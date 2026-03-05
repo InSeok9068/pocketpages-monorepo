@@ -1,0 +1,77 @@
+name: Release Service Build
+
+on:
+  push:
+    branches:
+      - "release/**"
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_OWNER: inseok9068
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve service from branch
+        id: svc
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="${GITHUB_REF_NAME}"
+          SERVICE="${BRANCH_NAME#release/}"
+
+          if [[ "$SERVICE" == "$BRANCH_NAME" || -z "$SERVICE" ]]; then
+            echo "Branch must be release/<service>. current=$BRANCH_NAME"
+            exit 1
+          fi
+
+          APP_DIR="apps/${SERVICE}"
+          DOCKERFILE="${APP_DIR}/Dockerfile"
+
+          if [[ ! -d "$APP_DIR" ]]; then
+            echo "Service directory not found: $APP_DIR"
+            exit 1
+          fi
+
+          if [[ ! -f "$DOCKERFILE" ]]; then
+            echo "Dockerfile not found: $DOCKERFILE"
+            exit 1
+          fi
+
+          echo "service=${SERVICE}" >> "$GITHUB_OUTPUT"
+          echo "app_dir=${APP_DIR}" >> "$GITHUB_OUTPUT"
+          echo "dockerfile=${DOCKERFILE}" >> "$GITHUB_OUTPUT"
+          echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${SERVICE}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ steps.svc.outputs.app_dir }}
+          file: ${{ steps.svc.outputs.dockerfile }}
+          push: true
+          tags: |
+            ${{ steps.svc.outputs.image }}:${{ github.sha }}
+            ${{ steps.svc.outputs.image }}:release

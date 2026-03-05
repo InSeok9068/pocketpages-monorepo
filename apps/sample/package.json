@@ -2,7 +2,7 @@
   "name": "sample",
   "private": true,
   "scripts": {
-    "postinstall": "patch-package"
+    "postinstall": "node -e \"try{require.resolve('patch-package');require('child_process').execSync('patch-package',{stdio:'inherit'})}catch(e){console.log('patch-package not installed, skip')}\""
   },
   "dependencies": {
     "pocketpages": ">=0.22.3",

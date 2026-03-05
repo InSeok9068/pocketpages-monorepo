@@ -1,0 +1,195 @@
+version: "3.9"
+
+services:
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./app/caddy:/data
+      - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - todo-pocketbase
+      - kjca-pocketbase
+      - stylemate-pocketbase
+      - sample-pocketpages
+      - squash-helper
+    networks:
+      - public
+      - private
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  todo-pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    container_name: todo-pocketbase
+    restart: unless-stopped
+    environment:
+      PB_HOST: 0.0.0.0
+      PB_PORT: 8090
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY}
+    expose:
+      - "8090"
+    volumes:
+      - /path/to/todo/data:/pb_data
+      - /path/to/todo/public:/pb_public
+      - /path/to/todo/hooks:/pb_hooks
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8090/api/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - private
+      - egress
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  kjca-pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    container_name: kjca-pocketbase
+    restart: unless-stopped
+    environment:
+      PB_HOST: 0.0.0.0
+      PB_PORT: 8090
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY}
+    expose:
+      - "8090"
+    volumes:
+      - /path/to/kjca/data:/pb_data
+      - /path/to/kjca/public:/pb_public
+      - /path/to/kjca/hooks:/pb_hooks
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8090/api/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - private
+      - egress
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  stylemate-pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    container_name: stylemate-pocketbase
+    restart: unless-stopped
+    environment:
+      PB_HOST: 0.0.0.0
+      PB_PORT: 8090
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY}
+    expose:
+      - "8090"
+    volumes:
+      - /path/to/stylemate/data:/pb_data
+      - /path/to/stylemate/public:/pb_public
+      - /path/to/stylemate/hooks:/pb_hooks
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8090/api/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - private
+      - egress
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  sample-pocketpages:
+    image: ghcr.io/inseok9068/sample:release-sample
+    container_name: sample-pocketpages
+    restart: unless-stopped
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY}
+    expose:
+      - "8090"
+    volumes:
+      - /path/to/sample/data:/app/pb_data
+      - /path/to/sample/public:/app/pb_public
+      - /path/to/sample/hooks:/app/pb_hooks
+      - /path/to/sample/migrations:/app/pb_migrations
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8090/api/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - private
+      - egress
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  squash-helper:
+    container_name: squash-helper
+    image: ghcr.io/inseok9068/squash-helper:release
+    restart: unless-stopped
+    expose:
+      - "8080"
+    networks:
+      - private
+      - egress
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+networks:
+  public:
+  private:
+    internal: true
+  egress:
