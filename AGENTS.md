@@ -31,6 +31,7 @@
 - `sample/pb_hooks/pages/(site)/index.ejs`: 기본 페이지
 - `sample/pb_hooks/pages/api/*`: API 성격 엔드포인트
 - `sample/pb_hooks/pages/_private/*`: 부분 템플릿/내부 조각
+- `types.d.ts`: 루트 기준 PocketBase JSVM 타입 정의(전역 API/객체/시그니처 기준)
 - `.docs/pocketpages/*`: PocketPages 로컬 문서 스냅샷
 - `.docs/pocketbase/pocketbase_docs_js.md`: PocketBase(+JS 확장) 통합 문서
 
@@ -47,6 +48,8 @@
 - 새 기능은 먼저 `sample/pb_hooks/pages`의 파일 기반 라우팅 구조에 맞춰 배치합니다.
 - 공통 `<head>`/메타/공통 스크립트는 `+layout.ejs`에 두고, 페이지별 내용은 각 `*.ejs`로 분리합니다.
 - PocketBase 컬렉션/권한 규칙에 의존하는 로직은 문서 기준으로 검증 후 구현합니다.
+- PocketBase JSVM 코드를 작성할 때는 반드시 루트 `types.d.ts`를 기준으로 가능한 API/타입만 사용합니다.
+- 문서 예시와 `types.d.ts`가 다를 경우 `types.d.ts`를 우선하며, 타입 정의에 없는 심볼/시그니처는 사용하지 않습니다.
 - 프론트엔드 역할 분리 원칙:
   1. 간단한 클라이언트 상호작용은 Alpine.js로 처리
   2. 디자인/기본 UI 스타일은 Pico CSS를 기준으로 구성
