@@ -6,10 +6,16 @@ RUN npm ci --omit=dev
 
 FROM alpine:3.20 AS pocketbase
 
+ARG TARGETARCH
+
 RUN apk add --no-cache ca-certificates curl unzip
-RUN PB_VERSION="$(curl -fsSL https://api.github.com/repos/pocketbase/pocketbase/releases/latest | tr -d '\n' | sed -n 's/.*\"tag_name\"[[:space:]]*:[[:space:]]*\"v\([^\"]*\)\".*/\1/p')" \
+RUN case "${TARGETARCH}" in \
+    amd64|arm64) PB_ARCH="${TARGETARCH}" ;; \
+    *) echo "Unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
+  esac \
+  && PB_VERSION="$(curl -fsSL https://api.github.com/repos/pocketbase/pocketbase/releases/latest | tr -d '\n' | sed -n 's/.*\"tag_name\"[[:space:]]*:[[:space:]]*\"v\([^\"]*\)\".*/\1/p')" \
   && curl -fsSL -o /tmp/pocketbase.zip \
-  "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_amd64.zip" \
+  "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_${PB_ARCH}.zip" \
   && unzip /tmp/pocketbase.zip -d /out \
   && chmod +x /out/pocketbase
 
