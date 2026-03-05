@@ -10,14 +10,17 @@
   <meta property="og:description" content="<%= meta('description') %>" />
   <meta property="og:image" content="<%= meta('image') || '/android-chrome-512x512.png' %>" />
   <meta property="og:url" content="<%= meta('path') ? meta('path') : (meta('url') || request.url) %>" />
-  <link rel="stylesheet" href="https://unpkg.com/mvp.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.3/htmx.min.js" integrity="sha512-dQu3OKLMpRu85mW24LA1CUZG67BgLPR8Px3mcxmpdyijgl1UpCM1RtJoQP6h8UkufSnaHVRTUx98EQT9fcKohw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="https://unpkg.com/pocketbase-htmx-ext-sse"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@latest"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <%- slots.head %>
 </head>
 
 <body>
-  <main><%- slots.body || slot %></main>
+  <main class="container">
+    <%- slots.body || slot %>
+  </main>
 </body>
 
 </html>

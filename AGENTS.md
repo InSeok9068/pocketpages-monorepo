@@ -14,10 +14,14 @@
 - **페이지 루트**: `pb_hooks/pages`
 - **템플릿 엔진**: EJS (`pocketpages-plugin-ejs`)
 - **리얼타임**: `pocketpages-plugin-realtime` (SSE/HTMX 연계 가능)
+- **클라이언트 상호작용**: Alpine.js
+- **디자인 시스템**: Pico CSS
+- **서버 통신/부분 갱신**: HTMX
 
 요약하면:
 - 데이터/인증/권한/API 규칙 = PocketBase
 - 파일 기반 라우팅, 레이아웃, 렌더링, 컨텍스트 API = PocketPages
+- UI 상호작용 = Alpine.js / 스타일 = Pico CSS / 서버 통신 = HTMX
 
 ## 3) 현재 레포 기준 핵심 경로
 
@@ -43,6 +47,10 @@
 - 새 기능은 먼저 `sample/pb_hooks/pages`의 파일 기반 라우팅 구조에 맞춰 배치합니다.
 - 공통 `<head>`/메타/공통 스크립트는 `+layout.ejs`에 두고, 페이지별 내용은 각 `*.ejs`로 분리합니다.
 - PocketBase 컬렉션/권한 규칙에 의존하는 로직은 문서 기준으로 검증 후 구현합니다.
+- 프론트엔드 역할 분리 원칙:
+  1. 간단한 클라이언트 상호작용은 Alpine.js로 처리
+  2. 디자인/기본 UI 스타일은 Pico CSS를 기준으로 구성
+  3. 서버와의 통신 및 부분 렌더 갱신은 HTMX를 우선 사용
 - 문서 참조 우선순위:
   1. `.docs/pocketpages/*` (프레임워크 동작)
   2. `.docs/pocketbase/pocketbase_docs_js.md` (DB/Auth/API/JS hooks)
