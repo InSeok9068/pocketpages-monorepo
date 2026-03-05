@@ -31,6 +31,8 @@ RUN apk add --no-cache ca-certificates
 COPY . .
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
+RUN mkdir -p /opt/defaults/pb_hooks \
+  && if [ -d /app/pb_hooks ]; then cp -R /app/pb_hooks/. /opt/defaults/pb_hooks/; fi
 
 RUN cat <<'EOF' > /usr/local/bin/start.sh
 #!/bin/sh
@@ -43,6 +45,12 @@ PB_MIGRATIONS="${APP_ROOT}/pb_migrations"
 INIT_MARKER="${PB_DATA}/.superuser_initialized"
 
 mkdir -p "${PB_DATA}"
+mkdir -p "${PB_HOOKS}"
+
+# If hooks volume is empty, seed it with baked defaults.
+if [ -z "$(ls -A "${PB_HOOKS}" 2>/dev/null)" ] && [ -d /opt/defaults/pb_hooks ]; then
+  cp -R /opt/defaults/pb_hooks/. "${PB_HOOKS}/"
+fi
 
 if [ -n "${PB_ADMIN_EMAIL:-}" ] && [ -n "${PB_ADMIN_PASSWORD:-}" ] && [ ! -f "${INIT_MARKER}" ]; then
   echo "Initializing PocketBase superuser..."
