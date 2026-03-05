@@ -1,8 +1,14 @@
 {
   "name": "sample",
   "private": true,
+  "scripts": {
+    "postinstall": "patch-package"
+  },
   "dependencies": {
     "pocketpages": ">=0.22.3",
     "pocketpages-plugin-realtime": "^0.2.0"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
   }
 }
