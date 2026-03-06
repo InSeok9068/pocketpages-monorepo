@@ -14,24 +14,19 @@
         display: none !important;
       }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@unocss/runtime/attributify.global.js"></script>
     <script>
       window.__unocss = {
-        presets: [
-          // 테일윈드 문법을 그대로 사용하게 해주는 기본 프리셋
-          () => window.__unocss_runtime.presets.presetUno(),
-          // p-4, bg-blue 같은 속성 방식을 활성화하는 프리셋
-          () => window.__unocss_runtime.presets.presetAttributify(),
-        ],
-        // 스타일 계산이 완료되면 [un-cloak] 속성을 제거하여 화면을 보여줌
+        presets: [() => window.__unocss_runtime.presets.presetUno(), () => window.__unocss_runtime.presets.presetAttributify()],
         ready: () => {
+          // 모든 스타일 계산이 끝나면 숨겨진 화면을 짠! 하고 보여줌
           document.documentElement.removeAttribute("un-cloak");
         },
       };
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@latest"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <%- slots.head %>
   </head>
 
