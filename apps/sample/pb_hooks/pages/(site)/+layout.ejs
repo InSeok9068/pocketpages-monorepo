@@ -22,7 +22,6 @@
       window.__unocss = {
         presets: [() => window.__unocss_runtime.presets.presetUno(), () => window.__unocss_runtime.presets.presetAttributify()],
         ready: () => {
-          // 모든 스타일 계산이 끝나면 숨겨진 화면을 짠! 하고 보여줌
           document.documentElement.removeAttribute("un-cloak");
         },
       };
