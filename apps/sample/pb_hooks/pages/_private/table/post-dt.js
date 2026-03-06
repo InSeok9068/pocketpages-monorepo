@@ -34,8 +34,12 @@ module.exports = function createPostDT(record) {
       return this.status === 'archived'
     },
 
+    hasPublishableContent() {
+      return String(this.title || '').trim() !== '' && String(this.content || '').trim() !== ''
+    },
+
     canPublish() {
-      return this.isDraft() && String(this.title || '').trim() !== '' && String(this.content || '').trim() !== ''
+      return !this.isArchived() && this.hasPublishableContent()
     },
 
     canArchive() {

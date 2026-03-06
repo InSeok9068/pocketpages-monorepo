@@ -48,8 +48,17 @@
         throw new Error('게시글은 draft 상태에서 제목과 본문이 모두 있어야 게시할 수 있습니다.')
       }
       $app.save(record)
-      info('api/posts/create:success', { boardSlug, slug: record.get('slug') })
-      response.redirect('/boards/' + encodeURIComponent(boardSlug) + '?__flash=' + encodeURIComponent('Post created.'), 303)
+      const createdSlug = record.get('slug')
+      info('api/posts/create:success', { boardSlug, slug: createdSlug })
+      response.redirect(
+        '/boards/' +
+          encodeURIComponent(boardSlug) +
+          '/posts/' +
+          encodeURIComponent(createdSlug) +
+          '?__flash=' +
+          encodeURIComponent('Post created.'),
+        303
+      )
       return
     } catch (exception) {
       error('api/posts/create:save-failed', exception)
@@ -57,4 +66,4 @@
     }
   }
 </script>
-<% response.redirect('/boards/' + encodeURIComponent(boardSlug) + '?__flash=' + encodeURIComponent(errorMessage || 'Failed to create post.'), 303) %>
+<% response.redirect('/boards/' + encodeURIComponent(boardSlug) + '/posts/new?__flash=' + encodeURIComponent(errorMessage || 'Failed to create post.'), 303) %>

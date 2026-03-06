@@ -80,7 +80,7 @@
 <%
   const fallbackBoard = '/boards/' + encodeURIComponent(boardSlug)
   const fallbackPost = postSlug
-    ? fallbackBoard + '/posts/' + encodeURIComponent(postSlug)
+    ? fallbackBoard + '/posts/' + encodeURIComponent(postSlug) + '/edit'
     : fallbackBoard
   response.redirect(fallbackPost + '?__flash=' + encodeURIComponent(errorMessage || 'Failed to update post.'), 303)
 %>

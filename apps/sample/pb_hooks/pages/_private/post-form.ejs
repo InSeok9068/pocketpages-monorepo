@@ -1,0 +1,75 @@
+<form action="<%= formAction %>" method="post" max-w-2xl space-y-4>
+  <input type="hidden" name="board" value="<%= boardSlug %>" />
+  <% if (postSlug) { %>
+    <input type="hidden" name="post" value="<%= postSlug %>" />
+  <% } %>
+
+  <label block>
+    Title
+    <input
+      type="text"
+      name="title"
+      maxlength="200"
+      value="<%= values.title %>"
+      required
+      mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
+    />
+  </label>
+
+  <label block>
+    Slug
+    <input
+      type="text"
+      name="slug"
+      value="<%= values.slug %>"
+      placeholder="welcome-post"
+      mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
+    />
+  </label>
+
+  <label block>
+    Author
+    <input
+      type="text"
+      name="authorName"
+      value="<%= values.authorName %>"
+      placeholder="Admin"
+      required
+      mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
+    />
+  </label>
+
+  <label block>
+    Content
+    <textarea
+      name="content"
+      rows="<%= textareaRows || 8 %>"
+      required
+      mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
+    ><%= values.content %></textarea>
+  </label>
+
+  <label block>
+    Status
+    <select
+      name="status"
+      mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
+    >
+      <option value="published" <%= values.status === 'published' ? 'selected' : '' %>>Published</option>
+      <option value="draft" <%= values.status === 'draft' ? 'selected' : '' %>>Draft</option>
+      <option value="archived" <%= values.status === 'archived' ? 'selected' : '' %>>Archived</option>
+    </select>
+  </label>
+
+  <label flex items-center gap-3 text="sm stone-700">
+    <input type="checkbox" name="isNotice" value="true" <%= values.isNotice ? 'checked' : '' %> />
+    Notice
+  </label>
+
+  <button
+    type="submit"
+    inline-flex items-center rounded-full bg="stone-900 hover:stone-700" px-4 py-2 text="sm white" font-medium transition
+  >
+    <%= submitLabel %>
+  </button>
+</form>
