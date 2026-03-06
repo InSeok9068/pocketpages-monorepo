@@ -15,25 +15,41 @@
         display: none !important;
       }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js" onerror="this.onerror=null;this.src='<%= asset('/assets/vendor/htmx-2.0.3.min.js') %>'"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" onerror="this.onerror=null;this.src='<%= asset('/assets/vendor/alpine-3.x.x-cdn.min.js') %>'"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@latest" onerror="this.onerror=null;this.src='<%= asset('/assets/vendor/pocketbase-htmx-ext-sse-latest.js') %>'"></script>
+    <script>
+      window.__assetFallback = function (element) {
+        element.onerror = null;
+        element.src = element.dataset.fallbackSrc;
+      };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js" data-fallback-src="<%= asset('/assets/vendor/htmx-2.0.3.min.js') %>" onerror="window.__assetFallback(this)"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+      data-fallback-src="<%= asset('/assets/vendor/alpine-3.x.x-cdn.min.js') %>"
+      onerror="window.__assetFallback(this)"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@latest"
+      data-fallback-src="<%= asset('/assets/vendor/pocketbase-htmx-ext-sse-latest.js') %>"
+      onerror="window.__assetFallback(this)"
+    ></script>
     <script
       src="https://cdn.jsdelivr.net/npm/@unocss/runtime/attributify.global.js"
-      onerror="this.onerror=null;this.src='<%= asset('/assets/vendor/unocss-runtime-attributify.global.js') %>'"
+      data-fallback-src="<%= asset('/assets/vendor/unocss-runtime-attributify.global.js') %>"
+      onerror="window.__assetFallback(this)"
     ></script>
     <script>
       window.__unocss = {
         presets: [() => window.__unocss_runtime.presets.presetUno(), () => window.__unocss_runtime.presets.presetAttributify()],
         ready: () => {
-          document.documentElement.removeAttribute("un-cloak");
+          document.body.removeAttribute("un-cloak");
         },
       };
     </script>
     <%- slots.head %>
   </head>
 
-  <body min-h-screen bg="stone-100" text="stone-900" antialiased>
+  <body un-cloak min-h-screen bg="stone-100" text="stone-900" antialiased>
     <main mx-auto max-w-5xl px="6 md:8" py="10 md:14"><%- slots.body || slot %></main>
   </body>
 </html>
