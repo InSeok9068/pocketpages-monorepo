@@ -1,5 +1,6 @@
 <script server>
   const boardService = resolve('board-service')
+  const createBoardDT = resolve('board-dt')
   const form = body()
   const name = String(form.name || '').trim()
   const slug = boardService.slugify(form.slug || form.name).slice(0, 80)
@@ -30,6 +31,12 @@
       record.set('description', description)
       record.set('is_active', true)
       record.set('sort_order', 0)
+      const boardDT = createBoardDT(record)
+
+      if (!boardDT.isUsable()) {
+        throw new Error('활성 상태의 게시판만 생성할 수 있습니다.')
+      }
+
       $app.save(record)
       info('api/boards/create:success', { slug: record.get('slug') })
       response.redirect('/boards?__flash=' + encodeURIComponent('Board created.'), 303)

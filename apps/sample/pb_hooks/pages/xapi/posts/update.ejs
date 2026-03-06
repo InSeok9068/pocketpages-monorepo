@@ -1,5 +1,7 @@
 <script server>
   const boardService = resolve('board-service')
+  const createBoardDT = resolve('board-dt')
+  const createPostDT = resolve('post-dt')
   const form = body()
   const boardSlug = String(form.board || '').trim()
   const postSlug = String(form.post || '').trim()
@@ -13,12 +15,16 @@
   dbg('api/posts/update:start', { boardSlug, postSlug, nextSlug, status, isNotice })
 
   const board = boardService.findActiveBoardBySlug(boardSlug)
+  const boardDT = board ? createBoardDT(board) : null
   let post = null
   let errorMessage = ''
 
   if (!board) {
     warn('api/posts/update:board-not-found', { boardSlug })
     errorMessage = 'Board not found.'
+  } else if (!boardDT.canAcceptPosts()) {
+    warn('api/posts/update:board-not-accepting-posts', { boardSlug })
+    errorMessage = 'Board cannot accept posts.'
   }
 
   if (!errorMessage) {
@@ -37,6 +43,14 @@
 
   if (!errorMessage) {
     try {
+      const beforePostDT = createPostDT(post)
+      if (!beforePostDT.canEdit()) {
+        throw new Error('archived 상태의 게시글은 수정하거나 삭제할 수 없습니다.')
+      }
+      if (status === 'archived' && !beforePostDT.canArchive()) {
+        throw new Error('게시글은 published 상태일 때만 보관 처리할 수 있습니다.')
+      }
+
       post.set('title', title)
       post.set('slug', nextSlug)
       post.set('content', content)
@@ -45,6 +59,10 @@
       post.set('is_notice', isNotice)
       if (status === 'published' && !post.get('published_at')) {
         post.set('published_at', new Date().toISOString())
+      }
+      const nextPostDT = createPostDT(post)
+      if (status === 'published' && !nextPostDT.canPublish()) {
+        throw new Error('게시글은 draft 상태에서 제목과 본문이 모두 있어야 게시할 수 있습니다.')
       }
       $app.save(post)
       info('api/posts/update:success', { boardSlug, previousSlug: postSlug, nextSlug })

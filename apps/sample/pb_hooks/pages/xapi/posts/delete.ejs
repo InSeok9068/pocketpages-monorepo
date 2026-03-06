@@ -1,5 +1,6 @@
 <script server>
   const boardService = resolve('board-service')
+  const createPostDT = resolve('post-dt')
   const form = body()
   const boardSlug = String(form.board || '').trim()
   const postSlug = String(form.post || '').trim()
@@ -26,6 +27,10 @@
 
   if (!errorMessage) {
     try {
+      const postDT = createPostDT(post)
+      if (!postDT.canEdit()) {
+        throw new Error('archived 상태의 게시글은 수정하거나 삭제할 수 없습니다.')
+      }
       $app.delete(post)
       info('api/posts/delete:success', { boardSlug, postSlug })
       response.redirect('/boards/' + encodeURIComponent(boardSlug) + '?__flash=' + encodeURIComponent('Post deleted.'), 303)
