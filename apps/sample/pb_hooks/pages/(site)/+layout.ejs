@@ -9,15 +9,19 @@
     <meta property="og:description" content="<%= meta('description') %>" />
     <meta property="og:image" content="<%= meta('image') || '/android-chrome-512x512.png' %>" />
     <meta property="og:url" content="<%= meta('path') ? meta('path') : (meta('url') || request.url) %>" />
+    <link rel="stylesheet" href="<%= asset('/assets/style.css') %>" />
     <style>
       [un-cloak] {
         display: none !important;
       }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@unocss/runtime/attributify.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js" onerror="this.onerror=null;this.src='<%= asset('/assets/vendor/htmx-2.0.3.min.js') %>'"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" onerror="this.onerror=null;this.src='<%= asset('/assets/vendor/alpine-3.x.x-cdn.min.js') %>'"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@latest" onerror="this.onerror=null;this.src='<%= asset('/assets/vendor/pocketbase-htmx-ext-sse-latest.js') %>'"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@unocss/runtime/attributify.global.js"
+      onerror="this.onerror=null;this.src='<%= asset('/assets/vendor/unocss-runtime-attributify.global.js') %>'"
+    ></script>
     <script>
       window.__unocss = {
         presets: [() => window.__unocss_runtime.presets.presetUno(), () => window.__unocss_runtime.presets.presetAttributify()],
