@@ -98,6 +98,7 @@ EOF
   local cmd=(
     "${RUNNER[@]}"
     serve
+    "--dev"
     "--dir=$service_dir/pb_data"
     "--hooksDir=$service_dir/pb_hooks"
   )

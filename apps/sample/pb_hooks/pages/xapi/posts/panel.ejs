@@ -1,5 +1,5 @@
 <script server>
-  const boardService = resolve('/_private/board-service')
+  const boardService = resolve('board-service')
   const boardSlug = String(params.board || '').trim()
   const selectedBoard = boardService.findActiveBoardBySlug(boardSlug)
   let posts = []

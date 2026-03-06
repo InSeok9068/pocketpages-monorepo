@@ -1,5 +1,5 @@
 <script server>
-  const boardService = resolve('/_private/board-service')
+  const boardService = resolve('board-service')
   const form = body()
   const boardSlug = String(form.board || '').trim()
   const title = String(form.title || '').trim()

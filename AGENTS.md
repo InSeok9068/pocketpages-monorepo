@@ -25,7 +25,8 @@
 - `apps/sample/pb_hooks/pages/+config.js`: PocketPages 설정
 - `apps/sample/pb_hooks/pages/(site)/+layout.ejs`: 사이트 레이아웃
 - `apps/sample/pb_hooks/pages/(site)/*`: 레이아웃이 적용되는 전체 페이지
-- `apps/sample/pb_hooks/pages/api/*`: 레이아웃 없이 부분 응답/액션을 반환하는 엔드포인트
+- `apps/sample/pb_hooks/pages/api/*`: JSON/프로그래매틱 API 성격의 엔드포인트를 둘 수 있는 위치
+- `apps/sample/pb_hooks/pages/xapi/*`: 레이아웃 없이 부분 응답/액션을 반환하는 엔드포인트
 - `apps/sample/pb_hooks/pages/_private/*`: partial, 서버 유틸, 내부 모듈
 - `apps/sample/pb_schema.json`: PocketBase 스키마 스냅샷
 - `apps/sample/pb_data/types.d.ts`: 서비스 기준 PocketBase JSVM 타입 정의
@@ -68,6 +69,7 @@
 - 페이지 고유 내용은 각 `*.ejs`에 둡니다.
 - 레이아웃이 실제로 필요로 하는 값은 leaf 페이지 기준으로 설계합니다.
 - PocketPages 레이아웃에서는 leaf 쪽 데이터만 보인다는 점을 기준으로 구조를 잡습니다.
+- layout 자체에서 여러 하위 페이지에 공통으로 필요한 데이터가 있다면, leaf 페이지마다 중복해서 넣지 말고 middleware로 올려서 전달하는 쪽을 우선합니다.
 
 ### D. `_private` 사용법
 
@@ -87,7 +89,10 @@
 
 - HTMX는 전체 페이지를 다시 받지 않고 **필요한 조각만 받는 구조**를 기본값으로 삼습니다.
 - 전체 페이지와 부분 응답은 디렉터리 차원에서 분리합니다.
-- 이 레포에서는 layout이 적용되는 페이지는 `(site)` 아래에, 부분 응답/액션은 `pages/api/*` 아래에 둡니다.
+- 이 레포에서는 layout이 적용되는 페이지는 `(site)` 아래에 둡니다.
+- HTMX partial, form action, redirect, SSE, raw HTML 응답처럼 **레이아웃 없는 상호작용 엔드포인트**는 `pages/xapi/*` 아래에 둡니다.
+- JSON을 반환하거나 외부/프로그래매틱 호출을 위한 **명시적인 API 엔드포인트**는 `pages/api/*` 아래에 둘 수 있습니다.
+- 즉 `xapi`는 layout 없는 interaction endpoint, `api`는 JSON/프로그래매틱 API라는 구분을 기본값으로 삼습니다.
 - HTMX 응답은 layout 없는 raw HTML 또는 리다이렉트/JSON 등 필요한 응답만 반환합니다.
 - 초기 페이지 렌더와 HTMX 응답이 같은 마크업을 써야 하면 `_private` partial로 묶어 한 곳에서 관리합니다.
 

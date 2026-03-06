@@ -1,5 +1,5 @@
 <script server>
-  const boardService = resolve('/_private/board-service')
+  const boardService = resolve('board-service')
   const sharedData = data || {}
   const board = sharedData.board || null
   const boardSlug = String(params.boardSlug || '').trim()
@@ -87,7 +87,7 @@
       <h2 text="2xl stone-950" font-semibold>Edit Post</h2>
     </header>
 
-    <form action="/api/posts/update" method="post" max-w-2xl space-y-4>
+    <form action="/xapi/posts/update" method="post" max-w-2xl space-y-4>
       <input type="hidden" name="board" value="<%= params.boardSlug %>" />
       <input type="hidden" name="post" value="<%= params.postSlug %>" />
 
@@ -165,7 +165,7 @@
       <h2 text="2xl rose-900" font-semibold>Delete Post</h2>
     </header>
 
-    <form action="/api/posts/delete" method="post">
+    <form action="/xapi/posts/delete" method="post">
       <input type="hidden" name="board" value="<%= params.boardSlug %>" />
       <input type="hidden" name="post" value="<%= params.postSlug %>" />
       <button

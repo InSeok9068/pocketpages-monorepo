@@ -13,7 +13,7 @@
         <p><small>/boards/<%= boardSlug %></small></p>
       </header>
       <p><%= boardDescription || 'No description' %></p>
-      <form hx-get="/api/posts/panel" hx-target="#post-panel" hx-swap="outerHTML">
+      <form hx-get="/xapi/posts/panel" hx-target="#post-panel" hx-swap="outerHTML">
         <input type="hidden" name="board" value="<%= boardSlug %>" />
         <button type="submit"><%= selectedBoardSlug === boardSlug ? 'Refresh posts' : 'View posts' %></button>
       </form>
