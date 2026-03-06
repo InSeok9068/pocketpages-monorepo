@@ -1,49 +1,38 @@
 <script server>
+  const boardService = resolve('/_private/board-service')
   const form = body()
   const boardSlug = String(form.board || '').trim()
   const postSlug = String(form.post || '').trim()
 
-  let board = null
-  let post = null
-  let error = ''
+  dbg('api/posts/delete:start', { boardSlug, postSlug })
 
-  try {
-    board = $app.findFirstRecordByFilter(
-      'boards',
-      'slug = {:slug} && is_active = true',
-      { slug: boardSlug }
-    )
-  } catch (e) {
-    board = null
-  }
+  const board = boardService.findActiveBoardBySlug(boardSlug)
+  let post = null
+  let errorMessage = ''
 
   if (!board) {
-    error = 'Board not found.'
+    warn('api/posts/delete:board-not-found', { boardSlug })
+    errorMessage = 'Board not found.'
   }
 
-  if (!error) {
-    try {
-      post = $app.findFirstRecordByFilter(
-        'posts',
-        'board = {:boardId} && slug = {:slug}',
-        { boardId: board.id, slug: postSlug }
-      )
-    } catch (e) {
-      post = null
-    }
+  if (!errorMessage) {
+    post = boardService.findPostByBoardAndSlug(board.id, postSlug)
 
     if (!post) {
-      error = 'Post not found.'
+      warn('api/posts/delete:post-not-found', { boardSlug, postSlug })
+      errorMessage = 'Post not found.'
     }
   }
 
-  if (!error) {
+  if (!errorMessage) {
     try {
       $app.delete(post)
+      info('api/posts/delete:success', { boardSlug, postSlug })
       response.redirect('/boards/' + encodeURIComponent(boardSlug) + '?__flash=' + encodeURIComponent('Post deleted.'), 303)
       return
-    } catch (e) {
-      error = String(e.message || e)
+    } catch (exception) {
+      error('api/posts/delete:delete-failed', exception)
+      errorMessage = String(exception.message || exception)
     }
   }
 </script>
@@ -52,5 +41,5 @@
   const fallbackPost = postSlug
     ? fallbackBoard + '/posts/' + encodeURIComponent(postSlug)
     : fallbackBoard
-  response.redirect(fallbackPost + '?__flash=' + encodeURIComponent(error || 'Failed to delete post.'), 303)
+  response.redirect(fallbackPost + '?__flash=' + encodeURIComponent(errorMessage || 'Failed to delete post.'), 303)
 %>

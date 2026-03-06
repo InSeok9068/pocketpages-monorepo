@@ -1,44 +1,28 @@
 <script server>
-  function slugify(value) {
-    return String(value || '')
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 200)
-  }
-
+  const boardService = resolve('/_private/board-service')
   const form = body()
   const boardSlug = String(form.board || '').trim()
   const title = String(form.title || '').trim()
-  const slug = slugify(form.slug || form.title)
+  const slug = boardService.slugify(form.slug || form.title)
   const authorName = String(form.authorName || '').trim()
   const content = String(form.content || '').trim()
   const isNotice = String(form.isNotice || '') === 'true'
   const status = String(form.status || 'published').trim() || 'published'
 
-  let selectedBoard = null
-  let error = ''
+  dbg('api/posts/create:start', { boardSlug, title, status, isNotice })
 
-  if (boardSlug) {
-    try {
-      selectedBoard = $app.findFirstRecordByFilter(
-        'boards',
-        'slug = {:slug} && is_active = true',
-        { slug: boardSlug }
-      )
-    } catch (error) {
-      selectedBoard = null
-    }
-  }
+  const selectedBoard = boardService.findActiveBoardBySlug(boardSlug)
+  let errorMessage = ''
 
   if (!selectedBoard) {
-    error = 'Board not found.'
+    warn('api/posts/create:board-not-found', { boardSlug })
+    errorMessage = 'Board not found.'
   } else if (!title || !slug || !authorName || !content) {
-    error = 'All fields are required.'
+    warn('api/posts/create:validation-failed', { boardSlug, title, slug, authorName })
+    errorMessage = 'All fields are required.'
   }
 
-  if (!error) {
+  if (!errorMessage) {
     try {
       const collection = $app.findCollectionByNameOrId('posts')
       const record = new Record(collection)
@@ -54,11 +38,13 @@
         record.set('published_at', new Date().toISOString())
       }
       $app.save(record)
+      info('api/posts/create:success', { boardSlug, slug: record.get('slug') })
       response.redirect('/boards/' + encodeURIComponent(boardSlug) + '?__flash=' + encodeURIComponent('Post created.'), 303)
       return
-    } catch (error) {
-      error = String(error.message || error)
+    } catch (exception) {
+      error('api/posts/create:save-failed', exception)
+      errorMessage = String(exception.message || exception)
     }
   }
 </script>
-<% response.redirect('/boards/' + encodeURIComponent(boardSlug) + '?__flash=' + encodeURIComponent(error || 'Failed to create post.'), 303) %>
+<% response.redirect('/boards/' + encodeURIComponent(boardSlug) + '?__flash=' + encodeURIComponent(errorMessage || 'Failed to create post.'), 303) %>

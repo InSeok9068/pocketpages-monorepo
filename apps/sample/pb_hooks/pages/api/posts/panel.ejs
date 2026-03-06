@@ -1,32 +1,21 @@
 <script server>
+  const boardService = resolve('/_private/board-service')
   const boardSlug = String(params.board || '').trim()
-  let selectedBoard = null
+  const selectedBoard = boardService.findActiveBoardBySlug(boardSlug)
   let posts = []
 
-  if (boardSlug) {
+  if (selectedBoard) {
     try {
-      selectedBoard = $app.findFirstRecordByFilter(
-        'boards',
-        'slug = {:slug} && is_active = true',
-        { slug: boardSlug }
+      posts = $app.findRecordsByFilter(
+        'posts',
+        'board = {:boardId} && status = "published"',
+        '-is_notice,-published_at,-created',
+        50,
+        0,
+        { boardId: selectedBoard.id }
       )
     } catch (error) {
-      selectedBoard = null
-    }
-
-    if (selectedBoard) {
-      try {
-        posts = $app.findRecordsByFilter(
-          'posts',
-          'board = {:boardId} && status = "published"',
-          '-is_notice,-published_at,-created',
-          50,
-          0,
-          { boardId: selectedBoard.id }
-        )
-      } catch (error) {
-        posts = []
-      }
+      posts = []
     }
   }
 </script>

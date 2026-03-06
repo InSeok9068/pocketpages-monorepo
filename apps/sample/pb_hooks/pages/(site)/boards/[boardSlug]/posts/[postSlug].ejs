@@ -1,32 +1,16 @@
 <script server>
+  const boardService = resolve('/_private/board-service')
+  const sharedData = data || {}
+  const board = sharedData.board || null
   const boardSlug = String(params.boardSlug || '').trim()
   const postSlug = String(params.postSlug || '').trim()
-  let board = null
   let post = null
-
-  try {
-    board = $app.findFirstRecordByFilter(
-      'boards',
-      'slug = {:slug} && is_active = true',
-      { slug: boardSlug }
-    )
-  } catch (error) {
-    board = null
-  }
 
   if (!board) {
     response.status(404)
     meta('title', 'Board Not Found')
   } else {
-    try {
-      post = $app.findFirstRecordByFilter(
-        'posts',
-        'board = {:boardId} && slug = {:slug}',
-        { boardId: board.id, slug: postSlug }
-      )
-    } catch (error) {
-      post = null
-    }
+    post = boardService.findPostByBoardAndSlug(board.id, postSlug)
 
     if (!post) {
       response.status(404)
@@ -37,7 +21,7 @@
     }
   }
 
-  const data = !board
+  const pageData = !board
     ? {
         board: null,
         post: null,
@@ -56,10 +40,10 @@
         }
 </script>
 
-<% if (data.error) { %>
+<% if (pageData.error) { %>
   <article rounded-3xl border="~ rose-200" bg-white p-6 shadow="sm">
     <header space-y-4>
-      <h1 text="3xl stone-950" font-semibold><%= data.error %></h1>
+      <h1 text="3xl stone-950" font-semibold><%= pageData.error %></h1>
     </header>
     <p mt-4>
       <a href="/boards/<%= params.boardSlug %>" text="sm stone-600 hover:stone-900" font-medium no-underline>
@@ -68,12 +52,12 @@
     </p>
   </article>
 <% } else { %>
-  <% const boardName = data.board.get('name') || params.boardSlug %>
-  <% const title = data.post.get('title') || params.postSlug %>
-  <% const status = data.post.get('status') || 'draft' %>
-  <% const authorName = data.post.get('author_name') || 'unknown' %>
-  <% const publishedAt = data.post.get('published_at') || data.post.created || '' %>
-  <% const content = data.post.get('content') || '' %>
+  <% const boardName = pageData.board.get('name') || params.boardSlug %>
+  <% const title = pageData.post.get('title') || params.postSlug %>
+  <% const status = pageData.post.get('status') || 'draft' %>
+  <% const authorName = pageData.post.get('author_name') || 'unknown' %>
+  <% const publishedAt = pageData.post.get('published_at') || pageData.post.created || '' %>
+  <% const content = pageData.post.get('content') || '' %>
 
   <header mb-8 space-y-4>
     <p>
@@ -124,7 +108,7 @@
         <input
           type="text"
           name="slug"
-          value="<%= data.post.get('slug') || params.postSlug %>"
+          value="<%= pageData.post.get('slug') || params.postSlug %>"
           mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
         />
       </label>
@@ -163,7 +147,7 @@
       </label>
 
       <label flex items-center gap-3 text="sm stone-700">
-        <input type="checkbox" name="isNotice" value="true" <%= data.post.get('is_notice') ? 'checked' : '' %> />
+        <input type="checkbox" name="isNotice" value="true" <%= pageData.post.get('is_notice') ? 'checked' : '' %> />
         Notice
       </label>
 

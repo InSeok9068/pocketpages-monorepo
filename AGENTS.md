@@ -1,104 +1,176 @@
 # AGENTS.md
 
-이 문서는 이 저장소에서 작업하는 에이전트/개발자가 PocketPages 아키텍처를 빠르게 이해하고, 일관된 방식으로 수정하기 위한 최소 가이드입니다.
+이 문서는 이 저장소에서 작업하는 에이전트/개발자가 PocketPages 기반 구조를 빠르게 이해하고, 같은 기준으로 일관되게 수정하기 위한 작업 가이드입니다.
 
-## 1) 프로젝트 한 줄 요약
+## 1) 프로젝트 요약
 
 - 이 레포는 **PocketBase + PocketPages** 기반 SSR 서비스 모음입니다.
-- 핵심 실행 컨텍스트는 PocketBase의 `pb_hooks`(JSVM)이며, PocketPages가 라우팅/렌더링 레이어를 제공합니다.
+- 핵심 실행 컨텍스트는 PocketBase의 `pb_hooks` JSVM이며, PocketPages가 파일 기반 라우팅/레이아웃/렌더링을 담당합니다.
+- 이 레포에서는 특히 **단순함, 명시성, 추적 가능성**을 중요하게 봅니다.
 
-## 2) 아키텍처 개요
+## 2) 기술 기준
 
-- **플랫폼**: PocketBase 서버
-- **앱 레이어**: PocketPages (`require('pocketpages')`)
-- **페이지 루트**: `pb_hooks/pages`
-- **템플릿 엔진**: EJS (`pocketpages-plugin-ejs`)
-- **리얼타임**: `pocketpages-plugin-realtime` (SSE/HTMX 연계 가능)
-- **클라이언트 상호작용**: Alpine.js
-- **디자인 시스템**: UnoCSS Runtime (Attributify Mode 기반 유틸리티 스타일 방식)
-- **서버 통신/부분 갱신**: HTMX
-
-요약하면:
-
-- 데이터/인증/권한/API 규칙 = PocketBase
-- 파일 기반 라우팅, 레이아웃, 렌더링, 컨텍스트 API = PocketPages
-- UI 상호작용 = Alpine.js / 스타일 = UnoCSS Runtime (Attributify Mode) / 서버 통신 = HTMX
+- 플랫폼: PocketBase
+- 앱 레이어: PocketPages (`require('pocketpages')`)
+- 템플릿 엔진: EJS (`pocketpages-plugin-ejs`)
+- 페이지 루트: `pb_hooks/pages`
+- 클라이언트 상호작용: Alpine.js
+- 서버 통신/부분 갱신: HTMX
+- 리얼타임: `pocketpages-plugin-realtime`
+- 스타일링: UnoCSS Runtime (Attributify Mode)
 
 ## 3) 현재 레포 기준 핵심 경로
 
-- `sample/pb_hooks/pocketpages.pb.js`: PocketPages 부트스트랩 엔트리
-- `sample/pb_hooks/pages/+config.js`: PocketPages 플러그인 설정
-- `sample/pb_hooks/pages/(site)/+layout.ejs`: 사이트 공통 레이아웃
-- `sample/pb_hooks/pages/(site)/index.ejs`: 기본 페이지
-- `sample/pb_hooks/pages/api/*`: API 성격 엔드포인트
-- `sample/pb_hooks/pages/_private/*`: 부분 템플릿/내부 조각
-- `sample/pb_schema.json`: 서비스별 PocketBase 스키마 스냅샷(컬렉션명, 필드명, 필드 타입, 제약 조건 확인용)
-- `sample/pb_data/types.d.ts`: 서비스 실행 시 생성되는 PocketBase JSVM 타입 정의(전역 API/객체/시그니처 기준)
-- `.docs/pocketpages/*`: PocketPages 로컬 문서 스냅샷
-- `.docs/pocketbase/pocketbase_docs_js.md`: PocketBase(+JS 확장) 통합 문서
+- `apps/sample/pb_hooks/pocketpages.pb.js`: PocketPages 부트스트랩 엔트리
+- `apps/sample/pb_hooks/pages/+config.js`: PocketPages 설정
+- `apps/sample/pb_hooks/pages/(site)/+layout.ejs`: 사이트 레이아웃
+- `apps/sample/pb_hooks/pages/(site)/*`: 레이아웃이 적용되는 전체 페이지
+- `apps/sample/pb_hooks/pages/api/*`: 레이아웃 없이 부분 응답/액션을 반환하는 엔드포인트
+- `apps/sample/pb_hooks/pages/_private/*`: partial, 서버 유틸, 내부 모듈
+- `apps/sample/pb_schema.json`: PocketBase 스키마 스냅샷
+- `apps/sample/pb_data/types.d.ts`: 서비스 기준 PocketBase JSVM 타입 정의
+- `.docs/pocketpages/*`: PocketPages 문서 스냅샷
+- `.docs/pocketbase/pocketbase_docs_js.md`: PocketBase JS 문서
 
-## 4) 수정 원칙
+## 4) 가장 중요한 작업 원칙
 
-### A. PocketPages 라우팅/렌더링 레이어
+- PocketPages에서는 과도한 추상화보다 **파일 구조가 직접 의도를 설명하는 형태**를 우선합니다.
+- 한 번만 쓰이는 로직은 억지로 공용화하지 말고, 해당 페이지 문맥 안에 명시적으로 둡니다.
+- 여러 파일에서 반복되는 책임만 공용화합니다.
+- 사람이든 AI든 **파일 경로만 보고 흐름을 추적할 수 있어야** 합니다.
+- 수정 전에는 항상 "이 책임이 페이지 전용인지, 여러 하위 경로에 공통인지, API 응답 전용인지"부터 구분합니다.
 
-- PocketPages 관점에서는 구조를 **심플하게 유지하는 것**을 우선 원칙으로 삼습니다.
-- 과도한 최적화, 이른 추상화, 불필요한 공용화보다 **명시적인 코드**를 우선합니다.
-- 한 번만 쓰이는 로직까지 억지로 헬퍼/레이어/추상화로 분리하지 말고, 해당 페이지 문맥에서 바로 읽히는 형태를 기본값으로 둡니다.
-- 에이전트와 사람이 모두 빠르게 추적할 수 있도록, 파일 이동이 많고 호출 흐름이 숨겨지는 구조보다 **직접 따라가기 쉬운 구조**를 선호합니다.
-- PocketPages는 파일 기반 라우팅과 템플릿 분리가 이미 명확하므로, 그 장점을 해치지 않는 선에서 단순하게 구성합니다.
-- 새 기능은 먼저 `sample/pb_hooks/pages`의 파일 기반 라우팅 구조에 맞춰 배치합니다.
-- 공통 `<head>`/메타/공통 스크립트는 `+layout.ejs`에 두고, 페이지별 내용은 각 `*.ejs`로 분리합니다.
-- 페이지 하나에서만 사용하는 데이터 준비나 메타 설정이라면 `+load.js`보다 해당 `index.ejs` 상단의 `<script server>`에 직접 두는 방식을 기본값으로 삼습니다.
-- `+load.js`는 여러 템플릿에서 로딩 책임을 공유해야 하거나, 메서드별 로딩(`+get.js`, `+post.js` 등)과 함께 구조적으로 유지할 이유가 분명할 때만 사용합니다.
+## 5) PocketPages 레이어 작업 기준
+
+### A. 라우팅과 파일명
+
+- 파일 기반 라우팅 구조를 먼저 존중합니다.
+- `index.ejs`는 **디렉터리 대표 경로**일 때 우선 사용합니다.
+- 하위 화면의 의미가 분명하면 `new.ejs`, `edit.ejs`, `[postSlug].ejs`처럼 파일명으로 의도를 드러냅니다.
+- 파일명은 화면 역할과 URL 의미가 최대한 바로 읽히게 유지합니다.
 - 동적 라우트(`[param]`)는 필요한 경우에만 도입합니다.
 
-### B. PocketBase 데이터/JSVM 레이어
+### B. 페이지, 로더, 미들웨어 구분
 
-- PocketBase 컬렉션/권한 규칙에 의존하는 로직은 문서 기준으로 검증 후 구현합니다.
-- 컬렉션 관련 필드명, 필드 타입, relation, 옵션, 제약 조건을 확인해야 할 때는 먼저 해당 서비스 루트의 `pb_schema.json`을 확인합니다.
-- `pb_schema.json`을 볼 때는 전체 스키마를 무작정 펼쳐서 훑지 말고, **필요한 컬렉션명으로 필터링해서 필요한 부분만 확인하는 것**을 기본 원칙으로 합니다.
-- PocketBase JSVM 코드를 작성할 때는 반드시 해당 서비스의 `pb_data/types.d.ts`를 기준으로 가능한 API/타입만 사용합니다.
-- 문서 예시와 서비스의 `pb_data/types.d.ts`가 다를 경우 `pb_data/types.d.ts`를 우선하며, 타입 정의에 없는 심볼/시그니처는 사용하지 않습니다.
-- 서버 로직을 작성할 때는 PocketPages가 제공하는 전역 로그 함수(`dbg`, `info`, `warn`, `error`)를 적극적으로 사용합니다.
-- 런타임에서 어떤 단계에서 문제가 생겼는지 추적할 수 있도록, 서버 작업은 주요 단계별로 로그를 명시적으로 남기는 것을 기본 원칙으로 합니다.
-- 특히 요청 진입, 입력값 확인, 분기 처리, DB 조회/저장, 예외 처리 지점처럼 흐름이 끊기기 쉬운 구간에는 로그를 충분히 남겨 AI와 사람이 모두 추적하기 쉽게 만듭니다.
-- PocketBase `Record`를 EJS에서 렌더링할 때는 `record.fieldName` 직접 접근을 기본값으로 가정하지 말고, 우선 `record.get('fieldName')` 방식으로 읽습니다.
+- 페이지 하나에서만 쓰는 데이터 준비/메타 설정은 해당 페이지 상단의 `<script server>`에 두는 것을 기본값으로 삼습니다.
+- `+load.js`는 페이지 엔트리와 같은 레벨에서 **하나만 실행**된다는 점을 전제로 사용합니다.
+- `+load.js`는 여러 템플릿에서 같은 로딩 책임을 공유하거나, `+get.js`/`+post.js` 등과 함께 구조적으로 유지할 이유가 분명할 때만 사용합니다.
+- 여러 하위 경로에 공통으로 필요한 데이터, 인증, 가드, 요청 검증은 `+middleware.js`로 올립니다.
+- `+middleware.js`는 루트에서 리프까지 계층적으로 실행되므로, 공통 책임을 모으는 용도로 사용합니다.
+- middleware에서 PocketPages 컨텍스트 API가 필요하면 **전역 심볼로 가정하지 말고**, 함수 인자로 받은 `api`에서 꺼내 사용합니다.
+- 예시: `module.exports = function ({ params, resolve, dbg }) { ... }`
+- `next`를 사용하는 middleware는 흐름 제어가 복잡해지므로, 꼭 필요한 경우에만 사용합니다.
+- middleware에서 조기 종료하면 직접 응답을 보내야 한다는 점을 항상 염두에 둡니다.
 
-### C. PocketBase 마이그레이션 레이어
+### C. 레이아웃
 
-- migration에서 relation 필드는 대상 컬렉션이 실제로 저장된 뒤의 `collection.id`를 사용합니다.
+- 공통 `<head>`, 메타 기본값, 공통 스크립트, 공통 외형은 `+layout.ejs`에 둡니다.
+- 페이지 고유 내용은 각 `*.ejs`에 둡니다.
+- 레이아웃이 실제로 필요로 하는 값은 leaf 페이지 기준으로 설계합니다.
+- PocketPages 레이아웃에서는 leaf 쪽 데이터만 보인다는 점을 기준으로 구조를 잡습니다.
+
+### D. `_private` 사용법
+
+- `_private`는 단순 partial 폴더가 아니라, **부분 템플릿 + 서버 유틸 + 내부 모듈**을 두는 기본 위치입니다.
+- 외부 라우트로 노출되면 안 되는 파일은 `_private`에 둡니다.
+- partial은 `_private`에 두고 `include()`로 재사용합니다.
+- 공통 서버 로직, 쿼리 유틸, 포맷터, slug 처리 같은 로직도 `_private`에 둡니다.
+- EJS나 템플릿 컨텍스트에서는 `_private` 모듈을 `resolve()`로 불러옵니다.
+- `resolve()`는 `_private`를 포함한 전체 경로를 넘기는 것이 아니라, `_private` 기준 이름으로 사용합니다.
+- 예시: `resolve('board-service')`
+- middleware에서는 `resolve()`를 전역 함수처럼 직접 호출하지 말고, `module.exports = function ({ resolve }) { ... }`처럼 **인자로 받은 `resolve`**를 사용합니다.
+- `resolve('/_private/board-service')` 같은 형태는 `_private/_private/...`로 잘못 해석될 수 있으므로 사용하지 않습니다.
+- `_private` 파일은 **가까운 곳에 두고**, 더 넓게 재사용되기 시작하면 상위 디렉터리로 올립니다.
+- 하위 섹션에서 상위 `_private` 파일을 override할 수 있다는 점을 감안해 파일 위치를 정합니다.
+
+### E. HTMX와 API 응답
+
+- HTMX는 전체 페이지를 다시 받지 않고 **필요한 조각만 받는 구조**를 기본값으로 삼습니다.
+- 전체 페이지와 부분 응답은 디렉터리 차원에서 분리합니다.
+- 이 레포에서는 layout이 적용되는 페이지는 `(site)` 아래에, 부분 응답/액션은 `pages/api/*` 아래에 둡니다.
+- HTMX 응답은 layout 없는 raw HTML 또는 리다이렉트/JSON 등 필요한 응답만 반환합니다.
+- 초기 페이지 렌더와 HTMX 응답이 같은 마크업을 써야 하면 `_private` partial로 묶어 한 곳에서 관리합니다.
+
+## 6) PocketBase / JSVM 작업 기준
+
+### A. 타입과 문서 기준
+
+- PocketBase JSVM 코드는 반드시 해당 서비스의 `pb_data/types.d.ts`를 기준으로 가능한 API/타입만 사용합니다.
+- 문서 예시와 `pb_data/types.d.ts`가 다르면 `pb_data/types.d.ts`를 우선합니다.
+- 타입 정의에 없는 심볼/시그니처는 사용하지 않습니다.
+
+### B. 스키마 확인 기준
+
+- 컬렉션명, 필드명, 필드 타입, relation, 옵션, 제약 조건 확인이 필요하면 해당 서비스 루트의 `pb_schema.json`을 먼저 봅니다.
+- `pb_schema.json`은 전체를 무작정 펼쳐서 읽지 말고, **필요한 컬렉션명으로 필터링해서 필요한 부분만 확인**합니다.
+
+### C. Record 접근 기준
+
+- EJS에서 PocketBase `Record`를 렌더링할 때는 `record.fieldName` 직접 접근을 기본값으로 가정하지 않습니다.
+- 우선 `record.get('fieldName')` 방식으로 읽습니다.
+
+### D. 로그와 런타임 추적
+
+- 서버 로직을 작성할 때는 PocketPages 전역 로그 함수 `dbg`, `info`, `warn`, `error`를 적극적으로 사용합니다.
+- 런타임에서 어디서 문제가 났는지 바로 알 수 있도록 주요 단계별 로그를 명시적으로 남깁니다.
+- 특히 요청 진입, 입력값 확인, 분기, DB 조회, 저장/삭제, 예외 처리 지점은 로그를 남기는 편을 기본값으로 둡니다.
+- `dbg()`는 개발 추적용, `info()`는 정상 흐름 기록, `warn()`은 예상 가능한 이상 상태, `error()`는 실제 실패 기록으로 구분합니다.
+
+### E. 마이그레이션
+
+- relation 필드는 대상 컬렉션이 저장된 뒤의 실제 `collection.id`를 사용합니다.
 - relation 대상 컬렉션 ID를 임의 문자열로 하드코딩하지 않습니다.
-- self relation(예: `comments.parent_comment`)은 컬렉션 생성과 동시에 넣지 말고, 컬렉션 저장 후 2차 업데이트로 추가하는 것을 기본 원칙으로 합니다.
+- self relation은 컬렉션 생성과 동시에 넣지 말고, 저장 후 2차 업데이트로 추가하는 것을 기본 원칙으로 합니다.
 
-### D. 프론트엔드/HTMX/Alpine 레이어
+## 7) 프론트엔드 기준
 
 - 간단한 클라이언트 상호작용은 Alpine.js로 처리합니다.
-- 디자인/기본 UI 스타일은 UnoCSS Runtime + Attributify Mode 기준으로 구성합니다.
-- 스타일을 `class="..."` 하나에 길게 몰아넣지 말고, 가능한 한 Attributify 속성으로 나누어 작성합니다.
+- 스타일은 UnoCSS Runtime + Attributify Mode 기준으로 작성합니다.
+- 스타일을 긴 `class=""` 하나에 몰아넣지 말고, 가능한 한 Attributify 속성으로 나눠 씁니다.
 - 성격이 비슷한 스타일은 속성 그룹으로 묶습니다.
-- 예시: `p-4`, `flex`, `rounded-xl`처럼 단일 속성을 직접 쓰거나, `text="center lg white"`, `border="~ gray-200 rounded-xl"`처럼 그룹화합니다.
-- 서버와의 통신 및 부분 렌더 갱신은 HTMX를 우선 사용합니다.
-- HTMX로 부분 갱신할 때는 전체 페이지 라우트(`/(site)/index.ejs` 등)를 직접 다시 치지 말고, 가능한 한 `pages/api/*` 아래에 부분 응답 전용 엔드포인트를 만들어 해당 조각만 반환합니다.
+- 예시: `text="center lg white"`, `border="~ stone-200 rounded-xl"`
 
-### E. 도구/환경 레이어
+## 8) 이 레포에서 선호하는 코드 스타일
 
-- PowerShell에서 경로에 괄호가 포함된 파일(예: `(site)`)을 읽거나 검사할 때는 항상 전체 경로를 따옴표로 감쌉니다.
+- 명시적인 코드 선호
+- 짧은 추적 경로 선호
+- 불필요한 공용 헬퍼/래퍼 지양
+- 공통 책임은 middleware 또는 `_private`로 이동
+- 페이지 전용 책임은 페이지 안에 유지
+- 파일명만 봐도 역할이 드러나게 구성
 
-### F. 문서 참조 우선순위
+## 9) 변경 전 체크리스트
 
-- 1순위: `.docs/pocketpages/*` (프레임워크 동작)
-- 2순위: `.docs/pocketbase/pocketbase_docs_js.md` (DB/Auth/API/JS hooks)
+- 이 작업이 PocketPages 레이어인지 PocketBase 레이어인지 먼저 구분했는가
+- 동적 라우트가 정말 필요한가
+- `index.ejs`가 정말 디렉터리 대표 페이지인가
+- 페이지 전용 데이터 로딩인데 `+load.js`를 쓰고 있지는 않은가
+- 여러 하위 경로에서 반복되는 책임인데 middleware로 올리는 편이 더 맞지는 않은가
+- 반복되는 partial/서버 유틸인데 `_private`로 정리하는 편이 더 맞지는 않은가
+- HTMX 응답이 전체 레이아웃 HTML을 다시 반환하지 않는가
+- 컬렉션/필드 확인이 필요할 때 `pb_schema.json`을 컬렉션명 기준으로 확인했는가
+- JSVM API 사용이 `pb_data/types.d.ts` 기준과 맞는가
 
-## 5) 에이전트 작업 체크리스트
+## 10) 변경 중 체크리스트
 
-- 변경 전: 수정 대상이 PocketPages 레이어인지 PocketBase 레이어인지 구분
-- 변경 전: 동적 라우트가 꼭 필요한지 먼저 검토하고, 정적 경로 + HTMX partial로 더 작게 쪼갤 수 있으면 그 방식부터 시도
-- 변경 전: 이 구현이 정말 추상화가 필요한지 먼저 점검하고, 가능하면 더 명시적이고 직접적인 코드로 유지
-- 변경 전: 페이지 전용 데이터 로딩이라면 `+load.js`가 정말 필요한지 먼저 점검하고, 가능하면 `index.ejs` 상단 `<script server>`로 단순하게 유지
-- 변경 중: `pages` 구조/레이아웃/플러그인 설정 영향 범위 확인
-- 변경 중: 에이전트와 사람이 요청 흐름을 파일 기준으로 쉽게 따라갈 수 있는지 확인
-- 변경 중: HTMX 요청이 전체 레이아웃 HTML을 다시 받아오지 않는지 확인
-- 변경 중: 서버 작업이라면 런타임 추적에 필요한 단계별 로그가 충분히 남아 있는지 확인
-- 변경 중: EJS에서 PocketBase `Record` 필드 접근 방식이 맞는지 확인
-- 변경 후: 라우트/리다이렉트/API 응답 영향이 있으면, 어떤 항목을 사용자가 확인해야 하는지 명시
-- 변경 후: migration 추가 시 startup/초기 부팅 리스크가 있는지 점검하고, 사용자가 확인해야 할 검증 포인트를 함께 남김
+- 파일 구조만 봐도 흐름을 추적할 수 있는가
+- 공통 책임과 페이지 전용 책임이 섞이지 않았는가
+- `_private` 파일이 실제 사용 범위와 맞는 위치에 있는가
+- 서버 작업이라면 단계별 로그가 충분한가
+- EJS에서 `record.get()` 접근이 맞는가
+
+## 11) 변경 후 체크리스트
+
+- 라우트/리다이렉트/API 응답 영향이 있으면 사용자가 확인해야 할 포인트를 남겼는가
+- migration 변경이 있으면 startup/초기 부팅 리스크와 확인 포인트를 남겼는가
+
+## 12) 문서 참조 우선순위
+
+- 1순위: `.docs/pocketpages/*`
+- 2순위: `.docs/pocketbase/pocketbase_docs_js.md`
+- 3순위: 해당 서비스의 `pb_schema.json`, `pb_data/types.d.ts`
+
+## 13) 도구 사용 메모
+
+- PowerShell에서 경로에 괄호나 대괄호가 포함된 파일을 읽을 때는 전체 경로를 따옴표로 감쌉니다.
+- 대괄호가 포함된 경로는 필요하면 `-LiteralPath`를 우선 사용합니다.
