@@ -66,6 +66,11 @@
       }
       $app.save(post)
       info('api/posts/update:success', { boardSlug, previousSlug: postSlug, nextSlug })
+      dbg('api/posts/update:response', {
+        status: 303,
+        redirectTo: `/boards/${encodeURIComponent(boardSlug)}/posts/${encodeURIComponent(nextSlug)}`,
+        flash: 'Post updated.',
+      })
       response.redirect(
         '/boards/' + encodeURIComponent(boardSlug) + '/posts/' + encodeURIComponent(nextSlug) + '?__flash=' + encodeURIComponent('Post updated.'),
         303
@@ -82,5 +87,13 @@
   const fallbackPost = postSlug
     ? fallbackBoard + '/posts/' + encodeURIComponent(postSlug) + '/edit'
     : fallbackBoard
-  response.redirect(fallbackPost + '?__flash=' + encodeURIComponent(errorMessage || 'Failed to update post.'), 303)
+  const updateFallbackRedirect = fallbackPost + '?__flash=' + encodeURIComponent(errorMessage || 'Failed to update post.')
+  dbg('api/posts/update:response', {
+    status: 303,
+    redirectTo: updateFallbackRedirect,
+    boardSlug,
+    postSlug,
+    error: errorMessage || 'Failed to update post.',
+  })
+  response.redirect(updateFallbackRedirect, 303)
 %>

@@ -36,6 +36,12 @@
         posts: [],
         error: 'Board not found',
       }
+
+  dbg('page/boards/show:response', {
+    boardSlug,
+    error: pageData.error || '',
+    postCount: pageData.posts.length,
+  })
 </script>
 
 <% if (pageData.error) { %>

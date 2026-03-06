@@ -2,16 +2,21 @@
   meta('title', 'Boards')
   meta('description', 'Simple boards list page')
 
-  let data = {
+  let pageData = {
     boards: [],
     error: '',
   }
 
   try {
-    data.boards = $app.findRecordsByFilter('boards', '', '+sort_order,+name', 50, 0)
+    pageData.boards = $app.findRecordsByFilter('boards', '', '+sort_order,+name', 50, 0)
   } catch (error) {
-    data.error = String(error.message || error)
+    pageData.error = String(error.message || error)
   }
+
+  dbg('page/boards:index:response', {
+    error: pageData.error || '',
+    boardCount: pageData.boards.length,
+  })
 </script>
 
 <header mb-8 space-y-4>
@@ -80,9 +85,9 @@
       <h2 text="2xl stone-950" font-semibold>Board List</h2>
     </header>
 
-    <% if (data.error) { %>
-      <p rounded-2xl border="~ rose-200" bg="rose-50" px-4 py-3 text="sm rose-700" font-medium><%= data.error %></p>
-    <% } else if (!data.boards.length) { %>
+    <% if (pageData.error) { %>
+      <p rounded-2xl border="~ rose-200" bg="rose-50" px-4 py-3 text="sm rose-700" font-medium><%= pageData.error %></p>
+    <% } else if (!pageData.boards.length) { %>
       <p text="sm stone-500">No boards found.</p>
     <% } else { %>
       <div overflow-x-auto>
@@ -96,7 +101,7 @@
             </tr>
           </thead>
           <tbody>
-            <% data.boards.forEach((board) => { %>
+            <% pageData.boards.forEach((board) => { %>
               <% const boardName = board.get('name') || '' %>
               <% const boardSlug = board.get('slug') || '' %>
               <% const boardDescription = board.get('description') || '' %>

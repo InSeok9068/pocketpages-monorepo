@@ -38,6 +38,13 @@
           post,
           error: '',
         }
+
+  dbg('page/posts/edit:response', {
+    boardSlug,
+    postSlug,
+    error: pageData.error || '',
+    status: pageData.post ? pageData.post.get('status') || '' : '',
+  })
 </script>
 
 <% if (pageData.error) { %>

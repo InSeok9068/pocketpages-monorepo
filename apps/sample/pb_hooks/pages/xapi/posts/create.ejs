@@ -50,6 +50,11 @@
       $app.save(record)
       const createdSlug = record.get('slug')
       info('api/posts/create:success', { boardSlug, slug: createdSlug })
+      dbg('api/posts/create:response', {
+        status: 303,
+        redirectTo: `/boards/${encodeURIComponent(boardSlug)}/posts/${encodeURIComponent(createdSlug)}`,
+        flash: 'Post created.',
+      })
       response.redirect(
         '/boards/' +
           encodeURIComponent(boardSlug) +
@@ -66,4 +71,12 @@
     }
   }
 </script>
-<% response.redirect('/boards/' + encodeURIComponent(boardSlug) + '/posts/new?__flash=' + encodeURIComponent(errorMessage || 'Failed to create post.'), 303) %>
+<%
+  const createFallbackRedirect = '/boards/' + encodeURIComponent(boardSlug) + '/posts/new?__flash=' + encodeURIComponent(errorMessage || 'Failed to create post.')
+  dbg('api/posts/create:response', {
+    status: 303,
+    redirectTo: createFallbackRedirect,
+    error: errorMessage || 'Failed to create post.',
+  })
+  response.redirect(createFallbackRedirect, 303)
+%>

@@ -33,6 +33,11 @@
       }
       $app.delete(post)
       info('api/posts/delete:success', { boardSlug, postSlug })
+      dbg('api/posts/delete:response', {
+        status: 303,
+        redirectTo: `/boards/${encodeURIComponent(boardSlug)}`,
+        flash: 'Post deleted.',
+      })
       response.redirect('/boards/' + encodeURIComponent(boardSlug) + '?__flash=' + encodeURIComponent('Post deleted.'), 303)
       return
     } catch (exception) {
@@ -46,5 +51,13 @@
   const fallbackPost = postSlug
     ? fallbackBoard + '/posts/' + encodeURIComponent(postSlug)
     : fallbackBoard
-  response.redirect(fallbackPost + '?__flash=' + encodeURIComponent(errorMessage || 'Failed to delete post.'), 303)
+  const deleteFallbackRedirect = fallbackPost + '?__flash=' + encodeURIComponent(errorMessage || 'Failed to delete post.')
+  dbg('api/posts/delete:response', {
+    status: 303,
+    redirectTo: deleteFallbackRedirect,
+    boardSlug,
+    postSlug,
+    error: errorMessage || 'Failed to delete post.',
+  })
+  response.redirect(deleteFallbackRedirect, 303)
 %>

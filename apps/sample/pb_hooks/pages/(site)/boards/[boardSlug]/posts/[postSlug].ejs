@@ -22,9 +22,17 @@
         try {
           post.set('view_count', postDT.viewCount + 1)
           $app.save(post)
-          info('page/posts/show:view-incremented', { boardSlug, postSlug, viewCount: post.get('view_count') })
+          info('page/posts/show:view-incremented', {
+            boardSlug,
+            postSlug,
+            viewCount: post.get('view_count'),
+          })
         } catch (error) {
-          warn('page/posts/show:view-increment-failed', { boardSlug, postSlug, message: String(error.message || error) })
+          warn('page/posts/show:view-increment-failed', {
+            boardSlug,
+            postSlug,
+            message: String(error.message || error),
+          })
         }
       }
 
@@ -50,6 +58,14 @@
           post,
           error: '',
         }
+
+  dbg('page/posts/show:response', {
+    boardSlug,
+    postSlug,
+    error: pageData.error || '',
+    status: pageData.post ? pageData.post.get('status') || '' : '',
+    viewCount: pageData.post ? pageData.post.get('view_count') || 0 : 0,
+  })
 </script>
 
 <% if (pageData.error) { %>

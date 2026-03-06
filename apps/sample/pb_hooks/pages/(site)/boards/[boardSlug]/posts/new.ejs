@@ -20,6 +20,12 @@
         board: null,
         error: 'Board not found',
       }
+
+  dbg('page/posts/new:response', {
+    boardSlug,
+    error: pageData.error || '',
+    boardId: pageData.board ? pageData.board.id : '',
+  })
 </script>
 
 <% if (pageData.error) { %>
