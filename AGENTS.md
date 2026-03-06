@@ -33,19 +33,11 @@
 - `sample/pb_hooks/pages/api/*`: API 성격 엔드포인트
 - `sample/pb_hooks/pages/_private/*`: 부분 템플릿/내부 조각
 - `sample/pb_schema.json`: 서비스별 PocketBase 스키마 스냅샷(컬렉션명, 필드명, 필드 타입, 제약 조건 확인용)
-- `types.d.ts`: 루트 기준 PocketBase JSVM 타입 정의(전역 API/객체/시그니처 기준)
+- `sample/pb_data/types.d.ts`: 서비스 실행 시 생성되는 PocketBase JSVM 타입 정의(전역 API/객체/시그니처 기준)
 - `.docs/pocketpages/*`: PocketPages 로컬 문서 스냅샷
 - `.docs/pocketbase/pocketbase_docs_js.md`: PocketBase(+JS 확장) 통합 문서
 
-## 4) 요청 처리 흐름(실무용 축약)
-
-1. PocketBase가 요청 수신
-2. `pb_hooks`에서 PocketPages가 페이지 라우팅
-3. 필요 시 `+load.js` 등에서 데이터 준비
-4. EJS 템플릿 렌더링 후 응답
-5. 리얼타임/HTMX 사용 시 SSE 갱신 수행
-
-## 5) 수정 원칙
+## 4) 수정 원칙
 
 ### A. PocketPages 라우팅/렌더링 레이어
 
@@ -61,11 +53,10 @@
 ### B. PocketBase 데이터/JSVM 레이어
 
 - PocketBase 컬렉션/권한 규칙에 의존하는 로직은 문서 기준으로 검증 후 구현합니다.
-- 서비스별 `pb_schema.json`은 PocketBase 스키마 확인용 기준 파일로 사용합니다.
 - 컬렉션 관련 필드명, 필드 타입, relation, 옵션, 제약 조건을 확인해야 할 때는 먼저 해당 서비스 루트의 `pb_schema.json`을 확인합니다.
 - `pb_schema.json`을 볼 때는 전체 스키마를 무작정 펼쳐서 훑지 말고, **필요한 컬렉션명으로 필터링해서 필요한 부분만 확인하는 것**을 기본 원칙으로 합니다.
-- PocketBase JSVM 코드를 작성할 때는 반드시 루트 `types.d.ts`를 기준으로 가능한 API/타입만 사용합니다.
-- 문서 예시와 `types.d.ts`가 다를 경우 `types.d.ts`를 우선하며, 타입 정의에 없는 심볼/시그니처는 사용하지 않습니다.
+- PocketBase JSVM 코드를 작성할 때는 반드시 해당 서비스의 `pb_data/types.d.ts`를 기준으로 가능한 API/타입만 사용합니다.
+- 문서 예시와 서비스의 `pb_data/types.d.ts`가 다를 경우 `pb_data/types.d.ts`를 우선하며, 타입 정의에 없는 심볼/시그니처는 사용하지 않습니다.
 - PocketBase `Record`를 EJS에서 렌더링할 때는 `record.fieldName` 직접 접근을 기본값으로 가정하지 말고, 우선 `record.get('fieldName')` 방식으로 읽습니다.
 
 ### C. PocketBase 마이그레이션 레이어
@@ -93,7 +84,7 @@
 - 1순위: `.docs/pocketpages/*` (프레임워크 동작)
 - 2순위: `.docs/pocketbase/pocketbase_docs_js.md` (DB/Auth/API/JS hooks)
 
-## 6) 에이전트 작업 체크리스트
+## 5) 에이전트 작업 체크리스트
 
 - 변경 전: 수정 대상이 PocketPages 레이어인지 PocketBase 레이어인지 구분
 - 변경 전: 동적 라우트가 꼭 필요한지 먼저 검토하고, 정적 경로 + HTMX partial로 더 작게 쪼갤 수 있으면 그 방식부터 시도
