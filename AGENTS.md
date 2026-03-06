@@ -102,6 +102,9 @@
 
 ## 6) PocketBase / JSVM 작업 기준
 
+- 이 레포에서는 대부분의 요청-응답 기반 기능을 PocketPages 안에서 처리하는 것을 기본값으로 봅니다.
+- 다만 **스케줄 작업(cron/job)** 은 PocketPages가 아니라 `pb_hooks/*.pb.js` 에서 **PocketBase JS 확장 기능을 그대로 사용**하는 것을 기본 원칙으로 삼습니다.
+
 ### A. 타입과 문서 기준
 
 - PocketBase JSVM 코드는 반드시 해당 서비스의 `pb_data/types.d.ts`를 기준으로 가능한 API/타입만 사용합니다.
