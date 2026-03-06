@@ -17,7 +17,7 @@
 
   <article>
     <header>
-      <strong>Published Posts</strong>
+      <h2>Published Posts</h2>
       <p><small>/boards/<%= params.boardSlug %></small></p>
     </header>
 
@@ -30,8 +30,8 @@
         <% const isNotice = !!post.get('is_notice') %>
         <% const publishedAt = post.get('published_at') || post.created %>
         <section>
-          <h2 style="margin-bottom: 0.25rem;"><%= title %></h2>
-          <p style="margin-bottom: 0;">
+          <h3><%= title %></h3>
+          <p>
             <small><%= isNotice ? 'Notice' : 'Post' %> · <%= authorName %> · <%= publishedAt %></small>
           </p>
         </section>

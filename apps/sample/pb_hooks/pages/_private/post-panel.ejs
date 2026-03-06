@@ -6,13 +6,13 @@
   <% } else { %>
     <% const boardName = selectedBoard.get('name') || selectedBoardSlug %>
     <header>
-      <strong><%= boardName %></strong>
+      <h3><%= boardName %></h3>
       <p><small>/boards/<%= selectedBoardSlug %></small></p>
     </header>
 
     <article x-data="{ open: false, title: '', slug: '', content: '' }">
       <header>
-        <strong>Write Post</strong>
+        <h4>Write Post</h4>
       </header>
 
       <button type="button" @click="open = !open" x-text="open ? 'Close' : 'New post'"></button>
@@ -70,8 +70,8 @@
         <% const isNotice = !!post.get('is_notice') %>
         <% const publishedAt = post.get('published_at') || post.created %>
         <section>
-          <h2 style="margin-bottom: 0.25rem;"><%= title %></h2>
-          <p style="margin-bottom: 0.25rem;">
+          <h4><%= title %></h4>
+          <p>
             <small><%= isNotice ? 'Notice' : 'Post' %> · <%= authorName %> · <%= publishedAt %></small>
           </p>
         </section>

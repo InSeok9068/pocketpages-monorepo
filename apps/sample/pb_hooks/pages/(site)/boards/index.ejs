@@ -5,7 +5,7 @@
 
 <article x-data="{ q: '' }">
   <header>
-    <strong>Board List</strong>
+    <h2>Board List</h2>
   </header>
 
   <label>
@@ -22,13 +22,18 @@
       <% const boardName = board.get('name') || '' %>
       <% const boardSlug = board.get('slug') || '' %>
       <% const boardDescription = board.get('description') || '' %>
-      <section
+      <article
         x-show="'<%= `${boardName} ${boardSlug}`.toLowerCase().replace(/'/g, "\\'") %>'.includes(q.toLowerCase())"
       >
-        <h2 style="margin-bottom: 0.25rem;"><%= boardName || '(untitled board)' %></h2>
-        <p style="margin-bottom: 0.25rem;"><small>/boards/<%= boardSlug %></small></p>
-        <p style="margin-bottom: 0;"><%= boardDescription || 'No description' %></p>
-      </section>
+        <header>
+          <h3><%= boardName || '(untitled board)' %></h3>
+          <p><small>/boards/<%= boardSlug %></small></p>
+        </header>
+        <p><%= boardDescription || 'No description' %></p>
+        <nav>
+          <a href="/boards/<%= boardSlug %>">Open board</a>
+        </nav>
+      </article>
     <% }) %>
   <% } %>
 </article>
