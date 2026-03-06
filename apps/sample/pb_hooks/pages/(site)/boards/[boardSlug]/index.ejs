@@ -1,0 +1,41 @@
+<% if (data.error) { %>
+  <article>
+    <header>
+      <h1><%= data.error %></h1>
+    </header>
+    <p><a href="/">Back to home</a></p>
+  </article>
+<% } else { %>
+  <% const boardName = data.board.get('name') || params.boardSlug %>
+  <% const boardDescription = data.board.get('description') || 'No description' %>
+
+  <header>
+    <p><a href="/">Home</a></p>
+    <h1><%= boardName %></h1>
+    <p><%= boardDescription %></p>
+  </header>
+
+  <article>
+    <header>
+      <strong>Published Posts</strong>
+      <p><small>/boards/<%= params.boardSlug %></small></p>
+    </header>
+
+    <% if (!data.posts.length) { %>
+      <p><em>No published posts yet.</em></p>
+    <% } else { %>
+      <% data.posts.forEach((post) => { %>
+        <% const title = post.get('title') || '(untitled post)' %>
+        <% const authorName = post.get('author_name') || 'unknown' %>
+        <% const isNotice = !!post.get('is_notice') %>
+        <% const publishedAt = post.get('published_at') || post.created %>
+        <section>
+          <h2 style="margin-bottom: 0.25rem;"><%= title %></h2>
+          <p style="margin-bottom: 0;">
+            <small><%= isNotice ? 'Notice' : 'Post' %> · <%= authorName %> · <%= publishedAt %></small>
+          </p>
+        </section>
+      <% }) %>
+    <% } %>
+  </article>
+<% } %>

@@ -1,0 +1,31 @@
+<% if (error) { %>
+  <p><strong><%= error %></strong></p>
+<% } else if (!boards.length) { %>
+  <p><em>No boards found.</em></p>
+<% } else { %>
+  <% boards.forEach((board) => { %>
+    <% const boardName = board.get('name') || '' %>
+    <% const boardSlug = board.get('slug') || '' %>
+    <% const boardDescription = board.get('description') || '' %>
+    <section x-show="'<%= `${boardName} ${boardSlug}`.toLowerCase().replace(/'/g, "\\'") %>'.includes(q.toLowerCase())">
+      <div style="display: grid; gap: 0.75rem;">
+        <form hx-get="/api/posts/panel" hx-target="#post-panel" hx-swap="outerHTML">
+          <input type="hidden" name="board" value="<%= boardSlug %>" />
+          <button
+            type="submit"
+            class="<%= selectedBoardSlug === boardSlug ? 'secondary' : 'outline' %>"
+            style="width: 100%; text-align: left; padding: 1rem;"
+          >
+            <h2 style="margin-bottom: 0.25rem;"><%= boardName || '(untitled board)' %></h2>
+            <p style="margin-bottom: 0.25rem;"><small>/boards/<%= boardSlug %></small></p>
+            <p style="margin-bottom: 0;"><%= boardDescription || 'No description' %></p>
+          </button>
+        </form>
+
+        <p style="margin: 0;">
+          <a href="/boards/<%= boardSlug %>">Open dynamic board page</a>
+        </p>
+      </div>
+    </section>
+  <% }) %>
+<% } %>

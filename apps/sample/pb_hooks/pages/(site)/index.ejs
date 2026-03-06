@@ -1,40 +1,77 @@
 <header>
-  <h1>HTMX Realtime Demo</h1>
-  <p>Simple chat and counter example with PocketPages, HTMX and SSE.</p>
+  <h1>PocketPages Board</h1>
+  <p>게시판 서비스의 시작 화면입니다. 현재는 `boards` 컬렉션 목록만 단순하게 보여줍니다.</p>
 </header>
 
 <section class="grid">
-  <article>
+  <article x-data="{ q: '' }">
     <header>
-      <strong>Chat Connection #1</strong>
+      <strong>Board List</strong>
     </header>
-    <div hx-ext="pocketbase-sse">
-      <div sse-swap="chat" hx-swap="beforeend"></div>
+
+    <label>
+      Search
+      <input type="search" x-model="q" placeholder="Search board name or slug" />
+    </label>
+
+    <div id="board-list">
+      <%- include('board-list.ejs', {
+        boards: data.boards,
+        error: data.error,
+        selectedBoardSlug: '',
+      }) %>
     </div>
   </article>
 
-  <article>
+  <article x-data="{ open: false, name: '', slug: '' }">
     <header>
-      <strong>Chat Connection #2</strong>
+      <strong>Create Board</strong>
     </header>
-    <div hx-ext="pocketbase-sse">
-      <div sse-swap="chat" hx-swap="beforeend"></div>
-    </div>
+
+    <button type="button" @click="open = !open" x-text="open ? 'Close' : 'New board'"></button>
+
+    <form
+      x-show="open"
+      x-transition
+      hx-post="/api/boards/create"
+      hx-target="#board-create-feedback"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful){ this.reset(); open = false; }"
+    >
+      <label>
+        Name
+        <input type="text" name="name" x-model="name" placeholder="General Discussion" required />
+      </label>
+
+      <label>
+        Slug
+        <input type="text" name="slug" x-model="slug" placeholder="general-discussion" />
+        <small x-show="name || slug">
+          Preview:
+          <span x-text="slug || name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')"></span>
+        </small>
+      </label>
+
+      <label>
+        Description
+        <textarea name="description" placeholder="Board description"></textarea>
+      </label>
+
+      <button type="submit">Create</button>
+    </form>
+
+    <div id="board-create-feedback"></div>
   </article>
 </section>
 
 <article>
-  <form hx-post="/api/chat" hx-swap="none" hx-on::after-request="if(event.detail.successful) { this.reset(); this.querySelector('input[name=message]').focus() }">
-    <fieldset role="group">
-      <input type="text" name="message" placeholder="Type a message..." required />
-      <button type="submit">Send</button>
-    </fieldset>
-  </form>
-</article>
-
-<article>
-  <fieldset role="group">
-    <input type="text" value="Counter" readonly />
-    <button hx-get="/api/count"><%- include('count.ejs') %></button>
-  </fieldset>
+  <header>
+    <strong>Posts</strong>
+    <p>보드를 선택하면 해당 게시글 목록을 HTMX로 불러옵니다.</p>
+  </header>
+  <%- include('post-panel.ejs', {
+    selectedBoard: null,
+    selectedBoardSlug: '',
+    posts: [],
+  }) %>
 </article>

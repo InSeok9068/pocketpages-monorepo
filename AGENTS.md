@@ -45,18 +45,40 @@
 
 ## 5) 수정 원칙
 
+### A. PocketPages 라우팅/렌더링 레이어
+
 - 새 기능은 먼저 `sample/pb_hooks/pages`의 파일 기반 라우팅 구조에 맞춰 배치합니다.
 - 공통 `<head>`/메타/공통 스크립트는 `+layout.ejs`에 두고, 페이지별 내용은 각 `*.ejs`로 분리합니다.
+- 동적 라우트(`[param]`)는 필요한 경우에만 도입합니다.
+
+### B. PocketBase 데이터/JSVM 레이어
+
 - PocketBase 컬렉션/권한 규칙에 의존하는 로직은 문서 기준으로 검증 후 구현합니다.
 - PocketBase JSVM 코드를 작성할 때는 반드시 루트 `types.d.ts`를 기준으로 가능한 API/타입만 사용합니다.
 - 문서 예시와 `types.d.ts`가 다를 경우 `types.d.ts`를 우선하며, 타입 정의에 없는 심볼/시그니처는 사용하지 않습니다.
-- 프론트엔드 역할 분리 원칙:
-  1. 간단한 클라이언트 상호작용은 Alpine.js로 처리
-  2. 디자인/기본 UI 스타일은 Pico CSS를 기준으로 구성
-  3. 서버와의 통신 및 부분 렌더 갱신은 HTMX를 우선 사용
-- 문서 참조 우선순위:
-  1. `.docs/pocketpages/*` (프레임워크 동작)
-  2. `.docs/pocketbase/pocketbase_docs_js.md` (DB/Auth/API/JS hooks)
+- PocketBase `Record`를 EJS에서 렌더링할 때는 `record.fieldName` 직접 접근을 기본값으로 가정하지 말고, 우선 `record.get('fieldName')` 방식으로 읽습니다.
+
+### C. PocketBase 마이그레이션 레이어
+
+- migration에서 relation 필드는 대상 컬렉션이 실제로 저장된 뒤의 `collection.id`를 사용합니다.
+- relation 대상 컬렉션 ID를 임의 문자열로 하드코딩하지 않습니다.
+- self relation(예: `comments.parent_comment`)은 컬렉션 생성과 동시에 넣지 말고, 컬렉션 저장 후 2차 업데이트로 추가하는 것을 기본 원칙으로 합니다.
+
+### D. 프론트엔드/HTMX/Alpine 레이어
+
+- 간단한 클라이언트 상호작용은 Alpine.js로 처리합니다.
+- 디자인/기본 UI 스타일은 Pico CSS를 기준으로 구성합니다.
+- 서버와의 통신 및 부분 렌더 갱신은 HTMX를 우선 사용합니다.
+- HTMX로 부분 갱신할 때는 전체 페이지 라우트(`/(site)/index.ejs` 등)를 직접 다시 치지 말고, 가능한 한 `pages/api/*` 아래에 부분 응답 전용 엔드포인트를 만들어 해당 조각만 반환합니다.
+
+### E. 도구/환경 레이어
+
+- PowerShell에서 경로에 괄호가 포함된 파일(예: `(site)`)을 읽거나 검사할 때는 항상 전체 경로를 따옴표로 감쌉니다.
+
+### F. 문서 참조 우선순위
+
+- 1순위: `.docs/pocketpages/*` (프레임워크 동작)
+- 2순위: `.docs/pocketbase/pocketbase_docs_js.md` (DB/Auth/API/JS hooks)
 
 ## 6) 로컬 실행(샘플)
 
@@ -69,5 +91,9 @@
 ## 7) 에이전트 작업 체크리스트
 
 - 변경 전: 수정 대상이 PocketPages 레이어인지 PocketBase 레이어인지 구분
+- 변경 전: 동적 라우트가 꼭 필요한지 먼저 검토하고, 정적 경로 + HTMX partial로 더 작게 쪼갤 수 있으면 그 방식부터 시도
 - 변경 중: `pages` 구조/레이아웃/플러그인 설정 영향 범위 확인
+- 변경 중: HTMX 요청이 전체 레이아웃 HTML을 다시 받아오지 않는지 확인
+- 변경 중: EJS에서 PocketBase `Record` 필드 접근 방식이 맞는지 확인
 - 변경 후: 최소 1회 수동 라우트 확인(렌더링/리다이렉트/API 응답)
+- 변경 후: migration 추가 시 새 DB에서 startup 에러 없이 부팅되는지 먼저 확인한 다음 페이지 작업 진행

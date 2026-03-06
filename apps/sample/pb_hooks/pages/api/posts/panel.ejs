@@ -1,0 +1,37 @@
+<script server>
+  const boardSlug = String(params.board || '').trim()
+  let selectedBoard = null
+  let posts = []
+
+  if (boardSlug) {
+    try {
+      selectedBoard = $app.findFirstRecordByFilter(
+        'boards',
+        'slug = {:slug} && is_active = true',
+        { slug: boardSlug }
+      )
+    } catch (error) {
+      selectedBoard = null
+    }
+
+    if (selectedBoard) {
+      try {
+        posts = $app.findRecordsByFilter(
+          'posts',
+          'board = {:boardId} && status = "published"',
+          '-is_notice,-published_at,-created',
+          50,
+          0,
+          { boardId: selectedBoard.id }
+        )
+      } catch (error) {
+        posts = []
+      }
+    }
+  }
+</script>
+<%- include('post-panel.ejs', {
+  selectedBoard,
+  selectedBoardSlug: boardSlug,
+  posts,
+}) %>

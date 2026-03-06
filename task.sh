@@ -150,8 +150,8 @@ kill_pocketbase() {
       Write-Output "none"
     }
 
-    foreach ($pid in $targets) {
-      Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    foreach ($procId in $targets) {
+      Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
     }
 
     Start-Sleep -Milliseconds 300

@@ -1,0 +1,34 @@
+<header>
+  <h1>Boards</h1>
+  <p>게시판 컬렉션을 가장 단순하게 읽어서 보여주는 첫 단계 페이지입니다.</p>
+</header>
+
+<article x-data="{ q: '' }">
+  <header>
+    <strong>Board List</strong>
+  </header>
+
+  <label>
+    Filter
+    <input type="search" x-model="q" placeholder="Search board name or slug" />
+  </label>
+
+  <% if (data.error) { %>
+    <p><strong><%= data.error %></strong></p>
+  <% } else if (!data.boards.length) { %>
+    <p><em>No boards found.</em></p>
+  <% } else { %>
+    <% data.boards.forEach((board) => { %>
+      <% const boardName = board.get('name') || '' %>
+      <% const boardSlug = board.get('slug') || '' %>
+      <% const boardDescription = board.get('description') || '' %>
+      <section
+        x-show="'<%= `${boardName} ${boardSlug}`.toLowerCase().replace(/'/g, "\\'") %>'.includes(q.toLowerCase())"
+      >
+        <h2 style="margin-bottom: 0.25rem;"><%= boardName || '(untitled board)' %></h2>
+        <p style="margin-bottom: 0.25rem;"><small>/boards/<%= boardSlug %></small></p>
+        <p style="margin-bottom: 0;"><%= boardDescription || 'No description' %></p>
+      </section>
+    <% }) %>
+  <% } %>
+</article>

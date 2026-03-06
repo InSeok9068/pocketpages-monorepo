@@ -1,0 +1,71 @@
+<script server>
+  function slugify(value) {
+    return String(value || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 200)
+  }
+
+  const form = body()
+  const boardSlug = String(form.board || '').trim()
+  const title = String(form.title || '').trim()
+  const slug = slugify(form.slug || form.title)
+  const authorName = String(form.authorName || '').trim()
+  const content = String(form.content || '').trim()
+  const isNotice = String(form.isNotice || '') === 'true'
+
+  let selectedBoard = null
+  let posts = []
+
+  if (boardSlug) {
+    try {
+      selectedBoard = $app.findFirstRecordByFilter(
+        'boards',
+        'slug = {:slug} && is_active = true',
+        { slug: boardSlug }
+      )
+    } catch (error) {
+      selectedBoard = null
+    }
+  }
+
+  if (selectedBoard && title && slug && authorName && content) {
+    try {
+      const collection = $app.findCollectionByNameOrId('posts')
+      const record = new Record(collection)
+      record.set('board', selectedBoard.id)
+      record.set('title', title)
+      record.set('slug', slug)
+      record.set('content', content)
+      record.set('author_name', authorName)
+      record.set('status', 'published')
+      record.set('is_notice', isNotice)
+      record.set('view_count', 0)
+      record.set('published_at', new Date().toISOString())
+      $app.save(record)
+    } catch (error) {
+    }
+  }
+
+  if (selectedBoard) {
+    try {
+      posts = $app.findRecordsByFilter(
+        'posts',
+        'board = {:boardId} && status = "published"',
+        '-is_notice,-published_at,-created',
+        50,
+        0,
+        { boardId: selectedBoard.id }
+      )
+    } catch (error) {
+      posts = []
+    }
+  }
+</script>
+<%- include('post-panel.ejs', {
+  selectedBoard,
+  selectedBoardSlug: boardSlug,
+  posts,
+}) %>
