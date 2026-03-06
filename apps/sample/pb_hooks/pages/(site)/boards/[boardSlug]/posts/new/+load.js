@@ -2,7 +2,6 @@
 module.exports = ({ meta, params, response }) => {
   const boardSlug = String(params.boardSlug || '').trim()
   let board = null
-  let posts = []
 
   try {
     board = $app.findFirstRecordByFilter(
@@ -20,30 +19,15 @@ module.exports = ({ meta, params, response }) => {
 
     return {
       board: null,
-      posts: [],
       error: 'Board not found',
     }
   }
 
-  meta('title', `${board.get('name') || boardSlug} | PocketPages Board`)
-  meta('description', board.get('description') || `Board ${boardSlug}`)
-
-  try {
-    posts = $app.findRecordsByFilter(
-      'posts',
-      'board = {:boardId}',
-      '-is_notice,-published_at,-created',
-      50,
-      0,
-      { boardId: board.id }
-    )
-  } catch (error) {
-    posts = []
-  }
+  meta('title', `Write Post | ${board.get('name') || boardSlug}`)
+  meta('description', board.get('description') || `Write post in ${boardSlug}`)
 
   return {
     board,
-    posts,
     error: '',
   }
 }

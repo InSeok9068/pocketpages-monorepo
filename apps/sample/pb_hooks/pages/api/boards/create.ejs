@@ -12,9 +12,6 @@
   const name = String(form.name || '').trim()
   const slug = slugify(form.slug || form.name)
   const description = String(form.description || '').trim()
-
-  let created = null
-  let message = ''
   let error = ''
 
   try {
@@ -39,31 +36,11 @@
       record.set('is_active', true)
       record.set('sort_order', 0)
       $app.save(record)
-      created = record
-      message = 'Board created.'
+      response.redirect('/boards?__flash=' + encodeURIComponent('Board created.'), 303)
+      return
     } catch (e) {
       error = String(e.message || e)
     }
   }
-
-  let boards = []
-  try {
-    boards = $app.findRecordsByFilter('boards', '', '+sort_order,+name', 50, 0)
-  } catch (e) {
-    boards = []
-  }
 </script>
-
-<div id="board-list" hx-swap-oob="outerHTML">
-  <%- include('board-list.ejs', { boards, error: '', selectedBoardSlug: '' }) %>
-</div>
-
-<article>
-  <% if (error) { %>
-    <strong>Failed:</strong> <%= error %>
-  <% } else if (created) { %>
-    <strong>Created:</strong> <%= created.get('name') %>
-  <% } else { %>
-    <strong><%= message %></strong>
-  <% } %>
-</article>
+<% response.redirect('/boards?__flash=' + encodeURIComponent(error || 'Failed to create board.'), 303) %>

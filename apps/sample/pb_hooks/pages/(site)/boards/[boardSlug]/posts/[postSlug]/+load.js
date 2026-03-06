@@ -1,8 +1,9 @@
 /** @type {import('pocketpages').PageDataLoaderFunc} */
 module.exports = ({ meta, params, response }) => {
   const boardSlug = String(params.boardSlug || '').trim()
+  const postSlug = String(params.postSlug || '').trim()
   let board = null
-  let posts = []
+  let post = null
 
   try {
     board = $app.findFirstRecordByFilter(
@@ -20,30 +21,38 @@ module.exports = ({ meta, params, response }) => {
 
     return {
       board: null,
-      posts: [],
+      post: null,
       error: 'Board not found',
     }
   }
 
-  meta('title', `${board.get('name') || boardSlug} | PocketPages Board`)
-  meta('description', board.get('description') || `Board ${boardSlug}`)
-
   try {
-    posts = $app.findRecordsByFilter(
+    post = $app.findFirstRecordByFilter(
       'posts',
-      'board = {:boardId}',
-      '-is_notice,-published_at,-created',
-      50,
-      0,
-      { boardId: board.id }
+      'board = {:boardId} && slug = {:slug}',
+      { boardId: board.id, slug: postSlug }
     )
   } catch (error) {
-    posts = []
+    post = null
   }
+
+  if (!post) {
+    response.status(404)
+    meta('title', 'Post Not Found')
+
+    return {
+      board,
+      post: null,
+      error: 'Post not found',
+    }
+  }
+
+  meta('title', `${post.get('title') || postSlug} | ${board.get('name') || boardSlug}`)
+  meta('description', board.get('description') || `Post ${postSlug}`)
 
   return {
     board,
-    posts,
+    post,
     error: '',
   }
 }

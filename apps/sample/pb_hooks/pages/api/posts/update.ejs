@@ -1,0 +1,87 @@
+<script server>
+  function slugify(value) {
+    return String(value || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 200)
+  }
+
+  const form = body()
+  const boardSlug = String(form.board || '').trim()
+  const postSlug = String(form.post || '').trim()
+  const title = String(form.title || '').trim()
+  const nextSlug = slugify(form.slug || form.title)
+  const authorName = String(form.authorName || '').trim()
+  const content = String(form.content || '').trim()
+  const status = String(form.status || 'draft').trim() || 'draft'
+  const isNotice = String(form.isNotice || '') === 'true'
+
+  let board = null
+  let post = null
+  let error = ''
+
+  try {
+    board = $app.findFirstRecordByFilter(
+      'boards',
+      'slug = {:slug} && is_active = true',
+      { slug: boardSlug }
+    )
+  } catch (e) {
+    board = null
+  }
+
+  if (!board) {
+    error = 'Board not found.'
+  }
+
+  if (!error) {
+    try {
+      post = $app.findFirstRecordByFilter(
+        'posts',
+        'board = {:boardId} && slug = {:slug}',
+        { boardId: board.id, slug: postSlug }
+      )
+    } catch (e) {
+      post = null
+    }
+
+    if (!post) {
+      error = 'Post not found.'
+    }
+  }
+
+  if (!error && (!title || !nextSlug || !authorName || !content)) {
+    error = 'All fields are required.'
+  }
+
+  if (!error) {
+    try {
+      post.set('title', title)
+      post.set('slug', nextSlug)
+      post.set('content', content)
+      post.set('author_name', authorName)
+      post.set('status', status)
+      post.set('is_notice', isNotice)
+      if (status === 'published' && !post.get('published_at')) {
+        post.set('published_at', new Date().toISOString())
+      }
+      $app.save(post)
+      response.redirect(
+        '/boards/' + encodeURIComponent(boardSlug) + '/posts/' + encodeURIComponent(nextSlug) + '?__flash=' + encodeURIComponent('Post updated.'),
+        303
+      )
+      return
+    } catch (e) {
+      error = String(e.message || e)
+    }
+  }
+</script>
+<%
+  const fallbackBoard = '/boards/' + encodeURIComponent(boardSlug)
+  const fallbackPost = postSlug
+    ? fallbackBoard + '/posts/' + encodeURIComponent(postSlug)
+    : fallbackBoard
+  response.redirect(fallbackPost + '?__flash=' + encodeURIComponent(error || 'Failed to update post.'), 303)
+%>

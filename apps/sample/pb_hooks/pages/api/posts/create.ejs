@@ -15,9 +15,10 @@
   const authorName = String(form.authorName || '').trim()
   const content = String(form.content || '').trim()
   const isNotice = String(form.isNotice || '') === 'true'
+  const status = String(form.status || 'published').trim() || 'published'
 
   let selectedBoard = null
-  let posts = []
+  let error = ''
 
   if (boardSlug) {
     try {
@@ -31,7 +32,13 @@
     }
   }
 
-  if (selectedBoard && title && slug && authorName && content) {
+  if (!selectedBoard) {
+    error = 'Board not found.'
+  } else if (!title || !slug || !authorName || !content) {
+    error = 'All fields are required.'
+  }
+
+  if (!error) {
     try {
       const collection = $app.findCollectionByNameOrId('posts')
       const record = new Record(collection)
@@ -40,32 +47,18 @@
       record.set('slug', slug)
       record.set('content', content)
       record.set('author_name', authorName)
-      record.set('status', 'published')
+      record.set('status', status)
       record.set('is_notice', isNotice)
       record.set('view_count', 0)
-      record.set('published_at', new Date().toISOString())
+      if (status === 'published') {
+        record.set('published_at', new Date().toISOString())
+      }
       $app.save(record)
+      response.redirect('/boards/' + encodeURIComponent(boardSlug) + '?__flash=' + encodeURIComponent('Post created.'), 303)
+      return
     } catch (error) {
-    }
-  }
-
-  if (selectedBoard) {
-    try {
-      posts = $app.findRecordsByFilter(
-        'posts',
-        'board = {:boardId} && status = "published"',
-        '-is_notice,-published_at,-created',
-        50,
-        0,
-        { boardId: selectedBoard.id }
-      )
-    } catch (error) {
-      posts = []
+      error = String(error.message || error)
     }
   }
 </script>
-<%- include('post-panel.ejs', {
-  selectedBoard,
-  selectedBoardSlug: boardSlug,
-  posts,
-}) %>
+<% response.redirect('/boards/' + encodeURIComponent(boardSlug) + '?__flash=' + encodeURIComponent(error || 'Failed to create post.'), 303) %>

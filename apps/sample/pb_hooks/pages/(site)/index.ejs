@@ -1,83 +1,24 @@
-<header>
-  <h1>PocketPages Board</h1>
-  <p>게시판 서비스의 시작 화면입니다. 현재는 `boards` 컬렉션 목록만 단순하게 보여줍니다.</p>
+<header class="mb-10 space-y-4">
+  <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">PocketPages Sample</p>
+  <h1 class="text-4xl font-semibold tracking-tight text-stone-950 md:text-5xl">PocketPages Board</h1>
+  <p class="max-w-2xl text-base leading-7 text-stone-600">
+    홈은 가볍게 두고, 실제 작업은 게시판 목록과 게시판 상세에서 처리하는 MVP 구조입니다.
+  </p>
 </header>
 
-<nav>
-  <a href="/boards">Browse all boards</a>
-</nav>
-
-<section>
-  <article x-data="{ q: '' }">
-    <header>
-      <h2>Board List</h2>
-      <p>이름이나 슬러그로 게시판을 빠르게 찾을 수 있습니다.</p>
-    </header>
-
-    <label>
-      Search
-      <input type="search" x-model="q" placeholder="Search board name or slug" />
-    </label>
-
-    <div id="board-list">
-      <%- include('board-list.ejs', {
-        boards: data.boards,
-        error: data.error,
-        selectedBoardSlug: '',
-      }) %>
-    </div>
-  </article>
-
-  <article x-data="{ open: false, name: '', slug: '' }">
-    <header>
-      <h2>Create Board</h2>
-      <p>새 게시판을 만든 뒤 바로 글 목록 패널에서 확인할 수 있습니다.</p>
-    </header>
-
-    <button type="button" @click="open = !open" x-text="open ? 'Close' : 'New board'"></button>
-
-    <form
-      x-show="open"
-      x-transition
-      hx-post="/api/boards/create"
-      hx-target="#board-create-feedback"
-      hx-swap="innerHTML"
-      hx-on::after-request="if(event.detail.successful){ this.reset(); open = false; }"
-    >
-      <label>
-        Name
-        <input type="text" name="name" x-model="name" placeholder="General Discussion" required />
-      </label>
-
-      <label>
-        Slug
-        <input type="text" name="slug" x-model="slug" placeholder="general-discussion" />
-        <small x-show="name || slug">
-          Preview:
-          <span x-text="slug || name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')"></span>
-        </small>
-      </label>
-
-      <label>
-        Description
-        <textarea name="description" placeholder="Board description"></textarea>
-      </label>
-
-      <button type="submit">Create</button>
-    </form>
-
-    <div id="board-create-feedback"></div>
+<section class="grid gap-6">
+  <article class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+    <h2 class="text-2xl font-semibold text-stone-950">Start</h2>
+    <p class="mt-3 max-w-2xl text-sm leading-6 text-stone-600">
+      게시판을 만들거나 기존 게시판으로 들어가서 글을 읽고, 쓰고, 수정하고, 삭제할 수 있습니다.
+    </p>
+    <nav class="mt-6">
+      <a
+        href="/boards"
+        class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700"
+      >
+        Go to boards
+      </a>
+    </nav>
   </article>
 </section>
-
-<article>
-  <header>
-    <h2>Posts</h2>
-    <p>보드를 선택하면 해당 게시글 목록을 HTMX로 불러옵니다.</p>
-  </header>
-  <%- include('post-panel.ejs', {
-    selectedBoard: null,
-    selectedBoardSlug: '',
-    posts: [],
-  }) %>
-</article>

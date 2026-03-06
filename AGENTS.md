@@ -15,13 +15,13 @@
 - **템플릿 엔진**: EJS (`pocketpages-plugin-ejs`)
 - **리얼타임**: `pocketpages-plugin-realtime` (SSE/HTMX 연계 가능)
 - **클라이언트 상호작용**: Alpine.js
-- **디자인 시스템**: Water.css
+- **디자인 시스템**: UnoCSS Runtime (Tailwind 유틸리티 스타일 방식)
 - **서버 통신/부분 갱신**: HTMX
 
 요약하면:
 - 데이터/인증/권한/API 규칙 = PocketBase
 - 파일 기반 라우팅, 레이아웃, 렌더링, 컨텍스트 API = PocketPages
-- UI 상호작용 = Alpine.js / 스타일 = Water.css / 서버 통신 = HTMX
+- UI 상호작용 = Alpine.js / 스타일 = UnoCSS Runtime / 서버 통신 = HTMX
 
 ## 3) 현재 레포 기준 핵심 경로
 
@@ -67,7 +67,7 @@
 ### D. 프론트엔드/HTMX/Alpine 레이어
 
 - 간단한 클라이언트 상호작용은 Alpine.js로 처리합니다.
-- 디자인/기본 UI 스타일은 Water.css를 기준으로 구성합니다.
+- 디자인/기본 UI 스타일은 UnoCSS Runtime 기준의 유틸리티 클래스 방식으로 구성합니다.
 - 서버와의 통신 및 부분 렌더 갱신은 HTMX를 우선 사용합니다.
 - HTMX로 부분 갱신할 때는 전체 페이지 라우트(`/(site)/index.ejs` 등)를 직접 다시 치지 말고, 가능한 한 `pages/api/*` 아래에 부분 응답 전용 엔드포인트를 만들어 해당 조각만 반환합니다.
 
