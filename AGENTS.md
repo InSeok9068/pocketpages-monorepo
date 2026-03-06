@@ -19,17 +19,19 @@
 - 리얼타임: `pocketpages-plugin-realtime`
 - 스타일링: UnoCSS Runtime (Attributify Mode)
 
-## 3) 현재 레포 기준 핵심 경로
+## 3) 서비스 구조 기준 핵심 경로
 
-- `apps/sample/pb_hooks/pocketpages.pb.js`: PocketPages 부트스트랩 엔트리
-- `apps/sample/pb_hooks/pages/+config.js`: PocketPages 설정
-- `apps/sample/pb_hooks/pages/(site)/+layout.ejs`: 사이트 레이아웃
-- `apps/sample/pb_hooks/pages/(site)/*`: 레이아웃이 적용되는 전체 페이지
-- `apps/sample/pb_hooks/pages/api/*`: JSON/프로그래매틱 API 성격의 엔드포인트를 둘 수 있는 위치
-- `apps/sample/pb_hooks/pages/xapi/*`: 레이아웃 없이 부분 응답/액션을 반환하는 엔드포인트
-- `apps/sample/pb_hooks/pages/_private/*`: partial, 서버 유틸, 내부 모듈
-- `apps/sample/pb_schema.json`: PocketBase 스키마 스냅샷
-- `apps/sample/pb_data/types.d.ts`: 서비스 기준 PocketBase JSVM 타입 정의
+- 이 레포는 `apps/*` 아래에 서비스별 디렉터리를 두는 모노레포 구조입니다.
+- 각 서비스는 대체로 비슷한 PocketPages/PocketBase 구조를 따르며, 아래 경로는 `apps/sample`을 예시로 든 공통 가이드라인입니다.
+- `apps/<service>/pb_hooks/pocketpages.pb.js`: PocketPages 부트스트랩 엔트리
+- `apps/<service>/pb_hooks/pages/+config.js`: PocketPages 설정
+- `apps/<service>/pb_hooks/pages/(site)/+layout.ejs`: 사이트 레이아웃
+- `apps/<service>/pb_hooks/pages/(site)/*`: 레이아웃이 적용되는 전체 페이지
+- `apps/<service>/pb_hooks/pages/api/*`: JSON/프로그래매틱 API 성격의 엔드포인트를 둘 수 있는 위치
+- `apps/<service>/pb_hooks/pages/xapi/*`: layout 없는 interaction endpoint 위치
+- `apps/<service>/pb_hooks/pages/_private/*`: partial, 서버 유틸, 내부 모듈
+- `apps/<service>/pb_schema.json`: PocketBase 스키마 스냅샷
+- `apps/<service>/pb_data/types.d.ts`: 서비스 기준 PocketBase JSVM 타입 정의
 - `.docs/pocketpages/*`: PocketPages 문서 스냅샷
 - `.docs/pocketbase/pocketbase_docs_js.md`: PocketBase JS 문서
 
@@ -77,7 +79,7 @@
 - 외부 라우트로 노출되면 안 되는 파일은 `_private`에 둡니다.
 - partial은 `_private`에 두고 `include()`로 재사용합니다.
 - 공통 서버 로직, 쿼리 유틸, 포맷터, slug 처리 같은 로직도 `_private`에 둡니다.
-- EJS나 템플릿 컨텍스트에서는 `_private` 모듈을 `resolve()`로 불러옵니다.
+- EJS, `<script server>`, loader, middleware처럼 PocketPages 요청 컨텍스트 안에서는 `_private` 모듈을 `resolve()`로 불러올 수 있습니다.
 - `resolve()`는 `_private`를 포함한 전체 경로를 넘기는 것이 아니라, `_private` 기준 이름으로 사용합니다.
 - 예시: `resolve('board-service')`
 - middleware에서는 `resolve()`를 전역 함수처럼 직접 호출하지 말고, `module.exports = function ({ resolve }) { ... }`처럼 **인자로 받은 `resolve`**를 사용합니다.
@@ -93,7 +95,7 @@
 - HTMX partial, form action, redirect, SSE, raw HTML 응답처럼 **레이아웃 없는 상호작용 엔드포인트**는 `pages/xapi/*` 아래에 둡니다.
 - JSON을 반환하거나 외부/프로그래매틱 호출을 위한 **명시적인 API 엔드포인트**는 `pages/api/*` 아래에 둘 수 있습니다.
 - 즉 `xapi`는 layout 없는 interaction endpoint, `api`는 JSON/프로그래매틱 API라는 구분을 기본값으로 삼습니다.
-- HTMX 응답은 layout 없는 raw HTML 또는 리다이렉트/JSON 등 필요한 응답만 반환합니다.
+- HTMX 응답은 layout 없는 raw HTML 또는 리다이렉트처럼 필요한 응답만 반환합니다.
 - 초기 페이지 렌더와 HTMX 응답이 같은 마크업을 써야 하면 `_private` partial로 묶어 한 곳에서 관리합니다.
 
 ## 6) PocketBase / JSVM 작업 기준
