@@ -10,11 +10,13 @@ Usage:
   ./task.sh list
   ./task.sh start <service> [-- <extra args>]
   ./task.sh kill
+  ./task.sh lint [service]
 
 Commands:
   list      List services under apps/
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
+  lint      Run lightweight PocketPages self-validation checks for one service or all services
 EOF
 }
 
@@ -177,6 +179,30 @@ kill_pocketbase() {
   '
 }
 
+run_lint() {
+  local lint_script="$ROOT_DIR/scripts/lint-pocketpages.sh"
+  local service="${1:-}"
+
+  if [[ ! -f "$lint_script" ]]; then
+    echo "Missing lint script: $lint_script" >&2
+    exit 1
+  fi
+
+  if [[ -n "$service" ]]; then
+    local service_dir
+    if ! service_dir="$(resolve_service_dir "$service")"; then
+      echo "Unknown service: $service" >&2
+      echo "Available services:" >&2
+      list_services >&2
+      exit 1
+    fi
+    "$lint_script" "$service_dir"
+    return 0
+  fi
+
+  "$lint_script"
+}
+
 if [[ "${1:-}" == "__complete_services" ]]; then
   list_services
   exit 0
@@ -196,6 +222,10 @@ case "${1:-help}" in
     ;;
   kill)
     kill_pocketbase
+    ;;
+  lint)
+    shift || true
+    run_lint "${1:-}"
     ;;
   help|-h|--help)
     print_help
