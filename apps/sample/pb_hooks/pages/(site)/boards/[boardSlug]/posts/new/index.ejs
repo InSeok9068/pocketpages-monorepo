@@ -1,3 +1,36 @@
+<script server>
+  const boardSlug = String(params.boardSlug || '').trim()
+  let board = null
+
+  try {
+    board = $app.findFirstRecordByFilter(
+      'boards',
+      'slug = {:slug} && is_active = true',
+      { slug: boardSlug }
+    )
+  } catch (error) {
+    board = null
+  }
+
+  if (!board) {
+    response.status(404)
+    meta('title', 'Board Not Found')
+  } else {
+    meta('title', `Write Post | ${board.get('name') || boardSlug}`)
+    meta('description', board.get('description') || `Write post in ${boardSlug}`)
+  }
+
+  const data = board
+    ? {
+        board,
+        error: '',
+      }
+    : {
+        board: null,
+        error: 'Board not found',
+      }
+</script>
+
 <% if (data.error) { %>
   <article rounded-3xl border="~ rose-200" bg-white p-6 shadow="sm">
     <header space-y-4>
