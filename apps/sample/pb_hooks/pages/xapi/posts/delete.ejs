@@ -1,6 +1,6 @@
 <script server>
   const boardService = resolve('board-service')
-  const createPostDT = resolve('post-dt')
+  const createPostDT = resolve('table/post-dt')
   const form = body()
   const boardSlug = String(form.board || '').trim()
   const postSlug = String(form.post || '').trim()
