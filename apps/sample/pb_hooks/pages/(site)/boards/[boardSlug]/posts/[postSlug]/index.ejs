@@ -1,10 +1,10 @@
 <% if (data.error) { %>
-  <article class="rounded-3xl border border-rose-200 bg-white p-6 shadow-sm">
-    <header class="space-y-4">
-      <h1 class="text-3xl font-semibold text-stone-950"><%= data.error %></h1>
+  <article rounded-3xl border="~ rose-200" bg-white p-6 shadow="sm">
+    <header space-y-4>
+      <h1 text="3xl stone-950" font-semibold><%= data.error %></h1>
     </header>
-    <p class="mt-4">
-      <a href="/boards/<%= params.boardSlug %>" class="text-sm font-medium text-stone-600 no-underline hover:text-stone-900">
+    <p mt-4>
+      <a href="/boards/<%= params.boardSlug %>" text="sm stone-600 hover:stone-900" font-medium no-underline>
         Back to board
       </a>
     </p>
@@ -17,39 +17,39 @@
   <% const publishedAt = data.post.get('published_at') || data.post.created || '' %>
   <% const content = data.post.get('content') || '' %>
 
-  <header class="mb-8 space-y-4">
+  <header mb-8 space-y-4>
     <p>
-      <a href="/boards/<%= params.boardSlug %>" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900">
+      <a href="/boards/<%= params.boardSlug %>" text="sm stone-500 hover:stone-900" font-medium no-underline>
         <%= boardName %>
       </a>
     </p>
-    <h1 class="text-4xl font-semibold tracking-tight text-stone-950"><%= title %></h1>
-    <p class="text-sm uppercase tracking-[0.14em] text-stone-500"><%= status %> · <%= authorName %> · <%= publishedAt %></p>
+    <h1 text="4xl stone-950" font-semibold tracking-tight><%= title %></h1>
+    <p text="sm stone-500" uppercase tracking="[0.14em]"><%= status %> · <%= authorName %> · <%= publishedAt %></p>
   </header>
 
   <% if (params.__flash) { %>
-    <p class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+    <p mb-6 rounded-2xl border="~ emerald-200" bg="emerald-50" px-4 py-3 text="sm emerald-700" font-medium>
       <%= params.__flash %>
     </p>
   <% } %>
 
-  <article class="mb-6 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
-    <header class="mb-4">
-      <h2 class="text-2xl font-semibold text-stone-950">Content</h2>
+  <article mb-6 rounded-3xl border="~ stone-200" bg-white p-6 shadow="sm">
+    <header mb-4>
+      <h2 text="2xl stone-950" font-semibold>Content</h2>
     </header>
-    <div class="max-w-none leading-7 text-stone-700"><%- content %></div>
+    <div max-w-none leading-7 text="stone-700"><%- content %></div>
   </article>
 
-  <article class="mb-6 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
-    <header class="mb-5">
-      <h2 class="text-2xl font-semibold text-stone-950">Edit Post</h2>
+  <article mb-6 rounded-3xl border="~ stone-200" bg-white p-6 shadow="sm">
+    <header mb-5>
+      <h2 text="2xl stone-950" font-semibold>Edit Post</h2>
     </header>
 
-    <form action="/api/posts/update" method="post" class="max-w-2xl space-y-4">
+    <form action="/api/posts/update" method="post" max-w-2xl space-y-4>
       <input type="hidden" name="board" value="<%= params.boardSlug %>" />
       <input type="hidden" name="post" value="<%= params.postSlug %>" />
 
-      <label class="block">
+      <label block>
         Title
         <input
           type="text"
@@ -57,46 +57,46 @@
           maxlength="200"
           value="<%= title %>"
           required
-          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
+          mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
         />
       </label>
 
-      <label class="block">
+      <label block>
         Slug
         <input
           type="text"
           name="slug"
           value="<%= data.post.get('slug') || params.postSlug %>"
-          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
+          mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
         />
       </label>
 
-      <label class="block">
+      <label block>
         Author
         <input
           type="text"
           name="authorName"
           value="<%= authorName %>"
           required
-          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
+          mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
         />
       </label>
 
-      <label class="block">
+      <label block>
         Content
         <textarea
           name="content"
           rows="10"
           required
-          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
+          mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
         ><%= content %></textarea>
       </label>
 
-      <label class="block">
+      <label block>
         Status
         <select
           name="status"
-          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
+          mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
         >
           <option value="published" <%= status === 'published' ? 'selected' : '' %>>Published</option>
           <option value="draft" <%= status === 'draft' ? 'selected' : '' %>>Draft</option>
@@ -104,23 +104,23 @@
         </select>
       </label>
 
-      <label class="flex items-center gap-3 text-sm text-stone-700">
+      <label flex items-center gap-3 text="sm stone-700">
         <input type="checkbox" name="isNotice" value="true" <%= data.post.get('is_notice') ? 'checked' : '' %> />
         Notice
       </label>
 
       <button
         type="submit"
-        class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700"
+        inline-flex items-center rounded-full bg="stone-900 hover:stone-700" px-4 py-2 text="sm white" font-medium transition
       >
         Save changes
       </button>
     </form>
   </article>
 
-  <article class="rounded-3xl border border-rose-200 bg-rose-50 p-6 shadow-sm">
-    <header class="mb-5">
-      <h2 class="text-2xl font-semibold text-rose-900">Delete Post</h2>
+  <article rounded-3xl border="~ rose-200" bg="rose-50" p-6 shadow="sm">
+    <header mb-5>
+      <h2 text="2xl rose-900" font-semibold>Delete Post</h2>
     </header>
 
     <form action="/api/posts/delete" method="post">
@@ -128,7 +128,7 @@
       <input type="hidden" name="post" value="<%= params.postSlug %>" />
       <button
         type="submit"
-        class="inline-flex items-center rounded-full bg-rose-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-600"
+        inline-flex items-center rounded-full bg="rose-700 hover:rose-600" px-4 py-2 text="sm white" font-medium transition
       >
         Delete post
       </button>

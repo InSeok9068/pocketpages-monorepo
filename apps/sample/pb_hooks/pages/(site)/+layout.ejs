@@ -1,26 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title><%= meta('title') %></title>
+    <meta name="description" content="<%= meta('description') %>" />
+    <meta property="og:title" content="<%= meta('title') %>" />
+    <meta property="og:description" content="<%= meta('description') %>" />
+    <meta property="og:image" content="<%= meta('image') || '/android-chrome-512x512.png' %>" />
+    <meta property="og:url" content="<%= meta('path') ? meta('path') : (meta('url') || request.url) %>" />
+    <style>
+      [un-cloak] {
+        display: none !important;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@unocss/runtime/attributify.global.js"></script>
+    <script>
+      window.__unocss = {
+        presets: [
+          // 테일윈드 문법을 그대로 사용하게 해주는 기본 프리셋
+          () => window.__unocss_runtime.presets.presetUno(),
+          // p-4, bg-blue 같은 속성 방식을 활성화하는 프리셋
+          () => window.__unocss_runtime.presets.presetAttributify(),
+        ],
+        // 스타일 계산이 완료되면 [un-cloak] 속성을 제거하여 화면을 보여줌
+        ready: () => {
+          document.documentElement.removeAttribute("un-cloak");
+        },
+      };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@latest"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <%- slots.head %>
+  </head>
 
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title><%= meta('title') %></title>
-  <meta name="description" content="<%= meta('description') %>" />
-  <meta property="og:title" content="<%= meta('title') %>" />
-  <meta property="og:description" content="<%= meta('description') %>" />
-  <meta property="og:image" content="<%= meta('image') || '/android-chrome-512x512.png' %>" />
-  <meta property="og:url" content="<%= meta('path') ? meta('path') : (meta('url') || request.url) %>" />
-  <script src="https://cdn.jsdelivr.net/npm/@unocss/runtime"></script>
-  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@latest"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <%- slots.head %>
-</head>
-
-<body class="min-h-screen bg-stone-100 text-stone-900 antialiased">
-  <main class="mx-auto max-w-5xl px-6 py-10 md:px-8 md:py-14">
-    <%- slots.body || slot %>
-  </main>
-</body>
-
+  <body min-h-screen bg="stone-100" text="stone-900" antialiased>
+    <main mx-auto max-w-5xl px="6 md:8" py="10 md:14"><%- slots.body || slot %></main>
+  </body>
 </html>

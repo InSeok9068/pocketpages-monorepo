@@ -1,54 +1,54 @@
 <% if (data.error) { %>
-  <article class="rounded-3xl border border-rose-200 bg-white p-6 shadow-sm">
-    <header class="space-y-4">
-      <h1 class="text-3xl font-semibold text-stone-950"><%= data.error %></h1>
+  <article rounded-3xl border="~ rose-200" bg-white p-6 shadow="sm">
+    <header space-y-4>
+      <h1 text="3xl stone-950" font-semibold><%= data.error %></h1>
     </header>
-    <p class="mt-4">
-      <a href="/boards" class="text-sm font-medium text-stone-600 no-underline hover:text-stone-900">Back to boards</a>
+    <p mt-4>
+      <a href="/boards" text="sm stone-600 hover:stone-900" font-medium no-underline>Back to boards</a>
     </p>
   </article>
 <% } else { %>
   <% const boardName = data.board.get('name') || params.boardSlug %>
   <% const boardDescription = data.board.get('description') || 'No description' %>
 
-  <header class="mb-8 space-y-4">
+  <header mb-8 space-y-4>
     <p>
-      <a href="/boards" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900">Boards</a>
+      <a href="/boards" text="sm stone-500 hover:stone-900" font-medium no-underline>Boards</a>
     </p>
-    <h1 class="text-4xl font-semibold tracking-tight text-stone-950"><%= boardName %></h1>
-    <p class="max-w-3xl text-base leading-7 text-stone-600"><%= boardDescription %></p>
+    <h1 text="4xl stone-950" font-semibold tracking-tight><%= boardName %></h1>
+    <p max-w-3xl text="base stone-600" leading-7><%= boardDescription %></p>
   </header>
 
   <% if (params.__flash) { %>
-    <p class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+    <p mb-6 rounded-2xl border="~ emerald-200" bg="emerald-50" px-4 py-3 text="sm emerald-700" font-medium>
       <%= params.__flash %>
     </p>
   <% } %>
 
-  <article class="mb-6 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
-    <header class="mb-4">
-      <h2 class="text-2xl font-semibold text-stone-950">Actions</h2>
+  <article mb-6 rounded-3xl border="~ stone-200" bg-white p-6 shadow="sm">
+    <header mb-4>
+      <h2 text="2xl stone-950" font-semibold>Actions</h2>
     </header>
     <nav>
       <a
         href="/boards/<%= params.boardSlug %>/posts/new"
-        class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700"
+        inline-flex items-center rounded-full bg="stone-900 hover:stone-700" px-4 py-2 text="sm white" font-medium no-underline transition
       >
         Write new post
       </a>
     </nav>
   </article>
 
-  <article class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
-    <header class="mb-5 space-y-2">
-      <h2 class="text-2xl font-semibold text-stone-950">Posts</h2>
-      <p class="text-sm text-stone-500">/boards/<%= params.boardSlug %></p>
+  <article rounded-3xl border="~ stone-200" bg-white p-6 shadow="sm">
+    <header mb-5 space-y-2>
+      <h2 text="2xl stone-950" font-semibold>Posts</h2>
+      <p text="sm stone-500">/boards/<%= params.boardSlug %></p>
     </header>
 
     <% if (!data.posts.length) { %>
-      <p class="text-sm text-stone-500">No posts yet.</p>
+      <p text="sm stone-500">No posts yet.</p>
     <% } else { %>
-      <div class="space-y-4">
+      <div space-y-4>
         <% data.posts.forEach((post) => { %>
           <% const title = post.get('title') || '(untitled post)' %>
           <% const authorName = post.get('author_name') || 'unknown' %>
@@ -56,20 +56,20 @@
           <% const status = post.get('status') || 'draft' %>
           <% const publishedAt = post.get('published_at') || post.created || '' %>
           <% const preview = String(post.get('content') || '').replace(/<[^>]*>/g, '').slice(0, 180) %>
-          <section class="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
-            <h3 class="text-lg font-semibold text-stone-900">
+          <section rounded-2xl border="~ stone-200" bg="stone-50" px-5 py-4>
+            <h3 text="lg stone-900" font-semibold>
               <a
                 href="/boards/<%= params.boardSlug %>/posts/<%= post.get('slug') %>"
-                class="text-stone-900 no-underline hover:text-stone-700"
+                text="stone-900 hover:stone-700" no-underline
               >
                 <%= title %>
               </a>
             </h3>
-            <p class="mt-2 text-xs uppercase tracking-[0.14em] text-stone-500">
+            <p mt-2 text="xs stone-500" uppercase tracking="[0.14em]">
               <%= isNotice ? 'Notice' : 'Post' %> · <%= status %> · <%= authorName %> · <%= publishedAt %>
             </p>
             <% if (preview) { %>
-              <p class="mt-3 text-sm leading-6 text-stone-600"><%= preview %></p>
+              <p mt-3 text="sm stone-600" leading-6><%= preview %></p>
             <% } %>
           </section>
         <% }) %>
