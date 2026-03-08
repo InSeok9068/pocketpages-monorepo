@@ -39,7 +39,15 @@
 
       $app.save(record)
       info('api/boards/create:success', { slug: record.get('slug') })
-      response.redirect('/boards?__flash=' + encodeURIComponent('Board created.'), 303)
+      dbg('api/boards/create:response', {
+        status: 303,
+        redirectTo: '/boards',
+        flash: 'Board created.',
+      })
+      redirect('/boards', {
+        status: 303,
+        message: 'Board created.',
+      })
       return
     } catch (exception) {
       error('api/boards/create:save-failed', exception)
@@ -47,4 +55,14 @@
     }
   }
 </script>
-<% response.redirect('/boards?__flash=' + encodeURIComponent(errorMessage || 'Failed to create board.'), 303) %>
+<%
+  dbg('api/boards/create:response', {
+    status: 303,
+    redirectTo: '/boards',
+    error: errorMessage || 'Failed to create board.',
+  })
+  redirect('/boards', {
+    status: 303,
+    message: errorMessage || 'Failed to create board.',
+  })
+%>

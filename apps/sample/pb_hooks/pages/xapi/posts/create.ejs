@@ -55,15 +55,10 @@
         redirectTo: `/boards/${encodeURIComponent(boardSlug)}/posts/${encodeURIComponent(createdSlug)}`,
         flash: 'Post created.',
       })
-      response.redirect(
-        '/boards/' +
-          encodeURIComponent(boardSlug) +
-          '/posts/' +
-          encodeURIComponent(createdSlug) +
-          '?__flash=' +
-          encodeURIComponent('Post created.'),
-        303
-      )
+      redirect('/boards/' + encodeURIComponent(boardSlug) + '/posts/' + encodeURIComponent(createdSlug), {
+        status: 303,
+        message: 'Post created.',
+      })
       return
     } catch (exception) {
       error('api/posts/create:save-failed', exception)
@@ -72,11 +67,14 @@
   }
 </script>
 <%
-  const createFallbackRedirect = '/boards/' + encodeURIComponent(boardSlug) + '/posts/new?__flash=' + encodeURIComponent(errorMessage || 'Failed to create post.')
+  const createFallbackRedirect = '/boards/' + encodeURIComponent(boardSlug) + '/posts/new'
   dbg('api/posts/create:response', {
     status: 303,
     redirectTo: createFallbackRedirect,
     error: errorMessage || 'Failed to create post.',
   })
-  response.redirect(createFallbackRedirect, 303)
+  redirect('/boards/' + encodeURIComponent(boardSlug) + '/posts/new', {
+    status: 303,
+    message: errorMessage || 'Failed to create post.',
+  })
 %>

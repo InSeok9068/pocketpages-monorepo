@@ -1,0 +1,15 @@
+<%
+  const flashMessage = params && params.__flash ? String(params.__flash).trim() : ''
+  const isErrorFlash = /failed|error|not found|required|cannot|invalid/i.test(flashMessage)
+%>
+
+<% if (flashMessage) { %>
+  <p
+    mb-6 rounded-2xl border="<%= `~ ${isErrorFlash ? 'rose-200' : 'emerald-200'}` %>"
+    bg="<%= isErrorFlash ? 'rose-50' : 'emerald-50' %>"
+    px-4 py-3 text="<%= `sm ${isErrorFlash ? 'rose-700' : 'emerald-700'}` %>"
+    font-medium
+  >
+    <%= flashMessage %>
+  </p>
+<% } %>

@@ -71,11 +71,7 @@
     <p max-w-2xl text="base stone-600" leading-7><%= boardName %> 게시판의 게시글을 수정합니다.</p>
   </header>
 
-  <% if (params.__flash) { %>
-    <p mb-6 rounded-2xl border="~ emerald-200" bg="emerald-50" px-4 py-3 text="sm emerald-700" font-medium>
-      <%= params.__flash %>
-    </p>
-  <% } %>
+  <%- include('flash-alert.ejs') %>
 
   <article mb-6 rounded-3xl border="~ stone-200" bg-white p-6 shadow="sm">
     <header mb-5 flex items-center justify-between gap-4>
