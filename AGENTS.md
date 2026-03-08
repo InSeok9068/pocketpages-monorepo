@@ -100,6 +100,16 @@
 - HTMX 응답은 layout 없는 raw HTML 또는 리다이렉트처럼 필요한 응답만 반환합니다.
 - 초기 페이지 렌더와 HTMX 응답이 같은 마크업을 써야 하면 `_private` partial로 묶어 한 곳에서 관리합니다.
 
+### F. redirect와 flash message
+
+- 작업 완료, 생성/수정/삭제 성공, 검증 실패처럼 **사용자가 다음 화면에서 바로 알아야 하는 결과**는 PocketPages `redirect()`의 flash message 패턴을 우선 사용합니다.
+- 기본 패턴은 `redirect('/target', { status: 303, message: 'Post created.' })` 형태로 작성합니다.
+- 성공/실패 알림을 위해 `?__flash=...` 쿼리스트링을 수동으로 조립하지 않습니다.
+- redirect 직전에는 `dbg()`로 `status`, `redirectTo`, `flash` 또는 `error`를 남겨 런타임 추적이 가능하게 합니다.
+- flash message는 도착 페이지에서 `params.__flash`로 읽는 것을 기본값으로 삼습니다.
+- 여러 페이지에서 같은 flash UI를 쓴다면 각 페이지에 같은 마크업을 반복하지 말고 `_private` partial로 분리해 `include()`로 재사용합니다.
+- flash UI는 메시지 문자열만 출력하는 데서 끝내지 말고, 성공/실패 여부가 시각적으로 드러나도록 스타일 규칙도 함께 둡니다.
+
 ## 6) PocketBase / JSVM 작업 기준
 
 - 이 레포에서는 대부분의 요청-응답 기반 기능을 PocketPages 안에서 처리하는 것을 기본값으로 봅니다.
@@ -181,11 +191,13 @@
 - `_private` 파일이 실제 사용 범위와 맞는 위치에 있는가
 - 서버 작업이라면 단계별 로그가 충분한가
 - EJS에서 `record.get()` 접근이 맞는가
+- redirect가 필요한 작업 완료/실패 흐름이라면 `redirect(..., { message })` flash 패턴을 사용했는가
 
 ## 11) 변경 후 체크리스트
 
 - 라우트/리다이렉트/API 응답 영향이 있으면 사용자가 확인해야 할 포인트를 남겼는가
 - migration 변경이 있으면 startup/초기 부팅 리스크와 확인 포인트를 남겼는가
+- redirect 후 사용자 피드백이 필요한 흐름이라면 도착 페이지에서 `params.__flash`가 실제로 렌더링되는지 확인했는가
 - AI가 서비스를 수정한 뒤에는 반드시 **Windows Git Bash**에서 `./task.sh lint <service>`를 실행해 해당 서비스 lint를 통과시켰는가
 - lint에서 이슈가 나오면 관련 파일을 수정한 뒤 같은 명령을 다시 실행해 통과 여부를 확인했는가
 
