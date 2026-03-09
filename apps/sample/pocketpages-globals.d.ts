@@ -12,6 +12,8 @@ type PocketPagesRealtimeApi = {
 }
 
 declare global {
+  interface PocketPagesRouteParams {}
+
   const api: PocketPagesEditorApi<any>
   const asset: PocketPagesEditorApi<any>['asset']
   const auth: PocketPagesEditorApi<any>['auth']
@@ -20,7 +22,7 @@ declare global {
   const formData: PocketPagesEditorApi<any>['formData']
   const body: PocketPagesEditorApi<any>['body']
   const meta: PocketPagesEditorApi<any>['meta']
-  const params: PocketPagesEditorApi<any>['params']
+  const params: PocketPagesEditorApi<any>['params'] & PocketPagesRouteParams
   const redirect: PocketPagesEditorApi<any>['redirect']
   const request: PocketPagesEditorApi<any>['request']
   const resolve: PocketPagesEditorApi<any>['resolve']

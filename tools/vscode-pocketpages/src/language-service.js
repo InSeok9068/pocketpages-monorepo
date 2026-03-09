@@ -4,6 +4,14 @@ const fs = require("fs");
 const path = require("path");
 const ts = require("typescript");
 const { extractServerBlocks, getServerBlockAtOffset } = require("./script-server");
+const { PocketPagesProjectIndex } = require("./project-index");
+const {
+  collectPathContexts,
+  collectSchemaContexts,
+  getPathContextAtOffset,
+  getScriptCollectionContext,
+  getScriptFieldContext,
+} = require("./custom-context");
 
 const CACHE_ROOT = path.resolve(__dirname, "..", ".cache");
 const COMPILER_OPTIONS = {
@@ -90,6 +98,7 @@ function flattenDiagnosticMessage(messageText) {
 class ProjectLanguageService {
   constructor(appRoot) {
     this.appRoot = appRoot;
+    this.projectIndex = new PocketPagesProjectIndex(appRoot);
     this.projectVersion = 0;
     this.staticFiles = new Map();
     this.virtualFiles = new Map();
@@ -176,16 +185,33 @@ class ProjectLanguageService {
     this.ensureStaticFile(path.join(this.appRoot, "pocketpages-globals.d.ts"));
   }
 
-  buildPrelude() {
+  buildPrelude(filePath) {
     const references = [path.join(this.appRoot, "pb_data", "types.d.ts"), path.join(this.appRoot, "pocketpages-globals.d.ts")]
       .filter((filePath) => fileExists(filePath))
       .map((filePath) => `/// <reference path="${toReferencePath(filePath)}" />`);
 
-    if (!references.length) {
+    const routeParams = this.projectIndex.getRouteParamEntries(filePath);
+    const routeParamLines = routeParams.length
+      ? [
+          "interface PocketPagesRouteParams {",
+          ...routeParams.map((entry) => `  ${JSON.stringify(entry.name)}: ${entry.type};`),
+          "}",
+        ]
+      : [];
+
+    if (!references.length && !routeParamLines.length) {
       return "";
     }
 
-    return `${references.join("\n")}\n\n`;
+    const parts = [];
+    if (references.length) {
+      parts.push(references.join("\n"));
+    }
+    if (routeParamLines.length) {
+      parts.push(routeParamLines.join("\n"));
+    }
+
+    return `${parts.join("\n\n")}\n\n`;
   }
 
   upsertVirtualFile(filePath, block) {
@@ -196,7 +222,7 @@ class ProjectLanguageService {
     const virtualDir = path.join(CACHE_ROOT, sanitizeFileName(this.appRoot));
     const virtualFileName = normalizePath(path.join(virtualDir, `${sanitizeFileName(relativePath)}__block_${block.index}.ts`));
 
-    const prelude = this.buildPrelude();
+    const prelude = this.buildPrelude(resolvedPath);
     const text = `${prelude}${block.content}`;
     const previous = this.virtualFiles.get(virtualFileName);
 
@@ -274,6 +300,77 @@ class ProjectLanguageService {
     };
   }
 
+  getCustomCompletionData(filePath, documentText, offset) {
+    const pathContext = getPathContextAtOffset(documentText, offset);
+    if (pathContext) {
+      const candidates =
+        pathContext.kind === "resolve-path"
+          ? this.projectIndex.getResolveCandidates(filePath)
+          : this.projectIndex.getIncludeCandidates(filePath);
+
+      return {
+        start: pathContext.start,
+        end: pathContext.end,
+        items: candidates.map((candidate) => ({
+          label: candidate.value,
+          insertText: candidate.value,
+          detail: candidate.detail,
+          documentation: candidate.filePath,
+          targetFilePath: candidate.filePath,
+          category: pathContext.kind,
+        })),
+      };
+    }
+
+    const block = getServerBlockAtOffset(documentText, offset);
+    if (!block) {
+      return null;
+    }
+
+    const localOffset = offset - block.contentStart;
+    const collectionContext = getScriptCollectionContext(block.content, localOffset);
+    if (collectionContext) {
+      return {
+        start: block.contentStart + collectionContext.start,
+        end: block.contentStart + collectionContext.end,
+        items: this.projectIndex.getCollectionNames().map((collectionName) => ({
+          label: collectionName,
+          insertText: collectionName,
+          detail: "PocketBase collection",
+          documentation: `Collection from ${this.projectIndex.getSchemaState().schemaPath}`,
+          category: "collection-name",
+        })),
+      };
+    }
+
+    const fieldContext = getScriptFieldContext(block.content, localOffset);
+    if (fieldContext) {
+      const collectionName = this.projectIndex.inferCollectionName(
+        fieldContext.receiverExpression,
+        block.content,
+        fieldContext.start
+      );
+
+      if (!collectionName) {
+        return null;
+      }
+
+      return {
+        start: block.contentStart + fieldContext.start,
+        end: block.contentStart + fieldContext.end,
+        items: this.projectIndex.getFields(collectionName).map((field) => ({
+          label: field.name,
+          insertText: field.name,
+          detail: `${collectionName}.${field.name}`,
+          documentation: field.type ? `PocketBase field type: ${field.type}` : collectionName,
+          category: "record-field",
+        })),
+      };
+    }
+
+    return null;
+  }
+
   getCompletionDetails(virtualFileName, virtualOffset, name, source) {
     return this.languageService.getCompletionEntryDetails(virtualFileName, virtualOffset, name, {}, source, {});
   }
@@ -335,9 +432,84 @@ class ProjectLanguageService {
           end,
         });
       }
+
+      for (const context of collectSchemaContexts(block.content)) {
+        if (context.kind === "collection-name" && !this.projectIndex.hasCollection(context.value)) {
+          diagnostics.push({
+            code: "pp-schema-collection",
+            category: ts.DiagnosticCategory.Warning,
+            message: `Unknown PocketBase collection "${context.value}" in ${context.methodName}().`,
+            start: block.contentStart + context.start,
+            end: block.contentStart + context.end,
+          });
+        }
+
+        if (context.kind === "record-field") {
+          const collectionName = this.projectIndex.inferCollectionName(
+            context.receiverExpression,
+            block.content,
+            context.start
+          );
+
+          if (collectionName && !this.projectIndex.hasField(collectionName, context.value)) {
+            diagnostics.push({
+              code: "pp-schema-field",
+              category: ts.DiagnosticCategory.Warning,
+              message: `Unknown field "${context.value}" for collection "${collectionName}".`,
+              start: block.contentStart + context.start,
+              end: block.contentStart + context.end,
+            });
+          }
+        }
+      }
     }
 
     return diagnostics;
+  }
+
+  getDefinitionTarget(filePath, documentText, offset) {
+    const pathContext = getPathContextAtOffset(documentText, offset);
+    if (!pathContext) {
+      return null;
+    }
+
+    if (pathContext.kind === "resolve-path") {
+      return this.projectIndex.resolveResolveTarget(filePath, pathContext.value);
+    }
+
+    if (pathContext.kind === "include-path") {
+      return this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
+    }
+
+    return null;
+  }
+
+  getDocumentLinks(filePath, documentText) {
+    const links = [];
+
+    for (const pathContext of collectPathContexts(documentText)) {
+      let targetFilePath = null;
+
+      if (pathContext.kind === "resolve-path") {
+        targetFilePath = this.projectIndex.resolveResolveTarget(filePath, pathContext.value);
+      } else if (pathContext.kind === "include-path") {
+        targetFilePath = this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
+      }
+
+      if (!targetFilePath) {
+        continue;
+      }
+
+      links.push({
+        start: pathContext.start,
+        end: pathContext.end,
+        targetFilePath,
+        kind: pathContext.kind,
+        value: pathContext.value,
+      });
+    }
+
+    return links;
   }
 }
 

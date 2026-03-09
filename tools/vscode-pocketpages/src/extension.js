@@ -50,6 +50,20 @@ function diagnosticSeverity(category) {
   }
 }
 
+function customCompletionKind(category) {
+  switch (category) {
+    case 'resolve-path':
+    case 'include-path':
+      return vscode.CompletionItemKind.File
+    case 'collection-name':
+      return vscode.CompletionItemKind.Struct
+    case 'record-field':
+      return vscode.CompletionItemKind.Field
+    default:
+      return vscode.CompletionItemKind.Text
+  }
+}
+
 function debounce(fn, waitMs) {
   let timeoutId = null
 
@@ -81,6 +95,23 @@ class PocketPagesCompletionProvider {
     }
 
     const offset = document.offsetAt(position)
+    const customCompletionData = service.getCustomCompletionData(document.uri.fsPath, document.getText(), offset)
+
+    if (customCompletionData) {
+      return customCompletionData.items.map((entry) => {
+        const item = new vscode.CompletionItem(entry.label, customCompletionKind(entry.category))
+        item.insertText = entry.insertText || entry.label
+        item.detail = entry.detail || ''
+
+        if (entry.documentation) {
+          item.documentation = new vscode.MarkdownString(String(entry.documentation))
+        }
+
+        item.range = toRange(document, customCompletionData.start, customCompletionData.end)
+        return item
+      })
+    }
+
     const completionData = service.getCompletionData(document.uri.fsPath, document.getText(), offset)
 
     if (!completionData) {
@@ -187,6 +218,58 @@ class PocketPagesHoverProvider {
   }
 }
 
+class PocketPagesDefinitionProvider {
+  constructor(manager) {
+    this.manager = manager
+  }
+
+  provideDefinition(document, position) {
+    if (!findAppRoot(document.uri.fsPath)) {
+      return null
+    }
+
+    const service = this.manager.getServiceForFile(document.uri.fsPath)
+    if (!service) {
+      return null
+    }
+
+    const offset = document.offsetAt(position)
+    const targetFilePath = service.getDefinitionTarget(document.uri.fsPath, document.getText(), offset)
+
+    if (!targetFilePath) {
+      return null
+    }
+
+    return new vscode.Location(vscode.Uri.file(targetFilePath), new vscode.Position(0, 0))
+  }
+}
+
+class PocketPagesDocumentLinkProvider {
+  constructor(manager) {
+    this.manager = manager
+  }
+
+  provideDocumentLinks(document) {
+    if (!findAppRoot(document.uri.fsPath)) {
+      return null
+    }
+
+    const service = this.manager.getServiceForFile(document.uri.fsPath)
+    if (!service) {
+      return null
+    }
+
+    return service.getDocumentLinks(document.uri.fsPath, document.getText()).map((entry) => {
+      const link = new vscode.DocumentLink(toRange(document, entry.start, entry.end), vscode.Uri.file(entry.targetFilePath))
+      link.tooltip =
+        entry.kind === 'resolve-path'
+          ? `Open resolved module: ${entry.value}`
+          : `Open included template: ${entry.value}`
+      return link
+    })
+  }
+}
+
 function activate(context) {
   const manager = new PocketPagesLanguageServiceManager()
   const diagnostics = vscode.languages.createDiagnosticCollection('pocketpages-server-script')
@@ -238,6 +321,8 @@ function activate(context) {
       '"',
       '/'
     ),
+    vscode.languages.registerDocumentLinkProvider(DOCUMENT_SELECTOR, new PocketPagesDocumentLinkProvider(manager)),
+    vscode.languages.registerDefinitionProvider(DOCUMENT_SELECTOR, new PocketPagesDefinitionProvider(manager)),
     vscode.languages.registerHoverProvider(DOCUMENT_SELECTOR, new PocketPagesHoverProvider(manager)),
     vscode.workspace.onDidOpenTextDocument(updateDiagnostics),
     vscode.workspace.onDidCloseTextDocument((document) => diagnostics.delete(document.uri)),
