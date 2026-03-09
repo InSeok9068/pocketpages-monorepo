@@ -1,0 +1,15 @@
+<script server>
+  dbg('xapi/auth/sign-out:start', {
+    isSignedIn: !!request.auth,
+  })
+  signOut()
+  dbg('xapi/auth/sign-out:response', {
+    status: 303,
+    redirectTo: '/sign-in',
+    flash: '로그아웃 완료',
+  })
+  redirect('/sign-in', {
+    status: 303,
+    message: '로그아웃 완료',
+  })
+</script>

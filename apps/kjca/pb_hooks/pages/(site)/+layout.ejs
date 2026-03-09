@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title><%= meta('title') %></title>
+    <meta name="description" content="<%= meta('description') %>" />
+    <meta property="og:title" content="<%= meta('title') %>" />
+    <meta property="og:description" content="<%= meta('description') %>" />
+    <meta property="og:url" content="<%= meta('path') ? meta('path') : (meta('url') || request.url) %>" />
+    <link rel="stylesheet" href="<%= asset('/assets/style.css') %>" />
+    <style>
+      [un-cloak] {
+        display: none !important;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@unocss/runtime/attributify.global.js"></script>
+    <script>
+      window.__unocss = {
+        presets: [() => window.__unocss_runtime.presets.presetUno(), () => window.__unocss_runtime.presets.presetAttributify()],
+        ready: () => {
+          document.body.removeAttribute('un-cloak');
+        },
+      };
+    </script>
+    <%- slots.head %>
+  </head>
+
+  <body un-cloak min-h-screen text="slate-900" antialiased>
+    <div min-h-screen>
+      <main mx-auto max-w="[1560px]" px="4 md:7 xl:9" py="6 md:8 xl:10">
+        <%- slots.body || slot %>
+      </main>
+    </div>
+  </body>
+</html>

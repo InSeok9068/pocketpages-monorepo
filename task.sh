@@ -69,6 +69,20 @@ resolve_pbw_cmd() {
   return 1
 }
 
+load_service_env() {
+  local service_dir="$1"
+  local env_file="$service_dir/.env"
+
+  [[ -f "$env_file" ]] || return 0
+
+  echo "Loading environment: $env_file"
+
+  set -a
+  # shellcheck disable=SC1090
+  source <(sed -e 's/\r$//' "$env_file")
+  set +a
+}
+
 start_service() {
   local service="$1"
   shift || true
@@ -96,6 +110,8 @@ Expected one of:
 EOF
     exit 1
   fi
+
+  load_service_env "$service_dir"
 
   local cmd=(
     "${RUNNER[@]}"

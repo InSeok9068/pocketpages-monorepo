@@ -1,0 +1,31 @@
+:root {
+  --kjca-ink: #1e293b;
+  --kjca-surface: #fffcf5;
+  --kjca-panel: rgba(255, 255, 255, 0.9);
+  --kjca-line: rgba(148, 163, 184, 0.28);
+}
+
+html {
+  color: var(--kjca-ink);
+  background:
+    radial-gradient(circle at top right, rgba(245, 158, 11, 0.18), transparent 28rem),
+    radial-gradient(circle at left 15%, rgba(14, 116, 144, 0.12), transparent 24rem),
+    linear-gradient(180deg, #fffaf0 0%, #f8fafc 48%, #eef2ff 100%);
+}
+
+body {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+}
+
+a {
+  color: inherit;
+}
+
+.htmx-indicator {
+  display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  display: flex;
+}

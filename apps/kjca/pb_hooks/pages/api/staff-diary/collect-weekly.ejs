@@ -1,0 +1,63 @@
+<script server>
+  const kjcaService = resolve('kjca-service')
+  const createStaffDiaryAnalysisCacheDT = resolve('table/staff-diary-analysis-cache-dt')
+  const createRecruitingWeekPlanDT = resolve('table/recruiting-week-plan-dt')
+  const createRecruitingWeekPlanItemDT = resolve('table/recruiting-week-plan-item-dt')
+  const createRecruitingDailyResultDT = resolve('table/recruiting-daily-result-dt')
+  const createRecruitingWeekTextPlanDT = resolve('table/recruiting-week-text-plan-dt')
+  const createRecruitingWeekTextRowDT = resolve('table/recruiting-week-text-row-dt')
+
+  if (request.method !== 'POST') {
+    response.status(405)
+    response.json(405, {
+      ok: false,
+      message: 'Method not allowed.',
+    })
+    return
+  }
+
+  const authState = kjcaService.readAuthState({ request })
+  if (!authState.isSuperuser) {
+    response.status(401)
+    response.json(401, {
+      ok: false,
+      message: 'PocketBase 슈퍼유저 로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const payload = body()
+
+  try {
+    const result = kjcaService.collectWeekly(
+      {
+        request,
+        dbg,
+        info,
+        warn,
+        error,
+        dt: {
+          createStaffDiaryAnalysisCacheDT,
+          createRecruitingWeekPlanDT,
+          createRecruitingWeekPlanItemDT,
+          createRecruitingDailyResultDT,
+          createRecruitingWeekTextPlanDT,
+          createRecruitingWeekTextRowDT,
+        },
+      },
+      payload,
+    )
+
+    response.json(200, result)
+  } catch (exception) {
+    const errorMessage = String(exception.message || exception)
+    error('api/staff-diary/collect-weekly:failed', {
+      error: errorMessage,
+    })
+    response.status(500)
+    response.json(500, {
+      ok: false,
+      message: errorMessage,
+    })
+  }
+</script>

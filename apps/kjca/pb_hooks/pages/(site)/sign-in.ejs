@@ -1,0 +1,74 @@
+<script server>
+  const kjcaService = resolve('kjca-service')
+
+  meta('title', 'KJCA 슈퍼유저 로그인')
+  meta('description', 'PocketBase 슈퍼유저 로그인 페이지')
+
+  const authState = kjcaService.readAuthState({ request })
+
+  if (authState.isSuperuser) {
+    dbg('page/kjca:sign-in:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '이미 로그인되어 있습니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '이미 로그인되어 있습니다.',
+    })
+    return
+  }
+</script>
+
+<section mx-auto max-w-xl py="8 md:12">
+  <div rounded-4xl border="~ amber-200/70" bg="white/88" p="6 md:8" shadow="xl amber-100/40" backdrop-blur>
+    <p text="xs amber-700" font-semibold uppercase tracking="[0.24em]">sign in</p>
+    <h1 mt-3 text="3xl slate-950" font-semibold tracking-tight>슈퍼유저 로그인</h1>
+    <p mt-3 text="sm slate-600" leading-7>
+      아이디에 `@`가 없으면 자동으로 `@kjca.local`이 붙습니다. 로그인 후 `/` 대시보드로 이동합니다.
+    </p>
+
+    <div mt-6>
+      <%- include('flash-alert.ejs') %>
+    </div>
+
+    <form action="/xapi/auth/sign-in" method="post" mt-6 space-y-4>
+      <label block text="sm slate-700" font-medium>
+        아이디
+        <input
+          type="text"
+          name="loginId"
+          placeholder="admin"
+          required
+          mt-2 block w-full rounded-3xl border="~ amber-200 focus:amber-400" bg="amber-50/60 focus:white" px-4 py-3 text="sm slate-900" outline-none transition
+        />
+      </label>
+
+      <label block text="sm slate-700" font-medium>
+        비밀번호
+        <input
+          type="password"
+          name="password"
+          placeholder="비밀번호 입력"
+          required
+          mt-2 block w-full rounded-3xl border="~ amber-200 focus:amber-400" bg="amber-50/60 focus:white" px-4 py-3 text="sm slate-900" outline-none transition
+        />
+      </label>
+
+      <div flex gap-3 pt-2>
+        <button
+          type="submit"
+          inline-flex items-center rounded-full bg="slate-900 hover:slate-700" px-5 py-2.5 text="sm white" font-medium transition
+        >
+          로그인
+        </button>
+        <a
+          href="/"
+          inline-flex items-center rounded-full border="~ slate-300 hover:slate-900" px-5 py-2.5 text="sm slate-700" font-medium no-underline transition
+        >
+          홈으로
+        </a>
+      </div>
+    </form>
+  </div>
+</section>

@@ -1,0 +1,15 @@
+<%
+  const flashMessage = params && params.__flash ? String(params.__flash).trim() : ''
+  const isErrorFlash = /실패|오류|error|failed|invalid|required|필요|없습니다|찾지 못했습니다/i.test(flashMessage)
+%>
+
+<% if (flashMessage) { %>
+  <p
+    mb-6 rounded-3xl border="<%= `~ ${isErrorFlash ? 'rose-200' : 'emerald-200'}` %>"
+    bg="<%= isErrorFlash ? 'rose-50/90' : 'emerald-50/90' %>"
+    px-5 py-4 text="<%= `sm ${isErrorFlash ? 'rose-700' : 'emerald-700'}` %>"
+    font-medium shadow="sm <%= isErrorFlash ? 'rose-100/70' : 'emerald-100/70' %>"
+  >
+    <%= flashMessage %>
+  </p>
+<% } %>

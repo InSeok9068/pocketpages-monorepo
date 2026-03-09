@@ -1,0 +1,81 @@
+<script server>
+  const kjcaService = resolve('kjca-service')
+  const createStaffDiaryAnalysisCacheDT = resolve('table/staff-diary-analysis-cache-dt')
+  const createRecruitingWeekPlanDT = resolve('table/recruiting-week-plan-dt')
+  const createRecruitingWeekPlanItemDT = resolve('table/recruiting-week-plan-item-dt')
+  const createRecruitingDailyResultDT = resolve('table/recruiting-daily-result-dt')
+  const createRecruitingWeekTextPlanDT = resolve('table/recruiting-week-text-plan-dt')
+  const createRecruitingWeekTextRowDT = resolve('table/recruiting-week-text-row-dt')
+
+  const authState = kjcaService.readAuthState({ request })
+  const form = body()
+  const formState = kjcaService.buildFormState({
+    reportDate: form.reportDate,
+    testOneOnly: form.testOneOnly,
+  })
+  let dashboardState = kjcaService.buildDashboardState({
+    reportDate: formState.reportDate,
+    testOneOnly: formState.testOneOnly,
+  })
+
+  dbg('xapi/kjca/collect:start', {
+    reportDate: formState.reportDate,
+    testOneOnly: formState.testOneOnly,
+    isSuperuser: authState.isSuperuser,
+  })
+
+  if (!authState.isSuperuser) {
+    dashboardState = kjcaService.buildDashboardState({
+      reportDate: formState.reportDate,
+      testOneOnly: formState.testOneOnly,
+      errorMessage: '먼저 PocketBase 슈퍼유저로 로그인해주세요.',
+    })
+  } else {
+    try {
+      const result = kjcaService.collectWeekly(
+        {
+          request,
+          dbg,
+          info,
+          warn,
+          error,
+          dt: {
+            createStaffDiaryAnalysisCacheDT,
+            createRecruitingWeekPlanDT,
+            createRecruitingWeekPlanItemDT,
+            createRecruitingDailyResultDT,
+            createRecruitingWeekTextPlanDT,
+            createRecruitingWeekTextRowDT,
+          },
+        },
+        formState,
+      )
+      dashboardState = kjcaService.buildDashboardStateFromCollectResult(result, formState)
+    } catch (exception) {
+      const errorMessage = String(exception.message || exception)
+      error('xapi/kjca/collect:failed', {
+        reportDate: formState.reportDate,
+        error: errorMessage,
+      })
+      dashboardState = kjcaService.buildDashboardState({
+        reportDate: formState.reportDate,
+        testOneOnly: formState.testOneOnly,
+        errorMessage,
+      })
+    }
+  }
+
+  dbg('xapi/kjca/collect:response', {
+    reportDate: dashboardState.reportDate,
+    warningCount: dashboardState.warnings.length,
+    teamLeadCount: dashboardState.teamLeadRows.length,
+    analysisCount: dashboardState.analysisResults.length,
+    deptWeekTableCount: dashboardState.deptWeekTables.length,
+  })
+</script>
+<%- include('dashboard-shell.ejs', {
+  authState,
+  formState,
+  dashboardState,
+  kjcaService,
+}) %>

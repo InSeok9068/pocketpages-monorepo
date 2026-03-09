@@ -1,0 +1,18 @@
+diff --git a/node_modules/pocketpages/dist/index.js b/node_modules/pocketpages/dist/index.js
+index 2bda541..cf945a7 100644
+--- a/node_modules/pocketpages/dist/index.js
++++ b/node_modules/pocketpages/dist/index.js
+@@ -839,7 +839,12 @@ const AfterBootstrapHandler = (e) => {
+ 		{
+ 			const pathParts = $filepath.toSlash($filepath.dir(relativePath)).split(`/`).filter((node) => node !== ".").filter((p) => !!p);
+ 			do {
+-				const maybeLayouts = $filepath.glob($filepath.join(pagesRoot, ...pathParts, `+layout.*`).replace(/\[/g, "\\[").replace(/\]/g, "\\]"));
++				let maybeLayouts = [];
++				try {
++					maybeLayouts = $filepath.glob($filepath.join(pagesRoot, ...pathParts, `+layout.*`).replace(/\[/g, "\\[").replace(/\]/g, "\\]")) || [];
++				} catch (e$1) {
++					maybeLayouts = [];
++				}
+ 				if (maybeLayouts && maybeLayouts.length > 0) {
+ 					if (maybeLayouts.length > 1) throw new Error(`Multiple layouts found for ${relativePath}`);
+ 					const maybeLayout = maybeLayouts[0];
