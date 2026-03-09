@@ -1,0 +1,44 @@
+{
+  "name": "vscode-pocketpages",
+  "displayName": "VSCode PocketPages",
+  "description": "VSCode extension for PocketPages <script server> completion, hover, and diagnostics in .ejs files.",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "dlstj-local",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:ejs",
+    "onCommand:pocketpagesServerScript.probeCurrentFile"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "pocketpagesServerScript.probeCurrentFile",
+        "title": "PocketPages: Probe Current EJS File"
+      },
+      {
+        "command": "pocketpagesServerScript.refreshDiagnostics",
+        "title": "PocketPages: Refresh Server Script Diagnostics"
+      }
+    ]
+  },
+  "scripts": {
+    "sanity-check": "node ./scripts/sanity-check.js",
+    "package:vsix": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --allow-missing-repository --out ./dist/vscode-pocketpages.vsix",
+    "install:vscode-pocketpages": "npm run package:vsix && node ./scripts/install-vscode-pocketpages.js"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.6.1"
+  },
+  "dependencies": {
+    "typescript": "^5.8.2"
+  }
+}

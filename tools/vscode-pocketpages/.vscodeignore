@@ -1,0 +1,5 @@
+.cache/**
+.vscode/**
+scripts/**
+dist/**
+package-lock.json
