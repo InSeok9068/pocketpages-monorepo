@@ -30,3 +30,19 @@
 | 배포 방식           | 파일 동기화 (PB 전송)    |
 | 모바일              | PWA => Capacitor         |
 | 푸시/알림           | FCM / OneSignal          |
+
+## sftp.json
+
+```json
+{
+  "name": "kjca",
+  "host": "146.56.177.250",
+  "protocol": "sftp",
+  "port": 22,
+  "username": "ubuntu",
+  "privateKeyPath": "~/.ssh/ssh-key-2023-04-17-DOCKER.key",
+  "context": "apps/kjca/pb_hooks",
+  "remotePath": "/path/to/kjca/hooks",
+  "connectTimeout": 100000
+}
+```
