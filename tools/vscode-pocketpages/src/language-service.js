@@ -193,15 +193,13 @@ class ProjectLanguageService {
     const routeParams = this.projectIndex.getRouteParamEntries(filePath);
     const routeParamLines = routeParams.length
       ? [
+          "declare global {",
           "interface PocketPagesRouteParams {",
           ...routeParams.map((entry) => `  ${JSON.stringify(entry.name)}: ${entry.type};`),
           "}",
+          "}",
         ]
       : [];
-
-    if (!references.length && !routeParamLines.length) {
-      return "";
-    }
 
     const parts = [];
     if (references.length) {
@@ -210,6 +208,10 @@ class ProjectLanguageService {
     if (routeParamLines.length) {
       parts.push(routeParamLines.join("\n"));
     }
+
+    // Force each extracted <script server> block into module scope so top-level
+    // bindings from different EJS files do not collide in the shared TS project.
+    parts.push("export {};");
 
     return `${parts.join("\n\n")}\n\n`;
   }

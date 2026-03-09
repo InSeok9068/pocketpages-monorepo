@@ -116,6 +116,22 @@ function run() {
     throw new Error(`Expected unknown field diagnostic. Got: ${diagnosticMessages.join(' | ')}`)
   }
 
+  service.getDiagnostics(
+    boardsFilePath,
+    `<script server>\nconst pageData = { boards: [], error: '' }\n</script>\n`
+  )
+  const isolatedDiagnostics = service.getDiagnostics(
+    boardShowFilePath,
+    `<script server>\nconst pageData = { post: null, error: '' }\n</script>\n`
+  )
+  if (isolatedDiagnostics.some((entry) => String(entry.message).includes('Cannot redeclare block-scoped variable'))) {
+    throw new Error(
+      `Expected per-file module isolation for server scripts. Got: ${isolatedDiagnostics
+        .map((entry) => String(entry.message))
+        .join(' | ')}`
+    )
+  }
+
   const documentLinks = service.getDocumentLinks(
     boardsFilePath,
     `<script server>\nresolve('board-service')\n</script>\n<%- include('flash-alert.ejs') %>\n`
