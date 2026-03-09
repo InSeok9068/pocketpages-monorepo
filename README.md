@@ -15,13 +15,18 @@
 | DB <br>마이그레이션 | PB Migration             |
 | DB 복구             | File Backup (ZIP)        |
 | 인증                | PB Auth + (Cookie)       |
+| 인가                | 서버 로직                |
 | 객체 저장           | File, AWS S3             |
+| 스케줄 작업         | PB cron                  |
 | 메시지 큐           | X                        |
+| 캐시                | Memory / Server (Store)  |
 | 웹 서버             | Caddy                    |
-| 엣지 함수           | Cloudflare Workers       |
-| 모니터링            | Pocketbase Logs          |
-| 린팅                | shell script             |
+| 서버리스 함수       | Cloudflare Workers       |
+| 모니터링            | PB Admin Logs            |
+| 로깅                | PB Logs                  |
+| 린팅                | custom script            |
 | 테스트              | node test (http only)    |
 | 빌드 과정           | 불필요                   |
 | 배포 방식           | 파일 동기화 (PB 전송)    |
 | 모바일              | PWA => Capacitor         |
+| 푸시/알림           | FCM / OneSignal          |
