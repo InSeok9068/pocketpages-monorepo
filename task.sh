@@ -196,11 +196,16 @@ kill_pocketbase() {
 }
 
 run_lint() {
-  local lint_script="$ROOT_DIR/scripts/lint-pocketpages.sh"
+  local lint_script="$ROOT_DIR/scripts/lint-pocketpages.js"
   local service="${1:-}"
 
   if [[ ! -f "$lint_script" ]]; then
     echo "Missing lint script: $lint_script" >&2
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run lint command." >&2
     exit 1
   fi
 
@@ -212,11 +217,11 @@ run_lint() {
       list_services >&2
       exit 1
     fi
-    "$lint_script" "$service_dir"
+    node "$lint_script" "$service_dir"
     return 0
   fi
 
-  "$lint_script"
+  node "$lint_script"
 }
 
 if [[ "${1:-}" == "__complete_services" ]]; then
