@@ -1,4 +1,17 @@
 <script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/auth/sign-out:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
   dbg('xapi/auth/sign-out:start', {
     isSignedIn: !!request.auth,
   })

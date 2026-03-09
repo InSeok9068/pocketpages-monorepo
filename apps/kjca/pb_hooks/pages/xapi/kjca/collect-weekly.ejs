@@ -1,11 +1,6 @@
 <script server>
   const kjcaService = resolve('kjca-service')
-  const createStaffDiaryAnalysisCacheDT = resolve('table/staff-diary-analysis-cache-dt')
-  const createRecruitingWeekPlanDT = resolve('table/recruiting-week-plan-dt')
-  const createRecruitingWeekPlanItemDT = resolve('table/recruiting-week-plan-item-dt')
-  const createRecruitingDailyResultDT = resolve('table/recruiting-daily-result-dt')
-  const createRecruitingWeekTextPlanDT = resolve('table/recruiting-week-text-plan-dt')
-  const createRecruitingWeekTextRowDT = resolve('table/recruiting-week-text-row-dt')
+  const routeContext = resolve('kjca-route-context')
 
   const authState = kjcaService.readAuthState({ request })
   const form = body()
@@ -33,21 +28,7 @@
   } else {
     try {
       const result = kjcaService.collectWeekly(
-        {
-          request,
-          dbg,
-          info,
-          warn,
-          error,
-          dt: {
-            createStaffDiaryAnalysisCacheDT,
-            createRecruitingWeekPlanDT,
-            createRecruitingWeekPlanItemDT,
-            createRecruitingDailyResultDT,
-            createRecruitingWeekTextPlanDT,
-            createRecruitingWeekTextRowDT,
-          },
-        },
+        routeContext.buildCollectContext({ request, dbg, info, warn, error, resolve }),
         formState,
       )
       dashboardState = kjcaService.buildDashboardStateFromCollectResult(result, formState)

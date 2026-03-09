@@ -1,9 +1,22 @@
 <script server>
   const kjcaService = resolve('kjca-service')
+  if (request.method !== 'POST') {
+    dbg('xapi/auth/sign-in:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
   const form = body()
   const loginId = String(form.loginId || '').trim()
   const normalizedLoginId = kjcaService.normalizeSuperuserLoginId(loginId)
-  const password = String(form.password || '').trim()
+  const password = form.password === undefined || form.password === null ? '' : String(form.password)
   let errorMessage = ''
 
   dbg('xapi/auth/sign-in:start', {

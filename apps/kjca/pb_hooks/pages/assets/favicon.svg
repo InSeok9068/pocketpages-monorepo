@@ -1,0 +1,39 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 64 64"
+  role="img"
+  aria-label="KJCA favicon"
+>
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#081b62" />
+  <text
+    x="16"
+    y="43"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="34"
+    font-style="italic"
+    font-weight="700"
+    fill="#ffffff"
+    letter-spacing="-1"
+  >
+    jk
+  </text>
+  <path
+    d="M45 33 C52 31 56 27 58 22"
+    stroke="#ffffff"
+    stroke-width="2"
+    fill="none"
+    stroke-linecap="round"
+    opacity="0.95"
+  />
+  <path
+    d="M45 38 C53 36 58 31 61 25"
+    stroke="#ffffff"
+    stroke-width="1.6"
+    fill="none"
+    stroke-linecap="round"
+    opacity="0.85"
+  />
+  <circle cx="52" cy="22" r="2.2" fill="#ffffff" />
+  <circle cx="56" cy="18" r="1.6" fill="#ffffff" opacity="0.9" />
+  <circle cx="59" cy="14.5" r="1.2" fill="#ffffff" opacity="0.85" />
+</svg>
