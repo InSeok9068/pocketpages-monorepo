@@ -18,7 +18,7 @@
   if (!authState.isSuperuser) {
     dashboardState = kjcaService.buildDashboardState({
       ...dashboardState,
-      errorMessage: '먼저 PocketBase 슈퍼유저로 로그인해주세요.',
+      errorMessage: '먼저 관리자 계정으로 로그인해주세요.',
     })
   } else {
     try {
