@@ -1,6 +1,9 @@
 import type { PagesGlobalContext, PagesRequestContext, PagesResponse } from 'pocketpages'
 import type { Client, ClientId, RealtimeOptions } from 'pocketpages-plugin-realtime'
 
+// Editor-only mirror for globals injected by PocketPages core and plugins in
+// `pb_hooks/pages/+config.js`.
+
 type PocketPagesEditorApi<TData = any> = PagesRequestContext<TData>
 type PocketPagesEditorResponse = PagesResponse & {
   // Repo code uses response.status(...) inside <script server>.
@@ -52,6 +55,7 @@ type PocketPagesRealtimeApi = {
 declare global {
   interface PocketPagesRouteParams {}
 
+  // `pocketpages` core request/context globals
   const api: PocketPagesEditorApi<any>
   const asset: PocketPagesEditorApi<any>['asset']
   const auth: PocketPagesEditorApi<any>['auth']
@@ -67,6 +71,8 @@ declare global {
   const response: PocketPagesEditorResponse
   const slot: PocketPagesEditorApi<any>['slot']
   const slots: PocketPagesEditorApi<any>['slots']
+
+  // `pocketpages-plugin-auth` auth helpers
   const createUser: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => core.Record
   const createAnonymousUser: (options?: PocketPagesAuthOptions) => PocketPagesAnonymousUserData
   const createPasswordlessUser: (email: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesPasswordlessUserData
@@ -90,6 +96,7 @@ declare global {
   const requestVerification: (email: string, options?: PocketPagesAuthOptions) => void
   const confirmVerification: (token: string, options?: PocketPagesAuthOptions) => void
 
+  // `pocketpages` core global helpers
   const url: PagesGlobalContext['url']
   const stringify: PagesGlobalContext['stringify']
   const env: PagesGlobalContext['env']
@@ -99,7 +106,10 @@ declare global {
   const warn: PagesGlobalContext['warn']
   const error: PagesGlobalContext['error']
 
+  // `pocketpages-plugin-ejs` template helper
   const include: (path: string, data?: Record<string, any>) => string
+
+  // `pocketpages-plugin-realtime` runtime helper
   const realtime: PocketPagesRealtimeApi
 }
 
