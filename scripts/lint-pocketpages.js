@@ -20,6 +20,8 @@
 // 16) DT(_private/table/*-dt.js) 내부에서 redirect/response/request/body/save/delete 같은 부작용 사용
 // 17) auth helper 사용 시 pocketpages-plugin-auth 누락
 // 18) pocketpages-plugin-auth 사용 시 pocketpages-plugin-js-sdk 누락 또는 순서 역전
+// 19) DT(_private/table/*-dt.js) 상단 const 선언이 pb_schema.json 필드와 순서까지 정확히 일치하지 않음
+// 20) DT(_private/table/*-dt.js) return 객체에 함수가 아닌 필드/값을 직접 노출함
 
 const fs = require('fs')
 const path = require('path')
@@ -170,6 +172,7 @@ function buildServiceContext(serviceDir) {
   const pagesRoot = path.join(hooksRoot, 'pages')
   const configFile = path.join(pagesRoot, '+config.js')
   const files = walkFiles(hooksRoot).map((filePath) => buildFileInfo(filePath, hooksRoot, pagesRoot))
+  const schemaInfo = loadSchemaInfo(serviceDir)
 
   const hooksCodeFiles = files.filter((file) => file.isCode)
   const pagesFiles = files.filter((file) => file.inPages)
@@ -181,6 +184,7 @@ function buildServiceContext(serviceDir) {
     serviceName: path.basename(serviceDir),
     hooksRoot,
     pagesRoot,
+    schemaInfo,
     configFile,
     configFileInfo: pagesCodeFiles.find((file) => file.absPath === configFile) || null,
     hooksCodeFiles,
@@ -196,6 +200,53 @@ function buildServiceContext(serviceDir) {
     dtFiles: pagesCodeFiles.filter(
       (file) => file.relFromPages.startsWith('_private/table/') && file.basename.endsWith('-dt.js'),
     ),
+  }
+}
+
+function loadSchemaInfo(serviceDir) {
+  const schemaFile = path.join(serviceDir, 'pb_schema.json')
+
+  if (!fs.existsSync(schemaFile)) {
+    return {
+      schemaFile,
+      collections: new Map(),
+      error: '',
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(schemaFile, 'utf8'))
+    const rawCollections = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed.collections)
+        ? parsed.collections
+        : []
+    const collections = new Map()
+
+    for (const collection of rawCollections) {
+      if (!collection || typeof collection.name !== 'string' || !Array.isArray(collection.fields)) {
+        continue
+      }
+
+      collections.set(
+        collection.name,
+        collection.fields
+          .map((field) => (field && typeof field.name === 'string' ? field.name : ''))
+          .filter(Boolean),
+      )
+    }
+
+    return {
+      schemaFile,
+      collections,
+      error: '',
+    }
+  } catch (error) {
+    return {
+      schemaFile,
+      collections: new Map(),
+      error: String(error.message || error),
+    }
   }
 }
 
@@ -233,6 +284,399 @@ function filterLinesExcluding(lines, regex) {
     regex.lastIndex = 0
     return !regex.test(line)
   })
+}
+
+function unique(items) {
+  return [...new Set(items)]
+}
+
+function pluralizeWord(word) {
+  if (/[^aeiou]y$/i.test(word)) {
+    return `${word.slice(0, -1)}ies`
+  }
+
+  if (/(s|x|z|ch|sh)$/i.test(word)) {
+    return `${word}es`
+  }
+
+  if (/fe$/i.test(word)) {
+    return `${word.slice(0, -2)}ves`
+  }
+
+  if (/f$/i.test(word)) {
+    return `${word.slice(0, -1)}ves`
+  }
+
+  return `${word}s`
+}
+
+function inferDtCollectionName(file, schemaCollections) {
+  const stem = file.basename.replace(/-dt\.js$/, '')
+  const snake = stem.replace(/-/g, '_')
+  const candidates = unique([snake, pluralizeWord(snake)])
+
+  for (const candidate of candidates) {
+    if (schemaCollections.has(candidate)) {
+      return candidate
+    }
+  }
+
+  return ''
+}
+
+function findMatchingBrace(content, openBraceIndex) {
+  let depth = 0
+  let inString = ''
+  let inBlockComment = false
+  let escaped = false
+
+  for (let index = openBraceIndex; index < content.length; index += 1) {
+    const char = content[index]
+    const next = content[index + 1]
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false
+        index += 1
+      }
+      continue
+    }
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+
+      if (char === '\\') {
+        escaped = true
+        continue
+      }
+
+      if (char === inString) {
+        inString = ''
+      }
+      continue
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true
+      index += 1
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      while (index < content.length && content[index] !== '\n') {
+        index += 1
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      inString = char
+      continue
+    }
+
+    if (char === '{') {
+      depth += 1
+      continue
+    }
+
+    if (char === '}') {
+      depth -= 1
+      if (depth === 0) {
+        return index
+      }
+    }
+  }
+
+  return -1
+}
+
+function extractExportedFunctionBody(content) {
+  const exportIndex = content.indexOf('module.exports')
+  if (exportIndex === -1) {
+    return null
+  }
+
+  const functionIndex = content.indexOf('function', exportIndex)
+  if (functionIndex === -1) {
+    return null
+  }
+
+  const openBraceIndex = content.indexOf('{', functionIndex)
+  if (openBraceIndex === -1) {
+    return null
+  }
+
+  const closeBraceIndex = findMatchingBrace(content, openBraceIndex)
+  if (closeBraceIndex === -1) {
+    return null
+  }
+
+  return {
+    body: content.slice(openBraceIndex + 1, closeBraceIndex),
+    bodyStartIndex: openBraceIndex + 1,
+  }
+}
+
+function buildLineDepthInfo(content) {
+  const lines = content.split(/\r?\n/)
+  const depthBefore = []
+  let depth = 0
+  let inString = ''
+  let inBlockComment = false
+  let escaped = false
+
+  for (const line of lines) {
+    depthBefore.push(depth)
+
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index]
+      const next = line[index + 1]
+
+      if (inBlockComment) {
+        if (char === '*' && next === '/') {
+          inBlockComment = false
+          index += 1
+        }
+        continue
+      }
+
+      if (inString) {
+        if (escaped) {
+          escaped = false
+          continue
+        }
+
+        if (char === '\\') {
+          escaped = true
+          continue
+        }
+
+        if (char === inString) {
+          inString = ''
+        }
+        continue
+      }
+
+      if (char === '/' && next === '*') {
+        inBlockComment = true
+        index += 1
+        continue
+      }
+
+      if (char === '/' && next === '/') {
+        break
+      }
+
+      if (char === '"' || char === "'" || char === '`') {
+        inString = char
+        continue
+      }
+
+      if (char === '{') {
+        depth += 1
+      } else if (char === '}') {
+        depth -= 1
+      }
+    }
+  }
+
+  return { lines, depthBefore }
+}
+
+function collectTopLevelConstNames(functionBody) {
+  const { lines, depthBefore } = buildLineDepthInfo(functionBody)
+  const names = []
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (depthBefore[index] !== 0) {
+      continue
+    }
+
+    const match = lines[index].match(/^\s*const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=/)
+    if (match) {
+      names.push(match[1])
+    }
+  }
+
+  return names
+}
+
+function lineNumberAt(content, index) {
+  return content.slice(0, index).split(/\r?\n/).length
+}
+
+function extractTopLevelReturnObject(functionBody, bodyStartLine) {
+  let depth = 0
+  let inString = ''
+  let inBlockComment = false
+  let escaped = false
+
+  for (let index = 0; index < functionBody.length; index += 1) {
+    const char = functionBody[index]
+    const next = functionBody[index + 1]
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false
+        index += 1
+      }
+      continue
+    }
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+
+      if (char === '\\') {
+        escaped = true
+        continue
+      }
+
+      if (char === inString) {
+        inString = ''
+      }
+      continue
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true
+      index += 1
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      while (index < functionBody.length && functionBody[index] !== '\n') {
+        index += 1
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      inString = char
+      continue
+    }
+
+    if (char === '{') {
+      depth += 1
+      continue
+    }
+
+    if (char === '}') {
+      depth -= 1
+      continue
+    }
+
+    if (
+      depth === 0 &&
+      functionBody.startsWith('return', index) &&
+      !/[A-Za-z0-9_$]/.test(functionBody[index - 1] || '') &&
+      !/[A-Za-z0-9_$]/.test(functionBody[index + 6] || '')
+    ) {
+      let cursor = index + 6
+      while (/\s/.test(functionBody[cursor] || '')) {
+        cursor += 1
+      }
+
+      if (functionBody[cursor] !== '{') {
+        continue
+      }
+
+      const closeBraceIndex = findMatchingBrace(functionBody, cursor)
+      if (closeBraceIndex === -1) {
+        return null
+      }
+
+      return {
+        body: functionBody.slice(cursor + 1, closeBraceIndex),
+        startLine: bodyStartLine + lineNumberAt(functionBody, cursor + 1) - 1,
+      }
+    }
+  }
+
+  return null
+}
+
+function lintDtStructure(context) {
+  const matches = []
+  const schemaInfo = context.schemaInfo
+
+  if (context.dtFiles.length === 0) {
+    return matches
+  }
+
+  if (schemaInfo.error) {
+    matches.push(`${toDisplayPath(schemaInfo.schemaFile)}: failed to parse schema: ${schemaInfo.error}`)
+    return matches
+  }
+
+  if (schemaInfo.collections.size === 0) {
+    matches.push(`${toDisplayPath(schemaInfo.schemaFile)}: no collections found for DT lint rules.`)
+    return matches
+  }
+
+  for (const file of context.dtFiles) {
+    const collectionName = inferDtCollectionName(file, schemaInfo.collections)
+    if (!collectionName) {
+      matches.push(
+        `${file.displayPath}: could not infer matching collection from pb_schema.json for ${file.basename}`,
+      )
+      continue
+    }
+
+    const schemaFields = schemaInfo.collections.get(collectionName) || []
+    const exportedFunction = extractExportedFunctionBody(file.content)
+    if (!exportedFunction) {
+      matches.push(`${file.displayPath}: could not parse module.exports function body`)
+      continue
+    }
+    const bodyStartLine = lineNumberAt(file.content, exportedFunction.bodyStartIndex)
+
+    const constNames = collectTopLevelConstNames(exportedFunction.body)
+    if (constNames.join('\u0000') !== schemaFields.join('\u0000')) {
+      matches.push(
+        `${file.displayPath}: DT const declarations must exactly match ${collectionName} schema fields in order. expected [${schemaFields.join(', ')}] but found [${constNames.join(', ')}]`,
+      )
+    }
+
+    const returnObject = extractTopLevelReturnObject(exportedFunction.body, bodyStartLine)
+    if (!returnObject) {
+      matches.push(`${file.displayPath}: DT must return an object literal that exposes validation methods only`)
+      continue
+    }
+
+    const { lines, depthBefore } = buildLineDepthInfo(returnObject.body)
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      if (depthBefore[lineIndex] !== 0) {
+        continue
+      }
+
+      const line = lines[lineIndex]
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*')) {
+        continue
+      }
+
+      const isMethodShorthand = /^[A-Za-z_$][A-Za-z0-9_$]*\s*\([^)]*\)\s*\{/.test(trimmed)
+      const isFunctionProperty = /^[A-Za-z_$][A-Za-z0-9_$]*\s*:\s*(?:async\s+)?function\b/.test(trimmed)
+      const isArrowProperty =
+        /^[A-Za-z_$][A-Za-z0-9_$]*\s*:\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>/.test(
+          trimmed,
+        )
+
+      if (!isMethodShorthand && !isFunctionProperty && !isArrowProperty) {
+        matches.push(
+          `${file.displayPath}:${returnObject.startLine + lineIndex}: DT return object must expose functions only: ${trimmed}`,
+        )
+      }
+    }
+  }
+
+  return matches
 }
 
 function collectPathMatches(files, predicate) {
@@ -402,6 +846,13 @@ function lintService(context) {
     context.serviceName,
     'DT files must stay side-effect free. Keep redirect/response/request/body/save/delete logic in page/xapi/api call sites.',
     dtSideEffectMatches,
+  )
+
+  const dtStructureMatches = lintDtStructure(context)
+  printMatches(
+    context.serviceName,
+    'DT files must declare pb_schema.json fields in exact order and return functions only.',
+    dtStructureMatches,
   )
 
   const compactConfig = context.configFileInfo ? context.configFileInfo.content.replace(/\s+/g, '') : ''
