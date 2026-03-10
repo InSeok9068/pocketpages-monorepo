@@ -1,12 +1,13 @@
 <script server>
   const kjcaService = resolve('kjca-service')
+  const staffDiaryAnalysisCacheTable = resolve('table/staff-diary-analysis-cache-dt')
 
   const payload = body()
 
   try {
     const result = kjcaService.analyzeStaffDiary(
       request,
-      resolve,
+      staffDiaryAnalysisCacheTable,
       payload,
     )
 

@@ -128,7 +128,18 @@ declare namespace types {
     deptSnapshots: KjcaDeptSnapshot[]
   }
 
-  type KjcaResolveFunc = (path: string) => any
+  type KjcaDTTable = {
+    toDT?: (record: core.Record) => any
+  }
+
+  type KjcaCollectTables = {
+    staffDiaryAnalysisCacheTable?: KjcaDTTable | null
+    recruitingWeekPlanTable?: KjcaDTTable | null
+    recruitingWeekPlanItemTable?: KjcaDTTable | null
+    recruitingDailyResultTable?: KjcaDTTable | null
+    recruitingWeekTextPlanTable?: KjcaDTTable | null
+    recruitingWeekTextRowTable?: KjcaDTTable | null
+  }
 
   type KjcaSession = {
     host: string

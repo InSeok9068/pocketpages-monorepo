@@ -1,5 +1,11 @@
 <script server>
   const kjcaService = resolve('kjca-service')
+  const staffDiaryAnalysisCacheTable = resolve('table/staff-diary-analysis-cache-dt')
+  const recruitingWeekPlanTable = resolve('table/recruiting-week-plan-dt')
+  const recruitingWeekPlanItemTable = resolve('table/recruiting-week-plan-item-dt')
+  const recruitingDailyResultTable = resolve('table/recruiting-daily-result-dt')
+  const recruitingWeekTextPlanTable = resolve('table/recruiting-week-text-plan-dt')
+  const recruitingWeekTextRowTable = resolve('table/recruiting-week-text-row-dt')
 
   const authState = kjcaService.readAuthState(request)
   const form = body()
@@ -28,7 +34,14 @@
     try {
       const result = kjcaService.collectWeekly(
         request,
-        resolve,
+        {
+          staffDiaryAnalysisCacheTable,
+          recruitingWeekPlanTable,
+          recruitingWeekPlanItemTable,
+          recruitingDailyResultTable,
+          recruitingWeekTextPlanTable,
+          recruitingWeekTextRowTable,
+        },
         formState,
       )
       dashboardState = kjcaService.buildDashboardStateFromCollectResult(result, formState)

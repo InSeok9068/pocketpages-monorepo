@@ -23,8 +23,9 @@ declare global {
   const auth: PocketPagesEditorApi<any>['auth']
   const data: PocketPagesEditorApi<any>['data']
   const echo: PocketPagesEditorApi<any>['echo']
-  const formData: PocketPagesEditorApi<any>['formData']
-  const body: PocketPagesEditorApi<any>['body']
+  // Raw request payload is normalized per route, so editor typing stays loose here.
+  const formData: () => any
+  const body: () => any
   const meta: PocketPagesEditorApi<any>['meta']
   const params: PocketPagesEditorApi<any>['params'] & PocketPagesRouteParams
   const redirect: PocketPagesEditorApi<any>['redirect']

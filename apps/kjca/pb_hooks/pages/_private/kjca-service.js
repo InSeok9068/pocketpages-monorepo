@@ -1146,10 +1146,10 @@ function fetchDiaryList(session, scDay) {
  * 특정 일자의 KJCA 업무일지 접근 가능 여부와 팀장 목록을 확인합니다.
  * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
  * @param {types.KjcaProbePayload | null | undefined} payload 조회할 일자를 담은 입력값입니다.
- * @param {types.KjcaSession | null | undefined} session 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
+ * @param {types.KjcaSession | null | undefined} [session] 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
  * @returns {types.KjcaProbeResult} 접근 가능 여부와 팀장 목록을 담은 결과입니다.
  */
-function probeStaffAuth(request, payload, session) {
+function probeStaffAuth(request, payload, session = null) {
   const safeSession = session || createKjcaSession(request);
   const scDay = normalizeReportDate(payload && (payload.scDay || payload.reportDate));
 
@@ -1407,7 +1407,7 @@ function findSuccessCache(params) {
   }
 }
 
-function upsertSuccessCache(resolve, params) {
+function upsertSuccessCache(staffDiaryAnalysisCacheTable, params) {
   const collection = $app.findCollectionByNameOrId(CACHE_COLLECTION_NAME);
   const lookupFilter = buildCacheIdentityFilter(params);
   let record = null;
@@ -1433,9 +1433,8 @@ function upsertSuccessCache(resolve, params) {
   targetRecord.set("model", GEMINI_MODEL_NAME);
   targetRecord.set("promptVersion", params.promptVersion);
 
-  const cacheTable = typeof resolve === "function" ? resolve("table/staff-diary-analysis-cache-dt") : null;
-  if (cacheTable && typeof cacheTable.toDT === "function") {
-    const cacheDT = cacheTable.toDT(targetRecord);
+  if (staffDiaryAnalysisCacheTable && typeof staffDiaryAnalysisCacheTable.toDT === "function") {
+    const cacheDT = staffDiaryAnalysisCacheTable.toDT(targetRecord);
     if (!cacheDT.canSaveSuccess()) {
       warn("kjca/analyze:cache-skip", {
         dept: params.dept,
@@ -1451,12 +1450,12 @@ function upsertSuccessCache(resolve, params) {
 /**
  * 팀장 업무일지 본문을 읽어 AI 분석 결과 목록으로 변환합니다.
  * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
- * @param {types.KjcaResolveFunc | null | undefined} resolve PocketPages `resolve()` 함수입니다.
+ * @param {types.KjcaDTTable | null | undefined} staffDiaryAnalysisCacheTable 분석 성공 캐시 저장 전에 확인할 DT 테이블입니다.
  * @param {types.KjcaAnalyzePayload | null | undefined} payload 분석 날짜와 대상 목록을 담은 입력값입니다.
- * @param {types.KjcaSession | null | undefined} session 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
+ * @param {types.KjcaSession | null | undefined} [session] 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
  * @returns {types.KjcaAnalyzeCallResult} 분석 결과 목록과 중단 사유를 담은 결과입니다.
  */
-function analyzeStaffDiary(request, resolve, payload, session) {
+function analyzeStaffDiary(request, staffDiaryAnalysisCacheTable, payload, session = null) {
   const safeSession = session || createKjcaSession(request);
   const targets = Array.isArray(payload && payload.targets) ? payload.targets : [];
   const reportDate = normalizeReportDate(payload && payload.reportDate);
@@ -1658,7 +1657,7 @@ function analyzeStaffDiary(request, resolve, payload, session) {
     const special = normalizeStringArray(parsed && parsed.special);
     const recruiting = normalizeRecruitingExtract(parsed && parsed.recruiting);
 
-    upsertSuccessCache(resolve, {
+    upsertSuccessCache(staffDiaryAnalysisCacheTable, {
       reportDate,
       dept,
       staffName,
@@ -1725,7 +1724,7 @@ function isUniqueValueError(error) {
   return String(error || "").includes("Value must be unique");
 }
 
-function upsertWeekTextPlan(resolve, params) {
+function upsertWeekTextPlan(recruitingWeekTextPlanTable, recruitingWeekTextRowTable, params) {
   const safeWeekStartDate = formatDateText(parseDateText(params.weekStartDate));
   const dept = String(params.dept || "").trim();
   if (!dept) return { ok: false, reason: "dept-empty" };
@@ -1741,9 +1740,8 @@ function upsertWeekTextPlan(resolve, params) {
   plan.set("dept", dept);
   plan.set("status", "confirmed");
 
-  const recruitingWeekTextPlan = typeof resolve === "function" ? resolve("table/recruiting-week-text-plan-dt") : null;
-  if (recruitingWeekTextPlan && typeof recruitingWeekTextPlan.toDT === "function") {
-    const planDT = recruitingWeekTextPlan.toDT(plan);
+  if (recruitingWeekTextPlanTable && typeof recruitingWeekTextPlanTable.toDT === "function") {
+    const planDT = recruitingWeekTextPlanTable.toDT(plan);
     if (!planDT.canSaveConfirmed()) {
       return { ok: false, reason: "plan-invalid" };
     }
@@ -1767,7 +1765,6 @@ function upsertWeekTextPlan(resolve, params) {
     $app.delete(row);
   });
 
-  const recruitingWeekTextRow = typeof resolve === "function" ? resolve("table/recruiting-week-text-row-dt") : null;
   nextRows.forEach((row) => {
     const record = new Record(rowCollection);
     record.set("planId", plan.id);
@@ -1782,8 +1779,8 @@ function upsertWeekTextPlan(resolve, params) {
     record.set("note", row.note);
     record.set("sortOrder", row.sortOrder);
 
-    if (recruitingWeekTextRow && typeof recruitingWeekTextRow.toDT === "function") {
-      const rowDT = recruitingWeekTextRow.toDT(record);
+    if (recruitingWeekTextRowTable && typeof recruitingWeekTextRowTable.toDT === "function") {
+      const rowDT = recruitingWeekTextRowTable.toDT(record);
       if (!rowDT.canSave()) return;
     }
 
@@ -1793,7 +1790,7 @@ function upsertWeekTextPlan(resolve, params) {
   return { ok: true, planId: plan.id };
 }
 
-function upsertWeekTextRowsForWeekday(resolve, params) {
+function upsertWeekTextRowsForWeekday(recruitingWeekTextPlanTable, recruitingWeekTextRowTable, params) {
   const safeWeekStartDate = formatDateText(parseDateText(params.weekStartDate));
   const dept = String(params.dept || "").trim();
   const weekday = normalizeWeekday(params.weekday);
@@ -1802,7 +1799,7 @@ function upsertWeekTextRowsForWeekday(resolve, params) {
 
   let plan = findWeekTextPlan(safeWeekStartDate, dept);
   if (!plan) {
-    const created = upsertWeekTextPlan(resolve, {
+    const created = upsertWeekTextPlan(recruitingWeekTextPlanTable, recruitingWeekTextRowTable, {
       weekStartDate: safeWeekStartDate,
       dept,
       rows: [],
@@ -1822,7 +1819,6 @@ function upsertWeekTextRowsForWeekday(resolve, params) {
   const weekdayRows = normalizeWeekTextRows(params.rows).filter((row) => row.weekday === weekday);
   if (weekdayRows.length === 0) return { ok: true, reason: "weekday-empty-rows" };
 
-  const recruitingWeekTextRow = typeof resolve === "function" ? resolve("table/recruiting-week-text-row-dt") : null;
   weekdayRows.forEach((row, index) => {
     const record = new Record(rowCollection);
     record.set("planId", plan.id);
@@ -1837,8 +1833,8 @@ function upsertWeekTextRowsForWeekday(resolve, params) {
     record.set("note", row.note);
     record.set("sortOrder", index);
 
-    if (recruitingWeekTextRow && typeof recruitingWeekTextRow.toDT === "function") {
-      const rowDT = recruitingWeekTextRow.toDT(record);
+    if (recruitingWeekTextRowTable && typeof recruitingWeekTextRowTable.toDT === "function") {
+      const rowDT = recruitingWeekTextRowTable.toDT(record);
       if (!rowDT.canSave()) return;
     }
 
@@ -1878,7 +1874,7 @@ function findWeekResults(weekStartDate, dept) {
   }
 }
 
-function upsertRecruitingWeekPlan(resolve, params) {
+function upsertRecruitingWeekPlan(recruitingWeekPlanTable, recruitingWeekPlanItemTable, params) {
   const dept = String((params && params.dept) || "").trim();
   if (!dept) return { ok: false, reason: "dept-empty" };
 
@@ -1896,9 +1892,8 @@ function upsertRecruitingWeekPlan(resolve, params) {
   plan.set("weekTarget", params.weekTarget);
   plan.set("status", "confirmed");
 
-  const recruitingWeekPlan = typeof resolve === "function" ? resolve("table/recruiting-week-plan-dt") : null;
-  if (recruitingWeekPlan && typeof recruitingWeekPlan.toDT === "function") {
-    const planDT = recruitingWeekPlan.toDT(plan);
+  if (recruitingWeekPlanTable && typeof recruitingWeekPlanTable.toDT === "function") {
+    const planDT = recruitingWeekPlanTable.toDT(plan);
     if (!planDT.canSaveConfirmed()) {
       return { ok: false, reason: "plan-invalid" };
     }
@@ -1958,7 +1953,6 @@ function upsertRecruitingWeekPlan(resolve, params) {
     });
   }
 
-  const recruitingWeekPlanItem = typeof resolve === "function" ? resolve("table/recruiting-week-plan-item-dt") : null;
   nextItems.forEach((item) => {
     const record = new Record(itemCollection);
     record.set("planId", plan.id);
@@ -1970,8 +1964,8 @@ function upsertRecruitingWeekPlan(resolve, params) {
     record.set("note", item.note);
     record.set("sortOrder", item.sortOrder);
 
-    if (recruitingWeekPlanItem && typeof recruitingWeekPlanItem.toDT === "function") {
-      const itemDT = recruitingWeekPlanItem.toDT(record);
+    if (recruitingWeekPlanItemTable && typeof recruitingWeekPlanItemTable.toDT === "function") {
+      const itemDT = recruitingWeekPlanItemTable.toDT(record);
       if (!itemDT.canSave()) return;
     }
 
@@ -1981,7 +1975,7 @@ function upsertRecruitingWeekPlan(resolve, params) {
   return { ok: true };
 }
 
-function upsertRecruitingDailyResult(resolve, params) {
+function upsertRecruitingDailyResult(recruitingDailyResultTable, params) {
   const dept = String((params && params.dept) || "").trim();
   if (!dept) return { ok: false, reason: "dept-empty" };
 
@@ -2010,9 +2004,8 @@ function upsertRecruitingDailyResult(resolve, params) {
   target.set("sourceType", "ai");
   target.set("memo", "AI 자동 추출");
 
-  const recruitingDailyResult = typeof resolve === "function" ? resolve("table/recruiting-daily-result-dt") : null;
-  if (recruitingDailyResult && typeof recruitingDailyResult.toDT === "function") {
-    const dailyResultDT = recruitingDailyResult.toDT(target);
+  if (recruitingDailyResultTable && typeof recruitingDailyResultTable.toDT === "function") {
+    const dailyResultDT = recruitingDailyResultTable.toDT(target);
     if (!dailyResultDT.canSaveAiResult()) {
       return { ok: false, reason: "daily-result-invalid" };
     }
@@ -2081,12 +2074,19 @@ function clearAnalysisCache(request, payload) {
 /**
  * 특정 날짜 기준으로 업무일지 분석과 주간 집계를 한 번에 수행합니다.
  * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
- * @param {types.KjcaResolveFunc | null | undefined} resolve PocketPages `resolve()` 함수입니다.
+ * @param {types.KjcaCollectTables | null | undefined} tables 호출부에서 미리 resolve한 DT 테이블 묶음입니다.
  * @param {types.KjcaCollectPayload | null | undefined} payload 집계 날짜와 테스트 옵션을 담은 입력값입니다.
  * @returns {types.KjcaCollectResult} 집계 후 화면 구성에 필요한 전체 결과입니다.
  */
-function collectWeekly(request, resolve, payload) {
+function collectWeekly(request, tables, payload) {
   ensureSuperuserRequest(request);
+  const safeTables = tables && typeof tables === "object" ? tables : {};
+  const staffDiaryAnalysisCacheTable = safeTables.staffDiaryAnalysisCacheTable || null;
+  const recruitingWeekPlanTable = safeTables.recruitingWeekPlanTable || null;
+  const recruitingWeekPlanItemTable = safeTables.recruitingWeekPlanItemTable || null;
+  const recruitingDailyResultTable = safeTables.recruitingDailyResultTable || null;
+  const recruitingWeekTextPlanTable = safeTables.recruitingWeekTextPlanTable || null;
+  const recruitingWeekTextRowTable = safeTables.recruitingWeekTextRowTable || null;
 
   const reportDate = normalizeReportDate(payload && payload.reportDate);
   const weekStartDate = buildWeekStartDate(reportDate);
@@ -2121,7 +2121,7 @@ function collectWeekly(request, resolve, payload) {
     if (bootstrapTargets.length > 0) {
       const mondayAnalyze = analyzeStaffDiary(
         request,
-        resolve,
+        staffDiaryAnalysisCacheTable,
         {
           reportDate: weekStartDate,
           targets: bootstrapTargets,
@@ -2136,7 +2136,7 @@ function collectWeekly(request, resolve, payload) {
           if (!hasWeekPlanData(recruiting)) return;
 
           try {
-            const result = upsertRecruitingWeekPlan(resolve, {
+            const result = upsertRecruitingWeekPlan(recruitingWeekPlanTable, recruitingWeekPlanItemTable, {
               weekStartDate,
               dept: String(item.dept || "").trim(),
               monthTarget: recruiting.monthTarget,
@@ -2149,7 +2149,7 @@ function collectWeekly(request, resolve, payload) {
           }
 
           try {
-            const textPlanResult = upsertWeekTextPlan(resolve, {
+            const textPlanResult = upsertWeekTextPlan(recruitingWeekTextPlanTable, recruitingWeekTextRowTable, {
               weekStartDate,
               dept: String(item.dept || "").trim(),
               rows: ensureWeekdayRows(recruiting.weekTableRows),
@@ -2166,7 +2166,7 @@ function collectWeekly(request, resolve, payload) {
 
   const todayAnalyze = analyzeStaffDiary(
     request,
-    resolve,
+    staffDiaryAnalysisCacheTable,
     {
       reportDate,
       targets: collectTargets,
@@ -2205,7 +2205,7 @@ function collectWeekly(request, resolve, payload) {
     try {
       const retryAnalyze = analyzeStaffDiary(
         request,
-        resolve,
+        staffDiaryAnalysisCacheTable,
         {
           reportDate,
           targets: retryTargets,
@@ -2247,7 +2247,7 @@ function collectWeekly(request, resolve, payload) {
 
       if (canReplaceWeekTable) {
         try {
-          const textPlanResult = upsertWeekTextPlan(resolve, {
+          const textPlanResult = upsertWeekTextPlan(recruitingWeekTextPlanTable, recruitingWeekTextRowTable, {
             weekStartDate,
             dept: safeDept,
             rows: allWeekTextRows,
@@ -2260,7 +2260,7 @@ function collectWeekly(request, resolve, payload) {
         const todayTextRows = allWeekTextRows.filter((row) => row.weekday === reportWeekday);
         if (todayTextRows.length > 0) {
           try {
-            const textUpdateResult = upsertWeekTextRowsForWeekday(resolve, {
+            const textUpdateResult = upsertWeekTextRowsForWeekday(recruitingWeekTextPlanTable, recruitingWeekTextRowTable, {
               weekStartDate,
               dept: safeDept,
               weekday: reportWeekday,
@@ -2280,7 +2280,7 @@ function collectWeekly(request, resolve, payload) {
       }
 
       try {
-        const result = upsertRecruitingDailyResult(resolve, {
+        const result = upsertRecruitingDailyResult(recruitingDailyResultTable, {
           reportDate,
           weekStartDate,
           dept: safeDept,

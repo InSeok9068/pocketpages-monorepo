@@ -1,24 +1,37 @@
 <script server>
-  const kjcaService = resolve('kjca-service')
+  const kjcaService = resolve("kjca-service");
+  const staffDiaryAnalysisCacheTable = resolve("table/staff-diary-analysis-cache-dt");
+  const recruitingWeekPlanTable = resolve("table/recruiting-week-plan-dt");
+  const recruitingWeekPlanItemTable = resolve("table/recruiting-week-plan-item-dt");
+  const recruitingDailyResultTable = resolve("table/recruiting-daily-result-dt");
+  const recruitingWeekTextPlanTable = resolve("table/recruiting-week-text-plan-dt");
+  const recruitingWeekTextRowTable = resolve("table/recruiting-week-text-row-dt");
 
-  const payload = body()
+  const payload = body();
 
   try {
     const result = kjcaService.collectWeekly(
       request,
-      resolve,
+      {
+        staffDiaryAnalysisCacheTable,
+        recruitingWeekPlanTable,
+        recruitingWeekPlanItemTable,
+        recruitingDailyResultTable,
+        recruitingWeekTextPlanTable,
+        recruitingWeekTextRowTable,
+      },
       payload,
-    )
+    );
 
-    response.json(200, result)
+    response.json(200, result);
   } catch (exception) {
-    const errorMessage = String(exception.message || exception)
-    error('api/staff-diary/collect-weekly:failed', {
+    const errorMessage = String(exception.message || exception);
+    error("api/staff-diary/collect-weekly:failed", {
       error: errorMessage,
-    })
+    });
     response.json(500, {
       ok: false,
       message: errorMessage,
-    })
+    });
   }
 </script>
