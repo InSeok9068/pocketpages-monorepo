@@ -17,19 +17,6 @@ const weekdayLabelMap = {
   fri: "금",
 };
 
-function emitLog(ctx, level, eventName, payload) {
-  if (!ctx || typeof ctx[level] !== "function") {
-    return;
-  }
-
-  if (payload === undefined) {
-    ctx[level](eventName);
-    return;
-  }
-
-  ctx[level](eventName, payload);
-}
-
 function parseJsonSafely(text, fallback) {
   try {
     return JSON.parse(text);
@@ -1002,11 +989,10 @@ function normalizeSuperuserLoginId(loginId) {
 
 /**
  * 현재 PocketBase 요청에서 관리자 로그인 상태를 읽습니다.
- * @param {types.KjcaAuthStateParams | null | undefined} params 요청 객체가 들어있는 컨텍스트입니다.
+ * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
  * @returns {types.KjcaAuthState} 화면과 API에서 공통으로 쓰는 인증 상태입니다.
  */
-function readAuthState(params) {
-  const request = params && params.request ? params.request : null;
+function readAuthState(request) {
   const authRecord = request && request.auth ? request.auth : null;
   const isSignedIn = !!authRecord;
   const isSuperuser = !!(authRecord && typeof authRecord.isSuperuser === "function" && authRecord.isSuperuser());
@@ -1019,16 +1005,16 @@ function readAuthState(params) {
   };
 }
 
-function ensureSuperuserRequest(ctx) {
-  const authState = readAuthState(ctx);
+function ensureSuperuserRequest(request) {
+  const authState = readAuthState(request);
   if (!authState.isSuperuser || !authState.authRecord) {
     throw new Error("PocketBase 슈퍼유저 로그인이 필요합니다.");
   }
   return authState;
 }
 
-function readMappedKjcaCredentials(ctx) {
-  const authState = ensureSuperuserRequest(ctx);
+function readMappedKjcaCredentials(request) {
+  const authState = ensureSuperuserRequest(request);
   const superuserEmail = String(authState.email || "").trim();
   if (!superuserEmail) {
     throw new Error("슈퍼유저 이메일 정보를 확인할 수 없습니다.");
@@ -1061,14 +1047,13 @@ function readMappedKjcaCredentials(ctx) {
 
 /**
  * KJCA 관리자 사이트에 로그인해 재사용 가능한 세션 정보를 만듭니다.
- * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 인증 정보를 포함한 서비스 컨텍스트입니다.
+ * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
  * @returns {types.KjcaSession} 이후 요청에서 재사용할 KJCA 세션 정보입니다.
  */
-function createKjcaSession(ctx) {
-  const safeCtx = ctx && typeof ctx === "object" ? ctx : {};
-  const credentials = readMappedKjcaCredentials(safeCtx);
+function createKjcaSession(request) {
+  const credentials = readMappedKjcaCredentials(request);
 
-  emitLog(safeCtx, "info", "kjca/session:start", {
+  info("kjca/session:start", {
     email: credentials.authState.email,
   });
 
@@ -1099,7 +1084,7 @@ function createKjcaSession(ctx) {
 
   cookieHeader = mergeSetCookieIntoCookieHeader(cookieHeader, loginResponse.headers);
 
-  emitLog(safeCtx, "info", "kjca/session:login-check", {
+  info("kjca/session:login-check", {
     statusCode: loginResponse.statusCode,
     setCookieCount: getHeaderValues(loginResponse.headers, "Set-Cookie").length,
   });
@@ -1116,7 +1101,7 @@ function createKjcaSession(ctx) {
   };
 }
 
-function fetchDiaryList(ctx, session, scDay) {
+function fetchDiaryList(session, scDay) {
   const safeDay = normalizeReportDate(scDay);
   const diaryListUrl =
     `${session.host}/diary/?site=groupware&mn=1450&bd_type=1&sc_sort=bd_insert_date&sc_ord=desc` +
@@ -1138,7 +1123,7 @@ function fetchDiaryList(ctx, session, scDay) {
   const isDiaryAccessible = diaryResponse.statusCode >= 200 && diaryResponse.statusCode < 300 && !diaryAuthRequired;
   const parsed = isDiaryAccessible ? parseTeamLeadRowsFromDiaryHtml(diaryHtml, session.host) : { rows: [] };
 
-  emitLog(ctx, "info", "kjca/probe:diary-list", {
+  info("kjca/probe:diary-list", {
     scDay: safeDay,
     statusCode: diaryResponse.statusCode,
     isDiaryAccessible,
@@ -1159,23 +1144,22 @@ function fetchDiaryList(ctx, session, scDay) {
 
 /**
  * 특정 일자의 KJCA 업무일지 접근 가능 여부와 팀장 목록을 확인합니다.
- * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 인증 정보를 포함한 서비스 컨텍스트입니다.
+ * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
  * @param {types.KjcaProbePayload | null | undefined} payload 조회할 일자를 담은 입력값입니다.
  * @param {types.KjcaSession | null | undefined} session 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
  * @returns {types.KjcaProbeResult} 접근 가능 여부와 팀장 목록을 담은 결과입니다.
  */
-function probeStaffAuth(ctx, payload, session) {
-  const safeCtx = ctx && typeof ctx === "object" ? ctx : {};
-  const safeSession = session || createKjcaSession(safeCtx);
+function probeStaffAuth(request, payload, session) {
+  const safeSession = session || createKjcaSession(request);
   const scDay = normalizeReportDate(payload && (payload.scDay || payload.reportDate));
 
-  emitLog(safeCtx, "dbg", "kjca/probe:start", {
+  dbg("kjca/probe:start", {
     scDay,
   });
 
-  const result = fetchDiaryList(safeCtx, safeSession, scDay);
+  const result = fetchDiaryList(safeSession, scDay);
 
-  emitLog(safeCtx, "dbg", "kjca/probe:response", {
+  dbg("kjca/probe:response", {
     scDay,
     isDiaryAccessible: result.isDiaryAccessible,
     teamLeadCount: result.teamLeadRows.length,
@@ -1219,7 +1203,7 @@ function isRetryableGeminiTransportError(errorText) {
   );
 }
 
-function requestGeminiWithRetry(ctx, geminiPayload, context) {
+function requestGeminiWithRetry(geminiPayload, context) {
   let lastStatusCode = 0;
   let lastResponseBody = "";
   let lastHeaders = {};
@@ -1281,7 +1265,7 @@ function requestGeminiWithRetry(ctx, geminiPayload, context) {
       }
 
       const delayMs = computeRetryDelayMs(attempts, retryAfter);
-      emitLog(ctx, "warn", "kjca/analyze:gemini-retry", {
+      warn("kjca/analyze:gemini-retry", {
         index: context.index,
         dept: context.dept,
         attempt: attempts,
@@ -1310,7 +1294,7 @@ function requestGeminiWithRetry(ctx, geminiPayload, context) {
       }
 
       const delayMs = computeRetryDelayMs(attempts);
-      emitLog(ctx, "warn", "kjca/analyze:gemini-retry-transport", {
+      warn("kjca/analyze:gemini-retry-transport", {
         index: context.index,
         dept: context.dept,
         attempt: attempts,
@@ -1423,7 +1407,7 @@ function findSuccessCache(params) {
   }
 }
 
-function upsertSuccessCache(ctx, params) {
+function upsertSuccessCache(resolve, params) {
   const collection = $app.findCollectionByNameOrId(CACHE_COLLECTION_NAME);
   const lookupFilter = buildCacheIdentityFilter(params);
   let record = null;
@@ -1449,11 +1433,11 @@ function upsertSuccessCache(ctx, params) {
   targetRecord.set("model", GEMINI_MODEL_NAME);
   targetRecord.set("promptVersion", params.promptVersion);
 
-  const cacheTable = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/staff-diary-analysis-cache-dt") : null;
+  const cacheTable = typeof resolve === "function" ? resolve("table/staff-diary-analysis-cache-dt") : null;
   if (cacheTable && typeof cacheTable.toDT === "function") {
     const cacheDT = cacheTable.toDT(targetRecord);
     if (!cacheDT.canSaveSuccess()) {
-      emitLog(ctx, "warn", "kjca/analyze:cache-skip", {
+      warn("kjca/analyze:cache-skip", {
         dept: params.dept,
         reportDate: params.reportDate,
       });
@@ -1466,14 +1450,14 @@ function upsertSuccessCache(ctx, params) {
 
 /**
  * 팀장 업무일지 본문을 읽어 AI 분석 결과 목록으로 변환합니다.
- * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 resolve를 포함한 서비스 컨텍스트입니다.
+ * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
+ * @param {types.KjcaResolveFunc | null | undefined} resolve PocketPages `resolve()` 함수입니다.
  * @param {types.KjcaAnalyzePayload | null | undefined} payload 분석 날짜와 대상 목록을 담은 입력값입니다.
  * @param {types.KjcaSession | null | undefined} session 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
  * @returns {types.KjcaAnalyzeCallResult} 분석 결과 목록과 중단 사유를 담은 결과입니다.
  */
-function analyzeStaffDiary(ctx, payload, session) {
-  const safeCtx = ctx && typeof ctx === "object" ? ctx : {};
-  const safeSession = session || createKjcaSession(safeCtx);
+function analyzeStaffDiary(request, resolve, payload, session) {
+  const safeSession = session || createKjcaSession(request);
   const targets = Array.isArray(payload && payload.targets) ? payload.targets : [];
   const reportDate = normalizeReportDate(payload && payload.reportDate);
   const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_AI_KEY;
@@ -1488,7 +1472,7 @@ function analyzeStaffDiary(ctx, payload, session) {
     throw new Error("GEMINI_API_KEY (또는 GEMINI_AI_KEY)가 설정되지 않았습니다.");
   }
 
-  emitLog(safeCtx, "info", "kjca/analyze:start", {
+  info("kjca/analyze:start", {
     reportDate,
     targetsCount: targets.length,
   });
@@ -1505,14 +1489,14 @@ function analyzeStaffDiary(ctx, payload, session) {
     const printUrl = toAbsoluteKjcaUrl(safeSession.host, String(target.printUrl || "").trim());
 
     if (!dept || !printUrl) {
-      emitLog(safeCtx, "warn", "kjca/analyze:target-skip-missing", {
+      warn("kjca/analyze:target-skip-missing", {
         index,
         dept,
       });
       continue;
     }
     if (!isAllowedKjcaUrl(safeSession.host, printUrl)) {
-      emitLog(safeCtx, "warn", "kjca/analyze:target-skip-url", {
+      warn("kjca/analyze:target-skip-url", {
         index,
         dept,
         printUrl,
@@ -1601,7 +1585,6 @@ function analyzeStaffDiary(ctx, payload, session) {
     }
 
     const geminiAttemptResult = requestGeminiWithRetry(
-      safeCtx,
       {
         contents: [
           {
@@ -1675,7 +1658,7 @@ function analyzeStaffDiary(ctx, payload, session) {
     const special = normalizeStringArray(parsed && parsed.special);
     const recruiting = normalizeRecruitingExtract(parsed && parsed.recruiting);
 
-    upsertSuccessCache(safeCtx, {
+    upsertSuccessCache(resolve, {
       reportDate,
       dept,
       staffName,
@@ -1742,7 +1725,7 @@ function isUniqueValueError(error) {
   return String(error || "").includes("Value must be unique");
 }
 
-function upsertWeekTextPlan(ctx, params) {
+function upsertWeekTextPlan(resolve, params) {
   const safeWeekStartDate = formatDateText(parseDateText(params.weekStartDate));
   const dept = String(params.dept || "").trim();
   if (!dept) return { ok: false, reason: "dept-empty" };
@@ -1758,7 +1741,7 @@ function upsertWeekTextPlan(ctx, params) {
   plan.set("dept", dept);
   plan.set("status", "confirmed");
 
-  const recruitingWeekTextPlan = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-week-text-plan-dt") : null;
+  const recruitingWeekTextPlan = typeof resolve === "function" ? resolve("table/recruiting-week-text-plan-dt") : null;
   if (recruitingWeekTextPlan && typeof recruitingWeekTextPlan.toDT === "function") {
     const planDT = recruitingWeekTextPlan.toDT(plan);
     if (!planDT.canSaveConfirmed()) {
@@ -1784,7 +1767,7 @@ function upsertWeekTextPlan(ctx, params) {
     $app.delete(row);
   });
 
-  const recruitingWeekTextRow = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-week-text-row-dt") : null;
+  const recruitingWeekTextRow = typeof resolve === "function" ? resolve("table/recruiting-week-text-row-dt") : null;
   nextRows.forEach((row) => {
     const record = new Record(rowCollection);
     record.set("planId", plan.id);
@@ -1810,7 +1793,7 @@ function upsertWeekTextPlan(ctx, params) {
   return { ok: true, planId: plan.id };
 }
 
-function upsertWeekTextRowsForWeekday(ctx, params) {
+function upsertWeekTextRowsForWeekday(resolve, params) {
   const safeWeekStartDate = formatDateText(parseDateText(params.weekStartDate));
   const dept = String(params.dept || "").trim();
   const weekday = normalizeWeekday(params.weekday);
@@ -1819,7 +1802,7 @@ function upsertWeekTextRowsForWeekday(ctx, params) {
 
   let plan = findWeekTextPlan(safeWeekStartDate, dept);
   if (!plan) {
-    const created = upsertWeekTextPlan(ctx, {
+    const created = upsertWeekTextPlan(resolve, {
       weekStartDate: safeWeekStartDate,
       dept,
       rows: [],
@@ -1839,7 +1822,7 @@ function upsertWeekTextRowsForWeekday(ctx, params) {
   const weekdayRows = normalizeWeekTextRows(params.rows).filter((row) => row.weekday === weekday);
   if (weekdayRows.length === 0) return { ok: true, reason: "weekday-empty-rows" };
 
-  const recruitingWeekTextRow = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-week-text-row-dt") : null;
+  const recruitingWeekTextRow = typeof resolve === "function" ? resolve("table/recruiting-week-text-row-dt") : null;
   weekdayRows.forEach((row, index) => {
     const record = new Record(rowCollection);
     record.set("planId", plan.id);
@@ -1895,7 +1878,7 @@ function findWeekResults(weekStartDate, dept) {
   }
 }
 
-function upsertRecruitingWeekPlan(ctx, params) {
+function upsertRecruitingWeekPlan(resolve, params) {
   const dept = String((params && params.dept) || "").trim();
   if (!dept) return { ok: false, reason: "dept-empty" };
 
@@ -1913,7 +1896,7 @@ function upsertRecruitingWeekPlan(ctx, params) {
   plan.set("weekTarget", params.weekTarget);
   plan.set("status", "confirmed");
 
-  const recruitingWeekPlan = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-week-plan-dt") : null;
+  const recruitingWeekPlan = typeof resolve === "function" ? resolve("table/recruiting-week-plan-dt") : null;
   if (recruitingWeekPlan && typeof recruitingWeekPlan.toDT === "function") {
     const planDT = recruitingWeekPlan.toDT(plan);
     if (!planDT.canSaveConfirmed()) {
@@ -1975,7 +1958,7 @@ function upsertRecruitingWeekPlan(ctx, params) {
     });
   }
 
-  const recruitingWeekPlanItem = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-week-plan-item-dt") : null;
+  const recruitingWeekPlanItem = typeof resolve === "function" ? resolve("table/recruiting-week-plan-item-dt") : null;
   nextItems.forEach((item) => {
     const record = new Record(itemCollection);
     record.set("planId", plan.id);
@@ -1998,7 +1981,7 @@ function upsertRecruitingWeekPlan(ctx, params) {
   return { ok: true };
 }
 
-function upsertRecruitingDailyResult(ctx, params) {
+function upsertRecruitingDailyResult(resolve, params) {
   const dept = String((params && params.dept) || "").trim();
   if (!dept) return { ok: false, reason: "dept-empty" };
 
@@ -2027,7 +2010,7 @@ function upsertRecruitingDailyResult(ctx, params) {
   target.set("sourceType", "ai");
   target.set("memo", "AI 자동 추출");
 
-  const recruitingDailyResult = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-daily-result-dt") : null;
+  const recruitingDailyResult = typeof resolve === "function" ? resolve("table/recruiting-daily-result-dt") : null;
   if (recruitingDailyResult && typeof recruitingDailyResult.toDT === "function") {
     const dailyResultDT = recruitingDailyResult.toDT(target);
     if (!dailyResultDT.canSaveAiResult()) {
@@ -2061,13 +2044,12 @@ function upsertRecruitingDailyResult(ctx, params) {
 
 /**
  * 특정 날짜와 부서의 분석 캐시를 삭제합니다.
- * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 인증 정보를 포함한 서비스 컨텍스트입니다.
+ * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
  * @param {types.KjcaCacheClearPayload | null | undefined} payload 삭제 대상 날짜와 부서를 담은 입력값입니다.
  * @returns {types.KjcaCacheClearResult} 삭제 결과 요약입니다.
  */
-function clearAnalysisCache(ctx, payload) {
-  const safeCtx = ctx && typeof ctx === "object" ? ctx : {};
-  ensureSuperuserRequest(safeCtx);
+function clearAnalysisCache(request, payload) {
+  ensureSuperuserRequest(request);
 
   const reportDate = normalizeReportDate(payload && payload.reportDate);
   const dept = String((payload && payload.dept) || "").trim();
@@ -2098,13 +2080,13 @@ function clearAnalysisCache(ctx, payload) {
 
 /**
  * 특정 날짜 기준으로 업무일지 분석과 주간 집계를 한 번에 수행합니다.
- * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 resolve를 포함한 서비스 컨텍스트입니다.
+ * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
+ * @param {types.KjcaResolveFunc | null | undefined} resolve PocketPages `resolve()` 함수입니다.
  * @param {types.KjcaCollectPayload | null | undefined} payload 집계 날짜와 테스트 옵션을 담은 입력값입니다.
  * @returns {types.KjcaCollectResult} 집계 후 화면 구성에 필요한 전체 결과입니다.
  */
-function collectWeekly(ctx, payload) {
-  const safeCtx = ctx && typeof ctx === "object" ? ctx : {};
-  ensureSuperuserRequest(safeCtx);
+function collectWeekly(request, resolve, payload) {
+  ensureSuperuserRequest(request);
 
   const reportDate = normalizeReportDate(payload && payload.reportDate);
   const weekStartDate = buildWeekStartDate(reportDate);
@@ -2112,9 +2094,9 @@ function collectWeekly(ctx, payload) {
   const testOneOnly = normalizeBool(payload && payload.testOneOnly);
   const warnings = [];
 
-  const session = createKjcaSession(safeCtx);
+  const session = createKjcaSession(request);
 
-  const todayProbe = probeStaffAuth(safeCtx, { scDay: reportDate }, session);
+  const todayProbe = probeStaffAuth(request, { scDay: reportDate }, session);
   const teamLeadRows = normalizeTeamLeadRows(todayProbe.teamLeadRows);
   const todayTargets = buildUniqueTargets(teamLeadRows);
   const collectTargets = testOneOnly ? todayTargets.slice(0, 1) : todayTargets;
@@ -2129,7 +2111,7 @@ function collectWeekly(ctx, payload) {
     let mondayTargetsSource = todayTargets;
 
     if (reportDate !== weekStartDate) {
-      const mondayProbe = probeStaffAuth(safeCtx, { scDay: weekStartDate }, session);
+      const mondayProbe = probeStaffAuth(request, { scDay: weekStartDate }, session);
       mondayTargetsSource = buildUniqueTargets(normalizeTeamLeadRows(mondayProbe.teamLeadRows));
     }
 
@@ -2138,7 +2120,8 @@ function collectWeekly(ctx, payload) {
 
     if (bootstrapTargets.length > 0) {
       const mondayAnalyze = analyzeStaffDiary(
-        safeCtx,
+        request,
+        resolve,
         {
           reportDate: weekStartDate,
           targets: bootstrapTargets,
@@ -2153,7 +2136,7 @@ function collectWeekly(ctx, payload) {
           if (!hasWeekPlanData(recruiting)) return;
 
           try {
-            const result = upsertRecruitingWeekPlan(safeCtx, {
+            const result = upsertRecruitingWeekPlan(resolve, {
               weekStartDate,
               dept: String(item.dept || "").trim(),
               monthTarget: recruiting.monthTarget,
@@ -2166,7 +2149,7 @@ function collectWeekly(ctx, payload) {
           }
 
           try {
-            const textPlanResult = upsertWeekTextPlan(safeCtx, {
+            const textPlanResult = upsertWeekTextPlan(resolve, {
               weekStartDate,
               dept: String(item.dept || "").trim(),
               rows: ensureWeekdayRows(recruiting.weekTableRows),
@@ -2182,7 +2165,8 @@ function collectWeekly(ctx, payload) {
   }
 
   const todayAnalyze = analyzeStaffDiary(
-    safeCtx,
+    request,
+    resolve,
     {
       reportDate,
       targets: collectTargets,
@@ -2220,7 +2204,8 @@ function collectWeekly(ctx, payload) {
     sleep(1200);
     try {
       const retryAnalyze = analyzeStaffDiary(
-        safeCtx,
+        request,
+        resolve,
         {
           reportDate,
           targets: retryTargets,
@@ -2262,7 +2247,7 @@ function collectWeekly(ctx, payload) {
 
       if (canReplaceWeekTable) {
         try {
-          const textPlanResult = upsertWeekTextPlan(safeCtx, {
+          const textPlanResult = upsertWeekTextPlan(resolve, {
             weekStartDate,
             dept: safeDept,
             rows: allWeekTextRows,
@@ -2275,7 +2260,7 @@ function collectWeekly(ctx, payload) {
         const todayTextRows = allWeekTextRows.filter((row) => row.weekday === reportWeekday);
         if (todayTextRows.length > 0) {
           try {
-            const textUpdateResult = upsertWeekTextRowsForWeekday(safeCtx, {
+            const textUpdateResult = upsertWeekTextRowsForWeekday(resolve, {
               weekStartDate,
               dept: safeDept,
               weekday: reportWeekday,
@@ -2295,7 +2280,7 @@ function collectWeekly(ctx, payload) {
       }
 
       try {
-        const result = upsertRecruitingDailyResult(safeCtx, {
+        const result = upsertRecruitingDailyResult(resolve, {
           reportDate,
           weekStartDate,
           dept: safeDept,

@@ -1,7 +1,7 @@
 /** @type {import('pocketpages').MiddlewareLoaderFunc} */
 module.exports = function ({ request, response, resolve }, next) {
   const kjcaService = resolve("kjca-service");
-  const authState = kjcaService.readAuthState({ request });
+  const authState = kjcaService.readAuthState(request);
 
   if (request.method !== "POST") {
     return response.json(405, {

@@ -1,6 +1,6 @@
 <script server>
   const kjcaService = resolve('kjca-service')
-  const authState = kjcaService.readAuthState({ request })
+  const authState = kjcaService.readAuthState(request)
   const form = body()
   const formState = kjcaService.buildFormState({
     reportDate: form.reportDate,
@@ -22,7 +22,7 @@
   } else {
     try {
       const result = kjcaService.clearAnalysisCache(
-        { request, dbg, info, warn, error },
+        request,
         {
           reportDate: formState.reportDate,
           dept: form.dept,

@@ -110,10 +110,8 @@ declare namespace types {
     analysisResults?: unknown
   }
 
-  type KjcaAuthStateParams = {
-    request?: {
-      auth?: core.Record | null
-    }
+  type KjcaRequestLike = {
+    auth?: core.Record | null
   }
 
   type KjcaDashboardState = {
@@ -130,16 +128,7 @@ declare namespace types {
     deptSnapshots: KjcaDeptSnapshot[]
   }
 
-  type KjcaServiceContext = {
-    request?: {
-      auth?: core.Record | null
-    }
-    resolve?: (path: string) => any
-    dbg?: (...args: any[]) => void
-    info?: (...args: any[]) => void
-    warn?: (...args: any[]) => void
-    error?: (...args: any[]) => void
-  }
+  type KjcaResolveFunc = (path: string) => any
 
   type KjcaSession = {
     host: string

@@ -4,7 +4,7 @@
   meta('title', 'KJCA 관리자 로그인')
   meta('description', '관리자 로그인 페이지')
 
-  const authState = kjcaService.readAuthState({ request })
+  const authState = kjcaService.readAuthState(request)
 
   if (authState.isSuperuser) {
     dbg('page/kjca:sign-in:redirect', {

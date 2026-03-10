@@ -1,7 +1,7 @@
 <script server>
   const kjcaService = resolve('kjca-service')
 
-  const authState = kjcaService.readAuthState({ request })
+  const authState = kjcaService.readAuthState(request)
   const form = body()
   const formState = kjcaService.buildFormState({
     reportDate: form.reportDate,
@@ -27,7 +27,8 @@
   } else {
     try {
       const result = kjcaService.collectWeekly(
-        { request, dbg, info, warn, error, resolve },
+        request,
+        resolve,
         formState,
       )
       dashboardState = kjcaService.buildDashboardStateFromCollectResult(result, formState)

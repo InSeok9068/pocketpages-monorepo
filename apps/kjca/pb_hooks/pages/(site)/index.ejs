@@ -4,7 +4,7 @@
   meta('title', 'KJCA 업무일지 자동 취합')
   meta('description', 'KJCA 업무일지 자동 취합 및 확인 화면')
 
-  const authState = kjcaService.readAuthState({ request })
+  const authState = kjcaService.readAuthState(request)
   const formState = kjcaService.buildFormState({
     reportDate: params.reportDate,
     testOneOnly: params.testOneOnly,
