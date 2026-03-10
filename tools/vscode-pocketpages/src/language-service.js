@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const ts = require("typescript");
+const { buildTemplateVirtualText, getTemplateCodeBlockAtOffset } = require("./ejs-template");
 const { extractServerBlocks, getServerBlockAtOffset } = require("./script-server");
 const { PocketPagesProjectIndex } = require("./project-index");
 const {
@@ -352,6 +353,42 @@ class ProjectLanguageService {
     };
   }
 
+  upsertTemplateVirtualFile(filePath, documentText) {
+    this.refreshStaticFiles();
+
+    const resolvedPath = normalizePath(filePath);
+    const relativePath = path.relative(this.appRoot, resolvedPath);
+    const virtualDir = path.join(CACHE_ROOT, sanitizeFileName(this.appRoot));
+    const virtualFileName = normalizePath(path.join(virtualDir, `${sanitizeFileName(relativePath)}__template.ts`));
+
+    const prelude = this.buildPrelude(resolvedPath);
+    const text = `${prelude}${buildTemplateVirtualText(documentText)}`;
+    const previous = this.virtualFiles.get(virtualFileName);
+
+    if (!previous || previous.text !== text) {
+      ensureDir(virtualDir);
+      fs.writeFileSync(virtualFileName, text, "utf8");
+
+      this.virtualFiles.set(virtualFileName, {
+        text,
+        version: previous ? String(Number(previous.version) + 1) : "1",
+        filePath: resolvedPath,
+        preludeLength: prelude.length,
+        kind: "template-document",
+        documentLength: documentText.length,
+      });
+      this.projectVersion += 1;
+    } else {
+      previous.preludeLength = prelude.length;
+      previous.documentLength = documentText.length;
+    }
+
+    return {
+      fileName: virtualFileName,
+      preludeLength: prelude.length,
+    };
+  }
+
   mapVirtualOffsetToDocumentOffset(virtualFileName, offset) {
     const state = this.virtualFiles.get(virtualFileName);
     if (!state) {
@@ -363,17 +400,30 @@ class ProjectLanguageService {
     }
 
     const relativeOffset = offset - state.preludeLength;
+    if (state.kind === "template-document") {
+      if (relativeOffset < 0 || relativeOffset > state.documentLength) {
+        return null;
+      }
+
+      return relativeOffset;
+    }
+
     return state.block.contentStart + relativeOffset;
   }
 
   getCompletionData(filePath, documentText, offset) {
     const block = getServerBlockAtOffset(documentText, offset);
-    if (!block) {
+    const virtual = block
+      ? this.upsertVirtualFile(filePath, block)
+      : getTemplateCodeBlockAtOffset(documentText, offset)
+        ? this.upsertTemplateVirtualFile(filePath, documentText)
+        : null;
+
+    if (!virtual) {
       return null;
     }
 
-    const virtual = this.upsertVirtualFile(filePath, block);
-    const virtualOffset = virtual.preludeLength + (offset - block.contentStart);
+    const virtualOffset = block ? virtual.preludeLength + (offset - block.contentStart) : virtual.preludeLength + offset;
     const info = this.languageService.getCompletionsAtPosition(virtual.fileName, virtualOffset, {
       includeCompletionsWithInsertText: true,
       includeCompletionsForModuleExports: false,
@@ -403,11 +453,13 @@ class ProjectLanguageService {
 
   getCustomCompletionData(filePath, documentText, offset) {
     const pathContext = getPathContextAtOffset(documentText, offset);
-    if (pathContext && (pathContext.kind === "resolve-path" || pathContext.kind === "include-path")) {
+    if (pathContext && (pathContext.kind === "resolve-path" || pathContext.kind === "include-path" || pathContext.kind === "route-path")) {
       const candidates =
         pathContext.kind === "resolve-path"
           ? this.projectIndex.getResolveCandidates(filePath)
-          : this.projectIndex.getIncludeCandidates(filePath);
+          : pathContext.kind === "include-path"
+            ? this.projectIndex.getIncludeCandidates(filePath)
+            : this.projectIndex.getRouteCandidates({ routeSource: pathContext.routeSource });
 
       return {
         start: pathContext.start,
@@ -424,16 +476,19 @@ class ProjectLanguageService {
     }
 
     const block = getServerBlockAtOffset(documentText, offset);
-    if (!block) {
+    const templateCodeBlock = getTemplateCodeBlockAtOffset(documentText, offset);
+    if (!block && !templateCodeBlock) {
       return null;
     }
 
-    const localOffset = offset - block.contentStart;
-    const collectionContext = getScriptCollectionContext(block.content, localOffset);
+    const analysisText = block ? block.content : buildTemplateVirtualText(documentText);
+    const analysisOffset = block ? offset - block.contentStart : offset;
+    const analysisStart = block ? block.contentStart : 0;
+    const collectionContext = getScriptCollectionContext(analysisText, analysisOffset);
     if (collectionContext) {
       return {
-        start: block.contentStart + collectionContext.start,
-        end: block.contentStart + collectionContext.end,
+        start: analysisStart + collectionContext.start,
+        end: analysisStart + collectionContext.end,
         items: this.projectIndex.getCollectionNames().map((collectionName) => ({
           label: collectionName,
           insertText: collectionName,
@@ -444,11 +499,11 @@ class ProjectLanguageService {
       };
     }
 
-    const fieldContext = getScriptFieldContext(block.content, localOffset);
+    const fieldContext = getScriptFieldContext(analysisText, analysisOffset);
     if (fieldContext) {
       const collectionName = this.projectIndex.inferCollectionName(
         fieldContext.receiverExpression,
-        block.content,
+        analysisText,
         fieldContext.start
       );
 
@@ -457,8 +512,8 @@ class ProjectLanguageService {
       }
 
       return {
-        start: block.contentStart + fieldContext.start,
-        end: block.contentStart + fieldContext.end,
+        start: analysisStart + fieldContext.start,
+        end: analysisStart + fieldContext.end,
         items: this.projectIndex.getFields(collectionName).map((field) => ({
           label: field.name,
           insertText: field.name,
@@ -478,12 +533,17 @@ class ProjectLanguageService {
 
   getQuickInfo(filePath, documentText, offset) {
     const block = getServerBlockAtOffset(documentText, offset);
-    if (!block) {
+    const virtual = block
+      ? this.upsertVirtualFile(filePath, block)
+      : getTemplateCodeBlockAtOffset(documentText, offset)
+        ? this.upsertTemplateVirtualFile(filePath, documentText)
+        : null;
+
+    if (!virtual) {
       return null;
     }
 
-    const virtual = this.upsertVirtualFile(filePath, block);
-    const virtualOffset = virtual.preludeLength + (offset - block.contentStart);
+    const virtualOffset = block ? virtual.preludeLength + (offset - block.contentStart) : virtual.preludeLength + offset;
     const quickInfo = this.languageService.getQuickInfoAtPosition(virtual.fileName, virtualOffset);
 
     if (!quickInfo) {
@@ -596,12 +656,14 @@ class ProjectLanguageService {
     }
 
     const block = getServerBlockAtOffset(documentText, offset);
-    if (!block) {
+    const templateCodeBlock = getTemplateCodeBlockAtOffset(documentText, offset);
+    if (!block && !templateCodeBlock) {
       return null;
     }
 
-    const localOffset = offset - block.contentStart;
-    const resolvedModuleMemberContext = getResolvedModuleMemberContext(block.content, localOffset);
+    const analysisText = block ? block.content : buildTemplateVirtualText(documentText);
+    const analysisOffset = block ? offset - block.contentStart : offset;
+    const resolvedModuleMemberContext = getResolvedModuleMemberContext(analysisText, analysisOffset);
     if (resolvedModuleMemberContext) {
       return this.projectIndex.resolveResolvedModuleMemberTarget(
         filePath,

@@ -2,13 +2,29 @@
 
 VSCode extension for PocketPages `.ejs` files.
 
-It extracts `<script server>` blocks, feeds them into an in-memory TypeScript language service, and surfaces:
+## 한국어 요약
+
+현재 이 확장은 PocketPages `.ejs` 파일에서 `<script server>` 와 EJS 템플릿 태그 작업을 도와줍니다.
+
+- `meta`, `redirect`, `resolve`, `request`, `response`, `dbg` 같은 PocketPages 전역에 대한 자동완성
+- `<script server>` 와 EJS 템플릿 태그(`<% %>`, `<%= %>`, `<%- %>`) 안 코드 자동완성 및 hover
+- `<script server>` 안 진단 표시
+- `resolve()`, `include()`, 정적 라우트 문자열의 정의로 이동 및 경로 자동완성
+- `const svc = resolve('...')` 뒤 `svc.someFn()` 형태에서 export된 함수 정의로 이동
+- `pb_schema.json` 기준 컬렉션명 / `record.get('field')` 필드명 보조 및 경고
+- 앱별 `pb_data/types.d.ts`, `pocketpages-globals.d.ts`를 읽어서 서비스별로 다르게 동작
+
+아직 안 하는 것은 symbol rename/reference, formatting, 그리고 `<script server>` 밖 EJS 템플릿 영역의 diagnostics 입니다.
+
+It extracts `<script server>` blocks and EJS template code, feeds them into an in-memory TypeScript language service, and surfaces:
 
 - completion
 - hover
 - diagnostics
 - document links / go-to-definition for `resolve()`, `include()`, and static route literals
 - go-to-definition for exported members called from `resolve()` module aliases
+- route path completion for static `href`, `action`, `hx-*`, and `redirect()` literals
+- schema-aware `record.get('field')` completion in `<script server>` and EJS template tags
 
 ## What this extension covers
 
@@ -21,7 +37,7 @@ It extracts `<script server>` blocks, feeds them into an in-memory TypeScript la
 
 - symbol references / rename
 - formatting
-- EJS template tags outside `<script server>` for hover/completion/diagnostics
+- EJS template tags outside `<script server>` for diagnostics
 
 ## Run locally
 

@@ -642,6 +642,34 @@ class PocketPagesProjectIndex {
     return toDefinitionTarget(moduleFilePath, sourceFile, definitionNode)
   }
 
+  getRouteCandidates(options = {}) {
+    const preferredMethods = getPreferredRouteMethods(options.routeSource)
+    const bestEntries = new Map()
+
+    for (const entry of this.getStaticRouteEntries()) {
+      const rank = this.getRouteEntryRank(entry, preferredMethods)
+      const current = bestEntries.get(entry.routePath)
+
+      if (!current || rank < current.rank || (rank === current.rank && entry.filePath.localeCompare(current.entry.filePath) < 0)) {
+        bestEntries.set(entry.routePath, { entry, rank })
+      }
+    }
+
+    return [...bestEntries.values()]
+      .sort((left, right) => {
+        if (left.rank !== right.rank) {
+          return left.rank - right.rank
+        }
+
+        return left.entry.routePath.localeCompare(right.entry.routePath)
+      })
+      .map(({ entry }) => ({
+        value: entry.routePath,
+        filePath: entry.filePath,
+        detail: `${entry.method || 'PAGE'} ${toRelativePath(path.relative(this.pagesRoot, entry.filePath))}`,
+      }))
+  }
+
   getStaticRouteEntries() {
     const files = walkFiles(
       this.pagesRoot,

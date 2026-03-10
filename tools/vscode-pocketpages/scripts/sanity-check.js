@@ -194,11 +194,34 @@ function run() {
       throw new Error(`Expected "meta" completion. Got: ${completionNames.slice(0, 20).join(', ')}`)
     }
 
+    const templateCompletionText = `<script server>
+const authState = { email: '', isSignedIn: true }
+</script>
+<p><%= authState. %></p>
+`
+    const templateCompletionOffset = templateCompletionText.indexOf('authState.') + 'authState.'.length
+    const templateCompletion = service.getCompletionData(fixture.boardsFilePath, templateCompletionText, templateCompletionOffset)
+    const templateCompletionNames = templateCompletion ? templateCompletion.entries.map((entry) => entry.name) : []
+    if (!templateCompletionNames.includes('email') || !templateCompletionNames.includes('isSignedIn')) {
+      throw new Error(`Expected EJS template completion for authState fields. Got: ${templateCompletionNames.slice(0, 20).join(', ')}`)
+    }
+
     const hoverText = `<script server>\nmeta\n</script>\n`
     const hoverOffset = hoverText.indexOf('meta') + 1
     const quickInfo = service.getQuickInfo(fixture.boardsFilePath, hoverText, hoverOffset)
     if (!quickInfo || !quickInfo.displayText.includes('meta')) {
       throw new Error(`Expected hover info for "meta". Got: ${JSON.stringify(quickInfo)}`)
+    }
+
+    const templateHoverText = `<script server>
+const authState = { email: '', isSignedIn: true }
+</script>
+<p><%= authState.email %></p>
+`
+    const templateHoverOffset = templateHoverText.indexOf('authState') + 1
+    const templateQuickInfo = service.getQuickInfo(fixture.boardsFilePath, templateHoverText, templateHoverOffset)
+    if (!templateQuickInfo || !templateQuickInfo.displayText.includes('const authState')) {
+      throw new Error(`Expected hover info inside EJS template. Got: ${JSON.stringify(templateQuickInfo)}`)
     }
 
     const paramsText = `<script server>\nparams.\n</script>\n`
@@ -225,6 +248,14 @@ function run() {
       throw new Error(`Expected include() completion for "flash-alert.ejs". Got: ${includeNames.slice(0, 20).join(', ')}`)
     }
 
+    const routeCompletionText = `<a href="/si"></a>\n`
+    const routeCompletionOffset = routeCompletionText.indexOf('/si') + '/si'.length
+    const routeCompletion = service.getCustomCompletionData(fixture.siteIndexFilePath, routeCompletionText, routeCompletionOffset)
+    const routeNames = routeCompletion ? routeCompletion.items.map((entry) => entry.label) : []
+    if (!routeNames.includes('/sign-in')) {
+      throw new Error(`Expected route path completion for "/sign-in". Got: ${routeNames.slice(0, 20).join(', ')}`)
+    }
+
     const collectionText = `<script server>\n$app.findRecordsByFilter('bo')\n</script>\n`
     const collectionOffset = collectionText.indexOf('bo') + 'bo'.length
     const collectionCompletion = service.getCustomCompletionData(fixture.boardsFilePath, collectionText, collectionOffset)
@@ -239,6 +270,14 @@ function run() {
     const fieldNames = fieldCompletion ? fieldCompletion.items.map((entry) => entry.label) : []
     if (!fieldNames.includes('name') || !fieldNames.includes('slug')) {
       throw new Error(`Expected board field completions. Got: ${fieldNames.slice(0, 20).join(', ')}`)
+    }
+
+    const templateFieldText = `<% const board = pageData.board %>\n<p><%= board.get('na') %></p>\n`
+    const templateFieldOffset = templateFieldText.indexOf('na') + 'na'.length
+    const templateFieldCompletion = service.getCustomCompletionData(fixture.boardShowFilePath, templateFieldText, templateFieldOffset)
+    const templateFieldNames = templateFieldCompletion ? templateFieldCompletion.items.map((entry) => entry.label) : []
+    if (!templateFieldNames.includes('name') || !templateFieldNames.includes('description')) {
+      throw new Error(`Expected EJS template field completions. Got: ${templateFieldNames.slice(0, 20).join(', ')}`)
     }
 
     const resolveDefinition = service.getDefinitionTarget(

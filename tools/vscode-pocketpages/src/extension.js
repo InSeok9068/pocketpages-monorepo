@@ -69,6 +69,7 @@ function customCompletionKind(category) {
   switch (category) {
     case 'resolve-path':
     case 'include-path':
+    case 'route-path':
       return vscode.CompletionItemKind.File
     case 'collection-name':
       return vscode.CompletionItemKind.Struct
