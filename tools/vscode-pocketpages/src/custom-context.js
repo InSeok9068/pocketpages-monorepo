@@ -236,30 +236,25 @@ function getScriptFieldContext(scriptText, offset) {
 }
 
 function getResolvedModuleMemberContext(scriptText, offset) {
+  return collectResolvedModuleMemberContexts(scriptText).find((context) => offset >= context.start && offset <= context.end) || null
+}
+
+function collectResolvedModuleMemberContexts(scriptText) {
   const sourceFile = ts.createSourceFile('pocketpages-resolve-member.ts', scriptText, ts.ScriptTarget.Latest, true)
   const aliases = collectResolveAliases(sourceFile)
-  let matchContext = null
+  const contexts = []
 
   const visit = (node) => {
-    if (matchContext) {
-      return
-    }
-
     if (ts.isPropertyAccessExpression(node)) {
       const requestPath = getResolveRequestPathFromExpression(node.expression, aliases)
       if (requestPath) {
-        const start = node.name.getStart(sourceFile)
-        const end = node.name.getEnd()
-        if (offset >= start && offset <= end) {
-          matchContext = {
-            kind: 'resolved-module-member',
-            modulePath: requestPath,
-            memberName: node.name.text,
-            start,
-            end,
-          }
-          return
-        }
+        contexts.push({
+          kind: 'resolved-module-member',
+          modulePath: requestPath,
+          memberName: node.name.text,
+          start: node.name.getStart(sourceFile),
+          end: node.name.getEnd(),
+        })
       }
     }
 
@@ -267,7 +262,7 @@ function getResolvedModuleMemberContext(scriptText, offset) {
   }
 
   visit(sourceFile)
-  return matchContext
+  return contexts
 }
 
 function collectSchemaContexts(scriptText) {
@@ -290,6 +285,7 @@ function collectSchemaContexts(scriptText) {
 }
 
 module.exports = {
+  collectResolvedModuleMemberContexts,
   collectSchemaContexts,
   collectPathContexts,
   getPathContextAtOffset,

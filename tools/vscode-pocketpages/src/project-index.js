@@ -7,6 +7,7 @@ const ts = require('typescript')
 const RESOLVE_EXTENSIONS = ['.js', '.ejs', '.json', '.cjs', '.mjs']
 const INCLUDE_EXTENSIONS = ['.ejs']
 const ROUTE_EXTENSIONS = ['.ejs', '.js', '.cjs', '.mjs']
+const PAGES_CODE_EXTENSIONS = ['.ejs', '.js', '.cjs', '.mjs']
 const ROUTE_METHOD_BY_FILE_BASENAME = {
   '+delete': 'DELETE',
   '+get': 'GET',
@@ -239,6 +240,93 @@ function toDefinitionTarget(filePath, sourceFile, node) {
     line: position.line,
     character: position.character,
   }
+}
+
+function getRenamableDefinitionNode(node) {
+  if (!node) {
+    return null
+  }
+
+  if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) {
+    return node.name
+  }
+
+  if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+    return node.name
+  }
+
+  if (
+    ts.isMethodDeclaration(node) ||
+    ts.isPropertyAssignment(node) ||
+    ts.isShorthandPropertyAssignment(node) ||
+    ts.isPropertyAccessExpression(node)
+  ) {
+    return node.name
+  }
+
+  return node
+}
+
+function collectExportedMemberDefinitionInfos(sourceFile) {
+  const declarations = collectNamedDeclarations(sourceFile)
+  const definitions = new Map()
+
+  const remember = (exportName, node) => {
+    if (!exportName || definitions.has(exportName)) {
+      return
+    }
+
+    const targetNode = getRenamableDefinitionNode(node) || node
+    if (!targetNode || typeof targetNode.getStart !== 'function') {
+      return
+    }
+
+    const position = sourceFile.getLineAndCharacterOfPosition(targetNode.getStart(sourceFile))
+    definitions.set(exportName, {
+      filePath: sourceFile.fileName,
+      memberName: String(exportName),
+      start: targetNode.getStart(sourceFile),
+      end: targetNode.getEnd(),
+      line: position.line,
+      character: position.character,
+    })
+  }
+
+  const visit = (node) => {
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const left = skipParenthesizedExpression(node.left)
+      const right = skipParenthesizedExpression(node.right)
+
+      if (isModuleExportsExpression(left) && right && ts.isObjectLiteralExpression(right)) {
+        for (const property of right.properties) {
+          if (ts.isShorthandPropertyAssignment(property)) {
+            remember(property.name.text, declarations.get(property.name.text) || property.name)
+            continue
+          }
+
+          if (ts.isPropertyAssignment(property)) {
+            const exportName = getPropertyNameText(property.name)
+            remember(exportName, resolveInitializerDefinitionNode(property.initializer, declarations) || property.name)
+            continue
+          }
+
+          if (ts.isMethodDeclaration(property)) {
+            remember(getPropertyNameText(property.name), property)
+          }
+        }
+      }
+
+      const assignedExportName = getCommonJsExportName(left)
+      if (assignedExportName) {
+        remember(assignedExportName, resolveInitializerDefinitionNode(right, declarations) || left)
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return [...definitions.values()]
 }
 
 function collectNamedDeclarations(sourceFile) {
@@ -526,6 +614,35 @@ class PocketPagesProjectIndex {
     return items
   }
 
+  getPagesCodeFiles() {
+    return walkFiles(
+      this.pagesRoot,
+      (candidatePath) => PAGES_CODE_EXTENSIONS.includes(path.extname(candidatePath).toLowerCase()),
+      this.pagesRoot
+    )
+  }
+
+  getModuleExportedMembers(moduleFilePath, sourceText = null) {
+    const normalizedFilePath = normalizePath(moduleFilePath)
+    const extension = path.extname(normalizedFilePath).toLowerCase()
+    if (!['.js', '.cjs', '.mjs'].includes(extension)) {
+      return []
+    }
+
+    const effectiveSourceText =
+      typeof sourceText === 'string'
+        ? sourceText
+        : fileExists(normalizedFilePath)
+          ? fs.readFileSync(normalizedFilePath, 'utf8')
+          : null
+    if (effectiveSourceText === null) {
+      return []
+    }
+
+    const sourceFile = ts.createSourceFile(normalizedFilePath, effectiveSourceText, ts.ScriptTarget.Latest, true)
+    return collectExportedMemberDefinitionInfos(sourceFile)
+  }
+
   resolveResolveTarget(filePath, requestPath) {
     const normalizedRequestPath = String(requestPath || '').trim().replace(/^\/+/, '')
     if (!normalizedRequestPath) {
@@ -621,25 +738,26 @@ class PocketPagesProjectIndex {
     return null
   }
 
-  resolveResolvedModuleMemberTarget(filePath, requestPath, memberName) {
+  getResolvedModuleMemberDefinitionInfo(filePath, requestPath, memberName) {
     const moduleFilePath = this.resolveResolveTarget(filePath, requestPath)
     if (!moduleFilePath || !memberName) {
       return null
     }
 
-    const extension = path.extname(moduleFilePath).toLowerCase()
-    if (!['.js', '.cjs', '.mjs'].includes(extension)) {
+    return this.getModuleExportedMembers(moduleFilePath).find((entry) => entry.memberName === String(memberName)) || null
+  }
+
+  resolveResolvedModuleMemberTarget(filePath, requestPath, memberName) {
+    const definitionInfo = this.getResolvedModuleMemberDefinitionInfo(filePath, requestPath, memberName)
+    if (!definitionInfo) {
       return null
     }
 
-    const sourceText = fs.readFileSync(moduleFilePath, 'utf8')
-    const sourceFile = ts.createSourceFile(moduleFilePath, sourceText, ts.ScriptTarget.Latest, true)
-    const definitionNode = findExportedMemberDefinitionNode(sourceFile, String(memberName))
-    if (!definitionNode) {
-      return null
+    return {
+      filePath: definitionInfo.filePath,
+      line: definitionInfo.line,
+      character: definitionInfo.character,
     }
-
-    return toDefinitionTarget(moduleFilePath, sourceFile, definitionNode)
   }
 
   getRouteCandidates(options = {}) {

@@ -8,6 +8,12 @@ const DOCUMENT_SELECTOR = [
   { scheme: 'file', pattern: '**/*.ejs' },
   { scheme: 'untitled', pattern: '**/*.ejs' },
 ]
+const RENAME_DOCUMENT_SELECTOR = [
+  ...DOCUMENT_SELECTOR,
+  { scheme: 'file', pattern: '**/pb_hooks/pages/**/*.js' },
+  { scheme: 'file', pattern: '**/pb_hooks/pages/**/*.cjs' },
+  { scheme: 'file', pattern: '**/pb_hooks/pages/**/*.mjs' },
+]
 const SEMANTIC_TOKENS_LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, [])
 
 const COMPLETION_KIND_MAP = {
@@ -262,6 +268,114 @@ class PocketPagesDefinitionProvider {
   }
 }
 
+class PocketPagesRenameProvider {
+  constructor(manager) {
+    this.manager = manager
+  }
+
+  prepareRename(document, position) {
+    if (!findAppRoot(document.uri.fsPath)) {
+      return null
+    }
+
+    const service = this.manager.getServiceForFile(document.uri.fsPath)
+    if (!service) {
+      return null
+    }
+
+    const offset = document.offsetAt(position)
+    const renameInfo = service.getRenameInfo(document.uri.fsPath, document.getText(), offset)
+    if (!renameInfo) {
+      return null
+    }
+
+    if (!renameInfo.canRename) {
+      throw new Error(renameInfo.localizedErrorMessage || 'Unable to rename this PocketPages symbol.')
+    }
+
+    return {
+      range: toRange(document, renameInfo.start, renameInfo.end),
+      placeholder: renameInfo.placeholder,
+    }
+  }
+
+  async provideRenameEdits(document, position, newName) {
+    if (!findAppRoot(document.uri.fsPath)) {
+      return null
+    }
+
+    const service = this.manager.getServiceForFile(document.uri.fsPath)
+    if (!service) {
+      return null
+    }
+
+    const offset = document.offsetAt(position)
+    const renameResult = service.getRenameEdits(document.uri.fsPath, document.getText(), offset, newName)
+    if (!renameResult) {
+      return null
+    }
+
+    if (!renameResult.canRename) {
+      throw new Error(renameResult.localizedErrorMessage || 'Unable to rename this PocketPages symbol.')
+    }
+
+    const workspaceEdit = new vscode.WorkspaceEdit()
+    const documentCache = new Map([[document.uri.fsPath, document]])
+
+    for (const edit of renameResult.edits) {
+      let targetDocument = documentCache.get(edit.filePath)
+      if (!targetDocument) {
+        targetDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(edit.filePath))
+        documentCache.set(edit.filePath, targetDocument)
+      }
+
+      workspaceEdit.replace(targetDocument.uri, toRange(targetDocument, edit.start, edit.end), edit.newText)
+    }
+
+    return workspaceEdit
+  }
+}
+
+class PocketPagesReferenceProvider {
+  constructor(manager) {
+    this.manager = manager
+  }
+
+  async provideReferences(document, position, context) {
+    if (!findAppRoot(document.uri.fsPath)) {
+      return null
+    }
+
+    const service = this.manager.getServiceForFile(document.uri.fsPath)
+    if (!service) {
+      return null
+    }
+
+    const offset = document.offsetAt(position)
+    const references = service.getReferenceTargets(document.uri.fsPath, document.getText(), offset, {
+      includeDeclaration: !!(context && context.includeDeclaration),
+    })
+    if (!references || !references.length) {
+      return null
+    }
+
+    const documentCache = new Map([[document.uri.fsPath, document]])
+    const locations = []
+
+    for (const reference of references) {
+      let targetDocument = documentCache.get(reference.filePath)
+      if (!targetDocument) {
+        targetDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(reference.filePath))
+        documentCache.set(reference.filePath, targetDocument)
+      }
+
+      locations.push(new vscode.Location(targetDocument.uri, toRange(targetDocument, reference.start, reference.end)))
+    }
+
+    return locations
+  }
+}
+
 class PocketPagesDocumentLinkProvider {
   constructor(manager) {
     this.manager = manager
@@ -390,6 +504,8 @@ function activate(context) {
     ),
     vscode.languages.registerDocumentLinkProvider(DOCUMENT_SELECTOR, new PocketPagesDocumentLinkProvider(manager)),
     vscode.languages.registerDefinitionProvider(DOCUMENT_SELECTOR, new PocketPagesDefinitionProvider(manager)),
+    vscode.languages.registerReferenceProvider(RENAME_DOCUMENT_SELECTOR, new PocketPagesReferenceProvider(manager)),
+    vscode.languages.registerRenameProvider(RENAME_DOCUMENT_SELECTOR, new PocketPagesRenameProvider(manager)),
     vscode.languages.registerHoverProvider(DOCUMENT_SELECTOR, new PocketPagesHoverProvider(manager)),
     vscode.languages.registerDocumentSemanticTokensProvider(
       DOCUMENT_SELECTOR,

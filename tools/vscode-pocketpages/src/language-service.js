@@ -8,6 +8,7 @@ const { extractServerBlocks, getServerBlockAtOffset } = require("./script-server
 const { PocketPagesProjectIndex } = require("./project-index");
 const {
   collectPathContexts,
+  collectResolvedModuleMemberContexts,
   collectSchemaContexts,
   getPathContextAtOffset,
   getResolvedModuleMemberContext,
@@ -51,6 +52,26 @@ function directoryExists(dirPath) {
   } catch (_error) {
     return false;
   }
+}
+
+function readFileText(filePath) {
+  return fs.readFileSync(filePath, "utf8");
+}
+
+function isEjsFile(filePath) {
+  return path.extname(String(filePath || "")).toLowerCase() === ".ejs";
+}
+
+function isScriptFile(filePath) {
+  return [".js", ".cjs", ".mjs"].includes(path.extname(String(filePath || "")).toLowerCase());
+}
+
+function toAnalysisText(filePath, documentText) {
+  return isEjsFile(filePath) ? buildTemplateVirtualText(documentText) : documentText;
+}
+
+function isValidIdentifierName(value) {
+  return ts.isIdentifierText(String(value || ""), ts.ScriptTarget.Latest, ts.LanguageVariant.Standard);
 }
 
 function findAppRoot(filePath) {
@@ -280,6 +301,22 @@ class ProjectLanguageService {
     this.projectVersion += 1;
   }
 
+  upsertStaticFileText(filePath, text) {
+    const resolvedPath = normalizePath(filePath);
+    const previous = this.staticFiles.get(resolvedPath);
+
+    if (previous && previous.text === text) {
+      return;
+    }
+
+    this.staticFiles.set(resolvedPath, {
+      text,
+      mtimeMs: previous ? previous.mtimeMs : 0,
+      version: previous ? String(Number(previous.version) + 1) : "1",
+    });
+    this.projectVersion += 1;
+  }
+
   refreshStaticFiles() {
     this.ensureStaticFile(path.join(this.appRoot, "pb_data", "types.d.ts"));
     this.ensureStaticFile(path.join(this.appRoot, "pocketpages-globals.d.ts"));
@@ -409,6 +446,246 @@ class ProjectLanguageService {
     }
 
     return state.block.contentStart + relativeOffset;
+  }
+
+  getResolvedModuleMemberContextForRename(filePath, documentText, offset) {
+    if (isEjsFile(filePath)) {
+      const block = getServerBlockAtOffset(documentText, offset);
+      const templateCodeBlock = getTemplateCodeBlockAtOffset(documentText, offset);
+      if (!block && !templateCodeBlock) {
+        return null;
+      }
+
+      const analysisText = block ? block.content : buildTemplateVirtualText(documentText);
+      const analysisOffset = block ? offset - block.contentStart : offset;
+      const resolvedModuleMemberContext = getResolvedModuleMemberContext(analysisText, analysisOffset);
+      if (!resolvedModuleMemberContext) {
+        return null;
+      }
+
+      return {
+        ...resolvedModuleMemberContext,
+        source: "resolved-module-member",
+        start: block ? block.contentStart + resolvedModuleMemberContext.start : resolvedModuleMemberContext.start,
+        end: block ? block.contentStart + resolvedModuleMemberContext.end : resolvedModuleMemberContext.end,
+      };
+    }
+
+    if (!isScriptFile(filePath)) {
+      return null;
+    }
+
+    const resolvedModuleMemberContext = getResolvedModuleMemberContext(documentText, offset);
+    if (!resolvedModuleMemberContext) {
+      return null;
+    }
+
+    return {
+      ...resolvedModuleMemberContext,
+      source: "resolved-module-member",
+    };
+  }
+
+  getModuleExportRenameContext(filePath, documentText, offset) {
+    if (!isScriptFile(filePath)) {
+      return null;
+    }
+
+    const exportedMembers = this.projectIndex.getModuleExportedMembers(filePath, documentText);
+    if (!exportedMembers.length) {
+      return null;
+    }
+
+    for (const exportedMember of exportedMembers) {
+      if (offset >= exportedMember.start && offset <= exportedMember.end) {
+        return {
+          source: "module-export",
+          start: exportedMember.start,
+          end: exportedMember.end,
+          placeholder: exportedMember.memberName,
+          moduleDefinitionInfo: exportedMember,
+        };
+      }
+    }
+
+    this.upsertStaticFileText(filePath, documentText);
+
+    const renameInfo = this.languageService.getRenameInfo(filePath, offset, {
+      allowRenameOfImportPath: false,
+    });
+    if (!renameInfo || !renameInfo.canRename) {
+      return null;
+    }
+
+    const locations = this.languageService.findRenameLocations(filePath, offset, false, false, {}) || [];
+    for (const exportedMember of exportedMembers) {
+      const hasDefinitionLocation = locations.some(
+        (location) =>
+          normalizePath(location.fileName) === normalizePath(filePath) &&
+          location.textSpan.start <= exportedMember.start &&
+          location.textSpan.start + location.textSpan.length >= exportedMember.end
+      );
+
+      if (hasDefinitionLocation) {
+        return {
+          source: "module-export",
+          start: exportedMember.start,
+          end: exportedMember.end,
+          placeholder: exportedMember.memberName,
+          moduleDefinitionInfo: exportedMember,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  getModuleRenameLocations(moduleDefinitionInfo, overrides = {}) {
+    const overrideText = overrides[normalizePath(moduleDefinitionInfo.filePath)];
+    if (typeof overrideText === "string") {
+      this.upsertStaticFileText(moduleDefinitionInfo.filePath, overrideText);
+    } else {
+      this.ensureStaticFile(moduleDefinitionInfo.filePath);
+    }
+
+    const renameInfo = this.languageService.getRenameInfo(moduleDefinitionInfo.filePath, moduleDefinitionInfo.start, {
+      allowRenameOfImportPath: false,
+    });
+    if (!renameInfo || !renameInfo.canRename) {
+      return {
+        canRename: false,
+        localizedErrorMessage: renameInfo && renameInfo.localizedErrorMessage,
+        locations: [],
+      };
+    }
+
+    const locations =
+      this.languageService.findRenameLocations(
+        moduleDefinitionInfo.filePath,
+        moduleDefinitionInfo.start,
+        false,
+        false,
+        {}
+      ) || [];
+
+    return {
+      canRename: true,
+      locations,
+    };
+  }
+
+  resolvePathContextTarget(filePath, pathContext) {
+    if (!pathContext) {
+      return null;
+    }
+
+    if (pathContext.kind === "resolve-path") {
+      return this.projectIndex.resolveResolveTarget(filePath, pathContext.value);
+    }
+
+    if (pathContext.kind === "include-path") {
+      return this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
+    }
+
+    if (pathContext.kind === "route-path") {
+      return this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
+        routeSource: pathContext.routeSource,
+      });
+    }
+
+    return null;
+  }
+
+  getPathReferenceContext(filePath, documentText, offset) {
+    const pathContext = getPathContextAtOffset(documentText, offset);
+    if (!pathContext) {
+      return null;
+    }
+
+    const targetFilePath = this.resolvePathContextTarget(filePath, pathContext);
+    if (!targetFilePath) {
+      return null;
+    }
+
+    return {
+      ...pathContext,
+      targetFilePath: normalizePath(targetFilePath),
+    };
+  }
+
+  collectPathReferenceLocations(pathKind, targetFilePath, overrides = {}) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    const uniqueLocations = new Map();
+
+    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      const codeFilePath = normalizePath(entry.filePath);
+      const documentText =
+        Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : readFileText(codeFilePath);
+
+      for (const pathContext of collectPathContexts(documentText)) {
+        if (pathContext.kind !== pathKind) {
+          continue;
+        }
+
+        const resolvedTargetFilePath = this.resolvePathContextTarget(codeFilePath, pathContext);
+        if (!resolvedTargetFilePath || normalizePath(resolvedTargetFilePath) !== normalizedTargetFilePath) {
+          continue;
+        }
+
+        const locationKey = `${codeFilePath}:${pathContext.start}:${pathContext.end}`;
+        if (!uniqueLocations.has(locationKey)) {
+          uniqueLocations.set(locationKey, {
+            filePath: codeFilePath,
+            start: pathContext.start,
+            end: pathContext.end,
+          });
+        }
+      }
+    }
+
+    return [...uniqueLocations.values()];
+  }
+
+  collectResolvedModuleMemberUsageLocations(targetModuleFilePath, memberName, overrides = {}) {
+    const normalizedTargetFilePath = normalizePath(targetModuleFilePath);
+    const uniqueLocations = new Map();
+
+    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      const codeFilePath = normalizePath(entry.filePath);
+      const documentText =
+        Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : readFileText(codeFilePath);
+      const analysisText = toAnalysisText(codeFilePath, documentText);
+      const contexts = collectResolvedModuleMemberContexts(analysisText);
+
+      for (const context of contexts) {
+        if (context.memberName !== memberName) {
+          continue;
+        }
+
+        const resolvedModuleFilePath = this.projectIndex.resolveResolveTarget(codeFilePath, context.modulePath);
+        if (!resolvedModuleFilePath || normalizePath(resolvedModuleFilePath) !== normalizedTargetFilePath) {
+          continue;
+        }
+
+        const locationKey = `${codeFilePath}:${context.start}:${context.end}`;
+        if (!uniqueLocations.has(locationKey)) {
+          uniqueLocations.set(locationKey, {
+            filePath: codeFilePath,
+            start: context.start,
+            end: context.end,
+          });
+        }
+      }
+    }
+
+    return [...uniqueLocations.values()];
+  }
+
+  collectResolvedModuleMemberUsageEdits(targetModuleFilePath, memberName, newName, overrides = {}) {
+    return this.collectResolvedModuleMemberUsageLocations(targetModuleFilePath, memberName, overrides).map((location) => ({
+      ...location,
+      newText: newName,
+    }));
   }
 
   getCompletionData(filePath, documentText, offset) {
@@ -655,15 +932,7 @@ class ProjectLanguageService {
       }
     }
 
-    const block = getServerBlockAtOffset(documentText, offset);
-    const templateCodeBlock = getTemplateCodeBlockAtOffset(documentText, offset);
-    if (!block && !templateCodeBlock) {
-      return null;
-    }
-
-    const analysisText = block ? block.content : buildTemplateVirtualText(documentText);
-    const analysisOffset = block ? offset - block.contentStart : offset;
-    const resolvedModuleMemberContext = getResolvedModuleMemberContext(analysisText, analysisOffset);
+    const resolvedModuleMemberContext = this.getResolvedModuleMemberContextForRename(filePath, documentText, offset);
     if (resolvedModuleMemberContext) {
       return this.projectIndex.resolveResolvedModuleMemberTarget(
         filePath,
@@ -673,6 +942,183 @@ class ProjectLanguageService {
     }
 
     return null;
+  }
+
+  getRenameInfo(filePath, documentText, offset) {
+    const resolvedModuleMemberContext = this.getResolvedModuleMemberContextForRename(filePath, documentText, offset);
+    if (!resolvedModuleMemberContext) {
+      const moduleExportContext = this.getModuleExportRenameContext(filePath, documentText, offset);
+      if (!moduleExportContext) {
+        return null;
+      }
+
+      return {
+        canRename: true,
+        ...moduleExportContext,
+      };
+    }
+
+    const moduleDefinitionInfo = this.projectIndex.getResolvedModuleMemberDefinitionInfo(
+      filePath,
+      resolvedModuleMemberContext.modulePath,
+      resolvedModuleMemberContext.memberName
+    );
+    if (!moduleDefinitionInfo) {
+      return null;
+    }
+
+    const moduleRename = this.getModuleRenameLocations(moduleDefinitionInfo);
+    if (!moduleRename.canRename) {
+      return {
+        canRename: false,
+        localizedErrorMessage: moduleRename.localizedErrorMessage || "Unable to rename resolved module member.",
+        start: resolvedModuleMemberContext.start,
+        end: resolvedModuleMemberContext.end,
+        placeholder: resolvedModuleMemberContext.memberName,
+      };
+    }
+
+    return {
+      canRename: true,
+      source: resolvedModuleMemberContext.source,
+      start: resolvedModuleMemberContext.start,
+      end: resolvedModuleMemberContext.end,
+      placeholder: resolvedModuleMemberContext.memberName,
+      moduleDefinitionInfo,
+    };
+  }
+
+  getRenameEdits(filePath, documentText, offset, newName) {
+    const renameInfo = this.getRenameInfo(filePath, documentText, offset);
+    if (!renameInfo) {
+      return null;
+    }
+
+    if (!renameInfo.canRename) {
+      return {
+        canRename: false,
+        localizedErrorMessage: renameInfo.localizedErrorMessage || "Unable to rename resolved module member.",
+        edits: [],
+      };
+    }
+
+    if (!isValidIdentifierName(newName)) {
+      return {
+        canRename: false,
+        localizedErrorMessage: `Invalid identifier name "${newName}".`,
+        edits: [],
+      };
+    }
+
+    const moduleRename = this.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, {
+      [normalizePath(filePath)]: isScriptFile(filePath) ? documentText : undefined,
+    });
+    if (!moduleRename.canRename) {
+      return {
+        canRename: false,
+        localizedErrorMessage: moduleRename.localizedErrorMessage || "Unable to rename resolved module member.",
+        edits: [],
+      };
+    }
+
+    const uniqueEdits = new Map();
+
+    if (renameInfo.source !== "module-export") {
+      for (const location of moduleRename.locations) {
+        const editKey = `${normalizePath(location.fileName)}:${location.textSpan.start}:${location.textSpan.start + location.textSpan.length}:${newName}`;
+        if (!uniqueEdits.has(editKey)) {
+          uniqueEdits.set(editKey, {
+            filePath: normalizePath(location.fileName),
+            start: location.textSpan.start,
+            end: location.textSpan.start + location.textSpan.length,
+            newText: `${location.prefixText || ""}${newName}${location.suffixText || ""}`,
+          });
+        }
+      }
+    }
+
+    for (const edit of this.collectResolvedModuleMemberUsageEdits(
+      renameInfo.moduleDefinitionInfo.filePath,
+      renameInfo.placeholder,
+      newName,
+      { [normalizePath(filePath)]: documentText }
+    )) {
+      const editKey = `${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`;
+      if (!uniqueEdits.has(editKey)) {
+        uniqueEdits.set(editKey, edit);
+      }
+    }
+
+    return {
+      canRename: true,
+      edits: [...uniqueEdits.values()],
+    };
+  }
+
+  getReferenceTargets(filePath, documentText, offset, options = {}) {
+    const pathReferenceContext = this.getPathReferenceContext(filePath, documentText, offset);
+    if (pathReferenceContext) {
+      return this.collectPathReferenceLocations(pathReferenceContext.kind, pathReferenceContext.targetFilePath, {
+        [normalizePath(filePath)]: documentText,
+      });
+    }
+
+    const renameInfo = this.getRenameInfo(filePath, documentText, offset);
+    if (!renameInfo) {
+      return null;
+    }
+
+    const moduleRename = this.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, {
+      [normalizePath(filePath)]: isScriptFile(filePath) ? documentText : undefined,
+    });
+    if (!moduleRename.canRename) {
+      return [];
+    }
+
+    const uniqueLocations = new Map();
+    const addLocation = (location) => {
+      if (!location) {
+        return;
+      }
+
+      const locationKey = `${normalizePath(location.filePath)}:${location.start}:${location.end}`;
+      if (!uniqueLocations.has(locationKey)) {
+        uniqueLocations.set(locationKey, {
+          filePath: normalizePath(location.filePath),
+          start: location.start,
+          end: location.end,
+        });
+      }
+    };
+
+    for (const location of moduleRename.locations) {
+      const start = location.textSpan.start;
+      const end = location.textSpan.start + location.textSpan.length;
+      if (
+        !options.includeDeclaration &&
+        normalizePath(location.fileName) === normalizePath(renameInfo.moduleDefinitionInfo.filePath) &&
+        start === renameInfo.moduleDefinitionInfo.start &&
+        end === renameInfo.moduleDefinitionInfo.end
+      ) {
+        continue;
+      }
+
+      addLocation({
+        filePath: location.fileName,
+        start,
+        end,
+      });
+    }
+
+    for (const location of this.collectResolvedModuleMemberUsageLocations(
+      renameInfo.moduleDefinitionInfo.filePath,
+      renameInfo.placeholder,
+      { [normalizePath(filePath)]: documentText }
+    )) {
+      addLocation(location);
+    }
+
+    return [...uniqueLocations.values()];
   }
 
   getDocumentLinks(filePath, documentText) {

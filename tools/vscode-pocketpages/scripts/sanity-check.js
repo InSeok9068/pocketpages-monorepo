@@ -15,6 +15,17 @@ function writeFile(filePath, content) {
   fs.writeFileSync(filePath, content, 'utf8')
 }
 
+function applyEditsToText(text, edits) {
+  return edits
+    .slice()
+    .sort((left, right) => right.start - left.start)
+    .reduce((current, edit) => current.slice(0, edit.start) + edit.newText + current.slice(edit.end), text)
+}
+
+function normalizeFilePath(filePath) {
+  return String(filePath || '').replace(/\\/g, '/')
+}
+
 function createFixtureApp(repoRoot) {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-fixture-'))
   const appRoot = path.join(fixtureRoot, 'apps', 'fixture-app')
@@ -136,9 +147,17 @@ export {}
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'), `<h1>Sign In</h1>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'), `<%- include('flash-alert.ejs') %>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'index.ejs'), `<script server>\nboard.get('name')\n</script>\n`)
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
+    `<script server>\nconst boardService = resolve('board-service')\nconst authState = boardService.readAuthState({ request })\n</script>\n`
+  )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'), `<script server>\nsignInWithPassword('a', 'b')\nreturn\n</script>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-out.ejs'), `<script server>\nsignOut()\nredirect('/sign-in')\nreturn\n</script>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'jobs', 'collect-weekly.ejs'), `<script server>\nresponse.json(200, { ok: true })\n</script>\n`)
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
+    `module.exports = function ({ request, resolve }, next) {\n  const boardService = resolve('board-service')\n  boardService.readAuthState({ request })\n  return next()\n}\n`
+  )
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
     `function readAuthState(params) {
@@ -158,6 +177,9 @@ module.exports = {
     siteIndexFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'),
     boardsFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
     boardShowFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'index.ejs'),
+    renameCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
+    middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
+    boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
     signOutFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-out.ejs'),
     signInFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'),
   }
@@ -320,6 +342,171 @@ const authState = { email: '', isSignedIn: true }
     }
     if (resolvedMemberDefinition.line !== 0) {
       throw new Error(`Expected readAuthState definition on line 1. Got: ${JSON.stringify(resolvedMemberDefinition)}`)
+    }
+
+    const renameText = `<script server>\nconst boardService = resolve('board-service')\nconst authState = boardService.readAuthState({ request })\n</script>\n`
+    const renameOffset = renameText.indexOf('readAuthState') + 2
+    const renameInfo = service.getRenameInfo(fixture.renameCheckFilePath, renameText, renameOffset)
+    if (!renameInfo || !renameInfo.canRename || renameInfo.placeholder !== 'readAuthState') {
+      throw new Error(`Expected rename info for resolve()-derived member. Got: ${JSON.stringify(renameInfo)}`)
+    }
+
+    const renameEdits = service.getRenameEdits(fixture.renameCheckFilePath, renameText, renameOffset, 'readSessionState')
+    if (!renameEdits || !renameEdits.canRename) {
+      throw new Error(`Expected rename edits for resolve()-derived member. Got: ${JSON.stringify(renameEdits)}`)
+    }
+
+    const boardServiceEdits = renameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardServiceFilePath)
+    )
+    const renameCheckEdits = renameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath)
+    )
+    const middlewareEdits = renameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.middlewareFilePath)
+    )
+
+    if (boardServiceEdits.length < 2) {
+      throw new Error(`Expected board-service.js rename edits for declaration + export. Got: ${JSON.stringify(boardServiceEdits)}`)
+    }
+    if (renameCheckEdits.length !== 1) {
+      throw new Error(`Expected current EJS rename edit. Got: ${JSON.stringify(renameCheckEdits)}`)
+    }
+    if (middlewareEdits.length !== 1) {
+      throw new Error(`Expected middleware JS rename edit. Got: ${JSON.stringify(middlewareEdits)}`)
+    }
+
+    const renamedBoardServiceText = applyEditsToText(fs.readFileSync(fixture.boardServiceFilePath, 'utf8'), boardServiceEdits)
+    if (!renamedBoardServiceText.includes('function readSessionState(params)')) {
+      throw new Error(`Expected renamed board-service declaration. Got: ${renamedBoardServiceText}`)
+    }
+    if (!renamedBoardServiceText.includes('module.exports = {\n  readSessionState,')) {
+      throw new Error(`Expected renamed board-service export. Got: ${renamedBoardServiceText}`)
+    }
+
+    const renamedRenameCheckText = applyEditsToText(renameText, renameCheckEdits)
+    if (!renamedRenameCheckText.includes('boardService.readSessionState({ request })')) {
+      throw new Error(`Expected renamed current EJS usage. Got: ${renamedRenameCheckText}`)
+    }
+
+    const renamedMiddlewareText = applyEditsToText(fs.readFileSync(fixture.middlewareFilePath, 'utf8'), middlewareEdits)
+    if (!renamedMiddlewareText.includes('boardService.readSessionState({ request })')) {
+      throw new Error(`Expected renamed middleware usage. Got: ${renamedMiddlewareText}`)
+    }
+
+    const moduleRenameText = fs.readFileSync(fixture.boardServiceFilePath, 'utf8')
+    const moduleRenameOffset = moduleRenameText.indexOf('readAuthState') + 2
+    const moduleRenameInfo = service.getRenameInfo(fixture.boardServiceFilePath, moduleRenameText, moduleRenameOffset)
+    if (!moduleRenameInfo || !moduleRenameInfo.canRename || moduleRenameInfo.placeholder !== 'readAuthState') {
+      throw new Error(`Expected module export rename info. Got: ${JSON.stringify(moduleRenameInfo)}`)
+    }
+
+    const moduleRenameEdits = service.getRenameEdits(
+      fixture.boardServiceFilePath,
+      moduleRenameText,
+      moduleRenameOffset,
+      'readSessionState'
+    )
+    if (!moduleRenameEdits || !moduleRenameEdits.canRename) {
+      throw new Error(`Expected module export rename edits. Got: ${JSON.stringify(moduleRenameEdits)}`)
+    }
+
+    const moduleInitiatedBoardServiceEdits = moduleRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardServiceFilePath)
+    )
+    const moduleInitiatedRenameCheckEdits = moduleRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath)
+    )
+    const moduleInitiatedMiddlewareEdits = moduleRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.middlewareFilePath)
+    )
+
+    if (moduleInitiatedBoardServiceEdits.length !== 0) {
+      throw new Error(`Expected JS-initiated custom rename edits to skip module file edits. Got: ${JSON.stringify(moduleInitiatedBoardServiceEdits)}`)
+    }
+    if (moduleInitiatedRenameCheckEdits.length !== 1) {
+      throw new Error(`Expected JS-initiated rename to update EJS usage. Got: ${JSON.stringify(moduleInitiatedRenameCheckEdits)}`)
+    }
+    if (moduleInitiatedMiddlewareEdits.length !== 1) {
+      throw new Error(`Expected JS-initiated rename to update JS resolve() usage. Got: ${JSON.stringify(moduleInitiatedMiddlewareEdits)}`)
+    }
+
+    const jsResolveRenameText = fs.readFileSync(fixture.middlewareFilePath, 'utf8')
+    const jsResolveRenameOffset = jsResolveRenameText.indexOf('readAuthState') + 2
+    const jsResolveRenameInfo = service.getRenameInfo(fixture.middlewareFilePath, jsResolveRenameText, jsResolveRenameOffset)
+    if (!jsResolveRenameInfo || !jsResolveRenameInfo.canRename || jsResolveRenameInfo.placeholder !== 'readAuthState') {
+      throw new Error(`Expected JS resolve() rename info. Got: ${JSON.stringify(jsResolveRenameInfo)}`)
+    }
+
+    const jsResolveRenameEdits = service.getRenameEdits(
+      fixture.middlewareFilePath,
+      jsResolveRenameText,
+      jsResolveRenameOffset,
+      'readSessionState'
+    )
+    if (!jsResolveRenameEdits || !jsResolveRenameEdits.canRename) {
+      throw new Error(`Expected JS resolve() rename edits. Got: ${JSON.stringify(jsResolveRenameEdits)}`)
+    }
+
+    const jsResolveBoardServiceEdits = jsResolveRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardServiceFilePath)
+    )
+    const jsResolveRenameCheckEdits = jsResolveRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath)
+    )
+    const jsResolveMiddlewareEdits = jsResolveRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.middlewareFilePath)
+    )
+
+    if (jsResolveBoardServiceEdits.length < 2) {
+      throw new Error(`Expected JS resolve() rename to update module declaration + export. Got: ${JSON.stringify(jsResolveBoardServiceEdits)}`)
+    }
+    if (jsResolveRenameCheckEdits.length !== 1) {
+      throw new Error(`Expected JS resolve() rename to update EJS usage. Got: ${JSON.stringify(jsResolveRenameCheckEdits)}`)
+    }
+    if (jsResolveMiddlewareEdits.length !== 1) {
+      throw new Error(`Expected JS resolve() rename to update current JS usage. Got: ${JSON.stringify(jsResolveMiddlewareEdits)}`)
+    }
+
+    const resolvePathReferenceOffset = renameText.indexOf('board-service') + 2
+    const resolvePathReferences = service.getReferenceTargets(
+      fixture.renameCheckFilePath,
+      renameText,
+      resolvePathReferenceOffset,
+      { includeDeclaration: false }
+    )
+    if (!resolvePathReferences || resolvePathReferences.length !== 2) {
+      throw new Error(`Expected resolve() path references in two files. Got: ${JSON.stringify(resolvePathReferences)}`)
+    }
+    if (
+      !resolvePathReferences.some(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath)
+      ) ||
+      !resolvePathReferences.some(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.middlewareFilePath)
+      )
+    ) {
+      throw new Error(`Expected resolve() path references for rename-check and middleware. Got: ${JSON.stringify(resolvePathReferences)}`)
+    }
+
+    const resolvedMemberReferences = service.getReferenceTargets(
+      fixture.renameCheckFilePath,
+      renameText,
+      renameOffset,
+      { includeDeclaration: true }
+    )
+    if (!resolvedMemberReferences || resolvedMemberReferences.length !== 4) {
+      throw new Error(`Expected resolved member references for declaration, export, and usages. Got: ${JSON.stringify(resolvedMemberReferences)}`)
+    }
+
+    const moduleExportReferences = service.getReferenceTargets(
+      fixture.boardServiceFilePath,
+      moduleRenameText,
+      moduleRenameOffset,
+      { includeDeclaration: true }
+    )
+    if (!moduleExportReferences || moduleExportReferences.length !== 4) {
+      throw new Error(`Expected module export references to include JS and EJS usages. Got: ${JSON.stringify(moduleExportReferences)}`)
     }
 
     const hrefDefinition = indexService.getDefinitionTarget(
