@@ -4,7 +4,7 @@
  * @returns {{ request: any, dbg: any, info: any, warn: any, error: any }} 서비스 함수에서 재사용할 기본 컨텍스트입니다.
  */
 function buildBaseContext(api) {
-  const source = api && typeof api === 'object' ? api : {}
+  const source = api && typeof api === "object" ? api : {};
 
   return {
     request: source.request || null,
@@ -12,7 +12,7 @@ function buildBaseContext(api) {
     info: source.info,
     warn: source.warn,
     error: source.error,
-  }
+  };
 }
 
 /**
@@ -21,13 +21,13 @@ function buildBaseContext(api) {
  * @returns {{ createStaffDiaryAnalysisCacheDT?: Function }} 분석 단계에서 쓰는 DT 팩토리 묶음입니다.
  */
 function resolveAnalyzeDT(resolve) {
-  if (typeof resolve !== 'function') {
-    return {}
+  if (typeof resolve !== "function") {
+    return {};
   }
 
   return {
-    createStaffDiaryAnalysisCacheDT: resolve('table/staff-diary-analysis-cache-dt'),
-  }
+    createStaffDiaryAnalysisCacheDT: resolve("table/staff-diary-analysis-cache-dt"),
+  };
 }
 
 /**
@@ -36,18 +36,18 @@ function resolveAnalyzeDT(resolve) {
  * @returns {Record<string, Function>} 수집 단계에서 쓰는 DT 팩토리 묶음입니다.
  */
 function resolveCollectDT(resolve) {
-  if (typeof resolve !== 'function') {
-    return {}
+  if (typeof resolve !== "function") {
+    return {};
   }
 
   return {
     ...resolveAnalyzeDT(resolve),
-    createRecruitingWeekPlanDT: resolve('table/recruiting-week-plan-dt'),
-    createRecruitingWeekPlanItemDT: resolve('table/recruiting-week-plan-item-dt'),
-    createRecruitingDailyResultDT: resolve('table/recruiting-daily-result-dt'),
-    createRecruitingWeekTextPlanDT: resolve('table/recruiting-week-text-plan-dt'),
-    createRecruitingWeekTextRowDT: resolve('table/recruiting-week-text-row-dt'),
-  }
+    createRecruitingWeekPlanDT: resolve("table/recruiting-week-plan-dt"),
+    createRecruitingWeekPlanItemDT: resolve("table/recruiting-week-plan-item-dt"),
+    createRecruitingDailyResultDT: resolve("table/recruiting-daily-result-dt"),
+    createRecruitingWeekTextPlanDT: resolve("table/recruiting-week-text-plan-dt"),
+    createRecruitingWeekTextRowDT: resolve("table/recruiting-week-text-row-dt"),
+  };
 }
 
 /**
@@ -56,11 +56,11 @@ function resolveCollectDT(resolve) {
  * @returns {{ request: any, dbg: any, info: any, warn: any, error: any, dt: Record<string, Function> }} 분석용 서비스 컨텍스트입니다.
  */
 function buildAnalyzeContext(api) {
-  const baseContext = buildBaseContext(api)
+  const baseContext = buildBaseContext(api);
   return {
     ...baseContext,
     dt: resolveAnalyzeDT(api && api.resolve),
-  }
+  };
 }
 
 /**
@@ -69,15 +69,15 @@ function buildAnalyzeContext(api) {
  * @returns {{ request: any, dbg: any, info: any, warn: any, error: any, dt: Record<string, Function> }} 수집용 서비스 컨텍스트입니다.
  */
 function buildCollectContext(api) {
-  const baseContext = buildBaseContext(api)
+  const baseContext = buildBaseContext(api);
   return {
     ...baseContext,
     dt: resolveCollectDT(api && api.resolve),
-  }
+  };
 }
 
 module.exports = {
   buildBaseContext,
   buildAnalyzeContext,
   buildCollectContext,
-}
+};
