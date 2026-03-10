@@ -1,4 +1,5 @@
-module.exports = {
+/** @type {types.SampleBoardService} */
+const boardService = {
   findActiveBoardBySlug(boardSlug) {
     const slug = String(boardSlug || "").trim();
 
@@ -36,3 +37,5 @@ module.exports = {
       .slice(0, 200);
   },
 };
+
+module.exports = boardService;
