@@ -3,7 +3,7 @@
  * @param {core.Record} record 댓글 record입니다.
  * @returns {object} 댓글 검증 메서드만 가진 DT입니다.
  */
-module.exports = function createCommentDT(record) {
+function toDT(record) {
   const id = record.get('id')
   const post = record.get('post')
   const author_name = String(record.get('author_name') || '').trim()
@@ -36,4 +36,8 @@ module.exports = function createCommentDT(record) {
       return !this.isDeleted()
     },
   }
+}
+
+module.exports = {
+  toDT,
 }

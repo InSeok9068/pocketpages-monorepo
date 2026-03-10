@@ -1,7 +1,7 @@
 <script server>
   const boardService = resolve('board-service')
-  const createBoardDT = resolve('table/board-dt')
-  const createPostDT = resolve('table/post-dt')
+  const boardTable = resolve('table/board-dt')
+  const postTable = resolve('table/post-dt')
   const form = body()
   const boardSlug = String(form.board || '').trim()
   const title = String(form.title || '').trim()
@@ -14,7 +14,7 @@
   dbg('api/posts/create:start', { boardSlug, title, status, isNotice })
 
   const selectedBoard = boardService.findActiveBoardBySlug(boardSlug)
-  const boardDT = selectedBoard ? createBoardDT(selectedBoard) : null
+  const boardDT = selectedBoard ? boardTable.toDT(selectedBoard) : null
   let errorMessage = ''
 
   if (!selectedBoard) {
@@ -43,7 +43,7 @@
       if (status === 'published') {
         record.set('published_at', new Date().toISOString())
       }
-      const postDT = createPostDT(record)
+      const postDT = postTable.toDT(record)
       if (status === 'published' && !postDT.canPublish()) {
         throw new Error('게시글은 draft 상태에서 제목과 본문이 모두 있어야 게시할 수 있습니다.')
       }

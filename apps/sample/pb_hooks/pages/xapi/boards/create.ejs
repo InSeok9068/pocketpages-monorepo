@@ -1,6 +1,6 @@
 <script server>
   const boardService = resolve('board-service')
-  const createBoardDT = resolve('table/board-dt')
+  const boardTable = resolve('table/board-dt')
   const form = body()
   const name = String(form.name || '').trim()
   const slug = boardService.slugify(form.slug || form.name).slice(0, 80)
@@ -31,7 +31,7 @@
       record.set('description', description)
       record.set('is_active', true)
       record.set('sort_order', 0)
-      const boardDT = createBoardDT(record)
+      const boardDT = boardTable.toDT(record)
 
       if (!boardDT.isUsable()) {
         throw new Error('활성 상태의 게시판만 생성할 수 있습니다.')

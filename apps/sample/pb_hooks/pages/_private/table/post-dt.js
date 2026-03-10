@@ -3,7 +3,7 @@
  * @param {core.Record} record 게시글 record입니다.
  * @returns {object} 게시글 검증 메서드만 가진 DT입니다.
  */
-module.exports = function createPostDT(record) {
+function toDT(record) {
   const id = record.get('id')
   const board = record.get('board')
   const title = String(record.get('title') || '').trim()
@@ -48,4 +48,8 @@ module.exports = function createPostDT(record) {
       return this.isPublished()
     },
   }
+}
+
+module.exports = {
+  toDT,
 }

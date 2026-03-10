@@ -3,7 +3,7 @@
  * @param {core.Record} record 검증할 주간 텍스트 계획 레코드입니다.
  * @returns {{ isConfirmed: () => boolean, canSaveConfirmed: () => boolean }} 저장 전 상태를 확인하는 DT입니다.
  */
-module.exports = function createRecruitingWeekTextPlanDT(record) {
+function toDT(record) {
   const id = record.get('id')
   const weekStartDate = String(record.get('weekStartDate') || '').trim()
   const dept = String(record.get('dept') || '').trim()
@@ -21,4 +21,8 @@ module.exports = function createRecruitingWeekTextPlanDT(record) {
       return !!weekStartDate && !!dept && status === 'confirmed'
     },
   }
+}
+
+module.exports = {
+  toDT,
 }

@@ -3,7 +3,7 @@
  * @param {core.Record} record 검증할 모집 실적 레코드입니다.
  * @returns {{ isAiSource: () => boolean, canSaveAiResult: () => boolean }} 저장 전 상태를 확인하는 DT입니다.
  */
-module.exports = function createRecruitingDailyResultDT(record) {
+function toDT(record) {
   const id = record.get('id')
   const reportDate = String(record.get('reportDate') || '').trim()
   const weekStartDate = String(record.get('weekStartDate') || '').trim()
@@ -25,4 +25,8 @@ module.exports = function createRecruitingDailyResultDT(record) {
       return !!reportDate && !!weekStartDate && !!dept && !!weekday && sourceType === 'ai' && Number.isFinite(actualCount) && actualCount >= 0
     },
   }
+}
+
+module.exports = {
+  toDT,
 }

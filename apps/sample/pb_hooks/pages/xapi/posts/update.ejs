@@ -1,7 +1,7 @@
 <script server>
   const boardService = resolve('board-service')
-  const createBoardDT = resolve('table/board-dt')
-  const createPostDT = resolve('table/post-dt')
+  const boardTable = resolve('table/board-dt')
+  const postTable = resolve('table/post-dt')
   const form = body()
   const boardSlug = String(form.board || '').trim()
   const postSlug = String(form.post || '').trim()
@@ -15,7 +15,7 @@
   dbg('api/posts/update:start', { boardSlug, postSlug, nextSlug, status, isNotice })
 
   const board = boardService.findActiveBoardBySlug(boardSlug)
-  const boardDT = board ? createBoardDT(board) : null
+  const boardDT = board ? boardTable.toDT(board) : null
   let post = null
   let errorMessage = ''
 
@@ -43,7 +43,7 @@
 
   if (!errorMessage) {
     try {
-      const beforePostDT = createPostDT(post)
+      const beforePostDT = postTable.toDT(post)
       if (!beforePostDT.canEdit()) {
         throw new Error('archived 상태의 게시글은 수정하거나 삭제할 수 없습니다.')
       }
@@ -60,7 +60,7 @@
       if (status === 'published' && !post.get('published_at')) {
         post.set('published_at', new Date().toISOString())
       }
-      const nextPostDT = createPostDT(post)
+      const nextPostDT = postTable.toDT(post)
       if (status === 'published' && !nextPostDT.canPublish()) {
         throw new Error('게시글은 draft 상태에서 제목과 본문이 모두 있어야 게시할 수 있습니다.')
       }

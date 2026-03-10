@@ -1,12 +1,11 @@
 <script server>
   const kjcaService = resolve('kjca-service')
-  const routeContext = resolve('kjca-route-context')
 
   const payload = body()
 
   try {
     const result = kjcaService.collectWeekly(
-      routeContext.buildCollectContext({ request, dbg, info, warn, error, resolve }),
+      { request, dbg, info, warn, error, resolve },
       payload,
     )
 

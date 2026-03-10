@@ -393,7 +393,36 @@ function findMatchingBrace(content, openBraceIndex) {
   return -1
 }
 
+function extractNamedFunctionBody(content, functionName) {
+  const pattern = new RegExp(`\\bfunction\\s+${functionName}\\s*\\(`)
+  const match = pattern.exec(content)
+  if (!match) {
+    return null
+  }
+
+  const functionIndex = match.index
+  const openBraceIndex = content.indexOf('{', functionIndex)
+  if (openBraceIndex === -1) {
+    return null
+  }
+
+  const closeBraceIndex = findMatchingBrace(content, openBraceIndex)
+  if (closeBraceIndex === -1) {
+    return null
+  }
+
+  return {
+    body: content.slice(openBraceIndex + 1, closeBraceIndex),
+    bodyStartIndex: openBraceIndex + 1,
+  }
+}
+
 function extractExportedFunctionBody(content) {
+  const namedToDT = extractNamedFunctionBody(content, 'toDT')
+  if (namedToDT) {
+    return namedToDT
+  }
+
   const exportIndex = content.indexOf('module.exports')
   if (exportIndex === -1) {
     return null

@@ -3,7 +3,7 @@
  * @param {core.Record} record 검증할 주간 텍스트 행 레코드입니다.
  * @returns {{ hasContent: () => boolean, canSave: () => boolean }} 저장 전 상태를 확인하는 DT입니다.
  */
-module.exports = function createRecruitingWeekTextRowDT(record) {
+function toDT(record) {
   const id = record.get('id')
   const planId = record.get('planId')
   const weekday = String(record.get('weekday') || '').trim()
@@ -28,4 +28,8 @@ module.exports = function createRecruitingWeekTextRowDT(record) {
       return !!weekday
     },
   }
+}
+
+module.exports = {
+  toDT,
 }

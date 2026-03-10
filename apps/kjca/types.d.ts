@@ -134,7 +134,7 @@ declare namespace types {
     request?: {
       auth?: core.Record | null
     }
-    dt?: Record<string, any>
+    resolve?: (path: string) => any
     dbg?: (...args: any[]) => void
     info?: (...args: any[]) => void
     warn?: (...args: any[]) => void

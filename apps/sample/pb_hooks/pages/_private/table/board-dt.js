@@ -3,7 +3,7 @@
  * @param {core.Record} record 게시판 record입니다.
  * @returns {object} 게시판 검증 메서드만 가진 DT입니다.
  */
-module.exports = function createBoardDT(record) {
+function toDT(record) {
   const id = record.get('id')
   const name = String(record.get('name') || '').trim()
   const slug = String(record.get('slug') || '').trim()
@@ -24,4 +24,8 @@ module.exports = function createBoardDT(record) {
       return is_active
     },
   }
+}
+
+module.exports = {
+  toDT,
 }

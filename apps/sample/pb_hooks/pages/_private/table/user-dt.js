@@ -3,7 +3,7 @@
  * @param {core.Record} record 사용자 record입니다.
  * @returns {object} 사용자 검증 메서드만 가진 DT입니다.
  */
-module.exports = function createUserDT(record) {
+function toDT(record) {
   const id = record.get('id')
   const password = record.get('password')
   const tokenKey = record.get('tokenKey')
@@ -36,4 +36,8 @@ module.exports = function createUserDT(record) {
       return verified === true
     },
   }
+}
+
+module.exports = {
+  toDT,
 }

@@ -3,7 +3,7 @@
  * @param {core.Record} record 검증할 분석 캐시 레코드입니다.
  * @returns {{ isSuccessStatus: () => boolean, canSaveSuccess: () => boolean }} 저장 전 상태를 확인하는 DT입니다.
  */
-module.exports = function createStaffDiaryAnalysisCacheDT(record) {
+function toDT(record) {
   const id = record.get('id')
   const reportDate = String(record.get('reportDate') || '').trim()
   const dept = String(record.get('dept') || '').trim()
@@ -30,4 +30,8 @@ module.exports = function createStaffDiaryAnalysisCacheDT(record) {
       return !!reportDate && !!dept && !!printUrl && !!sourceHash && (!status || status === 'success')
     },
   }
+}
+
+module.exports = {
+  toDT,
 }

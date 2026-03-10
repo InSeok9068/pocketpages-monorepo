@@ -1059,21 +1059,13 @@ function readMappedKjcaCredentials(ctx) {
   };
 }
 
-function buildServiceContext(ctx) {
-  const source = ctx && typeof ctx === "object" ? ctx : {};
-  return {
-    ...source,
-    dt: source.dt && typeof source.dt === "object" ? source.dt : {},
-  };
-}
-
 /**
  * KJCA 관리자 사이트에 로그인해 재사용 가능한 세션 정보를 만듭니다.
  * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 인증 정보를 포함한 서비스 컨텍스트입니다.
  * @returns {types.KjcaSession} 이후 요청에서 재사용할 KJCA 세션 정보입니다.
  */
 function createKjcaSession(ctx) {
-  const safeCtx = buildServiceContext(ctx);
+  const safeCtx = ctx && typeof ctx === "object" ? ctx : {};
   const credentials = readMappedKjcaCredentials(safeCtx);
 
   emitLog(safeCtx, "info", "kjca/session:start", {
@@ -1173,7 +1165,7 @@ function fetchDiaryList(ctx, session, scDay) {
  * @returns {types.KjcaProbeResult} 접근 가능 여부와 팀장 목록을 담은 결과입니다.
  */
 function probeStaffAuth(ctx, payload, session) {
-  const safeCtx = buildServiceContext(ctx);
+  const safeCtx = ctx && typeof ctx === "object" ? ctx : {};
   const safeSession = session || createKjcaSession(safeCtx);
   const scDay = normalizeReportDate(payload && (payload.scDay || payload.reportDate));
 
@@ -1457,9 +1449,9 @@ function upsertSuccessCache(ctx, params) {
   targetRecord.set("model", GEMINI_MODEL_NAME);
   targetRecord.set("promptVersion", params.promptVersion);
 
-  const createCacheDT = ctx.dt.createStaffDiaryAnalysisCacheDT;
-  if (typeof createCacheDT === "function") {
-    const cacheDT = createCacheDT(targetRecord);
+  const cacheTable = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/staff-diary-analysis-cache-dt") : null;
+  if (cacheTable && typeof cacheTable.toDT === "function") {
+    const cacheDT = cacheTable.toDT(targetRecord);
     if (!cacheDT.canSaveSuccess()) {
       emitLog(ctx, "warn", "kjca/analyze:cache-skip", {
         dept: params.dept,
@@ -1474,13 +1466,13 @@ function upsertSuccessCache(ctx, params) {
 
 /**
  * 팀장 업무일지 본문을 읽어 AI 분석 결과 목록으로 변환합니다.
- * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 DT 팩토리를 포함한 서비스 컨텍스트입니다.
+ * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 resolve를 포함한 서비스 컨텍스트입니다.
  * @param {types.KjcaAnalyzePayload | null | undefined} payload 분석 날짜와 대상 목록을 담은 입력값입니다.
  * @param {types.KjcaSession | null | undefined} session 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
  * @returns {types.KjcaAnalyzeCallResult} 분석 결과 목록과 중단 사유를 담은 결과입니다.
  */
 function analyzeStaffDiary(ctx, payload, session) {
-  const safeCtx = buildServiceContext(ctx);
+  const safeCtx = ctx && typeof ctx === "object" ? ctx : {};
   const safeSession = session || createKjcaSession(safeCtx);
   const targets = Array.isArray(payload && payload.targets) ? payload.targets : [];
   const reportDate = normalizeReportDate(payload && payload.reportDate);
@@ -1766,9 +1758,9 @@ function upsertWeekTextPlan(ctx, params) {
   plan.set("dept", dept);
   plan.set("status", "confirmed");
 
-  const createPlanDT = ctx.dt.createRecruitingWeekTextPlanDT;
-  if (typeof createPlanDT === "function") {
-    const planDT = createPlanDT(plan);
+  const recruitingWeekTextPlan = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-week-text-plan-dt") : null;
+  if (recruitingWeekTextPlan && typeof recruitingWeekTextPlan.toDT === "function") {
+    const planDT = recruitingWeekTextPlan.toDT(plan);
     if (!planDT.canSaveConfirmed()) {
       return { ok: false, reason: "plan-invalid" };
     }
@@ -1792,7 +1784,7 @@ function upsertWeekTextPlan(ctx, params) {
     $app.delete(row);
   });
 
-  const createRowDT = ctx.dt.createRecruitingWeekTextRowDT;
+  const recruitingWeekTextRow = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-week-text-row-dt") : null;
   nextRows.forEach((row) => {
     const record = new Record(rowCollection);
     record.set("planId", plan.id);
@@ -1807,8 +1799,8 @@ function upsertWeekTextPlan(ctx, params) {
     record.set("note", row.note);
     record.set("sortOrder", row.sortOrder);
 
-    if (typeof createRowDT === "function") {
-      const rowDT = createRowDT(record);
+    if (recruitingWeekTextRow && typeof recruitingWeekTextRow.toDT === "function") {
+      const rowDT = recruitingWeekTextRow.toDT(record);
       if (!rowDT.canSave()) return;
     }
 
@@ -1847,7 +1839,7 @@ function upsertWeekTextRowsForWeekday(ctx, params) {
   const weekdayRows = normalizeWeekTextRows(params.rows).filter((row) => row.weekday === weekday);
   if (weekdayRows.length === 0) return { ok: true, reason: "weekday-empty-rows" };
 
-  const createRowDT = ctx.dt.createRecruitingWeekTextRowDT;
+  const recruitingWeekTextRow = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-week-text-row-dt") : null;
   weekdayRows.forEach((row, index) => {
     const record = new Record(rowCollection);
     record.set("planId", plan.id);
@@ -1862,8 +1854,8 @@ function upsertWeekTextRowsForWeekday(ctx, params) {
     record.set("note", row.note);
     record.set("sortOrder", index);
 
-    if (typeof createRowDT === "function") {
-      const rowDT = createRowDT(record);
+    if (recruitingWeekTextRow && typeof recruitingWeekTextRow.toDT === "function") {
+      const rowDT = recruitingWeekTextRow.toDT(record);
       if (!rowDT.canSave()) return;
     }
 
@@ -1921,9 +1913,9 @@ function upsertRecruitingWeekPlan(ctx, params) {
   plan.set("weekTarget", params.weekTarget);
   plan.set("status", "confirmed");
 
-  const createPlanDT = ctx.dt.createRecruitingWeekPlanDT;
-  if (typeof createPlanDT === "function") {
-    const planDT = createPlanDT(plan);
+  const recruitingWeekPlan = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-week-plan-dt") : null;
+  if (recruitingWeekPlan && typeof recruitingWeekPlan.toDT === "function") {
+    const planDT = recruitingWeekPlan.toDT(plan);
     if (!planDT.canSaveConfirmed()) {
       return { ok: false, reason: "plan-invalid" };
     }
@@ -1983,7 +1975,7 @@ function upsertRecruitingWeekPlan(ctx, params) {
     });
   }
 
-  const createItemDT = ctx.dt.createRecruitingWeekPlanItemDT;
+  const recruitingWeekPlanItem = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-week-plan-item-dt") : null;
   nextItems.forEach((item) => {
     const record = new Record(itemCollection);
     record.set("planId", plan.id);
@@ -1995,8 +1987,8 @@ function upsertRecruitingWeekPlan(ctx, params) {
     record.set("note", item.note);
     record.set("sortOrder", item.sortOrder);
 
-    if (typeof createItemDT === "function") {
-      const itemDT = createItemDT(record);
+    if (recruitingWeekPlanItem && typeof recruitingWeekPlanItem.toDT === "function") {
+      const itemDT = recruitingWeekPlanItem.toDT(record);
       if (!itemDT.canSave()) return;
     }
 
@@ -2035,9 +2027,9 @@ function upsertRecruitingDailyResult(ctx, params) {
   target.set("sourceType", "ai");
   target.set("memo", "AI 자동 추출");
 
-  const createDailyResultDT = ctx.dt.createRecruitingDailyResultDT;
-  if (typeof createDailyResultDT === "function") {
-    const dailyResultDT = createDailyResultDT(target);
+  const recruitingDailyResult = ctx && typeof ctx.resolve === "function" ? ctx.resolve("table/recruiting-daily-result-dt") : null;
+  if (recruitingDailyResult && typeof recruitingDailyResult.toDT === "function") {
+    const dailyResultDT = recruitingDailyResult.toDT(target);
     if (!dailyResultDT.canSaveAiResult()) {
       return { ok: false, reason: "daily-result-invalid" };
     }
@@ -2074,7 +2066,7 @@ function upsertRecruitingDailyResult(ctx, params) {
  * @returns {types.KjcaCacheClearResult} 삭제 결과 요약입니다.
  */
 function clearAnalysisCache(ctx, payload) {
-  const safeCtx = buildServiceContext(ctx);
+  const safeCtx = ctx && typeof ctx === "object" ? ctx : {};
   ensureSuperuserRequest(safeCtx);
 
   const reportDate = normalizeReportDate(payload && payload.reportDate);
@@ -2106,12 +2098,12 @@ function clearAnalysisCache(ctx, payload) {
 
 /**
  * 특정 날짜 기준으로 업무일지 분석과 주간 집계를 한 번에 수행합니다.
- * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 DT 팩토리를 포함한 서비스 컨텍스트입니다.
+ * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 resolve를 포함한 서비스 컨텍스트입니다.
  * @param {types.KjcaCollectPayload | null | undefined} payload 집계 날짜와 테스트 옵션을 담은 입력값입니다.
  * @returns {types.KjcaCollectResult} 집계 후 화면 구성에 필요한 전체 결과입니다.
  */
 function collectWeekly(ctx, payload) {
-  const safeCtx = buildServiceContext(ctx);
+  const safeCtx = ctx && typeof ctx === "object" ? ctx : {};
   ensureSuperuserRequest(safeCtx);
 
   const reportDate = normalizeReportDate(payload && payload.reportDate);

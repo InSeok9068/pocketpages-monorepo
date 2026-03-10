@@ -3,7 +3,7 @@
  * @param {core.Record} record 데모 노트 record입니다.
  * @returns {object} 데모 노트 검증 메서드만 가진 DT입니다.
  */
-module.exports = function createDemoNoteDT(record) {
+function toDT(record) {
   const id = record.get('id')
   const title = String(record.get('title') || '').trim()
   const body = String(record.get('body') || '').trim()
@@ -22,4 +22,8 @@ module.exports = function createDemoNoteDT(record) {
       return !!body
     },
   }
+}
+
+module.exports = {
+  toDT,
 }
