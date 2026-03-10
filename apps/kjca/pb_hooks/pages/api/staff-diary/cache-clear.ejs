@@ -1,7 +1,13 @@
 <script server>
   const kjcaService = resolve('kjca-service')
 
-  const payload = body()
+  const requestBody = body()
+  const payload = {
+    reportDate: requestBody && requestBody.reportDate,
+    dept: requestBody && requestBody.dept,
+  }
+
+  dbg('api/staff-diary/cache-clear:start', payload)
 
   try {
     const result = kjcaService.clearAnalysisCache(
@@ -13,6 +19,8 @@
   } catch (exception) {
     const errorMessage = String(exception.message || exception)
     error('api/staff-diary/cache-clear:failed', {
+      reportDate: payload.reportDate,
+      dept: payload.dept,
       error: errorMessage,
     })
     response.json(500, {

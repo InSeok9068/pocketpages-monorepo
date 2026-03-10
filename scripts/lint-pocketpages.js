@@ -828,7 +828,7 @@ function lintService(context) {
     .map((file) => {
       const matches = file.content.match(RE.roleResolvePath)
       const count = matches ? matches.length : 0
-      if (count <= 4) {
+      if (count <= 10) {
         return ''
       }
 

@@ -1,6 +1,13 @@
 <script server>
   const kjcaService = resolve('kjca-service')
-  const collectRoles = resolve('kjca-collect-roles')
+  const collectRoles = {
+    staffDiaryAnalysisCacheRole: resolve('roles/staff-diary-analysis-cache'),
+    recruitingWeekPlanRole: resolve('roles/recruiting-week-plan'),
+    recruitingWeekPlanItemRole: resolve('roles/recruiting-week-plan-item'),
+    recruitingDailyResultRole: resolve('roles/recruiting-daily-result'),
+    recruitingWeekTextPlanRole: resolve('roles/recruiting-week-text-plan'),
+    recruitingWeekTextRowRole: resolve('roles/recruiting-week-text-row'),
+  }
 
   const authState = kjcaService.readAuthState(request)
   const form = body()
@@ -27,10 +34,15 @@
     })
   } else {
     try {
+      const collectPayload = {
+        reportDate: formState.reportDate,
+        testOneOnly: formState.testOneOnly,
+      }
+
       const result = kjcaService.collectWeekly(
         request,
         collectRoles,
-        formState,
+        collectPayload,
       )
       dashboardState = kjcaService.buildDashboardStateFromCollectResult(result, formState)
     } catch (exception) {

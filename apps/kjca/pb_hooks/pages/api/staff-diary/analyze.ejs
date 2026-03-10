@@ -2,7 +2,16 @@
   const kjcaService = resolve('kjca-service')
   const staffDiaryAnalysisCacheRole = resolve('roles/staff-diary-analysis-cache')
 
-  const payload = body()
+  const requestBody = body()
+  const payload = {
+    reportDate: requestBody && requestBody.reportDate,
+    targets: requestBody && requestBody.targets,
+  }
+
+  dbg('api/staff-diary/analyze:start', {
+    reportDate: payload.reportDate,
+    targetsCount: Array.isArray(payload.targets) ? payload.targets.length : 0,
+  })
 
   try {
     const result = kjcaService.analyzeStaffDiary(
@@ -15,6 +24,7 @@
   } catch (exception) {
     const errorMessage = String(exception.message || exception)
     error('api/staff-diary/analyze:failed', {
+      reportDate: payload.reportDate,
       error: errorMessage,
     })
     response.json(500, {
