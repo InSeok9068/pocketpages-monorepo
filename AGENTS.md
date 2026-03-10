@@ -86,6 +86,11 @@
 - EJS, `<script server>`, loader, middleware처럼 PocketPages 요청 컨텍스트 안에서는 `_private` 모듈을 `resolve()`로 불러올 수 있습니다.
 - `resolve()`는 `_private`를 포함한 전체 경로를 넘기는 것이 아니라, `_private` 기준 이름으로 사용합니다.
 - 예시: `resolve('board-service')`
+- `resolve()`는 **요청 엔트리에서 필요한 의존성을 조립하는 용도**로 사용하고, `_private/*.js` 내부에서 연쇄적으로 다시 호출하는 구조를 기본값으로 삼지 않습니다.
+- `_private/*.js`는 PocketPages 요청 컨텍스트가 자동 주입되는 위치가 아니므로, 그 내부에서 `resolve()`를 전역처럼 가정하지 않습니다.
+- `_private` 모듈이 다른 `_private` 모듈이나 DT에 의존하면, EJS/loader/middleware 같은 엔트리에서 먼저 `resolve()`로 불러온 뒤 함수 인자로 넘겨 **의존성 주입** 형태로 조합합니다.
+- 즉 바깥에서는 `resolve()`로 조립하고, 안쪽 `_private` 함수는 **전달받은 의존성만 사용해 로직을 수행하는 구조**를 기본 패턴으로 봅니다.
+- `_private/*.js` 내부에서 `require('pocketpages')`처럼 CommonJS import를 쓰는 것은 가능하지만, 이것으로 PocketPages의 `_private` 탐색 규칙이나 요청별 `resolve()` 문맥을 대체하려고 하지 않습니다.
 - middleware에서는 `resolve()`를 전역 함수처럼 직접 호출하지 말고, `module.exports = function ({ resolve }) { ... }`처럼 **인자로 받은 `resolve`**를 사용합니다.
 - `resolve('/_private/board-service')` 같은 형태는 `_private/_private/...`로 잘못 해석될 수 있으므로 사용하지 않습니다.
 - `_private` 파일은 **가까운 곳에 두고**, 더 넓게 재사용되기 시작하면 상위 디렉터리로 올립니다.
@@ -204,6 +209,7 @@
 - 파일 구조만 봐도 흐름을 추적할 수 있는가
 - 공통 책임과 페이지 전용 책임이 섞이지 않았는가
 - `_private` 파일이 실제 사용 범위와 맞는 위치에 있는가
+- 엔트리에서 필요한 `resolve()`를 먼저 조립하고, `_private` 모듈 내부는 의존성 주입 기반으로 유지했는가
 - 따로 분리한 함수라면 JSDoc이 있고, 필요한 named type은 `apps/<service>/types.d.ts`에 정리되어 있으며, 함수/파라미터 역할 설명이 짧은 한글로 적혀 있는가
 - 서버 작업이라면 단계별 로그가 충분한가
 - EJS에서 `record.get()` 접근이 맞는가
