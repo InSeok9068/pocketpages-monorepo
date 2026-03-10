@@ -12,6 +12,7 @@
 
 - 플랫폼: PocketBase
 - 앱 레이어: PocketPages (`require('pocketpages')`)
+- 인증 헬퍼: `pocketpages-plugin-auth`
 - 템플릿 엔진: EJS (`pocketpages-plugin-ejs`)
 - 페이지 루트: `pb_hooks/pages`
 - 클라이언트 상호작용: Alpine.js
@@ -32,6 +33,7 @@
 - `apps/<service>/pb_hooks/pages/_private/*`: partial, 서버 유틸, 내부 모듈
 - `apps/<service>/pb_schema.json`: PocketBase 스키마 스냅샷
 - `apps/<service>/pb_data/types.d.ts`: 서비스 기준 PocketBase JSVM 타입 정의
+- `apps/<service>/types.d.ts`: 해당 서비스의 JSDoc 타입 네임스페이스
 - `.docs/pocketpages/*`: PocketPages 문서 스냅샷
 - `.docs/pocketbase/pocketbase_docs_js.md`: PocketBase JS 문서
 
@@ -120,6 +122,13 @@
 - PocketBase JSVM 코드는 반드시 해당 서비스의 `pb_data/types.d.ts`를 기준으로 가능한 API/타입만 사용합니다.
 - 문서 예시와 `pb_data/types.d.ts`가 다르면 `pb_data/types.d.ts`를 우선합니다.
 - 타입 정의에 없는 심볼/시그니처는 사용하지 않습니다.
+- 서비스 코드에서 이름을 붙여 관리할 JSDoc 타입은 사용 범위와 무관하게 서비스 루트 `types.d.ts`에 둡니다.
+- `types.d.ts`는 기본적으로 **pure ambient** 파일로 유지하고, `declare namespace types { ... }` 형태를 사용합니다.
+- 해당 서비스의 JSDoc 타입은 모노레포 루트가 아니라 **반드시 `apps/<service>/types.d.ts`** 에 둡니다.
+- `pb_data/types.d.ts`는 **PocketBase JSVM 런타임이 실제로 제공하는 API/전역/시그니처의 기준**이고, `types.d.ts`는 **해당 서비스가 JSDoc에서 이름 붙여 재사용하는 입력/출력/렌더링 shape의 기준**입니다. 전자는 "밖에서 주어지는 타입 계약", 후자는 "이 서비스 안에서 관리하는 타입 이름"으로 구분합니다.
+- JS/EJS JSDoc에서 서비스 타입 네임스페이스를 쓸 때는 `types.KjcaDashboardState`처럼 **반드시 `types.*`를 직접 참조합니다.**
+- 서비스 코드 안에서는 로컬 `@typedef`로 named shape를 정의하지 않습니다.
+- 필요한 named type은 항상 `apps/<service>/types.d.ts`에 추가합니다.
 
 ### B. 스키마 확인 기준
 
@@ -172,7 +181,10 @@
 - 페이지 전용 책임은 페이지 안에 유지
 - 파일명만 봐도 역할이 드러나게 구성
 - 여러 곳에서 쓰이도록 함수나 로직을 따로 뺐다면 해당 함수에는 **반드시 JSDoc**을 작성합니다.
-- 함수 입력/반환 타입이 길어지거나 반복되는 shape가 있으면 `@typedef`로 타입을 먼저 정의한 뒤 함수 JSDoc에서 재사용합니다.
+- 함수 입력/반환 타입에 이름을 붙여 관리할 필요가 있으면 `apps/<service>/types.d.ts`에 타입을 먼저 정의한 뒤 함수 JSDoc에서 재사용합니다.
+- 단일 파일에서만 쓰는 타입이라도 서비스 코드에서 named shape가 필요하면 반드시 `apps/<service>/types.d.ts`에 둡니다.
+- 파일 안에서 브리지용 `@typedef {types.SomeType} SomeType`는 두지 않습니다.
+- 함수 JSDoc 본문에서는 `types.SomeType`를 직접 씁니다.
 - JSDoc에는 함수가 하는 일과 각 파라미터의 역할을 **짧은 한글 설명**으로 적고, 구현 과정을 장황하게 풀어쓰지 않습니다.
 
 ## 9) 변경 전 체크리스트
@@ -192,7 +204,7 @@
 - 파일 구조만 봐도 흐름을 추적할 수 있는가
 - 공통 책임과 페이지 전용 책임이 섞이지 않았는가
 - `_private` 파일이 실제 사용 범위와 맞는 위치에 있는가
-- 따로 분리한 함수라면 JSDoc과 필요한 `@typedef`가 있고, 함수/파라미터 역할 설명이 짧은 한글로 적혀 있는가
+- 따로 분리한 함수라면 JSDoc이 있고, 필요한 named type은 `apps/<service>/types.d.ts`에 정리되어 있으며, 함수/파라미터 역할 설명이 짧은 한글로 적혀 있는가
 - 서버 작업이라면 단계별 로그가 충분한가
 - EJS에서 `record.get()` 접근이 맞는가
 - redirect가 필요한 작업 완료/실패 흐름이라면 `redirect(..., { message })` flash 패턴을 사용했는가

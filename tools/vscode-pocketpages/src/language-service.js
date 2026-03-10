@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const ts = require("typescript");
-const { buildTemplateVirtualText, getTemplateCodeBlockAtOffset } = require("./ejs-template");
+const { buildTemplateVirtualText, extractTemplateCodeBlocks, getTemplateCodeBlockAtOffset } = require("./ejs-template");
 const { extractServerBlocks, getServerBlockAtOffset } = require("./script-server");
 const { PocketPagesProjectIndex } = require("./project-index");
 const {
@@ -65,6 +65,18 @@ function isEjsFile(filePath) {
 
 function isScriptFile(filePath) {
   return [".js", ".cjs", ".mjs"].includes(path.extname(String(filePath || "")).toLowerCase());
+}
+
+function isPrivatePagesFile(filePath) {
+  return normalizePath(filePath).includes("/pb_hooks/pages/_private/");
+}
+
+function getAppAmbientTypeFiles(appRoot) {
+  return [
+    path.join(appRoot, "pb_data", "types.d.ts"),
+    path.join(appRoot, "pocketpages-globals.d.ts"),
+    path.join(appRoot, "types.d.ts"),
+  ];
 }
 
 function toAnalysisText(filePath, documentText) {
@@ -319,12 +331,13 @@ class ProjectLanguageService {
   }
 
   refreshStaticFiles() {
-    this.ensureStaticFile(path.join(this.appRoot, "pb_data", "types.d.ts"));
-    this.ensureStaticFile(path.join(this.appRoot, "pocketpages-globals.d.ts"));
+    for (const filePath of getAppAmbientTypeFiles(this.appRoot)) {
+      this.ensureStaticFile(filePath);
+    }
   }
 
   buildPrelude(filePath, analysisText = "") {
-    const references = [path.join(this.appRoot, "pb_data", "types.d.ts"), path.join(this.appRoot, "pocketpages-globals.d.ts")]
+    const references = getAppAmbientTypeFiles(this.appRoot)
       .filter((filePath) => fileExists(filePath))
       .map((filePath) => `/// <reference path="${toReferencePath(filePath)}" />`);
 
@@ -899,10 +912,7 @@ class ProjectLanguageService {
 
   getDiagnostics(filePath, documentText) {
     const blocks = extractServerBlocks(documentText);
-    if (!blocks.length) {
-      return [];
-    }
-
+    const templateBlocks = extractTemplateCodeBlocks(documentText);
     const diagnostics = [];
 
     for (const block of blocks) {
@@ -970,7 +980,87 @@ class ProjectLanguageService {
       }
     }
 
-    return diagnostics;
+    if (templateBlocks.length && !isPrivatePagesFile(filePath)) {
+      const templateVirtual = this.upsertTemplateVirtualFile(filePath, documentText);
+      const templateVirtualText = buildTemplateVirtualText(documentText);
+      const rawDiagnostics = [
+        ...this.languageService.getSyntacticDiagnostics(templateVirtual.fileName),
+        ...this.languageService.getSemanticDiagnostics(templateVirtual.fileName),
+      ];
+      const overlapsTemplateBlock = (start, end) =>
+        templateBlocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
+      const overlapsServerBlock = (start, end) =>
+        blocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
+
+      for (const diagnostic of rawDiagnostics) {
+        if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number") {
+          continue;
+        }
+
+        const start = this.mapVirtualOffsetToDocumentOffset(templateVirtual.fileName, diagnostic.start);
+        const end = this.mapVirtualOffsetToDocumentOffset(templateVirtual.fileName, diagnostic.start + diagnostic.length);
+
+        if (start === null || end === null) {
+          continue;
+        }
+
+        if (!overlapsTemplateBlock(start, end) || overlapsServerBlock(start, end)) {
+          continue;
+        }
+
+        diagnostics.push({
+          code: diagnostic.code,
+          category: diagnostic.category,
+          message: flattenDiagnosticMessage(diagnostic.messageText),
+          start,
+          end,
+        });
+      }
+
+      for (const context of collectSchemaContexts(templateVirtualText)) {
+        if (!overlapsTemplateBlock(context.start, context.end) || overlapsServerBlock(context.start, context.end)) {
+          continue;
+        }
+
+        if (context.kind === "collection-name" && !this.projectIndex.hasCollection(context.value)) {
+          diagnostics.push({
+            code: "pp-schema-collection",
+            category: ts.DiagnosticCategory.Warning,
+            message: `Unknown PocketBase collection "${context.value}" in ${context.methodName}().`,
+            start: context.start,
+            end: context.end,
+          });
+        }
+
+        if (context.kind === "record-field") {
+          const collectionName = this.projectIndex.inferCollectionName(
+            context.receiverExpression,
+            templateVirtualText,
+            context.start
+          );
+
+          if (collectionName && !this.projectIndex.hasField(collectionName, context.value)) {
+            diagnostics.push({
+              code: "pp-schema-field",
+              category: ts.DiagnosticCategory.Warning,
+              message: `Unknown field "${context.value}" for collection "${collectionName}".`,
+              start: context.start,
+              end: context.end,
+            });
+          }
+        }
+      }
+    }
+
+    const uniqueDiagnostics = new Map();
+    for (const diagnostic of diagnostics) {
+      const key = `${diagnostic.code}:${diagnostic.category}:${diagnostic.start}:${diagnostic.end}:${diagnostic.message}`;
+      if (!uniqueDiagnostics.has(key)) {
+        uniqueDiagnostics.set(key, diagnostic);
+      }
+    }
+
+    return [...uniqueDiagnostics.values()];
   }
 
   getDefinitionTarget(filePath, documentText, offset) {

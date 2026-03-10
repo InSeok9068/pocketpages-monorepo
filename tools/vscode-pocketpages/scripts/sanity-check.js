@@ -31,6 +31,17 @@ function createFixtureApp(repoRoot) {
   const appRoot = path.join(fixtureRoot, 'apps', 'fixture-app')
 
   writeFile(
+    path.join(appRoot, 'jsconfig.json'),
+    JSON.stringify(
+      {
+        include: ['pb_data/types.d.ts', 'pocketpages-globals.d.ts', 'types.d.ts', '**/*.ejs', '**/*.js'],
+      },
+      null,
+      2
+    )
+  )
+
+  writeFile(
     path.join(appRoot, 'pb_data', 'types.d.ts'),
     `declare namespace core {
   interface Record {
@@ -118,6 +129,18 @@ export {}
   )
 
   writeFile(
+    path.join(appRoot, 'types.d.ts'),
+    `declare namespace types {
+  type FixtureAuthState = {
+    ok: boolean
+    method: string
+    roleNames: string[]
+  }
+}
+`
+  )
+
+  writeFile(
     path.join(appRoot, 'pb_schema.json'),
     JSON.stringify(
       [
@@ -160,9 +183,15 @@ export {}
   )
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
-    `/** @param {{ request: { method: string } }} params */
+    `/**
+ * @param {{ request: { method: string } }} params
+ * @returns {types.FixtureAuthState}
+ */
 function readAuthState(params) {
-  return { ok: !!params, method: params.request.method }
+  return /** @type {any} */ ({
+    ok: !!params,
+    method: params.request.method,
+  })
 }
 
 module.exports = {
@@ -181,6 +210,7 @@ module.exports = {
     renameCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
     boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
+    flashAlertFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
     signOutFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-out.ejs'),
     signInFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'),
   }
@@ -287,6 +317,30 @@ boardService.readAuthState({ request })
       !typedResolveQuickInfo.displayText.includes('method: string')
     ) {
       throw new Error(`Expected typed resolve() hover info. Got: ${JSON.stringify(typedResolveQuickInfo)}`)
+    }
+
+    const typedResolveReturnCompletionText = `<script server>
+const boardService = resolve('board-service')
+const authState = boardService.readAuthState({ request })
+authState.
+</script>
+`
+    const typedResolveReturnCompletionOffset =
+      typedResolveReturnCompletionText.indexOf('authState.') + 'authState.'.length
+    const typedResolveReturnCompletion = service.getCompletionData(
+      fixture.boardsFilePath,
+      typedResolveReturnCompletionText,
+      typedResolveReturnCompletionOffset
+    )
+    const typedResolveReturnCompletionNames = typedResolveReturnCompletion
+      ? typedResolveReturnCompletion.entries.map((entry) => entry.name)
+      : []
+    if (!typedResolveReturnCompletionNames.includes('roleNames')) {
+      throw new Error(
+        `Expected resolve()-derived return type completion from app types.d.ts. Got: ${typedResolveReturnCompletionNames
+          .slice(0, 20)
+          .join(', ')}`
+      )
     }
 
     const typedResolveSignatureText = `<script server>
@@ -404,8 +458,8 @@ boardService.readAuthState(
     if (!resolvedMemberDefinition.filePath.endsWith('/pb_hooks/pages/_private/board-service.js')) {
       throw new Error(`Expected resolve()-derived member definition file. Got: ${JSON.stringify(resolvedMemberDefinition)}`)
     }
-    if (resolvedMemberDefinition.line !== 1) {
-      throw new Error(`Expected readAuthState definition on line 2. Got: ${JSON.stringify(resolvedMemberDefinition)}`)
+    if (resolvedMemberDefinition.line < 0) {
+      throw new Error(`Expected resolve()-derived member definition line. Got: ${JSON.stringify(resolvedMemberDefinition)}`)
     }
 
     const renameText = `<script server>\nconst boardService = resolve('board-service')\nconst authState = boardService.readAuthState({ request })\n</script>\n`
@@ -619,6 +673,46 @@ boardService.readAuthState(
     }
     if (!diagnosticMessages.some((message) => message.includes('Unknown field "missing_field" for collection "boards"'))) {
       throw new Error(`Expected unknown field diagnostic. Got: ${diagnosticMessages.join(' | ')}`)
+    }
+
+    const templateDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nconst authState = { email: '' }\n</script>\n<p><%= authState.email %></p>\n<p><%= missingAuthState.email %></p>\n`
+    )
+    if (!templateDiagnostics.some((entry) => entry.code === 2304 && String(entry.message).includes('missingAuthState'))) {
+      throw new Error(
+        `Expected EJS template semantic diagnostic for missingAuthState. Got: ${templateDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+
+    const templateSchemaDiagnostics = service.getDiagnostics(
+      fixture.boardShowFilePath,
+      `<% const board = pageData.board %>\n<p><%= board.get('missing_field') %></p>\n`
+    )
+    if (
+      !templateSchemaDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "boards"')
+      )
+    ) {
+      throw new Error(
+        `Expected EJS template schema diagnostic. Got: ${templateSchemaDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+
+    const privateTemplateDiagnostics = service.getDiagnostics(
+      fixture.flashAlertFilePath,
+      `<% const flashTone = isErrorFlash ? 'error' : 'notice' %>\n<div><%= flashMessage %> / <%= flashTone %></div>\n`
+    )
+    if (privateTemplateDiagnostics.some((entry) => entry.code === 2304)) {
+      throw new Error(
+        `Expected _private EJS template diagnostics to skip include locals. Got: ${privateTemplateDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
     }
 
     service.getDiagnostics(

@@ -17,213 +17,6 @@ const weekdayLabelMap = {
   fri: "금",
 };
 
-/**
- * @typedef {"mon" | "tue" | "wed" | "thu" | "fri"} KjcaWeekday
- */
-
-/**
- * @typedef {{
- *   monthTarget: number | null,
- *   monthAssignedCurrent: number | null,
- *   weekTarget: number | null,
- *   dailyPlan: Array<{
- *     weekday: KjcaWeekday,
- *     channelName: string,
- *     promotionContent: string,
- *     targetCount: number | null,
- *     ownerName: string,
- *     note: string,
- *   }>,
- *   dailyActualCount: number | null,
- *   weekTableRows: KjcaWeekTextRow[],
- * }} KjcaRecruitingExtract
- */
-
-/**
- * @typedef {{
- *   dept: string,
- *   position: string,
- *   staffName: string,
- *   printUrl: string,
- * }} KjcaTeamLeadRow
- */
-
-/**
- * @typedef {{
- *   weekday: KjcaWeekday,
- *   channelName: string,
- *   weeklyPlan: string,
- *   promotionContent: string,
- *   targetText: string,
- *   resultText: string,
- *   recruitCountText: string,
- *   ownerName: string,
- *   note: string,
- *   sortOrder?: number,
- * }} KjcaWeekTextRow
- */
-
-/**
- * @typedef {{
- *   channelName: string,
- *   weeklyPlan: string,
- *   promotionContent: string,
- *   targetText: string,
- *   resultText: string,
- *   recruitCountText: string,
- *   ownerName: string,
- *   note: string,
- * }} KjcaMergedWeekdayRow
- */
-
-/**
- * @typedef {{
- *   dept: string,
- *   position: string,
- *   staffName: string,
- *   ok: boolean,
- *   error: string,
- *   promotion: string[],
- *   vacation: string[],
- *   special: string[],
- *   recruiting: KjcaRecruitingExtract,
- *   printUrl: string,
- * }} KjcaAnalyzeResult
- */
-
-/**
- * @typedef {{
- *   weekday: KjcaWeekday,
- *   target: number,
- *   actual: number,
- *   gap: number,
- * }} KjcaSnapshotRow
- */
-
-/**
- * @typedef {{
- *   dept: string,
- *   todayWeekday: KjcaWeekday,
- *   rows: KjcaWeekTextRow[],
- * }} KjcaDeptWeekTable
- */
-
-/**
- * @typedef {{
- *   dept: string,
- *   monthTarget: number | null,
- *   weekTarget: number | null,
- *   rows: KjcaSnapshotRow[],
- *   today: KjcaSnapshotRow,
- *   cumulative: {
- *     target: number,
- *     actual: number,
- *     gap: number,
- *   },
- * }} KjcaDeptSnapshot
- */
-
-/**
- * @typedef {{
- *   authRecord: core.Record | null,
- *   isSignedIn: boolean,
- *   isSuperuser: boolean,
- *   email: string,
- * }} KjcaAuthState
- */
-
-/**
- * @typedef {{
- *   reportDate: string,
- *   testOneOnly: boolean,
- * }} KjcaFormState
- */
-
-/**
- * @typedef {{
- *   reportDate?: string | string[] | null | undefined,
- *   testOneOnly?: boolean | string | string[] | null | undefined,
- * }} KjcaFormStateInput
- */
-
-/**
- * @typedef {{
- *   reportDate: string,
- *   testOneOnly: boolean,
- *   noticeMessage: string,
- *   errorMessage: string,
- *   warnings: string[],
- *   stoppedReason: string,
- *   isDiaryAccessible: boolean | null,
- *   teamLeadRows: KjcaTeamLeadRow[],
- *   analysisResults: KjcaAnalyzeResult[],
- *   deptWeekTables: KjcaDeptWeekTable[],
- *   deptSnapshots: KjcaDeptSnapshot[],
- * }} KjcaDashboardState
- */
-
-/**
- * @typedef {{
- *   request?: {
- *     auth?: core.Record | null,
- *   },
- *   dt?: Record<string, any>,
- *   dbg?: (...args: any[]) => void,
- *   info?: (...args: any[]) => void,
- *   warn?: (...args: any[]) => void,
- *   error?: (...args: any[]) => void,
- * }} KjcaServiceContext
- */
-
-/**
- * @typedef {{
- *   host: string,
- *   loginUrl: string,
- *   staffAuthUrl: string,
- *   cookieHeader: string,
- * }} KjcaSession
- */
-
-/**
- * @typedef {{
- *   ok: true,
- *   isDiaryAccessible: boolean,
- *   teamLeadRows: KjcaTeamLeadRow[],
- * }} KjcaProbeResult
- */
-
-/**
- * @typedef {{
- *   ok: true,
- *   results: KjcaAnalyzeResult[],
- *   stoppedReason: string,
- *   alertMessage: string,
- * }} KjcaAnalyzeCallResult
- */
-
-/**
- * @typedef {{
- *   ok: true,
- *   isDiaryAccessible: boolean,
- *   teamLeadRows: KjcaTeamLeadRow[],
- *   analysisResults: KjcaAnalyzeResult[],
- *   deptSnapshots: KjcaDeptSnapshot[],
- *   deptWeekTables: KjcaDeptWeekTable[],
- *   alertMessage: string,
- *   stoppedReason: string,
- *   warnings: string[],
- * }} KjcaCollectResult
- */
-
-/**
- * @typedef {{
- *   ok: true,
- *   reportDate: string,
- *   dept: string,
- *   deletedCount: number,
- * }} KjcaCacheClearResult
- */
-
 function emitLog(ctx, level, eventName, payload) {
   if (!ctx || typeof ctx[level] !== "function") {
     return;
@@ -481,8 +274,8 @@ function normalizeReportDate(value) {
 
 /**
  * 화면에서 쓰는 기본 폼 상태를 원본 입력값에서 정규화합니다.
- * @param {KjcaFormStateInput | null | undefined} value 페이지나 폼에서 받은 원본 입력값입니다.
- * @returns {KjcaFormState} 화면에서 바로 쓸 수 있는 폼 상태입니다.
+ * @param {types.KjcaFormStateInput | null | undefined} value 페이지나 폼에서 받은 원본 입력값입니다.
+ * @returns {types.KjcaFormState} 화면에서 바로 쓸 수 있는 폼 상태입니다.
  */
 function buildFormState(value) {
   const source = value && typeof value === "object" ? value : {};
@@ -659,7 +452,7 @@ function buildWeekStartDate(dateText) {
 /**
  * 날짜를 기준으로 업무일지 집계용 요일 키를 계산합니다.
  * @param {unknown} dateText 기준이 되는 날짜 값입니다.
- * @returns {KjcaWeekday} `mon`부터 `fri` 중 하나의 요일 키입니다.
+ * @returns {types.KjcaWeekday} `mon`부터 `fri` 중 하나의 요일 키입니다.
  */
 function toWeekdayKey(dateText) {
   const day = parseDateText(dateText).getDay();
@@ -673,7 +466,7 @@ function toWeekdayKey(dateText) {
 /**
  * 다양한 요일 표현을 내부 요일 키로 정규화합니다.
  * @param {unknown} value 문자열 또는 외부 입력으로 받은 요일 값입니다.
- * @returns {KjcaWeekday | ""} 인식 가능한 경우 내부 요일 키, 아니면 빈 문자열입니다.
+ * @returns {types.KjcaWeekday | ""} 인식 가능한 경우 내부 요일 키, 아니면 빈 문자열입니다.
  */
 function normalizeWeekday(value) {
   const text = String(value || "")
@@ -809,7 +602,7 @@ function normalizeCachedRecruitingField(value) {
 /**
  * 팀장 목록 응답을 화면에서 쓰는 행 배열로 정리합니다.
  * @param {unknown} value 외부 응답이나 저장값에서 받은 팀장 목록 값입니다.
- * @returns {KjcaTeamLeadRow[]} 정규화된 팀장 행 목록입니다.
+ * @returns {types.KjcaTeamLeadRow[]} 정규화된 팀장 행 목록입니다.
  */
 function normalizeTeamLeadRows(value) {
   if (!Array.isArray(value)) return [];
@@ -830,7 +623,7 @@ function normalizeTeamLeadRows(value) {
 /**
  * 분석 결과 목록을 화면과 후속 저장에 맞는 shape로 정리합니다.
  * @param {unknown} value 분석 API나 캐시에서 받은 결과 목록 값입니다.
- * @returns {KjcaAnalyzeResult[]} 정규화된 분석 결과 목록입니다.
+ * @returns {types.KjcaAnalyzeResult[]} 정규화된 분석 결과 목록입니다.
  */
 function normalizeAnalyzeResults(value) {
   const rows = Array.isArray(value) ? value : [];
@@ -1004,7 +797,7 @@ function buildSnapshotRows(planItems, weekResults) {
 /**
  * 부서별 주간 텍스트 테이블 목록을 화면용 shape로 정리합니다.
  * @param {unknown} value 수집 결과나 저장값에서 받은 테이블 목록 값입니다.
- * @returns {KjcaDeptWeekTable[]} 정규화된 부서별 주간 테이블 목록입니다.
+ * @returns {types.KjcaDeptWeekTable[]} 정규화된 부서별 주간 테이블 목록입니다.
  */
 function normalizeDeptWeekTables(value) {
   if (!Array.isArray(value)) return [];
@@ -1024,7 +817,7 @@ function normalizeDeptWeekTables(value) {
 /**
  * 부서별 주간 스냅샷 목록을 화면용 shape로 정리합니다.
  * @param {unknown} value 수집 결과나 저장값에서 받은 스냅샷 목록 값입니다.
- * @returns {KjcaDeptSnapshot[]} 정규화된 부서별 스냅샷 목록입니다.
+ * @returns {types.KjcaDeptSnapshot[]} 정규화된 부서별 스냅샷 목록입니다.
  */
 function normalizeDeptSnapshots(value) {
   if (!Array.isArray(value)) return [];
@@ -1079,8 +872,8 @@ function normalizeDeptSnapshots(value) {
 
 /**
  * 대시보드 렌더링에 필요한 전체 상태를 정규화합니다.
- * @param {Partial<KjcaDashboardState> | null | undefined} input 페이지나 상호작용 응답에서 만든 원본 상태입니다.
- * @returns {KjcaDashboardState} 화면에서 바로 쓸 수 있는 대시보드 상태입니다.
+ * @param {Partial<types.KjcaDashboardState> | null | undefined} input 페이지나 상호작용 응답에서 만든 원본 상태입니다.
+ * @returns {types.KjcaDashboardState} 화면에서 바로 쓸 수 있는 대시보드 상태입니다.
  */
 function buildDashboardState(input) {
   const source = input && typeof input === "object" ? input : {};
@@ -1101,7 +894,7 @@ function buildDashboardState(input) {
 
 /**
  * 대시보드 상태를 hidden field 전송용 문자열로 직렬화합니다.
- * @param {Partial<KjcaDashboardState> | null | undefined} state 직렬화할 대시보드 상태입니다.
+ * @param {Partial<types.KjcaDashboardState> | null | undefined} state 직렬화할 대시보드 상태입니다.
  * @returns {string} URL 인코딩된 대시보드 상태 문자열입니다.
  */
 function serializeDashboardState(state) {
@@ -1112,8 +905,8 @@ function serializeDashboardState(state) {
 /**
  * 직렬화된 대시보드 상태를 다시 화면용 상태로 복원합니다.
  * @param {unknown} value hidden field나 요청값으로 받은 직렬화 문자열입니다.
- * @param {Partial<KjcaDashboardState> | null | undefined} fallback 복원 실패 시 기본값으로 쓸 상태입니다.
- * @returns {KjcaDashboardState} 복원된 대시보드 상태입니다.
+ * @param {Partial<types.KjcaDashboardState> | null | undefined} fallback 복원 실패 시 기본값으로 쓸 상태입니다.
+ * @returns {types.KjcaDashboardState} 복원된 대시보드 상태입니다.
  */
 function parseDashboardState(value, fallback) {
   const fallbackState = buildDashboardState(fallback);
@@ -1133,9 +926,9 @@ function parseDashboardState(value, fallback) {
 
 /**
  * 같은 요일의 여러 텍스트 행을 한 줄 요약용 값으로 합칩니다.
- * @param {KjcaWeekTextRow[] | null | undefined} rows 병합할 주간 텍스트 행 목록입니다.
- * @param {KjcaWeekday | string} weekday 선택할 요일 키입니다.
- * @returns {KjcaMergedWeekdayRow} 화면 표시용 병합 행입니다.
+ * @param {types.KjcaWeekTextRow[] | null | undefined} rows 병합할 주간 텍스트 행 목록입니다.
+ * @param {types.KjcaWeekday | string} weekday 선택할 요일 키입니다.
+ * @returns {types.KjcaMergedWeekdayRow} 화면 표시용 병합 행입니다.
  */
 function getWeekdayMergedRow(rows, weekday) {
   const items = (Array.isArray(rows) ? rows : []).filter((row) => row.weekday === weekday).sort((a, b) => a.sortOrder - b.sortOrder);
@@ -1160,8 +953,8 @@ function getWeekdayMergedRow(rows, weekday) {
 
 /**
  * 현재 표시 중인 요일이 오늘 강조 대상인지 확인합니다.
- * @param {KjcaWeekday | string} weekday 비교할 행의 요일 키입니다.
- * @param {KjcaWeekday | string} todayWeekday 오늘 기준 요일 키입니다.
+ * @param {types.KjcaWeekday | string} weekday 비교할 행의 요일 키입니다.
+ * @param {types.KjcaWeekday | string} todayWeekday 오늘 기준 요일 키입니다.
  * @returns {boolean} 오늘 강조 대상이면 `true`입니다.
  */
 function isFocusWeekday(weekday, todayWeekday) {
@@ -1179,7 +972,7 @@ function buildMonthLabel(dateText) {
 
 /**
  * 부서 카드 상단에 표시할 요약 문구를 만듭니다.
- * @param {{ dept?: unknown, reportDate?: unknown, analysisResults?: unknown } | null | undefined} params 요약에 필요한 부서명, 날짜, 분석 결과입니다.
+ * @param {types.KjcaDeptSummaryParams | null | undefined} params 요약에 필요한 부서명, 날짜, 분석 결과입니다.
  * @returns {string} 화면에 표시할 요약 문구입니다.
  */
 function buildDeptSummaryText(params) {
@@ -1209,8 +1002,8 @@ function normalizeSuperuserLoginId(loginId) {
 
 /**
  * 현재 PocketBase 요청에서 관리자 로그인 상태를 읽습니다.
- * @param {{ request?: { auth?: core.Record | null } } | null | undefined} params 요청 객체가 들어있는 컨텍스트입니다.
- * @returns {KjcaAuthState} 화면과 API에서 공통으로 쓰는 인증 상태입니다.
+ * @param {types.KjcaAuthStateParams | null | undefined} params 요청 객체가 들어있는 컨텍스트입니다.
+ * @returns {types.KjcaAuthState} 화면과 API에서 공통으로 쓰는 인증 상태입니다.
  */
 function readAuthState(params) {
   const request = params && params.request ? params.request : null;
@@ -1276,8 +1069,8 @@ function buildServiceContext(ctx) {
 
 /**
  * KJCA 관리자 사이트에 로그인해 재사용 가능한 세션 정보를 만듭니다.
- * @param {KjcaServiceContext | null | undefined} ctx 로그와 인증 정보를 포함한 서비스 컨텍스트입니다.
- * @returns {KjcaSession} 이후 요청에서 재사용할 KJCA 세션 정보입니다.
+ * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 인증 정보를 포함한 서비스 컨텍스트입니다.
+ * @returns {types.KjcaSession} 이후 요청에서 재사용할 KJCA 세션 정보입니다.
  */
 function createKjcaSession(ctx) {
   const safeCtx = buildServiceContext(ctx);
@@ -1374,10 +1167,10 @@ function fetchDiaryList(ctx, session, scDay) {
 
 /**
  * 특정 일자의 KJCA 업무일지 접근 가능 여부와 팀장 목록을 확인합니다.
- * @param {KjcaServiceContext | null | undefined} ctx 로그와 인증 정보를 포함한 서비스 컨텍스트입니다.
- * @param {{ scDay?: unknown, reportDate?: unknown } | null | undefined} payload 조회할 일자를 담은 입력값입니다.
- * @param {KjcaSession | null | undefined} session 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
- * @returns {KjcaProbeResult} 접근 가능 여부와 팀장 목록을 담은 결과입니다.
+ * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 인증 정보를 포함한 서비스 컨텍스트입니다.
+ * @param {types.KjcaProbePayload | null | undefined} payload 조회할 일자를 담은 입력값입니다.
+ * @param {types.KjcaSession | null | undefined} session 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
+ * @returns {types.KjcaProbeResult} 접근 가능 여부와 팀장 목록을 담은 결과입니다.
  */
 function probeStaffAuth(ctx, payload, session) {
   const safeCtx = buildServiceContext(ctx);
@@ -1681,10 +1474,10 @@ function upsertSuccessCache(ctx, params) {
 
 /**
  * 팀장 업무일지 본문을 읽어 AI 분석 결과 목록으로 변환합니다.
- * @param {KjcaServiceContext | null | undefined} ctx 로그와 DT 팩토리를 포함한 서비스 컨텍스트입니다.
- * @param {{ reportDate?: unknown, targets?: unknown[] } | null | undefined} payload 분석 날짜와 대상 목록을 담은 입력값입니다.
- * @param {KjcaSession | null | undefined} session 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
- * @returns {KjcaAnalyzeCallResult} 분석 결과 목록과 중단 사유를 담은 결과입니다.
+ * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 DT 팩토리를 포함한 서비스 컨텍스트입니다.
+ * @param {types.KjcaAnalyzePayload | null | undefined} payload 분석 날짜와 대상 목록을 담은 입력값입니다.
+ * @param {types.KjcaSession | null | undefined} session 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
+ * @returns {types.KjcaAnalyzeCallResult} 분석 결과 목록과 중단 사유를 담은 결과입니다.
  */
 function analyzeStaffDiary(ctx, payload, session) {
   const safeCtx = buildServiceContext(ctx);
@@ -2276,9 +2069,9 @@ function upsertRecruitingDailyResult(ctx, params) {
 
 /**
  * 특정 날짜와 부서의 분석 캐시를 삭제합니다.
- * @param {KjcaServiceContext | null | undefined} ctx 로그와 인증 정보를 포함한 서비스 컨텍스트입니다.
- * @param {{ reportDate?: unknown, dept?: unknown } | null | undefined} payload 삭제 대상 날짜와 부서를 담은 입력값입니다.
- * @returns {KjcaCacheClearResult} 삭제 결과 요약입니다.
+ * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 인증 정보를 포함한 서비스 컨텍스트입니다.
+ * @param {types.KjcaCacheClearPayload | null | undefined} payload 삭제 대상 날짜와 부서를 담은 입력값입니다.
+ * @returns {types.KjcaCacheClearResult} 삭제 결과 요약입니다.
  */
 function clearAnalysisCache(ctx, payload) {
   const safeCtx = buildServiceContext(ctx);
@@ -2313,9 +2106,9 @@ function clearAnalysisCache(ctx, payload) {
 
 /**
  * 특정 날짜 기준으로 업무일지 분석과 주간 집계를 한 번에 수행합니다.
- * @param {KjcaServiceContext | null | undefined} ctx 로그와 DT 팩토리를 포함한 서비스 컨텍스트입니다.
- * @param {{ reportDate?: unknown, testOneOnly?: unknown } | null | undefined} payload 집계 날짜와 테스트 옵션을 담은 입력값입니다.
- * @returns {KjcaCollectResult} 집계 후 화면 구성에 필요한 전체 결과입니다.
+ * @param {types.KjcaServiceContext | null | undefined} ctx 로그와 DT 팩토리를 포함한 서비스 컨텍스트입니다.
+ * @param {types.KjcaCollectPayload | null | undefined} payload 집계 날짜와 테스트 옵션을 담은 입력값입니다.
+ * @returns {types.KjcaCollectResult} 집계 후 화면 구성에 필요한 전체 결과입니다.
  */
 function collectWeekly(ctx, payload) {
   const safeCtx = buildServiceContext(ctx);
@@ -2605,9 +2398,9 @@ function collectWeekly(ctx, payload) {
 
 /**
  * 수집 결과를 화면용 대시보드 상태로 변환합니다.
- * @param {Partial<KjcaCollectResult> | null | undefined} result 수집 API가 돌려준 결과입니다.
- * @param {KjcaFormStateInput | null | undefined} formState 현재 화면의 폼 상태 입력값입니다.
- * @returns {KjcaDashboardState} 렌더링에 바로 쓸 수 있는 대시보드 상태입니다.
+ * @param {Partial<types.KjcaCollectResult> | null | undefined} result 수집 API가 돌려준 결과입니다.
+ * @param {types.KjcaFormStateInput | null | undefined} formState 현재 화면의 폼 상태 입력값입니다.
+ * @returns {types.KjcaDashboardState} 렌더링에 바로 쓸 수 있는 대시보드 상태입니다.
  */
 function buildDashboardStateFromCollectResult(result, formState) {
   const safeFormState = buildFormState(formState);
