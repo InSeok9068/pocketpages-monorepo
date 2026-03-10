@@ -83,18 +83,22 @@
 - 외부 라우트로 노출되면 안 되는 파일은 `_private`에 둡니다.
 - partial은 `_private`에 두고 `include()`로 재사용합니다.
 - 공통 서버 로직, 쿼리 유틸, 포맷터, slug 처리 같은 로직도 `_private`에 둡니다.
+- PocketPages의 `include()`와 `resolve()`는 현재 요청 엔트리의 디렉터리에서 시작해 가까운 `_private`를 먼저 찾고, 없으면 상위 디렉터리로 올라가며 탐색합니다.
+- 따라서 `_private` 파일은 **가까운 곳에 두고**, 더 넓게 재사용되기 시작하면 상위 디렉터리로 올립니다.
+- 하위 섹션에서 상위 `_private` 파일을 override할 수 있다는 점을 감안해 파일 위치를 정합니다.
 - EJS, `<script server>`, loader, middleware처럼 PocketPages 요청 컨텍스트 안에서는 `_private` 모듈을 `resolve()`로 불러올 수 있습니다.
 - `resolve()`는 `_private`를 포함한 전체 경로를 넘기는 것이 아니라, `_private` 기준 이름으로 사용합니다.
-- 예시: `resolve('board-service')`
-- `resolve()`는 **요청 엔트리에서 필요한 의존성을 조립하는 용도**로 사용하고, `_private/*.js` 내부에서 연쇄적으로 다시 호출하는 구조를 기본값으로 삼지 않습니다.
-- `_private/*.js`는 PocketPages 요청 컨텍스트가 자동 주입되는 위치가 아니므로, 그 내부에서 `resolve()`를 전역처럼 가정하지 않습니다.
-- `_private` 모듈이 다른 `_private` 모듈이나 DT에 의존하면, EJS/loader/middleware 같은 엔트리에서 먼저 `resolve()`로 불러온 뒤 함수 인자로 넘겨 **의존성 주입** 형태로 조합합니다.
-- 즉 바깥에서는 `resolve()`로 조립하고, 안쪽 `_private` 함수는 **전달받은 의존성만 사용해 로직을 수행하는 구조**를 기본 패턴으로 봅니다.
-- `_private/*.js` 내부에서 `require('pocketpages')`처럼 CommonJS import를 쓰는 것은 가능하지만, 이것으로 PocketPages의 `_private` 탐색 규칙이나 요청별 `resolve()` 문맥을 대체하려고 하지 않습니다.
+- 예시: `resolve('board-service')`, `resolve('roles/post')`
 - middleware에서는 `resolve()`를 전역 함수처럼 직접 호출하지 말고, `module.exports = function ({ resolve }) { ... }`처럼 **인자로 받은 `resolve`**를 사용합니다.
 - `resolve('/_private/board-service')` 같은 형태는 `_private/_private/...`로 잘못 해석될 수 있으므로 사용하지 않습니다.
-- `_private` 파일은 **가까운 곳에 두고**, 더 넓게 재사용되기 시작하면 상위 디렉터리로 올립니다.
-- 하위 섹션에서 상위 `_private` 파일을 override할 수 있다는 점을 감안해 파일 위치를 정합니다.
+- 이 레포에서 `resolve()`는 **요청 엔트리에서 필요한 의존성을 조립하는 용도**로 봅니다.
+- `_private/*.js`는 PocketPages 요청 컨텍스트가 자동 주입되는 위치가 아니므로, 그 내부에서 `resolve()`를 전역처럼 가정하지 않습니다.
+- 즉 `_private/*.js` 안에서 다른 `_private` 모듈을 다시 `resolve()`로 연쇄 호출하는 구조를 기본 패턴으로 두지 않습니다.
+- 이유는 기술적으로 import를 전면 금지하려는 것이 아니라, 요청 문맥에 묶인 숨은 의존성과 교차참조를 줄이고 **파일 경로만으로 의존 흐름을 추적 가능하게 유지**하기 위해서입니다.
+- `_private` 모듈이 다른 `_private` 모듈이나 role에 의존하면, EJS/loader/middleware 같은 엔트리에서 먼저 `resolve()`로 불러온 뒤 함수 인자로 넘겨 **의존성 주입** 형태로 조합합니다.
+- 즉 바깥 엔트리에서는 `resolve()`로 조립하고, 안쪽 `_private` 함수는 **전달받은 의존성만 사용해 로직을 수행하는 구조**를 기본 패턴으로 봅니다.
+- `_private/*.js` 내부에서 `require('pocketpages')`나 일반 CommonJS import를 쓰는 것은 가능하지만, 이것으로 PocketPages의 `_private` 탐색 규칙이나 요청별 `resolve()` 문맥을 대체하려고 하지는 않습니다.
+- 한 번만 쓰이는 로직이면 `_private`로 빼기보다 해당 페이지 엔트리에 두는 편을 우선합니다.
 
 ### E. HTMX와 API 응답
 
@@ -145,15 +149,21 @@
 - EJS에서 PocketBase `Record`를 렌더링할 때는 `record.fieldName` 직접 접근을 기본값으로 가정하지 않습니다.
 - 우선 `record.get('fieldName')` 방식으로 읽습니다.
 
-### D. DT(Data/Domain Type) 기준
+### D. Roles 기준
 
-- 이 레포에서는 **직접 만든 컬렉션마다 DT를 둡니다.**
-- DT 파일은 기본적으로 `apps/<service>/pb_hooks/pages/_private/table/*.js` 위치에 둡니다.
-- DT는 저장/삭제/응답을 처리하지 않고, **상태/필드 판단만** 담당합니다.
-- `xapi`/`page` 호출부는 DT의 `can...()`, `is...()`, `has...()` 결과를 보고 **명시적으로 에러를 던집니다.**
+- 이 레포에서는 DB record 기반의 도메인 판단 로직을 `roles/*.js`에 둡니다.
+- role 파일은 기본적으로 `apps/<service>/pb_hooks/pages/_private/roles/*.js` 위치에 둡니다.
+- 예시: `roles/post.js`, `roles/board.js`
+- role은 저장/삭제/리다이렉트/응답을 처리하지 않고, **DB 데이터와 상태를 기준으로 한 판단만** 담당합니다.
+- 예시: 특정 post가 수정 가능한 상태인지, 특정 board와 post의 관계가 유효한지, 특정 record가 삭제 가능한지 같은 규칙입니다.
+- `xapi`/`page` 호출부는 role의 `can...()`, `is...()`, `has...()`, `assert...()` 같은 결과를 보고 **명시적으로 에러를 던지거나 흐름을 제어합니다.**
 - 저장/삭제/리다이렉트/응답 처리는 항상 호출부가 담당합니다.
-- DT는 해당 서비스의 `pb_schema.json`과 **항상 싱크가 맞아야 합니다.**
-- DT와 실제 스키마가 어긋나면 **`pb_schema.json`이 정답**이며, 누락되거나 달라진 필드는 `pb_schema.json` 기준으로 DT를 업데이트합니다.
+- 요청 body, params, query의 형식 검증처럼 **이번 요청의 입력 shape만 확인하는 로직**은 role로 올리지 말고 엔트리에 둡니다.
+- 반대로 여러 엔트리에서 반복되는 **DB 기반 상태 판단, 관계 검증, 도메인 가드**만 role로 분리합니다.
+- role은 가능한 한 조회된 record나 필요한 값만 인자로 받아 판단하고, 숨은 DB 조회나 과도한 내부 의존성 조립은 기본 패턴으로 두지 않습니다.
+- role이 다른 role이나 공통 모듈에 의존하면, 엔트리에서 먼저 `resolve()`로 조립한 뒤 함수 인자로 넘겨 사용합니다.
+- role은 해당 서비스의 `pb_schema.json`과 **항상 싱크가 맞아야 합니다.**
+- role과 실제 스키마가 어긋나면 **`pb_schema.json`이 정답**이며, 누락되거나 달라진 필드는 `pb_schema.json` 기준으로 role을 업데이트합니다.
 
 ### E. 로그와 런타임 추적
 

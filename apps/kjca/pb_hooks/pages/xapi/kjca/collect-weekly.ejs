@@ -1,11 +1,11 @@
 <script server>
   const kjcaService = resolve('kjca-service')
-  const staffDiaryAnalysisCacheTable = resolve('table/staff-diary-analysis-cache-dt')
-  const recruitingWeekPlanTable = resolve('table/recruiting-week-plan-dt')
-  const recruitingWeekPlanItemTable = resolve('table/recruiting-week-plan-item-dt')
-  const recruitingDailyResultTable = resolve('table/recruiting-daily-result-dt')
-  const recruitingWeekTextPlanTable = resolve('table/recruiting-week-text-plan-dt')
-  const recruitingWeekTextRowTable = resolve('table/recruiting-week-text-row-dt')
+  const staffDiaryAnalysisCacheRole = resolve('roles/staff-diary-analysis-cache')
+  const recruitingWeekPlanRole = resolve('roles/recruiting-week-plan')
+  const recruitingWeekPlanItemRole = resolve('roles/recruiting-week-plan-item')
+  const recruitingDailyResultRole = resolve('roles/recruiting-daily-result')
+  const recruitingWeekTextPlanRole = resolve('roles/recruiting-week-text-plan')
+  const recruitingWeekTextRowRole = resolve('roles/recruiting-week-text-row')
 
   const authState = kjcaService.readAuthState(request)
   const form = body()
@@ -35,12 +35,12 @@
       const result = kjcaService.collectWeekly(
         request,
         {
-          staffDiaryAnalysisCacheTable,
-          recruitingWeekPlanTable,
-          recruitingWeekPlanItemTable,
-          recruitingDailyResultTable,
-          recruitingWeekTextPlanTable,
-          recruitingWeekTextRowTable,
+          staffDiaryAnalysisCacheRole,
+          recruitingWeekPlanRole,
+          recruitingWeekPlanItemRole,
+          recruitingDailyResultRole,
+          recruitingWeekTextPlanRole,
+          recruitingWeekTextRowRole,
         },
         formState,
       )

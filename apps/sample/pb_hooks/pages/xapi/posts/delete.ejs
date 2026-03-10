@@ -1,6 +1,6 @@
 <script server>
   const boardService = resolve('board-service')
-  const postTable = resolve('table/post-dt')
+  const postRole = resolve('roles/post')
   const form = body()
   const boardSlug = String(form.board || '').trim()
   const postSlug = String(form.post || '').trim()
@@ -27,8 +27,7 @@
 
   if (!errorMessage) {
     try {
-      const postDT = postTable.toDT(post)
-      if (!postDT.canEdit()) {
+      if (!postRole.canEdit(post)) {
         throw new Error('archived 상태의 게시글은 수정하거나 삭제할 수 없습니다.')
       }
       $app.delete(post)

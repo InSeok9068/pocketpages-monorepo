@@ -17,11 +17,9 @@
 // 13) next 인자를 받는 middleware가 next()나 response.* 호출 없이 끝나는 패턴
 // 14) 상위/하위 경로에 중첩 +load.js 배치
 // 15) 허용 범위를 벗어난 raw EJS 출력(<%- ... %>)
-// 16) DT(_private/table/*-dt.js) 내부에서 redirect/response/request/body/save/delete 같은 부작용 사용
-// 17) auth helper 사용 시 pocketpages-plugin-auth 누락
-// 18) pocketpages-plugin-auth 사용 시 pocketpages-plugin-js-sdk 누락 또는 순서 역전
-// 19) DT(_private/table/*-dt.js) 상단 const 선언이 pb_schema.json 필드와 순서까지 정확히 일치하지 않음
-// 20) DT(_private/table/*-dt.js) return 객체에 함수가 아닌 필드/값을 직접 노출함
+// 16) auth helper 사용 시 pocketpages-plugin-auth 누락
+// 17) pocketpages-plugin-auth 사용 시 pocketpages-plugin-js-sdk 누락 또는 순서 역전
+// 18) _private 내부 .js/.ejs 파일에서 resolve() 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -59,10 +57,9 @@ const RE = {
   middlewareUsesResponse: /(^|[^A-Za-z0-9_])response\.[A-Za-z_][A-Za-z0-9_]*\s*\(/,
   rawEjsOutput: /<%-/,
   rawEjsAllowed: /<%-\s*(include\s*\(|slots?\b|content\b|resolve\s*\()/,
-  dtSideEffect:
-    /\bredirect\s*\(|\bresponse\.[A-Za-z_][A-Za-z0-9_]*\s*\(|\bbody\s*\(|\brequest\b|\$app\.(save|saveNoValidate|delete|deleteRecord|deleteRecords|dao)\b/,
   authHelper:
     /\b(signInWithPassword|signOut|requestOAuth2Login|requestOAuth2Link|registerWithPassword|signInWithOtp|signInWithOAuth2|signInAnonymously|signInWithToken)\s*\(/,
+  resolveCall: /\bresolve\s*\(/,
 }
 
 let errors = 0
@@ -172,7 +169,6 @@ function buildServiceContext(serviceDir) {
   const pagesRoot = path.join(hooksRoot, 'pages')
   const configFile = path.join(pagesRoot, '+config.js')
   const files = walkFiles(hooksRoot).map((filePath) => buildFileInfo(filePath, hooksRoot, pagesRoot))
-  const schemaInfo = loadSchemaInfo(serviceDir)
 
   const hooksCodeFiles = files.filter((file) => file.isCode)
   const pagesFiles = files.filter((file) => file.inPages)
@@ -184,69 +180,19 @@ function buildServiceContext(serviceDir) {
     serviceName: path.basename(serviceDir),
     hooksRoot,
     pagesRoot,
-    schemaInfo,
     configFile,
     configFileInfo: pagesCodeFiles.find((file) => file.absPath === configFile) || null,
     hooksCodeFiles,
     pagesFiles,
     pagesCodeFiles,
     pagesEjsFiles,
+    privateCodeFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('_private/')),
     apiFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('api/')),
     xapiFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('xapi/')),
     middlewareFiles: pagesCodeFiles.filter((file) => file.basename === '+middleware.js'),
     loadFiles: pagesCodeFiles.filter((file) => file.basename === '+load.js'),
     configFiles: pagesCodeFiles.filter((file) => file.basename === '+config.js'),
     specialPlusFiles: pagesCodeFiles.filter((file) => file.basename.startsWith('+')),
-    dtFiles: pagesCodeFiles.filter(
-      (file) => file.relFromPages.startsWith('_private/table/') && file.basename.endsWith('-dt.js'),
-    ),
-  }
-}
-
-function loadSchemaInfo(serviceDir) {
-  const schemaFile = path.join(serviceDir, 'pb_schema.json')
-
-  if (!fs.existsSync(schemaFile)) {
-    return {
-      schemaFile,
-      collections: new Map(),
-      error: '',
-    }
-  }
-
-  try {
-    const parsed = JSON.parse(fs.readFileSync(schemaFile, 'utf8'))
-    const rawCollections = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed.collections)
-        ? parsed.collections
-        : []
-    const collections = new Map()
-
-    for (const collection of rawCollections) {
-      if (!collection || typeof collection.name !== 'string' || !Array.isArray(collection.fields)) {
-        continue
-      }
-
-      collections.set(
-        collection.name,
-        collection.fields
-          .map((field) => (field && typeof field.name === 'string' ? field.name : ''))
-          .filter(Boolean),
-      )
-    }
-
-    return {
-      schemaFile,
-      collections,
-      error: '',
-    }
-  } catch (error) {
-    return {
-      schemaFile,
-      collections: new Map(),
-      error: String(error.message || error),
-    }
   }
 }
 
@@ -630,84 +576,6 @@ function extractTopLevelReturnObject(functionBody, bodyStartLine) {
   return null
 }
 
-function lintDtStructure(context) {
-  const matches = []
-  const schemaInfo = context.schemaInfo
-
-  if (context.dtFiles.length === 0) {
-    return matches
-  }
-
-  if (schemaInfo.error) {
-    matches.push(`${toDisplayPath(schemaInfo.schemaFile)}: failed to parse schema: ${schemaInfo.error}`)
-    return matches
-  }
-
-  if (schemaInfo.collections.size === 0) {
-    matches.push(`${toDisplayPath(schemaInfo.schemaFile)}: no collections found for DT lint rules.`)
-    return matches
-  }
-
-  for (const file of context.dtFiles) {
-    const collectionName = inferDtCollectionName(file, schemaInfo.collections)
-    if (!collectionName) {
-      matches.push(
-        `${file.displayPath}: could not infer matching collection from pb_schema.json for ${file.basename}`,
-      )
-      continue
-    }
-
-    const schemaFields = schemaInfo.collections.get(collectionName) || []
-    const exportedFunction = extractExportedFunctionBody(file.content)
-    if (!exportedFunction) {
-      matches.push(`${file.displayPath}: could not parse module.exports function body`)
-      continue
-    }
-    const bodyStartLine = lineNumberAt(file.content, exportedFunction.bodyStartIndex)
-
-    const constNames = collectTopLevelConstNames(exportedFunction.body)
-    if (constNames.join('\u0000') !== schemaFields.join('\u0000')) {
-      matches.push(
-        `${file.displayPath}: DT const declarations must exactly match ${collectionName} schema fields in order. expected [${schemaFields.join(', ')}] but found [${constNames.join(', ')}]`,
-      )
-    }
-
-    const returnObject = extractTopLevelReturnObject(exportedFunction.body, bodyStartLine)
-    if (!returnObject) {
-      matches.push(`${file.displayPath}: DT must return an object literal that exposes validation methods only`)
-      continue
-    }
-
-    const { lines, depthBefore } = buildLineDepthInfo(returnObject.body)
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-      if (depthBefore[lineIndex] !== 0) {
-        continue
-      }
-
-      const line = lines[lineIndex]
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*')) {
-        continue
-      }
-
-      const isMethodShorthand = /^[A-Za-z_$][A-Za-z0-9_$]*\s*\([^)]*\)\s*\{/.test(trimmed)
-      const isFunctionProperty = /^[A-Za-z_$][A-Za-z0-9_$]*\s*:\s*(?:async\s+)?function\b/.test(trimmed)
-      const isArrowProperty =
-        /^[A-Za-z_$][A-Za-z0-9_$]*\s*:\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>/.test(
-          trimmed,
-        )
-
-      if (!isMethodShorthand && !isFunctionProperty && !isArrowProperty) {
-        matches.push(
-          `${file.displayPath}:${returnObject.startLine + lineIndex}: DT return object must expose functions only: ${trimmed}`,
-        )
-      }
-    }
-  }
-
-  return matches
-}
-
 function collectPathMatches(files, predicate) {
   return files.filter(predicate).map((file) => file.displayPath)
 }
@@ -774,6 +642,13 @@ function lintService(context) {
     context.serviceName,
     '_private must not contain PocketPages special route/config files.',
     privateSpecialFileMatches,
+  )
+
+  const privateResolveMatches = collectLineMatches(context.privateCodeFiles, RE.resolveCall)
+  printMatches(
+    context.serviceName,
+    '_private .js/.ejs files must not call resolve(). Resolve dependencies only from request entry files such as EJS, <script server>, loaders, and middleware.',
+    privateResolveMatches,
   )
 
   const xapiJsonMatches = collectLineMatches(context.xapiFiles, RE.responseJson)
@@ -868,20 +743,6 @@ function lintService(context) {
     context.serviceName,
     'Raw EJS output (<%- ... %>) should be limited to include(), slot/slots, content, or resolve()-provided safe assets.',
     disallowedRawEjsMatches,
-  )
-
-  const dtSideEffectMatches = collectLineMatches(context.dtFiles, RE.dtSideEffect)
-  printMatches(
-    context.serviceName,
-    'DT files must stay side-effect free. Keep redirect/response/request/body/save/delete logic in page/xapi/api call sites.',
-    dtSideEffectMatches,
-  )
-
-  const dtStructureMatches = lintDtStructure(context)
-  printMatches(
-    context.serviceName,
-    'DT files must declare pb_schema.json fields in exact order and return functions only.',
-    dtStructureMatches,
   )
 
   const compactConfig = context.configFileInfo ? context.configFileInfo.content.replace(/\s+/g, '') : ''

@@ -1,6 +1,6 @@
 <script server>
   const boardService = resolve('board-service')
-  const postTable = resolve('table/post-dt')
+  const postRole = resolve('roles/post')
   const sharedData = data || {}
   const board = sharedData.board || null
   const boardSlug = String(params.boardSlug || '').trim()
@@ -17,8 +17,7 @@
       response.status(404)
       meta('title', 'Post Not Found')
     } else {
-      const postDT = postTable.toDT(post)
-      if (postDT.canIncrementViewCount()) {
+      if (postRole.canIncrementViewCount(post)) {
         try {
           post.set('view_count', Number(post.get('view_count') || 0) + 1)
           $app.save(post)

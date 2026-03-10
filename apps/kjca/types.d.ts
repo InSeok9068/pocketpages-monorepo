@@ -128,17 +128,21 @@ declare namespace types {
     deptSnapshots: KjcaDeptSnapshot[]
   }
 
-  type KjcaDTTable = {
-    toDT?: (record: core.Record) => any
+  type KjcaRole = {
+    canSaveSuccess?: (record: core.Record) => boolean
+    canSaveConfirmed?: (record: core.Record) => boolean
+    canSaveAiResult?: (record: core.Record) => boolean
+    canSave?: (record: core.Record) => boolean
+    hasContent?: (record: core.Record) => boolean
   }
 
-  type KjcaCollectTables = {
-    staffDiaryAnalysisCacheTable?: KjcaDTTable | null
-    recruitingWeekPlanTable?: KjcaDTTable | null
-    recruitingWeekPlanItemTable?: KjcaDTTable | null
-    recruitingDailyResultTable?: KjcaDTTable | null
-    recruitingWeekTextPlanTable?: KjcaDTTable | null
-    recruitingWeekTextRowTable?: KjcaDTTable | null
+  type KjcaCollectRoles = {
+    staffDiaryAnalysisCacheRole?: KjcaRole | null
+    recruitingWeekPlanRole?: KjcaRole | null
+    recruitingWeekPlanItemRole?: KjcaRole | null
+    recruitingDailyResultRole?: KjcaRole | null
+    recruitingWeekTextPlanRole?: KjcaRole | null
+    recruitingWeekTextRowRole?: KjcaRole | null
   }
 
   type KjcaSession = {
