@@ -16,7 +16,21 @@ const ROUTE_METHOD_BY_FILE_BASENAME = {
   '+put': 'PUT',
 }
 const NON_ROUTE_SPECIAL_FILE_BASENAMES = new Set(['+config', '+layout', '+load', '+middleware'])
-const COLLECTION_METHOD_RE = /\$app\.(?:findRecordsByFilter|findFirstRecordByFilter|findRecordById)\(\s*['"]([^'"]+)['"]/g
+const DEFAULT_COLLECTION_METHOD_NAMES = [
+  'countRecords',
+  'findAuthRecordByEmail',
+  'findCachedCollectionByNameOrId',
+  'findCollectionByNameOrId',
+  'findFirstRecordByData',
+  'findFirstRecordByFilter',
+  'findRecordById',
+  'findRecordByViewFile',
+  'findRecordsByFilter',
+  'findRecordsByIds',
+  'findAllRecords',
+  'isCollectionNameUnique',
+  'recordQuery',
+]
 
 function normalizePath(filePath) {
   return path.resolve(filePath).replace(/\\/g, '/')
@@ -90,6 +104,135 @@ function walkFiles(dirPath, predicate, rootDir = dirPath, results = []) {
 
 function quoteRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function normalizeTypeText(value) {
+  return String(value || '').replace(/\s+/g, '')
+}
+
+function typeCanAcceptCollectionIdentifier(typeText) {
+  const normalized = normalizeTypeText(typeText)
+  if (!normalized) {
+    return false
+  }
+
+  if (normalized === 'any' || normalized === 'unknown') {
+    return true
+  }
+
+  return /(^|\|)string($|\|)/.test(normalized)
+}
+
+function isCollectionIdentifierParameter(methodName, parameterName, typeText, isRest) {
+  if (isRest || !typeCanAcceptCollectionIdentifier(typeText)) {
+    return false
+  }
+
+  const safeMethodName = String(methodName || '')
+  const safeParameterName = String(parameterName || '')
+
+  if (!safeMethodName || !safeParameterName) {
+    return false
+  }
+
+  if (/collectionModelOrIdentifier$/i.test(safeParameterName)) {
+    return true
+  }
+
+  if (/nameOrId$/i.test(safeParameterName) && /Collection/i.test(safeMethodName)) {
+    return true
+  }
+
+  if (/collectionName$/i.test(safeParameterName)) {
+    return true
+  }
+
+  if (/^name$/i.test(safeParameterName) && /CollectionName/i.test(safeMethodName)) {
+    return true
+  }
+
+  return false
+}
+
+function findVariableDeclarationByName(sourceFile, variableName) {
+  let match = null
+
+  const visit = (node) => {
+    if (match) {
+      return
+    }
+
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === variableName) {
+      match = node
+      return
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return match
+}
+
+function extractCollectionMethodNamesFromAppType(typesPath) {
+  const program = ts.createProgram([typesPath], {
+    allowJs: false,
+    noEmit: true,
+    skipLibCheck: true,
+    strict: false,
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.CommonJS,
+  })
+  const sourceFile = program.getSourceFile(typesPath)
+  if (!sourceFile) {
+    return []
+  }
+
+  const checker = program.getTypeChecker()
+  const appDeclaration = findVariableDeclarationByName(sourceFile, '$app')
+  if (!appDeclaration) {
+    return []
+  }
+
+  const appType = checker.getTypeAtLocation(appDeclaration.name)
+  const methodNames = new Set()
+
+  for (const property of appType.getProperties()) {
+    const propertyName = property.getName()
+    const declaration = property.valueDeclaration || (property.declarations && property.declarations[0]) || appDeclaration
+    const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration)
+    const signatures = propertyType.getCallSignatures()
+
+    if (!signatures.length) {
+      continue
+    }
+
+    const hasCollectionIdentifierSignature = signatures.some((signature) => {
+      const parameters = signature.getParameters()
+      if (!parameters.length) {
+        return false
+      }
+
+      const firstParameter = parameters[0]
+      const firstDeclaration = firstParameter.valueDeclaration || (firstParameter.declarations && firstParameter.declarations[0])
+      const firstType = firstDeclaration
+        ? checker.getTypeOfSymbolAtLocation(firstParameter, firstDeclaration)
+        : checker.getTypeAtLocation(appDeclaration.name)
+
+      return isCollectionIdentifierParameter(
+        propertyName,
+        firstParameter.getName(),
+        checker.typeToString(firstType),
+        !!(firstDeclaration && firstDeclaration.dotDotDotToken)
+      )
+    })
+
+    if (hasCollectionIdentifierSignature) {
+      methodNames.add(propertyName)
+    }
+  }
+
+  return [...methodNames].sort()
 }
 
 function toPlural(name) {
@@ -441,6 +584,7 @@ class PocketPagesProjectIndex {
     this.appRoot = normalizePath(appRoot)
     this.pagesRoot = normalizePath(path.join(this.appRoot, 'pb_hooks', 'pages'))
     this.schemaCache = null
+    this.collectionMethodCache = null
   }
 
   getSchemaState() {
@@ -526,6 +670,55 @@ class PocketPagesProjectIndex {
 
   hasField(collectionName, fieldName) {
     return this.getFieldNames(collectionName).includes(fieldName)
+  }
+
+  getCollectionMethodState() {
+    const typesPath = normalizePath(path.join(this.appRoot, 'pb_data', 'types.d.ts'))
+    if (!fileExists(typesPath)) {
+      this.collectionMethodCache = {
+        typesPath,
+        mtimeMs: 0,
+        methodNames: [...DEFAULT_COLLECTION_METHOD_NAMES],
+      }
+      return this.collectionMethodCache
+    }
+
+    const stats = fs.statSync(typesPath)
+    if (this.collectionMethodCache && this.collectionMethodCache.mtimeMs === stats.mtimeMs) {
+      return this.collectionMethodCache
+    }
+
+    let methodNames = []
+    try {
+      methodNames = extractCollectionMethodNamesFromAppType(typesPath)
+    } catch (_error) {
+      methodNames = []
+    }
+
+    if (!methodNames.length) {
+      methodNames = [...DEFAULT_COLLECTION_METHOD_NAMES]
+    }
+
+    this.collectionMethodCache = {
+      typesPath,
+      mtimeMs: stats.mtimeMs,
+      methodNames,
+    }
+
+    return this.collectionMethodCache
+  }
+
+  getCollectionMethodNames() {
+    return [...this.getCollectionMethodState().methodNames]
+  }
+
+  getCollectionCallRegex() {
+    const methodNames = this.getCollectionMethodNames()
+    if (!methodNames.length) {
+      return null
+    }
+
+    return new RegExp(`\\$app\\.(?:${methodNames.map((name) => quoteRegex(name)).join('|')})\\(\\s*['"]([^'"]+)['"]`, 'g')
   }
 
   getRouteParamEntries(filePath) {
@@ -906,9 +1099,12 @@ class PocketPagesProjectIndex {
 
     const genericNames = new Set(['record', 'item', 'entry', 'row'])
     const scriptPrefix = scriptText.slice(0, beforeOffset)
-    const collectionMatches = Array.from(scriptPrefix.matchAll(COLLECTION_METHOD_RE))
-      .map((match) => match[1])
-      .filter((name) => this.hasCollection(name))
+    const collectionCallRegex = this.getCollectionCallRegex()
+    const collectionMatches = collectionCallRegex
+      ? Array.from(scriptPrefix.matchAll(collectionCallRegex))
+          .map((match) => match[1])
+          .filter((name) => this.hasCollection(name))
+      : []
 
     if (collectionMatches.length) {
       const lastCollection = collectionMatches[collectionMatches.length - 1]
@@ -918,9 +1114,11 @@ class PocketPagesProjectIndex {
     }
 
     if (genericNames.has(receiverName)) {
-      const allMatches = Array.from(scriptText.matchAll(COLLECTION_METHOD_RE))
-        .map((match) => match[1])
-        .filter((name) => this.hasCollection(name))
+      const allMatches = collectionCallRegex
+        ? Array.from(scriptText.matchAll(collectionCallRegex))
+            .map((match) => match[1])
+            .filter((name) => this.hasCollection(name))
+        : []
       const uniqueCollections = [...new Set(allMatches)]
       if (uniqueCollections.length === 1) {
         return uniqueCollections[0]

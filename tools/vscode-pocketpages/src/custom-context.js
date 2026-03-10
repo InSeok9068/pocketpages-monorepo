@@ -8,10 +8,9 @@ const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=
 const ROUTE_ATTR_CLOSED_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)\2/g
 const ROUTE_CALL_OPEN_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)$/s
 const ROUTE_CALL_CLOSED_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)\2/g
-const COLLECTION_OPEN_RE = /\$app\.(findRecordsByFilter|findFirstRecordByFilter|findRecordById)\(\s*(['"])([^'"]*)$/s
-const COLLECTION_CLOSED_RE = /\$app\.(findRecordsByFilter|findFirstRecordByFilter|findRecordById)\(\s*(['"])([^'"]+)\2/g
 const FIELD_OPEN_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.get\(\s*(['"])([^'"]*)$/s
 const FIELD_CLOSED_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.get\(\s*(['"])([^'"]+)\2/g
+const COLLECTION_REGEX_CACHE = new Map()
 
 function getLastPathSegment(value) {
   return String(value || '')
@@ -127,6 +126,32 @@ function getOpenMatchContext(documentText, offset, regex, mapper) {
   })
 }
 
+function getCollectionRegexState(collectionMethodNames = []) {
+  const methodNames = [...new Set((Array.isArray(collectionMethodNames) ? collectionMethodNames : []).filter(Boolean))].sort()
+  const cacheKey = methodNames.join('\u0000')
+  const cached = COLLECTION_REGEX_CACHE.get(cacheKey)
+  if (cached) {
+    return cached
+  }
+
+  if (!methodNames.length) {
+    const emptyState = {
+      openRe: null,
+      closedRe: null,
+    }
+    COLLECTION_REGEX_CACHE.set(cacheKey, emptyState)
+    return emptyState
+  }
+
+  const pattern = methodNames.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  const state = {
+    openRe: new RegExp(`\\$app\\.(${pattern})\\(\\s*(['"])([^'"]*)$`, 's'),
+    closedRe: new RegExp(`\\$app\\.(${pattern})\\(\\s*(['"])([^'"]+)\\2`, 'g'),
+  }
+  COLLECTION_REGEX_CACHE.set(cacheKey, state)
+  return state
+}
+
 function getModulePathContextAtOffset(documentText, offset) {
   for (const match of documentText.matchAll(PATH_CLOSED_RE)) {
     const context = toClosedMatchContext(match, `${match[1]}-path`)
@@ -214,8 +239,13 @@ function collectPathContexts(documentText) {
   return contexts
 }
 
-function getScriptCollectionContext(scriptText, offset) {
-  return getOpenMatchContext(scriptText, offset, COLLECTION_OPEN_RE, ({ value, start, end, match }) => ({
+function getScriptCollectionContext(scriptText, offset, options = {}) {
+  const collectionRegexState = getCollectionRegexState(options.collectionMethodNames)
+  if (!collectionRegexState.openRe) {
+    return null
+  }
+
+  return getOpenMatchContext(scriptText, offset, collectionRegexState.openRe, ({ value, start, end, match }) => ({
     kind: 'collection-name',
     methodName: match[1],
     value,
@@ -286,13 +316,16 @@ function collectResolvedModuleMemberContexts(scriptText) {
   return contexts
 }
 
-function collectSchemaContexts(scriptText) {
+function collectSchemaContexts(scriptText, options = {}) {
   const contexts = []
 
-  for (const match of scriptText.matchAll(COLLECTION_CLOSED_RE)) {
-    const context = toClosedMatchContext(match, 'collection-name')
-    context.methodName = match[1]
-    contexts.push(context)
+  const collectionRegexState = getCollectionRegexState(options.collectionMethodNames)
+  if (collectionRegexState.closedRe) {
+    for (const match of scriptText.matchAll(collectionRegexState.closedRe)) {
+      const context = toClosedMatchContext(match, 'collection-name')
+      context.methodName = match[1]
+      contexts.push(context)
+    }
   }
 
   for (const match of scriptText.matchAll(FIELD_CLOSED_RE)) {

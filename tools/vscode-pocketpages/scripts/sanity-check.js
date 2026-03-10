@@ -49,6 +49,31 @@ function createFixtureApp(repoRoot) {
     get(name: string): any
   }
 }
+
+declare namespace pocketbase {
+  interface Collection {
+    id: string
+    name: string
+  }
+
+  interface PocketBase {
+    findCollectionByNameOrId(nameOrId: string): Collection
+    findCachedCollectionByNameOrId(nameOrId: string): Collection
+    recordQuery(collectionModelOrIdentifier: any): any
+    findRecordById(collectionModelOrIdentifier: any, recordId: string): core.Record
+    findRecordsByIds(collectionModelOrIdentifier: any, recordIds: string[]): Array<core.Record>
+    findAllRecords(collectionModelOrIdentifier: any): Array<core.Record>
+    findFirstRecordByData(collectionModelOrIdentifier: any, key: string, value: any): core.Record
+    findRecordsByFilter(collectionModelOrIdentifier: any, filter?: string, sort?: string, limit?: number, offset?: number): Array<core.Record>
+    findFirstRecordByFilter(collectionModelOrIdentifier: any, filter: string): core.Record
+    countRecords(collectionModelOrIdentifier: any): number
+    findAuthRecordByEmail(collectionModelOrIdentifier: any, email: string): core.Record
+    findRecordByViewFile(viewCollectionModelOrIdentifier: any, fileKey: string): core.Record
+    isCollectionNameUnique(name: string): boolean
+  }
+}
+
+declare var $app: pocketbase.PocketBase
 `
   )
 
@@ -413,12 +438,80 @@ boardService.readAuthState(
       throw new Error(`Expected collection completions for "boards" and "posts". Got: ${collectionNames.slice(0, 20).join(', ')}`)
     }
 
+    const jsCompletionText = `const boardService = resolve('board-service')\nboardService.\n`
+    const jsCompletionOffset = jsCompletionText.indexOf('boardService.') + 'boardService.'.length
+    const jsCompletion = service.getCompletionData(fixture.middlewareFilePath, jsCompletionText, jsCompletionOffset)
+    const jsCompletionNames = jsCompletion ? jsCompletion.entries.map((entry) => entry.name) : []
+    if (!jsCompletionNames.includes('readAuthState')) {
+      throw new Error(`Expected JS module member completion for "readAuthState". Got: ${jsCompletionNames.slice(0, 20).join(', ')}`)
+    }
+
+    const jsCollectionText = `$app.findRecordsByFilter('bo')\n`
+    const jsCollectionOffset = jsCollectionText.indexOf('bo') + 'bo'.length
+    const jsCollectionCompletion = service.getCustomCompletionData(fixture.boardServiceFilePath, jsCollectionText, jsCollectionOffset)
+    const jsCollectionNames = jsCollectionCompletion ? jsCollectionCompletion.items.map((entry) => entry.label) : []
+    if (!jsCollectionNames.includes('boards') || !jsCollectionNames.includes('posts')) {
+      throw new Error(`Expected JS collection completions for "boards" and "posts". Got: ${jsCollectionNames.slice(0, 20).join(', ')}`)
+    }
+
+    const jsCollectionByNameText = `$app.findCollectionByNameOrId('bo')\n`
+    const jsCollectionByNameOffset = jsCollectionByNameText.indexOf('bo') + 'bo'.length
+    const jsCollectionByNameCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      jsCollectionByNameText,
+      jsCollectionByNameOffset
+    )
+    const jsCollectionByNameNames = jsCollectionByNameCompletion ? jsCollectionByNameCompletion.items.map((entry) => entry.label) : []
+    if (!jsCollectionByNameNames.includes('boards') || !jsCollectionByNameNames.includes('posts')) {
+      throw new Error(
+        `Expected JS findCollectionByNameOrId() completions for "boards" and "posts". Got: ${jsCollectionByNameNames.slice(0, 20).join(', ')}`
+      )
+    }
+
+    const jsRecordQueryText = `$app.recordQuery('bo')\n`
+    const jsRecordQueryOffset = jsRecordQueryText.indexOf('bo') + 'bo'.length
+    const jsRecordQueryCompletion = service.getCustomCompletionData(fixture.boardServiceFilePath, jsRecordQueryText, jsRecordQueryOffset)
+    const jsRecordQueryNames = jsRecordQueryCompletion ? jsRecordQueryCompletion.items.map((entry) => entry.label) : []
+    if (!jsRecordQueryNames.includes('boards') || !jsRecordQueryNames.includes('posts')) {
+      throw new Error(`Expected JS recordQuery() completions for "boards" and "posts". Got: ${jsRecordQueryNames.slice(0, 20).join(', ')}`)
+    }
+
+    const jsCollectionNameText = `$app.isCollectionNameUnique('bo')\n`
+    const jsCollectionNameOffset = jsCollectionNameText.indexOf('bo') + 'bo'.length
+    const jsCollectionNameCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      jsCollectionNameText,
+      jsCollectionNameOffset
+    )
+    const jsCollectionNameNames = jsCollectionNameCompletion ? jsCollectionNameCompletion.items.map((entry) => entry.label) : []
+    if (!jsCollectionNameNames.includes('boards') || !jsCollectionNameNames.includes('posts')) {
+      throw new Error(
+        `Expected JS isCollectionNameUnique() completions for "boards" and "posts". Got: ${jsCollectionNameNames.slice(0, 20).join(', ')}`
+      )
+    }
+
     const fieldText = `<script server>\nboard.get('na')\n</script>\n`
     const fieldOffset = fieldText.indexOf('na') + 'na'.length
     const fieldCompletion = service.getCustomCompletionData(fixture.boardShowFilePath, fieldText, fieldOffset)
     const fieldNames = fieldCompletion ? fieldCompletion.items.map((entry) => entry.label) : []
     if (!fieldNames.includes('name') || !fieldNames.includes('slug')) {
       throw new Error(`Expected board field completions. Got: ${fieldNames.slice(0, 20).join(', ')}`)
+    }
+
+    const jsFieldText = `const board = $app.findFirstRecordByFilter('boards', 'id != \"\"')\nboard.get('na')\n`
+    const jsFieldOffset = jsFieldText.lastIndexOf('na') + 'na'.length
+    const jsFieldCompletion = service.getCustomCompletionData(fixture.boardServiceFilePath, jsFieldText, jsFieldOffset)
+    const jsFieldNames = jsFieldCompletion ? jsFieldCompletion.items.map((entry) => entry.label) : []
+    if (!jsFieldNames.includes('name') || !jsFieldNames.includes('slug')) {
+      throw new Error(`Expected JS board field completions. Got: ${jsFieldNames.slice(0, 20).join(', ')}`)
+    }
+
+    const jsAuthFieldText = `const record = $app.findAuthRecordByEmail('boards', 'test@example.com')\nrecord.get('na')\n`
+    const jsAuthFieldOffset = jsAuthFieldText.lastIndexOf('na') + 'na'.length
+    const jsAuthFieldCompletion = service.getCustomCompletionData(fixture.boardServiceFilePath, jsAuthFieldText, jsAuthFieldOffset)
+    const jsAuthFieldNames = jsAuthFieldCompletion ? jsAuthFieldCompletion.items.map((entry) => entry.label) : []
+    if (!jsAuthFieldNames.includes('name') || !jsAuthFieldNames.includes('slug')) {
+      throw new Error(`Expected JS auth record field completions. Got: ${jsAuthFieldNames.slice(0, 20).join(', ')}`)
     }
 
     const templateFieldText = `<% const board = pageData.board %>\n<p><%= board.get('na') %></p>\n`

@@ -4,15 +4,19 @@ const vscode = require('vscode')
 const { PocketPagesLanguageServiceManager, findAppRoot, ts } = require('./language-service')
 const { TOKEN_TYPES, collectEjsSemanticTokenEntries, getTokenTypeIndex } = require('./ejs-semantic-tokens')
 
-const DOCUMENT_SELECTOR = [
+const EJS_DOCUMENT_SELECTOR = [
   { scheme: 'file', pattern: '**/*.ejs' },
   { scheme: 'untitled', pattern: '**/*.ejs' },
 ]
-const RENAME_DOCUMENT_SELECTOR = [
-  ...DOCUMENT_SELECTOR,
+const SCRIPT_DOCUMENT_SELECTOR = [
   { scheme: 'file', pattern: '**/pb_hooks/pages/**/*.js' },
   { scheme: 'file', pattern: '**/pb_hooks/pages/**/*.cjs' },
   { scheme: 'file', pattern: '**/pb_hooks/pages/**/*.mjs' },
+]
+const CODE_DOCUMENT_SELECTOR = [...EJS_DOCUMENT_SELECTOR, ...SCRIPT_DOCUMENT_SELECTOR]
+const RENAME_DOCUMENT_SELECTOR = [
+  ...EJS_DOCUMENT_SELECTOR,
+  ...SCRIPT_DOCUMENT_SELECTOR,
 ]
 const SEMANTIC_TOKENS_LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, [])
 
@@ -561,26 +565,26 @@ function activate(context) {
     diagnostics,
     output,
     vscode.languages.registerCompletionItemProvider(
-      DOCUMENT_SELECTOR,
+      CODE_DOCUMENT_SELECTOR,
       new PocketPagesCompletionProvider(manager),
       '.',
       "'",
       '"',
       '/'
     ),
-    vscode.languages.registerDocumentLinkProvider(DOCUMENT_SELECTOR, new PocketPagesDocumentLinkProvider(manager)),
-    vscode.languages.registerDefinitionProvider(DOCUMENT_SELECTOR, new PocketPagesDefinitionProvider(manager)),
+    vscode.languages.registerDocumentLinkProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesDocumentLinkProvider(manager)),
+    vscode.languages.registerDefinitionProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesDefinitionProvider(manager)),
     vscode.languages.registerReferenceProvider(RENAME_DOCUMENT_SELECTOR, new PocketPagesReferenceProvider(manager)),
     vscode.languages.registerRenameProvider(RENAME_DOCUMENT_SELECTOR, new PocketPagesRenameProvider(manager)),
-    vscode.languages.registerHoverProvider(DOCUMENT_SELECTOR, new PocketPagesHoverProvider(manager)),
+    vscode.languages.registerHoverProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesHoverProvider(manager)),
     vscode.languages.registerSignatureHelpProvider(
-      DOCUMENT_SELECTOR,
+      CODE_DOCUMENT_SELECTOR,
       new PocketPagesSignatureHelpProvider(manager),
       '(',
       ','
     ),
     vscode.languages.registerDocumentSemanticTokensProvider(
-      DOCUMENT_SELECTOR,
+      EJS_DOCUMENT_SELECTOR,
       new PocketPagesSemanticTokensProvider(),
       SEMANTIC_TOKENS_LEGEND
     ),

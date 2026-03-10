@@ -475,6 +475,42 @@ class ProjectLanguageService {
     };
   }
 
+  upsertScriptVirtualFile(filePath, documentText) {
+    this.refreshStaticFiles();
+
+    const resolvedPath = normalizePath(filePath);
+    const relativePath = path.relative(this.appRoot, resolvedPath);
+    const virtualDir = path.join(CACHE_ROOT, sanitizeFileName(this.appRoot));
+    const virtualFileName = normalizePath(path.join(virtualDir, `${sanitizeFileName(relativePath)}__script.ts`));
+
+    const prelude = this.buildPrelude(resolvedPath, documentText);
+    const text = `${prelude}${documentText}`;
+    const previous = this.virtualFiles.get(virtualFileName);
+
+    if (!previous || previous.text !== text) {
+      ensureDir(virtualDir);
+      fs.writeFileSync(virtualFileName, text, "utf8");
+
+      this.virtualFiles.set(virtualFileName, {
+        text,
+        version: previous ? String(Number(previous.version) + 1) : "1",
+        filePath: resolvedPath,
+        preludeLength: prelude.length,
+        kind: "script-document",
+        documentLength: documentText.length,
+      });
+      this.projectVersion += 1;
+    } else {
+      previous.preludeLength = prelude.length;
+      previous.documentLength = documentText.length;
+    }
+
+    return {
+      fileName: virtualFileName,
+      preludeLength: prelude.length,
+    };
+  }
+
   mapVirtualOffsetToDocumentOffset(virtualFileName, offset) {
     const state = this.virtualFiles.get(virtualFileName);
     if (!state) {
@@ -486,7 +522,7 @@ class ProjectLanguageService {
     }
 
     const relativeOffset = offset - state.preludeLength;
-    if (state.kind === "template-document") {
+    if (state.kind === "template-document" || state.kind === "script-document") {
       if (relativeOffset < 0 || relativeOffset > state.documentLength) {
         return null;
       }
@@ -498,6 +534,16 @@ class ProjectLanguageService {
   }
 
   getVirtualStateAtOffset(filePath, documentText, offset) {
+    if (isScriptFile(filePath)) {
+      const virtual = this.upsertScriptVirtualFile(filePath, documentText);
+
+      return {
+        block: null,
+        virtual,
+        virtualOffset: virtual.preludeLength + offset,
+      };
+    }
+
     const block = getServerBlockAtOffset(documentText, offset);
     const virtual = block
       ? this.upsertVirtualFile(filePath, block)
@@ -791,6 +837,7 @@ class ProjectLanguageService {
   }
 
   getCustomCompletionData(filePath, documentText, offset) {
+    const collectionMethodNames = this.projectIndex.getCollectionMethodNames();
     const pathContext = getPathContextAtOffset(documentText, offset);
     if (pathContext && (pathContext.kind === "resolve-path" || pathContext.kind === "include-path" || pathContext.kind === "route-path")) {
       const candidates =
@@ -814,16 +861,23 @@ class ProjectLanguageService {
       };
     }
 
-    const block = getServerBlockAtOffset(documentText, offset);
-    const templateCodeBlock = getTemplateCodeBlockAtOffset(documentText, offset);
-    if (!block && !templateCodeBlock) {
-      return null;
+    let analysisText = documentText;
+    let analysisOffset = offset;
+    let analysisStart = 0;
+
+    if (!isScriptFile(filePath)) {
+      const block = getServerBlockAtOffset(documentText, offset);
+      const templateCodeBlock = getTemplateCodeBlockAtOffset(documentText, offset);
+      if (!block && !templateCodeBlock) {
+        return null;
+      }
+
+      analysisText = block ? block.content : buildTemplateVirtualText(documentText);
+      analysisOffset = block ? offset - block.contentStart : offset;
+      analysisStart = block ? block.contentStart : 0;
     }
 
-    const analysisText = block ? block.content : buildTemplateVirtualText(documentText);
-    const analysisOffset = block ? offset - block.contentStart : offset;
-    const analysisStart = block ? block.contentStart : 0;
-    const collectionContext = getScriptCollectionContext(analysisText, analysisOffset);
+    const collectionContext = getScriptCollectionContext(analysisText, analysisOffset, { collectionMethodNames });
     if (collectionContext) {
       return {
         start: analysisStart + collectionContext.start,
@@ -913,6 +967,7 @@ class ProjectLanguageService {
   getDiagnostics(filePath, documentText) {
     const blocks = extractServerBlocks(documentText);
     const templateBlocks = extractTemplateCodeBlocks(documentText);
+    const collectionMethodNames = this.projectIndex.getCollectionMethodNames();
     const diagnostics = [];
 
     for (const block of blocks) {
@@ -949,7 +1004,7 @@ class ProjectLanguageService {
         });
       }
 
-      for (const context of collectSchemaContexts(block.content)) {
+      for (const context of collectSchemaContexts(block.content, { collectionMethodNames })) {
         if (context.kind === "collection-name" && !this.projectIndex.hasCollection(context.value)) {
           diagnostics.push({
             code: "pp-schema-collection",
@@ -1017,7 +1072,7 @@ class ProjectLanguageService {
         });
       }
 
-      for (const context of collectSchemaContexts(templateVirtualText)) {
+      for (const context of collectSchemaContexts(templateVirtualText, { collectionMethodNames })) {
         if (!overlapsTemplateBlock(context.start, context.end) || overlapsServerBlock(context.start, context.end)) {
           continue;
         }
