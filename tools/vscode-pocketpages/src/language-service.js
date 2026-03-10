@@ -9,6 +9,7 @@ const {
   collectPathContexts,
   collectSchemaContexts,
   getPathContextAtOffset,
+  getResolvedModuleMemberContext,
   getScriptCollectionContext,
   getScriptFieldContext,
 } = require("./custom-context");
@@ -578,22 +579,35 @@ class ProjectLanguageService {
 
   getDefinitionTarget(filePath, documentText, offset) {
     const pathContext = getPathContextAtOffset(documentText, offset);
-    if (!pathContext) {
+    if (pathContext) {
+      if (pathContext.kind === "resolve-path") {
+        return this.projectIndex.resolveResolveTarget(filePath, pathContext.value);
+      }
+
+      if (pathContext.kind === "include-path") {
+        return this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
+      }
+
+      if (pathContext.kind === "route-path") {
+        return this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
+          routeSource: pathContext.routeSource,
+        });
+      }
+    }
+
+    const block = getServerBlockAtOffset(documentText, offset);
+    if (!block) {
       return null;
     }
 
-    if (pathContext.kind === "resolve-path") {
-      return this.projectIndex.resolveResolveTarget(filePath, pathContext.value);
-    }
-
-    if (pathContext.kind === "include-path") {
-      return this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
-    }
-
-    if (pathContext.kind === "route-path") {
-      return this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
-        routeSource: pathContext.routeSource,
-      });
+    const localOffset = offset - block.contentStart;
+    const resolvedModuleMemberContext = getResolvedModuleMemberContext(block.content, localOffset);
+    if (resolvedModuleMemberContext) {
+      return this.projectIndex.resolveResolvedModuleMemberTarget(
+        filePath,
+        resolvedModuleMemberContext.modulePath,
+        resolvedModuleMemberContext.memberName
+      );
     }
 
     return null;

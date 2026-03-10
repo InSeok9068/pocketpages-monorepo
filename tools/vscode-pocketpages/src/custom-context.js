@@ -1,5 +1,7 @@
 'use strict'
 
+const ts = require('typescript')
+
 const PATH_OPEN_RE = /\b(resolve|include)\(\s*(['"])([^'"]*)$/s
 const PATH_CLOSED_RE = /\b(resolve|include)\(\s*(['"])([^'"]*)\2/g
 const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)$/s
@@ -16,6 +18,78 @@ function getLastPathSegment(value) {
     .split('.')
     .filter(Boolean)
     .pop() || ''
+}
+
+function skipParenthesizedExpression(node) {
+  let current = node
+  while (current && ts.isParenthesizedExpression(current)) {
+    current = current.expression
+  }
+  return current
+}
+
+function readResolveRequestPath(node) {
+  const target = skipParenthesizedExpression(node)
+  if (!target || !ts.isCallExpression(target)) {
+    return null
+  }
+
+  if (!ts.isIdentifier(target.expression) || target.expression.text !== 'resolve') {
+    return null
+  }
+
+  if (!target.arguments.length) {
+    return null
+  }
+
+  const firstArgument = target.arguments[0]
+  if (!ts.isStringLiteralLike(firstArgument)) {
+    return null
+  }
+
+  return firstArgument.text
+}
+
+function collectResolveAliases(sourceFile) {
+  const aliases = new Map()
+
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      const requestPath = readResolveRequestPath(node.initializer)
+      if (requestPath) {
+        aliases.set(node.name.text, requestPath)
+      }
+    }
+
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(node.left)
+    ) {
+      const requestPath = readResolveRequestPath(node.right)
+      if (requestPath) {
+        aliases.set(node.left.text, requestPath)
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return aliases
+}
+
+function getResolveRequestPathFromExpression(node, aliases) {
+  const target = skipParenthesizedExpression(node)
+  if (!target) {
+    return null
+  }
+
+  if (ts.isIdentifier(target)) {
+    return aliases.get(target.text) || null
+  }
+
+  return readResolveRequestPath(target)
 }
 
 function toClosedMatchContext(match, kind) {
@@ -161,6 +235,41 @@ function getScriptFieldContext(scriptText, offset) {
   }))
 }
 
+function getResolvedModuleMemberContext(scriptText, offset) {
+  const sourceFile = ts.createSourceFile('pocketpages-resolve-member.ts', scriptText, ts.ScriptTarget.Latest, true)
+  const aliases = collectResolveAliases(sourceFile)
+  let matchContext = null
+
+  const visit = (node) => {
+    if (matchContext) {
+      return
+    }
+
+    if (ts.isPropertyAccessExpression(node)) {
+      const requestPath = getResolveRequestPathFromExpression(node.expression, aliases)
+      if (requestPath) {
+        const start = node.name.getStart(sourceFile)
+        const end = node.name.getEnd()
+        if (offset >= start && offset <= end) {
+          matchContext = {
+            kind: 'resolved-module-member',
+            modulePath: requestPath,
+            memberName: node.name.text,
+            start,
+            end,
+          }
+          return
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return matchContext
+}
+
 function collectSchemaContexts(scriptText) {
   const contexts = []
 
@@ -184,6 +293,7 @@ module.exports = {
   collectSchemaContexts,
   collectPathContexts,
   getPathContextAtOffset,
+  getResolvedModuleMemberContext,
   getScriptCollectionContext,
   getScriptFieldContext,
 }

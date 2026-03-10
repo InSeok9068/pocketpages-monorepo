@@ -36,6 +36,21 @@ function toRange(document, start, end) {
   return new vscode.Range(document.positionAt(start), document.positionAt(end))
 }
 
+function toDefinitionLocation(target) {
+  if (!target) {
+    return null
+  }
+
+  if (typeof target === 'string') {
+    return new vscode.Location(vscode.Uri.file(target), new vscode.Position(0, 0))
+  }
+
+  return new vscode.Location(
+    vscode.Uri.file(target.filePath),
+    new vscode.Position(target.line || 0, target.character || 0)
+  )
+}
+
 function diagnosticSeverity(category) {
   switch (category) {
     case ts.DiagnosticCategory.Error:
@@ -234,13 +249,13 @@ class PocketPagesDefinitionProvider {
     }
 
     const offset = document.offsetAt(position)
-    const targetFilePath = service.getDefinitionTarget(document.uri.fsPath, document.getText(), offset)
-
-    if (!targetFilePath) {
+    const target = service.getDefinitionTarget(document.uri.fsPath, document.getText(), offset)
+    const location = toDefinitionLocation(target)
+    if (!location) {
       return null
     }
 
-    return new vscode.Location(vscode.Uri.file(targetFilePath), new vscode.Position(0, 0))
+    return location
   }
 }
 

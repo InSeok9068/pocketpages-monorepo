@@ -138,7 +138,17 @@ export {}
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'), `<script server>\nsignInWithPassword('a', 'b')\nreturn\n</script>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-out.ejs'), `<script server>\nsignOut()\nredirect('/sign-in')\nreturn\n</script>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'jobs', 'collect-weekly.ejs'), `<script server>\nresponse.json(200, { ok: true })\n</script>\n`)
-  writeFile(path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'), `module.exports = {}\n`)
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
+    `function readAuthState(params) {
+  return { ok: !!params }
+}
+
+module.exports = {
+  readAuthState,
+}
+`
+  )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'), `<div>flash</div>\n`)
 
   return {
@@ -247,6 +257,21 @@ function run() {
     )
     if (!includeDefinition || !includeDefinition.endsWith('/pb_hooks/pages/_private/flash-alert.ejs')) {
       throw new Error(`Expected include() definition target. Got: ${includeDefinition}`)
+    }
+
+    const resolvedMemberDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<script server>\nconst boardService = resolve('board-service')\nconst authState = boardService.readAuthState({ request })\n</script>\n`,
+      `<script server>\nconst boardService = resolve('board-service')\nconst authState = boardService.readAuthState({ request })\n</script>\n`.indexOf('readAuthState') + 2
+    )
+    if (!resolvedMemberDefinition || typeof resolvedMemberDefinition === 'string') {
+      throw new Error(`Expected resolve()-derived member definition target. Got: ${JSON.stringify(resolvedMemberDefinition)}`)
+    }
+    if (!resolvedMemberDefinition.filePath.endsWith('/pb_hooks/pages/_private/board-service.js')) {
+      throw new Error(`Expected resolve()-derived member definition file. Got: ${JSON.stringify(resolvedMemberDefinition)}`)
+    }
+    if (resolvedMemberDefinition.line !== 0) {
+      throw new Error(`Expected readAuthState definition on line 1. Got: ${JSON.stringify(resolvedMemberDefinition)}`)
     }
 
     const hrefDefinition = indexService.getDefinitionTarget(

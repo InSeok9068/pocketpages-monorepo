@@ -8,6 +8,7 @@ It extracts `<script server>` blocks, feeds them into an in-memory TypeScript la
 - hover
 - diagnostics
 - document links / go-to-definition for `resolve()`, `include()`, and static route literals
+- go-to-definition for exported members called from `resolve()` module aliases
 
 ## What this extension covers
 

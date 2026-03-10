@@ -2,6 +2,7 @@
 
 const fs = require('fs')
 const path = require('path')
+const ts = require('typescript')
 
 const RESOLVE_EXTENSIONS = ['.js', '.ejs', '.json', '.cjs', '.mjs']
 const INCLUDE_EXTENSIONS = ['.ejs']
@@ -181,6 +182,170 @@ function getPreferredRouteMethods(routeSource) {
     default:
       return ['GET']
   }
+}
+
+function skipParenthesizedExpression(node) {
+  let current = node
+  while (current && ts.isParenthesizedExpression(current)) {
+    current = current.expression
+  }
+  return current
+}
+
+function getPropertyNameText(node) {
+  if (!node) {
+    return null
+  }
+
+  if (ts.isIdentifier(node) || ts.isStringLiteralLike(node) || ts.isNumericLiteral(node)) {
+    return String(node.text)
+  }
+
+  return null
+}
+
+function isModuleExportsExpression(node) {
+  return (
+    !!node &&
+    ts.isPropertyAccessExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === 'module' &&
+    node.name.text === 'exports'
+  )
+}
+
+function getCommonJsExportName(node) {
+  if (!node || !ts.isPropertyAccessExpression(node)) {
+    return null
+  }
+
+  if (ts.isIdentifier(node.expression) && node.expression.text === 'exports') {
+    return node.name.text
+  }
+
+  if (isModuleExportsExpression(node.expression)) {
+    return node.name.text
+  }
+
+  return null
+}
+
+function toDefinitionTarget(filePath, sourceFile, node) {
+  const targetNode = node && typeof node.getStart === 'function' ? node : sourceFile
+  const position = sourceFile.getLineAndCharacterOfPosition(targetNode.getStart(sourceFile))
+
+  return {
+    filePath,
+    line: position.line,
+    character: position.character,
+  }
+}
+
+function collectNamedDeclarations(sourceFile) {
+  const declarations = new Map()
+
+  const remember = (name, node) => {
+    if (!name || declarations.has(name)) {
+      return
+    }
+
+    declarations.set(name, node)
+  }
+
+  const visit = (node) => {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      remember(node.name.text, node)
+    } else if (ts.isClassDeclaration(node) && node.name) {
+      remember(node.name.text, node)
+    } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      remember(node.name.text, node)
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return declarations
+}
+
+function resolveInitializerDefinitionNode(initializer, declarations) {
+  const target = skipParenthesizedExpression(initializer)
+  if (!target) {
+    return null
+  }
+
+  if (ts.isIdentifier(target)) {
+    return declarations.get(target.text) || null
+  }
+
+  if (
+    ts.isFunctionExpression(target) ||
+    ts.isArrowFunction(target) ||
+    ts.isClassExpression(target) ||
+    ts.isObjectLiteralExpression(target)
+  ) {
+    return target
+  }
+
+  return null
+}
+
+function findExportedMemberDefinitionNode(sourceFile, exportName) {
+  const declarations = collectNamedDeclarations(sourceFile)
+  let definitionNode = null
+
+  const visit = (node) => {
+    if (definitionNode) {
+      return
+    }
+
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const left = skipParenthesizedExpression(node.left)
+      const right = skipParenthesizedExpression(node.right)
+
+      if (isModuleExportsExpression(left) && right && ts.isObjectLiteralExpression(right)) {
+        for (const property of right.properties) {
+          if (ts.isShorthandPropertyAssignment(property)) {
+            if (property.name.text !== exportName) {
+              continue
+            }
+
+            definitionNode = declarations.get(property.name.text) || property.name
+            return
+          }
+
+          if (ts.isPropertyAssignment(property)) {
+            if (getPropertyNameText(property.name) !== exportName) {
+              continue
+            }
+
+            definitionNode = resolveInitializerDefinitionNode(property.initializer, declarations) || property.name
+            return
+          }
+
+          if (ts.isMethodDeclaration(property)) {
+            if (getPropertyNameText(property.name) !== exportName) {
+              continue
+            }
+
+            definitionNode = property
+            return
+          }
+        }
+      }
+
+      const assignedExportName = getCommonJsExportName(left)
+      if (assignedExportName === exportName) {
+        definitionNode = resolveInitializerDefinitionNode(right, declarations) || left
+        return
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return definitionNode
 }
 
 class PocketPagesProjectIndex {
@@ -454,6 +619,27 @@ class PocketPagesProjectIndex {
     }
 
     return null
+  }
+
+  resolveResolvedModuleMemberTarget(filePath, requestPath, memberName) {
+    const moduleFilePath = this.resolveResolveTarget(filePath, requestPath)
+    if (!moduleFilePath || !memberName) {
+      return null
+    }
+
+    const extension = path.extname(moduleFilePath).toLowerCase()
+    if (!['.js', '.cjs', '.mjs'].includes(extension)) {
+      return null
+    }
+
+    const sourceText = fs.readFileSync(moduleFilePath, 'utf8')
+    const sourceFile = ts.createSourceFile(moduleFilePath, sourceText, ts.ScriptTarget.Latest, true)
+    const definitionNode = findExportedMemberDefinitionNode(sourceFile, String(memberName))
+    if (!definitionNode) {
+      return null
+    }
+
+    return toDefinitionTarget(moduleFilePath, sourceFile, definitionNode)
   }
 
   getStaticRouteEntries() {
