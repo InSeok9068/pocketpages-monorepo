@@ -20,6 +20,8 @@
 // 16) auth helper 사용 시 pocketpages-plugin-auth 누락
 // 17) pocketpages-plugin-auth 사용 시 pocketpages-plugin-js-sdk 누락 또는 순서 역전
 // 18) _private 내부 .js/.ejs 파일에서 resolve() 사용
+// 19) roles/*.js 내부에서 부작용/DB 조회/요청 문맥 접근 사용
+// 20) 엔트리에서 resolve('roles/...') 조립이 과도하게 많음
 
 const fs = require('fs')
 const path = require('path')
@@ -60,9 +62,16 @@ const RE = {
   authHelper:
     /\b(signInWithPassword|signOut|requestOAuth2Login|requestOAuth2Link|registerWithPassword|signInWithOtp|signInWithOAuth2|signInAnonymously|signInWithToken)\s*\(/,
   resolveCall: /\bresolve\s*\(/,
+  roleSideEffect:
+    /\bredirect\s*\(|\bresponse\.[A-Za-z_][A-Za-z0-9_]*\s*\(|\bbody\s*\(|\$app\.(save|saveNoValidate|delete|deleteRecord|deleteRecords|dao)\b/,
+  roleDbQuery:
+    /\$app\.(findAllRecords|findAuthRecordByToken|findCollectionByNameOrId|findCollectionsByFilter|findFirstRecordByData|findFirstRecordByFilter|findRecordById|findRecordsByExpr|findRecordsByFilter)\b/,
+  roleRequestContext: /(^|[^A-Za-z0-9_])(request|params|query)\b|\bresolve\s*\(/,
+  roleResolvePath: /resolve\(\s*["']roles\//g,
 }
 
 let errors = 0
+let warnings = 0
 
 function fromMsysPath(value) {
   if (process.platform === 'win32' && /^\/[a-zA-Z](\/|$)/.test(value)) {
@@ -187,6 +196,10 @@ function buildServiceContext(serviceDir) {
     pagesCodeFiles,
     pagesEjsFiles,
     privateCodeFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('_private/')),
+    roleFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('_private/roles/') && file.basename.endsWith('.js')),
+    entryCodeFiles: pagesCodeFiles.filter(
+      (file) => !file.relFromPages.startsWith('_private/') && !file.relFromPages.startsWith('assets/'),
+    ),
     apiFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('api/')),
     xapiFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('xapi/')),
     middlewareFiles: pagesCodeFiles.filter((file) => file.basename === '+middleware.js'),
@@ -204,6 +217,19 @@ function printMatches(serviceName, title, matches) {
   errors += matches.length
   console.log()
   console.log(`[FAIL][${serviceName}] ${title}`)
+  for (const match of matches) {
+    console.log(`  ${match}`)
+  }
+}
+
+function printWarnings(serviceName, title, matches) {
+  if (matches.length === 0) {
+    return
+  }
+
+  warnings += matches.length
+  console.log()
+  console.log(`[WARN][${serviceName}] ${title}`)
   for (const match of matches) {
     console.log(`  ${match}`)
   }
@@ -586,14 +612,14 @@ function lintService(context) {
   const resolvePrivateMatches = collectLineMatches(context.hooksCodeFiles, RE.resolvePrivate)
   printMatches(
     context.serviceName,
-    "Do not call resolve() with /_private paths. Use names relative to _private, e.g. resolve('board-service').",
+    "Invalid resolve() path. Use names relative to _private, for example resolve('board-service').",
     resolvePrivateMatches,
   )
 
   const includePrivateMatches = collectLineMatches(context.pagesCodeFiles, RE.includePrivate)
   printMatches(
     context.serviceName,
-    'Do not call include() with /_private paths. Keep include paths relative to the current PocketPages include rules.',
+    'Invalid include() path. Keep include paths relative to the current PocketPages include rules.',
     includePrivateMatches,
   )
 
@@ -601,7 +627,7 @@ function lintService(context) {
   const recordFieldMatches = filterLinesExcluding(rawRecordFieldMatches, RE.recordFieldAllowed)
   printMatches(
     context.serviceName,
-    "Avoid record.fieldName direct access in EJS. Prefer record.get('fieldName').",
+    "Invalid direct Record field access. Read PocketBase fields with record.get('fieldName').",
     recordFieldMatches,
   )
 
@@ -614,7 +640,7 @@ function lintService(context) {
     .map((file) => file.displayPath)
   printMatches(
     context.serviceName,
-    'Middleware must use resolve from function arguments, not a global resolve() call.',
+    'Invalid middleware resolve() usage. Read resolve from middleware function arguments.',
     middlewareResolveMatches,
   )
 
@@ -622,12 +648,16 @@ function lintService(context) {
     context.pagesFiles,
     (file) => /^(api|xapi)(\/.*)?\/\+layout\.ejs$/.test(file.relFromPages),
   )
-  printMatches(context.serviceName, 'api/xapi routes must not define +layout.ejs files.', apiLayoutMatches)
+  printMatches(
+    context.serviceName,
+    'Invalid layout placement. Keep +layout.ejs in routable page sections, not under api/ or xapi/.',
+    apiLayoutMatches,
+  )
 
   const xapiFullHtmlMatches = collectLineMatches(context.xapiFiles, RE.fullHtml)
   printMatches(
     context.serviceName,
-    'xapi endpoints should return fragments or raw responses, not full HTML documents.',
+    'Invalid xapi response shape. Return fragments or raw responses from xapi/, not full HTML documents.',
     xapiFullHtmlMatches,
   )
 
@@ -640,35 +670,56 @@ function lintService(context) {
   )
   printMatches(
     context.serviceName,
-    '_private must not contain PocketPages special route/config files.',
+    'Invalid _private file placement. Keep PocketPages special route/config files outside _private.',
     privateSpecialFileMatches,
   )
 
   const privateResolveMatches = collectLineMatches(context.privateCodeFiles, RE.resolveCall)
   printMatches(
     context.serviceName,
-    '_private .js/.ejs files must not call resolve(). Resolve dependencies only from request entry files such as EJS, <script server>, loaders, and middleware.',
+    'Invalid _private resolve() usage. Resolve dependencies only from request entry files such as EJS, <script server>, loaders, and middleware.',
     privateResolveMatches,
+  )
+
+  const roleSideEffectMatches = collectLineMatches(context.roleFiles, RE.roleSideEffect)
+  printMatches(
+    context.serviceName,
+    'Invalid role side effect. Keep roles/*.js pure and move redirect/response/body/save/delete work to entry or service code.',
+    roleSideEffectMatches,
+  )
+
+  const roleDbQueryMatches = collectLineMatches(context.roleFiles, RE.roleDbQuery)
+  printMatches(
+    context.serviceName,
+    'Invalid role DB lookup. Fetch records in entry or service code and pass them into the role.',
+    roleDbQueryMatches,
+  )
+
+  const roleRequestContextMatches = collectLineMatches(context.roleFiles, RE.roleRequestContext)
+  printMatches(
+    context.serviceName,
+    'Invalid role request-context access. Do not use request, params, query, or resolve() inside roles/*.js.',
+    roleRequestContextMatches,
   )
 
   const xapiJsonMatches = collectLineMatches(context.xapiFiles, RE.responseJson)
   printMatches(
     context.serviceName,
-    'xapi endpoints should return fragments/raw responses, not response.json(...). Move JSON endpoints under api/.',
+    'Invalid xapi JSON response. Move JSON endpoints under api/ and keep xapi/ for fragments or raw responses.',
     xapiJsonMatches,
   )
 
   const apiRedirectMatches = collectLineMatches(context.apiFiles, RE.redirect)
   printMatches(
     context.serviceName,
-    'api endpoints should return programmatic responses, not redirect(...).',
+    'Invalid api redirect. Keep api/ for programmatic responses and move redirect flows to page or xapi code.',
     apiRedirectMatches,
   )
 
   const manualFlashMatches = collectLineMatches(context.pagesCodeFiles, RE.manualFlash)
   printMatches(
     context.serviceName,
-    'Do not manually build ?__flash=... query strings. Use redirect(path, { message }).',
+    'Invalid flash handling. Use redirect(path, { message }) instead of manually building ?__flash=....',
     manualFlashMatches,
   )
 
@@ -677,7 +728,7 @@ function lintService(context) {
     .map((file) => file.displayPath)
   printMatches(
     context.serviceName,
-    '+config.js must live only at pb_hooks/pages/+config.js, not nested route directories.',
+    'Invalid +config.js placement. Keep a single +config.js at pb_hooks/pages/+config.js.',
     nestedConfigMatches,
   )
 
@@ -686,7 +737,7 @@ function lintService(context) {
     .map((file) => file.displayPath)
   printMatches(
     context.serviceName,
-    'Unknown +special file name detected. Only +config.js, +layout.ejs, +load.js, +middleware.js, +get.js, +post.js, +put.js, +patch.js, +delete.js are allowed.',
+    'Invalid +special file name. Only +config.js, +layout.ejs, +load.js, +middleware.js, +get.js, +post.js, +put.js, +patch.js, and +delete.js are allowed.',
     invalidSpecialPlusFiles,
   )
 
@@ -704,7 +755,7 @@ function lintService(context) {
     .map((file) => file.displayPath)
   printMatches(
     context.serviceName,
-    'Middleware that declares next must either call next() or send a response via response.* before returning.',
+    'Invalid middleware control flow. Middleware that declares next must call next() or send a response before returning.',
     middlewareFlowMatches,
   )
 
@@ -733,7 +784,7 @@ function lintService(context) {
   }
   printMatches(
     context.serviceName,
-    'Avoid stacking parent/child +load.js files. PocketPages executes only the leaf +load.js; shared loading belongs in middleware.',
+    'Invalid nested +load.js layout. PocketPages executes only the leaf +load.js, so shared loading belongs in middleware.',
     nestedLoadMatches,
   )
 
@@ -741,7 +792,7 @@ function lintService(context) {
   const disallowedRawEjsMatches = filterLinesExcluding(rawEjsOutputMatches, RE.rawEjsAllowed)
   printMatches(
     context.serviceName,
-    'Raw EJS output (<%- ... %>) should be limited to include(), slot/slots, content, or resolve()-provided safe assets.',
+    'Invalid raw EJS output. Limit <%- ... %> to include(), slot/slots, content, or resolve()-provided safe assets.',
     disallowedRawEjsMatches,
   )
 
@@ -750,7 +801,7 @@ function lintService(context) {
   if (authHelperMatches.length > 0 && !compactConfig.includes('pocketpages-plugin-auth')) {
     printMatches(
       context.serviceName,
-      'Auth helpers require pocketpages-plugin-auth in pb_hooks/pages/+config.js.',
+      'Invalid auth helper setup. Add pocketpages-plugin-auth to pb_hooks/pages/+config.js before using auth helpers.',
       authHelperMatches,
     )
   }
@@ -769,8 +820,25 @@ function lintService(context) {
   }
   printMatches(
     context.serviceName,
-    'pocketpages-plugin-auth requires pocketpages-plugin-js-sdk to be explicitly listed before it in +config.js.',
+    'Invalid auth plugin order. List pocketpages-plugin-js-sdk before pocketpages-plugin-auth in +config.js.',
     authPluginConfigMatches,
+  )
+
+  const excessiveRoleResolveMatches = context.entryCodeFiles
+    .map((file) => {
+      const matches = file.content.match(RE.roleResolvePath)
+      const count = matches ? matches.length : 0
+      if (count <= 4) {
+        return ''
+      }
+
+      return `${file.displayPath}: found ${count} role resolve() calls; consider composing them once in an entry-level service/factory`
+    })
+    .filter(Boolean)
+  printWarnings(
+    context.serviceName,
+    "Heavy role composition in one entry. Consider composing resolve('roles/...') calls once in an entry-level service or factory.",
+    excessiveRoleResolveMatches,
   )
 }
 
@@ -793,6 +861,12 @@ function main() {
     console.log()
     console.log(`PocketPages lint failed with ${errors} issue(s).`)
     process.exit(1)
+  }
+
+  if (warnings > 0) {
+    console.log()
+    console.log(`PocketPages lint passed with ${warnings} warning(s).`)
+    process.exit(0)
   }
 
   console.log('PocketPages lint passed.')

@@ -128,21 +128,38 @@ declare namespace types {
     deptSnapshots: KjcaDeptSnapshot[]
   }
 
-  type KjcaRole = {
-    canSaveSuccess?: (record: core.Record) => boolean
-    canSaveConfirmed?: (record: core.Record) => boolean
-    canSaveAiResult?: (record: core.Record) => boolean
-    canSave?: (record: core.Record) => boolean
-    hasContent?: (record: core.Record) => boolean
+  type KjcaStaffDiaryAnalysisCacheRole = {
+    canSaveSuccess: (record: core.Record) => boolean
+  }
+
+  type KjcaRecruitingWeekPlanRole = {
+    canSaveConfirmed: (record: core.Record) => boolean
+  }
+
+  type KjcaRecruitingWeekPlanItemRole = {
+    canSave: (record: core.Record) => boolean
+    hasContent: (record: core.Record) => boolean
+  }
+
+  type KjcaRecruitingDailyResultRole = {
+    canSaveAiResult: (record: core.Record) => boolean
+  }
+
+  type KjcaRecruitingWeekTextPlanRole = {
+    canSaveConfirmed: (record: core.Record) => boolean
+  }
+
+  type KjcaRecruitingWeekTextRowRole = {
+    canSave: (record: core.Record) => boolean
   }
 
   type KjcaCollectRoles = {
-    staffDiaryAnalysisCacheRole?: KjcaRole | null
-    recruitingWeekPlanRole?: KjcaRole | null
-    recruitingWeekPlanItemRole?: KjcaRole | null
-    recruitingDailyResultRole?: KjcaRole | null
-    recruitingWeekTextPlanRole?: KjcaRole | null
-    recruitingWeekTextRowRole?: KjcaRole | null
+    staffDiaryAnalysisCacheRole?: KjcaStaffDiaryAnalysisCacheRole | null
+    recruitingWeekPlanRole?: KjcaRecruitingWeekPlanRole | null
+    recruitingWeekPlanItemRole?: KjcaRecruitingWeekPlanItemRole | null
+    recruitingDailyResultRole?: KjcaRecruitingDailyResultRole | null
+    recruitingWeekTextPlanRole?: KjcaRecruitingWeekTextPlanRole | null
+    recruitingWeekTextRowRole?: KjcaRecruitingWeekTextRowRole | null
   }
 
   type KjcaSession = {

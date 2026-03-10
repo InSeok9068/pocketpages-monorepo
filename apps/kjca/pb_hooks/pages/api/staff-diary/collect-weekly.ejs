@@ -1,25 +1,13 @@
 <script server>
   const kjcaService = resolve("kjca-service");
-  const staffDiaryAnalysisCacheRole = resolve("roles/staff-diary-analysis-cache");
-  const recruitingWeekPlanRole = resolve("roles/recruiting-week-plan");
-  const recruitingWeekPlanItemRole = resolve("roles/recruiting-week-plan-item");
-  const recruitingDailyResultRole = resolve("roles/recruiting-daily-result");
-  const recruitingWeekTextPlanRole = resolve("roles/recruiting-week-text-plan");
-  const recruitingWeekTextRowRole = resolve("roles/recruiting-week-text-row");
+  const collectRoles = resolve("kjca-collect-roles");
 
   const payload = body();
 
   try {
     const result = kjcaService.collectWeekly(
       request,
-      {
-        staffDiaryAnalysisCacheRole,
-        recruitingWeekPlanRole,
-        recruitingWeekPlanItemRole,
-        recruitingDailyResultRole,
-        recruitingWeekTextPlanRole,
-        recruitingWeekTextRowRole,
-      },
+      collectRoles,
       payload,
     );
 

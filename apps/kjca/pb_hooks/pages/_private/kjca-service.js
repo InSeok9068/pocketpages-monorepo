@@ -1452,7 +1452,7 @@ function upsertSuccessCache(staffDiaryAnalysisCacheRole, params) {
 /**
  * 팀장 업무일지 본문을 읽어 AI 분석 결과 목록으로 변환합니다.
  * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
- * @param {types.KjcaRole | null | undefined} staffDiaryAnalysisCacheRole 분석 성공 캐시 저장 전에 확인할 role입니다.
+ * @param {types.KjcaStaffDiaryAnalysisCacheRole | null | undefined} staffDiaryAnalysisCacheRole 분석 성공 캐시 저장 전에 확인할 role입니다.
  * @param {types.KjcaAnalyzePayload | null | undefined} payload 분석 날짜와 대상 목록을 담은 입력값입니다.
  * @param {types.KjcaSession | null | undefined} [session] 이미 만든 세션이 있으면 재사용할 세션 정보입니다.
  * @returns {types.KjcaAnalyzeCallResult} 분석 결과 목록과 중단 사유를 담은 결과입니다.
