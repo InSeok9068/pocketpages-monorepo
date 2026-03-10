@@ -1,3 +1,6 @@
+const { globalApi } = require("pocketpages");
+const { dbg, info, warn, error } = globalApi;
+
 const KJCA_EMAIL_DOMAIN = "kjca.local";
 const KJCA_HOST = "http://www.kjca.co.kr";
 const KJCA_LOGIN_URL = `${KJCA_HOST}/staff/auth/login_check`;
