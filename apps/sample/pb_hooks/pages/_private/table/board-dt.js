@@ -1,29 +1,27 @@
+/**
+ * 게시판 record를 검증 전용 DT로 감쌉니다.
+ * @param {core.Record} record 게시판 record입니다.
+ * @returns {object} 게시판 검증 메서드만 가진 DT입니다.
+ */
 module.exports = function createBoardDT(record) {
   const id = record.get('id')
-  const name = record.get('name')
-  const slug = record.get('slug')
-  const description = record.get('description')
-  const isActive = !!record.get('is_active')
-  const sortOrder = record.get('sort_order') || 0
+  const name = String(record.get('name') || '').trim()
+  const slug = String(record.get('slug') || '').trim()
+  const description = String(record.get('description') || '').trim()
+  const is_active = !!record.get('is_active')
+  const sort_order = Number(record.get('sort_order') || 0)
 
   return {
-    id,
-    name,
-    slug,
-    description,
-    isActive,
-    sortOrder,
-
     isUsable() {
-      return this.isActive
+      return is_active
     },
 
     canAcceptPosts() {
-      return this.isActive
+      return is_active
     },
 
     canDeactivate() {
-      return this.isActive
+      return is_active
     },
   }
 }

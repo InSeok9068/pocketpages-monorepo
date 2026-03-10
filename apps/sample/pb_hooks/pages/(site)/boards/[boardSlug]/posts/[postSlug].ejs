@@ -20,7 +20,7 @@
       const postDT = createPostDT(post)
       if (postDT.canIncrementViewCount()) {
         try {
-          post.set('view_count', postDT.viewCount + 1)
+          post.set('view_count', Number(post.get('view_count') || 0) + 1)
           $app.save(post)
           info('page/posts/show:view-incremented', {
             boardSlug,

@@ -4,9 +4,13 @@
  * @returns {{ isConfirmed: () => boolean, canSaveConfirmed: () => boolean }} 저장 전 상태를 확인하는 DT입니다.
  */
 module.exports = function createRecruitingWeekTextPlanDT(record) {
+  const id = record.get('id')
   const weekStartDate = String(record.get('weekStartDate') || '').trim()
   const dept = String(record.get('dept') || '').trim()
   const status = String(record.get('status') || '').trim()
+  const createdBy = record.get('createdBy')
+  const created = record.get('created')
+  const updated = record.get('updated')
 
   return {
     isConfirmed() {

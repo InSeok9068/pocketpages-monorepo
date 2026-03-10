@@ -1,23 +1,27 @@
+/**
+ * 사용자 record를 검증 전용 DT로 감쌉니다.
+ * @param {core.Record} record 사용자 record입니다.
+ * @returns {object} 사용자 검증 메서드만 가진 DT입니다.
+ */
 module.exports = function createUserDT(record) {
   const id = record.get('id')
-  const email = record.get('email')
-  const name = record.get('name')
+  const password = record.get('password')
+  const tokenKey = record.get('tokenKey')
+  const email = String(record.get('email') || '').trim()
+  const emailVisibility = !!record.get('emailVisibility')
+  const name = String(record.get('name') || '').trim()
   const verified = typeof record.verified === 'function' ? record.verified() : !!record.get('verified')
   const avatar = record.get('avatar')
+  const created = record.get('created')
+  const updated = record.get('updated')
 
   return {
-    id,
-    email,
-    name,
-    verified,
-    avatar,
-
     hasDisplayName() {
-      return String(this.name || '').trim().length > 0
+      return !!name
     },
 
     isVerified() {
-      return this.verified === true
+      return verified === true
     },
 
     canEditProfile(authRecord) {
@@ -25,11 +29,11 @@ module.exports = function createUserDT(record) {
         return false
       }
 
-      return authRecord.get('id') === this.id || authRecord.isSuperuser()
+      return authRecord.get('id') === id || authRecord.isSuperuser()
     },
 
     canUploadAvatar() {
-      return this.isVerified()
+      return verified === true
     },
   }
 }

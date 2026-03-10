@@ -1,29 +1,27 @@
+/**
+ * 댓글 record를 검증 전용 DT로 감쌉니다.
+ * @param {core.Record} record 댓글 record입니다.
+ * @returns {object} 댓글 검증 메서드만 가진 DT입니다.
+ */
 module.exports = function createCommentDT(record) {
   const id = record.get('id')
-  const postId = record.get('post')
-  const authorName = record.get('author_name')
-  const content = record.get('content')
-  const status = record.get('status')
-  const parentCommentId = record.get('parent_comment')
+  const post = record.get('post')
+  const author_name = String(record.get('author_name') || '').trim()
+  const content = String(record.get('content') || '').trim()
+  const status = String(record.get('status') || '').trim()
+  const parent_comment = record.get('parent_comment')
 
   return {
-    id,
-    postId,
-    authorName,
-    content,
-    status,
-    parentCommentId,
-
     isVisible() {
-      return this.status === 'visible'
+      return status === 'visible'
     },
 
     isHidden() {
-      return this.status === 'hidden'
+      return status === 'hidden'
     },
 
     isDeleted() {
-      return this.status === 'deleted'
+      return status === 'deleted'
     },
 
     canReply() {

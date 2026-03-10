@@ -1,41 +1,35 @@
+/**
+ * 게시글 record를 검증 전용 DT로 감쌉니다.
+ * @param {core.Record} record 게시글 record입니다.
+ * @returns {object} 게시글 검증 메서드만 가진 DT입니다.
+ */
 module.exports = function createPostDT(record) {
   const id = record.get('id')
-  const boardId = record.get('board')
-  const title = record.get('title')
-  const slug = record.get('slug')
-  const content = record.get('content')
-  const authorName = record.get('author_name')
-  const status = record.get('status')
-  const isNotice = !!record.get('is_notice')
-  const viewCount = record.get('view_count') || 0
-  const publishedAt = record.get('published_at')
+  const board = record.get('board')
+  const title = String(record.get('title') || '').trim()
+  const slug = String(record.get('slug') || '').trim()
+  const content = String(record.get('content') || '').trim()
+  const author_name = String(record.get('author_name') || '').trim()
+  const status = String(record.get('status') || '').trim()
+  const is_notice = !!record.get('is_notice')
+  const view_count = Number(record.get('view_count') || 0)
+  const published_at = record.get('published_at')
 
   return {
-    id,
-    boardId,
-    title,
-    slug,
-    content,
-    authorName,
-    status,
-    isNotice,
-    viewCount,
-    publishedAt,
-
     isDraft() {
-      return this.status === 'draft'
+      return status === 'draft'
     },
 
     isPublished() {
-      return this.status === 'published'
+      return status === 'published'
     },
 
     isArchived() {
-      return this.status === 'archived'
+      return status === 'archived'
     },
 
     hasPublishableContent() {
-      return String(this.title || '').trim() !== '' && String(this.content || '').trim() !== ''
+      return !!title && !!content
     },
 
     canPublish() {

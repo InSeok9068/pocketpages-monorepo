@@ -4,6 +4,8 @@
  * @returns {{ hasContent: () => boolean, canSave: () => boolean }} 저장 전 상태를 확인하는 DT입니다.
  */
 module.exports = function createRecruitingWeekTextRowDT(record) {
+  const id = record.get('id')
+  const planId = record.get('planId')
   const weekday = String(record.get('weekday') || '').trim()
   const channelName = String(record.get('channelName') || '').trim()
   const weeklyPlan = String(record.get('weeklyPlan') || '').trim()
@@ -13,6 +15,9 @@ module.exports = function createRecruitingWeekTextRowDT(record) {
   const recruitCountText = String(record.get('recruitCountText') || '').trim()
   const ownerName = String(record.get('ownerName') || '').trim()
   const note = String(record.get('note') || '').trim()
+  const sortOrder = record.get('sortOrder')
+  const created = record.get('created')
+  const updated = record.get('updated')
 
   return {
     hasContent() {
