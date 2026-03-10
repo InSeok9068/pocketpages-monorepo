@@ -239,6 +239,27 @@ function getResolvedModuleMemberContext(scriptText, offset) {
   return collectResolvedModuleMemberContexts(scriptText).find((context) => offset >= context.start && offset <= context.end) || null
 }
 
+function collectResolveRequestPaths(scriptText) {
+  const sourceFile = ts.createSourceFile('pocketpages-resolve-paths.ts', scriptText, ts.ScriptTarget.Latest, true)
+  const requestPaths = []
+  const seen = new Set()
+
+  const visit = (node) => {
+    if (ts.isCallExpression(node)) {
+      const requestPath = readResolveRequestPath(node)
+      if (requestPath && !seen.has(requestPath)) {
+        seen.add(requestPath)
+        requestPaths.push(requestPath)
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return requestPaths
+}
+
 function collectResolvedModuleMemberContexts(scriptText) {
   const sourceFile = ts.createSourceFile('pocketpages-resolve-member.ts', scriptText, ts.ScriptTarget.Latest, true)
   const aliases = collectResolveAliases(sourceFile)
@@ -285,6 +306,7 @@ function collectSchemaContexts(scriptText) {
 }
 
 module.exports = {
+  collectResolveRequestPaths,
   collectResolvedModuleMemberContexts,
   collectSchemaContexts,
   collectPathContexts,

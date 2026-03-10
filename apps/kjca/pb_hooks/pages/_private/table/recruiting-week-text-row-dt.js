@@ -1,3 +1,8 @@
+/**
+ * 주간 텍스트 행 레코드의 저장 가능 상태를 판단하는 DT를 만듭니다.
+ * @param {core.Record} record 검증할 주간 텍스트 행 레코드입니다.
+ * @returns {{ hasContent: () => boolean, canSave: () => boolean }} 저장 전 상태를 확인하는 DT입니다.
+ */
 module.exports = function createRecruitingWeekTextRowDT(record) {
   const weekday = String(record.get('weekday') || '').trim()
   const channelName = String(record.get('channelName') || '').trim()

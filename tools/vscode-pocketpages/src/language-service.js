@@ -7,6 +7,7 @@ const { buildTemplateVirtualText, getTemplateCodeBlockAtOffset } = require("./ej
 const { extractServerBlocks, getServerBlockAtOffset } = require("./script-server");
 const { PocketPagesProjectIndex } = require("./project-index");
 const {
+  collectResolveRequestPaths,
   collectPathContexts,
   collectResolvedModuleMemberContexts,
   collectSchemaContexts,
@@ -322,7 +323,7 @@ class ProjectLanguageService {
     this.ensureStaticFile(path.join(this.appRoot, "pocketpages-globals.d.ts"));
   }
 
-  buildPrelude(filePath) {
+  buildPrelude(filePath, analysisText = "") {
     const references = [path.join(this.appRoot, "pb_data", "types.d.ts"), path.join(this.appRoot, "pocketpages-globals.d.ts")]
       .filter((filePath) => fileExists(filePath))
       .map((filePath) => `/// <reference path="${toReferencePath(filePath)}" />`);
@@ -350,7 +351,41 @@ class ProjectLanguageService {
     // bindings from different EJS files do not collide in the shared TS project.
     parts.push("export {};");
 
+    const resolveTypePrelude = this.buildResolveTypePrelude(filePath, analysisText);
+    if (resolveTypePrelude) {
+      parts.push(resolveTypePrelude);
+    }
+
     return `${parts.join("\n\n")}\n\n`;
+  }
+
+  buildResolveTypePrelude(filePath, analysisText) {
+    if (!analysisText) {
+      return "";
+    }
+
+    const overloadLines = [];
+
+    for (const requestPath of collectResolveRequestPaths(analysisText)) {
+      const targetFilePath = this.projectIndex.resolveResolveTarget(filePath, requestPath);
+      if (!targetFilePath || !isScriptFile(targetFilePath)) {
+        continue;
+      }
+
+      overloadLines.push(
+        `  (requestPath: ${JSON.stringify(requestPath)}, ...args: any[]): typeof import(${JSON.stringify(normalizePath(targetFilePath))});`
+      );
+    }
+
+    if (!overloadLines.length) {
+      return "";
+    }
+
+    return [
+      "declare const resolve: ((requestPath: string, ...args: any[]) => any) & {",
+      ...overloadLines,
+      "};",
+    ].join("\n");
   }
 
   upsertVirtualFile(filePath, block) {
@@ -361,7 +396,7 @@ class ProjectLanguageService {
     const virtualDir = path.join(CACHE_ROOT, sanitizeFileName(this.appRoot));
     const virtualFileName = normalizePath(path.join(virtualDir, `${sanitizeFileName(relativePath)}__block_${block.index}.ts`));
 
-    const prelude = this.buildPrelude(resolvedPath);
+    const prelude = this.buildPrelude(resolvedPath, block.content);
     const text = `${prelude}${block.content}`;
     const previous = this.virtualFiles.get(virtualFileName);
 
@@ -398,8 +433,9 @@ class ProjectLanguageService {
     const virtualDir = path.join(CACHE_ROOT, sanitizeFileName(this.appRoot));
     const virtualFileName = normalizePath(path.join(virtualDir, `${sanitizeFileName(relativePath)}__template.ts`));
 
-    const prelude = this.buildPrelude(resolvedPath);
-    const text = `${prelude}${buildTemplateVirtualText(documentText)}`;
+    const templateVirtualText = buildTemplateVirtualText(documentText);
+    const prelude = this.buildPrelude(resolvedPath, templateVirtualText);
+    const text = `${prelude}${templateVirtualText}`;
     const previous = this.virtualFiles.get(virtualFileName);
 
     if (!previous || previous.text !== text) {
@@ -446,6 +482,25 @@ class ProjectLanguageService {
     }
 
     return state.block.contentStart + relativeOffset;
+  }
+
+  getVirtualStateAtOffset(filePath, documentText, offset) {
+    const block = getServerBlockAtOffset(documentText, offset);
+    const virtual = block
+      ? this.upsertVirtualFile(filePath, block)
+      : getTemplateCodeBlockAtOffset(documentText, offset)
+        ? this.upsertTemplateVirtualFile(filePath, documentText)
+        : null;
+
+    if (!virtual) {
+      return null;
+    }
+
+    return {
+      block,
+      virtual,
+      virtualOffset: block ? virtual.preludeLength + (offset - block.contentStart) : virtual.preludeLength + offset,
+    };
   }
 
   getResolvedModuleMemberContextForRename(filePath, documentText, offset) {
@@ -689,18 +744,12 @@ class ProjectLanguageService {
   }
 
   getCompletionData(filePath, documentText, offset) {
-    const block = getServerBlockAtOffset(documentText, offset);
-    const virtual = block
-      ? this.upsertVirtualFile(filePath, block)
-      : getTemplateCodeBlockAtOffset(documentText, offset)
-        ? this.upsertTemplateVirtualFile(filePath, documentText)
-        : null;
-
-    if (!virtual) {
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
+    if (!virtualState) {
       return null;
     }
 
-    const virtualOffset = block ? virtual.preludeLength + (offset - block.contentStart) : virtual.preludeLength + offset;
+    const { virtual, virtualOffset } = virtualState;
     const info = this.languageService.getCompletionsAtPosition(virtual.fileName, virtualOffset, {
       includeCompletionsWithInsertText: true,
       includeCompletionsForModuleExports: false,
@@ -809,18 +858,12 @@ class ProjectLanguageService {
   }
 
   getQuickInfo(filePath, documentText, offset) {
-    const block = getServerBlockAtOffset(documentText, offset);
-    const virtual = block
-      ? this.upsertVirtualFile(filePath, block)
-      : getTemplateCodeBlockAtOffset(documentText, offset)
-        ? this.upsertTemplateVirtualFile(filePath, documentText)
-        : null;
-
-    if (!virtual) {
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
+    if (!virtualState) {
       return null;
     }
 
-    const virtualOffset = block ? virtual.preludeLength + (offset - block.contentStart) : virtual.preludeLength + offset;
+    const { virtual, virtualOffset } = virtualState;
     const quickInfo = this.languageService.getQuickInfoAtPosition(virtual.fileName, virtualOffset);
 
     if (!quickInfo) {
@@ -836,6 +879,22 @@ class ProjectLanguageService {
       start,
       end,
     };
+  }
+
+  getSignatureHelp(filePath, documentText, offset, options = {}) {
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
+    if (!virtualState) {
+      return null;
+    }
+
+    const signatureHelp = this.languageService.getSignatureHelpItems(virtualState.virtual.fileName, virtualState.virtualOffset, {
+      triggerReason: {
+        kind: options.isRetrigger ? "retrigger" : options.triggerCharacter ? "characterTyped" : "invoked",
+        triggerCharacter: options.triggerCharacter,
+      },
+    });
+
+    return signatureHelp || null;
   }
 
   getDiagnostics(filePath, documentText) {

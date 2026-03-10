@@ -160,8 +160,9 @@ export {}
   )
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
-    `function readAuthState(params) {
-  return { ok: !!params }
+    `/** @param {{ request: { method: string } }} params */
+function readAuthState(params) {
+  return { ok: !!params, method: params.request.method }
 }
 
 module.exports = {
@@ -255,6 +256,69 @@ const authState = { email: '', isSignedIn: true }
       throw new Error(`Expected hover info inside EJS template. Got: ${JSON.stringify(templateQuickInfo)}`)
     }
 
+    const typedResolveCompletionText = `<script server>
+const boardService = resolve('board-service')
+boardService.
+</script>
+`
+    const typedResolveCompletionOffset = typedResolveCompletionText.indexOf('boardService.') + 'boardService.'.length
+    const typedResolveCompletion = service.getCompletionData(
+      fixture.boardsFilePath,
+      typedResolveCompletionText,
+      typedResolveCompletionOffset
+    )
+    const typedResolveCompletionNames = typedResolveCompletion ? typedResolveCompletion.entries.map((entry) => entry.name) : []
+    if (!typedResolveCompletionNames.includes('readAuthState')) {
+      throw new Error(
+        `Expected typed resolve() completion for "readAuthState". Got: ${typedResolveCompletionNames.slice(0, 20).join(', ')}`
+      )
+    }
+
+    const typedResolveHoverText = `<script server>
+const boardService = resolve('board-service')
+boardService.readAuthState({ request })
+</script>
+`
+    const typedResolveHoverOffset = typedResolveHoverText.indexOf('readAuthState') + 2
+    const typedResolveQuickInfo = service.getQuickInfo(fixture.boardsFilePath, typedResolveHoverText, typedResolveHoverOffset)
+    if (
+      !typedResolveQuickInfo ||
+      !typedResolveQuickInfo.displayText.includes('readAuthState(params: {') ||
+      !typedResolveQuickInfo.displayText.includes('method: string')
+    ) {
+      throw new Error(`Expected typed resolve() hover info. Got: ${JSON.stringify(typedResolveQuickInfo)}`)
+    }
+
+    const typedResolveSignatureText = `<script server>
+const boardService = resolve('board-service')
+boardService.readAuthState(
+</script>
+`
+    const typedResolveSignatureOffset = typedResolveSignatureText.indexOf('readAuthState(') + 'readAuthState('.length
+    const typedResolveSignatureHelp = service.getSignatureHelp(
+      fixture.boardsFilePath,
+      typedResolveSignatureText,
+      typedResolveSignatureOffset,
+      { triggerCharacter: '(' }
+    )
+    const typedResolveSignatureLabel =
+      typedResolveSignatureHelp && typedResolveSignatureHelp.items.length
+        ? [
+            typedResolveSignatureHelp.items[0].prefixDisplayParts,
+            ...typedResolveSignatureHelp.items[0].parameters.flatMap((parameter, index) => [
+              ...(index > 0 ? typedResolveSignatureHelp.items[0].separatorDisplayParts : []),
+              ...parameter.displayParts,
+            ]),
+            typedResolveSignatureHelp.items[0].suffixDisplayParts,
+          ]
+            .flat()
+            .map((part) => part.text)
+            .join('')
+        : ''
+    if (!typedResolveSignatureLabel.includes('readAuthState(') || !typedResolveSignatureLabel.includes('method: string')) {
+      throw new Error(`Expected typed resolve() signature help. Got: ${JSON.stringify(typedResolveSignatureHelp)}`)
+    }
+
     const paramsText = `<script server>\nparams.\n</script>\n`
     const paramsOffset = paramsText.indexOf('params.') + 'params.'.length
     const paramsCompletion = service.getCompletionData(fixture.boardShowFilePath, paramsText, paramsOffset)
@@ -340,8 +404,8 @@ const authState = { email: '', isSignedIn: true }
     if (!resolvedMemberDefinition.filePath.endsWith('/pb_hooks/pages/_private/board-service.js')) {
       throw new Error(`Expected resolve()-derived member definition file. Got: ${JSON.stringify(resolvedMemberDefinition)}`)
     }
-    if (resolvedMemberDefinition.line !== 0) {
-      throw new Error(`Expected readAuthState definition on line 1. Got: ${JSON.stringify(resolvedMemberDefinition)}`)
+    if (resolvedMemberDefinition.line !== 1) {
+      throw new Error(`Expected readAuthState definition on line 2. Got: ${JSON.stringify(resolvedMemberDefinition)}`)
     }
 
     const renameText = `<script server>\nconst boardService = resolve('board-service')\nconst authState = boardService.readAuthState({ request })\n</script>\n`

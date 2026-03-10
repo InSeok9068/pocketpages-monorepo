@@ -88,6 +88,47 @@ function customCompletionKind(category) {
   }
 }
 
+function toSignatureHelp(signatureHelpItems) {
+  if (!signatureHelpItems || !signatureHelpItems.items || !signatureHelpItems.items.length) {
+    return null
+  }
+
+  const signatureHelp = new vscode.SignatureHelp()
+  signatureHelp.activeSignature = signatureHelpItems.selectedItemIndex || 0
+  signatureHelp.activeParameter = signatureHelpItems.argumentIndex || 0
+  signatureHelp.signatures = signatureHelpItems.items.map((item) => {
+    const prefix = ts.displayPartsToString(item.prefixDisplayParts || [])
+    const suffix = ts.displayPartsToString(item.suffixDisplayParts || [])
+    const separator = ts.displayPartsToString(item.separatorDisplayParts || [])
+    let label = prefix
+    const parameters = []
+
+    item.parameters.forEach((parameter, index) => {
+      if (index > 0) {
+        label += separator
+      }
+
+      const parameterLabel = ts.displayPartsToString(parameter.displayParts || [])
+      const start = label.length
+      label += parameterLabel
+      parameters.push(
+        new vscode.ParameterInformation([start, label.length], ts.displayPartsToString(parameter.documentation || []))
+      )
+    })
+
+    label += suffix
+
+    const signatureInformation = new vscode.SignatureInformation(
+      label,
+      ts.displayPartsToString(item.documentation || [])
+    )
+    signatureInformation.parameters = parameters
+    return signatureInformation
+  })
+
+  return signatureHelp
+}
+
 function debounce(fn, waitMs) {
   let timeoutId = null
 
@@ -239,6 +280,31 @@ class PocketPagesHoverProvider {
     }
 
     return new vscode.Hover(contents, toRange(document, quickInfo.start, quickInfo.end))
+  }
+}
+
+class PocketPagesSignatureHelpProvider {
+  constructor(manager) {
+    this.manager = manager
+  }
+
+  provideSignatureHelp(document, position, _token, context) {
+    if (!findAppRoot(document.uri.fsPath)) {
+      return null
+    }
+
+    const service = this.manager.getServiceForFile(document.uri.fsPath)
+    if (!service) {
+      return null
+    }
+
+    const offset = document.offsetAt(position)
+    const signatureHelp = service.getSignatureHelp(document.uri.fsPath, document.getText(), offset, {
+      triggerCharacter: context ? context.triggerCharacter : undefined,
+      isRetrigger: !!(context && context.isRetrigger),
+    })
+
+    return toSignatureHelp(signatureHelp)
   }
 }
 
@@ -507,6 +573,12 @@ function activate(context) {
     vscode.languages.registerReferenceProvider(RENAME_DOCUMENT_SELECTOR, new PocketPagesReferenceProvider(manager)),
     vscode.languages.registerRenameProvider(RENAME_DOCUMENT_SELECTOR, new PocketPagesRenameProvider(manager)),
     vscode.languages.registerHoverProvider(DOCUMENT_SELECTOR, new PocketPagesHoverProvider(manager)),
+    vscode.languages.registerSignatureHelpProvider(
+      DOCUMENT_SELECTOR,
+      new PocketPagesSignatureHelpProvider(manager),
+      '(',
+      ','
+    ),
     vscode.languages.registerDocumentSemanticTokensProvider(
       DOCUMENT_SELECTOR,
       new PocketPagesSemanticTokensProvider(),
