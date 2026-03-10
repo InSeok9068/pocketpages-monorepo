@@ -264,7 +264,9 @@ class PocketPagesDocumentLinkProvider {
       link.tooltip =
         entry.kind === 'resolve-path'
           ? `Open resolved module: ${entry.value}`
-          : `Open included template: ${entry.value}`
+          : entry.kind === 'include-path'
+            ? `Open included template: ${entry.value}`
+            : `Open route target: ${entry.value}`
       return link
     })
   }
@@ -368,9 +370,6 @@ function activate(context) {
   for (const document of vscode.workspace.textDocuments) {
     updateDiagnostics(document)
   }
-
-  output.show(true)
-  vscode.window.showInformationMessage('VSCode PocketPages activated.')
 }
 
 function deactivate() {}

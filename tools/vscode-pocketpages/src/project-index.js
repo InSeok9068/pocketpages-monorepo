@@ -5,6 +5,15 @@ const path = require('path')
 
 const RESOLVE_EXTENSIONS = ['.js', '.ejs', '.json', '.cjs', '.mjs']
 const INCLUDE_EXTENSIONS = ['.ejs']
+const ROUTE_EXTENSIONS = ['.ejs', '.js', '.cjs', '.mjs']
+const ROUTE_METHOD_BY_FILE_BASENAME = {
+  '+delete': 'DELETE',
+  '+get': 'GET',
+  '+patch': 'PATCH',
+  '+post': 'POST',
+  '+put': 'PUT',
+}
+const NON_ROUTE_SPECIAL_FILE_BASENAMES = new Set(['+config', '+layout', '+load', '+middleware'])
 const COLLECTION_METHOD_RE = /\$app\.(?:findRecordsByFilter|findFirstRecordByFilter|findRecordById)\(\s*['"]([^'"]+)['"]/g
 
 function normalizePath(filePath) {
@@ -122,6 +131,56 @@ function getLastPathSegment(value) {
     .split('.')
     .filter(Boolean)
     .pop() || ''
+}
+
+function isRouteGroupSegment(segment) {
+  return /^\(.+\)$/.test(String(segment || ''))
+}
+
+function isDynamicRouteSegment(segment) {
+  return /^\[(\.\.\.)?[^\]]+\]$/.test(String(segment || ''))
+}
+
+function normalizeRoutePath(routePath) {
+  let value = String(routePath || '').trim()
+  if (!value || !value.startsWith('/')) {
+    return null
+  }
+
+  if (value.startsWith('//')) {
+    return null
+  }
+
+  const markerIndex = value.search(/[?#]/)
+  if (markerIndex !== -1) {
+    value = value.slice(0, markerIndex)
+  }
+
+  value = value.replace(/\/+/g, '/')
+  if (value.length > 1) {
+    value = value.replace(/\/+$/, '')
+  }
+
+  return value || '/'
+}
+
+function getPreferredRouteMethods(routeSource) {
+  switch (String(routeSource || '').toLowerCase()) {
+    case 'action':
+    case 'hx-post':
+      return ['POST', 'GET']
+    case 'hx-put':
+      return ['PUT', 'GET']
+    case 'hx-delete':
+      return ['DELETE', 'GET']
+    case 'hx-patch':
+      return ['PATCH', 'GET']
+    case 'href':
+    case 'redirect':
+    case 'hx-get':
+    default:
+      return ['GET']
+  }
 }
 
 class PocketPagesProjectIndex {
@@ -395,6 +454,112 @@ class PocketPagesProjectIndex {
     }
 
     return null
+  }
+
+  getStaticRouteEntries() {
+    const files = walkFiles(
+      this.pagesRoot,
+      (candidatePath) => {
+        if (!ROUTE_EXTENSIONS.includes(path.extname(candidatePath))) {
+          return false
+        }
+
+        const relativePath = toRelativePath(path.relative(this.pagesRoot, candidatePath))
+        return !relativePath.split('/').includes('_private')
+      },
+      this.pagesRoot
+    )
+
+    const entries = []
+
+    for (const entry of files) {
+      const relativeSegments = entry.relativePath.split('/').filter(Boolean)
+      if (!relativeSegments.length) {
+        continue
+      }
+
+      const fileName = relativeSegments[relativeSegments.length - 1]
+      const fileBasename = stripKnownExtension(fileName, ROUTE_EXTENSIONS)
+      const directorySegments = relativeSegments.slice(0, -1)
+      const routeSegments = []
+      let isStaticRoute = true
+
+      for (const segment of directorySegments) {
+        if (!segment || isRouteGroupSegment(segment)) {
+          continue
+        }
+
+        if (segment.startsWith('+') || isDynamicRouteSegment(segment)) {
+          isStaticRoute = false
+          break
+        }
+
+        routeSegments.push(segment)
+      }
+
+      if (!isStaticRoute) {
+        continue
+      }
+
+      let method = null
+      if (fileBasename === 'index') {
+        method = null
+      } else if (ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]) {
+        method = ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]
+      } else if (NON_ROUTE_SPECIAL_FILE_BASENAMES.has(fileBasename) || fileBasename.startsWith('+')) {
+        continue
+      } else if (isDynamicRouteSegment(fileBasename)) {
+        continue
+      } else {
+        routeSegments.push(fileBasename)
+      }
+
+      entries.push({
+        filePath: entry.filePath,
+        method,
+        routePath: routeSegments.length ? `/${routeSegments.join('/')}` : '/',
+      })
+    }
+
+    return entries
+  }
+
+  resolveRouteTarget(_filePath, requestPath, options = {}) {
+    const normalizedRequestPath = normalizeRoutePath(requestPath)
+    if (!normalizedRequestPath) {
+      return null
+    }
+
+    const preferredMethods = getPreferredRouteMethods(options.routeSource)
+    const matchingEntries = this.getStaticRouteEntries().filter((entry) => entry.routePath === normalizedRequestPath)
+    if (!matchingEntries.length) {
+      return null
+    }
+
+    matchingEntries.sort((left, right) => {
+      const leftRank = this.getRouteEntryRank(left, preferredMethods)
+      const rightRank = this.getRouteEntryRank(right, preferredMethods)
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank
+      }
+
+      return left.filePath.localeCompare(right.filePath)
+    })
+
+    return matchingEntries[0].filePath
+  }
+
+  getRouteEntryRank(entry, preferredMethods) {
+    if (!entry.method) {
+      return 1
+    }
+
+    const preferredIndex = preferredMethods.indexOf(entry.method)
+    if (preferredIndex !== -1) {
+      return preferredIndex === 0 ? 0 : 2 + preferredIndex
+    }
+
+    return 10
   }
 
   inferCollectionName(receiverExpression, scriptText, beforeOffset) {

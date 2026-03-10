@@ -56,9 +56,7 @@ function findAppRoot(filePath) {
 
   while (true) {
     const hasPages = directoryExists(path.join(currentDir, "pb_hooks", "pages"));
-    const hasTypes = fileExists(path.join(currentDir, "pb_data", "types.d.ts"));
-
-    if (hasPages && hasTypes) {
+    if (hasPages) {
       return currentDir;
     }
 
@@ -93,6 +91,106 @@ function flattenDiagnosticMessage(messageText) {
   }
 
   return parts.join("\n");
+}
+
+function skipParenthesizedExpression(node) {
+  let current = node;
+  while (current && ts.isParenthesizedExpression(current)) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function isBodyLikeCallExpression(node) {
+  const target = skipParenthesizedExpression(node);
+  return (
+    !!target &&
+    ts.isCallExpression(target) &&
+    target.arguments.length === 0 &&
+    ts.isIdentifier(target.expression) &&
+    (target.expression.text === "body" || target.expression.text === "formData")
+  );
+}
+
+function collectBindingPatternSpans(bindingPattern, sourceFile, spans) {
+  for (const element of bindingPattern.elements) {
+    if (ts.isIdentifier(element.name)) {
+      spans.push({
+        start: element.name.getStart(sourceFile),
+        end: element.name.getEnd(),
+      });
+      continue;
+    }
+
+    if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      collectBindingPatternSpans(element.name, sourceFile, spans);
+    }
+  }
+}
+
+function collectRelaxedBodyDiagnosticSpans(scriptText) {
+  const sourceFile = ts.createSourceFile("pocketpages-body-relaxation.ts", scriptText, ts.ScriptTarget.Latest, true);
+  const aliasNames = new Set();
+  const spans = [];
+
+  const isRelaxedBodySource = (node) => {
+    const target = skipParenthesizedExpression(node);
+    return (
+      isBodyLikeCallExpression(target) ||
+      (!!target && ts.isIdentifier(target) && aliasNames.has(target.text))
+    );
+  };
+
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      if (ts.isIdentifier(node.name) && isRelaxedBodySource(node.initializer)) {
+        aliasNames.add(node.name.text);
+      }
+
+      if (
+        (ts.isObjectBindingPattern(node.name) || ts.isArrayBindingPattern(node.name)) &&
+        isRelaxedBodySource(node.initializer)
+      ) {
+        collectBindingPatternSpans(node.name, sourceFile, spans);
+      }
+    }
+
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(node.left) &&
+      isRelaxedBodySource(node.right)
+    ) {
+      aliasNames.add(node.left.text);
+    }
+
+    if (ts.isPropertyAccessExpression(node) && isRelaxedBodySource(node.expression)) {
+      spans.push({
+        start: node.name.getStart(sourceFile),
+        end: node.name.getEnd(),
+      });
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return spans;
+}
+
+function shouldSuppressDiagnosticForRelaxedBodyAccess(diagnostic, block, relaxedSpans) {
+  if (!diagnostic || diagnostic.code !== 2339 || typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number") {
+    return false;
+  }
+
+  const diagnosticStartInBlock = diagnostic.start - block.preludeLength;
+  const diagnosticEndInBlock = diagnosticStartInBlock + diagnostic.length;
+
+  if (diagnosticStartInBlock < 0) {
+    return false;
+  }
+
+  return relaxedSpans.some((span) => diagnosticStartInBlock >= span.start && diagnosticEndInBlock <= span.end);
 }
 
 class ProjectLanguageService {
@@ -304,7 +402,7 @@ class ProjectLanguageService {
 
   getCustomCompletionData(filePath, documentText, offset) {
     const pathContext = getPathContextAtOffset(documentText, offset);
-    if (pathContext) {
+    if (pathContext && (pathContext.kind === "resolve-path" || pathContext.kind === "include-path")) {
       const candidates =
         pathContext.kind === "resolve-path"
           ? this.projectIndex.getResolveCandidates(filePath)
@@ -412,9 +510,18 @@ class ProjectLanguageService {
 
     for (const block of blocks) {
       const virtual = this.upsertVirtualFile(filePath, block);
+      const relaxedBodyDiagnosticSpans = collectRelaxedBodyDiagnosticSpans(block.content);
       const rawDiagnostics = [...this.languageService.getSyntacticDiagnostics(virtual.fileName), ...this.languageService.getSemanticDiagnostics(virtual.fileName)];
 
       for (const diagnostic of rawDiagnostics) {
+        if (diagnostic && diagnostic.code === 1108) {
+          continue;
+        }
+
+        if (shouldSuppressDiagnosticForRelaxedBodyAccess(diagnostic, virtual, relaxedBodyDiagnosticSpans)) {
+          continue;
+        }
+
         if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number") {
           continue;
         }
@@ -483,6 +590,12 @@ class ProjectLanguageService {
       return this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
     }
 
+    if (pathContext.kind === "route-path") {
+      return this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
+        routeSource: pathContext.routeSource,
+      });
+    }
+
     return null;
   }
 
@@ -496,6 +609,10 @@ class ProjectLanguageService {
         targetFilePath = this.projectIndex.resolveResolveTarget(filePath, pathContext.value);
       } else if (pathContext.kind === "include-path") {
         targetFilePath = this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
+      } else if (pathContext.kind === "route-path") {
+        targetFilePath = this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
+          routeSource: pathContext.routeSource,
+        });
       }
 
       if (!targetFilePath) {

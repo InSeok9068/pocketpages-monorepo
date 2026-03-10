@@ -2,6 +2,10 @@
 
 const PATH_OPEN_RE = /\b(resolve|include)\(\s*(['"])([^'"]*)$/s
 const PATH_CLOSED_RE = /\b(resolve|include)\(\s*(['"])([^'"]*)\2/g
+const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)$/s
+const ROUTE_ATTR_CLOSED_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)\2/g
+const ROUTE_CALL_OPEN_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)$/s
+const ROUTE_CALL_CLOSED_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)\2/g
 const COLLECTION_OPEN_RE = /\$app\.(findRecordsByFilter|findFirstRecordByFilter|findRecordById)\(\s*(['"])([^'"]*)$/s
 const COLLECTION_CLOSED_RE = /\$app\.(findRecordsByFilter|findFirstRecordByFilter|findRecordById)\(\s*(['"])([^'"]+)\2/g
 const FIELD_OPEN_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.get\(\s*(['"])([^'"]*)$/s
@@ -49,7 +53,7 @@ function getOpenMatchContext(documentText, offset, regex, mapper) {
   })
 }
 
-function getPathContextAtOffset(documentText, offset) {
+function getModulePathContextAtOffset(documentText, offset) {
   for (const match of documentText.matchAll(PATH_CLOSED_RE)) {
     const context = toClosedMatchContext(match, `${match[1]}-path`)
     if (offset >= context.start && offset <= context.end) {
@@ -66,11 +70,71 @@ function getPathContextAtOffset(documentText, offset) {
   }))
 }
 
+function getRoutePathContextAtOffset(documentText, offset) {
+  for (const match of documentText.matchAll(ROUTE_ATTR_CLOSED_RE)) {
+    const context = toClosedMatchContext(match, 'route-path')
+    context.routeSource = match[1]
+    if (offset >= context.start && offset <= context.end) {
+      return context
+    }
+  }
+
+  for (const match of documentText.matchAll(ROUTE_CALL_CLOSED_RE)) {
+    const context = toClosedMatchContext(match, 'route-path')
+    context.routeSource = match[1]
+    if (offset >= context.start && offset <= context.end) {
+      return context
+    }
+  }
+
+  const openAttributeContext = getOpenMatchContext(documentText, offset, ROUTE_ATTR_OPEN_RE, ({ value, start, end, match }) => ({
+    kind: 'route-path',
+    routeSource: match[1],
+    value,
+    start,
+    end,
+    isOpen: true,
+  }))
+  if (openAttributeContext) {
+    return openAttributeContext
+  }
+
+  return getOpenMatchContext(documentText, offset, ROUTE_CALL_OPEN_RE, ({ value, start, end, match }) => ({
+    kind: 'route-path',
+    routeSource: match[1],
+    value,
+    start,
+    end,
+    isOpen: true,
+  }))
+}
+
+function getPathContextAtOffset(documentText, offset) {
+  const modulePathContext = getModulePathContextAtOffset(documentText, offset)
+  if (modulePathContext) {
+    return modulePathContext
+  }
+
+  return getRoutePathContextAtOffset(documentText, offset)
+}
+
 function collectPathContexts(documentText) {
   const contexts = []
 
   for (const match of documentText.matchAll(PATH_CLOSED_RE)) {
     contexts.push(toClosedMatchContext(match, `${match[1]}-path`))
+  }
+
+  for (const match of documentText.matchAll(ROUTE_ATTR_CLOSED_RE)) {
+    const context = toClosedMatchContext(match, 'route-path')
+    context.routeSource = match[1]
+    contexts.push(context)
+  }
+
+  for (const match of documentText.matchAll(ROUTE_CALL_CLOSED_RE)) {
+    const context = toClosedMatchContext(match, 'route-path')
+    context.routeSource = match[1]
+    contexts.push(context)
   }
 
   return contexts

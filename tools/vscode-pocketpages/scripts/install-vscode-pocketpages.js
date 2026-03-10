@@ -7,19 +7,20 @@ const { spawnSync } = require('child_process')
 const VSIX_PATH = path.resolve(__dirname, '..', 'dist', 'vscode-pocketpages.vsix')
 const EXTENSION_ID = 'dlstj-local.vscode-pocketpages'
 const LEGACY_EXTENSION_IDS = ['dlstj-local.vscode-pocketpages-ejs-poc']
+const LOCAL_APPDATA = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Local')
 const INSTALL_TARGETS = [
   {
     label: 'VSCode',
     candidates: [
       'code.cmd',
-      'C:\\Users\\dlstj\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd',
+      path.join(LOCAL_APPDATA, 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd'),
     ],
   },
   {
     label: 'Antigravity',
     candidates: [
       'antigravity.cmd',
-      'C:\\Users\\dlstj\\AppData\\Local\\Programs\\Antigravity\\bin\\antigravity.cmd',
+      path.join(LOCAL_APPDATA, 'Programs', 'Antigravity', 'bin', 'antigravity.cmd'),
     ],
   },
 ]
@@ -67,11 +68,34 @@ function runEditorCommand(executable, args) {
   const commandLine = `& '${executable.replace(/'/g, "''")}' ${escapedArgs}`
   const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', commandLine], {
     encoding: 'utf8',
-    stdio: 'inherit',
+    stdio: 'pipe',
     shell: false,
   })
 
-  return result.status || 0
+  if (result.stdout) {
+    process.stdout.write(result.stdout)
+  }
+
+  if (result.stderr) {
+    process.stderr.write(result.stderr)
+  }
+
+  return {
+    status: result.status || 0,
+    output: `${result.stdout || ''}\n${result.stderr || ''}`,
+  }
+}
+
+function isSuccessfulInstallResult(result) {
+  if (!result) {
+    return false
+  }
+
+  if (result.status === 0) {
+    return true
+  }
+
+  return /successfully installed/i.test(result.output)
 }
 
 function installIntoTarget(target) {
@@ -88,9 +112,13 @@ function installIntoTarget(target) {
     runEditorCommand(executable, ['--uninstall-extension', legacyId])
   }
 
-  const installStatus = runEditorCommand(executable, ['--install-extension', VSIX_PATH, '--force'])
-  if (installStatus !== 0) {
-    process.exit(installStatus)
+  const installResult = runEditorCommand(executable, ['--install-extension', VSIX_PATH, '--force'])
+  if (!isSuccessfulInstallResult(installResult)) {
+    process.exit(installResult.status || 1)
+  }
+
+  if (installResult.status !== 0) {
+    console.warn(`${target.label} install reported a non-zero exit code after a successful install message. Continuing.`)
   }
 
   console.log(`${target.label} install completed. Reload the window to activate ${EXTENSION_ID}.`)

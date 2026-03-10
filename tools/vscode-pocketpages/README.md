@@ -7,20 +7,20 @@ It extracts `<script server>` blocks, feeds them into an in-memory TypeScript la
 - completion
 - hover
 - diagnostics
+- document links / go-to-definition for `resolve()`, `include()`, and static route literals
 
 ## What this extension covers
 
-- `.ejs` documents under PocketPages app folders like `apps/sample`
+- `.ejs` documents under PocketPages app folders like `apps/<service>`
 - app-local `pb_data/types.d.ts`
 - app-local `pocketpages-globals.d.ts`
 - PocketPages globals such as `meta`, `redirect`, `resolve`, `request`, `response`, `dbg`
 
 ## What this extension does not cover yet
 
-- route-param-specific typing like `params.boardSlug`
-- go-to-definition / references
+- symbol references / rename
 - formatting
-- EJS template tags outside `<script server>`
+- EJS template tags outside `<script server>` for hover/completion/diagnostics
 
 ## Run locally
 
@@ -35,7 +35,6 @@ The included launch config opens the repo root automatically as the test workspa
 When it activates correctly, you should see:
 
 - a new VSCode window titled as an `Extension Development Host`
-- an information toast saying `VSCode PocketPages activated.`
 - an output channel named `VSCode PocketPages`
 
 If you are unsure whether the extension is running, use the command:
