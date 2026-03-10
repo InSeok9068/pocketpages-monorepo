@@ -2,11 +2,13 @@
 
 const vscode = require('vscode')
 const { PocketPagesLanguageServiceManager, findAppRoot, ts } = require('./language-service')
+const { TOKEN_TYPES, collectEjsSemanticTokenEntries, getTokenTypeIndex } = require('./ejs-semantic-tokens')
 
 const DOCUMENT_SELECTOR = [
   { scheme: 'file', pattern: '**/*.ejs' },
   { scheme: 'untitled', pattern: '**/*.ejs' },
 ]
+const SEMANTIC_TOKENS_LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, [])
 
 const COMPLETION_KIND_MAP = {
   [ts.ScriptElementKind.primitiveType]: vscode.CompletionItemKind.Keyword,
@@ -288,6 +290,53 @@ class PocketPagesDocumentLinkProvider {
   }
 }
 
+class PocketPagesSemanticTokensProvider {
+  provideDocumentSemanticTokens(document) {
+    if (!findAppRoot(document.uri.fsPath)) {
+      return null
+    }
+
+    const builder = new vscode.SemanticTokensBuilder(SEMANTIC_TOKENS_LEGEND)
+    const entries = collectEjsSemanticTokenEntries(document.getText())
+
+    for (const entry of entries) {
+      const tokenTypeIndex = getTokenTypeIndex(entry.tokenType)
+      if (tokenTypeIndex === null) {
+        continue
+      }
+
+      const start = document.positionAt(entry.start)
+      const end = document.positionAt(entry.start + entry.length)
+
+      if (start.line === end.line) {
+        builder.push(start.line, start.character, entry.length, tokenTypeIndex, 0)
+        continue
+      }
+
+      let currentOffset = entry.start
+      while (currentOffset < entry.start + entry.length) {
+        const currentStart = document.positionAt(currentOffset)
+        const lineEndOffset = document.offsetAt(new vscode.Position(currentStart.line, document.lineAt(currentStart.line).range.end.character))
+        const chunkEnd = Math.min(lineEndOffset, entry.start + entry.length)
+        const chunkLength = chunkEnd - currentOffset
+
+        if (chunkLength > 0) {
+          builder.push(currentStart.line, currentStart.character, chunkLength, tokenTypeIndex, 0)
+        }
+
+        if (chunkEnd === currentOffset) {
+          currentOffset += document.getText(new vscode.Range(document.positionAt(currentOffset), document.positionAt(currentOffset + 2))).startsWith('\r\n') ? 2 : 1
+          continue
+        }
+
+        currentOffset = chunkEnd
+      }
+    }
+
+    return builder.build()
+  }
+}
+
 function activate(context) {
   const manager = new PocketPagesLanguageServiceManager()
   const diagnostics = vscode.languages.createDiagnosticCollection('pocketpages-server-script')
@@ -342,6 +391,11 @@ function activate(context) {
     vscode.languages.registerDocumentLinkProvider(DOCUMENT_SELECTOR, new PocketPagesDocumentLinkProvider(manager)),
     vscode.languages.registerDefinitionProvider(DOCUMENT_SELECTOR, new PocketPagesDefinitionProvider(manager)),
     vscode.languages.registerHoverProvider(DOCUMENT_SELECTOR, new PocketPagesHoverProvider(manager)),
+    vscode.languages.registerDocumentSemanticTokensProvider(
+      DOCUMENT_SELECTOR,
+      new PocketPagesSemanticTokensProvider(),
+      SEMANTIC_TOKENS_LEGEND
+    ),
     vscode.workspace.onDidOpenTextDocument(updateDiagnostics),
     vscode.workspace.onDidCloseTextDocument((document) => diagnostics.delete(document.uri)),
     vscode.workspace.onDidChangeTextDocument((event) => debouncedUpdateDiagnostics(event.document)),

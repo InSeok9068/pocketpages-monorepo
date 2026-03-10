@@ -4,6 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { PocketPagesLanguageServiceManager } = require('../src/language-service')
+const { collectEjsSemanticTokenEntries } = require('../src/ejs-semantic-tokens')
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true })
@@ -192,6 +193,14 @@ function run() {
     const completionNames = completionData.entries.map((entry) => entry.name)
     if (!completionNames.includes('meta')) {
       throw new Error(`Expected "meta" completion. Got: ${completionNames.slice(0, 20).join(', ')}`)
+    }
+
+    const semanticTokens = collectEjsSemanticTokenEntries(`<% if (!safeDashboardState.teamLeadRows || safeDashboardState.teamLeadRows.length === 0) { %>
+<%= authState.email || '<b>Kim</b>' %>
+`)
+    const semanticTypes = semanticTokens.map((entry) => entry.tokenType)
+    if (!semanticTypes.includes('keyword') || !semanticTypes.includes('string') || !semanticTypes.includes('operator')) {
+      throw new Error(`Expected semantic token extraction for EJS template JS. Got: ${semanticTypes.join(', ')}`)
     }
 
     const templateCompletionText = `<script server>

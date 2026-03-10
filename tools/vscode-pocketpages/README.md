@@ -8,6 +8,7 @@ VSCode extension for PocketPages `.ejs` files.
 
 - `meta`, `redirect`, `resolve`, `request`, `response`, `dbg` 같은 PocketPages 전역에 대한 자동완성
 - `<script server>` 와 EJS 템플릿 태그(`<% %>`, `<%= %>`, `<%- %>`) 안 코드 자동완성 및 hover
+- EJS 템플릿 태그(`<% %>`, `<%= %>`, `<%- %>`) 안 JavaScript semantic highlighting
 - `<script server>` 안 진단 표시
 - `resolve()`, `include()`, 정적 라우트 문자열의 정의로 이동 및 경로 자동완성
 - `const svc = resolve('...')` 뒤 `svc.someFn()` 형태에서 export된 함수 정의로 이동
@@ -21,6 +22,7 @@ It extracts `<script server>` blocks and EJS template code, feeds them into an i
 - completion
 - hover
 - diagnostics
+- semantic highlighting for JavaScript inside EJS template tags
 - document links / go-to-definition for `resolve()`, `include()`, and static route literals
 - go-to-definition for exported members called from `resolve()` module aliases
 - route path completion for static `href`, `action`, `hx-*`, and `redirect()` literals
