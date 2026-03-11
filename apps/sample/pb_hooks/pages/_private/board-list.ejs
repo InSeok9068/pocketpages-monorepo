@@ -1,25 +1,30 @@
 <% if (error) { %>
-  <p><strong><%= error %></strong></p>
+<p>
+  <strong><%= error %></strong>
+</p>
 <% } else if (!boards.length) { %>
-  <p><em>No boards found.</em></p>
+<p><em>No boards found.</em></p>
 <% } else { %>
-  <% boards.forEach((board) => { %>
-    <% const boardName = board.get('name') || '' %>
-    <% const boardSlug = board.get('slug') || '' %>
-    <% const boardDescription = board.get('description') || '' %>
-    <article x-show="'<%= `${boardName} ${boardSlug}`.toLowerCase().replace(/'/g, "\\'") %>'.includes(q.toLowerCase())">
-      <header>
-        <h3><%= boardName || '(untitled board)' %></h3>
-        <p><small>/boards/<%= boardSlug %></small></p>
-      </header>
-      <p><%= boardDescription || 'No description' %></p>
-      <form hx-get="/xapi/posts/panel" hx-target="#post-panel" hx-swap="outerHTML">
-        <input type="hidden" name="board" value="<%= boardSlug %>" />
-        <button type="submit"><%= selectedBoardSlug === boardSlug ? 'Refresh posts' : 'View posts' %></button>
-      </form>
-      <nav>
-        <a href="/boards/<%= boardSlug %>">Open board page</a>
-      </nav>
-    </article>
-  <% }) %>
+<% boards.forEach((board) => { %>
+<% const boardName = board.get('name') || '' %>
+<% const boardSlug = board.get('slug') || '' %>
+<% const boardDescription = board.get('description') || '' %>
+<% const boardSearchText = JSON.stringify(`${boardName} ${boardSlug}`.toLowerCase()) %>
+<article x-show="<%= `${boardSearchText}.includes(q.toLowerCase())` %>">
+  <header>
+    <h3><%= boardName || '(untitled board)' %></h3>
+    <p>
+      <small>/boards/<%= boardSlug %></small>
+    </p>
+  </header>
+  <p><%= boardDescription || 'No description' %></p>
+  <form hx-get="/xapi/posts/panel" hx-target="#post-panel" hx-swap="outerHTML">
+    <input type="hidden" name="board" value="<%= boardSlug %>" />
+    <button type="submit"><%= selectedBoardSlug === boardSlug ? 'Refresh posts' : 'View posts' %></button>
+  </form>
+  <nav>
+    <a href="/boards/<%= boardSlug %>">Open board page</a>
+  </nav>
+</article>
+<% }) %>
 <% } %>

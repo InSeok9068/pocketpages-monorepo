@@ -2,7 +2,8 @@
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
-    "*.ejs": "+load.js"
+    "*.ejs": "+load.js",
+    ".prettierrc": ".prettierignore"
   },
   "search.exclude": {
     ".docs/**": true,

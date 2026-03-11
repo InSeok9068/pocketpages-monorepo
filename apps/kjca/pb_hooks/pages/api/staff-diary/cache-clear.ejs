@@ -1,31 +1,28 @@
 <script server>
-  const kjcaService = resolve('kjca-service')
+  const kjcaService = resolve("kjca-service");
 
-  const requestBody = body()
+  const requestBody = body();
   const payload = {
     reportDate: requestBody && requestBody.reportDate,
     dept: requestBody && requestBody.dept,
-  }
+  };
 
-  dbg('api/staff-diary/cache-clear:start', payload)
+  dbg("api/staff-diary/cache-clear:start", payload);
 
   try {
-    const result = kjcaService.clearAnalysisCache(
-      request,
-      payload,
-    )
+    const result = kjcaService.clearAnalysisCache(request, payload);
 
-    response.json(200, result)
+    response.json(200, result);
   } catch (exception) {
-    const errorMessage = String(exception.message || exception)
-    error('api/staff-diary/cache-clear:failed', {
+    const errorMessage = String(exception.message || exception);
+    error("api/staff-diary/cache-clear:failed", {
       reportDate: payload.reportDate,
       dept: payload.dept,
       error: errorMessage,
-    })
+    });
     response.json(500, {
       ok: false,
       message: errorMessage,
-    })
+    });
   }
 </script>

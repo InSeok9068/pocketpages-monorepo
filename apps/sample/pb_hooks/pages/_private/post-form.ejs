@@ -1,7 +1,7 @@
 <form action="<%= formAction %>" method="post" max-w-2xl space-y-4>
   <input type="hidden" name="board" value="<%= boardSlug %>" />
   <% if (postSlug) { %>
-    <input type="hidden" name="post" value="<%= postSlug %>" />
+  <input type="hidden" name="post" value="<%= postSlug %>" />
   <% } %>
 
   <label block>
@@ -12,7 +12,17 @@
       maxlength="200"
       value="<%= values.title %>"
       required
-      mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
+      mt-2
+      block
+      w-full
+      rounded-2xl
+      border="~ stone-300 focus:stone-500"
+      bg="stone-50 focus:white"
+      px-4
+      py-3
+      text="sm stone-900"
+      outline-none
+      transition
     />
   </label>
 
@@ -23,7 +33,17 @@
       name="slug"
       value="<%= values.slug %>"
       placeholder="welcome-post"
-      mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
+      mt-2
+      block
+      w-full
+      rounded-2xl
+      border="~ stone-300 focus:stone-500"
+      bg="stone-50 focus:white"
+      px-4
+      py-3
+      text="sm stone-900"
+      outline-none
+      transition
     />
   </label>
 
@@ -35,7 +55,17 @@
       value="<%= values.authorName %>"
       placeholder="Admin"
       required
-      mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
+      mt-2
+      block
+      w-full
+      rounded-2xl
+      border="~ stone-300 focus:stone-500"
+      bg="stone-50 focus:white"
+      px-4
+      py-3
+      text="sm stone-900"
+      outline-none
+      transition
     />
   </label>
 
@@ -45,31 +75,53 @@
       name="content"
       rows="<%= textareaRows || 8 %>"
       required
-      mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
-    ><%= values.content %></textarea>
+      mt-2
+      block
+      w-full
+      rounded-2xl
+      border="~ stone-300 focus:stone-500"
+      bg="stone-50 focus:white"
+      px-4
+      py-3
+      text="sm stone-900"
+      outline-none
+      transition
+    >
+<%= values.content %></textarea
+    >
   </label>
 
   <label block>
     Status
-    <select
-      name="status"
-      mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition
-    >
-      <option value="published" <%= values.status === 'published' ? 'selected' : '' %>>Published</option>
-      <option value="draft" <%= values.status === 'draft' ? 'selected' : '' %>>Draft</option>
-      <option value="archived" <%= values.status === 'archived' ? 'selected' : '' %>>Archived</option>
+    <select name="status" mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition>
+      <% if (values.status === 'published') { %>
+      <option value="published" selected>Published</option>
+      <% } else { %>
+      <option value="published">Published</option>
+      <% } %>
+      <% if (values.status === 'draft') { %>
+      <option value="draft" selected>Draft</option>
+      <% } else { %>
+      <option value="draft">Draft</option>
+      <% } %>
+      <% if (values.status === 'archived') { %>
+      <option value="archived" selected>Archived</option>
+      <% } else { %>
+      <option value="archived">Archived</option>
+      <% } %>
     </select>
   </label>
 
   <label flex items-center gap-3 text="sm stone-700">
-    <input type="checkbox" name="isNotice" value="true" <%= values.isNotice ? 'checked' : '' %> />
+    <% if (values.isNotice) { %>
+    <input type="checkbox" name="isNotice" value="true" checked />
+    <% } else { %>
+    <input type="checkbox" name="isNotice" value="true" />
+    <% } %>
     Notice
   </label>
 
-  <button
-    type="submit"
-    inline-flex items-center rounded-full bg="stone-900 hover:stone-700" px-4 py-2 text="sm white" font-medium transition
-  >
+  <button type="submit" inline-flex items-center rounded-full bg="stone-900 hover:stone-700" px-4 py-2 text="sm white" font-medium transition>
     <%= submitLabel %>
   </button>
 </form>

@@ -1,71 +1,67 @@
 <script server>
-  const kjcaService = resolve('kjca-service')
+  const kjcaService = resolve("kjca-service");
   const collectRoles = {
-    staffDiaryAnalysisCacheRole: resolve('roles/staff-diary-analysis-cache'),
-    recruitingWeekPlanRole: resolve('roles/recruiting-week-plan'),
-    recruitingWeekPlanItemRole: resolve('roles/recruiting-week-plan-item'),
-    recruitingDailyResultRole: resolve('roles/recruiting-daily-result'),
-    recruitingWeekTextPlanRole: resolve('roles/recruiting-week-text-plan'),
-    recruitingWeekTextRowRole: resolve('roles/recruiting-week-text-row'),
-  }
+    staffDiaryAnalysisCacheRole: resolve("roles/staff-diary-analysis-cache"),
+    recruitingWeekPlanRole: resolve("roles/recruiting-week-plan"),
+    recruitingWeekPlanItemRole: resolve("roles/recruiting-week-plan-item"),
+    recruitingDailyResultRole: resolve("roles/recruiting-daily-result"),
+    recruitingWeekTextPlanRole: resolve("roles/recruiting-week-text-plan"),
+    recruitingWeekTextRowRole: resolve("roles/recruiting-week-text-row"),
+  };
 
-  const authState = kjcaService.readAuthState(request)
-  const form = body()
+  const authState = kjcaService.readAuthState(request);
+  const form = body();
   const formState = kjcaService.buildFormState({
     reportDate: form.reportDate,
     testOneOnly: form.testOneOnly,
-  })
+  });
   let dashboardState = kjcaService.buildDashboardState({
     reportDate: formState.reportDate,
     testOneOnly: formState.testOneOnly,
-  })
+  });
 
-  dbg('xapi/kjca/collect:start', {
+  dbg("xapi/kjca/collect:start", {
     reportDate: formState.reportDate,
     testOneOnly: formState.testOneOnly,
     isSuperuser: authState.isSuperuser,
-  })
+  });
 
   if (!authState.isSuperuser) {
     dashboardState = kjcaService.buildDashboardState({
       reportDate: formState.reportDate,
       testOneOnly: formState.testOneOnly,
-      errorMessage: '먼저 관리자 계정으로 로그인해주세요.',
-    })
+      errorMessage: "먼저 관리자 계정으로 로그인해주세요.",
+    });
   } else {
     try {
       const collectPayload = {
         reportDate: formState.reportDate,
         testOneOnly: formState.testOneOnly,
-      }
+      };
 
-      const result = kjcaService.collectWeekly(
-        request,
-        collectRoles,
-        collectPayload,
-      )
-      dashboardState = kjcaService.buildDashboardStateFromCollectResult(result, formState)
+      const result = kjcaService.collectWeekly(request, collectRoles, collectPayload);
+      dashboardState = kjcaService.buildDashboardStateFromCollectResult(result, formState);
     } catch (exception) {
-      const errorMessage = String(exception.message || exception)
-      error('xapi/kjca/collect:failed', {
+      const errorMessage = String(exception.message || exception);
+      error("xapi/kjca/collect:failed", {
         reportDate: formState.reportDate,
         error: errorMessage,
-      })
+      });
       dashboardState = kjcaService.buildDashboardState({
         reportDate: formState.reportDate,
         testOneOnly: formState.testOneOnly,
         errorMessage,
-      })
+      });
     }
   }
 
-  dbg('xapi/kjca/collect:response', {
+  dbg("xapi/kjca/collect:response", {
     reportDate: dashboardState.reportDate,
     warningCount: dashboardState.warnings.length,
     teamLeadCount: dashboardState.teamLeadRows.length,
     analysisCount: dashboardState.analysisResults.length,
     deptWeekTableCount: dashboardState.deptWeekTables.length,
-  })
+  });
 </script>
 <%- include('dashboard-shell.ejs', {
   authState,

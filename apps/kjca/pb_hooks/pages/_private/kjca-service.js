@@ -996,13 +996,7 @@ const kjcaAuth = createKjcaAuth({
   dbg,
 });
 
-const {
-  normalizeSuperuserLoginId,
-  readAuthState,
-  ensureSuperuserRequest,
-  createKjcaSession,
-  probeStaffAuth,
-} = kjcaAuth;
+const { normalizeSuperuserLoginId, readAuthState, ensureSuperuserRequest, createKjcaSession, probeStaffAuth } = kjcaAuth;
 
 const kjcaAnalyzeService = createKjcaAnalyzeService({
   CACHE_COLLECTION_NAME,

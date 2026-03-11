@@ -1,52 +1,52 @@
 <script server>
-  const kjcaService = resolve('kjca-service')
-  if (request.method !== 'POST') {
-    dbg('xapi/auth/sign-in:redirect', {
+  const kjcaService = resolve("kjca-service");
+  if (request.method !== "POST") {
+    dbg("xapi/auth/sign-in:redirect", {
       status: 303,
-      redirectTo: '/sign-in',
-      flash: '잘못된 요청입니다.',
-    })
-    redirect('/sign-in', {
+      redirectTo: "/sign-in",
+      flash: "잘못된 요청입니다.",
+    });
+    redirect("/sign-in", {
       status: 303,
-      message: '잘못된 요청입니다.',
-    })
-    return
+      message: "잘못된 요청입니다.",
+    });
+    return;
   }
 
-  const form = body()
-  const loginId = String(form.loginId || '').trim()
-  const normalizedLoginId = kjcaService.normalizeSuperuserLoginId(loginId)
-  const password = form.password === undefined || form.password === null ? '' : String(form.password)
-  let errorMessage = ''
+  const form = body();
+  const loginId = String(form.loginId || "").trim();
+  const normalizedLoginId = kjcaService.normalizeSuperuserLoginId(loginId);
+  const password = form.password === undefined || form.password === null ? "" : String(form.password);
+  let errorMessage = "";
 
-  dbg('xapi/auth/sign-in:start', {
+  dbg("xapi/auth/sign-in:start", {
     loginId: normalizedLoginId,
-  })
+  });
 
   try {
-    if (!normalizedLoginId) throw new Error('아이디(loginId)가 필요합니다.')
-    if (!password) throw new Error('비밀번호가 필요합니다.')
+    if (!normalizedLoginId) throw new Error("아이디(loginId)가 필요합니다.");
+    if (!password) throw new Error("비밀번호가 필요합니다.");
 
     signInWithPassword(normalizedLoginId, password, {
-      collection: '_superusers',
-    })
+      collection: "_superusers",
+    });
 
-    dbg('xapi/auth/sign-in:response', {
+    dbg("xapi/auth/sign-in:response", {
       status: 303,
-      redirectTo: '/',
-      flash: '로그인 완료',
-    })
-    redirect('/', {
+      redirectTo: "/",
+      flash: "로그인 완료",
+    });
+    redirect("/", {
       status: 303,
-      message: '로그인 완료',
-    })
-    return
+      message: "로그인 완료",
+    });
+    return;
   } catch (exception) {
-    errorMessage = String(exception.message || exception)
-    error('xapi/auth/sign-in:failed', {
+    errorMessage = String(exception.message || exception);
+    error("xapi/auth/sign-in:failed", {
       loginId: normalizedLoginId,
       error: errorMessage,
-    })
+    });
   }
 </script>
 <%

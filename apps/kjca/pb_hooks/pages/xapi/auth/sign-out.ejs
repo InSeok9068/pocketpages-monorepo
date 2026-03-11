@@ -1,28 +1,28 @@
 <script server>
-  if (request.method !== 'POST') {
-    dbg('xapi/auth/sign-out:redirect', {
+  if (request.method !== "POST") {
+    dbg("xapi/auth/sign-out:redirect", {
       status: 303,
-      redirectTo: '/',
-      flash: '잘못된 요청입니다.',
-    })
-    redirect('/', {
+      redirectTo: "/",
+      flash: "잘못된 요청입니다.",
+    });
+    redirect("/", {
       status: 303,
-      message: '잘못된 요청입니다.',
-    })
-    return
+      message: "잘못된 요청입니다.",
+    });
+    return;
   }
 
-  dbg('xapi/auth/sign-out:start', {
+  dbg("xapi/auth/sign-out:start", {
     isSignedIn: !!request.auth,
-  })
-  signOut()
-  dbg('xapi/auth/sign-out:response', {
+  });
+  signOut();
+  dbg("xapi/auth/sign-out:response", {
     status: 303,
-    redirectTo: '/sign-in',
-    flash: '로그아웃 완료',
-  })
-  redirect('/sign-in', {
+    redirectTo: "/sign-in",
+    flash: "로그아웃 완료",
+  });
+  redirect("/sign-in", {
     status: 303,
-    message: '로그아웃 완료',
-  })
+    message: "로그아웃 완료",
+  });
 </script>

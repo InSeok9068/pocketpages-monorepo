@@ -18,11 +18,7 @@
   dbg("api/staff-diary/collect-weekly:start", payload);
 
   try {
-    const result = kjcaService.collectWeekly(
-      request,
-      collectRoles,
-      payload,
-    );
+    const result = kjcaService.collectWeekly(request, collectRoles, payload);
 
     response.json(200, result);
   } catch (exception) {

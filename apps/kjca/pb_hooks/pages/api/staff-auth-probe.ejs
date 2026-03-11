@@ -1,23 +1,20 @@
 <script server>
-  const kjcaService = resolve('kjca-service')
+  const kjcaService = resolve("kjca-service");
 
-  const payload = body()
+  const payload = body();
 
   try {
-    const result = kjcaService.probeStaffAuth(
-      request,
-      payload,
-    )
+    const result = kjcaService.probeStaffAuth(request, payload);
 
-    response.json(200, result)
+    response.json(200, result);
   } catch (exception) {
-    const errorMessage = String(exception.message || exception)
-    error('api/staff-auth-probe:failed', {
+    const errorMessage = String(exception.message || exception);
+    error("api/staff-auth-probe:failed", {
       error: errorMessage,
-    })
+    });
     response.json(500, {
       ok: false,
       message: errorMessage,
-    })
+    });
   }
 </script>

@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "format": "prettier --write \"apps/*/pb_hooks/**/*\""
+  },
+  "devDependencies": {
+    "prettier": "^3.8.1",
+    "prettier-plugin-ejs": "^1.0.3"
+  }
+}

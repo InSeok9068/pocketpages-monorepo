@@ -4,12 +4,16 @@
 %>
 
 <% if (flashMessage) { %>
-  <p
-    mb-6 rounded-2xl border="<%= `~ ${isErrorFlash ? 'rose-200' : 'emerald-200'}` %>"
-    bg="<%= isErrorFlash ? 'rose-50' : 'emerald-50' %>"
-    px-4 py-3 text="<%= `sm ${isErrorFlash ? 'rose-700' : 'emerald-700'}` %>"
-    font-medium
-  >
-    <%= flashMessage %>
-  </p>
+<p
+  mb-6
+  rounded-2xl
+  border="<%= `~ ${isErrorFlash ? 'rose-200' : 'emerald-200'}` %>"
+  bg="<%= isErrorFlash ? 'rose-50' : 'emerald-50' %>"
+  px-4
+  py-3
+  text="<%= `sm ${isErrorFlash ? 'rose-700' : 'emerald-700'}` %>"
+  font-medium
+>
+  <%= flashMessage %>
+</p>
 <% } %>

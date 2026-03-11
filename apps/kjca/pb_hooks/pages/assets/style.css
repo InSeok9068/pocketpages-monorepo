@@ -17,15 +17,12 @@
 
 html {
   color: var(--kjca-ink);
-  background:
-    linear-gradient(180deg, #f8fafc 0%, #f2f6fb 52%, #edf2f7 100%);
+  background: linear-gradient(180deg, #f8fafc 0%, #f2f6fb 52%, #edf2f7 100%);
 }
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top, rgba(8, 27, 98, 0.06), transparent 32rem),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0) 18rem);
+  background: radial-gradient(circle at top, rgba(8, 27, 98, 0.06), transparent 32rem), linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0) 18rem);
 }
 
 a {
@@ -64,7 +61,7 @@ textarea {
   color: #94a3b8;
 }
 
-input[type='date'].kjca-control {
+input[type="date"].kjca-control {
   padding-right: 2.75rem;
 }
 

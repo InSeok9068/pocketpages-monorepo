@@ -58,7 +58,14 @@ function createKjcaAnalyzeService(deps) {
   function isRetryableGeminiTransportError(errorText) {
     const text = String(errorText || "").toLowerCase();
     if (!text) return false;
-    return text.includes("timeout") || text.includes("deadline") || text.includes("temporarily unavailable") || text.includes("connection reset") || text.includes("connection refused") || text.includes("eof");
+    return (
+      text.includes("timeout") ||
+      text.includes("deadline") ||
+      text.includes("temporarily unavailable") ||
+      text.includes("connection reset") ||
+      text.includes("connection refused") ||
+      text.includes("eof")
+    );
   }
 
   function requestGeminiWithRetry(geminiPayload, context) {

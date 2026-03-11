@@ -112,11 +112,7 @@ function createKjcaAuth(deps) {
     cookieHeader = mergeSetCookieIntoCookieHeader(cookieHeader, authInitResponse.headers);
 
     const loginBody =
-      `url=${encodeURIComponent("/board/admin")}` +
-      "&sf_mobile_key=" +
-      "&sf_alarm_key=" +
-      `&mng_id=${encodeURIComponent(credentials.mngId)}` +
-      `&mng_pw=${encodeURIComponent(credentials.mngPw)}`;
+      `url=${encodeURIComponent("/board/admin")}` + "&sf_mobile_key=" + "&sf_alarm_key=" + `&mng_id=${encodeURIComponent(credentials.mngId)}` + `&mng_pw=${encodeURIComponent(credentials.mngPw)}`;
 
     const loginResponse = $http.send({
       url: KJCA_LOGIN_URL,

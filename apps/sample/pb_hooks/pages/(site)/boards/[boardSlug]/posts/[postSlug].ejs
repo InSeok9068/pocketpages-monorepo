@@ -1,42 +1,42 @@
 <script server>
-  const boardService = resolve('board-service')
-  const postRole = resolve('roles/post')
-  const sharedData = data || {}
-  const board = sharedData.board || null
-  const boardSlug = String(params.boardSlug || '').trim()
-  const postSlug = String(params.postSlug || '').trim()
-  let post = null
+  const boardService = resolve("board-service");
+  const postRole = resolve("roles/post");
+  const sharedData = data || {};
+  const board = sharedData.board || null;
+  const boardSlug = String(params.boardSlug || "").trim();
+  const postSlug = String(params.postSlug || "").trim();
+  let post = null;
 
   if (!board) {
-    response.status(404)
-    meta('title', 'Board Not Found')
+    response.status(404);
+    meta("title", "Board Not Found");
   } else {
-    post = boardService.findPostByBoardAndSlug(board.id, postSlug)
+    post = boardService.findPostByBoardAndSlug(board.id, postSlug);
 
     if (!post) {
-      response.status(404)
-      meta('title', 'Post Not Found')
+      response.status(404);
+      meta("title", "Post Not Found");
     } else {
       if (postRole.canIncrementViewCount(post)) {
         try {
-          post.set('view_count', Number(post.get('view_count') || 0) + 1)
-          $app.save(post)
-          info('page/posts/show:view-incremented', {
+          post.set("view_count", Number(post.get("view_count") || 0) + 1);
+          $app.save(post);
+          info("page/posts/show:view-incremented", {
             boardSlug,
             postSlug,
-            viewCount: post.get('view_count'),
-          })
+            viewCount: post.get("view_count"),
+          });
         } catch (error) {
-          warn('page/posts/show:view-increment-failed', {
+          warn("page/posts/show:view-increment-failed", {
             boardSlug,
             postSlug,
             message: String(error.message || error),
-          })
+          });
         }
       }
 
-      meta('title', `${post.get('title') || postSlug} | ${board.get('name') || boardSlug}`)
-      meta('description', board.get('description') || `Post ${postSlug}`)
+      meta("title", `${post.get("title") || postSlug} | ${board.get("name") || boardSlug}`);
+      meta("description", board.get("description") || `Post ${postSlug}`);
     }
   }
 
@@ -44,75 +44,82 @@
     ? {
         board: null,
         post: null,
-        error: 'Board not found',
+        error: "Board not found",
       }
     : !post
       ? {
           board,
           post: null,
-          error: 'Post not found',
+          error: "Post not found",
         }
       : {
           board,
           post,
-          error: '',
-        }
+          error: "",
+        };
 
-  dbg('page/posts/show:response', {
+  dbg("page/posts/show:response", {
     boardSlug,
     postSlug,
-    error: pageData.error || '',
-    status: pageData.post ? pageData.post.get('status') || '' : '',
-    viewCount: pageData.post ? pageData.post.get('view_count') || 0 : 0,
-  })
+    error: pageData.error || "",
+    status: pageData.post ? pageData.post.get("status") || "" : "",
+    viewCount: pageData.post ? pageData.post.get("view_count") || 0 : 0,
+  });
 </script>
 
 <% if (pageData.error) { %>
-  <article rounded-3xl border="~ rose-200" bg-white p-6 shadow="sm">
-    <header space-y-4>
-      <h1 text="3xl stone-950" font-semibold><%= pageData.error %></h1>
-    </header>
-    <p mt-4>
-      <a href="/boards/<%= params.boardSlug %>" text="sm stone-600 hover:stone-900" font-medium no-underline>
-        Back to board
-      </a>
-    </p>
-  </article>
-<% } else { %>
-  <% const boardName = pageData.board.get('name') || params.boardSlug %>
-  <% const title = pageData.post.get('title') || params.postSlug %>
-  <% const status = pageData.post.get('status') || 'draft' %>
-  <% const authorName = pageData.post.get('author_name') || 'unknown' %>
-  <% const publishedAt = pageData.post.get('published_at') || pageData.post.created || '' %>
-  <% const content = pageData.post.get('content') || '' %>
-  <% const viewCount = pageData.post.get('view_count') || 0 %>
-
-  <header mb-8 space-y-4>
-    <p>
-      <a href="/boards/<%= params.boardSlug %>" text="sm stone-500 hover:stone-900" font-medium no-underline>
-        <%= boardName %>
-      </a>
-    </p>
-    <h1 text="4xl stone-950" font-semibold tracking-tight><%= title %></h1>
-    <p text="sm stone-500" uppercase tracking="[0.14em]"><%= status %> · <%= authorName %> · <%= publishedAt %> · views <%= viewCount %></p>
+<article rounded-3xl border="~ rose-200" bg-white p-6 shadow="sm">
+  <header space-y-4>
+    <h1 text="3xl stone-950" font-semibold><%= pageData.error %></h1>
   </header>
+  <p mt-4>
+    <a href="/boards/<%= params.boardSlug %>" text="sm stone-600 hover:stone-900" font-medium no-underline> Back to board </a>
+  </p>
+</article>
+<% } else { %>
+<% const boardName = pageData.board.get('name') || params.boardSlug %>
+<% const title = pageData.post.get('title') || params.postSlug %>
+<% const status = pageData.post.get('status') || 'draft' %>
+<% const authorName = pageData.post.get('author_name') || 'unknown' %>
+<% const publishedAt = pageData.post.get('published_at') || pageData.post.created || '' %>
+<% const content = pageData.post.get('content') || '' %>
+<% const viewCount = pageData.post.get('view_count') || 0 %>
 
-  <%- include('flash-alert.ejs') %>
+<header mb-8 space-y-4>
+  <p>
+    <a href="/boards/<%= params.boardSlug %>" text="sm stone-500 hover:stone-900" font-medium no-underline>
+      <%= boardName %>
+    </a>
+  </p>
+  <h1 text="4xl stone-950" font-semibold tracking-tight><%= title %></h1>
+  <p text="sm stone-500" uppercase tracking="[0.14em]"><%= status %> · <%= authorName %> · <%= publishedAt %> · views <%= viewCount %></p>
+</header>
 
-  <article mb-6 rounded-3xl border="~ stone-200" bg-white p-6 shadow="sm">
-    <header mb-5 flex items-center justify-between gap-4>
-      <div>
-        <h2 text="2xl stone-950" font-semibold>Content</h2>
-      </div>
-      <nav flex items-center gap-3>
-        <a
-          href="/boards/<%= params.boardSlug %>/posts/<%= params.postSlug %>/edit"
-          inline-flex items-center rounded-full border="~ stone-300 hover:stone-900" px-4 py-2 text="sm stone-700 hover:stone-900" font-medium no-underline transition
-        >
-          Edit post
-        </a>
-      </nav>
-    </header>
-    <div max-w-none leading-7 text="stone-700"><%- content %></div>
-  </article>
+<%- include('flash-alert.ejs') %>
+
+<article mb-6 rounded-3xl border="~ stone-200" bg-white p-6 shadow="sm">
+  <header mb-5 flex items-center justify-between gap-4>
+    <div>
+      <h2 text="2xl stone-950" font-semibold>Content</h2>
+    </div>
+    <nav flex items-center gap-3>
+      <a
+        href="/boards/<%= params.boardSlug %>/posts/<%= params.postSlug %>/edit"
+        inline-flex
+        items-center
+        rounded-full
+        border="~ stone-300 hover:stone-900"
+        px-4
+        py-2
+        text="sm stone-700 hover:stone-900"
+        font-medium
+        no-underline
+        transition
+      >
+        Edit post
+      </a>
+    </nav>
+  </header>
+  <div max-w-none leading-7 text="stone-700"><%- content %></div>
+</article>
 <% } %>

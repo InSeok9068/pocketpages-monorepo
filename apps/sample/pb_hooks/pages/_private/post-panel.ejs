@@ -1,81 +1,82 @@
 <article id="post-panel">
   <% if (!selectedBoardSlug) { %>
-    <p><em>Select a board to view posts.</em></p>
+  <p><em>Select a board to view posts.</em></p>
   <% } else if (!selectedBoard) { %>
-    <p><strong>Board not found.</strong></p>
+  <p><strong>Board not found.</strong></p>
   <% } else { %>
-    <% const boardName = selectedBoard.get('name') || selectedBoardSlug %>
+  <% const boardName = selectedBoard.get('name') || selectedBoardSlug %>
+  <header>
+    <h3><%= boardName %></h3>
+    <p>
+      <small>/boards/<%= selectedBoardSlug %></small>
+    </p>
+  </header>
+
+  <article x-data="{ open: false, title: '', slug: '', content: '' }">
     <header>
-      <h3><%= boardName %></h3>
-      <p><small>/boards/<%= selectedBoardSlug %></small></p>
+      <h4>Write Post</h4>
     </header>
 
-    <article x-data="{ open: false, title: '', slug: '', content: '' }">
-      <header>
-        <h4>Write Post</h4>
-      </header>
+    <button type="button" @click="open = !open" x-text="open ? 'Close' : 'New post'"></button>
 
-      <button type="button" @click="open = !open" x-text="open ? 'Close' : 'New post'"></button>
+    <form x-show="open" x-transition hx-post="/xapi/posts/create" hx-target="#post-panel" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful){ this.reset(); open = false; }">
+      <input type="hidden" name="board" value="<%= selectedBoardSlug %>" />
 
-      <form
-        x-show="open"
-        x-transition
-        hx-post="/xapi/posts/create"
-        hx-target="#post-panel"
-        hx-swap="outerHTML"
-        hx-on::after-request="if(event.detail.successful){ this.reset(); open = false; }"
+      <label>
+        Title
+        <input type="text" name="title" x-model="title" maxlength="200" required />
+      </label>
+
+      <label>
+        Slug
+        <input type="text" name="slug" x-model="slug" placeholder="welcome-post" />
+        <small x-show="title || slug">
+          Preview:
+          <span x-text="slug || title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')"></span>
+        </small>
+      </label>
+
+      <label>
+        Author
+        <input type="text" name="authorName" placeholder="Admin" required />
+      </label>
+
+      <label>
+        Content
+        <textarea name="content" x-model="content" rows="6" required></textarea>
+        <small><span x-text="content.length"></span> chars</small>
+      </label>
+
+      <label>
+        <input type="checkbox" name="isNotice" value="true" />
+        Notice
+      </label>
+
+      <button type="submit">Publish</button>
+    </form>
+  </article>
+
+  <% if (!posts.length) { %>
+  <p><em>No published posts yet.</em></p>
+  <% } else { %>
+  <% posts.forEach((post) => { %>
+  <% const title = post.get('title') || '(untitled post)' %>
+  <% const authorName = post.get('author_name') || 'unknown' %>
+  <% const isNotice = !!post.get('is_notice') %>
+  <% const publishedAt = post.get('published_at') || post.created %>
+  <section>
+    <h4><%= title %></h4>
+    <p>
+      <small
+        ><%= isNotice ? 'Notice' : 'Post' %>
+        ·
+        <%= authorName %>
+        ·
+        <%= publishedAt %></small
       >
-        <input type="hidden" name="board" value="<%= selectedBoardSlug %>" />
-
-        <label>
-          Title
-          <input type="text" name="title" x-model="title" maxlength="200" required />
-        </label>
-
-        <label>
-          Slug
-          <input type="text" name="slug" x-model="slug" placeholder="welcome-post" />
-          <small x-show="title || slug">
-            Preview:
-            <span x-text="slug || title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')"></span>
-          </small>
-        </label>
-
-        <label>
-          Author
-          <input type="text" name="authorName" placeholder="Admin" required />
-        </label>
-
-        <label>
-          Content
-          <textarea name="content" x-model="content" rows="6" required></textarea>
-          <small><span x-text="content.length"></span> chars</small>
-        </label>
-
-        <label>
-          <input type="checkbox" name="isNotice" value="true" />
-          Notice
-        </label>
-
-        <button type="submit">Publish</button>
-      </form>
-    </article>
-
-    <% if (!posts.length) { %>
-      <p><em>No published posts yet.</em></p>
-    <% } else { %>
-      <% posts.forEach((post) => { %>
-        <% const title = post.get('title') || '(untitled post)' %>
-        <% const authorName = post.get('author_name') || 'unknown' %>
-        <% const isNotice = !!post.get('is_notice') %>
-        <% const publishedAt = post.get('published_at') || post.created %>
-        <section>
-          <h4><%= title %></h4>
-          <p>
-            <small><%= isNotice ? 'Notice' : 'Post' %> · <%= authorName %> · <%= publishedAt %></small>
-          </p>
-        </section>
-      <% }) %>
-    <% } %>
+    </p>
+  </section>
+  <% }) %>
+  <% } %>
   <% } %>
 </article>

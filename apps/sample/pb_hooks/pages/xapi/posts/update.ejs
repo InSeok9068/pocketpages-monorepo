@@ -1,81 +1,81 @@
 <script server>
-  const boardService = resolve('board-service')
-  const boardRole = resolve('roles/board')
-  const postRole = resolve('roles/post')
-  const form = body()
-  const boardSlug = String(form.board || '').trim()
-  const postSlug = String(form.post || '').trim()
-  const title = String(form.title || '').trim()
-  const nextSlug = boardService.slugify(form.slug || form.title)
-  const authorName = String(form.authorName || '').trim()
-  const content = String(form.content || '').trim()
-  const status = String(form.status || 'draft').trim() || 'draft'
-  const isNotice = String(form.isNotice || '') === 'true'
+  const boardService = resolve("board-service");
+  const boardRole = resolve("roles/board");
+  const postRole = resolve("roles/post");
+  const form = body();
+  const boardSlug = String(form.board || "").trim();
+  const postSlug = String(form.post || "").trim();
+  const title = String(form.title || "").trim();
+  const nextSlug = boardService.slugify(form.slug || form.title);
+  const authorName = String(form.authorName || "").trim();
+  const content = String(form.content || "").trim();
+  const status = String(form.status || "draft").trim() || "draft";
+  const isNotice = String(form.isNotice || "") === "true";
 
-  dbg('api/posts/update:start', { boardSlug, postSlug, nextSlug, status, isNotice })
+  dbg("api/posts/update:start", { boardSlug, postSlug, nextSlug, status, isNotice });
 
-  const board = boardService.findActiveBoardBySlug(boardSlug)
-  let post = null
-  let errorMessage = ''
+  const board = boardService.findActiveBoardBySlug(boardSlug);
+  let post = null;
+  let errorMessage = "";
 
   if (!board) {
-    warn('api/posts/update:board-not-found', { boardSlug })
-    errorMessage = 'Board not found.'
+    warn("api/posts/update:board-not-found", { boardSlug });
+    errorMessage = "Board not found.";
   } else if (!boardRole.canAcceptPosts(board)) {
-    warn('api/posts/update:board-not-accepting-posts', { boardSlug })
-    errorMessage = 'Board cannot accept posts.'
+    warn("api/posts/update:board-not-accepting-posts", { boardSlug });
+    errorMessage = "Board cannot accept posts.";
   }
 
   if (!errorMessage) {
-    post = boardService.findPostByBoardAndSlug(board.id, postSlug)
+    post = boardService.findPostByBoardAndSlug(board.id, postSlug);
 
     if (!post) {
-      warn('api/posts/update:post-not-found', { boardSlug, postSlug })
-      errorMessage = 'Post not found.'
+      warn("api/posts/update:post-not-found", { boardSlug, postSlug });
+      errorMessage = "Post not found.";
     }
   }
 
   if (!errorMessage && (!title || !nextSlug || !authorName || !content)) {
-    warn('api/posts/update:validation-failed', { boardSlug, postSlug, nextSlug })
-    errorMessage = 'All fields are required.'
+    warn("api/posts/update:validation-failed", { boardSlug, postSlug, nextSlug });
+    errorMessage = "All fields are required.";
   }
 
   if (!errorMessage) {
     try {
       if (!postRole.canEdit(post)) {
-        throw new Error('archived 상태의 게시글은 수정하거나 삭제할 수 없습니다.')
+        throw new Error("archived 상태의 게시글은 수정하거나 삭제할 수 없습니다.");
       }
-      if (status === 'archived' && !postRole.canArchive(post)) {
-        throw new Error('게시글은 published 상태일 때만 보관 처리할 수 있습니다.')
+      if (status === "archived" && !postRole.canArchive(post)) {
+        throw new Error("게시글은 published 상태일 때만 보관 처리할 수 있습니다.");
       }
 
-      post.set('title', title)
-      post.set('slug', nextSlug)
-      post.set('content', content)
-      post.set('author_name', authorName)
-      post.set('status', status)
-      post.set('is_notice', isNotice)
-      if (status === 'published' && !post.get('published_at')) {
-        post.set('published_at', new Date().toISOString())
+      post.set("title", title);
+      post.set("slug", nextSlug);
+      post.set("content", content);
+      post.set("author_name", authorName);
+      post.set("status", status);
+      post.set("is_notice", isNotice);
+      if (status === "published" && !post.get("published_at")) {
+        post.set("published_at", new Date().toISOString());
       }
-      if (status === 'published' && !postRole.canPublish(post)) {
-        throw new Error('게시글은 draft 상태에서 제목과 본문이 모두 있어야 게시할 수 있습니다.')
+      if (status === "published" && !postRole.canPublish(post)) {
+        throw new Error("게시글은 draft 상태에서 제목과 본문이 모두 있어야 게시할 수 있습니다.");
       }
-      $app.save(post)
-      info('api/posts/update:success', { boardSlug, previousSlug: postSlug, nextSlug })
-      dbg('api/posts/update:response', {
+      $app.save(post);
+      info("api/posts/update:success", { boardSlug, previousSlug: postSlug, nextSlug });
+      dbg("api/posts/update:response", {
         status: 303,
         redirectTo: `/boards/${encodeURIComponent(boardSlug)}/posts/${encodeURIComponent(nextSlug)}`,
-        flash: 'Post updated.',
-      })
-      redirect('/boards/' + encodeURIComponent(boardSlug) + '/posts/' + encodeURIComponent(nextSlug), {
+        flash: "Post updated.",
+      });
+      redirect("/boards/" + encodeURIComponent(boardSlug) + "/posts/" + encodeURIComponent(nextSlug), {
         status: 303,
-        message: 'Post updated.',
-      })
-      return
+        message: "Post updated.",
+      });
+      return;
     } catch (exception) {
-      error('api/posts/update:save-failed', exception)
-      errorMessage = String(exception.message || exception)
+      error("api/posts/update:save-failed", exception);
+      errorMessage = String(exception.message || exception);
     }
   }
 </script>
