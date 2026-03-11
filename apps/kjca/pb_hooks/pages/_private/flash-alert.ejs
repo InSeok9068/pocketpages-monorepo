@@ -7,9 +7,7 @@
   const labelClasses = isErrorFlash ? "text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-500" : "text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-600";
 %>
 <% if (flashMessage) { %>
-<div
-  class="<%= containerClasses %>"
->
+<div class="<%= containerClasses %>">
   <p class="<%= labelClasses %>"><%= isErrorFlash ? 'Alert' : 'Notice' %></p>
   <p class="mt-1.5 font-medium"><%= flashMessage %></p>
 </div>

@@ -48,5 +48,15 @@
     }
   }
 </script>
-<% const flashMessage = errorMessage || "Failed to create board."; dbg("api/boards/create:response", { status: 303, redirectTo: "/boards", error: flashMessage, }); redirect("/boards", { status: 303,
-message: flashMessage, }); %>
+<%
+  const flashMessage = errorMessage || "Failed to create board.";
+  dbg("api/boards/create:response", {
+    status: 303,
+    redirectTo: "/boards",
+    error: flashMessage,
+  });
+  redirect("/boards", {
+    status: 303,
+    message: flashMessage,
+  });
+%>

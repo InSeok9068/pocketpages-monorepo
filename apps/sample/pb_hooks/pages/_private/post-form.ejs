@@ -41,14 +41,13 @@
 
   <label class="block">
     Content
+    <!-- prettier-ignore -->
     <textarea
       name="content"
       rows="<%= textareaRows || 8 %>"
       required
       class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
-    >
-<%= values.content %></textarea
-    >
+    ><%= values.content %></textarea>
   </label>
 
   <label class="block">
@@ -58,11 +57,13 @@
       <option value="published" selected>Published</option>
       <% } else { %>
       <option value="published">Published</option>
-      <% } %> <% if (values.status === 'draft') { %>
+      <% } %>
+      <% if (values.status === 'draft') { %>
       <option value="draft" selected>Draft</option>
       <% } else { %>
       <option value="draft">Draft</option>
-      <% } %> <% if (values.status === 'archived') { %>
+      <% } %>
+      <% if (values.status === 'archived') { %>
       <option value="archived" selected>Archived</option>
       <% } else { %>
       <option value="archived">Archived</option>
@@ -75,8 +76,11 @@
     <input type="checkbox" name="isNotice" value="true" checked />
     <% } else { %>
     <input type="checkbox" name="isNotice" value="true" />
-    <% } %> Notice
+    <% } %>
+    Notice
   </label>
 
-  <button type="submit" class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700"><%= submitLabel %></button>
+  <button type="submit" class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700">
+    <%= submitLabel %>
+  </button>
 </form>

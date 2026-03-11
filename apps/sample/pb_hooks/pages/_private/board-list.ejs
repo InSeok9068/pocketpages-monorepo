@@ -1,13 +1,27 @@
-<% const safeBoards = Array.isArray(typeof boards === "undefined" ? undefined : boards) ? boards : []; const safeError = typeof error === "undefined" ? "" : String(error || ""); const currentBoardSlug
-= typeof selectedBoardSlug === "undefined" ? "" : String(selectedBoardSlug || ""); const boardItems = safeBoards.map((board) => { const boardName = board.get("name") || ""; const boardSlug =
-board.get("slug") || ""; return { name: boardName, slug: boardSlug, description: board.get("description") || "", searchExpr: JSON.stringify(`${boardName} ${boardSlug}`.toLowerCase()), }; }); %> <% if
-(safeError) { %>
+<%
+  const safeBoards = Array.isArray(typeof boards === "undefined" ? undefined : boards) ? boards : [];
+  const safeError = typeof error === "undefined" ? "" : String(error || "");
+  const currentBoardSlug = typeof selectedBoardSlug === "undefined" ? "" : String(selectedBoardSlug || "");
+  const boardItems = safeBoards.map((board) => {
+    const boardName = board.get("name") || "";
+    const boardSlug = board.get("slug") || "";
+
+    return {
+      name: boardName,
+      slug: boardSlug,
+      description: board.get("description") || "",
+      searchExpr: JSON.stringify(`${boardName} ${boardSlug}`.toLowerCase()),
+    };
+  });
+%>
+<% if (safeError) { %>
 <p>
   <strong><%= safeError %></strong>
 </p>
 <% } else if (!boardItems.length) { %>
 <p><em>No boards found.</em></p>
-<% } else { %> <% boardItems.forEach((boardItem) => { %>
+<% } else { %>
+<% boardItems.forEach((boardItem) => { %>
 <article x-show="<%= `${boardItem.searchExpr}.includes(q.toLowerCase())` %>">
   <header>
     <h3><%= boardItem.name || '(untitled board)' %></h3>
@@ -24,4 +38,5 @@ board.get("slug") || ""; return { name: boardName, slug: boardSlug, description:
     <a href="/boards/<%= boardItem.slug %>">Open board page</a>
   </nav>
 </article>
-<% }) %> <% } %>
+<% }) %>
+<% } %>

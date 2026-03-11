@@ -4,7 +4,5 @@
   const flashClasses = isErrorFlash ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700";
 %>
 <% if (flashMessage) { %>
-<p class="<%= `mb-6 rounded-2xl border px-4 py-3 text-sm font-medium ${flashClasses}` %>">
-  <%= flashMessage %>
-</p>
+<p class="<%= `mb-6 ${flashClasses}` %> rounded-2xl border px-4 py-3 text-sm font-medium"><%= flashMessage %></p>
 <% } %>

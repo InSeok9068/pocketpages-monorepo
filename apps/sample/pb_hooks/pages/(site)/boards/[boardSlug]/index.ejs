@@ -101,7 +101,9 @@
       <h3 class="text-lg font-semibold text-stone-900">
         <a href="/boards/<%= params.boardSlug %>/posts/<%= postCard.slug %>" class="text-stone-900 no-underline hover:text-stone-700"> <%= postCard.title %> </a>
       </h3>
-      <p class="mt-2 text-xs uppercase tracking-[0.14em] text-stone-500"><%= postCard.isNotice ? 'Notice' : 'Post' %> · <%= postCard.status %> · <%= postCard.authorName %> · <%= postCard.publishedAt %> · views <%= postCard.viewCount %></p>
+      <p class="mt-2 text-xs uppercase tracking-[0.14em] text-stone-500">
+        <%= postCard.isNotice ? 'Notice' : 'Post' %> · <%= postCard.status %> · <%= postCard.authorName %> · <%= postCard.publishedAt %> · views <%= postCard.viewCount %>
+      </p>
       <% if (postCard.preview) { %>
       <p class="mt-3 text-sm leading-6 text-stone-600"><%= postCard.preview %></p>
       <% } %>
