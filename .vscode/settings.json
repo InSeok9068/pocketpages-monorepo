@@ -12,9 +12,9 @@
     "package-lock.json": true,
     "lint-pocketpages.js": true
   },
-  // "files.exclude": {
-  //   "tools/**": true
-  // },
+  "files.exclude": {
+    // "tools/**": true
+  },
   "[javascript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   }

@@ -19,7 +19,7 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "list start kill lint help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill lint format help" -- "$cur") )
     return
   fi
 

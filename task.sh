@@ -7,16 +7,16 @@ APPS_DIR="$ROOT_DIR/apps"
 print_help() {
   cat <<'EOF'
 Usage:
-  ./task.sh list
   ./task.sh start <service> [-- <extra args>]
   ./task.sh kill
   ./task.sh lint [service]
+  ./task.sh format [-- <extra args>]
 
 Commands:
-  list      List services under apps/
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
   lint      Run lightweight PocketPages self-validation checks for one service or all services
+  format    Run npm run format
 EOF
 }
 
@@ -224,15 +224,21 @@ run_lint() {
   node "$lint_script"
 }
 
+run_format() {
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "npm not found. Cannot run format command." >&2
+    exit 1
+  fi
+
+  npm run format -- "$@"
+}
+
 if [[ "${1:-}" == "__complete_services" ]]; then
   list_services
   exit 0
 fi
 
 case "${1:-help}" in
-  list)
-    list_services
-    ;;
   start)
     shift
     [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh start <service> [-- <args>]" >&2; exit 1; }
@@ -247,6 +253,11 @@ case "${1:-help}" in
   lint)
     shift || true
     run_lint "${1:-}"
+    ;;
+  format)
+    shift || true
+    [[ "${1:-}" == "--" ]] && shift
+    run_format "$@"
     ;;
   help|-h|--help)
     print_help
