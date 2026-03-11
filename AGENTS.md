@@ -86,15 +86,17 @@
 - PocketPages의 `include()`와 `resolve()`는 현재 요청 엔트리의 디렉터리에서 시작해 가까운 `_private`를 먼저 찾고, 없으면 상위 디렉터리로 올라가며 탐색합니다.
 - 따라서 `_private` 파일은 **가까운 곳에 두고**, 더 넓게 재사용되기 시작하면 상위 디렉터리로 올립니다.
 - 하위 섹션에서 상위 `_private` 파일을 override할 수 있다는 점을 감안해 파일 위치를 정합니다.
-- EJS, `<script server>`, loader, middleware처럼 PocketPages 요청 컨텍스트 안에서는 `_private` 모듈을 `resolve()`로 불러올 수 있습니다.
-- `resolve()`는 `_private`를 포함한 전체 경로를 넘기는 것이 아니라, `_private` 기준 이름으로 사용합니다.
+- `resolve()`는 PocketPages **요청 컨텍스트 API**이며, EJS, `<script server>`, loader, middleware 같은 엔트리에서 현재 요청 경로 기준으로 `_private` 의존성을 **선택/해석**할 때 사용합니다.
+- `resolve()`는 `_private`를 포함한 전체 경로를 넘기는 것이 아니라 `_private` 기준 이름으로 사용합니다.
 - 예시: `resolve('board-service')`, `resolve('roles/post')`
-- middleware에서는 `resolve()`를 전역 함수처럼 직접 호출하지 말고, `module.exports = function ({ resolve }) { ... }`처럼 **인자로 받은 `resolve`**를 사용합니다.
+- middleware에서는 `resolve()`를 전역 함수처럼 직접 호출하지 말고 `module.exports = function ({ resolve }) { ... }`처럼 **인자로 받은 `resolve`**를 사용합니다.
 - `resolve('/_private/board-service')` 같은 형태는 `_private/_private/...`로 잘못 해석될 수 있으므로 사용하지 않습니다.
-- 이 레포에서 `resolve()`는 **요청 엔트리에서 필요한 의존성을 조립하는 용도**로 봅니다. `_private/*.js`는 PocketPages 요청 컨텍스트가 자동 주입되는 위치가 아니므로, 그 내부에서 `resolve()`를 전역처럼 가정하거나 연쇄 호출하는 구조를 기본 패턴으로 두지 않습니다.
-- 이유는 기술적으로 import를 전면 금지하려는 것이 아니라, 요청 문맥에 묶인 숨은 의존성과 교차참조를 줄이고 **파일 경로만으로 의존 흐름을 추적 가능하게 유지**하기 위해서입니다.
-- `_private` 모듈이 다른 `_private` 모듈이나 role에 의존하면, EJS/loader/middleware 같은 엔트리에서 먼저 `resolve()`로 불러온 뒤 함수 인자로 넘겨 **의존성 주입** 형태로 조합합니다.
-- `_private/*.js` 내부에서 `require('pocketpages')`나 일반 CommonJS import를 쓰는 것은 가능하지만, 이것으로 PocketPages의 `_private` 탐색 규칙이나 요청별 `resolve()` 문맥을 대체하려고 하지는 않습니다.
+- 이 레포에서 `resolve()`의 기본 역할은 **엔트리에서 필요한 `_private` 모듈을 조립하는 것**입니다. 여러 page/xapi/api 엔트리에서 연결될 수 있는 service, role, formatter, query 모듈은 엔트리에서 먼저 `resolve()`로 결정합니다.
+- `_private/*.js`는 PocketPages 요청 컨텍스트가 자동 주입되는 위치가 아니므로, 그 내부에서 `resolve()`를 전역처럼 가정하거나 연쇄 호출하는 구조를 기본 패턴으로 두지 않습니다.
+- `_private/*.js` 내부에서의 `require()`는 **이미 선택된 파일 내부의 고정 구현을 연결하는 일반 CommonJS import**로 봅니다. 즉 `require()`는 현재 요청 경로나 `_private` override/hoist 규칙을 해석하지 않습니다.
+- 따라서 **문맥에 따라 달라질 수 있는 의존성은 엔트리에서 `resolve()`**, **항상 같은 로컬 구현을 붙이는 보조 의존성은 `_private` 내부에서 `require()`**를 사용합니다.
+- `_private` 모듈이 다른 `_private` 모듈이나 role에 의존하면, 우선 엔트리에서 먼저 `resolve()`로 불러온 뒤 함수 인자로 넘겨 **의존성 주입** 형태로 조합합니다. `_private` 내부의 `require()`는 이 패턴을 보조하는 범위에서만 사용합니다.
+- 이유는 import를 금지하려는 것이 아니라, 요청 문맥에 묶인 선택 책임을 엔트리에 두고 **파일 경로만으로 의존 흐름을 추적 가능하게 유지**하기 위해서입니다.
 - 한 번만 쓰이는 로직이면 `_private`로 빼기보다 해당 페이지 엔트리에 두는 편을 우선합니다.
 
 ### E. HTMX와 API 응답
@@ -158,7 +160,7 @@
 - 반대로 여러 엔트리에서 반복되는 **DB 기반 상태 판단, 관계 검증, 도메인 가드**만 role로 분리합니다.
 - 조회와 record 준비는 엔트리나 service에서 끝내고, role은 **전달받은 record/값만으로 판단**하는 것을 기본값으로 삼습니다.
 - role 안에서 숨은 DB 조회나 과도한 내부 의존성 조립은 기본 패턴으로 두지 않습니다.
-- role이 다른 role이나 공통 모듈에 의존하면, 엔트리에서 먼저 `resolve()`로 조립한 뒤 함수 인자로 넘겨 사용합니다.
+- role이 다른 role이나 공통 모듈에 의존하면, `_private` 내부에서 연쇄 `resolve()`하지 말고 엔트리에서 먼저 조립한 뒤 함수 인자로 넘겨 사용합니다.
 - role은 해당 서비스의 `pb_schema.json`과 **항상 싱크가 맞아야 하며**, 누락되거나 달라진 필드는 `pb_schema.json` 기준으로 업데이트합니다.
 
 ### E. 로그와 런타임 추적
@@ -215,7 +217,7 @@
 - 파일 구조만 봐도 흐름을 추적할 수 있는가
 - 공통 책임과 페이지 전용 책임이 섞이지 않았는가
 - `_private` 파일이 실제 사용 범위와 맞는 위치에 있는가
-- 엔트리에서 필요한 `resolve()`를 먼저 조립하고, `_private` 모듈 내부는 의존성 주입 기반으로 유지했는가
+- 문맥 선택 책임은 엔트리의 `resolve()`에 두고, `_private` 내부의 `require()`는 고정 구현 연결에만 쓰고 있는가
 - 따로 분리한 함수라면 JSDoc이 있고, 필요한 named type은 `apps/<service>/types.d.ts`에 정리되어 있으며, 함수/파라미터 역할 설명이 짧은 한글로 적혀 있는가
 - 서버 작업이라면 단계별 로그가 충분한가
 - EJS에서 `record.get()` 접근이 맞는가
