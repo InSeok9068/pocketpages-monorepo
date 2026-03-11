@@ -8,7 +8,7 @@ function isPublished(post) {
     return false;
   }
 
-  return String(post.get("status") || "").trim() === "published";
+  return String(post.get('status') || '').trim() === 'published';
 }
 
 /**
@@ -21,7 +21,7 @@ function isArchived(post) {
     return false;
   }
 
-  return String(post.get("status") || "").trim() === "archived";
+  return String(post.get('status') || '').trim() === 'archived';
 }
 
 /**
@@ -34,8 +34,8 @@ function hasPublishableContent(post) {
     return false;
   }
 
-  const title = String(post.get("title") || "").trim();
-  const content = String(post.get("content") || "").trim();
+  const title = String(post.get('title') || '').trim();
+  const content = String(post.get('content') || '').trim();
   return !!title && !!content;
 }
 

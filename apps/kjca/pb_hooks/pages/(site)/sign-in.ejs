@@ -1,20 +1,20 @@
 <script server>
-  const kjcaService = resolve("kjca-service");
+  const kjcaService = resolve('kjca-service');
 
-  meta("title", "KJCA 관리자 로그인");
-  meta("description", "관리자 로그인 페이지");
+  meta('title', 'KJCA 관리자 로그인');
+  meta('description', '관리자 로그인 페이지');
 
   const authState = kjcaService.readAuthState(request);
 
   if (authState.isSuperuser) {
-    dbg("page/kjca:sign-in:redirect", {
+    dbg('page/kjca:sign-in:redirect', {
       status: 303,
-      redirectTo: "/",
-      flash: "이미 로그인되어 있습니다.",
+      redirectTo: '/',
+      flash: '이미 로그인되어 있습니다.',
     });
-    redirect("/", {
+    redirect('/', {
       status: 303,
-      message: "이미 로그인되어 있습니다.",
+      message: '이미 로그인되어 있습니다.',
     });
     return;
   }

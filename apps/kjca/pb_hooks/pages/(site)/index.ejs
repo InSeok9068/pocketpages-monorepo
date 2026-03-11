@@ -1,8 +1,8 @@
 <script server>
-  const kjcaService = resolve("kjca-service");
+  const kjcaService = resolve('kjca-service');
 
-  meta("title", "KJCA 업무일지 자동 취합");
-  meta("description", "KJCA 업무일지 자동 취합 및 확인 화면");
+  meta('title', 'KJCA 업무일지 자동 취합');
+  meta('description', 'KJCA 업무일지 자동 취합 및 확인 화면');
 
   const authState = kjcaService.readAuthState(request);
   const formState = kjcaService.buildFormState({
@@ -14,7 +14,7 @@
     testOneOnly: formState.testOneOnly,
   });
 
-  dbg("page/kjca:index:response", {
+  dbg('page/kjca:index:response', {
     isSignedIn: authState.isSignedIn,
     isSuperuser: authState.isSuperuser,
     reportDate: formState.reportDate,
@@ -63,5 +63,5 @@
 <%- include('flash-alert.ejs') %>
 
 <section x-data="{ leftOpen: true }" class="bg-white/72 rounded-2xl border border-slate-200 p-4 shadow-sm shadow-slate-200/60 md:p-5">
-  <div id="kjca-dashboard-shell"><%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaService, }) %></div>
+  <div id="kjca-dashboard-shell"><%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaService }) %></div>
 </section>

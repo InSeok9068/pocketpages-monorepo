@@ -8,7 +8,7 @@
     <meta property="og:title" content="<%= meta('title') %>" />
     <meta property="og:description" content="<%= meta('description') %>" />
     <meta property="og:image" content="<%= meta('image') || '/android-chrome-512x512.png' %>" />
-    <meta property="og:url" content="<%= meta('path') ? meta('path') : (meta('url') || request.url) %>" />
+    <meta property="og:url" content="<%= meta('path') ? meta('path') : meta('url') || request.url %>" />
     <link rel="stylesheet" href="<%= asset('/assets/style.css') %>" />
     <style>
       [un-cloak] {
@@ -42,7 +42,7 @@
       window.__unocss = {
         presets: [() => window.__unocss_runtime.presets.presetUno()],
         ready: () => {
-          document.body.removeAttribute("un-cloak");
+          document.body.removeAttribute('un-cloak');
         },
       };
     </script>

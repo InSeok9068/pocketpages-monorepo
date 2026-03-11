@@ -1,10 +1,10 @@
 <%
-  const panelBoardName = selectedBoard ? selectedBoard.get("name") || selectedBoardSlug : "";
+  const panelBoardName = selectedBoard ? selectedBoard.get('name') || selectedBoardSlug : '';
   const postCards = (posts || []).map((post) => ({
-    title: post.get("title") || "(untitled post)",
-    authorName: post.get("author_name") || "unknown",
-    isNotice: !!post.get("is_notice"),
-    publishedAt: post.get("published_at") || post.created || "",
+    title: post.get('title') || '(untitled post)',
+    authorName: post.get('author_name') || 'unknown',
+    isNotice: !!post.get('is_notice'),
+    publishedAt: post.get('published_at') || post.created || '',
   }));
 %>
 <article id="post-panel">

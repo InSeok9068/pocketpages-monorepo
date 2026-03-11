@@ -34,7 +34,7 @@ function createKjcaAnalyzeService(deps) {
   } = deps;
 
   function parseRetryAfterMs(value) {
-    const text = String(value || "").trim();
+    const text = String(value || '').trim();
     if (!text) return 0;
     const parsed = Number(text);
     if (!Number.isFinite(parsed) || parsed <= 0) return 0;
@@ -51,28 +51,28 @@ function createKjcaAnalyzeService(deps) {
   }
 
   function isRetryableGeminiHttp(statusCode, rateLimitCauseGuess) {
-    if (statusCode === 429 && rateLimitCauseGuess === "quota-or-billing-limit") return false;
+    if (statusCode === 429 && rateLimitCauseGuess === 'quota-or-billing-limit') return false;
     return statusCode === 429 || statusCode === 500 || statusCode === 502 || statusCode === 503 || statusCode === 504;
   }
 
   function isRetryableGeminiTransportError(errorText) {
-    const text = String(errorText || "").toLowerCase();
+    const text = String(errorText || '').toLowerCase();
     if (!text) return false;
     return (
-      text.includes("timeout") ||
-      text.includes("deadline") ||
-      text.includes("temporarily unavailable") ||
-      text.includes("connection reset") ||
-      text.includes("connection refused") ||
-      text.includes("eof")
+      text.includes('timeout') ||
+      text.includes('deadline') ||
+      text.includes('temporarily unavailable') ||
+      text.includes('connection reset') ||
+      text.includes('connection refused') ||
+      text.includes('eof')
     );
   }
 
   function requestGeminiWithRetry(geminiPayload, context) {
     let lastStatusCode = 0;
-    let lastResponseBody = "";
+    let lastResponseBody = '';
     let lastHeaders = {};
-    let lastTransportError = "";
+    let lastTransportError = '';
     let attempts = 0;
 
     while (attempts < GEMINI_MAX_ATTEMPTS) {
@@ -82,11 +82,11 @@ function createKjcaAnalyzeService(deps) {
       try {
         const response = $http.send({
           url: `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_NAME}:generateContent?key=${context.geminiApiKey}`,
-          method: "POST",
+          method: 'POST',
           timeout: 60,
           body: JSON.stringify(geminiPayload),
           headers: {
-            "content-type": "application/json",
+            'content-type': 'application/json',
           },
         });
 
@@ -94,29 +94,29 @@ function createKjcaAnalyzeService(deps) {
         const statusCode = Number(response.statusCode || 0);
         const responseBody = toString(response.body);
         const headers = response.headers || {};
-        const retryAfter = getHeaderValues(headers, "Retry-After")[0] || "";
+        const retryAfter = getHeaderValues(headers, 'Retry-After')[0] || '';
         const parsedErrorBody = parseJsonSafely(responseBody, {});
         const geminiError = parsedErrorBody && parsedErrorBody.error ? parsedErrorBody.error : {};
-        const geminiErrorMessage = String(geminiError.message || "").trim();
+        const geminiErrorMessage = String(geminiError.message || '').trim();
         const geminiErrorDetailsText = stringifyGeminiErrorDetails(geminiError.details);
-        const rateLimitCauseGuess = statusCode === 429 ? inferGemini429Cause(geminiErrorMessage, geminiErrorDetailsText) : "";
+        const rateLimitCauseGuess = statusCode === 429 ? inferGemini429Cause(geminiErrorMessage, geminiErrorDetailsText) : '';
 
         lastStatusCode = statusCode;
         lastResponseBody = responseBody;
         lastHeaders = headers;
-        lastTransportError = "";
+        lastTransportError = '';
 
         if (statusCode >= 200 && statusCode < 300) {
-          return { statusCode, responseBody, headers, attempts, elapsedMs, transportError: "" };
+          return { statusCode, responseBody, headers, attempts, elapsedMs, transportError: '' };
         }
 
         const canRetry = attempts < GEMINI_MAX_ATTEMPTS && isRetryableGeminiHttp(statusCode, rateLimitCauseGuess);
         if (!canRetry) {
-          return { statusCode, responseBody, headers, attempts, elapsedMs, transportError: "" };
+          return { statusCode, responseBody, headers, attempts, elapsedMs, transportError: '' };
         }
 
         const delayMs = computeRetryDelayMs(attempts, retryAfter);
-        warn("kjca/analyze:gemini-retry", {
+        warn('kjca/analyze:gemini-retry', {
           index: context.index,
           dept: context.dept,
           attempt: attempts,
@@ -126,19 +126,19 @@ function createKjcaAnalyzeService(deps) {
         sleep(delayMs);
       } catch (error) {
         const elapsedMs = Date.now() - attemptStartedAt;
-        const errorText = String(error || "").trim();
+        const errorText = String(error || '').trim();
         lastStatusCode = 0;
-        lastResponseBody = "";
+        lastResponseBody = '';
         lastHeaders = {};
         lastTransportError = errorText;
 
         const canRetry = attempts < GEMINI_MAX_ATTEMPTS && isRetryableGeminiTransportError(errorText);
         if (!canRetry) {
-          return { statusCode: 0, responseBody: "", headers: {}, attempts, elapsedMs, transportError: errorText };
+          return { statusCode: 0, responseBody: '', headers: {}, attempts, elapsedMs, transportError: errorText };
         }
 
         const delayMs = computeRetryDelayMs(attempts);
-        warn("kjca/analyze:gemini-retry-transport", {
+        warn('kjca/analyze:gemini-retry-transport', {
           index: context.index,
           dept: context.dept,
           attempt: attempts,
@@ -161,16 +161,16 @@ function createKjcaAnalyzeService(deps) {
 
   function buildAnalyzeResult(params) {
     return {
-      dept: String(params.dept || "").trim(),
-      position: String(params.position || "").trim(),
-      staffName: String(params.staffName || "").trim(),
+      dept: String(params.dept || '').trim(),
+      position: String(params.position || '').trim(),
+      staffName: String(params.staffName || '').trim(),
       ok: params.ok !== false,
-      error: String(params.error || "").trim(),
+      error: String(params.error || '').trim(),
       promotion: normalizeStringArray(params.promotion),
       vacation: normalizeStringArray(params.vacation),
       special: normalizeStringArray(params.special),
       recruiting: normalizeRecruitingExtract(params.recruiting),
-      printUrl: String(params.printUrl || "").trim(),
+      printUrl: String(params.printUrl || '').trim(),
     };
   }
 
@@ -178,16 +178,16 @@ function createKjcaAnalyzeService(deps) {
     return (
       '아래는 업무일지 본문 텍스트야. 부서별로 "모집/홍보", "휴가", "특이사항"을 최대한 빠짐없이 추출해.\n' +
       '"모집"과 "홍보"는 같은 범주로 보고 모두 promotion 배열에 넣어.\n' +
-      "추가로 모집/현황 비교에 필요한 구조화 정보(recruiting)도 함께 추출해.\n" +
-      "recruiting.dailyPlan은 요일별 계획표(월~금)를 읽어 배열로 만들어.\n" +
-      "recruiting.dailyActualCount는 당일 모집 실적(예: 모집 1명)을 숫자로 넣어.\n" +
+      '추가로 모집/현황 비교에 필요한 구조화 정보(recruiting)도 함께 추출해.\n' +
+      'recruiting.dailyPlan은 요일별 계획표(월~금)를 읽어 배열로 만들어.\n' +
+      'recruiting.dailyActualCount는 당일 모집 실적(예: 모집 1명)을 숫자로 넣어.\n' +
       'recruiting.weekTableRows에는 "요일, 주간 홍보계획, 결과, 담당자, 비고, 모집홍보처, 모집 홍보내용, 모집목표, 모집 건수"를 텍스트로 최대한 보존해.\n' +
-      "값이 없거나 판단 불가면 반드시 null을 넣어.\n" +
-      "반드시 코드펜스 없이 JSON 객체만 반환해.\n" +
-      "추출할 내용이 없으면 해당 배열은 빈 배열([])로 반환.\n" +
-      "\n" +
-      "응답 스키마:\n" +
-      "{\n" +
+      '값이 없거나 판단 불가면 반드시 null을 넣어.\n' +
+      '반드시 코드펜스 없이 JSON 객체만 반환해.\n' +
+      '추출할 내용이 없으면 해당 배열은 빈 배열([])로 반환.\n' +
+      '\n' +
+      '응답 스키마:\n' +
+      '{\n' +
       '  "promotion": ["string"],\n' +
       '  "vacation": ["string"],\n' +
       '  "special": ["string"],\n' +
@@ -196,18 +196,18 @@ function createKjcaAnalyzeService(deps) {
       '    "monthAssignedCurrent": number | null,\n' +
       '    "weekTarget": number | null,\n' +
       '    "dailyPlan": [\n' +
-      "      {\n" +
+      '      {\n' +
       '        "weekday": "mon" | "tue" | "wed" | "thu" | "fri",\n' +
       '        "channelName": "string",\n' +
       '        "promotionContent": "string",\n' +
       '        "targetCount": number | null,\n' +
       '        "ownerName": "string",\n' +
       '        "note": "string"\n' +
-      "      }\n" +
-      "    ],\n" +
+      '      }\n' +
+      '    ],\n' +
       '    "dailyActualCount": number | null,\n' +
       '    "weekTableRows": [\n' +
-      "      {\n" +
+      '      {\n' +
       '        "weekday": "mon" | "tue" | "wed" | "thu" | "fri",\n' +
       '        "channelName": "string",\n' +
       '        "weeklyPlan": "string",\n' +
@@ -217,21 +217,21 @@ function createKjcaAnalyzeService(deps) {
       '        "recruitCountText": "string",\n' +
       '        "ownerName": "string",\n' +
       '        "note": "string"\n' +
-      "      }\n" +
-      "    ]\n" +
-      "  }\n" +
-      "}\n" +
-      "\n" +
+      '      }\n' +
+      '    ]\n' +
+      '  }\n' +
+      '}\n' +
+      '\n' +
       `부서: ${params.dept}\n` +
-      (params.staffName ? `성명: ${params.staffName}\n` : "") +
-      "\n" +
-      "본문:\n" +
+      (params.staffName ? `성명: ${params.staffName}\n` : '') +
+      '\n' +
+      '본문:\n' +
       params.docText
     );
   }
 
   function buildCacheIdentityFilter(params) {
-    const reportDateExact = String(params.reportDate || "").trim();
+    const reportDateExact = String(params.reportDate || '').trim();
     const reportDateLike = `${reportDateExact}%`;
     return (
       `(reportDate = '${escapeFilterValue(reportDateExact)}' || reportDate ~ '${escapeFilterValue(reportDateLike)}')` +
@@ -263,23 +263,23 @@ function createKjcaAnalyzeService(deps) {
     }
 
     const targetRecord = record || new Record(collection);
-    targetRecord.set("reportDate", params.reportDate);
-    targetRecord.set("dept", params.dept);
-    targetRecord.set("staffName", params.staffName);
-    targetRecord.set("printUrl", params.printUrl);
-    targetRecord.set("sourceHash", params.sourceHash);
-    targetRecord.set("promotion", params.promotion || []);
-    targetRecord.set("vacation", params.vacation || []);
-    targetRecord.set("special", params.special || []);
-    targetRecord.set("recruiting", params.recruiting || {});
-    targetRecord.set("status", "success");
-    targetRecord.set("errorMessage", "");
-    targetRecord.set("model", GEMINI_MODEL_NAME);
-    targetRecord.set("promptVersion", params.promptVersion);
+    targetRecord.set('reportDate', params.reportDate);
+    targetRecord.set('dept', params.dept);
+    targetRecord.set('staffName', params.staffName);
+    targetRecord.set('printUrl', params.printUrl);
+    targetRecord.set('sourceHash', params.sourceHash);
+    targetRecord.set('promotion', params.promotion || []);
+    targetRecord.set('vacation', params.vacation || []);
+    targetRecord.set('special', params.special || []);
+    targetRecord.set('recruiting', params.recruiting || {});
+    targetRecord.set('status', 'success');
+    targetRecord.set('errorMessage', '');
+    targetRecord.set('model', GEMINI_MODEL_NAME);
+    targetRecord.set('promptVersion', params.promptVersion);
 
-    if (staffDiaryAnalysisCacheRole && typeof staffDiaryAnalysisCacheRole.canSaveSuccess === "function") {
+    if (staffDiaryAnalysisCacheRole && typeof staffDiaryAnalysisCacheRole.canSaveSuccess === 'function') {
       if (!staffDiaryAnalysisCacheRole.canSaveSuccess(targetRecord)) {
-        warn("kjca/analyze:cache-skip", {
+        warn('kjca/analyze:cache-skip', {
           dept: params.dept,
           reportDate: params.reportDate,
         });
@@ -304,38 +304,38 @@ function createKjcaAnalyzeService(deps) {
     const reportDate = normalizeReportDate(payload && payload.reportDate);
     const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_AI_KEY;
 
-    if (!targets.length) throw new Error("targets가 필요합니다.");
-    if (targets.length > 50) throw new Error("targets는 최대 50개까지 지원합니다.");
-    if (!geminiApiKey) throw new Error("GEMINI_API_KEY (또는 GEMINI_AI_KEY)가 설정되지 않았습니다.");
+    if (!targets.length) throw new Error('targets가 필요합니다.');
+    if (targets.length > 50) throw new Error('targets는 최대 50개까지 지원합니다.');
+    if (!geminiApiKey) throw new Error('GEMINI_API_KEY (또는 GEMINI_AI_KEY)가 설정되지 않았습니다.');
 
-    info("kjca/analyze:start", {
+    info('kjca/analyze:start', {
       reportDate,
       targetsCount: targets.length,
     });
 
     const results = [];
-    let stoppedReason = "";
-    let alertMessage = "";
+    let stoppedReason = '';
+    let alertMessage = '';
 
     for (let index = 0; index < targets.length; index += 1) {
       const target = targets[index] || {};
-      const dept = String(target.dept || "").trim();
-      const position = String(target.position || "").trim();
-      const staffName = String(target.staffName || "").trim();
-      const printUrl = toAbsoluteKjcaUrl(safeSession.host, String(target.printUrl || "").trim());
+      const dept = String(target.dept || '').trim();
+      const position = String(target.position || '').trim();
+      const staffName = String(target.staffName || '').trim();
+      const printUrl = toAbsoluteKjcaUrl(safeSession.host, String(target.printUrl || '').trim());
 
       if (!dept || !printUrl) {
-        warn("kjca/analyze:target-skip-missing", { index, dept });
+        warn('kjca/analyze:target-skip-missing', { index, dept });
         continue;
       }
       if (!isAllowedKjcaUrl(safeSession.host, printUrl)) {
-        warn("kjca/analyze:target-skip-url", { index, dept, printUrl });
+        warn('kjca/analyze:target-skip-url', { index, dept, printUrl });
         continue;
       }
 
       const detailResponse = $http.send({
         url: printUrl,
-        method: "GET",
+        method: 'GET',
         timeout: 20,
         headers: buildBrowserLikeHeaders(safeSession.host, safeSession.cookieHeader, printUrl),
       });
@@ -348,11 +348,11 @@ function createKjcaAnalyzeService(deps) {
       }
 
       if (detectAuthRequiredHtml(detailHtml)) {
-        results.push(buildAnalyzeResult({ dept, position, staffName, ok: false, error: "로그인이 필요합니다.", printUrl }));
+        results.push(buildAnalyzeResult({ dept, position, staffName, ok: false, error: '로그인이 필요합니다.', printUrl }));
         continue;
       }
 
-      const docInnerHtml = extractDivInnerHtmlByClasses(detailHtml, ["doc_text", "editor"]) || extractDivInnerHtmlByClasses(detailHtml, ["doc_text"]);
+      const docInnerHtml = extractDivInnerHtmlByClasses(detailHtml, ['doc_text', 'editor']) || extractDivInnerHtmlByClasses(detailHtml, ['doc_text']);
       const docText = htmlToText(docInnerHtml);
       const sourceHash = hashText(docText);
 
@@ -376,10 +376,10 @@ function createKjcaAnalyzeService(deps) {
             position,
             staffName,
             ok: true,
-            promotion: normalizeJsonArrayField(cachedRecord.get("promotion")),
-            vacation: normalizeJsonArrayField(cachedRecord.get("vacation")),
-            special: normalizeJsonArrayField(cachedRecord.get("special")),
-            recruiting: normalizeCachedRecruitingField(cachedRecord.get("recruiting")),
+            promotion: normalizeJsonArrayField(cachedRecord.get('promotion')),
+            vacation: normalizeJsonArrayField(cachedRecord.get('vacation')),
+            special: normalizeJsonArrayField(cachedRecord.get('special')),
+            recruiting: normalizeCachedRecruitingField(cachedRecord.get('recruiting')),
             printUrl,
           }),
         );
@@ -390,7 +390,7 @@ function createKjcaAnalyzeService(deps) {
         {
           contents: [
             {
-              role: "user",
+              role: 'user',
               parts: [{ text: buildPrompt({ dept, staffName, docText }) }],
             },
           ],
@@ -401,21 +401,21 @@ function createKjcaAnalyzeService(deps) {
         { index, dept, geminiApiKey },
       );
 
-      const responseBody = String(geminiAttemptResult.responseBody || "");
+      const responseBody = String(geminiAttemptResult.responseBody || '');
       const geminiStatusCode = Number(geminiAttemptResult.statusCode || 0);
       const parsedErrorBody = parseJsonSafely(responseBody, {});
       const geminiError = parsedErrorBody && parsedErrorBody.error ? parsedErrorBody.error : {};
-      const geminiErrorMessage = String(geminiError.message || "").trim();
+      const geminiErrorMessage = String(geminiError.message || '').trim();
       const geminiErrorDetailsText = stringifyGeminiErrorDetails(geminiError.details);
-      const rateLimitCauseGuess = geminiStatusCode === 429 ? inferGemini429Cause(geminiErrorMessage, geminiErrorDetailsText) : "";
+      const rateLimitCauseGuess = geminiStatusCode === 429 ? inferGemini429Cause(geminiErrorMessage, geminiErrorDetailsText) : '';
 
       if (!(geminiStatusCode >= 200 && geminiStatusCode < 300)) {
-        const errorText = geminiStatusCode > 0 ? `AI 요청 실패 (HTTP ${geminiStatusCode})` : `AI 요청 실패 (네트워크/타임아웃) ${String(geminiAttemptResult.transportError || "").trim()}`;
+        const errorText = geminiStatusCode > 0 ? `AI 요청 실패 (HTTP ${geminiStatusCode})` : `AI 요청 실패 (네트워크/타임아웃) ${String(geminiAttemptResult.transportError || '').trim()}`;
         results.push(buildAnalyzeResult({ dept, position, staffName, ok: false, error: errorText, printUrl }));
 
-        if (rateLimitCauseGuess === "quota-or-billing-limit") {
-          stoppedReason = "quota-exceeded";
-          alertMessage = "Gemini 무료 쿼터가 소진되어 분석을 중단했습니다. 잠시 후 다시 시도하거나 과금/플랜을 확인해주세요.";
+        if (rateLimitCauseGuess === 'quota-or-billing-limit') {
+          stoppedReason = 'quota-exceeded';
+          alertMessage = 'Gemini 무료 쿼터가 소진되어 분석을 중단했습니다. 잠시 후 다시 시도하거나 과금/플랜을 확인해주세요.';
           break;
         }
 
@@ -430,8 +430,8 @@ function createKjcaAnalyzeService(deps) {
         geminiPayloadJson.candidates[0].content &&
         geminiPayloadJson.candidates[0].content.parts &&
         geminiPayloadJson.candidates[0].content.parts[0]
-          ? geminiPayloadJson.candidates[0].content.parts[0].text || ""
-          : "";
+          ? geminiPayloadJson.candidates[0].content.parts[0].text || ''
+          : '';
       const parsed = parseJsonSafely(extractJsonObjectText(geminiText), {});
       const promotion = normalizeStringArray(parsed && parsed.promotion);
       const vacation = normalizeStringArray(parsed && parsed.vacation);

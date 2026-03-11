@@ -1,24 +1,24 @@
 <%
   /** @type {types.KjcaFormState} */
   const safeFormState = formState || {
-    reportDate: "",
+    reportDate: '',
     testOneOnly: false,
   };
   /** @type {types.KjcaDashboardState} */
   const safeDashboardState = dashboardState || {
-    reportDate: "",
+    reportDate: '',
     testOneOnly: false,
-    noticeMessage: "",
-    errorMessage: "",
+    noticeMessage: '',
+    errorMessage: '',
     warnings: [],
-    stoppedReason: "",
+    stoppedReason: '',
     isDiaryAccessible: null,
     teamLeadRows: [],
     analysisResults: [],
     deptWeekTables: [],
     deptSnapshots: [],
   };
-  const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || "").trim();
+  const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || '').trim();
   const testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly);
   const encodedState = kjcaService.serializeDashboardState(safeDashboardState);
   const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) => ({

@@ -1,5 +1,5 @@
 <script server>
-  const kjcaService = resolve("kjca-service");
+  const kjcaService = resolve('kjca-service');
 
   const payload = body();
 
@@ -9,7 +9,7 @@
     response.json(200, result);
   } catch (exception) {
     const errorMessage = String(exception.message || exception);
-    error("api/staff-auth-probe:failed", {
+    error('api/staff-auth-probe:failed', {
       error: errorMessage,
     });
     response.json(500, {

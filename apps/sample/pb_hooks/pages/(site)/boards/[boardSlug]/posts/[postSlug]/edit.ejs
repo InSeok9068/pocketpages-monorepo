@@ -1,23 +1,23 @@
 <script server>
-  const boardService = resolve("board-service");
+  const boardService = resolve('board-service');
   const sharedData = data || {};
   const board = sharedData.board || null;
-  const boardSlug = String(params.boardSlug || "").trim();
-  const postSlug = String(params.postSlug || "").trim();
+  const boardSlug = String(params.boardSlug || '').trim();
+  const postSlug = String(params.postSlug || '').trim();
   let post = null;
 
   if (!board) {
     response.status(404);
-    meta("title", "Board Not Found");
+    meta('title', 'Board Not Found');
   } else {
     post = boardService.findPostByBoardAndSlug(board.id, postSlug);
 
     if (!post) {
       response.status(404);
-      meta("title", "Post Not Found");
+      meta('title', 'Post Not Found');
     } else {
-      meta("title", `Edit ${post.get("title") || postSlug} | ${board.get("name") || boardSlug}`);
-      meta("description", board.get("description") || `Edit post ${postSlug}`);
+      meta('title', `Edit ${post.get('title') || postSlug} | ${board.get('name') || boardSlug}`);
+      meta('description', board.get('description') || `Edit post ${postSlug}`);
     }
   }
 
@@ -25,35 +25,35 @@
     ? {
         board: null,
         post: null,
-        error: "Board not found",
+        error: 'Board not found',
       }
     : !post
       ? {
           board,
           post: null,
-          error: "Post not found",
+          error: 'Post not found',
         }
       : {
           board,
           post,
-          boardName: board.get("name") || boardSlug,
-          postTitle: post.get("title") || postSlug,
+          boardName: board.get('name') || boardSlug,
+          postTitle: post.get('title') || postSlug,
           formValues: {
-            title: post.get("title") || "",
-            slug: post.get("slug") || postSlug,
-            authorName: post.get("author_name") || "",
-            content: post.get("content") || "",
-            status: post.get("status") || "draft",
-            isNotice: !!post.get("is_notice"),
+            title: post.get('title') || '',
+            slug: post.get('slug') || postSlug,
+            authorName: post.get('author_name') || '',
+            content: post.get('content') || '',
+            status: post.get('status') || 'draft',
+            isNotice: !!post.get('is_notice'),
           },
-          error: "",
+          error: '',
         };
 
-  dbg("page/posts/edit:response", {
+  dbg('page/posts/edit:response', {
     boardSlug,
     postSlug,
-    error: pageData.error || "",
-    status: pageData.post ? pageData.post.get("status") || "" : "",
+    error: pageData.error || '',
+    status: pageData.post ? pageData.post.get('status') || '' : '',
   });
 </script>
 
@@ -91,13 +91,13 @@
   </header>
 
   <%- include('post-form.ejs', {
-    formAction: '/xapi/posts/update',
-    boardSlug: params.boardSlug,
-    postSlug: params.postSlug,
-    submitLabel: 'Save changes',
-    textareaRows: 10,
-    values: pageData.formValues,
-  }) %>
+  formAction: '/xapi/posts/update',
+  boardSlug: params.boardSlug,
+  postSlug: params.postSlug,
+  submitLabel: 'Save changes',
+  textareaRows: 10,
+  values: pageData.formValues,
+}) %>
 </article>
 
 <article class="rounded-3xl border border-rose-200 bg-rose-50 p-6 shadow-sm">

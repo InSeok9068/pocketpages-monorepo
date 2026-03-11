@@ -1,32 +1,32 @@
 <script server>
   const sharedData = data || {};
   const board = sharedData.board || null;
-  const boardSlug = String(params.boardSlug || "").trim();
+  const boardSlug = String(params.boardSlug || '').trim();
 
   if (!board) {
     response.status(404);
-    meta("title", "Board Not Found");
+    meta('title', 'Board Not Found');
   } else {
-    meta("title", `Write Post | ${board.get("name") || boardSlug}`);
-    meta("description", board.get("description") || `Write post in ${boardSlug}`);
+    meta('title', `Write Post | ${board.get('name') || boardSlug}`);
+    meta('description', board.get('description') || `Write post in ${boardSlug}`);
   }
 
   const pageData = board
     ? {
         board,
-        boardName: board.get("name") || boardSlug,
-        error: "",
+        boardName: board.get('name') || boardSlug,
+        error: '',
       }
     : {
         board: null,
-        boardName: "",
-        error: "Board not found",
+        boardName: '',
+        error: 'Board not found',
       };
 
-  dbg("page/posts/new:response", {
+  dbg('page/posts/new:response', {
     boardSlug,
-    error: pageData.error || "",
-    boardId: pageData.board ? pageData.board.id : "",
+    error: pageData.error || '',
+    boardId: pageData.board ? pageData.board.id : '',
   });
 </script>
 
@@ -53,19 +53,19 @@
 
 <article class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
   <%- include('post-form.ejs', {
-    formAction: '/xapi/posts/create',
-    boardSlug: params.boardSlug,
-    postSlug: '',
-    submitLabel: 'Create post',
-    textareaRows: 8,
-    values: {
-      title: '',
-      slug: '',
-      authorName: '',
-      content: '',
-      status: 'published',
-      isNotice: false,
-    },
-  }) %>
+  formAction: '/xapi/posts/create',
+  boardSlug: params.boardSlug,
+  postSlug: '',
+  submitLabel: 'Create post',
+  textareaRows: 8,
+  values: {
+    title: '',
+    slug: '',
+    authorName: '',
+    content: '',
+    status: 'published',
+    isNotice: false,
+  },
+}) %>
 </article>
 <% } %>

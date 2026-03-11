@@ -1,27 +1,27 @@
 <script server>
-  meta("title", "Boards");
-  meta("description", "Simple boards list page");
+  meta('title', 'Boards');
+  meta('description', 'Simple boards list page');
 
   let pageData = {
     boards: [],
     boardRows: [],
-    error: "",
+    error: '',
   };
 
   try {
-    pageData.boards = $app.findRecordsByFilter("boards", "", "+sort_order,+name", 50, 0);
+    pageData.boards = $app.findRecordsByFilter('boards', '', '+sort_order,+name', 50, 0);
   } catch (error) {
     pageData.error = String(error.message || error);
   }
 
   pageData.boardRows = pageData.boards.map((board) => ({
-    name: board.get("name") || "",
-    slug: board.get("slug") || "",
-    description: board.get("description") || "",
+    name: board.get('name') || '',
+    slug: board.get('slug') || '',
+    description: board.get('description') || '',
   }));
 
-  dbg("page/boards:index:response", {
-    error: pageData.error || "",
+  dbg('page/boards:index:response', {
+    error: pageData.error || '',
     boardCount: pageData.boards.length,
   });
 </script>

@@ -1,15 +1,15 @@
 <%
-  const safeBoards = Array.isArray(typeof boards === "undefined" ? undefined : boards) ? boards : [];
-  const safeError = typeof error === "undefined" ? "" : String(error || "");
-  const currentBoardSlug = typeof selectedBoardSlug === "undefined" ? "" : String(selectedBoardSlug || "");
+  const safeBoards = Array.isArray(typeof boards === 'undefined' ? undefined : boards) ? boards : [];
+  const safeError = typeof error === 'undefined' ? '' : String(error || '');
+  const currentBoardSlug = typeof selectedBoardSlug === 'undefined' ? '' : String(selectedBoardSlug || '');
   const boardItems = safeBoards.map((board) => {
-    const boardName = board.get("name") || "";
-    const boardSlug = board.get("slug") || "";
+    const boardName = board.get('name') || '';
+    const boardSlug = board.get('slug') || '';
 
     return {
       name: boardName,
       slug: boardSlug,
-      description: board.get("description") || "",
+      description: board.get('description') || '',
       searchExpr: JSON.stringify(`${boardName} ${boardSlug}`.toLowerCase()),
     };
   });

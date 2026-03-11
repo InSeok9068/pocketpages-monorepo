@@ -1,59 +1,59 @@
 <script server>
-  const boardService = resolve("board-service");
-  const postRole = resolve("roles/post");
+  const boardService = resolve('board-service');
+  const postRole = resolve('roles/post');
   const form = body();
-  const boardSlug = String(form.board || "").trim();
-  const postSlug = String(form.post || "").trim();
+  const boardSlug = String(form.board || '').trim();
+  const postSlug = String(form.post || '').trim();
 
-  dbg("api/posts/delete:start", { boardSlug, postSlug });
+  dbg('api/posts/delete:start', { boardSlug, postSlug });
 
   const board = boardService.findActiveBoardBySlug(boardSlug);
   let post = null;
-  let errorMessage = "";
+  let errorMessage = '';
 
   if (!board) {
-    warn("api/posts/delete:board-not-found", { boardSlug });
-    errorMessage = "Board not found.";
+    warn('api/posts/delete:board-not-found', { boardSlug });
+    errorMessage = 'Board not found.';
   }
 
   if (!errorMessage) {
     post = boardService.findPostByBoardAndSlug(board.id, postSlug);
 
     if (!post) {
-      warn("api/posts/delete:post-not-found", { boardSlug, postSlug });
-      errorMessage = "Post not found.";
+      warn('api/posts/delete:post-not-found', { boardSlug, postSlug });
+      errorMessage = 'Post not found.';
     }
   }
 
   if (!errorMessage) {
     try {
       if (!postRole.canEdit(post)) {
-        throw new Error("archived 상태의 게시글은 수정하거나 삭제할 수 없습니다.");
+        throw new Error('archived 상태의 게시글은 수정하거나 삭제할 수 없습니다.');
       }
       $app.delete(post);
-      info("api/posts/delete:success", { boardSlug, postSlug });
-      dbg("api/posts/delete:response", {
+      info('api/posts/delete:success', { boardSlug, postSlug });
+      dbg('api/posts/delete:response', {
         status: 303,
         redirectTo: `/boards/${encodeURIComponent(boardSlug)}`,
-        flash: "Post deleted.",
+        flash: 'Post deleted.',
       });
-      redirect("/boards/" + encodeURIComponent(boardSlug), {
+      redirect('/boards/' + encodeURIComponent(boardSlug), {
         status: 303,
-        message: "Post deleted.",
+        message: 'Post deleted.',
       });
       return;
     } catch (exception) {
-      error("api/posts/delete:delete-failed", exception);
+      error('api/posts/delete:delete-failed', exception);
       errorMessage = String(exception.message || exception);
     }
   }
 </script>
 <%
-  const fallbackBoard = "/boards/" + encodeURIComponent(boardSlug);
-  const fallbackPost = postSlug ? fallbackBoard + "/posts/" + encodeURIComponent(postSlug) : fallbackBoard;
-  const flashMessage = errorMessage || "Failed to delete post.";
+  const fallbackBoard = '/boards/' + encodeURIComponent(boardSlug);
+  const fallbackPost = postSlug ? fallbackBoard + '/posts/' + encodeURIComponent(postSlug) : fallbackBoard;
+  const flashMessage = errorMessage || 'Failed to delete post.';
 
-  dbg("api/posts/delete:response", {
+  dbg('api/posts/delete:response', {
     status: 303,
     redirectTo: fallbackPost,
     boardSlug,

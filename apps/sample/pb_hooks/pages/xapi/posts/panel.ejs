@@ -1,12 +1,12 @@
 <script server>
-  const boardService = resolve("board-service");
-  const boardSlug = String(request.url.query.board || "").trim();
+  const boardService = resolve('board-service');
+  const boardSlug = String(request.url.query.board || '').trim();
   const selectedBoard = boardService.findActiveBoardBySlug(boardSlug);
   let posts = [];
 
   if (selectedBoard) {
     try {
-      posts = $app.findRecordsByFilter("posts", 'board = {:boardId} && status = "published"', "-is_notice,-published_at,-created", 50, 0, { boardId: selectedBoard.id });
+      posts = $app.findRecordsByFilter('posts', 'board = {:boardId} && status = "published"', '-is_notice,-published_at,-created', 50, 0, { boardId: selectedBoard.id });
     } catch (error) {
       posts = [];
     }

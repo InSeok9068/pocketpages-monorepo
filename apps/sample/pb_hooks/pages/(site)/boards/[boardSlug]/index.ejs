@@ -1,18 +1,18 @@
 <script server>
   const sharedData = data || {};
-  const boardSlug = String(params.boardSlug || "").trim();
+  const boardSlug = String(params.boardSlug || '').trim();
   const board = sharedData.board || null;
   let posts = [];
 
   if (!board) {
     response.status(404);
-    meta("title", "Board Not Found");
+    meta('title', 'Board Not Found');
   } else {
-    meta("title", `${board.get("name") || boardSlug} | PocketPages Board`);
-    meta("description", board.get("description") || `Board ${boardSlug}`);
+    meta('title', `${board.get('name') || boardSlug} | PocketPages Board`);
+    meta('description', board.get('description') || `Board ${boardSlug}`);
 
     try {
-      posts = $app.findRecordsByFilter("posts", "board = {:boardId}", "-is_notice,-published_at,-created", 50, 0, { boardId: board.id });
+      posts = $app.findRecordsByFilter('posts', 'board = {:boardId}', '-is_notice,-published_at,-created', 50, 0, { boardId: board.id });
     } catch (error) {
       posts = [];
     }
@@ -22,34 +22,34 @@
     ? {
         board,
         posts,
-        boardName: board.get("name") || boardSlug,
-        boardDescription: board.get("description") || "No description",
+        boardName: board.get('name') || boardSlug,
+        boardDescription: board.get('description') || 'No description',
         postCards: posts.map((post) => ({
-          slug: post.get("slug") || "",
-          title: post.get("title") || "(untitled post)",
-          authorName: post.get("author_name") || "unknown",
-          isNotice: !!post.get("is_notice"),
-          status: post.get("status") || "draft",
-          publishedAt: post.get("published_at") || post.created || "",
-          viewCount: post.get("view_count") || 0,
-          preview: String(post.get("content") || "")
-            .replace(/<[^>]*>/g, "")
+          slug: post.get('slug') || '',
+          title: post.get('title') || '(untitled post)',
+          authorName: post.get('author_name') || 'unknown',
+          isNotice: !!post.get('is_notice'),
+          status: post.get('status') || 'draft',
+          publishedAt: post.get('published_at') || post.created || '',
+          viewCount: post.get('view_count') || 0,
+          preview: String(post.get('content') || '')
+            .replace(/<[^>]*>/g, '')
             .slice(0, 180),
         })),
-        error: "",
+        error: '',
       }
     : {
         board: null,
         posts: [],
-        boardName: "",
-        boardDescription: "",
+        boardName: '',
+        boardDescription: '',
         postCards: [],
-        error: "Board not found",
+        error: 'Board not found',
       };
 
-  dbg("page/boards/show:response", {
+  dbg('page/boards/show:response', {
     boardSlug,
-    error: pageData.error || "",
+    error: pageData.error || '',
     postCount: pageData.posts.length,
   });
 </script>

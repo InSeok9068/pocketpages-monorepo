@@ -6,13 +6,13 @@
 function canSaveSuccess(record) {
   if (!record) return false;
 
-  const reportDate = String(record.get("reportDate") || "").trim();
-  const dept = String(record.get("dept") || "").trim();
-  const printUrl = String(record.get("printUrl") || "").trim();
-  const sourceHash = String(record.get("sourceHash") || "").trim();
-  const status = String(record.get("status") || "").trim();
+  const reportDate = String(record.get('reportDate') || '').trim();
+  const dept = String(record.get('dept') || '').trim();
+  const printUrl = String(record.get('printUrl') || '').trim();
+  const sourceHash = String(record.get('sourceHash') || '').trim();
+  const status = String(record.get('status') || '').trim();
 
-  return !!reportDate && !!dept && !!printUrl && !!sourceHash && (!status || status === "success");
+  return !!reportDate && !!dept && !!printUrl && !!sourceHash && (!status || status === 'success');
 }
 
 module.exports = {

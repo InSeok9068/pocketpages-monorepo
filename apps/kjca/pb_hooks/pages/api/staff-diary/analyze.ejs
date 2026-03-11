@@ -1,6 +1,6 @@
 <script server>
-  const kjcaService = resolve("kjca-service");
-  const staffDiaryAnalysisCacheRole = resolve("roles/staff-diary-analysis-cache");
+  const kjcaService = resolve('kjca-service');
+  const staffDiaryAnalysisCacheRole = resolve('roles/staff-diary-analysis-cache');
 
   const requestBody = body();
   const payload = {
@@ -8,7 +8,7 @@
     targets: requestBody && requestBody.targets,
   };
 
-  dbg("api/staff-diary/analyze:start", {
+  dbg('api/staff-diary/analyze:start', {
     reportDate: payload.reportDate,
     targetsCount: Array.isArray(payload.targets) ? payload.targets.length : 0,
   });
@@ -19,7 +19,7 @@
     response.json(200, result);
   } catch (exception) {
     const errorMessage = String(exception.message || exception);
-    error("api/staff-diary/analyze:failed", {
+    error('api/staff-diary/analyze:failed', {
       reportDate: payload.reportDate,
       error: errorMessage,
     });

@@ -4,14 +4,14 @@
  * @returns {core.Record | null} 활성 게시판이 있으면 record, 없으면 null입니다.
  */
 function findActiveBoardBySlug(boardSlug) {
-  const slug = String(boardSlug || "").trim();
+  const slug = String(boardSlug || '').trim();
 
   if (!slug) {
     return null;
   }
 
   try {
-    return $app.findFirstRecordByFilter("boards", "slug = {:slug} && is_active = true", { slug });
+    return $app.findFirstRecordByFilter('boards', 'slug = {:slug} && is_active = true', { slug });
   } catch (error) {
     return null;
   }
@@ -24,14 +24,14 @@ function findActiveBoardBySlug(boardSlug) {
  * @returns {core.Record | null} 게시글이 있으면 record, 없으면 null입니다.
  */
 function findPostByBoardAndSlug(boardId, postSlug) {
-  const slug = String(postSlug || "").trim();
+  const slug = String(postSlug || '').trim();
 
   if (!boardId || !slug) {
     return null;
   }
 
   try {
-    return $app.findFirstRecordByFilter("posts", "board = {:boardId} && slug = {:slug}", { boardId, slug });
+    return $app.findFirstRecordByFilter('posts', 'board = {:boardId} && slug = {:slug}', { boardId, slug });
   } catch (error) {
     return null;
   }
@@ -43,11 +43,11 @@ function findPostByBoardAndSlug(boardId, postSlug) {
  * @returns {string} 소문자 하이픈 slug 문자열입니다.
  */
 function slugify(value) {
-  return String(value || "")
+  return String(value || '')
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
     .slice(0, 200);
 }
 

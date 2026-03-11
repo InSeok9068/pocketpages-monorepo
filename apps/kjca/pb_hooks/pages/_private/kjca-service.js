@@ -1,26 +1,26 @@
-const { globalApi } = require("pocketpages");
+const { globalApi } = require('pocketpages');
 const { dbg, info, warn, error } = globalApi;
-const createKjcaAuth = require("./kjca-auth");
-const createKjcaAnalyzeService = require("./kjca-analyze-service");
-const createKjcaCollectService = require("./kjca-collect-service");
+const createKjcaAuth = require('./kjca-auth');
+const createKjcaAnalyzeService = require('./kjca-analyze-service');
+const createKjcaCollectService = require('./kjca-collect-service');
 
-const KJCA_EMAIL_DOMAIN = "kjca.local";
-const KJCA_HOST = "http://www.kjca.co.kr";
+const KJCA_EMAIL_DOMAIN = 'kjca.local';
+const KJCA_HOST = 'http://www.kjca.co.kr';
 const KJCA_LOGIN_URL = `${KJCA_HOST}/staff/auth/login_check`;
 const KJCA_AUTH_URL = `${KJCA_HOST}/staff/auth`;
-const CACHE_COLLECTION_NAME = "staff_diary_analysis_cache";
-const GEMINI_MODEL_NAME = "gemini-2.5-flash-lite";
+const CACHE_COLLECTION_NAME = 'staff_diary_analysis_cache';
+const GEMINI_MODEL_NAME = 'gemini-2.5-flash-lite';
 const PROMPT_VERSION = 4;
 const GEMINI_MAX_ATTEMPTS = 3;
 
-const WEEKDAY_ORDER = ["mon", "tue", "wed", "thu", "fri"];
+const WEEKDAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri'];
 
 const weekdayLabelMap = {
-  mon: "월",
-  tue: "화",
-  wed: "수",
-  thu: "목",
-  fri: "금",
+  mon: '월',
+  tue: '화',
+  wed: '수',
+  thu: '목',
+  fri: '금',
 };
 
 function parseJsonSafely(text, fallback) {
@@ -32,14 +32,14 @@ function parseJsonSafely(text, fallback) {
 }
 
 function extractJsonObjectText(text) {
-  const normalized = String(text || "")
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/```$/i, "")
+  const normalized = String(text || '')
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```$/i, '')
     .trim();
-  const objectStart = normalized.indexOf("{");
-  const objectEnd = normalized.lastIndexOf("}");
+  const objectStart = normalized.indexOf('{');
+  const objectEnd = normalized.lastIndexOf('}');
   if (objectStart === -1 || objectEnd === -1 || objectEnd <= objectStart) {
-    return "{}";
+    return '{}';
   }
   return normalized.slice(objectStart, objectEnd + 1).trim();
 }
@@ -62,15 +62,15 @@ function getHeaderValues(headers, key) {
 }
 
 function normalizeCookieHeader(cookieHeader) {
-  if (!cookieHeader) return "";
+  if (!cookieHeader) return '';
 
   const cookieMap = {};
   String(cookieHeader)
-    .split(";")
+    .split(';')
     .map((chunk) => chunk.trim())
     .filter((chunk) => !!chunk)
     .forEach((cookiePair) => {
-      const separatorIndex = cookiePair.indexOf("=");
+      const separatorIndex = cookiePair.indexOf('=');
       if (separatorIndex === -1) return;
       const name = cookiePair.slice(0, separatorIndex).trim();
       const value = cookiePair.slice(separatorIndex + 1).trim();
@@ -80,17 +80,17 @@ function normalizeCookieHeader(cookieHeader) {
 
   return Object.keys(cookieMap)
     .map((name) => `${name}=${cookieMap[name]}`)
-    .join("; ");
+    .join('; ');
 }
 
 function extractCookieHeaderFromSetCookie(setCookieHeaders) {
   const cookieMap = {};
 
   setCookieHeaders.forEach((header) => {
-    const cookiePair = String(header).split(";")[0].trim();
+    const cookiePair = String(header).split(';')[0].trim();
     if (!cookiePair) return;
 
-    const separatorIndex = cookiePair.indexOf("=");
+    const separatorIndex = cookiePair.indexOf('=');
     if (separatorIndex === -1) return;
 
     const name = cookiePair.slice(0, separatorIndex).trim();
@@ -102,11 +102,11 @@ function extractCookieHeaderFromSetCookie(setCookieHeaders) {
 
   return Object.keys(cookieMap)
     .map((name) => `${name}=${cookieMap[name]}`)
-    .join("; ");
+    .join('; ');
 }
 
 function mergeSetCookieIntoCookieHeader(cookieHeader, responseHeaders) {
-  const setCookieHeaders = getHeaderValues(responseHeaders, "Set-Cookie");
+  const setCookieHeaders = getHeaderValues(responseHeaders, 'Set-Cookie');
   if (!setCookieHeaders.length) return cookieHeader;
 
   const nextCookie = normalizeCookieHeader(extractCookieHeaderFromSetCookie(setCookieHeaders));
@@ -117,52 +117,52 @@ function mergeSetCookieIntoCookieHeader(cookieHeader, responseHeaders) {
 }
 
 function detectAuthRequiredHtml(html) {
-  const text = String(html || "");
-  if (text.includes("/staff/auth/login_check") || text.includes('id="mng_id"')) return true;
+  const text = String(html || '');
+  if (text.includes('/staff/auth/login_check') || text.includes('id="mng_id"')) return true;
 
   const redirectRegex = /location\.href\s*=\s*(?:'|")\s*\/staff\/auth\s*(?:'|")/i;
   return redirectRegex.test(text);
 }
 
 function decodeHtmlEntities(text) {
-  const source = String(text || "");
+  const source = String(text || '');
   return source
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
 }
 
 function stripTags(html) {
-  return decodeHtmlEntities(String(html || "").replace(/<[^>]*>/g, "")).trim();
+  return decodeHtmlEntities(String(html || '').replace(/<[^>]*>/g, '')).trim();
 }
 
 function toAbsoluteKjcaUrl(host, maybeRelativeUrl) {
-  const url = String(maybeRelativeUrl || "").trim();
-  if (!url) return "";
+  const url = String(maybeRelativeUrl || '').trim();
+  if (!url) return '';
   if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith("?")) return `${host}/diary/${url}`;
-  if (url.startsWith("/?") && url.includes("bd_idx=")) return `${host}/diary${url}`;
-  if (url.startsWith("/")) return `${host}${url}`;
+  if (url.startsWith('?')) return `${host}/diary/${url}`;
+  if (url.startsWith('/?') && url.includes('bd_idx=')) return `${host}/diary${url}`;
+  if (url.startsWith('/')) return `${host}${url}`;
   return `${host}/${url}`;
 }
 
 function isAllowedKjcaUrl(host, url) {
-  const normalized = String(url || "").trim();
-  return normalized.startsWith(`${host}/`) || normalized.startsWith("http://www.kjca.co.kr/") || normalized.startsWith("https://www.kjca.co.kr/");
+  const normalized = String(url || '').trim();
+  return normalized.startsWith(`${host}/`) || normalized.startsWith('http://www.kjca.co.kr/') || normalized.startsWith('https://www.kjca.co.kr/');
 }
 
 function extractPrintUrlFromCell(host, cellHtml) {
-  const source = decodeHtmlEntities(String(cellHtml || ""));
-  if (!source) return "";
+  const source = decodeHtmlEntities(String(cellHtml || ''));
+  if (!source) return '';
 
   const candidates = [];
   const quotedUrlRegex = /['"]((?:https?:\/\/|\/|\?)[^'"]+)['"]/gi;
   let urlMatch = null;
   while ((urlMatch = quotedUrlRegex.exec(source))) {
-    const candidate = String(urlMatch[1] || "").trim();
+    const candidate = String(urlMatch[1] || '').trim();
     if (!candidate) continue;
     candidates.push(candidate);
   }
@@ -170,43 +170,43 @@ function extractPrintUrlFromCell(host, cellHtml) {
   const normalized = candidates
     .map((candidate) => candidate.trim())
     .filter((candidate) => !!candidate)
-    .filter((candidate) => candidate !== "#")
+    .filter((candidate) => candidate !== '#')
     .filter((candidate) => !/^javascript:/i.test(candidate))
     .filter((candidate) => !/^void\(0\)/i.test(candidate));
 
-  if (!normalized.length) return "";
+  if (!normalized.length) return '';
 
-  const preferred = normalized.find((candidate) => candidate.includes("bd_idx=")) || normalized.find((candidate) => candidate.includes("/diary/") || candidate.startsWith("?site=")) || normalized[0];
+  const preferred = normalized.find((candidate) => candidate.includes('bd_idx=')) || normalized.find((candidate) => candidate.includes('/diary/') || candidate.startsWith('?site=')) || normalized[0];
 
   return toAbsoluteKjcaUrl(host, preferred);
 }
 
 function parseTeamLeadRowsFromDiaryHtml(diaryHtml, host) {
-  const html = String(diaryHtml || "");
+  const html = String(diaryHtml || '');
   const rows = [];
   const trRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
   let trMatch = null;
 
   while ((trMatch = trRegex.exec(html))) {
-    const trInner = trMatch[1] || "";
-    if (!trInner.includes("data-label")) continue;
+    const trInner = trMatch[1] || '';
+    if (!trInner.includes('data-label')) continue;
 
     const cellHtmlByLabel = {};
     const tdRegex = /<td\b[^>]*data-label\s*=\s*(['"])([^'"]+)\1[^>]*>([\s\S]*?)<\/td>/gi;
     let tdMatch = null;
     while ((tdMatch = tdRegex.exec(trInner))) {
       const label = stripTags(tdMatch[2]);
-      const cellInner = tdMatch[3] || "";
+      const cellInner = tdMatch[3] || '';
       if (!label) continue;
       cellHtmlByLabel[label] = cellInner;
     }
 
-    const position = stripTags(cellHtmlByLabel["직책"] || "");
-    if (position !== "팀장") continue;
+    const position = stripTags(cellHtmlByLabel['직책'] || '');
+    if (position !== '팀장') continue;
 
-    const dept = stripTags(cellHtmlByLabel["부서"] || "");
-    const staffName = stripTags(cellHtmlByLabel["성명"] || "");
-    const printCell = String(cellHtmlByLabel["인쇄"] || "");
+    const dept = stripTags(cellHtmlByLabel['부서'] || '');
+    const staffName = stripTags(cellHtmlByLabel['성명'] || '');
+    const printCell = String(cellHtmlByLabel['인쇄'] || '');
     const printUrl = extractPrintUrlFromCell(host, printCell);
 
     rows.push({
@@ -220,7 +220,7 @@ function parseTeamLeadRowsFromDiaryHtml(diaryHtml, host) {
   const seen = {};
   const uniqueRows = [];
   rows.forEach((row) => {
-    const key = row.dept || "";
+    const key = row.dept || '';
     if (!key || seen[key]) return;
     seen[key] = true;
     uniqueRows.push(row);
@@ -231,14 +231,14 @@ function parseTeamLeadRowsFromDiaryHtml(diaryHtml, host) {
 
 function buildBrowserLikeHeaders(host, cookieHeader, referer) {
   const headers = {
-    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "Accept-Encoding": "identity",
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Cache-Control": "no-cache",
-    Pragma: "no-cache",
-    "Upgrade-Insecure-Requests": "1",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
-    Host: host.replace(/^https?:\/\//i, ""),
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Encoding': 'identity',
+    'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
+    'Upgrade-Insecure-Requests': '1',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+    Host: host.replace(/^https?:\/\//i, ''),
   };
 
   if (cookieHeader) headers.Cookie = cookieHeader;
@@ -249,8 +249,8 @@ function buildBrowserLikeHeaders(host, cookieHeader, referer) {
 function buildTodayDateText() {
   const now = new Date();
   const year = now.getFullYear();
-  const month = `${now.getMonth() + 1}`.padStart(2, "0");
-  const day = `${now.getDate()}`.padStart(2, "0");
+  const month = `${now.getMonth() + 1}`.padStart(2, '0');
+  const day = `${now.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
@@ -260,7 +260,7 @@ function buildTodayDateText() {
  * @returns {string} 정규화된 날짜 문자열입니다.
  */
 function normalizeReportDate(value) {
-  const text = String(value || "").trim();
+  const text = String(value || '').trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   return buildTodayDateText();
 }
@@ -271,7 +271,7 @@ function normalizeReportDate(value) {
  * @returns {types.KjcaFormState} 화면에서 바로 쓸 수 있는 폼 상태입니다.
  */
 function buildFormState(value) {
-  const source = value && typeof value === "object" ? value : {};
+  const source = value && typeof value === 'object' ? value : {};
   return {
     reportDate: normalizeReportDate(source.reportDate),
     testOneOnly: normalizeBool(source.testOneOnly),
@@ -279,30 +279,30 @@ function buildFormState(value) {
 }
 
 function escapeFilterValue(value) {
-  return String(value || "")
-    .replace(/\\/g, "\\\\")
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'");
 }
 
 function hashText(text) {
-  const source = String(text || "");
+  const source = String(text || '');
   let hash = 0x811c9dc5;
   for (let i = 0; i < source.length; i += 1) {
     hash ^= source.charCodeAt(i);
     hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
     hash >>>= 0;
   }
-  return `${hash.toString(16).padStart(8, "0")}-${source.length}`;
+  return `${hash.toString(16).padStart(8, '0')}-${source.length}`;
 }
 
 function extractDivInnerHtmlByClasses(html, requiredClasses) {
-  const source = String(html || "");
-  if (!source) return "";
+  const source = String(html || '');
+  if (!source) return '';
 
   const divStartRegex = /<div\b[^>]*class\s*=\s*(['"])([^'"]*)\1[^>]*>/gi;
   let match = null;
   while ((match = divStartRegex.exec(source))) {
-    const classValue = String(match[2] || "");
+    const classValue = String(match[2] || '');
     const ok = requiredClasses.every((cls) => new RegExp(`\\b${cls}\\b`).test(classValue));
     if (!ok) continue;
 
@@ -313,13 +313,13 @@ function extractDivInnerHtmlByClasses(html, requiredClasses) {
 
     let tokenMatch = null;
     while ((tokenMatch = tokenRegex.exec(source))) {
-      const token = String(tokenMatch[0] || "").toLowerCase();
-      if (token === "<div") {
+      const token = String(tokenMatch[0] || '').toLowerCase();
+      if (token === '<div') {
         depth += 1;
         continue;
       }
 
-      if (token === "</div") {
+      if (token === '</div') {
         depth -= 1;
         if (depth === 0) {
           const closeTagStartIndex = tokenMatch.index;
@@ -328,35 +328,35 @@ function extractDivInnerHtmlByClasses(html, requiredClasses) {
       }
     }
 
-    return "";
+    return '';
   }
 
-  return "";
+  return '';
 }
 
 function htmlToText(html) {
-  const normalized = String(html || "")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(td|th)>/gi, "\t")
-    .replace(/<\/tr>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<\/div>/gi, "\n")
-    .replace(/<\/li>/gi, "\n")
-    .replace(/<li\b[^>]*>/gi, "- ");
-  return decodeHtmlEntities(normalized.replace(/<[^>]*>/g, " "))
-    .replace(/\r/g, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/\t+/g, " | ")
-    .replace(/\n{3,}/g, "\n\n")
+  const normalized = String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(td|th)>/gi, '\t')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '- ');
+  return decodeHtmlEntities(normalized.replace(/<[^>]*>/g, ' '))
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\t+/g, ' | ')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 function normalizeStringArray(value) {
   if (!Array.isArray(value)) return [];
-  return value.map((item) => String(item || "").trim()).filter((item) => !!item);
+  return value.map((item) => String(item || '').trim()).filter((item) => !!item);
 }
 
 function isNumericByteArray(value) {
@@ -368,7 +368,7 @@ function isNumericByteArray(value) {
 function normalizeJsonArrayField(value) {
   if (Array.isArray(value)) {
     if (isNumericByteArray(value)) {
-      const text = String(toString(value) || "").trim();
+      const text = String(toString(value) || '').trim();
       if (!text) return [];
       const parsedFromBytes = parseJsonSafely(text, null);
       if (Array.isArray(parsedFromBytes)) return normalizeStringArray(parsedFromBytes);
@@ -379,7 +379,7 @@ function normalizeJsonArrayField(value) {
 
   if (value === null || value === undefined) return [];
 
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return [];
     const parsed = parseJsonSafely(trimmed, null);
@@ -391,40 +391,40 @@ function normalizeJsonArrayField(value) {
 }
 
 function inferGemini429Cause(message, detailsText) {
-  const source = `${String(message || "")} ${String(detailsText || "")}`.toLowerCase();
-  if (!source.trim()) return "unknown";
+  const source = `${String(message || '')} ${String(detailsText || '')}`.toLowerCase();
+  if (!source.trim()) return 'unknown';
 
-  const hasQuotaSignal = source.includes("quota") || source.includes("billing") || source.includes("free tier") || source.includes("resource_exhausted");
-  if (hasQuotaSignal) return "quota-or-billing-limit";
+  const hasQuotaSignal = source.includes('quota') || source.includes('billing') || source.includes('free tier') || source.includes('resource_exhausted');
+  if (hasQuotaSignal) return 'quota-or-billing-limit';
 
-  const hasRateSignal = source.includes("rate") || source.includes("too many requests") || source.includes("per minute") || source.includes("retry");
-  if (hasRateSignal) return "request-rate-limit";
+  const hasRateSignal = source.includes('rate') || source.includes('too many requests') || source.includes('per minute') || source.includes('retry');
+  if (hasRateSignal) return 'request-rate-limit';
 
-  return "unknown";
+  return 'unknown';
 }
 
 function stringifyGeminiErrorDetails(details) {
-  if (!Array.isArray(details)) return "";
+  if (!Array.isArray(details)) return '';
   return details
     .map((detail) => {
-      if (detail === null || detail === undefined) return "";
+      if (detail === null || detail === undefined) return '';
       const text = `${detail}`;
-      return text === "[object Object]" ? JSON.stringify(detail) : text;
+      return text === '[object Object]' ? JSON.stringify(detail) : text;
     })
-    .join(" | ");
+    .join(' | ');
 }
 
 function parseDateText(value) {
-  const text = String(value || "").trim();
+  const text = String(value || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return new Date();
-  const [year, month, day] = text.split("-").map((unit) => Number(unit));
+  const [year, month, day] = text.split('-').map((unit) => Number(unit));
   return new Date(year, month - 1, day);
 }
 
 function formatDateText(date) {
   const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
@@ -449,11 +449,11 @@ function buildWeekStartDate(dateText) {
  */
 function toWeekdayKey(dateText) {
   const day = parseDateText(dateText).getDay();
-  if (day === 1) return "mon";
-  if (day === 2) return "tue";
-  if (day === 3) return "wed";
-  if (day === 4) return "thu";
-  return "fri";
+  if (day === 1) return 'mon';
+  if (day === 2) return 'tue';
+  if (day === 3) return 'wed';
+  if (day === 4) return 'thu';
+  return 'fri';
 }
 
 /**
@@ -462,15 +462,15 @@ function toWeekdayKey(dateText) {
  * @returns {types.KjcaWeekday | ""} 인식 가능한 경우 내부 요일 키, 아니면 빈 문자열입니다.
  */
 function normalizeWeekday(value) {
-  const text = String(value || "")
+  const text = String(value || '')
     .trim()
     .toLowerCase();
-  if (text === "mon" || text === "monday" || text === "월") return "mon";
-  if (text === "tue" || text === "tuesday" || text === "화") return "tue";
-  if (text === "wed" || text === "wednesday" || text === "수") return "wed";
-  if (text === "thu" || text === "thursday" || text === "목") return "thu";
-  if (text === "fri" || text === "friday" || text === "금") return "fri";
-  return "";
+  if (text === 'mon' || text === 'monday' || text === '월') return 'mon';
+  if (text === 'tue' || text === 'tuesday' || text === '화') return 'tue';
+  if (text === 'wed' || text === 'wednesday' || text === '수') return 'wed';
+  if (text === 'thu' || text === 'thursday' || text === '목') return 'thu';
+  if (text === 'fri' || text === 'friday' || text === '금') return 'fri';
+  return '';
 }
 
 function buildDateMatchParams(dateText) {
@@ -482,7 +482,7 @@ function buildDateMatchParams(dateText) {
 }
 
 function normalizeNullableInt(value) {
-  if (value === null || value === undefined || value === "") return null;
+  if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
   return Math.max(0, Math.trunc(parsed));
@@ -501,29 +501,29 @@ function normalizeRequiredInt(value, fallback) {
  */
 function normalizeBool(value) {
   if (value === true || value === false) return value;
-  const text = String(value || "")
+  const text = String(value || '')
     .trim()
     .toLowerCase();
-  if (text === "true" || text === "1" || text === "y" || text === "yes" || text === "on") return true;
+  if (text === 'true' || text === '1' || text === 'y' || text === 'yes' || text === 'on') return true;
   return false;
 }
 
 function normalizeRecruitingExtract(value) {
-  const source = value && typeof value === "object" ? value : {};
+  const source = value && typeof value === 'object' ? value : {};
   const dailyPlanRaw = Array.isArray(source.dailyPlan) ? source.dailyPlan : [];
   const dailyPlan = dailyPlanRaw
     .map((item) => {
-      const row = item && typeof item === "object" ? item : {};
+      const row = item && typeof item === 'object' ? item : {};
       const weekday = normalizeWeekday(row.weekday);
       if (!weekday) return null;
 
       return {
         weekday,
-        channelName: String(row.channelName || "").trim(),
-        promotionContent: String(row.promotionContent || "").trim(),
+        channelName: String(row.channelName || '').trim(),
+        promotionContent: String(row.promotionContent || '').trim(),
         targetCount: normalizeNullableInt(row.targetCount),
-        ownerName: String(row.ownerName || "").trim(),
-        note: String(row.note || "").trim(),
+        ownerName: String(row.ownerName || '').trim(),
+        note: String(row.note || '').trim(),
       };
     })
     .filter((item) => !!item);
@@ -531,20 +531,20 @@ function normalizeRecruitingExtract(value) {
   const weekTableRowsRaw = Array.isArray(source.weekTableRows) ? source.weekTableRows : [];
   const weekTableRowsNormalized = weekTableRowsRaw
     .map((item) => {
-      const row = item && typeof item === "object" ? item : {};
+      const row = item && typeof item === 'object' ? item : {};
       const weekday = normalizeWeekday(row.weekday);
       if (!weekday) return null;
 
       return {
         weekday,
-        channelName: String(row.channelName || row.promotionChannel || "").trim(),
-        weeklyPlan: String(row.weeklyPlan || row.plan || "").trim(),
-        promotionContent: String(row.promotionContent || "").trim(),
-        targetText: String(row.targetText || row.target || "").trim(),
-        resultText: String(row.resultText || row.result || "").trim(),
-        recruitCountText: String(row.recruitCountText || row.countText || "").trim(),
-        ownerName: String(row.ownerName || "").trim(),
-        note: String(row.note || "").trim(),
+        channelName: String(row.channelName || row.promotionChannel || '').trim(),
+        weeklyPlan: String(row.weeklyPlan || row.plan || '').trim(),
+        promotionContent: String(row.promotionContent || '').trim(),
+        targetText: String(row.targetText || row.target || '').trim(),
+        resultText: String(row.resultText || row.result || '').trim(),
+        recruitCountText: String(row.recruitCountText || row.countText || '').trim(),
+        ownerName: String(row.ownerName || '').trim(),
+        note: String(row.note || '').trim(),
         sortOrder: Math.max(0, Math.trunc(Number(row.sortOrder || 0))),
       };
     })
@@ -554,11 +554,11 @@ function normalizeRecruitingExtract(value) {
     .map((row, index) => ({
       weekday: row.weekday,
       channelName: row.channelName,
-      weeklyPlan: "",
+      weeklyPlan: '',
       promotionContent: row.promotionContent,
-      targetText: row.targetCount === null ? "" : String(row.targetCount),
-      resultText: "",
-      recruitCountText: "",
+      targetText: row.targetCount === null ? '' : String(row.targetCount),
+      resultText: '',
+      recruitCountText: '',
       ownerName: row.ownerName,
       note: row.note,
       sortOrder: index,
@@ -577,7 +577,7 @@ function normalizeRecruitingExtract(value) {
 
 function normalizeCachedRecruitingField(value) {
   if (value === null || value === undefined) return normalizeRecruitingExtract({});
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     const text = value.trim();
     if (!text) return normalizeRecruitingExtract({});
     return normalizeRecruitingExtract(parseJsonSafely(text, {}));
@@ -585,7 +585,7 @@ function normalizeCachedRecruitingField(value) {
   if (Array.isArray(value)) {
     const isByteArray = value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255);
     if (!isByteArray) return normalizeRecruitingExtract({});
-    const text = String(toString(value) || "").trim();
+    const text = String(toString(value) || '').trim();
     if (!text) return normalizeRecruitingExtract({});
     return normalizeRecruitingExtract(parseJsonSafely(text, {}));
   }
@@ -602,12 +602,12 @@ function normalizeTeamLeadRows(value) {
 
   return value
     .map((row) => {
-      const item = row && typeof row === "object" ? row : {};
+      const item = row && typeof row === 'object' ? row : {};
       return {
-        dept: String(item.dept || "").trim(),
-        position: String(item.position || "").trim(),
-        staffName: String(item.staffName || "").trim(),
-        printUrl: String(item.printUrl || "").trim(),
+        dept: String(item.dept || '').trim(),
+        position: String(item.position || '').trim(),
+        staffName: String(item.staffName || '').trim(),
+        printUrl: String(item.printUrl || '').trim(),
       };
     })
     .filter((row) => !!row.dept && !!row.printUrl);
@@ -621,16 +621,16 @@ function normalizeTeamLeadRows(value) {
 function normalizeAnalyzeResults(value) {
   const rows = Array.isArray(value) ? value : [];
   return rows.map((item) => ({
-    dept: String((item && item.dept) || "").trim(),
-    position: String((item && item.position) || "").trim(),
-    staffName: String((item && item.staffName) || "").trim(),
+    dept: String((item && item.dept) || '').trim(),
+    position: String((item && item.position) || '').trim(),
+    staffName: String((item && item.staffName) || '').trim(),
     ok: !(item && item.ok === false),
-    error: String((item && item.error) || "").trim(),
-    promotion: Array.isArray(item && item.promotion) ? item.promotion.map((entry) => String(entry || "").trim()).filter(Boolean) : [],
-    vacation: Array.isArray(item && item.vacation) ? item.vacation.map((entry) => String(entry || "").trim()).filter(Boolean) : [],
-    special: Array.isArray(item && item.special) ? item.special.map((entry) => String(entry || "").trim()).filter(Boolean) : [],
+    error: String((item && item.error) || '').trim(),
+    promotion: Array.isArray(item && item.promotion) ? item.promotion.map((entry) => String(entry || '').trim()).filter(Boolean) : [],
+    vacation: Array.isArray(item && item.vacation) ? item.vacation.map((entry) => String(entry || '').trim()).filter(Boolean) : [],
+    special: Array.isArray(item && item.special) ? item.special.map((entry) => String(entry || '').trim()).filter(Boolean) : [],
     recruiting: normalizeRecruitingExtract(item && item.recruiting),
-    printUrl: String((item && item.printUrl) || "").trim(),
+    printUrl: String((item && item.printUrl) || '').trim(),
   }));
 }
 
@@ -639,20 +639,20 @@ function normalizeWeekTextRows(rows) {
 
   return rows
     .map((item, index) => {
-      const row = item && typeof item === "object" ? item : {};
+      const row = item && typeof item === 'object' ? item : {};
       const weekday = normalizeWeekday(row.weekday);
       if (!weekday) return null;
 
       return {
         weekday,
-        channelName: String(row.channelName || "").trim(),
-        weeklyPlan: String(row.weeklyPlan || "").trim(),
-        promotionContent: String(row.promotionContent || "").trim(),
-        targetText: String(row.targetText || "").trim(),
-        resultText: String(row.resultText || "").trim(),
-        recruitCountText: String(row.recruitCountText || "").trim(),
-        ownerName: String(row.ownerName || "").trim(),
-        note: String(row.note || "").trim(),
+        channelName: String(row.channelName || '').trim(),
+        weeklyPlan: String(row.weeklyPlan || '').trim(),
+        promotionContent: String(row.promotionContent || '').trim(),
+        targetText: String(row.targetText || '').trim(),
+        resultText: String(row.resultText || '').trim(),
+        recruitCountText: String(row.recruitCountText || '').trim(),
+        ownerName: String(row.ownerName || '').trim(),
+        note: String(row.note || '').trim(),
         sortOrder: Number.isFinite(Number(row.sortOrder)) ? Math.trunc(Number(row.sortOrder)) : index,
       };
     })
@@ -674,14 +674,14 @@ function ensureWeekdayRows(rows) {
     if (items.length === 0) {
       result.push({
         weekday,
-        channelName: "",
-        weeklyPlan: "",
-        promotionContent: "",
-        targetText: "",
-        resultText: "",
-        recruitCountText: "",
-        ownerName: "",
-        note: "",
+        channelName: '',
+        weeklyPlan: '',
+        promotionContent: '',
+        targetText: '',
+        resultText: '',
+        recruitCountText: '',
+        ownerName: '',
+        note: '',
         sortOrder: 0,
       });
       return;
@@ -696,14 +696,14 @@ function ensureWeekdayRows(rows) {
 function hasWeekTextContent(rows) {
   return rows.some(
     (row) =>
-      !!String(row.channelName || "").trim() ||
-      !!String(row.weeklyPlan || "").trim() ||
-      !!String(row.promotionContent || "").trim() ||
-      !!String(row.targetText || "").trim() ||
-      !!String(row.resultText || "").trim() ||
-      !!String(row.recruitCountText || "").trim() ||
-      !!String(row.ownerName || "").trim() ||
-      !!String(row.note || "").trim(),
+      !!String(row.channelName || '').trim() ||
+      !!String(row.weeklyPlan || '').trim() ||
+      !!String(row.promotionContent || '').trim() ||
+      !!String(row.targetText || '').trim() ||
+      !!String(row.resultText || '').trim() ||
+      !!String(row.recruitCountText || '').trim() ||
+      !!String(row.ownerName || '').trim() ||
+      !!String(row.note || '').trim(),
   );
 }
 
@@ -737,14 +737,14 @@ function hasWeekPlanData(recruiting) {
     (Array.isArray(recruiting.weekTableRows) &&
       recruiting.weekTableRows.some(
         (row) =>
-          !!String(row.channelName || "").trim() ||
-          !!String(row.weeklyPlan || "").trim() ||
-          !!String(row.promotionContent || "").trim() ||
-          !!String(row.targetText || "").trim() ||
-          !!String(row.resultText || "").trim() ||
-          !!String(row.recruitCountText || "").trim() ||
-          !!String(row.ownerName || "").trim() ||
-          !!String(row.note || "").trim(),
+          !!String(row.channelName || '').trim() ||
+          !!String(row.weeklyPlan || '').trim() ||
+          !!String(row.promotionContent || '').trim() ||
+          !!String(row.targetText || '').trim() ||
+          !!String(row.resultText || '').trim() ||
+          !!String(row.recruitCountText || '').trim() ||
+          !!String(row.ownerName || '').trim() ||
+          !!String(row.note || '').trim(),
       )) ||
     recruiting.dailyPlan.some((item) => item.targetCount !== null || !!item.channelName || !!item.promotionContent || !!item.ownerName || !!item.note)
   );
@@ -796,15 +796,15 @@ function normalizeDeptWeekTables(value) {
   if (!Array.isArray(value)) return [];
   return value
     .map((item) => {
-      const source = item && typeof item === "object" ? item : {};
+      const source = item && typeof item === 'object' ? item : {};
       return {
-        dept: String(source.dept || "").trim(),
-        todayWeekday: normalizeWeekday(source.todayWeekday) || "fri",
+        dept: String(source.dept || '').trim(),
+        todayWeekday: normalizeWeekday(source.todayWeekday) || 'fri',
         rows: ensureWeekdayRows(source.rows),
       };
     })
     .filter((item) => !!item.dept)
-    .sort((a, b) => a.dept.localeCompare(b.dept, "ko"));
+    .sort((a, b) => a.dept.localeCompare(b.dept, 'ko'));
 }
 
 /**
@@ -816,15 +816,15 @@ function normalizeDeptSnapshots(value) {
   if (!Array.isArray(value)) return [];
   return value
     .map((item) => {
-      const source = item && typeof item === "object" ? item : {};
+      const source = item && typeof item === 'object' ? item : {};
       return {
-        dept: String(source.dept || "").trim(),
+        dept: String(source.dept || '').trim(),
         monthTarget: normalizeNullableInt(source.monthTarget),
         weekTarget: normalizeNullableInt(source.weekTarget),
         rows: Array.isArray(source.rows)
           ? source.rows
               .map((row) => ({
-                weekday: normalizeWeekday(row && row.weekday) || "mon",
+                weekday: normalizeWeekday(row && row.weekday) || 'mon',
                 target: normalizeRequiredInt(row && row.target, 0),
                 actual: normalizeRequiredInt(row && row.actual, 0),
                 gap: Number.isFinite(Number(row && row.gap)) ? Math.trunc(Number(row.gap)) : 0,
@@ -832,21 +832,21 @@ function normalizeDeptSnapshots(value) {
               .filter((row) => !!row.weekday)
           : [],
         today:
-          source.today && typeof source.today === "object"
+          source.today && typeof source.today === 'object'
             ? {
-                weekday: normalizeWeekday(source.today.weekday) || "fri",
+                weekday: normalizeWeekday(source.today.weekday) || 'fri',
                 target: normalizeRequiredInt(source.today.target, 0),
                 actual: normalizeRequiredInt(source.today.actual, 0),
                 gap: Number.isFinite(Number(source.today.gap)) ? Math.trunc(Number(source.today.gap)) : 0,
               }
             : {
-                weekday: "fri",
+                weekday: 'fri',
                 target: 0,
                 actual: 0,
                 gap: 0,
               },
         cumulative:
-          source.cumulative && typeof source.cumulative === "object"
+          source.cumulative && typeof source.cumulative === 'object'
             ? {
                 target: normalizeRequiredInt(source.cumulative.target, 0),
                 actual: normalizeRequiredInt(source.cumulative.actual, 0),
@@ -860,7 +860,7 @@ function normalizeDeptSnapshots(value) {
       };
     })
     .filter((item) => !!item.dept)
-    .sort((a, b) => a.dept.localeCompare(b.dept, "ko"));
+    .sort((a, b) => a.dept.localeCompare(b.dept, 'ko'));
 }
 
 /**
@@ -869,14 +869,14 @@ function normalizeDeptSnapshots(value) {
  * @returns {types.KjcaDashboardState} 화면에서 바로 쓸 수 있는 대시보드 상태입니다.
  */
 function buildDashboardState(input) {
-  const source = input && typeof input === "object" ? input : {};
+  const source = input && typeof input === 'object' ? input : {};
   return {
     reportDate: normalizeReportDate(source.reportDate),
     testOneOnly: normalizeBool(source.testOneOnly),
-    noticeMessage: String(source.noticeMessage || "").trim(),
-    errorMessage: String(source.errorMessage || "").trim(),
-    warnings: Array.isArray(source.warnings) ? source.warnings.map((item) => String(item || "").trim()).filter(Boolean) : [],
-    stoppedReason: String(source.stoppedReason || "").trim(),
+    noticeMessage: String(source.noticeMessage || '').trim(),
+    errorMessage: String(source.errorMessage || '').trim(),
+    warnings: Array.isArray(source.warnings) ? source.warnings.map((item) => String(item || '').trim()).filter(Boolean) : [],
+    stoppedReason: String(source.stoppedReason || '').trim(),
     isDiaryAccessible: source.isDiaryAccessible === true ? true : source.isDiaryAccessible === false ? false : null,
     teamLeadRows: normalizeTeamLeadRows(source.teamLeadRows),
     analysisResults: normalizeAnalyzeResults(source.analysisResults),
@@ -903,7 +903,7 @@ function serializeDashboardState(state) {
  */
 function parseDashboardState(value, fallback) {
   const fallbackState = buildDashboardState(fallback);
-  const text = String(value || "").trim();
+  const text = String(value || '').trim();
   if (!text) return fallbackState;
 
   try {
@@ -928,9 +928,9 @@ function getWeekdayMergedRow(rows, weekday) {
 
   const joinValues = (extractor) =>
     items
-      .map((row) => String(extractor(row) || "").trim())
+      .map((row) => String(extractor(row) || '').trim())
       .filter(Boolean)
-      .join(" / ");
+      .join(' / ');
 
   return {
     channelName: joinValues((row) => row.channelName),
@@ -955,11 +955,11 @@ function isFocusWeekday(weekday, todayWeekday) {
 }
 
 function buildMonthLabel(dateText) {
-  const text = String(dateText || "").trim();
+  const text = String(dateText || '').trim();
   const matched = text.match(/^\d{4}-(\d{2})-\d{2}$/);
-  if (!matched) return "금월";
+  if (!matched) return '금월';
   const month = Number(matched[1]);
-  if (!Number.isFinite(month) || month < 1 || month > 12) return "금월";
+  if (!Number.isFinite(month) || month < 1 || month > 12) return '금월';
   return `${month}월`;
 }
 
@@ -969,14 +969,14 @@ function buildMonthLabel(dateText) {
  * @returns {string} 화면에 표시할 요약 문구입니다.
  */
 function buildDeptSummaryText(params) {
-  const dept = String((params && params.dept) || "").trim();
-  const reportDate = String((params && params.reportDate) || "").trim();
+  const dept = String((params && params.dept) || '').trim();
+  const reportDate = String((params && params.reportDate) || '').trim();
   const analysisResults = Array.isArray(params && params.analysisResults) ? params.analysisResults : [];
   const item = analysisResults.find((row) => row.dept === dept && row.ok);
   const monthTarget = item && item.recruiting ? item.recruiting.monthTarget : null;
   const monthAssignedCurrent = item && item.recruiting ? item.recruiting.monthAssignedCurrent : null;
-  const monthTargetText = monthTarget === null ? "-" : `${monthTarget}건`;
-  const monthAssignedText = monthAssignedCurrent === null ? "-" : `${monthAssignedCurrent}명`;
+  const monthTargetText = monthTarget === null ? '-' : `${monthTarget}건`;
+  const monthAssignedText = monthAssignedCurrent === null ? '-' : `${monthAssignedCurrent}명`;
   const monthLabel = buildMonthLabel(reportDate);
   return `월 배정목표 : ${monthTargetText} / ${monthLabel} 현재 달성 : 배정 ${monthAssignedText}`;
 }
@@ -1070,7 +1070,7 @@ const { collectWeekly, clearAnalysisCache } = kjcaCollectService;
 function buildDashboardStateFromCollectResult(result, formState) {
   const safeFormState = buildFormState(formState);
   const deptWeekTables = normalizeDeptWeekTables(result && result.deptWeekTables);
-  const alertMessage = String((result && result.alertMessage) || "").trim();
+  const alertMessage = String((result && result.alertMessage) || '').trim();
   const noticeMessage = alertMessage || `자동 취합 완료 (${deptWeekTables.length}개 부서)`;
 
   return buildDashboardState({

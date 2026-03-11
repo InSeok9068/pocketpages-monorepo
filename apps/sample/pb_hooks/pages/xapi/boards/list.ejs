@@ -1,21 +1,21 @@
 <script server>
-  const selectedBoardSlug = String(request.url.query.board || "").trim();
+  const selectedBoardSlug = String(request.url.query.board || '').trim();
   let boards = [];
-  let errorMessage = "";
+  let errorMessage = '';
 
-  dbg("xapi/boards/list:start", { selectedBoardSlug });
+  dbg('xapi/boards/list:start', { selectedBoardSlug });
 
   try {
-    boards = $app.findRecordsByFilter("boards", "", "+sort_order,+name", 50, 0);
+    boards = $app.findRecordsByFilter('boards', '', '+sort_order,+name', 50, 0);
   } catch (error) {
-    warn("xapi/boards/list:load-failed", { message: String(error.message || error) });
+    warn('xapi/boards/list:load-failed', { message: String(error.message || error) });
     errorMessage = String(error.message || error);
   }
 
-  dbg("xapi/boards/list:response", {
+  dbg('xapi/boards/list:response', {
     boardCount: boards.length,
     selectedBoardSlug,
-    error: errorMessage || "",
+    error: errorMessage || '',
   });
 </script>
-<%- include('board-list.ejs', { boards, error: errorMessage, selectedBoardSlug, }) %>
+<%- include('board-list.ejs', { boards, error: errorMessage, selectedBoardSlug }) %>

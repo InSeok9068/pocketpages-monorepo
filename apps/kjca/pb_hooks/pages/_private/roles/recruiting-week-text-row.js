@@ -6,7 +6,7 @@
 function canSave(record) {
   if (!record) return false;
 
-  const weekday = String(record.get("weekday") || "").trim();
+  const weekday = String(record.get('weekday') || '').trim();
   return !!weekday;
 }
 

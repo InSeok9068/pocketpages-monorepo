@@ -33,15 +33,15 @@ function createKjcaCollectService(deps) {
   } = deps;
 
   function shouldRetryAnalyzeError(errorText) {
-    const text = String(errorText || "").toLowerCase();
+    const text = String(errorText || '').toLowerCase();
     if (!text) return false;
-    return text.includes("http 503") || text.includes("http 429") || text.includes("timeout") || text.includes("temporarily unavailable") || text.includes("connection reset");
+    return text.includes('http 503') || text.includes('http 429') || text.includes('timeout') || text.includes('temporarily unavailable') || text.includes('connection reset');
   }
 
   function findWeekTextPlan(weekStartDate, dept) {
     const weekDate = buildDateMatchParams(weekStartDate);
     try {
-      return $app.findFirstRecordByFilter("recruiting_week_text_plans", "(weekStartDate = {:exact} || weekStartDate ~ {:like}) && dept = {:dept}", {
+      return $app.findFirstRecordByFilter('recruiting_week_text_plans', '(weekStartDate = {:exact} || weekStartDate ~ {:like}) && dept = {:dept}', {
         exact: weekDate.exact,
         like: weekDate.like,
         dept,
@@ -53,35 +53,35 @@ function createKjcaCollectService(deps) {
 
   function findWeekTextRows(planId) {
     try {
-      return $app.findRecordsByFilter("recruiting_week_text_rows", "planId = {:planId}", "weekday,sortOrder,created", 1000, 0, { planId });
+      return $app.findRecordsByFilter('recruiting_week_text_rows', 'planId = {:planId}', 'weekday,sortOrder,created', 1000, 0, { planId });
     } catch (error) {
       return [];
     }
   }
 
   function isUniqueValueError(error) {
-    return String(error || "").includes("Value must be unique");
+    return String(error || '').includes('Value must be unique');
   }
 
   function upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRole, params) {
     const safeWeekStartDate = deps.formatDateText(deps.parseDateText(params.weekStartDate));
-    const dept = String(params.dept || "").trim();
-    if (!dept) return { ok: false, reason: "dept-empty" };
+    const dept = String(params.dept || '').trim();
+    if (!dept) return { ok: false, reason: 'dept-empty' };
 
-    const planCollection = $app.findCollectionByNameOrId("recruiting_week_text_plans");
-    const rowCollection = $app.findCollectionByNameOrId("recruiting_week_text_rows");
+    const planCollection = $app.findCollectionByNameOrId('recruiting_week_text_plans');
+    const rowCollection = $app.findCollectionByNameOrId('recruiting_week_text_rows');
 
     let plan = findWeekTextPlan(safeWeekStartDate, dept);
     const wasNew = !plan;
     if (!plan) plan = new Record(planCollection);
 
-    plan.set("weekStartDate", safeWeekStartDate);
-    plan.set("dept", dept);
-    plan.set("status", "confirmed");
+    plan.set('weekStartDate', safeWeekStartDate);
+    plan.set('dept', dept);
+    plan.set('status', 'confirmed');
 
-    if (recruitingWeekTextPlanRole && typeof recruitingWeekTextPlanRole.canSaveConfirmed === "function") {
+    if (recruitingWeekTextPlanRole && typeof recruitingWeekTextPlanRole.canSaveConfirmed === 'function') {
       if (!recruitingWeekTextPlanRole.canSaveConfirmed(plan)) {
-        return { ok: false, reason: "plan-invalid" };
+        return { ok: false, reason: 'plan-invalid' };
       }
     }
 
@@ -91,9 +91,9 @@ function createKjcaCollectService(deps) {
       if (!wasNew || !isUniqueValueError(error)) throw error;
       const existing = findWeekTextPlan(safeWeekStartDate, dept);
       if (!existing) throw error;
-      existing.set("weekStartDate", safeWeekStartDate);
-      existing.set("dept", dept);
-      existing.set("status", "confirmed");
+      existing.set('weekStartDate', safeWeekStartDate);
+      existing.set('dept', dept);
+      existing.set('status', 'confirmed');
       $app.save(existing);
       plan = existing;
     }
@@ -105,19 +105,19 @@ function createKjcaCollectService(deps) {
 
     nextRows.forEach((row) => {
       const record = new Record(rowCollection);
-      record.set("planId", plan.id);
-      record.set("weekday", row.weekday);
-      record.set("channelName", row.channelName);
-      record.set("weeklyPlan", row.weeklyPlan);
-      record.set("promotionContent", row.promotionContent);
-      record.set("targetText", row.targetText);
-      record.set("resultText", row.resultText);
-      record.set("recruitCountText", row.recruitCountText);
-      record.set("ownerName", row.ownerName);
-      record.set("note", row.note);
-      record.set("sortOrder", row.sortOrder);
+      record.set('planId', plan.id);
+      record.set('weekday', row.weekday);
+      record.set('channelName', row.channelName);
+      record.set('weeklyPlan', row.weeklyPlan);
+      record.set('promotionContent', row.promotionContent);
+      record.set('targetText', row.targetText);
+      record.set('resultText', row.resultText);
+      record.set('recruitCountText', row.recruitCountText);
+      record.set('ownerName', row.ownerName);
+      record.set('note', row.note);
+      record.set('sortOrder', row.sortOrder);
 
-      if (recruitingWeekTextRowRole && typeof recruitingWeekTextRowRole.canSave === "function") {
+      if (recruitingWeekTextRowRole && typeof recruitingWeekTextRowRole.canSave === 'function') {
         if (!recruitingWeekTextRowRole.canSave(record)) return;
       }
 
@@ -129,10 +129,10 @@ function createKjcaCollectService(deps) {
 
   function upsertWeekTextRowsForWeekday(recruitingWeekTextPlanRole, recruitingWeekTextRowRole, params) {
     const safeWeekStartDate = deps.formatDateText(deps.parseDateText(params.weekStartDate));
-    const dept = String(params.dept || "").trim();
+    const dept = String(params.dept || '').trim();
     const weekday = normalizeWeekday(params.weekday);
-    if (!dept) return { ok: false, reason: "dept-empty" };
-    if (!weekday) return { ok: false, reason: "weekday-empty" };
+    if (!dept) return { ok: false, reason: 'dept-empty' };
+    if (!weekday) return { ok: false, reason: 'weekday-empty' };
 
     let plan = findWeekTextPlan(safeWeekStartDate, dept);
     if (!plan) {
@@ -144,33 +144,33 @@ function createKjcaCollectService(deps) {
       if (!created.ok) return created;
       plan = findWeekTextPlan(safeWeekStartDate, dept);
     }
-    if (!plan) return { ok: false, reason: "plan-create-failed" };
+    if (!plan) return { ok: false, reason: 'plan-create-failed' };
 
-    const rowCollection = $app.findCollectionByNameOrId("recruiting_week_text_rows");
+    const rowCollection = $app.findCollectionByNameOrId('recruiting_week_text_rows');
     findWeekTextRows(plan.id)
-      .filter((row) => normalizeWeekday(row.get("weekday")) === weekday)
+      .filter((row) => normalizeWeekday(row.get('weekday')) === weekday)
       .forEach((row) => {
         $app.delete(row);
       });
 
     const weekdayRows = normalizeWeekTextRows(params.rows).filter((row) => row.weekday === weekday);
-    if (weekdayRows.length === 0) return { ok: true, reason: "weekday-empty-rows" };
+    if (weekdayRows.length === 0) return { ok: true, reason: 'weekday-empty-rows' };
 
     weekdayRows.forEach((row, index) => {
       const record = new Record(rowCollection);
-      record.set("planId", plan.id);
-      record.set("weekday", row.weekday);
-      record.set("channelName", row.channelName);
-      record.set("weeklyPlan", row.weeklyPlan);
-      record.set("promotionContent", row.promotionContent);
-      record.set("targetText", row.targetText);
-      record.set("resultText", row.resultText);
-      record.set("recruitCountText", row.recruitCountText);
-      record.set("ownerName", row.ownerName);
-      record.set("note", row.note);
-      record.set("sortOrder", index);
+      record.set('planId', plan.id);
+      record.set('weekday', row.weekday);
+      record.set('channelName', row.channelName);
+      record.set('weeklyPlan', row.weeklyPlan);
+      record.set('promotionContent', row.promotionContent);
+      record.set('targetText', row.targetText);
+      record.set('resultText', row.resultText);
+      record.set('recruitCountText', row.recruitCountText);
+      record.set('ownerName', row.ownerName);
+      record.set('note', row.note);
+      record.set('sortOrder', index);
 
-      if (recruitingWeekTextRowRole && typeof recruitingWeekTextRowRole.canSave === "function") {
+      if (recruitingWeekTextRowRole && typeof recruitingWeekTextRowRole.canSave === 'function') {
         if (!recruitingWeekTextRowRole.canSave(record)) return;
       }
 
@@ -183,7 +183,7 @@ function createKjcaCollectService(deps) {
   function findWeekPlan(weekStartDate, dept) {
     const weekDate = buildDateMatchParams(weekStartDate);
     try {
-      return $app.findFirstRecordByFilter("recruiting_week_plans", "(weekStartDate = {:exact} || weekStartDate ~ {:like}) && dept = {:dept}", { exact: weekDate.exact, like: weekDate.like, dept });
+      return $app.findFirstRecordByFilter('recruiting_week_plans', '(weekStartDate = {:exact} || weekStartDate ~ {:like}) && dept = {:dept}', { exact: weekDate.exact, like: weekDate.like, dept });
     } catch (error) {
       return null;
     }
@@ -191,7 +191,7 @@ function createKjcaCollectService(deps) {
 
   function findWeekPlanItems(planId) {
     try {
-      return $app.findRecordsByFilter("recruiting_week_plan_items", "planId = {:planId}", "weekday,sortOrder,created", 500, 0, { planId });
+      return $app.findRecordsByFilter('recruiting_week_plan_items', 'planId = {:planId}', 'weekday,sortOrder,created', 500, 0, { planId });
     } catch (error) {
       return [];
     }
@@ -200,7 +200,7 @@ function createKjcaCollectService(deps) {
   function findWeekResults(weekStartDate, dept) {
     const weekDate = buildDateMatchParams(weekStartDate);
     try {
-      return $app.findRecordsByFilter("recruiting_daily_results", "(weekStartDate = {:exact} || weekStartDate ~ {:like}) && dept = {:dept}", "reportDate", 500, 0, {
+      return $app.findRecordsByFilter('recruiting_daily_results', '(weekStartDate = {:exact} || weekStartDate ~ {:like}) && dept = {:dept}', 'reportDate', 500, 0, {
         exact: weekDate.exact,
         like: weekDate.like,
         dept,
@@ -211,26 +211,26 @@ function createKjcaCollectService(deps) {
   }
 
   function upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItemRole, params) {
-    const dept = String((params && params.dept) || "").trim();
-    if (!dept) return { ok: false, reason: "dept-empty" };
+    const dept = String((params && params.dept) || '').trim();
+    if (!dept) return { ok: false, reason: 'dept-empty' };
 
     const safeWeekStartDate = deps.formatDateText(deps.parseDateText(params.weekStartDate));
-    const planCollection = $app.findCollectionByNameOrId("recruiting_week_plans");
-    const itemCollection = $app.findCollectionByNameOrId("recruiting_week_plan_items");
+    const planCollection = $app.findCollectionByNameOrId('recruiting_week_plans');
+    const itemCollection = $app.findCollectionByNameOrId('recruiting_week_plan_items');
 
     let plan = findWeekPlan(safeWeekStartDate, dept);
     const wasNew = !plan;
     if (!plan) plan = new Record(planCollection);
 
-    plan.set("weekStartDate", safeWeekStartDate);
-    plan.set("dept", dept);
-    plan.set("monthTarget", params.monthTarget);
-    plan.set("weekTarget", params.weekTarget);
-    plan.set("status", "confirmed");
+    plan.set('weekStartDate', safeWeekStartDate);
+    plan.set('dept', dept);
+    plan.set('monthTarget', params.monthTarget);
+    plan.set('weekTarget', params.weekTarget);
+    plan.set('status', 'confirmed');
 
-    if (recruitingWeekPlanRole && typeof recruitingWeekPlanRole.canSaveConfirmed === "function") {
+    if (recruitingWeekPlanRole && typeof recruitingWeekPlanRole.canSaveConfirmed === 'function') {
       if (!recruitingWeekPlanRole.canSaveConfirmed(plan)) {
-        return { ok: false, reason: "plan-invalid" };
+        return { ok: false, reason: 'plan-invalid' };
       }
     }
 
@@ -242,11 +242,11 @@ function createKjcaCollectService(deps) {
       const existing = findWeekPlan(safeWeekStartDate, dept);
       if (!existing) throw error;
 
-      existing.set("weekStartDate", safeWeekStartDate);
-      existing.set("dept", dept);
-      existing.set("monthTarget", params.monthTarget);
-      existing.set("weekTarget", params.weekTarget);
-      existing.set("status", "confirmed");
+      existing.set('weekStartDate', safeWeekStartDate);
+      existing.set('dept', dept);
+      existing.set('monthTarget', params.monthTarget);
+      existing.set('weekTarget', params.weekTarget);
+      existing.set('status', 'confirmed');
       $app.save(existing);
       plan = existing;
     }
@@ -258,11 +258,11 @@ function createKjcaCollectService(deps) {
     const normalizedItems = (Array.isArray(params.items) ? params.items : [])
       .map((item, index) => ({
         weekday: normalizeWeekday(item.weekday),
-        channelName: String(item.channelName || "").trim(),
-        promotionContent: String(item.promotionContent || "").trim(),
+        channelName: String(item.channelName || '').trim(),
+        promotionContent: String(item.promotionContent || '').trim(),
         targetCount: normalizeNullableInt(item.targetCount),
-        ownerName: String(item.ownerName || "").trim(),
-        note: String(item.note || "").trim(),
+        ownerName: String(item.ownerName || '').trim(),
+        note: String(item.note || '').trim(),
         sortOrder: Number.isFinite(Number(item.sortOrder)) ? Math.trunc(Number(item.sortOrder)) : index,
       }))
       .filter((item) => !!item.weekday);
@@ -278,11 +278,11 @@ function createKjcaCollectService(deps) {
         if (remain > 0) remain -= 1;
         return {
           weekday,
-          channelName: "",
-          promotionContent: "",
+          channelName: '',
+          promotionContent: '',
           targetCount: base + add,
-          ownerName: "",
-          note: "주목표 자동분배",
+          ownerName: '',
+          note: '주목표 자동분배',
           sortOrder: index,
         };
       });
@@ -290,16 +290,16 @@ function createKjcaCollectService(deps) {
 
     nextItems.forEach((item) => {
       const record = new Record(itemCollection);
-      record.set("planId", plan.id);
-      record.set("weekday", item.weekday);
-      record.set("channelName", item.channelName);
-      record.set("promotionContent", item.promotionContent);
-      record.set("targetCount", item.targetCount);
-      record.set("ownerName", item.ownerName);
-      record.set("note", item.note);
-      record.set("sortOrder", item.sortOrder);
+      record.set('planId', plan.id);
+      record.set('weekday', item.weekday);
+      record.set('channelName', item.channelName);
+      record.set('promotionContent', item.promotionContent);
+      record.set('targetCount', item.targetCount);
+      record.set('ownerName', item.ownerName);
+      record.set('note', item.note);
+      record.set('sortOrder', item.sortOrder);
 
-      if (recruitingWeekPlanItemRole && typeof recruitingWeekPlanItemRole.canSave === "function") {
+      if (recruitingWeekPlanItemRole && typeof recruitingWeekPlanItemRole.canSave === 'function') {
         if (!recruitingWeekPlanItemRole.canSave(record)) return;
       }
 
@@ -310,37 +310,37 @@ function createKjcaCollectService(deps) {
   }
 
   function upsertRecruitingDailyResult(recruitingDailyResultRole, params) {
-    const dept = String((params && params.dept) || "").trim();
-    if (!dept) return { ok: false, reason: "dept-empty" };
+    const dept = String((params && params.dept) || '').trim();
+    if (!dept) return { ok: false, reason: 'dept-empty' };
 
     const safeReportDate = deps.formatDateText(deps.parseDateText(params.reportDate));
     const safeWeekStartDate = deps.formatDateText(deps.parseDateText(params.weekStartDate));
     const safeWeekday = normalizeWeekday(params.weekday) || toWeekdayKey(safeReportDate);
     const safeActualCount = normalizeNullableInt(params.actualCount);
-    if (safeActualCount === null) return { ok: false, reason: "actualCount-invalid" };
+    if (safeActualCount === null) return { ok: false, reason: 'actualCount-invalid' };
 
-    const collection = $app.findCollectionByNameOrId("recruiting_daily_results");
+    const collection = $app.findCollectionByNameOrId('recruiting_daily_results');
     const reportDate = buildDateMatchParams(safeReportDate);
 
     let record = null;
     try {
-      record = $app.findFirstRecordByFilter("recruiting_daily_results", "(reportDate = {:exact} || reportDate ~ {:like}) && dept = {:dept}", { exact: reportDate.exact, like: reportDate.like, dept });
+      record = $app.findFirstRecordByFilter('recruiting_daily_results', '(reportDate = {:exact} || reportDate ~ {:like}) && dept = {:dept}', { exact: reportDate.exact, like: reportDate.like, dept });
     } catch (error) {
       record = null;
     }
 
     const target = record || new Record(collection);
-    target.set("reportDate", safeReportDate);
-    target.set("weekStartDate", safeWeekStartDate);
-    target.set("dept", dept);
-    target.set("weekday", safeWeekday);
-    target.set("actualCount", safeActualCount);
-    target.set("sourceType", "ai");
-    target.set("memo", "AI 자동 추출");
+    target.set('reportDate', safeReportDate);
+    target.set('weekStartDate', safeWeekStartDate);
+    target.set('dept', dept);
+    target.set('weekday', safeWeekday);
+    target.set('actualCount', safeActualCount);
+    target.set('sourceType', 'ai');
+    target.set('memo', 'AI 자동 추출');
 
-    if (recruitingDailyResultRole && typeof recruitingDailyResultRole.canSaveAiResult === "function") {
+    if (recruitingDailyResultRole && typeof recruitingDailyResultRole.canSaveAiResult === 'function') {
       if (!recruitingDailyResultRole.canSaveAiResult(target)) {
-        return { ok: false, reason: "daily-result-invalid" };
+        return { ok: false, reason: 'daily-result-invalid' };
       }
     }
 
@@ -349,19 +349,19 @@ function createKjcaCollectService(deps) {
     } catch (error) {
       if (!!record || !isUniqueValueError(error)) throw error;
 
-      const existing = $app.findFirstRecordByFilter("recruiting_daily_results", "(reportDate = {:exact} || reportDate ~ {:like}) && dept = {:dept}", {
+      const existing = $app.findFirstRecordByFilter('recruiting_daily_results', '(reportDate = {:exact} || reportDate ~ {:like}) && dept = {:dept}', {
         exact: reportDate.exact,
         like: reportDate.like,
         dept,
       });
 
-      existing.set("reportDate", safeReportDate);
-      existing.set("weekStartDate", safeWeekStartDate);
-      existing.set("dept", dept);
-      existing.set("weekday", safeWeekday);
-      existing.set("actualCount", safeActualCount);
-      existing.set("sourceType", "ai");
-      existing.set("memo", "AI 자동 추출");
+      existing.set('reportDate', safeReportDate);
+      existing.set('weekStartDate', safeWeekStartDate);
+      existing.set('dept', dept);
+      existing.set('weekday', safeWeekday);
+      existing.set('actualCount', safeActualCount);
+      existing.set('sourceType', 'ai');
+      existing.set('memo', 'AI 자동 추출');
       $app.save(existing);
     }
 
@@ -372,14 +372,14 @@ function createKjcaCollectService(deps) {
     ensureSuperuserRequest(request);
 
     const reportDate = normalizeReportDate(payload && payload.reportDate);
-    const dept = String((payload && payload.dept) || "").trim();
-    if (!dept) throw new Error("부서(dept)가 필요합니다.");
+    const dept = String((payload && payload.dept) || '').trim();
+    if (!dept) throw new Error('부서(dept)가 필요합니다.');
 
     const filter = `(reportDate = '${escapeFilterValue(reportDate)}' || reportDate ~ '${escapeFilterValue(`${reportDate}%`)}')` + ` && dept = '${escapeFilterValue(dept)}'`;
 
     let rows = [];
     try {
-      rows = $app.findRecordsByFilter(CACHE_COLLECTION_NAME, filter, "created", 1000, 0);
+      rows = $app.findRecordsByFilter(CACHE_COLLECTION_NAME, filter, 'created', 1000, 0);
     } catch (error) {
       rows = [];
     }
@@ -398,7 +398,7 @@ function createKjcaCollectService(deps) {
 
   function collectWeekly(request, roles, payload) {
     ensureSuperuserRequest(request);
-    const safeRoles = roles && typeof roles === "object" ? roles : {};
+    const safeRoles = roles && typeof roles === 'object' ? roles : {};
     const staffDiaryAnalysisCacheRole = safeRoles.staffDiaryAnalysisCacheRole || null;
     const recruitingWeekPlanRole = safeRoles.recruitingWeekPlanRole || null;
     const recruitingWeekPlanItemRole = safeRoles.recruitingWeekPlanItemRole || null;
@@ -420,7 +420,7 @@ function createKjcaCollectService(deps) {
     const collectTargets = testOneOnly ? todayTargets.slice(0, 1) : todayTargets;
 
     if (!collectTargets.length) {
-      throw new Error("해당 일자 팀장 일지를 찾지 못했습니다.");
+      throw new Error('해당 일자 팀장 일지를 찾지 못했습니다.');
     }
 
     const missingPlanDepts = collectTargets.map((target) => target.dept).filter((dept) => !findWeekPlan(weekStartDate, dept));
@@ -456,25 +456,25 @@ function createKjcaCollectService(deps) {
             try {
               const result = upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItemRole, {
                 weekStartDate,
-                dept: String(item.dept || "").trim(),
+                dept: String(item.dept || '').trim(),
                 monthTarget: recruiting.monthTarget,
                 weekTarget: recruiting.weekTarget,
                 items: recruiting.dailyPlan,
               });
-              if (!result.ok) warnings.push(`weekPlan skip: ${String(item.dept || "-")} (${result.reason || "unknown"})`);
+              if (!result.ok) warnings.push(`weekPlan skip: ${String(item.dept || '-')} (${result.reason || 'unknown'})`);
             } catch (error) {
-              warnings.push(`weekPlan error: ${String(item.dept || "-")} (${String(error)})`);
+              warnings.push(`weekPlan error: ${String(item.dept || '-')} (${String(error)})`);
             }
 
             try {
               const textPlanResult = upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRole, {
                 weekStartDate,
-                dept: String(item.dept || "").trim(),
+                dept: String(item.dept || '').trim(),
                 rows: ensureWeekdayRows(recruiting.weekTableRows),
               });
-              if (!textPlanResult.ok) warnings.push(`weekTextPlan skip: ${String(item.dept || "-")} (${textPlanResult.reason || "unknown"})`);
+              if (!textPlanResult.ok) warnings.push(`weekTextPlan skip: ${String(item.dept || '-')} (${textPlanResult.reason || 'unknown'})`);
             } catch (error) {
-              warnings.push(`weekTextPlan error: ${String(item.dept || "-")} (${String(error)})`);
+              warnings.push(`weekTextPlan error: ${String(item.dept || '-')} (${String(error)})`);
             }
           });
       }
@@ -490,19 +490,19 @@ function createKjcaCollectService(deps) {
       session,
     );
 
-    let finalAlertMessage = String(todayAnalyze.alertMessage || "").trim();
-    let finalStoppedReason = String(todayAnalyze.stoppedReason || "").trim();
+    let finalAlertMessage = String(todayAnalyze.alertMessage || '').trim();
+    let finalStoppedReason = String(todayAnalyze.stoppedReason || '').trim();
     let analysisResults = normalizeAnalyzeResults(todayAnalyze.results);
 
     const targetKeyMap = new Map();
     collectTargets.forEach((target) => {
-      const dept = String((target && target.dept) || "").trim();
-      const printUrl = String((target && target.printUrl) || "").trim();
+      const dept = String((target && target.dept) || '').trim();
+      const printUrl = String((target && target.printUrl) || '').trim();
       if (!dept || !printUrl) return;
       targetKeyMap.set(`${dept}||${printUrl}`, {
         dept,
-        position: String(target.position || "").trim(),
-        staffName: String(target.staffName || "").trim(),
+        position: String(target.position || '').trim(),
+        staffName: String(target.staffName || '').trim(),
         printUrl,
       });
     });
@@ -542,8 +542,8 @@ function createKjcaCollectService(deps) {
         });
 
         warnings.push(`AI 재시도 완료: 성공 ${recoveredCount}건 / 대상 ${retryTargets.length}건`);
-        if (!finalAlertMessage) finalAlertMessage = String(retryAnalyze.alertMessage || "").trim();
-        if (!finalStoppedReason) finalStoppedReason = String(retryAnalyze.stoppedReason || "").trim();
+        if (!finalAlertMessage) finalAlertMessage = String(retryAnalyze.alertMessage || '').trim();
+        if (!finalStoppedReason) finalStoppedReason = String(retryAnalyze.stoppedReason || '').trim();
       } catch (error) {
         warnings.push(`AI 재시도 호출 실패: ${String(error)}`);
       }
@@ -552,9 +552,9 @@ function createKjcaCollectService(deps) {
     analysisResults
       .filter((item) => item.ok)
       .forEach((item) => {
-        const safeDept = String(item.dept || "").trim();
+        const safeDept = String(item.dept || '').trim();
         if (!safeDept) {
-          warnings.push("dailyResult skip: dept-empty");
+          warnings.push('dailyResult skip: dept-empty');
           return;
         }
 
@@ -568,7 +568,7 @@ function createKjcaCollectService(deps) {
               dept: safeDept,
               rows: allWeekTextRows,
             });
-            if (!textPlanResult.ok) warnings.push(`weekTextPlan skip: ${safeDept} (${textPlanResult.reason || "unknown"})`);
+            if (!textPlanResult.ok) warnings.push(`weekTextPlan skip: ${safeDept} (${textPlanResult.reason || 'unknown'})`);
           } catch (error) {
             warnings.push(`weekTextPlan error: ${safeDept} (${String(error)})`);
           }
@@ -582,7 +582,7 @@ function createKjcaCollectService(deps) {
                 weekday: reportWeekday,
                 rows: todayTextRows,
               });
-              if (!textUpdateResult.ok) warnings.push(`weekTextDaily skip: ${safeDept} (${textUpdateResult.reason || "unknown"})`);
+              if (!textUpdateResult.ok) warnings.push(`weekTextDaily skip: ${safeDept} (${textUpdateResult.reason || 'unknown'})`);
             } catch (error) {
               warnings.push(`weekTextDaily error: ${safeDept} (${String(error)})`);
             }
@@ -591,7 +591,7 @@ function createKjcaCollectService(deps) {
 
         const safeActual = normalizeNullableInt(item.recruiting.dailyActualCount);
         if (safeActual === null) {
-          warnings.push(`dailyResult skip: ${item.dept || "-"} (actualCount-empty)`);
+          warnings.push(`dailyResult skip: ${item.dept || '-'} (actualCount-empty)`);
           return;
         }
 
@@ -603,7 +603,7 @@ function createKjcaCollectService(deps) {
             weekday: reportWeekday,
             actualCount: normalizeRequiredInt(safeActual, 0),
           });
-          if (!result.ok) warnings.push(`dailyResult skip: ${safeDept} (${result.reason || "unknown"})`);
+          if (!result.ok) warnings.push(`dailyResult skip: ${safeDept} (${result.reason || 'unknown'})`);
         } catch (error) {
           warnings.push(`dailyResult error: ${safeDept} (${String(error)})`);
         }
@@ -614,16 +614,16 @@ function createKjcaCollectService(deps) {
         const plan = findWeekTextPlan(weekStartDate, target.dept);
         const planRows = plan
           ? findWeekTextRows(plan.id).map((row) => ({
-              weekday: normalizeWeekday(row.get("weekday")) || "mon",
-              channelName: String(row.get("channelName") || "").trim(),
-              weeklyPlan: String(row.get("weeklyPlan") || "").trim(),
-              promotionContent: String(row.get("promotionContent") || "").trim(),
-              targetText: String(row.get("targetText") || "").trim(),
-              resultText: String(row.get("resultText") || "").trim(),
-              recruitCountText: String(row.get("recruitCountText") || "").trim(),
-              ownerName: String(row.get("ownerName") || "").trim(),
-              note: String(row.get("note") || "").trim(),
-              sortOrder: Math.trunc(Number(row.get("sortOrder") || 0)),
+              weekday: normalizeWeekday(row.get('weekday')) || 'mon',
+              channelName: String(row.get('channelName') || '').trim(),
+              weeklyPlan: String(row.get('weeklyPlan') || '').trim(),
+              promotionContent: String(row.get('promotionContent') || '').trim(),
+              targetText: String(row.get('targetText') || '').trim(),
+              resultText: String(row.get('resultText') || '').trim(),
+              recruitCountText: String(row.get('recruitCountText') || '').trim(),
+              ownerName: String(row.get('ownerName') || '').trim(),
+              note: String(row.get('note') || '').trim(),
+              sortOrder: Math.trunc(Number(row.get('sortOrder') || 0)),
             }))
           : [];
         return {
@@ -632,7 +632,7 @@ function createKjcaCollectService(deps) {
           rows: ensureWeekdayRows(planRows),
         };
       })
-      .sort((a, b) => a.dept.localeCompare(b.dept, "ko"));
+      .sort((a, b) => a.dept.localeCompare(b.dept, 'ko'));
 
     const deptSnapshots = collectTargets
       .map((target) => {
@@ -641,12 +641,12 @@ function createKjcaCollectService(deps) {
         const weekResults = findWeekResults(weekStartDate, target.dept);
         const rows = buildSnapshotRows(
           planItems.map((item) => ({
-            weekday: item.get("weekday"),
-            targetCount: item.get("targetCount"),
+            weekday: item.get('weekday'),
+            targetCount: item.get('targetCount'),
           })),
           weekResults.map((item) => ({
-            weekday: item.get("weekday"),
-            actualCount: item.get("actualCount"),
+            weekday: item.get('weekday'),
+            actualCount: item.get('actualCount'),
           })),
         );
         const today = rows.find((row) => row.weekday === reportWeekday) || {
@@ -667,14 +667,14 @@ function createKjcaCollectService(deps) {
         );
         return {
           dept: target.dept,
-          monthTarget: plan ? normalizeNullableInt(plan.get("monthTarget")) : null,
-          weekTarget: plan ? normalizeNullableInt(plan.get("weekTarget")) : null,
+          monthTarget: plan ? normalizeNullableInt(plan.get('monthTarget')) : null,
+          weekTarget: plan ? normalizeNullableInt(plan.get('weekTarget')) : null,
           rows,
           today,
           cumulative,
         };
       })
-      .sort((a, b) => a.dept.localeCompare(b.dept, "ko"));
+      .sort((a, b) => a.dept.localeCompare(b.dept, 'ko'));
 
     return {
       ok: true,

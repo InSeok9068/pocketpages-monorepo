@@ -3,6 +3,7 @@
  * It preserves raw <% ... %> content while reusing Tailwind's parser wrappers.
  */
 
+import prettier from 'prettier'
 import * as htmlPlugin from 'prettier/plugins/html'
 import * as tailwindPlugin from 'prettier-plugin-tailwindcss'
 
@@ -13,6 +14,118 @@ const tailwindHtmlParser = tailwindPlugin.parsers.html
 const EJS_TAG_PATTERN = /<%(?:[%=_#-])?[\s\S]*?(?:[-_])?%>/g
 const BLOCK_TOKEN_PREFIX = '__PP_EJS_BLOCK_'
 const INLINE_TOKEN_PREFIX = '__PP_EJS_INLINE_'
+const INDENT = '  '
+
+function buildJsFormatOptions(options, parser, overrides = {}) {
+  return {
+    parser,
+    printWidth: options.printWidth,
+    singleQuote: options.singleQuote,
+    trailingComma: options.trailingComma,
+    semi: options.semi,
+    bracketSpacing: options.bracketSpacing,
+    quoteProps: options.quoteProps,
+    jsxSingleQuote: options.jsxSingleQuote,
+    arrowParens: options.arrowParens,
+    objectWrap: options.objectWrap,
+    ...overrides,
+  }
+}
+
+function indentBlock(text) {
+  return text
+    .split('\n')
+    .map((line) => (line ? `${INDENT}${line}` : line))
+    .join('\n')
+}
+
+async function tryFormatScriptlet(body, options) {
+  const inner = body.trim()
+  if (!inner) {
+    return null
+  }
+
+  try {
+    const formatted = await prettier.format(inner, buildJsFormatOptions(options, 'babel'))
+
+    return formatted.trimEnd()
+  } catch {
+    return null
+  }
+}
+
+async function tryFormatExpression(body, options) {
+  const inner = body.trim()
+  if (!inner) {
+    return null
+  }
+
+  try {
+    const formatted = await prettier.format(
+      inner,
+      buildJsFormatOptions(options, '__js_expression', { printWidth: 1000 }),
+    )
+
+    return formatted.trim()
+  } catch {
+    return null
+  }
+}
+
+async function formatEjsTag(match, options) {
+  const parts = match.match(/^<%([%=_#-]?)([\s\S]*?)([-_]?)%>$/)
+  if (!parts) {
+    return match
+  }
+
+  const [, openModifier, body, closeModifier] = parts
+
+  if (openModifier === '#' || openModifier === '%') {
+    return match
+  }
+
+  if (openModifier === '=' || openModifier === '-') {
+    const formattedExpression = await tryFormatExpression(body, options)
+    if (!formattedExpression) {
+      return match
+    }
+
+    return `<%${openModifier} ${formattedExpression} ${closeModifier}%>`
+  }
+
+  const formattedScriptlet = await tryFormatScriptlet(body, options)
+  if (!formattedScriptlet) {
+    return match
+  }
+
+  if (!formattedScriptlet.includes('\n')) {
+    return `<%${openModifier} ${formattedScriptlet} ${closeModifier}%>`
+  }
+
+  return `<%${openModifier}\n${indentBlock(formattedScriptlet)}\n${closeModifier}%>`
+}
+
+async function formatEjsBodies(text, options) {
+  const matches = [...text.matchAll(EJS_TAG_PATTERN)]
+  if (matches.length === 0) {
+    return text
+  }
+
+  const replacements = await Promise.all(matches.map(([match]) => formatEjsTag(match, options)))
+  let lastIndex = 0
+  let result = ''
+
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index]
+    const offset = match.index ?? 0
+    result += text.slice(lastIndex, offset)
+    result += replacements[index]
+    lastIndex = offset + match[0].length
+  }
+
+  result += text.slice(lastIndex)
+  return result
+}
 
 function isStandaloneTag(text, offset, match) {
   const lineStart = text.lastIndexOf('\n', offset - 1) + 1
@@ -70,8 +183,9 @@ function restoreTokens(value, entries) {
   return restored
 }
 
-function parse(text, options, legacy) {
-  const { entries, preparedText } = tokenizeEjs(text)
+async function parse(text, options, legacy) {
+  const formattedText = await formatEjsBodies(text, options)
+  const { entries, preparedText } = tokenizeEjs(formattedText)
   options.__ppEjsTokenEntries = entries
   options.originalText = preparedText
   return tailwindHtmlParser.parse(preparedText, options, legacy)

@@ -7,7 +7,7 @@
     <meta name="description" content="<%= meta('description') %>" />
     <meta property="og:title" content="<%= meta('title') %>" />
     <meta property="og:description" content="<%= meta('description') %>" />
-    <meta property="og:url" content="<%= meta('path') ? meta('path') : (meta('url') || request.url) %>" />
+    <meta property="og:url" content="<%= meta('path') ? meta('path') : meta('url') || request.url %>" />
     <link rel="icon" type="image/svg+xml" href="<%= asset('/assets/favicon.svg') %>" />
     <link rel="stylesheet" href="<%= asset('/assets/style.css') %>" />
     <style>
@@ -36,7 +36,7 @@
       window.__unocss = {
         presets: [() => window.__unocss_runtime.presets.presetUno()],
         ready: () => {
-          document.body.removeAttribute("un-cloak");
+          document.body.removeAttribute('un-cloak');
         },
       };
     </script>

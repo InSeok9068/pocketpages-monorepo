@@ -1,33 +1,33 @@
 <script server>
-  const boardService = resolve("board-service");
-  const postRole = resolve("roles/post");
+  const boardService = resolve('board-service');
+  const postRole = resolve('roles/post');
   const sharedData = data || {};
   const board = sharedData.board || null;
-  const boardSlug = String(params.boardSlug || "").trim();
-  const postSlug = String(params.postSlug || "").trim();
+  const boardSlug = String(params.boardSlug || '').trim();
+  const postSlug = String(params.postSlug || '').trim();
   let post = null;
 
   if (!board) {
     response.status(404);
-    meta("title", "Board Not Found");
+    meta('title', 'Board Not Found');
   } else {
     post = boardService.findPostByBoardAndSlug(board.id, postSlug);
 
     if (!post) {
       response.status(404);
-      meta("title", "Post Not Found");
+      meta('title', 'Post Not Found');
     } else {
       if (postRole.canIncrementViewCount(post)) {
         try {
-          post.set("view_count", Number(post.get("view_count") || 0) + 1);
+          post.set('view_count', Number(post.get('view_count') || 0) + 1);
           $app.save(post);
-          info("page/posts/show:view-incremented", {
+          info('page/posts/show:view-incremented', {
             boardSlug,
             postSlug,
-            viewCount: post.get("view_count"),
+            viewCount: post.get('view_count'),
           });
         } catch (error) {
-          warn("page/posts/show:view-increment-failed", {
+          warn('page/posts/show:view-increment-failed', {
             boardSlug,
             postSlug,
             message: String(error.message || error),
@@ -35,8 +35,8 @@
         }
       }
 
-      meta("title", `${post.get("title") || postSlug} | ${board.get("name") || boardSlug}`);
-      meta("description", board.get("description") || `Post ${postSlug}`);
+      meta('title', `${post.get('title') || postSlug} | ${board.get('name') || boardSlug}`);
+      meta('description', board.get('description') || `Post ${postSlug}`);
     }
   }
 
@@ -44,33 +44,33 @@
     ? {
         board: null,
         post: null,
-        error: "Board not found",
+        error: 'Board not found',
       }
     : !post
       ? {
           board,
           post: null,
-          error: "Post not found",
+          error: 'Post not found',
         }
       : {
           board,
           post,
-          boardName: board.get("name") || boardSlug,
-          title: post.get("title") || postSlug,
-          status: post.get("status") || "draft",
-          authorName: post.get("author_name") || "unknown",
-          publishedAt: post.get("published_at") || post.created || "",
-          content: post.get("content") || "",
-          viewCount: post.get("view_count") || 0,
-          error: "",
+          boardName: board.get('name') || boardSlug,
+          title: post.get('title') || postSlug,
+          status: post.get('status') || 'draft',
+          authorName: post.get('author_name') || 'unknown',
+          publishedAt: post.get('published_at') || post.created || '',
+          content: post.get('content') || '',
+          viewCount: post.get('view_count') || 0,
+          error: '',
         };
 
-  dbg("page/posts/show:response", {
+  dbg('page/posts/show:response', {
     boardSlug,
     postSlug,
-    error: pageData.error || "",
-    status: pageData.post ? pageData.post.get("status") || "" : "",
-    viewCount: pageData.post ? pageData.post.get("view_count") || 0 : 0,
+    error: pageData.error || '',
+    status: pageData.post ? pageData.post.get('status') || '' : '',
+    viewCount: pageData.post ? pageData.post.get('view_count') || 0 : 0,
   });
 </script>
 
