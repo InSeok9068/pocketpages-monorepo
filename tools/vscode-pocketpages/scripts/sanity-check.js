@@ -161,6 +161,12 @@ export {}
     method: string
     roleNames: string[]
   }
+
+  type FixturePageData = {
+    boardName: string
+    boardCount: number
+    postSlugs: string[]
+  }
 }
 `
   )
@@ -309,6 +315,55 @@ const authState = { email: '', isSignedIn: true }
     const templateQuickInfo = service.getQuickInfo(fixture.boardsFilePath, templateHoverText, templateHoverOffset)
     if (!templateQuickInfo || !templateQuickInfo.displayText.includes('const authState')) {
       throw new Error(`Expected hover info inside EJS template. Got: ${JSON.stringify(templateQuickInfo)}`)
+    }
+
+    const typedTemplateCompletionText = `<script server>
+/** @type {types.FixturePageData} */
+const pageData = { boardName: 'Boards', boardCount: 1, postSlugs: ['welcome'] }
+</script>
+<p><%= pageData. %></p>
+`
+    const typedTemplateCompletionOffset =
+      typedTemplateCompletionText.indexOf('pageData.') + 'pageData.'.length
+    const typedTemplateCompletion = service.getCompletionData(
+      fixture.boardsFilePath,
+      typedTemplateCompletionText,
+      typedTemplateCompletionOffset
+    )
+    const typedTemplateCompletionNames = typedTemplateCompletion
+      ? typedTemplateCompletion.entries.map((entry) => entry.name)
+      : []
+    if (
+      !typedTemplateCompletionNames.includes('boardName') ||
+      !typedTemplateCompletionNames.includes('boardCount') ||
+      !typedTemplateCompletionNames.includes('postSlugs')
+    ) {
+      throw new Error(
+        `Expected JSDoc-backed EJS template completion for pageData fields. Got: ${typedTemplateCompletionNames
+          .slice(0, 20)
+          .join(', ')}`
+      )
+    }
+
+    const typedTemplateHoverText = `<script server>
+/** @type {types.FixturePageData} */
+const pageData = { boardName: 'Boards', boardCount: 1, postSlugs: ['welcome'] }
+</script>
+<p><%= pageData.boardName %></p>
+`
+    const typedTemplateHoverOffset = typedTemplateHoverText.indexOf('pageData') + 1
+    const typedTemplateQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedTemplateHoverText,
+      typedTemplateHoverOffset
+    )
+    if (
+      !typedTemplateQuickInfo ||
+      !typedTemplateQuickInfo.displayText.includes('const pageData: {') ||
+      !typedTemplateQuickInfo.displayText.includes('boardName: string;') ||
+      !typedTemplateQuickInfo.displayText.includes('postSlugs: string[];')
+    ) {
+      throw new Error(`Expected JSDoc-backed hover info inside EJS template. Got: ${JSON.stringify(typedTemplateQuickInfo)}`)
     }
 
     const typedResolveCompletionText = `<script server>
@@ -553,6 +608,26 @@ boardService.readAuthState(
     }
     if (resolvedMemberDefinition.line < 0) {
       throw new Error(`Expected resolve()-derived member definition line. Got: ${JSON.stringify(resolvedMemberDefinition)}`)
+    }
+
+    const sameFileDefinitionText = `<script server>
+const pageData = { boardName: 'Boards', boardCount: 1 }
+</script>
+<h1><%= pageData.boardName %></h1>
+`
+    const sameFileDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      sameFileDefinitionText,
+      sameFileDefinitionText.lastIndexOf('pageData') + 2
+    )
+    if (!sameFileDefinition || typeof sameFileDefinition === 'string') {
+      throw new Error(`Expected same-file EJS definition target. Got: ${JSON.stringify(sameFileDefinition)}`)
+    }
+    if (normalizeFilePath(sameFileDefinition.filePath) !== normalizeFilePath(fixture.boardsFilePath)) {
+      throw new Error(`Expected same-file EJS definition target path. Got: ${JSON.stringify(sameFileDefinition)}`)
+    }
+    if (sameFileDefinition.line !== 1) {
+      throw new Error(`Expected same-file EJS definition to point at script server declaration. Got: ${JSON.stringify(sameFileDefinition)}`)
     }
 
     const renameText = `<script server>\nconst boardService = resolve('board-service')\nconst authState = boardService.readAuthState({ request })\n</script>\n`

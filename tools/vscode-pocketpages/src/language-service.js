@@ -129,6 +129,11 @@ function flattenDiagnosticMessage(messageText) {
   return parts.join("\n");
 }
 
+function getLineAndCharacterFromText(text, offset) {
+  const sourceFile = ts.createSourceFile("pocketpages-offset-map.ts", String(text || ""), ts.ScriptTarget.Latest, true);
+  return sourceFile.getLineAndCharacterOfPosition(offset);
+}
+
 function skipParenthesizedExpression(node) {
   let current = node;
   while (current && ts.isParenthesizedExpression(current)) {
@@ -570,6 +575,97 @@ class ProjectLanguageService {
     }
 
     return state.block.contentStart + relativeOffset;
+  }
+
+  getDocumentTextForTarget(filePath, currentFilePath, currentDocumentText) {
+    if (normalizePath(filePath) === normalizePath(currentFilePath)) {
+      return currentDocumentText;
+    }
+
+    const text = this.readFile(filePath);
+    return typeof text === "string" ? text : null;
+  }
+
+  toOffsetDefinitionTarget(filePath, documentText, offset) {
+    if (typeof documentText !== "string" || typeof offset !== "number" || offset < 0) {
+      return null;
+    }
+
+    const { line, character } = getLineAndCharacterFromText(documentText, offset);
+    return {
+      filePath: normalizePath(filePath),
+      line,
+      character,
+    };
+  }
+
+  mapTypeScriptDefinitionToTarget(currentFilePath, currentDocumentText, definitionInfo) {
+    if (!definitionInfo || !definitionInfo.fileName || !definitionInfo.textSpan) {
+      return null;
+    }
+
+    const definitionFileName = normalizePath(definitionInfo.fileName);
+    const virtualState = this.virtualFiles.get(definitionFileName);
+
+    if (virtualState) {
+      const targetOffset = this.mapVirtualOffsetToDocumentOffset(definitionFileName, definitionInfo.textSpan.start);
+      if (targetOffset === null) {
+        return null;
+      }
+
+      const targetDocumentText = this.getDocumentTextForTarget(
+        virtualState.filePath,
+        currentFilePath,
+        currentDocumentText
+      );
+      if (targetDocumentText === null) {
+        return null;
+      }
+
+      return this.toOffsetDefinitionTarget(virtualState.filePath, targetDocumentText, targetOffset);
+    }
+
+    const targetDocumentText = this.getDocumentTextForTarget(definitionFileName, currentFilePath, currentDocumentText);
+    if (targetDocumentText === null) {
+      return null;
+    }
+
+    return this.toOffsetDefinitionTarget(definitionFileName, targetDocumentText, definitionInfo.textSpan.start);
+  }
+
+  getTypeScriptDefinitionTarget(filePath, documentText, offset) {
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
+    if (!virtualState) {
+      return null;
+    }
+
+    const definitions =
+      this.languageService.getDefinitionAtPosition(virtualState.virtual.fileName, virtualState.virtualOffset) || [];
+
+    if (!definitions.length) {
+      return null;
+    }
+
+    const currentFilePath = normalizePath(filePath);
+    const rankedDefinitions = definitions.slice().sort((left, right) => {
+      const leftIsCurrent = normalizePath(left.fileName) === currentFilePath ? 0 : 1;
+      const rightIsCurrent = normalizePath(right.fileName) === currentFilePath ? 0 : 1;
+
+      if (leftIsCurrent !== rightIsCurrent) {
+        return leftIsCurrent - rightIsCurrent;
+      }
+
+      return left.textSpan.start - right.textSpan.start;
+    });
+
+    for (const definition of rankedDefinitions) {
+      const target = this.mapTypeScriptDefinitionToTarget(filePath, documentText, definition);
+      if (target) {
+        return target;
+      }
+    }
+
+    return null;
   }
 
   getVirtualStateAtOffset(filePath, documentText, offset) {
@@ -1201,7 +1297,7 @@ class ProjectLanguageService {
       );
     }
 
-    return null;
+    return this.getTypeScriptDefinitionTarget(filePath, documentText, offset);
   }
 
   getRenameInfo(filePath, documentText, offset) {

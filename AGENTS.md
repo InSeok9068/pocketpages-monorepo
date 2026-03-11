@@ -23,6 +23,7 @@
 - 서버 통신/부분 갱신: HTMX
 - 리얼타임: `pocketpages-plugin-realtime`
 - 스타일링: UnoCSS Runtime
+- 스타일 문법 기준: TailwindCSS v3 호환 문법(Wind3 기준)
 
 ---
 
@@ -311,6 +312,9 @@
 
 - 간단한 클라이언트 상호작용은 Alpine.js로 처리합니다.
 - 스타일은 UnoCSS Runtime utility class 기준으로 작성합니다.
+- UnoCSS Runtime은 Wind3(TailwindCSS v3 호환) 기준으로 보고 작업합니다.
+- 스타일 클래스를 작성하거나 수정할 때는 **TailwindCSS v3 문법을 기본값**으로 사용합니다.
+- TailwindCSS v4 전용 문법이나 UnoCSS 전용 확장 문법은 기존 코드/설정에서 명시적으로 필요하다고 확인된 경우에만 사용합니다.
 
 ---
 
