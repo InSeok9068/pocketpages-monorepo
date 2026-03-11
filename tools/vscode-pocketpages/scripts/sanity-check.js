@@ -199,11 +199,40 @@ export {}
 
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'), `<a href="/boards">Boards</a>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'), `<h1>Sign In</h1>\n`)
-  writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'), `<%- include('flash-alert.ejs') %>\n`)
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
+    `<%- include('flash-alert.ejs', { flashMessage: 'Saved', isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`
+  )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'index.ejs'), `<script server>\nboard.get('name')\n</script>\n`)
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     `<script server>\nconst boardService = resolve('board-service')\nconst authState = boardService.readAuthState({ request })\n</script>\n`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'locals-type-check.ejs'),
+    `<script server>
+const authState = { email: '', isSignedIn: true }
+const boardService = resolve('board-service')
+</script>
+<%- include('typed-panel.ejs', { authState, boardService }) %>
+`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
+    `<script server>
+const pageData = {
+  formValues: {
+    title: '',
+    slug: '',
+    authorName: '',
+    content: '',
+    status: 'draft',
+    isNotice: false,
+  },
+}
+</script>
+<%- include('property-panel.ejs', { values: pageData.formValues, boardSlug: params.boardSlug }) %>
+`
   )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'), `<script server>\nsignInWithPassword('a', 'b')\nreturn\n</script>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-out.ejs'), `<script server>\nsignOut()\nredirect('/sign-in')\nreturn\n</script>\n`)
@@ -230,7 +259,18 @@ module.exports = {
 }
 `
   )
-  writeFile(path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'), `<div>flash</div>\n`)
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
+    `<% const flashTone = isErrorFlash ? 'error' : 'notice' %>\n<div><%= flashMessage %> / <%= flashTone %> / <%= flashMeta.count %></div>\n`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'typed-panel.ejs'),
+    `<div><%= authState.email %> / <%= boardService.readAuthState({ request }).method %></div>\n`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'property-panel.ejs'),
+    `<div><%= values.title %> / <%= boardSlug %></div>\n`
+  )
 
   return {
     fixtureRoot,
@@ -238,10 +278,14 @@ module.exports = {
     siteIndexFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'),
     boardsFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
     boardShowFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'index.ejs'),
+    localsTypeCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'locals-type-check.ejs'),
+    propertyLocalsCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
     renameCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
     boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
     flashAlertFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
+    typedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'typed-panel.ejs'),
+    propertyPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'property-panel.ejs'),
     signOutFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-out.ejs'),
     signInFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'),
   }
@@ -595,6 +639,134 @@ boardService.readAuthState(
       throw new Error(`Expected include() definition target. Got: ${includeDefinition}`)
     }
 
+    const privateTemplateCompletionText = `<div><%= flashMeta. %></div>\n`
+    const privateTemplateCompletionOffset =
+      privateTemplateCompletionText.indexOf('flashMeta.') + 'flashMeta.'.length
+    const privateTemplateCompletion = service.getCompletionData(
+      fixture.flashAlertFilePath,
+      privateTemplateCompletionText,
+      privateTemplateCompletionOffset
+    )
+    const privateTemplateCompletionNames = privateTemplateCompletion
+      ? privateTemplateCompletion.entries.map((entry) => entry.name)
+      : []
+    if (!privateTemplateCompletionNames.includes('count')) {
+      throw new Error(
+        `Expected include() locals completion in _private partial. Got: ${privateTemplateCompletionNames
+          .slice(0, 20)
+          .join(', ')}`
+      )
+    }
+
+    const privateTemplateHoverText = `<div><%= flashMessage %></div>\n`
+    const privateTemplateHoverOffset = privateTemplateHoverText.indexOf('flashMessage') + 2
+    const privateTemplateQuickInfo = service.getQuickInfo(
+      fixture.flashAlertFilePath,
+      privateTemplateHoverText,
+      privateTemplateHoverOffset
+    )
+    if (!privateTemplateQuickInfo || !privateTemplateQuickInfo.displayText.includes('const flashMessage: string')) {
+      throw new Error(`Expected include() locals hover in _private partial. Got: ${JSON.stringify(privateTemplateQuickInfo)}`)
+    }
+
+    const typedPanelCompletionText = `<div><%= authState. %></div>\n`
+    const typedPanelCompletionOffset = typedPanelCompletionText.indexOf('authState.') + 'authState.'.length
+    const typedPanelCompletion = service.getCompletionData(
+      fixture.typedPanelFilePath,
+      typedPanelCompletionText,
+      typedPanelCompletionOffset
+    )
+    const typedPanelCompletionNames = typedPanelCompletion ? typedPanelCompletion.entries.map((entry) => entry.name) : []
+    if (!typedPanelCompletionNames.includes('email') || !typedPanelCompletionNames.includes('isSignedIn')) {
+      throw new Error(
+        `Expected shorthand include() locals completion in _private partial. Got: ${typedPanelCompletionNames
+          .slice(0, 20)
+          .join(', ')}`
+      )
+    }
+
+    const typedPanelHoverText = `<div><%= authState.email %></div>\n`
+    const typedPanelHoverOffset = typedPanelHoverText.indexOf('authState') + 2
+    const typedPanelQuickInfo = service.getQuickInfo(
+      fixture.typedPanelFilePath,
+      typedPanelHoverText,
+      typedPanelHoverOffset
+    )
+    if (
+      !typedPanelQuickInfo ||
+      !typedPanelQuickInfo.displayText.includes('const authState: {') ||
+      !typedPanelQuickInfo.displayText.includes('email: string;')
+    ) {
+      throw new Error(`Expected shorthand include() locals hover in _private partial. Got: ${JSON.stringify(typedPanelQuickInfo)}`)
+    }
+
+    const typedPanelServiceCompletionText = `<div><%= boardService. %></div>\n`
+    const typedPanelServiceCompletionOffset =
+      typedPanelServiceCompletionText.indexOf('boardService.') + 'boardService.'.length
+    const typedPanelServiceCompletion = service.getCompletionData(
+      fixture.typedPanelFilePath,
+      typedPanelServiceCompletionText,
+      typedPanelServiceCompletionOffset
+    )
+    const typedPanelServiceCompletionNames = typedPanelServiceCompletion
+      ? typedPanelServiceCompletion.entries.map((entry) => entry.name)
+      : []
+    if (!typedPanelServiceCompletionNames.includes('readAuthState')) {
+      throw new Error(
+        `Expected resolve()-derived shorthand include() locals completion. Got: ${typedPanelServiceCompletionNames
+          .slice(0, 20)
+          .join(', ')}`
+      )
+    }
+
+    const propertyPanelCompletionText = `<div><%= values. %></div>\n`
+    const propertyPanelCompletionOffset = propertyPanelCompletionText.indexOf('values.') + 'values.'.length
+    const propertyPanelCompletion = service.getCompletionData(
+      fixture.propertyPanelFilePath,
+      propertyPanelCompletionText,
+      propertyPanelCompletionOffset
+    )
+    const propertyPanelCompletionNames = propertyPanelCompletion
+      ? propertyPanelCompletion.entries.map((entry) => entry.name)
+      : []
+    if (
+      !propertyPanelCompletionNames.includes('title') ||
+      !propertyPanelCompletionNames.includes('status') ||
+      !propertyPanelCompletionNames.includes('isNotice')
+    ) {
+      throw new Error(
+        `Expected property-access include() locals completion in _private partial. Got: ${propertyPanelCompletionNames
+          .slice(0, 20)
+          .join(', ')}`
+      )
+    }
+
+    const propertyPanelHoverText = `<div><%= boardSlug %></div>\n`
+    const propertyPanelHoverOffset = propertyPanelHoverText.indexOf('boardSlug') + 2
+    const propertyPanelQuickInfo = service.getQuickInfo(
+      fixture.propertyPanelFilePath,
+      propertyPanelHoverText,
+      propertyPanelHoverOffset
+    )
+    if (
+      !propertyPanelQuickInfo ||
+      !propertyPanelQuickInfo.displayText.includes('const boardSlug: string')
+    ) {
+      throw new Error(`Expected property-access include() hover in _private partial. Got: ${JSON.stringify(propertyPanelQuickInfo)}`)
+    }
+
+    const propertyPanelDiagnostics = service.getDiagnostics(
+      fixture.propertyPanelFilePath,
+      `<div><%= values.title %> / <%= boardSlug %></div>\n`
+    )
+    if (propertyPanelDiagnostics.some((entry) => entry.code === 2339)) {
+      throw new Error(
+        `Expected property-access include() locals diagnostics to resolve. Got: ${propertyPanelDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+
     const resolvedMemberDefinition = service.getDefinitionTarget(
       fixture.boardsFilePath,
       `<script server>\nconst boardService = resolve('board-service')\nconst authState = boardService.readAuthState({ request })\n</script>\n`,
@@ -761,18 +933,21 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
       resolvePathReferenceOffset,
       { includeDeclaration: false }
     )
-    if (!resolvePathReferences || resolvePathReferences.length !== 2) {
-      throw new Error(`Expected resolve() path references in two files. Got: ${JSON.stringify(resolvePathReferences)}`)
+    if (!resolvePathReferences || resolvePathReferences.length !== 3) {
+      throw new Error(`Expected resolve() path references in three files. Got: ${JSON.stringify(resolvePathReferences)}`)
     }
     if (
       !resolvePathReferences.some(
         (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath)
       ) ||
       !resolvePathReferences.some(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.localsTypeCheckFilePath)
+      ) ||
+      !resolvePathReferences.some(
         (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.middlewareFilePath)
       )
     ) {
-      throw new Error(`Expected resolve() path references for rename-check and middleware. Got: ${JSON.stringify(resolvePathReferences)}`)
+      throw new Error(`Expected resolve() path references for rename-check, locals-type-check, and middleware. Got: ${JSON.stringify(resolvePathReferences)}`)
     }
 
     const resolvedMemberReferences = service.getReferenceTargets(
@@ -855,6 +1030,30 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
       )
     }
 
+    const sameLineTemplateDiagnostics = service.getDiagnostics(
+      fixture.boardShowFilePath,
+      `<a href="/boards/<%= params.boardSlug %>" class="link"><%= pageData.boardName %></a>\n`
+    )
+    if (sameLineTemplateDiagnostics.some((entry) => entry.code === 1005)) {
+      throw new Error(
+        `Expected same-line EJS expressions to avoid parser false positives. Got: ${sameLineTemplateDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const templateLiteralContinuationDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nconst item = { ok: true }\n</script>\n<div class="<%= item.ok ? 'on' : 'off' %>">\n  <span class="<%= \`badge \${item.ok ? 'yes' : 'no'}\` %>"></span>\n</div>\n`
+    )
+    if (templateLiteralContinuationDiagnostics.some((entry) => entry.code === 2349)) {
+      throw new Error(
+        `Expected multiline EJS expressions before template literals to avoid callable false positives. Got: ${templateLiteralContinuationDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
     const templateSchemaDiagnostics = service.getDiagnostics(
       fixture.boardShowFilePath,
       `<% const board = pageData.board %>\n<p><%= board.get('missing_field') %></p>\n`
@@ -871,13 +1070,107 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
       )
     }
 
+    const paramsQueryDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nparams.sort\n</script>\n`
+    )
+    if (!paramsQueryDiagnostics.some((entry) => entry.code === 'pp-query-via-params')) {
+      throw new Error(
+        `Expected params query-string diagnostic. Got: ${paramsQueryDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const paramsQueryCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      `<script server>\nparams.sort\n</script>\n`,
+      {
+        start: `<script server>\nparams.sort\n</script>\n`.indexOf('params'),
+        end: `<script server>\nparams.sort\n</script>\n`.indexOf('sort') + 'sort'.length,
+      }
+    )
+    if (
+      !paramsQueryCodeActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === 'request.url.query')
+      )
+    ) {
+      throw new Error(`Expected params query quick fix. Got: ${JSON.stringify(paramsQueryCodeActions)}`)
+    }
+
+    const routeParamDiagnostics = service.getDiagnostics(
+      fixture.boardShowFilePath,
+      `<script server>\nparams.boardSlug\n</script>\n`
+    )
+    if (routeParamDiagnostics.some((entry) => entry.code === 'pp-query-via-params')) {
+      throw new Error(
+        `Expected route params access to skip AGENTS query diagnostic. Got: ${routeParamDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const resolvePrivatePrefixDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('/_private/board-service')\n</script>\n`
+    )
+    if (!resolvePrivatePrefixDiagnostics.some((entry) => entry.code === 'pp-resolve-private-prefix')) {
+      throw new Error(
+        `Expected resolve('/_private/...') diagnostic. Got: ${resolvePrivatePrefixDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const resolvePrivatePrefixCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('/_private/board-service')\n</script>\n`,
+      {
+        start: `<script server>\nresolve('/_private/board-service')\n</script>\n`.indexOf('/_private/board-service'),
+        end:
+          `<script server>\nresolve('/_private/board-service')\n</script>\n`.indexOf('/_private/board-service') +
+          '/_private/board-service'.length,
+      }
+    )
+    if (
+      !resolvePrivatePrefixCodeActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === 'board-service')
+      )
+    ) {
+      throw new Error(`Expected resolve('/_private/...') quick fix. Got: ${JSON.stringify(resolvePrivatePrefixCodeActions)}`)
+    }
+
+    const partialContextDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<%- include('flash-alert.ejs', { params, request }) %>\n`
+    )
+    if (!partialContextDiagnostics.some((entry) => entry.code === 'pp-partial-full-context')) {
+      throw new Error(
+        `Expected include() full context diagnostic. Got: ${partialContextDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const manualFlashDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nredirect('/boards?__flash=saved')\n</script>\n`
+    )
+    if (!manualFlashDiagnostics.some((entry) => entry.code === 'pp-manual-flash-query')) {
+      throw new Error(
+        `Expected manual __flash query diagnostic. Got: ${manualFlashDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
     const privateTemplateDiagnostics = service.getDiagnostics(
       fixture.flashAlertFilePath,
-      `<% const flashTone = isErrorFlash ? 'error' : 'notice' %>\n<div><%= flashMessage %> / <%= flashTone %></div>\n`
+      `<% const flashTone = isErrorFlash ? 'error' : 'notice' %>\n<div><%= flashMessage %> / <%= flashTone %> / <%= flashMeta.count %></div>\n`
     )
     if (privateTemplateDiagnostics.some((entry) => entry.code === 2304)) {
       throw new Error(
-        `Expected _private EJS template diagnostics to skip include locals. Got: ${privateTemplateDiagnostics
+        `Expected _private EJS template diagnostics to understand include locals. Got: ${privateTemplateDiagnostics
           .map((entry) => String(entry.message))
           .join(' | ')}`
       )

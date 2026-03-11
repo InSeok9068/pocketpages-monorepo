@@ -1,6 +1,23 @@
 <%
-  const safeFormState = formState || {};
-  const safeDashboardState = dashboardState || {};
+  /** @type {types.KjcaFormState} */
+  const safeFormState = formState || {
+    reportDate: "",
+    testOneOnly: false,
+  };
+  /** @type {types.KjcaDashboardState} */
+  const safeDashboardState = dashboardState || {
+    reportDate: "",
+    testOneOnly: false,
+    noticeMessage: "",
+    errorMessage: "",
+    warnings: [],
+    stoppedReason: "",
+    isDiaryAccessible: null,
+    teamLeadRows: [],
+    analysisResults: [],
+    deptWeekTables: [],
+    deptSnapshots: [],
+  };
   const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || "").trim();
   const testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly);
   const encodedState = kjcaService.serializeDashboardState(safeDashboardState);

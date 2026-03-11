@@ -338,6 +338,54 @@ class PocketPagesDefinitionProvider {
   }
 }
 
+class PocketPagesCodeActionProvider {
+  constructor(manager) {
+    this.manager = manager
+  }
+
+  async provideCodeActions(document, range) {
+    if (!findAppRoot(document.uri.fsPath)) {
+      return null
+    }
+
+    const service = this.manager.getServiceForFile(document.uri.fsPath)
+    if (!service) {
+      return null
+    }
+
+    const actionSpecs = service.getCodeActions(document.uri.fsPath, document.getText(), {
+      start: document.offsetAt(range.start),
+      end: document.offsetAt(range.end),
+    })
+    if (!actionSpecs || !actionSpecs.length) {
+      return null
+    }
+
+    const documentCache = new Map([[document.uri.fsPath, document]])
+    const actions = []
+
+    for (const actionSpec of actionSpecs) {
+      const action = new vscode.CodeAction(actionSpec.title, vscode.CodeActionKind.QuickFix)
+      const workspaceEdit = new vscode.WorkspaceEdit()
+
+      for (const edit of actionSpec.edits) {
+        let targetDocument = documentCache.get(edit.filePath)
+        if (!targetDocument) {
+          targetDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(edit.filePath))
+          documentCache.set(edit.filePath, targetDocument)
+        }
+
+        workspaceEdit.replace(targetDocument.uri, toRange(targetDocument, edit.start, edit.end), edit.newText)
+      }
+
+      action.edit = workspaceEdit
+      actions.push(action)
+    }
+
+    return actions
+  }
+}
+
 class PocketPagesRenameProvider {
   constructor(manager) {
     this.manager = manager
@@ -574,6 +622,13 @@ function activate(context) {
     ),
     vscode.languages.registerDocumentLinkProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesDocumentLinkProvider(manager)),
     vscode.languages.registerDefinitionProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesDefinitionProvider(manager)),
+    vscode.languages.registerCodeActionsProvider(
+      CODE_DOCUMENT_SELECTOR,
+      new PocketPagesCodeActionProvider(manager),
+      {
+        providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
+      }
+    ),
     vscode.languages.registerReferenceProvider(RENAME_DOCUMENT_SELECTOR, new PocketPagesReferenceProvider(manager)),
     vscode.languages.registerRenameProvider(RENAME_DOCUMENT_SELECTOR, new PocketPagesRenameProvider(manager)),
     vscode.languages.registerHoverProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesHoverProvider(manager)),

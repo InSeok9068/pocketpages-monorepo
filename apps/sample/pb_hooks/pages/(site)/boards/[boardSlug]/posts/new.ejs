@@ -52,20 +52,7 @@
 <%- include('flash-alert.ejs') %>
 
 <article class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
-  <%- include('post-form.ejs', {
-    formAction: '/xapi/posts/create',
-    boardSlug: params.boardSlug,
-    postSlug: '',
-    submitLabel: 'Create post',
-    textareaRows: 8,
-    values: {
-      title: '',
-      slug: '',
-      authorName: '',
-      content: '',
-      status: 'published',
-      isNotice: false,
-    },
-  }) %>
+  <%- include('post-form.ejs', { formAction: '/xapi/posts/create', boardSlug: params.boardSlug, postSlug: '', submitLabel: 'Create post', textareaRows: 8, values: { title: '', slug: '', authorName:
+  '', content: '', status: 'published', isNotice: false, }, }) %>
 </article>
 <% } %>

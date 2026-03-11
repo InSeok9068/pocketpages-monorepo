@@ -4,6 +4,29 @@ const { extractServerBlocks } = require('./script-server')
 
 const EJS_TAG_RE = /<%(?![%#])[_=-]?[\s\S]*?[-_]?%>/g
 
+function shouldInsertStatementSeparator(previousBlock, nextBlock) {
+  const previousText = String(previousBlock && previousBlock.content || '').trim()
+  const nextText = String(nextBlock && nextBlock.content || '').trim()
+
+  if (!previousText || !nextText) {
+    return false
+  }
+
+  if (
+    previousText.endsWith('}') &&
+    /^(else\b|catch\b|finally\b|while\b)/.test(nextText)
+  ) {
+    return false
+  }
+
+  return true
+}
+
+function needsStatementSeparatorAcrossLines(nextBlock) {
+  const nextText = String(nextBlock && nextBlock.content || '').trim()
+  return /^(\(|\[|`|\/|\+|-)/.test(nextText)
+}
+
 function extractTemplateCodeBlocks(text) {
   const blocks = []
   let match
@@ -49,14 +72,32 @@ function getTemplateCodeBlockAtOffset(text, offset) {
 }
 
 function buildTemplateVirtualText(text) {
+  const sourceText = String(text || '')
   const chars = String(text || '')
     .split('')
     .map((char) => (char === '\r' || char === '\n' ? char : ' '))
+  const blocks = [...extractServerBlocks(sourceText), ...extractTemplateCodeBlocks(sourceText)].sort((left, right) => left.contentStart - right.contentStart)
 
-  for (const block of [...extractServerBlocks(text), ...extractTemplateCodeBlocks(text)]) {
+  for (const block of blocks) {
     for (let index = block.contentStart; index < block.contentEnd; index += 1) {
-      chars[index] = text[index]
+      chars[index] = sourceText[index]
     }
+  }
+
+  for (let index = 0; index < blocks.length - 1; index += 1) {
+    const currentBlock = blocks[index]
+    const nextBlock = blocks[index + 1]
+    const gapText = sourceText.slice(currentBlock.contentEnd, nextBlock.contentStart)
+
+    if (!gapText || !shouldInsertStatementSeparator(currentBlock, nextBlock)) {
+      continue
+    }
+
+    if (/[\r\n]/.test(gapText) && !needsStatementSeparatorAcrossLines(nextBlock)) {
+      continue
+    }
+
+    chars[currentBlock.contentEnd] = ';'
   }
 
   return chars.join('')

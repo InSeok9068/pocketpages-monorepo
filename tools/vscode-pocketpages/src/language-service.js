@@ -134,6 +134,42 @@ function getLineAndCharacterFromText(text, offset) {
   return sourceFile.getLineAndCharacterOfPosition(offset);
 }
 
+function findNarrowestNodeAtOffset(node, offset) {
+  if (!node || offset < node.getFullStart() || offset > node.getEnd()) {
+    return null;
+  }
+
+  let best = node;
+  node.forEachChild((child) => {
+    const candidate = findNarrowestNodeAtOffset(child, offset);
+    if (candidate) {
+      best = candidate;
+    }
+  });
+
+  return best;
+}
+
+function findNarrowestNodeForSpan(node, sourceFile, start, end) {
+  if (!node || start < node.getFullStart() || end > node.getEnd()) {
+    return null;
+  }
+
+  let best = null;
+  node.forEachChild((child) => {
+    const candidate = findNarrowestNodeForSpan(child, sourceFile, start, end);
+    if (candidate) {
+      best = candidate;
+    }
+  });
+
+  if (best) {
+    return best;
+  }
+
+  return node.getStart(sourceFile) === start && node.getEnd() === end ? node : null;
+}
+
 function skipParenthesizedExpression(node) {
   let current = node;
   while (current && ts.isParenthesizedExpression(current)) {
@@ -273,6 +309,211 @@ function collectResolveCallSpansFromTemplate(documentText) {
   return spans;
 }
 
+function skipExpressionWrappers(node) {
+  let current = node;
+  while (current) {
+    if (
+      ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isTypeAssertionExpression(current) ||
+      ts.isNonNullExpression(current)
+    ) {
+      current = current.expression;
+      continue;
+    }
+
+    if (ts.isSatisfiesExpression && ts.isSatisfiesExpression(current)) {
+      current = current.expression;
+      continue;
+    }
+
+    break;
+  }
+
+  return current;
+}
+
+function rangesOverlap(leftStart, leftEnd, rightStart, rightEnd) {
+  return leftEnd >= rightStart && leftStart <= rightEnd;
+}
+
+function getPropertyAccessChain(node) {
+  const segments = [];
+  let current = node;
+
+  while (current && ts.isPropertyAccessExpression(current)) {
+    segments.unshift(current.name.text);
+    current = skipExpressionWrappers(current.expression);
+  }
+
+  return {
+    root: current,
+    segments,
+  };
+}
+
+function getObjectPropertyNameNode(property) {
+  if (!property) {
+    return null;
+  }
+
+  if (ts.isShorthandPropertyAssignment(property)) {
+    return property.name;
+  }
+
+  if (ts.isPropertyAssignment(property) || ts.isMethodDeclaration(property)) {
+    return property.name || null;
+  }
+
+  return null;
+}
+
+function readObjectPropertyName(property) {
+  const nameNode = getObjectPropertyNameNode(property);
+  if (!nameNode) {
+    return null;
+  }
+
+  if (ts.isIdentifier(nameNode) || ts.isStringLiteralLike(nameNode) || ts.isNumericLiteral(nameNode)) {
+    return String(nameNode.text);
+  }
+
+  return null;
+}
+
+function collectParamsQueryDiagnostics(scriptText, allowedRouteParamNames) {
+  const sourceFile = ts.createSourceFile("pocketpages-agents-params.ts", scriptText, ts.ScriptTarget.Latest, true);
+  const diagnostics = [];
+  const allowedNames = new Set((Array.isArray(allowedRouteParamNames) ? allowedRouteParamNames : []).filter(Boolean));
+
+  const visit = (node) => {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      !(ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node)
+    ) {
+      const chain = getPropertyAccessChain(node);
+      if (chain.root && ts.isIdentifier(chain.root) && chain.root.text === "params") {
+        const topPropertyName = chain.segments[0] || "";
+        if (topPropertyName && topPropertyName !== "__flash" && !allowedNames.has(topPropertyName)) {
+          diagnostics.push({
+            code: "pp-query-via-params",
+            category: ts.DiagnosticCategory.Warning,
+            message: 'Use request.url.query for query string access. "params" is reserved for route params in this repo.',
+            start: node.getStart(sourceFile),
+            end: node.getEnd(),
+            fixes: [
+              {
+                title: "Use request.url.query",
+                edits: [
+                  {
+                    start: chain.root.getStart(sourceFile),
+                    end: chain.root.getEnd(),
+                    newText: "request.url.query",
+                  },
+                ],
+              },
+            ],
+          });
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return diagnostics;
+}
+
+function collectIncludeContextDiagnostics(scriptText) {
+  const sourceFile = ts.createSourceFile("pocketpages-agents-include.ts", scriptText, ts.ScriptTarget.Latest, true);
+  const diagnostics = [];
+  const forbiddenNames = new Set(["api", "request", "response", "resolve", "params", "data"]);
+
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "include" &&
+      node.arguments.length > 1
+    ) {
+      const localsArgument = skipExpressionWrappers(node.arguments[1]);
+      if (localsArgument && ts.isObjectLiteralExpression(localsArgument)) {
+        for (const property of localsArgument.properties) {
+          const propertyName = readObjectPropertyName(property);
+          if (!propertyName || !forbiddenNames.has(propertyName)) {
+            continue;
+          }
+
+          const nameNode = getObjectPropertyNameNode(property) || property;
+          diagnostics.push({
+            code: "pp-partial-full-context",
+            category: ts.DiagnosticCategory.Warning,
+            message: "Do not pass PocketPages full context objects into partials. Pass only the values the partial needs.",
+            start: nameNode.getStart(sourceFile),
+            end: nameNode.getEnd(),
+          });
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return diagnostics;
+}
+
+function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText) {
+  const diagnostics = [];
+  const analysisText = isEjsFile(filePath) ? buildTemplateVirtualText(documentText) : documentText;
+  const routeParamNames = projectIndex.getRouteParamEntries(filePath).map((entry) => entry.name);
+
+  for (const diagnostic of collectParamsQueryDiagnostics(analysisText, routeParamNames)) {
+    diagnostics.push(diagnostic);
+  }
+
+  for (const diagnostic of collectIncludeContextDiagnostics(analysisText)) {
+    diagnostics.push(diagnostic);
+  }
+
+  for (const context of collectPathContexts(documentText)) {
+    if (context.kind === "resolve-path" && /^\/?_private\//.test(context.value)) {
+      diagnostics.push({
+        code: "pp-resolve-private-prefix",
+        category: ts.DiagnosticCategory.Warning,
+        message: "resolve() paths must be written relative to _private. Remove the _private prefix.",
+        start: context.start,
+        end: context.end,
+        fixes: [
+          {
+            title: "Remove _private prefix",
+            edits: [
+              {
+                start: context.start,
+                end: context.end,
+                newText: context.value.replace(/^\/?_private\//, ""),
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    if (context.kind === "route-path" && /(?:\?|&)__flash=/.test(context.value)) {
+      diagnostics.push({
+        code: "pp-manual-flash-query",
+        category: ts.DiagnosticCategory.Warning,
+        message: "Do not build __flash query strings manually. Use redirect(path, { message }) instead.",
+        start: context.start,
+        end: context.end,
+      });
+    }
+  }
+
+  return diagnostics;
+}
+
 class ProjectLanguageService {
   constructor(appRoot) {
     this.appRoot = appRoot;
@@ -280,6 +521,7 @@ class ProjectLanguageService {
     this.projectVersion = 0;
     this.staticFiles = new Map();
     this.virtualFiles = new Map();
+    this.includePreludeStack = new Set();
 
     this.languageService = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry());
   }
@@ -404,6 +646,11 @@ class ProjectLanguageService {
       parts.push(routeParamLines.join("\n"));
     }
 
+    const includeLocalsPrelude = isEjsFile(filePath) ? this.buildIncludeLocalsPrelude(filePath) : "";
+    if (includeLocalsPrelude) {
+      parts.push(includeLocalsPrelude);
+    }
+
     // Force each extracted <script server> block into module scope so top-level
     // bindings from different EJS files do not collide in the shared TS project.
     parts.push("export {};");
@@ -414,6 +661,132 @@ class ProjectLanguageService {
     }
 
     return `${parts.join("\n\n")}\n\n`;
+  }
+
+  buildIncludeLocalsPrelude(filePath) {
+    const normalizedFilePath = normalizePath(filePath);
+    if (!isEjsFile(normalizedFilePath)) {
+      return "";
+    }
+
+    if (this.includePreludeStack.has(normalizedFilePath)) {
+      return this.projectIndex.buildIncludeLocalsPrelude(normalizedFilePath);
+    }
+
+    this.includePreludeStack.add(normalizedFilePath);
+
+    try {
+      const callSites = this.projectIndex.getIncludeTargetCallSites(normalizedFilePath);
+      if (!callSites.length) {
+        return "";
+      }
+
+      const bindingsByName = new Map();
+
+      for (const callSite of callSites) {
+        const callerFilePath = normalizePath(callSite.callerFilePath);
+        if (!fileExists(callerFilePath)) {
+          continue;
+        }
+
+        const callerDocumentText = readFileText(callerFilePath);
+
+        for (const local of callSite.locals || []) {
+          let bindingState = bindingsByName.get(local.name);
+          if (!bindingState) {
+            bindingState = {
+              presenceCount: 0,
+              typeTexts: new Set(),
+            };
+            bindingsByName.set(local.name, bindingState);
+          }
+
+          bindingState.presenceCount += 1;
+          bindingState.typeTexts.add(this.getIncludeLocalTypeText(callerFilePath, callerDocumentText, local));
+        }
+      }
+
+      const bindingLines = [];
+      const callSiteCount = callSites.length;
+
+      for (const [name, bindingState] of [...bindingsByName.entries()].sort((left, right) => left[0].localeCompare(right[0]))) {
+        const typeTexts = [...bindingState.typeTexts].filter(Boolean);
+        let typeText = typeTexts.length ? [...new Set(typeTexts)].sort().join(" | ") : "any";
+        if (typeTexts.includes("any")) {
+          typeText = "any";
+        }
+
+        if (bindingState.presenceCount < callSiteCount) {
+          typeText = typeText === "any" ? "any" : `${typeText} | undefined`;
+        }
+
+        bindingLines.push(`declare const ${name}: ${typeText};`);
+      }
+
+      return bindingLines.join("\n");
+    } finally {
+      this.includePreludeStack.delete(normalizedFilePath);
+    }
+  }
+
+  getIncludeLocalTypeText(filePath, documentText, local) {
+    if (!local || local.typeStrategy !== "ts-expression") {
+      return local && local.typeText ? local.typeText : "any";
+    }
+
+    if (typeof local.expressionStart !== "number" || local.expressionStart < 0) {
+      return local.typeText || "any";
+    }
+
+    const inferredTypeText = this.getTypeTextAtDocumentSpan(
+      filePath,
+      documentText,
+      local.expressionStart,
+      typeof local.expressionEnd === "number" ? local.expressionEnd : null
+    );
+    return inferredTypeText || local.typeText || "any";
+  }
+
+  getTypeTextAtDocumentSpan(filePath, documentText, startOffset, endOffset = null) {
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, startOffset);
+    if (!virtualState) {
+      return null;
+    }
+
+    const program = this.languageService.getProgram();
+    if (!program) {
+      return null;
+    }
+
+    const sourceFile = program.getSourceFile(virtualState.virtual.fileName);
+    if (!sourceFile) {
+      return null;
+    }
+
+    let targetNode = null;
+    if (typeof endOffset === "number" && endOffset > startOffset) {
+      targetNode = findNarrowestNodeForSpan(
+        sourceFile,
+        sourceFile,
+        virtualState.virtualOffset,
+        virtualState.virtualOffset + (endOffset - startOffset)
+      );
+    }
+
+    if (!targetNode) {
+      targetNode = findNarrowestNodeAtOffset(sourceFile, virtualState.virtualOffset);
+    }
+    if (!targetNode) {
+      return null;
+    }
+
+    const checker = program.getTypeChecker();
+    const targetType = checker.getTypeAtLocation(targetNode);
+    if (!targetType) {
+      return null;
+    }
+
+    return checker.typeToString(targetType, targetNode, ts.TypeFormatFlags.NoTruncation);
   }
 
   buildResolveTypePrelude(filePath, analysisText) {
@@ -1187,7 +1560,7 @@ class ProjectLanguageService {
       }
     }
 
-    if (templateBlocks.length && !privatePagesFile) {
+    if (templateBlocks.length) {
       const templateVirtual = this.upsertTemplateVirtualFile(filePath, documentText);
       const templateVirtualText = buildTemplateVirtualText(documentText);
       const rawDiagnostics = [
@@ -1259,6 +1632,10 @@ class ProjectLanguageService {
       }
     }
 
+    for (const diagnostic of collectAgentsRuleDiagnostics(this.projectIndex, filePath, documentText)) {
+      diagnostics.push(diagnostic);
+    }
+
     const uniqueDiagnostics = new Map();
     for (const diagnostic of diagnostics) {
       const key = `${diagnostic.code}:${diagnostic.category}:${diagnostic.start}:${diagnostic.end}:${diagnostic.message}`;
@@ -1268,6 +1645,52 @@ class ProjectLanguageService {
     }
 
     return [...uniqueDiagnostics.values()];
+  }
+
+  getCodeActions(filePath, documentText, range) {
+    if (!range || typeof range.start !== "number" || typeof range.end !== "number") {
+      return [];
+    }
+
+    const actions = [];
+    const actionKeys = new Set();
+
+    for (const diagnostic of this.getDiagnostics(filePath, documentText)) {
+      if (!Array.isArray(diagnostic.fixes) || !diagnostic.fixes.length) {
+        continue;
+      }
+
+      if (!rangesOverlap(diagnostic.start, diagnostic.end, range.start, range.end)) {
+        continue;
+      }
+
+      for (const fix of diagnostic.fixes) {
+        const actionKey = `${diagnostic.code}:${diagnostic.start}:${diagnostic.end}:${fix.title}`;
+        if (actionKeys.has(actionKey)) {
+          continue;
+        }
+
+        actionKeys.add(actionKey);
+        actions.push({
+          title: fix.title,
+          kind: "quickfix",
+          diagnostic: {
+            code: diagnostic.code,
+            start: diagnostic.start,
+            end: diagnostic.end,
+            message: diagnostic.message,
+          },
+          edits: fix.edits.map((edit) => ({
+            filePath: normalizePath(edit.filePath || filePath),
+            start: edit.start,
+            end: edit.end,
+            newText: edit.newText,
+          })),
+        });
+      }
+    }
+
+    return actions;
   }
 
   getDefinitionTarget(filePath, documentText, offset) {

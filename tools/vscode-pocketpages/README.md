@@ -1,99 +1,117 @@
 # VSCode PocketPages
 
-VSCode extension for PocketPages `.ejs` and page `.js` files.
+PocketPages 기반 `.ejs` / `pb_hooks/pages/**/*.js|cjs|mjs` 작업을 위한 VS Code 확장입니다.
 
-## 한국어 요약
+이 확장은 일반 JavaScript 보조보다, 이 레포의 PocketPages 구조와 규칙을 빠르게 추적하고 안전하게 수정하는 데 초점을 둡니다.
 
-현재 이 확장은 PocketPages `.ejs` 파일과 `pb_hooks/pages/**/*.js|cjs|mjs` 파일 작업을 도와줍니다.
+## 지원 범위
 
-- `meta`, `redirect`, `resolve`, `request`, `response`, `dbg` 같은 PocketPages 전역에 대한 자동완성
-- `<script server>` 와 EJS 템플릿 태그(`<% %>`, `<%= %>`, `<%- %>`) 안 코드 자동완성 및 hover
-- EJS 템플릿 태그(`<% %>`, `<%= %>`, `<%- %>`) 안 JavaScript semantic highlighting
-- `<script server>` 안 진단 표시
-- `resolve()`, `include()`, 정적 라우트 문자열의 정의로 이동 및 경로 자동완성
-- `const svc = resolve('...')` 뒤 `svc.someFn()` 형태에서 export된 함수 정의로 이동
-- `pb_schema.json` 기준 컬렉션명 / `record.get('field')` 필드명 보조 및 경고
-- `pb_data/types.d.ts` 기준으로 컬렉션 식별자를 받는 `$app.someMethod('...')` 문자열 자동완성
-- 앱별 `pb_data/types.d.ts`, `pocketpages-globals.d.ts`를 읽어서 서비스별로 다르게 동작
+- `apps/<service>` 아래 PocketPages 앱
+- `.ejs` 문서
+- `pb_hooks/pages/**/*.js|cjs|mjs` 문서
+- 서비스별 `pb_data/types.d.ts`
+- 서비스별 `pocketpages-globals.d.ts`
+- 서비스별 `pb_schema.json`
 
-아직 안 하는 것은 symbol rename/reference, formatting, 그리고 `<script server>` 밖 EJS 템플릿 영역의 diagnostics 입니다.
+## 주요 기능
 
-It extracts `<script server>` blocks, EJS template code, and `pb_hooks/pages/**/*.js|cjs|mjs` files, feeds them into an in-memory TypeScript language service, and surfaces:
+- PocketPages 전역(`meta`, `redirect`, `resolve`, `request`, `response`, `dbg` 등) 자동완성
+- `<script server>` 내부 completion / hover / signature help / diagnostics
+- EJS 템플릿 태그(`<% %>`, `<%= %>`, `<%- %>`) 내부 completion / hover / definition
+- 템플릿 영역에서 `<script server>` 변수 정의로 이동
+- `resolve()`, `include()`, 정적 `href/action/hx-*`, `redirect()` 경로 자동완성
+- `resolve()`, `include()`, 정적 라우트 문자열 정의로 이동
+- `resolve()`로 불러온 CommonJS 모듈 export 멤버에 대한 정의 이동 / rename / references
+- `pb_schema.json` 기반 컬렉션명 completion 및 unknown collection 경고
+- `record.get('field')` 필드명 completion 및 unknown field 경고
+- EJS 템플릿 JS 구문 semantic highlighting
+- `_private` partial의 `include(..., { ... })` locals 추적
+- partial locals 기반 completion / hover / diagnostics
+- 레포 규칙 기반 AGENTS-aware diagnostics
+- 일부 AGENTS 진단에 대한 quick fix
 
-- completion
-- hover
-- diagnostics
-- semantic highlighting for JavaScript inside EJS template tags
-- document links / go-to-definition for `resolve()`, `include()`, and static route literals
-- go-to-definition for exported members called from `resolve()` module aliases
-- route path completion for static `href`, `action`, `hx-*`, and `redirect()` literals
-- schema-aware `record.get('field')` completion in `<script server>`, EJS template tags, and page JS modules
-- schema-aware collection literal completion for `$app` methods inferred from `pb_data/types.d.ts`
+## AGENTS-aware diagnostics
 
-## What this extension covers
+현재 확장은 이 레포 규칙을 기준으로 다음 패턴을 추가로 점검합니다.
 
-- `.ejs` documents under PocketPages app folders like `apps/<service>`
-- `pb_hooks/pages/**/*.js|cjs|mjs` documents under PocketPages app folders
-- app-local `pb_data/types.d.ts`
-- app-local `pocketpages-globals.d.ts`
-- PocketPages globals such as `meta`, `redirect`, `resolve`, `request`, `response`, `dbg`
+- `params.foo` 형태를 query string처럼 사용하는 경우 경고
+  - quick fix: `request.url.query.foo` 기준으로 바꾸기
+- `resolve('/_private/...')` 또는 `resolve('_private/...')` 사용 경고
+  - quick fix: `_private` prefix 제거
+- `?__flash=...`를 수동으로 붙이는 경고
+- partial에 `api`, `request`, `response`, `resolve`, `params`, `data` 같은 전체 컨텍스트를 넘기는 경고
 
-## What this extension does not cover yet
+## include() locals 추적
 
-- symbol references / rename
-- formatting
-- EJS template tags outside `<script server>` for diagnostics
+`_private/*.ejs` partial을 `include('...', { ... })`로 호출하면, 호출부 object literal을 스캔해서 partial 안 locals 이름과 기본 타입을 추적합니다.
 
-## Run locally
+예시:
 
-1. Open `tools/vscode-pocketpages` as the workspace in VSCode.
-2. Run `npm install`.
-3. Press `F5`.
-4. In the Extension Development Host window, open the monorepo root folder.
-5. Open an `.ejs` file or `pb_hooks/pages/**/*.js` file and test completions.
+```ejs
+<%- include('flash-alert.ejs', {
+  flashMessage: 'Saved',
+  isErrorFlash: false,
+  flashMeta: { count: 1 }
+}) %>
+```
 
-The included launch config opens the repo root automatically as the test workspace.
+위처럼 호출하면 partial 안에서 다음이 동작합니다.
 
-When it activates correctly, you should see:
+- `flashMessage` hover
+- `isErrorFlash` completion / diagnostics
+- `flashMeta.count` completion
 
-- a new VSCode window titled as an `Extension Development Host`
-- an output channel named `VSCode PocketPages`
+현재 locals 타입 추적은 object literal 기반 호출을 가장 잘 처리합니다. 식별자/복잡한 표현식은 안전하게 `any`로 처리합니다.
 
-If you are unsure whether the extension is running, use the command:
+## 아직 하지 않는 것
 
-`PocketPages: Probe Current EJS File`
+- 포맷팅
+- HTML 자체 구조 검사
+- CSS/UnoCSS 클래스 유효성 검사
+- 모든 동적 문자열 경로에 대한 완전한 해석
 
-This shows whether the current file is inside a detected PocketPages app root and how many diagnostics were produced.
+## 로컬 실행
 
-## Sanity check
+1. `tools/vscode-pocketpages`를 VS Code 워크스페이스로 엽니다.
+2. `npm install`
+3. `F5`
+4. 열린 Extension Development Host에서 모노레포 루트를 엽니다.
+5. `.ejs` 또는 `pb_hooks/pages/**/*.js` 파일을 열어 확인합니다.
 
-Run:
+## sanity check
+
+확장 호스트를 띄우지 않고 language-service 브리지만 검증하려면:
 
 ```bash
 npm run sanity-check
 ```
 
-This checks the core language-service bridge without starting VSCode.
+## VSIX 패키징 / 설치
 
-## Install locally
-
-Build the VSIX:
+VSIX 생성:
 
 ```bash
 npm run package:vsix
 ```
 
-Then install `dist/vscode-pocketpages.vsix` from your editor:
-
-- VSCode: `Extensions` -> `...` -> `Install from VSIX...`
-- Antigravity or other VSCode forks: use the same VSIX install flow if supported
-
-After installing, restart the editor and open a PocketPages `.ejs` file or `pb_hooks/pages/**/*.js` file.
-
-If you use VSCode or Antigravity locally, you can package and reinstall in one step:
+VS Code/Antigravity에 재설치까지 한 번에:
 
 ```bash
 npm run install:vscode-pocketpages
 ```
 
-After reinstalling, run `Developer: Reload Window` in your editor.
+설치 후에는 에디터에서 `Developer: Reload Window`를 실행해야 새 코드가 반영됩니다.
+
+## 확인용 명령
+
+- `PocketPages: Probe Current EJS File`
+  - 현재 파일이 PocketPages 앱 루트 안에 있는지, 진단이 몇 개인지 확인합니다.
+- `PocketPages: Refresh Server Script Diagnostics`
+  - 현재 파일 진단을 강제로 다시 계산합니다.
+
+## 문제를 볼 때 먼저 확인할 것
+
+- 확장이 실제로 활성화됐는지
+- VSIX 재설치 후 `Developer: Reload Window`를 했는지
+- 현재 파일이 `apps/<service>` 아래 PocketPages 앱으로 인식되는지
+- `pb_data/types.d.ts`, `pocketpages-globals.d.ts`, `pb_schema.json`가 서비스 루트에 있는지

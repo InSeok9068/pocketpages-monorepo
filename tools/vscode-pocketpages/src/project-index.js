@@ -3,6 +3,7 @@
 const fs = require('fs')
 const path = require('path')
 const ts = require('typescript')
+const { buildTemplateVirtualText } = require('./ejs-template')
 
 const RESOLVE_EXTENSIONS = ['.js', '.ejs', '.json', '.cjs', '.mjs']
 const INCLUDE_EXTENSIONS = ['.ejs']
@@ -31,9 +32,45 @@ const DEFAULT_COLLECTION_METHOD_NAMES = [
   'isCollectionNameUnique',
   'recordQuery',
 ]
+const POCKETPAGES_GLOBAL_NAMES = new Set([
+  'api',
+  'asset',
+  'auth',
+  'body',
+  'data',
+  'dbg',
+  'echo',
+  'env',
+  'error',
+  'formData',
+  'include',
+  'info',
+  'meta',
+  'params',
+  'redirect',
+  'request',
+  'resolve',
+  'response',
+  'signInWithPassword',
+  'signOut',
+  'slot',
+  'slots',
+  'store',
+  'stringify',
+  'url',
+  'warn',
+])
 
 function normalizePath(filePath) {
   return path.resolve(filePath).replace(/\\/g, '/')
+}
+
+function isEjsFile(filePath) {
+  return path.extname(String(filePath || '')).toLowerCase() === '.ejs'
+}
+
+function isValidIdentifierName(value) {
+  return ts.isIdentifierText(String(value || ''), ts.ScriptTarget.Latest, ts.LanguageVariant.Standard)
 }
 
 function toRelativePath(filePath) {
@@ -336,6 +373,199 @@ function skipParenthesizedExpression(node) {
   return current
 }
 
+function skipExpressionWrappers(node) {
+  let current = node
+  while (current) {
+    if (ts.isParenthesizedExpression(current) || ts.isAsExpression(current) || ts.isTypeAssertionExpression(current) || ts.isNonNullExpression(current)) {
+      current = current.expression
+      continue
+    }
+
+    if (ts.isSatisfiesExpression && ts.isSatisfiesExpression(current)) {
+      current = current.expression
+      continue
+    }
+
+    break
+  }
+
+  return current
+}
+
+function readStringLiteralText(node) {
+  const target = skipExpressionWrappers(node)
+  return target && ts.isStringLiteralLike(target) ? target.text : null
+}
+
+function mergeTypeTexts(typeTexts) {
+  const uniqueTypes = [...new Set((Array.isArray(typeTexts) ? typeTexts : []).filter(Boolean))]
+  if (!uniqueTypes.length) {
+    return 'any'
+  }
+
+  if (uniqueTypes.includes('any')) {
+    return 'any'
+  }
+
+  return uniqueTypes.sort().join(' | ')
+}
+
+function inferIncludeLocalTypeText(node, depth = 0) {
+  const target = skipExpressionWrappers(node)
+  if (!target || depth > 4) {
+    return 'any'
+  }
+
+  if (ts.isStringLiteralLike(target) || ts.isNoSubstitutionTemplateLiteral(target) || ts.isTemplateExpression(target)) {
+    return 'string'
+  }
+
+  if (ts.isNumericLiteral(target)) {
+    return 'number'
+  }
+
+  if (target.kind === ts.SyntaxKind.TrueKeyword || target.kind === ts.SyntaxKind.FalseKeyword) {
+    return 'boolean'
+  }
+
+  if (target.kind === ts.SyntaxKind.NullKeyword) {
+    return 'null'
+  }
+
+  if (ts.isArrayLiteralExpression(target)) {
+    const elementTypes = target.elements.map((element) => inferIncludeLocalTypeText(element, depth + 1))
+    const mergedElementType = mergeTypeTexts(elementTypes)
+    return mergedElementType === 'any' ? 'any[]' : `Array<${mergedElementType}>`
+  }
+
+  if (ts.isObjectLiteralExpression(target)) {
+    const propertyLines = []
+
+    for (const property of target.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        continue
+      }
+
+      if (ts.isShorthandPropertyAssignment(property)) {
+        propertyLines.push(`${property.name.text}: any;`)
+        continue
+      }
+
+      if (ts.isMethodDeclaration(property)) {
+        const propertyName = getPropertyNameText(property.name)
+        if (!propertyName) {
+          continue
+        }
+
+        const label = isValidIdentifierName(propertyName) ? propertyName : JSON.stringify(propertyName)
+        propertyLines.push(`${label}: (...args: any[]) => any;`)
+        continue
+      }
+
+      if (!ts.isPropertyAssignment(property)) {
+        continue
+      }
+
+      const propertyName = getPropertyNameText(property.name)
+      if (!propertyName) {
+        continue
+      }
+
+      const label = isValidIdentifierName(propertyName) ? propertyName : JSON.stringify(propertyName)
+      propertyLines.push(`${label}: ${inferIncludeLocalTypeText(property.initializer, depth + 1)};`)
+    }
+
+    if (!propertyLines.length) {
+      return 'Record<string, any>'
+    }
+
+    return `{ ${propertyLines.join(' ')} }`
+  }
+
+  if (ts.isArrowFunction(target) || ts.isFunctionExpression(target)) {
+    return '(...args: any[]) => any'
+  }
+
+  if (ts.isConditionalExpression(target)) {
+    return mergeTypeTexts([
+      inferIncludeLocalTypeText(target.whenTrue, depth + 1),
+      inferIncludeLocalTypeText(target.whenFalse, depth + 1),
+    ])
+  }
+
+  return 'any'
+}
+
+function collectIncludeCallEntries(filePath, scriptText) {
+  const sourceFile = ts.createSourceFile(filePath, scriptText, ts.ScriptTarget.Latest, true)
+  const entries = []
+
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'include' &&
+      node.arguments.length
+    ) {
+      const requestPath = readStringLiteralText(node.arguments[0])
+      if (requestPath) {
+        const locals = []
+        const localsArgument = skipExpressionWrappers(node.arguments[1])
+
+        if (localsArgument && ts.isObjectLiteralExpression(localsArgument)) {
+          for (const property of localsArgument.properties) {
+            if (ts.isSpreadAssignment(property)) {
+              continue
+            }
+
+            if (ts.isShorthandPropertyAssignment(property)) {
+              locals.push({
+                name: property.name.text,
+                typeStrategy: 'ts-expression',
+                typeText: 'any',
+                expressionStart: property.name.getStart(sourceFile),
+                expressionEnd: property.name.getEnd(),
+              })
+              continue
+            }
+
+            if (!ts.isPropertyAssignment(property)) {
+              continue
+            }
+
+            const propertyName = getPropertyNameText(property.name)
+            if (!propertyName) {
+              continue
+            }
+
+            const initializer = skipExpressionWrappers(property.initializer)
+            const useTypeScriptInference =
+              !!initializer && (ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer))
+
+            locals.push({
+              name: propertyName,
+              typeStrategy: useTypeScriptInference ? 'ts-expression' : 'static',
+              typeText: useTypeScriptInference ? 'any' : inferIncludeLocalTypeText(property.initializer),
+              expressionStart: useTypeScriptInference ? initializer.getStart(sourceFile) : null,
+              expressionEnd: useTypeScriptInference ? initializer.getEnd() : null,
+            })
+          }
+        }
+
+        entries.push({
+          requestPath,
+          locals,
+        })
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return entries
+}
+
 function getPropertyNameText(node) {
   if (!node) {
     return null
@@ -585,6 +815,7 @@ class PocketPagesProjectIndex {
     this.pagesRoot = normalizePath(path.join(this.appRoot, 'pb_hooks', 'pages'))
     this.schemaCache = null
     this.collectionMethodCache = null
+    this.includeLocalsCache = null
   }
 
   getSchemaState() {
@@ -834,6 +1065,134 @@ class PocketPagesProjectIndex {
 
     const sourceFile = ts.createSourceFile(normalizedFilePath, effectiveSourceText, ts.ScriptTarget.Latest, true)
     return collectExportedMemberDefinitionInfos(sourceFile)
+  }
+
+  getIncludeLocalsState() {
+    const codeFiles = this.getPagesCodeFiles()
+    const snapshotKey = codeFiles
+      .filter((entry) => fileExists(entry.filePath))
+      .map((entry) => {
+        const stats = fs.statSync(entry.filePath)
+        return `${normalizePath(entry.filePath)}:${stats.mtimeMs}:${stats.size}`
+      })
+      .join('|')
+
+    if (this.includeLocalsCache && this.includeLocalsCache.snapshotKey === snapshotKey) {
+      return this.includeLocalsCache
+    }
+
+    const byTargetFile = new Map()
+
+    for (const entry of codeFiles) {
+      if (!fileExists(entry.filePath)) {
+        continue
+      }
+
+      const sourceText = fs.readFileSync(entry.filePath, 'utf8')
+      const analysisText = isEjsFile(entry.filePath) ? buildTemplateVirtualText(sourceText) : sourceText
+      const includeCalls = collectIncludeCallEntries(entry.filePath, analysisText)
+
+      for (const includeCall of includeCalls) {
+        const targetFilePath = this.resolveIncludeTarget(entry.filePath, includeCall.requestPath)
+        if (!targetFilePath) {
+          continue
+        }
+
+        const normalizedTargetFilePath = normalizePath(targetFilePath)
+        let targetState = byTargetFile.get(normalizedTargetFilePath)
+        if (!targetState) {
+          targetState = {
+            callSites: [],
+          }
+          byTargetFile.set(normalizedTargetFilePath, targetState)
+        }
+
+        const seenNames = new Set()
+        const locals = []
+        for (const local of includeCall.locals) {
+          if (!local || !isValidIdentifierName(local.name) || POCKETPAGES_GLOBAL_NAMES.has(local.name) || seenNames.has(local.name)) {
+            continue
+          }
+
+          seenNames.add(local.name)
+          locals.push({
+            name: local.name,
+            typeStrategy: local.typeStrategy || 'static',
+            typeText: local.typeText || 'any',
+            expressionStart: typeof local.expressionStart === 'number' ? local.expressionStart : null,
+            expressionEnd: typeof local.expressionEnd === 'number' ? local.expressionEnd : null,
+          })
+        }
+
+        targetState.callSites.push({
+          callerFilePath: normalizePath(entry.filePath),
+          locals,
+        })
+      }
+    }
+
+    this.includeLocalsCache = {
+      snapshotKey,
+      byTargetFile,
+    }
+
+    return this.includeLocalsCache
+  }
+
+  getIncludeLocalBindings(targetFilePath) {
+    const targetState = this.getIncludeLocalsState().byTargetFile.get(normalizePath(targetFilePath))
+    if (!targetState) {
+      return []
+    }
+
+    const localsByName = new Map()
+    const callSiteCount = targetState.callSites.length
+
+    for (const callSite of targetState.callSites) {
+      for (const local of callSite.locals) {
+        let localState = localsByName.get(local.name)
+        if (!localState) {
+          localState = {
+            presenceCount: 0,
+            typeTexts: new Set(),
+          }
+          localsByName.set(local.name, localState)
+        }
+
+        localState.presenceCount += 1
+        localState.typeTexts.add(local.typeText || 'any')
+      }
+    }
+
+    const bindings = []
+    for (const [name, localState] of localsByName.entries()) {
+      let typeText = mergeTypeTexts([...localState.typeTexts])
+      if (localState.presenceCount < callSiteCount) {
+        typeText = mergeTypeTexts([typeText, 'undefined'])
+      }
+
+      bindings.push({
+        name,
+        typeText,
+        optional: localState.presenceCount < targetState.callSiteCount,
+      })
+    }
+
+    return bindings.sort((left, right) => left.name.localeCompare(right.name))
+  }
+
+  buildIncludeLocalsPrelude(targetFilePath) {
+    const bindings = this.getIncludeLocalBindings(targetFilePath)
+    if (!bindings.length) {
+      return ''
+    }
+
+    return bindings.map((binding) => `declare const ${binding.name}: ${binding.typeText};`).join('\n')
+  }
+
+  getIncludeTargetCallSites(targetFilePath) {
+    const targetState = this.getIncludeLocalsState().byTargetFile.get(normalizePath(targetFilePath))
+    return targetState ? [...targetState.callSites] : []
   }
 
   resolveResolveTarget(filePath, requestPath) {
