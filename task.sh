@@ -10,12 +10,16 @@ Usage:
   ./task.sh start <service> [-- <extra args>]
   ./task.sh kill
   ./task.sh lint [service]
+  ./task.sh diag <file-or-service>
+  ./task.sh verify [service]
   ./task.sh format [-- <extra args>]
 
 Commands:
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
   lint      Run lightweight PocketPages self-validation checks for one service or all services
+  diag      Run PocketPages editor diagnostics. File mode matches VSCode current .ejs diagnostics most closely.
+  verify    Run lint and diag together for one service or all services
   format    Run npm run format
 EOF
 }
@@ -224,6 +228,47 @@ run_lint() {
   node "$lint_script"
 }
 
+run_diag() {
+  local diag_script="$ROOT_DIR/scripts/diag-pocketpages.js"
+  local target="${1:-}"
+
+  if [[ ! -f "$diag_script" ]]; then
+    echo "Missing diag script: $diag_script" >&2
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run diag command." >&2
+    exit 1
+  fi
+
+  if [[ -n "$target" ]]; then
+    if [[ -f "$target" ]]; then
+      node "$diag_script" "$target"
+      return 0
+    fi
+
+    local service_dir
+    if ! service_dir="$(resolve_service_dir "$target")"; then
+      echo "Unknown service or file: $target" >&2
+      echo "Available services:" >&2
+      list_services >&2
+      exit 1
+    fi
+    node "$diag_script" "$service_dir"
+    return 0
+  fi
+
+  node "$diag_script"
+}
+
+run_verify() {
+  local service="${1:-}"
+
+  run_lint "$service"
+  run_diag "$service"
+}
+
 run_format() {
   if ! command -v npm >/dev/null 2>&1; then
     echo "npm not found. Cannot run format command." >&2
@@ -253,6 +298,14 @@ case "${1:-help}" in
   lint)
     shift || true
     run_lint "${1:-}"
+    ;;
+  diag)
+    shift || true
+    run_diag "${1:-}"
+    ;;
+  verify)
+    shift || true
+    run_verify "${1:-}"
     ;;
   format)
     shift || true

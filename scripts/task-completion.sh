@@ -19,11 +19,11 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill lint format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill lint diag verify format help" -- "$cur") )
     return
   fi
 
-  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "start" || "$cmd" == "lint" ) ]]; then
+  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "start" || "$cmd" == "lint" || "$cmd" == "diag" || "$cmd" == "verify" ) ]]; then
     services="$("$script" __complete_services 2>/dev/null)"
     COMPREPLY=( $(compgen -W "$services" -- "$cur") )
     return

@@ -6,8 +6,8 @@
 
   const authState = kjcaService.readAuthState(request);
   const formState = kjcaService.buildFormState({
-    reportDate: params.reportDate,
-    testOneOnly: params.testOneOnly,
+    reportDate: request.url.query.reportDate,
+    testOneOnly: request.url.query.testOneOnly,
   });
   const dashboardState = kjcaService.buildDashboardState({
     reportDate: formState.reportDate,

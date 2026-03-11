@@ -1,6 +1,6 @@
 <script server>
   const boardService = resolve("board-service");
-  const boardSlug = String(params.board || "").trim();
+  const boardSlug = String(request.url.query.board || "").trim();
   const selectedBoard = boardService.findActiveBoardBySlug(boardSlug);
   let posts = [];
 
