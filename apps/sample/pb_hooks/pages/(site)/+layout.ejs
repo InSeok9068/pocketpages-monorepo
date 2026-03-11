@@ -34,13 +34,13 @@
       onerror="window.__assetFallback(this)"
     ></script>
     <script
-      src="https://cdn.jsdelivr.net/npm/@unocss/runtime/attributify.global.js"
-      data-fallback-src="<%= asset('/assets/vendor/unocss-runtime-attributify.global.js') %>"
+      src="https://cdn.jsdelivr.net/npm/@unocss/runtime/uno.global.js"
+      data-fallback-src="<%= asset('/assets/vendor/unocss-runtime-uno.global.js') %>"
       onerror="window.__assetFallback(this)"
     ></script>
     <script>
       window.__unocss = {
-        presets: [() => window.__unocss_runtime.presets.presetUno(), () => window.__unocss_runtime.presets.presetAttributify()],
+        presets: [() => window.__unocss_runtime.presets.presetUno()],
         ready: () => {
           document.body.removeAttribute("un-cloak");
         },
@@ -49,7 +49,7 @@
     <%- slots.head %>
   </head>
 
-  <body un-cloak min-h-screen bg="stone-100" text="stone-900" antialiased>
-    <main mx-auto max-w-5xl px="6 md:8" py="10 md:14"><%- slots.body || slot %></main>
+  <body un-cloak class="min-h-screen bg-stone-100 text-stone-900 antialiased">
+    <main class="mx-auto max-w-5xl px-6 py-10 md:px-8 md:py-14"><%- slots.body || slot %></main>
   </body>
 </html>

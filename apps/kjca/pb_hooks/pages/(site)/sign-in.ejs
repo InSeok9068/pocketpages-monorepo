@@ -20,30 +20,28 @@
   }
 </script>
 
-<section mx-auto max-w="[560px]" py="10 md:16">
-  <div rounded-2xl border="~ slate-200" bg="white/94" p="6 md:8" shadow="sm slate-200/80">
-    <p text="11px slate-500" font-semibold uppercase tracking="[0.24em]">관리자 로그인</p>
-    <h1 mt-3 text="3xl slate-950" font-semibold tracking-tight>관리자 로그인</h1>
-    <p mt-3 text="sm slate-600" leading-7>아이디에 `@`가 없으면 자동으로 `@kjca.local`이 붙습니다. 로그인 후 `/` 대시보드로 이동합니다.</p>
+<section class="mx-auto max-w-[560px] py-10 md:py-16">
+  <div class="bg-white/94 rounded-2xl border border-slate-200 p-6 shadow-sm shadow-slate-200/80 md:p-8">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">관리자 로그인</p>
+    <h1 class="mt-3 text-3xl font-semibold tracking-tight text-slate-950">관리자 로그인</h1>
+    <p class="mt-3 text-sm leading-7 text-slate-600">아이디에 `@`가 없으면 자동으로 `@kjca.local`이 붙습니다. 로그인 후 `/` 대시보드로 이동합니다.</p>
 
-    <div mt-5 rounded-2xl bg="slate-50" px-4 py-3 text="sm slate-600">로그인 후 자동 취합 실행과 캐시 삭제 기능을 사용할 수 있습니다.</div>
+    <div class="mt-5 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">로그인 후 자동 취합 실행과 캐시 삭제 기능을 사용할 수 있습니다.</div>
 
-    <div mt-6>
-      <%- include('flash-alert.ejs') %>
-    </div>
+    <div class="mt-6"><%- include('flash-alert.ejs') %></div>
 
-    <form action="/xapi/auth/sign-in" method="post" mt-6 space-y-4>
-      <label block text="sm slate-700" font-medium>
+    <form action="/xapi/auth/sign-in" method="post" class="mt-6 space-y-4">
+      <label class="block text-sm font-medium text-slate-700">
         아이디
-        <input type="text" name="loginId" placeholder="admin" required class="kjca-control" mt-2 block px-4 py-3 text="sm slate-900" />
+        <input type="text" name="loginId" placeholder="admin" required class="kjca-control mt-2 block px-4 py-3 text-sm text-slate-900" />
       </label>
 
-      <label block text="sm slate-700" font-medium>
+      <label class="block text-sm font-medium text-slate-700">
         비밀번호
-        <input type="password" name="password" placeholder="비밀번호 입력" required class="kjca-control" mt-2 block px-4 py-3 text="sm slate-900" />
+        <input type="password" name="password" placeholder="비밀번호 입력" required class="kjca-control mt-2 block px-4 py-3 text-sm text-slate-900" />
       </label>
 
-      <div flex gap-3 pt-2>
+      <div class="flex gap-3 pt-2">
         <button type="submit" class="kjca-btn kjca-btn-primary">로그인</button>
         <a href="/" class="kjca-btn kjca-btn-secondary"> 홈으로 </a>
       </div>

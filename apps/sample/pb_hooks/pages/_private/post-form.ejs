@@ -1,10 +1,10 @@
-<form action="<%= formAction %>" method="post" max-w-2xl space-y-4>
+<form action="<%= formAction %>" method="post" class="max-w-2xl space-y-4">
   <input type="hidden" name="board" value="<%= boardSlug %>" />
   <% if (postSlug) { %>
   <input type="hidden" name="post" value="<%= postSlug %>" />
   <% } %>
 
-  <label block>
+  <label class="block">
     Title
     <input
       type="text"
@@ -12,42 +12,22 @@
       maxlength="200"
       value="<%= values.title %>"
       required
-      mt-2
-      block
-      w-full
-      rounded-2xl
-      border="~ stone-300 focus:stone-500"
-      bg="stone-50 focus:white"
-      px-4
-      py-3
-      text="sm stone-900"
-      outline-none
-      transition
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
     />
   </label>
 
-  <label block>
+  <label class="block">
     Slug
     <input
       type="text"
       name="slug"
       value="<%= values.slug %>"
       placeholder="welcome-post"
-      mt-2
-      block
-      w-full
-      rounded-2xl
-      border="~ stone-300 focus:stone-500"
-      bg="stone-50 focus:white"
-      px-4
-      py-3
-      text="sm stone-900"
-      outline-none
-      transition
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
     />
   </label>
 
-  <label block>
+  <label class="block">
     Author
     <input
       type="text"
@@ -55,56 +35,34 @@
       value="<%= values.authorName %>"
       placeholder="Admin"
       required
-      mt-2
-      block
-      w-full
-      rounded-2xl
-      border="~ stone-300 focus:stone-500"
-      bg="stone-50 focus:white"
-      px-4
-      py-3
-      text="sm stone-900"
-      outline-none
-      transition
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
     />
   </label>
 
-  <label block>
+  <label class="block">
     Content
     <textarea
       name="content"
       rows="<%= textareaRows || 8 %>"
       required
-      mt-2
-      block
-      w-full
-      rounded-2xl
-      border="~ stone-300 focus:stone-500"
-      bg="stone-50 focus:white"
-      px-4
-      py-3
-      text="sm stone-900"
-      outline-none
-      transition
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
     >
 <%= values.content %></textarea
     >
   </label>
 
-  <label block>
+  <label class="block">
     Status
-    <select name="status" mt-2 block w-full rounded-2xl border="~ stone-300 focus:stone-500" bg="stone-50 focus:white" px-4 py-3 text="sm stone-900" outline-none transition>
+    <select name="status" class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white">
       <% if (values.status === 'published') { %>
       <option value="published" selected>Published</option>
       <% } else { %>
       <option value="published">Published</option>
-      <% } %>
-      <% if (values.status === 'draft') { %>
+      <% } %> <% if (values.status === 'draft') { %>
       <option value="draft" selected>Draft</option>
       <% } else { %>
       <option value="draft">Draft</option>
-      <% } %>
-      <% if (values.status === 'archived') { %>
+      <% } %> <% if (values.status === 'archived') { %>
       <option value="archived" selected>Archived</option>
       <% } else { %>
       <option value="archived">Archived</option>
@@ -112,16 +70,13 @@
     </select>
   </label>
 
-  <label flex items-center gap-3 text="sm stone-700">
+  <label class="flex items-center gap-3 text-sm text-stone-700">
     <% if (values.isNotice) { %>
     <input type="checkbox" name="isNotice" value="true" checked />
     <% } else { %>
     <input type="checkbox" name="isNotice" value="true" />
-    <% } %>
-    Notice
+    <% } %> Notice
   </label>
 
-  <button type="submit" inline-flex items-center rounded-full bg="stone-900 hover:stone-700" px-4 py-2 text="sm white" font-medium transition>
-    <%= submitLabel %>
-  </button>
+  <button type="submit" class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700"><%= submitLabel %></button>
 </form>

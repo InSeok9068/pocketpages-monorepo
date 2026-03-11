@@ -22,7 +22,7 @@
 - 클라이언트 상호작용: Alpine.js
 - 서버 통신/부분 갱신: HTMX
 - 리얼타임: `pocketpages-plugin-realtime`
-- 스타일링: UnoCSS Runtime (Attributify Mode)
+- 스타일링: UnoCSS Runtime
 
 ---
 
@@ -293,10 +293,7 @@
 ## 7) 프론트엔드 기준
 
 - 간단한 클라이언트 상호작용은 Alpine.js로 처리합니다.
-- 스타일은 UnoCSS Runtime + Attributify Mode 기준으로 작성합니다.
-- 스타일을 긴 `class=""` 하나에 몰아넣지 말고, 가능한 한 Attributify 속성으로 나눠 씁니다.
-- 성격이 비슷한 스타일은 속성 그룹으로 묶습니다.
-- 예시: `text="center lg white"`, `border="~ stone-200 rounded-xl"`
+- 스타일은 UnoCSS Runtime utility class 기준으로 작성합니다.
 
 ---
 

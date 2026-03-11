@@ -3,8 +3,7 @@
   <p><em>Select a board to view posts.</em></p>
   <% } else if (!selectedBoard) { %>
   <p><strong>Board not found.</strong></p>
-  <% } else { %>
-  <% const boardName = selectedBoard.get('name') || selectedBoardSlug %>
+  <% } else { %> <% const boardName = selectedBoard.get('name') || selectedBoardSlug %>
   <header>
     <h3><%= boardName %></h3>
     <p>
@@ -58,25 +57,13 @@
 
   <% if (!posts.length) { %>
   <p><em>No published posts yet.</em></p>
-  <% } else { %>
-  <% posts.forEach((post) => { %>
-  <% const title = post.get('title') || '(untitled post)' %>
-  <% const authorName = post.get('author_name') || 'unknown' %>
-  <% const isNotice = !!post.get('is_notice') %>
-  <% const publishedAt = post.get('published_at') || post.created %>
+  <% } else { %> <% posts.forEach((post) => { %> <% const title = post.get('title') || '(untitled post)' %> <% const authorName = post.get('author_name') || 'unknown' %> <% const isNotice =
+  !!post.get('is_notice') %> <% const publishedAt = post.get('published_at') || post.created %>
   <section>
     <h4><%= title %></h4>
     <p>
-      <small
-        ><%= isNotice ? 'Notice' : 'Post' %>
-        ·
-        <%= authorName %>
-        ·
-        <%= publishedAt %></small
-      >
+      <small><%= isNotice ? 'Notice' : 'Post' %> · <%= authorName %> · <%= publishedAt %></small>
     </p>
   </section>
-  <% }) %>
-  <% } %>
-  <% } %>
+  <% }) %> <% } %> <% } %>
 </article>

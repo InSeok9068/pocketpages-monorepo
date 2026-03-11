@@ -1,22 +1,9 @@
-<%
-  const flashMessage = params && params.__flash ? String(params.__flash).trim() : ''
-  const isErrorFlash = /실패|오류|error|failed|invalid|required|필요|없습니다|찾지 못했습니다/i.test(flashMessage)
-%>
-
-<% if (flashMessage) { %>
+<% const flashMessage = params && params.__flash ? String(params.__flash).trim() : '' const isErrorFlash = /실패|오류|error|failed|invalid|required|필요|없습니다|찾지 못했습니다/i.test(flashMessage)
+%> <% if (flashMessage) { %>
 <div
-  mb-5
-  rounded-2xl
-  border="<%= `~ ${isErrorFlash ? 'rose-200' : 'emerald-200'}` %>"
-  bg="<%= isErrorFlash ? 'rose-50/95' : 'emerald-50/95' %>"
-  px-5
-  py-4
-  text="<%= `sm ${isErrorFlash ? 'rose-700' : 'emerald-700'}` %>"
-  shadow="sm <%= isErrorFlash ? 'rose-100/50' : 'emerald-100/50' %>"
+  class="<%= `mb-5 ${isErrorFlash ? 'border-rose-200 shadow-rose-100/50' : 'border-emerald-200 shadow-emerald-100/50'}` %> rounded-2xl border bg-emerald-50/95 bg-rose-50/95 px-5 py-4 text-sm text-emerald-700 text-rose-700 shadow-sm"
 >
-  <p text="11px <%= isErrorFlash ? 'rose-500' : 'emerald-600' %>" font-semibold uppercase tracking="[0.18em]"><%= isErrorFlash ? 'Alert' : 'Notice' %></p>
-  <p mt-1.5 font-medium>
-    <%= flashMessage %>
-  </p>
+  <p class="<%= `text-[11px] ${isErrorFlash ? 'text-rose-500' : 'text-emerald-600'}` %> font-semibold uppercase tracking-[0.18em]"><%= isErrorFlash ? 'Alert' : 'Notice' %></p>
+  <p class="mt-1.5 font-medium"><%= flashMessage %></p>
 </div>
 <% } %>

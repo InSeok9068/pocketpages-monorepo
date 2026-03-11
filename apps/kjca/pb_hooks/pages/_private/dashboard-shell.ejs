@@ -1,31 +1,26 @@
-<%
-  const safeFormState = formState || {}
-  const safeDashboardState = dashboardState || {}
-  const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || '').trim()
-  const testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly)
-  const encodedState = kjcaService.serializeDashboardState(safeDashboardState)
-%>
+<% const safeFormState = formState || {} const safeDashboardState = dashboardState || {} const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || '').trim() const
+testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly) const encodedState = kjcaService.serializeDashboardState(safeDashboardState) %>
 
-<div grid gap-5 xl:grid-cols="[320px_minmax(0,1fr)]" :style="leftOpen ? '' : 'grid-template-columns: minmax(0, 1fr)'">
-  <aside x-show="leftOpen" x-transition.opacity.duration.150ms x-transition.scale.origin.top.left.duration.150ms flex min-w-0 flex-col gap-5 xl:self-start>
-    <article rounded-2xl border="~ slate-200" bg="white" p-5 shadow="sm slate-200/60">
-      <form id="kjca-dashboard-form" hx-post="/xapi/kjca/collect-weekly" hx-target="#kjca-dashboard-shell" hx-swap="innerHTML" hx-indicator="#kjca-collect-indicator" space-y-4>
-        <div flex items-center justify-between gap-3>
+<div class="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]" :style="leftOpen ? '' : 'grid-template-columns: minmax(0, 1fr)'">
+  <aside x-show="leftOpen" x-transition.opacity.duration.150ms x-transition.scale.origin.top.left.duration.150ms class="flex min-w-0 flex-col gap-5 xl:self-start">
+    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60">
+      <form id="kjca-dashboard-form" hx-post="/xapi/kjca/collect-weekly" hx-target="#kjca-dashboard-shell" hx-swap="innerHTML" hx-indicator="#kjca-collect-indicator" class="space-y-4">
+        <div class="flex items-center justify-between gap-3">
           <div>
-            <p text="11px slate-500" font-semibold uppercase tracking="[0.22em]">Filters</p>
-            <h2 mt-1 text="lg slate-950" font-semibold>조회 조건</h2>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Filters</p>
+            <h2 class="mt-1 text-lg font-semibold text-slate-950">조회 조건</h2>
           </div>
           <% if (!authState.isSuperuser) { %>
-          <span rounded-full bg="amber-50" px-3 py-1 text="xs amber-700" font-semibold>로그인 필요</span>
+          <span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">로그인 필요</span>
           <% } %>
         </div>
 
-        <label block text="sm slate-700" font-medium>
+        <label class="block text-sm font-medium text-slate-700">
           조회일
-          <input type="date" name="reportDate" value="<%= reportDate %>" class="kjca-control" mt-2 block px-4 py-3 text="sm slate-900" />
+          <input type="date" name="reportDate" value="<%= reportDate %>" class="kjca-control mt-2 block px-4 py-3 text-sm text-slate-900" />
         </label>
 
-        <label flex items-center gap-3 rounded-xl bg="slate-50" px-4 py-3 text="sm slate-700">
+        <label class="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
           <% if (testOneOnly) { %>
           <input type="checkbox" name="testOneOnly" value="true" checked />
           <% } else { %>
@@ -35,52 +30,49 @@
         </label>
 
         <% if (authState.isSuperuser) { %>
-        <button type="submit" class="kjca-btn kjca-btn-primary" w-full>금일 자동 취합/비교 실행</button>
+        <button type="submit" class="kjca-btn kjca-btn-primary w-full">금일 자동 취합/비교 실행</button>
         <% } else { %>
-        <button type="submit" class="kjca-btn kjca-btn-primary" disabled w-full>금일 자동 취합/비교 실행</button>
+        <button type="submit" class="kjca-btn kjca-btn-primary w-full" disabled>금일 자동 취합/비교 실행</button>
         <% } %>
 
-        <div id="kjca-collect-indicator" class="htmx-indicator" items-center gap-3 rounded-xl bg="slate-50" px-4 py-3 text="sm slate-700">
-          <span inline-block h-4 w-4 animate-spin rounded-full border="~ slate-500" border-t-transparent></span>
+        <div id="kjca-collect-indicator" class="htmx-indicator items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <span class="inline-block h-4 w-4 animate-spin rounded-full border border-slate-500 border-t-transparent"></span>
           <span>팀장 일지 스크랩, 분석, 저장을 진행 중입니다.</span>
         </div>
       </form>
     </article>
 
-    <article rounded-2xl border="~ slate-200" bg="white" p-5 shadow="sm slate-200/60">
-      <div flex items-center justify-between gap-3>
+    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60">
+      <div class="flex items-center justify-between gap-3">
         <div>
-          <p text="11px slate-500" font-semibold uppercase tracking="[0.22em]">Team Leads</p>
-          <h2 mt-1 text="lg slate-950" font-semibold>팀장 목록</h2>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Team Leads</p>
+          <h2 class="mt-1 text-lg font-semibold text-slate-950">팀장 목록</h2>
         </div>
-        <span rounded-full bg="slate-100" px-3 py-1 text="xs slate-700" font-semibold>
-          총
-          <%= (safeDashboardState.teamLeadRows || []).length %>건
-        </span>
+        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"> 총 <%= (safeDashboardState.teamLeadRows || []).length %>건 </span>
       </div>
 
-      <div mt-4 text="sm slate-600">
+      <div class="mt-4 text-sm text-slate-600">
         접근 상태: <% if (safeDashboardState.isDiaryAccessible === true) { %>
-        <span rounded-full bg="emerald-100" px-2.5 py-1 text="xs emerald-800" font-semibold>성공</span>
+        <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">성공</span>
         <% } else if (safeDashboardState.isDiaryAccessible === false) { %>
-        <span rounded-full bg="rose-100" px-2.5 py-1 text="xs rose-800" font-semibold>실패</span>
+        <span class="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-800">실패</span>
         <% } else { %>
         <span>-</span>
         <% } %>
       </div>
 
       <% if (!safeDashboardState.teamLeadRows || safeDashboardState.teamLeadRows.length === 0) { %>
-      <p mt-4 text="sm slate-500">조회 결과가 없습니다.</p>
+      <p class="mt-4 text-sm text-slate-500">조회 결과가 없습니다.</p>
       <% } else { %>
-      <div mt-4 max-h="[calc(100vh-360px)]" overflow-y-auto rounded-xl border="~ slate-200" bg="slate-50/70" p-4>
-        <div grid grid-cols="[minmax(0,1fr)_56px_72px]" gap-x-2 gap-y-2 text="sm slate-700">
-          <div text="xs slate-500" font-semibold uppercase tracking="[0.16em]">부서</div>
-          <div text="xs slate-500" font-semibold uppercase tracking="[0.16em]">직책</div>
-          <div text="xs slate-500" font-semibold uppercase tracking="[0.16em]">성명</div>
+      <div class="mt-4 max-h-[calc(100vh-360px)] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+        <div class="grid grid-cols-[minmax(0,1fr)_56px_72px] gap-x-2 gap-y-2 text-sm text-slate-700">
+          <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">부서</div>
+          <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">직책</div>
+          <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">성명</div>
           <% safeDashboardState.teamLeadRows.forEach((row) => { %>
-          <div break-words><%= row.dept %></div>
-          <div break-words><%= row.position %></div>
-          <div break-words><%= row.staffName %></div>
+          <div class="break-words"><%= row.dept %></div>
+          <div class="break-words"><%= row.position %></div>
+          <div class="break-words"><%= row.staffName %></div>
           <% }) %>
         </div>
       </div>
@@ -88,9 +80,9 @@
     </article>
   </aside>
 
-  <section min-w-0 space-y-6>
-    <div flex items-center justify-between gap-3>
-      <div text="11px slate-500" font-semibold uppercase tracking="[0.22em]">Results</div>
+  <section class="min-w-0 space-y-6">
+    <div class="flex items-center justify-between gap-3">
+      <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Results</div>
       <button type="button" @click="leftOpen = !leftOpen" class="kjca-btn kjca-btn-secondary kjca-btn-sm">
         <span x-text="leftOpen ? '조회 영역 접기' : '조회 영역 펼치기'"></span>
       </button>
@@ -99,57 +91,41 @@
     <input type="hidden" id="kjca-dashboard-state" name="dashboardStateJson" value="<%= encodedState %>" />
 
     <% if (safeDashboardState.noticeMessage) { %>
-    <div rounded-2xl border="~ emerald-200" bg="emerald-50/95" px-5 py-4 text="sm emerald-700" font-medium shadow="sm emerald-100/40"><%= safeDashboardState.noticeMessage %></div>
-    <% } %>
-
-    <% if (safeDashboardState.errorMessage) { %>
-    <div rounded-2xl border="~ rose-200" bg="rose-50/95" px-5 py-4 text="sm rose-700" font-medium shadow="sm rose-100/40"><%= safeDashboardState.errorMessage %></div>
-    <% } %>
-
-    <% if (safeDashboardState.warnings && safeDashboardState.warnings.length > 0) { %>
-    <div rounded-2xl border="~ amber-200" bg="amber-50/95" px-5 py-4 text="sm amber-800" shadow="sm amber-100/40">
-      <p text="11px amber-700" font-semibold uppercase tracking="[0.18em]">Warnings</p>
-      <p mt-1 font-semibold>일부 항목은 자동 보정 또는 스킵되었습니다.</p>
-      <div mt-3 flex max-h-40 flex-col gap-1 overflow-auto>
+    <div class="rounded-2xl border border-emerald-200 bg-emerald-50/95 px-5 py-4 text-sm font-medium text-emerald-700 shadow-sm shadow-emerald-100/40"><%= safeDashboardState.noticeMessage %></div>
+    <% } %> <% if (safeDashboardState.errorMessage) { %>
+    <div class="rounded-2xl border border-rose-200 bg-rose-50/95 px-5 py-4 text-sm font-medium text-rose-700 shadow-sm shadow-rose-100/40"><%= safeDashboardState.errorMessage %></div>
+    <% } %> <% if (safeDashboardState.warnings && safeDashboardState.warnings.length > 0) { %>
+    <div class="rounded-2xl border border-amber-200 bg-amber-50/95 px-5 py-4 text-sm text-amber-800 shadow-sm shadow-amber-100/40">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">Warnings</p>
+      <p class="mt-1 font-semibold">일부 항목은 자동 보정 또는 스킵되었습니다.</p>
+      <div class="mt-3 flex max-h-40 flex-col gap-1 overflow-auto">
         <% safeDashboardState.warnings.forEach((warningItem) => { %>
-        <div>
-          -
-          <%= warningItem %>
-        </div>
+        <div>- <%= warningItem %></div>
         <% }) %>
       </div>
     </div>
-    <% } %>
-
-    <% if (safeDashboardState.deptWeekTables && safeDashboardState.deptWeekTables.length > 0) { %>
-    <article rounded-2xl border="~ slate-200" bg="white" p="5 md:6" shadow="sm slate-200/60">
-      <div flex items-center justify-between gap-3>
+    <% } %> <% if (safeDashboardState.deptWeekTables && safeDashboardState.deptWeekTables.length > 0) { %>
+    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 md:p-6">
+      <div class="flex items-center justify-between gap-3">
         <div>
-          <p text="11px slate-500" font-semibold uppercase tracking="[0.22em]">Weekly Table</p>
-          <h2 mt-1 text="lg slate-950" font-semibold>금주 모집 계획/결과</h2>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly Table</p>
+          <h2 class="mt-1 text-lg font-semibold text-slate-950">금주 모집 계획/결과</h2>
         </div>
-        <span rounded-full bg="slate-100" px-3 py-1 text="xs slate-700" font-semibold>
-          총
-          <%= safeDashboardState.deptWeekTables.length %>개 부서
-        </span>
+        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"> 총 <%= safeDashboardState.deptWeekTables.length %>개 부서 </span>
       </div>
 
-      <div mt-5 flex flex-col gap-4>
-        <% safeDashboardState.deptWeekTables.forEach((table) => { %>
-        <% const summaryText = kjcaService.buildDeptSummaryText({
-              dept: table.dept,
-              reportDate,
-              analysisResults: safeDashboardState.analysisResults || [],
-            }) %>
-        <details open rounded-2xl border="~ slate-200" bg="slate-50/60" p-4>
-          <summary cursor-pointer text="base slate-950" font-semibold>
-            <div inline-flex items-center gap-3>
+      <div class="mt-5 flex flex-col gap-4">
+        <% safeDashboardState.deptWeekTables.forEach((table) => { %> <% const summaryText = kjcaService.buildDeptSummaryText({ dept: table.dept, reportDate, analysisResults:
+        safeDashboardState.analysisResults || [], }) %>
+        <details open class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+          <summary class="cursor-pointer text-base font-semibold text-slate-950">
+            <div class="inline-flex items-center gap-3">
               <span><%= table.dept %></span>
-              <span rounded-full bg="blue-50" px-3 py-1 text="xs blue-700" font-semibold>주간표</span>
+              <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">주간표</span>
             </div>
           </summary>
 
-          <div mt-4 flex items-center justify-end>
+          <div class="mt-4 flex items-center justify-end">
             <button
               type="button"
               hx-post="/xapi/kjca/clear-cache"
@@ -163,44 +139,41 @@
             </button>
           </div>
 
-          <div mt-4 overflow-x-auto rounded-2xl border="~ slate-200" bg="white">
-            <table min-w="[980px]" w-full border-separate border-spacing-0 text-left text="sm slate-700">
-              <thead bg="slate-50">
+          <div class="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+            <table class="w-full min-w-[980px] border-separate border-spacing-0 text-left text-sm text-slate-700">
+              <thead class="bg-slate-50">
                 <tr>
-                  <th colspan="7" border-b="~ slate-200" px-4 py-3 text="sm slate-800" font-semibold>
-                    <%= summaryText %>
-                  </th>
+                  <th colspan="7" class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800"><%= summaryText %></th>
                 </tr>
                 <tr>
-                  <th rowspan="2" border-b="~ slate-200" px-4 py-3 text="sm slate-800" font-semibold>요일</th>
-                  <th colspan="3" border-b="~ slate-200" px-4 py-3 text="sm slate-800" font-semibold>주간 홍보계획</th>
-                  <th border-b="~ slate-200" px-4 py-3 text="sm slate-800" font-semibold>결과</th>
-                  <th rowspan="2" border-b="~ slate-200" px-4 py-3 text="sm slate-800" font-semibold>담당자(홍보)</th>
-                  <th rowspan="2" border-b="~ slate-200" px-4 py-3 text="sm slate-800" font-semibold>비고</th>
+                  <th rowspan="2" class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">요일</th>
+                  <th colspan="3" class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">주간 홍보계획</th>
+                  <th class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">결과</th>
+                  <th rowspan="2" class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">담당자(홍보)</th>
+                  <th rowspan="2" class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">비고</th>
                 </tr>
                 <tr>
-                  <th border-b="~ slate-200" px-4 py-3 text="sm slate-800" font-semibold>모집홍보처</th>
-                  <th border-b="~ slate-200" px-4 py-3 text="sm slate-800" font-semibold>모집 홍보내용</th>
-                  <th border-b="~ slate-200" px-4 py-3 text="sm slate-800" font-semibold>모집목표</th>
-                  <th border-b="~ slate-200" px-4 py-3 text="sm slate-800" font-semibold>모집 건수</th>
+                  <th class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">모집홍보처</th>
+                  <th class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">모집 홍보내용</th>
+                  <th class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">모집목표</th>
+                  <th class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">모집 건수</th>
                 </tr>
               </thead>
               <tbody>
-                <% kjcaService.WEEKDAY_ORDER.forEach((weekday) => { %>
-                <% const row = kjcaService.getWeekdayMergedRow(table.rows || [], weekday) %>
-                <% const isToday = kjcaService.isFocusWeekday(weekday, table.todayWeekday) %>
-                <tr bg="<%= isToday ? 'blue-50/70' : 'white' %>" text="<%= isToday ? 'slate-900' : 'slate-700' %>">
-                  <td border-b="~ slate-100" px-4 py-3 align-top break-words font="<%= isToday ? 'semibold' : 'medium' %>">
+                <% kjcaService.WEEKDAY_ORDER.forEach((weekday) => { %> <% const row = kjcaService.getWeekdayMergedRow(table.rows || [], weekday) %> <% const isToday =
+                kjcaService.isFocusWeekday(weekday, table.todayWeekday) %>
+                <tr class="<%= isToday ? 'bg-blue-50/70 text-slate-900' : 'bg-white text-slate-700' %>">
+                  <td class="<%= `border-b ${isToday ? 'font-semibold' : 'font-medium'}` %> break-words border-slate-100 px-4 py-3 align-top">
                     <%= kjcaService.weekdayLabelMap[weekday] %> <% if (isToday) { %>
-                    <span ml-2 rounded-full bg="blue-100" px-2.5 py-0.5 text="xs blue-700" font-semibold>오늘</span>
+                    <span class="ml-2 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">오늘</span>
                     <% } %>
                   </td>
-                  <td border-b="~ slate-100" px-4 py-3 align-top break-words><%= row.channelName || '' %></td>
-                  <td border-b="~ slate-100" px-4 py-3 align-top break-words><%= row.promotionContent || '' %></td>
-                  <td border-b="~ slate-100" px-4 py-3 align-top break-words><%= row.targetText || '' %></td>
-                  <td border-b="~ slate-100" px-4 py-3 align-top break-words><%= row.recruitCountText || '' %></td>
-                  <td border-b="~ slate-100" px-4 py-3 align-top break-words><%= row.ownerName || '' %></td>
-                  <td border-b="~ slate-100" px-4 py-3 align-top break-words><%= row.note || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.channelName || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.promotionContent || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.targetText || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.recruitCountText || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.ownerName || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.note || '' %></td>
                 </tr>
                 <% }) %>
               </tbody>
@@ -210,63 +183,45 @@
         <% }) %>
       </div>
     </article>
-    <% } %>
-
-    <% if (safeDashboardState.analysisResults && safeDashboardState.analysisResults.length > 0) { %>
-    <article rounded-2xl border="~ slate-200" bg="white" p="5 md:6" shadow="sm slate-200/60">
-      <div flex items-center justify-between gap-3>
+    <% } %> <% if (safeDashboardState.analysisResults && safeDashboardState.analysisResults.length > 0) { %>
+    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 md:p-6">
+      <div class="flex items-center justify-between gap-3">
         <div>
-          <p text="11px slate-500" font-semibold uppercase tracking="[0.22em]">AI Results</p>
-          <h2 mt-1 text="lg slate-950" font-semibold>AI 분석 상세</h2>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">AI Results</p>
+          <h2 class="mt-1 text-lg font-semibold text-slate-950">AI 분석 상세</h2>
         </div>
-        <span rounded-full bg="slate-100" px-3 py-1 text="xs slate-700" font-semibold>
-          총
-          <%= safeDashboardState.analysisResults.length %>건
-        </span>
+        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"> 총 <%= safeDashboardState.analysisResults.length %>건 </span>
       </div>
 
-      <div mt-5 flex flex-col gap-4>
+      <div class="mt-5 flex flex-col gap-4">
         <% safeDashboardState.analysisResults.forEach((item) => { %>
-        <details open rounded-2xl border="~ slate-200" bg="slate-50/60" p-4>
-          <summary cursor-pointer text="base slate-950" font-semibold>
-            <%= item.dept %>
-            /
-            <%= item.staffName %><%= item.ok ? '' : ' (실패)' %>
-          </summary>
+        <details open class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+          <summary class="cursor-pointer text-base font-semibold text-slate-950"><%= item.dept %> / <%= item.staffName %><%= item.ok ? '' : ' (실패)' %></summary>
 
-          <div mt-4 space-y-4 text="sm slate-700">
+          <div class="mt-4 space-y-4 text-sm text-slate-700">
             <div>
               <a href="<%= item.printUrl %>" target="_blank" rel="noreferrer" class="kjca-btn kjca-btn-secondary kjca-btn-sm"> 원본링크 </a>
             </div>
 
             <% if (!item.ok) { %>
-            <div rounded-2xl border="~ rose-200" bg="rose-50/95" px-4 py-3 text="sm rose-700" font-medium>
-              <%= item.error || '분석에 실패했습니다.' %>
-            </div>
+            <div class="rounded-2xl border border-rose-200 bg-rose-50/95 px-4 py-3 text-sm font-medium text-rose-700"><%= item.error || '분석에 실패했습니다.' %></div>
             <% } %>
 
-            <div grid gap-4 md:grid-cols-2>
-              <div rounded-2xl border="~ slate-200" bg="white" p-4>
-                <p text="11px slate-500" font-semibold uppercase tracking="[0.18em]">Promotion</p>
-                <div mt-2 space-y-1>
+            <div class="grid gap-4 md:grid-cols-2">
+              <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Promotion</p>
+                <div class="mt-2 space-y-1">
                   <% if (!item.promotion || item.promotion.length === 0) { %>
-                  <p text="sm slate-500">-</p>
-                  <% } else { %>
-                  <% item.promotion.forEach((promotionText) => { %>
-                  <div break-words>
-                    -
-                    <%= promotionText %>
-                  </div>
-                  <% }) %>
-                  <% } %>
+                  <p class="text-sm text-slate-500">-</p>
+                  <% } else { %> <% item.promotion.forEach((promotionText) => { %>
+                  <div class="break-words">- <%= promotionText %></div>
+                  <% }) %> <% } %>
                 </div>
               </div>
 
-              <div rounded-2xl border="~ slate-200" bg="white" p-4>
-                <p text="11px slate-500" font-semibold uppercase tracking="[0.18em]">Daily Actual</p>
-                <p mt-2 text="sm slate-700" font-medium>
-                  <%= item.recruiting && item.recruiting.dailyActualCount !== null ? `${item.recruiting.dailyActualCount}명` : '-' %>
-                </p>
+              <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Daily Actual</p>
+                <p class="mt-2 text-sm font-medium text-slate-700"><%= item.recruiting && item.recruiting.dailyActualCount !== null ? `${item.recruiting.dailyActualCount}명` : '-' %></p>
               </div>
             </div>
           </div>
@@ -274,13 +229,12 @@
         <% }) %>
       </div>
     </article>
-    <% } %>
-
-    <% if ((!safeDashboardState.deptWeekTables || safeDashboardState.deptWeekTables.length === 0) && (!safeDashboardState.analysisResults || safeDashboardState.analysisResults.length === 0) && !safeDashboardState.noticeMessage && !safeDashboardState.errorMessage && (!safeDashboardState.warnings || safeDashboardState.warnings.length === 0)) { %>
-    <article rounded-2xl border="~ slate-200" bg="white" p="6 md:7" text-center shadow="sm slate-200/60">
-      <p text="11px slate-500" font-semibold uppercase tracking="[0.2em]">Ready</p>
-      <h2 mt-2 text="2xl slate-950" font-semibold>자동 취합 대기 중</h2>
-      <p mt-3 text="sm slate-600" leading-7>좌측 조회 조건을 설정하고 자동 취합을 실행하면 팀장 목록, 부서별 주간표, AI 분석 상세가 이 영역에 렌더링됩니다.</p>
+    <% } %> <% if ((!safeDashboardState.deptWeekTables || safeDashboardState.deptWeekTables.length === 0) && (!safeDashboardState.analysisResults || safeDashboardState.analysisResults.length === 0) &&
+    !safeDashboardState.noticeMessage && !safeDashboardState.errorMessage && (!safeDashboardState.warnings || safeDashboardState.warnings.length === 0)) { %>
+    <article class="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm shadow-slate-200/60 md:p-7">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Ready</p>
+      <h2 class="mt-2 text-2xl font-semibold text-slate-950">자동 취합 대기 중</h2>
+      <p class="mt-3 text-sm leading-7 text-slate-600">좌측 조회 조건을 설정하고 자동 취합을 실행하면 팀장 목록, 부서별 주간표, AI 분석 상세가 이 영역에 렌더링됩니다.</p>
     </article>
     <% } %>
   </section>

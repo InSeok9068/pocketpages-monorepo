@@ -4,12 +4,8 @@
 </p>
 <% } else if (!boards.length) { %>
 <p><em>No boards found.</em></p>
-<% } else { %>
-<% boards.forEach((board) => { %>
-<% const boardName = board.get('name') || '' %>
-<% const boardSlug = board.get('slug') || '' %>
-<% const boardDescription = board.get('description') || '' %>
-<% const boardSearchText = JSON.stringify(`${boardName} ${boardSlug}`.toLowerCase()) %>
+<% } else { %> <% boards.forEach((board) => { %> <% const boardName = board.get('name') || '' %> <% const boardSlug = board.get('slug') || '' %> <% const boardDescription = board.get('description') ||
+'' %> <% const boardSearchText = JSON.stringify(`${boardName} ${boardSlug}`.toLowerCase()) %>
 <article x-show="<%= `${boardSearchText}.includes(q.toLowerCase())` %>">
   <header>
     <h3><%= boardName || '(untitled board)' %></h3>
@@ -26,5 +22,4 @@
     <a href="/boards/<%= boardSlug %>">Open board page</a>
   </nav>
 </article>
-<% }) %>
-<% } %>
+<% }) %> <% } %>

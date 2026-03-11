@@ -13,7 +13,11 @@
     "lint-pocketpages.js": true
   },
   "files.exclude": {
+    // "tailwind.config.js": true
     // "tools/**": true
+  },
+  "tailwindCSS.includeLanguages": {
+    "ejs": "html"
   },
   "[javascript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
