@@ -1,5 +1,32 @@
-<% const safeFormState = formState || {} const safeDashboardState = dashboardState || {} const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || '').trim() const
-testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly) const encodedState = kjcaService.serializeDashboardState(safeDashboardState) %>
+<%
+  const safeFormState = formState || {};
+  const safeDashboardState = dashboardState || {};
+  const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || "").trim();
+  const testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly);
+  const encodedState = kjcaService.serializeDashboardState(safeDashboardState);
+  const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) => ({
+    ...table,
+    summaryText: kjcaService.buildDeptSummaryText({
+      dept: table.dept,
+      reportDate,
+      analysisResults: safeDashboardState.analysisResults || [],
+    }),
+    weekdayRows: kjcaService.WEEKDAY_ORDER.map((weekday) => {
+      const row = kjcaService.getWeekdayMergedRow(table.rows || [], weekday);
+      const isToday = kjcaService.isFocusWeekday(weekday, table.todayWeekday);
+
+      return {
+        weekday,
+        row,
+        isToday,
+      };
+    }),
+  }));
+  const hasWarnings = !!(safeDashboardState.warnings && safeDashboardState.warnings.length > 0);
+  const hasDeptWeekTables = deptWeekTables.length > 0;
+  const hasAnalysisResults = !!(safeDashboardState.analysisResults && safeDashboardState.analysisResults.length > 0);
+  const showEmptyState = !hasDeptWeekTables && !hasAnalysisResults && !safeDashboardState.noticeMessage && !safeDashboardState.errorMessage && !hasWarnings;
+%>
 
 <div class="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]" :style="leftOpen ? '' : 'grid-template-columns: minmax(0, 1fr)'">
   <aside x-show="leftOpen" x-transition.opacity.duration.150ms x-transition.scale.origin.top.left.duration.150ms class="flex min-w-0 flex-col gap-5 xl:self-start">
@@ -94,7 +121,8 @@ testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly) co
     <div class="rounded-2xl border border-emerald-200 bg-emerald-50/95 px-5 py-4 text-sm font-medium text-emerald-700 shadow-sm shadow-emerald-100/40"><%= safeDashboardState.noticeMessage %></div>
     <% } %> <% if (safeDashboardState.errorMessage) { %>
     <div class="rounded-2xl border border-rose-200 bg-rose-50/95 px-5 py-4 text-sm font-medium text-rose-700 shadow-sm shadow-rose-100/40"><%= safeDashboardState.errorMessage %></div>
-    <% } %> <% if (safeDashboardState.warnings && safeDashboardState.warnings.length > 0) { %>
+    <% } %>
+    <% if (hasWarnings) { %>
     <div class="rounded-2xl border border-amber-200 bg-amber-50/95 px-5 py-4 text-sm text-amber-800 shadow-sm shadow-amber-100/40">
       <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">Warnings</p>
       <p class="mt-1 font-semibold">일부 항목은 자동 보정 또는 스킵되었습니다.</p>
@@ -104,19 +132,19 @@ testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly) co
         <% }) %>
       </div>
     </div>
-    <% } %> <% if (safeDashboardState.deptWeekTables && safeDashboardState.deptWeekTables.length > 0) { %>
+    <% } %>
+    <% if (hasDeptWeekTables) { %>
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 md:p-6">
       <div class="flex items-center justify-between gap-3">
         <div>
           <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly Table</p>
           <h2 class="mt-1 text-lg font-semibold text-slate-950">금주 모집 계획/결과</h2>
         </div>
-        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"> 총 <%= safeDashboardState.deptWeekTables.length %>개 부서 </span>
+        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"> 총 <%= deptWeekTables.length %>개 부서 </span>
       </div>
 
       <div class="mt-5 flex flex-col gap-4">
-        <% safeDashboardState.deptWeekTables.forEach((table) => { %> <% const summaryText = kjcaService.buildDeptSummaryText({ dept: table.dept, reportDate, analysisResults:
-        safeDashboardState.analysisResults || [], }) %>
+        <% deptWeekTables.forEach((table) => { %>
         <details open class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
           <summary class="cursor-pointer text-base font-semibold text-slate-950">
             <div class="inline-flex items-center gap-3">
@@ -143,7 +171,7 @@ testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly) co
             <table class="w-full min-w-[980px] border-separate border-spacing-0 text-left text-sm text-slate-700">
               <thead class="bg-slate-50">
                 <tr>
-                  <th colspan="7" class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800"><%= summaryText %></th>
+                  <th colspan="7" class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800"><%= table.summaryText %></th>
                 </tr>
                 <tr>
                   <th rowspan="2" class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">요일</th>
@@ -160,20 +188,19 @@ testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly) co
                 </tr>
               </thead>
               <tbody>
-                <% kjcaService.WEEKDAY_ORDER.forEach((weekday) => { %> <% const row = kjcaService.getWeekdayMergedRow(table.rows || [], weekday) %> <% const isToday =
-                kjcaService.isFocusWeekday(weekday, table.todayWeekday) %>
-                <tr class="<%= isToday ? 'bg-blue-50/70 text-slate-900' : 'bg-white text-slate-700' %>">
-                  <td class="<%= `border-b ${isToday ? 'font-semibold' : 'font-medium'}` %> break-words border-slate-100 px-4 py-3 align-top">
-                    <%= kjcaService.weekdayLabelMap[weekday] %> <% if (isToday) { %>
+                <% table.weekdayRows.forEach((weekdayRow) => { %>
+                <tr class="<%= weekdayRow.isToday ? 'bg-blue-50/70 text-slate-900' : 'bg-white text-slate-700' %>">
+                  <td class="<%= `border-b ${weekdayRow.isToday ? 'font-semibold' : 'font-medium'}` %> break-words border-slate-100 px-4 py-3 align-top">
+                    <%= kjcaService.weekdayLabelMap[weekdayRow.weekday] %> <% if (weekdayRow.isToday) { %>
                     <span class="ml-2 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">오늘</span>
                     <% } %>
                   </td>
-                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.channelName || '' %></td>
-                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.promotionContent || '' %></td>
-                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.targetText || '' %></td>
-                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.recruitCountText || '' %></td>
-                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.ownerName || '' %></td>
-                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= row.note || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= weekdayRow.row.channelName || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= weekdayRow.row.promotionContent || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= weekdayRow.row.targetText || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= weekdayRow.row.recruitCountText || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= weekdayRow.row.ownerName || '' %></td>
+                  <td class="break-words border-b border-slate-100 px-4 py-3 align-top"><%= weekdayRow.row.note || '' %></td>
                 </tr>
                 <% }) %>
               </tbody>
@@ -183,7 +210,8 @@ testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly) co
         <% }) %>
       </div>
     </article>
-    <% } %> <% if (safeDashboardState.analysisResults && safeDashboardState.analysisResults.length > 0) { %>
+    <% } %>
+    <% if (hasAnalysisResults) { %>
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 md:p-6">
       <div class="flex items-center justify-between gap-3">
         <div>
@@ -229,8 +257,8 @@ testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly) co
         <% }) %>
       </div>
     </article>
-    <% } %> <% if ((!safeDashboardState.deptWeekTables || safeDashboardState.deptWeekTables.length === 0) && (!safeDashboardState.analysisResults || safeDashboardState.analysisResults.length === 0) &&
-    !safeDashboardState.noticeMessage && !safeDashboardState.errorMessage && (!safeDashboardState.warnings || safeDashboardState.warnings.length === 0)) { %>
+    <% } %>
+    <% if (showEmptyState) { %>
     <article class="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm shadow-slate-200/60 md:p-7">
       <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Ready</p>
       <h2 class="mt-2 text-2xl font-semibold text-slate-950">자동 취합 대기 중</h2>

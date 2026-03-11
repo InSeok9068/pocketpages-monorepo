@@ -55,6 +55,13 @@
       : {
           board,
           post,
+          boardName: board.get("name") || boardSlug,
+          title: post.get("title") || postSlug,
+          status: post.get("status") || "draft",
+          authorName: post.get("author_name") || "unknown",
+          publishedAt: post.get("published_at") || post.created || "",
+          content: post.get("content") || "",
+          viewCount: post.get("view_count") || 0,
           error: "",
         };
 
@@ -76,16 +83,14 @@
     <a href="/boards/<%= params.boardSlug %>" class="text-sm font-medium text-stone-600 no-underline hover:text-stone-900"> Back to board </a>
   </p>
 </article>
-<% } else { %> <% const boardName = pageData.board.get('name') || params.boardSlug %> <% const title = pageData.post.get('title') || params.postSlug %> <% const status = pageData.post.get('status') ||
-'draft' %> <% const authorName = pageData.post.get('author_name') || 'unknown' %> <% const publishedAt = pageData.post.get('published_at') || pageData.post.created || '' %> <% const content =
-pageData.post.get('content') || '' %> <% const viewCount = pageData.post.get('view_count') || 0 %>
+<% } else { %>
 
 <header class="mb-8 space-y-4">
   <p>
-    <a href="/boards/<%= params.boardSlug %>" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"> <%= boardName %> </a>
+    <a href="/boards/<%= params.boardSlug %>" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"> <%= pageData.boardName %> </a>
   </p>
-  <h1 class="text-4xl font-semibold tracking-tight text-stone-950"><%= title %></h1>
-  <p class="text-sm uppercase tracking-[0.14em] text-stone-500"><%= status %> · <%= authorName %> · <%= publishedAt %> · views <%= viewCount %></p>
+  <h1 class="text-4xl font-semibold tracking-tight text-stone-950"><%= pageData.title %></h1>
+  <p class="text-sm uppercase tracking-[0.14em] text-stone-500"><%= pageData.status %> · <%= pageData.authorName %> · <%= pageData.publishedAt %> · views <%= pageData.viewCount %></p>
 </header>
 
 <%- include('flash-alert.ejs') %>
@@ -104,6 +109,6 @@ pageData.post.get('content') || '' %> <% const viewCount = pageData.post.get('vi
       </a>
     </nav>
   </header>
-  <div class="max-w-none leading-7 text-stone-700"><%- content %></div>
+  <div class="max-w-none leading-7 text-stone-700"><%= pageData.content %></div>
 </article>
 <% } %>

@@ -1,11 +1,20 @@
+<%
+  const panelBoardName = selectedBoard ? selectedBoard.get("name") || selectedBoardSlug : "";
+  const postCards = (posts || []).map((post) => ({
+    title: post.get("title") || "(untitled post)",
+    authorName: post.get("author_name") || "unknown",
+    isNotice: !!post.get("is_notice"),
+    publishedAt: post.get("published_at") || post.created || "",
+  }));
+%>
 <article id="post-panel">
   <% if (!selectedBoardSlug) { %>
   <p><em>Select a board to view posts.</em></p>
   <% } else if (!selectedBoard) { %>
   <p><strong>Board not found.</strong></p>
-  <% } else { %> <% const boardName = selectedBoard.get('name') || selectedBoardSlug %>
+  <% } else { %>
   <header>
-    <h3><%= boardName %></h3>
+    <h3><%= panelBoardName %></h3>
     <p>
       <small>/boards/<%= selectedBoardSlug %></small>
     </p>
@@ -55,15 +64,17 @@
     </form>
   </article>
 
-  <% if (!posts.length) { %>
+  <% if (!postCards.length) { %>
   <p><em>No published posts yet.</em></p>
-  <% } else { %> <% posts.forEach((post) => { %> <% const title = post.get('title') || '(untitled post)' %> <% const authorName = post.get('author_name') || 'unknown' %> <% const isNotice =
-  !!post.get('is_notice') %> <% const publishedAt = post.get('published_at') || post.created %>
+  <% } else { %>
+  <% postCards.forEach((postCard) => { %>
   <section>
-    <h4><%= title %></h4>
+    <h4><%= postCard.title %></h4>
     <p>
-      <small><%= isNotice ? 'Notice' : 'Post' %> · <%= authorName %> · <%= publishedAt %></small>
+      <small><%= postCard.isNotice ? 'Notice' : 'Post' %> · <%= postCard.authorName %> · <%= postCard.publishedAt %></small>
     </p>
   </section>
-  <% }) %> <% } %> <% } %>
+  <% }) %>
+  <% } %>
+  <% } %>
 </article>

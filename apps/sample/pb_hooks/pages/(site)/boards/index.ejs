@@ -13,6 +13,12 @@
     pageData.error = String(error.message || error);
   }
 
+  pageData.boardRows = pageData.boards.map((board) => ({
+    name: board.get("name") || "",
+    slug: board.get("slug") || "",
+    description: board.get("description") || "",
+  }));
+
   dbg("page/boards:index:response", {
     error: pageData.error || "",
     boardCount: pageData.boards.length,
@@ -92,15 +98,14 @@
           </tr>
         </thead>
         <tbody>
-          <% pageData.boards.forEach((board) => { %> <% const boardName = board.get('name') || '' %> <% const boardSlug = board.get('slug') || '' %> <% const boardDescription =
-          board.get('description') || '' %>
+          <% pageData.boardRows.forEach((boardRow) => { %>
           <tr align-top>
-            <td class="border-b border-stone-100 px-4 py-4 font-semibold text-stone-900"><%= boardName || '(untitled board)' %></td>
-            <td class="whitespace-nowrap border-b border-stone-100 px-4 py-4 text-stone-500">/boards/<%= boardSlug %></td>
-            <td class="border-b border-stone-100 px-4 py-4 leading-6 text-stone-600"><%= boardDescription || 'No description' %></td>
+            <td class="border-b border-stone-100 px-4 py-4 font-semibold text-stone-900"><%= boardRow.name || '(untitled board)' %></td>
+            <td class="whitespace-nowrap border-b border-stone-100 px-4 py-4 text-stone-500">/boards/<%= boardRow.slug %></td>
+            <td class="border-b border-stone-100 px-4 py-4 leading-6 text-stone-600"><%= boardRow.description || 'No description' %></td>
             <td class="border-b border-stone-100 px-4 py-4">
               <a
-                href="/boards/<%= boardSlug %>"
+                href="/boards/<%= boardRow.slug %>"
                 class="inline-flex items-center rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
               >
                 Open

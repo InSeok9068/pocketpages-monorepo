@@ -79,6 +79,21 @@
     }
   }
 </script>
-<% const fallbackBoard = '/boards/' + encodeURIComponent(boardSlug) const fallbackPost = postSlug ? fallbackBoard + '/posts/' + encodeURIComponent(postSlug) + '/edit' : fallbackBoard
-dbg('api/posts/update:response', { status: 303, redirectTo: fallbackPost, boardSlug, postSlug, error: errorMessage || 'Failed to update post.', }) redirect(fallbackPost, { status: 303, message:
-errorMessage || 'Failed to update post.', }) %>
+<%
+  const fallbackBoard = "/boards/" + encodeURIComponent(boardSlug);
+  const fallbackPost = postSlug ? fallbackBoard + "/posts/" + encodeURIComponent(postSlug) + "/edit" : fallbackBoard;
+  const flashMessage = errorMessage || "Failed to update post.";
+
+  dbg("api/posts/update:response", {
+    status: 303,
+    redirectTo: fallbackPost,
+    boardSlug,
+    postSlug,
+    error: flashMessage,
+  });
+
+  redirect(fallbackPost, {
+    status: 303,
+    message: flashMessage,
+  });
+%>

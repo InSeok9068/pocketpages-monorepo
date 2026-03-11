@@ -64,5 +64,18 @@
     }
   }
 </script>
-<% const createFallbackRedirect = '/boards/' + encodeURIComponent(boardSlug) + '/posts/new' dbg('api/posts/create:response', { status: 303, redirectTo: createFallbackRedirect, error: errorMessage ||
-'Failed to create post.', }) redirect('/boards/' + encodeURIComponent(boardSlug) + '/posts/new', { status: 303, message: errorMessage || 'Failed to create post.', }) %>
+<%
+  const createFallbackRedirect = "/boards/" + encodeURIComponent(boardSlug) + "/posts/new";
+  const flashMessage = errorMessage || "Failed to create post.";
+
+  dbg("api/posts/create:response", {
+    status: 303,
+    redirectTo: createFallbackRedirect,
+    error: flashMessage,
+  });
+
+  redirect(createFallbackRedirect, {
+    status: 303,
+    message: flashMessage,
+  });
+%>
