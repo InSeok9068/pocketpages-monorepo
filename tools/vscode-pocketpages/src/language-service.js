@@ -229,6 +229,45 @@ function shouldSuppressDiagnosticForRelaxedBodyAccess(diagnostic, block, relaxed
   return relaxedSpans.some((span) => diagnosticStartInBlock >= span.start && diagnosticEndInBlock <= span.end);
 }
 
+function collectResolveCallSpansFromScript(scriptText) {
+  const sourceFile = ts.createSourceFile("pocketpages-private-resolve.ts", scriptText, ts.ScriptTarget.Latest, true);
+  const spans = [];
+
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "resolve"
+    ) {
+      spans.push({
+        start: node.expression.getStart(sourceFile),
+        end: node.expression.getEnd(),
+      });
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return spans;
+}
+
+function collectResolveCallSpansFromTemplate(documentText) {
+  const spans = [];
+  const regex = /\bresolve\s*\(/g;
+  let match = regex.exec(documentText);
+
+  while (match) {
+    spans.push({
+      start: match.index,
+      end: match.index + "resolve".length,
+    });
+    match = regex.exec(documentText);
+  }
+
+  return spans;
+}
+
 class ProjectLanguageService {
   constructor(appRoot) {
     this.appRoot = appRoot;
@@ -969,6 +1008,23 @@ class ProjectLanguageService {
     const templateBlocks = extractTemplateCodeBlocks(documentText);
     const collectionMethodNames = this.projectIndex.getCollectionMethodNames();
     const diagnostics = [];
+    const privatePagesFile = isPrivatePagesFile(filePath);
+
+    if (privatePagesFile) {
+      const resolveCallSpans = isScriptFile(filePath)
+        ? collectResolveCallSpansFromScript(documentText)
+        : collectResolveCallSpansFromTemplate(documentText);
+
+      for (const span of resolveCallSpans) {
+        diagnostics.push({
+          code: "pp-private-resolve",
+          category: ts.DiagnosticCategory.Warning,
+          message: "Avoid resolve() inside _private files. Compose private dependencies in the entry and pass them in.",
+          start: span.start,
+          end: span.end,
+        });
+      }
+    }
 
     for (const block of blocks) {
       const virtual = this.upsertVirtualFile(filePath, block);
@@ -1035,7 +1091,7 @@ class ProjectLanguageService {
       }
     }
 
-    if (templateBlocks.length && !isPrivatePagesFile(filePath)) {
+    if (templateBlocks.length && !privatePagesFile) {
       const templateVirtual = this.upsertTemplateVirtualFile(filePath, documentText);
       const templateVirtualText = buildTemplateVirtualText(documentText);
       const rawDiagnostics = [
