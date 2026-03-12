@@ -3,7 +3,7 @@
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
     "*.ejs": "+load.js",
-    ".prettierrc": ".prettierignore"
+    "package.json": "package-lock.json, .prettier*, tailwind.config.js"
   },
   "search.exclude": {
     ".docs/**": true,
@@ -11,10 +11,6 @@
     "pb_schema.json": true,
     "package-lock.json": true,
     "lint-pocketpages.js": true
-  },
-  "files.exclude": {
-    // "tailwind.config.js": true
-    // "tools/**": true
   },
   "tailwindCSS.includeLanguages": {
     "ejs": "html"

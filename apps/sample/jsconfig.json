@@ -1,3 +1,6 @@
 {
-  "include": ["pb_data/types.d.ts", "pocketpages-globals.d.ts", "types.d.ts", "**/*.ejs", "**/*.js"]
+  "include": ["pb_data/types.d.ts", "pocketpages-globals.d.ts", "types.d.ts", "**/*.ejs", "**/*.js"],
+  "compilerOptions": {
+    "module": "commonjs"
+  }
 }
