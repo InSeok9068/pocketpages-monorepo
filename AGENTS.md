@@ -24,6 +24,7 @@
 - 리얼타임: `pocketpages-plugin-realtime`
 - 스타일링: UnoCSS Runtime
 - 스타일 문법 기준: TailwindCSS v3 호환 문법(Wind3 기준)
+- JSVM 코드 문법 기준: ES6(ES2015) 호환 문법만 사용
 
 ---
 
@@ -238,6 +239,9 @@
 
 #### 강제 규칙
 
+- PocketBase JSVM을 사용하는 JS 코드는 **ES6(ES2015)와 호환되는 문법**으로만 작성합니다.
+- 모든 로직은 동기식으로 작성하며, `async/await`와 Promise 기반 비동기 문법은 사용하지 않습니다.
+- 모듈은 `import` / `export` 대신 CommonJS `require()` / `module.exports`만 사용합니다.
 - PocketBase JSVM 코드는 반드시 해당 서비스의 `pb_data/types.d.ts`를 기준으로 가능한 API/타입만 사용합니다.
 - 문서 예시와 `pb_data/types.d.ts`가 다르면 `pb_data/types.d.ts`를 우선합니다.
 - 타입 정의에 없는 심볼/시그니처는 사용하지 않습니다.
