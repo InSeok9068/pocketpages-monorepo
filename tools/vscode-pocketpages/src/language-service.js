@@ -71,6 +71,29 @@ function isPrivatePagesFile(filePath) {
   return normalizePath(filePath).includes("/pb_hooks/pages/_private/");
 }
 
+function collectStaticRequireCallContexts(documentText) {
+  const contexts = [];
+  const requireRe = /\brequire\(\s*(['"])([^'"]+)\1\s*\)/g;
+
+  for (const match of documentText.matchAll(requireRe)) {
+    const fullText = match[0];
+    const quote = match[1];
+    const value = match[2];
+    const quoteOffset = fullText.indexOf(quote);
+    const start = match.index + quoteOffset + 1;
+    const end = start + value.length;
+
+    contexts.push({
+      kind: "require-path",
+      value,
+      start,
+      end,
+    });
+  }
+
+  return contexts;
+}
+
 function getAppAmbientTypeFiles(appRoot) {
   return [
     path.join(appRoot, "pb_data", "types.d.ts"),
@@ -1256,21 +1279,21 @@ class ProjectLanguageService {
     if (isPrivatePagesFile(normalizedFilePath)) {
       if (isEjsFile(normalizedFilePath)) {
         return {
-          kind: "include-path",
+          kind: "private-partial",
           targetFilePath: normalizedFilePath,
-          command: "pocketpagesServerScript.findCurrentPartialReferences",
-          title: "Find include references",
+          command: "pocketpagesServerScript.allFileReferences",
+          title: "PocketPages: All File References",
           emptyMessage: "No include() references found for this partial.",
         };
       }
 
       if (isScriptFile(normalizedFilePath)) {
         return {
-          kind: "resolve-path",
+          kind: "private-module",
           targetFilePath: normalizedFilePath,
-          command: "pocketpagesServerScript.findCurrentModuleReferences",
-          title: "Find resolve references",
-          emptyMessage: "No resolve() references found for this private module.",
+          command: "pocketpagesServerScript.allFileReferences",
+          title: "PocketPages: All File References",
+          emptyMessage: "No resolve() or require() references found for this private module.",
         };
       }
     }
@@ -1281,10 +1304,10 @@ class ProjectLanguageService {
     }
 
     return {
-      kind: "route-path",
+      kind: "route-file",
       targetFilePath: normalizedFilePath,
-      command: "pocketpagesServerScript.findCurrentRouteReferences",
-      title: `Find route references for ${routeEntry.routePath}`,
+      command: "pocketpagesServerScript.allFileReferences",
+      title: "PocketPages: All File References",
       emptyMessage: `No route references found for ${routeEntry.routePath}.`,
       routePath: routeEntry.routePath,
       routeMethod: routeEntry.method || "PAGE",
@@ -1324,15 +1347,84 @@ class ProjectLanguageService {
     return [...uniqueLocations.values()];
   }
 
+  collectRequireReferenceLocations(targetFilePath, overrides = {}) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    const uniqueLocations = new Map();
+
+    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      const codeFilePath = normalizePath(entry.filePath);
+      if (!isScriptFile(codeFilePath)) {
+        continue;
+      }
+
+      const documentText =
+        Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : readFileText(codeFilePath);
+
+      for (const requireContext of collectStaticRequireCallContexts(documentText)) {
+        const resolvedTargetFilePath = this.projectIndex.resolveRequireTarget(codeFilePath, requireContext.value);
+        if (!resolvedTargetFilePath || normalizePath(resolvedTargetFilePath) !== normalizedTargetFilePath) {
+          continue;
+        }
+
+        const locationKey = `${codeFilePath}:${requireContext.start}:${requireContext.end}`;
+        if (!uniqueLocations.has(locationKey)) {
+          uniqueLocations.set(locationKey, {
+            filePath: codeFilePath,
+            start: requireContext.start,
+            end: requireContext.end,
+          });
+        }
+      }
+    }
+
+    return [...uniqueLocations.values()];
+  }
+
+  mergeReferenceLocations(...referenceGroups) {
+    const uniqueLocations = new Map();
+
+    for (const group of referenceGroups) {
+      for (const location of group || []) {
+        const locationKey = `${normalizePath(location.filePath)}:${location.start}:${location.end}`;
+        if (!uniqueLocations.has(locationKey)) {
+          uniqueLocations.set(locationKey, {
+            filePath: normalizePath(location.filePath),
+            start: location.start,
+            end: location.end,
+          });
+        }
+      }
+    }
+
+    return [...uniqueLocations.values()];
+  }
+
   getFileReferenceTargets(filePath, documentText, _options = {}) {
     const referenceQuery = this.getFileReferenceQuery(filePath);
     if (!referenceQuery) {
       return null;
     }
 
-    return this.collectPathReferenceLocations(referenceQuery.kind, referenceQuery.targetFilePath, {
+    const overrides = {
       [normalizePath(filePath)]: documentText,
-    });
+    };
+
+    if (referenceQuery.kind === "private-partial") {
+      return this.collectPathReferenceLocations("include-path", referenceQuery.targetFilePath, overrides);
+    }
+
+    if (referenceQuery.kind === "private-module") {
+      return this.mergeReferenceLocations(
+        this.collectPathReferenceLocations("resolve-path", referenceQuery.targetFilePath, overrides),
+        this.collectRequireReferenceLocations(referenceQuery.targetFilePath, overrides)
+      );
+    }
+
+    if (referenceQuery.kind === "route-file") {
+      return this.collectPathReferenceLocations("route-path", referenceQuery.targetFilePath, overrides);
+    }
+
+    return null;
   }
 
   collectResolvedModuleMemberUsageLocations(targetModuleFilePath, memberName, overrides = {}) {

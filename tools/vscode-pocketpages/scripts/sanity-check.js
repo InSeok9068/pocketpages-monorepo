@@ -260,6 +260,15 @@ module.exports = {
 `
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service-consumer.js'),
+    `const boardService = require('./board-service')
+
+module.exports = {
+  boardService,
+}
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
     `<% const flashTone = isErrorFlash ? 'error' : 'notice' %>\n<div><%= flashMessage %> / <%= flashTone %> / <%= flashMeta.count %></div>\n`
   )
@@ -668,7 +677,7 @@ boardService.readAuthState(
     }
 
     const partialReferenceQuery = service.getFileReferenceQuery(fixture.flashAlertFilePath)
-    if (!partialReferenceQuery || partialReferenceQuery.kind !== 'include-path') {
+    if (!partialReferenceQuery || partialReferenceQuery.kind !== 'private-partial') {
       throw new Error(`Expected _private partial file reference query. Got: ${JSON.stringify(partialReferenceQuery)}`)
     }
 
@@ -1009,17 +1018,20 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
     }
 
     const moduleReferenceQuery = service.getFileReferenceQuery(fixture.boardServiceFilePath)
-    if (!moduleReferenceQuery || moduleReferenceQuery.kind !== 'resolve-path') {
+    if (!moduleReferenceQuery || moduleReferenceQuery.kind !== 'private-module') {
       throw new Error(`Expected _private module file reference query. Got: ${JSON.stringify(moduleReferenceQuery)}`)
     }
 
     const moduleFileReferences = service.getFileReferenceTargets(fixture.boardServiceFilePath, fs.readFileSync(fixture.boardServiceFilePath, 'utf8'))
-    if (!moduleFileReferences || moduleFileReferences.length !== 3) {
-      throw new Error(`Expected file-based resolve() references in three files. Got: ${JSON.stringify(moduleFileReferences)}`)
+    if (!moduleFileReferences || moduleFileReferences.length !== 4) {
+      throw new Error(`Expected file-based resolve()/require() references in four files. Got: ${JSON.stringify(moduleFileReferences)}`)
+    }
+    if (!moduleFileReferences.some((entry) => normalizeFilePath(entry.filePath).endsWith('/pb_hooks/pages/_private/board-service-consumer.js'))) {
+      throw new Error(`Expected file-based module references to include static require() usage. Got: ${JSON.stringify(moduleFileReferences)}`)
     }
 
     const routeReferenceQuery = service.getFileReferenceQuery(fixture.boardsFilePath)
-    if (!routeReferenceQuery || routeReferenceQuery.kind !== 'route-path' || routeReferenceQuery.routePath !== '/boards') {
+    if (!routeReferenceQuery || routeReferenceQuery.kind !== 'route-file' || routeReferenceQuery.routePath !== '/boards') {
       throw new Error(`Expected static route file reference query for /boards. Got: ${JSON.stringify(routeReferenceQuery)}`)
     }
 

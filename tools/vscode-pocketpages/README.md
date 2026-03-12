@@ -224,19 +224,17 @@ npm run install:vscode-pocketpages
   - 현재 파일이 PocketPages 앱 루트 안에 있는지, 현재 진단이 몇 개인지 빠르게 확인합니다.
 - `PocketPages: Refresh Server Script Diagnostics`
   - 현재 문서의 PocketPages 진단을 강제로 다시 계산합니다.
-- `PocketPages: Find Current Partial References`
-  - 현재 열린 `_private/*.ejs` partial을 `include()`하는 호출부를 찾아 references peek로 보여줍니다.
-  - 현재 파일이 partial이 아니면 바로 안내 메시지를 띄웁니다.
-  - EJS partial의 역참조는 VS Code 기본 `Find All References`보다 이 명령이 더 예측 가능합니다.
-- `PocketPages: Find Current Module References`
-  - 현재 열린 `_private/*.js|cjs|mjs` private module을 `resolve()`하는 호출부를 찾아 references peek로 보여줍니다.
-- `PocketPages: Find Current Route References`
-  - 현재 열린 static route 파일을 가리키는 `href`, `action`, `hx-*`, `redirect()` 사용처를 찾아 references peek로 보여줍니다.
+- `PocketPages: All File References`
+  - 현재 열린 파일이 `_private/*.ejs`면 `include()` 호출부를 보여줍니다.
+  - 현재 열린 파일이 `_private/*.js|cjs|mjs`면 `resolve()` 호출부와 정적 string literal `require()` 호출부를 함께 보여줍니다.
+  - 현재 열린 파일이 static route 파일이면 `href`, `action`, `hx-*`, `redirect()` 사용처를 보여줍니다.
+  - 지원하지 않는 파일이면 안내 메시지를 띄웁니다.
+  - file-based PocketPages 역참조는 VS Code 기본 `Find All References`보다 이 명령이 더 예측 가능합니다.
 
 ## 추가 UX
 
 - `_private/*.ejs`, `_private/*.js|cjs|mjs`, static route 파일 상단에는 reference count가 보이는 CodeLens가 표시됩니다.
-- 에디터 우클릭 메뉴에서 partial/module/route reference 명령을 직접 실행할 수 있습니다.
+- 에디터 우클릭 메뉴에서 `PocketPages: All File References`를 직접 실행할 수 있습니다.
 - `resolve()`, `include()`, `href`, `action`, `hx-*`, `redirect()` 문자열 hover에는 실제 target 파일 경로가 함께 표시됩니다.
 
 ## 문제를 볼 때 먼저 확인할 것

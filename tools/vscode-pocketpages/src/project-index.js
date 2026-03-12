@@ -6,6 +6,7 @@ const ts = require('typescript')
 const { buildTemplateVirtualText } = require('./ejs-template')
 
 const RESOLVE_EXTENSIONS = ['.js', '.ejs', '.json', '.cjs', '.mjs']
+const REQUIRE_EXTENSIONS = ['.js', '.json', '.cjs', '.mjs']
 const INCLUDE_EXTENSIONS = ['.ejs']
 const ROUTE_EXTENSIONS = ['.ejs', '.js', '.cjs', '.mjs']
 const PAGES_CODE_EXTENSIONS = ['.ejs', '.js', '.cjs', '.mjs']
@@ -1212,6 +1213,36 @@ class PocketPagesProjectIndex {
         if (fileExists(candidatePath)) {
           return candidatePath
         }
+      }
+    }
+
+    return null
+  }
+
+  resolveRequireTarget(filePath, requestPath) {
+    const normalizedRequestPath = String(requestPath || '').trim()
+    if (!normalizedRequestPath) {
+      return null
+    }
+
+    if (!(normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../') || normalizedRequestPath.startsWith('/'))) {
+      return null
+    }
+
+    const currentDir = normalizePath(path.dirname(filePath))
+    const basePath = normalizedRequestPath.startsWith('/')
+      ? normalizePath(path.join(this.appRoot, normalizedRequestPath))
+      : normalizePath(path.join(currentDir, normalizedRequestPath))
+
+    const candidatePaths = [
+      basePath,
+      ...REQUIRE_EXTENSIONS.map((extension) => normalizePath(`${basePath}${extension}`)),
+      ...REQUIRE_EXTENSIONS.map((extension) => normalizePath(path.join(basePath, `index${extension}`))),
+    ]
+
+    for (const candidatePath of candidatePaths) {
+      if (fileExists(candidatePath)) {
+        return candidatePath
       }
     }
 

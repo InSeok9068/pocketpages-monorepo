@@ -88,6 +88,18 @@ function describeReferenceQuery(referenceQuery) {
     return referenceQuery.routePath ? `route references for ${referenceQuery.routePath}` : 'route references'
   }
 
+  if (referenceQuery.kind === 'private-module') {
+    return 'resolve() and require() references'
+  }
+
+  if (referenceQuery.kind === 'private-partial') {
+    return 'include() references'
+  }
+
+  if (referenceQuery.kind === 'route-file') {
+    return referenceQuery.routePath ? `route references for ${referenceQuery.routePath}` : 'route references'
+  }
+
   return 'references'
 }
 
@@ -659,13 +671,13 @@ class PocketPagesCodeLensProvider {
       includeDeclaration: false,
     })
     const referenceCount = references ? references.length : 0
-    const title = `${referenceQuery.title} (${referenceCount})`
+    const title = `All File References (${referenceCount})`
     const range = new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0))
 
     return [
       new vscode.CodeLens(range, {
         title,
-        command: referenceQuery.command,
+        command: 'pocketpagesServerScript.allFileReferences',
         arguments: [document.uri],
       }),
     ]
@@ -833,39 +845,7 @@ function activate(context) {
       output.show(true)
       vscode.window.showInformationMessage(message)
     }),
-    vscode.commands.registerCommand('pocketpagesServerScript.findCurrentPartialReferences', async (resourceUri) => {
-      const editor = vscode.window.activeTextEditor
-      const filePath = resourceUri && resourceUri.fsPath ? resourceUri.fsPath : editor && editor.document.uri.fsPath
-      if (!filePath) {
-        vscode.window.showWarningMessage('No active editor.')
-        return
-      }
-
-      await showFileReferences({
-        manager,
-        output,
-        document: editor && editor.document.uri.fsPath === filePath ? editor.document : null,
-        editor,
-        filePath,
-      })
-    }),
-    vscode.commands.registerCommand('pocketpagesServerScript.findCurrentModuleReferences', async (resourceUri) => {
-      const editor = vscode.window.activeTextEditor
-      const filePath = resourceUri && resourceUri.fsPath ? resourceUri.fsPath : editor && editor.document.uri.fsPath
-      if (!filePath) {
-        vscode.window.showWarningMessage('No active editor.')
-        return
-      }
-
-      await showFileReferences({
-        manager,
-        output,
-        document: editor && editor.document.uri.fsPath === filePath ? editor.document : null,
-        editor,
-        filePath,
-      })
-    }),
-    vscode.commands.registerCommand('pocketpagesServerScript.findCurrentRouteReferences', async (resourceUri) => {
+    vscode.commands.registerCommand('pocketpagesServerScript.allFileReferences', async (resourceUri) => {
       const editor = vscode.window.activeTextEditor
       const filePath = resourceUri && resourceUri.fsPath ? resourceUri.fsPath : editor && editor.document.uri.fsPath
       if (!filePath) {

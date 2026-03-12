@@ -29,34 +29,16 @@
         "title": "PocketPages: Refresh Server Script Diagnostics"
       },
       {
-        "command": "pocketpagesServerScript.findCurrentPartialReferences",
-        "title": "PocketPages: Find Current Partial References"
-      },
-      {
-        "command": "pocketpagesServerScript.findCurrentModuleReferences",
-        "title": "PocketPages: Find Current Module References"
-      },
-      {
-        "command": "pocketpagesServerScript.findCurrentRouteReferences",
-        "title": "PocketPages: Find Current Route References"
+        "command": "pocketpagesServerScript.allFileReferences",
+        "title": "PocketPages: All File References"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "pocketpagesServerScript.findCurrentPartialReferences",
-          "when": "resourceScheme == file && resourceExtname == .ejs",
-          "group": "navigation@20"
-        },
-        {
-          "command": "pocketpagesServerScript.findCurrentModuleReferences",
-          "when": "resourceScheme == file && (resourceExtname == .js || resourceExtname == .cjs || resourceExtname == .mjs)",
-          "group": "navigation@21"
-        },
-        {
-          "command": "pocketpagesServerScript.findCurrentRouteReferences",
+          "command": "pocketpagesServerScript.allFileReferences",
           "when": "resourceScheme == file && (resourceExtname == .ejs || resourceExtname == .js || resourceExtname == .cjs || resourceExtname == .mjs)",
-          "group": "navigation@22"
+          "group": "navigation@20"
         }
       ]
     }
