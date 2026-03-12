@@ -15,8 +15,7 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onLanguage:ejs",
-    "onCommand:pocketpagesServerScript.probeCurrentFile"
+    "onLanguage:ejs"
   ],
   "main": "./src/extension.js",
   "contributes": {
@@ -28,6 +27,10 @@
       {
         "command": "pocketpagesServerScript.refreshDiagnostics",
         "title": "PocketPages: Refresh Server Script Diagnostics"
+      },
+      {
+        "command": "pocketpagesServerScript.findCurrentPartialReferences",
+        "title": "PocketPages: Find Current Partial References"
       }
     ]
   },

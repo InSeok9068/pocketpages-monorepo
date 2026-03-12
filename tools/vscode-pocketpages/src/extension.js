@@ -63,6 +63,10 @@ function toDefinitionLocation(target) {
   )
 }
 
+function toReferenceLocation(document, reference) {
+  return new vscode.Location(document.uri, toRange(document, reference.start, reference.end))
+}
+
 function diagnosticSeverity(category) {
   switch (category) {
     case ts.DiagnosticCategory.Error:
@@ -681,6 +685,72 @@ function activate(context) {
       output.appendLine(`probe: ${message}`)
       output.show(true)
       vscode.window.showInformationMessage(message)
+    }),
+    vscode.commands.registerCommand('pocketpagesServerScript.findCurrentPartialReferences', async () => {
+      const editor = vscode.window.activeTextEditor
+      if (!editor) {
+        vscode.window.showWarningMessage('No active editor.')
+        return
+      }
+
+      const document = editor.document
+      if (document.uri.scheme !== 'file' || !document.uri.fsPath.endsWith('.ejs')) {
+        vscode.window.showWarningMessage('Open a _private/*.ejs file first.')
+        return
+      }
+
+      const normalizedPath = document.uri.fsPath.replace(/\\/g, '/')
+      if (!normalizedPath.includes('/pb_hooks/pages/_private/')) {
+        vscode.window.showWarningMessage('This command currently supports only _private/*.ejs partial files.')
+        return
+      }
+
+      const service = manager.getServiceForFile(document.uri.fsPath)
+      if (!service) {
+        vscode.window.showWarningMessage('Current file is not inside a PocketPages app root.')
+        return
+      }
+
+      const references = service.getReferenceTargets(document.uri.fsPath, document.getText(), 0, {
+        includeDeclaration: false,
+      })
+
+      output.appendLine(
+        `findCurrentPartialReferences: path=${document.uri.fsPath} refs=${references ? references.length : 0}`
+      )
+
+      if (!references || !references.length) {
+        vscode.window.showInformationMessage('No include() references found for this partial.')
+        return
+      }
+
+      const uniqueFilePaths = [...new Set(references.map((entry) => entry.filePath))]
+      const referenceDocuments = await Promise.all(
+        uniqueFilePaths.map(async (filePath) => [filePath, await vscode.workspace.openTextDocument(vscode.Uri.file(filePath))])
+      )
+      const documentMap = new Map(referenceDocuments)
+      const locations = references
+        .map((reference) => {
+          const referenceDocument = documentMap.get(reference.filePath)
+          if (!referenceDocument) {
+            return null
+          }
+
+          return toReferenceLocation(referenceDocument, reference)
+        })
+        .filter(Boolean)
+
+      if (!locations.length) {
+        vscode.window.showInformationMessage('Found references, but failed to open the target files.')
+        return
+      }
+
+      await vscode.commands.executeCommand(
+        'editor.action.showReferences',
+        document.uri,
+        editor.selection.active,
+        locations
+      )
     })
   )
 

@@ -8,7 +8,7 @@
   "search.exclude": {
     ".docs/**": true,
     "tools/**": true,
-    "pb_schema.json": true,
+    "**/pb_schema.json": true,
     "package-lock.json": true,
     "lint-pocketpages.js": true
   },

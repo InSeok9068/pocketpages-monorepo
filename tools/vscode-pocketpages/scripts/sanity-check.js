@@ -639,6 +639,25 @@ boardService.readAuthState(
       throw new Error(`Expected include() definition target. Got: ${includeDefinition}`)
     }
 
+    const partialReferenceText = `<div><%= flashMessage %></div>\n`
+    const partialReferenceOffset = partialReferenceText.indexOf('flashMessage') + 2
+    const partialReferences = service.getReferenceTargets(
+      fixture.flashAlertFilePath,
+      partialReferenceText,
+      partialReferenceOffset,
+      { includeDeclaration: false }
+    )
+    if (!partialReferences || partialReferences.length !== 1) {
+      throw new Error(`Expected _private partial include references. Got: ${JSON.stringify(partialReferences)}`)
+    }
+    if (
+      !partialReferences.some(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
+      )
+    ) {
+      throw new Error(`Expected _private partial reference to point at boards index include call. Got: ${JSON.stringify(partialReferences)}`)
+    }
+
     const privateTemplateCompletionText = `<div><%= flashMeta. %></div>\n`
     const privateTemplateCompletionOffset =
       privateTemplateCompletionText.indexOf('flashMeta.') + 'flashMeta.'.length

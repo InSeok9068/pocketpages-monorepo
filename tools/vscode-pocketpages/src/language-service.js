@@ -1235,6 +1235,17 @@ class ProjectLanguageService {
     };
   }
 
+  getPrivateIncludeReferenceContext(filePath) {
+    if (!isEjsFile(filePath) || !isPrivatePagesFile(filePath)) {
+      return null;
+    }
+
+    return {
+      kind: "include-path",
+      targetFilePath: normalizePath(filePath),
+    };
+  }
+
   collectPathReferenceLocations(pathKind, targetFilePath, overrides = {}) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
     const uniqueLocations = new Map();
@@ -1835,7 +1846,8 @@ class ProjectLanguageService {
   }
 
   getReferenceTargets(filePath, documentText, offset, options = {}) {
-    const pathReferenceContext = this.getPathReferenceContext(filePath, documentText, offset);
+    const pathReferenceContext =
+      this.getPathReferenceContext(filePath, documentText, offset) || this.getPrivateIncludeReferenceContext(filePath);
     if (pathReferenceContext) {
       return this.collectPathReferenceLocations(pathReferenceContext.kind, pathReferenceContext.targetFilePath, {
         [normalizePath(filePath)]: documentText,
