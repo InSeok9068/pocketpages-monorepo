@@ -67,6 +67,98 @@ function toReferenceLocation(document, reference) {
   return new vscode.Location(document.uri, toRange(document, reference.start, reference.end))
 }
 
+function workspaceRelativePath(filePath) {
+  return vscode.workspace.asRelativePath(filePath, false)
+}
+
+function describeReferenceQuery(referenceQuery) {
+  if (!referenceQuery) {
+    return 'references'
+  }
+
+  if (referenceQuery.kind === 'include-path') {
+    return 'include references'
+  }
+
+  if (referenceQuery.kind === 'resolve-path') {
+    return 'resolve references'
+  }
+
+  if (referenceQuery.kind === 'route-path') {
+    return referenceQuery.routePath ? `route references for ${referenceQuery.routePath}` : 'route references'
+  }
+
+  return 'references'
+}
+
+async function showFileReferences({ manager, output, document, editor, filePath }) {
+  const service = manager.getServiceForFile(filePath)
+  if (!service) {
+    vscode.window.showWarningMessage('Current file is not inside a PocketPages app root.')
+    return
+  }
+
+  const referenceQuery = service.getFileReferenceQuery(filePath)
+  if (!referenceQuery) {
+    vscode.window.showWarningMessage(
+      'This file is not a supported PocketPages target. Use a _private partial, a _private module, or a static route file.'
+    )
+    return
+  }
+
+  const effectiveDocument =
+    document && document.uri.fsPath === filePath ? document : await vscode.workspace.openTextDocument(vscode.Uri.file(filePath))
+  const references = service.getFileReferenceTargets(filePath, effectiveDocument.getText(), {
+    includeDeclaration: false,
+  })
+
+  output.appendLine(
+    `showFileReferences: kind=${referenceQuery.kind} path=${filePath} refs=${references ? references.length : 0}`
+  )
+
+  if (!references || !references.length) {
+    vscode.window.showInformationMessage(referenceQuery.emptyMessage || `No ${describeReferenceQuery(referenceQuery)} found.`)
+    return
+  }
+
+  const uniqueFilePaths = [...new Set(references.map((entry) => entry.filePath))]
+  const referenceDocuments = await Promise.all(
+    uniqueFilePaths.map(async (referenceFilePath) => [
+      referenceFilePath,
+      await vscode.workspace.openTextDocument(vscode.Uri.file(referenceFilePath)),
+    ])
+  )
+  const documentMap = new Map(referenceDocuments)
+  const locations = references
+    .map((reference) => {
+      const referenceDocument = documentMap.get(reference.filePath)
+      if (!referenceDocument) {
+        return null
+      }
+
+      return toReferenceLocation(referenceDocument, reference)
+    })
+    .filter(Boolean)
+
+  if (!locations.length) {
+    vscode.window.showInformationMessage('Found references, but failed to open the target files.')
+    return
+  }
+
+  const activeEditor =
+    editor && editor.document.uri.fsPath === filePath
+      ? editor
+      : vscode.window.visibleTextEditors.find((candidate) => candidate.document.uri.fsPath === filePath)
+  const anchorPosition = activeEditor ? activeEditor.selection.active : new vscode.Position(0, 0)
+
+  await vscode.commands.executeCommand(
+    'editor.action.showReferences',
+    effectiveDocument.uri,
+    anchorPosition,
+    locations
+  )
+}
+
 function diagnosticSeverity(category) {
   switch (category) {
     case ts.DiagnosticCategory.Error:
@@ -272,22 +364,39 @@ class PocketPagesHoverProvider {
 
     const offset = document.offsetAt(position)
     const quickInfo = service.getQuickInfo(document.uri.fsPath, document.getText(), offset)
+    const pathTargetInfo = service.getPathTargetInfo(document.uri.fsPath, document.getText(), offset)
 
-    if (!quickInfo || quickInfo.start === null || quickInfo.end === null) {
+    if ((!quickInfo || quickInfo.start === null || quickInfo.end === null) && !pathTargetInfo) {
       return null
     }
 
     const contents = []
 
-    if (quickInfo.displayText) {
+    if (quickInfo && quickInfo.displayText) {
       contents.push(new vscode.MarkdownString().appendCodeblock(quickInfo.displayText, 'ts'))
     }
 
-    if (quickInfo.documentation) {
+    if (quickInfo && quickInfo.documentation) {
       contents.push(new vscode.MarkdownString(quickInfo.documentation))
     }
+    if (pathTargetInfo && pathTargetInfo.targetFilePath) {
+      const targetLabel = workspaceRelativePath(pathTargetInfo.targetFilePath)
+      const pathDetails = new vscode.MarkdownString()
+      pathDetails.appendMarkdown(`PocketPages target: \`${targetLabel}\``)
 
-    return new vscode.Hover(contents, toRange(document, quickInfo.start, quickInfo.end))
+      if (pathTargetInfo.kind === 'route-path' && pathTargetInfo.value) {
+        pathDetails.appendMarkdown(`\n\nRoute: \`${pathTargetInfo.value}\``)
+      }
+
+      contents.push(pathDetails)
+    }
+
+    const hoverRange =
+      quickInfo && quickInfo.start !== null && quickInfo.end !== null
+        ? toRange(document, quickInfo.start, quickInfo.end)
+        : toRange(document, pathTargetInfo.start, pathTargetInfo.end)
+
+    return new vscode.Hover(contents, hoverRange)
   }
 }
 
@@ -526,6 +635,43 @@ class PocketPagesDocumentLinkProvider {
   }
 }
 
+class PocketPagesCodeLensProvider {
+  constructor(manager) {
+    this.manager = manager
+  }
+
+  provideCodeLenses(document) {
+    if (!findAppRoot(document.uri.fsPath)) {
+      return null
+    }
+
+    const service = this.manager.getServiceForFile(document.uri.fsPath)
+    if (!service) {
+      return null
+    }
+
+    const referenceQuery = service.getFileReferenceQuery(document.uri.fsPath)
+    if (!referenceQuery) {
+      return null
+    }
+
+    const references = service.getFileReferenceTargets(document.uri.fsPath, document.getText(), {
+      includeDeclaration: false,
+    })
+    const referenceCount = references ? references.length : 0
+    const title = `${referenceQuery.title} (${referenceCount})`
+    const range = new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0))
+
+    return [
+      new vscode.CodeLens(range, {
+        title,
+        command: referenceQuery.command,
+        arguments: [document.uri],
+      }),
+    ]
+  }
+}
+
 class PocketPagesSemanticTokensProvider {
   provideDocumentSemanticTokens(document) {
     if (!findAppRoot(document.uri.fsPath)) {
@@ -626,6 +772,7 @@ function activate(context) {
     ),
     vscode.languages.registerDocumentLinkProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesDocumentLinkProvider(manager)),
     vscode.languages.registerDefinitionProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesDefinitionProvider(manager)),
+    vscode.languages.registerCodeLensProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesCodeLensProvider(manager)),
     vscode.languages.registerCodeActionsProvider(
       CODE_DOCUMENT_SELECTOR,
       new PocketPagesCodeActionProvider(manager),
@@ -686,71 +833,53 @@ function activate(context) {
       output.show(true)
       vscode.window.showInformationMessage(message)
     }),
-    vscode.commands.registerCommand('pocketpagesServerScript.findCurrentPartialReferences', async () => {
+    vscode.commands.registerCommand('pocketpagesServerScript.findCurrentPartialReferences', async (resourceUri) => {
       const editor = vscode.window.activeTextEditor
-      if (!editor) {
+      const filePath = resourceUri && resourceUri.fsPath ? resourceUri.fsPath : editor && editor.document.uri.fsPath
+      if (!filePath) {
         vscode.window.showWarningMessage('No active editor.')
         return
       }
 
-      const document = editor.document
-      if (document.uri.scheme !== 'file' || !document.uri.fsPath.endsWith('.ejs')) {
-        vscode.window.showWarningMessage('Open a _private/*.ejs file first.')
-        return
-      }
-
-      const normalizedPath = document.uri.fsPath.replace(/\\/g, '/')
-      if (!normalizedPath.includes('/pb_hooks/pages/_private/')) {
-        vscode.window.showWarningMessage('This command currently supports only _private/*.ejs partial files.')
-        return
-      }
-
-      const service = manager.getServiceForFile(document.uri.fsPath)
-      if (!service) {
-        vscode.window.showWarningMessage('Current file is not inside a PocketPages app root.')
-        return
-      }
-
-      const references = service.getReferenceTargets(document.uri.fsPath, document.getText(), 0, {
-        includeDeclaration: false,
+      await showFileReferences({
+        manager,
+        output,
+        document: editor && editor.document.uri.fsPath === filePath ? editor.document : null,
+        editor,
+        filePath,
       })
-
-      output.appendLine(
-        `findCurrentPartialReferences: path=${document.uri.fsPath} refs=${references ? references.length : 0}`
-      )
-
-      if (!references || !references.length) {
-        vscode.window.showInformationMessage('No include() references found for this partial.')
+    }),
+    vscode.commands.registerCommand('pocketpagesServerScript.findCurrentModuleReferences', async (resourceUri) => {
+      const editor = vscode.window.activeTextEditor
+      const filePath = resourceUri && resourceUri.fsPath ? resourceUri.fsPath : editor && editor.document.uri.fsPath
+      if (!filePath) {
+        vscode.window.showWarningMessage('No active editor.')
         return
       }
 
-      const uniqueFilePaths = [...new Set(references.map((entry) => entry.filePath))]
-      const referenceDocuments = await Promise.all(
-        uniqueFilePaths.map(async (filePath) => [filePath, await vscode.workspace.openTextDocument(vscode.Uri.file(filePath))])
-      )
-      const documentMap = new Map(referenceDocuments)
-      const locations = references
-        .map((reference) => {
-          const referenceDocument = documentMap.get(reference.filePath)
-          if (!referenceDocument) {
-            return null
-          }
-
-          return toReferenceLocation(referenceDocument, reference)
-        })
-        .filter(Boolean)
-
-      if (!locations.length) {
-        vscode.window.showInformationMessage('Found references, but failed to open the target files.')
+      await showFileReferences({
+        manager,
+        output,
+        document: editor && editor.document.uri.fsPath === filePath ? editor.document : null,
+        editor,
+        filePath,
+      })
+    }),
+    vscode.commands.registerCommand('pocketpagesServerScript.findCurrentRouteReferences', async (resourceUri) => {
+      const editor = vscode.window.activeTextEditor
+      const filePath = resourceUri && resourceUri.fsPath ? resourceUri.fsPath : editor && editor.document.uri.fsPath
+      if (!filePath) {
+        vscode.window.showWarningMessage('No active editor.')
         return
       }
 
-      await vscode.commands.executeCommand(
-        'editor.action.showReferences',
-        document.uri,
-        editor.selection.active,
-        locations
-      )
+      await showFileReferences({
+        manager,
+        output,
+        document: editor && editor.document.uri.fsPath === filePath ? editor.document : null,
+        editor,
+        filePath,
+      })
     })
   )
 

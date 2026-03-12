@@ -639,6 +639,15 @@ boardService.readAuthState(
       throw new Error(`Expected include() definition target. Got: ${includeDefinition}`)
     }
 
+    const includePathTargetInfo = service.getPathTargetInfo(
+      fixture.boardsFilePath,
+      `<%- include('flash-alert.ejs') %>\n`,
+      `<%- include('flash-alert.ejs') %>\n`.indexOf('flash-alert.ejs') + 2
+    )
+    if (!includePathTargetInfo || normalizeFilePath(includePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.flashAlertFilePath)) {
+      throw new Error(`Expected include() path target info. Got: ${JSON.stringify(includePathTargetInfo)}`)
+    }
+
     const partialReferenceText = `<div><%= flashMessage %></div>\n`
     const partialReferenceOffset = partialReferenceText.indexOf('flashMessage') + 2
     const partialReferences = service.getReferenceTargets(
@@ -656,6 +665,16 @@ boardService.readAuthState(
       )
     ) {
       throw new Error(`Expected _private partial reference to point at boards index include call. Got: ${JSON.stringify(partialReferences)}`)
+    }
+
+    const partialReferenceQuery = service.getFileReferenceQuery(fixture.flashAlertFilePath)
+    if (!partialReferenceQuery || partialReferenceQuery.kind !== 'include-path') {
+      throw new Error(`Expected _private partial file reference query. Got: ${JSON.stringify(partialReferenceQuery)}`)
+    }
+
+    const partialFileReferences = service.getFileReferenceTargets(fixture.flashAlertFilePath, fs.readFileSync(fixture.flashAlertFilePath, 'utf8'))
+    if (!partialFileReferences || partialFileReferences.length !== 1) {
+      throw new Error(`Expected file-based partial references. Got: ${JSON.stringify(partialFileReferences)}`)
     }
 
     const privateTemplateCompletionText = `<div><%= flashMeta. %></div>\n`
@@ -987,6 +1006,29 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
     )
     if (!moduleExportReferences || moduleExportReferences.length !== 4) {
       throw new Error(`Expected module export references to include JS and EJS usages. Got: ${JSON.stringify(moduleExportReferences)}`)
+    }
+
+    const moduleReferenceQuery = service.getFileReferenceQuery(fixture.boardServiceFilePath)
+    if (!moduleReferenceQuery || moduleReferenceQuery.kind !== 'resolve-path') {
+      throw new Error(`Expected _private module file reference query. Got: ${JSON.stringify(moduleReferenceQuery)}`)
+    }
+
+    const moduleFileReferences = service.getFileReferenceTargets(fixture.boardServiceFilePath, fs.readFileSync(fixture.boardServiceFilePath, 'utf8'))
+    if (!moduleFileReferences || moduleFileReferences.length !== 3) {
+      throw new Error(`Expected file-based resolve() references in three files. Got: ${JSON.stringify(moduleFileReferences)}`)
+    }
+
+    const routeReferenceQuery = service.getFileReferenceQuery(fixture.boardsFilePath)
+    if (!routeReferenceQuery || routeReferenceQuery.kind !== 'route-path' || routeReferenceQuery.routePath !== '/boards') {
+      throw new Error(`Expected static route file reference query for /boards. Got: ${JSON.stringify(routeReferenceQuery)}`)
+    }
+
+    const routeFileReferences = service.getFileReferenceTargets(fixture.boardsFilePath, fs.readFileSync(fixture.boardsFilePath, 'utf8'))
+    if (!routeFileReferences || routeFileReferences.length !== 1) {
+      throw new Error(`Expected file-based route references for /boards. Got: ${JSON.stringify(routeFileReferences)}`)
+    }
+    if (!routeFileReferences.some((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.siteIndexFilePath))) {
+      throw new Error(`Expected /boards route reference to point at site index href. Got: ${JSON.stringify(routeFileReferences)}`)
     }
 
     const hrefDefinition = indexService.getDefinitionTarget(

@@ -1235,6 +1235,10 @@ class ProjectLanguageService {
     };
   }
 
+  getPathTargetInfo(filePath, documentText, offset) {
+    return this.getPathReferenceContext(filePath, documentText, offset);
+  }
+
   getPrivateIncludeReferenceContext(filePath) {
     if (!isEjsFile(filePath) || !isPrivatePagesFile(filePath)) {
       return null;
@@ -1243,6 +1247,47 @@ class ProjectLanguageService {
     return {
       kind: "include-path",
       targetFilePath: normalizePath(filePath),
+    };
+  }
+
+  getFileReferenceQuery(filePath) {
+    const normalizedFilePath = normalizePath(filePath);
+
+    if (isPrivatePagesFile(normalizedFilePath)) {
+      if (isEjsFile(normalizedFilePath)) {
+        return {
+          kind: "include-path",
+          targetFilePath: normalizedFilePath,
+          command: "pocketpagesServerScript.findCurrentPartialReferences",
+          title: "Find include references",
+          emptyMessage: "No include() references found for this partial.",
+        };
+      }
+
+      if (isScriptFile(normalizedFilePath)) {
+        return {
+          kind: "resolve-path",
+          targetFilePath: normalizedFilePath,
+          command: "pocketpagesServerScript.findCurrentModuleReferences",
+          title: "Find resolve references",
+          emptyMessage: "No resolve() references found for this private module.",
+        };
+      }
+    }
+
+    const routeEntry = this.projectIndex.getStaticRouteEntryByFilePath(normalizedFilePath);
+    if (!routeEntry) {
+      return null;
+    }
+
+    return {
+      kind: "route-path",
+      targetFilePath: normalizedFilePath,
+      command: "pocketpagesServerScript.findCurrentRouteReferences",
+      title: `Find route references for ${routeEntry.routePath}`,
+      emptyMessage: `No route references found for ${routeEntry.routePath}.`,
+      routePath: routeEntry.routePath,
+      routeMethod: routeEntry.method || "PAGE",
     };
   }
 
@@ -1277,6 +1322,17 @@ class ProjectLanguageService {
     }
 
     return [...uniqueLocations.values()];
+  }
+
+  getFileReferenceTargets(filePath, documentText, _options = {}) {
+    const referenceQuery = this.getFileReferenceQuery(filePath);
+    if (!referenceQuery) {
+      return null;
+    }
+
+    return this.collectPathReferenceLocations(referenceQuery.kind, referenceQuery.targetFilePath, {
+      [normalizePath(filePath)]: documentText,
+    });
   }
 
   collectResolvedModuleMemberUsageLocations(targetModuleFilePath, memberName, overrides = {}) {

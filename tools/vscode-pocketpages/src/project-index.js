@@ -1408,6 +1408,11 @@ class PocketPagesProjectIndex {
     return entries
   }
 
+  getStaticRouteEntryByFilePath(filePath) {
+    const normalizedFilePath = normalizePath(filePath)
+    return this.getStaticRouteEntries().find((entry) => normalizePath(entry.filePath) === normalizedFilePath) || null
+  }
+
   resolveRouteTarget(_filePath, requestPath, options = {}) {
     const normalizedRequestPath = normalizeRoutePath(requestPath)
     if (!normalizedRequestPath) {
