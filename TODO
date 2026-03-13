@@ -23,11 +23,21 @@
       - 읍면동 단위 동네예보 3시간 간격 제공
       - 단기예보 이후 향후 11일까지의 기상전망 제공
 
+  진행:
+
+  완료(✔):
+
+  폐기(✘):
 
 =====================================================================================
 프로젝트고도화(project):
   백로그:
-    ☐ Pocketbase (Extend with JavaScript) / Console commands 을 토대로 csv 파일을 읽어서 DB에 데이터 업로드 하는 기능 추가
+    ☐ Pocketbase (Extend with JavaScript) 데이터 업로드
+      - Console commands 을 토대로 csv 파일을 읽어서 DB에 데이터 업로드 하는 기능 추가
+      - AI가 편하게 쓸 수 있는 CLI로 개발
+    ☐ 스펙(AGENTS.md) <=> 코드(Source) <=> 테스트(__tests__) 동기화 삼각형
+      - 3개가 서로 유기적으로 동기화가 될 수 있도록
+      - https://news.hada.io/topic?id=27331
 
   진행:
 
