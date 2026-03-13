@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -74,6 +75,21 @@ function resolveRunner(serviceDir) {
   throw new Error(`pbw/pocketbase binary not found in ${serviceDir}`);
 }
 
+function createTempDataDir(serviceDir, serviceName) {
+  const sourceDir = path.join(serviceDir, 'pb_data');
+  const tempRootDir = mkdtempSync(path.join(os.tmpdir(), `pocketpages-${serviceName}-`));
+  const tempDataDir = path.join(tempRootDir, 'pb_data');
+
+  cpSync(sourceDir, tempDataDir, {
+    recursive: true,
+  });
+
+  return {
+    tempRootDir,
+    tempDataDir,
+  };
+}
+
 async function waitForServer(getBaseUrl, child, timeoutMs) {
   const startedAt = Date.now();
 
@@ -127,6 +143,17 @@ function stopProcessTree(child) {
   });
 }
 
+function removeTempDir(tempRootDir) {
+  if (!tempRootDir || !existsSync(tempRootDir)) {
+    return;
+  }
+
+  rmSync(tempRootDir, {
+    force: true,
+    recursive: true,
+  });
+}
+
 /**
  * 테스트용 PocketPages 서비스를 띄우고 종료 함수를 돌려준다.
  * @param {{ serviceName: string, timeoutMs?: number }} options
@@ -137,6 +164,7 @@ export async function startService(options) {
   const timeoutMs = options.timeoutMs || 20000;
   const serviceDir = resolveServiceDir(serviceName);
   const [runnerPath, pocketBasePath] = resolveRunner(serviceDir);
+  const tempData = createTempDataDir(serviceDir, serviceName);
   const envFilePath = path.join(serviceDir, '.env');
   const childEnv = {
     ...process.env,
@@ -146,7 +174,7 @@ export async function startService(options) {
     pocketBasePath,
     'serve',
     '--dev',
-    `--dir=${path.join(serviceDir, 'pb_data')}`,
+    `--dir=${tempData.tempDataDir}`,
     `--hooksDir=${path.join(serviceDir, 'pb_hooks')}`,
     '--http=127.0.0.1:8090',
   ];
@@ -189,6 +217,7 @@ export async function startService(options) {
     await waitForServer(() => baseUrl, child, timeoutMs);
   } catch (error) {
     await stopProcessTree(child);
+    removeTempDir(tempData.tempRootDir);
     error.message = `[${serviceName}] ${error.message}\nstdout:\n${stdout}\nstderr:\n${stderr}`;
     throw error;
   }
@@ -197,6 +226,7 @@ export async function startService(options) {
     baseUrl,
     async stop() {
       await stopProcessTree(child);
+      removeTempDir(tempData.tempRootDir);
     },
   };
 }

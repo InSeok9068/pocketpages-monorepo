@@ -258,7 +258,7 @@ run_test() {
     fi
 
     echo "Running tests for service: $service_name"
-    node --test "${test_files[@]}"
+    node --test --test-concurrency=1 "${test_files[@]}"
   }
 
   if [[ -n "$service" ]]; then
