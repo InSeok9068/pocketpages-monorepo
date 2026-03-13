@@ -5,7 +5,7 @@ import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
-const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APPS_DIR = path.join(ROOT_DIR, 'apps');
 
 function parseEnvFile(envFilePath) {
@@ -129,12 +129,11 @@ function stopProcessTree(child) {
 
 /**
  * 테스트용 PocketPages 서비스를 띄우고 종료 함수를 돌려준다.
- * @param {{ serviceName: string, port?: number, timeoutMs?: number }} options
- * @returns {Promise<{ baseUrl: string, stop: () => void }>}
+ * @param {{ serviceName: string, timeoutMs?: number }} options
+ * @returns {Promise<{ baseUrl: string, stop: () => Promise<void> }>}
  */
 export async function startService(options) {
   const serviceName = options.serviceName;
-  const port = options.port || 8090;
   const timeoutMs = options.timeoutMs || 20000;
   const serviceDir = resolveServiceDir(serviceName);
   const [runnerPath, pocketBasePath] = resolveRunner(serviceDir);
@@ -149,7 +148,7 @@ export async function startService(options) {
     '--dev',
     `--dir=${path.join(serviceDir, 'pb_data')}`,
     `--hooksDir=${path.join(serviceDir, 'pb_hooks')}`,
-    `--http=127.0.0.1:${port}`,
+    '--http=127.0.0.1:8090',
   ];
 
   if (existsSync(path.join(serviceDir, 'pb_public'))) {
@@ -168,7 +167,7 @@ export async function startService(options) {
 
   let stdout = '';
   let stderr = '';
-  let baseUrl = `http://127.0.0.1:${port}`;
+  let baseUrl = 'http://127.0.0.1:8090';
 
   child.stdout.on('data', (chunk) => {
     const text = chunk.toString();
@@ -189,7 +188,7 @@ export async function startService(options) {
   try {
     await waitForServer(() => baseUrl, child, timeoutMs);
   } catch (error) {
-    stopProcessTree(child);
+    await stopProcessTree(child);
     error.message = `[${serviceName}] ${error.message}\nstdout:\n${stdout}\nstderr:\n${stderr}`;
     throw error;
   }

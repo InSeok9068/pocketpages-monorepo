@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { load } from 'cheerio';
 
-import { startService } from '../../../scripts/test-support/service-harness.mjs';
+import { startService } from '../../../scripts/service-harness.mjs';
 
 let service;
 
