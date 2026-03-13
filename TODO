@@ -12,6 +12,16 @@
   폐기(✘):
 
 =====================================================================================
+[미정]어디놀러갈까(gospot):
+  백로그:
+    ☐ 문화체육관광부 문화정보[https://www.culture.go.kr/data/openapi/openapiInfo.do]
+      - 공연, 전시, 문화재, 도서관 등 문화정보
+    ☐ 한국관광공사 TourAPI[https://api.visitkorea.or.kr/]
+      - 관광지, 숙박, 음식점, 축제 등 관광정보
+    ☐ 기상청 API[https://github.com/yybmion/public-apis-4Kr?tab=readme-ov-file#%EB%82%A0%EC%94%A8--%ED%99%98%EA%B2%BD]
+
+
+=====================================================================================
 프로젝트고도화(project):
   백로그:
     ☐ Pocketbase (Extend with JavaScript) / Console commands 을 토대로 csv 파일을 읽어서 DB에 데이터 업로드 하는 기능 추가
