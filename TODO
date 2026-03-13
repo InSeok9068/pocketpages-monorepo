@@ -14,11 +14,14 @@
 =====================================================================================
 [미정]어디놀러갈까(gospot):
   백로그:
-    ☐ 문화체육관광부 문화정보[https://www.culture.go.kr/data/openapi/openapiInfo.do]
-      - 공연, 전시, 문화재, 도서관 등 문화정보
-    ☐ 한국관광공사 TourAPI[https://api.visitkorea.or.kr/]
+    ☐ 문화관광 API https://github.com/yybmion/public-apis-4Kr?tab=readme-ov-file#%EB%AC%B8%ED%99%94--%EA%B4%80%EA%B4%91
+      - 박물관, 미술관, 공연, 문화재 정보
       - 관광지, 숙박, 음식점, 축제 등 관광정보
+      - 문화콘텐츠 오픈 API
     ☐ 기상청 API[https://github.com/yybmion/public-apis-4Kr?tab=readme-ov-file#%EB%82%A0%EC%94%A8--%ED%99%98%EA%B2%BD]
+      - 관측·예보·위성·레이더 등 12개 분야 기상데이터
+      - 읍면동 단위 동네예보 3시간 간격 제공
+      - 단기예보 이후 향후 11일까지의 기상전망 제공
 
 
 =====================================================================================
