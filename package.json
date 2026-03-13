@@ -3,6 +3,7 @@
     "format": "prettier --write \"apps/*/pb_hooks/**/*\""
   },
   "devDependencies": {
+    "cheerio": "^1.2.0",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2"
   }

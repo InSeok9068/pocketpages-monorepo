@@ -9,6 +9,7 @@ print_help() {
 Usage:
   ./task.sh start <service> [-- <extra args>]
   ./task.sh kill
+  ./task.sh test [service]
   ./task.sh lint [service]
   ./task.sh diag <file-or-service>
   ./task.sh verify [service]
@@ -17,6 +18,7 @@ Usage:
 Commands:
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
+  test      Run node:test files under __tests__ for one service or all services
   lint      Run lightweight PocketPages self-validation checks for one service or all services
   diag      Run PocketPages editor diagnostics. File mode matches VSCode current .ejs diagnostics most closely.
   verify    Run lint and diag together for one service or all services
@@ -228,6 +230,67 @@ run_lint() {
   node "$lint_script"
 }
 
+run_test() {
+  local service="${1:-}"
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run test command." >&2
+    exit 1
+  fi
+
+  run_test_for_service() {
+    local service_dir="$1"
+    local service_name
+    service_name="$(basename "$service_dir")"
+    local test_dir="$service_dir/__tests__"
+    local test_files=()
+
+    if [[ ! -d "$test_dir" ]]; then
+      echo "Skipping $service_name: missing __tests__ directory."
+      return 0
+    fi
+
+    mapfile -t test_files < <(find "$test_dir" -type f \( -name '*.test.js' -o -name '*.test.mjs' -o -name '*.test.cjs' \) | sort)
+
+    if [[ "${#test_files[@]}" -eq 0 ]]; then
+      echo "Skipping $service_name: no node:test files found."
+      return 0
+    fi
+
+    echo "Running tests for service: $service_name"
+    node --test "${test_files[@]}"
+  }
+
+  if [[ -n "$service" ]]; then
+    local service_dir
+    if ! service_dir="$(resolve_service_dir "$service")"; then
+      echo "Unknown service: $service" >&2
+      echo "Available services:" >&2
+      list_services >&2
+      exit 1
+    fi
+
+    run_test_for_service "$service_dir"
+    return 0
+  fi
+
+  local service_name
+  local service_dir
+  local failed=0
+
+  while IFS= read -r service_name; do
+    service_dir="$APPS_DIR/$service_name"
+
+    if ! run_test_for_service "$service_dir"; then
+      failed=1
+    fi
+  done < <(list_services)
+
+  if [[ "$failed" -ne 0 ]]; then
+    exit 1
+  fi
+}
+
 run_diag() {
   local diag_script="$ROOT_DIR/scripts/diag-pocketpages.js"
   local target="${1:-}"
@@ -294,6 +357,10 @@ case "${1:-help}" in
     ;;
   kill)
     kill_pocketbase
+    ;;
+  test)
+    shift || true
+    run_test "${1:-}"
     ;;
   lint)
     shift || true
