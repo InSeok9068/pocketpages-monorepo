@@ -3,6 +3,7 @@
 const vscode = require('vscode')
 const { PocketPagesLanguageServiceManager, findAppRoot, ts } = require('./language-service')
 const { TOKEN_TYPES, collectEjsSemanticTokenEntries, getTokenTypeIndex } = require('./ejs-semantic-tokens')
+const { getServerTemplateBoundaryLineNumbers } = require('./ejs-server-boundary')
 
 const EJS_DOCUMENT_SELECTOR = [
   { scheme: 'file', pattern: '**/*.ejs' },
@@ -83,6 +84,14 @@ function isSupportedPrivateRenamePath(filePath) {
     normalizedPath.endsWith('.cjs') ||
     normalizedPath.endsWith('.mjs')
   )
+}
+
+function isPrivatePartialDocument(document) {
+  if (!document || document.uri.scheme !== 'file' || !document.uri.fsPath.endsWith('.ejs')) {
+    return false
+  }
+
+  return document.uri.fsPath.replace(/\\/g, '/').includes('/pb_hooks/pages/_private/')
 }
 
 function isPocketPagesCodeDocument(document) {
@@ -867,6 +876,13 @@ function activate(context) {
   const manager = new PocketPagesLanguageServiceManager()
   const diagnostics = vscode.languages.createDiagnosticCollection('pocketpages-server-script')
   const output = vscode.window.createOutputChannel('VSCode PocketPages')
+  const serverTemplateBoundaryDecoration = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    borderWidth: '1px 0 0 0',
+    borderStyle: 'solid',
+    borderColor: new vscode.ThemeColor('editorIndentGuide.background'),
+    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+  })
 
   output.appendLine('VSCode PocketPages activated.')
 
@@ -894,6 +910,40 @@ function activate(context) {
     }
 
     service.clearDocumentOverride(document.uri.fsPath)
+  }
+
+  const updateServerTemplateBoundaries = (editor) => {
+    if (!editor || !editor.document) {
+      return
+    }
+
+    const document = editor.document
+    if (
+      document.uri.scheme !== 'file' ||
+      !document.uri.fsPath.endsWith('.ejs') ||
+      !findAppRoot(document.uri.fsPath)
+    ) {
+      editor.setDecorations(serverTemplateBoundaryDecoration, [])
+      return
+    }
+
+    const boundaryRanges = getServerTemplateBoundaryLineNumbers(document.getText(), {
+      includeTopLevelPartialSetup: isPrivatePartialDocument(document),
+    }).map((lineIndex) =>
+      new vscode.Range(new vscode.Position(lineIndex, 0), new vscode.Position(lineIndex, 0))
+    )
+
+    editor.setDecorations(serverTemplateBoundaryDecoration, boundaryRanges)
+  }
+
+  const updateServerTemplateBoundariesForDocument = (document) => {
+    for (const editor of vscode.window.visibleTextEditors) {
+      if (editor.document.uri.toString() !== document.uri.toString()) {
+        continue
+      }
+
+      updateServerTemplateBoundaries(editor)
+    }
   }
 
   const updateDiagnostics = (document) => {
@@ -932,6 +982,7 @@ function activate(context) {
   context.subscriptions.push(
     diagnostics,
     output,
+    serverTemplateBoundaryDecoration,
     vscode.languages.registerCompletionItemProvider(
       CODE_DOCUMENT_SELECTOR,
       new PocketPagesCompletionProvider(manager),
@@ -970,6 +1021,7 @@ function activate(context) {
     vscode.workspace.onDidOpenTextDocument((document) => {
       syncDocumentOverride(document)
       updateDiagnostics(document)
+      updateServerTemplateBoundariesForDocument(document)
     }),
     vscode.workspace.onDidCloseTextDocument((document) => {
       clearDocumentOverride(document)
@@ -978,17 +1030,25 @@ function activate(context) {
     vscode.workspace.onDidChangeTextDocument((event) => {
       syncDocumentOverride(event.document)
       debouncedUpdateDiagnostics(event.document)
+      updateServerTemplateBoundariesForDocument(event.document)
     }),
     vscode.workspace.onDidRenameFiles((event) => applyPrivateFileRenameEdits({ manager, output, event })),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       if (editor) {
         updateDiagnostics(editor.document)
+        updateServerTemplateBoundaries(editor)
       }
+    }),
+    vscode.window.onDidChangeVisibleTextEditors((editors) => {
+      editors.forEach((editor) => {
+        updateServerTemplateBoundaries(editor)
+      })
     }),
     vscode.commands.registerCommand('pocketpagesServerScript.refreshDiagnostics', () => {
       const editor = vscode.window.activeTextEditor
       if (editor) {
         updateDiagnostics(editor.document)
+        updateServerTemplateBoundaries(editor)
       }
     }),
     vscode.commands.registerCommand('pocketpagesServerScript.noopCodeLens', () => {}),
@@ -1072,6 +1132,10 @@ function activate(context) {
   for (const document of vscode.workspace.textDocuments) {
     syncDocumentOverride(document)
     updateDiagnostics(document)
+  }
+
+  for (const editor of vscode.window.visibleTextEditors) {
+    updateServerTemplateBoundaries(editor)
   }
 }
 

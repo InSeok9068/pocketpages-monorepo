@@ -5,6 +5,7 @@ const os = require('os')
 const path = require('path')
 const { PocketPagesLanguageServiceManager } = require('../src/language-service')
 const { collectEjsSemanticTokenEntries } = require('../src/ejs-semantic-tokens')
+const { getServerTemplateBoundaryLineNumbers } = require('../src/ejs-server-boundary')
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true })
@@ -2152,9 +2153,85 @@ metaPayload.trim()
       throw new Error(`Expected action route document link target. Got: ${routeDocumentLinkTargets.join(', ')}`)
     }
 
+    const serverTemplateBoundaryLines = getServerTemplateBoundaryLineNumbers(
+      `<script server>
+const boardService = resolve('board-service')
+</script>
+
+<section>
+  <div>Boards</div>
+</section>
+`
+    )
+    if (serverTemplateBoundaryLines.length !== 1 || serverTemplateBoundaryLines[0] !== 4) {
+      throw new Error(
+        `Expected one server/template boundary at the first template line. Got: ${JSON.stringify(serverTemplateBoundaryLines)}`
+      )
+    }
+
+    const consecutiveServerBoundaryLines = getServerTemplateBoundaryLineNumbers(
+      `<script server>
+const authState = resolve('auth-service')
+</script>
+
+<script server>
+const boardService = resolve('board-service')
+</script>
+
+<section>
+  <div>Boards</div>
+</section>
+`
+    )
+    if (consecutiveServerBoundaryLines.length !== 1 || consecutiveServerBoundaryLines[0] !== 8) {
+      throw new Error(
+        `Expected consecutive server blocks to skip intermediate separators. Got: ${JSON.stringify(consecutiveServerBoundaryLines)}`
+      )
+    }
+
+    const privatePartialBoundaryLines = getServerTemplateBoundaryLineNumbers(
+      `<%
+const safeState = pageState || { ok: true }
+const reportDate = String(safeState.reportDate || '').trim()
+%>
+
+<section>
+  <div>Dashboard</div>
+</section>
+`,
+      { includeTopLevelPartialSetup: true }
+    )
+    if (privatePartialBoundaryLines.length !== 1 || privatePartialBoundaryLines[0] !== 5) {
+      throw new Error(
+        `Expected _private partial setup block boundary at the first template line. Got: ${JSON.stringify(privatePartialBoundaryLines)}`
+      )
+    }
+
+    const rawOutputBoundaryLines = getServerTemplateBoundaryLineNumbers(
+      `<%- include('flash-alert.ejs') %>
+<section>
+  <div>Dashboard</div>
+</section>
+`,
+      { includeTopLevelPartialSetup: true }
+    )
+    if (rawOutputBoundaryLines.length !== 0) {
+      throw new Error(
+        `Expected raw output blocks to avoid partial setup boundaries. Got: ${JSON.stringify(rawOutputBoundaryLines)}`
+      )
+    }
+
     const extensionSourceText = fs.readFileSync(path.join(__dirname, '../src/extension.js'), 'utf8')
     if (!extensionSourceText.includes("command: 'vscode.open'") || !extensionSourceText.includes("command: 'pocketpagesServerScript.noopCodeLens'")) {
       throw new Error('Expected CodeLens provider to map target paths to vscode.open and fall back to an internal no-op command.')
+    }
+    if (
+      !extensionSourceText.includes('createTextEditorDecorationType') ||
+      !extensionSourceText.includes('getServerTemplateBoundaryLineNumbers') ||
+      !extensionSourceText.includes('onDidChangeVisibleTextEditors') ||
+      !extensionSourceText.includes('includeTopLevelPartialSetup')
+    ) {
+      throw new Error('Expected extension to register server/template boundary decorations for visible EJS editors.')
     }
     if (!routeDocumentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/(site)/index.ejs'))) {
       throw new Error(`Expected redirect route document link target. Got: ${routeDocumentLinkTargets.join(', ')}`)

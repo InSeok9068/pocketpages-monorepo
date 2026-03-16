@@ -28,6 +28,7 @@
 // 24) include()에 full context(api/request/response/resolve/params/data) 전달
 // 25) 로컬 @typedef 사용
 // 26) module.exports.foo = ... 형태의 분산 export 사용
+// 27) _private/*.ejs 에서 <script server> 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -82,6 +83,7 @@ const RE = {
   privateModuleFactoryExport: /module\.exports\s*=\s*[A-Za-z_$][A-Za-z0-9_$]*\s*\(/,
   localTypedef: /@typedef\b/,
   distributedModuleExport: /module\.exports\.[A-Za-z_$][A-Za-z0-9_$]*\s*=/,
+  scriptServerTag: /<script\b(?=[^>]*\bserver\b)/,
 }
 
 let errors = 0
@@ -788,6 +790,16 @@ function lintService(context) {
     context.serviceName,
     'Prefer plain module exports. Group public members in one module.exports = { ... } object instead of scattered module.exports.foo assignments.',
     distributedModuleExportWarnings,
+  )
+
+  const privateScriptServerMatches = collectLineMatches(
+    context.pagesEjsFiles.filter((file) => file.relFromPages.startsWith('_private/')),
+    RE.scriptServerTag,
+  )
+  printMatches(
+    context.serviceName,
+    'Invalid _private <script server> usage. Keep _private partial setup in top-level <% ... %> blocks and reserve <script server> for entry EJS files.',
+    privateScriptServerMatches,
   )
 
   const includeFullContextMatches = collectIncludeFullContextMatches(context.pagesEjsFiles)
