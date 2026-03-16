@@ -218,6 +218,28 @@ const boardService = resolve('board-service')
 `
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'override-card-check.ejs'),
+    `<%- include('override-card.ejs', { banner: { message: 'Saved' } }) %>\n`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-a.ejs'),
+    `<%- include('optional-notice.ejs', { noticeText: 'Saved', tone: 'notice' }) %>\n`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-b.ejs'),
+    `<%- include('optional-notice.ejs', { tone: 'error' }) %>\n`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-reference-check.ejs'),
+    `<a href="/sign-in">Go</a>
+<form action="/sign-in" method="post"></form>
+<button hx-get="/sign-in"></button>
+<script server>
+redirect('/sign-in')
+</script>
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
     `<script server>
 const pageData = {
@@ -280,6 +302,14 @@ module.exports = {
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'property-panel.ejs'),
     `<div><%= values.title %> / <%= boardSlug %></div>\n`
   )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'override-card.ejs'),
+    `<div><%= banner.message %></div>\n`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'optional-notice.ejs'),
+    `<% if (noticeText) { %><div><%= noticeText %> / <%= tone %></div><% } %>\n`
+  )
 
   return {
     fixtureRoot,
@@ -288,6 +318,10 @@ module.exports = {
     boardsFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
     boardShowFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'index.ejs'),
     localsTypeCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'locals-type-check.ejs'),
+    overrideCardCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'override-card-check.ejs'),
+    optionalNoticeAFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-a.ejs'),
+    optionalNoticeBFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-b.ejs'),
+    routeReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-reference-check.ejs'),
     propertyLocalsCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
     renameCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
@@ -296,8 +330,11 @@ module.exports = {
     flashAlertFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
     typedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'typed-panel.ejs'),
     propertyPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'property-panel.ejs'),
+    overrideCardFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'override-card.ejs'),
+    optionalNoticeFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'optional-notice.ejs'),
     signOutFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-out.ejs'),
     signInFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'),
+    siteSignInFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'),
   }
 }
 
@@ -436,6 +473,25 @@ boardService.
       throw new Error(
         `Expected typed resolve() completion for "readAuthState". Got: ${typedResolveCompletionNames.slice(0, 20).join(', ')}`
       )
+    }
+
+    const typedResolveCompletionEntry = typedResolveCompletion
+      ? typedResolveCompletion.entries.find((entry) => entry.name === 'readAuthState')
+      : null
+    const typedResolveCompletionDetails =
+      typedResolveCompletion && typedResolveCompletionEntry
+        ? service.getCompletionDetails(
+            typedResolveCompletion.virtualFileName,
+            typedResolveCompletion.virtualOffset,
+            typedResolveCompletionEntry.name,
+            typedResolveCompletionEntry.source
+          )
+        : null
+    const typedResolveCompletionDetailText = typedResolveCompletionDetails
+      ? (typedResolveCompletionDetails.displayParts || []).map((part) => part.text).join('')
+      : ''
+    if (!typedResolveCompletionDetailText.includes('readAuthState(params: {') || !typedResolveCompletionDetailText.includes('method: string')) {
+      throw new Error(`Expected typed resolve() completion details. Got: ${typedResolveCompletionDetailText}`)
     }
 
     const typedResolveHoverText = `<script server>
@@ -640,6 +696,15 @@ boardService.readAuthState(
       throw new Error(`Expected resolve() definition target. Got: ${resolveDefinition}`)
     }
 
+    const resolvePathTargetInfo = service.getPathTargetInfo(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('board-service')\n</script>\n`,
+      `<script server>\nresolve('board-service')\n</script>\n`.indexOf('board-service') + 2
+    )
+    if (!resolvePathTargetInfo || normalizeFilePath(resolvePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.boardServiceFilePath)) {
+      throw new Error(`Expected resolve() path target info. Got: ${JSON.stringify(resolvePathTargetInfo)}`)
+    }
+
     const includeDefinition = service.getDefinitionTarget(
       fixture.boardsFilePath,
       `<%- include('flash-alert.ejs') %>\n`,
@@ -656,6 +721,15 @@ boardService.readAuthState(
     )
     if (!includePathTargetInfo || normalizeFilePath(includePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.flashAlertFilePath)) {
       throw new Error(`Expected include() path target info. Got: ${JSON.stringify(includePathTargetInfo)}`)
+    }
+
+    const hrefPathTargetInfo = indexService.getPathTargetInfo(
+      fixture.siteIndexFilePath,
+      `<a href="/boards"></a>\n`,
+      `<a href="/boards"></a>\n`.indexOf('/boards') + 2
+    )
+    if (!hrefPathTargetInfo || normalizeFilePath(hrefPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.boardsFilePath)) {
+      throw new Error(`Expected href path target info. Got: ${JSON.stringify(hrefPathTargetInfo)}`)
     }
 
     const partialReferenceText = `<div><%= flashMessage %></div>\n`
@@ -813,6 +887,69 @@ boardService.readAuthState(
           .map((entry) => String(entry.message))
           .join(' | ')}`
       )
+    }
+
+    const optionalNoticeText = fs.readFileSync(fixture.optionalNoticeFilePath, 'utf8')
+    const optionalNoticeBindings = service.projectIndex.getIncludeLocalBindings(fixture.optionalNoticeFilePath)
+    const optionalNoticeBinding = optionalNoticeBindings.find((entry) => entry.name === 'noticeText')
+    if (!optionalNoticeBinding || !optionalNoticeBinding.optional || !optionalNoticeBinding.typeText.includes('undefined')) {
+      throw new Error(`Expected optional include() local binding to include undefined. Got: ${JSON.stringify(optionalNoticeBindings)}`)
+    }
+
+    const optionalNoticeDiagnostics = service.getDiagnostics(fixture.optionalNoticeFilePath, optionalNoticeText)
+    if (optionalNoticeDiagnostics.some((entry) => entry.code === 18048 || entry.code === 2339)) {
+      throw new Error(
+        `Expected guarded optional include() locals to avoid TS diagnostics. Got: ${optionalNoticeDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const overrideCardCompletionText = `<div><%= banner. %></div>\n`
+    const overrideCardCompletionOffset = overrideCardCompletionText.indexOf('banner.') + 'banner.'.length
+    const overrideCardBaselineCompletion = service.getCompletionData(
+      fixture.overrideCardFilePath,
+      overrideCardCompletionText,
+      overrideCardCompletionOffset
+    )
+    const overrideCardBaselineNames = overrideCardBaselineCompletion
+      ? overrideCardBaselineCompletion.entries.map((entry) => entry.name)
+      : []
+    if (!overrideCardBaselineNames.includes('message') || overrideCardBaselineNames.includes('title')) {
+      throw new Error(`Expected baseline include() locals completion for override-card. Got: ${overrideCardBaselineNames.join(', ')}`)
+    }
+
+    service.setDocumentOverride(
+      fixture.overrideCardCheckFilePath,
+      `<%- include('override-card.ejs', { banner: { title: 'Saved', count: 1 } }) %>\n`
+    )
+    const overrideCardOverrideCompletion = service.getCompletionData(
+      fixture.overrideCardFilePath,
+      overrideCardCompletionText,
+      overrideCardCompletionOffset
+    )
+    const overrideCardOverrideNames = overrideCardOverrideCompletion
+      ? overrideCardOverrideCompletion.entries.map((entry) => entry.name)
+      : []
+    if (
+      !overrideCardOverrideNames.includes('title') ||
+      !overrideCardOverrideNames.includes('count') ||
+      overrideCardOverrideNames.includes('message')
+    ) {
+      throw new Error(`Expected include() locals override completion to invalidate cache. Got: ${overrideCardOverrideNames.join(', ')}`)
+    }
+
+    service.clearDocumentOverride(fixture.overrideCardCheckFilePath)
+    const overrideCardClearedCompletion = service.getCompletionData(
+      fixture.overrideCardFilePath,
+      overrideCardCompletionText,
+      overrideCardCompletionOffset
+    )
+    const overrideCardClearedNames = overrideCardClearedCompletion
+      ? overrideCardClearedCompletion.entries.map((entry) => entry.name)
+      : []
+    if (!overrideCardClearedNames.includes('message') || overrideCardClearedNames.includes('title')) {
+      throw new Error(`Expected include() locals completion to restore after clearing override. Got: ${overrideCardClearedNames.join(', ')}`)
     }
 
     const resolvedMemberDefinition = service.getDefinitionTarget(
@@ -1018,6 +1155,69 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
       throw new Error(`Expected module export references to include JS and EJS usages. Got: ${JSON.stringify(moduleExportReferences)}`)
     }
 
+    const overriddenBoardServiceText = `/**
+ * @param {{ request: { method: string } }} params
+ * @returns {types.FixtureAuthState}
+ */
+function readSessionState(params) {
+  return /** @type {any} */ ({
+    ok: !!params,
+    method: params.request.method,
+  })
+}
+
+module.exports = {
+  readSessionState,
+}
+`
+    const overriddenResolveCallerText = `<script server>
+const boardService = resolve('board-service')
+boardService.readSessionState({ request })
+</script>
+`
+    service.setDocumentOverride(fixture.boardServiceFilePath, overriddenBoardServiceText)
+    const overriddenDefinition = service.getDefinitionTarget(
+      fixture.renameCheckFilePath,
+      overriddenResolveCallerText,
+      overriddenResolveCallerText.indexOf('readSessionState') + 2
+    )
+    if (
+      !overriddenDefinition ||
+      typeof overriddenDefinition === 'string' ||
+      normalizeFilePath(overriddenDefinition.filePath) !== normalizeFilePath(fixture.boardServiceFilePath)
+    ) {
+      throw new Error(`Expected resolved member definition to follow module override text. Got: ${JSON.stringify(overriddenDefinition)}`)
+    }
+
+    const overriddenRenameInfo = service.getRenameInfo(
+      fixture.renameCheckFilePath,
+      overriddenResolveCallerText,
+      overriddenResolveCallerText.indexOf('readSessionState') + 2
+    )
+    if (!overriddenRenameInfo || !overriddenRenameInfo.canRename || overriddenRenameInfo.placeholder !== 'readSessionState') {
+      throw new Error(`Expected resolved member rename info to follow module override text. Got: ${JSON.stringify(overriddenRenameInfo)}`)
+    }
+    service.clearDocumentOverride(fixture.boardServiceFilePath)
+
+    const partialLocalReferenceText = fs.readFileSync(fixture.flashAlertFilePath, 'utf8')
+    const partialLocalReferenceOffset = partialLocalReferenceText.lastIndexOf('flashTone') + 2
+    const partialSymbolReferences = service.getReferenceTargets(
+      fixture.flashAlertFilePath,
+      partialLocalReferenceText,
+      partialLocalReferenceOffset,
+      { includeDeclaration: true }
+    )
+    if (!partialSymbolReferences || partialSymbolReferences.length !== 2) {
+      throw new Error(`Expected _private partial symbol references to stay inside the partial file. Got: ${JSON.stringify(partialSymbolReferences)}`)
+    }
+    if (
+      partialSymbolReferences.some(
+        (entry) => normalizeFilePath(entry.filePath) !== normalizeFilePath(fixture.flashAlertFilePath)
+      )
+    ) {
+      throw new Error(`Expected _private partial symbol references to avoid include() caller fallback. Got: ${JSON.stringify(partialSymbolReferences)}`)
+    }
+
     const moduleReferenceQuery = service.getFileReferenceQuery(fixture.boardServiceFilePath)
     if (!moduleReferenceQuery || moduleReferenceQuery.kind !== 'private-module') {
       throw new Error(`Expected _private module file reference query. Got: ${JSON.stringify(moduleReferenceQuery)}`)
@@ -1030,6 +1230,29 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
     if (!moduleFileReferences.some((entry) => normalizeFilePath(entry.filePath).endsWith('/pb_hooks/pages/_private/board-service-consumer.js'))) {
       throw new Error(`Expected file-based module references to include static require() usage. Got: ${JSON.stringify(moduleFileReferences)}`)
     }
+
+    service.setDocumentOverride(
+      fixture.boardServiceConsumerFilePath,
+      `const firstBoardService = require('./board-service')
+const secondBoardService = require('./board-service')
+
+module.exports = {
+  firstBoardService,
+  secondBoardService,
+}
+`
+    )
+    const overriddenModuleFileReferences = service.getFileReferenceTargets(
+      fixture.boardServiceFilePath,
+      fs.readFileSync(fixture.boardServiceFilePath, 'utf8')
+    )
+    const overriddenConsumerReferences = (overriddenModuleFileReferences || []).filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardServiceConsumerFilePath)
+    )
+    if (overriddenConsumerReferences.length !== 2) {
+      throw new Error(`Expected file-based module references to follow open document overrides. Got: ${JSON.stringify(overriddenConsumerReferences)}`)
+    }
+    service.clearDocumentOverride(fixture.boardServiceConsumerFilePath)
 
     const partialRenameEdits = service.getFileRenameEdits(
       fixture.flashAlertFilePath,
@@ -1092,6 +1315,68 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
       throw new Error(`Expected static require() path to update after module file rename. Got: ${renamedRequireConsumerText}`)
     }
 
+    const duplicatePartialCallerText = `<%- include('flash-alert.ejs', { flashMessage: 'Saved' }) %>\n<%- include('flash-alert.ejs', { flashMessage: 'Again' }) %>\n`
+    service.setDocumentOverride(fixture.boardsFilePath, duplicatePartialCallerText)
+    const duplicatePartialRenameEdits = service.getFileRenameEdits(
+      fixture.flashAlertFilePath,
+      path.resolve(path.dirname(fixture.flashAlertFilePath), 'notice-alert.ejs')
+    )
+    const duplicateBoardsEdits = duplicatePartialRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
+    )
+    if (duplicateBoardsEdits.length !== 2) {
+      throw new Error(`Expected two include() edits in the same caller file. Got: ${JSON.stringify(duplicateBoardsEdits)}`)
+    }
+    const duplicatePartialRenamedText = applyEditsToText(duplicatePartialCallerText, duplicateBoardsEdits)
+    if ((duplicatePartialRenamedText.match(/notice-alert\.ejs/g) || []).length !== 2) {
+      throw new Error(`Expected both include() paths to rename in the same caller file. Got: ${duplicatePartialRenamedText}`)
+    }
+    service.clearDocumentOverride(fixture.boardsFilePath)
+
+    const duplicateResolveCallerText = `<script server>
+const firstBoardService = resolve('board-service')
+const secondBoardService = resolve('board-service')
+firstBoardService.readAuthState({ request })
+secondBoardService.readAuthState({ request })
+</script>
+`
+    const duplicateRequireCallerText = `const firstBoardService = require('./board-service')
+const secondBoardService = require('./board-service')
+
+module.exports = {
+  firstBoardService,
+  secondBoardService,
+}
+`
+    service.setDocumentOverride(fixture.renameCheckFilePath, duplicateResolveCallerText)
+    service.setDocumentOverride(fixture.boardServiceConsumerFilePath, duplicateRequireCallerText)
+    const duplicateModuleRenameEdits = service.getFileRenameEdits(
+      fixture.boardServiceFilePath,
+      path.resolve(path.dirname(fixture.boardServiceFilePath), 'session-service.js')
+    )
+    const duplicateResolveEdits = duplicateModuleRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath)
+    )
+    const duplicateRequireEdits = duplicateModuleRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardServiceConsumerFilePath)
+    )
+    if (duplicateResolveEdits.length !== 2) {
+      throw new Error(`Expected two resolve() edits in the same caller file. Got: ${JSON.stringify(duplicateResolveEdits)}`)
+    }
+    if (duplicateRequireEdits.length !== 2) {
+      throw new Error(`Expected two require() edits in the same caller file. Got: ${JSON.stringify(duplicateRequireEdits)}`)
+    }
+    const duplicateResolveRenamedText = applyEditsToText(duplicateResolveCallerText, duplicateResolveEdits)
+    if ((duplicateResolveRenamedText.match(/resolve\('session-service'\)/g) || []).length !== 2) {
+      throw new Error(`Expected both resolve() paths to rename in the same caller file. Got: ${duplicateResolveRenamedText}`)
+    }
+    const duplicateRequireRenamedText = applyEditsToText(duplicateRequireCallerText, duplicateRequireEdits)
+    if ((duplicateRequireRenamedText.match(/require\('\.\/session-service'\)/g) || []).length !== 2) {
+      throw new Error(`Expected both require() paths to rename in the same caller file. Got: ${duplicateRequireRenamedText}`)
+    }
+    service.clearDocumentOverride(fixture.renameCheckFilePath)
+    service.clearDocumentOverride(fixture.boardServiceConsumerFilePath)
+
     const routeReferenceQuery = service.getFileReferenceQuery(fixture.boardsFilePath)
     if (!routeReferenceQuery || routeReferenceQuery.kind !== 'route-file' || routeReferenceQuery.routePath !== '/boards') {
       throw new Error(`Expected static route file reference query for /boards. Got: ${JSON.stringify(routeReferenceQuery)}`)
@@ -1103,6 +1388,25 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
     }
     if (!routeFileReferences.some((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.siteIndexFilePath))) {
       throw new Error(`Expected /boards route reference to point at site index href. Got: ${JSON.stringify(routeFileReferences)}`)
+    }
+
+    const siteSignInReferenceQuery = service.getFileReferenceQuery(fixture.siteSignInFilePath)
+    if (!siteSignInReferenceQuery || siteSignInReferenceQuery.kind !== 'route-file' || siteSignInReferenceQuery.routePath !== '/sign-in') {
+      throw new Error(`Expected static route file reference query for /sign-in. Got: ${JSON.stringify(siteSignInReferenceQuery)}`)
+    }
+
+    const siteSignInFileReferences = service.getFileReferenceTargets(
+      fixture.siteSignInFilePath,
+      fs.readFileSync(fixture.siteSignInFilePath, 'utf8')
+    )
+    if (!siteSignInFileReferences || siteSignInFileReferences.length !== 5) {
+      throw new Error(`Expected file-based route references for /sign-in across multiple source kinds. Got: ${JSON.stringify(siteSignInFileReferences)}`)
+    }
+    const routeReferenceCheckMatches = siteSignInFileReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath)
+    )
+    if (routeReferenceCheckMatches.length !== 4) {
+      throw new Error(`Expected href/action/hx/redirect route references in route-reference-check.ejs. Got: ${JSON.stringify(routeReferenceCheckMatches)}`)
     }
 
     const hrefDefinition = indexService.getDefinitionTarget(

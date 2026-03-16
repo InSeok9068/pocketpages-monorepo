@@ -1068,13 +1068,25 @@ class PocketPagesProjectIndex {
     return collectExportedMemberDefinitionInfos(sourceFile)
   }
 
-  getIncludeLocalsState() {
+  getIncludeLocalsState(options = {}) {
+    const readText =
+      typeof options.readFileText === 'function'
+        ? options.readFileText
+        : (filePath) => fs.readFileSync(filePath, 'utf8')
     const codeFiles = this.getPagesCodeFiles()
     const snapshotKey = codeFiles
       .filter((entry) => fileExists(entry.filePath))
       .map((entry) => {
+        const normalizedFilePath = normalizePath(entry.filePath)
+        const overrideText = options.overrides && typeof options.overrides[normalizedFilePath] === 'string'
+          ? options.overrides[normalizedFilePath]
+          : null
+        if (overrideText !== null) {
+          return `${normalizedFilePath}:override:${overrideText.length}:${overrideText}`
+        }
+
         const stats = fs.statSync(entry.filePath)
-        return `${normalizePath(entry.filePath)}:${stats.mtimeMs}:${stats.size}`
+        return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}`
       })
       .join('|')
 
@@ -1089,7 +1101,7 @@ class PocketPagesProjectIndex {
         continue
       }
 
-      const sourceText = fs.readFileSync(entry.filePath, 'utf8')
+      const sourceText = readText(entry.filePath)
       const analysisText = isEjsFile(entry.filePath) ? buildTemplateVirtualText(sourceText) : sourceText
       const includeCalls = collectIncludeCallEntries(entry.filePath, analysisText)
 
@@ -1140,8 +1152,8 @@ class PocketPagesProjectIndex {
     return this.includeLocalsCache
   }
 
-  getIncludeLocalBindings(targetFilePath) {
-    const targetState = this.getIncludeLocalsState().byTargetFile.get(normalizePath(targetFilePath))
+  getIncludeLocalBindings(targetFilePath, options = {}) {
+    const targetState = this.getIncludeLocalsState(options).byTargetFile.get(normalizePath(targetFilePath))
     if (!targetState) {
       return []
     }
@@ -1175,15 +1187,15 @@ class PocketPagesProjectIndex {
       bindings.push({
         name,
         typeText,
-        optional: localState.presenceCount < targetState.callSiteCount,
+        optional: localState.presenceCount < callSiteCount,
       })
     }
 
     return bindings.sort((left, right) => left.name.localeCompare(right.name))
   }
 
-  buildIncludeLocalsPrelude(targetFilePath) {
-    const bindings = this.getIncludeLocalBindings(targetFilePath)
+  buildIncludeLocalsPrelude(targetFilePath, options = {}) {
+    const bindings = this.getIncludeLocalBindings(targetFilePath, options)
     if (!bindings.length) {
       return ''
     }
@@ -1191,8 +1203,8 @@ class PocketPagesProjectIndex {
     return bindings.map((binding) => `declare const ${binding.name}: ${binding.typeText};`).join('\n')
   }
 
-  getIncludeTargetCallSites(targetFilePath) {
-    const targetState = this.getIncludeLocalsState().byTargetFile.get(normalizePath(targetFilePath))
+  getIncludeTargetCallSites(targetFilePath, options = {}) {
+    const targetState = this.getIncludeLocalsState(options).byTargetFile.get(normalizePath(targetFilePath))
     return targetState ? [...targetState.callSites] : []
   }
 
@@ -1321,17 +1333,17 @@ class PocketPagesProjectIndex {
     return null
   }
 
-  getResolvedModuleMemberDefinitionInfo(filePath, requestPath, memberName) {
+  getResolvedModuleMemberDefinitionInfo(filePath, requestPath, memberName, sourceText = null) {
     const moduleFilePath = this.resolveResolveTarget(filePath, requestPath)
     if (!moduleFilePath || !memberName) {
       return null
     }
 
-    return this.getModuleExportedMembers(moduleFilePath).find((entry) => entry.memberName === String(memberName)) || null
+    return this.getModuleExportedMembers(moduleFilePath, sourceText).find((entry) => entry.memberName === String(memberName)) || null
   }
 
-  resolveResolvedModuleMemberTarget(filePath, requestPath, memberName) {
-    const definitionInfo = this.getResolvedModuleMemberDefinitionInfo(filePath, requestPath, memberName)
+  resolveResolvedModuleMemberTarget(filePath, requestPath, memberName, sourceText = null) {
+    const definitionInfo = this.getResolvedModuleMemberDefinitionInfo(filePath, requestPath, memberName, sourceText)
     if (!definitionInfo) {
       return null
     }

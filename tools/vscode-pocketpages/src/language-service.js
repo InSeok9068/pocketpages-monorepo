@@ -577,8 +577,60 @@ class ProjectLanguageService {
     this.staticFiles = new Map();
     this.virtualFiles = new Map();
     this.includePreludeStack = new Set();
+    this.documentOverrides = new Map();
 
     this.languageService = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry());
+  }
+
+  setDocumentOverride(filePath, text) {
+    const normalizedFilePath = normalizePath(filePath);
+    const currentText = typeof text === "string" ? text : "";
+    const previousText = this.documentOverrides.get(normalizedFilePath);
+    if (previousText === currentText) {
+      return;
+    }
+
+    this.documentOverrides.set(normalizedFilePath, currentText);
+    this.projectVersion += 1;
+  }
+
+  clearDocumentOverride(filePath) {
+    const normalizedFilePath = normalizePath(filePath);
+    if (this.documentOverrides.delete(normalizedFilePath)) {
+      this.projectVersion += 1;
+    }
+  }
+
+  getDocumentOverride(filePath) {
+    return this.documentOverrides.get(normalizePath(filePath));
+  }
+
+  getDocumentText(filePath) {
+    const normalizedFilePath = normalizePath(filePath);
+    if (this.documentOverrides.has(normalizedFilePath)) {
+      return this.documentOverrides.get(normalizedFilePath);
+    }
+
+    return readFileText(normalizedFilePath);
+  }
+
+  getPagesCodeOverrides(extraOverrides = {}) {
+    const overrides = {};
+
+    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      const filePath = normalizePath(entry.filePath);
+      if (this.documentOverrides.has(filePath)) {
+        overrides[filePath] = this.documentOverrides.get(filePath);
+      }
+    }
+
+    for (const [filePath, text] of Object.entries(extraOverrides || {})) {
+      if (typeof text === "string") {
+        overrides[normalizePath(filePath)] = text;
+      }
+    }
+
+    return overrides;
   }
 
   createHost() {
@@ -725,13 +777,13 @@ class ProjectLanguageService {
     }
 
     if (this.includePreludeStack.has(normalizedFilePath)) {
-      return this.projectIndex.buildIncludeLocalsPrelude(normalizedFilePath);
+      return "";
     }
 
     this.includePreludeStack.add(normalizedFilePath);
 
     try {
-      const callSites = this.projectIndex.getIncludeTargetCallSites(normalizedFilePath);
+      const callSites = this.collectIncludeTargetCallSites(normalizedFilePath);
       if (!callSites.length) {
         return "";
       }
@@ -744,7 +796,7 @@ class ProjectLanguageService {
           continue;
         }
 
-        const callerDocumentText = readFileText(callerFilePath);
+        const callerDocumentText = this.getDocumentText(callerFilePath);
 
         for (const local of callSite.locals || []) {
           let bindingState = bindingsByName.get(local.name);
@@ -782,6 +834,13 @@ class ProjectLanguageService {
     } finally {
       this.includePreludeStack.delete(normalizedFilePath);
     }
+  }
+
+  collectIncludeTargetCallSites(targetFilePath) {
+    return this.projectIndex.getIncludeTargetCallSites(targetFilePath, {
+      overrides: this.getPagesCodeOverrides(),
+      readFileText: (filePath) => this.getDocumentText(filePath),
+    });
   }
 
   getIncludeLocalTypeText(filePath, documentText, local) {
@@ -1096,6 +1155,103 @@ class ProjectLanguageService {
     return null;
   }
 
+  mapTypeScriptReferenceToLocation(referenceEntry, isDefinition = false) {
+    if (!referenceEntry || !referenceEntry.fileName || !referenceEntry.textSpan) {
+      return null;
+    }
+
+    const referenceFileName = normalizePath(referenceEntry.fileName);
+    const virtualState = this.virtualFiles.get(referenceFileName);
+    if (virtualState) {
+      const start = this.mapVirtualOffsetToDocumentOffset(referenceFileName, referenceEntry.textSpan.start);
+      const end = this.mapVirtualOffsetToDocumentOffset(
+        referenceFileName,
+        referenceEntry.textSpan.start + referenceEntry.textSpan.length
+      );
+      if (start === null || end === null) {
+        return null;
+      }
+
+      return {
+        filePath: normalizePath(virtualState.filePath),
+        start,
+        end,
+        isDefinition,
+      };
+    }
+
+    return {
+      filePath: referenceFileName,
+      start: referenceEntry.textSpan.start,
+      end: referenceEntry.textSpan.start + referenceEntry.textSpan.length,
+      isDefinition,
+    };
+  }
+
+  getTypeScriptReferenceTargets(filePath, documentText, offset, options = {}) {
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
+    if (!virtualState) {
+      return null;
+    }
+
+    const referencedSymbols = this.languageService.findReferences(virtualState.virtual.fileName, virtualState.virtualOffset) || [];
+    if (!referencedSymbols.length) {
+      return null;
+    }
+
+    const uniqueLocations = new Map();
+    let hasMappedDefinition = false;
+    let hasExternalReference = false;
+    for (const referencedSymbol of referencedSymbols) {
+      const definition = this.mapTypeScriptReferenceToLocation(referencedSymbol.definition, true);
+      const definitionKey = definition ? `${definition.filePath}:${definition.start}:${definition.end}` : null;
+      if (definition) {
+        hasMappedDefinition = true;
+        if (normalizePath(definition.filePath) !== normalizePath(filePath)) {
+          hasExternalReference = true;
+        }
+
+        if (options.includeDeclaration && !uniqueLocations.has(definitionKey)) {
+          uniqueLocations.set(definitionKey, {
+            filePath: definition.filePath,
+            start: definition.start,
+            end: definition.end,
+          });
+        }
+      }
+
+      for (const reference of referencedSymbol.references || []) {
+        const location = this.mapTypeScriptReferenceToLocation(reference, false);
+        if (!location) {
+          continue;
+        }
+
+        if (normalizePath(location.filePath) !== normalizePath(filePath)) {
+          hasExternalReference = true;
+        }
+
+        const locationKey = `${location.filePath}:${location.start}:${location.end}`;
+        if (locationKey === definitionKey && !options.includeDeclaration) {
+          continue;
+        }
+
+        if (!uniqueLocations.has(locationKey)) {
+          uniqueLocations.set(locationKey, {
+            filePath: location.filePath,
+            start: location.start,
+            end: location.end,
+          });
+        }
+      }
+    }
+
+    return {
+      locations: [...uniqueLocations.values()],
+      hasMappedDefinition,
+      hasExternalReference,
+    };
+  }
+
   getVirtualStateAtOffset(filePath, documentText, offset) {
     if (isScriptFile(filePath)) {
       const virtual = this.upsertScriptVirtualFile(filePath, documentText);
@@ -1353,7 +1509,7 @@ class ProjectLanguageService {
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
       const codeFilePath = normalizePath(entry.filePath);
       const documentText =
-        Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : readFileText(codeFilePath);
+        Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
 
       for (const pathContext of collectPathContexts(documentText)) {
         if (pathContext.kind !== pathKind) {
@@ -1390,7 +1546,7 @@ class ProjectLanguageService {
       }
 
       const documentText =
-        Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : readFileText(codeFilePath);
+        Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
 
       for (const requireContext of collectStaticRequireCallContexts(documentText)) {
         const resolvedTargetFilePath = this.projectIndex.resolveRequireTarget(codeFilePath, requireContext.value);
@@ -1437,9 +1593,9 @@ class ProjectLanguageService {
       return null;
     }
 
-    const overrides = {
+    const overrides = this.getPagesCodeOverrides({
       [normalizePath(filePath)]: documentText,
-    };
+    });
 
     if (referenceQuery.kind === "private-partial") {
       return this.collectPathReferenceLocations("include-path", referenceQuery.targetFilePath, overrides);
@@ -1467,38 +1623,21 @@ class ProjectLanguageService {
 
     const normalizedOldFilePath = normalizePath(oldFilePath);
     const normalizedNewFilePath = normalizePath(newFilePath);
-    const overrides = {};
+    const overrides = this.getPagesCodeOverrides();
     const uniqueEdits = new Map();
 
     if (referenceQuery.kind === "private-partial") {
-      for (const location of this.collectPathReferenceLocations("include-path", normalizedOldFilePath, overrides)) {
-        const edit = this.getIncludeFileRenameEdit(location.filePath, normalizedOldFilePath, normalizedNewFilePath, overrides);
-        if (!edit) {
-          continue;
-        }
-
+      for (const edit of this.getIncludeFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
         uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
       }
     }
 
     if (referenceQuery.kind === "private-module") {
-      const resolveLocations = this.collectPathReferenceLocations("resolve-path", normalizedOldFilePath, overrides);
-      for (const location of resolveLocations) {
-        const edit = this.getResolveFileRenameEdit(location.filePath, normalizedOldFilePath, normalizedNewFilePath, overrides);
-        if (!edit) {
-          continue;
-        }
-
+      for (const edit of this.getResolveFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
         uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
       }
 
-      const requireLocations = this.collectRequireReferenceLocations(normalizedOldFilePath, overrides);
-      for (const location of requireLocations) {
-        const edit = this.getRequireFileRenameEdit(location.filePath, normalizedOldFilePath, normalizedNewFilePath, overrides);
-        if (!edit) {
-          continue;
-        }
-
+      for (const edit of this.getRequireFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
         uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
       }
     }
@@ -1512,92 +1651,108 @@ class ProjectLanguageService {
       return overrides[normalizedFilePath];
     }
 
-    const documentText = readFileText(normalizedFilePath);
+    const documentText = this.getDocumentText(normalizedFilePath);
     overrides[normalizedFilePath] = documentText;
     return documentText;
   }
 
-  getIncludeFileRenameEdit(filePath, oldTargetFilePath, newTargetFilePath, overrides = {}) {
-    const documentText = this.getCallerDocumentText(filePath, overrides);
-    const pathContexts = collectPathContexts(documentText);
+  getIncludeFileRenameEdits(oldTargetFilePath, newTargetFilePath, overrides = {}) {
+    const edits = [];
+    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      const filePath = normalizePath(entry.filePath);
+      const documentText = this.getCallerDocumentText(filePath, overrides);
+      const pathContexts = collectPathContexts(documentText);
 
-    for (const pathContext of pathContexts) {
-      if (pathContext.kind !== "include-path") {
-        continue;
+      for (const pathContext of pathContexts) {
+        if (pathContext.kind !== "include-path") {
+          continue;
+        }
+
+        if (!this.isIncludeRequestForTarget(filePath, pathContext.value, oldTargetFilePath)) {
+          continue;
+        }
+
+        const newValue = this.buildUpdatedIncludeRequestPath(filePath, pathContext.value, oldTargetFilePath, newTargetFilePath);
+        if (!newValue || newValue === pathContext.value) {
+          continue;
+        }
+
+        edits.push({
+          filePath,
+          start: pathContext.start,
+          end: pathContext.end,
+          newText: newValue,
+        });
       }
-
-      if (!this.isIncludeRequestForTarget(filePath, pathContext.value, oldTargetFilePath)) {
-        continue;
-      }
-
-      const newValue = this.buildUpdatedIncludeRequestPath(filePath, pathContext.value, oldTargetFilePath, newTargetFilePath);
-      if (!newValue || newValue === pathContext.value) {
-        return null;
-      }
-
-      return {
-        filePath: normalizePath(filePath),
-        start: pathContext.start,
-        end: pathContext.end,
-        newText: newValue,
-      };
     }
 
-    return null;
+    return edits;
   }
 
-  getResolveFileRenameEdit(filePath, oldTargetFilePath, newTargetFilePath, overrides = {}) {
-    const documentText = this.getCallerDocumentText(filePath, overrides);
-    const pathContexts = collectPathContexts(documentText);
+  getResolveFileRenameEdits(oldTargetFilePath, newTargetFilePath, overrides = {}) {
+    const edits = [];
+    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      const filePath = normalizePath(entry.filePath);
+      const documentText = this.getCallerDocumentText(filePath, overrides);
+      const pathContexts = collectPathContexts(documentText);
 
-    for (const pathContext of pathContexts) {
-      if (pathContext.kind !== "resolve-path") {
-        continue;
+      for (const pathContext of pathContexts) {
+        if (pathContext.kind !== "resolve-path") {
+          continue;
+        }
+
+        if (!this.isResolveRequestForTarget(filePath, pathContext.value, oldTargetFilePath)) {
+          continue;
+        }
+
+        const newValue = this.buildUpdatedResolveRequestPath(filePath, pathContext.value, oldTargetFilePath, newTargetFilePath);
+        if (!newValue || newValue === pathContext.value) {
+          continue;
+        }
+
+        edits.push({
+          filePath,
+          start: pathContext.start,
+          end: pathContext.end,
+          newText: newValue,
+        });
       }
-
-      if (!this.isResolveRequestForTarget(filePath, pathContext.value, oldTargetFilePath)) {
-        continue;
-      }
-
-      const newValue = this.buildUpdatedResolveRequestPath(filePath, pathContext.value, oldTargetFilePath, newTargetFilePath);
-      if (!newValue || newValue === pathContext.value) {
-        return null;
-      }
-
-      return {
-        filePath: normalizePath(filePath),
-        start: pathContext.start,
-        end: pathContext.end,
-        newText: newValue,
-      };
     }
 
-    return null;
+    return edits;
   }
 
-  getRequireFileRenameEdit(filePath, oldTargetFilePath, newTargetFilePath, overrides = {}) {
-    const documentText = this.getCallerDocumentText(filePath, overrides);
-    const requireContexts = collectStaticRequireCallContexts(documentText);
-
-    for (const requireContext of requireContexts) {
-      if (!this.isRequireRequestForTarget(filePath, requireContext.value, oldTargetFilePath)) {
+  getRequireFileRenameEdits(oldTargetFilePath, newTargetFilePath, overrides = {}) {
+    const edits = [];
+    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      const filePath = normalizePath(entry.filePath);
+      if (!isScriptFile(filePath)) {
         continue;
       }
 
-      const newValue = this.buildUpdatedRequireRequestPath(filePath, requireContext.value, newTargetFilePath);
-      if (!newValue || newValue === requireContext.value) {
-        return null;
-      }
+      const documentText = this.getCallerDocumentText(filePath, overrides);
+      const requireContexts = collectStaticRequireCallContexts(documentText);
 
-      return {
-        filePath: normalizePath(filePath),
-        start: requireContext.start,
-        end: requireContext.end,
-        newText: newValue,
-      };
+      for (const requireContext of requireContexts) {
+        if (!this.isRequireRequestForTarget(filePath, requireContext.value, oldTargetFilePath)) {
+          continue;
+        }
+
+        const newValue = this.buildUpdatedRequireRequestPath(filePath, requireContext.value, newTargetFilePath);
+        if (!newValue || newValue === requireContext.value) {
+          continue;
+        }
+
+        edits.push({
+          filePath,
+          start: requireContext.start,
+          end: requireContext.end,
+          newText: newValue,
+        });
+      }
     }
 
-    return null;
+    return edits;
   }
 
   isIncludeRequestForTarget(filePath, requestPath, targetFilePath) {
@@ -1801,7 +1956,7 @@ class ProjectLanguageService {
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
       const codeFilePath = normalizePath(entry.filePath);
       const documentText =
-        Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : readFileText(codeFilePath);
+        Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
       const analysisText = toAnalysisText(codeFilePath, documentText);
       const contexts = collectResolvedModuleMemberContexts(analysisText);
 
@@ -2239,10 +2394,12 @@ class ProjectLanguageService {
 
     const resolvedModuleMemberContext = this.getResolvedModuleMemberContextForRename(filePath, documentText, offset);
     if (resolvedModuleMemberContext) {
+      const moduleFilePath = this.projectIndex.resolveResolveTarget(filePath, resolvedModuleMemberContext.modulePath);
       return this.projectIndex.resolveResolvedModuleMemberTarget(
         filePath,
         resolvedModuleMemberContext.modulePath,
-        resolvedModuleMemberContext.memberName
+        resolvedModuleMemberContext.memberName,
+        moduleFilePath ? this.getDocumentOverride(moduleFilePath) : null
       );
     }
 
@@ -2266,13 +2423,19 @@ class ProjectLanguageService {
     const moduleDefinitionInfo = this.projectIndex.getResolvedModuleMemberDefinitionInfo(
       filePath,
       resolvedModuleMemberContext.modulePath,
-      resolvedModuleMemberContext.memberName
+      resolvedModuleMemberContext.memberName,
+      (() => {
+        const moduleFilePath = this.projectIndex.resolveResolveTarget(filePath, resolvedModuleMemberContext.modulePath);
+        return moduleFilePath ? this.getDocumentOverride(moduleFilePath) : null;
+      })()
     );
     if (!moduleDefinitionInfo) {
       return null;
     }
 
-    const moduleRename = this.getModuleRenameLocations(moduleDefinitionInfo);
+    const moduleRename = this.getModuleRenameLocations(moduleDefinitionInfo, {
+      [normalizePath(moduleDefinitionInfo.filePath)]: this.getDocumentOverride(moduleDefinitionInfo.filePath),
+    });
     if (!moduleRename.canRename) {
       return {
         canRename: false,
@@ -2315,9 +2478,9 @@ class ProjectLanguageService {
       };
     }
 
-    const moduleRename = this.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, {
+    const moduleRename = this.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, this.getPagesCodeOverrides({
       [normalizePath(filePath)]: isScriptFile(filePath) ? documentText : undefined,
-    });
+    }));
     if (!moduleRename.canRename) {
       return {
         canRename: false,
@@ -2346,7 +2509,7 @@ class ProjectLanguageService {
       renameInfo.moduleDefinitionInfo.filePath,
       renameInfo.placeholder,
       newName,
-      { [normalizePath(filePath)]: documentText }
+      this.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
     )) {
       const editKey = `${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`;
       if (!uniqueEdits.has(editKey)) {
@@ -2361,22 +2524,37 @@ class ProjectLanguageService {
   }
 
   getReferenceTargets(filePath, documentText, offset, options = {}) {
-    const pathReferenceContext =
-      this.getPathReferenceContext(filePath, documentText, offset) || this.getPrivateIncludeReferenceContext(filePath);
+    const pathReferenceContext = this.getPathReferenceContext(filePath, documentText, offset);
     if (pathReferenceContext) {
-      return this.collectPathReferenceLocations(pathReferenceContext.kind, pathReferenceContext.targetFilePath, {
-        [normalizePath(filePath)]: documentText,
-      });
+      return this.collectPathReferenceLocations(
+        pathReferenceContext.kind,
+        pathReferenceContext.targetFilePath,
+        this.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
+      );
     }
 
     const renameInfo = this.getRenameInfo(filePath, documentText, offset);
     if (!renameInfo) {
-      return null;
+      const typeScriptReferences = this.getTypeScriptReferenceTargets(filePath, documentText, offset, options);
+      const fileReferenceContext = this.getPrivateIncludeReferenceContext(filePath);
+      if (typeScriptReferences && typeScriptReferences.locations.length) {
+        if (!fileReferenceContext || typeScriptReferences.hasMappedDefinition || typeScriptReferences.hasExternalReference) {
+          return typeScriptReferences.locations;
+        }
+      }
+
+      if (!fileReferenceContext) {
+        return null;
+      }
+
+      return this.collectPathReferenceLocations(fileReferenceContext.kind, fileReferenceContext.targetFilePath, this.getPagesCodeOverrides({
+        [normalizePath(filePath)]: documentText,
+      }));
     }
 
-    const moduleRename = this.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, {
+    const moduleRename = this.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, this.getPagesCodeOverrides({
       [normalizePath(filePath)]: isScriptFile(filePath) ? documentText : undefined,
-    });
+    }));
     if (!moduleRename.canRename) {
       return [];
     }
@@ -2419,7 +2597,7 @@ class ProjectLanguageService {
     for (const location of this.collectResolvedModuleMemberUsageLocations(
       renameInfo.moduleDefinitionInfo.filePath,
       renameInfo.placeholder,
-      { [normalizePath(filePath)]: documentText }
+      this.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
     )) {
       addLocation(location);
     }

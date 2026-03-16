@@ -85,6 +85,19 @@ function isSupportedPrivateRenamePath(filePath) {
   )
 }
 
+function isPocketPagesCodeDocument(document) {
+  if (!document || document.uri.scheme !== 'file') {
+    return false
+  }
+
+  return (
+    document.uri.fsPath.endsWith('.ejs') ||
+    document.uri.fsPath.endsWith('.js') ||
+    document.uri.fsPath.endsWith('.cjs') ||
+    document.uri.fsPath.endsWith('.mjs')
+  )
+}
+
 function describeReferenceQuery(referenceQuery) {
   if (!referenceQuery) {
     return 'references'
@@ -808,6 +821,32 @@ function activate(context) {
 
   output.appendLine('VSCode PocketPages activated.')
 
+  const syncDocumentOverride = (document) => {
+    if (!isPocketPagesCodeDocument(document)) {
+      return
+    }
+
+    const service = manager.getServiceForFile(document.uri.fsPath)
+    if (!service) {
+      return
+    }
+
+    service.setDocumentOverride(document.uri.fsPath, document.getText())
+  }
+
+  const clearDocumentOverride = (document) => {
+    if (!isPocketPagesCodeDocument(document)) {
+      return
+    }
+
+    const service = manager.getServiceForFile(document.uri.fsPath)
+    if (!service) {
+      return
+    }
+
+    service.clearDocumentOverride(document.uri.fsPath)
+  }
+
   const updateDiagnostics = (document) => {
     if (!document || document.uri.scheme !== 'file' || !document.uri.fsPath.endsWith('.ejs')) {
       return
@@ -876,9 +915,18 @@ function activate(context) {
       new PocketPagesSemanticTokensProvider(),
       SEMANTIC_TOKENS_LEGEND
     ),
-    vscode.workspace.onDidOpenTextDocument(updateDiagnostics),
-    vscode.workspace.onDidCloseTextDocument((document) => diagnostics.delete(document.uri)),
-    vscode.workspace.onDidChangeTextDocument((event) => debouncedUpdateDiagnostics(event.document)),
+    vscode.workspace.onDidOpenTextDocument((document) => {
+      syncDocumentOverride(document)
+      updateDiagnostics(document)
+    }),
+    vscode.workspace.onDidCloseTextDocument((document) => {
+      clearDocumentOverride(document)
+      diagnostics.delete(document.uri)
+    }),
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      syncDocumentOverride(event.document)
+      debouncedUpdateDiagnostics(event.document)
+    }),
     vscode.workspace.onDidRenameFiles((event) => applyPrivateFileRenameEdits({ manager, output, event })),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       if (editor) {
@@ -935,6 +983,7 @@ function activate(context) {
   )
 
   for (const document of vscode.workspace.textDocuments) {
+    syncDocumentOverride(document)
     updateDiagnostics(document)
   }
 }
