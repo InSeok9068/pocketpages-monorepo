@@ -67,30 +67,30 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
 
 ---
 
+## 웹 서버
+
+- 웹 서버: Caddy
+- HTTPS: Caddy에서 자동 처리
+- 운영 설정: 보안, 압축, 헤더, 타임아웃, body size 제한은 앞단에서 관리
+
+---
+
 ## SQLite 복제/복원
 
 - 도구: Litestream
 
-- [Litestream Getting Started](https://litestream.io/getting-started/)
-- [Litestream Replicate](https://litestream.io/reference/replicate/)
-- [Litestream Restore](https://litestream.io/reference/restore/)
+---
+
+## SMTP
+
+- 솔루션: Resend
+- 추가 후보: AWS SES
 
 ---
 
 ## Cloudflare Workers
 
 - 용도: 브라우저 자동화, 추가 라이브러리 의존 동작
-
-- [Cloudflare Workers Getting Started](https://developers.cloudflare.com/workers/get-started/)
-- [Cloudflare Browser Rendering with Puppeteer](https://developers.cloudflare.com/browser-rendering/platform/puppeteer/)
-
----
-
-## 웹 서버
-
-- 웹 서버: Caddy
-- HTTPS: Caddy에서 자동 처리
-- 운영 설정: 보안, 압축, 헤더, 타임아웃, body size 제한은 앞단에서 관리
 
 ---
 
