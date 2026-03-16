@@ -34,7 +34,7 @@ function readAuthState(request) {
   const authRecord = request && request.auth ? request.auth : null;
   const isSignedIn = !!authRecord;
   const isSuperuser = !!(authRecord && typeof authRecord.isSuperuser === 'function' && authRecord.isSuperuser());
-  const email = authRecord ? String(authRecord.get('email') || authRecord.email || '').trim() : '';
+  const email = authRecord ? String(authRecord.get('email') || '').trim() : '';
   return {
     authRecord,
     isSignedIn,
@@ -43,6 +43,11 @@ function readAuthState(request) {
   };
 }
 
+/**
+ * 현재 요청이 슈퍼유저 로그인 상태인지 확인합니다.
+ * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
+ * @returns {types.KjcaAuthState} 검증에 통과한 인증 상태입니다.
+ */
 function ensureSuperuserRequest(request) {
   const authState = readAuthState(request);
   if (!authState.isSuperuser || !authState.authRecord) {

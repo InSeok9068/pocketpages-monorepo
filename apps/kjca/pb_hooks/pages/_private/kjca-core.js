@@ -17,6 +17,12 @@ const weekdayLabelMap = {
   fri: '금',
 };
 
+/**
+ * JSON 문자열을 안전하게 파싱합니다.
+ * @param {unknown} text 파싱할 원본 값입니다.
+ * @param {unknown} fallback 파싱 실패 시 돌려줄 기본값입니다.
+ * @returns {unknown} 파싱 결과 또는 기본값입니다.
+ */
 function parseJsonSafely(text, fallback) {
   try {
     return JSON.parse(text);
@@ -25,6 +31,11 @@ function parseJsonSafely(text, fallback) {
   }
 }
 
+/**
+ * 응답 텍스트에서 JSON object 구간만 추출합니다.
+ * @param {unknown} text 모델 응답이나 원본 텍스트입니다.
+ * @returns {string} JSON object 문자열입니다.
+ */
 function extractJsonObjectText(text) {
   const normalized = String(text || '')
     .replace(/^```(?:json)?\s*/i, '')
@@ -38,6 +49,12 @@ function extractJsonObjectText(text) {
   return normalized.slice(objectStart, objectEnd + 1).trim();
 }
 
+/**
+ * 헤더 객체에서 대소문자 구분 없이 값을 배열로 읽습니다.
+ * @param {object | null | undefined} headers 응답 헤더 객체입니다.
+ * @param {string} key 찾을 헤더 이름입니다.
+ * @returns {string[]} 일치한 헤더 값 목록입니다.
+ */
 function getHeaderValues(headers, key) {
   if (!headers) return [];
 
@@ -99,6 +116,12 @@ function extractCookieHeaderFromSetCookie(setCookieHeaders) {
     .join('; ');
 }
 
+/**
+ * 응답의 `Set-Cookie`를 기존 쿠키 헤더와 합칩니다.
+ * @param {string | null | undefined} cookieHeader 현재 쿠키 헤더 문자열입니다.
+ * @param {object | null | undefined} responseHeaders 응답 헤더 객체입니다.
+ * @returns {string} 병합된 쿠키 헤더 문자열입니다.
+ */
 function mergeSetCookieIntoCookieHeader(cookieHeader, responseHeaders) {
   const setCookieHeaders = getHeaderValues(responseHeaders, 'Set-Cookie');
   if (!setCookieHeaders.length) return cookieHeader;
@@ -110,6 +133,11 @@ function mergeSetCookieIntoCookieHeader(cookieHeader, responseHeaders) {
   return normalizeCookieHeader(merged);
 }
 
+/**
+ * HTML 본문이 인증 필요 화면인지 확인합니다.
+ * @param {unknown} html 응답 HTML 문자열입니다.
+ * @returns {boolean} 인증 필요 화면이면 true입니다.
+ */
 function detectAuthRequiredHtml(html) {
   const text = String(html || '');
   if (text.includes('/staff/auth/login_check') || text.includes('id="mng_id"')) return true;
@@ -133,6 +161,12 @@ function stripTags(html) {
   return decodeHtmlEntities(String(html || '').replace(/<[^>]*>/g, '')).trim();
 }
 
+/**
+ * KJCA 상대 경로를 절대 URL로 바꿉니다.
+ * @param {string} host KJCA 호스트입니다.
+ * @param {unknown} maybeRelativeUrl 상대 또는 절대 URL 값입니다.
+ * @returns {string} 절대 URL 문자열입니다.
+ */
 function toAbsoluteKjcaUrl(host, maybeRelativeUrl) {
   const url = String(maybeRelativeUrl || '').trim();
   if (!url) return '';
@@ -143,6 +177,12 @@ function toAbsoluteKjcaUrl(host, maybeRelativeUrl) {
   return `${host}/${url}`;
 }
 
+/**
+ * 허용된 KJCA 호스트 URL인지 확인합니다.
+ * @param {string} host KJCA 호스트입니다.
+ * @param {unknown} url 검사할 URL 값입니다.
+ * @returns {boolean} 허용된 URL이면 true입니다.
+ */
 function isAllowedKjcaUrl(host, url) {
   const normalized = String(url || '').trim();
   return normalized.startsWith(`${host}/`) || normalized.startsWith('http://www.kjca.co.kr/') || normalized.startsWith('https://www.kjca.co.kr/');
@@ -175,6 +215,12 @@ function extractPrintUrlFromCell(host, cellHtml) {
   return toAbsoluteKjcaUrl(host, preferred);
 }
 
+/**
+ * 업무일지 목록 HTML에서 팀장 행과 인쇄 URL을 추출합니다.
+ * @param {unknown} diaryHtml 업무일지 목록 HTML입니다.
+ * @param {string} host KJCA 호스트입니다.
+ * @returns {{ rows: types.KjcaTeamLeadRow[] }} 추출된 팀장 행 목록입니다.
+ */
 function parseTeamLeadRowsFromDiaryHtml(diaryHtml, host) {
   const html = String(diaryHtml || '');
   const rows = [];
@@ -223,6 +269,13 @@ function parseTeamLeadRowsFromDiaryHtml(diaryHtml, host) {
   return { rows: uniqueRows };
 }
 
+/**
+ * KJCA 요청에 맞는 브라우저형 헤더를 만듭니다.
+ * @param {string} host KJCA 호스트입니다.
+ * @param {string | null | undefined} cookieHeader 현재 쿠키 헤더입니다.
+ * @param {string | null | undefined} referer 참조 URL입니다.
+ * @returns {object} 요청에 사용할 헤더 객체입니다.
+ */
 function buildBrowserLikeHeaders(host, cookieHeader, referer) {
   const headers = {
     Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -272,12 +325,22 @@ function buildFormState(value) {
   };
 }
 
+/**
+ * PocketBase filter 문자열에서 쓸 값을 이스케이프합니다.
+ * @param {unknown} value filter에 넣을 원본 값입니다.
+ * @returns {string} 이스케이프된 문자열입니다.
+ */
 function escapeFilterValue(value) {
   return String(value || '')
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'");
 }
 
+/**
+ * 텍스트를 짧은 캐시 키 문자열로 해시합니다.
+ * @param {unknown} text 해시할 원본 텍스트입니다.
+ * @returns {string} 길이를 포함한 해시 문자열입니다.
+ */
 function hashText(text) {
   const source = String(text || '');
   let hash = 0x811c9dc5;
@@ -289,6 +352,12 @@ function hashText(text) {
   return `${hash.toString(16).padStart(8, '0')}-${source.length}`;
 }
 
+/**
+ * class 조합으로 특정 div의 내부 HTML을 추출합니다.
+ * @param {unknown} html 원본 HTML 문자열입니다.
+ * @param {string[]} requiredClasses 찾아야 할 class 목록입니다.
+ * @returns {string} 찾은 div의 내부 HTML입니다.
+ */
 function extractDivInnerHtmlByClasses(html, requiredClasses) {
   const source = String(html || '');
   if (!source) return '';
@@ -328,6 +397,11 @@ function extractDivInnerHtmlByClasses(html, requiredClasses) {
   return '';
 }
 
+/**
+ * HTML을 읽기 쉬운 텍스트로 정리합니다.
+ * @param {unknown} html 원본 HTML 문자열입니다.
+ * @returns {string} 정리된 텍스트입니다.
+ */
 function htmlToText(html) {
   const normalized = String(html || '')
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -348,6 +422,11 @@ function htmlToText(html) {
     .trim();
 }
 
+/**
+ * 문자열 배열 입력을 빈 값 없는 문자열 배열로 정리합니다.
+ * @param {unknown} value 원본 배열 값입니다.
+ * @returns {string[]} 정리된 문자열 배열입니다.
+ */
 function normalizeStringArray(value) {
   if (!Array.isArray(value)) return [];
   return value.map((item) => String(item || '').trim()).filter((item) => !!item);
@@ -359,6 +438,11 @@ function isNumericByteArray(value) {
   return value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255);
 }
 
+/**
+ * JSON 배열 필드를 문자열 배열로 정리합니다.
+ * @param {unknown} value 문자열, 배열, 바이트 배열 등 원본 값입니다.
+ * @returns {string[]} 정리된 문자열 배열입니다.
+ */
 function normalizeJsonArrayField(value) {
   if (Array.isArray(value)) {
     if (isNumericByteArray(value)) {
@@ -384,6 +468,12 @@ function normalizeJsonArrayField(value) {
   return [];
 }
 
+/**
+ * Gemini 429 응답의 원인을 추정합니다.
+ * @param {unknown} message 오류 메시지 값입니다.
+ * @param {unknown} detailsText 세부 오류 텍스트입니다.
+ * @returns {string} 추정된 원인 키입니다.
+ */
 function inferGemini429Cause(message, detailsText) {
   const source = `${String(message || '')} ${String(detailsText || '')}`.toLowerCase();
   if (!source.trim()) return 'unknown';
@@ -397,6 +487,11 @@ function inferGemini429Cause(message, detailsText) {
   return 'unknown';
 }
 
+/**
+ * Gemini 오류 detail 배열을 로그용 문자열로 합칩니다.
+ * @param {unknown} details 오류 detail 배열 값입니다.
+ * @returns {string} 직렬화된 detail 문자열입니다.
+ */
 function stringifyGeminiErrorDetails(details) {
   if (!Array.isArray(details)) return '';
   return details
@@ -467,6 +562,11 @@ function normalizeWeekday(value) {
   return '';
 }
 
+/**
+ * 날짜 exact/like filter 파라미터를 만듭니다.
+ * @param {unknown} dateText 기준 날짜 값입니다.
+ * @returns {{ exact: string, like: string }} exact와 like용 날짜 문자열입니다.
+ */
 function buildDateMatchParams(dateText) {
   const normalized = formatDateText(parseDateText(dateText));
   return {
@@ -475,6 +575,11 @@ function buildDateMatchParams(dateText) {
   };
 }
 
+/**
+ * 정수를 읽되 비어 있거나 잘못된 값은 null로 돌립니다.
+ * @param {unknown} value 원본 숫자 값입니다.
+ * @returns {number | null} 정수 값 또는 null입니다.
+ */
 function normalizeNullableInt(value) {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
@@ -482,6 +587,12 @@ function normalizeNullableInt(value) {
   return Math.max(0, Math.trunc(parsed));
 }
 
+/**
+ * 필수 정수를 읽고 없으면 기본값을 사용합니다.
+ * @param {unknown} value 원본 숫자 값입니다.
+ * @param {number} fallback 대체 기본값입니다.
+ * @returns {number} 정수 값입니다.
+ */
 function normalizeRequiredInt(value, fallback) {
   const parsed = normalizeNullableInt(value);
   if (parsed === null) return fallback;
@@ -502,6 +613,11 @@ function normalizeBool(value) {
   return false;
 }
 
+/**
+ * AI 분석 결과의 recruiting 필드를 서비스 shape로 정리합니다.
+ * @param {unknown} value recruiting 원본 값입니다.
+ * @returns {types.KjcaRecruitingExtract} 정리된 recruiting 값입니다.
+ */
 function normalizeRecruitingExtract(value) {
   const source = value && typeof value === 'object' ? value : {};
   const dailyPlanRaw = Array.isArray(source.dailyPlan) ? source.dailyPlan : [];
@@ -569,6 +685,11 @@ function normalizeRecruitingExtract(value) {
   };
 }
 
+/**
+ * 캐시에 저장된 recruiting 필드를 서비스 shape로 복원합니다.
+ * @param {unknown} value 캐시에서 읽은 원본 값입니다.
+ * @returns {types.KjcaRecruitingExtract} 정리된 recruiting 값입니다.
+ */
 function normalizeCachedRecruitingField(value) {
   if (value === null || value === undefined) return normalizeRecruitingExtract({});
   if (typeof value === 'string') {
@@ -628,6 +749,11 @@ function normalizeAnalyzeResults(value) {
   }));
 }
 
+/**
+ * 주간 텍스트 행 목록을 내부 shape로 정리합니다.
+ * @param {unknown} rows 원본 행 목록 값입니다.
+ * @returns {types.KjcaWeekTextRow[]} 정리된 주간 텍스트 행 목록입니다.
+ */
 function normalizeWeekTextRows(rows) {
   if (!Array.isArray(rows)) return [];
 
@@ -653,6 +779,11 @@ function normalizeWeekTextRows(rows) {
     .filter((row) => !!row);
 }
 
+/**
+ * 주간 텍스트 행을 월-금 기준으로 빈 행까지 채워 정렬합니다.
+ * @param {unknown} rows 원본 행 목록 값입니다.
+ * @returns {types.KjcaWeekTextRow[]} 월-금 기준으로 채워진 행 목록입니다.
+ */
 function ensureWeekdayRows(rows) {
   const normalized = normalizeWeekTextRows(rows);
   const byWeekday = new Map();
@@ -687,6 +818,11 @@ function ensureWeekdayRows(rows) {
   return result;
 }
 
+/**
+ * 주간 텍스트 행에 실제 내용이 있는지 확인합니다.
+ * @param {types.KjcaWeekTextRow[]} rows 검사할 행 목록입니다.
+ * @returns {boolean} 내용이 있으면 true입니다.
+ */
 function hasWeekTextContent(rows) {
   return rows.some(
     (row) =>
@@ -701,6 +837,11 @@ function hasWeekTextContent(rows) {
   );
 }
 
+/**
+ * 행 목록에 포함된 서로 다른 요일 수를 셉니다.
+ * @param {Array<{ weekday?: unknown }>} rows 검사할 행 목록입니다.
+ * @returns {number} 서로 다른 요일 수입니다.
+ */
 function getDistinctWeekdayCount(rows) {
   const weekdaySet = new Set();
   rows.forEach((row) => {
@@ -710,6 +851,11 @@ function getDistinctWeekdayCount(rows) {
   return weekdaySet.size;
 }
 
+/**
+ * 부서 기준으로 중복 없는 타깃 목록을 만듭니다.
+ * @param {types.KjcaAnalyzeResult[]} rows 분석 결과 목록입니다.
+ * @returns {types.KjcaTeamLeadRow[]} 부서별 대표 타깃 목록입니다.
+ */
 function buildUniqueTargets(rows) {
   const map = new Map();
   rows.forEach((row) => {
@@ -724,6 +870,11 @@ function buildUniqueTargets(rows) {
   return Array.from(map.values());
 }
 
+/**
+ * 주간 계획 데이터가 실제로 들어 있는지 확인합니다.
+ * @param {types.KjcaRecruitingExtract} recruiting 검사할 recruiting 값입니다.
+ * @returns {boolean} 계획 데이터가 있으면 true입니다.
+ */
 function hasWeekPlanData(recruiting) {
   return (
     recruiting.monthTarget !== null ||
@@ -744,6 +895,12 @@ function hasWeekPlanData(recruiting) {
   );
 }
 
+/**
+ * 주간 목표/실적 스냅샷 행을 계산합니다.
+ * @param {Array<{ weekday?: unknown, targetCount?: unknown }>} planItems 계획 행 목록입니다.
+ * @param {Array<{ weekday?: unknown, actualCount?: unknown }>} weekResults 실적 행 목록입니다.
+ * @returns {types.KjcaSnapshotRow[]} 요일별 스냅샷 행 목록입니다.
+ */
 function buildSnapshotRows(planItems, weekResults) {
   const targetMap = {
     mon: 0,
