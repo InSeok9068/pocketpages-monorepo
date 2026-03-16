@@ -576,7 +576,7 @@ class PocketPagesCodeActionProvider {
       const action = new vscode.CodeAction(actionSpec.title, vscode.CodeActionKind.QuickFix)
       const workspaceEdit = new vscode.WorkspaceEdit()
 
-      for (const edit of actionSpec.edits) {
+      for (const edit of actionSpec.edits || []) {
         let targetDocument = documentCache.get(edit.filePath)
         if (!targetDocument) {
           targetDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(edit.filePath))
@@ -848,7 +848,7 @@ function activate(context) {
   }
 
   const updateDiagnostics = (document) => {
-    if (!document || document.uri.scheme !== 'file' || !document.uri.fsPath.endsWith('.ejs')) {
+    if (!isPocketPagesCodeDocument(document)) {
       return
     }
 

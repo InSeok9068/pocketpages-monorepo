@@ -5,7 +5,7 @@ const path = require("path");
 const ts = require("typescript");
 const { buildTemplateVirtualText, extractTemplateCodeBlocks, getTemplateCodeBlockAtOffset } = require("./ejs-template");
 const { extractServerBlocks, getServerBlockAtOffset } = require("./script-server");
-const { PocketPagesProjectIndex } = require("./project-index");
+const { PocketPagesProjectIndex, collectIncludeCallEntries } = require("./project-index");
 const {
   collectResolveRequestPaths,
   collectPathContexts,
@@ -519,6 +519,458 @@ function collectIncludeContextDiagnostics(scriptText) {
   return diagnostics;
 }
 
+function normalizeRouteRequestPath(routePath) {
+  let value = String(routePath || "").trim();
+  if (!value || !value.startsWith("/")) {
+    return null;
+  }
+
+  if (value.startsWith("//")) {
+    return null;
+  }
+
+  const markerIndex = value.search(/[?#]/);
+  if (markerIndex !== -1) {
+    value = value.slice(0, markerIndex);
+  }
+
+  value = value.replace(/\/+/g, "/");
+  if (value.length > 1) {
+    value = value.replace(/\/+$/, "");
+  }
+
+  return value || "/";
+}
+
+function splitRoutePathSuffix(routePath) {
+  const value = String(routePath || "");
+  const markerIndex = value.search(/[?#]/);
+  if (markerIndex === -1) {
+    return {
+      basePath: value,
+      suffix: "",
+    };
+  }
+
+  return {
+    basePath: value.slice(0, markerIndex),
+    suffix: value.slice(markerIndex),
+  };
+}
+
+function getPathContextLabel(context) {
+  if (!context) {
+    return "PocketPages path";
+  }
+
+  if (context.kind === "resolve-path") {
+    return "resolve() path";
+  }
+
+  if (context.kind === "include-path") {
+    return "include() path";
+  }
+
+  if (context.kind === "route-path") {
+    return context.routeSource ? `${context.routeSource} path` : "route path";
+  }
+
+  return "PocketPages path";
+}
+
+function getComparablePathValue(context) {
+  if (!context) {
+    return "";
+  }
+
+  if (context.kind === "route-path") {
+    return normalizeRouteRequestPath(context.value) || String(context.value || "").trim();
+  }
+
+  if (context.kind === "resolve-path") {
+    return String(context.value || "").trim().replace(/^\/+/, "");
+  }
+
+  return String(context.value || "").trim();
+}
+
+function getPathContextCandidates(projectIndex, filePath, context) {
+  if (!context) {
+    return [];
+  }
+
+  if (context.kind === "resolve-path") {
+    return projectIndex.getResolveCandidates(filePath);
+  }
+
+  if (context.kind === "include-path") {
+    return projectIndex.getIncludeCandidates(filePath);
+  }
+
+  if (context.kind === "route-path") {
+    return projectIndex.getRouteCandidates({
+      routeSource: context.routeSource,
+    });
+  }
+
+  return [];
+}
+
+function computeLevenshteinDistance(leftText, rightText) {
+  const left = String(leftText || "");
+  const right = String(rightText || "");
+  if (left === right) {
+    return 0;
+  }
+
+  if (!left.length) {
+    return right.length;
+  }
+
+  if (!right.length) {
+    return left.length;
+  }
+
+  const previous = new Array(right.length + 1);
+  const current = new Array(right.length + 1);
+
+  for (let index = 0; index <= right.length; index += 1) {
+    previous[index] = index;
+  }
+
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    current[0] = leftIndex;
+
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+      current[rightIndex] = Math.min(
+        previous[rightIndex] + 1,
+        current[rightIndex - 1] + 1,
+        previous[rightIndex - 1] + substitutionCost
+      );
+    }
+
+    for (let index = 0; index <= right.length; index += 1) {
+      previous[index] = current[index];
+    }
+  }
+
+  return previous[right.length];
+}
+
+function getBasenameLike(value) {
+  return String(value || "")
+    .split("/")
+    .filter(Boolean)
+    .pop() || "";
+}
+
+function getSuggestedPathCandidates(context, candidates, limit = 3) {
+  const requestValue = getComparablePathValue(context);
+  const normalizedRequest = requestValue.toLowerCase();
+  if (!normalizedRequest) {
+    return [];
+  }
+
+  const requestBaseName = getBasenameLike(normalizedRequest);
+  const threshold = Math.max(2, Math.ceil(normalizedRequest.length * 0.2));
+
+  return (Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => {
+      const candidateValue = context.kind === "route-path"
+        ? normalizeRouteRequestPath(candidate.value) || String(candidate.value || "").trim()
+        : String(candidate.value || "").trim();
+      const normalizedCandidate = candidateValue.toLowerCase();
+      const candidateBaseName = getBasenameLike(normalizedCandidate);
+      let score = computeLevenshteinDistance(normalizedRequest, normalizedCandidate);
+
+      if (candidateBaseName && candidateBaseName === requestBaseName) {
+        score -= 2;
+      }
+      if (normalizedCandidate.includes(normalizedRequest) || normalizedRequest.includes(normalizedCandidate)) {
+        score -= 1;
+      }
+
+      return {
+        ...candidate,
+        value: candidateValue,
+        score,
+      };
+    })
+    .filter((candidate) => {
+      const normalizedCandidate = String(candidate.value || "").toLowerCase();
+      const candidateBaseName = getBasenameLike(normalizedCandidate);
+      const sharesLeadingCharacter = normalizedCandidate[0] === normalizedRequest[0];
+      return (
+        (candidate.score <= threshold && sharesLeadingCharacter) ||
+        normalizedCandidate.startsWith(normalizedRequest) ||
+        normalizedRequest.startsWith(normalizedCandidate) ||
+        (candidateBaseName && candidateBaseName === requestBaseName)
+      );
+    })
+    .sort((left, right) => {
+      if (left.score !== right.score) {
+        return left.score - right.score;
+      }
+
+      if (left.value.length !== right.value.length) {
+        return left.value.length - right.value.length;
+      }
+
+      return String(left.value || "").localeCompare(String(right.value || ""));
+    })
+    .slice(0, limit);
+}
+
+/**
+ * include() local 이름 오타 후보를 고른다.
+ * @param {string} requestedName
+ * @param {string[]} candidateNames
+ * @param {number} [limit]
+ * @returns {string[]}
+ */
+function getSuggestedIdentifierCandidates(requestedName, candidateNames, limit = 3) {
+  const normalizedRequestedName = String(requestedName || "").trim().toLowerCase();
+  if (!normalizedRequestedName) {
+    return [];
+  }
+
+  const threshold = Math.max(1, Math.ceil(normalizedRequestedName.length * 0.34));
+
+  return [...new Set(Array.isArray(candidateNames) ? candidateNames.filter(Boolean) : [])]
+    .map((candidateName) => {
+      const normalizedCandidateName = String(candidateName || "").trim().toLowerCase();
+      let score = computeLevenshteinDistance(normalizedRequestedName, normalizedCandidateName);
+
+      if (
+        normalizedCandidateName.startsWith(normalizedRequestedName) ||
+        normalizedRequestedName.startsWith(normalizedCandidateName)
+      ) {
+        score -= 1;
+      }
+
+      return {
+        candidateName: String(candidateName),
+        normalizedCandidateName,
+        score,
+      };
+    })
+    .filter((candidate) => {
+      if (!candidate.normalizedCandidateName) {
+        return false;
+      }
+
+      return (
+        candidate.score <= threshold &&
+        candidate.normalizedCandidateName[0] === normalizedRequestedName[0]
+      ) || candidate.normalizedCandidateName.startsWith(normalizedRequestedName);
+    })
+    .sort((left, right) => {
+      if (left.score !== right.score) {
+        return left.score - right.score;
+      }
+
+      if (left.candidateName.length !== right.candidateName.length) {
+        return left.candidateName.length - right.candidateName.length;
+      }
+
+      return left.candidateName.localeCompare(right.candidateName);
+    })
+    .slice(0, limit)
+    .map((candidate) => candidate.candidateName);
+}
+
+function buildSuggestedReplacementValue(context, candidateValue) {
+  if (!context) {
+    return candidateValue;
+  }
+
+  if (context.kind === "route-path") {
+    const { suffix } = splitRoutePathSuffix(context.value);
+    return `${candidateValue}${suffix}`;
+  }
+
+  return candidateValue;
+}
+
+/**
+ * null/undefined 비교에서 검사하는 식별자 이름을 읽는다.
+ * @param {ts.Node | undefined | null} node
+ * @returns {string | null}
+ */
+function getOptionalGuardIdentifierName(node) {
+  const target = skipExpressionWrappers(node);
+  if (!target) {
+    return null;
+  }
+
+  if (ts.isIdentifier(target)) {
+    return target.text;
+  }
+
+  if (ts.isTypeOfExpression(target)) {
+    const expressionTarget = skipExpressionWrappers(target.expression);
+    return expressionTarget && ts.isIdentifier(expressionTarget) ? expressionTarget.text : null;
+  }
+
+  return null;
+}
+
+/**
+ * optional local guard에 쓰인 이름을 수집한다.
+ * @param {ts.SourceFile} sourceFile
+ * @returns {Set<string>}
+ */
+function collectOptionalGuardNames(sourceFile) {
+  const names = new Set();
+
+  const isNullishLiteral = (node) => {
+    const target = skipExpressionWrappers(node);
+    return (
+      !!target &&
+      ((ts.isIdentifier(target) && target.text === "undefined") || target.kind === ts.SyntaxKind.NullKeyword)
+    );
+  };
+
+  const rememberGuardedIdentifiers = (node) => {
+    const target = skipExpressionWrappers(node);
+    if (!target) {
+      return;
+    }
+
+    if (ts.isIdentifier(target)) {
+      names.add(target.text);
+      return;
+    }
+
+    if (ts.isPrefixUnaryExpression(target) && target.operator === ts.SyntaxKind.ExclamationToken) {
+      rememberGuardedIdentifiers(target.operand);
+      return;
+    }
+
+    if (ts.isBinaryExpression(target)) {
+      if (
+        target.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        target.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+        target.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+      ) {
+        rememberGuardedIdentifiers(target.left);
+        rememberGuardedIdentifiers(target.right);
+      }
+    }
+  };
+
+  const visit = (node) => {
+    if (ts.isTypeOfExpression(node)) {
+      const guardedName = getOptionalGuardIdentifierName(node.expression);
+      if (guardedName) {
+        names.add(guardedName);
+      }
+    }
+
+    if (ts.isBinaryExpression(node)) {
+      const leftName = getOptionalGuardIdentifierName(node.left);
+      const rightName = getOptionalGuardIdentifierName(node.right);
+
+      if (leftName && isNullishLiteral(node.right)) {
+        names.add(leftName);
+      }
+
+      if (rightName && isNullishLiteral(node.left)) {
+        names.add(rightName);
+      }
+    }
+
+    if (ts.isIfStatement(node) || ts.isWhileStatement(node) || ts.isDoStatement(node)) {
+      rememberGuardedIdentifiers(node.expression);
+    }
+
+    if (ts.isForStatement(node) && node.condition) {
+      rememberGuardedIdentifiers(node.condition);
+    }
+
+    if (ts.isConditionalExpression(node)) {
+      rememberGuardedIdentifiers(node.condition);
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return names;
+}
+
+function resolvePathContextTargetWithIndex(projectIndex, filePath, context) {
+  if (!context) {
+    return null;
+  }
+
+  if (context.kind === "resolve-path") {
+    return projectIndex.resolveResolveTarget(filePath, context.value);
+  }
+
+  if (context.kind === "include-path") {
+    return projectIndex.resolveIncludeTarget(filePath, context.value);
+  }
+
+  if (context.kind === "route-path") {
+    return projectIndex.resolveRouteTarget(filePath, context.value, {
+      routeSource: context.routeSource,
+    });
+  }
+
+  return null;
+}
+
+function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText) {
+  const diagnostics = [];
+
+  for (const context of collectPathContexts(documentText)) {
+    if (context.kind === "resolve-path" && /^\/?_private\//.test(context.value)) {
+      continue;
+    }
+
+    const targetFilePath = resolvePathContextTargetWithIndex(projectIndex, filePath, context);
+    if (targetFilePath) {
+      continue;
+    }
+
+    const candidates = getPathContextCandidates(projectIndex, filePath, context);
+    const suggestedCandidates = getSuggestedPathCandidates(context, candidates);
+    const fixes = suggestedCandidates.map((candidate) => ({
+      title: `Use "${candidate.value}"`,
+      edits: [
+        {
+          start: context.start,
+          end: context.end,
+          newText: buildSuggestedReplacementValue(context, candidate.value),
+        },
+      ],
+    }));
+
+    const label = getPathContextLabel(context);
+    const message = suggestedCandidates.length
+      ? `Unresolved ${label} "${context.value}". Did you mean "${suggestedCandidates[0].value}"?`
+      : `Unresolved ${label} "${context.value}".`;
+
+    diagnostics.push({
+      code:
+        context.kind === "resolve-path"
+          ? "pp-unresolved-resolve-path"
+          : context.kind === "include-path"
+            ? "pp-unresolved-include-path"
+            : "pp-unresolved-route-path",
+      category: ts.DiagnosticCategory.Warning,
+      message,
+      start: context.start,
+      end: context.end,
+      fixes,
+    });
+  }
+
+  return diagnostics;
+}
+
 function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText) {
   const diagnostics = [];
   const analysisText = isEjsFile(filePath) ? buildTemplateVirtualText(documentText) : documentText;
@@ -529,6 +981,10 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText) {
   }
 
   for (const diagnostic of collectIncludeContextDiagnostics(analysisText)) {
+    diagnostics.push(diagnostic);
+  }
+
+  for (const diagnostic of collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText)) {
     diagnostics.push(diagnostic);
   }
 
@@ -729,7 +1185,7 @@ class ProjectLanguageService {
     }
   }
 
-  buildPrelude(filePath, analysisText = "") {
+  buildPrelude(filePath, analysisText = "", options = {}) {
     const references = getAppAmbientTypeFiles(this.appRoot)
       .filter((filePath) => fileExists(filePath))
       .map((filePath) => `/// <reference path="${toReferencePath(filePath)}" />`);
@@ -753,7 +1209,7 @@ class ProjectLanguageService {
       parts.push(routeParamLines.join("\n"));
     }
 
-    const includeLocalsPrelude = isEjsFile(filePath) ? this.buildIncludeLocalsPrelude(filePath) : "";
+    const includeLocalsPrelude = !options.skipIncludeLocals && isEjsFile(filePath) ? this.buildIncludeLocalsPrelude(filePath) : "";
     if (includeLocalsPrelude) {
       parts.push(includeLocalsPrelude);
     }
@@ -762,7 +1218,7 @@ class ProjectLanguageService {
     // bindings from different EJS files do not collide in the shared TS project.
     parts.push("export {};");
 
-    const resolveTypePrelude = this.buildResolveTypePrelude(filePath, analysisText);
+    const resolveTypePrelude = options.skipResolveTypePrelude ? "" : this.buildResolveTypePrelude(filePath, analysisText);
     if (resolveTypePrelude) {
       parts.push(resolveTypePrelude);
     }
@@ -901,6 +1357,190 @@ class ProjectLanguageService {
     }
 
     return checker.typeToString(targetType, targetNode, ts.TypeFormatFlags.NoTruncation);
+  }
+
+  getIncludeContractLocals(targetFilePath) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    if (!isEjsFile(normalizedTargetFilePath) || !fileExists(normalizedTargetFilePath)) {
+      return [];
+    }
+
+    const documentText = this.getDocumentText(normalizedTargetFilePath);
+    const analysisText = buildTemplateVirtualText(documentText);
+    if (!analysisText.trim()) {
+      return [];
+    }
+
+    const preludeText = this.buildPrelude(normalizedTargetFilePath, analysisText, {
+      skipIncludeLocals: true,
+      skipResolveTypePrelude: true,
+    });
+    const tempText = `${preludeText}${analysisText}`;
+    const tempFilePath = normalizePath(path.join(CACHE_ROOT, `${sanitizeFileName(normalizedTargetFilePath)}__include_contract.ts`));
+    const ambientFiles = getAppAmbientTypeFiles(this.appRoot).filter((filePath) => fileExists(filePath)).map((filePath) => normalizePath(filePath));
+    const compilerHost = ts.createCompilerHost(COMPILER_OPTIONS, true);
+    const defaultReadFile = compilerHost.readFile.bind(compilerHost);
+    const defaultFileExists = compilerHost.fileExists.bind(compilerHost);
+    const defaultGetSourceFile = compilerHost.getSourceFile.bind(compilerHost);
+
+    compilerHost.readFile = (fileName) => {
+      const normalizedFileName = normalizePath(fileName);
+      if (normalizedFileName === tempFilePath) {
+        return tempText;
+      }
+
+      return defaultReadFile(fileName);
+    };
+
+    compilerHost.fileExists = (fileName) => {
+      const normalizedFileName = normalizePath(fileName);
+      if (normalizedFileName === tempFilePath) {
+        return true;
+      }
+
+      return defaultFileExists(fileName);
+    };
+
+    compilerHost.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
+      const normalizedFileName = normalizePath(fileName);
+      if (normalizedFileName === tempFilePath) {
+        return ts.createSourceFile(fileName, tempText, languageVersion, true);
+      }
+
+      return defaultGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
+    };
+
+    const program = ts.createProgram([...ambientFiles, tempFilePath], COMPILER_OPTIONS, compilerHost);
+    const tempSourceFile = program.getSourceFile(tempFilePath);
+    if (!tempSourceFile) {
+      return [];
+    }
+
+    const optionalGuardNames = collectOptionalGuardNames(tempSourceFile);
+    const expectedNames = new Set();
+    const diagnostics = [
+      ...program.getSyntacticDiagnostics(tempSourceFile),
+      ...program.getSemanticDiagnostics(tempSourceFile),
+    ];
+
+    for (const diagnostic of diagnostics) {
+      if (![2304, 2552].includes(diagnostic.code)) {
+        continue;
+      }
+
+      if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number" || diagnostic.length <= 0) {
+        continue;
+      }
+
+      if (diagnostic.start < preludeText.length) {
+        continue;
+      }
+
+      const identifierName = tempText.slice(diagnostic.start, diagnostic.start + diagnostic.length);
+      if (!isValidIdentifierName(identifierName) || identifierName === "undefined") {
+        continue;
+      }
+
+      expectedNames.add(identifierName);
+    }
+
+    return [...expectedNames]
+      .sort((left, right) => left.localeCompare(right))
+      .map((name) => ({
+        name,
+        optional: optionalGuardNames.has(name),
+      }));
+  }
+
+  getIncludeCallerDiagnostics(filePath, documentText) {
+    const analysisText = toAnalysisText(filePath, documentText);
+    const includeCalls = collectIncludeCallEntries(filePath, analysisText);
+    if (!includeCalls.length) {
+      return [];
+    }
+
+    const diagnostics = [];
+    const contractCache = new Map();
+
+    for (const includeCall of includeCalls) {
+      const targetFilePath = this.projectIndex.resolveIncludeTarget(filePath, includeCall.requestPath);
+      if (!targetFilePath) {
+        continue;
+      }
+
+      let contractLocals = contractCache.get(targetFilePath);
+      if (!contractLocals) {
+        contractLocals = this.getIncludeContractLocals(targetFilePath);
+        contractCache.set(targetFilePath, contractLocals);
+      }
+
+      if (!contractLocals.length) {
+        continue;
+      }
+
+      const expectedNames = contractLocals.map((entry) => entry.name);
+      const expectedNameSet = new Set(expectedNames);
+      const coveredMissingNames = new Set();
+
+      if (includeCall.localsMode === "object") {
+        for (const local of includeCall.locals || []) {
+          if (expectedNameSet.has(local.name)) {
+            continue;
+          }
+
+          const suggestions = getSuggestedIdentifierCandidates(local.name, expectedNames);
+          if (suggestions.length) {
+            coveredMissingNames.add(suggestions[0]);
+          }
+
+          diagnostics.push({
+            code: "pp-include-unknown-local",
+            category: ts.DiagnosticCategory.Warning,
+            message: suggestions.length
+              ? `Unknown local "${local.name}" passed to include("${includeCall.requestPath}"). Did you mean "${suggestions[0]}"?`
+              : `Unknown local "${local.name}" passed to include("${includeCall.requestPath}").`,
+            start: typeof local.nameStart === "number" ? local.nameStart : includeCall.requestStart,
+            end: typeof local.nameEnd === "number" ? local.nameEnd : includeCall.requestEnd,
+            fixes: suggestions.map((candidateName) => ({
+              title: `Rename to "${candidateName}"`,
+              edits: [
+                {
+                  start: typeof local.nameStart === "number" ? local.nameStart : includeCall.requestStart,
+                  end: typeof local.nameEnd === "number" ? local.nameEnd : includeCall.requestEnd,
+                  newText: candidateName,
+                },
+              ],
+            })),
+          });
+        }
+      }
+
+      if (includeCall.localsMode === "dynamic" || includeCall.hasDynamicLocals) {
+        continue;
+      }
+
+      const providedNames = new Set((includeCall.locals || []).map((local) => local.name));
+      const missingNames = contractLocals
+        .filter((entry) => !entry.optional && !providedNames.has(entry.name) && !coveredMissingNames.has(entry.name))
+        .map((entry) => entry.name);
+
+      if (!missingNames.length) {
+        continue;
+      }
+
+      diagnostics.push({
+        code: "pp-include-missing-local",
+        category: ts.DiagnosticCategory.Warning,
+        message:
+          missingNames.length === 1
+            ? `Missing local "${missingNames[0]}" for include("${includeCall.requestPath}").`
+            : `Missing locals for include("${includeCall.requestPath}"): ${missingNames.join(", ")}.`,
+        start: includeCall.requestStart,
+        end: includeCall.requestEnd,
+      });
+    }
+
+    return diagnostics;
   }
 
   buildResolveTypePrelude(filePath, analysisText) {
@@ -2317,6 +2957,10 @@ class ProjectLanguageService {
       diagnostics.push(diagnostic);
     }
 
+    for (const diagnostic of this.getIncludeCallerDiagnostics(filePath, documentText)) {
+      diagnostics.push(diagnostic);
+    }
+
     const uniqueDiagnostics = new Map();
     for (const diagnostic of diagnostics) {
       const key = `${diagnostic.code}:${diagnostic.category}:${diagnostic.start}:${diagnostic.end}:${diagnostic.message}`;
@@ -2361,7 +3005,7 @@ class ProjectLanguageService {
             end: diagnostic.end,
             message: diagnostic.message,
           },
-          edits: fix.edits.map((edit) => ({
+          edits: (fix.edits || []).map((edit) => ({
             filePath: normalizePath(edit.filePath || filePath),
             start: edit.start,
             end: edit.end,

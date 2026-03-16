@@ -512,10 +512,15 @@ function collectIncludeCallEntries(filePath, scriptText) {
       if (requestPath) {
         const locals = []
         const localsArgument = skipExpressionWrappers(node.arguments[1])
+        let localsMode = 'none'
+        let hasDynamicLocals = false
 
         if (localsArgument && ts.isObjectLiteralExpression(localsArgument)) {
+          localsMode = 'object'
+
           for (const property of localsArgument.properties) {
             if (ts.isSpreadAssignment(property)) {
+              hasDynamicLocals = true
               continue
             }
 
@@ -524,6 +529,8 @@ function collectIncludeCallEntries(filePath, scriptText) {
                 name: property.name.text,
                 typeStrategy: 'ts-expression',
                 typeText: 'any',
+                nameStart: property.name.getStart(sourceFile),
+                nameEnd: property.name.getEnd(),
                 expressionStart: property.name.getStart(sourceFile),
                 expressionEnd: property.name.getEnd(),
               })
@@ -536,6 +543,7 @@ function collectIncludeCallEntries(filePath, scriptText) {
 
             const propertyName = getPropertyNameText(property.name)
             if (!propertyName) {
+              hasDynamicLocals = true
               continue
             }
 
@@ -547,14 +555,24 @@ function collectIncludeCallEntries(filePath, scriptText) {
               name: propertyName,
               typeStrategy: useTypeScriptInference ? 'ts-expression' : 'static',
               typeText: useTypeScriptInference ? 'any' : inferIncludeLocalTypeText(property.initializer),
+              nameStart: property.name.getStart(sourceFile),
+              nameEnd: property.name.getEnd(),
               expressionStart: useTypeScriptInference ? initializer.getStart(sourceFile) : null,
               expressionEnd: useTypeScriptInference ? initializer.getEnd() : null,
             })
           }
+        } else if (localsArgument) {
+          localsMode = 'dynamic'
         }
 
         entries.push({
           requestPath,
+          callStart: node.getStart(sourceFile),
+          callEnd: node.getEnd(),
+          requestStart: node.arguments[0].getStart(sourceFile) + 1,
+          requestEnd: node.arguments[0].getEnd() - 1,
+          localsMode,
+          hasDynamicLocals,
           locals,
         })
       }
@@ -1545,6 +1563,7 @@ class PocketPagesProjectIndex {
 
 module.exports = {
   PocketPagesProjectIndex,
+  collectIncludeCallEntries,
   normalizePath,
   fileExists,
   quoteRegex,

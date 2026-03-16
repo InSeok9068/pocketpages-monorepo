@@ -340,6 +340,11 @@ module.exports = {
 
 function run() {
   const repoRoot = path.resolve(__dirname, '..', '..', '..')
+  const extensionSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'extension.js'), 'utf8')
+  if (!/const updateDiagnostics = \(document\) => \{\s*if \(!isPocketPagesCodeDocument\(document\)\) \{\s*return\s*\}/.test(extensionSource)) {
+    throw new Error('Expected updateDiagnostics() to cover PocketPages code documents, including JS page files.')
+  }
+
   const fixture = createFixtureApp(repoRoot)
 
   try {
@@ -1577,6 +1582,197 @@ module.exports = {
       )
     ) {
       throw new Error(`Expected resolve('/_private/...') quick fix. Got: ${JSON.stringify(resolvePrivatePrefixCodeActions)}`)
+    }
+
+    const unresolvedResolveDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('board-servce')\n</script>\n`
+    )
+    const unresolvedResolveDiagnostic = unresolvedResolveDiagnostics.find((entry) => entry.code === 'pp-unresolved-resolve-path')
+    if (!unresolvedResolveDiagnostic || !String(unresolvedResolveDiagnostic.message).includes('board-service')) {
+      throw new Error(`Expected unresolved resolve() path diagnostic with suggestion. Got: ${JSON.stringify(unresolvedResolveDiagnostics)}`)
+    }
+
+    const unresolvedResolveCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('board-servce')\n</script>\n`,
+      {
+        start: `<script server>\nresolve('board-servce')\n</script>\n`.indexOf('board-servce'),
+        end: `<script server>\nresolve('board-servce')\n</script>\n`.indexOf('board-servce') + 'board-servce'.length,
+      }
+    )
+    if (
+      !unresolvedResolveCodeActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === 'board-service')
+      )
+    ) {
+      throw new Error(`Expected unresolved resolve() path quick fix. Got: ${JSON.stringify(unresolvedResolveCodeActions)}`)
+    }
+    if (unresolvedResolveCodeActions.some((entry) => Array.isArray(entry.creates) && entry.creates.length)) {
+      throw new Error(`Expected unresolved resolve() typo fix to prefer suggestions over create-file actions. Got: ${JSON.stringify(unresolvedResolveCodeActions)}`)
+    }
+
+    const missingResolveDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('new-dashboard-service')\n</script>\n`
+    )
+    if (!missingResolveDiagnostics.some((entry) => entry.code === 'pp-unresolved-resolve-path')) {
+      throw new Error(`Expected unresolved resolve() path diagnostic for missing module. Got: ${JSON.stringify(missingResolveDiagnostics)}`)
+    }
+
+    const unresolvedIncludeDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<%- include('flash-alret.ejs') %>\n`
+    )
+    const unresolvedIncludeDiagnostic = unresolvedIncludeDiagnostics.find((entry) => entry.code === 'pp-unresolved-include-path')
+    if (!unresolvedIncludeDiagnostic || !String(unresolvedIncludeDiagnostic.message).includes('flash-alert.ejs')) {
+      throw new Error(`Expected unresolved include() path diagnostic with suggestion. Got: ${JSON.stringify(unresolvedIncludeDiagnostics)}`)
+    }
+
+    const unresolvedIncludeCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      `<%- include('flash-alret.ejs') %>\n`,
+      {
+        start: `<%- include('flash-alret.ejs') %>\n`.indexOf('flash-alret.ejs'),
+        end: `<%- include('flash-alret.ejs') %>\n`.indexOf('flash-alret.ejs') + 'flash-alret.ejs'.length,
+      }
+    )
+    if (
+      !unresolvedIncludeCodeActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === 'flash-alert.ejs')
+      )
+    ) {
+      throw new Error(`Expected unresolved include() path quick fix. Got: ${JSON.stringify(unresolvedIncludeCodeActions)}`)
+    }
+
+    const includeUnknownLocalDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<%- include('flash-alert.ejs', { flashMesage: 'Saved', isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`
+    )
+    const includeUnknownLocalDiagnostic = includeUnknownLocalDiagnostics.find((entry) => entry.code === 'pp-include-unknown-local')
+    if (!includeUnknownLocalDiagnostic || !String(includeUnknownLocalDiagnostic.message).includes('flashMessage')) {
+      throw new Error(`Expected include() unknown local diagnostic with rename suggestion. Got: ${JSON.stringify(includeUnknownLocalDiagnostics)}`)
+    }
+    if (
+      includeUnknownLocalDiagnostics.some(
+        (entry) => entry.code === 'pp-include-missing-local' && String(entry.message).includes('flashMessage')
+      )
+    ) {
+      throw new Error(`Expected include() typo local diagnostic to suppress duplicate missing-local warning. Got: ${JSON.stringify(includeUnknownLocalDiagnostics)}`)
+    }
+
+    const includeUnknownLocalCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      `<%- include('flash-alert.ejs', { flashMesage: 'Saved', isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`,
+      {
+        start:
+          `<%- include('flash-alert.ejs', { flashMesage: 'Saved', isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`.indexOf('flashMesage'),
+        end:
+          `<%- include('flash-alert.ejs', { flashMesage: 'Saved', isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`.indexOf('flashMesage') +
+          'flashMesage'.length,
+      }
+    )
+    if (
+      !includeUnknownLocalCodeActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === 'flashMessage')
+      )
+    ) {
+      throw new Error(`Expected include() unknown local rename quick fix. Got: ${JSON.stringify(includeUnknownLocalCodeActions)}`)
+    }
+
+    const includeMissingLocalDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<%- include('flash-alert.ejs', { isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`
+    )
+    if (
+      !includeMissingLocalDiagnostics.some(
+        (entry) => entry.code === 'pp-include-missing-local' && String(entry.message).includes('flashMessage')
+      )
+    ) {
+      throw new Error(`Expected include() missing local diagnostic for flashMessage. Got: ${JSON.stringify(includeMissingLocalDiagnostics)}`)
+    }
+
+    const requiredFlashCallerFilePath = path.join(
+      fixture.appRoot,
+      'pb_hooks',
+      'pages',
+      '(site)',
+      'boards',
+      'flash-alert-required-check.ejs'
+    )
+    writeFile(
+      requiredFlashCallerFilePath,
+      `<%- include('flash-alert.ejs', { isErrorFlash: true, flashMeta: { count: 2 } }) %>\n`
+    )
+    const requiredFlashCallerDiagnostics = service.getDiagnostics(
+      requiredFlashCallerFilePath,
+      `<%- include('flash-alert.ejs', { isErrorFlash: true, flashMeta: { count: 2 } }) %>\n`
+    )
+    if (
+      !requiredFlashCallerDiagnostics.some(
+        (entry) => entry.code === 'pp-include-missing-local' && String(entry.message).includes('flashMessage')
+      )
+    ) {
+      throw new Error(`Expected include() required local diagnostic to remain active across multiple call sites. Got: ${JSON.stringify(requiredFlashCallerDiagnostics)}`)
+    }
+
+    const validFlashCallerDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<%- include('flash-alert.ejs', { flashMessage: 'Saved', isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`
+    )
+    if (validFlashCallerDiagnostics.some((entry) => entry.code === 'pp-include-missing-local')) {
+      throw new Error(`Expected valid include() call site to avoid missing-local diagnostics after adding another caller. Got: ${JSON.stringify(validFlashCallerDiagnostics)}`)
+    }
+
+    const includeOptionalLocalDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<%- include('optional-notice.ejs', { tone: 'notice' }) %>\n`
+    )
+    if (includeOptionalLocalDiagnostics.some((entry) => entry.code === 'pp-include-missing-local')) {
+      throw new Error(`Expected include() optional locals to avoid missing-local diagnostics. Got: ${JSON.stringify(includeOptionalLocalDiagnostics)}`)
+    }
+
+    const includeDynamicLocalDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nconst flashLocals = { isErrorFlash: false, flashMeta: { count: 1 } }\n</script>\n<%- include('flash-alert.ejs', flashLocals) %>\n`
+    )
+    if (includeDynamicLocalDiagnostics.some((entry) => entry.code === 'pp-include-missing-local')) {
+      throw new Error(`Expected dynamic include() locals to skip missing-local diagnostics. Got: ${JSON.stringify(includeDynamicLocalDiagnostics)}`)
+    }
+
+    const missingIncludeDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<%- include('new-status-card.ejs') %>\n`
+    )
+    if (!missingIncludeDiagnostics.some((entry) => entry.code === 'pp-unresolved-include-path')) {
+      throw new Error(`Expected unresolved include() path diagnostic for missing partial. Got: ${JSON.stringify(missingIncludeDiagnostics)}`)
+    }
+
+    const unresolvedRouteDiagnostics = service.getDiagnostics(
+      fixture.siteIndexFilePath,
+      `<a href="/signn-in?next=/boards"></a>\n`
+    )
+    const unresolvedRouteDiagnostic = unresolvedRouteDiagnostics.find((entry) => entry.code === 'pp-unresolved-route-path')
+    if (!unresolvedRouteDiagnostic || !String(unresolvedRouteDiagnostic.message).includes('/sign-in')) {
+      throw new Error(`Expected unresolved route path diagnostic with suggestion. Got: ${JSON.stringify(unresolvedRouteDiagnostics)}`)
+    }
+
+    const unresolvedRouteCodeActions = service.getCodeActions(
+      fixture.siteIndexFilePath,
+      `<a href="/signn-in?next=/boards"></a>\n`,
+      {
+        start: `<a href="/signn-in?next=/boards"></a>\n`.indexOf('/signn-in?next=/boards'),
+        end:
+          `<a href="/signn-in?next=/boards"></a>\n`.indexOf('/signn-in?next=/boards') +
+          '/signn-in?next=/boards'.length,
+      }
+    )
+    if (
+      !unresolvedRouteCodeActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === '/sign-in?next=/boards')
+      )
+    ) {
+      throw new Error(`Expected unresolved route path quick fix to preserve query suffix. Got: ${JSON.stringify(unresolvedRouteCodeActions)}`)
     }
 
     const partialContextDiagnostics = service.getDiagnostics(
