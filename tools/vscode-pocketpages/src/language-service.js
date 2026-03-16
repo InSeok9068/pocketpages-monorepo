@@ -1213,6 +1213,11 @@ class ProjectLanguageService {
       parts.push(routeParamLines.join("\n"));
     }
 
+    const recordGetPrelude = this.buildRecordGetTypePrelude(analysisText);
+    if (recordGetPrelude) {
+      parts.push(recordGetPrelude);
+    }
+
     const includeLocalsPrelude = !options.skipIncludeLocals && isEjsFile(filePath) ? this.buildIncludeLocalsPrelude(filePath) : "";
     if (includeLocalsPrelude) {
       parts.push(includeLocalsPrelude);
@@ -1228,6 +1233,41 @@ class ProjectLanguageService {
     }
 
     return `${parts.join("\n\n")}\n\n`;
+  }
+
+  buildRecordGetTypePrelude(analysisText) {
+    if (!analysisText) {
+      return "";
+    }
+
+    const fieldNames = [...new Set(
+      collectSchemaContexts(analysisText, {
+        collectionMethodNames: this.projectIndex.getCollectionMethodNames(),
+      })
+        .filter((context) => context.kind === "record-field")
+        .map((context) => context.value)
+        .filter(Boolean)
+    )];
+    const overloadLines = fieldNames
+      .map((fieldName) => {
+        const typeText = this.projectIndex.getRecordFieldTypeText(fieldName);
+        return typeText ? `      get(name: ${JSON.stringify(fieldName)}): ${typeText};` : null;
+      })
+      .filter(Boolean);
+
+    if (!overloadLines.length) {
+      return "";
+    }
+
+    return [
+      "declare global {",
+      "  namespace core {",
+      "    interface Record {",
+      ...overloadLines,
+      "    }",
+      "  }",
+      "}",
+    ].join("\n");
   }
 
   buildIncludeLocalsPrelude(filePath) {

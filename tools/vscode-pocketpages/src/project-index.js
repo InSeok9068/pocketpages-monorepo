@@ -411,6 +411,24 @@ function mergeTypeTexts(typeTexts) {
   return uniqueTypes.sort().join(' | ')
 }
 
+function mapSchemaFieldTypeToTypeText(fieldType) {
+  switch (String(fieldType || '').toLowerCase()) {
+    case 'text':
+    case 'email':
+    case 'url':
+    case 'editor':
+      return 'string'
+    case 'bool':
+      return 'boolean'
+    case 'number':
+      return 'number'
+    case 'json':
+      return 'any'
+    default:
+      return null
+  }
+}
+
 function inferIncludeLocalTypeText(node, depth = 0) {
   const target = skipExpressionWrappers(node)
   if (!target || depth > 4) {
@@ -920,6 +938,32 @@ class PocketPagesProjectIndex {
 
   hasField(collectionName, fieldName) {
     return this.getFieldNames(collectionName).includes(fieldName)
+  }
+
+  getFieldTypeText(collectionName, fieldName) {
+    const field = this.getFields(collectionName).find((entry) => entry.name === fieldName)
+    if (!field) {
+      return null
+    }
+
+    return mapSchemaFieldTypeToTypeText(field.type)
+  }
+
+  getRecordFieldTypeText(fieldName) {
+    const typeTexts = []
+
+    for (const collectionName of this.getCollectionNames()) {
+      const typeText = this.getFieldTypeText(collectionName, fieldName)
+      if (typeText) {
+        typeTexts.push(typeText)
+      }
+    }
+
+    if (!typeTexts.length) {
+      return null
+    }
+
+    return mergeTypeTexts(typeTexts)
   }
 
   getCollectionMethodState() {

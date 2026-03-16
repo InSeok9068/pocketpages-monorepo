@@ -182,6 +182,8 @@ export {}
             { name: 'slug', type: 'text' },
             { name: 'description', type: 'text' },
             { name: 'is_active', type: 'bool' },
+            { name: 'sort_order', type: 'number' },
+            { name: 'meta_json', type: 'json' },
           ],
         },
         {
@@ -1465,6 +1467,69 @@ module.exports = {
     }
     if (!diagnosticMessages.some((message) => message.includes('Unknown field "missing_field" for collection "boards"'))) {
       throw new Error(`Expected unknown field diagnostic. Got: ${diagnosticMessages.join(' | ')}`)
+    }
+
+    const typedRecordGetText = `<script server>
+const board = $app.findRecordById('boards', 'board-1')
+const boardName = board.get('name')
+const isActive = board.get('is_active')
+const sortOrder = board.get('sort_order')
+const metaPayload = board.get('meta_json')
+
+boardName.trim()
+isActive.trim()
+sortOrder.trim()
+metaPayload.trim()
+</script>\n`
+    const boardNameQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      typedRecordGetText.indexOf('boardName =') + 2
+    )
+    if (!boardNameQuickInfo || !boardNameQuickInfo.displayText.includes('const boardName: string')) {
+      throw new Error(`Expected record.get('name') quick info to resolve to string. Got: ${JSON.stringify(boardNameQuickInfo)}`)
+    }
+
+    const isActiveQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      typedRecordGetText.indexOf('isActive =') + 2
+    )
+    if (!isActiveQuickInfo || !isActiveQuickInfo.displayText.includes('const isActive: boolean')) {
+      throw new Error(`Expected record.get('is_active') quick info to resolve to boolean. Got: ${JSON.stringify(isActiveQuickInfo)}`)
+    }
+
+    const sortOrderQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      typedRecordGetText.indexOf('sortOrder =') + 2
+    )
+    if (!sortOrderQuickInfo || !sortOrderQuickInfo.displayText.includes('const sortOrder: number')) {
+      throw new Error(`Expected record.get('sort_order') quick info to resolve to number. Got: ${JSON.stringify(sortOrderQuickInfo)}`)
+    }
+
+    const metaPayloadQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      typedRecordGetText.indexOf('metaPayload =') + 2
+    )
+    if (!metaPayloadQuickInfo || !metaPayloadQuickInfo.displayText.includes('const metaPayload: any')) {
+      throw new Error(`Expected record.get('meta_json') quick info to resolve to any. Got: ${JSON.stringify(metaPayloadQuickInfo)}`)
+    }
+
+    const typedRecordGetDiagnostics = service.getDiagnostics(fixture.boardsFilePath, typedRecordGetText)
+    const typedRecordGetMessages = typedRecordGetDiagnostics.map((entry) => String(entry.message))
+    if (!typedRecordGetMessages.some((message) => message.includes("Property 'trim' does not exist on type 'boolean'"))) {
+      throw new Error(`Expected boolean record.get() diagnostics. Got: ${typedRecordGetMessages.join(' | ')}`)
+    }
+    if (!typedRecordGetMessages.some((message) => message.includes("Property 'trim' does not exist on type 'number'"))) {
+      throw new Error(`Expected number record.get() diagnostics. Got: ${typedRecordGetMessages.join(' | ')}`)
+    }
+    if (typedRecordGetMessages.some((message) => message.includes("Property 'trim' does not exist on type 'string'"))) {
+      throw new Error(`Expected string record.get() typing to avoid trim() diagnostics. Got: ${typedRecordGetMessages.join(' | ')}`)
+    }
+    if (typedRecordGetMessages.some((message) => message.includes("Property 'trim' does not exist on type 'any'"))) {
+      throw new Error(`Expected json record.get() typing to stay permissive. Got: ${typedRecordGetMessages.join(' | ')}`)
     }
 
     const templateDiagnostics = service.getDiagnostics(
