@@ -292,6 +292,7 @@ module.exports = {
     renameCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
     boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
+    boardServiceConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service-consumer.js'),
     flashAlertFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
     typedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'typed-panel.ejs'),
     propertyPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'property-panel.ejs'),
@@ -1028,6 +1029,67 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
     }
     if (!moduleFileReferences.some((entry) => normalizeFilePath(entry.filePath).endsWith('/pb_hooks/pages/_private/board-service-consumer.js'))) {
       throw new Error(`Expected file-based module references to include static require() usage. Got: ${JSON.stringify(moduleFileReferences)}`)
+    }
+
+    const partialRenameEdits = service.getFileRenameEdits(
+      fixture.flashAlertFilePath,
+      path.resolve(path.dirname(fixture.flashAlertFilePath), 'notice-alert.ejs')
+    )
+    if (!partialRenameEdits || partialRenameEdits.length !== 1) {
+      throw new Error(`Expected file rename edits for flash-alert partial. Got: ${JSON.stringify(partialRenameEdits)}`)
+    }
+    if (normalizeFilePath(partialRenameEdits[0].filePath) !== normalizeFilePath(fixture.boardsFilePath)) {
+      throw new Error(`Expected partial rename edit in boards index. Got: ${JSON.stringify(partialRenameEdits)}`)
+    }
+
+    const renamedPartialIncludeText = applyEditsToText(
+      fs.readFileSync(fixture.boardsFilePath, 'utf8'),
+      partialRenameEdits.filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath))
+    )
+    if (!renamedPartialIncludeText.includes(`include('notice-alert.ejs'`)) {
+      throw new Error(`Expected include() request path to update after partial file rename. Got: ${renamedPartialIncludeText}`)
+    }
+
+    const moduleFileRenameEdits = service.getFileRenameEdits(
+      fixture.boardServiceFilePath,
+      path.resolve(path.dirname(fixture.boardServiceFilePath), 'session-service.js')
+    )
+    if (!moduleFileRenameEdits || moduleFileRenameEdits.length !== 4) {
+      throw new Error(`Expected file rename edits for _private module. Got: ${JSON.stringify(moduleFileRenameEdits)}`)
+    }
+
+    const renamedResolveCheckText = applyEditsToText(
+      fs.readFileSync(fixture.renameCheckFilePath, 'utf8'),
+      moduleFileRenameEdits.filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath))
+    )
+    if (!renamedResolveCheckText.includes(`resolve('session-service')`)) {
+      throw new Error(`Expected rename-check resolve() path to update after module file rename. Got: ${renamedResolveCheckText}`)
+    }
+
+    const renamedLocalsTypeCheckText = applyEditsToText(
+      fs.readFileSync(fixture.localsTypeCheckFilePath, 'utf8'),
+      moduleFileRenameEdits.filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.localsTypeCheckFilePath))
+    )
+    if (!renamedLocalsTypeCheckText.includes(`resolve('session-service')`)) {
+      throw new Error(`Expected locals-type-check resolve() path to update after module file rename. Got: ${renamedLocalsTypeCheckText}`)
+    }
+
+    const renamedMiddlewareResolveText = applyEditsToText(
+      fs.readFileSync(fixture.middlewareFilePath, 'utf8'),
+      moduleFileRenameEdits.filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.middlewareFilePath))
+    )
+    if (!renamedMiddlewareResolveText.includes(`resolve('session-service')`)) {
+      throw new Error(`Expected middleware resolve() path to update after module file rename. Got: ${renamedMiddlewareResolveText}`)
+    }
+
+    const renamedRequireConsumerText = applyEditsToText(
+      fs.readFileSync(fixture.boardServiceConsumerFilePath, 'utf8'),
+      moduleFileRenameEdits.filter(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardServiceConsumerFilePath)
+      )
+    )
+    if (!renamedRequireConsumerText.includes(`require('./session-service')`)) {
+      throw new Error(`Expected static require() path to update after module file rename. Got: ${renamedRequireConsumerText}`)
     }
 
     const routeReferenceQuery = service.getFileReferenceQuery(fixture.boardsFilePath)

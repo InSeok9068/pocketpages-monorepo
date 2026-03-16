@@ -71,6 +71,20 @@ function workspaceRelativePath(filePath) {
   return vscode.workspace.asRelativePath(filePath, false)
 }
 
+function isSupportedPrivateRenamePath(filePath) {
+  const normalizedPath = String(filePath || '').replace(/\\/g, '/')
+  if (!normalizedPath.includes('/pb_hooks/pages/_private/')) {
+    return false
+  }
+
+  return (
+    normalizedPath.endsWith('.ejs') ||
+    normalizedPath.endsWith('.js') ||
+    normalizedPath.endsWith('.cjs') ||
+    normalizedPath.endsWith('.mjs')
+  )
+}
+
 function describeReferenceQuery(referenceQuery) {
   if (!referenceQuery) {
     return 'references'
@@ -169,6 +183,62 @@ async function showFileReferences({ manager, output, document, editor, filePath 
     anchorPosition,
     locations
   )
+}
+
+async function applyPrivateFileRenameEdits({ manager, output, event }) {
+  const renameSpecs = event.files.filter(
+    (entry) =>
+      entry.oldUri &&
+      entry.newUri &&
+      entry.oldUri.scheme === 'file' &&
+      entry.newUri.scheme === 'file' &&
+      isSupportedPrivateRenamePath(entry.oldUri.fsPath)
+  )
+
+  if (!renameSpecs.length) {
+    return
+  }
+
+  const workspaceEdit = new vscode.WorkspaceEdit()
+  const documentCache = new Map()
+  const uniqueEdits = new Map()
+
+  for (const renameSpec of renameSpecs) {
+    const oldFilePath = renameSpec.oldUri.fsPath
+    const newFilePath = renameSpec.newUri.fsPath
+    const service = manager.getServiceForFile(oldFilePath) || manager.getServiceForFile(newFilePath)
+    if (!service) {
+      continue
+    }
+
+    const edits = service.getFileRenameEdits(oldFilePath, newFilePath)
+    output.appendLine(
+      `fileRename: old=${oldFilePath} new=${newFilePath} edits=${edits ? edits.length : 0}`
+    )
+
+    for (const edit of edits || []) {
+      uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit)
+    }
+  }
+
+  if (!uniqueEdits.size) {
+    return
+  }
+
+  for (const edit of uniqueEdits.values()) {
+    let targetDocument = documentCache.get(edit.filePath)
+    if (!targetDocument) {
+      targetDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(edit.filePath))
+      documentCache.set(edit.filePath, targetDocument)
+    }
+
+    workspaceEdit.replace(targetDocument.uri, toRange(targetDocument, edit.start, edit.end), edit.newText)
+  }
+
+  const applied = await vscode.workspace.applyEdit(workspaceEdit)
+  if (!applied) {
+    vscode.window.showWarningMessage('PocketPages file rename references were found, but the workspace edit could not be applied.')
+  }
 }
 
 function diagnosticSeverity(category) {
@@ -809,6 +879,7 @@ function activate(context) {
     vscode.workspace.onDidOpenTextDocument(updateDiagnostics),
     vscode.workspace.onDidCloseTextDocument((document) => diagnostics.delete(document.uri)),
     vscode.workspace.onDidChangeTextDocument((event) => debouncedUpdateDiagnostics(event.document)),
+    vscode.workspace.onDidRenameFiles((event) => applyPrivateFileRenameEdits({ manager, output, event })),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       if (editor) {
         updateDiagnostics(editor.document)

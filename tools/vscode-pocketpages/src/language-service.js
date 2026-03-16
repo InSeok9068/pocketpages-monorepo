@@ -39,6 +39,10 @@ function toReferencePath(filePath) {
   return normalizePath(filePath).replace(/\\/g, "/");
 }
 
+function toPortablePath(filePath) {
+  return String(filePath || "").replace(/\\/g, "/");
+}
+
 function fileExists(filePath) {
   try {
     return fs.statSync(filePath).isFile();
@@ -69,6 +73,34 @@ function isScriptFile(filePath) {
 
 function isPrivatePagesFile(filePath) {
   return normalizePath(filePath).includes("/pb_hooks/pages/_private/");
+}
+
+function stripKnownExtension(filePath, extensions) {
+  for (const extension of extensions) {
+    if (filePath.endsWith(extension)) {
+      return filePath.slice(0, -extension.length);
+    }
+  }
+
+  return filePath;
+}
+
+function isSameOrChildPath(parentPath, candidatePath) {
+  const relativePath = path.relative(parentPath, candidatePath);
+  return !relativePath || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+}
+
+function toRelativeSpecifier(relativePath, options = {}) {
+  const normalizedPath = toPortablePath(relativePath);
+  if (!normalizedPath || normalizedPath === ".") {
+    return options.leadingDot ? "./" : "";
+  }
+
+  if (options.leadingDot && !normalizedPath.startsWith(".")) {
+    return `./${normalizedPath}`;
+  }
+
+  return normalizedPath;
 }
 
 function collectStaticRequireCallContexts(documentText) {
@@ -1425,6 +1457,341 @@ class ProjectLanguageService {
     }
 
     return null;
+  }
+
+  getFileRenameEdits(oldFilePath, newFilePath) {
+    const referenceQuery = this.getFileReferenceQuery(oldFilePath);
+    if (!referenceQuery || !isPrivatePagesFile(oldFilePath)) {
+      return [];
+    }
+
+    const normalizedOldFilePath = normalizePath(oldFilePath);
+    const normalizedNewFilePath = normalizePath(newFilePath);
+    const overrides = {};
+    const uniqueEdits = new Map();
+
+    if (referenceQuery.kind === "private-partial") {
+      for (const location of this.collectPathReferenceLocations("include-path", normalizedOldFilePath, overrides)) {
+        const edit = this.getIncludeFileRenameEdit(location.filePath, normalizedOldFilePath, normalizedNewFilePath, overrides);
+        if (!edit) {
+          continue;
+        }
+
+        uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+      }
+    }
+
+    if (referenceQuery.kind === "private-module") {
+      const resolveLocations = this.collectPathReferenceLocations("resolve-path", normalizedOldFilePath, overrides);
+      for (const location of resolveLocations) {
+        const edit = this.getResolveFileRenameEdit(location.filePath, normalizedOldFilePath, normalizedNewFilePath, overrides);
+        if (!edit) {
+          continue;
+        }
+
+        uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+      }
+
+      const requireLocations = this.collectRequireReferenceLocations(normalizedOldFilePath, overrides);
+      for (const location of requireLocations) {
+        const edit = this.getRequireFileRenameEdit(location.filePath, normalizedOldFilePath, normalizedNewFilePath, overrides);
+        if (!edit) {
+          continue;
+        }
+
+        uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+      }
+    }
+
+    return [...uniqueEdits.values()];
+  }
+
+  getCallerDocumentText(filePath, overrides = {}) {
+    const normalizedFilePath = normalizePath(filePath);
+    if (Object.prototype.hasOwnProperty.call(overrides, normalizedFilePath)) {
+      return overrides[normalizedFilePath];
+    }
+
+    const documentText = readFileText(normalizedFilePath);
+    overrides[normalizedFilePath] = documentText;
+    return documentText;
+  }
+
+  getIncludeFileRenameEdit(filePath, oldTargetFilePath, newTargetFilePath, overrides = {}) {
+    const documentText = this.getCallerDocumentText(filePath, overrides);
+    const pathContexts = collectPathContexts(documentText);
+
+    for (const pathContext of pathContexts) {
+      if (pathContext.kind !== "include-path") {
+        continue;
+      }
+
+      if (!this.isIncludeRequestForTarget(filePath, pathContext.value, oldTargetFilePath)) {
+        continue;
+      }
+
+      const newValue = this.buildUpdatedIncludeRequestPath(filePath, pathContext.value, oldTargetFilePath, newTargetFilePath);
+      if (!newValue || newValue === pathContext.value) {
+        return null;
+      }
+
+      return {
+        filePath: normalizePath(filePath),
+        start: pathContext.start,
+        end: pathContext.end,
+        newText: newValue,
+      };
+    }
+
+    return null;
+  }
+
+  getResolveFileRenameEdit(filePath, oldTargetFilePath, newTargetFilePath, overrides = {}) {
+    const documentText = this.getCallerDocumentText(filePath, overrides);
+    const pathContexts = collectPathContexts(documentText);
+
+    for (const pathContext of pathContexts) {
+      if (pathContext.kind !== "resolve-path") {
+        continue;
+      }
+
+      if (!this.isResolveRequestForTarget(filePath, pathContext.value, oldTargetFilePath)) {
+        continue;
+      }
+
+      const newValue = this.buildUpdatedResolveRequestPath(filePath, pathContext.value, oldTargetFilePath, newTargetFilePath);
+      if (!newValue || newValue === pathContext.value) {
+        return null;
+      }
+
+      return {
+        filePath: normalizePath(filePath),
+        start: pathContext.start,
+        end: pathContext.end,
+        newText: newValue,
+      };
+    }
+
+    return null;
+  }
+
+  getRequireFileRenameEdit(filePath, oldTargetFilePath, newTargetFilePath, overrides = {}) {
+    const documentText = this.getCallerDocumentText(filePath, overrides);
+    const requireContexts = collectStaticRequireCallContexts(documentText);
+
+    for (const requireContext of requireContexts) {
+      if (!this.isRequireRequestForTarget(filePath, requireContext.value, oldTargetFilePath)) {
+        continue;
+      }
+
+      const newValue = this.buildUpdatedRequireRequestPath(filePath, requireContext.value, newTargetFilePath);
+      if (!newValue || newValue === requireContext.value) {
+        return null;
+      }
+
+      return {
+        filePath: normalizePath(filePath),
+        start: requireContext.start,
+        end: requireContext.end,
+        newText: newValue,
+      };
+    }
+
+    return null;
+  }
+
+  isIncludeRequestForTarget(filePath, requestPath, targetFilePath) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    const normalizedRequestPath = String(requestPath || "").trim();
+    const currentDir = normalizePath(path.dirname(filePath));
+
+    if (normalizedRequestPath.startsWith("./") || normalizedRequestPath.startsWith("../")) {
+      return normalizePath(path.join(currentDir, normalizedRequestPath)) === normalizedTargetFilePath;
+    }
+
+    if (normalizePath(path.join(currentDir, normalizedRequestPath)) === normalizedTargetFilePath) {
+      return true;
+    }
+
+    if (normalizePath(path.join(this.projectIndex.pagesRoot, normalizedRequestPath)) === normalizedTargetFilePath) {
+      return true;
+    }
+
+    for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
+      if (normalizePath(path.join(privateRoot, normalizedRequestPath)) === normalizedTargetFilePath) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  isResolveRequestForTarget(filePath, requestPath, targetFilePath) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    const normalizedRequestPath = String(requestPath || "").trim().replace(/^\/+/, "");
+    if (!normalizedRequestPath) {
+      return false;
+    }
+
+    for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
+      const candidatePaths = [
+        normalizePath(path.join(privateRoot, normalizedRequestPath)),
+        ...[".js", ".cjs", ".mjs"].map((extension) => normalizePath(path.join(privateRoot, `${normalizedRequestPath}${extension}`))),
+        ...[".js", ".cjs", ".mjs"].map((extension) =>
+          normalizePath(path.join(privateRoot, normalizedRequestPath, `index${extension}`))
+        ),
+      ];
+
+      if (candidatePaths.includes(normalizedTargetFilePath)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  isRequireRequestForTarget(filePath, requestPath, targetFilePath) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    const normalizedRequestPath = String(requestPath || "").trim();
+    if (!normalizedRequestPath) {
+      return false;
+    }
+
+    const currentDir = normalizePath(path.dirname(filePath));
+    const basePath = normalizedRequestPath.startsWith("/")
+      ? normalizePath(path.join(this.projectIndex.appRoot, normalizedRequestPath))
+      : normalizePath(path.join(currentDir, normalizedRequestPath));
+    const candidatePaths = [
+      basePath,
+      ...[".js", ".cjs", ".mjs", ".json"].map((extension) => normalizePath(`${basePath}${extension}`)),
+      ...[".js", ".cjs", ".mjs", ".json"].map((extension) => normalizePath(path.join(basePath, `index${extension}`))),
+    ];
+
+    return candidatePaths.includes(normalizedTargetFilePath);
+  }
+
+  getMatchingIncludeRoot(filePath, requestPath, targetFilePath) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    const normalizedRequestPath = String(requestPath || "").trim();
+
+    for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
+      if (normalizePath(path.join(privateRoot, normalizedRequestPath)) === normalizedTargetFilePath) {
+        return privateRoot;
+      }
+    }
+
+    return null;
+  }
+
+  getMatchingResolveRoot(filePath, requestPath, targetFilePath) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    const normalizedRequestPath = String(requestPath || "").trim().replace(/^\/+/, "");
+    if (!normalizedRequestPath) {
+      return null;
+    }
+
+    for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
+      const candidatePaths = [
+        normalizePath(path.join(privateRoot, normalizedRequestPath)),
+        ...[".js", ".cjs", ".mjs"].map((extension) => normalizePath(path.join(privateRoot, `${normalizedRequestPath}${extension}`))),
+        ...[".js", ".cjs", ".mjs"].map((extension) =>
+          normalizePath(path.join(privateRoot, normalizedRequestPath, `index${extension}`))
+        ),
+      ];
+
+      if (candidatePaths.includes(normalizedTargetFilePath)) {
+        return privateRoot;
+      }
+    }
+
+    return null;
+  }
+
+  buildUpdatedIncludeRequestPath(filePath, currentRequestPath, oldTargetFilePath, newTargetFilePath) {
+    const normalizedCurrentRequestPath = String(currentRequestPath || "").trim();
+    const currentDir = normalizePath(path.dirname(filePath));
+
+    if (normalizedCurrentRequestPath.startsWith("./") || normalizedCurrentRequestPath.startsWith("../")) {
+      return toRelativeSpecifier(path.relative(currentDir, newTargetFilePath), { leadingDot: true });
+    }
+
+    if (normalizePath(path.join(currentDir, normalizedCurrentRequestPath)) === normalizePath(oldTargetFilePath)) {
+      return toRelativeSpecifier(path.relative(currentDir, newTargetFilePath));
+    }
+
+    if (normalizePath(path.join(this.projectIndex.pagesRoot, normalizedCurrentRequestPath)) === normalizePath(oldTargetFilePath)) {
+      return toPortablePath(path.relative(this.projectIndex.pagesRoot, newTargetFilePath));
+    }
+
+    const matchedPrivateRoot = this.getMatchingIncludeRoot(filePath, normalizedCurrentRequestPath, oldTargetFilePath);
+    if (matchedPrivateRoot && isSameOrChildPath(matchedPrivateRoot, newTargetFilePath)) {
+      return toPortablePath(path.relative(matchedPrivateRoot, newTargetFilePath));
+    }
+
+    for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
+      if (isSameOrChildPath(privateRoot, newTargetFilePath)) {
+        return toPortablePath(path.relative(privateRoot, newTargetFilePath));
+      }
+    }
+
+    return null;
+  }
+
+  buildUpdatedResolveRequestPath(filePath, currentRequestPath, oldTargetFilePath, newTargetFilePath) {
+    const leadingSlashPrefix = String(currentRequestPath || "").match(/^\/+/);
+    const matchedPrivateRoot = this.getMatchingResolveRoot(filePath, currentRequestPath, oldTargetFilePath);
+    const candidateRoots = [];
+
+    if (matchedPrivateRoot && isSameOrChildPath(matchedPrivateRoot, newTargetFilePath)) {
+      candidateRoots.push(matchedPrivateRoot);
+    }
+
+    for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
+      if (!isSameOrChildPath(privateRoot, newTargetFilePath)) {
+        continue;
+      }
+
+      if (!candidateRoots.includes(privateRoot)) {
+        candidateRoots.push(privateRoot);
+      }
+    }
+
+    for (const privateRoot of candidateRoots) {
+      let requestPath = toPortablePath(path.relative(privateRoot, newTargetFilePath));
+      requestPath = stripKnownExtension(requestPath, [".js", ".cjs", ".mjs"]);
+      if (requestPath.endsWith("/index")) {
+        requestPath = requestPath.slice(0, -"/index".length);
+      }
+
+      if (!requestPath) {
+        continue;
+      }
+
+      return `${leadingSlashPrefix ? leadingSlashPrefix[0] : ""}${requestPath}`;
+    }
+
+    return null;
+  }
+
+  buildUpdatedRequireRequestPath(filePath, currentRequestPath, newTargetFilePath) {
+    const normalizedCurrentRequestPath = String(currentRequestPath || "").trim();
+    const keepExtension = !!path.extname(normalizedCurrentRequestPath);
+
+    if (normalizedCurrentRequestPath.startsWith("/")) {
+      let requestPath = toPortablePath(path.relative(this.projectIndex.appRoot, newTargetFilePath));
+      if (!keepExtension) {
+        requestPath = stripKnownExtension(requestPath, [".js", ".cjs", ".mjs", ".json"]);
+      }
+
+      return `/${requestPath}`;
+    }
+
+    let requestPath = toRelativeSpecifier(path.relative(path.dirname(filePath), newTargetFilePath), { leadingDot: true });
+    if (!keepExtension) {
+      requestPath = stripKnownExtension(requestPath, [".js", ".cjs", ".mjs", ".json"]);
+    }
+
+    return requestPath;
   }
 
   collectResolvedModuleMemberUsageLocations(targetModuleFilePath, memberName, overrides = {}) {
