@@ -2229,9 +2229,14 @@ const reportDate = String(safeState.reportDate || '').trim()
       !extensionSourceText.includes('createTextEditorDecorationType') ||
       !extensionSourceText.includes('getServerTemplateBoundaryLineNumbers') ||
       !extensionSourceText.includes('onDidChangeVisibleTextEditors') ||
-      !extensionSourceText.includes('includeTopLevelPartialSetup')
+      !extensionSourceText.includes('includeTopLevelPartialSetup') ||
+      !extensionSourceText.includes("title: 'Template'") ||
+      !extensionSourceText.includes("kind: 'template-boundary'")
     ) {
       throw new Error('Expected extension to register server/template boundary decorations for visible EJS editors.')
+    }
+    if (extensionSourceText.includes("contentText: 'Template'")) {
+      throw new Error('Expected Template label to move out of inline decoration content and into CodeLens.')
     }
     if (!routeDocumentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/(site)/index.ejs'))) {
       throw new Error(`Expected redirect route document link target. Got: ${routeDocumentLinkTargets.join(', ')}`)

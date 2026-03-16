@@ -757,8 +757,30 @@ class PocketPagesCodeLensProvider {
       return null
     }
 
-    const entries = service.getCodeLensEntries(document.uri.fsPath, document.getText())
-    if (!entries || !entries.length) {
+    const boundaryEntries = getServerTemplateBoundaryLineNumbers(document.getText(), {
+      includeTopLevelPartialSetup: isPrivatePartialDocument(document),
+    }).map((lineIndex) => ({
+      kind: 'template-boundary',
+      title: 'Template',
+      start: document.offsetAt(new vscode.Position(lineIndex, 0)),
+      command: 'pocketpagesServerScript.noopCodeLens',
+    }))
+
+    const serviceEntries = service.getCodeLensEntries(document.uri.fsPath, document.getText()) || []
+    const entries = [...boundaryEntries, ...serviceEntries].sort((left, right) => {
+      const leftStart = typeof left.start === 'number' ? left.start : -1
+      const rightStart = typeof right.start === 'number' ? right.start : -1
+
+      if (leftStart !== rightStart) {
+        return leftStart - rightStart
+      }
+
+      const leftPriority = left.kind === 'template-boundary' ? 0 : 1
+      const rightPriority = right.kind === 'template-boundary' ? 0 : 1
+      return leftPriority - rightPriority
+    })
+
+    if (!entries.length) {
       return null
     }
 
