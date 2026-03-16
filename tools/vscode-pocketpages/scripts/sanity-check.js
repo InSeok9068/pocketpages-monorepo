@@ -261,6 +261,7 @@ const pageData = {
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'), `<script server>\nsignInWithPassword('a', 'b')\nreturn\n</script>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-out.ejs'), `<script server>\nsignOut()\nredirect('/sign-in')\nreturn\n</script>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'jobs', 'collect-weekly.ejs'), `<script server>\nresponse.json(200, { ok: true })\n</script>\n`)
+  writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'api', '+post.js'), `module.exports = function () {\n  return ''\n}\n`)
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
     `module.exports = function ({ request, resolve }, next) {\n  const boardService = resolve('board-service')\n  boardService.readAuthState({ request })\n  return next()\n}\n`
@@ -692,6 +693,9 @@ boardService.readAuthState(
     const routeNames = routeCompletion ? routeCompletion.items.map((entry) => entry.label) : []
     if (!routeNames.includes('/sign-in')) {
       throw new Error(`Expected route path completion for "/sign-in". Got: ${routeNames.slice(0, 20).join(', ')}`)
+    }
+    if (routeNames.includes('/api')) {
+      throw new Error(`Expected route path completion to exclude JS route handlers. Got: ${routeNames.slice(0, 20).join(', ')}`)
     }
 
     const collectionText = `<script server>\n$app.findRecordsByFilter('bo')\n</script>\n`

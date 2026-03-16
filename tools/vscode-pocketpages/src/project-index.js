@@ -9,6 +9,7 @@ const RESOLVE_EXTENSIONS = ['.js', '.ejs', '.json', '.cjs', '.mjs']
 const REQUIRE_EXTENSIONS = ['.js', '.json', '.cjs', '.mjs']
 const INCLUDE_EXTENSIONS = ['.ejs']
 const ROUTE_EXTENSIONS = ['.ejs', '.js', '.cjs', '.mjs']
+const ROUTE_COMPLETION_EXTENSIONS = ['.ejs']
 const PAGES_CODE_EXTENSIONS = ['.ejs', '.js', '.cjs', '.mjs']
 const ROUTE_METHOD_BY_FILE_BASENAME = {
   '+delete': 'DELETE',
@@ -1445,7 +1446,7 @@ class PocketPagesProjectIndex {
     const preferredMethods = getPreferredRouteMethods(options.routeSource)
     const bestEntries = new Map()
 
-    for (const entry of this.getStaticRouteEntries()) {
+    for (const entry of this.getStaticRouteEntries({ completionOnly: true })) {
       const rank = this.getRouteEntryRank(entry, preferredMethods)
       const current = bestEntries.get(entry.routePath)
 
@@ -1469,11 +1470,12 @@ class PocketPagesProjectIndex {
       }))
   }
 
-  getStaticRouteEntries() {
+  getStaticRouteEntries(options = {}) {
+    const routeExtensions = options && options.completionOnly ? ROUTE_COMPLETION_EXTENSIONS : ROUTE_EXTENSIONS
     const files = walkFiles(
       this.pagesRoot,
       (candidatePath) => {
-        if (!ROUTE_EXTENSIONS.includes(path.extname(candidatePath))) {
+        if (!routeExtensions.includes(path.extname(candidatePath))) {
           return false
         }
 
@@ -1492,7 +1494,7 @@ class PocketPagesProjectIndex {
       }
 
       const fileName = relativeSegments[relativeSegments.length - 1]
-      const fileBasename = stripKnownExtension(fileName, ROUTE_EXTENSIONS)
+      const fileBasename = stripKnownExtension(fileName, routeExtensions)
       const directorySegments = relativeSegments.slice(0, -1)
       const routeSegments = []
       let isStaticRoute = true
