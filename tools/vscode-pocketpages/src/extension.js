@@ -274,6 +274,8 @@ function customCompletionKind(category) {
     case 'include-path':
     case 'route-path':
       return vscode.CompletionItemKind.File
+    case 'include-local':
+      return vscode.CompletionItemKind.Property
     case 'collection-name':
       return vscode.CompletionItemKind.Struct
     case 'record-field':
@@ -362,6 +364,7 @@ class PocketPagesCompletionProvider {
         const item = new vscode.CompletionItem(entry.label, customCompletionKind(entry.category))
         item.insertText = entry.insertText || entry.label
         item.detail = entry.detail || ''
+        item.sortText = entry.sortText
 
         if (entry.documentation) {
           item.documentation = new vscode.MarkdownString(String(entry.documentation))
@@ -745,25 +748,71 @@ class PocketPagesCodeLensProvider {
       return null
     }
 
-    const referenceQuery = service.getFileReferenceQuery(document.uri.fsPath)
-    if (!referenceQuery) {
+    const entries = service.getCodeLensEntries(document.uri.fsPath, document.getText())
+    if (!entries || !entries.length) {
       return null
     }
 
-    const references = service.getFileReferenceTargets(document.uri.fsPath, document.getText(), {
-      includeDeclaration: false,
-    })
-    const referenceCount = references ? references.length : 0
-    const title = `All File References (${referenceCount})`
-    const range = new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0))
+    return entries.map((entry) => {
+      const range =
+        typeof entry.start === 'number'
+          ? new vscode.Range(document.positionAt(entry.start), document.positionAt(entry.start))
+          : new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0))
 
-    return [
-      new vscode.CodeLens(range, {
-        title,
-        command: 'pocketpagesServerScript.allFileReferences',
-        arguments: [document.uri],
-      }),
-    ]
+      let command = null
+      if (entry.command) {
+        command = {
+          title: entry.title,
+          command: entry.command,
+          arguments: Array.isArray(entry.arguments) ? entry.arguments : [document.uri],
+        }
+      } else if (entry.targetFilePath) {
+        command = {
+          title: entry.title,
+          command: 'vscode.open',
+          arguments: [vscode.Uri.file(entry.targetFilePath)],
+        }
+      } else {
+        command = {
+          title: entry.title,
+          command: 'pocketpagesServerScript.noopCodeLens',
+        }
+      }
+
+      return new vscode.CodeLens(range, command)
+    })
+  }
+}
+
+class PocketPagesInlayHintsProvider {
+  constructor(manager) {
+    this.manager = manager
+  }
+
+  provideInlayHints(document, range) {
+    if (!findAppRoot(document.uri.fsPath)) {
+      return null
+    }
+
+    const service = this.manager.getServiceForFile(document.uri.fsPath)
+    if (!service) {
+      return null
+    }
+
+    return service
+      .getInlayHintEntries(document.uri.fsPath, document.getText(), {
+        start: document.offsetAt(range.start),
+        end: document.offsetAt(range.end),
+      })
+      .map((entry) => {
+        const hint = new vscode.InlayHint(document.positionAt(entry.position), entry.label)
+        hint.paddingLeft = true
+        hint.kind = entry.kind === 'parameter' ? vscode.InlayHintKind.Parameter : vscode.InlayHintKind.Type
+        if (entry.tooltip) {
+          hint.tooltip = entry.tooltip
+        }
+        return hint
+      })
   }
 }
 
@@ -889,7 +938,9 @@ function activate(context) {
       '.',
       "'",
       '"',
-      '/'
+      '/',
+      '{',
+      ','
     ),
     vscode.languages.registerDocumentLinkProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesDocumentLinkProvider(manager)),
     vscode.languages.registerDefinitionProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesDefinitionProvider(manager)),
@@ -915,6 +966,7 @@ function activate(context) {
       new PocketPagesSemanticTokensProvider(),
       SEMANTIC_TOKENS_LEGEND
     ),
+    vscode.languages.registerInlayHintsProvider(CODE_DOCUMENT_SELECTOR, new PocketPagesInlayHintsProvider(manager)),
     vscode.workspace.onDidOpenTextDocument((document) => {
       syncDocumentOverride(document)
       updateDiagnostics(document)
@@ -938,6 +990,41 @@ function activate(context) {
       if (editor) {
         updateDiagnostics(editor.document)
       }
+    }),
+    vscode.commands.registerCommand('pocketpagesServerScript.noopCodeLens', () => {}),
+    vscode.commands.registerCommand('pocketpagesServerScript.reloadCaches', () => {
+      const editor = vscode.window.activeTextEditor
+      const targetFilePath = editor && editor.document && editor.document.uri ? editor.document.uri.fsPath : null
+      const targetService = targetFilePath ? manager.resetCachesForFile(targetFilePath) : null
+
+      if (!targetService) {
+        manager.resetAllCaches()
+      }
+
+      for (const document of vscode.workspace.textDocuments) {
+        if (!isPocketPagesCodeDocument(document)) {
+          continue
+        }
+
+        const service = manager.getServiceForFile(document.uri.fsPath)
+        if (!service) {
+          continue
+        }
+
+        if (targetService && service !== targetService) {
+          continue
+        }
+
+        syncDocumentOverride(document)
+        updateDiagnostics(document)
+      }
+
+      const message = targetService
+        ? 'PocketPages caches reloaded for the current app.'
+        : 'PocketPages caches reloaded.'
+      output.appendLine(`reloadCaches: ${message}`)
+      output.show(true)
+      vscode.window.showInformationMessage(message)
     }),
     vscode.commands.registerCommand('pocketpagesServerScript.probeCurrentFile', () => {
       const editor = vscode.window.activeTextEditor

@@ -547,8 +547,12 @@ function collectIncludeCallEntries(filePath, scriptText) {
                 name: property.name.text,
                 typeStrategy: 'ts-expression',
                 typeText: 'any',
+                propertyStart: property.getStart(sourceFile),
+                propertyEnd: property.getEnd(),
                 nameStart: property.name.getStart(sourceFile),
                 nameEnd: property.name.getEnd(),
+                initializerStart: property.name.getStart(sourceFile),
+                initializerEnd: property.name.getEnd(),
                 expressionStart: property.name.getStart(sourceFile),
                 expressionEnd: property.name.getEnd(),
               })
@@ -573,8 +577,12 @@ function collectIncludeCallEntries(filePath, scriptText) {
               name: propertyName,
               typeStrategy: useTypeScriptInference ? 'ts-expression' : 'static',
               typeText: useTypeScriptInference ? 'any' : inferIncludeLocalTypeText(property.initializer),
+              propertyStart: property.getStart(sourceFile),
+              propertyEnd: property.getEnd(),
               nameStart: property.name.getStart(sourceFile),
               nameEnd: property.name.getEnd(),
+              initializerStart: property.initializer.getStart(sourceFile),
+              initializerEnd: property.initializer.getEnd(),
               expressionStart: useTypeScriptInference ? initializer.getStart(sourceFile) : null,
               expressionEnd: useTypeScriptInference ? initializer.getEnd() : null,
             })
@@ -589,6 +597,16 @@ function collectIncludeCallEntries(filePath, scriptText) {
           callEnd: node.getEnd(),
           requestStart: node.arguments[0].getStart(sourceFile) + 1,
           requestEnd: node.arguments[0].getEnd() - 1,
+          localsStart: localsArgument ? localsArgument.getStart(sourceFile) : null,
+          localsEnd: localsArgument ? localsArgument.getEnd() : null,
+          localsObjectStart:
+            localsArgument && ts.isObjectLiteralExpression(localsArgument)
+              ? localsArgument.getStart(sourceFile) + 1
+              : null,
+          localsObjectEnd:
+            localsArgument && ts.isObjectLiteralExpression(localsArgument)
+              ? localsArgument.getEnd() - 1
+              : null,
           localsMode,
           hasDynamicLocals,
           locals,
@@ -850,6 +868,12 @@ class PocketPagesProjectIndex {
   constructor(appRoot) {
     this.appRoot = normalizePath(appRoot)
     this.pagesRoot = normalizePath(path.join(this.appRoot, 'pb_hooks', 'pages'))
+    this.schemaCache = null
+    this.collectionMethodCache = null
+    this.includeLocalsCache = null
+  }
+
+  resetCaches() {
     this.schemaCache = null
     this.collectionMethodCache = null
     this.includeLocalsCache = null
@@ -1516,6 +1540,62 @@ class PocketPagesProjectIndex {
   getStaticRouteEntryByFilePath(filePath) {
     const normalizedFilePath = normalizePath(filePath)
     return this.getStaticRouteEntries().find((entry) => normalizePath(entry.filePath) === normalizedFilePath) || null
+  }
+
+  getRouteDescriptorByFilePath(filePath) {
+    const normalizedFilePath = normalizePath(filePath)
+    if (!fileExists(normalizedFilePath)) {
+      return null
+    }
+
+    const relativePath = toRelativePath(path.relative(this.pagesRoot, normalizedFilePath))
+    if (!relativePath || relativePath.startsWith('..') || relativePath.split('/').includes('_private')) {
+      return null
+    }
+
+    const relativeSegments = relativePath.split('/').filter(Boolean)
+    if (!relativeSegments.length) {
+      return null
+    }
+
+    const fileName = relativeSegments[relativeSegments.length - 1]
+    if (!ROUTE_EXTENSIONS.includes(path.extname(fileName))) {
+      return null
+    }
+
+    const fileBasename = stripKnownExtension(fileName, ROUTE_EXTENSIONS)
+    const directorySegments = relativeSegments.slice(0, -1)
+    const routeSegments = []
+
+    for (const segment of directorySegments) {
+      if (!segment || isRouteGroupSegment(segment)) {
+        continue
+      }
+
+      if (segment.startsWith('+')) {
+        return null
+      }
+
+      routeSegments.push(segment)
+    }
+
+    let method = 'PAGE'
+    if (fileBasename === 'index') {
+      method = 'PAGE'
+    } else if (ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]) {
+      method = ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]
+    } else if (NON_ROUTE_SPECIAL_FILE_BASENAMES.has(fileBasename) || fileBasename.startsWith('+')) {
+      return null
+    } else {
+      routeSegments.push(fileBasename)
+    }
+
+    return {
+      filePath: normalizedFilePath,
+      method,
+      routePath: routeSegments.length ? `/${routeSegments.join('/')}` : '/',
+      isStaticRoute: !routeSegments.some((segment) => isDynamicRouteSegment(segment)),
+    }
   }
 
   resolveRouteTarget(_filePath, requestPath, options = {}) {

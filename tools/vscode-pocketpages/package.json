@@ -29,6 +29,10 @@
         "title": "PocketPages: Refresh Server Script Diagnostics"
       },
       {
+        "command": "pocketpagesServerScript.reloadCaches",
+        "title": "PocketPages: Reload Caches"
+      },
+      {
         "command": "pocketpagesServerScript.allFileReferences",
         "title": "PocketPages: All File References"
       }

@@ -348,8 +348,21 @@ module.exports = {
 function run() {
   const repoRoot = path.resolve(__dirname, '..', '..', '..')
   const extensionSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'extension.js'), 'utf8')
+  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'package.json'), 'utf8'))
   if (!/const updateDiagnostics = \(document\) => \{\s*if \(!isPocketPagesCodeDocument\(document\)\) \{\s*return\s*\}/.test(extensionSource)) {
     throw new Error('Expected updateDiagnostics() to cover PocketPages code documents, including JS page files.')
+  }
+  if (!/registerInlayHintsProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesInlayHintsProvider\(manager\)\)/.test(extensionSource)) {
+    throw new Error('Expected PocketPages inlay hints provider registration for code documents.')
+  }
+  if (!/registerCommand\('pocketpagesServerScript\.reloadCaches'/.test(extensionSource)) {
+    throw new Error('Expected PocketPages reloadCaches command registration in extension.js.')
+  }
+  const contributedCommands = Array.isArray(packageJson.contributes && packageJson.contributes.commands)
+    ? packageJson.contributes.commands.map((entry) => entry.command)
+    : []
+  if (!contributedCommands.includes('pocketpagesServerScript.reloadCaches')) {
+    throw new Error('Expected PocketPages reloadCaches command contribution in package.json.')
   }
 
   const fixture = createFixtureApp(repoRoot)
@@ -597,6 +610,80 @@ boardService.readAuthState(
     const includeNames = includeCompletion ? includeCompletion.items.map((entry) => entry.label) : []
     if (!includeNames.includes('flash-alert.ejs')) {
       throw new Error(`Expected include() completion for "flash-alert.ejs". Got: ${includeNames.slice(0, 20).join(', ')}`)
+    }
+
+    const includeLocalCompletionText = `<%- include('flash-alert.ejs', { msg }) %>\n`
+    const includeLocalCompletionOffset = includeLocalCompletionText.indexOf('msg') + 'msg'.length
+    const includeLocalCompletion = service.getCustomCompletionData(
+      fixture.boardsFilePath,
+      includeLocalCompletionText,
+      includeLocalCompletionOffset
+    )
+    const includeLocalNames = includeLocalCompletion ? includeLocalCompletion.items.map((entry) => entry.label) : []
+    if (!includeLocalNames.includes('flashMessage') || !includeLocalNames.includes('flashMeta')) {
+      throw new Error(`Expected include() local key completion. Got: ${includeLocalNames.join(', ')}`)
+    }
+    const flashMessageCompletionItem = includeLocalCompletion
+      ? includeLocalCompletion.items.find((entry) => entry.label === 'flashMessage')
+      : null
+    if (!flashMessageCompletionItem || flashMessageCompletionItem.insertText !== 'flashMessage') {
+      throw new Error(`Expected include() local completion to replace the current key. Got: ${JSON.stringify(flashMessageCompletionItem)}`)
+    }
+
+    const includeSignatureText = `<%- include('flash-alert.ejs', { flashMessage: 'Saved' }) %>\n`
+    const includeSignatureOffset = includeSignatureText.indexOf('{ flashMessage') + 1
+    const includeSignatureHelp = service.getSignatureHelp(
+      fixture.boardsFilePath,
+      includeSignatureText,
+      includeSignatureOffset,
+      { triggerCharacter: ',' }
+    )
+    const includeSignatureLabel =
+      includeSignatureHelp && includeSignatureHelp.items.length
+        ? [
+            includeSignatureHelp.items[0].prefixDisplayParts,
+            ...includeSignatureHelp.items[0].parameters.flatMap((parameter, index) => [
+              ...(index > 0 ? includeSignatureHelp.items[0].separatorDisplayParts : []),
+              ...parameter.displayParts,
+            ]),
+            includeSignatureHelp.items[0].suffixDisplayParts,
+          ]
+            .flat()
+            .map((part) => part.text)
+            .join('')
+        : ''
+    if (
+      !includeSignatureLabel.includes('include(') ||
+      !includeSignatureLabel.includes('flashMessage:') ||
+      !includeSignatureLabel.includes('isErrorFlash?:') ||
+      !includeSignatureLabel.includes('flashMeta:')
+    ) {
+      throw new Error(`Expected include() contract signature help. Got: ${JSON.stringify(includeSignatureHelp)}`)
+    }
+
+    if (!service.includeContractCache || service.includeContractCache.size === 0) {
+      throw new Error('Expected include() contract analysis to populate the includeContractCache.')
+    }
+    if (!service.includeCallEntriesCache || service.includeCallEntriesCache.size === 0) {
+      throw new Error('Expected include() completion/signature analysis to populate the includeCallEntriesCache.')
+    }
+    service.resetCaches()
+    if (service.includeContractCache.size !== 0 || service.includeCallEntriesCache.size !== 0) {
+      throw new Error('Expected resetCaches() to clear PocketPages include caches.')
+    }
+    if (service.projectIndex.includeLocalsCache !== null || service.projectIndex.schemaCache !== null || service.projectIndex.collectionMethodCache !== null) {
+      throw new Error('Expected resetCaches() to clear PocketPages project index caches.')
+    }
+    const includeLocalCompletionAfterReset = service.getCustomCompletionData(
+      fixture.boardsFilePath,
+      includeLocalCompletionText,
+      includeLocalCompletionOffset
+    )
+    const includeLocalNamesAfterReset = includeLocalCompletionAfterReset
+      ? includeLocalCompletionAfterReset.items.map((entry) => entry.label)
+      : []
+    if (!includeLocalNamesAfterReset.includes('flashMessage') || !includeLocalNamesAfterReset.includes('flashMeta')) {
+      throw new Error(`Expected include() local completion to recover after resetCaches(). Got: ${includeLocalNamesAfterReset.join(', ')}`)
     }
 
     const routeCompletionText = `<a href="/si"></a>\n`
@@ -1402,6 +1489,39 @@ module.exports = {
       throw new Error(`Expected /boards route reference to point at site index href. Got: ${JSON.stringify(routeFileReferences)}`)
     }
 
+    const partialCodeLensEntries = service.getCodeLensEntries(
+      fixture.flashAlertFilePath,
+      fs.readFileSync(fixture.flashAlertFilePath, 'utf8')
+    )
+    if (!partialCodeLensEntries.some((entry) => entry.title.startsWith('Partial callers: '))) {
+      throw new Error(`Expected partial caller CodeLens entry. Got: ${JSON.stringify(partialCodeLensEntries)}`)
+    }
+    if (!partialCodeLensEntries.some((entry) => entry.title.startsWith('All File References ('))) {
+      throw new Error(`Expected partial all-file-references CodeLens entry. Got: ${JSON.stringify(partialCodeLensEntries)}`)
+    }
+
+    const boardsCodeLensEntries = service.getCodeLensEntries(
+      fixture.boardsFilePath,
+      fs.readFileSync(fixture.boardsFilePath, 'utf8')
+    )
+    const includePathCodeLens = boardsCodeLensEntries.find((entry) => entry.title === '-> pb_hooks/pages/_private/flash-alert.ejs')
+    if (
+      !includePathCodeLens ||
+      typeof includePathCodeLens.start !== 'number' ||
+      includePathCodeLens.start <= 0 ||
+      normalizeFilePath(includePathCodeLens.targetFilePath) !== normalizeFilePath(fixture.flashAlertFilePath)
+    ) {
+      throw new Error(`Expected include() path CodeLens entry above the include call. Got: ${JSON.stringify(boardsCodeLensEntries)}`)
+    }
+
+    const routeCodeLensEntries = service.getCodeLensEntries(
+      fixture.boardShowFilePath,
+      fs.readFileSync(fixture.boardShowFilePath, 'utf8')
+    )
+    if (!routeCodeLensEntries.some((entry) => entry.title === 'Route: /boards/[boardSlug]')) {
+      throw new Error(`Expected dynamic route CodeLens entry. Got: ${JSON.stringify(routeCodeLensEntries)}`)
+    }
+
     const siteSignInReferenceQuery = service.getFileReferenceQuery(fixture.siteSignInFilePath)
     if (!siteSignInReferenceQuery || siteSignInReferenceQuery.kind !== 'route-file' || siteSignInReferenceQuery.routePath !== '/sign-in') {
       throw new Error(`Expected static route file reference query for /sign-in. Got: ${JSON.stringify(siteSignInReferenceQuery)}`)
@@ -1530,6 +1650,27 @@ metaPayload.trim()
     }
     if (typedRecordGetMessages.some((message) => message.includes("Property 'trim' does not exist on type 'any'"))) {
       throw new Error(`Expected json record.get() typing to stay permissive. Got: ${typedRecordGetMessages.join(' | ')}`)
+    }
+
+    const typedRecordGetInlayHints = service.getInlayHintEntries(fixture.boardsFilePath, typedRecordGetText)
+    if (!typedRecordGetInlayHints.some((entry) => entry.label === ': string')) {
+      throw new Error(`Expected record.get() string inlay hint. Got: ${JSON.stringify(typedRecordGetInlayHints)}`)
+    }
+    if (!typedRecordGetInlayHints.some((entry) => entry.label === ': boolean')) {
+      throw new Error(`Expected record.get() boolean inlay hint. Got: ${JSON.stringify(typedRecordGetInlayHints)}`)
+    }
+
+    const resolveInlayHintText = `<script server>\nconst boardService = resolve('board-service')\n</script>\n`
+    const resolveInlayHints = service.getInlayHintEntries(fixture.boardsFilePath, resolveInlayHintText)
+    if (!resolveInlayHints.some((entry) => String(entry.label).includes('pb_hooks/pages/_private/board-service.js'))) {
+      throw new Error(`Expected resolve() target inlay hint. Got: ${JSON.stringify(resolveInlayHints)}`)
+    }
+    const includePathInlayHints = service.getInlayHintEntries(
+      fixture.boardsFilePath,
+      fs.readFileSync(fixture.boardsFilePath, 'utf8')
+    )
+    if (includePathInlayHints.some((entry) => String(entry.label).includes('flash-alert.ejs'))) {
+      throw new Error(`Expected include() path hints to move from inline inlay hints to CodeLens. Got: ${JSON.stringify(includePathInlayHints)}`)
     }
 
     const templateDiagnostics = service.getDiagnostics(
@@ -1762,6 +1903,28 @@ metaPayload.trim()
       throw new Error(`Expected include() missing local diagnostic for flashMessage. Got: ${JSON.stringify(includeMissingLocalDiagnostics)}`)
     }
 
+    const includeMissingLocalCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      `<%- include('flash-alert.ejs', { isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`,
+      {
+        start: `<%- include('flash-alert.ejs', { isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`.indexOf('flash-alert.ejs'),
+        end:
+          `<%- include('flash-alert.ejs', { isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`.indexOf('flash-alert.ejs') +
+          'flash-alert.ejs'.length,
+      }
+    )
+    const addMissingLocalAction = includeMissingLocalCodeActions.find((entry) => entry.title.includes('flashMessage'))
+    if (!addMissingLocalAction) {
+      throw new Error(`Expected include() missing-local stub quick fix. Got: ${JSON.stringify(includeMissingLocalCodeActions)}`)
+    }
+    const includeMissingLocalPatchedText = applyEditsToText(
+      `<%- include('flash-alert.ejs', { isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`,
+      addMissingLocalAction.edits
+    )
+    if (!includeMissingLocalPatchedText.includes('flashMessage: undefined')) {
+      throw new Error(`Expected include() missing-local quick fix to add a stub local. Got: ${includeMissingLocalPatchedText}`)
+    }
+
     const requiredFlashCallerFilePath = path.join(
       fixture.appRoot,
       'pb_hooks',
@@ -1983,6 +2146,11 @@ metaPayload.trim()
     }
     if (!routeDocumentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/xapi/auth/sign-out.ejs'))) {
       throw new Error(`Expected action route document link target. Got: ${routeDocumentLinkTargets.join(', ')}`)
+    }
+
+    const extensionSourceText = fs.readFileSync(path.join(__dirname, '../src/extension.js'), 'utf8')
+    if (!extensionSourceText.includes("command: 'vscode.open'") || !extensionSourceText.includes("command: 'pocketpagesServerScript.noopCodeLens'")) {
+      throw new Error('Expected CodeLens provider to map target paths to vscode.open and fall back to an internal no-op command.')
     }
     if (!routeDocumentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/(site)/index.ejs'))) {
       throw new Error(`Expected redirect route document link target. Got: ${routeDocumentLinkTargets.join(', ')}`)

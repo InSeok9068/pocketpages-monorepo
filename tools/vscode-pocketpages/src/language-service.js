@@ -138,6 +138,30 @@ function toAnalysisText(filePath, documentText) {
   return isEjsFile(filePath) ? buildTemplateVirtualText(documentText) : documentText;
 }
 
+function getAnalysisContextAtOffset(filePath, documentText, offset) {
+  let analysisText = documentText;
+  let analysisOffset = offset;
+  let analysisStart = 0;
+
+  if (!isScriptFile(filePath)) {
+    const block = getServerBlockAtOffset(documentText, offset);
+    const templateCodeBlock = getTemplateCodeBlockAtOffset(documentText, offset);
+    if (!block && !templateCodeBlock) {
+      return null;
+    }
+
+    analysisText = block ? block.content : buildTemplateVirtualText(documentText);
+    analysisOffset = block ? offset - block.contentStart : offset;
+    analysisStart = block ? block.contentStart : 0;
+  }
+
+  return {
+    analysisText,
+    analysisOffset,
+    analysisStart,
+  };
+}
+
 function isValidIdentifierName(value) {
   return ts.isIdentifierText(String(value || ""), ts.ScriptTarget.Latest, ts.LanguageVariant.Standard);
 }
@@ -182,6 +206,31 @@ function flattenDiagnosticMessage(messageText) {
   }
 
   return parts.join("\n");
+}
+
+function toDisplayParts(text, kind = "text") {
+  return [{ text: String(text || ""), kind }];
+}
+
+function stripUndefinedFromTypeText(typeText) {
+  return String(typeText || "")
+    .split("|")
+    .map((part) => part.trim())
+    .filter((part) => part && part !== "undefined")
+    .join(" | ") || "any";
+}
+
+function mergeTypeTexts(typeTexts) {
+  const uniqueTypes = [...new Set((Array.isArray(typeTexts) ? typeTexts : []).filter(Boolean))];
+  if (!uniqueTypes.length) {
+    return "any";
+  }
+
+  if (uniqueTypes.includes("any")) {
+    return "any";
+  }
+
+  return uniqueTypes.sort().join(" | ");
 }
 
 function getLineAndCharacterFromText(text, offset) {
@@ -434,6 +483,11 @@ function readObjectPropertyName(property) {
   }
 
   return null;
+}
+
+function readStringLiteralText(node) {
+  const target = skipExpressionWrappers(node);
+  return target && ts.isStringLiteralLike(target) ? target.text : null;
 }
 
 function collectParamsQueryDiagnostics(scriptText, allowedRouteParamNames) {
@@ -1038,6 +1092,8 @@ class ProjectLanguageService {
     this.virtualFiles = new Map();
     this.includePreludeStack = new Set();
     this.documentOverrides = new Map();
+    this.includeContractCache = new Map();
+    this.includeCallEntriesCache = new Map();
 
     this.languageService = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry());
   }
@@ -1051,14 +1107,28 @@ class ProjectLanguageService {
     }
 
     this.documentOverrides.set(normalizedFilePath, currentText);
+    this.includeCallEntriesCache.delete(normalizedFilePath);
+    this.includeContractCache.delete(normalizedFilePath);
     this.projectVersion += 1;
   }
 
   clearDocumentOverride(filePath) {
     const normalizedFilePath = normalizePath(filePath);
     if (this.documentOverrides.delete(normalizedFilePath)) {
+      this.includeCallEntriesCache.delete(normalizedFilePath);
+      this.includeContractCache.delete(normalizedFilePath);
       this.projectVersion += 1;
     }
+  }
+
+  resetCaches() {
+    this.includeContractCache.clear();
+    this.includeCallEntriesCache.clear();
+    this.includePreludeStack.clear();
+    this.staticFiles.clear();
+    this.virtualFiles.clear();
+    this.projectIndex.resetCaches();
+    this.projectVersion += 1;
   }
 
   getDocumentOverride(filePath) {
@@ -1091,6 +1161,81 @@ class ProjectLanguageService {
     }
 
     return overrides;
+  }
+
+  getAmbientSnapshotKey() {
+    const filePaths = [
+      ...getAppAmbientTypeFiles(this.appRoot),
+      this.projectIndex.getSchemaState().schemaPath,
+    ].filter((filePath, index, items) => filePath && items.indexOf(filePath) === index);
+
+    return filePaths
+      .map((filePath) => {
+        const normalizedFilePath = normalizePath(filePath);
+        if (!fileExists(normalizedFilePath)) {
+          return `${normalizedFilePath}:missing`;
+        }
+
+        const stats = fs.statSync(normalizedFilePath);
+        return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}`;
+      })
+      .join("|");
+  }
+
+  getIncludeCallEntries(filePath, analysisText) {
+    const normalizedFilePath = normalizePath(filePath);
+    const cachedEntry = this.includeCallEntriesCache.get(normalizedFilePath);
+    if (cachedEntry && cachedEntry.analysisText === analysisText) {
+      return cachedEntry.entries;
+    }
+
+    const entries = collectIncludeCallEntries(filePath, analysisText);
+    this.includeCallEntriesCache.set(normalizedFilePath, {
+      analysisText,
+      entries,
+    });
+    return entries;
+  }
+
+  getCachedIncludeLocalBindingMap(targetFilePath) {
+    if (!this.projectIndex.includeLocalsCache) {
+      return null;
+    }
+
+    const targetState = this.projectIndex.includeLocalsCache.byTargetFile.get(normalizePath(targetFilePath));
+    if (!targetState) {
+      return null;
+    }
+
+    const localsByName = new Map();
+    const callSiteCount = targetState.callSites.length;
+    for (const callSite of targetState.callSites) {
+      for (const local of callSite.locals || []) {
+        let state = localsByName.get(local.name);
+        if (!state) {
+          state = {
+            presenceCount: 0,
+            typeTexts: new Set(),
+          };
+          localsByName.set(local.name, state);
+        }
+
+        state.presenceCount += 1;
+        state.typeTexts.add(local.typeText || "any");
+      }
+    }
+
+    const bindingMap = new Map();
+    for (const [name, state] of localsByName.entries()) {
+      let typeText = mergeTypeTexts([...state.typeTexts]);
+      if (state.presenceCount < callSiteCount) {
+        typeText = mergeTypeTexts([typeText, "undefined"]);
+      }
+
+      bindingMap.set(name, typeText);
+    }
+
+    return bindingMap;
   }
 
   createHost() {
@@ -1403,7 +1548,7 @@ class ProjectLanguageService {
     return checker.typeToString(targetType, targetNode, ts.TypeFormatFlags.NoTruncation);
   }
 
-  getIncludeContractLocals(targetFilePath) {
+  getIncludeContractLocals(targetFilePath, options = {}) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
     if (!isEjsFile(normalizedTargetFilePath) || !fileExists(normalizedTargetFilePath)) {
       return [];
@@ -1415,90 +1560,331 @@ class ProjectLanguageService {
       return [];
     }
 
-    const preludeText = this.buildPrelude(normalizedTargetFilePath, analysisText, {
-      skipIncludeLocals: true,
-      skipResolveTypePrelude: true,
-    });
-    const tempText = `${preludeText}${analysisText}`;
-    const tempFilePath = normalizePath(path.join(CACHE_ROOT, `${sanitizeFileName(normalizedTargetFilePath)}__include_contract.ts`));
-    const ambientFiles = getAppAmbientTypeFiles(this.appRoot).filter((filePath) => fileExists(filePath)).map((filePath) => normalizePath(filePath));
-    const compilerHost = ts.createCompilerHost(COMPILER_OPTIONS, true);
-    const defaultReadFile = compilerHost.readFile.bind(compilerHost);
-    const defaultFileExists = compilerHost.fileExists.bind(compilerHost);
-    const defaultGetSourceFile = compilerHost.getSourceFile.bind(compilerHost);
-
-    compilerHost.readFile = (fileName) => {
-      const normalizedFileName = normalizePath(fileName);
-      if (normalizedFileName === tempFilePath) {
-        return tempText;
-      }
-
-      return defaultReadFile(fileName);
-    };
-
-    compilerHost.fileExists = (fileName) => {
-      const normalizedFileName = normalizePath(fileName);
-      if (normalizedFileName === tempFilePath) {
-        return true;
-      }
-
-      return defaultFileExists(fileName);
-    };
-
-    compilerHost.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
-      const normalizedFileName = normalizePath(fileName);
-      if (normalizedFileName === tempFilePath) {
-        return ts.createSourceFile(fileName, tempText, languageVersion, true);
-      }
-
-      return defaultGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
-    };
-
-    const program = ts.createProgram([...ambientFiles, tempFilePath], COMPILER_OPTIONS, compilerHost);
-    const tempSourceFile = program.getSourceFile(tempFilePath);
-    if (!tempSourceFile) {
-      return [];
+    const ambientSnapshotKey = this.getAmbientSnapshotKey();
+    const cachedEntry = this.includeContractCache.get(normalizedTargetFilePath);
+    let baseLocals = null;
+    if (cachedEntry && cachedEntry.documentText === documentText && cachedEntry.ambientSnapshotKey === ambientSnapshotKey) {
+      baseLocals = cachedEntry.locals;
     }
 
-    const optionalGuardNames = collectOptionalGuardNames(tempSourceFile);
-    const expectedNames = new Set();
-    const diagnostics = [
-      ...program.getSyntacticDiagnostics(tempSourceFile),
-      ...program.getSemanticDiagnostics(tempSourceFile),
-    ];
+    if (!baseLocals) {
+      const preludeText = this.buildPrelude(normalizedTargetFilePath, analysisText, {
+        skipIncludeLocals: true,
+        skipResolveTypePrelude: true,
+      });
+      const tempText = `${preludeText}${analysisText}`;
+      const tempFilePath = normalizePath(path.join(CACHE_ROOT, `${sanitizeFileName(normalizedTargetFilePath)}__include_contract.ts`));
+      const ambientFiles = getAppAmbientTypeFiles(this.appRoot).filter((filePath) => fileExists(filePath)).map((filePath) => normalizePath(filePath));
+      const compilerHost = ts.createCompilerHost(COMPILER_OPTIONS, true);
+      const defaultReadFile = compilerHost.readFile.bind(compilerHost);
+      const defaultFileExists = compilerHost.fileExists.bind(compilerHost);
+      const defaultGetSourceFile = compilerHost.getSourceFile.bind(compilerHost);
 
-    for (const diagnostic of diagnostics) {
-      if (![2304, 2552].includes(diagnostic.code)) {
-        continue;
+      compilerHost.readFile = (fileName) => {
+        const normalizedFileName = normalizePath(fileName);
+        if (normalizedFileName === tempFilePath) {
+          return tempText;
+        }
+
+        return defaultReadFile(fileName);
+      };
+
+      compilerHost.fileExists = (fileName) => {
+        const normalizedFileName = normalizePath(fileName);
+        if (normalizedFileName === tempFilePath) {
+          return true;
+        }
+
+        return defaultFileExists(fileName);
+      };
+
+      compilerHost.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
+        const normalizedFileName = normalizePath(fileName);
+        if (normalizedFileName === tempFilePath) {
+          return ts.createSourceFile(fileName, tempText, languageVersion, true);
+        }
+
+        return defaultGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
+      };
+
+      const program = ts.createProgram([...ambientFiles, tempFilePath], COMPILER_OPTIONS, compilerHost);
+      const tempSourceFile = program.getSourceFile(tempFilePath);
+      if (!tempSourceFile) {
+        return [];
       }
 
-      if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number" || diagnostic.length <= 0) {
-        continue;
+      const optionalGuardNames = collectOptionalGuardNames(tempSourceFile);
+      const expectedNames = new Set();
+      const diagnostics = [
+        ...program.getSyntacticDiagnostics(tempSourceFile),
+        ...program.getSemanticDiagnostics(tempSourceFile),
+      ];
+
+      for (const diagnostic of diagnostics) {
+        if (![2304, 2552].includes(diagnostic.code)) {
+          continue;
+        }
+
+        if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number" || diagnostic.length <= 0) {
+          continue;
+        }
+
+        if (diagnostic.start < preludeText.length) {
+          continue;
+        }
+
+        const identifierName = tempText.slice(diagnostic.start, diagnostic.start + diagnostic.length);
+        if (!isValidIdentifierName(identifierName) || identifierName === "undefined") {
+          continue;
+        }
+
+        expectedNames.add(identifierName);
       }
 
-      if (diagnostic.start < preludeText.length) {
-        continue;
-      }
-
-      const identifierName = tempText.slice(diagnostic.start, diagnostic.start + diagnostic.length);
-      if (!isValidIdentifierName(identifierName) || identifierName === "undefined") {
-        continue;
-      }
-
-      expectedNames.add(identifierName);
+      baseLocals = [...expectedNames]
+        .sort((left, right) => left.localeCompare(right))
+        .map((name) => ({
+          name,
+          optional: optionalGuardNames.has(name),
+        }));
+      this.includeContractCache.set(normalizedTargetFilePath, {
+        ambientSnapshotKey,
+        documentText,
+        locals: baseLocals,
+      });
     }
 
-    return [...expectedNames]
-      .sort((left, right) => left.localeCompare(right))
-      .map((name) => ({
-        name,
-        optional: optionalGuardNames.has(name),
+    if (!options.includeBindingTypes) {
+      return baseLocals.map((local) => ({
+        ...local,
+        typeText: "any",
       }));
+    }
+
+    const bindingByName = this.getCachedIncludeLocalBindingMap(normalizedTargetFilePath);
+    return baseLocals.map((local) => {
+      const bindingTypeText = bindingByName ? bindingByName.get(local.name) : null;
+      return {
+        ...local,
+        typeText: local.optional
+          ? bindingTypeText || "any"
+          : stripUndefinedFromTypeText(bindingTypeText || "any"),
+      };
+    });
+  }
+
+  getIncludeCallContextAtOffset(filePath, documentText, offset) {
+    const analysisContext = getAnalysisContextAtOffset(filePath, documentText, offset);
+    if (!analysisContext) {
+      return null;
+    }
+
+    const includeCall = this.getIncludeCallEntries(filePath, analysisContext.analysisText).find(
+      (entry) => analysisContext.analysisOffset >= entry.callStart && analysisContext.analysisOffset <= entry.callEnd
+    );
+    if (!includeCall) {
+      return null;
+    }
+
+    const targetFilePath = this.projectIndex.resolveIncludeTarget(filePath, includeCall.requestPath);
+    if (!targetFilePath) {
+      return null;
+    }
+
+    return {
+      ...analysisContext,
+      includeCall,
+      targetFilePath,
+    };
+  }
+
+  getIncludeLocalCompletionData(filePath, documentText, offset) {
+    const includeContext = this.getIncludeCallContextAtOffset(filePath, documentText, offset);
+    if (!includeContext || includeContext.includeCall.localsMode !== "object") {
+      return null;
+    }
+
+    const { analysisStart, analysisOffset, includeCall } = includeContext;
+    if (
+      typeof includeCall.localsObjectStart !== "number" ||
+      typeof includeCall.localsObjectEnd !== "number" ||
+      analysisOffset < includeCall.localsObjectStart ||
+      analysisOffset > includeCall.localsObjectEnd
+    ) {
+      return null;
+    }
+
+    let activeLocal = null;
+    for (const local of includeCall.locals || []) {
+      if (typeof local.nameStart === "number" && typeof local.nameEnd === "number") {
+        if (analysisOffset >= local.nameStart && analysisOffset <= local.nameEnd) {
+          activeLocal = local;
+          break;
+        }
+      }
+    }
+
+    const isShorthandLikeInsertionPoint =
+      !activeLocal &&
+      /\b[A-Za-z_$][\w$]*$/.test(includeContext.analysisText.slice(includeCall.localsObjectStart, analysisOffset));
+
+    if (!activeLocal && !isShorthandLikeInsertionPoint) {
+      for (const local of includeCall.locals || []) {
+        if (
+          typeof local.propertyStart === "number" &&
+          typeof local.propertyEnd === "number" &&
+          analysisOffset >= local.propertyStart &&
+          analysisOffset <= local.propertyEnd
+        ) {
+          return null;
+        }
+      }
+    }
+
+    const contractLocals = this.getIncludeContractLocals(includeContext.targetFilePath, {
+      includeBindingTypes: true,
+    });
+    if (!contractLocals.length) {
+      return null;
+    }
+
+    const providedNames = new Set(
+      (includeCall.locals || [])
+        .map((local) => local.name)
+        .filter((name) => name && (!activeLocal || name !== activeLocal.name))
+    );
+    const items = contractLocals
+      .filter((local) => !providedNames.has(local.name) || (activeLocal && local.name === activeLocal.name))
+      .map((local, index) => ({
+        label: local.name,
+        insertText: activeLocal ? local.name : `${local.name}: `,
+        detail: local.optional ? "Optional include local" : "Required include local",
+        documentation: [
+          `Partial: ${toPortablePath(path.relative(this.appRoot, includeContext.targetFilePath))}`,
+          `Type: ${local.typeText || "any"}`,
+        ].join("\n"),
+        category: "include-local",
+        sortText: `${local.optional ? "1" : "0"}-${String(index).padStart(4, "0")}-${local.name}`,
+      }));
+
+    if (!items.length) {
+      return null;
+    }
+
+    return {
+      start: analysisStart + (activeLocal ? activeLocal.nameStart : analysisOffset),
+      end: analysisStart + (activeLocal ? activeLocal.nameEnd : analysisOffset),
+      items,
+    };
+  }
+
+  getIncludeSignatureHelp(filePath, documentText, offset) {
+    const includeContext = this.getIncludeCallContextAtOffset(filePath, documentText, offset);
+    if (!includeContext) {
+      return null;
+    }
+
+    const contractLocals = this.getIncludeContractLocals(includeContext.targetFilePath, {
+      includeBindingTypes: true,
+    });
+    if (!contractLocals.length) {
+      return null;
+    }
+
+    const { analysisOffset, includeCall } = includeContext;
+    const localsLabel = contractLocals.length
+      ? contractLocals
+          .map((local) => `${local.name}${local.optional ? "?" : ""}: ${local.typeText || "any"}`)
+          .join("; ")
+      : "Record<string, any>";
+    const activeParameter =
+      typeof includeCall.localsStart === "number"
+        ? analysisOffset >= includeCall.localsStart
+          ? 1
+          : 0
+        : analysisOffset > includeCall.requestEnd + 1
+          ? 1
+          : 0;
+
+    return {
+      selectedItemIndex: 0,
+      argumentIndex: activeParameter,
+      items: [
+        {
+          prefixDisplayParts: toDisplayParts("include("),
+          separatorDisplayParts: toDisplayParts(", "),
+          suffixDisplayParts: toDisplayParts(")"),
+          documentation: toDisplayParts(
+            `Partial ${toPortablePath(path.relative(this.appRoot, includeContext.targetFilePath))}`
+          ),
+          parameters: [
+            {
+              displayParts: toDisplayParts(`path: ${JSON.stringify(includeCall.requestPath)}`),
+              documentation: toDisplayParts("include() target partial path"),
+            },
+            {
+              displayParts: toDisplayParts(`locals: { ${localsLabel} }`),
+              documentation: toDisplayParts(
+                contractLocals.length
+                  ? `Required: ${contractLocals.filter((local) => !local.optional).map((local) => local.name).join(", ") || "none"}\nOptional: ${contractLocals
+                      .filter((local) => local.optional)
+                      .map((local) => local.name)
+                      .join(", ") || "none"}`
+                  : "No inferred include locals."
+              ),
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  buildIncludeMissingLocalFix(includeCall, missingNames, documentText) {
+    if (!Array.isArray(missingNames) || !missingNames.length || includeCall.hasDynamicLocals) {
+      return null;
+    }
+
+    const stubText = missingNames.map((name) => `${name}: undefined`).join(", ");
+    if (
+      includeCall.localsMode === "object" &&
+      typeof includeCall.localsObjectEnd === "number"
+    ) {
+      const objectBodyText = String(documentText || "").slice(includeCall.localsObjectStart, includeCall.localsObjectEnd);
+      const hasTrailingComma = /,\s*$/.test(objectBodyText);
+      return {
+        title: missingNames.length === 1 ? `Add "${missingNames[0]}" local` : "Add missing locals",
+        edits: [
+          {
+            start: includeCall.localsObjectEnd,
+            end: includeCall.localsObjectEnd,
+            newText:
+              includeCall.locals && includeCall.locals.length
+                ? `${hasTrailingComma ? " " : ", "}${stubText}`
+                : stubText,
+          },
+        ],
+      };
+    }
+
+    if (includeCall.localsMode === "none") {
+      return {
+        title: missingNames.length === 1 ? `Add "${missingNames[0]}" local` : "Add missing locals",
+        edits: [
+          {
+            start: includeCall.callEnd - 1,
+            end: includeCall.callEnd - 1,
+            newText: `, { ${stubText} }`,
+          },
+        ],
+      };
+    }
+
+    return null;
   }
 
   getIncludeCallerDiagnostics(filePath, documentText) {
     const analysisText = toAnalysisText(filePath, documentText);
-    const includeCalls = collectIncludeCallEntries(filePath, analysisText);
+    const includeCalls = this.getIncludeCallEntries(filePath, analysisText);
     if (!includeCalls.length) {
       return [];
     }
@@ -1576,6 +1962,7 @@ class ProjectLanguageService {
         continue;
       }
 
+      const missingLocalFix = this.buildIncludeMissingLocalFix(includeCall, missingNames, documentText);
       diagnostics.push({
         code: "pp-include-missing-local",
         category: ts.DiagnosticCategory.Warning,
@@ -1585,6 +1972,7 @@ class ProjectLanguageService {
             : `Missing locals for include("${includeCall.requestPath}"): ${missingNames.join(", ")}.`,
         start: includeCall.requestStart,
         end: includeCall.requestEnd,
+        fixes: missingLocalFix ? [missingLocalFix] : undefined,
       });
     }
 
@@ -2738,21 +3126,17 @@ class ProjectLanguageService {
       };
     }
 
-    let analysisText = documentText;
-    let analysisOffset = offset;
-    let analysisStart = 0;
-
-    if (!isScriptFile(filePath)) {
-      const block = getServerBlockAtOffset(documentText, offset);
-      const templateCodeBlock = getTemplateCodeBlockAtOffset(documentText, offset);
-      if (!block && !templateCodeBlock) {
-        return null;
-      }
-
-      analysisText = block ? block.content : buildTemplateVirtualText(documentText);
-      analysisOffset = block ? offset - block.contentStart : offset;
-      analysisStart = block ? block.contentStart : 0;
+    const includeLocalCompletion = this.getIncludeLocalCompletionData(filePath, documentText, offset);
+    if (includeLocalCompletion) {
+      return includeLocalCompletion;
     }
+
+    const analysisContext = getAnalysisContextAtOffset(filePath, documentText, offset);
+    if (!analysisContext) {
+      return null;
+    }
+
+    const { analysisText, analysisOffset, analysisStart } = analysisContext;
 
     const collectionContext = getScriptCollectionContext(analysisText, analysisOffset, { collectionMethodNames });
     if (collectionContext) {
@@ -2826,6 +3210,11 @@ class ProjectLanguageService {
   }
 
   getSignatureHelp(filePath, documentText, offset, options = {}) {
+    const includeSignatureHelp = this.getIncludeSignatureHelp(filePath, documentText, offset);
+    if (includeSignatureHelp) {
+      return includeSignatureHelp;
+    }
+
     const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
     if (!virtualState) {
       return null;
@@ -2839,6 +3228,133 @@ class ProjectLanguageService {
     });
 
     return signatureHelp || null;
+  }
+
+  getCodeLensEntries(filePath, documentText) {
+    const entries = [];
+    const routeDescriptor = this.projectIndex.getRouteDescriptorByFilePath(filePath);
+    if (routeDescriptor) {
+      entries.push({
+        title:
+          routeDescriptor.method && routeDescriptor.method !== "PAGE"
+            ? `Route: ${routeDescriptor.method} ${routeDescriptor.routePath}`
+            : `Route: ${routeDescriptor.routePath}`,
+        start: 0,
+      });
+    }
+
+    for (const pathContext of collectPathContexts(documentText)) {
+      if (pathContext.kind !== "include-path") {
+        continue;
+      }
+
+      const targetFilePath = this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
+      if (!targetFilePath) {
+        continue;
+      }
+
+      entries.push({
+        title: `-> ${toPortablePath(path.relative(this.appRoot, targetFilePath))}`,
+        start: pathContext.start,
+        targetFilePath: normalizePath(targetFilePath),
+      });
+    }
+
+    const referenceQuery = this.getFileReferenceQuery(filePath);
+    if (!referenceQuery) {
+      return entries;
+    }
+
+    const references = this.getFileReferenceTargets(filePath, documentText, {
+      includeDeclaration: false,
+    });
+    const referenceCount = references ? references.length : 0;
+    const summaryTitle =
+      referenceQuery.kind === "private-partial"
+        ? `Partial callers: ${referenceCount}`
+        : referenceQuery.kind === "private-module"
+          ? `Resolve callers: ${referenceCount}`
+          : `Route callers: ${referenceCount}`;
+
+    entries.push({
+      title: summaryTitle,
+      command: "pocketpagesServerScript.allFileReferences",
+      start: 0,
+    });
+    entries.push({
+      title: `All File References (${referenceCount})`,
+      command: "pocketpagesServerScript.allFileReferences",
+      start: 0,
+    });
+
+    return entries;
+  }
+
+  getInlayHintEntries(filePath, documentText, range = {}) {
+    const startOffset = typeof range.start === "number" ? range.start : 0;
+    const endOffset = typeof range.end === "number" ? range.end : documentText.length;
+    const entries = [];
+    const seen = new Set();
+    const analysisText = toAnalysisText(filePath, documentText);
+    const sourceFile = ts.createSourceFile(filePath, analysisText, ts.ScriptTarget.Latest, true);
+    const addEntry = (position, label, tooltip, kind = "type") => {
+      if (typeof position !== "number" || position < startOffset || position > endOffset) {
+        return;
+      }
+
+      const key = `${position}:${label}`;
+      if (seen.has(key)) {
+        return;
+      }
+
+      seen.add(key);
+      entries.push({
+        position,
+        label,
+        tooltip,
+        kind,
+      });
+    };
+
+    for (const pathContext of collectPathContexts(documentText)) {
+      if (pathContext.kind !== "resolve-path") {
+        continue;
+      }
+
+      const targetFilePath = this.resolvePathContextTarget(filePath, pathContext);
+      if (!targetFilePath) {
+        continue;
+      }
+
+      addEntry(
+        pathContext.end,
+        ` -> ${toPortablePath(path.relative(this.appRoot, targetFilePath))}`,
+        `PocketPages target: ${toPortablePath(path.relative(this.appRoot, targetFilePath))}`,
+        "parameter"
+      );
+    }
+
+    const visit = (node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "get" &&
+        node.arguments.length &&
+        readStringLiteralText(node.arguments[0])
+      ) {
+        const callStart = node.getStart(sourceFile);
+        const callEnd = node.getEnd();
+        const typeText = this.getTypeTextAtDocumentSpan(filePath, documentText, callStart, callEnd);
+        if (typeText) {
+          addEntry(callEnd, `: ${typeText}`, `PocketBase field type: ${typeText}`);
+        }
+      }
+
+      ts.forEachChild(node, visit);
+    };
+
+    visit(sourceFile);
+    return entries;
   }
 
   getDiagnostics(filePath, documentText) {
@@ -3346,6 +3862,22 @@ class PocketPagesLanguageServiceManager {
     }
 
     return this.services.get(appRoot);
+  }
+
+  resetCachesForFile(filePath) {
+    const service = this.getServiceForFile(filePath);
+    if (!service) {
+      return null;
+    }
+
+    service.resetCaches();
+    return service;
+  }
+
+  resetAllCaches() {
+    for (const service of this.services.values()) {
+      service.resetCaches();
+    }
   }
 }
 
