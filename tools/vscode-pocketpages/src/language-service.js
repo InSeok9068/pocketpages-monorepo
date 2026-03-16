@@ -5,7 +5,7 @@ const path = require("path");
 const ts = require("typescript");
 const { buildTemplateVirtualText, extractTemplateCodeBlocks, getTemplateCodeBlockAtOffset } = require("./ejs-template");
 const { extractServerBlocks, getServerBlockAtOffset } = require("./script-server");
-const { PocketPagesProjectIndex, collectIncludeCallEntries } = require("./project-index");
+const { PocketPagesProjectIndex, POCKETPAGES_GLOBAL_NAMES, collectIncludeCallEntries } = require("./project-index");
 const {
   collectResolveRequestPaths,
   collectPathContexts,
@@ -930,6 +930,10 @@ function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText) 
       continue;
     }
 
+    if (context.kind === "route-path" && /<%[=-]?/.test(context.value)) {
+      continue;
+    }
+
     const targetFilePath = resolvePathContextTargetWithIndex(projectIndex, filePath, context);
     if (targetFilePath) {
       continue;
@@ -1484,6 +1488,10 @@ class ProjectLanguageService {
 
       if (includeCall.localsMode === "object") {
         for (const local of includeCall.locals || []) {
+          if (POCKETPAGES_GLOBAL_NAMES.has(local.name)) {
+            continue;
+          }
+
           if (expectedNameSet.has(local.name)) {
             continue;
           }

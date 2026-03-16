@@ -310,6 +310,10 @@ module.exports = {
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'optional-notice.ejs'),
     `<% if (noticeText) { %><div><%= noticeText %> / <%= tone %></div><% } %>\n`
   )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'error-panel.ejs'),
+    `<% const safeError = typeof error === 'undefined' ? '' : String(error || '') %>\n<% if (safeError) { %><div><%= safeError %></div><% } %>\n`
+  )
 
   return {
     fixtureRoot,
@@ -332,6 +336,7 @@ module.exports = {
     propertyPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'property-panel.ejs'),
     overrideCardFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'override-card.ejs'),
     optionalNoticeFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'optional-notice.ejs'),
+    errorPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'error-panel.ejs'),
     signOutFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-out.ejs'),
     signInFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'),
     siteSignInFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'),
@@ -1740,6 +1745,14 @@ module.exports = {
       throw new Error(`Expected dynamic include() locals to skip missing-local diagnostics. Got: ${JSON.stringify(includeDynamicLocalDiagnostics)}`)
     }
 
+    const includeGlobalNamedLocalDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nconst errorMessage = 'Failed'\n</script>\n<%- include('error-panel.ejs', { error: errorMessage }) %>\n`
+    )
+    if (includeGlobalNamedLocalDiagnostics.some((entry) => entry.code === 'pp-include-unknown-local')) {
+      throw new Error(`Expected include() locals that shadow PocketPages globals to avoid unknown-local diagnostics. Got: ${JSON.stringify(includeGlobalNamedLocalDiagnostics)}`)
+    }
+
     const missingIncludeDiagnostics = service.getDiagnostics(
       fixture.boardsFilePath,
       `<%- include('new-status-card.ejs') %>\n`
@@ -1773,6 +1786,14 @@ module.exports = {
       )
     ) {
       throw new Error(`Expected unresolved route path quick fix to preserve query suffix. Got: ${JSON.stringify(unresolvedRouteCodeActions)}`)
+    }
+
+    const dynamicRouteDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<a href="/boards/<%= params.boardSlug %>/posts/new"></a>\n`
+    )
+    if (dynamicRouteDiagnostics.some((entry) => entry.code === 'pp-unresolved-route-path')) {
+      throw new Error(`Expected dynamic EJS route paths to skip unresolved-route diagnostics. Got: ${JSON.stringify(dynamicRouteDiagnostics)}`)
     }
 
     const partialContextDiagnostics = service.getDiagnostics(

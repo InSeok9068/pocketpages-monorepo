@@ -1563,6 +1563,7 @@ class PocketPagesProjectIndex {
 
 module.exports = {
   PocketPagesProjectIndex,
+  POCKETPAGES_GLOBAL_NAMES,
   collectIncludeCallEntries,
   normalizePath,
   fileExists,
