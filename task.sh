@@ -20,7 +20,7 @@ Commands:
   kill      Kill running pocketbase/pbw processes and free their ports
   test      Run node:test files under __tests__ for one service or all services
   lint      Run lightweight PocketPages self-validation checks for one service or all services
-  diag      Run PocketPages editor diagnostics. File mode matches VSCode current .ejs diagnostics most closely.
+  diag      Run PocketPages editor diagnostics for PocketPages code files (.ejs/.js/.cjs/.mjs).
   verify    Run lint and diag together for one service or all services
   format    Run npm run format
 EOF

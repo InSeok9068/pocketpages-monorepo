@@ -8,7 +8,7 @@ const { PocketPagesLanguageServiceManager, ts } = require('../tools/vscode-pocke
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const APPS_DIR = path.join(ROOT_DIR, 'apps');
-const DIAGNOSTIC_EXTENSION = '.ejs';
+const DIAGNOSTIC_EXTENSIONS = new Set(['.ejs', '.js', '.cjs', '.mjs']);
 const ISSUE_CATEGORY_ORDER = new Map([
   [ts.DiagnosticCategory.Error, 0],
   [ts.DiagnosticCategory.Warning, 1],
@@ -134,7 +134,7 @@ function collectPagesCodeFiles(serviceDir) {
         continue;
       }
 
-      if (path.extname(entry.name).toLowerCase() !== DIAGNOSTIC_EXTENSION) {
+      if (!DIAGNOSTIC_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
         continue;
       }
 
@@ -147,13 +147,14 @@ function collectPagesCodeFiles(serviceDir) {
 
 /**
  * 파일 하나의 확장 진단을 계산합니다.
- * @param {string} filePath PocketPages .ejs 파일 경로입니다.
+ * @param {string} filePath PocketPages 코드 파일 경로입니다.
  * @param {PocketPagesLanguageServiceManager} manager 확장 language service 매니저입니다.
  * @returns {{ filePath: string, totalMs: number, issues: Array<{ filePath: string, line: number, column: number, code: string | number, category: number, message: string }> }} 결과 요약입니다.
  */
 function runFileDiagnostics(filePath, manager) {
-  if (path.extname(filePath).toLowerCase() !== DIAGNOSTIC_EXTENSION) {
-    throw new Error(`PocketPages VSCode diagnostics currently support only ${DIAGNOSTIC_EXTENSION} files: ${filePath}`);
+  const extension = path.extname(filePath).toLowerCase();
+  if (!DIAGNOSTIC_EXTENSIONS.has(extension)) {
+    throw new Error(`PocketPages VSCode diagnostics currently support only ${Array.from(DIAGNOSTIC_EXTENSIONS).join(', ')} files: ${filePath}`);
   }
 
   const service = manager.getServiceForFile(filePath);

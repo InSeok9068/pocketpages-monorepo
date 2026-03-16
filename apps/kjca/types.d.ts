@@ -104,7 +104,7 @@ declare namespace types {
     testOneOnly?: boolean | string | string[] | null | undefined
   }
 
-  type KjcaDeptSummaryParams = {
+  type KjcaDeptSummaryInput = {
     dept?: unknown
     reportDate?: unknown
     analysisResults?: unknown

@@ -22,6 +22,7 @@
 // 18) _private 내부 .js/.ejs 파일에서 resolve() 사용
 // 19) roles/*.js 내부에서 부작용/DB 조회/요청 문맥 접근 사용
 // 20) 엔트리에서 resolve('roles/...') 조립이 과도하게 많음
+// 21) JS helper/로컬 바인딩에서 params 이름 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -606,6 +607,32 @@ function collectPathMatches(files, predicate) {
   return files.filter(predicate).map((file) => file.displayPath)
 }
 
+function collectReservedParamsBindingMatches(files) {
+  const matches = []
+  const patterns = [
+    /\bfunction(?:\s+[A-Za-z_$][A-Za-z0-9_$]*)?\s*\(\s*params\s*(?:[,)=])/g,
+    /\(\s*params\s*\)\s*=>/g,
+    /\bparams\s*=>/g,
+    /\b(?:const|let|var)\s+params\s*=/g,
+  ]
+
+  for (const file of files) {
+    for (const pattern of patterns) {
+      pattern.lastIndex = 0
+
+      let match = pattern.exec(file.content)
+      while (match) {
+        const lineNumber = lineNumberAt(file.content, match.index)
+        const lineText = file.lines[lineNumber - 1] || ''
+        matches.push(`${file.displayPath}:${lineNumber}:${lineText}`)
+        match = pattern.exec(file.content)
+      }
+    }
+  }
+
+  return unique(matches)
+}
+
 function lintService(context) {
   console.log(`Checking service: ${context.serviceName}`)
 
@@ -679,6 +706,13 @@ function lintService(context) {
     context.serviceName,
     'Invalid _private resolve() usage. Resolve dependencies only from request entry files such as EJS, <script server>, loaders, and middleware.',
     privateResolveMatches,
+  )
+
+  const reservedParamsBindingMatches = collectReservedParamsBindingMatches(context.pagesCodeFiles)
+  printMatches(
+    context.serviceName,
+    'Invalid JS params binding. Reserve "params" for route context only and rename helper inputs or locals to payload, input, summaryInput, or another contextual name.',
+    reservedParamsBindingMatches,
   )
 
   const roleSideEffectMatches = collectLineMatches(context.roleFiles, RE.roleSideEffect)

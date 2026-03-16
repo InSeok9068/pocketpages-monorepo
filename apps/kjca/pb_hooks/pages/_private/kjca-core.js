@@ -1116,13 +1116,13 @@ function buildMonthLabel(dateText) {
 
 /**
  * 부서 카드 상단에 표시할 요약 문구를 만듭니다.
- * @param {types.KjcaDeptSummaryParams | null | undefined} params 요약에 필요한 부서명, 날짜, 분석 결과입니다.
+ * @param {types.KjcaDeptSummaryInput | null | undefined} summaryInput 요약에 필요한 부서명, 날짜, 분석 결과입니다.
  * @returns {string} 화면에 표시할 요약 문구입니다.
  */
-function buildDeptSummaryText(params) {
-  const dept = String((params && params.dept) || '').trim();
-  const reportDate = String((params && params.reportDate) || '').trim();
-  const analysisResults = Array.isArray(params && params.analysisResults) ? params.analysisResults : [];
+function buildDeptSummaryText(summaryInput) {
+  const dept = String((summaryInput && summaryInput.dept) || '').trim();
+  const reportDate = String((summaryInput && summaryInput.reportDate) || '').trim();
+  const analysisResults = Array.isArray(summaryInput && summaryInput.analysisResults) ? summaryInput.analysisResults : [];
   const item = analysisResults.find((row) => row.dept === dept && row.ok);
   const monthTarget = item && item.recruiting ? item.recruiting.monthTarget : null;
   const monthAssignedCurrent = item && item.recruiting ? item.recruiting.monthAssignedCurrent : null;
