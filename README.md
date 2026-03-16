@@ -37,7 +37,7 @@
 
 ## 공용 스크립트
 
-Windows 환경에서는 Git Bash 기준으로 아래 흐름을 쓰면 됩니다.
+- 실행 환경: Windows Git Bash 기준
 
 ```bash
 ./task.sh start sample
@@ -69,7 +69,7 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
 
 ## SQLite 복제/복원
 
-SQLite 복제/복원은 Litestream을 사용하면 됩니다.
+- 도구: Litestream
 
 - [Litestream Getting Started](https://litestream.io/getting-started/)
 - [Litestream Replicate](https://litestream.io/reference/replicate/)
@@ -77,9 +77,27 @@ SQLite 복제/복원은 Litestream을 사용하면 됩니다.
 
 ---
 
+## Cloudflare Workers
+
+- 용도: 브라우저 자동화, 추가 라이브러리 의존 동작
+
+- [Cloudflare Workers Getting Started](https://developers.cloudflare.com/workers/get-started/)
+- [Cloudflare Browser Rendering with Puppeteer](https://developers.cloudflare.com/browser-rendering/platform/puppeteer/)
+
+---
+
+## 웹 서버
+
+- 웹 서버: Caddy
+- HTTPS: Caddy에서 자동 처리
+- 운영 설정: 보안, 압축, 헤더, 타임아웃, body size 제한은 앞단에서 관리
+
+---
+
 ## SFTP 배포 방법
 
-VS Code의 SFTP 확장을 사용하고, 명령 팔레트에서 이미지처럼 `SFTP: Sync Local -> Remote`를 실행해 배포하면 됩니다.
+- 도구: VS Code SFTP 확장
+- 명령: `SFTP: Sync Local -> Remote`
 
 ```json
 [
