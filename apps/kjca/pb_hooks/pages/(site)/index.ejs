@@ -1,15 +1,16 @@
 <script server>
-  const kjcaService = resolve('kjca-service');
+  const kjcaAuth = resolve('kjca-auth');
+  const kjcaCore = resolve('kjca-core');
 
   meta('title', 'KJCA 업무일지 자동 취합');
   meta('description', 'KJCA 업무일지 자동 취합 및 확인 화면');
 
-  const authState = kjcaService.readAuthState(request);
-  const formState = kjcaService.buildFormState({
+  const authState = kjcaAuth.readAuthState(request);
+  const formState = kjcaCore.buildFormState({
     reportDate: request.url.query.reportDate,
     testOneOnly: request.url.query.testOneOnly,
   });
-  const dashboardState = kjcaService.buildDashboardState({
+  const dashboardState = kjcaCore.buildDashboardState({
     reportDate: formState.reportDate,
     testOneOnly: formState.testOneOnly,
   });
@@ -64,6 +65,6 @@
 
 <section x-data="{ leftOpen: true }" class="bg-white/72 rounded-2xl border border-slate-200 p-4 shadow-sm shadow-slate-200/60 md:p-5">
   <div id="kjca-dashboard-shell">
-    <%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaService }) %>
+    <%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaCore }) %>
   </div>
 </section>

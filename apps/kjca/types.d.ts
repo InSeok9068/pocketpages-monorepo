@@ -220,4 +220,5 @@ declare namespace types {
     reportDate?: unknown
     dept?: unknown
   }
+
 }

@@ -20,17 +20,17 @@
   };
   const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || '').trim();
   const testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly);
-  const encodedState = kjcaService.serializeDashboardState(safeDashboardState);
+  const encodedState = kjcaCore.serializeDashboardState(safeDashboardState);
   const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) => ({
     ...table,
-    summaryText: kjcaService.buildDeptSummaryText({
+    summaryText: kjcaCore.buildDeptSummaryText({
       dept: table.dept,
       reportDate,
       analysisResults: safeDashboardState.analysisResults || [],
     }),
-    weekdayRows: kjcaService.WEEKDAY_ORDER.map((weekday) => {
-      const row = kjcaService.getWeekdayMergedRow(table.rows || [], weekday);
-      const isToday = kjcaService.isFocusWeekday(weekday, table.todayWeekday);
+    weekdayRows: kjcaCore.WEEKDAY_ORDER.map((weekday) => {
+      const row = kjcaCore.getWeekdayMergedRow(table.rows || [], weekday);
+      const isToday = kjcaCore.isFocusWeekday(weekday, table.todayWeekday);
 
       return {
         weekday,
@@ -209,7 +209,7 @@
                 <% table.weekdayRows.forEach((weekdayRow) => { %>
                 <tr class="<%= weekdayRow.isToday ? 'bg-blue-50/70 text-slate-900' : 'bg-white text-slate-700' %>">
                   <td class="<%= `border-b ${weekdayRow.isToday ? 'font-semibold' : 'font-medium'}` %> break-words border-slate-100 px-4 py-3 align-top">
-                    <%= kjcaService.weekdayLabelMap[weekdayRow.weekday] %>
+                    <%= kjcaCore.weekdayLabelMap[weekdayRow.weekday] %>
                     <% if (weekdayRow.isToday) { %>
                     <span class="ml-2 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">오늘</span>
                     <% } %>

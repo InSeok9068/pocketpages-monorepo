@@ -1,45 +1,40 @@
-/**
- * 업무일지 AI 분석 helper를 조립합니다.
- * @param {object} deps 공용 상수, helper, 로그 함수 묶음입니다.
- * @returns {object} 분석 관련 함수 묶음입니다.
- */
-function createKjcaAnalyzeService(deps) {
-  const {
-    CACHE_COLLECTION_NAME,
-    GEMINI_MODEL_NAME,
-    PROMPT_VERSION,
-    GEMINI_MAX_ATTEMPTS,
-    parseJsonSafely,
-    extractJsonObjectText,
-    getHeaderValues,
-    mergeSetCookieIntoCookieHeader,
-    detectAuthRequiredHtml,
-    toAbsoluteKjcaUrl,
-    isAllowedKjcaUrl,
-    buildBrowserLikeHeaders,
-    normalizeReportDate,
-    escapeFilterValue,
-    hashText,
-    extractDivInnerHtmlByClasses,
-    htmlToText,
-    normalizeStringArray,
-    normalizeJsonArrayField,
-    inferGemini429Cause,
-    stringifyGeminiErrorDetails,
-    normalizeRecruitingExtract,
-    normalizeCachedRecruitingField,
-    createKjcaSession,
-    warn,
-    info,
-  } = deps;
+const { globalApi } = require('pocketpages');
+const { warn, info } = globalApi;
+const {
+  CACHE_COLLECTION_NAME,
+  GEMINI_MODEL_NAME,
+  PROMPT_VERSION,
+  GEMINI_MAX_ATTEMPTS,
+  parseJsonSafely,
+  extractJsonObjectText,
+  getHeaderValues,
+  mergeSetCookieIntoCookieHeader,
+  detectAuthRequiredHtml,
+  toAbsoluteKjcaUrl,
+  isAllowedKjcaUrl,
+  buildBrowserLikeHeaders,
+  normalizeReportDate,
+  escapeFilterValue,
+  hashText,
+  extractDivInnerHtmlByClasses,
+  htmlToText,
+  normalizeStringArray,
+  normalizeJsonArrayField,
+  inferGemini429Cause,
+  stringifyGeminiErrorDetails,
+  normalizeRecruitingExtract,
+  normalizeCachedRecruitingField,
+} = require('./kjca-core');
+const kjcaAuth = require('./kjca-auth');
+const { createKjcaSession } = kjcaAuth;
 
-  function parseRetryAfterMs(value) {
-    const text = String(value || '').trim();
-    if (!text) return 0;
-    const parsed = Number(text);
-    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-    return Math.trunc(parsed * 1000);
-  }
+function parseRetryAfterMs(value) {
+  const text = String(value || '').trim();
+  if (!text) return 0;
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.trunc(parsed * 1000);
+}
 
   function computeRetryDelayMs(attempt, retryAfterHeader) {
     const retryAfterMs = parseRetryAfterMs(retryAfterHeader);
@@ -462,9 +457,6 @@ function createKjcaAnalyzeService(deps) {
     };
   }
 
-  return {
-    analyzeStaffDiary,
-  };
-}
-
-module.exports = createKjcaAnalyzeService;
+module.exports = {
+  analyzeStaffDiary,
+};

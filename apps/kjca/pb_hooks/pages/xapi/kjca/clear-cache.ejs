@@ -1,12 +1,14 @@
 <script server>
-  const kjcaService = resolve('kjca-service');
-  const authState = kjcaService.readAuthState(request);
+  const kjcaAuth = resolve('kjca-auth');
+  const kjcaCore = resolve('kjca-core');
+  const kjcaCollectService = resolve('kjca-collect-service');
+  const authState = kjcaAuth.readAuthState(request);
   const form = body();
-  const formState = kjcaService.buildFormState({
+  const formState = kjcaCore.buildFormState({
     reportDate: form.reportDate,
     testOneOnly: form.testOneOnly,
   });
-  let dashboardState = kjcaService.parseDashboardState(form.dashboardStateJson, formState);
+  let dashboardState = kjcaCore.parseDashboardState(form.dashboardStateJson, formState);
 
   dbg('xapi/kjca/clear-cache:start', {
     reportDate: formState.reportDate,
@@ -15,19 +17,19 @@
   });
 
   if (!authState.isSuperuser) {
-    dashboardState = kjcaService.buildDashboardState({
+    dashboardState = kjcaCore.buildDashboardState({
       ...dashboardState,
       errorMessage: '먼저 관리자 계정으로 로그인해주세요.',
     });
   } else {
     try {
-      const result = kjcaService.clearAnalysisCache(request, {
+      const result = kjcaCollectService.clearAnalysisCache(request, {
         reportDate: formState.reportDate,
         dept: form.dept,
       });
 
       const safeDept = String(result.dept || '').trim();
-      dashboardState = kjcaService.buildDashboardState({
+      dashboardState = kjcaCore.buildDashboardState({
         ...dashboardState,
         reportDate: formState.reportDate,
         testOneOnly: formState.testOneOnly,
@@ -42,7 +44,7 @@
         dept: String(form.dept || '').trim(),
         error: errorMessage,
       });
-      dashboardState = kjcaService.buildDashboardState({
+      dashboardState = kjcaCore.buildDashboardState({
         ...dashboardState,
         reportDate: formState.reportDate,
         testOneOnly: formState.testOneOnly,
@@ -58,4 +60,4 @@
     errorMessage: dashboardState.errorMessage,
   });
 </script>
-<%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaService }) %>
+<%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaCore }) %>

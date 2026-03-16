@@ -1,5 +1,5 @@
 <script server>
-  const kjcaService = resolve('kjca-service');
+  const kjcaAuth = resolve('kjca-auth');
   if (request.method !== 'POST') {
     dbg('xapi/auth/sign-in:redirect', {
       status: 303,
@@ -15,7 +15,7 @@
 
   const form = body();
   const loginId = String(form.loginId || '').trim();
-  const normalizedLoginId = kjcaService.normalizeSuperuserLoginId(loginId);
+  const normalizedLoginId = kjcaAuth.normalizeSuperuserLoginId(loginId);
   const password = form.password === undefined || form.password === null ? '' : String(form.password);
   let errorMessage = '';
 

@@ -1,9 +1,3 @@
-const { globalApi } = require('pocketpages');
-const { dbg, info, warn, error } = globalApi;
-const createKjcaAuth = require('./kjca-auth');
-const createKjcaAnalyzeService = require('./kjca-analyze-service');
-const createKjcaCollectService = require('./kjca-collect-service');
-
 const KJCA_EMAIL_DOMAIN = 'kjca.local';
 const KJCA_HOST = 'http://www.kjca.co.kr';
 const KJCA_LOGIN_URL = `${KJCA_HOST}/staff/auth/login_check`;
@@ -981,86 +975,6 @@ function buildDeptSummaryText(params) {
   return `월 배정목표 : ${monthTargetText} / ${monthLabel} 현재 달성 : 배정 ${monthAssignedText}`;
 }
 
-const kjcaAuth = createKjcaAuth({
-  KJCA_EMAIL_DOMAIN,
-  KJCA_HOST,
-  KJCA_LOGIN_URL,
-  KJCA_AUTH_URL,
-  getHeaderValues,
-  mergeSetCookieIntoCookieHeader,
-  detectAuthRequiredHtml,
-  parseTeamLeadRowsFromDiaryHtml,
-  buildBrowserLikeHeaders,
-  normalizeReportDate,
-  info,
-  dbg,
-});
-
-const { normalizeSuperuserLoginId, readAuthState, ensureSuperuserRequest, createKjcaSession, probeStaffAuth } = kjcaAuth;
-
-const kjcaAnalyzeService = createKjcaAnalyzeService({
-  CACHE_COLLECTION_NAME,
-  GEMINI_MODEL_NAME,
-  PROMPT_VERSION,
-  GEMINI_MAX_ATTEMPTS,
-  parseJsonSafely,
-  extractJsonObjectText,
-  getHeaderValues,
-  mergeSetCookieIntoCookieHeader,
-  detectAuthRequiredHtml,
-  toAbsoluteKjcaUrl,
-  isAllowedKjcaUrl,
-  buildBrowserLikeHeaders,
-  normalizeReportDate,
-  escapeFilterValue,
-  hashText,
-  extractDivInnerHtmlByClasses,
-  htmlToText,
-  normalizeStringArray,
-  normalizeJsonArrayField,
-  inferGemini429Cause,
-  stringifyGeminiErrorDetails,
-  normalizeRecruitingExtract,
-  normalizeCachedRecruitingField,
-  createKjcaSession,
-  warn,
-  info,
-});
-
-const { analyzeStaffDiary } = kjcaAnalyzeService;
-
-const kjcaCollectService = createKjcaCollectService({
-  CACHE_COLLECTION_NAME,
-  WEEKDAY_ORDER,
-  normalizeReportDate,
-  escapeFilterValue,
-  buildWeekStartDate,
-  toWeekdayKey,
-  normalizeWeekday,
-  buildDateMatchParams,
-  normalizeNullableInt,
-  normalizeRequiredInt,
-  normalizeBool,
-  normalizeRecruitingExtract,
-  normalizeTeamLeadRows,
-  normalizeAnalyzeResults,
-  normalizeWeekTextRows,
-  ensureWeekdayRows,
-  hasWeekTextContent,
-  getDistinctWeekdayCount,
-  buildUniqueTargets,
-  hasWeekPlanData,
-  buildSnapshotRows,
-  ensureSuperuserRequest,
-  createKjcaSession,
-  probeStaffAuth,
-  analyzeStaffDiary,
-  parseDateText,
-  formatDateText,
-});
-
-const { collectWeekly, clearAnalysisCache } = kjcaCollectService;
-
 /**
  * 수집 결과를 화면용 대시보드 상태로 변환합니다.
  * @param {Partial<types.KjcaCollectResult> | null | undefined} result 수집 API가 돌려준 결과입니다.
@@ -1088,11 +1002,55 @@ function buildDashboardStateFromCollectResult(result, formState) {
 }
 
 module.exports = {
+  KJCA_EMAIL_DOMAIN,
+  KJCA_HOST,
+  KJCA_LOGIN_URL,
+  KJCA_AUTH_URL,
+  CACHE_COLLECTION_NAME,
+  GEMINI_MODEL_NAME,
+  PROMPT_VERSION,
+  GEMINI_MAX_ATTEMPTS,
   WEEKDAY_ORDER,
   weekdayLabelMap,
-  normalizeSuperuserLoginId,
-  readAuthState,
+  parseJsonSafely,
+  extractJsonObjectText,
+  getHeaderValues,
+  mergeSetCookieIntoCookieHeader,
+  detectAuthRequiredHtml,
+  toAbsoluteKjcaUrl,
+  isAllowedKjcaUrl,
+  parseTeamLeadRowsFromDiaryHtml,
+  buildBrowserLikeHeaders,
   buildFormState,
+  normalizeReportDate,
+  escapeFilterValue,
+  hashText,
+  extractDivInnerHtmlByClasses,
+  htmlToText,
+  normalizeStringArray,
+  normalizeJsonArrayField,
+  inferGemini429Cause,
+  stringifyGeminiErrorDetails,
+  buildWeekStartDate,
+  toWeekdayKey,
+  normalizeWeekday,
+  buildDateMatchParams,
+  normalizeNullableInt,
+  normalizeRequiredInt,
+  normalizeBool,
+  normalizeRecruitingExtract,
+  normalizeCachedRecruitingField,
+  normalizeTeamLeadRows,
+  normalizeAnalyzeResults,
+  normalizeWeekTextRows,
+  ensureWeekdayRows,
+  hasWeekTextContent,
+  getDistinctWeekdayCount,
+  buildUniqueTargets,
+  hasWeekPlanData,
+  buildSnapshotRows,
+  normalizeDeptWeekTables,
+  normalizeDeptSnapshots,
   buildDashboardState,
   buildDashboardStateFromCollectResult,
   parseDashboardState,
@@ -1100,8 +1058,4 @@ module.exports = {
   isFocusWeekday,
   getWeekdayMergedRow,
   buildDeptSummaryText,
-  probeStaffAuth,
-  analyzeStaffDiary,
-  collectWeekly,
-  clearAnalysisCache,
 };

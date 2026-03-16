@@ -1,36 +1,32 @@
-/**
- * 주간 취합과 관련 저장 작업을 조립합니다.
- * @param {object} deps 공용 상수, helper, service 함수 묶음입니다.
- * @returns {object} 취합 관련 함수 묶음입니다.
- */
-function createKjcaCollectService(deps) {
-  const {
-    CACHE_COLLECTION_NAME,
-    WEEKDAY_ORDER,
-    normalizeReportDate,
-    escapeFilterValue,
-    buildWeekStartDate,
-    toWeekdayKey,
-    normalizeWeekday,
-    buildDateMatchParams,
-    normalizeNullableInt,
-    normalizeRequiredInt,
-    normalizeBool,
-    normalizeRecruitingExtract,
-    normalizeTeamLeadRows,
-    normalizeAnalyzeResults,
-    normalizeWeekTextRows,
-    ensureWeekdayRows,
-    hasWeekTextContent,
-    getDistinctWeekdayCount,
-    buildUniqueTargets,
-    hasWeekPlanData,
-    buildSnapshotRows,
-    ensureSuperuserRequest,
-    createKjcaSession,
-    probeStaffAuth,
-    analyzeStaffDiary,
-  } = deps;
+const {
+  CACHE_COLLECTION_NAME,
+  WEEKDAY_ORDER,
+  normalizeReportDate,
+  escapeFilterValue,
+  buildWeekStartDate,
+  toWeekdayKey,
+  normalizeWeekday,
+  buildDateMatchParams,
+  normalizeNullableInt,
+  normalizeRequiredInt,
+  normalizeBool,
+  normalizeRecruitingExtract,
+  normalizeTeamLeadRows,
+  normalizeAnalyzeResults,
+  normalizeWeekTextRows,
+  ensureWeekdayRows,
+  hasWeekTextContent,
+  getDistinctWeekdayCount,
+  buildUniqueTargets,
+  hasWeekPlanData,
+  buildSnapshotRows,
+  parseDateText,
+  formatDateText,
+} = require('./kjca-core');
+const kjcaAuth = require('./kjca-auth');
+const kjcaAnalyzeService = require('./kjca-analyze-service');
+const { ensureSuperuserRequest, createKjcaSession, probeStaffAuth } = kjcaAuth;
+const { analyzeStaffDiary } = kjcaAnalyzeService;
 
   function shouldRetryAnalyzeError(errorText) {
     const text = String(errorText || '').toLowerCase();
@@ -368,6 +364,12 @@ function createKjcaCollectService(deps) {
     return { ok: true };
   }
 
+  /**
+   * 특정 부서와 날짜의 분석 캐시를 삭제합니다.
+   * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
+   * @param {types.KjcaCacheClearPayload | null | undefined} payload 삭제 대상 날짜와 부서입니다.
+   * @returns {types.KjcaCacheClearResult} 삭제 결과와 건수입니다.
+   */
   function clearAnalysisCache(request, payload) {
     ensureSuperuserRequest(request);
 
@@ -396,6 +398,13 @@ function createKjcaCollectService(deps) {
     };
   }
 
+  /**
+   * 지정한 날짜 기준으로 팀장 일지를 수집하고 주간 집계 결과를 만듭니다.
+   * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
+   * @param {types.KjcaCollectRoles | null | undefined} roles 저장 전에 적용할 role 묶음입니다.
+   * @param {types.KjcaCollectPayload | null | undefined} payload 수집 날짜와 옵션 입력값입니다.
+   * @returns {types.KjcaCollectResult} 화면 렌더링에 쓰는 주간 집계 결과입니다.
+   */
   function collectWeekly(request, roles, payload) {
     ensureSuperuserRequest(request);
     const safeRoles = roles && typeof roles === 'object' ? roles : {};
@@ -689,10 +698,7 @@ function createKjcaCollectService(deps) {
     };
   }
 
-  return {
-    collectWeekly,
-    clearAnalysisCache,
-  };
-}
-
-module.exports = createKjcaCollectService;
+module.exports = {
+  collectWeekly,
+  clearAnalysisCache,
+};

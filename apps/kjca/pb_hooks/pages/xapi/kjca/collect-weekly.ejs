@@ -1,5 +1,7 @@
 <script server>
-  const kjcaService = resolve('kjca-service');
+  const kjcaAuth = resolve('kjca-auth');
+  const kjcaCore = resolve('kjca-core');
+  const kjcaCollectService = resolve('kjca-collect-service');
   const collectRoles = {
     staffDiaryAnalysisCacheRole: resolve('roles/staff-diary-analysis-cache'),
     recruitingWeekPlanRole: resolve('roles/recruiting-week-plan'),
@@ -9,13 +11,13 @@
     recruitingWeekTextRowRole: resolve('roles/recruiting-week-text-row'),
   };
 
-  const authState = kjcaService.readAuthState(request);
+  const authState = kjcaAuth.readAuthState(request);
   const form = body();
-  const formState = kjcaService.buildFormState({
+  const formState = kjcaCore.buildFormState({
     reportDate: form.reportDate,
     testOneOnly: form.testOneOnly,
   });
-  let dashboardState = kjcaService.buildDashboardState({
+  let dashboardState = kjcaCore.buildDashboardState({
     reportDate: formState.reportDate,
     testOneOnly: formState.testOneOnly,
   });
@@ -27,7 +29,7 @@
   });
 
   if (!authState.isSuperuser) {
-    dashboardState = kjcaService.buildDashboardState({
+    dashboardState = kjcaCore.buildDashboardState({
       reportDate: formState.reportDate,
       testOneOnly: formState.testOneOnly,
       errorMessage: '먼저 관리자 계정으로 로그인해주세요.',
@@ -39,15 +41,15 @@
         testOneOnly: formState.testOneOnly,
       };
 
-      const result = kjcaService.collectWeekly(request, collectRoles, collectPayload);
-      dashboardState = kjcaService.buildDashboardStateFromCollectResult(result, formState);
+      const result = kjcaCollectService.collectWeekly(request, collectRoles, collectPayload);
+      dashboardState = kjcaCore.buildDashboardStateFromCollectResult(result, formState);
     } catch (exception) {
       const errorMessage = String(exception.message || exception);
       error('xapi/kjca/collect:failed', {
         reportDate: formState.reportDate,
         error: errorMessage,
       });
-      dashboardState = kjcaService.buildDashboardState({
+      dashboardState = kjcaCore.buildDashboardState({
         reportDate: formState.reportDate,
         testOneOnly: formState.testOneOnly,
         errorMessage,
@@ -63,4 +65,4 @@
     deptWeekTableCount: dashboardState.deptWeekTables.length,
   });
 </script>
-<%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaService }) %>
+<%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaCore }) %>
