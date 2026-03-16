@@ -23,6 +23,11 @@
 // 19) roles/*.js 내부에서 부작용/DB 조회/요청 문맥 접근 사용
 // 20) 엔트리에서 resolve('roles/...') 조립이 과도하게 많음
 // 21) JS helper/로컬 바인딩에서 params 이름 사용
+// 22) JSVM 비허용 문법(async/await/import/export) 사용
+// 23) _private/*.js 에서 plain module 대신 factory/function export 사용
+// 24) include()에 full context(api/request/response/resolve/params/data) 전달
+// 25) 로컬 @typedef 사용
+// 26) module.exports.foo = ... 형태의 분산 export 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -69,6 +74,14 @@ const RE = {
     /\$app\.(findAllRecords|findAuthRecordByToken|findCollectionByNameOrId|findCollectionsByFilter|findFirstRecordByData|findFirstRecordByFilter|findRecordById|findRecordsByExpr|findRecordsByFilter)\b/,
   roleRequestContext: /(^|[^A-Za-z0-9_])(request|params|query)\b|\bresolve\s*\(/,
   roleResolvePath: /resolve\(\s*["']roles\//g,
+  asyncKeyword: /\basync\b/,
+  awaitKeyword: /\bawait\b/,
+  importStatement: /^\s*import\s+/,
+  exportStatement: /^\s*export\s+/,
+  privateModuleFunctionExport: /module\.exports\s*=\s*function\b/,
+  privateModuleFactoryExport: /module\.exports\s*=\s*[A-Za-z_$][A-Za-z0-9_$]*\s*\(/,
+  localTypedef: /@typedef\b/,
+  distributedModuleExport: /module\.exports\.[A-Za-z_$][A-Za-z0-9_$]*\s*=/,
 }
 
 let errors = 0
@@ -195,7 +208,8 @@ function buildServiceContext(serviceDir) {
     hooksCodeFiles,
     pagesFiles,
     pagesCodeFiles,
-    pagesEjsFiles,
+    lintCodeFiles: pagesCodeFiles.filter((file) => !file.relFromPages.startsWith('assets/')),
+    pagesEjsFiles: pagesEjsFiles.filter((file) => !file.relFromPages.startsWith('assets/')),
     privateCodeFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('_private/')),
     roleFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('_private/roles/') && file.basename.endsWith('.js')),
     entryCodeFiles: pagesCodeFiles.filter(
@@ -633,10 +647,31 @@ function collectReservedParamsBindingMatches(files) {
   return unique(matches)
 }
 
+function collectIncludeFullContextMatches(files) {
+  const matches = []
+  const forbiddenNames = ['api', 'request', 'response', 'resolve', 'params', 'data']
+
+  for (const file of files) {
+    const lines = file.lines
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index]
+      if (!line.includes('include(')) {
+        continue
+      }
+
+      if (forbiddenNames.some((name) => new RegExp(`\\b${name}\\b`).test(line))) {
+        matches.push(`${file.displayPath}:${index + 1}:${line}`)
+      }
+    }
+  }
+
+  return unique(matches)
+}
+
 function lintService(context) {
   console.log(`Checking service: ${context.serviceName}`)
 
-  const resolvePrivateMatches = collectLineMatches(context.hooksCodeFiles, RE.resolvePrivate)
+  const resolvePrivateMatches = collectLineMatches(context.lintCodeFiles, RE.resolvePrivate)
   printMatches(
     context.serviceName,
     "Invalid resolve() path. Use names relative to _private, for example resolve('board-service').",
@@ -650,7 +685,7 @@ function lintService(context) {
     includePrivateMatches,
   )
 
-  const rawRecordFieldMatches = collectLineMatches(context.hooksCodeFiles, RE.recordField)
+  const rawRecordFieldMatches = collectLineMatches(context.lintCodeFiles, RE.recordField)
   const recordFieldMatches = filterLinesExcluding(rawRecordFieldMatches, RE.recordFieldAllowed)
   printMatches(
     context.serviceName,
@@ -708,11 +743,65 @@ function lintService(context) {
     privateResolveMatches,
   )
 
-  const reservedParamsBindingMatches = collectReservedParamsBindingMatches(context.pagesCodeFiles)
+  const reservedParamsBindingMatches = collectReservedParamsBindingMatches(context.lintCodeFiles)
   printMatches(
     context.serviceName,
     'Invalid JS params binding. Reserve "params" for route context only and rename helper inputs or locals to payload, input, summaryInput, or another contextual name.',
     reservedParamsBindingMatches,
+  )
+
+  const asyncMatches = unique([
+    ...collectLineMatches(context.lintCodeFiles, RE.asyncKeyword),
+    ...collectLineMatches(context.lintCodeFiles, RE.awaitKeyword),
+  ])
+  printMatches(
+    context.serviceName,
+    'Invalid JSVM async syntax. Keep PocketBase JSVM code synchronous and do not use async/await.',
+    asyncMatches,
+  )
+
+  const esmMatches = unique([
+    ...collectLineMatches(context.lintCodeFiles, RE.importStatement),
+    ...collectLineMatches(context.lintCodeFiles, RE.exportStatement),
+  ])
+  printMatches(
+    context.serviceName,
+    'Invalid JSVM module syntax. Use CommonJS require()/module.exports instead of import/export.',
+    esmMatches,
+  )
+
+  const privateModulePatternWarnings = unique([
+    ...collectLineMatches(context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')), RE.privateModuleFunctionExport),
+    ...collectLineMatches(context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')), RE.privateModuleFactoryExport),
+  ])
+  printWarnings(
+    context.serviceName,
+    'Prefer plain _private modules. Default to module.exports = { ... } and avoid function/factory exports unless there is a clear structural reason.',
+    privateModulePatternWarnings,
+  )
+
+  const distributedModuleExportWarnings = collectLineMatches(
+    context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')),
+    RE.distributedModuleExport,
+  )
+  printWarnings(
+    context.serviceName,
+    'Prefer plain module exports. Group public members in one module.exports = { ... } object instead of scattered module.exports.foo assignments.',
+    distributedModuleExportWarnings,
+  )
+
+  const includeFullContextMatches = collectIncludeFullContextMatches(context.pagesEjsFiles)
+  printMatches(
+    context.serviceName,
+    'Invalid include() locals. Pass only the values the partial needs instead of api/request/response/resolve/params/data.',
+    includeFullContextMatches,
+  )
+
+  const localTypedefMatches = collectLineMatches(context.lintCodeFiles, RE.localTypedef)
+  printMatches(
+    context.serviceName,
+    'Invalid local @typedef usage. Move named shapes to apps/<service>/types.d.ts and reference them as types.*.',
+    localTypedefMatches,
   )
 
   const roleSideEffectMatches = collectLineMatches(context.roleFiles, RE.roleSideEffect)
@@ -866,12 +955,12 @@ function lintService(context) {
         return ''
       }
 
-      return `${file.displayPath}: found ${count} role resolve() calls; consider composing them once in an entry-level service/factory`
+      return `${file.displayPath}: found ${count} role resolve() calls; keep direct resolve by default, and move only repeated shared wiring into a nearby plain _private module`
     })
     .filter(Boolean)
   printWarnings(
     context.serviceName,
-    "Heavy role composition in one entry. Consider composing resolve('roles/...') calls once in an entry-level service or factory.",
+    "Heavy role composition in one entry. Keep direct resolve by default, and move only repeated shared wiring into a nearby plain _private module when it is reused.",
     excessiveRoleResolveMatches,
   )
 }
