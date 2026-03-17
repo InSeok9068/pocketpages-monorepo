@@ -1,80 +1,57 @@
 <%
-  const panelBoardName = selectedBoard ? selectedBoard.get('name') || selectedBoardSlug : '';
-  const postCards = (posts || []).map((post) => ({
-    title: post.get('title') || '(untitled post)',
-    authorName: post.get('author_name') || 'unknown',
-    isNotice: !!post.get('is_notice'),
-    publishedAt: post.get('published_at') || post.created || '',
-  }));
+  const panelBoard = selectedBoard || null;
+  const panelBoardName = panelBoard ? panelBoard.name || selectedBoardSlug : '';
+  const panelBoardPath = panelBoard ? panelBoard.path || '' : '';
+  const panelError = typeof error === 'undefined' ? '' : String(error || '');
+  const safePostItems = Array.isArray(typeof postItems === 'undefined' ? undefined : postItems) ? postItems : [];
 %>
-<article id="post-panel">
+<article id="post-panel" class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
   <% if (!selectedBoardSlug) { %>
-  <p><em>Select a board to view posts.</em></p>
-  <% } else if (!selectedBoard) { %>
-  <p><strong>Board not found.</strong></p>
+  <header class="space-y-3">
+    <h2 class="text-2xl font-semibold text-stone-950">HTMX Post Panel</h2>
+    <p class="max-w-2xl text-sm leading-6 text-stone-600">왼쪽 목록에서 게시판을 고르면 `xapi/posts/panel`이 이 영역만 다시 렌더링합니다.</p>
+  </header>
+  <% } else if (panelError) { %>
+  <p class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"><%= panelError %></p>
+  <% } else if (!panelBoard) { %>
+  <p class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">Board not found.</p>
   <% } else { %>
-  <header>
-    <h3><%= panelBoardName %></h3>
-    <p>
-      <small>/boards/<%= selectedBoardSlug %></small>
-    </p>
+  <header class="mb-5 flex flex-wrap items-start justify-between gap-4">
+    <div class="space-y-2">
+      <p class="text-xs uppercase tracking-[0.16em] text-stone-500">HTMX Fragment</p>
+      <h2 class="text-2xl font-semibold text-stone-950"><%= panelBoardName %></h2>
+      <p class="text-sm text-stone-500"><%= panelBoardPath %></p>
+      <p class="max-w-2xl text-sm leading-6 text-stone-600">partial에는 record가 아니라 plain object만 넘기고, 전체 작성/수정은 full page route로 넘기는 구조입니다.</p>
+      <p class="text-sm text-stone-500">
+        JSON example:
+        <a href="/api/boards/<%= encodeURIComponent(selectedBoardSlug) %>?limit=3" class="font-medium text-stone-700 no-underline hover:text-stone-900">
+          /api/boards/<%= selectedBoardSlug %>?limit=3
+        </a>
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <a href="<%= panelBoardPath %>/posts/new" class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">
+        Write post
+      </a>
+      <a href="<%= panelBoardPath %>" class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
+        Open board
+      </a>
+    </div>
   </header>
 
-  <article x-data="{ open: false, title: '', slug: '', content: '' }">
-    <header>
-      <h4>Write Post</h4>
-    </header>
-
-    <button type="button" @click="open = !open" x-text="open ? 'Close' : 'New post'"></button>
-
-    <form x-show="open" x-transition hx-post="/xapi/posts/create" hx-target="#post-panel" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful){ this.reset(); open = false; }">
-      <input type="hidden" name="board" value="<%= selectedBoardSlug %>" />
-
-      <label>
-        Title
-        <input type="text" name="title" x-model="title" maxlength="200" required />
-      </label>
-
-      <label>
-        Slug
-        <input type="text" name="slug" x-model="slug" placeholder="welcome-post" />
-        <small x-show="title || slug">
-          Preview:
-          <span x-text="slug || title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')"></span>
-        </small>
-      </label>
-
-      <label>
-        Author
-        <input type="text" name="authorName" placeholder="Admin" required />
-      </label>
-
-      <label>
-        Content
-        <textarea name="content" x-model="content" rows="6" required></textarea>
-        <small><span x-text="content.length"></span> chars</small>
-      </label>
-
-      <label>
-        <input type="checkbox" name="isNotice" value="true" />
-        Notice
-      </label>
-
-      <button type="submit">Publish</button>
-    </form>
-  </article>
-
-  <% if (!postCards.length) { %>
-  <p><em>No published posts yet.</em></p>
+  <% if (!safePostItems.length) { %>
+  <p class="text-sm text-stone-500">No published posts yet.</p>
   <% } else { %>
-  <% postCards.forEach((postCard) => { %>
-  <section>
-    <h4><%= postCard.title %></h4>
-    <p>
-      <small><%= postCard.isNotice ? 'Notice' : 'Post' %> · <%= postCard.authorName %> · <%= postCard.publishedAt %></small>
-    </p>
-  </section>
-  <% }) %>
+  <div class="space-y-4">
+    <% safePostItems.forEach((postItem) => { %>
+    <section class="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
+      <h3 class="text-lg font-semibold text-stone-900">
+        <a href="<%= postItem.path %>" class="text-stone-900 no-underline hover:text-stone-700"><%= postItem.title %></a>
+      </h3>
+      <p class="mt-2 text-xs uppercase tracking-[0.14em] text-stone-500"><%= postItem.isNotice ? 'Notice' : 'Post' %> · <%= postItem.authorName %> · <%= postItem.publishedAt %></p>
+    </section>
+    <% }) %>
+  </div>
   <% } %>
   <% } %>
 </article>

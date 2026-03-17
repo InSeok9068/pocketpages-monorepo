@@ -1,0 +1,374 @@
+<script server>
+  const boardService = resolve('board-service');
+  const postService = resolve('post-service');
+  const selectedBoardSlug = String(request.url.query.board || '').trim();
+  let boardItems = [];
+  let boardListError = '';
+  let selectedBoard = null;
+  let postItems = [];
+  let postError = '';
+
+  meta('title', 'PocketPages Patterns');
+  meta('description', 'PocketPages file routing, middleware, xapi fragment patterns');
+
+  try {
+    boardItems = boardService.toBoardSummaries(boardService.listBoards());
+  } catch (error) {
+    warn('page/patterns:index:board-list-failed', {
+      message: String(error.message || error),
+    });
+    boardListError = String(error.message || error);
+  }
+
+  if (selectedBoardSlug) {
+    const selectedBoardRecord = boardService.findActiveBoardBySlug(selectedBoardSlug);
+
+    if (selectedBoardRecord) {
+      selectedBoard = boardService.toBoardSummary(selectedBoardRecord);
+
+      try {
+        postItems = postService.toPostPanelItems(postService.listPublishedPostsByBoard(selectedBoardRecord.id), selectedBoardSlug);
+      } catch (error) {
+        warn('page/patterns:index:post-list-failed', {
+          boardSlug: selectedBoardSlug,
+          message: String(error.message || error),
+        });
+        postError = String(error.message || error);
+      }
+    }
+  }
+
+  const routeCards = [
+    {
+      label: '(site)',
+      title: '전체 페이지 SSR',
+      body: 'layout이 필요한 화면은 `(site)` 아래에 두고, 페이지 엔트리에서는 meta와 화면 데이터를 준비합니다.',
+      example: '/boards/[boardSlug]',
+      fileHint: 'pages/(site)/boards/[boardSlug]/index.ejs',
+    },
+    {
+      label: '+middleware.js',
+      title: '계층 공통 데이터 로드',
+      body: 'board, post처럼 하위 경로 전체에서 반복되는 조회는 middleware에서 먼저 로드해 `data`로 넘깁니다.',
+      example: '/boards/[boardSlug]/posts/[postSlug]',
+      fileHint: 'pages/(site)/boards/[boardSlug]/+middleware.js',
+    },
+    {
+      label: 'xapi',
+      title: 'HTML fragment 응답',
+      body: 'HTMX 응답은 `xapi`에서 layout 없이 필요한 HTML 조각만 반환합니다.',
+      example: '/xapi/posts/panel?board=slug',
+      fileHint: 'pages/xapi/posts/panel.ejs',
+    },
+    {
+      label: 'api',
+      title: 'JSON endpoint',
+      body: '외부 소비나 가벼운 데이터 조회는 `pages/api/*`에서 JSON으로 분리합니다.',
+      example: '/api/boards/[boardSlug]?limit=3',
+      fileHint: 'pages/api/boards/[boardSlug].ejs',
+    },
+  ];
+
+  const bestPracticeCards = [
+    {
+      title: 'partial에는 plain object만 전달',
+      body: 'record 전체를 partial에 넘기지 않고, `_private` service에서 view model로 가공한 값만 전달합니다.',
+    },
+    {
+      title: 'query string은 request.url.query로 읽기',
+      body: 'route parameter는 `params`, query string은 `request.url.query`로 고정해 혼동을 줄입니다.',
+    },
+    {
+      title: 'redirect 직전 로그 남기기',
+      body: 'mutation endpoint에서는 `dbg()`로 status, redirectTo, flash/error를 남겨 추적성을 확보합니다.',
+    },
+    {
+      title: '페이지와 상호작용 endpoint 분리',
+      body: '전체 페이지 렌더와 HTMX fragment, JSON API를 디렉터리 기준으로 분리해 책임을 명확히 유지합니다.',
+    },
+  ];
+
+  const requestFlows = [
+    {
+      label: 'SSR Page',
+      title: '전체 페이지 흐름',
+      steps: [
+        '`(site)` route로 요청 진입',
+        '`+middleware.js`에서 board/post 조회',
+        'page `<script server>`에서 meta와 view model 준비',
+        '`+layout.ejs`가 전체 shell 렌더',
+      ],
+    },
+    {
+      label: 'HTMX',
+      title: 'fragment 흐름',
+      steps: [
+        '버튼이나 form이 `/xapi/*` 호출',
+        'endpoint가 필요한 데이터만 조회',
+        '`_private` partial로 같은 마크업 재사용',
+        'target 영역만 교체',
+      ],
+    },
+    {
+      label: 'JSON API',
+      title: 'data endpoint 흐름',
+      steps: [
+        '`/api/*` route에서 params와 query 검증',
+        'service/role로 조회와 상태 판단',
+        '`response.json(status, payload)`로 응답',
+        'layout 없이 raw JSON만 반환',
+      ],
+    },
+  ];
+
+  const fileTreeLines = [
+    'pb_hooks/pages/',
+    '  (site)/',
+    '    +layout.ejs',
+    '    boards/',
+    '      [boardSlug]/',
+    '        +middleware.js',
+    '        index.ejs',
+    '        posts/',
+    '          [postSlug]/',
+    '            +middleware.js',
+    '            edit.ejs',
+    '    patterns/index.ejs',
+    '  xapi/',
+    '    boards/list.ejs',
+    '    posts/panel.ejs',
+    '  api/',
+    '    boards/[boardSlug].ejs',
+    '  _private/',
+    '    board-service.js',
+    '    post-service.js',
+    '    board-list.ejs',
+    '    post-panel.ejs',
+  ];
+
+  const selectedBoardApiUrl = selectedBoard
+    ? '/api/boards/' + encodeURIComponent(selectedBoard.slug) + '?limit=3'
+    : '/api/boards/[boardSlug]?limit=3';
+
+  const apiExamplePayload = selectedBoard
+    ? {
+        meta: {
+          requestedAt: '2026-03-17T09:00:00.000Z',
+          recentLimit: 3,
+        },
+        board: {
+          id: selectedBoard.id,
+          name: selectedBoard.name,
+          slug: selectedBoard.slug,
+          description: selectedBoard.description,
+          path: selectedBoard.path,
+          isActive: selectedBoard.isActive,
+        },
+        stats: {
+          totalPosts: postItems.length,
+          publishedPosts: postItems.length,
+          draftPosts: 0,
+          archivedPosts: 0,
+          noticePosts: postItems.filter(function (postItem) {
+            return postItem.isNotice;
+          }).length,
+        },
+        recentPosts: postItems.slice(0, 3).map(function (postItem) {
+          return {
+            title: postItem.title,
+            slug: String(postItem.path || '').split('/').pop() || '',
+            isNotice: postItem.isNotice,
+            publishedAt: postItem.publishedAt,
+            path: postItem.path,
+          };
+        }),
+      }
+    : {
+        meta: {
+          requestedAt: '2026-03-17T09:00:00.000Z',
+          recentLimit: 3,
+        },
+        board: {
+          id: 'board_record_id',
+          name: 'General Discussion',
+          slug: 'general-discussion',
+          description: 'Board summary payload',
+          path: '/boards/general-discussion',
+          isActive: true,
+        },
+        stats: {
+          totalPosts: 12,
+          publishedPosts: 10,
+          draftPosts: 1,
+          archivedPosts: 1,
+          noticePosts: 2,
+        },
+        recentPosts: [
+          {
+            title: 'Welcome Post',
+            slug: 'welcome-post',
+            isNotice: true,
+            publishedAt: '2026-03-17 09:00:00.000Z',
+            path: '/boards/general-discussion/posts/welcome-post',
+          },
+        ],
+      };
+
+  const apiExampleJson = JSON.stringify(apiExamplePayload, null, 2);
+
+  dbg('page/patterns:index:response', {
+    selectedBoardSlug: selectedBoardSlug,
+    boardCount: boardItems.length,
+    boardListError: boardListError || '',
+    postCount: postItems.length,
+    postError: postError || '',
+  });
+</script>
+
+<header class="mb-10 overflow-hidden rounded-[2rem] border border-stone-200 bg-[linear-gradient(135deg,#f8f5ef,white_55%,#ece7de)] px-6 py-8 shadow-sm md:px-8 md:py-10">
+  <div class="flex flex-wrap items-start justify-between gap-6">
+    <div class="max-w-3xl space-y-4">
+      <p>
+        <a href="/" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900">Home</a>
+      </p>
+      <p class="inline-flex items-center rounded-full border border-stone-300 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Sample Playbook</p>
+      <h1 class="text-4xl font-semibold tracking-tight text-stone-950 md:text-5xl">PocketPages Patterns</h1>
+      <p class="max-w-3xl text-base leading-7 text-stone-600">이 페이지는 `sample`을 복붙 출발점으로 쓸 때 바로 따라갈 수 있는 구조를 보여줍니다. 목적은 기능 나열보다 “왜 이 폴더에 두는지”, “어느 레이어에서 처리하는지”를 명확하게 보여주는 것입니다.</p>
+    </div>
+
+    <div class="grid min-w-[18rem] gap-3 rounded-3xl border border-stone-200 bg-white/85 p-4">
+      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Start Here</p>
+      <a href="/boards" class="inline-flex items-center justify-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">Board CRUD</a>
+      <a href="<%= selectedBoardApiUrl %>" class="inline-flex items-center justify-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
+        JSON API Example
+      </a>
+    </div>
+  </div>
+</header>
+
+<section class="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <% routeCards.forEach((routeCard) => { %>
+  <article class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500"><%= routeCard.label %></p>
+    <h2 class="mt-3 text-xl font-semibold text-stone-950"><%= routeCard.title %></h2>
+    <p class="mt-2 text-sm leading-6 text-stone-600"><%= routeCard.body %></p>
+    <p class="mt-4 rounded-2xl bg-stone-100 px-3 py-2 font-mono text-xs text-stone-600"><%= routeCard.example %></p>
+    <p class="mt-3 font-mono text-xs text-stone-500"><%= routeCard.fileHint %></p>
+  </article>
+  <% }) %>
+</section>
+
+<section class="mb-6 grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.95fr)]">
+  <article class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+    <header class="mb-5 space-y-2">
+      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Recommended Structure</p>
+      <h2 class="text-2xl font-semibold text-stone-950">Directory Shape</h2>
+      <p class="max-w-2xl text-sm leading-6 text-stone-600">이 샘플은 페이지, fragment, JSON API, 내부 모듈을 디렉터리 차원에서 분리합니다. 파일 경로만 봐도 요청 흐름이 따라가져야 한다는 기준을 그대로 반영했습니다.</p>
+    </header>
+    <pre class="overflow-x-auto rounded-3xl bg-stone-950 px-5 py-5 text-xs leading-6 text-stone-100"><code><%= fileTreeLines.join('\n') %></code></pre>
+  </article>
+
+  <article class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+    <header class="mb-5 space-y-2">
+      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Best Practices</p>
+      <h2 class="text-2xl font-semibold text-stone-950">Default Rules</h2>
+    </header>
+    <div class="grid gap-4">
+      <% bestPracticeCards.forEach((practiceCard) => { %>
+      <section class="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+        <h3 class="text-base font-semibold text-stone-900"><%= practiceCard.title %></h3>
+        <p class="mt-2 text-sm leading-6 text-stone-600"><%= practiceCard.body %></p>
+      </section>
+      <% }) %>
+    </div>
+  </article>
+</section>
+
+<section class="mb-6 grid gap-4 lg:grid-cols-3">
+  <% requestFlows.forEach((requestFlow) => { %>
+  <article class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500"><%= requestFlow.label %></p>
+    <h2 class="mt-3 text-xl font-semibold text-stone-950"><%= requestFlow.title %></h2>
+    <ol class="mt-4 space-y-3 text-sm leading-6 text-stone-600">
+      <% requestFlow.steps.forEach((step, index) => { %>
+      <li class="flex gap-3">
+        <span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-stone-900 text-xs font-semibold text-white"><%= index + 1 %></span>
+        <span><%= step %></span>
+      </li>
+      <% }) %>
+    </ol>
+  </article>
+  <% }) %>
+</section>
+
+<section class="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.25fr)]">
+  <article class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+    <header class="mb-5 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Interactive Sample</p>
+        <h2 class="text-2xl font-semibold text-stone-950">Board Selector</h2>
+        <p class="mt-2 max-w-md text-sm leading-6 text-stone-600">검색과 선택은 클라이언트에서 가볍게 처리하고, 실제 게시글 패널은 `/xapi/posts/panel`로 받아옵니다.</p>
+      </div>
+      <form hx-get="/xapi/boards/list" hx-target="#board-list" hx-swap="innerHTML">
+        <input type="hidden" name="board" value="<%= selectedBoardSlug %>" />
+        <button type="submit" class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-900 hover:text-stone-900">
+          Refresh list
+        </button>
+      </form>
+    </header>
+
+    <div x-data="{ q: '' }" class="space-y-4">
+      <label class="block">
+        Search
+        <input
+          x-model="q"
+          type="text"
+          placeholder="board name or slug"
+          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
+        />
+      </label>
+
+      <div id="board-list">
+        <%- include('board-list.ejs', {
+        boardItems: boardItems,
+        error: boardListError,
+        selectedBoardSlug: selectedBoardSlug,
+      }) %>
+      </div>
+    </div>
+  </article>
+
+  <div class="space-y-6">
+    <%- include('post-panel.ejs', {
+    selectedBoard: selectedBoard,
+    selectedBoardSlug: selectedBoardSlug,
+    postItems: postItems,
+    error: postError,
+  }) %>
+
+    <article class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+      <header class="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">JSON API</p>
+          <h2 class="text-2xl font-semibold text-stone-950">Board Snapshot Endpoint</h2>
+          <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-600">`params.boardSlug`로 대상 게시판을 읽고, `request.url.query.limit`로 최근 글 개수를 제어하는 예시입니다. layout 없이 `response.json(status, payload)`만 반환합니다.</p>
+        </div>
+        <a href="<%= selectedBoardApiUrl %>" class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">
+          Open endpoint
+        </a>
+      </header>
+
+      <div class="space-y-4">
+        <div class="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Route</p>
+          <p class="mt-2 font-mono text-sm text-stone-700"><%= selectedBoardApiUrl %></p>
+        </div>
+
+        <div class="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Response Shape</p>
+          <pre class="mt-3 overflow-x-auto rounded-2xl bg-stone-950 px-4 py-4 text-xs leading-6 text-stone-100"><code><%= apiExampleJson %></code></pre>
+        </div>
+      </div>
+    </article>
+  </div>
+</section>

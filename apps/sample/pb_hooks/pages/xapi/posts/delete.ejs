@@ -1,5 +1,6 @@
 <script server>
   const boardService = resolve('board-service');
+  const postService = resolve('post-service');
   const postRole = resolve('roles/post');
   const form = body();
   const boardSlug = String(form.board || '').trim();
@@ -17,7 +18,7 @@
   }
 
   if (!errorMessage) {
-    post = boardService.findPostByBoardAndSlug(board.id, postSlug);
+    post = postService.findPostByBoardAndSlug(board.id, postSlug);
 
     if (!post) {
       warn('api/posts/delete:post-not-found', { boardSlug, postSlug });
@@ -49,8 +50,7 @@
   }
 </script>
 <%
-  const fallbackBoard = '/boards/' + encodeURIComponent(boardSlug);
-  const fallbackPost = postSlug ? fallbackBoard + '/posts/' + encodeURIComponent(postSlug) : fallbackBoard;
+  const fallbackPost = postService.buildPostPath(boardSlug, postSlug);
   const flashMessage = errorMessage || 'Failed to delete post.';
 
   dbg('api/posts/delete:response', {

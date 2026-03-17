@@ -1,42 +1,48 @@
 <%
-  const safeBoards = Array.isArray(typeof boards === 'undefined' ? undefined : boards) ? boards : [];
+  const safeBoards = Array.isArray(typeof boardItems === 'undefined' ? undefined : boardItems) ? boardItems : [];
   const safeError = typeof error === 'undefined' ? '' : String(error || '');
   const currentBoardSlug = typeof selectedBoardSlug === 'undefined' ? '' : String(selectedBoardSlug || '');
-  const boardItems = safeBoards.map((board) => {
-    const boardName = board.get('name') || '';
-    const boardSlug = board.get('slug') || '';
+  const boardCards = safeBoards.map((boardItem) => {
+    const boardName = boardItem.name || '';
+    const boardSlug = boardItem.slug || '';
 
     return {
       name: boardName,
       slug: boardSlug,
-      description: board.get('description') || '',
+      path: boardItem.path || '',
+      description: boardItem.description || '',
       searchExpr: JSON.stringify(`${boardName} ${boardSlug}`.toLowerCase()),
     };
   });
 %>
 <% if (safeError) { %>
-<p>
-  <strong><%= safeError %></strong>
-</p>
-<% } else if (!boardItems.length) { %>
-<p><em>No boards found.</em></p>
+<p class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"><%= safeError %></p>
+<% } else if (!boardCards.length) { %>
+<p class="text-sm text-stone-500">No boards found.</p>
 <% } else { %>
-<% boardItems.forEach((boardItem) => { %>
-<article x-show="<%= `${boardItem.searchExpr}.includes(q.toLowerCase())` %>">
-  <header>
-    <h3><%= boardItem.name || '(untitled board)' %></h3>
-    <p>
-      <small>/boards/<%= boardItem.slug %></small>
-    </p>
-  </header>
-  <p><%= boardItem.description || 'No description' %></p>
-  <form hx-get="/xapi/posts/panel" hx-target="#post-panel" hx-swap="outerHTML">
-    <input type="hidden" name="board" value="<%= boardItem.slug %>" />
-    <button type="submit"><%= currentBoardSlug === boardItem.slug ? 'Refresh posts' : 'View posts' %></button>
-  </form>
-  <nav>
-    <a href="/boards/<%= boardItem.slug %>">Open board page</a>
-  </nav>
-</article>
-<% }) %>
+<div class="space-y-4">
+  <% boardCards.forEach((boardCard) => { %>
+  <article x-show="<%= `${boardCard.searchExpr}.includes(q.toLowerCase())` %>" class="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4 transition">
+    <header class="space-y-2">
+      <h3 class="text-lg font-semibold text-stone-950"><%= boardCard.name || '(untitled board)' %></h3>
+      <p class="text-xs uppercase tracking-[0.14em] text-stone-500">/boards/<%= boardCard.slug %></p>
+    </header>
+    <p class="mt-3 text-sm leading-6 text-stone-600"><%= boardCard.description || 'No description' %></p>
+    <div class="mt-4 flex flex-wrap items-center gap-2">
+      <form hx-get="/xapi/posts/panel" hx-target="#post-panel" hx-swap="outerHTML" hx-push-url="/patterns?board=<%= encodeURIComponent(boardCard.slug) %>">
+        <input type="hidden" name="board" value="<%= boardCard.slug %>" />
+        <button
+          type="submit"
+          class="<%= currentBoardSlug === boardCard.slug ? 'bg-stone-900 text-white hover:bg-stone-700' : 'border border-stone-300 text-stone-700 hover:border-stone-900 hover:text-stone-900' %> inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium transition"
+        >
+          <%= currentBoardSlug === boardCard.slug ? 'Refresh panel' : 'Load panel' %>
+        </button>
+      </form>
+      <a href="<%= boardCard.path %>" class="inline-flex items-center rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
+        Open full page
+      </a>
+    </div>
+  </article>
+  <% }) %>
+</div>
 <% } %>

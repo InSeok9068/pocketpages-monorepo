@@ -1,59 +1,47 @@
 <script server>
   const boardService = resolve('board-service');
+  const postService = resolve('post-service');
   const sharedData = data || {};
   const board = sharedData.board || null;
-  const boardSlug = String(params.boardSlug || '').trim();
-  const postSlug = String(params.postSlug || '').trim();
-  let post = null;
+  const post = sharedData.post || null;
+  const boardSummary = boardService.toBoardSummary(board);
+  const postDetail = postService.toPostDetail(post, String(params.boardSlug || '').trim());
 
-  if (!board) {
+  if (!boardSummary) {
     response.status(404);
     meta('title', 'Board Not Found');
+  } else if (!postDetail) {
+    response.status(404);
+    meta('title', 'Post Not Found');
   } else {
-    post = boardService.findPostByBoardAndSlug(board.id, postSlug);
-
-    if (!post) {
-      response.status(404);
-      meta('title', 'Post Not Found');
-    } else {
-      meta('title', `Edit ${post.get('title') || postSlug} | ${board.get('name') || boardSlug}`);
-      meta('description', board.get('description') || `Edit post ${postSlug}`);
-    }
+    meta('title', `Edit ${postDetail.title} | ${boardSummary.name || boardSummary.slug}`);
+    meta('description', boardSummary.description || `Edit post ${postDetail.slug}`);
   }
 
-  const pageData = !board
+  const pageData = !boardSummary
     ? {
         board: null,
         post: null,
         error: 'Board not found',
       }
-    : !post
+    : !postDetail
       ? {
-          board,
+          board: boardSummary,
           post: null,
           error: 'Post not found',
         }
       : {
-          board,
-          post,
-          boardName: board.get('name') || boardSlug,
-          postTitle: post.get('title') || postSlug,
-          formValues: {
-            title: post.get('title') || '',
-            slug: post.get('slug') || postSlug,
-            authorName: post.get('author_name') || '',
-            content: post.get('content') || '',
-            status: post.get('status') || 'draft',
-            isNotice: !!post.get('is_notice'),
-          },
+          board: boardSummary,
+          post: postDetail,
+          formValues: postService.toPostFormValues(post),
           error: '',
         };
 
   dbg('page/posts/edit:response', {
-    boardSlug,
-    postSlug,
+    boardSlug: pageData.board ? pageData.board.slug : String(params.boardSlug || '').trim(),
+    postSlug: pageData.post ? pageData.post.slug : String(params.postSlug || '').trim(),
     error: pageData.error || '',
-    status: pageData.post ? pageData.post.get('status') || '' : '',
+    status: pageData.post ? pageData.post.status : '',
   });
 </script>
 
@@ -69,10 +57,10 @@
 <% } else { %>
 <header class="mb-8 space-y-4">
   <p>
-    <a href="/boards/<%= params.boardSlug %>/posts/<%= params.postSlug %>" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"> <%= pageData.postTitle %> </a>
+    <a href="<%= pageData.post.path %>" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"> <%= pageData.post.title %> </a>
   </p>
   <h1 class="text-4xl font-semibold tracking-tight text-stone-950">Edit Post</h1>
-  <p class="max-w-2xl text-base leading-7 text-stone-600"><%= pageData.boardName %> 게시판의 게시글을 수정합니다.</p>
+  <p class="max-w-2xl text-base leading-7 text-stone-600"><%= pageData.board.name %> 게시판의 게시글을 수정합니다.</p>
 </header>
 
 <%- include('flash-alert.ejs') %>
@@ -83,7 +71,7 @@
       <h2 class="text-2xl font-semibold text-stone-950">Edit Fields</h2>
     </div>
     <a
-      href="/boards/<%= params.boardSlug %>/posts/<%= params.postSlug %>"
+      href="<%= pageData.post.path %>"
       class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
     >
       View post
@@ -106,8 +94,8 @@
   </header>
 
   <form action="/xapi/posts/delete" method="post">
-    <input type="hidden" name="board" value="<%= params.boardSlug %>" />
-    <input type="hidden" name="post" value="<%= params.postSlug %>" />
+    <input type="hidden" name="board" value="<%= pageData.board.slug %>" />
+    <input type="hidden" name="post" value="<%= pageData.post.slug %>" />
     <button type="submit" class="inline-flex items-center rounded-full bg-rose-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-600">Delete post</button>
   </form>
 </article>

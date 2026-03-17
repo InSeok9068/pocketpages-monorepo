@@ -1,30 +1,29 @@
 <script server>
+  const boardService = resolve('board-service');
   const sharedData = data || {};
   const board = sharedData.board || null;
-  const boardSlug = String(params.boardSlug || '').trim();
+  const boardSummary = boardService.toBoardSummary(board);
 
-  if (!board) {
+  if (!boardSummary) {
     response.status(404);
     meta('title', 'Board Not Found');
   } else {
-    meta('title', `Write Post | ${board.get('name') || boardSlug}`);
-    meta('description', board.get('description') || `Write post in ${boardSlug}`);
+    meta('title', `Write Post | ${boardSummary.name || boardSummary.slug}`);
+    meta('description', boardSummary.description || `Write post in ${boardSummary.slug}`);
   }
 
-  const pageData = board
+  const pageData = boardSummary
     ? {
-        board,
-        boardName: board.get('name') || boardSlug,
+        board: boardSummary,
         error: '',
       }
     : {
         board: null,
-        boardName: '',
         error: 'Board not found',
       };
 
   dbg('page/posts/new:response', {
-    boardSlug,
+    boardSlug: pageData.board ? pageData.board.slug : String(params.boardSlug || '').trim(),
     error: pageData.error || '',
     boardId: pageData.board ? pageData.board.id : '',
   });
@@ -43,7 +42,7 @@
 
 <header class="mb-8 space-y-4">
   <p>
-    <a href="/boards/<%= params.boardSlug %>" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"> <%= pageData.boardName %> </a>
+    <a href="<%= pageData.board.path %>" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"> <%= pageData.board.name %> </a>
   </p>
   <h1 class="text-4xl font-semibold tracking-tight text-stone-950">Write Post</h1>
   <p class="max-w-2xl text-base leading-7 text-stone-600">새 글 작성만 분리한 화면입니다.</p>
@@ -54,7 +53,7 @@
 <article class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
   <%- include('post-form.ejs', {
   formAction: '/xapi/posts/create',
-  boardSlug: params.boardSlug,
+  boardSlug: pageData.board.slug,
   postSlug: '',
   submitLabel: 'Create post',
   textareaRows: 8,

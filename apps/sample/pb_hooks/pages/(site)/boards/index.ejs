@@ -1,28 +1,23 @@
 <script server>
+  const boardService = resolve('board-service');
   meta('title', 'Boards');
   meta('description', 'Simple boards list page');
 
   let pageData = {
-    boards: [],
-    boardRows: [],
+    boardItems: [],
     error: '',
   };
 
   try {
-    pageData.boards = $app.findRecordsByFilter('boards', '', '+sort_order,+name', 50, 0);
+    pageData.boardItems = boardService.toBoardSummaries(boardService.listBoards());
   } catch (error) {
+    warn('page/boards:index:load-failed', { message: String(error.message || error) });
     pageData.error = String(error.message || error);
   }
 
-  pageData.boardRows = pageData.boards.map((board) => ({
-    name: board.get('name') || '',
-    slug: board.get('slug') || '',
-    description: board.get('description') || '',
-  }));
-
   dbg('page/boards:index:response', {
     error: pageData.error || '',
-    boardCount: pageData.boards.length,
+    boardCount: pageData.boardItems.length,
   });
 </script>
 
@@ -85,7 +80,7 @@
 
     <% if (pageData.error) { %>
     <p class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"><%= pageData.error %></p>
-    <% } else if (!pageData.boards.length) { %>
+    <% } else if (!pageData.boardItems.length) { %>
     <p class="text-sm text-stone-500">No boards found.</p>
     <% } else { %>
     <div class="overflow-x-auto">
@@ -99,14 +94,14 @@
           </tr>
         </thead>
         <tbody>
-          <% pageData.boardRows.forEach((boardRow) => { %>
+          <% pageData.boardItems.forEach((boardItem) => { %>
           <tr align-top>
-            <td class="border-b border-stone-100 px-4 py-4 font-semibold text-stone-900"><%= boardRow.name || '(untitled board)' %></td>
-            <td class="whitespace-nowrap border-b border-stone-100 px-4 py-4 text-stone-500">/boards/<%= boardRow.slug %></td>
-            <td class="border-b border-stone-100 px-4 py-4 leading-6 text-stone-600"><%= boardRow.description || 'No description' %></td>
+            <td class="border-b border-stone-100 px-4 py-4 font-semibold text-stone-900"><%= boardItem.name || '(untitled board)' %></td>
+            <td class="whitespace-nowrap border-b border-stone-100 px-4 py-4 text-stone-500">/boards/<%= boardItem.slug %></td>
+            <td class="border-b border-stone-100 px-4 py-4 leading-6 text-stone-600"><%= boardItem.description || 'No description' %></td>
             <td class="border-b border-stone-100 px-4 py-4">
               <a
-                href="/boards/<%= boardRow.slug %>"
+                href="<%= boardItem.path %>"
                 class="inline-flex items-center rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
               >
                 Open
