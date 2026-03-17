@@ -1,0 +1,80 @@
+diff --git a/node_modules/pocketpages-plugin-ejs/dist/index.js b/node_modules/pocketpages-plugin-ejs/dist/index.js
+index 218861d..d2ab331 100644
+--- a/node_modules/pocketpages-plugin-ejs/dist/index.js
++++ b/node_modules/pocketpages-plugin-ejs/dist/index.js
+@@ -49,26 +49,54 @@ const ejsPluinFactory = (config, extra) => {
+ 	};
+ 	pocketbase_ejs.default.resolveInclude = function(includePath, templatePath, isDir) {
+ 		dbg(`ejs resolveInclude ${includePath} from ${templatePath} <${isDir ? "dir" : "file"}>`);
+-		if (isDir) return pocketbase_node.path.resolve(pagesRoot, includePath);
++		const normalizeSlashes = (p) => p.replaceAll("\\", "/");
++		const stripTrailingSlash = (p) => p.endsWith("/") ? p.slice(0, -1) : p;
++		const dirnamePath = (p) => {
++			const normalized = stripTrailingSlash(normalizeSlashes(p));
++			const idx = normalized.lastIndexOf("/");
++			if (idx < 0) return ".";
++			if (idx === 0) return "/";
++			return normalized.slice(0, idx);
++		};
++		const joinPath = (...parts) => parts.map((p) => normalizeSlashes(p)).join("/").replaceAll(/\/+/g, "/");
++		const pathCandidates = (p) => {
++			const normalized = normalizeSlashes(p);
++			const candidates = [normalized];
++			if (/^[A-Za-z]:\//.test(normalized)) {
++				candidates.push(normalized.replaceAll("/", "\\"));
++			}
++			return candidates;
++		};
++		const comparePath = (p) => {
++			const normalized = stripTrailingSlash(normalizeSlashes(p));
++			return process.platform === "win32" ? normalized.toLowerCase() : normalized;
++		};
++		const normalizedPagesRoot = comparePath(pagesRoot);
++		if (isDir) return joinPath(pagesRoot, includePath);
+ 		const tryExtensions = (basePath) => {
+-			if (pocketbase_node.fs.existsSync(basePath, "file")) {
+-				dbg(`found exact path ${basePath}`);
+-				return basePath;
++			for (const exactPath of pathCandidates(basePath)) {
++				if (pocketbase_node.fs.existsSync(exactPath, "file")) {
++					dbg(`found exact path ${exactPath}`);
++					return exactPath;
++				}
+ 			}
+ 			for (const ext of opts.extensions) {
+ 				const pathWithExt = basePath + ext;
+-				if (pocketbase_node.fs.existsSync(pathWithExt, "file")) {
+-					dbg(`found extension ${pathWithExt}`);
+-					return pathWithExt;
++				for (const withExtPath of pathCandidates(pathWithExt)) {
++					if (pocketbase_node.fs.existsSync(withExtPath, "file")) {
++						dbg(`found extension ${withExtPath}`);
++						return withExtPath;
++					}
+ 				}
+ 			}
+ 			return null;
+ 		};
+-		let currentPath = pocketbase_node.path.dirname(templatePath);
++		let currentPath = dirnamePath(templatePath);
+ 		const triedPaths = [];
+ 		while (currentPath.length >= pagesRoot.length) {
+-			const attemptPath = pocketbase_node.path.resolve(currentPath, `_private`, includePath);
+-			if (!attemptPath.startsWith(pagesRoot)) {
++			const attemptPath = joinPath(currentPath, `_private`, includePath);
++			const normalizedAttemptPath = comparePath(attemptPath);
++			if (!normalizedAttemptPath.startsWith(normalizedPagesRoot)) {
+ 				dbg(`skipping ${attemptPath} in ${pagesRoot}`);
+ 				break;
+ 			}
+@@ -76,8 +104,8 @@ const ejsPluinFactory = (config, extra) => {
+ 			const foundPath = tryExtensions(attemptPath);
+ 			if (foundPath) return foundPath;
+ 			triedPaths.push(attemptPath);
+-			if (currentPath === pagesRoot) break;
+-			currentPath = pocketbase_node.path.dirname(currentPath);
++			if (comparePath(currentPath) === normalizedPagesRoot) break;
++			currentPath = dirnamePath(currentPath);
+ 		}
+ 		throw new Error(`No partial '${includePath}' found in any _private directory. Tried: ${triedPaths.join(", ")}`);
+ 	};

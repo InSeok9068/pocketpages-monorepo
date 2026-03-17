@@ -1,0 +1,177 @@
+<script server>
+  const fflate = require('fflate');
+
+  function normalizePreview(input, maxLength) {
+    return String(input || '')
+      .replace(/[^\x20-\x7E\u00A0-\uFFFF\r\n\t]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .slice(0, maxLength);
+  }
+
+  function dirname(filePath) {
+    const lastSlashIndex = String(filePath || '').lastIndexOf('/');
+    if (lastSlashIndex === -1) {
+      return '';
+    }
+
+    return filePath.slice(0, lastSlashIndex);
+  }
+
+  function joinPath(basePath, relativePath) {
+    const rawPath = (basePath ? basePath + '/' : '') + String(relativePath || '');
+    const segments = rawPath.split('/');
+    const normalizedSegments = [];
+
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment = segments[index];
+
+      if (!segment || segment === '.') {
+        continue;
+      }
+
+      if (segment === '..') {
+        normalizedSegments.pop();
+        continue;
+      }
+
+      normalizedSegments.push(segment);
+    }
+
+    return normalizedSegments.join('/');
+  }
+
+  function readArchiveText(archiveEntries, entryPath) {
+    if (!entryPath || !archiveEntries[entryPath]) {
+      return '';
+    }
+
+    return fflate.strFromU8(archiveEntries[entryPath]);
+  }
+
+  function extractAttribute(tagText, attributeName) {
+    const pattern = new RegExp(attributeName + '="([^"]+)"');
+    const match = String(tagText || '').match(pattern);
+    return match ? match[1] : '';
+  }
+
+  if (request.method !== 'POST') {
+    dbg('xapi/epub/upload:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    });
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    });
+    return;
+  }
+
+  dbg('xapi/epub/upload:start', {
+    method: request.method,
+  });
+
+  try {
+    const uploadedFiles = request.event.findUploadedFiles('epubFile') || [];
+    const epubFile = uploadedFiles[0];
+
+    if (!epubFile) {
+      throw new Error('EPUB 파일이 필요합니다.');
+    }
+
+    const reader = epubFile.reader.open();
+    const epubBytes = toBytes(reader, 1024 * 1024 * 4);
+    reader.close();
+
+    const archiveEntries = fflate.unzipSync(new Uint8Array(epubBytes));
+    const entryNames = Object.keys(archiveEntries).sort();
+    const sampleEntryNames = entryNames.slice(0, 30);
+
+    const mimetypeText = readArchiveText(archiveEntries, 'mimetype');
+    const containerXml = readArchiveText(archiveEntries, 'META-INF/container.xml');
+    const containerRootfileMatch = containerXml.match(/full-path="([^"]+)"/);
+    const packageDocumentPath = containerRootfileMatch ? containerRootfileMatch[1] : '';
+    const packageDocumentXml = readArchiveText(archiveEntries, packageDocumentPath);
+
+    const manifestItemPattern = /<item\b[^>]*>/g;
+    const manifestItems = packageDocumentXml.match(manifestItemPattern) || [];
+    let firstContentPath = '';
+
+    for (let index = 0; index < manifestItems.length; index += 1) {
+      const manifestItem = manifestItems[index];
+      const mediaType = extractAttribute(manifestItem, 'media-type');
+      const href = extractAttribute(manifestItem, 'href');
+
+      if (!href) {
+        continue;
+      }
+
+      if (mediaType === 'application/xhtml+xml' || /\.(xhtml|html|htm)$/i.test(href)) {
+        firstContentPath = joinPath(dirname(packageDocumentPath), href);
+        break;
+      }
+    }
+
+    if (!firstContentPath) {
+      for (let index = 0; index < entryNames.length; index += 1) {
+        const entryName = entryNames[index];
+        if (/\.(xhtml|html|htm)$/i.test(entryName)) {
+          firstContentPath = entryName;
+          break;
+        }
+      }
+    }
+
+    const firstContentXml = readArchiveText(archiveEntries, firstContentPath);
+    const firstContentText = normalizePreview(
+      firstContentXml
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' '),
+      800
+    );
+
+    info('xapi/epub/upload:read-result', {
+      fileName: epubFile.name,
+      originalName: epubFile.originalName,
+      size: epubFile.size,
+      headerBytes: epubBytes.slice(0, 16),
+      zipEntryCount: entryNames.length,
+      entryNames: sampleEntryNames,
+      mimetype: normalizePreview(mimetypeText, 120),
+      packageDocumentPath: packageDocumentPath,
+      containerXmlPreview: normalizePreview(containerXml, 500),
+      packageDocumentPreview: normalizePreview(packageDocumentXml, 800),
+      firstContentPath: firstContentPath,
+      firstContentXmlPreview: normalizePreview(firstContentXml, 800),
+      firstContentTextPreview: firstContentText,
+    });
+
+    dbg('xapi/epub/upload:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: 'EPUB 파일을 읽고 로그를 남겼습니다.',
+    });
+    redirect('/', {
+      status: 303,
+      message: 'EPUB 파일을 읽고 로그를 남겼습니다.',
+    });
+    return;
+  } catch (exception) {
+    const errorMessage = String(exception.message || exception);
+
+    error('xapi/epub/upload:failed', {
+      error: errorMessage,
+    });
+
+    dbg('xapi/epub/upload:redirect', {
+      status: 303,
+      redirectTo: '/',
+      error: errorMessage,
+    });
+    redirect('/', {
+      status: 303,
+      message: errorMessage,
+    });
+  }
+</script>
