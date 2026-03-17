@@ -2,36 +2,36 @@
 
 > AI 에이전트 안내: 이 문서를 작업 기준으로 사용하지 말고 먼저 `AGENTS.md`를 확인하세요.
 
-| 구분                | PocketPages (SSR)        |
-| ------------------- | ------------------------ |
-| 목적                | 빠른 MVP                 |
-| 핵심가치            | AI 에이전트 협업         |
-| 백엔드              | PocketPages (Pocketbase) |
-| 프론트엔드          | HTMX, Alpine.js          |
-| 템플릿/UI           | EJS                      |
-| CSS                 | UnoCSS (Tailwind)        |
-| 상태관리            | PB Native Context        |
-| 라우팅              | 파일 시스템 (Auto)       |
-| DB                  | SQLite (PB)              |
-| DB 관리             | PB Admin                 |
-| DB <br>마이그레이션 | PB Migration             |
-| DB 복제/복원        | Litestream               |
-| 인증                | PB Auth + (Cookie)       |
-| 인가                | 서버 로직                |
-| 객체 저장           | File, AWS S3             |
-| 스케줄 작업         | PB cron                  |
-| 메시지 큐           | X                        |
-| 캐시                | Memory / Server (Store)  |
-| 웹 서버             | Caddy                    |
-| 서버리스 함수       | Cloudflare Workers       |
-| 모니터링            | PB Admin Logs            |
-| 로깅                | PB Logs                  |
-| 린팅                | custom script            |
-| 테스트              | node test (http only)    |
-| 빌드 과정           | 불필요                   |
-| 배포 방식           | 파일 동기화 (PB 전송)    |
-| 모바일              | PWA => Capacitor         |
-| 푸시/알림           | FCM / OneSignal          |
+| 구분                | PocketPages (SSR)       |
+| ------------------- | ----------------------- |
+| 목적                | 빠른 MVP                |
+| 핵심가치            | AI 에이전트 협업        |
+| 백엔드              | PocketPages (PB)        |
+| 프론트엔드          | HTMX, Alpine.js         |
+| 템플릿/UI           | EJS                     |
+| CSS                 | UnoCSS (Tailwind)       |
+| 상태관리            | PB Native Context       |
+| 라우팅              | 파일 시스템 (Auto)      |
+| DB                  | SQLite (PB)             |
+| DB 관리             | PB Admin                |
+| DB <br>마이그레이션 | PB Migration            |
+| DB 복제/복원        | Litestream, LiteFS      |
+| 인증                | PB Auth + (Cookie)      |
+| 인가                | 서버 로직               |
+| 객체 저장           | File, AWS S3            |
+| 스케줄 작업         | PB cron                 |
+| 메시지 큐           | X                       |
+| 캐시                | Memory / Server (Store) |
+| 웹 서버             | Caddy                   |
+| 서버리스 함수       | Cloudflare Workers      |
+| 모니터링            | PB Admin Logs           |
+| 로깅                | PB Logs                 |
+| 린팅                | custom script           |
+| 테스트              | node test (http only)   |
+| 빌드 과정           | 불필요                  |
+| 배포 방식           | 파일 동기화 (PB 전송)   |
+| 모바일              | PWA => Capacitor        |
+| 푸시/알림           | FCM / OneSignal         |
 
 ---
 
@@ -75,9 +75,17 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
 
 ---
 
+## 운영 DB 클라이언트
+
+- 도구: Adminer
+- 용도: 운영 DB 조회 및 쿼리 실행
+
+---
+
 ## SQLite 복제/복원
 
-- 도구: Litestream
+- 기본 복제/복원: Litestream
+- 장기 운영 확장 옵션: LiteFS (분산 읽기)
 
 ---
 
