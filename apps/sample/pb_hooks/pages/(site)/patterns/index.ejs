@@ -47,7 +47,6 @@
     }
   }
 
-  const boardCount = boardItems.length;
   const apiListUrl = '/api/boards/list?limit=10';
   const selectedBoardApiUrl = selectedBoard ? '/api/boards/' + encodeURIComponent(selectedBoard.slug) + '?limit=3' : '';
   const apiPreviewPayload = selectedBoard
@@ -103,62 +102,36 @@
   dbg('page/patterns:index:response', {
     requestedBoardSlug: requestedBoardSlug,
     selectedBoardSlug: selectedBoardSlug,
-    boardCount: boardCount,
+    boardCount: boardItems.length,
     boardListError: boardListError || '',
     postCount: postItems.length,
     postError: postError || '',
   });
 </script>
 
-<header class="mb-8 overflow-hidden rounded-[2rem] border border-stone-200 bg-[linear-gradient(135deg,#f8f5ef,white_50%,#ece7de)] px-6 py-8 shadow-sm md:px-8 md:py-10">
-  <div class="flex flex-wrap items-start justify-between gap-6">
-    <div class="max-w-3xl space-y-4">
+<header class="mb-8 rounded-[2rem] border border-stone-200 bg-white px-6 py-6 shadow-sm md:px-8">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div class="space-y-3">
       <p>
         <a href="/" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900">Home</a>
       </p>
-      <p class="inline-flex items-center rounded-full border border-stone-300 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Sample Workspace</p>
-      <h1 class="text-4xl font-semibold tracking-tight text-stone-950 md:text-5xl">PocketPages Sample Workspace</h1>
-      <p class="max-w-3xl text-base leading-7 text-stone-600">설명문을 길게 읽는 페이지가 아니라, 페이지 렌더링, HTMX fragment, JSON endpoint가 같이 동작하는 샘플 작업 화면입니다. 이 화면에서 바로 눌러보고 파일 구조를 따라가면 됩니다.</p>
+      <h1 class="text-4xl font-semibold tracking-tight text-stone-950">Sample Workspace</h1>
     </div>
 
-    <div class="grid min-w-[18rem] gap-3 rounded-3xl border border-stone-200 bg-white/85 p-4">
-      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Quick Links</p>
-      <a href="/boards" class="inline-flex items-center justify-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">Open board CRUD</a>
+    <div class="flex flex-wrap items-center gap-2">
+      <a href="/boards" class="inline-flex items-center justify-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">Board CRUD</a>
       <a href="<%= apiListUrl %>" class="inline-flex items-center justify-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
-        Open board API list
+        Board API List
       </a>
     </div>
   </div>
 </header>
 
-<section class="mb-6 grid gap-4 md:grid-cols-3">
-  <article class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Pages</p>
-    <h2 class="mt-3 text-2xl font-semibold text-stone-950"><%= boardCount %></h2>
-    <p class="mt-2 text-sm leading-6 text-stone-600">게시판 수입니다. 전체 페이지는 `(site)` 아래 route에서 렌더링합니다.</p>
-  </article>
-
-  <article class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Selected Board</p>
-    <h2 class="mt-3 text-2xl font-semibold text-stone-950"><%= selectedBoard ? selectedBoard.name : 'No active board' %></h2>
-    <p class="mt-2 text-sm leading-6 text-stone-600"><%= selectedBoard ? selectedBoard.path : '게시판을 하나 고르면 HTMX panel과 JSON snapshot이 같이 바뀝니다.' %></p>
-  </article>
-
-  <article class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Endpoints</p>
-    <h2 class="mt-3 text-2xl font-semibold text-stone-950">xapi + api</h2>
-    <p class="mt-2 text-sm leading-6 text-stone-600">HTML 조각은 `xapi`, JSON은 `api`에서 따로 확인할 수 있습니다.</p>
-  </article>
-</section>
-
 <section class="grid gap-6 xl:grid-cols-[22rem_minmax(0,1fr)]">
   <article class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-    <header class="mb-4 space-y-3">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Board Selector</p>
-        <h2 class="text-2xl font-semibold text-stone-950">Boards</h2>
-        <p class="mt-2 text-sm leading-6 text-stone-600">게시판을 고르면 오른쪽 패널과 JSON 예시가 같이 바뀝니다.</p>
-      </div>
+    <header class="mb-4">
+      <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Board Selector</p>
+      <h2 class="mt-2 text-2xl font-semibold text-stone-950">Boards</h2>
     </header>
 
     <div x-data="{ q: '' }" class="space-y-4">
@@ -205,7 +178,6 @@
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">JSON Snapshot</p>
           <h2 class="text-2xl font-semibold text-stone-950">Board API</h2>
-          <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-600">board 하나를 고르면 실제 JSON endpoint 주소와 응답 모양을 바로 확인할 수 있습니다. 목록 endpoint는 `/api/boards/list`, 상세 snapshot은 `/api/boards/{boardSlug}`입니다.</p>
         </div>
         <div class="flex flex-wrap gap-2">
           <a href="<%= apiListUrl %>" class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">

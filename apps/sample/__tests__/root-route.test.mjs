@@ -34,7 +34,7 @@ test('GET /patterns returns the pattern reference page', async () => {
   const $ = load(body);
 
   assert.equal(response.status, 200);
-  assert.equal($('h1').first().text().trim(), 'PocketPages Sample Workspace');
+  assert.equal($('h1').first().text().trim(), 'Sample Workspace');
   assert.equal($('a[href="/"]').first().text().trim(), 'Home');
 });
 
