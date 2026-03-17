@@ -35,6 +35,17 @@
 
 ---
 
+## 순수 JS 라이브러리 후보
+
+| 라이브러리         | 용도 |
+| ------------------ | ---- |
+| `fflate`           | ZIP/EPUB 압축 해제, 바이너리 압축 데이터 처리 |
+| `fast-xml-parser`  | EPUB 내부 XML, OPF, container.xml 같은 구조 파싱 |
+| `dayjs`            | 날짜 포맷, 표시용 문자열 처리, 간단한 날짜 계산 |
+| `zod`              | form/body/query 입력값 런타임 검증 |
+
+---
+
 ## 공용 스크립트
 
 - 실행 환경: Windows Git Bash 기준
