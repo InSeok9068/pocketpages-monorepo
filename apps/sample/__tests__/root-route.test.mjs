@@ -34,8 +34,18 @@ test('GET /patterns returns the pattern reference page', async () => {
   const $ = load(body);
 
   assert.equal(response.status, 200);
-  assert.equal($('h1').first().text().trim(), 'PocketPages Patterns');
+  assert.equal($('h1').first().text().trim(), 'PocketPages Sample Workspace');
   assert.equal($('a[href="/"]').first().text().trim(), 'Home');
+});
+
+test('GET /api/boards/list returns board list json', async () => {
+  const response = await fetch(`${service.baseUrl}/api/boards/list?limit=5`);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') || '', /^application\/json/);
+  assert.equal(payload.meta.limit, 5);
+  assert.ok(Array.isArray(payload.items));
 });
 
 test('GET /api/boards/[boardSlug] returns board snapshot json', async () => {

@@ -1,0 +1,49 @@
+<script server>
+  const boardService = resolve('board-service');
+  const parsedLimit = Number(request.url.query.limit || 20);
+  const limit = isNaN(parsedLimit) ? 20 : Math.max(1, Math.min(parsedLimit, 50));
+
+  dbg('api/boards:list:start', { limit: limit });
+
+  try {
+    const boardItems = boardService.toBoardSummaries(boardService.listBoards()).slice(0, limit);
+    const payload = {
+      meta: {
+        requestedAt: new Date().toISOString(),
+        limit: limit,
+        count: boardItems.length,
+      },
+      items: boardItems.map(function (boardItem) {
+        return {
+          id: boardItem.id,
+          name: boardItem.name,
+          slug: boardItem.slug,
+          description: boardItem.description,
+          path: boardItem.path,
+          isActive: boardItem.isActive,
+          snapshotPath: '/api/boards/' + encodeURIComponent(boardItem.slug) + '?limit=3',
+        };
+      }),
+    };
+
+    dbg('api/boards:list:response', {
+      status: 200,
+      count: payload.items.length,
+    });
+    response.header('Cache-Control', 'no-store');
+    response.json(200, payload);
+    return;
+  } catch (exception) {
+    error('api/boards:list:load-failed', {
+      message: String(exception.message || exception),
+    });
+    dbg('api/boards:list:response', {
+      status: 500,
+      error: 'Failed to load boards.',
+    });
+    response.json(500, {
+      error: 'Failed to load boards.',
+    });
+    return;
+  }
+</script>
