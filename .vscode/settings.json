@@ -3,7 +3,8 @@
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
     "*.ejs": "+load.js",
-    "package.json": "package-lock.json, .prettier*, tailwind.config.js"
+    "package.json": "package-lock.json, .prettier*, tailwind.config.js",
+    "README.md": "MEMO.md, DBSCHEMA.md"
   },
   "search.exclude": {
     ".docs/**": true,
