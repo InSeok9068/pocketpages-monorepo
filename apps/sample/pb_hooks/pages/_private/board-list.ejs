@@ -38,7 +38,10 @@
           <%= currentBoardSlug === boardCard.slug ? 'Refresh panel' : 'Load panel' %>
         </button>
       </form>
-      <a href="<%= boardCard.path %>" class="inline-flex items-center rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
+      <a
+        href="<%= boardCard.path %>"
+        class="inline-flex items-center rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
+      >
         Open full page
       </a>
     </div>

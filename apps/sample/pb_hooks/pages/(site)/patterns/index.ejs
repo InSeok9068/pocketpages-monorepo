@@ -92,32 +92,17 @@
     {
       label: 'SSR Page',
       title: '전체 페이지 흐름',
-      steps: [
-        '`(site)` route로 요청 진입',
-        '`+middleware.js`에서 board/post 조회',
-        'page `<script server>`에서 meta와 view model 준비',
-        '`+layout.ejs`가 전체 shell 렌더',
-      ],
+      steps: ['`(site)` route로 요청 진입', '`+middleware.js`에서 board/post 조회', 'page `<script server>`에서 meta와 view model 준비', '`+layout.ejs`가 전체 shell 렌더'],
     },
     {
       label: 'HTMX',
       title: 'fragment 흐름',
-      steps: [
-        '버튼이나 form이 `/xapi/*` 호출',
-        'endpoint가 필요한 데이터만 조회',
-        '`_private` partial로 같은 마크업 재사용',
-        'target 영역만 교체',
-      ],
+      steps: ['버튼이나 form이 `/xapi/*` 호출', 'endpoint가 필요한 데이터만 조회', '`_private` partial로 같은 마크업 재사용', 'target 영역만 교체'],
     },
     {
       label: 'JSON API',
       title: 'data endpoint 흐름',
-      steps: [
-        '`/api/*` route에서 params와 query 검증',
-        'service/role로 조회와 상태 판단',
-        '`response.json(status, payload)`로 응답',
-        'layout 없이 raw JSON만 반환',
-      ],
+      steps: ['`/api/*` route에서 params와 query 검증', 'service/role로 조회와 상태 판단', '`response.json(status, payload)`로 응답', 'layout 없이 raw JSON만 반환'],
     },
   ];
 
@@ -146,9 +131,7 @@
     '    post-panel.ejs',
   ];
 
-  const selectedBoardApiUrl = selectedBoard
-    ? '/api/boards/' + encodeURIComponent(selectedBoard.slug) + '?limit=3'
-    : '/api/boards/[boardSlug]?limit=3';
+  const selectedBoardApiUrl = selectedBoard ? '/api/boards/' + encodeURIComponent(selectedBoard.slug) + '?limit=3' : '/api/boards/[boardSlug]?limit=3';
 
   const apiExamplePayload = selectedBoard
     ? {
@@ -176,7 +159,9 @@
         recentPosts: postItems.slice(0, 3).map(function (postItem) {
           return {
             title: postItem.title,
-            slug: String(postItem.path || '').split('/').pop() || '',
+            slug: String(postItem.path || '')
+                .split('/')
+                .pop() || '',
             isNotice: postItem.isNotice,
             publishedAt: postItem.publishedAt,
             path: postItem.path,
@@ -233,13 +218,18 @@
       </p>
       <p class="inline-flex items-center rounded-full border border-stone-300 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Sample Playbook</p>
       <h1 class="text-4xl font-semibold tracking-tight text-stone-950 md:text-5xl">PocketPages Patterns</h1>
-      <p class="max-w-3xl text-base leading-7 text-stone-600">이 페이지는 `sample`을 복붙 출발점으로 쓸 때 바로 따라갈 수 있는 구조를 보여줍니다. 목적은 기능 나열보다 “왜 이 폴더에 두는지”, “어느 레이어에서 처리하는지”를 명확하게 보여주는 것입니다.</p>
+      <p class="max-w-3xl text-base leading-7 text-stone-600">
+        이 페이지는 `sample`을 복붙 출발점으로 쓸 때 바로 따라갈 수 있는 구조를 보여줍니다. 목적은 기능 나열보다 “왜 이 폴더에 두는지”, “어느 레이어에서 처리하는지”를 명확하게 보여주는 것입니다.
+      </p>
     </div>
 
     <div class="grid min-w-[18rem] gap-3 rounded-3xl border border-stone-200 bg-white/85 p-4">
       <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Start Here</p>
       <a href="/boards" class="inline-flex items-center justify-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">Board CRUD</a>
-      <a href="<%= selectedBoardApiUrl %>" class="inline-flex items-center justify-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
+      <a
+        href="<%= selectedBoardApiUrl %>"
+        class="inline-flex items-center justify-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
+      >
         JSON API Example
       </a>
     </div>
@@ -263,7 +253,9 @@
     <header class="mb-5 space-y-2">
       <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Recommended Structure</p>
       <h2 class="text-2xl font-semibold text-stone-950">Directory Shape</h2>
-      <p class="max-w-2xl text-sm leading-6 text-stone-600">이 샘플은 페이지, fragment, JSON API, 내부 모듈을 디렉터리 차원에서 분리합니다. 파일 경로만 봐도 요청 흐름이 따라가져야 한다는 기준을 그대로 반영했습니다.</p>
+      <p class="max-w-2xl text-sm leading-6 text-stone-600">
+        이 샘플은 페이지, fragment, JSON API, 내부 모듈을 디렉터리 차원에서 분리합니다. 파일 경로만 봐도 요청 흐름이 따라가져야 한다는 기준을 그대로 반영했습니다.
+      </p>
     </header>
     <pre class="overflow-x-auto rounded-3xl bg-stone-950 px-5 py-5 text-xs leading-6 text-stone-100"><code><%= fileTreeLines.join('\n') %></code></pre>
   </article>
@@ -330,28 +322,30 @@
 
       <div id="board-list">
         <%- include('board-list.ejs', {
-        boardItems: boardItems,
-        error: boardListError,
-        selectedBoardSlug: selectedBoardSlug,
-      }) %>
+  boardItems: boardItems,
+  error: boardListError,
+  selectedBoardSlug: selectedBoardSlug,
+}) %>
       </div>
     </div>
   </article>
 
   <div class="space-y-6">
     <%- include('post-panel.ejs', {
-    selectedBoard: selectedBoard,
-    selectedBoardSlug: selectedBoardSlug,
-    postItems: postItems,
-    error: postError,
-  }) %>
+  selectedBoard: selectedBoard,
+  selectedBoardSlug: selectedBoardSlug,
+  postItems: postItems,
+  error: postError,
+}) %>
 
     <article class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
       <header class="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">JSON API</p>
           <h2 class="text-2xl font-semibold text-stone-950">Board Snapshot Endpoint</h2>
-          <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-600">`params.boardSlug`로 대상 게시판을 읽고, `request.url.query.limit`로 최근 글 개수를 제어하는 예시입니다. layout 없이 `response.json(status, payload)`만 반환합니다.</p>
+          <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+            `params.boardSlug`로 대상 게시판을 읽고, `request.url.query.limit`로 최근 글 개수를 제어하는 예시입니다. layout 없이 `response.json(status, payload)`만 반환합니다.
+          </p>
         </div>
         <a href="<%= selectedBoardApiUrl %>" class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">
           Open endpoint

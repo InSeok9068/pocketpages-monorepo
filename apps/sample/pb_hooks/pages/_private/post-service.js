@@ -13,8 +13,12 @@ var POST_STATUS_VALUES = {
  * @returns {types.PostStatus} 허용된 게시글 상태값입니다.
  */
 function normalizePostStatus(value, fallbackStatus) {
-  var fallback = String(fallbackStatus || 'draft').trim().toLowerCase();
-  var nextStatus = String(value || fallback).trim().toLowerCase();
+  var fallback = String(fallbackStatus || 'draft')
+    .trim()
+    .toLowerCase();
+  var nextStatus = String(value || fallback)
+    .trim()
+    .toLowerCase();
 
   if (!POST_STATUS_VALUES[fallback]) {
     fallback = 'draft';
