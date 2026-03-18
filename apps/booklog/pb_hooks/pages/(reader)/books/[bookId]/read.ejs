@@ -138,10 +138,9 @@
     savePositionMessageTimer: null,
     savingPosition: false,
     loadingSavedPosition: false,
-    fullscreenMode: false,
+    fullscreenMode: true,
     menuOpen: false,
     controlsVisible: false,
-    controlsTimer: null,
     searchQuery: '',
     searchResults: [],
     searchOpen: false,
@@ -156,7 +155,6 @@
     openSearch: function () {
       this.searchOpen = true
       this.controlsVisible = true
-      this.clearControlsTimer()
       this.searchMessage = ''
       this.$nextTick(function () {
         var input = document.getElementById('reader-search-input')
@@ -168,13 +166,11 @@
     },
     closeSearch: function () {
       this.searchOpen = false
-      this.scheduleControlsHide()
     },
     openHighlight: function () {
       this.highlightOpen = true
       this.highlightMessage = ''
       this.controlsVisible = true
-      this.clearControlsTimer()
       this.$nextTick(function () {
         var input = document.getElementById('reader-highlight-quote')
 
@@ -189,7 +185,6 @@
       }
 
       this.highlightOpen = false
-      this.scheduleControlsHide()
     },
     saveHighlight: function () {
       window.booklogReaderLogic.saveHighlight(this)
@@ -225,37 +220,11 @@
         self.savePositionMessageTimer = null
       }, 1000)
     },
-    clearControlsTimer: function () {
-      if (this.controlsTimer) {
-        clearTimeout(this.controlsTimer)
-        this.controlsTimer = null
-      }
-    },
-    scheduleControlsHide: function () {
-      var self = this
-
-      this.clearControlsTimer()
-
-      if (!this.fullscreenMode || this.searchOpen) {
-        return
-      }
-
-      this.controlsTimer = setTimeout(function () {
-        self.controlsVisible = false
-      }, 2200)
-    },
     showControls: function () {
       this.controlsVisible = true
-      this.scheduleControlsHide()
     },
     toggleControls: function () {
       this.controlsVisible = !this.controlsVisible
-
-      if (this.controlsVisible) {
-        this.scheduleControlsHide()
-      } else {
-        this.clearControlsTimer()
-      }
     },
     toggleFullscreenMode: function () {
       this.fullscreenMode = !this.fullscreenMode
@@ -263,10 +232,8 @@
 
       if (this.fullscreenMode) {
         this.controlsVisible = false
-        this.clearControlsTimer()
       } else {
         this.controlsVisible = false
-        this.clearControlsTimer()
       }
     },
     goToSearchResult: function (result) {
@@ -295,7 +262,7 @@
       <button
         type="button"
         x-on:click="toggleMenu()"
-        class="inline-flex h-12 w-12 items-center justify-center rounded-full border-none bg-white/92 text-xl text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+        class="bg-white/92 inline-flex h-12 w-12 items-center justify-center rounded-full border-none text-xl text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
         ☰
       </button>
 
@@ -594,16 +561,29 @@
     </header>
 
     <div
-      x-show="loading"
+      x-show="loading && !fullscreenMode"
       x-cloak
-      class="bg-white/78 mb-4 rounded-[1.5rem] border border-stone-200 px-4 py-4 text-sm leading-6 text-stone-600 shadow-[0_16px_32px_rgba(70,52,31,0.06)]">
+      class="pointer-events-none fixed left-1/2 top-20 z-40 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 rounded-full bg-[rgba(255,250,241,0.96)] px-5 py-3 text-center text-sm font-medium text-stone-700 shadow-[0_18px_40px_rgba(70,52,31,0.14)] backdrop-blur-sm">
       EPUB 파일을 불러오는 중입니다.
     </div>
 
     <div
-      x-show="errorMessage"
+      x-show="loading && fullscreenMode"
       x-cloak
-      class="mb-4 rounded-[1.5rem] border border-[#e2b49d] bg-[#fff1e9] px-4 py-4 text-sm leading-6 text-[#8d4b2d] shadow-[0_16px_32px_rgba(70,52,31,0.06)]"
+      class="pointer-events-none fixed left-1/2 top-5 z-40 max-w-[calc(100vw-6rem)] -translate-x-1/2 rounded-full bg-[rgba(24,19,16,0.82)] px-5 py-3 text-center text-sm font-medium text-white shadow-[0_18px_40px_rgba(24,19,16,0.28)] backdrop-blur-sm">
+      EPUB 파일을 불러오는 중입니다.
+    </div>
+
+    <div
+      x-show="errorMessage && !fullscreenMode"
+      x-cloak
+      class="pointer-events-none fixed left-1/2 top-20 z-40 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 rounded-full bg-[rgba(255,241,233,0.98)] px-5 py-3 text-center text-sm font-medium text-[#8d4b2d] shadow-[0_18px_40px_rgba(141,75,45,0.16)] backdrop-blur-sm"
+      x-text="errorMessage"></div>
+
+    <div
+      x-show="errorMessage && fullscreenMode"
+      x-cloak
+      class="pointer-events-none fixed left-1/2 top-5 z-40 max-w-[calc(100vw-6rem)] -translate-x-1/2 rounded-full bg-[rgba(122,54,32,0.9)] px-5 py-3 text-center text-sm font-medium text-white shadow-[0_18px_40px_rgba(67,28,16,0.28)] backdrop-blur-sm"
       x-text="errorMessage"></div>
 
     <div
@@ -965,20 +945,19 @@
       return fetch(readerUrl, {
         method: 'GET',
         credentials: 'same-origin',
-      })
-        .then(function (response) {
-          console.debug('page/books/[bookId]/read:fetch-response', {
-            ok: response.ok,
-            status: response.status,
-            contentType: response.headers.get('Content-Type') || '',
-          })
-
-          if (!response.ok) {
-            throw new Error('EPUB 파일 응답이 올바르지 않습니다. status=' + response.status)
-          }
-
-          return response.arrayBuffer()
+      }).then(function (response) {
+        console.debug('page/books/[bookId]/read:fetch-response', {
+          ok: response.ok,
+          status: response.status,
+          contentType: response.headers.get('Content-Type') || '',
         })
+
+        if (!response.ok) {
+          throw new Error('EPUB 파일 응답이 올바르지 않습니다. status=' + response.status)
+        }
+
+        return response.arrayBuffer()
+      })
     }
 
     function isAutoPagingLocked() {
@@ -1042,7 +1021,7 @@
             message: String(exception && exception.message ? exception.message : exception),
           })
         })
-      }
+    }
 
     function bindAutoPaging(component, target) {
       if (!target) {
@@ -1319,7 +1298,6 @@
 
       component.loading = true
       component.searchOpen = false
-      component.scheduleControlsHide()
 
       renditionInstance
         .display(target)
@@ -1392,8 +1370,8 @@
           component.highlightOpen = false
           component.highlightQuoteText = ''
           component.highlightNoteText = ''
-          component.highlightMessage = '인상 깊은 문구를 저장했습니다.'
-          component.scheduleControlsHide()
+          component.highlightMessage = ''
+          component.showSavePositionMessage(String(result.payload && result.payload.message ? result.payload.message : '인상 깊은 문구를 저장했습니다.'))
         })
         .catch(function (exception) {
           component.savingHighlight = false

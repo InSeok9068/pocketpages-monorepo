@@ -229,30 +229,55 @@
   }"
   class="mt-9">
   <div class="space-y-6">
-  <div class="flex items-center justify-between gap-4">
-    <div class="space-y-1">
-      <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">My Shelf</p>
-      <h2 class="text-2xl font-semibold tracking-tight text-stone-950">도서함</h2>
+    <div class="flex items-center justify-between gap-4">
+      <div class="space-y-1">
+        <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">My Shelf</p>
+        <h2 class="text-2xl font-semibold tracking-tight text-stone-950">도서함</h2>
+      </div>
+
+      <button
+        type="button"
+        x-on:click="uploadOpen = true"
+        class="inline-flex items-center rounded-full border-none bg-stone-900 px-4 py-2.5 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700">
+        책 추가
+      </button>
     </div>
 
-    <button
-      type="button"
-      x-on:click="uploadOpen = true"
-      class="inline-flex items-center rounded-full border-none bg-stone-900 px-4 py-2.5 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700">
-      책 추가
-    </button>
-  </div>
-
-  <section
-    class="rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.92),rgba(245,236,222,0.95))] p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
-    <div class="overflow-x-auto overflow-y-hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div class="flex min-w-max gap-3">
-        <% for (let index = 0; index < shelfBooks.length; index += 1) { const book = shelfBooks[index] %>
-        <article class="w-[8.35rem] flex-none sm:w-[8.9rem]">
-          <% if (book.bookId) { %>
-          <a
-            href="/books/<%= book.bookId %>"
-            class="block no-underline transition hover:translate-y-[-1px]">
+    <section
+      class="rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.92),rgba(245,236,222,0.95))] p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
+      <div class="overflow-x-auto overflow-y-hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div class="flex min-w-max gap-3">
+          <% for (let index = 0; index < shelfBooks.length; index += 1) { const book = shelfBooks[index] %>
+          <article class="w-[8.35rem] flex-none sm:w-[8.9rem]">
+            <% if (book.bookId) { %>
+            <a
+              href="/books/<%= book.bookId %>"
+              class="block no-underline transition hover:translate-y-[-1px]">
+              <div
+                class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
+                <% if (book.isReading) { %>
+                <span
+                  class="bg-stone-900/84 absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] backdrop-blur-sm">
+                  읽는 중
+                </span>
+                <% } %>
+                <% if (book.coverUrl) { %>
+                <img
+                  src="<%= book.coverUrl %>"
+                  alt="<%= book.title %> 표지"
+                  class="h-full w-full object-cover" />
+                <% } %>
+                <div class="<%= book.coverUrl ? '' : 'ml-2' %> relative flex h-full flex-col justify-between px-3 py-4 text-white">
+                  <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/70">Booklog</p>
+                  <div class="space-y-2">
+                    <h3 class="text-base font-semibold leading-5 tracking-[-0.03em]"><%= book.title %></h3>
+                    <p class="leading-4.5 text-white/78 text-[11px]"><%= book.caption %></p>
+                  </div>
+                  <p class="text-[11px] font-medium text-white/70"><%= book.statusLabel %></p>
+                </div>
+              </div>
+            </a>
+            <% } else { %>
             <div
               class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
               <% if (book.isReading) { %>
@@ -276,80 +301,55 @@
                 <p class="text-[11px] font-medium text-white/70"><%= book.statusLabel %></p>
               </div>
             </div>
-          </a>
-          <% } else { %>
-          <div
-            class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
-            <% if (book.isReading) { %>
-            <span
-              class="bg-stone-900/84 absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] backdrop-blur-sm">
-              읽는 중
-            </span>
             <% } %>
-            <% if (book.coverUrl) { %>
-            <img
-              src="<%= book.coverUrl %>"
-              alt="<%= book.title %> 표지"
-              class="h-full w-full object-cover" />
-            <% } %>
-            <div class="<%= book.coverUrl ? '' : 'ml-2' %> relative flex h-full flex-col justify-between px-3 py-4 text-white">
-              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/70">Booklog</p>
-              <div class="space-y-2">
-                <h3 class="text-base font-semibold leading-5 tracking-[-0.03em]"><%= book.title %></h3>
-                <p class="leading-4.5 text-white/78 text-[11px]"><%= book.caption %></p>
-              </div>
-              <p class="text-[11px] font-medium text-white/70"><%= book.statusLabel %></p>
-            </div>
-          </div>
+          </article>
           <% } %>
-        </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-white/78 rounded-[2rem] border border-stone-200/80 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+      <div class="space-y-2">
+        <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">Highlights</p>
+        <h3 class="text-xl font-semibold tracking-tight text-stone-950">인상 깊은 문구</h3>
+      </div>
+
+      <% if (randomHighlights.length > 0) { %>
+      <div class="mt-4 space-y-3">
+        <% for (let index = 0; index < randomHighlights.length; index += 1) { const highlight = randomHighlights[index] %>
+        <a
+          href="/books/<%= highlight.bookId %>"
+          class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
+          <p class="text-base font-semibold leading-7 tracking-[-0.02em] text-stone-900">"<%= highlight.quoteText %>"</p>
+          <p class="mt-2 text-[12px] leading-5 text-stone-500">
+            <span><%= highlight.bookTitle %></span>
+            <% if (highlight.pageNumber) { %>
+            <span> · <%= highlight.pageNumber %>p</span>
+            <% } %>
+          </p>
+          <% if (highlight.highlightedAt) { %>
+          <p class="mt-1 text-[12px] font-medium text-stone-400"><%= highlight.highlightedAt %></p>
+          <% } %>
+        </a>
         <% } %>
       </div>
-    </div>
-  </section>
-
-  <section class="bg-white/78 rounded-[2rem] border border-stone-200/80 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
-    <div class="space-y-2">
-      <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">Highlights</p>
-      <h3 class="text-xl font-semibold tracking-tight text-stone-950">인상 깊은 문구</h3>
-    </div>
-
-    <% if (randomHighlights.length > 0) { %>
-    <div class="mt-4 space-y-3">
-      <% for (let index = 0; index < randomHighlights.length; index += 1) { const highlight = randomHighlights[index] %>
-      <a
-        href="/books/<%= highlight.bookId %>"
-        class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
-        <p class="text-base font-semibold leading-7 tracking-[-0.02em] text-stone-900">"<%= highlight.quoteText %>"</p>
-        <p class="mt-2 text-[12px] leading-5 text-stone-500">
-          <span><%= highlight.bookTitle %></span>
-          <% if (highlight.pageNumber) { %>
-          <span> · <%= highlight.pageNumber %>p</span>
-          <% } %>
-          <% if (highlight.highlightedAt) { %>
-          <span> · <%= highlight.highlightedAt %></span>
-          <% } %>
-        </p>
-      </a>
+      <% } else { %>
+      <div class="mt-4 rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">저장된 인상 깊은 문구가 아직 없습니다.</div>
       <% } %>
-    </div>
-    <% } else { %>
-    <div class="mt-4 rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">저장된 인상 깊은 문구가 아직 없습니다.</div>
-    <% } %>
 
-    <div class="mt-4 grid grid-cols-2 gap-2">
-      <a
-        href="/reviews"
-        class="bg-white/88 inline-flex items-center justify-center rounded-full border-none px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
-        감상평 리스트
-      </a>
-      <a
-        href="/highlights"
-        class="bg-white/88 inline-flex items-center justify-center rounded-full border-none px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
-        문구 리스트
-      </a>
-    </div>
-  </section>
+      <div class="mt-4 grid grid-cols-2 gap-2">
+        <a
+          href="/reviews"
+          class="bg-white/88 inline-flex items-center justify-center rounded-full border-none px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
+          감상평 리스트
+        </a>
+        <a
+          href="/highlights"
+          class="bg-white/88 inline-flex items-center justify-center rounded-full border-none px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
+          문구 리스트
+        </a>
+      </div>
+    </section>
   </div>
 
   <div
@@ -399,8 +399,7 @@
           </div>
         </label>
 
-        <div
-          class="rounded-[1.5rem] border border-[#dcc5a3] bg-[#fff8ec] px-4 py-4 text-sm leading-6 text-stone-700">
+        <div class="rounded-[1.5rem] border border-[#dcc5a3] bg-[#fff8ec] px-4 py-4 text-sm leading-6 text-stone-700">
           <p class="font-medium text-stone-900">업로드 후 메타데이터 조회까지 이어서 처리합니다.</p>
           <p class="mt-1 text-stone-600">대용량 파일이거나 외부 도서 정보 조회가 길어지면 잠시 시간이 걸릴 수 있습니다.</p>
         </div>
@@ -438,20 +437,22 @@
     x-cloak
     x-transition.opacity
     class="fixed inset-0 z-[90] flex items-end justify-center px-0 pt-0 sm:items-center sm:px-6 sm:py-6">
-    <div class="absolute inset-0 bg-stone-950/58 backdrop-blur-[2px]"></div>
+    <div class="bg-stone-950/58 absolute inset-0 backdrop-blur-[2px]"></div>
 
-    <section class="relative w-full max-w-xl rounded-t-[2rem] bg-[linear-gradient(180deg,#fffdf8,#f5ead7)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-[0_-18px_50px_rgba(41,28,17,0.24)] sm:rounded-[2.2rem] sm:px-6 sm:pb-6 sm:pt-6 sm:shadow-[0_30px_90px_rgba(41,28,17,0.28)]">
+    <section
+      class="relative w-full max-w-xl rounded-t-[2rem] bg-[linear-gradient(180deg,#fffdf8,#f5ead7)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-[0_-18px_50px_rgba(41,28,17,0.24)] sm:rounded-[2.2rem] sm:px-6 sm:pb-6 sm:pt-6 sm:shadow-[0_30px_90px_rgba(41,28,17,0.28)]">
       <div class="flex items-start justify-between gap-4">
         <div class="space-y-2">
-          <div class="inline-flex items-center gap-2 rounded-full bg-[#f2e4cd] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#8a5a2b] shadow-[inset_0_0_0_1px_rgba(138,90,43,0.08)]">
-            <span class="inline-flex h-2.5 w-2.5 rounded-full bg-[#b06d2f] animate-pulse"></span>
+          <div
+            class="inline-flex items-center gap-2 rounded-full bg-[#f2e4cd] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#8a5a2b] shadow-[inset_0_0_0_1px_rgba(138,90,43,0.08)]">
+            <span class="inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-[#b06d2f]"></span>
             처리 중
           </div>
           <h3 class="text-[1.85rem] font-semibold tracking-tight text-stone-950">업로드를 계속 진행하고 있습니다</h3>
           <p class="max-w-xl text-sm leading-6 text-stone-600">이 화면이 보이는 동안 정상적으로 작업 중입니다. 완료되면 다음 화면으로 자동 이동합니다.</p>
         </div>
 
-        <div class="rounded-[1.2rem] bg-white/78 px-3 py-2 text-right shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
+        <div class="bg-white/78 rounded-[1.2rem] px-3 py-2 text-right shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">경과 시간</p>
           <p
             x-text="uploadElapsedLabel"
@@ -459,7 +460,7 @@
         </div>
       </div>
 
-      <div class="mt-5 rounded-[1.4rem] bg-white/78 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
+      <div class="bg-white/78 mt-5 rounded-[1.4rem] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
         <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">선택한 파일</p>
         <p
           x-text="uploadFileName || 'EPUB 파일'"

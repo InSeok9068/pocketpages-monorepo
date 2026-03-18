@@ -38,25 +38,62 @@
     if (!locator && !href) throw new Error('저장할 읽기 위치가 없습니다.')
 
     const bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
-    let shelfRecord = null
+    let existingShelfRecord = null
     let bookFileRecord = null
-    let collection = null
 
     try {
-      shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+      existingShelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
         userId: userId,
         bookId: bookId,
       })
     } catch (exception) {
-      shelfRecord = null
+      existingShelfRecord = null
     }
 
-    if (!shelfRecord) {
-      collection = $app.findCollectionByNameOrId('book_shelves')
-      shelfRecord = new Record(collection)
-      shelfRecord.set('user_id', userId)
-      shelfRecord.set('book_id', String(bookRecord.get('id') || ''))
-      shelfRecord.set('status', 'reading')
+    if (existingShelfRecord) {
+      if (String(existingShelfRecord.get('status') || '') !== 'reading') {
+        existingShelfRecord.set('status', 'reading')
+      }
+
+      if (!String(existingShelfRecord.get('started_at') || '').trim()) {
+        existingShelfRecord.set('started_at', new Date().toISOString().slice(0, 10))
+      }
+
+      existingShelfRecord.set('current_locator', locator)
+      existingShelfRecord.set('current_href', href)
+      existingShelfRecord.set('current_label', chapterLabel)
+      existingShelfRecord.set('last_read_at', new Date().toISOString().slice(0, 10))
+
+      if (pageNumber !== null && !isNaN(pageNumber)) {
+        existingShelfRecord.set('current_page', pageNumber)
+      }
+
+      if (progressPercent !== null && !isNaN(progressPercent)) {
+        existingShelfRecord.set('progress_percent', progressPercent)
+      }
+
+      $app.save(existingShelfRecord)
+
+      info('api/books/save-progress:done', {
+        userId: userId,
+        bookId: bookId,
+        shelfId: String(existingShelfRecord.get('id') || ''),
+        hasLocator: !!locator,
+      })
+
+      response.json(200, {
+        ok: true,
+        message: '읽던 위치를 저장했습니다.',
+        id: String(existingShelfRecord.get('id') || ''),
+      })
+      return
+    } else {
+      const shelfCollection = $app.findCollectionByNameOrId('book_shelves')
+      const newShelfRecord = new Record(shelfCollection)
+
+      newShelfRecord.set('user_id', userId)
+      newShelfRecord.set('book_id', String(bookRecord.get('id') || ''))
+      newShelfRecord.set('status', 'reading')
 
       try {
         bookFileRecord = $app.findFirstRecordByFilter('book_files', 'book_id = {:bookId}', { bookId: bookId })
@@ -65,46 +102,39 @@
       }
 
       if (bookFileRecord) {
-        shelfRecord.set('book_file_id', String(bookFileRecord.get('id') || ''))
+        newShelfRecord.set('book_file_id', String(bookFileRecord.get('id') || ''))
       }
+
+      newShelfRecord.set('started_at', new Date().toISOString().slice(0, 10))
+      newShelfRecord.set('current_locator', locator)
+      newShelfRecord.set('current_href', href)
+      newShelfRecord.set('current_label', chapterLabel)
+      newShelfRecord.set('last_read_at', new Date().toISOString().slice(0, 10))
+
+      if (pageNumber !== null && !isNaN(pageNumber)) {
+        newShelfRecord.set('current_page', pageNumber)
+      }
+
+      if (progressPercent !== null && !isNaN(progressPercent)) {
+        newShelfRecord.set('progress_percent', progressPercent)
+      }
+
+      $app.save(newShelfRecord)
+
+      info('api/books/save-progress:done', {
+        userId: userId,
+        bookId: bookId,
+        shelfId: String(newShelfRecord.get('id') || ''),
+        hasLocator: !!locator,
+      })
+
+      response.json(200, {
+        ok: true,
+        message: '읽던 위치를 저장했습니다.',
+        id: String(newShelfRecord.get('id') || ''),
+      })
+      return
     }
-
-    if (String(shelfRecord.get('status') || '') !== 'reading') {
-      shelfRecord.set('status', 'reading')
-    }
-
-    if (!String(shelfRecord.get('started_at') || '').trim()) {
-      shelfRecord.set('started_at', new Date().toISOString().slice(0, 10))
-    }
-
-    shelfRecord.set('current_locator', locator)
-    shelfRecord.set('current_href', href)
-    shelfRecord.set('current_label', chapterLabel)
-    shelfRecord.set('last_read_at', new Date().toISOString().slice(0, 10))
-
-    if (pageNumber !== null && !isNaN(pageNumber)) {
-      shelfRecord.set('current_page', pageNumber)
-    }
-
-    if (progressPercent !== null && !isNaN(progressPercent)) {
-      shelfRecord.set('progress_percent', progressPercent)
-    }
-
-    $app.save(shelfRecord)
-
-    info('api/books/save-progress:done', {
-      userId: userId,
-      bookId: bookId,
-      shelfId: String(shelfRecord.get('id') || ''),
-      hasLocator: !!String(shelfRecord.get('current_locator') || ''),
-    })
-
-    response.json(200, {
-      ok: true,
-      message: '읽던 위치를 저장했습니다.',
-      id: String(shelfRecord.get('id') || ''),
-    })
-    return
   } catch (exception) {
     const errorMessage = String(exception.message || exception)
 

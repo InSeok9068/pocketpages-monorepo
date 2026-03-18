@@ -553,11 +553,7 @@
       addSearchProfile(profiles, epubMetadata.title, epubMetadata.author, 'epub-raw-author')
     }
 
-    if (
-      filenameMetadata.title &&
-      (filenameMetadata.title !== String(epubMetadata.title || '').trim() ||
-        filePrimaryAuthor !== (primaryAuthor || String(epubMetadata.author || '').trim()))
-    ) {
+    if (filenameMetadata.title && (filenameMetadata.title !== String(epubMetadata.title || '').trim() || filePrimaryAuthor !== (primaryAuthor || String(epubMetadata.author || '').trim()))) {
       addSearchProfile(profiles, filenameMetadata.title, filePrimaryAuthor || filenameMetadata.author, 'filename')
     }
 
@@ -1036,11 +1032,7 @@
     const epubMetadata = parseEpubMetadata(packageDocumentXml)
     const filenameMetadata = parseFilenameMetadata(epubFile.originalName || epubFile.name)
     const fallbackTitle = epubMetadata.title || filenameMetadata.title || stripFileExtension(epubFile.originalName || epubFile.name)
-    const fallbackAuthor =
-      extractPrimaryAuthorName(epubMetadata.author) ||
-      extractPrimaryAuthorName(filenameMetadata.author) ||
-      epubMetadata.author ||
-      filenameMetadata.author
+    const fallbackAuthor = extractPrimaryAuthorName(epubMetadata.author) || extractPrimaryAuthorName(filenameMetadata.author) || epubMetadata.author || filenameMetadata.author
     dbg('xapi/epub/upload:epub-metadata', {
       title: epubMetadata.title,
       author: epubMetadata.author,
@@ -1090,14 +1082,7 @@
     let matchedIsbn13 = ''
 
     if (epubMetadata.title || epubMetadata.author || filenameMetadata.title || filenameMetadata.author) {
-      const lookupResult = resolveBookLookup(
-        epubMetadata,
-        archiveEntries,
-        manifestItems,
-        packageDocumentPath,
-        entryNames,
-        epubFile.originalName || epubFile.name
-      )
+      const lookupResult = resolveBookLookup(epubMetadata, archiveEntries, manifestItems, packageDocumentPath, entryNames, epubFile.originalName || epubFile.name)
       searchKeyword = lookupResult.searchKeyword
       searchResult = lookupResult.searchResult
       selectedDoc = lookupResult.selectedDoc

@@ -43,6 +43,7 @@
   let reviewRecord = null
   let bookFileRecord = null
   let highlightRecords = []
+  let highlightCards = []
 
   try {
     bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
@@ -138,6 +139,51 @@
     highlightRecords = []
   }
 
+  /**
+   * 문구 표시용 챕터 라벨을 정리합니다.
+   * @param {string} value 원본 라벨 문자열
+   * @returns {string} 사용자에게 보여줄 라벨
+   */
+  function formatHighlightLabel(value) {
+    const normalizedValue = String(value || '').trim()
+
+    if (!normalizedValue) {
+      return ''
+    }
+
+    if (/[\\/]/.test(normalizedValue) || /\.x?html?$/i.test(normalizedValue) || /^section\d+/i.test(normalizedValue) || /^text$/i.test(normalizedValue)) {
+      return ''
+    }
+
+    return normalizedValue
+  }
+
+  /**
+   * 문구 표시용 날짜 문자열을 정리합니다.
+   * @param {string} value 원본 날짜 문자열
+   * @returns {string} 사용자에게 보여줄 날짜
+   */
+  function formatHighlightDate(value) {
+    const normalizedValue = String(value || '').trim()
+
+    if (!normalizedValue) {
+      return ''
+    }
+
+    return normalizedValue.slice(0, 10)
+  }
+
+  highlightCards = highlightRecords.map(function (highlight) {
+    return {
+      id: String(highlight.get('id') || ''),
+      label: formatHighlightLabel(String(highlight.get('chapter_label') || '')),
+      pageNumber: String(highlight.get('page_number') || '').trim(),
+      highlightedAt: formatHighlightDate(String(highlight.get('highlighted_at') || '')),
+      quoteText: String(highlight.get('quote_text') || '').trim(),
+      noteText: String(highlight.get('note_text') || '').trim(),
+    }
+  })
+
   let bookMetaText = publicationDate
 
   if (!bookMetaText && publicationYear) {
@@ -166,7 +212,8 @@
   </section>
   <% } %>
 
-  <section class="relative rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.94),rgba(245,236,222,0.96))] p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+  <section
+    class="relative rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.94),rgba(245,236,222,0.96))] p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
     <% if (shelfRecord) { %>
     <form
       method="post"
@@ -180,19 +227,21 @@
       <button
         type="submit"
         class="inline-flex items-center rounded-full border-none bg-[#efe2d2] px-3.5 py-2 text-[12px] font-medium text-[#8e5521] shadow-[0_10px_22px_rgba(132,90,47,0.10)] outline-none ring-0 transition hover:bg-[#ead9c4]">
-        내 도서함에서 제거
+        도서함에서 제거
       </button>
     </form>
     <% } %>
     <div class="flex flex-col gap-5 sm:flex-row sm:items-start">
-      <div class="w-40 shrink-0">
+      <div class="w-34 shrink-0 sm:w-40">
         <% if (bookImageUrl) { %>
-        <img
-          src="<%= bookImageUrl %>"
-          alt="<%= title %> 표지"
-          class="h-56 w-40 rounded-[1.5rem] object-cover shadow-[0_18px_30px_rgba(74,50,28,0.12)]" />
+        <div class="w-34 flex aspect-[5/7] items-center justify-center overflow-hidden rounded-[1.5rem] bg-white px-2 py-2 shadow-[0_18px_30px_rgba(74,50,28,0.12)] sm:w-40">
+          <img
+            src="<%= bookImageUrl %>"
+            alt="<%= title %> 표지"
+            class="block h-full w-full object-contain" />
+        </div>
         <% } else { %>
-        <div class="flex h-56 w-40 items-end rounded-[1.5rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] px-4 py-5 text-white shadow-[0_18px_28px_rgba(74,50,28,0.18)]">
+        <div class="w-34 flex aspect-[5/7] items-end rounded-[1.5rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] px-4 py-5 text-white shadow-[0_18px_28px_rgba(74,50,28,0.18)] sm:w-40">
           <p class="text-lg font-semibold leading-6 tracking-[-0.03em]"><%= title %></p>
         </div>
         <% } %>
@@ -272,37 +321,58 @@
     </div>
   </section>
 
-  <section class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+  <section class="relative rounded-[2rem] border border-stone-200/80 bg-white/80 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
     <div class="space-y-2">
       <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-stone-500">Review</p>
       <h3 class="text-2xl font-semibold tracking-tight text-stone-950">감상평</h3>
       <p class="text-sm leading-6 text-stone-600">책을 읽으며 느낀 점을 간단하게 남겨두세요.</p>
     </div>
 
+    <% if (reviewText.trim()) { %>
     <form
-      class="mt-5 space-y-4"
       method="post"
-      action="/xapi/books/save-review">
+      action="/xapi/books/delete-review"
+      class="absolute right-5 top-5 m-0"
+      onsubmit="return window.confirm('감상평을 삭제할까요?')">
       <input
         type="hidden"
         name="bookId"
         value="<%= bookId %>" />
-      <label class="block space-y-2">
-        <span class="text-sm font-medium text-stone-700">내 감상</span>
-        <textarea
-          name="reviewText"
-          rows="8"
-          class="box-border block w-full min-w-0 rounded-[1.4rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] outline-none transition placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.42),0_14px_28px_rgba(157,121,72,0.12)]"
-          placeholder="읽으며 들었던 생각을 적어보세요.">
-<%= reviewText %></textarea
-        >
-      </label>
       <button
         type="submit"
-        class="inline-flex items-center justify-center rounded-full border-none bg-stone-900 px-5 py-3 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700">
-        감상평 저장
+        aria-label="감상평 삭제"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold text-[#8e5521] shadow-[0_8px_18px_rgba(132,90,47,0.08)] outline-none ring-0 transition hover:bg-[#ead9c4]">
+        ×
       </button>
     </form>
+    <% } %>
+
+    <div class="mt-5 space-y-4">
+      <form
+        class="space-y-4"
+        method="post"
+        action="/xapi/books/save-review">
+        <input
+          type="hidden"
+          name="bookId"
+          value="<%= bookId %>" />
+        <label class="block space-y-2">
+          <span class="text-sm font-medium text-stone-700">내 감상</span>
+          <textarea
+            name="reviewText"
+            rows="8"
+            class="box-border block w-full min-w-0 rounded-[1.4rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] outline-none transition placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.42),0_14px_28px_rgba(157,121,72,0.12)]"
+            placeholder="읽으며 들었던 생각을 적어보세요.">
+<%= reviewText %></textarea
+          >
+        </label>
+        <button
+          type="submit"
+          class="inline-flex items-center justify-center rounded-full border-none bg-stone-900 px-5 py-3 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700">
+          감상평 저장
+        </button>
+      </form>
+    </div>
   </section>
 
   <section class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
@@ -312,24 +382,48 @@
       <p class="text-sm leading-6 text-stone-600">리더에서 저장한 문구와 메모를 이곳에서 다시 볼 수 있습니다.</p>
     </div>
 
-    <% if (highlightRecords.length > 0) { %>
+    <% if (highlightCards.length > 0) { %>
     <div class="mt-5 space-y-3">
-      <% for (let index = 0; index < highlightRecords.length; index += 1) { const highlight = highlightRecords[index] %>
+      <% for (let index = 0; index < highlightCards.length; index += 1) { const highlight = highlightCards[index] %>
       <article class="rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-        <div class="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
-          <% if (String(highlight.get('chapter_label') || '').trim()) { %>
-          <span><%= String(highlight.get('chapter_label') || '') %></span>
-          <% } %>
-          <% if (String(highlight.get('page_number') || '').trim()) { %>
-          <span>Page <%= String(highlight.get('page_number') || '') %></span>
-          <% } %>
-          <% if (String(highlight.get('highlighted_at') || '').trim()) { %>
-          <span><%= String(highlight.get('highlighted_at') || '') %></span>
-          <% } %>
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="flex min-w-0 flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+              <% if (highlight.label) { %>
+              <span><%= highlight.label %></span>
+              <% } %>
+              <% if (highlight.pageNumber) { %>
+              <span>Page <%= highlight.pageNumber %></span>
+              <% } %>
+            </div>
+            <% if (highlight.highlightedAt) { %>
+            <p class="mt-1 text-[12px] font-medium text-stone-400"><%= highlight.highlightedAt %></p>
+            <% } %>
+          </div>
+          <form
+            method="post"
+            action="/xapi/books/delete-highlight"
+            class="m-0 shrink-0"
+            onsubmit="return window.confirm('이 문구를 삭제할까요?')">
+            <input
+              type="hidden"
+              name="bookId"
+              value="<%= bookId %>" />
+            <input
+              type="hidden"
+              name="highlightId"
+              value="<%= highlight.id %>" />
+            <button
+              type="submit"
+              aria-label="인상 깊은 문구 삭제"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold text-[#8e5521] shadow-[0_6px_14px_rgba(132,90,47,0.06)] outline-none ring-0 transition hover:bg-[#ead9c4]">
+              ×
+            </button>
+          </form>
         </div>
-        <p class="mt-3 text-base font-medium leading-7 text-stone-900"><%= String(highlight.get('quote_text') || '') %></p>
-        <% if (String(highlight.get('note_text') || '').trim()) { %>
-        <p class="mt-3 text-sm leading-6 text-stone-600"><%= String(highlight.get('note_text') || '') %></p>
+        <p class="mt-3 text-base font-medium leading-7 text-stone-900"><%= highlight.quoteText %></p>
+        <% if (highlight.noteText) { %>
+        <p class="mt-3 text-sm leading-6 text-stone-600"><%= highlight.noteText %></p>
         <% } %>
       </article>
       <% } %>

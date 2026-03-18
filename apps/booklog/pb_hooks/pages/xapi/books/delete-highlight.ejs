@@ -1,0 +1,83 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/books/delete-highlight:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/books/delete-highlight:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const highlightId = String(form.highlightId || '').trim()
+  const bookDetailPath = '/books/' + bookId
+  let errorMessage = ''
+
+  dbg('xapi/books/delete-highlight:start', {
+    userId: userId,
+    bookId: bookId,
+    highlightId: highlightId,
+  })
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+    if (!highlightId) throw new Error('문구 정보가 필요합니다.')
+
+    const highlightRecord = $app.findFirstRecordByFilter('book_highlights', 'id = {:highlightId} && user_id = {:userId} && book_id = {:bookId}', {
+      highlightId: highlightId,
+      userId: userId,
+      bookId: bookId,
+    })
+
+    $app.delete(highlightRecord)
+
+    dbg('xapi/books/delete-highlight:redirect', {
+      status: 303,
+      redirectTo: bookDetailPath,
+      flash: '인상 깊은 문구를 삭제했습니다.',
+      highlightId: highlightId,
+    })
+    redirect(bookDetailPath, {
+      status: 303,
+      message: '인상 깊은 문구를 삭제했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/books/delete-highlight:failed', {
+      userId: userId,
+      bookId: bookId,
+      highlightId: highlightId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/books/delete-highlight:redirect', {
+    status: 303,
+    redirectTo: bookId ? bookDetailPath : '/',
+    error: errorMessage || '인상 깊은 문구 삭제에 실패했습니다.',
+  })
+  redirect(bookId ? bookDetailPath : '/', {
+    status: 303,
+    message: errorMessage || '인상 깊은 문구 삭제에 실패했습니다.',
+  })
+</script>
