@@ -33,6 +33,26 @@
   const today = new Date().toISOString().slice(0, 10)
   let errorMessage = ''
 
+  /**
+   * 책에 연결된 EPUB 파일이 하나뿐일 때 그 파일 ID를 반환합니다.
+   *
+   * @param {string} targetBookId 조회할 책 ID
+   * @returns {string} 단일 EPUB 파일 ID
+   */
+  function findSingleBookFileId(targetBookId) {
+    try {
+      const matchedBookFileRecords = $app.findRecordsByFilter('book_files', 'book_id = {:bookId}', '-updated', 2, 0, {
+        bookId: targetBookId,
+      })
+
+      if (matchedBookFileRecords.length === 1) {
+        return String(matchedBookFileRecords[0].get('id') || '')
+      }
+    } catch (exception) {}
+
+    return ''
+  }
+
   dbg('xapi/books/update-status:start', {
     userId: userId,
     bookId: bookId,
@@ -70,10 +90,18 @@
 
     if (!shelfRecord) {
       const collection = $app.findCollectionByNameOrId('book_shelves')
+      const singleBookFileId = findSingleBookFileId(bookId)
+
       shelfRecord = new Record(collection)
       shelfRecord.set('user_id', userId)
       shelfRecord.set('book_id', String(bookRecord.get('id') || ''))
+
+      if (singleBookFileId) {
+        shelfRecord.set('book_file_id', singleBookFileId)
+      }
     }
+
+    const shelfStartedAt = String(shelfRecord.get('started_at') || '').trim()
 
     shelfRecord.set('status', status)
     shelfRecord.set('last_read_at', today)
@@ -85,14 +113,14 @@
     }
 
     if (status === 'reading') {
-      if (!String(shelfRecord.get('started_at') || '').trim()) {
+      if (!shelfStartedAt) {
         shelfRecord.set('started_at', today)
       }
       shelfRecord.set('finished_at', '')
     }
 
     if (status === 'finished') {
-      if (!String(shelfRecord.get('started_at') || '').trim()) {
+      if (!shelfStartedAt) {
         shelfRecord.set('started_at', today)
       }
       shelfRecord.set('finished_at', today)

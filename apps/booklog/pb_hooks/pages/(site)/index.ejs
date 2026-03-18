@@ -17,6 +17,7 @@
       caption: '첫 EPUB를 올리면 여기에 꽂힙니다',
       tone: 'from-[#d8c3a5] to-[#b08968]',
       coverUrl: '',
+      isReading: false,
       statusLabel: 'Shelf 1',
     },
     {
@@ -25,6 +26,7 @@
       caption: '진행 중인 책이 가로로 쌓입니다',
       tone: 'from-[#9c6644] to-[#7f5539]',
       coverUrl: '',
+      isReading: false,
       statusLabel: 'Shelf 2',
     },
     {
@@ -33,6 +35,7 @@
       caption: '완독한 책도 같은 도서함에 정리됩니다',
       tone: 'from-[#7f4f24] to-[#582f0e]',
       coverUrl: '',
+      isReading: false,
       statusLabel: 'Shelf 3',
     },
   ]
@@ -191,7 +194,8 @@
             <div
               class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
               <% if (book.isReading) { %>
-              <span class="absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full bg-stone-900/84 px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] backdrop-blur-sm">
+              <span
+                class="bg-stone-900/84 absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] backdrop-blur-sm">
                 읽는 중
               </span>
               <% } %>
@@ -216,7 +220,8 @@
           <div
             class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
             <% if (book.isReading) { %>
-            <span class="absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full bg-stone-900/84 px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] backdrop-blur-sm">
+            <span
+              class="bg-stone-900/84 absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] backdrop-blur-sm">
               읽는 중
             </span>
             <% } %>
