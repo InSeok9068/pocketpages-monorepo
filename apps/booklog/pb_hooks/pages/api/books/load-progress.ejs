@@ -1,0 +1,86 @@
+<script server>
+  if (request.method !== 'POST') {
+    response.json(405, {
+      ok: false,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    response.json(401, {
+      ok: false,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+
+  dbg('api/books/load-progress:start', {
+    userId: userId,
+    bookId: bookId,
+  })
+
+  try {
+    let shelfRecord = null
+
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+
+    try {
+      shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+        userId: userId,
+        bookId: bookId,
+      })
+    } catch (exception) {
+      shelfRecord = null
+    }
+
+    if (!shelfRecord) {
+      throw new Error('저장된 읽기 위치가 없습니다.')
+    }
+
+    const locator = String(shelfRecord.get('current_locator') || '').trim()
+    const href = String(shelfRecord.get('current_href') || '').trim()
+    const chapterLabel = String(shelfRecord.get('current_label') || '').trim()
+    const currentPageValue = shelfRecord.get('current_page')
+    const progressPercentValue = shelfRecord.get('progress_percent')
+
+    if (!locator && !href) {
+      throw new Error('저장된 읽기 위치가 없습니다.')
+    }
+
+    info('api/books/load-progress:done', {
+      userId: userId,
+      bookId: bookId,
+      hasLocator: !!locator,
+      hasHref: !!href,
+    })
+
+    response.json(200, {
+      ok: true,
+      message: '저장된 읽기 위치를 불러왔습니다.',
+      locator: locator,
+      href: href,
+      chapterLabel: chapterLabel,
+      pageNumber: currentPageValue === null || typeof currentPageValue === 'undefined' ? '' : String(currentPageValue),
+      progressPercent: progressPercentValue === null || typeof progressPercentValue === 'undefined' ? '' : String(progressPercentValue),
+    })
+    return
+  } catch (exception) {
+    const errorMessage = String(exception.message || exception)
+
+    error('api/books/load-progress:failed', {
+      userId: userId,
+      bookId: bookId,
+      error: errorMessage,
+    })
+
+    response.json(400, {
+      ok: false,
+      message: errorMessage || '읽기 위치를 불러오지 못했습니다.',
+    })
+  }
+</script>

@@ -165,8 +165,70 @@
 </section>
 <% } else { %>
 <section
-  x-data="{ uploadOpen: false, uploading: false, uploadFileName: '' }"
-  class="mt-9 space-y-6">
+  x-data="{
+    uploadOpen: false,
+    uploading: false,
+    uploadFileName: '',
+    uploadElapsedSeconds: 0,
+    uploadStageIndex: 0,
+    uploadTickTimerId: null,
+    uploadStageTimerId: null,
+    uploadStages: [
+      { label: '파일 전송 중', detail: '선택한 EPUB 파일을 서버로 안전하게 올리고 있습니다.' },
+      { label: 'EPUB 구조 확인 중', detail: '본문과 메타데이터, 식별자 정보를 읽고 있습니다.' },
+      { label: '도서 정보 찾는 중', detail: '제목, 저자, ISBN을 기준으로 도서 메타데이터를 확인하고 있습니다.' },
+      { label: '서재에 저장 중', detail: '책 정보와 업로드 파일을 도서함에 정리하고 있습니다.' },
+    ],
+    get activeUploadStage() {
+      return this.uploadStages[this.uploadStageIndex] || this.uploadStages[0]
+    },
+    get uploadElapsedLabel() {
+      if (this.uploadElapsedSeconds < 60) {
+        return this.uploadElapsedSeconds + '초'
+      }
+
+      return Math.floor(this.uploadElapsedSeconds / 60) + '분 ' + (this.uploadElapsedSeconds % 60) + '초'
+    },
+    selectUploadFile(event) {
+      this.uploadFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : ''
+    },
+    stopUploadTimers() {
+      if (this.uploadTickTimerId) {
+        window.clearInterval(this.uploadTickTimerId)
+        this.uploadTickTimerId = null
+      }
+
+      if (this.uploadStageTimerId) {
+        window.clearInterval(this.uploadStageTimerId)
+        this.uploadStageTimerId = null
+      }
+    },
+    beginUpload() {
+      if (this.uploading) {
+        return
+      }
+
+      const component = this
+
+      this.uploading = true
+      this.uploadOpen = false
+      this.uploadElapsedSeconds = 0
+      this.uploadStageIndex = 0
+      this.stopUploadTimers()
+
+      this.uploadTickTimerId = window.setInterval(function () {
+        component.uploadElapsedSeconds += 1
+      }, 1000)
+
+      this.uploadStageTimerId = window.setInterval(function () {
+        if (component.uploadStageIndex < component.uploadStages.length - 1) {
+          component.uploadStageIndex += 1
+        }
+      }, 2600)
+    },
+  }"
+  class="mt-9">
+  <div class="space-y-6">
   <div class="flex items-center justify-between gap-4">
     <div class="space-y-1">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">My Shelf</p>
@@ -183,7 +245,7 @@
 
   <section
     class="rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.92),rgba(245,236,222,0.95))] p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
-    <div class="overflow-x-auto overflow-y-hidden pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div class="overflow-x-auto overflow-y-hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div class="flex min-w-max gap-3">
         <% for (let index = 0; index < shelfBooks.length; index += 1) { const book = shelfBooks[index] %>
         <article class="w-[8.35rem] flex-none sm:w-[8.9rem]">
@@ -204,7 +266,6 @@
                 src="<%= book.coverUrl %>"
                 alt="<%= book.title %> 표지"
                 class="h-full w-full object-cover" />
-              <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(46,31,20,0.08),rgba(46,31,20,0.38))]"></div>
               <% } %>
               <div class="<%= book.coverUrl ? '' : 'ml-2' %> relative flex h-full flex-col justify-between px-3 py-4 text-white">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/70">Booklog</p>
@@ -230,7 +291,6 @@
               src="<%= book.coverUrl %>"
               alt="<%= book.title %> 표지"
               class="h-full w-full object-cover" />
-            <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(46,31,20,0.08),rgba(46,31,20,0.38))]"></div>
             <% } %>
             <div class="<%= book.coverUrl ? '' : 'ml-2' %> relative flex h-full flex-col justify-between px-3 py-4 text-white">
               <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/70">Booklog</p>
@@ -290,6 +350,7 @@
       </a>
     </div>
   </section>
+  </div>
 
   <div
     x-show="uploadOpen"
@@ -319,7 +380,7 @@
         method="post"
         action="/xapi/epub/upload"
         enctype="multipart/form-data"
-        x-on:submit="window.setTimeout(function () { uploading = true }, 0)">
+        x-on:submit="beginUpload()">
         <label class="block space-y-2">
           <span class="text-sm font-medium text-stone-700">EPUB 파일</span>
           <div class="rounded-[1.35rem] border border-stone-200 bg-white/90 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
@@ -328,7 +389,7 @@
               type="file"
               name="epubFile"
               accept=".epub,application/epub+zip"
-              x-on:change="uploadFileName = $event.target.files && $event.target.files[0] ? $event.target.files[0].name : ''"
+              x-on:change="selectUploadFile($event)"
               required />
             <p
               x-show="uploadFileName"
@@ -339,11 +400,9 @@
         </label>
 
         <div
-          x-show="uploading"
-          x-cloak
           class="rounded-[1.5rem] border border-[#dcc5a3] bg-[#fff8ec] px-4 py-4 text-sm leading-6 text-stone-700">
-          <p class="font-medium text-stone-900">업로드와 메타데이터 조회를 진행 중입니다.</p>
-          <p class="mt-1 text-stone-600">파일을 읽고 도서 검색과 상세 조회를 같이 처리하니 몇 초 정도 걸릴 수 있습니다.</p>
+          <p class="font-medium text-stone-900">업로드 후 메타데이터 조회까지 이어서 처리합니다.</p>
+          <p class="mt-1 text-stone-600">대용량 파일이거나 외부 도서 정보 조회가 길어지면 잠시 시간이 걸릴 수 있습니다.</p>
         </div>
 
         <div class="flex gap-3 pt-1">
@@ -372,6 +431,81 @@
         </div>
       </form>
     </div>
+  </div>
+
+  <div
+    x-show="uploading"
+    x-cloak
+    x-transition.opacity
+    class="fixed inset-0 z-[90] flex items-end justify-center px-0 pt-0 sm:items-center sm:px-6 sm:py-6">
+    <div class="absolute inset-0 bg-stone-950/58 backdrop-blur-[2px]"></div>
+
+    <section class="relative w-full max-w-xl rounded-t-[2rem] bg-[linear-gradient(180deg,#fffdf8,#f5ead7)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-[0_-18px_50px_rgba(41,28,17,0.24)] sm:rounded-[2.2rem] sm:px-6 sm:pb-6 sm:pt-6 sm:shadow-[0_30px_90px_rgba(41,28,17,0.28)]">
+      <div class="flex items-start justify-between gap-4">
+        <div class="space-y-2">
+          <div class="inline-flex items-center gap-2 rounded-full bg-[#f2e4cd] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#8a5a2b] shadow-[inset_0_0_0_1px_rgba(138,90,43,0.08)]">
+            <span class="inline-flex h-2.5 w-2.5 rounded-full bg-[#b06d2f] animate-pulse"></span>
+            처리 중
+          </div>
+          <h3 class="text-[1.85rem] font-semibold tracking-tight text-stone-950">업로드를 계속 진행하고 있습니다</h3>
+          <p class="max-w-xl text-sm leading-6 text-stone-600">이 화면이 보이는 동안 정상적으로 작업 중입니다. 완료되면 다음 화면으로 자동 이동합니다.</p>
+        </div>
+
+        <div class="rounded-[1.2rem] bg-white/78 px-3 py-2 text-right shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">경과 시간</p>
+          <p
+            x-text="uploadElapsedLabel"
+            class="mt-1 text-lg font-semibold tracking-tight text-stone-900"></p>
+        </div>
+      </div>
+
+      <div class="mt-5 rounded-[1.4rem] bg-white/78 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
+        <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">선택한 파일</p>
+        <p
+          x-text="uploadFileName || 'EPUB 파일'"
+          class="mt-2 break-all text-sm font-medium leading-6 text-stone-900"></p>
+        <p
+          x-text="activeUploadStage.detail"
+          class="mt-2 text-[13px] leading-6 text-stone-600"></p>
+      </div>
+
+      <div class="mt-5 space-y-2.5">
+        <template
+          x-for="(stage, index) in uploadStages"
+          :key="stage.label">
+          <div
+            class="rounded-[1.35rem] px-4 py-3 transition"
+            x-bind:class="index === uploadStageIndex ? 'bg-[#f6ebd8] text-stone-900 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.10)]' : (index < uploadStageIndex ? 'bg-white/82 text-stone-700 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]' : 'bg-stone-100/82 text-stone-400 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.06)]')">
+            <div class="flex items-start gap-3">
+              <span
+                class="inline-flex h-8 w-8 flex-none items-center justify-center rounded-full text-sm font-semibold"
+                x-bind:class="index === uploadStageIndex ? 'bg-stone-900 text-white' : (index < uploadStageIndex ? 'bg-[#c98a49] text-white' : 'bg-white/70 text-stone-400')"
+                x-text="index < uploadStageIndex ? '✓' : String(index + 1)"></span>
+
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center justify-between gap-3">
+                  <p
+                    x-text="stage.label"
+                    class="text-sm font-semibold leading-6"></p>
+                  <p
+                    x-text="index === uploadStageIndex ? '진행 중' : (index < uploadStageIndex ? '완료' : '대기')"
+                    class="text-[11px] font-semibold uppercase tracking-[0.18em]"></p>
+                </div>
+                <p
+                  x-show="index === uploadStageIndex"
+                  x-cloak
+                  x-text="stage.detail"
+                  class="mt-1 text-[13px] leading-5 text-stone-600"></p>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div class="mt-5 rounded-[1.35rem] border border-[#dcc5a3] bg-[#fff8ec] px-4 py-4 text-[13px] leading-6 text-stone-600">
+        브라우저를 새로고침하거나 닫지 마세요. EPUB 업로드와 메타데이터 조회가 모두 끝나면 서재 화면으로 돌아갑니다.
+      </div>
+    </section>
   </div>
 </section>
 <% } %>

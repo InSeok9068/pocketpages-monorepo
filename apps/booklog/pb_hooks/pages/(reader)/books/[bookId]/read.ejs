@@ -107,6 +107,7 @@
   }
 
   const storedFileName = bookFileRecord ? String(bookFileRecord.get('stored_file') || '').trim() : ''
+  const bookFileHash = bookFileRecord ? String(bookFileRecord.get('file_hash') || '').trim() : ''
   const epubReaderUrl = bookFileRecord && storedFileName ? '/xapi/books/' + encodeURIComponent(bookId) + '/read-file' : ''
 
   if (!epubReaderUrl) {
@@ -133,7 +134,12 @@
   x-data="{
     loading: true,
     errorMessage: '',
+    savePositionMessage: '',
+    savePositionMessageTimer: null,
+    savingPosition: false,
+    loadingSavedPosition: false,
     fullscreenMode: false,
+    menuOpen: false,
     controlsVisible: false,
     controlsTimer: null,
     searchQuery: '',
@@ -188,6 +194,37 @@
     saveHighlight: function () {
       window.booklogReaderLogic.saveHighlight(this)
     },
+    saveCurrentPosition: function () {
+      window.booklogReaderLogic.saveCurrentPosition(this)
+    },
+    loadSavedPosition: function () {
+      window.booklogReaderLogic.loadSavedPosition(this)
+    },
+    closeMenu: function () {
+      this.menuOpen = false
+    },
+    toggleMenu: function () {
+      this.menuOpen = !this.menuOpen
+    },
+    showSavePositionMessage: function (message) {
+      var self = this
+
+      this.savePositionMessage = String(message || '').trim()
+
+      if (this.savePositionMessageTimer) {
+        clearTimeout(this.savePositionMessageTimer)
+        this.savePositionMessageTimer = null
+      }
+
+      if (!this.savePositionMessage) {
+        return
+      }
+
+      this.savePositionMessageTimer = setTimeout(function () {
+        self.savePositionMessage = ''
+        self.savePositionMessageTimer = null
+      }, 1000)
+    },
     clearControlsTimer: function () {
       if (this.controlsTimer) {
         clearTimeout(this.controlsTimer)
@@ -222,6 +259,7 @@
     },
     toggleFullscreenMode: function () {
       this.fullscreenMode = !this.fullscreenMode
+      this.menuOpen = false
 
       if (this.fullscreenMode) {
         this.controlsVisible = false
@@ -232,6 +270,7 @@
       }
     },
     goToSearchResult: function (result) {
+      this.menuOpen = false
       window.booklogReaderLogic.goToSearchResult(this, result)
     },
     performSearch: function () {
@@ -252,25 +291,70 @@
       책 상세
     </a>
 
-    <div class="flex items-center gap-2">
+    <div class="relative">
       <button
         type="button"
-        x-on:click="openSearch()"
-        class="inline-flex items-center gap-2 rounded-full border-none bg-white/90 px-3 py-2 text-sm font-semibold text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
-        검색
+        x-on:click="toggleMenu()"
+        class="inline-flex h-12 w-12 items-center justify-center rounded-full border-none bg-white/92 text-xl text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+        ☰
       </button>
-      <button
-        type="button"
-        x-on:click="openHighlight()"
-        class="inline-flex items-center gap-2 rounded-full border-none bg-white/90 px-3 py-2 text-sm font-semibold text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
-        문구 추가
-      </button>
-      <button
-        type="button"
-        x-on:click="toggleFullscreenMode()"
-        class="inline-flex items-center gap-2 rounded-full border-none bg-stone-950 px-3 py-2 text-sm font-semibold text-white shadow-[0_10px_26px_rgba(24,19,16,0.16)] outline-none ring-0">
-        전체모드
-      </button>
+
+      <div
+        x-show="menuOpen"
+        x-cloak
+        x-on:click.outside="closeMenu()"
+        class="absolute right-0 top-14 z-40 flex w-40 flex-col gap-2 rounded-[1.5rem] bg-white/95 p-3 shadow-[0_18px_40px_rgba(70,52,31,0.12)] backdrop-blur-sm">
+        <button
+          type="button"
+          x-on:click="openSearch(); closeMenu()"
+          class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
+          검색
+        </button>
+        <button
+          type="button"
+          x-on:click="saveCurrentPosition(); closeMenu()"
+          x-bind:disabled="savingPosition || loading"
+          class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0 disabled:opacity-60">
+          <span
+            x-show="!savingPosition"
+            x-cloak
+            >위치 저장</span
+          >
+          <span
+            x-show="savingPosition"
+            x-cloak
+            >저장 중</span
+          >
+        </button>
+        <button
+          type="button"
+          x-on:click="loadSavedPosition(); closeMenu()"
+          x-bind:disabled="loadingSavedPosition || loading"
+          class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0 disabled:opacity-60">
+          <span
+            x-show="!loadingSavedPosition"
+            x-cloak
+            >위치 불러오기</span
+          >
+          <span
+            x-show="loadingSavedPosition"
+            x-cloak
+            >불러오는 중</span
+          >
+        </button>
+        <button
+          type="button"
+          x-on:click="openHighlight(); closeMenu()"
+          class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
+          문구 추가
+        </button>
+        <button
+          type="button"
+          x-on:click="toggleFullscreenMode()"
+          class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white outline-none ring-0">
+          전체모드
+        </button>
+      </div>
     </div>
   </div>
 
@@ -279,35 +363,67 @@
     x-show="fullscreenMode"
     x-cloak
     x-on:click="toggleControls()"
-    class="fixed right-4 top-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-[rgba(24,19,16,0.18)] text-lg text-white shadow-none outline-none ring-0 backdrop-blur-[1px]">
-    ⋯
+    class="fixed right-4 top-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-[rgba(24,19,16,0.18)] text-xl text-white shadow-none outline-none ring-0 backdrop-blur-[1px]">
+    ☰
   </button>
 
   <div
     x-show="fullscreenMode && controlsVisible"
     x-cloak
-    class="top-18 fixed right-4 z-30 flex flex-col items-end gap-2">
-    <button
-      type="button"
-      x-on:click="toggleFullscreenMode()"
-      class="inline-flex items-center gap-2 rounded-full border-none bg-stone-950 px-3 py-2 text-sm font-semibold text-white shadow-[0_10px_26px_rgba(24,19,16,0.16)] outline-none ring-0">
-      기본보기
-    </button>
+    class="top-18 fixed right-4 z-30 flex w-40 flex-col items-stretch gap-2 rounded-[1.5rem] bg-[rgba(255,255,255,0.92)] p-3 shadow-[0_18px_40px_rgba(24,19,16,0.18)] backdrop-blur-sm">
     <button
       type="button"
       x-on:click="openSearch()"
-      class="bg-white/92 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-semibold text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
       검색
     </button>
     <button
       type="button"
+      x-on:click="saveCurrentPosition()"
+      x-bind:disabled="savingPosition || loading"
+      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0 disabled:opacity-60">
+      <span
+        x-show="!savingPosition"
+        x-cloak
+        >위치 저장</span
+      >
+      <span
+        x-show="savingPosition"
+        x-cloak
+        >저장 중</span
+      >
+    </button>
+    <button
+      type="button"
+      x-on:click="loadSavedPosition()"
+      x-bind:disabled="loadingSavedPosition || loading"
+      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0 disabled:opacity-60">
+      <span
+        x-show="!loadingSavedPosition"
+        x-cloak
+        >위치 불러오기</span
+      >
+      <span
+        x-show="loadingSavedPosition"
+        x-cloak
+        >불러오는 중</span
+      >
+    </button>
+    <button
+      type="button"
       x-on:click="openHighlight()"
-      class="bg-white/92 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-semibold text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
       문구 추가
+    </button>
+    <button
+      type="button"
+      x-on:click="toggleFullscreenMode()"
+      class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_26px_rgba(24,19,16,0.16)] outline-none ring-0">
+      기본보기
     </button>
     <a
       href="/books/<%= bookId %>"
-      class="bg-white/92 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-semibold text-stone-700 no-underline shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-700 no-underline outline-none ring-0">
       책 상세
     </a>
   </div>
@@ -491,6 +607,18 @@
       x-text="errorMessage"></div>
 
     <div
+      x-show="savePositionMessage && !fullscreenMode"
+      x-cloak
+      class="pointer-events-none fixed left-1/2 top-20 z-40 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 rounded-full bg-[rgba(255,250,241,0.96)] px-5 py-3 text-center text-sm font-medium text-stone-700 shadow-[0_18px_40px_rgba(70,52,31,0.14)] backdrop-blur-sm"
+      x-text="savePositionMessage"></div>
+
+    <div
+      x-show="savePositionMessage && fullscreenMode"
+      x-cloak
+      class="pointer-events-none fixed left-1/2 top-5 z-40 max-w-[calc(100vw-6rem)] -translate-x-1/2 rounded-full bg-[rgba(24,19,16,0.82)] px-5 py-3 text-center text-sm font-medium text-white shadow-[0_18px_40px_rgba(24,19,16,0.28)] backdrop-blur-sm"
+      x-text="savePositionMessage"></div>
+
+    <div
       x-bind:class="fullscreenMode ? 'rounded-none shadow-none' : 'rounded-[2rem] shadow-[0_24px_60px_rgba(70,52,31,0.08)]'"
       class="min-h-0 flex-1 bg-white transition-all duration-200">
       <div
@@ -505,10 +633,20 @@
   window.booklogReaderLogic = (function () {
     var readerUrl = '<%= epubReaderUrl %>'
     var bookId = '<%= bookId %>'
+    var readerCacheKey = '<%= userId %>:<%= bookFileHash || bookId %>'
     var bookInstance = null
     var renditionInstance = null
     var tocLabelByHref = {}
     var currentLocation = null
+    var readerContainer = null
+    var autoPagingLockUntil = 0
+    var lastContainerScrollTop = 0
+    var touchStartY = 0
+    var EDGE_TRIGGER_DISTANCE = 56
+    var AUTO_PAGE_LOCK_MS = 700
+    var READER_CACHE_DB_NAME = 'booklog-reader-cache'
+    var READER_CACHE_STORE_NAME = 'epubBuffers'
+    var READER_CACHE_LIMIT = 3
 
     function normalizeText(value) {
       return String(value || '')
@@ -577,6 +715,40 @@
       component.currentChapterLabel = getChapterLabelForHref(href)
     }
 
+    function getCurrentProgressPayload(component) {
+      var location = currentLocation && currentLocation.start ? currentLocation.start : null
+      var locator = location && location.cfi ? String(location.cfi) : ''
+      var href = location && location.href ? String(location.href) : ''
+      var chapterLabel = component && component.currentChapterLabel ? String(component.currentChapterLabel) : getChapterLabelForHref(href)
+      var pageNumber = location && location.displayed && typeof location.displayed.page === 'number' ? String(location.displayed.page) : ''
+      var progressPercent = ''
+
+      if (!locator && renditionInstance && typeof renditionInstance.currentLocation === 'function') {
+        updateCurrentLocation(component, renditionInstance.currentLocation())
+        location = currentLocation && currentLocation.start ? currentLocation.start : null
+        locator = location && location.cfi ? String(location.cfi) : ''
+        href = location && location.href ? String(location.href) : ''
+        chapterLabel = component && component.currentChapterLabel ? String(component.currentChapterLabel) : getChapterLabelForHref(href)
+        pageNumber = location && location.displayed && typeof location.displayed.page === 'number' ? String(location.displayed.page) : ''
+      }
+
+      try {
+        if (locator && bookInstance && bookInstance.locations && typeof bookInstance.locations.percentageFromCfi === 'function') {
+          progressPercent = String(Math.max(0, Math.min(100, Math.round(bookInstance.locations.percentageFromCfi(locator) * 100))))
+        }
+      } catch (exception) {
+        progressPercent = ''
+      }
+
+      return {
+        locator: locator,
+        href: href,
+        chapterLabel: chapterLabel,
+        pageNumber: pageNumber,
+        progressPercent: progressPercent,
+      }
+    }
+
     function buildSearchResultLabel(result) {
       var chapterLabel = normalizeText(result && result.chapterLabel ? result.chapterLabel : '')
       var excerpt = normalizeText(result && result.excerpt ? result.excerpt : '')
@@ -588,21 +760,209 @@
       return chapterLabel || excerpt || '검색 결과'
     }
 
-    function init(component) {
-      var container = document.getElementById('epub-reader')
+    function canUseReaderCache() {
+      return !!window.indexedDB
+    }
 
-      if (!container || !window.ePub) {
-        component.loading = false
-        component.errorMessage = 'EPUB 뷰어를 불러오지 못했습니다.'
-        return
-      }
+    function openReaderCacheDb() {
+      return new Promise(function (resolve, reject) {
+        var request = null
 
-      console.debug('page/books/[bookId]/read:init', {
-        bookId: bookId,
-        readerUrl: readerUrl,
+        if (!canUseReaderCache()) {
+          resolve(null)
+          return
+        }
+
+        request = window.indexedDB.open(READER_CACHE_DB_NAME, 1)
+
+        request.onupgradeneeded = function (event) {
+          var db = event.target.result
+
+          if (!db.objectStoreNames.contains(READER_CACHE_STORE_NAME)) {
+            db.createObjectStore(READER_CACHE_STORE_NAME, { keyPath: 'cacheKey' })
+          }
+        }
+
+        request.onsuccess = function () {
+          resolve(request.result)
+        }
+
+        request.onerror = function () {
+          reject(request.error || new Error('IndexedDB를 열지 못했습니다.'))
+        }
       })
+    }
 
-      fetch(readerUrl, {
+    function readCachedBookBuffer() {
+      return openReaderCacheDb().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var transaction = null
+          var store = null
+          var request = null
+
+          if (!db) {
+            resolve(null)
+            return
+          }
+
+          transaction = db.transaction(READER_CACHE_STORE_NAME, 'readonly')
+          store = transaction.objectStore(READER_CACHE_STORE_NAME)
+          request = store.get(readerCacheKey)
+
+          request.onsuccess = function () {
+            var cacheEntry = request.result || null
+
+            resolve(cacheEntry && cacheEntry.buffer ? cacheEntry.buffer : null)
+          }
+
+          request.onerror = function () {
+            reject(request.error || new Error('EPUB 캐시를 읽지 못했습니다.'))
+          }
+        }).finally(function () {
+          db.close()
+        })
+      })
+    }
+
+    function pruneReaderCache(store) {
+      return new Promise(function (resolve, reject) {
+        var request = store.getAll()
+
+        request.onsuccess = function () {
+          var records = request.result || []
+          var removable = null
+          var pendingDeletes = 0
+          var failed = false
+
+          records.sort(function (left, right) {
+            return Number(right && right.lastOpenedAt ? right.lastOpenedAt : 0) - Number(left && left.lastOpenedAt ? left.lastOpenedAt : 0)
+          })
+
+          removable = records.slice(READER_CACHE_LIMIT)
+
+          if (!removable.length) {
+            resolve()
+            return
+          }
+
+          pendingDeletes = removable.length
+
+          removable.forEach(function (cacheEntry) {
+            var deleteRequest = store.delete(cacheEntry.cacheKey)
+
+            deleteRequest.onsuccess = function () {
+              pendingDeletes -= 1
+
+              if (!pendingDeletes && !failed) {
+                resolve()
+              }
+            }
+
+            deleteRequest.onerror = function () {
+              if (failed) {
+                return
+              }
+
+              failed = true
+              reject(deleteRequest.error || new Error('EPUB 캐시 정리에 실패했습니다.'))
+            }
+          })
+        }
+
+        request.onerror = function () {
+          reject(request.error || new Error('EPUB 캐시 목록을 읽지 못했습니다.'))
+        }
+      })
+    }
+
+    function writeCachedBookBuffer(buffer) {
+      return openReaderCacheDb().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var transaction = null
+          var store = null
+          var request = null
+
+          if (!db || !buffer) {
+            resolve()
+            return
+          }
+
+          transaction = db.transaction(READER_CACHE_STORE_NAME, 'readwrite')
+          store = transaction.objectStore(READER_CACHE_STORE_NAME)
+          request = store.put({
+            cacheKey: readerCacheKey,
+            buffer: buffer,
+            byteLength: Number(buffer.byteLength || 0),
+            lastOpenedAt: Date.now(),
+          })
+
+          request.onsuccess = function () {
+            pruneReaderCache(store)
+              .then(function () {
+                resolve()
+              })
+              .catch(function (exception) {
+                reject(exception)
+              })
+          }
+
+          request.onerror = function () {
+            reject(request.error || new Error('EPUB 캐시에 저장하지 못했습니다.'))
+          }
+        }).finally(function () {
+          db.close()
+        })
+      })
+    }
+
+    function touchCachedBookBuffer() {
+      return openReaderCacheDb().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var transaction = null
+          var store = null
+          var request = null
+
+          if (!db) {
+            resolve()
+            return
+          }
+
+          transaction = db.transaction(READER_CACHE_STORE_NAME, 'readwrite')
+          store = transaction.objectStore(READER_CACHE_STORE_NAME)
+          request = store.get(readerCacheKey)
+
+          request.onsuccess = function () {
+            var cacheEntry = request.result || null
+            var putRequest = null
+
+            if (!cacheEntry || !cacheEntry.buffer) {
+              resolve()
+              return
+            }
+
+            cacheEntry.lastOpenedAt = Date.now()
+            putRequest = store.put(cacheEntry)
+
+            putRequest.onsuccess = function () {
+              resolve()
+            }
+
+            putRequest.onerror = function () {
+              reject(putRequest.error || new Error('EPUB 캐시 사용 시각을 갱신하지 못했습니다.'))
+            }
+          }
+
+          request.onerror = function () {
+            reject(request.error || new Error('EPUB 캐시 갱신에 실패했습니다.'))
+          }
+        }).finally(function () {
+          db.close()
+        })
+      })
+    }
+
+    function fetchBookBuffer() {
+      return fetch(readerUrl, {
         method: 'GET',
         credentials: 'same-origin',
       })
@@ -619,33 +979,238 @@
 
           return response.arrayBuffer()
         })
-        .then(function (buffer) {
-          console.debug('page/books/[bookId]/read:fetch-buffer', {
-            byteLength: buffer && buffer.byteLength ? buffer.byteLength : 0,
+    }
+
+    function isAutoPagingLocked() {
+      return Date.now() < autoPagingLockUntil
+    }
+
+    function lockAutoPaging() {
+      autoPagingLockUntil = Date.now() + AUTO_PAGE_LOCK_MS
+    }
+
+    function isNearBottom(target) {
+      if (!target) {
+        return false
+      }
+
+      return target.scrollHeight - (target.scrollTop + target.clientHeight) <= EDGE_TRIGGER_DISTANCE
+    }
+
+    function isNearTop(target) {
+      if (!target) {
+        return false
+      }
+
+      return target.scrollTop <= EDGE_TRIGGER_DISTANCE
+    }
+
+    function goToAdjacentSection(component, direction) {
+      var action = null
+
+      if (!renditionInstance || isAutoPagingLocked()) {
+        return
+      }
+
+      if (direction !== 'next' && direction !== 'prev') {
+        return
+      }
+
+      action = direction === 'next' ? renditionInstance.next : renditionInstance.prev
+
+      if (typeof action !== 'function') {
+        return
+      }
+
+      lockAutoPaging()
+
+      Promise.resolve(action.call(renditionInstance))
+        .then(function (location) {
+          if (readerContainer) {
+            if (direction === 'next') {
+              readerContainer.scrollTop = 0
+            } else if (readerContainer.scrollHeight > readerContainer.clientHeight) {
+              readerContainer.scrollTop = Math.max(readerContainer.scrollHeight - readerContainer.clientHeight - EDGE_TRIGGER_DISTANCE, 0)
+            }
+          }
+
+          updateCurrentLocation(component, location || renditionInstance.currentLocation())
+        })
+        .catch(function (exception) {
+          console.warn('page/books/[bookId]/read:auto-page:failed', {
+            direction: direction,
+            message: String(exception && exception.message ? exception.message : exception),
           })
+        })
+      }
 
-          bookInstance = window.ePub(buffer)
-          renditionInstance = bookInstance.renderTo('epub-reader', {
-            width: '100%',
-            height: '100%',
-            manager: 'continuous',
-            flow: 'scrolled',
-            allowScriptedContent: false,
+    function bindAutoPaging(component, target) {
+      if (!target) {
+        return
+      }
+
+      readerContainer = target
+      lastContainerScrollTop = target.scrollTop || 0
+
+      target.addEventListener(
+        'scroll',
+        function () {
+          var currentScrollTop = target.scrollTop || 0
+          var movingDown = currentScrollTop > lastContainerScrollTop
+          var movingUp = currentScrollTop < lastContainerScrollTop
+
+          lastContainerScrollTop = currentScrollTop
+
+          if (movingDown && isNearBottom(target)) {
+            goToAdjacentSection(component, 'next')
+            return
+          }
+
+          if (movingUp && isNearTop(target)) {
+            goToAdjacentSection(component, 'prev')
+          }
+        },
+        { passive: true }
+      )
+
+      target.addEventListener(
+        'wheel',
+        function (event) {
+          if (event.deltaY > 0 && isNearBottom(target)) {
+            goToAdjacentSection(component, 'next')
+            return
+          }
+
+          if (event.deltaY < 0 && isNearTop(target)) {
+            goToAdjacentSection(component, 'prev')
+          }
+        },
+        { passive: true }
+      )
+
+      target.addEventListener(
+        'touchstart',
+        function (event) {
+          var touch = event.touches && event.touches[0] ? event.touches[0] : null
+          touchStartY = touch ? Number(touch.clientY || 0) : 0
+        },
+        { passive: true }
+      )
+
+      target.addEventListener(
+        'touchend',
+        function (event) {
+          var touch = event.changedTouches && event.changedTouches[0] ? event.changedTouches[0] : null
+          var touchEndY = touch ? Number(touch.clientY || 0) : 0
+          var deltaY = touchStartY - touchEndY
+
+          if (deltaY > 24 && isNearBottom(target)) {
+            goToAdjacentSection(component, 'next')
+            return
+          }
+
+          if (deltaY < -24 && isNearTop(target)) {
+            goToAdjacentSection(component, 'prev')
+          }
+        },
+        { passive: true }
+      )
+    }
+
+    function renderBookBuffer(component, buffer) {
+      console.debug('page/books/[bookId]/read:fetch-buffer', {
+        byteLength: buffer && buffer.byteLength ? buffer.byteLength : 0,
+      })
+
+      bookInstance = window.ePub(buffer)
+      renditionInstance = bookInstance.renderTo('epub-reader', {
+        width: '100%',
+        height: '100%',
+        manager: 'continuous',
+        flow: 'scrolled',
+        allowScriptedContent: false,
+      })
+
+      renditionInstance.on('relocated', function (location) {
+        updateCurrentLocation(component, location)
+      })
+
+      bindAutoPaging(component, readerContainer)
+
+      return bookInstance.ready.then(function () {
+        var locationsPromise = Promise.resolve()
+
+        try {
+          if (bookInstance.locations && typeof bookInstance.locations.generate === 'function') {
+            locationsPromise = Promise.resolve(bookInstance.locations.generate(1600))
+          }
+        } catch (exception) {
+          locationsPromise = Promise.resolve()
+        }
+
+        try {
+          registerTocItems(bookInstance.navigation && bookInstance.navigation.toc ? bookInstance.navigation.toc : [])
+        } catch (exception) {}
+
+        return locationsPromise.then(function () {
+          return renditionInstance.display().then(function (location) {
+            updateCurrentLocation(component, location || renditionInstance.currentLocation())
           })
+        })
+      })
+    }
 
-          renditionInstance.on('relocated', function (location) {
-            updateCurrentLocation(component, location)
-          })
+    function init(component) {
+      var container = document.getElementById('epub-reader')
 
-          return bookInstance.ready.then(function () {
-            try {
-              registerTocItems(bookInstance.navigation && bookInstance.navigation.toc ? bookInstance.navigation.toc : [])
-            } catch (exception) {}
+      if (!container || !window.ePub) {
+        component.loading = false
+        component.errorMessage = 'EPUB 뷰어를 불러오지 못했습니다.'
+        return
+      }
 
-            return renditionInstance.display().then(function (location) {
-              updateCurrentLocation(component, location || renditionInstance.currentLocation())
+      console.debug('page/books/[bookId]/read:init', {
+        bookId: bookId,
+        readerUrl: readerUrl,
+        readerCacheKey: readerCacheKey,
+      })
+
+      readerContainer = container
+
+      readCachedBookBuffer()
+        .then(function (cachedBuffer) {
+          if (cachedBuffer) {
+            console.debug('page/books/[bookId]/read:cache-hit', {
+              bookId: bookId,
+              cacheKey: readerCacheKey,
             })
+
+            return touchCachedBookBuffer()
+              .catch(function () {})
+              .then(function () {
+                return cachedBuffer
+              })
+          }
+
+          console.debug('page/books/[bookId]/read:cache-miss', {
+            bookId: bookId,
+            cacheKey: readerCacheKey,
           })
+
+          return fetchBookBuffer().then(function (buffer) {
+            return writeCachedBookBuffer(buffer)
+              .catch(function (exception) {
+                console.warn('page/books/[bookId]/read:cache-write-skipped', {
+                  message: String(exception && exception.message ? exception.message : exception),
+                })
+              })
+              .then(function () {
+                return buffer
+              })
+          })
+        })
+        .then(function (buffer) {
+          return renderBookBuffer(component, buffer)
         })
         .then(function () {
           component.loading = false
@@ -839,11 +1404,146 @@
         })
     }
 
+    function saveCurrentPosition(component) {
+      var progress = getCurrentProgressPayload(component)
+      var formData = new FormData()
+
+      component.showSavePositionMessage('')
+
+      if (!progress.locator && !progress.href) {
+        component.showSavePositionMessage('아직 저장할 읽기 위치를 찾지 못했습니다.')
+        return
+      }
+
+      formData.set('bookId', bookId)
+      formData.set('locator', progress.locator)
+      formData.set('href', progress.href)
+      formData.set('chapterLabel', progress.chapterLabel)
+      formData.set('pageNumber', progress.pageNumber)
+      formData.set('progressPercent', progress.progressPercent)
+
+      component.savingPosition = true
+
+      fetch('/api/books/save-progress', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+      })
+        .then(function (response) {
+          return response
+            .json()
+            .then(function (payload) {
+              return {
+                ok: response.ok,
+                payload: payload || {},
+              }
+            })
+            .catch(function () {
+              return {
+                ok: response.ok,
+                payload: {},
+              }
+            })
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            throw new Error(String(result.payload && result.payload.message ? result.payload.message : '읽던 위치 저장에 실패했습니다.'))
+          }
+
+          component.savingPosition = false
+          component.showSavePositionMessage(String(result.payload && result.payload.message ? result.payload.message : '읽던 위치를 저장했습니다.'))
+        })
+        .catch(function (exception) {
+          component.savingPosition = false
+          component.showSavePositionMessage(String(exception && exception.message ? exception.message : exception))
+          console.error('page/books/[bookId]/read:save-progress:failed', {
+            message: String(exception && exception.message ? exception.message : exception),
+          })
+        })
+    }
+
+    function loadSavedPosition(component) {
+      var formData = new FormData()
+
+      component.showSavePositionMessage('')
+
+      if (!renditionInstance) {
+        component.showSavePositionMessage('리더가 아직 준비되지 않았습니다.')
+        return
+      }
+
+      formData.set('bookId', bookId)
+      component.loadingSavedPosition = true
+
+      fetch('/api/books/load-progress', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+      })
+        .then(function (response) {
+          return response
+            .json()
+            .then(function (payload) {
+              return {
+                ok: response.ok,
+                payload: payload || {},
+              }
+            })
+            .catch(function () {
+              return {
+                ok: response.ok,
+                payload: {},
+              }
+            })
+        })
+        .then(function (result) {
+          var locator = String(result.payload && result.payload.locator ? result.payload.locator : '')
+          var href = String(result.payload && result.payload.href ? result.payload.href : '')
+          var target = locator || href
+
+          if (!result.ok) {
+            throw new Error(String(result.payload && result.payload.message ? result.payload.message : '읽기 위치를 불러오지 못했습니다.'))
+          }
+
+          if (!target) {
+            throw new Error('저장된 읽기 위치가 없습니다.')
+          }
+
+          component.loading = true
+
+          return Promise.resolve(renditionInstance.display(target))
+            .catch(function () {
+              if (locator && href) {
+                return renditionInstance.display(href)
+              }
+
+              throw new Error('저장된 위치로 이동하지 못했습니다.')
+            })
+            .then(function (location) {
+              component.loadingSavedPosition = false
+              component.loading = false
+              component.currentChapterLabel = String(result.payload && result.payload.chapterLabel ? result.payload.chapterLabel : component.currentChapterLabel || '')
+              component.showSavePositionMessage(String(result.payload && result.payload.message ? result.payload.message : '저장된 읽기 위치를 불러왔습니다.'))
+              updateCurrentLocation(component, location || renditionInstance.currentLocation())
+            })
+        })
+        .catch(function (exception) {
+          component.loadingSavedPosition = false
+          component.loading = false
+          component.showSavePositionMessage(String(exception && exception.message ? exception.message : exception))
+          console.error('page/books/[bookId]/read:load-progress:failed', {
+            message: String(exception && exception.message ? exception.message : exception),
+          })
+        })
+    }
+
     return {
       init: init,
       performSearch: performSearch,
       goToSearchResult: goToSearchResult,
       saveHighlight: saveHighlight,
+      saveCurrentPosition: saveCurrentPosition,
+      loadSavedPosition: loadSavedPosition,
     }
   })()
 </script>

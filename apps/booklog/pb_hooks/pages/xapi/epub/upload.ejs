@@ -2,6 +2,8 @@
   const fflate = require('fflate')
   const data4libraryService = resolve('data4library-service')
   const MAX_EPUB_BYTES = 1024 * 1024 * 100
+  const MIN_BOOK_SEARCH_SCORE = 80
+  const MAX_METADATA_PAGE_FALLBACKS = 12
 
   function normalizePreview(input, maxLength) {
     return String(input || '')
@@ -51,9 +53,9 @@
   }
 
   function extractAttribute(tagText, attributeName) {
-    const pattern = new RegExp(attributeName + '="([^"]+)"')
+    const pattern = new RegExp(attributeName + '=(?:"([^"]+)"|\'([^\']+)\')', 'i')
     const match = String(tagText || '').match(pattern)
-    return match ? match[1] : ''
+    return match ? match[1] || match[2] || '' : ''
   }
 
   function decodeXmlText(input) {
@@ -90,9 +92,311 @@
     return matches
   }
 
+  function extractXmlNodes(xmlText, tagName) {
+    const pattern = new RegExp('<(?:\\w+:)?' + tagName + '\\b([^>]*)>([\\s\\S]*?)<\\/(?:\\w+:)?' + tagName + '>', 'gi')
+    const nodes = []
+    let match = null
+
+    while ((match = pattern.exec(String(xmlText || '')))) {
+      nodes.push({
+        attributesText: match[1] || '',
+        value: decodeXmlText(match[2]),
+      })
+    }
+
+    return nodes
+  }
+
   function extractDigits(input) {
     const digits = String(input || '').replace(/\D+/g, '')
     return digits || ''
+  }
+
+  function pushUniqueValue(list, value) {
+    const normalizedValue = String(value || '').trim()
+
+    if (!normalizedValue) {
+      return
+    }
+
+    for (let index = 0; index < list.length; index += 1) {
+      if (list[index] === normalizedValue) {
+        return
+      }
+    }
+
+    list.push(normalizedValue)
+  }
+
+  function addIsbnCandidate(candidates, candidate) {
+    if (!candidate || !candidate.isbn13) {
+      return
+    }
+
+    for (let index = 0; index < candidates.length; index += 1) {
+      if (candidates[index].isbn13 === candidate.isbn13) {
+        return
+      }
+    }
+
+    candidates.push(candidate)
+  }
+
+  function normalizeIsbnScanText(input) {
+    return String(input || '')
+      .replace(/[–—−]/g, '-')
+      .replace(/[（]/g, '(')
+      .replace(/[）]/g, ')')
+  }
+
+  function extractIsbn13Matches(input) {
+    const normalizedInput = normalizeIsbnScanText(input)
+    const pattern = /97[89](?:[\s-]*\d){10}/g
+    const matches = []
+    let match = null
+
+    while ((match = pattern.exec(normalizedInput))) {
+      const isbn13 = extractDigits(match[0]).slice(0, 13)
+
+      if (isbn13.length === 13) {
+        pushUniqueValue(matches, isbn13)
+      }
+    }
+
+    return matches
+  }
+
+  function isLikelyUuidIdentifier(value, attributesText) {
+    const normalizedValue = String(value || '').toLowerCase()
+    const normalizedAttributesText = String(attributesText || '').toLowerCase()
+
+    if (normalizedValue.indexOf('urn:uuid:') !== -1) {
+      return true
+    }
+
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(normalizedValue)) {
+      return true
+    }
+
+    return normalizedAttributesText.indexOf('uuid') !== -1 && normalizedValue.indexOf('urn:isbn:') === -1
+  }
+
+  function isExplicitIsbnIdentifier(attributesText) {
+    return /(?:opf:)?scheme\s*=\s*['"]isbn['"]/i.test(String(attributesText || ''))
+  }
+
+  function extractIdentifierIsbnCandidates(identifierNodes) {
+    const explicitCandidates = []
+    const fallbackCandidates = []
+    const nodes = Array.isArray(identifierNodes) ? identifierNodes : []
+
+    for (let index = 0; index < nodes.length; index += 1) {
+      const identifierNode = nodes[index]
+      const identifierValue = identifierNode && identifierNode.value ? identifierNode.value : ''
+      const attributesText = identifierNode && identifierNode.attributesText ? identifierNode.attributesText : ''
+
+      if (!identifierValue || isLikelyUuidIdentifier(identifierValue, attributesText)) {
+        continue
+      }
+
+      const matches = extractIsbn13Matches(identifierValue)
+
+      for (let matchIndex = 0; matchIndex < matches.length; matchIndex += 1) {
+        const isbn13 = matches[matchIndex]
+        const targetList = isExplicitIsbnIdentifier(attributesText) ? explicitCandidates : fallbackCandidates
+
+        addIsbnCandidate(targetList, {
+          isbn13: isbn13,
+          source: isExplicitIsbnIdentifier(attributesText) ? 'opf-identifier-isbn' : 'opf-identifier-value',
+          entryPath: '',
+          context: normalizePreview(identifierValue, 160),
+        })
+      }
+    }
+
+    return explicitCandidates.concat(fallbackCandidates)
+  }
+
+  function htmlToPlainText(input) {
+    return decodeXmlText(
+      String(input || '')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+    )
+  }
+
+  function buildMetadataEntryPaths(manifestItems, packageDocumentPath, entryNames) {
+    const orderedPaths = []
+    const keywordPaths = []
+    const leadingTextPaths = []
+    const metadataPathPattern = /(rights|copyright|colophon|author|about|credit|imprint|title|cover)/i
+    const manifestList = Array.isArray(manifestItems) ? manifestItems : []
+    const normalizedEntryNames = Array.isArray(entryNames) ? entryNames : []
+
+    for (let index = 0; index < manifestList.length; index += 1) {
+      const manifestItem = manifestList[index]
+
+      if (!manifestItem || !manifestItem.href) {
+        continue
+      }
+
+      if (!(manifestItem.mediaType === 'application/xhtml+xml' || /\.(xhtml|html|htm)$/i.test(manifestItem.href))) {
+        continue
+      }
+
+      const entryPath = joinPath(dirname(packageDocumentPath), manifestItem.href)
+
+      if (metadataPathPattern.test(entryPath)) {
+        pushUniqueValue(keywordPaths, entryPath)
+      } else if (leadingTextPaths.length < MAX_METADATA_PAGE_FALLBACKS) {
+        pushUniqueValue(leadingTextPaths, entryPath)
+      }
+    }
+
+    for (let index = 0; index < normalizedEntryNames.length; index += 1) {
+      const entryName = normalizedEntryNames[index]
+
+      if (!/\.(xhtml|html|htm)$/i.test(entryName) || !metadataPathPattern.test(entryName)) {
+        continue
+      }
+
+      pushUniqueValue(keywordPaths, entryName)
+    }
+
+    for (let index = 0; index < keywordPaths.length; index += 1) {
+      pushUniqueValue(orderedPaths, keywordPaths[index])
+    }
+
+    for (let index = 0; index < leadingTextPaths.length; index += 1) {
+      pushUniqueValue(orderedPaths, leadingTextPaths[index])
+    }
+
+    return orderedPaths
+  }
+
+  function extractPageIsbnCandidates(plainText, entryPath) {
+    const normalizedText = normalizeIsbnScanText(plainText)
+    const pattern = /97[89](?:[\s-]*\d){10}/g
+    const matches = []
+    let match = null
+
+    while ((match = pattern.exec(normalizedText))) {
+      const isbn13 = extractDigits(match[0]).slice(0, 13)
+
+      if (isbn13.length !== 13) {
+        continue
+      }
+
+      const contextStart = Math.max(0, match.index - 48)
+      const contextEnd = Math.min(normalizedText.length, pattern.lastIndex + 48)
+      const context = normalizedText.slice(contextStart, contextEnd)
+      let score = 0
+
+      if (/isbn/i.test(context)) {
+        score += 10
+      }
+
+      if (/전자책|ebook|e-book/i.test(context)) {
+        score += 20
+      }
+
+      if (/종이책|paper/i.test(context)) {
+        score -= 5
+      }
+
+      matches.push({
+        isbn13: isbn13,
+        source: 'metadata-page',
+        entryPath: entryPath,
+        context: normalizePreview(context, 160),
+        score: score,
+      })
+    }
+
+    matches.sort(function (left, right) {
+      return right.score - left.score
+    })
+
+    return matches
+  }
+
+  function collectEpubIsbnCandidates(epubMetadata, archiveEntries, manifestItems, packageDocumentPath, entryNames) {
+    const candidates = []
+    const identifierCandidates = extractIdentifierIsbnCandidates(epubMetadata.identifierNodes)
+    const metadataEntryPaths = buildMetadataEntryPaths(manifestItems, packageDocumentPath, entryNames)
+
+    for (let index = 0; index < identifierCandidates.length; index += 1) {
+      addIsbnCandidate(candidates, identifierCandidates[index])
+    }
+
+    for (let index = 0; index < metadataEntryPaths.length; index += 1) {
+      const entryPath = metadataEntryPaths[index]
+      const plainText = htmlToPlainText(readArchiveText(archiveEntries, entryPath))
+      const pageCandidates = extractPageIsbnCandidates(plainText, entryPath)
+
+      for (let candidateIndex = 0; candidateIndex < pageCandidates.length; candidateIndex += 1) {
+        addIsbnCandidate(candidates, pageCandidates[candidateIndex])
+      }
+    }
+
+    return candidates
+  }
+
+  function extractPrimaryAuthorName(authorText) {
+    let normalizedAuthor = String(authorText || '').trim()
+
+    if (!normalizedAuthor) {
+      return ''
+    }
+
+    normalizedAuthor = normalizedAuthor.replace(/[|│/]/g, '|')
+
+    if (normalizedAuthor.indexOf('|') !== -1) {
+      normalizedAuthor = normalizedAuthor.split('|')[0]
+    }
+
+    const translatorRoleMatch = normalizedAuthor.match(/옮긴이|옮김|역자|그림|감수/i)
+
+    if (translatorRoleMatch) {
+      normalizedAuthor = normalizedAuthor.slice(0, translatorRoleMatch.index)
+    }
+
+    normalizedAuthor = normalizedAuthor
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/(?:지은이|지음|글쓴이|글|저자)\s*[·:|-]?\s*/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    return normalizedAuthor
+  }
+
+  function stripFileExtension(fileName) {
+    return String(fileName || '').replace(/\.[^.]+$/, '')
+  }
+
+  function parseFilenameMetadata(fileName) {
+    let normalizedName = stripFileExtension(fileName).trim()
+    const sourceSuffixPattern = /\s*\((?:[^)]*(?:z-library|z-lib|1lib)[^)]*)\)\s*$/i
+
+    while (sourceSuffixPattern.test(normalizedName)) {
+      normalizedName = normalizedName.replace(sourceSuffixPattern, '').trim()
+    }
+
+    const authorMatch = normalizedName.match(/^(.*)\s+\(([^()]+)\)$/)
+
+    if (!authorMatch) {
+      return {
+        title: normalizedName,
+        author: '',
+      }
+    }
+
+    return {
+      title: String(authorMatch[1] || '').trim(),
+      author: String(authorMatch[2] || '').trim(),
+    }
   }
 
   function normalizeMatchText(input) {
@@ -146,19 +450,30 @@
 
   function parseEpubMetadata(packageDocumentXml) {
     const versionMatch = String(packageDocumentXml || '').match(/<package\b[^>]*version="([^"]+)"/i)
-    const identifiers = extractXmlTexts(packageDocumentXml, 'identifier')
+    const identifierNodes = extractXmlNodes(packageDocumentXml, 'identifier')
+    const identifiers = []
     const title = extractXmlText(packageDocumentXml, 'title')
-    const author = extractXmlText(packageDocumentXml, 'creator')
+    const creatorNodes = extractXmlNodes(packageDocumentXml, 'creator')
+    const author = creatorNodes.length > 0 ? creatorNodes[0].value : ''
     const languageCode = extractXmlText(packageDocumentXml, 'language')
+    const identifierCandidates = extractIdentifierIsbnCandidates(identifierNodes)
+
+    for (let index = 0; index < identifierNodes.length; index += 1) {
+      if (identifierNodes[index].value) {
+        identifiers.push(identifierNodes[index].value)
+      }
+    }
+
     const identifierValue = identifiers.length > 0 ? identifiers[0] : ''
-    const isbn13 = identifiers.length > 0 ? extractDigits(identifiers.join(' ')).slice(0, 13) : ''
 
     return {
       title: title,
       author: author,
       languageCode: languageCode,
       identifierValue: identifierValue,
-      isbn13: isbn13.length === 13 ? isbn13 : '',
+      identifiers: identifiers,
+      identifierNodes: identifierNodes,
+      isbn13: identifierCandidates.length > 0 ? identifierCandidates[0].isbn13 : '',
       epubVersion: versionMatch ? versionMatch[1] : '',
     }
   }
@@ -179,25 +494,74 @@
     return segments.join(' ')
   }
 
-  function collectCandidateSearchKeywords(title, author) {
-    const candidates = []
+  function addSearchProfile(profiles, title, author, source) {
     const normalizedTitle = String(title || '').trim()
     const normalizedAuthor = String(author || '').trim()
     const combinedKeyword = buildSearchKeyword(normalizedTitle, normalizedAuthor)
 
     if (combinedKeyword) {
-      candidates.push(combinedKeyword)
+      pushUniqueSearchProfile(profiles, {
+        keyword: combinedKeyword,
+        title: normalizedTitle,
+        author: normalizedAuthor,
+        source: source + ':combined',
+      })
     }
 
-    if (normalizedTitle && normalizedTitle !== combinedKeyword) {
-      candidates.push(normalizedTitle)
+    if (normalizedTitle) {
+      pushUniqueSearchProfile(profiles, {
+        keyword: normalizedTitle,
+        title: normalizedTitle,
+        author: normalizedAuthor,
+        source: source + ':title',
+      })
     }
 
-    if (normalizedAuthor && normalizedAuthor !== combinedKeyword) {
-      candidates.push(normalizedAuthor)
+    if (normalizedAuthor) {
+      pushUniqueSearchProfile(profiles, {
+        keyword: normalizedAuthor,
+        title: normalizedTitle,
+        author: normalizedAuthor,
+        source: source + ':author',
+      })
+    }
+  }
+
+  function pushUniqueSearchProfile(profiles, profile) {
+    if (!profile || !profile.keyword) {
+      return
     }
 
-    return candidates
+    for (let index = 0; index < profiles.length; index += 1) {
+      if (profiles[index].keyword === profile.keyword) {
+        return
+      }
+    }
+
+    profiles.push(profile)
+  }
+
+  function collectSearchProfiles(epubMetadata, originalName) {
+    const profiles = []
+    const filenameMetadata = parseFilenameMetadata(originalName)
+    const primaryAuthor = extractPrimaryAuthorName(epubMetadata.author)
+    const filePrimaryAuthor = extractPrimaryAuthorName(filenameMetadata.author)
+
+    addSearchProfile(profiles, epubMetadata.title, primaryAuthor || epubMetadata.author, 'epub')
+
+    if (epubMetadata.author && primaryAuthor && epubMetadata.author !== primaryAuthor) {
+      addSearchProfile(profiles, epubMetadata.title, epubMetadata.author, 'epub-raw-author')
+    }
+
+    if (
+      filenameMetadata.title &&
+      (filenameMetadata.title !== String(epubMetadata.title || '').trim() ||
+        filePrimaryAuthor !== (primaryAuthor || String(epubMetadata.author || '').trim()))
+    ) {
+      addSearchProfile(profiles, filenameMetadata.title, filePrimaryAuthor || filenameMetadata.author, 'filename')
+    }
+
+    return profiles
   }
 
   function scoreSearchDoc(doc, epubMetadata) {
@@ -251,7 +615,10 @@
       }
     }
 
-    return bestDoc
+    return {
+      bestDoc: bestDoc,
+      bestScore: bestScore,
+    }
   }
 
   function loadBookDetailByIsbn13(isbn13) {
@@ -288,28 +655,48 @@
     }
   }
 
-  function findBestBookSearchResult(epubMetadata) {
-    const detailByIsbn13 = loadBookDetailByIsbn13(epubMetadata.isbn13)
+  function loadBookDetailByIsbnCandidates(isbnCandidates) {
+    const candidates = Array.isArray(isbnCandidates) ? isbnCandidates : []
 
-    if (detailByIsbn13 && detailByIsbn13.book) {
-      return {
-        searchKeyword: '',
-        searchResult: null,
-        selectedDoc: detailByIsbn13.book,
-        detailResult: detailByIsbn13,
-        matchedBy: 'isbn13',
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidate = candidates[index]
+      const detailResult = loadBookDetailByIsbn13(candidate.isbn13)
+
+      dbg('xapi/epub/upload:isbn-candidate-result', {
+        isbn13: candidate.isbn13,
+        source: candidate.source,
+        entryPath: candidate.entryPath || '',
+        found: !!(detailResult && detailResult.book),
+      })
+
+      if (detailResult && detailResult.book) {
+        return {
+          detailResult: detailResult,
+          matchedCandidate: candidate,
+        }
       }
     }
 
-    const keywords = collectCandidateSearchKeywords(epubMetadata.title, epubMetadata.author)
+    return {
+      detailResult: null,
+      matchedCandidate: null,
+    }
+  }
+
+  function findBestBookSearchResult(epubMetadata, originalName) {
+    const profiles = collectSearchProfiles(epubMetadata, originalName)
     let selectedDoc = null
     let selectedSearchKeyword = ''
     let selectedSearchResult = null
+    let selectedSearchScore = -1
+    let matchedSource = ''
 
-    for (let index = 0; index < keywords.length; index += 1) {
-      const keyword = keywords[index]
+    for (let index = 0; index < profiles.length; index += 1) {
+      const profile = profiles[index]
+      const keyword = profile.keyword
       dbg('xapi/epub/upload:search-attempt', {
         keyword: keyword,
+        source: profile.source,
       })
       const searchResult = data4libraryService.searchBooks(
         { apiKey: env('DATA4LIBRARY_APIKEY') },
@@ -319,20 +706,28 @@
           pageSize: 10,
         }
       )
-      const bestDoc = chooseBestSearchDoc(searchResult.docs, epubMetadata)
+      const bestMatch = chooseBestSearchDoc(searchResult.docs, {
+        title: profile.title,
+        author: profile.author,
+        isbn13: '',
+      })
 
       dbg('xapi/epub/upload:search-result', {
         keyword: keyword,
+        source: profile.source,
         numFound: searchResult.numFound,
         docsCount: Array.isArray(searchResult.docs) ? searchResult.docs.length : 0,
-        matchedIsbn13: bestDoc && bestDoc.isbn13 ? String(bestDoc.isbn13) : '',
-        matchedBookname: bestDoc && bestDoc.bookname ? String(bestDoc.bookname) : '',
+        bestScore: bestMatch.bestScore,
+        matchedIsbn13: bestMatch.bestDoc && bestMatch.bestDoc.isbn13 ? String(bestMatch.bestDoc.isbn13) : '',
+        matchedBookname: bestMatch.bestDoc && bestMatch.bestDoc.bookname ? String(bestMatch.bestDoc.bookname) : '',
       })
 
-      if (bestDoc) {
-        selectedDoc = bestDoc
+      if (bestMatch.bestDoc && bestMatch.bestScore >= MIN_BOOK_SEARCH_SCORE) {
+        selectedDoc = bestMatch.bestDoc
         selectedSearchKeyword = keyword
         selectedSearchResult = searchResult
+        selectedSearchScore = bestMatch.bestScore
+        matchedSource = profile.source
         break
       }
     }
@@ -342,7 +737,53 @@
       searchResult: selectedSearchResult,
       selectedDoc: selectedDoc,
       detailResult: null,
+      matchedSource: matchedSource,
+      matchedScore: selectedSearchScore,
       matchedBy: selectedDoc ? 'keyword' : '',
+    }
+  }
+
+  function resolveBookLookup(epubMetadata, archiveEntries, manifestItems, packageDocumentPath, entryNames, originalName) {
+    const isbnCandidates = collectEpubIsbnCandidates(epubMetadata, archiveEntries, manifestItems, packageDocumentPath, entryNames)
+
+    dbg('xapi/epub/upload:isbn-candidates', {
+      count: isbnCandidates.length,
+      items: isbnCandidates.map(function (candidate) {
+        return {
+          isbn13: candidate.isbn13,
+          source: candidate.source,
+          entryPath: candidate.entryPath || '',
+          context: candidate.context || '',
+        }
+      }),
+    })
+
+    const detailLookup = loadBookDetailByIsbnCandidates(isbnCandidates)
+
+    if (detailLookup.detailResult && detailLookup.detailResult.book) {
+      return {
+        searchKeyword: '',
+        searchResult: null,
+        selectedDoc: detailLookup.detailResult.book,
+        detailResult: detailLookup.detailResult,
+        matchedBy: 'isbn13',
+        matchedSource: detailLookup.matchedCandidate ? detailLookup.matchedCandidate.source : '',
+        matchedScore: 0,
+        matchedIsbn13: detailLookup.matchedCandidate ? detailLookup.matchedCandidate.isbn13 : '',
+      }
+    }
+
+    const searchLookup = findBestBookSearchResult(epubMetadata, originalName)
+
+    return {
+      searchKeyword: searchLookup.searchKeyword,
+      searchResult: searchLookup.searchResult,
+      selectedDoc: searchLookup.selectedDoc,
+      detailResult: searchLookup.detailResult,
+      matchedBy: searchLookup.matchedBy,
+      matchedSource: searchLookup.matchedSource || '',
+      matchedScore: searchLookup.matchedScore,
+      matchedIsbn13: searchLookup.selectedDoc && searchLookup.selectedDoc.isbn13 ? String(searchLookup.selectedDoc.isbn13) : '',
     }
   }
 
@@ -593,6 +1034,13 @@
     const packageDocumentXml = readArchiveText(archiveEntries, packageDocumentPath)
     const manifestItems = parseManifestItems(packageDocumentXml)
     const epubMetadata = parseEpubMetadata(packageDocumentXml)
+    const filenameMetadata = parseFilenameMetadata(epubFile.originalName || epubFile.name)
+    const fallbackTitle = epubMetadata.title || filenameMetadata.title || stripFileExtension(epubFile.originalName || epubFile.name)
+    const fallbackAuthor =
+      extractPrimaryAuthorName(epubMetadata.author) ||
+      extractPrimaryAuthorName(filenameMetadata.author) ||
+      epubMetadata.author ||
+      filenameMetadata.author
     dbg('xapi/epub/upload:epub-metadata', {
       title: epubMetadata.title,
       author: epubMetadata.author,
@@ -637,18 +1085,33 @@
     let searchResult = null
     let selectedDoc = null
     let detailResult = null
+    let matchedBy = ''
+    let matchedSource = ''
+    let matchedIsbn13 = ''
 
-    if (epubMetadata.title || epubMetadata.author) {
-      const bestSearchResult = findBestBookSearchResult(epubMetadata)
-      searchKeyword = bestSearchResult.searchKeyword
-      searchResult = bestSearchResult.searchResult
-      selectedDoc = bestSearchResult.selectedDoc
-      detailResult = bestSearchResult.detailResult || null
+    if (epubMetadata.title || epubMetadata.author || filenameMetadata.title || filenameMetadata.author) {
+      const lookupResult = resolveBookLookup(
+        epubMetadata,
+        archiveEntries,
+        manifestItems,
+        packageDocumentPath,
+        entryNames,
+        epubFile.originalName || epubFile.name
+      )
+      searchKeyword = lookupResult.searchKeyword
+      searchResult = lookupResult.searchResult
+      selectedDoc = lookupResult.selectedDoc
+      detailResult = lookupResult.detailResult || null
+      matchedBy = lookupResult.matchedBy || ''
+      matchedSource = lookupResult.matchedSource || ''
+      matchedIsbn13 = lookupResult.matchedIsbn13 || ''
 
       dbg('xapi/epub/upload:search-selection', {
         searchKeyword: searchKeyword,
         hasSearchResult: !!searchResult,
-        matchedBy: bestSearchResult.matchedBy || '',
+        matchedBy: matchedBy,
+        matchedSource: matchedSource,
+        matchedIsbn13: matchedIsbn13,
         selectedIsbn13: selectedDoc && selectedDoc.isbn13 ? String(selectedDoc.isbn13) : '',
         selectedBookname: selectedDoc && selectedDoc.bookname ? String(selectedDoc.bookname) : '',
       })
@@ -658,27 +1121,23 @@
       dbg('xapi/epub/upload:detail-request', {
         isbn13: String(selectedDoc.isbn13),
       })
-      detailResult = data4libraryService.getBookDetail(
-        { apiKey: env('DATA4LIBRARY_APIKEY') },
-        {
-          isbn13: String(selectedDoc.isbn13),
-          loaninfoYN: 'Y',
-        }
-      )
+      detailResult = loadBookDetailByIsbn13(String(selectedDoc.isbn13))
     }
 
     const detailBook = detailResult && detailResult.book ? detailResult.book : null
+    const matchedBook = detailBook || selectedDoc || null
+    const resolvedIsbn13 = detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
     const bookRecord = saveBookRecord({
-      title: detailBook && detailBook.bookname ? detailBook.bookname : epubMetadata.title || epubFile.originalName,
-      author: detailBook && detailBook.authors ? detailBook.authors : epubMetadata.author,
-      publisher: detailBook && detailBook.publisher ? detailBook.publisher : '',
-      publicationDate: detailBook ? parsePublicationDate(detailBook.publication_date) : '',
-      publicationYear: detailBook && detailBook.publication_year ? String(detailBook.publication_year) : '',
-      classNo: detailBook && detailBook.class_no ? String(detailBook.class_no) : '',
-      isbn: detailBook && detailBook.isbn ? String(detailBook.isbn) : '',
-      isbn13: detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : epubMetadata.isbn13,
-      bookImageUrl: detailBook && detailBook.bookImageURL ? detailBook.bookImageURL : '',
-      description: detailBook && detailBook.description ? detailBook.description : '',
+      title: matchedBook && matchedBook.bookname ? matchedBook.bookname : fallbackTitle,
+      author: matchedBook && matchedBook.authors ? matchedBook.authors : fallbackAuthor,
+      publisher: matchedBook && matchedBook.publisher ? matchedBook.publisher : '',
+      publicationDate: matchedBook ? parsePublicationDate(matchedBook.publication_date) : '',
+      publicationYear: matchedBook && matchedBook.publication_year ? String(matchedBook.publication_year) : '',
+      classNo: matchedBook && matchedBook.class_no ? String(matchedBook.class_no) : '',
+      isbn: matchedBook && matchedBook.isbn ? String(matchedBook.isbn) : '',
+      isbn13: resolvedIsbn13,
+      bookImageUrl: matchedBook && matchedBook.bookImageURL ? matchedBook.bookImageURL : '',
+      description: matchedBook && matchedBook.description ? matchedBook.description : '',
       metadataJson: detailResult ? detailResult.raw : null,
     })
     const existingBookFile = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
@@ -728,7 +1187,9 @@
       epubTitle: epubMetadata.title,
       epubAuthor: epubMetadata.author,
       searchKeyword: searchKeyword,
-      selectedIsbn13: detailBook && detailBook.isbn13 ? detailBook.isbn13 : '',
+      matchedBy: matchedBy,
+      matchedSource: matchedSource,
+      selectedIsbn13: resolvedIsbn13,
     })
 
     dbg('xapi/epub/upload:redirect', {

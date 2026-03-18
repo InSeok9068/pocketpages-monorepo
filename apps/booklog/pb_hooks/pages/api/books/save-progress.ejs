@@ -1,0 +1,122 @@
+<script server>
+  if (request.method !== 'POST') {
+    response.json(405, {
+      ok: false,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    response.json(401, {
+      ok: false,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const locator = String(form.locator || '').trim()
+  const href = String(form.href || '').trim()
+  const chapterLabel = String(form.chapterLabel || '').trim()
+  const pageNumberRaw = String(form.pageNumber || '').trim()
+  const progressPercentRaw = String(form.progressPercent || '').trim()
+  const pageNumber = pageNumberRaw ? Number(pageNumberRaw) : null
+  const progressPercent = progressPercentRaw ? Number(progressPercentRaw) : null
+
+  dbg('api/books/save-progress:start', {
+    userId: userId,
+    bookId: bookId,
+    hasLocator: !!locator,
+    hasHref: !!href,
+  })
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+    if (!locator && !href) throw new Error('저장할 읽기 위치가 없습니다.')
+
+    const bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
+    let shelfRecord = null
+    let bookFileRecord = null
+    let collection = null
+
+    try {
+      shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+        userId: userId,
+        bookId: bookId,
+      })
+    } catch (exception) {
+      shelfRecord = null
+    }
+
+    if (!shelfRecord) {
+      collection = $app.findCollectionByNameOrId('book_shelves')
+      shelfRecord = new Record(collection)
+      shelfRecord.set('user_id', userId)
+      shelfRecord.set('book_id', String(bookRecord.get('id') || ''))
+      shelfRecord.set('status', 'reading')
+
+      try {
+        bookFileRecord = $app.findFirstRecordByFilter('book_files', 'book_id = {:bookId}', { bookId: bookId })
+      } catch (exception) {
+        bookFileRecord = null
+      }
+
+      if (bookFileRecord) {
+        shelfRecord.set('book_file_id', String(bookFileRecord.get('id') || ''))
+      }
+    }
+
+    if (String(shelfRecord.get('status') || '') !== 'reading') {
+      shelfRecord.set('status', 'reading')
+    }
+
+    if (!String(shelfRecord.get('started_at') || '').trim()) {
+      shelfRecord.set('started_at', new Date().toISOString().slice(0, 10))
+    }
+
+    shelfRecord.set('current_locator', locator)
+    shelfRecord.set('current_href', href)
+    shelfRecord.set('current_label', chapterLabel)
+    shelfRecord.set('last_read_at', new Date().toISOString().slice(0, 10))
+
+    if (pageNumber !== null && !isNaN(pageNumber)) {
+      shelfRecord.set('current_page', pageNumber)
+    }
+
+    if (progressPercent !== null && !isNaN(progressPercent)) {
+      shelfRecord.set('progress_percent', progressPercent)
+    }
+
+    $app.save(shelfRecord)
+
+    info('api/books/save-progress:done', {
+      userId: userId,
+      bookId: bookId,
+      shelfId: String(shelfRecord.get('id') || ''),
+      hasLocator: !!String(shelfRecord.get('current_locator') || ''),
+    })
+
+    response.json(200, {
+      ok: true,
+      message: '읽던 위치를 저장했습니다.',
+      id: String(shelfRecord.get('id') || ''),
+    })
+    return
+  } catch (exception) {
+    const errorMessage = String(exception.message || exception)
+
+    error('api/books/save-progress:failed', {
+      userId: userId,
+      bookId: bookId,
+      error: errorMessage,
+    })
+
+    response.json(400, {
+      ok: false,
+      message: errorMessage || '읽던 위치 저장에 실패했습니다.',
+    })
+  }
+</script>

@@ -1039,9 +1039,7 @@
         "id": "file1101001001",
         "maxSelect": 1,
         "maxSize": 104857600,
-        "mimeTypes": [
-          "application/epub+zip"
-        ],
+        "mimeTypes": [],
         "name": "stored_file",
         "presentable": false,
         "protected": true,

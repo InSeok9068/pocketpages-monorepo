@@ -1,0 +1,106 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/books/remove-from-shelf:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/books/remove-from-shelf:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const bookDetailPath = '/books/' + bookId
+  let errorMessage = ''
+
+  dbg('xapi/books/remove-from-shelf:start', {
+    userId: userId,
+    bookId: bookId,
+  })
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+
+    let shelfRecord = null
+
+    try {
+      shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+        userId: userId,
+        bookId: bookId,
+      })
+    } catch (exception) {
+      shelfRecord = null
+    }
+
+    if (!shelfRecord) {
+      throw new Error('이미 내 도서함에서 제거된 책입니다.')
+    }
+
+    const reviewRecords = $app.findRecordsByFilter('book_reviews', 'user_id = {:userId} && book_id = {:bookId}', '-updated', 20, 0, {
+      userId: userId,
+      bookId: bookId,
+    })
+    const highlightRecords = $app.findRecordsByFilter('book_highlights', 'user_id = {:userId} && book_id = {:bookId}', '-updated', 200, 0, {
+      userId: userId,
+      bookId: bookId,
+    })
+
+    for (let index = 0; index < reviewRecords.length; index += 1) {
+      $app.delete(reviewRecords[index])
+    }
+
+    for (let index = 0; index < highlightRecords.length; index += 1) {
+      $app.delete(highlightRecords[index])
+    }
+
+    $app.delete(shelfRecord)
+
+    dbg('xapi/books/remove-from-shelf:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '내 도서함에서 책을 제거했습니다.',
+      removedReviewCount: reviewRecords.length,
+      removedHighlightCount: highlightRecords.length,
+    })
+    redirect('/', {
+      status: 303,
+      message: '내 도서함에서 책을 제거했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/books/remove-from-shelf:failed', {
+      userId: userId,
+      bookId: bookId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/books/remove-from-shelf:redirect', {
+    status: 303,
+    redirectTo: bookId ? bookDetailPath : '/',
+    error: errorMessage || '책 제거에 실패했습니다.',
+  })
+  redirect(bookId ? bookDetailPath : '/', {
+    status: 303,
+    message: errorMessage || '책 제거에 실패했습니다.',
+  })
+</script>

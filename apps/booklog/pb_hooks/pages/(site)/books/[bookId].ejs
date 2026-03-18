@@ -166,7 +166,24 @@
   </section>
   <% } %>
 
-  <section class="rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.94),rgba(245,236,222,0.96))] p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+  <section class="relative rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.94),rgba(245,236,222,0.96))] p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+    <% if (shelfRecord) { %>
+    <form
+      method="post"
+      action="/xapi/books/remove-from-shelf"
+      class="absolute right-5 top-5 z-10 m-0"
+      onsubmit="return window.confirm('이 책을 내 도서함에서 제거할까요? 감상평과 저장한 문구도 함께 정리됩니다.')">
+      <input
+        type="hidden"
+        name="bookId"
+        value="<%= bookId %>" />
+      <button
+        type="submit"
+        class="inline-flex items-center rounded-full border-none bg-[#efe2d2] px-3.5 py-2 text-[12px] font-medium text-[#8e5521] shadow-[0_10px_22px_rgba(132,90,47,0.10)] outline-none ring-0 transition hover:bg-[#ead9c4]">
+        내 도서함에서 제거
+      </button>
+    </form>
+    <% } %>
     <div class="flex flex-col gap-5 sm:flex-row sm:items-start">
       <div class="w-40 shrink-0">
         <% if (bookImageUrl) { %>
