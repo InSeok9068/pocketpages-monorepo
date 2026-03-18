@@ -45,7 +45,7 @@
   }
 
   if (isSignedIn) {
-    const shelfRecords = $app.findRecordsByFilter('book_shelves', 'user_id = {:userId}', '-last_read_at,-updated', 50, 0, { userId: request.auth.get('id') })
+    const shelfRecords = $app.findRecordsByFilter('book_shelves', 'user_id = {:userId}', '-status,-updated,-last_read_at', 50, 0, { userId: request.auth.get('id') })
     const loadedShelfBooks = []
 
     for (let index = 0; index < shelfRecords.length; index += 1) {

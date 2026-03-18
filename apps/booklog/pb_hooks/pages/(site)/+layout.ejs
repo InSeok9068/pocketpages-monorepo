@@ -22,6 +22,10 @@
       property="og:url"
       content="<%= meta('path') ? meta('path') : meta('url') || request.url %>" />
     <link
+      rel="icon"
+      type="image/svg+xml"
+      href="<%= asset('/assets/favicon.svg') %>" />
+    <link
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
     <style>
@@ -85,14 +89,20 @@
           x-show="open"
           x-transition.opacity.scale.origin.top.right
           class="bg-white/92 absolute right-0 top-14 z-20 min-w-40 rounded-2xl border-none p-2 shadow-[0_18px_40px_rgba(70,52,31,0.10)] backdrop-blur-sm">
+          <a
+            href="https://ko.1lib.sk/"
+            target="_blank"
+            rel="noreferrer noopener"
+            class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline outline-none ring-0 transition hover:bg-stone-100/80">
+            EPUB 도서관
+          </a>
           <form
             method="post"
             action="/xapi/auth/sign-out">
             <button
-              class="flex w-full items-center justify-between rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 outline-none ring-0 transition hover:bg-stone-100/80"
+              class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 outline-none ring-0 transition hover:bg-stone-100/80"
               type="submit">
-              <span>로그아웃</span>
-              <span class="text-stone-400">↗</span>
+              로그아웃
             </button>
           </form>
         </div>
