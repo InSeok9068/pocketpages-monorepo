@@ -28,6 +28,7 @@
   const form = body()
   const userId = String(request.auth.get('id') || '')
   const bookId = String(form.bookId || '').trim()
+  const bookDetailPath = '/books/' + bookId
   const status = String(form.status || '').trim()
   const today = new Date().toISOString().slice(0, 10)
   let errorMessage = ''
@@ -87,10 +88,10 @@
 
     dbg('xapi/books/update-status:redirect', {
       status: 303,
-      redirectTo: '/books/' + bookId,
+      redirectTo: bookDetailPath,
       flash: status === 'finished' ? '다 읽음으로 표시했습니다.' : '읽는 중으로 표시했습니다.',
     })
-    redirect('/books/' + bookId, {
+    redirect(bookDetailPath, {
       status: 303,
       message: status === 'finished' ? '다 읽음으로 표시했습니다.' : '읽는 중으로 표시했습니다.',
     })
@@ -107,10 +108,10 @@
 
   dbg('xapi/books/update-status:redirect', {
     status: 303,
-    redirectTo: bookId ? '/books/' + bookId : '/',
+    redirectTo: bookId ? bookDetailPath : '/',
     error: errorMessage || '상태 변경에 실패했습니다.',
   })
-  redirect(bookId ? '/books/' + bookId : '/', {
+  redirect(bookId ? bookDetailPath : '/', {
     status: 303,
     message: errorMessage || '상태 변경에 실패했습니다.',
   })

@@ -64,6 +64,13 @@
     return
   }
 
+  const title = String(bookRecord.get('title') || '제목 없음')
+  const author = String(bookRecord.get('author') || '').trim()
+  const publicationDate = String(bookRecord.get('publication_date') || '').trim()
+  const publicationYear = String(bookRecord.get('publication_year') || '').trim()
+  const publisher = String(bookRecord.get('publisher') || '').trim()
+  const bookImageUrl = String(bookRecord.get('book_image_url') || '').trim()
+
   try {
     shelfRecord = $app.findFirstRecordByFilter(
       'book_shelves',
@@ -76,6 +83,9 @@
   } catch (exception) {
     shelfRecord = null
   }
+
+  const shelfStatus = shelfRecord ? String(shelfRecord.get('status') || 'queued') : 'queued'
+  const shelfBookFileId = shelfRecord ? String(shelfRecord.get('book_file_id') || '').trim() : ''
 
   try {
     reviewRecord = $app.findFirstRecordByFilter(
@@ -90,13 +100,15 @@
     reviewRecord = null
   }
 
-  if (shelfRecord && String(shelfRecord.get('book_file_id') || '').trim()) {
+  const reviewText = reviewRecord ? String(reviewRecord.get('review_text') || '') : ''
+
+  if (shelfBookFileId) {
     try {
       bookFileRecord = $app.findFirstRecordByFilter(
         'book_files',
         'id = {:bookFileId}',
         {
-          bookFileId: String(shelfRecord.get('book_file_id') || ''),
+          bookFileId: shelfBookFileId,
         },
       )
     } catch (exception) {
@@ -116,6 +128,11 @@
     }
   }
 
+  const storedFileName = bookFileRecord ? String(bookFileRecord.get('stored_file') || '').trim() : ''
+  const bookFileUrl = bookFileRecord && storedFileName
+    ? '/api/files/' + encodeURIComponent(String(bookFileRecord.collection().name || 'book_files')) + '/' + encodeURIComponent(String(bookFileRecord.get('id') || '')) + '/' + encodeURIComponent(storedFileName)
+    : ''
+
   try {
     highlightRecords = $app.findRecordsByFilter(
       'book_highlights',
@@ -131,19 +148,6 @@
   } catch (exception) {
     highlightRecords = []
   }
-
-  const title = String(bookRecord.get('title') || '제목 없음')
-  const author = String(bookRecord.get('author') || '').trim()
-  const publicationDate = String(bookRecord.get('publication_date') || '').trim()
-  const publicationYear = String(bookRecord.get('publication_year') || '').trim()
-  const publisher = String(bookRecord.get('publisher') || '').trim()
-  const bookImageUrl = String(bookRecord.get('book_image_url') || '').trim()
-  const shelfStatus = shelfRecord ? String(shelfRecord.get('status') || 'queued') : 'queued'
-  const reviewText = reviewRecord ? String(reviewRecord.get('review_text') || '') : ''
-  const storedFileName = bookFileRecord ? String(bookFileRecord.get('stored_file') || '').trim() : ''
-  const bookFileUrl = bookFileRecord && storedFileName
-    ? '/api/files/' + encodeURIComponent(String(bookFileRecord.collection().name || 'book_files')) + '/' + encodeURIComponent(String(bookFileRecord.get('id') || '')) + '/' + encodeURIComponent(storedFileName)
-    : ''
 
   let bookMetaText = publicationDate
 

@@ -54,6 +54,10 @@
     return
   }
 
+  const title = String(bookRecord.get('title') || '제목 없음')
+  const author = String(bookRecord.get('author') || '').trim()
+  const bookDetailPath = '/books/' + bookId
+
   try {
     shelfRecord = $app.findFirstRecordByFilter(
       'book_shelves',
@@ -67,13 +71,28 @@
     shelfRecord = null
   }
 
-  if (shelfRecord && String(shelfRecord.get('book_file_id') || '').trim()) {
+  if (shelfRecord) {
+    if (String(shelfRecord.get('status') || '') !== 'reading') {
+      shelfRecord.set('status', 'reading')
+    }
+
+    if (!String(shelfRecord.get('started_at') || '').trim()) {
+      shelfRecord.set('started_at', new Date().toISOString().slice(0, 10))
+    }
+
+    shelfRecord.set('last_read_at', new Date().toISOString().slice(0, 10))
+    $app.save(shelfRecord)
+  }
+
+  const shelfBookFileId = shelfRecord ? String(shelfRecord.get('book_file_id') || '').trim() : ''
+
+  if (shelfBookFileId) {
     try {
       bookFileRecord = $app.findFirstRecordByFilter(
         'book_files',
         'id = {:bookFileId}',
         {
-          bookFileId: String(shelfRecord.get('book_file_id') || ''),
+          bookFileId: shelfBookFileId,
         },
       )
     } catch (exception) {
@@ -93,8 +112,6 @@
     }
   }
 
-  const title = String(bookRecord.get('title') || '제목 없음')
-  const author = String(bookRecord.get('author') || '').trim()
   const storedFileName = bookFileRecord ? String(bookFileRecord.get('stored_file') || '').trim() : ''
   const epubReaderUrl = bookFileRecord && storedFileName
     ? '/xapi/books/' + encodeURIComponent(bookId) + '/read-file'
@@ -103,28 +120,15 @@
   if (!epubReaderUrl) {
     dbg('page/books/[bookId]/read:redirect', {
       status: 303,
-      redirectTo: '/books/' + bookId,
+      redirectTo: bookDetailPath,
       flash: 'EPUB 파일을 찾을 수 없습니다.',
       bookId: bookId,
     })
-    redirect('/books/' + bookId, {
+    redirect(bookDetailPath, {
       status: 303,
       message: 'EPUB 파일을 찾을 수 없습니다.',
     })
     return
-  }
-
-  if (shelfRecord) {
-    if (String(shelfRecord.get('status') || '') !== 'reading') {
-      shelfRecord.set('status', 'reading')
-    }
-
-    if (!String(shelfRecord.get('started_at') || '').trim()) {
-      shelfRecord.set('started_at', new Date().toISOString().slice(0, 10))
-    }
-
-    shelfRecord.set('last_read_at', new Date().toISOString().slice(0, 10))
-    $app.save(shelfRecord)
   }
 </script>
 

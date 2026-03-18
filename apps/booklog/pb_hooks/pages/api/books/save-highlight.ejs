@@ -56,13 +56,15 @@
       shelfRecord = null
     }
 
-    if (shelfRecord && String(shelfRecord.get('book_file_id') || '').trim()) {
+    const shelfBookFileId = shelfRecord ? String(shelfRecord.get('book_file_id') || '').trim() : ''
+
+    if (shelfBookFileId) {
       try {
         bookFileRecord = $app.findFirstRecordByFilter(
           'book_files',
           'id = {:bookFileId}',
           {
-            bookFileId: String(shelfRecord.get('book_file_id') || ''),
+            bookFileId: shelfBookFileId,
           },
         )
       } catch (exception) {

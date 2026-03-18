@@ -33,6 +33,8 @@
   for (let index = 0; index < reviewRecords.length; index += 1) {
     const reviewRecord = reviewRecords[index]
     const bookId = String(reviewRecord.get('book_id') || '').trim()
+    const reviewText = String(reviewRecord.get('review_text') || '').trim()
+    const reviewedAt = formatDateText(reviewRecord.get('reviewed_at'))
     let bookRecord = null
 
     try {
@@ -44,8 +46,8 @@
     reviewItems.push({
       bookId: bookId,
       bookTitle: bookRecord ? String(bookRecord.get('title') || '제목 없음') : '제목 없음',
-      reviewText: String(reviewRecord.get('review_text') || '').trim(),
-      reviewedAt: formatDateText(reviewRecord.get('reviewed_at')),
+      reviewText: reviewText,
+      reviewedAt: reviewedAt,
     })
   }
 </script>

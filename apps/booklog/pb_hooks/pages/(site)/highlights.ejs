@@ -33,6 +33,9 @@
   for (let index = 0; index < highlightRecords.length; index += 1) {
     const highlightRecord = highlightRecords[index]
     const bookId = String(highlightRecord.get('book_id') || '').trim()
+    const quoteText = String(highlightRecord.get('quote_text') || '').trim()
+    const pageNumber = String(highlightRecord.get('page_number') || '').trim()
+    const highlightedAt = formatDateText(highlightRecord.get('highlighted_at'))
     let bookRecord = null
 
     try {
@@ -44,9 +47,9 @@
     highlightItems.push({
       bookId: bookId,
       bookTitle: bookRecord ? String(bookRecord.get('title') || '제목 없음') : '제목 없음',
-      quoteText: String(highlightRecord.get('quote_text') || '').trim(),
-      pageNumber: String(highlightRecord.get('page_number') || '').trim(),
-      highlightedAt: formatDateText(highlightRecord.get('highlighted_at')),
+      quoteText: quoteText,
+      pageNumber: pageNumber,
+      highlightedAt: highlightedAt,
     })
   }
 </script>

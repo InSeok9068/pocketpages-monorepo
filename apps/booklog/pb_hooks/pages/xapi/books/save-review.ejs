@@ -28,6 +28,7 @@
   const form = body()
   const userId = String(request.auth.get('id') || '')
   const bookId = String(form.bookId || '').trim()
+  const bookDetailPath = '/books/' + bookId
   const reviewText = String(form.reviewText || '').trim()
   let errorMessage = ''
 
@@ -89,10 +90,10 @@
 
     dbg('xapi/books/save-review:redirect', {
       status: 303,
-      redirectTo: '/books/' + bookId,
+      redirectTo: bookDetailPath,
       flash: '감상평을 저장했습니다.',
     })
-    redirect('/books/' + bookId, {
+    redirect(bookDetailPath, {
       status: 303,
       message: '감상평을 저장했습니다.',
     })
@@ -108,10 +109,10 @@
 
   dbg('xapi/books/save-review:redirect', {
     status: 303,
-    redirectTo: bookId ? '/books/' + bookId : '/',
+    redirectTo: bookId ? bookDetailPath : '/',
     error: errorMessage || '감상평 저장에 실패했습니다.',
   })
-  redirect(bookId ? '/books/' + bookId : '/', {
+  redirect(bookId ? bookDetailPath : '/', {
     status: 303,
     message: errorMessage || '감상평 저장에 실패했습니다.',
   })

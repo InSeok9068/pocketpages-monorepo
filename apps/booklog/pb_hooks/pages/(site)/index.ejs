@@ -12,6 +12,7 @@
   }
   const emptyShelfBooks = [
     {
+      bookId: '',
       title: '아직 책이 없습니다',
       caption: '첫 EPUB를 올리면 여기에 꽂힙니다',
       tone: 'from-[#d8c3a5] to-[#b08968]',
@@ -19,6 +20,7 @@
       statusLabel: 'Shelf 1',
     },
     {
+      bookId: '',
       title: '읽는 중인 책',
       caption: '진행 중인 책이 가로로 쌓입니다',
       tone: 'from-[#9c6644] to-[#7f5539]',
@@ -26,6 +28,7 @@
       statusLabel: 'Shelf 2',
     },
     {
+      bookId: '',
       title: '읽은 책',
       caption: '완독한 책도 같은 도서함에 정리됩니다',
       tone: 'from-[#7f4f24] to-[#582f0e]',
@@ -53,6 +56,7 @@
     for (let index = 0; index < shelfRecords.length; index += 1) {
       const shelfRecord = shelfRecords[index]
       const bookId = shelfRecord.get('book_id')
+      const status = String(shelfRecord.get('status') || 'queued')
       let bookRecord = null
 
       try {
@@ -65,7 +69,6 @@
         continue
       }
 
-      const status = String(shelfRecord.get('status') || 'queued')
       const author = String(bookRecord.get('author') || '').trim()
       const publisher = String(bookRecord.get('publisher') || '').trim()
       const captionParts = []
@@ -113,6 +116,9 @@
 
       randomHighlights = shuffledHighlights.slice(0, 3).map((highlightRecord) => {
         const highlightBookId = String(highlightRecord.get('book_id') || '').trim()
+        const quoteText = String(highlightRecord.get('quote_text') || '').trim()
+        const pageNumber = String(highlightRecord.get('page_number') || '').trim()
+        const highlightedAt = formatDateText(highlightRecord.get('highlighted_at'))
         let highlightBookRecord = null
 
         try {
@@ -124,9 +130,9 @@
         return {
           bookId: highlightBookId,
           bookTitle: highlightBookRecord ? String(highlightBookRecord.get('title') || '제목 없음') : '제목 없음',
-          quoteText: String(highlightRecord.get('quote_text') || '').trim(),
-          pageNumber: String(highlightRecord.get('page_number') || '').trim(),
-          highlightedAt: formatDateText(highlightRecord.get('highlighted_at')),
+          quoteText: quoteText,
+          pageNumber: pageNumber,
+          highlightedAt: highlightedAt,
         }
       }).filter((item) => item.quoteText)
     } catch (exception) {
