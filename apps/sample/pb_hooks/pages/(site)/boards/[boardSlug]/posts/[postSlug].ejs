@@ -73,14 +73,24 @@
     <h1 class="text-3xl font-semibold text-stone-950"><%= pageData.error %></h1>
   </header>
   <p class="mt-4">
-    <a href="/boards/<%= params.boardSlug %>" class="text-sm font-medium text-stone-600 no-underline hover:text-stone-900"> Back to board </a>
+    <a
+      href="/boards/<%= params.boardSlug %>"
+      class="text-sm font-medium text-stone-600 no-underline hover:text-stone-900"
+    >
+      Back to board
+    </a>
   </p>
 </article>
 <% } else { %>
 
 <header class="mb-8 space-y-4">
   <p>
-    <a href="<%= pageData.board.path %>" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"> <%= pageData.board.name %> </a>
+    <a
+      href="<%= pageData.board.path %>"
+      class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"
+    >
+      <%= pageData.board.name %>
+    </a>
   </p>
   <h1 class="text-4xl font-semibold tracking-tight text-stone-950"><%= pageData.post.title %></h1>
   <p class="text-sm uppercase tracking-[0.14em] text-stone-500">

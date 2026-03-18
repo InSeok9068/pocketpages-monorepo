@@ -53,14 +53,22 @@
     <h1 class="text-3xl font-semibold text-stone-950"><%= pageData.error %></h1>
   </header>
   <p class="mt-4">
-    <a href="/boards" class="text-sm font-medium text-stone-600 no-underline hover:text-stone-900">Back to boards</a>
+    <a
+      href="/boards"
+      class="text-sm font-medium text-stone-600 no-underline hover:text-stone-900"
+      >Back to boards</a
+    >
   </p>
 </article>
 <% } else { %>
 
 <header class="mb-8 space-y-4">
   <p>
-    <a href="/boards" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900">Boards</a>
+    <a
+      href="/boards"
+      class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"
+      >Boards</a
+    >
   </p>
   <h1 class="text-4xl font-semibold tracking-tight text-stone-950"><%= pageData.board.name %></h1>
   <p class="max-w-3xl text-base leading-7 text-stone-600"><%= pageData.board.description || 'No description' %></p>
@@ -97,7 +105,12 @@
     <% pageData.postCards.forEach((postCard) => { %>
     <section class="rounded-2xl border border-stone-200 bg-stone-50 px-5 py-4">
       <h3 class="text-lg font-semibold text-stone-900">
-        <a href="<%= postCard.path %>" class="text-stone-900 no-underline hover:text-stone-700"> <%= postCard.title %> </a>
+        <a
+          href="<%= postCard.path %>"
+          class="text-stone-900 no-underline hover:text-stone-700"
+        >
+          <%= postCard.title %>
+        </a>
       </h3>
       <p class="mt-2 text-xs uppercase tracking-[0.14em] text-stone-500">
         <%= postCard.isNotice ? 'Notice' : 'Post' %> · <%= postCard.status %> · <%= postCard.authorName %> · <%= postCard.publishedAt %> · views <%= postCard.viewCount %>

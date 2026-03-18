@@ -116,13 +116,21 @@
   <div class="flex flex-wrap items-start justify-between gap-4">
     <div class="space-y-3">
       <p>
-        <a href="/" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900">Home</a>
+        <a
+          href="/"
+          class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"
+          >Home</a
+        >
       </p>
       <h1 class="text-4xl font-semibold tracking-tight text-stone-950">Sample Workspace</h1>
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
-      <a href="/boards" class="inline-flex items-center justify-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">Board CRUD</a>
+      <a
+        href="/boards"
+        class="inline-flex items-center justify-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700"
+        >Board CRUD</a
+      >
       <a
         href="<%= apiListUrl %>"
         class="inline-flex items-center justify-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
@@ -140,7 +148,10 @@
       <h2 class="mt-2 text-2xl font-semibold text-stone-950">Boards</h2>
     </header>
 
-    <div x-data="{ q: '' }" class="space-y-4">
+    <div
+      x-data="{ q: '' }"
+      class="space-y-4"
+    >
       <div class="flex items-center gap-2">
         <label class="block min-w-0 flex-1">
           <span class="sr-only">Search boards</span>
@@ -151,8 +162,17 @@
             class="block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
           />
         </label>
-        <form hx-get="/xapi/boards/list" hx-target="#board-list" hx-swap="innerHTML" class="shrink-0">
-          <input type="hidden" name="board" value="<%= selectedBoardSlug %>" />
+        <form
+          hx-get="/xapi/boards/list"
+          hx-target="#board-list"
+          hx-swap="innerHTML"
+          class="shrink-0"
+        >
+          <input
+            type="hidden"
+            name="board"
+            value="<%= selectedBoardSlug %>"
+          />
           <button
             type="submit"
             class="inline-flex items-center rounded-full border border-stone-300 px-4 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-900 hover:text-stone-900"
@@ -163,7 +183,10 @@
       </div>
 
       <div class="rounded-3xl bg-stone-100/70 p-2">
-        <div id="board-list" class="max-h-[32rem] overflow-y-auto pr-1">
+        <div
+          id="board-list"
+          class="max-h-[32rem] overflow-y-auto pr-1"
+        >
           <%- include('board-list.ejs', {
   boardItems: boardItems,
   error: boardListError,
@@ -196,7 +219,10 @@
             Open list API
           </a>
           <% if (selectedBoardApiUrl) { %>
-          <a href="<%= selectedBoardApiUrl %>" class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">
+          <a
+            href="<%= selectedBoardApiUrl %>"
+            class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700"
+          >
             Open snapshot API
           </a>
           <% } %>

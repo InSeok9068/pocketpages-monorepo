@@ -23,7 +23,11 @@
 
 <header class="mb-8 space-y-4">
   <p>
-    <a href="/" class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900">Home</a>
+    <a
+      href="/"
+      class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"
+      >Home</a
+    >
   </p>
   <h1 class="text-4xl font-semibold tracking-tight text-stone-950">Boards</h1>
   <p class="max-w-2xl text-base leading-7 text-stone-600">여기서는 게시판 목록을 보고 새 게시판을 만듭니다.</p>
@@ -37,7 +41,11 @@
       <h2 class="text-2xl font-semibold text-stone-950">Create Board</h2>
     </header>
 
-    <form action="/xapi/boards/create" method="post" class="max-w-2xl space-y-4">
+    <form
+      action="/xapi/boards/create"
+      method="post"
+      class="max-w-2xl space-y-4"
+    >
       <label class="block">
         Name
         <input
@@ -69,7 +77,12 @@
         ></textarea>
       </label>
 
-      <button type="submit" class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700">Create board</button>
+      <button
+        type="submit"
+        class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700"
+      >
+        Create board
+      </button>
     </form>
   </article>
 
@@ -87,10 +100,30 @@
       <table class="min-w-full border-separate border-spacing-0 text-left text-sm">
         <thead>
           <tr>
-            <th scope="col" class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500">Name</th>
-            <th scope="col" class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500">Slug</th>
-            <th scope="col" class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500">Description</th>
-            <th scope="col" class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500">Open</th>
+            <th
+              scope="col"
+              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500"
+            >
+              Name
+            </th>
+            <th
+              scope="col"
+              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500"
+            >
+              Slug
+            </th>
+            <th
+              scope="col"
+              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500"
+            >
+              Description
+            </th>
+            <th
+              scope="col"
+              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500"
+            >
+              Open
+            </th>
           </tr>
         </thead>
         <tbody>

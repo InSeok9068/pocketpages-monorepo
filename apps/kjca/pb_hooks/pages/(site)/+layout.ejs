@@ -2,20 +2,46 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
     <title><%= meta('title') %></title>
-    <meta name="description" content="<%= meta('description') %>" />
-    <meta property="og:title" content="<%= meta('title') %>" />
-    <meta property="og:description" content="<%= meta('description') %>" />
-    <meta property="og:url" content="<%= meta('path') ? meta('path') : meta('url') || request.url %>" />
-    <link rel="icon" type="image/svg+xml" href="<%= asset('/assets/favicon.svg') %>" />
-    <link rel="stylesheet" href="<%= asset('/assets/style.css') %>" />
+    <meta
+      name="description"
+      content="<%= meta('description') %>"
+    />
+    <meta
+      property="og:title"
+      content="<%= meta('title') %>"
+    />
+    <meta
+      property="og:description"
+      content="<%= meta('description') %>"
+    />
+    <meta
+      property="og:url"
+      content="<%= meta('path') ? meta('path') : meta('url') || request.url %>"
+    />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="<%= asset('/assets/favicon.svg') %>"
+    />
+    <link
+      rel="stylesheet"
+      href="<%= asset('/assets/style.css') %>"
+    />
     <style>
       [un-cloak] {
         display: none !important;
       }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js" data-fallback-src="<%= asset('/assets/vendor/htmx-2.0.3.min.js') %>" onerror="window.__assetFallback(this)"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js"
+      data-fallback-src="<%= asset('/assets/vendor/htmx-2.0.3.min.js') %>"
+      onerror="window.__assetFallback(this)"
+    ></script>
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
@@ -43,7 +69,10 @@
     <%- slots.head %>
   </head>
 
-  <body un-cloak class="min-h-screen text-slate-900 antialiased">
+  <body
+    un-cloak
+    class="min-h-screen text-slate-900 antialiased"
+  >
     <div class="min-h-screen">
       <main class="mx-auto max-w-[1480px] px-4 py-5 md:px-8 md:py-7 xl:px-10 xl:py-8"><%- slots.body || slot %></main>
     </div>

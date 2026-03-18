@@ -1,7 +1,8 @@
 {
-  "printWidth": 200,
   "semi": false,
+  "printWidth": 200,
   "singleQuote": true,
   "trailingComma": "es5",
+  "singleAttributePerLine": true,
   "plugins": ["./tools/prettier-plugin-ejs-safe.mjs"]
 }

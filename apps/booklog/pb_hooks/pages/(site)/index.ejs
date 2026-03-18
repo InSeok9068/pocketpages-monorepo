@@ -23,12 +23,28 @@
     <p class="text-sm leading-6 text-stone-600">EPUB 파일 하나를 올리면 서버가 파일을 읽고 내부에서 찾은 문자열과 엔트리 이름을 로그로 남깁니다.</p>
   </div>
 
-  <form class="mt-6 space-y-4" method="post" action="/xapi/epub/upload" enctype="multipart/form-data">
+  <form
+    class="mt-6 space-y-4"
+    method="post"
+    action="/xapi/epub/upload"
+    enctype="multipart/form-data"
+  >
     <label class="block space-y-2">
       <span class="text-sm font-medium text-stone-700">EPUB 파일</span>
-      <input class="block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900" type="file" name="epubFile" accept=".epub,application/epub+zip" required />
+      <input
+        class="block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900"
+        type="file"
+        name="epubFile"
+        accept=".epub,application/epub+zip"
+        required
+      />
     </label>
 
-    <button class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700" type="submit">Upload EPUB</button>
+    <button
+      class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700"
+      type="submit"
+    >
+      Upload EPUB
+    </button>
   </form>
 </section>
