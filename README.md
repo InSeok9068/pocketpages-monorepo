@@ -46,6 +46,7 @@
 | `slugify`          | slug 문자열 생성, URL 친화적인 식별자 변환 |
 | `he`               | HTML entity 인코딩/디코딩 |
 | `validator`        | 이메일, URL, 숫자/문자열 같은 문자열 단위 검증 |
+| `qs`               | 중첩 query string 파싱, 배열/객체 형태 쿼리 직렬화 |
 | `zod`              | form/body/query 입력값 런타임 검증 |
 
 ---
