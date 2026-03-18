@@ -39,18 +39,13 @@
   let shelfBooks = emptyShelfBooks
   let randomHighlights = []
   const formatDateText = function (value) {
-    return String(value || '').trim().slice(0, 10)
+    return String(value || '')
+      .trim()
+      .slice(0, 10)
   }
 
   if (isSignedIn) {
-    const shelfRecords = $app.findRecordsByFilter(
-      'book_shelves',
-      'user_id = {:userId}',
-      '-last_read_at,-updated',
-      50,
-      0,
-      { userId: request.auth.get('id') },
-    )
+    const shelfRecords = $app.findRecordsByFilter('book_shelves', 'user_id = {:userId}', '-last_read_at,-updated', 50, 0, { userId: request.auth.get('id') })
     const loadedShelfBooks = []
 
     for (let index = 0; index < shelfRecords.length; index += 1) {
@@ -96,14 +91,7 @@
     }
 
     try {
-      const highlightRecords = $app.findRecordsByFilter(
-        'book_highlights',
-        'user_id = {:userId}',
-        '-updated',
-        50,
-        0,
-        { userId: request.auth.get('id') },
-      )
+      const highlightRecords = $app.findRecordsByFilter('book_highlights', 'user_id = {:userId}', '-updated', 50, 0, { userId: request.auth.get('id') })
       const shuffledHighlights = highlightRecords.slice()
 
       for (let index = shuffledHighlights.length - 1; index > 0; index -= 1) {
@@ -114,27 +102,30 @@
         shuffledHighlights[swapIndex] = currentValue
       }
 
-      randomHighlights = shuffledHighlights.slice(0, 3).map((highlightRecord) => {
-        const highlightBookId = String(highlightRecord.get('book_id') || '').trim()
-        const quoteText = String(highlightRecord.get('quote_text') || '').trim()
-        const pageNumber = String(highlightRecord.get('page_number') || '').trim()
-        const highlightedAt = formatDateText(highlightRecord.get('highlighted_at'))
-        let highlightBookRecord = null
+      randomHighlights = shuffledHighlights
+        .slice(0, 3)
+        .map((highlightRecord) => {
+          const highlightBookId = String(highlightRecord.get('book_id') || '').trim()
+          const quoteText = String(highlightRecord.get('quote_text') || '').trim()
+          const pageNumber = String(highlightRecord.get('page_number') || '').trim()
+          const highlightedAt = formatDateText(highlightRecord.get('highlighted_at'))
+          let highlightBookRecord = null
 
-        try {
-          highlightBookRecord = $app.findFirstRecordByFilter('books', 'id = {:id}', { id: highlightBookId })
-        } catch (exception) {
-          highlightBookRecord = null
-        }
+          try {
+            highlightBookRecord = $app.findFirstRecordByFilter('books', 'id = {:id}', { id: highlightBookId })
+          } catch (exception) {
+            highlightBookRecord = null
+          }
 
-        return {
-          bookId: highlightBookId,
-          bookTitle: highlightBookRecord ? String(highlightBookRecord.get('title') || '제목 없음') : '제목 없음',
-          quoteText: quoteText,
-          pageNumber: pageNumber,
-          highlightedAt: highlightedAt,
-        }
-      }).filter((item) => item.quoteText)
+          return {
+            bookId: highlightBookId,
+            bookTitle: highlightBookRecord ? String(highlightBookRecord.get('title') || '제목 없음') : '제목 없음',
+            quoteText: quoteText,
+            pageNumber: pageNumber,
+            highlightedAt: highlightedAt,
+          }
+        })
+        .filter((item) => item.quoteText)
     } catch (exception) {
       randomHighlights = []
     }
@@ -186,7 +177,8 @@
     </button>
   </div>
 
-  <section class="rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.92),rgba(245,236,222,0.95))] p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
+  <section
+    class="rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.92),rgba(245,236,222,0.95))] p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
     <div class="overflow-x-auto overflow-y-hidden pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div class="flex min-w-max gap-3">
         <% for (let index = 0; index < shelfBooks.length; index += 1) { const book = shelfBooks[index] %>
@@ -195,7 +187,8 @@
           <a
             href="/books/<%= book.bookId %>"
             class="block no-underline transition hover:translate-y-[-1px]">
-            <div class="relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b <%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> sm:h-[12.5rem]">
+            <div
+              class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
               <% if (book.coverUrl) { %>
               <img
                 src="<%= book.coverUrl %>"
@@ -203,18 +196,19 @@
                 class="h-full w-full object-cover" />
               <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(46,31,20,0.08),rgba(46,31,20,0.38))]"></div>
               <% } %>
-              <div class="relative <%= book.coverUrl ? '' : 'ml-2' %> flex h-full flex-col justify-between px-3 py-4 text-white">
+              <div class="<%= book.coverUrl ? '' : 'ml-2' %> relative flex h-full flex-col justify-between px-3 py-4 text-white">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/70">Booklog</p>
                 <div class="space-y-2">
-                  <h3 class="text-base leading-5 font-semibold tracking-[-0.03em]"><%= book.title %></h3>
-                  <p class="text-[11px] leading-4.5 text-white/78"><%= book.caption %></p>
+                  <h3 class="text-base font-semibold leading-5 tracking-[-0.03em]"><%= book.title %></h3>
+                  <p class="leading-4.5 text-white/78 text-[11px]"><%= book.caption %></p>
                 </div>
                 <p class="text-[11px] font-medium text-white/70"><%= book.statusLabel %></p>
               </div>
             </div>
           </a>
           <% } else { %>
-          <div class="relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b <%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> sm:h-[12.5rem]">
+          <div
+            class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
             <% if (book.coverUrl) { %>
             <img
               src="<%= book.coverUrl %>"
@@ -222,11 +216,11 @@
               class="h-full w-full object-cover" />
             <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(46,31,20,0.08),rgba(46,31,20,0.38))]"></div>
             <% } %>
-            <div class="relative <%= book.coverUrl ? '' : 'ml-2' %> flex h-full flex-col justify-between px-3 py-4 text-white">
+            <div class="<%= book.coverUrl ? '' : 'ml-2' %> relative flex h-full flex-col justify-between px-3 py-4 text-white">
               <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/70">Booklog</p>
               <div class="space-y-2">
-                <h3 class="text-base leading-5 font-semibold tracking-[-0.03em]"><%= book.title %></h3>
-                <p class="text-[11px] leading-4.5 text-white/78"><%= book.caption %></p>
+                <h3 class="text-base font-semibold leading-5 tracking-[-0.03em]"><%= book.title %></h3>
+                <p class="leading-4.5 text-white/78 text-[11px]"><%= book.caption %></p>
               </div>
               <p class="text-[11px] font-medium text-white/70"><%= book.statusLabel %></p>
             </div>
@@ -238,7 +232,7 @@
     </div>
   </section>
 
-  <section class="rounded-[2rem] border border-stone-200/80 bg-white/78 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+  <section class="bg-white/78 rounded-[2rem] border border-stone-200/80 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
     <div class="space-y-2">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">Highlights</p>
       <h3 class="text-xl font-semibold tracking-tight text-stone-950">인상 깊은 문구</h3>
@@ -250,9 +244,7 @@
       <a
         href="/books/<%= highlight.bookId %>"
         class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
-        <p class="text-base leading-7 font-semibold tracking-[-0.02em] text-stone-900">
-          "<%= highlight.quoteText %>"
-        </p>
+        <p class="text-base font-semibold leading-7 tracking-[-0.02em] text-stone-900">"<%= highlight.quoteText %>"</p>
         <p class="mt-2 text-[12px] leading-5 text-stone-500">
           <span><%= highlight.bookTitle %></span>
           <% if (highlight.pageNumber) { %>
@@ -266,20 +258,18 @@
       <% } %>
     </div>
     <% } else { %>
-    <div class="mt-4 rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-      저장된 인상 깊은 문구가 아직 없습니다.
-    </div>
+    <div class="mt-4 rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">저장된 인상 깊은 문구가 아직 없습니다.</div>
     <% } %>
 
     <div class="mt-4 grid grid-cols-2 gap-2">
       <a
         href="/reviews"
-        class="inline-flex items-center justify-center rounded-full border-none bg-white/88 px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
+        class="bg-white/88 inline-flex items-center justify-center rounded-full border-none px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
         감상평 리스트
       </a>
       <a
         href="/highlights"
-        class="inline-flex items-center justify-center rounded-full border-none bg-white/88 px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
+        class="bg-white/88 inline-flex items-center justify-center rounded-full border-none px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
         문구 리스트
       </a>
     </div>
@@ -289,7 +279,7 @@
     x-show="uploadOpen"
     x-cloak
     x-transition.opacity
-    class="fixed inset-0 z-[80] flex items-end justify-center bg-stone-950/42 px-0 pt-0 sm:items-center sm:px-6 sm:py-6">
+    class="bg-stone-950/42 fixed inset-0 z-[80] flex items-end justify-center px-0 pt-0 sm:items-center sm:px-6 sm:py-6">
     <div
       x-on:click.outside="if (!uploading) { uploadOpen = false }"
       class="w-full max-w-lg rounded-t-[2rem] border-none bg-[linear-gradient(180deg,#fffdf8,#f8f0e4)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-18px_50px_rgba(41,28,17,0.18)] sm:rounded-[2.1rem] sm:px-6 sm:pb-6 sm:pt-5 sm:shadow-[0_30px_90px_rgba(41,28,17,0.2)]">
@@ -302,7 +292,7 @@
           type="button"
           x-bind:disabled="uploading"
           x-on:click="if (!uploading) { uploadOpen = false }"
-          class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-white/78 text-stone-600 shadow-[0_8px_20px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-white/90"
+          class="bg-white/78 inline-flex h-10 w-10 items-center justify-center rounded-full border-none text-stone-600 shadow-[0_8px_20px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-white/90"
           aria-label="업로드 팝업 닫기">
           <span class="text-lg leading-none">×</span>
         </button>
@@ -318,7 +308,7 @@
           <span class="text-sm font-medium text-stone-700">EPUB 파일</span>
           <div class="rounded-[1.35rem] border border-stone-200 bg-white/90 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
             <input
-              class="block w-full box-border text-sm text-stone-900 file:mr-3 file:rounded-full file:border-0 file:bg-stone-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-stone-700"
+              class="box-border block w-full text-sm text-stone-900 file:mr-3 file:rounded-full file:border-0 file:bg-stone-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-stone-700"
               type="file"
               name="epubFile"
               accept=".epub,application/epub+zip"
@@ -343,16 +333,24 @@
         <div class="flex gap-3 pt-1">
           <button
             x-bind:disabled="uploading"
-            class="inline-flex min-h-13 flex-1 items-center justify-center rounded-full border-none bg-stone-900 px-4 py-3.5 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700 disabled:opacity-100"
+            class="min-h-13 inline-flex flex-1 items-center justify-center rounded-full border-none bg-stone-900 px-4 py-3.5 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700 disabled:opacity-100"
             type="submit">
-            <span x-show="!uploading" x-cloak>업로드</span>
-            <span x-show="uploading" x-cloak>업로드 중...</span>
+            <span
+              x-show="!uploading"
+              x-cloak
+              >업로드</span
+            >
+            <span
+              x-show="uploading"
+              x-cloak
+              >업로드 중...</span
+            >
           </button>
           <button
             type="button"
             x-bind:disabled="uploading"
             x-on:click="if (!uploading) { uploadOpen = false }"
-            class="inline-flex min-h-13 items-center justify-center rounded-full border-none bg-white/88 px-5 py-3.5 text-sm font-medium text-stone-700 shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
+            class="min-h-13 bg-white/88 inline-flex items-center justify-center rounded-full border-none px-5 py-3.5 text-sm font-medium text-stone-700 shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
             닫기
           </button>
         </div>

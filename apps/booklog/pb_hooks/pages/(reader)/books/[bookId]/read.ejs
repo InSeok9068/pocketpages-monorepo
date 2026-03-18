@@ -59,14 +59,10 @@
   const bookDetailPath = '/books/' + bookId
 
   try {
-    shelfRecord = $app.findFirstRecordByFilter(
-      'book_shelves',
-      'user_id = {:userId} && book_id = {:bookId}',
-      {
-        userId: userId,
-        bookId: bookId,
-      },
-    )
+    shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+      userId: userId,
+      bookId: bookId,
+    })
   } catch (exception) {
     shelfRecord = null
   }
@@ -88,13 +84,9 @@
 
   if (shelfBookFileId) {
     try {
-      bookFileRecord = $app.findFirstRecordByFilter(
-        'book_files',
-        'id = {:bookFileId}',
-        {
-          bookFileId: shelfBookFileId,
-        },
-      )
+      bookFileRecord = $app.findFirstRecordByFilter('book_files', 'id = {:bookFileId}', {
+        bookFileId: shelfBookFileId,
+      })
     } catch (exception) {
       bookFileRecord = null
     }
@@ -102,20 +94,14 @@
 
   if (!bookFileRecord) {
     try {
-      bookFileRecord = $app.findFirstRecordByFilter(
-        'book_files',
-        'book_id = {:bookId}',
-        { bookId: bookId },
-      )
+      bookFileRecord = $app.findFirstRecordByFilter('book_files', 'book_id = {:bookId}', { bookId: bookId })
     } catch (exception) {
       bookFileRecord = null
     }
   }
 
   const storedFileName = bookFileRecord ? String(bookFileRecord.get('stored_file') || '').trim() : ''
-  const epubReaderUrl = bookFileRecord && storedFileName
-    ? '/xapi/books/' + encodeURIComponent(bookId) + '/read-file'
-    : ''
+  const epubReaderUrl = bookFileRecord && storedFileName ? '/xapi/books/' + encodeURIComponent(bookId) + '/read-file' : ''
 
   if (!epubReaderUrl) {
     dbg('page/books/[bookId]/read:redirect', {
@@ -133,10 +119,8 @@
 </script>
 
 <!-- slot:head -->
-<script
-  src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script
-  src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
 
 <!-- slot:body -->
 <section
@@ -257,7 +241,7 @@
     class="fixed left-4 right-4 top-4 z-30 flex items-start justify-between gap-3">
     <a
       href="/books/<%= bookId %>"
-      class="inline-flex items-center gap-2 rounded-full border-none bg-white/88 px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+      class="bg-white/88 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
       <span aria-hidden="true">←</span>
       책 상세
     </a>
@@ -296,7 +280,7 @@
   <div
     x-show="fullscreenMode && controlsVisible"
     x-cloak
-    class="fixed right-4 top-18 z-30 flex flex-col items-end gap-2">
+    class="top-18 fixed right-4 z-30 flex flex-col items-end gap-2">
     <button
       type="button"
       x-on:click="toggleFullscreenMode()"
@@ -306,18 +290,18 @@
     <button
       type="button"
       x-on:click="openSearch()"
-      class="inline-flex items-center gap-2 rounded-full border-none bg-white/92 px-3 py-2 text-sm font-semibold text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+      class="bg-white/92 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-semibold text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
       검색
     </button>
     <button
       type="button"
       x-on:click="openHighlight()"
-      class="inline-flex items-center gap-2 rounded-full border-none bg-white/92 px-3 py-2 text-sm font-semibold text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+      class="bg-white/92 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-semibold text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
       문구 추가
     </button>
     <a
       href="/books/<%= bookId %>"
-      class="inline-flex items-center gap-2 rounded-full border-none bg-white/92 px-3 py-2 text-sm font-semibold text-stone-700 no-underline shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+      class="bg-white/92 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-semibold text-stone-700 no-underline shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
       책 상세
     </a>
   </div>
@@ -345,14 +329,22 @@
             x-on:keydown.enter.prevent="performSearch()"
             type="text"
             placeholder="찾을 문장을 입력해 주세요"
-            class="min-w-0 flex-1 rounded-full border border-stone-200 bg-[#fbf8f1] px-4 py-3 text-sm text-stone-900 outline-none box-border" />
+            class="box-border min-w-0 flex-1 rounded-full border border-stone-200 bg-[#fbf8f1] px-4 py-3 text-sm text-stone-900 outline-none" />
           <button
             type="button"
             x-on:click="performSearch()"
             x-bind:disabled="searching"
             class="shrink-0 rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white outline-none ring-0 disabled:opacity-60">
-            <span x-show="!searching" x-cloak>검색</span>
-            <span x-show="searching" x-cloak>검색 중</span>
+            <span
+              x-show="!searching"
+              x-cloak
+              >검색</span
+            >
+            <span
+              x-show="searching"
+              x-cloak
+              >검색 중</span
+            >
           </button>
         </div>
 
@@ -364,9 +356,7 @@
 
         <div class="max-h-[60vh] overflow-y-auto">
           <template x-if="!searchResults.length && !searching && !searchMessage">
-            <p class="rounded-[1.25rem] bg-[#f8f3e7] px-4 py-4 text-sm leading-6 text-stone-500">
-              검색어를 입력하면 책 전체를 훑어서 결과를 보여줍니다.
-            </p>
+            <p class="rounded-[1.25rem] bg-[#f8f3e7] px-4 py-4 text-sm leading-6 text-stone-500">검색어를 입력하면 책 전체를 훑어서 결과를 보여줍니다.</p>
           </template>
 
           <div
@@ -419,7 +409,7 @@
               id="reader-highlight-quote"
               x-model="highlightQuoteText"
               rows="5"
-              class="block w-full min-w-0 box-border rounded-[1.25rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] outline-none transition placeholder:text-[#b59f87]"
+              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] outline-none transition placeholder:text-[#b59f87]"
               placeholder="복사한 문구를 붙여넣어 주세요."></textarea>
           </label>
 
@@ -428,7 +418,7 @@
             <textarea
               x-model="highlightNoteText"
               rows="3"
-              class="block w-full min-w-0 box-border rounded-[1.25rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] outline-none transition placeholder:text-[#b59f87]"
+              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] outline-none transition placeholder:text-[#b59f87]"
               placeholder="짧은 생각이 있으면 같이 남겨두세요."></textarea>
           </label>
         </div>
@@ -445,8 +435,16 @@
             x-on:click="saveHighlight()"
             x-bind:disabled="savingHighlight"
             class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white outline-none ring-0 disabled:opacity-60">
-            <span x-show="!savingHighlight" x-cloak>문구 저장</span>
-            <span x-show="savingHighlight" x-cloak>저장 중</span>
+            <span
+              x-show="!savingHighlight"
+              x-cloak
+              >문구 저장</span
+            >
+            <span
+              x-show="savingHighlight"
+              x-cloak
+              >저장 중</span
+            >
           </button>
           <button
             type="button"
@@ -476,7 +474,7 @@
     <div
       x-show="loading"
       x-cloak
-      class="mb-4 rounded-[1.5rem] border border-stone-200 bg-white/78 px-4 py-4 text-sm leading-6 text-stone-600 shadow-[0_16px_32px_rgba(70,52,31,0.06)]">
+      class="bg-white/78 mb-4 rounded-[1.5rem] border border-stone-200 px-4 py-4 text-sm leading-6 text-stone-600 shadow-[0_16px_32px_rgba(70,52,31,0.06)]">
       EPUB 파일을 불러오는 중입니다.
     </div>
 
@@ -507,7 +505,9 @@
     var currentLocation = null
 
     function normalizeText(value) {
-      return String(value || '').replace(/\s+/g, ' ').trim()
+      return String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim()
     }
 
     function normalizeHref(value) {
@@ -536,10 +536,7 @@
     }
 
     function getChapterLabelForSection(section) {
-      var candidates = [
-        section && section.href ? section.href : '',
-        section && section.url ? section.url : '',
-      ]
+      var candidates = [section && section.href ? section.href : '', section && section.url ? section.url : '']
       var i = 0
       var href = ''
       var normalizedHref = ''
@@ -553,13 +550,7 @@
         }
       }
 
-      return normalizeText(
-        section && section.href ? section.href :
-        section && section.url ? section.url :
-        section && section.idref ? section.idref :
-        section && section.id ? section.id :
-        ''
-      )
+      return normalizeText(section && section.href ? section.href : section && section.url ? section.url : section && section.idref ? section.idref : section && section.id ? section.id : '')
     }
 
     function getChapterLabelForHref(href) {
@@ -608,57 +599,61 @@
       fetch(readerUrl, {
         method: 'GET',
         credentials: 'same-origin',
-      }).then(function (response) {
-        console.debug('page/books/[bookId]/read:fetch-response', {
-          ok: response.ok,
-          status: response.status,
-          contentType: response.headers.get('Content-Type') || '',
+      })
+        .then(function (response) {
+          console.debug('page/books/[bookId]/read:fetch-response', {
+            ok: response.ok,
+            status: response.status,
+            contentType: response.headers.get('Content-Type') || '',
+          })
+
+          if (!response.ok) {
+            throw new Error('EPUB 파일 응답이 올바르지 않습니다. status=' + response.status)
+          }
+
+          return response.arrayBuffer()
         })
+        .then(function (buffer) {
+          console.debug('page/books/[bookId]/read:fetch-buffer', {
+            byteLength: buffer && buffer.byteLength ? buffer.byteLength : 0,
+          })
 
-        if (!response.ok) {
-          throw new Error('EPUB 파일 응답이 올바르지 않습니다. status=' + response.status)
-        }
+          bookInstance = window.ePub(buffer)
+          renditionInstance = bookInstance.renderTo('epub-reader', {
+            width: '100%',
+            height: '100%',
+            manager: 'continuous',
+            flow: 'scrolled',
+            allowScriptedContent: false,
+          })
 
-        return response.arrayBuffer()
-      }).then(function (buffer) {
-        console.debug('page/books/[bookId]/read:fetch-buffer', {
-          byteLength: buffer && buffer.byteLength ? buffer.byteLength : 0,
-        })
+          renditionInstance.on('relocated', function (location) {
+            updateCurrentLocation(component, location)
+          })
 
-        bookInstance = window.ePub(buffer)
-        renditionInstance = bookInstance.renderTo('epub-reader', {
-          width: '100%',
-          height: '100%',
-          manager: 'continuous',
-          flow: 'scrolled',
-          allowScriptedContent: false,
-        })
+          return bookInstance.ready.then(function () {
+            try {
+              registerTocItems(bookInstance.navigation && bookInstance.navigation.toc ? bookInstance.navigation.toc : [])
+            } catch (exception) {}
 
-        renditionInstance.on('relocated', function (location) {
-          updateCurrentLocation(component, location)
-        })
-
-        return bookInstance.ready.then(function () {
-          try {
-            registerTocItems(bookInstance.navigation && bookInstance.navigation.toc ? bookInstance.navigation.toc : [])
-          } catch (exception) {}
-
-          return renditionInstance.display().then(function (location) {
-            updateCurrentLocation(component, location || renditionInstance.currentLocation())
+            return renditionInstance.display().then(function (location) {
+              updateCurrentLocation(component, location || renditionInstance.currentLocation())
+            })
           })
         })
-      }).then(function () {
-        component.loading = false
-        console.debug('page/books/[bookId]/read:rendered', {
-          bookId: bookId,
+        .then(function () {
+          component.loading = false
+          console.debug('page/books/[bookId]/read:rendered', {
+            bookId: bookId,
+          })
         })
-      }).catch(function (exception) {
-        component.loading = false
-        component.errorMessage = String(exception && exception.message ? exception.message : exception)
-        console.error('page/books/[bookId]/read:failed', {
-          message: component.errorMessage,
+        .catch(function (exception) {
+          component.loading = false
+          component.errorMessage = String(exception && exception.message ? exception.message : exception)
+          console.error('page/books/[bookId]/read:failed', {
+            message: component.errorMessage,
+          })
         })
-      })
     }
 
     function performSearch(component) {
@@ -697,48 +692,51 @@
         }
 
         searchPromises.push(
-          Promise.resolve(section.load(bookInstance.load.bind(bookInstance))).then(function () {
-            var found = section.find(query) || []
-            var chapterLabel = getChapterLabelForSection(section)
+          Promise.resolve(section.load(bookInstance.load.bind(bookInstance)))
+            .then(function () {
+              var found = section.find(query) || []
+              var chapterLabel = getChapterLabelForSection(section)
 
-            found.forEach(function (item) {
-              results.push({
-                cfi: String(item && item.cfi ? item.cfi : ''),
-                excerpt: normalizeText(item && item.excerpt ? item.excerpt : ''),
-                chapterLabel: chapterLabel,
-                label: buildSearchResultLabel({
+              found.forEach(function (item) {
+                results.push({
+                  cfi: String(item && item.cfi ? item.cfi : ''),
+                  excerpt: normalizeText(item && item.excerpt ? item.excerpt : ''),
                   chapterLabel: chapterLabel,
-                  excerpt: item && item.excerpt ? item.excerpt : '',
-                }),
+                  label: buildSearchResultLabel({
+                    chapterLabel: chapterLabel,
+                    excerpt: item && item.excerpt ? item.excerpt : '',
+                  }),
+                })
               })
             })
-          }).catch(function (exception) {
-            console.warn('page/books/[bookId]/read:search-section-skipped', {
-              href: section && section.href ? section.href : '',
-              message: String(exception && exception.message ? exception.message : exception),
+            .catch(function (exception) {
+              console.warn('page/books/[bookId]/read:search-section-skipped', {
+                href: section && section.href ? section.href : '',
+                message: String(exception && exception.message ? exception.message : exception),
+              })
             })
-          }).finally(function () {
-            try {
-              section.unload()
-            } catch (exception) {}
-          })
+            .finally(function () {
+              try {
+                section.unload()
+              } catch (exception) {}
+            })
         )
       })
 
-      Promise.all(searchPromises).then(function () {
-        component.searching = false
-        component.searchResults = results
-        component.searchMessage = results.length
-          ? results.length + '개의 결과를 찾았습니다.'
-          : '검색 결과가 없습니다.'
-      }).catch(function (exception) {
-        component.searching = false
-        component.searchResults = []
-        component.searchMessage = '검색 중 오류가 발생했습니다.'
-        console.error('page/books/[bookId]/read:search-failed', {
-          message: String(exception && exception.message ? exception.message : exception),
+      Promise.all(searchPromises)
+        .then(function () {
+          component.searching = false
+          component.searchResults = results
+          component.searchMessage = results.length ? results.length + '개의 결과를 찾았습니다.' : '검색 결과가 없습니다.'
         })
-      })
+        .catch(function (exception) {
+          component.searching = false
+          component.searchResults = []
+          component.searchMessage = '검색 중 오류가 발생했습니다.'
+          console.error('page/books/[bookId]/read:search-failed', {
+            message: String(exception && exception.message ? exception.message : exception),
+          })
+        })
     }
 
     function goToSearchResult(component, result) {
@@ -752,25 +750,26 @@
       component.searchOpen = false
       component.scheduleControlsHide()
 
-      renditionInstance.display(target).then(function () {
-        component.loading = false
-      }).catch(function (exception) {
-        component.loading = false
-        component.errorMessage = String(exception && exception.message ? exception.message : exception)
-        console.error('page/books/[bookId]/read:goto-search-result:failed', {
-          message: component.errorMessage,
-          cfi: target,
+      renditionInstance
+        .display(target)
+        .then(function () {
+          component.loading = false
         })
-      })
+        .catch(function (exception) {
+          component.loading = false
+          component.errorMessage = String(exception && exception.message ? exception.message : exception)
+          console.error('page/books/[bookId]/read:goto-search-result:failed', {
+            message: component.errorMessage,
+            cfi: target,
+          })
+        })
     }
 
     function saveHighlight(component) {
       var location = currentLocation && currentLocation.start ? currentLocation.start : null
       var locator = location && location.cfi ? String(location.cfi) : ''
       var href = location && location.href ? String(location.href) : ''
-      var pageNumber = location && location.displayed && typeof location.displayed.page === 'number'
-        ? String(location.displayed.page)
-        : ''
+      var pageNumber = location && location.displayed && typeof location.displayed.page === 'number' ? String(location.displayed.page) : ''
       var formData = new FormData()
 
       component.highlightMessage = ''
@@ -794,38 +793,44 @@
         method: 'POST',
         body: formData,
         credentials: 'same-origin',
-      }).then(function (response) {
-        return response.json().then(function (payload) {
-          return {
-            ok: response.ok,
-            status: response.status,
-            payload: payload || {},
-          }
-        }).catch(function () {
-          return {
-            ok: response.ok,
-            status: response.status,
-            payload: {},
-          }
-        })
-      }).then(function (result) {
-        if (!result.ok) {
-          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '문구 저장에 실패했습니다.'))
-        }
-
-        component.savingHighlight = false
-        component.highlightOpen = false
-        component.highlightQuoteText = ''
-        component.highlightNoteText = ''
-        component.highlightMessage = '인상 깊은 문구를 저장했습니다.'
-        component.scheduleControlsHide()
-      }).catch(function (exception) {
-        component.savingHighlight = false
-        component.highlightMessage = String(exception && exception.message ? exception.message : exception)
-        console.error('page/books/[bookId]/read:save-highlight:failed', {
-          message: component.highlightMessage,
-        })
       })
+        .then(function (response) {
+          return response
+            .json()
+            .then(function (payload) {
+              return {
+                ok: response.ok,
+                status: response.status,
+                payload: payload || {},
+              }
+            })
+            .catch(function () {
+              return {
+                ok: response.ok,
+                status: response.status,
+                payload: {},
+              }
+            })
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            throw new Error(String(result.payload && result.payload.message ? result.payload.message : '문구 저장에 실패했습니다.'))
+          }
+
+          component.savingHighlight = false
+          component.highlightOpen = false
+          component.highlightQuoteText = ''
+          component.highlightNoteText = ''
+          component.highlightMessage = '인상 깊은 문구를 저장했습니다.'
+          component.scheduleControlsHide()
+        })
+        .catch(function (exception) {
+          component.savingHighlight = false
+          component.highlightMessage = String(exception && exception.message ? exception.message : exception)
+          console.error('page/books/[bookId]/read:save-highlight:failed', {
+            message: component.highlightMessage,
+          })
+        })
     }
 
     return {

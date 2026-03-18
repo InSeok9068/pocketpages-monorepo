@@ -47,14 +47,10 @@
     let shelfRecord = null
 
     try {
-      shelfRecord = $app.findFirstRecordByFilter(
-        'book_shelves',
-        'user_id = {:userId} && book_id = {:bookId}',
-        {
-          userId: userId,
-          bookId: bookId,
-        },
-      )
+      shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+        userId: userId,
+        bookId: bookId,
+      })
     } catch (exception) {
       shelfRecord = null
     }

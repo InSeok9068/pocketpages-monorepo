@@ -4,13 +4,12 @@
   const containerClasses = isErrorFlash
     ? 'rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 shadow-sm'
     : 'rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700 shadow-sm'
-  const labelClasses = isErrorFlash
-    ? 'text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-500'
-    : 'text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-600'
+  const labelClasses = isErrorFlash ? 'text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-500' : 'text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-600'
 %>
 <% if (flashMessage) { %>
-<div class="<%= isErrorFlash ? 'rounded-[1.5rem] border-none bg-rose-50/90 px-4 py-3 text-sm text-rose-800 shadow-[0_12px_30px_rgba(136,19,55,0.06)] backdrop-blur-sm' : 'rounded-[1.5rem] border-none bg-emerald-50/90 px-4 py-3 text-sm text-emerald-800 shadow-[0_12px_30px_rgba(6,95,70,0.06)] backdrop-blur-sm' %>">
+<div
+  class="<%= isErrorFlash ? 'rounded-[1.5rem] border-none bg-rose-50/90 px-4 py-3 text-sm text-rose-800 shadow-[0_12px_30px_rgba(136,19,55,0.06)] backdrop-blur-sm' : 'rounded-[1.5rem] border-none bg-emerald-50/90 px-4 py-3 text-sm text-emerald-800 shadow-[0_12px_30px_rgba(6,95,70,0.06)] backdrop-blur-sm' %>">
   <p class="<%= labelClasses %>"><%= isErrorFlash ? 'Alert' : 'Notice' %></p>
-  <p class="mt-1.5 leading-6 font-medium"><%= flashMessage %></p>
+  <p class="mt-1.5 font-medium leading-6"><%= flashMessage %></p>
 </div>
 <% } %>

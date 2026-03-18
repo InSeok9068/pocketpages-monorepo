@@ -13,7 +13,9 @@
   }
 
   const form = body()
-  const email = String(form.email || '').trim().toLowerCase()
+  const email = String(form.email || '')
+    .trim()
+    .toLowerCase()
   const password = form.password === undefined || form.password === null ? '' : String(form.password)
   let errorMessage = ''
 

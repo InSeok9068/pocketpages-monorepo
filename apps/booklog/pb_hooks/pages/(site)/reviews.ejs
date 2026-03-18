@@ -4,7 +4,9 @@
 
   const flashMessage = params.__flash ? String(params.__flash) : ''
   const formatDateText = function (value) {
-    return String(value || '').trim().slice(0, 10)
+    return String(value || '')
+      .trim()
+      .slice(0, 10)
   }
 
   if (!request.auth) {
@@ -20,14 +22,7 @@
     return
   }
 
-  const reviewRecords = $app.findRecordsByFilter(
-    'book_reviews',
-    'user_id = {:userId}',
-    '-reviewed_at,-updated',
-    100,
-    0,
-    { userId: request.auth.get('id') },
-  )
+  const reviewRecords = $app.findRecordsByFilter('book_reviews', 'user_id = {:userId}', '-reviewed_at,-updated', 100, 0, { userId: request.auth.get('id') })
   const reviewItems = []
 
   for (let index = 0; index < reviewRecords.length; index += 1) {
@@ -56,7 +51,7 @@
   <div class="space-y-3">
     <a
       href="/"
-      class="inline-flex items-center gap-2 rounded-full border-none bg-white/78 px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0">
+      class="bg-white/78 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0">
       <span aria-hidden="true">←</span>
       메인으로
     </a>
@@ -76,7 +71,7 @@
       <a
         href="/books/<%= item.bookId %>"
         class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
-        <p class="text-base leading-7 font-semibold tracking-[-0.02em] text-stone-900"><%= item.reviewText %></p>
+        <p class="text-base font-semibold leading-7 tracking-[-0.02em] text-stone-900"><%= item.reviewText %></p>
         <p class="mt-2 text-[12px] leading-5 text-stone-500">
           <span><%= item.bookTitle %></span>
           <% if (item.reviewedAt) { %>
@@ -87,9 +82,7 @@
       <% } %>
     </div>
     <% } else { %>
-    <div class="rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-      아직 저장된 감상평이 없습니다.
-    </div>
+    <div class="rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">아직 저장된 감상평이 없습니다.</div>
     <% } %>
   </section>
 </section>

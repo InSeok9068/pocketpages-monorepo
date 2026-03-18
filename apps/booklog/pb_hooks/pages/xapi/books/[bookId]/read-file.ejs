@@ -19,14 +19,10 @@
   let bookFileRecord = null
 
   try {
-    shelfRecord = $app.findFirstRecordByFilter(
-      'book_shelves',
-      'user_id = {:userId} && book_id = {:bookId}',
-      {
-        userId: userId,
-        bookId: bookId,
-      },
-    )
+    shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+      userId: userId,
+      bookId: bookId,
+    })
   } catch (exception) {
     shelfRecord = null
   }
@@ -35,13 +31,9 @@
 
   if (shelfBookFileId) {
     try {
-      bookFileRecord = $app.findFirstRecordByFilter(
-        'book_files',
-        'id = {:bookFileId}',
-        {
-          bookFileId: shelfBookFileId,
-        },
-      )
+      bookFileRecord = $app.findFirstRecordByFilter('book_files', 'id = {:bookFileId}', {
+        bookFileId: shelfBookFileId,
+      })
     } catch (exception) {
       bookFileRecord = null
     }
@@ -49,11 +41,7 @@
 
   if (!bookFileRecord) {
     try {
-      bookFileRecord = $app.findFirstRecordByFilter(
-        'book_files',
-        'book_id = {:bookId}',
-        { bookId: bookId },
-      )
+      bookFileRecord = $app.findFirstRecordByFilter('book_files', 'book_id = {:bookId}', { bookId: bookId })
     } catch (exception) {
       bookFileRecord = null
     }

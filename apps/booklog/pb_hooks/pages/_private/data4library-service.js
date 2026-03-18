@@ -48,7 +48,7 @@ function requestData4LibraryJson(config, path, query) {
       authKey: apiKey,
       format: 'json',
     },
-    query || {},
+    query || {}
   )
   const url = baseUrl + path + '?' + toQueryString(requestQuery)
 

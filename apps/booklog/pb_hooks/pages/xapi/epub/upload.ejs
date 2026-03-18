@@ -266,10 +266,7 @@
     })
 
     try {
-      const detailResult = data4libraryService.getBookDetail(
-        { apiKey: env('DATA4LIBRARY_APIKEY') },
-        { isbn13: normalizedIsbn13 },
-      )
+      const detailResult = data4libraryService.getBookDetail({ apiKey: env('DATA4LIBRARY_APIKEY') }, { isbn13: normalizedIsbn13 })
 
       dbg('xapi/epub/upload:detail-by-isbn13:done', {
         isbn13: normalizedIsbn13,
@@ -458,14 +455,10 @@
 
   function saveBookShelfRecord(shelfInput) {
     const collection = $app.findCollectionByNameOrId('book_shelves')
-    let record = findFirstRecordOrNull(
-      'book_shelves',
-      'user_id = {:userId} && book_id = {:bookId}',
-      {
-        userId: shelfInput.userId,
-        bookId: shelfInput.bookId,
-      },
-    )
+    let record = findFirstRecordOrNull('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+      userId: shelfInput.userId,
+      bookId: shelfInput.bookId,
+    })
 
     if (!record) {
       record = new Record(collection)
@@ -616,10 +609,7 @@
         continue
       }
 
-      if (
-        manifestItem.mediaType === 'application/xhtml+xml' ||
-        /\.(xhtml|html|htm)$/i.test(manifestItem.href)
-      ) {
+      if (manifestItem.mediaType === 'application/xhtml+xml' || /\.(xhtml|html|htm)$/i.test(manifestItem.href)) {
         firstContentPath = joinPath(dirname(packageDocumentPath), manifestItem.href)
         break
       }
@@ -689,25 +679,23 @@
       isbn13: detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : epubMetadata.isbn13,
       bookImageUrl: detailBook && detailBook.bookImageURL ? detailBook.bookImageURL : '',
       description: detailBook && detailBook.description ? detailBook.description : '',
-      metadataJson: detailResult ? detailResult.raw : null
+      metadataJson: detailResult ? detailResult.raw : null,
     })
     const existingBookFile = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
-      fileHash: fileHash
+      fileHash: fileHash,
     })
     dbg('xapi/epub/upload:existing-book-file', {
       fileHash: fileHash,
       existingId: existingBookFile ? existingBookFile.get('id') : '',
       existingBookId: existingBookFile ? existingBookFile.get('book_id') : '',
     })
-    const targetBookId = existingBookFile && existingBookFile.get('book_id')
-      ? existingBookFile.get('book_id')
-      : bookRecord.get('id')
+    const targetBookId = existingBookFile && existingBookFile.get('book_id') ? existingBookFile.get('book_id') : bookRecord.get('id')
 
     if (existingBookFile && existingBookFile.get('book_id') && existingBookFile.get('book_id') !== bookRecord.get('id')) {
       warn('xapi/epub/upload:file-book-mismatch', {
         fileHash: fileHash,
         existingBookId: existingBookFile.get('book_id'),
-        newBookId: bookRecord.get('id')
+        newBookId: bookRecord.get('id'),
       })
     }
 
@@ -723,12 +711,12 @@
       identifierValue: epubMetadata.identifierValue,
       previewText: firstContentText,
       tocJson: [],
-      manifestJson: manifestItems
+      manifestJson: manifestItems,
     })
     const shelfRecord = saveBookShelfRecord({
       userId: request.auth.get('id'),
       bookId: targetBookId,
-      bookFileId: bookFileRecord.get('id')
+      bookFileId: bookFileRecord.get('id'),
     })
 
     info('xapi/epub/upload:success', {
@@ -740,7 +728,7 @@
       epubTitle: epubMetadata.title,
       epubAuthor: epubMetadata.author,
       searchKeyword: searchKeyword,
-      selectedIsbn13: detailBook && detailBook.isbn13 ? detailBook.isbn13 : ''
+      selectedIsbn13: detailBook && detailBook.isbn13 ? detailBook.isbn13 : '',
     })
 
     dbg('xapi/epub/upload:redirect', {
