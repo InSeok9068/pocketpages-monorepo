@@ -1,47 +1,272 @@
 <script server>
   meta('title', 'Booklog')
-  meta('description', 'Booklog 기본 메인 페이지')
+  meta('description', 'Booklog 메인 페이지')
 
   const flashMessage = params.__flash ? String(params.__flash) : ''
+  const isSignedIn = !!request.auth
+  const shelfStatusLabels = {
+    queued: '읽을 예정',
+    reading: '읽는 중',
+    finished: '읽음',
+    dropped: '중단함',
+  }
+  const emptyShelfBooks = [
+    {
+      title: '아직 책이 없습니다',
+      caption: '첫 EPUB를 올리면 여기에 꽂힙니다',
+      tone: 'from-[#d8c3a5] to-[#b08968]',
+      coverUrl: '',
+      statusLabel: 'Shelf 1',
+    },
+    {
+      title: '읽는 중인 책',
+      caption: '진행 중인 책이 가로로 쌓입니다',
+      tone: 'from-[#9c6644] to-[#7f5539]',
+      coverUrl: '',
+      statusLabel: 'Shelf 2',
+    },
+    {
+      title: '읽은 책',
+      caption: '완독한 책도 같은 도서함에 정리됩니다',
+      tone: 'from-[#7f4f24] to-[#582f0e]',
+      coverUrl: '',
+      statusLabel: 'Shelf 3',
+    },
+  ]
+  let shelfBooks = emptyShelfBooks
+
+  if (isSignedIn) {
+    const shelfRecords = $app.findRecordsByFilter(
+      'book_shelves',
+      'user_id = {:userId}',
+      '-last_read_at,-updated',
+      50,
+      0,
+      { userId: request.auth.get('id') },
+    )
+    const loadedShelfBooks = []
+
+    for (let index = 0; index < shelfRecords.length; index += 1) {
+      const shelfRecord = shelfRecords[index]
+      const bookId = shelfRecord.get('book_id')
+      let bookRecord = null
+
+      try {
+        bookRecord = $app.findFirstRecordByFilter('books', 'id = {:id}', { id: bookId })
+      } catch (exception) {
+        bookRecord = null
+      }
+
+      if (!bookRecord) {
+        continue
+      }
+
+      const status = String(shelfRecord.get('status') || 'queued')
+      const author = String(bookRecord.get('author') || '').trim()
+      const publisher = String(bookRecord.get('publisher') || '').trim()
+      const captionParts = []
+
+      if (author) {
+        captionParts.push(author)
+      }
+
+      if (publisher) {
+        captionParts.push(publisher)
+      }
+
+      loadedShelfBooks.push({
+        bookId: String(bookRecord.get('id') || ''),
+        title: String(bookRecord.get('title') || '제목 없음'),
+        caption: captionParts.length > 0 ? captionParts.join(' · ') : '메타데이터가 아직 없습니다',
+        tone: 'from-[#d8c3a5] to-[#b08968]',
+        coverUrl: String(bookRecord.get('book_image_url') || '').trim(),
+        statusLabel: shelfStatusLabels[status] || '보관 중',
+      })
+    }
+
+    if (loadedShelfBooks.length > 0) {
+      shelfBooks = loadedShelfBooks
+    }
+  }
 </script>
 
 <section class="space-y-4">
-  <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">PocketPages Booklog</p>
   <h1 class="text-4xl font-semibold tracking-tight text-stone-950">Booklog</h1>
-  <p class="max-w-2xl text-base leading-7 text-stone-600">로그인 기능을 붙이기 전 단계의 기본 메인 페이지입니다.</p>
+  <p class="max-w-[17rem] text-[15px] leading-6 text-stone-600 sm:max-w-none sm:text-base sm:leading-7">한 권씩 꽂아두고, 읽는 흐름과 기록을 같이 쌓아가는 개인 서재.</p>
 </section>
 
 <% if (flashMessage) { %>
-<section class="mt-6 rounded-2xl border border-stone-200 bg-white px-5 py-4 text-sm text-stone-700 shadow-sm">
+<section class="mt-6 rounded-[1.6rem] border border-stone-200 bg-white/85 px-5 py-4 text-sm text-stone-700 shadow-sm backdrop-blur-sm">
   <%= flashMessage %>
 </section>
 <% } %>
 
-<section class="mt-8 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
-  <div class="space-y-2">
-    <h2 class="text-2xl font-semibold text-stone-950">EPUB Upload Test</h2>
-    <p class="text-sm leading-6 text-stone-600">EPUB 파일 하나를 올리면 서버가 파일을 읽고 내부에서 찾은 문자열과 엔트리 이름을 로그로 남깁니다.</p>
+<% if (!isSignedIn) { %>
+<section class="mt-8 rounded-[2rem] border border-stone-200/80 bg-white/75 p-6 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+  <div class="space-y-3">
+    <p class="text-sm font-medium uppercase tracking-[0.2em] text-stone-500">Welcome</p>
+    <h2 class="text-3xl font-semibold tracking-tight text-stone-950">내 서재를 시작해보세요</h2>
+    <p class="max-w-xl text-sm leading-7 text-stone-600">로그인하면 EPUB 업로드, 도서함 정리, 읽는 중 상태와 감상 기록을 이어서 관리할 수 있습니다.</p>
   </div>
 
-  <form
-    class="mt-6 space-y-4"
-    method="post"
-    action="/xapi/epub/upload"
-    enctype="multipart/form-data">
-    <label class="block space-y-2">
-      <span class="text-sm font-medium text-stone-700">EPUB 파일</span>
-      <input
-        class="block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900"
-        type="file"
-        name="epubFile"
-        accept=".epub,application/epub+zip"
-        required />
-    </label>
+  <div class="mt-6">
+    <a
+      class="inline-flex items-center rounded-full bg-stone-900 px-5 py-3 text-sm font-medium text-white no-underline transition hover:bg-stone-700"
+      href="/auth">
+      로그인 / 회원가입
+    </a>
+  </div>
+</section>
+<% } else { %>
+<section
+  x-data="{ uploadOpen: false, uploading: false, uploadFileName: '' }"
+  class="mt-8 space-y-6">
+  <div class="flex items-center justify-between gap-4">
+    <div class="space-y-1">
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">My Shelf</p>
+      <h2 class="text-2xl font-semibold tracking-tight text-stone-950">도서함</h2>
+    </div>
 
     <button
-      class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700"
-      type="submit">
-      Upload EPUB
+      type="button"
+      x-on:click="uploadOpen = true"
+      class="inline-flex items-center rounded-full border-none bg-stone-900 px-4 py-2.5 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700">
+      책 추가
     </button>
-  </form>
+  </div>
+
+  <section class="rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.92),rgba(245,236,222,0.95))] p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
+    <div class="overflow-x-auto overflow-y-hidden pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div class="flex min-w-max gap-3">
+        <% for (let index = 0; index < shelfBooks.length; index += 1) { const book = shelfBooks[index] %>
+        <article class="w-[8.35rem] flex-none sm:w-[8.9rem]">
+          <% if (book.bookId) { %>
+          <a
+            href="/books/<%= book.bookId %>"
+            class="block no-underline transition hover:translate-y-[-1px]">
+            <div class="relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b <%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> sm:h-[12.5rem]">
+              <% if (book.coverUrl) { %>
+              <img
+                src="<%= book.coverUrl %>"
+                alt="<%= book.title %> 표지"
+                class="h-full w-full object-cover" />
+              <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(46,31,20,0.08),rgba(46,31,20,0.38))]"></div>
+              <% } %>
+              <div class="relative <%= book.coverUrl ? '' : 'ml-2' %> flex h-full flex-col justify-between px-3 py-4 text-white">
+                <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/70">Booklog</p>
+                <div class="space-y-2">
+                  <h3 class="text-base leading-5 font-semibold tracking-[-0.03em]"><%= book.title %></h3>
+                  <p class="text-[11px] leading-4.5 text-white/78"><%= book.caption %></p>
+                </div>
+                <p class="text-[11px] font-medium text-white/70"><%= book.statusLabel %></p>
+              </div>
+            </div>
+          </a>
+          <% } else { %>
+          <div class="relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b <%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> sm:h-[12.5rem]">
+            <% if (book.coverUrl) { %>
+            <img
+              src="<%= book.coverUrl %>"
+              alt="<%= book.title %> 표지"
+              class="h-full w-full object-cover" />
+            <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(46,31,20,0.08),rgba(46,31,20,0.38))]"></div>
+            <% } %>
+            <div class="relative <%= book.coverUrl ? '' : 'ml-2' %> flex h-full flex-col justify-between px-3 py-4 text-white">
+              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/70">Booklog</p>
+              <div class="space-y-2">
+                <h3 class="text-base leading-5 font-semibold tracking-[-0.03em]"><%= book.title %></h3>
+                <p class="text-[11px] leading-4.5 text-white/78"><%= book.caption %></p>
+              </div>
+              <p class="text-[11px] font-medium text-white/70"><%= book.statusLabel %></p>
+            </div>
+          </div>
+          <% } %>
+        </article>
+        <% } %>
+      </div>
+    </div>
+  </section>
+
+  <section class="rounded-[2rem] border border-stone-200/80 bg-white/78 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+    <div class="space-y-2">
+      <h3 class="text-xl font-semibold tracking-tight text-stone-950">도서함 메모</h3>
+      <p class="text-sm leading-6 text-stone-600">업로드한 책이 있으면 표지와 기본 메타데이터를 이 도서함에서 바로 볼 수 있습니다.</p>
+    </div>
+  </section>
+
+  <div
+    x-show="uploadOpen"
+    x-cloak
+    x-transition.opacity
+    class="fixed left-0 top-0 z-[80] h-screen w-screen flex items-end justify-center bg-stone-950/45 px-3 pb-3 pt-16 sm:items-center sm:px-6 sm:py-6">
+    <div
+      x-on:click.outside="if (!uploading) { uploadOpen = false }"
+      class="w-full max-w-lg rounded-[2.1rem] border border-stone-200/90 bg-[linear-gradient(180deg,#fffdf8,#f8f0e4)] px-5 pb-5 pt-4 shadow-[0_30px_90px_rgba(41,28,17,0.3)] sm:px-6 sm:pb-6 sm:pt-5">
+      <div class="flex items-start justify-between gap-4">
+        <div class="space-y-1">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-stone-500">Upload</p>
+          <h3 class="text-2xl font-semibold tracking-tight text-stone-950">도서함에 책 넣기</h3>
+        </div>
+        <button
+          type="button"
+          x-bind:disabled="uploading"
+          x-on:click="if (!uploading) { uploadOpen = false }"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-white/78 text-stone-600 shadow-[0_8px_20px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-white/90"
+          aria-label="업로드 팝업 닫기">
+          <span class="text-lg leading-none">×</span>
+        </button>
+      </div>
+
+      <form
+        class="mt-6 space-y-5"
+        method="post"
+        action="/xapi/epub/upload"
+        enctype="multipart/form-data"
+        x-on:submit="window.setTimeout(function () { uploading = true }, 0)">
+        <label class="block space-y-2">
+          <span class="text-sm font-medium text-stone-700">EPUB 파일</span>
+          <div class="rounded-[1.35rem] border border-stone-200 bg-white/90 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+            <input
+              class="block w-full box-border text-sm text-stone-900 file:mr-3 file:rounded-full file:border-0 file:bg-stone-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-stone-700"
+              type="file"
+              name="epubFile"
+              accept=".epub,application/epub+zip"
+              x-on:change="uploadFileName = $event.target.files && $event.target.files[0] ? $event.target.files[0].name : ''"
+              required />
+            <p
+              x-show="uploadFileName"
+              x-cloak
+              x-text="uploadFileName"
+              class="mt-3 break-all text-[13px] leading-5 text-stone-500"></p>
+          </div>
+        </label>
+
+        <div
+          x-show="uploading"
+          x-cloak
+          class="rounded-[1.5rem] border border-[#dcc5a3] bg-[#fff8ec] px-4 py-4 text-sm leading-6 text-stone-700">
+          <p class="font-medium text-stone-900">업로드와 메타데이터 조회를 진행 중입니다.</p>
+          <p class="mt-1 text-stone-600">파일을 읽고 도서 검색과 상세 조회를 같이 처리하니 몇 초 정도 걸릴 수 있습니다.</p>
+        </div>
+
+        <div class="flex gap-3 pt-1">
+          <button
+            x-bind:disabled="uploading"
+            class="inline-flex min-h-13 flex-1 items-center justify-center rounded-full border-none bg-stone-900 px-4 py-3.5 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700 disabled:opacity-100"
+            type="submit">
+            <span x-show="!uploading" x-cloak>업로드</span>
+            <span x-show="uploading" x-cloak>업로드 중...</span>
+          </button>
+          <button
+            type="button"
+            x-bind:disabled="uploading"
+            x-on:click="if (!uploading) { uploadOpen = false }"
+            class="inline-flex min-h-13 items-center justify-center rounded-full border-none bg-white/88 px-5 py-3.5 text-sm font-medium text-stone-700 shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
+            닫기
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 </section>
+<% } %>

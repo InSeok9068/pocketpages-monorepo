@@ -1,0 +1,254 @@
+<script server>
+  meta('title', 'Booklog 책 상세')
+  meta('description', 'Booklog 책 상세 페이지')
+
+  const flashMessage = params.__flash ? String(params.__flash) : ''
+  const bookId = String(params.bookId || '').trim()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const shelfStatusLabels = {
+    queued: '읽을 예정',
+    reading: '읽는 중',
+    finished: '다 읽음',
+    dropped: '중단함',
+  }
+
+  if (!request.auth) {
+    dbg('page/books/[bookId]:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  if (!bookId) {
+    dbg('page/books/[bookId]:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '책 정보를 찾을 수 없습니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '책 정보를 찾을 수 없습니다.',
+    })
+    return
+  }
+
+  let bookRecord = null
+  let shelfRecord = null
+  let reviewRecord = null
+  let bookFileRecord = null
+
+  try {
+    bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
+  } catch (exception) {
+    bookRecord = null
+  }
+
+  if (!bookRecord) {
+    dbg('page/books/[bookId]:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '책 정보를 찾을 수 없습니다.',
+      bookId: bookId,
+    })
+    redirect('/', {
+      status: 303,
+      message: '책 정보를 찾을 수 없습니다.',
+    })
+    return
+  }
+
+  try {
+    shelfRecord = $app.findFirstRecordByFilter(
+      'book_shelves',
+      'user_id = {:userId} && book_id = {:bookId}',
+      {
+        userId: userId,
+        bookId: bookId,
+      },
+    )
+  } catch (exception) {
+    shelfRecord = null
+  }
+
+  try {
+    reviewRecord = $app.findFirstRecordByFilter(
+      'book_reviews',
+      'user_id = {:userId} && book_id = {:bookId}',
+      {
+        userId: userId,
+        bookId: bookId,
+      },
+    )
+  } catch (exception) {
+    reviewRecord = null
+  }
+
+  if (shelfRecord && String(shelfRecord.get('book_file_id') || '').trim()) {
+    try {
+      bookFileRecord = $app.findFirstRecordByFilter(
+        'book_files',
+        'id = {:bookFileId}',
+        {
+          bookFileId: String(shelfRecord.get('book_file_id') || ''),
+        },
+      )
+    } catch (exception) {
+      bookFileRecord = null
+    }
+  }
+
+  if (!bookFileRecord) {
+    try {
+      bookFileRecord = $app.findFirstRecordByFilter(
+        'book_files',
+        'book_id = {:bookId}',
+        { bookId: bookId },
+      )
+    } catch (exception) {
+      bookFileRecord = null
+    }
+  }
+
+  const title = String(bookRecord.get('title') || '제목 없음')
+  const author = String(bookRecord.get('author') || '').trim()
+  const publicationDate = String(bookRecord.get('publication_date') || '').trim()
+  const publicationYear = String(bookRecord.get('publication_year') || '').trim()
+  const publisher = String(bookRecord.get('publisher') || '').trim()
+  const bookImageUrl = String(bookRecord.get('book_image_url') || '').trim()
+  const shelfStatus = shelfRecord ? String(shelfRecord.get('status') || 'queued') : 'queued'
+  const reviewText = reviewRecord ? String(reviewRecord.get('review_text') || '') : ''
+  const storedFileName = bookFileRecord ? String(bookFileRecord.get('stored_file') || '').trim() : ''
+  const bookFileUrl = bookFileRecord && storedFileName
+    ? '/api/files/' + encodeURIComponent(String(bookFileRecord.collection().name || 'book_files')) + '/' + encodeURIComponent(String(bookFileRecord.get('id') || '')) + '/' + encodeURIComponent(storedFileName)
+    : ''
+
+  let bookMetaText = publicationDate
+
+  if (!bookMetaText && publicationYear) {
+    bookMetaText = publicationYear
+  }
+
+  if (!bookMetaText) {
+    bookMetaText = '출판일 정보 없음'
+  }
+</script>
+
+<section class="space-y-6">
+  <div class="space-y-2">
+    <a
+      href="/"
+      class="inline-flex items-center gap-2 rounded-full border-none bg-white/78 px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0">
+      <span aria-hidden="true">←</span>
+      도서함으로
+    </a>
+    <h1 class="text-4xl font-semibold tracking-tight text-stone-950">책 상세</h1>
+  </div>
+
+  <% if (flashMessage) { %>
+  <section class="rounded-[1.6rem] border border-stone-200 bg-white/85 px-5 py-4 text-sm text-stone-700 shadow-sm backdrop-blur-sm">
+    <%= flashMessage %>
+  </section>
+  <% } %>
+
+  <section class="rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.94),rgba(245,236,222,0.96))] p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+    <div class="flex flex-col gap-5 sm:flex-row sm:items-start">
+      <div class="w-40 shrink-0">
+        <% if (bookImageUrl) { %>
+        <img
+          src="<%= bookImageUrl %>"
+          alt="<%= title %> 표지"
+          class="h-56 w-40 rounded-[1.5rem] object-cover shadow-[0_18px_30px_rgba(74,50,28,0.12)]" />
+        <% } else { %>
+        <div class="flex h-56 w-40 items-end rounded-[1.5rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] px-4 py-5 text-white shadow-[0_18px_28px_rgba(74,50,28,0.18)]">
+          <p class="text-lg leading-6 font-semibold tracking-[-0.03em]"><%= title %></p>
+        </div>
+        <% } %>
+        <% if (bookFileUrl) { %>
+        <a
+          href="/books/<%= bookId %>/read"
+          class="mt-3 inline-flex w-full items-center justify-center rounded-full border-none bg-stone-900 px-4 py-3 text-sm font-medium text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700">
+          EPUB 뷰어로 보기
+        </a>
+        <% } %>
+      </div>
+
+      <div class="min-w-0 flex-1 space-y-4">
+        <div class="space-y-2">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.26em] text-stone-500">Book</p>
+          <h2 class="text-3xl leading-tight font-semibold tracking-[-0.04em] text-stone-950"><%= title %></h2>
+        </div>
+
+        <dl class="grid gap-3 text-sm text-stone-700 sm:grid-cols-2">
+          <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+            <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">저자</dt>
+            <dd class="mt-1 text-base font-medium text-stone-900"><%= author || '저자 정보 없음' %></dd>
+          </div>
+          <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+            <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">출판일</dt>
+            <dd class="mt-1 text-base font-medium text-stone-900"><%= bookMetaText %></dd>
+          </div>
+          <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+            <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">출판사</dt>
+            <dd class="mt-1 text-base font-medium text-stone-900"><%= publisher || '출판사 정보 없음' %></dd>
+          </div>
+          <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+            <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">현재 상태</dt>
+            <dd class="mt-1 text-base font-medium text-stone-900"><%= shelfStatusLabels[shelfStatus] || '읽을 예정' %></dd>
+          </div>
+        </dl>
+
+        <div class="flex flex-wrap gap-2 pt-1">
+          <form method="post" action="/xapi/books/update-status" class="m-0">
+            <input type="hidden" name="bookId" value="<%= bookId %>" />
+            <input type="hidden" name="status" value="reading" />
+            <button
+              type="submit"
+              class="inline-flex items-center rounded-full border-none px-4 py-2.5 text-sm font-medium outline-none ring-0 transition <%= shelfStatus === 'reading' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-white/88 text-stone-700 shadow-[0_10px_22px_rgba(70,52,31,0.08)] hover:bg-stone-100/80' %>">
+              읽는 중
+            </button>
+          </form>
+          <form method="post" action="/xapi/books/update-status" class="m-0">
+            <input type="hidden" name="bookId" value="<%= bookId %>" />
+            <input type="hidden" name="status" value="finished" />
+            <button
+              type="submit"
+              class="inline-flex items-center rounded-full border-none px-4 py-2.5 text-sm font-medium outline-none ring-0 transition <%= shelfStatus === 'finished' ? 'bg-[#9e6125] text-white shadow-[0_10px_22px_rgba(165,103,38,0.14)]' : 'bg-white/88 text-stone-700 shadow-[0_10px_22px_rgba(70,52,31,0.08)] hover:bg-stone-100/80' %>">
+              다 읽음
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+    <div class="space-y-2">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-stone-500">Review</p>
+      <h3 class="text-2xl font-semibold tracking-tight text-stone-950">감상평</h3>
+      <p class="text-sm leading-6 text-stone-600">책을 읽으며 느낀 점을 간단하게 남겨두세요.</p>
+    </div>
+
+    <form class="mt-5 space-y-4" method="post" action="/xapi/books/save-review">
+      <input type="hidden" name="bookId" value="<%= bookId %>" />
+      <label class="block space-y-2">
+        <span class="text-sm font-medium text-stone-700">내 감상</span>
+        <textarea
+          name="reviewText"
+          rows="8"
+          class="block w-full min-w-0 box-border rounded-[1.4rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] outline-none transition placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.42),0_14px_28px_rgba(157,121,72,0.12)]"
+          placeholder="읽으며 들었던 생각을 적어보세요."><%= reviewText %></textarea>
+      </label>
+      <button
+        type="submit"
+        class="inline-flex items-center justify-center rounded-full border-none bg-stone-900 px-5 py-3 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700">
+        감상평 저장
+      </button>
+    </form>
+  </section>
+</section>

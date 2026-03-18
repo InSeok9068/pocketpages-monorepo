@@ -27,5 +27,23 @@
   },
   "[javascript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
+  },
+  "dbcode.connections": [
+    {
+      "connectionId": "of_b7icMLkbbZ2JPToSRq",
+      "name": "booklog",
+      "driver": "sqlite",
+      "connectionType": "socket",
+      "socket": "pocketpages-monorepo/apps/booklog/pb_data/data.db",
+      "readOnly": false,
+      "postConnectionSqlType": "inline",
+      "driverOptions": {
+        "extensions": []
+      },
+      "idleTimeout": 0,
+      "introspection": {
+        "progressive": false
+      }
+    }
+  ]
 }

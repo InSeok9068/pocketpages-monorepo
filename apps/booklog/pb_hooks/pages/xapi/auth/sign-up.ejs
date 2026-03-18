@@ -1,0 +1,64 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/auth/sign-up:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const email = String(form.email || '').trim().toLowerCase()
+  const password = form.password === undefined || form.password === null ? '' : String(form.password)
+  const passwordConfirm = form.passwordConfirm === undefined || form.passwordConfirm === null ? '' : String(form.passwordConfirm)
+  let errorMessage = ''
+
+  dbg('xapi/auth/sign-up:start', {
+    email: email,
+  })
+
+  try {
+    if (!email) throw new Error('이메일이 필요합니다.')
+    if (!password) throw new Error('비밀번호가 필요합니다.')
+    if (password.length < 8) throw new Error('비밀번호는 8자 이상이어야 합니다.')
+    if (password !== passwordConfirm) throw new Error('비밀번호 확인이 일치하지 않습니다.')
+
+    createUser(email, password, {
+      collection: 'users',
+      sendVerificationEmail: false,
+    })
+    signInWithPassword(email, password)
+
+    dbg('xapi/auth/sign-up:response', {
+      status: 303,
+      redirectTo: '/',
+      flash: '회원가입 완료',
+    })
+    redirect('/', {
+      status: 303,
+      message: '회원가입 완료',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/auth/sign-up:failed', {
+      email: email,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/auth/sign-up:response', {
+    status: 303,
+    redirectTo: '/auth',
+    error: errorMessage || '회원가입에 실패했습니다.',
+  })
+  redirect('/auth', {
+    status: 303,
+    message: errorMessage || '회원가입에 실패했습니다.',
+  })
+</script>

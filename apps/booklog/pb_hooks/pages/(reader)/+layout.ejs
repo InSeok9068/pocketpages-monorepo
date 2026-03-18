@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1" />
+    <title><%= meta('title') %></title>
+    <meta
+      name="description"
+      content="<%= meta('description') %>" />
+    <link
+      rel="stylesheet"
+      href="<%= asset('/assets/style.css') %>" />
+    <style>
+      [x-cloak],
+      [un-cloak] {
+        display: none !important;
+      }
+    </style>
+    <script>
+      window.__assetFallback = function (element) {
+        element.onerror = null
+        element.src = element.dataset.fallbackSrc
+      }
+    </script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+      data-fallback-src="<%= asset('/assets/vendor/alpine-3.x.x-cdn.min.js') %>"
+      onerror="window.__assetFallback(this)"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@unocss/runtime/uno.global.js"
+      data-fallback-src="<%= asset('/assets/vendor/unocss-runtime-attributify.global.js') %>"
+      onerror="window.__assetFallback(this)"></script>
+    <script>
+      window.__unocss = {
+        presets: [() => window.__unocss_runtime.presets.presetUno()],
+        ready: function () {
+          document.body.removeAttribute('un-cloak')
+        },
+      }
+    </script>
+    <%- slots.head %>
+  </head>
+
+  <body
+    un-cloak
+    class="min-h-screen bg-[#f7f2e6] text-stone-900 antialiased">
+    <%- slots.body || slot %>
+  </body>
+</html>

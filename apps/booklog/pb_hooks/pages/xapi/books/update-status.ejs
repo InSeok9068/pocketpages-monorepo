@@ -1,0 +1,117 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/books/update-status:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/books/update-status:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const status = String(form.status || '').trim()
+  const today = new Date().toISOString().slice(0, 10)
+  let errorMessage = ''
+
+  dbg('xapi/books/update-status:start', {
+    userId: userId,
+    bookId: bookId,
+    status: status,
+  })
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+    if (status !== 'reading' && status !== 'finished') throw new Error('변경할 수 없는 상태입니다.')
+
+    const bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
+    let shelfRecord = null
+
+    try {
+      shelfRecord = $app.findFirstRecordByFilter(
+        'book_shelves',
+        'user_id = {:userId} && book_id = {:bookId}',
+        {
+          userId: userId,
+          bookId: bookId,
+        },
+      )
+    } catch (exception) {
+      shelfRecord = null
+    }
+
+    if (!shelfRecord) {
+      const collection = $app.findCollectionByNameOrId('book_shelves')
+      shelfRecord = new Record(collection)
+      shelfRecord.set('user_id', userId)
+      shelfRecord.set('book_id', String(bookRecord.get('id') || ''))
+    }
+
+    shelfRecord.set('status', status)
+    shelfRecord.set('last_read_at', today)
+
+    if (status === 'reading') {
+      if (!String(shelfRecord.get('started_at') || '').trim()) {
+        shelfRecord.set('started_at', today)
+      }
+      shelfRecord.set('finished_at', '')
+    }
+
+    if (status === 'finished') {
+      if (!String(shelfRecord.get('started_at') || '').trim()) {
+        shelfRecord.set('started_at', today)
+      }
+      shelfRecord.set('finished_at', today)
+      shelfRecord.set('progress_percent', 100)
+    }
+
+    $app.save(shelfRecord)
+
+    dbg('xapi/books/update-status:redirect', {
+      status: 303,
+      redirectTo: '/books/' + bookId,
+      flash: status === 'finished' ? '다 읽음으로 표시했습니다.' : '읽는 중으로 표시했습니다.',
+    })
+    redirect('/books/' + bookId, {
+      status: 303,
+      message: status === 'finished' ? '다 읽음으로 표시했습니다.' : '읽는 중으로 표시했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/books/update-status:failed', {
+      userId: userId,
+      bookId: bookId,
+      status: status,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/books/update-status:redirect', {
+    status: 303,
+    redirectTo: bookId ? '/books/' + bookId : '/',
+    error: errorMessage || '상태 변경에 실패했습니다.',
+  })
+  redirect(bookId ? '/books/' + bookId : '/', {
+    status: 303,
+    message: errorMessage || '상태 변경에 실패했습니다.',
+  })
+</script>

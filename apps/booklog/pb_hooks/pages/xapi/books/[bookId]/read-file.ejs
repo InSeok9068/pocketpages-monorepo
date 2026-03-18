@@ -1,0 +1,85 @@
+<script server>
+  const bookId = String(params.bookId || '').trim()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+
+  if (!request.auth) {
+    warn('xapi/books/[bookId]/read-file:unauthorized', {
+      bookId: bookId,
+    })
+    response.html(401, '로그인이 필요합니다.')
+    return
+  }
+
+  if (!bookId) {
+    response.html(400, '책 정보가 필요합니다.')
+    return
+  }
+
+  let shelfRecord = null
+  let bookFileRecord = null
+
+  try {
+    shelfRecord = $app.findFirstRecordByFilter(
+      'book_shelves',
+      'user_id = {:userId} && book_id = {:bookId}',
+      {
+        userId: userId,
+        bookId: bookId,
+      },
+    )
+  } catch (exception) {
+    shelfRecord = null
+  }
+
+  if (shelfRecord && String(shelfRecord.get('book_file_id') || '').trim()) {
+    try {
+      bookFileRecord = $app.findFirstRecordByFilter(
+        'book_files',
+        'id = {:bookFileId}',
+        {
+          bookFileId: String(shelfRecord.get('book_file_id') || ''),
+        },
+      )
+    } catch (exception) {
+      bookFileRecord = null
+    }
+  }
+
+  if (!bookFileRecord) {
+    try {
+      bookFileRecord = $app.findFirstRecordByFilter(
+        'book_files',
+        'book_id = {:bookId}',
+        { bookId: bookId },
+      )
+    } catch (exception) {
+      bookFileRecord = null
+    }
+  }
+
+  if (!bookFileRecord) {
+    response.html(404, 'EPUB 파일을 찾을 수 없습니다.')
+    return
+  }
+
+  const storedFileName = String(bookFileRecord.get('stored_file') || '').trim()
+
+  if (!storedFileName) {
+    response.html(404, 'EPUB 파일을 찾을 수 없습니다.')
+    return
+  }
+
+  const storageFileKey = String(bookFileRecord.baseFilesPath() || '') + '/' + storedFileName
+  const localFilePath = String($app.dataDir() || '') + '/storage/' + storageFileKey
+
+  dbg('xapi/books/[bookId]/read-file:serve', {
+    userId: userId,
+    bookId: bookId,
+    bookFileId: String(bookFileRecord.get('id') || ''),
+    fileKey: storageFileKey,
+    filePath: localFilePath,
+  })
+
+  response.header('Content-Type', 'application/epub+zip')
+  response.file(localFilePath)
+</script>

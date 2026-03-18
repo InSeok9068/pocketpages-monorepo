@@ -1,0 +1,610 @@
+<script server>
+  meta('title', 'Booklog 리더')
+  meta('description', 'Booklog EPUB 리더')
+
+  const bookId = String(params.bookId || '').trim()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  let bookRecord = null
+  let shelfRecord = null
+  let bookFileRecord = null
+
+  if (!request.auth) {
+    dbg('page/books/[bookId]/read:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  if (!bookId) {
+    dbg('page/books/[bookId]/read:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '책 정보를 찾을 수 없습니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '책 정보를 찾을 수 없습니다.',
+    })
+    return
+  }
+
+  try {
+    bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
+  } catch (exception) {
+    bookRecord = null
+  }
+
+  if (!bookRecord) {
+    dbg('page/books/[bookId]/read:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '책 정보를 찾을 수 없습니다.',
+      bookId: bookId,
+    })
+    redirect('/', {
+      status: 303,
+      message: '책 정보를 찾을 수 없습니다.',
+    })
+    return
+  }
+
+  try {
+    shelfRecord = $app.findFirstRecordByFilter(
+      'book_shelves',
+      'user_id = {:userId} && book_id = {:bookId}',
+      {
+        userId: userId,
+        bookId: bookId,
+      },
+    )
+  } catch (exception) {
+    shelfRecord = null
+  }
+
+  if (shelfRecord && String(shelfRecord.get('book_file_id') || '').trim()) {
+    try {
+      bookFileRecord = $app.findFirstRecordByFilter(
+        'book_files',
+        'id = {:bookFileId}',
+        {
+          bookFileId: String(shelfRecord.get('book_file_id') || ''),
+        },
+      )
+    } catch (exception) {
+      bookFileRecord = null
+    }
+  }
+
+  if (!bookFileRecord) {
+    try {
+      bookFileRecord = $app.findFirstRecordByFilter(
+        'book_files',
+        'book_id = {:bookId}',
+        { bookId: bookId },
+      )
+    } catch (exception) {
+      bookFileRecord = null
+    }
+  }
+
+  const title = String(bookRecord.get('title') || '제목 없음')
+  const author = String(bookRecord.get('author') || '').trim()
+  const storedFileName = bookFileRecord ? String(bookFileRecord.get('stored_file') || '').trim() : ''
+  const epubReaderUrl = bookFileRecord && storedFileName
+    ? '/xapi/books/' + encodeURIComponent(bookId) + '/read-file'
+    : ''
+
+  if (!epubReaderUrl) {
+    dbg('page/books/[bookId]/read:redirect', {
+      status: 303,
+      redirectTo: '/books/' + bookId,
+      flash: 'EPUB 파일을 찾을 수 없습니다.',
+      bookId: bookId,
+    })
+    redirect('/books/' + bookId, {
+      status: 303,
+      message: 'EPUB 파일을 찾을 수 없습니다.',
+    })
+    return
+  }
+
+  if (shelfRecord) {
+    if (String(shelfRecord.get('status') || '') !== 'reading') {
+      shelfRecord.set('status', 'reading')
+    }
+
+    if (!String(shelfRecord.get('started_at') || '').trim()) {
+      shelfRecord.set('started_at', new Date().toISOString().slice(0, 10))
+    }
+
+    shelfRecord.set('last_read_at', new Date().toISOString().slice(0, 10))
+    $app.save(shelfRecord)
+  }
+</script>
+
+<!-- slot:head -->
+<script
+  src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
+
+<!-- slot:body -->
+<section
+  x-data="{
+    loading: true,
+    errorMessage: '',
+    fullscreenMode: false,
+    controlsVisible: false,
+    controlsTimer: null,
+    searchQuery: '',
+    searchResults: [],
+    searchOpen: false,
+    searching: false,
+    searchMessage: '',
+    bookInstance: null,
+    renditionInstance: null,
+    tocLabelByHref: {},
+    normalizeText: function (value) {
+      return String(value || '').replace(/\s+/g, ' ').trim()
+    },
+    normalizeHref: function (value) {
+      var href = String(value || '').trim()
+
+      if (!href) {
+        return ''
+      }
+
+      return href.split('#')[0]
+    },
+    registerTocItems: function (items) {
+      var self = this
+
+      ;(items || []).forEach(function (item) {
+        var href = self.normalizeHref(item && item.href ? item.href : '')
+        var label = self.normalizeText(item && item.label ? item.label : '')
+
+        if (href && label) {
+          self.tocLabelByHref[href] = label
+        }
+
+        if (item && item.subitems && item.subitems.length) {
+          self.registerTocItems(item.subitems)
+        }
+      })
+    },
+    getChapterLabelForSection: function (section) {
+      var candidates = [
+        section && section.href ? section.href : '',
+        section && section.url ? section.url : '',
+      ]
+      var i = 0
+      var href = ''
+      var normalizedHref = ''
+
+      for (i = 0; i < candidates.length; i += 1) {
+        href = String(candidates[i] || '').trim()
+        normalizedHref = this.normalizeHref(href)
+
+        if (normalizedHref && this.tocLabelByHref[normalizedHref]) {
+          return this.tocLabelByHref[normalizedHref]
+        }
+      }
+
+      return this.normalizeText(
+        section && section.href ? section.href :
+        section && section.url ? section.url :
+        section && section.idref ? section.idref :
+        section && section.id ? section.id :
+        ''
+      )
+    },
+    getResultLabel: function (result) {
+      var chapterLabel = this.normalizeText(result && result.chapterLabel ? result.chapterLabel : '')
+      var excerpt = this.normalizeText(result && result.excerpt ? result.excerpt : '')
+
+      if (chapterLabel && excerpt) {
+        return chapterLabel + ' · ' + excerpt
+      }
+
+      return chapterLabel || excerpt || '검색 결과'
+    },
+    openSearch: function () {
+      this.searchOpen = true
+      this.controlsVisible = true
+      this.clearControlsTimer()
+      this.searchMessage = ''
+      this.$nextTick(function () {
+        var input = document.getElementById('reader-search-input')
+
+        if (input) {
+          input.focus()
+        }
+      })
+    },
+    closeSearch: function () {
+      this.searchOpen = false
+      this.scheduleControlsHide()
+    },
+    clearControlsTimer: function () {
+      if (this.controlsTimer) {
+        clearTimeout(this.controlsTimer)
+        this.controlsTimer = null
+      }
+    },
+    scheduleControlsHide: function () {
+      var self = this
+
+      this.clearControlsTimer()
+
+      if (!this.fullscreenMode || this.searchOpen) {
+        return
+      }
+
+      this.controlsTimer = setTimeout(function () {
+        self.controlsVisible = false
+      }, 2200)
+    },
+    showControls: function () {
+      this.controlsVisible = true
+      this.scheduleControlsHide()
+    },
+    toggleControls: function () {
+      this.controlsVisible = !this.controlsVisible
+
+      if (this.controlsVisible) {
+        this.scheduleControlsHide()
+      } else {
+        this.clearControlsTimer()
+      }
+    },
+    toggleFullscreenMode: function () {
+      this.fullscreenMode = !this.fullscreenMode
+
+      if (this.fullscreenMode) {
+        this.controlsVisible = false
+        this.clearControlsTimer()
+      } else {
+        this.controlsVisible = false
+        this.clearControlsTimer()
+      }
+    },
+    goToSearchResult: function (result) {
+      var target = result && result.cfi ? String(result.cfi) : ''
+
+      if (!target || !this.renditionInstance) {
+        return
+      }
+
+      this.loading = true
+      this.searchOpen = false
+      this.scheduleControlsHide()
+
+      this.renditionInstance.display(target).then(() => {
+        this.loading = false
+      }).catch((exception) => {
+        this.loading = false
+        this.errorMessage = String(exception && exception.message ? exception.message : exception)
+        console.error('page/books/[bookId]/read:goto-search-result:failed', {
+          message: this.errorMessage,
+          cfi: target,
+        })
+      })
+    },
+    performSearch: function () {
+      var query = this.normalizeText(this.searchQuery)
+      var spineItems = null
+      var results = []
+      var self = this
+      var searchPromises = []
+
+      if (!query) {
+        this.searchResults = []
+        this.searchMessage = '검색어를 입력해 주세요.'
+        return
+      }
+
+      if (!this.bookInstance || !this.bookInstance.spine) {
+        this.searchResults = []
+        this.searchMessage = '리더가 아직 준비되지 않았습니다.'
+        return
+      }
+
+      spineItems = this.bookInstance.spine.spineItems || []
+
+      if (!spineItems.length) {
+        this.searchResults = []
+        this.searchMessage = '검색할 본문이 없습니다.'
+        return
+      }
+
+      this.searching = true
+      this.searchMessage = ''
+      this.searchResults = []
+
+      spineItems.forEach(function (section) {
+        if (!section || typeof section.find !== 'function') {
+          return
+        }
+
+        searchPromises.push(
+          Promise.resolve(section.load(self.bookInstance.load.bind(self.bookInstance))).then(function () {
+            var found = section.find(query) || []
+            var chapterLabel = self.getChapterLabelForSection(section)
+
+            found.forEach(function (item) {
+              results.push({
+                cfi: String(item && item.cfi ? item.cfi : ''),
+                excerpt: self.normalizeText(item && item.excerpt ? item.excerpt : ''),
+                chapterLabel: chapterLabel,
+              })
+            })
+          }).catch(function (exception) {
+            console.warn('page/books/[bookId]/read:search-section-skipped', {
+              href: section && section.href ? section.href : '',
+              message: String(exception && exception.message ? exception.message : exception),
+            })
+          }).finally(function () {
+            try {
+              section.unload()
+            } catch (exception) {}
+          })
+        )
+      })
+
+      Promise.all(searchPromises).then(function () {
+        self.searching = false
+        self.searchResults = results
+        self.searchMessage = results.length
+          ? results.length + '개의 결과를 찾았습니다.'
+          : '검색 결과가 없습니다.'
+      }).catch(function (exception) {
+        self.searching = false
+        self.searchResults = []
+        self.searchMessage = '검색 중 오류가 발생했습니다.'
+        console.error('page/books/[bookId]/read:search-failed', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+    },
+    initReader: function () {
+      var container = document.getElementById('epub-reader')
+
+      if (!container || !window.ePub) {
+        this.loading = false
+        this.errorMessage = 'EPUB 뷰어를 불러오지 못했습니다.'
+        return
+      }
+
+      var book = null
+      var rendition = null
+      var readerUrl = '<%= epubReaderUrl %>'
+      var self = this
+
+      console.debug('page/books/[bookId]/read:init', {
+        bookId: '<%= bookId %>',
+        readerUrl: readerUrl,
+      })
+
+      fetch(readerUrl, {
+        method: 'GET',
+        credentials: 'same-origin',
+      }).then(function (response) {
+        console.debug('page/books/[bookId]/read:fetch-response', {
+          ok: response.ok,
+          status: response.status,
+          contentType: response.headers.get('Content-Type') || '',
+        })
+
+        if (!response.ok) {
+          throw new Error('EPUB 파일 응답이 올바르지 않습니다. status=' + response.status)
+        }
+
+        return response.arrayBuffer()
+      }).then(function (buffer) {
+        console.debug('page/books/[bookId]/read:fetch-buffer', {
+          byteLength: buffer && buffer.byteLength ? buffer.byteLength : 0,
+        })
+
+        book = window.ePub(buffer)
+        rendition = book.renderTo('epub-reader', {
+          width: '100%',
+          height: '100%',
+          manager: 'continuous',
+          flow: 'scrolled',
+          allowScriptedContent: false,
+        })
+
+        self.bookInstance = book
+        self.renditionInstance = rendition
+
+        return book.ready.then(function () {
+          try {
+            self.registerTocItems(book.navigation && book.navigation.toc ? book.navigation.toc : [])
+          } catch (exception) {}
+          return rendition.display()
+        })
+      }).then(function () {
+        self.loading = false
+        console.debug('page/books/[bookId]/read:rendered', {
+          bookId: '<%= bookId %>',
+        })
+      }).catch(function (exception) {
+        self.loading = false
+        self.errorMessage = String(exception && exception.message ? exception.message : exception)
+        console.error('page/books/[bookId]/read:failed', {
+          message: self.errorMessage,
+        })
+      })
+    },
+  }"
+  x-init="initReader()"
+  x-bind:class="fullscreenMode ? 'bg-[#f5f1e7]' : ''"
+  class="relative min-h-screen">
+  <div
+    x-show="!fullscreenMode"
+    x-cloak
+    class="fixed left-4 right-4 top-4 z-30 flex items-start justify-between gap-3">
+    <a
+      href="/books/<%= bookId %>"
+      class="inline-flex items-center gap-2 rounded-full border-none bg-white/88 px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+      <span aria-hidden="true">←</span>
+      책 상세
+    </a>
+
+    <div class="flex items-center gap-2">
+      <button
+        type="button"
+        x-on:click="openSearch()"
+        class="inline-flex items-center gap-2 rounded-full border-none bg-white/90 px-3 py-2 text-sm font-semibold text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+        검색
+      </button>
+      <button
+        type="button"
+        x-on:click="toggleFullscreenMode()"
+        class="inline-flex items-center gap-2 rounded-full border-none bg-stone-950 px-3 py-2 text-sm font-semibold text-white shadow-[0_10px_26px_rgba(24,19,16,0.16)] outline-none ring-0">
+        전체모드
+      </button>
+    </div>
+  </div>
+
+  <button
+    type="button"
+    x-show="fullscreenMode"
+    x-cloak
+    x-on:click="toggleControls()"
+    class="fixed right-4 top-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-[rgba(24,19,16,0.18)] text-lg text-white shadow-none outline-none ring-0 backdrop-blur-[1px]">
+    ⋯
+  </button>
+
+  <div
+    x-show="fullscreenMode && controlsVisible"
+    x-cloak
+    class="fixed right-4 top-18 z-30 flex flex-col items-end gap-2">
+    <button
+      type="button"
+      x-on:click="toggleFullscreenMode()"
+      class="inline-flex items-center gap-2 rounded-full border-none bg-stone-950 px-3 py-2 text-sm font-semibold text-white shadow-[0_10px_26px_rgba(24,19,16,0.16)] outline-none ring-0">
+      기본보기
+    </button>
+    <button
+      type="button"
+      x-on:click="openSearch()"
+      class="inline-flex items-center gap-2 rounded-full border-none bg-white/92 px-3 py-2 text-sm font-semibold text-stone-800 shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+      검색
+    </button>
+    <a
+      href="/books/<%= bookId %>"
+      class="inline-flex items-center gap-2 rounded-full border-none bg-white/92 px-3 py-2 text-sm font-semibold text-stone-700 no-underline shadow-[0_10px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm">
+      책 상세
+    </a>
+  </div>
+
+  <div
+    x-show="searchOpen"
+    x-cloak
+    class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.2)] backdrop-blur-[2px]">
+    <div class="mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
+      <div class="w-full rounded-[1.75rem] bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h2 class="text-base font-semibold text-stone-950">책 전체 검색</h2>
+          <button
+            type="button"
+            x-on:click="closeSearch()"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-stone-100 text-stone-500 outline-none ring-0">
+            ×
+          </button>
+        </div>
+
+        <div class="mb-3 flex gap-2">
+          <input
+            id="reader-search-input"
+            x-model="searchQuery"
+            x-on:keydown.enter.prevent="performSearch()"
+            type="text"
+            placeholder="찾을 문장을 입력해 주세요"
+            class="min-w-0 flex-1 rounded-full border border-stone-200 bg-[#fbf8f1] px-4 py-3 text-sm text-stone-900 outline-none box-border" />
+          <button
+            type="button"
+            x-on:click="performSearch()"
+            x-bind:disabled="searching"
+            class="shrink-0 rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white outline-none ring-0 disabled:opacity-60">
+            <span x-show="!searching" x-cloak>검색</span>
+            <span x-show="searching" x-cloak>검색 중</span>
+          </button>
+        </div>
+
+        <p
+          x-show="searchMessage"
+          x-cloak
+          class="mb-3 text-sm text-stone-500"
+          x-text="searchMessage"></p>
+
+        <div class="max-h-[60vh] overflow-y-auto">
+          <template x-if="!searchResults.length && !searching && !searchMessage">
+            <p class="rounded-[1.25rem] bg-[#f8f3e7] px-4 py-4 text-sm leading-6 text-stone-500">
+              검색어를 입력하면 책 전체를 훑어서 결과를 보여줍니다.
+            </p>
+          </template>
+
+          <div
+            x-show="searchResults.length"
+            x-cloak
+            class="space-y-2">
+            <template
+              x-for="result in searchResults"
+              :key="result.cfi">
+              <button
+                type="button"
+                x-on:click="goToSearchResult(result)"
+                class="block w-full rounded-[1.25rem] border-none bg-stone-50 px-4 py-3 text-left text-sm leading-6 text-stone-700 outline-none ring-0">
+                <span x-text="getResultLabel(result)"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    x-bind:class="fullscreenMode ? 'max-w-none px-0 pb-0 pt-0 sm:px-0' : 'max-w-3xl px-4 pb-6 pt-20 sm:px-6'"
+    class="mx-auto flex min-h-screen flex-col transition-all duration-200">
+    <header
+      x-show="!fullscreenMode"
+      x-cloak
+      class="mb-5 space-y-1">
+      <h1 class="text-2xl font-semibold tracking-tight text-stone-950"><%= title %></h1>
+      <% if (author) { %>
+      <p class="text-sm text-stone-500"><%= author %></p>
+      <% } %>
+    </header>
+
+    <div
+      x-show="loading"
+      x-cloak
+      class="mb-4 rounded-[1.5rem] border border-stone-200 bg-white/78 px-4 py-4 text-sm leading-6 text-stone-600 shadow-[0_16px_32px_rgba(70,52,31,0.06)]">
+      EPUB 파일을 불러오는 중입니다.
+    </div>
+
+    <div
+      x-show="errorMessage"
+      x-cloak
+      class="mb-4 rounded-[1.5rem] border border-[#e2b49d] bg-[#fff1e9] px-4 py-4 text-sm leading-6 text-[#8d4b2d] shadow-[0_16px_32px_rgba(70,52,31,0.06)]"
+      x-text="errorMessage"></div>
+
+    <div
+      x-bind:class="fullscreenMode ? 'rounded-none shadow-none' : 'rounded-[2rem] shadow-[0_24px_60px_rgba(70,52,31,0.08)]'"
+      class="min-h-0 flex-1 bg-white transition-all duration-200">
+      <div
+        id="epub-reader"
+        x-bind:class="fullscreenMode ? 'h-screen px-0 py-0 sm:px-0 sm:py-0' : 'h-[calc(100vh-12rem)] px-4 py-6 sm:px-8 sm:py-8'"
+        class="overflow-y-auto"></div>
+    </div>
+  </div>
+</section>

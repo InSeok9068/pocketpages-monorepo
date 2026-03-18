@@ -1,0 +1,118 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/books/save-review:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/books/save-review:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const reviewText = String(form.reviewText || '').trim()
+  let errorMessage = ''
+
+  dbg('xapi/books/save-review:start', {
+    userId: userId,
+    bookId: bookId,
+  })
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+    if (!reviewText) throw new Error('감상평을 입력해주세요.')
+
+    const bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
+    let shelfRecord = null
+    let reviewRecord = null
+
+    try {
+      shelfRecord = $app.findFirstRecordByFilter(
+        'book_shelves',
+        'user_id = {:userId} && book_id = {:bookId}',
+        {
+          userId: userId,
+          bookId: bookId,
+        },
+      )
+    } catch (exception) {
+      shelfRecord = null
+    }
+
+    try {
+      reviewRecord = $app.findFirstRecordByFilter(
+        'book_reviews',
+        'user_id = {:userId} && book_id = {:bookId}',
+        {
+          userId: userId,
+          bookId: bookId,
+        },
+      )
+    } catch (exception) {
+      reviewRecord = null
+    }
+
+    if (!reviewRecord) {
+      const collection = $app.findCollectionByNameOrId('book_reviews')
+      reviewRecord = new Record(collection)
+    }
+
+    reviewRecord.set('user_id', userId)
+    reviewRecord.set('book_id', String(bookRecord.get('id') || ''))
+    reviewRecord.set('visibility', 'private')
+    reviewRecord.set('review_text', reviewText)
+    reviewRecord.set('reviewed_at', new Date().toISOString().slice(0, 10))
+
+    if (shelfRecord) {
+      reviewRecord.set('shelf_id', String(shelfRecord.get('id') || ''))
+    }
+
+    $app.save(reviewRecord)
+
+    dbg('xapi/books/save-review:redirect', {
+      status: 303,
+      redirectTo: '/books/' + bookId,
+      flash: '감상평을 저장했습니다.',
+    })
+    redirect('/books/' + bookId, {
+      status: 303,
+      message: '감상평을 저장했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/books/save-review:failed', {
+      userId: userId,
+      bookId: bookId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/books/save-review:redirect', {
+    status: 303,
+    redirectTo: bookId ? '/books/' + bookId : '/',
+    error: errorMessage || '감상평 저장에 실패했습니다.',
+  })
+  redirect(bookId ? '/books/' + bookId : '/', {
+    status: 303,
+    message: errorMessage || '감상평 저장에 실패했습니다.',
+  })
+</script>

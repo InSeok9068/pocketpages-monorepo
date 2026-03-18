@@ -45,10 +45,6 @@
       data-fallback-src="<%= asset('/assets/vendor/alpine-3.x.x-cdn.min.js') %>"
       onerror="window.__assetFallback(this)"></script>
     <script
-      src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@latest"
-      data-fallback-src="<%= asset('/assets/vendor/pocketbase-htmx-ext-sse-latest.js') %>"
-      onerror="window.__assetFallback(this)"></script>
-    <script
       src="https://cdn.jsdelivr.net/npm/@unocss/runtime/uno.global.js"
       data-fallback-src="<%= asset('/assets/vendor/unocss-runtime-attributify.global.js') %>"
       onerror="window.__assetFallback(this)"></script>
@@ -65,7 +61,47 @@
 
   <body
     un-cloak
-    class="min-h-screen bg-stone-100 text-stone-900 antialiased">
-    <main class="mx-auto max-w-5xl px-6 py-10 md:px-8 md:py-14"><%- slots.body || slot %></main>
+    class="min-h-screen bg-[radial-gradient(circle_at_top,_#f7f1df_0%,_#efe6d2_34%,_#e6dece_62%,_#ddd8cf_100%)] text-stone-900 antialiased">
+    <% if (request.auth) { %>
+    <div
+      x-data="{ open: false }"
+      class="pointer-events-none fixed right-4 top-4 z-40 sm:right-6 sm:top-6 md:right-8 md:top-8">
+      <div class="pointer-events-auto relative">
+        <button
+          type="button"
+          x-on:click="open = !open"
+          x-on:click.outside="open = false"
+          x-bind:aria-expanded="open ? 'true' : 'false'"
+          class="inline-flex h-12 w-12 items-center justify-center rounded-full border-none bg-white/82 text-stone-700 shadow-[0_12px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm transition hover:bg-white/92"
+          aria-label="메뉴 열기">
+          <span class="flex flex-col gap-1.5">
+            <span class="block h-0.5 w-5 rounded-full bg-current"></span>
+            <span class="block h-0.5 w-5 rounded-full bg-current"></span>
+            <span class="block h-0.5 w-5 rounded-full bg-current"></span>
+          </span>
+        </button>
+
+        <div
+          x-show="open"
+          x-transition.opacity.scale.origin.top.right
+          class="absolute right-0 top-14 z-20 min-w-40 rounded-2xl border-none bg-white/92 p-2 shadow-[0_18px_40px_rgba(70,52,31,0.10)] backdrop-blur-sm">
+          <form
+            method="post"
+            action="/xapi/auth/sign-out">
+            <button
+              class="flex w-full items-center justify-between rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 outline-none ring-0 transition hover:bg-stone-100/80"
+              type="submit">
+              <span>로그아웃</span>
+              <span class="text-stone-400">↗</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+    <% } %>
+
+    <main class="mx-auto min-h-screen max-w-5xl px-4 py-6 sm:px-6 sm:py-8 md:px-8 md:py-12">
+      <%- slots.body || slot %>
+    </main>
   </body>
 </html>
