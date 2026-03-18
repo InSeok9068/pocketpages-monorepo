@@ -254,7 +254,56 @@
     return bestDoc
   }
 
+  function loadBookDetailByIsbn13(isbn13) {
+    const normalizedIsbn13 = extractDigits(isbn13).slice(0, 13)
+
+    if (normalizedIsbn13.length !== 13) {
+      return null
+    }
+
+    dbg('xapi/epub/upload:detail-by-isbn13:start', {
+      isbn13: normalizedIsbn13,
+    })
+
+    try {
+      const detailResult = data4libraryService.getBookDetail(
+        { apiKey: env('DATA4LIBRARY_APIKEY') },
+        { isbn13: normalizedIsbn13 },
+      )
+
+      dbg('xapi/epub/upload:detail-by-isbn13:done', {
+        isbn13: normalizedIsbn13,
+        found: !!(detailResult && detailResult.book),
+        bookname: detailResult && detailResult.book ? String(detailResult.book.bookname || '') : '',
+      })
+
+      if (!detailResult || !detailResult.book) {
+        return null
+      }
+
+      return detailResult
+    } catch (exception) {
+      warn('xapi/epub/upload:detail-by-isbn13:failed', {
+        isbn13: normalizedIsbn13,
+        error: String(exception && exception.message ? exception.message : exception),
+      })
+      return null
+    }
+  }
+
   function findBestBookSearchResult(epubMetadata) {
+    const detailByIsbn13 = loadBookDetailByIsbn13(epubMetadata.isbn13)
+
+    if (detailByIsbn13 && detailByIsbn13.book) {
+      return {
+        searchKeyword: '',
+        searchResult: null,
+        selectedDoc: detailByIsbn13.book,
+        detailResult: detailByIsbn13,
+        matchedBy: 'isbn13',
+      }
+    }
+
     const keywords = collectCandidateSearchKeywords(epubMetadata.title, epubMetadata.author)
     let selectedDoc = null
     let selectedSearchKeyword = ''
@@ -295,6 +344,8 @@
       searchKeyword: selectedSearchKeyword,
       searchResult: selectedSearchResult,
       selectedDoc: selectedDoc,
+      detailResult: null,
+      matchedBy: selectedDoc ? 'keyword' : '',
     }
   }
 
@@ -602,16 +653,18 @@
       searchKeyword = bestSearchResult.searchKeyword
       searchResult = bestSearchResult.searchResult
       selectedDoc = bestSearchResult.selectedDoc
+      detailResult = bestSearchResult.detailResult || null
 
       dbg('xapi/epub/upload:search-selection', {
         searchKeyword: searchKeyword,
         hasSearchResult: !!searchResult,
+        matchedBy: bestSearchResult.matchedBy || '',
         selectedIsbn13: selectedDoc && selectedDoc.isbn13 ? String(selectedDoc.isbn13) : '',
         selectedBookname: selectedDoc && selectedDoc.bookname ? String(selectedDoc.bookname) : '',
       })
     }
 
-    if (selectedDoc && selectedDoc.isbn13) {
+    if (!detailResult && selectedDoc && selectedDoc.isbn13) {
       dbg('xapi/epub/upload:detail-request', {
         isbn13: String(selectedDoc.isbn13),
       })
