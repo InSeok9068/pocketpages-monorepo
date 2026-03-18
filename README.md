@@ -43,6 +43,9 @@
 | `fast-xml-parser`  | EPUB 내부 XML, OPF, container.xml 같은 구조 파싱 |
 | `papaparse`        | CSV 파싱, CSV 확장자 파일 업로드/가져오기 처리 |
 | `dayjs`            | 날짜 포맷, 표시용 문자열 처리, 간단한 날짜 계산 |
+| `slugify`          | slug 문자열 생성, URL 친화적인 식별자 변환 |
+| `he`               | HTML entity 인코딩/디코딩 |
+| `validator`        | 이메일, URL, 숫자/문자열 같은 문자열 단위 검증 |
 | `zod`              | form/body/query 입력값 런타임 검증 |
 
 ---
