@@ -82,6 +82,7 @@
         caption: captionParts.length > 0 ? captionParts.join(' · ') : '메타데이터가 아직 없습니다',
         tone: 'from-[#d8c3a5] to-[#b08968]',
         coverUrl: String(bookRecord.get('book_image_url') || '').trim(),
+        isReading: status === 'reading',
         statusLabel: shelfStatusLabels[status] || '보관 중',
       })
     }
@@ -134,7 +135,7 @@
 
 <section class="space-y-5">
   <h1 class="text-4xl font-semibold tracking-tight text-stone-950">Booklog</h1>
-  <p class="max-w-[17rem] text-[15px] leading-6 text-stone-600 sm:max-w-none sm:text-base sm:leading-7">한 권씩 꽂아두고, 읽는 흐름과 기록을 같이 쌓아가는 개인 서재.</p>
+  <p class="max-w-[17rem] text-[15px] leading-6 text-stone-600 sm:max-w-none sm:text-base sm:leading-7">책을 읽고 남긴 문장과 감상이 한 권씩 쌓여, 나만의 작은 도서관이 되어가는 곳.</p>
 </section>
 
 <% if (flashMessage) { %>
@@ -189,6 +190,11 @@
             class="block no-underline transition hover:translate-y-[-1px]">
             <div
               class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
+              <% if (book.isReading) { %>
+              <span class="absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full bg-stone-900/84 px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] backdrop-blur-sm">
+                읽는 중
+              </span>
+              <% } %>
               <% if (book.coverUrl) { %>
               <img
                 src="<%= book.coverUrl %>"
@@ -209,6 +215,11 @@
           <% } else { %>
           <div
             class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
+            <% if (book.isReading) { %>
+            <span class="absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full bg-stone-900/84 px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] backdrop-blur-sm">
+              읽는 중
+            </span>
+            <% } %>
             <% if (book.coverUrl) { %>
             <img
               src="<%= book.coverUrl %>"

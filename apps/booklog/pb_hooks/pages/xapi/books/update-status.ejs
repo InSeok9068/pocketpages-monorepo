@@ -41,7 +41,7 @@
 
   try {
     if (!bookId) throw new Error('책 정보가 필요합니다.')
-    if (status !== 'reading' && status !== 'finished') throw new Error('변경할 수 없는 상태입니다.')
+    if (status !== 'queued' && status !== 'reading' && status !== 'finished') throw new Error('변경할 수 없는 상태입니다.')
 
     const bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
     let shelfRecord = null
@@ -55,6 +55,19 @@
       shelfRecord = null
     }
 
+    if (!shelfRecord && status === 'queued') {
+      dbg('xapi/books/update-status:redirect', {
+        status: 303,
+        redirectTo: bookDetailPath,
+        flash: '읽을 예정으로 되돌렸습니다.',
+      })
+      redirect(bookDetailPath, {
+        status: 303,
+        message: '읽을 예정으로 되돌렸습니다.',
+      })
+      return
+    }
+
     if (!shelfRecord) {
       const collection = $app.findCollectionByNameOrId('book_shelves')
       shelfRecord = new Record(collection)
@@ -64,6 +77,12 @@
 
     shelfRecord.set('status', status)
     shelfRecord.set('last_read_at', today)
+
+    if (status === 'queued') {
+      shelfRecord.set('started_at', '')
+      shelfRecord.set('finished_at', '')
+      shelfRecord.set('progress_percent', 0)
+    }
 
     if (status === 'reading') {
       if (!String(shelfRecord.get('started_at') || '').trim()) {
@@ -82,14 +101,24 @@
 
     $app.save(shelfRecord)
 
+    let flashMessage = '읽는 중으로 표시했습니다.'
+
+    if (status === 'finished') {
+      flashMessage = '다 읽음으로 표시했습니다.'
+    }
+
+    if (status === 'queued') {
+      flashMessage = '읽을 예정으로 되돌렸습니다.'
+    }
+
     dbg('xapi/books/update-status:redirect', {
       status: 303,
       redirectTo: bookDetailPath,
-      flash: status === 'finished' ? '다 읽음으로 표시했습니다.' : '읽는 중으로 표시했습니다.',
+      flash: flashMessage,
     })
     redirect(bookDetailPath, {
       status: 303,
-      message: status === 'finished' ? '다 읽음으로 표시했습니다.' : '읽는 중으로 표시했습니다.',
+      message: flashMessage,
     })
     return
   } catch (exception) {

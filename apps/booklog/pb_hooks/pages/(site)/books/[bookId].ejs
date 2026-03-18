@@ -219,11 +219,11 @@
             <input
               type="hidden"
               name="status"
-              value="reading" />
+              value="<%= shelfStatus === 'reading' ? 'queued' : 'reading' %>" />
             <button
               type="submit"
               class="<%= shelfStatus === 'reading' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-white/88 text-stone-700 shadow-[0_10px_22px_rgba(70,52,31,0.08)] hover:bg-stone-100/80' %> inline-flex items-center rounded-full border-none px-4 py-2.5 text-sm font-medium outline-none ring-0 transition">
-              읽는 중
+              <%= shelfStatus === 'reading' ? '읽는 중 풀기' : '읽는 중' %>
             </button>
           </form>
           <form
@@ -237,11 +237,11 @@
             <input
               type="hidden"
               name="status"
-              value="finished" />
+              value="<%= shelfStatus === 'finished' ? 'queued' : 'finished' %>" />
             <button
               type="submit"
               class="<%= shelfStatus === 'finished' ? 'bg-[#9e6125] text-white shadow-[0_10px_22px_rgba(165,103,38,0.14)]' : 'bg-white/88 text-stone-700 shadow-[0_10px_22px_rgba(70,52,31,0.08)] hover:bg-stone-100/80' %> inline-flex items-center rounded-full border-none px-4 py-2.5 text-sm font-medium outline-none ring-0 transition">
-              다 읽음
+              <%= shelfStatus === 'finished' ? '다 읽음 풀기' : '다 읽음' %>
             </button>
           </form>
         </div>
