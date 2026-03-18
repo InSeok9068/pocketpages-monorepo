@@ -41,6 +41,7 @@
 | ------------------ | ---- |
 | `fflate`           | ZIP/EPUB 압축 해제, 바이너리 압축 데이터 처리 |
 | `fast-xml-parser`  | EPUB 내부 XML, OPF, container.xml 같은 구조 파싱 |
+| `papaparse`        | CSV 파싱, CSV 확장자 파일 업로드/가져오기 처리 |
 | `dayjs`            | 날짜 포맷, 표시용 문자열 처리, 간단한 날짜 계산 |
 | `zod`              | form/body/query 입력값 런타임 검증 |
 
