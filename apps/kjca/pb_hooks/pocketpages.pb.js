@@ -1,1 +1,1 @@
-require('pocketpages');
+require('pocketpages')

@@ -1,34 +1,34 @@
 <script server>
-  const kjcaAuth = resolve('kjca-auth');
-  const kjcaCore = resolve('kjca-core');
-  const kjcaCollectService = resolve('kjca-collect-service');
-  const authState = kjcaAuth.readAuthState(request);
-  const form = body();
+  const kjcaAuth = resolve('kjca-auth')
+  const kjcaCore = resolve('kjca-core')
+  const kjcaCollectService = resolve('kjca-collect-service')
+  const authState = kjcaAuth.readAuthState(request)
+  const form = body()
   const formState = kjcaCore.buildFormState({
     reportDate: form.reportDate,
     testOneOnly: form.testOneOnly,
-  });
-  let dashboardState = kjcaCore.parseDashboardState(form.dashboardStateJson, formState);
+  })
+  let dashboardState = kjcaCore.parseDashboardState(form.dashboardStateJson, formState)
 
   dbg('xapi/kjca/clear-cache:start', {
     reportDate: formState.reportDate,
     dept: String(form.dept || '').trim(),
     isSuperuser: authState.isSuperuser,
-  });
+  })
 
   if (!authState.isSuperuser) {
     dashboardState = kjcaCore.buildDashboardState({
       ...dashboardState,
       errorMessage: '먼저 관리자 계정으로 로그인해주세요.',
-    });
+    })
   } else {
     try {
       const result = kjcaCollectService.clearAnalysisCache(request, {
         reportDate: formState.reportDate,
         dept: form.dept,
-      });
+      })
 
-      const safeDept = String(result.dept || '').trim();
+      const safeDept = String(result.dept || '').trim()
       dashboardState = kjcaCore.buildDashboardState({
         ...dashboardState,
         reportDate: formState.reportDate,
@@ -36,20 +36,20 @@
         noticeMessage: result.deletedCount > 0 ? `${safeDept} 캐시 ${result.deletedCount}건을 삭제했습니다.` : `${safeDept} 캐시가 없어 삭제할 항목이 없습니다.`,
         errorMessage: '',
         analysisResults: dashboardState.analysisResults.filter((item) => String(item.dept || '').trim() !== safeDept),
-      });
+      })
     } catch (exception) {
-      const errorMessage = String(exception.message || exception);
+      const errorMessage = String(exception.message || exception)
       error('xapi/kjca/clear-cache:failed', {
         reportDate: formState.reportDate,
         dept: String(form.dept || '').trim(),
         error: errorMessage,
-      });
+      })
       dashboardState = kjcaCore.buildDashboardState({
         ...dashboardState,
         reportDate: formState.reportDate,
         testOneOnly: formState.testOneOnly,
         errorMessage,
-      });
+      })
     }
   }
 
@@ -58,6 +58,6 @@
     analysisCount: dashboardState.analysisResults.length,
     noticeMessage: dashboardState.noticeMessage,
     errorMessage: dashboardState.errorMessage,
-  });
+  })
 </script>
 <%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaCore }) %>

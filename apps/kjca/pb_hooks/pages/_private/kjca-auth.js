@@ -1,5 +1,5 @@
-const { globalApi } = require('pocketpages');
-const { info, dbg } = globalApi;
+const { globalApi } = require('pocketpages')
+const { info, dbg } = globalApi
 const {
   KJCA_EMAIL_DOMAIN,
   KJCA_HOST,
@@ -11,7 +11,7 @@ const {
   parseTeamLeadRowsFromDiaryHtml,
   buildBrowserLikeHeaders,
   normalizeReportDate,
-} = require('./kjca-core');
+} = require('./kjca-core')
 
 /**
  * 관리자 로그인 ID를 KJCA 이메일 형식으로 정규화합니다.
@@ -19,10 +19,10 @@ const {
  * @returns {string} 정규화된 로그인 ID 문자열입니다.
  */
 function normalizeSuperuserLoginId(loginId) {
-  const id = String(loginId || '').trim();
-  if (!id) return '';
-  if (id.includes('@')) return id;
-  return `${id}@${KJCA_EMAIL_DOMAIN}`;
+  const id = String(loginId || '').trim()
+  if (!id) return ''
+  if (id.includes('@')) return id
+  return `${id}@${KJCA_EMAIL_DOMAIN}`
 }
 
 /**
@@ -31,16 +31,16 @@ function normalizeSuperuserLoginId(loginId) {
  * @returns {types.KjcaAuthState} 화면과 API에서 공통으로 쓰는 인증 상태입니다.
  */
 function readAuthState(request) {
-  const authRecord = request && request.auth ? request.auth : null;
-  const isSignedIn = !!authRecord;
-  const isSuperuser = !!(authRecord && typeof authRecord.isSuperuser === 'function' && authRecord.isSuperuser());
-  const email = authRecord ? String(authRecord.get('email') || '').trim() : '';
+  const authRecord = request && request.auth ? request.auth : null
+  const isSignedIn = !!authRecord
+  const isSuperuser = !!(authRecord && typeof authRecord.isSuperuser === 'function' && authRecord.isSuperuser())
+  const email = authRecord ? String(authRecord.get('email') || '').trim() : ''
   return {
     authRecord,
     isSignedIn,
     isSuperuser,
     email,
-  };
+  }
 }
 
 /**
@@ -49,35 +49,35 @@ function readAuthState(request) {
  * @returns {types.KjcaAuthState} 검증에 통과한 인증 상태입니다.
  */
 function ensureSuperuserRequest(request) {
-  const authState = readAuthState(request);
+  const authState = readAuthState(request)
   if (!authState.isSuperuser || !authState.authRecord) {
-    throw new Error('PocketBase 슈퍼유저 로그인이 필요합니다.');
+    throw new Error('PocketBase 슈퍼유저 로그인이 필요합니다.')
   }
-  return authState;
+  return authState
 }
 
 function readMappedKjcaCredentials(request) {
-  const authState = ensureSuperuserRequest(request);
-  const superuserEmail = String(authState.email || '').trim();
+  const authState = ensureSuperuserRequest(request)
+  const superuserEmail = String(authState.email || '').trim()
   if (!superuserEmail) {
-    throw new Error('슈퍼유저 이메일 정보를 확인할 수 없습니다.');
+    throw new Error('슈퍼유저 이메일 정보를 확인할 수 없습니다.')
   }
 
-  let userRecord = null;
+  let userRecord = null
   try {
-    userRecord = $app.findAuthRecordByEmail('users', superuserEmail);
+    userRecord = $app.findAuthRecordByEmail('users', superuserEmail)
   } catch (error) {
-    userRecord = null;
+    userRecord = null
   }
 
   if (!userRecord) {
-    throw new Error(`users 컬렉션에서 로그인 계정(${superuserEmail})을 찾지 못했습니다.`);
+    throw new Error(`users 컬렉션에서 로그인 계정(${superuserEmail})을 찾지 못했습니다.`)
   }
 
-  const mngId = String(userRecord.get('name') || '').trim();
-  const mngPw = String(userRecord.get('kjcaPw') || '').trim();
+  const mngId = String(userRecord.get('name') || '').trim()
+  const mngPw = String(userRecord.get('kjcaPw') || '').trim()
   if (!mngId || !mngPw) {
-    throw new Error('KJCA 계정 정보가 필요합니다. (users.name=mng_id, users.kjcaPw=mng_pw)');
+    throw new Error('KJCA 계정 정보가 필요합니다. (users.name=mng_id, users.kjcaPw=mng_pw)')
   }
 
   return {
@@ -85,7 +85,7 @@ function readMappedKjcaCredentials(request) {
     userRecord,
     mngId,
     mngPw,
-  };
+  }
 }
 
 /**
@@ -94,24 +94,24 @@ function readMappedKjcaCredentials(request) {
  * @returns {types.KjcaSession} 이후 요청에서 재사용할 KJCA 세션 정보입니다.
  */
 function createKjcaSession(request) {
-  const credentials = readMappedKjcaCredentials(request);
+  const credentials = readMappedKjcaCredentials(request)
 
   info('kjca/session:start', {
     email: credentials.authState.email,
-  });
+  })
 
-  let cookieHeader = '';
+  let cookieHeader = ''
 
   const authInitResponse = $http.send({
     url: KJCA_AUTH_URL,
     method: 'GET',
     timeout: 20,
     headers: buildBrowserLikeHeaders(KJCA_HOST, '', `${KJCA_HOST}/`),
-  });
-  cookieHeader = mergeSetCookieIntoCookieHeader(cookieHeader, authInitResponse.headers);
+  })
+  cookieHeader = mergeSetCookieIntoCookieHeader(cookieHeader, authInitResponse.headers)
 
   const loginBody =
-    `url=${encodeURIComponent('/board/admin')}` + '&sf_mobile_key=' + '&sf_alarm_key=' + `&mng_id=${encodeURIComponent(credentials.mngId)}` + `&mng_pw=${encodeURIComponent(credentials.mngPw)}`;
+    `url=${encodeURIComponent('/board/admin')}` + '&sf_mobile_key=' + '&sf_alarm_key=' + `&mng_id=${encodeURIComponent(credentials.mngId)}` + `&mng_pw=${encodeURIComponent(credentials.mngPw)}`
 
   const loginResponse = $http.send({
     url: KJCA_LOGIN_URL,
@@ -123,17 +123,17 @@ function createKjcaSession(request) {
       'content-type': 'application/x-www-form-urlencoded',
       Origin: KJCA_HOST,
     },
-  });
+  })
 
-  cookieHeader = mergeSetCookieIntoCookieHeader(cookieHeader, loginResponse.headers);
+  cookieHeader = mergeSetCookieIntoCookieHeader(cookieHeader, loginResponse.headers)
 
   info('kjca/session:login-check', {
     statusCode: loginResponse.statusCode,
     setCookieCount: getHeaderValues(loginResponse.headers, 'Set-Cookie').length,
-  });
+  })
 
   if (!cookieHeader) {
-    throw new Error('세션 쿠키를 확보하지 못했습니다.');
+    throw new Error('세션 쿠키를 확보하지 못했습니다.')
   }
 
   return {
@@ -141,37 +141,37 @@ function createKjcaSession(request) {
     loginUrl: KJCA_LOGIN_URL,
     staffAuthUrl: KJCA_AUTH_URL,
     cookieHeader,
-  };
+  }
 }
 
 function fetchDiaryList(session, scDay) {
-  const safeDay = normalizeReportDate(scDay);
+  const safeDay = normalizeReportDate(scDay)
   const diaryListUrl =
     `${session.host}/diary/?site=groupware&mn=1450&bd_type=1&sc_sort=bd_insert_date&sc_ord=desc` +
     `&sc_day_start=${encodeURIComponent(safeDay)}` +
     `&sc_day_end=${encodeURIComponent(safeDay)}` +
-    '&sc_my_insert=Y&sc_my_appr=Y&sc_appr_type1=&sc_appr_type2=&sc_appr_type3=&sc_sf_name=';
+    '&sc_my_insert=Y&sc_my_appr=Y&sc_appr_type1=&sc_appr_type2=&sc_appr_type3=&sc_sf_name='
 
   const diaryResponse = $http.send({
     url: diaryListUrl,
     method: 'GET',
     timeout: 20,
     headers: buildBrowserLikeHeaders(session.host, session.cookieHeader, diaryListUrl),
-  });
+  })
 
-  session.cookieHeader = mergeSetCookieIntoCookieHeader(session.cookieHeader, diaryResponse.headers);
+  session.cookieHeader = mergeSetCookieIntoCookieHeader(session.cookieHeader, diaryResponse.headers)
 
-  const diaryHtml = toString(diaryResponse.body);
-  const diaryAuthRequired = detectAuthRequiredHtml(diaryHtml);
-  const isDiaryAccessible = diaryResponse.statusCode >= 200 && diaryResponse.statusCode < 300 && !diaryAuthRequired;
-  const parsed = isDiaryAccessible ? parseTeamLeadRowsFromDiaryHtml(diaryHtml, session.host) : { rows: [] };
+  const diaryHtml = toString(diaryResponse.body)
+  const diaryAuthRequired = detectAuthRequiredHtml(diaryHtml)
+  const isDiaryAccessible = diaryResponse.statusCode >= 200 && diaryResponse.statusCode < 300 && !diaryAuthRequired
+  const parsed = isDiaryAccessible ? parseTeamLeadRowsFromDiaryHtml(diaryHtml, session.host) : { rows: [] }
 
   info('kjca/probe:diary-list', {
     scDay: safeDay,
     statusCode: diaryResponse.statusCode,
     isDiaryAccessible,
     teamLeadCount: parsed.rows.length,
-  });
+  })
 
   return {
     ok: true,
@@ -182,7 +182,7 @@ function fetchDiaryList(session, scDay) {
       staffName: row.staffName,
       printUrl: row.printUrl,
     })),
-  };
+  }
 }
 
 /**
@@ -193,22 +193,22 @@ function fetchDiaryList(session, scDay) {
  * @returns {types.KjcaProbeResult} 접근 가능 여부와 팀장 목록을 담은 결과입니다.
  */
 function probeStaffAuth(request, payload, session = null) {
-  const safeSession = session || createKjcaSession(request);
-  const scDay = normalizeReportDate(payload && (payload.scDay || payload.reportDate));
+  const safeSession = session || createKjcaSession(request)
+  const scDay = normalizeReportDate(payload && (payload.scDay || payload.reportDate))
 
   dbg('kjca/probe:start', {
     scDay,
-  });
+  })
 
-  const result = fetchDiaryList(safeSession, scDay);
+  const result = fetchDiaryList(safeSession, scDay)
 
   dbg('kjca/probe:response', {
     scDay,
     isDiaryAccessible: result.isDiaryAccessible,
     teamLeadCount: result.teamLeadRows.length,
-  });
+  })
 
-  return result;
+  return result
 }
 
 module.exports = {
@@ -217,4 +217,4 @@ module.exports = {
   ensureSuperuserRequest,
   createKjcaSession,
   probeStaffAuth,
-};
+}

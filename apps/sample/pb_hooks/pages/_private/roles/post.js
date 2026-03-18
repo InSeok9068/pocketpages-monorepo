@@ -5,10 +5,10 @@
  */
 function isPublished(post) {
   if (!post) {
-    return false;
+    return false
   }
 
-  return String(post.get('status') || '').trim() === 'published';
+  return String(post.get('status') || '').trim() === 'published'
 }
 
 /**
@@ -18,10 +18,10 @@ function isPublished(post) {
  */
 function isArchived(post) {
   if (!post) {
-    return false;
+    return false
   }
 
-  return String(post.get('status') || '').trim() === 'archived';
+  return String(post.get('status') || '').trim() === 'archived'
 }
 
 /**
@@ -31,12 +31,12 @@ function isArchived(post) {
  */
 function hasPublishableContent(post) {
   if (!post) {
-    return false;
+    return false
   }
 
-  const title = String(post.get('title') || '').trim();
-  const content = String(post.get('content') || '').trim();
-  return !!title && !!content;
+  const title = String(post.get('title') || '').trim()
+  const content = String(post.get('content') || '').trim()
+  return !!title && !!content
 }
 
 /**
@@ -45,7 +45,7 @@ function hasPublishableContent(post) {
  * @returns {boolean} 게시 가능하면 true입니다.
  */
 function canPublish(post) {
-  return !isArchived(post) && hasPublishableContent(post);
+  return !isArchived(post) && hasPublishableContent(post)
 }
 
 /**
@@ -54,7 +54,7 @@ function canPublish(post) {
  * @returns {boolean} archived 전환이 가능하면 true입니다.
  */
 function canArchive(post) {
-  return isPublished(post);
+  return isPublished(post)
 }
 
 /**
@@ -63,7 +63,7 @@ function canArchive(post) {
  * @returns {boolean} 수정 가능하면 true입니다.
  */
 function canEdit(post) {
-  return !isArchived(post);
+  return !isArchived(post)
 }
 
 /**
@@ -72,7 +72,7 @@ function canEdit(post) {
  * @returns {boolean} 조회수 증가 대상이면 true입니다.
  */
 function canIncrementViewCount(post) {
-  return isPublished(post);
+  return isPublished(post)
 }
 
 module.exports = {
@@ -83,4 +83,4 @@ module.exports = {
   hasPublishableContent,
   isArchived,
   isPublished,
-};
+}

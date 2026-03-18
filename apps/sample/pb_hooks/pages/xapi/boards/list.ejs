@@ -1,22 +1,22 @@
 <script server>
-  const boardService = resolve('board-service');
-  const selectedBoardSlug = String(request.url.query.board || '').trim();
-  let boardItems = [];
-  let errorMessage = '';
+  const boardService = resolve('board-service')
+  const selectedBoardSlug = String(request.url.query.board || '').trim()
+  let boardItems = []
+  let errorMessage = ''
 
-  dbg('xapi/boards/list:start', { selectedBoardSlug });
+  dbg('xapi/boards/list:start', { selectedBoardSlug })
 
   try {
-    boardItems = boardService.toBoardSummaries(boardService.listBoards());
+    boardItems = boardService.toBoardSummaries(boardService.listBoards())
   } catch (error) {
-    warn('xapi/boards/list:load-failed', { message: String(error.message || error) });
-    errorMessage = String(error.message || error);
+    warn('xapi/boards/list:load-failed', { message: String(error.message || error) })
+    errorMessage = String(error.message || error)
   }
 
   dbg('xapi/boards/list:response', {
     boardCount: boardItems.length,
     selectedBoardSlug,
     error: errorMessage || '',
-  });
+  })
 </script>
 <%- include('board-list.ejs', { boardItems: boardItems, error: errorMessage, selectedBoardSlug: selectedBoardSlug }) %>

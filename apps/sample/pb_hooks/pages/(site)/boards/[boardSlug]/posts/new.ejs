@@ -1,15 +1,15 @@
 <script server>
-  const boardService = resolve('board-service');
-  const sharedData = data || {};
-  const board = sharedData.board || null;
-  const boardSummary = boardService.toBoardSummary(board);
+  const boardService = resolve('board-service')
+  const sharedData = data || {}
+  const board = sharedData.board || null
+  const boardSummary = boardService.toBoardSummary(board)
 
   if (!boardSummary) {
-    response.status(404);
-    meta('title', 'Board Not Found');
+    response.status(404)
+    meta('title', 'Board Not Found')
   } else {
-    meta('title', `Write Post | ${boardSummary.name || boardSummary.slug}`);
-    meta('description', boardSummary.description || `Write post in ${boardSummary.slug}`);
+    meta('title', `Write Post | ${boardSummary.name || boardSummary.slug}`)
+    meta('description', boardSummary.description || `Write post in ${boardSummary.slug}`)
   }
 
   const pageData = boardSummary
@@ -20,13 +20,13 @@
     : {
         board: null,
         error: 'Board not found',
-      };
+      }
 
   dbg('page/posts/new:response', {
     boardSlug: pageData.board ? pageData.board.slug : String(params.boardSlug || '').trim(),
     error: pageData.error || '',
     boardId: pageData.board ? pageData.board.id : '',
-  });
+  })
 </script>
 
 <% if (pageData.error) { %>

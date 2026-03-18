@@ -1,24 +1,24 @@
 <script server>
-  const boardService = resolve('board-service');
-  meta('title', 'Boards');
-  meta('description', 'Simple boards list page');
+  const boardService = resolve('board-service')
+  meta('title', 'Boards')
+  meta('description', 'Simple boards list page')
 
   let pageData = {
     boardItems: [],
     error: '',
-  };
+  }
 
   try {
-    pageData.boardItems = boardService.toBoardSummaries(boardService.listBoards());
+    pageData.boardItems = boardService.toBoardSummaries(boardService.listBoards())
   } catch (error) {
-    warn('page/boards:index:load-failed', { message: String(error.message || error) });
-    pageData.error = String(error.message || error);
+    warn('page/boards:index:load-failed', { message: String(error.message || error) })
+    pageData.error = String(error.message || error)
   }
 
   dbg('page/boards:index:response', {
     error: pageData.error || '',
     boardCount: pageData.boardItems.length,
-  });
+  })
 </script>
 
 <header class="mb-8 space-y-4">

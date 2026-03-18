@@ -1,10 +1,10 @@
-const { slugify } = require('./slugify');
+const { slugify } = require('./slugify')
 
 var POST_STATUS_VALUES = {
   draft: true,
   published: true,
   archived: true,
-};
+}
 
 /**
  * 게시글 상태값을 허용된 값으로 정규화합니다.
@@ -15,20 +15,20 @@ var POST_STATUS_VALUES = {
 function normalizePostStatus(value, fallbackStatus) {
   var fallback = String(fallbackStatus || 'draft')
     .trim()
-    .toLowerCase();
+    .toLowerCase()
   var nextStatus = String(value || fallback)
     .trim()
-    .toLowerCase();
+    .toLowerCase()
 
   if (!POST_STATUS_VALUES[fallback]) {
-    fallback = 'draft';
+    fallback = 'draft'
   }
 
   if (!POST_STATUS_VALUES[nextStatus]) {
-    return /** @type {types.PostStatus} */ (fallback);
+    return /** @type {types.PostStatus} */ (fallback)
   }
 
-  return /** @type {types.PostStatus} */ (nextStatus);
+  return /** @type {types.PostStatus} */ (nextStatus)
 }
 
 /**
@@ -37,13 +37,13 @@ function normalizePostStatus(value, fallbackStatus) {
  * @returns {string} 게시판 상세 경로입니다.
  */
 function buildBoardPath(boardSlug) {
-  const slug = String(boardSlug || '').trim();
+  const slug = String(boardSlug || '').trim()
 
   if (!slug) {
-    return '/boards';
+    return '/boards'
   }
 
-  return '/boards/' + encodeURIComponent(slug);
+  return '/boards/' + encodeURIComponent(slug)
 }
 
 /**
@@ -53,14 +53,14 @@ function buildBoardPath(boardSlug) {
  * @returns {string} 게시글 상세 경로입니다.
  */
 function buildPostPath(boardSlug, postSlug) {
-  const boardPath = buildBoardPath(boardSlug);
-  const slug = String(postSlug || '').trim();
+  const boardPath = buildBoardPath(boardSlug)
+  const slug = String(postSlug || '').trim()
 
   if (!slug) {
-    return boardPath;
+    return boardPath
   }
 
-  return boardPath + '/posts/' + encodeURIComponent(slug);
+  return boardPath + '/posts/' + encodeURIComponent(slug)
 }
 
 /**
@@ -69,14 +69,14 @@ function buildPostPath(boardSlug, postSlug) {
  * @returns {string} 새 글 작성 경로입니다.
  */
 function buildNewPostPath(boardSlug) {
-  const slug = String(boardSlug || '').trim();
-  const boardPath = buildBoardPath(slug);
+  const slug = String(boardSlug || '').trim()
+  const boardPath = buildBoardPath(slug)
 
   if (!slug) {
-    return boardPath;
+    return boardPath
   }
 
-  return boardPath + '/posts/new';
+  return boardPath + '/posts/new'
 }
 
 /**
@@ -86,14 +86,14 @@ function buildNewPostPath(boardSlug) {
  * @returns {string} 글 수정 경로입니다.
  */
 function buildEditPostPath(boardSlug, postSlug) {
-  const slug = String(postSlug || '').trim();
-  const postPath = buildPostPath(boardSlug, slug);
+  const slug = String(postSlug || '').trim()
+  const postPath = buildPostPath(boardSlug, slug)
 
   if (!slug) {
-    return postPath;
+    return postPath
   }
 
-  return postPath + '/edit';
+  return postPath + '/edit'
 }
 
 /**
@@ -103,16 +103,16 @@ function buildEditPostPath(boardSlug, postSlug) {
  * @returns {core.Record | null} 게시글이 있으면 record, 없으면 null입니다.
  */
 function findPostByBoardAndSlug(boardId, postSlug) {
-  const slug = String(postSlug || '').trim();
+  const slug = String(postSlug || '').trim()
 
   if (!boardId || !slug) {
-    return null;
+    return null
   }
 
   try {
-    return $app.findFirstRecordByFilter('posts', 'board = {:boardId} && slug = {:slug}', { boardId: boardId, slug: slug });
+    return $app.findFirstRecordByFilter('posts', 'board = {:boardId} && slug = {:slug}', { boardId: boardId, slug: slug })
   } catch (error) {
-    return null;
+    return null
   }
 }
 
@@ -123,10 +123,10 @@ function findPostByBoardAndSlug(boardId, postSlug) {
  */
 function listPostsByBoard(boardId) {
   if (!boardId) {
-    return [];
+    return []
   }
 
-  return $app.findRecordsByFilter('posts', 'board = {:boardId}', '-is_notice,-published_at', 50, 0, { boardId: boardId });
+  return $app.findRecordsByFilter('posts', 'board = {:boardId}', '-is_notice,-published_at', 50, 0, { boardId: boardId })
 }
 
 /**
@@ -136,10 +136,10 @@ function listPostsByBoard(boardId) {
  */
 function listPublishedPostsByBoard(boardId) {
   if (!boardId) {
-    return [];
+    return []
   }
 
-  return $app.findRecordsByFilter('posts', 'board = {:boardId} && status = "published"', '-is_notice,-published_at', 50, 0, { boardId: boardId });
+  return $app.findRecordsByFilter('posts', 'board = {:boardId} && status = "published"', '-is_notice,-published_at', 50, 0, { boardId: boardId })
 }
 
 /**
@@ -149,7 +149,7 @@ function listPublishedPostsByBoard(boardId) {
  * @returns {types.PostFormInput} 정규화한 게시글 입력값입니다.
  */
 function readPostForm(form, fallbackStatus) {
-  const safeForm = form && typeof form === 'object' ? form : {};
+  const safeForm = form && typeof form === 'object' ? form : {}
 
   return {
     title: String(safeForm.title || '').trim(),
@@ -158,7 +158,7 @@ function readPostForm(form, fallbackStatus) {
     content: String(safeForm.content || '').trim(),
     status: normalizePostStatus(safeForm.status, fallbackStatus || 'draft'),
     isNotice: String(safeForm.isNotice || '') === 'true',
-  };
+  }
 }
 
 /**
@@ -168,10 +168,10 @@ function readPostForm(form, fallbackStatus) {
  */
 function hasRequiredPostInput(input) {
   if (!input) {
-    return false;
+    return false
   }
 
-  return !!input.title && !!input.slug && !!input.authorName && !!input.content;
+  return !!input.title && !!input.slug && !!input.authorName && !!input.content
 }
 
 /**
@@ -181,12 +181,12 @@ function hasRequiredPostInput(input) {
  * @returns {void}
  */
 function applyEditableFields(post, input) {
-  post.set('title', input.title);
-  post.set('slug', input.slug);
-  post.set('content', input.content);
-  post.set('author_name', input.authorName);
-  post.set('status', input.status);
-  post.set('is_notice', input.isNotice);
+  post.set('title', input.title)
+  post.set('slug', input.slug)
+  post.set('content', input.content)
+  post.set('author_name', input.authorName)
+  post.set('status', input.status)
+  post.set('is_notice', input.isNotice)
 }
 
 /**
@@ -197,11 +197,11 @@ function applyEditableFields(post, input) {
  */
 function toPostCard(post, boardSlug) {
   if (!post) {
-    return null;
+    return null
   }
 
-  const slug = String(post.get('slug') || '').trim();
-  const content = String(post.get('content') || '');
+  const slug = String(post.get('slug') || '').trim()
+  const content = String(post.get('content') || '')
 
   return {
     slug: slug,
@@ -213,7 +213,7 @@ function toPostCard(post, boardSlug) {
     viewCount: Number(post.get('view_count') || 0),
     preview: content.replace(/<[^>]*>/g, '').slice(0, 180),
     path: buildPostPath(boardSlug, slug),
-  };
+  }
 }
 
 /**
@@ -223,18 +223,18 @@ function toPostCard(post, boardSlug) {
  * @returns {types.PostCard[]} 템플릿에서 바로 쓸 게시글 카드 목록입니다.
  */
 function toPostCards(posts, boardSlug) {
-  const safePosts = Array.isArray(posts) ? posts : [];
-  const postCards = [];
+  const safePosts = Array.isArray(posts) ? posts : []
+  const postCards = []
 
   safePosts.forEach(function (post) {
-    const postCard = toPostCard(post, boardSlug);
+    const postCard = toPostCard(post, boardSlug)
 
     if (postCard) {
-      postCards.push(postCard);
+      postCards.push(postCard)
     }
-  });
+  })
 
-  return postCards;
+  return postCards
 }
 
 /**
@@ -245,10 +245,10 @@ function toPostCards(posts, boardSlug) {
  */
 function toPostPanelItem(post, boardSlug) {
   if (!post) {
-    return null;
+    return null
   }
 
-  const slug = String(post.get('slug') || '').trim();
+  const slug = String(post.get('slug') || '').trim()
 
   return {
     title: String(post.get('title') || '').trim() || '(untitled post)',
@@ -256,7 +256,7 @@ function toPostPanelItem(post, boardSlug) {
     isNotice: !!post.get('is_notice'),
     publishedAt: String(post.get('published_at') || post.created || ''),
     path: buildPostPath(boardSlug, slug),
-  };
+  }
 }
 
 /**
@@ -266,18 +266,18 @@ function toPostPanelItem(post, boardSlug) {
  * @returns {types.PostPanelItem[]} HTMX 패널에서 바로 쓸 게시글 목록입니다.
  */
 function toPostPanelItems(posts, boardSlug) {
-  const safePosts = Array.isArray(posts) ? posts : [];
-  const postItems = [];
+  const safePosts = Array.isArray(posts) ? posts : []
+  const postItems = []
 
   safePosts.forEach(function (post) {
-    const postItem = toPostPanelItem(post, boardSlug);
+    const postItem = toPostPanelItem(post, boardSlug)
 
     if (postItem) {
-      postItems.push(postItem);
+      postItems.push(postItem)
     }
-  });
+  })
 
-  return postItems;
+  return postItems
 }
 
 /**
@@ -288,11 +288,11 @@ function toPostPanelItems(posts, boardSlug) {
  */
 function toPostDetail(post, boardSlug) {
   if (!post) {
-    return null;
+    return null
   }
 
-  const slug = String(post.get('slug') || '').trim();
-  const path = buildPostPath(boardSlug, slug);
+  const slug = String(post.get('slug') || '').trim()
+  const path = buildPostPath(boardSlug, slug)
 
   return {
     slug: slug,
@@ -305,7 +305,7 @@ function toPostDetail(post, boardSlug) {
     content: String(post.get('content') || ''),
     path: path,
     editPath: buildEditPostPath(boardSlug, slug),
-  };
+  }
 }
 
 /**
@@ -322,7 +322,7 @@ function toPostFormValues(post) {
       content: '',
       status: 'draft',
       isNotice: false,
-    };
+    }
   }
 
   return {
@@ -332,7 +332,7 @@ function toPostFormValues(post) {
     content: String(post.get('content') || ''),
     status: normalizePostStatus(post.get('status'), 'draft'),
     isNotice: !!post.get('is_notice'),
-  };
+  }
 }
 
 module.exports = {
@@ -349,4 +349,4 @@ module.exports = {
   toPostDetail,
   toPostFormValues,
   toPostPanelItems,
-};
+}

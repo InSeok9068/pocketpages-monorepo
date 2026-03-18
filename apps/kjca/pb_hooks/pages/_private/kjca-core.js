@@ -1,13 +1,13 @@
-const KJCA_EMAIL_DOMAIN = 'kjca.local';
-const KJCA_HOST = 'http://www.kjca.co.kr';
-const KJCA_LOGIN_URL = `${KJCA_HOST}/staff/auth/login_check`;
-const KJCA_AUTH_URL = `${KJCA_HOST}/staff/auth`;
-const CACHE_COLLECTION_NAME = 'staff_diary_analysis_cache';
-const GEMINI_MODEL_NAME = 'gemini-2.5-flash-lite';
-const PROMPT_VERSION = 4;
-const GEMINI_MAX_ATTEMPTS = 3;
+const KJCA_EMAIL_DOMAIN = 'kjca.local'
+const KJCA_HOST = 'http://www.kjca.co.kr'
+const KJCA_LOGIN_URL = `${KJCA_HOST}/staff/auth/login_check`
+const KJCA_AUTH_URL = `${KJCA_HOST}/staff/auth`
+const CACHE_COLLECTION_NAME = 'staff_diary_analysis_cache'
+const GEMINI_MODEL_NAME = 'gemini-2.5-flash-lite'
+const PROMPT_VERSION = 4
+const GEMINI_MAX_ATTEMPTS = 3
 
-const WEEKDAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri'];
+const WEEKDAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri']
 
 const weekdayLabelMap = {
   mon: '월',
@@ -15,7 +15,7 @@ const weekdayLabelMap = {
   wed: '수',
   thu: '목',
   fri: '금',
-};
+}
 
 /**
  * JSON 문자열을 안전하게 파싱합니다.
@@ -25,9 +25,9 @@ const weekdayLabelMap = {
  */
 function parseJsonSafely(text, fallback) {
   try {
-    return JSON.parse(text);
+    return JSON.parse(text)
   } catch (error) {
-    return fallback;
+    return fallback
   }
 }
 
@@ -40,13 +40,13 @@ function extractJsonObjectText(text) {
   const normalized = String(text || '')
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/```$/i, '')
-    .trim();
-  const objectStart = normalized.indexOf('{');
-  const objectEnd = normalized.lastIndexOf('}');
+    .trim()
+  const objectStart = normalized.indexOf('{')
+  const objectEnd = normalized.lastIndexOf('}')
   if (objectStart === -1 || objectEnd === -1 || objectEnd <= objectStart) {
-    return '{}';
+    return '{}'
   }
-  return normalized.slice(objectStart, objectEnd + 1).trim();
+  return normalized.slice(objectStart, objectEnd + 1).trim()
 }
 
 /**
@@ -56,64 +56,64 @@ function extractJsonObjectText(text) {
  * @returns {string[]} 일치한 헤더 값 목록입니다.
  */
 function getHeaderValues(headers, key) {
-  if (!headers) return [];
+  if (!headers) return []
 
-  const direct = headers[key] || headers[key.toLowerCase()] || headers[key.toUpperCase()];
-  if (Array.isArray(direct)) return direct.map((item) => String(item));
-  if (direct !== undefined && direct !== null) return [String(direct)];
+  const direct = headers[key] || headers[key.toLowerCase()] || headers[key.toUpperCase()]
+  if (Array.isArray(direct)) return direct.map((item) => String(item))
+  if (direct !== undefined && direct !== null) return [String(direct)]
 
-  const matchedKey = Object.keys(headers).find((headerKey) => headerKey.toLowerCase() === key.toLowerCase());
-  if (!matchedKey) return [];
+  const matchedKey = Object.keys(headers).find((headerKey) => headerKey.toLowerCase() === key.toLowerCase())
+  if (!matchedKey) return []
 
-  const matchedValue = headers[matchedKey];
-  if (Array.isArray(matchedValue)) return matchedValue.map((item) => String(item));
-  if (matchedValue !== undefined && matchedValue !== null) return [String(matchedValue)];
+  const matchedValue = headers[matchedKey]
+  if (Array.isArray(matchedValue)) return matchedValue.map((item) => String(item))
+  if (matchedValue !== undefined && matchedValue !== null) return [String(matchedValue)]
 
-  return [];
+  return []
 }
 
 function normalizeCookieHeader(cookieHeader) {
-  if (!cookieHeader) return '';
+  if (!cookieHeader) return ''
 
-  const cookieMap = {};
+  const cookieMap = {}
   String(cookieHeader)
     .split(';')
     .map((chunk) => chunk.trim())
     .filter((chunk) => !!chunk)
     .forEach((cookiePair) => {
-      const separatorIndex = cookiePair.indexOf('=');
-      if (separatorIndex === -1) return;
-      const name = cookiePair.slice(0, separatorIndex).trim();
-      const value = cookiePair.slice(separatorIndex + 1).trim();
-      if (!name) return;
-      cookieMap[name] = value;
-    });
+      const separatorIndex = cookiePair.indexOf('=')
+      if (separatorIndex === -1) return
+      const name = cookiePair.slice(0, separatorIndex).trim()
+      const value = cookiePair.slice(separatorIndex + 1).trim()
+      if (!name) return
+      cookieMap[name] = value
+    })
 
   return Object.keys(cookieMap)
     .map((name) => `${name}=${cookieMap[name]}`)
-    .join('; ');
+    .join('; ')
 }
 
 function extractCookieHeaderFromSetCookie(setCookieHeaders) {
-  const cookieMap = {};
+  const cookieMap = {}
 
   setCookieHeaders.forEach((header) => {
-    const cookiePair = String(header).split(';')[0].trim();
-    if (!cookiePair) return;
+    const cookiePair = String(header).split(';')[0].trim()
+    if (!cookiePair) return
 
-    const separatorIndex = cookiePair.indexOf('=');
-    if (separatorIndex === -1) return;
+    const separatorIndex = cookiePair.indexOf('=')
+    if (separatorIndex === -1) return
 
-    const name = cookiePair.slice(0, separatorIndex).trim();
-    const value = cookiePair.slice(separatorIndex + 1).trim();
-    if (!name) return;
+    const name = cookiePair.slice(0, separatorIndex).trim()
+    const value = cookiePair.slice(separatorIndex + 1).trim()
+    if (!name) return
 
-    cookieMap[name] = value;
-  });
+    cookieMap[name] = value
+  })
 
   return Object.keys(cookieMap)
     .map((name) => `${name}=${cookieMap[name]}`)
-    .join('; ');
+    .join('; ')
 }
 
 /**
@@ -123,14 +123,14 @@ function extractCookieHeaderFromSetCookie(setCookieHeaders) {
  * @returns {string} 병합된 쿠키 헤더 문자열입니다.
  */
 function mergeSetCookieIntoCookieHeader(cookieHeader, responseHeaders) {
-  const setCookieHeaders = getHeaderValues(responseHeaders, 'Set-Cookie');
-  if (!setCookieHeaders.length) return cookieHeader;
+  const setCookieHeaders = getHeaderValues(responseHeaders, 'Set-Cookie')
+  if (!setCookieHeaders.length) return cookieHeader
 
-  const nextCookie = normalizeCookieHeader(extractCookieHeaderFromSetCookie(setCookieHeaders));
-  if (!nextCookie) return cookieHeader;
+  const nextCookie = normalizeCookieHeader(extractCookieHeaderFromSetCookie(setCookieHeaders))
+  if (!nextCookie) return cookieHeader
 
-  const merged = cookieHeader ? `${cookieHeader}; ${nextCookie}` : nextCookie;
-  return normalizeCookieHeader(merged);
+  const merged = cookieHeader ? `${cookieHeader}; ${nextCookie}` : nextCookie
+  return normalizeCookieHeader(merged)
 }
 
 /**
@@ -139,26 +139,26 @@ function mergeSetCookieIntoCookieHeader(cookieHeader, responseHeaders) {
  * @returns {boolean} 인증 필요 화면이면 true입니다.
  */
 function detectAuthRequiredHtml(html) {
-  const text = String(html || '');
-  if (text.includes('/staff/auth/login_check') || text.includes('id="mng_id"')) return true;
+  const text = String(html || '')
+  if (text.includes('/staff/auth/login_check') || text.includes('id="mng_id"')) return true
 
-  const redirectRegex = /location\.href\s*=\s*(?:'|")\s*\/staff\/auth\s*(?:'|")/i;
-  return redirectRegex.test(text);
+  const redirectRegex = /location\.href\s*=\s*(?:'|")\s*\/staff\/auth\s*(?:'|")/i
+  return redirectRegex.test(text)
 }
 
 function decodeHtmlEntities(text) {
-  const source = String(text || '');
+  const source = String(text || '')
   return source
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;/g, "'")
 }
 
 function stripTags(html) {
-  return decodeHtmlEntities(String(html || '').replace(/<[^>]*>/g, '')).trim();
+  return decodeHtmlEntities(String(html || '').replace(/<[^>]*>/g, '')).trim()
 }
 
 /**
@@ -168,13 +168,13 @@ function stripTags(html) {
  * @returns {string} 절대 URL 문자열입니다.
  */
 function toAbsoluteKjcaUrl(host, maybeRelativeUrl) {
-  const url = String(maybeRelativeUrl || '').trim();
-  if (!url) return '';
-  if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith('?')) return `${host}/diary/${url}`;
-  if (url.startsWith('/?') && url.includes('bd_idx=')) return `${host}/diary${url}`;
-  if (url.startsWith('/')) return `${host}${url}`;
-  return `${host}/${url}`;
+  const url = String(maybeRelativeUrl || '').trim()
+  if (!url) return ''
+  if (/^https?:\/\//i.test(url)) return url
+  if (url.startsWith('?')) return `${host}/diary/${url}`
+  if (url.startsWith('/?') && url.includes('bd_idx=')) return `${host}/diary${url}`
+  if (url.startsWith('/')) return `${host}${url}`
+  return `${host}/${url}`
 }
 
 /**
@@ -184,21 +184,21 @@ function toAbsoluteKjcaUrl(host, maybeRelativeUrl) {
  * @returns {boolean} 허용된 URL이면 true입니다.
  */
 function isAllowedKjcaUrl(host, url) {
-  const normalized = String(url || '').trim();
-  return normalized.startsWith(`${host}/`) || normalized.startsWith('http://www.kjca.co.kr/') || normalized.startsWith('https://www.kjca.co.kr/');
+  const normalized = String(url || '').trim()
+  return normalized.startsWith(`${host}/`) || normalized.startsWith('http://www.kjca.co.kr/') || normalized.startsWith('https://www.kjca.co.kr/')
 }
 
 function extractPrintUrlFromCell(host, cellHtml) {
-  const source = decodeHtmlEntities(String(cellHtml || ''));
-  if (!source) return '';
+  const source = decodeHtmlEntities(String(cellHtml || ''))
+  if (!source) return ''
 
-  const candidates = [];
-  const quotedUrlRegex = /['"]((?:https?:\/\/|\/|\?)[^'"]+)['"]/gi;
-  let urlMatch = null;
+  const candidates = []
+  const quotedUrlRegex = /['"]((?:https?:\/\/|\/|\?)[^'"]+)['"]/gi
+  let urlMatch = null
   while ((urlMatch = quotedUrlRegex.exec(source))) {
-    const candidate = String(urlMatch[1] || '').trim();
-    if (!candidate) continue;
-    candidates.push(candidate);
+    const candidate = String(urlMatch[1] || '').trim()
+    if (!candidate) continue
+    candidates.push(candidate)
   }
 
   const normalized = candidates
@@ -206,13 +206,13 @@ function extractPrintUrlFromCell(host, cellHtml) {
     .filter((candidate) => !!candidate)
     .filter((candidate) => candidate !== '#')
     .filter((candidate) => !/^javascript:/i.test(candidate))
-    .filter((candidate) => !/^void\(0\)/i.test(candidate));
+    .filter((candidate) => !/^void\(0\)/i.test(candidate))
 
-  if (!normalized.length) return '';
+  if (!normalized.length) return ''
 
-  const preferred = normalized.find((candidate) => candidate.includes('bd_idx=')) || normalized.find((candidate) => candidate.includes('/diary/') || candidate.startsWith('?site=')) || normalized[0];
+  const preferred = normalized.find((candidate) => candidate.includes('bd_idx=')) || normalized.find((candidate) => candidate.includes('/diary/') || candidate.startsWith('?site=')) || normalized[0]
 
-  return toAbsoluteKjcaUrl(host, preferred);
+  return toAbsoluteKjcaUrl(host, preferred)
 }
 
 /**
@@ -222,51 +222,51 @@ function extractPrintUrlFromCell(host, cellHtml) {
  * @returns {{ rows: types.KjcaTeamLeadRow[] }} 추출된 팀장 행 목록입니다.
  */
 function parseTeamLeadRowsFromDiaryHtml(diaryHtml, host) {
-  const html = String(diaryHtml || '');
-  const rows = [];
-  const trRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
-  let trMatch = null;
+  const html = String(diaryHtml || '')
+  const rows = []
+  const trRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
+  let trMatch = null
 
   while ((trMatch = trRegex.exec(html))) {
-    const trInner = trMatch[1] || '';
-    if (!trInner.includes('data-label')) continue;
+    const trInner = trMatch[1] || ''
+    if (!trInner.includes('data-label')) continue
 
-    const cellHtmlByLabel = {};
-    const tdRegex = /<td\b[^>]*data-label\s*=\s*(['"])([^'"]+)\1[^>]*>([\s\S]*?)<\/td>/gi;
-    let tdMatch = null;
+    const cellHtmlByLabel = {}
+    const tdRegex = /<td\b[^>]*data-label\s*=\s*(['"])([^'"]+)\1[^>]*>([\s\S]*?)<\/td>/gi
+    let tdMatch = null
     while ((tdMatch = tdRegex.exec(trInner))) {
-      const label = stripTags(tdMatch[2]);
-      const cellInner = tdMatch[3] || '';
-      if (!label) continue;
-      cellHtmlByLabel[label] = cellInner;
+      const label = stripTags(tdMatch[2])
+      const cellInner = tdMatch[3] || ''
+      if (!label) continue
+      cellHtmlByLabel[label] = cellInner
     }
 
-    const position = stripTags(cellHtmlByLabel['직책'] || '');
-    if (position !== '팀장') continue;
+    const position = stripTags(cellHtmlByLabel['직책'] || '')
+    if (position !== '팀장') continue
 
-    const dept = stripTags(cellHtmlByLabel['부서'] || '');
-    const staffName = stripTags(cellHtmlByLabel['성명'] || '');
-    const printCell = String(cellHtmlByLabel['인쇄'] || '');
-    const printUrl = extractPrintUrlFromCell(host, printCell);
+    const dept = stripTags(cellHtmlByLabel['부서'] || '')
+    const staffName = stripTags(cellHtmlByLabel['성명'] || '')
+    const printCell = String(cellHtmlByLabel['인쇄'] || '')
+    const printUrl = extractPrintUrlFromCell(host, printCell)
 
     rows.push({
       dept,
       position,
       staffName,
       printUrl,
-    });
+    })
   }
 
-  const seen = {};
-  const uniqueRows = [];
+  const seen = {}
+  const uniqueRows = []
   rows.forEach((row) => {
-    const key = row.dept || '';
-    if (!key || seen[key]) return;
-    seen[key] = true;
-    uniqueRows.push(row);
-  });
+    const key = row.dept || ''
+    if (!key || seen[key]) return
+    seen[key] = true
+    uniqueRows.push(row)
+  })
 
-  return { rows: uniqueRows };
+  return { rows: uniqueRows }
 }
 
 /**
@@ -286,19 +286,19 @@ function buildBrowserLikeHeaders(host, cookieHeader, referer) {
     'Upgrade-Insecure-Requests': '1',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
     Host: host.replace(/^https?:\/\//i, ''),
-  };
+  }
 
-  if (cookieHeader) headers.Cookie = cookieHeader;
-  if (referer) headers.Referer = referer;
-  return headers;
+  if (cookieHeader) headers.Cookie = cookieHeader
+  if (referer) headers.Referer = referer
+  return headers
 }
 
 function buildTodayDateText() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = `${now.getMonth() + 1}`.padStart(2, '0');
-  const day = `${now.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = `${now.getMonth() + 1}`.padStart(2, '0')
+  const day = `${now.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 /**
@@ -307,9 +307,9 @@ function buildTodayDateText() {
  * @returns {string} 정규화된 날짜 문자열입니다.
  */
 function normalizeReportDate(value) {
-  const text = String(value || '').trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-  return buildTodayDateText();
+  const text = String(value || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
+  return buildTodayDateText()
 }
 
 /**
@@ -318,11 +318,11 @@ function normalizeReportDate(value) {
  * @returns {types.KjcaFormState} 화면에서 바로 쓸 수 있는 폼 상태입니다.
  */
 function buildFormState(value) {
-  const source = value && typeof value === 'object' ? value : {};
+  const source = value && typeof value === 'object' ? value : {}
   return {
     reportDate: normalizeReportDate(source.reportDate),
     testOneOnly: normalizeBool(source.testOneOnly),
-  };
+  }
 }
 
 /**
@@ -333,7 +333,7 @@ function buildFormState(value) {
 function escapeFilterValue(value) {
   return String(value || '')
     .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'");
+    .replace(/'/g, "\\'")
 }
 
 /**
@@ -342,14 +342,14 @@ function escapeFilterValue(value) {
  * @returns {string} 길이를 포함한 해시 문자열입니다.
  */
 function hashText(text) {
-  const source = String(text || '');
-  let hash = 0x811c9dc5;
+  const source = String(text || '')
+  let hash = 0x811c9dc5
   for (let i = 0; i < source.length; i += 1) {
-    hash ^= source.charCodeAt(i);
-    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
-    hash >>>= 0;
+    hash ^= source.charCodeAt(i)
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)
+    hash >>>= 0
   }
-  return `${hash.toString(16).padStart(8, '0')}-${source.length}`;
+  return `${hash.toString(16).padStart(8, '0')}-${source.length}`
 }
 
 /**
@@ -359,42 +359,42 @@ function hashText(text) {
  * @returns {string} 찾은 div의 내부 HTML입니다.
  */
 function extractDivInnerHtmlByClasses(html, requiredClasses) {
-  const source = String(html || '');
-  if (!source) return '';
+  const source = String(html || '')
+  if (!source) return ''
 
-  const divStartRegex = /<div\b[^>]*class\s*=\s*(['"])([^'"]*)\1[^>]*>/gi;
-  let match = null;
+  const divStartRegex = /<div\b[^>]*class\s*=\s*(['"])([^'"]*)\1[^>]*>/gi
+  let match = null
   while ((match = divStartRegex.exec(source))) {
-    const classValue = String(match[2] || '');
-    const ok = requiredClasses.every((cls) => new RegExp(`\\b${cls}\\b`).test(classValue));
-    if (!ok) continue;
+    const classValue = String(match[2] || '')
+    const ok = requiredClasses.every((cls) => new RegExp(`\\b${cls}\\b`).test(classValue))
+    if (!ok) continue
 
-    const openTagEndIndex = match.index + match[0].length;
-    const tokenRegex = /<\/?div\b/gi;
-    tokenRegex.lastIndex = openTagEndIndex;
-    let depth = 1;
+    const openTagEndIndex = match.index + match[0].length
+    const tokenRegex = /<\/?div\b/gi
+    tokenRegex.lastIndex = openTagEndIndex
+    let depth = 1
 
-    let tokenMatch = null;
+    let tokenMatch = null
     while ((tokenMatch = tokenRegex.exec(source))) {
-      const token = String(tokenMatch[0] || '').toLowerCase();
+      const token = String(tokenMatch[0] || '').toLowerCase()
       if (token === '<div') {
-        depth += 1;
-        continue;
+        depth += 1
+        continue
       }
 
       if (token === '</div') {
-        depth -= 1;
+        depth -= 1
         if (depth === 0) {
-          const closeTagStartIndex = tokenMatch.index;
-          return source.slice(openTagEndIndex, closeTagStartIndex);
+          const closeTagStartIndex = tokenMatch.index
+          return source.slice(openTagEndIndex, closeTagStartIndex)
         }
       }
     }
 
-    return '';
+    return ''
   }
 
-  return '';
+  return ''
 }
 
 /**
@@ -412,14 +412,14 @@ function htmlToText(html) {
     .replace(/<\/p>/gi, '\n')
     .replace(/<\/div>/gi, '\n')
     .replace(/<\/li>/gi, '\n')
-    .replace(/<li\b[^>]*>/gi, '- ');
+    .replace(/<li\b[^>]*>/gi, '- ')
   return decodeHtmlEntities(normalized.replace(/<[^>]*>/g, ' '))
     .replace(/\r/g, '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n[ \t]+/g, '\n')
     .replace(/\t+/g, ' | ')
     .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    .trim()
 }
 
 /**
@@ -428,14 +428,14 @@ function htmlToText(html) {
  * @returns {string[]} 정리된 문자열 배열입니다.
  */
 function normalizeStringArray(value) {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => String(item || '').trim()).filter((item) => !!item);
+  if (!Array.isArray(value)) return []
+  return value.map((item) => String(item || '').trim()).filter((item) => !!item)
 }
 
 function isNumericByteArray(value) {
-  if (!Array.isArray(value)) return false;
-  if (!value.length) return false;
-  return value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255);
+  if (!Array.isArray(value)) return false
+  if (!value.length) return false
+  return value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255)
 }
 
 /**
@@ -446,26 +446,26 @@ function isNumericByteArray(value) {
 function normalizeJsonArrayField(value) {
   if (Array.isArray(value)) {
     if (isNumericByteArray(value)) {
-      const text = String(toString(value) || '').trim();
-      if (!text) return [];
-      const parsedFromBytes = parseJsonSafely(text, null);
-      if (Array.isArray(parsedFromBytes)) return normalizeStringArray(parsedFromBytes);
-      return [];
+      const text = String(toString(value) || '').trim()
+      if (!text) return []
+      const parsedFromBytes = parseJsonSafely(text, null)
+      if (Array.isArray(parsedFromBytes)) return normalizeStringArray(parsedFromBytes)
+      return []
     }
-    return normalizeStringArray(value);
+    return normalizeStringArray(value)
   }
 
-  if (value === null || value === undefined) return [];
+  if (value === null || value === undefined) return []
 
   if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return [];
-    const parsed = parseJsonSafely(trimmed, null);
-    if (Array.isArray(parsed)) return normalizeStringArray(parsed);
-    return normalizeStringArray([trimmed]);
+    const trimmed = value.trim()
+    if (!trimmed) return []
+    const parsed = parseJsonSafely(trimmed, null)
+    if (Array.isArray(parsed)) return normalizeStringArray(parsed)
+    return normalizeStringArray([trimmed])
   }
 
-  return [];
+  return []
 }
 
 /**
@@ -475,16 +475,16 @@ function normalizeJsonArrayField(value) {
  * @returns {string} 추정된 원인 키입니다.
  */
 function inferGemini429Cause(message, detailsText) {
-  const source = `${String(message || '')} ${String(detailsText || '')}`.toLowerCase();
-  if (!source.trim()) return 'unknown';
+  const source = `${String(message || '')} ${String(detailsText || '')}`.toLowerCase()
+  if (!source.trim()) return 'unknown'
 
-  const hasQuotaSignal = source.includes('quota') || source.includes('billing') || source.includes('free tier') || source.includes('resource_exhausted');
-  if (hasQuotaSignal) return 'quota-or-billing-limit';
+  const hasQuotaSignal = source.includes('quota') || source.includes('billing') || source.includes('free tier') || source.includes('resource_exhausted')
+  if (hasQuotaSignal) return 'quota-or-billing-limit'
 
-  const hasRateSignal = source.includes('rate') || source.includes('too many requests') || source.includes('per minute') || source.includes('retry');
-  if (hasRateSignal) return 'request-rate-limit';
+  const hasRateSignal = source.includes('rate') || source.includes('too many requests') || source.includes('per minute') || source.includes('retry')
+  if (hasRateSignal) return 'request-rate-limit'
 
-  return 'unknown';
+  return 'unknown'
 }
 
 /**
@@ -493,28 +493,28 @@ function inferGemini429Cause(message, detailsText) {
  * @returns {string} 직렬화된 detail 문자열입니다.
  */
 function stringifyGeminiErrorDetails(details) {
-  if (!Array.isArray(details)) return '';
+  if (!Array.isArray(details)) return ''
   return details
     .map((detail) => {
-      if (detail === null || detail === undefined) return '';
-      const text = `${detail}`;
-      return text === '[object Object]' ? JSON.stringify(detail) : text;
+      if (detail === null || detail === undefined) return ''
+      const text = `${detail}`
+      return text === '[object Object]' ? JSON.stringify(detail) : text
     })
-    .join(' | ');
+    .join(' | ')
 }
 
 function parseDateText(value) {
-  const text = String(value || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return new Date();
-  const [year, month, day] = text.split('-').map((unit) => Number(unit));
-  return new Date(year, month - 1, day);
+  const text = String(value || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return new Date()
+  const [year, month, day] = text.split('-').map((unit) => Number(unit))
+  return new Date(year, month - 1, day)
 }
 
 function formatDateText(date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 /**
@@ -523,12 +523,12 @@ function formatDateText(date) {
  * @returns {string} 해당 주 월요일의 날짜 문자열입니다.
  */
 function buildWeekStartDate(dateText) {
-  const date = parseDateText(dateText);
-  const day = date.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(date);
-  monday.setDate(date.getDate() + diff);
-  return formatDateText(monday);
+  const date = parseDateText(dateText)
+  const day = date.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  const monday = new Date(date)
+  monday.setDate(date.getDate() + diff)
+  return formatDateText(monday)
 }
 
 /**
@@ -537,12 +537,12 @@ function buildWeekStartDate(dateText) {
  * @returns {types.KjcaWeekday} `mon`부터 `fri` 중 하나의 요일 키입니다.
  */
 function toWeekdayKey(dateText) {
-  const day = parseDateText(dateText).getDay();
-  if (day === 1) return 'mon';
-  if (day === 2) return 'tue';
-  if (day === 3) return 'wed';
-  if (day === 4) return 'thu';
-  return 'fri';
+  const day = parseDateText(dateText).getDay()
+  if (day === 1) return 'mon'
+  if (day === 2) return 'tue'
+  if (day === 3) return 'wed'
+  if (day === 4) return 'thu'
+  return 'fri'
 }
 
 /**
@@ -553,13 +553,13 @@ function toWeekdayKey(dateText) {
 function normalizeWeekday(value) {
   const text = String(value || '')
     .trim()
-    .toLowerCase();
-  if (text === 'mon' || text === 'monday' || text === '월') return 'mon';
-  if (text === 'tue' || text === 'tuesday' || text === '화') return 'tue';
-  if (text === 'wed' || text === 'wednesday' || text === '수') return 'wed';
-  if (text === 'thu' || text === 'thursday' || text === '목') return 'thu';
-  if (text === 'fri' || text === 'friday' || text === '금') return 'fri';
-  return '';
+    .toLowerCase()
+  if (text === 'mon' || text === 'monday' || text === '월') return 'mon'
+  if (text === 'tue' || text === 'tuesday' || text === '화') return 'tue'
+  if (text === 'wed' || text === 'wednesday' || text === '수') return 'wed'
+  if (text === 'thu' || text === 'thursday' || text === '목') return 'thu'
+  if (text === 'fri' || text === 'friday' || text === '금') return 'fri'
+  return ''
 }
 
 /**
@@ -568,11 +568,11 @@ function normalizeWeekday(value) {
  * @returns {{ exact: string, like: string }} exact와 like용 날짜 문자열입니다.
  */
 function buildDateMatchParams(dateText) {
-  const normalized = formatDateText(parseDateText(dateText));
+  const normalized = formatDateText(parseDateText(dateText))
   return {
     exact: normalized,
     like: `${normalized}%`,
-  };
+  }
 }
 
 /**
@@ -581,10 +581,10 @@ function buildDateMatchParams(dateText) {
  * @returns {number | null} 정수 값 또는 null입니다.
  */
 function normalizeNullableInt(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  return Math.max(0, Math.trunc(parsed));
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return null
+  return Math.max(0, Math.trunc(parsed))
 }
 
 /**
@@ -594,9 +594,9 @@ function normalizeNullableInt(value) {
  * @returns {number} 정수 값입니다.
  */
 function normalizeRequiredInt(value, fallback) {
-  const parsed = normalizeNullableInt(value);
-  if (parsed === null) return fallback;
-  return parsed;
+  const parsed = normalizeNullableInt(value)
+  if (parsed === null) return fallback
+  return parsed
 }
 
 /**
@@ -605,12 +605,12 @@ function normalizeRequiredInt(value, fallback) {
  * @returns {boolean} 정규화된 불리언 값입니다.
  */
 function normalizeBool(value) {
-  if (value === true || value === false) return value;
+  if (value === true || value === false) return value
   const text = String(value || '')
     .trim()
-    .toLowerCase();
-  if (text === 'true' || text === '1' || text === 'y' || text === 'yes' || text === 'on') return true;
-  return false;
+    .toLowerCase()
+  if (text === 'true' || text === '1' || text === 'y' || text === 'yes' || text === 'on') return true
+  return false
 }
 
 /**
@@ -619,13 +619,13 @@ function normalizeBool(value) {
  * @returns {types.KjcaRecruitingExtract} 정리된 recruiting 값입니다.
  */
 function normalizeRecruitingExtract(value) {
-  const source = value && typeof value === 'object' ? value : {};
-  const dailyPlanRaw = Array.isArray(source.dailyPlan) ? source.dailyPlan : [];
+  const source = value && typeof value === 'object' ? value : {}
+  const dailyPlanRaw = Array.isArray(source.dailyPlan) ? source.dailyPlan : []
   const dailyPlan = dailyPlanRaw
     .map((item) => {
-      const row = item && typeof item === 'object' ? item : {};
-      const weekday = normalizeWeekday(row.weekday);
-      if (!weekday) return null;
+      const row = item && typeof item === 'object' ? item : {}
+      const weekday = normalizeWeekday(row.weekday)
+      if (!weekday) return null
 
       return {
         weekday,
@@ -634,16 +634,16 @@ function normalizeRecruitingExtract(value) {
         targetCount: normalizeNullableInt(row.targetCount),
         ownerName: String(row.ownerName || '').trim(),
         note: String(row.note || '').trim(),
-      };
+      }
     })
-    .filter((item) => !!item);
+    .filter((item) => !!item)
 
-  const weekTableRowsRaw = Array.isArray(source.weekTableRows) ? source.weekTableRows : [];
+  const weekTableRowsRaw = Array.isArray(source.weekTableRows) ? source.weekTableRows : []
   const weekTableRowsNormalized = weekTableRowsRaw
     .map((item) => {
-      const row = item && typeof item === 'object' ? item : {};
-      const weekday = normalizeWeekday(row.weekday);
-      if (!weekday) return null;
+      const row = item && typeof item === 'object' ? item : {}
+      const weekday = normalizeWeekday(row.weekday)
+      if (!weekday) return null
 
       return {
         weekday,
@@ -656,9 +656,9 @@ function normalizeRecruitingExtract(value) {
         ownerName: String(row.ownerName || '').trim(),
         note: String(row.note || '').trim(),
         sortOrder: Math.max(0, Math.trunc(Number(row.sortOrder || 0))),
-      };
+      }
     })
-    .filter((item) => !!item);
+    .filter((item) => !!item)
 
   const weekTableRowsFallback = dailyPlan
     .map((row, index) => ({
@@ -673,7 +673,7 @@ function normalizeRecruitingExtract(value) {
       note: row.note,
       sortOrder: index,
     }))
-    .filter((row) => !!row.channelName || !!row.weeklyPlan || !!row.promotionContent || !!row.targetText || !!row.resultText || !!row.recruitCountText || !!row.ownerName || !!row.note);
+    .filter((row) => !!row.channelName || !!row.weeklyPlan || !!row.promotionContent || !!row.targetText || !!row.resultText || !!row.recruitCountText || !!row.ownerName || !!row.note)
 
   return {
     monthTarget: normalizeNullableInt(source.monthTarget),
@@ -682,7 +682,7 @@ function normalizeRecruitingExtract(value) {
     dailyPlan,
     dailyActualCount: normalizeNullableInt(source.dailyActualCount),
     weekTableRows: weekTableRowsNormalized.length > 0 ? weekTableRowsNormalized : weekTableRowsFallback,
-  };
+  }
 }
 
 /**
@@ -691,20 +691,20 @@ function normalizeRecruitingExtract(value) {
  * @returns {types.KjcaRecruitingExtract} 정리된 recruiting 값입니다.
  */
 function normalizeCachedRecruitingField(value) {
-  if (value === null || value === undefined) return normalizeRecruitingExtract({});
+  if (value === null || value === undefined) return normalizeRecruitingExtract({})
   if (typeof value === 'string') {
-    const text = value.trim();
-    if (!text) return normalizeRecruitingExtract({});
-    return normalizeRecruitingExtract(parseJsonSafely(text, {}));
+    const text = value.trim()
+    if (!text) return normalizeRecruitingExtract({})
+    return normalizeRecruitingExtract(parseJsonSafely(text, {}))
   }
   if (Array.isArray(value)) {
-    const isByteArray = value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255);
-    if (!isByteArray) return normalizeRecruitingExtract({});
-    const text = String(toString(value) || '').trim();
-    if (!text) return normalizeRecruitingExtract({});
-    return normalizeRecruitingExtract(parseJsonSafely(text, {}));
+    const isByteArray = value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255)
+    if (!isByteArray) return normalizeRecruitingExtract({})
+    const text = String(toString(value) || '').trim()
+    if (!text) return normalizeRecruitingExtract({})
+    return normalizeRecruitingExtract(parseJsonSafely(text, {}))
   }
-  return normalizeRecruitingExtract(value);
+  return normalizeRecruitingExtract(value)
 }
 
 /**
@@ -713,19 +713,19 @@ function normalizeCachedRecruitingField(value) {
  * @returns {types.KjcaTeamLeadRow[]} 정규화된 팀장 행 목록입니다.
  */
 function normalizeTeamLeadRows(value) {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) return []
 
   return value
     .map((row) => {
-      const item = row && typeof row === 'object' ? row : {};
+      const item = row && typeof row === 'object' ? row : {}
       return {
         dept: String(item.dept || '').trim(),
         position: String(item.position || '').trim(),
         staffName: String(item.staffName || '').trim(),
         printUrl: String(item.printUrl || '').trim(),
-      };
+      }
     })
-    .filter((row) => !!row.dept && !!row.printUrl);
+    .filter((row) => !!row.dept && !!row.printUrl)
 }
 
 /**
@@ -734,7 +734,7 @@ function normalizeTeamLeadRows(value) {
  * @returns {types.KjcaAnalyzeResult[]} 정규화된 분석 결과 목록입니다.
  */
 function normalizeAnalyzeResults(value) {
-  const rows = Array.isArray(value) ? value : [];
+  const rows = Array.isArray(value) ? value : []
   return rows.map((item) => ({
     dept: String((item && item.dept) || '').trim(),
     position: String((item && item.position) || '').trim(),
@@ -746,7 +746,7 @@ function normalizeAnalyzeResults(value) {
     special: Array.isArray(item && item.special) ? item.special.map((entry) => String(entry || '').trim()).filter(Boolean) : [],
     recruiting: normalizeRecruitingExtract(item && item.recruiting),
     printUrl: String((item && item.printUrl) || '').trim(),
-  }));
+  }))
 }
 
 /**
@@ -755,13 +755,13 @@ function normalizeAnalyzeResults(value) {
  * @returns {types.KjcaWeekTextRow[]} 정리된 주간 텍스트 행 목록입니다.
  */
 function normalizeWeekTextRows(rows) {
-  if (!Array.isArray(rows)) return [];
+  if (!Array.isArray(rows)) return []
 
   return rows
     .map((item, index) => {
-      const row = item && typeof item === 'object' ? item : {};
-      const weekday = normalizeWeekday(row.weekday);
-      if (!weekday) return null;
+      const row = item && typeof item === 'object' ? item : {}
+      const weekday = normalizeWeekday(row.weekday)
+      if (!weekday) return null
 
       return {
         weekday,
@@ -774,9 +774,9 @@ function normalizeWeekTextRows(rows) {
         ownerName: String(row.ownerName || '').trim(),
         note: String(row.note || '').trim(),
         sortOrder: Number.isFinite(Number(row.sortOrder)) ? Math.trunc(Number(row.sortOrder)) : index,
-      };
+      }
     })
-    .filter((row) => !!row);
+    .filter((row) => !!row)
 }
 
 /**
@@ -785,17 +785,17 @@ function normalizeWeekTextRows(rows) {
  * @returns {types.KjcaWeekTextRow[]} 월-금 기준으로 채워진 행 목록입니다.
  */
 function ensureWeekdayRows(rows) {
-  const normalized = normalizeWeekTextRows(rows);
-  const byWeekday = new Map();
+  const normalized = normalizeWeekTextRows(rows)
+  const byWeekday = new Map()
   normalized.forEach((row) => {
-    const key = row.weekday;
-    if (!byWeekday.has(key)) byWeekday.set(key, []);
-    byWeekday.get(key).push(row);
-  });
+    const key = row.weekday
+    if (!byWeekday.has(key)) byWeekday.set(key, [])
+    byWeekday.get(key).push(row)
+  })
 
-  const result = [];
+  const result = []
   WEEKDAY_ORDER.forEach((weekday) => {
-    const items = byWeekday.get(weekday) || [];
+    const items = byWeekday.get(weekday) || []
     if (items.length === 0) {
       result.push({
         weekday,
@@ -808,14 +808,14 @@ function ensureWeekdayRows(rows) {
         ownerName: '',
         note: '',
         sortOrder: 0,
-      });
-      return;
+      })
+      return
     }
 
-    items.sort((a, b) => a.sortOrder - b.sortOrder).forEach((item, index) => result.push({ ...item, sortOrder: index }));
-  });
+    items.sort((a, b) => a.sortOrder - b.sortOrder).forEach((item, index) => result.push({ ...item, sortOrder: index }))
+  })
 
-  return result;
+  return result
 }
 
 /**
@@ -833,8 +833,8 @@ function hasWeekTextContent(rows) {
       !!String(row.resultText || '').trim() ||
       !!String(row.recruitCountText || '').trim() ||
       !!String(row.ownerName || '').trim() ||
-      !!String(row.note || '').trim(),
-  );
+      !!String(row.note || '').trim()
+  )
 }
 
 /**
@@ -843,12 +843,12 @@ function hasWeekTextContent(rows) {
  * @returns {number} 서로 다른 요일 수입니다.
  */
 function getDistinctWeekdayCount(rows) {
-  const weekdaySet = new Set();
+  const weekdaySet = new Set()
   rows.forEach((row) => {
-    const weekday = normalizeWeekday(row.weekday);
-    if (weekday) weekdaySet.add(weekday);
-  });
-  return weekdaySet.size;
+    const weekday = normalizeWeekday(row.weekday)
+    if (weekday) weekdaySet.add(weekday)
+  })
+  return weekdaySet.size
 }
 
 /**
@@ -857,17 +857,17 @@ function getDistinctWeekdayCount(rows) {
  * @returns {types.KjcaTeamLeadRow[]} 부서별 대표 타깃 목록입니다.
  */
 function buildUniqueTargets(rows) {
-  const map = new Map();
+  const map = new Map()
   rows.forEach((row) => {
-    if (map.has(row.dept)) return;
+    if (map.has(row.dept)) return
     map.set(row.dept, {
       dept: row.dept,
       position: row.position,
       staffName: row.staffName,
       printUrl: row.printUrl,
-    });
-  });
-  return Array.from(map.values());
+    })
+  })
+  return Array.from(map.values())
 }
 
 /**
@@ -889,10 +889,10 @@ function hasWeekPlanData(recruiting) {
           !!String(row.resultText || '').trim() ||
           !!String(row.recruitCountText || '').trim() ||
           !!String(row.ownerName || '').trim() ||
-          !!String(row.note || '').trim(),
+          !!String(row.note || '').trim()
       )) ||
     recruiting.dailyPlan.some((item) => item.targetCount !== null || !!item.channelName || !!item.promotionContent || !!item.ownerName || !!item.note)
-  );
+  )
 }
 
 /**
@@ -908,7 +908,7 @@ function buildSnapshotRows(planItems, weekResults) {
     wed: 0,
     thu: 0,
     fri: 0,
-  };
+  }
 
   const actualMap = {
     mon: 0,
@@ -916,26 +916,26 @@ function buildSnapshotRows(planItems, weekResults) {
     wed: 0,
     thu: 0,
     fri: 0,
-  };
+  }
 
   planItems.forEach((item) => {
-    const weekday = normalizeWeekday(item.weekday);
-    if (!weekday) return;
-    targetMap[weekday] += Math.max(0, Math.trunc(Number(item.targetCount || 0)));
-  });
+    const weekday = normalizeWeekday(item.weekday)
+    if (!weekday) return
+    targetMap[weekday] += Math.max(0, Math.trunc(Number(item.targetCount || 0)))
+  })
 
   weekResults.forEach((item) => {
-    const weekday = normalizeWeekday(item.weekday);
-    if (!weekday) return;
-    actualMap[weekday] += Math.max(0, Math.trunc(Number(item.actualCount || 0)));
-  });
+    const weekday = normalizeWeekday(item.weekday)
+    if (!weekday) return
+    actualMap[weekday] += Math.max(0, Math.trunc(Number(item.actualCount || 0)))
+  })
 
   return WEEKDAY_ORDER.map((weekday) => ({
     weekday,
     target: targetMap[weekday],
     actual: actualMap[weekday],
     gap: actualMap[weekday] - targetMap[weekday],
-  }));
+  }))
 }
 
 /**
@@ -944,18 +944,18 @@ function buildSnapshotRows(planItems, weekResults) {
  * @returns {types.KjcaDeptWeekTable[]} 정규화된 부서별 주간 테이블 목록입니다.
  */
 function normalizeDeptWeekTables(value) {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) return []
   return value
     .map((item) => {
-      const source = item && typeof item === 'object' ? item : {};
+      const source = item && typeof item === 'object' ? item : {}
       return {
         dept: String(source.dept || '').trim(),
         todayWeekday: normalizeWeekday(source.todayWeekday) || 'fri',
         rows: ensureWeekdayRows(source.rows),
-      };
+      }
     })
     .filter((item) => !!item.dept)
-    .sort((a, b) => a.dept.localeCompare(b.dept, 'ko'));
+    .sort((a, b) => a.dept.localeCompare(b.dept, 'ko'))
 }
 
 /**
@@ -964,10 +964,10 @@ function normalizeDeptWeekTables(value) {
  * @returns {types.KjcaDeptSnapshot[]} 정규화된 부서별 스냅샷 목록입니다.
  */
 function normalizeDeptSnapshots(value) {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) return []
   return value
     .map((item) => {
-      const source = item && typeof item === 'object' ? item : {};
+      const source = item && typeof item === 'object' ? item : {}
       return {
         dept: String(source.dept || '').trim(),
         monthTarget: normalizeNullableInt(source.monthTarget),
@@ -1008,10 +1008,10 @@ function normalizeDeptSnapshots(value) {
                 actual: 0,
                 gap: 0,
               },
-      };
+      }
     })
     .filter((item) => !!item.dept)
-    .sort((a, b) => a.dept.localeCompare(b.dept, 'ko'));
+    .sort((a, b) => a.dept.localeCompare(b.dept, 'ko'))
 }
 
 /**
@@ -1020,7 +1020,7 @@ function normalizeDeptSnapshots(value) {
  * @returns {types.KjcaDashboardState} 화면에서 바로 쓸 수 있는 대시보드 상태입니다.
  */
 function buildDashboardState(input) {
-  const source = input && typeof input === 'object' ? input : {};
+  const source = input && typeof input === 'object' ? input : {}
   return {
     reportDate: normalizeReportDate(source.reportDate),
     testOneOnly: normalizeBool(source.testOneOnly),
@@ -1033,7 +1033,7 @@ function buildDashboardState(input) {
     analysisResults: normalizeAnalyzeResults(source.analysisResults),
     deptWeekTables: normalizeDeptWeekTables(source.deptWeekTables),
     deptSnapshots: normalizeDeptSnapshots(source.deptSnapshots),
-  };
+  }
 }
 
 /**
@@ -1042,8 +1042,8 @@ function buildDashboardState(input) {
  * @returns {string} URL 인코딩된 대시보드 상태 문자열입니다.
  */
 function serializeDashboardState(state) {
-  const normalized = buildDashboardState(state);
-  return encodeURIComponent(JSON.stringify(normalized));
+  const normalized = buildDashboardState(state)
+  return encodeURIComponent(JSON.stringify(normalized))
 }
 
 /**
@@ -1053,18 +1053,18 @@ function serializeDashboardState(state) {
  * @returns {types.KjcaDashboardState} 복원된 대시보드 상태입니다.
  */
 function parseDashboardState(value, fallback) {
-  const fallbackState = buildDashboardState(fallback);
-  const text = String(value || '').trim();
-  if (!text) return fallbackState;
+  const fallbackState = buildDashboardState(fallback)
+  const text = String(value || '').trim()
+  if (!text) return fallbackState
 
   try {
-    const decoded = decodeURIComponent(text);
+    const decoded = decodeURIComponent(text)
     return buildDashboardState({
       ...fallbackState,
       ...parseJsonSafely(decoded, {}),
-    });
+    })
   } catch (error) {
-    return fallbackState;
+    return fallbackState
   }
 }
 
@@ -1075,13 +1075,13 @@ function parseDashboardState(value, fallback) {
  * @returns {types.KjcaMergedWeekdayRow} 화면 표시용 병합 행입니다.
  */
 function getWeekdayMergedRow(rows, weekday) {
-  const items = (Array.isArray(rows) ? rows : []).filter((row) => row.weekday === weekday).sort((a, b) => a.sortOrder - b.sortOrder);
+  const items = (Array.isArray(rows) ? rows : []).filter((row) => row.weekday === weekday).sort((a, b) => a.sortOrder - b.sortOrder)
 
   const joinValues = (extractor) =>
     items
       .map((row) => String(extractor(row) || '').trim())
       .filter(Boolean)
-      .join(' / ');
+      .join(' / ')
 
   return {
     channelName: joinValues((row) => row.channelName),
@@ -1092,7 +1092,7 @@ function getWeekdayMergedRow(rows, weekday) {
     recruitCountText: joinValues((row) => row.recruitCountText),
     ownerName: joinValues((row) => row.ownerName),
     note: joinValues((row) => row.note),
-  };
+  }
 }
 
 /**
@@ -1102,16 +1102,16 @@ function getWeekdayMergedRow(rows, weekday) {
  * @returns {boolean} 오늘 강조 대상이면 `true`입니다.
  */
 function isFocusWeekday(weekday, todayWeekday) {
-  return weekday === todayWeekday;
+  return weekday === todayWeekday
 }
 
 function buildMonthLabel(dateText) {
-  const text = String(dateText || '').trim();
-  const matched = text.match(/^\d{4}-(\d{2})-\d{2}$/);
-  if (!matched) return '금월';
-  const month = Number(matched[1]);
-  if (!Number.isFinite(month) || month < 1 || month > 12) return '금월';
-  return `${month}월`;
+  const text = String(dateText || '').trim()
+  const matched = text.match(/^\d{4}-(\d{2})-\d{2}$/)
+  if (!matched) return '금월'
+  const month = Number(matched[1])
+  if (!Number.isFinite(month) || month < 1 || month > 12) return '금월'
+  return `${month}월`
 }
 
 /**
@@ -1120,16 +1120,16 @@ function buildMonthLabel(dateText) {
  * @returns {string} 화면에 표시할 요약 문구입니다.
  */
 function buildDeptSummaryText(summaryInput) {
-  const dept = String((summaryInput && summaryInput.dept) || '').trim();
-  const reportDate = String((summaryInput && summaryInput.reportDate) || '').trim();
-  const analysisResults = Array.isArray(summaryInput && summaryInput.analysisResults) ? summaryInput.analysisResults : [];
-  const item = analysisResults.find((row) => row.dept === dept && row.ok);
-  const monthTarget = item && item.recruiting ? item.recruiting.monthTarget : null;
-  const monthAssignedCurrent = item && item.recruiting ? item.recruiting.monthAssignedCurrent : null;
-  const monthTargetText = monthTarget === null ? '-' : `${monthTarget}건`;
-  const monthAssignedText = monthAssignedCurrent === null ? '-' : `${monthAssignedCurrent}명`;
-  const monthLabel = buildMonthLabel(reportDate);
-  return `월 배정목표 : ${monthTargetText} / ${monthLabel} 현재 달성 : 배정 ${monthAssignedText}`;
+  const dept = String((summaryInput && summaryInput.dept) || '').trim()
+  const reportDate = String((summaryInput && summaryInput.reportDate) || '').trim()
+  const analysisResults = Array.isArray(summaryInput && summaryInput.analysisResults) ? summaryInput.analysisResults : []
+  const item = analysisResults.find((row) => row.dept === dept && row.ok)
+  const monthTarget = item && item.recruiting ? item.recruiting.monthTarget : null
+  const monthAssignedCurrent = item && item.recruiting ? item.recruiting.monthAssignedCurrent : null
+  const monthTargetText = monthTarget === null ? '-' : `${monthTarget}건`
+  const monthAssignedText = monthAssignedCurrent === null ? '-' : `${monthAssignedCurrent}명`
+  const monthLabel = buildMonthLabel(reportDate)
+  return `월 배정목표 : ${monthTargetText} / ${monthLabel} 현재 달성 : 배정 ${monthAssignedText}`
 }
 
 /**
@@ -1139,10 +1139,10 @@ function buildDeptSummaryText(summaryInput) {
  * @returns {types.KjcaDashboardState} 렌더링에 바로 쓸 수 있는 대시보드 상태입니다.
  */
 function buildDashboardStateFromCollectResult(result, formState) {
-  const safeFormState = buildFormState(formState);
-  const deptWeekTables = normalizeDeptWeekTables(result && result.deptWeekTables);
-  const alertMessage = String((result && result.alertMessage) || '').trim();
-  const noticeMessage = alertMessage || `자동 취합 완료 (${deptWeekTables.length}개 부서)`;
+  const safeFormState = buildFormState(formState)
+  const deptWeekTables = normalizeDeptWeekTables(result && result.deptWeekTables)
+  const alertMessage = String((result && result.alertMessage) || '').trim()
+  const noticeMessage = alertMessage || `자동 취합 완료 (${deptWeekTables.length}개 부서)`
 
   return buildDashboardState({
     reportDate: safeFormState.reportDate,
@@ -1155,7 +1155,7 @@ function buildDashboardStateFromCollectResult(result, formState) {
     deptWeekTables,
     deptSnapshots: result && result.deptSnapshots,
     stoppedReason: result && result.stoppedReason,
-  });
+  })
 }
 
 module.exports = {
@@ -1215,4 +1215,4 @@ module.exports = {
   isFocusWeekday,
   getWeekdayMergedRow,
   buildDeptSummaryText,
-};
+}

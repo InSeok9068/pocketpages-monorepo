@@ -4,15 +4,15 @@
  * @returns {boolean} 저장 가능하면 true입니다.
  */
 function canSaveConfirmed(record) {
-  if (!record) return false;
+  if (!record) return false
 
-  const weekStartDate = String(record.get('weekStartDate') || '').trim();
-  const dept = String(record.get('dept') || '').trim();
-  const status = String(record.get('status') || '').trim();
+  const weekStartDate = String(record.get('weekStartDate') || '').trim()
+  const dept = String(record.get('dept') || '').trim()
+  const status = String(record.get('status') || '').trim()
 
-  return !!weekStartDate && !!dept && status === 'confirmed';
+  return !!weekStartDate && !!dept && status === 'confirmed'
 }
 
 module.exports = {
   canSaveConfirmed,
-};
+}

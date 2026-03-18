@@ -1,11 +1,11 @@
 <%
-  const safeBoards = Array.isArray(typeof boardItems === 'undefined' ? undefined : boardItems) ? boardItems : [];
-  const safeError = typeof error === 'undefined' ? '' : String(error || '');
-  const currentBoardSlug = typeof selectedBoardSlug === 'undefined' ? '' : String(selectedBoardSlug || '');
+  const safeBoards = Array.isArray(typeof boardItems === 'undefined' ? undefined : boardItems) ? boardItems : []
+  const safeError = typeof error === 'undefined' ? '' : String(error || '')
+  const currentBoardSlug = typeof selectedBoardSlug === 'undefined' ? '' : String(selectedBoardSlug || '')
   const boardCards = safeBoards.map((boardItem) => {
-    const boardName = boardItem.name || '';
-    const boardSlug = boardItem.slug || '';
-    const description = String(boardItem.description || '').trim();
+    const boardName = boardItem.name || ''
+    const boardSlug = boardItem.slug || ''
+    const description = String(boardItem.description || '').trim()
 
     return {
       name: boardName,
@@ -13,8 +13,8 @@
       path: boardItem.path || '',
       description: description.length > 96 ? description.slice(0, 93) + '...' : description,
       searchExpr: JSON.stringify(`${boardName} ${boardSlug}`.toLowerCase()),
-    };
-  });
+    }
+  })
 %>
 <% if (safeError) { %>
 <p class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"><%= safeError %></p>

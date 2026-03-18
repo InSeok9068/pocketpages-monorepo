@@ -1,8 +1,8 @@
 <script server>
-  meta('title', 'Booklog');
-  meta('description', 'Booklog 기본 메인 페이지');
+  meta('title', 'Booklog')
+  meta('description', 'Booklog 기본 메인 페이지')
 
-  const flashMessage = params.__flash ? String(params.__flash) : '';
+  const flashMessage = params.__flash ? String(params.__flash) : ''
 </script>
 
 <section class="space-y-4">
@@ -12,9 +12,9 @@
 </section>
 
 <% if (flashMessage) { %>
-  <section class="mt-6 rounded-2xl border border-stone-200 bg-white px-5 py-4 text-sm text-stone-700 shadow-sm">
-    <%= flashMessage %>
-  </section>
+<section class="mt-6 rounded-2xl border border-stone-200 bg-white px-5 py-4 text-sm text-stone-700 shadow-sm">
+  <%= flashMessage %>
+</section>
 <% } %>
 
 <section class="mt-8 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
@@ -26,20 +26,9 @@
   <form class="mt-6 space-y-4" method="post" action="/xapi/epub/upload" enctype="multipart/form-data">
     <label class="block space-y-2">
       <span class="text-sm font-medium text-stone-700">EPUB 파일</span>
-      <input
-        class="block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900"
-        type="file"
-        name="epubFile"
-        accept=".epub,application/epub+zip"
-        required
-      />
+      <input class="block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900" type="file" name="epubFile" accept=".epub,application/epub+zip" required />
     </label>
 
-    <button
-      class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700"
-      type="submit"
-    >
-      Upload EPUB
-    </button>
+    <button class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700" type="submit">Upload EPUB</button>
   </form>
 </section>

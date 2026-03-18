@@ -1,76 +1,76 @@
 <script server>
-  const boardService = resolve('board-service');
-  const boardInput = boardService.readBoardForm(body());
-  let errorMessage = '';
+  const boardService = resolve('board-service')
+  const boardInput = boardService.readBoardForm(body())
+  let errorMessage = ''
 
   dbg('api/boards/create:start', {
     name: boardInput.name,
     slug: boardInput.slug,
-  });
+  })
 
   if (!boardInput.name) {
     warn('api/boards/create:validation-failed', {
       name: boardInput.name,
       slug: boardInput.slug,
       message: 'Board name is required.',
-    });
-    errorMessage = 'Board name is required.';
+    })
+    errorMessage = 'Board name is required.'
   } else if (!boardInput.slug) {
     warn('api/boards/create:validation-failed', {
       name: boardInput.name,
       slug: boardInput.slug,
       message: 'Board slug is required.',
-    });
-    errorMessage = 'Board slug is required.';
+    })
+    errorMessage = 'Board slug is required.'
   } else if (boardService.findBoardBySlug(boardInput.slug)) {
     warn('api/boards/create:validation-failed', {
       name: boardInput.name,
       slug: boardInput.slug,
       message: 'Slug already exists.',
-    });
-    errorMessage = 'Slug already exists.';
+    })
+    errorMessage = 'Slug already exists.'
   }
 
   if (!errorMessage) {
     try {
-      const collection = $app.findCollectionByNameOrId('boards');
-      const record = new Record(collection);
-      record.set('name', boardInput.name);
-      record.set('slug', boardInput.slug);
-      record.set('description', boardInput.description);
-      record.set('is_active', true);
-      record.set('sort_order', 0);
-      $app.save(record);
-      info('api/boards/create:success', { slug: record.get('slug') });
+      const collection = $app.findCollectionByNameOrId('boards')
+      const record = new Record(collection)
+      record.set('name', boardInput.name)
+      record.set('slug', boardInput.slug)
+      record.set('description', boardInput.description)
+      record.set('is_active', true)
+      record.set('sort_order', 0)
+      $app.save(record)
+      info('api/boards/create:success', { slug: record.get('slug') })
       dbg('api/boards/create:response', {
         status: 303,
         redirectTo: '/boards',
         flash: 'Board created.',
-      });
+      })
       redirect('/boards', {
         status: 303,
         message: 'Board created.',
-      });
-      return;
+      })
+      return
     } catch (exception) {
       error('api/boards/create:save-failed', {
         name: boardInput.name,
         slug: boardInput.slug,
         message: String(exception.message || exception),
-      });
-      errorMessage = String(exception.message || exception);
+      })
+      errorMessage = String(exception.message || exception)
     }
   }
 </script>
 <%
-  const flashMessage = errorMessage || 'Failed to create board.';
+  const flashMessage = errorMessage || 'Failed to create board.'
   dbg('api/boards/create:response', {
     status: 303,
     redirectTo: '/boards',
     error: flashMessage,
-  });
+  })
   redirect('/boards', {
     status: 303,
     message: flashMessage,
-  });
+  })
 %>

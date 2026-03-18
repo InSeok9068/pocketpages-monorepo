@@ -1,42 +1,42 @@
 <script server>
-  const boardService = resolve('board-service');
-  const postService = resolve('post-service');
-  const postRole = resolve('roles/post');
-  const sharedData = data || {};
-  const board = sharedData.board || null;
-  const post = sharedData.post || null;
-  const boardSummary = boardService.toBoardSummary(board);
-  let postDetail = null;
+  const boardService = resolve('board-service')
+  const postService = resolve('post-service')
+  const postRole = resolve('roles/post')
+  const sharedData = data || {}
+  const board = sharedData.board || null
+  const post = sharedData.post || null
+  const boardSummary = boardService.toBoardSummary(board)
+  let postDetail = null
 
   if (!boardSummary) {
-    response.status(404);
-    meta('title', 'Board Not Found');
+    response.status(404)
+    meta('title', 'Board Not Found')
   } else {
     if (!post) {
-      response.status(404);
-      meta('title', 'Post Not Found');
+      response.status(404)
+      meta('title', 'Post Not Found')
     } else {
       if (postRole.canIncrementViewCount(post)) {
         try {
-          post.set('view_count', Number(post.get('view_count') || 0) + 1);
-          $app.save(post);
+          post.set('view_count', Number(post.get('view_count') || 0) + 1)
+          $app.save(post)
           info('page/posts/show:view-incremented', {
             boardSlug: boardSummary.slug,
             postSlug: String(params.postSlug || '').trim(),
             viewCount: post.get('view_count'),
-          });
+          })
         } catch (error) {
           warn('page/posts/show:view-increment-failed', {
             boardSlug: boardSummary.slug,
             postSlug: String(params.postSlug || '').trim(),
             message: String(error.message || error),
-          });
+          })
         }
       }
 
-      postDetail = postService.toPostDetail(post, boardSummary.slug);
-      meta('title', `${postDetail.title} | ${boardSummary.name || boardSummary.slug}`);
-      meta('description', boardSummary.description || `Post ${postDetail.slug}`);
+      postDetail = postService.toPostDetail(post, boardSummary.slug)
+      meta('title', `${postDetail.title} | ${boardSummary.name || boardSummary.slug}`)
+      meta('description', boardSummary.description || `Post ${postDetail.slug}`)
     }
   }
 
@@ -56,7 +56,7 @@
           board: boardSummary,
           post: postDetail,
           error: '',
-        };
+        }
 
   dbg('page/posts/show:response', {
     boardSlug: pageData.board ? pageData.board.slug : String(params.boardSlug || '').trim(),
@@ -64,7 +64,7 @@
     error: pageData.error || '',
     status: pageData.post ? pageData.post.status : '',
     viewCount: pageData.post ? pageData.post.viewCount : 0,
-  });
+  })
 </script>
 
 <% if (pageData.error) { %>

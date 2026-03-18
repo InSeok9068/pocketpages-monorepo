@@ -1,62 +1,62 @@
 <script server>
-  const kjcaAuth = resolve('kjca-auth');
+  const kjcaAuth = resolve('kjca-auth')
   if (request.method !== 'POST') {
     dbg('xapi/auth/sign-in:redirect', {
       status: 303,
       redirectTo: '/sign-in',
       flash: '잘못된 요청입니다.',
-    });
+    })
     redirect('/sign-in', {
       status: 303,
       message: '잘못된 요청입니다.',
-    });
-    return;
+    })
+    return
   }
 
-  const form = body();
-  const loginId = String(form.loginId || '').trim();
-  const normalizedLoginId = kjcaAuth.normalizeSuperuserLoginId(loginId);
-  const password = form.password === undefined || form.password === null ? '' : String(form.password);
-  let errorMessage = '';
+  const form = body()
+  const loginId = String(form.loginId || '').trim()
+  const normalizedLoginId = kjcaAuth.normalizeSuperuserLoginId(loginId)
+  const password = form.password === undefined || form.password === null ? '' : String(form.password)
+  let errorMessage = ''
 
   dbg('xapi/auth/sign-in:start', {
     loginId: normalizedLoginId,
-  });
+  })
 
   try {
-    if (!normalizedLoginId) throw new Error('아이디(loginId)가 필요합니다.');
-    if (!password) throw new Error('비밀번호가 필요합니다.');
+    if (!normalizedLoginId) throw new Error('아이디(loginId)가 필요합니다.')
+    if (!password) throw new Error('비밀번호가 필요합니다.')
 
     signInWithPassword(normalizedLoginId, password, {
       collection: '_superusers',
-    });
+    })
 
     dbg('xapi/auth/sign-in:response', {
       status: 303,
       redirectTo: '/',
       flash: '로그인 완료',
-    });
+    })
     redirect('/', {
       status: 303,
       message: '로그인 완료',
-    });
-    return;
+    })
+    return
   } catch (exception) {
-    errorMessage = String(exception.message || exception);
+    errorMessage = String(exception.message || exception)
     error('xapi/auth/sign-in:failed', {
       loginId: normalizedLoginId,
       error: errorMessage,
-    });
+    })
   }
 
-  const flashMessage = errorMessage || '로그인에 실패했습니다.';
+  const flashMessage = errorMessage || '로그인에 실패했습니다.'
   dbg('xapi/auth/sign-in:response', {
     status: 303,
     redirectTo: '/sign-in',
     error: flashMessage,
-  });
+  })
   redirect('/sign-in', {
     status: 303,
     message: flashMessage,
-  });
+  })
 </script>

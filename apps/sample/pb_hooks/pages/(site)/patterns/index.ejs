@@ -1,54 +1,55 @@
 <script server>
-  const boardService = resolve('board-service');
-  const postService = resolve('post-service');
-  const requestedBoardSlug = String(request.url.query.board || '').trim();
-  let boardItems = [];
-  let boardListError = '';
-  let selectedBoard = null;
-  let selectedBoardSlug = requestedBoardSlug;
-  let postItems = [];
-  let postError = '';
+  const boardService = resolve('board-service')
+  const postService = resolve('post-service')
+  const requestedBoardSlug = String(request.url.query.board || '').trim()
+  let boardItems = []
+  let boardListError = ''
+  let selectedBoard = null
+  let selectedBoardSlug = requestedBoardSlug
+  let postItems = []
+  let postError = ''
 
-  meta('title', 'PocketPages Sample Workspace');
-  meta('description', 'PocketPages sample workspace for page, xapi, api flows');
+  meta('title', 'PocketPages Sample Workspace')
+  meta('description', 'PocketPages sample workspace for page, xapi, api flows')
 
   try {
-    boardItems = boardService.toBoardSummaries(boardService.listBoards());
+    boardItems = boardService.toBoardSummaries(boardService.listBoards())
   } catch (error) {
     warn('page/patterns:index:board-list-failed', {
       message: String(error.message || error),
-    });
-    boardListError = String(error.message || error);
+    })
+    boardListError = String(error.message || error)
   }
 
   if (!selectedBoardSlug && boardItems.length) {
-    const defaultBoard = boardItems.find(function (boardItem) {
-      return boardItem.isActive;
-    }) || boardItems[0];
+    const defaultBoard =
+      boardItems.find(function (boardItem) {
+        return boardItem.isActive
+      }) || boardItems[0]
 
-    selectedBoardSlug = defaultBoard ? defaultBoard.slug : '';
+    selectedBoardSlug = defaultBoard ? defaultBoard.slug : ''
   }
 
   if (selectedBoardSlug) {
-    const selectedBoardRecord = boardService.findActiveBoardBySlug(selectedBoardSlug);
+    const selectedBoardRecord = boardService.findActiveBoardBySlug(selectedBoardSlug)
 
     if (selectedBoardRecord) {
-      selectedBoard = boardService.toBoardSummary(selectedBoardRecord);
+      selectedBoard = boardService.toBoardSummary(selectedBoardRecord)
 
       try {
-        postItems = postService.toPostPanelItems(postService.listPublishedPostsByBoard(selectedBoardRecord.id), selectedBoardSlug);
+        postItems = postService.toPostPanelItems(postService.listPublishedPostsByBoard(selectedBoardRecord.id), selectedBoardSlug)
       } catch (error) {
         warn('page/patterns:index:post-list-failed', {
           boardSlug: selectedBoardSlug,
           message: String(error.message || error),
-        });
-        postError = String(error.message || error);
+        })
+        postError = String(error.message || error)
       }
     }
   }
 
-  const apiListUrl = '/api/boards/list?limit=10';
-  const selectedBoardApiUrl = selectedBoard ? '/api/boards/' + encodeURIComponent(selectedBoard.slug) + '?limit=3' : '';
+  const apiListUrl = '/api/boards/list?limit=10'
+  const selectedBoardApiUrl = selectedBoard ? '/api/boards/' + encodeURIComponent(selectedBoard.slug) + '?limit=3' : ''
   const apiPreviewPayload = selectedBoard
     ? {
         meta: {
@@ -69,17 +70,19 @@
           draftPosts: 0,
           archivedPosts: 0,
           noticePosts: postItems.filter(function (postItem) {
-            return postItem.isNotice;
+            return postItem.isNotice
           }).length,
         },
         recentPosts: postItems.slice(0, 3).map(function (postItem) {
           return {
             title: postItem.title,
-            slug: String(postItem.path || '').split('/').pop() || '',
+            slug: String(postItem.path || '')
+                .split('/')
+                .pop() || '',
             isNotice: postItem.isNotice,
             publishedAt: postItem.publishedAt,
             path: postItem.path,
-          };
+          }
         }),
       }
     : {
@@ -96,8 +99,8 @@
           noticePosts: 0,
         },
         recentPosts: [],
-      };
-  const apiPreviewJson = JSON.stringify(apiPreviewPayload, null, 2);
+      }
+  const apiPreviewJson = JSON.stringify(apiPreviewPayload, null, 2)
 
   dbg('page/patterns:index:response', {
     requestedBoardSlug: requestedBoardSlug,
@@ -106,7 +109,7 @@
     boardListError: boardListError || '',
     postCount: postItems.length,
     postError: postError || '',
-  });
+  })
 </script>
 
 <header class="mb-8 rounded-[2rem] border border-stone-200 bg-white px-6 py-6 shadow-sm md:px-8">
@@ -120,7 +123,10 @@
 
     <div class="flex flex-wrap items-center gap-2">
       <a href="/boards" class="inline-flex items-center justify-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">Board CRUD</a>
-      <a href="<%= apiListUrl %>" class="inline-flex items-center justify-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
+      <a
+        href="<%= apiListUrl %>"
+        class="inline-flex items-center justify-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
+      >
         Board API List
       </a>
     </div>
@@ -147,7 +153,10 @@
         </label>
         <form hx-get="/xapi/boards/list" hx-target="#board-list" hx-swap="innerHTML" class="shrink-0">
           <input type="hidden" name="board" value="<%= selectedBoardSlug %>" />
-          <button type="submit" class="inline-flex items-center rounded-full border border-stone-300 px-4 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-900 hover:text-stone-900">
+          <button
+            type="submit"
+            class="inline-flex items-center rounded-full border border-stone-300 px-4 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-900 hover:text-stone-900"
+          >
             Refresh
           </button>
         </form>
@@ -155,11 +164,11 @@
 
       <div class="rounded-3xl bg-stone-100/70 p-2">
         <div id="board-list" class="max-h-[32rem] overflow-y-auto pr-1">
-        <%- include('board-list.ejs', {
-        boardItems: boardItems,
-        error: boardListError,
-        selectedBoardSlug: selectedBoardSlug,
-      }) %>
+          <%- include('board-list.ejs', {
+  boardItems: boardItems,
+  error: boardListError,
+  selectedBoardSlug: selectedBoardSlug,
+}) %>
         </div>
       </div>
     </div>
@@ -167,11 +176,11 @@
 
   <div class="space-y-6">
     <%- include('post-panel.ejs', {
-    selectedBoard: selectedBoard,
-    selectedBoardSlug: selectedBoardSlug,
-    postItems: postItems,
-    error: postError,
-  }) %>
+  selectedBoard: selectedBoard,
+  selectedBoardSlug: selectedBoardSlug,
+  postItems: postItems,
+  error: postError,
+}) %>
 
     <article class="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
       <header class="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -180,7 +189,10 @@
           <h2 class="text-2xl font-semibold text-stone-950">Board API</h2>
         </div>
         <div class="flex flex-wrap gap-2">
-          <a href="<%= apiListUrl %>" class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
+          <a
+            href="<%= apiListUrl %>"
+            class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
+          >
             Open list API
           </a>
           <% if (selectedBoardApiUrl) { %>

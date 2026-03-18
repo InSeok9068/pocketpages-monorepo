@@ -1,23 +1,23 @@
 <script server>
-  const boardService = resolve('board-service');
-  const postService = resolve('post-service');
-  const boardSlug = String(request.url.query.board || '').trim();
-  const selectedBoardRecord = boardService.findActiveBoardBySlug(boardSlug);
-  const selectedBoard = boardService.toBoardSummary(selectedBoardRecord);
-  let postItems = [];
-  let errorMessage = '';
+  const boardService = resolve('board-service')
+  const postService = resolve('post-service')
+  const boardSlug = String(request.url.query.board || '').trim()
+  const selectedBoardRecord = boardService.findActiveBoardBySlug(boardSlug)
+  const selectedBoard = boardService.toBoardSummary(selectedBoardRecord)
+  let postItems = []
+  let errorMessage = ''
 
-  dbg('xapi/posts/panel:start', { boardSlug });
+  dbg('xapi/posts/panel:start', { boardSlug })
 
   if (selectedBoardRecord) {
     try {
-      postItems = postService.toPostPanelItems(postService.listPublishedPostsByBoard(selectedBoardRecord.id), boardSlug);
+      postItems = postService.toPostPanelItems(postService.listPublishedPostsByBoard(selectedBoardRecord.id), boardSlug)
     } catch (error) {
       warn('xapi/posts/panel:load-failed', {
         boardSlug: boardSlug,
         message: String(error.message || error),
-      });
-      errorMessage = String(error.message || error);
+      })
+      errorMessage = String(error.message || error)
     }
   }
 
@@ -26,7 +26,7 @@
     boardFound: !!selectedBoard,
     error: errorMessage || '',
     postCount: postItems.length,
-  });
+  })
 </script>
 <%- include('post-panel.ejs', {
   selectedBoard: selectedBoard,

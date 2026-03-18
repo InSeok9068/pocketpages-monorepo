@@ -1,7 +1,7 @@
 <%
-  const flashMessage = params && params.__flash ? String(params.__flash).trim() : '';
-  const isErrorFlash = /failed|error|not found|required|cannot|invalid/i.test(flashMessage);
-  const flashClasses = isErrorFlash ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  const flashMessage = params && params.__flash ? String(params.__flash).trim() : ''
+  const isErrorFlash = /failed|error|not found|required|cannot|invalid/i.test(flashMessage)
+  const flashClasses = isErrorFlash ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
 %>
 <% if (flashMessage) { %>
 <p class="<%= `mb-6 ${flashClasses}` %> rounded-2xl border px-4 py-3 text-sm font-medium"><%= flashMessage %></p>

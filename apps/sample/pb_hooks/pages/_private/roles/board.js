@@ -5,12 +5,12 @@
  */
 function canAcceptPosts(board) {
   if (!board) {
-    return false;
+    return false
   }
 
-  return !!board.get('is_active');
+  return !!board.get('is_active')
 }
 
 module.exports = {
   canAcceptPosts,
-};
+}

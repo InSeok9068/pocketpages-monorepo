@@ -16,9 +16,9 @@
         content: '',
         status: 'draft',
         isNotice: false,
-      };
-  const currentStatus = safeValues.status || 'draft';
-  const safeTextareaRows = textareaRows || 8;
+      }
+  const currentStatus = safeValues.status || 'draft'
+  const safeTextareaRows = textareaRows || 8
 %>
 <form action="<%= formAction %>" method="post" class="max-w-2xl space-y-4">
   <input type="hidden" name="board" value="<%= boardSlug %>" />

@@ -1,12 +1,12 @@
 <script server>
-  const boardService = resolve('board-service');
-  const postService = resolve('post-service');
-  const boardRole = resolve('roles/board');
-  const postRole = resolve('roles/post');
-  const form = body();
-  const boardSlug = String(form.board || '').trim();
-  const postSlug = String(form.post || '').trim();
-  const postInput = postService.readPostForm(form, 'draft');
+  const boardService = resolve('board-service')
+  const postService = resolve('post-service')
+  const boardRole = resolve('roles/board')
+  const postRole = resolve('roles/post')
+  const form = body()
+  const boardSlug = String(form.board || '').trim()
+  const postSlug = String(form.post || '').trim()
+  const postInput = postService.readPostForm(form, 'draft')
 
   dbg('api/posts/update:start', {
     boardSlug: boardSlug,
@@ -14,26 +14,26 @@
     nextSlug: postInput.slug,
     status: postInput.status,
     isNotice: postInput.isNotice,
-  });
+  })
 
-  const board = boardService.findActiveBoardBySlug(boardSlug);
-  let post = null;
-  let errorMessage = '';
+  const board = boardService.findActiveBoardBySlug(boardSlug)
+  let post = null
+  let errorMessage = ''
 
   if (!board) {
-    warn('api/posts/update:board-not-found', { boardSlug });
-    errorMessage = 'Board not found.';
+    warn('api/posts/update:board-not-found', { boardSlug })
+    errorMessage = 'Board not found.'
   } else if (!boardRole.canAcceptPosts(board)) {
-    warn('api/posts/update:board-not-accepting-posts', { boardSlug });
-    errorMessage = 'Board cannot accept posts.';
+    warn('api/posts/update:board-not-accepting-posts', { boardSlug })
+    errorMessage = 'Board cannot accept posts.'
   }
 
   if (!errorMessage) {
-    post = postService.findPostByBoardAndSlug(board.id, postSlug);
+    post = postService.findPostByBoardAndSlug(board.id, postSlug)
 
     if (!post) {
-      warn('api/posts/update:post-not-found', { boardSlug, postSlug });
-      errorMessage = 'Post not found.';
+      warn('api/posts/update:post-not-found', { boardSlug, postSlug })
+      errorMessage = 'Post not found.'
     }
   }
 
@@ -42,12 +42,12 @@
       boardSlug: boardSlug,
       postSlug: postSlug,
       nextSlug: postInput.slug,
-    });
-    errorMessage = 'All fields are required.';
+    })
+    errorMessage = 'All fields are required.'
   }
 
   if (!errorMessage) {
-    const conflictingPost = postService.findPostByBoardAndSlug(board.id, postInput.slug);
+    const conflictingPost = postService.findPostByBoardAndSlug(board.id, postInput.slug)
 
     if (conflictingPost && conflictingPost.id !== post.id) {
       warn('api/posts/update:validation-failed', {
@@ -55,49 +55,49 @@
         postSlug: postSlug,
         nextSlug: postInput.slug,
         message: 'Slug already exists.',
-      });
-      errorMessage = 'Slug already exists.';
+      })
+      errorMessage = 'Slug already exists.'
     }
   }
 
   if (!errorMessage) {
     try {
       if (!postRole.canEdit(post)) {
-        throw new Error('archived 상태의 게시글은 수정하거나 삭제할 수 없습니다.');
+        throw new Error('archived 상태의 게시글은 수정하거나 삭제할 수 없습니다.')
       }
       if (postInput.status === 'archived' && !postRole.canArchive(post)) {
-        throw new Error('게시글은 published 상태일 때만 보관 처리할 수 있습니다.');
+        throw new Error('게시글은 published 상태일 때만 보관 처리할 수 있습니다.')
       }
 
-      postService.applyEditableFields(post, postInput);
+      postService.applyEditableFields(post, postInput)
       if (postInput.status === 'published' && !post.get('published_at')) {
-        post.set('published_at', new Date().toISOString());
+        post.set('published_at', new Date().toISOString())
       }
       if (postInput.status === 'published' && !postRole.canPublish(post)) {
-        throw new Error('게시글은 draft 상태에서 제목과 본문이 모두 있어야 게시할 수 있습니다.');
+        throw new Error('게시글은 draft 상태에서 제목과 본문이 모두 있어야 게시할 수 있습니다.')
       }
-      $app.save(post);
-      const redirectTo = postService.buildPostPath(boardSlug, postInput.slug);
-      info('api/posts/update:success', { boardSlug, previousSlug: postSlug, nextSlug: postInput.slug });
+      $app.save(post)
+      const redirectTo = postService.buildPostPath(boardSlug, postInput.slug)
+      info('api/posts/update:success', { boardSlug, previousSlug: postSlug, nextSlug: postInput.slug })
       dbg('api/posts/update:response', {
         status: 303,
         redirectTo: redirectTo,
         flash: 'Post updated.',
-      });
+      })
       redirect(redirectTo, {
         status: 303,
         message: 'Post updated.',
-      });
-      return;
+      })
+      return
     } catch (exception) {
-      error('api/posts/update:save-failed', exception);
-      errorMessage = String(exception.message || exception);
+      error('api/posts/update:save-failed', exception)
+      errorMessage = String(exception.message || exception)
     }
   }
 </script>
 <%
-  const fallbackPost = postService.buildEditPostPath(boardSlug, postSlug);
-  const flashMessage = errorMessage || 'Failed to update post.';
+  const fallbackPost = postService.buildEditPostPath(boardSlug, postSlug)
+  const flashMessage = errorMessage || 'Failed to update post.'
 
   dbg('api/posts/update:response', {
     status: 303,
@@ -105,10 +105,10 @@
     boardSlug,
     postSlug,
     error: flashMessage,
-  });
+  })
 
   redirect(fallbackPost, {
     status: 303,
     message: flashMessage,
-  });
+  })
 %>

@@ -1,56 +1,56 @@
 <script server>
-  const boardService = resolve('board-service');
-  const postService = resolve('post-service');
-  const postRole = resolve('roles/post');
-  const boardSlug = String(params.boardSlug || '').trim();
-  const parsedLimit = Number(request.url.query.limit || 5);
-  const recentLimit = isNaN(parsedLimit) ? 5 : Math.max(1, Math.min(parsedLimit, 10));
-  const board = boardService.findActiveBoardBySlug(boardSlug);
+  const boardService = resolve('board-service')
+  const postService = resolve('post-service')
+  const postRole = resolve('roles/post')
+  const boardSlug = String(params.boardSlug || '').trim()
+  const parsedLimit = Number(request.url.query.limit || 5)
+  const recentLimit = isNaN(parsedLimit) ? 5 : Math.max(1, Math.min(parsedLimit, 10))
+  const board = boardService.findActiveBoardBySlug(boardSlug)
 
   dbg('api/boards/show:start', {
     boardSlug: boardSlug,
     recentLimit: recentLimit,
-  });
+  })
 
   if (!board) {
-    warn('api/boards/show:board-not-found', { boardSlug: boardSlug });
+    warn('api/boards/show:board-not-found', { boardSlug: boardSlug })
     dbg('api/boards/show:response', {
       status: 404,
       boardSlug: boardSlug,
       error: 'Board not found.',
-    });
+    })
     response.json(404, {
       error: 'Board not found.',
       boardSlug: boardSlug,
-    });
-    return;
+    })
+    return
   }
 
   try {
-    const boardSummary = boardService.toBoardSummary(board);
-    const posts = postService.listPostsByBoard(board.id);
-    const postCards = postService.toPostCards(posts, boardSummary.slug);
+    const boardSummary = boardService.toBoardSummary(board)
+    const posts = postService.listPostsByBoard(board.id)
+    const postCards = postService.toPostCards(posts, boardSummary.slug)
     const stats = {
       totalPosts: posts.length,
       publishedPosts: 0,
       draftPosts: 0,
       archivedPosts: 0,
       noticePosts: 0,
-    };
+    }
 
     posts.forEach(function (post) {
       if (postRole.isPublished(post)) {
-        stats.publishedPosts += 1;
+        stats.publishedPosts += 1
       } else if (postRole.isArchived(post)) {
-        stats.archivedPosts += 1;
+        stats.archivedPosts += 1
       } else {
-        stats.draftPosts += 1;
+        stats.draftPosts += 1
       }
 
       if (post.get('is_notice')) {
-        stats.noticePosts += 1;
+        stats.noticePosts += 1
       }
-    });
+    })
 
     const recentPosts = postCards.slice(0, recentLimit).map(function (postCard) {
       return {
@@ -61,8 +61,8 @@
         publishedAt: postCard.publishedAt,
         viewCount: postCard.viewCount,
         path: postCard.path,
-      };
-    });
+      }
+    })
 
     const payload = {
       meta: {
@@ -79,32 +79,32 @@
       },
       stats: stats,
       recentPosts: recentPosts,
-    };
+    }
 
     dbg('api/boards/show:response', {
       status: 200,
       boardSlug: boardSlug,
       totalPosts: stats.totalPosts,
       recentPosts: recentPosts.length,
-    });
+    })
 
-    response.header('Cache-Control', 'no-store');
-    response.json(200, payload);
-    return;
+    response.header('Cache-Control', 'no-store')
+    response.json(200, payload)
+    return
   } catch (exception) {
     error('api/boards/show:load-failed', {
       boardSlug: boardSlug,
       message: String(exception.message || exception),
-    });
+    })
     dbg('api/boards/show:response', {
       status: 500,
       boardSlug: boardSlug,
       error: 'Failed to load board snapshot.',
-    });
+    })
     response.json(500, {
       error: 'Failed to load board snapshot.',
       boardSlug: boardSlug,
-    });
-    return;
+    })
+    return
   }
 </script>

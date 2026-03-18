@@ -17,9 +17,9 @@
     </style>
     <script>
       window.__assetFallback = function (element) {
-        element.onerror = null;
-        element.src = element.dataset.fallbackSrc;
-      };
+        element.onerror = null
+        element.src = element.dataset.fallbackSrc
+      }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js" data-fallback-src="<%= asset('/assets/vendor/htmx-2.0.3.min.js') %>" onerror="window.__assetFallback(this)"></script>
     <script
@@ -42,9 +42,9 @@
       window.__unocss = {
         presets: [() => window.__unocss_runtime.presets.presetUno()],
         ready: () => {
-          document.body.removeAttribute('un-cloak');
+          document.body.removeAttribute('un-cloak')
         },
-      };
+      }
     </script>
     <%- slots.head %>
   </head>

@@ -4,12 +4,12 @@
  * @returns {boolean} 저장 가능하면 true입니다.
  */
 function canSave(record) {
-  if (!record) return false;
+  if (!record) return false
 
-  const weekday = String(record.get('weekday') || '').trim();
-  return !!weekday;
+  const weekday = String(record.get('weekday') || '').trim()
+  return !!weekday
 }
 
 module.exports = {
   canSave,
-};
+}

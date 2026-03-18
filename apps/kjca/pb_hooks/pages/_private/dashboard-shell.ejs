@@ -3,7 +3,7 @@
   const safeFormState = formState || {
     reportDate: '',
     testOneOnly: false,
-  };
+  }
   /** @type {types.KjcaDashboardState} */
   const safeDashboardState = dashboardState || {
     reportDate: '',
@@ -17,10 +17,10 @@
     analysisResults: [],
     deptWeekTables: [],
     deptSnapshots: [],
-  };
-  const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || '').trim();
-  const testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly);
-  const encodedState = kjcaCore.serializeDashboardState(safeDashboardState);
+  }
+  const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || '').trim()
+  const testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly)
+  const encodedState = kjcaCore.serializeDashboardState(safeDashboardState)
   const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) => ({
     ...table,
     summaryText: kjcaCore.buildDeptSummaryText({
@@ -29,20 +29,20 @@
       analysisResults: safeDashboardState.analysisResults || [],
     }),
     weekdayRows: kjcaCore.WEEKDAY_ORDER.map((weekday) => {
-      const row = kjcaCore.getWeekdayMergedRow(table.rows || [], weekday);
-      const isToday = kjcaCore.isFocusWeekday(weekday, table.todayWeekday);
+      const row = kjcaCore.getWeekdayMergedRow(table.rows || [], weekday)
+      const isToday = kjcaCore.isFocusWeekday(weekday, table.todayWeekday)
 
       return {
         weekday,
         row,
         isToday,
-      };
+      }
     }),
-  }));
-  const hasWarnings = !!(safeDashboardState.warnings && safeDashboardState.warnings.length > 0);
-  const hasDeptWeekTables = deptWeekTables.length > 0;
-  const hasAnalysisResults = !!(safeDashboardState.analysisResults && safeDashboardState.analysisResults.length > 0);
-  const showEmptyState = !hasDeptWeekTables && !hasAnalysisResults && !safeDashboardState.noticeMessage && !safeDashboardState.errorMessage && !hasWarnings;
+  }))
+  const hasWarnings = !!(safeDashboardState.warnings && safeDashboardState.warnings.length > 0)
+  const hasDeptWeekTables = deptWeekTables.length > 0
+  const hasAnalysisResults = !!(safeDashboardState.analysisResults && safeDashboardState.analysisResults.length > 0)
+  const showEmptyState = !hasDeptWeekTables && !hasAnalysisResults && !safeDashboardState.noticeMessage && !safeDashboardState.errorMessage && !hasWarnings
 %>
 
 <div class="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]" :style="leftOpen ? '' : 'grid-template-columns: minmax(0, 1fr)'">

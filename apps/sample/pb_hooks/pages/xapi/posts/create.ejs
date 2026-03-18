@@ -1,90 +1,90 @@
 <script server>
-  const boardService = resolve('board-service');
-  const postService = resolve('post-service');
-  const boardRole = resolve('roles/board');
-  const postRole = resolve('roles/post');
-  const form = body();
-  const boardSlug = String(form.board || '').trim();
-  const postInput = postService.readPostForm(form, 'published');
+  const boardService = resolve('board-service')
+  const postService = resolve('post-service')
+  const boardRole = resolve('roles/board')
+  const postRole = resolve('roles/post')
+  const form = body()
+  const boardSlug = String(form.board || '').trim()
+  const postInput = postService.readPostForm(form, 'published')
 
   dbg('api/posts/create:start', {
     boardSlug: boardSlug,
     title: postInput.title,
     status: postInput.status,
     isNotice: postInput.isNotice,
-  });
+  })
 
-  const selectedBoard = boardService.findActiveBoardBySlug(boardSlug);
-  let errorMessage = '';
+  const selectedBoard = boardService.findActiveBoardBySlug(boardSlug)
+  let errorMessage = ''
 
   if (!selectedBoard) {
-    warn('api/posts/create:board-not-found', { boardSlug });
-    errorMessage = 'Board not found.';
+    warn('api/posts/create:board-not-found', { boardSlug })
+    errorMessage = 'Board not found.'
   } else if (!boardRole.canAcceptPosts(selectedBoard)) {
-    warn('api/posts/create:board-not-accepting-posts', { boardSlug });
-    errorMessage = 'Board cannot accept posts.';
+    warn('api/posts/create:board-not-accepting-posts', { boardSlug })
+    errorMessage = 'Board cannot accept posts.'
   } else if (!postService.hasRequiredPostInput(postInput)) {
     warn('api/posts/create:validation-failed', {
       boardSlug: boardSlug,
       title: postInput.title,
       slug: postInput.slug,
       authorName: postInput.authorName,
-    });
-    errorMessage = 'All fields are required.';
+    })
+    errorMessage = 'All fields are required.'
   } else if (postService.findPostByBoardAndSlug(selectedBoard.id, postInput.slug)) {
     warn('api/posts/create:validation-failed', {
       boardSlug: boardSlug,
       slug: postInput.slug,
       message: 'Slug already exists.',
-    });
-    errorMessage = 'Slug already exists.';
+    })
+    errorMessage = 'Slug already exists.'
   }
 
   if (!errorMessage) {
     try {
-      const collection = $app.findCollectionByNameOrId('posts');
-      const record = new Record(collection);
-      record.set('board', selectedBoard.id);
-      postService.applyEditableFields(record, postInput);
-      record.set('view_count', 0);
+      const collection = $app.findCollectionByNameOrId('posts')
+      const record = new Record(collection)
+      record.set('board', selectedBoard.id)
+      postService.applyEditableFields(record, postInput)
+      record.set('view_count', 0)
       if (postInput.status === 'published') {
-        record.set('published_at', new Date().toISOString());
+        record.set('published_at', new Date().toISOString())
       }
       if (postInput.status === 'published' && !postRole.canPublish(record)) {
-        throw new Error('게시글은 draft 상태에서 제목과 본문이 모두 있어야 게시할 수 있습니다.');
+        throw new Error('게시글은 draft 상태에서 제목과 본문이 모두 있어야 게시할 수 있습니다.')
       }
-      $app.save(record);
-      const createdSlug = record.get('slug');
-      const redirectTo = postService.buildPostPath(boardSlug, createdSlug);
-      info('api/posts/create:success', { boardSlug, slug: createdSlug });
+      $app.save(record)
+      const createdSlug = record.get('slug')
+      const redirectTo = postService.buildPostPath(boardSlug, createdSlug)
+      info('api/posts/create:success', { boardSlug, slug: createdSlug })
       dbg('api/posts/create:response', {
         status: 303,
         redirectTo: redirectTo,
         flash: 'Post created.',
-      });
+      })
       redirect(redirectTo, {
         status: 303,
         message: 'Post created.',
-      });
-      return;
+      })
+      return
     } catch (exception) {
-      error('api/posts/create:save-failed', exception);
-      errorMessage = String(exception.message || exception);
+      error('api/posts/create:save-failed', exception)
+      errorMessage = String(exception.message || exception)
     }
   }
 </script>
 <%
-  const createFallbackRedirect = postService.buildNewPostPath(boardSlug);
-  const flashMessage = errorMessage || 'Failed to create post.';
+  const createFallbackRedirect = postService.buildNewPostPath(boardSlug)
+  const flashMessage = errorMessage || 'Failed to create post.'
 
   dbg('api/posts/create:response', {
     status: 303,
     redirectTo: createFallbackRedirect,
     error: flashMessage,
-  });
+  })
 
   redirect(createFallbackRedirect, {
     status: 303,
     message: flashMessage,
-  });
+  })
 %>

@@ -4,15 +4,15 @@
  * @returns {boolean} 의미 있는 내용이 있으면 true입니다.
  */
 function hasContent(record) {
-  if (!record) return false;
+  if (!record) return false
 
-  const channelName = String(record.get('channelName') || '').trim();
-  const promotionContent = String(record.get('promotionContent') || '').trim();
-  const targetCount = Number(record.get('targetCount') || 0);
-  const ownerName = String(record.get('ownerName') || '').trim();
-  const note = String(record.get('note') || '').trim();
+  const channelName = String(record.get('channelName') || '').trim()
+  const promotionContent = String(record.get('promotionContent') || '').trim()
+  const targetCount = Number(record.get('targetCount') || 0)
+  const ownerName = String(record.get('ownerName') || '').trim()
+  const note = String(record.get('note') || '').trim()
 
-  return !!channelName || !!promotionContent || !!ownerName || !!note || (Number.isFinite(targetCount) && targetCount > 0);
+  return !!channelName || !!promotionContent || !!ownerName || !!note || (Number.isFinite(targetCount) && targetCount > 0)
 }
 
 /**
@@ -21,13 +21,13 @@ function hasContent(record) {
  * @returns {boolean} 저장 가능하면 true입니다.
  */
 function canSave(record) {
-  if (!record) return false;
+  if (!record) return false
 
-  const weekday = String(record.get('weekday') || '').trim();
-  return !!weekday && hasContent(record);
+  const weekday = String(record.get('weekday') || '').trim()
+  return !!weekday && hasContent(record)
 }
 
 module.exports = {
   canSave,
   hasContent,
-};
+}
