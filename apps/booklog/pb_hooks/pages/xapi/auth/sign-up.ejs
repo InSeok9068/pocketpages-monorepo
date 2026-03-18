@@ -1,4 +1,5 @@
 <script server>
+  const booklogAuthCookie = resolve('booklog-auth-cookie')
   if (request.method !== 'POST') {
     dbg('xapi/auth/sign-up:redirect', {
       status: 303,
@@ -34,12 +35,15 @@
       collection: 'users',
       sendVerificationEmail: false,
     })
-    signInWithPassword(email, password)
+
+    const authData = booklogAuthCookie.authenticateWithPassword(env, email, password)
+    booklogAuthCookie.writePersistedAuthCookie(response, authData, env)
 
     dbg('xapi/auth/sign-up:response', {
       status: 303,
       redirectTo: '/',
       flash: '회원가입 완료',
+      authId: authData.record.get('id'),
     })
     redirect('/', {
       status: 303,
