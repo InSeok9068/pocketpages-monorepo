@@ -47,14 +47,12 @@
 
 <div
   class="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]"
-  :style="leftOpen ? '' : 'grid-template-columns: minmax(0, 1fr)'"
->
+  :style="leftOpen ? '' : 'grid-template-columns: minmax(0, 1fr)'">
   <aside
     x-show="leftOpen"
     x-transition.opacity.duration.150ms
     x-transition.scale.origin.top.left.duration.150ms
-    class="flex min-w-0 flex-col gap-5 xl:self-start"
-  >
+    class="flex min-w-0 flex-col gap-5 xl:self-start">
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60">
       <form
         id="kjca-dashboard-form"
@@ -62,8 +60,7 @@
         hx-target="#kjca-dashboard-shell"
         hx-swap="innerHTML"
         hx-indicator="#kjca-collect-indicator"
-        class="space-y-4"
-      >
+        class="space-y-4">
         <div class="flex items-center justify-between gap-3">
           <div>
             <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Filters</p>
@@ -80,8 +77,7 @@
             type="date"
             name="reportDate"
             value="<%= reportDate %>"
-            class="kjca-control mt-2 block px-4 py-3 text-sm text-slate-900"
-          />
+            class="kjca-control mt-2 block px-4 py-3 text-sm text-slate-900" />
         </label>
 
         <label class="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -90,14 +86,12 @@
             type="checkbox"
             name="testOneOnly"
             value="true"
-            checked
-          />
+            checked />
           <% } else { %>
           <input
             type="checkbox"
             name="testOneOnly"
-            value="true"
-          />
+            value="true" />
           <% } %>
           <span>테스트 모드 (1건만 처리)</span>
         </label>
@@ -105,24 +99,21 @@
         <% if (authState.isSuperuser) { %>
         <button
           type="submit"
-          class="kjca-btn kjca-btn-primary w-full"
-        >
+          class="kjca-btn kjca-btn-primary w-full">
           금일 자동 취합/비교 실행
         </button>
         <% } else { %>
         <button
           type="submit"
           class="kjca-btn kjca-btn-primary w-full"
-          disabled
-        >
+          disabled>
           금일 자동 취합/비교 실행
         </button>
         <% } %>
 
         <div
           id="kjca-collect-indicator"
-          class="htmx-indicator items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700"
-        >
+          class="htmx-indicator items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
           <span class="inline-block h-4 w-4 animate-spin rounded-full border border-slate-500 border-t-transparent"></span>
           <span>팀장 일지 스크랩, 분석, 저장을 진행 중입니다.</span>
         </div>
@@ -173,8 +164,7 @@
       <button
         type="button"
         @click="leftOpen = !leftOpen"
-        class="kjca-btn kjca-btn-secondary kjca-btn-sm"
-      >
+        class="kjca-btn kjca-btn-secondary kjca-btn-sm">
         <span x-text="leftOpen ? '조회 영역 접기' : '조회 영역 펼치기'"></span>
       </button>
     </div>
@@ -183,8 +173,7 @@
       type="hidden"
       id="kjca-dashboard-state"
       name="dashboardStateJson"
-      value="<%= encodedState %>"
-    />
+      value="<%= encodedState %>" />
 
     <% if (safeDashboardState.noticeMessage) { %>
     <div class="rounded-2xl border border-emerald-200 bg-emerald-50/95 px-5 py-4 text-sm font-medium text-emerald-700 shadow-sm shadow-emerald-100/40"><%= safeDashboardState.noticeMessage %></div>
@@ -217,8 +206,7 @@
         <% deptWeekTables.forEach((table) => { %>
         <details
           open
-          class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4"
-        >
+          class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
           <summary class="cursor-pointer text-base font-semibold text-slate-950">
             <div class="inline-flex items-center gap-3">
               <span><%= table.dept %></span>
@@ -234,8 +222,7 @@
               hx-include="#kjca-dashboard-form, #kjca-dashboard-state"
               hx-target="#kjca-dashboard-shell"
               hx-swap="innerHTML"
-              class="kjca-btn kjca-btn-secondary kjca-btn-sm"
-            >
+              class="kjca-btn kjca-btn-secondary kjca-btn-sm">
               해당 부서 캐시 지우기
             </button>
           </div>
@@ -246,35 +233,30 @@
                 <tr>
                   <th
                     colspan="7"
-                    class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800"
-                  >
+                    class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">
                     <%= table.summaryText %>
                   </th>
                 </tr>
                 <tr>
                   <th
                     rowspan="2"
-                    class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800"
-                  >
+                    class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">
                     요일
                   </th>
                   <th
                     colspan="3"
-                    class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800"
-                  >
+                    class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">
                     주간 홍보계획
                   </th>
                   <th class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">결과</th>
                   <th
                     rowspan="2"
-                    class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800"
-                  >
+                    class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">
                     담당자(홍보)
                   </th>
                   <th
                     rowspan="2"
-                    class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800"
-                  >
+                    class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">
                     비고
                   </th>
                 </tr>
@@ -324,8 +306,7 @@
         <% safeDashboardState.analysisResults.forEach((item) => { %>
         <details
           open
-          class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4"
-        >
+          class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
           <summary class="cursor-pointer text-base font-semibold text-slate-950"><%= item.dept %> / <%= item.staffName %><%= item.ok ? '' : ' (실패)' %></summary>
 
           <div class="mt-4 space-y-4 text-sm text-slate-700">
@@ -334,8 +315,7 @@
                 href="<%= item.printUrl %>"
                 target="_blank"
                 rel="noreferrer"
-                class="kjca-btn kjca-btn-secondary kjca-btn-sm"
-              >
+                class="kjca-btn kjca-btn-secondary kjca-btn-sm">
                 원본링크
               </a>
             </div>

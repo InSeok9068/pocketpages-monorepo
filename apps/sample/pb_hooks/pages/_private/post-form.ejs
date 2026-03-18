@@ -23,19 +23,16 @@
 <form
   action="<%= formAction %>"
   method="post"
-  class="max-w-2xl space-y-4"
->
+  class="max-w-2xl space-y-4">
   <input
     type="hidden"
     name="board"
-    value="<%= boardSlug %>"
-  />
+    value="<%= boardSlug %>" />
   <% if (postSlug) { %>
   <input
     type="hidden"
     name="post"
-    value="<%= postSlug %>"
-  />
+    value="<%= postSlug %>" />
   <% } %>
 
   <label class="block">
@@ -46,8 +43,7 @@
       maxlength="200"
       value="<%= safeValues.title || '' %>"
       required
-      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
-    />
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white" />
   </label>
 
   <label class="block">
@@ -57,8 +53,7 @@
       name="slug"
       value="<%= safeValues.slug || '' %>"
       placeholder="welcome-post"
-      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
-    />
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white" />
   </label>
 
   <label class="block">
@@ -69,8 +64,7 @@
       value="<%= safeValues.authorName || '' %>"
       placeholder="Admin"
       required
-      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
-    />
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white" />
   </label>
 
   <label class="block">
@@ -79,8 +73,7 @@
       name="content"
       rows="<%= safeTextareaRows %>"
       required
-      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
-    >
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white">
 <%= safeValues.content || '' %></textarea
     >
   </label>
@@ -89,13 +82,11 @@
     Status
     <select
       name="status"
-      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
-    >
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white">
       <% if (currentStatus === 'published') { %>
       <option
         value="published"
-        selected
-      >
+        selected>
         Published
       </option>
       <% } else { %>
@@ -104,8 +95,7 @@
       <% if (currentStatus === 'draft') { %>
       <option
         value="draft"
-        selected
-      >
+        selected>
         Draft
       </option>
       <% } else { %>
@@ -114,8 +104,7 @@
       <% if (currentStatus === 'archived') { %>
       <option
         value="archived"
-        selected
-      >
+        selected>
         Archived
       </option>
       <% } else { %>
@@ -130,22 +119,19 @@
       type="checkbox"
       name="isNotice"
       value="true"
-      checked
-    />
+      checked />
     <% } else { %>
     <input
       type="checkbox"
       name="isNotice"
-      value="true"
-    />
+      value="true" />
     <% } %>
     Notice
   </label>
 
   <button
     type="submit"
-    class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700"
-  >
+    class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700">
     <%= submitLabel %>
   </button>
 </form>

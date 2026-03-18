@@ -3,6 +3,7 @@
   "printWidth": 200,
   "singleQuote": true,
   "trailingComma": "es5",
+  "bracketSameLine": true,
   "singleAttributePerLine": true,
   "plugins": ["./tools/prettier-plugin-ejs-safe.mjs"]
 }

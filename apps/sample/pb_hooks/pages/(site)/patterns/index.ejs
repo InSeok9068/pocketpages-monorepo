@@ -133,8 +133,7 @@
       >
       <a
         href="<%= apiListUrl %>"
-        class="inline-flex items-center justify-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
-      >
+        class="inline-flex items-center justify-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
         Board API List
       </a>
     </div>
@@ -150,8 +149,7 @@
 
     <div
       x-data="{ q: '' }"
-      class="space-y-4"
-    >
+      class="space-y-4">
       <div class="flex items-center gap-2">
         <label class="block min-w-0 flex-1">
           <span class="sr-only">Search boards</span>
@@ -159,24 +157,20 @@
             x-model="q"
             type="text"
             placeholder="Search boards"
-            class="block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
-          />
+            class="block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white" />
         </label>
         <form
           hx-get="/xapi/boards/list"
           hx-target="#board-list"
           hx-swap="innerHTML"
-          class="shrink-0"
-        >
+          class="shrink-0">
           <input
             type="hidden"
             name="board"
-            value="<%= selectedBoardSlug %>"
-          />
+            value="<%= selectedBoardSlug %>" />
           <button
             type="submit"
-            class="inline-flex items-center rounded-full border border-stone-300 px-4 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-900 hover:text-stone-900"
-          >
+            class="inline-flex items-center rounded-full border border-stone-300 px-4 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-900 hover:text-stone-900">
             Refresh
           </button>
         </form>
@@ -185,8 +179,7 @@
       <div class="rounded-3xl bg-stone-100/70 p-2">
         <div
           id="board-list"
-          class="max-h-[32rem] overflow-y-auto pr-1"
-        >
+          class="max-h-[32rem] overflow-y-auto pr-1">
           <%- include('board-list.ejs', {
   boardItems: boardItems,
   error: boardListError,
@@ -214,15 +207,13 @@
         <div class="flex flex-wrap gap-2">
           <a
             href="<%= apiListUrl %>"
-            class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
-          >
+            class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
             Open list API
           </a>
           <% if (selectedBoardApiUrl) { %>
           <a
             href="<%= selectedBoardApiUrl %>"
-            class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700"
-          >
+            class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">
             Open snapshot API
           </a>
           <% } %>

@@ -27,8 +27,7 @@
     class="mt-6 space-y-4"
     method="post"
     action="/xapi/epub/upload"
-    enctype="multipart/form-data"
-  >
+    enctype="multipart/form-data">
     <label class="block space-y-2">
       <span class="text-sm font-medium text-stone-700">EPUB 파일</span>
       <input
@@ -36,14 +35,12 @@
         type="file"
         name="epubFile"
         accept=".epub,application/epub+zip"
-        required
-      />
+        required />
     </label>
 
     <button
       class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700"
-      type="submit"
-    >
+      type="submit">
       Upload EPUB
     </button>
   </form>

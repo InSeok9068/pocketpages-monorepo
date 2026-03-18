@@ -44,8 +44,7 @@
     <form
       action="/xapi/boards/create"
       method="post"
-      class="max-w-2xl space-y-4"
-    >
+      class="max-w-2xl space-y-4">
       <label class="block">
         Name
         <input
@@ -53,8 +52,7 @@
           name="name"
           placeholder="General Discussion"
           required
-          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
-        />
+          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white" />
       </label>
 
       <label class="block">
@@ -63,8 +61,7 @@
           type="text"
           name="slug"
           placeholder="general-discussion"
-          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
-        />
+          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white" />
       </label>
 
       <label class="block">
@@ -73,14 +70,12 @@
           name="description"
           rows="4"
           placeholder="Board description"
-          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
-        ></textarea>
+          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"></textarea>
       </label>
 
       <button
         type="submit"
-        class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700"
-      >
+        class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700">
         Create board
       </button>
     </form>
@@ -102,26 +97,22 @@
           <tr>
             <th
               scope="col"
-              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500"
-            >
+              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500">
               Name
             </th>
             <th
               scope="col"
-              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500"
-            >
+              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500">
               Slug
             </th>
             <th
               scope="col"
-              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500"
-            >
+              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500">
               Description
             </th>
             <th
               scope="col"
-              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500"
-            >
+              class="border-b border-stone-200 px-4 py-3 font-semibold text-stone-500">
               Open
             </th>
           </tr>
@@ -135,8 +126,7 @@
             <td class="border-b border-stone-100 px-4 py-4">
               <a
                 href="<%= boardItem.path %>"
-                class="inline-flex items-center rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
-              >
+                class="inline-flex items-center rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
                 Open
               </a>
             </td>

@@ -53,19 +53,16 @@
       <% if (!authState.isSuperuser) { %>
       <a
         href="/sign-in"
-        class="kjca-btn kjca-btn-primary"
-      >
+        class="kjca-btn kjca-btn-primary">
         로그인
       </a>
       <% } else { %>
       <form
         action="/xapi/auth/sign-out"
-        method="post"
-      >
+        method="post">
         <button
           type="submit"
-          class="kjca-btn kjca-btn-secondary"
-        >
+          class="kjca-btn kjca-btn-secondary">
           로그아웃
         </button>
       </form>
@@ -78,8 +75,7 @@
 
 <section
   x-data="{ leftOpen: true }"
-  class="bg-white/72 rounded-2xl border border-slate-200 p-4 shadow-sm shadow-slate-200/60 md:p-5"
->
+  class="bg-white/72 rounded-2xl border border-slate-200 p-4 shadow-sm shadow-slate-200/60 md:p-5">
   <div id="kjca-dashboard-shell">
     <%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaCore }) %>
   </div>

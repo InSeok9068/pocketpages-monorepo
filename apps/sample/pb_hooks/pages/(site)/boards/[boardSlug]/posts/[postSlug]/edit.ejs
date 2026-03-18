@@ -53,8 +53,7 @@
   <p class="mt-4">
     <a
       href="/boards/<%= params.boardSlug %>"
-      class="text-sm font-medium text-stone-600 no-underline hover:text-stone-900"
-    >
+      class="text-sm font-medium text-stone-600 no-underline hover:text-stone-900">
       Back to board
     </a>
   </p>
@@ -64,8 +63,7 @@
   <p>
     <a
       href="<%= pageData.post.path %>"
-      class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"
-    >
+      class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900">
       <%= pageData.post.title %>
     </a>
   </p>
@@ -82,8 +80,7 @@
     </div>
     <a
       href="<%= pageData.post.path %>"
-      class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
-    >
+      class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
       View post
     </a>
   </header>
@@ -105,22 +102,18 @@
 
   <form
     action="/xapi/posts/delete"
-    method="post"
-  >
+    method="post">
     <input
       type="hidden"
       name="board"
-      value="<%= pageData.board.slug %>"
-    />
+      value="<%= pageData.board.slug %>" />
     <input
       type="hidden"
       name="post"
-      value="<%= pageData.post.slug %>"
-    />
+      value="<%= pageData.post.slug %>" />
     <button
       type="submit"
-      class="inline-flex items-center rounded-full bg-rose-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-600"
-    >
+      class="inline-flex items-center rounded-full bg-rose-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-600">
       Delete post
     </button>
   </form>

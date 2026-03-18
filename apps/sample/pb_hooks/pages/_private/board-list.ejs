@@ -25,8 +25,7 @@
   <% boardCards.forEach((boardCard) => { %>
   <article
     x-show="<%= `${boardCard.searchExpr}.includes(q.toLowerCase())` %>"
-    class="<%= currentBoardSlug === boardCard.slug ? 'border-stone-900 bg-white shadow-sm' : 'border-stone-200 bg-stone-50' %> rounded-2xl border px-4 py-4 transition"
-  >
+    class="<%= currentBoardSlug === boardCard.slug ? 'border-stone-900 bg-white shadow-sm' : 'border-stone-200 bg-stone-50' %> rounded-2xl border px-4 py-4 transition">
     <header class="flex items-start justify-between gap-3">
       <div class="min-w-0 space-y-1">
         <h3 class="truncate text-base font-semibold text-stone-950"><%= boardCard.name || '(untitled board)' %></h3>
@@ -42,24 +41,20 @@
         hx-get="/xapi/posts/panel"
         hx-target="#post-panel"
         hx-swap="outerHTML"
-        hx-push-url="/patterns?board=<%= encodeURIComponent(boardCard.slug) %>"
-      >
+        hx-push-url="/patterns?board=<%= encodeURIComponent(boardCard.slug) %>">
         <input
           type="hidden"
           name="board"
-          value="<%= boardCard.slug %>"
-        />
+          value="<%= boardCard.slug %>" />
         <button
           type="submit"
-          class="<%= currentBoardSlug === boardCard.slug ? 'bg-stone-900 text-white hover:bg-stone-700' : 'border border-stone-300 text-stone-700 hover:border-stone-900 hover:text-stone-900' %> inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium transition"
-        >
+          class="<%= currentBoardSlug === boardCard.slug ? 'bg-stone-900 text-white hover:bg-stone-700' : 'border border-stone-300 text-stone-700 hover:border-stone-900 hover:text-stone-900' %> inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium transition">
           <%= currentBoardSlug === boardCard.slug ? 'Refresh panel' : 'Load panel' %>
         </button>
       </form>
       <a
         href="<%= boardCard.path %>"
-        class="inline-flex items-center rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900"
-      >
+        class="inline-flex items-center rounded-full border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
         Full page
       </a>
     </div>
