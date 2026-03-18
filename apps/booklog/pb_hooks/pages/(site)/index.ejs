@@ -34,6 +34,10 @@
     },
   ]
   let shelfBooks = emptyShelfBooks
+  let randomHighlights = []
+  const formatDateText = function (value) {
+    return String(value || '').trim().slice(0, 10)
+  }
 
   if (isSignedIn) {
     const shelfRecords = $app.findRecordsByFilter(
@@ -87,10 +91,51 @@
     if (loadedShelfBooks.length > 0) {
       shelfBooks = loadedShelfBooks
     }
+
+    try {
+      const highlightRecords = $app.findRecordsByFilter(
+        'book_highlights',
+        'user_id = {:userId}',
+        '-updated',
+        50,
+        0,
+        { userId: request.auth.get('id') },
+      )
+      const shuffledHighlights = highlightRecords.slice()
+
+      for (let index = shuffledHighlights.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(Math.random() * (index + 1))
+        const currentValue = shuffledHighlights[index]
+
+        shuffledHighlights[index] = shuffledHighlights[swapIndex]
+        shuffledHighlights[swapIndex] = currentValue
+      }
+
+      randomHighlights = shuffledHighlights.slice(0, 3).map((highlightRecord) => {
+        const highlightBookId = String(highlightRecord.get('book_id') || '').trim()
+        let highlightBookRecord = null
+
+        try {
+          highlightBookRecord = $app.findFirstRecordByFilter('books', 'id = {:id}', { id: highlightBookId })
+        } catch (exception) {
+          highlightBookRecord = null
+        }
+
+        return {
+          bookId: highlightBookId,
+          bookTitle: highlightBookRecord ? String(highlightBookRecord.get('title') || '제목 없음') : '제목 없음',
+          quoteText: String(highlightRecord.get('quote_text') || '').trim(),
+          pageNumber: String(highlightRecord.get('page_number') || '').trim(),
+          highlightedAt: formatDateText(highlightRecord.get('highlighted_at')),
+        }
+      }).filter((item) => item.quoteText)
+    } catch (exception) {
+      randomHighlights = []
+    }
   }
 </script>
 
-<section class="space-y-4">
+<section class="space-y-5">
   <h1 class="text-4xl font-semibold tracking-tight text-stone-950">Booklog</h1>
   <p class="max-w-[17rem] text-[15px] leading-6 text-stone-600 sm:max-w-none sm:text-base sm:leading-7">한 권씩 꽂아두고, 읽는 흐름과 기록을 같이 쌓아가는 개인 서재.</p>
 </section>
@@ -120,7 +165,7 @@
 <% } else { %>
 <section
   x-data="{ uploadOpen: false, uploading: false, uploadFileName: '' }"
-  class="mt-8 space-y-6">
+  class="mt-9 space-y-6">
   <div class="flex items-center justify-between gap-4">
     <div class="space-y-1">
       <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">My Shelf</p>
@@ -189,8 +234,48 @@
 
   <section class="rounded-[2rem] border border-stone-200/80 bg-white/78 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
     <div class="space-y-2">
-      <h3 class="text-xl font-semibold tracking-tight text-stone-950">도서함 메모</h3>
-      <p class="text-sm leading-6 text-stone-600">업로드한 책이 있으면 표지와 기본 메타데이터를 이 도서함에서 바로 볼 수 있습니다.</p>
+      <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">Highlights</p>
+      <h3 class="text-xl font-semibold tracking-tight text-stone-950">인상 깊은 문구</h3>
+    </div>
+
+    <% if (randomHighlights.length > 0) { %>
+    <div class="mt-4 space-y-3">
+      <% for (let index = 0; index < randomHighlights.length; index += 1) { const highlight = randomHighlights[index] %>
+      <a
+        href="/books/<%= highlight.bookId %>"
+        class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
+        <p class="text-base leading-7 font-semibold tracking-[-0.02em] text-stone-900">
+          "<%= highlight.quoteText %>"
+        </p>
+        <p class="mt-2 text-[12px] leading-5 text-stone-500">
+          <span><%= highlight.bookTitle %></span>
+          <% if (highlight.pageNumber) { %>
+          <span> · <%= highlight.pageNumber %>p</span>
+          <% } %>
+          <% if (highlight.highlightedAt) { %>
+          <span> · <%= highlight.highlightedAt %></span>
+          <% } %>
+        </p>
+      </a>
+      <% } %>
+    </div>
+    <% } else { %>
+    <div class="mt-4 rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+      저장된 인상 깊은 문구가 아직 없습니다.
+    </div>
+    <% } %>
+
+    <div class="mt-4 grid grid-cols-2 gap-2">
+      <a
+        href="/reviews"
+        class="inline-flex items-center justify-center rounded-full border-none bg-white/88 px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
+        감상평 리스트
+      </a>
+      <a
+        href="/highlights"
+        class="inline-flex items-center justify-center rounded-full border-none bg-white/88 px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
+        문구 리스트
+      </a>
     </div>
   </section>
 
@@ -198,10 +283,10 @@
     x-show="uploadOpen"
     x-cloak
     x-transition.opacity
-    class="fixed left-0 top-0 z-[80] h-screen w-screen flex items-end justify-center bg-stone-950/45 px-3 pb-3 pt-16 sm:items-center sm:px-6 sm:py-6">
+    class="fixed inset-0 z-[80] flex items-end justify-center bg-stone-950/42 px-0 pt-0 sm:items-center sm:px-6 sm:py-6">
     <div
       x-on:click.outside="if (!uploading) { uploadOpen = false }"
-      class="w-full max-w-lg rounded-[2.1rem] border border-stone-200/90 bg-[linear-gradient(180deg,#fffdf8,#f8f0e4)] px-5 pb-5 pt-4 shadow-[0_30px_90px_rgba(41,28,17,0.3)] sm:px-6 sm:pb-6 sm:pt-5">
+      class="w-full max-w-lg rounded-t-[2rem] border-none bg-[linear-gradient(180deg,#fffdf8,#f8f0e4)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-18px_50px_rgba(41,28,17,0.18)] sm:rounded-[2.1rem] sm:px-6 sm:pb-6 sm:pt-5 sm:shadow-[0_30px_90px_rgba(41,28,17,0.2)]">
       <div class="flex items-start justify-between gap-4">
         <div class="space-y-1">
           <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-stone-500">Upload</p>

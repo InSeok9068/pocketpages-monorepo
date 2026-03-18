@@ -42,6 +42,7 @@
   let shelfRecord = null
   let reviewRecord = null
   let bookFileRecord = null
+  let highlightRecords = []
 
   try {
     bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
@@ -115,6 +116,22 @@
     }
   }
 
+  try {
+    highlightRecords = $app.findRecordsByFilter(
+      'book_highlights',
+      'user_id = {:userId} && book_id = {:bookId}',
+      '-highlighted_at,-updated',
+      20,
+      0,
+      {
+        userId: userId,
+        bookId: bookId,
+      },
+    )
+  } catch (exception) {
+    highlightRecords = []
+  }
+
   const title = String(bookRecord.get('title') || '제목 없음')
   const author = String(bookRecord.get('author') || '').trim()
   const publicationDate = String(bookRecord.get('publication_date') || '').trim()
@@ -139,8 +156,8 @@
   }
 </script>
 
-<section class="space-y-6">
-  <div class="space-y-2">
+<section class="space-y-7">
+  <div class="space-y-3">
     <a
       href="/"
       class="inline-flex items-center gap-2 rounded-full border-none bg-white/78 px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0">
@@ -250,5 +267,41 @@
         감상평 저장
       </button>
     </form>
+  </section>
+
+  <section class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+    <div class="space-y-2">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-stone-500">Highlights</p>
+      <h3 class="text-2xl font-semibold tracking-tight text-stone-950">인상 깊은 문구</h3>
+      <p class="text-sm leading-6 text-stone-600">리더에서 저장한 문구와 메모를 이곳에서 다시 볼 수 있습니다.</p>
+    </div>
+
+    <% if (highlightRecords.length > 0) { %>
+    <div class="mt-5 space-y-3">
+      <% for (let index = 0; index < highlightRecords.length; index += 1) { const highlight = highlightRecords[index] %>
+      <article class="rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+        <div class="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+          <% if (String(highlight.get('chapter_label') || '').trim()) { %>
+          <span><%= String(highlight.get('chapter_label') || '') %></span>
+          <% } %>
+          <% if (String(highlight.get('page_number') || '').trim()) { %>
+          <span>Page <%= String(highlight.get('page_number') || '') %></span>
+          <% } %>
+          <% if (String(highlight.get('highlighted_at') || '').trim()) { %>
+          <span><%= String(highlight.get('highlighted_at') || '') %></span>
+          <% } %>
+        </div>
+        <p class="mt-3 text-base leading-7 font-medium text-stone-900"><%= String(highlight.get('quote_text') || '') %></p>
+        <% if (String(highlight.get('note_text') || '').trim()) { %>
+        <p class="mt-3 text-sm leading-6 text-stone-600"><%= String(highlight.get('note_text') || '') %></p>
+        <% } %>
+      </article>
+      <% } %>
+    </div>
+    <% } else { %>
+    <div class="mt-5 rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+      아직 저장된 문구가 없습니다. 리더에서 마음에 드는 문장을 복사해 저장해 보세요.
+    </div>
+    <% } %>
   </section>
 </section>

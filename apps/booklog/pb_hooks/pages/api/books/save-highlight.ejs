@@ -1,0 +1,134 @@
+<script server>
+  if (request.method !== 'POST') {
+    response.json(405, {
+      ok: false,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    response.json(401, {
+      ok: false,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const quoteText = String(form.quoteText || '').trim()
+  const noteText = String(form.noteText || '').trim()
+  const locator = String(form.locator || '').trim()
+  const href = String(form.href || '').trim()
+  const chapterLabel = String(form.chapterLabel || '').trim()
+  const pageNumberRaw = String(form.pageNumber || '').trim()
+  const pageNumber = pageNumberRaw ? Number(pageNumberRaw) : null
+
+  dbg('api/books/save-highlight:start', {
+    userId: userId,
+    bookId: bookId,
+    hasLocator: !!locator,
+    hasHref: !!href,
+  })
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+    if (!quoteText) throw new Error('문구를 입력해 주세요.')
+
+    const bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
+    let shelfRecord = null
+    let bookFileRecord = null
+    const collection = $app.findCollectionByNameOrId('book_highlights')
+    const highlightRecord = new Record(collection)
+
+    try {
+      shelfRecord = $app.findFirstRecordByFilter(
+        'book_shelves',
+        'user_id = {:userId} && book_id = {:bookId}',
+        {
+          userId: userId,
+          bookId: bookId,
+        },
+      )
+    } catch (exception) {
+      shelfRecord = null
+    }
+
+    if (shelfRecord && String(shelfRecord.get('book_file_id') || '').trim()) {
+      try {
+        bookFileRecord = $app.findFirstRecordByFilter(
+          'book_files',
+          'id = {:bookFileId}',
+          {
+            bookFileId: String(shelfRecord.get('book_file_id') || ''),
+          },
+        )
+      } catch (exception) {
+        bookFileRecord = null
+      }
+    }
+
+    if (!bookFileRecord) {
+      try {
+        bookFileRecord = $app.findFirstRecordByFilter(
+          'book_files',
+          'book_id = {:bookId}',
+          { bookId: bookId },
+        )
+      } catch (exception) {
+        bookFileRecord = null
+      }
+    }
+
+    highlightRecord.set('user_id', userId)
+    highlightRecord.set('book_id', String(bookRecord.get('id') || ''))
+    highlightRecord.set('quote_text', quoteText)
+    highlightRecord.set('note_text', noteText)
+    highlightRecord.set('locator', locator)
+    highlightRecord.set('href', href)
+    highlightRecord.set('chapter_label', chapterLabel)
+    highlightRecord.set('highlighted_at', new Date().toISOString().slice(0, 10))
+
+    if (pageNumber !== null && !isNaN(pageNumber)) {
+      highlightRecord.set('page_number', pageNumber)
+    }
+
+    if (shelfRecord) {
+      highlightRecord.set('shelf_id', String(shelfRecord.get('id') || ''))
+    }
+
+    if (bookFileRecord) {
+      highlightRecord.set('file_id', String(bookFileRecord.get('id') || ''))
+    }
+
+    $app.save(highlightRecord)
+
+    info('api/books/save-highlight:created', {
+      userId: userId,
+      bookId: bookId,
+      highlightId: String(highlightRecord.get('id') || ''),
+    })
+
+    response.json(200, {
+      ok: true,
+      message: '인상 깊은 문구를 저장했습니다.',
+      id: String(highlightRecord.get('id') || ''),
+    })
+    return
+  } catch (exception) {
+    const errorMessage = String(exception.message || exception)
+
+    error('api/books/save-highlight:failed', {
+      userId: userId,
+      bookId: bookId,
+      error: errorMessage,
+    })
+
+    response.json(400, {
+      ok: false,
+      message: errorMessage || '문구 저장에 실패했습니다.',
+    })
+  }
+</script>
