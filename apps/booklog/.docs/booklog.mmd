@@ -1,0 +1,125 @@
+erDiagram
+    USERS {
+        string id PK "사용자 레코드 ID"
+        string email UK "로그인 이메일"
+        string password "비밀번호 해시"
+        bool verified "이메일 인증 여부"
+        datetime created "가입 시각"
+        datetime updated "수정 시각"
+    }
+
+    BOOKS {
+        string id PK "책 레코드 ID"
+        string title "도서명"
+        string title_sort "정렬용 제목"
+        string author "저자명"
+        string publisher "출판사"
+        date publication_date "출판일자"
+        string publication_year "출판년도"
+        string class_no "주제분류"
+        string isbn "ISBN"
+        string isbn13 UK "ISBN13"
+        string book_image_url "표지 이미지 URL"
+        text description "책 소개/요약"
+        json metadata_json "도서관정보나루 원본 응답 JSON"
+        datetime created "생성 시각"
+        datetime updated "수정 시각"
+    }
+
+    BOOK_FILES {
+        string id PK "공용 EPUB 파일 레코드 ID"
+        string book_id FK "연결된 책 ID"
+        string original_name "원본 파일명"
+        string stored_file "PocketBase 저장 파일명"
+        string mime_type "파일 MIME 타입"
+        number file_size "파일 크기(byte)"
+        string file_hash UK "중복 제거용 파일 해시"
+        string epub_version "EPUB 버전"
+        string language_code "EPUB 언어 코드"
+        string identifier_value "EPUB 내부 식별자"
+        text preview_text "본문 미리보기 텍스트"
+        json toc_json "목차 JSON"
+        json manifest_json "manifest/spine 요약 JSON"
+        datetime created "파일 등록 시각"
+        datetime updated "수정 시각"
+    }
+
+    BOOK_SHELVES {
+        string id PK "사용자 책 상태 레코드 ID"
+        string user_id FK "사용자 ID"
+        string book_id FK "책 ID"
+        string book_file_id FK "사용 중인 EPUB 파일 ID"
+        select status "읽기 상태(queued|reading|finished|dropped)"
+        number progress_percent "진행률 0~100"
+        string current_locator "epub.js locator/cfi"
+        string current_href "현재 챕터 href"
+        string current_label "현재 표시 위치"
+        number current_page "현재 페이지 추정값"
+        date started_at "읽기 시작일"
+        date finished_at "읽기 완료일"
+        date last_read_at "마지막 읽은 날짜"
+        bool reread_flag "재독서 여부"
+        datetime created "생성 시각"
+        datetime updated "수정 시각"
+    }
+
+    BOOK_REVIEWS {
+        string id PK "감상평 레코드 ID"
+        string user_id FK "작성자 ID"
+        string book_id FK "책 ID"
+        string shelf_id FK "연결된 읽기 상태 ID"
+        select visibility "공개 범위(private|app)"
+        number rating "별점 또는 점수"
+        text review_text "감상평 본문"
+        date reviewed_at "감상 작성일"
+        datetime created "생성 시각"
+        datetime updated "수정 시각"
+    }
+
+    BOOK_HIGHLIGHTS {
+        string id PK "인상 깊은 구절 레코드 ID"
+        string user_id FK "작성자 ID"
+        string book_id FK "책 ID"
+        string file_id FK "기준 EPUB 파일 ID"
+        string shelf_id FK "읽기 상태 ID"
+        string locator "epub.js locator/cfi"
+        string href "해당 본문 href"
+        string chapter_label "챕터/섹션 이름"
+        number page_number "기록 당시 페이지"
+        text quote_text "기록한 구절 본문"
+        text note_text "짧은 메모"
+        bool is_favorite "즐겨찾기 여부"
+        date highlighted_at "구절 기록일"
+        datetime created "생성 시각"
+        datetime updated "수정 시각"
+    }
+
+    USER_SETTINGS {
+        string id PK "설정 레코드 ID"
+        string user_id FK "사용자 ID"
+        number inactivity_push_days "미완독 알림 기준 일수"
+        select highlight_push_cycle "구절 알림 주기(off|daily|weekly|monthly)"
+        bool push_enabled "푸시 알림 사용 여부"
+        bool reading_reminder_enabled "읽기 리마인더 사용 여부"
+        bool highlight_reminder_enabled "구절 리마인더 사용 여부"
+        select preferred_view_mode "뷰어 기본 모드(paged|scrolled)"
+        number font_scale "뷰어 글자 크기 배율"
+        datetime created "생성 시각"
+        datetime updated "수정 시각"
+    }
+
+    USERS ||--o{ BOOK_SHELVES : "owns"
+    USERS ||--o{ BOOK_REVIEWS : "writes"
+    USERS ||--o{ BOOK_HIGHLIGHTS : "records"
+    USERS ||--|| USER_SETTINGS : "configures"
+
+    BOOKS ||--o{ BOOK_FILES : "has_source_files"
+    BOOKS ||--o{ BOOK_SHELVES : "tracked_in"
+    BOOKS ||--o{ BOOK_REVIEWS : "reviewed_in"
+    BOOKS ||--o{ BOOK_HIGHLIGHTS : "quoted_in"
+
+    BOOK_FILES ||--o{ BOOK_SHELVES : "used_in"
+    BOOK_FILES ||--o{ BOOK_HIGHLIGHTS : "quoted_from"
+
+    BOOK_SHELVES ||--o{ BOOK_REVIEWS : "summarized_by"
+    BOOK_SHELVES ||--o{ BOOK_HIGHLIGHTS : "collected_during"
