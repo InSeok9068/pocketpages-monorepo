@@ -123,3 +123,18 @@ erDiagram
 
     BOOK_SHELVES ||--o{ BOOK_REVIEWS : "summarized_by"
     BOOK_SHELVES ||--o{ BOOK_HIGHLIGHTS : "collected_during"
+
+%% Index Notes
+%% DB 방어용
+%% BOOKS: UNIQUE(isbn13) - 같은 ISBN 책 중복 방지
+%% BOOK_FILES: UNIQUE(file_hash) - 같은 EPUB 파일 중복 방지
+%% BOOK_SHELVES: UNIQUE(user_id, book_id) - 사용자별 같은 책 상태 중복 방지
+%% USER_SETTINGS: UNIQUE(user_id) - 사용자별 설정 1개만 허용
+%%
+%% 검색용
+%% BOOKS: INDEX(title_sort) - 제목 정렬, 제목 검색
+%% BOOKS: INDEX(author) - 저자 검색
+%% BOOK_FILES: INDEX(book_id) - 책별 EPUB 파일 조회
+%% BOOK_SHELVES: INDEX(user_id, status, last_read_at) - 내 서재 상태 필터, 최근 읽은 순
+%% BOOK_REVIEWS: INDEX(user_id, book_id, reviewed_at) - 감상평 목록 조회
+%% BOOK_HIGHLIGHTS: INDEX(user_id, book_id, highlighted_at) - 구절 목록 조회
