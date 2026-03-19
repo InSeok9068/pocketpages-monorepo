@@ -9,6 +9,7 @@ print_help() {
 Usage:
   ./task.sh start <service> [-- <extra args>]
   ./task.sh kill
+  ./task.sh deploy <service>
   ./task.sh test [service]
   ./task.sh lint [service]
   ./task.sh diag <file-or-service>
@@ -18,6 +19,7 @@ Usage:
 Commands:
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
+  deploy    Upload one service pb_hooks using .vscode/sftp.json
   test      Run node:test files under __tests__ for one service or all services
   lint      Run lightweight PocketPages self-validation checks for one service or all services
   diag      Run PocketPages editor diagnostics for PocketPages code files (.ejs/.js/.cjs/.mjs).
@@ -341,6 +343,287 @@ run_format() {
   npm run format -- "$@"
 }
 
+normalize_bash_path() {
+  local raw_path="$1"
+
+  if [[ "$raw_path" == "~" ]]; then
+    printf '%s\n' "$HOME"
+    return 0
+  fi
+
+  if [[ "$raw_path" == "~/"* ]]; then
+    printf '%s\n' "$HOME/${raw_path:2}"
+    return 0
+  fi
+
+  if [[ "$raw_path" =~ ^[A-Za-z]:[\\/].* ]] && command -v cygpath >/dev/null 2>&1; then
+    cygpath -u "$raw_path"
+    return 0
+  fi
+
+  printf '%s\n' "$raw_path"
+}
+
+resolve_config_dir() {
+  local raw_path="$1"
+  local normalized_path
+
+  normalized_path="$(normalize_bash_path "$raw_path")"
+
+  if [[ "$normalized_path" == /* ]]; then
+    (cd "$normalized_path" && pwd)
+    return 0
+  fi
+
+  (cd "$ROOT_DIR/$normalized_path" && pwd)
+}
+
+DEPLOY_HOST=""
+DEPLOY_PORT=""
+DEPLOY_USERNAME=""
+DEPLOY_PRIVATE_KEY_PATH=""
+DEPLOY_CONTEXT=""
+DEPLOY_REMOTE_PATH=""
+DEPLOY_PROTOCOL=""
+DEPLOY_CONNECT_TIMEOUT_SECONDS=""
+DEPLOY_DELETE_REMOTE=""
+
+load_deploy_config() {
+  local service="$1"
+  local config_file="$ROOT_DIR/.vscode/sftp.json"
+  local config_values=()
+
+  [[ -f "$config_file" ]] || {
+    echo "Missing deploy config: $config_file" >&2
+    exit 1
+  }
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot read deploy config." >&2
+    exit 1
+  fi
+
+  if ! mapfile -t config_values < <(node - "$config_file" "$service" <<'NODE'
+const fs = require('fs');
+
+const configFile = process.argv[2];
+const serviceName = process.argv[3];
+
+const entries = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+const entry = entries.find((item) => item && item.name === serviceName);
+
+if (!entry) {
+  console.error(`Unknown deploy service: ${serviceName}`);
+  process.exit(1);
+}
+
+const timeoutMs = Number(entry.connectTimeout);
+const timeoutSeconds = Number.isFinite(timeoutMs) && timeoutMs > 0
+  ? Math.max(1, Math.ceil(timeoutMs / 1000))
+  : 30;
+
+const values = [
+  entry.host || '',
+  entry.port == null ? '' : String(entry.port),
+  entry.username || '',
+  entry.privateKeyPath || '',
+  entry.context || '',
+  entry.remotePath || '',
+  entry.protocol || '',
+  String(timeoutSeconds),
+  entry.syncOption && entry.syncOption.delete === true ? 'true' : 'false',
+];
+
+process.stdout.write(values.join('\n'));
+NODE
+  ); then
+    exit 1
+  fi
+
+  if [[ "${#config_values[@]}" -ne 9 ]]; then
+    echo "Invalid deploy config for service: $service" >&2
+    exit 1
+  fi
+
+  DEPLOY_HOST="${config_values[0]}"
+  DEPLOY_PORT="${config_values[1]}"
+  DEPLOY_USERNAME="${config_values[2]}"
+  DEPLOY_PRIVATE_KEY_PATH="${config_values[3]}"
+  DEPLOY_CONTEXT="${config_values[4]}"
+  DEPLOY_REMOTE_PATH="${config_values[5]}"
+  DEPLOY_PROTOCOL="${config_values[6]}"
+  DEPLOY_CONNECT_TIMEOUT_SECONDS="${config_values[7]}"
+  DEPLOY_DELETE_REMOTE="${config_values[8]}"
+}
+
+run_deploy() {
+  local service="$1"
+  local context_dir=""
+  local private_key_path=""
+  local temp_dir=""
+  local archive_path=""
+  local batch_file=""
+  local remote_archive_path=""
+  local ssh_target=""
+  local timestamp=""
+  local sftp_cmd=()
+  local ssh_cmd=()
+
+  load_deploy_config "$service"
+
+  if [[ "$DEPLOY_PROTOCOL" != "sftp" ]]; then
+    echo "Unsupported deploy protocol for $service: $DEPLOY_PROTOCOL" >&2
+    exit 1
+  fi
+
+  if [[ -z "$DEPLOY_HOST" || -z "$DEPLOY_USERNAME" || -z "$DEPLOY_CONTEXT" || -z "$DEPLOY_REMOTE_PATH" ]]; then
+    echo "Incomplete deploy config for service: $service" >&2
+    exit 1
+  fi
+
+  if ! command -v ssh >/dev/null 2>&1 || ! command -v sftp >/dev/null 2>&1; then
+    echo "ssh/sftp not found. Run this command in Windows Git Bash." >&2
+    exit 1
+  fi
+
+  if ! command -v tar >/dev/null 2>&1 || ! command -v mktemp >/dev/null 2>&1; then
+    echo "tar/mktemp not found. Run this command in Windows Git Bash." >&2
+    exit 1
+  fi
+
+  if ! context_dir="$(resolve_config_dir "$DEPLOY_CONTEXT")"; then
+    echo "Deploy context not found: $DEPLOY_CONTEXT" >&2
+    exit 1
+  fi
+
+  private_key_path="$(normalize_bash_path "$DEPLOY_PRIVATE_KEY_PATH")"
+  if [[ -n "$private_key_path" && ! -f "$private_key_path" ]]; then
+    echo "Private key not found: $private_key_path" >&2
+    exit 1
+  fi
+
+  temp_dir="$(mktemp -d)"
+  archive_path="$temp_dir/${service}-pb_hooks.tar.gz"
+  batch_file="$temp_dir/upload.sftp"
+  timestamp="$(date +%s)"
+  remote_archive_path="/tmp/${service}-pb-hooks-${timestamp}-$$.tar.gz"
+  ssh_target="${DEPLOY_USERNAME}@${DEPLOY_HOST}"
+
+  cleanup_deploy_temp() {
+    rm -rf "$temp_dir"
+  }
+  trap cleanup_deploy_temp EXIT
+
+  echo "Packaging hooks: $context_dir"
+  (
+    cd "$context_dir"
+    tar -czf "$archive_path" .
+  )
+
+  printf 'put %s %s\n' "$archive_path" "$remote_archive_path" >"$batch_file"
+
+  sftp_cmd=(
+    sftp
+    -q
+    -b "$batch_file"
+    -P "$DEPLOY_PORT"
+    -o BatchMode=yes
+    -o StrictHostKeyChecking=accept-new
+    -o ConnectTimeout="$DEPLOY_CONNECT_TIMEOUT_SECONDS"
+  )
+
+  ssh_cmd=(
+    ssh
+    -p "$DEPLOY_PORT"
+    -o BatchMode=yes
+    -o StrictHostKeyChecking=accept-new
+    -o ConnectTimeout="$DEPLOY_CONNECT_TIMEOUT_SECONDS"
+  )
+
+  if [[ -n "$private_key_path" ]]; then
+    sftp_cmd+=(-i "$private_key_path")
+    ssh_cmd+=(-i "$private_key_path")
+  fi
+
+  echo "Uploading archive: $ssh_target:$remote_archive_path"
+  "${sftp_cmd[@]}" "$ssh_target"
+
+  echo "Replacing remote hooks: $DEPLOY_REMOTE_PATH"
+  "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$remote_archive_path" "$DEPLOY_REMOTE_PATH" "$DEPLOY_DELETE_REMOTE" <<'EOF'
+set -euo pipefail
+
+archive_path="$1"
+remote_path="$2"
+delete_remote="$3"
+stage_dir="$(mktemp -d /tmp/pb-hooks-deploy.XXXXXX)"
+
+cleanup() {
+  rm -rf "$stage_dir"
+  rm -f "$archive_path"
+}
+
+trap cleanup EXIT
+
+mkdir -p "$remote_path"
+tar -xzf "$archive_path" -C "$stage_dir"
+
+remove_remote_only_entries() {
+  local remote_root="$1"
+  local stage_root="$2"
+  local relative_path=""
+
+  while IFS= read -r -d '' relative_path; do
+    relative_path="${relative_path#./}"
+
+    if [[ ! -e "$stage_root/$relative_path" && ! -L "$stage_root/$relative_path" ]]; then
+      rm -rf "$remote_root/$relative_path"
+    fi
+  done < <(cd "$remote_root" && find . -mindepth 1 -print0)
+}
+
+remove_type_conflicts() {
+  local remote_root="$1"
+  local stage_root="$2"
+  local relative_path=""
+  local remote_item=""
+  local stage_item=""
+  local stage_is_dir=0
+  local remote_is_dir=0
+
+  while IFS= read -r -d '' relative_path; do
+    relative_path="${relative_path#./}"
+    remote_item="$remote_root/$relative_path"
+    stage_item="$stage_root/$relative_path"
+    stage_is_dir=0
+    remote_is_dir=0
+
+    if [[ ! -e "$remote_item" && ! -L "$remote_item" ]]; then
+      continue
+    fi
+
+    [[ -d "$stage_item" && ! -L "$stage_item" ]] && stage_is_dir=1
+    [[ -d "$remote_item" && ! -L "$remote_item" ]] && remote_is_dir=1
+
+    if [[ "$stage_is_dir" -ne "$remote_is_dir" ]]; then
+      rm -rf "$remote_item"
+    fi
+  done < <(cd "$stage_root" && find . -mindepth 1 -print0)
+}
+
+if [ "$delete_remote" = "true" ]; then
+  remove_remote_only_entries "$remote_path" "$stage_dir"
+fi
+
+remove_type_conflicts "$remote_path" "$stage_dir"
+cp -a "$stage_dir"/. "$remote_path"/
+EOF
+
+  trap - EXIT
+  cleanup_deploy_temp
+
+  echo "Deploy complete: $service"
+}
+
 if [[ "${1:-}" == "__complete_services" ]]; then
   list_services
   exit 0
@@ -357,6 +640,11 @@ case "${1:-help}" in
     ;;
   kill)
     kill_pocketbase
+    ;;
+  deploy)
+    shift
+    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh deploy <service>" >&2; exit 1; }
+    run_deploy "$1"
     ;;
   test)
     shift || true
