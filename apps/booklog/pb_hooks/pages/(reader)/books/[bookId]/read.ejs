@@ -480,9 +480,16 @@
     var touchStartY = 0
     var EDGE_TRIGGER_DISTANCE = 56
     var AUTO_PAGE_LOCK_MS = 700
+    var AUTO_SAVE_INTERVAL_MS = 5000
     var READER_CACHE_DB_NAME = 'booklog-reader-cache'
     var READER_CACHE_STORE_NAME = 'epubBuffers'
     var READER_CACHE_LIMIT = 3
+    var autoSaveTimerId = null
+    var autoSaveInFlight = false
+    var saveRequestInFlight = false
+    var isRestoringPosition = false
+    var hasAttemptedInitialRestore = false
+    var lastPersistedProgressKey = ''
 
     function normalizeText(value) {
       return String(value || '')
@@ -551,6 +558,14 @@
       component.currentChapterLabel = getChapterLabelForHref(href)
     }
 
+    function buildProgressKey(progress) {
+      var locator = progress && progress.locator ? String(progress.locator) : ''
+      var href = progress && progress.href ? String(progress.href) : ''
+      var pageNumber = progress && progress.pageNumber ? String(progress.pageNumber) : ''
+
+      return [locator, href, pageNumber].join('::')
+    }
+
     function getCurrentProgressPayload(component) {
       var location = currentLocation && currentLocation.start ? currentLocation.start : null
       var locator = location && location.cfi ? String(location.cfi) : ''
@@ -583,6 +598,224 @@
         pageNumber: pageNumber,
         progressPercent: progressPercent,
       }
+    }
+
+    function requestSavedProgress() {
+      var formData = new FormData()
+
+      formData.set('bookId', bookId)
+
+      return fetch('/api/books/load-progress', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+      })
+        .then(function (response) {
+          return response
+            .json()
+            .then(function (payload) {
+              return {
+                ok: response.ok,
+                payload: payload || {},
+              }
+            })
+            .catch(function () {
+              return {
+                ok: response.ok,
+                payload: {},
+              }
+            })
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            throw new Error(String(result.payload && result.payload.message ? result.payload.message : '읽기 위치를 불러오지 못했습니다.'))
+          }
+
+          return result.payload || {}
+        })
+    }
+
+    function persistProgress(component, options) {
+      var progress = getCurrentProgressPayload(component)
+      var formData = new FormData()
+      var shouldShowMessage = !options || !options.silent
+      var progressKey = buildProgressKey(progress)
+
+      if (saveRequestInFlight) {
+        if (shouldShowMessage) {
+          component.showSavePositionMessage('읽기 위치를 저장하는 중입니다.')
+        }
+
+        return Promise.resolve(false)
+      }
+
+      if (!progress.locator && !progress.href) {
+        if (shouldShowMessage) {
+          component.showSavePositionMessage('아직 저장할 읽기 위치를 찾지 못했습니다.')
+        }
+
+        return Promise.resolve(false)
+      }
+
+      if (options && options.skipIfUnchanged && progressKey && progressKey === lastPersistedProgressKey) {
+        return Promise.resolve(false)
+      }
+
+      formData.set('bookId', bookId)
+      formData.set('locator', progress.locator)
+      formData.set('href', progress.href)
+      formData.set('chapterLabel', progress.chapterLabel)
+      formData.set('pageNumber', progress.pageNumber)
+      formData.set('progressPercent', progress.progressPercent)
+      saveRequestInFlight = true
+
+      return fetch('/api/books/save-progress', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+      })
+        .then(function (response) {
+          return response
+            .json()
+            .then(function (payload) {
+              return {
+                ok: response.ok,
+                payload: payload || {},
+              }
+            })
+            .catch(function () {
+              return {
+                ok: response.ok,
+                payload: {},
+              }
+            })
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            throw new Error(String(result.payload && result.payload.message ? result.payload.message : '읽던 위치 저장에 실패했습니다.'))
+          }
+
+          lastPersistedProgressKey = progressKey
+
+          if (shouldShowMessage) {
+            component.showSavePositionMessage(String(result.payload && result.payload.message ? result.payload.message : '읽던 위치를 저장했습니다.'))
+          }
+
+          return true
+        })
+        .finally(function () {
+          saveRequestInFlight = false
+        })
+    }
+
+    function restoreSavedPosition(component, options) {
+      var shouldShowMessage = !options || !options.silent
+
+      if (!renditionInstance) {
+        if (shouldShowMessage) {
+          component.showSavePositionMessage('리더가 아직 준비되지 않았습니다.')
+        }
+
+        return Promise.resolve(false)
+      }
+
+      isRestoringPosition = true
+
+      if (shouldShowMessage) {
+        component.showSavePositionMessage('')
+      }
+
+      return requestSavedProgress()
+        .then(function (payload) {
+          var locator = String(payload && payload.locator ? payload.locator : '')
+          var href = String(payload && payload.href ? payload.href : '')
+          var target = locator || href
+
+          if (!target) {
+            throw new Error('저장된 읽기 위치가 없습니다.')
+          }
+
+          return Promise.resolve(renditionInstance.display(target))
+            .catch(function () {
+              if (locator && href) {
+                return renditionInstance.display(href)
+              }
+
+              throw new Error('저장된 위치로 이동하지 못했습니다.')
+            })
+            .then(function (location) {
+              var progress = null
+
+              component.currentChapterLabel = String(payload && payload.chapterLabel ? payload.chapterLabel : component.currentChapterLabel || '')
+              updateCurrentLocation(component, location || renditionInstance.currentLocation())
+
+              progress = getCurrentProgressPayload(component)
+              lastPersistedProgressKey = buildProgressKey(progress)
+
+              if (shouldShowMessage) {
+                component.showSavePositionMessage(String(payload && payload.message ? payload.message : '저장된 읽기 위치를 불러왔습니다.'))
+              }
+
+              return true
+            })
+        })
+        .catch(function (exception) {
+          if (shouldShowMessage) {
+            component.showSavePositionMessage(String(exception && exception.message ? exception.message : exception))
+          } else {
+            console.warn('page/books/[bookId]/read:restore-saved-position-skipped', {
+              message: String(exception && exception.message ? exception.message : exception),
+            })
+          }
+
+          return false
+        })
+        .finally(function () {
+          isRestoringPosition = false
+        })
+    }
+
+    function shouldSkipAutoSave(component) {
+      if (!component || component.loading || component.loadingSavedPosition || component.savingPosition) {
+        return true
+      }
+
+      if (!renditionInstance || !hasAttemptedInitialRestore || isRestoringPosition || autoSaveInFlight) {
+        return true
+      }
+
+      return false
+    }
+
+    function runAutoSave(component) {
+      if (shouldSkipAutoSave(component)) {
+        return
+      }
+
+      autoSaveInFlight = true
+
+      persistProgress(component, {
+        silent: true,
+        skipIfUnchanged: true,
+      })
+        .catch(function (exception) {
+          console.warn('page/books/[bookId]/read:auto-save:failed', {
+            message: String(exception && exception.message ? exception.message : exception),
+          })
+        })
+        .finally(function () {
+          autoSaveInFlight = false
+        })
+    }
+
+    function startAutoSave(component) {
+      if (autoSaveTimerId) {
+        clearInterval(autoSaveTimerId)
+      }
+
+      autoSaveTimerId = setInterval(function () {
+        runAutoSave(component)
+      }, AUTO_SAVE_INTERVAL_MS)
     }
 
     function buildSearchResultLabel(result) {
@@ -1048,7 +1281,18 @@
           return renderBookBuffer(component, buffer)
         })
         .then(function () {
+          component.loadingSavedPosition = true
+
+          return restoreSavedPosition(component, {
+            silent: true,
+          }).finally(function () {
+            hasAttemptedInitialRestore = true
+            component.loadingSavedPosition = false
+          })
+        })
+        .then(function () {
           component.loading = false
+          startAutoSave(component)
           console.debug('page/books/[bookId]/read:rendered', {
             bookId: bookId,
           })
@@ -1239,53 +1483,16 @@
     }
 
     function saveCurrentPosition(component) {
-      var progress = getCurrentProgressPayload(component)
-      var formData = new FormData()
-
       component.showSavePositionMessage('')
-
-      if (!progress.locator && !progress.href) {
-        component.showSavePositionMessage('아직 저장할 읽기 위치를 찾지 못했습니다.')
-        return
-      }
-
-      formData.set('bookId', bookId)
-      formData.set('locator', progress.locator)
-      formData.set('href', progress.href)
-      formData.set('chapterLabel', progress.chapterLabel)
-      formData.set('pageNumber', progress.pageNumber)
-      formData.set('progressPercent', progress.progressPercent)
 
       component.savingPosition = true
 
-      fetch('/api/books/save-progress', {
-        method: 'POST',
-        body: formData,
-        credentials: 'same-origin',
+      persistProgress(component, {
+        silent: false,
+        skipIfUnchanged: false,
       })
-        .then(function (response) {
-          return response
-            .json()
-            .then(function (payload) {
-              return {
-                ok: response.ok,
-                payload: payload || {},
-              }
-            })
-            .catch(function () {
-              return {
-                ok: response.ok,
-                payload: {},
-              }
-            })
-        })
-        .then(function (result) {
-          if (!result.ok) {
-            throw new Error(String(result.payload && result.payload.message ? result.payload.message : '읽던 위치 저장에 실패했습니다.'))
-          }
-
+        .then(function () {
           component.savingPosition = false
-          component.showSavePositionMessage(String(result.payload && result.payload.message ? result.payload.message : '읽던 위치를 저장했습니다.'))
         })
         .catch(function (exception) {
           component.savingPosition = false
@@ -1297,69 +1504,20 @@
     }
 
     function loadSavedPosition(component) {
-      var formData = new FormData()
-
-      component.showSavePositionMessage('')
-
       if (!renditionInstance) {
         component.showSavePositionMessage('리더가 아직 준비되지 않았습니다.')
         return
       }
 
-      formData.set('bookId', bookId)
       component.loadingSavedPosition = true
+      component.loading = true
 
-      fetch('/api/books/load-progress', {
-        method: 'POST',
-        body: formData,
-        credentials: 'same-origin',
+      restoreSavedPosition(component, {
+        silent: false,
       })
-        .then(function (response) {
-          return response
-            .json()
-            .then(function (payload) {
-              return {
-                ok: response.ok,
-                payload: payload || {},
-              }
-            })
-            .catch(function () {
-              return {
-                ok: response.ok,
-                payload: {},
-              }
-            })
-        })
-        .then(function (result) {
-          var locator = String(result.payload && result.payload.locator ? result.payload.locator : '')
-          var href = String(result.payload && result.payload.href ? result.payload.href : '')
-          var target = locator || href
-
-          if (!result.ok) {
-            throw new Error(String(result.payload && result.payload.message ? result.payload.message : '읽기 위치를 불러오지 못했습니다.'))
-          }
-
-          if (!target) {
-            throw new Error('저장된 읽기 위치가 없습니다.')
-          }
-
-          component.loading = true
-
-          return Promise.resolve(renditionInstance.display(target))
-            .catch(function () {
-              if (locator && href) {
-                return renditionInstance.display(href)
-              }
-
-              throw new Error('저장된 위치로 이동하지 못했습니다.')
-            })
-            .then(function (location) {
-              component.loadingSavedPosition = false
-              component.loading = false
-              component.currentChapterLabel = String(result.payload && result.payload.chapterLabel ? result.payload.chapterLabel : component.currentChapterLabel || '')
-              component.showSavePositionMessage(String(result.payload && result.payload.message ? result.payload.message : '저장된 읽기 위치를 불러왔습니다.'))
-              updateCurrentLocation(component, location || renditionInstance.currentLocation())
-            })
+        .then(function () {
+          component.loadingSavedPosition = false
+          component.loading = false
         })
         .catch(function (exception) {
           component.loadingSavedPosition = false
