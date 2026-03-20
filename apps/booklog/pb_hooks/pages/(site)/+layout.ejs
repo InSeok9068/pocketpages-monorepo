@@ -1,14 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko">
   <head>
-    <%
-      const metaImage = String(meta('image') || '/android-chrome-512x512.png')
-      const requestUrl = String(request.url || '')
-      const requestOriginMatch = requestUrl.match(/^https?:\/\/[^/]+/i)
-      const requestOrigin = requestOriginMatch ? requestOriginMatch[0] : ''
-      const normalizedMetaImage = metaImage.charAt(0) === '/' ? metaImage : '/' + metaImage
-      const metaImageUrl = /^https?:\/\//i.test(metaImage) ? metaImage : requestOrigin + normalizedMetaImage
-    %>
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -25,7 +17,7 @@
       content="<%= meta('description') %>" />
     <meta
       property="og:image"
-      content="<%= metaImageUrl %>" />
+      content="<%= meta('image') || '/android-chrome-512x512.png' %>" />
     <meta
       property="og:url"
       content="<%= meta('path') ? meta('path') : meta('url') || request.url %>" />
@@ -40,7 +32,7 @@
       content="<%= meta('description') %>" />
     <meta
       name="twitter:image"
-      content="<%= metaImageUrl %>" />
+      content="<%= meta('image') || '/android-chrome-512x512.png' %>" />
     <link
       rel="icon"
       type="image/svg+xml"
