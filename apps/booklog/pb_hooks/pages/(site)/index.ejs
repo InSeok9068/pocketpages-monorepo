@@ -1,6 +1,7 @@
 <script server>
   meta('title', 'Booklog')
-  meta('description', 'Booklog 메인 페이지')
+  meta('description', '책을 읽고 남긴 문장과 감상이 한 권씩 쌓여, 나만의 작은 도서관이 되어가는 곳.')
+  meta('image', '/assets/og/booklog-home.png')
 
   const flashMessage = params.__flash ? String(params.__flash) : ''
   const isSignedIn = !!request.auth
