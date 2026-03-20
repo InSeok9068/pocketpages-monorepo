@@ -791,11 +791,23 @@
     }
   }
 
+  /**
+   * 도서 메타데이터를 기존 책에 반영하거나 새 책으로 저장합니다.
+   * @param {object} bookInput 저장할 도서 값
+   * @param {string} [bookInput.existingBookId] 우선 재사용할 기존 책 ID
+   * @returns {Record} 저장된 책 레코드
+   */
   function saveBookRecord(bookInput) {
     const collection = $app.findCollectionByNameOrId('books')
     let record = null
 
-    if (bookInput.isbn13) {
+    if (bookInput.existingBookId) {
+      record = findFirstRecordOrNull('books', 'id = {:bookId}', {
+        bookId: bookInput.existingBookId,
+      })
+    }
+
+    if (!record && bookInput.isbn13) {
       record = findFirstRecordOrNull('books', 'isbn13 = {:isbn13}', {
         isbn13: bookInput.isbn13,
       })
@@ -1109,10 +1121,21 @@
       detailResult = loadBookDetailByIsbn13(String(selectedDoc.isbn13))
     }
 
+    const existingBookFile = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
+      fileHash: fileHash,
+    })
+    dbg('xapi/epub/upload:existing-book-file', {
+      fileHash: fileHash,
+      existingId: existingBookFile ? existingBookFile.get('id') : '',
+      existingBookId: existingBookFile ? existingBookFile.get('book_id') : '',
+    })
+
+    const existingBookId = existingBookFile && existingBookFile.get('book_id') ? String(existingBookFile.get('book_id')) : ''
     const detailBook = detailResult && detailResult.book ? detailResult.book : null
     const matchedBook = detailBook || selectedDoc || null
     const resolvedIsbn13 = detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
     const bookRecord = saveBookRecord({
+      existingBookId: existingBookId,
       title: matchedBook && matchedBook.bookname ? matchedBook.bookname : fallbackTitle,
       author: matchedBook && matchedBook.authors ? matchedBook.authors : fallbackAuthor,
       publisher: matchedBook && matchedBook.publisher ? matchedBook.publisher : '',
@@ -1124,14 +1147,6 @@
       bookImageUrl: matchedBook && matchedBook.bookImageURL ? matchedBook.bookImageURL : '',
       description: matchedBook && matchedBook.description ? matchedBook.description : '',
       metadataJson: detailResult ? detailResult.raw : null,
-    })
-    const existingBookFile = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
-      fileHash: fileHash,
-    })
-    dbg('xapi/epub/upload:existing-book-file', {
-      fileHash: fileHash,
-      existingId: existingBookFile ? existingBookFile.get('id') : '',
-      existingBookId: existingBookFile ? existingBookFile.get('book_id') : '',
     })
     const targetBookId = existingBookFile && existingBookFile.get('book_id') ? existingBookFile.get('book_id') : bookRecord.get('id')
 
