@@ -290,13 +290,13 @@
     x-cloak
     class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.2)] backdrop-blur-[2px]">
     <div class="mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
-      <div class="w-full rounded-[1.75rem] bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
+      <div class="bg-white/88 w-full rounded-[1.75rem] border border-stone-200/80 p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] backdrop-blur-sm">
         <div class="mb-3 flex items-center justify-between gap-3">
           <h2 class="text-base font-semibold text-stone-950">책 전체 검색</h2>
           <button
             type="button"
             x-on:click="closeSearch()"
-            class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-stone-100 text-stone-500 outline-none ring-0">
+            class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-stone-100 text-stone-500 outline-none ring-0 transition hover:bg-stone-200/80">
             ×
           </button>
         </div>
@@ -308,7 +308,7 @@
             x-on:keydown.enter.prevent="performSearch()"
             type="text"
             placeholder="찾을 문장을 입력해 주세요"
-            class="box-border min-w-0 flex-1 rounded-full border border-stone-200 bg-[#fbf8f1] px-4 py-3 text-sm text-stone-900 outline-none" />
+            class="box-border min-w-0 flex-1 rounded-full border-0 bg-[#fbf5ec] px-4 py-3 text-sm text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none transition placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.32)]" />
           <button
             type="button"
             x-on:click="performSearch()"
@@ -335,7 +335,7 @@
 
         <div class="max-h-[60vh] overflow-y-auto">
           <template x-if="!searchResults.length && !searching && !searchMessage">
-            <p class="rounded-[1.25rem] bg-[#f8f3e7] px-4 py-4 text-sm leading-6 text-stone-500">검색어를 입력하면 책 전체를 훑어서 결과를 보여줍니다.</p>
+            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">검색어를 입력하면 책 전체를 훑어서 결과를 보여줍니다.</p>
           </template>
 
           <div
@@ -348,8 +348,8 @@
               <button
                 type="button"
                 x-on:click="goToSearchResult(result)"
-                class="block w-full rounded-[1.25rem] border-none bg-stone-50 px-4 py-3 text-left text-sm leading-6 text-stone-700 outline-none ring-0">
-                <span x-text="result.label"></span>
+                class="block w-full rounded-[1.25rem] border-none bg-[#fbf7ef] px-4 py-3 text-left text-sm leading-6 text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] outline-none ring-0 transition hover:bg-[#f7f0e3]">
+                <span x-html="result.labelHtml || result.label"></span>
               </button>
             </template>
           </div>
@@ -537,7 +537,7 @@
         }
       }
 
-      return normalizeText(section && section.href ? section.href : section && section.url ? section.url : section && section.idref ? section.idref : section && section.id ? section.id : '')
+      return ''
     }
 
     function getChapterLabelForHref(href) {
@@ -547,7 +547,23 @@
         return tocLabelByHref[normalizedHref]
       }
 
-      return normalizeText(href)
+      return ''
+    }
+
+    function getPageNumberFromLocation(location) {
+      if (!location) {
+        return ''
+      }
+
+      if (location.displayed && typeof location.displayed.page === 'number') {
+        return String(location.displayed.page)
+      }
+
+      if (location.start && location.start.displayed && typeof location.start.displayed.page === 'number') {
+        return String(location.start.displayed.page)
+      }
+
+      return ''
     }
 
     function updateCurrentLocation(component, location) {
@@ -571,7 +587,7 @@
       var locator = location && location.cfi ? String(location.cfi) : ''
       var href = location && location.href ? String(location.href) : ''
       var chapterLabel = component && component.currentChapterLabel ? String(component.currentChapterLabel) : getChapterLabelForHref(href)
-      var pageNumber = location && location.displayed && typeof location.displayed.page === 'number' ? String(location.displayed.page) : ''
+      var pageNumber = getPageNumberFromLocation(currentLocation)
       var progressPercent = ''
 
       if (!locator && renditionInstance && typeof renditionInstance.currentLocation === 'function') {
@@ -580,7 +596,7 @@
         locator = location && location.cfi ? String(location.cfi) : ''
         href = location && location.href ? String(location.href) : ''
         chapterLabel = component && component.currentChapterLabel ? String(component.currentChapterLabel) : getChapterLabelForHref(href)
-        pageNumber = location && location.displayed && typeof location.displayed.page === 'number' ? String(location.displayed.page) : ''
+        pageNumber = getPageNumberFromLocation(currentLocation)
       }
 
       try {
@@ -827,6 +843,34 @@
       }
 
       return chapterLabel || excerpt || '검색 결과'
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+    }
+
+    function escapeRegExp(value) {
+      return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    }
+
+    function buildSearchResultLabelHtml(result, query) {
+      var label = buildSearchResultLabel(result)
+      var normalizedQuery = normalizeText(query)
+      var escapedLabel = escapeHtml(label)
+      var matcher = null
+
+      if (!normalizedQuery) {
+        return escapedLabel
+      }
+
+      matcher = new RegExp('(' + escapeRegExp(normalizedQuery) + ')', 'gi')
+
+      return escapedLabel.replace(matcher, '<mark class="bg-transparent font-semibold text-stone-900 underline decoration-[#b68454] decoration-[2px] underline-offset-[0.22em]">$1</mark>')
     }
 
     function canUseReaderCache() {
@@ -1356,6 +1400,13 @@
                     chapterLabel: chapterLabel,
                     excerpt: item && item.excerpt ? item.excerpt : '',
                   }),
+                  labelHtml: buildSearchResultLabelHtml(
+                    {
+                      chapterLabel: chapterLabel,
+                      excerpt: item && item.excerpt ? item.excerpt : '',
+                    },
+                    query
+                  ),
                 })
               })
             })
@@ -1418,7 +1469,7 @@
       var location = currentLocation && currentLocation.start ? currentLocation.start : null
       var locator = location && location.cfi ? String(location.cfi) : ''
       var href = location && location.href ? String(location.href) : ''
-      var pageNumber = location && location.displayed && typeof location.displayed.page === 'number' ? String(location.displayed.page) : ''
+      var pageNumber = getPageNumberFromLocation(currentLocation)
       var formData = new FormData()
 
       component.highlightMessage = ''
