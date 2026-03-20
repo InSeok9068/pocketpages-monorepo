@@ -11,7 +11,7 @@
   "files.exclude": {
     // 개발중인 서비스만 주석
     "apps/sample/**": true,
-    // "apps/kjca/**": true,
+    "apps/kjca/**": true,
     // "apps/booklog/**": true,
   },
   "search.exclude": {

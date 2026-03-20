@@ -10,6 +10,7 @@ Usage:
   ./task.sh start <service> [-- <extra args>]
   ./task.sh kill
   ./task.sh deploy <service>
+  ./task.sh rollback <service> <version>
   ./task.sh test [service]
   ./task.sh lint [service]
   ./task.sh diag <file-or-service>
@@ -20,6 +21,7 @@ Commands:
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
   deploy    Upload one service pb_hooks using .vscode/sftp.json
+  rollback  Restore one of the last 3 deployed pb_hooks versions
   test      Run node:test files under __tests__ for one service or all services
   lint      Run lightweight PocketPages self-validation checks for one service or all services
   diag      Run PocketPages editor diagnostics for PocketPages code files (.ejs/.js/.cjs/.mjs).
@@ -545,17 +547,51 @@ run_deploy() {
     ssh_cmd+=(-i "$private_key_path")
   fi
 
+  echo "Testing SSH connection: $ssh_target"
+  if ! "${ssh_cmd[@]}" "$ssh_target" true; then
+    echo "SSH connection test failed. Check network/VPN and try again." >&2
+    exit 1
+  fi
+
   echo "Uploading archive: $ssh_target:$remote_archive_path"
   "${sftp_cmd[@]}" "$ssh_target"
 
   echo "Replacing remote hooks: $DEPLOY_REMOTE_PATH"
-  "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$remote_archive_path" "$DEPLOY_REMOTE_PATH" "$DEPLOY_DELETE_REMOTE" <<'EOF'
+"${ssh_cmd[@]}" "$ssh_target" bash -s -- "$remote_archive_path" "$DEPLOY_REMOTE_PATH" "$DEPLOY_DELETE_REMOTE" <<'EOF'
 set -euo pipefail
 
 archive_path="$1"
 remote_path="$2"
 delete_remote="$3"
 stage_dir="$(mktemp -d /tmp/pb-hooks-deploy.XXXXXX)"
+had_remote_path=0
+
+create_history_snapshot() {
+  local source_dir="$1"
+  local snapshot_name=""
+
+  [ -d "$source_dir" ] || return 0
+
+  mkdir -p "$history_dir"
+  snapshot_name="$(date +%Y%m%d-%H%M%S-%N)-$$"
+  cp -a "$source_dir" "$history_dir/$snapshot_name"
+}
+
+list_history_snapshots() {
+  [ -d "$history_dir" ] || return 0
+  find "$history_dir" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' | sort -nr | awk '{print $2}'
+}
+
+prune_history() {
+  local snapshots=()
+  local index=0
+
+  mapfile -t snapshots < <(list_history_snapshots)
+
+  for (( index=3; index<${#snapshots[@]}; index+=1 )); do
+    rm -rf "$history_dir/${snapshots[$index]}"
+  done
+}
 
 cleanup() {
   rm -rf "$stage_dir"
@@ -564,6 +600,11 @@ cleanup() {
 
 trap cleanup EXIT
 
+remote_parent_dir="$(dirname "$remote_path")"
+remote_base_name="$(basename "$remote_path")"
+history_dir="${remote_parent_dir}/.deploy-history/${remote_base_name}"
+
+[ -d "$remote_path" ] && had_remote_path=1
 mkdir -p "$remote_path"
 tar -xzf "$archive_path" -C "$stage_dir"
 
@@ -614,14 +655,192 @@ if [ "$delete_remote" = "true" ]; then
   remove_remote_only_entries "$remote_path" "$stage_dir"
 fi
 
+if [ "$had_remote_path" -eq 1 ]; then
+  create_history_snapshot "$remote_path"
+fi
 remove_type_conflicts "$remote_path" "$stage_dir"
 cp -a "$stage_dir"/. "$remote_path"/
+prune_history
 EOF
 
   trap - EXIT
   cleanup_deploy_temp
 
   echo "Deploy complete: $service"
+}
+
+run_rollback() {
+  local service="$1"
+  local version_index="$2"
+  local private_key_path=""
+  local ssh_target=""
+  local ssh_cmd=()
+
+  load_deploy_config "$service"
+
+  if [[ "$DEPLOY_PROTOCOL" != "sftp" ]]; then
+    echo "Unsupported deploy protocol for $service: $DEPLOY_PROTOCOL" >&2
+    exit 1
+  fi
+
+  if [[ -z "$DEPLOY_HOST" || -z "$DEPLOY_USERNAME" || -z "$DEPLOY_REMOTE_PATH" ]]; then
+    echo "Incomplete deploy config for service: $service" >&2
+    exit 1
+  fi
+
+  if [[ ! "$version_index" =~ ^[1-3]$ ]]; then
+    echo "Rollback version must be 1, 2, or 3." >&2
+    exit 1
+  fi
+
+  if ! command -v ssh >/dev/null 2>&1; then
+    echo "ssh not found. Run this command in Windows Git Bash." >&2
+    exit 1
+  fi
+
+  private_key_path="$(normalize_bash_path "$DEPLOY_PRIVATE_KEY_PATH")"
+  if [[ -n "$private_key_path" && ! -f "$private_key_path" ]]; then
+    echo "Private key not found: $private_key_path" >&2
+    exit 1
+  fi
+
+  ssh_target="${DEPLOY_USERNAME}@${DEPLOY_HOST}"
+  ssh_cmd=(
+    ssh
+    -p "$DEPLOY_PORT"
+    -o BatchMode=yes
+    -o StrictHostKeyChecking=accept-new
+    -o ConnectTimeout="$DEPLOY_CONNECT_TIMEOUT_SECONDS"
+  )
+
+  if [[ -n "$private_key_path" ]]; then
+    ssh_cmd+=(-i "$private_key_path")
+  fi
+
+  echo "Testing SSH connection: $ssh_target"
+  if ! "${ssh_cmd[@]}" "$ssh_target" true; then
+    echo "SSH connection test failed. Check network/VPN and try again." >&2
+    exit 1
+  fi
+
+  echo "Rolling back remote hooks: $DEPLOY_REMOTE_PATH (version $version_index)"
+"${ssh_cmd[@]}" "$ssh_target" bash -s -- "$DEPLOY_REMOTE_PATH" "$version_index" <<'EOF'
+set -euo pipefail
+
+remote_path="$1"
+version_index="$2"
+remote_parent_dir="$(dirname "$remote_path")"
+remote_base_name="$(basename "$remote_path")"
+history_dir="${remote_parent_dir}/.deploy-history/${remote_base_name}"
+stage_dir="$(mktemp -d /tmp/pb-hooks-rollback.XXXXXX)"
+
+create_history_snapshot() {
+  local source_dir="$1"
+  local snapshot_name=""
+
+  [ -d "$source_dir" ] || return 0
+
+  mkdir -p "$history_dir"
+  snapshot_name="$(date +%Y%m%d-%H%M%S-%N)-$$"
+  cp -a "$source_dir" "$history_dir/$snapshot_name"
+}
+
+list_history_snapshots() {
+  [ -d "$history_dir" ] || return 0
+  find "$history_dir" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' | sort -nr | awk '{print $2}'
+}
+
+prune_history() {
+  local snapshots=()
+  local index=0
+
+  mapfile -t snapshots < <(list_history_snapshots)
+
+  for (( index=3; index<${#snapshots[@]}; index+=1 )); do
+    rm -rf "$history_dir/${snapshots[$index]}"
+  done
+}
+
+cleanup() {
+  rm -rf "$stage_dir"
+}
+
+trap cleanup EXIT
+
+if [ ! -d "$history_dir" ]; then
+  echo "No deploy history found for $remote_path" >&2
+  exit 1
+fi
+
+mapfile -t snapshots < <(list_history_snapshots)
+
+if [ "${#snapshots[@]}" -lt "$version_index" ]; then
+  echo "Rollback version $version_index is not available for $remote_path" >&2
+  exit 1
+fi
+
+target_snapshot="${snapshots[$((version_index - 1))]}"
+target_dir="$history_dir/$target_snapshot"
+
+if [ ! -d "$target_dir" ]; then
+  echo "Rollback target not found: $target_dir" >&2
+  exit 1
+fi
+
+mkdir -p "$remote_path"
+cp -a "$target_dir"/. "$stage_dir"/
+
+remove_remote_only_entries() {
+  local remote_root="$1"
+  local stage_root="$2"
+  local relative_path=""
+
+  while IFS= read -r -d '' relative_path; do
+    relative_path="${relative_path#./}"
+
+    if [[ ! -e "$stage_root/$relative_path" && ! -L "$stage_root/$relative_path" ]]; then
+      rm -rf "$remote_root/$relative_path"
+    fi
+  done < <(cd "$remote_root" && find . -mindepth 1 -print0)
+}
+
+remove_type_conflicts() {
+  local remote_root="$1"
+  local stage_root="$2"
+  local relative_path=""
+  local remote_item=""
+  local stage_item=""
+  local stage_is_dir=0
+  local remote_is_dir=0
+
+  while IFS= read -r -d '' relative_path; do
+    relative_path="${relative_path#./}"
+    remote_item="$remote_root/$relative_path"
+    stage_item="$stage_root/$relative_path"
+    stage_is_dir=0
+    remote_is_dir=0
+
+    if [[ ! -e "$remote_item" && ! -L "$remote_item" ]]; then
+      continue
+    fi
+
+    [[ -d "$stage_item" && ! -L "$stage_item" ]] && stage_is_dir=1
+    [[ -d "$remote_item" && ! -L "$remote_item" ]] && remote_is_dir=1
+
+    if [[ "$stage_is_dir" -ne "$remote_is_dir" ]]; then
+      rm -rf "$remote_item"
+    fi
+  done < <(cd "$stage_root" && find . -mindepth 1 -print0)
+}
+
+create_history_snapshot "$remote_path"
+remove_remote_only_entries "$remote_path" "$stage_dir"
+remove_type_conflicts "$remote_path" "$stage_dir"
+cp -a "$stage_dir"/. "$remote_path"/
+prune_history
+EOF
+
+  echo "Rollback complete: $service -> version $version_index"
 }
 
 if [[ "${1:-}" == "__complete_services" ]]; then
@@ -645,6 +864,11 @@ case "${1:-help}" in
     shift
     [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh deploy <service>" >&2; exit 1; }
     run_deploy "$1"
+    ;;
+  rollback)
+    shift
+    [[ -n "${1:-}" && -n "${2:-}" ]] || { echo "Usage: ./task.sh rollback <service> <version>" >&2; exit 1; }
+    run_rollback "$1" "$2"
     ;;
   test)
     shift || true
