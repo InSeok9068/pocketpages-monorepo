@@ -88,10 +88,7 @@
         tone: 'from-[#d8c3a5] to-[#b08968]',
         coverUrl: String(bookRecord.get('book_image_url') || '').trim(),
         statusBadgeLabel: status === 'reading' || status === 'finished' ? shelfStatusLabels[status] : '',
-        statusBadgeClass:
-          status === 'finished'
-            ? 'bg-[#9e6125]/88 text-white shadow-[0_8px_18px_rgba(165,103,38,0.14)]'
-            : 'bg-stone-900/84 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]',
+        statusBadgeClass: status === 'finished' ? 'bg-[#9e6125]/88 text-white shadow-[0_8px_18px_rgba(165,103,38,0.14)]' : 'bg-stone-900/84 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]',
         statusLabel: shelfStatusLabels[status] || '보관 중',
       })
     }
@@ -262,8 +259,7 @@
               <div
                 class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
                 <% if (book.statusBadgeLabel) { %>
-                <span
-                  class="<%= book.statusBadgeClass %> absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
+                <span class="<%= book.statusBadgeClass %> absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
                   <%= book.statusBadgeLabel %>
                 </span>
                 <% } %>
@@ -287,8 +283,7 @@
             <div
               class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
               <% if (book.statusBadgeLabel) { %>
-              <span
-                class="<%= book.statusBadgeClass %> absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
+              <span class="<%= book.statusBadgeClass %> absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
                 <%= book.statusBadgeLabel %>
               </span>
               <% } %>

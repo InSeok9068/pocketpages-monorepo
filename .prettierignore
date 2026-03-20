@@ -1,4 +1,7 @@
 apps/*/pb_hooks/pages/assets/vendor/**
 *.svg
+*.png
+*.jpg
+*.webp
 *.min.js
 *.min.css
