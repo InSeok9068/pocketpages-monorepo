@@ -549,11 +549,14 @@
     var tocLabelByHref = {}
     var currentLocation = null
     var readerContainer = null
+    var autoPagingTarget = null
     var autoPagingLockUntil = 0
+    var autoPagingInFlight = false
+    var autoPagingCheckFrameId = 0
+    var pendingAutoPagingDirection = ''
     var lastContainerScrollTop = 0
-    var touchStartY = 0
     var EDGE_TRIGGER_DISTANCE = 56
-    var AUTO_PAGE_LOCK_MS = 700
+    var AUTO_PAGE_LOCK_MS = 320
     var AUTO_SAVE_INTERVAL_MS = 5000
     var READER_CACHE_DB_NAME = 'booklog-reader-cache'
     var READER_CACHE_STORE_NAME = 'epubBuffers'
@@ -694,9 +697,16 @@
     function updateCurrentLocation(component, location) {
       var start = location && location.start ? location.start : null
       var href = start && start.href ? String(start.href) : ''
+      var target = autoPagingTarget || resolveAutoPagingTarget()
 
       currentLocation = location || null
       component.currentChapterLabel = getChapterLabelForHref(href)
+
+      if (target) {
+        autoPagingTarget = target
+        lastContainerScrollTop = target.scrollTop || 0
+      }
+
       syncCurrentProgressState(component)
     }
 
@@ -1265,6 +1275,62 @@
     }
 
     /**
+     * 자동 페이지 전환 기준으로 쓸 수 있는 스크롤 컨테이너인지 확인합니다.
+     * @param {HTMLElement | null | undefined} target 검사할 DOM 요소
+     * @returns {boolean} 스크롤 판단에 사용할 수 있는지 여부
+     */
+    function isScrollableAutoPagingTarget(target) {
+      var overflowY = ''
+
+      if (!target || target.scrollHeight <= target.clientHeight) {
+        return false
+      }
+
+      try {
+        overflowY = window.getComputedStyle(target).overflowY || ''
+      } catch (exception) {
+        overflowY = ''
+      }
+
+      return overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay'
+    }
+
+    /**
+     * 자동 페이지 전환에 사용할 대표 스크롤 컨테이너를 고릅니다.
+     * @returns {HTMLElement | null} 실제 판단 기준이 될 스크롤 컨테이너
+     */
+    function resolveAutoPagingTarget() {
+      var targets = getAutoPagingTargets()
+      var i = 0
+
+      for (i = 0; i < targets.length; i += 1) {
+        if (isScrollableAutoPagingTarget(targets[i])) {
+          return targets[i]
+        }
+      }
+
+      return targets.length ? targets[0] : null
+    }
+
+    /**
+     * 현재 자동 페이지 전환 기준 컨테이너와 스크롤 위치 상태를 동기화합니다.
+     * @returns {HTMLElement | null} 현재 기준 스크롤 컨테이너
+     */
+    function syncAutoPagingTarget() {
+      var target = resolveAutoPagingTarget()
+
+      if (!target) {
+        return null
+      }
+
+      autoPagingTarget = target
+      readerContainer = target
+      lastContainerScrollTop = target.scrollTop || 0
+
+      return target
+    }
+
+    /**
      * 인접 섹션 이동 후 현재 스크롤 대상을 원하는 위치로 맞춥니다.
      * @param {'next' | 'prev'} direction 이동 방향
      */
@@ -1338,10 +1404,59 @@
       return false
     }
 
+    /**
+     * 현재 스크롤 위치와 입력 방향을 바탕으로 자동 페이지 전환 여부를 평가합니다.
+     * @param {any} component Alpine 컴포넌트 상태
+     * @param {'next' | 'prev'} direction 이동 방향
+     * @returns {void}
+     */
+    function evaluateAutoPaging(component, direction) {
+      var target = autoPagingTarget || syncAutoPagingTarget()
+
+      if (!target || direction !== 'next' && direction !== 'prev') {
+        return
+      }
+
+      if (direction === 'next' && isNearBottom(target)) {
+        goToAdjacentSection(component, 'next')
+        return
+      }
+
+      if (direction === 'prev' && isNearTop(target)) {
+        goToAdjacentSection(component, 'prev')
+      }
+    }
+
+    /**
+     * 스크롤 연속 이벤트를 한 프레임으로 합쳐 자동 페이지 전환을 검사합니다.
+     * @param {any} component Alpine 컴포넌트 상태
+     * @param {'next' | 'prev'} direction 이동 방향
+     * @returns {void}
+     */
+    function scheduleAutoPagingEvaluation(component, direction) {
+      if (direction !== 'next' && direction !== 'prev') {
+        return
+      }
+
+      pendingAutoPagingDirection = direction
+
+      if (autoPagingCheckFrameId) {
+        return
+      }
+
+      autoPagingCheckFrameId = window.requestAnimationFrame(function () {
+        var queuedDirection = pendingAutoPagingDirection
+
+        autoPagingCheckFrameId = 0
+        pendingAutoPagingDirection = ''
+        evaluateAutoPaging(component, queuedDirection)
+      })
+    }
+
     function goToAdjacentSection(component, direction) {
       var action = null
 
-      if (!renditionInstance || isAutoPagingLocked()) {
+      if (!renditionInstance || autoPagingInFlight || isAutoPagingLocked()) {
         return
       }
 
@@ -1359,7 +1474,7 @@
         return
       }
 
-      lockAutoPaging()
+      autoPagingInFlight = true
 
       Promise.resolve(action.call(renditionInstance))
         .then(function (location) {
@@ -1371,6 +1486,11 @@
             direction: direction,
             message: String(exception && exception.message ? exception.message : exception),
           })
+        })
+        .finally(function () {
+          autoPagingInFlight = false
+          lockAutoPaging()
+          syncAutoPagingTarget()
         })
     }
 
@@ -1391,60 +1511,18 @@
         'scroll',
         function () {
           var currentScrollTop = target.scrollTop || 0
-          var movingDown = currentScrollTop > lastContainerScrollTop
+          var direction = ''
+
+          if (currentScrollTop > lastContainerScrollTop) {
+            direction = 'next'
+          } else if (currentScrollTop < lastContainerScrollTop) {
+            direction = 'prev'
+          }
 
           lastContainerScrollTop = currentScrollTop
 
-          if (movingDown && isNearBottom(target)) {
-            goToAdjacentSection(component, 'next')
-            return
-          }
-
-          if (!movingDown && isNearTop(target)) {
-            goToAdjacentSection(component, 'prev')
-          }
-        },
-        { passive: true }
-      )
-
-      target.addEventListener(
-        'wheel',
-        function (event) {
-          if (event.deltaY > 0 && isNearBottom(target)) {
-            goToAdjacentSection(component, 'next')
-            return
-          }
-
-          if (event.deltaY < 0 && isNearTop(target)) {
-            goToAdjacentSection(component, 'prev')
-          }
-        },
-        { passive: true }
-      )
-
-      target.addEventListener(
-        'touchstart',
-        function (event) {
-          var touch = event.touches && event.touches[0] ? event.touches[0] : null
-          touchStartY = touch ? Number(touch.clientY || 0) : 0
-        },
-        { passive: true }
-      )
-
-      target.addEventListener(
-        'touchend',
-        function (event) {
-          var touch = event.changedTouches && event.changedTouches[0] ? event.changedTouches[0] : null
-          var touchEndY = touch ? Number(touch.clientY || 0) : 0
-          var deltaY = touchStartY - touchEndY
-
-          if (deltaY > 24 && isNearBottom(target)) {
-            goToAdjacentSection(component, 'next')
-            return
-          }
-
-          if (deltaY < -24 && isNearTop(target)) {
-            goToAdjacentSection(component, 'prev')
+          if (direction) {
+            scheduleAutoPagingEvaluation(component, direction)
           }
         },
         { passive: true }
@@ -1467,7 +1545,6 @@
 
       getAutoPagingTargets().forEach(function (target) {
         disableScrollAnchoring(target)
-        bindAutoPaging(component, target)
       })
 
       renditionInstance.hooks.content.register(function (contents) {
@@ -1507,10 +1584,16 @@
 
         return locationsPromise.then(function () {
           return renditionInstance.display().then(function (location) {
-            getAutoPagingTargets().forEach(function (target) {
-              disableScrollAnchoring(target)
-              bindAutoPaging(component, target)
+            var target = null
+
+            getAutoPagingTargets().forEach(function (candidateTarget) {
+              disableScrollAnchoring(candidateTarget)
             })
+            target = syncAutoPagingTarget()
+
+            if (target) {
+              bindAutoPaging(component, target)
+            }
             updateCurrentLocation(component, location || renditionInstance.currentLocation())
           })
         })
