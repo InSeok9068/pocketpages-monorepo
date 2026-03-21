@@ -1229,14 +1229,6 @@
       return target.scrollHeight - (target.scrollTop + target.clientHeight) <= EDGE_TRIGGER_DISTANCE
     }
 
-    function isNearTop(target) {
-      if (!target) {
-        return false
-      }
-
-      return target.scrollTop <= EDGE_TRIGGER_DISTANCE
-    }
-
     function goToAdjacentSection(component, direction) {
       var action = null
 
@@ -1289,17 +1281,11 @@
         function () {
           var currentScrollTop = target.scrollTop || 0
           var movingDown = currentScrollTop > lastContainerScrollTop
-          var movingUp = currentScrollTop < lastContainerScrollTop
 
           lastContainerScrollTop = currentScrollTop
 
           if (movingDown && isNearBottom(target)) {
             goToAdjacentSection(component, 'next')
-            return
-          }
-
-          if (movingUp && isNearTop(target)) {
-            goToAdjacentSection(component, 'prev')
           }
         },
         { passive: true }
@@ -1310,11 +1296,6 @@
         function (event) {
           if (event.deltaY > 0 && isNearBottom(target)) {
             goToAdjacentSection(component, 'next')
-            return
-          }
-
-          if (event.deltaY < 0 && isNearTop(target)) {
-            goToAdjacentSection(component, 'prev')
           }
         },
         { passive: true }
@@ -1338,11 +1319,6 @@
 
           if (deltaY > 24 && isNearBottom(target)) {
             goToAdjacentSection(component, 'next')
-            return
-          }
-
-          if (deltaY < -24 && isNearTop(target)) {
-            goToAdjacentSection(component, 'prev')
           }
         },
         { passive: true }
@@ -1361,6 +1337,28 @@
         manager: 'continuous',
         flow: 'scrolled',
         allowScriptedContent: false,
+      })
+
+      try {
+        if (renditionInstance.manager && renditionInstance.manager.container) {
+          renditionInstance.manager.container.style.overflowAnchor = 'none'
+        }
+      } catch (exception) {}
+
+      renditionInstance.hooks.content.register(function (contents) {
+        var doc = contents && contents.document ? contents.document : null
+
+        if (!doc) {
+          return
+        }
+
+        if (doc.documentElement && doc.documentElement.style) {
+          doc.documentElement.style.setProperty('overflow-anchor', 'none', 'important')
+        }
+
+        if (doc.body && doc.body.style) {
+          doc.body.style.setProperty('overflow-anchor', 'none', 'important')
+        }
       })
 
       renditionInstance.on('relocated', function (location) {
