@@ -1221,12 +1221,121 @@
       autoPagingLockUntil = Date.now() + AUTO_PAGE_LOCK_MS
     }
 
+    /**
+     * 자동 페이지 전환에 사용할 스크롤 대상을 중복 없이 추가합니다.
+     * @param {HTMLElement[]} targets 수집 중인 스크롤 대상 목록
+     * @param {HTMLElement | null | undefined} target 검사할 DOM 요소
+     */
+    function appendAutoPagingTarget(targets, target) {
+      if (!target || targets.indexOf(target) !== -1) {
+        return
+      }
+
+      targets.push(target)
+    }
+
+    /**
+     * 현재 리더에서 스크롤 이벤트를 받을 수 있는 후보들을 반환합니다.
+     * @returns {HTMLElement[]} 자동 페이지 전환 후보 목록
+     */
+    function getAutoPagingTargets() {
+      var targets = []
+      var rootContainer = document.getElementById('epub-reader')
+      var managerContainer = renditionInstance && renditionInstance.manager ? renditionInstance.manager.container : null
+
+      appendAutoPagingTarget(targets, readerContainer)
+      appendAutoPagingTarget(targets, rootContainer)
+      appendAutoPagingTarget(targets, managerContainer)
+
+      return targets
+    }
+
+    /**
+     * 스크롤 앵커링을 끄고 상단 prepend 시 점프를 줄입니다.
+     * @param {HTMLElement | null | undefined} target 적용할 DOM 요소
+     */
+    function disableScrollAnchoring(target) {
+      if (!target || !target.style) {
+        return
+      }
+
+      try {
+        target.style.overflowAnchor = 'none'
+      } catch (exception) {}
+    }
+
+    /**
+     * 인접 섹션 이동 후 현재 스크롤 대상을 원하는 위치로 맞춥니다.
+     * @param {'next' | 'prev'} direction 이동 방향
+     */
+    function syncAdjacentSectionScrollPosition(direction) {
+      getAutoPagingTargets().forEach(function (target) {
+        if (direction === 'next') {
+          target.scrollTop = 0
+          return
+        }
+
+        if (target.scrollHeight > target.clientHeight) {
+          target.scrollTop = Math.max(target.scrollHeight - target.clientHeight - EDGE_TRIGGER_DISTANCE, 0)
+        }
+      })
+    }
+
+    function isNearTop(target) {
+      if (!target) {
+        return false
+      }
+
+      return Number(target.scrollTop || 0) <= EDGE_TRIGGER_DISTANCE
+    }
+
     function isNearBottom(target) {
       if (!target) {
         return false
       }
 
       return target.scrollHeight - (target.scrollTop + target.clientHeight) <= EDGE_TRIGGER_DISTANCE
+    }
+
+    /**
+     * 현재 위치가 자동 페이지 전환의 시작/끝 경계인지 확인합니다.
+     * @param {'next' | 'prev'} direction 이동 방향
+     * @returns {boolean} 더 이상 자동 이동하면 안 되는지 여부
+     */
+    function isAutoPagingBoundary(direction) {
+      var spineItems = bookInstance && bookInstance.spine && bookInstance.spine.spineItems ? bookInstance.spine.spineItems : []
+      var start = currentLocation && currentLocation.start ? currentLocation.start : null
+      var end = currentLocation && currentLocation.end ? currentLocation.end : null
+      var lastSpineIndex = spineItems.length ? spineItems.length - 1 : -1
+      var startIndex = start && typeof start.index === 'number' ? start.index : null
+      var endIndex = end && typeof end.index === 'number' ? end.index : startIndex
+      var displayed = currentLocation && currentLocation.displayed ? currentLocation.displayed : null
+      var startDisplayed = start && start.displayed ? start.displayed : null
+      var page = displayed && typeof displayed.page === 'number' ? displayed.page : startDisplayed && typeof startDisplayed.page === 'number' ? startDisplayed.page : null
+      var total = displayed && typeof displayed.total === 'number' ? displayed.total : startDisplayed && typeof startDisplayed.total === 'number' ? startDisplayed.total : null
+      var progressPercent = Number(getProgressPercentFromLocator(start && start.cfi ? String(start.cfi) : ''))
+
+      if (direction === 'prev') {
+        if (startIndex === 0 && page === 1) {
+          return true
+        }
+
+        if (startIndex === 0 && (progressPercent === 0 || !isFinite(progressPercent))) {
+          return true
+        }
+      }
+
+      if (direction === 'next') {
+        if (lastSpineIndex >= 0 && endIndex === lastSpineIndex && page !== null && total !== null && page >= total) {
+          return true
+        }
+
+        if (lastSpineIndex >= 0 && endIndex === lastSpineIndex && progressPercent === 100) {
+          return true
+        }
+      }
+
+      return false
     }
 
     function goToAdjacentSection(component, direction) {
@@ -1240,6 +1349,10 @@
         return
       }
 
+      if (isAutoPagingBoundary(direction)) {
+        return
+      }
+
       action = direction === 'next' ? renditionInstance.next : renditionInstance.prev
 
       if (typeof action !== 'function') {
@@ -1250,14 +1363,7 @@
 
       Promise.resolve(action.call(renditionInstance))
         .then(function (location) {
-          if (readerContainer) {
-            if (direction === 'next') {
-              readerContainer.scrollTop = 0
-            } else if (readerContainer.scrollHeight > readerContainer.clientHeight) {
-              readerContainer.scrollTop = Math.max(readerContainer.scrollHeight - readerContainer.clientHeight - EDGE_TRIGGER_DISTANCE, 0)
-            }
-          }
-
+          syncAdjacentSectionScrollPosition(direction)
           updateCurrentLocation(component, location || renditionInstance.currentLocation())
         })
         .catch(function (exception) {
@@ -1273,6 +1379,11 @@
         return
       }
 
+      if (target.__booklogAutoPagingBound) {
+        return
+      }
+
+      target.__booklogAutoPagingBound = true
       readerContainer = target
       lastContainerScrollTop = target.scrollTop || 0
 
@@ -1286,6 +1397,11 @@
 
           if (movingDown && isNearBottom(target)) {
             goToAdjacentSection(component, 'next')
+            return
+          }
+
+          if (!movingDown && isNearTop(target)) {
+            goToAdjacentSection(component, 'prev')
           }
         },
         { passive: true }
@@ -1296,6 +1412,11 @@
         function (event) {
           if (event.deltaY > 0 && isNearBottom(target)) {
             goToAdjacentSection(component, 'next')
+            return
+          }
+
+          if (event.deltaY < 0 && isNearTop(target)) {
+            goToAdjacentSection(component, 'prev')
           }
         },
         { passive: true }
@@ -1319,6 +1440,11 @@
 
           if (deltaY > 24 && isNearBottom(target)) {
             goToAdjacentSection(component, 'next')
+            return
+          }
+
+          if (deltaY < -24 && isNearTop(target)) {
+            goToAdjacentSection(component, 'prev')
           }
         },
         { passive: true }
@@ -1339,11 +1465,10 @@
         allowScriptedContent: false,
       })
 
-      try {
-        if (renditionInstance.manager && renditionInstance.manager.container) {
-          renditionInstance.manager.container.style.overflowAnchor = 'none'
-        }
-      } catch (exception) {}
+      getAutoPagingTargets().forEach(function (target) {
+        disableScrollAnchoring(target)
+        bindAutoPaging(component, target)
+      })
 
       renditionInstance.hooks.content.register(function (contents) {
         var doc = contents && contents.document ? contents.document : null
@@ -1365,8 +1490,6 @@
         updateCurrentLocation(component, location)
       })
 
-      bindAutoPaging(component, readerContainer)
-
       return bookInstance.ready.then(function () {
         var locationsPromise = Promise.resolve()
 
@@ -1384,6 +1507,10 @@
 
         return locationsPromise.then(function () {
           return renditionInstance.display().then(function (location) {
+            getAutoPagingTargets().forEach(function (target) {
+              disableScrollAnchoring(target)
+              bindAutoPaging(component, target)
+            })
             updateCurrentLocation(component, location || renditionInstance.currentLocation())
           })
         })
