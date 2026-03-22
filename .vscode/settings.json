@@ -9,18 +9,25 @@
   },
   // prettier-ignore
   "files.exclude": {
+    ".docs/**": true,
+    "tools/**": true,
     // 개발중인 서비스만 주석
     "apps/sample/**": true,
     "apps/kjca/**": true,
     // "apps/booklog/**": true,
   },
+  // prettier-ignore
   "search.exclude": {
     ".docs/**": true,
     "tools/**": true,
     "**/pb_schema.json": true,
     "package-lock.json": true,
     "lint-pocketpages.js": true,
-    "diag-pocketpages.js": true
+    "diag-pocketpages.js": true,
+    // 개발중인 서비스만 주석
+    "apps/sample/**": true,
+    "apps/kjca/**": true,
+    // "apps/booklog/**": true,
   },
   "tailwindCSS.includeLanguages": {
     "ejs": "html"
