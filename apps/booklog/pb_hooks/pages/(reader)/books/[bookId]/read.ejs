@@ -66,7 +66,9 @@
   }
 
   if (shelfRecord) {
-    if (String(shelfRecord.get('status') || '') !== 'reading') {
+    const shelfStatus = String(shelfRecord.get('status') || '').trim()
+
+    if (shelfStatus !== 'finished' && shelfStatus !== 'reading') {
       shelfRecord.set('status', 'reading')
     }
 

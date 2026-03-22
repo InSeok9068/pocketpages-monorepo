@@ -51,7 +51,9 @@
     }
 
     if (existingShelfRecord) {
-      if (String(existingShelfRecord.get('status') || '') !== 'reading') {
+      const shelfStatus = String(existingShelfRecord.get('status') || '').trim()
+
+      if (shelfStatus !== 'finished' && shelfStatus !== 'reading') {
         existingShelfRecord.set('status', 'reading')
       }
 
