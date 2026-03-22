@@ -813,6 +813,27 @@
       })
     }
 
+    if (record && bookInput.isbn13) {
+      const recordId = String(record.get('id') || '')
+      const recordIsbn13 = String(record.get('isbn13') || '')
+
+      if (recordIsbn13 !== bookInput.isbn13) {
+        const matchedIsbnRecord = findFirstRecordOrNull('books', 'isbn13 = {:isbn13}', {
+          isbn13: bookInput.isbn13,
+        })
+
+        if (matchedIsbnRecord && String(matchedIsbnRecord.get('id') || '') !== recordId) {
+          warn('xapi/epub/upload:save-book:reuse-isbn-record', {
+            previousId: recordId,
+            previousIsbn13: recordIsbn13,
+            reusedId: matchedIsbnRecord.get('id'),
+            reusedIsbn13: matchedIsbnRecord.get('isbn13'),
+          })
+          record = matchedIsbnRecord
+        }
+      }
+    }
+
     if (!record) {
       record = new Record(collection)
     }
@@ -1148,18 +1169,18 @@
       description: matchedBook && matchedBook.description ? matchedBook.description : '',
       metadataJson: detailResult ? detailResult.raw : null,
     })
-    const targetBookId = existingBookFile && existingBookFile.get('book_id') ? existingBookFile.get('book_id') : bookRecord.get('id')
+    const resolvedBookId = bookRecord.get('id')
 
-    if (existingBookFile && existingBookFile.get('book_id') && existingBookFile.get('book_id') !== bookRecord.get('id')) {
+    if (existingBookFile && existingBookFile.get('book_id') && existingBookFile.get('book_id') !== resolvedBookId) {
       warn('xapi/epub/upload:file-book-mismatch', {
         fileHash: fileHash,
         existingBookId: existingBookFile.get('book_id'),
-        newBookId: bookRecord.get('id'),
+        newBookId: resolvedBookId,
       })
     }
 
     const bookFileRecord = saveBookFileRecord({
-      bookId: targetBookId,
+      bookId: resolvedBookId,
       originalName: epubFile.originalName || epubFile.name,
       uploadedFile: epubFile,
       mimeType: normalizePreview(mimetypeText, 120) || 'application/epub+zip',
@@ -1174,13 +1195,13 @@
     })
     const shelfRecord = saveBookShelfRecord({
       userId: request.auth.get('id'),
-      bookId: targetBookId,
+      bookId: resolvedBookId,
       bookFileId: bookFileRecord.get('id'),
     })
 
     info('xapi/epub/upload:success', {
       userId: request.auth.get('id'),
-      bookId: targetBookId,
+      bookId: resolvedBookId,
       bookFileId: bookFileRecord.get('id'),
       shelfId: shelfRecord.get('id'),
       fileHash: fileHash,
