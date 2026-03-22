@@ -1413,7 +1413,7 @@
     function evaluateAutoPaging(component, direction) {
       var target = autoPagingTarget || syncAutoPagingTarget()
 
-      if (!target || direction !== 'next' && direction !== 'prev') {
+      if (!target || (direction !== 'next' && direction !== 'prev')) {
         return
       }
 
