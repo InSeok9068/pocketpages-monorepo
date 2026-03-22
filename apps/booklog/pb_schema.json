@@ -935,6 +935,18 @@
         "type": "text"
       },
       {
+        "hidden": false,
+        "id": "number1101001016",
+        "max": null,
+        "min": 0,
+        "name": "estimated_page_count",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
         "convertURLs": false,
         "hidden": false,
         "id": "editor1101001001",
@@ -1143,6 +1155,30 @@
         "required": false,
         "system": false,
         "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "number1101001018",
+        "max": null,
+        "min": 0,
+        "name": "text_char_count",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "hidden": false,
+        "id": "number1101001019",
+        "max": null,
+        "min": 0,
+        "name": "chapter_count",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
       },
       {
         "hidden": false,

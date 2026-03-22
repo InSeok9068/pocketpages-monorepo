@@ -6,6 +6,8 @@
   const MAX_METADATA_PAGE_FALLBACKS = 12
   const MAX_BOOK_SEARCH_DOCS = 100
   const BOOK_SEARCH_PAGE_SIZE = 25
+  const FICTION_CHARS_PER_PAGE = 430
+  const NONFICTION_CHARS_PER_PAGE = 310
 
   function normalizePreview(input, maxLength) {
     return String(input || '')
@@ -227,6 +229,135 @@
         .replace(/<[^>]+>/g, ' ')
         .replace(/&nbsp;/gi, ' ')
     )
+  }
+
+  function parseSpineIdrefs(packageDocumentXml) {
+    const itemrefPattern = /<itemref\b[^>]*idref=(?:"([^"]+)"|'([^']+)')[^>]*>/gi
+    const idrefs = []
+    let match = null
+
+    while ((match = itemrefPattern.exec(String(packageDocumentXml || '')))) {
+      const idref = String(match[1] || match[2] || '').trim()
+
+      if (idref) {
+        idrefs.push(idref)
+      }
+    }
+
+    return idrefs
+  }
+
+  function findTocEntryPath(manifestItems, packageDocumentXml, packageDocumentPath) {
+    const tocIdMatch = String(packageDocumentXml || '').match(/<spine\b[^>]*toc=(?:"([^"]+)"|'([^']+)')/i)
+    const tocId = tocIdMatch ? String(tocIdMatch[1] || tocIdMatch[2] || '').trim() : ''
+    const manifestList = Array.isArray(manifestItems) ? manifestItems : []
+
+    for (let index = 0; index < manifestList.length; index += 1) {
+      const manifestItem = manifestList[index]
+
+      if (!manifestItem || !manifestItem.href) {
+        continue
+      }
+
+      if ((tocId && manifestItem.id === tocId) || manifestItem.mediaType === 'application/x-dtbncx+xml') {
+        return joinPath(dirname(packageDocumentPath), manifestItem.href)
+      }
+    }
+
+    return ''
+  }
+
+  function countTocNavPoints(tocXml) {
+    const matches = String(tocXml || '').match(/<navPoint\b/gi)
+    return matches ? matches.length : 0
+  }
+
+  function countReadableCharacters(input) {
+    const normalizedText = String(input || '').replace(/\s+/g, '')
+    return normalizedText ? normalizedText.length : 0
+  }
+
+  function isLikelyNarrativeBook(classNo, description, title) {
+    const normalizedClassNo = String(classNo || '').trim()
+    const normalizedDescription = String(description || '')
+    const normalizedTitle = String(title || '')
+    const fictionPattern = /소설|장편|단편|문학|시집|희곡|에세이소설/i
+
+    if (normalizedClassNo && normalizedClassNo.charAt(0) === '8') {
+      return true
+    }
+
+    if (fictionPattern.test(normalizedDescription) || fictionPattern.test(normalizedTitle)) {
+      return true
+    }
+
+    return false
+  }
+
+  /**
+   * EPUB 본문 기준 분량 지표를 계산합니다.
+   * @param {Record|null} matchedBook 매칭된 외부 메타데이터 책 정보
+   * @param {{ title?: string }} epubMetadata EPUB 기본 메타데이터
+   * @param {object} archiveEntries EPUB 압축 엔트리 맵
+   * @param {Array<{id:string,href:string,mediaType:string,properties:string}>} manifestItems manifest 아이템 목록
+   * @param {string} packageDocumentPath OPF 경로
+   * @param {string} packageDocumentXml OPF XML 텍스트
+   * @returns {{ textCharCount: number, chapterCount: number, estimatedPageCount: number, pageDivisor: number, pageRule: string }} 계산된 분량 지표
+   */
+  function buildReadingMetrics(matchedBook, epubMetadata, archiveEntries, manifestItems, packageDocumentPath, packageDocumentXml) {
+    const manifestList = Array.isArray(manifestItems) ? manifestItems : []
+    const manifestById = {}
+    const spineIdrefs = parseSpineIdrefs(packageDocumentXml)
+    const excludedPathPattern = /(cover|copy|copyright|colophon|imprint|about|author|title|toc|nav|contents|index|footnote)/i
+    let combinedText = ''
+
+    for (let index = 0; index < manifestList.length; index += 1) {
+      const manifestItem = manifestList[index]
+
+      if (manifestItem && manifestItem.id) {
+        manifestById[manifestItem.id] = manifestItem
+      }
+    }
+
+    for (let index = 0; index < spineIdrefs.length; index += 1) {
+      const manifestItem = manifestById[spineIdrefs[index]]
+
+      if (!manifestItem || !manifestItem.href) {
+        continue
+      }
+
+      if (!(manifestItem.mediaType === 'application/xhtml+xml' || /\.(xhtml|html|htm)$/i.test(manifestItem.href))) {
+        continue
+      }
+
+      const entryPath = joinPath(dirname(packageDocumentPath), manifestItem.href)
+
+      if (excludedPathPattern.test(entryPath)) {
+        continue
+      }
+
+      combinedText += ' ' + htmlToPlainText(readArchiveText(archiveEntries, entryPath))
+    }
+
+    const textCharCount = countReadableCharacters(combinedText)
+    const tocEntryPath = findTocEntryPath(manifestItems, packageDocumentXml, packageDocumentPath)
+    const chapterCount = countTocNavPoints(readArchiveText(archiveEntries, tocEntryPath))
+    const pageDivisor = isLikelyNarrativeBook(
+      matchedBook && matchedBook.class_no ? matchedBook.class_no : '',
+      matchedBook && matchedBook.description ? matchedBook.description : '',
+      matchedBook && matchedBook.bookname ? matchedBook.bookname : epubMetadata.title
+    )
+      ? FICTION_CHARS_PER_PAGE
+      : NONFICTION_CHARS_PER_PAGE
+    const estimatedPageCount = textCharCount > 0 ? Math.ceil(textCharCount / pageDivisor) : 0
+
+    return {
+      textCharCount: textCharCount,
+      chapterCount: chapterCount,
+      estimatedPageCount: estimatedPageCount,
+      pageDivisor: pageDivisor,
+      pageRule: pageDivisor === FICTION_CHARS_PER_PAGE ? 'fiction' : 'nonfiction',
+    }
   }
 
   function buildMetadataEntryPaths(manifestItems, packageDocumentPath, entryNames) {
@@ -1355,6 +1486,7 @@
     record.set('isbn', bookInput.isbn)
     record.set('isbn13', bookInput.isbn13)
     record.set('book_image_url', bookInput.bookImageUrl)
+    record.set('estimated_page_count', bookInput.estimatedPageCount)
     record.set('description', bookInput.description)
     record.set('metadata_json', bookInput.metadataJson)
 
@@ -1396,6 +1528,8 @@
     record.set('language_code', fileInput.languageCode)
     record.set('identifier_value', fileInput.identifierValue)
     record.set('preview_text', fileInput.previewText)
+    record.set('text_char_count', fileInput.textCharCount)
+    record.set('chapter_count', fileInput.chapterCount)
     record.set('toc_json', fileInput.tocJson)
     record.set('manifest_json', fileInput.manifestJson)
 
@@ -1657,6 +1791,14 @@
     const detailBook = detailResult && detailResult.book ? detailResult.book : null
     const matchedBook = detailBook || selectedDoc || null
     const resolvedIsbn13 = detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
+    const readingMetrics = buildReadingMetrics(matchedBook, epubMetadata, archiveEntries, manifestItems, packageDocumentPath, packageDocumentXml)
+    dbg('xapi/epub/upload:reading-metrics', {
+      textCharCount: readingMetrics.textCharCount,
+      chapterCount: readingMetrics.chapterCount,
+      estimatedPageCount: readingMetrics.estimatedPageCount,
+      pageDivisor: readingMetrics.pageDivisor,
+      pageRule: readingMetrics.pageRule,
+    })
     const bookRecord = saveBookRecord({
       existingBookId: existingBookId,
       title: matchedBook && matchedBook.bookname ? matchedBook.bookname : fallbackTitle,
@@ -1668,6 +1810,7 @@
       isbn: matchedBook && matchedBook.isbn ? String(matchedBook.isbn) : '',
       isbn13: resolvedIsbn13,
       bookImageUrl: matchedBook && matchedBook.bookImageURL ? matchedBook.bookImageURL : '',
+      estimatedPageCount: readingMetrics.estimatedPageCount,
       description: matchedBook && matchedBook.description ? matchedBook.description : '',
       metadataJson: detailResult ? detailResult.raw : null,
     })
@@ -1692,6 +1835,8 @@
       languageCode: epubMetadata.languageCode,
       identifierValue: epubMetadata.identifierValue,
       previewText: firstContentText,
+      textCharCount: readingMetrics.textCharCount,
+      chapterCount: readingMetrics.chapterCount,
       tocJson: [],
       manifestJson: manifestItems,
     })

@@ -70,6 +70,7 @@
   const publicationDate = String(bookRecord.get('publication_date') || '').trim()
   const publicationYear = String(bookRecord.get('publication_year') || '').trim()
   const publisher = String(bookRecord.get('publisher') || '').trim()
+  const estimatedPageCount = Number(bookRecord.get('estimated_page_count') || 0)
   const bookImageUrl = String(bookRecord.get('book_image_url') || '').trim()
 
   try {
@@ -279,6 +280,10 @@
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
             <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">출판사</dt>
             <dd class="mt-1 text-base font-medium text-stone-900"><%= publisher || '출판사 정보 없음' %></dd>
+          </div>
+          <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+            <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">페이지 수</dt>
+            <dd class="mt-1 text-base font-medium text-stone-900"><%= estimatedPageCount > 0 ? '약 ' + estimatedPageCount + 'p' : '페이지 정보 없음' %></dd>
           </div>
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
             <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">현재 상태</dt>
