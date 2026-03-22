@@ -517,6 +517,7 @@
     const author = creatorNodes.length > 0 ? creatorNodes[0].value : ''
     const languageCode = extractXmlText(packageDocumentXml, 'language')
     const publisher = extractXmlText(packageDocumentXml, 'publisher')
+    const source = extractXmlText(packageDocumentXml, 'source')
     const identifierCandidates = extractIdentifierIsbnCandidates(identifierNodes)
 
     for (let index = 0; index < identifierNodes.length; index += 1) {
@@ -531,6 +532,7 @@
       title: title,
       author: author,
       publisher: publisher,
+      source: source,
       languageCode: languageCode,
       identifierValue: identifierValue,
       identifiers: identifiers,
@@ -614,7 +616,7 @@
   function collectSupplementalSearchMetadata(epubMetadata, archiveEntries, manifestItems, packageDocumentPath, entryNames) {
     const metadataEntryPaths = buildMetadataEntryPaths(manifestItems, packageDocumentPath, entryNames)
     let translator = ''
-    let publisher = normalizePublisherName(epubMetadata && epubMetadata.publisher ? epubMetadata.publisher : '')
+    let publisher = normalizePublisherName(epubMetadata && (epubMetadata.publisher || epubMetadata.source) ? epubMetadata.publisher || epubMetadata.source : '')
 
     for (let index = 0; index < metadataEntryPaths.length; index += 1) {
       const entryPath = metadataEntryPaths[index]
@@ -691,7 +693,10 @@
       normalizedTitle.replace(/\s+/g, ''),
       normalizedTitle.replace(/\s*[:：].*$/, '').trim(),
       normalizedTitle.replace(/\s*[-:|].*$/, '').trim(),
-      normalizedTitle.replace(/[〈《「『\(\[].*?[》〉」』\)\]]/g, ' ').replace(/\s+/g, ' ').trim(),
+      normalizedTitle
+        .replace(/[〈《「『\(\[].*?[》〉」』\)\]]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
     ]
 
     for (let index = 0; index < variants.length; index += 1) {
@@ -736,6 +741,12 @@
     return scoreSearchDocWithDetails(doc, matchInput).score
   }
 
+  /**
+   * 검색 후보 점수와 근거를 계산합니다.
+   * @param {any} doc API 후보 도서
+   * @param {{ title?: string, author?: string, translator?: string, publisher?: string, isbn13?: string }} matchInput 비교 기준
+   * @returns {types.BookSearchScoreDetails} 점수 상세
+   */
   function scoreSearchDocWithDetails(doc, matchInput) {
     const titleTexts = buildComparableTitleList(matchInput && matchInput.title ? matchInput.title : '')
     const authorText = normalizeMatchText(matchInput && matchInput.author ? matchInput.author : '')
@@ -747,6 +758,7 @@
     const docPublisher = normalizeMatchText(doc && doc.publisher)
     const docIsbn13 = extractDigits(doc && doc.isbn13)
     let score = 0
+    /** @type {types.BookSearchScoreDetails} */
     const details = {
       titleExact: false,
       titlePartial: false,
@@ -764,6 +776,7 @@
       publisherScore: 0,
       isbnScore: 0,
       bonusScore: 0,
+      score: 0,
     }
 
     if (titleTexts.length > 0 && docTitle) {
@@ -937,6 +950,115 @@
     }
   }
 
+  function hasMeaningfulBookField(input, minLength) {
+    return String(input || '').trim().length >= (minLength || 1)
+  }
+
+  function summarizeBookMetadataRichness(book) {
+    const publisher = hasMeaningfulBookField(book && book.publisher, 1)
+    const publicationDate = hasMeaningfulBookField(book && book.publication_date, 1)
+    const publicationYear = hasMeaningfulBookField(book && book.publication_year, 1)
+    const description = hasMeaningfulBookField(book && book.description, 30)
+    const bookImageUrl = hasMeaningfulBookField(book && book.bookImageURL, 1)
+    let score = 0
+
+    if (publisher) {
+      score += 2
+    }
+
+    if (publicationDate) {
+      score += 2
+    }
+
+    if (publicationYear) {
+      score += 1
+    }
+
+    if (description) {
+      score += 3
+    }
+
+    if (bookImageUrl) {
+      score += 2
+    }
+
+    return {
+      score: score,
+      publisher: publisher,
+      publicationDate: publicationDate,
+      publicationYear: publicationYear,
+      description: description,
+      bookImageUrl: bookImageUrl,
+    }
+  }
+
+  function isSparseDetailBook(book) {
+    const richness = summarizeBookMetadataRichness(book)
+
+    return richness.score <= 3
+  }
+
+  function canUseEnrichmentBook(detailBook, enrichedBook) {
+    const detailTitleVariants = buildComparableTitleList(detailBook && detailBook.bookname ? detailBook.bookname : '')
+    const enrichedTitle = normalizeMatchText(enrichedBook && enrichedBook.bookname ? enrichedBook.bookname : '')
+    const detailAuthor = normalizeMatchText(detailBook && detailBook.authors ? detailBook.authors : '')
+    const enrichedAuthor = normalizeMatchText(enrichedBook && enrichedBook.authors ? enrichedBook.authors : '')
+
+    if (detailTitleVariants.length > 0 && enrichedTitle && !containsAnyComparableText(enrichedTitle, detailTitleVariants)) {
+      return false
+    }
+
+    if (detailAuthor && enrichedAuthor && enrichedAuthor.indexOf(detailAuthor) === -1 && detailAuthor.indexOf(enrichedAuthor) === -1) {
+      return false
+    }
+
+    return true
+  }
+
+  function preferBookField(primaryValue, fallbackValue, minLength) {
+    if (hasMeaningfulBookField(primaryValue, minLength)) {
+      return primaryValue
+    }
+
+    if (hasMeaningfulBookField(fallbackValue, minLength)) {
+      return fallbackValue
+    }
+
+    return primaryValue || fallbackValue || ''
+  }
+
+  function buildEnrichedDetailResult(detailResult, enrichedDoc, enrichmentLookup) {
+    const detailBook = detailResult && detailResult.book ? detailResult.book : {}
+    const mergedBook = Object.assign({}, detailBook)
+
+    mergedBook.bookname = preferBookField(detailBook.bookname, enrichedDoc && enrichedDoc.bookname, 1)
+    mergedBook.authors = preferBookField(detailBook.authors, enrichedDoc && enrichedDoc.authors, 1)
+    mergedBook.publisher = preferBookField(detailBook.publisher, enrichedDoc && enrichedDoc.publisher, 1)
+    mergedBook.publication_date = preferBookField(detailBook.publication_date, enrichedDoc && enrichedDoc.publication_date, 1)
+    mergedBook.publication_year = preferBookField(detailBook.publication_year, enrichedDoc && enrichedDoc.publication_year, 1)
+    mergedBook.description = preferBookField(detailBook.description, enrichedDoc && enrichedDoc.description, 30)
+    mergedBook.bookImageURL = preferBookField(detailBook.bookImageURL, enrichedDoc && enrichedDoc.bookImageURL, 1)
+    mergedBook.class_no = preferBookField(detailBook.class_no, enrichedDoc && enrichedDoc.class_no, 1)
+    mergedBook.class_nm = preferBookField(detailBook.class_nm, enrichedDoc && enrichedDoc.class_nm, 1)
+    mergedBook.isbn = preferBookField(detailBook.isbn, enrichedDoc && enrichedDoc.isbn, 1)
+    mergedBook.isbn13 = preferBookField(detailBook.isbn13, enrichedDoc && enrichedDoc.isbn13, 1)
+
+    return {
+      request: detailResult.request || {},
+      book: mergedBook,
+      detail: Array.isArray(detailResult.detail) ? detailResult.detail : [],
+      loanInfo: Array.isArray(detailResult.loanInfo) ? detailResult.loanInfo : [],
+      raw: Object.assign({}, detailResult.raw || {}, {
+        enrichment: {
+          searchKeyword: enrichmentLookup && enrichmentLookup.searchKeyword ? enrichmentLookup.searchKeyword : '',
+          matchedSource: enrichmentLookup && enrichmentLookup.matchedSource ? enrichmentLookup.matchedSource : '',
+          matchedScore: enrichmentLookup && typeof enrichmentLookup.matchedScore === 'number' ? enrichmentLookup.matchedScore : -1,
+          matchedIsbn13: enrichedDoc && enrichedDoc.isbn13 ? String(enrichedDoc.isbn13) : '',
+        },
+      }),
+    }
+  }
+
   function loadBookDetailByIsbn13(isbn13) {
     const normalizedIsbn13 = extractDigits(isbn13).slice(0, 13)
 
@@ -1092,6 +1214,51 @@
     const detailLookup = loadBookDetailByIsbnCandidates(isbnCandidates)
 
     if (detailLookup.detailResult && detailLookup.detailResult.book) {
+      const detailBook = detailLookup.detailResult.book
+      const detailRichness = summarizeBookMetadataRichness(detailBook)
+
+      info('xapi/epub/upload:detail-selected', {
+        isbn13: detailLookup.matchedCandidate ? detailLookup.matchedCandidate.isbn13 : '',
+        source: detailLookup.matchedCandidate ? detailLookup.matchedCandidate.source : '',
+        bookname: detailBook.bookname ? String(detailBook.bookname) : '',
+        authors: detailBook.authors ? String(detailBook.authors) : '',
+        richness: detailRichness,
+      })
+
+      if (isSparseDetailBook(detailBook)) {
+        const enrichmentLookup = findBestBookSearchResult(epubMetadata, supplementalMetadata, originalName)
+
+        if (enrichmentLookup.selectedDoc && canUseEnrichmentBook(detailBook, enrichmentLookup.selectedDoc)) {
+          const enrichedDetailResult = buildEnrichedDetailResult(detailLookup.detailResult, enrichmentLookup.selectedDoc, enrichmentLookup)
+
+          info('xapi/epub/upload:detail-enriched', {
+            isbn13: detailLookup.matchedCandidate ? detailLookup.matchedCandidate.isbn13 : '',
+            searchKeyword: enrichmentLookup.searchKeyword,
+            matchedSource: enrichmentLookup.matchedSource || '',
+            matchedScore: enrichmentLookup.matchedScore,
+            enrichedIsbn13: enrichmentLookup.selectedDoc && enrichmentLookup.selectedDoc.isbn13 ? String(enrichmentLookup.selectedDoc.isbn13) : '',
+            beforeRichness: detailRichness,
+            afterRichness: summarizeBookMetadataRichness(enrichedDetailResult.book),
+          })
+
+          return {
+            searchKeyword: enrichmentLookup.searchKeyword,
+            searchResult: enrichmentLookup.searchResult,
+            selectedDoc: enrichmentLookup.selectedDoc,
+            detailResult: enrichedDetailResult,
+            matchedBy: 'isbn13+enriched',
+            matchedSource: (detailLookup.matchedCandidate ? detailLookup.matchedCandidate.source : '') + '+' + (enrichmentLookup.matchedSource || ''),
+            matchedScore: enrichmentLookup.matchedScore,
+            matchedIsbn13: detailLookup.matchedCandidate ? detailLookup.matchedCandidate.isbn13 : '',
+          }
+        }
+
+        info('xapi/epub/upload:detail-sparse-no-enrichment', {
+          isbn13: detailLookup.matchedCandidate ? detailLookup.matchedCandidate.isbn13 : '',
+          richness: detailRichness,
+        })
+      }
+
       return {
         searchKeyword: '',
         searchResult: null,
