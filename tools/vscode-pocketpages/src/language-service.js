@@ -208,6 +208,101 @@ function flattenDiagnosticMessage(messageText) {
   return parts.join("\n");
 }
 
+const CLIENT_SCRIPT_RE = /(^|[\r\n>])([ \t]*)<script\b(?![^>]*\bserver\b)([^>]*)>([\s\S]*?)<\/script>/gi;
+const EJS_IN_SCRIPT_RE = /<%(?![%#])[_=-]?[\s\S]*?[-_]?%>/g;
+const JAVASCRIPT_MIME_TYPES = new Set([
+  "text/javascript",
+  "application/javascript",
+  "application/ecmascript",
+  "text/ecmascript",
+]);
+
+function extractClientScriptBlocks(text) {
+  const blocks = [];
+  let match = CLIENT_SCRIPT_RE.exec(text);
+
+  while (match) {
+    const fullMatch = match[0];
+    const prefixText = String(match[1] || "");
+    const indentationText = String(match[2] || "");
+    const attributesText = String(match[3] || "");
+    const content = String(match[4] || "");
+    const fullMatchWithoutPrefix = fullMatch.slice(prefixText.length + indentationText.length);
+    const matchStart = match.index + prefixText.length + indentationText.length;
+    const openTagLength = fullMatchWithoutPrefix.indexOf(">") + 1;
+    const contentStart = matchStart + openTagLength;
+    const contentEnd = contentStart + content.length;
+
+    if (shouldCheckClientScriptBlock(attributesText)) {
+      blocks.push({
+        index: blocks.length,
+        fullStart: matchStart,
+        fullEnd: matchStart + fullMatch.length,
+        contentStart,
+        contentEnd,
+        content,
+      });
+    }
+
+    match = CLIENT_SCRIPT_RE.exec(text);
+  }
+
+  return blocks;
+}
+
+function shouldCheckClientScriptBlock(attributesText) {
+  const attributes = String(attributesText || "");
+  const srcMatch = attributes.match(/\bsrc\s*=\s*(['"])([\s\S]*?)\1/i);
+  if (srcMatch && String(srcMatch[2] || "").trim()) {
+    return false;
+  }
+
+  const typeMatch = attributes.match(/\btype\s*=\s*(['"])([\s\S]*?)\1/i);
+  if (!typeMatch) {
+    return true;
+  }
+
+  const typeValue = String(typeMatch[2] || "").trim().toLowerCase();
+  return typeValue === "module" || JAVASCRIPT_MIME_TYPES.has(typeValue);
+}
+
+function sanitizeClientScriptContent(scriptText) {
+  return String(scriptText || "").replace(EJS_IN_SCRIPT_RE, (match) =>
+    match.replace(/[^\r\n]/g, " ")
+  );
+}
+
+function collectClientScriptSyntacticDiagnostics(documentText) {
+  const diagnostics = [];
+
+  for (const block of extractClientScriptBlocks(documentText)) {
+    const sanitizedText = sanitizeClientScriptContent(block.content);
+    const sourceFile = ts.createSourceFile(
+      "pocketpages-client-script.js",
+      sanitizedText,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS
+    );
+
+    for (const diagnostic of sourceFile.parseDiagnostics || []) {
+      if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number") {
+        continue;
+      }
+
+      diagnostics.push({
+        code: diagnostic.code,
+        category: diagnostic.category,
+        message: flattenDiagnosticMessage(diagnostic.messageText),
+        start: block.contentStart + diagnostic.start,
+        end: block.contentStart + diagnostic.start + diagnostic.length,
+      });
+    }
+  }
+
+  return diagnostics;
+}
+
 function toDisplayParts(text, kind = "text") {
   return [{ text: String(text || ""), kind }];
 }
@@ -3361,7 +3456,7 @@ class ProjectLanguageService {
     const blocks = extractServerBlocks(documentText);
     const templateBlocks = extractTemplateCodeBlocks(documentText);
     const collectionMethodNames = this.projectIndex.getCollectionMethodNames();
-    const diagnostics = [];
+    const diagnostics = collectClientScriptSyntacticDiagnostics(documentText);
     const privatePagesFile = isPrivatePagesFile(filePath);
 
     if (privatePagesFile) {

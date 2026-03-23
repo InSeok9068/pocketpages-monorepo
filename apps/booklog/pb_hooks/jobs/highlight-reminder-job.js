@@ -128,7 +128,7 @@ function run() {
         sentCount += 1
       } else {
         skippedCount += 1
-        $app.logger().debug('jobs/highlight-reminder:skip', 'userId', String(result.userId || ''), 'reason', String(result.reason || ''))
+        $app.logger().info('jobs/highlight-reminder:skip', 'userId', String(result.userId || ''), 'reason', String(result.reason || ''))
       }
     } catch (exception) {
       skippedCount += 1

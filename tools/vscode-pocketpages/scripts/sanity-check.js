@@ -2041,6 +2041,34 @@ metaPayload.trim()
       )
     }
 
+    const validClientScriptDiagnostics = service.getDiagnostics(
+      fixture.siteIndexFilePath,
+      `<script>
+const oneSignalAppId = '<%= String(env("ONESIGNAL_APPID") || "") %>'
+const oneSignalExternalId = '<%= request.auth ? String(request.auth.get("id") || "") : "" %>'
+</script>
+`
+    )
+    if (validClientScriptDiagnostics.length > 0) {
+      throw new Error(
+        `Expected safe client <script> sample to avoid extra diagnostics. Got: ${JSON.stringify(validClientScriptDiagnostics)}`
+      )
+    }
+
+    const clientScriptSyntaxDiagnostics = service.getDiagnostics(
+      fixture.siteIndexFilePath,
+      `<script>
+const state = {
+  open: true
+</script>
+`
+    )
+    if (!clientScriptSyntaxDiagnostics.some((entry) => Number(entry.code) === 1005)) {
+      throw new Error(
+        `Expected client <script> syntax diagnostics to include TS1005. Got: ${JSON.stringify(clientScriptSyntaxDiagnostics)}`
+      )
+    }
+
     const manualFlashDiagnostics = service.getDiagnostics(
       fixture.boardsFilePath,
       `<script server>\nredirect('/boards?__flash=saved')\n</script>\n`
