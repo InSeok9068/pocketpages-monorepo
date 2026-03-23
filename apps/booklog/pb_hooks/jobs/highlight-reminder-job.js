@@ -37,7 +37,7 @@ function findRandomHighlightRecord(userId) {
   try {
     const totalCount = $app.countRecords(
       'book_highlights',
-      dbx.exp('user_id = {:userId}', {
+      $dbx.exp('user_id = {:userId}', {
         userId: userId,
       })
     )
@@ -54,7 +54,9 @@ function findRandomHighlightRecord(userId) {
     if (highlightRecords.length > 0) {
       return highlightRecords[0]
     }
-  } catch (exception) {}
+  } catch (exception) {
+    $app.logger().error('jobs/highlight-reminder:find-highlight-failed', 'userId', String(userId || '').trim(), 'error', String(exception && exception.message ? exception.message : exception))
+  }
 
   return null
 }

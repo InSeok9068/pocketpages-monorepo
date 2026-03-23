@@ -1,4 +1,5 @@
-cronAdd('booklog-highlight-reminder', '0 9 * * *', function () {
+// UTC 기준 > 한국시간보려면 +9시간
+cronAdd('booklog-highlight-reminder', '0 0 * * *', function () {
   try {
     const highlightReminderJob = require(__hooks + '/jobs/highlight-reminder-job.js')
 
