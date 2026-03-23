@@ -219,6 +219,9 @@
     saveCurrentPosition: function () {
       window.booklogReaderLogic.saveCurrentPosition(this)
     },
+    goToBookDetail: function () {
+      window.booklogReaderLogic.goToBookDetail(this)
+    },
     loadSavedPosition: function () {
       window.booklogReaderLogic.loadSavedPosition(this)
     },
@@ -381,6 +384,7 @@
     </button>
     <a
       href="/books/<%= bookId %>"
+      x-on:click.prevent="goToBookDetail()"
       class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-700 no-underline outline-none ring-0">
       책 상세
     </a>
@@ -650,15 +654,21 @@
     var EDGE_TRIGGER_DISTANCE = 56
     var AUTO_PAGE_LOCK_MS = 320
     var AUTO_SAVE_INTERVAL_MS = 5000
+    var NAVIGATION_SAVE_WAIT_MS = 2000
     var READER_CACHE_DB_NAME = 'booklog-reader-cache'
     var READER_CACHE_STORE_NAME = 'epubBuffers'
     var READER_CACHE_LIMIT = 3
     var autoSaveTimerId = null
     var autoSaveInFlight = false
     var saveRequestInFlight = false
+    var activePersistRequest = null
     var isRestoringPosition = false
     var hasAttemptedInitialRestore = false
     var lastPersistedProgressKey = ''
+    var activeComponent = null
+    var isLeavingPage = false
+    var isHandlingHistoryBack = false
+    var skipNextPopState = false
 
     function normalizeText(value) {
       return String(value || '')
@@ -1101,7 +1111,7 @@
           component.showSavePositionMessage('읽기 위치를 저장하는 중입니다.')
         }
 
-        return Promise.resolve(false)
+        return activePersistRequest || Promise.resolve(false)
       }
 
       if (!progress.locator && !progress.href) {
@@ -1124,7 +1134,7 @@
       formData.set('progressPercent', progress.progressPercent)
       saveRequestInFlight = true
 
-      return fetch('/api/books/save-progress', {
+      activePersistRequest = fetch('/api/books/save-progress', {
         method: 'POST',
         body: formData,
         credentials: 'same-origin',
@@ -1160,7 +1170,90 @@
         })
         .finally(function () {
           saveRequestInFlight = false
+          activePersistRequest = null
         })
+
+      return activePersistRequest
+    }
+
+    function waitForProgressSave(component, options) {
+      return new Promise(function (resolve) {
+        var waitTimerId = setTimeout(function () {
+          console.warn('page/books/[bookId]/read:navigation-save-timeout', {
+            waitMs: NAVIGATION_SAVE_WAIT_MS,
+          })
+          resolve(false)
+        }, NAVIGATION_SAVE_WAIT_MS)
+
+        persistProgress(component, options)
+          .then(function (saved) {
+            clearTimeout(waitTimerId)
+            resolve(saved)
+          })
+          .catch(function (exception) {
+            clearTimeout(waitTimerId)
+            console.warn('page/books/[bookId]/read:navigation-save-failed', {
+              message: String(exception && exception.message ? exception.message : exception),
+            })
+            resolve(false)
+          })
+      })
+    }
+
+    function leavePageWithSavedProgress(component, options) {
+      var nextLocation = options && options.nextLocation ? String(options.nextLocation) : ''
+      var historyBack = !!(options && options.historyBack)
+      var saveOptions = options && options.saveOptions ? options.saveOptions : {
+        silent: true,
+        skipIfUnchanged: false,
+      }
+
+      if (!component || isLeavingPage) {
+        return
+      }
+
+      isLeavingPage = true
+
+      waitForProgressSave(component, saveOptions).finally(function () {
+        if (historyBack) {
+          skipNextPopState = true
+          window.history.back()
+          return
+        }
+
+        if (nextLocation) {
+          window.location.href = nextLocation
+          return
+        }
+
+        isLeavingPage = false
+      })
+    }
+
+    function handlePopState() {
+      if (skipNextPopState) {
+        skipNextPopState = false
+        return
+      }
+
+      if (!activeComponent || isHandlingHistoryBack || isLeavingPage) {
+        return
+      }
+
+      isHandlingHistoryBack = true
+      console.debug('page/books/[bookId]/read:history-back-intercepted', {
+        bookId: bookId,
+      })
+
+      leavePageWithSavedProgress(activeComponent, {
+        historyBack: true,
+        saveOptions: {
+          silent: true,
+          skipIfUnchanged: false,
+        },
+      })
+
+      isHandlingHistoryBack = false
     }
 
     function restoreSavedPosition(component, options) {
@@ -1913,6 +2006,10 @@
     function init(component) {
       var container = document.getElementById('epub-reader')
 
+      activeComponent = component
+      window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
+      window.addEventListener('popstate', handlePopState)
+
       if (!container || !window.ePub) {
         component.loading = false
         component.errorMessage = 'EPUB 뷰어를 불러오지 못했습니다.'
@@ -2226,6 +2323,18 @@
         })
     }
 
+    function goToBookDetail(component) {
+      component.showSavePositionMessage('책 상세로 이동하기 전에 읽기 위치를 저장합니다.')
+
+      leavePageWithSavedProgress(component, {
+        nextLocation: '/books/' + bookId,
+        saveOptions: {
+          silent: false,
+          skipIfUnchanged: false,
+        },
+      })
+    }
+
     function loadSavedPosition(component) {
       if (!renditionInstance) {
         component.showSavePositionMessage('리더가 아직 준비되지 않았습니다.')
@@ -2312,6 +2421,7 @@
       isActiveTocItem: isActiveTocItem,
       saveHighlight: saveHighlight,
       saveCurrentPosition: saveCurrentPosition,
+      goToBookDetail: goToBookDetail,
       loadSavedPosition: loadSavedPosition,
       goToProgress: goToProgress,
     }
