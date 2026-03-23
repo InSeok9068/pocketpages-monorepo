@@ -1,21 +1,59 @@
 const oneSignalService = require('./onesignal-service')
 
 /**
- * 하이라이트 문구를 알림 본문 길이에 맞게 정리합니다.
+ * 하이라이트 문구를 알림 본문용으로 정리합니다.
  *
  * @param {string} quoteText 원본 하이라이트 문구
- * @returns {string} 잘린 하이라이트 문구
+ * @returns {string} 정리된 하이라이트 문구
  */
 function trimHighlightQuote(quoteText) {
-  const normalized = String(quoteText || '')
+  return String(quoteText || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * 푸시 본문에 넣을 책 제목을 짧게 정리합니다.
+ *
+ * @param {string} title 원본 책 제목
+ * @returns {string} 잘린 책 제목
+ */
+function trimBookTitle(title) {
+  const normalized = String(title || '')
     .replace(/\s+/g, ' ')
     .trim()
 
-  if (normalized.length <= 90) {
+  if (!normalized) {
+    return '제목 없음'
+  }
+
+  if (normalized.length <= 15) {
     return normalized
   }
 
-  return normalized.slice(0, 87) + '...'
+  return normalized.slice(0, 15) + '...'
+}
+
+/**
+ * 하이라이트에 연결된 책 제목을 조회합니다.
+ *
+ * @param {any} highlightRecord 하이라이트 record
+ * @returns {string} 책 제목
+ */
+function findHighlightBookTitle(highlightRecord) {
+  const bookId = String(highlightRecord && highlightRecord.get('book_id') ? highlightRecord.get('book_id') : '').trim()
+
+  if (!bookId) {
+    return '제목 없음'
+  }
+
+  try {
+    const bookRecord = $app.findRecordById('books', bookId)
+    return String(bookRecord && bookRecord.get('title') ? bookRecord.get('title') : '제목 없음').trim() || '제목 없음'
+  } catch (exception) {
+    $app.logger().warn('jobs/highlight-reminder:find-book-failed', 'bookId', bookId, 'error', String(exception && exception.message ? exception.message : exception))
+    return '제목 없음'
+  }
 }
 
 /**
@@ -91,7 +129,8 @@ function sendReminderForUser(settingsRecord) {
   }
 
   const quoteText = trimHighlightQuote(highlightRecord.get('quote_text'))
-  const contents = quoteText || '저장한 문장을 다시 읽어볼 시간입니다.'
+  const bookTitle = trimBookTitle(findHighlightBookTitle(highlightRecord))
+  const contents = quoteText ? quoteText + '\n"' + bookTitle + '"' : '"' + bookTitle + '"'
 
   oneSignalService.sendPushNotification({
     externalIds: [userId],
@@ -99,7 +138,7 @@ function sendReminderForUser(settingsRecord) {
     contents: contents,
   })
 
-  $app.logger().info('jobs/highlight-reminder:sent', 'userId', userId, 'highlightId', String(highlightRecord.get('id') || '').trim())
+  $app.logger().info('jobs/highlight-reminder:sent', 'userId', userId, 'highlightId', String(highlightRecord.get('id') || '').trim(), 'bookTitle', bookTitle)
 
   return {
     sent: true,
