@@ -27,18 +27,18 @@
 
   const form = body()
   const userId = String(request.auth.get('id') || '')
-  const highlightPushCycle = String(form.highlightPushCycle || '').trim()
+  const readingReminderCycleRaw = String(form.readingReminderCycle || '').trim()
+  const highlightPushCycleRaw = String(form.highlightPushCycle || '').trim()
+  const readingReminderCycle = readingReminderCycleRaw ? Number(readingReminderCycleRaw) : null
+  const highlightPushCycle = highlightPushCycleRaw ? Number(highlightPushCycleRaw) : null
   const pushEnabled = String(form.pushEnabled || '').trim() === 'true'
-  const readingReminderEnabled = String(form.readingReminderEnabled || '').trim() === 'true'
-  const highlightReminderEnabled = String(form.highlightReminderEnabled || '').trim() === 'true'
   let errorMessage = ''
 
   dbg('xapi/settings/save:start', {
     userId: userId,
+    readingReminderCycle: readingReminderCycle,
     highlightPushCycle: highlightPushCycle,
     pushEnabled: pushEnabled,
-    readingReminderEnabled: readingReminderEnabled,
-    highlightReminderEnabled: highlightReminderEnabled,
   })
 
   try {
@@ -46,8 +46,12 @@
       throw new Error('로그인이 필요합니다.')
     }
 
-    if (highlightPushCycle !== 'off' && highlightPushCycle !== 'daily' && highlightPushCycle !== 'weekly' && highlightPushCycle !== 'monthly') {
-      throw new Error('하이라이트 알림 주기가 올바르지 않습니다.')
+    if (readingReminderCycle !== null && (isNaN(readingReminderCycle) || readingReminderCycle < 1 || readingReminderCycle > 365 || Math.floor(readingReminderCycle) !== readingReminderCycle)) {
+      throw new Error('읽기 리마인더 주기는 1일부터 365일 사이의 정수여야 합니다.')
+    }
+
+    if (highlightPushCycle !== null && (isNaN(highlightPushCycle) || highlightPushCycle < 1 || highlightPushCycle > 365 || Math.floor(highlightPushCycle) !== highlightPushCycle)) {
+      throw new Error('하이라이트 리마인더 주기는 1일부터 365일 사이의 정수여야 합니다.')
     }
 
     let settingsRecord = null
@@ -69,8 +73,7 @@
     }
 
     settingsRecord.set('push_enabled', pushEnabled)
-    settingsRecord.set('reading_reminder_enabled', readingReminderEnabled)
-    settingsRecord.set('highlight_reminder_enabled', highlightReminderEnabled)
+    settingsRecord.set('reading_reminder_cycle', readingReminderCycle)
     settingsRecord.set('highlight_push_cycle', highlightPushCycle)
 
     $app.save(settingsRecord)

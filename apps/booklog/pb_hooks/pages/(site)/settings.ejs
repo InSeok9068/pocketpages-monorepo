@@ -29,9 +29,8 @@
 
   const settings = {
     pushEnabled: settingsRecord ? !!settingsRecord.get('push_enabled') : false,
-    readingReminderEnabled: settingsRecord ? !!settingsRecord.get('reading_reminder_enabled') : false,
-    highlightReminderEnabled: settingsRecord ? !!settingsRecord.get('highlight_reminder_enabled') : false,
-    highlightPushCycle: settingsRecord ? String(settingsRecord.get('highlight_push_cycle') || 'off') : 'off',
+    readingReminderCycle: settingsRecord && settingsRecord.get('reading_reminder_cycle') ? Number(settingsRecord.get('reading_reminder_cycle')) : '',
+    highlightPushCycle: settingsRecord && settingsRecord.get('highlight_push_cycle') ? Number(settingsRecord.get('highlight_push_cycle')) : '',
   }
 </script>
 
@@ -84,61 +83,33 @@
           hidden
           class="rounded-[1.4rem] bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-700"></p>
 
-        <div class="grid gap-4 md:grid-cols-2">
-          <label class="flex items-start gap-3 rounded-[1.4rem] bg-[#f7f2e6] px-4 py-4">
-            <input
-              type="checkbox"
-              name="readingReminderEnabled"
-              value="true"
-              <% if (settings.readingReminderEnabled) { %>checked<% } %>
-              class="mt-1 h-4 w-4 rounded border-stone-300 text-stone-900" />
-            <span class="block">
-              <span class="block text-sm font-semibold text-stone-900">읽기 리마인더 사용</span>
-              <span class="mt-1 block text-sm leading-6 text-stone-600">읽는 중인 책을 다시 열도록 돕는 알림을 허용합니다.</span>
-            </span>
-          </label>
-
-          <label class="flex items-start gap-3 rounded-[1.4rem] bg-[#f7f2e6] px-4 py-4">
-            <input
-              type="checkbox"
-              name="highlightReminderEnabled"
-              value="true"
-              <% if (settings.highlightReminderEnabled) { %>checked<% } %>
-              class="mt-1 h-4 w-4 rounded border-stone-300 text-stone-900" />
-            <span class="block">
-              <span class="block text-sm font-semibold text-stone-900">하이라이트 리마인더 사용</span>
-              <span class="mt-1 block text-sm leading-6 text-stone-600">저장했던 문장을 다시 보여주는 알림을 허용합니다.</span>
-            </span>
-          </label>
-        </div>
+        <label class="block rounded-[1.4rem] bg-[#f7f2e6] px-4 py-4">
+          <span class="mb-2 block text-sm font-semibold text-stone-900">읽기 리마인더 주기</span>
+          <span class="mb-3 block text-sm leading-6 text-stone-600">비워두면 끄기 상태입니다. 숫자를 넣으면 마지막으로 읽은 뒤 그 일수만큼 지나면 다시 읽기 알림을 보냅니다.</span>
+          <input
+            id="reading-reminder-cycle-input"
+            type="number"
+            name="readingReminderCycle"
+            min="1"
+            max="365"
+            value="<%= settings.readingReminderCycle === '' ? '' : String(settings.readingReminderCycle) %>"
+            placeholder="off"
+            class="box-border block w-full rounded-[1rem] border-0 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.12)] outline-none" />
+        </label>
 
         <label class="block rounded-[1.4rem] bg-[#f7f2e6] px-4 py-4">
           <span class="mb-2 block text-sm font-semibold text-stone-900">하이라이트 알림 주기</span>
-          <span class="mb-3 block text-sm leading-6 text-stone-600">저장한 문장을 다시 보여줄 주기를 선택합니다.</span>
-          <select
+          <span class="mb-3 block text-sm leading-6 text-stone-600">비워두면 끄기 상태입니다. 숫자를 넣으면 하이라이트 리마인더를 그 일수 간격으로 보냅니다.</span>
+          <input
+            id="highlight-push-cycle-input"
+            type="number"
             name="highlightPushCycle"
+            min="1"
+            max="365"
+            value="<%= settings.highlightPushCycle === '' ? '' : String(settings.highlightPushCycle) %>"
+            placeholder="off"
             class="box-border block w-full rounded-[1rem] border-0 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.12)] outline-none">
-            <option
-              value="off"
-              <%= settings.highlightPushCycle === 'off' ? 'selected' : '' %>>
-              끄기
-            </option>
-            <option
-              value="daily"
-              <%= settings.highlightPushCycle === 'daily' ? 'selected' : '' %>>
-              매일
-            </option>
-            <option
-              value="weekly"
-              <%= settings.highlightPushCycle === 'weekly' ? 'selected' : '' %>>
-              매주
-            </option>
-            <option
-              value="monthly"
-              <%= settings.highlightPushCycle === 'monthly' ? 'selected' : '' %>>
-              매월
-            </option>
-          </select>
+          </input>
         </label>
       </div>
 
@@ -158,12 +129,14 @@
   ;(function () {
     const form = document.getElementById('settings-form')
     const pushEnabledInput = document.getElementById('push-enabled-input')
+    const readingReminderCycleInput = document.getElementById('reading-reminder-cycle-input')
+    const highlightPushCycleInput = document.getElementById('highlight-push-cycle-input')
     const pushNoticeElement = document.getElementById('push-notice')
     const pushStateNoticeElement = document.getElementById('push-state-notice')
     const submitButton = document.getElementById('settings-submit-button')
     const submitLabel = document.getElementById('settings-submit-label')
 
-    if (!form || !pushEnabledInput || !pushNoticeElement || !pushStateNoticeElement || !submitButton || !submitLabel) {
+    if (!form || !pushEnabledInput || !readingReminderCycleInput || !highlightPushCycleInput || !pushNoticeElement || !pushStateNoticeElement || !submitButton || !submitLabel) {
       return
     }
 
@@ -309,6 +282,26 @@
       renderMessage(pushNoticeElement, '')
       state.submitting = true
       renderSubmittingState()
+
+      if (readingReminderCycleInput.value) {
+        const readingReminderCycle = Number(readingReminderCycleInput.value || '')
+
+        if (isNaN(readingReminderCycle) || readingReminderCycle < 1 || readingReminderCycle > 365 || Math.floor(readingReminderCycle) !== readingReminderCycle) {
+          event.preventDefault()
+          stopSubmit('읽기 리마인더 주기는 1일부터 365일 사이의 정수여야 합니다.')
+          return
+        }
+      }
+
+      if (highlightPushCycleInput.value) {
+        const highlightPushCycle = Number(highlightPushCycleInput.value || '')
+
+        if (isNaN(highlightPushCycle) || highlightPushCycle < 1 || highlightPushCycle > 365 || Math.floor(highlightPushCycle) !== highlightPushCycle) {
+          event.preventDefault()
+          stopSubmit('하이라이트 리마인더 주기는 1일부터 365일 사이의 정수여야 합니다.')
+          return
+        }
+      }
 
       if (pushEnabledInput.checked === initialPushEnabled) {
         return
