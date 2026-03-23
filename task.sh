@@ -20,8 +20,8 @@ Usage:
 Commands:
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
-  deploy    Upload one service pb_hooks using .vscode/sftp.json
-  rollback  Restore one of the last 3 deployed pb_hooks versions
+  deploy    Upload one service deploy targets using .vscode/sftp.json
+  rollback  Restore one of the last 3 deployed target versions
   test      Run node:test files under __tests__ for one service or all services
   lint      Run lightweight PocketPages self-validation checks for one service or all services
   diag      Run PocketPages editor diagnostics for PocketPages code files (.ejs/.js/.cjs/.mjs).
@@ -458,8 +458,47 @@ NODE
   DEPLOY_DELETE_REMOTE="${config_values[8]}"
 }
 
-run_deploy() {
+resolve_deploy_targets() {
   local service="$1"
+  local config_file="$ROOT_DIR/.vscode/sftp.json"
+
+  [[ -f "$config_file" ]] || {
+    echo "Missing deploy config: $config_file" >&2
+    exit 1
+  }
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot read deploy config." >&2
+    exit 1
+  fi
+
+  node - "$config_file" "$service" <<'NODE'
+const fs = require('fs');
+
+const configFile = process.argv[2];
+const serviceName = process.argv[3];
+
+const entries = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+const exactMatches = entries.filter((item) => item && item.name === serviceName);
+
+if (exactMatches.length > 0) {
+  process.stdout.write(exactMatches.map((item) => item.name).join('\n'));
+  process.exit(0);
+}
+
+const prefixMatches = entries.filter((item) => item && typeof item.name === 'string' && item.name.startsWith(`${serviceName}-`));
+
+if (prefixMatches.length === 0) {
+  console.error(`Unknown deploy service: ${serviceName}`);
+  process.exit(1);
+}
+
+process.stdout.write(prefixMatches.map((item) => item.name).join('\n'));
+NODE
+}
+
+deploy_target() {
+  local target_name="$1"
   local context_dir=""
   local private_key_path=""
   local temp_dir=""
@@ -471,15 +510,15 @@ run_deploy() {
   local sftp_cmd=()
   local ssh_cmd=()
 
-  load_deploy_config "$service"
+  load_deploy_config "$target_name"
 
   if [[ "$DEPLOY_PROTOCOL" != "sftp" ]]; then
-    echo "Unsupported deploy protocol for $service: $DEPLOY_PROTOCOL" >&2
+    echo "Unsupported deploy protocol for $target_name: $DEPLOY_PROTOCOL" >&2
     exit 1
   fi
 
   if [[ -z "$DEPLOY_HOST" || -z "$DEPLOY_USERNAME" || -z "$DEPLOY_CONTEXT" || -z "$DEPLOY_REMOTE_PATH" ]]; then
-    echo "Incomplete deploy config for service: $service" >&2
+    echo "Incomplete deploy config for service: $target_name" >&2
     exit 1
   fi
 
@@ -505,10 +544,10 @@ run_deploy() {
   fi
 
   temp_dir="$(mktemp -d)"
-  archive_path="$temp_dir/${service}-pb_hooks.tar.gz"
+  archive_path="$temp_dir/${target_name}.tar.gz"
   batch_file="$temp_dir/upload.sftp"
   timestamp="$(date +%s)"
-  remote_archive_path="/tmp/${service}-pb-hooks-${timestamp}-$$.tar.gz"
+  remote_archive_path="/tmp/${target_name}-${timestamp}-$$.tar.gz"
   ssh_target="${DEPLOY_USERNAME}@${DEPLOY_HOST}"
 
   cleanup_deploy_temp() {
@@ -516,7 +555,7 @@ run_deploy() {
   }
   trap cleanup_deploy_temp EXIT
 
-  echo "Packaging hooks: $context_dir"
+  echo "Packaging target: $target_name ($context_dir)"
   (
     cd "$context_dir"
     tar -czf "$archive_path" .
@@ -556,7 +595,7 @@ run_deploy() {
   echo "Uploading archive: $ssh_target:$remote_archive_path"
   "${sftp_cmd[@]}" "$ssh_target"
 
-  echo "Replacing remote hooks: $DEPLOY_REMOTE_PATH"
+  echo "Replacing remote target: $DEPLOY_REMOTE_PATH"
 "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$remote_archive_path" "$DEPLOY_REMOTE_PATH" "$DEPLOY_DELETE_REMOTE" <<'EOF'
 set -euo pipefail
 
@@ -666,25 +705,39 @@ EOF
   trap - EXIT
   cleanup_deploy_temp
 
-  echo "Deploy complete: $service"
+  echo "Deploy complete: $target_name"
 }
 
-run_rollback() {
+run_deploy() {
   local service="$1"
+  local deploy_targets=()
+  local target_name=""
+
+  if ! mapfile -t deploy_targets < <(resolve_deploy_targets "$service"); then
+    exit 1
+  fi
+
+  for target_name in "${deploy_targets[@]}"; do
+    deploy_target "$target_name"
+  done
+}
+
+rollback_target() {
+  local target_name="$1"
   local version_index="$2"
   local private_key_path=""
   local ssh_target=""
   local ssh_cmd=()
 
-  load_deploy_config "$service"
+  load_deploy_config "$target_name"
 
   if [[ "$DEPLOY_PROTOCOL" != "sftp" ]]; then
-    echo "Unsupported deploy protocol for $service: $DEPLOY_PROTOCOL" >&2
+    echo "Unsupported deploy protocol for $target_name: $DEPLOY_PROTOCOL" >&2
     exit 1
   fi
 
   if [[ -z "$DEPLOY_HOST" || -z "$DEPLOY_USERNAME" || -z "$DEPLOY_REMOTE_PATH" ]]; then
-    echo "Incomplete deploy config for service: $service" >&2
+    echo "Incomplete deploy config for service: $target_name" >&2
     exit 1
   fi
 
@@ -723,7 +776,7 @@ run_rollback() {
     exit 1
   fi
 
-  echo "Rolling back remote hooks: $DEPLOY_REMOTE_PATH (version $version_index)"
+  echo "Rolling back remote target: $DEPLOY_REMOTE_PATH (version $version_index)"
 "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$DEPLOY_REMOTE_PATH" "$version_index" <<'EOF'
 set -euo pipefail
 
@@ -840,7 +893,22 @@ cp -a "$stage_dir"/. "$remote_path"/
 prune_history
 EOF
 
-  echo "Rollback complete: $service -> version $version_index"
+  echo "Rollback complete: $target_name -> version $version_index"
+}
+
+run_rollback() {
+  local service="$1"
+  local version_index="$2"
+  local deploy_targets=()
+  local target_name=""
+
+  if ! mapfile -t deploy_targets < <(resolve_deploy_targets "$service"); then
+    exit 1
+  fi
+
+  for target_name in "${deploy_targets[@]}"; do
+    rollback_target "$target_name" "$version_index"
+  done
 }
 
 if [[ "${1:-}" == "__complete_services" ]]; then
