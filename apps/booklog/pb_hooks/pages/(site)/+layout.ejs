@@ -88,20 +88,22 @@
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || []
       OneSignalDeferred.push(function (OneSignal) {
-        const oneSignalAppId = '<%= String(env("ONESIGNAL_APPID") || "") %>'
-        const oneSignalExternalId = '<%= request.auth ? String(request.auth.get("id") || "") : "" %>'
+        const oneSignalAppId = '<%= String(env('ONESIGNAL_APPID') || '') %>'
+        const oneSignalExternalId = '<%= request.auth ? String(request.auth.get('id') || '') : '' %>'
 
         OneSignal.init({
           appId: oneSignalAppId,
-        }).then(function () {
-          if (oneSignalExternalId) {
-            return OneSignal.login(oneSignalExternalId)
-          }
-
-          return OneSignal.logout()
-        }).catch(function (initError) {
-          console.warn('OneSignal init failed', initError)
         })
+          .then(function () {
+            if (oneSignalExternalId) {
+              return OneSignal.login(oneSignalExternalId)
+            }
+
+            return OneSignal.logout()
+          })
+          .catch(function (initError) {
+            console.warn('OneSignal init failed', initError)
+          })
       })
     </script>
     <%- slots.head %>

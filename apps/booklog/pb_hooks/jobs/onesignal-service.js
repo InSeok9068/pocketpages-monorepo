@@ -91,13 +91,7 @@ function sendPushNotification(input) {
     throw new Error('OneSignal 알림 본문이 필요합니다.')
   }
 
-  $app.logger().debug(
-    'onesignal:send:start',
-    'externalIdCount',
-    externalIds.length,
-    'title',
-    payload.headings.en
-  )
+  $app.logger().debug('onesignal:send:start', 'externalIdCount', externalIds.length, 'title', payload.headings.en)
 
   const response = $http.send({
     url: getBaseUrl() + '/notifications',
@@ -107,13 +101,7 @@ function sendPushNotification(input) {
     timeout: timeout,
   })
 
-  $app.logger().debug(
-    'onesignal:send:response',
-    'statusCode',
-    response.statusCode,
-    'externalIdCount',
-    externalIds.length
-  )
+  $app.logger().debug('onesignal:send:response', 'statusCode', response.statusCode, 'externalIdCount', externalIds.length)
 
   if (response.statusCode < 200 || response.statusCode >= 300) {
     throw new Error('OneSignal 푸시 발송에 실패했습니다. status=' + response.statusCode)

@@ -42,7 +42,7 @@
 
 <div class="mt-5"><%- include('flash-alert.ejs') %></div>
 
-<section class="mt-6 rounded-[2rem] border border-stone-200/80 bg-white/78 p-5 shadow-[0_20px_44px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-6">
+<section class="bg-white/78 mt-6 rounded-[2rem] border border-stone-200/80 p-5 shadow-[0_20px_44px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-6">
   <form
     action="/xapi/settings/save"
     method="post"
@@ -141,7 +141,7 @@
             type="checkbox"
             name="readingReminderEnabled"
             value="true"
-            <%= settings.readingReminderEnabled ? 'checked' : '' %>
+            <% if (settings.readingReminderEnabled) { %>checked<% } %>
             class="mt-1 h-4 w-4 rounded border-stone-300 text-stone-900" />
           <span class="block">
             <span class="block text-sm font-semibold text-stone-900">읽기 리마인더 사용</span>
@@ -154,7 +154,7 @@
             type="checkbox"
             name="highlightReminderEnabled"
             value="true"
-            <%= settings.highlightReminderEnabled ? 'checked' : '' %>
+            <% if (settings.highlightReminderEnabled) { %>checked<% } %>
             class="mt-1 h-4 w-4 rounded border-stone-300 text-stone-900" />
           <span class="block">
             <span class="block text-sm font-semibold text-stone-900">하이라이트 리마인더 사용</span>
@@ -169,10 +169,26 @@
         <select
           name="highlightPushCycle"
           class="box-border block w-full rounded-[1rem] border-0 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.12)] outline-none">
-          <option value="off" <%= settings.highlightPushCycle === 'off' ? 'selected' : '' %>>끄기</option>
-          <option value="daily" <%= settings.highlightPushCycle === 'daily' ? 'selected' : '' %>>매일</option>
-          <option value="weekly" <%= settings.highlightPushCycle === 'weekly' ? 'selected' : '' %>>매주</option>
-          <option value="monthly" <%= settings.highlightPushCycle === 'monthly' ? 'selected' : '' %>>매월</option>
+          <option
+            value="off"
+            <%= settings.highlightPushCycle === 'off' ? 'selected' : '' %>>
+            끄기
+          </option>
+          <option
+            value="daily"
+            <%= settings.highlightPushCycle === 'daily' ? 'selected' : '' %>>
+            매일
+          </option>
+          <option
+            value="weekly"
+            <%= settings.highlightPushCycle === 'weekly' ? 'selected' : '' %>>
+            매주
+          </option>
+          <option
+            value="monthly"
+            <%= settings.highlightPushCycle === 'monthly' ? 'selected' : '' %>>
+            매월
+          </option>
         </select>
       </label>
     </div>

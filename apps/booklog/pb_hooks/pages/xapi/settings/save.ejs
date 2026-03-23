@@ -46,12 +46,7 @@
       throw new Error('로그인이 필요합니다.')
     }
 
-    if (
-      highlightPushCycle !== 'off' &&
-      highlightPushCycle !== 'daily' &&
-      highlightPushCycle !== 'weekly' &&
-      highlightPushCycle !== 'monthly'
-    ) {
+    if (highlightPushCycle !== 'off' && highlightPushCycle !== 'daily' && highlightPushCycle !== 'weekly' && highlightPushCycle !== 'monthly') {
       throw new Error('하이라이트 알림 주기가 올바르지 않습니다.')
     }
 

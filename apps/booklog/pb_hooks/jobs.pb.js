@@ -4,10 +4,6 @@ cronAdd('booklog-highlight-reminder', '0 9 * * *', function () {
 
     highlightReminderJob.run()
   } catch (exception) {
-    $app.logger().error(
-      'jobs/highlight-reminder:failed',
-      'error',
-      String(exception && exception.message ? exception.message : exception)
-    )
+    $app.logger().error('jobs/highlight-reminder:failed', 'error', String(exception && exception.message ? exception.message : exception))
   }
 })

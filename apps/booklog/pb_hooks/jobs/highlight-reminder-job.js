@@ -35,9 +35,12 @@ function findDailyReminderSettings() {
  */
 function findRandomHighlightRecord(userId) {
   try {
-    const totalCount = $app.countRecords('book_highlights', dbx.exp('user_id = {:userId}', {
-      userId: userId,
-    }))
+    const totalCount = $app.countRecords(
+      'book_highlights',
+      dbx.exp('user_id = {:userId}', {
+        userId: userId,
+      })
+    )
 
     if (totalCount < 1) {
       return null
@@ -94,13 +97,7 @@ function sendReminderForUser(settingsRecord) {
     contents: contents,
   })
 
-  $app.logger().info(
-    'jobs/highlight-reminder:sent',
-    'userId',
-    userId,
-    'highlightId',
-    String(highlightRecord.get('id') || '').trim()
-  )
+  $app.logger().info('jobs/highlight-reminder:sent', 'userId', userId, 'highlightId', String(highlightRecord.get('id') || '').trim())
 
   return {
     sent: true,
@@ -119,11 +116,7 @@ function run() {
   let sentCount = 0
   let skippedCount = 0
 
-  $app.logger().info(
-    'jobs/highlight-reminder:start',
-    'matchedUserCount',
-    settingsRecords.length
-  )
+  $app.logger().info('jobs/highlight-reminder:start', 'matchedUserCount', settingsRecords.length)
 
   for (let index = 0; index < settingsRecords.length; index += 1) {
     const settingsRecord = settingsRecords[index]
@@ -135,35 +128,17 @@ function run() {
         sentCount += 1
       } else {
         skippedCount += 1
-        $app.logger().debug(
-          'jobs/highlight-reminder:skip',
-          'userId',
-          String(result.userId || ''),
-          'reason',
-          String(result.reason || '')
-        )
+        $app.logger().debug('jobs/highlight-reminder:skip', 'userId', String(result.userId || ''), 'reason', String(result.reason || ''))
       }
     } catch (exception) {
       skippedCount += 1
-      $app.logger().error(
-        'jobs/highlight-reminder:user-failed',
-        'userId',
-        String(settingsRecord.get('user_id') || '').trim(),
-        'error',
-        String(exception && exception.message ? exception.message : exception)
-      )
+      $app
+        .logger()
+        .error('jobs/highlight-reminder:user-failed', 'userId', String(settingsRecord.get('user_id') || '').trim(), 'error', String(exception && exception.message ? exception.message : exception))
     }
   }
 
-  $app.logger().info(
-    'jobs/highlight-reminder:done',
-    'matchedUserCount',
-    settingsRecords.length,
-    'sentCount',
-    sentCount,
-    'skippedCount',
-    skippedCount
-  )
+  $app.logger().info('jobs/highlight-reminder:done', 'matchedUserCount', settingsRecords.length, 'sentCount', sentCount, 'skippedCount', skippedCount)
 
   return {
     ready: true,

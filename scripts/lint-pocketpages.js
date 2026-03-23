@@ -29,6 +29,8 @@
 // 25) 로컬 @typedef 사용
 // 26) module.exports.foo = ... 형태의 분산 export 사용
 // 27) _private/*.ejs 에서 <script server> 사용
+// 28) pages 내부 코드에서 process.env 사용
+// 29) pages 밖 pb_hooks 코드에서 PocketPages 전역(env/dbg/info/warn/error) 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -84,6 +86,8 @@ const RE = {
   localTypedef: /@typedef\b/,
   distributedModuleExport: /module\.exports\.[A-Za-z_$][A-Za-z0-9_$]*\s*=/,
   scriptServerTag: /<script\b(?=[^>]*\bserver\b)/,
+  processEnv: /\bprocess\.env\b/,
+  pocketpagesOnlyGlobalCall: /(^|[^.A-Za-z0-9_$])(env|dbg|info|warn|error)\s*\(/,
 }
 
 let errors = 0
@@ -208,6 +212,7 @@ function buildServiceContext(serviceDir) {
     configFile,
     configFileInfo: pagesCodeFiles.find((file) => file.absPath === configFile) || null,
     hooksCodeFiles,
+    nonPagesHooksCodeFiles: hooksCodeFiles.filter((file) => !file.inPages),
     pagesFiles,
     pagesCodeFiles,
     lintCodeFiles: pagesCodeFiles.filter((file) => !file.relFromPages.startsWith('assets/')),
@@ -800,6 +805,23 @@ function lintService(context) {
     context.serviceName,
     'Invalid _private <script server> usage. Keep _private partial setup in top-level <% ... %> blocks and reserve <script server> for entry EJS files.',
     privateScriptServerMatches,
+  )
+
+  const pagesProcessEnvMatches = collectLineMatches(context.lintCodeFiles, RE.processEnv)
+  printMatches(
+    context.serviceName,
+    'Invalid process.env usage in PocketPages pages code. Use env(...) inside pb_hooks/pages files.',
+    pagesProcessEnvMatches,
+  )
+
+  const nonPagesPocketPagesGlobalMatches = collectLineMatches(
+    context.nonPagesHooksCodeFiles,
+    RE.pocketpagesOnlyGlobalCall,
+  )
+  printMatches(
+    context.serviceName,
+    'Invalid PocketPages global usage outside pb_hooks/pages. Do not use env(...), dbg(...), info(...), warn(...), or error(...) in non-pages pb_hooks code.',
+    nonPagesPocketPagesGlobalMatches,
   )
 
   const includeFullContextMatches = collectIncludeFullContextMatches(context.pagesEjsFiles)
