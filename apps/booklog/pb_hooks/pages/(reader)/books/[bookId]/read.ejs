@@ -1203,10 +1203,13 @@
     function leavePageWithSavedProgress(component, options) {
       var nextLocation = options && options.nextLocation ? String(options.nextLocation) : ''
       var historyBack = !!(options && options.historyBack)
-      var saveOptions = options && options.saveOptions ? options.saveOptions : {
-        silent: true,
-        skipIfUnchanged: false,
-      }
+      var saveOptions =
+        options && options.saveOptions
+          ? options.saveOptions
+          : {
+              silent: true,
+              skipIfUnchanged: false,
+            }
 
       if (!component || isLeavingPage) {
         return

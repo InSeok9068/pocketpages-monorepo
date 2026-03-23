@@ -1425,6 +1425,33 @@
   }
 
   /**
+   * 책 레코드의 핵심 메타데이터 완전성을 확인합니다.
+   * @param {Record|null} bookRecord 확인할 책 레코드
+   * @returns {boolean} 필수 메타데이터가 모두 있으면 true
+   */
+  function hasCompleteStoredBookMetadata(bookRecord) {
+    const requiredFields = ['title', 'author', 'publisher', 'publication_date', 'publication_year', 'isbn', 'isbn13', 'book_image_url', 'description']
+    let fieldIndex = 0
+    const estimatedPageCount = bookRecord ? Number(bookRecord.get('estimated_page_count') || 0) : 0
+
+    if (!bookRecord) {
+      return false
+    }
+
+    for (fieldIndex = 0; fieldIndex < requiredFields.length; fieldIndex += 1) {
+      if (!String(bookRecord.get(requiredFields[fieldIndex]) || '').trim()) {
+        return false
+      }
+    }
+
+    if (estimatedPageCount <= 0) {
+      return false
+    }
+
+    return true
+  }
+
+  /**
    * 도서 메타데이터를 기존 책에 반영하거나 새 책으로 저장합니다.
    * @param {object} bookInput 저장할 도서 값
    * @param {string} [bookInput.existingBookId] 우선 재사용할 기존 책 ID
@@ -1690,6 +1717,50 @@
       fileSize: fileSize,
       fileHash: fileHash,
     })
+    const existingBookFile = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
+      fileHash: fileHash,
+    })
+    const existingBookId = existingBookFile && existingBookFile.get('book_id') ? String(existingBookFile.get('book_id')) : ''
+    const existingBookRecord = existingBookId
+      ? findFirstRecordOrNull('books', 'id = {:bookId}', {
+          bookId: existingBookId,
+        })
+      : null
+
+    dbg('xapi/epub/upload:existing-book-file', {
+      fileHash: fileHash,
+      existingId: existingBookFile ? existingBookFile.get('id') : '',
+      existingBookId: existingBookId,
+      hasCompleteBookMetadata: hasCompleteStoredBookMetadata(existingBookRecord),
+    })
+
+    if (existingBookFile && existingBookRecord && hasCompleteStoredBookMetadata(existingBookRecord)) {
+      const shelfRecord = saveBookShelfRecord({
+        userId: request.auth.get('id'),
+        bookId: existingBookId,
+        bookFileId: existingBookFile.get('id'),
+      })
+
+      info('xapi/epub/upload:reuse-existing-book', {
+        userId: request.auth.get('id'),
+        bookId: existingBookId,
+        bookFileId: existingBookFile.get('id'),
+        shelfId: shelfRecord.get('id'),
+        fileHash: fileHash,
+      })
+
+      dbg('xapi/epub/upload:redirect', {
+        status: 303,
+        redirectTo: '/',
+        flash: '기존 책과 파일을 찾아 서재에 연결했습니다.',
+      })
+      redirect('/', {
+        status: 303,
+        message: '기존 책과 파일을 찾아 서재에 연결했습니다.',
+      })
+      return
+    }
+
     const archiveEntries = fflate.unzipSync(epubByteArray)
     const entryNames = Object.keys(archiveEntries).sort()
     const mimetypeText = readArchiveText(archiveEntries, 'mimetype')
@@ -1778,16 +1849,6 @@
       detailResult = loadBookDetailByIsbn13(String(selectedDoc.isbn13))
     }
 
-    const existingBookFile = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
-      fileHash: fileHash,
-    })
-    dbg('xapi/epub/upload:existing-book-file', {
-      fileHash: fileHash,
-      existingId: existingBookFile ? existingBookFile.get('id') : '',
-      existingBookId: existingBookFile ? existingBookFile.get('book_id') : '',
-    })
-
-    const existingBookId = existingBookFile && existingBookFile.get('book_id') ? String(existingBookFile.get('book_id')) : ''
     const detailBook = detailResult && detailResult.book ? detailResult.book : null
     const matchedBook = detailBook || selectedDoc || null
     const resolvedIsbn13 = detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
