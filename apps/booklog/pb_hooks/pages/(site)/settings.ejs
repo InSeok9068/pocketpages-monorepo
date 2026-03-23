@@ -1,0 +1,194 @@
+<script server>
+  meta('title', '설정 관리')
+  meta('description', '알림과 리더 기본 동작을 관리하는 페이지')
+
+  if (!request.auth) {
+    dbg('page/settings:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const flashMessage = params.__flash ? String(params.__flash) : ''
+  const userId = String(request.auth.get('id') || '')
+  let settingsRecord = null
+
+  try {
+    settingsRecord = $app.findFirstRecordByFilter('user_settings', 'user_id = {:userId}', {
+      userId: userId,
+    })
+  } catch (exception) {
+    settingsRecord = null
+  }
+
+  const settings = {
+    pushEnabled: settingsRecord ? !!settingsRecord.get('push_enabled') : false,
+    readingReminderEnabled: settingsRecord ? !!settingsRecord.get('reading_reminder_enabled') : false,
+    highlightReminderEnabled: settingsRecord ? !!settingsRecord.get('highlight_reminder_enabled') : false,
+    highlightPushCycle: settingsRecord ? String(settingsRecord.get('highlight_push_cycle') || 'off') : 'off',
+  }
+</script>
+
+<section class="space-y-3">
+  <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">Settings</p>
+  <h1 class="text-3xl font-semibold tracking-tight text-stone-950">설정 관리</h1>
+</section>
+
+<div class="mt-5"><%- include('flash-alert.ejs') %></div>
+
+<section class="mt-6 rounded-[2rem] border border-stone-200/80 bg-white/78 p-5 shadow-[0_20px_44px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-6">
+  <form
+    action="/xapi/settings/save"
+    method="post"
+    x-data="{
+      pushEnabled: <%= settings.pushEnabled ? 'true' : 'false' %>,
+      initialPushEnabled: <%= settings.pushEnabled ? 'true' : 'false' %>,
+      pushNotice: '',
+      submitting: false,
+      submitSettingsForm(event) {
+        const form = event.target
+        const component = this
+
+        if (component.submitting) {
+          return
+        }
+
+        component.pushNotice = ''
+        component.submitting = true
+
+        function finishSubmit() {
+          HTMLFormElement.prototype.submit.call(form)
+        }
+
+        function stopSubmit(message) {
+          component.pushNotice = message
+          component.submitting = false
+        }
+
+        if (component.pushEnabled === component.initialPushEnabled) {
+          finishSubmit()
+          return
+        }
+
+        if (typeof window.OneSignalDeferred === 'undefined') {
+          stopSubmit('푸시 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
+          return
+        }
+
+        window.OneSignalDeferred.push(function (OneSignal) {
+          if (!component.pushEnabled) {
+            Promise.resolve(OneSignal.User.PushSubscription.optOut())
+              .catch(function (error) {
+                console.warn('OneSignal optOut failed', error)
+              })
+              .then(function () {
+                finishSubmit()
+              })
+            return
+          }
+
+          Promise.resolve(OneSignal.User.PushSubscription.optIn())
+            .then(function () {
+              if (OneSignal.User.PushSubscription.optedIn) {
+                finishSubmit()
+                return
+              }
+
+              stopSubmit('브라우저 알림 권한이 허용되지 않아 푸시 사용을 켤 수 없습니다.')
+            })
+            .catch(function (error) {
+              console.warn('OneSignal optIn failed', error)
+              stopSubmit('브라우저 알림 권한 요청에 실패했습니다. 다시 시도해주세요.')
+            })
+        })
+      },
+    }"
+    x-on:submit.prevent="submitSettingsForm"
+    class="space-y-8">
+    <div class="space-y-4">
+      <div>
+        <h2 class="text-xl font-semibold tracking-tight text-stone-950">푸시 알림 설정</h2>
+        <p class="mt-1 text-sm leading-6 text-stone-600">북로그에서 실제로 사용할 푸시 설정만 간단하게 관리합니다.</p>
+      </div>
+
+      <label class="flex items-start gap-3 rounded-[1.4rem] bg-[#f7f2e6] px-4 py-4">
+        <input
+          type="checkbox"
+          name="pushEnabled"
+          value="true"
+          x-model="pushEnabled"
+          class="mt-1 h-4 w-4 rounded border-stone-300 text-stone-900" />
+        <span class="block">
+          <span class="block text-sm font-semibold text-stone-900">푸시 알림 사용</span>
+          <span class="mt-1 block text-sm leading-6 text-stone-600">브라우저 구독이 허용된 경우 북로그 알림을 받을 수 있습니다.</span>
+        </span>
+      </label>
+
+      <p
+        x-show="pushNotice"
+        x-text="pushNotice"
+        class="rounded-[1.4rem] bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800"></p>
+
+      <div class="grid gap-4 md:grid-cols-2">
+        <label class="flex items-start gap-3 rounded-[1.4rem] bg-[#f7f2e6] px-4 py-4">
+          <input
+            type="checkbox"
+            name="readingReminderEnabled"
+            value="true"
+            <%= settings.readingReminderEnabled ? 'checked' : '' %>
+            class="mt-1 h-4 w-4 rounded border-stone-300 text-stone-900" />
+          <span class="block">
+            <span class="block text-sm font-semibold text-stone-900">읽기 리마인더 사용</span>
+            <span class="mt-1 block text-sm leading-6 text-stone-600">읽는 중인 책을 다시 열도록 돕는 알림을 허용합니다.</span>
+          </span>
+        </label>
+
+        <label class="flex items-start gap-3 rounded-[1.4rem] bg-[#f7f2e6] px-4 py-4">
+          <input
+            type="checkbox"
+            name="highlightReminderEnabled"
+            value="true"
+            <%= settings.highlightReminderEnabled ? 'checked' : '' %>
+            class="mt-1 h-4 w-4 rounded border-stone-300 text-stone-900" />
+          <span class="block">
+            <span class="block text-sm font-semibold text-stone-900">하이라이트 리마인더 사용</span>
+            <span class="mt-1 block text-sm leading-6 text-stone-600">저장했던 문장을 다시 보여주는 알림을 허용합니다.</span>
+          </span>
+        </label>
+      </div>
+
+      <label class="block rounded-[1.4rem] bg-[#f7f2e6] px-4 py-4">
+        <span class="mb-2 block text-sm font-semibold text-stone-900">하이라이트 알림 주기</span>
+        <span class="mb-3 block text-sm leading-6 text-stone-600">저장한 문장을 다시 보여줄 주기를 선택합니다.</span>
+        <select
+          name="highlightPushCycle"
+          class="box-border block w-full rounded-[1rem] border-0 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.12)] outline-none">
+          <option value="off" <%= settings.highlightPushCycle === 'off' ? 'selected' : '' %>>끄기</option>
+          <option value="daily" <%= settings.highlightPushCycle === 'daily' ? 'selected' : '' %>>매일</option>
+          <option value="weekly" <%= settings.highlightPushCycle === 'weekly' ? 'selected' : '' %>>매주</option>
+          <option value="monthly" <%= settings.highlightPushCycle === 'monthly' ? 'selected' : '' %>>매월</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3 pt-1">
+      <button
+        type="submit"
+        x-bind:disabled="submitting"
+        class="inline-flex items-center rounded-full border-none bg-stone-900 px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700">
+        <span x-text="submitting ? '저장 중...' : '설정 저장'"></span>
+      </button>
+      <a
+        href="/"
+        class="inline-flex items-center rounded-full bg-white px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_24px_rgba(72,53,30,0.08)] transition hover:bg-stone-50">
+        홈으로 돌아가기
+      </a>
+    </div>
+  </form>
+</section>

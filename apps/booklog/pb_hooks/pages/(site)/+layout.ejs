@@ -88,10 +88,11 @@
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || []
       OneSignalDeferred.push(function (OneSignal) {
+        const oneSignalAppId = '<%= String(env("ONESIGNAL_APPID") || "") %>'
         const oneSignalExternalId = '<%= request.auth ? String(request.auth.get("id") || "") : "" %>'
 
         OneSignal.init({
-          appId: '85e79ba8-ee4d-4521-a228-bac74d3c8fb8',
+          appId: oneSignalAppId,
         }).then(function () {
           if (oneSignalExternalId) {
             return OneSignal.login(oneSignalExternalId)
@@ -138,6 +139,11 @@
             rel="noreferrer noopener"
             class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline outline-none ring-0 transition">
             EPUB 도서관
+          </a>
+          <a
+            href="/settings"
+            class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline outline-none ring-0 transition">
+            설정관리
           </a>
           <form
             method="post"

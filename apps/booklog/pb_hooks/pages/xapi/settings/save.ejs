@@ -1,0 +1,109 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/settings/save:redirect', {
+      status: 303,
+      redirectTo: '/settings',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/settings', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/settings/save:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const highlightPushCycle = String(form.highlightPushCycle || '').trim()
+  const pushEnabled = String(form.pushEnabled || '').trim() === 'true'
+  const readingReminderEnabled = String(form.readingReminderEnabled || '').trim() === 'true'
+  const highlightReminderEnabled = String(form.highlightReminderEnabled || '').trim() === 'true'
+  let errorMessage = ''
+
+  dbg('xapi/settings/save:start', {
+    userId: userId,
+    highlightPushCycle: highlightPushCycle,
+    pushEnabled: pushEnabled,
+    readingReminderEnabled: readingReminderEnabled,
+    highlightReminderEnabled: highlightReminderEnabled,
+  })
+
+  try {
+    if (!userId) {
+      throw new Error('로그인이 필요합니다.')
+    }
+
+    if (
+      highlightPushCycle !== 'off' &&
+      highlightPushCycle !== 'daily' &&
+      highlightPushCycle !== 'weekly' &&
+      highlightPushCycle !== 'monthly'
+    ) {
+      throw new Error('하이라이트 알림 주기가 올바르지 않습니다.')
+    }
+
+    let settingsRecord = null
+
+    try {
+      settingsRecord = $app.findFirstRecordByFilter('user_settings', 'user_id = {:userId}', {
+        userId: userId,
+      })
+    } catch (exception) {
+      settingsRecord = null
+    }
+
+    if (!settingsRecord) {
+      const collection = $app.findCollectionByNameOrId('user_settings')
+
+      settingsRecord = new Record(collection)
+      settingsRecord.set('user_id', userId)
+    }
+
+    settingsRecord.set('push_enabled', pushEnabled)
+    settingsRecord.set('reading_reminder_enabled', readingReminderEnabled)
+    settingsRecord.set('highlight_reminder_enabled', highlightReminderEnabled)
+    settingsRecord.set('highlight_push_cycle', highlightPushCycle)
+
+    $app.save(settingsRecord)
+
+    dbg('xapi/settings/save:redirect', {
+      status: 303,
+      redirectTo: '/settings',
+      flash: '설정을 저장했습니다.',
+    })
+    redirect('/settings', {
+      status: 303,
+      message: '설정을 저장했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/settings/save:failed', {
+      userId: userId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/settings/save:redirect', {
+    status: 303,
+    redirectTo: '/settings',
+    error: errorMessage || '설정 저장에 실패했습니다.',
+  })
+  redirect('/settings', {
+    status: 303,
+    message: errorMessage || '설정 저장에 실패했습니다.',
+  })
+</script>
