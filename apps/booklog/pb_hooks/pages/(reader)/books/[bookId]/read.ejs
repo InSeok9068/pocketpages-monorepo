@@ -157,6 +157,12 @@
     searching: false,
     searchMessage: '',
     currentProgressPercent: '',
+    tocOpen: false,
+    tocItems: [],
+    tocReady: false,
+    tocMessage: '목차를 불러오는 중입니다.',
+    activeTocKey: '',
+    activeTocHref: '',
     progressJumpValue: '',
     progressJumpEditing: false,
     jumpingProgress: false,
@@ -180,6 +186,13 @@
     },
     closeSearch: function () {
       this.searchOpen = false
+    },
+    openToc: function () {
+      this.tocOpen = true
+      this.controlsVisible = true
+    },
+    closeToc: function () {
+      this.tocOpen = false
     },
     openHighlight: function () {
       this.highlightOpen = true
@@ -236,6 +249,12 @@
     },
     performSearch: function () {
       window.booklogReaderLogic.performSearch(this)
+    },
+    goToTocItem: function (item) {
+      window.booklogReaderLogic.goToTocItem(this, item)
+    },
+    isActiveTocItem: function (item) {
+      return window.booklogReaderLogic.isActiveTocItem(this, item)
     },
     goToProgress: function () {
       window.booklogReaderLogic.goToProgress(this)
@@ -316,6 +335,12 @@
         </button>
       </div>
     </div>
+    <button
+      type="button"
+      x-on:click="openToc()"
+      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
+      목차
+    </button>
     <button
       type="button"
       x-on:click="saveCurrentPosition()"
@@ -429,6 +454,67 @@
               </button>
             </template>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    x-show="tocOpen"
+    x-cloak
+    class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.2)] backdrop-blur-[2px]">
+    <div class="mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
+      <div class="w-full rounded-[1.75rem] bg-white/92 p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] backdrop-blur-sm">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-semibold text-stone-950">목차</h2>
+            <p
+              class="mt-1 text-sm text-stone-500"
+              x-text="currentChapterLabel ? '현재 위치: ' + currentChapterLabel : '현재 위치를 확인하는 중입니다.'"></p>
+          </div>
+          <button
+            type="button"
+            x-on:click="closeToc()"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-stone-100 text-stone-700 outline-none ring-0">
+            ×
+          </button>
+        </div>
+
+        <div class="max-h-[60vh] overflow-y-auto">
+          <template x-if="!tocReady || !tocItems.length">
+            <p
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]"
+              x-text="tocReady ? tocMessage : '목차를 불러오는 중입니다.'"></p>
+          </template>
+
+          <template x-if="tocReady && tocItems.length">
+            <div class="space-y-1">
+              <template x-for="item in tocItems" :key="item.id || item.href || item.label">
+                <div class="space-y-1">
+                  <button
+                    type="button"
+                    x-on:click="goToTocItem(item)"
+                    x-bind:class="isActiveTocItem(item) ? 'bg-stone-950 text-white' : 'bg-[#fbf7ef] text-stone-700 hover:bg-[#f7f0e3]'"
+                    class="block w-full rounded-[1.1rem] border-none px-4 py-3 text-left text-sm leading-6 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] outline-none ring-0 transition">
+                    <span x-text="item.label || '제목 없음'"></span>
+                  </button>
+                  <template x-if="item.subitems && item.subitems.length">
+                    <div class="ml-4 border-l border-[rgba(118,87,52,0.12)] pl-3">
+                      <template x-for="child in item.subitems" :key="child.id || child.href || child.label">
+                        <button
+                          type="button"
+                          x-on:click="goToTocItem(child)"
+                          x-bind:class="isActiveTocItem(child) ? 'bg-stone-950 text-white' : 'bg-[#fbf7ef] text-stone-700 hover:bg-[#f7f0e3]'"
+                          class="block w-full rounded-[1.1rem] border-none px-4 py-3 text-left text-sm leading-6 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] outline-none ring-0 transition">
+                          <span x-text="child.label || '제목 없음'"></span>
+                        </button>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -586,6 +672,27 @@
       return href.split('#')[0]
     }
 
+    function parseHrefParts(value) {
+      var href = String(value || '').trim()
+      var hashIndex = -1
+
+      if (!href) {
+        return {
+          href: '',
+          bind: '',
+          fragment: '',
+        }
+      }
+
+      hashIndex = href.indexOf('#')
+
+      return {
+        href: href,
+        bind: hashIndex >= 0 ? href.slice(0, hashIndex) : href,
+        fragment: hashIndex >= 0 ? href.slice(hashIndex + 1) : '',
+      }
+    }
+
     function registerTocItems(items) {
       ;(items || []).forEach(function (item) {
         var href = normalizeHref(item && item.href ? item.href : '')
@@ -627,6 +734,207 @@
       }
 
       return ''
+    }
+
+    function buildTocTree(items, depth) {
+      var currentDepth = typeof depth === 'number' ? depth : 1
+
+      return (items || []).map(function (item) {
+        var hrefParts = parseHrefParts(item && item.href ? item.href : '')
+        var itemId = item && item.id ? String(item.id) : ''
+        var itemHref = hrefParts.href
+
+        return {
+          id: itemId,
+          key: itemId || itemHref || normalizeText(item && item.label ? item.label : ''),
+          href: itemHref,
+          bind: hrefParts.bind,
+          fragment: hrefParts.fragment,
+          cfi: '',
+          label: normalizeText(item && item.label ? item.label : '') || '제목 없음',
+          subitems: currentDepth < 2 ? buildTocTree(item && item.subitems ? item.subitems : [], currentDepth + 1) : [],
+        }
+      })
+    }
+
+    function flattenTocItems(items, collector) {
+      ;(items || []).forEach(function (item) {
+        collector.push(item)
+
+        if (item && item.subitems && item.subitems.length) {
+          flattenTocItems(item.subitems, collector)
+        }
+      })
+    }
+
+    function compareCfi(left, right) {
+      if (!left || !right || !window.ePub || !window.ePub.CFI) {
+        return 0
+      }
+
+      try {
+        return new window.ePub.CFI().compare(String(left), String(right))
+      } catch (exception) {
+        return 0
+      }
+    }
+
+    function findActiveTocItem(location, items) {
+      var start = location && location.start ? location.start : null
+      var currentHref = start && start.href ? String(start.href) : ''
+      var currentUrl = start && start.url ? String(start.url) : ''
+      var currentBind = normalizeHref(currentHref || currentUrl)
+      var currentCfi = start && start.cfi ? String(start.cfi) : ''
+      var flatItems = []
+      var candidates = []
+      var bestItem = null
+
+      flattenTocItems(items, flatItems)
+      candidates = flatItems.filter(function (item) {
+        return item && item.bind && item.bind === currentBind
+      })
+
+      candidates.forEach(function (item) {
+        if (!item || !item.cfi || !currentCfi) {
+          return
+        }
+
+        if (compareCfi(item.cfi, currentCfi) <= 0 && (!bestItem || compareCfi(item.cfi, bestItem.cfi) >= 0)) {
+          bestItem = item
+        }
+      })
+
+      if (bestItem) {
+        return bestItem
+      }
+
+      return candidates.length ? candidates[0] : null
+    }
+
+    function syncActiveTocState(component, location) {
+      var activeItem = findActiveTocItem(location, component && component.tocItems ? component.tocItems : [])
+      var start = location && location.start ? location.start : null
+      var href = start && start.href ? String(start.href) : ''
+      var url = start && start.url ? String(start.url) : ''
+
+      component.activeTocKey = activeItem && activeItem.key ? String(activeItem.key) : ''
+      component.activeTocHref = normalizeHref(href || url)
+
+      if (activeItem && activeItem.label) {
+        component.currentChapterLabel = String(activeItem.label)
+        return
+      }
+
+      component.currentChapterLabel = getChapterLabelForHref(href)
+    }
+
+    /**
+     * 목차 항목의 실제 문서 위치 CFI를 미리 계산합니다.
+     * @param {any} component Alpine 컴포넌트 상태
+     * @returns {Promise<void>} 계산 완료 promise
+     */
+    function resolveTocItemCfis(component) {
+      var flatItems = []
+      var groupedItems = {}
+      var bindKeys = []
+
+      if (!bookInstance || typeof bookInstance.section !== 'function') {
+        return Promise.resolve()
+      }
+
+      flattenTocItems(component && component.tocItems ? component.tocItems : [], flatItems)
+
+      flatItems.forEach(function (item) {
+        var bind = item && item.bind ? String(item.bind) : ''
+
+        if (!bind) {
+          return
+        }
+
+        if (!groupedItems[bind]) {
+          groupedItems[bind] = []
+          bindKeys.push(bind)
+        }
+
+        groupedItems[bind].push(item)
+      })
+
+      return Promise.all(
+        bindKeys.map(function (bind) {
+          var section = null
+          var sectionItems = groupedItems[bind] || []
+
+          try {
+            section = bookInstance.section(bind)
+          } catch (exception) {
+            section = null
+          }
+
+          if (!section || typeof section.load !== 'function') {
+            return Promise.resolve()
+          }
+
+          return Promise.resolve(section.load(bookInstance.load.bind(bookInstance)))
+            .then(function () {
+              var doc = section.document
+              var fallbackElement = doc && doc.body ? doc.body : doc && doc.documentElement ? doc.documentElement : null
+
+              sectionItems.forEach(function (item) {
+                var targetElement = fallbackElement
+                var fragment = item && item.fragment ? String(item.fragment) : ''
+
+                if (doc && fragment) {
+                  targetElement =
+                    doc.getElementById(fragment) ||
+                    doc.getElementById(decodeURIComponent(fragment)) ||
+                    doc.querySelector('[name="' + fragment.replace(/"/g, '\\"') + '"]') ||
+                    fallbackElement
+                }
+
+                if (targetElement && typeof section.cfiFromElement === 'function') {
+                  try {
+                    item.cfi = String(section.cfiFromElement(targetElement) || '')
+                  } catch (exception) {
+                    item.cfi = ''
+                  }
+                }
+              })
+            })
+            .catch(function (exception) {
+              console.warn('page/books/[bookId]/read:toc-cfi-skip', {
+                href: bind,
+                message: String(exception && exception.message ? exception.message : exception),
+              })
+            })
+            .finally(function () {
+              try {
+                section.unload()
+              } catch (exception) {}
+            })
+        })
+      ).then(function () {
+        if (currentLocation) {
+          syncActiveTocState(component, currentLocation)
+        }
+      })
+    }
+
+    /**
+     * 컴포넌트에 목차 상태를 반영합니다.
+     * @param {any} component Alpine 컴포넌트 상태
+     * @param {Array<any>} items epub.js 목차 목록
+     * @returns {void}
+     */
+    function syncTocState(component, items) {
+      var tocItems = buildTocTree(items, 1)
+
+      component.tocItems = tocItems
+      component.tocReady = true
+      component.tocMessage = tocItems.length ? '' : '목차 정보가 없습니다.'
+
+      if (tocItems.length) {
+        resolveTocItemCfis(component)
+      }
     }
 
     function getPageNumberFromLocation(location) {
@@ -697,12 +1005,10 @@
     }
 
     function updateCurrentLocation(component, location) {
-      var start = location && location.start ? location.start : null
-      var href = start && start.href ? String(start.href) : ''
       var target = autoPagingTarget || resolveAutoPagingTarget()
 
       currentLocation = location || null
-      component.currentChapterLabel = getChapterLabelForHref(href)
+      syncActiveTocState(component, currentLocation)
 
       if (target) {
         autoPagingTarget = target
@@ -1582,6 +1888,7 @@
 
         try {
           registerTocItems(bookInstance.navigation && bookInstance.navigation.toc ? bookInstance.navigation.toc : [])
+          syncTocState(component, bookInstance.navigation && bookInstance.navigation.toc ? bookInstance.navigation.toc : [])
         } catch (exception) {}
 
         return locationsPromise.then(function () {
@@ -1795,6 +2102,40 @@
         })
     }
 
+    function goToTocItem(component, item) {
+      var target = item && item.href ? String(item.href) : ''
+
+      if (!target || !renditionInstance) {
+        return
+      }
+
+      component.tocOpen = false
+      component.controlsVisible = false
+      component.loading = true
+
+      renditionInstance
+        .display(target)
+        .then(function (location) {
+          updateCurrentLocation(component, location || renditionInstance.currentLocation())
+          component.loading = false
+        })
+        .catch(function (exception) {
+          component.loading = false
+          component.errorMessage = String(exception && exception.message ? exception.message : exception)
+          console.error('page/books/[bookId]/read:goto-toc-item:failed', {
+            message: component.errorMessage,
+            href: target,
+          })
+        })
+    }
+
+    function isActiveTocItem(component, item) {
+      var activeKey = component && component.activeTocKey ? String(component.activeTocKey) : ''
+      var itemKey = item && item.key ? String(item.key) : ''
+
+      return !!activeKey && !!itemKey && activeKey === itemKey
+    }
+
     function saveHighlight(component) {
       var location = currentLocation && currentLocation.start ? currentLocation.start : null
       var locator = location && location.cfi ? String(location.cfi) : ''
@@ -1966,6 +2307,8 @@
       init: init,
       performSearch: performSearch,
       goToSearchResult: goToSearchResult,
+      goToTocItem: goToTocItem,
+      isActiveTocItem: isActiveTocItem,
       saveHighlight: saveHighlight,
       saveCurrentPosition: saveCurrentPosition,
       loadSavedPosition: loadSavedPosition,
