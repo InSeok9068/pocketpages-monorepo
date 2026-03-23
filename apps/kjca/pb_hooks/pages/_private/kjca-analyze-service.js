@@ -1,5 +1,5 @@
 const { globalApi } = require('pocketpages')
-const { warn, info } = globalApi
+const { env, warn, info } = globalApi
 const {
   CACHE_COLLECTION_NAME,
   GEMINI_MODEL_NAME,
@@ -297,7 +297,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
   const safeSession = session || createKjcaSession(request)
   const targets = Array.isArray(payload && payload.targets) ? payload.targets : []
   const reportDate = normalizeReportDate(payload && payload.reportDate)
-  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_AI_KEY
+  const geminiApiKey = String(env('GEMINI_API_KEY') || env('GEMINI_AI_KEY') || '').trim()
 
   if (!targets.length) throw new Error('targets가 필요합니다.')
   if (targets.length > 50) throw new Error('targets는 최대 50개까지 지원합니다.')
