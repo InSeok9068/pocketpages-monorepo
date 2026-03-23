@@ -136,7 +136,7 @@
 
 <section class="space-y-5">
   <h1 class="text-4xl font-semibold tracking-tight text-stone-950">Booklog</h1>
-  <p class="max-w-[17rem] text-[15px] leading-6 text-stone-600 sm:max-w-none sm:text-base sm:leading-7">책을 읽고 남긴 문장과 감상이 한 권씩 쌓여, 나만의 작은 도서관이 되어가는 곳.</p>
+  <p class="max-w-[18.5rem] text-sm leading-6 text-stone-600 sm:max-w-none sm:text-[15px] sm:leading-7">책을 읽고 남긴 문장과 감상이 한 권씩 쌓여,<br />나만의 작은 도서관이 되어가는 곳.</p>
 </section>
 
 <% if (flashMessage) { %>
@@ -225,7 +225,7 @@
       }, 2600)
     },
   }"
-  class="mt-9">
+  class="mt-6">
   <div class="space-y-6">
     <div class="flex items-center justify-between gap-4">
       <div class="space-y-1">
@@ -246,15 +246,15 @@
       <div class="overflow-x-auto overflow-y-hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div class="flex min-w-max gap-3">
           <% for (let index = 0; index < shelfBooks.length; index += 1) { const book = shelfBooks[index] %>
-          <article class="w-[8.35rem] flex-none sm:w-[8.9rem]">
+          <article class="w-[7.35rem] flex-none sm:w-[7.8rem]">
             <% if (book.bookId) { %>
             <a
               href="/books/<%= book.bookId %>"
               class="block no-underline transition hover:translate-y-[-1px]">
               <div
-                class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
+                class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[10.4rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[11rem]">
                 <% if (book.statusBadgeLabel) { %>
-                <span class="<%= book.statusBadgeClass %> absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
+                <span class="<%= book.statusBadgeClass %> absolute right-2 top-2 z-10 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
                   <%= book.statusBadgeLabel %>
                 </span>
                 <% } %>
@@ -265,7 +265,7 @@
                   class="h-full w-full object-cover" />
                 <% } else { %>
                 <div class="absolute inset-0 box-border px-3 py-4 text-white">
-                  <div class="absolute left-1/2 top-[34%] w-[6.4rem] -translate-x-1/2 -translate-y-1/2 text-center">
+                  <div class="absolute left-1/2 top-[34%] w-[5.55rem] -translate-x-1/2 -translate-y-1/2 text-center">
                     <h3 class="m-0 break-keep text-base font-semibold leading-5 tracking-[-0.03em]"><%= book.title %></h3>
                   </div>
                   <p class="text-white/78 absolute bottom-4 left-3 right-3 m-0 break-keep text-right text-[11px] leading-4"><%= book.author %></p>
@@ -275,9 +275,9 @@
             </a>
             <% } else { %>
             <div
-              class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[11.8rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[12.5rem]">
+              class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[10.4rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[11rem]">
               <% if (book.statusBadgeLabel) { %>
-              <span class="<%= book.statusBadgeClass %> absolute right-2.5 top-2.5 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
+              <span class="<%= book.statusBadgeClass %> absolute right-2 top-2 z-10 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
                 <%= book.statusBadgeLabel %>
               </span>
               <% } %>
@@ -288,7 +288,7 @@
                 class="h-full w-full object-cover" />
               <% } else { %>
               <div class="absolute inset-0 box-border px-3 py-4 text-white">
-                <div class="absolute left-1/2 top-[34%] w-[6.4rem] -translate-x-1/2 -translate-y-1/2 text-center">
+                <div class="absolute left-1/2 top-[34%] w-[5.55rem] -translate-x-1/2 -translate-y-1/2 text-center">
                   <h3 class="m-0 break-keep text-base font-semibold leading-5 tracking-[-0.03em]"><%= book.title %></h3>
                 </div>
                 <p class="text-white/78 absolute bottom-4 left-3 right-3 m-0 break-keep text-right text-[11px] leading-4"><%= book.author %></p>
@@ -302,33 +302,33 @@
       </div>
     </section>
 
-    <section class="bg-white/78 rounded-[2rem] border border-stone-200/80 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
-      <div class="space-y-2">
+    <section class="bg-white/78 rounded-[2rem] border border-stone-200/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-[1.2rem]">
+      <div class="space-y-1.5">
         <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">Highlights</p>
         <h3 class="text-xl font-semibold tracking-tight text-stone-950">인상 깊은 문구</h3>
       </div>
 
       <% if (randomHighlights.length > 0) { %>
-      <div class="mt-4 space-y-3">
+      <div class="mt-4 space-y-2.5">
         <% for (let index = 0; index < randomHighlights.length; index += 1) { const highlight = randomHighlights[index] %>
         <a
           href="/books/<%= highlight.bookId %>"
-          class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
-          <p class="text-base font-semibold leading-7 tracking-[-0.02em] text-stone-900">"<%= highlight.quoteText %>"</p>
-          <p class="mt-2 text-[12px] leading-5 text-stone-500">
+          class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-3.5 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
+          <p class="text-[15px] font-semibold leading-[1.65] tracking-[-0.02em] text-stone-900 sm:text-base">"<%= highlight.quoteText %>"</p>
+          <p class="mt-2.5 text-[12px] leading-5 text-stone-500">
             <span><%= highlight.bookTitle %></span>
             <% if (highlight.pageNumber) { %>
             <span> · <%= highlight.pageNumber %>p</span>
             <% } %>
           </p>
           <% if (highlight.highlightedAt) { %>
-          <p class="mt-1 text-[12px] font-medium text-stone-400"><%= highlight.highlightedAt %></p>
+          <p class="mt-1.5 text-[12px] font-medium text-stone-400"><%= highlight.highlightedAt %></p>
           <% } %>
         </a>
         <% } %>
       </div>
       <% } else { %>
-      <div class="mt-4 rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">저장된 인상 깊은 문구가 아직 없습니다.</div>
+      <div class="mt-4 rounded-[1.4rem] bg-[#fbf7ef] px-3.5 py-3.5 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">저장된 인상 깊은 문구가 아직 없습니다.</div>
       <% } %>
 
       <div class="mt-4 grid grid-cols-2 gap-2">
