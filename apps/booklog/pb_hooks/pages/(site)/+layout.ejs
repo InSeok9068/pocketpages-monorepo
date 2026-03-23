@@ -86,10 +86,126 @@
       }
     </script>
     <script>
+      window.__booklogPushBridge =
+        window.__booklogPushBridge ||
+        (function () {
+          const listeners = []
+          const state = {
+            ready: false,
+            supported: typeof window !== 'undefined' && 'Notification' in window,
+            permission: typeof Notification !== 'undefined' ? Notification.permission : 'default',
+            optedIn: false,
+            externalId: '',
+          }
+
+          function cloneState() {
+            return {
+              ready: state.ready,
+              supported: state.supported,
+              permission: state.permission,
+              optedIn: state.optedIn,
+              externalId: state.externalId,
+            }
+          }
+
+          function notify() {
+            const snapshot = cloneState()
+
+            for (let index = 0; index < listeners.length; index += 1) {
+              listeners[index](snapshot)
+            }
+
+            window.dispatchEvent(
+              new CustomEvent('booklog:push-state-change', {
+                detail: snapshot,
+              })
+            )
+          }
+
+          return {
+            read() {
+              return cloneState()
+            },
+            subscribe(listener) {
+              if (typeof listener !== 'function') {
+                return function () {}
+              }
+
+              listeners.push(listener)
+              listener(cloneState())
+
+              return function unsubscribe() {
+                const listenerIndex = listeners.indexOf(listener)
+
+                if (listenerIndex >= 0) {
+                  listeners.splice(listenerIndex, 1)
+                }
+              }
+            },
+            update(nextState) {
+              const source = nextState || {}
+
+              if (typeof source.ready === 'boolean') {
+                state.ready = source.ready
+              }
+
+              if (typeof source.supported === 'boolean') {
+                state.supported = source.supported
+              }
+
+              if (typeof source.permission === 'string' && source.permission) {
+                state.permission = source.permission
+              }
+
+              if (typeof source.optedIn === 'boolean') {
+                state.optedIn = source.optedIn
+              }
+
+              if (typeof source.externalId === 'string') {
+                state.externalId = source.externalId
+              }
+
+              notify()
+            },
+          }
+        })()
+    </script>
+    <script>
       window.OneSignalDeferred = window.OneSignalDeferred || []
       OneSignalDeferred.push(function (OneSignal) {
         const oneSignalAppId = '<%= String(env('ONESIGNAL_APPID') || '') %>'
         const oneSignalExternalId = '<%= request.auth ? String(request.auth.get('id') || '') : '' %>'
+        const pushBridge = window.__booklogPushBridge
+
+        function readPermission() {
+          if (OneSignal.Notifications && typeof OneSignal.Notifications.permission === 'string') {
+            return OneSignal.Notifications.permission
+          }
+
+          if (typeof Notification !== 'undefined' && typeof Notification.permission === 'string') {
+            return Notification.permission
+          }
+
+          return 'default'
+        }
+
+        function publishPushState() {
+          pushBridge.update({
+            ready: true,
+            supported: typeof window !== 'undefined' && 'Notification' in window,
+            permission: readPermission(),
+            optedIn: !!(OneSignal.User && OneSignal.User.PushSubscription && OneSignal.User.PushSubscription.optedIn),
+            externalId: oneSignalExternalId,
+          })
+        }
+
+        function handlePushSubscriptionChange() {
+          publishPushState()
+        }
+
+        function handlePermissionChange() {
+          publishPushState()
+        }
 
         OneSignal.init({
           appId: oneSignalAppId,
@@ -101,7 +217,25 @@
 
             return OneSignal.logout()
           })
+          .then(function () {
+            if (OneSignal.User && OneSignal.User.PushSubscription) {
+              OneSignal.User.PushSubscription.addEventListener('change', handlePushSubscriptionChange)
+            }
+
+            if (OneSignal.Notifications) {
+              OneSignal.Notifications.addEventListener('permissionChange', handlePermissionChange)
+            }
+
+            publishPushState()
+          })
           .catch(function (initError) {
+            pushBridge.update({
+              ready: true,
+              supported: typeof window !== 'undefined' && 'Notification' in window,
+              permission: typeof Notification !== 'undefined' ? Notification.permission : 'default',
+              optedIn: false,
+              externalId: oneSignalExternalId,
+            })
             console.warn('OneSignal init failed', initError)
           })
       })
