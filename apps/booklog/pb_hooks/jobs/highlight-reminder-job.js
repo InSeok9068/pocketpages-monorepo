@@ -240,9 +240,7 @@ function sendReminderForUser(settingsRecord) {
     }
   }
 
-  const contents = quoteText
-    ? '"' + quoteText + '"\n"' + bookTitle + '"\n이 문장이 유난히 마음에 남았던 이유를 잠시 떠올려보세요. 🍃'
-    : ''
+  const contents = quoteText ? '"' + quoteText + '"\n"' + bookTitle + '"\n이 문장이 유난히 마음에 남았던 이유를 잠시 떠올려보세요. 🍃' : ''
   const payload = {
     externalIds: [userId],
     title: '북로그 리마인더',

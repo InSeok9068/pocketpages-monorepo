@@ -464,7 +464,7 @@
     x-cloak
     class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.2)] backdrop-blur-[2px]">
     <div class="mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
-      <div class="w-full rounded-[1.75rem] bg-white/92 p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] backdrop-blur-sm">
+      <div class="bg-white/92 w-full rounded-[1.75rem] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] backdrop-blur-sm">
         <div class="mb-3 flex items-center justify-between gap-3">
           <div>
             <h2 class="text-base font-semibold text-stone-950">목차</h2>
@@ -489,7 +489,9 @@
 
           <template x-if="tocReady && tocItems.length">
             <div class="space-y-1">
-              <template x-for="item in tocItems" :key="item.id || item.href || item.label">
+              <template
+                x-for="item in tocItems"
+                :key="item.id || item.href || item.label">
                 <div class="space-y-1">
                   <button
                     type="button"
@@ -500,7 +502,9 @@
                   </button>
                   <template x-if="item.subitems && item.subitems.length">
                     <div class="ml-4 border-l border-[rgba(118,87,52,0.12)] pl-3">
-                      <template x-for="child in item.subitems" :key="child.id || child.href || child.label">
+                      <template
+                        x-for="child in item.subitems"
+                        :key="child.id || child.href || child.label">
                         <button
                           type="button"
                           x-on:click="goToTocItem(child)"
@@ -885,10 +889,7 @@
 
                 if (doc && fragment) {
                   targetElement =
-                    doc.getElementById(fragment) ||
-                    doc.getElementById(decodeURIComponent(fragment)) ||
-                    doc.querySelector('[name="' + fragment.replace(/"/g, '\\"') + '"]') ||
-                    fallbackElement
+                    doc.getElementById(fragment) || doc.getElementById(decodeURIComponent(fragment)) || doc.querySelector('[name="' + fragment.replace(/"/g, '\\"') + '"]') || fallbackElement
                 }
 
                 if (targetElement && typeof section.cfiFromElement === 'function') {
