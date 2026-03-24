@@ -188,8 +188,13 @@
       this.searchOpen = false
     },
     openToc: function () {
+      var component = this
+
       this.tocOpen = true
       this.controlsVisible = true
+      this.$nextTick(function () {
+        window.booklogReaderLogic.scrollActiveTocItemIntoView(component)
+      })
     },
     closeToc: function () {
       this.tocOpen = false
@@ -484,7 +489,9 @@
           </button>
         </div>
 
-        <div class="max-h-[60vh] overflow-y-auto">
+        <div
+          id="reader-toc-scroll"
+          class="max-h-[60vh] overflow-y-auto">
           <template x-if="!tocReady || !tocItems.length">
             <p
               class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]"
@@ -500,6 +507,8 @@
                   <button
                     type="button"
                     x-on:click="goToTocItem(item)"
+                    x-bind:data-toc-key="item.key || ''"
+                    x-bind:aria-current="isActiveTocItem(item) ? 'true' : null"
                     x-bind:class="isActiveTocItem(item) ? 'bg-stone-950 text-white' : 'bg-[#fbf7ef] text-stone-700 hover:bg-[#f7f0e3]'"
                     class="block w-full rounded-[1.1rem] border-none px-4 py-3 text-left text-sm leading-6 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] outline-none ring-0 transition">
                     <span x-text="item.label || '제목 없음'"></span>
@@ -512,6 +521,8 @@
                         <button
                           type="button"
                           x-on:click="goToTocItem(child)"
+                          x-bind:data-toc-key="child.key || ''"
+                          x-bind:aria-current="isActiveTocItem(child) ? 'true' : null"
                           x-bind:class="isActiveTocItem(child) ? 'bg-stone-950 text-white' : 'bg-[#fbf7ef] text-stone-700 hover:bg-[#f7f0e3]'"
                           class="block w-full rounded-[1.1rem] border-none px-4 py-3 text-left text-sm leading-6 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] outline-none ring-0 transition">
                           <span x-text="child.label || '제목 없음'"></span>
@@ -836,10 +847,41 @@
 
       if (activeItem && activeItem.label) {
         component.currentChapterLabel = String(activeItem.label)
+        scrollActiveTocItemIntoView(component)
         return
       }
 
       component.currentChapterLabel = getChapterLabelForHref(href)
+      scrollActiveTocItemIntoView(component)
+    }
+
+    /**
+     * 현재 활성 목차가 패널 안에서 보이도록 스크롤합니다.
+     * @param {any} component Alpine 컴포넌트 상태
+     * @returns {void}
+     */
+    function scrollActiveTocItemIntoView(component) {
+      var activeKey = component && component.activeTocKey ? String(component.activeTocKey) : ''
+
+      if (!component || !component.tocOpen || !activeKey) {
+        return
+      }
+
+      window.requestAnimationFrame(function () {
+        var container = document.getElementById('reader-toc-scroll')
+        var selector = '[data-toc-key="' + activeKey.replace(/"/g, '\\"') + '"]'
+        var activeButton = container ? container.querySelector(selector) : null
+
+        if (!container || !activeButton || typeof activeButton.scrollIntoView !== 'function') {
+          return
+        }
+
+        activeButton.scrollIntoView({
+          block: 'center',
+          inline: 'nearest',
+          behavior: 'smooth',
+        })
+      })
     }
 
     /**
@@ -2422,6 +2464,7 @@
       goToSearchResult: goToSearchResult,
       goToTocItem: goToTocItem,
       isActiveTocItem: isActiveTocItem,
+      scrollActiveTocItemIntoView: scrollActiveTocItemIntoView,
       saveHighlight: saveHighlight,
       saveCurrentPosition: saveCurrentPosition,
       goToBookDetail: goToBookDetail,
