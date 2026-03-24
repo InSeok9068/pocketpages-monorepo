@@ -33,6 +33,7 @@
 // 29) pages 밖 pb_hooks 코드에서 PocketPages 전역(env/dbg/info/warn/error) 사용
 // 30) _private/*.ejs 에서 $app 기반 DB 접근 사용
 // 31) module.exports = { ... } 에서 축약 가능한 foo: foo 사용
+// 32) pb_hooks/pages 아래에 *.pb.js 파일 배치
 
 const fs = require('fs')
 const path = require('path')
@@ -802,6 +803,13 @@ function lintService(context) {
     context.serviceName,
     'Invalid _private file placement. Keep PocketPages special route/config files outside _private.',
     privateSpecialFileMatches,
+  )
+
+  const pagesPbJsMatches = collectPathMatches(context.pagesFiles, (file) => file.basename.endsWith('.pb.js'))
+  printMatches(
+    context.serviceName,
+    'Invalid pages file name. Files under pb_hooks/pages are routed by PocketPages. Move *.pb.js hooks to pb_hooks/ root or another PocketBase hook location.',
+    pagesPbJsMatches,
   )
 
   const privateResolveMatches = collectLineMatches(context.privateCodeFiles, RE.resolveCall)
