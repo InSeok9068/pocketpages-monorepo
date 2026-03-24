@@ -126,7 +126,7 @@ function clearAuthCookie(response, envGetter) {
 }
 
 module.exports = {
-  authenticateWithPassword: authenticateWithPassword,
-  writePersistedAuthCookie: writePersistedAuthCookie,
-  clearAuthCookie: clearAuthCookie,
+  authenticateWithPassword,
+  writePersistedAuthCookie,
+  clearAuthCookie,
 }

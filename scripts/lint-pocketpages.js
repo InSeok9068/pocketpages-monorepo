@@ -31,6 +31,8 @@
 // 27) _private/*.ejs 에서 <script server> 사용
 // 28) pages 내부 코드에서 process.env 사용
 // 29) pages 밖 pb_hooks 코드에서 PocketPages 전역(env/dbg/info/warn/error) 사용
+// 30) _private/*.ejs 에서 $app 기반 DB 접근 사용
+// 31) module.exports = { ... } 에서 축약 가능한 foo: foo 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -88,6 +90,8 @@ const RE = {
   scriptServerTag: /<script\b(?=[^>]*\bserver\b)/,
   processEnv: /\bprocess\.env\b/,
   pocketpagesOnlyGlobalCall: /(^|[^.A-Za-z0-9_$])(env|dbg|info|warn|error)\s*\(/,
+  privateEjsDbAccess:
+    /\$app\.(findAllRecords|findAuthRecordByToken|findCollectionByNameOrId|findCollectionsByFilter|findFirstRecordByData|findFirstRecordByFilter|findRecordById|findRecordsByExpr|findRecordsByFilter|save|saveNoValidate|delete|deleteRecord|deleteRecords|dao|recordQuery|collectionQuery|runInTransaction|auxRunInTransaction)\b/,
 }
 
 let errors = 0
@@ -624,6 +628,34 @@ function extractTopLevelReturnObject(functionBody, bodyStartLine) {
   return null
 }
 
+function extractModuleExportsObjects(content) {
+  const matches = []
+  const pattern = /module\.exports\s*=\s*\{/g
+
+  let match = pattern.exec(content)
+  while (match) {
+    const openBraceIndex = content.indexOf('{', match.index)
+    if (openBraceIndex === -1) {
+      break
+    }
+
+    const closeBraceIndex = findMatchingBrace(content, openBraceIndex)
+    if (closeBraceIndex === -1) {
+      break
+    }
+
+    matches.push({
+      body: content.slice(openBraceIndex + 1, closeBraceIndex),
+      startLine: lineNumberAt(content, openBraceIndex + 1),
+    })
+
+    pattern.lastIndex = closeBraceIndex + 1
+    match = pattern.exec(content)
+  }
+
+  return matches
+}
+
 function collectPathMatches(files, predicate) {
   return files.filter(predicate).map((file) => file.displayPath)
 }
@@ -668,6 +700,35 @@ function collectIncludeFullContextMatches(files) {
 
       if (forbiddenNames.some((name) => new RegExp(`\\b${name}\\b`).test(line))) {
         matches.push(`${file.displayPath}:${index + 1}:${line}`)
+      }
+    }
+  }
+
+  return unique(matches)
+}
+
+function collectModuleExportsShorthandMatches(files) {
+  const matches = []
+  const shorthandPattern =
+    /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*\1\s*,?\s*(?:\/\/.*)?$/
+
+  for (const file of files) {
+    const exportObjects = extractModuleExportsObjects(file.content)
+
+    for (const exportObject of exportObjects) {
+      const lineInfo = buildLineDepthInfo(exportObject.body)
+
+      for (let index = 0; index < lineInfo.lines.length; index += 1) {
+        if (lineInfo.depthBefore[index] !== 0) {
+          continue
+        }
+
+        const line = lineInfo.lines[index]
+        if (!shorthandPattern.test(line)) {
+          continue
+        }
+
+        matches.push(`${file.displayPath}:${exportObject.startLine + index}:${line}`)
       }
     }
   }
@@ -797,6 +858,15 @@ function lintService(context) {
     distributedModuleExportWarnings,
   )
 
+  const moduleExportsShorthandMatches = collectModuleExportsShorthandMatches(
+    context.hooksCodeFiles.filter((file) => file.basename.endsWith('.js')),
+  )
+  printMatches(
+    context.serviceName,
+    'Invalid module.exports object style. Use shorthand members such as { sentCount } instead of repeating sentCount: sentCount in exported objects.',
+    moduleExportsShorthandMatches,
+  )
+
   const privateScriptServerMatches = collectLineMatches(
     context.pagesEjsFiles.filter((file) => file.relFromPages.startsWith('_private/')),
     RE.scriptServerTag,
@@ -805,6 +875,16 @@ function lintService(context) {
     context.serviceName,
     'Invalid _private <script server> usage. Keep _private partial setup in top-level <% ... %> blocks and reserve <script server> for entry EJS files.',
     privateScriptServerMatches,
+  )
+
+  const privateEjsDbAccessMatches = collectLineMatches(
+    context.pagesEjsFiles.filter((file) => file.relFromPages.startsWith('_private/')),
+    RE.privateEjsDbAccess,
+  )
+  printMatches(
+    context.serviceName,
+    'Invalid _private EJS DB access. Keep _private partials render-only and move PocketBase queries or writes to the entry EJS <script server> block or a nearby _private/*.js module.',
+    privateEjsDbAccessMatches,
   )
 
   const pagesProcessEnvMatches = collectLineMatches(context.lintCodeFiles, RE.processEnv)
