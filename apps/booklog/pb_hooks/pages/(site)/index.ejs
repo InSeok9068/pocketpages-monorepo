@@ -162,6 +162,61 @@
   </div>
 </section>
 <% } else { %>
+<script>
+  window.booklogHomeUpload = {
+    stages: [
+      { label: '파일 전송 중', detail: '선택한 EPUB 파일을 서버로 안전하게 올리고 있습니다.' },
+      { label: 'EPUB 구조 확인 중', detail: '본문과 메타데이터, 식별자 정보를 읽고 있습니다.' },
+      { label: '도서 정보 찾는 중', detail: '제목, 저자, ISBN을 기준으로 도서 메타데이터를 확인하고 있습니다.' },
+      { label: '서재에 저장 중', detail: '책 정보와 업로드 파일을 도서함에 정리하고 있습니다.' },
+    ],
+    getActiveUploadStage: function (component) {
+      return this.stages[component.uploadStageIndex] || this.stages[0]
+    },
+    getUploadElapsedLabel: function (seconds) {
+      if (seconds < 60) {
+        return seconds + '초'
+      }
+
+      return Math.floor(seconds / 60) + '분 ' + (seconds % 60) + '초'
+    },
+    selectUploadFile: function (component, event) {
+      component.uploadFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : ''
+    },
+    stopUploadTimers: function (component) {
+      if (component.uploadTickTimerId) {
+        window.clearInterval(component.uploadTickTimerId)
+        component.uploadTickTimerId = null
+      }
+
+      if (component.uploadStageTimerId) {
+        window.clearInterval(component.uploadStageTimerId)
+        component.uploadStageTimerId = null
+      }
+    },
+    beginUpload: function (component) {
+      if (component.uploading) {
+        return
+      }
+
+      component.uploading = true
+      component.uploadOpen = false
+      component.uploadElapsedSeconds = 0
+      component.uploadStageIndex = 0
+      this.stopUploadTimers(component)
+
+      component.uploadTickTimerId = window.setInterval(function () {
+        component.uploadElapsedSeconds += 1
+      }, 1000)
+
+      component.uploadStageTimerId = window.setInterval(function () {
+        if (component.uploadStageIndex < component.uploadStages.length - 1) {
+          component.uploadStageIndex += 1
+        }
+      }, 2600)
+    },
+  }
+</script>
 <section
   x-data="{
     uploadOpen: false,
@@ -171,58 +226,21 @@
     uploadStageIndex: 0,
     uploadTickTimerId: null,
     uploadStageTimerId: null,
-    uploadStages: [
-      { label: '파일 전송 중', detail: '선택한 EPUB 파일을 서버로 안전하게 올리고 있습니다.' },
-      { label: 'EPUB 구조 확인 중', detail: '본문과 메타데이터, 식별자 정보를 읽고 있습니다.' },
-      { label: '도서 정보 찾는 중', detail: '제목, 저자, ISBN을 기준으로 도서 메타데이터를 확인하고 있습니다.' },
-      { label: '서재에 저장 중', detail: '책 정보와 업로드 파일을 도서함에 정리하고 있습니다.' },
-    ],
+    uploadStages: window.booklogHomeUpload.stages,
     get activeUploadStage() {
-      return this.uploadStages[this.uploadStageIndex] || this.uploadStages[0]
+      return window.booklogHomeUpload.getActiveUploadStage(this)
     },
     get uploadElapsedLabel() {
-      if (this.uploadElapsedSeconds < 60) {
-        return this.uploadElapsedSeconds + '초'
-      }
-
-      return Math.floor(this.uploadElapsedSeconds / 60) + '분 ' + (this.uploadElapsedSeconds % 60) + '초'
+      return window.booklogHomeUpload.getUploadElapsedLabel(this.uploadElapsedSeconds)
     },
     selectUploadFile(event) {
-      this.uploadFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : ''
+      window.booklogHomeUpload.selectUploadFile(this, event)
     },
     stopUploadTimers() {
-      if (this.uploadTickTimerId) {
-        window.clearInterval(this.uploadTickTimerId)
-        this.uploadTickTimerId = null
-      }
-
-      if (this.uploadStageTimerId) {
-        window.clearInterval(this.uploadStageTimerId)
-        this.uploadStageTimerId = null
-      }
+      window.booklogHomeUpload.stopUploadTimers(this)
     },
     beginUpload() {
-      if (this.uploading) {
-        return
-      }
-
-      const component = this
-
-      this.uploading = true
-      this.uploadOpen = false
-      this.uploadElapsedSeconds = 0
-      this.uploadStageIndex = 0
-      this.stopUploadTimers()
-
-      this.uploadTickTimerId = window.setInterval(function () {
-        component.uploadElapsedSeconds += 1
-      }, 1000)
-
-      this.uploadStageTimerId = window.setInterval(function () {
-        if (component.uploadStageIndex < component.uploadStages.length - 1) {
-          component.uploadStageIndex += 1
-        }
-      }, 2600)
+      window.booklogHomeUpload.beginUpload(this)
     },
   }"
   class="mt-6">
