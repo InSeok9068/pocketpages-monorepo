@@ -838,24 +838,24 @@ function lintService(context) {
     esmMatches,
   )
 
-  const privateModulePatternWarnings = unique([
+  const privateModulePatternMatches = unique([
     ...collectLineMatches(context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')), RE.privateModuleFunctionExport),
     ...collectLineMatches(context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')), RE.privateModuleFactoryExport),
   ])
-  printWarnings(
+  printMatches(
     context.serviceName,
-    'Prefer plain _private modules. Default to module.exports = { ... } and avoid function/factory exports unless there is a clear structural reason.',
-    privateModulePatternWarnings,
+    'Invalid _private module export style. Default to module.exports = { ... } and avoid function/factory exports in _private/*.js.',
+    privateModulePatternMatches,
   )
 
-  const distributedModuleExportWarnings = collectLineMatches(
+  const distributedModuleExportMatches = collectLineMatches(
     context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')),
     RE.distributedModuleExport,
   )
-  printWarnings(
+  printMatches(
     context.serviceName,
-    'Prefer plain module exports. Group public members in one module.exports = { ... } object instead of scattered module.exports.foo assignments.',
-    distributedModuleExportWarnings,
+    'Invalid _private module export style. Group public members in one module.exports = { ... } object instead of scattered module.exports.foo assignments.',
+    distributedModuleExportMatches,
   )
 
   const moduleExportsShorthandMatches = collectModuleExportsShorthandMatches(
