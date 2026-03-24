@@ -1,0 +1,102 @@
+<script server>
+  const bookId = String(params.bookId || '').trim()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+
+  if (!request.auth) {
+    warn('xapi/books/[bookId]/download-file:unauthorized', {
+      bookId: bookId,
+    })
+    response.html(401, '로그인이 필요합니다.')
+    return
+  }
+
+  if (!bookId) {
+    response.html(400, '책 정보가 필요합니다.')
+    return
+  }
+
+  let bookRecord = null
+  let shelfRecord = null
+  let bookFileRecord = null
+
+  try {
+    bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', {
+      bookId: bookId,
+    })
+  } catch (exception) {
+    bookRecord = null
+  }
+
+  if (!bookRecord) {
+    response.html(404, '책 정보를 찾을 수 없습니다.')
+    return
+  }
+
+  try {
+    shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+      userId: userId,
+      bookId: bookId,
+    })
+  } catch (exception) {
+    shelfRecord = null
+  }
+
+  const shelfBookFileId = shelfRecord ? String(shelfRecord.get('book_file_id') || '').trim() : ''
+
+  if (shelfBookFileId) {
+    try {
+      bookFileRecord = $app.findFirstRecordByFilter('book_files', 'id = {:bookFileId}', {
+        bookFileId: shelfBookFileId,
+      })
+    } catch (exception) {
+      bookFileRecord = null
+    }
+  }
+
+  if (!bookFileRecord && !shelfBookFileId) {
+    try {
+      const matchedBookFileRecords = $app.findRecordsByFilter('book_files', 'book_id = {:bookId}', '-updated', 2, 0, {
+        bookId: bookId,
+      })
+
+      if (matchedBookFileRecords.length === 1) {
+        bookFileRecord = matchedBookFileRecords[0]
+      }
+    } catch (exception) {
+      bookFileRecord = null
+    }
+  }
+
+  if (!bookFileRecord) {
+    response.html(404, 'EPUB 파일을 찾을 수 없습니다.')
+    return
+  }
+
+  const storedFileName = String(bookFileRecord.get('stored_file') || '').trim()
+
+  if (!storedFileName) {
+    response.html(404, 'EPUB 파일을 찾을 수 없습니다.')
+    return
+  }
+
+  const storageFileKey = String(bookFileRecord.baseFilesPath() || '') + '/' + storedFileName
+  const localFilePath = String($app.dataDir() || '') + '/storage/' + storageFileKey
+  const bookTitle = String(bookRecord.get('title') || 'book').trim()
+  const sanitizedTitle = bookTitle.replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim()
+  const downloadFileName = (sanitizedTitle || 'book') + '.epub'
+  const asciiFileName = downloadFileName.replace(/[^\x20-\x7E]/g, '').replace(/["\\]/g, '').trim() || 'book.epub'
+
+  dbg('xapi/books/[bookId]/download-file:serve', {
+    userId: userId,
+    bookId: bookId,
+    bookFileId: String(bookFileRecord.get('id') || ''),
+    fileKey: storageFileKey,
+    filePath: localFilePath,
+    downloadFileName: downloadFileName,
+  })
+
+  response.header('Content-Type', 'application/epub+zip')
+  response.header('Content-Disposition', 'attachment; filename="' + asciiFileName + '"; filename*=UTF-8\'\'' + encodeURIComponent(downloadFileName))
+  response.file(localFilePath)
+  return
+</script>

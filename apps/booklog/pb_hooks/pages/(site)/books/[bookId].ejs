@@ -130,6 +130,7 @@
         '/' +
         encodeURIComponent(storedFileName)
       : ''
+  const downloadFileUrl = bookFileRecord && storedFileName ? '/xapi/books/' + encodeURIComponent(bookId) + '/download-file' : ''
 
   try {
     highlightRecords = $app.findRecordsByFilter('book_highlights', 'user_id = {:userId} && book_id = {:bookId}', '-highlighted_at,-updated', 20, 0, {
@@ -291,7 +292,7 @@
           </div>
         </dl>
 
-        <div class="flex flex-wrap gap-2 pt-1">
+        <div class="flex flex-wrap items-center gap-2 pt-1">
           <form
             method="post"
             action="/xapi/books/update-status"
@@ -328,6 +329,27 @@
               <%= shelfStatus === 'finished' ? '완독 풀기' : '완독' %>
             </button>
           </form>
+          <% if (downloadFileUrl) { %>
+          <a
+            href="<%= downloadFileUrl %>"
+            aria-label="EPUB 다운로드"
+            class="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-[#dcc6ad] text-[#6b4423] no-underline shadow-[0_12px_24px_rgba(112,84,54,0.14)] outline-none ring-0 transition hover:bg-[#d2b596]">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="h-5 w-5"
+              aria-hidden="true">
+              <path d="M12 4.5v9" />
+              <path d="M8.5 10.5 12 14l3.5-3.5" />
+              <path d="M5 18.5h14" />
+            </svg>
+          </a>
+          <% } %>
         </div>
       </div>
     </div>
@@ -446,4 +468,5 @@
     </div>
     <% } %>
   </section>
+
 </section>
