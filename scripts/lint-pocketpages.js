@@ -34,6 +34,10 @@
 // 30) _private/*.ejs 에서 $app 기반 DB 접근 사용
 // 31) module.exports = { ... } 에서 축약 가능한 foo: foo 사용
 // 32) pb_hooks/pages 아래에 *.pb.js 파일 배치
+// 33) pages 일반 .js(static js) 안에 서버 코드 사용
+// 34) runInTransaction 콜백 안에서 바깥 $app 사용
+// 35) pb_hooks/pages 안에서 PocketBase hook 등록 API 사용
+// 36) api 엔드포인트에서 HTML 응답 반환
 
 const fs = require('fs')
 const path = require('path')
@@ -62,8 +66,9 @@ const RE = {
   middlewareUsesResolve: /\bresolve\s*\(/,
   middlewareHasResolveArg:
     /module\.exports\s*=\s*function\s*\(\s*\{[\s\S]*?\bresolve\b[\s\S]*?\}\s*(?:,|\))/,
-  fullHtml: /<!DOCTYPE|<html\b|<body\b/,
+  fullHtml: /<!DOCTYPE|<html\b|<head\b|<body\b/,
   responseJson: /\bresponse\.json\s*\(/,
+  responseHtml: /\bresponse\.html\s*\(/,
   redirect: /\bredirect\s*\(/,
   manualFlash: /__flash=/,
   middlewareDeclaresNext: /module\.exports\s*=\s*function\s*\([^)]*,\s*next\s*\)/,
@@ -93,6 +98,11 @@ const RE = {
   pocketpagesOnlyGlobalCall: /(^|[^.A-Za-z0-9_$])(env|dbg|info|warn|error)\s*\(/,
   privateEjsDbAccess:
     /\$app\.(findAllRecords|findAuthRecordByToken|findCollectionByNameOrId|findCollectionsByFilter|findFirstRecordByData|findFirstRecordByFilter|findRecordById|findRecordsByExpr|findRecordsByFilter|save|saveNoValidate|delete|deleteRecord|deleteRecords|dao|recordQuery|collectionQuery|runInTransaction|auxRunInTransaction)\b/,
+  staticJsServerCode:
+    /\bmodule\.exports\b|\brequire\s*\(|\$app\.|(^|[^A-Za-z0-9_$])(response\.[A-Za-z_][A-Za-z0-9_]*\s*\(|redirect\s*\(|resolve\s*\(|env\s*\()/,
+  hookRegistration:
+    /(^|[^A-Za-z0-9_$])(routerAdd|routerUse|cronAdd|onBootstrap|onServe|onTerminate|onRecord[A-Za-z0-9_]*|onSettings[A-Za-z0-9_]*|onMailer[A-Za-z0-9_]*|onRealtime[A-Za-z0-9_]*|onBackup[A-Za-z0-9_]*)\s*\(/,
+  outerAppInsideTransaction: /\$app\./,
 }
 
 let errors = 0
@@ -737,6 +747,51 @@ function collectModuleExportsShorthandMatches(files) {
   return unique(matches)
 }
 
+function collectTransactionOuterAppMatches(files) {
+  const matches = []
+  const transactionPatterns = [
+    /\$app\.runInTransaction\s*\(\s*\(\s*[A-Za-z_$][A-Za-z0-9_$]*\s*\)\s*=>\s*\{/g,
+    /\$app\.runInTransaction\s*\(\s*[A-Za-z_$][A-Za-z0-9_$]*\s*=>\s*\{/g,
+    /\$app\.runInTransaction\s*\(\s*function\s*\(\s*[A-Za-z_$][A-Za-z0-9_$]*\s*\)\s*\{/g,
+  ]
+
+  for (const file of files) {
+    for (const pattern of transactionPatterns) {
+      pattern.lastIndex = 0
+
+      let match = pattern.exec(file.content)
+      while (match) {
+        const openBraceIndex = match.index + match[0].length - 1
+        const closeBraceIndex = findMatchingBrace(file.content, openBraceIndex)
+
+        if (closeBraceIndex === -1) {
+          break
+        }
+
+        const body = file.content.slice(openBraceIndex + 1, closeBraceIndex)
+        const bodyStartLine = lineNumberAt(file.content, openBraceIndex + 1)
+        const bodyLines = body.split(/\r?\n/)
+
+        for (let index = 0; index < bodyLines.length; index += 1) {
+          const line = bodyLines[index]
+          RE.outerAppInsideTransaction.lastIndex = 0
+
+          if (!RE.outerAppInsideTransaction.test(line)) {
+            continue
+          }
+
+          matches.push(`${file.displayPath}:${bodyStartLine + index}:${line}`)
+        }
+
+        pattern.lastIndex = closeBraceIndex + 1
+        match = pattern.exec(file.content)
+      }
+    }
+  }
+
+  return unique(matches)
+}
+
 function lintService(context) {
   console.log(`Checking service: ${context.serviceName}`)
 
@@ -792,6 +847,16 @@ function lintService(context) {
     xapiFullHtmlMatches,
   )
 
+  const apiHtmlResponseMatches = unique([
+    ...collectLineMatches(context.apiFiles, RE.fullHtml),
+    ...collectLineMatches(context.apiFiles, RE.responseHtml),
+  ])
+  printMatches(
+    context.serviceName,
+    'Invalid api response shape. Keep api/ for programmatic responses such as JSON and do not return HTML documents or response.html(...).',
+    apiHtmlResponseMatches,
+  )
+
   const privateSpecialFileMatches = collectPathMatches(
     context.pagesFiles,
     (file) =>
@@ -810,6 +875,35 @@ function lintService(context) {
     context.serviceName,
     'Invalid pages file name. Files under pb_hooks/pages are routed by PocketPages. Move *.pb.js hooks to pb_hooks/ root or another PocketBase hook location.',
     pagesPbJsMatches,
+  )
+
+  const staticPagesJsFiles = context.pagesCodeFiles.filter(
+    (file) =>
+      file.basename.endsWith('.js') &&
+      !file.basename.startsWith('+') &&
+      !file.basename.endsWith('.pb.js') &&
+      !file.relFromPages.startsWith('_private/') &&
+      !file.relFromPages.startsWith('assets/'),
+  )
+  const staticJsServerCodeMatches = collectLineMatches(staticPagesJsFiles, RE.staticJsServerCode)
+  printMatches(
+    context.serviceName,
+    'Invalid pages static .js usage. Regular .js files under pb_hooks/pages are served as static assets, so move server code to +*.js, *.ejs, or _private/*.js.',
+    staticJsServerCodeMatches,
+  )
+
+  const transactionOuterAppMatches = collectTransactionOuterAppMatches(context.hooksCodeFiles)
+  printMatches(
+    context.serviceName,
+    'Invalid runInTransaction usage. Inside $app.runInTransaction(...) always use the callback txApp argument instead of the outer $app instance.',
+    transactionOuterAppMatches,
+  )
+
+  const pagesHookRegistrationMatches = collectLineMatches(context.pagesCodeFiles, RE.hookRegistration)
+  printMatches(
+    context.serviceName,
+    'Invalid PocketBase hook registration in pages code. Move routerAdd/routerUse/cronAdd/onRecord*/onSettings* registrations to pb_hooks/*.pb.js or another non-pages hook file.',
+    pagesHookRegistrationMatches,
   )
 
   const privateResolveMatches = collectLineMatches(context.privateCodeFiles, RE.resolveCall)
