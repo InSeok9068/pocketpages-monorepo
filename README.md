@@ -37,17 +37,17 @@
 
 ## 순수 JS 라이브러리 후보
 
-| 라이브러리         | 용도 |
-| ------------------ | ---- |
-| `fflate`           | ZIP/EPUB 압축 해제, 바이너리 압축 데이터 처리 |
-| `fast-xml-parser`  | EPUB 내부 XML, OPF, container.xml 같은 구조 파싱 |
-| `papaparse`        | CSV 파싱, CSV 확장자 파일 업로드/가져오기 처리 |
-| `dayjs`            | 날짜 포맷, 표시용 문자열 처리, 간단한 날짜 계산 |
-| `slugify`          | slug 문자열 생성, URL 친화적인 식별자 변환 |
-| `he`               | HTML entity 인코딩/디코딩 |
-| `validator`        | 이메일, URL, 숫자/문자열 같은 문자열 단위 검증 |
-| `qs`               | 중첩 query string 파싱, 배열/객체 형태 쿼리 직렬화 |
-| `zod`              | form/body/query 입력값 런타임 검증 |
+| 라이브러리        | 용도                                               |
+| ----------------- | -------------------------------------------------- |
+| `fflate`          | ZIP/EPUB 압축 해제, 바이너리 압축 데이터 처리      |
+| `fast-xml-parser` | EPUB 내부 XML, OPF, container.xml 같은 구조 파싱   |
+| `papaparse`       | CSV 파싱, CSV 확장자 파일 업로드/가져오기 처리     |
+| `dayjs`           | 날짜 포맷, 표시용 문자열 처리, 간단한 날짜 계산    |
+| `slugify`         | slug 문자열 생성, URL 친화적인 식별자 변환         |
+| `he`              | HTML entity 인코딩/디코딩                          |
+| `validator`       | 이메일, URL, 숫자/문자열 같은 문자열 단위 검증     |
+| `qs`              | 중첩 query string 파싱, 배열/객체 형태 쿼리 직렬화 |
+| `zod`             | form/body/query 입력값 런타임 검증                 |
 
 ---
 
@@ -126,7 +126,7 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
 ```json
 [
   {
-    "name": "kjca",
+    "name": "kjca-hooks",
     "host": "146.56.177.250",
     "protocol": "sftp",
     "port": 22,
@@ -138,6 +138,69 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
     "syncOption": {
       "delete": true
     }
+  },
+  {
+    "name": "kjca-public",
+    "host": "146.56.177.250",
+    "protocol": "sftp",
+    "port": 22,
+    "username": "ubuntu",
+    "privateKeyPath": "~/.ssh/ssh-key-2023-04-17-DOCKER.key",
+    "context": "apps/kjca/pb_public",
+    "remotePath": "/path/to/kjca/public",
+    "connectTimeout": 100000,
+    "syncOption": {
+      "delete": true
+    }
+  },
+  {
+    "name": "booklog-hooks",
+    "host": "146.56.177.250",
+    "protocol": "sftp",
+    "port": 22,
+    "username": "ubuntu",
+    "privateKeyPath": "~/.ssh/ssh-key-2023-04-17-DOCKER.key",
+    "context": "apps/booklog/pb_hooks",
+    "remotePath": "/path/to/booklog/hooks",
+    "connectTimeout": 100000,
+    "syncOption": {
+      "delete": true
+    }
+  },
+  {
+    "name": "booklog-public",
+    "agent": "",
+    "host": "146.56.177.250",
+    "protocol": "sftp",
+    "port": 22,
+    "username": "ubuntu",
+    "privateKeyPath": "~/.ssh/ssh-key-2023-04-17-DOCKER.key",
+    "context": "apps/booklog/pb_public",
+    "remotePath": "/path/to/booklog/public",
+    "connectTimeout": 100000,
+    "syncOption": {
+      "delete": true
+    }
   }
 ]
+```
+
+---
+
+## Git 확장 도구 설치/업데이트
+
+### 설치
+
+```shell
+scoop bucket add extras
+scoop install delta
+scoop install lazygit
+```
+
+### 업데이트
+
+```shell
+scoop update
+scoop update delta
+scoop update lazygit
 ```
