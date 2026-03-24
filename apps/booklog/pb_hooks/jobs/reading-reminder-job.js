@@ -164,7 +164,7 @@ function createReminderContents(bookTitle, inactiveDays) {
   const normalizedTitle = trimBookTitle(bookTitle) || '제목 없는 책'
   const dayText = String(inactiveDays) + '일'
 
-  return '"' + normalizedTitle + '"\n마지막으로 읽은 지 ' + dayText + '이 지났어요.\n오늘 한 페이지라도 이어서 읽어볼까요? 📖'
+  return `📚 "${normalizedTitle}"\n\n⏱ ${dayText}째 멈춰 있어요.\n\n📖 오늘 한 페이지라도 이어서 읽어볼까요?`
 }
 
 /**
