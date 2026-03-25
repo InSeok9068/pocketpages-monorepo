@@ -82,9 +82,16 @@
   const storageFileKey = String(bookFileRecord.baseFilesPath() || '') + '/' + storedFileName
   const localFilePath = String($app.dataDir() || '') + '/storage/' + storageFileKey
   const bookTitle = String(book.get('title') || 'book').trim()
-  const sanitizedTitle = bookTitle.replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim()
+  const sanitizedTitle = bookTitle
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
   const downloadFileName = (sanitizedTitle || 'book') + '.epub'
-  const asciiFileName = downloadFileName.replace(/[^\x20-\x7E]/g, '').replace(/["\\]/g, '').trim() || 'book.epub'
+  const asciiFileName =
+    downloadFileName
+      .replace(/[^\x20-\x7E]/g, '')
+      .replace(/["\\]/g, '')
+      .trim() || 'book.epub'
 
   dbg('xapi/books/[bookId]/download-file:serve', {
     userId: userId,
@@ -96,7 +103,7 @@
   })
 
   response.header('Content-Type', 'application/epub+zip')
-  response.header('Content-Disposition', 'attachment; filename="' + asciiFileName + '"; filename*=UTF-8\'\'' + encodeURIComponent(downloadFileName))
+  response.header('Content-Disposition', 'attachment; filename="' + asciiFileName + "\"; filename*=UTF-8''" + encodeURIComponent(downloadFileName))
   response.file(localFilePath)
   return
 </script>
