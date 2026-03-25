@@ -7,7 +7,7 @@ const PATH_CLOSED_RE = /\b(resolve|include)\(\s*(['"])([^'"]*)\2/g
 const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)$/s
 const ROUTE_ATTR_CLOSED_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)\2/g
 const ROUTE_CALL_OPEN_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)$/s
-const ROUTE_CALL_CLOSED_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)\2/g
+const ROUTE_CALL_CLOSED_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)\2(?=\s*[,)\]])/g
 const FIELD_OPEN_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.get\(\s*(['"])([^'"]*)$/s
 const FIELD_CLOSED_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.get\(\s*(['"])([^'"]+)\2/g
 const COLLECTION_REGEX_CACHE = new Map()
@@ -108,6 +108,10 @@ function toClosedMatchContext(match, kind) {
   }
 }
 
+function isDynamicRoutePathValue(value) {
+  return /<%[\s\S]*?%>|\$\{[\s\S]*?\}/.test(String(value || ''))
+}
+
 function getOpenMatchContext(documentText, offset, regex, mapper) {
   const windowStart = Math.max(0, offset - 400)
   const prefix = documentText.slice(windowStart, offset)
@@ -173,6 +177,7 @@ function getRoutePathContextAtOffset(documentText, offset) {
   for (const match of documentText.matchAll(ROUTE_ATTR_CLOSED_RE)) {
     const context = toClosedMatchContext(match, 'route-path')
     context.routeSource = match[1]
+    context.isDynamic = isDynamicRoutePathValue(context.value)
     if (offset >= context.start && offset <= context.end) {
       return context
     }
@@ -181,6 +186,7 @@ function getRoutePathContextAtOffset(documentText, offset) {
   for (const match of documentText.matchAll(ROUTE_CALL_CLOSED_RE)) {
     const context = toClosedMatchContext(match, 'route-path')
     context.routeSource = match[1]
+    context.isDynamic = isDynamicRoutePathValue(context.value)
     if (offset >= context.start && offset <= context.end) {
       return context
     }
@@ -193,6 +199,7 @@ function getRoutePathContextAtOffset(documentText, offset) {
     start,
     end,
     isOpen: true,
+    isDynamic: isDynamicRoutePathValue(value),
   }))
   if (openAttributeContext) {
     return openAttributeContext
@@ -205,6 +212,7 @@ function getRoutePathContextAtOffset(documentText, offset) {
     start,
     end,
     isOpen: true,
+    isDynamic: isDynamicRoutePathValue(value),
   }))
 }
 
@@ -227,12 +235,14 @@ function collectPathContexts(documentText) {
   for (const match of documentText.matchAll(ROUTE_ATTR_CLOSED_RE)) {
     const context = toClosedMatchContext(match, 'route-path')
     context.routeSource = match[1]
+    context.isDynamic = isDynamicRoutePathValue(context.value)
     contexts.push(context)
   }
 
   for (const match of documentText.matchAll(ROUTE_CALL_CLOSED_RE)) {
     const context = toClosedMatchContext(match, 'route-path')
     context.routeSource = match[1]
+    context.isDynamic = isDynamicRoutePathValue(context.value)
     contexts.push(context)
   }
 

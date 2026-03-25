@@ -47,6 +47,52 @@
 
 ---
 
+## 3-1) AI 구조 파악 도구 사용 기준
+
+- 이 레포에서 AI가 구조 파악에 우선 사용할 기본 도구는 `./task.sh index <service>` 입니다.
+- `index`는 lint 대체가 아니라, **수정 전 구조 파악/영향 범위 확인용**입니다.
+- 수정 후 규칙 검증은 기존처럼 `./task.sh lint <service>`를 사용합니다.
+
+### 기본 사용 순서
+
+- 단일 파일 수정이고 외부 영향이 거의 없으면 바로 파일을 엽니다.
+- 여러 파일 영향이 의심되면 먼저 `./task.sh index <service> --section impactByFile`로 범위를 좁힙니다.
+- 더 정확한 원천 정보가 필요하면 관련 섹션을 추가로 확인합니다.
+- `index`는 구조 요약용이고, 실제 구현 판단은 필요한 파일을 다시 열어 확인합니다.
+
+### 섹션 선택 기준
+
+- `./task.sh index <service> --section routes`
+  - 서비스의 page/api/xapi 라우트 목록과 route path를 볼 때 사용합니다.
+- `./task.sh index <service> --section partials`
+  - `_private/*.ejs` partial의 caller와 locals shape를 확인할 때 사용합니다.
+- `./task.sh index <service> --section resolveGraph`
+  - `_private/*.js` module/role의 caller와 사용 멤버를 확인할 때 사용합니다.
+- `./task.sh index <service> --section routeLinks`
+  - `href`, `action`, `hx-*`, `redirect()` 연결을 확인할 때 사용합니다.
+- `./task.sh index <service> --section schemaUsage`
+  - collection 문자열과 `record.get('field')` 사용처를 확인할 때 사용합니다.
+- `./task.sh index <service> --section impactByFile`
+  - 파일 하나 수정 시 같이 봐야 할 caller와 route를 빠르게 좁힐 때 사용합니다.
+  - `impactByFile`은 다른 섹션을 파일 기준으로 재조합한 요약 뷰입니다.
+
+### 강제 규칙
+
+- 여러 파일에 걸친 수정 전 영향을 판단해야 하면 먼저 관련 `index` 섹션으로 범위를 좁힙니다.
+- 어떤 섹션을 봐야 할지 애매하면 먼저 `impactByFile`를 보고 필요한 원천 섹션만 추가로 확인합니다.
+- `_private` partial 수정 전에는 `partials` 섹션으로 caller를 먼저 확인합니다.
+- `_private` service/role/module 수정 전에는 `resolveGraph` 섹션으로 caller와 사용 멤버를 먼저 확인합니다.
+- route path를 바꾸거나 HTMX/redirect 연결을 수정할 때는 `routeLinks` 섹션으로 연결 관계를 먼저 확인합니다.
+- 컬렉션/필드명을 건드리거나 schema sync가 중요한 수정에서는 `schemaUsage` 섹션을 먼저 확인합니다.
+
+### 예외 허용
+
+- 변경 범위가 단일 파일 내부에서 완전히 닫혀 있고, 외부 호출 관계를 볼 필요가 없을 때는 `index` 없이 바로 파일을 열어도 됩니다.
+- `impactByFile`는 빠른 영향 범위 요약이 목적이므로, 필요하면 원천 섹션을 다시 확인합니다.
+- `index`가 주는 구조 정보만으로 부족한 경우에만 추가로 `rg`, 개별 파일 열람, `pb_schema.json` 직접 확인을 이어갑니다.
+
+---
+
 ## 4) 가장 중요한 작업 원칙
 
 - 과도한 추상화보다 **파일 구조가 직접 의도를 설명하는 형태**를 우선합니다.
@@ -336,6 +382,7 @@
 ### 작업 전
 
 - 이 작업이 PocketPages 레이어인지 PocketBase 레이어인지 먼저 구분했는가
+- 여러 파일 영향이 예상되면 `./task.sh index <service> --section ...`로 구조와 호출 관계를 먼저 확인했는가
 - 파일 구조만 봐도 흐름을 추적할 수 있는가
 - 공통 책임과 페이지 전용 책임이 섞이지 않도록 책임 경계를 먼저 정했는가
 - 동적 라우트, `index.ejs`, `+load.js`, `+middleware.js`, `_private` 선택이 실제 책임과 사용 범위에 맞는가
@@ -346,6 +393,7 @@
 ### 작업 후
 
 - flash를 제외한 query string 접근을 `params`에 기대지 않고, partial에는 필요한 값만 넘기고 있는가
+- partial/module/route/schema 변경 영향이 있으면 `index` 출력과 실제 수정 결과가 어긋나지 않는지 필요한 섹션으로 다시 확인했는가
 - 따로 분리한 함수라면 JSDoc이 있고, 필요한 named type은 `apps/<service>/types.d.ts`에 있으며, 함수/파라미터 역할 설명이 짧은 한글로 적혀 있는가
 - 서버 작업이라면 단계별 로그가 충분한가
 - JS/EJS에서 PocketBase `Record`를 읽을 때 `record.get()` 접근이 맞는가

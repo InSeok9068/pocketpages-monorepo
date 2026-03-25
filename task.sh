@@ -15,6 +15,7 @@ Usage:
   ./task.sh lint [service]
   ./task.sh diag <file-or-service>
   ./task.sh verify [service]
+  ./task.sh index <service> [--section <name>] [--json|--pretty]
   ./task.sh format [-- <extra args>]
 
 Commands:
@@ -26,6 +27,7 @@ Commands:
   lint      Run lightweight PocketPages self-validation checks for one service or all services
   diag      Run PocketPages editor diagnostics for PocketPages code files (.ejs/.js/.cjs/.mjs).
   verify    Run lint and diag together for one service or all services
+  index     Print machine-readable PocketPages project index JSON for one service
   format    Run npm run format
 EOF
 }
@@ -334,6 +336,37 @@ run_verify() {
 
   run_lint "$service"
   run_diag "$service"
+}
+
+run_index() {
+  local index_script="$ROOT_DIR/scripts/index-pocketpages.js"
+  local service="${1:-}"
+  shift || true
+
+  if [[ ! -f "$index_script" ]]; then
+    echo "Missing index script: $index_script" >&2
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run index command." >&2
+    exit 1
+  fi
+
+  if [[ -z "$service" ]]; then
+    echo "Usage: ./task.sh index <service> [--section <name>] [--json|--pretty]" >&2
+    exit 1
+  fi
+
+  local service_dir
+  if ! service_dir="$(resolve_service_dir "$service")"; then
+    echo "Unknown service: $service" >&2
+    echo "Available services:" >&2
+    list_services >&2
+    exit 1
+  fi
+
+  node "$index_script" "$service_dir" "$@"
 }
 
 run_format() {
@@ -916,6 +949,11 @@ if [[ "${1:-}" == "__complete_services" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "__complete_index_sections" ]]; then
+  printf '%s\n' routes partials resolveGraph routeLinks schemaUsage impactByFile
+  exit 0
+fi
+
 case "${1:-help}" in
   start)
     shift
@@ -953,6 +991,13 @@ case "${1:-help}" in
   verify)
     shift || true
     run_verify "${1:-}"
+    ;;
+  index)
+    shift
+    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh index <service> [--section <name>] [--json|--pretty]" >&2; exit 1; }
+    service="$1"
+    shift || true
+    run_index "$service" "$@"
     ;;
   format)
     shift || true

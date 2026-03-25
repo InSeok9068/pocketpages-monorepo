@@ -19,11 +19,11 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill deploy rollback test lint diag verify format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill deploy rollback test lint diag verify index format help" -- "$cur") )
     return
   fi
 
-  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "start" || "$cmd" == "deploy" || "$cmd" == "rollback" || "$cmd" == "test" || "$cmd" == "lint" || "$cmd" == "diag" || "$cmd" == "verify" ) ]]; then
+  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "start" || "$cmd" == "deploy" || "$cmd" == "rollback" || "$cmd" == "test" || "$cmd" == "lint" || "$cmd" == "diag" || "$cmd" == "verify" || "$cmd" == "index" ) ]]; then
     services="$("$script" __complete_services 2>/dev/null)"
     COMPREPLY=( $(compgen -W "$services" -- "$cur") )
     return
@@ -32,6 +32,20 @@ _pp_dev_complete() {
   if [[ $COMP_CWORD -eq 3 && "$cmd" == "rollback" ]]; then
     COMPREPLY=( $(compgen -W "1 2 3" -- "$cur") )
     return
+  fi
+
+  if [[ "$cmd" == "index" ]]; then
+    if [[ "$cur" == --* ]]; then
+      COMPREPLY=( $(compgen -W "--section --json --pretty" -- "$cur") )
+      return
+    fi
+
+    if [[ $COMP_CWORD -ge 3 && "${COMP_WORDS[COMP_CWORD-1]}" == "--section" ]]; then
+      local sections
+      sections="$("$script" __complete_index_sections 2>/dev/null)"
+      COMPREPLY=( $(compgen -W "$sections" -- "$cur") )
+      return
+    fi
   fi
 }
 

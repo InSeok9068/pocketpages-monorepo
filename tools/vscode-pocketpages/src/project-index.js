@@ -1638,13 +1638,33 @@ class PocketPagesProjectIndex {
     return 10
   }
 
-  inferCollectionName(receiverExpression, scriptText, beforeOffset) {
+  inferCollectionReference(receiverExpression, scriptText, beforeOffset) {
     const receiverName = getLastPathSegment(receiverExpression)
     const collectionNames = this.getCollectionNames()
 
-    for (const candidate of [receiverName, toPlural(receiverName), toSingular(receiverName)]) {
-      if (collectionNames.includes(candidate)) {
-        return candidate
+    if (collectionNames.includes(receiverName)) {
+      return {
+        collectionName: receiverName,
+        confidence: 'high',
+        strategy: 'receiver-name',
+      }
+    }
+
+    const pluralReceiverName = toPlural(receiverName)
+    if (collectionNames.includes(pluralReceiverName)) {
+      return {
+        collectionName: pluralReceiverName,
+        confidence: 'high',
+        strategy: 'receiver-pluralized',
+      }
+    }
+
+    const singularizedReceiverName = toSingular(receiverName)
+    if (collectionNames.includes(singularizedReceiverName)) {
+      return {
+        collectionName: singularizedReceiverName,
+        confidence: 'medium',
+        strategy: 'receiver-singularized',
       }
     }
 
@@ -1660,7 +1680,11 @@ class PocketPagesProjectIndex {
     if (collectionMatches.length) {
       const lastCollection = collectionMatches[collectionMatches.length - 1]
       if (lastCollection) {
-        return lastCollection
+        return {
+          collectionName: lastCollection,
+          confidence: genericNames.has(receiverName) ? 'medium' : 'low',
+          strategy: 'latest-collection-call',
+        }
       }
     }
 
@@ -1672,18 +1696,31 @@ class PocketPagesProjectIndex {
         : []
       const uniqueCollections = [...new Set(allMatches)]
       if (uniqueCollections.length === 1) {
-        return uniqueCollections[0]
+        return {
+          collectionName: uniqueCollections[0],
+          confidence: 'low',
+          strategy: 'single-collection-in-file',
+        }
       }
     }
 
     const singularReceiver = toSingular(receiverName)
     for (const collectionName of collectionNames) {
       if (toSingular(collectionName) === singularReceiver) {
-        return collectionName
+        return {
+          collectionName: collectionName,
+          confidence: 'medium',
+          strategy: 'receiver-singular-match',
+        }
       }
     }
 
     return null
+  }
+
+  inferCollectionName(receiverExpression, scriptText, beforeOffset) {
+    const reference = this.inferCollectionReference(receiverExpression, scriptText, beforeOffset)
+    return reference ? reference.collectionName : null
   }
 }
 
