@@ -325,7 +325,7 @@
   <div
     x-show="controlsVisible"
     x-cloak
-    class="fixed bottom-18 right-4 z-30 flex w-52 max-w-[calc(100vw-2rem)] flex-col items-stretch gap-2 rounded-[1.5rem] bg-[rgba(255,255,255,0.92)] p-3 shadow-[0_18px_40px_rgba(24,19,16,0.18)] backdrop-blur-sm">
+    class="bottom-18 fixed right-4 z-30 flex w-52 max-w-[calc(100vw-2rem)] flex-col items-stretch gap-2 rounded-[1.5rem] bg-[rgba(255,255,255,0.92)] p-3 shadow-[0_18px_40px_rgba(24,19,16,0.18)] backdrop-blur-sm">
     <button
       type="button"
       x-on:click="openSearch()"
@@ -460,9 +460,7 @@
 
         <div class="space-y-4">
           <template x-if="!readAloudSupported">
-            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-              이 브라우저는 읽어주기 기능을 지원하지 않습니다.
-            </p>
+            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">이 브라우저는 읽어주기 기능을 지원하지 않습니다.</p>
           </template>
 
           <template x-if="readAloudSupported">
