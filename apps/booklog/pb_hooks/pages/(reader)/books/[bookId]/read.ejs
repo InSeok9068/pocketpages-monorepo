@@ -657,13 +657,22 @@
     var currentLocation = null
     var readerContainer = null
     var autoPagingTarget = null
-    var autoPagingLockUntil = 0
     var autoPagingInFlight = false
+    var settlingUntil = 0
     var autoPagingCheckFrameId = 0
     var pendingAutoPagingDirection = ''
+    var intentDirection = ''
+    var intentStartedAt = 0
+    var releaseRequired = false
+    var releaseDirection = ''
+    var pendingTransitionSnapshot = null
+    var boundAutoPagingTarget = null
+    var boundAutoPagingHandler = null
     var lastContainerScrollTop = 0
-    var EDGE_TRIGGER_DISTANCE = 56
-    var AUTO_PAGE_LOCK_MS = 320
+    var EDGE_TRIGGER_DISTANCE = 32
+    var EDGE_RELEASE_DISTANCE = 96
+    var EDGE_INTENT_MS = 140
+    var AUTO_PAGE_SETTLE_MS = 520
     var AUTO_SAVE_INTERVAL_MS = 5000
     var NAVIGATION_SAVE_WAIT_MS = 2000
     var READER_CACHE_DB_NAME = 'booklog-reader-cache'
@@ -1313,6 +1322,7 @@
       }
 
       isRestoringPosition = true
+      prepareManualNavigation()
 
       if (shouldShowMessage) {
         component.showSavePositionMessage('')
@@ -1670,12 +1680,63 @@
       })
     }
 
-    function isAutoPagingLocked() {
-      return Date.now() < autoPagingLockUntil
+    function isAutoPagingSettling() {
+      return Date.now() < settlingUntil
     }
 
-    function lockAutoPaging() {
-      autoPagingLockUntil = Date.now() + AUTO_PAGE_LOCK_MS
+    function setAutoPagingSettling() {
+      settlingUntil = Date.now() + AUTO_PAGE_SETTLE_MS
+    }
+
+    /**
+     * 자동 페이지 전환 의도 상태를 초기화합니다.
+     * @returns {void}
+     */
+    function resetAutoPagingIntent() {
+      intentDirection = ''
+      intentStartedAt = 0
+    }
+
+    /**
+     * 예약된 자동 페이지 전환 검사와 상태를 초기화합니다.
+     * @param {{ keepSettling?: boolean, keepRelease?: boolean, keepInFlight?: boolean }=} options 유지할 상태 옵션
+     * @returns {void}
+     */
+    function resetAutoPagingState(options) {
+      var keepSettling = !!(options && options.keepSettling)
+      var keepRelease = !!(options && options.keepRelease)
+      var keepInFlight = !!(options && options.keepInFlight)
+
+      if (autoPagingCheckFrameId) {
+        window.cancelAnimationFrame(autoPagingCheckFrameId)
+        autoPagingCheckFrameId = 0
+      }
+
+      pendingAutoPagingDirection = ''
+      pendingTransitionSnapshot = null
+      resetAutoPagingIntent()
+
+      if (!keepRelease) {
+        releaseRequired = false
+        releaseDirection = ''
+      }
+
+      if (!keepSettling) {
+        settlingUntil = 0
+      }
+
+      if (!keepInFlight) {
+        autoPagingInFlight = false
+      }
+    }
+
+    /**
+     * 수동 이동 전에 자동 페이지 전환 상태를 정리합니다.
+     * @returns {void}
+     */
+    function prepareManualNavigation() {
+      resetAutoPagingState()
+      setAutoPagingSettling()
     }
 
     /**
@@ -1770,44 +1831,59 @@
         return null
       }
 
+      if (autoPagingTarget !== target) {
+        lastContainerScrollTop = target.scrollTop || 0
+      }
+
       autoPagingTarget = target
       readerContainer = target
-      lastContainerScrollTop = target.scrollTop || 0
 
       return target
     }
 
     /**
-     * 인접 섹션 이동 후 현재 스크롤 대상을 원하는 위치로 맞춥니다.
+     * 현재 방향 기준으로 경계까지 남은 거리를 계산합니다.
+     * @param {HTMLElement | null} target 현재 스크롤 컨테이너
      * @param {'next' | 'prev'} direction 이동 방향
+     * @returns {number} 경계까지 남은 거리
      */
-    function syncAdjacentSectionScrollPosition(direction) {
-      getAutoPagingTargets().forEach(function (target) {
-        if (direction === 'next') {
-          target.scrollTop = 0
-          return
-        }
-
-        if (target.scrollHeight > target.clientHeight) {
-          target.scrollTop = Math.max(target.scrollHeight - target.clientHeight - EDGE_TRIGGER_DISTANCE, 0)
-        }
-      })
-    }
-
-    function isNearTop(target) {
+    function getDistanceToEdge(target, direction) {
       if (!target) {
-        return false
+        return Number.POSITIVE_INFINITY
       }
 
-      return Number(target.scrollTop || 0) <= EDGE_TRIGGER_DISTANCE
-    }
-
-    function isNearBottom(target) {
-      if (!target) {
-        return false
+      if (direction === 'prev') {
+        return Number(target.scrollTop || 0)
       }
 
-      return target.scrollHeight - (target.scrollTop + target.clientHeight) <= EDGE_TRIGGER_DISTANCE
+      if (direction === 'next') {
+        return Math.max(target.scrollHeight - (target.scrollTop + target.clientHeight), 0)
+      }
+
+      return Number.POSITIVE_INFINITY
+    }
+
+    /**
+     * 자동 페이지 전환을 다시 허용할 만큼 경계에서 벗어났는지 확인합니다.
+     * @param {HTMLElement | null} target 현재 스크롤 컨테이너
+     * @returns {boolean} 재발동 가능한지 여부
+     */
+    function hasReleasedAutoPagingEdge(target) {
+      if (!releaseRequired || !releaseDirection) {
+        return true
+      }
+
+      return getDistanceToEdge(target, releaseDirection) > EDGE_RELEASE_DISTANCE
+    }
+
+    /**
+     * 현재 위치가 자동 페이지 전환 트리거 범위인지 확인합니다.
+     * @param {HTMLElement | null} target 현재 스크롤 컨테이너
+     * @param {'next' | 'prev'} direction 이동 방향
+     * @returns {boolean} 트리거 가능한 경계 근처인지 여부
+     */
+    function isWithinAutoPagingTrigger(target, direction) {
+      return getDistanceToEdge(target, direction) <= EDGE_TRIGGER_DISTANCE
     }
 
     /**
@@ -1852,26 +1928,117 @@
     }
 
     /**
-     * 현재 스크롤 위치와 입력 방향을 바탕으로 자동 페이지 전환 여부를 평가합니다.
-     * @param {any} component Alpine 컴포넌트 상태
+     * 자동 페이지 전환 전 스크롤 위치 스냅샷을 기록합니다.
      * @param {'next' | 'prev'} direction 이동 방향
+     * @param {HTMLElement | null} target 현재 스크롤 컨테이너
+     * @returns {{ direction: 'next' | 'prev', beforeScrollTop: number, beforeScrollHeight: number, beforeClientHeight: number } | null} 전환 보정 스냅샷
+     */
+    function createAutoPagingTransitionSnapshot(direction, target) {
+      if (!target || (direction !== 'next' && direction !== 'prev')) {
+        return null
+      }
+
+      return {
+        direction: direction,
+        beforeScrollTop: Number(target.scrollTop || 0),
+        beforeScrollHeight: Number(target.scrollHeight || 0),
+        beforeClientHeight: Number(target.clientHeight || 0),
+      }
+    }
+
+    /**
+     * 자동 페이지 전환 완료 후 공통 상태를 마무리합니다.
+     * @param {'next' | 'prev'} direction 이동 방향
+     * @param {HTMLElement | null} target 현재 스크롤 컨테이너
      * @returns {void}
      */
-    function evaluateAutoPaging(component, direction) {
+    function finalizeAutoPagingTransition(direction, target) {
+      var activeTarget = target || syncAutoPagingTarget()
+
+      autoPagingInFlight = false
+      pendingTransitionSnapshot = null
+      releaseRequired = true
+      releaseDirection = direction
+      setAutoPagingSettling()
+      resetAutoPagingIntent()
+
+      if (activeTarget) {
+        lastContainerScrollTop = activeTarget.scrollTop || 0
+      }
+    }
+
+    /**
+     * 이전 섹션 prepend 후 높이 차이만큼 스크롤 위치를 보정합니다.
+     * @param {{ direction: 'next' | 'prev', beforeScrollTop: number, beforeScrollHeight: number, beforeClientHeight: number } | null} snapshot 전환 전 스냅샷
+     * @returns {void}
+     */
+    function schedulePrevAutoPagingCompensation(snapshot) {
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(function () {
+          var target = syncAutoPagingTarget()
+          var afterScrollHeight = 0
+          var heightDelta = 0
+
+          if (!target || !snapshot || snapshot.direction !== 'prev') {
+            finalizeAutoPagingTransition(snapshot && snapshot.direction ? snapshot.direction : 'prev', target)
+            return
+          }
+
+          afterScrollHeight = Number(target.scrollHeight || 0)
+          heightDelta = Math.max(afterScrollHeight - snapshot.beforeScrollHeight, 0)
+          target.scrollTop = snapshot.beforeScrollTop + heightDelta
+          lastContainerScrollTop = target.scrollTop || 0
+
+          finalizeAutoPagingTransition('prev', target)
+        })
+      })
+    }
+
+    function goToAdjacentSection(component, direction) {
+      var action = null
       var target = autoPagingTarget || syncAutoPagingTarget()
 
-      if (!target || (direction !== 'next' && direction !== 'prev')) {
+      if (!renditionInstance || !target || autoPagingInFlight || isAutoPagingSettling()) {
         return
       }
 
-      if (direction === 'next' && isNearBottom(target)) {
-        goToAdjacentSection(component, 'next')
+      if (direction !== 'next' && direction !== 'prev') {
         return
       }
 
-      if (direction === 'prev' && isNearTop(target)) {
-        goToAdjacentSection(component, 'prev')
+      if (isAutoPagingBoundary(direction)) {
+        resetAutoPagingIntent()
+        return
       }
+
+      action = direction === 'next' ? renditionInstance.next : renditionInstance.prev
+
+      if (typeof action !== 'function') {
+        return
+      }
+
+      pendingTransitionSnapshot = createAutoPagingTransitionSnapshot(direction, target)
+
+      if (!pendingTransitionSnapshot) {
+        return
+      }
+
+      autoPagingInFlight = true
+      resetAutoPagingIntent()
+
+      Promise.resolve(action.call(renditionInstance))
+        .then(function () {
+          console.debug('page/books/[bookId]/read:auto-page:requested', {
+            direction: direction,
+          })
+        })
+        .catch(function (exception) {
+          resetAutoPagingState()
+          console.warn('page/books/[bookId]/read:auto-page:failed', {
+            direction: direction,
+            message: String(exception && exception.message ? exception.message : exception),
+          })
+        })
     }
 
     /**
@@ -1900,45 +2067,54 @@
       })
     }
 
-    function goToAdjacentSection(component, direction) {
-      var action = null
+    /**
+     * 현재 스크롤 위치와 입력 방향을 바탕으로 자동 페이지 전환 여부를 평가합니다.
+     * @param {any} component Alpine 컴포넌트 상태
+     * @param {'next' | 'prev'} direction 이동 방향
+     * @returns {void}
+     */
+    function evaluateAutoPaging(component, direction) {
+      var target = autoPagingTarget || syncAutoPagingTarget()
 
-      if (!renditionInstance || autoPagingInFlight || isAutoPagingLocked()) {
+      if (!target || (direction !== 'next' && direction !== 'prev')) {
+        resetAutoPagingIntent()
         return
       }
 
-      if (direction !== 'next' && direction !== 'prev') {
+      if (component.loading || isRestoringPosition || autoPagingInFlight || isAutoPagingSettling()) {
+        resetAutoPagingIntent()
         return
       }
 
-      if (isAutoPagingBoundary(direction)) {
+      if (releaseRequired) {
+        if (!hasReleasedAutoPagingEdge(target)) {
+          resetAutoPagingIntent()
+          return
+        }
+
+        releaseRequired = false
+        releaseDirection = ''
+      }
+
+      if (!isWithinAutoPagingTrigger(target, direction)) {
+        if (intentDirection === direction) {
+          resetAutoPagingIntent()
+        }
+
         return
       }
 
-      action = direction === 'next' ? renditionInstance.next : renditionInstance.prev
-
-      if (typeof action !== 'function') {
+      if (intentDirection !== direction) {
+        intentDirection = direction
+        intentStartedAt = Date.now()
         return
       }
 
-      autoPagingInFlight = true
+      if (Date.now() - intentStartedAt < EDGE_INTENT_MS) {
+        return
+      }
 
-      Promise.resolve(action.call(renditionInstance))
-        .then(function (location) {
-          syncAdjacentSectionScrollPosition(direction)
-          updateCurrentLocation(component, location || renditionInstance.currentLocation())
-        })
-        .catch(function (exception) {
-          console.warn('page/books/[bookId]/read:auto-page:failed', {
-            direction: direction,
-            message: String(exception && exception.message ? exception.message : exception),
-          })
-        })
-        .finally(function () {
-          autoPagingInFlight = false
-          lockAutoPaging()
-          syncAutoPagingTarget()
-        })
+      goToAdjacentSection(component, direction)
     }
 
     function bindAutoPaging(component, target) {
@@ -1946,34 +2122,36 @@
         return
       }
 
-      if (target.__booklogAutoPagingBound) {
+      if (boundAutoPagingTarget === target && boundAutoPagingHandler) {
         return
       }
 
-      target.__booklogAutoPagingBound = true
+      if (boundAutoPagingTarget && boundAutoPagingHandler) {
+        boundAutoPagingTarget.removeEventListener('scroll', boundAutoPagingHandler)
+      }
+
+      boundAutoPagingTarget = target
       readerContainer = target
       lastContainerScrollTop = target.scrollTop || 0
 
-      target.addEventListener(
-        'scroll',
-        function () {
-          var currentScrollTop = target.scrollTop || 0
-          var direction = ''
+      boundAutoPagingHandler = function () {
+        var currentScrollTop = boundAutoPagingTarget ? boundAutoPagingTarget.scrollTop || 0 : 0
+        var direction = ''
 
-          if (currentScrollTop > lastContainerScrollTop) {
-            direction = 'next'
-          } else if (currentScrollTop < lastContainerScrollTop) {
-            direction = 'prev'
-          }
+        if (currentScrollTop > lastContainerScrollTop) {
+          direction = 'next'
+        } else if (currentScrollTop < lastContainerScrollTop) {
+          direction = 'prev'
+        }
 
-          lastContainerScrollTop = currentScrollTop
+        lastContainerScrollTop = currentScrollTop
 
-          if (direction) {
-            scheduleAutoPagingEvaluation(component, direction)
-          }
-        },
-        { passive: true }
-      )
+        if (direction) {
+          scheduleAutoPagingEvaluation(component, direction)
+        }
+      }
+
+      target.addEventListener('scroll', boundAutoPagingHandler, { passive: true })
     }
 
     function renderBookBuffer(component, buffer) {
@@ -2011,7 +2189,25 @@
       })
 
       renditionInstance.on('relocated', function (location) {
+        var target = null
+        var snapshot = pendingTransitionSnapshot
+
+        target = syncAutoPagingTarget()
+        if (target) {
+          bindAutoPaging(component, target)
+        }
         updateCurrentLocation(component, location)
+
+        if (!autoPagingInFlight || !snapshot) {
+          return
+        }
+
+        if (snapshot.direction === 'prev') {
+          schedulePrevAutoPagingCompensation(snapshot)
+          return
+        }
+
+        finalizeAutoPagingTransition(snapshot.direction, target)
       })
 
       return bookInstance.ready.then(function () {
@@ -2229,6 +2425,7 @@
 
       component.loading = true
       component.searchOpen = false
+      prepareManualNavigation()
 
       renditionInstance
         .display(target)
@@ -2255,6 +2452,7 @@
       component.tocOpen = false
       component.controlsVisible = false
       component.loading = true
+      prepareManualNavigation()
 
       renditionInstance
         .display(target)
@@ -2438,6 +2636,8 @@
         component.showSavePositionMessage('해당 진행률 위치를 찾지 못했습니다.')
         return
       }
+
+      prepareManualNavigation()
 
       Promise.resolve(renditionInstance.display(locator))
         .then(function (location) {
