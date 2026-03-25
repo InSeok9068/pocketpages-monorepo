@@ -16,7 +16,8 @@ const ISSUE_CATEGORY_ORDER = new Map([
   [ts.DiagnosticCategory.Message, 3],
 ]);
 
-let issueCount = 0;
+let blockingIssueCount = 0;
+let advisoryIssueCount = 0;
 
 /**
  * Git Bash 스타일 경로를 Windows 경로로 바꿉니다.
@@ -278,6 +279,15 @@ function toSeverityLabel(category) {
 }
 
 /**
+ * verify 실패를 유발하는 blocking 진단인지 판별합니다.
+ * @param {number} category TypeScript 진단 카테고리입니다.
+ * @returns {boolean} Error/Warning이면 true입니다.
+ */
+function isBlockingCategory(category) {
+  return category === ts.DiagnosticCategory.Error || category === ts.DiagnosticCategory.Warning;
+}
+
+/**
  * 서비스 하나의 확장 진단을 계산합니다.
  * @param {string} serviceDir 서비스 루트입니다.
  * @param {PocketPagesLanguageServiceManager} manager 확장 language service 매니저입니다.
@@ -355,15 +365,24 @@ function printServiceResult(result) {
     return;
   }
 
-  issueCount += result.issues.length;
-  console.log(`[FAIL][${result.serviceName}] PocketPages editor diagnostics`);
+  const blockingIssues = result.issues.filter((issue) => isBlockingCategory(issue.category));
+
+  if (blockingIssues.length > 0) {
+    blockingIssueCount += blockingIssues.length;
+    console.log(`[FAIL][${result.serviceName}] PocketPages editor diagnostics`);
+  } else {
+    advisoryIssueCount += result.issues.length;
+    console.log(`[WARN][${result.serviceName}] PocketPages editor diagnostics advisory issues`);
+  }
 
   for (const issue of result.issues) {
     const displayPath = toDisplayPath(issue.filePath);
     console.log(`  ${displayPath}:${issue.line}:${issue.column} [${toSeverityLabel(issue.category)}][${String(issue.code)}] ${issue.message}`);
   }
 
-  console.log(`Found ${result.issues.length} issue(s) in ${(result.totalMs / 1000).toFixed(2)}s.`);
+  console.log(
+    `${blockingIssues.length > 0 ? "Found" : "Found advisory"} ${result.issues.length} issue(s) in ${(result.totalMs / 1000).toFixed(2)}s.`
+  );
 }
 
 /**
@@ -378,15 +397,24 @@ function printFileResult(result) {
     return;
   }
 
-  issueCount += result.issues.length;
-  console.log('[FAIL] PocketPages editor diagnostics');
+  const blockingIssues = result.issues.filter((issue) => isBlockingCategory(issue.category));
+
+  if (blockingIssues.length > 0) {
+    blockingIssueCount += blockingIssues.length;
+    console.log("[FAIL] PocketPages editor diagnostics");
+  } else {
+    advisoryIssueCount += result.issues.length;
+    console.log("[WARN] PocketPages editor diagnostics advisory issues");
+  }
 
   for (const issue of result.issues) {
     const displayPath = toDisplayPath(issue.filePath);
     console.log(`  ${displayPath}:${issue.line}:${issue.column} [${toSeverityLabel(issue.category)}][${String(issue.code)}] ${issue.message}`);
   }
 
-  console.log(`Found ${result.issues.length} issue(s) in ${(result.totalMs / 1000).toFixed(2)}s.`);
+  console.log(
+    `${blockingIssues.length > 0 ? "Found" : "Found advisory"} ${result.issues.length} issue(s) in ${(result.totalMs / 1000).toFixed(2)}s.`
+  );
 }
 
 function main() {
@@ -422,10 +450,16 @@ function main() {
     }
   }
 
-  if (issueCount > 0) {
+  if (blockingIssueCount > 0) {
     console.log();
-    console.log(`PocketPages editor diagnostics failed with ${issueCount} issue(s).`);
+    console.log(`PocketPages editor diagnostics failed with ${blockingIssueCount} blocking issue(s).`);
     process.exit(1);
+  }
+
+  if (advisoryIssueCount > 0) {
+    console.log();
+    console.log(`PocketPages editor diagnostics passed with ${advisoryIssueCount} advisory issue(s).`);
+    process.exit(0);
   }
 
   console.log('PocketPages editor diagnostics passed.');

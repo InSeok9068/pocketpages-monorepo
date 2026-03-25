@@ -1178,6 +1178,36 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText) {
   return diagnostics;
 }
 
+function buildSchemaFieldDiagnostic(projectIndex, context, analysisText, offsetBase = 0) {
+  const reference = projectIndex.inferCollectionReference(
+    context.receiverExpression,
+    analysisText,
+    context.start
+  );
+
+  if (!reference || projectIndex.hasField(reference.collectionName, context.value)) {
+    return null;
+  }
+
+  if (reference.confidence === "low") {
+    return null;
+  }
+
+  return {
+    code: "pp-schema-field",
+    category:
+      reference.confidence === "high"
+        ? ts.DiagnosticCategory.Warning
+        : ts.DiagnosticCategory.Suggestion,
+    message:
+      reference.confidence === "high"
+        ? `Unknown field "${context.value}" for collection "${reference.collectionName}".`
+        : `Possible unknown field "${context.value}". Inferred collection is "${reference.collectionName}" with ${reference.confidence} confidence.`,
+    start: offsetBase + context.start,
+    end: offsetBase + context.end,
+  };
+}
+
 class ProjectLanguageService {
   constructor(appRoot) {
     this.appRoot = appRoot;
@@ -3521,20 +3551,15 @@ class ProjectLanguageService {
         }
 
         if (context.kind === "record-field") {
-          const collectionName = this.projectIndex.inferCollectionName(
-            context.receiverExpression,
+          const fieldDiagnostic = buildSchemaFieldDiagnostic(
+            this.projectIndex,
+            context,
             block.content,
-            context.start
+            block.contentStart
           );
 
-          if (collectionName && !this.projectIndex.hasField(collectionName, context.value)) {
-            diagnostics.push({
-              code: "pp-schema-field",
-              category: ts.DiagnosticCategory.Warning,
-              message: `Unknown field "${context.value}" for collection "${collectionName}".`,
-              start: block.contentStart + context.start,
-              end: block.contentStart + context.end,
-            });
+          if (fieldDiagnostic) {
+            diagnostics.push(fieldDiagnostic);
           }
         }
       }
@@ -3593,20 +3618,14 @@ class ProjectLanguageService {
         }
 
         if (context.kind === "record-field") {
-          const collectionName = this.projectIndex.inferCollectionName(
-            context.receiverExpression,
-            templateVirtualText,
-            context.start
+          const fieldDiagnostic = buildSchemaFieldDiagnostic(
+            this.projectIndex,
+            context,
+            templateVirtualText
           );
 
-          if (collectionName && !this.projectIndex.hasField(collectionName, context.value)) {
-            diagnostics.push({
-              code: "pp-schema-field",
-              category: ts.DiagnosticCategory.Warning,
-              message: `Unknown field "${context.value}" for collection "${collectionName}".`,
-              start: context.start,
-              end: context.end,
-            });
+          if (fieldDiagnostic) {
+            diagnostics.push(fieldDiagnostic);
           }
         }
       }

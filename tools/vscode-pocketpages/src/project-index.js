@@ -310,6 +310,81 @@ function toSingular(name) {
   return name
 }
 
+function toSnakeCase(name) {
+  return String(name || '')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[-\s]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase()
+}
+
+function stripReceiverCollectionSuffix(name) {
+  const value = String(name || '')
+  const suffixes = ['Record', 'Item', 'Entry', 'Row', 'Model']
+
+  for (const suffix of suffixes) {
+    const suffixRegex = new RegExp(`${suffix}$`, 'i')
+    if (value.length > suffix.length && suffixRegex.test(value)) {
+      return value.slice(0, -suffix.length)
+    }
+  }
+
+  return value
+}
+
+function buildCollectionReferenceCandidates(receiverName) {
+  const seenNames = new Set()
+  const candidates = []
+
+  const addCandidate = (collectionName, confidence, strategy) => {
+    const normalizedName = String(collectionName || '').trim()
+    if (!normalizedName || seenNames.has(normalizedName)) {
+      return
+    }
+
+    seenNames.add(normalizedName)
+    candidates.push({
+      collectionName: normalizedName,
+      confidence,
+      strategy,
+    })
+  }
+
+  const strippedReceiverName = stripReceiverCollectionSuffix(receiverName)
+  const receiverSnakeName = toSnakeCase(receiverName)
+  const strippedReceiverSnakeName = toSnakeCase(strippedReceiverName)
+
+  addCandidate(receiverName, 'high', 'receiver-name')
+  addCandidate(toPlural(receiverName), 'high', 'receiver-pluralized')
+  addCandidate(toSingular(receiverName), 'medium', 'receiver-singularized')
+
+  if (strippedReceiverName && strippedReceiverName !== receiverName) {
+    addCandidate(strippedReceiverName, 'high', 'receiver-suffix-stripped')
+    addCandidate(toPlural(strippedReceiverName), 'high', 'receiver-suffix-stripped-pluralized')
+    addCandidate(toSingular(strippedReceiverName), 'medium', 'receiver-suffix-stripped-singularized')
+  }
+
+  if (receiverSnakeName && receiverSnakeName !== receiverName) {
+    addCandidate(receiverSnakeName, 'medium', 'receiver-snake-case')
+    addCandidate(toPlural(receiverSnakeName), 'high', 'receiver-snake-pluralized')
+    addCandidate(toSingular(receiverSnakeName), 'medium', 'receiver-snake-singularized')
+  }
+
+  if (strippedReceiverSnakeName && strippedReceiverSnakeName !== receiverSnakeName) {
+    addCandidate(strippedReceiverSnakeName, 'medium', 'receiver-suffix-stripped-snake-case')
+    addCandidate(toPlural(strippedReceiverSnakeName), 'high', 'receiver-suffix-stripped-snake-pluralized')
+    addCandidate(
+      toSingular(strippedReceiverSnakeName),
+      'medium',
+      'receiver-suffix-stripped-snake-singularized',
+    )
+  }
+
+  return candidates
+}
+
 function getLastPathSegment(value) {
   return String(value || '')
     .split('.')
@@ -1641,30 +1716,11 @@ class PocketPagesProjectIndex {
   inferCollectionReference(receiverExpression, scriptText, beforeOffset) {
     const receiverName = getLastPathSegment(receiverExpression)
     const collectionNames = this.getCollectionNames()
+    const directCandidates = buildCollectionReferenceCandidates(receiverName)
 
-    if (collectionNames.includes(receiverName)) {
-      return {
-        collectionName: receiverName,
-        confidence: 'high',
-        strategy: 'receiver-name',
-      }
-    }
-
-    const pluralReceiverName = toPlural(receiverName)
-    if (collectionNames.includes(pluralReceiverName)) {
-      return {
-        collectionName: pluralReceiverName,
-        confidence: 'high',
-        strategy: 'receiver-pluralized',
-      }
-    }
-
-    const singularizedReceiverName = toSingular(receiverName)
-    if (collectionNames.includes(singularizedReceiverName)) {
-      return {
-        collectionName: singularizedReceiverName,
-        confidence: 'medium',
-        strategy: 'receiver-singularized',
+    for (const candidate of directCandidates) {
+      if (collectionNames.includes(candidate.collectionName)) {
+        return candidate
       }
     }
 

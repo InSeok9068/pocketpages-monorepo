@@ -36,7 +36,7 @@ _pp_dev_complete() {
 
   if [[ "$cmd" == "index" ]]; then
     if [[ "$cur" == --* ]]; then
-      COMPREPLY=( $(compgen -W "--section --json --pretty" -- "$cur") )
+      COMPREPLY=( $(compgen -W "--section --file --json --pretty" -- "$cur") )
       return
     fi
 

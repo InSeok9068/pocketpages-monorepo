@@ -15,7 +15,7 @@ Usage:
   ./task.sh lint [service]
   ./task.sh diag <file-or-service>
   ./task.sh verify [service]
-  ./task.sh index <service> [--section <name>] [--json|--pretty]
+  ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
   ./task.sh format [-- <extra args>]
 
 Commands:
@@ -27,7 +27,7 @@ Commands:
   lint      Run lightweight PocketPages self-validation checks for one service or all services
   diag      Run PocketPages editor diagnostics for PocketPages code files (.ejs/.js/.cjs/.mjs).
   verify    Run lint and diag together for one service or all services
-  index     Print machine-readable PocketPages project index JSON for one service
+  index     Query AI-friendly PocketPages project index JSON for one service
   format    Run npm run format
 EOF
 }
@@ -354,7 +354,7 @@ run_index() {
   fi
 
   if [[ -z "$service" ]]; then
-    echo "Usage: ./task.sh index <service> [--section <name>] [--json|--pretty]" >&2
+    echo "Usage: ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]" >&2
     exit 1
   fi
 
@@ -994,7 +994,7 @@ case "${1:-help}" in
     ;;
   index)
     shift
-    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh index <service> [--section <name>] [--json|--pretty]" >&2; exit 1; }
+    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]" >&2; exit 1; }
     service="$1"
     shift || true
     run_index "$service" "$@"

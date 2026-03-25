@@ -914,9 +914,9 @@ function lintService(context) {
   )
 
   const reservedParamsBindingMatches = collectReservedParamsBindingMatches(context.lintCodeFiles)
-  printMatches(
+  printWarnings(
     context.serviceName,
-    'Invalid JS params binding. Reserve "params" for route context only and rename helper inputs or locals to payload, input, summaryInput, or another contextual name.',
+    'Discouraged JS params binding. Reserve "params" for route context only and rename helper inputs or locals to payload, input, summaryInput, or another contextual name.',
     reservedParamsBindingMatches,
   )
 
@@ -944,9 +944,9 @@ function lintService(context) {
     ...collectLineMatches(context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')), RE.privateModuleFunctionExport),
     ...collectLineMatches(context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')), RE.privateModuleFactoryExport),
   ])
-  printMatches(
+  printWarnings(
     context.serviceName,
-    'Invalid _private module export style. Default to module.exports = { ... } and avoid function/factory exports in _private/*.js.',
+    'Discouraged _private module export style. Prefer module.exports = { ... } and avoid function/factory exports in _private/*.js.',
     privateModulePatternMatches,
   )
 
@@ -954,18 +954,18 @@ function lintService(context) {
     context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')),
     RE.distributedModuleExport,
   )
-  printMatches(
+  printWarnings(
     context.serviceName,
-    'Invalid _private module export style. Group public members in one module.exports = { ... } object instead of scattered module.exports.foo assignments.',
+    'Discouraged _private module export style. Prefer grouping public members in one module.exports = { ... } object instead of scattered module.exports.foo assignments.',
     distributedModuleExportMatches,
   )
 
   const moduleExportsShorthandMatches = collectModuleExportsShorthandMatches(
     context.hooksCodeFiles.filter((file) => file.basename.endsWith('.js')),
   )
-  printMatches(
+  printWarnings(
     context.serviceName,
-    'Invalid module.exports object style. Use shorthand members such as { sentCount } instead of repeating sentCount: sentCount in exported objects.',
+    'Discouraged module.exports object style. Prefer shorthand members such as { sentCount } instead of repeating sentCount: sentCount in exported objects.',
     moduleExportsShorthandMatches,
   )
 
@@ -1014,9 +1014,9 @@ function lintService(context) {
   )
 
   const localTypedefMatches = collectLineMatches(context.lintCodeFiles, RE.localTypedef)
-  printMatches(
+  printWarnings(
     context.serviceName,
-    'Invalid local @typedef usage. Move named shapes to apps/<service>/types.d.ts and reference them as types.*.',
+    'Discouraged local @typedef usage. Prefer moving named shapes to apps/<service>/types.d.ts and reference them as types.*.',
     localTypedefMatches,
   )
 
