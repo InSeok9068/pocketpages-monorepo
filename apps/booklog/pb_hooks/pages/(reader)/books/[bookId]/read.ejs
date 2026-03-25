@@ -166,6 +166,15 @@
     progressJumpValue: '',
     progressJumpEditing: false,
     jumpingProgress: false,
+    readAloudOpen: false,
+    readAloudSupported: false,
+    readAloudBusy: false,
+    readAloudPlaying: false,
+    readAloudPaused: false,
+    readAloudMessage: '',
+    readAloudVoiceName: '',
+    readAloudRate: '1',
+    readAloudVoices: [],
     highlightOpen: false,
     savingHighlight: false,
     highlightMessage: '',
@@ -198,6 +207,21 @@
     },
     closeToc: function () {
       this.tocOpen = false
+    },
+    openReadAloud: function () {
+      this.readAloudOpen = true
+      this.readAloudMessage = ''
+      this.controlsVisible = true
+      this.$nextTick(function () {
+        var select = document.getElementById('reader-read-aloud-voice')
+
+        if (select) {
+          select.focus()
+        }
+      })
+    },
+    closeReadAloud: function () {
+      this.readAloudOpen = false
     },
     openHighlight: function () {
       this.highlightOpen = true
@@ -266,6 +290,18 @@
     },
     goToProgress: function () {
       window.booklogReaderLogic.goToProgress(this)
+    },
+    startReadAloud: function () {
+      window.booklogReaderLogic.startReadAloud(this)
+    },
+    pauseReadAloud: function () {
+      window.booklogReaderLogic.pauseReadAloud(this)
+    },
+    resumeReadAloud: function () {
+      window.booklogReaderLogic.resumeReadAloud(this)
+    },
+    stopReadAloud: function () {
+      window.booklogReaderLogic.stopReadAloud(this)
     },
   }"
   x-init="window.booklogReaderLogic.init($data)"
@@ -351,6 +387,12 @@
     </button>
     <button
       type="button"
+      x-on:click="openReadAloud()"
+      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
+      읽어주기
+    </button>
+    <button
+      type="button"
       x-on:click="saveCurrentPosition()"
       x-bind:disabled="savingPosition || loading"
       class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0 disabled:opacity-60">
@@ -393,6 +435,124 @@
       class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-700 no-underline outline-none ring-0">
       책 상세
     </a>
+  </div>
+
+  <div
+    x-show="readAloudOpen"
+    x-cloak
+    class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.2)] backdrop-blur-[2px]">
+    <div class="mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
+      <div class="w-full rounded-[1.75rem] bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-semibold text-stone-950">읽어주기</h2>
+            <p
+              class="mt-1 text-sm text-stone-500"
+              x-text="currentChapterLabel ? '현재 챕터: ' + currentChapterLabel : '현재 챕터를 확인하는 중입니다.'"></p>
+          </div>
+          <button
+            type="button"
+            x-on:click="closeReadAloud()"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-stone-100 text-stone-700 outline-none ring-0">
+            ×
+          </button>
+        </div>
+
+        <div class="space-y-4">
+          <template x-if="!readAloudSupported">
+            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              이 브라우저는 읽어주기 기능을 지원하지 않습니다.
+            </p>
+          </template>
+
+          <template x-if="readAloudSupported">
+            <div class="space-y-4">
+              <label class="block space-y-2">
+                <span class="text-sm font-medium text-stone-700">한국어 음성</span>
+                <select
+                  id="reader-read-aloud-voice"
+                  x-model="readAloudVoiceName"
+                  class="box-border block w-full min-w-0 rounded-[1.1rem] border-0 bg-[#fbf5ec] px-4 py-3 text-sm text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none">
+                  <template
+                    x-for="voice in readAloudVoices"
+                    :key="voice.name + '::' + voice.lang">
+                    <option
+                      :value="voice.name"
+                      x-text="voice.label"></option>
+                  </template>
+                </select>
+              </label>
+
+              <label class="block space-y-2">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="text-sm font-medium text-stone-700">재생 속도</span>
+                  <span
+                    class="text-sm text-stone-500"
+                    x-text="Number(readAloudRate || 1).toFixed(1) + 'x'"></span>
+                </div>
+                <input
+                  x-model="readAloudRate"
+                  type="range"
+                  min="0.8"
+                  max="1.6"
+                  step="0.1"
+                  class="block w-full accent-stone-900" />
+              </label>
+
+              <div class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+                현재 위치와 가장 가까운 문단부터 현재 챕터 끝까지 읽습니다.
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <p
+          x-show="readAloudMessage"
+          x-cloak
+          class="mt-3 text-sm text-stone-500"
+          x-text="readAloudMessage"></p>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            x-on:click="startReadAloud()"
+            x-bind:disabled="!readAloudSupported || readAloudBusy"
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white outline-none ring-0 disabled:opacity-60">
+            <span
+              x-show="!readAloudBusy"
+              x-cloak
+              >재생</span
+            >
+            <span
+              x-show="readAloudBusy"
+              x-cloak
+              >준비 중</span
+            >
+          </button>
+          <button
+            type="button"
+            x-on:click="pauseReadAloud()"
+            x-bind:disabled="!readAloudPlaying || readAloudPaused"
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 outline-none ring-0 disabled:opacity-60">
+            일시정지
+          </button>
+          <button
+            type="button"
+            x-on:click="resumeReadAloud()"
+            x-bind:disabled="!readAloudPaused"
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 outline-none ring-0 disabled:opacity-60">
+            이어읽기
+          </button>
+          <button
+            type="button"
+            x-on:click="stopReadAloud()"
+            x-bind:disabled="!readAloudPlaying && !readAloudPaused && !readAloudBusy"
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 outline-none ring-0 disabled:opacity-60">
+            정지
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div
@@ -685,6 +845,15 @@
     var isRestoringPosition = false
     var hasAttemptedInitialRestore = false
     var lastPersistedProgressKey = ''
+    var speechSynthesisInstance = null
+    var speechVoices = []
+    var speechVoiceSyncHandler = null
+    var speechQueue = []
+    var speechQueueIndex = 0
+    var speechCurrentUtterance = null
+    var speechCurrentComponent = null
+    var speechRestartTimerId = null
+    var speechActiveToken = 0
     var activeComponent = null
     var isLeavingPage = false
     var isHandlingHistoryBack = false
@@ -725,6 +894,348 @@
         bind: hashIndex >= 0 ? href.slice(0, hashIndex) : href,
         fragment: hashIndex >= 0 ? href.slice(hashIndex + 1) : '',
       }
+    }
+
+    function clearSpeechRestartTimer() {
+      if (!speechRestartTimerId) {
+        return
+      }
+
+      clearTimeout(speechRestartTimerId)
+      speechRestartTimerId = null
+    }
+
+    function resetReadAloudState(component, options) {
+      var keepMessage = !!(options && options.keepMessage)
+
+      clearSpeechRestartTimer()
+      speechQueue = []
+      speechQueueIndex = 0
+      speechCurrentUtterance = null
+      speechCurrentComponent = component || speechCurrentComponent
+
+      if (!component) {
+        return
+      }
+
+      component.readAloudBusy = false
+      component.readAloudPlaying = false
+      component.readAloudPaused = false
+
+      if (!keepMessage) {
+        component.readAloudMessage = ''
+      }
+    }
+
+    function stopSpeechPlayback(component, options) {
+      var shouldKeepMessage = !!(options && options.keepMessage)
+
+      clearSpeechRestartTimer()
+      speechActiveToken += 1
+
+      if (speechSynthesisInstance) {
+        try {
+          speechSynthesisInstance.cancel()
+        } catch (exception) {}
+      }
+
+      resetReadAloudState(component || speechCurrentComponent, {
+        keepMessage: shouldKeepMessage,
+      })
+    }
+
+    function getSpeechSynthesisInstance() {
+      if (typeof window === 'undefined' || !window.speechSynthesis || typeof window.SpeechSynthesisUtterance === 'undefined') {
+        return null
+      }
+
+      if (!speechSynthesisInstance) {
+        speechSynthesisInstance = window.speechSynthesis
+      }
+
+      return speechSynthesisInstance
+    }
+
+    function isKoreanVoice(voice) {
+      var lang = String(voice && voice.lang ? voice.lang : '').toLowerCase()
+      var name = String(voice && voice.name ? voice.name : '').toLowerCase()
+
+      return lang.indexOf('ko') === 0 || name.indexOf('korean') >= 0 || name.indexOf('한국') >= 0 || name.indexOf('ko-kr') >= 0
+    }
+
+    /**
+     * 읽어주기에서 사용할 음성 목록을 동기화합니다.
+     * @param {any} component Alpine 컴포넌트 상태
+     * @returns {void}
+     */
+    function syncSpeechVoices(component) {
+      var synth = getSpeechSynthesisInstance()
+      var voices = []
+
+      if (!component) {
+        return
+      }
+
+      component.readAloudSupported = !!synth
+
+      if (!synth) {
+        component.readAloudVoices = []
+        component.readAloudVoiceName = ''
+        return
+      }
+
+      try {
+        voices = synth.getVoices ? synth.getVoices() : []
+      } catch (exception) {
+        voices = []
+      }
+
+      speechVoices = voices.filter(isKoreanVoice)
+      component.readAloudVoices = speechVoices.map(function (voice) {
+        return {
+          name: String(voice.name || ''),
+          lang: String(voice.lang || ''),
+          label: normalizeText(String(voice.name || '') + ' (' + String(voice.lang || '') + ')'),
+          defaultVoice: !!voice.default,
+        }
+      })
+
+      if (!component.readAloudVoices.length) {
+        component.readAloudVoiceName = ''
+        return
+      }
+
+      if (
+        component.readAloudVoiceName &&
+        component.readAloudVoices.some(function (voice) {
+          return voice.name === component.readAloudVoiceName
+        })
+      ) {
+        return
+      }
+
+      component.readAloudVoiceName = component.readAloudVoices[0].name
+    }
+
+    function findSelectedVoice(component) {
+      var targetName = component && component.readAloudVoiceName ? String(component.readAloudVoiceName) : ''
+
+      if (!speechVoices.length) {
+        return null
+      }
+
+      if (targetName) {
+        return (
+          speechVoices.find(function (voice) {
+            return String(voice.name || '') === targetName
+          }) || null
+        )
+      }
+
+      return speechVoices[0]
+    }
+
+    function collectReadableTextNodes(root) {
+      var selectors = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'blockquote', 'pre']
+      var nodes = []
+
+      if (!root || !root.querySelectorAll) {
+        return nodes
+      }
+
+      selectors.forEach(function (selector) {
+        var matchedNodes = root.querySelectorAll(selector)
+        var index = 0
+
+        for (index = 0; index < matchedNodes.length; index += 1) {
+          nodes.push(matchedNodes[index])
+        }
+      })
+
+      nodes.sort(function (left, right) {
+        var leftPosition = 0
+        var rightPosition = 0
+
+        try {
+          leftPosition = left.compareDocumentPosition(right)
+        } catch (exception) {
+          return 0
+        }
+
+        if (leftPosition & Node.DOCUMENT_POSITION_FOLLOWING) {
+          return -1
+        }
+
+        if (leftPosition & Node.DOCUMENT_POSITION_PRECEDING) {
+          return 1
+        }
+
+        return 0
+      })
+
+      return nodes
+    }
+
+    function buildSpeechQueueFromSection(section, currentCfi) {
+      var doc = section && section.document ? section.document : null
+      var nodes = collectReadableTextNodes(doc && doc.body ? doc.body : doc)
+      var queue = []
+      var firstMatchingIndex = -1
+
+      nodes.forEach(function (node, index) {
+        var text = normalizeText(node && node.textContent ? node.textContent : '')
+        var cfi = ''
+
+        if (!text) {
+          return
+        }
+
+        if (section && typeof section.cfiFromElement === 'function') {
+          try {
+            cfi = String(section.cfiFromElement(node) || '')
+          } catch (exception) {
+            cfi = ''
+          }
+        }
+
+        if (firstMatchingIndex < 0 && currentCfi && cfi && compareCfi(cfi, currentCfi) >= 0) {
+          firstMatchingIndex = queue.length
+        }
+
+        queue.push({
+          text: text,
+          cfi: cfi,
+          sourceIndex: index,
+        })
+      })
+
+      if (!queue.length) {
+        return []
+      }
+
+      if (firstMatchingIndex >= 0) {
+        return queue.slice(firstMatchingIndex)
+      }
+
+      return queue
+    }
+
+    /**
+     * 현재 챕터에서 읽어줄 문단 큐를 만듭니다.
+     * @param {any} component Alpine 컴포넌트 상태
+     * @returns {Promise<Array<{text:string,cfi:string}>>} 읽을 문단 큐
+     */
+    function buildReadAloudQueue(component) {
+      var location = currentLocation && currentLocation.start ? currentLocation.start : null
+      var href = normalizeHref(location && location.href ? location.href : '')
+      var cfi = location && location.cfi ? String(location.cfi) : ''
+      var section = null
+
+      if (!bookInstance || typeof bookInstance.section !== 'function') {
+        return Promise.reject(new Error('리더가 아직 준비되지 않았습니다.'))
+      }
+
+      if (!href) {
+        return Promise.reject(new Error('현재 챕터 위치를 찾지 못했습니다.'))
+      }
+
+      try {
+        section = bookInstance.section(href)
+      } catch (exception) {
+        section = null
+      }
+
+      if (!section || typeof section.load !== 'function') {
+        return Promise.reject(new Error('현재 챕터를 읽어오지 못했습니다.'))
+      }
+
+      return Promise.resolve(section.load(bookInstance.load.bind(bookInstance)))
+        .then(function () {
+          var queue = buildSpeechQueueFromSection(section, cfi)
+
+          if (!queue.length) {
+            throw new Error('현재 챕터에서 읽을 문단을 찾지 못했습니다.')
+          }
+
+          return queue
+        })
+        .finally(function () {
+          try {
+            section.unload()
+          } catch (exception) {}
+        })
+    }
+
+    function speakQueueItem(component, token) {
+      var synth = getSpeechSynthesisInstance()
+      var queueItem = speechQueue[speechQueueIndex]
+      var voice = findSelectedVoice(component)
+      var utterance = null
+      var rate = Number(component && component.readAloudRate ? component.readAloudRate : 1)
+
+      if (!component || !synth) {
+        return
+      }
+
+      if (token !== speechActiveToken) {
+        return
+      }
+
+      if (!queueItem) {
+        component.readAloudBusy = false
+        component.readAloudPlaying = false
+        component.readAloudPaused = false
+        component.readAloudMessage = '현재 챕터 읽기가 끝났습니다.'
+        return
+      }
+
+      utterance = new window.SpeechSynthesisUtterance(queueItem.text)
+      utterance.lang = voice && voice.lang ? String(voice.lang) : 'ko-KR'
+      utterance.rate = isFinite(rate) ? Math.max(0.8, Math.min(1.6, rate)) : 1
+
+      if (voice) {
+        utterance.voice = voice
+      }
+
+      utterance.onstart = function () {
+        if (token !== speechActiveToken) {
+          return
+        }
+
+        speechCurrentUtterance = utterance
+        speechCurrentComponent = component
+        component.readAloudBusy = false
+        component.readAloudPlaying = true
+        component.readAloudPaused = false
+        component.readAloudMessage = '현재 챕터를 읽는 중입니다.'
+      }
+
+      utterance.onend = function () {
+        if (token !== speechActiveToken) {
+          return
+        }
+
+        speechCurrentUtterance = null
+        speechQueueIndex += 1
+        clearSpeechRestartTimer()
+        speechRestartTimerId = setTimeout(function () {
+          speakQueueItem(component, token)
+        }, 40)
+      }
+
+      utterance.onerror = function (event) {
+        if (token !== speechActiveToken) {
+          return
+        }
+
+        console.error('page/books/[bookId]/read:read-aloud:failed', {
+          message: event && event.error ? String(event.error) : 'speech error',
+        })
+        stopSpeechPlayback(component, { keepMessage: true })
+        component.readAloudMessage = '읽어주기 재생에 실패했습니다.'
+      }
+
+      synth.speak(utterance)
     }
 
     function registerTocItems(items) {
@@ -2248,8 +2759,23 @@
       var container = document.getElementById('epub-reader')
 
       activeComponent = component
+      syncSpeechVoices(component)
       window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
       window.addEventListener('popstate', handlePopState)
+
+      if (getSpeechSynthesisInstance() && !speechVoiceSyncHandler) {
+        speechVoiceSyncHandler = function () {
+          syncSpeechVoices(activeComponent)
+        }
+
+        getSpeechSynthesisInstance().addEventListener('voiceschanged', speechVoiceSyncHandler)
+      }
+
+      window.addEventListener('beforeunload', function () {
+        stopSpeechPlayback(activeComponent, {
+          keepMessage: true,
+        })
+      })
 
       if (!container || !window.ePub) {
         component.loading = false
@@ -2324,6 +2850,98 @@
             message: component.errorMessage,
           })
         })
+    }
+
+    function startReadAloud(component) {
+      var synth = getSpeechSynthesisInstance()
+
+      if (!component || !synth) {
+        if (component) {
+          component.readAloudMessage = '이 브라우저는 읽어주기를 지원하지 않습니다.'
+        }
+        return
+      }
+
+      if (!component.readAloudVoices.length) {
+        syncSpeechVoices(component)
+      }
+
+      if (!component.readAloudVoices.length) {
+        component.readAloudMessage = '사용 가능한 한국어 음성을 찾지 못했습니다.'
+        return
+      }
+
+      stopSpeechPlayback(component, {
+        keepMessage: true,
+      })
+
+      component.readAloudBusy = true
+      component.readAloudPlaying = false
+      component.readAloudPaused = false
+      component.readAloudMessage = '현재 챕터를 준비하는 중입니다.'
+      speechActiveToken += 1
+      speechCurrentComponent = component
+
+      buildReadAloudQueue(component)
+        .then(function (queue) {
+          if (speechCurrentComponent !== component) {
+            return
+          }
+
+          speechQueue = queue
+          speechQueueIndex = 0
+          speakQueueItem(component, speechActiveToken)
+        })
+        .catch(function (exception) {
+          resetReadAloudState(component, {
+            keepMessage: true,
+          })
+          component.readAloudMessage = String(exception && exception.message ? exception.message : exception)
+        })
+    }
+
+    function pauseReadAloud(component) {
+      var synth = getSpeechSynthesisInstance()
+
+      if (!component || !synth || !component.readAloudPlaying || component.readAloudPaused) {
+        return
+      }
+
+      try {
+        synth.pause()
+      } catch (exception) {}
+
+      component.readAloudPaused = true
+      component.readAloudPlaying = false
+      component.readAloudBusy = false
+      component.readAloudMessage = '읽어주기를 일시정지했습니다.'
+    }
+
+    function resumeReadAloud(component) {
+      var synth = getSpeechSynthesisInstance()
+
+      if (!component || !synth || !component.readAloudPaused) {
+        return
+      }
+
+      try {
+        synth.resume()
+      } catch (exception) {}
+
+      component.readAloudPaused = false
+      component.readAloudPlaying = true
+      component.readAloudBusy = false
+      component.readAloudMessage = '읽어주기를 이어서 재생합니다.'
+    }
+
+    function stopReadAloud(component) {
+      stopSpeechPlayback(component, {
+        keepMessage: true,
+      })
+
+      if (component) {
+        component.readAloudMessage = '읽어주기를 멈췄습니다.'
+      }
     }
 
     function performSearch(component) {
@@ -2425,6 +3043,9 @@
 
       component.loading = true
       component.searchOpen = false
+      stopSpeechPlayback(component, {
+        keepMessage: true,
+      })
       prepareManualNavigation()
 
       renditionInstance
@@ -2452,6 +3073,9 @@
       component.tocOpen = false
       component.controlsVisible = false
       component.loading = true
+      stopSpeechPlayback(component, {
+        keepMessage: true,
+      })
       prepareManualNavigation()
 
       renditionInstance
@@ -2584,6 +3208,9 @@
 
       component.loadingSavedPosition = true
       component.loading = true
+      stopSpeechPlayback(component, {
+        keepMessage: true,
+      })
 
       restoreSavedPosition(component, {
         silent: false,
@@ -2638,6 +3265,9 @@
       }
 
       prepareManualNavigation()
+      stopSpeechPlayback(component, {
+        keepMessage: true,
+      })
 
       Promise.resolve(renditionInstance.display(locator))
         .then(function (location) {
@@ -2663,6 +3293,10 @@
       goToTocItem: goToTocItem,
       isActiveTocItem: isActiveTocItem,
       scrollActiveTocItemIntoView: scrollActiveTocItemIntoView,
+      startReadAloud: startReadAloud,
+      pauseReadAloud: pauseReadAloud,
+      resumeReadAloud: resumeReadAloud,
+      stopReadAloud: stopReadAloud,
       saveHighlight: saveHighlight,
       saveCurrentPosition: saveCurrentPosition,
       goToBookDetail: goToBookDetail,
