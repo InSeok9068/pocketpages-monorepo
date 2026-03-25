@@ -2283,7 +2283,6 @@
       var location = currentLocation && currentLocation.start ? currentLocation.start : null
       var locator = location && location.cfi ? String(location.cfi) : ''
       var href = location && location.href ? String(location.href) : ''
-      var pageNumber = getPageNumberFromLocation(currentLocation)
       var formData = new FormData()
 
       component.highlightMessage = ''
@@ -2299,7 +2298,6 @@
       formData.set('locator', locator)
       formData.set('href', href)
       formData.set('chapterLabel', component.currentChapterLabel || getChapterLabelForHref(href))
-      formData.set('pageNumber', pageNumber)
 
       component.savingHighlight = true
 

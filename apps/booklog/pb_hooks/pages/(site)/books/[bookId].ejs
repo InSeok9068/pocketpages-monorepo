@@ -179,7 +179,6 @@
     return {
       id: String(highlight.get('id') || ''),
       label: formatHighlightLabel(String(highlight.get('chapter_label') || '')),
-      pageNumber: String(highlight.get('page_number') || '').trim(),
       highlightedAt: formatHighlightDate(String(highlight.get('highlighted_at') || '')),
       quoteText: String(highlight.get('quote_text') || '').trim(),
       noteText: String(highlight.get('note_text') || '').trim(),
@@ -425,9 +424,6 @@
             <div class="flex min-w-0 flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
               <% if (highlight.label) { %>
               <span><%= highlight.label %></span>
-              <% } %>
-              <% if (highlight.pageNumber) { %>
-              <span>Page <%= highlight.pageNumber %></span>
               <% } %>
             </div>
             <% if (highlight.highlightedAt) { %>

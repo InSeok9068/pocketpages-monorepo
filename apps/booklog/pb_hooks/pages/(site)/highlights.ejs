@@ -29,7 +29,6 @@
     const highlightRecord = highlightRecords[index]
     const bookId = String(highlightRecord.get('book_id') || '').trim()
     const quoteText = String(highlightRecord.get('quote_text') || '').trim()
-    const pageNumber = String(highlightRecord.get('page_number') || '').trim()
     const highlightedAt = formatDateText(highlightRecord.get('highlighted_at'))
     let bookRecord = null
 
@@ -43,7 +42,6 @@
       bookId: bookId,
       bookTitle: bookRecord ? String(bookRecord.get('title') || '제목 없음') : '제목 없음',
       quoteText: quoteText,
-      pageNumber: pageNumber,
       highlightedAt: highlightedAt,
     })
   }
@@ -74,12 +72,7 @@
         href="/books/<%= item.bookId %>"
         class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-3.5 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
         <p class="text-[15px] font-semibold leading-[1.65] tracking-[-0.02em] text-stone-900 sm:text-base">"<%= item.quoteText %>"</p>
-        <p class="mt-2.5 text-[12px] leading-5 text-stone-500">
-          <span><%= item.bookTitle %></span>
-          <% if (item.pageNumber) { %>
-          <span> · <%= item.pageNumber %>p</span>
-          <% } %>
-        </p>
+        <p class="mt-2.5 text-[12px] leading-5 text-stone-500"><%= item.bookTitle %></p>
         <% if (item.highlightedAt) { %>
         <p class="mt-1.5 text-[12px] font-medium text-stone-400"><%= item.highlightedAt %></p>
         <% } %>
