@@ -1144,6 +1144,33 @@
       return nodes
     }
 
+    function findHighlightTarget(node) {
+      var highlightSelector = 'p, li, blockquote'
+      var currentNode = node
+
+      if (!currentNode || currentNode.nodeType !== 1) {
+        return null
+      }
+
+      if (typeof currentNode.matches === 'function' && currentNode.matches(highlightSelector)) {
+        return currentNode
+      }
+
+      if (typeof currentNode.closest === 'function') {
+        return currentNode.closest(highlightSelector) || currentNode
+      }
+
+      while (currentNode && currentNode.nodeType === 1) {
+        if (typeof currentNode.matches === 'function' && currentNode.matches(highlightSelector)) {
+          return currentNode
+        }
+
+        currentNode = currentNode.parentElement
+      }
+
+      return node
+    }
+
     function buildSpeechQueueFromSection(section, currentCfi) {
       var href = normalizeHref(section && section.href ? section.href : section && section.url ? section.url : '')
       var doc = section && section.document ? section.document : null
@@ -1249,6 +1276,12 @@
           break
         }
       }
+
+      if (!node || !node.classList) {
+        return
+      }
+
+      node = findHighlightTarget(node)
 
       if (!node || !node.classList) {
         return
