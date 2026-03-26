@@ -202,6 +202,9 @@ export {}
 
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'), `<a href="/boards">Boards</a>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'), `<h1>Sign In</h1>\n`)
+  writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'), `console.log('reader')\n`)
+  writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'vendor', 'jszip-3.10.1.min.js'), `window.JSZip = {}\n`)
+  writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'card.css'), `.board-card { color: #222; }\n`)
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
     `<%- include('flash-alert.ejs', { flashMessage: 'Saved', isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`
@@ -330,6 +333,8 @@ module.exports = {
     optionalNoticeAFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-a.ejs'),
     optionalNoticeBFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-b.ejs'),
     routeReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-reference-check.ejs'),
+    globalAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'),
+    localAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'card.css'),
     propertyLocalsCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
     renameCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
@@ -699,6 +704,30 @@ boardService.readAuthState(
       throw new Error(`Expected route path completion to exclude JS route handlers. Got: ${routeNames.slice(0, 20).join(', ')}`)
     }
 
+    const localAssetCompletionText = `<link rel="stylesheet" href="<%= asset('ca') %>">\n`
+    const localAssetCompletionOffset = localAssetCompletionText.indexOf('ca') + 'ca'.length
+    const localAssetCompletion = service.getCustomCompletionData(
+      fixture.boardsFilePath,
+      localAssetCompletionText,
+      localAssetCompletionOffset
+    )
+    const localAssetNames = localAssetCompletion ? localAssetCompletion.items.map((entry) => entry.label) : []
+    if (!localAssetNames.includes('card.css')) {
+      throw new Error(`Expected asset() completion for local card.css. Got: ${localAssetNames.slice(0, 20).join(', ')}`)
+    }
+
+    const globalAssetCompletionText = `<script src="<%= asset('/assets/bo') %>"></script>\n`
+    const globalAssetCompletionOffset = globalAssetCompletionText.indexOf('/assets/bo') + '/assets/bo'.length
+    const globalAssetCompletion = service.getCustomCompletionData(
+      fixture.boardsFilePath,
+      globalAssetCompletionText,
+      globalAssetCompletionOffset
+    )
+    const globalAssetNames = globalAssetCompletion ? globalAssetCompletion.items.map((entry) => entry.label) : []
+    if (!globalAssetNames.includes('/assets/booklog-reader.js')) {
+      throw new Error(`Expected asset() completion for global /assets/booklog-reader.js. Got: ${globalAssetNames.slice(0, 20).join(', ')}`)
+    }
+
     const collectionText = `<script server>\n$app.findRecordsByFilter('bo')\n</script>\n`
     const collectionOffset = collectionText.indexOf('bo') + 'bo'.length
     const collectionCompletion = service.getCustomCompletionData(fixture.boardsFilePath, collectionText, collectionOffset)
@@ -825,6 +854,49 @@ boardService.readAuthState(
     )
     if (!includePathTargetInfo || normalizeFilePath(includePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.flashAlertFilePath)) {
       throw new Error(`Expected include() path target info. Got: ${JSON.stringify(includePathTargetInfo)}`)
+    }
+
+    const globalAssetDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>\n`,
+      `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>\n`.indexOf('/assets/booklog-reader.js') + 4
+    )
+    if (!globalAssetDefinition || normalizeFilePath(globalAssetDefinition) !== normalizeFilePath(fixture.globalAssetFilePath)) {
+      throw new Error(`Expected asset() definition target for global asset. Got: ${globalAssetDefinition}`)
+    }
+
+    const localAssetDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<link rel="stylesheet" href="<%= asset('card.css') %>">\n`,
+      `<link rel="stylesheet" href="<%= asset('card.css') %>">\n`.indexOf('card.css') + 2
+    )
+    if (!localAssetDefinition || normalizeFilePath(localAssetDefinition) !== normalizeFilePath(fixture.localAssetFilePath)) {
+      throw new Error(`Expected asset() definition target for local asset. Got: ${localAssetDefinition}`)
+    }
+
+    const assetPathTargetInfo = service.getPathTargetInfo(
+      fixture.boardsFilePath,
+      `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>\n`,
+      `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>\n`.indexOf('/assets/booklog-reader.js') + 4
+    )
+    if (!assetPathTargetInfo || normalizeFilePath(assetPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.globalAssetFilePath)) {
+      throw new Error(`Expected asset() path target info. Got: ${JSON.stringify(assetPathTargetInfo)}`)
+    }
+
+    const resolvedGlobalAssetTarget = service.projectIndex.resolveAssetTarget(
+      fixture.boardsFilePath,
+      '/assets/booklog-reader.js'
+    )
+    if (!resolvedGlobalAssetTarget || normalizeFilePath(resolvedGlobalAssetTarget) !== normalizeFilePath(fixture.globalAssetFilePath)) {
+      throw new Error(`Expected project index to resolve global asset target. Got: ${resolvedGlobalAssetTarget}`)
+    }
+
+    const resolvedLocalAssetTarget = service.projectIndex.resolveAssetTarget(
+      fixture.boardsFilePath,
+      'card.css'
+    )
+    if (!resolvedLocalAssetTarget || normalizeFilePath(resolvedLocalAssetTarget) !== normalizeFilePath(fixture.localAssetFilePath)) {
+      throw new Error(`Expected project index to resolve local asset target. Got: ${resolvedLocalAssetTarget}`)
     }
 
     const hrefPathTargetInfo = indexService.getPathTargetInfo(
@@ -2192,6 +2264,18 @@ const state = {
     }
     if (!documentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/_private/flash-alert.ejs'))) {
       throw new Error(`Expected include() document link target. Got: ${documentLinkTargets.join(', ')}`)
+    }
+
+    const assetDocumentLinks = service.getDocumentLinks(
+      fixture.boardsFilePath,
+      `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>\n<link rel="stylesheet" href="<%= asset('card.css') %>">\n`
+    )
+    const assetDocumentLinkTargets = assetDocumentLinks.map((entry) => entry.targetFilePath)
+    if (!assetDocumentLinkTargets.some((target) => normalizeFilePath(target) === normalizeFilePath(fixture.globalAssetFilePath))) {
+      throw new Error(`Expected asset() document link target for global asset. Got: ${assetDocumentLinkTargets.join(', ')}`)
+    }
+    if (!assetDocumentLinkTargets.some((target) => normalizeFilePath(target) === normalizeFilePath(fixture.localAssetFilePath))) {
+      throw new Error(`Expected asset() document link target for local asset. Got: ${assetDocumentLinkTargets.join(', ')}`)
     }
 
     const routeDocumentLinks = authService.getDocumentLinks(

@@ -2558,8 +2558,6 @@ window.booklogReaderLogic = (function () {
   }
 
   function goToBookDetail(component) {
-    component.showSavePositionMessage('책 상세로 이동하기 전에 읽기 위치를 저장합니다.')
-
     leavePageWithSavedProgress(component, {
       nextLocation: '/books/' + bookId,
       saveOptions: {

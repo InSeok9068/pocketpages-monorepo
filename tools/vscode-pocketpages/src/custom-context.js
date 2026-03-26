@@ -4,6 +4,8 @@ const ts = require('typescript')
 
 const PATH_OPEN_RE = /\b(resolve|include)\(\s*(['"])([^'"]*)$/s
 const PATH_CLOSED_RE = /\b(resolve|include)\(\s*(['"])([^'"]*)\2/g
+const ASSET_OPEN_RE = /\b(?:asset|api\.asset)\(\s*(['"])([^'"]*)$/s
+const ASSET_CLOSED_RE = /\b(?:asset|api\.asset)\(\s*(['"])([^'"]*)\1/g
 const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)$/s
 const ROUTE_ATTR_CLOSED_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)\2/g
 const ROUTE_CALL_OPEN_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)$/s
@@ -222,6 +224,36 @@ function getPathContextAtOffset(documentText, offset) {
     return modulePathContext
   }
 
+  for (const match of documentText.matchAll(ASSET_CLOSED_RE)) {
+    const fullText = match[0]
+    const quote = match[1]
+    const value = match[2]
+    const quoteOffset = fullText.indexOf(quote)
+    const start = match.index + quoteOffset + 1
+    const end = start + value.length
+
+    if (offset >= start && offset <= end) {
+      return {
+        kind: 'asset-path',
+        value,
+        start,
+        end,
+        matchText: fullText,
+      }
+    }
+  }
+
+  const openAssetContext = getOpenMatchContext(documentText, offset, ASSET_OPEN_RE, ({ value, start, end }) => ({
+    kind: 'asset-path',
+    value,
+    start,
+    end,
+    isOpen: true,
+  }))
+  if (openAssetContext) {
+    return openAssetContext
+  }
+
   return getRoutePathContextAtOffset(documentText, offset)
 }
 
@@ -230,6 +262,23 @@ function collectPathContexts(documentText) {
 
   for (const match of documentText.matchAll(PATH_CLOSED_RE)) {
     contexts.push(toClosedMatchContext(match, `${match[1]}-path`))
+  }
+
+  for (const match of documentText.matchAll(ASSET_CLOSED_RE)) {
+    const fullText = match[0]
+    const quote = match[1]
+    const value = match[2]
+    const quoteOffset = fullText.indexOf(quote)
+    const start = match.index + quoteOffset + 1
+    const end = start + value.length
+
+    contexts.push({
+      kind: 'asset-path',
+      value,
+      start,
+      end,
+      matchText: fullText,
+    })
   }
 
   for (const match of documentText.matchAll(ROUTE_ATTR_CLOSED_RE)) {

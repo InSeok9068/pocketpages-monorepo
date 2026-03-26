@@ -822,6 +822,10 @@ function getPathContextLabel(context) {
     return "include() path";
   }
 
+  if (context.kind === "asset-path") {
+    return "asset() path";
+  }
+
   if (context.kind === "route-path") {
     return context.routeSource ? `${context.routeSource} path` : "route path";
   }
@@ -856,6 +860,10 @@ function getPathContextCandidates(projectIndex, filePath, context) {
 
   if (context.kind === "include-path") {
     return projectIndex.getIncludeCandidates(filePath);
+  }
+
+  if (context.kind === "asset-path") {
+    return projectIndex.getAssetCandidates(filePath);
   }
 
   if (context.kind === "route-path") {
@@ -1164,6 +1172,10 @@ function resolvePathContextTargetWithIndex(projectIndex, filePath, context) {
     return projectIndex.resolveIncludeTarget(filePath, context.value);
   }
 
+  if (context.kind === "asset-path") {
+    return projectIndex.resolveAssetTarget(filePath, context.value);
+  }
+
   if (context.kind === "route-path") {
     return projectIndex.resolveRouteTarget(filePath, context.value, {
       routeSource: context.routeSource,
@@ -1214,6 +1226,8 @@ function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText) 
           ? "pp-unresolved-resolve-path"
           : context.kind === "include-path"
             ? "pp-unresolved-include-path"
+            : context.kind === "asset-path"
+              ? "pp-unresolved-asset-path"
             : "pp-unresolved-route-path",
       category: ts.DiagnosticCategory.Warning,
       message,
@@ -2723,6 +2737,10 @@ class ProjectLanguageService {
       return this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
     }
 
+    if (pathContext.kind === "asset-path") {
+      return this.projectIndex.resolveAssetTarget(filePath, pathContext.value);
+    }
+
     if (pathContext.kind === "route-path") {
       return this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
         routeSource: pathContext.routeSource,
@@ -3331,12 +3349,14 @@ class ProjectLanguageService {
   getCustomCompletionData(filePath, documentText, offset) {
     const collectionMethodNames = this.projectIndex.getCollectionMethodNames();
     const pathContext = getPathContextAtOffset(documentText, offset);
-    if (pathContext && (pathContext.kind === "resolve-path" || pathContext.kind === "include-path" || pathContext.kind === "route-path")) {
+    if (pathContext && (pathContext.kind === "resolve-path" || pathContext.kind === "include-path" || pathContext.kind === "asset-path" || pathContext.kind === "route-path")) {
       const candidates =
         pathContext.kind === "resolve-path"
           ? this.projectIndex.getResolveCandidates(filePath)
           : pathContext.kind === "include-path"
             ? this.projectIndex.getIncludeCandidates(filePath)
+            : pathContext.kind === "asset-path"
+              ? this.projectIndex.getAssetCandidates(filePath)
             : this.projectIndex.getRouteCandidates({ routeSource: pathContext.routeSource });
 
       return {
@@ -3809,6 +3829,10 @@ class ProjectLanguageService {
         return this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
       }
 
+      if (pathContext.kind === "asset-path") {
+        return this.projectIndex.resolveAssetTarget(filePath, pathContext.value);
+      }
+
       if (pathContext.kind === "route-path") {
         return this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
           routeSource: pathContext.routeSource,
@@ -4039,6 +4063,8 @@ class ProjectLanguageService {
         targetFilePath = this.projectIndex.resolveResolveTarget(filePath, pathContext.value);
       } else if (pathContext.kind === "include-path") {
         targetFilePath = this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
+      } else if (pathContext.kind === "asset-path") {
+        targetFilePath = this.projectIndex.resolveAssetTarget(filePath, pathContext.value);
       } else if (pathContext.kind === "route-path") {
         targetFilePath = this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
           routeSource: pathContext.routeSource,

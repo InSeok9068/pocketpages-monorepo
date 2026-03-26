@@ -11,6 +11,7 @@ const INCLUDE_EXTENSIONS = ['.ejs']
 const ROUTE_EXTENSIONS = ['.ejs', '.js', '.cjs', '.mjs']
 const ROUTE_COMPLETION_EXTENSIONS = ['.ejs']
 const PAGES_CODE_EXTENSIONS = ['.ejs', '.js', '.cjs', '.mjs']
+const ASSET_SCRIPT_EXTENSIONS = ['.js', '.cjs', '.mjs']
 const ROUTE_METHOD_BY_FILE_BASENAME = {
   '+delete': 'DELETE',
   '+get': 'GET',
@@ -398,6 +399,32 @@ function isRouteGroupSegment(segment) {
 
 function isDynamicRouteSegment(segment) {
   return /^\[(\.\.\.)?[^\]]+\]$/.test(String(segment || ''))
+}
+
+function isAssetCandidateFile(pagesRoot, filePath) {
+  const normalizedFilePath = normalizePath(filePath)
+  const relativePath = toRelativePath(path.relative(pagesRoot, normalizedFilePath))
+  const extension = path.extname(normalizedFilePath).toLowerCase()
+  const relativeSegments = relativePath.split('/').filter(Boolean)
+  const baseName = path.basename(normalizedFilePath)
+
+  if (!relativePath || relativePath.startsWith('..') || relativeSegments.includes('_private')) {
+    return false
+  }
+
+  if (extension === '.ejs') {
+    return false
+  }
+
+  if (ASSET_SCRIPT_EXTENSIONS.includes(extension)) {
+    return relativeSegments.includes('assets')
+  }
+
+  if (baseName.startsWith('+')) {
+    return false
+  }
+
+  return true
 }
 
 function normalizeRoutePath(routePath) {
@@ -1466,6 +1493,45 @@ class PocketPagesProjectIndex {
     return items
   }
 
+  getAssetCandidates(filePath) {
+    const currentDir = normalizePath(path.dirname(filePath))
+    const items = []
+    const seen = new Set()
+    const assetFiles = walkFiles(
+      this.pagesRoot,
+      (candidatePath) => isAssetCandidateFile(this.pagesRoot, candidatePath),
+      this.pagesRoot
+    )
+
+    const addCandidate = (value, absolutePath) => {
+      if (!value || seen.has(value)) {
+        return
+      }
+
+      seen.add(value)
+      items.push({
+        value,
+        filePath: absolutePath,
+        detail: toRelativePath(path.relative(this.pagesRoot, absolutePath)),
+      })
+    }
+
+    for (const entry of assetFiles) {
+      const absolutePath = normalizePath(entry.filePath)
+      const relativeFromCurrent = toRelativePath(path.relative(currentDir, absolutePath))
+      if (!relativeFromCurrent.startsWith('..')) {
+        addCandidate(relativeFromCurrent, absolutePath)
+      }
+    }
+
+    for (const entry of assetFiles) {
+      const absolutePath = normalizePath(entry.filePath)
+      addCandidate(`/${entry.relativePath}`, absolutePath)
+    }
+
+    return items
+  }
+
   resolveIncludeTarget(filePath, requestPath) {
     const normalizedRequestPath = String(requestPath || '').trim()
     if (!normalizedRequestPath) {
@@ -1493,6 +1559,24 @@ class PocketPagesProjectIndex {
     }
 
     return null
+  }
+
+  resolveAssetTarget(filePath, requestPath) {
+    const normalizedRequestPath = String(requestPath || '').trim()
+    if (!normalizedRequestPath) {
+      return null
+    }
+
+    const currentDir = normalizePath(path.dirname(filePath))
+    const candidatePath = normalizedRequestPath.startsWith('/')
+      ? normalizePath(path.join(this.pagesRoot, normalizedRequestPath))
+      : normalizePath(path.join(currentDir, normalizedRequestPath))
+
+    if (!fileExists(candidatePath) || !isAssetCandidateFile(this.pagesRoot, candidatePath)) {
+      return null
+    }
+
+    return candidatePath
   }
 
   getResolvedModuleMemberDefinitionInfo(filePath, requestPath, memberName, sourceText = null) {
