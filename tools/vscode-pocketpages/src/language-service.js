@@ -208,7 +208,6 @@ function flattenDiagnosticMessage(messageText) {
   return parts.join("\n");
 }
 
-const CLIENT_SCRIPT_RE = /(^|[\r\n>])([ \t]*)<script\b(?![^>]*\bserver\b)([^>]*)>([\s\S]*?)<\/script>/gi;
 const EJS_IN_SCRIPT_RE = /<%(?![%#])[_=-]?[\s\S]*?[-_]?%>/g;
 const JAVASCRIPT_MIME_TYPES = new Set([
   "text/javascript",
@@ -217,34 +216,137 @@ const JAVASCRIPT_MIME_TYPES = new Set([
   "text/ecmascript",
 ]);
 
-function extractClientScriptBlocks(text) {
-  const blocks = [];
-  let match = CLIENT_SCRIPT_RE.exec(text);
+function isHtmlNameChar(char) {
+  return /[A-Za-z0-9:_-]/.test(String(char || ""));
+}
 
-  while (match) {
-    const fullMatch = match[0];
-    const prefixText = String(match[1] || "");
-    const indentationText = String(match[2] || "");
-    const attributesText = String(match[3] || "");
-    const content = String(match[4] || "");
-    const fullMatchWithoutPrefix = fullMatch.slice(prefixText.length + indentationText.length);
-    const matchStart = match.index + prefixText.length + indentationText.length;
-    const openTagLength = fullMatchWithoutPrefix.indexOf(">") + 1;
-    const contentStart = matchStart + openTagLength;
-    const contentEnd = contentStart + content.length;
+function skipEjsTag(text, startIndex) {
+  const closeIndex = String(text || "").indexOf("%>", startIndex + 2);
+  if (closeIndex === -1) {
+    return text.length;
+  }
+
+  return closeIndex + 2;
+}
+
+function findScriptOpenTagEnd(text, startIndex) {
+  let quote = "";
+  let cursor = startIndex + "<script".length;
+
+  while (cursor < text.length) {
+    const currentChar = text.charAt(cursor);
+
+    if (quote) {
+      if (currentChar === quote) {
+        quote = "";
+      }
+      cursor += 1;
+      continue;
+    }
+
+    if (currentChar === '"' || currentChar === "'") {
+      quote = currentChar;
+      cursor += 1;
+      continue;
+    }
+
+    if (currentChar === "<" && text.slice(cursor, cursor + 2) === "<%") {
+      cursor = skipEjsTag(text, cursor);
+      continue;
+    }
+
+    if (currentChar === ">") {
+      return cursor;
+    }
+
+    cursor += 1;
+  }
+
+  return -1;
+}
+
+function findScriptCloseTag(text, startIndex) {
+  const lowerText = String(text || "").toLowerCase();
+  let cursor = startIndex;
+
+  while (cursor < text.length) {
+    const closeStart = lowerText.indexOf("</script", cursor);
+    if (closeStart === -1) {
+      return null;
+    }
+
+    const nextChar = text.charAt(closeStart + "</script".length);
+    if (nextChar && isHtmlNameChar(nextChar)) {
+      cursor = closeStart + "</script".length;
+      continue;
+    }
+
+    const closeTagEnd = text.indexOf(">", closeStart + "</script".length);
+    if (closeTagEnd === -1) {
+      return null;
+    }
+
+    return {
+      start: closeStart,
+      end: closeTagEnd + 1,
+    };
+  }
+
+  return null;
+}
+
+function extractClientScriptBlocks(text) {
+  const sourceText = String(text || "");
+  const lowerText = sourceText.toLowerCase();
+  const blocks = [];
+  let cursor = 0;
+
+  while (cursor < sourceText.length) {
+    const scriptStart = lowerText.indexOf("<script", cursor);
+    let openTagEnd = -1;
+    let closeTag = null;
+    let attributesText = "";
+    let contentStart = 0;
+    let contentEnd = 0;
+    let nextChar = "";
+
+    if (scriptStart === -1) {
+      break;
+    }
+
+    nextChar = sourceText.charAt(scriptStart + "<script".length);
+    if (nextChar && isHtmlNameChar(nextChar)) {
+      cursor = scriptStart + "<script".length;
+      continue;
+    }
+
+    openTagEnd = findScriptOpenTagEnd(sourceText, scriptStart);
+    if (openTagEnd === -1) {
+      break;
+    }
+
+    attributesText = sourceText.slice(scriptStart + "<script".length, openTagEnd);
+    contentStart = openTagEnd + 1;
+    closeTag = findScriptCloseTag(sourceText, contentStart);
+
+    if (!closeTag) {
+      break;
+    }
+
+    contentEnd = closeTag.start;
 
     if (shouldCheckClientScriptBlock(attributesText)) {
       blocks.push({
         index: blocks.length,
-        fullStart: matchStart,
-        fullEnd: matchStart + fullMatch.length,
+        fullStart: scriptStart,
+        fullEnd: closeTag.end,
         contentStart,
         contentEnd,
-        content,
+        content: sourceText.slice(contentStart, contentEnd),
       });
     }
 
-    match = CLIENT_SCRIPT_RE.exec(text);
+    cursor = closeTag.end;
   }
 
   return blocks;

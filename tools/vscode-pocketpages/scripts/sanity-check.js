@@ -2055,6 +2055,31 @@ const oneSignalExternalId = '<%= request.auth ? String(request.auth.get("id") ||
       )
     }
 
+    const externalClientScriptDiagnostics = service.getDiagnostics(
+      fixture.siteIndexFilePath,
+      `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>
+`
+    )
+    if (externalClientScriptDiagnostics.length > 0) {
+      throw new Error(
+        `Expected external client <script src="<%= asset(...) %>"> to avoid diagnostics. Got: ${JSON.stringify(externalClientScriptDiagnostics)}`
+      )
+    }
+
+    const multilineExternalClientScriptDiagnostics = service.getDiagnostics(
+      fixture.siteIndexFilePath,
+      `<script
+  src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"
+  data-fallback-src="<%= asset('/assets/vendor/jszip-3.10.1.min.js') %>"
+  onerror="window.__assetFallback(this)"></script>
+`
+    )
+    if (multilineExternalClientScriptDiagnostics.length > 0) {
+      throw new Error(
+        `Expected multiline external client <script> with EJS attributes to avoid diagnostics. Got: ${JSON.stringify(multilineExternalClientScriptDiagnostics)}`
+      )
+    }
+
     const clientScriptSyntaxDiagnostics = service.getDiagnostics(
       fixture.siteIndexFilePath,
       `<script>
