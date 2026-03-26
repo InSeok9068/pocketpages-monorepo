@@ -170,7 +170,6 @@
     readAloudSupported: false,
     readAloudBusy: false,
     readAloudPlaying: false,
-    readAloudPaused: false,
     readAloudMessage: '',
     readAloudVoiceName: '',
     readAloudRate: '1',
@@ -293,12 +292,6 @@
     },
     startReadAloud: function () {
       window.booklogReaderLogic.startReadAloud(this)
-    },
-    pauseReadAloud: function () {
-      window.booklogReaderLogic.pauseReadAloud(this)
-    },
-    resumeReadAloud: function () {
-      window.booklogReaderLogic.resumeReadAloud(this)
     },
     stopReadAloud: function () {
       window.booklogReaderLogic.stopReadAloud(this)
@@ -514,10 +507,10 @@
           <button
             type="button"
             x-on:click="startReadAloud()"
-            x-bind:disabled="!readAloudSupported || readAloudBusy"
+            x-bind:disabled="!readAloudSupported || readAloudBusy || readAloudPlaying"
             class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white outline-none ring-0 disabled:opacity-60">
             <span
-              x-show="!readAloudBusy"
+              x-show="!readAloudBusy && !readAloudPlaying"
               x-cloak
               >재생</span
             >
@@ -526,25 +519,16 @@
               x-cloak
               >준비 중</span
             >
-          </button>
-          <button
-            type="button"
-            x-on:click="pauseReadAloud()"
-            x-bind:disabled="!readAloudPlaying || readAloudPaused"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 outline-none ring-0 disabled:opacity-60">
-            일시정지
-          </button>
-          <button
-            type="button"
-            x-on:click="resumeReadAloud()"
-            x-bind:disabled="!readAloudPaused"
-            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 outline-none ring-0 disabled:opacity-60">
-            이어읽기
+            <span
+              x-show="readAloudPlaying"
+              x-cloak
+              >재생 중</span
+            >
           </button>
           <button
             type="button"
             x-on:click="stopReadAloud()"
-            x-bind:disabled="!readAloudPlaying && !readAloudPaused && !readAloudBusy"
+            x-bind:disabled="!readAloudPlaying && !readAloudBusy"
             class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 outline-none ring-0 disabled:opacity-60">
             정지
           </button>
@@ -852,6 +836,8 @@
     var speechCurrentComponent = null
     var speechRestartTimerId = null
     var speechActiveToken = 0
+    var renderedContentEntries = []
+    var activeReadAloudHighlight = null
     var activeComponent = null
     var isLeavingPage = false
     var isHandlingHistoryBack = false
@@ -871,6 +857,98 @@
       }
 
       return href.split('#')[0]
+    }
+
+    function clearReadAloudHighlight() {
+      if (!activeReadAloudHighlight || !activeReadAloudHighlight.node || !activeReadAloudHighlight.className) {
+        activeReadAloudHighlight = null
+        return
+      }
+
+      try {
+        activeReadAloudHighlight.node.classList.remove(activeReadAloudHighlight.className)
+      } catch (exception) {}
+
+      activeReadAloudHighlight = null
+    }
+
+    function deriveRenderedContentHref(contents, doc) {
+      var candidates = [
+        contents && contents.section && contents.section.href ? contents.section.href : '',
+        contents && contents.href ? contents.href : '',
+        doc && doc.documentElement ? doc.documentElement.getAttribute('data-booklog-href') : '',
+      ]
+      var index = 0
+      var normalizedHref = ''
+
+      for (index = 0; index < candidates.length; index += 1) {
+        normalizedHref = normalizeHref(candidates[index])
+
+        if (normalizedHref) {
+          return normalizedHref
+        }
+      }
+
+      return ''
+    }
+
+    function pruneRenderedContentEntries() {
+      renderedContentEntries = renderedContentEntries.filter(function (entry) {
+        var doc = entry && entry.document ? entry.document : null
+        var win = doc && doc.defaultView ? doc.defaultView : null
+        var frame = win && win.frameElement ? win.frameElement : null
+
+        return !!doc && !!frame && frame.isConnected
+      })
+    }
+
+    function upsertRenderedContentEntry(contents) {
+      var doc = contents && contents.document ? contents.document : null
+      var href = deriveRenderedContentHref(contents, doc)
+      var existingIndex = -1
+
+      if (!doc) {
+        return
+      }
+
+      if (doc.documentElement && href) {
+        doc.documentElement.setAttribute('data-booklog-href', href)
+      }
+
+      pruneRenderedContentEntries()
+      existingIndex = renderedContentEntries.findIndex(function (entry) {
+        return entry && entry.document === doc
+      })
+
+      if (existingIndex >= 0) {
+        renderedContentEntries[existingIndex] = {
+          href: href,
+          document: doc,
+        }
+        return
+      }
+
+      renderedContentEntries.push({
+        href: href,
+        document: doc,
+      })
+    }
+
+    function getRenderedContentEntryByHref(href) {
+      var normalizedHref = normalizeHref(href)
+
+      pruneRenderedContentEntries()
+
+      return (
+        renderedContentEntries.find(function (entry) {
+          return entry && entry.href && entry.href === normalizedHref
+        }) || null
+      )
+    }
+
+    function getRenderedContentEntries() {
+      pruneRenderedContentEntries()
+      return renderedContentEntries.slice()
     }
 
     function parseHrefParts(value) {
@@ -907,6 +985,7 @@
       var keepMessage = !!(options && options.keepMessage)
 
       clearSpeechRestartTimer()
+      clearReadAloudHighlight()
       speechQueue = []
       speechQueueIndex = 0
       speechCurrentUtterance = null
@@ -918,7 +997,6 @@
 
       component.readAloudBusy = false
       component.readAloudPlaying = false
-      component.readAloudPaused = false
 
       if (!keepMessage) {
         component.readAloudMessage = ''
@@ -1034,47 +1112,40 @@
     }
 
     function collectReadableTextNodes(root) {
-      var selectors = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'blockquote', 'pre']
+      var selector = 'h1, h2, h3, h4, h5, h6, p, li, blockquote, pre'
       var nodes = []
+      var matchedNodes = null
+      var index = 0
 
       if (!root || !root.querySelectorAll) {
         return nodes
       }
 
-      selectors.forEach(function (selector) {
-        var matchedNodes = root.querySelectorAll(selector)
-        var index = 0
+      matchedNodes = root.querySelectorAll(selector)
 
-        for (index = 0; index < matchedNodes.length; index += 1) {
-          nodes.push(matchedNodes[index])
-        }
-      })
+      for (index = 0; index < matchedNodes.length; index += 1) {
+        nodes.push(matchedNodes[index])
+      }
 
-      nodes.sort(function (left, right) {
-        var leftPosition = 0
-        var rightPosition = 0
+      return nodes
+    }
 
-        try {
-          leftPosition = left.compareDocumentPosition(right)
-        } catch (exception) {
-          return 0
+    function annotateReadableTextNodes(root) {
+      var nodes = collectReadableTextNodes(root)
+
+      nodes.forEach(function (node, index) {
+        if (!node || !node.setAttribute) {
+          return
         }
 
-        if (leftPosition & Node.DOCUMENT_POSITION_FOLLOWING) {
-          return -1
-        }
-
-        if (leftPosition & Node.DOCUMENT_POSITION_PRECEDING) {
-          return 1
-        }
-
-        return 0
+        node.setAttribute('data-booklog-read-aloud-index', String(index))
       })
 
       return nodes
     }
 
     function buildSpeechQueueFromSection(section, currentCfi) {
+      var href = normalizeHref(section && section.href ? section.href : section && section.url ? section.url : '')
       var doc = section && section.document ? section.document : null
       var nodes = collectReadableTextNodes(doc && doc.body ? doc.body : doc)
       var queue = []
@@ -1103,6 +1174,7 @@
         queue.push({
           text: text,
           cfi: cfi,
+          href: href,
           sourceIndex: index,
         })
       })
@@ -1116,6 +1188,85 @@
       }
 
       return queue
+    }
+
+    function activateReadAloudHighlight(queueItem) {
+      var entries = []
+      var entry = null
+      var doc = null
+      var nodes = null
+      var node = null
+      var entryIndex = 0
+      var className = 'booklog-read-aloud-active'
+
+      clearReadAloudHighlight()
+
+      if (!queueItem) {
+        return
+      }
+
+      entry = getRenderedContentEntryByHref(queueItem.href)
+
+      if (entry) {
+        entries.push(entry)
+      }
+
+      getRenderedContentEntries().forEach(function (candidateEntry) {
+        if (candidateEntry && candidateEntry !== entry) {
+          entries.push(candidateEntry)
+        }
+      })
+
+      for (entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+        doc = entries[entryIndex] && entries[entryIndex].document ? entries[entryIndex].document : null
+
+        if (!doc) {
+          continue
+        }
+
+        nodes = collectReadableTextNodes(doc.body || doc)
+
+        if (typeof queueItem.sourceIndex === 'number' && queueItem.sourceIndex >= 0) {
+          node = nodes[queueItem.sourceIndex] || null
+        }
+
+        if (!node && typeof queueItem.sourceIndex === 'number' && doc.querySelector) {
+          node = doc.querySelector('[data-booklog-read-aloud-index="' + String(queueItem.sourceIndex) + '"]')
+        }
+
+        if (node && queueItem.text && normalizeText(node.textContent || '') !== queueItem.text) {
+          node = null
+        }
+
+        if (!node && queueItem.text) {
+          node =
+            nodes.find(function (candidate) {
+              return normalizeText(candidate && candidate.textContent ? candidate.textContent : '') === queueItem.text
+            }) || null
+        }
+
+        if (node) {
+          break
+        }
+      }
+
+      if (!node || !node.classList) {
+        return
+      }
+
+      node.classList.add(className)
+      activeReadAloudHighlight = {
+        node: node,
+        className: className,
+      }
+
+      if (typeof node.scrollIntoView === 'function') {
+        node.scrollIntoView({
+          block: 'center',
+          inline: 'nearest',
+          behavior: 'smooth',
+        })
+      }
     }
 
     /**
@@ -1180,9 +1331,9 @@
       }
 
       if (!queueItem) {
+        clearReadAloudHighlight()
         component.readAloudBusy = false
         component.readAloudPlaying = false
-        component.readAloudPaused = false
         component.readAloudMessage = '현재 챕터 읽기가 끝났습니다.'
         return
       }
@@ -1204,7 +1355,7 @@
         speechCurrentComponent = component
         component.readAloudBusy = false
         component.readAloudPlaying = true
-        component.readAloudPaused = false
+        activateReadAloudHighlight(queueItem)
         component.readAloudMessage = '현재 챕터를 읽는 중입니다.'
       }
 
@@ -2683,10 +2834,14 @@
 
       renditionInstance.hooks.content.register(function (contents) {
         var doc = contents && contents.document ? contents.document : null
+        var styleElement = null
 
         if (!doc) {
           return
         }
+
+        upsertRenderedContentEntry(contents)
+        annotateReadableTextNodes(doc.body || doc)
 
         if (doc.documentElement && doc.documentElement.style) {
           doc.documentElement.style.setProperty('overflow-anchor', 'none', 'important')
@@ -2694,6 +2849,14 @@
 
         if (doc.body && doc.body.style) {
           doc.body.style.setProperty('overflow-anchor', 'none', 'important')
+        }
+
+        if (doc.head && !doc.getElementById('booklog-read-aloud-style')) {
+          styleElement = doc.createElement('style')
+          styleElement.id = 'booklog-read-aloud-style'
+          styleElement.textContent =
+            '.booklog-read-aloud-active{background:rgba(245,204,96,0.38)!important;border-radius:0.4rem;box-shadow:0 0 0 0.18rem rgba(245,204,96,0.16);transition:background-color 120ms ease;}'
+          doc.head.appendChild(styleElement)
         }
       })
 
@@ -2875,7 +3038,6 @@
 
       component.readAloudBusy = true
       component.readAloudPlaying = false
-      component.readAloudPaused = false
       component.readAloudMessage = '현재 챕터를 준비하는 중입니다.'
       speechActiveToken += 1
       speechCurrentComponent = component
@@ -2896,40 +3058,6 @@
           })
           component.readAloudMessage = String(exception && exception.message ? exception.message : exception)
         })
-    }
-
-    function pauseReadAloud(component) {
-      var synth = getSpeechSynthesisInstance()
-
-      if (!component || !synth || !component.readAloudPlaying || component.readAloudPaused) {
-        return
-      }
-
-      try {
-        synth.pause()
-      } catch (exception) {}
-
-      component.readAloudPaused = true
-      component.readAloudPlaying = false
-      component.readAloudBusy = false
-      component.readAloudMessage = '읽어주기를 일시정지했습니다.'
-    }
-
-    function resumeReadAloud(component) {
-      var synth = getSpeechSynthesisInstance()
-
-      if (!component || !synth || !component.readAloudPaused) {
-        return
-      }
-
-      try {
-        synth.resume()
-      } catch (exception) {}
-
-      component.readAloudPaused = false
-      component.readAloudPlaying = true
-      component.readAloudBusy = false
-      component.readAloudMessage = '읽어주기를 이어서 재생합니다.'
     }
 
     function stopReadAloud(component) {
@@ -3292,8 +3420,6 @@
       isActiveTocItem: isActiveTocItem,
       scrollActiveTocItemIntoView: scrollActiveTocItemIntoView,
       startReadAloud: startReadAloud,
-      pauseReadAloud: pauseReadAloud,
-      resumeReadAloud: resumeReadAloud,
       stopReadAloud: stopReadAloud,
       saveHighlight: saveHighlight,
       saveCurrentPosition: saveCurrentPosition,
