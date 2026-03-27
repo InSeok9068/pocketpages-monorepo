@@ -67,10 +67,12 @@ window.booklogReaderLogic = (function () {
   var isLeavingPage = false
   var isHandlingHistoryBack = false
   var skipNextPopState = false
-  var CLOUD_READ_ALOUD_MAX_CHARS = 720
-  var CLOUD_READ_ALOUD_MAX_ITEMS = 10
-  var CLOUD_READ_ALOUD_SHORT_PREFETCH_CHARS = 220
-  var CLOUD_READ_ALOUD_SHORT_PREFETCH_MS = 7600
+  var CLOUD_READ_ALOUD_MAX_CHARS = 1800
+  var CLOUD_READ_ALOUD_MAX_ITEMS = 18
+  var CLOUD_READ_ALOUD_PARAGRAPH_MAX_CHARS = 680
+  var CLOUD_READ_ALOUD_PARAGRAPH_MIN_CHARS = 320
+  var CLOUD_READ_ALOUD_SHORT_PREFETCH_CHARS = 420
+  var CLOUD_READ_ALOUD_SHORT_PREFETCH_MS = 14000
   var CLOUD_READ_ALOUD_MAX_PREFETCH_COUNT = 2
   var CLOUD_READ_ALOUD_MIN_BREAK_MS = 30
   var CLOUD_READ_ALOUD_MAX_BREAK_MS = 220
@@ -467,6 +469,158 @@ window.booklogReaderLogic = (function () {
   }
 
   /**
+   * 문장 끝 경계 문자를 읽습니다.
+   * @param {string} text 읽을 텍스트입니다.
+   * @returns {string} pause 판단에 쓸 경계 문자입니다.
+   */
+  function getReadAloudTrailingBoundaryCharFromText(text) {
+    var normalized = normalizeText(text)
+    var index = normalized.length - 1
+    var currentChar = ''
+
+    while (index >= 0) {
+      currentChar = normalized.charAt(index)
+
+      if (isReadAloudTrailingBoundaryChar(currentChar)) {
+        index -= 1
+        continue
+      }
+
+      if (currentChar === '.') {
+        return '.'
+      }
+
+      if ('!?…！？。,:;'.indexOf(currentChar) >= 0) {
+        return currentChar
+      }
+
+      break
+    }
+
+    return ''
+  }
+
+  /**
+   * 클라우드 읽어주기용 큰 단위를 만듭니다.
+   * @param {{ text?: string, cfi?: string, href?: string, sourceIndexes?: Array<number>, sourceIndex?: number, tagName?: string }} queueItem 원본 읽기 항목입니다.
+   * @param {string} text 실제로 합성할 텍스트입니다.
+   * @param {{ isHeading?: boolean }} options 보조 옵션입니다.
+   * @returns {{ text: string, spokenText: string, pauseAfterMs: number, ssmlText: string, cfi: string, href: string, sourceIndexes: Array<number>, sourceIndex: number, tagName: string } | null} 클라우드 읽기 단위입니다.
+   */
+  function createCloudReadAloudUnit(queueItem, text, options) {
+    var normalizedText = normalizeText(text)
+    var isHeading = !!(options && options.isHeading)
+    var boundaryChar = getReadAloudTrailingBoundaryCharFromText(normalizedText)
+    var pauseKey = classifyReadAloudPauseKey(boundaryChar, isHeading)
+    var speechForms = null
+
+    if (!normalizedText) {
+      return null
+    }
+
+    speechForms = buildReadAloudSpeechForms(normalizedText, {
+      isHeading: isHeading,
+      isLongSentence: normalizedText.length >= READ_ALOUD_LONG_SENTENCE_CHARS,
+    })
+
+    return {
+      text: normalizedText,
+      spokenText: speechForms.spokenText || normalizedText,
+      pauseKey: pauseKey,
+      pauseAfterMs: getReadAloudPauseMs(pauseKey),
+      ssmlText: speechForms.ssmlText || '<s>' + escapeXml(normalizedText) + '</s>',
+      cfi: queueItem && queueItem.cfi ? queueItem.cfi : '',
+      href: queueItem && queueItem.href ? queueItem.href : '',
+      sourceIndexes: Array.isArray(queueItem && queueItem.sourceIndexes) ? queueItem.sourceIndexes.slice() : [],
+      sourceIndex: queueItem && typeof queueItem.sourceIndex === 'number' ? queueItem.sourceIndex : -1,
+      tagName: String(queueItem && queueItem.tagName ? queueItem.tagName : '').toLowerCase(),
+    }
+  }
+
+  /**
+   * 클라우드 읽어주기용으로 문단 중심 단위를 만듭니다.
+   * @param {{ text?: string, cfi?: string, href?: string, sourceIndexes?: Array<number>, sourceIndex?: number, tagName?: string }} queueItem 원본 읽기 항목입니다.
+   * @returns {Array<{ text: string, spokenText: string, pauseAfterMs: number, ssmlText: string, cfi: string, href: string, sourceIndexes: Array<number>, sourceIndex: number, tagName: string }>} 클라우드 읽기 단위 목록입니다.
+   */
+  function buildCloudReadAloudUnitsForQueueItem(queueItem) {
+    var text = normalizeText(queueItem && queueItem.text ? queueItem.text : '')
+    var isHeading = /^h[1-6]$/.test(String(queueItem && queueItem.tagName ? queueItem.tagName : '').toLowerCase())
+    var sentenceBlocks = splitReadAloudSentenceBlocks(text)
+    var units = []
+    var currentText = ''
+    var blockText = ''
+    var combinedText = ''
+    var cloudUnit = null
+
+    if (!text) {
+      return units
+    }
+
+    if (isHeading || text.length <= CLOUD_READ_ALOUD_PARAGRAPH_MAX_CHARS) {
+      cloudUnit = createCloudReadAloudUnit(queueItem, text, {
+        isHeading: isHeading,
+      })
+
+      if (cloudUnit) {
+        units.push(cloudUnit)
+      }
+
+      return units
+    }
+
+    if (!sentenceBlocks.length) {
+      sentenceBlocks = [
+        {
+          text: text,
+          boundaryChar: '',
+        },
+      ]
+    }
+
+    sentenceBlocks.forEach(function (block) {
+      blockText = normalizeText(block && block.text ? block.text : '')
+
+      if (!blockText) {
+        return
+      }
+
+      combinedText = currentText ? currentText + ' ' + blockText : blockText
+
+      if (!currentText) {
+        currentText = blockText
+        return
+      }
+
+      if (combinedText.length <= CLOUD_READ_ALOUD_PARAGRAPH_MAX_CHARS || currentText.length < CLOUD_READ_ALOUD_PARAGRAPH_MIN_CHARS) {
+        currentText = combinedText
+        return
+      }
+
+      cloudUnit = createCloudReadAloudUnit(queueItem, currentText, {
+        isHeading: isHeading,
+      })
+
+      if (cloudUnit) {
+        units.push(cloudUnit)
+      }
+
+      currentText = blockText
+    })
+
+    if (currentText) {
+      cloudUnit = createCloudReadAloudUnit(queueItem, currentText, {
+        isHeading: isHeading,
+      })
+
+      if (cloudUnit) {
+        units.push(cloudUnit)
+      }
+    }
+
+    return units
+  }
+
+  /**
    * 한국어 읽어주기용 문장 단위를 만듭니다.
    * @param {{ text?: string, cfi?: string, href?: string, sourceIndexes?: Array<number>, sourceIndex?: number, tagName?: string }} queueItem 원본 읽기 항목입니다.
    * @returns {Array<{ text: string, spokenText: string, pauseAfterMs: number, ssmlText: string, cfi: string, href: string, sourceIndexes: Array<number>, sourceIndex: number, tagName: string }>} 분석된 읽기 단위 목록입니다.
@@ -519,6 +673,7 @@ window.booklogReaderLogic = (function () {
       units.push({
         text: blockText,
         spokenText: speechForms.spokenText || blockText,
+        pauseKey: pauseKey,
         pauseAfterMs: getReadAloudPauseMs(pauseKey),
         ssmlText: speechForms.ssmlText || '<s>' + escapeXml(blockText) + '</s>',
         cfi: queueItem && queueItem.cfi ? queueItem.cfi : '',
@@ -1591,6 +1746,20 @@ window.booklogReaderLogic = (function () {
           throw new Error('현재 챕터에서 읽을 문단을 찾지 못했습니다.')
         }
 
+        if (getReadAloudMode(component) === 'cloud') {
+          queue.forEach(function (queueItem) {
+            buildCloudReadAloudUnitsForQueueItem(queueItem).forEach(function (unit) {
+              analyzedQueue.push(unit)
+            })
+          })
+
+          if (!analyzedQueue.length) {
+            throw new Error('현재 챕터에서 읽을 문장을 찾지 못했습니다.')
+          }
+
+          return buildCloudSpeechQueue(analyzedQueue)
+        }
+
         queue.forEach(function (queueItem) {
           buildReadAloudUnitsForQueueItem(queueItem).forEach(function (unit) {
             analyzedQueue.push(unit)
@@ -1599,10 +1768,6 @@ window.booklogReaderLogic = (function () {
 
         if (!analyzedQueue.length) {
           throw new Error('현재 챕터에서 읽을 문장을 찾지 못했습니다.')
-        }
-
-        if (getReadAloudMode(component) === 'cloud') {
-          return buildCloudSpeechQueue(analyzedQueue)
         }
 
         return analyzedQueue
@@ -1782,6 +1947,22 @@ window.booklogReaderLogic = (function () {
     return true
   }
 
+  /**
+   * 로컬 TTS 다음 문장 시작 대기시간을 계산합니다.
+   * @param {{ pauseAfterMs?: number, pauseKey?: string }} queueItem 현재 읽기 항목입니다.
+   * @returns {number} 다음 문장 시작 전 대기시간입니다.
+   */
+  function getLocalReadAloudRestartDelayMs(queueItem) {
+    var pauseKey = String(queueItem && queueItem.pauseKey ? queueItem.pauseKey : '')
+    var baseDelay = Math.max(40, Number(queueItem && queueItem.pauseAfterMs ? queueItem.pauseAfterMs : 40))
+
+    if (pauseKey === 'sentence') {
+      return 0
+    }
+
+    return baseDelay
+  }
+
   function playCloudQueueItem(component, token) {
     var currentQueueIndex = speechQueueIndex
     var queueItem = speechQueue[currentQueueIndex]
@@ -1949,7 +2130,7 @@ window.booklogReaderLogic = (function () {
       clearSpeechRestartTimer()
       speechRestartTimerId = setTimeout(function () {
         speakQueueItem(component, token)
-      }, Math.max(40, Number(queueItem && queueItem.pauseAfterMs ? queueItem.pauseAfterMs : 40)))
+      }, getLocalReadAloudRestartDelayMs(queueItem))
     }
 
     utterance.onerror = function (event) {
