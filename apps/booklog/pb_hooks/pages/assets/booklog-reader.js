@@ -61,13 +61,523 @@ window.booklogReaderLogic = (function () {
   var isLeavingPage = false
   var isHandlingHistoryBack = false
   var skipNextPopState = false
-  var CLOUD_READ_ALOUD_MAX_CHARS = 460
-  var CLOUD_READ_ALOUD_MAX_ITEMS = 4
+  var CLOUD_READ_ALOUD_MAX_CHARS = 360
+  var CLOUD_READ_ALOUD_MAX_ITEMS = 6
+  var CLOUD_READ_ALOUD_SHORT_PREFETCH_CHARS = 120
+  var CLOUD_READ_ALOUD_SHORT_PREFETCH_MS = 4800
+  var CLOUD_READ_ALOUD_MAX_PREFETCH_COUNT = 2
+  var READ_ALOUD_LONG_SENTENCE_CHARS = 84
+  var READ_ALOUD_MAX_SENTENCE_CHARS = 120
+  var READ_ALOUD_ALIAS_BY_TERM = {
+    AI: '에이아이',
+    API: '에이피아이',
+    CS: '씨에스',
+    CEO: '씨이오',
+    CFO: '씨에프오',
+    CTO: '씨티오',
+    EPUB: '이펍',
+    IT: '아이티',
+    PDF: '피디에프',
+    SNS: '에스엔에스',
+    SSML: '에스에스엠엘',
+    TTS: '티티에스',
+    UI: '유아이',
+    URL: '유알엘',
+    UX: '유엑스',
+  }
+  var READ_ALOUD_ALIAS_TERMS = Object.keys(READ_ALOUD_ALIAS_BY_TERM).sort(function (left, right) {
+    return right.length - left.length
+  })
 
   function normalizeText(value) {
     return String(value || '')
+      .replace(/\.{3,}/g, '…')
       .replace(/\s+/g, ' ')
       .trim()
+  }
+
+  function escapeXml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;')
+  }
+
+  function classifyReadAloudPauseKey(boundaryChar, isHeading) {
+    if (boundaryChar === '…') {
+      return 'ellipsis'
+    }
+
+    if (boundaryChar === '?') {
+      return 'question'
+    }
+
+    if (boundaryChar === '!') {
+      return 'exclamation'
+    }
+
+    if (boundaryChar === ',') {
+      return 'comma'
+    }
+
+    if (boundaryChar === ':' || boundaryChar === ';') {
+      return 'colon'
+    }
+
+    if (boundaryChar === 'space') {
+      return 'space'
+    }
+
+    if (boundaryChar === '.' || boundaryChar === '。') {
+      return 'sentence'
+    }
+
+    return isHeading ? 'heading' : 'plain'
+  }
+
+  function getReadAloudPauseMs(pauseKey) {
+    if (pauseKey === 'ellipsis') {
+      return 680
+    }
+
+    if (pauseKey === 'question' || pauseKey === 'exclamation') {
+      return 620
+    }
+
+    if (pauseKey === 'sentence') {
+      return 520
+    }
+
+    if (pauseKey === 'colon') {
+      return 280
+    }
+
+    if (pauseKey === 'comma') {
+      return 220
+    }
+
+    if (pauseKey === 'space') {
+      return 180
+    }
+
+    if (pauseKey === 'heading') {
+      return 760
+    }
+
+    return 380
+  }
+
+  function isReadAloudSentenceBoundaryChar(value) {
+    return '.!?…！？。'.indexOf(String(value || '')) >= 0
+  }
+
+  function isReadAloudTrailingBoundaryChar(value) {
+    return '\'"”’)]}」』】〉》'.indexOf(String(value || '')) >= 0
+  }
+
+  function splitReadAloudSentenceBlocks(text) {
+    var normalized = normalizeText(text)
+    var blocks = []
+    var buffer = ''
+    var index = 0
+    var currentChar = ''
+    var nextChar = ''
+
+    if (!normalized) {
+      return blocks
+    }
+
+    while (index < normalized.length) {
+      currentChar = normalized.charAt(index)
+      buffer += currentChar
+
+      if (isReadAloudSentenceBoundaryChar(currentChar)) {
+        while (index + 1 < normalized.length) {
+          nextChar = normalized.charAt(index + 1)
+
+          if (!isReadAloudTrailingBoundaryChar(nextChar)) {
+            break
+          }
+
+          index += 1
+          buffer += nextChar
+        }
+
+        blocks.push({
+          text: normalizeText(buffer),
+          boundaryChar: currentChar,
+        })
+        buffer = ''
+      }
+
+      index += 1
+    }
+
+    if (normalizeText(buffer)) {
+      blocks.push({
+        text: normalizeText(buffer),
+        boundaryChar: '',
+      })
+    }
+
+    return blocks
+  }
+
+  function splitReadAloudBlockByClauses(block) {
+    var text = normalizeText(block && block.text ? block.text : '')
+    var chunks = []
+    var buffer = ''
+    var index = 0
+    var currentChar = ''
+
+    if (!text) {
+      return chunks
+    }
+
+    if (text.length <= READ_ALOUD_LONG_SENTENCE_CHARS) {
+      return [
+        {
+          text: text,
+          boundaryChar: block && block.boundaryChar ? block.boundaryChar : '',
+        },
+      ]
+    }
+
+    while (index < text.length) {
+      currentChar = text.charAt(index)
+      buffer += currentChar
+
+      if (',:;'.indexOf(currentChar) >= 0 && normalizeText(buffer).length >= 24) {
+        chunks.push({
+          text: normalizeText(buffer),
+          boundaryChar: currentChar,
+        })
+        buffer = ''
+      }
+
+      index += 1
+    }
+
+    if (normalizeText(buffer)) {
+      chunks.push({
+        text: normalizeText(buffer),
+        boundaryChar: block && block.boundaryChar ? block.boundaryChar : '',
+      })
+    }
+
+    if (chunks.length <= 1) {
+      return [
+        {
+          text: text,
+          boundaryChar: block && block.boundaryChar ? block.boundaryChar : '',
+        },
+      ]
+    }
+
+    return chunks
+  }
+
+  function splitReadAloudBlockByLength(block) {
+    var text = normalizeText(block && block.text ? block.text : '')
+    var chunks = []
+    var remaining = text
+    var splitIndex = -1
+    var chunkText = ''
+
+    if (!text) {
+      return chunks
+    }
+
+    while (remaining.length > READ_ALOUD_MAX_SENTENCE_CHARS) {
+      splitIndex = remaining.lastIndexOf(' ', READ_ALOUD_MAX_SENTENCE_CHARS)
+
+      if (splitIndex < Math.floor(READ_ALOUD_MAX_SENTENCE_CHARS * 0.55)) {
+        splitIndex = remaining.indexOf(' ', READ_ALOUD_MAX_SENTENCE_CHARS)
+      }
+
+      if (splitIndex < 0) {
+        break
+      }
+
+      chunkText = normalizeText(remaining.slice(0, splitIndex))
+
+      if (!chunkText) {
+        break
+      }
+
+      chunks.push({
+        text: chunkText,
+        boundaryChar: 'space',
+      })
+      remaining = normalizeText(remaining.slice(splitIndex + 1))
+    }
+
+    if (remaining) {
+      chunks.push({
+        text: remaining,
+        boundaryChar: block && block.boundaryChar ? block.boundaryChar : '',
+      })
+    }
+
+    if (!chunks.length) {
+      chunks.push({
+        text: text,
+        boundaryChar: block && block.boundaryChar ? block.boundaryChar : '',
+      })
+    }
+
+    return chunks
+  }
+
+  /**
+   * 한국어 읽어주기용 문장 단위를 만듭니다.
+   * @param {{ text?: string, cfi?: string, href?: string, sourceIndexes?: Array<number>, sourceIndex?: number, tagName?: string }} queueItem 원본 읽기 항목입니다.
+   * @returns {Array<{ text: string, spokenText: string, pauseAfterMs: number, ssmlText: string, cfi: string, href: string, sourceIndexes: Array<number>, sourceIndex: number, tagName: string }>} 분석된 읽기 단위 목록입니다.
+   */
+  function buildReadAloudUnitsForQueueItem(queueItem) {
+    var text = normalizeText(queueItem && queueItem.text ? queueItem.text : '')
+    var isHeading = /^h[1-6]$/.test(String(queueItem && queueItem.tagName ? queueItem.tagName : '').toLowerCase())
+    var sentenceBlocks = splitReadAloudSentenceBlocks(text)
+    var clauseBlocks = []
+    var finalBlocks = []
+    var units = []
+
+    if (!text) {
+      return units
+    }
+
+    if (!sentenceBlocks.length) {
+      sentenceBlocks = [
+        {
+          text: text,
+          boundaryChar: '',
+        },
+      ]
+    }
+
+    sentenceBlocks.forEach(function (sentenceBlock) {
+      splitReadAloudBlockByClauses(sentenceBlock).forEach(function (clauseBlock) {
+        splitReadAloudBlockByLength(clauseBlock).forEach(function (lengthBlock) {
+          finalBlocks.push(lengthBlock)
+        })
+      })
+    })
+
+    clauseBlocks = finalBlocks.length ? finalBlocks : sentenceBlocks
+
+    clauseBlocks.forEach(function (block) {
+      var pauseKey = classifyReadAloudPauseKey(block && block.boundaryChar ? block.boundaryChar : '', isHeading)
+      var blockText = normalizeText(block && block.text ? block.text : '')
+      var speechForms = null
+
+      if (!blockText) {
+        return
+      }
+
+      speechForms = buildReadAloudSpeechForms(blockText, {
+        isHeading: isHeading,
+        isLongSentence: blockText.length >= READ_ALOUD_LONG_SENTENCE_CHARS,
+      })
+
+      units.push({
+        text: blockText,
+        spokenText: speechForms.spokenText || blockText,
+        pauseAfterMs: getReadAloudPauseMs(pauseKey),
+        ssmlText: speechForms.ssmlText || '<s>' + escapeXml(blockText) + '</s>',
+        cfi: queueItem && queueItem.cfi ? queueItem.cfi : '',
+        href: queueItem && queueItem.href ? queueItem.href : '',
+        sourceIndexes: Array.isArray(queueItem && queueItem.sourceIndexes) ? queueItem.sourceIndexes.slice() : [],
+        sourceIndex: queueItem && typeof queueItem.sourceIndex === 'number' ? queueItem.sourceIndex : -1,
+        tagName: String(queueItem && queueItem.tagName ? queueItem.tagName : '').toLowerCase(),
+      })
+    })
+
+    return units
+  }
+
+  function estimateReadAloudSpeechMs(text) {
+    var normalizedText = normalizeText(text)
+    var charCount = normalizedText.length
+
+    if (!charCount) {
+      return 0
+    }
+
+    return Math.max(1400, Math.round(charCount * 42))
+  }
+
+  function escapeRegex(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }
+
+  function buildReadAloudAliasPattern() {
+    if (!READ_ALOUD_ALIAS_TERMS.length) {
+      return null
+    }
+
+    return new RegExp('\\b(?:' + READ_ALOUD_ALIAS_TERMS.map(escapeRegex).join('|') + ')\\b', 'g')
+  }
+
+  var READ_ALOUD_ALIAS_PATTERN = buildReadAloudAliasPattern()
+
+  function buildReadAloudSayAsSegment(match) {
+    var value = String(match || '')
+    var fullDateMatch = value.match(/^(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일$/)
+    var monthDayMatch = value.match(/^(\d{1,2})월\s*(\d{1,2})일$/)
+    var meridiemTimeMatch = value.match(/^(오전|오후)\s*(\d{1,2}):(\d{2})$/)
+    var percentMatch = value.match(/^(\d+(?:\.\d+)?)%$/)
+    var alias = READ_ALOUD_ALIAS_BY_TERM[value] || ''
+    var hour = 0
+    var meridiem = ''
+
+    if (fullDateMatch) {
+      return {
+        spokenText: value,
+        ssmlText:
+          '<say-as interpret-as="date" format="ymd">' +
+          fullDateMatch[1] +
+          '-' +
+          fullDateMatch[2] +
+          '-' +
+          fullDateMatch[3] +
+          '</say-as>',
+      }
+    }
+
+    if (monthDayMatch) {
+      return {
+        spokenText: value,
+        ssmlText: '<say-as interpret-as="date" format="md">' + monthDayMatch[1] + '-' + monthDayMatch[2] + '</say-as>',
+      }
+    }
+
+    if (meridiemTimeMatch) {
+      hour = Number(meridiemTimeMatch[2] || 0)
+      meridiem = meridiemTimeMatch[1] === '오후' ? 'pm' : 'am'
+
+      if (hour === 12) {
+        hour = meridiem === 'am' ? 0 : 12
+      } else if (meridiem === 'pm') {
+        hour += 12
+      }
+
+      return {
+        spokenText: meridiemTimeMatch[1] + ' ' + meridiemTimeMatch[2] + '시 ' + meridiemTimeMatch[3] + '분',
+        ssmlText: '<say-as interpret-as="time" format="hms12">' + String(hour) + ':' + meridiemTimeMatch[3] + meridiem + '</say-as>',
+      }
+    }
+
+    if (percentMatch) {
+      return {
+        spokenText: percentMatch[1] + ' 퍼센트',
+        ssmlText:
+          '<say-as interpret-as="cardinal">' +
+          percentMatch[1] +
+          '</say-as><sub alias="퍼센트">%</sub>',
+      }
+    }
+
+    if (alias) {
+      return {
+        spokenText: alias,
+        ssmlText: '<sub alias="' + escapeXml(alias) + '">' + escapeXml(value) + '</sub>',
+      }
+    }
+
+    return null
+  }
+
+  function buildReadAloudSpeechForms(text, options) {
+    var normalized = normalizeText(text)
+    var pattern =
+      /(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일|(\d{1,2})월\s*(\d{1,2})일|(오전|오후)\s*(\d{1,2}):(\d{2})|(\d+(?:\.\d+)?)%/g
+    var dynamicPattern = READ_ALOUD_ALIAS_PATTERN
+    var combinedMatches = []
+    var spokenSegments = []
+    var ssmlSegments = []
+    var lastIndex = 0
+    var match = null
+    var transformed = null
+    var plainText = ''
+    var isHeading = !!(options && options.isHeading)
+    var isLongSentence = !!(options && options.isLongSentence)
+    var ssmlInner = ''
+
+    while ((match = pattern.exec(normalized))) {
+      combinedMatches.push({
+        index: match.index,
+        text: match[0],
+      })
+    }
+
+    if (dynamicPattern) {
+      while ((match = dynamicPattern.exec(normalized))) {
+        combinedMatches.push({
+          index: match.index,
+          text: match[0],
+        })
+      }
+      dynamicPattern.lastIndex = 0
+    }
+
+    combinedMatches.sort(function (left, right) {
+      if (left.index === right.index) {
+        return right.text.length - left.text.length
+      }
+
+      return left.index - right.index
+    })
+
+    combinedMatches = combinedMatches.filter(function (entry, index) {
+      var previous = index > 0 ? combinedMatches[index - 1] : null
+
+      if (!previous) {
+        return true
+      }
+
+      return entry.index >= previous.index + previous.text.length
+    })
+
+    combinedMatches.forEach(function (entry) {
+      if (entry.index > lastIndex) {
+        plainText = normalized.slice(lastIndex, entry.index)
+        spokenSegments.push(plainText)
+        ssmlSegments.push(escapeXml(plainText))
+      }
+
+      transformed = buildReadAloudSayAsSegment(entry.text)
+
+      if (!transformed) {
+        spokenSegments.push(entry.text)
+        ssmlSegments.push(escapeXml(entry.text))
+      } else {
+        spokenSegments.push(transformed.spokenText)
+        ssmlSegments.push(transformed.ssmlText)
+      }
+
+      lastIndex = entry.index + entry.text.length
+    })
+
+    if (lastIndex < normalized.length) {
+      plainText = normalized.slice(lastIndex)
+      spokenSegments.push(plainText)
+      ssmlSegments.push(escapeXml(plainText))
+    }
+
+    ssmlInner = ssmlSegments.join('')
+
+    if (isHeading) {
+      ssmlInner = '<prosody rate="-8%">' + ssmlInner + '</prosody>'
+    } else if (isLongSentence) {
+      ssmlInner = '<prosody rate="-4%">' + ssmlInner + '</prosody>'
+    }
+
+    return {
+      spokenText: normalizeText(spokenSegments.join('')),
+      ssmlText: '<s>' + ssmlInner + '</s>',
+    }
   }
 
   function normalizeHref(value) {
@@ -573,6 +1083,7 @@ window.booklogReaderLogic = (function () {
         href: href,
         sourceIndexes: [index],
         sourceIndex: index,
+        tagName: String(node && node.tagName ? node.tagName : '').toLowerCase(),
       })
     })
 
@@ -700,6 +1211,9 @@ window.booklogReaderLogic = (function () {
   function buildCloudSpeechQueue(queue) {
     var groupedQueue = []
     var currentGroup = null
+    var itemSsmlText = ''
+    var itemPauseAfterMs = 0
+    var itemSpokenText = ''
 
     ;(queue || []).forEach(function (item) {
       var itemText = normalizeText(item && item.text ? item.text : '')
@@ -718,12 +1232,19 @@ window.booklogReaderLogic = (function () {
         shouldStartNewGroup = true
       }
 
+      itemSsmlText = String(item && item.ssmlText ? item.ssmlText : '').trim() || escapeXml(itemText)
+      itemPauseAfterMs = Math.max(120, Math.min(900, Number(item && item.pauseAfterMs ? item.pauseAfterMs : 0) || 0))
+      itemSpokenText = normalizeText(item && item.spokenText ? item.spokenText : itemText)
+
       if (shouldStartNewGroup) {
         currentGroup = {
           text: itemText,
+          spokenText: itemSpokenText,
+          ssmlText: itemSsmlText + (itemPauseAfterMs ? '<break time="' + String(itemPauseAfterMs) + 'ms"/>' : ''),
           cfi: item && item.cfi ? item.cfi : '',
           href: item && item.href ? item.href : '',
           items: [item],
+          estimatedPlaybackMs: estimateReadAloudSpeechMs(itemSpokenText) + itemPauseAfterMs,
           sourceIndexes: Array.isArray(item && item.sourceIndexes) ? item.sourceIndexes.slice() : [],
         }
         groupedQueue.push(currentGroup)
@@ -731,7 +1252,10 @@ window.booklogReaderLogic = (function () {
       }
 
       currentGroup.text += ' ' + itemText
+      currentGroup.spokenText += ' ' + itemSpokenText
+      currentGroup.ssmlText += itemSsmlText + (itemPauseAfterMs ? '<break time="' + String(itemPauseAfterMs) + 'ms"/>' : '')
       currentGroup.items.push(item)
+      currentGroup.estimatedPlaybackMs += estimateReadAloudSpeechMs(itemSpokenText) + itemPauseAfterMs
 
       if (Array.isArray(item && item.sourceIndexes)) {
         currentGroup.sourceIndexes = currentGroup.sourceIndexes.concat(item.sourceIndexes)
@@ -773,16 +1297,27 @@ window.booklogReaderLogic = (function () {
     return Promise.resolve(section.load(bookInstance.load.bind(bookInstance)))
       .then(function () {
         var queue = buildSpeechQueueFromSection(section, cfi)
+        var analyzedQueue = []
 
         if (!queue.length) {
           throw new Error('현재 챕터에서 읽을 문단을 찾지 못했습니다.')
         }
 
-        if (getReadAloudMode(component) === 'cloud') {
-          return buildCloudSpeechQueue(queue)
+        queue.forEach(function (queueItem) {
+          buildReadAloudUnitsForQueueItem(queueItem).forEach(function (unit) {
+            analyzedQueue.push(unit)
+          })
+        })
+
+        if (!analyzedQueue.length) {
+          throw new Error('현재 챕터에서 읽을 문장을 찾지 못했습니다.')
         }
 
-        return queue
+        if (getReadAloudMode(component) === 'cloud') {
+          return buildCloudSpeechQueue(analyzedQueue)
+        }
+
+        return analyzedQueue
       })
       .finally(function () {
         try {
@@ -826,7 +1361,8 @@ window.booklogReaderLogic = (function () {
       return Promise.reject(new Error('이 브라우저는 클라우드 읽어주기 오디오 재생을 지원하지 않습니다.'))
     }
 
-    formData.set('text', queueItem && queueItem.text ? queueItem.text : '')
+    formData.set('text', queueItem && queueItem.spokenText ? queueItem.spokenText : queueItem && queueItem.text ? queueItem.text : '')
+    formData.set('ssml', queueItem && queueItem.ssmlText ? queueItem.ssmlText : '')
     formData.set('voiceName', component && component.readAloudVoiceName ? String(component.readAloudVoiceName) : cloudReadAloudVoiceName)
     formData.set('rate', String(normalizeReadAloudRate(component && component.readAloudRate ? component.readAloudRate : 1)))
     formData.set('chapterLabel', component && component.currentChapterLabel ? component.currentChapterLabel : getChapterLabelForHref(queueItem && queueItem.href ? queueItem.href : ''))
@@ -893,14 +1429,54 @@ window.booklogReaderLogic = (function () {
     return entry.promise
   }
 
-  function prefetchCloudSpeechAudio(component, token) {
-    var nextIndex = speechQueueIndex + 1
+  function estimateCloudQueueItemPlaybackMs(component, queueItem) {
+    var rate = normalizeReadAloudRate(component && component.readAloudRate ? component.readAloudRate : 1)
+    var basePlaybackMs =
+      Number(queueItem && queueItem.estimatedPlaybackMs ? queueItem.estimatedPlaybackMs : 0) ||
+      estimateReadAloudSpeechMs(queueItem && queueItem.spokenText ? queueItem.spokenText : queueItem && queueItem.text ? queueItem.text : '')
 
-    if (token !== speechActiveToken || !speechQueue[nextIndex]) {
+    if (!basePlaybackMs) {
+      return 0
+    }
+
+    return Math.round(basePlaybackMs / rate)
+  }
+
+  function getCloudPrefetchCount(component, queueIndex) {
+    var queueItem = speechQueue[queueIndex]
+    var textLength = normalizeText(queueItem && queueItem.text ? queueItem.text : '').length
+    var estimatedPlaybackMs = estimateCloudQueueItemPlaybackMs(component, queueItem)
+    var unitCount = Array.isArray(queueItem && queueItem.items) ? queueItem.items.length : 1
+
+    if (!queueItem) {
+      return 0
+    }
+
+    if (estimatedPlaybackMs <= CLOUD_READ_ALOUD_SHORT_PREFETCH_MS || textLength <= CLOUD_READ_ALOUD_SHORT_PREFETCH_CHARS || unitCount <= 2) {
+      return CLOUD_READ_ALOUD_MAX_PREFETCH_COUNT
+    }
+
+    return 1
+  }
+
+  function prefetchCloudSpeechAudio(component, token, queueIndex) {
+    var prefetchCount = getCloudPrefetchCount(component, queueIndex)
+    var offset = 1
+    var nextIndex = 0
+
+    if (token !== speechActiveToken || prefetchCount < 1) {
       return
     }
 
-    ensureCloudSpeechAudio(component, nextIndex).catch(function () {})
+    for (offset = 1; offset <= prefetchCount; offset += 1) {
+      nextIndex = queueIndex + offset
+
+      if (!speechQueue[nextIndex]) {
+        break
+      }
+
+      ensureCloudSpeechAudio(component, nextIndex).catch(function () {})
+    }
   }
 
   function tryFallbackToLocalSpeech(component, token, message) {
@@ -919,7 +1495,8 @@ window.booklogReaderLogic = (function () {
   }
 
   function playCloudQueueItem(component, token) {
-    var queueItem = speechQueue[speechQueueIndex]
+    var currentQueueIndex = speechQueueIndex
+    var queueItem = speechQueue[currentQueueIndex]
 
     if (!component) {
       return
@@ -941,7 +1518,7 @@ window.booklogReaderLogic = (function () {
     component.readAloudPlaying = false
     activateReadAloudHighlight(queueItem)
 
-    ensureCloudSpeechAudio(component, speechQueueIndex)
+    ensureCloudSpeechAudio(component, currentQueueIndex)
       .then(function (entry) {
         var audio = null
 
@@ -966,11 +1543,11 @@ window.booklogReaderLogic = (function () {
           component.readAloudBusy = false
           component.readAloudPlaying = true
           component.readAloudMessage = '현재 챕터를 읽는 중입니다.'
-          prefetchCloudSpeechAudio(component, token)
+          prefetchCloudSpeechAudio(component, token, currentQueueIndex)
         }
 
         audio.onended = function () {
-          var finishedIndex = speechQueueIndex
+          var finishedIndex = currentQueueIndex
 
           if (token !== speechActiveToken) {
             return
@@ -979,7 +1556,7 @@ window.booklogReaderLogic = (function () {
           speechCurrentAudio = null
           revokeCloudAudioEntry(speechCloudAudioByIndex[finishedIndex])
           delete speechCloudAudioByIndex[finishedIndex]
-          speechQueueIndex += 1
+          speechQueueIndex = finishedIndex + 1
           playCloudQueueItem(component, token)
         }
 
@@ -1052,7 +1629,7 @@ window.booklogReaderLogic = (function () {
       return
     }
 
-    utterance = new window.SpeechSynthesisUtterance(queueItem.text)
+    utterance = new window.SpeechSynthesisUtterance(queueItem && queueItem.spokenText ? queueItem.spokenText : queueItem.text)
     utterance.lang = voice && voice.lang ? String(voice.lang) : 'ko-KR'
     utterance.rate = rate
 
@@ -1084,7 +1661,7 @@ window.booklogReaderLogic = (function () {
       clearSpeechRestartTimer()
       speechRestartTimerId = setTimeout(function () {
         speakQueueItem(component, token)
-      }, 40)
+      }, Math.max(40, Number(queueItem && queueItem.pauseAfterMs ? queueItem.pauseAfterMs : 40)))
     }
 
     utterance.onerror = function (event) {

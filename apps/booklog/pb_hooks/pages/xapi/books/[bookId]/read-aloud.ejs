@@ -51,6 +51,7 @@
 
   const form = body()
   const text = String(form.text || '').trim()
+  const ssmlText = String(form.ssml || '').trim()
   const voiceName = String(form.voiceName || '').trim()
   const chapterLabel = String(form.chapterLabel || '').trim()
   const rateRaw = String(form.rate || '').trim()
@@ -60,6 +61,7 @@
     userId: userId,
     bookId: bookId,
     textLength: text.length,
+    ssmlLength: ssmlText.length,
     voiceName: voiceName,
     chapterLabel: chapterLabel,
     rate: isNaN(rate) ? '' : rate,
@@ -74,7 +76,7 @@
     if (!request.auth.get('cloud_tts_enabled')) {
       throw createStatusError('클라우드 읽어주기 사용이 비활성화되어 있습니다.', 403)
     }
-    if (!text) throw new Error('읽을 텍스트가 필요합니다.')
+    if (!text && !ssmlText) throw new Error('읽을 텍스트가 필요합니다.')
 
     try {
       bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', {
@@ -94,6 +96,7 @@
       },
       {
         text: text,
+        ssmlText: ssmlText,
         voiceName: voiceName,
         rate: rate,
       }
@@ -102,7 +105,7 @@
     const audioExtension = getAudioFileExtension(synthResult ? synthResult.contentType : '')
     const audioCacheRoot = String($os.tempDir() || '').trim() || String($app.dataDir() || '').trim()
     const audioCacheMode = $os.stat(audioCacheRoot).mode().perm()
-    const audioCacheKey = $security.sha256([bookId, voiceName, String(rate), text].join('\n'))
+    const audioCacheKey = $security.sha256([bookId, voiceName, String(rate), text, ssmlText].join('\n'))
     const audioFilePath = audioCacheRoot.replace(/[\\/]+$/, '') + '/booklog-reader-tts-' + audioCacheKey + '.' + audioExtension
 
     $os.writeFile(audioFilePath, synthResult.body, audioCacheMode)

@@ -115,25 +115,29 @@ function toAzureProsodyRate(value) {
 
 /**
  * Azure TTS 요청용 SSML을 만듭니다.
- * @param {{ text: string, voiceName: string, rate: number|string }} input 합성 입력값입니다.
+ * @param {{ text?: string, ssmlText?: string, voiceName: string, rate: number|string }} input 합성 입력값입니다.
  * @returns {string} Azure REST API에 보낼 SSML 문자열입니다.
  */
 function createSsml(input) {
   var source = input || {}
   var voiceName = String(source.voiceName || '').trim()
+  var ssmlText = String(source.ssmlText || '').trim()
   var text = String(source.text || '')
     .replace(/\s+/g, ' ')
     .trim()
+  var bodyText = ''
 
-  if (!text) {
+  if (!ssmlText && !text) {
     throw createStatusError('읽을 텍스트가 필요합니다.', 400)
   }
 
+  bodyText = ssmlText ? '<p>' + ssmlText + '</p>' : '<p><s>' + escapeXml(text) + '</s></p>'
+
   return [
-    '<speak version="1.0" xml:lang="ko-KR">',
+    '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">',
     '<voice name="' + escapeXml(voiceName) + '">',
     '<prosody rate="' + escapeXml(toAzureProsodyRate(source.rate)) + '">',
-    escapeXml(text),
+    bodyText,
     '</prosody>',
     '</voice>',
     '</speak>',
@@ -158,7 +162,7 @@ function extractContentType(headers) {
 /**
  * Azure TTS로 음성을 합성합니다.
  * @param {(key: string) => string} envGetter 환경 변수 조회 함수입니다.
- * @param {{ text: string, voiceName?: string, rate?: number|string }} input 합성 입력값입니다.
+ * @param {{ text?: string, ssmlText?: string, voiceName?: string, rate?: number|string }} input 합성 입력값입니다.
  * @returns {{ contentType: string, body: Array<number> }} 합성된 오디오 응답입니다.
  */
 function synthesizeSpeech(envGetter, input) {
@@ -178,6 +182,7 @@ function synthesizeSpeech(envGetter, input) {
     },
     body: createSsml({
       text: input && input.text ? input.text : '',
+      ssmlText: input && input.ssmlText ? input.ssmlText : '',
       voiceName: voiceName,
       rate: input && typeof input.rate !== 'undefined' ? input.rate : 1,
     }),
