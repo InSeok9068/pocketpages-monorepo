@@ -109,6 +109,15 @@
   const storedFileName = bookFileRecord ? String(bookFileRecord.get('stored_file') || '').trim() : ''
   const bookFileHash = bookFileRecord ? String(bookFileRecord.get('file_hash') || '').trim() : ''
   const epubReaderUrl = bookFileRecord && storedFileName ? '/xapi/books/' + encodeURIComponent(bookId) + '/read-file' : ''
+  const defaultCloudTtsVoiceName = String(env('AZURE_TTS_VOICE_NAME') || 'ko-KR-SunHiNeural').trim() || 'ko-KR-SunHiNeural'
+  const readAloudConfig = {
+    preferredMode: request.auth.get('cloud_tts_enabled') ? 'cloud' : 'local',
+    cloudConfigured: !!String(env('AZURE_TTS_APIKEY') || '').trim(),
+    cloudEndpoint: '/xapi/books/' + encodeURIComponent(bookId) + '/read-aloud',
+    cloudVoiceName: defaultCloudTtsVoiceName,
+    cloudVoiceLabel: 'Azure 한국어 음성',
+  }
+  const readAloudCloudConfiguredText = readAloudConfig.cloudConfigured ? 'true' : 'false'
 
   if (!epubReaderUrl) {
     dbg('page/books/[bookId]/read:redirect', {
@@ -170,6 +179,8 @@
     readAloudSupported: false,
     readAloudBusy: false,
     readAloudPlaying: false,
+    readAloudMode: 'local',
+    readAloudModeLabel: '',
     readAloudMessage: '',
     readAloudVoiceName: '',
     readAloudRate: '1',
@@ -442,6 +453,9 @@
             <p
               class="mt-1 text-sm text-stone-500"
               x-text="currentChapterLabel ? '현재 챕터: ' + currentChapterLabel : '현재 챕터를 확인하는 중입니다.'"></p>
+            <p
+              class="mt-1 text-xs font-medium tracking-[0.12em] text-stone-400"
+              x-text="readAloudModeLabel ? '음성 엔진: ' + readAloudModeLabel : '음성 엔진을 확인하는 중입니다.'"></p>
           </div>
           <button
             type="button"
@@ -453,7 +467,9 @@
 
         <div class="space-y-4">
           <template x-if="!readAloudSupported">
-            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">이 브라우저는 읽어주기 기능을 지원하지 않습니다.</p>
+            <p
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]"
+              x-text="readAloudMode === 'cloud' ? '클라우드 읽어주기 설정을 확인하지 못했습니다.' : '이 브라우저는 읽어주기 기능을 지원하지 않습니다.'"></p>
           </template>
 
           <template x-if="readAloudSupported">
@@ -491,7 +507,8 @@
               </label>
 
               <div class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-                현재 위치와 가장 가까운 문단부터 현재 챕터 끝까지 읽습니다.
+                <span x-show="readAloudMode === 'cloud'">현재 위치와 가장 가까운 문단부터 여러 문단을 자연스럽게 묶어 현재 챕터 끝까지 읽습니다.</span>
+                <span x-show="readAloudMode !== 'cloud'">현재 위치와 가장 가까운 문단부터 현재 챕터 끝까지 읽습니다.</span>
               </div>
             </div>
           </template>
@@ -793,6 +810,13 @@
     readerUrl: '<%= epubReaderUrl %>',
     bookId: '<%= bookId %>',
     readerCacheKey: '<%= userId %>:<%= bookFileHash || bookId %>',
+    readAloud: {
+      preferredMode: '<%= readAloudConfig.preferredMode %>',
+      cloudConfigured: '<%= readAloudCloudConfiguredText %>' === 'true',
+      cloudEndpoint: '<%= readAloudConfig.cloudEndpoint %>',
+      cloudVoiceName: '<%= readAloudConfig.cloudVoiceName %>',
+      cloudVoiceLabel: '<%= readAloudConfig.cloudVoiceLabel %>',
+    },
   }
 </script>
 <script src="<%= asset('/assets/booklog-reader.js') %>"></script>

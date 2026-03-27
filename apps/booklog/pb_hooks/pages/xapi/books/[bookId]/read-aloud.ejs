@@ -1,0 +1,139 @@
+<script server>
+  /**
+   * 오디오 응답의 파일 확장자를 정합니다.
+   * @param {string} contentType 응답 Content-Type입니다.
+   * @returns {string} 저장에 사용할 파일 확장자입니다.
+   */
+  function getAudioFileExtension(contentType) {
+    const normalized = String(contentType || '').trim().toLowerCase()
+
+    if (normalized === 'audio/mpeg') {
+      return 'mp3'
+    }
+
+    if (normalized === 'audio/wav' || normalized === 'audio/x-wav') {
+      return 'wav'
+    }
+
+    if (normalized === 'audio/ogg' || normalized === 'audio/opus') {
+      return 'ogg'
+    }
+
+    return 'bin'
+  }
+
+  /**
+   * 상태코드를 포함한 오류 객체를 만듭니다.
+   * @param {string} message 사용자에게 보여줄 오류 메시지입니다.
+   * @param {number} statusCode HTTP 상태코드입니다.
+   * @returns {{ message: string, statusCode: number }} 상태코드를 포함한 오류 정보입니다.
+   */
+  function createStatusError(message, statusCode) {
+    return {
+      message: String(message || '').trim() || '요청에 실패했습니다.',
+      statusCode: statusCode,
+    }
+  }
+
+  const azureTtsService = resolve('azure-tts-service')
+  const bookId = String(params.bookId || '').trim()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+
+  if (request.method !== 'POST') {
+    response.html(405, '잘못된 요청입니다.')
+    return
+  }
+
+  if (!request.auth) {
+    response.html(401, '로그인이 필요합니다.')
+    return
+  }
+
+  const form = body()
+  const text = String(form.text || '').trim()
+  const voiceName = String(form.voiceName || '').trim()
+  const chapterLabel = String(form.chapterLabel || '').trim()
+  const rateRaw = String(form.rate || '').trim()
+  const rate = rateRaw ? Number(rateRaw) : 1
+
+  dbg('xapi/books/[bookId]/read-aloud:start', {
+    userId: userId,
+    bookId: bookId,
+    textLength: text.length,
+    voiceName: voiceName,
+    chapterLabel: chapterLabel,
+    rate: isNaN(rate) ? '' : rate,
+    cloudTtsEnabled: !!request.auth.get('cloud_tts_enabled'),
+  })
+
+  try {
+    let bookRecord = null
+    let synthResult = null
+
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+    if (!request.auth.get('cloud_tts_enabled')) {
+      throw createStatusError('클라우드 읽어주기 사용이 비활성화되어 있습니다.', 403)
+    }
+    if (!text) throw new Error('읽을 텍스트가 필요합니다.')
+
+    try {
+      bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', {
+        bookId: bookId,
+      })
+    } catch (exception) {
+      bookRecord = null
+    }
+
+    if (!bookRecord) {
+      throw new Error('책 정보를 찾을 수 없습니다.')
+    }
+
+    synthResult = azureTtsService.synthesizeSpeech(
+      function (key) {
+        return env(key)
+      },
+      {
+        text: text,
+        voiceName: voiceName,
+        rate: rate,
+      }
+    )
+
+    const audioExtension = getAudioFileExtension(synthResult ? synthResult.contentType : '')
+    const audioCacheRoot = String($os.tempDir() || '').trim() || String($app.dataDir() || '').trim()
+    const audioCacheMode = $os.stat(audioCacheRoot).mode().perm()
+    const audioCacheKey = $security.sha256([bookId, voiceName, String(rate), text].join('\n'))
+    const audioFilePath = audioCacheRoot.replace(/[\\/]+$/, '') + '/booklog-reader-tts-' + audioCacheKey + '.' + audioExtension
+
+    $os.writeFile(audioFilePath, synthResult.body, audioCacheMode)
+
+    info('xapi/books/[bookId]/read-aloud:done', {
+      userId: userId,
+      bookId: bookId,
+      chapterLabel: chapterLabel,
+      byteLength: synthResult && synthResult.body ? synthResult.body.length : 0,
+      contentType: synthResult ? synthResult.contentType : '',
+      audioFilePath: audioFilePath,
+    })
+
+    response.header('Cache-Control', 'no-store')
+    response.header('Content-Type', synthResult.contentType)
+    response.file(audioFilePath)
+    return
+  } catch (exception) {
+    const errorMessage =
+      exception && typeof exception === 'object' && 'message' in exception
+        ? String(exception.message || '')
+        : String(exception || '')
+    const statusCode = exception && typeof exception === 'object' && 'statusCode' in exception ? Number(exception.statusCode) : 400
+
+    error('xapi/books/[bookId]/read-aloud:failed', {
+      userId: userId,
+      bookId: bookId,
+      chapterLabel: chapterLabel,
+      error: errorMessage,
+    })
+
+    response.html(statusCode, errorMessage || '클라우드 읽어주기 생성에 실패했습니다.')
+  }
+</script>

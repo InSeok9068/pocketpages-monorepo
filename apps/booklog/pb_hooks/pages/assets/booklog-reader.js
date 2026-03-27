@@ -3,6 +3,12 @@ window.booklogReaderLogic = (function () {
   var readerUrl = String(readerConfig.readerUrl || '')
   var bookId = String(readerConfig.bookId || '')
   var readerCacheKey = String(readerConfig.readerCacheKey || '')
+  var readAloudConfig = readerConfig.readAloud || {}
+  var preferredReadAloudMode = String(readAloudConfig.preferredMode || 'local') === 'cloud' ? 'cloud' : 'local'
+  var cloudReadAloudConfigured = !!readAloudConfig.cloudConfigured
+  var cloudReadAloudEndpoint = String(readAloudConfig.cloudEndpoint || '')
+  var cloudReadAloudVoiceName = String(readAloudConfig.cloudVoiceName || 'ko-KR-SunHiNeural').trim() || 'ko-KR-SunHiNeural'
+  var cloudReadAloudVoiceLabel = String(readAloudConfig.cloudVoiceLabel || 'Azure 한국어 음성').trim() || 'Azure 한국어 음성'
   var bookInstance = null
   var renditionInstance = null
   var tocLabelByHref = {}
@@ -43,7 +49,10 @@ window.booklogReaderLogic = (function () {
   var speechQueue = []
   var speechQueueIndex = 0
   var speechCurrentUtterance = null
+  var speechCurrentAudio = null
   var speechCurrentComponent = null
+  var speechCurrentMode = ''
+  var speechCloudAudioByIndex = {}
   var speechRestartTimerId = null
   var speechActiveToken = 0
   var renderedContentEntries = []
@@ -52,6 +61,8 @@ window.booklogReaderLogic = (function () {
   var isLeavingPage = false
   var isHandlingHistoryBack = false
   var skipNextPopState = false
+  var CLOUD_READ_ALOUD_MAX_CHARS = 460
+  var CLOUD_READ_ALOUD_MAX_ITEMS = 4
 
   function normalizeText(value) {
     return String(value || '')
@@ -70,16 +81,66 @@ window.booklogReaderLogic = (function () {
   }
 
   function clearReadAloudHighlight() {
-    if (!activeReadAloudHighlight || !activeReadAloudHighlight.node || !activeReadAloudHighlight.className) {
+    var nodes = activeReadAloudHighlight && Array.isArray(activeReadAloudHighlight.nodes) ? activeReadAloudHighlight.nodes : []
+    var className = activeReadAloudHighlight && activeReadAloudHighlight.className ? activeReadAloudHighlight.className : ''
+
+    if (!nodes.length || !className) {
       activeReadAloudHighlight = null
       return
     }
 
     try {
-      activeReadAloudHighlight.node.classList.remove(activeReadAloudHighlight.className)
+      nodes.forEach(function (node) {
+        if (!node || !node.classList) {
+          return
+        }
+
+        node.classList.remove(className)
+      })
     } catch (exception) {}
 
     activeReadAloudHighlight = null
+  }
+
+  function revokeCloudAudioEntry(entry) {
+    if (!entry || !entry.objectUrl || !window.URL || typeof window.URL.revokeObjectURL !== 'function') {
+      return
+    }
+
+    try {
+      window.URL.revokeObjectURL(entry.objectUrl)
+    } catch (exception) {}
+
+    entry.objectUrl = ''
+  }
+
+  function clearCloudAudioCache() {
+    Object.keys(speechCloudAudioByIndex).forEach(function (key) {
+      revokeCloudAudioEntry(speechCloudAudioByIndex[key])
+    })
+
+    speechCloudAudioByIndex = {}
+  }
+
+  function stopCloudAudioPlayback(options) {
+    var keepCache = !!(options && options.keepCache)
+
+    if (speechCurrentAudio) {
+      try {
+        speechCurrentAudio.pause()
+      } catch (exception) {}
+
+      try {
+        speechCurrentAudio.removeAttribute('src')
+        speechCurrentAudio.load()
+      } catch (exception) {}
+    }
+
+    speechCurrentAudio = null
+
+    if (!keepCache) {
+      clearCloudAudioCache()
+    }
   }
 
   function deriveRenderedContentHref(contents, doc) {
@@ -196,9 +257,11 @@ window.booklogReaderLogic = (function () {
 
     clearSpeechRestartTimer()
     clearReadAloudHighlight()
+    stopCloudAudioPlayback()
     speechQueue = []
     speechQueueIndex = 0
     speechCurrentUtterance = null
+    speechCurrentMode = ''
     speechCurrentComponent = component || speechCurrentComponent
 
     if (!component) {
@@ -250,13 +313,41 @@ window.booklogReaderLogic = (function () {
   }
 
   /**
-   * 읽어주기에서 사용할 음성 목록을 동기화합니다.
-   * @param {any} component Alpine 컴포넌트 상태
-   * @returns {void}
+   * 기기 한국어 음성 목록을 읽습니다.
+   * @returns {Array<any>} 사용할 수 있는 한국어 음성 목록입니다.
    */
-  function syncSpeechVoices(component) {
+  function listLocalSpeechVoices() {
     var synth = getSpeechSynthesisInstance()
     var voices = []
+
+    if (!synth) {
+      speechVoices = []
+      return speechVoices
+    }
+
+    try {
+      voices = synth.getVoices ? synth.getVoices() : []
+    } catch (exception) {
+      voices = []
+    }
+
+    speechVoices = voices.filter(isKoreanVoice)
+    return speechVoices
+  }
+
+  function normalizeReadAloudRate(value) {
+    var parsed = Number(value)
+
+    if (!isFinite(parsed)) {
+      return 1
+    }
+
+    return Math.max(0.8, Math.min(1.6, parsed))
+  }
+
+  function syncLocalSpeechVoices(component) {
+    var synth = getSpeechSynthesisInstance()
+    var localVoices = listLocalSpeechVoices()
 
     if (!component) {
       return
@@ -270,14 +361,7 @@ window.booklogReaderLogic = (function () {
       return
     }
 
-    try {
-      voices = synth.getVoices ? synth.getVoices() : []
-    } catch (exception) {
-      voices = []
-    }
-
-    speechVoices = voices.filter(isKoreanVoice)
-    component.readAloudVoices = speechVoices.map(function (voice) {
+    component.readAloudVoices = localVoices.map(function (voice) {
       return {
         name: String(voice.name || ''),
         lang: String(voice.lang || ''),
@@ -301,6 +385,81 @@ window.booklogReaderLogic = (function () {
     }
 
     component.readAloudVoiceName = component.readAloudVoices[0].name
+  }
+
+  function syncCloudSpeechVoices(component) {
+    var isSupported = !!cloudReadAloudConfigured && !!cloudReadAloudEndpoint
+
+    if (!component) {
+      return
+    }
+
+    component.readAloudSupported = isSupported
+
+    if (!isSupported) {
+      component.readAloudVoices = []
+      component.readAloudVoiceName = ''
+      return
+    }
+
+    component.readAloudVoices = [
+      {
+        name: cloudReadAloudVoiceName,
+        lang: 'ko-KR',
+        label: cloudReadAloudVoiceLabel,
+        defaultVoice: true,
+      },
+    ]
+    component.readAloudVoiceName = cloudReadAloudVoiceName
+  }
+
+  function switchReadAloudMode(component, mode) {
+    if (!component) {
+      return
+    }
+
+    component.readAloudMode = mode === 'cloud' ? 'cloud' : 'local'
+    component.readAloudModeLabel = component.readAloudMode === 'cloud' ? '클라우드 음성' : '기기 음성'
+
+    if (component.readAloudMode === 'cloud') {
+      syncCloudSpeechVoices(component)
+      return
+    }
+
+    syncLocalSpeechVoices(component)
+  }
+
+  /**
+   * 읽어주기에서 사용할 음성 목록을 동기화합니다.
+   * @param {any} component Alpine 컴포넌트 상태
+   * @returns {void}
+   */
+  function syncSpeechVoices(component) {
+    listLocalSpeechVoices()
+
+    if (!component) {
+      return
+    }
+
+    if (preferredReadAloudMode === 'cloud' && cloudReadAloudConfigured && cloudReadAloudEndpoint) {
+      switchReadAloudMode(component, 'cloud')
+      return
+    }
+
+    if (getSpeechSynthesisInstance()) {
+      switchReadAloudMode(component, 'local')
+      return
+    }
+
+    component.readAloudMode = preferredReadAloudMode
+    component.readAloudModeLabel = preferredReadAloudMode === 'cloud' ? '클라우드 음성' : '기기 음성'
+    component.readAloudSupported = false
+    component.readAloudVoices = []
+    component.readAloudVoiceName = ''
+  }
+
+  function getReadAloudMode(component) {
+    return component && component.readAloudMode === 'cloud' ? 'cloud' : 'local'
   }
 
   function findSelectedVoice(component) {
@@ -412,6 +571,7 @@ window.booklogReaderLogic = (function () {
         text: text,
         cfi: cfi,
         href: href,
+        sourceIndexes: [index],
         sourceIndex: index,
       })
     })
@@ -432,8 +592,10 @@ window.booklogReaderLogic = (function () {
     var entry = null
     var doc = null
     var nodes = null
+    var matchedNodes = []
     var node = null
     var entryIndex = 0
+    var sourceIndexes = queueItem && Array.isArray(queueItem.sourceIndexes) ? queueItem.sourceIndexes : []
     var className = 'booklog-read-aloud-active'
 
     clearReadAloudHighlight()
@@ -463,12 +625,30 @@ window.booklogReaderLogic = (function () {
 
       nodes = collectReadableTextNodes(doc.body || doc)
 
-      if (typeof queueItem.sourceIndex === 'number' && queueItem.sourceIndex >= 0) {
-        node = nodes[queueItem.sourceIndex] || null
+      sourceIndexes.forEach(function (sourceIndex) {
+        var indexedNode = null
+
+        if (typeof sourceIndex !== 'number' || sourceIndex < 0) {
+          return
+        }
+
+        indexedNode = nodes[sourceIndex] || null
+
+        if (!indexedNode && doc.querySelector) {
+          indexedNode = doc.querySelector('[data-booklog-read-aloud-index="' + String(sourceIndex) + '"]')
+        }
+
+        if (indexedNode) {
+          matchedNodes.push(indexedNode)
+        }
+      })
+
+      if (matchedNodes.length) {
+        break
       }
 
-      if (!node && typeof queueItem.sourceIndex === 'number' && doc.querySelector) {
-        node = doc.querySelector('[data-booklog-read-aloud-index="' + String(queueItem.sourceIndex) + '"]')
+      if (typeof queueItem.sourceIndex === 'number' && queueItem.sourceIndex >= 0) {
+        node = nodes[queueItem.sourceIndex] || null
       }
 
       if (node && queueItem.text && normalizeText(node.textContent || '') !== queueItem.text) {
@@ -483,33 +663,82 @@ window.booklogReaderLogic = (function () {
       }
 
       if (node) {
+        matchedNodes.push(node)
         break
       }
     }
 
-    if (!node || !node.classList) {
+    matchedNodes = matchedNodes
+      .map(function (matchedNode) {
+        return findHighlightTarget(matchedNode)
+      })
+      .filter(function (matchedNode, index, list) {
+        return !!matchedNode && !!matchedNode.classList && list.indexOf(matchedNode) === index
+      })
+
+    if (!matchedNodes.length) {
       return
     }
 
-    node = findHighlightTarget(node)
-
-    if (!node || !node.classList) {
-      return
-    }
-
-    node.classList.add(className)
+    matchedNodes.forEach(function (matchedNode) {
+      matchedNode.classList.add(className)
+    })
     activeReadAloudHighlight = {
-      node: node,
+      nodes: matchedNodes,
       className: className,
     }
 
-    if (typeof node.scrollIntoView === 'function') {
-      node.scrollIntoView({
+    if (typeof matchedNodes[0].scrollIntoView === 'function') {
+      matchedNodes[0].scrollIntoView({
         block: 'center',
         inline: 'nearest',
         behavior: 'smooth',
       })
     }
+  }
+
+  function buildCloudSpeechQueue(queue) {
+    var groupedQueue = []
+    var currentGroup = null
+
+    ;(queue || []).forEach(function (item) {
+      var itemText = normalizeText(item && item.text ? item.text : '')
+      var combinedLength = currentGroup ? currentGroup.text.length + 1 + itemText.length : itemText.length
+      var shouldStartNewGroup = false
+
+      if (!itemText) {
+        return
+      }
+
+      if (!currentGroup) {
+        shouldStartNewGroup = true
+      } else if (currentGroup.items.length >= CLOUD_READ_ALOUD_MAX_ITEMS) {
+        shouldStartNewGroup = true
+      } else if (combinedLength > CLOUD_READ_ALOUD_MAX_CHARS) {
+        shouldStartNewGroup = true
+      }
+
+      if (shouldStartNewGroup) {
+        currentGroup = {
+          text: itemText,
+          cfi: item && item.cfi ? item.cfi : '',
+          href: item && item.href ? item.href : '',
+          items: [item],
+          sourceIndexes: Array.isArray(item && item.sourceIndexes) ? item.sourceIndexes.slice() : [],
+        }
+        groupedQueue.push(currentGroup)
+        return
+      }
+
+      currentGroup.text += ' ' + itemText
+      currentGroup.items.push(item)
+
+      if (Array.isArray(item && item.sourceIndexes)) {
+        currentGroup.sourceIndexes = currentGroup.sourceIndexes.concat(item.sourceIndexes)
+      }
+    })
+
+    return groupedQueue
   }
 
   /**
@@ -549,6 +778,10 @@ window.booklogReaderLogic = (function () {
           throw new Error('현재 챕터에서 읽을 문단을 찾지 못했습니다.')
         }
 
+        if (getReadAloudMode(component) === 'cloud') {
+          return buildCloudSpeechQueue(queue)
+        }
+
         return queue
       })
       .finally(function () {
@@ -558,12 +791,250 @@ window.booklogReaderLogic = (function () {
       })
   }
 
-  function speakQueueItem(component, token) {
+  function parseReadAloudErrorResponse(response) {
+    var contentType = response && response.headers ? String(response.headers.get('Content-Type') || '') : ''
+
+    if (!response) {
+      return Promise.resolve('클라우드 읽어주기 요청에 실패했습니다.')
+    }
+
+    if (contentType.indexOf('application/json') >= 0) {
+      return response
+        .json()
+        .then(function (payload) {
+          return String(payload && payload.message ? payload.message : '').trim() || '클라우드 읽어주기 요청에 실패했습니다.'
+        })
+        .catch(function () {
+          return '클라우드 읽어주기 요청에 실패했습니다.'
+        })
+    }
+
+    return response
+      .text()
+      .then(function (text) {
+        return String(text || '').trim() || '클라우드 읽어주기 요청에 실패했습니다.'
+      })
+      .catch(function () {
+        return '클라우드 읽어주기 요청에 실패했습니다.'
+      })
+  }
+
+  function requestCloudSpeechAudio(component, queueItem) {
+    var formData = new FormData()
+
+    if (!window.URL || typeof window.URL.createObjectURL !== 'function') {
+      return Promise.reject(new Error('이 브라우저는 클라우드 읽어주기 오디오 재생을 지원하지 않습니다.'))
+    }
+
+    formData.set('text', queueItem && queueItem.text ? queueItem.text : '')
+    formData.set('voiceName', component && component.readAloudVoiceName ? String(component.readAloudVoiceName) : cloudReadAloudVoiceName)
+    formData.set('rate', String(normalizeReadAloudRate(component && component.readAloudRate ? component.readAloudRate : 1)))
+    formData.set('chapterLabel', component && component.currentChapterLabel ? component.currentChapterLabel : getChapterLabelForHref(queueItem && queueItem.href ? queueItem.href : ''))
+
+    return fetch(cloudReadAloudEndpoint, {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+    }).then(function (response) {
+      if (!response.ok) {
+        return parseReadAloudErrorResponse(response).then(function (message) {
+          throw new Error(message)
+        })
+      }
+
+      return response.blob().then(function (blob) {
+        if (!blob || !blob.size) {
+          throw new Error('클라우드 읽어주기 오디오가 비어 있습니다.')
+        }
+
+        return {
+          blob: blob,
+          objectUrl: window.URL.createObjectURL(blob),
+        }
+      })
+    })
+  }
+
+  function ensureCloudSpeechAudio(component, queueIndex) {
+    var queueItem = speechQueue[queueIndex]
+    var entry = speechCloudAudioByIndex[queueIndex]
+
+    if (!queueItem) {
+      return Promise.reject(new Error('현재 챕터 읽기가 끝났습니다.'))
+    }
+
+    if (entry && entry.promise) {
+      return entry.promise
+    }
+
+    entry = {
+      objectUrl: '',
+      promise: null,
+    }
+    speechCloudAudioByIndex[queueIndex] = entry
+    entry.promise = requestCloudSpeechAudio(component, queueItem)
+      .then(function (result) {
+        if (speechCloudAudioByIndex[queueIndex] !== entry) {
+          revokeCloudAudioEntry(result)
+          return null
+        }
+
+        entry.objectUrl = result.objectUrl
+        return entry
+      })
+      .catch(function (exception) {
+        if (speechCloudAudioByIndex[queueIndex] === entry) {
+          delete speechCloudAudioByIndex[queueIndex]
+        }
+
+        throw exception
+      })
+
+    return entry.promise
+  }
+
+  function prefetchCloudSpeechAudio(component, token) {
+    var nextIndex = speechQueueIndex + 1
+
+    if (token !== speechActiveToken || !speechQueue[nextIndex]) {
+      return
+    }
+
+    ensureCloudSpeechAudio(component, nextIndex).catch(function () {})
+  }
+
+  function tryFallbackToLocalSpeech(component, token, message) {
+    stopCloudAudioPlayback()
+    switchReadAloudMode(component, 'local')
+
+    if (!component.readAloudSupported || !component.readAloudVoices.length) {
+      return false
+    }
+
+    component.readAloudBusy = true
+    component.readAloudPlaying = false
+    component.readAloudMessage = message || '클라우드 읽어주기 연결이 불안정해 기기 음성으로 이어서 재생합니다.'
+    speakLocalQueueItem(component, token)
+    return true
+  }
+
+  function playCloudQueueItem(component, token) {
+    var queueItem = speechQueue[speechQueueIndex]
+
+    if (!component) {
+      return
+    }
+
+    if (token !== speechActiveToken) {
+      return
+    }
+
+    if (!queueItem) {
+      clearReadAloudHighlight()
+      component.readAloudBusy = false
+      component.readAloudPlaying = false
+      component.readAloudMessage = '현재 챕터 읽기가 끝났습니다.'
+      return
+    }
+
+    component.readAloudBusy = true
+    component.readAloudPlaying = false
+    activateReadAloudHighlight(queueItem)
+
+    ensureCloudSpeechAudio(component, speechQueueIndex)
+      .then(function (entry) {
+        var audio = null
+
+        if (token !== speechActiveToken || !entry || !entry.objectUrl) {
+          return
+        }
+
+        stopCloudAudioPlayback({
+          keepCache: true,
+        })
+        speechCurrentMode = 'cloud'
+        speechCurrentComponent = component
+        speechCurrentAudio = new window.Audio(entry.objectUrl)
+        audio = speechCurrentAudio
+        audio.preload = 'auto'
+
+        audio.onplay = function () {
+          if (token !== speechActiveToken) {
+            return
+          }
+
+          component.readAloudBusy = false
+          component.readAloudPlaying = true
+          component.readAloudMessage = '현재 챕터를 읽는 중입니다.'
+          prefetchCloudSpeechAudio(component, token)
+        }
+
+        audio.onended = function () {
+          var finishedIndex = speechQueueIndex
+
+          if (token !== speechActiveToken) {
+            return
+          }
+
+          speechCurrentAudio = null
+          revokeCloudAudioEntry(speechCloudAudioByIndex[finishedIndex])
+          delete speechCloudAudioByIndex[finishedIndex]
+          speechQueueIndex += 1
+          playCloudQueueItem(component, token)
+        }
+
+        audio.onerror = function () {
+          if (token !== speechActiveToken) {
+            return
+          }
+
+          if (tryFallbackToLocalSpeech(component, token, '클라우드 읽어주기 연결이 불안정해 기기 음성으로 이어서 재생합니다.')) {
+            return
+          }
+
+          resetReadAloudState(component, {
+            keepMessage: true,
+          })
+          component.readAloudMessage = '클라우드 읽어주기 재생에 실패했습니다.'
+        }
+
+        audio.play().catch(function (exception) {
+          if (token !== speechActiveToken) {
+            return
+          }
+
+          if (tryFallbackToLocalSpeech(component, token, '클라우드 읽어주기 재생에 실패해 기기 음성으로 이어서 재생합니다.')) {
+            return
+          }
+
+          resetReadAloudState(component, {
+            keepMessage: true,
+          })
+          component.readAloudMessage = String(exception && exception.message ? exception.message : exception)
+        })
+      })
+      .catch(function (exception) {
+        if (token !== speechActiveToken) {
+          return
+        }
+
+        if (tryFallbackToLocalSpeech(component, token, '클라우드 읽어주기 연결이 불안정해 기기 음성으로 이어서 재생합니다.')) {
+          return
+        }
+
+        resetReadAloudState(component, {
+          keepMessage: true,
+        })
+        component.readAloudMessage = String(exception && exception.message ? exception.message : exception)
+      })
+  }
+
+  function speakLocalQueueItem(component, token) {
     var synth = getSpeechSynthesisInstance()
     var queueItem = speechQueue[speechQueueIndex]
     var voice = findSelectedVoice(component)
     var utterance = null
-    var rate = Number(component && component.readAloudRate ? component.readAloudRate : 1)
+    var rate = normalizeReadAloudRate(component && component.readAloudRate ? component.readAloudRate : 1)
 
     if (!component || !synth) {
       return
@@ -583,7 +1054,7 @@ window.booklogReaderLogic = (function () {
 
     utterance = new window.SpeechSynthesisUtterance(queueItem.text)
     utterance.lang = voice && voice.lang ? String(voice.lang) : 'ko-KR'
-    utterance.rate = isFinite(rate) ? Math.max(0.8, Math.min(1.6, rate)) : 1
+    utterance.rate = rate
 
     if (voice) {
       utterance.voice = voice
@@ -596,6 +1067,7 @@ window.booklogReaderLogic = (function () {
 
       speechCurrentUtterance = utterance
       speechCurrentComponent = component
+      speechCurrentMode = 'local'
       component.readAloudBusy = false
       component.readAloudPlaying = true
       activateReadAloudHighlight(queueItem)
@@ -628,6 +1100,15 @@ window.booklogReaderLogic = (function () {
     }
 
     synth.speak(utterance)
+  }
+
+  function speakQueueItem(component, token) {
+    if (getReadAloudMode(component) === 'cloud') {
+      playCloudQueueItem(component, token)
+      return
+    }
+
+    speakLocalQueueItem(component, token)
   }
 
   function registerTocItems(items) {
@@ -2257,21 +2738,19 @@ window.booklogReaderLogic = (function () {
   }
 
   function startReadAloud(component) {
-    var synth = getSpeechSynthesisInstance()
+    if (!component) {
+      return
+    }
 
-    if (!component || !synth) {
-      if (component) {
-        component.readAloudMessage = '이 브라우저는 읽어주기를 지원하지 않습니다.'
-      }
+    syncSpeechVoices(component)
+
+    if (!component.readAloudSupported) {
+      component.readAloudMessage = getReadAloudMode(component) === 'cloud' ? '클라우드 읽어주기 설정을 확인하지 못했습니다.' : '이 브라우저는 읽어주기를 지원하지 않습니다.'
       return
     }
 
     if (!component.readAloudVoices.length) {
-      syncSpeechVoices(component)
-    }
-
-    if (!component.readAloudVoices.length) {
-      component.readAloudMessage = '사용 가능한 한국어 음성을 찾지 못했습니다.'
+      component.readAloudMessage = getReadAloudMode(component) === 'cloud' ? '클라우드 읽어주기 음성 설정을 찾지 못했습니다.' : '사용 가능한 한국어 음성을 찾지 못했습니다.'
       return
     }
 
@@ -2284,6 +2763,7 @@ window.booklogReaderLogic = (function () {
     component.readAloudMessage = '현재 챕터를 준비하는 중입니다.'
     speechActiveToken += 1
     speechCurrentComponent = component
+    speechCurrentMode = getReadAloudMode(component)
 
     buildReadAloudQueue(component)
       .then(function (queue) {
