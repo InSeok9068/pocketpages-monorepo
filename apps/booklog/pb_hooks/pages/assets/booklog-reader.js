@@ -7,8 +7,14 @@ window.booklogReaderLogic = (function () {
   var preferredReadAloudMode = String(readAloudConfig.preferredMode || 'local') === 'cloud' ? 'cloud' : 'local'
   var cloudReadAloudConfigured = !!readAloudConfig.cloudConfigured
   var cloudReadAloudEndpoint = String(readAloudConfig.cloudEndpoint || '')
-  var cloudReadAloudVoiceName = String(readAloudConfig.cloudVoiceName || 'ko-KR-SunHiNeural').trim() || 'ko-KR-SunHiNeural'
-  var cloudReadAloudVoiceLabel = String(readAloudConfig.cloudVoiceLabel || 'Azure 한국어 음성').trim() || 'Azure 한국어 음성'
+  var cloudReadAloudVoiceOptions = normalizeCloudReadAloudVoices(
+    readAloudConfig.cloudVoices,
+    String(readAloudConfig.cloudVoiceName || 'ko-KR-SunHiNeural').trim() || 'ko-KR-SunHiNeural',
+    String(readAloudConfig.cloudVoiceLabel || 'Azure 한국어 음성').trim() || 'Azure 한국어 음성'
+  )
+  var cloudReadAloudVoiceName =
+    String(readAloudConfig.cloudVoiceName || (cloudReadAloudVoiceOptions[0] ? cloudReadAloudVoiceOptions[0].name : 'ko-KR-SunHiNeural')).trim() ||
+    'ko-KR-SunHiNeural'
   var bookInstance = null
   var renditionInstance = null
   var tocLabelByHref = {}
@@ -61,29 +67,109 @@ window.booklogReaderLogic = (function () {
   var isLeavingPage = false
   var isHandlingHistoryBack = false
   var skipNextPopState = false
-  var CLOUD_READ_ALOUD_MAX_CHARS = 360
-  var CLOUD_READ_ALOUD_MAX_ITEMS = 6
-  var CLOUD_READ_ALOUD_SHORT_PREFETCH_CHARS = 120
-  var CLOUD_READ_ALOUD_SHORT_PREFETCH_MS = 4800
+  var CLOUD_READ_ALOUD_MAX_CHARS = 720
+  var CLOUD_READ_ALOUD_MAX_ITEMS = 10
+  var CLOUD_READ_ALOUD_SHORT_PREFETCH_CHARS = 220
+  var CLOUD_READ_ALOUD_SHORT_PREFETCH_MS = 7600
   var CLOUD_READ_ALOUD_MAX_PREFETCH_COUNT = 2
-  var READ_ALOUD_LONG_SENTENCE_CHARS = 84
-  var READ_ALOUD_MAX_SENTENCE_CHARS = 120
+  var CLOUD_READ_ALOUD_MIN_BREAK_MS = 30
+  var CLOUD_READ_ALOUD_MAX_BREAK_MS = 220
+  var READ_ALOUD_LONG_SENTENCE_CHARS = 120
+  var READ_ALOUD_MAX_SENTENCE_CHARS = 180
+  var READ_ALOUD_MIN_CLAUSE_CHARS = 42
   var READ_ALOUD_ALIAS_BY_TERM = {
     AI: '에이아이',
+    'Alpine.js': '알파인 제이에스',
+    Amazon: '아마존',
+    Android: '안드로이드',
     API: '에이피아이',
+    Apple: '애플',
+    AWS: '에이더블유에스',
+    B2B: '비투비',
+    B2C: '비투씨',
+    ChatGPT: '챗지피티',
     CS: '씨에스',
     CEO: '씨이오',
     CFO: '씨에프오',
+    CIO: '씨아이오',
+    CMO: '씨엠오',
+    COO: '씨오오',
+    CPU: '씨피유',
+    CSS: '씨에스에스',
     CTO: '씨티오',
+    DB: '디비',
+    DNA: '디엔에이',
     EPUB: '이펍',
+    FAQ: '에프에이큐',
+    GitHub: '깃허브',
+    Google: '구글',
+    GPU: '지피유',
+    GPT: '지피티',
+    'GPT-4': '지피티 포',
+    'GPT-5': '지피티 파이브',
+    HTML: '에이치티엠엘',
+    HTMX: '에이치티엠엑스',
+    HTTP: '에이치티티피',
+    HTTPS: '에이치티티피에스',
+    iOS: '아이오에스',
+    iPad: '아이패드',
+    iPhone: '아이폰',
+    ISBN: '아이에스비엔',
     IT: '아이티',
+    JavaScript: '자바스크립트',
+    JSON: '제이슨',
+    JWT: '제이더블유티',
+    Kindle: '킨들',
+    LLM: '엘엘엠',
+    MBA: '엠비에이',
+    MBTI: '엠비티아이',
+    macOS: '맥오에스',
+    Meta: '메타',
+    Microsoft: '마이크로소프트',
+    Netflix: '넷플릭스',
+    Notion: '노션',
+    OpenAI: '오픈에이아이',
     PDF: '피디에프',
+    PocketBase: '포켓베이스',
+    PocketPages: '포켓페이지스',
+    SaaS: '사스',
+    SEO: '에스이오',
     SNS: '에스엔에스',
+    SQL: '에스큐엘',
     SSML: '에스에스엠엘',
+    TailwindCSS: '테일윈드 씨에스에스',
+    Tesla: '테슬라',
     TTS: '티티에스',
+    TypeScript: '타입스크립트',
     UI: '유아이',
+    UnoCSS: '우노 씨에스에스',
     URL: '유알엘',
+    USB: '유에스비',
     UX: '유엑스',
+    VPN: '브이피엔',
+    'Wi-Fi': '와이파이',
+    Windows: '윈도우즈',
+    YouTube: '유튜브',
+  }
+  var READ_ALOUD_UNIT_ALIAS_BY_TERM = {
+    '°C': '도',
+    TB: '테라바이트',
+    GB: '기가바이트',
+    MB: '메가바이트',
+    KB: '킬로바이트',
+    GHz: '기가헤르츠',
+    MHz: '메가헤르츠',
+    kHz: '킬로헤르츠',
+    Hz: '헤르츠',
+    kg: '킬로그램',
+    mg: '밀리그램',
+    g: '그램',
+    km: '킬로미터',
+    cm: '센티미터',
+    mm: '밀리미터',
+    m: '미터',
+    mL: '밀리리터',
+    L: '리터',
   }
   var READ_ALOUD_ALIAS_TERMS = Object.keys(READ_ALOUD_ALIAS_BY_TERM).sort(function (left, right) {
     return right.length - left.length
@@ -94,6 +180,55 @@ window.booklogReaderLogic = (function () {
       .replace(/\.{3,}/g, '…')
       .replace(/\s+/g, ' ')
       .trim()
+  }
+
+  function normalizeCloudReadAloudVoices(rawVoices, fallbackVoiceName, fallbackVoiceLabel) {
+    var normalizedVoices = []
+    var seenVoiceNames = {}
+    var fallbackName = String(fallbackVoiceName || 'ko-KR-SunHiNeural').trim() || 'ko-KR-SunHiNeural'
+    var fallbackLabel = String(fallbackVoiceLabel || 'Azure 한국어 음성').trim() || 'Azure 한국어 음성'
+    var defaultAssigned = false
+
+    ;(Array.isArray(rawVoices) ? rawVoices : []).forEach(function (voice) {
+      var voiceName = String(voice && voice.name ? voice.name : '').trim()
+      var voiceLang = String(voice && voice.lang ? voice.lang : 'ko-KR').trim() || 'ko-KR'
+      var voiceLabel = normalizeText(voice && voice.label ? voice.label : '')
+      var isDefaultVoice = !!(voice && voice.defaultVoice)
+
+      if (!voiceName || seenVoiceNames[voiceName]) {
+        return
+      }
+
+      seenVoiceNames[voiceName] = true
+
+      if (isDefaultVoice) {
+        defaultAssigned = true
+      }
+
+      normalizedVoices.push({
+        name: voiceName,
+        lang: voiceLang,
+        label: voiceLabel || voiceName,
+        defaultVoice: isDefaultVoice,
+      })
+    })
+
+    if (!normalizedVoices.length) {
+      return [
+        {
+          name: fallbackName,
+          lang: 'ko-KR',
+          label: fallbackLabel,
+          defaultVoice: true,
+        },
+      ]
+    }
+
+    if (!defaultAssigned) {
+      normalizedVoices[0].defaultVoice = true
+    }
+
+    return normalizedVoices
   }
 
   function escapeXml(value) {
@@ -139,34 +274,34 @@ window.booklogReaderLogic = (function () {
 
   function getReadAloudPauseMs(pauseKey) {
     if (pauseKey === 'ellipsis') {
-      return 680
+      return 360
     }
 
     if (pauseKey === 'question' || pauseKey === 'exclamation') {
-      return 620
-    }
-
-    if (pauseKey === 'sentence') {
-      return 520
-    }
-
-    if (pauseKey === 'colon') {
       return 280
     }
 
+    if (pauseKey === 'sentence') {
+      return 100
+    }
+
+    if (pauseKey === 'colon') {
+      return 95
+    }
+
     if (pauseKey === 'comma') {
-      return 220
+      return 60
     }
 
     if (pauseKey === 'space') {
-      return 180
+      return 35
     }
 
     if (pauseKey === 'heading') {
-      return 760
+      return 400
     }
 
-    return 380
+    return 130
   }
 
   function isReadAloudSentenceBoundaryChar(value) {
@@ -249,7 +384,7 @@ window.booklogReaderLogic = (function () {
       currentChar = text.charAt(index)
       buffer += currentChar
 
-      if (',:;'.indexOf(currentChar) >= 0 && normalizeText(buffer).length >= 24) {
+      if (',:;'.indexOf(currentChar) >= 0 && normalizeText(buffer).length >= READ_ALOUD_MIN_CLAUSE_CHARS) {
         chunks.push({
           text: normalizeText(buffer),
           boundaryChar: currentChar,
@@ -422,15 +557,118 @@ window.booklogReaderLogic = (function () {
 
   var READ_ALOUD_ALIAS_PATTERN = buildReadAloudAliasPattern()
 
+  function normalizeReadAloudNumberToken(value) {
+    return String(value || '')
+      .replace(/,/g, '')
+      .trim()
+  }
+
+  function normalizeReadAloudUnitToken(value) {
+    var normalizedUnit = String(value || '').trim()
+    var lowerUnit = normalizedUnit.toLowerCase()
+
+    if (normalizedUnit === '℃' || lowerUnit === '°c') {
+      return '°C'
+    }
+
+    if (lowerUnit === 'tb') {
+      return 'TB'
+    }
+
+    if (lowerUnit === 'gb') {
+      return 'GB'
+    }
+
+    if (lowerUnit === 'mb') {
+      return 'MB'
+    }
+
+    if (lowerUnit === 'kb') {
+      return 'KB'
+    }
+
+    if (lowerUnit === 'ghz') {
+      return 'GHz'
+    }
+
+    if (lowerUnit === 'mhz') {
+      return 'MHz'
+    }
+
+    if (lowerUnit === 'khz') {
+      return 'kHz'
+    }
+
+    if (lowerUnit === 'hz') {
+      return 'Hz'
+    }
+
+    if (lowerUnit === 'kg') {
+      return 'kg'
+    }
+
+    if (lowerUnit === 'mg') {
+      return 'mg'
+    }
+
+    if (lowerUnit === 'g') {
+      return 'g'
+    }
+
+    if (lowerUnit === 'km') {
+      return 'km'
+    }
+
+    if (lowerUnit === 'cm') {
+      return 'cm'
+    }
+
+    if (lowerUnit === 'mm') {
+      return 'mm'
+    }
+
+    if (lowerUnit === 'ml') {
+      return 'mL'
+    }
+
+    if (lowerUnit === 'l') {
+      return 'L'
+    }
+
+    if (lowerUnit === 'm') {
+      return 'm'
+    }
+
+    return normalizedUnit
+  }
+
+  function createReadAloudAliasSegment(originalText, aliasText) {
+    var normalizedAliasText = normalizeText(aliasText)
+
+    if (!normalizedAliasText) {
+      return null
+    }
+
+    return {
+      spokenText: normalizedAliasText,
+      ssmlText: '<sub alias="' + escapeXml(normalizedAliasText) + '">' + escapeXml(originalText) + '</sub>',
+    }
+  }
+
   function buildReadAloudSayAsSegment(match) {
     var value = String(match || '')
     var fullDateMatch = value.match(/^(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일$/)
     var monthDayMatch = value.match(/^(\d{1,2})월\s*(\d{1,2})일$/)
     var meridiemTimeMatch = value.match(/^(오전|오후)\s*(\d{1,2}):(\d{2})$/)
-    var percentMatch = value.match(/^(\d+(?:\.\d+)?)%$/)
+    var percentMatch = value.match(/^(-?\d[\d,]*(?:\.\d+)?)%$/)
+    var temperatureMatch = value.match(/^(-?\d[\d,]*(?:\.\d+)?)\s?(?:℃|°C)$/i)
+    var numberWithUnitMatch = value.match(/^(-?\d[\d,]*(?:\.\d+)?)\s?(TB|GB|MB|KB|GHz|MHz|kHz|Hz|kg|mg|km|cm|mm|ml|mL|g|m|L|l)$/i)
+    var dollarMatch = value.match(/^\$\s?(-?\d[\d,]*(?:\.\d+)?)$/)
     var alias = READ_ALOUD_ALIAS_BY_TERM[value] || ''
     var hour = 0
     var meridiem = ''
+    var numericValue = ''
+    var unitAlias = ''
 
     if (fullDateMatch) {
       return {
@@ -470,13 +708,27 @@ window.booklogReaderLogic = (function () {
     }
 
     if (percentMatch) {
-      return {
-        spokenText: percentMatch[1] + ' 퍼센트',
-        ssmlText:
-          '<say-as interpret-as="cardinal">' +
-          percentMatch[1] +
-          '</say-as><sub alias="퍼센트">%</sub>',
+      numericValue = normalizeReadAloudNumberToken(percentMatch[1])
+      return createReadAloudAliasSegment(value, numericValue + ' 퍼센트')
+    }
+
+    if (temperatureMatch) {
+      numericValue = normalizeReadAloudNumberToken(temperatureMatch[1])
+      return createReadAloudAliasSegment(value, numericValue + READ_ALOUD_UNIT_ALIAS_BY_TERM['°C'])
+    }
+
+    if (numberWithUnitMatch) {
+      numericValue = normalizeReadAloudNumberToken(numberWithUnitMatch[1])
+      unitAlias = READ_ALOUD_UNIT_ALIAS_BY_TERM[normalizeReadAloudUnitToken(numberWithUnitMatch[2])] || ''
+
+      if (unitAlias) {
+        return createReadAloudAliasSegment(value, numericValue + ' ' + unitAlias)
       }
+    }
+
+    if (dollarMatch) {
+      numericValue = normalizeReadAloudNumberToken(dollarMatch[1])
+      return createReadAloudAliasSegment(value, numericValue + ' 달러')
     }
 
     if (alias) {
@@ -492,7 +744,7 @@ window.booklogReaderLogic = (function () {
   function buildReadAloudSpeechForms(text, options) {
     var normalized = normalizeText(text)
     var pattern =
-      /(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일|(\d{1,2})월\s*(\d{1,2})일|(오전|오후)\s*(\d{1,2}):(\d{2})|(\d+(?:\.\d+)?)%/g
+      /(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일|(\d{1,2})월\s*(\d{1,2})일|(오전|오후)\s*(\d{1,2}):(\d{2})|(-?\d[\d,]*(?:\.\d+)?)%|(-?\d[\d,]*(?:\.\d+)?)\s?(?:℃|°C)|(-?\d[\d,]*(?:\.\d+)?)\s?(?:TB|GB|MB|KB|GHz|MHz|kHz|Hz|kg|mg|km|cm|mm|ml|mL|g|m|L|l)|\$\s?-?\d[\d,]*(?:\.\d+)?/gi
     var dynamicPattern = READ_ALOUD_ALIAS_PATTERN
     var combinedMatches = []
     var spokenSegments = []
@@ -899,6 +1151,7 @@ window.booklogReaderLogic = (function () {
 
   function syncCloudSpeechVoices(component) {
     var isSupported = !!cloudReadAloudConfigured && !!cloudReadAloudEndpoint
+    var defaultVoice = null
 
     if (!component) {
       return
@@ -912,15 +1165,35 @@ window.booklogReaderLogic = (function () {
       return
     }
 
-    component.readAloudVoices = [
-      {
-        name: cloudReadAloudVoiceName,
-        lang: 'ko-KR',
-        label: cloudReadAloudVoiceLabel,
-        defaultVoice: true,
-      },
-    ]
-    component.readAloudVoiceName = cloudReadAloudVoiceName
+    component.readAloudVoices = cloudReadAloudVoiceOptions.map(function (voice) {
+      return {
+        name: String(voice && voice.name ? voice.name : ''),
+        lang: String(voice && voice.lang ? voice.lang : 'ko-KR'),
+        label: normalizeText(voice && voice.label ? voice.label : ''),
+        defaultVoice: !!(voice && voice.defaultVoice),
+      }
+    })
+
+    if (!component.readAloudVoices.length) {
+      component.readAloudVoiceName = ''
+      return
+    }
+
+    if (
+      component.readAloudVoiceName &&
+      component.readAloudVoices.some(function (voice) {
+        return voice.name === component.readAloudVoiceName
+      })
+    ) {
+      return
+    }
+
+    defaultVoice =
+      component.readAloudVoices.find(function (voice) {
+        return !!voice.defaultVoice
+      }) || component.readAloudVoices[0]
+
+    component.readAloudVoiceName = defaultVoice ? defaultVoice.name : cloudReadAloudVoiceName
   }
 
   function switchReadAloudMode(component, mode) {
@@ -1214,6 +1487,7 @@ window.booklogReaderLogic = (function () {
     var itemSsmlText = ''
     var itemPauseAfterMs = 0
     var itemSpokenText = ''
+    var previousPauseAfterMs = 0
 
     ;(queue || []).forEach(function (item) {
       var itemText = normalizeText(item && item.text ? item.text : '')
@@ -1233,33 +1507,47 @@ window.booklogReaderLogic = (function () {
       }
 
       itemSsmlText = String(item && item.ssmlText ? item.ssmlText : '').trim() || escapeXml(itemText)
-      itemPauseAfterMs = Math.max(120, Math.min(900, Number(item && item.pauseAfterMs ? item.pauseAfterMs : 0) || 0))
+      itemPauseAfterMs = Math.max(CLOUD_READ_ALOUD_MIN_BREAK_MS, Math.min(CLOUD_READ_ALOUD_MAX_BREAK_MS, Number(item && item.pauseAfterMs ? item.pauseAfterMs : 0) || 0))
       itemSpokenText = normalizeText(item && item.spokenText ? item.spokenText : itemText)
 
       if (shouldStartNewGroup) {
         currentGroup = {
           text: itemText,
           spokenText: itemSpokenText,
-          ssmlText: itemSsmlText + (itemPauseAfterMs ? '<break time="' + String(itemPauseAfterMs) + 'ms"/>' : ''),
+          ssmlText: itemSsmlText,
           cfi: item && item.cfi ? item.cfi : '',
           href: item && item.href ? item.href : '',
           items: [item],
-          estimatedPlaybackMs: estimateReadAloudSpeechMs(itemSpokenText) + itemPauseAfterMs,
+          estimatedPlaybackMs: estimateReadAloudSpeechMs(itemSpokenText),
+          pendingPauseAfterMs: itemPauseAfterMs,
           sourceIndexes: Array.isArray(item && item.sourceIndexes) ? item.sourceIndexes.slice() : [],
         }
         groupedQueue.push(currentGroup)
         return
       }
 
+      previousPauseAfterMs = Math.max(
+        CLOUD_READ_ALOUD_MIN_BREAK_MS,
+        Math.min(CLOUD_READ_ALOUD_MAX_BREAK_MS, Number(currentGroup && currentGroup.pendingPauseAfterMs ? currentGroup.pendingPauseAfterMs : 0) || 0)
+      )
       currentGroup.text += ' ' + itemText
       currentGroup.spokenText += ' ' + itemSpokenText
-      currentGroup.ssmlText += itemSsmlText + (itemPauseAfterMs ? '<break time="' + String(itemPauseAfterMs) + 'ms"/>' : '')
+      currentGroup.ssmlText += (previousPauseAfterMs ? '<break time="' + String(previousPauseAfterMs) + 'ms"/>' : '') + itemSsmlText
       currentGroup.items.push(item)
-      currentGroup.estimatedPlaybackMs += estimateReadAloudSpeechMs(itemSpokenText) + itemPauseAfterMs
+      currentGroup.estimatedPlaybackMs += previousPauseAfterMs + estimateReadAloudSpeechMs(itemSpokenText)
+      currentGroup.pendingPauseAfterMs = itemPauseAfterMs
 
       if (Array.isArray(item && item.sourceIndexes)) {
         currentGroup.sourceIndexes = currentGroup.sourceIndexes.concat(item.sourceIndexes)
       }
+    })
+
+    groupedQueue.forEach(function (group) {
+      if (!group || typeof group !== 'object') {
+        return
+      }
+
+      delete group.pendingPauseAfterMs
     })
 
     return groupedQueue

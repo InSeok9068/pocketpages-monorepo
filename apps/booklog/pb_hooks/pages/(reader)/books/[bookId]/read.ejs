@@ -1,6 +1,161 @@
 <script server>
   meta('title', 'Booklog 리더')
   meta('description', 'Booklog EPUB 리더')
+  const pinnedCloudVoiceName = 'ko-KR-JiMinNeural'
+
+  /**
+   * Azure 보이스 표시 이름을 만듭니다.
+   * @param {string} voiceName Azure 보이스 이름입니다.
+   * @returns {string} UI에 보여줄 보이스 이름입니다.
+   */
+  function formatAzureVoiceLabel(voiceName) {
+    const normalizedName = String(voiceName || '').trim()
+    const shortName = normalizedName.replace(/^ko-KR-/, '').replace(/Neural$/, '').trim()
+
+    return shortName ? 'Azure ' + shortName : 'Azure 한국어 음성'
+  }
+
+  /**
+   * 기본 Azure 한국어 보이스 목록을 만듭니다.
+   * @param {string} defaultVoiceName 기본 보이스 이름입니다.
+   * @returns {Array<{ name: string, lang: string, label: string, defaultVoice: boolean }>} 보이스 목록입니다.
+   */
+  function buildDefaultAzureVoiceOptions(defaultVoiceName) {
+    const preferredName = String(defaultVoiceName || '').trim() || 'ko-KR-SunHiNeural'
+    const candidateNames = [
+      pinnedCloudVoiceName,
+      preferredName,
+      'ko-KR-SunHiNeural',
+      'ko-KR-InJoonNeural',
+      'ko-KR-BongJinNeural',
+      'ko-KR-GookMinNeural',
+      'ko-KR-SeoHyeonNeural',
+    ]
+    const seenNames = {}
+    const voiceOptions = []
+    let index = 0
+
+    for (index = 0; index < candidateNames.length; index += 1) {
+      const voiceName = String(candidateNames[index] || '').trim()
+
+      if (!voiceName || seenNames[voiceName]) {
+        continue
+      }
+
+      seenNames[voiceName] = true
+      voiceOptions.push({
+        name: voiceName,
+        lang: 'ko-KR',
+        label: formatAzureVoiceLabel(voiceName),
+        defaultVoice: voiceName === preferredName || (!preferredName && !voiceOptions.length),
+      })
+    }
+
+    return voiceOptions
+  }
+
+  /**
+   * 환경변수에서 Azure 보이스 목록을 읽습니다.
+   * @param {(key: string) => string} envGetter 환경 변수 조회 함수입니다.
+   * @param {string} defaultVoiceName 기본 보이스 이름입니다.
+   * @returns {Array<{ name: string, lang: string, label: string, defaultVoice: boolean }>} 보이스 목록입니다.
+   */
+  function readAzureVoiceOptions(envGetter, defaultVoiceName) {
+    const preferredName = String(defaultVoiceName || '').trim() || 'ko-KR-SunHiNeural'
+    const configuredText = String(envGetter('AZURE_TTS_VOICE_OPTIONS') || '').trim()
+    const voiceOptions = []
+    const seenNames = {}
+    let parsedOptions = null
+    let tokens = []
+
+    function pushVoice(voiceName, voiceLabel) {
+      const normalizedName = String(voiceName || '').trim()
+      const normalizedLabel = String(voiceLabel || '').trim()
+
+      if (!normalizedName || seenNames[normalizedName]) {
+        return
+      }
+
+      seenNames[normalizedName] = true
+      voiceOptions.push({
+        name: normalizedName,
+        lang: 'ko-KR',
+        label: normalizedLabel || formatAzureVoiceLabel(normalizedName),
+        defaultVoice: false,
+      })
+    }
+
+    if (!configuredText) {
+      return buildDefaultAzureVoiceOptions(preferredName)
+    }
+
+    if (configuredText.indexOf('[') === 0) {
+      try {
+        parsedOptions = JSON.parse(configuredText)
+      } catch (exception) {
+        parsedOptions = null
+      }
+    }
+
+    if (Array.isArray(parsedOptions)) {
+      parsedOptions.forEach(function (entry) {
+        if (typeof entry === 'string') {
+          pushVoice(entry, '')
+          return
+        }
+
+        if (!entry || typeof entry !== 'object') {
+          return
+        }
+
+        pushVoice(entry.name, entry.label)
+      })
+    } else {
+      tokens = configuredText.split(/[\r\n,;]+/)
+      tokens.forEach(function (token) {
+        const trimmedToken = String(token || '').trim()
+        const separatorIndex = trimmedToken.indexOf('|')
+        const voiceName = separatorIndex >= 0 ? trimmedToken.slice(0, separatorIndex) : trimmedToken
+        const voiceLabel = separatorIndex >= 0 ? trimmedToken.slice(separatorIndex + 1) : ''
+
+        pushVoice(voiceName, voiceLabel)
+      })
+    }
+
+    if (!voiceOptions.length) {
+      return buildDefaultAzureVoiceOptions(preferredName)
+    }
+
+    if (!seenNames[preferredName]) {
+      pushVoice(preferredName, '')
+    }
+
+    voiceOptions.sort(function (left, right) {
+      if (left.name === pinnedCloudVoiceName && right.name !== pinnedCloudVoiceName) {
+        return -1
+      }
+
+      if (right.name === pinnedCloudVoiceName && left.name !== pinnedCloudVoiceName) {
+        return 1
+      }
+
+      if (left.name === preferredName && right.name !== preferredName) {
+        return -1
+      }
+
+      if (right.name === preferredName && left.name !== preferredName) {
+        return 1
+      }
+
+      return 0
+    })
+
+    voiceOptions.forEach(function (voiceOption, index) {
+      voiceOption.defaultVoice = voiceOption.name === preferredName || (!preferredName && index === 0)
+    })
+
+    return voiceOptions
+  }
 
   const bookId = String(params.bookId || '').trim()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
@@ -110,14 +265,22 @@
   const bookFileHash = bookFileRecord ? String(bookFileRecord.get('file_hash') || '').trim() : ''
   const epubReaderUrl = bookFileRecord && storedFileName ? '/xapi/books/' + encodeURIComponent(bookId) + '/read-file' : ''
   const defaultCloudTtsVoiceName = String(env('AZURE_TTS_VOICE_NAME') || 'ko-KR-SunHiNeural').trim() || 'ko-KR-SunHiNeural'
+  const cloudVoiceOptions = readAzureVoiceOptions(
+    function (key) {
+      return env(key)
+    },
+    defaultCloudTtsVoiceName
+  )
   const readAloudConfig = {
     preferredMode: request.auth.get('cloud_tts_enabled') ? 'cloud' : 'local',
     cloudConfigured: !!String(env('AZURE_TTS_APIKEY') || '').trim(),
     cloudEndpoint: '/xapi/books/' + encodeURIComponent(bookId) + '/read-aloud',
     cloudVoiceName: defaultCloudTtsVoiceName,
-    cloudVoiceLabel: 'Azure 한국어 음성',
+    cloudVoiceLabel: cloudVoiceOptions.length ? cloudVoiceOptions[0].label : 'Azure 한국어 음성',
+    cloudVoices: cloudVoiceOptions,
   }
   const readAloudCloudConfiguredText = readAloudConfig.cloudConfigured ? 'true' : 'false'
+  const readAloudCloudVoicesEncoded = encodeURIComponent(JSON.stringify(readAloudConfig.cloudVoices))
 
   if (!epubReaderUrl) {
     dbg('page/books/[bookId]/read:redirect', {
@@ -816,6 +979,7 @@
       cloudEndpoint: '<%= readAloudConfig.cloudEndpoint %>',
       cloudVoiceName: '<%= readAloudConfig.cloudVoiceName %>',
       cloudVoiceLabel: '<%= readAloudConfig.cloudVoiceLabel %>',
+      cloudVoices: JSON.parse(decodeURIComponent('<%= readAloudCloudVoicesEncoded %>')),
     },
   }
 </script>
