@@ -1193,7 +1193,7 @@ function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText) 
       continue;
     }
 
-    if (context.kind === "route-path" && /<%[=-]?/.test(context.value)) {
+    if (context.kind === "route-path" && context.isDynamic) {
       continue;
     }
 

@@ -202,6 +202,15 @@ export {}
 
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'), `<a href="/boards">Boards</a>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'), `<h1>Sign In</h1>\n`)
+  writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', 'index.ejs'), `<h1>Feedback</h1>\n`)
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+post.js'),
+    `module.exports = function () {\n  return ''\n}\n`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+delete.js'),
+    `module.exports = function () {\n  return ''\n}\n`
+  )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'), `console.log('reader')\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'vendor', 'jszip-3.10.1.min.js'), `window.JSZip = {}\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'card.css'), `.board-card { color: #222; }\n`)
@@ -243,6 +252,14 @@ const boardService = resolve('board-service')
 <script server>
 redirect('/sign-in')
 </script>
+`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-method-reference-check.ejs'),
+    `<a href="/feedback">Feedback</a>
+<form action="/feedback" method="post"></form>
+<button hx-post="/feedback"></button>
+<button hx-delete="/feedback"></button>
 `
   )
   writeFile(
@@ -333,6 +350,7 @@ module.exports = {
     optionalNoticeAFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-a.ejs'),
     optionalNoticeBFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-b.ejs'),
     routeReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-reference-check.ejs'),
+    routeMethodReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-method-reference-check.ejs'),
     globalAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'),
     localAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'card.css'),
     propertyLocalsCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
@@ -349,6 +367,9 @@ module.exports = {
     signOutFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-out.ejs'),
     signInFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'),
     siteSignInFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'),
+    feedbackPageFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', 'index.ejs'),
+    feedbackPostFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+post.js'),
+    feedbackDeleteFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+delete.js'),
   }
 }
 
@@ -1618,6 +1639,52 @@ module.exports = {
       throw new Error(`Expected href/action/hx/redirect route references in route-reference-check.ejs. Got: ${JSON.stringify(routeReferenceCheckMatches)}`)
     }
 
+    const feedbackPageReferenceQuery = service.getFileReferenceQuery(fixture.feedbackPageFilePath)
+    if (!feedbackPageReferenceQuery || feedbackPageReferenceQuery.kind !== 'route-file' || feedbackPageReferenceQuery.routePath !== '/feedback' || feedbackPageReferenceQuery.routeMethod !== 'PAGE') {
+      throw new Error(`Expected page route file reference query for /feedback. Got: ${JSON.stringify(feedbackPageReferenceQuery)}`)
+    }
+
+    const feedbackPostReferenceQuery = service.getFileReferenceQuery(fixture.feedbackPostFilePath)
+    if (!feedbackPostReferenceQuery || feedbackPostReferenceQuery.kind !== 'route-file' || feedbackPostReferenceQuery.routePath !== '/feedback' || feedbackPostReferenceQuery.routeMethod !== 'POST') {
+      throw new Error(`Expected POST route file reference query for /feedback. Got: ${JSON.stringify(feedbackPostReferenceQuery)}`)
+    }
+
+    const feedbackDeleteReferenceQuery = service.getFileReferenceQuery(fixture.feedbackDeleteFilePath)
+    if (!feedbackDeleteReferenceQuery || feedbackDeleteReferenceQuery.kind !== 'route-file' || feedbackDeleteReferenceQuery.routePath !== '/feedback' || feedbackDeleteReferenceQuery.routeMethod !== 'DELETE') {
+      throw new Error(`Expected DELETE route file reference query for /feedback. Got: ${JSON.stringify(feedbackDeleteReferenceQuery)}`)
+    }
+
+    const feedbackPageReferences = service.getFileReferenceTargets(
+      fixture.feedbackPageFilePath,
+      fs.readFileSync(fixture.feedbackPageFilePath, 'utf8')
+    )
+    const feedbackPostReferences = service.getFileReferenceTargets(
+      fixture.feedbackPostFilePath,
+      fs.readFileSync(fixture.feedbackPostFilePath, 'utf8')
+    )
+    const feedbackDeleteReferences = service.getFileReferenceTargets(
+      fixture.feedbackDeleteFilePath,
+      fs.readFileSync(fixture.feedbackDeleteFilePath, 'utf8')
+    )
+    const feedbackPageCallerMatches = feedbackPageReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
+    )
+    const feedbackPostCallerMatches = feedbackPostReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
+    )
+    const feedbackDeleteCallerMatches = feedbackDeleteReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
+    )
+    if (feedbackPageCallerMatches.length !== 1) {
+      throw new Error(`Expected href-only references for feedback page route. Got: ${JSON.stringify(feedbackPageReferences)}`)
+    }
+    if (feedbackPostCallerMatches.length !== 2) {
+      throw new Error(`Expected action + hx-post references for feedback POST route. Got: ${JSON.stringify(feedbackPostReferences)}`)
+    }
+    if (feedbackDeleteCallerMatches.length !== 1) {
+      throw new Error(`Expected hx-delete references for feedback DELETE route. Got: ${JSON.stringify(feedbackDeleteReferences)}`)
+    }
+
     const hrefDefinition = indexService.getDefinitionTarget(
       fixture.siteIndexFilePath,
       `<a href="/boards"></a>\n`,
@@ -1652,6 +1719,42 @@ module.exports = {
     )
     if (!redirectDefinition || !redirectDefinition.endsWith('/pb_hooks/pages/(site)/sign-in.ejs')) {
       throw new Error(`Expected redirect() route definition target. Got: ${redirectDefinition}`)
+    }
+
+    const feedbackHrefDefinition = indexService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<a href="/feedback"></a>\n`,
+      `<a href="/feedback"></a>\n`.indexOf('/feedback') + 2
+    )
+    if (!feedbackHrefDefinition || normalizeFilePath(feedbackHrefDefinition) !== normalizeFilePath(fixture.feedbackPageFilePath)) {
+      throw new Error(`Expected href to resolve to feedback page route. Got: ${feedbackHrefDefinition}`)
+    }
+
+    const feedbackActionDefinition = indexService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<form action="/feedback" method="post"></form>\n`,
+      `<form action="/feedback" method="post"></form>\n`.indexOf('/feedback') + 2
+    )
+    if (!feedbackActionDefinition || normalizeFilePath(feedbackActionDefinition) !== normalizeFilePath(fixture.feedbackPostFilePath)) {
+      throw new Error(`Expected action to resolve to feedback POST route. Got: ${feedbackActionDefinition}`)
+    }
+
+    const feedbackHtmxPostDefinition = indexService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<button hx-post="/feedback"></button>\n`,
+      `<button hx-post="/feedback"></button>\n`.indexOf('/feedback') + 2
+    )
+    if (!feedbackHtmxPostDefinition || normalizeFilePath(feedbackHtmxPostDefinition) !== normalizeFilePath(fixture.feedbackPostFilePath)) {
+      throw new Error(`Expected hx-post to resolve to feedback POST route. Got: ${feedbackHtmxPostDefinition}`)
+    }
+
+    const feedbackHtmxDeleteDefinition = indexService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<button hx-delete="/feedback"></button>\n`,
+      `<button hx-delete="/feedback"></button>\n`.indexOf('/feedback') + 2
+    )
+    if (!feedbackHtmxDeleteDefinition || normalizeFilePath(feedbackHtmxDeleteDefinition) !== normalizeFilePath(fixture.feedbackDeleteFilePath)) {
+      throw new Error(`Expected hx-delete to resolve to feedback DELETE route. Got: ${feedbackHtmxDeleteDefinition}`)
     }
 
     const diagnostics = service.getDiagnostics(
@@ -1842,6 +1945,18 @@ metaPayload.trim()
       )
     }
 
+    const flashParamDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nparams.__flash\n</script>\n`
+    )
+    if (flashParamDiagnostics.some((entry) => entry.code === 'pp-query-via-params')) {
+      throw new Error(
+        `Expected params.__flash to skip AGENTS query diagnostic. Got: ${flashParamDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
     const resolvePrivatePrefixDiagnostics = service.getDiagnostics(
       fixture.boardsFilePath,
       `<script server>\nresolve('/_private/board-service')\n</script>\n`
@@ -1870,6 +1985,36 @@ metaPayload.trim()
       )
     ) {
       throw new Error(`Expected resolve('/_private/...') quick fix. Got: ${JSON.stringify(resolvePrivatePrefixCodeActions)}`)
+    }
+
+    const resolvePrivateRelativeDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('_private/board-service')\n</script>\n`
+    )
+    if (!resolvePrivateRelativeDiagnostics.some((entry) => entry.code === 'pp-resolve-private-prefix')) {
+      throw new Error(
+        `Expected resolve('_private/...') diagnostic. Got: ${resolvePrivateRelativeDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const resolvePrivateRelativeCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('_private/board-service')\n</script>\n`,
+      {
+        start: `<script server>\nresolve('_private/board-service')\n</script>\n`.indexOf('_private/board-service'),
+        end:
+          `<script server>\nresolve('_private/board-service')\n</script>\n`.indexOf('_private/board-service') +
+          '_private/board-service'.length,
+      }
+    )
+    if (
+      !resolvePrivateRelativeCodeActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === 'board-service')
+      )
+    ) {
+      throw new Error(`Expected resolve('_private/...') quick fix. Got: ${JSON.stringify(resolvePrivateRelativeCodeActions)}`)
     }
 
     const unresolvedResolveDiagnostics = service.getDiagnostics(
@@ -2093,12 +2238,38 @@ metaPayload.trim()
       throw new Error(`Expected unresolved route path quick fix to preserve query suffix. Got: ${JSON.stringify(unresolvedRouteCodeActions)}`)
     }
 
+    const unresolvedRouteHashCodeActions = service.getCodeActions(
+      fixture.siteIndexFilePath,
+      `<a href="/signn-in?next=/boards#hero"></a>\n`,
+      {
+        start: `<a href="/signn-in?next=/boards#hero"></a>\n`.indexOf('/signn-in?next=/boards#hero'),
+        end:
+          `<a href="/signn-in?next=/boards#hero"></a>\n`.indexOf('/signn-in?next=/boards#hero') +
+          '/signn-in?next=/boards#hero'.length,
+      }
+    )
+    if (
+      !unresolvedRouteHashCodeActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === '/sign-in?next=/boards#hero')
+      )
+    ) {
+      throw new Error(`Expected unresolved route path quick fix to preserve query and hash suffixes. Got: ${JSON.stringify(unresolvedRouteHashCodeActions)}`)
+    }
+
     const dynamicRouteDiagnostics = service.getDiagnostics(
       fixture.boardsFilePath,
       `<a href="/boards/<%= params.boardSlug %>/posts/new"></a>\n`
     )
     if (dynamicRouteDiagnostics.some((entry) => entry.code === 'pp-unresolved-route-path')) {
       throw new Error(`Expected dynamic EJS route paths to skip unresolved-route diagnostics. Got: ${JSON.stringify(dynamicRouteDiagnostics)}`)
+    }
+
+    const dynamicTemplateRouteDiagnostics = service.getDiagnostics(
+      fixture.siteIndexFilePath,
+      `<a href="/boards/\${window.currentBoardSlug}"></a>\n`
+    )
+    if (dynamicTemplateRouteDiagnostics.some((entry) => entry.code === 'pp-unresolved-route-path')) {
+      throw new Error(`Expected \${...} route paths to skip unresolved-route diagnostics. Got: ${JSON.stringify(dynamicTemplateRouteDiagnostics)}`)
     }
 
     const partialContextDiagnostics = service.getDiagnostics(
@@ -2173,6 +2344,42 @@ const state = {
     if (!manualFlashDiagnostics.some((entry) => entry.code === 'pp-manual-flash-query')) {
       throw new Error(
         `Expected manual __flash query diagnostic. Got: ${manualFlashDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const manualFlashHrefDiagnostics = service.getDiagnostics(
+      fixture.siteIndexFilePath,
+      `<a href="/boards?__flash=saved"></a>\n`
+    )
+    if (!manualFlashHrefDiagnostics.some((entry) => entry.code === 'pp-manual-flash-query')) {
+      throw new Error(
+        `Expected manual __flash query diagnostic for href. Got: ${manualFlashHrefDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const privateModuleResolveDiagnostics = service.getDiagnostics(
+      fixture.boardServiceFilePath,
+      `const innerService = resolve('board-service')\nmodule.exports = { innerService }\n`
+    )
+    if (!privateModuleResolveDiagnostics.some((entry) => entry.code === 'pp-private-resolve')) {
+      throw new Error(
+        `Expected _private module resolve() diagnostic. Got: ${privateModuleResolveDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const privatePartialResolveDiagnostics = service.getDiagnostics(
+      fixture.flashAlertFilePath,
+      `<% resolve('board-service') %>\n<div><%= flashMessage %></div>\n`
+    )
+    if (!privatePartialResolveDiagnostics.some((entry) => entry.code === 'pp-private-resolve')) {
+      throw new Error(
+        `Expected _private partial resolve() diagnostic. Got: ${privatePartialResolveDiagnostics
           .map((entry) => String(entry.code))
           .join(', ')}`
       )
@@ -2288,6 +2495,21 @@ const state = {
     }
     if (!routeDocumentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/xapi/auth/sign-out.ejs'))) {
       throw new Error(`Expected action route document link target. Got: ${routeDocumentLinkTargets.join(', ')}`)
+    }
+
+    const routeMethodDocumentLinks = indexService.getDocumentLinks(
+      fixture.routeMethodReferenceCheckFilePath,
+      fs.readFileSync(fixture.routeMethodReferenceCheckFilePath, 'utf8')
+    )
+    const routeMethodDocumentLinkTargets = routeMethodDocumentLinks.map((entry) => normalizeFilePath(entry.targetFilePath))
+    if (!routeMethodDocumentLinkTargets.includes(normalizeFilePath(fixture.feedbackPageFilePath))) {
+      throw new Error(`Expected href method route document link target. Got: ${routeMethodDocumentLinkTargets.join(', ')}`)
+    }
+    if (routeMethodDocumentLinkTargets.filter((target) => target === normalizeFilePath(fixture.feedbackPostFilePath)).length !== 2) {
+      throw new Error(`Expected action and hx-post to target feedback POST route. Got: ${routeMethodDocumentLinkTargets.join(', ')}`)
+    }
+    if (!routeMethodDocumentLinkTargets.includes(normalizeFilePath(fixture.feedbackDeleteFilePath))) {
+      throw new Error(`Expected hx-delete method route document link target. Got: ${routeMethodDocumentLinkTargets.join(', ')}`)
     }
 
     const serverTemplateBoundaryLines = getServerTemplateBoundaryLineNumbers(
