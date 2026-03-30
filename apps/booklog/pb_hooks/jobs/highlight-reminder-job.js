@@ -3,6 +3,7 @@ const pushSendLogService = require('./push-send-log-service')
 
 const NOTIFICATION_KEY = 'highlight_reminder'
 const PUSH_CHANNEL = 'push'
+const RECENT_HIGHLIGHT_LOOKBACK_DAYS = 7
 
 /**
  * 하이라이트 문구를 알림 본문용으로 정리합니다.
@@ -95,37 +96,77 @@ function isHighlightReminderDue(userId, highlightPushCycle) {
 }
 
 /**
- * 사용자별 하이라이트 하나를 랜덤으로 조회합니다.
+ * 사용자별 전체 하이라이트 목록을 조회합니다.
  *
  * @param {string} userId 조회할 사용자 ID
- * @returns {any | null} 랜덤 하이라이트 record
+ * @returns {Array<any>} 하이라이트 record 목록
  */
-function findRandomHighlightRecord(userId) {
+function findHighlightRecords(userId) {
   try {
-    const totalCount = $app.countRecords(
-      'book_highlights',
-      $dbx.exp('user_id = {:userId}', {
-        userId: userId,
-      })
-    )
-
-    if (totalCount < 1) {
-      return null
-    }
-
-    const randomOffset = Math.floor(Math.random() * totalCount)
-    const highlightRecords = $app.findRecordsByFilter('book_highlights', 'user_id = {:userId}', '-updated', 1, randomOffset, {
+    return $app.findRecordsByFilter('book_highlights', 'user_id = {:userId}', '-updated', 500, 0, {
       userId: userId,
     })
-
-    if (highlightRecords.length > 0) {
-      return highlightRecords[0]
-    }
   } catch (exception) {
-    $app.logger().error('jobs/highlight-reminder:find-highlight-failed', 'userId', String(userId || '').trim(), 'error', String(exception && exception.message ? exception.message : exception))
+    $app.logger().error('jobs/highlight-reminder:find-highlights-failed', 'userId', String(userId || '').trim(), 'error', String(exception && exception.message ? exception.message : exception))
   }
 
-  return null
+  return []
+}
+
+/**
+ * 후보 하이라이트 목록에서 랜덤으로 하나를 고릅니다.
+ *
+ * @param {Array<any>} highlightRecords 하이라이트 후보 목록
+ * @returns {any | null} 선택된 하이라이트 record
+ */
+function pickRandomHighlightRecord(highlightRecords) {
+  if (!highlightRecords || highlightRecords.length === 0) {
+    return null
+  }
+
+  const randomIndex = Math.floor(Math.random() * highlightRecords.length)
+
+  return highlightRecords[randomIndex] || null
+}
+
+/**
+ * 최근 발송된 하이라이트를 우선 제외하고 발송 대상을 고릅니다.
+ *
+ * @param {string} userId 사용자 ID
+ * @returns {any | null} 선택된 하이라이트 record
+ */
+function findReminderHighlightRecord(userId) {
+  const highlightRecords = findHighlightRecords(userId)
+
+  if (highlightRecords.length < 1) {
+    return null
+  }
+
+  const recentHighlightIds = pushSendLogService.getSentHighlightIdsWithinDays(userId, NOTIFICATION_KEY, RECENT_HIGHLIGHT_LOOKBACK_DAYS)
+  const recentHighlightIdMap = {}
+
+  for (let index = 0; index < recentHighlightIds.length; index += 1) {
+    recentHighlightIdMap[recentHighlightIds[index]] = true
+  }
+
+  const unsentRecentHighlightRecords = []
+
+  for (let index = 0; index < highlightRecords.length; index += 1) {
+    const highlightRecord = highlightRecords[index]
+    const highlightId = String(highlightRecord.get('id') || '').trim()
+
+    if (!highlightId || recentHighlightIdMap[highlightId]) {
+      continue
+    }
+
+    unsentRecentHighlightRecords.push(highlightRecord)
+  }
+
+  if (unsentRecentHighlightRecords.length > 0) {
+    return pickRandomHighlightRecord(unsentRecentHighlightRecords)
+  }
+
+  return pickRandomHighlightRecord(highlightRecords)
 }
 
 /**
@@ -195,7 +236,7 @@ function sendReminderForUser(settingsRecord) {
     }
   }
 
-  const highlightRecord = findRandomHighlightRecord(userId)
+  const highlightRecord = findReminderHighlightRecord(userId)
 
   if (!highlightRecord) {
     pushSendLogService.createLog({

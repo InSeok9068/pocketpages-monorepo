@@ -50,6 +50,21 @@ function getDaysBetween(fromDateText, toDateText) {
 }
 
 /**
+ * 오늘 기준으로 지난 날짜 문자열을 만듭니다.
+ *
+ * @param {number} daysBeforeToday 오늘에서 뺄 일수
+ * @returns {string} YYYY-MM-DD 날짜 문자열
+ */
+function getDateTextDaysAgo(daysBeforeToday) {
+  const targetDate = new Date()
+
+  targetDate.setUTCHours(0, 0, 0, 0)
+  targetDate.setUTCDate(targetDate.getUTCDate() - Number(daysBeforeToday || 0))
+
+  return targetDate.toISOString().slice(0, 10)
+}
+
+/**
  * 로그 저장용 payload를 안전한 객체로 정리합니다.
  *
  * @param {Object} payload 원본 payload
@@ -121,6 +136,57 @@ function getLastSentAt(userId, notificationKey) {
 }
 
 /**
+ * 최근 N일 안에 성공 발송된 하이라이트 ID 목록을 조회합니다.
+ *
+ * @param {string} userId 사용자 ID
+ * @param {string} notificationKey 알림 종류 코드
+ * @param {number} days 최근 일수
+ * @returns {string[]} 하이라이트 ID 목록
+ */
+function getSentHighlightIdsWithinDays(userId, notificationKey, days) {
+  const normalizedUserId = String(userId || '').trim()
+  const normalizedNotificationKey = String(notificationKey || '').trim()
+  const normalizedDays = Number(days)
+
+  if (!normalizedUserId || !normalizedNotificationKey || isNaN(normalizedDays) || normalizedDays < 1) {
+    return []
+  }
+
+  try {
+    const cutoffDateText = getDateTextDaysAgo(normalizedDays - 1)
+    const logRecords = $app.findRecordsByFilter(
+      COLLECTION_NAME,
+      'user_id = {:userId} && notification_key = {:notificationKey} && send_status = "sent" && highlight_id != "" && sent_at >= {:cutoffDate}',
+      '-sent_at,-created',
+      100,
+      0,
+      {
+        userId: normalizedUserId,
+        notificationKey: normalizedNotificationKey,
+        cutoffDate: cutoffDateText,
+      }
+    )
+    const highlightIdMap = {}
+    const highlightIds = []
+
+    for (let index = 0; index < logRecords.length; index += 1) {
+      const highlightId = String(logRecords[index].get('highlight_id') || '').trim()
+
+      if (!highlightId || highlightIdMap[highlightId]) {
+        continue
+      }
+
+      highlightIdMap[highlightId] = true
+      highlightIds.push(highlightId)
+    }
+
+    return highlightIds
+  } catch (exception) {
+    return []
+  }
+}
+
+/**
  * 푸시 발송 로그를 저장합니다.
  *
  * @param {Object} input 로그 입력값
@@ -164,7 +230,9 @@ function createLog(input) {
 
 module.exports = {
   createLog,
+  getDateTextDaysAgo,
   getDaysBetween,
+  getSentHighlightIdsWithinDays,
   getTodayDateText,
   getLastSentAt,
   hasSentToday,
