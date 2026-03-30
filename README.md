@@ -57,6 +57,12 @@
 
 - 현재 실측 기준으로 번들러가 필요했던 케이스는 `html-to-text`만 확인됨
 - `qs`: PocketBase JSVM에서는 `6.9.7` exact pin + `require('qs')` 기준으로 사용
+- `lodash`: 전체 import보다 메서드별 경로 import 방식(`per-method import`) 권장
+  ```js
+  const get = require('lodash/get')
+  const debounce = require('lodash/debounce')
+  const isEmpty = require('lodash/isEmpty')
+  ```
 
 ---
 
