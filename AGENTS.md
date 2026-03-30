@@ -1,4 +1,4 @@
-# AGENTS_COMPACT.md
+# AGENTS.md
 
 ## 0. Principles
 

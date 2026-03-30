@@ -1,4 +1,4 @@
-# AGENTS.md
+# AGENTS_FULL.md
 
 이 문서는 이 저장소에서 작업하는 에이전트/개발자가 PocketPages 구조를 같은 기준으로 이해하고 수정하기 위한 가이드입니다.
 

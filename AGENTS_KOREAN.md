@@ -1,4 +1,4 @@
-# AGENTS_COMPACT_KOREAN.md
+# AGENTS_KOREAN.md
 
 ## 0. 원칙
 
@@ -62,7 +62,7 @@
 
 ---
 
-## 5. _private 와 Resolve
+## 5. \_private 와 Resolve
 
 - `_private`는 internal 전용이며 route로 노출하지 않는다
 - partial, service, util, internal module 용도로 사용한다
