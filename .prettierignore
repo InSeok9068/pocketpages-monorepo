@@ -1,4 +1,5 @@
 apps/*/pb_hooks/pages/assets/vendor/**
+*.bundle.js
 *.svg
 *.png
 *.jpg
