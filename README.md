@@ -50,6 +50,7 @@
 | `fuse.js`           | 클라이언트/서버 간단 검색, 퍼지 매칭               | X           |
 | `dayjs`             | 날짜 포맷, 표시용 문자열 처리, 간단한 날짜 계산    | X           |
 | `slugify`           | slug 문자열 생성, URL 친화적인 식별자 변환         | X           |
+| `lodash`            | 배열/객체/문자열 처리를 위한 범용 JS 유틸리티      | X           |
 | `validator`         | 이메일, URL, 숫자/문자열 같은 문자열 단위 검증     | X           |
 | `qs`                | 중첩 query string 파싱, 배열/객체 형태 쿼리 직렬화 | X           |
 | `zod`               | form/body/query 입력값 런타임 검증                 | X           |
