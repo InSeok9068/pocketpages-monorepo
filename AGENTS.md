@@ -140,7 +140,7 @@
 - identify layer first: PocketPages or PocketBase
 - single-file, low-impact change -> open file directly
 - multi-file or unclear impact -> run `./task.sh index <service>`
-- service change must end with running `./task.sh lint <service>` from Windows Git Bash
+- service change must end with running `./task.sh lint <service>` from **Windows Git Bash**
 
 ---
 

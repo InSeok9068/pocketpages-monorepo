@@ -140,7 +140,7 @@
 - 먼저 이 작업이 PocketPages인지 PocketBase인지 구분한다
 - single-file, low-impact change면 바로 파일을 연다
 - multi-file change이거나 영향이 불명확하면 `./task.sh index <service>`를 실행한다
-- 서비스 수정은 반드시 Windows Git Bash에서 `./task.sh lint <service>`를 실행해 마무리한다
+- 서비스 수정은 반드시 **Windows Git Bash**에서 `./task.sh lint <service>`를 실행해 마무리한다
 
 ---
 
