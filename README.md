@@ -37,17 +37,22 @@
 
 ## 순수 JS 라이브러리 후보
 
-| 라이브러리        | 용도                                               |
-| ----------------- | -------------------------------------------------- |
-| `fflate`          | ZIP/EPUB 압축 해제, 바이너리 압축 데이터 처리      |
-| `fast-xml-parser` | EPUB 내부 XML, OPF, container.xml 같은 구조 파싱   |
-| `papaparse`       | CSV 파싱, CSV 확장자 파일 업로드/가져오기 처리     |
-| `dayjs`           | 날짜 포맷, 표시용 문자열 처리, 간단한 날짜 계산    |
-| `slugify`         | slug 문자열 생성, URL 친화적인 식별자 변환         |
-| `he`              | HTML entity 인코딩/디코딩                          |
-| `validator`       | 이메일, URL, 숫자/문자열 같은 문자열 단위 검증     |
-| `qs`              | 중첩 query string 파싱, 배열/객체 형태 쿼리 직렬화 |
-| `zod`             | form/body/query 입력값 런타임 검증                 |
+| 라이브러리          | 용도                                               |
+| ------------------- | -------------------------------------------------- |
+| `fflate`            | ZIP/EPUB 압축 해제, 바이너리 압축 데이터 처리      |
+| `fast-xml-parser`   | EPUB 내부 XML, OPF, container.xml 같은 구조 파싱   |
+| `papaparse`         | CSV 파싱, CSV 확장자 파일 업로드/가져오기 처리     |
+| `cheerio`           | HTML 파싱, 서버 쪽 DOM 탐색, 본문/메타 추출        |
+| `strip-tags`        | HTML 태그 제거, 본문 텍스트 정리                   |
+| `linkify-it`        | 본문 URL 탐지, 링크 후보 추출                      |
+| `sentence-splitter` | 문장 단위 분리, 텍스트 후처리                      |
+| `he`                | HTML entity 인코딩/디코딩                          |
+| `fuse.js`           | 클라이언트/서버 간단 검색, 퍼지 매칭               |
+| `dayjs`             | 날짜 포맷, 표시용 문자열 처리, 간단한 날짜 계산    |
+| `slugify`           | slug 문자열 생성, URL 친화적인 식별자 변환         |
+| `validator`         | 이메일, URL, 숫자/문자열 같은 문자열 단위 검증     |
+| `qs`                | 중첩 query string 파싱, 배열/객체 형태 쿼리 직렬화 |
+| `zod`               | form/body/query 입력값 런타임 검증                 |
 
 ---
 
