@@ -704,12 +704,12 @@ function collectParamsQueryDiagnostics(scriptText, allowedRouteParamNames) {
           diagnostics.push({
             code: "pp-query-via-params",
             category: ts.DiagnosticCategory.Warning,
-            message: 'Use request.url.query for query string access. "params" is reserved for route params in this repo.',
+            message: "Query strings should use request.url.query. params is for route params.",
             start: node.getStart(sourceFile),
             end: node.getEnd(),
             fixes: [
               {
-                title: "Use request.url.query",
+                title: "Replace with request.url.query",
                 edits: [
                   {
                     start: chain.root.getStart(sourceFile),
@@ -755,7 +755,7 @@ function collectIncludeContextDiagnostics(scriptText) {
           diagnostics.push({
             code: "pp-partial-full-context",
             category: ts.DiagnosticCategory.Warning,
-            message: "Do not pass PocketPages full context objects into partials. Pass only the values the partial needs.",
+            message: "Do not pass full PocketPages context to partials. Pass only the values the partial uses.",
             start: nameNode.getStart(sourceFile),
             end: nameNode.getEnd(),
           });
@@ -1205,7 +1205,7 @@ function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText) 
     const candidates = getPathContextCandidates(projectIndex, filePath, context);
     const suggestedCandidates = getSuggestedPathCandidates(context, candidates);
     const fixes = suggestedCandidates.map((candidate) => ({
-      title: `Use "${candidate.value}"`,
+      title: `Replace with "${candidate.value}"`,
       edits: [
         {
           start: context.start,
@@ -1217,8 +1217,8 @@ function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText) 
 
     const label = getPathContextLabel(context);
     const message = suggestedCandidates.length
-      ? `Unresolved ${label} "${context.value}". Did you mean "${suggestedCandidates[0].value}"?`
-      : `Unresolved ${label} "${context.value}".`;
+      ? `${label} "${context.value}" was not found. Did you mean "${suggestedCandidates[0].value}"?`
+      : `${label} "${context.value}" was not found.`;
 
     diagnostics.push({
       code:
@@ -1262,7 +1262,7 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText) {
       diagnostics.push({
         code: "pp-resolve-private-prefix",
         category: ts.DiagnosticCategory.Warning,
-        message: "resolve() paths must be written relative to _private. Remove the _private prefix.",
+        message: "resolve() paths should be relative to _private. Remove the _private prefix.",
         start: context.start,
         end: context.end,
         fixes: [
@@ -1284,7 +1284,7 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText) {
       diagnostics.push({
         code: "pp-manual-flash-query",
         category: ts.DiagnosticCategory.Warning,
-        message: "Do not build __flash query strings manually. Use redirect(path, { message }) instead.",
+        message: "Do not build __flash in the URL. Use redirect(path, { message }).",
         start: context.start,
         end: context.end,
       });
@@ -1318,7 +1318,7 @@ function buildSchemaFieldDiagnostic(projectIndex, context, analysisText, offsetB
     message:
       reference.confidence === "high"
         ? `Unknown field "${context.value}" for collection "${reference.collectionName}".`
-        : `Possible unknown field "${context.value}". Inferred collection is "${reference.collectionName}" with ${reference.confidence} confidence.`,
+        : `Possible unknown field "${context.value}". Inferred collection: "${reference.collectionName}" (${reference.confidence} confidence).`,
     start: offsetBase + context.start,
     end: offsetBase + context.end,
   };
@@ -2071,7 +2071,7 @@ class ProjectLanguageService {
                       .filter((local) => local.optional)
                       .map((local) => local.name)
                       .join(", ") || "none"}`
-                  : "No inferred include locals."
+                  : "No include locals inferred."
               ),
             },
           ],
@@ -2093,7 +2093,7 @@ class ProjectLanguageService {
       const objectBodyText = String(documentText || "").slice(includeCall.localsObjectStart, includeCall.localsObjectEnd);
       const hasTrailingComma = /,\s*$/.test(objectBodyText);
       return {
-        title: missingNames.length === 1 ? `Add "${missingNames[0]}" local` : "Add missing locals",
+        title: missingNames.length === 1 ? `Add local "${missingNames[0]}"` : "Add missing locals",
         edits: [
           {
             start: includeCall.localsObjectEnd,
@@ -2109,7 +2109,7 @@ class ProjectLanguageService {
 
     if (includeCall.localsMode === "none") {
       return {
-        title: missingNames.length === 1 ? `Add "${missingNames[0]}" local` : "Add missing locals",
+        title: missingNames.length === 1 ? `Add local "${missingNames[0]}"` : "Add missing locals",
         edits: [
           {
             start: includeCall.callEnd - 1,
@@ -2172,8 +2172,8 @@ class ProjectLanguageService {
             code: "pp-include-unknown-local",
             category: ts.DiagnosticCategory.Warning,
             message: suggestions.length
-              ? `Unknown local "${local.name}" passed to include("${includeCall.requestPath}"). Did you mean "${suggestions[0]}"?`
-              : `Unknown local "${local.name}" passed to include("${includeCall.requestPath}").`,
+              ? `Unknown local "${local.name}" in include("${includeCall.requestPath}"). Did you mean "${suggestions[0]}"?`
+              : `Unknown local "${local.name}" in include("${includeCall.requestPath}").`,
             start: typeof local.nameStart === "number" ? local.nameStart : includeCall.requestStart,
             end: typeof local.nameEnd === "number" ? local.nameEnd : includeCall.requestEnd,
             fixes: suggestions.map((candidateName) => ({
@@ -2209,8 +2209,8 @@ class ProjectLanguageService {
         category: ts.DiagnosticCategory.Warning,
         message:
           missingNames.length === 1
-            ? `Missing local "${missingNames[0]}" for include("${includeCall.requestPath}").`
-            : `Missing locals for include("${includeCall.requestPath}"): ${missingNames.join(", ")}.`,
+            ? `Missing local "${missingNames[0]}" in include("${includeCall.requestPath}").`
+            : `Missing locals in include("${includeCall.requestPath}"): ${missingNames.join(", ")}.`,
         start: includeCall.requestStart,
         end: includeCall.requestEnd,
         fixes: missingLocalFix ? [missingLocalFix] : undefined,
@@ -2792,7 +2792,7 @@ class ProjectLanguageService {
           targetFilePath: normalizedFilePath,
           command: "pocketpagesServerScript.allFileReferences",
           title: "PocketPages: All File References",
-          emptyMessage: "No include() references found for this partial.",
+          emptyMessage: "No include() callers found for this partial.",
         };
       }
 
@@ -2802,7 +2802,7 @@ class ProjectLanguageService {
           targetFilePath: normalizedFilePath,
           command: "pocketpagesServerScript.allFileReferences",
           title: "PocketPages: All File References",
-          emptyMessage: "No resolve() or require() references found for this private module.",
+          emptyMessage: "No resolve() or require() callers found for this module.",
         };
       }
     }
@@ -2817,7 +2817,7 @@ class ProjectLanguageService {
       targetFilePath: normalizedFilePath,
       command: "pocketpagesServerScript.allFileReferences",
       title: "PocketPages: All File References",
-      emptyMessage: `No route references found for ${routeEntry.routePath}.`,
+      emptyMessage: `No callers found for route ${routeEntry.routePath}.`,
       routePath: routeEntry.routePath,
       routeMethod: routeEntry.method || "PAGE",
     };
@@ -3419,7 +3419,7 @@ class ProjectLanguageService {
           label: field.name,
           insertText: field.name,
           detail: `${collectionName}.${field.name}`,
-          documentation: field.type ? `PocketBase field type: ${field.type}` : collectionName,
+          documentation: field.type ? `Field type: ${field.type}` : collectionName,
           category: "record-field",
         })),
       };
@@ -3520,7 +3520,7 @@ class ProjectLanguageService {
       referenceQuery.kind === "private-partial"
         ? `Partial callers: ${referenceCount}`
         : referenceQuery.kind === "private-module"
-          ? `Resolve callers: ${referenceCount}`
+          ? `Module callers: ${referenceCount}`
           : `Route callers: ${referenceCount}`;
 
     entries.push({
@@ -3576,7 +3576,7 @@ class ProjectLanguageService {
       addEntry(
         pathContext.end,
         ` -> ${toPortablePath(path.relative(this.appRoot, targetFilePath))}`,
-        `PocketPages target: ${toPortablePath(path.relative(this.appRoot, targetFilePath))}`,
+        `Target: ${toPortablePath(path.relative(this.appRoot, targetFilePath))}`,
         "parameter"
       );
     }
@@ -3593,7 +3593,7 @@ class ProjectLanguageService {
         const callEnd = node.getEnd();
         const typeText = this.getTypeTextAtDocumentSpan(filePath, documentText, callStart, callEnd);
         if (typeText) {
-          addEntry(callEnd, `: ${typeText}`, `PocketBase field type: ${typeText}`);
+          addEntry(callEnd, `: ${typeText}`, `Field type: ${typeText}`);
         }
       }
 
@@ -3620,7 +3620,7 @@ class ProjectLanguageService {
         diagnostics.push({
           code: "pp-private-resolve",
           category: ts.DiagnosticCategory.Warning,
-          message: "Avoid resolve() inside _private files. Compose private dependencies in the entry and pass them in.",
+          message: "Do not use resolve() inside _private files. Resolve dependencies in the entry and pass them in.",
           start: span.start,
           end: span.end,
         });
@@ -3663,13 +3663,13 @@ class ProjectLanguageService {
 
       for (const context of collectSchemaContexts(block.content, { collectionMethodNames })) {
         if (context.kind === "collection-name" && !this.projectIndex.hasCollection(context.value)) {
-          diagnostics.push({
-            code: "pp-schema-collection",
-            category: ts.DiagnosticCategory.Warning,
-            message: `Unknown PocketBase collection "${context.value}" in ${context.methodName}().`,
-            start: block.contentStart + context.start,
-            end: block.contentStart + context.end,
-          });
+            diagnostics.push({
+              code: "pp-schema-collection",
+              category: ts.DiagnosticCategory.Warning,
+              message: `Unknown PocketBase collection "${context.value}" in ${context.methodName}().`,
+              start: block.contentStart + context.start,
+              end: block.contentStart + context.end,
+            });
         }
 
         if (context.kind === "record-field") {
@@ -3887,7 +3887,7 @@ class ProjectLanguageService {
     if (!moduleRename.canRename) {
       return {
         canRename: false,
-        localizedErrorMessage: moduleRename.localizedErrorMessage || "Unable to rename resolved module member.",
+        localizedErrorMessage: moduleRename.localizedErrorMessage || "Unable to rename this module member.",
         start: resolvedModuleMemberContext.start,
         end: resolvedModuleMemberContext.end,
         placeholder: resolvedModuleMemberContext.memberName,
@@ -3913,7 +3913,7 @@ class ProjectLanguageService {
     if (!renameInfo.canRename) {
       return {
         canRename: false,
-        localizedErrorMessage: renameInfo.localizedErrorMessage || "Unable to rename resolved module member.",
+        localizedErrorMessage: renameInfo.localizedErrorMessage || "Unable to rename this module member.",
         edits: [],
       };
     }
@@ -3932,7 +3932,7 @@ class ProjectLanguageService {
     if (!moduleRename.canRename) {
       return {
         canRename: false,
-        localizedErrorMessage: moduleRename.localizedErrorMessage || "Unable to rename resolved module member.",
+        localizedErrorMessage: moduleRename.localizedErrorMessage || "Unable to rename this module member.",
         edits: [],
       };
     }

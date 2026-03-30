@@ -142,14 +142,14 @@ function describeReferenceQuery(referenceQuery) {
 async function showFileReferences({ manager, output, document, editor, filePath }) {
   const service = manager.getServiceForFile(filePath)
   if (!service) {
-    vscode.window.showWarningMessage('Current file is not inside a PocketPages app root.')
+    vscode.window.showWarningMessage('File is not inside a PocketPages app.')
     return
   }
 
   const referenceQuery = service.getFileReferenceQuery(filePath)
   if (!referenceQuery) {
     vscode.window.showWarningMessage(
-      'This file is not a supported PocketPages target. Use a _private partial, a _private module, or a static route file.'
+      'File is not a supported PocketPages reference target. Use a _private partial, a _private module, or a static route file.'
     )
     return
   }
@@ -189,7 +189,7 @@ async function showFileReferences({ manager, output, document, editor, filePath 
     .filter(Boolean)
 
   if (!locations.length) {
-    vscode.window.showInformationMessage('Found references, but failed to open the target files.')
+    vscode.window.showInformationMessage('References were found, but the target files could not be opened.')
     return
   }
 
@@ -259,7 +259,7 @@ async function applyPrivateFileRenameEdits({ manager, output, event }) {
 
   const applied = await vscode.workspace.applyEdit(workspaceEdit)
   if (!applied) {
-    vscode.window.showWarningMessage('PocketPages file rename references were found, but the workspace edit could not be applied.')
+    vscode.window.showWarningMessage('Updated references were found, but the workspace edit could not be applied.')
   }
 }
 
@@ -489,7 +489,7 @@ class PocketPagesHoverProvider {
     if (pathTargetInfo && pathTargetInfo.targetFilePath) {
       const targetLabel = workspaceRelativePath(pathTargetInfo.targetFilePath)
       const pathDetails = new vscode.MarkdownString()
-      pathDetails.appendMarkdown(`PocketPages target: \`${targetLabel}\``)
+      pathDetails.appendMarkdown(`Target: \`${targetLabel}\``)
 
       if (pathTargetInfo.kind === 'route-path' && pathTargetInfo.value) {
         pathDetails.appendMarkdown(`\n\nRoute: \`${pathTargetInfo.value}\``)
@@ -628,7 +628,7 @@ class PocketPagesRenameProvider {
     }
 
     if (!renameInfo.canRename) {
-      throw new Error(renameInfo.localizedErrorMessage || 'Unable to rename this PocketPages symbol.')
+      throw new Error(renameInfo.localizedErrorMessage || 'Unable to rename this symbol.')
     }
 
     return {
@@ -654,7 +654,7 @@ class PocketPagesRenameProvider {
     }
 
     if (!renameResult.canRename) {
-      throw new Error(renameResult.localizedErrorMessage || 'Unable to rename this PocketPages symbol.')
+      throw new Error(renameResult.localizedErrorMessage || 'Unable to rename this symbol.')
     }
 
     const workspaceEdit = new vscode.WorkspaceEdit()
@@ -733,9 +733,9 @@ class PocketPagesDocumentLinkProvider {
       const link = new vscode.DocumentLink(toRange(document, entry.start, entry.end), vscode.Uri.file(entry.targetFilePath))
       link.tooltip =
         entry.kind === 'resolve-path'
-          ? `Open resolved module: ${entry.value}`
+          ? `Open module target: ${entry.value}`
           : entry.kind === 'include-path'
-            ? `Open included template: ${entry.value}`
+            ? `Open partial target: ${entry.value}`
             : `Open route target: ${entry.value}`
       return link
     })
