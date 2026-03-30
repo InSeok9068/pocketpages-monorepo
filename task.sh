@@ -548,6 +548,50 @@ process.stdout.write(prefixMatches.map((item) => item.name).join('\n'));
 NODE
 }
 
+check_remote_deploy_permissions() {
+  local ssh_target="$1"
+  local remote_path="$2"
+  local remote_owner="$3"
+  local remote_mode="$4"
+  local create_history_dir="$5"
+  shift 5
+
+  local ssh_cmd=("$@")
+
+  echo "Checking remote sudo permissions: $remote_path"
+  "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$remote_path" "$remote_owner" "$remote_mode" "$create_history_dir" <<'EOF'
+set -euo pipefail
+
+remote_path="$1"
+remote_owner="$2"
+remote_mode="$3"
+create_history_dir="$4"
+remote_parent_dir="$(dirname "$remote_path")"
+remote_base_name="$(basename "$remote_path")"
+history_dir="${remote_parent_dir}/.deploy-history/${remote_base_name}"
+
+if ! command -v sudo >/dev/null 2>&1; then
+  echo "sudo not found on remote host." >&2
+  exit 1
+fi
+
+if ! sudo -n true >/dev/null 2>&1; then
+  echo "Remote sudo requires a password or is not allowed for this account." >&2
+  exit 1
+fi
+
+if [[ -d "$remote_path" ]]; then
+  sudo -n test -w "$remote_path"
+else
+  sudo -n test -w "$remote_parent_dir"
+fi
+
+if [[ "$create_history_dir" = "true" && -d "$history_dir" ]]; then
+  sudo -n test -w "$history_dir"
+fi
+EOF
+}
+
 deploy_target() {
   local target_name="$1"
   local context_dir=""
@@ -558,6 +602,8 @@ deploy_target() {
   local remote_archive_path=""
   local ssh_target=""
   local timestamp=""
+  local remote_owner=""
+  local remote_mode="755"
   local sftp_cmd=()
   local ssh_cmd=()
 
@@ -600,6 +646,7 @@ deploy_target() {
   timestamp="$(date +%s)"
   remote_archive_path="/tmp/${target_name}-${timestamp}-$$.tar.gz"
   ssh_target="${DEPLOY_USERNAME}@${DEPLOY_HOST}"
+  remote_owner="${DEPLOY_USERNAME}:${DEPLOY_USERNAME}"
 
   cleanup_deploy_temp() {
     rm -rf "$temp_dir"
@@ -642,6 +689,8 @@ deploy_target() {
     echo "SSH connection test failed. Check network/VPN and try again." >&2
     exit 1
   fi
+
+  check_remote_deploy_permissions "$ssh_target" "$DEPLOY_REMOTE_PATH" "$remote_owner" "$remote_mode" "true" "${ssh_cmd[@]}"
 
   echo "Uploading archive: $ssh_target:$remote_archive_path"
   "${sftp_cmd[@]}" "$ssh_target"
@@ -777,6 +826,8 @@ rollback_target() {
   local target_name="$1"
   local version_index="$2"
   local private_key_path=""
+  local remote_owner=""
+  local remote_mode="755"
   local ssh_target=""
   local ssh_cmd=()
 
@@ -809,6 +860,7 @@ rollback_target() {
   fi
 
   ssh_target="${DEPLOY_USERNAME}@${DEPLOY_HOST}"
+  remote_owner="${DEPLOY_USERNAME}:${DEPLOY_USERNAME}"
   ssh_cmd=(
     ssh
     -p "$DEPLOY_PORT"
@@ -826,6 +878,8 @@ rollback_target() {
     echo "SSH connection test failed. Check network/VPN and try again." >&2
     exit 1
   fi
+
+  check_remote_deploy_permissions "$ssh_target" "$DEPLOY_REMOTE_PATH" "$remote_owner" "$remote_mode" "false" "${ssh_cmd[@]}"
 
   echo "Rolling back remote target: $DEPLOY_REMOTE_PATH (version $version_index)"
 "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$DEPLOY_REMOTE_PATH" "$version_index" <<'EOF'
