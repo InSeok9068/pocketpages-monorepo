@@ -17,6 +17,8 @@
 - Stack: PocketBase (JSVM), PocketPages (SSR, file routing), EJS, HTMX, Alpine.js, UnoCSS (Tailwind v3 compatible)
 - Service root: `apps/<service>/*`
 - `pb_hooks/pages` = routing root
+- `apps/<service>/pb_hooks/pages/+config.js` = service plugin/config entry
+- `apps/<service>/pocketpages-globals.d.ts` = editor globals/plugin helper typing
 - `(site)` = full pages with layout
 - `xapi/*` = no-layout interaction
 - `api/*` = data/API
@@ -69,6 +71,7 @@
 - partials take minimal props only
 - DO NOT pass full context such as `request`, `response`, `api`, `resolve`, full `params`, full `data`
 - `_private` modules use CommonJS only
+- plain `_private` `require()` is fine for fixed wiring; avoid request-context `resolve()` chaining
 - do not treat `resolve()` inside `_private` as default pattern
 - dependencies should be chosen at entry and injected
 - `resolve()` is for entry-level dependency selection first
@@ -137,7 +140,7 @@
 - identify layer first: PocketPages or PocketBase
 - single-file, low-impact change -> open file directly
 - multi-file or unclear impact -> run `./task.sh index <service>`
-- service change must end with `./task.sh lint <service>`
+- service change must end with running `./task.sh lint <service>` from Windows Git Bash
 
 ---
 
@@ -168,3 +171,4 @@
 5. `apps/<service>/types.d.ts`
 
 If rules conflict, this file overrides defaults for this repo.
+If docs are ambiguous or seem to conflict, also check existing local service patterns and keep changes consistent.

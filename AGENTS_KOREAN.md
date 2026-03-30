@@ -17,6 +17,8 @@
 - 스택: PocketBase (JSVM), PocketPages (SSR, file routing), EJS, HTMX, Alpine.js, UnoCSS (Tailwind v3 compatible)
 - 서비스 루트: `apps/<service>/*`
 - `pb_hooks/pages` = 라우팅 루트
+- `apps/<service>/pb_hooks/pages/+config.js` = 서비스 plugin/config entry
+- `apps/<service>/pocketpages-globals.d.ts` = 에디터 globals/plugin helper typing
 - `(site)` = layout이 적용되는 전체 페이지
 - `xapi/*` = layout 없는 interaction
 - `api/*` = data/API
@@ -69,6 +71,7 @@
 - partial에는 필요한 최소 props만 넘긴다
 - `request`, `response`, `api`, `resolve`, full `params`, full `data` 같은 전체 context는 넘기지 않는다
 - `_private` module은 CommonJS만 사용한다
+- `_private` 내부 일반 `require()`는 고정 구현 연결이면 괜찮고, request-context `resolve()` 연쇄는 피한다
 - `_private` 내부에서 `resolve()`를 기본 패턴처럼 쓰지 않는다
 - 의존성은 entry에서 먼저 고르고 주입한다
 - `resolve()`는 entry level에서 의존성을 고르는 용도로 먼저 사용한다
@@ -137,7 +140,7 @@
 - 먼저 이 작업이 PocketPages인지 PocketBase인지 구분한다
 - single-file, low-impact change면 바로 파일을 연다
 - multi-file change이거나 영향이 불명확하면 `./task.sh index <service>`를 실행한다
-- 서비스 수정은 반드시 `./task.sh lint <service>`로 마무리한다
+- 서비스 수정은 반드시 Windows Git Bash에서 `./task.sh lint <service>`를 실행해 마무리한다
 
 ---
 
@@ -168,3 +171,4 @@
 5. `apps/<service>/types.d.ts`
 
 규칙이 충돌하면 이 파일의 기준을 이 저장소 기본값보다 우선한다.
+문서 해석이 애매하거나 충돌하는 것처럼 보이면 기존 서비스의 로컬 패턴도 함께 확인하고 일관성을 유지한다.
