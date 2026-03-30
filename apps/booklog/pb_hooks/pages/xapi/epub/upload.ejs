@@ -1,5 +1,8 @@
 <script server>
   const fflate = require('fflate')
+  const { XMLParser } = require('fast-xml-parser')
+  const he = require('he')
+  const { compile: compileHtmlToText } = require(`${__hooks}/pages/_private/vendor/html-to-text.bundle.js`)
   const data4libraryService = resolve('data4library-service')
   const MAX_EPUB_BYTES = 1024 * 1024 * 100
   const MIN_BOOK_SEARCH_SCORE = 80
@@ -8,6 +11,30 @@
   const BOOK_SEARCH_PAGE_SIZE = 25
   const FICTION_CHARS_PER_PAGE = 430
   const NONFICTION_CHARS_PER_PAGE = 310
+  const xmlParser = new XMLParser({
+    ignoreAttributes: false,
+    attributesGroupName: '@attrs',
+    attributeNamePrefix: '',
+    textNodeName: '#text',
+    cdataPropName: '#cdata',
+    removeNSPrefix: true,
+    trimValues: false,
+    parseTagValue: false,
+    parseAttributeValue: false,
+  })
+  const epubHtmlToText = compileHtmlToText({
+    wordwrap: false,
+    selectors: [
+      { selector: 'a', options: { ignoreHref: true } },
+      { selector: 'img', format: 'skip' },
+      { selector: 'h1', options: { uppercase: false } },
+      { selector: 'h2', options: { uppercase: false } },
+      { selector: 'h3', options: { uppercase: false } },
+      { selector: 'h4', options: { uppercase: false } },
+      { selector: 'h5', options: { uppercase: false } },
+      { selector: 'h6', options: { uppercase: false } },
+    ],
+  })
 
   function normalizePreview(input, maxLength) {
     return String(input || '')
@@ -56,59 +83,131 @@
     return fflate.strFromU8(archiveEntries[entryPath])
   }
 
-  function extractAttribute(tagText, attributeName) {
-    const pattern = new RegExp(attributeName + '=(?:"([^"]+)"|\'([^\']+)\')', 'i')
-    const match = String(tagText || '').match(pattern)
-    return match ? match[1] || match[2] || '' : ''
+  function ensureArray(value) {
+    if (Array.isArray(value)) {
+      return value
+    }
+
+    if (value === undefined || value === null || value === '') {
+      return []
+    }
+
+    return [value]
+  }
+
+  function getXmlChild(node, key) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) {
+      return null
+    }
+
+    const value = node[key]
+    return value && typeof value === 'object' ? value : null
+  }
+
+  function getXmlChildren(node, key) {
+    const targetNode = getXmlChild(node, key)
+    return ensureArray(targetNode)
+  }
+
+  function parseXmlDocument(xmlText) {
+    const normalizedXmlText = String(xmlText || '').trim()
+
+    if (!normalizedXmlText) {
+      return {}
+    }
+
+    try {
+      return xmlParser.parse(normalizedXmlText) || {}
+    } catch (exception) {
+      warn('xapi/epub/upload:xml-parse:failed', {
+        error: String(exception.message || exception),
+      })
+      return {}
+    }
+  }
+
+  function getXmlAttributes(node) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) {
+      return {}
+    }
+
+    return node['@attrs'] && typeof node['@attrs'] === 'object' ? node['@attrs'] : {}
+  }
+
+  function getXmlAttribute(node, attributeName) {
+    const attributes = getXmlAttributes(node)
+    const value = attributes[attributeName]
+    return value === undefined || value === null ? '' : String(value).trim()
+  }
+
+  function stringifyXmlAttributes(node) {
+    const attributes = getXmlAttributes(node)
+    return Object.keys(attributes)
+      .filter(function (key) {
+        return attributes[key] !== undefined && attributes[key] !== null && attributes[key] !== ''
+      })
+      .map(function (key) {
+        return key + '="' + String(attributes[key]) + '"'
+      })
+      .join(' ')
   }
 
   function decodeXmlText(input) {
     return String(input || '')
       .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&#x27;/gi, "'")
+      .replace(/&(?!(?:[a-z0-9]+|#\d+|#x[a-f0-9]+);)/gi, '&amp;')
+      .replace(/\u00A0/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&#160;/gi, ' ')
+      .replace(/&#xA0;/gi, ' ')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
+      .replace(/^[\s\S]*$/g, function (value) {
+        try {
+          return he.decode(value, { isAttributeValue: false })
+        } catch (exception) {
+          return value
+        }
+      })
       .replace(/\s+/g, ' ')
       .trim()
   }
 
-  function extractXmlText(xmlText, tagName) {
-    const pattern = new RegExp('<(?:\\w+:)?' + tagName + '\\b[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?' + tagName + '>', 'i')
-    const match = String(xmlText || '').match(pattern)
-    return match ? decodeXmlText(match[1]) : ''
-  }
+  function getXmlNodeText(node) {
+    if (node === undefined || node === null) {
+      return ''
+    }
 
-  function extractXmlTexts(xmlText, tagName) {
-    const pattern = new RegExp('<(?:\\w+:)?' + tagName + '\\b[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?' + tagName + '>', 'gi')
-    const matches = []
-    let match = null
+    if (typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') {
+      return decodeXmlText(node)
+    }
 
-    while ((match = pattern.exec(String(xmlText || '')))) {
-      const value = decodeXmlText(match[1])
-      if (value) {
-        matches.push(value)
+    if (Array.isArray(node)) {
+      const parts = []
+
+      for (let index = 0; index < node.length; index += 1) {
+        const value = getXmlNodeText(node[index])
+
+        if (value) {
+          parts.push(value)
+        }
       }
+
+      return decodeXmlText(parts.join(' '))
     }
 
-    return matches
+    if (typeof node === 'object') {
+      return decodeXmlText(String(node['#text'] || node['#cdata'] || ''))
+    }
+
+    return ''
   }
 
-  function extractXmlNodes(xmlText, tagName) {
-    const pattern = new RegExp('<(?:\\w+:)?' + tagName + '\\b([^>]*)>([\\s\\S]*?)<\\/(?:\\w+:)?' + tagName + '>', 'gi')
-    const nodes = []
-    let match = null
+  function parseContainerRootfilePath(containerDocument) {
+    const containerNode = getXmlChild(containerDocument, 'container')
+    const rootfilesNode = getXmlChild(containerNode, 'rootfiles')
+    const rootfileNode = getXmlChildren(rootfilesNode, 'rootfile')[0] || null
 
-    while ((match = pattern.exec(String(xmlText || '')))) {
-      nodes.push({
-        attributesText: match[1] || '',
-        value: decodeXmlText(match[2]),
-      })
-    }
-
-    return nodes
+    return rootfileNode ? getXmlAttribute(rootfileNode, 'full-path') : ''
   }
 
   function extractDigits(input) {
@@ -222,22 +321,17 @@
   }
 
   function htmlToPlainText(input) {
-    return decodeXmlText(
-      String(input || '')
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/gi, ' ')
-    )
+    return decodeXmlText(epubHtmlToText(String(input || '')))
   }
 
-  function parseSpineIdrefs(packageDocumentXml) {
-    const itemrefPattern = /<itemref\b[^>]*idref=(?:"([^"]+)"|'([^']+)')[^>]*>/gi
+  function parseSpineIdrefs(packageDocument) {
+    const packageNode = getXmlChild(packageDocument, 'package')
+    const spineNode = getXmlChild(packageNode, 'spine')
+    const itemrefNodes = getXmlChildren(spineNode, 'itemref')
     const idrefs = []
-    let match = null
 
-    while ((match = itemrefPattern.exec(String(packageDocumentXml || '')))) {
-      const idref = String(match[1] || match[2] || '').trim()
+    for (let index = 0; index < itemrefNodes.length; index += 1) {
+      const idref = getXmlAttribute(itemrefNodes[index], 'idref')
 
       if (idref) {
         idrefs.push(idref)
@@ -247,9 +341,10 @@
     return idrefs
   }
 
-  function findTocEntryPath(manifestItems, packageDocumentXml, packageDocumentPath) {
-    const tocIdMatch = String(packageDocumentXml || '').match(/<spine\b[^>]*toc=(?:"([^"]+)"|'([^']+)')/i)
-    const tocId = tocIdMatch ? String(tocIdMatch[1] || tocIdMatch[2] || '').trim() : ''
+  function findTocEntryPath(manifestItems, packageDocument, packageDocumentPath) {
+    const packageNode = getXmlChild(packageDocument, 'package')
+    const spineNode = getXmlChild(packageNode, 'spine')
+    const tocId = getXmlAttribute(spineNode, 'toc')
     const manifestList = Array.isArray(manifestItems) ? manifestItems : []
 
     for (let index = 0; index < manifestList.length; index += 1) {
@@ -267,9 +362,19 @@
     return ''
   }
 
-  function countTocNavPoints(tocXml) {
-    const matches = String(tocXml || '').match(/<navPoint\b/gi)
-    return matches ? matches.length : 0
+  function countTocNavPoints(node) {
+    if (!node || typeof node !== 'object') {
+      return 0
+    }
+
+    const navPoints = getXmlChildren(node, 'navPoint')
+    let count = navPoints.length
+
+    for (let index = 0; index < navPoints.length; index += 1) {
+      count += countTocNavPoints(navPoints[index])
+    }
+
+    return count
   }
 
   function countReadableCharacters(input) {
@@ -301,13 +406,13 @@
    * @param {object} archiveEntries EPUB 압축 엔트리 맵
    * @param {Array<{id:string,href:string,mediaType:string,properties:string}>} manifestItems manifest 아이템 목록
    * @param {string} packageDocumentPath OPF 경로
-   * @param {string} packageDocumentXml OPF XML 텍스트
+   * @param {object} packageDocument 파싱된 OPF XML 문서
    * @returns {{ textCharCount: number, chapterCount: number, estimatedPageCount: number, pageDivisor: number, pageRule: string }} 계산된 분량 지표
    */
-  function buildReadingMetrics(matchedBook, epubMetadata, archiveEntries, manifestItems, packageDocumentPath, packageDocumentXml) {
+  function buildReadingMetrics(matchedBook, epubMetadata, archiveEntries, manifestItems, packageDocumentPath, packageDocument) {
     const manifestList = Array.isArray(manifestItems) ? manifestItems : []
     const manifestById = {}
-    const spineIdrefs = parseSpineIdrefs(packageDocumentXml)
+    const spineIdrefs = parseSpineIdrefs(packageDocument)
     const excludedPathPattern = /(cover|copy|copyright|colophon|imprint|about|author|title|toc|nav|contents|index|footnote)/i
     let combinedText = ''
 
@@ -340,8 +445,8 @@
     }
 
     const textCharCount = countReadableCharacters(combinedText)
-    const tocEntryPath = findTocEntryPath(manifestItems, packageDocumentXml, packageDocumentPath)
-    const chapterCount = countTocNavPoints(readArchiveText(archiveEntries, tocEntryPath))
+    const tocEntryPath = findTocEntryPath(manifestItems, packageDocument, packageDocumentPath)
+    const chapterCount = countTocNavPoints(parseXmlDocument(readArchiveText(archiveEntries, tocEntryPath)))
     const pageDivisor = isLikelyNarrativeBook(
       matchedBook && matchedBook.class_no ? matchedBook.class_no : '',
       matchedBook && matchedBook.description ? matchedBook.description : '',
@@ -619,36 +724,48 @@
     return ''
   }
 
-  function parseManifestItems(packageDocumentXml) {
-    const manifestItemPattern = /<item\b[^>]*>/g
-    const manifestItems = packageDocumentXml.match(manifestItemPattern) || []
+  function parseManifestItems(packageDocument) {
+    const packageNode = getXmlChild(packageDocument, 'package')
+    const manifestNode = getXmlChild(packageNode, 'manifest')
+    const manifestItems = getXmlChildren(manifestNode, 'item')
     const normalizedItems = []
 
     for (let index = 0; index < manifestItems.length; index += 1) {
       const manifestItem = manifestItems[index]
-      const href = extractAttribute(manifestItem, 'href')
+      const href = getXmlAttribute(manifestItem, 'href')
 
       normalizedItems.push({
-        id: extractAttribute(manifestItem, 'id'),
+        id: getXmlAttribute(manifestItem, 'id'),
         href: href,
-        mediaType: extractAttribute(manifestItem, 'media-type'),
-        properties: extractAttribute(manifestItem, 'properties'),
+        mediaType: getXmlAttribute(manifestItem, 'media-type'),
+        properties: getXmlAttribute(manifestItem, 'properties'),
       })
     }
 
     return normalizedItems
   }
 
-  function parseEpubMetadata(packageDocumentXml) {
-    const versionMatch = String(packageDocumentXml || '').match(/<package\b[^>]*version="([^"]+)"/i)
-    const identifierNodes = extractXmlNodes(packageDocumentXml, 'identifier')
+  function parseEpubMetadata(packageDocument) {
+    const packageNode = getXmlChild(packageDocument, 'package')
+    const metadataNode = getXmlChild(packageNode, 'metadata')
+    const identifierNodes = getXmlChildren(metadataNode, 'identifier').map(function (node) {
+      return {
+        attributesText: stringifyXmlAttributes(node),
+        value: getXmlNodeText(node),
+      }
+    })
     const identifiers = []
-    const title = extractXmlText(packageDocumentXml, 'title')
-    const creatorNodes = extractXmlNodes(packageDocumentXml, 'creator')
+    const title = getXmlNodeText(getXmlChildren(metadataNode, 'title')[0])
+    const creatorNodes = getXmlChildren(metadataNode, 'creator').map(function (node) {
+      return {
+        attributesText: stringifyXmlAttributes(node),
+        value: getXmlNodeText(node),
+      }
+    })
     const author = creatorNodes.length > 0 ? creatorNodes[0].value : ''
-    const languageCode = extractXmlText(packageDocumentXml, 'language')
-    const publisher = extractXmlText(packageDocumentXml, 'publisher')
-    const source = extractXmlText(packageDocumentXml, 'source')
+    const languageCode = getXmlNodeText(getXmlChildren(metadataNode, 'language')[0])
+    const publisher = getXmlNodeText(getXmlChildren(metadataNode, 'publisher')[0])
+    const source = getXmlNodeText(getXmlChildren(metadataNode, 'source')[0])
     const identifierCandidates = extractIdentifierIsbnCandidates(identifierNodes)
 
     for (let index = 0; index < identifierNodes.length; index += 1) {
@@ -669,7 +786,7 @@
       identifiers: identifiers,
       identifierNodes: identifierNodes,
       isbn13: identifierCandidates.length > 0 ? identifierCandidates[0].isbn13 : '',
-      epubVersion: versionMatch ? versionMatch[1] : '',
+      epubVersion: getXmlAttribute(packageNode, 'version'),
     }
   }
 
@@ -1765,11 +1882,12 @@
     const entryNames = Object.keys(archiveEntries).sort()
     const mimetypeText = readArchiveText(archiveEntries, 'mimetype')
     const containerXml = readArchiveText(archiveEntries, 'META-INF/container.xml')
-    const containerRootfileMatch = containerXml.match(/full-path="([^"]+)"/)
-    const packageDocumentPath = containerRootfileMatch ? containerRootfileMatch[1] : ''
+    const containerDocument = parseXmlDocument(containerXml)
+    const packageDocumentPath = parseContainerRootfilePath(containerDocument)
     const packageDocumentXml = readArchiveText(archiveEntries, packageDocumentPath)
-    const manifestItems = parseManifestItems(packageDocumentXml)
-    const epubMetadata = parseEpubMetadata(packageDocumentXml)
+    const packageDocument = parseXmlDocument(packageDocumentXml)
+    const manifestItems = parseManifestItems(packageDocument)
+    const epubMetadata = parseEpubMetadata(packageDocument)
     const filenameMetadata = parseFilenameMetadata(epubFile.originalName || epubFile.name)
     const fallbackTitle = epubMetadata.title || filenameMetadata.title || stripFileExtension(epubFile.originalName || epubFile.name)
     const fallbackAuthor = extractPrimaryAuthorName(epubMetadata.author) || extractPrimaryAuthorName(filenameMetadata.author) || epubMetadata.author || filenameMetadata.author
@@ -1806,13 +1924,7 @@
     }
 
     const firstContentXml = readArchiveText(archiveEntries, firstContentPath)
-    const firstContentText = normalizePreview(
-      firstContentXml
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' '),
-      800
-    )
+    const firstContentText = normalizePreview(htmlToPlainText(firstContentXml), 800)
     let searchKeyword = ''
     let searchResult = null
     let selectedDoc = null
@@ -1852,7 +1964,7 @@
     const detailBook = detailResult && detailResult.book ? detailResult.book : null
     const matchedBook = detailBook || selectedDoc || null
     const resolvedIsbn13 = detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
-    const readingMetrics = buildReadingMetrics(matchedBook, epubMetadata, archiveEntries, manifestItems, packageDocumentPath, packageDocumentXml)
+    const readingMetrics = buildReadingMetrics(matchedBook, epubMetadata, archiveEntries, manifestItems, packageDocumentPath, packageDocument)
     dbg('xapi/epub/upload:reading-metrics', {
       textCharCount: readingMetrics.textCharCount,
       chapterCount: readingMetrics.chapterCount,

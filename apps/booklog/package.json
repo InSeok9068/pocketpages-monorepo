@@ -5,13 +5,16 @@
     "postinstall": "node -e \"try{require.resolve('patch-package');require('child_process').execSync('patch-package',{stdio:'inherit'})}catch(e){console.log('patch-package not installed, skip')}\""
   },
   "dependencies": {
+    "fast-xml-parser": "^5.5.9",
     "fflate": "^0.8.2",
+    "he": "^1.2.0",
     "pocketpages": "^0.22.3",
     "pocketpages-plugin-auth": "^0.2.2",
     "pocketpages-plugin-ejs": "^0.1.2",
     "pocketpages-plugin-js-sdk": "^0.2.0"
   },
   "devDependencies": {
+    "html-to-text": "^9.0.5",
     "patch-package": "^8.0.1"
   }
 }
