@@ -15,7 +15,7 @@
     "tools/**": true,
     // 개발중인 서비스만 주석
     "apps/sample/**": true,
-    "apps/kjca/**": true,
+    // "apps/kjca/**": true,
     // "apps/booklog/**": true,
   },
   // prettier-ignore
@@ -28,7 +28,7 @@
     "diag-pocketpages.js": true,
     // 개발중인 서비스만 주석
     "apps/sample/**": true,
-    "apps/kjca/**": true,
+    // "apps/kjca/**": true,
     // "apps/booklog/**": true,
   },
   "tailwindCSS.includeLanguages": {

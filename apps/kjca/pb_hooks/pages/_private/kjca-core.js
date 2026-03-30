@@ -1,3 +1,6 @@
+const { compile: compileHtmlToText } = require(`${__hooks}/pages/_private/vendor/html-to-text.bundle.js`)
+const LinkifyIt = require('linkify-it')
+
 const KJCA_EMAIL_DOMAIN = 'kjca.local'
 const KJCA_HOST = 'http://www.kjca.co.kr'
 const KJCA_LOGIN_URL = `${KJCA_HOST}/staff/auth/login_check`
@@ -16,6 +19,43 @@ const weekdayLabelMap = {
   thu: '목',
   fri: '금',
 }
+
+const inlineHtmlToText = compileHtmlToText({
+  wordwrap: false,
+  selectors: [
+    { selector: 'a', options: { ignoreHref: true } },
+    { selector: 'img', format: 'skip' },
+  ],
+})
+
+const structuredHtmlToText = compileHtmlToText({
+  wordwrap: false,
+  selectors: [
+    { selector: 'a', options: { ignoreHref: true } },
+    { selector: 'img', format: 'skip' },
+    {
+      selector: 'table',
+      format: 'dataTable',
+      options: {
+        uppercaseHeaderCells: false,
+        maxColumnWidth: 1000,
+        colSpacing: 3,
+        rowSpacing: 0,
+      },
+    },
+    { selector: 'h1', options: { uppercase: false } },
+    { selector: 'h2', options: { uppercase: false } },
+    { selector: 'h3', options: { uppercase: false } },
+    { selector: 'h4', options: { uppercase: false } },
+    { selector: 'h5', options: { uppercase: false } },
+    { selector: 'h6', options: { uppercase: false } },
+  ],
+})
+
+const kjcaLinkify = new LinkifyIt().set({
+  fuzzyLink: false,
+  fuzzyEmail: false,
+})
 
 /**
  * JSON 문자열을 안전하게 파싱합니다.
@@ -157,8 +197,36 @@ function decodeHtmlEntities(text) {
     .replace(/&#39;/g, "'")
 }
 
+function normalizeSingleLineText(text) {
+  return String(text || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\r/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeStructuredTextLine(line) {
+  const trimmed = String(line || '')
+    .replace(/\u00a0/g, ' ')
+    .trim()
+  if (!trimmed) return ''
+  if (/^\*\s+/.test(trimmed)) return `- ${trimmed.replace(/^\*\s+/, '')}`
+  if (/ {3,}/.test(trimmed)) return trimmed.replace(/ {3,}/g, ' | ')
+  return trimmed
+}
+
+function normalizeStructuredText(text) {
+  return String(text || '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => normalizeStructuredTextLine(line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function stripTags(html) {
-  return decodeHtmlEntities(String(html || '').replace(/<[^>]*>/g, '')).trim()
+  return normalizeSingleLineText(inlineHtmlToText(String(html || '')))
 }
 
 /**
@@ -188,25 +256,47 @@ function isAllowedKjcaUrl(host, url) {
   return normalized.startsWith(`${host}/`) || normalized.startsWith('http://www.kjca.co.kr/') || normalized.startsWith('https://www.kjca.co.kr/')
 }
 
-function extractPrintUrlFromCell(host, cellHtml) {
+function absolutizeQuotedKjcaUrl(host, rawUrl) {
+  const candidate = String(rawUrl || '').trim()
+  if (!candidate) return ''
+  if (candidate === '#') return ''
+  if (/^javascript:/i.test(candidate)) return ''
+  if (/^void\(0\)/i.test(candidate)) return ''
+  if (/^https?:\/\//i.test(candidate)) return candidate
+  if (candidate.startsWith('?')) return toAbsoluteKjcaUrl(host, candidate)
+  if (candidate.startsWith('/?')) return toAbsoluteKjcaUrl(host, candidate)
+  if (candidate.startsWith('/diary/')) return toAbsoluteKjcaUrl(host, candidate)
+  if (candidate.startsWith('/') && candidate.includes('bd_idx=')) return toAbsoluteKjcaUrl(host, candidate)
+  return ''
+}
+
+function buildLinkifySourceFromCell(host, cellHtml) {
   const source = decodeHtmlEntities(String(cellHtml || ''))
   if (!source) return ''
 
-  const candidates = []
-  const quotedUrlRegex = /['"]((?:https?:\/\/|\/|\?)[^'"]+)['"]/gi
-  let urlMatch = null
-  while ((urlMatch = quotedUrlRegex.exec(source))) {
-    const candidate = String(urlMatch[1] || '').trim()
-    if (!candidate) continue
-    candidates.push(candidate)
-  }
+  return source.replace(/(['"])((?:https?:\/\/|\/|\?)[^'"<>\s]+)\1/gi, (full, quote, rawUrl) => {
+    const absoluteUrl = absolutizeQuotedKjcaUrl(host, rawUrl)
+    if (!absoluteUrl) return full
+    return `${quote}${absoluteUrl}${quote}`
+  })
+}
 
-  const normalized = candidates
-    .map((candidate) => candidate.trim())
+function extractPrintUrlFromCell(host, cellHtml) {
+  const source = buildLinkifySourceFromCell(host, cellHtml)
+  if (!source) return ''
+
+  const matches = kjcaLinkify.pretest(source) ? kjcaLinkify.match(source) || [] : []
+  const seen = {}
+  const normalized = matches
+    .map((match) => toAbsoluteKjcaUrl(host, match && match.url))
     .filter((candidate) => !!candidate)
-    .filter((candidate) => candidate !== '#')
-    .filter((candidate) => !/^javascript:/i.test(candidate))
-    .filter((candidate) => !/^void\(0\)/i.test(candidate))
+    .filter((candidate) => isAllowedKjcaUrl(host, candidate))
+    .filter((candidate) => candidate.includes('bd_idx=') || candidate.includes('/diary/'))
+    .filter((candidate) => {
+      if (seen[candidate]) return false
+      seen[candidate] = true
+      return true
+    })
 
   if (!normalized.length) return ''
 
@@ -403,23 +493,7 @@ function extractDivInnerHtmlByClasses(html, requiredClasses) {
  * @returns {string} 정리된 텍스트입니다.
  */
 function htmlToText(html) {
-  const normalized = String(html || '')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(td|th)>/gi, '\t')
-    .replace(/<\/tr>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<li\b[^>]*>/gi, '- ')
-  return decodeHtmlEntities(normalized.replace(/<[^>]*>/g, ' '))
-    .replace(/\r/g, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n[ \t]+/g, '\n')
-    .replace(/\t+/g, ' | ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  return normalizeStructuredText(structuredHtmlToText(String(html || '')))
 }
 
 /**

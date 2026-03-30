@@ -19,7 +19,7 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill deploy rollback test lint diag verify index format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill deploy rollback test lint diag verify index bundle format help" -- "$cur") )
     return
   fi
 

@@ -16,6 +16,7 @@ Usage:
   ./task.sh diag <file-or-service>
   ./task.sh verify [service]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
+  ./task.sh bundle
   ./task.sh format [-- <extra args>]
 
 Commands:
@@ -28,6 +29,7 @@ Commands:
   diag      Run PocketPages editor diagnostics for PocketPages code files (.ejs/.js/.cjs/.mjs).
   verify    Run lint and diag together for one service or all services
   index     Query AI-friendly PocketPages project index JSON for one service
+  bundle    Interactively bundle one service dependency into pb_hooks/pages/_private/vendor
   format    Run npm run format
 EOF
 }
@@ -376,6 +378,22 @@ run_format() {
   fi
 
   npm run format -- "$@"
+}
+
+run_bundle() {
+  local bundle_script="$ROOT_DIR/scripts/bundle-pocketpages-vendor.mjs"
+
+  if [[ ! -f "$bundle_script" ]]; then
+    echo "Missing bundle script: $bundle_script" >&2
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run bundle command." >&2
+    exit 1
+  fi
+
+  node "$bundle_script" "$@"
 }
 
 normalize_bash_path() {
@@ -998,6 +1016,10 @@ case "${1:-help}" in
     service="$1"
     shift || true
     run_index "$service" "$@"
+    ;;
+  bundle)
+    shift || true
+    run_bundle "$@"
     ;;
   format)
     shift || true

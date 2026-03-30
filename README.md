@@ -42,6 +42,8 @@
 | `fflate`            | ZIP/EPUB 압축 해제, 바이너리 압축 데이터 처리      |
 | `fast-xml-parser`   | EPUB 내부 XML, OPF, container.xml 같은 구조 파싱   |
 | `papaparse`         | CSV 파싱, CSV 확장자 파일 업로드/가져오기 처리     |
+| `node-html-parser`  | HTML 파싱, 본문/메타 추출, 간단한 DOM 탐색         |
+| `html-to-text`      | HTML을 구조 있는 텍스트로 변환, 본문 분석 전처리   |
 | `linkify-it`        | 본문 URL 탐지, 링크 후보 추출                      |
 | `sentence-splitter` | 문장 단위 분리, 텍스트 후처리                      |
 | `he`                | HTML entity 인코딩/디코딩                          |

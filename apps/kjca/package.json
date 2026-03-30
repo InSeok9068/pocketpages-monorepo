@@ -5,12 +5,14 @@
     "postinstall": "node -e \"try{require.resolve('patch-package');require('child_process').execSync('patch-package',{stdio:'inherit'})}catch(e){console.log('patch-package not installed, skip')}\""
   },
   "dependencies": {
+    "linkify-it": "^5.0.0",
     "pocketpages": "^0.22.3",
     "pocketpages-plugin-auth": "^0.2.2",
     "pocketpages-plugin-js-sdk": "^0.2.0",
     "pocketpages-plugin-realtime": "^0.2.0"
   },
   "devDependencies": {
+    "html-to-text": "^9.0.5",
     "patch-package": "^8.0.1"
   }
 }

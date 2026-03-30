@@ -4,6 +4,7 @@
   },
   "devDependencies": {
     "cheerio": "^1.2.0",
+    "esbuild": "^0.25.12",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2"
   }
