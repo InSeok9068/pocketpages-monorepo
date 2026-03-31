@@ -96,22 +96,30 @@
 - 실행 환경: Windows Git Bash 기준
 
 ```bash
-./task.sh start sample
+./task.sh start <service> [-- <extra args>]
 ./task.sh kill
-./task.sh test sample
-./task.sh lint sample
-./task.sh diag sample
-./task.sh verify sample
-./task.sh format
+./task.sh deploy <service>
+./task.sh rollback <service> <version>
+./task.sh test [service]
+./task.sh lint [service]
+./task.sh diag [file-or-service]
+./task.sh verify [service]
+./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
+./task.sh bundle
+./task.sh format [-- <extra args>]
 ```
 
 - `start`: 서비스 실행
-- `kill`: 실행 중인 `pocketbase` / `pbw` 프로세스 종료
-- `test`: 서비스별 `__tests__` 아래 `node:test` 실행
-- `lint`: 레포 구조 규칙과 PocketPages 패턴 검사
-- `diag`: PocketPages 코드 파일(`.ejs`, `.js`, `.cjs`, `.mjs`) 진단 실행
-- `verify`: `lint`와 `diag`를 함께 실행
-- `format`: 루트 `npm run format` 실행
+- `kill`: 실행 중 프로세스 종료
+- `deploy`: 서비스 배포
+- `rollback`: 배포 롤백
+- `test`: 테스트 실행
+- `lint`: 린트 실행
+- `diag`: 진단 실행
+- `verify`: 린트 + 진단 실행
+- `index`: 프로젝트 인덱스 조회
+- `bundle`: vendor 번들링
+- `format`: 포맷 실행
 
 ---
 
