@@ -99,11 +99,19 @@ function isPocketPagesCodeDocument(document) {
     return false
   }
 
+  const normalizedPath = document.uri.fsPath.replace(/\\/g, '/')
+  if (normalizedPath.endsWith('.ejs')) {
+    return true
+  }
+
+  if (!normalizedPath.includes('/pb_hooks/pages/')) {
+    return false
+  }
+
   return (
-    document.uri.fsPath.endsWith('.ejs') ||
-    document.uri.fsPath.endsWith('.js') ||
-    document.uri.fsPath.endsWith('.cjs') ||
-    document.uri.fsPath.endsWith('.mjs')
+    normalizedPath.endsWith('.js') ||
+    normalizedPath.endsWith('.cjs') ||
+    normalizedPath.endsWith('.mjs')
   )
 }
 

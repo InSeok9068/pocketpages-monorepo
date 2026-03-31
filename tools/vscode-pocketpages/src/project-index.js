@@ -999,8 +999,14 @@ class PocketPagesProjectIndex {
       return this.schemaCache
     }
 
-    const raw = JSON.parse(fs.readFileSync(schemaPath, 'utf8'))
-    const collections = ensureArray(raw)
+    let collections = []
+    try {
+      const raw = JSON.parse(fs.readFileSync(schemaPath, 'utf8'))
+      collections = ensureArray(raw)
+    } catch (_error) {
+      collections = this.schemaCache && this.schemaCache.schemaPath === schemaPath ? ensureArray(this.schemaCache.collections) : []
+    }
+
     const collectionsByName = new Map()
 
     for (const collection of collections) {

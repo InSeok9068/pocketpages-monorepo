@@ -342,6 +342,7 @@ module.exports = {
   return {
     fixtureRoot,
     appRoot,
+    schemaFilePath: path.join(appRoot, 'pb_schema.json'),
     siteIndexFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'),
     boardsFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
     boardShowFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'index.ejs'),
@@ -379,6 +380,9 @@ function run() {
   const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'package.json'), 'utf8'))
   if (!/const updateDiagnostics = \(document\) => \{\s*if \(!isPocketPagesCodeDocument\(document\)\) \{\s*return\s*\}/.test(extensionSource)) {
     throw new Error('Expected updateDiagnostics() to cover PocketPages code documents, including JS page files.')
+  }
+  if (!/function isPocketPagesCodeDocument\(document\) \{[\s\S]*normalizedPath\.includes\('\/pb_hooks\/pages\/'\)/.test(extensionSource)) {
+    throw new Error('Expected PocketPages code document detection to limit JS diagnostics and overrides to pb_hooks/pages.')
   }
   if (!/registerInlayHintsProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesInlayHintsProvider\(manager\)\)/.test(extensionSource)) {
     throw new Error('Expected PocketPages inlay hints provider registration for code documents.')
@@ -755,6 +759,46 @@ boardService.readAuthState(
     const collectionNames = collectionCompletion ? collectionCompletion.items.map((entry) => entry.label) : []
     if (!collectionNames.includes('boards') || !collectionNames.includes('posts')) {
       throw new Error(`Expected collection completions for "boards" and "posts". Got: ${collectionNames.slice(0, 20).join(', ')}`)
+    }
+
+    const originalSchemaText = fs.readFileSync(fixture.schemaFilePath, 'utf8')
+    try {
+      writeFile(fixture.schemaFilePath, '{\n')
+      const collectionCompletionAfterInvalidSchema = service.getCustomCompletionData(
+        fixture.boardsFilePath,
+        collectionText,
+        collectionOffset
+      )
+      const collectionNamesAfterInvalidSchema = collectionCompletionAfterInvalidSchema
+        ? collectionCompletionAfterInvalidSchema.items.map((entry) => entry.label)
+        : []
+      if (!collectionNamesAfterInvalidSchema.includes('boards') || !collectionNamesAfterInvalidSchema.includes('posts')) {
+        throw new Error(
+          `Expected collection completions to keep last known good schema after invalid pb_schema.json. Got: ${collectionNamesAfterInvalidSchema.slice(0, 20).join(', ')}`
+        )
+      }
+
+      const recoveredSchema = JSON.parse(originalSchemaText)
+      recoveredSchema.push({
+        name: 'drafts',
+        fields: [{ name: 'title', type: 'text' }],
+      })
+      writeFile(fixture.schemaFilePath, JSON.stringify(recoveredSchema, null, 2))
+      const collectionCompletionAfterSchemaRecovery = service.getCustomCompletionData(
+        fixture.boardsFilePath,
+        collectionText,
+        collectionOffset
+      )
+      const collectionNamesAfterSchemaRecovery = collectionCompletionAfterSchemaRecovery
+        ? collectionCompletionAfterSchemaRecovery.items.map((entry) => entry.label)
+        : []
+      if (!collectionNamesAfterSchemaRecovery.includes('drafts')) {
+        throw new Error(
+          `Expected collection completions to recover after pb_schema.json becomes valid again. Got: ${collectionNamesAfterSchemaRecovery.slice(0, 20).join(', ')}`
+        )
+      }
+    } finally {
+      writeFile(fixture.schemaFilePath, originalSchemaText)
     }
 
     const jsCompletionText = `const boardService = resolve('board-service')\nboardService.\n`
