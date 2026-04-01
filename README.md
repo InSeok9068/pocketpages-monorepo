@@ -252,3 +252,14 @@ scoop update
 scoop update delta
 scoop update lazygit
 ```
+
+---
+
+## nvm 설치 후 global 패키지 의존성 설치
+
+@google/gemini-cli @openai/codex firebase-tools gemini-commit-assistant pnpm ts-node tsx
+
+```shell
+node -e "console.log(Object.keys(JSON.parse(require('child_process').execSync('npm list -g --depth=0 --json').toString()).dependencies).join('\n'))"
+node -e "console.log(Object.keys(JSON.parse(require('child_process').execSync('npm list -g --depth=0 --json').toString()).dependencies).join(' '))"
+```
