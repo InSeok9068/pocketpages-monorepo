@@ -16,6 +16,7 @@ const {
   getScriptCollectionContext,
   getScriptFieldContext,
 } = require("./custom-context");
+const { collectParamsFlowDiagnostics } = require("./flow-analysis");
 
 const CACHE_ROOT = path.resolve(__dirname, "..", ".cache");
 const COMPILER_OPTIONS = {
@@ -687,50 +688,6 @@ function readStringLiteralText(node) {
   return target && ts.isStringLiteralLike(target) ? target.text : null;
 }
 
-function collectParamsQueryDiagnostics(scriptText, allowedRouteParamNames) {
-  const sourceFile = ts.createSourceFile("pocketpages-agents-params.ts", scriptText, ts.ScriptTarget.Latest, true);
-  const diagnostics = [];
-  const allowedNames = new Set((Array.isArray(allowedRouteParamNames) ? allowedRouteParamNames : []).filter(Boolean));
-
-  const visit = (node) => {
-    if (
-      ts.isPropertyAccessExpression(node) &&
-      !(ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node)
-    ) {
-      const chain = getPropertyAccessChain(node);
-      if (chain.root && ts.isIdentifier(chain.root) && chain.root.text === "params") {
-        const topPropertyName = chain.segments[0] || "";
-        if (topPropertyName && topPropertyName !== "__flash" && !allowedNames.has(topPropertyName)) {
-          diagnostics.push({
-            code: "pp-query-via-params",
-            category: ts.DiagnosticCategory.Warning,
-            message: "Query strings should use request.url.query. params is for route params.",
-            start: node.getStart(sourceFile),
-            end: node.getEnd(),
-            fixes: [
-              {
-                title: "Replace with request.url.query",
-                edits: [
-                  {
-                    start: chain.root.getStart(sourceFile),
-                    end: chain.root.getEnd(),
-                    newText: "request.url.query",
-                  },
-                ],
-              },
-            ],
-          });
-        }
-      }
-    }
-
-    ts.forEachChild(node, visit);
-  };
-
-  visit(sourceFile);
-  return diagnostics;
-}
-
 function collectIncludeContextDiagnostics(scriptText) {
   const sourceFile = ts.createSourceFile("pocketpages-agents-include.ts", scriptText, ts.ScriptTarget.Latest, true);
   const diagnostics = [];
@@ -1245,7 +1202,7 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText) {
   const analysisText = isEjsFile(filePath) ? buildTemplateVirtualText(documentText) : documentText;
   const routeParamNames = projectIndex.getRouteParamEntries(filePath).map((entry) => entry.name);
 
-  for (const diagnostic of collectParamsQueryDiagnostics(analysisText, routeParamNames)) {
+  for (const diagnostic of collectParamsFlowDiagnostics(analysisText, routeParamNames)) {
     diagnostics.push(diagnostic);
   }
 
@@ -1630,7 +1587,7 @@ class ProjectLanguageService {
       collectSchemaContexts(analysisText, {
         collectionMethodNames: this.projectIndex.getCollectionMethodNames(),
       })
-        .filter((context) => context.kind === "record-field")
+        .filter((context) => context.kind === "record-field" && context.accessMethod === "get")
         .map((context) => context.value)
         .filter(Boolean)
     )];

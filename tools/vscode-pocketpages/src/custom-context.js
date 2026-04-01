@@ -10,8 +10,8 @@ const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=
 const ROUTE_ATTR_CLOSED_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)\2/g
 const ROUTE_CALL_OPEN_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)$/s
 const ROUTE_CALL_CLOSED_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)\2(?=\s*[,)\]])/g
-const FIELD_OPEN_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.get\(\s*(['"])([^'"]*)$/s
-const FIELD_CLOSED_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.get\(\s*(['"])([^'"]+)\2/g
+const FIELD_OPEN_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.(get|set)\(\s*(['"])([^'"]*)$/s
+const FIELD_CLOSED_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.(get|set)\(\s*(['"])([^'"]+)\3/g
 const COLLECTION_REGEX_CACHE = new Map()
 
 function getLastPathSegment(value) {
@@ -123,7 +123,7 @@ function getOpenMatchContext(documentText, offset, regex, mapper) {
     return null
   }
 
-  const value = match[3]
+  const value = match[match.length - 1]
   return mapper({
     value,
     start: offset - value.length,
@@ -318,6 +318,7 @@ function getScriptFieldContext(scriptText, offset) {
     kind: 'record-field',
     receiverExpression: match[1],
     receiverName: getLastPathSegment(match[1]),
+    accessMethod: match[2],
     value,
     start,
     end,
@@ -388,9 +389,20 @@ function collectSchemaContexts(scriptText, options = {}) {
   }
 
   for (const match of scriptText.matchAll(FIELD_CLOSED_RE)) {
-    const context = toClosedMatchContext(match, 'record-field')
+    const fullText = match[0]
+    const quote = match[3]
+    const value = match[4]
+    const quoteOffset = fullText.indexOf(quote)
+    const context = {
+      kind: 'record-field',
+      value,
+      start: match.index + quoteOffset + 1,
+      end: match.index + quoteOffset + 1 + value.length,
+      matchText: fullText,
+    }
     context.receiverExpression = match[1]
     context.receiverName = getLastPathSegment(match[1])
+    context.accessMethod = match[2]
     contexts.push(context)
   }
 

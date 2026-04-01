@@ -1813,6 +1813,22 @@ module.exports = {
       throw new Error(`Expected unknown field diagnostic. Got: ${diagnosticMessages.join(' | ')}`)
     }
 
+    const recordSetDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nconst board = $app.findRecordById('boards', 'board-1')\nboard.set('missing_field', request.url.query.sort)\n</script>\n`
+    )
+    if (
+      !recordSetDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "boards"')
+      )
+    ) {
+      throw new Error(
+        `Expected record.set() schema diagnostic. Got: ${recordSetDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+
     const typedRecordGetText = `<script server>
 const board = $app.findRecordById('boards', 'board-1')
 const boardName = board.get('name')
@@ -1996,6 +2012,42 @@ metaPayload.trim()
     if (flashParamDiagnostics.some((entry) => entry.code === 'pp-query-via-params')) {
       throw new Error(
         `Expected params.__flash to skip AGENTS query diagnostic. Got: ${flashParamDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const aliasedParamsDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nconst query = params\nquery.sort\n</script>\n`
+    )
+    if (!aliasedParamsDiagnostics.some((entry) => entry.code === 'pp-query-via-params')) {
+      throw new Error(
+        `Expected aliased params access diagnostic. Got: ${aliasedParamsDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const destructuredParamsDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nconst { sort } = params\nsort\n</script>\n`
+    )
+    if (!destructuredParamsDiagnostics.some((entry) => entry.code === 'pp-query-via-params')) {
+      throw new Error(
+        `Expected destructured params diagnostic. Got: ${destructuredParamsDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const aliasedRouteParamDiagnostics = service.getDiagnostics(
+      fixture.boardShowFilePath,
+      `<script server>\nconst routeParams = params\nrouteParams.boardSlug\n</script>\n`
+    )
+    if (aliasedRouteParamDiagnostics.some((entry) => entry.code === 'pp-query-via-params')) {
+      throw new Error(
+        `Expected aliased route params access to skip AGENTS query diagnostic. Got: ${aliasedRouteParamDiagnostics
           .map((entry) => String(entry.code))
           .join(', ')}`
       )
