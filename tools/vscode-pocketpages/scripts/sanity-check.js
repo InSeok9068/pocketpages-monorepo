@@ -345,6 +345,24 @@ module.exports = {
 `
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'board.js'),
+    `module.exports = {
+  canAcceptPosts() {
+    return true
+  },
+}
+`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'post.js'),
+    `module.exports = {
+  canPublish() {
+    return true
+  },
+}
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
     `<% const flashTone = isErrorFlash ? 'error' : 'notice' %>\n<div><%= flashMessage %> / <%= flashTone %> / <%= flashMeta.count %></div>\n`
   )
@@ -389,6 +407,8 @@ module.exports = {
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
     boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
     boardServiceConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service-consumer.js'),
+    boardRoleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'board.js'),
+    postRoleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'post.js'),
     flashAlertFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
     typedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'typed-panel.ejs'),
     propertyPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'property-panel.ejs'),
@@ -931,6 +951,30 @@ boardService.readAuthState(
     )
     if (!resolvePathTargetInfo || normalizeFilePath(resolvePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.boardServiceFilePath)) {
       throw new Error(`Expected resolve() path target info. Got: ${JSON.stringify(resolvePathTargetInfo)}`)
+    }
+
+    const groupedResolveText = `<script server>
+const roles = {
+  boardRole: resolve('roles/board'),
+  postRole: resolve('roles/post'),
+}
+</script>\n`
+    const groupedBoardResolveDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      groupedResolveText,
+      groupedResolveText.indexOf('roles/board') + 2
+    )
+    if (!groupedBoardResolveDefinition || normalizeFilePath(groupedBoardResolveDefinition) !== normalizeFilePath(fixture.boardRoleFilePath)) {
+      throw new Error(`Expected grouped resolve() definition target for roles/board. Got: ${groupedBoardResolveDefinition}`)
+    }
+
+    const groupedPostResolveDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      groupedResolveText,
+      groupedResolveText.indexOf('roles/post') + 2
+    )
+    if (!groupedPostResolveDefinition || normalizeFilePath(groupedPostResolveDefinition) !== normalizeFilePath(fixture.postRoleFilePath)) {
+      throw new Error(`Expected grouped resolve() definition target for roles/post. Got: ${groupedPostResolveDefinition}`)
     }
 
     const includeDefinition = service.getDefinitionTarget(
@@ -2047,6 +2091,42 @@ metaPayload.trim()
       )
     }
 
+    const flashGuardPatternDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nconst flashMessage = params && params.__flash ? String(params.__flash).trim() : ''\nflashMessage\n</script>\n`
+    )
+    if (flashGuardPatternDiagnostics.some((entry) => entry.code === 'pp-query-via-params')) {
+      throw new Error(
+        `Expected real flash guard pattern to skip AGENTS query diagnostic. Got: ${flashGuardPatternDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const routeParamTrimDiagnostics = service.getDiagnostics(
+      fixture.boardShowFilePath,
+      `<script server>\nconst boardSlug = String(params.boardSlug || '').trim()\nboardSlug\n</script>\n`
+    )
+    if (routeParamTrimDiagnostics.some((entry) => entry.code === 'pp-query-via-params')) {
+      throw new Error(
+        `Expected route param String(...).trim() pattern to skip AGENTS query diagnostic. Got: ${routeParamTrimDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const queryParamTrimDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nconst sort = String(params.sort || '').trim()\nsort\n</script>\n`
+    )
+    if (!queryParamTrimDiagnostics.some((entry) => entry.code === 'pp-query-via-params')) {
+      throw new Error(
+        `Expected query-like String(params.sort || '').trim() pattern to report AGENTS query diagnostic. Got: ${queryParamTrimDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
     const aliasedParamsDiagnostics = service.getDiagnostics(
       fixture.boardsFilePath,
       `<script server>\nconst query = params\nquery.sort\n</script>\n`
@@ -2123,6 +2203,35 @@ metaPayload.trim()
     ) {
       throw new Error(
         `Expected second repeated schema diagnostic run to drop stale missing_field issues. Got: ${staleSchemaSecondDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+
+    const staleRecordSetFirstText =
+      `<script server>\nconst board = $app.findRecordById('boards', 'board-1')\nboard.set('missing_field', request.url.query.sort)\n</script>\n`
+    const staleRecordSetSecondText =
+      `<script server>\nconst board = $app.findRecordById('boards', 'board-1')\nboard.set('name', request.url.query.sort)\n</script>\n`
+    const staleRecordSetFirstDiagnostics = service.getDiagnostics(fixture.boardsFilePath, staleRecordSetFirstText)
+    if (
+      !staleRecordSetFirstDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "boards"')
+      )
+    ) {
+      throw new Error(
+        `Expected first repeated record.set() diagnostic run to report missing_field. Got: ${staleRecordSetFirstDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+    const staleRecordSetSecondDiagnostics = service.getDiagnostics(fixture.boardsFilePath, staleRecordSetSecondText)
+    if (
+      staleRecordSetSecondDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "boards"')
+      )
+    ) {
+      throw new Error(
+        `Expected second repeated record.set() diagnostic run to drop stale missing_field issues. Got: ${staleRecordSetSecondDiagnostics
           .map((entry) => String(entry.message))
           .join(' | ')}`
       )
@@ -2667,6 +2776,15 @@ const state = {
     }
     if (!documentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/_private/flash-alert.ejs'))) {
       throw new Error(`Expected include() document link target. Got: ${documentLinkTargets.join(', ')}`)
+    }
+
+    const groupedResolveDocumentLinks = service.getDocumentLinks(fixture.boardsFilePath, groupedResolveText)
+    const groupedResolveTargets = groupedResolveDocumentLinks.map((entry) => normalizeFilePath(entry.targetFilePath))
+    if (!groupedResolveTargets.includes(normalizeFilePath(fixture.boardRoleFilePath))) {
+      throw new Error(`Expected grouped resolve() document link target for roles/board. Got: ${groupedResolveTargets.join(', ')}`)
+    }
+    if (!groupedResolveTargets.includes(normalizeFilePath(fixture.postRoleFilePath))) {
+      throw new Error(`Expected grouped resolve() document link target for roles/post. Got: ${groupedResolveTargets.join(', ')}`)
     }
 
     const assetDocumentLinks = service.getDocumentLinks(

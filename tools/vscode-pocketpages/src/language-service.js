@@ -6,6 +6,7 @@ const ts = require("typescript");
 const { buildTemplateVirtualText, extractTemplateCodeBlocks, getTemplateCodeBlockAtOffset } = require("./ejs-template");
 const { extractServerBlocks, getServerBlockAtOffset } = require("./script-server");
 const { PocketPagesProjectIndex, POCKETPAGES_GLOBAL_NAMES, collectIncludeCallEntries } = require("./project-index");
+const { createDocumentAnalysis, createSourceFileForText } = require("./document-analysis");
 const {
   collectResolveRequestPaths,
   collectPathContexts,
@@ -207,115 +208,6 @@ function flattenDiagnosticMessage(messageText) {
   }
 
   return parts.join("\n");
-}
-
-function createSourceFileForText(fileName, text) {
-  return ts.createSourceFile(fileName, String(text || ""), ts.ScriptTarget.Latest, true);
-}
-
-function createDocumentAnalysis(filePath, documentText) {
-  const normalizedFilePath = normalizePath(filePath);
-  const currentText = String(documentText || "");
-  const sourceFilesByKey = new Map();
-  let blocks = null;
-  let templateBlocks = null;
-  let templateVirtualText = null;
-  let pathContexts = null;
-  let analysisText = null;
-  let analysisSourceFile = null;
-  let documentSourceFile = null;
-  let privateResolveCallSpans = null;
-
-  const getCachedSourceFile = (cacheKey, textValue, fileName) => {
-    if (sourceFilesByKey.has(cacheKey)) {
-      return sourceFilesByKey.get(cacheKey);
-    }
-
-    const sourceFile = createSourceFileForText(fileName, textValue);
-    sourceFilesByKey.set(cacheKey, sourceFile);
-    return sourceFile;
-  };
-
-  return {
-    getBlocks() {
-      if (!blocks) {
-        blocks = extractServerBlocks(currentText);
-      }
-
-      return blocks;
-    },
-
-    getTemplateBlocks() {
-      if (!templateBlocks) {
-        templateBlocks = extractTemplateCodeBlocks(currentText);
-      }
-
-      return templateBlocks;
-    },
-
-    getTemplateVirtualText() {
-      if (templateVirtualText === null) {
-        templateVirtualText = buildTemplateVirtualText(currentText);
-      }
-
-      return templateVirtualText;
-    },
-
-    getPathContexts() {
-      if (!pathContexts) {
-        pathContexts = collectPathContexts(currentText);
-      }
-
-      return pathContexts;
-    },
-
-    getAnalysisText() {
-      if (analysisText === null) {
-        analysisText = isEjsFile(normalizedFilePath) ? this.getTemplateVirtualText() : currentText;
-      }
-
-      return analysisText;
-    },
-
-    getDocumentSourceFile() {
-      if (!documentSourceFile) {
-        documentSourceFile = getCachedSourceFile("document", currentText, normalizedFilePath);
-      }
-
-      return documentSourceFile;
-    },
-
-    getAnalysisSourceFile() {
-      const currentAnalysisText = this.getAnalysisText();
-      if (currentAnalysisText === currentText) {
-        return this.getDocumentSourceFile();
-      }
-
-      if (!analysisSourceFile) {
-        analysisSourceFile = getCachedSourceFile("analysis", currentAnalysisText, `${normalizedFilePath}.__analysis__.ts`);
-      }
-
-      return analysisSourceFile;
-    },
-
-    getBlockSourceFile(block) {
-      return getCachedSourceFile(
-        `block:${block.contentStart}:${block.contentEnd}`,
-        block.content,
-        `${normalizedFilePath}.__block_${block.contentStart}.ts`
-      );
-    },
-
-    getPrivateResolveCallSpans() {
-      if (!privateResolveCallSpans) {
-        privateResolveCallSpans = isScriptFile(normalizedFilePath)
-          ? collectResolveCallSpansFromScript(currentText, { sourceFile: this.getDocumentSourceFile() })
-          : collectResolveCallSpansFromTemplate(currentText);
-      }
-
-      return privateResolveCallSpans;
-    },
-  };
 }
 
 const EJS_IN_SCRIPT_RE = /<%(?![%#])[_=-]?[\s\S]*?[-_]?%>/g;
@@ -1395,6 +1287,29 @@ function buildSchemaFieldDiagnostic(projectIndex, context, analysisText, offsetB
     start: offsetBase + context.start,
     end: offsetBase + context.end,
   };
+}
+
+function buildSchemaCollectionDiagnostic(context, offsetBase = 0) {
+  return {
+    code: "pp-schema-collection",
+    category: ts.DiagnosticCategory.Warning,
+    message: `Unknown PocketBase collection "${context.value}" in ${context.methodName}().`,
+    start: offsetBase + context.start,
+    end: offsetBase + context.end,
+  };
+}
+
+function dedupeDiagnostics(diagnostics) {
+  const uniqueDiagnostics = new Map();
+
+  for (const diagnostic of diagnostics) {
+    const key = `${diagnostic.code}:${diagnostic.category}:${diagnostic.start}:${diagnostic.end}:${diagnostic.message}`;
+    if (!uniqueDiagnostics.has(key)) {
+      uniqueDiagnostics.set(key, diagnostic);
+    }
+  }
+
+  return [...uniqueDiagnostics.values()];
 }
 
 class ProjectLanguageService {
@@ -3677,34 +3592,32 @@ class ProjectLanguageService {
     return entries;
   }
 
-  getDiagnostics(filePath, documentText) {
-    const documentAnalysis = createDocumentAnalysis(filePath, documentText);
-    const blocks = documentAnalysis.getBlocks();
-    const templateBlocks = documentAnalysis.getTemplateBlocks();
-    const collectionMethodNames = this.projectIndex.getCollectionMethodNames();
-    const diagnostics = collectClientScriptSyntacticDiagnostics(documentText);
-    const privatePagesFile = isPrivatePagesFile(filePath);
-
-    if (privatePagesFile) {
-      const resolveCallSpans = documentAnalysis.getPrivateResolveCallSpans();
-
-      for (const span of resolveCallSpans) {
-        diagnostics.push({
-          code: "pp-private-resolve",
-          category: ts.DiagnosticCategory.Warning,
-          message: "Do not use resolve() inside _private files. Resolve dependencies in the entry and pass them in.",
-          start: span.start,
-          end: span.end,
-        });
-      }
+  collectPrivateResolveDiagnostics(filePath, documentAnalysis) {
+    if (!isPrivatePagesFile(filePath)) {
+      return [];
     }
+
+    return documentAnalysis.getPrivateResolveCallSpans().map((span) => ({
+      code: "pp-private-resolve",
+      category: ts.DiagnosticCategory.Warning,
+      message: "Do not use resolve() inside _private files. Resolve dependencies in the entry and pass them in.",
+      start: span.start,
+      end: span.end,
+    }));
+  }
+
+  collectServerBlockDiagnostics(filePath, blocks, collectionMethodNames, documentAnalysis) {
+    const diagnostics = [];
 
     for (const block of blocks) {
       const virtual = this.upsertVirtualFile(filePath, block);
       const relaxedBodyDiagnosticSpans = collectRelaxedBodyDiagnosticSpans(block.content, {
         sourceFile: documentAnalysis.getBlockSourceFile(block),
       });
-      const rawDiagnostics = [...this.languageService.getSyntacticDiagnostics(virtual.fileName), ...this.languageService.getSemanticDiagnostics(virtual.fileName)];
+      const rawDiagnostics = [
+        ...this.languageService.getSyntacticDiagnostics(virtual.fileName),
+        ...this.languageService.getSemanticDiagnostics(virtual.fileName),
+      ];
 
       for (const diagnostic of rawDiagnostics) {
         if (diagnostic && diagnostic.code === 1108) {
@@ -3737,13 +3650,7 @@ class ProjectLanguageService {
 
       for (const context of collectSchemaContexts(block.content, { collectionMethodNames })) {
         if (context.kind === "collection-name" && !this.projectIndex.hasCollection(context.value)) {
-            diagnostics.push({
-              code: "pp-schema-collection",
-              category: ts.DiagnosticCategory.Warning,
-              message: `Unknown PocketBase collection "${context.value}" in ${context.methodName}().`,
-              start: block.contentStart + context.start,
-              end: block.contentStart + context.end,
-            });
+          diagnostics.push(buildSchemaCollectionDiagnostic(context, block.contentStart));
         }
 
         if (context.kind === "record-field") {
@@ -3761,71 +3668,78 @@ class ProjectLanguageService {
       }
     }
 
-    if (templateBlocks.length) {
-      const templateVirtual = this.upsertTemplateVirtualFile(filePath, documentText);
-      const templateVirtualText = documentAnalysis.getTemplateVirtualText();
-      const rawDiagnostics = [
-        ...this.languageService.getSyntacticDiagnostics(templateVirtual.fileName),
-        ...this.languageService.getSemanticDiagnostics(templateVirtual.fileName),
-      ];
-      const overlapsTemplateBlock = (start, end) =>
-        templateBlocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
-      const overlapsServerBlock = (start, end) =>
-        blocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
+    return diagnostics;
+  }
 
-      for (const diagnostic of rawDiagnostics) {
-        if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number") {
-          continue;
-        }
+  collectTemplateDiagnostics(filePath, documentText, blocks, templateBlocks, collectionMethodNames, documentAnalysis) {
+    if (!templateBlocks.length) {
+      return [];
+    }
 
-        const start = this.mapVirtualOffsetToDocumentOffset(templateVirtual.fileName, diagnostic.start);
-        const end = this.mapVirtualOffsetToDocumentOffset(templateVirtual.fileName, diagnostic.start + diagnostic.length);
+    const diagnostics = [];
+    const templateVirtual = this.upsertTemplateVirtualFile(filePath, documentText);
+    const templateVirtualText = documentAnalysis.getTemplateVirtualText();
+    const rawDiagnostics = [
+      ...this.languageService.getSyntacticDiagnostics(templateVirtual.fileName),
+      ...this.languageService.getSemanticDiagnostics(templateVirtual.fileName),
+    ];
+    const overlapsTemplateBlock = (start, end) =>
+      templateBlocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
+    const overlapsServerBlock = (start, end) =>
+      blocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
 
-        if (start === null || end === null) {
-          continue;
-        }
-
-        if (!overlapsTemplateBlock(start, end) || overlapsServerBlock(start, end)) {
-          continue;
-        }
-
-        diagnostics.push({
-          code: diagnostic.code,
-          category: diagnostic.category,
-          message: flattenDiagnosticMessage(diagnostic.messageText),
-          start,
-          end,
-        });
+    for (const diagnostic of rawDiagnostics) {
+      if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number") {
+        continue;
       }
 
-      for (const context of collectSchemaContexts(templateVirtualText, { collectionMethodNames })) {
-        if (!overlapsTemplateBlock(context.start, context.end) || overlapsServerBlock(context.start, context.end)) {
-          continue;
-        }
+      const start = this.mapVirtualOffsetToDocumentOffset(templateVirtual.fileName, diagnostic.start);
+      const end = this.mapVirtualOffsetToDocumentOffset(templateVirtual.fileName, diagnostic.start + diagnostic.length);
 
-        if (context.kind === "collection-name" && !this.projectIndex.hasCollection(context.value)) {
-          diagnostics.push({
-            code: "pp-schema-collection",
-            category: ts.DiagnosticCategory.Warning,
-            message: `Unknown PocketBase collection "${context.value}" in ${context.methodName}().`,
-            start: context.start,
-            end: context.end,
-          });
-        }
+      if (start === null || end === null) {
+        continue;
+      }
 
-        if (context.kind === "record-field") {
-          const fieldDiagnostic = buildSchemaFieldDiagnostic(
-            this.projectIndex,
-            context,
-            templateVirtualText
-          );
+      if (!overlapsTemplateBlock(start, end) || overlapsServerBlock(start, end)) {
+        continue;
+      }
 
-          if (fieldDiagnostic) {
-            diagnostics.push(fieldDiagnostic);
-          }
+      diagnostics.push({
+        code: diagnostic.code,
+        category: diagnostic.category,
+        message: flattenDiagnosticMessage(diagnostic.messageText),
+        start,
+        end,
+      });
+    }
+
+    for (const context of collectSchemaContexts(templateVirtualText, { collectionMethodNames })) {
+      if (!overlapsTemplateBlock(context.start, context.end) || overlapsServerBlock(context.start, context.end)) {
+        continue;
+      }
+
+      if (context.kind === "collection-name" && !this.projectIndex.hasCollection(context.value)) {
+        diagnostics.push(buildSchemaCollectionDiagnostic(context));
+      }
+
+      if (context.kind === "record-field") {
+        const fieldDiagnostic = buildSchemaFieldDiagnostic(
+          this.projectIndex,
+          context,
+          templateVirtualText
+        );
+
+        if (fieldDiagnostic) {
+          diagnostics.push(fieldDiagnostic);
         }
       }
     }
+
+    return diagnostics;
+  }
+
+  collectProjectRuleDiagnostics(filePath, documentText, documentAnalysis) {
+    const diagnostics = [];
 
     for (const diagnostic of collectAgentsRuleDiagnostics(this.projectIndex, filePath, documentText, {
       analysisText: documentAnalysis.getAnalysisText(),
@@ -3839,15 +3753,28 @@ class ProjectLanguageService {
       diagnostics.push(diagnostic);
     }
 
-    const uniqueDiagnostics = new Map();
-    for (const diagnostic of diagnostics) {
-      const key = `${diagnostic.code}:${diagnostic.category}:${diagnostic.start}:${diagnostic.end}:${diagnostic.message}`;
-      if (!uniqueDiagnostics.has(key)) {
-        uniqueDiagnostics.set(key, diagnostic);
-      }
-    }
+    return diagnostics;
+  }
 
-    return [...uniqueDiagnostics.values()];
+  getDiagnostics(filePath, documentText) {
+    const documentAnalysis = createDocumentAnalysis({
+      filePath,
+      documentText,
+      collectResolveCallSpansFromScript,
+      collectResolveCallSpansFromTemplate,
+      collectPathContexts,
+    });
+    const blocks = documentAnalysis.getBlocks();
+    const templateBlocks = documentAnalysis.getTemplateBlocks();
+    const collectionMethodNames = this.projectIndex.getCollectionMethodNames();
+    const diagnostics = collectClientScriptSyntacticDiagnostics(documentText);
+
+    diagnostics.push(...this.collectPrivateResolveDiagnostics(filePath, documentAnalysis));
+    diagnostics.push(...this.collectServerBlockDiagnostics(filePath, blocks, collectionMethodNames, documentAnalysis));
+    diagnostics.push(...this.collectTemplateDiagnostics(filePath, documentText, blocks, templateBlocks, collectionMethodNames, documentAnalysis));
+    diagnostics.push(...this.collectProjectRuleDiagnostics(filePath, documentText, documentAnalysis));
+
+    return dedupeDiagnostics(diagnostics);
   }
 
   getCodeActions(filePath, documentText, range) {
