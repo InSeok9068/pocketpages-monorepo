@@ -1,0 +1,10 @@
+{
+  "name": "@pocketpages/test-support",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./service-harness": "./service-harness.mjs",
+    "./helpers/*": "./helpers/*",
+    "./fixtures/*": "./fixtures/*"
+  }
+}
