@@ -160,8 +160,8 @@ function collectParamsBindingPatternDiagnostics(bindingPattern, allowedNames, so
   }
 }
 
-function collectParamsFlowDiagnostics(scriptText, allowedRouteParamNames) {
-  const sourceFile = ts.createSourceFile("pocketpages-agents-params-flow.ts", scriptText, ts.ScriptTarget.Latest, true);
+function collectParamsFlowDiagnostics(scriptText, allowedRouteParamNames, options = {}) {
+  const sourceFile = options.sourceFile || ts.createSourceFile("pocketpages-agents-params-flow.ts", scriptText, ts.ScriptTarget.Latest, true);
   const diagnostics = [];
   const allowedNames = new Set(
     (Array.isArray(allowedRouteParamNames) ? allowedRouteParamNames : []).filter(Boolean)

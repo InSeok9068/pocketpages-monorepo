@@ -27,6 +27,36 @@ function normalizeFilePath(filePath) {
   return String(filePath || '').replace(/\\/g, '/')
 }
 
+function serializeDiagnostics(diagnostics) {
+  return (Array.isArray(diagnostics) ? diagnostics : [])
+    .map((entry) => ({
+      code: entry.code,
+      category: entry.category,
+      message: String(entry.message || ''),
+      start: typeof entry.start === 'number' ? entry.start : -1,
+      end: typeof entry.end === 'number' ? entry.end : -1,
+    }))
+    .sort((left, right) => {
+      if (left.start !== right.start) {
+        return left.start - right.start
+      }
+
+      if (left.end !== right.end) {
+        return left.end - right.end
+      }
+
+      if (String(left.code) !== String(right.code)) {
+        return String(left.code).localeCompare(String(right.code))
+      }
+
+      if (left.category !== right.category) {
+        return left.category - right.category
+      }
+
+      return left.message.localeCompare(right.message)
+    })
+}
+
 function createFixtureApp(repoRoot) {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-fixture-'))
   const appRoot = path.join(fixtureRoot, 'apps', 'fixture-app')
@@ -2050,6 +2080,76 @@ metaPayload.trim()
         `Expected aliased route params access to skip AGENTS query diagnostic. Got: ${aliasedRouteParamDiagnostics
           .map((entry) => String(entry.code))
           .join(', ')}`
+      )
+    }
+
+    const stableParamsDiagnosticsText = `<script server>\nconst query = params\nquery.sort\n</script>\n`
+    const stableParamsDiagnosticsFirst = serializeDiagnostics(
+      service.getDiagnostics(fixture.boardsFilePath, stableParamsDiagnosticsText)
+    )
+    const stableParamsDiagnosticsSecond = serializeDiagnostics(
+      service.getDiagnostics(fixture.boardsFilePath, stableParamsDiagnosticsText)
+    )
+    if (JSON.stringify(stableParamsDiagnosticsFirst) !== JSON.stringify(stableParamsDiagnosticsSecond)) {
+      throw new Error(
+        `Expected repeated diagnostics to stay stable for the same JS input. Got: ${JSON.stringify({
+          first: stableParamsDiagnosticsFirst,
+          second: stableParamsDiagnosticsSecond,
+        })}`
+      )
+    }
+
+    const staleSchemaFirstText =
+      `<script server>\nconst board = $app.findRecordById('boards', 'board-1')\nboard.get('missing_field')\n</script>\n`
+    const staleSchemaSecondText =
+      `<script server>\nconst board = $app.findRecordById('boards', 'board-1')\nboard.get('name')\n</script>\n`
+    const staleSchemaFirstDiagnostics = service.getDiagnostics(fixture.boardsFilePath, staleSchemaFirstText)
+    if (
+      !staleSchemaFirstDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "boards"')
+      )
+    ) {
+      throw new Error(
+        `Expected first repeated schema diagnostic run to report missing_field. Got: ${staleSchemaFirstDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+    const staleSchemaSecondDiagnostics = service.getDiagnostics(fixture.boardsFilePath, staleSchemaSecondText)
+    if (
+      staleSchemaSecondDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "boards"')
+      )
+    ) {
+      throw new Error(
+        `Expected second repeated schema diagnostic run to drop stale missing_field issues. Got: ${staleSchemaSecondDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+
+    const staleTemplateFirstText =
+      `<script server>\nconst authState = { email: '' }\n</script>\n<p><%= missingAuthState.email %></p>\n`
+    const staleTemplateSecondText =
+      `<script server>\nconst authState = { email: '' }\n</script>\n<p><%= authState.email %></p>\n`
+    const staleTemplateFirstDiagnostics = service.getDiagnostics(fixture.boardsFilePath, staleTemplateFirstText)
+    if (
+      !staleTemplateFirstDiagnostics.some((entry) => entry.code === 2304 && String(entry.message).includes('missingAuthState'))
+    ) {
+      throw new Error(
+        `Expected first repeated template diagnostic run to report missingAuthState. Got: ${staleTemplateFirstDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+    const staleTemplateSecondDiagnostics = service.getDiagnostics(fixture.boardsFilePath, staleTemplateSecondText)
+    if (
+      staleTemplateSecondDiagnostics.some((entry) => entry.code === 2304 && String(entry.message).includes('missingAuthState'))
+    ) {
+      throw new Error(
+        `Expected second repeated template diagnostic run to drop stale missingAuthState issues. Got: ${staleTemplateSecondDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
       )
     }
 

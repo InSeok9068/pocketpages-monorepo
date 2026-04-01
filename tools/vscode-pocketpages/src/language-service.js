@@ -209,6 +209,115 @@ function flattenDiagnosticMessage(messageText) {
   return parts.join("\n");
 }
 
+function createSourceFileForText(fileName, text) {
+  return ts.createSourceFile(fileName, String(text || ""), ts.ScriptTarget.Latest, true);
+}
+
+function createDocumentAnalysis(filePath, documentText) {
+  const normalizedFilePath = normalizePath(filePath);
+  const currentText = String(documentText || "");
+  const sourceFilesByKey = new Map();
+  let blocks = null;
+  let templateBlocks = null;
+  let templateVirtualText = null;
+  let pathContexts = null;
+  let analysisText = null;
+  let analysisSourceFile = null;
+  let documentSourceFile = null;
+  let privateResolveCallSpans = null;
+
+  const getCachedSourceFile = (cacheKey, textValue, fileName) => {
+    if (sourceFilesByKey.has(cacheKey)) {
+      return sourceFilesByKey.get(cacheKey);
+    }
+
+    const sourceFile = createSourceFileForText(fileName, textValue);
+    sourceFilesByKey.set(cacheKey, sourceFile);
+    return sourceFile;
+  };
+
+  return {
+    getBlocks() {
+      if (!blocks) {
+        blocks = extractServerBlocks(currentText);
+      }
+
+      return blocks;
+    },
+
+    getTemplateBlocks() {
+      if (!templateBlocks) {
+        templateBlocks = extractTemplateCodeBlocks(currentText);
+      }
+
+      return templateBlocks;
+    },
+
+    getTemplateVirtualText() {
+      if (templateVirtualText === null) {
+        templateVirtualText = buildTemplateVirtualText(currentText);
+      }
+
+      return templateVirtualText;
+    },
+
+    getPathContexts() {
+      if (!pathContexts) {
+        pathContexts = collectPathContexts(currentText);
+      }
+
+      return pathContexts;
+    },
+
+    getAnalysisText() {
+      if (analysisText === null) {
+        analysisText = isEjsFile(normalizedFilePath) ? this.getTemplateVirtualText() : currentText;
+      }
+
+      return analysisText;
+    },
+
+    getDocumentSourceFile() {
+      if (!documentSourceFile) {
+        documentSourceFile = getCachedSourceFile("document", currentText, normalizedFilePath);
+      }
+
+      return documentSourceFile;
+    },
+
+    getAnalysisSourceFile() {
+      const currentAnalysisText = this.getAnalysisText();
+      if (currentAnalysisText === currentText) {
+        return this.getDocumentSourceFile();
+      }
+
+      if (!analysisSourceFile) {
+        analysisSourceFile = getCachedSourceFile("analysis", currentAnalysisText, `${normalizedFilePath}.__analysis__.ts`);
+      }
+
+      return analysisSourceFile;
+    },
+
+    getBlockSourceFile(block) {
+      return getCachedSourceFile(
+        `block:${block.contentStart}:${block.contentEnd}`,
+        block.content,
+        `${normalizedFilePath}.__block_${block.contentStart}.ts`
+      );
+    },
+
+    getPrivateResolveCallSpans() {
+      if (!privateResolveCallSpans) {
+        privateResolveCallSpans = isScriptFile(normalizedFilePath)
+          ? collectResolveCallSpansFromScript(currentText, { sourceFile: this.getDocumentSourceFile() })
+          : collectResolveCallSpansFromTemplate(currentText);
+      }
+
+      return privateResolveCallSpans;
+    },
+  };
+}
+
 const EJS_IN_SCRIPT_RE = /<%(?![%#])[_=-]?[\s\S]*?[-_]?%>/g;
 const JAVASCRIPT_MIME_TYPES = new Set([
   "text/javascript",
@@ -507,8 +616,8 @@ function collectBindingPatternSpans(bindingPattern, sourceFile, spans) {
   }
 }
 
-function collectRelaxedBodyDiagnosticSpans(scriptText) {
-  const sourceFile = ts.createSourceFile("pocketpages-body-relaxation.ts", scriptText, ts.ScriptTarget.Latest, true);
+function collectRelaxedBodyDiagnosticSpans(scriptText, options = {}) {
+  const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-body-relaxation.ts", scriptText);
   const aliasNames = new Set();
   const spans = [];
 
@@ -572,8 +681,8 @@ function shouldSuppressDiagnosticForRelaxedBodyAccess(diagnostic, block, relaxed
   return relaxedSpans.some((span) => diagnosticStartInBlock >= span.start && diagnosticEndInBlock <= span.end);
 }
 
-function collectResolveCallSpansFromScript(scriptText) {
-  const sourceFile = ts.createSourceFile("pocketpages-private-resolve.ts", scriptText, ts.ScriptTarget.Latest, true);
+function collectResolveCallSpansFromScript(scriptText, options = {}) {
+  const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-private-resolve.ts", scriptText);
   const spans = [];
 
   const visit = (node) => {
@@ -688,8 +797,8 @@ function readStringLiteralText(node) {
   return target && ts.isStringLiteralLike(target) ? target.text : null;
 }
 
-function collectIncludeContextDiagnostics(scriptText) {
-  const sourceFile = ts.createSourceFile("pocketpages-agents-include.ts", scriptText, ts.ScriptTarget.Latest, true);
+function collectIncludeContextDiagnostics(scriptText, options = {}) {
+  const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-agents-include.ts", scriptText);
   const diagnostics = [];
   const forbiddenNames = new Set(["api", "request", "response", "resolve", "params", "data"]);
 
@@ -1142,10 +1251,11 @@ function resolvePathContextTargetWithIndex(projectIndex, filePath, context) {
   return null;
 }
 
-function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText) {
+function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText, options = {}) {
   const diagnostics = [];
+  const pathContexts = Array.isArray(options.pathContexts) ? options.pathContexts : collectPathContexts(documentText);
 
-  for (const context of collectPathContexts(documentText)) {
+  for (const context of pathContexts) {
     if (context.kind === "resolve-path" && /^\/?_private\//.test(context.value)) {
       continue;
     }
@@ -1197,24 +1307,30 @@ function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText) 
   return diagnostics;
 }
 
-function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText) {
+function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText, options = {}) {
   const diagnostics = [];
-  const analysisText = isEjsFile(filePath) ? buildTemplateVirtualText(documentText) : documentText;
+  const analysisText = typeof options.analysisText === "string"
+    ? options.analysisText
+    : isEjsFile(filePath)
+      ? buildTemplateVirtualText(documentText)
+      : documentText;
+  const analysisSourceFile = options.analysisSourceFile || null;
+  const pathContexts = Array.isArray(options.pathContexts) ? options.pathContexts : collectPathContexts(documentText);
   const routeParamNames = projectIndex.getRouteParamEntries(filePath).map((entry) => entry.name);
 
-  for (const diagnostic of collectParamsFlowDiagnostics(analysisText, routeParamNames)) {
+  for (const diagnostic of collectParamsFlowDiagnostics(analysisText, routeParamNames, { sourceFile: analysisSourceFile })) {
     diagnostics.push(diagnostic);
   }
 
-  for (const diagnostic of collectIncludeContextDiagnostics(analysisText)) {
+  for (const diagnostic of collectIncludeContextDiagnostics(analysisText, { sourceFile: analysisSourceFile })) {
     diagnostics.push(diagnostic);
   }
 
-  for (const diagnostic of collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText)) {
+  for (const diagnostic of collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText, { pathContexts })) {
     diagnostics.push(diagnostic);
   }
 
-  for (const context of collectPathContexts(documentText)) {
+  for (const context of pathContexts) {
     if (context.kind === "resolve-path" && /^\/?_private\//.test(context.value)) {
       diagnostics.push({
         code: "pp-resolve-private-prefix",
@@ -3562,16 +3678,15 @@ class ProjectLanguageService {
   }
 
   getDiagnostics(filePath, documentText) {
-    const blocks = extractServerBlocks(documentText);
-    const templateBlocks = extractTemplateCodeBlocks(documentText);
+    const documentAnalysis = createDocumentAnalysis(filePath, documentText);
+    const blocks = documentAnalysis.getBlocks();
+    const templateBlocks = documentAnalysis.getTemplateBlocks();
     const collectionMethodNames = this.projectIndex.getCollectionMethodNames();
     const diagnostics = collectClientScriptSyntacticDiagnostics(documentText);
     const privatePagesFile = isPrivatePagesFile(filePath);
 
     if (privatePagesFile) {
-      const resolveCallSpans = isScriptFile(filePath)
-        ? collectResolveCallSpansFromScript(documentText)
-        : collectResolveCallSpansFromTemplate(documentText);
+      const resolveCallSpans = documentAnalysis.getPrivateResolveCallSpans();
 
       for (const span of resolveCallSpans) {
         diagnostics.push({
@@ -3586,7 +3701,9 @@ class ProjectLanguageService {
 
     for (const block of blocks) {
       const virtual = this.upsertVirtualFile(filePath, block);
-      const relaxedBodyDiagnosticSpans = collectRelaxedBodyDiagnosticSpans(block.content);
+      const relaxedBodyDiagnosticSpans = collectRelaxedBodyDiagnosticSpans(block.content, {
+        sourceFile: documentAnalysis.getBlockSourceFile(block),
+      });
       const rawDiagnostics = [...this.languageService.getSyntacticDiagnostics(virtual.fileName), ...this.languageService.getSemanticDiagnostics(virtual.fileName)];
 
       for (const diagnostic of rawDiagnostics) {
@@ -3646,7 +3763,7 @@ class ProjectLanguageService {
 
     if (templateBlocks.length) {
       const templateVirtual = this.upsertTemplateVirtualFile(filePath, documentText);
-      const templateVirtualText = buildTemplateVirtualText(documentText);
+      const templateVirtualText = documentAnalysis.getTemplateVirtualText();
       const rawDiagnostics = [
         ...this.languageService.getSyntacticDiagnostics(templateVirtual.fileName),
         ...this.languageService.getSemanticDiagnostics(templateVirtual.fileName),
@@ -3710,7 +3827,11 @@ class ProjectLanguageService {
       }
     }
 
-    for (const diagnostic of collectAgentsRuleDiagnostics(this.projectIndex, filePath, documentText)) {
+    for (const diagnostic of collectAgentsRuleDiagnostics(this.projectIndex, filePath, documentText, {
+      analysisText: documentAnalysis.getAnalysisText(),
+      analysisSourceFile: documentAnalysis.getAnalysisSourceFile(),
+      pathContexts: documentAnalysis.getPathContexts(),
+    })) {
       diagnostics.push(diagnostic);
     }
 
