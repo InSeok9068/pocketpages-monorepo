@@ -9,6 +9,7 @@ print_help() {
 Usage:
   ./task.sh start <service> [-- <extra args>]
   ./task.sh kill
+  ./task.sh update <target> [-- <extra args>]
   ./task.sh deploy <service>
   ./task.sh rollback <service> <version>
   ./task.sh test [service]
@@ -22,6 +23,7 @@ Usage:
 Commands:
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
+  update    Update app npm dependencies or PocketBase binaries across apps
   deploy    Upload one service deploy targets using .vscode/sftp.json
   rollback  Restore one of the last 3 deployed target versions
   test      Run node:test files under __tests__ for one service or all services
@@ -207,6 +209,57 @@ kill_pocketbase() {
       Write-Output "none"
     }
   '
+}
+
+run_update_npm() {
+  local update_script="$ROOT_DIR/scripts/up-apps.js"
+
+  if [[ ! -f "$update_script" ]]; then
+    echo "Missing update script: $update_script" >&2
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run npm update." >&2
+    exit 1
+  fi
+
+  node "$update_script" "$@"
+}
+
+run_update_pocketbase() {
+  local update_script="$ROOT_DIR/scripts/up-pocketbase.js"
+
+  if [[ ! -f "$update_script" ]]; then
+    echo "Missing update script: $update_script" >&2
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run PocketBase update." >&2
+    exit 1
+  fi
+
+  node "$update_script" "$@"
+}
+
+run_update() {
+  local target="${1:-}"
+  shift || true
+
+  case "$target" in
+    npm)
+      run_update_npm "$@"
+      ;;
+    pocketbase)
+      run_update_pocketbase "$@"
+      ;;
+    *)
+      echo "Unknown update target: $target" >&2
+      echo "Usage: ./task.sh update <npm|pocketbase> [-- <extra args>]" >&2
+      exit 1
+      ;;
+  esac
 }
 
 run_lint() {
@@ -1016,6 +1069,11 @@ if [[ "${1:-}" == "__complete_index_sections" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "__complete_update_targets" ]]; then
+  printf '%s\n' npm pocketbase
+  exit 0
+fi
+
 case "${1:-help}" in
   start)
     shift
@@ -1027,6 +1085,14 @@ case "${1:-help}" in
     ;;
   kill)
     kill_pocketbase
+    ;;
+  update)
+    shift || true
+    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh update <npm|pocketbase> [-- <extra args>]" >&2; exit 1; }
+    target="$1"
+    shift || true
+    [[ "${1:-}" == "--" ]] && shift
+    run_update "$target" "$@"
     ;;
   deploy)
     shift

@@ -19,7 +19,14 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill deploy rollback test lint diag verify index bundle format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill update deploy rollback test lint diag verify index bundle format help" -- "$cur") )
+    return
+  fi
+
+  if [[ $COMP_CWORD -eq 2 && "$cmd" == "update" ]]; then
+    local update_targets
+    update_targets="$("$script" __complete_update_targets 2>/dev/null)"
+    COMPREPLY=( $(compgen -W "$update_targets" -- "$cur") )
     return
   fi
 
@@ -44,6 +51,21 @@ _pp_dev_complete() {
       local sections
       sections="$("$script" __complete_index_sections 2>/dev/null)"
       COMPREPLY=( $(compgen -W "$sections" -- "$cur") )
+      return
+    fi
+  fi
+
+  if [[ "$cmd" == "update" && "$cur" == --* ]]; then
+    local target
+    target="${COMP_WORDS[2]}"
+
+    if [[ "$target" == "pocketbase" ]]; then
+      COMPREPLY=( $(compgen -W "--backup --backup=false --help" -- "$cur") )
+      return
+    fi
+
+    if [[ "$target" == "npm" ]]; then
+      COMPREPLY=( $(compgen -W "--help" -- "$cur") )
       return
     fi
   fi

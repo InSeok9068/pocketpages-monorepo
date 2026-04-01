@@ -69,12 +69,12 @@ function toAppName(appDir) {
  * 도움말을 출력합니다.
  */
 function printHelp() {
-  console.log('Usage: npm run up:apps [-- <npm up args>]');
+  console.log('Usage: node scripts/up-apps.js [npm up args...]');
   console.log('');
   console.log('Examples:');
-  console.log('  npm run up:apps');
-  console.log('  npm run up:apps -- --save');
-  console.log('  npm run up:apps -- --dry-run');
+  console.log('  node scripts/up-apps.js');
+  console.log('  node scripts/up-apps.js --save');
+  console.log('  node scripts/up-apps.js --dry-run');
 }
 
 /**

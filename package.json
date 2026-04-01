@@ -1,7 +1,6 @@
 {
   "scripts": {
-    "format": "prettier --write \"apps/*/pb_hooks/**/*\"",
-    "up:apps": "node scripts/up-apps.js"
+    "format": "prettier --write \"apps/*/pb_hooks/**/*\""
   },
   "devDependencies": {
     "cheerio": "^1.2.0",
