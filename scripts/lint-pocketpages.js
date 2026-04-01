@@ -38,9 +38,16 @@
 // 34) runInTransaction 콜백 안에서 바깥 $app 사용
 // 35) pb_hooks/pages 안에서 PocketBase hook 등록 API 사용
 // 36) api 엔드포인트에서 HTML 응답 반환
+// 37) resolve/include/asset/route 경로가 실제로 없는 정적 경로
+// 38) 존재하지 않는 PocketBase collection 문자열 사용
+// 39) params를 query처럼 읽는 패턴
 
 const fs = require('fs')
 const path = require('path')
+const { buildTemplateVirtualText } = require('../tools/vscode-pocketpages/src/ejs-template')
+const { collectPathContexts, collectSchemaContexts } = require('../tools/vscode-pocketpages/src/custom-context')
+const { collectParamsFlowDiagnostics } = require('../tools/vscode-pocketpages/src/flow-analysis')
+const { PocketPagesProjectIndex } = require('../tools/vscode-pocketpages/src/project-index')
 
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
@@ -212,6 +219,7 @@ function buildServiceContext(serviceDir) {
   const hooksRoot = path.join(serviceDir, 'pb_hooks')
   const pagesRoot = path.join(hooksRoot, 'pages')
   const configFile = path.join(pagesRoot, '+config.js')
+  const projectIndex = new PocketPagesProjectIndex(serviceDir)
   const files = walkFiles(hooksRoot).map((filePath) => buildFileInfo(filePath, hooksRoot, pagesRoot))
 
   const hooksCodeFiles = files.filter((file) => file.isCode)
@@ -224,6 +232,8 @@ function buildServiceContext(serviceDir) {
     serviceName: path.basename(serviceDir),
     hooksRoot,
     pagesRoot,
+    projectIndex,
+    collectionMethodNames: projectIndex.getCollectionMethodNames(),
     configFile,
     configFileInfo: pagesCodeFiles.find((file) => file.absPath === configFile) || null,
     hooksCodeFiles,
@@ -792,6 +802,137 @@ function collectTransactionOuterAppMatches(files) {
   return unique(matches)
 }
 
+function getLintAnalysisText(file) {
+  return file.isEjs ? buildTemplateVirtualText(file.content) : file.content
+}
+
+function formatLintLineMatch(file, lineNumber) {
+  const safeLineNumber = Math.max(1, lineNumber)
+  const lineText = file.lines[safeLineNumber - 1] || ''
+  return `${file.displayPath}:${safeLineNumber}:${lineText}`
+}
+
+function resolveLintPathContextTarget(projectIndex, filePath, pathContext) {
+  if (pathContext.kind === 'resolve-path') {
+    return projectIndex.resolveResolveTarget(filePath, pathContext.value)
+  }
+
+  if (pathContext.kind === 'include-path') {
+    return projectIndex.resolveIncludeTarget(filePath, pathContext.value)
+  }
+
+  if (pathContext.kind === 'asset-path') {
+    return projectIndex.resolveAssetTarget(filePath, pathContext.value)
+  }
+
+  if (pathContext.kind === 'route-path') {
+    return projectIndex.resolveRouteTarget(filePath, pathContext.value, {
+      routeSource: pathContext.routeSource,
+    })
+  }
+
+  return null
+}
+
+function collectUnresolvedPathMatches(context) {
+  const matchesByKind = {
+    resolve: [],
+    include: [],
+    asset: [],
+    route: [],
+  }
+
+  for (const file of context.lintCodeFiles) {
+    const pathContexts = collectPathContexts(file.content)
+
+    for (const pathContext of pathContexts) {
+      if (pathContext.kind === 'resolve-path' && /^\/?_private\//.test(pathContext.value)) {
+        continue
+      }
+
+      if (pathContext.kind === 'route-path' && pathContext.isDynamic) {
+        continue
+      }
+
+      if (resolveLintPathContextTarget(context.projectIndex, file.absPath, pathContext)) {
+        continue
+      }
+
+      const lineNumber = lineNumberAt(file.content, pathContext.start)
+      const match = formatLintLineMatch(file, lineNumber)
+
+      if (pathContext.kind === 'resolve-path') {
+        matchesByKind.resolve.push(match)
+        continue
+      }
+
+      if (pathContext.kind === 'include-path') {
+        matchesByKind.include.push(match)
+        continue
+      }
+
+      if (pathContext.kind === 'asset-path') {
+        matchesByKind.asset.push(match)
+        continue
+      }
+
+      if (pathContext.kind === 'route-path') {
+        matchesByKind.route.push(match)
+      }
+    }
+  }
+
+  return {
+    resolve: unique(matchesByKind.resolve),
+    include: unique(matchesByKind.include),
+    asset: unique(matchesByKind.asset),
+    route: unique(matchesByKind.route),
+  }
+}
+
+function collectUnknownCollectionMatches(context) {
+  const matches = []
+
+  for (const file of context.lintCodeFiles) {
+    const analysisText = getLintAnalysisText(file)
+    const schemaContexts = collectSchemaContexts(analysisText, {
+      collectionMethodNames: context.collectionMethodNames,
+    })
+
+    for (const schemaContext of schemaContexts) {
+      if (schemaContext.kind !== 'collection-name' || context.projectIndex.hasCollection(schemaContext.value)) {
+        continue
+      }
+
+      const lineNumber = lineNumberAt(analysisText, schemaContext.start)
+      matches.push(formatLintLineMatch(file, lineNumber))
+    }
+  }
+
+  return unique(matches)
+}
+
+function collectQueryViaParamsMatches(context) {
+  const matches = []
+
+  for (const file of context.lintCodeFiles) {
+    const analysisText = getLintAnalysisText(file)
+    const routeParamNames = context.projectIndex.getRouteParamEntries(file.absPath).map((entry) => entry.name)
+    const diagnostics = collectParamsFlowDiagnostics(analysisText, routeParamNames)
+
+    for (const diagnostic of diagnostics) {
+      if (diagnostic.code !== 'pp-query-via-params' || typeof diagnostic.start !== 'number') {
+        continue
+      }
+
+      const lineNumber = lineNumberAt(analysisText, diagnostic.start)
+      matches.push(formatLintLineMatch(file, lineNumber))
+    }
+  }
+
+  return unique(matches)
+}
+
 function lintService(context) {
   console.log(`Checking service: ${context.serviceName}`)
 
@@ -1060,6 +1201,42 @@ function lintService(context) {
     context.serviceName,
     'Invalid flash handling. Use redirect(path, { message }) instead of manually building ?__flash=....',
     manualFlashMatches,
+  )
+
+  const unresolvedPathMatches = collectUnresolvedPathMatches(context)
+  printMatches(
+    context.serviceName,
+    'Invalid resolve() target. resolve(...) must point to an existing _private module or partial.',
+    unresolvedPathMatches.resolve,
+  )
+  printMatches(
+    context.serviceName,
+    'Invalid include() target. include(...) must point to an existing partial file.',
+    unresolvedPathMatches.include,
+  )
+  printMatches(
+    context.serviceName,
+    'Invalid asset() target. asset(...) must point to an existing asset file.',
+    unresolvedPathMatches.asset,
+  )
+  printMatches(
+    context.serviceName,
+    'Invalid route path. Static href/action/hx-*/redirect paths must point to an existing route.',
+    unresolvedPathMatches.route,
+  )
+
+  const unknownCollectionMatches = collectUnknownCollectionMatches(context)
+  printMatches(
+    context.serviceName,
+    'Invalid PocketBase collection name. Use a collection that exists in pb_schema.json.',
+    unknownCollectionMatches,
+  )
+
+  const queryViaParamsMatches = collectQueryViaParamsMatches(context)
+  printWarnings(
+    context.serviceName,
+    'Discouraged params query access. Use request.url.query for query strings and reserve params for route params or __flash.',
+    queryViaParamsMatches,
   )
 
   const nestedConfigMatches = context.configFiles
