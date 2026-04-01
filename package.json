@@ -4,6 +4,7 @@
   },
   "devDependencies": {
     "@pocketpages/test-support": "file:./test-support",
+    "@types/node": "^22.19.15",
     "cheerio": "^1.2.0",
     "esbuild": "^0.25.12",
     "prettier": "^3.8.1",
