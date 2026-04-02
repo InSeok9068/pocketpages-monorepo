@@ -1,6 +1,5 @@
 {
   "html.validate.scripts": false,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
     "*.ejs": "+load.js",
@@ -33,9 +32,6 @@
   },
   "tailwindCSS.includeLanguages": {
     "ejs": "html"
-  },
-  "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "dbcode.connections": [
     {
