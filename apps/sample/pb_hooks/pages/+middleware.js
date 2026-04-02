@@ -13,12 +13,7 @@ function isApiPath(pathname) {
  * @returns {string}
  */
 function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
+  return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;')
 }
 
 /** @type {import('pocketpages').MiddlewareLoaderFunc} */
@@ -45,13 +40,8 @@ module.exports = function (api, next) {
       })
     }
 
-    const detailHtml = isDevelopment
-      ? `<pre>${escapeHtml(message)}</pre>`
-      : '<p>Something went wrong. Please try again later.</p>'
+    const detailHtml = isDevelopment ? `<pre>${escapeHtml(message)}</pre>` : '<p>Something went wrong. Please try again later.</p>'
 
-    return response.html(
-      500,
-      `<html><body><h1>Global error boundary</h1><p>Unhandled route exception.</p>${detailHtml}</body></html>`,
-    )
+    return response.html(500, `<html><body><h1>Global error boundary</h1><p>Unhandled route exception.</p>${detailHtml}</body></html>`)
   }
 }
