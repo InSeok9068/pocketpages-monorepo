@@ -9,12 +9,12 @@ print_help() {
 Usage:
   ./task.sh start <service> [-- <extra args>]
   ./task.sh kill
-  ./task.sh update <target> [-- <extra args>]
+  ./task.sh update <npm|pocketbase> [-- <extra args>]
   ./task.sh deploy <service>
-  ./task.sh rollback <service> <version>
+  ./task.sh rollback <service> <1|2|3>
   ./task.sh test [service]
   ./task.sh lint [service]
-  ./task.sh diag <file-or-service>
+  ./task.sh diag [file-or-service]
   ./task.sh verify [service]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
   ./task.sh bundle
@@ -23,16 +23,22 @@ Usage:
 Commands:
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
-  update    Update app npm dependencies or PocketBase binaries across apps
+  update    `npm` runs npm up in root and app package.json dirs; `pocketbase` runs pocketbase update in app dirs
   deploy    Upload one service deploy targets using .vscode/sftp.json
-  rollback  Restore one of the last 3 deployed target versions
+  rollback  Restore deploy history version 1, 2, or 3 for one service target set
   test      Run node:test files under __tests__ for one service or all services
   lint      Run lightweight PocketPages self-validation checks for one service or all services
-  diag      Run PocketPages editor diagnostics for PocketPages code files (.ejs/.js/.cjs/.mjs).
+  diag      Run PocketPages editor diagnostics for one file, one service, or all services when omitted
   verify    Run lint and diag together for one service or all services
   index     Query AI-friendly PocketPages project index JSON for one service
   bundle    Interactively bundle one service dependency into pb_hooks/pages/_private/vendor
   format    Run npm run format
+
+Examples:
+  ./task.sh update npm
+  ./task.sh update npm -- --save
+  ./task.sh update pocketbase
+  ./task.sh update pocketbase -- --backup
 EOF
 }
 
