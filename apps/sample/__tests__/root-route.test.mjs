@@ -78,3 +78,35 @@ test('GET /api/boards/[boardSlug] returns board snapshot json', async () => {
   assert.equal(payload.stats.totalPosts, 0);
   assert.deepEqual(payload.recentPosts, []);
 });
+
+test('GET /error-lab/page-throw returns HTML from root global catcher', async () => {
+  const response = await fetch(`${service.baseUrl}/error-lab/page-throw`);
+  const body = await response.text();
+  const $ = load(body);
+
+  assert.equal(response.status, 500);
+  assert.match(response.headers.get('content-type') || '', /^text\/html/);
+  assert.equal($('h1').first().text().trim(), 'Global error boundary');
+  assert.match(body, /Page throw from EJS route/);
+});
+
+test('GET /error-lab/middleware-throw catches JS middleware errors at root', async () => {
+  const response = await fetch(`${service.baseUrl}/error-lab/middleware-throw`);
+  const body = await response.text();
+  const $ = load(body);
+
+  assert.equal(response.status, 500);
+  assert.match(response.headers.get('content-type') || '', /^text\/html/);
+  assert.equal($('h1').first().text().trim(), 'Global error boundary');
+  assert.match(body, /Page throw from JS middleware/);
+});
+
+test('GET /api/error-lab/throw returns JSON from root global catcher', async () => {
+  const response = await fetch(`${service.baseUrl}/api/error-lab/throw`);
+  const payload = await response.json();
+
+  assert.equal(response.status, 500);
+  assert.match(response.headers.get('content-type') || '', /^application\/json/);
+  assert.equal(payload.error, 'Global error boundary caught an unhandled exception.');
+  assert.match(payload.message, /API throw from EJS route/);
+});
