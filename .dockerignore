@@ -1,0 +1,15 @@
+.git
+.github
+.history
+.vscode
+.docs
+node_modules
+scripts
+tools
+apps/*/.docs
+apps/*/__tests__
+apps/*/node_modules
+apps/*/pb_data
+apps/*/pocketbase.exe
+apps/*/pbw.exe
+packages/*/node_modules

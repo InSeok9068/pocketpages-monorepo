@@ -1,0 +1,5 @@
+{
+  "name": "@pocketpages/utils",
+  "version": "0.0.1",
+  "main": "./index.js"
+}

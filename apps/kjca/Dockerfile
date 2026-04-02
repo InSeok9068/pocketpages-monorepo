@@ -1,7 +1,8 @@
 FROM node:20-alpine AS deps
 
-WORKDIR /app
-COPY package*.json ./
+WORKDIR /workspace/apps/kjca
+COPY apps/kjca/package*.json ./
+COPY packages /workspace/packages
 RUN npm ci --omit=dev
 
 FROM alpine:3.20 AS pocketbase
@@ -21,17 +22,18 @@ RUN case "${TARGETARCH}" in \
 
 FROM alpine:3.20
 
-ENV APP_ROOT=/app
+ENV APP_ROOT=/workspace/apps/kjca
 
-WORKDIR /app
+WORKDIR /workspace/apps/kjca
 
 RUN apk add --no-cache ca-certificates
 
-COPY . .
-COPY --from=deps /app/node_modules ./node_modules
+COPY apps/kjca/. .
+COPY packages /workspace/packages
+COPY --from=deps /workspace/apps/kjca/node_modules ./node_modules
 COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
 RUN mkdir -p /opt/defaults/pb_hooks \
-  && if [ -d /app/pb_hooks ]; then cp -R /app/pb_hooks/. /opt/defaults/pb_hooks/; fi
+  && if [ -d /workspace/apps/kjca/pb_hooks ]; then cp -R /workspace/apps/kjca/pb_hooks/. /opt/defaults/pb_hooks/; fi
 
 RUN cat <<'EOF' > /usr/local/bin/start.sh
 #!/bin/sh
