@@ -17,12 +17,19 @@ function getTodayDateText() {
  */
 function parseDateOnly(dateText) {
   const normalizedDateText = String(dateText || '').trim()
+  const matchedDateParts = normalizedDateText.match(/^(\d{4}-\d{2}-\d{2})(?:\s|T|$)/)
 
-  if (!normalizedDateText || !/^\d{4}-\d{2}-\d{2}$/.test(normalizedDateText)) {
+  if (!matchedDateParts) {
     return null
   }
 
-  const parsedDate = new Date(normalizedDateText + 'T00:00:00Z')
+  const dateOnlyText = matchedDateParts[1]
+
+  if (!dateOnlyText) {
+    return null
+  }
+
+  const parsedDate = new Date(dateOnlyText + 'T00:00:00Z')
 
   if (isNaN(parsedDate.getTime())) {
     return null
