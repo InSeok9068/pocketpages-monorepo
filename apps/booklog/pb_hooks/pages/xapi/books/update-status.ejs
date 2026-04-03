@@ -30,7 +30,7 @@
   const bookId = String(form.bookId || '').trim()
   const bookDetailPath = '/books/' + bookId
   const status = String(form.status || '').trim()
-  const today = new Date().toISOString().slice(0, 10)
+  const nowIso = new Date().toISOString()
   let errorMessage = ''
 
   /**
@@ -104,7 +104,7 @@
     const shelfStartedAt = String(shelfRecord.get('started_at') || '').trim()
 
     shelfRecord.set('status', status)
-    shelfRecord.set('last_read_at', today)
+    shelfRecord.set('last_read_at', nowIso)
 
     if (status === 'queued') {
       shelfRecord.set('started_at', '')
@@ -114,16 +114,16 @@
 
     if (status === 'reading') {
       if (!shelfStartedAt) {
-        shelfRecord.set('started_at', today)
+        shelfRecord.set('started_at', nowIso)
       }
       shelfRecord.set('finished_at', '')
     }
 
     if (status === 'finished') {
       if (!shelfStartedAt) {
-        shelfRecord.set('started_at', today)
+        shelfRecord.set('started_at', nowIso)
       }
-      shelfRecord.set('finished_at', today)
+      shelfRecord.set('finished_at', nowIso)
       shelfRecord.set('progress_percent', 100)
     }
 

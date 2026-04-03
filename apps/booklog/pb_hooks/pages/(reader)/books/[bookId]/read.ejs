@@ -4,6 +4,7 @@
 
   const bookId = String(params.bookId || '').trim()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const nowIso = new Date().toISOString()
   let bookRecord = null
   let shelfRecord = null
   let bookFileRecord = null
@@ -73,10 +74,10 @@
     }
 
     if (!String(shelfRecord.get('started_at') || '').trim()) {
-      shelfRecord.set('started_at', new Date().toISOString().slice(0, 10))
+      shelfRecord.set('started_at', nowIso)
     }
 
-    shelfRecord.set('last_read_at', new Date().toISOString().slice(0, 10))
+    shelfRecord.set('last_read_at', nowIso)
     $app.save(shelfRecord)
   }
 

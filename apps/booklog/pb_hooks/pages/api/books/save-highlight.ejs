@@ -23,6 +23,7 @@
   const locator = String(form.locator || '').trim()
   const href = String(form.href || '').trim()
   const chapterLabel = String(form.chapterLabel || '').trim()
+  const nowIso = new Date().toISOString()
 
   dbg('api/books/save-highlight:start', {
     userId: userId,
@@ -77,7 +78,7 @@
     highlightRecord.set('locator', locator)
     highlightRecord.set('href', href)
     highlightRecord.set('chapter_label', chapterLabel)
-    highlightRecord.set('highlighted_at', new Date().toISOString().slice(0, 10))
+    highlightRecord.set('highlighted_at', nowIso)
 
     if (shelfRecord) {
       highlightRecord.set('shelf_id', String(shelfRecord.get('id') || ''))

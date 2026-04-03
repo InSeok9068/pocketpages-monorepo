@@ -30,6 +30,7 @@
   const bookId = String(form.bookId || '').trim()
   const bookDetailPath = '/books/' + bookId
   const reviewText = String(form.reviewText || '').trim()
+  const nowIso = new Date().toISOString()
   let errorMessage = ''
 
   dbg('xapi/books/save-review:start', {
@@ -72,7 +73,7 @@
     reviewRecord.set('book_id', String(bookRecord.get('id') || ''))
     reviewRecord.set('visibility', 'private')
     reviewRecord.set('review_text', reviewText)
-    reviewRecord.set('reviewed_at', new Date().toISOString().slice(0, 10))
+    reviewRecord.set('reviewed_at', nowIso)
 
     if (shelfRecord) {
       reviewRecord.set('shelf_id', String(shelfRecord.get('id') || ''))

@@ -23,6 +23,7 @@
   const chapterLabel = String(form.chapterLabel || '').trim()
   const pageNumberRaw = String(form.pageNumber || '').trim()
   const progressPercentRaw = String(form.progressPercent || '').trim()
+  const nowIso = new Date().toISOString()
   const pageNumber = pageNumberRaw ? Number(pageNumberRaw) : null
   const progressPercent = progressPercentRaw ? Number(progressPercentRaw) : null
 
@@ -58,13 +59,13 @@
       }
 
       if (!String(existingShelfRecord.get('started_at') || '').trim()) {
-        existingShelfRecord.set('started_at', new Date().toISOString().slice(0, 10))
+        existingShelfRecord.set('started_at', nowIso)
       }
 
       existingShelfRecord.set('current_locator', locator)
       existingShelfRecord.set('current_href', href)
       existingShelfRecord.set('current_label', chapterLabel)
-      existingShelfRecord.set('last_read_at', new Date().toISOString().slice(0, 10))
+      existingShelfRecord.set('last_read_at', nowIso)
 
       if (pageNumber !== null && !isNaN(pageNumber)) {
         existingShelfRecord.set('current_page', pageNumber)
@@ -107,11 +108,11 @@
         newShelfRecord.set('book_file_id', String(bookFileRecord.get('id') || ''))
       }
 
-      newShelfRecord.set('started_at', new Date().toISOString().slice(0, 10))
+      newShelfRecord.set('started_at', nowIso)
       newShelfRecord.set('current_locator', locator)
       newShelfRecord.set('current_href', href)
       newShelfRecord.set('current_label', chapterLabel)
-      newShelfRecord.set('last_read_at', new Date().toISOString().slice(0, 10))
+      newShelfRecord.set('last_read_at', nowIso)
 
       if (pageNumber !== null && !isNaN(pageNumber)) {
         newShelfRecord.set('current_page', pageNumber)
