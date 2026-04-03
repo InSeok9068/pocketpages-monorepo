@@ -2,12 +2,8 @@
   meta('title', 'Booklog 감상평')
   meta('description', 'Booklog 감상평 리스트')
 
+  const { dateutil } = require('@pocketpages/utils')
   const flashMessage = params.__flash ? String(params.__flash) : ''
-  const formatDateText = function (value) {
-    return String(value || '')
-      .trim()
-      .slice(0, 10)
-  }
 
   if (!request.auth) {
     dbg('page/reviews:redirect', {
@@ -29,7 +25,8 @@
     const reviewRecord = reviewRecords[index]
     const bookId = String(reviewRecord.get('book_id') || '').trim()
     const reviewText = String(reviewRecord.get('review_text') || '').trim()
-    const reviewedAt = formatDateText(reviewRecord.get('reviewed_at'))
+    const reviewedAtValue = String(reviewRecord.get('reviewed_at') || '').trim()
+    const reviewedAt = reviewedAtValue ? dateutil.formatDate(reviewedAtValue, dateutil.FORMATS.DATE) : ''
     let bookRecord = null
 
     try {

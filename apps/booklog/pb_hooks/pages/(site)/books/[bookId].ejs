@@ -2,6 +2,7 @@
   meta('title', 'Booklog 책 상세')
   meta('description', 'Booklog 책 상세 페이지')
 
+  const { dateutil } = require('@pocketpages/utils')
   const flashMessage = params.__flash ? String(params.__flash) : ''
   const bookId = String(params.bookId || '').trim()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
@@ -160,26 +161,13 @@
     return normalizedValue
   }
 
-  /**
-   * 문구 표시용 날짜 문자열을 정리합니다.
-   * @param {string} value 원본 날짜 문자열
-   * @returns {string} 사용자에게 보여줄 날짜
-   */
-  function formatHighlightDate(value) {
-    const normalizedValue = String(value || '').trim()
-
-    if (!normalizedValue) {
-      return ''
-    }
-
-    return normalizedValue.slice(0, 10)
-  }
-
   highlightCards = highlightRecords.map(function (highlight) {
+    const highlightedAtValue = String(highlight.get('highlighted_at') || '').trim()
+
     return {
       id: String(highlight.get('id') || ''),
       label: formatHighlightLabel(String(highlight.get('chapter_label') || '')),
-      highlightedAt: formatHighlightDate(String(highlight.get('highlighted_at') || '')),
+      highlightedAt: highlightedAtValue ? dateutil.formatDate(highlightedAtValue, dateutil.FORMATS.DATE) : '',
       quoteText: String(highlight.get('quote_text') || '').trim(),
       noteText: String(highlight.get('note_text') || '').trim(),
     }
@@ -189,6 +177,10 @@
 
   if (!bookMetaText && publicationYear) {
     bookMetaText = publicationYear
+  }
+
+  if (bookMetaText && publicationDate) {
+    bookMetaText = dateutil.formatDate(publicationDate, dateutil.FORMATS.DATE)
   }
 
   if (!bookMetaText) {

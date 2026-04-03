@@ -35,7 +35,7 @@
       status: 303,
       redirectTo: '/',
       flash: '로그인 완료',
-      authId: authData.record.get('id'),
+      authId: String((authData.record && authData.record.id) || ''),
     })
     redirect('/', {
       status: 303,

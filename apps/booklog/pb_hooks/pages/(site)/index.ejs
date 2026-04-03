@@ -4,6 +4,7 @@
   meta('url', 'https://booklog.development-support.o-r.kr/')
   meta('image', 'https://booklog.development-support.o-r.kr/assets/og/booklog-home.png')
 
+  const { dateutil } = require('@pocketpages/utils')
   const flashMessage = params.__flash ? String(params.__flash) : ''
   const isSignedIn = !!request.auth
   const shelfStatusLabels = {
@@ -49,11 +50,6 @@
   ]
   let shelfBooks = emptyShelfBooks
   let randomHighlights = []
-  const formatDateText = function (value) {
-    return String(value || '')
-      .trim()
-      .slice(0, 10)
-  }
 
   if (isSignedIn) {
     const shelfRecords = $app.findRecordsByFilter('book_shelves', 'user_id = {:userId}', '-status,-updated,-last_read_at', 50, 0, { userId: request.auth.get('id') })
@@ -109,7 +105,8 @@
         .map((highlightRecord) => {
           const highlightBookId = String(highlightRecord.get('book_id') || '').trim()
           const quoteText = String(highlightRecord.get('quote_text') || '').trim()
-          const highlightedAt = formatDateText(highlightRecord.get('highlighted_at'))
+          const highlightedAtValue = String(highlightRecord.get('highlighted_at') || '').trim()
+          const highlightedAt = highlightedAtValue ? dateutil.formatDate(highlightedAtValue, dateutil.FORMATS.DATE) : ''
           let highlightBookRecord = null
 
           try {
