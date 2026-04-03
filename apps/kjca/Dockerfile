@@ -22,9 +22,9 @@ RUN case "${TARGETARCH}" in \
 
 FROM alpine:3.20
 
-ENV APP_ROOT=/workspace/apps/kjca
+ENV APP_ROOT=/app
 
-WORKDIR /workspace/apps/kjca
+WORKDIR /app
 
 RUN apk add --no-cache ca-certificates
 
@@ -33,7 +33,7 @@ COPY packages /workspace/packages
 COPY --from=deps /workspace/apps/kjca/node_modules ./node_modules
 COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
 RUN mkdir -p /opt/defaults/pb_hooks \
-  && if [ -d /workspace/apps/kjca/pb_hooks ]; then cp -R /workspace/apps/kjca/pb_hooks/. /opt/defaults/pb_hooks/; fi
+  && if [ -d /app/pb_hooks ]; then cp -R /app/pb_hooks/. /opt/defaults/pb_hooks/; fi
 
 RUN cat <<'EOF' > /usr/local/bin/start.sh
 #!/bin/sh
