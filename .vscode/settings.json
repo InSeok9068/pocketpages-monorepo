@@ -6,12 +6,13 @@
     "pocketbase.exe": "pbw.exe",
     "README.md": "MEMO.md, DBSCHEMA.md",
     "AGENTS.md": "AGENTS*.md",
-    "package.json": "package-lock.json, .prettier*, tailwind.config.js"
+    "package.json": "package-lock.json, .prettier*, tailwind.config.js, .dockerignore, .gitignore"
   },
   // prettier-ignore
   "files.exclude": {
     ".docs/**": true,
     "tools/**": true,
+    "scripts/**": true, 
     // 개발중인 서비스만 주석
     "apps/sample/**": true,
     "apps/kjca/**": true,
@@ -22,10 +23,9 @@
   "search.exclude": {
     ".docs/**": true,
     "tools/**": true,
+    "scripts/**": true,
     "**/pb_schema.json": true,
     "package-lock.json": true,
-    "lint-pocketpages.js": true,
-    "diag-pocketpages.js": true,
     // 개발중인 서비스만 주석
     "apps/sample/**": true,
     "apps/kjca/**": true,
