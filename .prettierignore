@@ -1,8 +1,9 @@
 apps/*/pb_hooks/pages/assets/vendor/**
+apps/*/pb_hooks/pages/_private/vendor/**
+apps/*/pb_hooks/pages/assets/**/*.svg
+apps/*/pb_hooks/pages/assets/**/*.png
+apps/*/pb_hooks/pages/assets/**/*.jpg
+apps/*/pb_hooks/pages/assets/**/*.webp
 *.bundle.js
-*.svg
-*.png
-*.jpg
-*.webp
 *.min.js
 *.min.css
