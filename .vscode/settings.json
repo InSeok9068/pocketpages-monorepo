@@ -13,7 +13,7 @@
     ".docs/**": true,
     "tools/**": true,
     // 개발중인 서비스만 주석
-    "apps/sample/**": true,
+    // "apps/sample/**": true,
     // "apps/kjca/**": true,
     // "apps/booklog/**": true,
   },
@@ -26,7 +26,7 @@
     "lint-pocketpages.js": true,
     "diag-pocketpages.js": true,
     // 개발중인 서비스만 주석
-    "apps/sample/**": true,
+    // "apps/sample/**": true,
     // "apps/kjca/**": true,
     // "apps/booklog/**": true,
   },

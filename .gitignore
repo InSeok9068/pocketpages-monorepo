@@ -2,3 +2,6 @@ pb_data
 node_modules
 .vscode/sftp.json
 .env
+pocketbase.exe
+pbw.exe
+!.download/*
