@@ -3,6 +3,7 @@ FROM node:20-alpine AS deps
 WORKDIR /workspace/apps/booklog
 COPY apps/booklog/package*.json ./
 COPY packages /workspace/packages
+RUN cd /workspace/packages/utils && npm ci --omit=dev
 RUN npm ci --omit=dev
 
 FROM alpine:3.20 AS pocketbase
