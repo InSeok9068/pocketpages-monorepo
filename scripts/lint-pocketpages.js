@@ -67,7 +67,7 @@ const ALLOWED_SPECIAL_FILES = new Set([
 const RE = {
   resolvePrivate: /resolve\(\s*["']\/?_private\//,
   includePrivate: /include\(\s*["']\/?_private\//,
-  recordField: /\brecord\.[A-Za-z_][A-Za-z0-9_]*/,
+  recordField: /(^|[^.$A-Za-z0-9_])record\.[A-Za-z_][A-Za-z0-9_]*/,
   recordFieldAllowed:
     /record\.(get|set|email|verified|isSuperuser|collection|publicExport|original|fresh)\s*\(/,
   middlewareUsesResolve: /\bresolve\s*\(/,
