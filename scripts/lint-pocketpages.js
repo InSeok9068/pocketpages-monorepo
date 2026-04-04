@@ -1370,7 +1370,11 @@ function main() {
   }
 
   for (const serviceDir of serviceDirs) {
-    lintService(buildServiceContext(serviceDir))
+    const serviceStart = process.hrtime.bigint()
+    const context = buildServiceContext(serviceDir)
+    lintService(context)
+    const serviceElapsedMs = Number(process.hrtime.bigint() - serviceStart) / 1e6
+    console.log(`Service lint time [${context.serviceName}]: ${serviceElapsedMs.toFixed(3)} ms`)
   }
 
   if (errors > 0) {
