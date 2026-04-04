@@ -217,7 +217,6 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
   },
   {
     "name": "booklog-public",
-    "agent": "",
     "host": "146.56.177.250",
     "protocol": "sftp",
     "port": 22,
