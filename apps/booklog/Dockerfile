@@ -30,7 +30,7 @@ WORKDIR /workspace/apps/booklog
 RUN apk add --no-cache ca-certificates
 
 COPY apps/booklog/. .
-COPY packages /workspace/packages
+COPY --from=deps /workspace/packages /workspace/packages
 COPY --from=deps /workspace/apps/booklog/node_modules ./node_modules
 COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
 RUN mkdir -p /opt/defaults/pb_hooks \
