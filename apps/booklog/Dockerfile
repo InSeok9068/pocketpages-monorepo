@@ -22,9 +22,10 @@ RUN case "${TARGETARCH}" in \
 
 FROM alpine:3.20
 
+ENV CODE_ROOT=/workspace/apps/booklog
 ENV APP_ROOT=/app
 
-WORKDIR /app
+WORKDIR /workspace/apps/booklog
 
 RUN apk add --no-cache ca-certificates
 
@@ -33,7 +34,7 @@ COPY packages /workspace/packages
 COPY --from=deps /workspace/apps/booklog/node_modules ./node_modules
 COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
 RUN mkdir -p /opt/defaults/pb_hooks \
-  && if [ -d /app/pb_hooks ]; then cp -R /app/pb_hooks/. /opt/defaults/pb_hooks/; fi
+  && if [ -d "${CODE_ROOT}/pb_hooks" ]; then cp -R "${CODE_ROOT}/pb_hooks/." /opt/defaults/pb_hooks/; fi
 
 RUN cat <<'EOF' > /usr/local/bin/start.sh
 #!/bin/sh
