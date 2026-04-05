@@ -372,10 +372,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
     const parsedRecruiting = parseRecruitingExtractFromDiaryHtml(docInnerHtml, reportDate)
     const parsedJobStatusTable = parseJobStatusTableFromDiaryHtml(docInnerHtml)
     const parsedMiscSection = parseMiscSectionFromDiaryHtml(docInnerHtml)
-    const recruitingFromHtml = mergeRecruitingPreferHtml(
-      parsedRecruiting || {},
-      parsedJobStatusTable ? { jobStatusTable: parsedJobStatusTable } : {}
-    )
+    const recruitingFromHtml = mergeRecruitingPreferHtml(parsedRecruiting || {}, parsedJobStatusTable ? { jobStatusTable: parsedJobStatusTable } : {})
     const miscSectionFromHtml = parsedMiscSection || null
 
     if (!docText) {

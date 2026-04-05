@@ -21,7 +21,10 @@
   const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || '').trim()
   const testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly)
   const encodedState = kjcaCore.serializeDashboardState(safeDashboardState)
-  const compareDeptText = (left, right) => String(left || '').trim().localeCompare(String(right || '').trim(), 'ko')
+  const compareDeptText = (left, right) =>
+    String(left || '')
+      .trim()
+      .localeCompare(String(right || '').trim(), 'ko')
   const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) => ({
     ...table,
     summaryText: kjcaCore.buildDeptSummaryText({
@@ -65,7 +68,6 @@
       table: jobStatusTable,
     })
   })
-
   ;(safeDashboardState.analysisResults || []).forEach((item) => {
     const dept = String((item && item.dept) || '').trim()
     const miscSection = item && item.miscSection ? item.miscSection : null
@@ -223,7 +225,7 @@
     <div class="flex items-center justify-between gap-3">
       <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Results</div>
       <div class="flex flex-wrap items-center justify-end gap-2">
-        <div class="inline-flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-slate-200 bg-white/92 px-3 py-2 shadow-sm shadow-slate-200/40">
+        <div class="bg-white/92 inline-flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-slate-200 px-3 py-2 shadow-sm shadow-slate-200/40">
           <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">관리자 로그인</p>
           <% if (authState.isSuperuser) { %>
           <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">로그인됨</span>
@@ -309,27 +311,21 @@
             @click="weeklyResultTab = 'weekly-plan'"
             :class="weeklyResultTab === 'weekly-plan' ? 'kjca-tab-btn kjca-tab-btn-active' : 'kjca-tab-btn kjca-tab-btn-idle'">
             <span>금주 모집 계획</span>
-            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-              <%= deptWeekTables.length %>개 부서
-            </span>
+            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600"> <%= deptWeekTables.length %>개 부서 </span>
           </button>
           <button
             type="button"
             @click="weeklyResultTab = 'job-status'"
             :class="weeklyResultTab === 'job-status' ? 'kjca-tab-btn kjca-tab-btn-active' : 'kjca-tab-btn kjca-tab-btn-idle'">
             <span>알선취업자 현황</span>
-            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-              <%= deptJobStatusTables.length %>개 부서
-            </span>
+            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600"> <%= deptJobStatusTables.length %>개 부서 </span>
           </button>
           <button
             type="button"
             @click="weeklyResultTab = 'misc-section'"
             :class="weeklyResultTab === 'misc-section' ? 'kjca-tab-btn kjca-tab-btn-active' : 'kjca-tab-btn kjca-tab-btn-idle'">
             <span>기타 사항</span>
-            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-              <%= deptMiscSections.length %>개 부서
-            </span>
+            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600"> <%= deptMiscSections.length %>개 부서 </span>
           </button>
         </div>
       </div>

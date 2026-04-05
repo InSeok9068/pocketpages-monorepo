@@ -601,62 +601,62 @@ function collectWeekly(request, roles, payload) {
     const hasRecruitingData = hasWeekPlanData(recruiting) || normalizeNullableInt(recruiting.dailyActualCount) !== null
     if (!hasRecruitingData) return
 
-      const safeDept = String(item.dept || '').trim()
-      if (!safeDept) {
-        warnings.push('dailyResult skip: dept-empty')
-        return
-      }
+    const safeDept = String(item.dept || '').trim()
+    if (!safeDept) {
+      warnings.push('dailyResult skip: dept-empty')
+      return
+    }
 
-      const allWeekTextRows = normalizeWeekTextRows(recruiting.weekTableRows)
-      const canReplaceWeekTable = hasWeekTextContent(allWeekTextRows) && getDistinctWeekdayCount(allWeekTextRows) >= WEEKDAY_ORDER.length
+    const allWeekTextRows = normalizeWeekTextRows(recruiting.weekTableRows)
+    const canReplaceWeekTable = hasWeekTextContent(allWeekTextRows) && getDistinctWeekdayCount(allWeekTextRows) >= WEEKDAY_ORDER.length
 
-      if (canReplaceWeekTable) {
-        try {
-          const textPlanResult = upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRole, {
-            weekStartDate,
-            dept: safeDept,
-            rows: allWeekTextRows,
-          })
-          if (!textPlanResult.ok) warnings.push(`weekTextPlan skip: ${safeDept} (${textPlanResult.reason || 'unknown'})`)
-        } catch (error) {
-          warnings.push(`weekTextPlan error: ${safeDept} (${String(error)})`)
-        }
-      } else {
-        const todayTextRows = allWeekTextRows.filter((row) => row.weekday === reportWeekday)
-        if (todayTextRows.length > 0) {
-          try {
-            const textUpdateResult = upsertWeekTextRowsForWeekday(recruitingWeekTextPlanRole, recruitingWeekTextRowRole, {
-              weekStartDate,
-              dept: safeDept,
-              weekday: reportWeekday,
-              rows: todayTextRows,
-            })
-            if (!textUpdateResult.ok) warnings.push(`weekTextDaily skip: ${safeDept} (${textUpdateResult.reason || 'unknown'})`)
-          } catch (error) {
-            warnings.push(`weekTextDaily error: ${safeDept} (${String(error)})`)
-          }
-        }
-      }
-
-      const safeActual = normalizeNullableInt(recruiting.dailyActualCount)
-      if (safeActual === null) {
-        warnings.push(`dailyResult skip: ${item.dept || '-'} (actualCount-empty)`)
-        return
-      }
-
+    if (canReplaceWeekTable) {
       try {
-        const result = upsertRecruitingDailyResult(recruitingDailyResultRole, {
-          reportDate,
+        const textPlanResult = upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRole, {
           weekStartDate,
           dept: safeDept,
-          weekday: reportWeekday,
-          actualCount: normalizeRequiredInt(safeActual, 0),
+          rows: allWeekTextRows,
         })
-        if (!result.ok) warnings.push(`dailyResult skip: ${safeDept} (${result.reason || 'unknown'})`)
+        if (!textPlanResult.ok) warnings.push(`weekTextPlan skip: ${safeDept} (${textPlanResult.reason || 'unknown'})`)
       } catch (error) {
-        warnings.push(`dailyResult error: ${safeDept} (${String(error)})`)
+        warnings.push(`weekTextPlan error: ${safeDept} (${String(error)})`)
       }
-    })
+    } else {
+      const todayTextRows = allWeekTextRows.filter((row) => row.weekday === reportWeekday)
+      if (todayTextRows.length > 0) {
+        try {
+          const textUpdateResult = upsertWeekTextRowsForWeekday(recruitingWeekTextPlanRole, recruitingWeekTextRowRole, {
+            weekStartDate,
+            dept: safeDept,
+            weekday: reportWeekday,
+            rows: todayTextRows,
+          })
+          if (!textUpdateResult.ok) warnings.push(`weekTextDaily skip: ${safeDept} (${textUpdateResult.reason || 'unknown'})`)
+        } catch (error) {
+          warnings.push(`weekTextDaily error: ${safeDept} (${String(error)})`)
+        }
+      }
+    }
+
+    const safeActual = normalizeNullableInt(recruiting.dailyActualCount)
+    if (safeActual === null) {
+      warnings.push(`dailyResult skip: ${item.dept || '-'} (actualCount-empty)`)
+      return
+    }
+
+    try {
+      const result = upsertRecruitingDailyResult(recruitingDailyResultRole, {
+        reportDate,
+        weekStartDate,
+        dept: safeDept,
+        weekday: reportWeekday,
+        actualCount: normalizeRequiredInt(safeActual, 0),
+      })
+      if (!result.ok) warnings.push(`dailyResult skip: ${safeDept} (${result.reason || 'unknown'})`)
+    } catch (error) {
+      warnings.push(`dailyResult error: ${safeDept} (${String(error)})`)
+    }
+  })
 
   const deptWeekTables = collectTargets
     .map((target) => {

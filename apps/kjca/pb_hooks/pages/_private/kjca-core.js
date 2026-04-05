@@ -230,9 +230,7 @@ function stripTags(html) {
 }
 
 function normalizeJobStatusMetricKey(label, index) {
-  const compact = normalizeSingleLineText(label)
-    .replace(/\s+/g, '')
-    .replace(/[()]/g, '')
+  const compact = normalizeSingleLineText(label).replace(/\s+/g, '').replace(/[()]/g, '')
   if (!compact) return `row-${Math.max(0, Math.trunc(Number(index) || 0))}`
   if (/^(?:\d+월)?알선취업목표$/.test(compact) || compact === '월알선취업목표' || compact === '월알선목표') return 'month-target'
   if (compact.includes('금일알선건수')) return 'daily-count'
@@ -417,7 +415,10 @@ function isJobStatusTableRows(rows) {
   const firstHeader = normalizeSingleLineText(headerRow[0] || '')
   if (firstHeader !== '구분') return false
 
-  const headerNames = headerRow.slice(1).map((cell) => normalizeSingleLineText(cell)).filter(Boolean)
+  const headerNames = headerRow
+    .slice(1)
+    .map((cell) => normalizeSingleLineText(cell))
+    .filter(Boolean)
   if (headerNames.length < 1) return false
 
   const recognizedMetricCount = rows
@@ -571,11 +572,7 @@ function extractRecruitingSectionHtml(diaryHtml) {
     sectionStart = previousTableIndex === -1 ? startMatch.htmlIndex : previousTableIndex
   }
 
-  const endMatch = findCompactTextVariant(
-    compactIndex,
-    ['알선취업현황', '알선취업', '상담사취업지원현황', '취업지원현황', '기타사항', '기타보고', '고용센터전달사항'],
-    startMatch.endIndex
-  )
+  const endMatch = findCompactTextVariant(compactIndex, ['알선취업현황', '알선취업', '상담사취업지원현황', '취업지원현황', '기타사항', '기타보고', '고용센터전달사항'], startMatch.endIndex)
   const sectionEnd = endMatch && endMatch.htmlIndex > sectionStart ? endMatch.htmlIndex : source.length
 
   return source.slice(sectionStart, sectionEnd)
@@ -693,7 +690,12 @@ function buildRecruitingWeekTableRows(rows, reportDate) {
 
   const summaryText = plainRows
     .slice(0, firstWeekdayRowIndex)
-    .map((row) => row.map((cell) => normalizeSingleLineText(cell)).filter(Boolean).join(' '))
+    .map((row) =>
+      row
+        .map((cell) => normalizeSingleLineText(cell))
+        .filter(Boolean)
+        .join(' ')
+    )
     .filter(Boolean)
     .join(' ')
     .trim()
@@ -718,8 +720,7 @@ function buildRecruitingWeekTableRows(rows, reportDate) {
     if (bodyCells.every((cell) => !normalizeRecruitingCellText(cell))) continue
 
     const mapped = mapRecruitingBodyCells(bodyCells, schema)
-    const hasMeaningfulContent =
-      !!mapped.channelName || !!mapped.promotionContent || !!mapped.targetText || !!mapped.resultText || !!mapped.recruitCountText || !!mapped.ownerName || !!mapped.note
+    const hasMeaningfulContent = !!mapped.channelName || !!mapped.promotionContent || !!mapped.targetText || !!mapped.resultText || !!mapped.recruitCountText || !!mapped.ownerName || !!mapped.note
 
     if (!hasMeaningfulContent) continue
 
@@ -740,8 +741,7 @@ function buildRecruitingWeekTableRows(rows, reportDate) {
   }))
 
   const numericTargetRows = dailyPlan.filter((row) => row.targetCount !== null)
-  const weekTarget =
-    numericTargetRows.length > 0 ? numericTargetRows.reduce((sum, row) => sum + Math.max(0, Math.trunc(Number(row.targetCount || 0))), 0) : null
+  const weekTarget = numericTargetRows.length > 0 ? numericTargetRows.reduce((sum, row) => sum + Math.max(0, Math.trunc(Number(row.targetCount || 0))), 0) : null
 
   const reportWeekday = normalizeWeekday(toWeekdayKey(reportDate))
   const actualValues = weekTableRows
@@ -785,27 +785,18 @@ function scoreRecruitingCandidate(parsedCandidate, blockHtml) {
   const rows = Array.isArray(parsedCandidate && parsedCandidate.rows) ? parsedCandidate.rows : []
   const distinctWeekdays = getDistinctWeekdayCount(rows)
   const nonEmptyFieldCount = rows.reduce((sum, row) => {
-    return (
-      sum +
-      ['channelName', 'promotionContent', 'targetText', 'recruitCountText', 'ownerName', 'note']
-        .map((key) => String((row && row[key]) || '').trim())
-        .filter(Boolean).length
-    )
+    return sum + ['channelName', 'promotionContent', 'targetText', 'recruitCountText', 'ownerName', 'note'].map((key) => String((row && row[key]) || '').trim()).filter(Boolean).length
   }, 0)
   const leakCount = rows.reduce((sum, row) => {
     return (
       sum +
-      ['channelName', 'promotionContent', 'targetText', 'recruitCountText', 'ownerName', 'note']
-        .map((key) => String((row && row[key]) || '').trim())
-        .filter((value) => isRecruitingLeakText(value)).length
+      ['channelName', 'promotionContent', 'targetText', 'recruitCountText', 'ownerName', 'note'].map((key) => String((row && row[key]) || '').trim()).filter((value) => isRecruitingLeakText(value))
+        .length
     )
   }, 0)
   const longFieldCount = rows.reduce((sum, row) => {
     return (
-      sum +
-      ['channelName', 'promotionContent', 'targetText', 'recruitCountText', 'ownerName', 'note']
-        .map((key) => String((row && row[key]) || '').trim())
-        .filter((value) => value.length >= 80).length
+      sum + ['channelName', 'promotionContent', 'targetText', 'recruitCountText', 'ownerName', 'note'].map((key) => String((row && row[key]) || '').trim()).filter((value) => value.length >= 80).length
     )
   }, 0)
 
@@ -874,10 +865,7 @@ function parseRecruitingExtractFromDiaryHtml(diaryHtml, reportDate) {
 }
 
 function normalizeMiscSectionKey(label, index) {
-  const compact = normalizeSingleLineText(label)
-    .replace(/\s+/g, '')
-    .replace(/[()]/g, '')
-    .replace(/[.:]/g, '')
+  const compact = normalizeSingleLineText(label).replace(/\s+/g, '').replace(/[()]/g, '').replace(/[.:]/g, '')
   if (!compact) return `item-${Math.max(0, Math.trunc(Number(index) || 0))}`
   if (compact.includes('고용센터전달사항')) return 'employment-center'
   if (compact.includes('지점특이사항') || compact.includes('지점사항')) return 'branch-notes'
@@ -1573,9 +1561,7 @@ function normalizeJobStatusTable(value) {
   const source = value && typeof value === 'object' ? value : null
   if (!source) return null
 
-  const staffNames = Array.isArray(source.staffNames)
-    ? source.staffNames.map((item, index) => normalizeSingleLineText(item) || buildJobStatusFallbackStaffName(index + 1)).filter(Boolean)
-    : []
+  const staffNames = Array.isArray(source.staffNames) ? source.staffNames.map((item, index) => normalizeSingleLineText(item) || buildJobStatusFallbackStaffName(index + 1)).filter(Boolean) : []
 
   if (staffNames.length === 0) return null
 
@@ -2153,13 +2139,7 @@ function buildPromotionDisplayItems(analyzeResult) {
   }
 
   const aiItems = Array.isArray(item.promotion) ? item.promotion : []
-  return Array.from(
-    new Set(
-      aiItems
-        .map((entry) => normalizeSingleLineText(entry))
-        .filter(Boolean)
-    )
-  )
+  return Array.from(new Set(aiItems.map((entry) => normalizeSingleLineText(entry)).filter(Boolean)))
 }
 
 /**

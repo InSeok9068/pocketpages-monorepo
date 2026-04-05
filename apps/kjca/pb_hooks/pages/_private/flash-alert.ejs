@@ -2,17 +2,14 @@
   const flashMessage = params && params.__flash ? String(params.__flash).trim() : ''
   const isErrorFlash = /실패|오류|error|failed|invalid|required|필요|없습니다|찾지 못했습니다/i.test(flashMessage)
   const flashDisplayMode = typeof flashDisplay !== 'undefined' && flashDisplay === 'inline' ? 'inline' : 'default'
-  const containerClasses = flashDisplayMode === 'inline'
-    ? ''
-    : isErrorFlash
-      ? 'rounded-xl border border-rose-200 bg-rose-50/95 px-3 py-2 text-xs text-rose-700 shadow-sm shadow-rose-100/50'
-      : 'rounded-xl border border-emerald-200 bg-emerald-50/95 px-3 py-2 text-xs text-emerald-700 shadow-sm shadow-emerald-100/50'
+  const containerClasses =
+    flashDisplayMode === 'inline'
+      ? ''
+      : isErrorFlash
+        ? 'rounded-xl border border-rose-200 bg-rose-50/95 px-3 py-2 text-xs text-rose-700 shadow-sm shadow-rose-100/50'
+        : 'rounded-xl border border-emerald-200 bg-emerald-50/95 px-3 py-2 text-xs text-emerald-700 shadow-sm shadow-emerald-100/50'
   const labelClasses = isErrorFlash ? 'text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-500' : 'text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-600'
-  const messageClasses = flashDisplayMode === 'inline'
-    ? isErrorFlash
-      ? 'text-xs font-medium text-rose-700'
-      : 'text-xs font-medium text-emerald-700'
-    : 'font-medium'
+  const messageClasses = flashDisplayMode === 'inline' ? (isErrorFlash ? 'text-xs font-medium text-rose-700' : 'text-xs font-medium text-emerald-700') : 'font-medium'
 %>
 <% if (flashMessage) { %>
 <% if (flashDisplayMode === 'inline') { %>
