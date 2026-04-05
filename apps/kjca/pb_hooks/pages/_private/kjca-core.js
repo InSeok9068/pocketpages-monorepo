@@ -1262,6 +1262,8 @@ module.exports = {
   normalizeJsonArrayField,
   inferGemini429Cause,
   stringifyGeminiErrorDetails,
+  parseDateText,
+  formatDateText,
   buildWeekStartDate,
   toWeekdayKey,
   normalizeWeekday,

@@ -60,7 +60,7 @@ function isUniqueValueError(error) {
 }
 
 function upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRole, weekTextPlanInput) {
-  const safeWeekStartDate = deps.formatDateText(deps.parseDateText(weekTextPlanInput.weekStartDate))
+  const safeWeekStartDate = formatDateText(parseDateText(weekTextPlanInput.weekStartDate))
   const dept = String(weekTextPlanInput.dept || '').trim()
   if (!dept) return { ok: false, reason: 'dept-empty' }
 
@@ -124,7 +124,7 @@ function upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRol
 }
 
 function upsertWeekTextRowsForWeekday(recruitingWeekTextPlanRole, recruitingWeekTextRowRole, weekdayRowsInput) {
-  const safeWeekStartDate = deps.formatDateText(deps.parseDateText(weekdayRowsInput.weekStartDate))
+  const safeWeekStartDate = formatDateText(parseDateText(weekdayRowsInput.weekStartDate))
   const dept = String(weekdayRowsInput.dept || '').trim()
   const weekday = normalizeWeekday(weekdayRowsInput.weekday)
   if (!dept) return { ok: false, reason: 'dept-empty' }
@@ -210,7 +210,7 @@ function upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItem
   const dept = String((weekPlanInput && weekPlanInput.dept) || '').trim()
   if (!dept) return { ok: false, reason: 'dept-empty' }
 
-  const safeWeekStartDate = deps.formatDateText(deps.parseDateText(weekPlanInput.weekStartDate))
+  const safeWeekStartDate = formatDateText(parseDateText(weekPlanInput.weekStartDate))
   const planCollection = $app.findCollectionByNameOrId('recruiting_week_plans')
   const itemCollection = $app.findCollectionByNameOrId('recruiting_week_plan_items')
 
@@ -309,8 +309,8 @@ function upsertRecruitingDailyResult(recruitingDailyResultRole, dailyResultInput
   const dept = String((dailyResultInput && dailyResultInput.dept) || '').trim()
   if (!dept) return { ok: false, reason: 'dept-empty' }
 
-  const safeReportDate = deps.formatDateText(deps.parseDateText(dailyResultInput.reportDate))
-  const safeWeekStartDate = deps.formatDateText(deps.parseDateText(dailyResultInput.weekStartDate))
+  const safeReportDate = formatDateText(parseDateText(dailyResultInput.reportDate))
+  const safeWeekStartDate = formatDateText(parseDateText(dailyResultInput.weekStartDate))
   const safeWeekday = normalizeWeekday(dailyResultInput.weekday) || toWeekdayKey(safeReportDate)
   const safeActualCount = normalizeNullableInt(dailyResultInput.actualCount)
   if (safeActualCount === null) return { ok: false, reason: 'actualCount-invalid' }
