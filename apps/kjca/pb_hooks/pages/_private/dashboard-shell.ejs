@@ -2,11 +2,17 @@
   /** @type {types.KjcaFormState} */
   const safeFormState = formState || {
     reportDate: '',
+    referenceWeek: '',
+    collectionMode: 'daily',
     testOneOnly: false,
   }
   /** @type {types.KjcaDashboardState} */
   const safeDashboardState = dashboardState || {
     reportDate: '',
+    weeklyReferenceWeek: '',
+    weeklyRangeStart: '',
+    weeklyRangeEnd: '',
+    collectionMode: 'daily',
     testOneOnly: false,
     noticeMessage: '',
     errorMessage: '',
@@ -17,33 +23,38 @@
     analysisResults: [],
     deptWeekTables: [],
     deptSnapshots: [],
+    weeklyReportRows: [],
   }
   const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || '').trim()
+  const referenceWeek = String(safeFormState.referenceWeek || safeDashboardState.weeklyReferenceWeek || kjcaCore.buildIsoWeekValue(reportDate)).trim()
+  const collectionMode = String(safeFormState.collectionMode || safeDashboardState.collectionMode || 'daily').trim() === 'weekly' ? 'weekly' : 'daily'
+  const dailyDisplayStyle = collectionMode === 'daily' ? '' : 'display: none;'
+  const weeklyDisplayStyle = collectionMode === 'weekly' ? '' : 'display: none;'
   const testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly)
   const encodedState = kjcaCore.serializeDashboardState(safeDashboardState)
-  const buildIsoWeekValue = (dateText) => {
-    const matched = String(dateText || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/)
-    if (!matched) return ''
-
-    const year = Number(matched[1])
-    const month = Number(matched[2])
-    const day = Number(matched[3])
-    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return ''
-
-    const date = new Date(Date.UTC(year, month - 1, day))
-    if (Number.isNaN(date.getTime())) return ''
-
-    const weekday = date.getUTCDay() || 7
-    date.setUTCDate(date.getUTCDate() + 4 - weekday)
-    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
-    const weekNumber = Math.ceil(((date - yearStart) / 86400000 + 1) / 7)
-    return `${date.getUTCFullYear()}-W${String(weekNumber).padStart(2, '0')}`
-  }
   const compareDeptText = (left, right) =>
     String(left || '')
       .trim()
       .localeCompare(String(right || '').trim(), 'ko')
-  const weeklyReferenceValue = buildIsoWeekValue(reportDate)
+  const weeklyReferenceRange = kjcaCore.buildWeeklyReportSearchRangeFromReferenceWeek(referenceWeek, reportDate)
+  const weeklyReferenceValue = weeklyReferenceRange.referenceWeek
+  const weeklyRangeStart = String(safeDashboardState.weeklyRangeStart || weeklyReferenceRange.weekStartDate || '').trim()
+  const weeklyRangeEnd = String(safeDashboardState.weeklyRangeEnd || weeklyReferenceRange.weekEndDate || '').trim()
+  const weeklyReportRows = safeDashboardState.weeklyReportRows || []
+  const weeklyDeptMap = {}
+  weeklyReportRows.forEach((row) => {
+    const dept = String((row && row.dept) || '').trim() || '미분류'
+    if (!weeklyDeptMap[dept]) weeklyDeptMap[dept] = []
+    weeklyDeptMap[dept].push(row)
+  })
+  const weeklyReportGroups = Object.keys(weeklyDeptMap)
+    .sort((left, right) => compareDeptText(left, right))
+    .map((dept) => ({
+      dept,
+      rows: (weeklyDeptMap[dept] || []).slice().sort((left, right) => String(right.draftDate || '').localeCompare(String(left.draftDate || ''))),
+    }))
+  const weeklyReportDeptCount = weeklyReportGroups.length
+  const hasWeeklyReportRows = weeklyReportRows.length > 0
   const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) => ({
     ...table,
     summaryText: kjcaCore.buildDeptSummaryText({
@@ -171,11 +182,16 @@
       <form
         id="kjca-dashboard-form"
         x-show="collectionMode === 'daily'"
+        style="<%= dailyDisplayStyle %>"
         hx-post="/xapi/kjca/collect-weekly"
         hx-target="#kjca-dashboard-shell"
         hx-swap="innerHTML"
         hx-indicator="#kjca-collect-indicator"
         class="mt-4 space-y-4">
+        <input
+          type="hidden"
+          name="collectionMode"
+          value="daily" />
         <label class="block text-sm font-medium text-slate-700">
           조회일
           <input
@@ -217,28 +233,57 @@
         <% } %>
       </form>
 
-      <div
+      <form
         x-show="collectionMode === 'weekly'"
+        style="<%= weeklyDisplayStyle %>"
+        hx-post="/xapi/kjca/collect-weekly-report-urls"
+        hx-target="#kjca-dashboard-shell"
+        hx-swap="innerHTML"
+        hx-indicator="#kjca-collect-indicator"
         class="mt-4 space-y-4">
+        <input
+          type="hidden"
+          name="collectionMode"
+          value="weekly" />
         <label class="block text-sm font-medium text-slate-700">
           기준 주차
           <input
             type="week"
+            name="referenceWeek"
             value="<%= weeklyReferenceValue %>"
             class="kjca-control mt-2 block px-4 py-3 text-sm text-slate-900" />
         </label>
 
+        <input
+          type="hidden"
+          name="dashboardStateJson"
+          value="<%= encodedState %>" />
+        <input
+          type="hidden"
+          name="reportDate"
+          value="<%= reportDate %>" />
+
+        <% if (authState.isSuperuser) { %>
         <button
-          type="button"
+          type="submit"
+          class="kjca-btn kjca-btn-primary w-full"
+        >
+          주간 보고 URL 조회
+        </button>
+        <% } else { %>
+        <button
+          type="submit"
           class="kjca-btn kjca-btn-primary w-full"
           disabled>
-          주간 업무 취합 준비 중
+          주간 보고 URL 조회
         </button>
-      </div>
+        <% } %>
+      </form>
     </article>
 
     <article
       x-show="collectionMode === 'daily'"
+      style="<%= dailyDisplayStyle %>"
       class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60">
       <div class="flex items-center justify-between gap-3">
         <div>
@@ -278,27 +323,28 @@
 
     <article
       x-show="collectionMode === 'weekly'"
+      style="<%= weeklyDisplayStyle %>"
       class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60">
       <div class="flex items-center justify-between gap-3">
         <div>
           <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly Scope</p>
-          <h2 class="mt-1 text-lg font-semibold text-slate-950">주간 업무 보기</h2>
+          <h2 class="mt-1 text-lg font-semibold text-slate-950">주간 보고 URL</h2>
         </div>
-        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">UI Only</span>
+        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">총 <%= weeklyReportRows.length %>건</span>
       </div>
 
       <div class="mt-4 grid gap-3">
         <section class="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-          <p class="text-sm font-semibold text-slate-900">주간 업무 요약</p>
-          <p class="mt-2 text-sm leading-6 text-slate-600">한 주 기준으로 모집/홍보, 알선, 특이사항을 한 번에 묶어 보는 요약 영역입니다.</p>
+          <p class="text-sm font-semibold text-slate-900">조회 범위</p>
+          <p class="mt-2 text-sm leading-6 text-slate-600"><%= weeklyRangeStart %> ~ <%= weeklyRangeEnd %></p>
         </section>
         <section class="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-          <p class="text-sm font-semibold text-slate-900">부서별 상세</p>
-          <p class="mt-2 text-sm leading-6 text-slate-600">주차별로 부서를 펼쳐서 월~금 흐름과 특이사항을 함께 비교하는 구조를 염두에 둔 레이아웃입니다.</p>
+          <p class="text-sm font-semibold text-slate-900">부서 수</p>
+          <p class="mt-2 text-sm leading-6 text-slate-600"><%= weeklyReportDeptCount %>개 부서</p>
         </section>
         <section class="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-          <p class="text-sm font-semibold text-slate-900">전주 대비</p>
-          <p class="mt-2 text-sm leading-6 text-slate-600">다음 단계에서 전주 대비 증감, 이슈 변화, 공백 요일을 붙일 수 있도록 별도 블록으로 분리해뒀습니다.</p>
+          <p class="text-sm font-semibold text-slate-900">검색 키워드</p>
+          <p class="mt-2 text-sm leading-6 text-slate-600">주간</p>
         </section>
       </div>
     </article>
@@ -362,6 +408,7 @@
     <% if (hasDeptWeekTables || hasJobStatusTables || hasMiscSections) { %>
     <article
       x-show="collectionMode === 'daily'"
+      style="<%= dailyDisplayStyle %>"
       x-data="{ weeklyResultTab: '<%= defaultResultTab %>' }"
       class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 md:p-6">
       <div class="flex items-center justify-between gap-3">
@@ -622,55 +669,100 @@
     <% } %>
     <article
       x-show="collectionMode === 'weekly'"
+      style="<%= weeklyDisplayStyle %>"
       class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 md:p-6">
       <div class="flex items-center justify-between gap-3">
         <div>
           <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly Report Summary</p>
-          <h2 class="mt-1 text-lg font-semibold text-slate-950">주간 업무 취합</h2>
+          <h2 class="mt-1 text-lg font-semibold text-slate-950">주간 보고 URL 목록</h2>
         </div>
-        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">주차별 조회</span>
+        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">총 <%= weeklyReportRows.length %>건 문서</span>
       </div>
 
-      <div class="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <section class="rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Weekly Layout</p>
-          <h3 class="mt-2 text-xl font-semibold text-slate-950">주차형 결과 영역</h3>
-          <div class="mt-5 grid gap-3 md:grid-cols-3">
-            <div class="rounded-2xl border border-slate-200 bg-white p-4">
-              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">기준 주차</p>
-              <p class="mt-2 text-base font-semibold text-slate-950"><%= weeklyReferenceValue || '선택 필요' %></p>
-            </div>
-            <div class="rounded-2xl border border-slate-200 bg-white p-4">
-              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">집계 단위</p>
-              <p class="mt-2 text-base font-semibold text-slate-950">부서별 주간 흐름</p>
-            </div>
-            <div class="rounded-2xl border border-slate-200 bg-white p-4">
-              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">비교 포인트</p>
-              <p class="mt-2 text-base font-semibold text-slate-950">전주 대비 / 공백 구간</p>
-            </div>
-          </div>
-        </section>
-
-        <section class="rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Next Step</p>
-          <h3 class="mt-2 text-lg font-semibold text-slate-950">주간 취합 예정 블록</h3>
-          <div class="mt-4 grid gap-3">
-            <div class="rounded-2xl border border-dashed border-slate-300 bg-white/90 p-4">
-              <p class="text-sm font-semibold text-slate-900">주간 업무 요약</p>
-            </div>
-            <div class="rounded-2xl border border-dashed border-slate-300 bg-white/90 p-4">
-              <p class="text-sm font-semibold text-slate-900">부서별 주간 상세</p>
-            </div>
-            <div class="rounded-2xl border border-dashed border-slate-300 bg-white/90 p-4">
-              <p class="text-sm font-semibold text-slate-900">주간 특이사항 모음</p>
-            </div>
-          </div>
-        </section>
+      <div class="mt-5 grid gap-3 md:grid-cols-3">
+        <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">기준 주차</p>
+          <p class="mt-2 text-base font-semibold text-slate-950"><%= weeklyReferenceValue || '-' %></p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">조회 기간</p>
+          <p class="mt-2 text-base font-semibold text-slate-950"><%= `${weeklyRangeStart} ~ ${weeklyRangeEnd}` %></p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">부서 수</p>
+          <p class="mt-2 text-base font-semibold text-slate-950"><%= weeklyReportDeptCount %>개 부서</p>
+        </div>
       </div>
+
+      <% if (!hasWeeklyReportRows) { %>
+      <section class="mt-5 rounded-[28px] border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-white to-slate-50/80 p-6 text-center shadow-sm shadow-slate-200/40">
+        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly URLs</p>
+        <h3 class="mt-2 text-xl font-semibold text-slate-950">주간 보고 URL이 없습니다</h3>
+        <p class="mt-3 text-sm leading-6 text-slate-600">좌측에서 기준 주차를 선택한 뒤 `주간 보고 URL 조회`를 실행하면, 그룹웨어 목록에서 찾은 문서 링크를 먼저 보여줍니다.</p>
+      </section>
+      <% } else { %>
+      <div class="mt-5 flex flex-col gap-4">
+        <% weeklyReportGroups.forEach((group) => { %>
+        <details
+          open
+          class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+          <summary class="cursor-pointer text-base font-semibold text-slate-950">
+            <div class="inline-flex flex-wrap items-center gap-3">
+              <span><%= group.dept %></span>
+              <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"><%= group.rows.length %>건</span>
+            </div>
+          </summary>
+
+          <div class="mt-4 flex flex-col gap-3">
+            <% group.rows.forEach((row) => { %>
+            <article class="rounded-2xl border border-slate-200 bg-white p-4">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <% if (row.sourceLabel) { %>
+                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600"><%= row.sourceLabel %></span>
+                    <% } %>
+                    <% if (row.status) { %>
+                    <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700"><%= row.status %></span>
+                    <% } %>
+                  </div>
+                  <a
+                    href="<%= row.viewUrl %>"
+                    target="_blank"
+                    rel="noreferrer"
+                    class="mt-3 block break-words text-sm font-semibold leading-6 text-slate-950 underline decoration-slate-300 underline-offset-4">
+                    <%= row.title %>
+                  </a>
+                  <div class="mt-2 break-all rounded-xl bg-slate-50 px-3 py-2 font-mono text-xs leading-5 text-slate-500"><%= row.viewUrl %></div>
+                </div>
+
+                <div class="min-w-[180px] space-y-1 text-right text-xs leading-5 text-slate-500">
+                  <% if (row.draftDate) { %>
+                  <div>기안일 <span class="font-semibold text-slate-700"><%= row.draftDate %></span></div>
+                  <% } %>
+                  <% if (row.drafter) { %>
+                  <div>기안자 <span class="font-semibold text-slate-700"><%= row.drafter %></span></div>
+                  <% } %>
+                  <% if (row.formName) { %>
+                  <div>문서양식 <span class="font-semibold text-slate-700"><%= row.formName %></span></div>
+                  <% } %>
+                  <% if (row.docNo) { %>
+                  <div>문서번호 <span class="font-semibold text-slate-700"><%= row.docNo %></span></div>
+                  <% } %>
+                </div>
+              </div>
+            </article>
+            <% }) %>
+          </div>
+        </details>
+        <% }) %>
+      </div>
+      <% } %>
     </article>
     <% if (hasAnalysisResults) { %>
     <article
       x-show="collectionMode === 'daily'"
+      style="<%= dailyDisplayStyle %>"
       class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 md:p-6">
       <div class="flex items-center justify-between gap-3">
         <div>

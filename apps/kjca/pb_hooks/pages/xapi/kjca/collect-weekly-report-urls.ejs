@@ -1,0 +1,65 @@
+<script server>
+  const kjcaAuth = resolve('kjca-auth')
+  const kjcaCore = resolve('kjca-core')
+  const kjcaWeeklyReportService = resolve('kjca-weekly-report-service')
+
+  const authState = kjcaAuth.readAuthState(request)
+  const form = body()
+  const formState = kjcaCore.buildFormState({
+    reportDate: form.reportDate,
+    referenceWeek: form.referenceWeek,
+    collectionMode: form.collectionMode,
+    testOneOnly: form.testOneOnly,
+  })
+  let dashboardState = kjcaCore.parseDashboardState(form.dashboardStateJson, {
+    reportDate: formState.reportDate,
+    referenceWeek: formState.referenceWeek,
+    collectionMode: formState.collectionMode,
+    testOneOnly: formState.testOneOnly,
+  })
+
+  dbg('xapi/kjca/collect-weekly-report-urls:start', {
+    referenceWeek: formState.referenceWeek,
+    isSuperuser: authState.isSuperuser,
+  })
+
+  if (!authState.isSuperuser) {
+    dashboardState = kjcaCore.buildDashboardState({
+      ...dashboardState,
+      weeklyReferenceWeek: formState.referenceWeek,
+      collectionMode: 'weekly',
+      errorMessage: '먼저 관리자 계정으로 로그인해주세요.',
+    })
+  } else {
+    try {
+      const result = kjcaWeeklyReportService.collectWeeklyReportUrls(request, {
+        referenceWeek: formState.referenceWeek,
+      })
+      dashboardState = kjcaCore.buildDashboardStateFromWeeklyReportUrlResult(result, dashboardState, formState)
+    } catch (exception) {
+      const errorMessage = String(exception.message || exception)
+      const weekRange = kjcaCore.buildWeeklyReportSearchRangeFromReferenceWeek(formState.referenceWeek, formState.reportDate)
+
+      error('xapi/kjca/collect-weekly-report-urls:failed', {
+        referenceWeek: formState.referenceWeek,
+        error: errorMessage,
+      })
+
+      dashboardState = kjcaCore.buildDashboardState({
+        ...dashboardState,
+        weeklyReferenceWeek: weekRange.referenceWeek,
+        weeklyRangeStart: weekRange.weekStartDate,
+        weeklyRangeEnd: weekRange.weekEndDate,
+        collectionMode: 'weekly',
+        errorMessage,
+      })
+    }
+  }
+
+  dbg('xapi/kjca/collect-weekly-report-urls:response', {
+    referenceWeek: dashboardState.weeklyReferenceWeek,
+    weeklyRowCount: dashboardState.weeklyReportRows.length,
+    warningCount: dashboardState.warnings.length,
+  })
+</script>
+<%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaCore }) %>

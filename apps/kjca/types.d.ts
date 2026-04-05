@@ -53,6 +53,20 @@ declare namespace types {
     printUrl: string
   }
 
+  type KjcaWeeklyReportRow = {
+    sourceLabel: string
+    sourceMenu: string
+    sourceType: string
+    docNo: string
+    formName: string
+    title: string
+    dept: string
+    drafter: string
+    draftDate: string
+    status: string
+    viewUrl: string
+  }
+
   type KjcaWeekTextRow = {
     weekday: KjcaWeekday
     channelName: string
@@ -126,11 +140,15 @@ declare namespace types {
 
   type KjcaFormState = {
     reportDate: string
+    referenceWeek: string
+    collectionMode: string
     testOneOnly: boolean
   }
 
   type KjcaFormStateInput = {
     reportDate?: string | string[] | null | undefined
+    referenceWeek?: string | string[] | null | undefined
+    collectionMode?: string | string[] | null | undefined
     testOneOnly?: boolean | string | string[] | null | undefined
   }
 
@@ -146,6 +164,10 @@ declare namespace types {
 
   type KjcaDashboardState = {
     reportDate: string
+    weeklyReferenceWeek: string
+    weeklyRangeStart: string
+    weeklyRangeEnd: string
+    collectionMode: string
     testOneOnly: boolean
     noticeMessage: string
     errorMessage: string
@@ -156,6 +178,7 @@ declare namespace types {
     analysisResults: KjcaAnalyzeResult[]
     deptWeekTables: KjcaDeptWeekTable[]
     deptSnapshots: KjcaDeptSnapshot[]
+    weeklyReportRows: KjcaWeeklyReportRow[]
   }
 
   type KjcaStaffDiaryAnalysisCacheRole = {
@@ -237,6 +260,20 @@ declare namespace types {
   type KjcaCollectPayload = {
     reportDate?: unknown
     testOneOnly?: unknown
+  }
+
+  type KjcaWeeklyReportUrlPayload = {
+    referenceWeek?: unknown
+  }
+
+  type KjcaWeeklyReportUrlResult = {
+    ok: true
+    referenceWeek: string
+    weekStartDate: string
+    weekEndDate: string
+    rows: KjcaWeeklyReportRow[]
+    warnings: string[]
+    alertMessage: string
   }
 
   type KjcaCacheClearResult = {

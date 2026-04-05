@@ -12,7 +12,10 @@ globalThis.__hooks = path.resolve(testDir, '../pb_hooks')
 const {
   htmlToText,
   buildPromotionDisplayItems,
+  buildWeekDateRangeFromReferenceWeek,
+  buildWeeklyReportSearchRangeFromReferenceWeek,
   parseTeamLeadRowsFromDiaryHtml,
+  parseWeeklyReportRowsFromListHtml,
   parseRecruitingExtractFromDiaryHtml,
   parseJobStatusTableFromDiaryHtml,
   parseMiscSectionFromDiaryHtml,
@@ -64,6 +67,81 @@ test('parseTeamLeadRowsFromDiaryHtml extracts absolute print urls from KJCA rows
         position: teamLead,
         staffName: 'Kim',
         printUrl: 'http://www.kjca.co.kr/diary/?site=groupware&mn=1450&bd_idx=22',
+      },
+    ],
+  })
+})
+
+test('buildWeekDateRangeFromReferenceWeek converts ISO week to monday-sunday range', () => {
+  assert.deepEqual(buildWeekDateRangeFromReferenceWeek('2026-W14', '2026-04-03'), {
+    referenceWeek: '2026-W14',
+    weekStartDate: '2026-03-30',
+    weekEndDate: '2026-04-05',
+  })
+})
+
+test('buildWeeklyReportSearchRangeFromReferenceWeek converts ISO week to tuesday-next-monday range', () => {
+  assert.deepEqual(buildWeeklyReportSearchRangeFromReferenceWeek('2026-W14', '2026-04-03'), {
+    referenceWeek: '2026-W14',
+    weekStartDate: '2026-03-31',
+    weekEndDate: '2026-04-06',
+  })
+})
+
+test('parseWeeklyReportRowsFromListHtml extracts approval document urls and metadata', () => {
+  const listHtml =
+    '<div class="page_system_list width_table">' +
+    '<table class="table_type_list2">' +
+    '<tbody>' +
+    '<tr>' +
+    '<td data-label="문서번호">커리어(수도권)-26-03981</td>' +
+    '<td data-label="문서양식">기안서</td>' +
+    '<td data-label="제목"><a href="?site=groupware&amp;mn=1426&amp;type=view&amp;type2=to_al_done&amp;ad_idx=239350" class="appr_doc_popup">국제커리어센터 경기성남지점 4월 첫째주 주간업무보고_ 2026.03.27.</a></td>' +
+    '<td data-label="기안부서">경기성남</td>' +
+    '<td data-label="기안자">김보라</td>' +
+    '<td data-label="기안일">2026-03-27</td>' +
+    '<td data-label="상태">종결</td>' +
+    '</tr>' +
+    '<tr>' +
+    '<td data-label="문서번호">커리어(수도권)-26-03961</td>' +
+    '<td data-label="문서양식">기안서</td>' +
+    '<td data-label="제목"><a href="?site=groupware&amp;mn=1426&amp;type=view&amp;type2=to_al_done&amp;ad_idx=239326" class="appr_doc_popup">국제커리어센터 대구동부 주간업무보고_(26.03.27)</a></td>' +
+    '<td data-label="기안부서">대구동부</td>' +
+    '<td data-label="기안자">황수연</td>' +
+    '<td data-label="기안일">2026-03-27</td>' +
+    '<td data-label="상태">종결</td>' +
+    '</tr>' +
+    '</tbody>' +
+    '</table>' +
+    '</div>'
+
+  assert.deepEqual(parseWeeklyReportRowsFromListHtml(listHtml, 'http://www.kjca.co.kr', { label: '종결 문서', mn: '1426', type2: 'to_al_done' }), {
+    rows: [
+      {
+        sourceLabel: '종결 문서',
+        sourceMenu: '1426',
+        sourceType: 'to_al_done',
+        docNo: '커리어(수도권)-26-03981',
+        formName: '기안서',
+        title: '국제커리어센터 경기성남지점 4월 첫째주 주간업무보고_ 2026.03.27.',
+        dept: '경기성남',
+        drafter: '김보라',
+        draftDate: '2026-03-27',
+        status: '종결',
+        viewUrl: 'http://www.kjca.co.kr/appr/appr_doc/?site=groupware&mn=1426&type=view&type2=to_al_done&ad_idx=239350',
+      },
+      {
+        sourceLabel: '종결 문서',
+        sourceMenu: '1426',
+        sourceType: 'to_al_done',
+        docNo: '커리어(수도권)-26-03961',
+        formName: '기안서',
+        title: '국제커리어센터 대구동부 주간업무보고_(26.03.27)',
+        dept: '대구동부',
+        drafter: '황수연',
+        draftDate: '2026-03-27',
+        status: '종결',
+        viewUrl: 'http://www.kjca.co.kr/appr/appr_doc/?site=groupware&mn=1426&type=view&type2=to_al_done&ad_idx=239326',
       },
     ],
   })

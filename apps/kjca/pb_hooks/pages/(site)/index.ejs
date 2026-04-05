@@ -8,10 +8,14 @@
   const authState = kjcaAuth.readAuthState(request)
   const formState = kjcaCore.buildFormState({
     reportDate: request.url.query.reportDate,
+    referenceWeek: request.url.query.referenceWeek,
+    collectionMode: request.url.query.collectionMode,
     testOneOnly: request.url.query.testOneOnly,
   })
   const dashboardState = kjcaCore.buildDashboardState({
     reportDate: formState.reportDate,
+    weeklyReferenceWeek: formState.referenceWeek,
+    collectionMode: formState.collectionMode,
     testOneOnly: formState.testOneOnly,
   })
 
@@ -28,7 +32,7 @@
 </header>
 
 <section
-  x-data="{ leftOpen: true, collectionMode: 'daily' }"
+  x-data="{ leftOpen: true, collectionMode: '<%= dashboardState.collectionMode %>' }"
   class="bg-white/72 rounded-2xl border border-slate-200 p-4 shadow-sm shadow-slate-200/60 md:p-5">
   <div id="kjca-dashboard-shell">
     <%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaCore }) %>

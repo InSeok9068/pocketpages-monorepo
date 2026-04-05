@@ -6,6 +6,8 @@
   const form = body()
   const formState = kjcaCore.buildFormState({
     reportDate: form.reportDate,
+    referenceWeek: form.referenceWeek,
+    collectionMode: form.collectionMode,
     testOneOnly: form.testOneOnly,
   })
   let dashboardState = kjcaCore.parseDashboardState(form.dashboardStateJson, formState)

@@ -1079,6 +1079,17 @@ function absolutizeQuotedKjcaUrl(host, rawUrl) {
   return ''
 }
 
+function toAbsoluteApprovalDocUrl(host, maybeRelativeUrl) {
+  const url = decodeHtmlEntities(String(maybeRelativeUrl || '').trim())
+  if (!url) return ''
+  if (/^https?:\/\//i.test(url)) return url
+  if (url.startsWith('?')) return `${host}/appr/appr_doc/${url}`
+  if (url.startsWith('/?')) return `${host}/appr/appr_doc${url}`
+  if (url.startsWith('/appr/')) return `${host}${url}`
+  if (url.startsWith('/')) return `${host}${url}`
+  return `${host}/appr/appr_doc/${url.replace(/^\.?\//, '')}`
+}
+
 function buildLinkifySourceFromCell(host, cellHtml) {
   const source = decodeHtmlEntities(String(cellHtml || ''))
   if (!source) return ''
@@ -1112,6 +1123,21 @@ function extractPrintUrlFromCell(host, cellHtml) {
   const preferred = normalized.find((candidate) => candidate.includes('bd_idx=')) || normalized.find((candidate) => candidate.includes('/diary/') || candidate.startsWith('?site=')) || normalized[0]
 
   return toAbsoluteKjcaUrl(host, preferred)
+}
+
+function extractHrefFromHtml(html) {
+  const matched = String(html || '').match(/\bhref\s*=\s*(['"])([^'"]+)\1/i)
+  if (!matched) return ''
+  return decodeHtmlEntities(String(matched[2] || '').trim())
+}
+
+function extractApprovalViewUrlFromCell(host, cellHtml) {
+  const href = extractHrefFromHtml(cellHtml)
+  const absoluteUrl = toAbsoluteApprovalDocUrl(host, href)
+  if (!absoluteUrl) return ''
+  if (!isAllowedKjcaUrl(host, absoluteUrl)) return ''
+  if (!absoluteUrl.includes('ad_idx=')) return ''
+  return absoluteUrl
 }
 
 /**
@@ -1169,6 +1195,62 @@ function parseTeamLeadRowsFromDiaryHtml(diaryHtml, host) {
 }
 
 /**
+ * 결재 문서 목록 HTML에서 주간 보고 문서 URL과 메타데이터를 추출합니다.
+ * @param {unknown} listHtml 결재 목록 HTML입니다.
+ * @param {string} host KJCA 호스트입니다.
+ * @param {{ label?: unknown, mn?: unknown, type2?: unknown } | null | undefined} sourceInfo 목록 출처 정보입니다.
+ * @returns {{ rows: types.KjcaWeeklyReportRow[] }} 추출된 주간 보고 문서 목록입니다.
+ */
+function parseWeeklyReportRowsFromListHtml(listHtml, host, sourceInfo) {
+  const source = sourceInfo && typeof sourceInfo === 'object' ? sourceInfo : {}
+  const sourceLabel = String(source.label || '').trim()
+  const sourceMenu = String(source.mn || '').trim()
+  const sourceType = String(source.type2 || '').trim()
+  const listContainerHtml = extractDivInnerHtmlByClasses(listHtml, ['page_system_list', 'width_table']) || String(listHtml || '')
+  const rows = []
+  const trRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
+  let trMatch = null
+
+  while ((trMatch = trRegex.exec(listContainerHtml))) {
+    const trInner = String(trMatch[1] || '')
+    if (!trInner.includes('data-label')) continue
+
+    const cellHtmlByLabel = {}
+    const tdRegex = /<td\b[^>]*data-label\s*=\s*(['"])([^'"]+)\1[^>]*>([\s\S]*?)<\/td>/gi
+    let tdMatch = null
+    while ((tdMatch = tdRegex.exec(trInner))) {
+      const label = stripTags(tdMatch[2])
+      const cellInner = tdMatch[3] || ''
+      if (!label) continue
+      cellHtmlByLabel[label] = cellInner
+    }
+
+    const titleCell = String(cellHtmlByLabel['제목'] || '')
+    const title = stripTags(titleCell)
+    const viewUrl = extractApprovalViewUrlFromCell(host, titleCell)
+    if (!title || !viewUrl) continue
+
+    rows.push({
+      sourceLabel,
+      sourceMenu,
+      sourceType,
+      docNo: stripTags(cellHtmlByLabel['문서번호'] || ''),
+      formName: stripTags(cellHtmlByLabel['문서양식'] || ''),
+      title,
+      dept: stripTags(cellHtmlByLabel['기안부서'] || ''),
+      drafter: stripTags(cellHtmlByLabel['기안자'] || ''),
+      draftDate: stripTags(cellHtmlByLabel['기안일'] || ''),
+      status: stripTags(cellHtmlByLabel['상태'] || ''),
+      viewUrl,
+    })
+  }
+
+  return {
+    rows: normalizeWeeklyReportRows(rows),
+  }
+}
+
+/**
  * KJCA 요청에 맞는 브라우저형 헤더를 만듭니다.
  * @param {string} host KJCA 호스트입니다.
  * @param {string | null | undefined} cookieHeader 현재 쿠키 헤더입니다.
@@ -1200,6 +1282,121 @@ function buildTodayDateText() {
   return `${year}-${month}-${day}`
 }
 
+function formatUtcDateText(date) {
+  const year = date.getUTCFullYear()
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getUTCDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseReferenceWeekParts(value) {
+  const matched = String(value || '')
+    .trim()
+    .match(/^(\d{4})-W(\d{2})$/)
+  if (!matched) return null
+
+  const year = Number(matched[1])
+  const week = Number(matched[2])
+  if (!Number.isFinite(year) || !Number.isFinite(week) || week < 1 || week > 53) return null
+
+  return {
+    year,
+    week,
+  }
+}
+
+/**
+ * 날짜를 ISO 주차 문자열로 변환합니다.
+ * @param {unknown} dateText 기준 날짜 값입니다.
+ * @returns {string} `YYYY-Www` 형식의 ISO 주차 문자열입니다.
+ */
+function buildIsoWeekValue(dateText) {
+  const matched = normalizeReportDate(dateText).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!matched) return ''
+
+  const year = Number(matched[1])
+  const month = Number(matched[2])
+  const day = Number(matched[3])
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return ''
+
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (Number.isNaN(date.getTime())) return ''
+
+  const weekday = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() + 4 - weekday)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  const weekNumber = Math.ceil(((date - yearStart) / 86400000 + 1) / 7)
+
+  return `${date.getUTCFullYear()}-W${String(weekNumber).padStart(2, '0')}`
+}
+
+/**
+ * 주차 입력값을 `YYYY-Www` 형식으로 정규화합니다.
+ * @param {unknown} value 폼이나 params에서 받은 주차 값입니다.
+ * @param {unknown} fallbackDateText 값이 비었을 때 기준이 될 날짜 값입니다.
+ * @returns {string} 정규화된 주차 문자열입니다.
+ */
+function normalizeReferenceWeek(value, fallbackDateText) {
+  const parsed = parseReferenceWeekParts(value)
+  if (parsed) return `${parsed.year}-W${String(parsed.week).padStart(2, '0')}`
+  return buildIsoWeekValue(fallbackDateText)
+}
+
+/**
+ * ISO 주차 문자열을 월요일~일요일 범위로 변환합니다.
+ * @param {unknown} referenceWeek 기준 주차 값입니다.
+ * @param {unknown} fallbackDateText 기준 주차가 비었을 때 사용할 날짜 값입니다.
+ * @returns {{ referenceWeek: string, weekStartDate: string, weekEndDate: string }} 주간 조회 범위입니다.
+ */
+function buildWeekDateRangeFromReferenceWeek(referenceWeek, fallbackDateText) {
+  const normalizedWeek = normalizeReferenceWeek(referenceWeek, fallbackDateText)
+  const parsed = parseReferenceWeekParts(normalizedWeek)
+  if (!parsed) {
+    const fallbackDate = normalizeReportDate(fallbackDateText)
+    const weekStartDate = buildWeekStartDate(fallbackDate)
+    const monday = parseDateText(weekStartDate)
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    return {
+      referenceWeek: buildIsoWeekValue(fallbackDate),
+      weekStartDate,
+      weekEndDate: formatDateText(sunday),
+    }
+  }
+
+  const weekAnchor = new Date(Date.UTC(parsed.year, 0, 4))
+  const anchorWeekday = weekAnchor.getUTCDay() || 7
+  weekAnchor.setUTCDate(weekAnchor.getUTCDate() - anchorWeekday + 1 + (parsed.week - 1) * 7)
+  const sunday = new Date(weekAnchor)
+  sunday.setUTCDate(weekAnchor.getUTCDate() + 6)
+
+  return {
+    referenceWeek: normalizedWeek,
+    weekStartDate: formatUtcDateText(weekAnchor),
+    weekEndDate: formatUtcDateText(sunday),
+  }
+}
+
+/**
+ * 주간 보고 목록 조회에 맞는 화요일~차주 월요일 범위를 계산합니다.
+ * @param {unknown} referenceWeek 기준 주차 값입니다.
+ * @param {unknown} fallbackDateText 기준 주차가 비었을 때 사용할 날짜 값입니다.
+ * @returns {{ referenceWeek: string, weekStartDate: string, weekEndDate: string }} 주간 보고 검색 범위입니다.
+ */
+function buildWeeklyReportSearchRangeFromReferenceWeek(referenceWeek, fallbackDateText) {
+  const baseRange = buildWeekDateRangeFromReferenceWeek(referenceWeek, fallbackDateText)
+  const startDate = parseDateText(baseRange.weekStartDate)
+  const endDate = parseDateText(baseRange.weekStartDate)
+  startDate.setDate(startDate.getDate() + 1)
+  endDate.setDate(endDate.getDate() + 7)
+
+  return {
+    referenceWeek: baseRange.referenceWeek,
+    weekStartDate: formatDateText(startDate),
+    weekEndDate: formatDateText(endDate),
+  }
+}
+
 /**
  * 날짜 입력값을 `YYYY-MM-DD` 형식으로 정규화합니다.
  * @param {string | string[] | null | undefined} value 폼이나 params에서 받은 날짜 값입니다.
@@ -1218,8 +1415,11 @@ function normalizeReportDate(value) {
  */
 function buildFormState(value) {
   const source = value && typeof value === 'object' ? value : {}
+  const reportDate = normalizeReportDate(source.reportDate)
   return {
-    reportDate: normalizeReportDate(source.reportDate),
+    reportDate,
+    referenceWeek: normalizeReferenceWeek(source.referenceWeek, reportDate),
+    collectionMode: normalizeCollectionMode(source.collectionMode),
     testOneOnly: normalizeBool(source.testOneOnly),
   }
 }
@@ -1496,6 +1696,15 @@ function normalizeBool(value) {
   return false
 }
 
+/**
+ * 대시보드 수집 모드를 정규화합니다.
+ * @param {unknown} value 폼이나 상태에서 받은 모드 값입니다.
+ * @returns {string} `daily` 또는 `weekly` 문자열입니다.
+ */
+function normalizeCollectionMode(value) {
+  return String(value || '').trim() === 'weekly' ? 'weekly' : 'daily'
+}
+
 function normalizeJobStatusMetricValues(values, expectedLength) {
   const source = Array.isArray(values) ? values : []
   const normalized = source.slice(0, expectedLength).map((item) => {
@@ -1704,6 +1913,50 @@ function normalizeTeamLeadRows(value) {
       }
     })
     .filter((row) => !!row.dept && !!row.printUrl)
+}
+
+/**
+ * 주간 보고 URL 목록을 화면 표시용 shape로 정리합니다.
+ * @param {unknown} value 외부 응답이나 저장값에서 받은 주간 보고 목록입니다.
+ * @returns {types.KjcaWeeklyReportRow[]} 정규화된 주간 보고 문서 목록입니다.
+ */
+function normalizeWeeklyReportRows(value) {
+  if (!Array.isArray(value)) return []
+
+  const seenByUrl = {}
+
+  return value
+    .map((item) => {
+      const row = item && typeof item === 'object' ? item : {}
+      return {
+        sourceLabel: String(row.sourceLabel || '').trim(),
+        sourceMenu: String(row.sourceMenu || '').trim(),
+        sourceType: String(row.sourceType || '').trim(),
+        docNo: String(row.docNo || '').trim(),
+        formName: String(row.formName || '').trim(),
+        title: String(row.title || '').trim(),
+        dept: String(row.dept || '').trim(),
+        drafter: String(row.drafter || '').trim(),
+        draftDate: normalizeSingleLineText(row.draftDate),
+        status: String(row.status || '').trim(),
+        viewUrl: toAbsoluteApprovalDocUrl(KJCA_HOST, row.viewUrl),
+      }
+    })
+    .filter((row) => !!row.title && !!row.viewUrl)
+    .filter((row) => {
+      if (seenByUrl[row.viewUrl]) return false
+      seenByUrl[row.viewUrl] = true
+      return true
+    })
+    .sort((left, right) => {
+      const deptCompare = String(left.dept || '').localeCompare(String(right.dept || ''), 'ko')
+      if (deptCompare !== 0) return deptCompare
+
+      const draftCompare = String(right.draftDate || '').localeCompare(String(left.draftDate || ''))
+      if (draftCompare !== 0) return draftCompare
+
+      return String(left.title || '').localeCompare(String(right.title || ''), 'ko')
+    })
 }
 
 /**
@@ -2000,8 +2253,16 @@ function normalizeDeptSnapshots(value) {
  */
 function buildDashboardState(input) {
   const source = input && typeof input === 'object' ? input : {}
+  const reportDate = normalizeReportDate(source.reportDate)
+  const weeklyReferenceWeek = normalizeReferenceWeek(source.weeklyReferenceWeek || source.referenceWeek, reportDate)
+  const weekRange = buildWeekDateRangeFromReferenceWeek(weeklyReferenceWeek, reportDate)
+
   return {
-    reportDate: normalizeReportDate(source.reportDate),
+    reportDate,
+    weeklyReferenceWeek,
+    weeklyRangeStart: normalizeReportDate(source.weeklyRangeStart || weekRange.weekStartDate),
+    weeklyRangeEnd: normalizeReportDate(source.weeklyRangeEnd || weekRange.weekEndDate),
+    collectionMode: normalizeCollectionMode(source.collectionMode),
     testOneOnly: normalizeBool(source.testOneOnly),
     noticeMessage: String(source.noticeMessage || '').trim(),
     errorMessage: String(source.errorMessage || '').trim(),
@@ -2012,6 +2273,7 @@ function buildDashboardState(input) {
     analysisResults: normalizeAnalyzeResults(source.analysisResults),
     deptWeekTables: normalizeDeptWeekTables(source.deptWeekTables),
     deptSnapshots: normalizeDeptSnapshots(source.deptSnapshots),
+    weeklyReportRows: normalizeWeeklyReportRows(source.weeklyReportRows),
   }
 }
 
@@ -2157,6 +2419,7 @@ function buildDashboardStateFromCollectResult(result, formState) {
   return buildDashboardState({
     reportDate: safeFormState.reportDate,
     testOneOnly: safeFormState.testOneOnly,
+    collectionMode: safeFormState.collectionMode,
     noticeMessage,
     warnings: result && result.warnings,
     isDiaryAccessible: result && result.isDiaryAccessible,
@@ -2165,6 +2428,38 @@ function buildDashboardStateFromCollectResult(result, formState) {
     deptWeekTables,
     deptSnapshots: result && result.deptSnapshots,
     stoppedReason: result && result.stoppedReason,
+  })
+}
+
+/**
+ * 주간 보고 URL 조회 결과를 기존 상태와 합쳐 화면용 대시보드 상태로 변환합니다.
+ * @param {Partial<types.KjcaWeeklyReportUrlResult> | null | undefined} result 주간 보고 URL 조회 결과입니다.
+ * @param {Partial<types.KjcaDashboardState> | null | undefined} currentState 현재 화면 상태입니다.
+ * @param {types.KjcaFormStateInput | null | undefined} formState 현재 폼 상태 입력값입니다.
+ * @returns {types.KjcaDashboardState} 렌더링에 바로 쓸 수 있는 대시보드 상태입니다.
+ */
+function buildDashboardStateFromWeeklyReportUrlResult(result, currentState, formState) {
+  const safeCurrentState = buildDashboardState(currentState)
+  const safeFormState = buildFormState(formState)
+  const weekRange = buildWeekDateRangeFromReferenceWeek(
+    result && result.referenceWeek ? result.referenceWeek : safeFormState.referenceWeek,
+    safeFormState.reportDate
+  )
+  const rows = normalizeWeeklyReportRows(result && result.rows)
+  const alertMessage = String((result && result.alertMessage) || '').trim()
+  const noticeMessage = alertMessage || `주간 보고 URL ${rows.length}건을 확인했습니다.`
+
+  return buildDashboardState({
+    ...safeCurrentState,
+    reportDate: safeCurrentState.reportDate || safeFormState.reportDate,
+    weeklyReferenceWeek: weekRange.referenceWeek,
+    weeklyRangeStart: result && result.weekStartDate ? result.weekStartDate : weekRange.weekStartDate,
+    weeklyRangeEnd: result && result.weekEndDate ? result.weekEndDate : weekRange.weekEndDate,
+    collectionMode: 'weekly',
+    noticeMessage,
+    errorMessage: '',
+    warnings: result && result.warnings,
+    weeklyReportRows: rows,
   })
 }
 
@@ -2187,12 +2482,17 @@ module.exports = {
   toAbsoluteKjcaUrl,
   isAllowedKjcaUrl,
   parseTeamLeadRowsFromDiaryHtml,
+  parseWeeklyReportRowsFromListHtml,
   parseRecruitingExtractFromDiaryHtml,
   parseJobStatusTableFromDiaryHtml,
   parseMiscSectionFromDiaryHtml,
   buildBrowserLikeHeaders,
   buildFormState,
   normalizeReportDate,
+  buildIsoWeekValue,
+  normalizeReferenceWeek,
+  buildWeekDateRangeFromReferenceWeek,
+  buildWeeklyReportSearchRangeFromReferenceWeek,
   escapeFilterValue,
   hashText,
   extractDivInnerHtmlByClasses,
@@ -2215,6 +2515,7 @@ module.exports = {
   normalizeRecruitingExtract,
   normalizeCachedRecruitingField,
   normalizeTeamLeadRows,
+  normalizeWeeklyReportRows,
   normalizeAnalyzeResults,
   normalizeWeekTextRows,
   ensureWeekdayRows,
@@ -2227,6 +2528,7 @@ module.exports = {
   normalizeDeptSnapshots,
   buildDashboardState,
   buildDashboardStateFromCollectResult,
+  buildDashboardStateFromWeeklyReportUrlResult,
   parseDashboardState,
   serializeDashboardState,
   isFocusWeekday,

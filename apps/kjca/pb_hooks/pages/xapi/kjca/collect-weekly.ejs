@@ -15,10 +15,14 @@
   const form = body()
   const formState = kjcaCore.buildFormState({
     reportDate: form.reportDate,
+    referenceWeek: form.referenceWeek,
+    collectionMode: form.collectionMode,
     testOneOnly: form.testOneOnly,
   })
   let dashboardState = kjcaCore.buildDashboardState({
     reportDate: formState.reportDate,
+    weeklyReferenceWeek: formState.referenceWeek,
+    collectionMode: formState.collectionMode,
     testOneOnly: formState.testOneOnly,
   })
 
