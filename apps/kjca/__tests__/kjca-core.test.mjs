@@ -9,7 +9,14 @@ const testDir = path.dirname(fileURLToPath(import.meta.url))
 
 globalThis.__hooks = path.resolve(testDir, '../pb_hooks')
 
-const { htmlToText, parseTeamLeadRowsFromDiaryHtml, parseJobStatusTableFromDiaryHtml, parseMiscSectionFromDiaryHtml } = require('../pb_hooks/pages/_private/kjca-core.js')
+const {
+  htmlToText,
+  buildPromotionDisplayItems,
+  parseTeamLeadRowsFromDiaryHtml,
+  parseRecruitingExtractFromDiaryHtml,
+  parseJobStatusTableFromDiaryHtml,
+  parseMiscSectionFromDiaryHtml,
+} = require('../pb_hooks/pages/_private/kjca-core.js')
 
 test('htmlToText keeps table columns and list markers readable', () => {
   const html =
@@ -208,6 +215,143 @@ test('parseJobStatusTableFromDiaryHtml recognizes counselor employment support s
   )
   assert.equal(parsed.rows[4].values[0].text, '')
   assert.equal(parsed.rows[4].values[1].valueNumber, 2)
+})
+
+test('parseRecruitingExtractFromDiaryHtml parses standard weekly recruiting table without AI help', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<strong>2. 모집. 홍보</strong>' +
+    '<table>' +
+    '<tr><td colspan="7">월 배정목표 : 60건 / 4월 현재 달성 : 배정 3명</td></tr>' +
+    '<tr><td>요일</td><td colspan="3">주간 홍보계획</td><td>결과</td><td>담당자(홍보)</td><td>비고</td></tr>' +
+    '<tr><td>모집홍보처</td><td>모집 홍보내용</td><td>모집목표</td><td>모집 건수</td></tr>' +
+    '<tr><td>월</td><td>올댓뷰티</td><td>훈련생 TM</td><td>3건</td><td>0건</td><td>백단비</td><td>올댓뷰티연계 2명 추가</td></tr>' +
+    '<tr><td>화</td><td>KH</td><td>훈련생 TM</td><td>3건</td><td>2건</td><td>백단비</td><td></td></tr>' +
+    '<tr><td>수</td><td>SBS게임아카데미</td><td>방문일정재협의</td><td>협약일정확인</td><td>4/9 방문예정</td><td>백단비</td><td></td></tr>' +
+    '<tr><td>목</td><td>아텐츠아카데미</td><td>훈련생 TM</td><td>3건</td><td>0건</td><td></td><td>익일 신청자 2명 연계</td></tr>' +
+    '<tr><td>금</td><td>KH</td><td>담당자 미팅 및 협약</td><td>3건</td><td>1건</td><td></td><td>금일방문예정 신청건 차주 일정변경</td></tr>' +
+    '</table>' +
+    '</div>'
+
+  const parsed = parseRecruitingExtractFromDiaryHtml(html, '2026-04-03')
+
+  assert.equal(parsed.monthTarget, 60)
+  assert.equal(parsed.monthAssignedCurrent, 3)
+  assert.equal(parsed.weekTarget, 12)
+  assert.equal(parsed.dailyActualCount, 1)
+  assert.equal(parsed.weekTableRows.length, 5)
+  assert.equal(parsed.weekTableRows[0].channelName, '올댓뷰티')
+  assert.equal(parsed.weekTableRows[1].recruitCountText, '2건')
+  assert.equal(parsed.weekTableRows[2].targetText, '협약일정확인')
+  assert.equal(parsed.dailyPlan[2].targetCount, null)
+  assert.equal(parsed.dailyPlan[4].targetCount, 3)
+})
+
+test('parseRecruitingExtractFromDiaryHtml handles count-only recruiting schema and weekday rowspans', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<span><strong>○ 홍보 모집</strong></span>' +
+    '<table>' +
+    '<tr><td colspan="7">월 배정목표:45건/모집배정목표20건 /3월 현재 달성: 배정 건 모집 :0건</td></tr>' +
+    '<tr><td rowspan="3">요일</td><td colspan="3">주간홍보계획</td><td>결과</td><td rowspan="2">담당자(홍보)</td><td rowspan="2">비고</td></tr>' +
+    '<tr><td>모집홍보기관</td><td>모집홍보내용</td><td>모집건수</td><td></td></tr>' +
+    '<tr><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '<tr><td>월</td><td>동부고용센터</td><td>실업급여 만료 대상자 홍보</td><td>3</td><td>참여신청서 작성 2건 제출예정 1건</td><td>이기영</td><td></td></tr>' +
+    '<tr><td>화</td><td>경북대학교 현장채용설명회 외부 홍보</td><td>설명회장 입퇴장자 대상 외부 홍보</td><td></td><td>고등학생 많음</td><td>김경태, 김나연</td><td>SBS-1건 작성</td></tr>' +
+    '<tr><td>수</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '<tr><td rowspan="2">목</td><td>동부고용센터</td><td>실업급여 만료 대상자 홍보</td><td>1</td><td></td><td>정향주</td><td></td></tr>' +
+    '<tr><td>동대구간호학원외2곳</td><td>기관홍보 협조및 설명회요청</td><td></td><td>9월에 설명회예정</td><td>진윤아,정향주</td><td></td></tr>' +
+    '<tr><td>금</td><td>배움디지털</td><td>협약홍보 협조요청, 설명회요청</td><td></td><td>4/9일 설명회</td><td>황수연, 이기영김나연</td><td></td></tr>' +
+    '</table>' +
+    '</div>'
+
+  const parsed = parseRecruitingExtractFromDiaryHtml(html, '2026-03-30')
+
+  assert.equal(parsed.monthTarget, 45)
+  assert.equal(parsed.monthAssignedCurrent, 0)
+  assert.equal(parsed.weekTarget, 4)
+  assert.equal(parsed.dailyActualCount, 3)
+  assert.equal(parsed.weekTableRows.length, 5)
+  assert.equal(parsed.weekTableRows[0].targetText, '3')
+  assert.equal(parsed.weekTableRows[0].recruitCountText, '3')
+  assert.equal(parsed.weekTableRows[0].note, '참여신청서 작성 2건 제출예정 1건')
+  assert.equal(parsed.weekTableRows[2].weekday, 'thu')
+  assert.equal(parsed.weekTableRows[2].ownerName, '정향주')
+  assert.equal(parsed.weekTableRows[3].weekday, 'thu')
+  assert.equal(parsed.weekTableRows[3].note, '9월에 설명회예정')
+})
+
+test('parseRecruitingExtractFromDiaryHtml keeps recruiting rows clean when later sections are nested in a wrapper table', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<table><tr><td>' +
+    '<strong>2. 모집 / 홍보</strong>' +
+    '<table>' +
+    '<tr><td colspan="7">월 배정목표 : 50건 / 4월 현재 달성 : 배정 9명</td></tr>' +
+    '<tr><td>요일</td><td colspan="3">주간 홍보계획</td><td>결과</td><td>담당자(홍보)</td><td>비고</td></tr>' +
+    '<tr><td>모집홍보처</td><td>모집 홍보내용</td><td>모집목표</td><td>모집 건수</td></tr>' +
+    '<tr><td>목</td><td>안양온누리요양보호사교육원</td><td>홍보</td><td></td><td></td><td>정은선</td><td></td></tr>' +
+    '<tr><td>금</td><td>한국직업능력교육원</td><td>설명회</td><td>12명</td><td>1</td><td>김민정</td><td>선물 전달예정</td></tr>' +
+    '</table>' +
+    '<strong>3. 알선취업자 현황</strong>' +
+    '<table>' +
+    '<tr><td>구분</td><td>민미경</td><td>최지원</td></tr>' +
+    '<tr><td>3월 알선취업 목표</td><td>3</td><td>0</td></tr>' +
+    '<tr><td>금일 알선건수</td><td>7</td><td>0</td></tr>' +
+    '<tr><td>알선취업 예정자 수</td><td>03/26 김희주</td><td>03/23 손유진</td></tr>' +
+    '<tr><td>알선자 면접건수</td><td>03/16 염혜원</td><td>03/30 송민선</td></tr>' +
+    '<tr><td>알선취업 누적건수</td><td>6</td><td>2</td></tr>' +
+    '</table>' +
+    '<strong>4. 기타 사항</strong>' +
+    '<table>' +
+    '<tr><td>구분</td><td>내용</td></tr>' +
+    '<tr><td>고용센터 전달사항</td><td>- 없음</td></tr>' +
+    '<tr><td>지점 특이사항</td><td>- 없음</td></tr>' +
+    '<tr><td>기타 건의사항</td><td>- 없음</td></tr>' +
+    '</table>' +
+    '</td></tr></table>' +
+    '</div>'
+
+  const parsed = parseRecruitingExtractFromDiaryHtml(html, '2026-04-03')
+  const thuRow = parsed.weekTableRows.find((row) => row.weekday === 'thu')
+  const friRow = parsed.weekTableRows.find((row) => row.weekday === 'fri')
+
+  assert.equal(parsed.monthTarget, 50)
+  assert.equal(parsed.monthAssignedCurrent, 9)
+  assert.equal(thuRow.channelName, '안양온누리요양보호사교육원')
+  assert.equal(thuRow.ownerName, '정은선')
+  assert.equal(friRow.channelName, '한국직업능력교육원')
+  assert.equal(friRow.promotionContent, '설명회')
+  assert.equal(friRow.targetText, '12명')
+  assert.equal(friRow.recruitCountText, '1')
+  assert.equal(friRow.ownerName, '김민정')
+  assert.equal(friRow.note, '선물 전달예정')
+})
+
+test('buildPromotionDisplayItems prefers structured recruiting rows with weekday labels', () => {
+  assert.deepEqual(
+    buildPromotionDisplayItems({
+      promotion: ['알선취업 예정자 2명', '모집 홍보 원문'],
+      recruiting: {
+        weekTableRows: [
+          { weekday: 'mon', channelName: '올댓뷰티', promotionContent: '훈련생 TM' },
+          { weekday: 'tue', channelName: 'KH', promotionContent: '담당자 미팅' },
+          { weekday: 'tue', channelName: 'KH', promotionContent: '담당자 미팅' },
+        ],
+      },
+    }),
+    ['(월) 올댓뷰티 / 훈련생 TM', '(화) KH / 담당자 미팅']
+  )
+})
+
+test('buildPromotionDisplayItems falls back to deduped AI promotion text when structured rows are absent', () => {
+  assert.deepEqual(
+    buildPromotionDisplayItems({
+      promotion: ['  외부 홍보  ', '외부 홍보', '기관 방문'],
+      recruiting: {},
+    }),
+    ['외부 홍보', '기관 방문']
+  )
 })
 
 test('parseMiscSectionFromDiaryHtml parses two-column miscellaneous table', () => {

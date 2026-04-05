@@ -552,6 +552,7 @@
           open
           class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
           <summary class="cursor-pointer text-base font-semibold text-slate-950"><%= item.dept %> / <%= item.staffName %><%= item.ok ? '' : ' (실패)' %></summary>
+          <% const promotionDisplayItems = kjcaCore.buildPromotionDisplayItems(item) %>
 
           <div class="mt-4 space-y-4 text-sm text-slate-700">
             <div>
@@ -572,10 +573,10 @@
               <div class="rounded-2xl border border-slate-200 bg-white p-4">
                 <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Promotion</p>
                 <div class="mt-2 space-y-1">
-                  <% if (!item.promotion || item.promotion.length === 0) { %>
+                  <% if (!promotionDisplayItems || promotionDisplayItems.length === 0) { %>
                   <p class="text-sm text-slate-500">-</p>
                   <% } else { %>
-                  <% item.promotion.forEach((promotionText) => { %>
+                  <% promotionDisplayItems.forEach((promotionText) => { %>
                   <div class="break-words">- <%= promotionText %></div>
                   <% }) %>
                   <% } %>

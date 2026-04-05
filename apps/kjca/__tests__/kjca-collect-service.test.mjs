@@ -31,6 +31,7 @@ class MockRecord {
 
 function createAppMock() {
   const store = {
+    staff_diary_analysis_cache: [],
     recruiting_week_plans: [],
     recruiting_week_plan_items: [],
     recruiting_week_text_plans: [],
@@ -74,6 +75,13 @@ function createAppMock() {
       throw new Error(`Unexpected findFirstRecordByFilter collection: ${collectionName}`)
     },
     findRecordsByFilter(collectionName, filter, sort, limit, offset, params) {
+      if (collectionName === 'staff_diary_analysis_cache') {
+        const exact = normalizeDateText(String(filter.match(/reportDate = '([^']+)'/)?.[1] || ''))
+        const dept = String(filter.match(/dept = '([^']+)'/)?.[1] || '').trim()
+        return store.staff_diary_analysis_cache.filter(
+          (row) => normalizeDateText(row.get('reportDate')) === exact && String(row.get('dept') || '').trim() === dept
+        )
+      }
       if (collectionName === 'recruiting_week_plan_items') {
         return store.recruiting_week_plan_items.filter((row) => row.get('planId') === params.planId)
       }
@@ -108,7 +116,17 @@ function createAppMock() {
       const nextRows = rows.filter((item) => item.id !== record.id)
       store[collectionName] = nextRows
     },
+    __store: store,
   }
+}
+
+function createSavedRecord(appMock, collectionName, values) {
+  const record = new MockRecord({ id: collectionName, name: collectionName })
+  Object.entries(values || {}).forEach(([key, value]) => {
+    record.set(key, value)
+  })
+  appMock.save(record)
+  return record
 }
 
 function buildWeekRows() {
@@ -291,5 +309,114 @@ test('collectWeekly saves and returns dept week table rows after module split', 
     globalThis.$app = originalApp
     globalThis.Record = originalRecord
     globalThis.sleep = originalSleep
+  }
+})
+
+test('clearAnalysisCache removes derived weekly records for the selected dept', () => {
+  const originalAuthCache = require.cache[authModulePath]
+  const originalAnalyzeCache = require.cache[analyzeModulePath]
+  const originalCollectCache = require.cache[collectServicePath]
+  const originalApp = globalThis.$app
+  const originalRecord = globalThis.Record
+
+  const appMock = createAppMock()
+
+  try {
+    require.cache[authModulePath] = {
+      id: authModulePath,
+      filename: authModulePath,
+      loaded: true,
+      exports: {
+        ensureSuperuserRequest() {},
+        createKjcaSession() {
+          return null
+        },
+        probeStaffAuth() {
+          return {
+            isDiaryAccessible: true,
+            teamLeadRows: [],
+          }
+        },
+      },
+    }
+
+    require.cache[analyzeModulePath] = {
+      id: analyzeModulePath,
+      filename: analyzeModulePath,
+      loaded: true,
+      exports: {
+        analyzeStaffDiary() {
+          throw new Error('not used in this test')
+        },
+      },
+    }
+
+    delete require.cache[collectServicePath]
+
+    globalThis.$app = appMock
+    globalThis.Record = MockRecord
+
+    createSavedRecord(appMock, 'staff_diary_analysis_cache', {
+      reportDate: '2026-04-03',
+      dept: '경기안양',
+    })
+
+    const weekTextPlan = createSavedRecord(appMock, 'recruiting_week_text_plans', {
+      weekStartDate: '2026-03-30',
+      dept: '경기안양',
+    })
+    createSavedRecord(appMock, 'recruiting_week_text_rows', {
+      planId: weekTextPlan.id,
+      weekday: 'fri',
+      channelName: '오염된 주간표',
+    })
+
+    const weekPlan = createSavedRecord(appMock, 'recruiting_week_plans', {
+      weekStartDate: '2026-03-30',
+      dept: '경기안양',
+    })
+    createSavedRecord(appMock, 'recruiting_week_plan_items', {
+      planId: weekPlan.id,
+      weekday: 'fri',
+      targetCount: 12,
+    })
+
+    createSavedRecord(appMock, 'recruiting_daily_results', {
+      reportDate: '2026-04-03',
+      weekStartDate: '2026-03-30',
+      dept: '경기안양',
+      weekday: 'fri',
+      actualCount: 1,
+    })
+
+    const collectService = require(collectServicePath)
+    const result = collectService.clearAnalysisCache(
+      {},
+      {
+        reportDate: '2026-04-03',
+        dept: '경기안양',
+      }
+    )
+
+    assert.equal(result.ok, true)
+    assert.equal(result.deletedCount, 6)
+    assert.equal(appMock.__store.staff_diary_analysis_cache.length, 0)
+    assert.equal(appMock.__store.recruiting_week_text_plans.length, 0)
+    assert.equal(appMock.__store.recruiting_week_text_rows.length, 0)
+    assert.equal(appMock.__store.recruiting_week_plans.length, 0)
+    assert.equal(appMock.__store.recruiting_week_plan_items.length, 0)
+    assert.equal(appMock.__store.recruiting_daily_results.length, 0)
+  } finally {
+    if (originalAuthCache) require.cache[authModulePath] = originalAuthCache
+    else delete require.cache[authModulePath]
+
+    if (originalAnalyzeCache) require.cache[analyzeModulePath] = originalAnalyzeCache
+    else delete require.cache[analyzeModulePath]
+
+    if (originalCollectCache) require.cache[collectServicePath] = originalCollectCache
+    else delete require.cache[collectServicePath]
+
+    globalThis.$app = originalApp
+    globalThis.Record = originalRecord
   }
 })

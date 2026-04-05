@@ -206,6 +206,41 @@ function findWeekResults(weekStartDate, dept) {
   }
 }
 
+function deleteRecords(rows) {
+  ;(Array.isArray(rows) ? rows : []).forEach((row) => {
+    $app.delete(row)
+  })
+}
+
+function clearDerivedWeeklyRecords(reportDate, dept) {
+  const safeWeekStartDate = buildWeekStartDate(reportDate)
+  let deletedCount = 0
+
+  const weekTextPlan = findWeekTextPlan(safeWeekStartDate, dept)
+  if (weekTextPlan) {
+    const weekTextRows = findWeekTextRows(weekTextPlan.id)
+    deleteRecords(weekTextRows)
+    deletedCount += weekTextRows.length
+    $app.delete(weekTextPlan)
+    deletedCount += 1
+  }
+
+  const weekPlan = findWeekPlan(safeWeekStartDate, dept)
+  if (weekPlan) {
+    const weekPlanItems = findWeekPlanItems(weekPlan.id)
+    deleteRecords(weekPlanItems)
+    deletedCount += weekPlanItems.length
+    $app.delete(weekPlan)
+    deletedCount += 1
+  }
+
+  const weekResults = findWeekResults(safeWeekStartDate, dept)
+  deleteRecords(weekResults)
+  deletedCount += weekResults.length
+
+  return deletedCount
+}
+
 function upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItemRole, weekPlanInput) {
   const dept = String((weekPlanInput && weekPlanInput.dept) || '').trim()
   if (!dept) return { ok: false, reason: 'dept-empty' }
@@ -389,12 +424,13 @@ function clearAnalysisCache(request, payload) {
   rows.forEach((row) => {
     $app.delete(row)
   })
+  const derivedDeletedCount = clearDerivedWeeklyRecords(reportDate, dept)
 
   return {
     ok: true,
     reportDate,
     dept,
-    deletedCount: rows.length,
+    deletedCount: rows.length + derivedDeletedCount,
   }
 }
 
@@ -457,10 +493,12 @@ function collectWeekly(request, roles, payload) {
       )
 
       ;(Array.isArray(mondayAnalyze.results) ? mondayAnalyze.results : [])
-        .filter((item) => item && item.ok !== false)
+        .filter((item) => {
+          const recruiting = normalizeRecruitingExtract(item && item.recruiting)
+          return hasWeekPlanData(recruiting)
+        })
         .forEach((item) => {
           const recruiting = normalizeRecruitingExtract(item.recruiting)
-          if (!hasWeekPlanData(recruiting)) return
 
           try {
             const result = upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItemRole, {
@@ -558,16 +596,18 @@ function collectWeekly(request, roles, payload) {
     }
   }
 
-  analysisResults
-    .filter((item) => item.ok)
-    .forEach((item) => {
+  analysisResults.forEach((item) => {
+    const recruiting = normalizeRecruitingExtract(item.recruiting)
+    const hasRecruitingData = hasWeekPlanData(recruiting) || normalizeNullableInt(recruiting.dailyActualCount) !== null
+    if (!hasRecruitingData) return
+
       const safeDept = String(item.dept || '').trim()
       if (!safeDept) {
         warnings.push('dailyResult skip: dept-empty')
         return
       }
 
-      const allWeekTextRows = normalizeWeekTextRows(item.recruiting.weekTableRows)
+      const allWeekTextRows = normalizeWeekTextRows(recruiting.weekTableRows)
       const canReplaceWeekTable = hasWeekTextContent(allWeekTextRows) && getDistinctWeekdayCount(allWeekTextRows) >= WEEKDAY_ORDER.length
 
       if (canReplaceWeekTable) {
@@ -598,7 +638,7 @@ function collectWeekly(request, roles, payload) {
         }
       }
 
-      const safeActual = normalizeNullableInt(item.recruiting.dailyActualCount)
+      const safeActual = normalizeNullableInt(recruiting.dailyActualCount)
       if (safeActual === null) {
         warnings.push(`dailyResult skip: ${item.dept || '-'} (actualCount-empty)`)
         return

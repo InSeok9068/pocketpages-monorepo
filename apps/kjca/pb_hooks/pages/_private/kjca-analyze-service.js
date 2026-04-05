@@ -17,6 +17,7 @@ const {
   escapeFilterValue,
   hashText,
   extractDivInnerHtmlByClasses,
+  parseRecruitingExtractFromDiaryHtml,
   parseJobStatusTableFromDiaryHtml,
   parseMiscSectionFromDiaryHtml,
   htmlToText,
@@ -170,6 +171,21 @@ function buildAnalyzeResult(resultInput) {
     recruiting: normalizeRecruitingExtract(resultInput.recruiting),
     printUrl: String(resultInput.printUrl || '').trim(),
   }
+}
+
+function mergeRecruitingPreferHtml(primaryRecruiting, fallbackRecruiting) {
+  const primary = normalizeRecruitingExtract(primaryRecruiting)
+  const fallback = normalizeRecruitingExtract(fallbackRecruiting)
+
+  return normalizeRecruitingExtract({
+    monthTarget: primary.monthTarget !== null ? primary.monthTarget : fallback.monthTarget,
+    monthAssignedCurrent: primary.monthAssignedCurrent !== null ? primary.monthAssignedCurrent : fallback.monthAssignedCurrent,
+    weekTarget: primary.weekTarget !== null ? primary.weekTarget : fallback.weekTarget,
+    jobStatusTable: primary.jobStatusTable || fallback.jobStatusTable,
+    dailyPlan: primary.dailyPlan.length > 0 ? primary.dailyPlan : fallback.dailyPlan,
+    dailyActualCount: primary.dailyActualCount !== null ? primary.dailyActualCount : fallback.dailyActualCount,
+    weekTableRows: primary.weekTableRows.length > 0 ? primary.weekTableRows : fallback.weekTableRows,
+  })
 }
 
 function buildPrompt(promptInput) {
@@ -353,9 +369,13 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
     const docInnerHtml = extractDivInnerHtmlByClasses(detailHtml, ['doc_text', 'editor']) || extractDivInnerHtmlByClasses(detailHtml, ['doc_text'])
     const docText = htmlToText(docInnerHtml)
     const sourceHash = hashText(docText)
+    const parsedRecruiting = parseRecruitingExtractFromDiaryHtml(docInnerHtml, reportDate)
     const parsedJobStatusTable = parseJobStatusTableFromDiaryHtml(docInnerHtml)
     const parsedMiscSection = parseMiscSectionFromDiaryHtml(docInnerHtml)
-    const recruitingFromHtml = parsedJobStatusTable ? { jobStatusTable: parsedJobStatusTable } : {}
+    const recruitingFromHtml = mergeRecruitingPreferHtml(
+      parsedRecruiting || {},
+      parsedJobStatusTable ? { jobStatusTable: parsedJobStatusTable } : {}
+    )
     const miscSectionFromHtml = parsedMiscSection || null
 
     if (!docText) {
@@ -394,10 +414,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
           vacation: normalizeJsonArrayField(cachedRecord.get('vacation')),
           special: normalizeJsonArrayField(cachedRecord.get('special')),
           miscSection: miscSectionFromHtml,
-          recruiting: {
-            ...cachedRecruiting,
-            ...recruitingFromHtml,
-          },
+          recruiting: mergeRecruitingPreferHtml(recruitingFromHtml, cachedRecruiting),
           printUrl,
         })
       )
@@ -454,10 +471,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
     const promotion = normalizeStringArray(parsed && parsed.promotion)
     const vacation = normalizeStringArray(parsed && parsed.vacation)
     const special = normalizeStringArray(parsed && parsed.special)
-    const recruiting = normalizeRecruitingExtract({
-      ...(parsed && parsed.recruiting),
-      ...recruitingFromHtml,
-    })
+    const recruiting = mergeRecruitingPreferHtml(recruitingFromHtml, parsed && parsed.recruiting)
 
     upsertSuccessCache(staffDiaryAnalysisCacheRole, {
       reportDate,

@@ -319,6 +319,86 @@ function extractTableHtmlBlocks(html) {
   return blocks.sort((a, b) => a.startIndex - b.startIndex)
 }
 
+function isCompactSearchChar(char) {
+  return /[0-9A-Za-z가-힣]/.test(String(char || ''))
+}
+
+function normalizeCompactSearchText(text) {
+  return decodeHtmlEntities(String(text || ''))
+    .replace(/<[^>]*>/g, ' ')
+    .split('')
+    .filter((char) => isCompactSearchChar(char))
+    .join('')
+    .toLowerCase()
+}
+
+function buildCompactHtmlTextIndex(html) {
+  const source = String(html || '')
+  const compactChars = []
+  const htmlIndexes = []
+
+  for (let index = 0; index < source.length; index += 1) {
+    const current = source[index]
+
+    if (current === '<') {
+      const closeIndex = source.indexOf('>', index + 1)
+      if (closeIndex === -1) break
+      index = closeIndex
+      continue
+    }
+
+    let decoded = current
+    let consumedLength = 1
+    if (current === '&') {
+      const semiIndex = source.indexOf(';', index + 1)
+      if (semiIndex !== -1 && semiIndex - index <= 10) {
+        decoded = decodeHtmlEntities(source.slice(index, semiIndex + 1))
+        consumedLength = semiIndex - index + 1
+      }
+    }
+
+    String(decoded || '')
+      .split('')
+      .forEach((char) => {
+        if (!isCompactSearchChar(char)) return
+        compactChars.push(char.toLowerCase())
+        htmlIndexes.push(index)
+      })
+
+    index += consumedLength - 1
+  }
+
+  return {
+    compactText: compactChars.join(''),
+    htmlIndexes,
+  }
+}
+
+function findCompactTextVariant(compactIndex, variants, startOffset = 0) {
+  const compactText = String((compactIndex && compactIndex.compactText) || '')
+  const safeStartOffset = Math.max(0, Math.trunc(Number(startOffset) || 0))
+  let best = null
+
+  ;(Array.isArray(variants) ? variants : []).forEach((variant) => {
+    const normalizedVariant = normalizeCompactSearchText(variant)
+    if (!normalizedVariant) return
+
+    const foundIndex = compactText.indexOf(normalizedVariant, safeStartOffset)
+    if (foundIndex === -1) return
+
+    if (!best || foundIndex < best.index) {
+      best = {
+        index: foundIndex,
+        endIndex: foundIndex + normalizedVariant.length,
+        htmlIndex: compactIndex && Array.isArray(compactIndex.htmlIndexes) ? compactIndex.htmlIndexes[foundIndex] : 0,
+        variant: normalizedVariant,
+      }
+    }
+  })
+
+  return best
+}
+
 function isMeaningfulJobStatusCellText(text) {
   const normalized = normalizeSingleLineText(text)
   if (!normalized) return false
@@ -427,6 +507,372 @@ function parseJobStatusTableFromDiaryHtml(diaryHtml) {
   }
 }
 
+function normalizeRecruitingCellText(text) {
+  const normalized = normalizeSingleLineText(text)
+  if (!normalized || normalized === '-' || normalized === '--') return ''
+  return normalized
+}
+
+function parseStrictRecruitingCount(text) {
+  const normalized = normalizeRecruitingCellText(text).replace(/,/g, '')
+  if (!normalized) return null
+
+  const matched = normalized.match(/^(\d+)(?:\s*(?:건|명))?$/)
+  if (!matched) return null
+
+  return Math.max(0, Math.trunc(Number(matched[1] || 0)))
+}
+
+function parseRecruitingMonthTarget(summaryText) {
+  const text = normalizeSingleLineText(summaryText)
+  if (!text) return null
+
+  const patterns = [/월\s*배정목표\s*[:：]?\s*(\d+)/i, /모집배정목표\s*[:：]?\s*(\d+)/i]
+  for (let index = 0; index < patterns.length; index += 1) {
+    const matched = text.match(patterns[index])
+    if (!matched) continue
+    return Math.max(0, Math.trunc(Number(matched[1] || 0)))
+  }
+
+  return null
+}
+
+function parseRecruitingMonthAssignedCurrent(summaryText) {
+  const text = normalizeSingleLineText(summaryText)
+  if (!text) return null
+
+  const patterns = [
+    /현재\s*(?:목표\s*)?달성[\s\S]{0,24}?배정\s*(\d+)\s*명/i,
+    /현재\s*(?:목표\s*)?달성[\s\S]{0,24}?(\d+)\s*명/i,
+    /현재\s*(?:목표\s*)?달성[\s\S]{0,32}?모집\s*[:：]?\s*(\d+)\s*건/i,
+    /현재\s*(?:목표\s*)?달성[\s\S]{0,32}?(\d+)\s*(?:건|명)/i,
+  ]
+
+  for (let index = 0; index < patterns.length; index += 1) {
+    const matched = text.match(patterns[index])
+    if (!matched) continue
+    return Math.max(0, Math.trunc(Number(matched[1] || 0)))
+  }
+
+  return null
+}
+
+function extractRecruitingSectionHtml(diaryHtml) {
+  const source = String(diaryHtml || '')
+  if (!source) return ''
+
+  const compactIndex = buildCompactHtmlTextIndex(source)
+  const startMatch = findCompactTextVariant(compactIndex, ['모집홍보', '홍보모집'])
+  if (!startMatch) return source
+
+  let sectionStart = source.indexOf('<table', startMatch.htmlIndex)
+  if (sectionStart === -1 || sectionStart - startMatch.htmlIndex > 1600) {
+    const previousTableIndex = source.lastIndexOf('<table', startMatch.htmlIndex)
+    sectionStart = previousTableIndex === -1 ? startMatch.htmlIndex : previousTableIndex
+  }
+
+  const endMatch = findCompactTextVariant(
+    compactIndex,
+    ['알선취업현황', '알선취업', '상담사취업지원현황', '취업지원현황', '기타사항', '기타보고', '고용센터전달사항'],
+    startMatch.endIndex
+  )
+  const sectionEnd = endMatch && endMatch.htmlIndex > sectionStart ? endMatch.htmlIndex : source.length
+
+  return source.slice(sectionStart, sectionEnd)
+}
+
+function hasRecruitingHeaderLabels(rows) {
+  const labels = []
+  ;(Array.isArray(rows) ? rows : []).forEach((row) => {
+    ;(Array.isArray(row) ? row : []).forEach((cell) => {
+      const text = normalizeSingleLineText(cell)
+      if (text) labels.push(text)
+    })
+  })
+
+  const hasWeekdayHeader = labels.includes('요일')
+  const hasChannelHeader = labels.some((label) => /모집\s*홍보(?:처|기관)/.test(label))
+  const hasContentHeader = labels.some((label) => /모집\s*홍보내용/.test(label))
+  const hasRecruitingHint = labels.some((label) => /주간\s*홍보\s*계획|배정목표|모집\s*[/.]?\s*홍보|홍보\s*모집|결과/.test(label))
+  return hasWeekdayHeader && hasChannelHeader && hasContentHeader && hasRecruitingHint
+}
+
+function isRecruitingTableRows(rows) {
+  if (!Array.isArray(rows) || rows.length < 4) return false
+  if (!hasRecruitingHeaderLabels(rows)) return false
+
+  const weekdayRows = rows.filter((row) => !!normalizeWeekday(row && row[0]))
+  return weekdayRows.length >= 2
+}
+
+function detectRecruitingSchema(headerRows) {
+  const labels = []
+  ;(Array.isArray(headerRows) ? headerRows : []).forEach((row) => {
+    ;(Array.isArray(row) ? row : []).forEach((cell) => {
+      const text = normalizeSingleLineText(cell)
+      if (text) labels.push(text)
+    })
+  })
+
+  const hasTargetHeader = labels.some((label) => /모집\s*목표/.test(label))
+  const hasCountHeader = labels.some((label) => /모집\s*건수/.test(label))
+  if (hasTargetHeader && hasCountHeader) return 'standard'
+  if (hasCountHeader) return 'count-only'
+  return 'standard'
+}
+
+function buildRecruitingRowNote(resultText, noteText) {
+  const result = normalizeRecruitingCellText(resultText)
+  const note = normalizeRecruitingCellText(noteText)
+  if (result && parseStrictRecruitingCount(result) !== null) return note
+  if (!result) return note
+  if (!note) return result
+  if (note.includes(result)) return note
+  return `${result} / ${note}`
+}
+
+function mapRecruitingBodyCells(bodyCells, schema) {
+  const cells = Array.isArray(bodyCells) ? bodyCells.map((cell) => normalizeRecruitingCellText(cell)) : []
+
+  while (cells.length < 6) {
+    cells.push('')
+  }
+
+  const extraText = cells.slice(6).filter(Boolean).join(' / ')
+
+  if (schema === 'count-only') {
+    const channelName = cells[0] || ''
+    const promotionContent = cells[1] || ''
+    const targetText = cells[2] || ''
+    const resultText = cells[3] || ''
+    const ownerName = cells[4] || ''
+    const note = buildRecruitingRowNote(resultText, [cells[5] || '', extraText].filter(Boolean).join(' / '))
+
+    return {
+      channelName,
+      weeklyPlan: '',
+      promotionContent,
+      targetText,
+      resultText,
+      recruitCountText: resultText && parseStrictRecruitingCount(resultText) !== null ? resultText : targetText,
+      ownerName,
+      note,
+    }
+  }
+
+  const channelName = cells[0] || ''
+  const promotionContent = cells[1] || ''
+  const targetText = cells[2] || ''
+  const recruitCountText = cells[3] || ''
+  const ownerName = cells[4] || ''
+  const note = [cells[5] || '', extraText].filter(Boolean).join(' / ')
+
+  return {
+    channelName,
+    weeklyPlan: '',
+    promotionContent,
+    targetText,
+    resultText: '',
+    recruitCountText,
+    ownerName,
+    note,
+  }
+}
+
+function buildRecruitingWeekTableRows(rows, reportDate) {
+  const plainRows = Array.isArray(rows) ? rows : []
+  const firstWeekdayRowIndex = plainRows.findIndex((row) => !!normalizeWeekday(row && row[0]))
+  if (firstWeekdayRowIndex === -1) {
+    return {
+      summaryText: '',
+      rows: [],
+      dailyActualCount: null,
+      weekTarget: null,
+    }
+  }
+
+  const summaryText = plainRows
+    .slice(0, firstWeekdayRowIndex)
+    .map((row) => row.map((cell) => normalizeSingleLineText(cell)).filter(Boolean).join(' '))
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+
+  const schema = detectRecruitingSchema(plainRows.slice(0, firstWeekdayRowIndex))
+  const weekTableRows = []
+  let currentWeekday = ''
+
+  for (let rowIndex = firstWeekdayRowIndex; rowIndex < plainRows.length; rowIndex += 1) {
+    const row = Array.isArray(plainRows[rowIndex]) ? plainRows[rowIndex] : []
+    if (row.length === 0) continue
+
+    const directWeekday = normalizeWeekday(row[0])
+    const offset = directWeekday ? 1 : 0
+    if (directWeekday) {
+      currentWeekday = directWeekday
+    }
+
+    if (!currentWeekday) continue
+
+    const bodyCells = row.slice(offset)
+    if (bodyCells.every((cell) => !normalizeRecruitingCellText(cell))) continue
+
+    const mapped = mapRecruitingBodyCells(bodyCells, schema)
+    const hasMeaningfulContent =
+      !!mapped.channelName || !!mapped.promotionContent || !!mapped.targetText || !!mapped.resultText || !!mapped.recruitCountText || !!mapped.ownerName || !!mapped.note
+
+    if (!hasMeaningfulContent) continue
+
+    weekTableRows.push({
+      weekday: currentWeekday,
+      ...mapped,
+      sortOrder: weekTableRows.length,
+    })
+  }
+
+  const dailyPlan = weekTableRows.map((row) => ({
+    weekday: row.weekday,
+    channelName: row.channelName,
+    promotionContent: row.promotionContent,
+    targetCount: parseStrictRecruitingCount(row.targetText),
+    ownerName: row.ownerName,
+    note: row.note,
+  }))
+
+  const numericTargetRows = dailyPlan.filter((row) => row.targetCount !== null)
+  const weekTarget =
+    numericTargetRows.length > 0 ? numericTargetRows.reduce((sum, row) => sum + Math.max(0, Math.trunc(Number(row.targetCount || 0))), 0) : null
+
+  const reportWeekday = normalizeWeekday(toWeekdayKey(reportDate))
+  const actualValues = weekTableRows
+    .filter((row) => row.weekday === reportWeekday)
+    .map((row) => parseStrictRecruitingCount(row.recruitCountText))
+    .filter((value) => value !== null)
+
+  return {
+    summaryText,
+    rows: weekTableRows,
+    dailyPlan,
+    dailyActualCount: actualValues.length > 0 ? actualValues.reduce((sum, value) => sum + Math.max(0, Math.trunc(Number(value || 0))), 0) : null,
+    weekTarget,
+  }
+}
+
+function isRecruitingLeakText(text) {
+  const compact = normalizeCompactSearchText(text)
+  if (!compact) return false
+
+  return (
+    compact.includes('알선취업목표') ||
+    compact.includes('월알선목표') ||
+    compact.includes('금일알선건수') ||
+    compact.includes('알선취업예정자수') ||
+    compact.includes('알선예정자수') ||
+    compact.includes('알선면접건수') ||
+    compact.includes('알선자면접건수') ||
+    compact.includes('알선취업누적건수') ||
+    compact.includes('알선취업누적') ||
+    compact.includes('상담사취업지원현황') ||
+    compact.includes('고용센터전달사항') ||
+    compact.includes('지점특이사항') ||
+    compact.includes('지점사항') ||
+    compact.includes('기타건의사항') ||
+    compact.includes('기타보고')
+  )
+}
+
+function scoreRecruitingCandidate(parsedCandidate, blockHtml) {
+  const rows = Array.isArray(parsedCandidate && parsedCandidate.rows) ? parsedCandidate.rows : []
+  const distinctWeekdays = getDistinctWeekdayCount(rows)
+  const nonEmptyFieldCount = rows.reduce((sum, row) => {
+    return (
+      sum +
+      ['channelName', 'promotionContent', 'targetText', 'recruitCountText', 'ownerName', 'note']
+        .map((key) => String((row && row[key]) || '').trim())
+        .filter(Boolean).length
+    )
+  }, 0)
+  const leakCount = rows.reduce((sum, row) => {
+    return (
+      sum +
+      ['channelName', 'promotionContent', 'targetText', 'recruitCountText', 'ownerName', 'note']
+        .map((key) => String((row && row[key]) || '').trim())
+        .filter((value) => isRecruitingLeakText(value)).length
+    )
+  }, 0)
+  const longFieldCount = rows.reduce((sum, row) => {
+    return (
+      sum +
+      ['channelName', 'promotionContent', 'targetText', 'recruitCountText', 'ownerName', 'note']
+        .map((key) => String((row && row[key]) || '').trim())
+        .filter((value) => value.length >= 80).length
+    )
+  }, 0)
+
+  let score = distinctWeekdays * 40 + rows.length * 12 + Math.min(20, nonEmptyFieldCount)
+  if (parsedCandidate && parsedCandidate.summaryText) score += 5
+  score -= leakCount * 240
+  score -= longFieldCount * 30
+  score -= Math.max(0, String(blockHtml || '').length - 12000) / 1000
+  return score
+}
+
+function findBestRecruitingTableCandidate(html, reportDate) {
+  return extractTableHtmlBlocks(html)
+    .map((block) => {
+      const rows = parseHtmlTableRows(block.html).filter((row) => row.some((cell) => normalizeSingleLineText(cell)))
+      if (!isRecruitingTableRows(rows)) return null
+
+      const parsed = buildRecruitingWeekTableRows(rows, reportDate)
+      if (!parsed.rows.length) return null
+
+      return {
+        summaryText: parsed.summaryText,
+        rows: parsed.rows,
+        dailyPlan: parsed.dailyPlan,
+        dailyActualCount: parsed.dailyActualCount,
+        weekTarget: parsed.weekTarget,
+        score: scoreRecruitingCandidate(parsed, block.html),
+        htmlLength: String(block.html || '').length,
+        startIndex: block.startIndex,
+      }
+    })
+    .filter((item) => !!item)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score
+      if (a.htmlLength !== b.htmlLength) return a.htmlLength - b.htmlLength
+      return a.startIndex - b.startIndex
+    })[0]
+}
+
+/**
+ * 업무일지 HTML에서 `모집/홍보` 주간표를 찾아 화면용 shape로 정리합니다.
+ * @param {unknown} diaryHtml 업무일지 본문 HTML입니다.
+ * @param {unknown} reportDate 조회 기준 일자입니다.
+ * @returns {types.KjcaRecruitingExtract | null} 정리된 모집/홍보 추출값 또는 `null`입니다.
+ */
+function parseRecruitingExtractFromDiaryHtml(diaryHtml, reportDate) {
+  const html = String(diaryHtml || '')
+  if (!html) return null
+
+  const sectionHtml = extractRecruitingSectionHtml(html)
+  const candidate = findBestRecruitingTableCandidate(sectionHtml, reportDate) || (sectionHtml !== html ? findBestRecruitingTableCandidate(html, reportDate) : null)
+
+  if (!candidate) return null
+
+  const monthTarget = parseRecruitingMonthTarget(candidate.summaryText)
+  const monthAssignedCurrent = parseRecruitingMonthAssignedCurrent(candidate.summaryText)
+
+  return normalizeRecruitingExtract({
+    monthTarget,
+    monthAssignedCurrent,
+    weekTarget: candidate.weekTarget,
+    dailyPlan: candidate.dailyPlan,
+    dailyActualCount: candidate.dailyActualCount,
+    weekTableRows: candidate.rows,
+  })
+}
+
 function normalizeMiscSectionKey(label, index) {
   const compact = normalizeSingleLineText(label)
     .replace(/\s+/g, '')
@@ -445,6 +891,13 @@ function buildMiscItemLabel(key, fallbackLabel) {
   if (key === 'branch-notes') return '지점 특이사항'
   if (key === 'suggestions') return '기타 건의사항'
   return fallback
+}
+
+function normalizeMiscSectionTitleText(title) {
+  const text = normalizeSingleLineText(title || '')
+  if (!text) return '기타 사항'
+  if (/기타\s*사항|기타보고|건의사항/i.test(text)) return '기타 사항'
+  return '기타 사항'
 }
 
 function normalizeMiscContentText(text) {
@@ -466,7 +919,7 @@ function buildMiscSectionTitleFromContext(contextHtml) {
     .filter(Boolean)
   const matched = text.reverse().find((line) => /기타\s*사항|기타보고|건의사항/i.test(line))
   if (!matched) return '기타 사항'
-  return matched.replace(/^(?:\d+\s*[.)]?\s*|[○●■]\s*)/, '').trim() || '기타 사항'
+  return normalizeMiscSectionTitleText(matched.replace(/^(?:['"]+|(?:\d+\s*[.)]?\s*|[○●■]\s*))+/, '').trim())
 }
 
 function isRecognizedMiscKey(key) {
@@ -1106,7 +1559,7 @@ function normalizeMiscSection(value) {
   if (items.length === 0) return null
 
   return {
-    title: normalizeSingleLineText(source.title || '기타 사항') || '기타 사항',
+    title: normalizeMiscSectionTitleText(source.title || '기타 사항'),
     items,
   }
 }
@@ -1673,6 +2126,43 @@ function buildDeptSummaryText(summaryInput) {
 }
 
 /**
+ * AI 상세의 Promotion 표시용 목록을 만듭니다.
+ * @param {Partial<types.KjcaAnalyzeResult> | null | undefined} analyzeResult 분석 결과 1건입니다.
+ * @returns {string[]} 화면에 표시할 모집/홍보 문구 목록입니다.
+ */
+function buildPromotionDisplayItems(analyzeResult) {
+  const item = analyzeResult && typeof analyzeResult === 'object' ? analyzeResult : {}
+  const recruiting = normalizeRecruitingExtract(item.recruiting)
+  const weekRows = normalizeWeekTextRows(recruiting.weekTableRows)
+
+  const structuredItems = weekRows
+    .map((row) => {
+      const parts = []
+      if (row.channelName) parts.push(row.channelName)
+      if (row.promotionContent && row.promotionContent !== row.channelName) parts.push(row.promotionContent)
+      else if (!parts.length && row.weeklyPlan) parts.push(row.weeklyPlan)
+      if (parts.length === 0) return ''
+
+      const weekdayLabel = weekdayLabelMap[row.weekday] || row.weekday
+      return `(${weekdayLabel}) ${parts.join(' / ')}`
+    })
+    .filter(Boolean)
+
+  if (structuredItems.length > 0) {
+    return Array.from(new Set(structuredItems))
+  }
+
+  const aiItems = Array.isArray(item.promotion) ? item.promotion : []
+  return Array.from(
+    new Set(
+      aiItems
+        .map((entry) => normalizeSingleLineText(entry))
+        .filter(Boolean)
+    )
+  )
+}
+
+/**
  * 수집 결과를 화면용 대시보드 상태로 변환합니다.
  * @param {Partial<types.KjcaCollectResult> | null | undefined} result 수집 API가 돌려준 결과입니다.
  * @param {types.KjcaFormStateInput | null | undefined} formState 현재 화면의 폼 상태 입력값입니다.
@@ -1717,6 +2207,7 @@ module.exports = {
   toAbsoluteKjcaUrl,
   isAllowedKjcaUrl,
   parseTeamLeadRowsFromDiaryHtml,
+  parseRecruitingExtractFromDiaryHtml,
   parseJobStatusTableFromDiaryHtml,
   parseMiscSectionFromDiaryHtml,
   buildBrowserLikeHeaders,
@@ -1761,4 +2252,5 @@ module.exports = {
   isFocusWeekday,
   getWeekdayMergedRow,
   buildDeptSummaryText,
+  buildPromotionDisplayItems,
 }
