@@ -41,6 +41,29 @@
   }))
   const hasDeptWeekTables = deptWeekTables.length > 0
   const hasAnalysisResults = !!(safeDashboardState.analysisResults && safeDashboardState.analysisResults.length > 0)
+  const deptJobStatusTables = []
+  const seenJobStatusDept = {}
+
+  ;(safeDashboardState.analysisResults || []).forEach((item) => {
+    const dept = String((item && item.dept) || '').trim()
+    const jobStatusTable = item && item.recruiting ? item.recruiting.jobStatusTable : null
+    const hasStaffNames = !!(jobStatusTable && Array.isArray(jobStatusTable.staffNames) && jobStatusTable.staffNames.length > 0)
+    const hasRows = !!(jobStatusTable && Array.isArray(jobStatusTable.rows) && jobStatusTable.rows.length > 0)
+
+    if (!dept || !hasStaffNames || !hasRows || seenJobStatusDept[dept]) return
+
+    seenJobStatusDept[dept] = true
+    deptJobStatusTables.push({
+      dept,
+      position: String((item && item.position) || '').trim(),
+      staffName: String((item && item.staffName) || '').trim(),
+      ok: !(item && item.ok === false),
+      error: String((item && item.error) || '').trim(),
+      table: jobStatusTable,
+    })
+  })
+
+  const hasJobStatusTables = deptJobStatusTables.length > 0
   const showEmptyState = !hasDeptWeekTables && !hasAnalysisResults && !safeDashboardState.noticeMessage && !safeDashboardState.errorMessage
 %>
 
@@ -173,12 +196,44 @@
   <section class="min-w-0 space-y-6">
     <div class="flex items-center justify-between gap-3">
       <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Results</div>
-      <button
-        type="button"
-        @click="leftOpen = !leftOpen"
-        class="kjca-btn kjca-btn-secondary kjca-btn-sm">
-        <span x-text="leftOpen ? '조회 영역 접기' : '조회 영역 펼치기'"></span>
-      </button>
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <div class="inline-flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-slate-200 bg-white/92 px-3 py-2 shadow-sm shadow-slate-200/40">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">관리자 로그인</p>
+          <% if (authState.isSuperuser) { %>
+          <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">로그인됨</span>
+          <% } else if (authState.isSignedIn) { %>
+          <span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">권한 확인 필요</span>
+          <% } else { %>
+          <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">미로그인</span>
+          <% } %>
+          <%- include('flash-alert.ejs', { flashDisplay: 'inline' }) %>
+
+          <% if (!authState.isSuperuser) { %>
+          <a
+            href="/sign-in"
+            class="kjca-btn kjca-btn-primary kjca-btn-sm">
+            로그인
+          </a>
+          <% } else { %>
+          <form
+            action="/xapi/auth/sign-out"
+            method="post">
+            <button
+              type="submit"
+              class="kjca-btn kjca-btn-secondary kjca-btn-sm">
+              로그아웃
+            </button>
+          </form>
+          <% } %>
+        </div>
+
+        <button
+          type="button"
+          @click="leftOpen = !leftOpen"
+          class="kjca-btn kjca-btn-secondary kjca-btn-sm">
+          <span x-text="leftOpen ? '조회 영역 접기' : '조회 영역 펼치기'"></span>
+        </button>
+      </div>
     </div>
 
     <input
@@ -193,17 +248,63 @@
     <% if (safeDashboardState.errorMessage) { %>
     <div class="rounded-2xl border border-rose-200 bg-rose-50/95 px-5 py-4 text-sm font-medium text-rose-700 shadow-sm shadow-rose-100/40"><%= safeDashboardState.errorMessage %></div>
     <% } %>
-    <% if (hasDeptWeekTables) { %>
-    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 md:p-6">
+    <% if (hasDeptWeekTables || hasJobStatusTables) { %>
+    <article
+      x-data="{ weeklyResultTab: 'weekly-plan' }"
+      class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 md:p-6">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly Table</p>
-          <h2 class="mt-1 text-lg font-semibold text-slate-950">금주 모집 계획/결과</h2>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Daily Report Summary</p>
+          <h2 class="mt-1 text-lg font-semibold text-slate-950">일일 업무 일지 취합</h2>
         </div>
-        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"> 총 <%= deptWeekTables.length %>개 부서 </span>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <span
+            x-show="weeklyResultTab === 'weekly-plan'"
+            class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+            총 <%= deptWeekTables.length %>개 부서
+          </span>
+          <span
+            x-show="weeklyResultTab === 'job-status'"
+            class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+            총 <%= deptJobStatusTables.length %>개 부서
+          </span>
+        </div>
       </div>
 
-      <div class="mt-5 flex flex-col gap-4">
+      <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            @click="weeklyResultTab = 'weekly-plan'"
+            :class="weeklyResultTab === 'weekly-plan' ? 'kjca-tab-btn kjca-tab-btn-active' : 'kjca-tab-btn kjca-tab-btn-idle'">
+            <span>금주 모집 계획</span>
+            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+              <%= deptWeekTables.length %>개 부서
+            </span>
+          </button>
+          <button
+            type="button"
+            @click="weeklyResultTab = 'job-status'"
+            :class="weeklyResultTab === 'job-status' ? 'kjca-tab-btn kjca-tab-btn-active' : 'kjca-tab-btn kjca-tab-btn-idle'">
+            <span>알선취업자 현황</span>
+            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+              <%= deptJobStatusTables.length %>개 부서
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div
+        x-show="weeklyResultTab === 'weekly-plan'"
+        x-transition.opacity.duration.150ms
+        class="mt-5 flex flex-col gap-4">
+        <% if (!hasDeptWeekTables) { %>
+        <section class="rounded-[28px] border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-white to-slate-50/80 p-6 text-center shadow-sm shadow-slate-200/40">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly Plan</p>
+          <h3 class="mt-2 text-xl font-semibold text-slate-950">금주 모집 계획 데이터가 없습니다</h3>
+          <p class="mt-3 text-sm leading-6 text-slate-600">업무일지에서 주간 모집/홍보 표가 확인되면 이 탭에 부서별 주간표를 렌더링합니다.</p>
+        </section>
+        <% } %>
         <% deptWeekTables.forEach((table) => { %>
         <details
           open
@@ -290,6 +391,66 @@
           </div>
         </details>
         <% }) %>
+      </div>
+
+      <div
+        x-show="weeklyResultTab === 'job-status'"
+        x-transition.opacity.duration.150ms
+        class="mt-5">
+        <% if (!hasJobStatusTables) { %>
+        <section class="rounded-[28px] border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-white to-blue-50/60 p-6 text-center shadow-sm shadow-slate-200/40">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Job Status</p>
+          <h3 class="mt-2 text-xl font-semibold text-slate-950">알선취업자 현황 데이터가 없습니다</h3>
+          <p class="mt-3 text-sm leading-6 text-slate-600">업무일지 본문에서 `알선취업자 현황` 표가 확인되면 이 탭에 부서별 표를 그대로 렌더링합니다.</p>
+        </section>
+        <% } else { %>
+        <div class="flex flex-col gap-4">
+          <% deptJobStatusTables.forEach((item) => { %>
+          <details
+            open
+            class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+            <summary class="cursor-pointer text-base font-semibold text-slate-950">
+              <div class="inline-flex flex-wrap items-center gap-3">
+                <span><%= item.dept %></span>
+                <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"><%= item.table.staffNames.length %>명</span>
+                <% if (item.table.title && item.table.title !== '알선취업자 현황') { %>
+                <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600"><%= item.table.title %></span>
+                <% } %>
+              </div>
+            </summary>
+
+            <% if (!item.ok && item.error) { %>
+            <div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50/95 px-4 py-3 text-sm font-medium text-amber-700">
+              AI 상세 분석은 실패했지만, 알선취업자 현황 표는 원본 HTML에서 직접 추출했습니다. (<%= item.error %>)
+            </div>
+            <% } %>
+
+            <div class="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+              <table class="w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm text-slate-700">
+                <thead class="bg-slate-50">
+                  <tr>
+                    <th class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">구분</th>
+                    <% item.table.staffNames.forEach((staffName) => { %>
+                    <th class="border-b border-slate-200 px-4 py-3 text-center text-sm font-semibold text-slate-800"><%= staffName %></th>
+                    <% }) %>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% item.table.rows.forEach((row) => { %>
+                  <tr class="bg-white">
+                    <td class="border-b border-slate-100 bg-slate-50/60 px-4 py-3 font-semibold text-slate-800"><%= row.label %></td>
+                    <% row.values.forEach((value) => { %>
+                    <td class="border-b border-slate-100 px-4 py-3 text-center align-middle"><%= value.text || '' %></td>
+                    <% }) %>
+                  </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          </details>
+          <% }) %>
+        </div>
+        <% } %>
       </div>
     </article>
     <% } %>

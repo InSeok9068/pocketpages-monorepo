@@ -5,6 +5,7 @@ declare namespace types {
     monthTarget: number | null
     monthAssignedCurrent: number | null
     weekTarget: number | null
+    jobStatusTable: KjcaJobStatusTable | null
     dailyPlan: Array<{
       weekday: KjcaWeekday
       channelName: string
@@ -15,6 +16,23 @@ declare namespace types {
     }>
     dailyActualCount: number | null
     weekTableRows: KjcaWeekTextRow[]
+  }
+
+  type KjcaJobStatusMetricValue = {
+    text: string
+    valueNumber: number | null
+  }
+
+  type KjcaJobStatusMetricRow = {
+    key: string
+    label: string
+    values: KjcaJobStatusMetricValue[]
+  }
+
+  type KjcaJobStatusTable = {
+    title: string
+    staffNames: string[]
+    rows: KjcaJobStatusMetricRow[]
   }
 
   type KjcaTeamLeadRow = {

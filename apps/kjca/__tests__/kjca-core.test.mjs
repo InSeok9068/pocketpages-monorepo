@@ -9,7 +9,7 @@ const testDir = path.dirname(fileURLToPath(import.meta.url))
 
 globalThis.__hooks = path.resolve(testDir, '../pb_hooks')
 
-const { htmlToText, parseTeamLeadRowsFromDiaryHtml } = require('../pb_hooks/pages/_private/kjca-core.js')
+const { htmlToText, parseTeamLeadRowsFromDiaryHtml, parseJobStatusTableFromDiaryHtml } = require('../pb_hooks/pages/_private/kjca-core.js')
 
 test('htmlToText keeps table columns and list markers readable', () => {
   const html =
@@ -60,4 +60,101 @@ test('parseTeamLeadRowsFromDiaryHtml extracts absolute print urls from KJCA rows
       },
     ],
   })
+})
+
+test('parseJobStatusTableFromDiaryHtml removes empty trailing columns and keeps a single staff column', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<strong>3. 알선취업자 현황</strong>' +
+    '<table>' +
+    '<tr><td>구분</td><td>임수라</td><td>&nbsp;</td><td>&nbsp;</td></tr>' +
+    '<tr><td>월 알선취업 목표</td><td>1</td><td>&nbsp;</td><td>&nbsp;</td></tr>' +
+    '<tr><td>금일 알선건수</td><td>0</td><td>&nbsp;</td><td>&nbsp;</td></tr>' +
+    '<tr><td>알선취업 예정자 수</td><td>1</td><td>&nbsp;</td><td>&nbsp;</td></tr>' +
+    '<tr><td>알선자 면접건수</td><td>0</td><td>&nbsp;</td><td>&nbsp;</td></tr>' +
+    '<tr><td>알선취업 누적건수</td><td>0</td><td>&nbsp;</td><td>&nbsp;</td></tr>' +
+    '</table>' +
+    '</div>'
+
+  assert.deepEqual(parseJobStatusTableFromDiaryHtml(html), {
+    title: '알선취업자 현황',
+    staffNames: ['임수라'],
+    rows: [
+      { key: 'month-target', label: '월 알선취업 목표', values: [{ text: '1', valueNumber: 1 }] },
+      { key: 'daily-count', label: '금일 알선건수', values: [{ text: '0', valueNumber: 0 }] },
+      { key: 'scheduled-count', label: '알선취업 예정자 수', values: [{ text: '1', valueNumber: 1 }] },
+      { key: 'interview-count', label: '알선자 면접건수', values: [{ text: '0', valueNumber: 0 }] },
+      { key: 'cumulative-count', label: '알선취업 누적건수', values: [{ text: '0', valueNumber: 0 }] },
+    ],
+  })
+})
+
+test('parseJobStatusTableFromDiaryHtml treats html entity blanks as empty values', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<strong>3. 알선취업자 현황</strong>' +
+    '<table>' +
+    '<tr><td>구분</td><td>임수라</td><td>&amp;nbsp;</td><td>&nbsp;</td></tr>' +
+    '<tr><td>월 알선취업 목표</td><td>&amp;nbsp;1</td><td>&amp;nbsp;</td><td>&nbsp;</td></tr>' +
+    '<tr><td>금일 알선건수</td><td>&amp;nbsp;0</td><td>&amp;nbsp;</td><td>&nbsp;</td></tr>' +
+    '<tr><td>알선취업 예정자 수</td><td>&amp;nbsp;1</td><td>&amp;nbsp;</td><td>&nbsp;</td></tr>' +
+    '<tr><td>알선자 면접건수</td><td>&amp;nbsp;0</td><td>&amp;nbsp;</td><td>&nbsp;</td></tr>' +
+    '<tr><td>알선취업 누적건수</td><td>&amp;nbsp;0</td><td>&amp;nbsp;</td><td>&nbsp;</td></tr>' +
+    '</table>' +
+    '</div>'
+
+  const parsed = parseJobStatusTableFromDiaryHtml(html)
+
+  assert.deepEqual(parsed.staffNames, ['임수라'])
+  assert.deepEqual(
+    parsed.rows.map((row) => row.values[0].text),
+    ['1', '0', '1', '0', '0']
+  )
+})
+
+test('parseJobStatusTableFromDiaryHtml keeps multiple staff columns and month-prefixed labels', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<span><strong>3. 알선취업자 현황</strong></span>' +
+    '<table>' +
+    '<tr><td>구분</td><td>김보라</td><td>김소라</td><td>박소정</td><td>김상미</td><td>길준석</td><td>유재은</td></tr>' +
+    '<tr><td>4월 알선취업 목표</td><td>1</td><td>2</td><td>1</td><td>2</td><td>3</td><td>1</td></tr>' +
+    '<tr><td>금일 알선건수</td><td>0</td><td>8</td><td>2</td><td>5</td><td>2</td><td>0</td></tr>' +
+    '<tr><td>알선취업 예정자 수</td><td>0</td><td>1</td><td>0</td><td>3</td><td>2</td><td>0</td></tr>' +
+    '<tr><td>알선자 면접건수</td><td>1</td><td>12</td><td>10</td><td>19</td><td>6</td><td>4</td></tr>' +
+    '<tr><td>알선취업 누적건수</td><td>1</td><td>0</td><td>4</td><td>9</td><td>3</td><td>0</td></tr>' +
+    '</table>' +
+    '</div>'
+
+  const parsed = parseJobStatusTableFromDiaryHtml(html)
+
+  assert.deepEqual(parsed.staffNames, ['김보라', '김소라', '박소정', '김상미', '길준석', '유재은'])
+  assert.equal(parsed.rows[0].key, 'month-target')
+  assert.equal(parsed.rows[0].values[1].valueNumber, 2)
+  assert.equal(parsed.rows[1].key, 'daily-count')
+  assert.equal(parsed.rows[1].values[3].text, '5')
+  assert.equal(parsed.rows[4].key, 'cumulative-count')
+  assert.equal(parsed.rows[4].values[4].valueNumber, 3)
+})
+
+test('parseJobStatusTableFromDiaryHtml preserves mixed text cells such as leave markers', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<strong>3. 알선취업자 현황/ 팀알선 8건</strong>' +
+    '<table>' +
+    '<tr><td>구분</td><td>채영미</td><td>노정숙</td><td>임다예</td><td>이영미</td><td>장세은</td><td>곽경림</td></tr>' +
+    '<tr><td>4월 알선취업 목표</td><td>1</td><td>1</td><td>1</td><td>2</td><td>1</td><td>1</td></tr>' +
+    '<tr><td>금일 알선건수</td><td>2</td><td>1</td><td>연차</td><td>2</td><td>1</td><td>2</td></tr>' +
+    '<tr><td>알선취업 예정자 수</td><td>0</td><td>1</td><td>0</td><td>0</td><td>1</td><td>0</td></tr>' +
+    '<tr><td>알선자 면접건수</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>' +
+    '<tr><td>알선취업 누적건수</td><td>1</td><td>1</td><td>0</td><td>3</td><td>1</td><td>2</td></tr>' +
+    '</table>' +
+    '</div>'
+
+  const parsed = parseJobStatusTableFromDiaryHtml(html)
+
+  assert.equal(parsed.title, '알선취업자 현황/ 팀알선 8건')
+  assert.equal(parsed.rows[1].key, 'daily-count')
+  assert.equal(parsed.rows[1].values[2].text, '연차')
+  assert.equal(parsed.rows[1].values[2].valueNumber, null)
 })

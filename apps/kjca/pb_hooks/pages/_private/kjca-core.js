@@ -198,7 +198,7 @@ function decodeHtmlEntities(text) {
 }
 
 function normalizeSingleLineText(text) {
-  return String(text || '')
+  return decodeHtmlEntities(String(text || ''))
     .replace(/\u00a0/g, ' ')
     .replace(/\r/g, '')
     .replace(/\s+/g, ' ')
@@ -227,6 +227,129 @@ function normalizeStructuredText(text) {
 
 function stripTags(html) {
   return normalizeSingleLineText(inlineHtmlToText(String(html || '')))
+}
+
+function normalizeJobStatusMetricKey(label, index) {
+  const compact = normalizeSingleLineText(label)
+    .replace(/\s+/g, '')
+    .replace(/[()]/g, '')
+  if (!compact) return `row-${Math.max(0, Math.trunc(Number(index) || 0))}`
+  if (/^(?:\d+월)?알선취업목표$/.test(compact) || compact === '월알선취업목표') return 'month-target'
+  if (compact.includes('금일알선건수')) return 'daily-count'
+  if (compact.includes('알선취업예정자수')) return 'scheduled-count'
+  if (compact.includes('알선자면접건수')) return 'interview-count'
+  if (compact.includes('알선취업누적건수')) return 'cumulative-count'
+  return `row-${Math.max(0, Math.trunc(Number(index) || 0))}`
+}
+
+function parseJobStatusValue(cellText) {
+  const text = normalizeSingleLineText(cellText)
+  if (!text) {
+    return {
+      text: '',
+      valueNumber: null,
+    }
+  }
+
+  const compact = text.replace(/,/g, '').replace(/\s+/g, '')
+  const matchedNumber = compact.match(/^-?\d+(?:명|건)?$/)
+  return {
+    text,
+    valueNumber: matchedNumber ? Math.trunc(Number((matchedNumber[0].match(/-?\d+/) || [''])[0])) : null,
+  }
+}
+
+function buildJobStatusFallbackStaffName(columnIndex) {
+  return `미기재 ${Math.max(1, Math.trunc(Number(columnIndex) || 1))}`
+}
+
+function parseHtmlTableRows(tableHtml) {
+  const rows = []
+  const trRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
+  let trMatch = null
+
+  while ((trMatch = trRegex.exec(String(tableHtml || '')))) {
+    const row = []
+    const trInner = String(trMatch[1] || '')
+    const cellRegex = /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi
+    let cellMatch = null
+
+    while ((cellMatch = cellRegex.exec(trInner))) {
+      row.push(stripTags(cellMatch[1] || ''))
+    }
+
+    if (row.length > 0) rows.push(row)
+  }
+
+  return rows
+}
+
+function isMeaningfulJobStatusCellText(text) {
+  const normalized = normalizeSingleLineText(text)
+  if (!normalized) return false
+  if (normalized === '-' || normalized === '--') return false
+  return true
+}
+
+/**
+ * 업무일지 HTML에서 `알선취업자 현황` 표를 찾아 화면용 shape로 정리합니다.
+ * @param {unknown} diaryHtml 업무일지 본문 HTML입니다.
+ * @returns {types.KjcaJobStatusTable | null} 정리된 알선취업자 현황 표 또는 `null`입니다.
+ */
+function parseJobStatusTableFromDiaryHtml(diaryHtml) {
+  const html = String(diaryHtml || '')
+  if (!html) return null
+
+  const headingMatch = html.match(/알선\s*취업자\s*현황[^<]*/i)
+  if (!headingMatch || !Number.isFinite(headingMatch.index)) return null
+
+  const sectionHtml = html.slice(headingMatch.index)
+  const tableMatch = sectionHtml.match(/<table\b[\s\S]*?<\/table>/i)
+  if (!tableMatch) return null
+
+  const title = normalizeSingleLineText(headingMatch[0] || '알선취업자 현황') || '알선취업자 현황'
+  const rawRows = parseHtmlTableRows(tableMatch[0]).filter((row) => row.some((cell) => normalizeSingleLineText(cell)))
+  if (rawRows.length < 2) return null
+
+  const headerRow = rawRows[0] || []
+  const metricRows = rawRows.slice(1)
+  const columnCount = rawRows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0)
+  const activeColumnIndexes = []
+
+  for (let columnIndex = 1; columnIndex < columnCount; columnIndex += 1) {
+    const headerName = normalizeSingleLineText(headerRow[columnIndex] || '')
+    const hasAnyValue = metricRows.some((row) => isMeaningfulJobStatusCellText(row[columnIndex] || ''))
+    if (!headerName && !hasAnyValue) continue
+    activeColumnIndexes.push(columnIndex)
+  }
+
+  if (activeColumnIndexes.length === 0) return null
+
+  const staffNames = activeColumnIndexes.map((columnIndex, arrayIndex) => {
+    const headerName = normalizeSingleLineText(headerRow[columnIndex] || '')
+    return headerName || buildJobStatusFallbackStaffName(arrayIndex + 1)
+  })
+
+  const rows = metricRows
+    .map((row, index) => {
+      const label = normalizeSingleLineText(row[0] || '')
+      if (!label) return null
+
+      return {
+        key: normalizeJobStatusMetricKey(label, index),
+        label,
+        values: activeColumnIndexes.map((columnIndex) => parseJobStatusValue(row[columnIndex] || '')),
+      }
+    })
+    .filter((row) => !!row)
+
+  if (rows.length === 0) return null
+
+  return {
+    title,
+    staffNames,
+    rows,
+  }
 }
 
 /**
@@ -687,6 +810,66 @@ function normalizeBool(value) {
   return false
 }
 
+function normalizeJobStatusMetricValues(values, expectedLength) {
+  const source = Array.isArray(values) ? values : []
+  const normalized = source.slice(0, expectedLength).map((item) => {
+    const value = item && typeof item === 'object' ? item : {}
+    return {
+      text: String(value.text || '').trim(),
+      valueNumber: Number.isFinite(Number(value.valueNumber)) ? Math.trunc(Number(value.valueNumber)) : null,
+    }
+  })
+
+  while (normalized.length < expectedLength) {
+    normalized.push({
+      text: '',
+      valueNumber: null,
+    })
+  }
+
+  return normalized
+}
+
+/**
+ * 알선취업자 현황 표를 서비스 shape로 정리합니다.
+ * @param {unknown} value 원본 표 값입니다.
+ * @returns {types.KjcaJobStatusTable | null} 정리된 표 값입니다.
+ */
+function normalizeJobStatusTable(value) {
+  const source = value && typeof value === 'object' ? value : null
+  if (!source) return null
+
+  const staffNames = Array.isArray(source.staffNames)
+    ? source.staffNames.map((item, index) => normalizeSingleLineText(item) || buildJobStatusFallbackStaffName(index + 1)).filter(Boolean)
+    : []
+
+  if (staffNames.length === 0) return null
+
+  const rows = Array.isArray(source.rows)
+    ? source.rows
+        .map((item, index) => {
+          const row = item && typeof item === 'object' ? item : {}
+          const label = normalizeSingleLineText(row.label || '')
+          if (!label) return null
+
+          return {
+            key: String(row.key || normalizeJobStatusMetricKey(label, index)).trim(),
+            label,
+            values: normalizeJobStatusMetricValues(row.values, staffNames.length),
+          }
+        })
+        .filter((row) => !!row)
+    : []
+
+  if (rows.length === 0) return null
+
+  return {
+    title: normalizeSingleLineText(source.title || '알선취업자 현황') || '알선취업자 현황',
+    staffNames,
+    rows,
+  }
+}
+
 /**
  * AI 분석 결과의 recruiting 필드를 서비스 shape로 정리합니다.
  * @param {unknown} value recruiting 원본 값입니다.
@@ -753,6 +936,7 @@ function normalizeRecruitingExtract(value) {
     monthTarget: normalizeNullableInt(source.monthTarget),
     monthAssignedCurrent: normalizeNullableInt(source.monthAssignedCurrent),
     weekTarget: normalizeNullableInt(source.weekTarget),
+    jobStatusTable: normalizeJobStatusTable(source.jobStatusTable),
     dailyPlan,
     dailyActualCount: normalizeNullableInt(source.dailyActualCount),
     weekTableRows: weekTableRowsNormalized.length > 0 ? weekTableRowsNormalized : weekTableRowsFallback,
@@ -1251,6 +1435,7 @@ module.exports = {
   toAbsoluteKjcaUrl,
   isAllowedKjcaUrl,
   parseTeamLeadRowsFromDiaryHtml,
+  parseJobStatusTableFromDiaryHtml,
   buildBrowserLikeHeaders,
   buildFormState,
   normalizeReportDate,
@@ -1271,6 +1456,7 @@ module.exports = {
   normalizeNullableInt,
   normalizeRequiredInt,
   normalizeBool,
+  normalizeJobStatusTable,
   normalizeRecruitingExtract,
   normalizeCachedRecruitingField,
   normalizeTeamLeadRows,
