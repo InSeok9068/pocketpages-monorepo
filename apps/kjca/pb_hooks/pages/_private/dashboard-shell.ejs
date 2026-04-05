@@ -21,6 +21,7 @@
   const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || '').trim()
   const testOneOnly = !!(safeFormState.testOneOnly || safeDashboardState.testOneOnly)
   const encodedState = kjcaCore.serializeDashboardState(safeDashboardState)
+  const compareDeptText = (left, right) => String(left || '').trim().localeCompare(String(right || '').trim(), 'ko')
   const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) => ({
     ...table,
     summaryText: kjcaCore.buildDeptSummaryText({
@@ -82,6 +83,9 @@
       section: miscSection,
     })
   })
+
+  deptJobStatusTables.sort((left, right) => compareDeptText(left.dept, right.dept))
+  deptMiscSections.sort((left, right) => compareDeptText(left.dept, right.dept))
 
   const hasJobStatusTables = deptJobStatusTables.length > 0
   const hasMiscSections = deptMiscSections.length > 0

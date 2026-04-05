@@ -404,3 +404,20 @@ test('parseMiscSectionFromDiaryHtml parses bullet-style miscellaneous blocks', (
     ],
   })
 })
+
+test('parseMiscSectionFromDiaryHtml normalizes broken miscellaneous title fragments to the default label', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<span style="font-family:맑은 고딕">4. 기타 사항</span>' +
+    '<table>' +
+    '<tr><td>구분</td><td>내용</td></tr>' +
+    '<tr><td>고용센터 전달사항</td><td>- 수원고용센터 간담회</td></tr>' +
+    '<tr><td>지점 특이사항</td><td>- 없음</td></tr>' +
+    '<tr><td>기타 건의사항</td><td>- 없음</td></tr>' +
+    '</table>' +
+    '</div>'
+
+  const parsed = parseMiscSectionFromDiaryHtml(html)
+
+  assert.equal(parsed.title, '기타 사항')
+})
