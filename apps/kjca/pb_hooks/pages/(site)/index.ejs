@@ -28,7 +28,7 @@
 </header>
 
 <section
-  x-data="{ leftOpen: true }"
+  x-data="{ leftOpen: true, collectionMode: 'daily' }"
   class="bg-white/72 rounded-2xl border border-slate-200 p-4 shadow-sm shadow-slate-200/60 md:p-5">
   <div id="kjca-dashboard-shell">
     <%- include('dashboard-shell.ejs', { authState, formState, dashboardState, kjcaCore }) %>
