@@ -703,25 +703,6 @@
         </div>
       </div>
 
-      <div class="mt-5 grid gap-3 md:grid-cols-4">
-        <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">기준 주차</p>
-          <p class="mt-2 text-base font-semibold text-slate-950"><%= weeklyReferenceValue || '-' %></p>
-        </div>
-        <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">조회 기간</p>
-          <p class="mt-2 text-base font-semibold text-slate-950"><%= `${weeklyRangeStart} ~ ${weeklyRangeEnd}` %></p>
-        </div>
-        <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">부서 수</p>
-          <p class="mt-2 text-base font-semibold text-slate-950"><%= weeklyReportDeptCount %>개 부서</p>
-        </div>
-        <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">본문 취합</p>
-          <p class="mt-2 text-base font-semibold text-slate-950"><%= hasWeeklyReportDetails ? `${weeklyDetailSuccessCount}건 완료` : '대기 중' %></p>
-        </div>
-      </div>
-
       <% if (!hasWeeklyReportRows) { %>
       <section class="mt-5 rounded-[28px] border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-white to-slate-50/80 p-6 text-center shadow-sm shadow-slate-200/40">
         <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly Reports</p>
