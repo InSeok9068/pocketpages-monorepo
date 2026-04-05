@@ -234,17 +234,17 @@ function normalizeJobStatusMetricKey(label, index) {
     .replace(/\s+/g, '')
     .replace(/[()]/g, '')
   if (!compact) return `row-${Math.max(0, Math.trunc(Number(index) || 0))}`
-  if (/^(?:\d+월)?알선취업목표$/.test(compact) || compact === '월알선취업목표') return 'month-target'
+  if (/^(?:\d+월)?알선취업목표$/.test(compact) || compact === '월알선취업목표' || compact === '월알선목표') return 'month-target'
   if (compact.includes('금일알선건수')) return 'daily-count'
-  if (compact.includes('알선취업예정자수')) return 'scheduled-count'
-  if (compact.includes('알선자면접건수')) return 'interview-count'
-  if (compact.includes('알선취업누적건수')) return 'cumulative-count'
+  if (compact.includes('알선취업예정자수') || compact.includes('알선예정자수')) return 'scheduled-count'
+  if (compact.includes('금일알선면접건수') || compact.includes('알선면접건수') || compact.includes('알선자면접건수')) return 'interview-count'
+  if (compact.includes('알선취업누적건수') || compact === '알선취업누적') return 'cumulative-count'
   return `row-${Math.max(0, Math.trunc(Number(index) || 0))}`
 }
 
 function parseJobStatusValue(cellText) {
   const text = normalizeSingleLineText(cellText)
-  if (!text) {
+  if (!text || text === '-' || text === '--') {
     return {
       text: '',
       valueNumber: null,
@@ -263,7 +263,7 @@ function buildJobStatusFallbackStaffName(columnIndex) {
   return `미기재 ${Math.max(1, Math.trunc(Number(columnIndex) || 1))}`
 }
 
-function parseHtmlTableRows(tableHtml) {
+function parseHtmlTableCellsDetailed(tableHtml) {
   const rows = []
   const trRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
   let trMatch = null
@@ -275,7 +275,11 @@ function parseHtmlTableRows(tableHtml) {
     let cellMatch = null
 
     while ((cellMatch = cellRegex.exec(trInner))) {
-      row.push(stripTags(cellMatch[1] || ''))
+      const cellHtml = String(cellMatch[1] || '')
+      row.push({
+        html: cellHtml,
+        text: stripTags(cellHtml),
+      })
     }
 
     if (row.length > 0) rows.push(row)
@@ -284,11 +288,75 @@ function parseHtmlTableRows(tableHtml) {
   return rows
 }
 
+function parseHtmlTableRows(tableHtml) {
+  return parseHtmlTableCellsDetailed(tableHtml).map((row) => row.map((cell) => cell.text))
+}
+
+function extractTableHtmlBlocks(html) {
+  const source = String(html || '')
+  const blocks = []
+  const tagRegex = /<\/?table\b[^>]*>/gi
+  const stack = []
+  let tagMatch = null
+
+  while ((tagMatch = tagRegex.exec(source))) {
+    const tagText = String(tagMatch[0] || '')
+    const isCloseTag = /^<\//.test(tagText)
+    if (!isCloseTag) {
+      stack.push(tagMatch.index)
+      continue
+    }
+
+    const startIndex = stack.pop()
+    if (!Number.isFinite(startIndex)) continue
+    blocks.push({
+      startIndex,
+      endIndex: tagRegex.lastIndex,
+      html: source.slice(startIndex, tagRegex.lastIndex),
+    })
+  }
+
+  return blocks.sort((a, b) => a.startIndex - b.startIndex)
+}
+
 function isMeaningfulJobStatusCellText(text) {
   const normalized = normalizeSingleLineText(text)
   if (!normalized) return false
   if (normalized === '-' || normalized === '--') return false
   return true
+}
+
+function isRecognizedJobStatusMetricKey(key) {
+  return key === 'month-target' || key === 'daily-count' || key === 'scheduled-count' || key === 'interview-count' || key === 'cumulative-count'
+}
+
+function isJobStatusTableRows(rows) {
+  if (!Array.isArray(rows) || rows.length < 3) return false
+
+  const headerRow = rows[0] || []
+  const firstHeader = normalizeSingleLineText(headerRow[0] || '')
+  if (firstHeader !== '구분') return false
+
+  const headerNames = headerRow.slice(1).map((cell) => normalizeSingleLineText(cell)).filter(Boolean)
+  if (headerNames.length < 1) return false
+
+  const recognizedMetricCount = rows
+    .slice(1)
+    .map((row, index) => normalizeJobStatusMetricKey(row && row[0], index))
+    .filter((key) => isRecognizedJobStatusMetricKey(key)).length
+
+  return recognizedMetricCount >= 3
+}
+
+function buildJobStatusTitleFromContext(contextHtml) {
+  const text = inlineHtmlToText(String(contextHtml || ''))
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => normalizeSingleLineText(line))
+    .filter(Boolean)
+  const matched = text.reverse().find((line) => /알선\s*취업|취업지원\s*현황|상담사\s*취업지원/i.test(line))
+  if (!matched) return '알선취업자 현황'
+  return matched.replace(/^(?:\d+\s*[.)]?\s*|[○●■]\s*)/, '').trim() || '알선취업자 현황'
 }
 
 /**
@@ -300,15 +368,22 @@ function parseJobStatusTableFromDiaryHtml(diaryHtml) {
   const html = String(diaryHtml || '')
   if (!html) return null
 
-  const headingMatch = html.match(/알선\s*취업자\s*현황[^<]*/i)
-  if (!headingMatch || !Number.isFinite(headingMatch.index)) return null
+  const candidate = extractTableHtmlBlocks(html)
+    .map((block) => {
+      const rows = parseHtmlTableRows(block.html).filter((row) => row.some((cell) => normalizeSingleLineText(cell)))
+      if (!isJobStatusTableRows(rows)) return null
+      return {
+        title: buildJobStatusTitleFromContext(html.slice(Math.max(0, block.startIndex - 320), block.startIndex)),
+        startIndex: block.startIndex,
+        rows,
+      }
+    })
+    .filter((item) => !!item)[0]
 
-  const sectionHtml = html.slice(headingMatch.index)
-  const tableMatch = sectionHtml.match(/<table\b[\s\S]*?<\/table>/i)
-  if (!tableMatch) return null
+  if (!candidate) return null
 
-  const title = normalizeSingleLineText(headingMatch[0] || '알선취업자 현황') || '알선취업자 현황'
-  const rawRows = parseHtmlTableRows(tableMatch[0]).filter((row) => row.some((cell) => normalizeSingleLineText(cell)))
+  const title = normalizeSingleLineText(candidate.title || '알선취업자 현황') || '알선취업자 현황'
+  const rawRows = candidate.rows
   if (rawRows.length < 2) return null
 
   const headerRow = rawRows[0] || []
@@ -350,6 +425,176 @@ function parseJobStatusTableFromDiaryHtml(diaryHtml) {
     staffNames,
     rows,
   }
+}
+
+function normalizeMiscSectionKey(label, index) {
+  const compact = normalizeSingleLineText(label)
+    .replace(/\s+/g, '')
+    .replace(/[()]/g, '')
+    .replace(/[.:]/g, '')
+  if (!compact) return `item-${Math.max(0, Math.trunc(Number(index) || 0))}`
+  if (compact.includes('고용센터전달사항')) return 'employment-center'
+  if (compact.includes('지점특이사항') || compact.includes('지점사항')) return 'branch-notes'
+  if (compact.includes('기타건의사항') || compact.includes('기타보고건의사항') || compact === '기타보고') return 'suggestions'
+  return `item-${Math.max(0, Math.trunc(Number(index) || 0))}`
+}
+
+function buildMiscItemLabel(key, fallbackLabel) {
+  const fallback = normalizeSingleLineText(fallbackLabel || '')
+  if (key === 'employment-center') return '고용센터 전달사항'
+  if (key === 'branch-notes') return '지점 특이사항'
+  if (key === 'suggestions') return '기타 건의사항'
+  return fallback
+}
+
+function normalizeMiscContentText(text) {
+  return String(text || '')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => normalizeSingleLineText(line))
+    .filter((line, index, array) => !!line || (index > 0 && index < array.length - 1))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function buildMiscSectionTitleFromContext(contextHtml) {
+  const text = inlineHtmlToText(String(contextHtml || ''))
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => normalizeSingleLineText(line))
+    .filter(Boolean)
+  const matched = text.reverse().find((line) => /기타\s*사항|기타보고|건의사항/i.test(line))
+  if (!matched) return '기타 사항'
+  return matched.replace(/^(?:\d+\s*[.)]?\s*|[○●■]\s*)/, '').trim() || '기타 사항'
+}
+
+function isRecognizedMiscKey(key) {
+  return key === 'employment-center' || key === 'branch-notes' || key === 'suggestions'
+}
+
+function isMiscRowTable(rows) {
+  if (!Array.isArray(rows) || rows.length < 2) return false
+  const firstRow = rows[0] || []
+  const headerLabel = normalizeSingleLineText(firstRow[0] || '')
+  const recognizedCount = rows
+    .slice(1)
+    .map((row, index) => normalizeMiscSectionKey(row && row[0], index))
+    .filter((key) => isRecognizedMiscKey(key)).length
+
+  if (headerLabel === '구분' && recognizedCount >= 2) return true
+  return recognizedCount >= 2
+}
+
+function parseMiscItemsFromRowTable(detailedRows) {
+  return detailedRows
+    .slice(1)
+    .map((row, index) => {
+      const label = normalizeSingleLineText(row && row[0] ? row[0].text : '')
+      const key = normalizeMiscSectionKey(label, index)
+      if (!isRecognizedMiscKey(key)) return null
+
+      const contentHtml = row && row[1] ? row[1].html : ''
+      const content = normalizeMiscContentText(htmlToText(contentHtml))
+      return {
+        key,
+        label: buildMiscItemLabel(key, label),
+        content,
+      }
+    })
+    .filter((item) => !!item && !!item.content)
+}
+
+function parseMiscItemsFromBulletText(text) {
+  const lines = String(text || '')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => normalizeSingleLineText(line))
+
+  const items = []
+  let current = null
+
+  const pushCurrent = () => {
+    if (!current || !isRecognizedMiscKey(current.key)) return
+    const content = normalizeMiscContentText(current.lines.join('\n'))
+    if (!content) return
+    items.push({
+      key: current.key,
+      label: buildMiscItemLabel(current.key, current.label),
+      content,
+    })
+  }
+
+  lines.forEach((line, index) => {
+    if (!line) {
+      if (current) current.lines.push('')
+      return
+    }
+
+    const bulletMatch = line.match(/^[○●■]\s*(.+)$/)
+    if (bulletMatch) {
+      pushCurrent()
+      const rawHeading = normalizeSingleLineText(bulletMatch[1] || '')
+      const headingParts = rawHeading.split(/\s*:\s*/, 2)
+      const label = headingParts[0] || rawHeading
+      current = {
+        key: normalizeMiscSectionKey(label, index),
+        label,
+        lines: headingParts[1] ? [headingParts[1]] : [],
+      }
+      return
+    }
+
+    if (!current) return
+    current.lines.push(line)
+  })
+
+  pushCurrent()
+
+  return items.filter((item) => isRecognizedMiscKey(item.key))
+}
+
+/**
+ * 업무일지 HTML에서 마지막 기타 사항/기타보고 영역을 찾아 화면용 shape로 정리합니다.
+ * @param {unknown} diaryHtml 업무일지 본문 HTML입니다.
+ * @returns {types.KjcaMiscSection | null} 정리된 기타 사항 섹션 또는 `null`입니다.
+ */
+function parseMiscSectionFromDiaryHtml(diaryHtml) {
+  const html = String(diaryHtml || '')
+  if (!html) return null
+
+  const tableBlocks = extractTableHtmlBlocks(html)
+
+  for (let index = 0; index < tableBlocks.length; index += 1) {
+    const block = tableBlocks[index]
+    const detailedRows = parseHtmlTableCellsDetailed(block.html).filter((row) => row.some((cell) => normalizeSingleLineText(cell && cell.text)))
+    const plainRows = detailedRows.map((row) => row.map((cell) => cell.text))
+    if (!isMiscRowTable(plainRows)) continue
+
+    const items = parseMiscItemsFromRowTable(detailedRows)
+    if (items.length === 0) continue
+
+    return {
+      title: buildMiscSectionTitleFromContext(html.slice(Math.max(0, block.startIndex - 320), block.startIndex)),
+      items,
+    }
+  }
+
+  for (let index = 0; index < tableBlocks.length; index += 1) {
+    const block = tableBlocks[index]
+    const blockText = htmlToText(block.html)
+    if (!/고용센터\s*전달사항|지점\s*(?:특이사항|사항)|기타\s*(?:건의사항|보고)/i.test(blockText)) continue
+
+    const items = parseMiscItemsFromBulletText(blockText)
+    if (items.length === 0) continue
+
+    return {
+      title: buildMiscSectionTitleFromContext(html.slice(Math.max(0, block.startIndex - 320), block.startIndex)) || '기타 사항',
+      items,
+    }
+  }
+
+  return null
 }
 
 /**
@@ -831,6 +1076,42 @@ function normalizeJobStatusMetricValues(values, expectedLength) {
 }
 
 /**
+ * 기타 사항 섹션을 서비스 shape로 정리합니다.
+ * @param {unknown} value 원본 섹션 값입니다.
+ * @returns {types.KjcaMiscSection | null} 정리된 기타 사항 섹션입니다.
+ */
+function normalizeMiscSection(value) {
+  const source = value && typeof value === 'object' ? value : null
+  if (!source) return null
+
+  const items = Array.isArray(source.items)
+    ? source.items
+        .map((item, index) => {
+          const row = item && typeof item === 'object' ? item : {}
+          const key = String(row.key || normalizeMiscSectionKey(row.label, index)).trim()
+          if (!isRecognizedMiscKey(key)) return null
+
+          const content = normalizeMiscContentText(row.content || '')
+          if (!content) return null
+
+          return {
+            key,
+            label: buildMiscItemLabel(key, row.label),
+            content,
+          }
+        })
+        .filter((item) => !!item)
+    : []
+
+  if (items.length === 0) return null
+
+  return {
+    title: normalizeSingleLineText(source.title || '기타 사항') || '기타 사항',
+    items,
+  }
+}
+
+/**
  * 알선취업자 현황 표를 서비스 shape로 정리합니다.
  * @param {unknown} value 원본 표 값입니다.
  * @returns {types.KjcaJobStatusTable | null} 정리된 표 값입니다.
@@ -1002,6 +1283,7 @@ function normalizeAnalyzeResults(value) {
     promotion: Array.isArray(item && item.promotion) ? item.promotion.map((entry) => String(entry || '').trim()).filter(Boolean) : [],
     vacation: Array.isArray(item && item.vacation) ? item.vacation.map((entry) => String(entry || '').trim()).filter(Boolean) : [],
     special: Array.isArray(item && item.special) ? item.special.map((entry) => String(entry || '').trim()).filter(Boolean) : [],
+    miscSection: normalizeMiscSection(item && item.miscSection),
     recruiting: normalizeRecruitingExtract(item && item.recruiting),
     printUrl: String((item && item.printUrl) || '').trim(),
   }))
@@ -1436,6 +1718,7 @@ module.exports = {
   isAllowedKjcaUrl,
   parseTeamLeadRowsFromDiaryHtml,
   parseJobStatusTableFromDiaryHtml,
+  parseMiscSectionFromDiaryHtml,
   buildBrowserLikeHeaders,
   buildFormState,
   normalizeReportDate,
@@ -1456,6 +1739,7 @@ module.exports = {
   normalizeNullableInt,
   normalizeRequiredInt,
   normalizeBool,
+  normalizeMiscSection,
   normalizeJobStatusTable,
   normalizeRecruitingExtract,
   normalizeCachedRecruitingField,

@@ -35,6 +35,17 @@ declare namespace types {
     rows: KjcaJobStatusMetricRow[]
   }
 
+  type KjcaMiscSectionItem = {
+    key: string
+    label: string
+    content: string
+  }
+
+  type KjcaMiscSection = {
+    title: string
+    items: KjcaMiscSectionItem[]
+  }
+
   type KjcaTeamLeadRow = {
     dept: string
     position: string
@@ -75,6 +86,7 @@ declare namespace types {
     promotion: string[]
     vacation: string[]
     special: string[]
+    miscSection: KjcaMiscSection | null
     recruiting: KjcaRecruitingExtract
     printUrl: string
   }

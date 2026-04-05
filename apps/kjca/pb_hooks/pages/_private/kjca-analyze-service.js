@@ -18,6 +18,7 @@ const {
   hashText,
   extractDivInnerHtmlByClasses,
   parseJobStatusTableFromDiaryHtml,
+  parseMiscSectionFromDiaryHtml,
   htmlToText,
   normalizeStringArray,
   normalizeJsonArrayField,
@@ -165,6 +166,7 @@ function buildAnalyzeResult(resultInput) {
     promotion: normalizeStringArray(resultInput.promotion),
     vacation: normalizeStringArray(resultInput.vacation),
     special: normalizeStringArray(resultInput.special),
+    miscSection: resultInput.miscSection || null,
     recruiting: normalizeRecruitingExtract(resultInput.recruiting),
     printUrl: String(resultInput.printUrl || '').trim(),
   }
@@ -352,7 +354,9 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
     const docText = htmlToText(docInnerHtml)
     const sourceHash = hashText(docText)
     const parsedJobStatusTable = parseJobStatusTableFromDiaryHtml(docInnerHtml)
+    const parsedMiscSection = parseMiscSectionFromDiaryHtml(docInnerHtml)
     const recruitingFromHtml = parsedJobStatusTable ? { jobStatusTable: parsedJobStatusTable } : {}
+    const miscSectionFromHtml = parsedMiscSection || null
 
     if (!docText) {
       results.push(
@@ -362,6 +366,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
           staffName,
           ok: false,
           error: `본문 영역(doc_text)을 찾지 못했습니다. (HTTP ${detailResponse.statusCode})`,
+          miscSection: miscSectionFromHtml,
           recruiting: recruitingFromHtml,
           printUrl,
         })
@@ -388,6 +393,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
           promotion: normalizeJsonArrayField(cachedRecord.get('promotion')),
           vacation: normalizeJsonArrayField(cachedRecord.get('vacation')),
           special: normalizeJsonArrayField(cachedRecord.get('special')),
+          miscSection: miscSectionFromHtml,
           recruiting: {
             ...cachedRecruiting,
             ...recruitingFromHtml,
@@ -423,7 +429,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
 
     if (!(geminiStatusCode >= 200 && geminiStatusCode < 300)) {
       const errorText = geminiStatusCode > 0 ? `AI 요청 실패 (HTTP ${geminiStatusCode})` : `AI 요청 실패 (네트워크/타임아웃) ${String(geminiAttemptResult.transportError || '').trim()}`
-      results.push(buildAnalyzeResult({ dept, position, staffName, ok: false, error: errorText, recruiting: recruitingFromHtml, printUrl }))
+      results.push(buildAnalyzeResult({ dept, position, staffName, ok: false, error: errorText, miscSection: miscSectionFromHtml, recruiting: recruitingFromHtml, printUrl }))
 
       if (rateLimitCauseGuess === 'quota-or-billing-limit') {
         stoppedReason = 'quota-exceeded'
@@ -466,7 +472,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
       recruiting,
     })
 
-    results.push(buildAnalyzeResult({ dept, position, staffName, ok: true, promotion, vacation, special, recruiting, printUrl }))
+    results.push(buildAnalyzeResult({ dept, position, staffName, ok: true, promotion, vacation, special, miscSection: miscSectionFromHtml, recruiting, printUrl }))
   }
 
   return {

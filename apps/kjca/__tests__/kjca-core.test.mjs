@@ -9,7 +9,7 @@ const testDir = path.dirname(fileURLToPath(import.meta.url))
 
 globalThis.__hooks = path.resolve(testDir, '../pb_hooks')
 
-const { htmlToText, parseTeamLeadRowsFromDiaryHtml, parseJobStatusTableFromDiaryHtml } = require('../pb_hooks/pages/_private/kjca-core.js')
+const { htmlToText, parseTeamLeadRowsFromDiaryHtml, parseJobStatusTableFromDiaryHtml, parseMiscSectionFromDiaryHtml } = require('../pb_hooks/pages/_private/kjca-core.js')
 
 test('htmlToText keeps table columns and list markers readable', () => {
   const html =
@@ -157,4 +157,106 @@ test('parseJobStatusTableFromDiaryHtml preserves mixed text cells such as leave 
   assert.equal(parsed.rows[1].key, 'daily-count')
   assert.equal(parsed.rows[1].values[2].text, '연차')
   assert.equal(parsed.rows[1].values[2].valueNumber, null)
+})
+
+test('parseJobStatusTableFromDiaryHtml recognizes shortened title variant and mixed text metrics', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<strong>3.&nbsp;</strong><strong>알선취업&nbsp;</strong><a><strong>현황</strong></a>' +
+    '<table>' +
+    '<tr><td>구분</td><td>백단비</td><td>강수현</td><td>정윤경</td><td>방인정</td><td>정수민</td><td>정령빈</td></tr>' +
+    '<tr><td>2월 알선취업 목표</td><td>1</td><td>2</td><td>2</td><td>2</td><td>2</td><td>1</td></tr>' +
+    '<tr><td>금일 알선건수</td><td>0</td><td>10</td><td>-</td><td>7</td><td>2</td><td>-</td></tr>' +
+    '<tr><td>알선취업 예정자 수</td><td>&nbsp;</td><td>이수정/0401</td><td>최희창/0316<br>김지현/0401</td><td>&nbsp;</td><td>권우희/0323</td><td>백서현/0316<br>박진우/0401</td></tr>' +
+    '<tr><td>알선자 면접건수</td><td>&nbsp;</td><td>백승연/0319</td><td>김원석/0325</td><td>&nbsp;</td><td>추정엽/0401</td><td>정형진/0320</td></tr>' +
+    '<tr><td>알선취업 누적건수</td><td>0</td><td>1</td><td>3</td><td>2</td><td>2</td><td>1</td></tr>' +
+    '</table>' +
+    '</div>'
+
+  const parsed = parseJobStatusTableFromDiaryHtml(html)
+
+  assert.equal(parsed.title, '알선취업 현황')
+  assert.deepEqual(parsed.staffNames, ['백단비', '강수현', '정윤경', '방인정', '정수민', '정령빈'])
+  assert.equal(parsed.rows[0].key, 'month-target')
+  assert.equal(parsed.rows[2].values[1].text, '이수정/0401')
+  assert.equal(parsed.rows[2].values[1].valueNumber, null)
+  assert.equal(parsed.rows[3].key, 'interview-count')
+})
+
+test('parseJobStatusTableFromDiaryHtml recognizes counselor employment support status alias', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<table><tr><td><span><strong>○상담사 취업지원현황</strong></span>' +
+    '<table>' +
+    '<tr><td>구분</td><td>황수연</td><td>김경태</td><td>진윤아</td><td>이기영</td><td>정향주</td></tr>' +
+    '<tr><td>월 알선목표</td><td>2</td><td>3</td><td>4</td><td>4</td><td>3</td></tr>' +
+    '<tr><td>금일 알선건수</td><td>0</td><td>&nbsp;</td><td>2</td><td>4</td><td>2</td></tr>' +
+    '<tr><td>알선취업예정자수</td><td>0</td><td>0</td><td>1</td><td>1</td><td>0</td></tr>' +
+    '<tr><td>금일 알선면접건수</td><td>0</td><td>0</td><td>0</td><td>1</td><td>0</td></tr>' +
+    '<tr><td>알선취업 누적</td><td>&nbsp;</td><td>2</td><td>8</td><td>6</td><td>1</td></tr>' +
+    '</table>' +
+    '</td></tr></table>' +
+    '</div>'
+
+  const parsed = parseJobStatusTableFromDiaryHtml(html)
+
+  assert.equal(parsed.title, '상담사 취업지원현황')
+  assert.deepEqual(parsed.staffNames, ['황수연', '김경태', '진윤아', '이기영', '정향주'])
+  assert.deepEqual(
+    parsed.rows.map((row) => row.key),
+    ['month-target', 'daily-count', 'scheduled-count', 'interview-count', 'cumulative-count']
+  )
+  assert.equal(parsed.rows[4].values[0].text, '')
+  assert.equal(parsed.rows[4].values[1].valueNumber, 2)
+})
+
+test('parseMiscSectionFromDiaryHtml parses two-column miscellaneous table', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<strong>4. 기타 사항</strong>' +
+    '<table>' +
+    '<tr><td>구분</td><td>내용</td></tr>' +
+    '<tr><td>고용센터 전달사항</td><td>- 4월15일 수원고용센터 간담회</td></tr>' +
+    '<tr><td>지점 특이사항</td><td>- 없음</td></tr>' +
+    '<tr><td>기타 건의사항</td><td>- 없음</td></tr>' +
+    '</table>' +
+    '</div>'
+
+  assert.deepEqual(parseMiscSectionFromDiaryHtml(html), {
+    title: '기타 사항',
+    items: [
+      { key: 'employment-center', label: '고용센터 전달사항', content: '- 4월15일 수원고용센터 간담회' },
+      { key: 'branch-notes', label: '지점 특이사항', content: '- 없음' },
+      { key: 'suggestions', label: '기타 건의사항', content: '- 없음' },
+    ],
+  })
+})
+
+test('parseMiscSectionFromDiaryHtml parses bullet-style miscellaneous blocks', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<table><tr><td>' +
+    '<span><strong>○ 고용센터 전달사항</strong></span><br>' +
+    '&lt;주무관 전달사항&gt;<br>' +
+    '-청년 특화프로그램 수당 대상자확인 안내<br>' +
+    '<span><strong>○ 지점사항:</strong>최나리 부장님 모니터5대 전달 완료</span><br>' +
+    '<span><strong>○ 기타보고(건의사항)</strong></span><br>' +
+    '</td></tr></table>' +
+    '</div>'
+
+  assert.deepEqual(parseMiscSectionFromDiaryHtml(html), {
+    title: '기타 사항',
+    items: [
+      {
+        key: 'employment-center',
+        label: '고용센터 전달사항',
+        content: '<주무관 전달사항>\n-청년 특화프로그램 수당 대상자확인 안내',
+      },
+      {
+        key: 'branch-notes',
+        label: '지점 특이사항',
+        content: '최나리 부장님 모니터5대 전달 완료',
+      },
+    ],
+  })
 })
