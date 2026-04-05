@@ -94,12 +94,38 @@ function isPrivatePartialDocument(document) {
   return document.uri.fsPath.replace(/\\/g, '/').includes('/pb_hooks/pages/_private/')
 }
 
+function normalizeDocumentPath(filePath) {
+  return String(filePath || '').replace(/\\/g, '/')
+}
+
+function isExcludedPocketPagesScriptPath(filePath) {
+  const normalizedPath = normalizeDocumentPath(filePath)
+
+  if (!normalizedPath.includes('/pb_hooks/pages/')) {
+    return false
+  }
+
+  const pagesRelativePath = normalizedPath.split('/pb_hooks/pages/')[1] || ''
+  const relativeSegments = pagesRelativePath.split('/').filter(Boolean)
+
+  return (
+    relativeSegments.includes('vendor') ||
+    normalizedPath.endsWith('.min.js') ||
+    normalizedPath.endsWith('.min.cjs') ||
+    normalizedPath.endsWith('.min.mjs')
+  )
+}
+
+function isAnalyzablePocketPagesFilePath(filePath) {
+  return !isExcludedPocketPagesScriptPath(filePath) && !!findAppRoot(filePath)
+}
+
 function isPocketPagesCodeDocument(document) {
   if (!document || document.uri.scheme !== 'file') {
     return false
   }
 
-  const normalizedPath = document.uri.fsPath.replace(/\\/g, '/')
+  const normalizedPath = normalizeDocumentPath(document.uri.fsPath)
   if (normalizedPath.endsWith('.ejs')) {
     return true
   }
@@ -109,9 +135,12 @@ function isPocketPagesCodeDocument(document) {
   }
 
   return (
-    normalizedPath.endsWith('.js') ||
-    normalizedPath.endsWith('.cjs') ||
-    normalizedPath.endsWith('.mjs')
+    !isExcludedPocketPagesScriptPath(normalizedPath) &&
+    (
+      normalizedPath.endsWith('.js') ||
+      normalizedPath.endsWith('.cjs') ||
+      normalizedPath.endsWith('.mjs')
+    )
   )
 }
 
@@ -364,7 +393,7 @@ class PocketPagesCompletionProvider {
   }
 
   provideCompletionItems(document, position) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -468,7 +497,7 @@ class PocketPagesHoverProvider {
   }
 
   provideHover(document, position) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -521,7 +550,7 @@ class PocketPagesSignatureHelpProvider {
   }
 
   provideSignatureHelp(document, position, _token, context) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -546,7 +575,7 @@ class PocketPagesDefinitionProvider {
   }
 
   provideDefinition(document, position) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -572,7 +601,7 @@ class PocketPagesCodeActionProvider {
   }
 
   async provideCodeActions(document, range) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -620,7 +649,7 @@ class PocketPagesRenameProvider {
   }
 
   prepareRename(document, position) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -646,7 +675,7 @@ class PocketPagesRenameProvider {
   }
 
   async provideRenameEdits(document, position, newName) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -688,7 +717,7 @@ class PocketPagesReferenceProvider {
   }
 
   async provideReferences(document, position, context) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -728,7 +757,7 @@ class PocketPagesDocumentLinkProvider {
   }
 
   provideDocumentLinks(document) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -756,7 +785,7 @@ class PocketPagesCodeLensProvider {
   }
 
   provideCodeLenses(document) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -829,7 +858,7 @@ class PocketPagesInlayHintsProvider {
   }
 
   provideInlayHints(document, range) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -857,7 +886,7 @@ class PocketPagesInlayHintsProvider {
 
 class PocketPagesSemanticTokensProvider {
   provideDocumentSemanticTokens(document) {
-    if (!findAppRoot(document.uri.fsPath)) {
+    if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
 
@@ -1175,3 +1204,4 @@ module.exports = {
   activate,
   deactivate,
 }
+
