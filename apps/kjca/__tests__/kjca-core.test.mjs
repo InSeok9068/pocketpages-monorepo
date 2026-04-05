@@ -328,6 +328,30 @@ test('parseRecruitingExtractFromDiaryHtml keeps recruiting rows clean when later
   assert.equal(friRow.note, '선물 전달예정')
 })
 
+test('parseRecruitingExtractFromDiaryHtml still parses a recruiting table when the section title is missing', () => {
+  const html =
+    '<div class="doc_text editor">' +
+    '<table>' +
+    '<tr><td colspan="7">월 배정목표 : 40건 / 4월 현재 달성 : 배정 12명</td></tr>' +
+    '<tr><td>요일</td><td colspan="3">주간 홍보계획</td><td>결과</td><td>담당자(홍보)</td><td>비고</td></tr>' +
+    '<tr><td>모집홍보처</td><td>모집 홍보내용</td><td>모집목표</td><td>모집 건수</td></tr>' +
+    '<tr><td>목</td><td>안양온누리요양보호사교육원</td><td>홍보</td><td></td><td></td><td>정은선</td><td></td></tr>' +
+    '<tr><td>금</td><td>SBS 게임학원</td><td>MOU</td><td></td><td></td><td>팀장</td><td>3시 진행</td></tr>' +
+    '</table>' +
+    '</div>'
+
+  const parsed = parseRecruitingExtractFromDiaryHtml(html, '2026-04-03')
+
+  assert.equal(parsed.monthTarget, 40)
+  assert.equal(parsed.monthAssignedCurrent, 12)
+  assert.equal(parsed.weekTableRows.length, 2)
+  assert.equal(parsed.weekTableRows[1].weekday, 'fri')
+  assert.equal(parsed.weekTableRows[1].channelName, 'SBS 게임학원')
+  assert.equal(parsed.weekTableRows[1].promotionContent, 'MOU')
+  assert.equal(parsed.weekTableRows[1].ownerName, '팀장')
+  assert.equal(parsed.weekTableRows[1].note, '3시 진행')
+})
+
 test('buildPromotionDisplayItems prefers structured recruiting rows with weekday labels', () => {
   assert.deepEqual(
     buildPromotionDisplayItems({
@@ -341,6 +365,18 @@ test('buildPromotionDisplayItems prefers structured recruiting rows with weekday
       },
     }),
     ['(월) 올댓뷰티 / 훈련생 TM', '(화) KH / 담당자 미팅']
+  )
+})
+
+test('buildPromotionDisplayItems falls back to weekly plan text when structured row has no channel or promotion content', () => {
+  assert.deepEqual(
+    buildPromotionDisplayItems({
+      promotion: ['AI 텍스트'],
+      recruiting: {
+        weekTableRows: [{ weekday: 'fri', weeklyPlan: '기관 재방문 일정 조율', channelName: '', promotionContent: '' }],
+      },
+    }),
+    ['(금) 기관 재방문 일정 조율']
   )
 })
 

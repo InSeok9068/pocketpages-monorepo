@@ -420,3 +420,178 @@ test('clearAnalysisCache removes derived weekly records for the selected dept', 
     globalThis.Record = originalRecord
   }
 })
+
+test('collectWeekly keeps existing weekdays and replaces only the current weekday when today rows are partial', () => {
+  const originalAuthCache = require.cache[authModulePath]
+  const originalAnalyzeCache = require.cache[analyzeModulePath]
+  const originalCollectCache = require.cache[collectServicePath]
+  const originalApp = globalThis.$app
+  const originalRecord = globalThis.Record
+  const originalSleep = globalThis.sleep
+
+  const appMock = createAppMock()
+
+  try {
+    require.cache[authModulePath] = {
+      id: authModulePath,
+      filename: authModulePath,
+      loaded: true,
+      exports: {
+        ensureSuperuserRequest() {},
+        createKjcaSession() {
+          return {
+            host: 'http://www.kjca.co.kr',
+            cookieHeader: '',
+          }
+        },
+        probeStaffAuth() {
+          return {
+            isDiaryAccessible: true,
+            teamLeadRows: [
+              {
+                dept: '입학팀',
+                position: '팀장',
+                staffName: '김팀장',
+                printUrl: 'http://www.kjca.co.kr/diary/?site=groupware&bd_idx=1',
+              },
+            ],
+          }
+        },
+      },
+    }
+
+    require.cache[analyzeModulePath] = {
+      id: analyzeModulePath,
+      filename: analyzeModulePath,
+      loaded: true,
+      exports: {
+        analyzeStaffDiary() {
+          return {
+            ok: true,
+            results: [
+              {
+                dept: '입학팀',
+                position: '팀장',
+                staffName: '김팀장',
+                ok: true,
+                promotion: [],
+                vacation: [],
+                special: [],
+                recruiting: {
+                  monthTarget: 20,
+                  monthAssignedCurrent: 4,
+                  weekTarget: 5,
+                  dailyPlan: [],
+                  dailyActualCount: 3,
+                  weekTableRows: [
+                    {
+                      weekday: 'fri',
+                      channelName: '새 금요일 채널',
+                      weeklyPlan: '',
+                      promotionContent: '새 금요일 홍보',
+                      targetText: '2',
+                      resultText: '',
+                      recruitCountText: '3',
+                      ownerName: '김팀장',
+                      note: '금요일만 교체',
+                    },
+                  ],
+                },
+                printUrl: 'http://www.kjca.co.kr/diary/?site=groupware&bd_idx=1',
+              },
+            ],
+            stoppedReason: '',
+            alertMessage: '',
+          }
+        },
+      },
+    }
+
+    delete require.cache[collectServicePath]
+
+    globalThis.$app = appMock
+    globalThis.Record = MockRecord
+    globalThis.sleep = () => {}
+
+    const weekPlan = createSavedRecord(appMock, 'recruiting_week_plans', {
+      weekStartDate: '2026-03-30',
+      dept: '입학팀',
+      monthTarget: 20,
+      weekTarget: 5,
+      status: 'confirmed',
+    })
+    createSavedRecord(appMock, 'recruiting_week_plan_items', {
+      planId: weekPlan.id,
+      weekday: 'mon',
+      targetCount: 1,
+    })
+
+    const weekTextPlan = createSavedRecord(appMock, 'recruiting_week_text_plans', {
+      weekStartDate: '2026-03-30',
+      dept: '입학팀',
+      status: 'confirmed',
+    })
+    ;[
+      { weekday: 'mon', channelName: '월 기존', promotionContent: '월 홍보' },
+      { weekday: 'tue', channelName: '화 기존', promotionContent: '화 홍보' },
+      { weekday: 'wed', channelName: '수 기존', promotionContent: '수 홍보' },
+      { weekday: 'thu', channelName: '목 기존', promotionContent: '목 홍보' },
+      { weekday: 'fri', channelName: '금 기존', promotionContent: '금 홍보' },
+    ].forEach((row, index) => {
+      createSavedRecord(appMock, 'recruiting_week_text_rows', {
+        planId: weekTextPlan.id,
+        weekday: row.weekday,
+        channelName: row.channelName,
+        weeklyPlan: '',
+        promotionContent: row.promotionContent,
+        targetText: '',
+        resultText: '',
+        recruitCountText: '',
+        ownerName: '',
+        note: '',
+        sortOrder: index,
+      })
+    })
+
+    const collectService = require(collectServicePath)
+    const result = collectService.collectWeekly(
+      {},
+      {
+        recruitingWeekPlanRole: { canSaveConfirmed: () => true },
+        recruitingWeekPlanItemRole: { canSave: () => true },
+        recruitingDailyResultRole: { canSaveAiResult: () => true },
+        recruitingWeekTextPlanRole: { canSaveConfirmed: () => true },
+        recruitingWeekTextRowRole: { canSave: () => true },
+      },
+      {
+        reportDate: '2026-04-03',
+        testOneOnly: false,
+      }
+    )
+
+    const rows = result.deptWeekTables[0].rows
+    const monRow = rows.find((row) => row.weekday === 'mon')
+    const friRow = rows.find((row) => row.weekday === 'fri')
+
+    assert.equal(monRow.channelName, '월 기존')
+    assert.equal(monRow.promotionContent, '월 홍보')
+    assert.equal(friRow.channelName, '새 금요일 채널')
+    assert.equal(friRow.promotionContent, '새 금요일 홍보')
+    assert.equal(friRow.recruitCountText, '3')
+    assert.equal(friRow.note, '금요일만 교체')
+    assert.equal(appMock.__store.recruiting_week_text_rows.length, 5)
+  } finally {
+    if (originalAuthCache) require.cache[authModulePath] = originalAuthCache
+    else delete require.cache[authModulePath]
+
+    if (originalAnalyzeCache) require.cache[analyzeModulePath] = originalAnalyzeCache
+    else delete require.cache[analyzeModulePath]
+
+    if (originalCollectCache) require.cache[collectServicePath] = originalCollectCache
+    else delete require.cache[collectServicePath]
+
+    globalThis.$app = originalApp
+    globalThis.Record = originalRecord
+    globalThis.sleep = originalSleep
+  }
+})
