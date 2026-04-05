@@ -29,6 +29,7 @@ test('GET / returns the KJCA dashboard page', async () => {
   assert.equal($('p').filter((_, element) => $(element).text().trim() === '관리자 로그인').length, 1);
   assert.equal($('input[type="week"][name="referenceWeek"]').length, 1);
   assert.equal($('form[hx-post="/xapi/kjca/collect-weekly-report-urls"]').length, 1);
+  assert.equal(body.includes('주간 보고 원문 취합 실행'), true);
 });
 
 test('GET /sign-in returns the login page without template errors', async () => {

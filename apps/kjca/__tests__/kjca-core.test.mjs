@@ -13,9 +13,11 @@ const {
   htmlToText,
   buildPromotionDisplayItems,
   buildWeekDateRangeFromReferenceWeek,
+  buildDashboardStateFromWeeklyReportDetailResult,
   buildWeeklyReportSearchRangeFromReferenceWeek,
   parseTeamLeadRowsFromDiaryHtml,
   parseWeeklyReportRowsFromListHtml,
+  parseWeeklyReportDetailFromHtml,
   parseRecruitingExtractFromDiaryHtml,
   parseJobStatusTableFromDiaryHtml,
   parseMiscSectionFromDiaryHtml,
@@ -145,6 +147,163 @@ test('parseWeeklyReportRowsFromListHtml extracts approval document urls and meta
       },
     ],
   })
+})
+
+test('parseWeeklyReportDetailFromHtml groups weekly report tables into operations, work, and people tabs', () => {
+  const detailHtml =
+    '<div class="doc_text">' +
+    '<strong>1. 대구동부 기본 현황</strong>' +
+    '<table>' +
+    '<tr><td>지점명</td><td>팀장</td><td>상담사</td><td>총 진행인원</td><td>평균 진행인원</td><td>관리자</td></tr>' +
+    '<tr><td>대구동부</td><td>황수연</td><td>06명</td><td>342명</td><td>57명</td><td>이명재 실장</td></tr>' +
+    '</table>' +
+    '<strong>2. 취업실적 현황</strong>' +
+    '<table>' +
+    '<tr><td>월 목표<br>알선 취업자</td><td>알선 취업자<br>달성</td><td>월 목표<br>본인취업</td><td>본인취업<br>달성</td><td>기간만료</td><td>중단</td><td>취업률</td><td>알선취업률</td></tr>' +
+    '<tr><td>12명</td><td>05명</td><td>12명</td><td>15명</td><td>18명</td><td>01명</td><td>50.69%</td><td>10.14%</td></tr>' +
+    '</table>' +
+    '<strong>3. 배정 및 IAP수립 현황</strong>' +
+    '<table>' +
+    '<tr><td>2026년 목표인원</td><td>2026년 달성인원</td><td>3월 목표인원</td><td>3월 달성인원</td><td>월 IAP수립목표</td><td>IAP수립 달성</td></tr>' +
+    '<tr><td>600명</td><td>97명</td><td>50명</td><td>30명</td><td>35명</td><td>32명</td></tr>' +
+    '</table>' +
+    '<strong>4. 지난주 업무결과 보고</strong>' +
+    '<table>' +
+    '<tr><td>지난주 업무계획</td><td>- 동부고용센터 실업급여장 홍보<br>- 훈련기관 협조 요청</td></tr>' +
+    '<tr><td>지난주 업무결과</td><td>- 올댓뷰티학원 협약<br>- 대학교 3곳 출장상담소 셋팅 완료</td></tr>' +
+    '</table>' +
+    '<strong>5. 차주 업무계획</strong>' +
+    '<table>' +
+    '<tr><td>요일</td><td>차주 업무계획 상세</td></tr>' +
+    '<tr><td>월</td><td>동부고용센터 실업급여장 홍보</td></tr>' +
+    '<tr><td>화</td><td>경북대학교 채용설명회 참여자 대상 홍보</td></tr>' +
+    '<tr><td>수</td><td></td></tr>' +
+    '<tr><td>목</td><td>수성구 훈련기관</td></tr>' +
+    '<tr><td>금</td><td>배움컴퓨터 학원 설명회 요청</td></tr>' +
+    '</table>' +
+    '<strong>6. 고용센터 및 지점 특이사항</strong>' +
+    '<table>' +
+    '<tr><td>구분</td><td>내용</td></tr>' +
+    '<tr><td>고용센터전달사항</td><td>- 미인정 과정 출석부 철저히 확인<br>- 취업률 향상 노력</td></tr>' +
+    '<tr><td>지점 특이사항</td><td>- 없음</td></tr>' +
+    '<tr><td>기타 건의사항</td><td>- 없음</td></tr>' +
+    '</table>' +
+    '<strong>5. 입.퇴사자</strong>' +
+    '<table>' +
+    '<tr><td rowspan="2">지점명</td><td colspan="2">퇴사자</td><td colspan="2">입사 예정자</td><td rowspan="2">비고</td></tr>' +
+    '<tr><td>상담사명</td><td>퇴사일</td><td>상담사명</td><td>입사일</td></tr>' +
+    '<tr><td>대구동부지점</td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '</table>' +
+    '<strong>7. 휴가 및 조기퇴근, 공가 현황</strong>' +
+    '<table>' +
+    '<tr><td>요일</td><td>연차</td><td>반차</td><td>공가</td><td>조기퇴근</td><td>외부교육</td><td>주간회의</td><td>외근</td><td>기타</td></tr>' +
+    '<tr><td>월</td><td></td><td></td><td></td><td></td><td></td><td></td><td>이기영</td><td></td></tr>' +
+    '<tr><td>화</td><td></td><td></td><td></td><td></td><td></td><td></td><td>김경태, 김나연</td><td></td></tr>' +
+    '<tr><td>수</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>' +
+    '<tr><td>목</td><td>김경태</td><td></td><td></td><td></td><td></td><td></td><td>진윤아, 정향주</td><td></td></tr>' +
+    '<tr><td>금</td><td>김경태</td><td></td><td></td><td></td><td></td><td></td><td>이기영, 황수연</td><td></td></tr>' +
+    '</table>' +
+    '</div>'
+
+  const parsed = parseWeeklyReportDetailFromHtml(
+    {
+      sourceLabel: '종결 문서',
+      sourceMenu: '1426',
+      sourceType: 'to_al_done',
+      docNo: '문서-1',
+      formName: '기안서',
+      title: '국제커리어센터 대구동부 주간업무보고_(26.03.27)',
+      dept: '대구동부',
+      drafter: '황수연',
+      draftDate: '2026-03-27',
+      status: '종결',
+      viewUrl: 'http://www.kjca.co.kr/appr/appr_doc/?site=groupware&mn=1426&type=view&type2=to_al_done&ad_idx=239326',
+    },
+    detailHtml
+  )
+
+  assert.equal(parsed.ok, true)
+  assert.deepEqual(
+    parsed.operationsTables.map((table) => table.key),
+    ['basic-status', 'employment-status', 'assignment-iap']
+  )
+  assert.deepEqual(
+    parsed.workTables.map((table) => table.key),
+    ['last-week', 'next-week-plan']
+  )
+  assert.deepEqual(
+    parsed.peopleTables.map((table) => table.key),
+    ['special-notes', 'hr-changes', 'leave-status']
+  )
+  assert.equal(parsed.operationsTables[0].rows[0][0], '대구동부')
+  assert.equal(parsed.operationsTables[1].rows[0][7], '10.14%')
+  assert.equal(parsed.workTables[0].rows[1][1].includes('대학교 3곳 출장상담소 셋팅 완료'), true)
+  assert.equal(parsed.workTables[0].rows[0][1].includes('\n'), true)
+  assert.equal(parsed.peopleTables[0].rows[0][1].includes('취업률 향상 노력'), true)
+  assert.equal(parsed.peopleTables[1].rows[0][0], '대구동부지점')
+  assert.equal(parsed.peopleTables[2].rows[4][1], '김경태')
+})
+
+test('buildDashboardStateFromWeeklyReportDetailResult keeps weekly details in dashboard state', () => {
+  const dashboardState = buildDashboardStateFromWeeklyReportDetailResult(
+    {
+      referenceWeek: '2026-W14',
+      weekStartDate: '2026-03-31',
+      weekEndDate: '2026-04-06',
+      rows: [
+        {
+          sourceLabel: '종결 문서',
+          sourceMenu: '1426',
+          sourceType: 'to_al_done',
+          docNo: '문서-1',
+          formName: '기안서',
+          title: '국제커리어센터 대구동부 주간업무보고_(26.03.27)',
+          dept: '대구동부',
+          drafter: '황수연',
+          draftDate: '2026-03-27',
+          status: '종결',
+          viewUrl: 'http://www.kjca.co.kr/appr/appr_doc/?site=groupware&mn=1426&type=view&type2=to_al_done&ad_idx=239326',
+        },
+      ],
+      details: [
+        {
+          sourceLabel: '종결 문서',
+          sourceMenu: '1426',
+          sourceType: 'to_al_done',
+          docNo: '문서-1',
+          formName: '기안서',
+          title: '국제커리어센터 대구동부 주간업무보고_(26.03.27)',
+          dept: '대구동부',
+          drafter: '황수연',
+          draftDate: '2026-03-27',
+          status: '종결',
+          viewUrl: 'http://www.kjca.co.kr/appr/appr_doc/?site=groupware&mn=1426&type=view&type2=to_al_done&ad_idx=239326',
+          ok: true,
+          error: '',
+          operationsTables: [{ key: 'basic-status', title: '기본 현황', headers: ['지점명'], rows: [['대구동부']] }],
+          workTables: [],
+          peopleTables: [],
+        },
+      ],
+      warnings: [],
+      alertMessage: '주간 보고 본문 1건을 취합했습니다.',
+    },
+    {
+      collectionMode: 'weekly',
+      weeklyReportRows: [],
+      weeklyReportDetails: [],
+    },
+    {
+      reportDate: '2026-04-03',
+      referenceWeek: '2026-W14',
+      collectionMode: 'weekly',
+    }
+  )
+
+  assert.equal(dashboardState.collectionMode, 'weekly')
+  assert.equal(dashboardState.weeklyReportRows.length, 1)
+  assert.equal(dashboardState.weeklyReportDetails.length, 1)
+  assert.equal(dashboardState.weeklyReportDetails[0].operationsTables[0].rows[0][0], '대구동부')
 })
 
 test('parseJobStatusTableFromDiaryHtml removes empty trailing columns and keeps a single staff column', () => {

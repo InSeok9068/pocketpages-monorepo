@@ -1250,6 +1250,216 @@ function parseWeeklyReportRowsFromListHtml(listHtml, host, sourceInfo) {
   }
 }
 
+function normalizeWeeklySectionTableText(text) {
+  return String(text || '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => normalizeSingleLineText(line))
+    .filter((line) => !!line)
+    .join('\n')
+    .trim()
+}
+
+function normalizeWeeklySectionCompactText(text) {
+  return normalizeSingleLineText(text)
+    .replace(/\s+/g, '')
+    .replace(/[.:]/g, '')
+}
+
+function parseWeeklyDisplayTableRows(tableHtml) {
+  return parseHtmlTableCellsDetailed(tableHtml)
+    .map((row) => row.map((cell) => normalizeWeeklySectionTableText(htmlToText(cell.html || '')) || stripTags(cell.html || '')))
+    .filter((row) => row.some((cell) => !!normalizeSingleLineText(cell)))
+}
+
+function buildWeeklyReportTableCandidates(html) {
+  return extractTableHtmlBlocks(html)
+    .map((block) => {
+      const plainRows = parseHtmlTableRows(block.html).filter((row) => row.some((cell) => !!normalizeSingleLineText(cell)))
+      const displayRows = parseWeeklyDisplayTableRows(block.html)
+      return {
+        ...block,
+        plainRows,
+        displayRows,
+        compactRows: plainRows.map((row) => row.map((cell) => normalizeWeeklySectionCompactText(cell))),
+      }
+    })
+    .filter((item) => item.plainRows.length > 0 && item.displayRows.length > 0)
+}
+
+function rowHasWeeklyKeywords(compactRow, keywords) {
+  const safeRow = Array.isArray(compactRow) ? compactRow : []
+  return keywords.every((keyword) => safeRow.some((cell) => cell === keyword || cell.includes(keyword)))
+}
+
+function pickSmallestWeeklyTableCandidate(candidates, matcher) {
+  return (Array.isArray(candidates) ? candidates : [])
+    .filter((candidate) => {
+      try {
+        return !!matcher(candidate)
+      } catch (error) {
+        return false
+      }
+    })
+    .sort((left, right) => left.html.length - right.html.length)[0] || null
+}
+
+function isWeeklyBasicStatusCandidate(candidate) {
+  const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
+  return rowHasWeeklyKeywords(headerRow, ['지점명', '팀장', '상담사', '총진행인원', '평균진행인원', '관리자']) && candidate.displayRows.length >= 2
+}
+
+function isWeeklyEmploymentStatusCandidate(candidate) {
+  const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
+  return (
+    rowHasWeeklyKeywords(headerRow, ['월목표알선취업자', '알선취업자달성', '월목표본인취업', '본인취업달성', '기간만료', '중단', '취업률', '알선취업률']) &&
+    candidate.displayRows.length >= 2
+  )
+}
+
+function isWeeklyAssignmentIapCandidate(candidate) {
+  const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
+  return (
+    headerRow.some((cell) => /년목표인원$/.test(cell)) &&
+    headerRow.some((cell) => /년달성인원$/.test(cell)) &&
+    headerRow.some((cell) => /월목표인원$/.test(cell)) &&
+    headerRow.some((cell) => /월달성인원$/.test(cell)) &&
+    headerRow.some((cell) => cell.includes('IAP수립목표')) &&
+    headerRow.some((cell) => cell.includes('IAP수립달성')) &&
+    candidate.displayRows.length >= 2
+  )
+}
+
+function isWeeklyLastWeekCandidate(candidate) {
+  const firstCells = (candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows : []).map((row) => row[0] || '')
+  return firstCells.includes('지난주업무계획') && firstCells.includes('지난주업무결과')
+}
+
+function isWeeklyNextWeekCandidate(candidate) {
+  const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
+  return rowHasWeeklyKeywords(headerRow, ['요일', '차주업무계획상세']) && candidate.displayRows.length >= 2
+}
+
+function isWeeklySpecialNotesCandidate(candidate) {
+  const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
+  const bodyFirstCells = (candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows.slice(1) : []).map((row) => row[0] || '')
+  return (
+    rowHasWeeklyKeywords(headerRow, ['구분', '내용']) &&
+    bodyFirstCells.some(
+      (cell) =>
+        cell.includes('고용센터전달사항') ||
+        cell.includes('고용센터및지점특이사항') ||
+        cell.includes('지점특이사항') ||
+        cell.includes('기타건의사항') ||
+        cell.includes('지점기타건의사항')
+    )
+  )
+}
+
+function isWeeklyHrChangesCandidate(candidate) {
+  const compactRows = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows : []
+  return compactRows.some((row) => row.includes('퇴사자') && row.includes('입사예정자')) && compactRows.some((row) => row.includes('상담사명') && row.includes('퇴사일'))
+}
+
+function isWeeklyLeaveStatusCandidate(candidate) {
+  const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
+  return (
+    rowHasWeeklyKeywords(headerRow, ['요일', '연차', '반차', '공가', '조기퇴근', '주간회의', '외근']) &&
+    headerRow.some((cell) => cell.includes('외부교육') || cell === '외부') &&
+    candidate.displayRows.length >= 2
+  )
+}
+
+function normalizeWeeklySectionRow(row, columnCount) {
+  const safeRow = Array.isArray(row) ? row : []
+  const targetLength = Math.max(1, Math.trunc(Number(columnCount) || 0))
+  const normalized = []
+  for (let index = 0; index < targetLength; index += 1) {
+    normalized.push(normalizeWeeklySectionTableText(safeRow[index] || ''))
+  }
+  return normalized
+}
+
+function buildWeeklySectionTable(key, title, headers, rows) {
+  const safeHeaders = Array.isArray(headers) ? headers.map((header) => normalizeWeeklySectionTableText(header)) : []
+  const columnCount = safeHeaders.length > 0 ? safeHeaders.length : Math.max(0, ...(Array.isArray(rows) ? rows.map((row) => (Array.isArray(row) ? row.length : 0)) : [0]))
+  if (!key || !title || columnCount === 0) return null
+
+  return {
+    key: String(key || '').trim(),
+    title: String(title || '').trim(),
+    headers: safeHeaders.length > 0 ? safeHeaders : normalizeWeeklySectionRow([], columnCount),
+    rows: (Array.isArray(rows) ? rows : []).map((row) => normalizeWeeklySectionRow(row, columnCount)),
+  }
+}
+
+function buildWeeklySectionTableFromHeaderCandidate(key, title, candidate) {
+  if (!candidate || !Array.isArray(candidate.displayRows) || candidate.displayRows.length < 2) return null
+  return buildWeeklySectionTable(key, title, candidate.displayRows[0], candidate.displayRows.slice(1))
+}
+
+function buildWeeklyLastWeekSectionTable(candidate) {
+  if (!candidate || !Array.isArray(candidate.displayRows) || candidate.displayRows.length === 0) return null
+  return buildWeeklySectionTable('last-week', '지난주 업무결과 보고', ['구분', '내용'], candidate.displayRows)
+}
+
+function buildWeeklyHrChangesSectionTable(candidate) {
+  if (!candidate || !Array.isArray(candidate.displayRows) || candidate.displayRows.length < 3) return null
+  return buildWeeklySectionTable('hr-changes', '입퇴사자', ['지점명', '퇴사자명', '퇴사일', '입사예정자명', '입사일', '비고'], candidate.displayRows.slice(2))
+}
+
+/**
+ * 주간 보고 문서 HTML에서 탭 렌더링용 섹션 표를 추출합니다.
+ * @param {types.KjcaWeeklyReportRow | null | undefined} reportRow 주간 보고 목록 행 메타데이터입니다.
+ * @param {unknown} documentHtml 주간 보고 상세 HTML입니다.
+ * @returns {types.KjcaWeeklyReportDetail} 표 단위로 정리된 주간 보고 상세입니다.
+ */
+function parseWeeklyReportDetailFromHtml(reportRow, documentHtml) {
+  const normalizedRow = normalizeWeeklyReportRows([reportRow])[0]
+  const row = normalizedRow && typeof normalizedRow === 'object' ? normalizedRow : {}
+  const tableCandidates = buildWeeklyReportTableCandidates(documentHtml)
+
+  const operationsTables = [
+    buildWeeklySectionTableFromHeaderCandidate('basic-status', '기본 현황', pickSmallestWeeklyTableCandidate(tableCandidates, isWeeklyBasicStatusCandidate)),
+    buildWeeklySectionTableFromHeaderCandidate('employment-status', '취업실적 현황', pickSmallestWeeklyTableCandidate(tableCandidates, isWeeklyEmploymentStatusCandidate)),
+    buildWeeklySectionTableFromHeaderCandidate('assignment-iap', '배정 및 IAP 수립 현황', pickSmallestWeeklyTableCandidate(tableCandidates, isWeeklyAssignmentIapCandidate)),
+  ].filter((item) => !!item)
+
+  const workTables = [
+    buildWeeklyLastWeekSectionTable(pickSmallestWeeklyTableCandidate(tableCandidates, isWeeklyLastWeekCandidate)),
+    buildWeeklySectionTableFromHeaderCandidate('next-week-plan', '차주 업무계획', pickSmallestWeeklyTableCandidate(tableCandidates, isWeeklyNextWeekCandidate)),
+  ].filter((item) => !!item)
+
+  const peopleTables = [
+    buildWeeklySectionTableFromHeaderCandidate('special-notes', '고용센터 및 지점 특이사항', pickSmallestWeeklyTableCandidate(tableCandidates, isWeeklySpecialNotesCandidate)),
+    buildWeeklyHrChangesSectionTable(pickSmallestWeeklyTableCandidate(tableCandidates, isWeeklyHrChangesCandidate)),
+    buildWeeklySectionTableFromHeaderCandidate('leave-status', '휴가 및 조기퇴근 / 공가 현황', pickSmallestWeeklyTableCandidate(tableCandidates, isWeeklyLeaveStatusCandidate)),
+  ].filter((item) => !!item)
+
+  if (operationsTables.length === 0 && workTables.length === 0 && peopleTables.length === 0) {
+    throw new Error('지원하는 주간 보고 표를 찾지 못했습니다.')
+  }
+
+  return {
+    sourceLabel: String(row.sourceLabel || '').trim(),
+    sourceMenu: String(row.sourceMenu || '').trim(),
+    sourceType: String(row.sourceType || '').trim(),
+    docNo: String(row.docNo || '').trim(),
+    formName: String(row.formName || '').trim(),
+    title: String(row.title || '').trim(),
+    dept: String(row.dept || '').trim(),
+    drafter: String(row.drafter || '').trim(),
+    draftDate: String(row.draftDate || '').trim(),
+    status: String(row.status || '').trim(),
+    viewUrl: String(row.viewUrl || '').trim(),
+    ok: true,
+    error: '',
+    operationsTables,
+    workTables,
+    peopleTables,
+  }
+}
+
 /**
  * KJCA 요청에 맞는 브라우저형 헤더를 만듭니다.
  * @param {string} host KJCA 호스트입니다.
@@ -1960,6 +2170,81 @@ function normalizeWeeklyReportRows(value) {
 }
 
 /**
+ * 주간 보고 섹션 표 목록을 화면용 shape로 정리합니다.
+ * @param {unknown} value 원본 섹션 표 목록입니다.
+ * @returns {types.KjcaWeeklySectionTable[]} 정리된 주간 보고 섹션 표 목록입니다.
+ */
+function normalizeWeeklySectionTables(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      const table = item && typeof item === 'object' ? item : {}
+      const headers = Array.isArray(table.headers) ? table.headers.map((header) => normalizeWeeklySectionTableText(header)).filter(Boolean) : []
+      const columnCount = headers.length > 0 ? headers.length : Math.max(0, ...(Array.isArray(table.rows) ? table.rows.map((row) => (Array.isArray(row) ? row.length : 0)) : [0]))
+      if (!table.key || !table.title || columnCount === 0) return null
+
+      return {
+        key: String(table.key || '').trim(),
+        title: String(table.title || '').trim(),
+        headers: headers.length > 0 ? headers : normalizeWeeklySectionRow([], columnCount),
+        rows: Array.isArray(table.rows) ? table.rows.map((row) => normalizeWeeklySectionRow(row, columnCount)) : [],
+      }
+    })
+    .filter((item) => !!item)
+}
+
+/**
+ * 주간 보고 상세 목록을 화면용 shape로 정리합니다.
+ * @param {unknown} value 원본 주간 보고 상세 목록입니다.
+ * @returns {types.KjcaWeeklyReportDetail[]} 정리된 주간 보고 상세 목록입니다.
+ */
+function normalizeWeeklyReportDetails(value) {
+  if (!Array.isArray(value)) return []
+
+  const seenByUrl = {}
+
+  return value
+    .map((item) => {
+      const detail = item && typeof item === 'object' ? item : {}
+      const normalizedRow = normalizeWeeklyReportRows([detail])[0]
+      const row = normalizedRow && typeof normalizedRow === 'object' ? normalizedRow : {}
+      return {
+        sourceLabel: String(row.sourceLabel || '').trim(),
+        sourceMenu: String(row.sourceMenu || '').trim(),
+        sourceType: String(row.sourceType || '').trim(),
+        docNo: String(row.docNo || '').trim(),
+        formName: String(row.formName || '').trim(),
+        title: String(row.title || '').trim(),
+        dept: String(row.dept || '').trim(),
+        drafter: String(row.drafter || '').trim(),
+        draftDate: String(row.draftDate || '').trim(),
+        status: String(row.status || '').trim(),
+        viewUrl: String(row.viewUrl || '').trim(),
+        ok: !(detail && detail.ok === false),
+        error: String((detail && detail.error) || '').trim(),
+        operationsTables: normalizeWeeklySectionTables(detail && detail.operationsTables),
+        workTables: normalizeWeeklySectionTables(detail && detail.workTables),
+        peopleTables: normalizeWeeklySectionTables(detail && detail.peopleTables),
+      }
+    })
+    .filter((detail) => !!detail.viewUrl)
+    .filter((detail) => {
+      if (seenByUrl[detail.viewUrl]) return false
+      seenByUrl[detail.viewUrl] = true
+      return true
+    })
+    .sort((left, right) => {
+      const deptCompare = String(left.dept || '').localeCompare(String(right.dept || ''), 'ko')
+      if (deptCompare !== 0) return deptCompare
+
+      const draftCompare = String(right.draftDate || '').localeCompare(String(left.draftDate || ''))
+      if (draftCompare !== 0) return draftCompare
+
+      return String(left.title || '').localeCompare(String(right.title || ''), 'ko')
+    })
+}
+
+/**
  * 분석 결과 목록을 화면과 후속 저장에 맞는 shape로 정리합니다.
  * @param {unknown} value 분석 API나 캐시에서 받은 결과 목록 값입니다.
  * @returns {types.KjcaAnalyzeResult[]} 정규화된 분석 결과 목록입니다.
@@ -2274,6 +2559,7 @@ function buildDashboardState(input) {
     deptWeekTables: normalizeDeptWeekTables(source.deptWeekTables),
     deptSnapshots: normalizeDeptSnapshots(source.deptSnapshots),
     weeklyReportRows: normalizeWeeklyReportRows(source.weeklyReportRows),
+    weeklyReportDetails: normalizeWeeklyReportDetails(source.weeklyReportDetails),
   }
 }
 
@@ -2432,8 +2718,8 @@ function buildDashboardStateFromCollectResult(result, formState) {
 }
 
 /**
- * 주간 보고 URL 조회 결과를 기존 상태와 합쳐 화면용 대시보드 상태로 변환합니다.
- * @param {Partial<types.KjcaWeeklyReportUrlResult> | null | undefined} result 주간 보고 URL 조회 결과입니다.
+ * 주간 보고 문서 목록 조회 결과를 기존 상태와 합쳐 화면용 대시보드 상태로 변환합니다.
+ * @param {Partial<types.KjcaWeeklyReportUrlResult> | null | undefined} result 주간 보고 문서 목록 조회 결과입니다.
  * @param {Partial<types.KjcaDashboardState> | null | undefined} currentState 현재 화면 상태입니다.
  * @param {types.KjcaFormStateInput | null | undefined} formState 현재 폼 상태 입력값입니다.
  * @returns {types.KjcaDashboardState} 렌더링에 바로 쓸 수 있는 대시보드 상태입니다.
@@ -2460,6 +2746,42 @@ function buildDashboardStateFromWeeklyReportUrlResult(result, currentState, form
     errorMessage: '',
     warnings: result && result.warnings,
     weeklyReportRows: rows,
+    weeklyReportDetails: [],
+  })
+}
+
+/**
+ * 주간 보고 본문 취합 결과를 기존 상태와 합쳐 화면용 대시보드 상태로 변환합니다.
+ * @param {Partial<types.KjcaWeeklyReportDetailResult> | null | undefined} result 주간 보고 본문 취합 결과입니다.
+ * @param {Partial<types.KjcaDashboardState> | null | undefined} currentState 현재 화면 상태입니다.
+ * @param {types.KjcaFormStateInput | null | undefined} formState 현재 폼 상태 입력값입니다.
+ * @returns {types.KjcaDashboardState} 렌더링에 바로 쓸 수 있는 대시보드 상태입니다.
+ */
+function buildDashboardStateFromWeeklyReportDetailResult(result, currentState, formState) {
+  const safeCurrentState = buildDashboardState(currentState)
+  const safeFormState = buildFormState(formState)
+  const weekRange = buildWeekDateRangeFromReferenceWeek(
+    result && result.referenceWeek ? result.referenceWeek : safeFormState.referenceWeek,
+    safeFormState.reportDate
+  )
+  const rows = normalizeWeeklyReportRows(result && result.rows ? result.rows : safeCurrentState.weeklyReportRows)
+  const details = normalizeWeeklyReportDetails(result && result.details)
+  const successCount = details.filter((item) => item.ok).length
+  const alertMessage = String((result && result.alertMessage) || '').trim()
+  const noticeMessage = alertMessage || `주간 보고 본문 ${successCount}건을 취합했습니다.`
+
+  return buildDashboardState({
+    ...safeCurrentState,
+    reportDate: safeCurrentState.reportDate || safeFormState.reportDate,
+    weeklyReferenceWeek: weekRange.referenceWeek,
+    weeklyRangeStart: result && result.weekStartDate ? result.weekStartDate : weekRange.weekStartDate,
+    weeklyRangeEnd: result && result.weekEndDate ? result.weekEndDate : weekRange.weekEndDate,
+    collectionMode: 'weekly',
+    noticeMessage,
+    errorMessage: '',
+    warnings: result && result.warnings,
+    weeklyReportRows: rows,
+    weeklyReportDetails: details,
   })
 }
 
@@ -2483,6 +2805,7 @@ module.exports = {
   isAllowedKjcaUrl,
   parseTeamLeadRowsFromDiaryHtml,
   parseWeeklyReportRowsFromListHtml,
+  parseWeeklyReportDetailFromHtml,
   parseRecruitingExtractFromDiaryHtml,
   parseJobStatusTableFromDiaryHtml,
   parseMiscSectionFromDiaryHtml,
@@ -2516,6 +2839,7 @@ module.exports = {
   normalizeCachedRecruitingField,
   normalizeTeamLeadRows,
   normalizeWeeklyReportRows,
+  normalizeWeeklyReportDetails,
   normalizeAnalyzeResults,
   normalizeWeekTextRows,
   ensureWeekdayRows,
@@ -2529,6 +2853,7 @@ module.exports = {
   buildDashboardState,
   buildDashboardStateFromCollectResult,
   buildDashboardStateFromWeeklyReportUrlResult,
+  buildDashboardStateFromWeeklyReportDetailResult,
   parseDashboardState,
   serializeDashboardState,
   isFocusWeekday,

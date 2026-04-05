@@ -607,6 +607,21 @@ function collectWeekly(request, roles, payload) {
       return
     }
 
+    if (!findWeekPlan(weekStartDate, safeDept) && hasWeekPlanData(recruiting)) {
+      try {
+        const weekPlanResult = upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItemRole, {
+          weekStartDate,
+          dept: safeDept,
+          monthTarget: recruiting.monthTarget,
+          weekTarget: recruiting.weekTarget,
+          items: recruiting.dailyPlan,
+        })
+        if (!weekPlanResult.ok) warnings.push(`weekPlan fallback skip: ${safeDept} (${weekPlanResult.reason || 'unknown'})`)
+      } catch (error) {
+        warnings.push(`weekPlan fallback error: ${safeDept} (${String(error)})`)
+      }
+    }
+
     const allWeekTextRows = normalizeWeekTextRows(recruiting.weekTableRows)
     const canReplaceWeekTable = hasWeekTextContent(allWeekTextRows) && getDistinctWeekdayCount(allWeekTextRows) >= WEEKDAY_ORDER.length
 

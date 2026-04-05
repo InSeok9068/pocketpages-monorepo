@@ -67,6 +67,32 @@ declare namespace types {
     viewUrl: string
   }
 
+  type KjcaWeeklySectionTable = {
+    key: string
+    title: string
+    headers: string[]
+    rows: string[][]
+  }
+
+  type KjcaWeeklyReportDetail = {
+    sourceLabel: string
+    sourceMenu: string
+    sourceType: string
+    docNo: string
+    formName: string
+    title: string
+    dept: string
+    drafter: string
+    draftDate: string
+    status: string
+    viewUrl: string
+    ok: boolean
+    error: string
+    operationsTables: KjcaWeeklySectionTable[]
+    workTables: KjcaWeeklySectionTable[]
+    peopleTables: KjcaWeeklySectionTable[]
+  }
+
   type KjcaWeekTextRow = {
     weekday: KjcaWeekday
     channelName: string
@@ -179,6 +205,7 @@ declare namespace types {
     deptWeekTables: KjcaDeptWeekTable[]
     deptSnapshots: KjcaDeptSnapshot[]
     weeklyReportRows: KjcaWeeklyReportRow[]
+    weeklyReportDetails: KjcaWeeklyReportDetail[]
   }
 
   type KjcaStaffDiaryAnalysisCacheRole = {
@@ -272,6 +299,22 @@ declare namespace types {
     weekStartDate: string
     weekEndDate: string
     rows: KjcaWeeklyReportRow[]
+    warnings: string[]
+    alertMessage: string
+  }
+
+  type KjcaWeeklyReportDetailPayload = {
+    referenceWeek?: unknown
+    rows?: unknown
+  }
+
+  type KjcaWeeklyReportDetailResult = {
+    ok: true
+    referenceWeek: string
+    weekStartDate: string
+    weekEndDate: string
+    rows: KjcaWeeklyReportRow[]
+    details: KjcaWeeklyReportDetail[]
     warnings: string[]
     alertMessage: string
   }

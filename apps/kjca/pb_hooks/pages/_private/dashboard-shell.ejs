@@ -24,6 +24,7 @@
     deptWeekTables: [],
     deptSnapshots: [],
     weeklyReportRows: [],
+    weeklyReportDetails: [],
   }
   const reportDate = String(safeFormState.reportDate || safeDashboardState.reportDate || '').trim()
   const referenceWeek = String(safeFormState.referenceWeek || safeDashboardState.weeklyReferenceWeek || kjcaCore.buildIsoWeekValue(reportDate)).trim()
@@ -41,6 +42,7 @@
   const weeklyRangeStart = String(safeDashboardState.weeklyRangeStart || weeklyReferenceRange.weekStartDate || '').trim()
   const weeklyRangeEnd = String(safeDashboardState.weeklyRangeEnd || weeklyReferenceRange.weekEndDate || '').trim()
   const weeklyReportRows = safeDashboardState.weeklyReportRows || []
+  const weeklyReportDetails = safeDashboardState.weeklyReportDetails || []
   const weeklyDeptMap = {}
   weeklyReportRows.forEach((row) => {
     const dept = String((row && row.dept) || '').trim() || '미분류'
@@ -55,6 +57,23 @@
     }))
   const weeklyReportDeptCount = weeklyReportGroups.length
   const hasWeeklyReportRows = weeklyReportRows.length > 0
+  const weeklyDetailDeptMap = {}
+  weeklyReportDetails.forEach((detail) => {
+    const dept = String((detail && detail.dept) || '').trim() || '미분류'
+    if (!weeklyDetailDeptMap[dept]) weeklyDetailDeptMap[dept] = []
+    weeklyDetailDeptMap[dept].push(detail)
+  })
+  const weeklyReportDetailGroups = Object.keys(weeklyDetailDeptMap)
+    .sort((left, right) => compareDeptText(left, right))
+    .map((dept) => ({
+      dept,
+      details: (weeklyDetailDeptMap[dept] || []).slice().sort((left, right) => String(right.draftDate || '').localeCompare(String(left.draftDate || ''))),
+    }))
+  const hasWeeklyReportDetails = weeklyReportDetails.length > 0
+  const weeklyDetailSuccessCount = weeklyReportDetails.filter((detail) => detail.ok).length
+  const weeklyOperationsDocCount = weeklyReportDetails.filter((detail) => Array.isArray(detail.operationsTables) && detail.operationsTables.length > 0).length
+  const weeklyWorkDocCount = weeklyReportDetails.filter((detail) => Array.isArray(detail.workTables) && detail.workTables.length > 0).length
+  const weeklyPeopleDocCount = weeklyReportDetails.filter((detail) => Array.isArray(detail.peopleTables) && detail.peopleTables.length > 0).length
   const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) => ({
     ...table,
     summaryText: kjcaCore.buildDeptSummaryText({
@@ -268,14 +287,14 @@
           type="submit"
           class="kjca-btn kjca-btn-primary w-full"
         >
-          주간 보고 URL 조회
+          주간 보고 원문 취합 실행
         </button>
         <% } else { %>
         <button
           type="submit"
           class="kjca-btn kjca-btn-primary w-full"
           disabled>
-          주간 보고 URL 조회
+          주간 보고 원문 취합 실행
         </button>
         <% } %>
       </form>
@@ -328,7 +347,7 @@
       <div class="flex items-center justify-between gap-3">
         <div>
           <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly Scope</p>
-          <h2 class="mt-1 text-lg font-semibold text-slate-950">주간 보고 URL</h2>
+          <h2 class="mt-1 text-lg font-semibold text-slate-950">주간 보고 취합</h2>
         </div>
         <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">총 <%= weeklyReportRows.length %>건</span>
       </div>
@@ -670,16 +689,22 @@
     <article
       x-show="collectionMode === 'weekly'"
       style="<%= weeklyDisplayStyle %>"
+      x-data="{ weeklySummaryTab: '<%= hasWeeklyReportDetails ? 'operations' : 'urls' %>' }"
       class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 md:p-6">
       <div class="flex items-center justify-between gap-3">
         <div>
           <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly Report Summary</p>
-          <h2 class="mt-1 text-lg font-semibold text-slate-950">주간 보고 URL 목록</h2>
+          <h2 class="mt-1 text-lg font-semibold text-slate-950">주간 보고 취합</h2>
         </div>
-        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">총 <%= weeklyReportRows.length %>건 문서</span>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">총 <%= weeklyReportRows.length %>건 문서</span>
+          <% if (hasWeeklyReportDetails) { %>
+          <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">취합 성공 <%= weeklyDetailSuccessCount %>건</span>
+          <% } %>
+        </div>
       </div>
 
-      <div class="mt-5 grid gap-3 md:grid-cols-3">
+      <div class="mt-5 grid gap-3 md:grid-cols-4">
         <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">기준 주차</p>
           <p class="mt-2 text-base font-semibold text-slate-950"><%= weeklyReferenceValue || '-' %></p>
@@ -692,16 +717,246 @@
           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">부서 수</p>
           <p class="mt-2 text-base font-semibold text-slate-950"><%= weeklyReportDeptCount %>개 부서</p>
         </div>
+        <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">본문 취합</p>
+          <p class="mt-2 text-base font-semibold text-slate-950"><%= hasWeeklyReportDetails ? `${weeklyDetailSuccessCount}건 완료` : '대기 중' %></p>
+        </div>
       </div>
 
       <% if (!hasWeeklyReportRows) { %>
       <section class="mt-5 rounded-[28px] border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-white to-slate-50/80 p-6 text-center shadow-sm shadow-slate-200/40">
-        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly URLs</p>
-        <h3 class="mt-2 text-xl font-semibold text-slate-950">주간 보고 URL이 없습니다</h3>
-        <p class="mt-3 text-sm leading-6 text-slate-600">좌측에서 기준 주차를 선택한 뒤 `주간 보고 URL 조회`를 실행하면, 그룹웨어 목록에서 찾은 문서 링크를 먼저 보여줍니다.</p>
+        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Weekly Reports</p>
+        <h3 class="mt-2 text-xl font-semibold text-slate-950">주간 보고가 없습니다</h3>
+        <p class="mt-3 text-sm leading-6 text-slate-600">좌측에서 기준 주차를 선택한 뒤 `주간 보고 원문 취합 실행`을 누르면, 그룹웨어 목록 조회와 본문 취합을 한 번에 진행합니다.</p>
       </section>
       <% } else { %>
-      <div class="mt-5 flex flex-col gap-4">
+      <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            @click="weeklySummaryTab = 'operations'"
+            :class="weeklySummaryTab === 'operations' ? 'kjca-tab-btn kjca-tab-btn-active' : 'kjca-tab-btn kjca-tab-btn-idle'">
+            <span>운영 현황</span>
+            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600"><%= weeklyOperationsDocCount %>건</span>
+          </button>
+          <button
+            type="button"
+            @click="weeklySummaryTab = 'work'"
+            :class="weeklySummaryTab === 'work' ? 'kjca-tab-btn kjca-tab-btn-active' : 'kjca-tab-btn kjca-tab-btn-idle'">
+            <span>업무 계획/결과</span>
+            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600"><%= weeklyWorkDocCount %>건</span>
+          </button>
+          <button
+            type="button"
+            @click="weeklySummaryTab = 'people'"
+            :class="weeklySummaryTab === 'people' ? 'kjca-tab-btn kjca-tab-btn-active' : 'kjca-tab-btn kjca-tab-btn-idle'">
+            <span>인사 / 특이사항</span>
+            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600"><%= weeklyPeopleDocCount %>건</span>
+          </button>
+          <button
+            type="button"
+            @click="weeklySummaryTab = 'urls'"
+            :class="weeklySummaryTab === 'urls' ? 'kjca-tab-btn kjca-tab-btn-active' : 'kjca-tab-btn kjca-tab-btn-idle'">
+            <span>원본 URL</span>
+            <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600"><%= weeklyReportRows.length %>건</span>
+          </button>
+        </div>
+      </div>
+
+      <div
+        x-show="weeklySummaryTab === 'operations'"
+        x-transition.opacity.duration.150ms
+        class="mt-5">
+        <% if (!hasWeeklyReportDetails) { %>
+        <section class="rounded-[28px] border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-white to-blue-50/60 p-6 text-center shadow-sm shadow-slate-200/40">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Operations</p>
+          <h3 class="mt-2 text-xl font-semibold text-slate-950">운영 현황 표를 아직 취합하지 않았습니다</h3>
+          <p class="mt-3 text-sm leading-6 text-slate-600">좌측의 `주간 보고 원문 취합 실행`을 누르면, 그룹웨어 목록 조회와 함께 각 문서 본문에서 기본 현황/취업실적/IAP 표를 추출해 이 탭에 묶어 보여줍니다.</p>
+        </section>
+        <% } else { %>
+        <div class="flex flex-col gap-4">
+          <% weeklyReportDetailGroups.forEach((group) => { %>
+          <details
+            open
+            class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+            <summary class="cursor-pointer text-base font-semibold text-slate-950">
+              <div class="inline-flex flex-wrap items-center gap-3">
+                <span><%= group.dept %></span>
+                <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"><%= group.details.length %>건</span>
+              </div>
+            </summary>
+            <div class="mt-4 flex flex-col gap-4">
+              <% group.details.forEach((detail) => { %>
+              <article class="rounded-2xl border border-slate-200 bg-white p-4">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <% if (detail.sourceLabel) { %>
+                      <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600"><%= detail.sourceLabel %></span>
+                      <% } %>
+                      <% if (detail.status) { %>
+                      <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700"><%= detail.status %></span>
+                      <% } %>
+                      <% if (!detail.ok) { %>
+                      <span class="rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">취합 실패</span>
+                      <% } %>
+                    </div>
+                    <a
+                      href="<%= detail.viewUrl %>"
+                      target="_blank"
+                      rel="noreferrer"
+                      class="mt-3 block break-words text-sm font-semibold leading-6 text-slate-950 underline decoration-slate-300 underline-offset-4">
+                      <%= detail.title %>
+                    </a>
+                  </div>
+                  <div class="min-w-[180px] space-y-1 text-right text-xs leading-5 text-slate-500">
+                    <% if (detail.draftDate) { %>
+                    <div>기안일 <span class="font-semibold text-slate-700"><%= detail.draftDate %></span></div>
+                    <% } %>
+                    <% if (detail.drafter) { %>
+                    <div>기안자 <span class="font-semibold text-slate-700"><%= detail.drafter %></span></div>
+                    <% } %>
+                  </div>
+                </div>
+
+                <% if (!detail.ok) { %>
+                <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50/95 px-4 py-3 text-sm font-medium text-rose-700"><%= detail.error || '본문 취합에 실패했습니다.' %></div>
+                <% } else if (!detail.operationsTables || detail.operationsTables.length === 0) { %>
+                <div class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500">운영 현황 표가 없습니다.</div>
+                <% } else { %>
+                <div class="mt-4 grid gap-4">
+                  <% detail.operationsTables.forEach((table) => { %>
+                  <%- include('weekly-section-table.ejs', { table }) %>
+                  <% }) %>
+                </div>
+                <% } %>
+              </article>
+              <% }) %>
+            </div>
+          </details>
+          <% }) %>
+        </div>
+        <% } %>
+      </div>
+
+      <div
+        x-show="weeklySummaryTab === 'work'"
+        x-transition.opacity.duration.150ms
+        class="mt-5">
+        <% if (!hasWeeklyReportDetails) { %>
+        <section class="rounded-[28px] border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-white to-blue-50/60 p-6 text-center shadow-sm shadow-slate-200/40">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Work</p>
+          <h3 class="mt-2 text-xl font-semibold text-slate-950">업무 계획/결과 표를 아직 취합하지 않았습니다</h3>
+          <p class="mt-3 text-sm leading-6 text-slate-600">지난주 업무결과와 차주 계획 표는 본문 취합 이후 이 탭에서 부서별로 비교할 수 있습니다.</p>
+        </section>
+        <% } else { %>
+        <div class="flex flex-col gap-4">
+          <% weeklyReportDetailGroups.forEach((group) => { %>
+          <details
+            open
+            class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+            <summary class="cursor-pointer text-base font-semibold text-slate-950">
+              <div class="inline-flex flex-wrap items-center gap-3">
+                <span><%= group.dept %></span>
+                <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"><%= group.details.length %>건</span>
+              </div>
+            </summary>
+            <div class="mt-4 flex flex-col gap-4">
+              <% group.details.forEach((detail) => { %>
+              <article class="rounded-2xl border border-slate-200 bg-white p-4">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <a
+                      href="<%= detail.viewUrl %>"
+                      target="_blank"
+                      rel="noreferrer"
+                      class="block break-words text-sm font-semibold leading-6 text-slate-950 underline decoration-slate-300 underline-offset-4">
+                      <%= detail.title %>
+                    </a>
+                  </div>
+                </div>
+
+                <% if (!detail.ok) { %>
+                <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50/95 px-4 py-3 text-sm font-medium text-rose-700"><%= detail.error || '본문 취합에 실패했습니다.' %></div>
+                <% } else if (!detail.workTables || detail.workTables.length === 0) { %>
+                <div class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500">업무 계획/결과 표가 없습니다.</div>
+                <% } else { %>
+                <div class="mt-4 grid gap-4">
+                  <% detail.workTables.forEach((table) => { %>
+                  <%- include('weekly-section-table.ejs', { table }) %>
+                  <% }) %>
+                </div>
+                <% } %>
+              </article>
+              <% }) %>
+            </div>
+          </details>
+          <% }) %>
+        </div>
+        <% } %>
+      </div>
+
+      <div
+        x-show="weeklySummaryTab === 'people'"
+        x-transition.opacity.duration.150ms
+        class="mt-5">
+        <% if (!hasWeeklyReportDetails) { %>
+        <section class="rounded-[28px] border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-white to-blue-50/60 p-6 text-center shadow-sm shadow-slate-200/40">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">People</p>
+          <h3 class="mt-2 text-xl font-semibold text-slate-950">인사 / 특이사항 표를 아직 취합하지 않았습니다</h3>
+          <p class="mt-3 text-sm leading-6 text-slate-600">특이사항, 입퇴사, 휴가/공가 표는 본문 취합 이후 이 탭에서 함께 확인할 수 있습니다.</p>
+        </section>
+        <% } else { %>
+        <div class="flex flex-col gap-4">
+          <% weeklyReportDetailGroups.forEach((group) => { %>
+          <details
+            open
+            class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+            <summary class="cursor-pointer text-base font-semibold text-slate-950">
+              <div class="inline-flex flex-wrap items-center gap-3">
+                <span><%= group.dept %></span>
+                <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"><%= group.details.length %>건</span>
+              </div>
+            </summary>
+            <div class="mt-4 flex flex-col gap-4">
+              <% group.details.forEach((detail) => { %>
+              <article class="rounded-2xl border border-slate-200 bg-white p-4">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <a
+                      href="<%= detail.viewUrl %>"
+                      target="_blank"
+                      rel="noreferrer"
+                      class="block break-words text-sm font-semibold leading-6 text-slate-950 underline decoration-slate-300 underline-offset-4">
+                      <%= detail.title %>
+                    </a>
+                  </div>
+                </div>
+
+                <% if (!detail.ok) { %>
+                <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50/95 px-4 py-3 text-sm font-medium text-rose-700"><%= detail.error || '본문 취합에 실패했습니다.' %></div>
+                <% } else if (!detail.peopleTables || detail.peopleTables.length === 0) { %>
+                <div class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500">인사 / 특이사항 표가 없습니다.</div>
+                <% } else { %>
+                <div class="mt-4 grid gap-4">
+                  <% detail.peopleTables.forEach((table) => { %>
+                  <%- include('weekly-section-table.ejs', { table }) %>
+                  <% }) %>
+                </div>
+                <% } %>
+              </article>
+              <% }) %>
+            </div>
+          </details>
+          <% }) %>
+        </div>
+        <% } %>
+      </div>
+
+      <div
+        x-show="weeklySummaryTab === 'urls'"
+        x-transition.opacity.duration.150ms
+        class="mt-5 flex flex-col gap-4">
         <% weeklyReportGroups.forEach((group) => { %>
         <details
           open

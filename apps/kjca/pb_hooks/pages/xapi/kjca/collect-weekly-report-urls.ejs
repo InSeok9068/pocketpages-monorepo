@@ -32,10 +32,10 @@
     })
   } else {
     try {
-      const result = kjcaWeeklyReportService.collectWeeklyReportUrls(request, {
+      const result = kjcaWeeklyReportService.collectWeeklyReports(request, {
         referenceWeek: formState.referenceWeek,
       })
-      dashboardState = kjcaCore.buildDashboardStateFromWeeklyReportUrlResult(result, dashboardState, formState)
+      dashboardState = kjcaCore.buildDashboardStateFromWeeklyReportDetailResult(result, dashboardState, formState)
     } catch (exception) {
       const errorMessage = String(exception.message || exception)
       const weekRange = kjcaCore.buildWeeklyReportSearchRangeFromReferenceWeek(formState.referenceWeek, formState.reportDate)
@@ -59,6 +59,7 @@
   dbg('xapi/kjca/collect-weekly-report-urls:response', {
     referenceWeek: dashboardState.weeklyReferenceWeek,
     weeklyRowCount: dashboardState.weeklyReportRows.length,
+    weeklyDetailCount: dashboardState.weeklyReportDetails.length,
     warningCount: dashboardState.warnings.length,
   })
 </script>
