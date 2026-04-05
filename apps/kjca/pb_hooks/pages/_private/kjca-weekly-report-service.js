@@ -231,10 +231,7 @@ function collectWeeklyReportDetails(request, payload, session = null) {
     rows,
     details: normalizedDetails,
     warnings,
-    alertMessage:
-      normalizedDetails.length > 0
-        ? `주간 보고 본문 ${successCount}건을 취합했습니다.`
-        : '선택한 주간 보고 본문을 취합하지 못했습니다.',
+    alertMessage: normalizedDetails.length > 0 ? `주간 보고 본문 ${successCount}건을 취합했습니다.` : '선택한 주간 보고 본문을 취합하지 못했습니다.',
   }
 }
 
@@ -273,9 +270,7 @@ function collectWeeklyReports(request, payload, session = null) {
 
   return {
     ...detailResult,
-    warnings: []
-      .concat(Array.isArray(urlResult.warnings) ? urlResult.warnings : [])
-      .concat(Array.isArray(detailResult.warnings) ? detailResult.warnings : []),
+    warnings: [].concat(Array.isArray(urlResult.warnings) ? urlResult.warnings : []).concat(Array.isArray(detailResult.warnings) ? detailResult.warnings : []),
   }
 }
 

@@ -1261,9 +1261,7 @@ function normalizeWeeklySectionTableText(text) {
 }
 
 function normalizeWeeklySectionCompactText(text) {
-  return normalizeSingleLineText(text)
-    .replace(/\s+/g, '')
-    .replace(/[.:]/g, '')
+  return normalizeSingleLineText(text).replace(/\s+/g, '').replace(/[.:]/g, '')
 }
 
 function parseWeeklyDisplayTableRows(tableHtml) {
@@ -1293,15 +1291,17 @@ function rowHasWeeklyKeywords(compactRow, keywords) {
 }
 
 function pickSmallestWeeklyTableCandidate(candidates, matcher) {
-  return (Array.isArray(candidates) ? candidates : [])
-    .filter((candidate) => {
-      try {
-        return !!matcher(candidate)
-      } catch (error) {
-        return false
-      }
-    })
-    .sort((left, right) => left.html.length - right.html.length)[0] || null
+  return (
+    (Array.isArray(candidates) ? candidates : [])
+      .filter((candidate) => {
+        try {
+          return !!matcher(candidate)
+        } catch (error) {
+          return false
+        }
+      })
+      .sort((left, right) => left.html.length - right.html.length)[0] || null
+  )
 }
 
 function isWeeklyBasicStatusCandidate(candidate) {
@@ -1311,10 +1311,7 @@ function isWeeklyBasicStatusCandidate(candidate) {
 
 function isWeeklyEmploymentStatusCandidate(candidate) {
   const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
-  return (
-    rowHasWeeklyKeywords(headerRow, ['월목표알선취업자', '알선취업자달성', '월목표본인취업', '본인취업달성', '기간만료', '중단', '취업률', '알선취업률']) &&
-    candidate.displayRows.length >= 2
-  )
+  return rowHasWeeklyKeywords(headerRow, ['월목표알선취업자', '알선취업자달성', '월목표본인취업', '본인취업달성', '기간만료', '중단', '취업률', '알선취업률']) && candidate.displayRows.length >= 2
 }
 
 function isWeeklyAssignmentIapCandidate(candidate) {
@@ -1346,12 +1343,7 @@ function isWeeklySpecialNotesCandidate(candidate) {
   return (
     rowHasWeeklyKeywords(headerRow, ['구분', '내용']) &&
     bodyFirstCells.some(
-      (cell) =>
-        cell.includes('고용센터전달사항') ||
-        cell.includes('고용센터및지점특이사항') ||
-        cell.includes('지점특이사항') ||
-        cell.includes('기타건의사항') ||
-        cell.includes('지점기타건의사항')
+      (cell) => cell.includes('고용센터전달사항') || cell.includes('고용센터및지점특이사항') || cell.includes('지점특이사항') || cell.includes('기타건의사항') || cell.includes('지점기타건의사항')
     )
   )
 }
@@ -2727,10 +2719,7 @@ function buildDashboardStateFromCollectResult(result, formState) {
 function buildDashboardStateFromWeeklyReportUrlResult(result, currentState, formState) {
   const safeCurrentState = buildDashboardState(currentState)
   const safeFormState = buildFormState(formState)
-  const weekRange = buildWeekDateRangeFromReferenceWeek(
-    result && result.referenceWeek ? result.referenceWeek : safeFormState.referenceWeek,
-    safeFormState.reportDate
-  )
+  const weekRange = buildWeekDateRangeFromReferenceWeek(result && result.referenceWeek ? result.referenceWeek : safeFormState.referenceWeek, safeFormState.reportDate)
   const rows = normalizeWeeklyReportRows(result && result.rows)
   const alertMessage = String((result && result.alertMessage) || '').trim()
   const noticeMessage = alertMessage || `주간 보고 URL ${rows.length}건을 확인했습니다.`
@@ -2760,10 +2749,7 @@ function buildDashboardStateFromWeeklyReportUrlResult(result, currentState, form
 function buildDashboardStateFromWeeklyReportDetailResult(result, currentState, formState) {
   const safeCurrentState = buildDashboardState(currentState)
   const safeFormState = buildFormState(formState)
-  const weekRange = buildWeekDateRangeFromReferenceWeek(
-    result && result.referenceWeek ? result.referenceWeek : safeFormState.referenceWeek,
-    safeFormState.reportDate
-  )
+  const weekRange = buildWeekDateRangeFromReferenceWeek(result && result.referenceWeek ? result.referenceWeek : safeFormState.referenceWeek, safeFormState.reportDate)
   const rows = normalizeWeeklyReportRows(result && result.rows ? result.rows : safeCurrentState.weeklyReportRows)
   const details = normalizeWeeklyReportDetails(result && result.details)
   const successCount = details.filter((item) => item.ok).length

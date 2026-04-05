@@ -285,8 +285,7 @@
         <% if (authState.isSuperuser) { %>
         <button
           type="submit"
-          class="kjca-btn kjca-btn-primary w-full"
-        >
+          class="kjca-btn kjca-btn-primary w-full">
           주간 보고 원문 취합 실행
         </button>
         <% } else { %>
@@ -771,7 +770,9 @@
         <section class="rounded-[28px] border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 via-white to-blue-50/60 p-6 text-center shadow-sm shadow-slate-200/40">
           <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Operations</p>
           <h3 class="mt-2 text-xl font-semibold text-slate-950">운영 현황 표를 아직 취합하지 않았습니다</h3>
-          <p class="mt-3 text-sm leading-6 text-slate-600">좌측의 `주간 보고 원문 취합 실행`을 누르면, 그룹웨어 목록 조회와 함께 각 문서 본문에서 기본 현황/취업실적/IAP 표를 추출해 이 탭에 묶어 보여줍니다.</p>
+          <p class="mt-3 text-sm leading-6 text-slate-600">
+            좌측의 `주간 보고 원문 취합 실행`을 누르면, 그룹웨어 목록 조회와 함께 각 문서 본문에서 기본 현황/취업실적/IAP 표를 추출해 이 탭에 묶어 보여줍니다.
+          </p>
         </section>
         <% } else { %>
         <div class="flex flex-col gap-4">
@@ -1015,6 +1016,14 @@
       <% } %>
     </article>
     <% if (hasAnalysisResults) { %>
+    <div
+      x-show="collectionMode === 'daily'"
+      style="<%= dailyDisplayStyle %>"
+      class="flex items-center gap-4 py-1">
+      <div class="h-0.5 flex-1 bg-slate-200"></div>
+      <span class="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">AI Results</span>
+      <div class="h-0.5 flex-1 bg-slate-200"></div>
+    </div>
     <article
       x-show="collectionMode === 'daily'"
       style="<%= dailyDisplayStyle %>"
