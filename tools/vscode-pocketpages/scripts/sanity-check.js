@@ -387,9 +387,63 @@ module.exports = {
     `<% const safeError = typeof error === 'undefined' ? '' : String(error || '') %>\n<% if (safeError) { %><div><%= safeError %></div><% } %>\n`
   )
 
+  const secondaryAppRoot = path.join(fixtureRoot, 'apps', 'secondary-app')
+
+  writeFile(path.join(secondaryAppRoot, 'jsconfig.json'), fs.readFileSync(path.join(appRoot, 'jsconfig.json'), 'utf8'))
+  writeFile(
+    path.join(secondaryAppRoot, 'pb_data', 'types.d.ts'),
+    fs.readFileSync(path.join(appRoot, 'pb_data', 'types.d.ts'), 'utf8')
+  )
+  writeFile(
+    path.join(secondaryAppRoot, 'pocketpages-globals.d.ts'),
+    fs.readFileSync(path.join(appRoot, 'pocketpages-globals.d.ts'), 'utf8')
+  )
+  writeFile(path.join(secondaryAppRoot, 'types.d.ts'), fs.readFileSync(path.join(appRoot, 'types.d.ts'), 'utf8'))
+  writeFile(
+    path.join(secondaryAppRoot, 'pb_schema.json'),
+    JSON.stringify(
+      [
+        {
+          name: 'journals',
+          fields: [
+            { name: 'title', type: 'text' },
+            { name: 'visibility', type: 'text' },
+          ],
+        },
+        {
+          name: 'entries',
+          fields: [
+            { name: 'journal', type: 'relation' },
+            { name: 'body', type: 'text' },
+          ],
+        },
+      ],
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(secondaryAppRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'),
+    `<%- include('status-badge.ejs', { state: 'open' }) %>\n`
+  )
+  writeFile(
+    path.join(secondaryAppRoot, 'pb_hooks', 'pages', '_private', 'journal-service.js'),
+    `module.exports = {
+  readSummary() {
+    return { ok: true }
+  },
+}
+`
+  )
+  writeFile(
+    path.join(secondaryAppRoot, 'pb_hooks', 'pages', '_private', 'status-badge.ejs'),
+    `<div><%= state %></div>\n`
+  )
+
   return {
     fixtureRoot,
     appRoot,
+    secondaryAppRoot,
     schemaFilePath: path.join(appRoot, 'pb_schema.json'),
     siteIndexFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'),
     boardsFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
@@ -421,6 +475,9 @@ module.exports = {
     feedbackPageFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', 'index.ejs'),
     feedbackPostFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+post.js'),
     feedbackDeleteFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+delete.js'),
+    secondarySiteIndexFilePath: path.join(secondaryAppRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'),
+    secondaryJournalServiceFilePath: path.join(secondaryAppRoot, 'pb_hooks', 'pages', '_private', 'journal-service.js'),
+    secondaryStatusBadgeFilePath: path.join(secondaryAppRoot, 'pb_hooks', 'pages', '_private', 'status-badge.ejs'),
   }
 }
 
@@ -454,6 +511,7 @@ function run() {
     const service = manager.getServiceForFile(fixture.boardsFilePath)
     const indexService = manager.getServiceForFile(fixture.siteIndexFilePath)
     const authService = manager.getServiceForFile(fixture.signOutFilePath)
+    const secondaryService = manager.getServiceForFile(fixture.secondarySiteIndexFilePath)
 
     if (!service) {
       throw new Error(`PocketPages app root not found for ${fixture.boardsFilePath}`)
@@ -463,6 +521,12 @@ function run() {
     }
     if (!authService) {
       throw new Error(`PocketPages app root not found for ${fixture.signOutFilePath}`)
+    }
+    if (!secondaryService) {
+      throw new Error(`PocketPages app root not found for ${fixture.secondarySiteIndexFilePath}`)
+    }
+    if (secondaryService === service) {
+      throw new Error('Expected PocketPages manager to isolate services per app root in a monorepo.')
     }
 
     const completionText = `<script server>\nmet\n</script>\n`
@@ -768,6 +832,43 @@ boardService.readAuthState(
       throw new Error(`Expected include() local completion to recover after resetCaches(). Got: ${includeLocalNamesAfterReset.join(', ')}`)
     }
 
+    const secondaryIncludeCompletionText = `<%- include('status-badge.ejs', { st }) %>\n`
+    const secondaryIncludeCompletionOffset = secondaryIncludeCompletionText.lastIndexOf('st') + 'st'.length
+    const secondaryIncludeCompletion = secondaryService.getCustomCompletionData(
+      fixture.secondarySiteIndexFilePath,
+      secondaryIncludeCompletionText,
+      secondaryIncludeCompletionOffset
+    )
+    const secondaryIncludeLocalNames = secondaryIncludeCompletion
+      ? secondaryIncludeCompletion.items.map((entry) => entry.label)
+      : []
+    if (!secondaryIncludeLocalNames.includes('state')) {
+      throw new Error(`Expected secondary app include() local completion. Got: ${secondaryIncludeLocalNames.join(', ')}`)
+    }
+
+    if (!service.includeContractCache || service.includeContractCache.size === 0 || !service.includeCallEntriesCache || service.includeCallEntriesCache.size === 0) {
+      throw new Error('Expected primary app include caches to be repopulated before scoped cache reset.')
+    }
+    if (
+      !secondaryService.includeContractCache ||
+      secondaryService.includeContractCache.size === 0 ||
+      !secondaryService.includeCallEntriesCache ||
+      secondaryService.includeCallEntriesCache.size === 0
+    ) {
+      throw new Error('Expected secondary app include caches to be populated before scoped cache reset.')
+    }
+
+    const scopedResetService = manager.resetCachesForFile(fixture.secondarySiteIndexFilePath)
+    if (scopedResetService !== secondaryService) {
+      throw new Error('Expected resetCachesForFile() to return the matching app service.')
+    }
+    if (secondaryService.includeContractCache.size !== 0 || secondaryService.includeCallEntriesCache.size !== 0) {
+      throw new Error('Expected resetCachesForFile() to clear include caches only for the target app.')
+    }
+    if (service.includeContractCache.size === 0 || service.includeCallEntriesCache.size === 0) {
+      throw new Error('Expected resetCachesForFile() to keep other app caches warm.')
+    }
+
     const routeCompletionText = `<a href="/si"></a>\n`
     const routeCompletionOffset = routeCompletionText.indexOf('/si') + '/si'.length
     const routeCompletion = service.getCustomCompletionData(fixture.siteIndexFilePath, routeCompletionText, routeCompletionOffset)
@@ -809,6 +910,30 @@ boardService.readAuthState(
     const collectionNames = collectionCompletion ? collectionCompletion.items.map((entry) => entry.label) : []
     if (!collectionNames.includes('boards') || !collectionNames.includes('posts')) {
       throw new Error(`Expected collection completions for "boards" and "posts". Got: ${collectionNames.slice(0, 20).join(', ')}`)
+    }
+    if (collectionNames.includes('journals')) {
+      throw new Error(`Expected primary app collection completions to stay isolated from other apps. Got: ${collectionNames.slice(0, 20).join(', ')}`)
+    }
+
+    const secondaryCollectionText = `$app.findCollectionByNameOrId('jo')\n`
+    const secondaryCollectionOffset = secondaryCollectionText.indexOf('jo') + 'jo'.length
+    const secondaryCollectionCompletion = secondaryService.getCustomCompletionData(
+      fixture.secondaryJournalServiceFilePath,
+      secondaryCollectionText,
+      secondaryCollectionOffset
+    )
+    const secondaryCollectionNames = secondaryCollectionCompletion
+      ? secondaryCollectionCompletion.items.map((entry) => entry.label)
+      : []
+    if (!secondaryCollectionNames.includes('journals')) {
+      throw new Error(
+        `Expected secondary app collection completions to use its own schema. Got: ${secondaryCollectionNames.slice(0, 20).join(', ')}`
+      )
+    }
+    if (secondaryCollectionNames.includes('boards') || secondaryCollectionNames.includes('posts')) {
+      throw new Error(
+        `Expected secondary app collection completions to avoid primary-app schema leakage. Got: ${secondaryCollectionNames.slice(0, 20).join(', ')}`
+      )
     }
 
     const originalSchemaText = fs.readFileSync(fixture.schemaFilePath, 'utf8')

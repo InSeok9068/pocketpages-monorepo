@@ -48,6 +48,7 @@
     }
   },
   "scripts": {
+    "test": "npm run sanity-check",
     "sanity-check": "node ./scripts/sanity-check.js",
     "package:vsix": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --allow-missing-repository --out ./dist/vscode-pocketpages.vsix",
     "install:vscode-pocketpages": "npm run package:vsix && node ./scripts/install-vscode-pocketpages.js"
