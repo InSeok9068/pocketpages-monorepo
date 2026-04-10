@@ -114,6 +114,81 @@ function stripKnownExtension(filePath, extensions) {
   return filePath
 }
 
+function hasKnownExtension(filePath, extensions) {
+  return extensions.includes(path.extname(String(filePath || '')).toLowerCase())
+}
+
+function getIncludeRequestVariants(requestPath) {
+  const normalizedRequestPath = String(requestPath || '').trim()
+  const variants = []
+  const seen = new Set()
+
+  const addVariant = (value) => {
+    const normalizedValue = String(value || '').trim()
+    if (!normalizedValue || seen.has(normalizedValue)) {
+      return
+    }
+
+    seen.add(normalizedValue)
+    variants.push(normalizedValue)
+  }
+
+  addVariant(normalizedRequestPath)
+
+  if (!hasKnownExtension(normalizedRequestPath, INCLUDE_EXTENSIONS)) {
+    for (const extension of INCLUDE_EXTENSIONS) {
+      addVariant(`${normalizedRequestPath}${extension}`)
+    }
+  }
+
+  return variants
+}
+
+function getResolveRequestVariants(requestPath) {
+  const normalizedRequestPath = String(requestPath || '').trim()
+  const variants = []
+  const seen = new Set()
+
+  const addVariant = (value) => {
+    const normalizedValue = String(value || '').trim()
+    if (!normalizedValue || seen.has(normalizedValue)) {
+      return
+    }
+
+    seen.add(normalizedValue)
+    variants.push(normalizedValue)
+  }
+
+  addVariant(normalizedRequestPath)
+
+  if (!hasKnownExtension(normalizedRequestPath, RESOLVE_EXTENSIONS)) {
+    for (const extension of RESOLVE_EXTENSIONS) {
+      addVariant(`${normalizedRequestPath}${extension}`)
+    }
+  }
+
+  return variants
+}
+
+function parsePrivateSearchRequest(requestPath) {
+  let remainingPath = String(requestPath || '').trim()
+  let skipPrivateRootCount = 0
+
+  while (remainingPath.startsWith('./')) {
+    remainingPath = remainingPath.slice(2)
+  }
+
+  while (remainingPath.startsWith('../')) {
+    skipPrivateRootCount += 1
+    remainingPath = remainingPath.slice(3)
+  }
+
+  return {
+    skipPrivateRootCount,
+    searchPath: remainingPath,
+  }
+}
+
 function walkFiles(dirPath, predicate, rootDir = dirPath, results = []) {
   if (!directoryExists(dirPath)) {
     return results
@@ -1206,9 +1281,9 @@ class PocketPagesProjectIndex {
     return entries
   }
 
-  getPrivateSearchRoots(filePath) {
+  getPrivateSearchRootsForDir(startDir) {
     const roots = []
-    let currentDir = normalizePath(path.dirname(filePath))
+    let currentDir = normalizePath(startDir)
 
     while (currentDir.startsWith(this.pagesRoot)) {
       const privateDir = normalizePath(path.join(currentDir, '_private'))
@@ -1226,11 +1301,39 @@ class PocketPagesProjectIndex {
     return roots
   }
 
+  getPrivateSearchRoots(filePath) {
+    return this.getPrivateSearchRootsForDir(path.dirname(filePath))
+  }
+
   getResolveCandidates(filePath) {
     const items = []
     const seen = new Set()
 
-    for (const privateRoot of this.getPrivateSearchRoots(filePath)) {
+    const addCandidate = (value, absolutePath) => {
+      if (!value || seen.has(value)) {
+        return
+      }
+
+      seen.add(value)
+      items.push({
+        value,
+        filePath: absolutePath,
+        detail: toRelativePath(path.relative(this.pagesRoot, absolutePath)),
+      })
+    }
+
+    const addResolveCandidateVariants = (value, absolutePath, depth = 0) => {
+      addCandidate(value, absolutePath)
+
+      if (depth === 0) {
+        addCandidate(`./${value}`, absolutePath)
+        return
+      }
+
+      addCandidate(`${'../'.repeat(depth)}${value}`, absolutePath)
+    }
+
+    for (const [depth, privateRoot] of this.getPrivateSearchRoots(filePath).entries()) {
       const files = walkFiles(privateRoot, (candidatePath) => RESOLVE_EXTENSIONS.includes(path.extname(candidatePath)))
 
       for (const entry of files) {
@@ -1239,20 +1342,109 @@ class PocketPagesProjectIndex {
           value = value.slice(0, -'/index'.length)
         }
 
-        if (!value || seen.has(value)) {
+        if (!value) {
           continue
         }
 
-        seen.add(value)
-        items.push({
-          value,
-          filePath: entry.filePath,
-          detail: toRelativePath(path.relative(this.pagesRoot, entry.filePath)),
-        })
+        addResolveCandidateVariants(value, entry.filePath, depth)
       }
     }
 
     return items
+  }
+
+  getResolveSearchRoots(filePath, requestPath) {
+    const normalizedRequestPath = String(requestPath || '').trim()
+    if (!normalizedRequestPath) {
+      return []
+    }
+
+    if (normalizedRequestPath.startsWith('/')) {
+      return [this.pagesRoot]
+    }
+
+    if (normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../')) {
+      const relativeSearch = parsePrivateSearchRequest(normalizedRequestPath)
+      if (!relativeSearch.searchPath) {
+        return []
+      }
+
+      let searchStartDir = normalizePath(path.dirname(filePath))
+      for (let index = 0; index < relativeSearch.skipPrivateRootCount && searchStartDir !== this.pagesRoot; index += 1) {
+        searchStartDir = normalizePath(path.dirname(searchStartDir))
+      }
+
+      return this.getPrivateSearchRootsForDir(searchStartDir)
+    }
+
+    return this.getPrivateSearchRoots(filePath)
+  }
+
+  getResolveRequestPathForSearch(requestPath) {
+    const normalizedRequestPath = String(requestPath || '').trim()
+    if (!normalizedRequestPath) {
+      return ''
+    }
+
+    if (normalizedRequestPath.startsWith('/')) {
+      return normalizedRequestPath.replace(/^\/+/, '')
+    }
+
+    if (normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../')) {
+      return parsePrivateSearchRequest(normalizedRequestPath).searchPath
+    }
+
+    return normalizedRequestPath
+  }
+
+  getResolveCandidatePaths(filePath, requestPath) {
+    const searchPath = this.getResolveRequestPathForSearch(requestPath)
+    if (!searchPath) {
+      return []
+    }
+
+    const candidatePaths = []
+    const seen = new Set()
+
+    for (const privateRoot of this.getResolveSearchRoots(filePath, requestPath)) {
+      const directCandidates = getResolveRequestVariants(searchPath).map((requestVariant) => normalizePath(path.join(privateRoot, requestVariant)))
+      const indexCandidates = hasKnownExtension(searchPath, RESOLVE_EXTENSIONS)
+        ? []
+        : RESOLVE_EXTENSIONS.map((extension) => normalizePath(path.join(privateRoot, searchPath, `index${extension}`)))
+
+      for (const candidatePath of [...directCandidates, ...indexCandidates]) {
+        if (seen.has(candidatePath)) {
+          continue
+        }
+
+        seen.add(candidatePath)
+        candidatePaths.push(candidatePath)
+      }
+    }
+
+    return candidatePaths
+  }
+
+  getResolveMatchingRoot(filePath, requestPath, targetFilePath) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath)
+    const searchPath = this.getResolveRequestPathForSearch(requestPath)
+    if (!searchPath) {
+      return null
+    }
+
+    for (const privateRoot of this.getResolveSearchRoots(filePath, requestPath)) {
+      const candidatePaths = [
+        normalizePath(path.join(privateRoot, searchPath)),
+        ...RESOLVE_EXTENSIONS.map((extension) => normalizePath(path.join(privateRoot, `${searchPath}${extension}`))),
+        ...RESOLVE_EXTENSIONS.map((extension) => normalizePath(path.join(privateRoot, searchPath, `index${extension}`))),
+      ]
+
+      if (candidatePaths.includes(normalizedTargetFilePath)) {
+        return privateRoot
+      }
+    }
+
+    return null
   }
 
   getPagesCodeFiles() {
@@ -1425,22 +1617,9 @@ class PocketPagesProjectIndex {
   }
 
   resolveResolveTarget(filePath, requestPath) {
-    const normalizedRequestPath = String(requestPath || '').trim().replace(/^\/+/, '')
-    if (!normalizedRequestPath) {
-      return null
-    }
-
-    for (const privateRoot of this.getPrivateSearchRoots(filePath)) {
-      const candidatePaths = [
-        normalizePath(path.join(privateRoot, normalizedRequestPath)),
-        ...RESOLVE_EXTENSIONS.map((extension) => normalizePath(path.join(privateRoot, `${normalizedRequestPath}${extension}`))),
-        ...RESOLVE_EXTENSIONS.map((extension) => normalizePath(path.join(privateRoot, normalizedRequestPath, `index${extension}`))),
-      ]
-
-      for (const candidatePath of candidatePaths) {
-        if (fileExists(candidatePath)) {
-          return candidatePath
-        }
+    for (const candidatePath of this.getResolveCandidatePaths(filePath, requestPath)) {
+      if (fileExists(candidatePath)) {
+        return candidatePath
       }
     }
 
@@ -1484,7 +1663,6 @@ class PocketPagesProjectIndex {
   }
 
   getIncludeCandidates(filePath) {
-    const currentDir = normalizePath(path.dirname(filePath))
     const items = []
     const seen = new Set()
 
@@ -1501,25 +1679,26 @@ class PocketPagesProjectIndex {
       })
     }
 
-    const localFiles = walkFiles(
-      currentDir,
-      (candidatePath) => INCLUDE_EXTENSIONS.includes(path.extname(candidatePath)) && normalizePath(candidatePath) !== normalizePath(filePath),
-      currentDir
-    )
+    const addIncludeCandidateVariants = (relativePath, absolutePath, depth = 0) => {
+      const extensionlessPath = stripKnownExtension(relativePath, INCLUDE_EXTENSIONS)
+      const depthPrefix = depth > 0 ? '../'.repeat(depth) : './'
 
-    for (const entry of localFiles) {
-      const baseName = path.basename(entry.relativePath)
-      if (entry.relativePath.includes('/') || baseName === 'index.ejs' || baseName.startsWith('+')) {
-        continue
+      addCandidate(relativePath, absolutePath)
+      if (extensionlessPath !== relativePath) {
+        addCandidate(extensionlessPath, absolutePath)
       }
 
-      addCandidate(entry.relativePath, entry.filePath)
+      addCandidate(`${depthPrefix}${relativePath}`, absolutePath)
+      if (extensionlessPath !== relativePath) {
+        addCandidate(`${depthPrefix}${extensionlessPath}`, absolutePath)
+      }
     }
 
-    for (const privateRoot of this.getPrivateSearchRoots(filePath)) {
+    const privateRoots = this.getPrivateSearchRoots(filePath)
+    for (const [depth, privateRoot] of privateRoots.entries()) {
       const files = walkFiles(privateRoot, (candidatePath) => INCLUDE_EXTENSIONS.includes(path.extname(candidatePath)))
       for (const entry of files) {
-        addCandidate(entry.relativePath, entry.filePath)
+        addIncludeCandidateVariants(entry.relativePath, entry.filePath, depth)
       }
     }
 
@@ -1573,15 +1752,44 @@ class PocketPagesProjectIndex {
 
     const candidatePaths = []
     const currentDir = normalizePath(path.dirname(filePath))
+    const seen = new Set()
 
-    if (normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../')) {
-      candidatePaths.push(normalizePath(path.join(currentDir, normalizedRequestPath)))
+    const addCandidatePath = (candidatePath) => {
+      const normalizedCandidatePath = normalizePath(candidatePath)
+      if (seen.has(normalizedCandidatePath)) {
+        return
+      }
+
+      seen.add(normalizedCandidatePath)
+      candidatePaths.push(normalizedCandidatePath)
+    }
+
+    const addIncludeTargetCandidates = (basePath, originalRequestPath) => {
+      for (const requestVariant of getIncludeRequestVariants(originalRequestPath)) {
+        addCandidatePath(path.join(basePath, requestVariant))
+      }
+    }
+
+    if (normalizedRequestPath.startsWith('/')) {
+      addIncludeTargetCandidates(this.pagesRoot, normalizedRequestPath.replace(/^\/+/, ''))
+    } else if (normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../')) {
+      const relativeSearch = parsePrivateSearchRequest(normalizedRequestPath)
+      if (relativeSearch.searchPath) {
+        let searchStartDir = currentDir
+        for (let index = 0; index < relativeSearch.skipPrivateRootCount && searchStartDir !== this.pagesRoot; index += 1) {
+          searchStartDir = normalizePath(path.dirname(searchStartDir))
+        }
+
+        const privateRoots = this.getPrivateSearchRootsForDir(searchStartDir)
+        for (const privateRoot of privateRoots) {
+          addIncludeTargetCandidates(privateRoot, relativeSearch.searchPath)
+        }
+      }
+
+      addIncludeTargetCandidates(currentDir, normalizedRequestPath)
     } else {
-      candidatePaths.push(normalizePath(path.join(currentDir, normalizedRequestPath)))
-      candidatePaths.push(normalizePath(path.join(this.pagesRoot, normalizedRequestPath)))
-
       for (const privateRoot of this.getPrivateSearchRoots(filePath)) {
-        candidatePaths.push(normalizePath(path.join(privateRoot, normalizedRequestPath)))
+        addIncludeTargetCandidates(privateRoot, normalizedRequestPath)
       }
     }
 

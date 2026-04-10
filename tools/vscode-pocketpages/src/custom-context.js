@@ -2,14 +2,14 @@
 
 const ts = require('typescript')
 
-const PATH_OPEN_RE = /\b(resolve|include)\(\s*(['"])([^'"]*)$/s
-const PATH_CLOSED_RE = /\b(resolve|include)\(\s*(['"])([^'"]*)\2/g
-const ASSET_OPEN_RE = /\b(?:asset|api\.asset)\(\s*(['"])([^'"]*)$/s
-const ASSET_CLOSED_RE = /\b(?:asset|api\.asset)\(\s*(['"])([^'"]*)\1/g
+const PATH_OPEN_RE = /\b(resolve|include)\(\s*(['"`])((?:(?!\2)[\s\S])*)$/s
+const PATH_CLOSED_RE = /\b(resolve|include)\(\s*(['"`])((?:(?!\2)[\s\S])*?)\2/g
+const ASSET_OPEN_RE = /\b(?:asset|api\.asset)\(\s*(['"`])((?:(?!\1)[\s\S])*)$/s
+const ASSET_CLOSED_RE = /\b(?:asset|api\.asset)\(\s*(['"`])((?:(?!\1)[\s\S])*?)\1/g
 const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)$/s
 const ROUTE_ATTR_CLOSED_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)\2/g
-const ROUTE_CALL_OPEN_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)$/s
-const ROUTE_CALL_CLOSED_RE = /\b(redirect)\(\s*(['"])(\/[^'"]*)\2(?=\s*[,)\]])/g
+const ROUTE_CALL_OPEN_RE = /\b(redirect)\(\s*(['"`])((?:(?!\2)[\s\S])*)$/s
+const ROUTE_CALL_CLOSED_RE = /\b(redirect)\(\s*(['"`])((?:(?!\2)[\s\S])*?)\2(?=\s*[,)\]])/g
 const FIELD_OPEN_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.(get|set)\(\s*(['"])([^'"]*)$/s
 const FIELD_CLOSED_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.(get|set)\(\s*(['"])([^'"]+)\3/g
 const COLLECTION_REGEX_CACHE = new Map()
@@ -103,11 +103,16 @@ function toClosedMatchContext(match, kind) {
 
   return {
     kind,
+    quote,
     value,
     start,
     end,
     matchText: fullText,
   }
+}
+
+function isStaticPathContext(context) {
+  return !!context && !(context.quote === '`' && String(context.value || '').includes('${'))
 }
 
 function isDynamicRoutePathValue(value) {
@@ -161,18 +166,24 @@ function getCollectionRegexState(collectionMethodNames = []) {
 function getModulePathContextAtOffset(documentText, offset) {
   for (const match of documentText.matchAll(PATH_CLOSED_RE)) {
     const context = toClosedMatchContext(match, `${match[1]}-path`)
+    if (!isStaticPathContext(context)) {
+      continue
+    }
     if (offset >= context.start && offset <= context.end) {
       return context
     }
   }
 
-  return getOpenMatchContext(documentText, offset, PATH_OPEN_RE, ({ value, start, end, match }) => ({
+  const openContext = getOpenMatchContext(documentText, offset, PATH_OPEN_RE, ({ value, start, end, match }) => ({
     kind: `${match[1]}-path`,
+    quote: match[2],
     value,
     start,
     end,
     isOpen: true,
   }))
+
+  return isStaticPathContext(openContext) ? openContext : null
 }
 
 function getRoutePathContextAtOffset(documentText, offset) {
@@ -187,6 +198,9 @@ function getRoutePathContextAtOffset(documentText, offset) {
 
   for (const match of documentText.matchAll(ROUTE_CALL_CLOSED_RE)) {
     const context = toClosedMatchContext(match, 'route-path')
+    if (!isStaticPathContext(context)) {
+      continue
+    }
     context.routeSource = match[1]
     context.isDynamic = isDynamicRoutePathValue(context.value)
     if (offset >= context.start && offset <= context.end) {
@@ -210,6 +224,7 @@ function getRoutePathContextAtOffset(documentText, offset) {
   return getOpenMatchContext(documentText, offset, ROUTE_CALL_OPEN_RE, ({ value, start, end, match }) => ({
     kind: 'route-path',
     routeSource: match[1],
+    quote: match[2],
     value,
     start,
     end,
@@ -232,9 +247,14 @@ function getPathContextAtOffset(documentText, offset) {
     const start = match.index + quoteOffset + 1
     const end = start + value.length
 
+    if (quote === '`' && String(value || '').includes('${')) {
+      continue
+    }
+
     if (offset >= start && offset <= end) {
       return {
         kind: 'asset-path',
+        quote,
         value,
         start,
         end,
@@ -243,14 +263,15 @@ function getPathContextAtOffset(documentText, offset) {
     }
   }
 
-  const openAssetContext = getOpenMatchContext(documentText, offset, ASSET_OPEN_RE, ({ value, start, end }) => ({
+  const openAssetContext = getOpenMatchContext(documentText, offset, ASSET_OPEN_RE, ({ value, start, end, match }) => ({
     kind: 'asset-path',
+    quote: match[1],
     value,
     start,
     end,
     isOpen: true,
   }))
-  if (openAssetContext) {
+  if (isStaticPathContext(openAssetContext)) {
     return openAssetContext
   }
 
@@ -261,7 +282,10 @@ function collectPathContexts(documentText) {
   const contexts = []
 
   for (const match of documentText.matchAll(PATH_CLOSED_RE)) {
-    contexts.push(toClosedMatchContext(match, `${match[1]}-path`))
+    const context = toClosedMatchContext(match, `${match[1]}-path`)
+    if (isStaticPathContext(context)) {
+      contexts.push(context)
+    }
   }
 
   for (const match of documentText.matchAll(ASSET_CLOSED_RE)) {
@@ -272,8 +296,13 @@ function collectPathContexts(documentText) {
     const start = match.index + quoteOffset + 1
     const end = start + value.length
 
+    if (quote === '`' && String(value || '').includes('${')) {
+      continue
+    }
+
     contexts.push({
       kind: 'asset-path',
+      quote,
       value,
       start,
       end,
@@ -290,6 +319,9 @@ function collectPathContexts(documentText) {
 
   for (const match of documentText.matchAll(ROUTE_CALL_CLOSED_RE)) {
     const context = toClosedMatchContext(match, 'route-path')
+    if (!isStaticPathContext(context)) {
+      continue
+    }
     context.routeSource = match[1]
     context.isDynamic = isDynamicRoutePathValue(context.value)
     contexts.push(context)

@@ -271,6 +271,11 @@ const boardService = resolve('board-service')
     `<%- include('override-card.ejs', { banner: { message: 'Saved' } }) %>\n`
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'resolve-parent-check.ejs'),
+    `<script server>\nconst sharedService = resolve('../shared-service')\n</script>\n`
+  )
+  writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'shared-panel.ejs'), `<h1>Route Shared Panel</h1>\n`)
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-a.ejs'),
     `<%- include('optional-notice.ejs', { noticeText: 'Saved', tone: 'notice' }) %>\n`
   )
@@ -349,8 +354,26 @@ module.exports = {
 `
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'shared-service.js'),
+    `module.exports = {
+  readSummary() {
+    return { scope: 'root' }
+  },
+}
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'html-to-text-consumer.js'),
     `const { compile } = require(\`\${__hooks}/pages/_private/vendor/html-to-text.bundle.js\`)
+
+module.exports = {
+  compile,
+}
+`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'html-to-text-consumer-concat.js'),
+    `const { compile } = require(__hooks + '/pages/_private/vendor/html-to-text.bundle.js')
 
 module.exports = {
   compile,
@@ -384,6 +407,10 @@ module.exports = {
     `<div><%= authState.email %> / <%= boardService.readAuthState({ request }).method %></div>\n`
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'shared-panel.ejs'),
+    `<div>root:<%= banner %></div>\n`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'property-panel.ejs'),
     `<div><%= values.title %> / <%= boardSlug %></div>\n`
   )
@@ -406,6 +433,19 @@ module.exports = {
     return function () {
       return ''
     }
+  },
+}
+`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '_private', 'shared-panel.ejs'),
+    `<div>local:<%= banner %></div>\n`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '_private', 'shared-service.js'),
+    `module.exports = {
+  readSummary() {
+    return { scope: 'local' }
   },
 }
 `
@@ -474,6 +514,7 @@ module.exports = {
     boardShowFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'index.ejs'),
     localsTypeCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'locals-type-check.ejs'),
     overrideCardCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'override-card-check.ejs'),
+    resolveParentCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'resolve-parent-check.ejs'),
     optionalNoticeAFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-a.ejs'),
     optionalNoticeBFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-b.ejs'),
     routeReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-reference-check.ejs'),
@@ -486,16 +527,22 @@ module.exports = {
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
     boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
     boardServiceConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service-consumer.js'),
+    sharedServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'shared-service.js'),
+    localSharedServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '_private', 'shared-service.js'),
     htmlToTextConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'html-to-text-consumer.js'),
+    htmlToTextConcatConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'html-to-text-consumer-concat.js'),
     htmlToTextBundleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'vendor', 'html-to-text.bundle.js'),
     boardRoleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'board.js'),
     postRoleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'post.js'),
     flashAlertFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
     typedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'typed-panel.ejs'),
+    sharedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'shared-panel.ejs'),
     propertyPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'property-panel.ejs'),
     overrideCardFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'override-card.ejs'),
     optionalNoticeFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'optional-notice.ejs'),
     errorPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'error-panel.ejs'),
+    localSharedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '_private', 'shared-panel.ejs'),
+    routeSharedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'shared-panel.ejs'),
     signOutFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-out.ejs'),
     signInFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'),
     siteSignInFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'),
@@ -803,13 +850,34 @@ boardService.readAuthState(
     if (!resolveNames.includes('board-service')) {
       throw new Error(`Expected resolve() completion for "board-service". Got: ${resolveNames.slice(0, 20).join(', ')}`)
     }
+    if (!resolveNames.includes('./shared-service') || !resolveNames.includes('../board-service')) {
+      throw new Error(`Expected resolve() completion to include explicit relative variants. Got: ${resolveNames.slice(0, 20).join(', ')}`)
+    }
+
+    const resolveBacktickText = `<script server>\nresolve(\`bo\`)\n</script>\n`
+    const resolveBacktickOffset = resolveBacktickText.indexOf('bo') + 'bo'.length
+    const resolveBacktickCompletion = service.getCustomCompletionData(fixture.boardsFilePath, resolveBacktickText, resolveBacktickOffset)
+    const resolveBacktickNames = resolveBacktickCompletion ? resolveBacktickCompletion.items.map((entry) => entry.label) : []
+    if (!resolveBacktickNames.includes('board-service')) {
+      throw new Error(`Expected resolve() completion inside backticks. Got: ${resolveBacktickNames.slice(0, 20).join(', ')}`)
+    }
 
     const includeText = `<%- include('fl') %>\n`
     const includeOffset = includeText.indexOf('fl') + 'fl'.length
     const includeCompletion = service.getCustomCompletionData(fixture.boardsFilePath, includeText, includeOffset)
     const includeNames = includeCompletion ? includeCompletion.items.map((entry) => entry.label) : []
-    if (!includeNames.includes('flash-alert.ejs')) {
-      throw new Error(`Expected include() completion for "flash-alert.ejs". Got: ${includeNames.slice(0, 20).join(', ')}`)
+    if (!includeNames.includes('flash-alert.ejs') || !includeNames.includes('flash-alert')) {
+      throw new Error(`Expected include() completion for explicit and extless flash-alert variants. Got: ${includeNames.slice(0, 20).join(', ')}`)
+    }
+
+    const includeBacktickText = `<%- include(\`fl\`) %>\n`
+    const includeBacktickOffset = includeBacktickText.indexOf('fl') + 'fl'.length
+    const includeBacktickCompletion = service.getCustomCompletionData(fixture.boardsFilePath, includeBacktickText, includeBacktickOffset)
+    const includeBacktickNames = includeBacktickCompletion ? includeBacktickCompletion.items.map((entry) => entry.label) : []
+    if (!includeBacktickNames.includes('flash-alert.ejs') || !includeBacktickNames.includes('flash-alert')) {
+      throw new Error(
+        `Expected include() completion inside backticks for explicit and extless flash-alert variants. Got: ${includeBacktickNames.slice(0, 20).join(', ')}`
+      )
     }
 
     const includeLocalCompletionText = `<%- include('flash-alert.ejs', { msg }) %>\n`
@@ -1156,6 +1224,33 @@ const roles = {
       throw new Error(`Expected grouped resolve() definition target for roles/post. Got: ${groupedPostResolveDefinition}`)
     }
 
+    const backtickResolveDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<script server>\nresolve(\`board-service\`)\n</script>\n`,
+      `<script server>\nresolve(\`board-service\`)\n</script>\n`.indexOf('board-service') + 2
+    )
+    if (!backtickResolveDefinition || normalizeFilePath(backtickResolveDefinition) !== normalizeFilePath(fixture.boardServiceFilePath)) {
+      throw new Error(`Expected backtick resolve() definition target. Got: ${backtickResolveDefinition}`)
+    }
+
+    const parentResolveDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('../shared-service')\n</script>\n`,
+      `<script server>\nresolve('../shared-service')\n</script>\n`.indexOf('../shared-service') + 3
+    )
+    if (!parentResolveDefinition || normalizeFilePath(parentResolveDefinition) !== normalizeFilePath(fixture.sharedServiceFilePath)) {
+      throw new Error(`Expected ../ resolve() to skip the local _private module and use the parent-level one. Got: ${parentResolveDefinition}`)
+    }
+
+    const localResolveDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('shared-service')\n</script>\n`,
+      `<script server>\nresolve('shared-service')\n</script>\n`.indexOf('shared-service') + 2
+    )
+    if (!localResolveDefinition || normalizeFilePath(localResolveDefinition) !== normalizeFilePath(fixture.localSharedServiceFilePath)) {
+      throw new Error(`Expected simple resolve() to keep preferring the nearest _private module. Got: ${localResolveDefinition}`)
+    }
+
     const includeDefinition = service.getDefinitionTarget(
       fixture.boardsFilePath,
       `<%- include('flash-alert.ejs') %>\n`,
@@ -1172,6 +1267,50 @@ const roles = {
     )
     if (!includePathTargetInfo || normalizeFilePath(includePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.flashAlertFilePath)) {
       throw new Error(`Expected include() path target info. Got: ${JSON.stringify(includePathTargetInfo)}`)
+    }
+
+    const extlessIncludeDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<%- include('flash-alert') %>\n`,
+      `<%- include('flash-alert') %>\n`.indexOf('flash-alert') + 2
+    )
+    if (!extlessIncludeDefinition || normalizeFilePath(extlessIncludeDefinition) !== normalizeFilePath(fixture.flashAlertFilePath)) {
+      throw new Error(`Expected extless include() definition target. Got: ${extlessIncludeDefinition}`)
+    }
+
+    const extlessIncludeDiagnostics = serializeDiagnostics(service.getDiagnostics(fixture.boardsFilePath, `<%- include('flash-alert') %>\n`))
+    if (extlessIncludeDiagnostics.some((entry) => entry.code === 'pp-unresolved-include-path')) {
+      throw new Error(`Expected extless include() to avoid unresolved diagnostics. Got: ${JSON.stringify(extlessIncludeDiagnostics)}`)
+    }
+
+    const backtickIncludeDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<%- include(\`flash-alert.ejs\`) %>\n`,
+      `<%- include(\`flash-alert.ejs\`) %>\n`.indexOf('flash-alert.ejs') + 2
+    )
+    if (!backtickIncludeDefinition || normalizeFilePath(backtickIncludeDefinition) !== normalizeFilePath(fixture.flashAlertFilePath)) {
+      throw new Error(`Expected backtick include() definition target. Got: ${backtickIncludeDefinition}`)
+    }
+
+    const localIncludeDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<%- include('shared-panel.ejs', { banner: 'Saved' }) %>\n`,
+      `<%- include('shared-panel.ejs', { banner: 'Saved' }) %>\n`.indexOf('shared-panel.ejs') + 2
+    )
+    if (!localIncludeDefinition || normalizeFilePath(localIncludeDefinition) !== normalizeFilePath(fixture.localSharedPanelFilePath)) {
+      throw new Error(`Expected include() to prefer the nearest _private partial over route files. Got: ${localIncludeDefinition}`)
+    }
+    if (normalizeFilePath(localIncludeDefinition) === normalizeFilePath(fixture.routeSharedPanelFilePath)) {
+      throw new Error(`Expected include() to avoid route-file shadowing. Got: ${localIncludeDefinition}`)
+    }
+
+    const parentIncludeDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<%- include('../shared-panel.ejs', { banner: 'Saved' }) %>\n`,
+      `<%- include('../shared-panel.ejs', { banner: 'Saved' }) %>\n`.indexOf('../shared-panel.ejs') + 3
+    )
+    if (!parentIncludeDefinition || normalizeFilePath(parentIncludeDefinition) !== normalizeFilePath(fixture.sharedPanelFilePath)) {
+      throw new Error(`Expected ../ include() to skip the local _private partial and use the parent-level one. Got: ${parentIncludeDefinition}`)
     }
 
     const globalAssetDefinition = service.getDefinitionTarget(
@@ -1734,13 +1873,21 @@ boardService.readSessionState({ request })
       fixture.htmlToTextBundleFilePath,
       fs.readFileSync(fixture.htmlToTextBundleFilePath, 'utf8')
     )
-    if (!hooksRequireReferences || hooksRequireReferences.length !== 1) {
-      throw new Error(`Expected template-literal require(__hooks...) references. Got: ${JSON.stringify(hooksRequireReferences)}`)
+    if (!hooksRequireReferences || hooksRequireReferences.length !== 2) {
+      throw new Error(`Expected __hooks require references for template-literal and concatenation callers. Got: ${JSON.stringify(hooksRequireReferences)}`)
     }
     if (
       normalizeFilePath(hooksRequireReferences[0].filePath) !== normalizeFilePath(fixture.htmlToTextConsumerFilePath)
+      && normalizeFilePath(hooksRequireReferences[0].filePath) !== normalizeFilePath(fixture.htmlToTextConcatConsumerFilePath)
     ) {
-      throw new Error(`Expected template-literal require(__hooks...) reference to point at html-to-text-consumer.js. Got: ${JSON.stringify(hooksRequireReferences)}`)
+      throw new Error(`Expected __hooks require reference to point at an html-to-text consumer file. Got: ${JSON.stringify(hooksRequireReferences)}`)
+    }
+    if (
+      !hooksRequireReferences.some(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.htmlToTextConcatConsumerFilePath)
+      )
+    ) {
+      throw new Error(`Expected __hooks string-concatenation require reference. Got: ${JSON.stringify(hooksRequireReferences)}`)
     }
 
     service.setDocumentOverride(
@@ -1817,6 +1964,24 @@ module.exports = {
       throw new Error(`Expected middleware resolve() path to update after module file rename. Got: ${renamedMiddlewareResolveText}`)
     }
 
+    const parentResolveRenameEdits = service.getFileRenameEdits(
+      fixture.sharedServiceFilePath,
+      path.resolve(path.dirname(fixture.sharedServiceFilePath), 'summary-service.js')
+    )
+    const resolveParentCheckEdits = parentResolveRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.resolveParentCheckFilePath)
+    )
+    if (resolveParentCheckEdits.length !== 1) {
+      throw new Error(`Expected parent-level resolve() rename edit. Got: ${JSON.stringify(resolveParentCheckEdits)}`)
+    }
+    const renamedResolveParentCheckText = applyEditsToText(
+      fs.readFileSync(fixture.resolveParentCheckFilePath, 'utf8'),
+      resolveParentCheckEdits
+    )
+    if (!renamedResolveParentCheckText.includes(`resolve('../summary-service')`)) {
+      throw new Error(`Expected ../ resolve() path to update after parent module rename. Got: ${renamedResolveParentCheckText}`)
+    }
+
     const renamedRequireConsumerText = applyEditsToText(
       fs.readFileSync(fixture.boardServiceConsumerFilePath, 'utf8'),
       moduleFileRenameEdits.filter(
@@ -1831,10 +1996,14 @@ module.exports = {
       fixture.htmlToTextBundleFilePath,
       path.resolve(path.dirname(fixture.htmlToTextBundleFilePath), 'markdown-renderer.bundle.js')
     )
-    if (!hooksRequireRenameEdits || hooksRequireRenameEdits.length !== 1) {
-      throw new Error(`Expected template-literal require(__hooks...) rename edits. Got: ${JSON.stringify(hooksRequireRenameEdits)}`)
+    if (!hooksRequireRenameEdits || hooksRequireRenameEdits.length !== 2) {
+      throw new Error(`Expected __hooks require rename edits for template-literal and concatenation callers. Got: ${JSON.stringify(hooksRequireRenameEdits)}`)
     }
-    if (normalizeFilePath(hooksRequireRenameEdits[0].filePath) !== normalizeFilePath(fixture.htmlToTextConsumerFilePath)) {
+    if (
+      !hooksRequireRenameEdits.some(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.htmlToTextConsumerFilePath)
+      )
+    ) {
       throw new Error(`Expected template-literal require rename edit in html-to-text-consumer.js. Got: ${JSON.stringify(hooksRequireRenameEdits)}`)
     }
 
@@ -1846,6 +2015,16 @@ module.exports = {
     )
     if (!renamedHooksRequireConsumerText.includes('require(`${__hooks}/pages/_private/vendor/markdown-renderer.bundle.js`)')) {
       throw new Error(`Expected template-literal require(__hooks...) path to update after module file rename. Got: ${renamedHooksRequireConsumerText}`)
+    }
+
+    const renamedHooksConcatConsumerText = applyEditsToText(
+      fs.readFileSync(fixture.htmlToTextConcatConsumerFilePath, 'utf8'),
+      hooksRequireRenameEdits.filter(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.htmlToTextConcatConsumerFilePath)
+      )
+    )
+    if (!renamedHooksConcatConsumerText.includes("require(__hooks + '/pages/_private/vendor/markdown-renderer.bundle.js')")) {
+      throw new Error(`Expected __hooks string-concatenation require path to update after module file rename. Got: ${renamedHooksConcatConsumerText}`)
     }
 
     const duplicatePartialCallerText = `<%- include('flash-alert.ejs', { flashMessage: 'Saved' }) %>\n<%- include('flash-alert.ejs', { flashMessage: 'Again' }) %>\n`

@@ -126,6 +126,7 @@ function collectStaticRequireCallContexts(documentText) {
   const contexts = [];
   const requireRe = /\brequire\(\s*(['"])([^'"]+)\1\s*\)/g;
   const hooksTemplateRequireRe = /\brequire\(\s*`\$\{__hooks\}([^`]*)`\s*\)/g;
+  const hooksConcatRequireRe = /\brequire\(\s*__hooks\s*\+\s*(['"])([^'"]+)\1\s*\)/g;
 
   for (const match of documentText.matchAll(requireRe)) {
     const fullText = match[0];
@@ -153,6 +154,23 @@ function collectStaticRequireCallContexts(documentText) {
     }
 
     const start = match.index + markerIndex + expressionMarker.length;
+    const end = start + value.length;
+
+    contexts.push({
+      kind: "require-path",
+      value,
+      start,
+      end,
+      rootKind: "__hooks",
+    });
+  }
+
+  for (const match of documentText.matchAll(hooksConcatRequireRe)) {
+    const fullText = match[0];
+    const quote = match[1];
+    const value = match[2];
+    const quoteOffset = fullText.indexOf(quote);
+    const start = match.index + quoteOffset + 1;
     const end = start + value.length;
 
     contexts.push({
@@ -3377,26 +3395,7 @@ class ProjectLanguageService {
 
   isResolveRequestForTarget(filePath, requestPath, targetFilePath) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
-    const normalizedRequestPath = String(requestPath || "").trim().replace(/^\/+/, "");
-    if (!normalizedRequestPath) {
-      return false;
-    }
-
-    for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
-      const candidatePaths = [
-        normalizePath(path.join(privateRoot, normalizedRequestPath)),
-        ...[".js", ".cjs", ".mjs"].map((extension) => normalizePath(path.join(privateRoot, `${normalizedRequestPath}${extension}`))),
-        ...[".js", ".cjs", ".mjs"].map((extension) =>
-          normalizePath(path.join(privateRoot, normalizedRequestPath, `index${extension}`))
-        ),
-      ];
-
-      if (candidatePaths.includes(normalizedTargetFilePath)) {
-        return true;
-      }
-    }
-
-    return false;
+    return this.projectIndex.getResolveCandidatePaths(filePath, requestPath).includes(normalizedTargetFilePath);
   }
 
   isRequireRequestForTarget(filePath, requestPath, targetFilePath, options = {}) {
@@ -3436,27 +3435,7 @@ class ProjectLanguageService {
   }
 
   getMatchingResolveRoot(filePath, requestPath, targetFilePath) {
-    const normalizedTargetFilePath = normalizePath(targetFilePath);
-    const normalizedRequestPath = String(requestPath || "").trim().replace(/^\/+/, "");
-    if (!normalizedRequestPath) {
-      return null;
-    }
-
-    for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
-      const candidatePaths = [
-        normalizePath(path.join(privateRoot, normalizedRequestPath)),
-        ...[".js", ".cjs", ".mjs"].map((extension) => normalizePath(path.join(privateRoot, `${normalizedRequestPath}${extension}`))),
-        ...[".js", ".cjs", ".mjs"].map((extension) =>
-          normalizePath(path.join(privateRoot, normalizedRequestPath, `index${extension}`))
-        ),
-      ];
-
-      if (candidatePaths.includes(normalizedTargetFilePath)) {
-        return privateRoot;
-      }
-    }
-
-    return null;
+    return this.projectIndex.getResolveMatchingRoot(filePath, requestPath, targetFilePath);
   }
 
   buildUpdatedIncludeRequestPath(filePath, currentRequestPath, oldTargetFilePath, newTargetFilePath) {
@@ -3490,7 +3469,15 @@ class ProjectLanguageService {
   }
 
   buildUpdatedResolveRequestPath(filePath, currentRequestPath, oldTargetFilePath, newTargetFilePath) {
-    const leadingSlashPrefix = String(currentRequestPath || "").match(/^\/+/);
+    const normalizedCurrentRequestPath = String(currentRequestPath || "").trim();
+    const leadingSlashPrefix = normalizedCurrentRequestPath.match(/^\/+/);
+    const isExplicitRelativeRequest =
+      normalizedCurrentRequestPath.startsWith("./") || normalizedCurrentRequestPath.startsWith("../");
+    const relativePrefix = normalizedCurrentRequestPath.startsWith("./")
+      ? "./"
+      : isExplicitRelativeRequest
+        ? "../".repeat((normalizedCurrentRequestPath.match(/\.\.\//g) || []).length)
+        : "";
     const matchedPrivateRoot = this.getMatchingResolveRoot(filePath, currentRequestPath, oldTargetFilePath);
     const candidateRoots = [];
 
@@ -3498,7 +3485,7 @@ class ProjectLanguageService {
       candidateRoots.push(matchedPrivateRoot);
     }
 
-    for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
+    for (const privateRoot of this.projectIndex.getResolveSearchRoots(filePath, currentRequestPath)) {
       if (!isSameOrChildPath(privateRoot, newTargetFilePath)) {
         continue;
       }
@@ -3519,7 +3506,15 @@ class ProjectLanguageService {
         continue;
       }
 
-      return `${leadingSlashPrefix ? leadingSlashPrefix[0] : ""}${requestPath}`;
+      if (leadingSlashPrefix) {
+        return `${leadingSlashPrefix[0]}${requestPath}`;
+      }
+
+      if (isExplicitRelativeRequest) {
+        return `${relativePrefix}${requestPath}`;
+      }
+
+      return requestPath;
     }
 
     return null;
