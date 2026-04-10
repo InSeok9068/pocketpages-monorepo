@@ -476,6 +476,10 @@ function isDynamicRouteSegment(segment) {
   return /^\[(\.\.\.)?[^\]]+\]$/.test(String(segment || ''))
 }
 
+function isCatchAllDynamicRouteSegment(segment) {
+  return /^\[\.\.\.[^\]]+\]$/.test(String(segment || ''))
+}
+
 function isAssetCandidateFile(pagesRoot, filePath) {
   const normalizedFilePath = normalizePath(filePath)
   const relativePath = toRelativePath(path.relative(pagesRoot, normalizedFilePath))
@@ -544,6 +548,61 @@ function normalizeRoutePath(routePath) {
   }
 
   return value || '/'
+}
+
+function splitNormalizedRoutePath(routePath) {
+  const normalizedRoutePath = normalizeRoutePath(routePath)
+  if (!normalizedRoutePath || normalizedRoutePath === '/') {
+    return []
+  }
+
+  return normalizedRoutePath.slice(1).split('/').filter(Boolean)
+}
+
+function getRoutePathMatchDetails(routeSegments, requestSegments) {
+  const normalizedRouteSegments = Array.isArray(routeSegments) ? routeSegments.filter(Boolean) : []
+  const normalizedRequestSegments = Array.isArray(requestSegments) ? requestSegments.filter(Boolean) : []
+  let requestIndex = 0
+  let dynamicSegmentCount = 0
+
+  for (let routeIndex = 0; routeIndex < normalizedRouteSegments.length; routeIndex += 1) {
+    const routeSegment = normalizedRouteSegments[routeIndex]
+
+    if (isCatchAllDynamicRouteSegment(routeSegment)) {
+      if (routeIndex !== normalizedRouteSegments.length - 1) {
+        return null
+      }
+
+      dynamicSegmentCount += 1
+      requestIndex = normalizedRequestSegments.length
+      return {
+        dynamicSegmentCount,
+        segmentCount: normalizedRouteSegments.length,
+      }
+    }
+
+    if (requestIndex >= normalizedRequestSegments.length) {
+      return null
+    }
+
+    const requestSegment = normalizedRequestSegments[requestIndex]
+    if (isDynamicRouteSegment(routeSegment)) {
+      dynamicSegmentCount += 1
+    } else if (routeSegment !== requestSegment) {
+      return null
+    }
+
+    requestIndex += 1
+  }
+
+  if (requestIndex !== normalizedRequestSegments.length) {
+    return null
+  }
+
+  return {
+    dynamicSegmentCount,
+    segmentCount: normalizedRouteSegments.length,
+  }
 }
 
 function getPreferredRouteMethods(routeSource) {
@@ -1996,6 +2055,7 @@ class PocketPagesProjectIndex {
       filePath: normalizedFilePath,
       method,
       routePath: routeSegments.length ? `/${routeSegments.join('/')}` : '/',
+      routeSegments: [...routeSegments],
       isStaticRoute: !routeSegments.some((segment) => isDynamicRouteSegment(segment)),
     }
   }
@@ -2007,7 +2067,37 @@ class PocketPagesProjectIndex {
     }
 
     const preferredMethods = getPreferredRouteMethods(options.routeSource)
-    const matchingEntries = this.getStaticRouteEntries().filter((entry) => entry.routePath === normalizedRequestPath)
+    const requestSegments = splitNormalizedRoutePath(normalizedRequestPath)
+    const matchingEntries = []
+
+    for (const entry of walkFiles(
+      this.pagesRoot,
+      (candidatePath) => {
+        if (!ROUTE_EXTENSIONS.includes(path.extname(candidatePath))) {
+          return false
+        }
+
+        const relativePath = toRelativePath(path.relative(this.pagesRoot, candidatePath))
+        return !relativePath.split('/').includes('_private')
+      },
+      this.pagesRoot
+    )) {
+      const descriptor = this.getRouteDescriptorByFilePath(entry.filePath)
+      if (!descriptor) {
+        continue
+      }
+
+      const matchDetails = getRoutePathMatchDetails(descriptor.routeSegments, requestSegments)
+      if (!matchDetails) {
+        continue
+      }
+
+      matchingEntries.push({
+        ...descriptor,
+        ...matchDetails,
+      })
+    }
+
     if (!matchingEntries.length) {
       return null
     }
@@ -2019,6 +2109,14 @@ class PocketPagesProjectIndex {
         return leftRank - rightRank
       }
 
+      if (left.dynamicSegmentCount !== right.dynamicSegmentCount) {
+        return left.dynamicSegmentCount - right.dynamicSegmentCount
+      }
+
+      if (left.segmentCount !== right.segmentCount) {
+        return right.segmentCount - left.segmentCount
+      }
+
       return left.filePath.localeCompare(right.filePath)
     })
 
@@ -2026,7 +2124,7 @@ class PocketPagesProjectIndex {
   }
 
   getRouteEntryRank(entry, preferredMethods) {
-    if (!entry.method) {
+    if (!entry.method || entry.method === 'PAGE') {
       return 1
     }
 

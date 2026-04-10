@@ -16,6 +16,23 @@ function writeFile(filePath, content) {
   fs.writeFileSync(filePath, content, 'utf8')
 }
 
+function withWriteFileSyncCount(callback) {
+  const originalWriteFileSync = fs.writeFileSync
+  let writeCount = 0
+
+  fs.writeFileSync = function patchedWriteFileSync(...args) {
+    writeCount += 1
+    return originalWriteFileSync.apply(this, args)
+  }
+
+  try {
+    const result = callback()
+    return { writeCount, result }
+  } finally {
+    fs.writeFileSync = originalWriteFileSync
+  }
+}
+
 function applyEditsToText(text, edits) {
   return edits
     .slice()
@@ -617,6 +634,24 @@ function run() {
     }
     if (secondaryService === service) {
       throw new Error('Expected PocketPages manager to isolate services per app root in a monorepo.')
+    }
+
+    const coldDiagnosticsWriteProbe = withWriteFileSyncCount(() => {
+      const coldManager = new PocketPagesLanguageServiceManager()
+      const coldService = coldManager.getServiceForFile(fixture.boardsFilePath)
+      if (!coldService) {
+        throw new Error(`PocketPages app root not found for cold diagnostics probe: ${fixture.boardsFilePath}`)
+      }
+
+      return coldService.getDiagnostics(
+        fixture.boardsFilePath,
+        fs.readFileSync(fixture.boardsFilePath, 'utf8')
+      )
+    })
+    if (coldDiagnosticsWriteProbe.writeCount !== 0) {
+      throw new Error(
+        `Expected cold diagnostics to avoid sync virtual-file writes. Got writeFileSync count ${coldDiagnosticsWriteProbe.writeCount}.`
+      )
     }
 
     const indexedCodeFilePaths = service.projectIndex.getPagesCodeFiles().map((entry) => normalizeFilePath(entry.filePath))
@@ -2272,6 +2307,15 @@ module.exports = {
       throw new Error(`Expected hx-delete to resolve to feedback DELETE route. Got: ${feedbackHtmxDeleteDefinition}`)
     }
 
+    const dynamicHrefDefinition = indexService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<a href="/boards/demo-board"></a>\n`,
+      `<a href="/boards/demo-board"></a>\n`.indexOf('/boards/demo-board') + 2
+    )
+    if (!dynamicHrefDefinition || normalizeFilePath(dynamicHrefDefinition) !== normalizeFilePath(fixture.boardShowFilePath)) {
+      throw new Error(`Expected concrete dynamic href to resolve to [boardSlug].ejs. Got: ${dynamicHrefDefinition}`)
+    }
+
     const diagnostics = service.getDiagnostics(
       fixture.boardsFilePath,
       `<script server>\n$app.findRecordsByFilter('missing_collection')\nboard.get('missing_field')\n</script>\n`
@@ -2966,6 +3010,16 @@ metaPayload.trim()
       throw new Error(`Expected dynamic EJS route paths to skip unresolved-route diagnostics. Got: ${JSON.stringify(dynamicRouteDiagnostics)}`)
     }
 
+    const concreteDynamicRouteDiagnostics = service.getDiagnostics(
+      fixture.siteIndexFilePath,
+      `<a href="/boards/demo-board"></a>\n`
+    )
+    if (concreteDynamicRouteDiagnostics.some((entry) => entry.code === 'pp-unresolved-route-path')) {
+      throw new Error(
+        `Expected concrete dynamic route URLs to resolve without unresolved-route diagnostics. Got: ${JSON.stringify(concreteDynamicRouteDiagnostics)}`
+      )
+    }
+
     const dynamicTemplateRouteDiagnostics = service.getDiagnostics(
       fixture.siteIndexFilePath,
       `<a href="/boards/\${window.currentBoardSlug}"></a>\n`
@@ -3333,6 +3387,17 @@ const state = {
     }
     if (!routeMethodDocumentLinkTargets.includes(normalizeFilePath(fixture.feedbackDeleteFilePath))) {
       throw new Error(`Expected hx-delete method route document link target. Got: ${routeMethodDocumentLinkTargets.join(', ')}`)
+    }
+
+    const dynamicRouteDocumentLinks = indexService.getDocumentLinks(
+      fixture.siteIndexFilePath,
+      `<a href="/boards/demo-board">Board</a>\n`
+    )
+    const dynamicRouteDocumentLinkTargets = dynamicRouteDocumentLinks.map((entry) => normalizeFilePath(entry.targetFilePath))
+    if (!dynamicRouteDocumentLinkTargets.includes(normalizeFilePath(fixture.boardShowFilePath))) {
+      throw new Error(
+        `Expected concrete dynamic route document link target for [boardSlug].ejs. Got: ${dynamicRouteDocumentLinkTargets.join(', ')}`
+      )
     }
 
     const serverTemplateBoundaryLines = getServerTemplateBoundaryLineNumbers(

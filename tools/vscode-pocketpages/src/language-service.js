@@ -247,10 +247,6 @@ function sanitizeFileName(filePath) {
   return filePath.replace(/[:\\/()[\]\s]+/g, "_");
 }
 
-function ensureDir(dirPath) {
-  fs.mkdirSync(dirPath, { recursive: true });
-}
-
 function flattenDiagnosticMessage(messageText) {
   if (typeof messageText === "string") {
     return messageText;
@@ -2599,9 +2595,6 @@ class ProjectLanguageService {
     const previous = this.virtualFiles.get(virtualFileName);
 
     if (!previous || previous.text !== text) {
-      ensureDir(virtualDir);
-      fs.writeFileSync(virtualFileName, text, "utf8");
-
       this.virtualFiles.set(virtualFileName, {
         text,
         version: previous ? String(Number(previous.version) + 1) : "1",
@@ -2637,9 +2630,6 @@ class ProjectLanguageService {
     const previous = this.virtualFiles.get(virtualFileName);
 
     if (!previous || previous.text !== text) {
-      ensureDir(virtualDir);
-      fs.writeFileSync(virtualFileName, text, "utf8");
-
       this.virtualFiles.set(virtualFileName, {
         text,
         version: previous ? String(Number(previous.version) + 1) : "1",
@@ -2673,9 +2663,6 @@ class ProjectLanguageService {
     const previous = this.virtualFiles.get(virtualFileName);
 
     if (!previous || previous.text !== text) {
-      ensureDir(virtualDir);
-      fs.writeFileSync(virtualFileName, text, "utf8");
-
       this.virtualFiles.set(virtualFileName, {
         text,
         version: previous ? String(Number(previous.version) + 1) : "1",
