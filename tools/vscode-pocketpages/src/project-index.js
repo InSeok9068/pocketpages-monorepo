@@ -427,6 +427,27 @@ function isAssetCandidateFile(pagesRoot, filePath) {
   return true
 }
 
+function isPagesCodeFile(pagesRoot, filePath) {
+  const normalizedFilePath = normalizePath(filePath)
+  const relativePath = toRelativePath(path.relative(pagesRoot, normalizedFilePath))
+  const extension = path.extname(normalizedFilePath).toLowerCase()
+  const relativeSegments = relativePath.split('/').filter(Boolean)
+
+  if (!relativePath || relativePath.startsWith('..')) {
+    return false
+  }
+
+  if (!PAGES_CODE_EXTENSIONS.includes(extension)) {
+    return false
+  }
+
+  if (relativeSegments.includes('assets')) {
+    return false
+  }
+
+  return true
+}
+
 function normalizeRoutePath(routePath) {
   let value = String(routePath || '').trim()
   if (!value || !value.startsWith('/')) {
@@ -1237,7 +1258,7 @@ class PocketPagesProjectIndex {
   getPagesCodeFiles() {
     return walkFiles(
       this.pagesRoot,
-      (candidatePath) => PAGES_CODE_EXTENSIONS.includes(path.extname(candidatePath).toLowerCase()),
+      (candidatePath) => isPagesCodeFile(this.pagesRoot, candidatePath),
       this.pagesRoot
     )
   }
@@ -1426,20 +1447,26 @@ class PocketPagesProjectIndex {
     return null
   }
 
-  resolveRequireTarget(filePath, requestPath) {
+  resolveRequireTarget(filePath, requestPath, options = {}) {
     const normalizedRequestPath = String(requestPath || '').trim()
     if (!normalizedRequestPath) {
       return null
     }
 
-    if (!(normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../') || normalizedRequestPath.startsWith('/'))) {
+    const rootKind = String(options.rootKind || '')
+    if (
+      rootKind !== '__hooks' &&
+      !(normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../') || normalizedRequestPath.startsWith('/'))
+    ) {
       return null
     }
 
     const currentDir = normalizePath(path.dirname(filePath))
-    const basePath = normalizedRequestPath.startsWith('/')
-      ? normalizePath(path.join(this.appRoot, normalizedRequestPath))
-      : normalizePath(path.join(currentDir, normalizedRequestPath))
+    const basePath = rootKind === '__hooks'
+      ? normalizePath(path.join(this.appRoot, 'pb_hooks', normalizedRequestPath.replace(/^\/+/, '')))
+      : normalizedRequestPath.startsWith('/')
+        ? normalizePath(path.join(this.appRoot, normalizedRequestPath))
+        : normalizePath(path.join(currentDir, normalizedRequestPath))
 
     const candidatePaths = [
       basePath,

@@ -345,6 +345,15 @@ module.exports = {
 `
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'html-to-text-consumer.js'),
+    `const { compile } = require(\`\${__hooks}/pages/_private/vendor/html-to-text.bundle.js\`)
+
+module.exports = {
+  compile,
+}
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'board.js'),
     `module.exports = {
   canAcceptPosts() {
@@ -385,6 +394,17 @@ module.exports = {
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'error-panel.ejs'),
     `<% const safeError = typeof error === 'undefined' ? '' : String(error || '') %>\n<% if (safeError) { %><div><%= safeError %></div><% } %>\n`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'vendor', 'html-to-text.bundle.js'),
+    `module.exports = {
+  compile() {
+    return function () {
+      return ''
+    }
+  },
+}
+`
   )
 
   const secondaryAppRoot = path.join(fixtureRoot, 'apps', 'secondary-app')
@@ -455,12 +475,15 @@ module.exports = {
     routeReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-reference-check.ejs'),
     routeMethodReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-method-reference-check.ejs'),
     globalAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'),
+    vendorAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'vendor', 'jszip-3.10.1.min.js'),
     localAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'card.css'),
     propertyLocalsCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
     renameCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
     boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
     boardServiceConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service-consumer.js'),
+    htmlToTextConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'html-to-text-consumer.js'),
+    htmlToTextBundleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'vendor', 'html-to-text.bundle.js'),
     boardRoleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'board.js'),
     postRoleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'post.js'),
     flashAlertFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
@@ -527,6 +550,17 @@ function run() {
     }
     if (secondaryService === service) {
       throw new Error('Expected PocketPages manager to isolate services per app root in a monorepo.')
+    }
+
+    const indexedCodeFilePaths = service.projectIndex.getPagesCodeFiles().map((entry) => normalizeFilePath(entry.filePath))
+    if (indexedCodeFilePaths.includes(normalizeFilePath(fixture.globalAssetFilePath))) {
+      throw new Error(`Expected pages code index to exclude client asset scripts. Got: ${indexedCodeFilePaths.join(', ')}`)
+    }
+    if (indexedCodeFilePaths.includes(normalizeFilePath(fixture.vendorAssetFilePath))) {
+      throw new Error(`Expected pages code index to exclude asset vendor scripts. Got: ${indexedCodeFilePaths.join(', ')}`)
+    }
+    if (!indexedCodeFilePaths.includes(normalizeFilePath(fixture.htmlToTextBundleFilePath))) {
+      throw new Error(`Expected pages code index to keep _private vendor modules. Got: ${indexedCodeFilePaths.join(', ')}`)
     }
 
     const completionText = `<script server>\nmet\n</script>\n`
@@ -1671,6 +1705,24 @@ boardService.readSessionState({ request })
       throw new Error(`Expected file-based module references to include static require() usage. Got: ${JSON.stringify(moduleFileReferences)}`)
     }
 
+    const hooksRequireReferenceQuery = service.getFileReferenceQuery(fixture.htmlToTextBundleFilePath)
+    if (!hooksRequireReferenceQuery || hooksRequireReferenceQuery.kind !== 'private-module') {
+      throw new Error(`Expected __hooks require target to expose a private-module reference query. Got: ${JSON.stringify(hooksRequireReferenceQuery)}`)
+    }
+
+    const hooksRequireReferences = service.getFileReferenceTargets(
+      fixture.htmlToTextBundleFilePath,
+      fs.readFileSync(fixture.htmlToTextBundleFilePath, 'utf8')
+    )
+    if (!hooksRequireReferences || hooksRequireReferences.length !== 1) {
+      throw new Error(`Expected template-literal require(__hooks...) references. Got: ${JSON.stringify(hooksRequireReferences)}`)
+    }
+    if (
+      normalizeFilePath(hooksRequireReferences[0].filePath) !== normalizeFilePath(fixture.htmlToTextConsumerFilePath)
+    ) {
+      throw new Error(`Expected template-literal require(__hooks...) reference to point at html-to-text-consumer.js. Got: ${JSON.stringify(hooksRequireReferences)}`)
+    }
+
     service.setDocumentOverride(
       fixture.boardServiceConsumerFilePath,
       `const firstBoardService = require('./board-service')
@@ -1753,6 +1805,27 @@ module.exports = {
     )
     if (!renamedRequireConsumerText.includes(`require('./session-service')`)) {
       throw new Error(`Expected static require() path to update after module file rename. Got: ${renamedRequireConsumerText}`)
+    }
+
+    const hooksRequireRenameEdits = service.getFileRenameEdits(
+      fixture.htmlToTextBundleFilePath,
+      path.resolve(path.dirname(fixture.htmlToTextBundleFilePath), 'markdown-renderer.bundle.js')
+    )
+    if (!hooksRequireRenameEdits || hooksRequireRenameEdits.length !== 1) {
+      throw new Error(`Expected template-literal require(__hooks...) rename edits. Got: ${JSON.stringify(hooksRequireRenameEdits)}`)
+    }
+    if (normalizeFilePath(hooksRequireRenameEdits[0].filePath) !== normalizeFilePath(fixture.htmlToTextConsumerFilePath)) {
+      throw new Error(`Expected template-literal require rename edit in html-to-text-consumer.js. Got: ${JSON.stringify(hooksRequireRenameEdits)}`)
+    }
+
+    const renamedHooksRequireConsumerText = applyEditsToText(
+      fs.readFileSync(fixture.htmlToTextConsumerFilePath, 'utf8'),
+      hooksRequireRenameEdits.filter(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.htmlToTextConsumerFilePath)
+      )
+    )
+    if (!renamedHooksRequireConsumerText.includes('require(`${__hooks}/pages/_private/vendor/markdown-renderer.bundle.js`)')) {
+      throw new Error(`Expected template-literal require(__hooks...) path to update after module file rename. Got: ${renamedHooksRequireConsumerText}`)
     }
 
     const duplicatePartialCallerText = `<%- include('flash-alert.ejs', { flashMessage: 'Saved' }) %>\n<%- include('flash-alert.ejs', { flashMessage: 'Again' }) %>\n`

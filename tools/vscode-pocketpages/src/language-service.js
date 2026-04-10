@@ -108,6 +108,7 @@ function toRelativeSpecifier(relativePath, options = {}) {
 function collectStaticRequireCallContexts(documentText) {
   const contexts = [];
   const requireRe = /\brequire\(\s*(['"])([^'"]+)\1\s*\)/g;
+  const hooksTemplateRequireRe = /\brequire\(\s*`\$\{__hooks\}([^`]*)`\s*\)/g;
 
   for (const match of documentText.matchAll(requireRe)) {
     const fullText = match[0];
@@ -122,6 +123,27 @@ function collectStaticRequireCallContexts(documentText) {
       value,
       start,
       end,
+    });
+  }
+
+  for (const match of documentText.matchAll(hooksTemplateRequireRe)) {
+    const fullText = match[0];
+    const value = match[1];
+    const expressionMarker = "${__hooks}";
+    const markerIndex = fullText.indexOf(expressionMarker);
+    if (markerIndex === -1) {
+      continue;
+    }
+
+    const start = match.index + markerIndex + expressionMarker.length;
+    const end = start + value.length;
+
+    contexts.push({
+      kind: "require-path",
+      value,
+      start,
+      end,
+      rootKind: "__hooks",
     });
   }
 
@@ -2858,7 +2880,7 @@ class ProjectLanguageService {
         Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
 
       for (const requireContext of collectStaticRequireCallContexts(documentText)) {
-        const resolvedTargetFilePath = this.projectIndex.resolveRequireTarget(codeFilePath, requireContext.value);
+        const resolvedTargetFilePath = this.projectIndex.resolveRequireTarget(codeFilePath, requireContext.value, requireContext);
         if (!resolvedTargetFilePath || normalizePath(resolvedTargetFilePath) !== normalizedTargetFilePath) {
           continue;
         }
@@ -3043,11 +3065,11 @@ class ProjectLanguageService {
       const requireContexts = collectStaticRequireCallContexts(documentText);
 
       for (const requireContext of requireContexts) {
-        if (!this.isRequireRequestForTarget(filePath, requireContext.value, oldTargetFilePath)) {
+        if (!this.isRequireRequestForTarget(filePath, requireContext.value, oldTargetFilePath, requireContext)) {
           continue;
         }
 
-        const newValue = this.buildUpdatedRequireRequestPath(filePath, requireContext.value, newTargetFilePath);
+        const newValue = this.buildUpdatedRequireRequestPath(filePath, requireContext.value, newTargetFilePath, requireContext);
         if (!newValue || newValue === requireContext.value) {
           continue;
         }
@@ -3114,17 +3136,20 @@ class ProjectLanguageService {
     return false;
   }
 
-  isRequireRequestForTarget(filePath, requestPath, targetFilePath) {
+  isRequireRequestForTarget(filePath, requestPath, targetFilePath, options = {}) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
     const normalizedRequestPath = String(requestPath || "").trim();
     if (!normalizedRequestPath) {
       return false;
     }
 
+    const rootKind = String(options.rootKind || "");
     const currentDir = normalizePath(path.dirname(filePath));
-    const basePath = normalizedRequestPath.startsWith("/")
-      ? normalizePath(path.join(this.projectIndex.appRoot, normalizedRequestPath))
-      : normalizePath(path.join(currentDir, normalizedRequestPath));
+    const basePath = rootKind === "__hooks"
+      ? normalizePath(path.join(this.projectIndex.appRoot, "pb_hooks", normalizedRequestPath.replace(/^\/+/, "")))
+      : normalizedRequestPath.startsWith("/")
+        ? normalizePath(path.join(this.projectIndex.appRoot, normalizedRequestPath))
+        : normalizePath(path.join(currentDir, normalizedRequestPath));
     const candidatePaths = [
       basePath,
       ...[".js", ".cjs", ".mjs", ".json"].map((extension) => normalizePath(`${basePath}${extension}`)),
@@ -3237,9 +3262,24 @@ class ProjectLanguageService {
     return null;
   }
 
-  buildUpdatedRequireRequestPath(filePath, currentRequestPath, newTargetFilePath) {
+  buildUpdatedRequireRequestPath(filePath, currentRequestPath, newTargetFilePath, options = {}) {
     const normalizedCurrentRequestPath = String(currentRequestPath || "").trim();
     const keepExtension = !!path.extname(normalizedCurrentRequestPath);
+    const rootKind = String(options.rootKind || "");
+
+    if (rootKind === "__hooks") {
+      const hooksRoot = normalizePath(path.join(this.projectIndex.appRoot, "pb_hooks"));
+      if (!isSameOrChildPath(hooksRoot, newTargetFilePath)) {
+        return null;
+      }
+
+      let requestPath = toPortablePath(path.relative(hooksRoot, newTargetFilePath));
+      if (!keepExtension) {
+        requestPath = stripKnownExtension(requestPath, [".js", ".cjs", ".mjs", ".json"]);
+      }
+
+      return `/${requestPath}`;
+    }
 
     if (normalizedCurrentRequestPath.startsWith("/")) {
       let requestPath = toPortablePath(path.relative(this.projectIndex.appRoot, newTargetFilePath));
