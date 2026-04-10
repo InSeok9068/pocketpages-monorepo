@@ -3075,6 +3075,18 @@ const state = {
       )
     }
 
+    const redirectFollowedByReturnDiagnostics = service.getDiagnostics(
+      fixture.feedbackLoadFilePath,
+      `module.exports = function () {\n  redirect('/sign-in')\n  return\n}\n`
+    )
+    if (redirectFollowedByReturnDiagnostics.some((entry) => entry.code === 'pp-redirect-missing-return')) {
+      throw new Error(
+        `Expected redirect() followed by return to skip missing return diagnostic. Got: ${redirectFollowedByReturnDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
     const redirectReturnedDiagnostics = service.getDiagnostics(
       fixture.feedbackLoadFilePath,
       `module.exports = function () {\n  return redirect('/sign-in')\n}\n`
@@ -3082,6 +3094,30 @@ const state = {
     if (redirectReturnedDiagnostics.some((entry) => entry.code === 'pp-redirect-missing-return')) {
       throw new Error(
         `Expected returned redirect() to skip missing return diagnostic. Got: ${redirectReturnedDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const ejsRedirectMissingReturnDiagnostics = service.getDiagnostics(
+      fixture.signOutFilePath,
+      `<script server>\nredirect('/sign-in')\n</script>\n`
+    )
+    if (!ejsRedirectMissingReturnDiagnostics.some((entry) => entry.code === 'pp-redirect-missing-return')) {
+      throw new Error(
+        `Expected redirect() missing return diagnostic in <script server>. Got: ${ejsRedirectMissingReturnDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const ejsRedirectFollowedByReturnDiagnostics = service.getDiagnostics(
+      fixture.signOutFilePath,
+      `<script server>\nredirect('/sign-in')\nreturn\n</script>\n`
+    )
+    if (ejsRedirectFollowedByReturnDiagnostics.some((entry) => entry.code === 'pp-redirect-missing-return')) {
+      throw new Error(
+        `Expected redirect() followed by return in <script server> to skip missing return diagnostic. Got: ${ejsRedirectFollowedByReturnDiagnostics
           .map((entry) => String(entry.code))
           .join(', ')}`
       )

@@ -843,12 +843,20 @@ function walkFunctionLikeBody(functionNode, visit) {
     return;
   }
 
+  walkStatementContainer(functionNode.body, visit);
+}
+
+function walkStatementContainer(containerNode, visit) {
+  if (!containerNode) {
+    return;
+  }
+
   const walk = (node) => {
     if (!node) {
       return;
     }
 
-    if (node !== functionNode.body && ts.isFunctionLike(node)) {
+    if (node !== containerNode && ts.isFunctionLike(node)) {
       return;
     }
 
@@ -856,7 +864,30 @@ function walkFunctionLikeBody(functionNode, visit) {
     ts.forEachChild(node, walk);
   };
 
-  walk(functionNode.body);
+  walk(containerNode);
+}
+
+function getNextSiblingStatement(statement) {
+  if (!statement || !statement.parent || !Array.isArray(statement.parent.statements)) {
+    return null;
+  }
+
+  const statements = statement.parent.statements;
+  const statementIndex = statements.indexOf(statement);
+  if (statementIndex === -1) {
+    return null;
+  }
+
+  for (let index = statementIndex + 1; index < statements.length; index += 1) {
+    const candidate = statements[index];
+    if (!candidate || ts.isEmptyStatement(candidate)) {
+      continue;
+    }
+
+    return candidate;
+  }
+
+  return null;
 }
 
 function isRedirectCallExpression(node) {
@@ -893,20 +924,35 @@ function isEmptyObjectLiteralExpression(node) {
   return !!target && ts.isObjectLiteralExpression(target) && target.properties.length === 0;
 }
 
-function collectRedirectReturnDiagnostics(filePath, scriptText, options = {}) {
+function getRedirectControlStatementContainer(filePath, sourceFile, options = {}) {
+  if (options.useTopLevelStatements) {
+    return sourceFile;
+  }
+
   if (!isRedirectControlScriptFile(filePath)) {
-    return [];
+    return null;
   }
 
-  const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-redirect-control.ts", scriptText);
   const handlerFunction = getPrimaryExportedFunction(sourceFile);
-  if (!handlerFunction) {
+  return handlerFunction ? handlerFunction.body : null;
+}
+
+function collectRedirectReturnDiagnostics(filePath, scriptText, options = {}) {
+  const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-redirect-control.ts", scriptText);
+  const statementContainer = getRedirectControlStatementContainer(filePath, sourceFile, options);
+  if (!statementContainer) {
     return [];
   }
 
+  const offsetBase = typeof options.offsetBase === "number" ? options.offsetBase : 0;
   const diagnostics = [];
-  walkFunctionLikeBody(handlerFunction, (node) => {
+  walkStatementContainer(statementContainer, (node) => {
     if (!ts.isExpressionStatement(node) || !isRedirectCallExpression(node.expression)) {
+      return;
+    }
+
+    const nextStatement = getNextSiblingStatement(node);
+    if (nextStatement && ts.isReturnStatement(nextStatement)) {
       return;
     }
 
@@ -914,8 +960,8 @@ function collectRedirectReturnDiagnostics(filePath, scriptText, options = {}) {
       code: "pp-redirect-missing-return",
       category: ts.DiagnosticCategory.Warning,
       message: "Return after redirect() so execution stops explicitly.",
-      start: node.expression.getStart(sourceFile),
-      end: node.expression.getEnd(),
+      start: offsetBase + node.expression.getStart(sourceFile),
+      end: offsetBase + node.expression.getEnd(),
     });
   });
 
@@ -3968,6 +4014,12 @@ class ProjectLanguageService {
           }
         }
       }
+
+      diagnostics.push(...collectRedirectReturnDiagnostics(filePath, block.content, {
+        sourceFile: documentAnalysis.getBlockSourceFile(block),
+        useTopLevelStatements: true,
+        offsetBase: block.contentStart,
+      }));
     }
 
     return diagnostics;
