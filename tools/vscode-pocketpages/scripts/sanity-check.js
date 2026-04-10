@@ -522,6 +522,12 @@ function run() {
   if (!/registerInlayHintsProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesInlayHintsProvider\(manager\)\)/.test(extensionSource)) {
     throw new Error('Expected PocketPages inlay hints provider registration for code documents.')
   }
+  if (!/const isEjsDocument = document\.uri\.fsPath\.endsWith\('\.ejs'\)\s*\n\s*const quickInfo = isEjsDocument \? service\.getQuickInfo/.test(extensionSource)) {
+    throw new Error('Expected PocketPages hover provider to limit JS quick info and let the built-in TS hover handle plain JS symbols.')
+  }
+  if (!/provideSignatureHelp\(document, position, _token, context\) \{[\s\S]*if \(!document\.uri\.fsPath\.endsWith\('\.ejs'\)\) \{\s*return null\s*\}/.test(extensionSource)) {
+    throw new Error('Expected PocketPages signature help to skip plain JS files and avoid duplicate TypeScript signatures.')
+  }
   if (!/registerCommand\('pocketpagesServerScript\.reloadCaches'/.test(extensionSource)) {
     throw new Error('Expected PocketPages reloadCaches command registration in extension.js.')
   }

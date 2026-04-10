@@ -507,7 +507,8 @@ class PocketPagesHoverProvider {
     }
 
     const offset = document.offsetAt(position)
-    const quickInfo = service.getQuickInfo(document.uri.fsPath, document.getText(), offset)
+    const isEjsDocument = document.uri.fsPath.endsWith('.ejs')
+    const quickInfo = isEjsDocument ? service.getQuickInfo(document.uri.fsPath, document.getText(), offset) : null
     const pathTargetInfo = service.getPathTargetInfo(document.uri.fsPath, document.getText(), offset)
 
     if ((!quickInfo || quickInfo.start === null || quickInfo.end === null) && !pathTargetInfo) {
@@ -551,6 +552,10 @@ class PocketPagesSignatureHelpProvider {
 
   provideSignatureHelp(document, position, _token, context) {
     if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
+      return null
+    }
+
+    if (!document.uri.fsPath.endsWith('.ejs')) {
       return null
     }
 
@@ -1204,4 +1209,3 @@ module.exports = {
   activate,
   deactivate,
 }
-
