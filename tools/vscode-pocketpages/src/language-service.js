@@ -3768,6 +3768,10 @@ class ProjectLanguageService {
     return signatureHelp || null;
   }
 
+  getCustomSignatureHelp(filePath, documentText, offset) {
+    return this.getIncludeSignatureHelp(filePath, documentText, offset);
+  }
+
   getCodeLensEntries(filePath, documentText) {
     const entries = [];
     const routeDescriptor = this.projectIndex.getRouteDescriptorByFilePath(filePath);

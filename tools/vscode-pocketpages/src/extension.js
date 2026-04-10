@@ -1,5 +1,7 @@
 'use strict'
 
+const fs = require('fs')
+const path = require('path')
 const vscode = require('vscode')
 const { PocketPagesLanguageServiceManager, findAppRoot, ts } = require('./language-service')
 const { TOKEN_TYPES, collectEjsSemanticTokenEntries, getTokenTypeIndex } = require('./ejs-semantic-tokens')
@@ -20,6 +22,54 @@ const RENAME_DOCUMENT_SELECTOR = [
   ...SCRIPT_DOCUMENT_SELECTOR,
 ]
 const SEMANTIC_TOKENS_LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, [])
+const DEFAULT_POCKETPAGES_HOVER_IDENTIFIER_NAMES = new Set([
+  '$app',
+  'api',
+  'asset',
+  'auth',
+  'body',
+  'createAnonymousUser',
+  'createPasswordlessUser',
+  'createUser',
+  'data',
+  'dbg',
+  'echo',
+  'env',
+  'error',
+  'formData',
+  'include',
+  'info',
+  'meta',
+  'params',
+  'realtime',
+  'redirect',
+  'request',
+  'requestOAuth2Login',
+  'requestOTP',
+  'requestVerification',
+  'resolve',
+  'response',
+  'signInAnonymously',
+  'signInWithOAuth2',
+  'signInWithOTP',
+  'signInWithPassword',
+  'signInWithToken',
+  'signOut',
+  'slot',
+  'slots',
+  'store',
+  'stringify',
+  'url',
+  'warn',
+])
+const POCKETPAGES_HOVER_TYPE_SIGNALS = [
+  'core.Record',
+  'dbx.Params',
+  'PocketPages',
+  'PagesRequestContext',
+  'PagesResponse',
+]
+const pocketPagesHoverIdentifierNameCache = new Map()
 
 const COMPLETION_KIND_MAP = {
   [ts.ScriptElementKind.primitiveType]: vscode.CompletionItemKind.Keyword,
@@ -70,6 +120,56 @@ function toReferenceLocation(document, reference) {
 
 function workspaceRelativePath(filePath) {
   return vscode.workspace.asRelativePath(filePath, false)
+}
+
+function getPocketPagesHoverIdentifierNames(filePath) {
+  const names = new Set(DEFAULT_POCKETPAGES_HOVER_IDENTIFIER_NAMES)
+  const appRoot = findAppRoot(filePath)
+  if (!appRoot) {
+    return names
+  }
+
+  const globalsFilePath = path.join(appRoot, 'pocketpages-globals.d.ts')
+  try {
+    const stats = fs.statSync(globalsFilePath)
+    const cacheKey = `${stats.mtimeMs}:${stats.size}`
+    const cached = pocketPagesHoverIdentifierNameCache.get(appRoot)
+    if (cached && cached.cacheKey === cacheKey) {
+      return cached.names
+    }
+
+    const fileText = fs.readFileSync(globalsFilePath, 'utf8')
+    for (const match of fileText.matchAll(/\b(?:const|function)\s+([A-Za-z_$][\w$]*)\b/g)) {
+      names.add(match[1])
+    }
+
+    pocketPagesHoverIdentifierNameCache.set(appRoot, {
+      cacheKey,
+      names,
+    })
+  } catch (_error) {
+    return names
+  }
+
+  return names
+}
+
+function shouldShowPocketPagesQuickInfo(document, quickInfo) {
+  if (!quickInfo || quickInfo.start === null || quickInfo.end === null) {
+    return false
+  }
+
+  const quickInfoRange = toRange(document, quickInfo.start, quickInfo.end)
+  const hoveredText = document.getText(quickInfoRange).trim()
+  if (getPocketPagesHoverIdentifierNames(document.uri.fsPath).has(hoveredText)) {
+    return true
+  }
+
+  const displayText = String(quickInfo.displayText || '')
+  const documentation = String(quickInfo.documentation || '')
+  return POCKETPAGES_HOVER_TYPE_SIGNALS.some(
+    (signal) => displayText.includes(signal) || documentation.includes(signal)
+  )
 }
 
 function isSupportedPrivateRenamePath(filePath) {
@@ -506,24 +606,28 @@ class PocketPagesHoverProvider {
       return null
     }
 
+    const documentText = document.getText()
     const offset = document.offsetAt(position)
-    const isEjsDocument = document.uri.fsPath.endsWith('.ejs')
-    const quickInfo = isEjsDocument ? service.getQuickInfo(document.uri.fsPath, document.getText(), offset) : null
-    const pathTargetInfo = service.getPathTargetInfo(document.uri.fsPath, document.getText(), offset)
+    const quickInfo = service.getQuickInfo(document.uri.fsPath, documentText, offset)
+    const pathTargetInfo = service.getPathTargetInfo(document.uri.fsPath, documentText, offset)
+    const hasPocketPagesQuickInfo = shouldShowPocketPagesQuickInfo(document, quickInfo)
 
-    if ((!quickInfo || quickInfo.start === null || quickInfo.end === null) && !pathTargetInfo) {
+    if (!hasPocketPagesQuickInfo && (!pathTargetInfo || !pathTargetInfo.targetFilePath)) {
       return null
     }
 
     const contents = []
 
-    if (quickInfo && quickInfo.displayText) {
-      contents.push(new vscode.MarkdownString().appendCodeblock(quickInfo.displayText, 'ts'))
+    if (hasPocketPagesQuickInfo) {
+      if (quickInfo.displayText) {
+        contents.push(new vscode.MarkdownString().appendCodeblock(quickInfo.displayText, 'ts'))
+      }
+
+      if (quickInfo.documentation) {
+        contents.push(new vscode.MarkdownString(quickInfo.documentation))
+      }
     }
 
-    if (quickInfo && quickInfo.documentation) {
-      contents.push(new vscode.MarkdownString(quickInfo.documentation))
-    }
     if (pathTargetInfo && pathTargetInfo.targetFilePath) {
       const targetLabel = workspaceRelativePath(pathTargetInfo.targetFilePath)
       const pathDetails = new vscode.MarkdownString()
@@ -537,7 +641,7 @@ class PocketPagesHoverProvider {
     }
 
     const hoverRange =
-      quickInfo && quickInfo.start !== null && quickInfo.end !== null
+      hasPocketPagesQuickInfo
         ? toRange(document, quickInfo.start, quickInfo.end)
         : toRange(document, pathTargetInfo.start, pathTargetInfo.end)
 
@@ -559,16 +663,14 @@ class PocketPagesSignatureHelpProvider {
       return null
     }
 
+    const documentText = document.getText()
+    const offset = document.offsetAt(position)
     const service = this.manager.getServiceForFile(document.uri.fsPath)
     if (!service) {
       return null
     }
 
-    const offset = document.offsetAt(position)
-    const signatureHelp = service.getSignatureHelp(document.uri.fsPath, document.getText(), offset, {
-      triggerCharacter: context ? context.triggerCharacter : undefined,
-      isRetrigger: !!(context && context.isRetrigger),
-    })
+    const signatureHelp = service.getCustomSignatureHelp(document.uri.fsPath, documentText, offset)
 
     return toSignatureHelp(signatureHelp)
   }
