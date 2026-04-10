@@ -238,6 +238,10 @@ export {}
     `module.exports = function () {\n  return ''\n}\n`
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+load.js'),
+    `module.exports = function () {\n  return {}\n}\n`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+delete.js'),
     `module.exports = function () {\n  return ''\n}\n`
   )
@@ -496,6 +500,7 @@ module.exports = {
     signInFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'),
     siteSignInFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'),
     feedbackPageFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', 'index.ejs'),
+    feedbackLoadFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+load.js'),
     feedbackPostFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+post.js'),
     feedbackDeleteFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+delete.js'),
     secondarySiteIndexFilePath: path.join(secondaryAppRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'),
@@ -2859,6 +2864,82 @@ const state = {
     if (!manualFlashHrefDiagnostics.some((entry) => entry.code === 'pp-manual-flash-query')) {
       throw new Error(
         `Expected manual __flash query diagnostic for href. Got: ${manualFlashHrefDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const redirectMissingReturnDiagnostics = service.getDiagnostics(
+      fixture.feedbackLoadFilePath,
+      `module.exports = function () {\n  redirect('/sign-in')\n}\n`
+    )
+    if (!redirectMissingReturnDiagnostics.some((entry) => entry.code === 'pp-redirect-missing-return')) {
+      throw new Error(
+        `Expected redirect() missing return diagnostic in +load.js. Got: ${redirectMissingReturnDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const redirectReturnedDiagnostics = service.getDiagnostics(
+      fixture.feedbackLoadFilePath,
+      `module.exports = function () {\n  return redirect('/sign-in')\n}\n`
+    )
+    if (redirectReturnedDiagnostics.some((entry) => entry.code === 'pp-redirect-missing-return')) {
+      throw new Error(
+        `Expected returned redirect() to skip missing return diagnostic. Got: ${redirectReturnedDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const middlewareMissingNextDiagnostics = service.getDiagnostics(
+      fixture.middlewareFilePath,
+      `module.exports = function ({ response }, next) {\n  return response.json(200, { ok: true })\n}\n`
+    )
+    if (!middlewareMissingNextDiagnostics.some((entry) => entry.code === 'pp-middleware-next-missing-call')) {
+      throw new Error(
+        `Expected +middleware.js next() missing call diagnostic. Got: ${middlewareMissingNextDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const middlewareBareReturnDiagnostics = service.getDiagnostics(
+      fixture.middlewareFilePath,
+      `module.exports = function (api, next) {\n  if (!api.request) {\n    return\n  }\n  return next()\n}\n`
+    )
+    if (!middlewareBareReturnDiagnostics.some((entry) => entry.code === 'pp-middleware-next-bare-return')) {
+      throw new Error(
+        `Expected +middleware.js bare return diagnostic with next(). Got: ${middlewareBareReturnDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const middlewareEmptyReturnDiagnostics = service.getDiagnostics(
+      fixture.middlewareFilePath,
+      `module.exports = function (api, next) {\n  if (!api.request) {\n    return {}\n  }\n  return next()\n}\n`
+    )
+    if (!middlewareEmptyReturnDiagnostics.some((entry) => entry.code === 'pp-middleware-next-empty-return')) {
+      throw new Error(
+        `Expected +middleware.js return {} diagnostic with next(). Got: ${middlewareEmptyReturnDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+
+    const validMiddlewareNextDiagnostics = service.getDiagnostics(
+      fixture.middlewareFilePath,
+      `module.exports = function ({ response }, next) {\n  if (false) {\n    return response.json(400, { error: 'invalid' })\n  }\n  return next()\n}\n`
+    )
+    if (
+      validMiddlewareNextDiagnostics.some((entry) =>
+        ['pp-middleware-next-missing-call', 'pp-middleware-next-bare-return', 'pp-middleware-next-empty-return'].includes(entry.code)
+      )
+    ) {
+      throw new Error(
+        `Expected valid +middleware.js next() flow to skip middleware control diagnostics. Got: ${validMiddlewareNextDiagnostics
           .map((entry) => String(entry.code))
           .join(', ')}`
       )

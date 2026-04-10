@@ -87,6 +87,23 @@ function stripKnownExtension(filePath, extensions) {
   return filePath;
 }
 
+function getScriptFileBasename(filePath) {
+  return stripKnownExtension(path.basename(String(filePath || "")), [".js", ".cjs", ".mjs"]);
+}
+
+function isMiddlewareScriptFile(filePath) {
+  return isScriptFile(filePath) && getScriptFileBasename(filePath) === "+middleware";
+}
+
+function isRedirectControlScriptFile(filePath) {
+  if (!isScriptFile(filePath)) {
+    return false;
+  }
+
+  const basename = getScriptFileBasename(filePath);
+  return basename.startsWith("+") && basename !== "+config";
+}
+
 function isSameOrChildPath(parentPath, candidatePath) {
   const relativePath = path.relative(parentPath, candidatePath);
   return !relativePath || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
@@ -711,6 +728,244 @@ function readStringLiteralText(node) {
   return target && ts.isStringLiteralLike(target) ? target.text : null;
 }
 
+function isModuleExportsTarget(node) {
+  const target = skipExpressionWrappers(node);
+  if (!target || !ts.isPropertyAccessExpression(target) || target.name.text !== "exports") {
+    return false;
+  }
+
+  const root = skipExpressionWrappers(target.expression);
+  return !!root && ts.isIdentifier(root) && root.text === "module";
+}
+
+function getTopLevelDeclarationsByName(sourceFile) {
+  const declarations = new Map();
+
+  for (const statement of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      declarations.set(statement.name.text, statement);
+      continue;
+    }
+
+    if (!ts.isVariableStatement(statement)) {
+      continue;
+    }
+
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name)) {
+        declarations.set(declaration.name.text, declaration);
+      }
+    }
+  }
+
+  return declarations;
+}
+
+function resolveFunctionLikeNode(node, declarationsByName, seenNames = new Set()) {
+  const target = skipExpressionWrappers(node);
+  if (!target) {
+    return null;
+  }
+
+  if (ts.isFunctionExpression(target) || ts.isArrowFunction(target) || ts.isFunctionDeclaration(target)) {
+    return target;
+  }
+
+  if (!ts.isIdentifier(target) || seenNames.has(target.text)) {
+    return null;
+  }
+
+  const declaration = declarationsByName.get(target.text);
+  if (!declaration) {
+    return null;
+  }
+
+  seenNames.add(target.text);
+
+  if (ts.isFunctionDeclaration(declaration)) {
+    return declaration;
+  }
+
+  if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
+    return resolveFunctionLikeNode(declaration.initializer, declarationsByName, seenNames);
+  }
+
+  return null;
+}
+
+function getPrimaryExportedFunction(sourceFile) {
+  const declarationsByName = getTopLevelDeclarationsByName(sourceFile);
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isExpressionStatement(statement)) {
+      continue;
+    }
+
+    const expression = skipExpressionWrappers(statement.expression);
+    if (
+      !expression ||
+      !ts.isBinaryExpression(expression) ||
+      expression.operatorToken.kind !== ts.SyntaxKind.EqualsToken ||
+      !isModuleExportsTarget(expression.left)
+    ) {
+      continue;
+    }
+
+    const handlerFunction = resolveFunctionLikeNode(expression.right, declarationsByName);
+    if (handlerFunction) {
+      return handlerFunction;
+    }
+  }
+
+  return null;
+}
+
+function walkFunctionLikeBody(functionNode, visit) {
+  if (!functionNode || !functionNode.body) {
+    return;
+  }
+
+  const walk = (node) => {
+    if (!node) {
+      return;
+    }
+
+    if (node !== functionNode.body && ts.isFunctionLike(node)) {
+      return;
+    }
+
+    visit(node);
+    ts.forEachChild(node, walk);
+  };
+
+  walk(functionNode.body);
+}
+
+function isRedirectCallExpression(node) {
+  const target = skipExpressionWrappers(node);
+  if (!target || !ts.isCallExpression(target)) {
+    return false;
+  }
+
+  const callee = skipExpressionWrappers(target.expression);
+  if (callee && ts.isIdentifier(callee)) {
+    return callee.text === "redirect";
+  }
+
+  if (!callee || !ts.isPropertyAccessExpression(callee) || callee.name.text !== "redirect") {
+    return false;
+  }
+
+  const root = skipExpressionWrappers(callee.expression);
+  return !!root && ts.isIdentifier(root) && root.text === "api";
+}
+
+function isIdentifierCallExpression(node, identifierName) {
+  const target = skipExpressionWrappers(node);
+  return (
+    !!target &&
+    ts.isCallExpression(target) &&
+    ts.isIdentifier(skipExpressionWrappers(target.expression)) &&
+    skipExpressionWrappers(target.expression).text === identifierName
+  );
+}
+
+function isEmptyObjectLiteralExpression(node) {
+  const target = skipExpressionWrappers(node);
+  return !!target && ts.isObjectLiteralExpression(target) && target.properties.length === 0;
+}
+
+function collectRedirectReturnDiagnostics(filePath, scriptText, options = {}) {
+  if (!isRedirectControlScriptFile(filePath)) {
+    return [];
+  }
+
+  const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-redirect-control.ts", scriptText);
+  const handlerFunction = getPrimaryExportedFunction(sourceFile);
+  if (!handlerFunction) {
+    return [];
+  }
+
+  const diagnostics = [];
+  walkFunctionLikeBody(handlerFunction, (node) => {
+    if (!ts.isExpressionStatement(node) || !isRedirectCallExpression(node.expression)) {
+      return;
+    }
+
+    diagnostics.push({
+      code: "pp-redirect-missing-return",
+      category: ts.DiagnosticCategory.Warning,
+      message: "Return after redirect() so execution stops explicitly.",
+      start: node.expression.getStart(sourceFile),
+      end: node.expression.getEnd(),
+    });
+  });
+
+  return diagnostics;
+}
+
+function collectMiddlewareNextDiagnostics(filePath, scriptText, options = {}) {
+  if (!isMiddlewareScriptFile(filePath)) {
+    return [];
+  }
+
+  const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-middleware-next.ts", scriptText);
+  const handlerFunction = getPrimaryExportedFunction(sourceFile);
+  if (!handlerFunction || handlerFunction.parameters.length < 2 || !ts.isIdentifier(handlerFunction.parameters[1].name)) {
+    return [];
+  }
+
+  const nextParameter = handlerFunction.parameters[1].name;
+  const nextName = nextParameter.text;
+  let hasNextCall = false;
+  const diagnostics = [];
+
+  walkFunctionLikeBody(handlerFunction, (node) => {
+    if (isIdentifierCallExpression(node, nextName)) {
+      hasNextCall = true;
+    }
+
+    if (!ts.isReturnStatement(node)) {
+      return;
+    }
+
+    if (!node.expression) {
+      diagnostics.push({
+        code: "pp-middleware-next-bare-return",
+        category: ts.DiagnosticCategory.Warning,
+        message: "This +middleware.js branch returns before next() and does not send a response.",
+        start: node.getStart(sourceFile),
+        end: node.getEnd(),
+      });
+      return;
+    }
+
+    if (!isEmptyObjectLiteralExpression(node.expression)) {
+      return;
+    }
+
+    diagnostics.push({
+      code: "pp-middleware-next-empty-return",
+      category: ts.DiagnosticCategory.Warning,
+      message: "Returning {} from +middleware.js with next stops the chain without sending a response.",
+      start: node.getStart(sourceFile),
+      end: node.getEnd(),
+    });
+  });
+
+  if (!hasNextCall) {
+    diagnostics.push({
+      code: "pp-middleware-next-missing-call",
+      category: ts.DiagnosticCategory.Warning,
+      message: "+middleware.js declares next but never calls next(). Call next() to continue, or remove the next parameter.",
+      start: nextParameter.getStart(sourceFile),
+      end: nextParameter.getEnd(),
+    });
+  }
+
+  return diagnostics;
+}
+
 function collectIncludeContextDiagnostics(scriptText, options = {}) {
   const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-agents-include.ts", scriptText);
   const diagnostics = [];
@@ -1241,6 +1496,14 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText, opti
   }
 
   for (const diagnostic of collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText, { pathContexts })) {
+    diagnostics.push(diagnostic);
+  }
+
+  for (const diagnostic of collectRedirectReturnDiagnostics(filePath, analysisText, { sourceFile: analysisSourceFile })) {
+    diagnostics.push(diagnostic);
+  }
+
+  for (const diagnostic of collectMiddlewareNextDiagnostics(filePath, analysisText, { sourceFile: analysisSourceFile })) {
     diagnostics.push(diagnostic);
   }
 
