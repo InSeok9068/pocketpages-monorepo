@@ -1,9 +1,9 @@
 FROM node:20-alpine AS deps
 
-WORKDIR /workspace/apps/kjca
+WORKDIR /app/apps/kjca
 COPY apps/kjca/package*.json ./
-COPY packages /workspace/packages
-RUN cd /workspace/packages/utils && npm ci --omit=dev
+COPY packages /app/packages
+RUN cd /app/packages/utils && npm ci --omit=dev
 RUN npm ci --omit=dev
 
 FROM alpine:3.20 AS pocketbase
@@ -23,16 +23,16 @@ RUN case "${TARGETARCH}" in \
 
 FROM alpine:3.20
 
-ENV CODE_ROOT=/workspace/apps/kjca
-ENV APP_ROOT=/app
+ENV CODE_ROOT=/app/apps/kjca
+ENV APP_ROOT=/app/apps/kjca
 
-WORKDIR /workspace/apps/kjca
+WORKDIR /app/apps/kjca
 
 RUN apk add --no-cache ca-certificates
 
 COPY apps/kjca/. .
-COPY --from=deps /workspace/packages /workspace/packages
-COPY --from=deps /workspace/apps/kjca/node_modules ./node_modules
+COPY --from=deps /app/packages /app/packages
+COPY --from=deps /app/apps/kjca/node_modules ./node_modules
 COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
 RUN mkdir -p /opt/defaults/pb_hooks \
   && if [ -d "${CODE_ROOT}/pb_hooks" ]; then cp -R "${CODE_ROOT}/pb_hooks/." /opt/defaults/pb_hooks/; fi
