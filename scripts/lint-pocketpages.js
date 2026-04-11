@@ -41,13 +41,23 @@
 // 37) resolve/include/asset/route 경로가 실제로 없는 정적 경로
 // 38) 존재하지 않는 PocketBase collection 문자열 사용
 // 39) params를 query처럼 읽는 패턴
+// 40) redirect() 뒤 return 누락
+// 41) 존재하지 않는 PocketBase field 문자열 사용
 
 const fs = require('fs')
 const path = require('path')
 const { buildTemplateVirtualText } = require('../tools/vscode-pocketpages/src/ejs-template')
 const { collectPathContexts, collectSchemaContexts } = require('../tools/vscode-pocketpages/src/custom-context')
 const { collectParamsFlowDiagnostics } = require('../tools/vscode-pocketpages/src/flow-analysis')
-const { PocketPagesProjectIndex } = require('../tools/vscode-pocketpages/src/project-index')
+const {
+  PocketPagesProjectIndex,
+} = require('../tools/vscode-pocketpages/src/project-index')
+const {
+  buildSchemaFieldDiagnostic,
+  collectRedirectReturnDiagnostics,
+  ts,
+} = require('../tools/vscode-pocketpages/src/language-service')
+const { extractServerBlocks } = require('../tools/vscode-pocketpages/src/script-server')
 
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
@@ -933,6 +943,76 @@ function collectQueryViaParamsMatches(context) {
   return unique(matches)
 }
 
+function collectRedirectMissingReturnMatches(context) {
+  const matches = []
+
+  for (const file of context.lintCodeFiles) {
+    if (file.isEjs) {
+      const blocks = extractServerBlocks(file.content)
+
+      for (const block of blocks) {
+        const diagnostics = collectRedirectReturnDiagnostics(file.absPath, block.content, {
+          sourceFile: ts.createSourceFile(`${file.absPath}.__redirect__.ts`, block.content, ts.ScriptTarget.Latest, true),
+          useTopLevelStatements: true,
+        })
+
+        for (const diagnostic of diagnostics) {
+          if (diagnostic.code !== 'pp-redirect-missing-return' || typeof diagnostic.start !== 'number') {
+            continue
+          }
+
+          const lineNumber = lineNumberAt(file.content, block.contentStart + diagnostic.start)
+          matches.push(formatLintLineMatch(file, lineNumber))
+        }
+      }
+
+      continue
+    }
+
+    const diagnostics = collectRedirectReturnDiagnostics(file.absPath, file.content, {
+      sourceFile: ts.createSourceFile(file.absPath, file.content, ts.ScriptTarget.Latest, true),
+    })
+
+    for (const diagnostic of diagnostics) {
+      if (diagnostic.code !== 'pp-redirect-missing-return' || typeof diagnostic.start !== 'number') {
+        continue
+      }
+
+      const lineNumber = lineNumberAt(file.content, diagnostic.start)
+      matches.push(formatLintLineMatch(file, lineNumber))
+    }
+  }
+
+  return unique(matches)
+}
+
+function collectUnknownFieldMatches(context) {
+  const matches = []
+
+  for (const file of context.lintCodeFiles) {
+    const analysisText = getLintAnalysisText(file)
+    const schemaContexts = collectSchemaContexts(analysisText, {
+      collectionMethodNames: context.collectionMethodNames,
+    })
+
+    for (const schemaContext of schemaContexts) {
+      if (schemaContext.kind !== 'record-field') {
+        continue
+      }
+
+      const diagnostic = buildSchemaFieldDiagnostic(context.projectIndex, schemaContext, analysisText)
+      if (!diagnostic || diagnostic.code !== 'pp-schema-field' || typeof diagnostic.start !== 'number') {
+        continue
+      }
+
+      const lineNumber = lineNumberAt(analysisText, diagnostic.start)
+      matches.push(formatLintLineMatch(file, lineNumber))
+    }
+  }
+
+  return unique(matches)
+}
+
 function lintService(context) {
   console.log(`Checking service: ${context.serviceName}`)
 
@@ -1202,6 +1282,12 @@ function lintService(context) {
     'Invalid flash handling. Use redirect(path, { message }) instead of manually building ?__flash=....',
     manualFlashMatches,
   )
+  const redirectMissingReturnMatches = collectRedirectMissingReturnMatches(context)
+  printMatches(
+    context.serviceName,
+    'Invalid redirect() control flow. Return after redirect() so PocketPages execution stops explicitly.',
+    redirectMissingReturnMatches,
+  )
 
   const unresolvedPathMatches = collectUnresolvedPathMatches(context)
   printMatches(
@@ -1230,6 +1316,12 @@ function lintService(context) {
     context.serviceName,
     'Invalid PocketBase collection name. Use a collection that exists in pb_schema.json.',
     unknownCollectionMatches,
+  )
+  const unknownFieldMatches = collectUnknownFieldMatches(context)
+  printMatches(
+    context.serviceName,
+    'Invalid PocketBase field name. Use a field that exists in pb_schema.json for the inferred collection.',
+    unknownFieldMatches,
   )
 
   const queryViaParamsMatches = collectQueryViaParamsMatches(context)

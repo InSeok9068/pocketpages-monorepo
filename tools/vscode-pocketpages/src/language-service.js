@@ -4537,6 +4537,8 @@ class PocketPagesLanguageServiceManager {
 
 module.exports = {
   PocketPagesLanguageServiceManager,
+  buildSchemaFieldDiagnostic,
+  collectRedirectReturnDiagnostics,
   findAppRoot,
   ts,
 };
