@@ -1,4 +1,5 @@
 {
+  "html.validate.styles": false,
   "html.validate.scripts": false,
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
