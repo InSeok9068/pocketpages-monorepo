@@ -408,6 +408,14 @@ export {}
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+delete.js'),
     `module.exports = function () {\n  return ''\n}\n`
   )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+put.js'),
+    `module.exports = function () {\n  return ''\n}\n`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+patch.js'),
+    `module.exports = function () {\n  return ''\n}\n`
+  )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'), `console.log('reader')\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'vendor', 'jszip-3.10.1.min.js'), `window.JSZip = {}\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'card.css'), `.board-card { color: #222; }\n`)
@@ -462,6 +470,8 @@ redirect('/sign-in')
 <form action="/feedback" method="post"></form>
 <button hx-post="/feedback"></button>
 <button hx-delete="/feedback"></button>
+<button hx-put="/feedback"></button>
+<button hx-patch="/feedback"></button>
 `
   )
   writeFile(
@@ -765,6 +775,8 @@ module.exports = {
     feedbackLoadFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+load.js'),
     feedbackPostFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+post.js'),
     feedbackDeleteFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+delete.js'),
+    feedbackPutFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+put.js'),
+    feedbackPatchFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+patch.js'),
     secondarySiteIndexFilePath: path.join(secondaryAppRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'),
     secondaryJournalServiceFilePath: path.join(secondaryAppRoot, 'pb_hooks', 'pages', '_private', 'journal-service.js'),
     secondaryStatusBadgeFilePath: path.join(secondaryAppRoot, 'pb_hooks', 'pages', '_private', 'status-badge.ejs'),
@@ -1462,6 +1474,19 @@ boardService.readAuthState(
     if (!resolvePathTargetInfo || normalizeFilePath(resolvePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.boardServiceFilePath)) {
       throw new Error(`Expected resolve() path target info. Got: ${JSON.stringify(resolvePathTargetInfo)}`)
     }
+    const mjsResolvePathTargetInfo = service.getPathTargetInfo(
+      fixture.mjsConsumerFilePath,
+      mjsConsumerText,
+      mjsConsumerText.indexOf('cjs-state-service') + 2
+    )
+    if (!mjsResolvePathTargetInfo || normalizeFilePath(mjsResolvePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.cjsStateServiceFilePath)) {
+      throw new Error(`Expected .mjs resolve() path target info. Got: ${JSON.stringify(mjsResolvePathTargetInfo)}`)
+    }
+    const mjsDocumentLinks = service.getDocumentLinks(fixture.mjsConsumerFilePath, mjsConsumerText)
+    const mjsDocumentLinkTargets = mjsDocumentLinks.map((entry) => normalizeFilePath(entry.targetFilePath))
+    if (!mjsDocumentLinkTargets.includes(normalizeFilePath(fixture.cjsStateServiceFilePath))) {
+      throw new Error(`Expected .mjs resolve() document link target. Got: ${mjsDocumentLinkTargets.join(', ')}`)
+    }
 
     const groupedResolveText = `<script server>
 const roles = {
@@ -1625,6 +1650,27 @@ const roles = {
     ) {
       throw new Error(`Expected __hooks require() path target info. Got: ${JSON.stringify(hooksRequirePathTargetInfo)}`)
     }
+    const hooksConcatRequireText = fs.readFileSync(fixture.htmlToTextConcatConsumerFilePath, 'utf8')
+    const hooksConcatRequireOffset = hooksConcatRequireText.indexOf('/pages/_private/vendor/html-to-text.bundle.js') + 5
+    const hooksConcatRequireDefinition = service.getDefinitionTarget(
+      fixture.htmlToTextConcatConsumerFilePath,
+      hooksConcatRequireText,
+      hooksConcatRequireOffset
+    )
+    if (!hooksConcatRequireDefinition || normalizeFilePath(hooksConcatRequireDefinition) !== normalizeFilePath(fixture.htmlToTextBundleFilePath)) {
+      throw new Error(`Expected __hooks string-concatenation require() definition target. Got: ${JSON.stringify(hooksConcatRequireDefinition)}`)
+    }
+    const hooksConcatRequirePathTargetInfo = service.getPathTargetInfo(
+      fixture.htmlToTextConcatConsumerFilePath,
+      hooksConcatRequireText,
+      hooksConcatRequireOffset
+    )
+    if (
+      !hooksConcatRequirePathTargetInfo
+      || normalizeFilePath(hooksConcatRequirePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.htmlToTextBundleFilePath)
+    ) {
+      throw new Error(`Expected __hooks string-concatenation require() path target info. Got: ${JSON.stringify(hooksConcatRequirePathTargetInfo)}`)
+    }
 
     const resolvedGlobalAssetTarget = service.projectIndex.resolveAssetTarget(
       fixture.boardsFilePath,
@@ -1649,6 +1695,75 @@ const roles = {
     )
     if (!hrefPathTargetInfo || normalizeFilePath(hrefPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.boardsFilePath)) {
       throw new Error(`Expected href path target info. Got: ${JSON.stringify(hrefPathTargetInfo)}`)
+    }
+    const feedbackActionPathTargetInfo = indexService.getPathTargetInfo(
+      fixture.siteIndexFilePath,
+      `<form action="/feedback" method="post"></form>\n`,
+      `<form action="/feedback" method="post"></form>\n`.indexOf('/feedback') + 2
+    )
+    if (
+      !feedbackActionPathTargetInfo
+      || normalizeFilePath(feedbackActionPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.feedbackPostFilePath)
+    ) {
+      throw new Error(`Expected action path target info for feedback POST route. Got: ${JSON.stringify(feedbackActionPathTargetInfo)}`)
+    }
+    const feedbackHtmxPostPathTargetInfo = indexService.getPathTargetInfo(
+      fixture.siteIndexFilePath,
+      `<button hx-post="/feedback"></button>\n`,
+      `<button hx-post="/feedback"></button>\n`.indexOf('/feedback') + 2
+    )
+    if (
+      !feedbackHtmxPostPathTargetInfo
+      || normalizeFilePath(feedbackHtmxPostPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.feedbackPostFilePath)
+    ) {
+      throw new Error(`Expected hx-post path target info for feedback POST route. Got: ${JSON.stringify(feedbackHtmxPostPathTargetInfo)}`)
+    }
+    const feedbackHtmxDeletePathTargetInfo = indexService.getPathTargetInfo(
+      fixture.siteIndexFilePath,
+      `<button hx-delete="/feedback"></button>\n`,
+      `<button hx-delete="/feedback"></button>\n`.indexOf('/feedback') + 2
+    )
+    if (
+      !feedbackHtmxDeletePathTargetInfo
+      || normalizeFilePath(feedbackHtmxDeletePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.feedbackDeleteFilePath)
+    ) {
+      throw new Error(`Expected hx-delete path target info for feedback DELETE route. Got: ${JSON.stringify(feedbackHtmxDeletePathTargetInfo)}`)
+    }
+    const feedbackHtmxPutPathTargetInfo = indexService.getPathTargetInfo(
+      fixture.siteIndexFilePath,
+      `<button hx-put="/feedback"></button>\n`,
+      `<button hx-put="/feedback"></button>\n`.indexOf('/feedback') + 2
+    )
+    if (
+      !feedbackHtmxPutPathTargetInfo
+      || normalizeFilePath(feedbackHtmxPutPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.feedbackPutFilePath)
+    ) {
+      throw new Error(`Expected hx-put path target info for feedback PUT route. Got: ${JSON.stringify(feedbackHtmxPutPathTargetInfo)}`)
+    }
+    const feedbackHtmxPatchPathTargetInfo = indexService.getPathTargetInfo(
+      fixture.siteIndexFilePath,
+      `<button hx-patch="/feedback"></button>\n`,
+      `<button hx-patch="/feedback"></button>\n`.indexOf('/feedback') + 2
+    )
+    if (
+      !feedbackHtmxPatchPathTargetInfo
+      || normalizeFilePath(feedbackHtmxPatchPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.feedbackPatchFilePath)
+    ) {
+      throw new Error(`Expected hx-patch path target info for feedback PATCH route. Got: ${JSON.stringify(feedbackHtmxPatchPathTargetInfo)}`)
+    }
+    const jsRedirectText = `module.exports = function () {\n  redirect('/sign-in')\n  return\n}\n`
+    const jsRedirectPathTargetInfo = service.getPathTargetInfo(
+      fixture.feedbackLoadFilePath,
+      jsRedirectText,
+      jsRedirectText.indexOf('/sign-in') + 2
+    )
+    if (!jsRedirectPathTargetInfo || normalizeFilePath(jsRedirectPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.siteSignInFilePath)) {
+      throw new Error(`Expected JS redirect() path target info. Got: ${JSON.stringify(jsRedirectPathTargetInfo)}`)
+    }
+    const jsRedirectDocumentLinks = service.getDocumentLinks(fixture.feedbackLoadFilePath, jsRedirectText)
+    const jsRedirectDocumentLinkTargets = jsRedirectDocumentLinks.map((entry) => normalizeFilePath(entry.targetFilePath))
+    if (!jsRedirectDocumentLinkTargets.includes(normalizeFilePath(fixture.siteSignInFilePath))) {
+      throw new Error(`Expected JS redirect() document link target. Got: ${jsRedirectDocumentLinkTargets.join(', ')}`)
     }
 
     const partialReferenceText = `<div><%= flashMessage %></div>\n`
@@ -2515,6 +2630,14 @@ module.exports = {
     if (!feedbackDeleteReferenceQuery || feedbackDeleteReferenceQuery.kind !== 'route-file' || feedbackDeleteReferenceQuery.routePath !== '/feedback' || feedbackDeleteReferenceQuery.routeMethod !== 'DELETE') {
       throw new Error(`Expected DELETE route file reference query for /feedback. Got: ${JSON.stringify(feedbackDeleteReferenceQuery)}`)
     }
+    const feedbackPutReferenceQuery = service.getFileReferenceQuery(fixture.feedbackPutFilePath)
+    if (!feedbackPutReferenceQuery || feedbackPutReferenceQuery.kind !== 'route-file' || feedbackPutReferenceQuery.routePath !== '/feedback' || feedbackPutReferenceQuery.routeMethod !== 'PUT') {
+      throw new Error(`Expected PUT route file reference query for /feedback. Got: ${JSON.stringify(feedbackPutReferenceQuery)}`)
+    }
+    const feedbackPatchReferenceQuery = service.getFileReferenceQuery(fixture.feedbackPatchFilePath)
+    if (!feedbackPatchReferenceQuery || feedbackPatchReferenceQuery.kind !== 'route-file' || feedbackPatchReferenceQuery.routePath !== '/feedback' || feedbackPatchReferenceQuery.routeMethod !== 'PATCH') {
+      throw new Error(`Expected PATCH route file reference query for /feedback. Got: ${JSON.stringify(feedbackPatchReferenceQuery)}`)
+    }
 
     const feedbackPageReferences = service.getFileReferenceTargets(
       fixture.feedbackPageFilePath,
@@ -2528,6 +2651,14 @@ module.exports = {
       fixture.feedbackDeleteFilePath,
       fs.readFileSync(fixture.feedbackDeleteFilePath, 'utf8')
     )
+    const feedbackPutReferences = service.getFileReferenceTargets(
+      fixture.feedbackPutFilePath,
+      fs.readFileSync(fixture.feedbackPutFilePath, 'utf8')
+    )
+    const feedbackPatchReferences = service.getFileReferenceTargets(
+      fixture.feedbackPatchFilePath,
+      fs.readFileSync(fixture.feedbackPatchFilePath, 'utf8')
+    )
     const feedbackPageCallerMatches = feedbackPageReferences.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
     )
@@ -2535,6 +2666,12 @@ module.exports = {
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
     )
     const feedbackDeleteCallerMatches = feedbackDeleteReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
+    )
+    const feedbackPutCallerMatches = feedbackPutReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
+    )
+    const feedbackPatchCallerMatches = feedbackPatchReferences.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
     )
     if (feedbackPageCallerMatches.length !== 1) {
@@ -2545,6 +2682,12 @@ module.exports = {
     }
     if (feedbackDeleteCallerMatches.length !== 1) {
       throw new Error(`Expected hx-delete references for feedback DELETE route. Got: ${JSON.stringify(feedbackDeleteReferences)}`)
+    }
+    if (feedbackPutCallerMatches.length !== 1) {
+      throw new Error(`Expected hx-put references for feedback PUT route. Got: ${JSON.stringify(feedbackPutReferences)}`)
+    }
+    if (feedbackPatchCallerMatches.length !== 1) {
+      throw new Error(`Expected hx-patch references for feedback PATCH route. Got: ${JSON.stringify(feedbackPatchReferences)}`)
     }
 
     const hrefDefinition = indexService.getDefinitionTarget(
@@ -2617,6 +2760,22 @@ module.exports = {
     )
     if (!feedbackHtmxDeleteDefinition || normalizeFilePath(feedbackHtmxDeleteDefinition) !== normalizeFilePath(fixture.feedbackDeleteFilePath)) {
       throw new Error(`Expected hx-delete to resolve to feedback DELETE route. Got: ${feedbackHtmxDeleteDefinition}`)
+    }
+    const feedbackHtmxPutDefinition = indexService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<button hx-put="/feedback"></button>\n`,
+      `<button hx-put="/feedback"></button>\n`.indexOf('/feedback') + 2
+    )
+    if (!feedbackHtmxPutDefinition || normalizeFilePath(feedbackHtmxPutDefinition) !== normalizeFilePath(fixture.feedbackPutFilePath)) {
+      throw new Error(`Expected hx-put to resolve to feedback PUT route. Got: ${feedbackHtmxPutDefinition}`)
+    }
+    const feedbackHtmxPatchDefinition = indexService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<button hx-patch="/feedback"></button>\n`,
+      `<button hx-patch="/feedback"></button>\n`.indexOf('/feedback') + 2
+    )
+    if (!feedbackHtmxPatchDefinition || normalizeFilePath(feedbackHtmxPatchDefinition) !== normalizeFilePath(fixture.feedbackPatchFilePath)) {
+      throw new Error(`Expected hx-patch to resolve to feedback PATCH route. Got: ${feedbackHtmxPatchDefinition}`)
     }
 
     const dynamicHrefDefinition = indexService.getDefinitionTarget(
@@ -3284,6 +3443,31 @@ metaPayload.trim()
     if (!missingIncludeDiagnostics.some((entry) => entry.code === 'pp-unresolved-include-path')) {
       throw new Error(`Expected unresolved include() path diagnostic for missing partial. Got: ${JSON.stringify(missingIncludeDiagnostics)}`)
     }
+    const unresolvedAssetDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script src="<%= asset('/assets/booklog-reder.js') %>"></script>\n`
+    )
+    const unresolvedAssetDiagnostic = unresolvedAssetDiagnostics.find((entry) => entry.code === 'pp-unresolved-asset-path')
+    if (!unresolvedAssetDiagnostic || !String(unresolvedAssetDiagnostic.message).includes('/assets/booklog-reader.js')) {
+      throw new Error(`Expected unresolved asset() path diagnostic with suggestion. Got: ${JSON.stringify(unresolvedAssetDiagnostics)}`)
+    }
+    const unresolvedAssetCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      `<script src="<%= asset('/assets/booklog-reder.js') %>"></script>\n`,
+      {
+        start: `<script src="<%= asset('/assets/booklog-reder.js') %>"></script>\n`.indexOf('/assets/booklog-reder.js'),
+        end:
+          `<script src="<%= asset('/assets/booklog-reder.js') %>"></script>\n`.indexOf('/assets/booklog-reder.js') +
+          '/assets/booklog-reder.js'.length,
+      }
+    )
+    if (
+      !unresolvedAssetCodeActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === '/assets/booklog-reader.js')
+      )
+    ) {
+      throw new Error(`Expected unresolved asset() path quick fix. Got: ${JSON.stringify(unresolvedAssetCodeActions)}`)
+    }
 
     const unresolvedRouteDiagnostics = service.getDiagnostics(
       fixture.siteIndexFilePath,
@@ -3677,6 +3861,14 @@ const state = {
     if (!requireDocumentLinkTargets.includes(normalizeFilePath(fixture.htmlToTextBundleFilePath))) {
       throw new Error(`Expected __hooks require() document link target. Got: ${requireDocumentLinkTargets.join(', ')}`)
     }
+    const concatRequireDocumentLinks = service.getDocumentLinks(
+      fixture.htmlToTextConcatConsumerFilePath,
+      fs.readFileSync(fixture.htmlToTextConcatConsumerFilePath, 'utf8')
+    )
+    const concatRequireDocumentLinkTargets = concatRequireDocumentLinks.map((entry) => normalizeFilePath(entry.targetFilePath))
+    if (!concatRequireDocumentLinkTargets.includes(normalizeFilePath(fixture.htmlToTextBundleFilePath))) {
+      throw new Error(`Expected __hooks string-concatenation require() document link target. Got: ${concatRequireDocumentLinkTargets.join(', ')}`)
+    }
 
     const groupedResolveDocumentLinks = service.getDocumentLinks(fixture.boardsFilePath, groupedResolveText)
     const groupedResolveTargets = groupedResolveDocumentLinks.map((entry) => normalizeFilePath(entry.targetFilePath))
@@ -3724,6 +3916,12 @@ const state = {
     }
     if (!routeMethodDocumentLinkTargets.includes(normalizeFilePath(fixture.feedbackDeleteFilePath))) {
       throw new Error(`Expected hx-delete method route document link target. Got: ${routeMethodDocumentLinkTargets.join(', ')}`)
+    }
+    if (!routeMethodDocumentLinkTargets.includes(normalizeFilePath(fixture.feedbackPutFilePath))) {
+      throw new Error(`Expected hx-put method route document link target. Got: ${routeMethodDocumentLinkTargets.join(', ')}`)
+    }
+    if (!routeMethodDocumentLinkTargets.includes(normalizeFilePath(fixture.feedbackPatchFilePath))) {
+      throw new Error(`Expected hx-patch method route document link target. Got: ${routeMethodDocumentLinkTargets.join(', ')}`)
     }
 
     const dynamicRouteDocumentLinks = indexService.getDocumentLinks(
