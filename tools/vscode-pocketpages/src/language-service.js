@@ -1625,20 +1625,17 @@ function buildSchemaFieldDiagnostic(projectIndex, context, analysisText, offsetB
     return null;
   }
 
-  if (reference.confidence === "low") {
+  // Schema field diagnostics should stay conservative. Medium-confidence
+  // collection guesses are useful for completion, but too noisy for editor
+  // warnings on generic names like row/item/entry.
+  if (reference.confidence !== "high") {
     return null;
   }
 
   return {
     code: "pp-schema-field",
-    category:
-      reference.confidence === "high"
-        ? ts.DiagnosticCategory.Warning
-        : ts.DiagnosticCategory.Suggestion,
-    message:
-      reference.confidence === "high"
-        ? `Unknown field "${context.value}" for collection "${reference.collectionName}".`
-        : `Possible unknown field "${context.value}". Inferred collection: "${reference.collectionName}" (${reference.confidence} confidence).`,
+    category: ts.DiagnosticCategory.Warning,
+    message: `Unknown field "${context.value}" for collection "${reference.collectionName}".`,
     start: offsetBase + context.start,
     end: offsetBase + context.end,
   };

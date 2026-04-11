@@ -2551,6 +2551,22 @@ module.exports = {
       )
     }
 
+    const mediumConfidenceSchemaDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+const weekTextRows = $app.findRecordsByFilter('posts')
+const weekResults = $app.findRecordsByFilter('boards')
+weekTextRows.map((row) => String(row.get('title') || '').trim())
+</script>\n`
+    )
+    if (mediumConfidenceSchemaDiagnostics.some((entry) => entry.code === 'pp-schema-field')) {
+      throw new Error(
+        `Expected medium-confidence generic row/item schema hints to stay suppressed. Got: ${mediumConfidenceSchemaDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
     const typedRecordGetText = `<script server>
 const board = $app.findRecordById('boards', 'board-1')
 const boardName = board.get('name')
