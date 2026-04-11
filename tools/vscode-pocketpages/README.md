@@ -2,61 +2,188 @@
 
 PocketPages 프로젝트를 위한 VS Code 전용 언어 확장입니다.
 
-이 확장은 `.ejs`와 `pb_hooks/pages/**/*.js|cjs|mjs`를 일반 HTML/JavaScript 파일이 아니라, PocketPages의 라우팅 규칙, `_private` 탐색 모델, `<script server>` 문맥, PocketBase 스키마, 저장소 AGENTS 규칙까지 포함한 도메인 문서로 해석합니다.
+이 확장은 PocketPages 코드를 일반 HTML/JavaScript로 보지 않고, 서비스 루트와 `pb_hooks/pages` 구조, `_private` 해석 규칙, `pocketpages-globals.d.ts`, `pb_schema.json`, 저장소 AGENTS 규칙까지 포함한 도메인 문서로 해석합니다.
 
-즉, `resolve()`, `include()`, `redirect()`, `href`, `action`, `hx-*`, `record.get('field')` 같은 문자열 기반 연결점을 편집기 수준의 탐색, 자동완성, 진단 대상으로 바꿔주는 확장입니다.
+핵심 목표는 문자열 기반 연결점을 편집기 기능으로 바꾸는 것입니다. 예를 들면 `resolve()`, `include()`, `asset()`, `redirect()`, `href`, `action`, `hx-*`, `require(\`${__hooks}/...\`)`, `record.get('field')` 같은 패턴을 completion, navigation, diagnostics 대상으로 다룹니다.
 
-## 핵심 기능
+## 대상 범위
 
-| 구분 | 지원 기능 | 설명 |
-| --- | --- | --- |
-| EJS 서버 코드 | `<script server>` 분석 | PocketPages 서버 실행 문맥으로 인식하여 completion, hover, signature help, diagnostics 제공 |
-| EJS 템플릿 | `<% %>`, `<%= %>`, `<%- %>` 분석 | 템플릿 표현식도 JS로 분석하고 같은 파일의 서버 선언과 연결 |
-| 경로 해석 | `resolve()`, `include()`, `href`, `action`, `hx-*`, `redirect()` | 경로 completion, definition 이동, document link 이동 지원 |
-| 역참조 탐색 | 호출부 찾기 | `_private` partial/module, static route의 사용처 탐색 지원 |
-| `_private` 모듈 추적 | `resolve()` 기반 CommonJS 분석 | export 멤버 completion, definition, references, rename 지원 |
-| 스키마 검증 | PocketBase 컬렉션/필드 문자열 검사 | `pb_schema.json` 기반 completion과 unknown collection/field diagnostics 제공 |
-| partial locals | `include(..., { ... })` locals 추론 | partial 내부 locals completion, hover, 일부 diagnostics 지원 |
-| 규칙 진단 | AGENTS-aware diagnostics | 저장소 규칙 위반 패턴을 편집 중 바로 진단 |
-| Quick Fix | 일부 규칙 위반 자동 수정 | 대표적인 PocketPages 규칙 위반 패턴을 빠르게 교정 |
-| 편집 UX | hover, CodeLens, context menu | target 경로 hover, reference count CodeLens, 참조 탐색 명령 제공 |
+이 확장이 직접 지원하는 편집 대상은 다음과 같습니다.
 
-## 분석 기준
+- `apps/<service>` 아래의 PocketPages 앱
+- 모든 `.ejs` 파일
+- `pb_hooks/pages/**/*.js`
+- `pb_hooks/pages/**/*.cjs`
+- `pb_hooks/pages/**/*.mjs`
 
-확장은 현재 파일만 보지 않고 서비스 단위 문맥을 구성해 해석합니다.
+다음 파일은 의도적으로 PocketPages code index에서 제외됩니다.
+
+- `pb_hooks/pages/assets/**/*.min.js|cjs|mjs`
+- `pb_hooks/pages/**/vendor/**` 아래의 클라이언트 자산 스크립트
+
+즉 `.js`라고 해서 모두 PocketPages 언어 기능이 붙는 것은 아니고, JS 계열은 `pb_hooks/pages` 범위 안에서만 지원합니다. 예를 들어 `pb_hooks/jobs/*.js`는 이 확장의 핵심 범위 밖입니다.
+
+## 무엇을 이해하나
+
+확장은 현재 파일만 보지 않고 서비스 단위 문맥을 구성합니다.
 
 - `apps/<service>/pb_hooks/pages`
-- 서비스별 `pb_data/types.d.ts`
-- 서비스별 `pocketpages-globals.d.ts`
-- 서비스별 `pb_schema.json`
-- 레포의 AGENTS 규칙 패턴
+- `apps/<service>/pb_data/types.d.ts`
+- `apps/<service>/pocketpages-globals.d.ts`
+- `apps/<service>/types.d.ts`
+- `apps/<service>/pb_schema.json`
+- 저장소 AGENTS 패턴
 
-## 지원 범위
+또한 `.ejs`는 그대로 분석하지 않고 `<script server>` 블록, 템플릿 표현식, include locals 정보를 가상 TypeScript 문서로 구성해 분석합니다.
 
-| 범위 | 내용 |
-| --- | --- |
-| 대상 프로젝트 | `apps/<service>` 아래 PocketPages 앱 |
-| 대상 파일 | `.ejs`, `pb_hooks/pages/**/*.js|cjs|mjs` |
-| 참조 메타데이터 | `pb_data/types.d.ts`, `pocketpages-globals.d.ts`, `pb_schema.json` |
+## 실제 제공 기능
 
-## 현재 범위 밖
+### 1. EJS 분석
 
-| 미지원 항목 | 설명 |
-| --- | --- |
-| 코드 포맷팅 | formatter 역할은 하지 않음 |
-| HTML 구조 품질 검사 | 일반적인 HTML lint 전체를 대체하지 않음 |
-| UnoCSS/Tailwind 클래스 검사 | 클래스 유효성 검사는 제공하지 않음 |
-| 완전한 동적 문자열 해석 | 모든 런타임 경로를 100% 해석하지 않음 |
-| 완전한 데이터 흐름 분석 | 임의 런타임 값 흐름 전체 추적은 범위 밖 |
+- `<script server>` 내부 completion
+- `<% %>`, `<%= %>`, `<%- %>` 내부 completion
+- EJS 내부 심볼 quick info hover
+- `include()` 호출 signature help
+- EJS semantic tokens
+- EJS/server-template boundary CodeLens 및 장식선
+- EJS 템플릿과 같은 파일의 서버 선언 연결
+- include locals를 partial 내부 타입으로 연결
+
+### 2. JS/CJS/MJS 페이지 코드 분석
+
+- `pb_hooks/pages/**/*.js|cjs|mjs`에서 completion
+- definition, references, rename
+- diagnostics, quick fix, inlay hints
+- 경로 hover 및 document link
+
+주의:
+
+- 일반 심볼 hover는 `.ejs`에서만 이 확장이 직접 제공합니다.
+- JS/CJS/MJS에서는 중복 hover를 줄이기 위해 일반 quick info hover를 별도로 덧붙이지 않고, 기본 JS/TS hover에 맡깁니다.
+- 대신 경로 hover는 JS/CJS/MJS에서도 동작합니다.
+
+### 3. 경로 인텔리전스
+
+다음 패턴을 경로/타깃으로 해석합니다.
+
+- `resolve('...')`
+- `include('...')`
+- `asset('...')`
+- `redirect('/path')`
+- `href="/path"`
+- `action="/path"`
+- `hx-get`, `hx-post`, `hx-put`, `hx-patch`, `hx-delete`
+- 정적 `require('...')`
+- `require(\`${__hooks}/...\`)`
+- `require(__hooks + '/...')`
+
+지원되는 동작은 다음과 같습니다.
+
+- 경로 completion
+- definition 이동
+- hover로 타깃 파일 표시
+- document link
+- `_private` partial/module, static route 기준 All File References
+- `_private` 파일 rename 시 호출부 경로 자동 보정
+
+### 4. `_private` partial / module 추적
+
+- nearest `_private` 우선 resolve
+- `../`를 이용한 상위 `_private` 해석
+- `resolve('roles/board')` 같은 grouped path 해석
+- `_private` CommonJS export 멤버 completion
+- resolve 결과 멤버 definition / references / rename
+- static `require('./module')` 호출부 추적
+- `_private/*.ejs` partial caller 추적
+- `include(..., { ... })` locals shape 추론
+
+### 5. PocketBase 스키마 인텔리전스
+
+`pb_schema.json`을 기준으로 컬렉션/필드 정보를 제공합니다.
+
+- 컬렉션 이름 completion
+- `record.get('field')` 필드 completion
+- `record.set('field', value)` 계열 필드 diagnostics
+- unknown collection diagnostics
+- unknown field diagnostics
+- 앱별 schema isolation
+- invalid schema 이후 last-known-good fallback
+- schema 복구 후 캐시 회복
+
+지원 검증 대상에는 `$app.findRecordsByFilter()`, `findCollectionByNameOrId()`, `recordQuery()`, `isCollectionNameUnique()` 같은 컬렉션 식별자 메서드가 포함됩니다.
+
+### 6. diagnostics / quick fix
+
+현재 구현된 진단 축은 다음과 같습니다.
+
+- unknown PocketBase collection / field
+- `resolve('/_private/...')` 또는 `resolve('_private/...')` 경고
+- unresolved `resolve()` / `include()` / route path
+- include locals 누락 / 오타 / 불필요한 full context 전달
+- `params`를 query처럼 사용하는 패턴 경고
+- 수동 `__flash` query 문자열 경고
+- `redirect()` 후 `return` 누락 경고
+- `+middleware.js`의 `next()` 흐름 경고
+- 클라이언트 `<script>` 구문 오류 감지
+
+일부 diagnostics에는 quick fix가 붙습니다.
+
+- `_private` prefix 제거
+- include local 키 오타 수정
+- unresolved path suggestion
+
+### 7. 추가 편집 UX
+
+- include target CodeLens
+- route CodeLens
+- partial/module/route caller 수 CodeLens
+- All File References 명령
+- inlay hints
 
 ## 제공 명령
 
 | 명령 | 설명 |
 | --- | --- |
-| `PocketPages: Probe Current EJS File` | 현재 파일이 PocketPages 앱으로 인식되는지와 진단 수를 빠르게 확인 |
-| `PocketPages: Refresh Server Script Diagnostics` | 현재 문서의 PocketPages 진단을 강제로 다시 계산 |
-| `PocketPages: Reload Caches` | 경로, 스키마, 참조 캐시를 다시 적재 |
-| `PocketPages: All File References` | 현재 파일 기준의 include/resolve/route 사용처를 한 번에 확인 |
+| `PocketPages: Probe Current EJS File` | 현재 활성 파일의 `languageId`, 경로, app root 인식 여부, diagnostics 개수를 빠르게 확인 |
+| `PocketPages: Refresh Server Script Diagnostics` | 현재 활성 문서의 PocketPages diagnostics를 즉시 다시 계산 |
+| `PocketPages: Reload Caches` | 현재 앱 또는 전체 확장의 경로 / schema / reference 캐시를 다시 적재 |
+| `PocketPages: All File References` | `_private` partial, `_private` module, static route 파일의 호출부를 한 번에 표시 |
+
+## 지원하지 않는 것
+
+이 확장은 다음 역할을 목표로 하지 않습니다.
+
+- formatter
+- 일반적인 HTML lint 전체 대체
+- UnoCSS / Tailwind 클래스 검사
+- 임의 동적 문자열의 완전 해석
+- 완전한 런타임 데이터 흐름 추적
+- `pb_hooks/jobs/*.js` 같은 비-`pb_hooks/pages` JS 전반 분석
+
+## 검증
+
+빠른 회귀 검증은 다음 명령으로 수행합니다.
+
+```bash
+npm run sanity-check
+```
+
+현재 `sanity-check`는 다음 축을 자동 검증합니다.
+
+- monorepo app-root isolation
+- `.ejs`, `.js`, `.cjs`, `.mjs` 분석
+- EJS server block / template completion / hover
+- typed include locals
+- resolve/include/asset/route/require navigation
+- `_private` module member definition / references / rename
+- `_private` file rename path rewrite
+- PocketBase schema completion / diagnostics / cache recovery
+- AGENTS-aware diagnostics
+- quick fix
+- CodeLens
+- document links
+- inlay hints
+- EJS semantic tokens
 
 ## 설치 및 실행
 
@@ -66,7 +193,7 @@ PocketPages 프로젝트를 위한 VS Code 전용 언어 확장입니다.
 2. `npm install`
 3. `F5`
 4. 열린 Extension Development Host에서 모노레포 루트를 엽니다.
-5. `.ejs` 또는 `pb_hooks/pages/**/*.js` 파일을 열어 동작을 확인합니다.
+5. `.ejs` 또는 `pb_hooks/pages/**/*.js|cjs|mjs` 파일을 열어 동작을 확인합니다.
 
 ### VSIX 패키징
 
@@ -82,16 +209,6 @@ npm run install:vscode-pocketpages
 
 설치 후에는 `Developer: Reload Window`를 실행해야 최신 코드가 반영됩니다.
 
-## 검증
-
-핵심 language feature를 빠르게 점검하려면 다음 명령을 사용합니다.
-
-```bash
-npm run sanity-check
-```
-
-이 명령은 completion, definition, rename, references, diagnostics, quick fix, document link가 기대대로 동작하는지 확인합니다.
-
 ## 문제 확인 체크포인트
 
 - 확장이 실제로 활성화되었는지
@@ -99,3 +216,4 @@ npm run sanity-check
 - 현재 파일이 `apps/<service>` 아래 PocketPages 앱으로 인식되는지
 - 서비스 루트에 `pb_data/types.d.ts`, `pocketpages-globals.d.ts`, `pb_schema.json`가 존재하는지
 - 현재 파일이 `.ejs` 또는 `pb_hooks/pages/**/*.js|cjs|mjs` 범위에 속하는지
+- JS 파일이라면 `pb_hooks/jobs`가 아니라 `pb_hooks/pages` 범위인지

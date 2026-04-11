@@ -340,6 +340,18 @@ const pageData = {
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'jobs', 'collect-weekly.ejs'), `<script server>\nresponse.json(200, { ok: true })\n</script>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'api', '+post.js'), `module.exports = function () {\n  return ''\n}\n`)
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', 'api', 'mjs-consumer.mjs'),
+    `const cjsStateService = resolve('cjs-state-service')
+const cjsState = cjsStateService.readCjsState()
+const records = $app.findRecordsByFilter('boards')
+
+module.exports = {
+  cjsState,
+  records,
+}
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
     `module.exports = function ({ request, resolve }, next) {\n  const boardService = resolve('board-service')\n  boardService.readAuthState({ request })\n  return next()\n}\n`
   )
@@ -367,6 +379,22 @@ module.exports = {
 
 module.exports = {
   boardService,
+}
+`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'cjs-state-service.cjs'),
+    `/**
+ * @returns {{ scope: string }}
+ */
+function readCjsState() {
+  return {
+    scope: 'cjs',
+  }
+}
+
+module.exports = {
+  readCjsState,
 }
 `
   )
@@ -551,8 +579,10 @@ module.exports = {
     propertyLocalsCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
     renameCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
+    mjsConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', 'mjs-consumer.mjs'),
     boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
     boardServiceConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service-consumer.js'),
+    cjsStateServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'cjs-state-service.cjs'),
     sharedServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'shared-service.js'),
     localSharedServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '_private', 'shared-service.js'),
     htmlToTextConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'html-to-text-consumer.js'),
@@ -1189,6 +1219,22 @@ boardService.readAuthState(
       )
     }
 
+    const mjsConsumerText = fs.readFileSync(fixture.mjsConsumerFilePath, 'utf8')
+    const mjsCompletionOffset = mjsConsumerText.indexOf('cjsStateService.') + 'cjsStateService.'.length
+    const mjsCompletion = service.getCompletionData(fixture.mjsConsumerFilePath, mjsConsumerText, mjsCompletionOffset)
+    const mjsCompletionNames = mjsCompletion ? mjsCompletion.entries.map((entry) => entry.name) : []
+    if (!mjsCompletionNames.includes('readCjsState')) {
+      throw new Error(`Expected .mjs resolve()-derived member completion for "readCjsState". Got: ${mjsCompletionNames.slice(0, 20).join(', ')}`)
+    }
+
+    const mjsCollectionText = `$app.findRecordsByFilter('bo')\n`
+    const mjsCollectionOffset = mjsCollectionText.indexOf('bo') + 'bo'.length
+    const mjsCollectionCompletion = service.getCustomCompletionData(fixture.mjsConsumerFilePath, mjsCollectionText, mjsCollectionOffset)
+    const mjsCollectionNames = mjsCollectionCompletion ? mjsCollectionCompletion.items.map((entry) => entry.label) : []
+    if (!mjsCollectionNames.includes('boards') || !mjsCollectionNames.includes('posts')) {
+      throw new Error(`Expected .mjs collection completions for "boards" and "posts". Got: ${mjsCollectionNames.slice(0, 20).join(', ')}`)
+    }
+
     const fieldText = `<script server>\nboard.get('na')\n</script>\n`
     const fieldOffset = fieldText.indexOf('na') + 'na'.length
     const fieldCompletion = service.getCustomCompletionData(fixture.boardShowFilePath, fieldText, fieldOffset)
@@ -1228,6 +1274,27 @@ boardService.readAuthState(
     )
     if (!resolveDefinition || !resolveDefinition.endsWith('/pb_hooks/pages/_private/board-service.js')) {
       throw new Error(`Expected resolve() definition target. Got: ${resolveDefinition}`)
+    }
+
+    const cjsResolveDefinition = service.getDefinitionTarget(
+      fixture.mjsConsumerFilePath,
+      mjsConsumerText,
+      mjsConsumerText.indexOf('cjs-state-service') + 2
+    )
+    if (!cjsResolveDefinition || normalizeFilePath(cjsResolveDefinition) !== normalizeFilePath(fixture.cjsStateServiceFilePath)) {
+      throw new Error(`Expected .mjs resolve() definition target for .cjs module. Got: ${cjsResolveDefinition}`)
+    }
+
+    const cjsResolvedMemberDefinition = service.getDefinitionTarget(
+      fixture.mjsConsumerFilePath,
+      mjsConsumerText,
+      mjsConsumerText.indexOf('readCjsState') + 2
+    )
+    if (!cjsResolvedMemberDefinition || typeof cjsResolvedMemberDefinition === 'string') {
+      throw new Error(`Expected .cjs resolved member definition target. Got: ${JSON.stringify(cjsResolvedMemberDefinition)}`)
+    }
+    if (normalizeFilePath(cjsResolvedMemberDefinition.filePath) !== normalizeFilePath(fixture.cjsStateServiceFilePath)) {
+      throw new Error(`Expected .cjs resolved member definition file. Got: ${JSON.stringify(cjsResolvedMemberDefinition)}`)
     }
 
     const resolvePathTargetInfo = service.getPathTargetInfo(
@@ -1804,6 +1871,49 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
     }
     if (jsResolveMiddlewareEdits.length !== 1) {
       throw new Error(`Expected JS resolve() rename to update current JS usage. Got: ${JSON.stringify(jsResolveMiddlewareEdits)}`)
+    }
+
+    const mjsRenameOffset = mjsConsumerText.indexOf('readCjsState') + 2
+    const mjsRenameInfo = service.getRenameInfo(fixture.mjsConsumerFilePath, mjsConsumerText, mjsRenameOffset)
+    if (!mjsRenameInfo || !mjsRenameInfo.canRename || mjsRenameInfo.placeholder !== 'readCjsState') {
+      throw new Error(`Expected .mjs -> .cjs rename info. Got: ${JSON.stringify(mjsRenameInfo)}`)
+    }
+
+    const mjsRenameEdits = service.getRenameEdits(
+      fixture.mjsConsumerFilePath,
+      mjsConsumerText,
+      mjsRenameOffset,
+      'readServerState'
+    )
+    if (!mjsRenameEdits || !mjsRenameEdits.canRename) {
+      throw new Error(`Expected .mjs -> .cjs rename edits. Got: ${JSON.stringify(mjsRenameEdits)}`)
+    }
+
+    const cjsModuleRenameEdits = mjsRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.cjsStateServiceFilePath)
+    )
+    const mjsConsumerRenameEdits = mjsRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.mjsConsumerFilePath)
+    )
+
+    if (cjsModuleRenameEdits.length < 2) {
+      throw new Error(`Expected .cjs module rename edits for declaration + export. Got: ${JSON.stringify(cjsModuleRenameEdits)}`)
+    }
+    if (mjsConsumerRenameEdits.length !== 1) {
+      throw new Error(`Expected .mjs caller rename edit. Got: ${JSON.stringify(mjsConsumerRenameEdits)}`)
+    }
+
+    const renamedCjsModuleText = applyEditsToText(fs.readFileSync(fixture.cjsStateServiceFilePath, 'utf8'), cjsModuleRenameEdits)
+    if (!renamedCjsModuleText.includes('function readServerState()')) {
+      throw new Error(`Expected renamed .cjs module declaration. Got: ${renamedCjsModuleText}`)
+    }
+    if (!renamedCjsModuleText.includes('module.exports = {\n  readServerState,')) {
+      throw new Error(`Expected renamed .cjs module export. Got: ${renamedCjsModuleText}`)
+    }
+
+    const renamedMjsConsumerText = applyEditsToText(mjsConsumerText, mjsConsumerRenameEdits)
+    if (!renamedMjsConsumerText.includes('cjsStateService.readServerState()')) {
+      throw new Error(`Expected renamed .mjs caller usage. Got: ${renamedMjsConsumerText}`)
     }
 
     const resolvePathReferenceOffset = renameText.indexOf('board-service') + 2
