@@ -596,17 +596,11 @@ function run() {
   if (!/registerInlayHintsProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesInlayHintsProvider\(manager\)\)/.test(extensionSource)) {
     throw new Error('Expected PocketPages inlay hints provider registration for code documents.')
   }
-  if (!/function getPocketPagesHoverIdentifierNames\(filePath\) \{[\s\S]*pocketpages-globals\.d\.ts[\s\S]*pocketPagesHoverIdentifierNameCache/.test(extensionSource)) {
-    throw new Error('Expected PocketPages hover identifiers to be augmented from pocketpages-globals.d.ts.')
+  if (!/const isEjsDocument = document\.uri\.fsPath\.endsWith\('\.ejs'\)\s*\n\s*const quickInfo = isEjsDocument \? service\.getQuickInfo\(document\.uri\.fsPath, documentText, offset\) : null/.test(extensionSource)) {
+    throw new Error('Expected PocketPages hover provider to limit quick info to EJS documents and avoid duplicate JS hover.')
   }
-  if (!/function shouldShowPocketPagesQuickInfo\(document, quickInfo\) \{[\s\S]*getPocketPagesHoverIdentifierNames\(document\.uri\.fsPath\)/.test(extensionSource)) {
-    throw new Error('Expected PocketPages hover helper to consult app hover identifiers from pocketpages-globals.d.ts.')
-  }
-  if (!/const quickInfo = service\.getQuickInfo\(document\.uri\.fsPath, documentText, offset\)[\s\S]*const hasPocketPagesQuickInfo = shouldShowPocketPagesQuickInfo\(document, quickInfo\)/.test(extensionSource)) {
-    throw new Error('Expected PocketPages hover provider to reuse quick info only when PocketPages-specific typing is detected.')
-  }
-  if (!/if \(!hasPocketPagesQuickInfo && \(!pathTargetInfo \|\| !pathTargetInfo\.targetFilePath\)\) \{\s*return null\s*\}/.test(extensionSource)) {
-    throw new Error('Expected PocketPages hover provider to skip generic symbol hover while keeping PocketPages path hover.')
+  if (!/if \(\(!quickInfo \|\| quickInfo\.start === null \|\| quickInfo\.end === null\) && !pathTargetInfo\) \{\s*return null\s*\}/.test(extensionSource)) {
+    throw new Error('Expected PocketPages hover provider to allow generic EJS quick info while still supporting path hover.')
   }
   if (!/const signatureHelp = service\.getCustomSignatureHelp\(document\.uri\.fsPath, documentText, offset\)/.test(extensionSource)) {
     throw new Error('Expected PocketPages signature help provider to use only custom PocketPages signatures.')
