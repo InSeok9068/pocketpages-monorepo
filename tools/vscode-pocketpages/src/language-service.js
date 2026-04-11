@@ -185,6 +185,16 @@ function collectStaticRequireCallContexts(documentText) {
   return contexts;
 }
 
+function getRequirePathContextAtOffset(documentText, offset) {
+  for (const context of collectStaticRequireCallContexts(documentText)) {
+    if (offset >= context.start && offset <= context.end) {
+      return context;
+    }
+  }
+
+  return null;
+}
+
 function getAppAmbientTypeFiles(appRoot) {
   return [
     path.join(appRoot, "pb_data", "types.d.ts"),
@@ -3092,7 +3102,25 @@ class ProjectLanguageService {
   }
 
   getPathTargetInfo(filePath, documentText, offset) {
-    return this.getPathReferenceContext(filePath, documentText, offset);
+    const pathReferenceContext = this.getPathReferenceContext(filePath, documentText, offset);
+    if (pathReferenceContext) {
+      return pathReferenceContext;
+    }
+
+    const requireContext = getRequirePathContextAtOffset(documentText, offset);
+    if (!requireContext) {
+      return null;
+    }
+
+    const targetFilePath = this.projectIndex.resolveRequireTarget(filePath, requireContext.value, requireContext);
+    if (!targetFilePath) {
+      return null;
+    }
+
+    return {
+      ...requireContext,
+      targetFilePath: normalizePath(targetFilePath),
+    };
   }
 
   getPrivateIncludeReferenceContext(filePath) {
@@ -3186,10 +3214,6 @@ class ProjectLanguageService {
 
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
       const codeFilePath = normalizePath(entry.filePath);
-      if (!isScriptFile(codeFilePath)) {
-        continue;
-      }
-
       const documentText =
         Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
 
@@ -3371,10 +3395,6 @@ class ProjectLanguageService {
     const edits = [];
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
       const filePath = normalizePath(entry.filePath);
-      if (!isScriptFile(filePath)) {
-        continue;
-      }
-
       const documentText = this.getCallerDocumentText(filePath, overrides);
       const requireContexts = collectStaticRequireCallContexts(documentText);
 
@@ -4186,6 +4206,11 @@ class ProjectLanguageService {
       }
     }
 
+    const requireContext = getRequirePathContextAtOffset(documentText, offset);
+    if (requireContext) {
+      return this.projectIndex.resolveRequireTarget(filePath, requireContext.value, requireContext);
+    }
+
     const resolvedModuleMemberContext = this.getResolvedModuleMemberContextForRename(filePath, documentText, offset);
     if (resolvedModuleMemberContext) {
       const moduleFilePath = this.projectIndex.resolveResolveTarget(filePath, resolvedModuleMemberContext.modulePath);
@@ -4427,6 +4452,21 @@ class ProjectLanguageService {
         targetFilePath,
         kind: pathContext.kind,
         value: pathContext.value,
+      });
+    }
+
+    for (const requireContext of collectStaticRequireCallContexts(documentText)) {
+      const targetFilePath = this.projectIndex.resolveRequireTarget(filePath, requireContext.value, requireContext);
+      if (!targetFilePath) {
+        continue;
+      }
+
+      links.push({
+        start: requireContext.start,
+        end: requireContext.end,
+        targetFilePath,
+        kind: requireContext.kind,
+        value: requireContext.value,
       });
     }
 

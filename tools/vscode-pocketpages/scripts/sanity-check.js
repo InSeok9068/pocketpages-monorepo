@@ -398,6 +398,15 @@ module.exports = {
 `
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'html-to-text-preview.ejs'),
+    `<script server>
+  const { compile } = require(\`\${__hooks}/pages/_private/vendor/html-to-text.bundle.js\`)
+  const htmlToText = compile({ wordwrap: false })
+</script>
+<div><%= htmlToText('<p>Hello</p>') %></div>
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'board.js'),
     `module.exports = {
   canAcceptPosts() {
@@ -548,6 +557,7 @@ module.exports = {
     localSharedServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '_private', 'shared-service.js'),
     htmlToTextConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'html-to-text-consumer.js'),
     htmlToTextConcatConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'html-to-text-consumer-concat.js'),
+    htmlToTextPageConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'html-to-text-preview.ejs'),
     htmlToTextBundleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'vendor', 'html-to-text.bundle.js'),
     boardRoleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'board.js'),
     postRoleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'post.js'),
@@ -1375,6 +1385,29 @@ const roles = {
       throw new Error(`Expected asset() path target info. Got: ${JSON.stringify(assetPathTargetInfo)}`)
     }
 
+    const hooksRequireText = fs.readFileSync(fixture.htmlToTextConsumerFilePath, 'utf8')
+    const hooksRequireOffset = hooksRequireText.indexOf('/pages/_private/vendor/html-to-text.bundle.js') + 5
+    const hooksRequireDefinition = service.getDefinitionTarget(
+      fixture.htmlToTextConsumerFilePath,
+      hooksRequireText,
+      hooksRequireOffset
+    )
+    if (!hooksRequireDefinition || normalizeFilePath(hooksRequireDefinition) !== normalizeFilePath(fixture.htmlToTextBundleFilePath)) {
+      throw new Error(`Expected __hooks require() definition target. Got: ${JSON.stringify(hooksRequireDefinition)}`)
+    }
+
+    const hooksRequirePathTargetInfo = service.getPathTargetInfo(
+      fixture.htmlToTextConsumerFilePath,
+      hooksRequireText,
+      hooksRequireOffset
+    )
+    if (
+      !hooksRequirePathTargetInfo
+      || normalizeFilePath(hooksRequirePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.htmlToTextBundleFilePath)
+    ) {
+      throw new Error(`Expected __hooks require() path target info. Got: ${JSON.stringify(hooksRequirePathTargetInfo)}`)
+    }
+
     const resolvedGlobalAssetTarget = service.projectIndex.resolveAssetTarget(
       fixture.boardsFilePath,
       '/assets/booklog-reader.js'
@@ -1908,12 +1941,13 @@ boardService.readSessionState({ request })
       fixture.htmlToTextBundleFilePath,
       fs.readFileSync(fixture.htmlToTextBundleFilePath, 'utf8')
     )
-    if (!hooksRequireReferences || hooksRequireReferences.length !== 2) {
-      throw new Error(`Expected __hooks require references for template-literal and concatenation callers. Got: ${JSON.stringify(hooksRequireReferences)}`)
+    if (!hooksRequireReferences || hooksRequireReferences.length !== 3) {
+      throw new Error(`Expected __hooks require references for JS and EJS callers. Got: ${JSON.stringify(hooksRequireReferences)}`)
     }
     if (
       normalizeFilePath(hooksRequireReferences[0].filePath) !== normalizeFilePath(fixture.htmlToTextConsumerFilePath)
       && normalizeFilePath(hooksRequireReferences[0].filePath) !== normalizeFilePath(fixture.htmlToTextConcatConsumerFilePath)
+      && normalizeFilePath(hooksRequireReferences[0].filePath) !== normalizeFilePath(fixture.htmlToTextPageConsumerFilePath)
     ) {
       throw new Error(`Expected __hooks require reference to point at an html-to-text consumer file. Got: ${JSON.stringify(hooksRequireReferences)}`)
     }
@@ -1923,6 +1957,13 @@ boardService.readSessionState({ request })
       )
     ) {
       throw new Error(`Expected __hooks string-concatenation require reference. Got: ${JSON.stringify(hooksRequireReferences)}`)
+    }
+    if (
+      !hooksRequireReferences.some(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.htmlToTextPageConsumerFilePath)
+      )
+    ) {
+      throw new Error(`Expected __hooks EJS require reference. Got: ${JSON.stringify(hooksRequireReferences)}`)
     }
 
     service.setDocumentOverride(
@@ -2031,8 +2072,8 @@ module.exports = {
       fixture.htmlToTextBundleFilePath,
       path.resolve(path.dirname(fixture.htmlToTextBundleFilePath), 'markdown-renderer.bundle.js')
     )
-    if (!hooksRequireRenameEdits || hooksRequireRenameEdits.length !== 2) {
-      throw new Error(`Expected __hooks require rename edits for template-literal and concatenation callers. Got: ${JSON.stringify(hooksRequireRenameEdits)}`)
+    if (!hooksRequireRenameEdits || hooksRequireRenameEdits.length !== 3) {
+      throw new Error(`Expected __hooks require rename edits for JS and EJS callers. Got: ${JSON.stringify(hooksRequireRenameEdits)}`)
     }
     if (
       !hooksRequireRenameEdits.some(
@@ -2060,6 +2101,16 @@ module.exports = {
     )
     if (!renamedHooksConcatConsumerText.includes("require(__hooks + '/pages/_private/vendor/markdown-renderer.bundle.js')")) {
       throw new Error(`Expected __hooks string-concatenation require path to update after module file rename. Got: ${renamedHooksConcatConsumerText}`)
+    }
+
+    const renamedHooksPageConsumerText = applyEditsToText(
+      fs.readFileSync(fixture.htmlToTextPageConsumerFilePath, 'utf8'),
+      hooksRequireRenameEdits.filter(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.htmlToTextPageConsumerFilePath)
+      )
+    )
+    if (!renamedHooksPageConsumerText.includes("require(`${__hooks}/pages/_private/vendor/markdown-renderer.bundle.js`)")) {
+      throw new Error(`Expected EJS __hooks require path to update after module file rename. Got: ${renamedHooksPageConsumerText}`)
     }
 
     const duplicatePartialCallerText = `<%- include('flash-alert.ejs', { flashMessage: 'Saved' }) %>\n<%- include('flash-alert.ejs', { flashMessage: 'Again' }) %>\n`
@@ -3339,6 +3390,15 @@ const state = {
     }
     if (!documentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/_private/flash-alert.ejs'))) {
       throw new Error(`Expected include() document link target. Got: ${documentLinkTargets.join(', ')}`)
+    }
+
+    const requireDocumentLinks = service.getDocumentLinks(
+      fixture.htmlToTextPageConsumerFilePath,
+      fs.readFileSync(fixture.htmlToTextPageConsumerFilePath, 'utf8')
+    )
+    const requireDocumentLinkTargets = requireDocumentLinks.map((entry) => normalizeFilePath(entry.targetFilePath))
+    if (!requireDocumentLinkTargets.includes(normalizeFilePath(fixture.htmlToTextBundleFilePath))) {
+      throw new Error(`Expected __hooks require() document link target. Got: ${requireDocumentLinkTargets.join(', ')}`)
     }
 
     const groupedResolveDocumentLinks = service.getDocumentLinks(fixture.boardsFilePath, groupedResolveText)

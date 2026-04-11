@@ -1143,6 +1143,7 @@ class PocketPagesProjectIndex {
       this.schemaCache = {
         schemaPath,
         mtimeMs: 0,
+        size: 0,
         collections: [],
         collectionsByName: new Map(),
       }
@@ -1150,7 +1151,7 @@ class PocketPagesProjectIndex {
     }
 
     const stats = fs.statSync(schemaPath)
-    if (this.schemaCache && this.schemaCache.mtimeMs === stats.mtimeMs) {
+    if (this.schemaCache && this.schemaCache.mtimeMs === stats.mtimeMs && this.schemaCache.size === stats.size) {
       return this.schemaCache
     }
 
@@ -1185,6 +1186,7 @@ class PocketPagesProjectIndex {
     this.schemaCache = {
       schemaPath,
       mtimeMs: stats.mtimeMs,
+      size: stats.size,
       collections,
       collectionsByName,
     }
