@@ -7,3 +7,4 @@ apps/*/pb_hooks/pages/assets/**/*.webp
 *.bundle.js
 *.min.js
 *.min.css
+.history
