@@ -74,6 +74,152 @@ function serializeDiagnostics(diagnostics) {
     })
 }
 
+function assertMatches(text, pattern, message) {
+  if (!pattern.test(text)) {
+    throw new Error(message)
+  }
+}
+
+function assertIncludes(collection, value, message) {
+  if (!collection.includes(value)) {
+    throw new Error(message)
+  }
+}
+
+function assertExtensionContracts(repoRoot) {
+  const extensionSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'extension.js'), 'utf8')
+  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'package.json'), 'utf8'))
+
+  assertMatches(
+    extensionSource,
+    /const updateDiagnostics = \(document\) => \{\s*if \(!isManagedPocketPagesDocument\(document\)\) \{\s*return\s*\}/,
+    'Expected updateDiagnostics() to cover both PocketPages pages and schema-support-only pb_hooks scripts.'
+  )
+  assertMatches(
+    extensionSource,
+    /function isPocketPagesCodeDocument\(document\) \{[\s\S]*normalizedPath\.includes\('\/pb_hooks\/pages\/'\)/,
+    'Expected PocketPages code document detection to limit JS diagnostics and overrides to pb_hooks/pages.'
+  )
+  assertMatches(
+    extensionSource,
+    /function isSchemaSupportOnlyHookScriptPath\(filePath\) \{[\s\S]*isPocketPagesHookScriptPath\(normalizedPath\)[\s\S]*!normalizedPath\.includes\('\/pb_hooks\/pages\/'\)/,
+    'Expected schema-support-only hook script detection for pb_hooks scripts outside pages.'
+  )
+  assertMatches(
+    extensionSource,
+    /registerCompletionItemProvider\(\s*COMPLETION_DOCUMENT_SELECTOR,\s*new PocketPagesCompletionProvider\(manager\)/,
+    'Expected completion provider registration to include schema-support-only pb_hooks scripts.'
+  )
+  assertMatches(
+    extensionSource,
+    /registerDocumentLinkProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesDocumentLinkProvider\(manager\)\)/,
+    'Expected document links to stay scoped to PocketPages page documents.'
+  )
+  assertMatches(
+    extensionSource,
+    /registerDefinitionProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesDefinitionProvider\(manager\)\)/,
+    'Expected definitions to stay scoped to PocketPages page documents.'
+  )
+  assertMatches(
+    extensionSource,
+    /registerReferenceProvider\(RENAME_DOCUMENT_SELECTOR,\s*new PocketPagesReferenceProvider\(manager\)\)/,
+    'Expected references to stay scoped to rename-capable PocketPages documents.'
+  )
+  assertMatches(
+    extensionSource,
+    /registerRenameProvider\(RENAME_DOCUMENT_SELECTOR,\s*new PocketPagesRenameProvider\(manager\)\)/,
+    'Expected rename to stay scoped to rename-capable PocketPages documents.'
+  )
+  assertMatches(
+    extensionSource,
+    /registerInlayHintsProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesInlayHintsProvider\(manager\)\)/,
+    'Expected PocketPages inlay hints provider registration for code documents.'
+  )
+  assertMatches(
+    extensionSource,
+    /const customItems = isSchemaSupportOnlyDocument\s*\?\s*customCompletionData\.items\.filter\([\s\S]*entry\.category === 'collection-name' \|\| entry\.category === 'record-field'[\s\S]*: customCompletionData\.items/,
+    'Expected schema-support-only hook scripts to limit custom completions to collection and field entries.'
+  )
+  assertMatches(
+    extensionSource,
+    /const filteredDiagnostics = filterDiagnosticsForDocument\(document, rawDiagnostics\)/,
+    'Expected diagnostics to be filtered per document support level.'
+  )
+  assertMatches(
+    extensionSource,
+    /const isEjsDocument = document\.uri\.fsPath\.endsWith\('\.ejs'\)\s*\n\s*const quickInfo = isEjsDocument \? service\.getQuickInfo\(document\.uri\.fsPath, documentText, offset\) : null/,
+    'Expected PocketPages hover provider to limit quick info to EJS documents and avoid duplicate JS hover.'
+  )
+  assertMatches(
+    extensionSource,
+    /if \(\(!quickInfo \|\| quickInfo\.start === null \|\| quickInfo\.end === null\) && !pathTargetInfo\) \{\s*return null\s*\}/,
+    'Expected PocketPages hover provider to allow generic EJS quick info while still supporting path hover.'
+  )
+  assertMatches(
+    extensionSource,
+    /const signatureHelp = service\.getCustomSignatureHelp\(document\.uri\.fsPath, documentText, offset\)/,
+    'Expected PocketPages signature help provider to use only custom PocketPages signatures.'
+  )
+  assertMatches(
+    extensionSource,
+    /registerCommand\('pocketpagesServerScript\.reloadCaches'/,
+    'Expected PocketPages reloadCaches command registration in extension.js.'
+  )
+  assertMatches(
+    extensionSource,
+    /command: 'vscode\.open'/,
+    'Expected CodeLens provider to open file targets with vscode.open.'
+  )
+  assertMatches(
+    extensionSource,
+    /command: 'pocketpagesServerScript\.noopCodeLens'/,
+    'Expected CodeLens provider to fall back to the internal no-op command for labels without targets.'
+  )
+
+  const templateBoundaryMarkers = [
+    'createTextEditorDecorationType',
+    'getServerTemplateBoundaryLineNumbers',
+    'onDidChangeVisibleTextEditors',
+    'includeTopLevelPartialSetup',
+    "title: 'Template'",
+    "kind: 'template-boundary'",
+  ]
+  for (const marker of templateBoundaryMarkers) {
+    if (!extensionSource.includes(marker)) {
+      throw new Error('Expected extension to register server/template boundary decorations and CodeLens markers for visible EJS editors.')
+    }
+  }
+
+  if (extensionSource.includes("contentText: 'Template'")) {
+    throw new Error('Expected Template label to stay out of inline decoration content and remain a CodeLens.')
+  }
+
+  const contributedCommands = Array.isArray(packageJson.contributes && packageJson.contributes.commands)
+    ? packageJson.contributes.commands.map((entry) => entry.command)
+    : []
+
+  assertIncludes(
+    contributedCommands,
+    'pocketpagesServerScript.probeCurrentFile',
+    'Expected PocketPages probeCurrentFile command contribution in package.json.'
+  )
+  assertIncludes(
+    contributedCommands,
+    'pocketpagesServerScript.refreshDiagnostics',
+    'Expected PocketPages refreshDiagnostics command contribution in package.json.'
+  )
+  assertIncludes(
+    contributedCommands,
+    'pocketpagesServerScript.reloadCaches',
+    'Expected PocketPages reloadCaches command contribution in package.json.'
+  )
+  assertIncludes(
+    contributedCommands,
+    'pocketpagesServerScript.allFileReferences',
+    'Expected PocketPages allFileReferences command contribution in package.json.'
+  )
+}
+
 function createFixtureApp(repoRoot) {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-fixture-'))
   const appRoot = path.join(fixtureRoot, 'apps', 'fixture-app')
@@ -627,48 +773,7 @@ module.exports = {
 
 function run() {
   const repoRoot = path.resolve(__dirname, '..', '..', '..')
-  const extensionSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'extension.js'), 'utf8')
-  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'package.json'), 'utf8'))
-  if (!/const updateDiagnostics = \(document\) => \{\s*if \(!isManagedPocketPagesDocument\(document\)\) \{\s*return\s*\}/.test(extensionSource)) {
-    throw new Error('Expected updateDiagnostics() to cover both PocketPages pages and schema-support-only pb_hooks scripts.')
-  }
-  if (!/function isPocketPagesCodeDocument\(document\) \{[\s\S]*normalizedPath\.includes\('\/pb_hooks\/pages\/'\)/.test(extensionSource)) {
-    throw new Error('Expected PocketPages code document detection to limit JS diagnostics and overrides to pb_hooks/pages.')
-  }
-  if (!/function isSchemaSupportOnlyHookScriptPath\(filePath\) \{[\s\S]*isPocketPagesHookScriptPath\(normalizedPath\)[\s\S]*!normalizedPath\.includes\('\/pb_hooks\/pages\/'\)/.test(extensionSource)) {
-    throw new Error('Expected schema-support-only hook script detection for pb_hooks scripts outside pages.')
-  }
-  if (!/registerInlayHintsProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesInlayHintsProvider\(manager\)\)/.test(extensionSource)) {
-    throw new Error('Expected PocketPages inlay hints provider registration for code documents.')
-  }
-  if (!/registerCompletionItemProvider\(\s*COMPLETION_DOCUMENT_SELECTOR,\s*new PocketPagesCompletionProvider\(manager\)/.test(extensionSource)) {
-    throw new Error('Expected completion provider registration to include schema-support-only pb_hooks scripts.')
-  }
-  if (!/const customItems = isSchemaSupportOnlyDocument\s*\?\s*customCompletionData\.items\.filter\([\s\S]*entry\.category === 'collection-name' \|\| entry\.category === 'record-field'[\s\S]*: customCompletionData\.items/.test(extensionSource)) {
-    throw new Error('Expected schema-support-only hook scripts to limit custom completions to collection and field entries.')
-  }
-  if (!/const filteredDiagnostics = filterDiagnosticsForDocument\(document, rawDiagnostics\)/.test(extensionSource)) {
-    throw new Error('Expected diagnostics to be filtered per document support level.')
-  }
-  if (!/const isEjsDocument = document\.uri\.fsPath\.endsWith\('\.ejs'\)\s*\n\s*const quickInfo = isEjsDocument \? service\.getQuickInfo\(document\.uri\.fsPath, documentText, offset\) : null/.test(extensionSource)) {
-    throw new Error('Expected PocketPages hover provider to limit quick info to EJS documents and avoid duplicate JS hover.')
-  }
-  if (!/if \(\(!quickInfo \|\| quickInfo\.start === null \|\| quickInfo\.end === null\) && !pathTargetInfo\) \{\s*return null\s*\}/.test(extensionSource)) {
-    throw new Error('Expected PocketPages hover provider to allow generic EJS quick info while still supporting path hover.')
-  }
-  if (!/const signatureHelp = service\.getCustomSignatureHelp\(document\.uri\.fsPath, documentText, offset\)/.test(extensionSource)) {
-    throw new Error('Expected PocketPages signature help provider to use only custom PocketPages signatures.')
-  }
-  if (!/registerCommand\('pocketpagesServerScript\.reloadCaches'/.test(extensionSource)) {
-    throw new Error('Expected PocketPages reloadCaches command registration in extension.js.')
-  }
-  const contributedCommands = Array.isArray(packageJson.contributes && packageJson.contributes.commands)
-    ? packageJson.contributes.commands.map((entry) => entry.command)
-    : []
-  if (!contributedCommands.includes('pocketpagesServerScript.reloadCaches')) {
-    throw new Error('Expected PocketPages reloadCaches command contribution in package.json.')
-  }
-
+  assertExtensionContracts(repoRoot)
   const fixture = createFixtureApp(repoRoot)
 
   try {
@@ -3700,23 +3805,6 @@ const reportDate = String(safeState.reportDate || '').trim()
       )
     }
 
-    const extensionSourceText = fs.readFileSync(path.join(__dirname, '../src/extension.js'), 'utf8')
-    if (!extensionSourceText.includes("command: 'vscode.open'") || !extensionSourceText.includes("command: 'pocketpagesServerScript.noopCodeLens'")) {
-      throw new Error('Expected CodeLens provider to map target paths to vscode.open and fall back to an internal no-op command.')
-    }
-    if (
-      !extensionSourceText.includes('createTextEditorDecorationType') ||
-      !extensionSourceText.includes('getServerTemplateBoundaryLineNumbers') ||
-      !extensionSourceText.includes('onDidChangeVisibleTextEditors') ||
-      !extensionSourceText.includes('includeTopLevelPartialSetup') ||
-      !extensionSourceText.includes("title: 'Template'") ||
-      !extensionSourceText.includes("kind: 'template-boundary'")
-    ) {
-      throw new Error('Expected extension to register server/template boundary decorations for visible EJS editors.')
-    }
-    if (extensionSourceText.includes("contentText: 'Template'")) {
-      throw new Error('Expected Template label to move out of inline decoration content and into CodeLens.')
-    }
     if (!routeDocumentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/(site)/index.ejs'))) {
       throw new Error(`Expected redirect route document link target. Got: ${routeDocumentLinkTargets.join(', ')}`)
     }

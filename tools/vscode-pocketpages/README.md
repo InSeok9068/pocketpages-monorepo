@@ -189,6 +189,8 @@ PocketPages 프로젝트를 위한 VS Code 전용 언어 확장입니다.
 npm run sanity-check
 ```
 
+`sanity-check.js` 한 파일 안에서 source/manifest 계약 검증과 fixture 앱 기반 언어 기능 회귀 검증을 함께 수행합니다.
+
 현재 `sanity-check`는 다음 축을 자동 검증합니다.
 
 - monorepo app-root isolation
