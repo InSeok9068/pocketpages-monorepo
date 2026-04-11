@@ -340,6 +340,17 @@ const pageData = {
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'jobs', 'collect-weekly.ejs'), `<script server>\nresponse.json(200, { ok: true })\n</script>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'api', '+post.js'), `module.exports = function () {\n  return ''\n}\n`)
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'jobs', 'rebuild-search.js'),
+    `const boards = $app.findRecordsByFilter('boards')
+const board = $app.findFirstRecordByFilter('boards', 'id != ""')
+
+module.exports = {
+  boards,
+  board,
+}
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', 'api', 'mjs-consumer.mjs'),
     `const cjsStateService = resolve('cjs-state-service')
 const cjsState = cjsStateService.readCjsState()
@@ -580,6 +591,7 @@ module.exports = {
     renameCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
     mjsConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', 'mjs-consumer.mjs'),
+    jobScriptFilePath: path.join(appRoot, 'pb_hooks', 'jobs', 'rebuild-search.js'),
     boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
     boardServiceConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service-consumer.js'),
     cjsStateServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'cjs-state-service.cjs'),
@@ -617,14 +629,26 @@ function run() {
   const repoRoot = path.resolve(__dirname, '..', '..', '..')
   const extensionSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'extension.js'), 'utf8')
   const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'package.json'), 'utf8'))
-  if (!/const updateDiagnostics = \(document\) => \{\s*if \(!isPocketPagesCodeDocument\(document\)\) \{\s*return\s*\}/.test(extensionSource)) {
-    throw new Error('Expected updateDiagnostics() to cover PocketPages code documents, including JS page files.')
+  if (!/const updateDiagnostics = \(document\) => \{\s*if \(!isManagedPocketPagesDocument\(document\)\) \{\s*return\s*\}/.test(extensionSource)) {
+    throw new Error('Expected updateDiagnostics() to cover both PocketPages pages and schema-support-only pb_hooks scripts.')
   }
   if (!/function isPocketPagesCodeDocument\(document\) \{[\s\S]*normalizedPath\.includes\('\/pb_hooks\/pages\/'\)/.test(extensionSource)) {
     throw new Error('Expected PocketPages code document detection to limit JS diagnostics and overrides to pb_hooks/pages.')
   }
+  if (!/function isSchemaSupportOnlyHookScriptPath\(filePath\) \{[\s\S]*isPocketPagesHookScriptPath\(normalizedPath\)[\s\S]*!normalizedPath\.includes\('\/pb_hooks\/pages\/'\)/.test(extensionSource)) {
+    throw new Error('Expected schema-support-only hook script detection for pb_hooks scripts outside pages.')
+  }
   if (!/registerInlayHintsProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesInlayHintsProvider\(manager\)\)/.test(extensionSource)) {
     throw new Error('Expected PocketPages inlay hints provider registration for code documents.')
+  }
+  if (!/registerCompletionItemProvider\(\s*COMPLETION_DOCUMENT_SELECTOR,\s*new PocketPagesCompletionProvider\(manager\)/.test(extensionSource)) {
+    throw new Error('Expected completion provider registration to include schema-support-only pb_hooks scripts.')
+  }
+  if (!/const customItems = isSchemaSupportOnlyDocument\s*\?\s*customCompletionData\.items\.filter\([\s\S]*entry\.category === 'collection-name' \|\| entry\.category === 'record-field'[\s\S]*: customCompletionData\.items/.test(extensionSource)) {
+    throw new Error('Expected schema-support-only hook scripts to limit custom completions to collection and field entries.')
+  }
+  if (!/const filteredDiagnostics = filterDiagnosticsForDocument\(document, rawDiagnostics\)/.test(extensionSource)) {
+    throw new Error('Expected diagnostics to be filtered per document support level.')
   }
   if (!/const isEjsDocument = document\.uri\.fsPath\.endsWith\('\.ejs'\)\s*\n\s*const quickInfo = isEjsDocument \? service\.getQuickInfo\(document\.uri\.fsPath, documentText, offset\) : null/.test(extensionSource)) {
     throw new Error('Expected PocketPages hover provider to limit quick info to EJS documents and avoid duplicate JS hover.')
@@ -1217,6 +1241,34 @@ boardService.readAuthState(
       throw new Error(
         `Expected JS isCollectionNameUnique() completions for "boards" and "posts". Got: ${jsCollectionNameNames.slice(0, 20).join(', ')}`
       )
+    }
+
+    const jobCollectionText = `$app.findRecordsByFilter('bo')\n`
+    const jobCollectionOffset = jobCollectionText.indexOf('bo') + 'bo'.length
+    const jobCollectionCompletion = service.getCustomCompletionData(fixture.jobScriptFilePath, jobCollectionText, jobCollectionOffset)
+    const jobCollectionNames = jobCollectionCompletion ? jobCollectionCompletion.items.map((entry) => entry.label) : []
+    if (!jobCollectionNames.includes('boards') || !jobCollectionNames.includes('posts')) {
+      throw new Error(`Expected pb_hooks/jobs collection completions for "boards" and "posts". Got: ${jobCollectionNames.slice(0, 20).join(', ')}`)
+    }
+
+    const jobFieldText = `const board = $app.findFirstRecordByFilter('boards', 'id != ""')\nboard.get('na')\n`
+    const jobFieldOffset = jobFieldText.lastIndexOf('na') + 'na'.length
+    const jobFieldCompletion = service.getCustomCompletionData(fixture.jobScriptFilePath, jobFieldText, jobFieldOffset)
+    const jobFieldNames = jobFieldCompletion ? jobFieldCompletion.items.map((entry) => entry.label) : []
+    if (!jobFieldNames.includes('name') || !jobFieldNames.includes('slug')) {
+      throw new Error(`Expected pb_hooks/jobs field completions. Got: ${jobFieldNames.slice(0, 20).join(', ')}`)
+    }
+
+    const jobDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      `const board = $app.findFirstRecordByFilter('boards', 'id != ""')\nboard.set('missing_field', 1)\n$app.findRecordsByFilter('missing_collection')\n`
+    )
+    const jobDiagnosticMessages = jobDiagnostics.map((entry) => String(entry.message))
+    if (!jobDiagnosticMessages.some((message) => message.includes('Unknown PocketBase collection "missing_collection"'))) {
+      throw new Error(`Expected pb_hooks/jobs unknown collection diagnostic. Got: ${jobDiagnosticMessages.join(' | ')}`)
+    }
+    if (!jobDiagnosticMessages.some((message) => message.includes('Unknown field "missing_field" for collection "boards"'))) {
+      throw new Error(`Expected pb_hooks/jobs unknown field diagnostic. Got: ${jobDiagnosticMessages.join(' | ')}`)
     }
 
     const mjsConsumerText = fs.readFileSync(fixture.mjsConsumerFilePath, 'utf8')

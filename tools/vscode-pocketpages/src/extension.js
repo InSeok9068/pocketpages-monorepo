@@ -9,15 +9,21 @@ const EJS_DOCUMENT_SELECTOR = [
   { scheme: 'file', pattern: '**/*.ejs' },
   { scheme: 'untitled', pattern: '**/*.ejs' },
 ]
-const SCRIPT_DOCUMENT_SELECTOR = [
+const PAGE_SCRIPT_DOCUMENT_SELECTOR = [
   { scheme: 'file', pattern: '**/pb_hooks/pages/**/*.js' },
   { scheme: 'file', pattern: '**/pb_hooks/pages/**/*.cjs' },
   { scheme: 'file', pattern: '**/pb_hooks/pages/**/*.mjs' },
 ]
-const CODE_DOCUMENT_SELECTOR = [...EJS_DOCUMENT_SELECTOR, ...SCRIPT_DOCUMENT_SELECTOR]
+const HOOK_SCRIPT_DOCUMENT_SELECTOR = [
+  { scheme: 'file', pattern: '**/pb_hooks/**/*.js' },
+  { scheme: 'file', pattern: '**/pb_hooks/**/*.cjs' },
+  { scheme: 'file', pattern: '**/pb_hooks/**/*.mjs' },
+]
+const CODE_DOCUMENT_SELECTOR = [...EJS_DOCUMENT_SELECTOR, ...PAGE_SCRIPT_DOCUMENT_SELECTOR]
+const COMPLETION_DOCUMENT_SELECTOR = [...EJS_DOCUMENT_SELECTOR, ...HOOK_SCRIPT_DOCUMENT_SELECTOR]
 const RENAME_DOCUMENT_SELECTOR = [
   ...EJS_DOCUMENT_SELECTOR,
-  ...SCRIPT_DOCUMENT_SELECTOR,
+  ...PAGE_SCRIPT_DOCUMENT_SELECTOR,
 ]
 const SEMANTIC_TOKENS_LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, [])
 
@@ -120,6 +126,18 @@ function isAnalyzablePocketPagesFilePath(filePath) {
   return !isExcludedPocketPagesScriptPath(filePath) && !!findAppRoot(filePath)
 }
 
+function isPocketPagesHookScriptPath(filePath) {
+  const normalizedPath = normalizeDocumentPath(filePath)
+  return (
+    normalizedPath.includes('/pb_hooks/') &&
+    (
+      normalizedPath.endsWith('.js') ||
+      normalizedPath.endsWith('.cjs') ||
+      normalizedPath.endsWith('.mjs')
+    )
+  )
+}
+
 function isPocketPagesCodeDocument(document) {
   if (!document || document.uri.scheme !== 'file') {
     return false
@@ -142,6 +160,35 @@ function isPocketPagesCodeDocument(document) {
       normalizedPath.endsWith('.mjs')
     )
   )
+}
+
+function isSchemaSupportOnlyHookScriptPath(filePath) {
+  const normalizedPath = normalizeDocumentPath(filePath)
+  return (
+    isPocketPagesHookScriptPath(normalizedPath) &&
+    !normalizedPath.includes('/pb_hooks/pages/') &&
+    !!findAppRoot(normalizedPath)
+  )
+}
+
+function isSchemaSupportOnlyHookScriptDocument(document) {
+  return !!document && document.uri.scheme === 'file' && isSchemaSupportOnlyHookScriptPath(document.uri.fsPath)
+}
+
+function isManagedPocketPagesDocument(document) {
+  return isPocketPagesCodeDocument(document) || isSchemaSupportOnlyHookScriptDocument(document)
+}
+
+function isSchemaDiagnosticCode(code) {
+  return code === 'pp-schema-collection' || code === 'pp-schema-field'
+}
+
+function filterDiagnosticsForDocument(document, diagnostics) {
+  if (!isSchemaSupportOnlyHookScriptDocument(document)) {
+    return diagnostics
+  }
+
+  return (Array.isArray(diagnostics) ? diagnostics : []).filter((diagnostic) => isSchemaDiagnosticCode(diagnostic.code))
 }
 
 function describeReferenceQuery(referenceQuery) {
@@ -404,9 +451,19 @@ class PocketPagesCompletionProvider {
 
     const offset = document.offsetAt(position)
     const customCompletionData = service.getCustomCompletionData(document.uri.fsPath, document.getText(), offset)
+    const isSchemaSupportOnlyDocument = isSchemaSupportOnlyHookScriptPath(document.uri.fsPath)
 
     if (customCompletionData) {
-      return customCompletionData.items.map((entry) => {
+      const customItems = isSchemaSupportOnlyDocument
+        ? customCompletionData.items.filter(
+            (entry) => entry.category === 'collection-name' || entry.category === 'record-field'
+          )
+        : customCompletionData.items
+      if (!customItems.length) {
+        return null
+      }
+
+      return customItems.map((entry) => {
         const item = new vscode.CompletionItem(entry.label, customCompletionKind(entry.category))
         item.insertText = entry.insertText || entry.label
         item.detail = entry.detail || ''
@@ -419,6 +476,10 @@ class PocketPagesCompletionProvider {
         item.range = toRange(document, customCompletionData.start, customCompletionData.end)
         return item
       })
+    }
+
+    if (isSchemaSupportOnlyDocument) {
+      return null
     }
 
     const completionData = service.getCompletionData(document.uri.fsPath, document.getText(), offset)
@@ -951,7 +1012,7 @@ function activate(context) {
   output.appendLine('VSCode PocketPages activated.')
 
   const syncDocumentOverride = (document) => {
-    if (!isPocketPagesCodeDocument(document)) {
+    if (!isManagedPocketPagesDocument(document)) {
       return
     }
 
@@ -964,7 +1025,7 @@ function activate(context) {
   }
 
   const clearDocumentOverride = (document) => {
-    if (!isPocketPagesCodeDocument(document)) {
+    if (!isManagedPocketPagesDocument(document)) {
       return
     }
 
@@ -1011,7 +1072,7 @@ function activate(context) {
   }
 
   const updateDiagnostics = (document) => {
-    if (!isPocketPagesCodeDocument(document)) {
+    if (!isManagedPocketPagesDocument(document)) {
       return
     }
 
@@ -1025,8 +1086,9 @@ function activate(context) {
     }
 
     const rawDiagnostics = service.getDiagnostics(document.uri.fsPath, document.getText())
-    output.appendLine(`  diagnostics: ${rawDiagnostics.length}`)
-    const mappedDiagnostics = rawDiagnostics.map((diagnostic) => {
+    const filteredDiagnostics = filterDiagnosticsForDocument(document, rawDiagnostics)
+    output.appendLine(`  diagnostics: ${filteredDiagnostics.length}`)
+    const mappedDiagnostics = filteredDiagnostics.map((diagnostic) => {
       const entry = new vscode.Diagnostic(
         toRange(document, diagnostic.start, diagnostic.end),
         diagnostic.message,
@@ -1048,7 +1110,7 @@ function activate(context) {
     output,
     serverTemplateBoundaryDecoration,
     vscode.languages.registerCompletionItemProvider(
-      CODE_DOCUMENT_SELECTOR,
+      COMPLETION_DOCUMENT_SELECTOR,
       new PocketPagesCompletionProvider(manager),
       '.',
       "'",
@@ -1126,7 +1188,7 @@ function activate(context) {
       }
 
       for (const document of vscode.workspace.textDocuments) {
-        if (!isPocketPagesCodeDocument(document)) {
+        if (!isManagedPocketPagesDocument(document)) {
           continue
         }
 
@@ -1167,7 +1229,8 @@ function activate(context) {
 
       if (service) {
         const rawDiagnostics = service.getDiagnostics(document.uri.fsPath, document.getText())
-        messageLines.push(`diagnostics=${rawDiagnostics.length}`)
+        const filteredDiagnostics = filterDiagnosticsForDocument(document, rawDiagnostics)
+        messageLines.push(`diagnostics=${filteredDiagnostics.length}`)
       }
 
       const message = messageLines.join(' | ')

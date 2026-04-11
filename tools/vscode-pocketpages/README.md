@@ -15,13 +15,18 @@ PocketPages 프로젝트를 위한 VS Code 전용 언어 확장입니다.
 - `pb_hooks/pages/**/*.js`
 - `pb_hooks/pages/**/*.cjs`
 - `pb_hooks/pages/**/*.mjs`
+- `pb_hooks/**/*.js|cjs|mjs` 중 `pb_hooks/pages` 밖 파일의 schema-only 지원
 
 다음 파일은 의도적으로 PocketPages code index에서 제외됩니다.
 
 - `pb_hooks/pages/assets/**/*.min.js|cjs|mjs`
 - `pb_hooks/pages/**/vendor/**` 아래의 클라이언트 자산 스크립트
 
-즉 `.js`라고 해서 모두 PocketPages 언어 기능이 붙는 것은 아니고, JS 계열은 `pb_hooks/pages` 범위 안에서만 지원합니다. 예를 들어 `pb_hooks/jobs/*.js`는 이 확장의 핵심 범위 밖입니다.
+즉 `.js`라고 해서 모두 같은 수준의 PocketPages 언어 기능이 붙는 것은 아닙니다.
+
+- `pb_hooks/pages/**/*.js|cjs|mjs`는 PocketPages 페이지 코드로 전체 지원됩니다.
+- `pb_hooks/jobs/*.js` 같은 `pb_hooks/pages` 밖 스크립트는 schema-only 지원만 받습니다.
+  여기서는 컬렉션/필드 completion과 schema diagnostics만 제공되고, route/partial/resolve 계열 기능은 붙지 않습니다.
 
 ## 무엇을 이해하나
 
@@ -62,7 +67,22 @@ PocketPages 프로젝트를 위한 VS Code 전용 언어 확장입니다.
 - JS/CJS/MJS에서는 중복 hover를 줄이기 위해 일반 quick info hover를 별도로 덧붙이지 않고, 기본 JS/TS hover에 맡깁니다.
 - 대신 경로 hover는 JS/CJS/MJS에서도 동작합니다.
 
-### 3. 경로 인텔리전스
+### 3. `pb_hooks/pages` 밖 script의 schema-only 지원
+
+`pb_hooks/jobs/*.js` 같은 `pb_hooks/pages` 밖 스크립트에도 다음 기능은 지원합니다.
+
+- `pb_schema.json` 기반 컬렉션 이름 completion
+- `record.get('field')`, `record.set('field', value)` 계열 필드 completion
+- unknown collection diagnostics
+- unknown field diagnostics
+
+하지만 이 범위는 의도적으로 얇게 제한됩니다.
+
+- `resolve()` / `include()` / route path / `href` / `action` / `hx-*`는 지원하지 않음
+- `_private` references / rename / document link / path hover는 지원하지 않음
+- PocketPages page/middleware 규칙 diagnostics는 적용하지 않음
+
+### 4. 경로 인텔리전스
 
 다음 패턴을 경로/타깃으로 해석합니다.
 
@@ -86,7 +106,7 @@ PocketPages 프로젝트를 위한 VS Code 전용 언어 확장입니다.
 - `_private` partial/module, static route 기준 All File References
 - `_private` 파일 rename 시 호출부 경로 자동 보정
 
-### 4. `_private` partial / module 추적
+### 5. `_private` partial / module 추적
 
 - nearest `_private` 우선 resolve
 - `../`를 이용한 상위 `_private` 해석
@@ -97,7 +117,7 @@ PocketPages 프로젝트를 위한 VS Code 전용 언어 확장입니다.
 - `_private/*.ejs` partial caller 추적
 - `include(..., { ... })` locals shape 추론
 
-### 5. PocketBase 스키마 인텔리전스
+### 6. PocketBase 스키마 인텔리전스
 
 `pb_schema.json`을 기준으로 컬렉션/필드 정보를 제공합니다.
 
@@ -112,7 +132,7 @@ PocketPages 프로젝트를 위한 VS Code 전용 언어 확장입니다.
 
 지원 검증 대상에는 `$app.findRecordsByFilter()`, `findCollectionByNameOrId()`, `recordQuery()`, `isCollectionNameUnique()` 같은 컬렉션 식별자 메서드가 포함됩니다.
 
-### 6. diagnostics / quick fix
+### 7. diagnostics / quick fix
 
 현재 구현된 진단 축은 다음과 같습니다.
 
@@ -132,7 +152,7 @@ PocketPages 프로젝트를 위한 VS Code 전용 언어 확장입니다.
 - include local 키 오타 수정
 - unresolved path suggestion
 
-### 7. 추가 편집 UX
+### 8. 추가 편집 UX
 
 - include target CodeLens
 - route CodeLens
@@ -158,7 +178,8 @@ PocketPages 프로젝트를 위한 VS Code 전용 언어 확장입니다.
 - UnoCSS / Tailwind 클래스 검사
 - 임의 동적 문자열의 완전 해석
 - 완전한 런타임 데이터 흐름 추적
-- `pb_hooks/jobs/*.js` 같은 비-`pb_hooks/pages` JS 전반 분석
+- `pb_hooks/jobs/*.js` 같은 비-`pb_hooks/pages` 스크립트의 full PocketPages 분석
+  이 범위는 schema completion + schema diagnostics만 지원
 
 ## 검증
 
@@ -172,6 +193,7 @@ npm run sanity-check
 
 - monorepo app-root isolation
 - `.ejs`, `.js`, `.cjs`, `.mjs` 분석
+- `pb_hooks/jobs/*.js` schema-only completion / diagnostics
 - EJS server block / template completion / hover
 - typed include locals
 - resolve/include/asset/route/require navigation
@@ -215,5 +237,5 @@ npm run install:vscode-pocketpages
 - VSIX 재설치 후 `Developer: Reload Window`를 실행했는지
 - 현재 파일이 `apps/<service>` 아래 PocketPages 앱으로 인식되는지
 - 서비스 루트에 `pb_data/types.d.ts`, `pocketpages-globals.d.ts`, `pb_schema.json`가 존재하는지
-- 현재 파일이 `.ejs` 또는 `pb_hooks/pages/**/*.js|cjs|mjs` 범위에 속하는지
-- JS 파일이라면 `pb_hooks/jobs`가 아니라 `pb_hooks/pages` 범위인지
+- 현재 파일이 `.ejs`, `pb_hooks/pages/**/*.js|cjs|mjs`, 또는 schema-only 대상 `pb_hooks/**/*.js|cjs|mjs` 범위에 속하는지
+- `pb_hooks/pages` 밖 스크립트라면 path/route/partial 기능이 아니라 schema completion/diagnostics만 기대해야 하는지

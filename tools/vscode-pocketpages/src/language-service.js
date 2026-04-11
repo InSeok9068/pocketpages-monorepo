@@ -4099,6 +4099,34 @@ class ProjectLanguageService {
     return diagnostics;
   }
 
+  collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames) {
+    if (!isScriptFile(filePath)) {
+      return [];
+    }
+
+    const diagnostics = [];
+
+    for (const context of collectSchemaContexts(documentText, { collectionMethodNames })) {
+      if (context.kind === "collection-name" && !this.projectIndex.hasCollection(context.value)) {
+        diagnostics.push(buildSchemaCollectionDiagnostic(context));
+      }
+
+      if (context.kind === "record-field") {
+        const fieldDiagnostic = buildSchemaFieldDiagnostic(
+          this.projectIndex,
+          context,
+          documentText
+        );
+
+        if (fieldDiagnostic) {
+          diagnostics.push(fieldDiagnostic);
+        }
+      }
+    }
+
+    return diagnostics;
+  }
+
   collectProjectRuleDiagnostics(filePath, documentText, documentAnalysis) {
     const diagnostics = [];
 
@@ -4133,6 +4161,7 @@ class ProjectLanguageService {
     diagnostics.push(...this.collectPrivateResolveDiagnostics(filePath, documentAnalysis));
     diagnostics.push(...this.collectServerBlockDiagnostics(filePath, blocks, collectionMethodNames, documentAnalysis));
     diagnostics.push(...this.collectTemplateDiagnostics(filePath, documentText, blocks, templateBlocks, collectionMethodNames, documentAnalysis));
+    diagnostics.push(...this.collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames));
     diagnostics.push(...this.collectProjectRuleDiagnostics(filePath, documentText, documentAnalysis));
 
     return dedupeDiagnostics(diagnostics);
