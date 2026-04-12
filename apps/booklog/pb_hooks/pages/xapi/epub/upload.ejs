@@ -11,6 +11,9 @@
   const BOOK_SEARCH_PAGE_SIZE = 25
   const FICTION_CHARS_PER_PAGE = 430
   const NONFICTION_CHARS_PER_PAGE = 310
+  const METADATA_ENTRY_PATH_PATTERN = /(rights|copyright|colophon|author|about|credit|imprint|title|cover|bookinfo|book_info|book-info)/i
+  const ISBN_SCAN_ENTRY_PATTERN = /\.(opf|xml|ncx|xhtml|html|htm|txt)$/i
+  const SET_ISBN_CONTEXT_PATTERN = /(?:세트|set|전집|합본)/i
   const xmlParser = new XMLParser({
     ignoreAttributes: false,
     attributesGroupName: '@attrs',
@@ -313,6 +316,8 @@
           source: isExplicitIsbnIdentifier(attributesText) ? 'opf-identifier-isbn' : 'opf-identifier-value',
           entryPath: '',
           context: normalizePreview(identifierValue, 160),
+          score: isExplicitIsbnIdentifier(attributesText) ? 60 : 40,
+          isSet: false,
         })
       }
     }
@@ -465,11 +470,18 @@
     }
   }
 
+  function isMetadataEntryPath(entryPath) {
+    return METADATA_ENTRY_PATH_PATTERN.test(String(entryPath || ''))
+  }
+
+  function isIsbnScanEntryPath(entryPath) {
+    return ISBN_SCAN_ENTRY_PATTERN.test(String(entryPath || ''))
+  }
+
   function buildMetadataEntryPaths(manifestItems, packageDocumentPath, entryNames) {
     const orderedPaths = []
     const keywordPaths = []
     const leadingTextPaths = []
-    const metadataPathPattern = /(rights|copyright|colophon|author|about|credit|imprint|title|cover)/i
     const manifestList = Array.isArray(manifestItems) ? manifestItems : []
     const normalizedEntryNames = Array.isArray(entryNames) ? entryNames : []
 
@@ -486,7 +498,7 @@
 
       const entryPath = joinPath(dirname(packageDocumentPath), manifestItem.href)
 
-      if (metadataPathPattern.test(entryPath)) {
+      if (isMetadataEntryPath(entryPath)) {
         pushUniqueValue(keywordPaths, entryPath)
       } else if (leadingTextPaths.length < MAX_METADATA_PAGE_FALLBACKS) {
         pushUniqueValue(leadingTextPaths, entryPath)
@@ -496,7 +508,7 @@
     for (let index = 0; index < normalizedEntryNames.length; index += 1) {
       const entryName = normalizedEntryNames[index]
 
-      if (!/\.(xhtml|html|htm)$/i.test(entryName) || !metadataPathPattern.test(entryName)) {
+      if (!/\.(xhtml|html|htm)$/i.test(entryName) || !isMetadataEntryPath(entryName)) {
         continue
       }
 
@@ -514,7 +526,140 @@
     return orderedPaths
   }
 
-  function extractPageIsbnCandidates(plainText, entryPath) {
+  function buildIsbnScanEntryPaths(manifestItems, packageDocumentPath, entryNames) {
+    const orderedPaths = []
+    const manifestList = Array.isArray(manifestItems) ? manifestItems : []
+    const normalizedEntryNames = Array.isArray(entryNames) ? entryNames : []
+    const metadataEntryPaths = buildMetadataEntryPaths(manifestItems, packageDocumentPath, entryNames)
+
+    if (packageDocumentPath && isIsbnScanEntryPath(packageDocumentPath)) {
+      pushUniqueValue(orderedPaths, packageDocumentPath)
+    }
+
+    for (let index = 0; index < metadataEntryPaths.length; index += 1) {
+      pushUniqueValue(orderedPaths, metadataEntryPaths[index])
+    }
+
+    for (let index = 0; index < manifestList.length; index += 1) {
+      const manifestItem = manifestList[index]
+
+      if (!manifestItem || !manifestItem.href) {
+        continue
+      }
+
+      const entryPath = joinPath(dirname(packageDocumentPath), manifestItem.href)
+
+      if (!isIsbnScanEntryPath(entryPath)) {
+        continue
+      }
+
+      pushUniqueValue(orderedPaths, entryPath)
+    }
+
+    for (let index = 0; index < normalizedEntryNames.length; index += 1) {
+      const entryName = normalizedEntryNames[index]
+
+      if (!isIsbnScanEntryPath(entryName)) {
+        continue
+      }
+
+      pushUniqueValue(orderedPaths, entryName)
+    }
+
+    return orderedPaths
+  }
+
+  function readIsbnScanText(archiveEntries, entryPath) {
+    const archiveText = readArchiveText(archiveEntries, entryPath)
+
+    if (!archiveText) {
+      return ''
+    }
+
+    if (/\.(xhtml|html|htm)$/i.test(String(entryPath || ''))) {
+      return htmlToPlainText(archiveText)
+    }
+
+    return archiveText
+  }
+
+  function scoreIsbnCandidateContext(context) {
+    const normalizedContext = String(context || '')
+    let score = 0
+
+    if (/isbn/i.test(normalizedContext)) {
+      score += 10
+    }
+
+    if (/전자책|ebook|e-book/i.test(normalizedContext)) {
+      score += 20
+    }
+
+    if (/지은이|저자|옮긴이|옮김|역자|발행|펴낸/i.test(normalizedContext)) {
+      score += 5
+    }
+
+    if (/종이책|paper/i.test(normalizedContext)) {
+      score -= 5
+    }
+
+    return score
+  }
+
+  function getIsbnCandidateSourcePriority(candidate) {
+    const source = String(candidate && candidate.source ? candidate.source : '')
+
+    if (source === 'opf-identifier-isbn') {
+      return 50
+    }
+
+    if (source === 'opf-identifier-value') {
+      return 45
+    }
+
+    if (source === 'metadata-page') {
+      return 30
+    }
+
+    if (source === 'archive-entry') {
+      return 20
+    }
+
+    return 10
+  }
+
+  function compareIsbnCandidates(left, right) {
+    const leftIsSetCandidate = !!(left && left.isSet)
+    const rightIsSetCandidate = !!(right && right.isSet)
+    const leftScore = left && typeof left.score === 'number' ? left.score : 0
+    const rightScore = right && typeof right.score === 'number' ? right.score : 0
+    const scoreDiff = rightScore - leftScore
+    const sourcePriorityDiff = getIsbnCandidateSourcePriority(right) - getIsbnCandidateSourcePriority(left)
+
+    if (leftIsSetCandidate !== rightIsSetCandidate) {
+      return leftIsSetCandidate ? 1 : -1
+    }
+
+    if (scoreDiff !== 0) {
+      return scoreDiff
+    }
+
+    if (sourcePriorityDiff !== 0) {
+      return sourcePriorityDiff
+    }
+
+    return 0
+  }
+
+  function isDirectSetIsbnContext(text, matchStart, matchEnd) {
+    const normalizedText = String(text || '')
+    const prefix = normalizedText.slice(Math.max(0, matchStart - 12), matchStart)
+    const suffix = normalizedText.slice(matchEnd, Math.min(normalizedText.length, matchEnd + 12))
+
+    return SET_ISBN_CONTEXT_PATTERN.test(prefix) || SET_ISBN_CONTEXT_PATTERN.test(suffix)
+  }
+
+  function extractPageIsbnCandidates(plainText, entryPath, source) {
     const normalizedText = normalizeIsbnScanText(plainText)
     const pattern = /97[89](?:[\s-]*\d){10}/g
     const matches = []
@@ -530,31 +675,20 @@
       const contextStart = Math.max(0, match.index - 48)
       const contextEnd = Math.min(normalizedText.length, pattern.lastIndex + 48)
       const context = normalizedText.slice(contextStart, contextEnd)
-      let score = 0
-
-      if (/isbn/i.test(context)) {
-        score += 10
-      }
-
-      if (/전자책|ebook|e-book/i.test(context)) {
-        score += 20
-      }
-
-      if (/종이책|paper/i.test(context)) {
-        score -= 5
-      }
+      const isSetCandidate = isDirectSetIsbnContext(normalizedText, match.index, pattern.lastIndex)
 
       matches.push({
         isbn13: isbn13,
-        source: 'metadata-page',
+        source: source || 'metadata-page',
         entryPath: entryPath,
         context: normalizePreview(context, 160),
-        score: score,
+        score: scoreIsbnCandidateContext(context) + (isSetCandidate ? -80 : 0),
+        isSet: isSetCandidate,
       })
     }
 
     matches.sort(function (left, right) {
-      return right.score - left.score
+      return compareIsbnCandidates(left, right)
     })
 
     return matches
@@ -562,21 +696,28 @@
 
   function collectEpubIsbnCandidates(epubMetadata, archiveEntries, manifestItems, packageDocumentPath, entryNames) {
     const candidates = []
+    const pendingCandidates = []
     const identifierCandidates = extractIdentifierIsbnCandidates(epubMetadata.identifierNodes)
-    const metadataEntryPaths = buildMetadataEntryPaths(manifestItems, packageDocumentPath, entryNames)
+    const isbnScanEntryPaths = buildIsbnScanEntryPaths(manifestItems, packageDocumentPath, entryNames)
 
     for (let index = 0; index < identifierCandidates.length; index += 1) {
-      addIsbnCandidate(candidates, identifierCandidates[index])
+      pendingCandidates.push(identifierCandidates[index])
     }
 
-    for (let index = 0; index < metadataEntryPaths.length; index += 1) {
-      const entryPath = metadataEntryPaths[index]
-      const plainText = htmlToPlainText(readArchiveText(archiveEntries, entryPath))
-      const pageCandidates = extractPageIsbnCandidates(plainText, entryPath)
+    for (let index = 0; index < isbnScanEntryPaths.length; index += 1) {
+      const entryPath = isbnScanEntryPaths[index]
+      const plainText = readIsbnScanText(archiveEntries, entryPath)
+      const pageCandidates = extractPageIsbnCandidates(plainText, entryPath, isMetadataEntryPath(entryPath) ? 'metadata-page' : 'archive-entry')
 
       for (let candidateIndex = 0; candidateIndex < pageCandidates.length; candidateIndex += 1) {
-        addIsbnCandidate(candidates, pageCandidates[candidateIndex])
+        pendingCandidates.push(pageCandidates[candidateIndex])
       }
+    }
+
+    pendingCandidates.sort(compareIsbnCandidates)
+
+    for (let index = 0; index < pendingCandidates.length; index += 1) {
+      addIsbnCandidate(candidates, pendingCandidates[index])
     }
 
     return candidates
