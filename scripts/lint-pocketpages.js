@@ -822,6 +822,10 @@ function formatLintLineMatch(file, lineNumber) {
   return `${file.displayPath}:${safeLineNumber}:${lineText}`
 }
 
+function formatElapsedSeconds(elapsedMs) {
+  return `${Number((elapsedMs / 1000).toFixed(3))}s`
+}
+
 function resolveLintPathContextTarget(projectIndex, filePath, pathContext) {
   if (pathContext.kind === 'resolve-path') {
     return projectIndex.resolveResolveTarget(filePath, pathContext.value)
@@ -1466,7 +1470,7 @@ function main() {
     const context = buildServiceContext(serviceDir)
     lintService(context)
     const serviceElapsedMs = Number(process.hrtime.bigint() - serviceStart) / 1e6
-    console.log(`Service lint time [${context.serviceName}]: ${serviceElapsedMs.toFixed(3)} ms`)
+    console.log(`Service lint time [${context.serviceName}]: ${formatElapsedSeconds(serviceElapsedMs)}`)
   }
 
   if (errors > 0) {
