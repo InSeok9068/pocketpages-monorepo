@@ -77,6 +77,73 @@ function createVersionedFileState(previousState, state) {
   };
 }
 
+function getMappingSegments(mappings) {
+  if (!Array.isArray(mappings)) {
+    return [];
+  }
+
+  const segments = [];
+  for (const mapping of mappings) {
+    if (
+      !mapping ||
+      !Array.isArray(mapping.sourceOffsets) ||
+      !Array.isArray(mapping.generatedOffsets) ||
+      !Array.isArray(mapping.lengths)
+    ) {
+      continue;
+    }
+
+    const segmentCount = Math.min(
+      mapping.sourceOffsets.length,
+      mapping.generatedOffsets.length,
+      mapping.lengths.length
+    );
+    for (let index = 0; index < segmentCount; index += 1) {
+      const sourceStart = Number(mapping.sourceOffsets[index]);
+      const generatedStart = Number(mapping.generatedOffsets[index]);
+      const length = Number(mapping.lengths[index]);
+      if (!Number.isFinite(sourceStart) || !Number.isFinite(generatedStart) || !Number.isFinite(length) || length <= 0) {
+        continue;
+      }
+
+      segments.push({
+        sourceStart,
+        sourceEnd: sourceStart + length,
+        generatedStart,
+        generatedEnd: generatedStart + length,
+      });
+    }
+  }
+
+  return segments.sort((left, right) => {
+    if (left.generatedStart !== right.generatedStart) {
+      return left.generatedStart - right.generatedStart;
+    }
+
+    return left.sourceStart - right.sourceStart;
+  });
+}
+
+function mapGeneratedOffsetToSourceOffset(mappings, generatedOffset) {
+  if (!Number.isFinite(generatedOffset) || generatedOffset < 0) {
+    return null;
+  }
+
+  const segments = getMappingSegments(mappings);
+  for (const segment of segments) {
+    if (
+      generatedOffset < segment.generatedStart ||
+      generatedOffset > segment.generatedEnd
+    ) {
+      continue;
+    }
+
+    return segment.sourceStart + Math.min(generatedOffset - segment.generatedStart, segment.sourceEnd - segment.sourceStart);
+  }
+
+  return null;
+}
+
 function isEjsFile(filePath) {
   return path.extname(String(filePath || "")).toLowerCase() === ".ejs";
 }
@@ -2689,7 +2756,7 @@ class ProjectLanguageService {
     this.preparedDocumentStates.delete(normalizePath(filePath));
   }
 
-  upsertVirtualFile(filePath, block) {
+  upsertVirtualFile(filePath, block, options = {}) {
     this.refreshStaticFiles();
 
     const resolvedPath = normalizePath(filePath);
@@ -2708,11 +2775,31 @@ class ProjectLanguageService {
         blockIndex: block.index,
         preludeLength: prelude.length,
         block,
+        mappings: Array.isArray(options.mappings)
+          ? options.mappings
+          : [
+              {
+                sourceOffsets: [block.contentStart],
+                generatedOffsets: [0],
+                lengths: [block.content.length],
+              },
+            ],
+        associatedScriptMappings:
+          options.associatedScriptMappings instanceof Map ? options.associatedScriptMappings : new Map(),
       }));
       this.projectVersion += 1;
     } else {
       previous.block = block;
       previous.preludeLength = prelude.length;
+      previous.mappings = Array.isArray(options.mappings)
+        ? options.mappings
+        : previous.mappings;
+      previous.associatedScriptMappings =
+        options.associatedScriptMappings instanceof Map
+          ? options.associatedScriptMappings
+          : previous.associatedScriptMappings instanceof Map
+            ? previous.associatedScriptMappings
+            : new Map();
     }
 
     return {
@@ -2722,7 +2809,7 @@ class ProjectLanguageService {
     };
   }
 
-  upsertTemplateVirtualFileState(filePath, templateVirtualText, documentLength) {
+  upsertTemplateVirtualFileState(filePath, templateVirtualText, documentLength, options = {}) {
     this.refreshStaticFiles();
 
     const resolvedPath = normalizePath(filePath);
@@ -2741,11 +2828,31 @@ class ProjectLanguageService {
         preludeLength: prelude.length,
         kind: "template-document",
         documentLength,
+        mappings: Array.isArray(options.mappings)
+          ? options.mappings
+          : [
+              {
+                sourceOffsets: [0],
+                generatedOffsets: [0],
+                lengths: [documentLength],
+              },
+            ],
+        associatedScriptMappings:
+          options.associatedScriptMappings instanceof Map ? options.associatedScriptMappings : new Map(),
       }));
       this.projectVersion += 1;
     } else {
       previous.preludeLength = prelude.length;
       previous.documentLength = documentLength;
+      previous.mappings = Array.isArray(options.mappings)
+        ? options.mappings
+        : previous.mappings;
+      previous.associatedScriptMappings =
+        options.associatedScriptMappings instanceof Map
+          ? options.associatedScriptMappings
+          : previous.associatedScriptMappings instanceof Map
+            ? previous.associatedScriptMappings
+            : new Map();
     }
 
     return {
@@ -2754,12 +2861,17 @@ class ProjectLanguageService {
     };
   }
 
-  upsertTemplateVirtualFile(filePath, documentText) {
+  upsertTemplateVirtualFile(filePath, documentText, options = {}) {
     const templateVirtualText = buildTemplateVirtualText(documentText);
-    return this.upsertTemplateVirtualFileState(filePath, templateVirtualText, documentText.length);
+    return this.upsertTemplateVirtualFileState(
+      filePath,
+      templateVirtualText,
+      documentText.length,
+      options
+    );
   }
 
-  upsertScriptVirtualFile(filePath, documentText) {
+  upsertScriptVirtualFile(filePath, documentText, options = {}) {
     this.refreshStaticFiles();
 
     const resolvedPath = normalizePath(filePath);
@@ -2778,11 +2890,31 @@ class ProjectLanguageService {
         preludeLength: prelude.length,
         kind: "script-document",
         documentLength: documentText.length,
+        mappings: Array.isArray(options.mappings)
+          ? options.mappings
+          : [
+              {
+                sourceOffsets: [0],
+                generatedOffsets: [0],
+                lengths: [documentText.length],
+              },
+            ],
+        associatedScriptMappings:
+          options.associatedScriptMappings instanceof Map ? options.associatedScriptMappings : new Map(),
       }));
       this.projectVersion += 1;
     } else {
       previous.preludeLength = prelude.length;
       previous.documentLength = documentText.length;
+      previous.mappings = Array.isArray(options.mappings)
+        ? options.mappings
+        : previous.mappings;
+      previous.associatedScriptMappings =
+        options.associatedScriptMappings instanceof Map
+          ? options.associatedScriptMappings
+          : previous.associatedScriptMappings instanceof Map
+            ? previous.associatedScriptMappings
+            : new Map();
     }
 
     return {
@@ -2799,7 +2931,13 @@ class ProjectLanguageService {
     }
 
     if (isScriptFile(normalizedFilePath)) {
-      const scriptVirtual = this.upsertScriptVirtualFile(normalizedFilePath, documentText);
+      const scriptVirtual = this.upsertScriptVirtualFile(normalizedFilePath, documentText, {
+        mappings: Array.isArray(virtualCode.mappings) ? virtualCode.mappings : undefined,
+        associatedScriptMappings:
+          virtualCode.associatedScriptMappings instanceof Map
+            ? virtualCode.associatedScriptMappings
+            : undefined,
+      });
       const preparedState = {
         kind: "script",
         filePath: normalizedFilePath,
@@ -2842,7 +2980,13 @@ class ProjectLanguageService {
           contentEnd: embeddedCode.metadata.sourceEnd,
           content: embeddedText,
         };
-        const serverVirtual = this.upsertVirtualFile(normalizedFilePath, block);
+        const serverVirtual = this.upsertVirtualFile(normalizedFilePath, block, {
+          mappings: Array.isArray(embeddedCode.mappings) ? embeddedCode.mappings : undefined,
+          associatedScriptMappings:
+            embeddedCode.associatedScriptMappings instanceof Map
+              ? embeddedCode.associatedScriptMappings
+              : undefined,
+        });
         preparedState.serverBlocks.push({
           index: block.index,
           contentStart: block.contentStart,
@@ -2857,7 +3001,14 @@ class ProjectLanguageService {
         const templateVirtual = this.upsertTemplateVirtualFileState(
           normalizedFilePath,
           embeddedText,
-          documentText.length
+          documentText.length,
+          {
+            mappings: Array.isArray(embeddedCode.mappings) ? embeddedCode.mappings : undefined,
+            associatedScriptMappings:
+              embeddedCode.associatedScriptMappings instanceof Map
+                ? embeddedCode.associatedScriptMappings
+                : undefined,
+          }
         );
         preparedState.template = {
           fileName: templateVirtual.fileName,
@@ -2922,9 +3073,8 @@ class ProjectLanguageService {
     return null;
   }
 
-  mapVirtualOffsetToDocumentOffset(virtualFileName, offset) {
-    const state = this.virtualFiles.get(virtualFileName);
-    if (!state) {
+  mapVirtualStateOffsetToDocumentOffset(state, offset) {
+    if (!state || typeof offset !== "number") {
       return null;
     }
 
@@ -2933,6 +3083,20 @@ class ProjectLanguageService {
     }
 
     const relativeOffset = offset - state.preludeLength;
+    const linkedMappings =
+      state.associatedScriptMappings instanceof Map
+        ? state.associatedScriptMappings.get("root")
+        : null;
+    const mappedLinkedOffset = mapGeneratedOffsetToSourceOffset(linkedMappings, relativeOffset);
+    if (mappedLinkedOffset !== null) {
+      return mappedLinkedOffset;
+    }
+
+    const mappedOffset = mapGeneratedOffsetToSourceOffset(state.mappings, relativeOffset);
+    if (mappedOffset !== null) {
+      return mappedOffset;
+    }
+
     if (state.kind === "template-document" || state.kind === "script-document") {
       if (relativeOffset < 0 || relativeOffset > state.documentLength) {
         return null;
@@ -2942,6 +3106,15 @@ class ProjectLanguageService {
     }
 
     return state.block.contentStart + relativeOffset;
+  }
+
+  mapVirtualOffsetToDocumentOffset(virtualFileName, offset) {
+    const state = this.virtualFiles.get(virtualFileName);
+    if (!state) {
+      return null;
+    }
+
+    return this.mapVirtualStateOffsetToDocumentOffset(state, offset);
   }
 
   getDocumentTextForTarget(filePath, currentFilePath, currentDocumentText) {

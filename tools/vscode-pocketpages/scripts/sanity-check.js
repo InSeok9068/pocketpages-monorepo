@@ -4,13 +4,16 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { URI } = require('vscode-uri')
-const { PocketPagesLanguageServiceManager } = require('../src/language-service')
+const { PocketPagesLanguageServiceManager, ts } = require('../src/language-service')
 const { PocketPagesLanguageCore } = require('../src/core/language-core')
 const { createPocketPagesLanguagePlugin } = require('../src/core/language-plugin')
 const { createScriptSnapshot } = require('../src/core/snapshot')
 const { createVirtualCode, updateVirtualCode } = require('../src/core/virtual-code')
 const { collectEjsSemanticTokenEntries } = require('../src/ejs-semantic-tokens')
 const { getServerTemplateBoundaryLineNumbers } = require('../src/ejs-server-boundary')
+const { createTypeScriptFeatureService } = require('../src/lsp/services/ts-features')
+const { createCustomFeatureService } = require('../src/lsp/services/custom-features')
+const { createDiagnosticsFeatureService } = require('../src/lsp/services/diagnostics-features')
 const {
   buildScriptServerMirrorText,
   collectExternalPocketPagesEjsFiles,
@@ -54,6 +57,69 @@ function normalizeFilePath(filePath) {
   return String(filePath || '').replace(/\\/g, '/').replace(/^[A-Z]:/, (value) => value.toLowerCase())
 }
 
+function offsetToPosition(text, offset) {
+  const clampedOffset = Math.max(0, Math.min(String(text || '').length, Number(offset) || 0))
+  let line = 0
+  let character = 0
+
+  for (let index = 0; index < clampedOffset; index += 1) {
+    if (text[index] === '\n') {
+      line += 1
+      character = 0
+      continue
+    }
+    character += 1
+  }
+
+  return { line, character }
+}
+
+function positionToOffset(text, position) {
+  const targetLine = Math.max(0, Number(position && position.line) || 0)
+  const targetCharacter = Math.max(0, Number(position && position.character) || 0)
+  let line = 0
+  let character = 0
+
+  for (let index = 0; index < String(text || '').length; index += 1) {
+    if (line === targetLine && character === targetCharacter) {
+      return index
+    }
+
+    if (text[index] === '\n') {
+      line += 1
+      character = 0
+      if (line > targetLine) {
+        return index + 1
+      }
+      continue
+    }
+
+    character += 1
+  }
+
+  return String(text || '').length
+}
+
+function createTestDocument(filePath, languageId, version, text) {
+  const documentText = String(text || '')
+  const uri = URI.file(filePath).toString()
+
+  return {
+    uri,
+    languageId,
+    version,
+    getText() {
+      return documentText
+    },
+    offsetAt(position) {
+      return positionToOffset(documentText, position)
+    },
+    positionAt(offset) {
+      return offsetToPosition(documentText, offset)
+    },
+  }
+}
+
 function serializeDiagnostics(diagnostics) {
   return (Array.isArray(diagnostics) ? diagnostics : [])
     .map((entry) => ({
@@ -93,6 +159,138 @@ function assertMatches(text, pattern, message) {
 function assertIncludes(collection, value, message) {
   if (!collection.includes(value)) {
     throw new Error(message)
+  }
+}
+
+function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
+  const documentEntries =
+    documentsByUri instanceof Map ? documentsByUri : new Map(Object.entries(documentsByUri || {}))
+
+  const completionKindText = 1
+  const inlayKindType = 1
+  const inlayKindParameter = 2
+  const markupKindMarkdown = 'markdown'
+  const insertTextFormatPlainText = 1
+  const codeActionKindQuickFix = 'quickfix'
+  const completionKindMap = {}
+
+  const helpers = {
+    COMPLETION_KIND_MAP: completionKindMap,
+    SCRIPT_DIAGNOSTICS_DEBOUNCE_MS: 10,
+    customCompletionKind() {
+      return completionKindText
+    },
+    diagnosticSeverity(category) {
+      return category === ts.DiagnosticCategory.Error ? 1 : 2
+    },
+    elapsedMilliseconds(startedAt) {
+      return Number(process.hrtime.bigint() - startedAt) / 1000000
+    },
+    formatCompletionTrigger(context) {
+      if (!context) {
+        return 'unspecified'
+      }
+      if (context.triggerCharacter) {
+        return `char:${context.triggerCharacter}`
+      }
+      return context.triggerKind === 1 ? 'invoke' : 'other'
+    },
+    getCompletionProfileFields(profile) {
+      return profile || {}
+    },
+    getDiagnosticsProfileFields(profile) {
+      return profile || {}
+    },
+    getDocumentByUri(uri) {
+      return documentEntries.get(uri) || null
+    },
+    getDocumentContextByUri(uri) {
+      return core.getDocumentContextByUri(uri)
+    },
+    getDocumentContextByFilePath(filePath) {
+      const document = [...documentEntries.values()].find(
+        (entry) => normalizeFilePath(URI.parse(entry.uri).fsPath) === normalizeFilePath(filePath)
+      )
+      return document ? core.getDocumentContextByUri(document.uri) : null
+    },
+    getRelativePathLabel(filePath) {
+      return normalizeFilePath(filePath)
+    },
+    isActiveDiagnosticRun() {
+      return true
+    },
+    isStaleDocumentVersion() {
+      return false
+    },
+    shouldAbortDocumentRequest() {
+      return false
+    },
+    isExcludedPocketPagesScriptPath() {
+      return false
+    },
+    isSchemaSupportOnlyHookScriptPath() {
+      return false
+    },
+    isEjsFilePath(filePath) {
+      return String(filePath || '').endsWith('.ejs')
+    },
+    logServer() {},
+    beginDiagnosticRun() {
+      return 1
+    },
+    uriToFilePath(uri) {
+      return URI.parse(uri).fsPath
+    },
+    toMarkupContent(signature, documentation) {
+      return {
+        kind: markupKindMarkdown,
+        value: [signature, documentation].filter(Boolean).join('\n\n'),
+      }
+    },
+    toRange(document, start, end) {
+      return {
+        start: document.positionAt(start),
+        end: document.positionAt(end),
+      }
+    },
+    toSignatureHelp(value) {
+      return value
+    },
+    toWorkspaceEdit(edits) {
+      return edits
+    },
+  }
+
+  return {
+    context: {
+      ts,
+      core,
+      helpers,
+      InsertTextFormat: {
+        PlainText: insertTextFormatPlainText,
+      },
+      CompletionItemKind: {
+        Text: completionKindText,
+      },
+      InlayHintKind: {
+        Type: inlayKindType,
+        Parameter: inlayKindParameter,
+      },
+      MarkupKind: {
+        Markdown: markupKindMarkdown,
+      },
+      CodeActionKind: {
+        QuickFix: codeActionKindQuickFix,
+      },
+      URI,
+      connection: extra.connection || {
+        sendDiagnostics() {},
+      },
+      state: extra.state || {
+        diagnosticTimeouts: new Map(),
+      },
+    },
+    helpers,
   }
 }
 
@@ -1212,6 +1410,226 @@ const boardService = resolve('board-service')
     )
     if (!preparedCompletion || !preparedCompletion.profile || preparedCompletion.profile.upsertKind !== 'server-block-prepared') {
       throw new Error(`Expected prepared virtual state completion path. Got: ${JSON.stringify(preparedCompletion && preparedCompletion.profile)}`)
+    }
+    const preparedServerState = preparedState.serverBlocks && preparedState.serverBlocks[0]
+      ? preparedService.virtualFiles.get(preparedState.serverBlocks[0].fileName)
+      : null
+    if (
+      !preparedServerState ||
+      !(preparedServerState.associatedScriptMappings instanceof Map) ||
+      !preparedServerState.associatedScriptMappings.has('root')
+    ) {
+      const preparedLinkedTargets =
+        preparedServerState && preparedServerState.associatedScriptMappings instanceof Map
+          ? [...preparedServerState.associatedScriptMappings.keys()]
+          : []
+      throw new Error(`Expected prepared server virtual state to keep linked root mappings. Got: ${JSON.stringify(preparedLinkedTargets)}`)
+    }
+    const preparedMappedOffset = preparedService.mapVirtualOffsetToDocumentOffset(
+      preparedState.serverBlocks[0].fileName,
+      preparedState.serverBlocks[0].preludeLength + 1
+    )
+    if (preparedMappedOffset !== preparedBoardShowText.indexOf('params')) {
+      throw new Error(`Expected linked mapping-backed virtual offset mapping for prepared server block. Got: ${JSON.stringify({ preparedMappedOffset, expected: preparedBoardShowText.indexOf('params') })}`)
+    }
+    const preparedLinkedConsumerText = `<script server>
+const localValue = { title: 'Boards' }
+</script>
+<div><%= localValue.title %></div>
+`
+    preparedCore.updateDocument({
+      uri: boardShowUri,
+      languageId: 'ejs',
+      version: 2,
+      text: preparedLinkedConsumerText,
+    })
+    const preparedDefinition = preparedService.getTypeScriptDefinitionTarget(
+      fixture.boardShowFilePath,
+      preparedLinkedConsumerText,
+      preparedLinkedConsumerText.lastIndexOf('localValue') + 2
+    )
+    if (
+      !preparedDefinition ||
+      normalizeFilePath(preparedDefinition.filePath) !== normalizeFilePath(fixture.boardShowFilePath) ||
+      preparedDefinition.line !== 1
+    ) {
+      throw new Error(`Expected prepared linked definition target to resolve back to the source declaration. Got: ${JSON.stringify(preparedDefinition)}`)
+    }
+    const preparedRenameServerText = `<script server>
+const localValue = 1
+const nextValue = localValue + 1
+</script>
+`
+    preparedCore.updateDocument({
+      uri: boardShowUri,
+      languageId: 'ejs',
+      version: 3,
+      text: preparedRenameServerText,
+    })
+    const preparedReferences = preparedService.getTypeScriptReferenceTargets(
+      fixture.boardShowFilePath,
+      preparedRenameServerText,
+      preparedRenameServerText.indexOf('localValue =') + 2,
+      { includeDeclaration: true }
+    )
+    if (!preparedReferences || preparedReferences.locations.length !== 2) {
+      throw new Error(`Expected prepared linked references for declaration and server usage. Got: ${JSON.stringify(preparedReferences)}`)
+    }
+    const preparedRenameEdits = preparedService.getTypeScriptRenameEdits(
+      fixture.boardShowFilePath,
+      preparedRenameServerText,
+      preparedRenameServerText.indexOf('localValue =') + 2,
+      'renamedValue'
+    )
+    if (!preparedRenameEdits || !preparedRenameEdits.canRename || preparedRenameEdits.edits.length !== 2) {
+      throw new Error(`Expected prepared linked rename edits for declaration and server usage. Got: ${JSON.stringify(preparedRenameEdits)}`)
+    }
+    const renamedPreparedLinkedText = applyEditsToText(preparedRenameServerText, preparedRenameEdits.edits)
+    if (!renamedPreparedLinkedText.includes('const renamedValue = 1') || !renamedPreparedLinkedText.includes('const nextValue = renamedValue + 1')) {
+      throw new Error(`Expected prepared linked rename to update both declaration and server usage. Got: ${renamedPreparedLinkedText}`)
+    }
+
+    const lspSmokeCore = new PocketPagesLanguageCore()
+    const lspSmokeText = `<script server>
+const boardService = resolve('board-service')
+const localValue = { title: 'Boards' }
+const authState = boardService.readAuthState({ request })
+const isSignedIn = !!authState && authState.isSignedIn
+</script>
+<div><%= localValue.title %></div>
+`
+    const lspSmokeDocument = createTestDocument(fixture.boardsFilePath, 'ejs', 1, lspSmokeText)
+    const lspSmokeUri = lspSmokeDocument.uri
+    lspSmokeCore.openDocument({
+      uri: lspSmokeUri,
+      languageId: 'ejs',
+      version: 1,
+      text: lspSmokeText,
+    })
+    const lspSmokeContext = createLspServiceSmokeContext(
+      lspSmokeCore,
+      new Map([[lspSmokeUri, lspSmokeDocument]])
+    )
+    const tsFeatureService = createTypeScriptFeatureService(lspSmokeContext.context)
+    const customFeatureService = createCustomFeatureService(lspSmokeContext.context)
+    const resolvePathHover = tsFeatureService.provideHover({
+      textDocument: { uri: lspSmokeUri },
+      position: lspSmokeDocument.positionAt(lspSmokeText.indexOf("'board-service'") + 1),
+    })
+    if (resolvePathHover !== null) {
+      throw new Error(`Expected TS feature hover to stay disabled inside resolve() path literals. Got: ${JSON.stringify(resolvePathHover)}`)
+    }
+    const customPathHover = customFeatureService.provideHover({
+      textDocument: { uri: lspSmokeUri },
+      position: lspSmokeDocument.positionAt(lspSmokeText.indexOf("'board-service'") + 1),
+    })
+    if (
+      !customPathHover ||
+      normalizeFilePath(customPathHover.targetFilePath) !== normalizeFilePath(fixture.boardServiceFilePath)
+    ) {
+      throw new Error(`Expected custom feature hover to own resolve() path literals. Got: ${JSON.stringify(customPathHover)}`)
+    }
+    const tsOwnedHover = tsFeatureService.provideHover({
+      textDocument: { uri: lspSmokeUri },
+      position: lspSmokeDocument.positionAt(lspSmokeText.indexOf('authState =') + 2),
+    })
+    if (!tsOwnedHover || !String(tsOwnedHover.displayText || '').includes('authState')) {
+      throw new Error(`Expected TS feature hover to stay available for script identifiers. Got: ${JSON.stringify(tsOwnedHover)}`)
+    }
+    const lspSmokeDefinition = tsFeatureService.provideDefinition({
+      textDocument: { uri: lspSmokeUri },
+      position: lspSmokeDocument.positionAt(lspSmokeText.lastIndexOf('localValue') + 2),
+    })
+    if (
+      !lspSmokeDefinition ||
+      normalizeFilePath(lspSmokeDefinition.filePath) !== normalizeFilePath(fixture.boardsFilePath)
+    ) {
+      throw new Error(`Expected TS feature definition to resolve same-file EJS identifiers. Got: ${JSON.stringify(lspSmokeDefinition)}`)
+    }
+    const lspSmokeReferences = tsFeatureService.provideReferences({
+      textDocument: { uri: lspSmokeUri },
+      position: lspSmokeDocument.positionAt(lspSmokeText.indexOf('authState =') + 2),
+      context: { includeDeclaration: true },
+    })
+    if (!Array.isArray(lspSmokeReferences) || lspSmokeReferences.length < 3) {
+      throw new Error(`Expected TS feature references to include declaration and script usage. Got: ${JSON.stringify(lspSmokeReferences)}`)
+    }
+    const lspSmokePrepareRename = tsFeatureService.providePrepareRename({
+      textDocument: { uri: lspSmokeUri },
+      position: lspSmokeDocument.positionAt(lspSmokeText.indexOf('authState =') + 2),
+    })
+    if (!lspSmokePrepareRename || lspSmokePrepareRename.placeholder !== 'authState') {
+      throw new Error(`Expected TS feature prepareRename placeholder for authState. Got: ${JSON.stringify(lspSmokePrepareRename)}`)
+    }
+    const lspSmokeRename = tsFeatureService.provideRename({
+      textDocument: { uri: lspSmokeUri },
+      position: lspSmokeDocument.positionAt(lspSmokeText.indexOf('authState =') + 2),
+      newName: 'sessionState',
+    })
+    if (!Array.isArray(lspSmokeRename) || lspSmokeRename.length < 3) {
+      throw new Error(`Expected TS feature rename to include declaration and script usage edits. Got: ${JSON.stringify(lspSmokeRename)}`)
+    }
+
+    const assetSmokeText = `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>\n`
+    const assetSmokeDocument = createTestDocument(fixture.siteIndexFilePath, 'ejs', 1, assetSmokeText)
+    const assetSmokeUri = assetSmokeDocument.uri
+    lspSmokeCore.openDocument({
+      uri: assetSmokeUri,
+      languageId: 'ejs',
+      version: 1,
+      text: assetSmokeText,
+    })
+    const assetSmokeContext = createLspServiceSmokeContext(
+      lspSmokeCore,
+      new Map([
+        [lspSmokeUri, lspSmokeDocument],
+        [assetSmokeUri, assetSmokeDocument],
+      ])
+    )
+    const assetCustomFeatureService = createCustomFeatureService(assetSmokeContext.context)
+    const assetFeatureDocumentLinks = assetCustomFeatureService.provideDocumentLinks({
+      textDocument: { uri: assetSmokeUri },
+    })
+    if (
+      !Array.isArray(assetFeatureDocumentLinks) ||
+      !assetFeatureDocumentLinks.some((entry) => String(entry.tooltip || '').includes('Open asset target'))
+    ) {
+      throw new Error(`Expected custom feature document links to preserve asset() tooltips. Got: ${JSON.stringify(assetFeatureDocumentLinks)}`)
+    }
+
+    const diagnosticsEvents = []
+    const diagnosticsSmokeCore = new PocketPagesLanguageCore()
+    const diagnosticsSmokeText = `<script server>\nresolve('/_private/board-service')\n</script>\n<div>ok</div>\n`
+    const diagnosticsSmokeDocument = createTestDocument(fixture.boardsFilePath, 'ejs', 1, diagnosticsSmokeText)
+    const diagnosticsSmokeUri = diagnosticsSmokeDocument.uri
+    diagnosticsSmokeCore.openDocument({
+      uri: diagnosticsSmokeUri,
+      languageId: 'ejs',
+      version: 1,
+      text: diagnosticsSmokeText,
+    })
+    const diagnosticsSmokeContext = createLspServiceSmokeContext(
+      diagnosticsSmokeCore,
+      new Map([[diagnosticsSmokeUri, diagnosticsSmokeDocument]]),
+      {
+        connection: {
+          sendDiagnostics(payload) {
+            diagnosticsEvents.push(payload)
+          },
+        },
+      }
+    )
+    const diagnosticsFeatureService = createDiagnosticsFeatureService(diagnosticsSmokeContext.context)
+    diagnosticsFeatureService.publishDiagnostics(diagnosticsSmokeUri)
+    if (!diagnosticsEvents.length || !Array.isArray(diagnosticsEvents[0].diagnostics) || diagnosticsEvents[0].diagnostics.length === 0) {
+      throw new Error(`Expected diagnostics feature service to publish mapper-filtered diagnostics. Got: ${JSON.stringify(diagnosticsEvents)}`)
+    }
+    if (
+      !diagnosticsEvents[0].diagnostics.some((entry) =>
+        ['pp-private-resolve-path', 'pp-resolve-private-prefix'].includes(String(entry.code))
+      )
+    ) {
+      throw new Error(`Expected diagnostics feature service to keep resolve() path diagnostics reportable. Got: ${JSON.stringify(diagnosticsEvents[0].diagnostics)}`)
     }
 
     const coldDiagnosticsWriteProbe = withWriteFileSyncCount(() => {
