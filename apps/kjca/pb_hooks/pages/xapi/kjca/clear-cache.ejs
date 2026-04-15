@@ -19,10 +19,9 @@
   })
 
   if (!authState.isSuperuser) {
-    dashboardState = kjcaCore.buildDashboardState({
-      ...dashboardState,
+    dashboardState = kjcaCore.buildDashboardState(Object.assign({}, dashboardState, {
       errorMessage: '먼저 관리자 계정으로 로그인해주세요.',
-    })
+    }))
   } else {
     try {
       const result = kjcaCollectService.clearAnalysisCache(request, {
@@ -31,8 +30,7 @@
       })
 
       const safeDept = String(result.dept || '').trim()
-      dashboardState = kjcaCore.buildDashboardState({
-        ...dashboardState,
+      dashboardState = kjcaCore.buildDashboardState(Object.assign({}, dashboardState, {
         reportDate: formState.reportDate,
         testOneOnly: formState.testOneOnly,
         noticeMessage: result.deletedCount > 0 ? `${safeDept} 캐시 ${result.deletedCount}건을 삭제했습니다.` : `${safeDept} 캐시가 없어 삭제할 항목이 없습니다.`,
@@ -40,7 +38,7 @@
         analysisResults: dashboardState.analysisResults.filter((item) => String(item.dept || '').trim() !== safeDept),
         deptWeekTables: dashboardState.deptWeekTables.filter((item) => String(item.dept || '').trim() !== safeDept),
         deptSnapshots: dashboardState.deptSnapshots.filter((item) => String(item.dept || '').trim() !== safeDept),
-      })
+      }))
     } catch (exception) {
       const errorMessage = String(exception.message || exception)
       error('xapi/kjca/clear-cache:failed', {
@@ -48,12 +46,11 @@
         dept: String(form.dept || '').trim(),
         error: errorMessage,
       })
-      dashboardState = kjcaCore.buildDashboardState({
-        ...dashboardState,
+      dashboardState = kjcaCore.buildDashboardState(Object.assign({}, dashboardState, {
         reportDate: formState.reportDate,
         testOneOnly: formState.testOneOnly,
         errorMessage,
-      })
+      }))
     }
   }
 

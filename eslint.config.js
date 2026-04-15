@@ -82,6 +82,10 @@ module.exports = [
       '**/pb_hooks/pages/assets/**',
       '**/pb_migrations/**',
       '**/pb_public/**',
+      'scripts/**',
+      'tools/**',
+      'eslint.config.js',
+      'tailwind.config.js',
     ],
   },
   js.configs.recommended,
@@ -90,14 +94,11 @@ module.exports = [
     processor: ejsProcessor,
   },
   {
-    files: ['**/*.js'],
+    files: ['apps/**/pb_hooks/**/*.js', 'packages/**/*.js'],
     languageOptions: {
-      ecmaVersion: 'latest',
+      ecmaVersion: 2015,
       sourceType: 'commonjs',
-      globals: {
-        ...globals.node,
-        ...pocketPagesGlobals,
-      },
+      globals: globals.node,
     },
     plugins: {
       jsdoc,
@@ -131,7 +132,13 @@ module.exports = [
     },
   },
   {
-    files: ['**/*.mjs'],
+    files: ['apps/**/pb_hooks/**/*.js'],
+    languageOptions: {
+      globals: pocketPagesGlobals,
+    },
+  },
+  {
+    files: ['apps/**/__tests__/**/*.mjs', 'packages/test-support/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -140,11 +147,17 @@ module.exports = [
   },
   {
     files: ['**/*.ejs.js'],
+    languageOptions: {
+      ecmaVersion: 2015,
+      sourceType: 'script',
+    },
     rules: {
       'no-control-regex': 'off',
       'no-empty': 'off',
       'no-undef': 'off',
       'no-unused-vars': 'off',
+      'no-useless-assignment': 'off',
+      'no-useless-escape': 'off',
     },
   },
 ]

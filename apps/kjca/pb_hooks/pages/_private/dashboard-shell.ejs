@@ -74,8 +74,7 @@
   const weeklyOperationsDocCount = weeklyReportDetails.filter((detail) => Array.isArray(detail.operationsTables) && detail.operationsTables.length > 0).length
   const weeklyWorkDocCount = weeklyReportDetails.filter((detail) => Array.isArray(detail.workTables) && detail.workTables.length > 0).length
   const weeklyPeopleDocCount = weeklyReportDetails.filter((detail) => Array.isArray(detail.peopleTables) && detail.peopleTables.length > 0).length
-  const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) => ({
-    ...table,
+  const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) => Object.assign({}, table, {
     summaryText: kjcaCore.buildDeptSummaryText({
       dept: table.dept,
       reportDate,

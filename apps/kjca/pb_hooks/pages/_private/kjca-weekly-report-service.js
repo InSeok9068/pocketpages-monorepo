@@ -268,10 +268,9 @@ function collectWeeklyReports(request, payload, session = null) {
     safeSession
   )
 
-  return {
-    ...detailResult,
+  return Object.assign({}, detailResult, {
     warnings: [].concat(Array.isArray(urlResult.warnings) ? urlResult.warnings : []).concat(Array.isArray(detailResult.warnings) ? detailResult.warnings : []),
-  }
+  })
 }
 
 module.exports = {

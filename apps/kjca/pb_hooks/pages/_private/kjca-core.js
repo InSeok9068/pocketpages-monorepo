@@ -724,11 +724,10 @@ function buildRecruitingWeekTableRows(rows, reportDate) {
 
     if (!hasMeaningfulContent) continue
 
-    weekTableRows.push({
+    weekTableRows.push(Object.assign({}, mapped, {
       weekday: currentWeekday,
-      ...mapped,
       sortOrder: weekTableRows.length,
-    })
+    }))
   }
 
   const dailyPlan = weekTableRows.map((row) => ({
@@ -1275,12 +1274,11 @@ function buildWeeklyReportTableCandidates(html) {
     .map((block) => {
       const plainRows = parseHtmlTableRows(block.html).filter((row) => row.some((cell) => !!normalizeSingleLineText(cell)))
       const displayRows = parseWeeklyDisplayTableRows(block.html)
-      return {
-        ...block,
+      return Object.assign({}, block, {
         plainRows,
         displayRows,
         compactRows: plainRows.map((row) => row.map((cell) => normalizeWeeklySectionCompactText(cell))),
-      }
+      })
     })
     .filter((item) => item.plainRows.length > 0 && item.displayRows.length > 0)
 }
@@ -2321,7 +2319,7 @@ function ensureWeekdayRows(rows) {
       return
     }
 
-    items.sort((a, b) => a.sortOrder - b.sortOrder).forEach((item, index) => result.push({ ...item, sortOrder: index }))
+    items.sort((a, b) => a.sortOrder - b.sortOrder).forEach((item, index) => result.push(Object.assign({}, item, { sortOrder: index })))
   })
 
   return result
@@ -2578,10 +2576,7 @@ function parseDashboardState(value, fallback) {
 
   try {
     const decoded = decodeURIComponent(text)
-    return buildDashboardState({
-      ...fallbackState,
-      ...parseJsonSafely(decoded, {}),
-    })
+    return buildDashboardState(Object.assign({}, fallbackState, parseJsonSafely(decoded, {})))
   } catch (_error) {
     return fallbackState
   }
@@ -2724,8 +2719,7 @@ function buildDashboardStateFromWeeklyReportUrlResult(result, currentState, form
   const alertMessage = String((result && result.alertMessage) || '').trim()
   const noticeMessage = alertMessage || `주간 보고 URL ${rows.length}건을 확인했습니다.`
 
-  return buildDashboardState({
-    ...safeCurrentState,
+  return buildDashboardState(Object.assign({}, safeCurrentState, {
     reportDate: safeCurrentState.reportDate || safeFormState.reportDate,
     weeklyReferenceWeek: weekRange.referenceWeek,
     weeklyRangeStart: result && result.weekStartDate ? result.weekStartDate : weekRange.weekStartDate,
@@ -2736,7 +2730,7 @@ function buildDashboardStateFromWeeklyReportUrlResult(result, currentState, form
     warnings: result && result.warnings,
     weeklyReportRows: rows,
     weeklyReportDetails: [],
-  })
+  }))
 }
 
 /**
@@ -2756,8 +2750,7 @@ function buildDashboardStateFromWeeklyReportDetailResult(result, currentState, f
   const alertMessage = String((result && result.alertMessage) || '').trim()
   const noticeMessage = alertMessage || `주간 보고 본문 ${successCount}건을 취합했습니다.`
 
-  return buildDashboardState({
-    ...safeCurrentState,
+  return buildDashboardState(Object.assign({}, safeCurrentState, {
     reportDate: safeCurrentState.reportDate || safeFormState.reportDate,
     weeklyReferenceWeek: weekRange.referenceWeek,
     weeklyRangeStart: result && result.weekStartDate ? result.weekStartDate : weekRange.weekStartDate,
@@ -2768,7 +2761,7 @@ function buildDashboardStateFromWeeklyReportDetailResult(result, currentState, f
     warnings: result && result.warnings,
     weeklyReportRows: rows,
     weeklyReportDetails: details,
-  })
+  }))
 }
 
 module.exports = {

@@ -118,11 +118,10 @@ function createKjcaSession(request) {
     method: 'POST',
     timeout: 20,
     body: loginBody,
-    headers: {
-      ...buildBrowserLikeHeaders(KJCA_HOST, cookieHeader, KJCA_AUTH_URL),
+    headers: Object.assign({}, buildBrowserLikeHeaders(KJCA_HOST, cookieHeader, KJCA_AUTH_URL), {
       'content-type': 'application/x-www-form-urlencoded',
       Origin: KJCA_HOST,
-    },
+    }),
   })
 
   cookieHeader = mergeSetCookieIntoCookieHeader(cookieHeader, loginResponse.headers)

@@ -43,7 +43,7 @@ function computeRetryDelayMs(attempt, retryAfterHeader) {
   const retryAfterMs = parseRetryAfterMs(retryAfterHeader)
   if (retryAfterMs > 0) return retryAfterMs
   const step = Math.max(0, Number(attempt) - 1)
-  const backoffMs = 1500 * 2 ** step
+  const backoffMs = 1500 * Math.pow(2, step)
   const jitterMs = Math.trunc(Math.random() * 400)
   return backoffMs + jitterMs
 }
