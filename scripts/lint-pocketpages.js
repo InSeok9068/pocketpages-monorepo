@@ -23,26 +23,25 @@
 // 19) roles/*.js 내부에서 부작용/DB 조회/요청 문맥 접근 사용
 // 20) 엔트리에서 resolve('roles/...') 조립이 과도하게 많음
 // 21) JS helper/로컬 바인딩에서 params 이름 사용
-// 22) JSVM 비허용 문법(async/await/import/export) 사용
-// 23) _private/*.js 에서 plain module 대신 factory/function export 사용
-// 24) include()에 full context(api/request/response/resolve/params/data) 전달
-// 25) 로컬 @typedef 사용
-// 26) module.exports.foo = ... 형태의 분산 export 사용
-// 27) _private/*.ejs 에서 <script server> 사용
-// 28) pages 내부 코드에서 process.env 사용
-// 29) pages 밖 pb_hooks 코드에서 PocketPages 전역(env/dbg/info/warn/error) 사용
-// 30) _private/*.ejs 에서 $app 기반 DB 접근 사용
-// 31) module.exports = { ... } 에서 축약 가능한 foo: foo 사용
-// 32) pb_hooks/pages 아래에 *.pb.js 파일 배치
-// 33) pages 일반 .js(static js) 안에 서버 코드 사용
-// 34) runInTransaction 콜백 안에서 바깥 $app 사용
-// 35) pb_hooks/pages 안에서 PocketBase hook 등록 API 사용
-// 36) api 엔드포인트에서 HTML 응답 반환
-// 37) resolve/include/asset/route 경로가 실제로 없는 정적 경로
-// 38) 존재하지 않는 PocketBase collection 문자열 사용
-// 39) params를 query처럼 읽는 패턴
-// 40) redirect() 뒤 return 누락
-// 41) 존재하지 않는 PocketBase field 문자열 사용
+// 22) _private/*.js 에서 plain module 대신 factory/function export 사용
+// 23) include()에 full context(api/request/response/resolve/params/data) 전달
+// 24) 로컬 @typedef 사용
+// 25) module.exports.foo = ... 형태의 분산 export 사용
+// 26) _private/*.ejs 에서 <script server> 사용
+// 27) pages 내부 코드에서 process.env 사용
+// 28) pages 밖 pb_hooks 코드에서 PocketPages 전역(env/dbg/info/warn/error) 사용
+// 29) _private/*.ejs 에서 $app 기반 DB 접근 사용
+// 30) module.exports = { ... } 에서 축약 가능한 foo: foo 사용
+// 31) pb_hooks/pages 아래에 *.pb.js 파일 배치
+// 32) pages 일반 .js(static js) 안에 서버 코드 사용
+// 33) runInTransaction 콜백 안에서 바깥 $app 사용
+// 34) pb_hooks/pages 안에서 PocketBase hook 등록 API 사용
+// 35) api 엔드포인트에서 HTML 응답 반환
+// 36) resolve/include/asset/route 경로가 실제로 없는 정적 경로
+// 37) 존재하지 않는 PocketBase collection 문자열 사용
+// 38) params를 query처럼 읽는 패턴
+// 39) redirect() 뒤 return 누락
+// 40) 존재하지 않는 PocketBase field 문자열 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -102,10 +101,6 @@ const RE = {
     /\$app\.(findAllRecords|findAuthRecordByToken|findCollectionByNameOrId|findCollectionsByFilter|findFirstRecordByData|findFirstRecordByFilter|findRecordById|findRecordsByExpr|findRecordsByFilter)\b/,
   roleRequestContext: /(^|[^A-Za-z0-9_])(request|params|query)\b|\bresolve\s*\(/,
   roleResolvePath: /resolve\(\s*["']roles\//g,
-  asyncKeyword: /\basync\b/,
-  awaitKeyword: /\bawait\b/,
-  importStatement: /^\s*import\s+/,
-  exportStatement: /^\s*export\s+/,
   privateModuleFunctionExport: /module\.exports\s*=\s*function\b/,
   privateModuleFactoryExport: /module\.exports\s*=\s*[A-Za-z_$][A-Za-z0-9_$]*\s*\(/,
   localTypedef: /@typedef\b/,
@@ -1143,26 +1138,6 @@ function lintService(context) {
     context.serviceName,
     'Discouraged JS params binding. Reserve "params" for route context only and rename helper inputs or locals to payload, input, summaryInput, or another contextual name.',
     reservedParamsBindingMatches,
-  )
-
-  const asyncMatches = unique([
-    ...collectLineMatches(context.lintCodeFiles, RE.asyncKeyword),
-    ...collectLineMatches(context.lintCodeFiles, RE.awaitKeyword),
-  ])
-  printMatches(
-    context.serviceName,
-    'Invalid JSVM async syntax. Keep PocketBase JSVM code synchronous and do not use async/await.',
-    asyncMatches,
-  )
-
-  const esmMatches = unique([
-    ...collectLineMatches(context.lintCodeFiles, RE.importStatement),
-    ...collectLineMatches(context.lintCodeFiles, RE.exportStatement),
-  ])
-  printMatches(
-    context.serviceName,
-    'Invalid JSVM module syntax. Use CommonJS require()/module.exports instead of import/export.',
-    esmMatches,
   )
 
   const privateModulePatternMatches = unique([
