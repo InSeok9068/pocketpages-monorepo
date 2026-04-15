@@ -132,7 +132,9 @@ function createCustomFeatureService(context) {
               ? `Open module target: ${entry.value}`
               : entry.kind === "include-path"
                 ? `Open partial target: ${entry.value}`
-                : `Open route target: ${entry.value}`,
+                : entry.kind === "asset-path"
+                  ? `Open asset target: ${entry.value}`
+                  : `Open route target: ${entry.value}`,
         }));
     },
 

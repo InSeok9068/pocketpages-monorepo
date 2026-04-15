@@ -245,6 +245,10 @@ function assertLspRuntimeContracts(repoRoot) {
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
   const clientSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'client.js'), 'utf8')
   const serverSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'lsp', 'server.js'), 'utf8')
+  const customFeatureSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'lsp', 'services', 'custom-features.js'),
+    'utf8'
+  )
   const diagnosticsFeatureSource = fs.readFileSync(
     path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'lsp', 'services', 'diagnostics-features.js'),
     'utf8'
@@ -261,6 +265,14 @@ function assertLspRuntimeContracts(repoRoot) {
 
   if (packageJson.main !== './src/client.js') {
     throw new Error(`Expected package.json main to point at client.js. Got: ${packageJson.main}`)
+  }
+
+  if (
+    !packageJson.scripts ||
+    typeof packageJson.scripts['package:vsix'] !== 'string' ||
+    packageJson.scripts['package:vsix'].includes('npm install')
+  ) {
+    throw new Error('Expected package:vsix to avoid npm install and package the current dependency state directly.')
   }
 
   if (packageJson.dependencies && Object.prototype.hasOwnProperty.call(packageJson.dependencies, 'vscode-pocketpages')) {
@@ -336,6 +348,11 @@ function assertLspRuntimeContracts(repoRoot) {
     serverSource,
     /const customResult = customFeatureService\.provideCompletionItems\(params\)/,
     'Expected server.js completion path to preserve custom PocketPages completions before TS completions.'
+  )
+  assertMatches(
+    customFeatureSource,
+    /entry\.kind === "asset-path"\s*\?\s*`Open asset target: \$\{entry\.value\}`/,
+    'Expected custom document link tooltips to label asset() targets correctly.'
   )
   assertMatches(
     diagnosticsFeatureSource,
