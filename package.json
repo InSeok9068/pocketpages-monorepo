@@ -1,6 +1,5 @@
 {
   "scripts": {
-    "lint:eslint": "eslint .",
     "format": "prettier --write \"apps/*/pb_hooks/**/*\""
   },
   "devDependencies": {
