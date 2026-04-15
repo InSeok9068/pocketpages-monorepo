@@ -792,6 +792,9 @@ function run() {
   const repoRoot = path.resolve(__dirname, '..', '..', '..')
   assertExtensionContracts(repoRoot)
   const fixture = createFixtureApp(repoRoot)
+  const realHighlightsFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', '(site)', 'highlights.ejs')
+  const realUploadFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', 'xapi', 'epub', 'upload.ejs')
+  const realWeeklySectionTableFilePath = path.join(repoRoot, 'apps', 'kjca', 'pb_hooks', 'pages', '_private', 'weekly-section-table.ejs')
 
   try {
     const manager = new PocketPagesLanguageServiceManager()
@@ -814,6 +817,58 @@ function run() {
     }
     if (secondaryService === service) {
       throw new Error('Expected PocketPages manager to isolate services per app root in a monorepo.')
+    }
+
+    if (fs.existsSync(realHighlightsFilePath)) {
+      const realHighlightsService = manager.getServiceForFile(realHighlightsFilePath)
+      if (!realHighlightsService) {
+        throw new Error(`Expected real app service for ${realHighlightsFilePath}`)
+      }
+
+      const realHighlightsText = fs.readFileSync(realHighlightsFilePath, 'utf8')
+      const realHighlightsBoundaries = getServerTemplateBoundaryLineNumbers(realHighlightsText)
+      if (!realHighlightsBoundaries.length) {
+        throw new Error('Expected real highlights.ejs to expose a server/template boundary marker.')
+      }
+
+      const metaOffset = realHighlightsText.indexOf('meta') + 1
+      const realHighlightQuickInfo = realHighlightsService.getQuickInfo(realHighlightsFilePath, realHighlightsText, metaOffset)
+      if (!realHighlightQuickInfo || !realHighlightQuickInfo.displayText.includes('meta')) {
+        throw new Error(`Expected real highlights.ejs hover info for meta(). Got: ${JSON.stringify(realHighlightQuickInfo)}`)
+      }
+    }
+
+    if (fs.existsSync(realUploadFilePath)) {
+      const realUploadService = manager.getServiceForFile(realUploadFilePath)
+      if (!realUploadService) {
+        throw new Error(`Expected real app service for ${realUploadFilePath}`)
+      }
+
+      const realUploadText = fs.readFileSync(realUploadFilePath, 'utf8')
+      const realUploadLinks = realUploadService.getDocumentLinks(realUploadFilePath, realUploadText)
+      const resolveLink = realUploadLinks.find((entry) => entry.kind === 'resolve-path' && entry.value === 'data4library-service')
+      if (!resolveLink || !resolveLink.targetFilePath) {
+        throw new Error(`Expected real upload.ejs resolve() document link for data4library-service. Got: ${JSON.stringify(realUploadLinks.slice(0, 5))}`)
+      }
+    }
+
+    if (fs.existsSync(realWeeklySectionTableFilePath)) {
+      const realWeeklyService = manager.getServiceForFile(realWeeklySectionTableFilePath)
+      if (!realWeeklyService) {
+        throw new Error(`Expected real app service for ${realWeeklySectionTableFilePath}`)
+      }
+
+      const realWeeklyText = fs.readFileSync(realWeeklySectionTableFilePath, 'utf8')
+      const realWeeklyReferenceQuery = realWeeklyService.getFileReferenceQuery(realWeeklySectionTableFilePath)
+      const realWeeklyReferences = realWeeklyService.getFileReferenceTargets(realWeeklySectionTableFilePath, realWeeklyText, {
+        includeDeclaration: false,
+      }) || []
+      if (!realWeeklyReferenceQuery || realWeeklyReferenceQuery.kind !== 'private-partial') {
+        throw new Error(`Expected real weekly-section-table.ejs private-partial reference query. Got: ${JSON.stringify(realWeeklyReferenceQuery)}`)
+      }
+      if (realWeeklyReferences.length < 3) {
+        throw new Error(`Expected real weekly-section-table.ejs to keep caller references from dashboard-shell.ejs. Got: ${JSON.stringify(realWeeklyReferences)}`)
+      }
     }
 
     const core = new PocketPagesLanguageCore()
@@ -1575,6 +1630,14 @@ boardService.readAuthState(
     if (!resolvePathTargetInfo || normalizeFilePath(resolvePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.boardServiceFilePath)) {
       throw new Error(`Expected resolve() path target info. Got: ${JSON.stringify(resolvePathTargetInfo)}`)
     }
+    const customResolveDefinition = service.getCustomDefinitionTarget(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('board-service')\n</script>\n`,
+      `<script server>\nresolve('board-service')\n</script>\n`.indexOf('board-service') + 2
+    )
+    if (!customResolveDefinition || normalizeFilePath(customResolveDefinition) !== normalizeFilePath(fixture.boardServiceFilePath)) {
+      throw new Error(`Expected custom definition target for resolve() path. Got: ${JSON.stringify(customResolveDefinition)}`)
+    }
     const mjsResolvePathTargetInfo = service.getPathTargetInfo(
       fixture.mjsConsumerFilePath,
       mjsConsumerText,
@@ -2128,10 +2191,23 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
     if (!renameInfo || !renameInfo.canRename || renameInfo.placeholder !== 'readAuthState') {
       throw new Error(`Expected rename info for resolve()-derived member. Got: ${JSON.stringify(renameInfo)}`)
     }
+    const customRenameInfo = service.getCustomRenameInfo(fixture.renameCheckFilePath, renameText, renameOffset)
+    if (!customRenameInfo || !customRenameInfo.canRename || customRenameInfo.placeholder !== 'readAuthState') {
+      throw new Error(`Expected custom rename info for resolve()-derived member. Got: ${JSON.stringify(customRenameInfo)}`)
+    }
 
     const renameEdits = service.getRenameEdits(fixture.renameCheckFilePath, renameText, renameOffset, 'readSessionState')
     if (!renameEdits || !renameEdits.canRename) {
       throw new Error(`Expected rename edits for resolve()-derived member. Got: ${JSON.stringify(renameEdits)}`)
+    }
+    const customRenameEdits = service.getCustomRenameEdits(
+      fixture.renameCheckFilePath,
+      renameText,
+      renameOffset,
+      'readSessionState'
+    )
+    if (!customRenameEdits || !customRenameEdits.canRename) {
+      throw new Error(`Expected custom rename edits for resolve()-derived member. Got: ${JSON.stringify(customRenameEdits)}`)
     }
 
     const boardServiceEdits = renameEdits.edits.filter(
@@ -2170,6 +2246,22 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
     const renamedMiddlewareText = applyEditsToText(fs.readFileSync(fixture.middlewareFilePath, 'utf8'), middlewareEdits)
     if (!renamedMiddlewareText.includes('boardService.readSessionState({ request })')) {
       throw new Error(`Expected renamed middleware usage. Got: ${renamedMiddlewareText}`)
+    }
+
+    const tsRenameText = `<script server>\nconst localValue = 1\nlocalValue\n</script>\n`
+    const tsRenameOffset = tsRenameText.lastIndexOf('localValue') + 2
+    const tsRenameInfo = service.getTypeScriptRenameInfo(fixture.renameCheckFilePath, tsRenameText, tsRenameOffset)
+    if (!tsRenameInfo || !tsRenameInfo.canRename || tsRenameInfo.placeholder !== 'localValue') {
+      throw new Error(`Expected TypeScript rename info for local variable. Got: ${JSON.stringify(tsRenameInfo)}`)
+    }
+    const tsRenameEdits = service.getTypeScriptRenameEdits(
+      fixture.renameCheckFilePath,
+      tsRenameText,
+      tsRenameOffset,
+      'renamedValue'
+    )
+    if (!tsRenameEdits || !tsRenameEdits.canRename || tsRenameEdits.edits.length !== 2) {
+      throw new Error(`Expected TypeScript rename edits for local variable. Got: ${JSON.stringify(tsRenameEdits)}`)
     }
 
     const moduleRenameText = fs.readFileSync(fixture.boardServiceFilePath, 'utf8')

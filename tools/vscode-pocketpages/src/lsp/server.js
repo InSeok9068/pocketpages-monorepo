@@ -21,6 +21,10 @@ const { REQUESTS, NOTIFICATIONS } = require("./protocol");
 const { ts, findAppRoot } = require("../language-service");
 const { TOKEN_TYPES, collectEjsSemanticTokenEntries, getTokenTypeIndex } = require("../ejs-semantic-tokens");
 const { getServerTemplateBoundaryLineNumbers } = require("../ejs-server-boundary");
+const { createCustomFeatureService } = require("./services/custom-features");
+const { createTypeScriptFeatureService } = require("./services/ts-features");
+const { createDiagnosticsFeatureService } = require("./services/diagnostics-features");
+const { createStructureFeatureService } = require("./services/structure-features");
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -505,36 +509,11 @@ function isActiveDiagnosticRun(uri, runId) {
 }
 
 function scheduleDiagnostics(uri) {
-  if (diagnosticTimeouts.has(uri)) {
-    clearTimeout(diagnosticTimeouts.get(uri));
-  }
-
-  const document = documents.get(uri);
-  const timeoutId = setTimeout(() => {
-    diagnosticTimeouts.delete(uri);
-    publishDiagnostics(uri);
-  }, SCRIPT_DIAGNOSTICS_DEBOUNCE_MS);
-  diagnosticTimeouts.set(uri, timeoutId);
-
-  if (document) {
-    logServer("perf", "diagnostics", "schedule", {
-      file: getRelativePathLabel(uriToFilePath(uri)),
-      version: document.version,
-      delayMs: SCRIPT_DIAGNOSTICS_DEBOUNCE_MS,
-    });
-  }
+  return diagnosticsFeatureService.scheduleDiagnostics(uri);
 }
 
 function cancelScheduledDiagnostics(uri) {
-  if (!diagnosticTimeouts.has(uri)) {
-    return;
-  }
-
-  clearTimeout(diagnosticTimeouts.get(uri));
-  diagnosticTimeouts.delete(uri);
-  logServer("info", "diagnostics", "cancel-scheduled", {
-    file: getRelativePathLabel(uriToFilePath(uri)),
-  });
+  return diagnosticsFeatureService.cancelScheduledDiagnostics(uri);
 }
 
 function getSemanticTokens(documentText, document) {
@@ -574,60 +553,69 @@ function getRelativePathLabel(filePath) {
   return path.relative(process.cwd(), filePath).replace(/\\/g, "/");
 }
 
+const featureServiceContext = {
+  connection,
+  documents,
+  core,
+  URI,
+  TextDocument,
+  ts,
+  CompletionItemKind,
+  InsertTextFormat,
+  MarkupKind,
+  InlayHintKind,
+  CodeActionKind,
+  SemanticTokensBuilder,
+  collectEjsSemanticTokenEntries,
+  getTokenTypeIndex,
+  getServerTemplateBoundaryLineNumbers,
+  state: {
+    diagnosticTimeouts,
+    diagnosticRunIds,
+    completionCache,
+  },
+  helpers: {
+    COMPLETION_KIND_MAP,
+    SCRIPT_DIAGNOSTICS_DEBOUNCE_MS,
+    beginDiagnosticRun,
+    customCompletionKind,
+    diagnosticSeverity,
+    elapsedMilliseconds,
+    formatCompletionTrigger,
+    getDocumentByUri: (uri) => documents.get(uri),
+    getDocumentContextByFilePath: (filePath) => core.getDocumentContextByFilePath(filePath),
+    getDocumentContextByUri: (uri) => core.getDocumentContextByUri(uri),
+    getCompletionProfileFields,
+    getDiagnosticsProfileFields,
+    getRelativePathLabel,
+    hasPrivatePagesSegment,
+    isActiveDiagnosticRun,
+    isEjsFilePath,
+    isExcludedPocketPagesScriptPath,
+    isSchemaSupportOnlyHookScriptPath,
+    isStaleDocumentVersion,
+    logServer,
+    shouldAbortDocumentRequest,
+    toLocation,
+    toMarkupContent,
+    toRange,
+    toSignatureHelp,
+    toWorkspaceEdit,
+    uriToFilePath,
+  },
+};
+
+const customFeatureService = createCustomFeatureService(featureServiceContext);
+const typeScriptFeatureService = createTypeScriptFeatureService(featureServiceContext);
+const diagnosticsFeatureService = createDiagnosticsFeatureService(featureServiceContext);
+const structureFeatureService = createStructureFeatureService(featureServiceContext);
+
 function publishDiagnostics(uri) {
-  const runId = beginDiagnosticRun(uri);
-  const document = documents.get(uri);
-  if (!document) {
-    connection.sendDiagnostics({ uri, diagnostics: [] });
-    return;
-  }
-
-  const context = core.getDocumentContextByUri(uri);
-  if (!context) {
-    connection.sendDiagnostics({ uri, diagnostics: [] });
-    return;
-  }
-
-  const startedAt = process.hrtime.bigint();
-  const diagnosticsProfile = {};
-  const requestedVersion = document.version;
-  const rawDiagnostics = context.service.getDiagnostics(context.filePath, document.getText(), {
-    profile: diagnosticsProfile,
-  });
-  const elapsedMs = elapsedMilliseconds(startedAt);
-
-  if (!isActiveDiagnosticRun(uri, runId) || isStaleDocumentVersion(uri, requestedVersion)) {
-    logServer("warn", "diagnostics", "stale", {
-      file: getRelativePathLabel(context.filePath),
-      version: requestedVersion,
-    });
-    return;
-  }
-
-  logServer("perf", "diagnostics", "publish", {
-    file: getRelativePathLabel(context.filePath),
-    version: requestedVersion,
-    count: rawDiagnostics.length,
-    totalMs: elapsedMs.toFixed(1),
-    ...getDiagnosticsProfileFields(diagnosticsProfile),
-  });
-
-  connection.sendDiagnostics({
-    uri,
-    diagnostics: rawDiagnostics.map((diagnostic) => ({
-      range: toRange(document, diagnostic.start, diagnostic.end),
-      severity: diagnosticSeverity(diagnostic.category),
-      code: diagnostic.code,
-      source: "pocketpages-server-script",
-      message: diagnostic.message,
-    })),
-  });
+  return diagnosticsFeatureService.publishDiagnostics(uri);
 }
 
 function publishManagedDiagnostics() {
-  for (const virtualCode of core.getManagedVirtualCodes()) {
-    publishDiagnostics(virtualCode.uri);
-  }
+  return diagnosticsFeatureService.publishManagedDiagnostics();
 }
 
 connection.onInitialize(() => {
@@ -699,7 +687,7 @@ documents.onDidChangeContent((event) => {
   logServer("perf", "document", "change", {
     file: getRelativePathLabel(uriToFilePath(event.document.uri)),
     version: event.document.version,
-    changes: event.contentChanges.length,
+    changes: Array.isArray(event.contentChanges) ? event.contentChanges.length : 0,
   });
 
   if (isScriptFilePath(uriToFilePath(event.document.uri))) {
@@ -761,7 +749,7 @@ connection.onCompletion((params, token) => {
   }
 
   const customStartedAt = process.hrtime.bigint();
-  const customCompletionData = context.service.getCustomCompletionData(context.filePath, documentText, offset);
+  const customResult = customFeatureService.provideCompletionItems(params);
   const customElapsedMs = elapsedMilliseconds(customStartedAt);
   const isSchemaSupportOnlyDocument = isSchemaSupportOnlyHookScriptPath(context.filePath);
 
@@ -776,42 +764,18 @@ connection.onCompletion((params, token) => {
     return null;
   }
 
-  if (customCompletionData) {
-    const customItems = isSchemaSupportOnlyDocument
-      ? customCompletionData.items.filter(
-          (entry) => entry.category === "collection-name" || entry.category === "record-field"
-        )
-      : customCompletionData.items;
-
-    const result = {
-      isIncomplete: false,
-      items: customItems.map((entry) => ({
-        label: entry.label,
-        kind: customCompletionKind(entry.category),
-        detail: entry.detail || "",
-        documentation: entry.documentation ? { kind: MarkupKind.Markdown, value: String(entry.documentation) } : undefined,
-        sortText: entry.sortText,
-        insertText: entry.insertText || entry.label,
-        insertTextFormat: InsertTextFormat.PlainText,
-        textEdit: {
-          range: toRange(document, customCompletionData.start, customCompletionData.end),
-          newText: entry.insertText || entry.label,
-        },
-        data: {
-          kind: "custom",
-        },
-      })),
-    };
+  if (customResult) {
+    const result = customResult.items.length ? customResult : null;
     setCachedCompletionItems(cacheKey, result);
     logServer("perf", "completion", "custom", {
       file: relativePath,
       trigger,
       offset,
-      count: result.items.length,
+      count: customResult.items.length,
       getCustomMs: customElapsedMs.toFixed(1),
       totalMs: elapsedMilliseconds(startedAt).toFixed(1),
     });
-    return result.items.length ? result : null;
+    return result;
   }
 
   if (isSchemaSupportOnlyDocument) {
@@ -819,101 +783,13 @@ connection.onCompletion((params, token) => {
     return null;
   }
 
-  const completionStartedAt = process.hrtime.bigint();
-  const completionData = context.service.getCompletionData(context.filePath, documentText, offset);
-  const completionElapsedMs = elapsedMilliseconds(completionStartedAt);
-  if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
-    logServer("warn", "completion", "abort", {
-      file: relativePath,
-      trigger,
-      offset,
-      stage: "ts",
-      totalMs: elapsedMilliseconds(startedAt).toFixed(1),
-    });
-    return null;
-  }
-  if (!completionData) {
-    setCachedCompletionItems(cacheKey, null);
-    logServer("perf", "completion", "none", {
-      file: relativePath,
-      trigger,
-      offset,
-      getCustomMs: customElapsedMs.toFixed(1),
-      getCompletionMs: completionElapsedMs.toFixed(1),
-      totalMs: elapsedMilliseconds(startedAt).toFixed(1),
-    });
-    return null;
-  }
-
-  const result = {
-    isIncomplete: false,
-    items: completionData.entries.map((entry) => ({
-      label: entry.name,
-      kind: COMPLETION_KIND_MAP[entry.kind] || CompletionItemKind.Text,
-      sortText: entry.sortText,
-      filterText: entry.insertText || entry.name,
-      insertText: entry.insertText || entry.name,
-      insertTextFormat: InsertTextFormat.PlainText,
-      detail: entry.kindModifiers ? `${entry.kind} ${entry.kindModifiers}` : entry.kind,
-      textEdit: completionData.replacementSpan
-        ? {
-            range: toRange(document, completionData.replacementSpan.start, completionData.replacementSpan.end),
-            newText: entry.insertText || entry.name,
-          }
-        : undefined,
-      data: {
-        kind: "ts",
-        filePath: context.filePath,
-        virtualFileName: completionData.virtualFileName,
-        virtualOffset: completionData.virtualOffset,
-        name: entry.name,
-        source: entry.source,
-      },
-    })),
-  };
-  setCachedCompletionItems(cacheKey, result);
-  logServer("perf", "completion", "ts", {
-    file: relativePath,
-    trigger,
-    offset,
-    count: result.items.length,
-    getCustomMs: customElapsedMs.toFixed(1),
-    getCompletionMs: completionElapsedMs.toFixed(1),
-    totalMs: elapsedMilliseconds(startedAt).toFixed(1),
-    ...getCompletionProfileFields(completionData.profile),
-  });
+  const result = typeScriptFeatureService.provideCompletionItems(params, token);
+  setCachedCompletionItems(cacheKey, result || null);
   return result;
 });
 
 connection.onCompletionResolve((item) => {
-  if (!item || !item.data || item.data.kind !== "ts") {
-    return item;
-  }
-
-  const context = core.getDocumentContextByFilePath(item.data.filePath);
-  if (!context) {
-    return item;
-  }
-
-  const details = context.service.getCompletionDetails(
-    item.data.virtualFileName,
-    item.data.virtualOffset,
-    item.data.name,
-    item.data.source
-  );
-  if (!details) {
-    return item;
-  }
-
-  const signature = ts.displayPartsToString(details.displayParts || []);
-  const documentation = ts.displayPartsToString(details.documentation || []);
-  if (signature) {
-    item.detail = signature;
-  }
-  if (signature || documentation) {
-    item.documentation = toMarkupContent(signature, documentation);
-  }
-  return item;
+  return typeScriptFeatureService.resolveCompletionItem(item);
 });
 
 connection.onHover((params) => {
@@ -922,14 +798,8 @@ connection.onHover((params) => {
     return null;
   }
 
-  const context = core.getDocumentContextByUri(params.textDocument.uri);
-  if (!context) {
-    return null;
-  }
-
-  const offset = document.offsetAt(params.position);
-  const quickInfo = context.service.getQuickInfo(context.filePath, document.getText(), offset);
-  const pathTargetInfo = context.service.getPathTargetInfo(context.filePath, document.getText(), offset);
+  const quickInfo = typeScriptFeatureService.provideHover(params);
+  const pathTargetInfo = customFeatureService.provideHover(params);
   if ((!quickInfo || quickInfo.start === null || quickInfo.end === null) && !pathTargetInfo) {
     return null;
   }
@@ -963,23 +833,12 @@ connection.onHover((params) => {
 });
 
 connection.onDefinition((params) => {
-  const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return null;
+  const customTarget = customFeatureService.provideDefinition(params);
+  if (customTarget) {
+    return toLocation(customTarget);
   }
 
-  const context = core.getDocumentContextByUri(params.textDocument.uri);
-  if (!context) {
-    return null;
-  }
-
-  return toLocation(
-    context.service.getDefinitionTarget(
-      context.filePath,
-      document.getText(),
-      document.offsetAt(params.position)
-    )
-  );
+  return toLocation(typeScriptFeatureService.provideDefinition(params));
 });
 
 connection.onReferences((params) => {
@@ -993,19 +852,64 @@ connection.onReferences((params) => {
     return null;
   }
 
-  const references = context.service.getReferenceTargets(
+  const customReferences = customFeatureService.provideReferences(params);
+  if (customReferences) {
+    return customReferences.map((reference) => {
+      const targetUri = URI.file(reference.filePath).toString();
+      const targetDocument = documents.get(targetUri) || TextDocument.create(targetUri, "javascript", 1, core.getDocumentTextForFile(reference.filePath));
+      return {
+        uri: targetUri,
+        range: toRange(targetDocument, reference.start, reference.end),
+      };
+    });
+  }
+
+  const offset = document.offsetAt(params.position);
+  const includeDeclaration = !!(params.context && params.context.includeDeclaration);
+  const typeScriptReferenceResult = context.service.getTypeScriptReferenceTargets(
     context.filePath,
     document.getText(),
-    document.offsetAt(params.position),
-    { includeDeclaration: !!(params.context && params.context.includeDeclaration) }
+    offset,
+    { includeDeclaration }
   );
-  if (!references || !references.length) {
+  const fileReferenceContext = context.service.getPrivateIncludeReferenceContext(context.filePath);
+
+  if (
+    typeScriptReferenceResult &&
+    typeScriptReferenceResult.locations.length &&
+    (!fileReferenceContext ||
+      typeScriptReferenceResult.hasMappedDefinition ||
+      typeScriptReferenceResult.hasExternalReference)
+  ) {
+    return typeScriptReferenceResult.locations.map((reference) => {
+      const targetUri = URI.file(reference.filePath).toString();
+      const targetDocument =
+        documents.get(targetUri) ||
+        TextDocument.create(targetUri, "javascript", 1, core.getDocumentTextForFile(reference.filePath));
+      return {
+        uri: targetUri,
+        range: toRange(targetDocument, reference.start, reference.end),
+      };
+    });
+  }
+
+  if (!fileReferenceContext) {
     return null;
   }
 
-  return references.map((reference) => {
+  const fileReferences =
+    context.service.getFileReferenceTargets(context.filePath, document.getText(), {
+      includeDeclaration,
+    }) || [];
+  if (!fileReferences.length) {
+    return null;
+  }
+
+  return fileReferences.map((reference) => {
     const targetUri = URI.file(reference.filePath).toString();
-    const targetDocument = documents.get(targetUri) || TextDocument.create(targetUri, "javascript", 1, core.getDocumentTextForFile(reference.filePath));
+    const targetDocument =
+      documents.get(targetUri) ||
+      TextDocument.create(targetUri, "javascript", 1, core.getDocumentTextForFile(reference.filePath));
     return {
       uri: targetUri,
       range: toRange(targetDocument, reference.start, reference.end),
@@ -1014,224 +918,44 @@ connection.onReferences((params) => {
 });
 
 connection.onCodeAction((params) => {
-  const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return null;
-  }
-
-  const context = core.getDocumentContextByUri(params.textDocument.uri);
-  if (!context) {
-    return null;
-  }
-
-  const actions = context.service.getCodeActions(context.filePath, document.getText(), {
-    start: document.offsetAt(params.range.start),
-    end: document.offsetAt(params.range.end),
-  });
-  if (!actions || !actions.length) {
-    return null;
-  }
-
-  return actions.map((action) => ({
-    title: action.title,
-    kind: CodeActionKind.QuickFix,
-    edit: toWorkspaceEdit(action.edits || []),
-  }));
+  return diagnosticsFeatureService.provideCodeActions(params);
 });
 
 connection.onPrepareRename((params) => {
-  const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return null;
-  }
-
-  const context = core.getDocumentContextByUri(params.textDocument.uri);
-  if (!context) {
-    return null;
-  }
-
-  const renameInfo = context.service.getRenameInfo(context.filePath, document.getText(), document.offsetAt(params.position));
-  if (!renameInfo) {
-    return null;
-  }
-  if (!renameInfo.canRename) {
-    throw new Error(renameInfo.localizedErrorMessage || "Unable to rename this symbol.");
-  }
-
-  return {
-    range: toRange(document, renameInfo.start, renameInfo.end),
-    placeholder: renameInfo.placeholder,
-  };
+  return (
+    customFeatureService.providePrepareRename(params) ||
+    typeScriptFeatureService.providePrepareRename(params)
+  );
 });
 
 connection.onRenameRequest((params) => {
-  const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return null;
-  }
-
-  const context = core.getDocumentContextByUri(params.textDocument.uri);
-  if (!context) {
-    return null;
-  }
-
-  const renameResult = context.service.getRenameEdits(
-    context.filePath,
-    document.getText(),
-    document.offsetAt(params.position),
-    params.newName
+  return (
+    customFeatureService.provideRename(params) ||
+    typeScriptFeatureService.provideRename(params)
   );
-  if (!renameResult) {
-    return null;
-  }
-  if (!renameResult.canRename) {
-    throw new Error(renameResult.localizedErrorMessage || "Unable to rename this symbol.");
-  }
-
-  return toWorkspaceEdit(renameResult.edits);
 });
 
 connection.onDocumentLinks((params) => {
-  const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return null;
-  }
-
-  const context = core.getDocumentContextByUri(params.textDocument.uri);
-  if (!context) {
-    return null;
-  }
-
-  return context.service.getDocumentLinks(context.filePath, document.getText()).map((entry) => ({
-    range: toRange(document, entry.start, entry.end),
-    target: URI.file(entry.targetFilePath).toString(),
-    tooltip:
-      entry.kind === "resolve-path"
-        ? `Open module target: ${entry.value}`
-        : entry.kind === "include-path"
-          ? `Open partial target: ${entry.value}`
-          : `Open route target: ${entry.value}`,
-  }));
+  return customFeatureService.provideDocumentLinks(params);
 });
 
 connection.onSignatureHelp((params) => {
-  const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return null;
-  }
-
-  const context = core.getDocumentContextByUri(params.textDocument.uri);
-  if (!context) {
-    return null;
-  }
-
-  return toSignatureHelp(
-    context.service.getSignatureHelp(context.filePath, document.getText(), document.offsetAt(params.position), {
-      triggerCharacter: params.context && params.context.triggerCharacter,
-      isRetrigger: params.context && params.context.isRetrigger,
-    })
+  return (
+    customFeatureService.provideSignatureHelp(params) ||
+    typeScriptFeatureService.provideSignatureHelp(params)
   );
 });
 
 connection.languages.inlayHint.on((params) => {
-  const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return null;
-  }
-
-  const context = core.getDocumentContextByUri(params.textDocument.uri);
-  if (!context) {
-    return null;
-  }
-
-  return context.service.getInlayHintEntries(context.filePath, document.getText(), {
-    start: document.offsetAt(params.range.start),
-    end: document.offsetAt(params.range.end),
-  }).map((entry) => ({
-    position: document.positionAt(entry.position),
-    label: entry.label,
-    paddingLeft: true,
-    kind: entry.kind === "parameter" ? InlayHintKind.Parameter : InlayHintKind.Type,
-    tooltip: entry.tooltip || undefined,
-  }));
+  return typeScriptFeatureService.provideInlayHints(params);
 });
 
 connection.languages.semanticTokens.on((params) => {
-  const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return { data: [] };
-  }
-
-  const filePath = uriToFilePath(params.textDocument.uri);
-  if (!isEjsFilePath(filePath)) {
-    return { data: [] };
-  }
-
-  return getSemanticTokens(document.getText(), document);
+  return structureFeatureService.provideSemanticTokens(params);
 });
 
 connection.onCodeLens((params) => {
-  const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return null;
-  }
-
-  const context = core.getDocumentContextByUri(params.textDocument.uri);
-  if (!context) {
-    return null;
-  }
-
-  const boundaryEntries = isEjsFilePath(context.filePath)
-    ? getServerTemplateBoundaryLineNumbers(document.getText(), {
-        includeTopLevelPartialSetup: hasPrivatePagesSegment(context.filePath),
-      }).map((lineIndex) => ({
-        title: "Template",
-        start: document.offsetAt({ line: lineIndex, character: 0 }),
-        command: "pocketpagesServerScript.noopCodeLens",
-      }))
-    : [];
-
-  const entries = [...boundaryEntries, ...(context.service.getCodeLensEntries(context.filePath, document.getText()) || [])];
-  if (!entries.length) {
-    return null;
-  }
-
-  return entries.map((entry) => {
-    const range = typeof entry.start === "number"
-      ? {
-          start: document.positionAt(entry.start),
-          end: document.positionAt(entry.start),
-        }
-      : {
-          start: { line: 0, character: 0 },
-          end: { line: 0, character: 0 },
-        };
-
-    let command = null;
-    if (entry.command) {
-      command = {
-        title: entry.title,
-        command: entry.command,
-        arguments: [params.textDocument.uri],
-      };
-    } else if (entry.targetFilePath) {
-      command = {
-        title: entry.title,
-        command: "vscode.open",
-        arguments: [URI.file(entry.targetFilePath).toString()],
-      };
-    } else {
-      command = {
-        title: entry.title,
-        command: "pocketpagesServerScript.noopCodeLens",
-      };
-    }
-
-    return {
-      range,
-      command,
-    };
-  });
+  return structureFeatureService.provideCodeLens(params);
 });
 
 connection.onRequest(REQUESTS.probeCurrentFile, ({ uri }) => {

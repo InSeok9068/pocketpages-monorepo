@@ -4527,6 +4527,15 @@ class ProjectLanguageService {
   }
 
   getDefinitionTarget(filePath, documentText, offset) {
+    const customDefinitionTarget = this.getCustomDefinitionTarget(filePath, documentText, offset);
+    if (customDefinitionTarget) {
+      return customDefinitionTarget;
+    }
+
+    return this.getTypeScriptDefinitionTarget(filePath, documentText, offset);
+  }
+
+  getCustomDefinitionTarget(filePath, documentText, offset) {
     const pathContext = getPathContextAtOffset(documentText, offset);
     if (pathContext) {
       if (pathContext.kind === "resolve-path") {
@@ -4564,10 +4573,19 @@ class ProjectLanguageService {
       );
     }
 
-    return this.getTypeScriptDefinitionTarget(filePath, documentText, offset);
+    return null;
   }
 
   getRenameInfo(filePath, documentText, offset) {
+    const customRenameInfo = this.getCustomRenameInfo(filePath, documentText, offset);
+    if (customRenameInfo) {
+      return customRenameInfo;
+    }
+
+    return this.getTypeScriptRenameInfo(filePath, documentText, offset);
+  }
+
+  getCustomRenameInfo(filePath, documentText, offset) {
     const resolvedModuleMemberContext = this.getResolvedModuleMemberContextForRename(filePath, documentText, offset);
     if (!resolvedModuleMemberContext) {
       const moduleExportContext = this.getModuleExportRenameContext(filePath, documentText, offset);
@@ -4617,8 +4635,56 @@ class ProjectLanguageService {
     };
   }
 
+  getTypeScriptRenameInfo(filePath, documentText, offset) {
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
+    if (!virtualState) {
+      return null;
+    }
+
+    const renameInfo = this.languageService.getRenameInfo(
+      virtualState.virtual.fileName,
+      virtualState.virtualOffset,
+      {
+        allowRenameOfImportPath: false,
+      }
+    );
+    if (!renameInfo) {
+      return null;
+    }
+
+    const start = this.mapVirtualOffsetToDocumentOffset(
+      virtualState.virtual.fileName,
+      renameInfo.triggerSpan.start
+    );
+    const end = this.mapVirtualOffsetToDocumentOffset(
+      virtualState.virtual.fileName,
+      renameInfo.triggerSpan.start + renameInfo.triggerSpan.length
+    );
+    if (start === null || end === null) {
+      return null;
+    }
+
+    return {
+      canRename: renameInfo.canRename,
+      localizedErrorMessage: renameInfo.localizedErrorMessage,
+      start,
+      end,
+      placeholder: documentText.slice(start, end),
+      source: "typescript",
+    };
+  }
+
   getRenameEdits(filePath, documentText, offset, newName) {
-    const renameInfo = this.getRenameInfo(filePath, documentText, offset);
+    const customRenameInfo = this.getCustomRenameInfo(filePath, documentText, offset);
+    if (customRenameInfo) {
+      return this.getCustomRenameEdits(filePath, documentText, offset, newName);
+    }
+
+    return this.getTypeScriptRenameEdits(filePath, documentText, offset, newName);
+  }
+
+  getCustomRenameEdits(filePath, documentText, offset, newName) {
+    const renameInfo = this.getCustomRenameInfo(filePath, documentText, offset);
     if (!renameInfo) {
       return null;
     }
@@ -4684,7 +4750,98 @@ class ProjectLanguageService {
     };
   }
 
+  getTypeScriptRenameEdits(filePath, documentText, offset, newName) {
+    const renameInfo = this.getTypeScriptRenameInfo(filePath, documentText, offset);
+    if (!renameInfo) {
+      return null;
+    }
+
+    if (!renameInfo.canRename) {
+      return {
+        canRename: false,
+        localizedErrorMessage: renameInfo.localizedErrorMessage || "Unable to rename this symbol.",
+        edits: [],
+      };
+    }
+
+    if (!isValidIdentifierName(newName)) {
+      return {
+        canRename: false,
+        localizedErrorMessage: `Invalid identifier name "${newName}".`,
+        edits: [],
+      };
+    }
+
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
+    if (!virtualState) {
+      return null;
+    }
+
+    const renameLocations =
+      this.languageService.findRenameLocations(
+        virtualState.virtual.fileName,
+        virtualState.virtualOffset,
+        false,
+        false,
+        {}
+      ) || [];
+
+    const uniqueEdits = new Map();
+    for (const location of renameLocations) {
+      const mappedLocation = this.mapTypeScriptReferenceToLocation(location, false);
+      if (!mappedLocation) {
+        continue;
+      }
+
+      const editKey = `${mappedLocation.filePath}:${mappedLocation.start}:${mappedLocation.end}:${newName}`;
+      if (!uniqueEdits.has(editKey)) {
+        uniqueEdits.set(editKey, {
+          filePath: mappedLocation.filePath,
+          start: mappedLocation.start,
+          end: mappedLocation.end,
+          newText: newName,
+        });
+      }
+    }
+
+    return {
+      canRename: true,
+      edits: [...uniqueEdits.values()],
+    };
+  }
+
   getReferenceTargets(filePath, documentText, offset, options = {}) {
+    const customReferenceTargets = this.getCustomReferenceTargets(filePath, documentText, offset, options);
+    if (customReferenceTargets) {
+      return customReferenceTargets;
+    }
+
+    const typeScriptReferences = this.getTypeScriptReferenceTargets(filePath, documentText, offset, options);
+    const fileReferenceContext = this.getPrivateIncludeReferenceContext(filePath);
+    if (typeScriptReferences && typeScriptReferences.locations.length) {
+      if (
+        !fileReferenceContext ||
+        typeScriptReferences.hasMappedDefinition ||
+        typeScriptReferences.hasExternalReference
+      ) {
+        return typeScriptReferences.locations;
+      }
+    }
+
+    if (!fileReferenceContext) {
+      return null;
+    }
+
+    return this.collectPathReferenceLocations(
+      fileReferenceContext.kind,
+      fileReferenceContext.targetFilePath,
+      this.getPagesCodeOverrides({
+        [normalizePath(filePath)]: documentText,
+      })
+    );
+  }
+
+  getCustomReferenceTargets(filePath, documentText, offset, options = {}) {
     const pathReferenceContext = this.getPathReferenceContext(filePath, documentText, offset);
     if (pathReferenceContext) {
       return this.collectPathReferenceLocations(
@@ -4694,23 +4851,9 @@ class ProjectLanguageService {
       );
     }
 
-    const renameInfo = this.getRenameInfo(filePath, documentText, offset);
+    const renameInfo = this.getCustomRenameInfo(filePath, documentText, offset);
     if (!renameInfo) {
-      const typeScriptReferences = this.getTypeScriptReferenceTargets(filePath, documentText, offset, options);
-      const fileReferenceContext = this.getPrivateIncludeReferenceContext(filePath);
-      if (typeScriptReferences && typeScriptReferences.locations.length) {
-        if (!fileReferenceContext || typeScriptReferences.hasMappedDefinition || typeScriptReferences.hasExternalReference) {
-          return typeScriptReferences.locations;
-        }
-      }
-
-      if (!fileReferenceContext) {
-        return null;
-      }
-
-      return this.collectPathReferenceLocations(fileReferenceContext.kind, fileReferenceContext.targetFilePath, this.getPagesCodeOverrides({
-        [normalizePath(filePath)]: documentText,
-      }));
+      return null;
     }
 
     const moduleRename = this.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, this.getPagesCodeOverrides({

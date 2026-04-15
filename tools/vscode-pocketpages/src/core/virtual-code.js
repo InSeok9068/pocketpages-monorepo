@@ -35,6 +35,47 @@ function createIdentityMapping(length, data) {
     : [];
 }
 
+function createCodeInformation(overrides = {}) {
+  return {
+    verification: false,
+    completion: false,
+    semantic: false,
+    navigation: false,
+    structure: false,
+    format: false,
+    references: false,
+    rename: false,
+    hover: false,
+    ...overrides,
+  };
+}
+
+const ROOT_CODE_INFORMATION = createCodeInformation({
+  semantic: true,
+  structure: true,
+  format: true,
+});
+
+const SERVER_SCRIPT_CODE_INFORMATION = createCodeInformation({
+  verification: true,
+  completion: true,
+  semantic: true,
+  navigation: true,
+  structure: true,
+  references: true,
+  rename: true,
+  hover: true,
+});
+
+const TEMPLATE_CODE_INFORMATION = createCodeInformation({
+  verification: true,
+  completion: true,
+  semantic: true,
+  navigation: true,
+  structure: true,
+  hover: true,
+});
+
 function createEmbeddedCode({
   id,
   kind,
@@ -78,13 +119,7 @@ function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodeMap)
                 sourceOffsets: [block.contentStart],
                 generatedOffsets: [0],
                 lengths: [block.content.length],
-                data: {
-                  verification: true,
-                  completion: true,
-                  semantic: true,
-                  navigation: true,
-                  structure: true,
-                },
+                data: SERVER_SCRIPT_CODE_INFORMATION,
               },
             ]
           : [],
@@ -110,13 +145,7 @@ function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodeMap)
         languageId: "typescript",
         text: templateVirtualText,
         previous: previousEmbeddedCodeMap.get("template"),
-        mappings: createIdentityMapping(templateLength, {
-          verification: true,
-          completion: true,
-          semantic: true,
-          navigation: true,
-          structure: true,
-        }),
+        mappings: createIdentityMapping(templateLength, TEMPLATE_CODE_INFORMATION),
         metadata: {
           templateBlocks,
           serverBlocks,
@@ -136,11 +165,7 @@ class PocketPagesVirtualCode {
     this.languageId = normalizeLanguageId(languageId, this.filePath);
     this.version = version;
     this.text = String(text || "");
-    this.mappings = createIdentityMapping(this.text.length, {
-      semantic: true,
-      structure: true,
-      format: true,
-    });
+    this.mappings = createIdentityMapping(this.text.length, ROOT_CODE_INFORMATION);
     this.associatedScriptMappings = new Map();
     this.embeddedCodes = [];
     this.snapshot = createScriptSnapshot(this.text);
@@ -155,11 +180,7 @@ class PocketPagesVirtualCode {
     this.languageId = normalizeLanguageId(languageId || this.languageId, this.filePath);
     this.text = String(text || "");
     this.snapshot = createScriptSnapshot(this.text, previousSnapshot);
-    this.mappings = createIdentityMapping(this.text.length, {
-      semantic: true,
-      structure: true,
-      format: true,
-    });
+    this.mappings = createIdentityMapping(this.text.length, ROOT_CODE_INFORMATION);
     this.updateEmbeddedCodes(previousEmbeddedCodes);
     return this;
   }
