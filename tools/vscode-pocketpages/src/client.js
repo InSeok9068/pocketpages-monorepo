@@ -21,10 +21,91 @@ const LSP_DOCUMENT_SELECTOR = [...EJS_DOCUMENT_SELECTOR, ...HOOK_SCRIPT_DOCUMENT
 
 let client = null;
 let legacyMode = false;
+let lspStatusController = null;
+let outputChannel = null;
+let clientLogger = null;
 const saveReasons = new Map();
+
+function getLogTimestamp() {
+  return new Date().toISOString().slice(11, 23);
+}
+
+function formatLogFieldValue(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : null;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  if (Array.isArray(value)) {
+    return value.length ? JSON.stringify(value) : null;
+  }
+
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+
+  const text = String(value);
+  return /\s/.test(text) ? JSON.stringify(text) : text;
+}
+
+function formatLogFields(fields = {}) {
+  const parts = [];
+  for (const [key, value] of Object.entries(fields)) {
+    const formattedValue = formatLogFieldValue(value);
+    if (formattedValue === null) {
+      continue;
+    }
+
+    parts.push(`${key}=${formattedValue}`);
+  }
+  return parts.length ? ` ${parts.join(" ")}` : "";
+}
+
+function createOutputLogger(output) {
+  function write(level, scope, message, fields = {}) {
+    output.appendLine(
+      `[${getLogTimestamp()}] [client] [${scope}] [${level}] ${message}${formatLogFields(fields)}`
+    );
+  }
+
+  return {
+    info(scope, message, fields) {
+      write("info", scope, message, fields);
+    },
+    warn(scope, message, fields) {
+      write("warn", scope, message, fields);
+    },
+    error(scope, message, fields) {
+      write("error", scope, message, fields);
+    },
+    perf(scope, message, fields) {
+      write("perf", scope, message, fields);
+    },
+  };
+}
 
 function normalizeDocumentPath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
+}
+
+function isManagedHookScriptDocument(document) {
+  if (!document || document.uri.scheme !== "file") {
+    return false;
+  }
+
+  const filePath = document.uri.fsPath;
+  if (!/\.(js|cjs|mjs)$/i.test(filePath)) {
+    return false;
+  }
+
+  return normalizeDocumentPath(filePath).includes("/pb_hooks/") && !!findAppRoot(filePath);
 }
 
 function hasPrivatePagesSegment(filePath) {
@@ -52,6 +133,10 @@ function isManagedEjsDocument(document) {
     && !!findAppRoot(document.uri.fsPath);
 }
 
+function isManagedLspDocument(document) {
+  return isManagedEjsDocument(document) || isManagedHookScriptDocument(document);
+}
+
 function formatSaveReason(reason) {
   if (reason === vscode.TextDocumentSaveReason.Manual) {
     return "manual";
@@ -74,6 +159,80 @@ function toRange(document, start, end) {
 
 function toReferenceLocation(document, reference) {
   return new vscode.Location(document.uri, toRange(document, reference.start, reference.end));
+}
+
+function createLspStatusController(context, output) {
+  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 200);
+  let phase = "starting";
+
+  const showOutputCommand = vscode.commands.registerCommand("pocketpagesServerScript.showOutput", () => {
+    output.show(true);
+  });
+  context.subscriptions.push(showOutputCommand);
+
+  statusBarItem.name = "PocketPages LSP";
+  statusBarItem.command = "pocketpagesServerScript.showOutput";
+
+  function applyPhase() {
+    if (phase === "starting") {
+      statusBarItem.text = "$(loading~spin) PocketPages LSP";
+      statusBarItem.tooltip = "PocketPages language server is starting.";
+      return;
+    }
+
+    if (phase === "ready") {
+      statusBarItem.text = "$(server-process) PocketPages LSP";
+      statusBarItem.tooltip = "PocketPages language server is running.";
+      return;
+    }
+
+    if (phase === "legacy") {
+      statusBarItem.text = "$(warning) PocketPages Legacy";
+      statusBarItem.tooltip = "PocketPages LSP failed to start. Using legacy extension host mode.";
+      return;
+    }
+
+    statusBarItem.text = "$(circle-slash) PocketPages LSP";
+    statusBarItem.tooltip = "PocketPages language server is stopped.";
+  }
+
+  function refreshVisibility() {
+    const activeDocument = vscode.window.activeTextEditor && vscode.window.activeTextEditor.document;
+    if (isManagedLspDocument(activeDocument)) {
+      statusBarItem.show();
+      return;
+    }
+
+    statusBarItem.hide();
+  }
+
+  return {
+    setStarting() {
+      phase = "starting";
+      applyPhase();
+      refreshVisibility();
+    },
+    setReady() {
+      phase = "ready";
+      applyPhase();
+      refreshVisibility();
+    },
+    setLegacy() {
+      phase = "legacy";
+      applyPhase();
+      refreshVisibility();
+    },
+    setStopped() {
+      phase = "stopped";
+      applyPhase();
+      refreshVisibility();
+    },
+    refreshVisibility,
+    dispose() {
+      statusBarItem.dispose();
+    },
+    item: statusBarItem,
+  };
 }
 
 function updateServerTemplateBoundaries(editor, decoration) {
@@ -110,9 +269,15 @@ function updateServerTemplateBoundariesForDocument(document, decoration) {
   }
 }
 
-async function showFileReferences({ output, fileUri }) {
+async function showFileReferences({ logger, fileUri }) {
+  logger.info("references", "query", {
+    file: vscode.workspace.asRelativePath(fileUri.fsPath, false),
+  });
   const result = await client.sendRequest(REQUESTS.allFileReferences, { uri: fileUri.toString() });
   if (!result) {
+    logger.warn("references", "unsupported-target", {
+      file: vscode.workspace.asRelativePath(fileUri.fsPath, false),
+    });
     vscode.window.showWarningMessage(
       "File is not a supported PocketPages reference target. Use a _private partial, a _private module, or a static route file."
     );
@@ -120,9 +285,11 @@ async function showFileReferences({ output, fileUri }) {
   }
 
   const references = Array.isArray(result.references) ? result.references : [];
-  output.appendLine(
-    `showFileReferences: kind=${result.referenceQuery.kind} path=${fileUri.fsPath} refs=${references.length}`
-  );
+  logger.info("references", "result", {
+    file: vscode.workspace.asRelativePath(fileUri.fsPath, false),
+    kind: result.referenceQuery && result.referenceQuery.kind,
+    refs: references.length,
+  });
 
   if (!references.length) {
     vscode.window.showInformationMessage(result.referenceQuery.emptyMessage || "No references found.");
@@ -149,6 +316,10 @@ async function showFileReferences({ output, fileUri }) {
     .filter(Boolean);
 
   if (!locations.length) {
+    logger.warn("references", "open-target-failed", {
+      file: vscode.workspace.asRelativePath(fileUri.fsPath, false),
+      refs: references.length,
+    });
     vscode.window.showInformationMessage("References were found, but the target files could not be opened.");
     return;
   }
@@ -158,7 +329,7 @@ async function showFileReferences({ output, fileUri }) {
   await vscode.commands.executeCommand("editor.action.showReferences", fileUri, anchorPosition, locations);
 }
 
-async function applyPrivateFileRenameEdits({ output, event }) {
+async function applyPrivateFileRenameEdits({ logger, event }) {
   const renameSpecs = event.files.filter(
     (entry) =>
       entry.oldUri &&
@@ -181,9 +352,11 @@ async function applyPrivateFileRenameEdits({ output, event }) {
       newUri: renameSpec.newUri.toString(),
     });
 
-    output.appendLine(
-      `fileRename: old=${renameSpec.oldUri.fsPath} new=${renameSpec.newUri.fsPath} edits=${Array.isArray(edits) ? edits.length : 0}`
-    );
+    logger.info("rename", "apply-edits", {
+      old: vscode.workspace.asRelativePath(renameSpec.oldUri.fsPath, false),
+      next: vscode.workspace.asRelativePath(renameSpec.newUri.fsPath, false),
+      edits: Array.isArray(edits) ? edits.length : 0,
+    });
 
     for (const edit of edits || []) {
       let targetDocument = documentCache.get(edit.filePath);
@@ -203,7 +376,11 @@ async function applyPrivateFileRenameEdits({ output, event }) {
 }
 
 async function activateLsp(context) {
-  const output = vscode.window.createOutputChannel("VSCode PocketPages");
+  outputChannel = vscode.window.createOutputChannel("VSCode PocketPages");
+  clientLogger = createOutputLogger(outputChannel);
+  const logger = clientLogger;
+  lspStatusController = createLspStatusController(context, outputChannel);
+  lspStatusController.setStarting();
   const serverModule = context.asAbsolutePath(path.join("src", "lsp", "server.js"));
   const serverOptions = {
     run: { module: serverModule, transport: TransportKind.ipc },
@@ -211,7 +388,7 @@ async function activateLsp(context) {
   };
   const clientOptions = {
     documentSelector: LSP_DOCUMENT_SELECTOR,
-    outputChannel: output,
+    outputChannel,
   };
 
   client = new LanguageClient(
@@ -221,8 +398,19 @@ async function activateLsp(context) {
     clientOptions
   );
 
-  context.subscriptions.push(output);
+  context.subscriptions.push(outputChannel, lspStatusController.item);
+  logger.info("lsp", "start", {
+    serverModule,
+    selector: ["ejs", "pb_hooks-scripts"],
+  });
   await client.start();
+  lspStatusController.setReady();
+  logger.info("lsp", "ready", {
+    transport: "ipc",
+  });
+  logger.info("help", "log-groups", {
+    groups: ["lifecycle", "document", "completion", "diagnostics", "cache", "references", "rename", "command"],
+  });
 
   const serverTemplateBoundaryDecoration = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
@@ -237,13 +425,32 @@ async function activateLsp(context) {
   context.subscriptions.push(
     serverTemplateBoundaryDecoration,
     vscode.workspace.onDidOpenTextDocument((document) => {
+      if (isManagedLspDocument(document)) {
+        logger.info("document", "open", {
+          file: vscode.workspace.asRelativePath(document.uri.fsPath, false),
+          languageId: document.languageId,
+          version: document.version,
+        });
+      }
       updateServerTemplateBoundariesForDocument(document, serverTemplateBoundaryDecoration);
     }),
     vscode.workspace.onDidChangeTextDocument((event) => {
+      if (isManagedLspDocument(event.document)) {
+        logger.perf("document", "change", {
+          file: vscode.workspace.asRelativePath(event.document.uri.fsPath, false),
+          version: event.document.version,
+          changes: event.contentChanges.length,
+        });
+      }
       updateServerTemplateBoundariesForDocument(event.document, serverTemplateBoundaryDecoration);
     }),
     vscode.workspace.onDidCloseTextDocument((document) => {
       saveReasons.delete(document.uri.toString());
+      if (isManagedLspDocument(document)) {
+        logger.info("document", "close", {
+          file: vscode.workspace.asRelativePath(document.uri.fsPath, false),
+        });
+      }
     }),
     vscode.workspace.onWillSaveTextDocument((event) => {
       saveReasons.set(event.document.uri.toString(), event.reason);
@@ -259,21 +466,32 @@ async function activateLsp(context) {
       }
 
       if (saveReason !== vscode.TextDocumentSaveReason.Manual) {
-        output.appendLine(
-          `updateDiagnostics skipped: ${document.uri.fsPath} (saveReason=${formatSaveReason(saveReason)})`
-        );
+        logger.info("diagnostics", "skip-auto-save", {
+          file: vscode.workspace.asRelativePath(document.uri.fsPath, false),
+          saveReason: formatSaveReason(saveReason),
+        });
         return;
       }
 
+      logger.info("diagnostics", "manual-save", {
+        file: vscode.workspace.asRelativePath(document.uri.fsPath, false),
+      });
       await client.sendNotification(NOTIFICATIONS.didManualSave, { uri: document.uri.toString() });
     }),
-    vscode.workspace.onDidRenameFiles((event) => applyPrivateFileRenameEdits({ output, event })),
+    vscode.workspace.onDidRenameFiles((event) => applyPrivateFileRenameEdits({ logger, event })),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
+      lspStatusController.refreshVisibility();
       if (editor) {
+        if (isManagedLspDocument(editor.document)) {
+          logger.info("editor", "active", {
+            file: vscode.workspace.asRelativePath(editor.document.uri.fsPath, false),
+          });
+        }
         updateServerTemplateBoundaries(editor, serverTemplateBoundaryDecoration);
       }
     }),
     vscode.window.onDidChangeVisibleTextEditors((editors) => {
+      lspStatusController.refreshVisibility();
       editors.forEach((editor) => updateServerTemplateBoundaries(editor, serverTemplateBoundaryDecoration));
     }),
     vscode.commands.registerCommand("pocketpagesServerScript.probeCurrentFile", async () => {
@@ -289,8 +507,12 @@ async function activateLsp(context) {
         `hasAppRoot=${result.hasAppRoot ? "yes" : "no"}`,
         `diagnostics=${result.diagnostics}`,
       ].join(" | ");
-      output.appendLine(`probe: ${message}`);
-      output.show(true);
+      logger.info("command", "probe", {
+        file: vscode.workspace.asRelativePath(editor.document.uri.fsPath, false),
+        hasAppRoot: result.hasAppRoot,
+        diagnostics: result.diagnostics,
+      });
+      outputChannel.show(true);
       vscode.window.showInformationMessage(message);
     }),
     vscode.commands.registerCommand("pocketpagesServerScript.refreshDiagnostics", async () => {
@@ -300,6 +522,9 @@ async function activateLsp(context) {
         return;
       }
 
+      logger.info("command", "refresh-diagnostics", {
+        file: vscode.workspace.asRelativePath(editor.document.uri.fsPath, false),
+      });
       await client.sendRequest(REQUESTS.refreshDiagnostics, { uri: editor.document.uri.toString() });
       updateServerTemplateBoundaries(editor, serverTemplateBoundaryDecoration);
     }),
@@ -308,8 +533,11 @@ async function activateLsp(context) {
       const result = await client.sendRequest(REQUESTS.reloadCaches, {
         uri: editor ? editor.document.uri.toString() : null,
       });
-      output.appendLine(`reloadCaches: ${result.message}`);
-      output.show(true);
+      logger.info("cache", "reload", {
+        file: editor && editor.document ? vscode.workspace.asRelativePath(editor.document.uri.fsPath, false) : null,
+        scoped: result.scoped,
+      });
+      outputChannel.show(true);
       vscode.window.showInformationMessage(result.message);
     }),
     vscode.commands.registerCommand("pocketpagesServerScript.allFileReferences", async (resourceUri) => {
@@ -320,7 +548,7 @@ async function activateLsp(context) {
         return;
       }
 
-      await showFileReferences({ output, fileUri });
+      await showFileReferences({ logger, fileUri });
     }),
     vscode.commands.registerCommand("pocketpagesServerScript.noopCodeLens", () => {})
   );
@@ -328,6 +556,10 @@ async function activateLsp(context) {
   for (const document of vscode.workspace.textDocuments) {
     updateServerTemplateBoundariesForDocument(document, serverTemplateBoundaryDecoration);
   }
+  lspStatusController.refreshVisibility();
+  logger.info("lifecycle", "activate-complete", {
+    openDocuments: vscode.workspace.textDocuments.filter((document) => isManagedLspDocument(document)).length,
+  });
 }
 
 async function activate(context) {
@@ -335,7 +567,20 @@ async function activate(context) {
     return await activateLsp(context);
   } catch (error) {
     legacyMode = true;
+    if (!outputChannel) {
+      outputChannel = vscode.window.createOutputChannel("VSCode PocketPages");
+      context.subscriptions.push(outputChannel);
+    }
+    if (!clientLogger) {
+      clientLogger = createOutputLogger(outputChannel);
+    }
+    if (!lspStatusController) {
+      lspStatusController = createLspStatusController(context, outputChannel);
+      context.subscriptions.push(lspStatusController.item);
+    }
+    lspStatusController.setLegacy();
     const message = error && error.message ? error.message : String(error);
+    clientLogger.error("lsp", "fallback-legacy", { message });
     vscode.window.showWarningMessage(`PocketPages LSP failed to start. Falling back to legacy extension host mode. (${message})`);
     return legacyExtension.activate(context);
   }
@@ -349,7 +594,14 @@ async function deactivate() {
   if (client) {
     const activeClient = client;
     client = null;
+    if (lspStatusController) {
+      lspStatusController.setStopped();
+    }
     return activeClient.stop();
+  }
+
+  if (lspStatusController) {
+    lspStatusController.setStopped();
   }
 }
 

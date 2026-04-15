@@ -39,6 +39,55 @@ const diagnosticTimeouts = new Map();
 const diagnosticRunIds = new Map();
 const completionCache = new Map();
 
+function getLogTimestamp() {
+  return new Date().toISOString().slice(11, 23);
+}
+
+function formatLogFieldValue(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : null;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  if (Array.isArray(value)) {
+    return value.length ? JSON.stringify(value) : null;
+  }
+
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+
+  const text = String(value);
+  return /\s/.test(text) ? JSON.stringify(text) : text;
+}
+
+function formatLogFields(fields = {}) {
+  const parts = [];
+  for (const [key, value] of Object.entries(fields)) {
+    const formattedValue = formatLogFieldValue(value);
+    if (formattedValue === null) {
+      continue;
+    }
+
+    parts.push(`${key}=${formattedValue}`);
+  }
+
+  return parts.length ? ` ${parts.join(" ")}` : "";
+}
+
+function logServer(level, scope, message, fields = {}) {
+  connection.console.log(
+    `[${getLogTimestamp()}] [server] [${scope}] [${level}] ${message}${formatLogFields(fields)}`
+  );
+}
+
 const COMPLETION_KIND_MAP = {
   [ts.ScriptElementKind.primitiveType]: CompletionItemKind.Keyword,
   [ts.ScriptElementKind.keyword]: CompletionItemKind.Keyword,
@@ -197,6 +246,25 @@ function formatCompletionProfile(profile) {
   return parts.length ? ` ${parts.join(" ")}` : "";
 }
 
+function getCompletionProfileFields(profile) {
+  if (!profile) {
+    return {};
+  }
+
+  return {
+    getVirtualStateMs:
+      typeof profile.getVirtualStateAtOffsetMs === "number"
+        ? profile.getVirtualStateAtOffsetMs.toFixed(1)
+        : null,
+    upsertKind: profile.upsertKind || null,
+    upsertMs: typeof profile.upsertMs === "number" ? profile.upsertMs.toFixed(1) : null,
+    tsLsMs:
+      typeof profile.getCompletionsAtPositionMs === "number"
+        ? profile.getCompletionsAtPositionMs.toFixed(1)
+        : null,
+  };
+}
+
 function formatDiagnosticsProfile(profile) {
   if (!profile) {
     return "";
@@ -229,6 +297,47 @@ function formatDiagnosticsProfile(profile) {
   }
 
   return parts.length ? ` ${parts.join(" ")}` : "";
+}
+
+function getDiagnosticsProfileFields(profile) {
+  if (!profile) {
+    return {};
+  }
+
+  return {
+    analysisMs:
+      typeof profile.createDocumentAnalysisMs === "number"
+        ? profile.createDocumentAnalysisMs.toFixed(1)
+        : null,
+    clientMs:
+      typeof profile.collectClientScriptSyntacticDiagnosticsMs === "number"
+        ? profile.collectClientScriptSyntacticDiagnosticsMs.toFixed(1)
+        : null,
+    privateMs:
+      typeof profile.collectPrivateResolveDiagnosticsMs === "number"
+        ? profile.collectPrivateResolveDiagnosticsMs.toFixed(1)
+        : null,
+    serverMs:
+      typeof profile.collectServerBlockDiagnosticsMs === "number"
+        ? profile.collectServerBlockDiagnosticsMs.toFixed(1)
+        : null,
+    templateMs:
+      typeof profile.collectTemplateDiagnosticsMs === "number"
+        ? profile.collectTemplateDiagnosticsMs.toFixed(1)
+        : null,
+    schemaMs:
+      typeof profile.collectScriptSchemaDiagnosticsMs === "number"
+        ? profile.collectScriptSchemaDiagnosticsMs.toFixed(1)
+        : null,
+    rulesMs:
+      typeof profile.collectProjectRuleDiagnosticsMs === "number"
+        ? profile.collectProjectRuleDiagnosticsMs.toFixed(1)
+        : null,
+    dedupeMs:
+      typeof profile.dedupeDiagnosticsMs === "number"
+        ? profile.dedupeDiagnosticsMs.toFixed(1)
+        : null,
+  };
 }
 
 function toRange(document, start, end) {
@@ -400,11 +509,20 @@ function scheduleDiagnostics(uri) {
     clearTimeout(diagnosticTimeouts.get(uri));
   }
 
+  const document = documents.get(uri);
   const timeoutId = setTimeout(() => {
     diagnosticTimeouts.delete(uri);
     publishDiagnostics(uri);
   }, SCRIPT_DIAGNOSTICS_DEBOUNCE_MS);
   diagnosticTimeouts.set(uri, timeoutId);
+
+  if (document) {
+    logServer("perf", "diagnostics", "schedule", {
+      file: getRelativePathLabel(uriToFilePath(uri)),
+      version: document.version,
+      delayMs: SCRIPT_DIAGNOSTICS_DEBOUNCE_MS,
+    });
+  }
 }
 
 function cancelScheduledDiagnostics(uri) {
@@ -414,6 +532,9 @@ function cancelScheduledDiagnostics(uri) {
 
   clearTimeout(diagnosticTimeouts.get(uri));
   diagnosticTimeouts.delete(uri);
+  logServer("info", "diagnostics", "cancel-scheduled", {
+    file: getRelativePathLabel(uriToFilePath(uri)),
+  });
 }
 
 function getSemanticTokens(documentText, document) {
@@ -476,16 +597,20 @@ function publishDiagnostics(uri) {
   const elapsedMs = elapsedMilliseconds(startedAt);
 
   if (!isActiveDiagnosticRun(uri, runId) || isStaleDocumentVersion(uri, requestedVersion)) {
-    connection.console.log(
-      `updateDiagnostics stale: ${context.filePath} (version=${requestedVersion})`
-    );
+    logServer("warn", "diagnostics", "stale", {
+      file: getRelativePathLabel(context.filePath),
+      version: requestedVersion,
+    });
     return;
   }
 
-  connection.console.log(`updateDiagnostics: ${context.filePath}`);
-  connection.console.log(
-    `  diagnostics: ${rawDiagnostics.length} (getDiagnostics=${elapsedMs.toFixed(1)}ms total=${elapsedMs.toFixed(1)}ms)${formatDiagnosticsProfile(diagnosticsProfile)}`
-  );
+  logServer("perf", "diagnostics", "publish", {
+    file: getRelativePathLabel(context.filePath),
+    version: requestedVersion,
+    count: rawDiagnostics.length,
+    totalMs: elapsedMs.toFixed(1),
+    ...getDiagnosticsProfileFields(diagnosticsProfile),
+  });
 
   connection.sendDiagnostics({
     uri,
@@ -505,42 +630,48 @@ function publishManagedDiagnostics() {
   }
 }
 
-connection.onInitialize(() => ({
-  capabilities: {
-    textDocumentSync: {
-      openClose: true,
-      change: TextDocumentSyncKind.Incremental,
-      save: false,
-    },
-    completionProvider: {
-      resolveProvider: true,
-      triggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
-    },
-    hoverProvider: true,
-    definitionProvider: true,
-    referencesProvider: true,
-    renameProvider: {
-      prepareProvider: true,
-    },
-    codeActionProvider: true,
-    documentLinkProvider: {},
-    signatureHelpProvider: {
-      triggerCharacters: SIGNATURE_TRIGGER_CHARACTERS,
-      retriggerCharacters: SIGNATURE_TRIGGER_CHARACTERS,
-    },
-    inlayHintProvider: true,
-    semanticTokensProvider: {
-      legend: {
-        tokenTypes: TOKEN_TYPES,
-        tokenModifiers: [],
+connection.onInitialize(() => {
+  logServer("info", "lifecycle", "initialize", {
+    pid: process.pid,
+    cwd: process.cwd(),
+  });
+  return {
+    capabilities: {
+      textDocumentSync: {
+        openClose: true,
+        change: TextDocumentSyncKind.Incremental,
+        save: false,
       },
-      full: true,
+      completionProvider: {
+        resolveProvider: true,
+        triggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
+      },
+      hoverProvider: true,
+      definitionProvider: true,
+      referencesProvider: true,
+      renameProvider: {
+        prepareProvider: true,
+      },
+      codeActionProvider: true,
+      documentLinkProvider: {},
+      signatureHelpProvider: {
+        triggerCharacters: SIGNATURE_TRIGGER_CHARACTERS,
+        retriggerCharacters: SIGNATURE_TRIGGER_CHARACTERS,
+      },
+      inlayHintProvider: true,
+      semanticTokensProvider: {
+        legend: {
+          tokenTypes: TOKEN_TYPES,
+          tokenModifiers: [],
+        },
+        full: true,
+      },
+      codeLensProvider: {
+        resolveProvider: false,
+      },
     },
-    codeLensProvider: {
-      resolveProvider: false,
-    },
-  },
-}));
+  };
+});
 
 documents.onDidOpen((event) => {
   core.openDocument({
@@ -548,6 +679,11 @@ documents.onDidOpen((event) => {
     languageId: event.document.languageId,
     version: event.document.version,
     text: event.document.getText(),
+  });
+  logServer("info", "document", "open", {
+    file: getRelativePathLabel(uriToFilePath(event.document.uri)),
+    languageId: event.document.languageId,
+    version: event.document.version,
   });
   publishDiagnostics(event.document.uri);
 });
@@ -560,6 +696,11 @@ documents.onDidChangeContent((event) => {
     version: event.document.version,
     text: event.document.getText(),
   });
+  logServer("perf", "document", "change", {
+    file: getRelativePathLabel(uriToFilePath(event.document.uri)),
+    version: event.document.version,
+    changes: event.contentChanges.length,
+  });
 
   if (isScriptFilePath(uriToFilePath(event.document.uri))) {
     scheduleDiagnostics(event.document.uri);
@@ -571,6 +712,9 @@ documents.onDidClose((event) => {
   cancelScheduledDiagnostics(event.document.uri);
   diagnosticRunIds.delete(event.document.uri);
   core.closeDocument(event.document.uri);
+  logServer("info", "document", "close", {
+    file: getRelativePathLabel(uriToFilePath(event.document.uri)),
+  });
   connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
 });
 
@@ -593,18 +737,26 @@ connection.onCompletion((params, token) => {
   const trigger = formatCompletionTrigger(params.context);
 
   if (shouldSkipInvokeBeforeMemberAccess(documentText, offset, params.context)) {
-    connection.console.log(
-      `completion: ${relativePath} skipped trigger=${trigger} offset=${offset} reason=invoke-before-dot total=${elapsedMilliseconds(startedAt).toFixed(1)}ms`
-    );
+    logServer("info", "completion", "skip", {
+      file: relativePath,
+      trigger,
+      offset,
+      reason: "invoke-before-dot",
+      totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+    });
     return null;
   }
 
   const cacheKey = completionCacheKey(document.uri, document.version, offset);
   const cachedItems = getCachedCompletionItems(cacheKey);
   if (cachedItems !== undefined) {
-    connection.console.log(
-      `completion: ${relativePath} cache-hit count=${cachedItems ? cachedItems.items.length : 0} trigger=${trigger} offset=${offset} total=${elapsedMilliseconds(startedAt).toFixed(1)}ms`
-    );
+    logServer("perf", "completion", "cache-hit", {
+      file: relativePath,
+      trigger,
+      offset,
+      count: cachedItems ? cachedItems.items.length : 0,
+      totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+    });
     return cachedItems;
   }
 
@@ -614,9 +766,13 @@ connection.onCompletion((params, token) => {
   const isSchemaSupportOnlyDocument = isSchemaSupportOnlyHookScriptPath(context.filePath);
 
   if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
-    connection.console.log(
-      `completion: ${relativePath} aborted trigger=${trigger} offset=${offset} stage=custom total=${elapsedMilliseconds(startedAt).toFixed(1)}ms`
-    );
+    logServer("warn", "completion", "abort", {
+      file: relativePath,
+      trigger,
+      offset,
+      stage: "custom",
+      totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+    });
     return null;
   }
 
@@ -647,9 +803,14 @@ connection.onCompletion((params, token) => {
       })),
     };
     setCachedCompletionItems(cacheKey, result);
-    connection.console.log(
-      `completion: ${relativePath} custom count=${result.items.length} trigger=${trigger} offset=${offset} (getCustom=${customElapsedMs.toFixed(1)}ms total=${elapsedMilliseconds(startedAt).toFixed(1)}ms)`
-    );
+    logServer("perf", "completion", "custom", {
+      file: relativePath,
+      trigger,
+      offset,
+      count: result.items.length,
+      getCustomMs: customElapsedMs.toFixed(1),
+      totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+    });
     return result.items.length ? result : null;
   }
 
@@ -662,16 +823,25 @@ connection.onCompletion((params, token) => {
   const completionData = context.service.getCompletionData(context.filePath, documentText, offset);
   const completionElapsedMs = elapsedMilliseconds(completionStartedAt);
   if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
-    connection.console.log(
-      `completion: ${relativePath} aborted trigger=${trigger} offset=${offset} stage=ts total=${elapsedMilliseconds(startedAt).toFixed(1)}ms`
-    );
+    logServer("warn", "completion", "abort", {
+      file: relativePath,
+      trigger,
+      offset,
+      stage: "ts",
+      totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+    });
     return null;
   }
   if (!completionData) {
     setCachedCompletionItems(cacheKey, null);
-    connection.console.log(
-      `completion: ${relativePath} none trigger=${trigger} offset=${offset} (getCustom=${customElapsedMs.toFixed(1)}ms getCompletion=${completionElapsedMs.toFixed(1)}ms total=${elapsedMilliseconds(startedAt).toFixed(1)}ms)`
-    );
+    logServer("perf", "completion", "none", {
+      file: relativePath,
+      trigger,
+      offset,
+      getCustomMs: customElapsedMs.toFixed(1),
+      getCompletionMs: completionElapsedMs.toFixed(1),
+      totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+    });
     return null;
   }
 
@@ -702,9 +872,16 @@ connection.onCompletion((params, token) => {
     })),
   };
   setCachedCompletionItems(cacheKey, result);
-  connection.console.log(
-    `completion: ${relativePath} ts count=${result.items.length} trigger=${trigger} offset=${offset} (getCustom=${customElapsedMs.toFixed(1)}ms getCompletion=${completionElapsedMs.toFixed(1)}ms total=${elapsedMilliseconds(startedAt).toFixed(1)}ms)${formatCompletionProfile(completionData.profile)}`
-  );
+  logServer("perf", "completion", "ts", {
+    file: relativePath,
+    trigger,
+    offset,
+    count: result.items.length,
+    getCustomMs: customElapsedMs.toFixed(1),
+    getCompletionMs: completionElapsedMs.toFixed(1),
+    totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+    ...getCompletionProfileFields(completionData.profile),
+  });
   return result;
 });
 
@@ -1057,21 +1234,72 @@ connection.onCodeLens((params) => {
   });
 });
 
-connection.onRequest(REQUESTS.probeCurrentFile, ({ uri }) => core.probeFile(uriToFilePath(uri)));
+connection.onRequest(REQUESTS.probeCurrentFile, ({ uri }) => {
+  const filePath = uriToFilePath(uri);
+  const startedAt = process.hrtime.bigint();
+  const result = core.probeFile(filePath);
+  logServer("perf", "command", "probe", {
+    file: getRelativePathLabel(filePath),
+    hasAppRoot: result && result.hasAppRoot,
+    diagnostics: result && result.diagnostics,
+    totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+  });
+  return result;
+});
+
 connection.onRequest(REQUESTS.refreshDiagnostics, ({ uri }) => {
+  const filePath = uriToFilePath(uri);
+  logServer("info", "command", "refresh-diagnostics", {
+    file: getRelativePathLabel(filePath),
+  });
   publishDiagnostics(uri);
   return { ok: true };
 });
+
 connection.onRequest(REQUESTS.reloadCaches, ({ uri }) => {
-  const result = core.reloadCaches(uri ? uriToFilePath(uri) : null);
+  const scopedFilePath = uri ? uriToFilePath(uri) : null;
+  const startedAt = process.hrtime.bigint();
+  const result = core.reloadCaches(scopedFilePath);
   publishManagedDiagnostics();
+  logServer("perf", "cache", "reload", {
+    file: scopedFilePath ? getRelativePathLabel(scopedFilePath) : null,
+    scoped: result && result.scoped,
+    totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+  });
   return result;
 });
-connection.onRequest(REQUESTS.allFileReferences, ({ uri }) => core.getFileReferenceResult(uriToFilePath(uri)));
-connection.onRequest(REQUESTS.fileRenameEdits, ({ oldUri, newUri }) =>
-  core.getFileRenameEdits(uriToFilePath(oldUri), uriToFilePath(newUri))
-);
+
+connection.onRequest(REQUESTS.allFileReferences, ({ uri }) => {
+  const filePath = uriToFilePath(uri);
+  const startedAt = process.hrtime.bigint();
+  const result = core.getFileReferenceResult(filePath);
+  logServer("perf", "references", "query", {
+    file: getRelativePathLabel(filePath),
+    kind: result && result.referenceQuery ? result.referenceQuery.kind : null,
+    refs: result && Array.isArray(result.references) ? result.references.length : 0,
+    totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+  });
+  return result;
+});
+
+connection.onRequest(REQUESTS.fileRenameEdits, ({ oldUri, newUri }) => {
+  const oldFilePath = uriToFilePath(oldUri);
+  const newFilePath = uriToFilePath(newUri);
+  const startedAt = process.hrtime.bigint();
+  const result = core.getFileRenameEdits(oldFilePath, newFilePath);
+  logServer("perf", "rename", "edits", {
+    old: getRelativePathLabel(oldFilePath),
+    next: getRelativePathLabel(newFilePath),
+    edits: Array.isArray(result) ? result.length : 0,
+    totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+  });
+  return result;
+});
+
 connection.onNotification(NOTIFICATIONS.didManualSave, ({ uri }) => {
+  logServer("info", "diagnostics", "manual-save", {
+    file: getRelativePathLabel(uriToFilePath(uri)),
+  });
   publishDiagnostics(uri);
 });
 
