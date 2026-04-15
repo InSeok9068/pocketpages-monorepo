@@ -226,6 +226,9 @@ async function activateLsp(context) {
 
   const serverTemplateBoundaryDecoration = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
+    borderWidth: "1px 0 0 0",
+    borderStyle: "solid",
+    borderColor: new vscode.ThemeColor("editorIndentGuide.background"),
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
     overviewRulerLane: vscode.OverviewRulerLane.Right,
     opacity: "0.999",
