@@ -106,7 +106,7 @@ function hasSentToday(userId, notificationKey) {
       notificationKey: normalizedNotificationKey,
       sentAt: getTodayDateText(),
     })
-  } catch (exception) {
+  } catch (_exception) {
     return false
   }
 }
@@ -137,7 +137,7 @@ function getLastSentAt(userId, notificationKey) {
     }
 
     return String(logRecords[0] && logRecords[0].get('sent_at') ? logRecords[0].get('sent_at') : '').trim()
-  } catch (exception) {
+  } catch (_exception) {
     return ''
   }
 }
@@ -188,7 +188,7 @@ function getSentHighlightIdsWithinDays(userId, notificationKey, days) {
     }
 
     return highlightIds
-  } catch (exception) {
+  } catch (_exception) {
     return []
   }
 }
