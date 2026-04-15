@@ -220,7 +220,7 @@ function assertExtensionContracts(repoRoot) {
   )
 }
 
-function createFixtureApp(repoRoot) {
+function createFixtureApp(_repoRoot) {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-fixture-'))
   const appRoot = path.join(fixtureRoot, 'apps', 'fixture-app')
 

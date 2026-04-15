@@ -22,7 +22,7 @@ function findBoardBySlug(boardSlug) {
 
   try {
     return $app.findFirstRecordByFilter('boards', 'slug = {:slug}', { slug })
-  } catch (error) {
+  } catch (_error) {
     return null
   }
 }
@@ -41,7 +41,7 @@ function findActiveBoardBySlug(boardSlug) {
 
   try {
     return $app.findFirstRecordByFilter('boards', 'slug = {:slug} && is_active = true', { slug })
-  } catch (error) {
+  } catch (_error) {
     return null
   }
 }

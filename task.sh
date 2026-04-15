@@ -27,7 +27,7 @@ Commands:
   deploy    Upload one service deploy targets using .vscode/sftp.json
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
   test      Run node:test files under __tests__ for one service or all services
-  lint      Run lightweight PocketPages self-validation checks for one service or all services
+  lint      Run PocketPages self-validation checks and ESLint for one service or all services
   diag      Run PocketPages editor diagnostics for one file, one service, or all services when omitted
   verify    Run lint and diag together for one service or all services
   index     Query AI-friendly PocketPages project index JSON for one service
@@ -270,10 +270,20 @@ run_update() {
 
 run_lint() {
   local lint_script="$ROOT_DIR/scripts/lint-pocketpages.js"
+  local eslint_bin="$ROOT_DIR/node_modules/eslint/bin/eslint.js"
   local service="${1:-}"
+  local service_dir=""
+  local eslint_target="."
+  local failed=0
 
   if [[ ! -f "$lint_script" ]]; then
     echo "Missing lint script: $lint_script" >&2
+    exit 1
+  fi
+
+  if [[ ! -f "$eslint_bin" ]]; then
+    echo "Missing local ESLint install: $eslint_bin" >&2
+    echo "Run npm install in the repository root first." >&2
     exit 1
   fi
 
@@ -283,18 +293,42 @@ run_lint() {
   fi
 
   if [[ -n "$service" ]]; then
-    local service_dir
     if ! service_dir="$(resolve_service_dir "$service")"; then
       echo "Unknown service: $service" >&2
       echo "Available services:" >&2
       list_services >&2
       exit 1
     fi
-    node "$lint_script" "$service_dir"
-    return 0
+
+    if [[ "$service_dir" == "$ROOT_DIR"/* ]]; then
+      eslint_target="${service_dir#$ROOT_DIR/}"
+    else
+      eslint_target="$service_dir"
+    fi
   fi
 
-  node "$lint_script"
+  if [[ -n "$service_dir" ]]; then
+    if ! node "$lint_script" "$service_dir"; then
+      failed=1
+    fi
+  else
+    if ! node "$lint_script"; then
+      failed=1
+    fi
+  fi
+
+  echo
+  echo "Running ESLint..."
+  if ! (
+    cd "$ROOT_DIR"
+    node "$eslint_bin" "$eslint_target"
+  ); then
+    failed=1
+  fi
+
+  if [[ "$failed" -ne 0 ]]; then
+    exit 1
+  fi
 }
 
 run_test() {

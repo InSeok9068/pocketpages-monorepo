@@ -613,7 +613,7 @@ class PocketPagesSignatureHelpProvider {
     this.manager = manager
   }
 
-  provideSignatureHelp(document, position, _token, context) {
+  provideSignatureHelp(document, position, _token, _context) {
     if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }

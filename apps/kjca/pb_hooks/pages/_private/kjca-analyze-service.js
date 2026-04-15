@@ -260,7 +260,7 @@ function findSuccessCache(cacheIdentityInput) {
   const filter = `${buildCacheIdentityFilter(cacheIdentityInput)} && status = 'success'`
   try {
     return $app.findFirstRecordByFilter(CACHE_COLLECTION_NAME, filter)
-  } catch (error) {
+  } catch (_error) {
     return null
   }
 }
@@ -272,7 +272,7 @@ function upsertSuccessCache(staffDiaryAnalysisCacheRole, cacheRecordInput) {
 
   try {
     record = $app.findFirstRecordByFilter(CACHE_COLLECTION_NAME, lookupFilter)
-  } catch (error) {
+  } catch (_error) {
     record = null
   }
 

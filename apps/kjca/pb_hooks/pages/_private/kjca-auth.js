@@ -66,7 +66,7 @@ function readMappedKjcaCredentials(request) {
   let userRecord = null
   try {
     userRecord = $app.findAuthRecordByEmail('users', superuserEmail)
-  } catch (error) {
+  } catch (_error) {
     userRecord = null
   }
 

@@ -111,7 +111,7 @@ function findPostByBoardAndSlug(boardId, postSlug) {
 
   try {
     return $app.findFirstRecordByFilter('posts', 'board = {:boardId} && slug = {:slug}', { boardId: boardId, slug: slug })
-  } catch (error) {
+  } catch (_error) {
     return null
   }
 }

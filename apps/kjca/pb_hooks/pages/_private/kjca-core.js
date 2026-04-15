@@ -66,7 +66,7 @@ const kjcaLinkify = new LinkifyIt().set({
 function parseJsonSafely(text, fallback) {
   try {
     return JSON.parse(text)
-  } catch (error) {
+  } catch (_error) {
     return fallback
   }
 }
@@ -1296,7 +1296,7 @@ function pickSmallestWeeklyTableCandidate(candidates, matcher) {
       .filter((candidate) => {
         try {
           return !!matcher(candidate)
-        } catch (error) {
+        } catch (_error) {
           return false
         }
       })
@@ -2582,7 +2582,7 @@ function parseDashboardState(value, fallback) {
       ...fallbackState,
       ...parseJsonSafely(decoded, {}),
     })
-  } catch (error) {
+  } catch (_error) {
     return fallbackState
   }
 }

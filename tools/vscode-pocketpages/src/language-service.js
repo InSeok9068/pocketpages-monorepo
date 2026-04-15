@@ -3,8 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 const ts = require("typescript");
-const { buildTemplateVirtualText, extractTemplateCodeBlocks, getTemplateCodeBlockAtOffset } = require("./ejs-template");
-const { extractServerBlocks, getServerBlockAtOffset } = require("./script-server");
+const { buildTemplateVirtualText, extractTemplateCodeBlocks: _extractTemplateCodeBlocks, getTemplateCodeBlockAtOffset } = require("./ejs-template");
+const { extractServerBlocks: _extractServerBlocks, getServerBlockAtOffset } = require("./script-server");
 const { PocketPagesProjectIndex, POCKETPAGES_GLOBAL_NAMES, collectIncludeCallEntries } = require("./project-index");
 const { createDocumentAnalysis, createSourceFileForText } = require("./document-analysis");
 const {
@@ -703,7 +703,7 @@ function rangesOverlap(leftStart, leftEnd, rightStart, rightEnd) {
   return leftEnd >= rightStart && leftStart <= rightEnd;
 }
 
-function getPropertyAccessChain(node) {
+function _getPropertyAccessChain(node) {
   const segments = [];
   let current = node;
 

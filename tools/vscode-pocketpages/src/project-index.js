@@ -917,7 +917,7 @@ function getCommonJsExportName(node) {
   return null
 }
 
-function toDefinitionTarget(filePath, sourceFile, node) {
+function _toDefinitionTarget(filePath, sourceFile, node) {
   const targetNode = node && typeof node.getStart === 'function' ? node : sourceFile
   const position = sourceFile.getLineAndCharacterOfPosition(targetNode.getStart(sourceFile))
 
@@ -1064,7 +1064,7 @@ function resolveInitializerDefinitionNode(initializer, declarations) {
   return null
 }
 
-function findExportedMemberDefinitionNode(sourceFile, exportName) {
+function _findExportedMemberDefinitionNode(sourceFile, exportName) {
   const declarations = collectNamedDeclarations(sourceFile)
   let definitionNode = null
 

@@ -42,7 +42,7 @@ function findWeekTextPlan(weekStartDate, dept) {
       like: weekDate.like,
       dept,
     })
-  } catch (error) {
+  } catch (_error) {
     return null
   }
 }
@@ -50,7 +50,7 @@ function findWeekTextPlan(weekStartDate, dept) {
 function findWeekTextRows(planId) {
   try {
     return $app.findRecordsByFilter('recruiting_week_text_rows', 'planId = {:planId}', 'weekday,sortOrder,created', 1000, 0, { planId })
-  } catch (error) {
+  } catch (_error) {
     return []
   }
 }
@@ -83,7 +83,7 @@ function upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRol
 
   try {
     $app.save(plan)
-  } catch (error) {
+  } catch (_error) {
     if (!wasNew || !isUniqueValueError(error)) throw error
     const existing = findWeekTextPlan(safeWeekStartDate, dept)
     if (!existing) throw error
@@ -180,7 +180,7 @@ function findWeekPlan(weekStartDate, dept) {
   const weekDate = buildDateMatchParams(weekStartDate)
   try {
     return $app.findFirstRecordByFilter('recruiting_week_plans', '(weekStartDate = {:exact} || weekStartDate ~ {:like}) && dept = {:dept}', { exact: weekDate.exact, like: weekDate.like, dept })
-  } catch (error) {
+  } catch (_error) {
     return null
   }
 }
@@ -188,7 +188,7 @@ function findWeekPlan(weekStartDate, dept) {
 function findWeekPlanItems(planId) {
   try {
     return $app.findRecordsByFilter('recruiting_week_plan_items', 'planId = {:planId}', 'weekday,sortOrder,created', 500, 0, { planId })
-  } catch (error) {
+  } catch (_error) {
     return []
   }
 }
@@ -201,7 +201,7 @@ function findWeekResults(weekStartDate, dept) {
       like: weekDate.like,
       dept,
     })
-  } catch (error) {
+  } catch (_error) {
     return []
   }
 }
@@ -267,7 +267,7 @@ function upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItem
 
   try {
     $app.save(plan)
-  } catch (error) {
+  } catch (_error) {
     if (!wasNew || !isUniqueValueError(error)) throw error
 
     const existing = findWeekPlan(safeWeekStartDate, dept)
@@ -356,7 +356,7 @@ function upsertRecruitingDailyResult(recruitingDailyResultRole, dailyResultInput
   let record = null
   try {
     record = $app.findFirstRecordByFilter('recruiting_daily_results', '(reportDate = {:exact} || reportDate ~ {:like}) && dept = {:dept}', { exact: reportDate.exact, like: reportDate.like, dept })
-  } catch (error) {
+  } catch (_error) {
     record = null
   }
 
@@ -377,7 +377,7 @@ function upsertRecruitingDailyResult(recruitingDailyResultRole, dailyResultInput
 
   try {
     $app.save(target)
-  } catch (error) {
+  } catch (_error) {
     if (!!record || !isUniqueValueError(error)) throw error
 
     const existing = $app.findFirstRecordByFilter('recruiting_daily_results', '(reportDate = {:exact} || reportDate ~ {:like}) && dept = {:dept}', {
@@ -417,7 +417,7 @@ function clearAnalysisCache(request, payload) {
   let rows = []
   try {
     rows = $app.findRecordsByFilter(CACHE_COLLECTION_NAME, filter, 'created', 1000, 0)
-  } catch (error) {
+  } catch (_error) {
     rows = []
   }
 

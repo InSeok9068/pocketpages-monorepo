@@ -339,7 +339,7 @@ function pluralizeWord(word) {
   return `${word}s`
 }
 
-function inferDtCollectionName(file, schemaCollections) {
+function _inferDtCollectionName(file, schemaCollections) {
   const stem = file.basename.replace(/-dt\.js$/, '')
   const snake = stem.replace(/-/g, '_')
   const candidates = unique([snake, pluralizeWord(snake)])
@@ -446,7 +446,7 @@ function extractNamedFunctionBody(content, functionName) {
   }
 }
 
-function extractExportedFunctionBody(content) {
+function _extractExportedFunctionBody(content) {
   const namedToDT = extractNamedFunctionBody(content, 'toDT')
   if (namedToDT) {
     return namedToDT
@@ -544,7 +544,7 @@ function buildLineDepthInfo(content) {
   return { lines, depthBefore }
 }
 
-function collectTopLevelConstNames(functionBody) {
+function _collectTopLevelConstNames(functionBody) {
   const { lines, depthBefore } = buildLineDepthInfo(functionBody)
   const names = []
 
@@ -566,7 +566,7 @@ function lineNumberAt(content, index) {
   return content.slice(0, index).split(/\r?\n/).length
 }
 
-function extractTopLevelReturnObject(functionBody, bodyStartLine) {
+function _extractTopLevelReturnObject(functionBody, bodyStartLine) {
   let depth = 0
   let inString = ''
   let inBlockComment = false
