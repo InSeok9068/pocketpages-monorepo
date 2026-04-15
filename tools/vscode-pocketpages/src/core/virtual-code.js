@@ -4,6 +4,7 @@ const path = require("path");
 const { URI } = require("vscode-uri");
 const { extractServerBlocks } = require("../script-server");
 const { buildTemplateVirtualText, extractTemplateCodeBlocks } = require("../ejs-template");
+const { collectPathContexts } = require("../custom-context");
 const { createScriptSnapshot } = require("./snapshot");
 
 function normalizeLanguageId(languageId, filePath) {
@@ -76,6 +77,144 @@ const TEMPLATE_CODE_INFORMATION = createCodeInformation({
   hover: true,
 });
 
+const PATH_LITERAL_CODE_INFORMATION = createCodeInformation({
+  verification: true,
+  completion: false,
+  semantic: false,
+  navigation: false,
+  structure: false,
+  format: false,
+  references: false,
+  rename: false,
+  hover: false,
+});
+
+function compareRanges(left, right) {
+  if (left.start !== right.start) {
+    return left.start - right.start;
+  }
+
+  return left.end - right.end;
+}
+
+function clampRangeToBounds(range, lowerBound, upperBound) {
+  const start = Math.max(lowerBound, Math.min(upperBound, range.start));
+  const end = Math.max(lowerBound, Math.min(upperBound, range.end));
+  if (end <= start) {
+    return null;
+  }
+
+  return {
+    start,
+    end,
+  };
+}
+
+function mergeRanges(ranges) {
+  const sortedRanges = ranges
+    .map((range) => ({
+      start: Number(range.start) || 0,
+      end: Number(range.end) || 0,
+    }))
+    .filter((range) => range.end > range.start)
+    .sort(compareRanges);
+
+  const mergedRanges = [];
+  for (const range of sortedRanges) {
+    const previousRange = mergedRanges[mergedRanges.length - 1];
+    if (!previousRange || range.start > previousRange.end) {
+      mergedRanges.push({ ...range });
+      continue;
+    }
+
+    previousRange.end = Math.max(previousRange.end, range.end);
+  }
+
+  return mergedRanges;
+}
+
+function subtractRanges(start, end, exclusions) {
+  if (end <= start) {
+    return [];
+  }
+
+  const segments = [];
+  let cursor = start;
+
+  for (const exclusion of mergeRanges(exclusions)) {
+    const boundedExclusion = clampRangeToBounds(exclusion, start, end);
+    if (!boundedExclusion) {
+      continue;
+    }
+
+    if (cursor < boundedExclusion.start) {
+      segments.push({
+        start: cursor,
+        end: boundedExclusion.start,
+      });
+    }
+
+    cursor = Math.max(cursor, boundedExclusion.end);
+  }
+
+  if (cursor < end) {
+    segments.push({
+      start: cursor,
+      end,
+    });
+  }
+
+  return segments;
+}
+
+function toPathLiteralRanges(text, rangeOffset = 0) {
+  return collectPathContexts(String(text || ""))
+    .map((context) => ({
+      start: rangeOffset + context.start,
+      end: rangeOffset + context.end,
+    }))
+    .filter((range) => range.end > range.start);
+}
+
+function createSegmentMappings({
+  sourceBaseOffset,
+  generatedBaseOffset,
+  length,
+  defaultData,
+  specialRanges = [],
+}) {
+  if (length <= 0) {
+    return [];
+  }
+
+  const mappings = [];
+  const normalizedSpecialRanges = specialRanges
+    .map((range) => clampRangeToBounds(range, 0, length))
+    .filter(Boolean);
+
+  for (const segment of subtractRanges(0, length, normalizedSpecialRanges)) {
+    mappings.push({
+      sourceOffsets: [sourceBaseOffset + segment.start],
+      generatedOffsets: [generatedBaseOffset + segment.start],
+      lengths: [segment.end - segment.start],
+      data: defaultData,
+    });
+  }
+
+  for (const range of mergeRanges(normalizedSpecialRanges)) {
+    mappings.push({
+      sourceOffsets: [sourceBaseOffset + range.start],
+      generatedOffsets: [generatedBaseOffset + range.start],
+      lengths: [range.end - range.start],
+      data: PATH_LITERAL_CODE_INFORMATION,
+    });
+  }
+
+  return mappings.sort(
+    (left, right) => left.generatedOffsets[0] - right.generatedOffsets[0]
+  );
+}
+
 function createEmbeddedCode({
   id,
   kind,
@@ -113,16 +252,13 @@ function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodeMap)
         languageId: "typescript",
         text: block.content,
         previous: previousEmbeddedCodeMap.get(id),
-        mappings: block.content.length
-          ? [
-              {
-                sourceOffsets: [block.contentStart],
-                generatedOffsets: [0],
-                lengths: [block.content.length],
-                data: SERVER_SCRIPT_CODE_INFORMATION,
-              },
-            ]
-          : [],
+        mappings: createSegmentMappings({
+          sourceBaseOffset: block.contentStart,
+          generatedBaseOffset: 0,
+          length: block.content.length,
+          defaultData: SERVER_SCRIPT_CODE_INFORMATION,
+          specialRanges: toPathLiteralRanges(block.content),
+        }),
         metadata: {
           blockIndex: block.index,
           sourceStart: block.contentStart,
@@ -137,7 +273,19 @@ function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodeMap)
   const templateBlocks = extractTemplateCodeBlocks(text);
   if (templateBlocks.length || serverBlocks.length) {
     const templateVirtualText = buildTemplateVirtualText(text);
-    const templateLength = templateVirtualText.length;
+    const templateMappings = [];
+    for (const block of templateBlocks) {
+      templateMappings.push(
+        ...createSegmentMappings({
+          sourceBaseOffset: block.contentStart,
+          generatedBaseOffset: block.contentStart,
+          length: block.content.length,
+          defaultData: TEMPLATE_CODE_INFORMATION,
+          specialRanges: toPathLiteralRanges(block.content),
+        })
+      );
+    }
+
     embeddedCodes.push(
       createEmbeddedCode({
         id: "template",
@@ -145,7 +293,7 @@ function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodeMap)
         languageId: "typescript",
         text: templateVirtualText,
         previous: previousEmbeddedCodeMap.get("template"),
-        mappings: createIdentityMapping(templateLength, TEMPLATE_CODE_INFORMATION),
+        mappings: templateMappings,
         metadata: {
           templateBlocks,
           serverBlocks,

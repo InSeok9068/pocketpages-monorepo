@@ -40,6 +40,18 @@ function createTypeScriptFeatureService(context) {
     };
   }
 
+  function isMappedFeatureEnabled(documentContext, document, offset, capabilityName) {
+    if (!helpers.isEjsFilePath(documentContext.filePath)) {
+      return true;
+    }
+
+    return context.core.isFeatureEnabledAtOffset(
+      document.uri.toString(),
+      offset,
+      capabilityName
+    );
+  }
+
   return {
     provideCompletionItems(params, token) {
       const requestContext = getDocumentRequestContext(params);
@@ -52,6 +64,10 @@ function createTypeScriptFeatureService(context) {
         isExcludedPocketPagesScriptPath(documentContext.filePath) ||
         isSchemaSupportOnlyHookScriptPath(documentContext.filePath)
       ) {
+        return null;
+      }
+
+      if (!isMappedFeatureEnabled(documentContext, document, offset, "completion")) {
         return null;
       }
 
@@ -170,7 +186,11 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
-      const { documentContext, documentText, offset } = requestContext;
+      const { document, documentContext, documentText, offset } = requestContext;
+      if (!isMappedFeatureEnabled(documentContext, document, offset, "hover")) {
+        return null;
+      }
+
       return documentContext.service.getQuickInfo(
         documentContext.filePath,
         documentText,
@@ -184,7 +204,11 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
-      const { documentContext, documentText, offset } = requestContext;
+      const { document, documentContext, documentText, offset } = requestContext;
+      if (!isMappedFeatureEnabled(documentContext, document, offset, "definition")) {
+        return null;
+      }
+
       return documentContext.service.getTypeScriptDefinitionTarget(
         documentContext.filePath,
         documentText,
@@ -198,7 +222,11 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
-      const { documentContext, documentText, offset } = requestContext;
+      const { document, documentContext, documentText, offset } = requestContext;
+      if (!isMappedFeatureEnabled(documentContext, document, offset, "references")) {
+        return null;
+      }
+
       const referenceResult = documentContext.service.getTypeScriptReferenceTargets(
         documentContext.filePath,
         documentText,
@@ -234,6 +262,10 @@ function createTypeScriptFeatureService(context) {
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      if (!isMappedFeatureEnabled(documentContext, document, offset, "rename")) {
+        return null;
+      }
+
       const renameInfo = documentContext.service.getTypeScriptRenameInfo(
         documentContext.filePath,
         documentText,
@@ -258,7 +290,11 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
-      const { documentContext, documentText, offset } = requestContext;
+      const { document, documentContext, documentText, offset } = requestContext;
+      if (!isMappedFeatureEnabled(documentContext, document, offset, "rename")) {
+        return null;
+      }
+
       const renameResult = documentContext.service.getTypeScriptRenameEdits(
         documentContext.filePath,
         documentText,

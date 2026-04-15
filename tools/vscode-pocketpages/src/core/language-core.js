@@ -43,6 +43,181 @@ function createGeneratedState(root, languagePlugin) {
   };
 }
 
+function getMappingSegments(mapping) {
+  if (
+    !mapping ||
+    !Array.isArray(mapping.sourceOffsets) ||
+    !Array.isArray(mapping.generatedOffsets) ||
+    !Array.isArray(mapping.lengths)
+  ) {
+    return [];
+  }
+
+  const segmentCount = Math.min(
+    mapping.sourceOffsets.length,
+    mapping.generatedOffsets.length,
+    mapping.lengths.length
+  );
+  const segments = [];
+
+  for (let index = 0; index < segmentCount; index += 1) {
+    const sourceStart = Number(mapping.sourceOffsets[index]) || 0;
+    const generatedStart = Number(mapping.generatedOffsets[index]) || 0;
+    const length = Number(mapping.lengths[index]) || 0;
+    if (length <= 0) {
+      continue;
+    }
+
+    segments.push({
+      mapping,
+      data: mapping.data || {},
+      sourceStart,
+      generatedStart,
+      length,
+      sourceEnd: sourceStart + length,
+      generatedEnd: generatedStart + length,
+    });
+  }
+
+  return segments;
+}
+
+function doesRangeOverlap(start, end, rangeStart, rangeEnd) {
+  return start < rangeEnd && end > rangeStart;
+}
+
+function isCapabilityEnabled(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (value && typeof value === "object") {
+    return true;
+  }
+
+  return false;
+}
+
+function getCapabilityValue(data, capabilityName) {
+  if (!data || typeof data !== "object") {
+    return undefined;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, capabilityName)) {
+    return data[capabilityName];
+  }
+
+  switch (capabilityName) {
+    case "hover":
+      return data.semantic;
+    case "definition":
+      return data.navigation;
+    case "references":
+      return data.references !== undefined ? data.references : data.navigation;
+    case "rename":
+      return data.rename !== undefined ? data.rename : data.navigation;
+    case "diagnostics":
+      return data.verification;
+    default:
+      return undefined;
+  }
+}
+
+function createMapper(mappings) {
+  const normalizedMappings = Array.isArray(mappings) ? mappings : [];
+  const segments = normalizedMappings
+    .flatMap((mapping) => getMappingSegments(mapping))
+    .sort((left, right) => {
+      if (left.generatedStart !== right.generatedStart) {
+        return left.generatedStart - right.generatedStart;
+      }
+
+      return left.sourceStart - right.sourceStart;
+    });
+
+  return {
+    mappings: normalizedMappings,
+    *toSourceRange(start, end, _fallbackToAnyMatch = false, filter) {
+      for (const segment of segments) {
+        if (!doesRangeOverlap(start, end, segment.generatedStart, segment.generatedEnd)) {
+          continue;
+        }
+
+        if (filter && !filter(segment.data)) {
+          continue;
+        }
+
+        const overlapStart = Math.max(start, segment.generatedStart);
+        const overlapEnd = Math.min(end, segment.generatedEnd);
+        yield [
+          segment.sourceStart + (overlapStart - segment.generatedStart),
+          segment.sourceStart + (overlapEnd - segment.generatedStart),
+          segment.mapping,
+          segment.mapping,
+        ];
+      }
+    },
+    *toGeneratedRange(start, end, _fallbackToAnyMatch = false, filter) {
+      for (const segment of segments) {
+        if (!doesRangeOverlap(start, end, segment.sourceStart, segment.sourceEnd)) {
+          continue;
+        }
+
+        if (filter && !filter(segment.data)) {
+          continue;
+        }
+
+        const overlapStart = Math.max(start, segment.sourceStart);
+        const overlapEnd = Math.min(end, segment.sourceEnd);
+        yield [
+          segment.generatedStart + (overlapStart - segment.sourceStart),
+          segment.generatedStart + (overlapEnd - segment.sourceStart),
+          segment.mapping,
+          segment.mapping,
+        ];
+      }
+    },
+    *toSourceLocation(generatedOffset, filter) {
+      for (const segment of segments) {
+        if (
+          generatedOffset < segment.generatedStart ||
+          generatedOffset >= segment.generatedEnd
+        ) {
+          continue;
+        }
+
+        if (filter && !filter(segment.data)) {
+          continue;
+        }
+
+        yield [
+          segment.sourceStart + (generatedOffset - segment.generatedStart),
+          segment.mapping,
+        ];
+      }
+    },
+    *toGeneratedLocation(sourceOffset, filter) {
+      for (const segment of segments) {
+        if (
+          sourceOffset < segment.sourceStart ||
+          sourceOffset >= segment.sourceEnd
+        ) {
+          continue;
+        }
+
+        if (filter && !filter(segment.data)) {
+          continue;
+        }
+
+        yield [
+          segment.generatedStart + (sourceOffset - segment.sourceStart),
+          segment.mapping,
+        ];
+      }
+    },
+  };
+}
+
 class PocketPagesLanguageCore {
   constructor(options = {}) {
     this.manager = options.manager || new PocketPagesLanguageServiceManager();
@@ -71,9 +246,10 @@ class PocketPagesLanguageCore {
         }) || null,
     };
     this.maps = {
-      get: (virtualCode) => ({
-        mappings: Array.isArray(virtualCode && virtualCode.mappings) ? virtualCode.mappings : [],
-      }),
+      get: (virtualCode) =>
+        createMapper(
+          Array.isArray(virtualCode && virtualCode.mappings) ? virtualCode.mappings : []
+        ),
       forEach: function* (virtualCode) {
         const sourceScript = this.scripts.fromVirtualCode(virtualCode);
         if (!sourceScript) {
@@ -82,9 +258,7 @@ class PocketPagesLanguageCore {
 
         yield [
           sourceScript,
-          {
-            mappings: Array.isArray(virtualCode && virtualCode.mappings) ? virtualCode.mappings : [],
-          },
+          this.maps.get(virtualCode, sourceScript),
         ];
       }.bind(this),
     };
@@ -214,6 +388,49 @@ class PocketPagesLanguageCore {
   getVirtualCode(uri) {
     const sourceScript = this.sourceScripts.get(uri);
     return sourceScript && sourceScript.generated ? sourceScript.generated.root : null;
+  }
+
+  getSourceScript(uri) {
+    return this.sourceScripts.get(uri) || null;
+  }
+
+  getFeatureOwnersAtOffset(uri, offset, capabilityName, options = {}) {
+    const sourceScript = this.getSourceScript(uri);
+    if (!sourceScript || !sourceScript.generated) {
+      return [];
+    }
+
+    const owners = [];
+    const embeddedCodes = sourceScript.generated.embeddedCodes
+      ? [...sourceScript.generated.embeddedCodes.values()]
+      : [];
+
+    for (const embeddedCode of embeddedCodes) {
+      if (options.kind && embeddedCode.kind !== options.kind) {
+        continue;
+      }
+
+      if (options.id && embeddedCode.id !== options.id) {
+        continue;
+      }
+
+      const mapper = this.maps.get(embeddedCode, sourceScript);
+      for (const [generatedOffset, mapping] of mapper.toGeneratedLocation(offset, (data) =>
+        isCapabilityEnabled(getCapabilityValue(data, capabilityName))
+      )) {
+        owners.push({
+          embeddedCode,
+          generatedOffset,
+          mapping,
+        });
+      }
+    }
+
+    return owners;
+  }
+
+  isFeatureEnabledAtOffset(uri, offset, capabilityName, options = {}) {
+    return this.getFeatureOwnersAtOffset(uri, offset, capabilityName, options).length > 0;
   }
 
   getManagedVirtualCodes() {

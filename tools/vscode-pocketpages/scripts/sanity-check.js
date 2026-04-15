@@ -1047,6 +1047,58 @@ function run() {
     if (typeof serverEmbeddedCode.snapshot.getChangeRange !== 'function') {
       throw new Error(`Expected embedded virtual code snapshot to implement getChangeRange().`)
     }
+    const fineGrainedText = `<script server>
+const boardService = resolve('board-service')
+</script>
+
+<div><%= include('flash-alert.ejs') %></div>
+`
+    const fineGrainedUri = URI.file(fixture.boardsFilePath).toString()
+    const fineGrainedCore = new PocketPagesLanguageCore()
+    fineGrainedCore.openDocument({
+      uri: fineGrainedUri,
+      languageId: 'ejs',
+      version: 1,
+      text: fineGrainedText,
+    })
+    const fineGrainedVirtualCode = createVirtualCode(fineGrainedUri, 'ejs', 1, fineGrainedText)
+    const fineGrainedServerCode = fineGrainedVirtualCode.embeddedCodes.find((entry) => entry.kind === 'server-script')
+    const fineGrainedTemplateCode = fineGrainedVirtualCode.embeddedCodes.find((entry) => entry.kind === 'template')
+    if (!fineGrainedServerCode || fineGrainedServerCode.mappings.length < 2) {
+      throw new Error(`Expected fine-grained server mappings around resolve() path literals. Got: ${JSON.stringify(fineGrainedServerCode && fineGrainedServerCode.mappings)}`)
+    }
+    if (!fineGrainedTemplateCode || fineGrainedTemplateCode.mappings.length < 2) {
+      throw new Error(`Expected fine-grained template mappings around include() path literals. Got: ${JSON.stringify(fineGrainedTemplateCode && fineGrainedTemplateCode.mappings)}`)
+    }
+    const fineGrainedOwners = fineGrainedCore.getFeatureOwnersAtOffset(
+      fineGrainedUri,
+      fineGrainedText.indexOf('boardService'),
+      'hover'
+    )
+    if (!fineGrainedOwners.some((entry) => entry.embeddedCode.kind === 'server-script')) {
+      throw new Error(`Expected server identifier hover ownership in fine-grained mapper. Got: ${JSON.stringify(fineGrainedOwners)}`)
+    }
+    if (fineGrainedCore.isFeatureEnabledAtOffset(fineGrainedUri, fineGrainedText.indexOf('<div>') + 1, 'hover')) {
+      throw new Error('Expected plain template HTML to stay outside hover-enabled mappings.')
+    }
+    if (
+      fineGrainedCore.isFeatureEnabledAtOffset(
+        fineGrainedUri,
+        fineGrainedText.indexOf("'board-service'") + 1,
+        'hover'
+      )
+    ) {
+      throw new Error('Expected resolve() path literals to stay outside TS hover ownership mappings.')
+    }
+    if (
+      fineGrainedCore.isFeatureEnabledAtOffset(
+        fineGrainedUri,
+        fineGrainedText.indexOf("'flash-alert.ejs'") + 1,
+        'completion'
+      )
+    ) {
+      throw new Error('Expected include() path literals to stay outside TS completion ownership mappings.')
+    }
 
     const plugin = createPocketPagesLanguagePlugin()
     const initialSnapshot = createScriptSnapshot(boardShowText)
