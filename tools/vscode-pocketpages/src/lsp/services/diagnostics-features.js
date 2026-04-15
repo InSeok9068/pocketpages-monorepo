@@ -20,6 +20,10 @@ function createDiagnosticsFeatureService(context) {
     toRange,
   } = helpers;
 
+  function isSchemaDiagnosticCode(code) {
+    return code === "pp-schema-collection" || code === "pp-schema-field";
+  }
+
   function shouldReportDiagnostic(uri, documentContext, diagnostic) {
     if (!documentContext || !helpers.isEjsFilePath(documentContext.filePath)) {
       return true;
@@ -44,9 +48,20 @@ function createDiagnosticsFeatureService(context) {
   }
 
   function filterReportedDiagnostics(uri, documentContext, diagnostics) {
-    return (Array.isArray(diagnostics) ? diagnostics : []).filter((diagnostic) =>
+    let filteredDiagnostics = (Array.isArray(diagnostics) ? diagnostics : []).filter((diagnostic) =>
       shouldReportDiagnostic(uri, documentContext, diagnostic)
     );
+
+    if (
+      documentContext &&
+      helpers.isSchemaSupportOnlyHookScriptPath(documentContext.filePath)
+    ) {
+      filteredDiagnostics = filteredDiagnostics.filter((diagnostic) =>
+        isSchemaDiagnosticCode(diagnostic && diagnostic.code)
+      );
+    }
+
+    return filteredDiagnostics;
   }
 
   function scheduleDiagnostics(uri) {

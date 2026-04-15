@@ -6,7 +6,6 @@ const { LanguageClient, TransportKind } = require("vscode-languageclient/node");
 const { findAppRoot } = require("./language-service");
 const { getServerTemplateBoundaryLineNumbers } = require("./ejs-server-boundary");
 const { REQUESTS, NOTIFICATIONS } = require("./lsp/protocol");
-const legacyExtension = require("./extension");
 
 const EJS_DOCUMENT_SELECTOR = [
   { scheme: "file", pattern: "**/*.ejs" },
@@ -20,7 +19,6 @@ const HOOK_SCRIPT_DOCUMENT_SELECTOR = [
 const LSP_DOCUMENT_SELECTOR = [...EJS_DOCUMENT_SELECTOR, ...HOOK_SCRIPT_DOCUMENT_SELECTOR];
 
 let client = null;
-let legacyMode = false;
 let lspStatusController = null;
 let outputChannel = null;
 let clientLogger = null;
@@ -186,9 +184,9 @@ function createLspStatusController(context, output) {
       return;
     }
 
-    if (phase === "legacy") {
-      statusBarItem.text = "$(warning) PocketPages Legacy";
-      statusBarItem.tooltip = "PocketPages LSP failed to start. Using legacy extension host mode.";
+    if (phase === "failed") {
+      statusBarItem.text = "$(error) PocketPages LSP";
+      statusBarItem.tooltip = "PocketPages language server failed to start.";
       return;
     }
 
@@ -217,8 +215,8 @@ function createLspStatusController(context, output) {
       applyPhase();
       refreshVisibility();
     },
-    setLegacy() {
-      phase = "legacy";
+    setFailed() {
+      phase = "failed";
       applyPhase();
       refreshVisibility();
     },
@@ -566,7 +564,12 @@ async function activate(context) {
   try {
     return await activateLsp(context);
   } catch (error) {
-    legacyMode = true;
+    if (client) {
+      try {
+        await client.stop();
+      } catch (_stopError) {}
+      client = null;
+    }
     if (!outputChannel) {
       outputChannel = vscode.window.createOutputChannel("VSCode PocketPages");
       context.subscriptions.push(outputChannel);
@@ -578,19 +581,14 @@ async function activate(context) {
       lspStatusController = createLspStatusController(context, outputChannel);
       context.subscriptions.push(lspStatusController.item);
     }
-    lspStatusController.setLegacy();
+    lspStatusController.setFailed();
     const message = error && error.message ? error.message : String(error);
-    clientLogger.error("lsp", "fallback-legacy", { message });
-    vscode.window.showWarningMessage(`PocketPages LSP failed to start. Falling back to legacy extension host mode. (${message})`);
-    return legacyExtension.activate(context);
+    clientLogger.error("lsp", "startup-failed", { message });
+    vscode.window.showErrorMessage(`PocketPages LSP failed to start. (${message})`);
   }
 }
 
 async function deactivate() {
-  if (legacyMode && legacyExtension && typeof legacyExtension.deactivate === "function") {
-    return legacyExtension.deactivate();
-  }
-
   if (client) {
     const activeClient = client;
     client = null;

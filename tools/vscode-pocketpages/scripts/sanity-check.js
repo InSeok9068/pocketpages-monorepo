@@ -174,6 +174,15 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
   const codeActionKindQuickFix = 'quickfix'
   const completionKindMap = {}
 
+  function isSchemaSupportOnlyHookScriptPath(filePath) {
+    const normalizedPath = normalizeFilePath(filePath)
+    return (
+      normalizedPath.includes('/pb_hooks/') &&
+      !normalizedPath.includes('/pb_hooks/pages/') &&
+      /\.(js|cjs|mjs)$/i.test(normalizedPath)
+    )
+  }
+
   const helpers = {
     COMPLETION_KIND_MAP: completionKindMap,
     SCRIPT_DIAGNOSTICS_DEBOUNCE_MS: 10,
@@ -228,8 +237,8 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
     isExcludedPocketPagesScriptPath() {
       return false
     },
-    isSchemaSupportOnlyHookScriptPath() {
-      return false
+    isSchemaSupportOnlyHookScriptPath(filePath) {
+      return isSchemaSupportOnlyHookScriptPath(filePath)
     },
     isEjsFilePath(filePath) {
       return String(filePath || '').endsWith('.ejs')
@@ -294,94 +303,64 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
   }
 }
 
-function assertExtensionContracts(repoRoot) {
-  const extensionSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'extension.js'), 'utf8')
+function assertClientContracts(repoRoot) {
+  const legacyExtensionFilePath = path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'extension.js')
+  const clientSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'client.js'), 'utf8')
   const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'package.json'), 'utf8'))
 
+  if (fs.existsSync(legacyExtensionFilePath)) {
+    throw new Error('Expected the legacy extension-host fallback source to be removed once LSP parity is the only runtime path.')
+  }
+
   assertMatches(
-    extensionSource,
-    /const updateDiagnostics = \(document\) => \{\s*if \(!isManagedPocketPagesDocument\(document\)\) \{\s*return\s*\}/,
-    'Expected updateDiagnostics() to cover both PocketPages pages and schema-support-only pb_hooks scripts.'
+    clientSource,
+    /const LSP_DOCUMENT_SELECTOR = \[\.\.\.EJS_DOCUMENT_SELECTOR,\s*\.\.\.HOOK_SCRIPT_DOCUMENT_SELECTOR\]/,
+    'Expected the PocketPages client to route both EJS files and pb_hooks scripts through the LSP.'
   )
   assertMatches(
-    extensionSource,
-    /function isPocketPagesCodeDocument\(document\) \{[\s\S]*normalizedPath\.includes\('\/pb_hooks\/pages\/'\)/,
-    'Expected PocketPages code document detection to limit JS diagnostics and overrides to pb_hooks/pages.'
+    clientSource,
+    /const serverTemplateBoundaryDecoration = vscode\.window\.createTextEditorDecorationType\(/,
+    'Expected the PocketPages client to keep editor-side server\/template boundary decorations.'
   )
   assertMatches(
-    extensionSource,
-    /function isSchemaSupportOnlyHookScriptPath\(filePath\) \{[\s\S]*isPocketPagesHookScriptPath\(normalizedPath\)[\s\S]*!normalizedPath\.includes\('\/pb_hooks\/pages\/'\)/,
-    'Expected schema-support-only hook script detection for pb_hooks scripts outside pages.'
+    clientSource,
+    /const boundaryRanges = getServerTemplateBoundaryLineNumbers\(document\.getText\(\), \{\s*includeTopLevelPartialSetup: isPrivatePartialDocument\(document\),\s*\}\)/,
+    'Expected the PocketPages client to keep template boundary calculation for EJS and _private partial editors.'
   )
   assertMatches(
-    extensionSource,
-    /registerCompletionItemProvider\(\s*COMPLETION_DOCUMENT_SELECTOR,\s*new PocketPagesCompletionProvider\(manager\)/,
-    'Expected completion provider registration to include schema-support-only pb_hooks scripts.'
+    clientSource,
+    /const result = await client\.sendRequest\(REQUESTS\.allFileReferences, \{ uri: fileUri\.toString\(\) \}\)/,
+    'Expected the PocketPages client to resolve all-file references through the LSP.'
   )
   assertMatches(
-    extensionSource,
-    /registerDocumentLinkProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesDocumentLinkProvider\(manager\)\)/,
-    'Expected document links to stay scoped to PocketPages page documents.'
+    clientSource,
+    /const edits = await client\.sendRequest\(REQUESTS\.fileRenameEdits, \{/,
+    'Expected the PocketPages client to request cross-file rename edits through the LSP.'
   )
   assertMatches(
-    extensionSource,
-    /registerDefinitionProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesDefinitionProvider\(manager\)\)/,
-    'Expected definitions to stay scoped to PocketPages page documents.'
+    clientSource,
+    /await client\.sendNotification\(NOTIFICATIONS\.didManualSave, \{ uri: document\.uri\.toString\(\) \}\)/,
+    'Expected the PocketPages client to keep manual-save diagnostics refresh notifications for EJS documents.'
   )
   assertMatches(
-    extensionSource,
-    /registerReferenceProvider\(RENAME_DOCUMENT_SELECTOR,\s*new PocketPagesReferenceProvider\(manager\)\)/,
-    'Expected references to stay scoped to rename-capable PocketPages documents.'
+    clientSource,
+    /vscode\.commands\.registerCommand\("pocketpagesServerScript\.reloadCaches", async \(\) => \{/,
+    'Expected the PocketPages client to keep the reloadCaches command on the LSP runtime path.'
   )
   assertMatches(
-    extensionSource,
-    /registerRenameProvider\(RENAME_DOCUMENT_SELECTOR,\s*new PocketPagesRenameProvider\(manager\)\)/,
-    'Expected rename to stay scoped to rename-capable PocketPages documents.'
+    clientSource,
+    /vscode\.commands\.registerCommand\("pocketpagesServerScript\.allFileReferences", async \(resourceUri\) => \{/,
+    'Expected the PocketPages client to keep the allFileReferences command on the LSP runtime path.'
   )
   assertMatches(
-    extensionSource,
-    /registerInlayHintsProvider\(CODE_DOCUMENT_SELECTOR,\s*new PocketPagesInlayHintsProvider\(manager\)\)/,
-    'Expected PocketPages inlay hints provider registration for code documents.'
+    clientSource,
+    /vscode\.commands\.registerCommand\("pocketpagesServerScript\.showOutput", \(\) => \{/,
+    'Expected the PocketPages client to keep the shared output-channel command for the status item.'
   )
   assertMatches(
-    extensionSource,
-    /const customItems = isSchemaSupportOnlyDocument\s*\?\s*customCompletionData\.items\.filter\([\s\S]*entry\.category === 'collection-name' \|\| entry\.category === 'record-field'[\s\S]*: customCompletionData\.items/,
-    'Expected schema-support-only hook scripts to limit custom completions to collection and field entries.'
-  )
-  assertMatches(
-    extensionSource,
-    /const filteredDiagnostics = filterDiagnosticsForDocument\(document, rawDiagnostics\)/,
-    'Expected diagnostics to be filtered per document support level.'
-  )
-  assertMatches(
-    extensionSource,
-    /const isEjsDocument = document\.uri\.fsPath\.endsWith\('\.ejs'\)\s*\n\s*const quickInfo = isEjsDocument \? service\.getQuickInfo\(document\.uri\.fsPath, documentText, offset\) : null/,
-    'Expected PocketPages hover provider to limit quick info to EJS documents and avoid duplicate JS hover.'
-  )
-  assertMatches(
-    extensionSource,
-    /if \(\(!quickInfo \|\| quickInfo\.start === null \|\| quickInfo\.end === null\) && !pathTargetInfo\) \{\s*return null\s*\}/,
-    'Expected PocketPages hover provider to allow generic EJS quick info while still supporting path hover.'
-  )
-  assertMatches(
-    extensionSource,
-    /const signatureHelp = service\.getCustomSignatureHelp\(document\.uri\.fsPath, documentText, offset\)/,
-    'Expected PocketPages signature help provider to use only custom PocketPages signatures.'
-  )
-  assertMatches(
-    extensionSource,
-    /registerCommand\('pocketpagesServerScript\.reloadCaches'/,
-    'Expected PocketPages reloadCaches command registration in extension.js.'
-  )
-  assertMatches(
-    extensionSource,
-    /command: 'vscode\.open'/,
-    'Expected CodeLens provider to open file targets with vscode.open.'
-  )
-  assertMatches(
-    extensionSource,
-    /command: 'pocketpagesServerScript\.noopCodeLens'/,
-    'Expected CodeLens provider to fall back to the internal no-op command for labels without targets.'
+    clientSource,
+    /clientLogger\.error\("lsp", "startup-failed", \{ message \}\)/,
+    'Expected the PocketPages client to report startup failures directly instead of falling back to legacy mode.'
   )
 
   const templateBoundaryMarkers = [
@@ -389,16 +368,14 @@ function assertExtensionContracts(repoRoot) {
     'getServerTemplateBoundaryLineNumbers',
     'onDidChangeVisibleTextEditors',
     'includeTopLevelPartialSetup',
-    "title: 'Template'",
-    "kind: 'template-boundary'",
   ]
   for (const marker of templateBoundaryMarkers) {
-    if (!extensionSource.includes(marker)) {
-      throw new Error('Expected extension to register server/template boundary decorations and CodeLens markers for visible EJS editors.')
+    if (!clientSource.includes(marker)) {
+      throw new Error('Expected the LSP client to register server/template boundary decorations for visible EJS editors.')
     }
   }
 
-  if (extensionSource.includes("contentText: 'Template'")) {
+  if (clientSource.includes("contentText: 'Template'")) {
     throw new Error('Expected Template label to stay out of inline decoration content and remain a CodeLens.')
   }
 
@@ -486,11 +463,6 @@ function assertLspRuntimeContracts(repoRoot) {
 
   assertMatches(
     clientSource,
-    /const legacyExtension = require\((["'])\.\/extension\1\)/,
-    'Expected client.js to keep legacy fallback wiring.'
-  )
-  assertMatches(
-    clientSource,
     /const clientOptions = \{\s*documentSelector: LSP_DOCUMENT_SELECTOR,\s*outputChannel,\s*\}/,
     'Expected client.js to route LSP logs through the shared PocketPages output channel.'
   )
@@ -504,11 +476,12 @@ function assertLspRuntimeContracts(repoRoot) {
     /await client\.sendNotification\(NOTIFICATIONS\.didManualSave, \{ uri: document\.uri\.toString\(\) \}\)/,
     'Expected client.js to keep EJS manual-save diagnostics notifications.'
   )
-  assertMatches(
-    clientSource,
-    /return legacyExtension\.activate\(context\)/,
-    'Expected client.js to fall back to legacy extension mode when LSP startup fails.'
-  )
+  if (clientSource.includes('legacyExtension')) {
+    throw new Error('Expected client.js to stop referencing the legacy extension fallback path.')
+  }
+  if (clientSource.includes('fallback-legacy')) {
+    throw new Error('Expected client.js to stop reporting fallback-legacy startup mode.')
+  }
 
   const requiredServiceFactories = [
     'createCustomFeatureService',
@@ -556,6 +529,16 @@ function assertLspRuntimeContracts(repoRoot) {
     diagnosticsFeatureSource,
     /context\.core\.hasFeatureCoverageForRange\(\s*uri,\s*start,\s*end,\s*"diagnostics"/,
     'Expected diagnostics feature service to selectively publish only diagnostics-covered mapped regions.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /helpers\.isSchemaSupportOnlyHookScriptPath\(documentContext\.filePath\)/,
+    'Expected diagnostics feature service to keep schema-support-only hook scripts on the schema-only diagnostic channel.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /code === "pp-schema-collection" \|\| code === "pp-schema-field"/,
+    'Expected diagnostics feature service to preserve only schema diagnostics for non-pages pb_hooks scripts.'
   )
   assertMatches(
     tsPluginSource,
@@ -1145,7 +1128,7 @@ module.exports = {
 
 function run() {
   const repoRoot = path.resolve(__dirname, '..', '..', '..')
-  assertExtensionContracts(repoRoot)
+  assertClientContracts(repoRoot)
   assertLspRuntimeContracts(repoRoot)
   const fixture = createFixtureApp(repoRoot)
   const realHighlightsFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', '(site)', 'highlights.ejs')
@@ -1630,6 +1613,90 @@ const isSignedIn = !!authState && authState.isSignedIn
       )
     ) {
       throw new Error(`Expected diagnostics feature service to keep resolve() path diagnostics reportable. Got: ${JSON.stringify(diagnosticsEvents[0].diagnostics)}`)
+    }
+
+    const schemaOnlyDiagnosticsEvents = []
+    const schemaOnlyDiagnosticsCore = new PocketPagesLanguageCore()
+    const schemaOnlyDiagnosticsText = `missingGlobal()\n$app.findRecordsByFilter('missing_collection')\n`
+    const schemaOnlyDiagnosticsDocument = createTestDocument(
+      fixture.jobScriptFilePath,
+      'javascript',
+      1,
+      schemaOnlyDiagnosticsText
+    )
+    const schemaOnlyDiagnosticsUri = schemaOnlyDiagnosticsDocument.uri
+    schemaOnlyDiagnosticsCore.openDocument({
+      uri: schemaOnlyDiagnosticsUri,
+      languageId: 'javascript',
+      version: 1,
+      text: schemaOnlyDiagnosticsText,
+    })
+    const schemaOnlyDiagnosticsSmokeContext = createLspServiceSmokeContext(
+      schemaOnlyDiagnosticsCore,
+      new Map([[schemaOnlyDiagnosticsUri, schemaOnlyDiagnosticsDocument]]),
+      {
+        connection: {
+          sendDiagnostics(payload) {
+            schemaOnlyDiagnosticsEvents.push(payload)
+          },
+        },
+      }
+    )
+    const schemaOnlyDocumentContext = schemaOnlyDiagnosticsCore.getDocumentContextByUri(
+      schemaOnlyDiagnosticsUri
+    )
+    const schemaOnlyService = schemaOnlyDocumentContext && schemaOnlyDocumentContext.service
+    const originalSchemaOnlyGetDiagnostics =
+      schemaOnlyService && typeof schemaOnlyService.getDiagnostics === 'function'
+        ? schemaOnlyService.getDiagnostics.bind(schemaOnlyService)
+        : null
+    if (!schemaOnlyService || !originalSchemaOnlyGetDiagnostics) {
+      throw new Error('Expected schema-support-only hook diagnostics smoke context to expose a language service.')
+    }
+    schemaOnlyService.getDiagnostics = () => ([
+      {
+        code: 'pp-schema-collection',
+        category: ts.DiagnosticCategory.Error,
+        message: 'Unknown PocketBase collection "missing_collection" in findRecordsByFilter().',
+        start: schemaOnlyDiagnosticsText.indexOf('missing_collection'),
+        end: schemaOnlyDiagnosticsText.indexOf('missing_collection') + 'missing_collection'.length,
+      },
+      {
+        code: 2304,
+        category: ts.DiagnosticCategory.Error,
+        message: "Cannot find name 'missingGlobal'.",
+        start: schemaOnlyDiagnosticsText.indexOf('missingGlobal'),
+        end: schemaOnlyDiagnosticsText.indexOf('missingGlobal') + 'missingGlobal'.length,
+      },
+    ])
+    const schemaOnlyDiagnosticsFeatureService = createDiagnosticsFeatureService(
+      schemaOnlyDiagnosticsSmokeContext.context
+    )
+    try {
+      schemaOnlyDiagnosticsFeatureService.publishDiagnostics(schemaOnlyDiagnosticsUri)
+    } finally {
+      schemaOnlyService.getDiagnostics = originalSchemaOnlyGetDiagnostics
+    }
+    if (!schemaOnlyDiagnosticsEvents.length || !Array.isArray(schemaOnlyDiagnosticsEvents[0].diagnostics)) {
+      throw new Error(
+        `Expected schema-support-only hook diagnostics publish event. Got: ${JSON.stringify(schemaOnlyDiagnosticsEvents)}`
+      )
+    }
+    if (
+      schemaOnlyDiagnosticsEvents[0].diagnostics.some(
+        (entry) =>
+          String(entry.code) !== 'pp-schema-collection' &&
+          String(entry.code) !== 'pp-schema-field'
+      )
+    ) {
+      throw new Error(
+        `Expected schema-support-only hook diagnostics publishing to drop non-schema entries. Got: ${JSON.stringify(schemaOnlyDiagnosticsEvents[0].diagnostics)}`
+      )
+    }
+    if (!schemaOnlyDiagnosticsEvents[0].diagnostics.some((entry) => String(entry.code) === 'pp-schema-collection')) {
+      throw new Error(
+        `Expected schema-support-only hook diagnostics publishing to keep collection diagnostics. Got: ${JSON.stringify(schemaOnlyDiagnosticsEvents[0].diagnostics)}`
+      )
     }
 
     const coldDiagnosticsWriteProbe = withWriteFileSyncCount(() => {
