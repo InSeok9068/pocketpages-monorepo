@@ -89,6 +89,42 @@ function createOutputLogger(output) {
   };
 }
 
+function toVscodeUri(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof vscode.Uri) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    try {
+      return value.includes("://") ? vscode.Uri.parse(value) : vscode.Uri.file(value);
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  if (typeof value === "object") {
+    if (typeof value.scheme === "string") {
+      try {
+        return vscode.Uri.revive(value);
+      } catch (_error) {}
+    }
+
+    if (typeof value.fsPath === "string") {
+      try {
+        return vscode.Uri.file(value.fsPath);
+      } catch (_error) {
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
 function normalizeDocumentPath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
 }
@@ -268,13 +304,22 @@ function updateServerTemplateBoundariesForDocument(document, decoration) {
 }
 
 async function showFileReferences({ logger, fileUri }) {
+  const normalizedFileUri = toVscodeUri(fileUri);
+  if (!normalizedFileUri) {
+    logger.warn("references", "invalid-uri", {
+      raw: typeof fileUri === "string" ? fileUri : typeof fileUri,
+    });
+    vscode.window.showWarningMessage("Unable to resolve the current file for PocketPages references.");
+    return;
+  }
+
   logger.info("references", "query", {
-    file: vscode.workspace.asRelativePath(fileUri.fsPath, false),
+    file: vscode.workspace.asRelativePath(normalizedFileUri.fsPath, false),
   });
-  const result = await client.sendRequest(REQUESTS.allFileReferences, { uri: fileUri.toString() });
+  const result = await client.sendRequest(REQUESTS.allFileReferences, { uri: normalizedFileUri.toString() });
   if (!result) {
     logger.warn("references", "unsupported-target", {
-      file: vscode.workspace.asRelativePath(fileUri.fsPath, false),
+      file: vscode.workspace.asRelativePath(normalizedFileUri.fsPath, false),
     });
     vscode.window.showWarningMessage(
       "File is not a supported PocketPages reference target. Use a _private partial, a _private module, or a static route file."
@@ -284,7 +329,7 @@ async function showFileReferences({ logger, fileUri }) {
 
   const references = Array.isArray(result.references) ? result.references : [];
   logger.info("references", "result", {
-    file: vscode.workspace.asRelativePath(fileUri.fsPath, false),
+    file: vscode.workspace.asRelativePath(normalizedFileUri.fsPath, false),
     kind: result.referenceQuery && result.referenceQuery.kind,
     refs: references.length,
   });
@@ -315,16 +360,16 @@ async function showFileReferences({ logger, fileUri }) {
 
   if (!locations.length) {
     logger.warn("references", "open-target-failed", {
-      file: vscode.workspace.asRelativePath(fileUri.fsPath, false),
+      file: vscode.workspace.asRelativePath(normalizedFileUri.fsPath, false),
       refs: references.length,
     });
     vscode.window.showInformationMessage("References were found, but the target files could not be opened.");
     return;
   }
 
-  const activeEditor = vscode.window.visibleTextEditors.find((editor) => editor.document.uri.fsPath === fileUri.fsPath);
+  const activeEditor = vscode.window.visibleTextEditors.find((editor) => editor.document.uri.fsPath === normalizedFileUri.fsPath);
   const anchorPosition = activeEditor ? activeEditor.selection.active : new vscode.Position(0, 0);
-  await vscode.commands.executeCommand("editor.action.showReferences", fileUri, anchorPosition, locations);
+  await vscode.commands.executeCommand("editor.action.showReferences", normalizedFileUri, anchorPosition, locations);
 }
 
 async function applyPrivateFileRenameEdits({ logger, event }) {
@@ -540,13 +585,22 @@ async function activateLsp(context) {
     }),
     vscode.commands.registerCommand("pocketpagesServerScript.allFileReferences", async (resourceUri) => {
       const editor = vscode.window.activeTextEditor;
-      const fileUri = resourceUri || (editor ? editor.document.uri : null);
+      const fileUri = toVscodeUri(resourceUri) || (editor ? editor.document.uri : null);
       if (!fileUri) {
         vscode.window.showWarningMessage("No active editor.");
         return;
       }
 
       await showFileReferences({ logger, fileUri });
+    }),
+    vscode.commands.registerCommand("pocketpagesServerScript.openCodeLensTarget", async (resourceUri) => {
+      const fileUri = toVscodeUri(resourceUri);
+      if (!fileUri) {
+        vscode.window.showWarningMessage("Unable to resolve the target file.");
+        return;
+      }
+
+      await vscode.commands.executeCommand("vscode.open", fileUri);
     }),
     vscode.commands.registerCommand("pocketpagesServerScript.noopCodeLens", () => {})
   );

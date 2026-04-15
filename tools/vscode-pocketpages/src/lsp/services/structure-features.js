@@ -112,12 +112,14 @@ function createStructureFeatureService(context) {
         command = {
           title: entry.title,
           command: entry.command,
-          arguments: [params.textDocument.uri],
+          arguments: Array.isArray(entry.arguments)
+            ? entry.arguments
+            : [params.textDocument.uri],
         };
       } else if (entry.targetFilePath) {
         command = {
           title: entry.title,
-          command: "vscode.open",
+          command: "pocketpagesServerScript.openCodeLensTarget",
           arguments: [URI.file(entry.targetFilePath).toString()],
         };
       } else {

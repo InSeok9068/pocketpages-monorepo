@@ -329,7 +329,7 @@ function assertClientContracts(repoRoot) {
   )
   assertMatches(
     clientSource,
-    /const result = await client\.sendRequest\(REQUESTS\.allFileReferences, \{ uri: fileUri\.toString\(\) \}\)/,
+    /const normalizedFileUri = toVscodeUri\(fileUri\)[\s\S]*const result = await client\.sendRequest\(REQUESTS\.allFileReferences, \{ uri: normalizedFileUri\.toString\(\) \}\)/,
     'Expected the PocketPages client to resolve all-file references through the LSP.'
   )
   assertMatches(
@@ -351,6 +351,16 @@ function assertClientContracts(repoRoot) {
     clientSource,
     /vscode\.commands\.registerCommand\("pocketpagesServerScript\.allFileReferences", async \(resourceUri\) => \{/,
     'Expected the PocketPages client to keep the allFileReferences command on the LSP runtime path.'
+  )
+  assertMatches(
+    clientSource,
+    /const fileUri = toVscodeUri\(resourceUri\) \|\| \(editor \? editor\.document\.uri : null\);/,
+    'Expected the PocketPages client to normalize LSP CodeLens URI arguments before showing file references.'
+  )
+  assertMatches(
+    clientSource,
+    /vscode\.commands\.registerCommand\("pocketpagesServerScript\.openCodeLensTarget", async \(resourceUri\) => \{/,
+    'Expected the PocketPages client to own CodeLens target opening so serialized URIs are revived correctly.'
   )
   assertMatches(
     clientSource,
