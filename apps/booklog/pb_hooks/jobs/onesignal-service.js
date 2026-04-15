@@ -28,11 +28,11 @@ function getBaseUrl() {
 /**
  * 특정 external id 목록으로 보낼 푸시 payload를 만듭니다.
  *
- * @param {Object} input 푸시 생성 입력값
+ * @param {object} input 푸시 생성 입력값
  * @param {string[]} input.externalIds 대상 external id 목록
  * @param {string} input.title 알림 제목
  * @param {string} input.contents 알림 본문
- * @returns {Object} OneSignal 메시지 payload
+ * @returns {object} OneSignal 메시지 payload
  */
 function createPushPayload(input) {
   const source = input || {}
@@ -68,11 +68,11 @@ function createAuthHeaders() {
 /**
  * OneSignal로 푸시 메시지를 보냅니다.
  *
- * @param {Object} input 푸시 발송 입력값
+ * @param {object} input 푸시 발송 입력값
  * @param {string[]} input.externalIds 대상 external id 목록
  * @param {string} input.title 알림 제목
  * @param {string} input.contents 알림 본문
- * @returns {Object} OneSignal 응답 json
+ * @returns {object} OneSignal 응답 json
  */
 function sendPushNotification(input) {
   const payload = createPushPayload(input)

@@ -74,8 +74,8 @@ function getDateTextDaysAgo(daysBeforeToday) {
 /**
  * 로그 저장용 payload를 안전한 객체로 정리합니다.
  *
- * @param {Object} payload 원본 payload
- * @returns {Object} 정리된 payload 객체
+ * @param {object} payload 원본 payload
+ * @returns {object} 정리된 payload 객체
  */
 function sanitizePayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -196,7 +196,7 @@ function getSentHighlightIdsWithinDays(userId, notificationKey, days) {
 /**
  * 푸시 발송 로그를 저장합니다.
  *
- * @param {Object} input 로그 입력값
+ * @param {object} input 로그 입력값
  * @param {string} input.userId 사용자 ID
  * @param {string} input.notificationKey 알림 종류 코드
  * @param {string} input.channel 채널 코드
@@ -210,7 +210,7 @@ function getSentHighlightIdsWithinDays(userId, notificationKey, days) {
  * @param {string} [input.providerMessageId] 외부 발송 ID
  * @param {string} [input.errorMessage] 실패 메시지
  * @param {string} [input.sentAt] 발송 일자
- * @param {Object} [input.payloadJson] 원본 payload
+ * @param {object} [input.payloadJson] 원본 payload
  */
 function createLog(input) {
   const source = input || {}

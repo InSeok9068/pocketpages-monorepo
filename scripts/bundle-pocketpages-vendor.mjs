@@ -55,7 +55,7 @@ async function readDirSafe(targetDir) {
   try {
     const { readdir } = await import('node:fs/promises')
     return await readdir(targetDir, { withFileTypes: true })
-  } catch (_error) {
+  } catch {
     return []
   }
 }
@@ -64,7 +64,7 @@ async function exists(targetPath) {
   try {
     await stat(targetPath)
     return true
-  } catch (_error) {
+  } catch {
     return false
   }
 }

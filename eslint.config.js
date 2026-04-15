@@ -1,4 +1,5 @@
 const js = require('@eslint/js')
+const jsdoc = require('eslint-plugin-jsdoc')
 const globals = require('globals')
 const { buildTemplateVirtualText } = require('./tools/vscode-pocketpages/src/ejs-template')
 
@@ -89,16 +90,34 @@ module.exports = [
     processor: ejsProcessor,
   },
   {
-    files: ['**/*.js', '**/*.mjs'],
+    files: ['**/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
-      sourceType: 'module',
+      sourceType: 'commonjs',
       globals: {
         ...globals.node,
         ...pocketPagesGlobals,
       },
     },
+    plugins: {
+      jsdoc,
+    },
+    settings: {
+      jsdoc: {
+        mode: 'typescript',
+      },
+    },
     rules: {
+      'jsdoc/check-param-names': 'warn',
+      'jsdoc/check-property-names': 'warn',
+      'jsdoc/check-syntax': 'warn',
+      'jsdoc/check-tag-names': 'warn',
+      'jsdoc/check-types': 'warn',
+      'jsdoc/check-values': 'warn',
+      'jsdoc/empty-tags': 'warn',
+      'jsdoc/no-bad-blocks': 'warn',
+      'jsdoc/require-returns-check': 'warn',
+      'jsdoc/valid-types': 'warn',
       'no-useless-assignment': 'off',
       'no-useless-escape': 'off',
       'no-unused-vars': [
@@ -109,6 +128,14 @@ module.exports = [
           varsIgnorePattern: '^_',
         },
       ],
+    },
+  },
+  {
+    files: ['**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: globals.node,
     },
   },
   {

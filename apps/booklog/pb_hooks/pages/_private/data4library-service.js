@@ -6,7 +6,7 @@ const DEFAULT_TIMEOUT_SECONDS = 15
 
 /**
  * data4library 요청용 query string을 만든다.
- * @param {Object<string, any>} query 값 객체
+ * @param {{ [key: string]: unknown }} query 값 객체
  * @returns {string} 직렬화된 query string
  */
 function toQueryString(query) {
@@ -31,7 +31,7 @@ function toQueryString(query) {
  * data4library API에 GET 요청을 보낸다.
  * @param {{ apiKey: string, baseUrl?: string, timeout?: number }} config 호출 설정
  * @param {string} path API 경로
- * @param {Object<string, any>} query 요청 query
+ * @param {{ [key: string]: unknown }} query 요청 query
  * @returns {any} 파싱된 json 응답
  */
 function requestData4LibraryJson(config, path, query) {
