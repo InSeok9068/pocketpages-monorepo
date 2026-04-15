@@ -798,8 +798,31 @@ connection.onHover((params) => {
     return null;
   }
 
-  const quickInfo = typeScriptFeatureService.provideHover(params);
+  const documentContext = core.getDocumentContextByUri(params.textDocument.uri);
+  if (!documentContext) {
+    return null;
+  }
+
   const pathTargetInfo = customFeatureService.provideHover(params);
+
+  if (!isEjsFilePath(documentContext.filePath)) {
+    if (!pathTargetInfo) {
+      return null;
+    }
+
+    return {
+      contents: {
+        kind: MarkupKind.Markdown,
+        value:
+          pathTargetInfo.kind === "route-path" && pathTargetInfo.value
+            ? `Target: \`${pathTargetInfo.targetFilePath.replace(/\\/g, "/")}\`\n\nRoute: \`${pathTargetInfo.value}\``
+            : `Target: \`${pathTargetInfo.targetFilePath.replace(/\\/g, "/")}\``,
+      },
+      range: toRange(document, pathTargetInfo.start, pathTargetInfo.end),
+    };
+  }
+
+  const quickInfo = typeScriptFeatureService.provideHover(params);
   if ((!quickInfo || quickInfo.start === null || quickInfo.end === null) && !pathTargetInfo) {
     return null;
   }
