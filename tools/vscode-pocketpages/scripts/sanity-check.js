@@ -240,6 +240,113 @@ function assertExtensionContracts(repoRoot) {
   )
 }
 
+function assertLspRuntimeContracts(repoRoot) {
+  const packageJsonPath = path.join(repoRoot, 'tools', 'vscode-pocketpages', 'package.json')
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
+  const clientSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'client.js'), 'utf8')
+  const serverSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'lsp', 'server.js'), 'utf8')
+  const vscodeIgnore = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', '.vscodeignore'), 'utf8')
+  const installScriptSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'scripts', 'install-vscode-pocketpages.js'),
+    'utf8'
+  )
+
+  if (packageJson.main !== './src/client.js') {
+    throw new Error(`Expected package.json main to point at client.js. Got: ${packageJson.main}`)
+  }
+
+  if (packageJson.dependencies && Object.prototype.hasOwnProperty.call(packageJson.dependencies, 'vscode-pocketpages')) {
+    throw new Error('Expected package.json to avoid self-referential vscode-pocketpages dependency.')
+  }
+
+  if (
+    !Array.isArray(packageJson.extensionDependencies) ||
+    !packageJson.extensionDependencies.includes('vscode.typescript-language-features')
+  ) {
+    throw new Error('Expected package.json to depend on vscode.typescript-language-features for TS plugin support.')
+  }
+
+  assertMatches(
+    clientSource,
+    /const legacyExtension = require\((["'])\.\/extension\1\)/,
+    'Expected client.js to keep legacy fallback wiring.'
+  )
+  assertMatches(
+    clientSource,
+    /const clientOptions = \{\s*documentSelector: LSP_DOCUMENT_SELECTOR,\s*outputChannel,\s*\}/,
+    'Expected client.js to route LSP logs through the shared PocketPages output channel.'
+  )
+  assertMatches(
+    clientSource,
+    /new LanguageClient\(\s*"pocketpages",\s*"PocketPages Language Server"/,
+    'Expected client.js to start the PocketPages language server client.'
+  )
+  assertMatches(
+    clientSource,
+    /await client\.sendNotification\(NOTIFICATIONS\.didManualSave, \{ uri: document\.uri\.toString\(\) \}\)/,
+    'Expected client.js to keep EJS manual-save diagnostics notifications.'
+  )
+  assertMatches(
+    clientSource,
+    /return legacyExtension\.activate\(context\)/,
+    'Expected client.js to fall back to legacy extension mode when LSP startup fails.'
+  )
+
+  const requiredServiceFactories = [
+    'createCustomFeatureService',
+    'createTypeScriptFeatureService',
+    'createDiagnosticsFeatureService',
+    'createStructureFeatureService',
+  ]
+  for (const factoryName of requiredServiceFactories) {
+    if (!serverSource.includes(factoryName)) {
+      throw new Error(`Expected server.js to wire ${factoryName} from split LSP services.`)
+    }
+  }
+
+  assertMatches(
+    serverSource,
+    /const pathTargetInfo = customFeatureService\.provideHover\(params\)/,
+    'Expected server.js hover path to query PocketPages custom hover first.'
+  )
+  assertMatches(
+    serverSource,
+    /if \(!isEjsFilePath\(documentContext\.filePath\)\) \{\s*return null;\s*\}/,
+    'Expected server.js hover path to avoid generic JS hover duplication outside EJS.'
+  )
+  assertMatches(
+    serverSource,
+    /const quickInfo = typeScriptFeatureService\.provideHover\(params\)/,
+    'Expected server.js to keep EJS TS quick info ownership in the LSP until TS plugin parity is achieved.'
+  )
+  assertMatches(
+    serverSource,
+    /const customTarget = customFeatureService\.provideDefinition\(params\);[\s\S]*if \(customTarget\) \{[\s\S]*return toLocation\(customTarget\);[\s\S]*\}[\s\S]*return toLocation\(typeScriptFeatureService\.provideDefinition\(params\)\);/,
+    'Expected server.js definition ownership to check PocketPages custom targets before TS definition fallback.'
+  )
+  assertMatches(
+    serverSource,
+    /const customResult = customFeatureService\.provideCompletionItems\(params\)/,
+    'Expected server.js completion path to preserve custom PocketPages completions before TS completions.'
+  )
+
+  if (!vscodeIgnore.includes('node_modules/**')) {
+    throw new Error('Expected .vscodeignore to exclude node_modules by default for VSIX packaging.')
+  }
+  if (!vscodeIgnore.includes('!node_modules/@dlstj-local/pocketpages-typescript-plugin/**')) {
+    throw new Error('Expected .vscodeignore to re-include the bundled PocketPages TS plugin package.')
+  }
+  if (!vscodeIgnore.includes('!node_modules/typescript/**')) {
+    throw new Error('Expected .vscodeignore to re-include the TypeScript runtime needed by the TS plugin.')
+  }
+
+  assertMatches(
+    installScriptSource,
+    /const packageJson = JSON\.parse\(fs\.readFileSync\(PACKAGE_JSON_PATH, 'utf8'\)\)[\s\S]*const EXTENSION_ID = `\$\{packageJson\.publisher\}\.\$\{packageJson\.name\}`/,
+    'Expected install-vscode-pocketpages.js to derive the extension ID from package.json metadata.'
+  )
+}
+
 function createFixtureApp(_repoRoot) {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-fixture-'))
   const appRoot = path.join(fixtureRoot, 'apps', 'fixture-app')
@@ -806,6 +913,7 @@ module.exports = {
 function run() {
   const repoRoot = path.resolve(__dirname, '..', '..', '..')
   assertExtensionContracts(repoRoot)
+  assertLspRuntimeContracts(repoRoot)
   const fixture = createFixtureApp(repoRoot)
   const realHighlightsFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', '(site)', 'highlights.ejs')
   const realUploadFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', 'xapi', 'epub', 'upload.ejs')

@@ -5,7 +5,9 @@ const path = require('path')
 const { spawnSync } = require('child_process')
 
 const VSIX_PATH = path.resolve(__dirname, '..', 'dist', 'vscode-pocketpages.vsix')
-const EXTENSION_ID = 'dlstj-local.vscode-pocketpages'
+const PACKAGE_JSON_PATH = path.resolve(__dirname, '..', 'package.json')
+const packageJson = JSON.parse(fs.readFileSync(PACKAGE_JSON_PATH, 'utf8'))
+const EXTENSION_ID = `${packageJson.publisher}.${packageJson.name}`
 const LEGACY_EXTENSION_IDS = ['dlstj-local.vscode-pocketpages-ejs-poc']
 const LOCAL_APPDATA = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Local')
 const INSTALL_TARGETS = [

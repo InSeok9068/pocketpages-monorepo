@@ -60,7 +60,7 @@
     "test": "npm run sanity-check",
     "sanity-check": "node ./scripts/sanity-check.js",
     "sync:ts-plugin": "node ./scripts/sync-ts-plugin-package.js",
-    "package:vsix": "npm install && node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --follow-symlinks --allow-missing-repository --out ./dist/vscode-pocketpages.vsix",
+    "package:vsix": "npm install --no-audit --no-fund && node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --follow-symlinks --allow-missing-repository --out ./dist/vscode-pocketpages.vsix",
     "install:vscode-pocketpages": "npm run package:vsix && node ./scripts/install-vscode-pocketpages.js"
   },
   "devDependencies": {
