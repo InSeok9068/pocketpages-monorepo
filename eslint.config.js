@@ -1,18 +1,49 @@
 const js = require('@eslint/js')
 const jsdoc = require('eslint-plugin-jsdoc')
+const { builtinModules } = require('module')
 const globals = require('globals')
 const { buildTemplateVirtualText } = require('./tools/vscode-pocketpages/src/ejs-template')
 
-const pocketPagesGlobals = {
+// goja에서 도는 코드에 허용할 최소 CommonJS 전역입니다.
+// PocketBase JSVM은 Node.js가 아니므로 globals.node 전체는 열지 않습니다.
+const commonJsRuntimeGlobals = {
+  console: 'readonly',
+  exports: 'readonly',
+  module: 'readonly',
+  require: 'readonly',
+  // jobs 같은 non-pages hooks에서 process.env를 쓰는 경우를 위해 남겨둡니다.
+  process: 'readonly',
+}
+
+const restrictedNodeModuleNames = builtinModules
+  .filter((name) => !name.startsWith('_'))
+  .reduce((acc, name) => {
+    acc.push(name)
+    acc.push(`node:${name}`)
+    return acc
+  }, [])
+
+// PocketBase가 pb_hooks 전역으로 제공하는 값들입니다.
+const pocketBaseHookGlobals = {
   $app: 'readonly',
   $apis: 'readonly',
   $http: 'readonly',
   __hooks: 'readonly',
+  cronAdd: 'readonly',
+  onBootstrap: 'readonly',
+  onServe: 'readonly',
+  onTerminate: 'readonly',
+  Record: 'readonly',
+  routerAdd: 'readonly',
+  routerUse: 'readonly',
+}
+
+// PocketPages가 pages/templates 문맥에 주입하는 전역 헬퍼들입니다.
+const pocketPagesContextGlobals = {
   api: 'readonly',
   asset: 'readonly',
   auth: 'readonly',
   body: 'readonly',
-  cronAdd: 'readonly',
   core: 'readonly',
   data: 'readonly',
   dbg: 'readonly',
@@ -23,17 +54,11 @@ const pocketPagesGlobals = {
   include: 'readonly',
   info: 'readonly',
   meta: 'readonly',
-  onBootstrap: 'readonly',
-  onServe: 'readonly',
-  onTerminate: 'readonly',
   params: 'readonly',
   redirect: 'readonly',
   request: 'readonly',
   resolve: 'readonly',
   response: 'readonly',
-  Record: 'readonly',
-  routerAdd: 'readonly',
-  routerUse: 'readonly',
   signInWithPassword: 'readonly',
   signOut: 'readonly',
   sleep: 'readonly',
@@ -43,6 +68,11 @@ const pocketPagesGlobals = {
   stringify: 'readonly',
   url: 'readonly',
   warn: 'readonly',
+}
+
+const pocketPagesGlobals = {
+  ...pocketBaseHookGlobals,
+  ...pocketPagesContextGlobals,
 }
 
 const ejsProcessor = {
@@ -98,7 +128,7 @@ module.exports = [
     languageOptions: {
       ecmaVersion: 2015,
       sourceType: 'commonjs',
-      globals: globals.node,
+      globals: commonJsRuntimeGlobals,
     },
     plugins: {
       jsdoc,
@@ -119,6 +149,7 @@ module.exports = [
       'jsdoc/no-bad-blocks': 'warn',
       'jsdoc/require-returns-check': 'warn',
       'jsdoc/valid-types': 'warn',
+      'no-restricted-modules': ['error', ...restrictedNodeModuleNames],
       'no-useless-assignment': 'off',
       'no-useless-escape': 'off',
       'no-unused-vars': [
