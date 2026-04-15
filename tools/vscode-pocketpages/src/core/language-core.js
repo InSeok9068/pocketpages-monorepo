@@ -218,6 +218,33 @@ function createMapper(mappings) {
   };
 }
 
+function createLinkedCodeMap(associatedScriptMappings) {
+  const normalizedMappings =
+    associatedScriptMappings instanceof Map ? associatedScriptMappings : new Map();
+
+  return {
+    get(targetId) {
+      if (!normalizedMappings.has(targetId)) {
+        return undefined;
+      }
+
+      return createMapper(normalizedMappings.get(targetId));
+    },
+    has(targetId) {
+      return normalizedMappings.has(targetId);
+    },
+    keys() {
+      return normalizedMappings.keys();
+    },
+    entries() {
+      return [...normalizedMappings.entries()].map(([targetId, mappings]) => [
+        targetId,
+        createMapper(mappings),
+      ]);
+    },
+  };
+}
+
 class PocketPagesLanguageCore {
   constructor(options = {}) {
     this.manager = options.manager || new PocketPagesLanguageServiceManager();
@@ -263,7 +290,17 @@ class PocketPagesLanguageCore {
       }.bind(this),
     };
     this.linkedCodeMaps = {
-      get: () => undefined,
+      get: (virtualCode) => {
+        if (
+          !virtualCode ||
+          !(virtualCode.associatedScriptMappings instanceof Map) ||
+          !virtualCode.associatedScriptMappings.size
+        ) {
+          return undefined;
+        }
+
+        return createLinkedCodeMap(virtualCode.associatedScriptMappings);
+      },
     };
   }
 
@@ -431,6 +468,42 @@ class PocketPagesLanguageCore {
 
   isFeatureEnabledAtOffset(uri, offset, capabilityName, options = {}) {
     return this.getFeatureOwnersAtOffset(uri, offset, capabilityName, options).length > 0;
+  }
+
+  hasFeatureCoverageForRange(uri, start, end, capabilityName, options = {}) {
+    const sourceScript = this.getSourceScript(uri);
+    if (!sourceScript || !sourceScript.generated) {
+      return false;
+    }
+
+    const rangeStart = Math.max(0, Number(start) || 0);
+    const rangeEnd = Math.max(rangeStart, Number.isFinite(end) ? Number(end) : rangeStart);
+    if (rangeEnd <= rangeStart) {
+      return this.isFeatureEnabledAtOffset(uri, rangeStart, capabilityName, options);
+    }
+
+    const embeddedCodes = sourceScript.generated.embeddedCodes
+      ? [...sourceScript.generated.embeddedCodes.values()]
+      : [];
+
+    for (const embeddedCode of embeddedCodes) {
+      if (options.kind && embeddedCode.kind !== options.kind) {
+        continue;
+      }
+
+      if (options.id && embeddedCode.id !== options.id) {
+        continue;
+      }
+
+      const mapper = this.maps.get(embeddedCode, sourceScript);
+      for (const _match of mapper.toGeneratedRange(rangeStart, rangeEnd, false, (data) =>
+        isCapabilityEnabled(getCapabilityValue(data, capabilityName))
+      )) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   getManagedVirtualCodes() {

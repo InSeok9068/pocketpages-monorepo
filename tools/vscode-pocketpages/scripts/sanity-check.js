@@ -245,6 +245,14 @@ function assertLspRuntimeContracts(repoRoot) {
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
   const clientSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'client.js'), 'utf8')
   const serverSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'lsp', 'server.js'), 'utf8')
+  const diagnosticsFeatureSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'lsp', 'services', 'diagnostics-features.js'),
+    'utf8'
+  )
+  const tsPluginSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'ts-plugin', 'index.js'),
+    'utf8'
+  )
   const vscodeIgnore = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', '.vscodeignore'), 'utf8')
   const installScriptSource = fs.readFileSync(
     path.join(repoRoot, 'tools', 'vscode-pocketpages', 'scripts', 'install-vscode-pocketpages.js'),
@@ -328,6 +336,16 @@ function assertLspRuntimeContracts(repoRoot) {
     serverSource,
     /const customResult = customFeatureService\.provideCompletionItems\(params\)/,
     'Expected server.js completion path to preserve custom PocketPages completions before TS completions.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /context\.core\.hasFeatureCoverageForRange\(\s*uri,\s*start,\s*end,\s*"diagnostics"/,
+    'Expected diagnostics feature service to selectively publish only diagnostics-covered mapped regions.'
+  )
+  assertMatches(
+    tsPluginSource,
+    /core\.isFeatureEnabledAtOffset\(\s*documentContext\.uri,\s*position,\s*capabilityName\s*\)/,
+    'Expected PocketPages TS plugin to respect mapper ownership before serving TS features for .ejs.'
   )
 
   if (!vscodeIgnore.includes('node_modules/**')) {
@@ -1098,6 +1116,43 @@ const boardService = resolve('board-service')
       )
     ) {
       throw new Error('Expected include() path literals to stay outside TS completion ownership mappings.')
+    }
+    if (
+      !fineGrainedCore.hasFeatureCoverageForRange(
+        fineGrainedUri,
+        fineGrainedText.indexOf("'board-service'") + 1,
+        fineGrainedText.indexOf("'board-service'") + 2,
+        'diagnostics'
+      )
+    ) {
+      throw new Error('Expected resolve() path literals to stay inside diagnostics-enabled mappings.')
+    }
+    if (
+      fineGrainedCore.hasFeatureCoverageForRange(
+        fineGrainedUri,
+        fineGrainedText.indexOf('<div>') + 1,
+        fineGrainedText.indexOf('<div>') + 4,
+        'diagnostics'
+      )
+    ) {
+      throw new Error('Expected plain template HTML to stay outside diagnostics-enabled mappings.')
+    }
+    const managedFineGrainedVirtualCode = fineGrainedCore.getVirtualCode(fineGrainedUri)
+    const managedFineGrainedServerCode = managedFineGrainedVirtualCode && managedFineGrainedVirtualCode.getEmbeddedCodes().find((entry) => entry.kind === 'server-script')
+    if (!managedFineGrainedServerCode) {
+      throw new Error('Expected managed fine-grained virtual code to expose the server embedded code.')
+    }
+    const rootLinkedCodeMap = fineGrainedCore.linkedCodeMaps.get(managedFineGrainedServerCode)
+    if (!rootLinkedCodeMap || !rootLinkedCodeMap.has('root')) {
+      throw new Error('Expected linked code precision to expose an embedded-code -> root mapper.')
+    }
+    const linkedRootLocations = [...rootLinkedCodeMap.get('root').toSourceLocation(1)]
+    if (!linkedRootLocations.some(([offset]) => offset === fineGrainedText.indexOf('const boardService'))) {
+      throw new Error(`Expected linked code mapper to resolve server generated offsets back to source. Got: ${JSON.stringify(linkedRootLocations)}`)
+    }
+    const embeddedLinkedCodeMap = fineGrainedCore.linkedCodeMaps.get(managedFineGrainedVirtualCode)
+    if (!embeddedLinkedCodeMap || !embeddedLinkedCodeMap.has('server:0')) {
+      throw new Error('Expected linked code precision to expose a root -> embedded-code mapper.')
     }
 
     const plugin = createPocketPagesLanguagePlugin()

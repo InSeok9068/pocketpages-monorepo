@@ -20,6 +20,35 @@ function createDiagnosticsFeatureService(context) {
     toRange,
   } = helpers;
 
+  function shouldReportDiagnostic(uri, documentContext, diagnostic) {
+    if (!documentContext || !helpers.isEjsFilePath(documentContext.filePath)) {
+      return true;
+    }
+
+    if (!diagnostic || typeof diagnostic.start !== "number") {
+      return true;
+    }
+
+    const start = Math.max(0, diagnostic.start);
+    const end =
+      typeof diagnostic.end === "number" && diagnostic.end > start
+        ? diagnostic.end
+        : start;
+
+    return context.core.hasFeatureCoverageForRange(
+      uri,
+      start,
+      end,
+      "diagnostics"
+    );
+  }
+
+  function filterReportedDiagnostics(uri, documentContext, diagnostics) {
+    return (Array.isArray(diagnostics) ? diagnostics : []).filter((diagnostic) =>
+      shouldReportDiagnostic(uri, documentContext, diagnostic)
+    );
+  }
+
   function scheduleDiagnostics(uri) {
     if (state.diagnosticTimeouts.has(uri)) {
       clearTimeout(state.diagnosticTimeouts.get(uri));
@@ -75,6 +104,11 @@ function createDiagnosticsFeatureService(context) {
       document.getText(),
       { profile: diagnosticsProfile }
     );
+    const reportedDiagnostics = filterReportedDiagnostics(
+      uri,
+      documentContext,
+      rawDiagnostics
+    );
     const elapsedMs = elapsedMilliseconds(startedAt);
 
     if (!isActiveDiagnosticRun(uri, runId) || isStaleDocumentVersion(uri, requestedVersion)) {
@@ -88,14 +122,15 @@ function createDiagnosticsFeatureService(context) {
     logServer("perf", "diagnostics", "publish", {
       file: getRelativePathLabel(documentContext.filePath),
       version: requestedVersion,
-      count: rawDiagnostics.length,
+      count: reportedDiagnostics.length,
+      rawCount: rawDiagnostics.length,
       totalMs: elapsedMs.toFixed(1),
       ...getDiagnosticsProfileFields(diagnosticsProfile),
     });
 
     connection.sendDiagnostics({
       uri,
-      diagnostics: rawDiagnostics.map((diagnostic) => ({
+      diagnostics: reportedDiagnostics.map((diagnostic) => ({
         range: toRange(document, diagnostic.start, diagnostic.end),
         severity: diagnosticSeverity(diagnostic.category),
         code: diagnostic.code,

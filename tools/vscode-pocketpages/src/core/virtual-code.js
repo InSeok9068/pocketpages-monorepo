@@ -232,6 +232,7 @@ function createEmbeddedCode({
     snapshot,
     mappings,
     embeddedCodes: [],
+    associatedScriptMappings: new Map(),
     metadata,
   };
 }
@@ -338,6 +339,22 @@ class PocketPagesVirtualCode {
       (Array.isArray(previousEmbeddedCodes) ? previousEmbeddedCodes : []).map((embeddedCode) => [embeddedCode.id, embeddedCode])
     );
     this.embeddedCodes = buildEmbeddedCodes(this.filePath, this.languageId, this.text, previousEmbeddedCodeMap);
+    this.associatedScriptMappings = new Map();
+
+    for (const embeddedCode of this.embeddedCodes) {
+      const linkedMappings = Array.isArray(embeddedCode.mappings)
+        ? embeddedCode.mappings
+        : [];
+      if (!linkedMappings.length) {
+        continue;
+      }
+
+      this.associatedScriptMappings.set(embeddedCode.id, linkedMappings);
+      if (!(embeddedCode.associatedScriptMappings instanceof Map)) {
+        embeddedCode.associatedScriptMappings = new Map();
+      }
+      embeddedCode.associatedScriptMappings.set("root", linkedMappings);
+    }
   }
 
   getText() {

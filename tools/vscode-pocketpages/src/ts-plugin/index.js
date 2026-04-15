@@ -121,6 +121,18 @@ function init(modules) {
         };
       }
 
+      function isTsOwnedPosition(documentContext, position, capabilityName) {
+        if (!documentContext) {
+          return false;
+        }
+
+        return core.isFeatureEnabledAtOffset(
+          documentContext.uri,
+          position,
+          capabilityName
+        );
+      }
+
       function isCustomPocketPagesPosition(documentContext, position) {
         if (!documentContext) {
           return false;
@@ -196,7 +208,11 @@ function init(modules) {
 
       proxy.getCompletionsAtPosition = (fileName, position, options) => {
         const documentContext = ensureDocumentContext(fileName);
-        if (!documentContext || isCustomPocketPagesPosition(documentContext, position)) {
+        if (
+          !documentContext ||
+          isCustomPocketPagesPosition(documentContext, position) ||
+          !isTsOwnedPosition(documentContext, position, "completion")
+        ) {
           return baseLanguageService.getCompletionsAtPosition(fileName, position, options);
         }
 
@@ -270,7 +286,11 @@ function init(modules) {
 
       proxy.getQuickInfoAtPosition = (fileName, position) => {
         const documentContext = ensureDocumentContext(fileName);
-        if (!documentContext || isCustomPocketPagesPosition(documentContext, position)) {
+        if (
+          !documentContext ||
+          isCustomPocketPagesPosition(documentContext, position) ||
+          !isTsOwnedPosition(documentContext, position, "hover")
+        ) {
           return baseLanguageService.getQuickInfoAtPosition(fileName, position);
         }
 
@@ -297,7 +317,11 @@ function init(modules) {
 
       proxy.getDefinitionAtPosition = (fileName, position) => {
         const documentContext = ensureDocumentContext(fileName);
-        if (!documentContext || isCustomPocketPagesPosition(documentContext, position)) {
+        if (
+          !documentContext ||
+          isCustomPocketPagesPosition(documentContext, position) ||
+          !isTsOwnedPosition(documentContext, position, "definition")
+        ) {
           return baseLanguageService.getDefinitionAtPosition(fileName, position);
         }
 
@@ -315,7 +339,11 @@ function init(modules) {
 
       proxy.getDefinitionAndBoundSpan = (fileName, position) => {
         const documentContext = ensureDocumentContext(fileName);
-        if (!documentContext || isCustomPocketPagesPosition(documentContext, position)) {
+        if (
+          !documentContext ||
+          isCustomPocketPagesPosition(documentContext, position) ||
+          !isTsOwnedPosition(documentContext, position, "definition")
+        ) {
           return baseLanguageService.getDefinitionAndBoundSpan(fileName, position);
         }
 
