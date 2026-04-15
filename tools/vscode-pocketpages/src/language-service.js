@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const ts = require("typescript");
+const { createScriptSnapshot } = require("./core/snapshot");
 const { buildTemplateVirtualText, extractTemplateCodeBlocks: _extractTemplateCodeBlocks, getTemplateCodeBlockAtOffset } = require("./ejs-template");
 const { extractServerBlocks: _extractServerBlocks, getServerBlockAtOffset } = require("./script-server");
 const { PocketPagesProjectIndex, POCKETPAGES_GLOBAL_NAMES, collectIncludeCallEntries } = require("./project-index");
@@ -34,7 +35,8 @@ const COMPILER_OPTIONS = {
 };
 
 function normalizePath(filePath) {
-  return path.resolve(filePath).replace(/\\/g, "/");
+  const normalizedPath = path.resolve(filePath).replace(/\\/g, "/");
+  return normalizedPath.replace(/^[A-Z]:/, (value) => value.toLowerCase());
 }
 
 function toReferencePath(filePath) {
@@ -65,6 +67,16 @@ function readFileText(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
+function createVersionedFileState(previousState, state) {
+  const currentText = String(state && state.text ? state.text : "");
+  return {
+    ...state,
+    text: currentText,
+    version: previousState ? String(Number(previousState.version) + 1) : "1",
+    snapshot: createScriptSnapshot(currentText, previousState ? previousState.snapshot : null),
+  };
+}
+
 function isEjsFile(filePath) {
   return path.extname(String(filePath || "")).toLowerCase() === ".ejs";
 }
@@ -74,7 +86,17 @@ function isScriptFile(filePath) {
 }
 
 function isPrivatePagesFile(filePath) {
-  return normalizePath(filePath).includes("/pb_hooks/pages/_private/");
+  const normalizedPath = normalizePath(filePath);
+  const pagesMarker = "/pb_hooks/pages/";
+  const markerIndex = normalizedPath.indexOf(pagesMarker);
+  if (markerIndex === -1) {
+    return false;
+  }
+
+  return normalizedPath
+    .slice(markerIndex + pagesMarker.length)
+    .split("/")
+    .includes("_private");
 }
 
 function stripKnownExtension(filePath, extensions) {
@@ -271,6 +293,10 @@ function flattenDiagnosticMessage(messageText) {
   }
 
   return parts.join("\n");
+}
+
+function elapsedMilliseconds(startTime) {
+  return Number(process.hrtime.bigint() - startTime) / 1e6;
 }
 
 const EJS_IN_SCRIPT_RE = /<%(?![%#])[_=-]?[\s\S]*?[-_]?%>/g;
@@ -1671,10 +1697,14 @@ class ProjectLanguageService {
     this.projectVersion = 0;
     this.staticFiles = new Map();
     this.virtualFiles = new Map();
+    this.preparedDocumentStates = new Map();
     this.includePreludeStack = new Set();
     this.documentOverrides = new Map();
+    this.documentOverrideSnapshotVersions = new Map();
+    this.nextDocumentOverrideSnapshotVersion = 1;
     this.includeContractCache = new Map();
     this.includeCallEntriesCache = new Map();
+    this.includePreludeCache = new Map();
 
     this.languageService = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry());
   }
@@ -1688,6 +1718,10 @@ class ProjectLanguageService {
     }
 
     this.documentOverrides.set(normalizedFilePath, currentText);
+    this.documentOverrideSnapshotVersions.set(
+      normalizedFilePath,
+      `override:${this.nextDocumentOverrideSnapshotVersion++}`
+    );
     this.includeCallEntriesCache.delete(normalizedFilePath);
     this.includeContractCache.delete(normalizedFilePath);
     this.projectVersion += 1;
@@ -1696,8 +1730,10 @@ class ProjectLanguageService {
   clearDocumentOverride(filePath) {
     const normalizedFilePath = normalizePath(filePath);
     if (this.documentOverrides.delete(normalizedFilePath)) {
+      this.documentOverrideSnapshotVersions.delete(normalizedFilePath);
       this.includeCallEntriesCache.delete(normalizedFilePath);
       this.includeContractCache.delete(normalizedFilePath);
+      this.preparedDocumentStates.delete(normalizedFilePath);
       this.projectVersion += 1;
     }
   }
@@ -1705,9 +1741,11 @@ class ProjectLanguageService {
   resetCaches() {
     this.includeContractCache.clear();
     this.includeCallEntriesCache.clear();
+    this.includePreludeCache.clear();
     this.includePreludeStack.clear();
     this.staticFiles.clear();
     this.virtualFiles.clear();
+    this.preparedDocumentStates.clear();
     this.projectIndex.resetCaches();
     this.projectVersion += 1;
   }
@@ -1726,10 +1764,22 @@ class ProjectLanguageService {
   }
 
   getPagesCodeOverrides(extraOverrides = {}) {
+    return this.getPagesCodeOverridesExcluding([], extraOverrides);
+  }
+
+  getPagesCodeOverridesExcluding(excludedFilePaths = [], extraOverrides = {}) {
     const overrides = {};
+    const excludedFilePathSet = new Set(
+      (Array.isArray(excludedFilePaths) ? excludedFilePaths : [excludedFilePaths])
+        .filter(Boolean)
+        .map((filePath) => normalizePath(filePath))
+    );
 
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
       const filePath = normalizePath(entry.filePath);
+      if (excludedFilePathSet.has(filePath)) {
+        continue;
+      }
       if (this.documentOverrides.has(filePath)) {
         overrides[filePath] = this.documentOverrides.get(filePath);
       }
@@ -1742,6 +1792,20 @@ class ProjectLanguageService {
     }
 
     return overrides;
+  }
+
+  getDocumentSnapshotToken(filePath) {
+    const normalizedFilePath = normalizePath(filePath);
+    if (this.documentOverrides.has(normalizedFilePath)) {
+      return this.documentOverrideSnapshotVersions.get(normalizedFilePath) || "override:unknown";
+    }
+
+    if (!fileExists(normalizedFilePath)) {
+      return "missing";
+    }
+
+    const stats = fs.statSync(normalizedFilePath);
+    return `disk:${stats.mtimeMs}:${stats.size}`;
   }
 
   getAmbientSnapshotKey() {
@@ -1827,14 +1891,14 @@ class ProjectLanguageService {
       getScriptSnapshot: (fileName) => {
         const state = this.getFileState(fileName);
         if (state) {
-          return ts.ScriptSnapshot.fromString(state.text);
+          return state.snapshot;
         }
 
         if (!ts.sys.fileExists(fileName)) {
           return undefined;
         }
 
-        return ts.ScriptSnapshot.fromString(ts.sys.readFile(fileName) || "");
+        return createScriptSnapshot(ts.sys.readFile(fileName) || "");
       },
       getCurrentDirectory: () => this.appRoot,
       getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
@@ -1885,11 +1949,10 @@ class ProjectLanguageService {
       return;
     }
 
-    this.staticFiles.set(resolvedPath, {
+    this.staticFiles.set(resolvedPath, createVersionedFileState(previous, {
       text,
       mtimeMs: stats.mtimeMs,
-      version: previous ? String(Number(previous.version) + 1) : "1",
-    });
+    }));
     this.projectVersion += 1;
   }
 
@@ -1901,11 +1964,10 @@ class ProjectLanguageService {
       return;
     }
 
-    this.staticFiles.set(resolvedPath, {
+    this.staticFiles.set(resolvedPath, createVersionedFileState(previous, {
       text,
       mtimeMs: previous ? previous.mtimeMs : 0,
-      version: previous ? String(Number(previous.version) + 1) : "1",
-    });
+    }));
     this.projectVersion += 1;
   }
 
@@ -1944,7 +2006,10 @@ class ProjectLanguageService {
       parts.push(recordGetPrelude);
     }
 
-    const includeLocalsPrelude = !options.skipIncludeLocals && isEjsFile(filePath) ? this.buildIncludeLocalsPrelude(filePath) : "";
+    const includeLocalsPrelude =
+      !options.skipIncludeLocals && isEjsFile(filePath) && isPrivatePagesFile(filePath)
+        ? this.buildIncludeLocalsPrelude(filePath)
+        : "";
     if (includeLocalsPrelude) {
       parts.push(includeLocalsPrelude);
     }
@@ -2011,7 +2076,23 @@ class ProjectLanguageService {
     try {
       const callSites = this.collectIncludeTargetCallSites(normalizedFilePath);
       if (!callSites.length) {
+        this.includePreludeCache.set(normalizedFilePath, {
+          snapshotKey: `${this.getAmbientSnapshotKey()}|empty`,
+          preludeText: "",
+        });
         return "";
+      }
+
+      const snapshotKey = [
+        this.getAmbientSnapshotKey(),
+        ...callSites.map((callSite) => {
+          const callerFilePath = normalizePath(callSite.callerFilePath);
+          return `${callerFilePath}:${this.getDocumentSnapshotToken(callerFilePath)}`;
+        }),
+      ].join("|");
+      const cachedEntry = this.includePreludeCache.get(normalizedFilePath);
+      if (cachedEntry && cachedEntry.snapshotKey === snapshotKey) {
+        return cachedEntry.preludeText;
       }
 
       const bindingsByName = new Map();
@@ -2056,7 +2137,12 @@ class ProjectLanguageService {
         bindingLines.push(`declare const ${name}: ${typeText};`);
       }
 
-      return bindingLines.join("\n");
+      const preludeText = bindingLines.join("\n");
+      this.includePreludeCache.set(normalizedFilePath, {
+        snapshotKey,
+        preludeText,
+      });
+      return preludeText;
     } finally {
       this.includePreludeStack.delete(normalizedFilePath);
     }
@@ -2064,7 +2150,7 @@ class ProjectLanguageService {
 
   collectIncludeTargetCallSites(targetFilePath) {
     return this.projectIndex.getIncludeTargetCallSites(targetFilePath, {
-      overrides: this.getPagesCodeOverrides(),
+      overrides: this.getPagesCodeOverridesExcluding([targetFilePath]),
       readFileText: (filePath) => this.getDocumentText(filePath),
     });
   }
@@ -2589,6 +2675,20 @@ class ProjectLanguageService {
     ].join("\n");
   }
 
+  setPreparedDocumentState(filePath, preparedState) {
+    const normalizedFilePath = normalizePath(filePath);
+    if (!preparedState) {
+      this.preparedDocumentStates.delete(normalizedFilePath);
+      return;
+    }
+
+    this.preparedDocumentStates.set(normalizedFilePath, preparedState);
+  }
+
+  clearPreparedDocumentState(filePath) {
+    this.preparedDocumentStates.delete(normalizePath(filePath));
+  }
+
   upsertVirtualFile(filePath, block) {
     this.refreshStaticFiles();
 
@@ -2602,14 +2702,13 @@ class ProjectLanguageService {
     const previous = this.virtualFiles.get(virtualFileName);
 
     if (!previous || previous.text !== text) {
-      this.virtualFiles.set(virtualFileName, {
+      this.virtualFiles.set(virtualFileName, createVersionedFileState(previous, {
         text,
-        version: previous ? String(Number(previous.version) + 1) : "1",
         filePath: resolvedPath,
         blockIndex: block.index,
         preludeLength: prelude.length,
         block,
-      });
+      }));
       this.projectVersion += 1;
     } else {
       previous.block = block;
@@ -2623,7 +2722,7 @@ class ProjectLanguageService {
     };
   }
 
-  upsertTemplateVirtualFile(filePath, documentText) {
+  upsertTemplateVirtualFileState(filePath, templateVirtualText, documentLength) {
     this.refreshStaticFiles();
 
     const resolvedPath = normalizePath(filePath);
@@ -2631,30 +2730,33 @@ class ProjectLanguageService {
     const virtualDir = path.join(CACHE_ROOT, sanitizeFileName(this.appRoot));
     const virtualFileName = normalizePath(path.join(virtualDir, `${sanitizeFileName(relativePath)}__template.ts`));
 
-    const templateVirtualText = buildTemplateVirtualText(documentText);
     const prelude = this.buildPrelude(resolvedPath, templateVirtualText);
     const text = `${prelude}${templateVirtualText}`;
     const previous = this.virtualFiles.get(virtualFileName);
 
     if (!previous || previous.text !== text) {
-      this.virtualFiles.set(virtualFileName, {
+      this.virtualFiles.set(virtualFileName, createVersionedFileState(previous, {
         text,
-        version: previous ? String(Number(previous.version) + 1) : "1",
         filePath: resolvedPath,
         preludeLength: prelude.length,
         kind: "template-document",
-        documentLength: documentText.length,
-      });
+        documentLength,
+      }));
       this.projectVersion += 1;
     } else {
       previous.preludeLength = prelude.length;
-      previous.documentLength = documentText.length;
+      previous.documentLength = documentLength;
     }
 
     return {
       fileName: virtualFileName,
       preludeLength: prelude.length,
     };
+  }
+
+  upsertTemplateVirtualFile(filePath, documentText) {
+    const templateVirtualText = buildTemplateVirtualText(documentText);
+    return this.upsertTemplateVirtualFileState(filePath, templateVirtualText, documentText.length);
   }
 
   upsertScriptVirtualFile(filePath, documentText) {
@@ -2670,14 +2772,13 @@ class ProjectLanguageService {
     const previous = this.virtualFiles.get(virtualFileName);
 
     if (!previous || previous.text !== text) {
-      this.virtualFiles.set(virtualFileName, {
+      this.virtualFiles.set(virtualFileName, createVersionedFileState(previous, {
         text,
-        version: previous ? String(Number(previous.version) + 1) : "1",
         filePath: resolvedPath,
         preludeLength: prelude.length,
         kind: "script-document",
         documentLength: documentText.length,
-      });
+      }));
       this.projectVersion += 1;
     } else {
       previous.preludeLength = prelude.length;
@@ -2688,6 +2789,137 @@ class ProjectLanguageService {
       fileName: virtualFileName,
       preludeLength: prelude.length,
     };
+  }
+
+  syncPreparedDocumentVirtualCode(filePath, documentText, virtualCode) {
+    const normalizedFilePath = normalizePath(filePath);
+    if (!virtualCode || typeof virtualCode.getEmbeddedCodes !== "function") {
+      this.clearPreparedDocumentState(normalizedFilePath);
+      return null;
+    }
+
+    if (isScriptFile(normalizedFilePath)) {
+      const scriptVirtual = this.upsertScriptVirtualFile(normalizedFilePath, documentText);
+      const preparedState = {
+        kind: "script",
+        filePath: normalizedFilePath,
+        script: {
+          fileName: scriptVirtual.fileName,
+          preludeLength: scriptVirtual.preludeLength,
+        },
+      };
+      this.setPreparedDocumentState(normalizedFilePath, preparedState);
+      return preparedState;
+    }
+
+    if (!isEjsFile(normalizedFilePath)) {
+      this.clearPreparedDocumentState(normalizedFilePath);
+      return null;
+    }
+
+    const preparedState = {
+      kind: "ejs",
+      filePath: normalizedFilePath,
+      serverBlocks: [],
+      template: null,
+    };
+
+    for (const embeddedCode of virtualCode.getEmbeddedCodes()) {
+      if (!embeddedCode || !embeddedCode.metadata) {
+        continue;
+      }
+
+      const embeddedText = embeddedCode.snapshot.getText(0, embeddedCode.snapshot.getLength());
+      if (embeddedCode.kind === "server-script") {
+        const block = {
+          index:
+            typeof embeddedCode.metadata.blockIndex === "number"
+              ? embeddedCode.metadata.blockIndex
+              : preparedState.serverBlocks.length,
+          fullStart: embeddedCode.metadata.fullStart,
+          fullEnd: embeddedCode.metadata.fullEnd,
+          contentStart: embeddedCode.metadata.sourceStart,
+          contentEnd: embeddedCode.metadata.sourceEnd,
+          content: embeddedText,
+        };
+        const serverVirtual = this.upsertVirtualFile(normalizedFilePath, block);
+        preparedState.serverBlocks.push({
+          index: block.index,
+          contentStart: block.contentStart,
+          contentEnd: block.contentEnd,
+          fileName: serverVirtual.fileName,
+          preludeLength: serverVirtual.preludeLength,
+        });
+        continue;
+      }
+
+      if (embeddedCode.kind === "template") {
+        const templateVirtual = this.upsertTemplateVirtualFileState(
+          normalizedFilePath,
+          embeddedText,
+          documentText.length
+        );
+        preparedState.template = {
+          fileName: templateVirtual.fileName,
+          preludeLength: templateVirtual.preludeLength,
+          blocks: Array.isArray(embeddedCode.metadata.templateBlocks) ? embeddedCode.metadata.templateBlocks : [],
+        };
+      }
+    }
+
+    this.setPreparedDocumentState(normalizedFilePath, preparedState);
+    return preparedState;
+  }
+
+  getPreparedVirtualStateAtOffset(filePath, offset) {
+    const preparedState = this.preparedDocumentStates.get(normalizePath(filePath));
+    if (!preparedState) {
+      return null;
+    }
+
+    if (preparedState.kind === "script" && preparedState.script) {
+      return {
+        block: null,
+        virtual: {
+          fileName: preparedState.script.fileName,
+          preludeLength: preparedState.script.preludeLength,
+        },
+        virtualOffset: preparedState.script.preludeLength + offset,
+      };
+    }
+
+    if (preparedState.kind !== "ejs") {
+      return null;
+    }
+
+    for (const block of preparedState.serverBlocks || []) {
+      if (offset >= block.contentStart && offset <= block.contentEnd) {
+        return {
+          block,
+          virtual: {
+            fileName: block.fileName,
+            preludeLength: block.preludeLength,
+          },
+          virtualOffset: block.preludeLength + (offset - block.contentStart),
+        };
+      }
+    }
+
+    if (
+      preparedState.template &&
+      (preparedState.template.blocks || []).some((block) => offset >= block.contentStart && offset <= block.contentEnd)
+    ) {
+      return {
+        block: null,
+        virtual: {
+          fileName: preparedState.template.fileName,
+          preludeLength: preparedState.template.preludeLength,
+        },
+        virtualOffset: preparedState.template.preludeLength + offset,
+      };
+    }
+
+    return null;
   }
 
   mapVirtualOffsetToDocumentOffset(virtualFileName, offset) {
@@ -2900,9 +3132,33 @@ class ProjectLanguageService {
     };
   }
 
-  getVirtualStateAtOffset(filePath, documentText, offset) {
+  getVirtualStateAtOffset(filePath, documentText, offset, options = {}) {
+    const profile = options && typeof options === "object" ? options.profile : null;
+    const startedAt = profile ? process.hrtime.bigint() : null;
+    const preparedVirtualState = this.getPreparedVirtualStateAtOffset(filePath, offset);
+    if (preparedVirtualState) {
+      if (profile && startedAt) {
+        profile.upsertKind =
+          preparedVirtualState.block && typeof preparedVirtualState.block.index === "number"
+            ? "server-block-prepared"
+            : isScriptFile(filePath)
+              ? "script-prepared"
+              : "template-prepared";
+        profile.upsertMs = 0;
+        profile.getVirtualStateAtOffsetMs = elapsedMilliseconds(startedAt);
+      }
+
+      return preparedVirtualState;
+    }
+
     if (isScriptFile(filePath)) {
+      const upsertStartedAt = profile ? process.hrtime.bigint() : null;
       const virtual = this.upsertScriptVirtualFile(filePath, documentText);
+      if (profile && upsertStartedAt) {
+        profile.upsertKind = "script";
+        profile.upsertMs = elapsedMilliseconds(upsertStartedAt);
+        profile.getVirtualStateAtOffsetMs = elapsedMilliseconds(startedAt);
+      }
 
       return {
         block: null,
@@ -2912,6 +3168,7 @@ class ProjectLanguageService {
     }
 
     const block = getServerBlockAtOffset(documentText, offset);
+    const upsertStartedAt = profile ? process.hrtime.bigint() : null;
     const virtual = block
       ? this.upsertVirtualFile(filePath, block)
       : getTemplateCodeBlockAtOffset(documentText, offset)
@@ -2919,7 +3176,18 @@ class ProjectLanguageService {
         : null;
 
     if (!virtual) {
+      if (profile && startedAt) {
+        profile.upsertKind = "none";
+        profile.upsertMs = upsertStartedAt ? elapsedMilliseconds(upsertStartedAt) : 0;
+        profile.getVirtualStateAtOffsetMs = elapsedMilliseconds(startedAt);
+      }
       return null;
+    }
+
+    if (profile && startedAt) {
+      profile.upsertKind = block ? "server-block" : "template";
+      profile.upsertMs = upsertStartedAt ? elapsedMilliseconds(upsertStartedAt) : 0;
+      profile.getVirtualStateAtOffsetMs = elapsedMilliseconds(startedAt);
     }
 
     return {
@@ -3649,16 +3917,19 @@ class ProjectLanguageService {
   }
 
   getCompletionData(filePath, documentText, offset) {
-    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
+    const profile = {};
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset, { profile });
     if (!virtualState) {
       return null;
     }
 
     const { virtual, virtualOffset } = virtualState;
+    const completionsStartedAt = process.hrtime.bigint();
     const info = this.languageService.getCompletionsAtPosition(virtual.fileName, virtualOffset, {
       includeCompletionsWithInsertText: true,
       includeCompletionsForModuleExports: false,
     });
+    profile.getCompletionsAtPositionMs = elapsedMilliseconds(completionsStartedAt);
 
     if (!info) {
       return null;
@@ -3677,6 +3948,7 @@ class ProjectLanguageService {
     return {
       entries: info.entries,
       replacementSpan,
+      profile,
       virtualFileName: virtual.fileName,
       virtualOffset,
     };
@@ -4142,7 +4414,11 @@ class ProjectLanguageService {
     return diagnostics;
   }
 
-  getDiagnostics(filePath, documentText) {
+  getDiagnostics(filePath, documentText, options = {}) {
+    const profile = options && options.profile ? options.profile : null;
+    const totalStartedAt = profile ? process.hrtime.bigint() : null;
+
+    let stepStartedAt = profile ? process.hrtime.bigint() : null;
     const documentAnalysis = createDocumentAnalysis({
       filePath,
       documentText,
@@ -4150,18 +4426,58 @@ class ProjectLanguageService {
       collectResolveCallSpansFromTemplate,
       collectPathContexts,
     });
+    if (profile) {
+      profile.createDocumentAnalysisMs = elapsedMilliseconds(stepStartedAt);
+    }
+
     const blocks = documentAnalysis.getBlocks();
     const templateBlocks = documentAnalysis.getTemplateBlocks();
     const collectionMethodNames = this.projectIndex.getCollectionMethodNames();
+
+    stepStartedAt = profile ? process.hrtime.bigint() : null;
     const diagnostics = collectClientScriptSyntacticDiagnostics(documentText);
+    if (profile) {
+      profile.collectClientScriptSyntacticDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+    }
 
+    stepStartedAt = profile ? process.hrtime.bigint() : null;
     diagnostics.push(...this.collectPrivateResolveDiagnostics(filePath, documentAnalysis));
-    diagnostics.push(...this.collectServerBlockDiagnostics(filePath, blocks, collectionMethodNames, documentAnalysis));
-    diagnostics.push(...this.collectTemplateDiagnostics(filePath, documentText, blocks, templateBlocks, collectionMethodNames, documentAnalysis));
-    diagnostics.push(...this.collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames));
-    diagnostics.push(...this.collectProjectRuleDiagnostics(filePath, documentText, documentAnalysis));
+    if (profile) {
+      profile.collectPrivateResolveDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+    }
 
-    return dedupeDiagnostics(diagnostics);
+    stepStartedAt = profile ? process.hrtime.bigint() : null;
+    diagnostics.push(...this.collectServerBlockDiagnostics(filePath, blocks, collectionMethodNames, documentAnalysis));
+    if (profile) {
+      profile.collectServerBlockDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+    }
+
+    stepStartedAt = profile ? process.hrtime.bigint() : null;
+    diagnostics.push(...this.collectTemplateDiagnostics(filePath, documentText, blocks, templateBlocks, collectionMethodNames, documentAnalysis));
+    if (profile) {
+      profile.collectTemplateDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+    }
+
+    stepStartedAt = profile ? process.hrtime.bigint() : null;
+    diagnostics.push(...this.collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames));
+    if (profile) {
+      profile.collectScriptSchemaDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+    }
+
+    stepStartedAt = profile ? process.hrtime.bigint() : null;
+    diagnostics.push(...this.collectProjectRuleDiagnostics(filePath, documentText, documentAnalysis));
+    if (profile) {
+      profile.collectProjectRuleDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+    }
+
+    stepStartedAt = profile ? process.hrtime.bigint() : null;
+    const dedupedDiagnostics = dedupeDiagnostics(diagnostics);
+    if (profile) {
+      profile.dedupeDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+      profile.getDiagnosticsMs = elapsedMilliseconds(totalStartedAt);
+    }
+
+    return dedupedDiagnostics;
   }
 
   getCodeActions(filePath, documentText, range) {

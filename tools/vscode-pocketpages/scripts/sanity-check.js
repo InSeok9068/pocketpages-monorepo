@@ -3,7 +3,12 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const { URI } = require('vscode-uri')
 const { PocketPagesLanguageServiceManager } = require('../src/language-service')
+const { PocketPagesLanguageCore } = require('../src/core/language-core')
+const { createPocketPagesLanguagePlugin } = require('../src/core/language-plugin')
+const { createScriptSnapshot } = require('../src/core/snapshot')
+const { createVirtualCode, updateVirtualCode } = require('../src/core/virtual-code')
 const { collectEjsSemanticTokenEntries } = require('../src/ejs-semantic-tokens')
 const { getServerTemplateBoundaryLineNumbers } = require('../src/ejs-server-boundary')
 
@@ -41,7 +46,7 @@ function applyEditsToText(text, edits) {
 }
 
 function normalizeFilePath(filePath) {
-  return String(filePath || '').replace(/\\/g, '/')
+  return String(filePath || '').replace(/\\/g, '/').replace(/^[A-Z]:/, (value) => value.toLowerCase())
 }
 
 function serializeDiagnostics(diagnostics) {
@@ -809,6 +814,102 @@ function run() {
     }
     if (secondaryService === service) {
       throw new Error('Expected PocketPages manager to isolate services per app root in a monorepo.')
+    }
+
+    const core = new PocketPagesLanguageCore()
+    const coreBoardsText = fs.readFileSync(fixture.boardsFilePath, 'utf8')
+    const coreBoardsUri = URI.file(fixture.boardsFilePath).toString()
+    core.openDocument({
+      uri: coreBoardsUri,
+      languageId: 'ejs',
+      version: 1,
+      text: coreBoardsText,
+    })
+
+    const coreProbe = core.probeFile(fixture.boardsFilePath)
+    if (!coreProbe.hasAppRoot) {
+      throw new Error(`Expected language-core probe to resolve an app root. Got: ${JSON.stringify(coreProbe)}`)
+    }
+
+    const coreReferenceResult = core.getFileReferenceResult(fixture.flashAlertFilePath)
+    if (!coreReferenceResult || !coreReferenceResult.referenceQuery || !Array.isArray(coreReferenceResult.references)) {
+      throw new Error(`Expected language-core file references for _private partials. Got: ${JSON.stringify(coreReferenceResult)}`)
+    }
+
+    if (coreReferenceResult.referenceQuery.kind !== 'private-partial') {
+      throw new Error(`Expected language-core partial reference query kind. Got: ${JSON.stringify(coreReferenceResult.referenceQuery)}`)
+    }
+
+    const coreReloadResult = core.reloadCaches(fixture.boardsFilePath)
+    if (!coreReloadResult || !/reloaded/i.test(coreReloadResult.message)) {
+      throw new Error(`Expected language-core cache reload result. Got: ${JSON.stringify(coreReloadResult)}`)
+    }
+
+    const boardShowText = fs.readFileSync(fixture.boardShowFilePath, 'utf8')
+    const boardShowUri = URI.file(fixture.boardShowFilePath).toString()
+    const virtualCode = createVirtualCode(boardShowUri, 'ejs', 1, boardShowText)
+    if (!Array.isArray(virtualCode.embeddedCodes) || !virtualCode.embeddedCodes.some((entry) => entry.kind === 'server-script')) {
+      throw new Error(`Expected virtual code to expose embedded server-script regions. Got: ${JSON.stringify(virtualCode.embeddedCodes)}`)
+    }
+    if (!virtualCode.embeddedCodes.some((entry) => entry.kind === 'template')) {
+      throw new Error(`Expected virtual code to expose template embedded code.`)
+    }
+
+    const updatedVirtualCode = updateVirtualCode(
+      virtualCode,
+      2,
+      boardShowText.replace("board.get('name')", "board.get('slug')"),
+      'ejs'
+    )
+    const serverEmbeddedCode = updatedVirtualCode.embeddedCodes.find((entry) => entry.kind === 'server-script')
+    const templateEmbeddedCode = updatedVirtualCode.embeddedCodes.find((entry) => entry.kind === 'template')
+    if (!serverEmbeddedCode || !templateEmbeddedCode) {
+      throw new Error(`Expected updated virtual code to keep server/template embedded code entries.`)
+    }
+    if (typeof serverEmbeddedCode.snapshot.getChangeRange !== 'function') {
+      throw new Error(`Expected embedded virtual code snapshot to implement getChangeRange().`)
+    }
+
+    const plugin = createPocketPagesLanguagePlugin()
+    const initialSnapshot = createScriptSnapshot(boardShowText)
+    const pluginVirtualCode = plugin.createVirtualCode(boardShowUri, 'ejs', initialSnapshot)
+    const nextSnapshot = createScriptSnapshot(boardShowText.replace("board.get('name')", "board.get('slug')"), initialSnapshot)
+    const pluginUpdatedVirtualCode = plugin.updateVirtualCode(boardShowUri, pluginVirtualCode, nextSnapshot)
+    if (!pluginUpdatedVirtualCode || pluginUpdatedVirtualCode.version !== 2) {
+      throw new Error(`Expected language plugin updateVirtualCode() to increment virtual code version. Got: ${JSON.stringify(pluginUpdatedVirtualCode)}`)
+    }
+
+    const changedSnapshot = createScriptSnapshot('const value = 2\n', createScriptSnapshot('const value = 1\n'))
+    const changeRange = changedSnapshot.getChangeRange(createScriptSnapshot('const value = 1\n'))
+    if (!changeRange || typeof changeRange.span.start !== 'number' || changeRange.newLength <= 0) {
+      throw new Error(`Expected incremental script snapshot change range. Got: ${JSON.stringify(changeRange)}`)
+    }
+
+    const preparedManager = new PocketPagesLanguageServiceManager()
+    const preparedCore = new PocketPagesLanguageCore({ manager: preparedManager })
+    const preparedBoardShowText = `<script server>\nparams.\n</script>\n`
+    preparedCore.openDocument({
+      uri: boardShowUri,
+      languageId: 'ejs',
+      version: 1,
+      text: preparedBoardShowText,
+    })
+    const preparedContext = preparedCore.getDocumentContextByUri(boardShowUri)
+    const preparedService = preparedContext && preparedContext.service
+    const preparedStateKey = path.resolve(fixture.boardShowFilePath).replace(/\\/g, '/').replace(/^[A-Z]:/, (value) => value.toLowerCase())
+    const preparedState = preparedService && preparedService.preparedDocumentStates
+      ? preparedService.preparedDocumentStates.get(preparedStateKey)
+      : null
+    if (!preparedService || !preparedState) {
+      throw new Error(`Expected prepared document state after openDocument(). Got service=${!!preparedService} keys=${JSON.stringify(preparedService ? [...preparedService.preparedDocumentStates.keys()] : [])}`)
+    }
+    const preparedCompletion = preparedService.getCompletionData(
+      fixture.boardShowFilePath,
+      preparedBoardShowText,
+      preparedBoardShowText.indexOf('params.') + 'params.'.length
+    )
+    if (!preparedCompletion || !preparedCompletion.profile || preparedCompletion.profile.upsertKind !== 'server-block-prepared') {
+      throw new Error(`Expected prepared virtual state completion path. Got: ${JSON.stringify(preparedCompletion && preparedCompletion.profile)}`)
     }
 
     const coldDiagnosticsWriteProbe = withWriteFileSyncCount(() => {

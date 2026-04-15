@@ -26,6 +26,9 @@ const RENAME_DOCUMENT_SELECTOR = [
   ...PAGE_SCRIPT_DOCUMENT_SELECTOR,
 ]
 const SEMANTIC_TOKENS_LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, [])
+const EJS_DIAGNOSTICS_DEBOUNCE_MS = 1500
+const SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 400
+let pocketPagesOutputChannel = null
 
 const COMPLETION_KIND_MAP = {
   [ts.ScriptElementKind.primitiveType]: vscode.CompletionItemKind.Keyword,
@@ -78,9 +81,136 @@ function workspaceRelativePath(filePath) {
   return vscode.workspace.asRelativePath(filePath, false)
 }
 
+function elapsedMilliseconds(startTime) {
+  return Number(process.hrtime.bigint() - startTime) / 1e6
+}
+
+function formatCompletionTrigger(context) {
+  if (!context) {
+    return 'unknown'
+  }
+
+  if (context.triggerKind === vscode.CompletionTriggerKind.TriggerCharacter) {
+    return `char:${context.triggerCharacter || ''}`
+  }
+
+  if (context.triggerKind === vscode.CompletionTriggerKind.TriggerForIncompleteCompletions) {
+    return 'incomplete'
+  }
+
+  if (context.triggerKind === vscode.CompletionTriggerKind.Invoke) {
+    return 'invoke'
+  }
+
+  return `kind:${context.triggerKind}`
+}
+
+function formatCompletionProfile(profile) {
+  if (!profile) {
+    return ''
+  }
+
+  const parts = []
+  if (typeof profile.getVirtualStateAtOffsetMs === 'number') {
+    parts.push(`getVirtualState=${profile.getVirtualStateAtOffsetMs.toFixed(1)}ms`)
+  }
+  if (typeof profile.upsertMs === 'number') {
+    parts.push(`${profile.upsertKind || 'upsert'}=${profile.upsertMs.toFixed(1)}ms`)
+  }
+  if (typeof profile.getCompletionsAtPositionMs === 'number') {
+    parts.push(`tsLS=${profile.getCompletionsAtPositionMs.toFixed(1)}ms`)
+  }
+
+  return parts.length ? ` ${parts.join(' ')}` : ''
+}
+
+function formatDiagnosticsProfile(profile) {
+  if (!profile) {
+    return ''
+  }
+
+  const parts = []
+  if (typeof profile.createDocumentAnalysisMs === 'number') {
+    parts.push(`analysis=${profile.createDocumentAnalysisMs.toFixed(1)}ms`)
+  }
+  if (typeof profile.collectClientScriptSyntacticDiagnosticsMs === 'number') {
+    parts.push(`client=${profile.collectClientScriptSyntacticDiagnosticsMs.toFixed(1)}ms`)
+  }
+  if (typeof profile.collectPrivateResolveDiagnosticsMs === 'number') {
+    parts.push(`private=${profile.collectPrivateResolveDiagnosticsMs.toFixed(1)}ms`)
+  }
+  if (typeof profile.collectServerBlockDiagnosticsMs === 'number') {
+    parts.push(`server=${profile.collectServerBlockDiagnosticsMs.toFixed(1)}ms`)
+  }
+  if (typeof profile.collectTemplateDiagnosticsMs === 'number') {
+    parts.push(`template=${profile.collectTemplateDiagnosticsMs.toFixed(1)}ms`)
+  }
+  if (typeof profile.collectScriptSchemaDiagnosticsMs === 'number') {
+    parts.push(`schema=${profile.collectScriptSchemaDiagnosticsMs.toFixed(1)}ms`)
+  }
+  if (typeof profile.collectProjectRuleDiagnosticsMs === 'number') {
+    parts.push(`rules=${profile.collectProjectRuleDiagnosticsMs.toFixed(1)}ms`)
+  }
+  if (typeof profile.dedupeDiagnosticsMs === 'number') {
+    parts.push(`dedupe=${profile.dedupeDiagnosticsMs.toFixed(1)}ms`)
+  }
+
+  return parts.length ? ` ${parts.join(' ')}` : ''
+}
+
+function hasPrivatePagesSegment(filePath) {
+  const normalizedPath = String(filePath || '').replace(/\\/g, '/')
+  const pagesMarker = '/pb_hooks/pages/'
+  const markerIndex = normalizedPath.indexOf(pagesMarker)
+  if (markerIndex === -1) {
+    return false
+  }
+
+  return normalizedPath
+    .slice(markerIndex + pagesMarker.length)
+    .split('/')
+    .includes('_private')
+}
+
+function isEjsDocument(document) {
+  return Boolean(document && document.uri && document.uri.fsPath && document.uri.fsPath.endsWith('.ejs'))
+}
+
+function formatSaveReason(reason) {
+  if (reason === vscode.TextDocumentSaveReason.Manual) {
+    return 'manual'
+  }
+
+  if (reason === vscode.TextDocumentSaveReason.AfterDelay) {
+    return 'afterDelay'
+  }
+
+  if (reason === vscode.TextDocumentSaveReason.FocusOut) {
+    return 'focusOut'
+  }
+
+  return `unknown:${String(reason)}`
+}
+
+function shouldSkipInvokeBeforeMemberAccess(document, documentText, offset, context) {
+  if (!isEjsDocument(document) || !context) {
+    return false
+  }
+
+  if (context.triggerKind !== vscode.CompletionTriggerKind.Invoke) {
+    return false
+  }
+
+  if (offset < 0 || offset >= documentText.length) {
+    return false
+  }
+
+  return documentText[offset] === '.'
+}
+
 function isSupportedPrivateRenamePath(filePath) {
   const normalizedPath = String(filePath || '').replace(/\\/g, '/')
-  if (!normalizedPath.includes('/pb_hooks/pages/_private/')) {
+  if (!hasPrivatePagesSegment(normalizedPath)) {
     return false
   }
 
@@ -97,7 +227,7 @@ function isPrivatePartialDocument(document) {
     return false
   }
 
-  return document.uri.fsPath.replace(/\\/g, '/').includes('/pb_hooks/pages/_private/')
+  return hasPrivatePagesSegment(document.uri.fsPath)
 }
 
 function normalizeDocumentPath(filePath) {
@@ -419,27 +549,84 @@ function toSignatureHelp(signatureHelpItems) {
   return signatureHelp
 }
 
-function debounce(fn, waitMs) {
-  let timeoutId = null
+function createDocumentDebouncer(fn, getWaitMs) {
+  const timeoutIds = new Map()
 
-  return (...args) => {
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-    }
+  return {
+    schedule(document) {
+      const key = document && document.uri ? document.uri.toString() : '__unknown__'
+      const waitMs = typeof getWaitMs === 'function' ? getWaitMs(document) : getWaitMs
+      if (timeoutIds.has(key)) {
+        clearTimeout(timeoutIds.get(key))
+      }
 
-    timeoutId = setTimeout(() => {
-      timeoutId = null
-      fn(...args)
-    }, waitMs)
+      const timeoutId = setTimeout(() => {
+        timeoutIds.delete(key)
+        fn(document)
+      }, waitMs)
+      timeoutIds.set(key, timeoutId)
+    },
+
+    cancel(document) {
+      const key = document && document.uri ? document.uri.toString() : '__unknown__'
+      if (!timeoutIds.has(key)) {
+        return
+      }
+
+      clearTimeout(timeoutIds.get(key))
+      timeoutIds.delete(key)
+    },
+
+    clear() {
+      for (const timeoutId of timeoutIds.values()) {
+        clearTimeout(timeoutId)
+      }
+      timeoutIds.clear()
+    },
   }
+}
+
+function getDiagnosticsDebounceMs(document) {
+  if (!document || !document.uri || !document.uri.fsPath) {
+    return SCRIPT_DIAGNOSTICS_DEBOUNCE_MS
+  }
+
+  return document.uri.fsPath.endsWith('.ejs')
+    ? EJS_DIAGNOSTICS_DEBOUNCE_MS
+    : SCRIPT_DIAGNOSTICS_DEBOUNCE_MS
 }
 
 class PocketPagesCompletionProvider {
   constructor(manager) {
     this.manager = manager
+    this.completionCache = new Map()
   }
 
-  provideCompletionItems(document, position) {
+  getCompletionCacheKey(document, offset) {
+    return `${document.uri.fsPath}::${document.version}::${offset}`
+  }
+
+  getCachedCompletionItems(cacheKey) {
+    if (!this.completionCache.has(cacheKey)) {
+      return undefined
+    }
+
+    const cachedItems = this.completionCache.get(cacheKey)
+    this.completionCache.delete(cacheKey)
+    this.completionCache.set(cacheKey, cachedItems)
+    return cachedItems
+  }
+
+  setCachedCompletionItems(cacheKey, items) {
+    this.completionCache.set(cacheKey, items)
+    while (this.completionCache.size > 30) {
+      const oldestKey = this.completionCache.keys().next().value
+      this.completionCache.delete(oldestKey)
+    }
+  }
+
+  provideCompletionItems(document, position, _token, context) {
+    const startedAt = process.hrtime.bigint()
     if (!isAnalyzablePocketPagesFilePath(document.uri.fsPath)) {
       return null
     }
@@ -450,7 +637,28 @@ class PocketPagesCompletionProvider {
     }
 
     const offset = document.offsetAt(position)
-    const customCompletionData = service.getCustomCompletionData(document.uri.fsPath, document.getText(), offset)
+    const documentText = document.getText()
+    const cacheKey = this.getCompletionCacheKey(document, offset)
+    const relativePath = workspaceRelativePath(document.uri.fsPath)
+    const trigger = formatCompletionTrigger(context)
+    if (shouldSkipInvokeBeforeMemberAccess(document, documentText, offset, context)) {
+      pocketPagesOutputChannel && pocketPagesOutputChannel.appendLine(
+        `completion: ${relativePath} skipped trigger=${trigger} offset=${offset} reason=invoke-before-dot total=${elapsedMilliseconds(startedAt).toFixed(1)}ms`
+      )
+      return null
+    }
+
+    const cachedItems = this.getCachedCompletionItems(cacheKey)
+    if (cachedItems !== undefined) {
+      pocketPagesOutputChannel && pocketPagesOutputChannel.appendLine(
+        `completion: ${relativePath} cache-hit count=${cachedItems ? cachedItems.length : 0} trigger=${trigger} offset=${offset} total=${elapsedMilliseconds(startedAt).toFixed(1)}ms`
+      )
+      return cachedItems
+    }
+
+    const customStartedAt = process.hrtime.bigint()
+    const customCompletionData = service.getCustomCompletionData(document.uri.fsPath, documentText, offset)
+    const customElapsedMs = elapsedMilliseconds(customStartedAt)
     const isSchemaSupportOnlyDocument = isSchemaSupportOnlyHookScriptPath(document.uri.fsPath)
 
     if (customCompletionData) {
@@ -460,10 +668,14 @@ class PocketPagesCompletionProvider {
           )
         : customCompletionData.items
       if (!customItems.length) {
+        this.setCachedCompletionItems(cacheKey, null)
+        pocketPagesOutputChannel && pocketPagesOutputChannel.appendLine(
+          `completion: ${relativePath} custom-empty trigger=${trigger} offset=${offset} (getCustom=${customElapsedMs.toFixed(1)}ms total=${elapsedMilliseconds(startedAt).toFixed(1)}ms)`
+        )
         return null
       }
 
-      return customItems.map((entry) => {
+      const items = customItems.map((entry) => {
         const item = new vscode.CompletionItem(entry.label, customCompletionKind(entry.category))
         item.insertText = entry.insertText || entry.label
         item.detail = entry.detail || ''
@@ -476,19 +688,34 @@ class PocketPagesCompletionProvider {
         item.range = toRange(document, customCompletionData.start, customCompletionData.end)
         return item
       })
+      this.setCachedCompletionItems(cacheKey, items)
+      pocketPagesOutputChannel && pocketPagesOutputChannel.appendLine(
+        `completion: ${relativePath} custom count=${items.length} trigger=${trigger} offset=${offset} (getCustom=${customElapsedMs.toFixed(1)}ms total=${elapsedMilliseconds(startedAt).toFixed(1)}ms)`
+      )
+      return items
     }
 
     if (isSchemaSupportOnlyDocument) {
+      this.setCachedCompletionItems(cacheKey, null)
+      pocketPagesOutputChannel && pocketPagesOutputChannel.appendLine(
+        `completion: ${relativePath} schema-only-none trigger=${trigger} offset=${offset} (getCustom=${customElapsedMs.toFixed(1)}ms total=${elapsedMilliseconds(startedAt).toFixed(1)}ms)`
+      )
       return null
     }
 
-    const completionData = service.getCompletionData(document.uri.fsPath, document.getText(), offset)
+    const tsStartedAt = process.hrtime.bigint()
+    const completionData = service.getCompletionData(document.uri.fsPath, documentText, offset)
+    const tsElapsedMs = elapsedMilliseconds(tsStartedAt)
 
     if (!completionData) {
+      this.setCachedCompletionItems(cacheKey, null)
+      pocketPagesOutputChannel && pocketPagesOutputChannel.appendLine(
+        `completion: ${relativePath} none trigger=${trigger} offset=${offset} (getCustom=${customElapsedMs.toFixed(1)}ms getCompletion=${tsElapsedMs.toFixed(1)}ms total=${elapsedMilliseconds(startedAt).toFixed(1)}ms)`
+      )
       return null
     }
 
-    return completionData.entries.map((entry) => {
+    const items = completionData.entries.map((entry) => {
       const item = new vscode.CompletionItem(
         entry.name,
         COMPLETION_KIND_MAP[entry.kind] || vscode.CompletionItemKind.Text
@@ -512,6 +739,11 @@ class PocketPagesCompletionProvider {
 
       return item
     })
+    this.setCachedCompletionItems(cacheKey, items)
+    pocketPagesOutputChannel && pocketPagesOutputChannel.appendLine(
+      `completion: ${relativePath} ts count=${items.length} trigger=${trigger} offset=${offset} (getCustom=${customElapsedMs.toFixed(1)}ms getCompletion=${tsElapsedMs.toFixed(1)}ms total=${elapsedMilliseconds(startedAt).toFixed(1)}ms)${formatCompletionProfile(completionData.profile)}`
+    )
+    return items
   }
 
   resolveCompletionItem(item) {
@@ -1001,6 +1233,8 @@ function activate(context) {
   const manager = new PocketPagesLanguageServiceManager()
   const diagnostics = vscode.languages.createDiagnosticCollection('pocketpages-server-script')
   const output = vscode.window.createOutputChannel('VSCode PocketPages')
+  pocketPagesOutputChannel = output
+  const pendingSaveReasons = new Map()
   const serverTemplateBoundaryDecoration = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
     borderWidth: '1px 0 0 0',
@@ -1076,6 +1310,7 @@ function activate(context) {
       return
     }
 
+    const startedAt = process.hrtime.bigint()
     output.appendLine(`updateDiagnostics: ${document.uri.fsPath}`)
 
     const service = manager.getServiceForFile(document.uri.fsPath)
@@ -1085,9 +1320,17 @@ function activate(context) {
       return
     }
 
-    const rawDiagnostics = service.getDiagnostics(document.uri.fsPath, document.getText())
+    const diagnosticsStartedAt = process.hrtime.bigint()
+    const diagnosticsProfile = {}
+    const rawDiagnostics = service.getDiagnostics(document.uri.fsPath, document.getText(), {
+      profile: diagnosticsProfile,
+    })
+    const diagnosticsElapsedMs = elapsedMilliseconds(diagnosticsStartedAt)
     const filteredDiagnostics = filterDiagnosticsForDocument(document, rawDiagnostics)
-    output.appendLine(`  diagnostics: ${filteredDiagnostics.length}`)
+    const totalElapsedMs = elapsedMilliseconds(startedAt)
+    output.appendLine(
+      `  diagnostics: ${filteredDiagnostics.length} (getDiagnostics=${diagnosticsElapsedMs.toFixed(1)}ms total=${totalElapsedMs.toFixed(1)}ms)${formatDiagnosticsProfile(diagnosticsProfile)}`
+    )
     const mappedDiagnostics = filteredDiagnostics.map((diagnostic) => {
       const entry = new vscode.Diagnostic(
         toRange(document, diagnostic.start, diagnostic.end),
@@ -1103,7 +1346,7 @@ function activate(context) {
     diagnostics.set(document.uri, mappedDiagnostics)
   }
 
-  const debouncedUpdateDiagnostics = debounce(updateDiagnostics, 200)
+  const debouncedUpdateDiagnostics = createDocumentDebouncer(updateDiagnostics, getDiagnosticsDebounceMs)
 
   context.subscriptions.push(
     diagnostics,
@@ -1150,13 +1393,38 @@ function activate(context) {
       updateServerTemplateBoundariesForDocument(document)
     }),
     vscode.workspace.onDidCloseTextDocument((document) => {
+      debouncedUpdateDiagnostics.cancel(document)
+      pendingSaveReasons.delete(document.uri.toString())
       clearDocumentOverride(document)
       diagnostics.delete(document.uri)
     }),
     vscode.workspace.onDidChangeTextDocument((event) => {
       syncDocumentOverride(event.document)
-      debouncedUpdateDiagnostics(event.document)
+      if (!isEjsDocument(event.document)) {
+        debouncedUpdateDiagnostics.schedule(event.document)
+      }
       updateServerTemplateBoundariesForDocument(event.document)
+    }),
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      const documentKey = document.uri.toString()
+      const saveReason = pendingSaveReasons.get(documentKey)
+      pendingSaveReasons.delete(documentKey)
+
+      syncDocumentOverride(document)
+
+      if (isEjsDocument(document) && saveReason !== vscode.TextDocumentSaveReason.Manual) {
+        output.appendLine(
+          `updateDiagnostics skipped: ${document.uri.fsPath} (saveReason=${formatSaveReason(saveReason)})`
+        )
+        updateServerTemplateBoundariesForDocument(document)
+        return
+      }
+
+      updateDiagnostics(document)
+      updateServerTemplateBoundariesForDocument(document)
+    }),
+    vscode.workspace.onWillSaveTextDocument((event) => {
+      pendingSaveReasons.set(event.document.uri.toString(), event.reason)
     }),
     vscode.workspace.onDidRenameFiles((event) => applyPrivateFileRenameEdits({ manager, output, event })),
     vscode.window.onDidChangeActiveTextEditor((editor) => {

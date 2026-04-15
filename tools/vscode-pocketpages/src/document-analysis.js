@@ -6,7 +6,8 @@ const { buildTemplateVirtualText, extractTemplateCodeBlocks } = require("./ejs-t
 const { extractServerBlocks } = require("./script-server");
 
 function normalizePath(filePath) {
-  return path.resolve(filePath).replace(/\\/g, "/");
+  const normalizedPath = path.resolve(filePath).replace(/\\/g, "/");
+  return normalizedPath.replace(/^[A-Z]:/, (value) => value.toLowerCase());
 }
 
 function isEjsFile(filePath) {
