@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { URI } = require("vscode-uri");
-const { PocketPagesLanguageServiceManager } = require("../language-service");
+const { PocketPagesLanguageServiceManager } = require("../language-service/language-service");
 const { createPocketPagesLanguagePlugin } = require("./language-plugin");
 
 function uriToFilePath(uri) {

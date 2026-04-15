@@ -4,7 +4,10 @@
 const fs = require('fs');
 const path = require('path');
 const { performance } = require('perf_hooks');
-const { PocketPagesLanguageServiceManager, ts } = require('../tools/vscode-pocketpages/src/language-service');
+const {
+  PocketPagesLanguageServiceManager,
+  ts,
+} = require('../tools/vscode-pocketpages/packages/language-service/language-service');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const APPS_DIR = path.join(ROOT_DIR, 'apps');

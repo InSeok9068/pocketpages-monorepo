@@ -3,7 +3,7 @@
 
 const fs = require('fs')
 const path = require('path')
-const { buildProjectIndexReport } = require('../tools/vscode-pocketpages/src/project-index-report')
+const { buildProjectIndexReport } = require('../tools/vscode-pocketpages/packages/language-service/project-index-report')
 
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')

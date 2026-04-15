@@ -17,7 +17,7 @@
     "onStartupFinished",
     "onLanguage:ejs"
   ],
-  "main": "./src/client.js",
+  "main": "./packages/vscode-pocketpages/index.js",
   "extensionDependencies": [
     "vscode.typescript-language-features"
   ],
@@ -67,7 +67,7 @@
     "@vscode/vsce": "^3.6.1"
   },
   "dependencies": {
-    "@dlstj-local/pocketpages-typescript-plugin": "file:./src/ts-plugin/package",
+    "@dlstj-local/pocketpages-typescript-plugin": "file:./packages/typescript-plugin",
     "typescript": "^5.8.2",
     "vscode-languageclient": "^9.0.1",
     "vscode-languageserver": "^9.0.1",

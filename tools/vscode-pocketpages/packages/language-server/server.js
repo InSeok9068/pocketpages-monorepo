@@ -16,11 +16,11 @@ const {
 } = require("vscode-languageserver/node");
 const { TextDocument } = require("vscode-languageserver-textdocument");
 const { URI } = require("vscode-uri");
-const { PocketPagesLanguageCore, uriToFilePath } = require("../core/language-core");
+const { PocketPagesLanguageCore, uriToFilePath } = require("../language-core/language-core");
 const { REQUESTS, NOTIFICATIONS } = require("./protocol");
-const { ts, findAppRoot } = require("../language-service");
-const { TOKEN_TYPES, collectEjsSemanticTokenEntries, getTokenTypeIndex } = require("../ejs-semantic-tokens");
-const { getServerTemplateBoundaryLineNumbers } = require("../ejs-server-boundary");
+const { ts, findAppRoot } = require("../language-service/language-service");
+const { TOKEN_TYPES, collectEjsSemanticTokenEntries, getTokenTypeIndex } = require("./ejs-semantic-tokens");
+const { getServerTemplateBoundaryLineNumbers } = require("../language-core/ejs-server-boundary");
 const { createCustomFeatureService } = require("./services/custom-features");
 const { createTypeScriptFeatureService } = require("./services/ts-features");
 const { createDiagnosticsFeatureService } = require("./services/diagnostics-features");

@@ -2,8 +2,8 @@
 
 const path = require("path");
 const ts = require("typescript");
-const { buildTemplateVirtualText, extractTemplateCodeBlocks } = require("./ejs-template");
-const { extractServerBlocks } = require("./script-server");
+const { buildTemplateVirtualText, extractTemplateCodeBlocks } = require("../language-core/ejs-template");
+const { extractServerBlocks } = require("../language-core/script-server");
 
 function normalizePath(filePath) {
   const normalizedPath = path.resolve(filePath).replace(/\\/g, "/");

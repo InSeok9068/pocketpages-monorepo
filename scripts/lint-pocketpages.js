@@ -45,18 +45,16 @@
 
 const fs = require('fs')
 const path = require('path')
-const { buildTemplateVirtualText } = require('../tools/vscode-pocketpages/src/ejs-template')
-const { collectPathContexts, collectSchemaContexts } = require('../tools/vscode-pocketpages/src/custom-context')
-const { collectParamsFlowDiagnostics } = require('../tools/vscode-pocketpages/src/flow-analysis')
-const {
-  PocketPagesProjectIndex,
-} = require('../tools/vscode-pocketpages/src/project-index')
+const { buildTemplateVirtualText } = require('../tools/vscode-pocketpages/packages/language-core/ejs-template')
+const { collectPathContexts, collectSchemaContexts } = require('../tools/vscode-pocketpages/packages/language-core/custom-context')
+const { extractServerBlocks } = require('../tools/vscode-pocketpages/packages/language-core/script-server')
+const { collectParamsFlowDiagnostics } = require('../tools/vscode-pocketpages/packages/language-service/flow-analysis')
+const { PocketPagesProjectIndex } = require('../tools/vscode-pocketpages/packages/language-service/project-index')
 const {
   buildSchemaFieldDiagnostic,
   collectRedirectReturnDiagnostics,
   ts,
-} = require('../tools/vscode-pocketpages/src/language-service')
-const { extractServerBlocks } = require('../tools/vscode-pocketpages/src/script-server')
+} = require('../tools/vscode-pocketpages/packages/language-service/language-service')
 
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')

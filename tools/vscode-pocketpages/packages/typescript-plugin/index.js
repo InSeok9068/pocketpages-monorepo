@@ -4,8 +4,8 @@ const fs = require("fs");
 const path = require("path");
 const { URI } = require("vscode-uri");
 const { PocketPagesLanguageCore } = requireExtensionModule([
-  "../core/language-core",
-  "../../../src/core/language-core",
+  "../language-core/language-core",
+  "../../../packages/language-core/language-core",
 ]);
 const {
   buildScriptServerMirrorText,

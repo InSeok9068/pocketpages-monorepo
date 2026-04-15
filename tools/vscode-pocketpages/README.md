@@ -6,6 +6,18 @@ PocketPages 프로젝트를 위한 VS Code 전용 언어 확장입니다.
 
 핵심 목표는 문자열 기반 연결점을 편집기 기능으로 바꾸는 것입니다. 예를 들면 `resolve()`, `include()`, `asset()`, `redirect()`, `href`, `action`, `hx-*`, `require(\`${__hooks}/...\`)`, `record.get('field')` 같은 패턴을 completion, navigation, diagnostics 대상으로 다룹니다.
 
+## 패키지 구조
+
+확장 런타임은 Volar식 경계를 참고해 다음 패키지 단위로 나뉩니다.
+
+- `packages/vscode-pocketpages`: VS Code extension client와 command wiring
+- `packages/language-server`: LSP 서버와 feature service 조합
+- `packages/language-service`: PocketPages 도메인 분석, TypeScript bridge, project index
+- `packages/language-core`: virtual code, snapshot, mapper, EJS/script parsing 공통부
+- `packages/typescript-plugin`: `.ejs`용 TypeScript server plugin
+
+즉, VS Code 엔트리와 TS plugin은 얇게 유지하고, 실제 언어 동작은 `language-core -> language-service -> language-server` 축으로 분리합니다.
+
 ## 대상 범위
 
 이 확장이 직접 지원하는 편집 대상은 다음과 같습니다.

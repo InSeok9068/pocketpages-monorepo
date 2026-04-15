@@ -3,9 +3,13 @@
 const fs = require("fs");
 const path = require("path");
 const ts = require("typescript");
-const { createScriptSnapshot } = require("./core/snapshot");
-const { buildTemplateVirtualText, extractTemplateCodeBlocks: _extractTemplateCodeBlocks, getTemplateCodeBlockAtOffset } = require("./ejs-template");
-const { extractServerBlocks: _extractServerBlocks, getServerBlockAtOffset } = require("./script-server");
+const { createScriptSnapshot } = require("../language-core/snapshot");
+const {
+  buildTemplateVirtualText,
+  extractTemplateCodeBlocks: _extractTemplateCodeBlocks,
+  getTemplateCodeBlockAtOffset,
+} = require("../language-core/ejs-template");
+const { extractServerBlocks: _extractServerBlocks, getServerBlockAtOffset } = require("../language-core/script-server");
 const { PocketPagesProjectIndex, POCKETPAGES_GLOBAL_NAMES, collectIncludeCallEntries } = require("./project-index");
 const { createDocumentAnalysis, createSourceFileForText } = require("./document-analysis");
 const {
@@ -17,10 +21,10 @@ const {
   getResolvedModuleMemberContext,
   getScriptCollectionContext,
   getScriptFieldContext,
-} = require("./custom-context");
+} = require("../language-core/custom-context");
 const { collectParamsFlowDiagnostics } = require("./flow-analysis");
 
-const CACHE_ROOT = path.resolve(__dirname, "..", ".cache");
+const CACHE_ROOT = path.resolve(__dirname, "..", "..", ".cache");
 const COMPILER_OPTIONS = {
   allowJs: true,
   checkJs: false,

@@ -2,14 +2,14 @@
 
 const fs = require('fs')
 const path = require('path')
-const { buildTemplateVirtualText } = require('./ejs-template')
+const { buildTemplateVirtualText } = require('../language-core/ejs-template')
 const { PocketPagesProjectIndex, normalizePath } = require('./project-index')
 const {
   collectPathContexts,
   collectResolveRequestPaths,
   collectResolvedModuleMemberContexts,
   collectSchemaContexts,
-} = require('./custom-context')
+} = require('../language-core/custom-context')
 
 /**
  * 경로를 POSIX 스타일 상대 경로로 정리합니다.

@@ -14,9 +14,9 @@ function copyFile(sourcePath, targetPath) {
 
 function main() {
   const packageRoot = path.resolve(__dirname, "..");
-  const sourcePackageDir = path.join(packageRoot, "src", "ts-plugin", "package");
-  const sourcePluginFile = path.join(packageRoot, "src", "ts-plugin", "index.js");
-  const sourceSharedFile = path.join(packageRoot, "src", "ts-plugin", "shared.js");
+  const sourcePackageDir = path.join(packageRoot, "packages", "typescript-plugin");
+  const sourcePluginFile = path.join(sourcePackageDir, "index.js");
+  const sourceSharedFile = path.join(sourcePackageDir, "shared.js");
   const targetPackageDir = path.join(
     packageRoot,
     "node_modules",

@@ -3,9 +3,9 @@
 const path = require("path");
 const vscode = require("vscode");
 const { LanguageClient, TransportKind } = require("vscode-languageclient/node");
-const { findAppRoot } = require("./language-service");
-const { getServerTemplateBoundaryLineNumbers } = require("./ejs-server-boundary");
-const { REQUESTS, NOTIFICATIONS } = require("./lsp/protocol");
+const { findAppRoot } = require("../language-service/language-service");
+const { getServerTemplateBoundaryLineNumbers } = require("../language-core/ejs-server-boundary");
+const { REQUESTS, NOTIFICATIONS } = require("../language-server/protocol");
 
 const EJS_DOCUMENT_SELECTOR = [
   { scheme: "file", pattern: "**/*.ejs" },
@@ -424,7 +424,7 @@ async function activateLsp(context) {
   const logger = clientLogger;
   lspStatusController = createLspStatusController(context, outputChannel);
   lspStatusController.setStarting();
-  const serverModule = context.asAbsolutePath(path.join("src", "lsp", "server.js"));
+  const serverModule = context.asAbsolutePath(path.join("packages", "language-server", "server.js"));
   const serverOptions = {
     run: { module: serverModule, transport: TransportKind.ipc },
     debug: { module: serverModule, transport: TransportKind.ipc },

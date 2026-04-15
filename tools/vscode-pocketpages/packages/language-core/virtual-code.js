@@ -2,9 +2,9 @@
 
 const path = require("path");
 const { URI } = require("vscode-uri");
-const { extractServerBlocks } = require("../script-server");
-const { buildTemplateVirtualText, extractTemplateCodeBlocks } = require("../ejs-template");
-const { collectPathContexts } = require("../custom-context");
+const { extractServerBlocks } = require("./script-server");
+const { buildTemplateVirtualText, extractTemplateCodeBlocks } = require("./ejs-template");
+const { collectPathContexts } = require("./custom-context");
 const { createScriptSnapshot } = require("./snapshot");
 
 function normalizeLanguageId(languageId, filePath) {

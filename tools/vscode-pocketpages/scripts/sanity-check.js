@@ -4,21 +4,21 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { URI } = require('vscode-uri')
-const { PocketPagesLanguageServiceManager, ts } = require('../src/language-service')
-const { PocketPagesLanguageCore } = require('../src/core/language-core')
-const { createPocketPagesLanguagePlugin } = require('../src/core/language-plugin')
-const { createScriptSnapshot } = require('../src/core/snapshot')
-const { createVirtualCode, updateVirtualCode } = require('../src/core/virtual-code')
-const { collectEjsSemanticTokenEntries } = require('../src/ejs-semantic-tokens')
-const { getServerTemplateBoundaryLineNumbers } = require('../src/ejs-server-boundary')
-const { createTypeScriptFeatureService } = require('../src/lsp/services/ts-features')
-const { createCustomFeatureService } = require('../src/lsp/services/custom-features')
-const { createDiagnosticsFeatureService } = require('../src/lsp/services/diagnostics-features')
+const { PocketPagesLanguageServiceManager, ts } = require('../packages/language-service/language-service')
+const { PocketPagesLanguageCore } = require('../packages/language-core/language-core')
+const { createPocketPagesLanguagePlugin } = require('../packages/language-core/language-plugin')
+const { createScriptSnapshot } = require('../packages/language-core/snapshot')
+const { createVirtualCode, updateVirtualCode } = require('../packages/language-core/virtual-code')
+const { collectEjsSemanticTokenEntries } = require('../packages/language-server/ejs-semantic-tokens')
+const { getServerTemplateBoundaryLineNumbers } = require('../packages/language-core/ejs-server-boundary')
+const { createTypeScriptFeatureService } = require('../packages/language-server/services/ts-features')
+const { createCustomFeatureService } = require('../packages/language-server/services/custom-features')
+const { createDiagnosticsFeatureService } = require('../packages/language-server/services/diagnostics-features')
 const {
   buildScriptServerMirrorText,
   collectExternalPocketPagesEjsFiles,
   isPocketPagesEjsFile,
-} = require('../src/ts-plugin/shared')
+} = require('../packages/typescript-plugin/shared')
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true })
@@ -305,7 +305,10 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
 
 function assertClientContracts(repoRoot) {
   const legacyExtensionFilePath = path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'extension.js')
-  const clientSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'client.js'), 'utf8')
+  const clientSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'vscode-pocketpages', 'index.js'),
+    'utf8'
+  )
   const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'package.json'), 'utf8'))
 
   if (fs.existsSync(legacyExtensionFilePath)) {
@@ -428,18 +431,32 @@ function assertClientContracts(repoRoot) {
 function assertLspRuntimeContracts(repoRoot) {
   const packageJsonPath = path.join(repoRoot, 'tools', 'vscode-pocketpages', 'package.json')
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
-  const clientSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'client.js'), 'utf8')
-  const serverSource = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'lsp', 'server.js'), 'utf8')
+  const clientSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'vscode-pocketpages', 'index.js'),
+    'utf8'
+  )
+  const serverSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-server', 'server.js'),
+    'utf8'
+  )
   const customFeatureSource = fs.readFileSync(
-    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'lsp', 'services', 'custom-features.js'),
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-server', 'services', 'custom-features.js'),
     'utf8'
   )
   const diagnosticsFeatureSource = fs.readFileSync(
-    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'lsp', 'services', 'diagnostics-features.js'),
+    path.join(
+      repoRoot,
+      'tools',
+      'vscode-pocketpages',
+      'packages',
+      'language-server',
+      'services',
+      'diagnostics-features.js'
+    ),
     'utf8'
   )
   const tsPluginSource = fs.readFileSync(
-    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'ts-plugin', 'index.js'),
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'typescript-plugin', 'index.js'),
     'utf8'
   )
   const vscodeIgnore = fs.readFileSync(path.join(repoRoot, 'tools', 'vscode-pocketpages', '.vscodeignore'), 'utf8')
@@ -448,8 +465,8 @@ function assertLspRuntimeContracts(repoRoot) {
     'utf8'
   )
 
-  if (packageJson.main !== './src/client.js') {
-    throw new Error(`Expected package.json main to point at client.js. Got: ${packageJson.main}`)
+  if (packageJson.main !== './packages/vscode-pocketpages/index.js') {
+    throw new Error(`Expected package.json main to point at the packaged VS Code client. Got: ${packageJson.main}`)
   }
 
   if (

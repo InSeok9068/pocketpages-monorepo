@@ -1,7 +1,7 @@
 'use strict'
 
 const ts = require('typescript')
-const { extractTemplateCodeBlocks } = require('./ejs-template')
+const { extractTemplateCodeBlocks } = require('../language-core/ejs-template')
 
 const TOKEN_TYPES = ['keyword', 'string', 'number', 'regexp', 'comment', 'operator']
 const TOKEN_TYPE_INDEX = new Map(TOKEN_TYPES.map((name, index) => [name, index]))

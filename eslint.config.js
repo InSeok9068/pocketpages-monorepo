@@ -2,7 +2,7 @@ const js = require('@eslint/js')
 const jsdoc = require('eslint-plugin-jsdoc')
 const { builtinModules } = require('module')
 const globals = require('globals')
-const { buildTemplateVirtualText } = require('./tools/vscode-pocketpages/src/ejs-template')
+const { buildTemplateVirtualText } = require('./tools/vscode-pocketpages/packages/language-core/ejs-template')
 
 // goja에서 도는 코드에 허용할 최소 CommonJS 전역입니다.
 // PocketBase JSVM은 Node.js가 아니므로 globals.node 전체는 열지 않습니다.

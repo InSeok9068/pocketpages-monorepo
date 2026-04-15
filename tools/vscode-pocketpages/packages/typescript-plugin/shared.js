@@ -2,7 +2,27 @@
 
 const fs = require("fs");
 const path = require("path");
-const { extractServerBlocks } = require("../script-server");
+
+const { extractServerBlocks } = requireExtensionModule([
+  "../language-core/script-server",
+  "../../../packages/language-core/script-server",
+]);
+
+function requireExtensionModule(candidatePaths) {
+  for (const candidatePath of candidatePaths) {
+    try {
+      return require(candidatePath);
+    } catch (error) {
+      if (error && error.code === "MODULE_NOT_FOUND") {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error(`Unable to resolve PocketPages extension module from ${__dirname}`);
+}
 
 function normalizeFilePath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
