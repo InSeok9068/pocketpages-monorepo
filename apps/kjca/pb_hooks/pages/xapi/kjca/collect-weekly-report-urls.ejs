@@ -24,11 +24,13 @@
   })
 
   if (!authState.isSuperuser) {
-    dashboardState = kjcaCore.buildDashboardState(Object.assign({}, dashboardState, {
-      weeklyReferenceWeek: formState.referenceWeek,
-      collectionMode: 'weekly',
-      errorMessage: '먼저 관리자 계정으로 로그인해주세요.',
-    }))
+    dashboardState = kjcaCore.buildDashboardState(
+      Object.assign({}, dashboardState, {
+        weeklyReferenceWeek: formState.referenceWeek,
+        collectionMode: 'weekly',
+        errorMessage: '먼저 관리자 계정으로 로그인해주세요.',
+      })
+    )
   } else {
     try {
       const result = kjcaWeeklyReportService.collectWeeklyReports(request, {
@@ -44,13 +46,15 @@
         error: errorMessage,
       })
 
-      dashboardState = kjcaCore.buildDashboardState(Object.assign({}, dashboardState, {
-        weeklyReferenceWeek: weekRange.referenceWeek,
-        weeklyRangeStart: weekRange.weekStartDate,
-        weeklyRangeEnd: weekRange.weekEndDate,
-        collectionMode: 'weekly',
-        errorMessage,
-      }))
+      dashboardState = kjcaCore.buildDashboardState(
+        Object.assign({}, dashboardState, {
+          weeklyReferenceWeek: weekRange.referenceWeek,
+          weeklyRangeStart: weekRange.weekStartDate,
+          weeklyRangeEnd: weekRange.weekEndDate,
+          collectionMode: 'weekly',
+          errorMessage,
+        })
+      )
     }
   }
 

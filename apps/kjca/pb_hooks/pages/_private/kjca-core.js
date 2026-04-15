@@ -724,10 +724,12 @@ function buildRecruitingWeekTableRows(rows, reportDate) {
 
     if (!hasMeaningfulContent) continue
 
-    weekTableRows.push(Object.assign({}, mapped, {
-      weekday: currentWeekday,
-      sortOrder: weekTableRows.length,
-    }))
+    weekTableRows.push(
+      Object.assign({}, mapped, {
+        weekday: currentWeekday,
+        sortOrder: weekTableRows.length,
+      })
+    )
   }
 
   const dailyPlan = weekTableRows.map((row) => ({
@@ -2719,18 +2721,20 @@ function buildDashboardStateFromWeeklyReportUrlResult(result, currentState, form
   const alertMessage = String((result && result.alertMessage) || '').trim()
   const noticeMessage = alertMessage || `주간 보고 URL ${rows.length}건을 확인했습니다.`
 
-  return buildDashboardState(Object.assign({}, safeCurrentState, {
-    reportDate: safeCurrentState.reportDate || safeFormState.reportDate,
-    weeklyReferenceWeek: weekRange.referenceWeek,
-    weeklyRangeStart: result && result.weekStartDate ? result.weekStartDate : weekRange.weekStartDate,
-    weeklyRangeEnd: result && result.weekEndDate ? result.weekEndDate : weekRange.weekEndDate,
-    collectionMode: 'weekly',
-    noticeMessage,
-    errorMessage: '',
-    warnings: result && result.warnings,
-    weeklyReportRows: rows,
-    weeklyReportDetails: [],
-  }))
+  return buildDashboardState(
+    Object.assign({}, safeCurrentState, {
+      reportDate: safeCurrentState.reportDate || safeFormState.reportDate,
+      weeklyReferenceWeek: weekRange.referenceWeek,
+      weeklyRangeStart: result && result.weekStartDate ? result.weekStartDate : weekRange.weekStartDate,
+      weeklyRangeEnd: result && result.weekEndDate ? result.weekEndDate : weekRange.weekEndDate,
+      collectionMode: 'weekly',
+      noticeMessage,
+      errorMessage: '',
+      warnings: result && result.warnings,
+      weeklyReportRows: rows,
+      weeklyReportDetails: [],
+    })
+  )
 }
 
 /**
@@ -2750,18 +2754,20 @@ function buildDashboardStateFromWeeklyReportDetailResult(result, currentState, f
   const alertMessage = String((result && result.alertMessage) || '').trim()
   const noticeMessage = alertMessage || `주간 보고 본문 ${successCount}건을 취합했습니다.`
 
-  return buildDashboardState(Object.assign({}, safeCurrentState, {
-    reportDate: safeCurrentState.reportDate || safeFormState.reportDate,
-    weeklyReferenceWeek: weekRange.referenceWeek,
-    weeklyRangeStart: result && result.weekStartDate ? result.weekStartDate : weekRange.weekStartDate,
-    weeklyRangeEnd: result && result.weekEndDate ? result.weekEndDate : weekRange.weekEndDate,
-    collectionMode: 'weekly',
-    noticeMessage,
-    errorMessage: '',
-    warnings: result && result.warnings,
-    weeklyReportRows: rows,
-    weeklyReportDetails: details,
-  }))
+  return buildDashboardState(
+    Object.assign({}, safeCurrentState, {
+      reportDate: safeCurrentState.reportDate || safeFormState.reportDate,
+      weeklyReferenceWeek: weekRange.referenceWeek,
+      weeklyRangeStart: result && result.weekStartDate ? result.weekStartDate : weekRange.weekStartDate,
+      weeklyRangeEnd: result && result.weekEndDate ? result.weekEndDate : weekRange.weekEndDate,
+      collectionMode: 'weekly',
+      noticeMessage,
+      errorMessage: '',
+      warnings: result && result.warnings,
+      weeklyReportRows: rows,
+      weeklyReportDetails: details,
+    })
+  )
 }
 
 module.exports = {

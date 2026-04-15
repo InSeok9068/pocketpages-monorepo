@@ -74,23 +74,25 @@
   const weeklyOperationsDocCount = weeklyReportDetails.filter((detail) => Array.isArray(detail.operationsTables) && detail.operationsTables.length > 0).length
   const weeklyWorkDocCount = weeklyReportDetails.filter((detail) => Array.isArray(detail.workTables) && detail.workTables.length > 0).length
   const weeklyPeopleDocCount = weeklyReportDetails.filter((detail) => Array.isArray(detail.peopleTables) && detail.peopleTables.length > 0).length
-  const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) => Object.assign({}, table, {
-    summaryText: kjcaCore.buildDeptSummaryText({
-      dept: table.dept,
-      reportDate,
-      analysisResults: safeDashboardState.analysisResults || [],
-    }),
-    weekdayRows: kjcaCore.WEEKDAY_ORDER.map((weekday) => {
-      const row = kjcaCore.getWeekdayMergedRow(table.rows || [], weekday)
-      const isToday = kjcaCore.isFocusWeekday(weekday, table.todayWeekday)
+  const deptWeekTables = (safeDashboardState.deptWeekTables || []).map((table) =>
+    Object.assign({}, table, {
+      summaryText: kjcaCore.buildDeptSummaryText({
+        dept: table.dept,
+        reportDate,
+        analysisResults: safeDashboardState.analysisResults || [],
+      }),
+      weekdayRows: kjcaCore.WEEKDAY_ORDER.map((weekday) => {
+        const row = kjcaCore.getWeekdayMergedRow(table.rows || [], weekday)
+        const isToday = kjcaCore.isFocusWeekday(weekday, table.todayWeekday)
 
-      return {
-        weekday,
-        row,
-        isToday,
-      }
-    }),
-  }))
+        return {
+          weekday,
+          row,
+          isToday,
+        }
+      }),
+    })
+  )
   const hasDeptWeekTables = deptWeekTables.length > 0
   const hasAnalysisResults = !!(safeDashboardState.analysisResults && safeDashboardState.analysisResults.length > 0)
   const deptJobStatusTables = []
