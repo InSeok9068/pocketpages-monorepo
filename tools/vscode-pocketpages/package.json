@@ -18,6 +18,9 @@
     "onLanguage:ejs"
   ],
   "main": "./src/client.js",
+  "extensionDependencies": [
+    "vscode.typescript-language-features"
+  ],
   "contributes": {
     "commands": [
       {
@@ -45,22 +48,31 @@
           "group": "navigation@20"
         }
       ]
-    }
+    },
+    "typescriptServerPlugins": [
+      {
+        "name": "@dlstj-local/pocketpages-typescript-plugin",
+        "enableForWorkspaceTypeScriptVersions": true
+      }
+    ]
   },
   "scripts": {
     "test": "npm run sanity-check",
     "sanity-check": "node ./scripts/sanity-check.js",
-    "package:vsix": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --allow-missing-repository --out ./dist/vscode-pocketpages.vsix",
+    "sync:ts-plugin": "node ./scripts/sync-ts-plugin-package.js",
+    "package:vsix": "npm install && node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --follow-symlinks --allow-missing-repository --out ./dist/vscode-pocketpages.vsix",
     "install:vscode-pocketpages": "npm run package:vsix && node ./scripts/install-vscode-pocketpages.js"
   },
   "devDependencies": {
     "@vscode/vsce": "^3.6.1"
   },
   "dependencies": {
+    "@dlstj-local/pocketpages-typescript-plugin": "file:./src/ts-plugin/package",
     "typescript": "^5.8.2",
     "vscode-languageclient": "^9.0.1",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
+    "vscode-pocketpages": "file:",
     "vscode-uri": "^3.1.0"
   }
 }

@@ -1,0 +1,6 @@
+{
+  "name": "@dlstj-local/pocketpages-typescript-plugin",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./index.js"
+}

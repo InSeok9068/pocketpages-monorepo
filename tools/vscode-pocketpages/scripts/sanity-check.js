@@ -11,6 +11,11 @@ const { createScriptSnapshot } = require('../src/core/snapshot')
 const { createVirtualCode, updateVirtualCode } = require('../src/core/virtual-code')
 const { collectEjsSemanticTokenEntries } = require('../src/ejs-semantic-tokens')
 const { getServerTemplateBoundaryLineNumbers } = require('../src/ejs-server-boundary')
+const {
+  buildScriptServerMirrorText,
+  collectExternalPocketPagesEjsFiles,
+  isPocketPagesEjsFile,
+} = require('../src/ts-plugin/shared')
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true })
@@ -222,6 +227,16 @@ function assertExtensionContracts(repoRoot) {
     contributedCommands,
     'pocketpagesServerScript.allFileReferences',
     'Expected PocketPages allFileReferences command contribution in package.json.'
+  )
+
+  const contributedTsPlugins = Array.isArray(packageJson.contributes && packageJson.contributes.typescriptServerPlugins)
+    ? packageJson.contributes.typescriptServerPlugins.map((entry) => entry.name)
+    : []
+
+  assertIncludes(
+    contributedTsPlugins,
+    '@dlstj-local/pocketpages-typescript-plugin',
+    'Expected PocketPages TypeScript server plugin contribution in package.json.'
   )
 }
 
@@ -4193,6 +4208,58 @@ const reportDate = String(safeState.reportDate || '').trim()
     if (rawOutputBoundaryLines.length !== 0) {
       throw new Error(
         `Expected raw output blocks to avoid partial setup boundaries. Got: ${JSON.stringify(rawOutputBoundaryLines)}`
+      )
+    }
+
+    const mirroredServerSource = `<script server>
+const authState = resolve('auth-service')
+</script>
+
+<section>
+  <div>Dashboard</div>
+</section>
+`
+    const mirroredServerText = buildScriptServerMirrorText(mirroredServerSource)
+    if (mirroredServerText.length !== mirroredServerSource.length) {
+      throw new Error(
+        `Expected mirrored server text to preserve source length. Got: ${mirroredServerText.length}`
+      )
+    }
+    if (!mirroredServerText.includes("const authState = resolve('auth-service')")) {
+      throw new Error(`Expected mirrored server text to preserve <script server> contents. Got: ${mirroredServerText}`)
+    }
+    if (/<section>|Dashboard/.test(mirroredServerText)) {
+      throw new Error(`Expected mirrored server text to blank template HTML. Got: ${mirroredServerText}`)
+    }
+
+    if (!isPocketPagesEjsFile(fixture.signInFilePath)) {
+      throw new Error('Expected PocketPages TS plugin helpers to recognize page .ejs files.')
+    }
+    if (isPocketPagesEjsFile(fixture.boardRoleFilePath)) {
+      throw new Error('Expected PocketPages TS plugin helpers to ignore non-.ejs files.')
+    }
+
+    const pluginExternalFiles = collectExternalPocketPagesEjsFiles(
+      {
+        sys: {
+          readDirectory(rootPath) {
+            if (normalizeFilePath(rootPath) !== normalizeFilePath(fixture.appRoot)) {
+              return []
+            }
+
+            return [fixture.signInFilePath, fixture.flashAlertFilePath]
+          },
+        },
+      },
+      {
+        getCurrentDirectory() {
+          return fixture.appRoot
+        },
+      }
+    )
+    if (!pluginExternalFiles.includes(fixture.signInFilePath) || !pluginExternalFiles.includes(fixture.flashAlertFilePath)) {
+      throw new Error(
+        `Expected PocketPages TS plugin helper to surface page and partial .ejs files. Got: ${pluginExternalFiles.join(', ')}`
       )
     }
 

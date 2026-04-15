@@ -804,12 +804,7 @@ connection.onHover((params) => {
   }
 
   const pathTargetInfo = customFeatureService.provideHover(params);
-
-  if (!isEjsFilePath(documentContext.filePath)) {
-    if (!pathTargetInfo) {
-      return null;
-    }
-
+  if (pathTargetInfo) {
     return {
       contents: {
         kind: MarkupKind.Markdown,
@@ -822,25 +817,23 @@ connection.onHover((params) => {
     };
   }
 
+  if (!isEjsFilePath(documentContext.filePath)) {
+    return null;
+  }
+
   const quickInfo = typeScriptFeatureService.provideHover(params);
-  if ((!quickInfo || quickInfo.start === null || quickInfo.end === null) && !pathTargetInfo) {
+  if (!quickInfo || quickInfo.start === null || quickInfo.end === null) {
     return null;
   }
 
   const parts = [];
-  if (quickInfo && quickInfo.displayText) {
+  if (quickInfo.displayText) {
     parts.push("```ts");
     parts.push(quickInfo.displayText);
     parts.push("```");
   }
-  if (quickInfo && quickInfo.documentation) {
+  if (quickInfo.documentation) {
     parts.push(quickInfo.documentation);
-  }
-  if (pathTargetInfo && pathTargetInfo.targetFilePath) {
-    parts.push(`Target: \`${pathTargetInfo.targetFilePath.replace(/\\/g, "/")}\``);
-    if (pathTargetInfo.kind === "route-path" && pathTargetInfo.value) {
-      parts.push(`Route: \`${pathTargetInfo.value}\``);
-    }
   }
 
   return {
@@ -848,10 +841,7 @@ connection.onHover((params) => {
       kind: MarkupKind.Markdown,
       value: parts.join("\n\n"),
     },
-    range:
-      quickInfo && quickInfo.start !== null && quickInfo.end !== null
-        ? toRange(document, quickInfo.start, quickInfo.end)
-        : toRange(document, pathTargetInfo.start, pathTargetInfo.end),
+    range: toRange(document, quickInfo.start, quickInfo.end),
   };
 });
 

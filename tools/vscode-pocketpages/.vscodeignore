@@ -3,3 +3,17 @@
 scripts/**
 dist/**
 package-lock.json
+node_modules/**
+!node_modules/@dlstj-local/pocketpages-typescript-plugin/**
+!node_modules/balanced-match/**
+!node_modules/brace-expansion/**
+!node_modules/minimatch/**
+!node_modules/semver/**
+!node_modules/typescript/**
+!node_modules/vscode-jsonrpc/**
+!node_modules/vscode-languageclient/**
+!node_modules/vscode-languageserver/**
+!node_modules/vscode-languageserver-protocol/**
+!node_modules/vscode-languageserver-textdocument/**
+!node_modules/vscode-languageserver-types/**
+!node_modules/vscode-uri/**
