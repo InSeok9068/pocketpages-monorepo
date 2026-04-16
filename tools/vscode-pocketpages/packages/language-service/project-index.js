@@ -115,8 +115,64 @@ function stripKnownExtension(filePath, extensions) {
   return filePath
 }
 
+function getPathCompletionRequestOptions(requestPath, extensions) {
+  const normalizedRequestPath = String(requestPath || '').trim()
+
+  return {
+    keepExtension: shouldKeepPathCompletionExtension(normalizedRequestPath, extensions),
+    prefixKind: normalizedRequestPath.startsWith('/')
+      ? 'absolute'
+      : normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../')
+        ? 'relative'
+        : 'implicit',
+  }
+}
+
+function buildPathCompletionCandidateValue(relativePath, extensions, options = {}) {
+  const normalizedRelativePath = toRelativePath(relativePath)
+  const keepExtension = !!options.keepExtension
+  const prefixKind = String(options.prefixKind || 'implicit')
+  const depth = Math.max(0, Number(options.depth) || 0)
+  const trimIndex = !!options.trimIndex
+  let value = keepExtension ? normalizedRelativePath : stripKnownExtension(normalizedRelativePath, extensions)
+
+  if (trimIndex && value.endsWith('/index')) {
+    value = value.slice(0, -'/index'.length)
+  }
+
+  if (!value) {
+    return ''
+  }
+
+  if (prefixKind === 'absolute') {
+    return `/${value}`
+  }
+
+  if (prefixKind === 'relative') {
+    return `${depth > 0 ? '../'.repeat(depth) : './'}${value}`
+  }
+
+  return value
+}
+
 function hasKnownExtension(filePath, extensions) {
   return extensions.includes(path.extname(String(filePath || '')).toLowerCase())
+}
+
+function shouldKeepPathCompletionExtension(requestPath, extensions) {
+  const normalizedRequestPath = String(requestPath || '').trim()
+  if (hasKnownExtension(normalizedRequestPath, extensions)) {
+    return true
+  }
+
+  const lastSegment = normalizedRequestPath.split('/').filter(Boolean).pop() || ''
+  const dotIndex = lastSegment.lastIndexOf('.')
+  if (dotIndex === -1) {
+    return false
+  }
+
+  const partialExtension = lastSegment.slice(dotIndex).toLowerCase()
+  return !!partialExtension && extensions.some((extension) => extension.startsWith(partialExtension))
 }
 
 function getIncludeRequestVariants(requestPath) {
@@ -1692,9 +1748,10 @@ class PocketPagesProjectIndex {
     return this.routeStateCache
   }
 
-  getResolveCandidates(filePath) {
+  getResolveCandidates(filePath, requestPath = '') {
     const items = []
     const seen = new Set()
+    const requestOptions = getPathCompletionRequestOptions(requestPath, RESOLVE_EXTENSIONS)
 
     const addCandidate = (value, absolutePath) => {
       if (!value || seen.has(value)) {
@@ -1709,31 +1766,19 @@ class PocketPagesProjectIndex {
       })
     }
 
-    const addResolveCandidateVariants = (value, absolutePath, depth = 0) => {
-      addCandidate(value, absolutePath)
-
-      if (depth === 0) {
-        addCandidate(`./${value}`, absolutePath)
-        return
-      }
-
-      addCandidate(`${'../'.repeat(depth)}${value}`, absolutePath)
-    }
-
     for (const [depth, privateRoot] of this.getPrivateSearchRoots(filePath).entries()) {
       const files = this.getSearchRootFileState(privateRoot, RESOLVE_EXTENSIONS).entries
 
       for (const entry of files) {
-        let value = stripKnownExtension(entry.relativePath, RESOLVE_EXTENSIONS)
-        if (value.endsWith('/index')) {
-          value = value.slice(0, -'/index'.length)
-        }
-
-        if (!value) {
-          continue
-        }
-
-        addResolveCandidateVariants(value, entry.filePath, depth)
+        addCandidate(
+          buildPathCompletionCandidateValue(entry.relativePath, RESOLVE_EXTENSIONS, {
+            keepExtension: requestOptions.keepExtension,
+            prefixKind: requestOptions.prefixKind,
+            depth,
+            trimIndex: !requestOptions.keepExtension,
+          }),
+          entry.filePath
+        )
       }
     }
 
@@ -2044,9 +2089,10 @@ class PocketPagesProjectIndex {
     return null
   }
 
-  getIncludeCandidates(filePath) {
+  getIncludeCandidates(filePath, requestPath = '') {
     const items = []
     const seen = new Set()
+    const requestOptions = getPathCompletionRequestOptions(requestPath, INCLUDE_EXTENSIONS)
 
     const addCandidate = (value, absolutePath) => {
       if (!value || seen.has(value)) {
@@ -2061,26 +2107,18 @@ class PocketPagesProjectIndex {
       })
     }
 
-    const addIncludeCandidateVariants = (relativePath, absolutePath, depth = 0) => {
-      const extensionlessPath = stripKnownExtension(relativePath, INCLUDE_EXTENSIONS)
-      const depthPrefix = depth > 0 ? '../'.repeat(depth) : './'
-
-      addCandidate(relativePath, absolutePath)
-      if (extensionlessPath !== relativePath) {
-        addCandidate(extensionlessPath, absolutePath)
-      }
-
-      addCandidate(`${depthPrefix}${relativePath}`, absolutePath)
-      if (extensionlessPath !== relativePath) {
-        addCandidate(`${depthPrefix}${extensionlessPath}`, absolutePath)
-      }
-    }
-
     const privateRoots = this.getPrivateSearchRoots(filePath)
     for (const [depth, privateRoot] of privateRoots.entries()) {
       const files = this.getSearchRootFileState(privateRoot, INCLUDE_EXTENSIONS).entries
       for (const entry of files) {
-        addIncludeCandidateVariants(entry.relativePath, entry.filePath, depth)
+        addCandidate(
+          buildPathCompletionCandidateValue(entry.relativePath, INCLUDE_EXTENSIONS, {
+            keepExtension: true,
+            prefixKind: requestOptions.prefixKind,
+            depth,
+          }),
+          entry.filePath
+        )
       }
     }
 

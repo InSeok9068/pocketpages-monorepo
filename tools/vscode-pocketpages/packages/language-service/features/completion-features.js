@@ -66,9 +66,9 @@ function createCompletionFeatureHandlers(deps) {
       ) {
         const candidates =
           pathContext.kind === "resolve-path"
-            ? service.projectIndex.getResolveCandidates(filePath)
+            ? service.projectIndex.getResolveCandidates(filePath, pathContext.value)
             : pathContext.kind === "include-path"
-              ? service.projectIndex.getIncludeCandidates(filePath)
+              ? service.projectIndex.getIncludeCandidates(filePath, pathContext.value)
               : pathContext.kind === "asset-path"
                 ? service.projectIndex.getAssetCandidates(filePath)
                 : service.projectIndex.getRouteCandidates({ routeSource: pathContext.routeSource });

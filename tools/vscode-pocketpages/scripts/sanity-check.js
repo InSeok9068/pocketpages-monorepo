@@ -2750,8 +2750,8 @@ boardService.readAuthState(
     if (!resolveNames.includes('board-service')) {
       throw new Error(`Expected resolve() completion for "board-service". Got: ${resolveNames.slice(0, 20).join(', ')}`)
     }
-    if (!resolveNames.includes('./shared-service') || !resolveNames.includes('../board-service')) {
-      throw new Error(`Expected resolve() completion to include explicit relative variants. Got: ${resolveNames.slice(0, 20).join(', ')}`)
+    if (resolveNames.includes('./shared-service') || resolveNames.includes('../board-service')) {
+      throw new Error(`Expected resolve() completion to prefer canonical non-relative names. Got: ${resolveNames.slice(0, 20).join(', ')}`)
     }
 
     const resolveSharedText = `<script server>\nresolve('sh')\n</script>\n`
@@ -2763,6 +2763,21 @@ boardService.readAuthState(
     }
     if (resolveSharedNames.includes('shared-panel') || resolveSharedNames.includes('shared-panel.ejs')) {
       throw new Error(`Expected resolve() completion to exclude .ejs partials. Got: ${resolveSharedNames.slice(0, 20).join(', ')}`)
+    }
+
+    const resolveRelativeText = `<script server>\nresolve('./sh')\n</script>\n`
+    const resolveRelativeOffset = resolveRelativeText.indexOf('./sh') + './sh'.length
+    const resolveRelativeCompletion = service.getCustomCompletionData(
+      fixture.boardsFilePath,
+      resolveRelativeText,
+      resolveRelativeOffset
+    )
+    const resolveRelativeNames = resolveRelativeCompletion ? resolveRelativeCompletion.items.map((entry) => entry.label) : []
+    if (!resolveRelativeNames.includes('./shared-service')) {
+      throw new Error(`Expected resolve() completion to keep explicit relative style. Got: ${resolveRelativeNames.slice(0, 20).join(', ')}`)
+    }
+    if (resolveRelativeNames.includes('shared-service')) {
+      throw new Error(`Expected resolve() relative completion to avoid duplicate canonical variants. Got: ${resolveRelativeNames.slice(0, 20).join(', ')}`)
     }
 
     const resolveBacktickText = `<script server>\nresolve(\`bo\`)\n</script>\n`
@@ -2777,18 +2792,58 @@ boardService.readAuthState(
     const includeOffset = includeText.indexOf('fl') + 'fl'.length
     const includeCompletion = service.getCustomCompletionData(fixture.boardsFilePath, includeText, includeOffset)
     const includeNames = includeCompletion ? includeCompletion.items.map((entry) => entry.label) : []
-    if (!includeNames.includes('flash-alert.ejs') || !includeNames.includes('flash-alert')) {
-      throw new Error(`Expected include() completion for explicit and extless flash-alert variants. Got: ${includeNames.slice(0, 20).join(', ')}`)
+    if (!includeNames.includes('flash-alert.ejs')) {
+      throw new Error(`Expected include() completion to prefer explicit .ejs paths. Got: ${includeNames.slice(0, 20).join(', ')}`)
+    }
+    if (includeNames.includes('flash-alert') || includeNames.includes('./flash-alert.ejs')) {
+      throw new Error(`Expected include() completion to avoid duplicate non-.ejs variants by default. Got: ${includeNames.slice(0, 20).join(', ')}`)
     }
 
     const includeBacktickText = `<%- include(\`fl\`) %>\n`
     const includeBacktickOffset = includeBacktickText.indexOf('fl') + 'fl'.length
     const includeBacktickCompletion = service.getCustomCompletionData(fixture.boardsFilePath, includeBacktickText, includeBacktickOffset)
     const includeBacktickNames = includeBacktickCompletion ? includeBacktickCompletion.items.map((entry) => entry.label) : []
-    if (!includeBacktickNames.includes('flash-alert.ejs') || !includeBacktickNames.includes('flash-alert')) {
+    if (!includeBacktickNames.includes('flash-alert.ejs')) {
       throw new Error(
-        `Expected include() completion inside backticks for explicit and extless flash-alert variants. Got: ${includeBacktickNames.slice(0, 20).join(', ')}`
+        `Expected include() completion inside backticks to prefer explicit .ejs paths. Got: ${includeBacktickNames.slice(0, 20).join(', ')}`
       )
+    }
+    if (includeBacktickNames.includes('flash-alert') || includeBacktickNames.includes('./flash-alert.ejs')) {
+      throw new Error(
+        `Expected include() backtick completion to avoid duplicate non-.ejs variants. Got: ${includeBacktickNames.slice(0, 20).join(', ')}`
+      )
+    }
+
+    const includeRelativeText = `<%- include('./sh') %>\n`
+    const includeRelativeOffset = includeRelativeText.indexOf('./sh') + './sh'.length
+    const includeRelativeCompletion = service.getCustomCompletionData(
+      fixture.boardsFilePath,
+      includeRelativeText,
+      includeRelativeOffset
+    )
+    const includeRelativeNames = includeRelativeCompletion ? includeRelativeCompletion.items.map((entry) => entry.label) : []
+    if (!includeRelativeNames.includes('./shared-panel.ejs')) {
+      throw new Error(`Expected include() completion to keep explicit relative .ejs style. Got: ${includeRelativeNames.slice(0, 20).join(', ')}`)
+    }
+    if (includeRelativeNames.includes('shared-panel') || includeRelativeNames.includes('./shared-panel')) {
+      throw new Error(`Expected include() relative completion to avoid duplicate non-.ejs variants. Got: ${includeRelativeNames.slice(0, 20).join(', ')}`)
+    }
+
+    const includeExplicitExtensionText = `<%- include('flash-alert.e') %>\n`
+    const includeExplicitExtensionOffset = includeExplicitExtensionText.indexOf('flash-alert.e') + 'flash-alert.e'.length
+    const includeExplicitExtensionCompletion = service.getCustomCompletionData(
+      fixture.boardsFilePath,
+      includeExplicitExtensionText,
+      includeExplicitExtensionOffset
+    )
+    const includeExplicitExtensionNames = includeExplicitExtensionCompletion
+      ? includeExplicitExtensionCompletion.items.map((entry) => entry.label)
+      : []
+    if (!includeExplicitExtensionNames.includes('flash-alert.ejs')) {
+      throw new Error(`Expected include() completion to preserve explicit extension style. Got: ${includeExplicitExtensionNames.slice(0, 20).join(', ')}`)
+    }
+    if (includeExplicitExtensionNames.includes('flash-alert')) {
+      throw new Error(`Expected include() explicit extension completion to avoid extless duplicates. Got: ${includeExplicitExtensionNames.slice(0, 20).join(', ')}`)
     }
 
     const includeLocalCompletionText = `<%- include('flash-alert.ejs', { msg }) %>\n`
@@ -2911,6 +2966,34 @@ boardService.readAuthState(
     }
     if (routeNames.includes('/api')) {
       throw new Error(`Expected route path completion to exclude JS route handlers. Got: ${routeNames.slice(0, 20).join(', ')}`)
+    }
+
+    const emptyRouteAttributeCompletionText = `<form action=""></form>\n`
+    const emptyRouteAttributeCompletionOffset = emptyRouteAttributeCompletionText.indexOf('action="') + 'action="'.length
+    const emptyRouteAttributeCompletion = service.getCustomCompletionData(
+      fixture.siteIndexFilePath,
+      emptyRouteAttributeCompletionText,
+      emptyRouteAttributeCompletionOffset
+    )
+    const emptyRouteAttributeNames = emptyRouteAttributeCompletion
+      ? emptyRouteAttributeCompletion.items.map((entry) => entry.label)
+      : []
+    if (!emptyRouteAttributeNames.includes('/sign-in')) {
+      throw new Error(`Expected route completion inside empty action attribute. Got: ${emptyRouteAttributeNames.slice(0, 20).join(', ')}`)
+    }
+
+    const slashlessRouteAttributeCompletionText = `<form action="si"></form>\n`
+    const slashlessRouteAttributeCompletionOffset = slashlessRouteAttributeCompletionText.indexOf('si') + 'si'.length
+    const slashlessRouteAttributeCompletion = service.getCustomCompletionData(
+      fixture.siteIndexFilePath,
+      slashlessRouteAttributeCompletionText,
+      slashlessRouteAttributeCompletionOffset
+    )
+    const slashlessRouteAttributeNames = slashlessRouteAttributeCompletion
+      ? slashlessRouteAttributeCompletion.items.map((entry) => entry.label)
+      : []
+    if (!slashlessRouteAttributeNames.includes('/sign-in')) {
+      throw new Error(`Expected route completion inside slashless action attribute. Got: ${slashlessRouteAttributeNames.slice(0, 20).join(', ')}`)
     }
 
     const localAssetCompletionText = `<link rel="stylesheet" href="<%= asset('ca') %>">\n`

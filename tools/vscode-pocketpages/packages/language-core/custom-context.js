@@ -6,7 +6,7 @@ const PATH_OPEN_RE = /\b(resolve|include)\(\s*(['"`])((?:(?!\2)[\s\S])*)$/s
 const PATH_CLOSED_RE = /\b(resolve|include)\(\s*(['"`])((?:(?!\2)[\s\S])*?)\2/g
 const ASSET_OPEN_RE = /\b(?:asset|api\.asset)\(\s*(['"`])((?:(?!\1)[\s\S])*)$/s
 const ASSET_CLOSED_RE = /\b(?:asset|api\.asset)\(\s*(['"`])((?:(?!\1)[\s\S])*?)\1/g
-const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)$/s
+const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])([^'"]*)$/s
 const ROUTE_ATTR_CLOSED_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)\2/g
 const ROUTE_CALL_OPEN_RE = /\b(redirect)\(\s*(['"`])((?:(?!\2)[\s\S])*)$/s
 const ROUTE_CALL_CLOSED_RE = /\b(redirect)\(\s*(['"`])((?:(?!\2)[\s\S])*?)\2(?=\s*[,)\]])/g

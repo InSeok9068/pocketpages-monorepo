@@ -1285,11 +1285,11 @@ function getPathContextCandidates(projectIndex, filePath, context) {
   }
 
   if (context.kind === "resolve-path") {
-    return projectIndex.getResolveCandidates(filePath);
+    return projectIndex.getResolveCandidates(filePath, context.value);
   }
 
   if (context.kind === "include-path") {
-    return projectIndex.getIncludeCandidates(filePath);
+    return projectIndex.getIncludeCandidates(filePath, context.value);
   }
 
   if (context.kind === "asset-path") {
