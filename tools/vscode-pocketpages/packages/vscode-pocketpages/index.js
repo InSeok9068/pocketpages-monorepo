@@ -429,9 +429,19 @@ async function activateLsp(context) {
     run: { module: serverModule, transport: TransportKind.ipc },
     debug: { module: serverModule, transport: TransportKind.ipc },
   };
+  const synchronizedFileWatchers = [
+    vscode.workspace.createFileSystemWatcher("**/pb_hooks/pages/**"),
+    vscode.workspace.createFileSystemWatcher("**/pb_schema.json"),
+    vscode.workspace.createFileSystemWatcher("**/pb_data/types.d.ts"),
+    vscode.workspace.createFileSystemWatcher("**/pocketpages-globals.d.ts"),
+    vscode.workspace.createFileSystemWatcher("**/types.d.ts"),
+  ];
   const clientOptions = {
     documentSelector: LSP_DOCUMENT_SELECTOR,
     outputChannel,
+    synchronize: {
+      fileEvents: synchronizedFileWatchers,
+    },
   };
 
   client = new LanguageClient(
@@ -441,7 +451,7 @@ async function activateLsp(context) {
     clientOptions
   );
 
-  context.subscriptions.push(outputChannel, lspStatusController.item);
+  context.subscriptions.push(...synchronizedFileWatchers, outputChannel, lspStatusController.item);
   logger.info("lsp", "start", {
     serverModule,
     selector: ["ejs", "pb_hooks-scripts"],

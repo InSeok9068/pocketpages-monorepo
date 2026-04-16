@@ -593,11 +593,8 @@ class PocketPagesLanguageCore {
     };
   }
 
-  reloadCaches(targetFilePath = null) {
-    const targetService = targetFilePath ? this.manager.resetCachesForFile(targetFilePath) : null;
-    if (!targetService) {
-      this.manager.resetAllCaches();
-    }
+  resyncManagedDocumentsForService(targetService = null) {
+    const affectedUris = [];
 
     for (const sourceScript of this.sourceScripts.values()) {
       const virtualCode = sourceScript.generated && sourceScript.generated.root;
@@ -606,11 +603,7 @@ class PocketPagesLanguageCore {
       }
 
       const service = this.manager.getServiceForFile(virtualCode.filePath);
-      if (!service) {
-        continue;
-      }
-
-      if (targetService && service !== targetService) {
+      if (!service || (targetService && service !== targetService)) {
         continue;
       }
 
@@ -622,14 +615,69 @@ class PocketPagesLanguageCore {
           virtualCode
         );
       }
+      affectedUris.push(sourceScript.id);
     }
+
+    return affectedUris;
+  }
+
+  reloadCaches(targetFilePath = null) {
+    const targetService = targetFilePath ? this.manager.resetCachesForFile(targetFilePath) : null;
+    if (!targetService) {
+      this.manager.resetAllCaches();
+    }
+
+    const affectedUris = this.resyncManagedDocumentsForService(targetService);
 
     return {
       targetFilePath,
       scoped: !!targetService,
+      affectedUris,
       message: targetService
         ? "PocketPages caches reloaded for the current app."
         : "PocketPages caches reloaded.",
+    };
+  }
+
+  reloadCachesForAppRoot(appRoot) {
+    const targetService = appRoot ? this.manager.resetCachesForAppRoot(appRoot) : null;
+    const affectedUris = this.resyncManagedDocumentsForService(targetService);
+    return {
+      appRoot,
+      scoped: !!targetService,
+      affectedUris,
+      message: targetService
+        ? "PocketPages caches reloaded for the current app."
+        : "PocketPages caches reloaded.",
+    };
+  }
+
+  handleWatchedFileChanges(changes) {
+    const appResults = [];
+    const affectedUris = [];
+    const seenUris = new Set();
+
+    for (const result of this.manager.handleWatchedFileChanges(changes)) {
+      const serviceAffectedUris = this.resyncManagedDocumentsForService(result.service);
+      for (const uri of serviceAffectedUris) {
+        if (seenUris.has(uri)) {
+          continue;
+        }
+
+        seenUris.add(uri);
+        affectedUris.push(uri);
+      }
+
+      appResults.push({
+        appRoot: result.appRoot,
+        changes: result.changes,
+        affectedUris: serviceAffectedUris,
+      });
+    }
+
+    return {
+      appResults,
+      affectedUris,
     };
   }
 

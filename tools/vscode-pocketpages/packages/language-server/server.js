@@ -13,6 +13,7 @@ const {
   MarkupKind,
   InlayHintKind,
   SemanticTokensBuilder,
+  FileChangeType,
 } = require("vscode-languageserver/node");
 const { TextDocument } = require("vscode-languageserver-textdocument");
 const { URI } = require("vscode-uri");
@@ -24,6 +25,8 @@ const { getServerTemplateBoundaryLineNumbers } = require("../language-core/ejs-s
 const { createCustomFeatureService } = require("./services/custom-features");
 const { createTypeScriptFeatureService } = require("./services/ts-features");
 const { createDiagnosticsFeatureService } = require("./services/diagnostics-features");
+const { createLifecycleFeatureService } = require("./services/lifecycle-features");
+const { createMaintenanceFeatureService } = require("./services/maintenance-features");
 const { createStructureFeatureService } = require("./services/structure-features");
 
 const connection = createConnection(ProposedFeatures.all);
@@ -559,6 +562,7 @@ const featureServiceContext = {
   core,
   URI,
   TextDocument,
+  FileChangeType,
   ts,
   CompletionItemKind,
   InsertTextFormat,
@@ -578,6 +582,8 @@ const featureServiceContext = {
     COMPLETION_KIND_MAP,
     SCRIPT_DIAGNOSTICS_DEBOUNCE_MS,
     beginDiagnosticRun,
+    cancelScheduledDiagnostics,
+    clearCachedCompletionItemsForUri,
     customCompletionKind,
     diagnosticSeverity,
     elapsedMilliseconds,
@@ -595,6 +601,8 @@ const featureServiceContext = {
     isSchemaSupportOnlyHookScriptPath,
     isStaleDocumentVersion,
     logServer,
+    publishDiagnostics,
+    scheduleDiagnostics,
     shouldAbortDocumentRequest,
     toLocation,
     toMarkupContent,
@@ -608,6 +616,8 @@ const featureServiceContext = {
 const customFeatureService = createCustomFeatureService(featureServiceContext);
 const typeScriptFeatureService = createTypeScriptFeatureService(featureServiceContext);
 const diagnosticsFeatureService = createDiagnosticsFeatureService(featureServiceContext);
+const lifecycleFeatureService = createLifecycleFeatureService(featureServiceContext);
+const maintenanceFeatureService = createMaintenanceFeatureService(featureServiceContext);
 const structureFeatureService = createStructureFeatureService(featureServiceContext);
 
 function publishDiagnostics(uri) {
@@ -661,51 +671,13 @@ connection.onInitialize(() => {
   };
 });
 
-documents.onDidOpen((event) => {
-  core.openDocument({
-    uri: event.document.uri,
-    languageId: event.document.languageId,
-    version: event.document.version,
-    text: event.document.getText(),
-  });
-  logServer("info", "document", "open", {
-    file: getRelativePathLabel(uriToFilePath(event.document.uri)),
-    languageId: event.document.languageId,
-    version: event.document.version,
-  });
-  publishDiagnostics(event.document.uri);
-});
+documents.onDidOpen((event) => lifecycleFeatureService.handleDidOpen(event));
 
-documents.onDidChangeContent((event) => {
-  clearCachedCompletionItemsForUri(event.document.uri);
-  core.updateDocument({
-    uri: event.document.uri,
-    languageId: event.document.languageId,
-    version: event.document.version,
-    text: event.document.getText(),
-  });
-  logServer("perf", "document", "change", {
-    file: getRelativePathLabel(uriToFilePath(event.document.uri)),
-    version: event.document.version,
-    changes: Array.isArray(event.contentChanges) ? event.contentChanges.length : 0,
-  });
+documents.onDidChangeContent((event) => lifecycleFeatureService.handleDidChangeContent(event));
 
-  const filePath = uriToFilePath(event.document.uri);
-  if (isEjsFilePath(filePath) || isScriptFilePath(filePath)) {
-    scheduleDiagnostics(event.document.uri);
-  }
-});
+documents.onDidClose((event) => lifecycleFeatureService.handleDidClose(event));
 
-documents.onDidClose((event) => {
-  clearCachedCompletionItemsForUri(event.document.uri);
-  cancelScheduledDiagnostics(event.document.uri);
-  diagnosticRunIds.delete(event.document.uri);
-  core.closeDocument(event.document.uri);
-  logServer("info", "document", "close", {
-    file: getRelativePathLabel(uriToFilePath(event.document.uri)),
-  });
-  connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
-});
+connection.onDidChangeWatchedFiles((event) => lifecycleFeatureService.handleDidChangeWatchedFiles(event));
 
 connection.onCompletion((params, token) => {
   const document = documents.get(params.textDocument.uri);
@@ -973,72 +945,29 @@ connection.onCodeLens((params) => {
 });
 
 connection.onRequest(REQUESTS.probeCurrentFile, ({ uri }) => {
-  const filePath = uriToFilePath(uri);
-  const startedAt = process.hrtime.bigint();
-  const result = core.probeFile(filePath);
-  logServer("perf", "command", "probe", {
-    file: getRelativePathLabel(filePath),
-    hasAppRoot: result && result.hasAppRoot,
-    diagnostics: result && result.diagnostics,
-    totalMs: elapsedMilliseconds(startedAt).toFixed(1),
-  });
-  return result;
+  return maintenanceFeatureService.provideProbeCurrentFile({ uri });
 });
 
 connection.onRequest(REQUESTS.refreshDiagnostics, ({ uri }) => {
-  const filePath = uriToFilePath(uri);
-  logServer("info", "command", "refresh-diagnostics", {
-    file: getRelativePathLabel(filePath),
-  });
-  publishDiagnostics(uri);
-  return { ok: true };
+  return maintenanceFeatureService.provideRefreshDiagnostics({ uri });
 });
 
 connection.onRequest(REQUESTS.reloadCaches, ({ uri }) => {
-  const scopedFilePath = uri ? uriToFilePath(uri) : null;
-  const startedAt = process.hrtime.bigint();
-  const result = core.reloadCaches(scopedFilePath);
+  const result = maintenanceFeatureService.provideReloadCaches({ uri });
   publishManagedDiagnostics();
-  logServer("perf", "cache", "reload", {
-    file: scopedFilePath ? getRelativePathLabel(scopedFilePath) : null,
-    scoped: result && result.scoped,
-    totalMs: elapsedMilliseconds(startedAt).toFixed(1),
-  });
   return result;
 });
 
 connection.onRequest(REQUESTS.allFileReferences, ({ uri }) => {
-  const filePath = uriToFilePath(uri);
-  const startedAt = process.hrtime.bigint();
-  const result = core.getFileReferenceResult(filePath);
-  logServer("perf", "references", "query", {
-    file: getRelativePathLabel(filePath),
-    kind: result && result.referenceQuery ? result.referenceQuery.kind : null,
-    refs: result && Array.isArray(result.references) ? result.references.length : 0,
-    totalMs: elapsedMilliseconds(startedAt).toFixed(1),
-  });
-  return result;
+  return maintenanceFeatureService.provideAllFileReferences({ uri });
 });
 
 connection.onRequest(REQUESTS.fileRenameEdits, ({ oldUri, newUri }) => {
-  const oldFilePath = uriToFilePath(oldUri);
-  const newFilePath = uriToFilePath(newUri);
-  const startedAt = process.hrtime.bigint();
-  const result = core.getFileRenameEdits(oldFilePath, newFilePath);
-  logServer("perf", "rename", "edits", {
-    old: getRelativePathLabel(oldFilePath),
-    next: getRelativePathLabel(newFilePath),
-    edits: Array.isArray(result) ? result.length : 0,
-    totalMs: elapsedMilliseconds(startedAt).toFixed(1),
-  });
-  return result;
+  return maintenanceFeatureService.provideFileRenameEdits({ oldUri, newUri });
 });
 
 connection.onNotification(NOTIFICATIONS.didManualSave, ({ uri }) => {
-  logServer("info", "diagnostics", "manual-save", {
-    file: getRelativePathLabel(uriToFilePath(uri)),
-  });
-  publishDiagnostics(uri);
+  lifecycleFeatureService.handleDidManualSave({ uri });
 });
 
 documents.listen(connection);

@@ -456,6 +456,18 @@ function assertLspRuntimeContracts(repoRoot) {
     ),
     'utf8'
   )
+  const lifecycleFeatureSource = fs.readFileSync(
+    path.join(
+      repoRoot,
+      'tools',
+      'vscode-pocketpages',
+      'packages',
+      'language-server',
+      'services',
+      'lifecycle-features.js'
+    ),
+    'utf8'
+  )
   const tsPluginSource = fs.readFileSync(
     path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'typescript-plugin', 'index.js'),
     'utf8'
@@ -491,7 +503,7 @@ function assertLspRuntimeContracts(repoRoot) {
 
   assertMatches(
     clientSource,
-    /const clientOptions = \{\s*documentSelector: LSP_DOCUMENT_SELECTOR,\s*outputChannel,\s*\}/,
+    /const clientOptions = \{\s*documentSelector: LSP_DOCUMENT_SELECTOR,\s*outputChannel,(?:\s*synchronize:\s*\{[\s\S]*?\},)?\s*\}/,
     'Expected client.js to route LSP logs through the shared PocketPages output channel.'
   )
   assertMatches(
@@ -515,6 +527,8 @@ function assertLspRuntimeContracts(repoRoot) {
     'createCustomFeatureService',
     'createTypeScriptFeatureService',
     'createDiagnosticsFeatureService',
+    'createLifecycleFeatureService',
+    'createMaintenanceFeatureService',
     'createStructureFeatureService',
   ]
   for (const factoryName of requiredServiceFactories) {
@@ -569,9 +583,9 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected diagnostics feature service to preserve only schema diagnostics for non-pages pb_hooks scripts.'
   )
   assertMatches(
-    serverSource,
+    lifecycleFeatureSource,
     /const filePath = uriToFilePath\(event\.document\.uri\);\s*if \(isEjsFilePath\(filePath\) \|\| isScriptFilePath\(filePath\)\) \{\s*scheduleDiagnostics\(event\.document\.uri\);/,
-    'Expected server.js to schedule diagnostics for both EJS files and hook scripts after content changes.'
+    'Expected lifecycle-features.js to schedule diagnostics for both EJS files and hook scripts after content changes.'
   )
   assertMatches(
     tsPluginSource,

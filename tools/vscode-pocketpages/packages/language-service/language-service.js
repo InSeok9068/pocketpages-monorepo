@@ -26,6 +26,7 @@ const { collectParamsFlowDiagnostics } = require("./flow-analysis");
 const { createCompletionFeatureHandlers } = require("./features/completion-features");
 const { createDiagnosticsFeatureHandlers } = require("./features/diagnostics-features");
 const { createNavigationFeatureHandlers } = require("./features/navigation-features");
+const { createPocketPagesLanguageServiceManager } = require("./service-manager");
 
 const CACHE_ROOT = path.resolve(__dirname, "..", "..", ".cache");
 const COMPILER_OPTIONS = {
@@ -4574,40 +4575,12 @@ class ProjectLanguageService {
   }
 }
 
-class PocketPagesLanguageServiceManager {
-  constructor() {
-    this.services = new Map();
-  }
-
-  getServiceForFile(filePath) {
-    const appRoot = findAppRoot(filePath);
-    if (!appRoot) {
-      return null;
-    }
-
-    if (!this.services.has(appRoot)) {
-      this.services.set(appRoot, new ProjectLanguageService(appRoot));
-    }
-
-    return this.services.get(appRoot);
-  }
-
-  resetCachesForFile(filePath) {
-    const service = this.getServiceForFile(filePath);
-    if (!service) {
-      return null;
-    }
-
-    service.resetCaches();
-    return service;
-  }
-
-  resetAllCaches() {
-    for (const service of this.services.values()) {
-      service.resetCaches();
-    }
-  }
-}
+const PocketPagesLanguageServiceManager = createPocketPagesLanguageServiceManager({
+  ProjectLanguageService,
+  findAppRoot,
+  isSameOrChildPath,
+  normalizePath,
+});
 
 module.exports = {
   PocketPagesLanguageServiceManager,

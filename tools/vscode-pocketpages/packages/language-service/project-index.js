@@ -1237,9 +1237,6 @@ class PocketPagesProjectIndex {
     this.routeStateCache = null
     this.pagesStructureVersion = 0
     this.pagesContentVersion = 0
-    this.appWatcher = null
-
-    this.startWatching()
   }
 
   resetCaches() {
@@ -1251,42 +1248,6 @@ class PocketPagesProjectIndex {
     this.routeStateCache = null
     this.pagesStructureVersion += 1
     this.pagesContentVersion += 1
-  }
-
-  startWatching() {
-    if (!directoryExists(this.appRoot)) {
-      return
-    }
-
-    try {
-      this.appWatcher = fs.watch(this.appRoot, {
-        persistent: false,
-        recursive: true,
-      }, (eventType, fileName) => {
-        if (!fileName) {
-          this.invalidateStructureCaches()
-          return
-        }
-
-        const changedFilePath = normalizePath(path.join(this.appRoot, String(fileName)))
-        if (eventType === 'rename') {
-          this.invalidateStructureForFile(changedFilePath)
-          return
-        }
-
-        this.invalidateContentForFile(changedFilePath)
-      })
-
-      if (typeof this.appWatcher.unref === 'function') {
-        this.appWatcher.unref()
-      }
-
-      this.appWatcher.on('error', () => {
-        this.invalidateStructureCaches()
-      })
-    } catch (_error) {
-      this.appWatcher = null
-    }
   }
 
   invalidateStructureCaches() {
