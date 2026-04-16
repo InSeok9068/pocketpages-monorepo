@@ -862,6 +862,10 @@ export {}
 `
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+get.js'),
+    `module.exports = function () {\n  return { ok: true }\n}\n`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+post.js'),
     `module.exports = function () {\n  return ''\n}\n`
   )
@@ -1240,6 +1244,7 @@ module.exports = {
     signInFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'xapi', 'auth', 'sign-in.ejs'),
     siteSignInFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'),
     feedbackPageFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', 'index.ejs'),
+    feedbackGetFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+get.js'),
     feedbackLoadFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+load.js'),
     feedbackPostFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+post.js'),
     feedbackDeleteFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+delete.js'),
@@ -4420,6 +4425,10 @@ module.exports = {
     if (!feedbackPageReferenceQuery || feedbackPageReferenceQuery.kind !== 'route-file' || feedbackPageReferenceQuery.routePath !== '/feedback' || feedbackPageReferenceQuery.routeMethod !== 'PAGE') {
       throw new Error(`Expected page route file reference query for /feedback. Got: ${JSON.stringify(feedbackPageReferenceQuery)}`)
     }
+    const feedbackGetReferenceQuery = service.getFileReferenceQuery(fixture.feedbackGetFilePath)
+    if (!feedbackGetReferenceQuery || feedbackGetReferenceQuery.kind !== 'route-file' || feedbackGetReferenceQuery.routePath !== '/feedback' || feedbackGetReferenceQuery.routeMethod !== 'GET') {
+      throw new Error(`Expected GET route file reference query for /feedback. Got: ${JSON.stringify(feedbackGetReferenceQuery)}`)
+    }
 
     const feedbackPostReferenceQuery = service.getFileReferenceQuery(fixture.feedbackPostFilePath)
     if (!feedbackPostReferenceQuery || feedbackPostReferenceQuery.kind !== 'route-file' || feedbackPostReferenceQuery.routePath !== '/feedback' || feedbackPostReferenceQuery.routeMethod !== 'POST') {
@@ -4545,6 +4554,24 @@ module.exports = {
     )
     if (!feedbackHrefDefinition || normalizeFilePath(feedbackHrefDefinition) !== normalizeFilePath(fixture.feedbackPageFilePath)) {
       throw new Error(`Expected href to resolve to feedback page route. Got: ${feedbackHrefDefinition}`)
+    }
+
+    const feedbackHtmxGetDefinition = indexService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<button hx-get="/feedback"></button>\n`,
+      `<button hx-get="/feedback"></button>\n`.indexOf('/feedback') + 2
+    )
+    if (!feedbackHtmxGetDefinition || normalizeFilePath(feedbackHtmxGetDefinition) !== normalizeFilePath(fixture.feedbackPageFilePath)) {
+      throw new Error(`Expected hx-get to resolve to feedback page route. Got: ${feedbackHtmxGetDefinition}`)
+    }
+
+    const feedbackRedirectDefinition = indexService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<script server>\nredirect('/feedback')\n</script>\n`,
+      `<script server>\nredirect('/feedback')\n</script>\n`.indexOf('/feedback') + 2
+    )
+    if (!feedbackRedirectDefinition || normalizeFilePath(feedbackRedirectDefinition) !== normalizeFilePath(fixture.feedbackPageFilePath)) {
+      throw new Error(`Expected redirect() to resolve to feedback page route. Got: ${feedbackRedirectDefinition}`)
     }
 
     const feedbackActionDefinition = indexService.getDefinitionTarget(

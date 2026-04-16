@@ -769,7 +769,7 @@ function getPreferredRouteMethods(routeSource) {
     case 'redirect':
     case 'hx-get':
     default:
-      return ['GET']
+      return ['PAGE']
   }
 }
 
@@ -2348,13 +2348,14 @@ class PocketPagesProjectIndex {
       return Number.POSITIVE_INFINITY
     }
 
-    if (!entry.method || entry.method === 'PAGE') {
-      return 1
-    }
-
-    const preferredIndex = preferredMethods.indexOf(entry.method)
+    const normalizedMethod = !entry.method || entry.method === 'PAGE' ? 'PAGE' : entry.method
+    const preferredIndex = preferredMethods.indexOf(normalizedMethod)
     if (preferredIndex !== -1) {
       return preferredIndex === 0 ? 0 : 2 + preferredIndex
+    }
+
+    if (normalizedMethod === 'PAGE') {
+      return 1
     }
 
     return 10
@@ -2372,7 +2373,10 @@ class PocketPagesProjectIndex {
     }
 
     const genericNames = new Set(['record', 'item', 'entry', 'row'])
-    const contextFilePath = options && options.filePath ? normalizePath(options.filePath) : ''
+    const contextFilePath =
+      options && typeof options.filePath === 'string' && options.filePath
+        ? normalizePath(options.filePath)
+        : ''
     if (contextFilePath && genericNames.has(receiverName) && hasPrivateRolesSegment(contextFilePath)) {
       const roleBaseName = path.basename(contextFilePath, path.extname(contextFilePath))
       const roleCandidates = buildCollectionReferenceCandidates(roleBaseName)

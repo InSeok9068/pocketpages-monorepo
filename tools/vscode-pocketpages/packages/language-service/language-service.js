@@ -1230,7 +1230,7 @@ function getPreferredRouteMethods(routeSource) {
     case "redirect":
     case "hx-get":
     default:
-      return ["GET"];
+      return ["PAGE"];
   }
 }
 
@@ -1739,7 +1739,21 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText, opti
   return diagnostics;
 }
 
-function buildSchemaFieldDiagnostic(projectIndex, filePath, context, analysisText, offsetBase = 0) {
+function buildSchemaFieldDiagnostic(projectIndex, filePathOrContext, contextOrAnalysisText, analysisTextOrOffsetBase, offsetBase = 0) {
+  const hasExplicitFilePath = typeof filePathOrContext === "string";
+  const filePath = hasExplicitFilePath ? filePathOrContext : "";
+  const context = hasExplicitFilePath ? contextOrAnalysisText : filePathOrContext;
+  const analysisText = hasExplicitFilePath ? analysisTextOrOffsetBase : contextOrAnalysisText;
+  const effectiveOffsetBase = hasExplicitFilePath
+    ? offsetBase
+    : typeof analysisTextOrOffsetBase === "number"
+      ? analysisTextOrOffsetBase
+      : 0;
+
+  if (!context || typeof analysisText !== "string") {
+    return null;
+  }
+
   const reference = projectIndex.inferCollectionReference(
     context.receiverExpression,
     analysisText,
@@ -1762,8 +1776,8 @@ function buildSchemaFieldDiagnostic(projectIndex, filePath, context, analysisTex
     code: "pp-schema-field",
     category: ts.DiagnosticCategory.Warning,
     message: `Unknown field "${context.value}" for collection "${reference.collectionName}".`,
-    start: offsetBase + context.start,
-    end: offsetBase + context.end,
+    start: effectiveOffsetBase + context.start,
+    end: effectiveOffsetBase + context.end,
   };
 }
 

@@ -997,7 +997,7 @@ function collectUnknownFieldMatches(context) {
         continue
       }
 
-      const diagnostic = buildSchemaFieldDiagnostic(context.projectIndex, schemaContext, analysisText)
+      const diagnostic = buildSchemaFieldDiagnostic(context.projectIndex, file.absPath, schemaContext, analysisText)
       if (!diagnostic || diagnostic.code !== 'pp-schema-field' || typeof diagnostic.start !== 'number') {
         continue
       }
