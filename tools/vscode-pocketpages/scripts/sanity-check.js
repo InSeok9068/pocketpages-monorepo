@@ -3286,6 +3286,19 @@ boardService.readAuthState(
       throw new Error(`Expected JS board field completions. Got: ${jsFieldNames.slice(0, 20).join(', ')}`)
     }
 
+    const indexedFieldText =
+      `const boardRecords = $app.findRecordsByFilter('boards', '', '-sort_order,+name', 10, 0)\nboardRecords[0].get('na')\n`
+    const indexedFieldOffset = indexedFieldText.lastIndexOf('na') + 'na'.length
+    const indexedFieldCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      indexedFieldText,
+      indexedFieldOffset
+    )
+    const indexedFieldNames = indexedFieldCompletion ? indexedFieldCompletion.items.map((entry) => entry.label) : []
+    if (!indexedFieldNames.includes('name') || !indexedFieldNames.includes('slug')) {
+      throw new Error(`Expected indexed record field completions. Got: ${indexedFieldNames.slice(0, 20).join(', ')}`)
+    }
+
     const roleFieldText = `function canAccept(record) {\n  return !!record.get('na')\n}\n`
     const roleFieldOffset = roleFieldText.lastIndexOf('na') + 'na'.length
     const roleFieldCompletion = service.getCustomCompletionData(fixture.boardRoleFilePath, roleFieldText, roleFieldOffset)
@@ -4826,6 +4839,159 @@ module.exports = {
       throw new Error(
         `Expected record.set() schema diagnostic. Got: ${recordSetDiagnostics
           .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+
+    const explicitAssignmentSchemaDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+let settingsRecord = null
+try {
+  settingsRecord = $app.findFirstRecordByFilter('posts', 'slug = {:slug}', { slug: 'welcome' })
+} catch (error) {
+  settingsRecord = null
+}
+settingsRecord.get('missing_field')
+</script>\n`
+    )
+    if (
+      !explicitAssignmentSchemaDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "posts"')
+      )
+    ) {
+      throw new Error(
+        `Expected explicit record assignment schema diagnostic. Got: ${explicitAssignmentSchemaDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const aliasedCollectionSchemaDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+const COLLECTION_NAME = 'posts'
+const postRecord = $app.findFirstRecordByFilter(COLLECTION_NAME, 'slug = {:slug}', { slug: 'welcome' })
+postRecord.get('missing_field')
+</script>\n`
+    )
+    if (
+      !aliasedCollectionSchemaDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "posts"')
+      )
+    ) {
+      throw new Error(
+        `Expected same-file string alias schema diagnostic. Got: ${aliasedCollectionSchemaDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const constructedRecordSchemaDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+const COLLECTION_NAME = 'posts'
+const collection = $app.findCollectionByNameOrId(COLLECTION_NAME)
+const postRecord = new Record(collection)
+postRecord.get('missing_field')
+</script>\n`
+    )
+    if (
+      !constructedRecordSchemaDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "posts"')
+      )
+    ) {
+      throw new Error(
+        `Expected new Record(collection) schema diagnostic. Got: ${constructedRecordSchemaDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const fallbackRecordSchemaDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+const COLLECTION_NAME = 'posts'
+const collection = $app.findCollectionByNameOrId(COLLECTION_NAME)
+let postRecord = null
+try {
+  postRecord = $app.findFirstRecordByFilter(COLLECTION_NAME, 'slug = {:slug}', { slug: 'welcome' })
+} catch (error) {
+  postRecord = null
+}
+const targetRecord = postRecord || new Record(collection)
+targetRecord.get('missing_field')
+</script>\n`
+    )
+    if (
+      !fallbackRecordSchemaDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "posts"')
+      )
+    ) {
+      throw new Error(
+        `Expected record fallback constructor schema diagnostic. Got: ${fallbackRecordSchemaDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const callbackRecordSchemaDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+const COLLECTION_NAME = 'posts'
+const postRecords = $app.findRecordsByFilter(COLLECTION_NAME, '')
+postRecords.map((postRecord) => postRecord.get('missing_field'))
+</script>\n`
+    )
+    if (
+      !callbackRecordSchemaDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "posts"')
+      )
+    ) {
+      throw new Error(
+        `Expected direct callback param schema diagnostic. Got: ${callbackRecordSchemaDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const forOfRecordSchemaDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+const COLLECTION_NAME = 'posts'
+const postRecords = $app.findRecordsByFilter(COLLECTION_NAME, '')
+for (const postRecord of postRecords) {
+  postRecord.get('missing_field')
+}
+</script>\n`
+    )
+    if (
+      !forOfRecordSchemaDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "missing_field" for collection "posts"')
+      )
+    ) {
+      throw new Error(
+        `Expected for-of iteration schema diagnostic. Got: ${forOfRecordSchemaDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const indexedRecordSchemaDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+const COLLECTION_NAME = 'posts'
+const index = 0
+const postRecords = $app.findRecordsByFilter(COLLECTION_NAME, '', '-created', 10, 0)
+postRecords[index].get('missing_field')
+postRecords[0].get('missing_field')
+</script>\n`
+    )
+    const indexedRecordDiagnosticMessages = indexedRecordSchemaDiagnostics.map((entry) => String(entry.message))
+    if (indexedRecordDiagnosticMessages.filter((message) => message.includes('Unknown field "missing_field" for collection "posts"')).length < 2) {
+      throw new Error(
+        `Expected indexed array access schema diagnostics. Got: ${indexedRecordSchemaDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
           .join(' | ')}`
       )
     }

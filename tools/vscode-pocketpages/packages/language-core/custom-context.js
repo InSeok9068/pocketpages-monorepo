@@ -10,8 +10,9 @@ const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=
 const ROUTE_ATTR_CLOSED_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)\2/g
 const ROUTE_CALL_OPEN_RE = /\b(redirect)\(\s*(['"`])((?:(?!\2)[\s\S])*)$/s
 const ROUTE_CALL_CLOSED_RE = /\b(redirect)\(\s*(['"`])((?:(?!\2)[\s\S])*?)\2(?=\s*[,)\]])/g
-const FIELD_OPEN_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.(get|set)\(\s*(['"])([^'"]*)$/s
-const FIELD_CLOSED_RE = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\.(get|set)\(\s*(['"])([^'"]+)\3/g
+const FIELD_RECEIVER_PATTERN = '([A-Za-z_$][\\w$]*(?:(?:\\.[A-Za-z_$][\\w$]*)|\\[(?:\\d+|[A-Za-z_$][\\w$]*)\\])*)'
+const FIELD_OPEN_RE = new RegExp(`${FIELD_RECEIVER_PATTERN}\\.(get|set)\\(\\s*(['"])([^'"]*)$`, 's')
+const FIELD_CLOSED_RE = new RegExp(`${FIELD_RECEIVER_PATTERN}\\.(get|set)\\(\\s*(['"])([^'"]+)\\3`, 'g')
 const COLLECTION_REGEX_CACHE = new Map()
 
 function getLastPathSegment(value) {

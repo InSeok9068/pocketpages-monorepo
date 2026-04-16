@@ -35,6 +35,31 @@ const DEFAULT_COLLECTION_METHOD_NAMES = [
   'isCollectionNameUnique',
   'recordQuery',
 ]
+const HIGH_CONFIDENCE_SINGLE_RECORD_METHOD_NAMES = new Set([
+  'findAuthRecordByEmail',
+  'findFirstRecordByData',
+  'findFirstRecordByFilter',
+  'findRecordById',
+  'findRecordByViewFile',
+])
+const HIGH_CONFIDENCE_COLLECTION_MODEL_METHOD_NAMES = new Set([
+  'findCachedCollectionByNameOrId',
+  'findCollectionByNameOrId',
+])
+const HIGH_CONFIDENCE_RECORD_ARRAY_METHOD_NAMES = new Set([
+  'findRecordsByFilter',
+])
+const ARRAY_COLLECTION_PASSTHROUGH_METHOD_NAMES = new Set([
+  'filter',
+  'slice',
+])
+const DIRECT_CALLBACK_COLLECTION_METHOD_NAMES = new Set([
+  'filter',
+  'forEach',
+  'map',
+])
+const AMBIGUOUS_INFERENCE_VALUE = Symbol('ambiguous-inference-value')
+const ARRAY_ELEMENT_RECEIVER_RE = /^([A-Za-z_$][\w$]*)\[(?:\d+|[A-Za-z_$][\w$]*)\]$/
 const POCKETPAGES_GLOBAL_NAMES = new Set([
   'api',
   'asset',
@@ -557,6 +582,836 @@ function buildCollectionReferenceCandidates(receiverName) {
   }
 
   return candidates
+}
+
+function isNullishAssignmentValue(node) {
+  const target = skipExpressionWrappers(node)
+  if (!target) {
+    return false
+  }
+
+  if (target.kind === ts.SyntaxKind.NullKeyword) {
+    return true
+  }
+
+  return ts.isIdentifier(target) && target.text === 'undefined'
+}
+
+function collectBindingIdentifierNames(bindingName, results = []) {
+  if (!bindingName) {
+    return results
+  }
+
+  if (ts.isIdentifier(bindingName)) {
+    results.push(bindingName.text)
+    return results
+  }
+
+  if (ts.isObjectBindingPattern(bindingName) || ts.isArrayBindingPattern(bindingName)) {
+    for (const element of bindingName.elements) {
+      if (!element) {
+        continue
+      }
+
+      if (ts.isBindingElement(element)) {
+        collectBindingIdentifierNames(element.name, results)
+      }
+    }
+  }
+
+  return results
+}
+
+function createExplicitInferenceFrame(initialDeclaredNames = []) {
+  const declaredNames = new Set()
+
+  for (const name of ensureArray(initialDeclaredNames)) {
+    if (isValidIdentifierName(name)) {
+      declaredNames.add(name)
+    }
+  }
+
+  return {
+    declaredNames,
+    stringConstants: new Map(),
+    collectionModels: new Map(),
+    recordVariables: new Map(),
+    arrayVariables: new Map(),
+  }
+}
+
+function createExplicitInferenceState() {
+  return {
+    frames: [createExplicitInferenceFrame()],
+  }
+}
+
+function getCurrentExplicitInferenceFrame(state) {
+  return state.frames[state.frames.length - 1]
+}
+
+function withExplicitInferenceFrame(state, initialDeclaredNames, callback) {
+  state.frames.push(createExplicitInferenceFrame(initialDeclaredNames))
+  try {
+    return callback()
+  } finally {
+    state.frames.pop()
+  }
+}
+
+function declareExplicitInferenceName(state, variableName) {
+  if (!isValidIdentifierName(variableName)) {
+    return
+  }
+
+  getCurrentExplicitInferenceFrame(state).declaredNames.add(variableName)
+}
+
+function findExplicitInferenceFrameForWrite(state, variableName) {
+  for (let index = state.frames.length - 1; index >= 0; index -= 1) {
+    const frame = state.frames[index]
+    if (frame.declaredNames.has(variableName)) {
+      return frame
+    }
+  }
+
+  return getCurrentExplicitInferenceFrame(state)
+}
+
+function readExplicitInferenceValue(state, mapName, variableName) {
+  for (let index = state.frames.length - 1; index >= 0; index -= 1) {
+    const frame = state.frames[index]
+    const trackedMap = frame[mapName]
+
+    if (trackedMap && trackedMap.has(variableName)) {
+      const value = trackedMap.get(variableName)
+      return value === AMBIGUOUS_INFERENCE_VALUE ? null : value
+    }
+
+    if (frame.declaredNames.has(variableName)) {
+      return null
+    }
+  }
+
+  return null
+}
+
+function clearExplicitInferenceValues(frame, variableName, preservedMapName = '') {
+  if (preservedMapName !== 'stringConstants') {
+    frame.stringConstants.delete(variableName)
+  }
+
+  if (preservedMapName !== 'collectionModels') {
+    frame.collectionModels.delete(variableName)
+  }
+
+  if (preservedMapName !== 'recordVariables') {
+    frame.recordVariables.delete(variableName)
+  }
+
+  if (preservedMapName !== 'arrayVariables') {
+    frame.arrayVariables.delete(variableName)
+  }
+}
+
+function writeExplicitInferenceString(state, variableName, stringValue) {
+  const frame = findExplicitInferenceFrameForWrite(state, variableName)
+  const currentValue = frame.stringConstants.get(variableName)
+
+  clearExplicitInferenceValues(frame, variableName, 'stringConstants')
+
+  if (currentValue === AMBIGUOUS_INFERENCE_VALUE) {
+    frame.stringConstants.set(variableName, AMBIGUOUS_INFERENCE_VALUE)
+    return
+  }
+
+  if (typeof currentValue === 'string' && currentValue !== stringValue) {
+    frame.stringConstants.set(variableName, AMBIGUOUS_INFERENCE_VALUE)
+    return
+  }
+
+  frame.stringConstants.set(variableName, stringValue)
+}
+
+function writeExplicitInferenceReference(state, mapName, variableName, reference) {
+  const frame = findExplicitInferenceFrameForWrite(state, variableName)
+  const trackedMap = frame[mapName]
+  const currentValue = trackedMap.get(variableName)
+
+  clearExplicitInferenceValues(frame, variableName, mapName)
+
+  if (currentValue === AMBIGUOUS_INFERENCE_VALUE) {
+    trackedMap.set(variableName, AMBIGUOUS_INFERENCE_VALUE)
+    return
+  }
+
+  if (currentValue && currentValue.collectionName !== reference.collectionName) {
+    trackedMap.set(variableName, AMBIGUOUS_INFERENCE_VALUE)
+    return
+  }
+
+  trackedMap.set(variableName, reference)
+}
+
+function clearExplicitInferenceReference(state, variableName) {
+  const frame = findExplicitInferenceFrameForWrite(state, variableName)
+  clearExplicitInferenceValues(frame, variableName)
+}
+
+function readCollectionNameExpression(node, state) {
+  const target = skipExpressionWrappers(node)
+  if (!target) {
+    return null
+  }
+
+  if (ts.isStringLiteralLike(target)) {
+    return target.text
+  }
+
+  if (ts.isIdentifier(target)) {
+    return readExplicitInferenceValue(state, 'stringConstants', target.text)
+  }
+
+  return null
+}
+
+function getAppPropertyCallDetails(node) {
+  const target = skipExpressionWrappers(node)
+  if (!target || !ts.isCallExpression(target) || !ts.isPropertyAccessExpression(target.expression)) {
+    return null
+  }
+
+  const owner = skipExpressionWrappers(target.expression.expression)
+  if (!owner || !ts.isIdentifier(owner) || owner.text !== '$app') {
+    return null
+  }
+
+  return {
+    callExpression: target,
+    methodName: target.expression.name.text,
+  }
+}
+
+function readCollectionModelReference(node, state) {
+  const target = skipExpressionWrappers(node)
+  if (!target) {
+    return null
+  }
+
+  if (ts.isIdentifier(target)) {
+    return readExplicitInferenceValue(state, 'collectionModels', target.text)
+  }
+
+  const callDetails = getAppPropertyCallDetails(target)
+  if (!callDetails || !HIGH_CONFIDENCE_COLLECTION_MODEL_METHOD_NAMES.has(callDetails.methodName)) {
+    return null
+  }
+
+  const collectionName = readCollectionNameExpression(callDetails.callExpression.arguments[0], state)
+  if (!collectionName) {
+    return null
+  }
+
+  return {
+    collectionName,
+    confidence: 'high',
+    strategy: `explicit-collection-model:${callDetails.methodName}`,
+  }
+}
+
+function readDirectHighConfidenceRecordReference(node, state) {
+  const callDetails = getAppPropertyCallDetails(node)
+  if (!callDetails || !HIGH_CONFIDENCE_SINGLE_RECORD_METHOD_NAMES.has(callDetails.methodName)) {
+    return null
+  }
+
+  const collectionName = readCollectionNameExpression(callDetails.callExpression.arguments[0], state)
+  if (!collectionName) {
+    return null
+  }
+
+  return {
+    collectionName,
+    confidence: 'high',
+    strategy: `explicit-record-assignment:${callDetails.methodName}`,
+  }
+}
+
+function readNewRecordReference(node, state) {
+  const target = skipExpressionWrappers(node)
+  if (!target || !ts.isNewExpression(target) || !ts.isIdentifier(target.expression) || target.expression.text !== 'Record') {
+    return null
+  }
+
+  const collectionReference = readCollectionModelReference(target.arguments && target.arguments[0], state)
+  if (!collectionReference) {
+    return null
+  }
+
+  return {
+    collectionName: collectionReference.collectionName,
+    confidence: 'high',
+    strategy: `explicit-record-constructor:${collectionReference.strategy}`,
+  }
+}
+
+function isSupportedArrayIndexExpression(node) {
+  const target = skipExpressionWrappers(node)
+  if (!target) {
+    return false
+  }
+
+  if (ts.isIdentifier(target) || ts.isNumericLiteral(target)) {
+    return true
+  }
+
+  return (
+    ts.isPrefixUnaryExpression(target) &&
+    target.operator === ts.SyntaxKind.MinusToken &&
+    ts.isNumericLiteral(target.operand)
+  )
+}
+
+function readIndexedArrayRecordReference(node, state) {
+  const target = skipExpressionWrappers(node)
+  if (!target || !ts.isElementAccessExpression(target) || !isSupportedArrayIndexExpression(target.argumentExpression)) {
+    return null
+  }
+
+  const arrayReference = readArrayCollectionReference(target.expression, state)
+  if (!arrayReference) {
+    return null
+  }
+
+  return {
+    collectionName: arrayReference.collectionName,
+    confidence: 'high',
+    strategy: `explicit-array-index:${arrayReference.strategy}`,
+  }
+}
+
+function readRecordReference(node, state) {
+  const target = skipExpressionWrappers(node)
+  if (!target) {
+    return null
+  }
+
+  if (ts.isIdentifier(target)) {
+    return readExplicitInferenceValue(state, 'recordVariables', target.text)
+  }
+
+  const indexedArrayReference = readIndexedArrayRecordReference(target, state)
+  if (indexedArrayReference) {
+    return indexedArrayReference
+  }
+
+  const directReference = readDirectHighConfidenceRecordReference(target, state)
+  if (directReference) {
+    return directReference
+  }
+
+  const constructedReference = readNewRecordReference(target, state)
+  if (constructedReference) {
+    return constructedReference
+  }
+
+  if (
+    ts.isBinaryExpression(target) &&
+    (target.operatorToken.kind === ts.SyntaxKind.BarBarToken || target.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+  ) {
+    const rightReference = readRecordReference(target.right, state)
+    if (!rightReference) {
+      return null
+    }
+
+    const left = skipExpressionWrappers(target.left)
+    if (isNullishAssignmentValue(left)) {
+      return {
+        ...rightReference,
+        strategy: `explicit-record-fallback:${rightReference.strategy}`,
+      }
+    }
+
+    if (left && ts.isIdentifier(left)) {
+      const leftReference = readExplicitInferenceValue(state, 'recordVariables', left.text)
+      if (leftReference && leftReference.collectionName === rightReference.collectionName) {
+        return {
+          ...rightReference,
+          strategy: `explicit-record-fallback:${rightReference.strategy}`,
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function readDirectRecordArrayReference(node, state) {
+  const callDetails = getAppPropertyCallDetails(node)
+  if (!callDetails || !HIGH_CONFIDENCE_RECORD_ARRAY_METHOD_NAMES.has(callDetails.methodName)) {
+    return null
+  }
+
+  const collectionName = readCollectionNameExpression(callDetails.callExpression.arguments[0], state)
+  if (!collectionName) {
+    return null
+  }
+
+  return {
+    collectionName,
+    confidence: 'high',
+    strategy: `explicit-record-array:${callDetails.methodName}`,
+  }
+}
+
+function readArrayCollectionReference(node, state) {
+  const target = skipExpressionWrappers(node)
+  if (!target) {
+    return null
+  }
+
+  if (ts.isIdentifier(target)) {
+    return readExplicitInferenceValue(state, 'arrayVariables', target.text)
+  }
+
+  const directReference = readDirectRecordArrayReference(target, state)
+  if (directReference) {
+    return directReference
+  }
+
+  if (ts.isCallExpression(target) && ts.isPropertyAccessExpression(target.expression)) {
+    const methodName = target.expression.name.text
+    if (ARRAY_COLLECTION_PASSTHROUGH_METHOD_NAMES.has(methodName)) {
+      const baseReference = readArrayCollectionReference(target.expression.expression, state)
+      if (baseReference) {
+        return {
+          ...baseReference,
+          strategy: `explicit-array-passthrough:${methodName}`,
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function applyExplicitInferenceAssignment(state, variableName, expression, options = {}) {
+  if (!variableName) {
+    return
+  }
+
+  const constStringValue = options.isConst ? readCollectionNameExpression(expression, state) : null
+  if (constStringValue) {
+    writeExplicitInferenceString(state, variableName, constStringValue)
+    return
+  }
+
+  const collectionModelReference = readCollectionModelReference(expression, state)
+  if (collectionModelReference) {
+    writeExplicitInferenceReference(state, 'collectionModels', variableName, collectionModelReference)
+    return
+  }
+
+  const recordReference = readRecordReference(expression, state)
+  if (recordReference) {
+    writeExplicitInferenceReference(state, 'recordVariables', variableName, recordReference)
+    return
+  }
+
+  const arrayReference = readArrayCollectionReference(expression, state)
+  if (arrayReference) {
+    writeExplicitInferenceReference(state, 'arrayVariables', variableName, arrayReference)
+    return
+  }
+
+  if (isNullishAssignmentValue(expression)) {
+    return
+  }
+
+  clearExplicitInferenceReference(state, variableName)
+}
+
+function nodeContainsOffset(sourceFile, node, offset) {
+  if (!node) {
+    return false
+  }
+
+  const start = node.getStart(sourceFile)
+  return start <= offset && offset < node.getEnd()
+}
+
+function isFunctionLikeWithBody(node) {
+  return (
+    !!node &&
+    (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) &&
+    !!node.body
+  )
+}
+
+function walkExplicitInferenceStatements(statements, sourceFile, beforeOffset, state) {
+  for (const statement of statements || []) {
+    if (!statement) {
+      continue
+    }
+
+    const statementStart = statement.getStart(sourceFile)
+    if (statementStart >= beforeOffset) {
+      break
+    }
+
+    const nextOffset = statement.getEnd() <= beforeOffset ? Number.POSITIVE_INFINITY : beforeOffset
+    processExplicitInferenceStatement(statement, sourceFile, nextOffset, state)
+
+    if (nextOffset !== Number.POSITIVE_INFINITY) {
+      break
+    }
+  }
+}
+
+function processExplicitInferenceScopedBlock(block, sourceFile, beforeOffset, state, initialDeclaredNames = [], setupCallback = null) {
+  if (!block || block.getStart(sourceFile) >= beforeOffset) {
+    return
+  }
+
+  const shouldKeepFrame =
+    beforeOffset !== Number.POSITIVE_INFINITY && nodeContainsOffset(sourceFile, block, beforeOffset)
+
+  if (shouldKeepFrame) {
+    state.frames.push(createExplicitInferenceFrame(initialDeclaredNames))
+    if (typeof setupCallback === 'function') {
+      setupCallback()
+    }
+    walkExplicitInferenceStatements(block.statements, sourceFile, beforeOffset, state)
+    return
+  }
+
+  withExplicitInferenceFrame(state, initialDeclaredNames, () => {
+    if (typeof setupCallback === 'function') {
+      setupCallback()
+    }
+    walkExplicitInferenceStatements(block.statements, sourceFile, beforeOffset, state)
+  })
+}
+
+function processExplicitInferenceFunctionLike(node, sourceFile, beforeOffset, state) {
+  if (!isFunctionLikeWithBody(node) || !nodeContainsOffset(sourceFile, node.body, beforeOffset)) {
+    return
+  }
+
+  const parameterNames = []
+  for (const parameter of node.parameters || []) {
+    collectBindingIdentifierNames(parameter.name, parameterNames)
+  }
+
+  if (ts.isBlock(node.body)) {
+    processExplicitInferenceScopedBlock(node.body, sourceFile, beforeOffset, state, parameterNames)
+  } else {
+    state.frames.push(createExplicitInferenceFrame(parameterNames))
+  }
+}
+
+function processExplicitInferenceVariableStatement(statement, sourceFile, beforeOffset, state) {
+  const isConst = !!(statement.declarationList.flags & ts.NodeFlags.Const)
+
+  for (const declaration of statement.declarationList.declarations) {
+    if (!declaration || declaration.getStart(sourceFile) >= beforeOffset) {
+      continue
+    }
+
+    const bindingNames = collectBindingIdentifierNames(declaration.name)
+    for (const bindingName of bindingNames) {
+      declareExplicitInferenceName(state, bindingName)
+    }
+
+    if (!ts.isIdentifier(declaration.name)) {
+      continue
+    }
+
+    const variableName = declaration.name.text
+    const initializer = declaration.initializer
+    if (!initializer) {
+      clearExplicitInferenceReference(state, variableName)
+      continue
+    }
+
+    if (nodeContainsOffset(sourceFile, initializer, beforeOffset) && isFunctionLikeWithBody(initializer)) {
+      processExplicitInferenceFunctionLike(initializer, sourceFile, beforeOffset, state)
+      continue
+    }
+
+    if (initializer.getStart(sourceFile) >= beforeOffset) {
+      continue
+    }
+
+    applyExplicitInferenceAssignment(state, variableName, initializer, { isConst })
+  }
+}
+
+function processExplicitInferenceExpressionStatement(statement, sourceFile, beforeOffset, state) {
+  const expression = skipExpressionWrappers(statement.expression)
+  if (
+    !expression ||
+    !ts.isBinaryExpression(expression) ||
+    expression.operatorToken.kind !== ts.SyntaxKind.EqualsToken
+  ) {
+    return
+  }
+
+  const left = skipParenthesizedExpression(expression.left)
+  if (!left || !ts.isIdentifier(left) || expression.right.getStart(sourceFile) >= beforeOffset) {
+    return
+  }
+
+  applyExplicitInferenceAssignment(state, left.text, expression.right)
+}
+
+function processExplicitInferenceIfStatement(statement, sourceFile, beforeOffset, state) {
+  if (statement.thenStatement && statement.thenStatement.getStart(sourceFile) < beforeOffset) {
+    processExplicitInferenceStatement(statement.thenStatement, sourceFile, beforeOffset, state)
+  }
+
+  if (statement.elseStatement && statement.elseStatement.getStart(sourceFile) < beforeOffset) {
+    processExplicitInferenceStatement(statement.elseStatement, sourceFile, beforeOffset, state)
+  }
+}
+
+function processExplicitInferenceTryStatement(statement, sourceFile, beforeOffset, state) {
+  if (statement.tryBlock && statement.tryBlock.getStart(sourceFile) < beforeOffset) {
+    processExplicitInferenceScopedBlock(statement.tryBlock, sourceFile, beforeOffset, state)
+  }
+
+  if (statement.catchClause && statement.catchClause.getStart(sourceFile) < beforeOffset) {
+    const catchNames = statement.catchClause.variableDeclaration
+      ? collectBindingIdentifierNames(statement.catchClause.variableDeclaration.name)
+      : []
+    processExplicitInferenceScopedBlock(statement.catchClause.block, sourceFile, beforeOffset, state, catchNames)
+  }
+
+  if (statement.finallyBlock && statement.finallyBlock.getStart(sourceFile) < beforeOffset) {
+    processExplicitInferenceScopedBlock(statement.finallyBlock, sourceFile, beforeOffset, state)
+  }
+}
+
+function getForOfLoopBindingName(initializer) {
+  const target = skipExpressionWrappers(initializer)
+  if (!target) {
+    return null
+  }
+
+  if (ts.isIdentifier(target)) {
+    return target.text
+  }
+
+  if (!ts.isVariableDeclarationList(target) || target.declarations.length !== 1) {
+    return null
+  }
+
+  const declaration = target.declarations[0]
+  if (!declaration || !ts.isIdentifier(declaration.name)) {
+    return null
+  }
+
+  return declaration.name.text
+}
+
+function getForOfLoopDeclaredNames(initializer) {
+  const target = skipExpressionWrappers(initializer)
+  if (!target) {
+    return []
+  }
+
+  if (ts.isIdentifier(target)) {
+    return [target.text]
+  }
+
+  if (!ts.isVariableDeclarationList(target)) {
+    return []
+  }
+
+  const declaredNames = []
+  for (const declaration of target.declarations) {
+    collectBindingIdentifierNames(declaration.name, declaredNames)
+  }
+
+  return declaredNames
+}
+
+function processExplicitInferenceForOfStatement(statement, sourceFile, beforeOffset, state) {
+  if (
+    !statement ||
+    !statement.expression ||
+    !statement.statement ||
+    statement.expression.getStart(sourceFile) >= beforeOffset ||
+    !nodeContainsOffset(sourceFile, statement.statement, beforeOffset)
+  ) {
+    return
+  }
+
+  const loopBindingName = getForOfLoopBindingName(statement.initializer)
+  const loopDeclaredNames = getForOfLoopDeclaredNames(statement.initializer)
+  const arrayReference = readArrayCollectionReference(statement.expression, state)
+  const applyLoopBinding = () => {
+    if (!loopBindingName || !arrayReference) {
+      return
+    }
+
+    writeExplicitInferenceReference(state, 'recordVariables', loopBindingName, {
+      collectionName: arrayReference.collectionName,
+      confidence: 'high',
+      strategy: 'explicit-array-iteration:for-of',
+    })
+  }
+
+  if (ts.isBlock(statement.statement)) {
+    processExplicitInferenceScopedBlock(
+      statement.statement,
+      sourceFile,
+      beforeOffset,
+      state,
+      loopDeclaredNames,
+      applyLoopBinding
+    )
+    return
+  }
+
+  withExplicitInferenceFrame(state, loopDeclaredNames, () => {
+    applyLoopBinding()
+    processExplicitInferenceStatement(statement.statement, sourceFile, beforeOffset, state)
+  })
+}
+
+function processExplicitInferenceStatement(statement, sourceFile, beforeOffset, state) {
+  if (!statement || statement.getStart(sourceFile) >= beforeOffset) {
+    return
+  }
+
+  if (ts.isVariableStatement(statement)) {
+    processExplicitInferenceVariableStatement(statement, sourceFile, beforeOffset, state)
+    return
+  }
+
+  if (ts.isExpressionStatement(statement)) {
+    processExplicitInferenceExpressionStatement(statement, sourceFile, beforeOffset, state)
+    return
+  }
+
+  if (ts.isBlock(statement)) {
+    processExplicitInferenceScopedBlock(statement, sourceFile, beforeOffset, state)
+    return
+  }
+
+  if (ts.isIfStatement(statement)) {
+    processExplicitInferenceIfStatement(statement, sourceFile, beforeOffset, state)
+    return
+  }
+
+  if (ts.isTryStatement(statement)) {
+    processExplicitInferenceTryStatement(statement, sourceFile, beforeOffset, state)
+    return
+  }
+
+  if (ts.isForOfStatement(statement)) {
+    processExplicitInferenceForOfStatement(statement, sourceFile, beforeOffset, state)
+    return
+  }
+
+  if (isFunctionLikeWithBody(statement) && nodeContainsOffset(sourceFile, statement, beforeOffset)) {
+    processExplicitInferenceFunctionLike(statement, sourceFile, beforeOffset, state)
+  }
+}
+
+function buildExplicitInferenceState(sourceFile, beforeOffset) {
+  const state = createExplicitInferenceState()
+  walkExplicitInferenceStatements(sourceFile.statements, sourceFile, beforeOffset, state)
+  return state
+}
+
+function inferExplicitVariableCollectionReference(receiverExpression, sourceFile, beforeOffset) {
+  const receiverName = String(receiverExpression || '').trim()
+  if (!receiverName || !isValidIdentifierName(receiverName)) {
+    return null
+  }
+
+  return readExplicitInferenceValue(
+    buildExplicitInferenceState(sourceFile, beforeOffset),
+    'recordVariables',
+    receiverName,
+  )
+}
+
+function inferExplicitIndexedElementCollectionReference(receiverExpression, sourceFile, beforeOffset) {
+  const receiverText = String(receiverExpression || '').trim()
+  const match = receiverText.match(ARRAY_ELEMENT_RECEIVER_RE)
+  if (!match) {
+    return null
+  }
+
+  const state = buildExplicitInferenceState(sourceFile, beforeOffset)
+  const arrayReference = readExplicitInferenceValue(state, 'arrayVariables', match[1])
+  if (!arrayReference) {
+    return null
+  }
+
+  return {
+    collectionName: arrayReference.collectionName,
+    confidence: 'high',
+    strategy: `explicit-array-index:${arrayReference.strategy}`,
+  }
+}
+
+function findInnermostNodeAtOffset(sourceFile, offset) {
+  let match = sourceFile
+
+  const visit = (node) => {
+    if (!nodeContainsOffset(sourceFile, node, offset)) {
+      return
+    }
+
+    match = node
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return match
+}
+
+function inferDirectCallbackCollectionReference(receiverExpression, sourceFile, beforeOffset) {
+  const receiverName = String(receiverExpression || '').trim()
+  if (!receiverName || !isValidIdentifierName(receiverName) || beforeOffset <= 0) {
+    return null
+  }
+
+  let current = findInnermostNodeAtOffset(sourceFile, Math.max(0, beforeOffset - 1))
+  while (current) {
+    if (
+      isFunctionLikeWithBody(current) &&
+      current.parameters.length > 0 &&
+      ts.isIdentifier(current.parameters[0].name) &&
+      current.parameters[0].name.text === receiverName &&
+      current.parent &&
+      ts.isCallExpression(current.parent) &&
+      current.parent.arguments[0] === current &&
+      ts.isPropertyAccessExpression(current.parent.expression)
+    ) {
+      const callbackMethodName = current.parent.expression.name.text
+      if (DIRECT_CALLBACK_COLLECTION_METHOD_NAMES.has(callbackMethodName)) {
+        const callbackState = buildExplicitInferenceState(sourceFile, current.getStart(sourceFile))
+        const arrayReference = readArrayCollectionReference(current.parent.expression.expression, callbackState)
+
+        if (arrayReference) {
+          return {
+            collectionName: arrayReference.collectionName,
+            confidence: 'high',
+            strategy: `explicit-array-callback:${callbackMethodName}`,
+          }
+        }
+      }
+    }
+
+    current = current.parent
+  }
+
+  return null
 }
 
 function getLastPathSegment(value) {
@@ -2402,6 +3257,24 @@ class PocketPagesProjectIndex {
   inferCollectionReference(receiverExpression, scriptText, beforeOffset, options = {}) {
     const receiverName = getLastPathSegment(receiverExpression)
     const collectionNames = this.getCollectionNames()
+    const inferenceSourceFile = ts.createSourceFile(
+      'pocketpages-explicit-record-reference.ts',
+      scriptText,
+      ts.ScriptTarget.Latest,
+      true
+    )
+    const explicitReference = inferExplicitVariableCollectionReference(receiverName, inferenceSourceFile, beforeOffset)
+    if (explicitReference && collectionNames.includes(explicitReference.collectionName)) {
+      return explicitReference
+    }
+    const indexedReference = inferExplicitIndexedElementCollectionReference(receiverExpression, inferenceSourceFile, beforeOffset)
+    if (indexedReference && collectionNames.includes(indexedReference.collectionName)) {
+      return indexedReference
+    }
+    const callbackReference = inferDirectCallbackCollectionReference(receiverName, inferenceSourceFile, beforeOffset)
+    if (callbackReference && collectionNames.includes(callbackReference.collectionName)) {
+      return callbackReference
+    }
     const directCandidates = buildCollectionReferenceCandidates(receiverName)
 
     for (const candidate of directCandidates) {
