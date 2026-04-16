@@ -568,6 +568,11 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected diagnostics feature service to preserve only schema diagnostics for non-pages pb_hooks scripts.'
   )
   assertMatches(
+    serverSource,
+    /const filePath = uriToFilePath\(event\.document\.uri\);\s*if \(isEjsFilePath\(filePath\) \|\| isScriptFilePath\(filePath\)\) \{\s*scheduleDiagnostics\(event\.document\.uri\);/,
+    'Expected server.js to schedule diagnostics for both EJS files and hook scripts after content changes.'
+  )
+  assertMatches(
     tsPluginSource,
     /core\.isFeatureEnabledAtOffset\(\s*documentContext\.uri,\s*position,\s*capabilityName\s*\)/,
     'Expected PocketPages TS plugin to respect mapper ownership before serving TS features for .ejs.'
@@ -1563,6 +1568,81 @@ const isSignedIn = !!authState && authState.isSignedIn
     })
     if (!Array.isArray(lspSmokeReferences) || lspSmokeReferences.length < 3) {
       throw new Error(`Expected TS feature references to include declaration and script usage. Got: ${JSON.stringify(lspSmokeReferences)}`)
+    }
+
+    const schemaOnlyCustomFeatureCore = new PocketPagesLanguageCore()
+    const schemaOnlyCustomFeatureText = `redirect('/')\n`
+    const schemaOnlyCustomFeatureDocument = createTestDocument(
+      fixture.jobScriptFilePath,
+      'javascript',
+      1,
+      schemaOnlyCustomFeatureText
+    )
+    const schemaOnlyCustomFeatureUri = schemaOnlyCustomFeatureDocument.uri
+    schemaOnlyCustomFeatureCore.openDocument({
+      uri: schemaOnlyCustomFeatureUri,
+      languageId: 'javascript',
+      version: 1,
+      text: schemaOnlyCustomFeatureText,
+    })
+    const schemaOnlyCustomFeatureContext = createLspServiceSmokeContext(
+      schemaOnlyCustomFeatureCore,
+      new Map([[schemaOnlyCustomFeatureUri, schemaOnlyCustomFeatureDocument]])
+    )
+    const schemaOnlyCustomFeatureService = createCustomFeatureService(
+      schemaOnlyCustomFeatureContext.context
+    )
+    const schemaOnlyPathPosition = schemaOnlyCustomFeatureDocument.positionAt(
+      schemaOnlyCustomFeatureText.indexOf("'/'") + 1
+    )
+    if (
+      schemaOnlyCustomFeatureService.provideHover({
+        textDocument: { uri: schemaOnlyCustomFeatureUri },
+        position: schemaOnlyPathPosition,
+      }) !== null
+    ) {
+      throw new Error('Expected schema-support-only hook scripts to suppress custom path hover.')
+    }
+    if (
+      schemaOnlyCustomFeatureService.provideDefinition({
+        textDocument: { uri: schemaOnlyCustomFeatureUri },
+        position: schemaOnlyPathPosition,
+      }) !== null
+    ) {
+      throw new Error('Expected schema-support-only hook scripts to suppress custom path definitions.')
+    }
+    if (
+      schemaOnlyCustomFeatureService.provideDocumentLinks({
+        textDocument: { uri: schemaOnlyCustomFeatureUri },
+      }) !== null
+    ) {
+      throw new Error('Expected schema-support-only hook scripts to suppress custom document links.')
+    }
+    if (
+      schemaOnlyCustomFeatureService.provideReferences({
+        textDocument: { uri: schemaOnlyCustomFeatureUri },
+        position: schemaOnlyPathPosition,
+        context: { includeDeclaration: true },
+      }) !== null
+    ) {
+      throw new Error('Expected schema-support-only hook scripts to suppress custom references.')
+    }
+    if (
+      schemaOnlyCustomFeatureService.providePrepareRename({
+        textDocument: { uri: schemaOnlyCustomFeatureUri },
+        position: schemaOnlyPathPosition,
+      }) !== null
+    ) {
+      throw new Error('Expected schema-support-only hook scripts to suppress custom rename prepare.')
+    }
+    if (
+      schemaOnlyCustomFeatureService.provideRename({
+        textDocument: { uri: schemaOnlyCustomFeatureUri },
+        position: schemaOnlyPathPosition,
+        newName: 'nextPath',
+      }) !== null
+    ) {
+      throw new Error('Expected schema-support-only hook scripts to suppress custom rename edits.')
     }
     const lspSmokePrepareRename = tsFeatureService.providePrepareRename({
       textDocument: { uri: lspSmokeUri },

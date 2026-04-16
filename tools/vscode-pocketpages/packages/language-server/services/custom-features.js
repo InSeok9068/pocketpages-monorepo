@@ -30,6 +30,13 @@ function createCustomFeatureService(context) {
     };
   }
 
+  function isSchemaSupportOnlyDocument(documentContext) {
+    return !!(
+      documentContext &&
+      helpers.isSchemaSupportOnlyHookScriptPath(documentContext.filePath)
+    );
+  }
+
   return {
     provideCompletionItems(params) {
       const requestContext = getDocumentRequestContext(params);
@@ -88,6 +95,10 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
+      if (isSchemaSupportOnlyDocument(documentContext)) {
+        return null;
+      }
+
       return (
         documentContext.service.getPathTargetInfo(
           documentContext.filePath,
@@ -104,6 +115,10 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
+      if (isSchemaSupportOnlyDocument(documentContext)) {
+        return null;
+      }
+
       return documentContext.service.getCustomDefinitionTarget(
         documentContext.filePath,
         documentText,
@@ -119,6 +134,10 @@ function createCustomFeatureService(context) {
 
       const documentContext = getDocumentContextByUri(params.textDocument.uri);
       if (!documentContext) {
+        return null;
+      }
+
+      if (isSchemaSupportOnlyDocument(documentContext)) {
         return null;
       }
 
@@ -145,6 +164,10 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
+      if (isSchemaSupportOnlyDocument(documentContext)) {
+        return null;
+      }
+
       const signatureHelp = documentContext.service.getCustomSignatureHelp(
         documentContext.filePath,
         documentText,
@@ -161,6 +184,10 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
+      if (isSchemaSupportOnlyDocument(documentContext)) {
+        return null;
+      }
+
       return documentContext.service.getCustomReferenceTargets(
         documentContext.filePath,
         documentText,
@@ -176,6 +203,10 @@ function createCustomFeatureService(context) {
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      if (isSchemaSupportOnlyDocument(documentContext)) {
+        return null;
+      }
+
       const renameInfo = documentContext.service.getCustomRenameInfo(
         documentContext.filePath,
         documentText,
@@ -201,6 +232,10 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
+      if (isSchemaSupportOnlyDocument(documentContext)) {
+        return null;
+      }
+
       const renameResult = documentContext.service.getCustomRenameEdits(
         documentContext.filePath,
         documentText,

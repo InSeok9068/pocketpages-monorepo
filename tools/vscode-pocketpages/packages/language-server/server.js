@@ -690,7 +690,8 @@ documents.onDidChangeContent((event) => {
     changes: Array.isArray(event.contentChanges) ? event.contentChanges.length : 0,
   });
 
-  if (isScriptFilePath(uriToFilePath(event.document.uri))) {
+  const filePath = uriToFilePath(event.document.uri);
+  if (isEjsFilePath(filePath) || isScriptFilePath(filePath)) {
     scheduleDiagnostics(event.document.uri);
   }
 });
