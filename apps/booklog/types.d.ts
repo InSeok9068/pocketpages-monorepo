@@ -1,5 +1,3 @@
-declare function require(moduleName: string): any;
-
 declare namespace types {
   interface BookSearchScoreDetails {
     titleExact: boolean
