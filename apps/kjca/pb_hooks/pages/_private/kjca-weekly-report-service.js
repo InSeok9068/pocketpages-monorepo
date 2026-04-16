@@ -1,4 +1,5 @@
-const { globalApi } = require('pocketpages')
+/** @type {import('pocketpages').PagesGlobalContext} */
+const globalApi = require('pocketpages').globalApi
 const { info, dbg, warn } = globalApi
 const { createKjcaSession } = require('./kjca-auth')
 const {

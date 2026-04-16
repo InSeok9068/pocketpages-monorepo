@@ -1,4 +1,5 @@
-const { globalApi } = require('pocketpages')
+/** @type {import('pocketpages').PagesGlobalContext} */
+const globalApi = require('pocketpages').globalApi
 const { info, dbg } = globalApi
 const {
   KJCA_EMAIL_DOMAIN,

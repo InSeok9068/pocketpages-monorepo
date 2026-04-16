@@ -1,4 +1,5 @@
-const { globalApi } = require('pocketpages')
+/** @type {import('pocketpages').PagesGlobalContext} */
+const globalApi = require('pocketpages').globalApi
 const { env, warn, info } = globalApi
 const {
   CACHE_COLLECTION_NAME,

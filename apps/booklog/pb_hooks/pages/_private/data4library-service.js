@@ -1,4 +1,5 @@
-const { globalApi } = require('pocketpages')
+/** @type {import('pocketpages').PagesGlobalContext} */
+const globalApi = require('pocketpages').globalApi
 const dbg = globalApi.dbg
 
 const DEFAULT_BASE_URL = 'http://data4library.kr/api'
