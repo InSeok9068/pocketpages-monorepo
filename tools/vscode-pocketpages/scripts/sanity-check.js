@@ -15,12 +15,16 @@ const { getServerTemplateBoundaryLineNumbers } = require('../packages/language-c
 const { createTypeScriptFeatureService } = require('../packages/language-server/services/ts-features')
 const { createCustomFeatureService } = require('../packages/language-server/services/custom-features')
 const { createDiagnosticsFeatureService } = require('../packages/language-server/services/diagnostics-features')
+const { createLifecycleFeatureService } = require('../packages/language-server/services/lifecycle-features')
 const { createMaintenanceFeatureService } = require('../packages/language-server/services/maintenance-features')
+const { createStructureFeatureService } = require('../packages/language-server/services/structure-features')
+const initTypeScriptPlugin = require('../packages/typescript-plugin')
 const {
   buildScriptServerMirrorText,
   collectExternalPocketPagesEjsFiles,
   isPocketPagesEjsFile,
 } = require('../packages/typescript-plugin/shared')
+const { getTokenTypeIndex } = require('../packages/language-server/ejs-semantic-tokens')
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true })
@@ -1938,6 +1942,514 @@ const isSignedIn = !!authState && authState.isSignedIn
       throw new Error(
         `Expected reloadCaches maintenance flow to clear completion cache entries for every affected URI. Got: ${JSON.stringify(clearedCompletionUris)}`
       )
+    }
+
+    const watchedManager = new PocketPagesLanguageServiceManager()
+    const watchedPrimaryService = watchedManager.getServiceForFile(fixture.boardsFilePath)
+    const watchedSecondaryService = watchedManager.getServiceForFile(fixture.secondarySiteIndexFilePath)
+    if (!watchedPrimaryService || !watchedSecondaryService) {
+      throw new Error('Expected watched-file manager smoke to resolve both primary and secondary app services.')
+    }
+    const primaryProjectVersionBeforeWatch = watchedPrimaryService.projectVersion
+    const secondaryProjectVersionBeforeWatch = watchedSecondaryService.projectVersion
+    const watchedManagerResults = watchedManager.handleWatchedFileChanges([
+      { filePath: fixture.boardServiceFilePath, type: 'change' },
+      { filePath: fixture.secondaryJournalServiceFilePath, type: 'change' },
+      { filePath: path.join(fixture.fixtureRoot, 'README.md'), type: 'change' },
+    ])
+    const watchedManagerAppRoots = watchedManagerResults.map((entry) => normalizeFilePath(entry.appRoot)).sort()
+    if (
+      watchedManagerAppRoots.length !== 2 ||
+      !watchedManagerAppRoots.includes(normalizeFilePath(fixture.appRoot)) ||
+      !watchedManagerAppRoots.includes(normalizeFilePath(fixture.secondaryAppRoot))
+    ) {
+      throw new Error(
+        `Expected watched-file manager handling to stay app-scoped and ignore unrelated files. Got: ${JSON.stringify(watchedManagerResults)}`
+      )
+    }
+    if (watchedPrimaryService.projectVersion <= primaryProjectVersionBeforeWatch) {
+      throw new Error('Expected watched-file manager to reset the primary app service after a managed file change.')
+    }
+    if (watchedSecondaryService.projectVersion <= secondaryProjectVersionBeforeWatch) {
+      throw new Error('Expected watched-file manager to reset the secondary app service after a managed file change.')
+    }
+
+    const watchedRouteCore = new PocketPagesLanguageCore()
+    const watchedRouteBoardsText = fs.readFileSync(fixture.boardsFilePath, 'utf8')
+    const watchedRouteBoardsUri = URI.file(fixture.boardsFilePath).toString()
+    watchedRouteCore.openDocument({
+      uri: watchedRouteBoardsUri,
+      languageId: 'ejs',
+      version: 1,
+      text: watchedRouteBoardsText,
+    })
+    const watchedRouteText = `<a href="/live-preview">Preview</a>\n`
+    const watchedRouteOffset = watchedRouteText.indexOf('/live-preview') + 2
+    const watchedRouteFilePath = path.join(fixture.appRoot, 'pb_hooks', 'pages', '(site)', 'live-preview.ejs')
+    const watchedRouteContextBefore = watchedRouteCore.getDocumentContextByUri(watchedRouteBoardsUri)
+    const watchedRouteTargetBefore = watchedRouteContextBefore.service.getPathTargetInfo(
+      fixture.boardsFilePath,
+      watchedRouteText,
+      watchedRouteOffset
+    )
+    if (watchedRouteTargetBefore) {
+      throw new Error(`Expected unresolved route path before watched-file creation. Got: ${JSON.stringify(watchedRouteTargetBefore)}`)
+    }
+    writeFile(watchedRouteFilePath, `<h1>Preview</h1>\n`)
+    const watchedRouteCreateResult = watchedRouteCore.handleWatchedFileChanges([
+      { filePath: watchedRouteFilePath, type: 'create' },
+    ])
+    if (!watchedRouteCreateResult.affectedUris.includes(watchedRouteBoardsUri)) {
+      throw new Error(
+        `Expected route watched-file create to resync open documents in the same app. Got: ${JSON.stringify(watchedRouteCreateResult)}`
+      )
+    }
+    const watchedRouteTargetAfterCreate = watchedRouteCore.getDocumentContextByUri(watchedRouteBoardsUri).service.getPathTargetInfo(
+      fixture.boardsFilePath,
+      watchedRouteText,
+      watchedRouteOffset
+    )
+    if (
+      !watchedRouteTargetAfterCreate ||
+      normalizeFilePath(watchedRouteTargetAfterCreate.targetFilePath) !== normalizeFilePath(watchedRouteFilePath)
+    ) {
+      throw new Error(
+        `Expected watched-file route create to surface the new route target immediately. Got: ${JSON.stringify(watchedRouteTargetAfterCreate)}`
+      )
+    }
+    fs.rmSync(watchedRouteFilePath, { force: true })
+    watchedRouteCore.handleWatchedFileChanges([
+      { filePath: watchedRouteFilePath, type: 'delete' },
+    ])
+    const watchedRouteTargetAfterDelete = watchedRouteCore.getDocumentContextByUri(watchedRouteBoardsUri).service.getPathTargetInfo(
+      fixture.boardsFilePath,
+      watchedRouteText,
+      watchedRouteOffset
+    )
+    if (watchedRouteTargetAfterDelete) {
+      throw new Error(
+        `Expected watched-file route delete to drop the removed route target. Got: ${JSON.stringify(watchedRouteTargetAfterDelete)}`
+      )
+    }
+
+    const watchedSchemaCore = new PocketPagesLanguageCore()
+    const watchedSchemaBoardsUri = URI.file(fixture.boardsFilePath).toString()
+    watchedSchemaCore.openDocument({
+      uri: watchedSchemaBoardsUri,
+      languageId: 'ejs',
+      version: 1,
+      text: watchedRouteBoardsText,
+    })
+    const schemaCollectionsBeforeWatch = watchedSchemaCore
+      .getDocumentContextByUri(watchedSchemaBoardsUri)
+      .service.projectIndex.getCollectionNames()
+    if (schemaCollectionsBeforeWatch.includes('comments')) {
+      throw new Error(`Expected fixture schema to start without comments collection. Got: ${schemaCollectionsBeforeWatch.join(', ')}`)
+    }
+    const originalFixtureSchemaText = fs.readFileSync(fixture.schemaFilePath, 'utf8')
+    writeFile(
+      fixture.schemaFilePath,
+      JSON.stringify(
+        [
+          {
+            name: 'boards',
+            fields: [
+              { name: 'name', type: 'text' },
+              { name: 'slug', type: 'text' },
+              { name: 'description', type: 'text' },
+              { name: 'is_active', type: 'bool' },
+              { name: 'sort_order', type: 'number' },
+              { name: 'meta_json', type: 'json' },
+            ],
+          },
+          {
+            name: 'posts',
+            fields: [
+              { name: 'title', type: 'text' },
+              { name: 'board', type: 'relation' },
+            ],
+          },
+          {
+            name: 'comments',
+            fields: [
+              { name: 'body', type: 'text' },
+            ],
+          },
+        ],
+        null,
+        2
+      )
+    )
+    const watchedSchemaChangeResult = watchedSchemaCore.handleWatchedFileChanges([
+      { filePath: fixture.schemaFilePath, type: 'change' },
+    ])
+    if (!watchedSchemaChangeResult.affectedUris.includes(watchedSchemaBoardsUri)) {
+      throw new Error(
+        `Expected schema watched-file change to resync open documents in the same app. Got: ${JSON.stringify(watchedSchemaChangeResult)}`
+      )
+    }
+    const schemaCollectionsAfterWatch = watchedSchemaCore
+      .getDocumentContextByUri(watchedSchemaBoardsUri)
+      .service.projectIndex.getCollectionNames()
+    if (!schemaCollectionsAfterWatch.includes('comments')) {
+      throw new Error(
+        `Expected schema watched-file change to refresh collection cache for open documents. Got: ${schemaCollectionsAfterWatch.join(', ')}`
+      )
+    }
+    writeFile(fixture.schemaFilePath, originalFixtureSchemaText)
+
+    const lifecycleOpenPublishCalls = []
+    const lifecycleScheduledUris = []
+    const lifecycleCancelledUris = []
+    const lifecycleClearedCompletionUris = []
+    const lifecycleSentDiagnostics = []
+    const lifecycleWatchedChanges = []
+    const lifecycleCoreCalls = {
+      open: [],
+      update: [],
+      close: [],
+    }
+    const lifecycleDocs = new Map()
+    const lifecycleBoardsText = `<script server>\nmeta('title')\n</script>\n`
+    const lifecycleBoardsDocument = createTestDocument(fixture.boardsFilePath, 'ejs', 1, lifecycleBoardsText)
+    const lifecycleBoardsUri = lifecycleBoardsDocument.uri
+    lifecycleDocs.set(lifecycleBoardsUri, lifecycleBoardsDocument)
+    const lifecycleWatchedDocument = createTestDocument(
+      fixture.localAssetFilePath,
+      'javascript',
+      1,
+      `console.log('asset')\n`
+    )
+    lifecycleDocs.set(lifecycleWatchedDocument.uri, lifecycleWatchedDocument)
+    const lifecycleVendorDocument = createTestDocument(
+      fixture.vendorAssetFilePath,
+      'javascript',
+      1,
+      `window.JSZip = {}\n`
+    )
+    const lifecycleCore = {
+      openDocument(document) {
+        lifecycleCoreCalls.open.push(document)
+      },
+      updateDocument(document) {
+        lifecycleCoreCalls.update.push(document)
+      },
+      closeDocument(uri) {
+        lifecycleCoreCalls.close.push(uri)
+      },
+      handleWatchedFileChanges(changes) {
+        lifecycleWatchedChanges.push(changes)
+        return {
+          affectedUris: [lifecycleBoardsUri, lifecycleVendorDocument.uri],
+          appResults: [
+            {
+              appRoot: fixture.appRoot,
+              changes,
+              affectedUris: [lifecycleBoardsUri],
+            },
+          ],
+        }
+      },
+    }
+    const lifecycleFeatureService = createLifecycleFeatureService({
+      core: lifecycleCore,
+      documents: lifecycleDocs,
+      connection: {
+        sendDiagnostics(payload) {
+          lifecycleSentDiagnostics.push(payload)
+        },
+      },
+      state: {
+        diagnosticRunIds: new Map([[lifecycleBoardsUri, 1]]),
+      },
+      FileChangeType: {
+        Created: 1,
+        Changed: 2,
+        Deleted: 3,
+      },
+      helpers: {
+        clearCachedCompletionItemsForUri(uri) {
+          lifecycleClearedCompletionUris.push(uri)
+        },
+        cancelScheduledDiagnostics(uri) {
+          lifecycleCancelledUris.push(uri)
+        },
+        getRelativePathLabel(filePath) {
+          return normalizeFilePath(filePath)
+        },
+        isEjsFilePath(filePath) {
+          return String(filePath || '').endsWith('.ejs')
+        },
+        isExcludedPocketPagesScriptPath(filePath) {
+          return normalizeFilePath(filePath) === normalizeFilePath(fixture.vendorAssetFilePath)
+        },
+        isScriptFilePath(filePath) {
+          return /\.(js|cjs|mjs)$/i.test(String(filePath || ''))
+        },
+        logServer() {},
+        publishDiagnostics(uri) {
+          lifecycleOpenPublishCalls.push(uri)
+        },
+        scheduleDiagnostics(uri) {
+          lifecycleScheduledUris.push(uri)
+        },
+        uriToFilePath(uri) {
+          return URI.parse(uri).fsPath
+        },
+      },
+    })
+    lifecycleFeatureService.handleDidOpen({ document: lifecycleBoardsDocument })
+    lifecycleFeatureService.handleDidOpen({ document: lifecycleVendorDocument })
+    if (lifecycleCoreCalls.open.length !== 2) {
+      throw new Error(`Expected lifecycle open to forward both documents to core. Got: ${JSON.stringify(lifecycleCoreCalls.open)}`)
+    }
+    if (!lifecycleOpenPublishCalls.includes(lifecycleBoardsUri)) {
+      throw new Error(`Expected lifecycle open to publish diagnostics for regular EJS documents. Got: ${JSON.stringify(lifecycleOpenPublishCalls)}`)
+    }
+    if (
+      !lifecycleSentDiagnostics.some(
+        (entry) => entry.uri === lifecycleVendorDocument.uri && Array.isArray(entry.diagnostics) && entry.diagnostics.length === 0
+      )
+    ) {
+      throw new Error(`Expected lifecycle open to publish empty diagnostics for excluded vendor scripts. Got: ${JSON.stringify(lifecycleSentDiagnostics)}`)
+    }
+    lifecycleFeatureService.handleDidChangeContent({
+      document: lifecycleBoardsDocument,
+      contentChanges: [{ text: 'meta(\'description\')' }],
+    })
+    lifecycleFeatureService.handleDidChangeContent({
+      document: lifecycleVendorDocument,
+      contentChanges: [{ text: 'window.JSZip = { loaded: true }' }],
+    })
+    if (
+      lifecycleCoreCalls.update.length !== 2 ||
+      !lifecycleClearedCompletionUris.includes(lifecycleBoardsUri) ||
+      !lifecycleClearedCompletionUris.includes(lifecycleVendorDocument.uri)
+    ) {
+      throw new Error(
+        `Expected lifecycle change handling to update core state and clear completion caches for both document kinds. Got updates=${JSON.stringify(lifecycleCoreCalls.update)} cleared=${JSON.stringify(lifecycleClearedCompletionUris)}`
+      )
+    }
+    if (!lifecycleScheduledUris.includes(lifecycleBoardsUri)) {
+      throw new Error(`Expected lifecycle change to schedule diagnostics for regular documents. Got: ${JSON.stringify(lifecycleScheduledUris)}`)
+    }
+    lifecycleFeatureService.handleDidManualSave({ uri: lifecycleBoardsUri })
+    if (lifecycleOpenPublishCalls.filter((uri) => uri === lifecycleBoardsUri).length < 2) {
+      throw new Error(`Expected manual save to republish diagnostics for the requested document. Got: ${JSON.stringify(lifecycleOpenPublishCalls)}`)
+    }
+    lifecycleFeatureService.handleDidChangeWatchedFiles({
+      changes: [
+        { uri: lifecycleWatchedDocument.uri, type: 2 },
+        { uri: URI.file(fixture.boardServiceFilePath).toString(), type: 2 },
+        { uri: URI.file(fixture.feedbackPageFilePath).toString(), type: 1 },
+        { uri: URI.file(fixture.vendorAssetFilePath).toString(), type: 3 },
+      ],
+    })
+    if (
+      lifecycleWatchedChanges.length !== 1 ||
+      lifecycleWatchedChanges[0].length !== 3 ||
+      lifecycleWatchedChanges[0][0].type !== 'change' ||
+      lifecycleWatchedChanges[0][1].type !== 'create' ||
+      lifecycleWatchedChanges[0][2].type !== 'delete'
+    ) {
+      throw new Error(`Expected lifecycle watched-file handling to ignore open changed docs and normalize change kinds. Got: ${JSON.stringify(lifecycleWatchedChanges)}`)
+    }
+    lifecycleFeatureService.handleDidClose({ document: lifecycleBoardsDocument })
+    if (
+      lifecycleCoreCalls.close.length !== 1 ||
+      lifecycleCoreCalls.close[0] !== lifecycleBoardsUri ||
+      !lifecycleCancelledUris.includes(lifecycleBoardsUri)
+    ) {
+      throw new Error(`Expected lifecycle close to clear state, cancel diagnostics, and close the core document. Got: ${JSON.stringify({ close: lifecycleCoreCalls.close, cancelled: lifecycleCancelledUris })}`)
+    }
+
+    const maintenanceProbeCalls = []
+    const maintenanceRefreshUris = []
+    const maintenanceReferenceCalls = []
+    const maintenanceRenameCalls = []
+    const maintenanceFeatureServiceFull = createMaintenanceFeatureService({
+      core: {
+        probeFile(filePath) {
+          maintenanceProbeCalls.push(filePath)
+          return { filePath, hasAppRoot: true, diagnostics: 2 }
+        },
+        reloadCaches(targetFilePath) {
+          return {
+            targetFilePath,
+            scoped: !!targetFilePath,
+            affectedUris: [lifecycleBoardsUri],
+            message: 'PocketPages caches reloaded for the current app.',
+          }
+        },
+        getFileReferenceResult(filePath) {
+          maintenanceReferenceCalls.push(filePath)
+          return { referenceQuery: { kind: 'route-file', routePath: '/boards' }, references: [{ filePath }] }
+        },
+        getFileRenameEdits(oldFilePath, newFilePath) {
+          maintenanceRenameCalls.push([oldFilePath, newFilePath])
+          return [{ filePath: oldFilePath, textChanges: [{ start: 0, end: 1, newText: newFilePath }] }]
+        },
+      },
+      helpers: {
+        clearCachedCompletionItemsForUri() {},
+        elapsedMilliseconds() {
+          return 0
+        },
+        getRelativePathLabel(filePath) {
+          return normalizeFilePath(filePath)
+        },
+        logServer() {},
+        publishDiagnostics(uri) {
+          maintenanceRefreshUris.push(uri)
+        },
+        uriToFilePath(uri) {
+          return URI.parse(uri).fsPath
+        },
+      },
+    })
+    const maintenanceProbeResult = maintenanceFeatureServiceFull.provideProbeCurrentFile({ uri: lifecycleBoardsUri })
+    if (
+      !maintenanceProbeResult.hasAppRoot ||
+      normalizeFilePath(maintenanceProbeCalls[0]) !== normalizeFilePath(fixture.boardsFilePath)
+    ) {
+      throw new Error(`Expected maintenance probe to forward the normalized file path and return core results. Got: ${JSON.stringify({ maintenanceProbeResult, maintenanceProbeCalls })}`)
+    }
+    const maintenanceRefreshResult = maintenanceFeatureServiceFull.provideRefreshDiagnostics({ uri: lifecycleBoardsUri })
+    if (!maintenanceRefreshResult.ok || !maintenanceRefreshUris.includes(lifecycleBoardsUri)) {
+      throw new Error(`Expected maintenance refreshDiagnostics to republish diagnostics for the requested URI. Got: ${JSON.stringify({ maintenanceRefreshResult, maintenanceRefreshUris })}`)
+    }
+    const maintenanceReferencesResult = maintenanceFeatureServiceFull.provideAllFileReferences({ uri: lifecycleBoardsUri })
+    if (
+      normalizeFilePath(maintenanceReferenceCalls[0]) !== normalizeFilePath(fixture.boardsFilePath) ||
+      !maintenanceReferencesResult ||
+      !Array.isArray(maintenanceReferencesResult.references) ||
+      maintenanceReferencesResult.references.length !== 1
+    ) {
+      throw new Error(`Expected maintenance all-file-references to proxy the core result. Got: ${JSON.stringify({ maintenanceReferencesResult, maintenanceReferenceCalls })}`)
+    }
+    const maintenanceRenameResult = maintenanceFeatureServiceFull.provideFileRenameEdits({
+      oldUri: URI.file(fixture.flashAlertFilePath).toString(),
+      newUri: URI.file(path.join(path.dirname(fixture.flashAlertFilePath), 'flash-banner.ejs')).toString(),
+    })
+    if (
+      maintenanceRenameCalls.length !== 1 ||
+      normalizeFilePath(maintenanceRenameCalls[0][0]) !== normalizeFilePath(fixture.flashAlertFilePath) ||
+      !Array.isArray(maintenanceRenameResult) ||
+      maintenanceRenameResult.length !== 1
+    ) {
+      throw new Error(`Expected maintenance fileRenameEdits to proxy old/new paths into core rename edits. Got: ${JSON.stringify({ maintenanceRenameResult, maintenanceRenameCalls })}`)
+    }
+
+    class TestSemanticTokensBuilder {
+      constructor() {
+        this.values = []
+      }
+
+      push(line, character, length, tokenType, modifiers) {
+        this.values.push(line, character, length, tokenType, modifiers)
+      }
+
+      build() {
+        return { data: this.values }
+      }
+    }
+    const structureBoardText = `<script server>\nconst mode = 'board'\n</script>\n<div><%= mode %></div>\n`
+    const structureBoardDocument = createTestDocument(fixture.boardsFilePath, 'ejs', 1, structureBoardText)
+    const structureBoardUri = structureBoardDocument.uri
+    const structureCore = new PocketPagesLanguageCore()
+    structureCore.openDocument({
+      uri: structureBoardUri,
+      languageId: 'ejs',
+      version: 1,
+      text: structureBoardText,
+    })
+    const structureDocuments = new Map([[structureBoardUri, structureBoardDocument]])
+    const structureDocumentContexts = new Map([
+      [
+        structureBoardUri,
+        {
+          filePath: fixture.boardsFilePath,
+          service: {
+            getCodeLensEntries() {
+              return [
+                {
+                  title: 'Open flash alert',
+                  start: 0,
+                  targetFilePath: fixture.flashAlertFilePath,
+                },
+                {
+                  title: 'Show refs',
+                  start: 5,
+                  command: 'pocketpagesServerScript.allFileReferences',
+                  arguments: [structureBoardUri],
+                },
+              ]
+            },
+          },
+        },
+      ],
+    ])
+    const structureFeatureService = createStructureFeatureService({
+      URI,
+      TextDocument: {
+        create(uri, languageId, version, text) {
+          return createTestDocument(URI.parse(uri).fsPath, languageId, version, text)
+        },
+      },
+      core: structureCore,
+      helpers: {
+        getDocumentByUri(uri) {
+          return structureDocuments.get(uri) || null
+        },
+        getDocumentContextByUri(uri) {
+          return structureDocumentContexts.get(uri) || null
+        },
+        hasPrivatePagesSegment(filePath) {
+          return normalizeFilePath(filePath).includes('/pb_hooks/pages/_private/')
+        },
+        isEjsFilePath(filePath) {
+          return String(filePath || '').endsWith('.ejs')
+        },
+        uriToFilePath(uri) {
+          return URI.parse(uri).fsPath
+        },
+      },
+      getServerTemplateBoundaryLineNumbers,
+      collectEjsSemanticTokenEntries,
+      getTokenTypeIndex,
+      SemanticTokensBuilder: TestSemanticTokensBuilder,
+    })
+    const structureSemanticTokens = structureFeatureService.provideSemanticTokens({
+      textDocument: { uri: structureBoardUri },
+    })
+    if (!structureSemanticTokens || !Array.isArray(structureSemanticTokens.data) || structureSemanticTokens.data.length === 0) {
+      throw new Error(`Expected structure service to emit semantic tokens for EJS documents. Got: ${JSON.stringify(structureSemanticTokens)}`)
+    }
+    const structureMissingSemanticTokens = structureFeatureService.provideSemanticTokens({
+      textDocument: { uri: URI.file(fixture.boardServiceFilePath).toString() },
+    })
+    if (!structureMissingSemanticTokens || structureMissingSemanticTokens.data.length !== 0) {
+      throw new Error(`Expected structure service to return empty semantic tokens for non-EJS or missing documents. Got: ${JSON.stringify(structureMissingSemanticTokens)}`)
+    }
+    const structureCodeLensEntries = structureFeatureService.provideCodeLens({
+      textDocument: { uri: structureBoardUri },
+    })
+    if (
+      !Array.isArray(structureCodeLensEntries) ||
+      !structureCodeLensEntries.some((entry) => entry.command && entry.command.title === 'Template') ||
+      !structureCodeLensEntries.some(
+        (entry) =>
+          entry.command &&
+          entry.command.command === 'pocketpagesServerScript.openCodeLensTarget' &&
+          entry.command.arguments &&
+          entry.command.arguments[0] === URI.file(fixture.flashAlertFilePath).toString()
+      )
+    ) {
+      throw new Error(`Expected structure service to expose boundary and target-opening CodeLens entries. Got: ${JSON.stringify(structureCodeLensEntries)}`)
+    }
+    const structureFallbackDocument = structureFeatureService.getDocumentForFile(fixture.flashAlertFilePath)
+    if (!structureFallbackDocument || !String(structureFallbackDocument.getText()).includes('flashTone')) {
+      throw new Error(`Expected structure service getDocumentForFile() to fall back to core-backed file text. Got: ${JSON.stringify(structureFallbackDocument)}`)
     }
 
     const coldDiagnosticsWriteProbe = withWriteFileSyncCount(() => {
@@ -5234,6 +5746,116 @@ const authState = resolve('auth-service')
       throw new Error(
         `Expected PocketPages TS plugin helper to surface page and partial .ejs files. Got: ${pluginExternalFiles.join(', ')}`
       )
+    }
+
+    const pluginRuntimeFactory = initTypeScriptPlugin({ typescript: ts })
+    let pluginProjectVersion = '1'
+    const pluginBaseLanguageService = {
+      getCompletionsAtPosition() {
+        return null
+      },
+      getCompletionEntryDetails() {
+        return null
+      },
+      getQuickInfoAtPosition() {
+        return null
+      },
+      getDefinitionAtPosition() {
+        return null
+      },
+      getDefinitionAndBoundSpan() {
+        return null
+      },
+    }
+    const pluginHost = {
+      getScriptSnapshot(fileName) {
+        if (!fs.existsSync(fileName)) {
+          return undefined
+        }
+        return ts.ScriptSnapshot.fromString(fs.readFileSync(fileName, 'utf8'))
+      },
+      getScriptVersion() {
+        return ''
+      },
+      getProjectVersion() {
+        return pluginProjectVersion
+      },
+      getScriptKind() {
+        return ts.ScriptKind.JS
+      },
+      getCurrentDirectory() {
+        return fixture.appRoot
+      },
+      getCompilationSettings() {
+        return {}
+      },
+    }
+    const pluginProject = {
+      getProjectVersion() {
+        return pluginProjectVersion
+      },
+      getProjectName() {
+        return path.join(fixture.appRoot, 'jsconfig.json')
+      },
+      getCurrentDirectory() {
+        return fixture.appRoot
+      },
+    }
+    const originalPluginReloadCachesForAppRoot = PocketPagesLanguageCore.prototype.reloadCachesForAppRoot
+    const originalPluginCloseDocument = PocketPagesLanguageCore.prototype.closeDocument
+    const pluginReloadAppRoots = []
+    const pluginClosedUris = []
+    PocketPagesLanguageCore.prototype.reloadCachesForAppRoot = function patchedReloadCachesForAppRoot(appRoot) {
+      pluginReloadAppRoots.push(normalizeFilePath(appRoot))
+      return originalPluginReloadCachesForAppRoot.call(this, appRoot)
+    }
+    PocketPagesLanguageCore.prototype.closeDocument = function patchedCloseDocument(uri) {
+      pluginClosedUris.push(uri)
+      return originalPluginCloseDocument.call(this, uri)
+    }
+    try {
+      const pluginProxy = pluginRuntimeFactory.create({
+        languageServiceHost: pluginHost,
+        languageService: pluginBaseLanguageService,
+        project: pluginProject,
+      })
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      const originalBoardServiceText = fs.readFileSync(fixture.boardServiceFilePath, 'utf8')
+      writeFile(
+        fixture.boardServiceFilePath,
+        `${originalBoardServiceText}\nmodule.exports.readMethod = function readMethod() { return 'ok' }\n`
+      )
+      pluginProjectVersion = '2'
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (!pluginReloadAppRoots.includes(normalizeFilePath(fixture.appRoot))) {
+        throw new Error(
+          `Expected TS plugin runtime to reload app-scoped caches after sibling file changes. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
+      }
+
+      const pluginLruFiles = []
+      for (let index = 0; index < 42; index += 1) {
+        const pluginLruFilePath = path.join(
+          fixture.appRoot,
+          'pb_hooks',
+          'pages',
+          '(site)',
+          'plugin-lru',
+          `page-${index}.ejs`
+        )
+        pluginLruFiles.push(pluginLruFilePath)
+        writeFile(
+          pluginLruFilePath,
+          `<script server>\nconst pageIndex = ${index}\n</script>\n<div><%= pageIndex %></div>\n`
+        )
+        pluginProxy.getQuickInfoAtPosition(pluginLruFilePath, 0)
+      }
+      if (!pluginClosedUris.length) {
+        throw new Error('Expected TS plugin runtime to prune visited EJS documents once the managed cache grows past the limit.')
+      }
+    } finally {
+      PocketPagesLanguageCore.prototype.reloadCachesForAppRoot = originalPluginReloadCachesForAppRoot
+      PocketPagesLanguageCore.prototype.closeDocument = originalPluginCloseDocument
     }
 
     if (!routeDocumentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/(site)/index.ejs'))) {
