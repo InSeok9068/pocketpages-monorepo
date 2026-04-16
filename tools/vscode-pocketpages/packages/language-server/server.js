@@ -12,6 +12,7 @@ const {
   CodeActionKind,
   MarkupKind,
   InlayHintKind,
+  SymbolKind,
   SemanticTokensBuilder,
   FileChangeType,
 } = require("vscode-languageserver/node");
@@ -586,6 +587,7 @@ const featureServiceContext = {
   InsertTextFormat,
   MarkupKind,
   InlayHintKind,
+  SymbolKind,
   CodeActionKind,
   SemanticTokensBuilder,
   collectEjsSemanticTokenEntries,
@@ -675,6 +677,8 @@ connection.onInitialize(() => {
         retriggerCharacters: SIGNATURE_TRIGGER_CHARACTERS,
       },
       inlayHintProvider: true,
+      documentSymbolProvider: true,
+      workspaceSymbolProvider: true,
       semanticTokensProvider: {
         legend: {
           tokenTypes: TOKEN_TYPES,
@@ -956,6 +960,14 @@ connection.languages.inlayHint.on((params) => {
 
 connection.languages.semanticTokens.on((params) => {
   return structureFeatureService.provideSemanticTokens(params);
+});
+
+connection.onDocumentSymbol((params) => {
+  return structureFeatureService.provideDocumentSymbols(params);
+});
+
+connection.onWorkspaceSymbol((params) => {
+  return structureFeatureService.provideWorkspaceSymbols(params);
 });
 
 connection.onCodeLens((params) => {

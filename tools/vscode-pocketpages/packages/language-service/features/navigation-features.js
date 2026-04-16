@@ -42,7 +42,7 @@ function createNavigationFeatureHandlers(deps) {
         }
       }
 
-      const requireContext = getRequirePathContextAtOffset(documentText, offset);
+      const requireContext = getRequirePathContextAtOffset(documentText, offset, { filePath });
       if (requireContext) {
         return service.projectIndex.resolveRequireTarget(filePath, requireContext.value, requireContext);
       }
@@ -451,7 +451,7 @@ function createNavigationFeatureHandlers(deps) {
         });
       }
 
-      for (const requireContext of collectStaticRequireCallContexts(documentText)) {
+      for (const requireContext of collectStaticRequireCallContexts(documentText, { filePath })) {
         const targetFilePath = service.projectIndex.resolveRequireTarget(
           filePath,
           requireContext.value,

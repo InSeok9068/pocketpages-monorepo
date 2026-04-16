@@ -2716,6 +2716,30 @@ class PocketPagesProjectIndex {
     return this.pagesGraphCache
   }
 
+  getAssetEntries() {
+    return this.getPagesGraphState().assetFiles
+  }
+
+  getAssetDescriptorByFilePath(filePath) {
+    const normalizedFilePath = normalizePath(filePath)
+    const existingEntry = this.getPagesGraphState().assetFiles.find((entry) => entry.filePath === normalizedFilePath)
+    if (existingEntry) {
+      return {
+        filePath: existingEntry.filePath,
+        relativePath: existingEntry.relativePath,
+      }
+    }
+
+    if (!isAssetCandidateFile(this.pagesRoot, normalizedFilePath)) {
+      return null
+    }
+
+    return {
+      filePath: normalizedFilePath,
+      relativePath: toRelativePath(path.relative(this.pagesRoot, normalizedFilePath)),
+    }
+  }
+
   getSearchRootFileState(rootPath, extensions) {
     const normalizedRootPath = normalizePath(rootPath)
     const extensionKey = [...extensions].sort().join('|')

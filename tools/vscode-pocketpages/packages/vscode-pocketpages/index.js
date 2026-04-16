@@ -129,13 +129,9 @@ function normalizeDocumentPath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
 }
 
-function isManagedPagesFilePath(filePath) {
+function isManagedRenameTargetPath(filePath) {
   const normalizedPath = normalizeDocumentPath(filePath);
   if (!normalizedPath.includes("/pb_hooks/pages/")) {
-    return false;
-  }
-
-  if (!/\.(ejs|js|cjs|mjs)$/i.test(normalizedPath)) {
     return false;
   }
 
@@ -335,7 +331,7 @@ async function showFileReferences({ logger, fileUri }) {
       file: vscode.workspace.asRelativePath(normalizedFileUri.fsPath, false),
     });
     vscode.window.showWarningMessage(
-      "File is not a supported PocketPages reference target. Use a _private partial, a _private module, or a static route file."
+      "File is not a supported PocketPages reference target. Use a PocketPages route file, asset file, _private partial, or _private module."
     );
     return;
   }
@@ -392,7 +388,7 @@ async function applyManagedFileRenameEdits({ logger, event }) {
       entry.newUri &&
       entry.oldUri.scheme === "file" &&
       entry.newUri.scheme === "file" &&
-      isManagedPagesFilePath(entry.oldUri.fsPath)
+      isManagedRenameTargetPath(entry.oldUri.fsPath)
   );
   if (!renameSpecs.length) {
     return;

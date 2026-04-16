@@ -48,6 +48,10 @@ function createPocketPagesLanguageServiceManager(deps) {
       return this.services.get(appRoot) || null;
     }
 
+    getAllServices() {
+      return [...this.services.values()];
+    }
+
     getServiceForFile(filePath) {
       const appRoot = findAppRoot(filePath);
       if (!appRoot) {

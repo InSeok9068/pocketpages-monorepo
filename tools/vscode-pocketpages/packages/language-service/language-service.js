@@ -218,71 +218,154 @@ function toRelativeSpecifier(relativePath, options = {}) {
   return normalizedPath;
 }
 
-function collectStaticRequireCallContexts(documentText) {
+function toRequirePathRangeFromStringLiteral(node, sourceFile, offsetBase = 0) {
+  if (!ts.isStringLiteralLike(node)) {
+    return null;
+  }
+
+  return {
+    start: offsetBase + node.getStart(sourceFile) + 1,
+    end: offsetBase + node.getEnd() - 1,
+    value: node.text,
+  };
+}
+
+function getHooksTemplateRequireContext(node, sourceFile, offsetBase = 0) {
+  if (!ts.isTemplateExpression(node) || node.templateSpans.length !== 1) {
+    return null;
+  }
+  if (node.head.text !== "") {
+    return null;
+  }
+
+  const [templateSpan] = node.templateSpans;
+  const expressionTarget = skipExpressionWrappers(templateSpan.expression);
+  if (!expressionTarget || !ts.isIdentifier(expressionTarget) || expressionTarget.text !== "__hooks") {
+    return null;
+  }
+
+  const nodeStart = node.getStart(sourceFile);
+  const nodeEnd = node.getEnd();
+  if (nodeEnd <= nodeStart + 1) {
+    return null;
+  }
+
+  const nodeText = sourceFile.text.slice(nodeStart, nodeEnd);
+  const closeBraceIndex = nodeText.indexOf("}");
+  if (closeBraceIndex === -1) {
+    return null;
+  }
+
+  const start = offsetBase + nodeStart + closeBraceIndex + 1;
+  const end = offsetBase + nodeEnd - 1;
+  return {
+    kind: "require-path",
+    value: sourceFile.text.slice(nodeStart + closeBraceIndex + 1, nodeEnd - 1),
+    start,
+    end,
+    rootKind: "__hooks",
+  };
+}
+
+function getHooksConcatRequireContext(node, sourceFile, offsetBase = 0) {
+  if (!ts.isBinaryExpression(node) || node.operatorToken.kind !== ts.SyntaxKind.PlusToken) {
+    return null;
+  }
+
+  const leftTarget = skipExpressionWrappers(node.left);
+  const rightTarget = skipExpressionWrappers(node.right);
+  if (!leftTarget || !ts.isIdentifier(leftTarget) || leftTarget.text !== "__hooks") {
+    return null;
+  }
+  if (!rightTarget || !ts.isStringLiteralLike(rightTarget)) {
+    return null;
+  }
+
+  const range = toRequirePathRangeFromStringLiteral(rightTarget, sourceFile, offsetBase);
+  if (!range) {
+    return null;
+  }
+
+  return {
+    kind: "require-path",
+    value: range.value,
+    start: range.start,
+    end: range.end,
+    rootKind: "__hooks",
+  };
+}
+
+function getStaticRequireContextFromArgument(argument, sourceFile, offsetBase = 0) {
+  const target = skipExpressionWrappers(argument);
+  if (!target) {
+    return null;
+  }
+
+  if (ts.isStringLiteralLike(target)) {
+    const range = toRequirePathRangeFromStringLiteral(target, sourceFile, offsetBase);
+    return range
+      ? {
+          kind: "require-path",
+          value: range.value,
+          start: range.start,
+          end: range.end,
+        }
+      : null;
+  }
+
+  return getHooksTemplateRequireContext(target, sourceFile, offsetBase)
+    || getHooksConcatRequireContext(target, sourceFile, offsetBase);
+}
+
+function getStaticRequireSearchSegments(documentText, options = {}) {
+  const text = String(documentText || "");
+  const filePath = typeof options.filePath === "string" ? options.filePath : "";
+  if (!filePath || !isEjsFile(filePath)) {
+    return [{ text, offsetBase: 0 }];
+  }
+
+  return [..._extractServerBlocks(text), ..._extractTemplateCodeBlocks(text)]
+    .map((block) => ({
+      text: block.content,
+      offsetBase: block.contentStart,
+    }))
+    .sort((left, right) => left.offsetBase - right.offsetBase);
+}
+
+function collectStaticRequireCallContexts(documentText, options = {}) {
   const contexts = [];
-  const requireRe = /\brequire\(\s*(['"])([^'"]+)\1\s*\)/g;
-  const hooksTemplateRequireRe = /\brequire\(\s*`\$\{__hooks\}([^`]*)`\s*\)/g;
-  const hooksConcatRequireRe = /\brequire\(\s*__hooks\s*\+\s*(['"])([^'"]+)\1\s*\)/g;
+  const seen = new Set();
 
-  for (const match of documentText.matchAll(requireRe)) {
-    const fullText = match[0];
-    const quote = match[1];
-    const value = match[2];
-    const quoteOffset = fullText.indexOf(quote);
-    const start = match.index + quoteOffset + 1;
-    const end = start + value.length;
+  for (const segment of getStaticRequireSearchSegments(documentText, options)) {
+    const sourceFile = createSourceFileForText("pocketpages-static-require.js", segment.text);
+    const visit = (node) => {
+      if (
+        ts.isCallExpression(node) &&
+        node.arguments.length === 1 &&
+        ts.isIdentifier(skipExpressionWrappers(node.expression)) &&
+        skipExpressionWrappers(node.expression).text === "require"
+      ) {
+        const context = getStaticRequireContextFromArgument(node.arguments[0], sourceFile, segment.offsetBase);
+        if (context) {
+          const contextKey = `${context.start}:${context.end}:${context.rootKind || ""}:${context.value}`;
+          if (!seen.has(contextKey)) {
+            seen.add(contextKey);
+            contexts.push(context);
+          }
+        }
+      }
 
-    contexts.push({
-      kind: "require-path",
-      value,
-      start,
-      end,
-    });
-  }
+      ts.forEachChild(node, visit);
+    };
 
-  for (const match of documentText.matchAll(hooksTemplateRequireRe)) {
-    const fullText = match[0];
-    const value = match[1];
-    const expressionMarker = "${__hooks}";
-    const markerIndex = fullText.indexOf(expressionMarker);
-    if (markerIndex === -1) {
-      continue;
-    }
-
-    const start = match.index + markerIndex + expressionMarker.length;
-    const end = start + value.length;
-
-    contexts.push({
-      kind: "require-path",
-      value,
-      start,
-      end,
-      rootKind: "__hooks",
-    });
-  }
-
-  for (const match of documentText.matchAll(hooksConcatRequireRe)) {
-    const fullText = match[0];
-    const quote = match[1];
-    const value = match[2];
-    const quoteOffset = fullText.indexOf(quote);
-    const start = match.index + quoteOffset + 1;
-    const end = start + value.length;
-
-    contexts.push({
-      kind: "require-path",
-      value,
-      start,
-      end,
-      rootKind: "__hooks",
-    });
+    visit(sourceFile);
   }
 
   return contexts;
 }
 
-function getRequirePathContextAtOffset(documentText, offset) {
-  for (const context of collectStaticRequireCallContexts(documentText)) {
+function getRequirePathContextAtOffset(documentText, offset, options = {}) {
+  for (const context of collectStaticRequireCallContexts(documentText, options)) {
     if (offset >= context.start && offset <= context.end) {
       return context;
     }
@@ -1220,6 +1303,118 @@ function splitRoutePathSuffix(routePath) {
     basePath: value.slice(0, markerIndex),
     suffix: value.slice(markerIndex),
   };
+}
+
+function isDynamicRoutePatternSegment(segment) {
+  return /^\[(\.\.\.)?[^\]]+\]$/.test(String(segment || ""));
+}
+
+function isCatchAllDynamicRoutePatternSegment(segment) {
+  return /^\[\.\.\.[^\]]+\]$/.test(String(segment || ""));
+}
+
+function splitNormalizedRouteRequestPath(routePath) {
+  const normalizedRoutePath = normalizeRouteRequestPath(routePath);
+  if (!normalizedRoutePath || normalizedRoutePath === "/") {
+    return [];
+  }
+
+  return normalizedRoutePath.slice(1).split("/").filter(Boolean);
+}
+
+function getRouteRequestMatchState(routeSegments, requestSegments) {
+  const normalizedRouteSegments = Array.isArray(routeSegments) ? routeSegments.filter(Boolean) : [];
+  const normalizedRequestSegments = Array.isArray(requestSegments) ? requestSegments.filter(Boolean) : [];
+  const dynamicValueGroups = [];
+  let requestIndex = 0;
+  let dynamicSegmentCount = 0;
+
+  for (let routeIndex = 0; routeIndex < normalizedRouteSegments.length; routeIndex += 1) {
+    const routeSegment = normalizedRouteSegments[routeIndex];
+
+    if (isCatchAllDynamicRoutePatternSegment(routeSegment)) {
+      if (routeIndex !== normalizedRouteSegments.length - 1) {
+        return null;
+      }
+
+      dynamicSegmentCount += 1;
+      dynamicValueGroups.push(normalizedRequestSegments.slice(requestIndex));
+      requestIndex = normalizedRequestSegments.length;
+      return {
+        dynamicSegmentCount,
+        dynamicValueGroups,
+        segmentCount: normalizedRouteSegments.length,
+      };
+    }
+
+    if (requestIndex >= normalizedRequestSegments.length) {
+      return null;
+    }
+
+    const requestSegment = normalizedRequestSegments[requestIndex];
+    if (isDynamicRoutePatternSegment(routeSegment)) {
+      dynamicSegmentCount += 1;
+      dynamicValueGroups.push([requestSegment]);
+    } else if (routeSegment !== requestSegment) {
+      return null;
+    }
+
+    requestIndex += 1;
+  }
+
+  if (requestIndex !== normalizedRequestSegments.length) {
+    return null;
+  }
+
+  return {
+    dynamicSegmentCount,
+    dynamicValueGroups,
+    segmentCount: normalizedRouteSegments.length,
+  };
+}
+
+function buildConcreteRoutePathFromSegments(routeSegments, dynamicValueGroups) {
+  const normalizedRouteSegments = Array.isArray(routeSegments) ? routeSegments.filter(Boolean) : [];
+  const normalizedDynamicValueGroups = Array.isArray(dynamicValueGroups) ? dynamicValueGroups : [];
+  const concreteSegments = [];
+  let dynamicValueIndex = 0;
+
+  for (const routeSegment of normalizedRouteSegments) {
+    if (isCatchAllDynamicRoutePatternSegment(routeSegment)) {
+      const valueGroup = normalizedDynamicValueGroups[dynamicValueIndex];
+      if (!Array.isArray(valueGroup)) {
+        return null;
+      }
+
+      for (const segment of valueGroup) {
+        if (!segment) {
+          continue;
+        }
+        concreteSegments.push(segment);
+      }
+      dynamicValueIndex += 1;
+      continue;
+    }
+
+    if (isDynamicRoutePatternSegment(routeSegment)) {
+      const valueGroup = normalizedDynamicValueGroups[dynamicValueIndex];
+      if (!Array.isArray(valueGroup) || valueGroup.length !== 1 || !valueGroup[0]) {
+        return null;
+      }
+
+      concreteSegments.push(valueGroup[0]);
+      dynamicValueIndex += 1;
+      continue;
+    }
+
+    concreteSegments.push(routeSegment);
+  }
+
+  if (dynamicValueIndex !== normalizedDynamicValueGroups.length) {
+    return null;
+  }
+
+  return concreteSegments.length ? `/${concreteSegments.join("/")}` : "/";
 }
 
 function getPreferredRouteMethods(routeSource) {
@@ -3812,7 +4007,7 @@ class ProjectLanguageService {
       return pathReferenceContext;
     }
 
-    const requireContext = getRequirePathContextAtOffset(documentText, offset);
+    const requireContext = getRequirePathContextAtOffset(documentText, offset, { filePath });
     if (!requireContext) {
       return null;
     }
@@ -3864,6 +4059,18 @@ class ProjectLanguageService {
       }
     }
 
+    const assetDescriptor = this.projectIndex.getAssetDescriptorByFilePath(normalizedFilePath);
+    if (assetDescriptor) {
+      return {
+        kind: "asset-file",
+        targetFilePath: normalizedFilePath,
+        command: "pocketpagesServerScript.allFileReferences",
+        title: "PocketPages: All File References",
+        emptyMessage: `No asset() callers found for ${assetDescriptor.relativePath}.`,
+        assetPath: `/${assetDescriptor.relativePath}`,
+      };
+    }
+
     const routeEntry = this.projectIndex.getStaticRouteEntryByFilePath(normalizedFilePath);
     if (routeEntry) {
       return {
@@ -3878,7 +4085,7 @@ class ProjectLanguageService {
     }
 
     const routeDescriptor = this.projectIndex.describeRouteFilePath(normalizedFilePath);
-    if (!routeDescriptor || !routeDescriptor.isStaticRoute) {
+    if (!routeDescriptor) {
       return null;
     }
 
@@ -3935,7 +4142,7 @@ class ProjectLanguageService {
       const documentText =
         Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
 
-      for (const requireContext of collectStaticRequireCallContexts(documentText)) {
+      for (const requireContext of collectStaticRequireCallContexts(documentText, { filePath: codeFilePath })) {
         const resolvedTargetFilePath = this.projectIndex.resolveRequireTarget(codeFilePath, requireContext.value, requireContext);
         if (!resolvedTargetFilePath || normalizePath(resolvedTargetFilePath) !== normalizedTargetFilePath) {
           continue;
@@ -3995,6 +4202,10 @@ class ProjectLanguageService {
       );
     }
 
+    if (referenceQuery.kind === "asset-file") {
+      return this.collectPathReferenceLocations("asset-path", referenceQuery.targetFilePath, overrides);
+    }
+
     if (referenceQuery.kind === "route-file") {
       return this.collectPathReferenceLocations("route-path", referenceQuery.targetFilePath, overrides);
     }
@@ -4029,18 +4240,28 @@ class ProjectLanguageService {
       }
     }
 
+    if (referenceQuery.kind === "asset-file") {
+      for (const edit of this.getAssetFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
+        uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+      }
+    }
+
     if (referenceQuery.kind === "route-file") {
+      const oldRouteDescriptor = this.projectIndex.describeRouteFilePath(normalizedOldFilePath);
       const newRouteDescriptor = this.projectIndex.describeRouteFilePath(normalizedNewFilePath);
       const oldRouteMethod = normalizeRouteMethod(referenceQuery.routeMethod);
       if (
+        oldRouteDescriptor &&
         newRouteDescriptor &&
-        newRouteDescriptor.isStaticRoute &&
+        normalizeRouteMethod(oldRouteDescriptor.method) === oldRouteMethod &&
         normalizeRouteMethod(newRouteDescriptor.method) === oldRouteMethod
       ) {
         for (const edit of this.getRouteFileRenameEdits({
           oldFilePath: normalizedOldFilePath,
+          oldRouteDescriptor,
           oldRoutePath: referenceQuery.routePath,
           oldRouteMethod,
+          newRouteDescriptor,
           newRoutePath: newRouteDescriptor.routePath,
         }, overrides)) {
           uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
@@ -4052,6 +4273,240 @@ class ProjectLanguageService {
     this.projectIndex.invalidateStructureForFile(normalizedNewFilePath);
 
     return [...uniqueEdits.values()];
+  }
+
+  getFileSymbolMetadata(filePath) {
+    const normalizedFilePath = normalizePath(filePath);
+    const appRelativePath = toPortablePath(path.relative(this.appRoot, normalizedFilePath));
+    const routeDescriptor = this.projectIndex.getRouteDescriptorByFilePath(normalizedFilePath);
+    if (routeDescriptor) {
+      return {
+        containerName: "Routes",
+        detail: appRelativePath,
+        kind: "file",
+        name:
+          routeDescriptor.method && routeDescriptor.method !== "PAGE"
+            ? `Route ${routeDescriptor.method} ${routeDescriptor.routePath}`
+            : `Route ${routeDescriptor.routePath}`,
+      };
+    }
+
+    const assetDescriptor = this.projectIndex.getAssetDescriptorByFilePath(normalizedFilePath);
+    if (assetDescriptor) {
+      return {
+        containerName: "Assets",
+        detail: assetDescriptor.relativePath,
+        kind: "file",
+        name: `Asset /${assetDescriptor.relativePath}`,
+      };
+    }
+
+    if (isPrivatePagesFile(normalizedFilePath)) {
+      const baseName = path.basename(normalizedFilePath);
+      return {
+        containerName: isEjsFile(normalizedFilePath) ? "Partials" : "Modules",
+        detail: appRelativePath,
+        kind: isEjsFile(normalizedFilePath) ? "file" : "module",
+        name: isEjsFile(normalizedFilePath)
+          ? `Partial ${baseName}`
+          : `Module ${baseName}`,
+      };
+    }
+
+    if (isScriptFile(normalizedFilePath) && path.basename(normalizedFilePath).startsWith("+")) {
+      return {
+        containerName: "Hooks",
+        detail: appRelativePath,
+        kind: "module",
+        name: `Hook ${path.basename(normalizedFilePath)}`,
+      };
+    }
+
+    return null;
+  }
+
+  getTemplateDocumentSymbolEntry(documentText, serverBlocks = []) {
+    const exclusionRanges = (Array.isArray(serverBlocks) ? serverBlocks : [])
+      .map((block) => ({
+        start: Math.max(0, Number(block && block.fullStart) || 0),
+        end: Math.max(0, Number(block && block.fullEnd) || 0),
+      }))
+      .filter((range) => range.end > range.start)
+      .sort((left, right) => left.start - right.start);
+    const sourceText = String(documentText || "");
+    let exclusionIndex = 0;
+    let templateStart = null;
+    let templateEnd = null;
+
+    for (let index = 0; index < sourceText.length; index += 1) {
+      while (
+        exclusionIndex < exclusionRanges.length &&
+        index >= exclusionRanges[exclusionIndex].end
+      ) {
+        exclusionIndex += 1;
+      }
+
+      if (
+        exclusionIndex < exclusionRanges.length &&
+        index >= exclusionRanges[exclusionIndex].start &&
+        index < exclusionRanges[exclusionIndex].end
+      ) {
+        continue;
+      }
+
+      if (!/\S/.test(sourceText[index])) {
+        continue;
+      }
+
+      if (templateStart === null) {
+        templateStart = index;
+      }
+      templateEnd = index + 1;
+    }
+
+    if (templateStart === null || templateEnd === null) {
+      return null;
+    }
+
+    return {
+      children: [],
+      detail: "HTML / EJS template",
+      end: templateEnd,
+      kind: "namespace",
+      name: "Template",
+      selectionEnd: templateStart + 1,
+      selectionStart: templateStart,
+      start: templateStart,
+    };
+  }
+
+  getDocumentSymbolEntries(filePath, documentText) {
+    if (!isEjsFile(filePath)) {
+      return [];
+    }
+
+    const symbolMetadata = this.getFileSymbolMetadata(filePath) || {
+      containerName: "Documents",
+      detail: toPortablePath(path.relative(this.appRoot, filePath)),
+      kind: "file",
+      name: path.basename(filePath),
+    };
+    const sourceText = String(documentText || "");
+    const serverBlocks = _extractServerBlocks(sourceText);
+    const childSymbols = [];
+
+    for (const block of serverBlocks) {
+      const contentSelectionStart =
+        typeof block.contentStart === "number" && block.contentStart < sourceText.length
+          ? block.contentStart
+          : Math.max(0, Number(block.fullStart) || 0);
+      childSymbols.push({
+        children: [],
+        detail: "<script server>",
+        end: Math.max(contentSelectionStart + 1, Number(block.fullEnd) || contentSelectionStart + 1),
+        kind: "namespace",
+        name: serverBlocks.length > 1 ? `Server ${block.index + 1}` : "Server",
+        selectionEnd: contentSelectionStart + 1,
+        selectionStart: contentSelectionStart,
+        start: Math.max(0, Number(block.fullStart) || 0),
+      });
+    }
+
+    const templateSymbolEntry = this.getTemplateDocumentSymbolEntry(sourceText, serverBlocks);
+    if (templateSymbolEntry) {
+      childSymbols.push(templateSymbolEntry);
+    }
+
+    for (const pathContext of collectPathContexts(sourceText)) {
+      if (pathContext.kind !== "include-path") {
+        continue;
+      }
+
+      const targetFilePath = this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
+      childSymbols.push({
+        children: [],
+        detail: targetFilePath
+          ? toPortablePath(path.relative(this.appRoot, targetFilePath))
+          : pathContext.value,
+        end: pathContext.end,
+        kind: "string",
+        name: `Include ${path.basename(pathContext.value) || pathContext.value}`,
+        selectionEnd: pathContext.end,
+        selectionStart: pathContext.start,
+        start: pathContext.start,
+      });
+    }
+
+    childSymbols.sort((left, right) => {
+      if (left.start !== right.start) {
+        return left.start - right.start;
+      }
+
+      return left.end - right.end;
+    });
+
+    return [
+      {
+        children: childSymbols,
+        detail: symbolMetadata.detail,
+        end: Math.max(sourceText.length, 1),
+        kind: symbolMetadata.kind,
+        name: symbolMetadata.name,
+        selectionEnd: Math.min(Math.max(sourceText.length, 1), 1),
+        selectionStart: 0,
+        start: 0,
+      },
+    ];
+  }
+
+  getWorkspaceSymbolEntries(query = "") {
+    const normalizedQuery = String(query || "").trim().toLowerCase();
+    const uniqueEntries = new Map();
+
+    for (const entry of this.projectIndex.getPagesGraphState().allFiles) {
+      const symbolMetadata = this.getFileSymbolMetadata(entry.filePath);
+      if (!symbolMetadata) {
+        continue;
+      }
+
+      const searchableText = [
+        symbolMetadata.name,
+        symbolMetadata.detail,
+        symbolMetadata.containerName,
+        toPortablePath(path.relative(this.appRoot, entry.filePath)),
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .toLowerCase();
+      if (normalizedQuery && !searchableText.includes(normalizedQuery)) {
+        continue;
+      }
+
+      const entryKey = `${normalizePath(entry.filePath)}:${symbolMetadata.name}`;
+      if (uniqueEntries.has(entryKey)) {
+        continue;
+      }
+
+      uniqueEntries.set(entryKey, {
+        containerName: symbolMetadata.containerName,
+        detail: symbolMetadata.detail,
+        end: 0,
+        filePath: normalizePath(entry.filePath),
+        kind: symbolMetadata.kind,
+        name: symbolMetadata.name,
+        selectionEnd: 0,
+        selectionStart: 0,
+        start: 0,
+      });
+    }
+
+    return [...uniqueEntries.values()].sort((left, right) => {
+      if (left.name !== right.name) {
+        return left.name.localeCompare(right.name);
+      }
+
+      return left.filePath.localeCompare(right.filePath);
+    });
   }
 
   getCallerDocumentText(filePath, overrides = {}) {
@@ -4136,7 +4591,7 @@ class ProjectLanguageService {
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
       const filePath = normalizePath(entry.filePath);
       const documentText = this.getCallerDocumentText(filePath, overrides);
-      const requireContexts = collectStaticRequireCallContexts(documentText);
+      const requireContexts = collectStaticRequireCallContexts(documentText, { filePath });
 
       for (const requireContext of requireContexts) {
         if (!this.isRequireRequestForTarget(filePath, requireContext.value, oldTargetFilePath, requireContext)) {
@@ -4158,6 +4613,155 @@ class ProjectLanguageService {
     }
 
     return edits;
+  }
+
+  isAssetRequestForTarget(filePath, requestPath, targetFilePath) {
+    const resolvedTargetFilePath = this.projectIndex.resolveAssetTarget(filePath, requestPath);
+    return !!resolvedTargetFilePath && normalizePath(resolvedTargetFilePath) === normalizePath(targetFilePath);
+  }
+
+  buildUpdatedAssetRequestPath(filePath, currentRequestPath, _oldTargetFilePath, newTargetFilePath) {
+    const normalizedCurrentRequestPath = String(currentRequestPath || "").trim();
+    const currentDir = normalizePath(path.dirname(filePath));
+    const assetDescriptor = this.projectIndex.getAssetDescriptorByFilePath(newTargetFilePath);
+    if (!assetDescriptor) {
+      return null;
+    }
+
+    if (normalizedCurrentRequestPath.startsWith("/")) {
+      return `/${assetDescriptor.relativePath}`;
+    }
+
+    if (
+      normalizedCurrentRequestPath.startsWith("./") ||
+      normalizedCurrentRequestPath.startsWith("../")
+    ) {
+      return toRelativeSpecifier(path.relative(currentDir, assetDescriptor.filePath), {
+        leadingDot: true,
+      });
+    }
+
+    return toRelativeSpecifier(path.relative(currentDir, assetDescriptor.filePath));
+  }
+
+  getAssetFileRenameEdits(oldTargetFilePath, newTargetFilePath, overrides = {}) {
+    const edits = [];
+    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      const filePath = normalizePath(entry.filePath);
+      const documentText = this.getCallerDocumentText(filePath, overrides);
+      const pathContexts = collectPathContexts(documentText);
+
+      for (const pathContext of pathContexts) {
+        if (pathContext.kind !== "asset-path") {
+          continue;
+        }
+
+        if (!this.isAssetRequestForTarget(filePath, pathContext.value, oldTargetFilePath)) {
+          continue;
+        }
+
+        const newValue = this.buildUpdatedAssetRequestPath(
+          filePath,
+          pathContext.value,
+          oldTargetFilePath,
+          newTargetFilePath
+        );
+        if (!newValue || newValue === pathContext.value) {
+          continue;
+        }
+
+        edits.push({
+          filePath,
+          start: pathContext.start,
+          end: pathContext.end,
+          newText: newValue,
+        });
+      }
+    }
+
+    return edits;
+  }
+
+  getBestRouteDescriptorForRequestPath(requestPath, routeSource, options = {}) {
+    const normalizedRequestPath = normalizeRouteRequestPath(requestPath);
+    if (!normalizedRequestPath) {
+      return null;
+    }
+
+    const preferredMethods = getPreferredRouteMethods(routeSource);
+    const requestSegments = splitNormalizedRouteRequestPath(normalizedRequestPath);
+    const excludedFilePath = options.excludeFilePath ? normalizePath(options.excludeFilePath) : "";
+    const matchingEntries = [];
+
+    for (const descriptor of this.projectIndex.getRouteState().descriptors) {
+      if (excludedFilePath && normalizePath(descriptor.filePath) === excludedFilePath) {
+        continue;
+      }
+
+      const matchState = getRouteRequestMatchState(descriptor.routeSegments, requestSegments);
+      if (!matchState) {
+        continue;
+      }
+
+      matchingEntries.push({
+        ...descriptor,
+        ...matchState,
+      });
+    }
+
+    const syntheticDescriptor = options.syntheticDescriptor || null;
+    if (
+      syntheticDescriptor &&
+      (!excludedFilePath || normalizePath(syntheticDescriptor.filePath) !== excludedFilePath)
+    ) {
+      const matchState = getRouteRequestMatchState(
+        syntheticDescriptor.routeSegments,
+        requestSegments
+      );
+      if (matchState) {
+        const normalizedSyntheticFilePath = normalizePath(syntheticDescriptor.filePath);
+        const hasMatchingEntry = matchingEntries.some(
+          (entry) =>
+            normalizePath(entry.filePath) === normalizedSyntheticFilePath &&
+            normalizeRouteMethod(entry.method) ===
+              normalizeRouteMethod(syntheticDescriptor.method)
+        );
+        if (!hasMatchingEntry) {
+          matchingEntries.push({
+            ...syntheticDescriptor,
+            filePath: normalizedSyntheticFilePath,
+            ...matchState,
+          });
+        }
+      }
+    }
+
+    if (!matchingEntries.length) {
+      return null;
+    }
+
+    matchingEntries.sort((left, right) => {
+      const leftRank = this.projectIndex.getRouteEntryRank(left, preferredMethods);
+      const rightRank = this.projectIndex.getRouteEntryRank(right, preferredMethods);
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+
+      if (left.dynamicSegmentCount !== right.dynamicSegmentCount) {
+        return left.dynamicSegmentCount - right.dynamicSegmentCount;
+      }
+
+      if (left.segmentCount !== right.segmentCount) {
+        return right.segmentCount - left.segmentCount;
+      }
+
+      return left.filePath.localeCompare(right.filePath);
+    });
+
+    const bestEntry = matchingEntries[0];
+    return Number.isFinite(this.projectIndex.getRouteEntryRank(bestEntry, preferredMethods))
+      ? bestEntry
+      : null;
   }
 
   getBestStaticRouteEntryForPath(routePath, routeSource, options = {}) {
@@ -4226,27 +4830,26 @@ class ProjectLanguageService {
       return false;
     }
 
-    if (normalizeRouteRequestPath(pathContext.value) !== routeRenameContext.oldRoutePath) {
+    const normalizedCurrentRequestPath = normalizeRouteRequestPath(
+      splitRoutePathSuffix(pathContext.value).basePath
+    );
+    if (!normalizedCurrentRequestPath) {
       return false;
     }
 
-    const bestEntryWithOld = this.getBestStaticRouteEntryForPath(
-      routeRenameContext.oldRoutePath,
+    const bestEntryWithOld = this.getBestRouteDescriptorForRequestPath(
+      normalizedCurrentRequestPath,
       pathContext.routeSource,
       {
-        syntheticEntry: {
-          filePath: routeRenameContext.oldFilePath,
-          method: routeRenameContext.oldRouteMethod,
-          routePath: routeRenameContext.oldRoutePath,
-        },
+        syntheticDescriptor: routeRenameContext.oldRouteDescriptor,
       }
     );
     if (!bestEntryWithOld || normalizePath(bestEntryWithOld.filePath) !== routeRenameContext.oldFilePath) {
       return false;
     }
 
-    const bestEntryWithoutOld = this.getBestStaticRouteEntryForPath(
-      routeRenameContext.oldRoutePath,
+    const bestEntryWithoutOld = this.getBestRouteDescriptorForRequestPath(
+      normalizedCurrentRequestPath,
       pathContext.routeSource,
       { excludeFilePath: routeRenameContext.oldFilePath }
     );
@@ -4267,8 +4870,7 @@ class ProjectLanguageService {
 
         const newValue = this.buildUpdatedRouteRequestPath(
           pathContext.value,
-          routeRenameContext.oldRoutePath,
-          routeRenameContext.newRoutePath
+          routeRenameContext
         );
         if (!newValue || newValue === pathContext.value) {
           continue;
@@ -4440,18 +5042,56 @@ class ProjectLanguageService {
   }
 
   buildUpdatedRouteRequestPath(currentRequestPath, oldRoutePath, newRoutePath) {
-    const normalizedOldRoutePath = normalizeRouteRequestPath(oldRoutePath);
-    const normalizedNewRoutePath = normalizeRouteRequestPath(newRoutePath);
+    const routeRenameContext =
+      oldRoutePath && typeof oldRoutePath === "object"
+        ? oldRoutePath
+        : {
+            oldRoutePath,
+            newRoutePath,
+          };
+    const normalizedOldRoutePath = normalizeRouteRequestPath(routeRenameContext.oldRoutePath);
+    const normalizedNewRoutePath = normalizeRouteRequestPath(routeRenameContext.newRoutePath);
     if (!normalizedOldRoutePath || !normalizedNewRoutePath) {
       return null;
     }
 
     const { basePath, suffix } = splitRoutePathSuffix(currentRequestPath);
-    if (normalizeRouteRequestPath(basePath) !== normalizedOldRoutePath) {
+    const normalizedBasePath = normalizeRouteRequestPath(basePath);
+    if (!normalizedBasePath) {
       return null;
     }
 
-    return `${normalizedNewRoutePath}${suffix}`;
+    if (normalizedBasePath === normalizedOldRoutePath) {
+      return `${normalizedNewRoutePath}${suffix}`;
+    }
+
+    const oldRouteDescriptor =
+      routeRenameContext.oldRouteDescriptor ||
+      this.projectIndex.describeRouteFilePath(routeRenameContext.oldFilePath || "");
+    const newRouteDescriptor =
+      routeRenameContext.newRouteDescriptor ||
+      this.projectIndex.describeRouteFilePath(routeRenameContext.newFilePath || "");
+    if (!oldRouteDescriptor || !newRouteDescriptor) {
+      return null;
+    }
+
+    const matchState = getRouteRequestMatchState(
+      oldRouteDescriptor.routeSegments,
+      splitNormalizedRouteRequestPath(normalizedBasePath)
+    );
+    if (!matchState) {
+      return null;
+    }
+
+    const rewrittenBasePath = buildConcreteRoutePathFromSegments(
+      newRouteDescriptor.routeSegments,
+      matchState.dynamicValueGroups
+    );
+    if (!rewrittenBasePath) {
+      return null;
+    }
+
+    return `${rewrittenBasePath}${suffix}`;
   }
 
   buildUpdatedRequireRequestPath(filePath, currentRequestPath, newTargetFilePath, options = {}) {
@@ -4612,7 +5252,9 @@ class ProjectLanguageService {
         ? `Partial callers: ${referenceCount}`
         : referenceQuery.kind === "private-module"
           ? `Module callers: ${referenceCount}`
-          : `Route callers: ${referenceCount}`;
+          : referenceQuery.kind === "asset-file"
+            ? `Asset callers: ${referenceCount}`
+            : `Route callers: ${referenceCount}`;
 
     entries.push({
       title: summaryTitle,

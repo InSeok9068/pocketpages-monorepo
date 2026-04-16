@@ -351,8 +351,8 @@ function assertClientContracts(repoRoot) {
   )
   assertMatches(
     clientSource,
-    /isManagedPagesFilePath\(entry\.oldUri\.fsPath\)/,
-    'Expected the PocketPages client to request rename edits for managed pages files, not only _private files.'
+    /isManagedRenameTargetPath\(entry\.oldUri\.fsPath\)/,
+    'Expected the PocketPages client to request rename edits for managed PocketPages targets, including assets.'
   )
   if (clientSource.includes('hasPrivatePagesSegment(entry.oldUri.fsPath)')) {
     throw new Error('Expected the PocketPages client to stop limiting file rename edits to _private files only.')
@@ -565,6 +565,26 @@ function assertLspRuntimeContracts(repoRoot) {
     }
   }
 
+  assertMatches(
+    serverSource,
+    /documentSymbolProvider:\s*true/,
+    'Expected server.js to advertise document symbols for PocketPages files.'
+  )
+  assertMatches(
+    serverSource,
+    /workspaceSymbolProvider:\s*true/,
+    'Expected server.js to advertise workspace symbols for PocketPages files.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.onDocumentSymbol\(\(params\) => \{\s*return structureFeatureService\.provideDocumentSymbols\(params\);\s*\}\);/,
+    'Expected server.js to route document symbols through structure-features.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.onWorkspaceSymbol\(\(params\) => \{\s*return structureFeatureService\.provideWorkspaceSymbols\(params\);\s*\}\);/,
+    'Expected server.js to route workspace symbols through structure-features.'
+  )
   assertMatches(
     serverSource,
     /const pathTargetInfo = customFeatureService\.provideHover\(params\)/,
@@ -2476,6 +2496,13 @@ const isSignedIn = !!authState && authState.isSignedIn
         return { data: this.values }
       }
     }
+    const lspSymbolKind = {
+      File: 1,
+      Module: 2,
+      Namespace: 3,
+      String: 15,
+      Object: 19,
+    }
     const structureBoardText = `<script server>\nconst mode = 'board'\n</script>\n<div><%= mode %></div>\n`
     const structureBoardDocument = createTestDocument(fixture.boardsFilePath, 'ejs', 1, structureBoardText)
     const structureBoardUri = structureBoardDocument.uri
@@ -2541,6 +2568,7 @@ const isSignedIn = !!authState && authState.isSignedIn
       collectEjsSemanticTokenEntries,
       getTokenTypeIndex,
       SemanticTokensBuilder: TestSemanticTokensBuilder,
+      SymbolKind: lspSymbolKind,
     })
     const structureSemanticTokens = structureFeatureService.provideSemanticTokens({
       textDocument: { uri: structureBoardUri },
@@ -2573,6 +2601,85 @@ const isSignedIn = !!authState && authState.isSignedIn
     const structureFallbackDocument = structureFeatureService.getDocumentForFile(fixture.flashAlertFilePath)
     if (!structureFallbackDocument || !String(structureFallbackDocument.getText()).includes('flashTone')) {
       throw new Error(`Expected structure service getDocumentForFile() to fall back to core-backed file text. Got: ${JSON.stringify(structureFallbackDocument)}`)
+    }
+
+    const symbolManager = new PocketPagesLanguageServiceManager()
+    const symbolRouteService = symbolManager.getServiceForFile(fixture.boardShowFilePath)
+    if (!symbolRouteService) {
+      throw new Error(`Expected symbol test manager to resolve a service for ${fixture.boardShowFilePath}`)
+    }
+    const symbolStructureCore = new PocketPagesLanguageCore({ manager: symbolManager })
+    const symbolBoardText = fs.readFileSync(fixture.boardShowFilePath, 'utf8')
+    const symbolBoardDocument = createTestDocument(fixture.boardShowFilePath, 'ejs', 1, symbolBoardText)
+    const symbolBoardUri = symbolBoardDocument.uri
+    symbolStructureCore.openDocument({
+      uri: symbolBoardUri,
+      languageId: 'ejs',
+      version: 1,
+      text: symbolBoardText,
+    })
+    const symbolDocuments = new Map([[symbolBoardUri, symbolBoardDocument]])
+    const symbolStructureFeatureService = createStructureFeatureService({
+      URI,
+      TextDocument: {
+        create(uri, languageId, version, text) {
+          return createTestDocument(URI.parse(uri).fsPath, languageId, version, text)
+        },
+      },
+      core: symbolStructureCore,
+      helpers: {
+        getDocumentByUri(uri) {
+          return symbolDocuments.get(uri) || null
+        },
+        getDocumentContextByUri(uri) {
+          return symbolStructureCore.getDocumentContextByUri(uri)
+        },
+        hasPrivatePagesSegment(filePath) {
+          return normalizeFilePath(filePath).includes('/pb_hooks/pages/_private/')
+        },
+        isEjsFilePath(filePath) {
+          return String(filePath || '').endsWith('.ejs')
+        },
+        uriToFilePath(uri) {
+          return URI.parse(uri).fsPath
+        },
+      },
+      getServerTemplateBoundaryLineNumbers,
+      collectEjsSemanticTokenEntries,
+      getTokenTypeIndex,
+      SemanticTokensBuilder: TestSemanticTokensBuilder,
+      SymbolKind: lspSymbolKind,
+    })
+    const structureDocumentSymbols = symbolStructureFeatureService.provideDocumentSymbols({
+      textDocument: { uri: symbolBoardUri },
+    })
+    if (
+      !Array.isArray(structureDocumentSymbols) ||
+      !structureDocumentSymbols.length ||
+      structureDocumentSymbols[0].name !== 'Route /boards/[boardSlug]' ||
+      !Array.isArray(structureDocumentSymbols[0].children) ||
+      !structureDocumentSymbols[0].children.some((entry) => entry.name === 'Server')
+    ) {
+      throw new Error(`Expected structure service to expose document symbols for dynamic route files. Got: ${JSON.stringify(structureDocumentSymbols)}`)
+    }
+    const structureWorkspaceSymbols = symbolStructureFeatureService.provideWorkspaceSymbols({
+      query: 'feedback',
+    })
+    if (
+      !Array.isArray(structureWorkspaceSymbols) ||
+      !structureWorkspaceSymbols.some((entry) => entry.name === 'Route /feedback') ||
+      !structureWorkspaceSymbols.some((entry) => entry.name === 'Route POST /feedback')
+    ) {
+      throw new Error(`Expected structure service to expose workspace symbols for PocketPages routes. Got: ${JSON.stringify(structureWorkspaceSymbols)}`)
+    }
+    const assetWorkspaceSymbols = symbolStructureFeatureService.provideWorkspaceSymbols({
+      query: 'booklog-reader',
+    })
+    if (
+      !Array.isArray(assetWorkspaceSymbols) ||
+      !assetWorkspaceSymbols.some((entry) => entry.name === 'Asset /assets/booklog-reader.js')
+    ) {
+      throw new Error(`Expected structure service to expose workspace symbols for asset files. Got: ${JSON.stringify(assetWorkspaceSymbols)}`)
     }
 
     const coldDiagnosticsWriteProbe = withWriteFileSyncCount(() => {
@@ -4610,8 +4717,70 @@ module.exports = {
     if ((duplicateRequireRenamedText.match(/require\('\.\/session-service'\)/g) || []).length !== 2) {
       throw new Error(`Expected both require() paths to rename in the same caller file. Got: ${duplicateRequireRenamedText}`)
     }
+
+    const requireFalsePositiveCallerText = `// require('./board-service') should stay comment
+const ignoredRequireText = "require('./board-service')"
+const actualBoardService = require('./board-service')
+
+module.exports = {
+  ignoredRequireText,
+  actualBoardService,
+}
+`
+    service.setDocumentOverride(fixture.boardServiceConsumerFilePath, requireFalsePositiveCallerText)
+    const requireFalsePositiveRenameEdits = service.getFileRenameEdits(
+      fixture.boardServiceFilePath,
+      path.resolve(path.dirname(fixture.boardServiceFilePath), 'session-service.js')
+    )
+    const filteredRequireFalsePositiveEdits = requireFalsePositiveRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardServiceConsumerFilePath)
+    )
+    if (filteredRequireFalsePositiveEdits.length !== 1) {
+      throw new Error(`Expected only one executable require() rename edit. Got: ${JSON.stringify(filteredRequireFalsePositiveEdits)}`)
+    }
+    const requireFalsePositiveRenamedText = applyEditsToText(
+      requireFalsePositiveCallerText,
+      filteredRequireFalsePositiveEdits
+    )
+    if ((requireFalsePositiveRenamedText.match(/board-service/g) || []).length !== 2) {
+      throw new Error(`Expected comment/string require text to stay unchanged. Got: ${requireFalsePositiveRenamedText}`)
+    }
+    if ((requireFalsePositiveRenamedText.match(/session-service/g) || []).length !== 1) {
+      throw new Error(`Expected only the executable require() path to rename. Got: ${requireFalsePositiveRenamedText}`)
+    }
+
+    const hooksRequireFalsePositivePageText = `<script server>
+  const { compile } = require(\`\${__hooks}/pages/_private/vendor/html-to-text.bundle.js\`)
+</script>
+<!-- require(\`\${__hooks}/pages/_private/vendor/html-to-text.bundle.js\`) should stay comment -->
+<div data-example="require(\`\${__hooks}/pages/_private/vendor/html-to-text.bundle.js\`)"></div>
+<div><%= compile('<p>Hello</p>') %></div>
+`
+    service.setDocumentOverride(fixture.htmlToTextPageConsumerFilePath, hooksRequireFalsePositivePageText)
+    const hooksRequireFalsePositiveRenameEdits = service.getFileRenameEdits(
+      fixture.htmlToTextBundleFilePath,
+      path.resolve(path.dirname(fixture.htmlToTextBundleFilePath), 'markdown-renderer.bundle.js')
+    )
+    const filteredHooksRequireFalsePositiveEdits = hooksRequireFalsePositiveRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.htmlToTextPageConsumerFilePath)
+    )
+    if (filteredHooksRequireFalsePositiveEdits.length !== 1) {
+      throw new Error(`Expected only one executable __hooks require() rename edit in EJS. Got: ${JSON.stringify(filteredHooksRequireFalsePositiveEdits)}`)
+    }
+    const hooksRequireFalsePositiveRenamedText = applyEditsToText(
+      hooksRequireFalsePositivePageText,
+      filteredHooksRequireFalsePositiveEdits
+    )
+    if ((hooksRequireFalsePositiveRenamedText.match(/html-to-text\.bundle\.js/g) || []).length !== 2) {
+      throw new Error(`Expected comment/html __hooks require text to stay unchanged. Got: ${hooksRequireFalsePositiveRenamedText}`)
+    }
+    if ((hooksRequireFalsePositiveRenamedText.match(/markdown-renderer\.bundle\.js/g) || []).length !== 1) {
+      throw new Error(`Expected only the executable EJS require() path to rename. Got: ${hooksRequireFalsePositiveRenamedText}`)
+    }
+
     service.clearDocumentOverride(fixture.renameCheckFilePath)
     service.clearDocumentOverride(fixture.boardServiceConsumerFilePath)
+    service.clearDocumentOverride(fixture.htmlToTextPageConsumerFilePath)
 
     const renamedSignInRouteFilePath = path.join(path.dirname(fixture.siteSignInFilePath), 'login.ejs')
     const routeFileRenameEdits = service.getFileRenameEdits(fixture.siteSignInFilePath, renamedSignInRouteFilePath)
@@ -4729,6 +4898,46 @@ module.exports = {
       throw new Error(`Expected href/action/hx/redirect route references in route-reference-check.ejs. Got: ${JSON.stringify(routeReferenceCheckMatches)}`)
     }
 
+    const dynamicRouteCallerText = `<a href="/boards/demo-board"></a>
+<button hx-get="/boards/demo-board"></button>
+<script server>
+redirect('/boards/demo-board')
+</script>
+`
+    service.setDocumentOverride(fixture.routeReferenceCheckFilePath, dynamicRouteCallerText)
+    const dynamicRouteReferenceQuery = service.getFileReferenceQuery(fixture.boardShowFilePath)
+    if (
+      !dynamicRouteReferenceQuery ||
+      dynamicRouteReferenceQuery.kind !== 'route-file' ||
+      dynamicRouteReferenceQuery.routePath !== '/boards/[boardSlug]' ||
+      dynamicRouteReferenceQuery.routeMethod !== 'PAGE'
+    ) {
+      throw new Error(`Expected dynamic route file reference query for /boards/[boardSlug]. Got: ${JSON.stringify(dynamicRouteReferenceQuery)}`)
+    }
+    const dynamicRouteReferences = service.getFileReferenceTargets(
+      fixture.boardShowFilePath,
+      fs.readFileSync(fixture.boardShowFilePath, 'utf8')
+    )
+    const dynamicRouteCallerMatches = dynamicRouteReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath)
+    )
+    if (dynamicRouteCallerMatches.length !== 3) {
+      throw new Error(`Expected href/hx-get/redirect references for dynamic board route. Got: ${JSON.stringify(dynamicRouteReferences)}`)
+    }
+    const renamedBoardRouteFilePath = path.join(path.dirname(fixture.boardShowFilePath), 'details.ejs')
+    const dynamicRouteRenameEdits = service.getFileRenameEdits(fixture.boardShowFilePath, renamedBoardRouteFilePath)
+    const dynamicRouteReferenceEdits = dynamicRouteRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath)
+    )
+    if (dynamicRouteReferenceEdits.length !== 3) {
+      throw new Error(`Expected href/hx-get/redirect callers to rewrite when dynamic route file is renamed. Got: ${JSON.stringify(dynamicRouteReferenceEdits)}`)
+    }
+    const dynamicRouteRenamedText = applyEditsToText(dynamicRouteCallerText, dynamicRouteReferenceEdits)
+    if ((dynamicRouteRenamedText.match(/\/boards\/demo-board\/details/g) || []).length !== 3) {
+      throw new Error(`Expected dynamic route callers to rewrite to /boards/demo-board/details. Got: ${dynamicRouteRenamedText}`)
+    }
+    service.clearDocumentOverride(fixture.routeReferenceCheckFilePath)
+
     const feedbackPageReferenceQuery = service.getFileReferenceQuery(fixture.feedbackPageFilePath)
     if (!feedbackPageReferenceQuery || feedbackPageReferenceQuery.kind !== 'route-file' || feedbackPageReferenceQuery.routePath !== '/feedback' || feedbackPageReferenceQuery.routeMethod !== 'PAGE') {
       throw new Error(`Expected page route file reference query for /feedback. Got: ${JSON.stringify(feedbackPageReferenceQuery)}`)
@@ -4763,10 +4972,73 @@ module.exports = {
     if (routeMinifiedReferenceQuery) {
       throw new Error(`Expected route-exposed minified scripts to stay out of route references. Got: ${JSON.stringify(routeMinifiedReferenceQuery)}`)
     }
-    const assetReferenceQuery = service.getFileReferenceQuery(fixture.globalAssetFilePath)
-    if (assetReferenceQuery) {
-      throw new Error(`Expected asset files to stay out of route references. Got: ${JSON.stringify(assetReferenceQuery)}`)
+    const assetReferenceCallerText = `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>
+<link rel="stylesheet" href="<%= asset('card.css') %>">
+`
+    service.setDocumentOverride(fixture.boardsFilePath, assetReferenceCallerText)
+    const globalAssetReferenceQuery = service.getFileReferenceQuery(fixture.globalAssetFilePath)
+    if (
+      !globalAssetReferenceQuery ||
+      globalAssetReferenceQuery.kind !== 'asset-file' ||
+      globalAssetReferenceQuery.assetPath !== '/assets/booklog-reader.js'
+    ) {
+      throw new Error(`Expected asset file reference query for /assets/booklog-reader.js. Got: ${JSON.stringify(globalAssetReferenceQuery)}`)
     }
+    const localAssetReferenceQuery = service.getFileReferenceQuery(fixture.localAssetFilePath)
+    if (!localAssetReferenceQuery || localAssetReferenceQuery.kind !== 'asset-file') {
+      throw new Error(`Expected asset file reference query for local board asset. Got: ${JSON.stringify(localAssetReferenceQuery)}`)
+    }
+    const globalAssetReferences = service.getFileReferenceTargets(
+      fixture.globalAssetFilePath,
+      fs.readFileSync(fixture.globalAssetFilePath, 'utf8')
+    )
+    const localAssetReferences = service.getFileReferenceTargets(
+      fixture.localAssetFilePath,
+      fs.readFileSync(fixture.localAssetFilePath, 'utf8')
+    )
+    const globalAssetCallerMatches = globalAssetReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
+    )
+    const localAssetCallerMatches = localAssetReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
+    )
+    if (globalAssetCallerMatches.length !== 1) {
+      throw new Error(`Expected one asset() caller for the global asset file. Got: ${JSON.stringify(globalAssetReferences)}`)
+    }
+    if (localAssetCallerMatches.length !== 1) {
+      throw new Error(`Expected one asset() caller for the local asset file. Got: ${JSON.stringify(localAssetReferences)}`)
+    }
+    const renamedGlobalAssetFilePath = path.join(path.dirname(fixture.globalAssetFilePath), 'reader-client.js')
+    const globalAssetRenameEdits = service.getFileRenameEdits(
+      fixture.globalAssetFilePath,
+      renamedGlobalAssetFilePath
+    )
+    const globalAssetCallerEdits = globalAssetRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
+    )
+    if (globalAssetCallerEdits.length !== 1) {
+      throw new Error(`Expected one caller rewrite for the renamed global asset file. Got: ${JSON.stringify(globalAssetRenameEdits)}`)
+    }
+    const globalAssetRenamedText = applyEditsToText(assetReferenceCallerText, globalAssetCallerEdits)
+    if (!globalAssetRenamedText.includes("asset('/assets/reader-client.js')")) {
+      throw new Error(`Expected global asset() caller to rewrite to /assets/reader-client.js. Got: ${globalAssetRenamedText}`)
+    }
+    const renamedLocalAssetFilePath = path.join(path.dirname(fixture.localAssetFilePath), 'board-card.css')
+    const localAssetRenameEdits = service.getFileRenameEdits(
+      fixture.localAssetFilePath,
+      renamedLocalAssetFilePath
+    )
+    const localAssetCallerEdits = localAssetRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
+    )
+    if (localAssetCallerEdits.length !== 1) {
+      throw new Error(`Expected one caller rewrite for the renamed local asset file. Got: ${JSON.stringify(localAssetRenameEdits)}`)
+    }
+    const localAssetRenamedText = applyEditsToText(assetReferenceCallerText, localAssetCallerEdits)
+    if (!localAssetRenamedText.includes("asset('board-card.css')")) {
+      throw new Error(`Expected local asset() caller to rewrite to board-card.css. Got: ${localAssetRenamedText}`)
+    }
+    service.clearDocumentOverride(fixture.boardsFilePath)
 
     const feedbackPageReferences = service.getFileReferenceTargets(
       fixture.feedbackPageFilePath,
