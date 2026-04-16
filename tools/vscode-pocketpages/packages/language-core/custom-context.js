@@ -52,43 +52,151 @@ function readResolveRequestPath(node) {
   return firstArgument.text
 }
 
-function collectResolveAliases(sourceFile) {
-  const aliases = new Map()
-
-  const visit = (node) => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
-      const requestPath = readResolveRequestPath(node.initializer)
-      if (requestPath) {
-        aliases.set(node.name.text, requestPath)
-      }
-    }
-
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isIdentifier(node.left)
-    ) {
-      const requestPath = readResolveRequestPath(node.right)
-      if (requestPath) {
-        aliases.set(node.left.text, requestPath)
-      }
-    }
-
-    ts.forEachChild(node, visit)
+function createResolveAliasScope(parent = null, kind = 'block') {
+  return {
+    parent,
+    kind,
+    bindings: new Map(),
   }
-
-  visit(sourceFile)
-  return aliases
 }
 
-function getResolveRequestPathFromExpression(node, aliases) {
+function getNearestFunctionResolveAliasScope(scope) {
+  let current = scope
+  while (current) {
+    if (current.kind === 'function') {
+      return current
+    }
+    current = current.parent
+  }
+
+  return scope
+}
+
+function declareResolveAliasBinding(scope, name, requestPath, options = {}) {
+  const normalizedName = String(name || '')
+  if (!normalizedName) {
+    return
+  }
+
+  const targetScope = options.functionScoped
+    ? getNearestFunctionResolveAliasScope(scope)
+    : scope
+  targetScope.bindings.set(normalizedName, requestPath || null)
+}
+
+function assignResolveAliasBinding(scope, name, requestPath) {
+  const normalizedName = String(name || '')
+  if (!normalizedName) {
+    return
+  }
+
+  let current = scope
+  while (current) {
+    if (current.bindings.has(normalizedName)) {
+      current.bindings.set(normalizedName, requestPath || null)
+      return
+    }
+    current = current.parent
+  }
+
+  getNearestFunctionResolveAliasScope(scope).bindings.set(normalizedName, requestPath || null)
+}
+
+function getResolveAliasRequestPath(scope, name) {
+  const normalizedName = String(name || '')
+  if (!normalizedName) {
+    return null
+  }
+
+  let current = scope
+  while (current) {
+    if (current.bindings.has(normalizedName)) {
+      return current.bindings.get(normalizedName) || null
+    }
+    current = current.parent
+  }
+
+  return null
+}
+
+function collectBindingIdentifierNames(node, names = []) {
+  if (!node) {
+    return names
+  }
+
+  if (ts.isIdentifier(node)) {
+    names.push(node.text)
+    return names
+  }
+
+  if (ts.isObjectBindingPattern(node) || ts.isArrayBindingPattern(node)) {
+    for (const element of node.elements) {
+      if (!element) {
+        continue
+      }
+
+      if (ts.isBindingElement(element)) {
+        collectBindingIdentifierNames(element.name, names)
+        continue
+      }
+
+      if (ts.isOmittedExpression(element)) {
+        continue
+      }
+
+      collectBindingIdentifierNames(element, names)
+    }
+  }
+
+  return names
+}
+
+function isFunctionScopedVariableDeclaration(node) {
+  return !!(
+    node &&
+    node.parent &&
+    ts.isVariableDeclarationList(node.parent) &&
+    (node.parent.flags & ts.NodeFlags.BlockScoped) === 0
+  )
+}
+
+function declareVariableResolveAliasBinding(scope, node) {
+  if (!node || !node.name) {
+    return
+  }
+
+  const requestPath = ts.isIdentifier(node.name) ? readResolveRequestPath(node.initializer) : null
+  for (const name of collectBindingIdentifierNames(node.name)) {
+    declareResolveAliasBinding(scope, name, requestPath, {
+      functionScoped: isFunctionScopedVariableDeclaration(node),
+    })
+  }
+}
+
+function declareParameterResolveAliasBindings(scope, parameters = []) {
+  for (const parameter of parameters) {
+    for (const name of collectBindingIdentifierNames(parameter.name)) {
+      declareResolveAliasBinding(scope, name, null)
+    }
+  }
+}
+
+function declareNamedScopeBinding(scope, name) {
+  if (!name || !ts.isIdentifier(name)) {
+    return
+  }
+
+  declareResolveAliasBinding(scope, name.text, null)
+}
+
+function getResolveRequestPathFromExpression(node, scope) {
   const target = skipParenthesizedExpression(node)
   if (!target) {
     return null
   }
 
   if (ts.isIdentifier(target)) {
-    return aliases.get(target.text) || null
+    return getResolveAliasRequestPath(scope, target.text)
   }
 
   return readResolveRequestPath(target)
@@ -389,12 +497,58 @@ function collectResolveRequestPaths(scriptText) {
 
 function collectResolvedModuleMemberContexts(scriptText) {
   const sourceFile = ts.createSourceFile('pocketpages-resolve-member.ts', scriptText, ts.ScriptTarget.Latest, true)
-  const aliases = collectResolveAliases(sourceFile)
   const contexts = []
+  const rootScope = createResolveAliasScope(null, 'function')
 
-  const visit = (node) => {
+  const visit = (node, scope) => {
+    if (
+      node !== sourceFile &&
+      (ts.isArrowFunction(node) ||
+        ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isConstructorDeclaration(node) ||
+        ts.isGetAccessorDeclaration(node) ||
+        ts.isSetAccessorDeclaration(node))
+    ) {
+      const functionScope = createResolveAliasScope(scope, 'function')
+      declareParameterResolveAliasBindings(functionScope, node.parameters)
+      declareNamedScopeBinding(functionScope, node.name)
+      if (node.body) {
+        visit(node.body, functionScope)
+      }
+      return
+    }
+
+    if (
+      node !== sourceFile &&
+      (ts.isBlock(node) || ts.isModuleBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node))
+    ) {
+      const blockScope = createResolveAliasScope(scope, 'block')
+      ts.forEachChild(node, (child) => visit(child, blockScope))
+      return
+    }
+
+    if (ts.isVariableDeclaration(node)) {
+      declareVariableResolveAliasBinding(scope, node)
+      if (node.initializer) {
+        visit(node.initializer, scope)
+      }
+      return
+    }
+
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(node.left)
+    ) {
+      visit(node.right, scope)
+      assignResolveAliasBinding(scope, node.left.text, readResolveRequestPath(node.right))
+      return
+    }
+
     if (ts.isPropertyAccessExpression(node)) {
-      const requestPath = getResolveRequestPathFromExpression(node.expression, aliases)
+      const requestPath = getResolveRequestPathFromExpression(node.expression, scope)
       if (requestPath) {
         contexts.push({
           kind: 'resolved-module-member',
@@ -406,10 +560,10 @@ function collectResolvedModuleMemberContexts(scriptText) {
       }
     }
 
-    ts.forEachChild(node, visit)
+    ts.forEachChild(node, (child) => visit(child, scope))
   }
 
-  visit(sourceFile)
+  visit(sourceFile, rootScope)
   return contexts
 }
 

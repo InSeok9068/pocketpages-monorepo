@@ -1857,6 +1857,67 @@ const isSignedIn = !!authState && authState.isSignedIn
     if (!Array.isArray(lspSmokeRename) || lspSmokeRename.length < 3) {
       throw new Error(`Expected TS feature rename to include declaration and script usage edits. Got: ${JSON.stringify(lspSmokeRename)}`)
     }
+    const templateRenameText = `<%
+const flashClasses = 'notice'
+%>
+<div class="<%= flashClasses %>"><%= flashClasses %></div>
+`
+    const templateRenameDocument = createTestDocument(
+      fixture.flashAlertFilePath,
+      'ejs',
+      1,
+      templateRenameText
+    )
+    const templateRenameUri = templateRenameDocument.uri
+    lspSmokeCore.openDocument({
+      uri: templateRenameUri,
+      languageId: 'ejs',
+      version: 1,
+      text: templateRenameText,
+    })
+    const templateRenameContext = createLspServiceSmokeContext(
+      lspSmokeCore,
+      new Map([
+        [lspSmokeUri, lspSmokeDocument],
+        [templateRenameUri, templateRenameDocument],
+      ])
+    )
+    const templateRenameFeatureService = createTypeScriptFeatureService(
+      templateRenameContext.context
+    )
+    const templateRenamePosition = templateRenameDocument.positionAt(
+      templateRenameText.indexOf('flashClasses %>') + 2
+    )
+    const templateRenameReferences = templateRenameFeatureService.provideReferences({
+      textDocument: { uri: templateRenameUri },
+      position: templateRenamePosition,
+      context: { includeDeclaration: true },
+    })
+    if (!Array.isArray(templateRenameReferences) || templateRenameReferences.length !== 3) {
+      throw new Error(`Expected template TS references to include declaration and template usages. Got: ${JSON.stringify(templateRenameReferences)}`)
+    }
+    const templatePrepareRename = templateRenameFeatureService.providePrepareRename({
+      textDocument: { uri: templateRenameUri },
+      position: templateRenamePosition,
+    })
+    if (!templatePrepareRename || templatePrepareRename.placeholder !== 'flashClasses') {
+      throw new Error(`Expected template TS prepareRename placeholder for flashClasses. Got: ${JSON.stringify(templatePrepareRename)}`)
+    }
+    const templateRenameEdits = templateRenameFeatureService.provideRename({
+      textDocument: { uri: templateRenameUri },
+      position: templateRenamePosition,
+      newName: 'bannerClasses',
+    })
+    if (!Array.isArray(templateRenameEdits) || templateRenameEdits.length !== 3) {
+      throw new Error(`Expected template TS rename to update declaration and template usages. Got: ${JSON.stringify(templateRenameEdits)}`)
+    }
+    const renamedTemplateText = applyEditsToText(templateRenameText, templateRenameEdits)
+    if (
+      !renamedTemplateText.includes("const bannerClasses = 'notice'") ||
+      !renamedTemplateText.includes('<div class="<%= bannerClasses %>"><%= bannerClasses %></div>')
+    ) {
+      throw new Error(`Expected template TS rename edits to update declaration and template usages. Got: ${renamedTemplateText}`)
+    }
 
     const assetSmokeText = `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>\n`
     const assetSmokeDocument = createTestDocument(fixture.siteIndexFilePath, 'ejs', 1, assetSmokeText)
@@ -3642,6 +3703,113 @@ const roles = {
     if (!groupedPostResolveDefinition || normalizeFilePath(groupedPostResolveDefinition) !== normalizeFilePath(fixture.postRoleFilePath)) {
       throw new Error(`Expected grouped resolve() definition target for roles/post. Got: ${groupedPostResolveDefinition}`)
     }
+
+    const originalBoardRoleText = fs.readFileSync(fixture.boardRoleFilePath, 'utf8')
+    const originalPostRoleText = fs.readFileSync(fixture.postRoleFilePath, 'utf8')
+    const shadowedResolveMemberName = 'readScopedState'
+    service.setDocumentOverride(
+      fixture.boardRoleFilePath,
+      `${originalBoardRoleText}
+
+function readScopedState(params) {
+  return !!params
+}
+
+module.exports.readScopedState = readScopedState
+`
+    )
+    service.setDocumentOverride(
+      fixture.postRoleFilePath,
+      `${originalPostRoleText}
+
+function readScopedState(params) {
+  return !params
+}
+
+module.exports.readScopedState = readScopedState
+`
+    )
+    const shadowedResolveText = `<script server>
+const roleService = resolve('roles/board')
+roleService.readScopedState({ request })
+
+function loadPostRole() {
+  const roleService = resolve('roles/post')
+  return roleService.readScopedState({ request })
+}
+</script>
+`
+    const shadowedOuterOffset = shadowedResolveText.indexOf(shadowedResolveMemberName) + 2
+    const shadowedInnerOffset = shadowedResolveText.lastIndexOf(shadowedResolveMemberName) + 2
+    const shadowedOuterDefinition = service.getCustomDefinitionTarget(
+      fixture.renameCheckFilePath,
+      shadowedResolveText,
+      shadowedOuterOffset
+    )
+    if (
+      !shadowedOuterDefinition ||
+      typeof shadowedOuterDefinition === 'string' ||
+      normalizeFilePath(shadowedOuterDefinition.filePath) !== normalizeFilePath(fixture.boardRoleFilePath)
+    ) {
+      throw new Error(`Expected outer shadowed resolve() member definition to stay on roles/board. Got: ${JSON.stringify(shadowedOuterDefinition)}`)
+    }
+    const shadowedInnerDefinition = service.getCustomDefinitionTarget(
+      fixture.renameCheckFilePath,
+      shadowedResolveText,
+      shadowedInnerOffset
+    )
+    if (
+      !shadowedInnerDefinition ||
+      typeof shadowedInnerDefinition === 'string' ||
+      normalizeFilePath(shadowedInnerDefinition.filePath) !== normalizeFilePath(fixture.postRoleFilePath)
+    ) {
+      throw new Error(`Expected inner shadowed resolve() member definition to stay on roles/post. Got: ${JSON.stringify(shadowedInnerDefinition)}`)
+    }
+    const shadowedOuterRenameInfo = service.getCustomRenameInfo(
+      fixture.renameCheckFilePath,
+      shadowedResolveText,
+      shadowedOuterOffset
+    )
+    if (
+      !shadowedOuterRenameInfo ||
+      !shadowedOuterRenameInfo.canRename ||
+      normalizeFilePath(shadowedOuterRenameInfo.moduleDefinitionInfo.filePath) !== normalizeFilePath(fixture.boardRoleFilePath)
+    ) {
+      throw new Error(`Expected outer shadowed rename info to target roles/board. Got: ${JSON.stringify(shadowedOuterRenameInfo)}`)
+    }
+    const shadowedOuterRenameEdits = service.getCustomRenameEdits(
+      fixture.renameCheckFilePath,
+      shadowedResolveText,
+      shadowedOuterOffset,
+      'readBoardScopedState'
+    )
+    if (!shadowedOuterRenameEdits || !shadowedOuterRenameEdits.canRename) {
+      throw new Error(`Expected outer shadowed rename edits. Got: ${JSON.stringify(shadowedOuterRenameEdits)}`)
+    }
+    const shadowedCallerEdits = shadowedOuterRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath)
+    )
+    const shadowedBoardRoleEdits = shadowedOuterRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardRoleFilePath)
+    )
+    const shadowedPostRoleEdits = shadowedOuterRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.postRoleFilePath)
+    )
+    const shadowedRenamedCallerText = applyEditsToText(shadowedResolveText, shadowedCallerEdits)
+    if (!shadowedRenamedCallerText.includes('roleService.readBoardScopedState({ request })')) {
+      throw new Error(`Expected outer shadowed caller usage to rename. Got: ${shadowedRenamedCallerText}`)
+    }
+    if (!shadowedRenamedCallerText.includes('return roleService.readScopedState({ request })')) {
+      throw new Error(`Expected inner shadowed caller usage to stay unchanged. Got: ${shadowedRenamedCallerText}`)
+    }
+    if (!shadowedBoardRoleEdits.length) {
+      throw new Error(`Expected outer shadowed rename to update roles/board export. Got: ${JSON.stringify(shadowedOuterRenameEdits)}`)
+    }
+    if (shadowedPostRoleEdits.length) {
+      throw new Error(`Expected outer shadowed rename to avoid roles/post edits. Got: ${JSON.stringify(shadowedPostRoleEdits)}`)
+    }
+    service.clearDocumentOverride(fixture.boardRoleFilePath)
+    service.clearDocumentOverride(fixture.postRoleFilePath)
 
     const backtickResolveDefinition = service.getDefinitionTarget(
       fixture.boardsFilePath,

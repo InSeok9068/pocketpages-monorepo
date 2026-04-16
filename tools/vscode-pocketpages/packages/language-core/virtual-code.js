@@ -74,6 +74,8 @@ const TEMPLATE_CODE_INFORMATION = createCodeInformation({
   semantic: true,
   navigation: true,
   structure: true,
+  references: true,
+  rename: true,
   hover: true,
 });
 
