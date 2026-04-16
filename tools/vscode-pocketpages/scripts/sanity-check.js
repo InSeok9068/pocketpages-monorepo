@@ -1061,6 +1061,42 @@ module.exports = {
 `
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'collection-constants.js'),
+    `const CACHE_COLLECTION_NAME = 'boards'
+
+module.exports = {
+  CACHE_COLLECTION_NAME,
+}
+`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'imported-collection-consumer.js'),
+    `const { CACHE_COLLECTION_NAME } = require('./collection-constants')
+
+function loadBoard() {
+  let record = null
+
+  try {
+    record = $app.findFirstRecordByFilter(CACHE_COLLECTION_NAME, '')
+    record.get('na')
+    const cachedBoardName = record.get('name')
+    return cachedBoardName
+  } catch (_error) {
+    record = null
+  }
+
+  const collection = $app.findCollectionByNameOrId(CACHE_COLLECTION_NAME)
+  const fallbackRecord = new Record(collection)
+  fallbackRecord.get('na')
+  return fallbackRecord.get('name')
+}
+
+module.exports = {
+  loadBoard,
+}
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'cjs-state-service.cjs'),
     `/**
  * @returns {{ scope: string }}
@@ -1261,6 +1297,8 @@ module.exports = {
     jobScriptFilePath: path.join(appRoot, 'pb_hooks', 'jobs', 'rebuild-search.js'),
     boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
     boardServiceConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service-consumer.js'),
+    importedCollectionConstantsFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'collection-constants.js'),
+    importedCollectionConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'imported-collection-consumer.js'),
     cjsStateServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'cjs-state-service.cjs'),
     sharedServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'shared-service.js'),
     localSharedServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '_private', 'shared-service.js'),
@@ -3323,6 +3361,59 @@ boardService.readAuthState(
     const jsAuthFieldNames = jsAuthFieldCompletion ? jsAuthFieldCompletion.items.map((entry) => entry.label) : []
     if (!jsAuthFieldNames.includes('name') || !jsAuthFieldNames.includes('slug')) {
       throw new Error(`Expected JS auth record field completions. Got: ${jsAuthFieldNames.slice(0, 20).join(', ')}`)
+    }
+
+    const importedCollectionConsumerText = fs.readFileSync(fixture.importedCollectionConsumerFilePath, 'utf8')
+    const importedRecordFieldOffset =
+      importedCollectionConsumerText.indexOf("record.get('na") + "record.get('na".length
+    const importedRecordFieldCompletion = service.getCustomCompletionData(
+      fixture.importedCollectionConsumerFilePath,
+      importedCollectionConsumerText,
+      importedRecordFieldOffset
+    )
+    const importedRecordFieldNames = importedRecordFieldCompletion
+      ? importedRecordFieldCompletion.items.map((entry) => entry.label)
+      : []
+    if (!importedRecordFieldNames.includes('name') || !importedRecordFieldNames.includes('slug')) {
+      throw new Error(
+        `Expected CommonJS imported collection constant field completions. Got: ${importedRecordFieldNames
+          .slice(0, 20)
+          .join(', ')}`
+      )
+    }
+
+    const importedFallbackFieldOffset =
+      importedCollectionConsumerText.indexOf("fallbackRecord.get('na") + "fallbackRecord.get('na".length
+    const importedFallbackFieldCompletion = service.getCustomCompletionData(
+      fixture.importedCollectionConsumerFilePath,
+      importedCollectionConsumerText,
+      importedFallbackFieldOffset
+    )
+    const importedFallbackFieldNames = importedFallbackFieldCompletion
+      ? importedFallbackFieldCompletion.items.map((entry) => entry.label)
+      : []
+    if (!importedFallbackFieldNames.includes('name') || !importedFallbackFieldNames.includes('slug')) {
+      throw new Error(
+        `Expected imported collection constant constructor field completions. Got: ${importedFallbackFieldNames
+          .slice(0, 20)
+          .join(', ')}`
+      )
+    }
+
+    const importedCollectionDiagnosticText =
+      `const { CACHE_COLLECTION_NAME } = require('./collection-constants')\n` +
+      `const record = $app.findFirstRecordByFilter(CACHE_COLLECTION_NAME, '')\n` +
+      `record.get('missing_field')\n`
+    const importedCollectionDiagnostics = service.getDiagnostics(
+      fixture.importedCollectionConsumerFilePath,
+      importedCollectionDiagnosticText
+    )
+    if (!importedCollectionDiagnostics.some((entry) => String(entry.message).includes('Unknown field "missing_field" for collection "boards"'))) {
+      throw new Error(
+        `Expected imported collection constant schema diagnostics. Got: ${importedCollectionDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
     }
 
     const templateFieldText = `<% const board = pageData.board %>\n<p><%= board.get('na') %></p>\n`

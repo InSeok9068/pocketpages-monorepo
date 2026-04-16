@@ -640,9 +640,18 @@ function createExplicitInferenceFrame(initialDeclaredNames = []) {
   }
 }
 
-function createExplicitInferenceState() {
+function createExplicitInferenceState(options = {}) {
   return {
     frames: [createExplicitInferenceFrame()],
+    filePath: typeof options.filePath === 'string' ? normalizePath(options.filePath) : '',
+    resolveRequireTarget:
+      typeof options.resolveRequireTarget === 'function'
+        ? options.resolveRequireTarget
+        : null,
+    getModuleExportedStringConstants:
+      typeof options.getModuleExportedStringConstants === 'function'
+        ? options.getModuleExportedStringConstants
+        : null,
   }
 }
 
@@ -995,6 +1004,47 @@ function readArrayCollectionReference(node, state) {
   return null
 }
 
+function applyExplicitInferenceRequireStringBindings(state, bindingName, initializer) {
+  if (!bindingName || !ts.isObjectBindingPattern(bindingName)) {
+    return false
+  }
+
+  const requestPath = readRequireRequestPath(initializer)
+  if (!requestPath || !state.filePath || !state.resolveRequireTarget || !state.getModuleExportedStringConstants) {
+    return false
+  }
+
+  const moduleFilePath = state.resolveRequireTarget(state.filePath, requestPath)
+  if (!moduleFilePath) {
+    return false
+  }
+
+  const exportedStringConstants = state.getModuleExportedStringConstants(moduleFilePath)
+  if (!(exportedStringConstants instanceof Map) || exportedStringConstants.size === 0) {
+    return false
+  }
+
+  let applied = false
+  for (const element of bindingName.elements) {
+    if (!element || !ts.isBindingElement(element) || !ts.isIdentifier(element.name)) {
+      continue
+    }
+
+    const exportName = element.propertyName
+      ? getPropertyNameText(element.propertyName)
+      : element.name.text
+    const stringValue = exportName ? exportedStringConstants.get(exportName) : null
+    if (typeof stringValue !== 'string') {
+      continue
+    }
+
+    writeExplicitInferenceString(state, element.name.text, stringValue)
+    applied = true
+  }
+
+  return applied
+}
+
 function applyExplicitInferenceAssignment(state, variableName, expression, options = {}) {
   if (!variableName) {
     return
@@ -1124,6 +1174,9 @@ function processExplicitInferenceVariableStatement(statement, sourceFile, before
     }
 
     if (!ts.isIdentifier(declaration.name)) {
+      if (declaration.initializer && declaration.initializer.getStart(sourceFile) < beforeOffset) {
+        applyExplicitInferenceRequireStringBindings(state, declaration.name, declaration.initializer)
+      }
       continue
     }
 
@@ -1320,33 +1373,33 @@ function processExplicitInferenceStatement(statement, sourceFile, beforeOffset, 
   }
 }
 
-function buildExplicitInferenceState(sourceFile, beforeOffset) {
-  const state = createExplicitInferenceState()
+function buildExplicitInferenceState(sourceFile, beforeOffset, options = {}) {
+  const state = createExplicitInferenceState(options)
   walkExplicitInferenceStatements(sourceFile.statements, sourceFile, beforeOffset, state)
   return state
 }
 
-function inferExplicitVariableCollectionReference(receiverExpression, sourceFile, beforeOffset) {
+function inferExplicitVariableCollectionReference(receiverExpression, sourceFile, beforeOffset, options = {}) {
   const receiverName = String(receiverExpression || '').trim()
   if (!receiverName || !isValidIdentifierName(receiverName)) {
     return null
   }
 
   return readExplicitInferenceValue(
-    buildExplicitInferenceState(sourceFile, beforeOffset),
+    buildExplicitInferenceState(sourceFile, beforeOffset, options),
     'recordVariables',
     receiverName,
   )
 }
 
-function inferExplicitIndexedElementCollectionReference(receiverExpression, sourceFile, beforeOffset) {
+function inferExplicitIndexedElementCollectionReference(receiverExpression, sourceFile, beforeOffset, options = {}) {
   const receiverText = String(receiverExpression || '').trim()
   const match = receiverText.match(ARRAY_ELEMENT_RECEIVER_RE)
   if (!match) {
     return null
   }
 
-  const state = buildExplicitInferenceState(sourceFile, beforeOffset)
+  const state = buildExplicitInferenceState(sourceFile, beforeOffset, options)
   const arrayReference = readExplicitInferenceValue(state, 'arrayVariables', match[1])
   if (!arrayReference) {
     return null
@@ -1375,7 +1428,7 @@ function findInnermostNodeAtOffset(sourceFile, offset) {
   return match
 }
 
-function inferDirectCallbackCollectionReference(receiverExpression, sourceFile, beforeOffset) {
+function inferDirectCallbackCollectionReference(receiverExpression, sourceFile, beforeOffset, options = {}) {
   const receiverName = String(receiverExpression || '').trim()
   if (!receiverName || !isValidIdentifierName(receiverName) || beforeOffset <= 0) {
     return null
@@ -1395,7 +1448,7 @@ function inferDirectCallbackCollectionReference(receiverExpression, sourceFile, 
     ) {
       const callbackMethodName = current.parent.expression.name.text
       if (DIRECT_CALLBACK_COLLECTION_METHOD_NAMES.has(callbackMethodName)) {
-        const callbackState = buildExplicitInferenceState(sourceFile, current.getStart(sourceFile))
+        const callbackState = buildExplicitInferenceState(sourceFile, current.getStart(sourceFile), options)
         const arrayReference = readArrayCollectionReference(current.parent.expression.expression, callbackState)
 
         if (arrayReference) {
@@ -1698,6 +1751,28 @@ function skipParenthesizedExpression(node) {
     current = current.expression
   }
   return current
+}
+
+function readRequireRequestPath(node) {
+  const target = skipParenthesizedExpression(node)
+  if (!target || !ts.isCallExpression(target)) {
+    return null
+  }
+
+  if (!ts.isIdentifier(target.expression) || target.expression.text !== 'require') {
+    return null
+  }
+
+  if (!target.arguments.length) {
+    return null
+  }
+
+  const firstArgument = target.arguments[0]
+  if (!ts.isStringLiteralLike(firstArgument)) {
+    return null
+  }
+
+  return firstArgument.text
 }
 
 function skipExpressionWrappers(node) {
@@ -2156,6 +2231,88 @@ function resolveInitializerDefinitionNode(initializer, declarations) {
   return null
 }
 
+function readStaticStringExpressionValue(node, declarations, visitedNames = new Set()) {
+  const target = skipParenthesizedExpression(node)
+  if (!target) {
+    return null
+  }
+
+  if (ts.isVariableDeclaration(target)) {
+    return target.initializer
+      ? readStaticStringExpressionValue(target.initializer, declarations, visitedNames)
+      : null
+  }
+
+  if (ts.isStringLiteralLike(target)) {
+    return target.text
+  }
+
+  if (!ts.isIdentifier(target)) {
+    return null
+  }
+
+  if (visitedNames.has(target.text)) {
+    return null
+  }
+
+  visitedNames.add(target.text)
+  const declaration = declarations.get(target.text)
+  if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer) {
+    return null
+  }
+
+  return readStaticStringExpressionValue(declaration.initializer, declarations, visitedNames)
+}
+
+function collectExportedStringConstantValues(sourceFile) {
+  const declarations = collectNamedDeclarations(sourceFile)
+  const definitions = new Map()
+
+  const remember = (exportName, value) => {
+    if (!exportName || typeof value !== 'string' || definitions.has(exportName)) {
+      return
+    }
+
+    definitions.set(exportName, value)
+  }
+
+  const visit = (node) => {
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const left = skipParenthesizedExpression(node.left)
+      const right = skipParenthesizedExpression(node.right)
+
+      if (isModuleExportsExpression(left) && right && ts.isObjectLiteralExpression(right)) {
+        for (const property of right.properties) {
+          if (ts.isShorthandPropertyAssignment(property)) {
+            remember(
+              property.name.text,
+              readStaticStringExpressionValue(declarations.get(property.name.text), declarations)
+            )
+            continue
+          }
+
+          if (ts.isPropertyAssignment(property)) {
+            remember(
+              getPropertyNameText(property.name),
+              readStaticStringExpressionValue(property.initializer, declarations)
+            )
+          }
+        }
+      }
+
+      const assignedExportName = getCommonJsExportName(left)
+      if (assignedExportName) {
+        remember(assignedExportName, readStaticStringExpressionValue(right, declarations))
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return definitions
+}
+
 function _findExportedMemberDefinitionNode(sourceFile, exportName) {
   const declarations = collectNamedDeclarations(sourceFile)
   let definitionNode = null
@@ -2220,6 +2377,7 @@ class PocketPagesProjectIndex {
     this.pagesRoot = normalizePath(path.join(this.appRoot, 'pb_hooks', 'pages'))
     this.schemaCache = null
     this.collectionMethodCache = null
+    this.moduleExportedStringConstantsCache = new Map()
     this.includeLocalsCache = null
     this.pagesGraphCache = null
     this.searchRootFileCache = new Map()
@@ -2231,6 +2389,7 @@ class PocketPagesProjectIndex {
   resetCaches() {
     this.schemaCache = null
     this.collectionMethodCache = null
+    this.moduleExportedStringConstantsCache.clear()
     this.includeLocalsCache = null
     this.pagesGraphCache = null
     this.searchRootFileCache.clear()
@@ -2240,6 +2399,7 @@ class PocketPagesProjectIndex {
   }
 
   invalidateStructureCaches() {
+    this.moduleExportedStringConstantsCache.clear()
     this.pagesGraphCache = null
     this.searchRootFileCache.clear()
     this.routeStateCache = null
@@ -2264,6 +2424,7 @@ class PocketPagesProjectIndex {
     }
 
     if (isPagesCodeFile(this.pagesRoot, normalizedFilePath)) {
+      this.moduleExportedStringConstantsCache.clear()
       this.includeLocalsCache = null
       this.pagesContentVersion += 1
     }
@@ -2783,6 +2944,36 @@ class PocketPagesProjectIndex {
     return collectExportedMemberDefinitionInfos(sourceFile)
   }
 
+  getModuleExportedStringConstants(moduleFilePath, sourceText = null) {
+    const normalizedFilePath = normalizePath(moduleFilePath)
+    const extension = path.extname(normalizedFilePath).toLowerCase()
+    if (!['.js', '.cjs', '.mjs'].includes(extension)) {
+      return new Map()
+    }
+
+    if (typeof sourceText === 'string') {
+      const sourceFile = ts.createSourceFile(normalizedFilePath, sourceText, ts.ScriptTarget.Latest, true)
+      return collectExportedStringConstantValues(sourceFile)
+    }
+
+    const cachedValue = this.moduleExportedStringConstantsCache.get(normalizedFilePath)
+    if (cachedValue) {
+      return cachedValue
+    }
+
+    const effectiveSourceText = fileExists(normalizedFilePath)
+      ? fs.readFileSync(normalizedFilePath, 'utf8')
+      : null
+    if (effectiveSourceText === null) {
+      return new Map()
+    }
+
+    const sourceFile = ts.createSourceFile(normalizedFilePath, effectiveSourceText, ts.ScriptTarget.Latest, true)
+    const exportedStringConstants = collectExportedStringConstantValues(sourceFile)
+    this.moduleExportedStringConstantsCache.set(normalizedFilePath, exportedStringConstants)
+    return exportedStringConstants
+  }
+
   getIncludeLocalsState(options = {}) {
     const readText =
       typeof options.readFileText === 'function'
@@ -3287,15 +3478,27 @@ class PocketPagesProjectIndex {
       ts.ScriptTarget.Latest,
       true
     )
-    const explicitReference = inferExplicitVariableCollectionReference(receiverName, inferenceSourceFile, beforeOffset)
+    const explicitReference = inferExplicitVariableCollectionReference(receiverName, inferenceSourceFile, beforeOffset, {
+      filePath: options.filePath,
+      resolveRequireTarget: this.resolveRequireTarget.bind(this),
+      getModuleExportedStringConstants: this.getModuleExportedStringConstants.bind(this),
+    })
     if (explicitReference && collectionNames.includes(explicitReference.collectionName)) {
       return explicitReference
     }
-    const indexedReference = inferExplicitIndexedElementCollectionReference(receiverExpression, inferenceSourceFile, beforeOffset)
+    const indexedReference = inferExplicitIndexedElementCollectionReference(receiverExpression, inferenceSourceFile, beforeOffset, {
+      filePath: options.filePath,
+      resolveRequireTarget: this.resolveRequireTarget.bind(this),
+      getModuleExportedStringConstants: this.getModuleExportedStringConstants.bind(this),
+    })
     if (indexedReference && collectionNames.includes(indexedReference.collectionName)) {
       return indexedReference
     }
-    const callbackReference = inferDirectCallbackCollectionReference(receiverName, inferenceSourceFile, beforeOffset)
+    const callbackReference = inferDirectCallbackCollectionReference(receiverName, inferenceSourceFile, beforeOffset, {
+      filePath: options.filePath,
+      resolveRequireTarget: this.resolveRequireTarget.bind(this),
+      getModuleExportedStringConstants: this.getModuleExportedStringConstants.bind(this),
+    })
     if (callbackReference && collectionNames.includes(callbackReference.collectionName)) {
       return callbackReference
     }
