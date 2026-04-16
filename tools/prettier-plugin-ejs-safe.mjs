@@ -14,7 +14,6 @@ const tailwindHtmlParser = tailwindPlugin.parsers.html
 const EJS_TAG_PATTERN = /<%(?:[%=_#-])?[\s\S]*?(?:[-_])?%>/g
 const BLOCK_TOKEN_PREFIX = '__PP_EJS_BLOCK_'
 const INLINE_TOKEN_PREFIX = '__PP_EJS_INLINE_'
-const INDENT = '  '
 
 function buildJsFormatOptions(options, parser, overrides = {}) {
   return {
@@ -28,14 +27,26 @@ function buildJsFormatOptions(options, parser, overrides = {}) {
     jsxSingleQuote: options.jsxSingleQuote,
     arrowParens: options.arrowParens,
     objectWrap: options.objectWrap,
+    tabWidth: options.tabWidth,
+    useTabs: options.useTabs,
     ...overrides,
   }
 }
 
-function indentBlock(text) {
+function getIndent(options) {
+  if (options.useTabs) {
+    return '\t'
+  }
+
+  const tabWidth = Number.isInteger(options.tabWidth) && options.tabWidth > 0 ? options.tabWidth : 2
+  return ' '.repeat(tabWidth)
+}
+
+function indentBlock(text, options) {
+  const indent = getIndent(options)
   return text
     .split('\n')
-    .map((line) => (line ? `${INDENT}${line}` : line))
+    .map((line) => (line ? `${indent}${line}` : line))
     .join('\n')
 }
 
@@ -102,7 +113,7 @@ async function formatEjsTag(match, options) {
     return `<%${openModifier} ${formattedScriptlet} ${closeModifier}%>`
   }
 
-  return `<%${openModifier}\n${indentBlock(formattedScriptlet)}\n${closeModifier}%>`
+  return `<%${openModifier}\n${indentBlock(formattedScriptlet, options)}\n${closeModifier}%>`
 }
 
 async function formatEjsBodies(text, options) {
