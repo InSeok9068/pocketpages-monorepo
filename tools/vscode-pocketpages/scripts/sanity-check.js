@@ -8,6 +8,7 @@ const { PocketPagesLanguageServiceManager, ts } = require('../packages/language-
 const { PocketPagesLanguageCore } = require('../packages/language-core/language-core')
 const { createPocketPagesLanguagePlugin } = require('../packages/language-core/language-plugin')
 const { createScriptSnapshot } = require('../packages/language-core/snapshot')
+const { extractServerBlocks } = require('../packages/language-core/script-server')
 const { createVirtualCode, updateVirtualCode } = require('../packages/language-core/virtual-code')
 const { collectEjsSemanticTokenEntries } = require('../packages/language-server/ejs-semantic-tokens')
 const { getServerTemplateBoundaryLineNumbers } = require('../packages/language-core/ejs-server-boundary')
@@ -5033,6 +5034,21 @@ const reportDate = String(safeState.reportDate || '').trim()
       throw new Error(
         `Expected raw output blocks to avoid partial setup boundaries. Got: ${JSON.stringify(rawOutputBoundaryLines)}`
       )
+    }
+
+    const explicitServerBlocks = extractServerBlocks(`<script server>const authState = resolve('auth-service')</script>`)
+    if (explicitServerBlocks.length !== 1) {
+      throw new Error(`Expected explicit server attribute to produce one server block. Got: ${explicitServerBlocks.length}`)
+    }
+
+    const dataServerBlocks = extractServerBlocks(`<script data-server="1">const authState = resolve('auth-service')</script>`)
+    if (dataServerBlocks.length !== 0) {
+      throw new Error(`Expected data-server attribute to stay out of PocketPages server block parsing. Got: ${dataServerBlocks.length}`)
+    }
+
+    const serverlessBlocks = extractServerBlocks(`<script serverless>const authState = resolve('auth-service')</script>`)
+    if (serverlessBlocks.length !== 0) {
+      throw new Error(`Expected serverless attribute to stay out of PocketPages server block parsing. Got: ${serverlessBlocks.length}`)
     }
 
     const mirroredServerSource = `<script server>
