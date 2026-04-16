@@ -3,6 +3,7 @@
 function createMaintenanceFeatureService(context) {
   const { core, helpers } = context;
   const {
+    clearCachedCompletionItemsForUri,
     elapsedMilliseconds,
     getRelativePathLabel,
     logServer,
@@ -31,6 +32,9 @@ function createMaintenanceFeatureService(context) {
       const scopedFilePath = uri ? uriToFilePath(uri) : null;
       const startedAt = process.hrtime.bigint();
       const result = core.reloadCaches(scopedFilePath);
+      for (const affectedUri of result && Array.isArray(result.affectedUris) ? result.affectedUris : []) {
+        clearCachedCompletionItemsForUri(affectedUri);
+      }
       logServer("info", "cache", "reload", {
         scoped: result.scoped,
         file: scopedFilePath ? getRelativePathLabel(scopedFilePath) : null,

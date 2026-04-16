@@ -7,12 +7,20 @@ function createLifecycleFeatureService(context) {
     cancelScheduledDiagnostics,
     getRelativePathLabel,
     isEjsFilePath,
+    isExcludedPocketPagesScriptPath,
     isScriptFilePath,
     logServer,
     publishDiagnostics,
     scheduleDiagnostics,
     uriToFilePath,
   } = helpers;
+
+  function shouldRunDiagnosticsForFile(filePath) {
+    return (
+      (isEjsFilePath(filePath) || isScriptFilePath(filePath)) &&
+      !isExcludedPocketPagesScriptPath(filePath)
+    );
+  }
 
   function toWatchedFileChangeKind(type) {
     switch (type) {
@@ -32,8 +40,13 @@ function createLifecycleFeatureService(context) {
     for (const uri of result.affectedUris) {
       clearCachedCompletionItemsForUri(uri);
       const filePath = uriToFilePath(uri);
-      if (isEjsFilePath(filePath) || isScriptFilePath(filePath)) {
+      if (shouldRunDiagnosticsForFile(filePath)) {
         scheduleDiagnostics(uri);
+        continue;
+      }
+
+      if (isExcludedPocketPagesScriptPath(filePath)) {
+        context.connection.sendDiagnostics({ uri, diagnostics: [] });
       }
     }
 
@@ -63,7 +76,15 @@ function createLifecycleFeatureService(context) {
         languageId: event.document.languageId,
         version: event.document.version,
       });
-      publishDiagnostics(event.document.uri);
+      const filePath = uriToFilePath(event.document.uri);
+      if (shouldRunDiagnosticsForFile(filePath)) {
+        publishDiagnostics(event.document.uri);
+        return;
+      }
+
+      if (isExcludedPocketPagesScriptPath(filePath)) {
+        context.connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
+      }
     },
 
     handleDidChangeContent(event) {
@@ -81,8 +102,13 @@ function createLifecycleFeatureService(context) {
       });
 
       const filePath = uriToFilePath(event.document.uri);
-      if (isEjsFilePath(filePath) || isScriptFilePath(filePath)) {
+      if (shouldRunDiagnosticsForFile(filePath)) {
         scheduleDiagnostics(event.document.uri);
+        return;
+      }
+
+      if (isExcludedPocketPagesScriptPath(filePath)) {
+        context.connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
       }
     },
 

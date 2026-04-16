@@ -111,6 +111,11 @@ function createDiagnosticsFeatureService(context) {
       return;
     }
 
+    if (helpers.isExcludedPocketPagesScriptPath(documentContext.filePath)) {
+      connection.sendDiagnostics({ uri, diagnostics: [] });
+      return;
+    }
+
     const startedAt = process.hrtime.bigint();
     const diagnosticsProfile = {};
     const requestedVersion = document.version;

@@ -15,6 +15,7 @@ const { getServerTemplateBoundaryLineNumbers } = require('../packages/language-c
 const { createTypeScriptFeatureService } = require('../packages/language-server/services/ts-features')
 const { createCustomFeatureService } = require('../packages/language-server/services/custom-features')
 const { createDiagnosticsFeatureService } = require('../packages/language-server/services/diagnostics-features')
+const { createMaintenanceFeatureService } = require('../packages/language-server/services/maintenance-features')
 const {
   buildScriptServerMirrorText,
   collectExternalPocketPagesEjsFiles,
@@ -244,6 +245,9 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
     isEjsFilePath(filePath) {
       return String(filePath || '').endsWith('.ejs')
     },
+    isScriptFilePath(filePath) {
+      return /\.(js|cjs|mjs)$/i.test(String(filePath || ''))
+    },
     logServer() {},
     beginDiagnosticRun() {
       return 1
@@ -468,6 +472,18 @@ function assertLspRuntimeContracts(repoRoot) {
     ),
     'utf8'
   )
+  const maintenanceFeatureSource = fs.readFileSync(
+    path.join(
+      repoRoot,
+      'tools',
+      'vscode-pocketpages',
+      'packages',
+      'language-server',
+      'services',
+      'maintenance-features.js'
+    ),
+    'utf8'
+  )
   const tsPluginSource = fs.readFileSync(
     path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'typescript-plugin', 'index.js'),
     'utf8'
@@ -583,14 +599,34 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected diagnostics feature service to preserve only schema diagnostics for non-pages pb_hooks scripts.'
   )
   assertMatches(
+    diagnosticsFeatureSource,
+    /helpers\.isExcludedPocketPagesScriptPath\(documentContext\.filePath\)/,
+    'Expected diagnostics feature service to skip excluded PocketPages vendor and minified scripts.'
+  )
+  assertMatches(
     lifecycleFeatureSource,
-    /const filePath = uriToFilePath\(event\.document\.uri\);\s*if \(isEjsFilePath\(filePath\) \|\| isScriptFilePath\(filePath\)\) \{\s*scheduleDiagnostics\(event\.document\.uri\);/,
-    'Expected lifecycle-features.js to schedule diagnostics for both EJS files and hook scripts after content changes.'
+    /function shouldRunDiagnosticsForFile\(filePath\) \{[\s\S]*!isExcludedPocketPagesScriptPath\(filePath\)/,
+    'Expected lifecycle-features.js to suppress diagnostics for excluded PocketPages vendor and minified scripts.'
   )
   assertMatches(
     tsPluginSource,
     /core\.isFeatureEnabledAtOffset\(\s*documentContext\.uri,\s*position,\s*capabilityName\s*\)/,
     'Expected PocketPages TS plugin to respect mapper ownership before serving TS features for .ejs.'
+  )
+  assertMatches(
+    tsPluginSource,
+    /core\.reloadCachesForAppRoot\(appRoot\)/,
+    'Expected PocketPages TS plugin to invalidate app-scoped caches when sibling project files change.'
+  )
+  assertMatches(
+    tsPluginSource,
+    /core\.closeDocument\(uri\)/,
+    'Expected PocketPages TS plugin to release managed EJS document state when pruning plugin-owned caches.'
+  )
+  assertMatches(
+    maintenanceFeatureSource,
+    /clearCachedCompletionItemsForUri\(affectedUri\)/,
+    'Expected reloadCaches maintenance flow to clear cached completion entries for affected open documents.'
   )
 
   if (!vscodeIgnore.includes('node_modules/**')) {
@@ -1818,6 +1854,89 @@ const isSignedIn = !!authState && authState.isSignedIn
     if (!schemaOnlyDiagnosticsEvents[0].diagnostics.some((entry) => String(entry.code) === 'pp-schema-collection')) {
       throw new Error(
         `Expected schema-support-only hook diagnostics publishing to keep collection diagnostics. Got: ${JSON.stringify(schemaOnlyDiagnosticsEvents[0].diagnostics)}`
+      )
+    }
+
+    const excludedVendorDiagnosticsEvents = []
+    const excludedVendorDiagnosticsCore = new PocketPagesLanguageCore()
+    const excludedVendorDiagnosticsText = `window.JSZip = {}\n`
+    const excludedVendorDiagnosticsDocument = createTestDocument(
+      fixture.vendorAssetFilePath,
+      'javascript',
+      1,
+      excludedVendorDiagnosticsText
+    )
+    const excludedVendorDiagnosticsUri = excludedVendorDiagnosticsDocument.uri
+    excludedVendorDiagnosticsCore.openDocument({
+      uri: excludedVendorDiagnosticsUri,
+      languageId: 'javascript',
+      version: 1,
+      text: excludedVendorDiagnosticsText,
+    })
+    const excludedVendorDiagnosticsContext = createLspServiceSmokeContext(
+      excludedVendorDiagnosticsCore,
+      new Map([[excludedVendorDiagnosticsUri, excludedVendorDiagnosticsDocument]]),
+      {
+        connection: {
+          sendDiagnostics(payload) {
+            excludedVendorDiagnosticsEvents.push(payload)
+          },
+        },
+      }
+    )
+    excludedVendorDiagnosticsContext.context.helpers.isExcludedPocketPagesScriptPath = (filePath) =>
+      normalizeFilePath(filePath) === normalizeFilePath(fixture.vendorAssetFilePath)
+    const excludedVendorDiagnosticsFeatureService = createDiagnosticsFeatureService(
+      excludedVendorDiagnosticsContext.context
+    )
+    excludedVendorDiagnosticsFeatureService.publishDiagnostics(excludedVendorDiagnosticsUri)
+    if (
+      !excludedVendorDiagnosticsEvents.length ||
+      !Array.isArray(excludedVendorDiagnosticsEvents[0].diagnostics) ||
+      excludedVendorDiagnosticsEvents[0].diagnostics.length !== 0
+    ) {
+      throw new Error(
+        `Expected excluded PocketPages vendor scripts to publish empty diagnostics. Got: ${JSON.stringify(excludedVendorDiagnosticsEvents)}`
+      )
+    }
+
+    const clearedCompletionUris = []
+    const maintenanceFeatureService = createMaintenanceFeatureService({
+      core: {
+        reloadCaches(targetFilePath) {
+          return {
+            targetFilePath,
+            scoped: !!targetFilePath,
+            affectedUris: [diagnosticsSmokeUri, assetSmokeUri],
+            message: 'PocketPages caches reloaded for the current app.',
+          }
+        },
+      },
+      helpers: {
+        clearCachedCompletionItemsForUri(uri) {
+          clearedCompletionUris.push(uri)
+        },
+        elapsedMilliseconds() {
+          return 0
+        },
+        getRelativePathLabel(filePath) {
+          return normalizeFilePath(filePath)
+        },
+        logServer() {},
+        publishDiagnostics() {},
+        uriToFilePath(uri) {
+          return URI.parse(uri).fsPath
+        },
+      },
+    })
+    maintenanceFeatureService.provideReloadCaches({ uri: diagnosticsSmokeUri })
+    if (
+      clearedCompletionUris.length !== 2 ||
+      !clearedCompletionUris.includes(diagnosticsSmokeUri) ||
+      !clearedCompletionUris.includes(assetSmokeUri)
+    ) {
+      throw new Error(
+        `Expected reloadCaches maintenance flow to clear completion cache entries for every affected URI. Got: ${JSON.stringify(clearedCompletionUris)}`
       )
     }
 
