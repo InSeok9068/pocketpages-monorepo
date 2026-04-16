@@ -351,6 +351,14 @@ function assertClientContracts(repoRoot) {
   )
   assertMatches(
     clientSource,
+    /isManagedPagesFilePath\(entry\.oldUri\.fsPath\)/,
+    'Expected the PocketPages client to request rename edits for managed pages files, not only _private files.'
+  )
+  if (clientSource.includes('hasPrivatePagesSegment(entry.oldUri.fsPath)')) {
+    throw new Error('Expected the PocketPages client to stop limiting file rename edits to _private files only.')
+  }
+  assertMatches(
+    clientSource,
     /await client\.sendNotification\(NOTIFICATIONS\.didManualSave, \{ uri: document\.uri\.toString\(\) \}\)/,
     'Expected the PocketPages client to keep manual-save diagnostics refresh notifications for EJS documents.'
   )
@@ -827,6 +835,33 @@ export {}
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'), `<h1>Sign In</h1>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', 'index.ejs'), `<h1>Feedback</h1>\n`)
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'roles', 'board.js'),
+    `module.exports = {
+  canRead() {
+    return true
+  },
+}
+`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'vendor', 'legacy.js'),
+    `module.exports = {
+  boot() {
+    return true
+  },
+}
+`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'legacy.min.js'),
+    `module.exports = {
+  boot() {
+    return true
+  },
+}
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', '+post.js'),
     `module.exports = function () {\n  return ''\n}\n`
   )
@@ -1189,6 +1224,9 @@ module.exports = {
     htmlToTextBundleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'vendor', 'html-to-text.bundle.js'),
     boardRoleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'board.js'),
     postRoleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'post.js'),
+    publicBoardRoleRouteFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'roles', 'board.js'),
+    routeVendorScriptFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'vendor', 'legacy.js'),
+    routeMinifiedScriptFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'legacy.min.js'),
     flashAlertFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
     typedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'typed-panel.ejs'),
     sharedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'shared-panel.ejs'),
@@ -2477,6 +2515,12 @@ const isSignedIn = !!authState && authState.isSignedIn
     if (indexedCodeFilePaths.includes(normalizeFilePath(fixture.vendorAssetFilePath))) {
       throw new Error(`Expected pages code index to exclude asset vendor scripts. Got: ${indexedCodeFilePaths.join(', ')}`)
     }
+    if (indexedCodeFilePaths.includes(normalizeFilePath(fixture.routeVendorScriptFilePath))) {
+      throw new Error(`Expected pages code index to exclude route-exposed vendor scripts. Got: ${indexedCodeFilePaths.join(', ')}`)
+    }
+    if (indexedCodeFilePaths.includes(normalizeFilePath(fixture.routeMinifiedScriptFilePath))) {
+      throw new Error(`Expected pages code index to exclude route-exposed minified scripts. Got: ${indexedCodeFilePaths.join(', ')}`)
+    }
     if (!indexedCodeFilePaths.includes(normalizeFilePath(fixture.htmlToTextBundleFilePath))) {
       throw new Error(`Expected pages code index to keep _private vendor modules. Got: ${indexedCodeFilePaths.join(', ')}`)
     }
@@ -3061,6 +3105,24 @@ boardService.readAuthState(
       throw new Error(`Expected JS board field completions. Got: ${jsFieldNames.slice(0, 20).join(', ')}`)
     }
 
+    const roleFieldText = `function canAccept(record) {\n  return !!record.get('na')\n}\n`
+    const roleFieldOffset = roleFieldText.lastIndexOf('na') + 'na'.length
+    const roleFieldCompletion = service.getCustomCompletionData(fixture.boardRoleFilePath, roleFieldText, roleFieldOffset)
+    const roleFieldNames = roleFieldCompletion ? roleFieldCompletion.items.map((entry) => entry.label) : []
+    if (!roleFieldNames.includes('name') || !roleFieldNames.includes('slug')) {
+      throw new Error(`Expected role-file generic record field completions from filename heuristic. Got: ${roleFieldNames.slice(0, 20).join(', ')}`)
+    }
+
+    const publicRoleFieldCompletion = service.getCustomCompletionData(
+      fixture.publicBoardRoleRouteFilePath,
+      roleFieldText,
+      roleFieldOffset
+    )
+    const publicRoleFieldNames = publicRoleFieldCompletion ? publicRoleFieldCompletion.items.map((entry) => entry.label) : []
+    if (publicRoleFieldNames.includes('name') || publicRoleFieldNames.includes('slug')) {
+      throw new Error(`Expected public roles route files to skip _private roles field heuristic. Got: ${publicRoleFieldNames.slice(0, 20).join(', ')}`)
+    }
+
     const jsAuthFieldText = `const record = $app.findAuthRecordByEmail('boards', 'test@example.com')\nrecord.get('na')\n`
     const jsAuthFieldOffset = jsAuthFieldText.lastIndexOf('na') + 'na'.length
     const jsAuthFieldCompletion = service.getCustomCompletionData(fixture.boardServiceFilePath, jsAuthFieldText, jsAuthFieldOffset)
@@ -3327,6 +3389,15 @@ const roles = {
     )
     if (!resolvedGlobalAssetTarget || normalizeFilePath(resolvedGlobalAssetTarget) !== normalizeFilePath(fixture.globalAssetFilePath)) {
       throw new Error(`Expected project index to resolve global asset target. Got: ${resolvedGlobalAssetTarget}`)
+    }
+
+    const misclassifiedAssetRouteTarget = service.projectIndex.resolveRouteTarget(
+      fixture.boardsFilePath,
+      '/assets/booklog-reader',
+      { routeSource: 'href' }
+    )
+    if (misclassifiedAssetRouteTarget) {
+      throw new Error(`Expected asset files to stay out of route resolution. Got: ${misclassifiedAssetRouteTarget}`)
     }
 
     const resolvedLocalAssetTarget = service.projectIndex.resolveAssetTarget(
@@ -4229,6 +4300,57 @@ module.exports = {
     service.clearDocumentOverride(fixture.renameCheckFilePath)
     service.clearDocumentOverride(fixture.boardServiceConsumerFilePath)
 
+    const renamedSignInRouteFilePath = path.join(path.dirname(fixture.siteSignInFilePath), 'login.ejs')
+    const routeFileRenameEdits = service.getFileRenameEdits(fixture.siteSignInFilePath, renamedSignInRouteFilePath)
+    const routeReferenceCheckEdits = routeFileRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath)
+    )
+    const signOutRouteEdits = routeFileRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.signOutFilePath)
+    )
+    if (routeReferenceCheckEdits.length !== 4) {
+      throw new Error(`Expected four route-path edits for renamed /sign-in route callers. Got: ${JSON.stringify(routeReferenceCheckEdits)}`)
+    }
+    if (signOutRouteEdits.length !== 1) {
+      throw new Error(`Expected one redirect edit in sign-out.ejs for renamed /sign-in route. Got: ${JSON.stringify(signOutRouteEdits)}`)
+    }
+    const routeReferenceCheckRenamedText = applyEditsToText(
+      fs.readFileSync(fixture.routeReferenceCheckFilePath, 'utf8'),
+      routeReferenceCheckEdits
+    )
+    if ((routeReferenceCheckRenamedText.match(/\/login/g) || []).length !== 4) {
+      throw new Error(`Expected href/action/hx-get/redirect callers to rewrite to /login. Got: ${routeReferenceCheckRenamedText}`)
+    }
+    const signOutRenamedText = applyEditsToText(
+      fs.readFileSync(fixture.signOutFilePath, 'utf8'),
+      signOutRouteEdits
+    )
+    if (!signOutRenamedText.includes("redirect('/login')")) {
+      throw new Error(`Expected sign-out redirect caller to rewrite to /login. Got: ${signOutRenamedText}`)
+    }
+
+    const renamedFeedbackPageFilePath = path.join(path.dirname(fixture.feedbackPageFilePath), 'login.ejs')
+    const feedbackRouteRenameEdits = service.getFileRenameEdits(fixture.feedbackPageFilePath, renamedFeedbackPageFilePath)
+    const feedbackRouteReferenceEdits = feedbackRouteRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
+    )
+    if (feedbackRouteReferenceEdits.length !== 1) {
+      throw new Error(`Expected only href callers to rewrite when the feedback page route is renamed alongside a POST route. Got: ${JSON.stringify(feedbackRouteReferenceEdits)}`)
+    }
+    const feedbackRouteReferenceRenamedText = applyEditsToText(
+      fs.readFileSync(fixture.routeMethodReferenceCheckFilePath, 'utf8'),
+      feedbackRouteReferenceEdits
+    )
+    if (!feedbackRouteReferenceRenamedText.includes('href="/feedback/login"')) {
+      throw new Error(`Expected href caller to rewrite to /feedback/login. Got: ${feedbackRouteReferenceRenamedText}`)
+    }
+    if (!feedbackRouteReferenceRenamedText.includes('action="/feedback"')) {
+      throw new Error(`Expected POST form action to stay on /feedback while +post.js still exists. Got: ${feedbackRouteReferenceRenamedText}`)
+    }
+    if (!feedbackRouteReferenceRenamedText.includes('hx-post="/feedback"')) {
+      throw new Error(`Expected hx-post caller to stay on /feedback while +post.js still exists. Got: ${feedbackRouteReferenceRenamedText}`)
+    }
+
     const routeReferenceQuery = service.getFileReferenceQuery(fixture.boardsFilePath)
     if (!routeReferenceQuery || routeReferenceQuery.kind !== 'route-file' || routeReferenceQuery.routePath !== '/boards') {
       throw new Error(`Expected static route file reference query for /boards. Got: ${JSON.stringify(routeReferenceQuery)}`)
@@ -4315,6 +4437,18 @@ module.exports = {
     const feedbackPatchReferenceQuery = service.getFileReferenceQuery(fixture.feedbackPatchFilePath)
     if (!feedbackPatchReferenceQuery || feedbackPatchReferenceQuery.kind !== 'route-file' || feedbackPatchReferenceQuery.routePath !== '/feedback' || feedbackPatchReferenceQuery.routeMethod !== 'PATCH') {
       throw new Error(`Expected PATCH route file reference query for /feedback. Got: ${JSON.stringify(feedbackPatchReferenceQuery)}`)
+    }
+    const routeVendorReferenceQuery = service.getFileReferenceQuery(fixture.routeVendorScriptFilePath)
+    if (routeVendorReferenceQuery) {
+      throw new Error(`Expected route-exposed vendor scripts to stay out of route references. Got: ${JSON.stringify(routeVendorReferenceQuery)}`)
+    }
+    const routeMinifiedReferenceQuery = service.getFileReferenceQuery(fixture.routeMinifiedScriptFilePath)
+    if (routeMinifiedReferenceQuery) {
+      throw new Error(`Expected route-exposed minified scripts to stay out of route references. Got: ${JSON.stringify(routeMinifiedReferenceQuery)}`)
+    }
+    const assetReferenceQuery = service.getFileReferenceQuery(fixture.globalAssetFilePath)
+    if (assetReferenceQuery) {
+      throw new Error(`Expected asset files to stay out of route references. Got: ${JSON.stringify(assetReferenceQuery)}`)
     }
 
     const feedbackPageReferences = service.getFileReferenceTargets(

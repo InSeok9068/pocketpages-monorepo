@@ -123,7 +123,8 @@ function createCompletionFeatureHandlers(deps) {
       const collectionName = service.projectIndex.inferCollectionName(
         fieldContext.receiverExpression,
         analysisText,
-        fieldContext.start
+        fieldContext.start,
+        { filePath }
       );
       if (!collectionName) {
         return null;

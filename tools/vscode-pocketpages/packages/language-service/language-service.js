@@ -1215,6 +1215,30 @@ function splitRoutePathSuffix(routePath) {
   };
 }
 
+function getPreferredRouteMethods(routeSource) {
+  switch (String(routeSource || "").toLowerCase()) {
+    case "action":
+    case "hx-post":
+      return ["POST", "GET"];
+    case "hx-put":
+      return ["PUT", "GET"];
+    case "hx-delete":
+      return ["DELETE", "GET"];
+    case "hx-patch":
+      return ["PATCH", "GET"];
+    case "href":
+    case "redirect":
+    case "hx-get":
+    default:
+      return ["GET"];
+  }
+}
+
+function normalizeRouteMethod(method) {
+  const normalizedMethod = String(method || "PAGE").toUpperCase();
+  return normalizedMethod || "PAGE";
+}
+
 function getPathContextLabel(context) {
   if (!context) {
     return "PocketPages path";
@@ -1715,11 +1739,12 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText, opti
   return diagnostics;
 }
 
-function buildSchemaFieldDiagnostic(projectIndex, context, analysisText, offsetBase = 0) {
+function buildSchemaFieldDiagnostic(projectIndex, filePath, context, analysisText, offsetBase = 0) {
   const reference = projectIndex.inferCollectionReference(
     context.receiverExpression,
     analysisText,
-    context.start
+    context.start,
+    { filePath }
   );
 
   if (!reference || projectIndex.hasField(reference.collectionName, context.value)) {
@@ -3637,7 +3662,20 @@ class ProjectLanguageService {
     }
 
     const routeEntry = this.projectIndex.getStaticRouteEntryByFilePath(normalizedFilePath);
-    if (!routeEntry) {
+    if (routeEntry) {
+      return {
+        kind: "route-file",
+        targetFilePath: normalizedFilePath,
+        command: "pocketpagesServerScript.allFileReferences",
+        title: "PocketPages: All File References",
+        emptyMessage: `No callers found for route ${routeEntry.routePath}.`,
+        routePath: routeEntry.routePath,
+        routeMethod: routeEntry.method || "PAGE",
+      };
+    }
+
+    const routeDescriptor = this.projectIndex.describeRouteFilePath(normalizedFilePath);
+    if (!routeDescriptor || !routeDescriptor.isStaticRoute) {
       return null;
     }
 
@@ -3646,9 +3684,9 @@ class ProjectLanguageService {
       targetFilePath: normalizedFilePath,
       command: "pocketpagesServerScript.allFileReferences",
       title: "PocketPages: All File References",
-      emptyMessage: `No callers found for route ${routeEntry.routePath}.`,
-      routePath: routeEntry.routePath,
-      routeMethod: routeEntry.method || "PAGE",
+      emptyMessage: `No callers found for route ${routeDescriptor.routePath}.`,
+      routePath: routeDescriptor.routePath,
+      routeMethod: routeDescriptor.method || "PAGE",
     };
   }
 
@@ -3763,7 +3801,7 @@ class ProjectLanguageService {
 
   getFileRenameEdits(oldFilePath, newFilePath) {
     const referenceQuery = this.getFileReferenceQuery(oldFilePath);
-    if (!referenceQuery || !isPrivatePagesFile(oldFilePath)) {
+    if (!referenceQuery) {
       return [];
     }
 
@@ -3785,6 +3823,25 @@ class ProjectLanguageService {
 
       for (const edit of this.getRequireFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
         uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+      }
+    }
+
+    if (referenceQuery.kind === "route-file") {
+      const newRouteDescriptor = this.projectIndex.describeRouteFilePath(normalizedNewFilePath);
+      const oldRouteMethod = normalizeRouteMethod(referenceQuery.routeMethod);
+      if (
+        newRouteDescriptor &&
+        newRouteDescriptor.isStaticRoute &&
+        normalizeRouteMethod(newRouteDescriptor.method) === oldRouteMethod
+      ) {
+        for (const edit of this.getRouteFileRenameEdits({
+          oldFilePath: normalizedOldFilePath,
+          oldRoutePath: referenceQuery.routePath,
+          oldRouteMethod,
+          newRoutePath: newRouteDescriptor.routePath,
+        }, overrides)) {
+          uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+        }
       }
     }
 
@@ -3892,6 +3949,132 @@ class ProjectLanguageService {
           filePath,
           start: requireContext.start,
           end: requireContext.end,
+          newText: newValue,
+        });
+      }
+    }
+
+    return edits;
+  }
+
+  getBestStaticRouteEntryForPath(routePath, routeSource, options = {}) {
+    const normalizedRoutePath = normalizeRouteRequestPath(routePath);
+    if (!normalizedRoutePath) {
+      return null;
+    }
+
+    const excludedFilePath = options.excludeFilePath ? normalizePath(options.excludeFilePath) : "";
+    const preferredMethods = getPreferredRouteMethods(routeSource);
+    const entries = [];
+
+    for (const entry of this.projectIndex.getStaticRouteEntries()) {
+      if (entry.routePath !== normalizedRoutePath) {
+        continue;
+      }
+
+      if (excludedFilePath && normalizePath(entry.filePath) === excludedFilePath) {
+        continue;
+      }
+
+      entries.push(entry);
+    }
+
+    const syntheticEntry = options.syntheticEntry || null;
+    if (syntheticEntry && syntheticEntry.routePath === normalizedRoutePath) {
+      const normalizedSyntheticFilePath = normalizePath(syntheticEntry.filePath);
+      if (!excludedFilePath || normalizedSyntheticFilePath !== excludedFilePath) {
+        const alreadyIncluded = entries.some(
+          (entry) =>
+            normalizePath(entry.filePath) === normalizedSyntheticFilePath &&
+            normalizeRouteMethod(entry.method) === normalizeRouteMethod(syntheticEntry.method)
+        );
+        if (!alreadyIncluded) {
+          entries.push({
+            filePath: normalizedSyntheticFilePath,
+            method: normalizeRouteMethod(syntheticEntry.method) === "PAGE" ? null : normalizeRouteMethod(syntheticEntry.method),
+            routePath: normalizedRoutePath,
+          });
+        }
+      }
+    }
+
+    if (!entries.length) {
+      return null;
+    }
+
+    entries.sort((left, right) => {
+      const leftRank = this.projectIndex.getRouteEntryRank(left, preferredMethods);
+      const rightRank = this.projectIndex.getRouteEntryRank(right, preferredMethods);
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+
+      return left.filePath.localeCompare(right.filePath);
+    });
+
+    const bestEntry = entries[0];
+    return Number.isFinite(this.projectIndex.getRouteEntryRank(bestEntry, preferredMethods))
+      ? bestEntry
+      : null;
+  }
+
+  shouldRenameRoutePathContext(pathContext, routeRenameContext) {
+    if (!pathContext || pathContext.kind !== "route-path" || pathContext.isDynamic) {
+      return false;
+    }
+
+    if (normalizeRouteRequestPath(pathContext.value) !== routeRenameContext.oldRoutePath) {
+      return false;
+    }
+
+    const bestEntryWithOld = this.getBestStaticRouteEntryForPath(
+      routeRenameContext.oldRoutePath,
+      pathContext.routeSource,
+      {
+        syntheticEntry: {
+          filePath: routeRenameContext.oldFilePath,
+          method: routeRenameContext.oldRouteMethod,
+          routePath: routeRenameContext.oldRoutePath,
+        },
+      }
+    );
+    if (!bestEntryWithOld || normalizePath(bestEntryWithOld.filePath) !== routeRenameContext.oldFilePath) {
+      return false;
+    }
+
+    const bestEntryWithoutOld = this.getBestStaticRouteEntryForPath(
+      routeRenameContext.oldRoutePath,
+      pathContext.routeSource,
+      { excludeFilePath: routeRenameContext.oldFilePath }
+    );
+    return !bestEntryWithoutOld;
+  }
+
+  getRouteFileRenameEdits(routeRenameContext, overrides = {}) {
+    const edits = [];
+    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      const filePath = normalizePath(entry.filePath);
+      const documentText = this.getCallerDocumentText(filePath, overrides);
+      const pathContexts = collectPathContexts(documentText);
+
+      for (const pathContext of pathContexts) {
+        if (!this.shouldRenameRoutePathContext(pathContext, routeRenameContext)) {
+          continue;
+        }
+
+        const newValue = this.buildUpdatedRouteRequestPath(
+          pathContext.value,
+          routeRenameContext.oldRoutePath,
+          routeRenameContext.newRoutePath
+        );
+        if (!newValue || newValue === pathContext.value) {
+          continue;
+        }
+
+        edits.push({
+          filePath,
+          start: pathContext.start,
+          end: pathContext.end,
           newText: newValue,
         });
       }
@@ -4051,6 +4234,21 @@ class ProjectLanguageService {
     }
 
     return null;
+  }
+
+  buildUpdatedRouteRequestPath(currentRequestPath, oldRoutePath, newRoutePath) {
+    const normalizedOldRoutePath = normalizeRouteRequestPath(oldRoutePath);
+    const normalizedNewRoutePath = normalizeRouteRequestPath(newRoutePath);
+    if (!normalizedOldRoutePath || !normalizedNewRoutePath) {
+      return null;
+    }
+
+    const { basePath, suffix } = splitRoutePathSuffix(currentRequestPath);
+    if (normalizeRouteRequestPath(basePath) !== normalizedOldRoutePath) {
+      return null;
+    }
+
+    return `${normalizedNewRoutePath}${suffix}`;
   }
 
   buildUpdatedRequireRequestPath(filePath, currentRequestPath, newTargetFilePath, options = {}) {
@@ -4358,6 +4556,7 @@ class ProjectLanguageService {
         if (context.kind === "record-field") {
           const fieldDiagnostic = buildSchemaFieldDiagnostic(
             this.projectIndex,
+            filePath,
             context,
             block.content,
             block.contentStart
@@ -4433,6 +4632,7 @@ class ProjectLanguageService {
       if (context.kind === "record-field") {
         const fieldDiagnostic = buildSchemaFieldDiagnostic(
           this.projectIndex,
+          filePath,
           context,
           templateVirtualText
         );
@@ -4461,6 +4661,7 @@ class ProjectLanguageService {
       if (context.kind === "record-field") {
         const fieldDiagnostic = buildSchemaFieldDiagnostic(
           this.projectIndex,
+          filePath,
           context,
           documentText
         );

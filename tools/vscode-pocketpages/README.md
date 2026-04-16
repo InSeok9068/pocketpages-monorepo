@@ -73,12 +73,14 @@ VSCode PocketPages는 PocketPages 파일을 일반 HTML 또는 일반 JavaScript
 
 `pb_hooks/pages` 안에 있어도 아래 스크립트는 PocketPages code index에서 제외됩니다.
 
-- `pb_hooks/pages/**/vendor/**`
+- route-exposed `vendor/**` script
 - `*.min.js`
 - `*.min.cjs`
 - `*.min.mjs`
 
 이 제외 규칙은 completion, 진단, 탐색 같은 PocketPages 전용 스크립트 기능에 적용됩니다.
+
+`_private/vendor/**` 내부 module은 내부 dependency로 계속 인덱싱합니다.
 
 ## 기능 분류
 

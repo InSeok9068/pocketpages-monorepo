@@ -127,6 +127,20 @@ function normalizeDocumentPath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
 }
 
+function hasPrivatePagesSegment(filePath) {
+  const normalizedPath = normalizeDocumentPath(filePath);
+  const pagesMarker = "/pb_hooks/pages/";
+  const markerIndex = normalizedPath.indexOf(pagesMarker);
+  if (markerIndex === -1) {
+    return false;
+  }
+
+  return normalizedPath
+    .slice(markerIndex + pagesMarker.length)
+    .split("/")
+    .includes("_private");
+}
+
 function isExcludedPocketPagesScriptPath(filePath) {
   const normalizedPath = normalizeDocumentPath(filePath);
   if (!normalizedPath.includes("/pb_hooks/pages/")) {
@@ -135,6 +149,10 @@ function isExcludedPocketPagesScriptPath(filePath) {
 
   const pagesRelativePath = normalizedPath.split("/pb_hooks/pages/")[1] || "";
   const relativeSegments = pagesRelativePath.split("/").filter(Boolean);
+  if (hasPrivatePagesSegment(normalizedPath)) {
+    return false;
+  }
+
   return (
     relativeSegments.includes("vendor") ||
     normalizedPath.endsWith(".min.js") ||

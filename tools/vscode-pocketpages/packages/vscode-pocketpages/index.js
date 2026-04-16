@@ -129,6 +129,19 @@ function normalizeDocumentPath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
 }
 
+function isManagedPagesFilePath(filePath) {
+  const normalizedPath = normalizeDocumentPath(filePath);
+  if (!normalizedPath.includes("/pb_hooks/pages/")) {
+    return false;
+  }
+
+  if (!/\.(ejs|js|cjs|mjs)$/i.test(normalizedPath)) {
+    return false;
+  }
+
+  return !!findAppRoot(filePath);
+}
+
 function isManagedHookScriptDocument(document) {
   if (!document || document.uri.scheme !== "file") {
     return false;
@@ -372,14 +385,14 @@ async function showFileReferences({ logger, fileUri }) {
   await vscode.commands.executeCommand("editor.action.showReferences", normalizedFileUri, anchorPosition, locations);
 }
 
-async function applyPrivateFileRenameEdits({ logger, event }) {
+async function applyManagedFileRenameEdits({ logger, event }) {
   const renameSpecs = event.files.filter(
     (entry) =>
       entry.oldUri &&
       entry.newUri &&
       entry.oldUri.scheme === "file" &&
       entry.newUri.scheme === "file" &&
-      hasPrivatePagesSegment(entry.oldUri.fsPath)
+      isManagedPagesFilePath(entry.oldUri.fsPath)
   );
   if (!renameSpecs.length) {
     return;
@@ -531,7 +544,7 @@ async function activateLsp(context) {
       });
       await client.sendNotification(NOTIFICATIONS.didManualSave, { uri: document.uri.toString() });
     }),
-    vscode.workspace.onDidRenameFiles((event) => applyPrivateFileRenameEdits({ logger, event })),
+    vscode.workspace.onDidRenameFiles((event) => applyManagedFileRenameEdits({ logger, event })),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       lspStatusController.refreshVisibility();
       if (editor) {

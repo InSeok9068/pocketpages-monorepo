@@ -510,6 +510,24 @@ function getLastPathSegment(value) {
     .pop() || ''
 }
 
+function hasPrivateRolesSegment(filePath) {
+  const normalizedPath = normalizePath(filePath)
+  const pagesMarker = '/pb_hooks/pages/'
+  const markerIndex = normalizedPath.indexOf(pagesMarker)
+  if (markerIndex === -1) {
+    return false
+  }
+
+  const relativeSegments = normalizedPath
+    .slice(markerIndex + pagesMarker.length)
+    .split('/')
+    .filter(Boolean)
+  const privateIndex = relativeSegments.indexOf('_private')
+  const rolesIndex = relativeSegments.indexOf('roles')
+
+  return privateIndex !== -1 && rolesIndex > privateIndex
+}
+
 function isRouteGroupSegment(segment) {
   return /^\(.+\)$/.test(String(segment || ''))
 }
@@ -548,6 +566,21 @@ function isAssetCandidateFile(pagesRoot, filePath) {
   return true
 }
 
+function isExcludedRouteExposedPagesScript(relativeSegments, filePath) {
+  const normalizedSegments = Array.isArray(relativeSegments) ? relativeSegments.filter(Boolean) : []
+  if (normalizedSegments.includes('_private')) {
+    return false
+  }
+
+  const normalizedFilePath = normalizePath(filePath)
+  return (
+    normalizedSegments.includes('vendor') ||
+    normalizedFilePath.endsWith('.min.js') ||
+    normalizedFilePath.endsWith('.min.cjs') ||
+    normalizedFilePath.endsWith('.min.mjs')
+  )
+}
+
 function isPagesCodeFile(pagesRoot, filePath) {
   const normalizedFilePath = normalizePath(filePath)
   const relativePath = toRelativePath(path.relative(pagesRoot, normalizedFilePath))
@@ -563,6 +596,10 @@ function isPagesCodeFile(pagesRoot, filePath) {
   }
 
   if (relativeSegments.includes('assets')) {
+    return false
+  }
+
+  if (ASSET_SCRIPT_EXTENSIONS.includes(extension) && isExcludedRouteExposedPagesScript(relativeSegments, normalizedFilePath)) {
     return false
   }
 
@@ -659,8 +696,17 @@ function createRouteDescriptor(pagesRoot, filePath, routeExtensions = ROUTE_EXTE
     return null
   }
 
+  if (relativeSegments.includes('assets')) {
+    return null
+  }
+
   const fileName = relativeSegments[relativeSegments.length - 1]
-  if (!routeExtensions.includes(path.extname(fileName))) {
+  const extension = path.extname(fileName).toLowerCase()
+  if (!routeExtensions.includes(extension)) {
+    return null
+  }
+
+  if (ASSET_SCRIPT_EXTENSIONS.includes(extension) && isExcludedRouteExposedPagesScript(relativeSegments, normalizedFilePath)) {
     return null
   }
 
@@ -725,6 +771,14 @@ function getPreferredRouteMethods(routeSource) {
     default:
       return ['GET']
   }
+}
+
+function isRouteEntryCompatible(entry, preferredMethods) {
+  if (!entry || !entry.method || entry.method === 'PAGE') {
+    return true
+  }
+
+  return ensureArray(preferredMethods).includes(entry.method)
 }
 
 function skipParenthesizedExpression(node) {
@@ -2235,6 +2289,12 @@ class PocketPagesProjectIndex {
     return this.getRouteState().descriptorByFilePath.get(normalizedFilePath) || null
   }
 
+  describeRouteFilePath(filePath, options = {}) {
+    const normalizedFilePath = normalizePath(filePath)
+    const extensions = options.completionOnly ? ROUTE_COMPLETION_EXTENSIONS : ROUTE_EXTENSIONS
+    return createRouteDescriptor(this.pagesRoot, normalizedFilePath, extensions)
+  }
+
   resolveRouteTarget(_filePath, requestPath, options = {}) {
     const normalizedRequestPath = normalizeRoutePath(requestPath)
     if (!normalizedRequestPath) {
@@ -2279,10 +2339,15 @@ class PocketPagesProjectIndex {
       return left.filePath.localeCompare(right.filePath)
     })
 
-    return matchingEntries[0].filePath
+    const bestEntry = matchingEntries[0]
+    return Number.isFinite(this.getRouteEntryRank(bestEntry, preferredMethods)) ? bestEntry.filePath : null
   }
 
   getRouteEntryRank(entry, preferredMethods) {
+    if (!isRouteEntryCompatible(entry, preferredMethods)) {
+      return Number.POSITIVE_INFINITY
+    }
+
     if (!entry.method || entry.method === 'PAGE') {
       return 1
     }
@@ -2295,7 +2360,7 @@ class PocketPagesProjectIndex {
     return 10
   }
 
-  inferCollectionReference(receiverExpression, scriptText, beforeOffset) {
+  inferCollectionReference(receiverExpression, scriptText, beforeOffset, options = {}) {
     const receiverName = getLastPathSegment(receiverExpression)
     const collectionNames = this.getCollectionNames()
     const directCandidates = buildCollectionReferenceCandidates(receiverName)
@@ -2307,6 +2372,21 @@ class PocketPagesProjectIndex {
     }
 
     const genericNames = new Set(['record', 'item', 'entry', 'row'])
+    const contextFilePath = options && options.filePath ? normalizePath(options.filePath) : ''
+    if (contextFilePath && genericNames.has(receiverName) && hasPrivateRolesSegment(contextFilePath)) {
+      const roleBaseName = path.basename(contextFilePath, path.extname(contextFilePath))
+      const roleCandidates = buildCollectionReferenceCandidates(roleBaseName)
+      for (const candidate of roleCandidates) {
+        if (collectionNames.includes(candidate.collectionName)) {
+          return {
+            ...candidate,
+            confidence: candidate.confidence === 'high' ? 'medium' : candidate.confidence,
+            strategy: `role-file:${candidate.strategy}`,
+          }
+        }
+      }
+    }
+
     const scriptPrefix = scriptText.slice(0, beforeOffset)
     const collectionCallRegex = this.getCollectionCallRegex()
     const collectionMatches = collectionCallRegex
@@ -2356,8 +2436,8 @@ class PocketPagesProjectIndex {
     return null
   }
 
-  inferCollectionName(receiverExpression, scriptText, beforeOffset) {
-    const reference = this.inferCollectionReference(receiverExpression, scriptText, beforeOffset)
+  inferCollectionName(receiverExpression, scriptText, beforeOffset, options = {}) {
+    const reference = this.inferCollectionReference(receiverExpression, scriptText, beforeOffset, options)
     return reference ? reference.collectionName : null
   }
 }
