@@ -23,6 +23,9 @@ const {
   getScriptFieldContext,
 } = require("../language-core/custom-context");
 const { collectParamsFlowDiagnostics } = require("./flow-analysis");
+const { createCompletionFeatureHandlers } = require("./features/completion-features");
+const { createDiagnosticsFeatureHandlers } = require("./features/diagnostics-features");
+const { createNavigationFeatureHandlers } = require("./features/navigation-features");
 
 const CACHE_ROOT = path.resolve(__dirname, "..", "..", ".cache");
 const COMPILER_OPTIONS = {
@@ -1761,6 +1764,35 @@ function dedupeDiagnostics(diagnostics) {
   return [...uniqueDiagnostics.values()];
 }
 
+const completionFeatureHandlers = createCompletionFeatureHandlers({
+  elapsedMilliseconds,
+  getAnalysisContextAtOffset,
+  getPathContextAtOffset,
+  getScriptCollectionContext,
+  getScriptFieldContext,
+  ts,
+});
+const diagnosticsFeatureHandlers = createDiagnosticsFeatureHandlers({
+  collectClientScriptSyntacticDiagnostics,
+  collectPathContexts,
+  collectResolveCallSpansFromScript,
+  collectResolveCallSpansFromTemplate,
+  createDocumentAnalysis,
+  dedupeDiagnostics,
+  elapsedMilliseconds,
+  normalizePath,
+  rangesOverlap,
+});
+const navigationFeatureHandlers = createNavigationFeatureHandlers({
+  collectPathContexts,
+  collectStaticRequireCallContexts,
+  getPathContextAtOffset,
+  getRequirePathContextAtOffset,
+  isScriptFile,
+  isValidIdentifierName,
+  normalizePath,
+});
+
 class ProjectLanguageService {
   constructor(appRoot) {
     this.appRoot = appRoot;
@@ -1793,6 +1825,7 @@ class ProjectLanguageService {
       normalizedFilePath,
       `override:${this.nextDocumentOverrideSnapshotVersion++}`
     );
+    this.projectIndex.invalidateContentForFile(normalizedFilePath);
     this.includeCallEntriesCache.delete(normalizedFilePath);
     this.includeContractCache.delete(normalizedFilePath);
     this.projectVersion += 1;
@@ -1802,6 +1835,7 @@ class ProjectLanguageService {
     const normalizedFilePath = normalizePath(filePath);
     if (this.documentOverrides.delete(normalizedFilePath)) {
       this.documentOverrideSnapshotVersions.delete(normalizedFilePath);
+      this.projectIndex.invalidateContentForFile(normalizedFilePath);
       this.includeCallEntriesCache.delete(normalizedFilePath);
       this.includeContractCache.delete(normalizedFilePath);
       this.preparedDocumentStates.delete(normalizedFilePath);
@@ -3753,6 +3787,9 @@ class ProjectLanguageService {
       }
     }
 
+    this.projectIndex.invalidateStructureForFile(normalizedOldFilePath);
+    this.projectIndex.invalidateStructureForFile(normalizedNewFilePath);
+
     return [...uniqueEdits.values()];
   }
 
@@ -4094,176 +4131,39 @@ class ProjectLanguageService {
   }
 
   getCompletionData(filePath, documentText, offset) {
-    const profile = {};
-    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset, { profile });
-    if (!virtualState) {
-      return null;
-    }
-
-    const { virtual, virtualOffset } = virtualState;
-    const completionsStartedAt = process.hrtime.bigint();
-    const info = this.languageService.getCompletionsAtPosition(virtual.fileName, virtualOffset, {
-      includeCompletionsWithInsertText: true,
-      includeCompletionsForModuleExports: false,
-    });
-    profile.getCompletionsAtPositionMs = elapsedMilliseconds(completionsStartedAt);
-
-    if (!info) {
-      return null;
-    }
-
-    let replacementSpan = null;
-    if (info.optionalReplacementSpan) {
-      const start = this.mapVirtualOffsetToDocumentOffset(virtual.fileName, info.optionalReplacementSpan.start);
-      const end = this.mapVirtualOffsetToDocumentOffset(virtual.fileName, info.optionalReplacementSpan.start + info.optionalReplacementSpan.length);
-
-      if (start !== null && end !== null) {
-        replacementSpan = { start, end };
-      }
-    }
-
-    return {
-      entries: info.entries,
-      replacementSpan,
-      profile,
-      virtualFileName: virtual.fileName,
-      virtualOffset,
-    };
+    return completionFeatureHandlers.getCompletionData(this, filePath, documentText, offset);
   }
 
   getCustomCompletionData(filePath, documentText, offset) {
-    const collectionMethodNames = this.projectIndex.getCollectionMethodNames();
-    const pathContext = getPathContextAtOffset(documentText, offset);
-    if (pathContext && (pathContext.kind === "resolve-path" || pathContext.kind === "include-path" || pathContext.kind === "asset-path" || pathContext.kind === "route-path")) {
-      const candidates =
-        pathContext.kind === "resolve-path"
-          ? this.projectIndex.getResolveCandidates(filePath)
-          : pathContext.kind === "include-path"
-            ? this.projectIndex.getIncludeCandidates(filePath)
-            : pathContext.kind === "asset-path"
-              ? this.projectIndex.getAssetCandidates(filePath)
-            : this.projectIndex.getRouteCandidates({ routeSource: pathContext.routeSource });
-
-      return {
-        start: pathContext.start,
-        end: pathContext.end,
-        items: candidates.map((candidate) => ({
-          label: candidate.value,
-          insertText: candidate.value,
-          detail: candidate.detail,
-          documentation: candidate.filePath,
-          targetFilePath: candidate.filePath,
-          category: pathContext.kind,
-        })),
-      };
-    }
-
-    const includeLocalCompletion = this.getIncludeLocalCompletionData(filePath, documentText, offset);
-    if (includeLocalCompletion) {
-      return includeLocalCompletion;
-    }
-
-    const analysisContext = getAnalysisContextAtOffset(filePath, documentText, offset);
-    if (!analysisContext) {
-      return null;
-    }
-
-    const { analysisText, analysisOffset, analysisStart } = analysisContext;
-
-    const collectionContext = getScriptCollectionContext(analysisText, analysisOffset, { collectionMethodNames });
-    if (collectionContext) {
-      return {
-        start: analysisStart + collectionContext.start,
-        end: analysisStart + collectionContext.end,
-        items: this.projectIndex.getCollectionNames().map((collectionName) => ({
-          label: collectionName,
-          insertText: collectionName,
-          detail: "PocketBase collection",
-          documentation: `Collection from ${this.projectIndex.getSchemaState().schemaPath}`,
-          category: "collection-name",
-        })),
-      };
-    }
-
-    const fieldContext = getScriptFieldContext(analysisText, analysisOffset);
-    if (fieldContext) {
-      const collectionName = this.projectIndex.inferCollectionName(
-        fieldContext.receiverExpression,
-        analysisText,
-        fieldContext.start
-      );
-
-      if (!collectionName) {
-        return null;
-      }
-
-      return {
-        start: analysisStart + fieldContext.start,
-        end: analysisStart + fieldContext.end,
-        items: this.projectIndex.getFields(collectionName).map((field) => ({
-          label: field.name,
-          insertText: field.name,
-          detail: `${collectionName}.${field.name}`,
-          documentation: field.type ? `Field type: ${field.type}` : collectionName,
-          category: "record-field",
-        })),
-      };
-    }
-
-    return null;
+    return completionFeatureHandlers.getCustomCompletionData(this, filePath, documentText, offset);
   }
 
   getCompletionDetails(virtualFileName, virtualOffset, name, source) {
-    return this.languageService.getCompletionEntryDetails(virtualFileName, virtualOffset, name, {}, source, {});
+    return completionFeatureHandlers.getCompletionDetails(
+      this,
+      virtualFileName,
+      virtualOffset,
+      name,
+      source
+    );
   }
 
   getQuickInfo(filePath, documentText, offset) {
-    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
-    if (!virtualState) {
-      return null;
-    }
-
-    const { virtual, virtualOffset } = virtualState;
-    const quickInfo = this.languageService.getQuickInfoAtPosition(virtual.fileName, virtualOffset);
-
-    if (!quickInfo) {
-      return null;
-    }
-
-    const start = this.mapVirtualOffsetToDocumentOffset(virtual.fileName, quickInfo.textSpan.start);
-    const end = this.mapVirtualOffsetToDocumentOffset(virtual.fileName, quickInfo.textSpan.start + quickInfo.textSpan.length);
-
-    return {
-      displayText: ts.displayPartsToString(quickInfo.displayParts || []),
-      documentation: ts.displayPartsToString(quickInfo.documentation || []),
-      start,
-      end,
-    };
+    return completionFeatureHandlers.getQuickInfo(this, filePath, documentText, offset);
   }
 
   getSignatureHelp(filePath, documentText, offset, options = {}) {
-    const includeSignatureHelp = this.getIncludeSignatureHelp(filePath, documentText, offset);
-    if (includeSignatureHelp) {
-      return includeSignatureHelp;
-    }
-
-    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
-    if (!virtualState) {
-      return null;
-    }
-
-    const signatureHelp = this.languageService.getSignatureHelpItems(virtualState.virtual.fileName, virtualState.virtualOffset, {
-      triggerReason: {
-        kind: options.isRetrigger ? "retrigger" : options.triggerCharacter ? "characterTyped" : "invoked",
-        triggerCharacter: options.triggerCharacter,
-      },
-    });
-
-    return signatureHelp || null;
+    return completionFeatureHandlers.getSignatureHelp(
+      this,
+      filePath,
+      documentText,
+      offset,
+      options
+    );
   }
 
   getCustomSignatureHelp(filePath, documentText, offset) {
-    return this.getIncludeSignatureHelp(filePath, documentText, offset);
+    return completionFeatureHandlers.getCustomSignatureHelp(this, filePath, documentText, offset);
   }
 
   getCodeLensEntries(filePath, documentText) {
@@ -4592,547 +4492,85 @@ class ProjectLanguageService {
   }
 
   getDiagnostics(filePath, documentText, options = {}) {
-    const profile = options && options.profile ? options.profile : null;
-    const totalStartedAt = profile ? process.hrtime.bigint() : null;
-
-    let stepStartedAt = profile ? process.hrtime.bigint() : null;
-    const documentAnalysis = createDocumentAnalysis({
-      filePath,
-      documentText,
-      collectResolveCallSpansFromScript,
-      collectResolveCallSpansFromTemplate,
-      collectPathContexts,
-    });
-    if (profile) {
-      profile.createDocumentAnalysisMs = elapsedMilliseconds(stepStartedAt);
-    }
-
-    const blocks = documentAnalysis.getBlocks();
-    const templateBlocks = documentAnalysis.getTemplateBlocks();
-    const collectionMethodNames = this.projectIndex.getCollectionMethodNames();
-
-    stepStartedAt = profile ? process.hrtime.bigint() : null;
-    const diagnostics = collectClientScriptSyntacticDiagnostics(documentText);
-    if (profile) {
-      profile.collectClientScriptSyntacticDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
-    }
-
-    stepStartedAt = profile ? process.hrtime.bigint() : null;
-    diagnostics.push(...this.collectPrivateResolveDiagnostics(filePath, documentAnalysis));
-    if (profile) {
-      profile.collectPrivateResolveDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
-    }
-
-    stepStartedAt = profile ? process.hrtime.bigint() : null;
-    diagnostics.push(...this.collectServerBlockDiagnostics(filePath, blocks, collectionMethodNames, documentAnalysis));
-    if (profile) {
-      profile.collectServerBlockDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
-    }
-
-    stepStartedAt = profile ? process.hrtime.bigint() : null;
-    diagnostics.push(...this.collectTemplateDiagnostics(filePath, documentText, blocks, templateBlocks, collectionMethodNames, documentAnalysis));
-    if (profile) {
-      profile.collectTemplateDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
-    }
-
-    stepStartedAt = profile ? process.hrtime.bigint() : null;
-    diagnostics.push(...this.collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames));
-    if (profile) {
-      profile.collectScriptSchemaDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
-    }
-
-    stepStartedAt = profile ? process.hrtime.bigint() : null;
-    diagnostics.push(...this.collectProjectRuleDiagnostics(filePath, documentText, documentAnalysis));
-    if (profile) {
-      profile.collectProjectRuleDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
-    }
-
-    stepStartedAt = profile ? process.hrtime.bigint() : null;
-    const dedupedDiagnostics = dedupeDiagnostics(diagnostics);
-    if (profile) {
-      profile.dedupeDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
-      profile.getDiagnosticsMs = elapsedMilliseconds(totalStartedAt);
-    }
-
-    return dedupedDiagnostics;
+    return diagnosticsFeatureHandlers.getDiagnostics(this, filePath, documentText, options);
   }
 
   getCodeActions(filePath, documentText, range) {
-    if (!range || typeof range.start !== "number" || typeof range.end !== "number") {
-      return [];
-    }
-
-    const actions = [];
-    const actionKeys = new Set();
-
-    for (const diagnostic of this.getDiagnostics(filePath, documentText)) {
-      if (!Array.isArray(diagnostic.fixes) || !diagnostic.fixes.length) {
-        continue;
-      }
-
-      if (!rangesOverlap(diagnostic.start, diagnostic.end, range.start, range.end)) {
-        continue;
-      }
-
-      for (const fix of diagnostic.fixes) {
-        const actionKey = `${diagnostic.code}:${diagnostic.start}:${diagnostic.end}:${fix.title}`;
-        if (actionKeys.has(actionKey)) {
-          continue;
-        }
-
-        actionKeys.add(actionKey);
-        actions.push({
-          title: fix.title,
-          kind: "quickfix",
-          diagnostic: {
-            code: diagnostic.code,
-            start: diagnostic.start,
-            end: diagnostic.end,
-            message: diagnostic.message,
-          },
-          edits: (fix.edits || []).map((edit) => ({
-            filePath: normalizePath(edit.filePath || filePath),
-            start: edit.start,
-            end: edit.end,
-            newText: edit.newText,
-          })),
-        });
-      }
-    }
-
-    return actions;
+    return diagnosticsFeatureHandlers.getCodeActions(this, filePath, documentText, range);
   }
 
   getDefinitionTarget(filePath, documentText, offset) {
-    const customDefinitionTarget = this.getCustomDefinitionTarget(filePath, documentText, offset);
-    if (customDefinitionTarget) {
-      return customDefinitionTarget;
-    }
-
-    return this.getTypeScriptDefinitionTarget(filePath, documentText, offset);
+    return navigationFeatureHandlers.getDefinitionTarget(this, filePath, documentText, offset);
   }
 
   getCustomDefinitionTarget(filePath, documentText, offset) {
-    const pathContext = getPathContextAtOffset(documentText, offset);
-    if (pathContext) {
-      if (pathContext.kind === "resolve-path") {
-        return this.projectIndex.resolveResolveTarget(filePath, pathContext.value);
-      }
-
-      if (pathContext.kind === "include-path") {
-        return this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
-      }
-
-      if (pathContext.kind === "asset-path") {
-        return this.projectIndex.resolveAssetTarget(filePath, pathContext.value);
-      }
-
-      if (pathContext.kind === "route-path") {
-        return this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
-          routeSource: pathContext.routeSource,
-        });
-      }
-    }
-
-    const requireContext = getRequirePathContextAtOffset(documentText, offset);
-    if (requireContext) {
-      return this.projectIndex.resolveRequireTarget(filePath, requireContext.value, requireContext);
-    }
-
-    const resolvedModuleMemberContext = this.getResolvedModuleMemberContextForRename(filePath, documentText, offset);
-    if (resolvedModuleMemberContext) {
-      const moduleFilePath = this.projectIndex.resolveResolveTarget(filePath, resolvedModuleMemberContext.modulePath);
-      return this.projectIndex.resolveResolvedModuleMemberTarget(
-        filePath,
-        resolvedModuleMemberContext.modulePath,
-        resolvedModuleMemberContext.memberName,
-        moduleFilePath ? this.getDocumentOverride(moduleFilePath) : null
-      );
-    }
-
-    return null;
+    return navigationFeatureHandlers.getCustomDefinitionTarget(this, filePath, documentText, offset);
   }
 
   getRenameInfo(filePath, documentText, offset) {
-    const customRenameInfo = this.getCustomRenameInfo(filePath, documentText, offset);
-    if (customRenameInfo) {
-      return customRenameInfo;
-    }
-
-    return this.getTypeScriptRenameInfo(filePath, documentText, offset);
+    return navigationFeatureHandlers.getRenameInfo(this, filePath, documentText, offset);
   }
 
   getCustomRenameInfo(filePath, documentText, offset) {
-    const resolvedModuleMemberContext = this.getResolvedModuleMemberContextForRename(filePath, documentText, offset);
-    if (!resolvedModuleMemberContext) {
-      const moduleExportContext = this.getModuleExportRenameContext(filePath, documentText, offset);
-      if (!moduleExportContext) {
-        return null;
-      }
-
-      return {
-        canRename: true,
-        ...moduleExportContext,
-      };
-    }
-
-    const moduleDefinitionInfo = this.projectIndex.getResolvedModuleMemberDefinitionInfo(
-      filePath,
-      resolvedModuleMemberContext.modulePath,
-      resolvedModuleMemberContext.memberName,
-      (() => {
-        const moduleFilePath = this.projectIndex.resolveResolveTarget(filePath, resolvedModuleMemberContext.modulePath);
-        return moduleFilePath ? this.getDocumentOverride(moduleFilePath) : null;
-      })()
-    );
-    if (!moduleDefinitionInfo) {
-      return null;
-    }
-
-    const moduleRename = this.getModuleRenameLocations(moduleDefinitionInfo, {
-      [normalizePath(moduleDefinitionInfo.filePath)]: this.getDocumentOverride(moduleDefinitionInfo.filePath),
-    });
-    if (!moduleRename.canRename) {
-      return {
-        canRename: false,
-        localizedErrorMessage: moduleRename.localizedErrorMessage || "Unable to rename this module member.",
-        start: resolvedModuleMemberContext.start,
-        end: resolvedModuleMemberContext.end,
-        placeholder: resolvedModuleMemberContext.memberName,
-      };
-    }
-
-    return {
-      canRename: true,
-      source: resolvedModuleMemberContext.source,
-      start: resolvedModuleMemberContext.start,
-      end: resolvedModuleMemberContext.end,
-      placeholder: resolvedModuleMemberContext.memberName,
-      moduleDefinitionInfo,
-    };
+    return navigationFeatureHandlers.getCustomRenameInfo(this, filePath, documentText, offset);
   }
 
   getTypeScriptRenameInfo(filePath, documentText, offset) {
-    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
-    if (!virtualState) {
-      return null;
-    }
-
-    const renameInfo = this.languageService.getRenameInfo(
-      virtualState.virtual.fileName,
-      virtualState.virtualOffset,
-      {
-        allowRenameOfImportPath: false,
-      }
-    );
-    if (!renameInfo) {
-      return null;
-    }
-
-    const start = this.mapVirtualOffsetToDocumentOffset(
-      virtualState.virtual.fileName,
-      renameInfo.triggerSpan.start
-    );
-    const end = this.mapVirtualOffsetToDocumentOffset(
-      virtualState.virtual.fileName,
-      renameInfo.triggerSpan.start + renameInfo.triggerSpan.length
-    );
-    if (start === null || end === null) {
-      return null;
-    }
-
-    return {
-      canRename: renameInfo.canRename,
-      localizedErrorMessage: renameInfo.localizedErrorMessage,
-      start,
-      end,
-      placeholder: documentText.slice(start, end),
-      source: "typescript",
-    };
+    return navigationFeatureHandlers.getTypeScriptRenameInfo(this, filePath, documentText, offset);
   }
 
   getRenameEdits(filePath, documentText, offset, newName) {
-    const customRenameInfo = this.getCustomRenameInfo(filePath, documentText, offset);
-    if (customRenameInfo) {
-      return this.getCustomRenameEdits(filePath, documentText, offset, newName);
-    }
-
-    return this.getTypeScriptRenameEdits(filePath, documentText, offset, newName);
+    return navigationFeatureHandlers.getRenameEdits(
+      this,
+      filePath,
+      documentText,
+      offset,
+      newName
+    );
   }
 
   getCustomRenameEdits(filePath, documentText, offset, newName) {
-    const renameInfo = this.getCustomRenameInfo(filePath, documentText, offset);
-    if (!renameInfo) {
-      return null;
-    }
-
-    if (!renameInfo.canRename) {
-      return {
-        canRename: false,
-        localizedErrorMessage: renameInfo.localizedErrorMessage || "Unable to rename this module member.",
-        edits: [],
-      };
-    }
-
-    if (!isValidIdentifierName(newName)) {
-      return {
-        canRename: false,
-        localizedErrorMessage: `Invalid identifier name "${newName}".`,
-        edits: [],
-      };
-    }
-
-    const moduleRename = this.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, this.getPagesCodeOverrides({
-      [normalizePath(filePath)]: isScriptFile(filePath) ? documentText : undefined,
-    }));
-    if (!moduleRename.canRename) {
-      return {
-        canRename: false,
-        localizedErrorMessage: moduleRename.localizedErrorMessage || "Unable to rename this module member.",
-        edits: [],
-      };
-    }
-
-    const uniqueEdits = new Map();
-
-    if (renameInfo.source !== "module-export") {
-      for (const location of moduleRename.locations) {
-        const editKey = `${normalizePath(location.fileName)}:${location.textSpan.start}:${location.textSpan.start + location.textSpan.length}:${newName}`;
-        if (!uniqueEdits.has(editKey)) {
-          uniqueEdits.set(editKey, {
-            filePath: normalizePath(location.fileName),
-            start: location.textSpan.start,
-            end: location.textSpan.start + location.textSpan.length,
-            newText: `${location.prefixText || ""}${newName}${location.suffixText || ""}`,
-          });
-        }
-      }
-    }
-
-    for (const edit of this.collectResolvedModuleMemberUsageEdits(
-      renameInfo.moduleDefinitionInfo.filePath,
-      renameInfo.placeholder,
-      newName,
-      this.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
-    )) {
-      const editKey = `${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`;
-      if (!uniqueEdits.has(editKey)) {
-        uniqueEdits.set(editKey, edit);
-      }
-    }
-
-    return {
-      canRename: true,
-      edits: [...uniqueEdits.values()],
-    };
+    return navigationFeatureHandlers.getCustomRenameEdits(
+      this,
+      filePath,
+      documentText,
+      offset,
+      newName
+    );
   }
 
   getTypeScriptRenameEdits(filePath, documentText, offset, newName) {
-    const renameInfo = this.getTypeScriptRenameInfo(filePath, documentText, offset);
-    if (!renameInfo) {
-      return null;
-    }
-
-    if (!renameInfo.canRename) {
-      return {
-        canRename: false,
-        localizedErrorMessage: renameInfo.localizedErrorMessage || "Unable to rename this symbol.",
-        edits: [],
-      };
-    }
-
-    if (!isValidIdentifierName(newName)) {
-      return {
-        canRename: false,
-        localizedErrorMessage: `Invalid identifier name "${newName}".`,
-        edits: [],
-      };
-    }
-
-    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
-    if (!virtualState) {
-      return null;
-    }
-
-    const renameLocations =
-      this.languageService.findRenameLocations(
-        virtualState.virtual.fileName,
-        virtualState.virtualOffset,
-        false,
-        false,
-        {}
-      ) || [];
-
-    const uniqueEdits = new Map();
-    for (const location of renameLocations) {
-      const mappedLocation = this.mapTypeScriptReferenceToLocation(location, false);
-      if (!mappedLocation) {
-        continue;
-      }
-
-      const editKey = `${mappedLocation.filePath}:${mappedLocation.start}:${mappedLocation.end}:${newName}`;
-      if (!uniqueEdits.has(editKey)) {
-        uniqueEdits.set(editKey, {
-          filePath: mappedLocation.filePath,
-          start: mappedLocation.start,
-          end: mappedLocation.end,
-          newText: newName,
-        });
-      }
-    }
-
-    return {
-      canRename: true,
-      edits: [...uniqueEdits.values()],
-    };
+    return navigationFeatureHandlers.getTypeScriptRenameEdits(
+      this,
+      filePath,
+      documentText,
+      offset,
+      newName
+    );
   }
 
   getReferenceTargets(filePath, documentText, offset, options = {}) {
-    const customReferenceTargets = this.getCustomReferenceTargets(filePath, documentText, offset, options);
-    if (customReferenceTargets) {
-      return customReferenceTargets;
-    }
-
-    const typeScriptReferences = this.getTypeScriptReferenceTargets(filePath, documentText, offset, options);
-    const fileReferenceContext = this.getPrivateIncludeReferenceContext(filePath);
-    if (typeScriptReferences && typeScriptReferences.locations.length) {
-      if (
-        !fileReferenceContext ||
-        typeScriptReferences.hasMappedDefinition ||
-        typeScriptReferences.hasExternalReference
-      ) {
-        return typeScriptReferences.locations;
-      }
-    }
-
-    if (!fileReferenceContext) {
-      return null;
-    }
-
-    return this.collectPathReferenceLocations(
-      fileReferenceContext.kind,
-      fileReferenceContext.targetFilePath,
-      this.getPagesCodeOverrides({
-        [normalizePath(filePath)]: documentText,
-      })
+    return navigationFeatureHandlers.getReferenceTargets(
+      this,
+      filePath,
+      documentText,
+      offset,
+      options
     );
   }
 
   getCustomReferenceTargets(filePath, documentText, offset, options = {}) {
-    const pathReferenceContext = this.getPathReferenceContext(filePath, documentText, offset);
-    if (pathReferenceContext) {
-      return this.collectPathReferenceLocations(
-        pathReferenceContext.kind,
-        pathReferenceContext.targetFilePath,
-        this.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
-      );
-    }
-
-    const renameInfo = this.getCustomRenameInfo(filePath, documentText, offset);
-    if (!renameInfo) {
-      return null;
-    }
-
-    const moduleRename = this.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, this.getPagesCodeOverrides({
-      [normalizePath(filePath)]: isScriptFile(filePath) ? documentText : undefined,
-    }));
-    if (!moduleRename.canRename) {
-      return [];
-    }
-
-    const uniqueLocations = new Map();
-    const addLocation = (location) => {
-      if (!location) {
-        return;
-      }
-
-      const locationKey = `${normalizePath(location.filePath)}:${location.start}:${location.end}`;
-      if (!uniqueLocations.has(locationKey)) {
-        uniqueLocations.set(locationKey, {
-          filePath: normalizePath(location.filePath),
-          start: location.start,
-          end: location.end,
-        });
-      }
-    };
-
-    for (const location of moduleRename.locations) {
-      const start = location.textSpan.start;
-      const end = location.textSpan.start + location.textSpan.length;
-      if (
-        !options.includeDeclaration &&
-        normalizePath(location.fileName) === normalizePath(renameInfo.moduleDefinitionInfo.filePath) &&
-        start === renameInfo.moduleDefinitionInfo.start &&
-        end === renameInfo.moduleDefinitionInfo.end
-      ) {
-        continue;
-      }
-
-      addLocation({
-        filePath: location.fileName,
-        start,
-        end,
-      });
-    }
-
-    for (const location of this.collectResolvedModuleMemberUsageLocations(
-      renameInfo.moduleDefinitionInfo.filePath,
-      renameInfo.placeholder,
-      this.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
-    )) {
-      addLocation(location);
-    }
-
-    return [...uniqueLocations.values()];
+    return navigationFeatureHandlers.getCustomReferenceTargets(
+      this,
+      filePath,
+      documentText,
+      offset,
+      options
+    );
   }
 
   getDocumentLinks(filePath, documentText) {
-    const links = [];
-
-    for (const pathContext of collectPathContexts(documentText)) {
-      let targetFilePath = null;
-
-      if (pathContext.kind === "resolve-path") {
-        targetFilePath = this.projectIndex.resolveResolveTarget(filePath, pathContext.value);
-      } else if (pathContext.kind === "include-path") {
-        targetFilePath = this.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
-      } else if (pathContext.kind === "asset-path") {
-        targetFilePath = this.projectIndex.resolveAssetTarget(filePath, pathContext.value);
-      } else if (pathContext.kind === "route-path") {
-        targetFilePath = this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
-          routeSource: pathContext.routeSource,
-        });
-      }
-
-      if (!targetFilePath) {
-        continue;
-      }
-
-      links.push({
-        start: pathContext.start,
-        end: pathContext.end,
-        targetFilePath,
-        kind: pathContext.kind,
-        value: pathContext.value,
-      });
-    }
-
-    for (const requireContext of collectStaticRequireCallContexts(documentText)) {
-      const targetFilePath = this.projectIndex.resolveRequireTarget(filePath, requireContext.value, requireContext);
-      if (!targetFilePath) {
-        continue;
-      }
-
-      links.push({
-        start: requireContext.start,
-        end: requireContext.end,
-        targetFilePath,
-        kind: requireContext.kind,
-        value: requireContext.value,
-      });
-    }
-
-    return links;
+    return navigationFeatureHandlers.getDocumentLinks(this, filePath, documentText);
   }
 }
 

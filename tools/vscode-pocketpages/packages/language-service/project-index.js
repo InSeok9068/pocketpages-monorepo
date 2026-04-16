@@ -218,6 +218,47 @@ function walkFiles(dirPath, predicate, rootDir = dirPath, results = []) {
   return results
 }
 
+function walkPagesGraph(pagesRoot) {
+  const normalizedPagesRoot = normalizePath(pagesRoot)
+  const allFiles = []
+  const privateRoots = new Set()
+  const pendingDirectories = [normalizedPagesRoot]
+
+  while (pendingDirectories.length) {
+    const currentDir = pendingDirectories.pop()
+    if (!directoryExists(currentDir)) {
+      continue
+    }
+
+    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+      const absolutePath = normalizePath(path.join(currentDir, entry.name))
+      if (entry.isDirectory()) {
+        if (entry.name === '_private') {
+          privateRoots.add(absolutePath)
+        }
+        pendingDirectories.push(absolutePath)
+        continue
+      }
+
+      if (!entry.isFile()) {
+        continue
+      }
+
+      allFiles.push({
+        filePath: absolutePath,
+        relativePath: toRelativePath(path.relative(normalizedPagesRoot, absolutePath)),
+      })
+    }
+  }
+
+  allFiles.sort((left, right) => left.filePath.localeCompare(right.filePath))
+
+  return {
+    allFiles,
+    privateRoots,
+  }
+}
+
 function quoteRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -603,6 +644,67 @@ function getRoutePathMatchDetails(routeSegments, requestSegments) {
   return {
     dynamicSegmentCount,
     segmentCount: normalizedRouteSegments.length,
+  }
+}
+
+function createRouteDescriptor(pagesRoot, filePath, routeExtensions = ROUTE_EXTENSIONS) {
+  const normalizedFilePath = normalizePath(filePath)
+  const relativePath = toRelativePath(path.relative(pagesRoot, normalizedFilePath))
+  if (!relativePath || relativePath.startsWith('..') || relativePath.split('/').includes('_private')) {
+    return null
+  }
+
+  const relativeSegments = relativePath.split('/').filter(Boolean)
+  if (!relativeSegments.length) {
+    return null
+  }
+
+  const fileName = relativeSegments[relativeSegments.length - 1]
+  if (!routeExtensions.includes(path.extname(fileName))) {
+    return null
+  }
+
+  const fileBasename = stripKnownExtension(fileName, routeExtensions)
+  const directorySegments = relativeSegments.slice(0, -1)
+  const routeSegments = []
+
+  for (const segment of directorySegments) {
+    if (!segment || isRouteGroupSegment(segment)) {
+      continue
+    }
+
+    if (segment.startsWith('+')) {
+      return null
+    }
+
+    routeSegments.push(segment)
+  }
+
+  let method = 'PAGE'
+  if (fileBasename === 'index') {
+    method = 'PAGE'
+  } else if (ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]) {
+    method = ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]
+  } else if (NON_ROUTE_SPECIAL_FILE_BASENAMES.has(fileBasename) || fileBasename.startsWith('+')) {
+    return null
+  } else {
+    routeSegments.push(fileBasename)
+  }
+
+  return {
+    filePath: normalizedFilePath,
+    method,
+    routePath: routeSegments.length ? `/${routeSegments.join('/')}` : '/',
+    routeSegments: [...routeSegments],
+    isStaticRoute: !routeSegments.some((segment) => isDynamicRouteSegment(segment)),
+  }
+}
+
+function toStaticRouteEntry(descriptor) {
+  return {
+    filePath: descriptor.filePath,
+    method: descriptor.method === 'PAGE' ? null : descriptor.method,
+    routePath: descriptor.routePath,
   }
 }
 
@@ -1130,12 +1232,111 @@ class PocketPagesProjectIndex {
     this.schemaCache = null
     this.collectionMethodCache = null
     this.includeLocalsCache = null
+    this.pagesGraphCache = null
+    this.searchRootFileCache = new Map()
+    this.routeStateCache = null
+    this.pagesStructureVersion = 0
+    this.pagesContentVersion = 0
+    this.appWatcher = null
+
+    this.startWatching()
   }
 
   resetCaches() {
     this.schemaCache = null
     this.collectionMethodCache = null
     this.includeLocalsCache = null
+    this.pagesGraphCache = null
+    this.searchRootFileCache.clear()
+    this.routeStateCache = null
+    this.pagesStructureVersion += 1
+    this.pagesContentVersion += 1
+  }
+
+  startWatching() {
+    if (!directoryExists(this.appRoot)) {
+      return
+    }
+
+    try {
+      this.appWatcher = fs.watch(this.appRoot, {
+        persistent: false,
+        recursive: true,
+      }, (eventType, fileName) => {
+        if (!fileName) {
+          this.invalidateStructureCaches()
+          return
+        }
+
+        const changedFilePath = normalizePath(path.join(this.appRoot, String(fileName)))
+        if (eventType === 'rename') {
+          this.invalidateStructureForFile(changedFilePath)
+          return
+        }
+
+        this.invalidateContentForFile(changedFilePath)
+      })
+
+      if (typeof this.appWatcher.unref === 'function') {
+        this.appWatcher.unref()
+      }
+
+      this.appWatcher.on('error', () => {
+        this.invalidateStructureCaches()
+      })
+    } catch (_error) {
+      this.appWatcher = null
+    }
+  }
+
+  invalidateStructureCaches() {
+    this.pagesGraphCache = null
+    this.searchRootFileCache.clear()
+    this.routeStateCache = null
+    this.includeLocalsCache = null
+    this.pagesStructureVersion += 1
+    this.pagesContentVersion += 1
+  }
+
+  invalidateContentForFile(filePath) {
+    const normalizedFilePath = normalizePath(filePath)
+    const schemaPath = normalizePath(path.join(this.appRoot, 'pb_schema.json'))
+    const typesPath = normalizePath(path.join(this.appRoot, 'pb_data', 'types.d.ts'))
+
+    if (normalizedFilePath === schemaPath) {
+      this.schemaCache = null
+      return
+    }
+
+    if (normalizedFilePath === typesPath) {
+      this.collectionMethodCache = null
+      return
+    }
+
+    if (isPagesCodeFile(this.pagesRoot, normalizedFilePath)) {
+      this.includeLocalsCache = null
+      this.pagesContentVersion += 1
+    }
+  }
+
+  invalidateStructureForFile(filePath) {
+    const normalizedFilePath = normalizePath(filePath)
+    const schemaPath = normalizePath(path.join(this.appRoot, 'pb_schema.json'))
+    const typesPath = normalizePath(path.join(this.appRoot, 'pb_data', 'types.d.ts'))
+
+    if (normalizedFilePath === schemaPath) {
+      this.schemaCache = null
+      return
+    }
+
+    if (normalizedFilePath === typesPath) {
+      this.collectionMethodCache = null
+      return
+    }
+
+    if (normalizedFilePath.startsWith(`${this.pagesRoot}/`) || normalizedFilePath === this.pagesRoot) {
+      this.invalidateStructureCaches()
+    }
   }
 
   getSchemaState() {
@@ -1263,13 +1464,18 @@ class PocketPagesProjectIndex {
       this.collectionMethodCache = {
         typesPath,
         mtimeMs: 0,
+        size: 0,
         methodNames: [...DEFAULT_COLLECTION_METHOD_NAMES],
       }
       return this.collectionMethodCache
     }
 
     const stats = fs.statSync(typesPath)
-    if (this.collectionMethodCache && this.collectionMethodCache.mtimeMs === stats.mtimeMs) {
+    if (
+      this.collectionMethodCache &&
+      this.collectionMethodCache.mtimeMs === stats.mtimeMs &&
+      this.collectionMethodCache.size === stats.size
+    ) {
       return this.collectionMethodCache
     }
 
@@ -1287,6 +1493,7 @@ class PocketPagesProjectIndex {
     this.collectionMethodCache = {
       typesPath,
       mtimeMs: stats.mtimeMs,
+      size: stats.size,
       methodNames,
     }
 
@@ -1346,10 +1553,11 @@ class PocketPagesProjectIndex {
   getPrivateSearchRootsForDir(startDir) {
     const roots = []
     let currentDir = normalizePath(startDir)
+    const privateRoots = this.getPagesGraphState().privateRoots
 
     while (currentDir.startsWith(this.pagesRoot)) {
       const privateDir = normalizePath(path.join(currentDir, '_private'))
-      if (directoryExists(privateDir)) {
+      if (privateRoots.has(privateDir)) {
         roots.push(privateDir)
       }
 
@@ -1365,6 +1573,108 @@ class PocketPagesProjectIndex {
 
   getPrivateSearchRoots(filePath) {
     return this.getPrivateSearchRootsForDir(path.dirname(filePath))
+  }
+
+  getPagesGraphState() {
+    if (this.pagesGraphCache) {
+      return this.pagesGraphCache
+    }
+
+    const graphState = walkPagesGraph(this.pagesRoot)
+    const pagesCodeFiles = []
+    const assetFiles = []
+
+    for (const entry of graphState.allFiles) {
+      if (isPagesCodeFile(this.pagesRoot, entry.filePath)) {
+        pagesCodeFiles.push(entry)
+      }
+
+      if (isAssetCandidateFile(this.pagesRoot, entry.filePath)) {
+        assetFiles.push(entry)
+      }
+    }
+
+    this.pagesGraphCache = {
+      ...graphState,
+      pagesCodeFiles,
+      pagesCodeFilePathSet: new Set(pagesCodeFiles.map((entry) => entry.filePath)),
+      assetFiles,
+      assetFilePathSet: new Set(assetFiles.map((entry) => entry.filePath)),
+    }
+
+    return this.pagesGraphCache
+  }
+
+  getSearchRootFileState(rootPath, extensions) {
+    const normalizedRootPath = normalizePath(rootPath)
+    const extensionKey = [...extensions].sort().join('|')
+    const cacheKey = `${normalizedRootPath}::${extensionKey}`
+    if (this.searchRootFileCache.has(cacheKey)) {
+      return this.searchRootFileCache.get(cacheKey)
+    }
+
+    const rootPrefix = `${normalizedRootPath}/`
+    const entries = this.getPagesGraphState().allFiles
+      .filter((entry) =>
+        entry.filePath.startsWith(rootPrefix) &&
+        extensions.includes(path.extname(entry.filePath).toLowerCase())
+      )
+      .map((entry) => ({
+        filePath: entry.filePath,
+        relativePath: toRelativePath(path.relative(normalizedRootPath, entry.filePath)),
+      }))
+      .sort((left, right) => left.filePath.localeCompare(right.filePath))
+
+    const state = {
+      entries,
+      filePathSet: new Set(entries.map((entry) => entry.filePath)),
+    }
+
+    this.searchRootFileCache.set(cacheKey, state)
+    return state
+  }
+
+  getRouteState() {
+    if (this.routeStateCache) {
+      return this.routeStateCache
+    }
+
+    const descriptors = []
+    const descriptorByFilePath = new Map()
+    const completionDescriptors = []
+
+    for (const entry of this.getPagesGraphState().allFiles) {
+      const descriptor = createRouteDescriptor(this.pagesRoot, entry.filePath, ROUTE_EXTENSIONS)
+      if (descriptor) {
+        descriptors.push(descriptor)
+        descriptorByFilePath.set(descriptor.filePath, descriptor)
+      }
+
+      const completionDescriptor = createRouteDescriptor(this.pagesRoot, entry.filePath, ROUTE_COMPLETION_EXTENSIONS)
+      if (completionDescriptor) {
+        completionDescriptors.push(completionDescriptor)
+      }
+    }
+
+    const staticEntries = descriptors
+      .filter((descriptor) => descriptor.isStaticRoute)
+      .map(toStaticRouteEntry)
+    const staticEntriesByFilePath = new Map(
+      staticEntries.map((entry) => [entry.filePath, entry])
+    )
+    const completionStaticEntries = completionDescriptors
+      .filter((descriptor) => descriptor.isStaticRoute)
+      .map(toStaticRouteEntry)
+
+    this.routeStateCache = {
+      descriptors,
+      descriptorByFilePath,
+      staticEntries,
+      staticEntriesByFilePath,
+      completionStaticEntries,
+    }
+
+    return this.routeStateCache
   }
 
   getResolveCandidates(filePath) {
@@ -1396,7 +1706,7 @@ class PocketPagesProjectIndex {
     }
 
     for (const [depth, privateRoot] of this.getPrivateSearchRoots(filePath).entries()) {
-      const files = walkFiles(privateRoot, (candidatePath) => RESOLVE_EXTENSIONS.includes(path.extname(candidatePath)))
+      const files = this.getSearchRootFileState(privateRoot, RESOLVE_EXTENSIONS).entries
 
       for (const entry of files) {
         let value = stripKnownExtension(entry.relativePath, RESOLVE_EXTENSIONS)
@@ -1510,11 +1820,7 @@ class PocketPagesProjectIndex {
   }
 
   getPagesCodeFiles() {
-    return walkFiles(
-      this.pagesRoot,
-      (candidatePath) => isPagesCodeFile(this.pagesRoot, candidatePath),
-      this.pagesRoot
-    )
+    return this.getPagesGraphState().pagesCodeFiles
   }
 
   getModuleExportedMembers(moduleFilePath, sourceText = null) {
@@ -1544,21 +1850,19 @@ class PocketPagesProjectIndex {
         ? options.readFileText
         : (filePath) => fs.readFileSync(filePath, 'utf8')
     const codeFiles = this.getPagesCodeFiles()
-    const snapshotKey = codeFiles
-      .filter((entry) => fileExists(entry.filePath))
-      .map((entry) => {
-        const normalizedFilePath = normalizePath(entry.filePath)
-        const overrideText = options.overrides && typeof options.overrides[normalizedFilePath] === 'string'
-          ? options.overrides[normalizedFilePath]
-          : null
-        if (overrideText !== null) {
-          return `${normalizedFilePath}:override:${overrideText.length}:${overrideText}`
-        }
-
-        const stats = fs.statSync(entry.filePath)
-        return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}`
+    const overrideSnapshotKey = Object.entries(options.overrides || {})
+      .filter(([, text]) => typeof text === 'string')
+      .map(([filePath, text]) => {
+        const normalizedFilePath = normalizePath(filePath)
+        return `${normalizedFilePath}:override:${text.length}:${text}`
       })
+      .sort()
       .join('|')
+    const snapshotKey = [
+      `structure:${this.pagesStructureVersion}`,
+      `content:${this.pagesContentVersion}`,
+      overrideSnapshotKey,
+    ].filter(Boolean).join('|')
 
     if (this.includeLocalsCache && this.includeLocalsCache.snapshotKey === snapshotKey) {
       return this.includeLocalsCache
@@ -1679,8 +1983,9 @@ class PocketPagesProjectIndex {
   }
 
   resolveResolveTarget(filePath, requestPath) {
+    const searchRoots = this.getResolveSearchRoots(filePath, requestPath)
     for (const candidatePath of this.getResolveCandidatePaths(filePath, requestPath)) {
-      if (fileExists(candidatePath)) {
+      if (searchRoots.some((searchRoot) => this.getSearchRootFileState(searchRoot, RESOLVE_EXTENSIONS).filePathSet.has(candidatePath))) {
         return candidatePath
       }
     }
@@ -1758,7 +2063,7 @@ class PocketPagesProjectIndex {
 
     const privateRoots = this.getPrivateSearchRoots(filePath)
     for (const [depth, privateRoot] of privateRoots.entries()) {
-      const files = walkFiles(privateRoot, (candidatePath) => INCLUDE_EXTENSIONS.includes(path.extname(candidatePath)))
+      const files = this.getSearchRootFileState(privateRoot, INCLUDE_EXTENSIONS).entries
       for (const entry of files) {
         addIncludeCandidateVariants(entry.relativePath, entry.filePath, depth)
       }
@@ -1771,11 +2076,7 @@ class PocketPagesProjectIndex {
     const currentDir = normalizePath(path.dirname(filePath))
     const items = []
     const seen = new Set()
-    const assetFiles = walkFiles(
-      this.pagesRoot,
-      (candidatePath) => isAssetCandidateFile(this.pagesRoot, candidatePath),
-      this.pagesRoot
-    )
+    const assetFiles = this.getPagesGraphState().assetFiles
 
     const addCandidate = (value, absolutePath) => {
       if (!value || seen.has(value)) {
@@ -1855,8 +2156,32 @@ class PocketPagesProjectIndex {
       }
     }
 
+    const privateRoots = this.getPrivateSearchRoots(filePath)
+    const rootCandidates = new Map()
+    const getRootCandidates = (rootPath) => {
+      const normalizedRootPath = normalizePath(rootPath)
+      if (!rootCandidates.has(normalizedRootPath)) {
+        rootCandidates.set(
+          normalizedRootPath,
+          this.getSearchRootFileState(normalizedRootPath, INCLUDE_EXTENSIONS).filePathSet
+        )
+      }
+
+      return rootCandidates.get(normalizedRootPath)
+    }
+
     for (const candidatePath of candidatePaths) {
-      if (fileExists(candidatePath)) {
+      if (getRootCandidates(currentDir).has(candidatePath)) {
+        return candidatePath
+      }
+
+      for (const privateRoot of privateRoots) {
+        if (candidatePath.startsWith(`${privateRoot}/`) && getRootCandidates(privateRoot).has(candidatePath)) {
+          return candidatePath
+        }
+      }
+
+      if (candidatePath.startsWith(`${this.pagesRoot}/`) && getRootCandidates(this.pagesRoot).has(candidatePath)) {
         return candidatePath
       }
     }
@@ -1875,7 +2200,7 @@ class PocketPagesProjectIndex {
       ? normalizePath(path.join(this.pagesRoot, normalizedRequestPath))
       : normalizePath(path.join(currentDir, normalizedRequestPath))
 
-    if (!fileExists(candidatePath) || !isAssetCandidateFile(this.pagesRoot, candidatePath)) {
+    if (!this.getPagesGraphState().assetFilePathSet.has(candidatePath)) {
       return null
     }
 
@@ -1933,134 +2258,20 @@ class PocketPagesProjectIndex {
   }
 
   getStaticRouteEntries(options = {}) {
-    const routeExtensions = options && options.completionOnly ? ROUTE_COMPLETION_EXTENSIONS : ROUTE_EXTENSIONS
-    const files = walkFiles(
-      this.pagesRoot,
-      (candidatePath) => {
-        if (!routeExtensions.includes(path.extname(candidatePath))) {
-          return false
-        }
-
-        const relativePath = toRelativePath(path.relative(this.pagesRoot, candidatePath))
-        return !relativePath.split('/').includes('_private')
-      },
-      this.pagesRoot
-    )
-
-    const entries = []
-
-    for (const entry of files) {
-      const relativeSegments = entry.relativePath.split('/').filter(Boolean)
-      if (!relativeSegments.length) {
-        continue
-      }
-
-      const fileName = relativeSegments[relativeSegments.length - 1]
-      const fileBasename = stripKnownExtension(fileName, routeExtensions)
-      const directorySegments = relativeSegments.slice(0, -1)
-      const routeSegments = []
-      let isStaticRoute = true
-
-      for (const segment of directorySegments) {
-        if (!segment || isRouteGroupSegment(segment)) {
-          continue
-        }
-
-        if (segment.startsWith('+') || isDynamicRouteSegment(segment)) {
-          isStaticRoute = false
-          break
-        }
-
-        routeSegments.push(segment)
-      }
-
-      if (!isStaticRoute) {
-        continue
-      }
-
-      let method = null
-      if (fileBasename === 'index') {
-        method = null
-      } else if (ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]) {
-        method = ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]
-      } else if (NON_ROUTE_SPECIAL_FILE_BASENAMES.has(fileBasename) || fileBasename.startsWith('+')) {
-        continue
-      } else if (isDynamicRouteSegment(fileBasename)) {
-        continue
-      } else {
-        routeSegments.push(fileBasename)
-      }
-
-      entries.push({
-        filePath: entry.filePath,
-        method,
-        routePath: routeSegments.length ? `/${routeSegments.join('/')}` : '/',
-      })
-    }
-
-    return entries
+    const routeState = this.getRouteState()
+    return options && options.completionOnly
+      ? routeState.completionStaticEntries
+      : routeState.staticEntries
   }
 
   getStaticRouteEntryByFilePath(filePath) {
     const normalizedFilePath = normalizePath(filePath)
-    return this.getStaticRouteEntries().find((entry) => normalizePath(entry.filePath) === normalizedFilePath) || null
+    return this.getRouteState().staticEntriesByFilePath.get(normalizedFilePath) || null
   }
 
   getRouteDescriptorByFilePath(filePath) {
     const normalizedFilePath = normalizePath(filePath)
-    if (!fileExists(normalizedFilePath)) {
-      return null
-    }
-
-    const relativePath = toRelativePath(path.relative(this.pagesRoot, normalizedFilePath))
-    if (!relativePath || relativePath.startsWith('..') || relativePath.split('/').includes('_private')) {
-      return null
-    }
-
-    const relativeSegments = relativePath.split('/').filter(Boolean)
-    if (!relativeSegments.length) {
-      return null
-    }
-
-    const fileName = relativeSegments[relativeSegments.length - 1]
-    if (!ROUTE_EXTENSIONS.includes(path.extname(fileName))) {
-      return null
-    }
-
-    const fileBasename = stripKnownExtension(fileName, ROUTE_EXTENSIONS)
-    const directorySegments = relativeSegments.slice(0, -1)
-    const routeSegments = []
-
-    for (const segment of directorySegments) {
-      if (!segment || isRouteGroupSegment(segment)) {
-        continue
-      }
-
-      if (segment.startsWith('+')) {
-        return null
-      }
-
-      routeSegments.push(segment)
-    }
-
-    let method = 'PAGE'
-    if (fileBasename === 'index') {
-      method = 'PAGE'
-    } else if (ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]) {
-      method = ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]
-    } else if (NON_ROUTE_SPECIAL_FILE_BASENAMES.has(fileBasename) || fileBasename.startsWith('+')) {
-      return null
-    } else {
-      routeSegments.push(fileBasename)
-    }
-
-    return {
-      filePath: normalizedFilePath,
-      method,
-      routePath: routeSegments.length ? `/${routeSegments.join('/')}` : '/',
-      routeSegments: [...routeSegments],
-      isStaticRoute: !routeSegments.some((segment) => isDynamicRouteSegment(segment)),
-    }
+    return this.getRouteState().descriptorByFilePath.get(normalizedFilePath) || null
   }
 
   resolveRouteTarget(_filePath, requestPath, options = {}) {
@@ -2073,23 +2284,7 @@ class PocketPagesProjectIndex {
     const requestSegments = splitNormalizedRoutePath(normalizedRequestPath)
     const matchingEntries = []
 
-    for (const entry of walkFiles(
-      this.pagesRoot,
-      (candidatePath) => {
-        if (!ROUTE_EXTENSIONS.includes(path.extname(candidatePath))) {
-          return false
-        }
-
-        const relativePath = toRelativePath(path.relative(this.pagesRoot, candidatePath))
-        return !relativePath.split('/').includes('_private')
-      },
-      this.pagesRoot
-    )) {
-      const descriptor = this.getRouteDescriptorByFilePath(entry.filePath)
-      if (!descriptor) {
-        continue
-      }
-
+    for (const descriptor of this.getRouteState().descriptors) {
       const matchDetails = getRoutePathMatchDetails(descriptor.routeSegments, requestSegments)
       if (!matchDetails) {
         continue
