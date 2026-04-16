@@ -1737,6 +1737,30 @@ function mergeTypeTexts(typeTexts) {
   return uniqueTypes.sort().join(' | ')
 }
 
+const SYSTEM_RECORD_FIELDS = Object.freeze([
+  { name: 'id', type: 'text', isSystem: true },
+])
+
+function mergeRecordFieldEntries(fieldEntries = []) {
+  const merged = []
+  const seen = new Set()
+
+  for (const fieldEntry of [...SYSTEM_RECORD_FIELDS, ...ensureArray(fieldEntries)]) {
+    if (!fieldEntry || typeof fieldEntry.name !== 'string' || seen.has(fieldEntry.name)) {
+      continue
+    }
+
+    seen.add(fieldEntry.name)
+    merged.push({
+      name: fieldEntry.name,
+      type: fieldEntry.type || '',
+      isSystem: !!fieldEntry.isSystem,
+    })
+  }
+
+  return merged
+}
+
 function mapSchemaFieldTypeToTypeText(fieldType) {
   switch (String(fieldType || '').toLowerCase()) {
     case 'text':
@@ -2341,7 +2365,7 @@ class PocketPagesProjectIndex {
       return []
     }
 
-    return [...collection.fields]
+    return mergeRecordFieldEntries(collection.fields)
   }
 
   hasCollection(collectionName) {
@@ -3298,41 +3322,6 @@ class PocketPagesProjectIndex {
             confidence: candidate.confidence === 'high' ? 'medium' : candidate.confidence,
             strategy: `role-file:${candidate.strategy}`,
           }
-        }
-      }
-    }
-
-    const scriptPrefix = scriptText.slice(0, beforeOffset)
-    const collectionCallRegex = this.getCollectionCallRegex()
-    const collectionMatches = collectionCallRegex
-      ? Array.from(scriptPrefix.matchAll(collectionCallRegex))
-          .map((match) => match[1])
-          .filter((name) => this.hasCollection(name))
-      : []
-
-    if (collectionMatches.length) {
-      const lastCollection = collectionMatches[collectionMatches.length - 1]
-      if (lastCollection) {
-        return {
-          collectionName: lastCollection,
-          confidence: genericNames.has(receiverName) ? 'medium' : 'low',
-          strategy: 'latest-collection-call',
-        }
-      }
-    }
-
-    if (genericNames.has(receiverName)) {
-      const allMatches = collectionCallRegex
-        ? Array.from(scriptText.matchAll(collectionCallRegex))
-            .map((match) => match[1])
-            .filter((name) => this.hasCollection(name))
-        : []
-      const uniqueCollections = [...new Set(allMatches)]
-      if (uniqueCollections.length === 1) {
-        return {
-          collectionName: uniqueCollections[0],
-          confidence: 'low',
-          strategy: 'single-collection-in-file',
         }
       }
     }

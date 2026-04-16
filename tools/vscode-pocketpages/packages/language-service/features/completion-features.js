@@ -120,16 +120,20 @@ function createCompletionFeatureHandlers(deps) {
         return null;
       }
 
-      const collectionName = service.projectIndex.inferCollectionName(
-        fieldContext.receiverExpression,
-        analysisText,
-        fieldContext.start,
-        { filePath }
+      const collectionReference = service.resolveSchemaFieldCollectionReference(
+        filePath,
+        documentText,
+        fieldContext,
+        {
+          analysisText,
+          analysisStart,
+        }
       );
-      if (!collectionName) {
+      if (!collectionReference) {
         return null;
       }
 
+      const collectionName = collectionReference.collectionName;
       return {
         start: analysisStart + fieldContext.start,
         end: analysisStart + fieldContext.end,

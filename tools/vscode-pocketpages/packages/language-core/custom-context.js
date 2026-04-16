@@ -130,11 +130,13 @@ function getOpenMatchContext(documentText, offset, regex, mapper) {
   }
 
   const value = match[match.length - 1]
+  const matchStart = windowStart + (typeof match.index === 'number' ? match.index : prefix.length - String(match[0] || '').length)
   return mapper({
     value,
     start: offset - value.length,
     end: offset,
     match,
+    matchStart,
   })
 }
 
@@ -347,10 +349,12 @@ function getScriptCollectionContext(scriptText, offset, options = {}) {
 }
 
 function getScriptFieldContext(scriptText, offset) {
-  return getOpenMatchContext(scriptText, offset, FIELD_OPEN_RE, ({ value, start, end, match }) => ({
+  return getOpenMatchContext(scriptText, offset, FIELD_OPEN_RE, ({ value, start, end, match, matchStart }) => ({
     kind: 'record-field',
     receiverExpression: match[1],
     receiverName: getLastPathSegment(match[1]),
+    receiverStart: matchStart,
+    receiverEnd: matchStart + String(match[1] || '').length,
     accessMethod: match[2],
     value,
     start,
@@ -435,6 +439,8 @@ function collectSchemaContexts(scriptText, options = {}) {
     }
     context.receiverExpression = match[1]
     context.receiverName = getLastPathSegment(match[1])
+    context.receiverStart = match.index
+    context.receiverEnd = match.index + String(match[1] || '').length
     context.accessMethod = match[2]
     contexts.push(context)
   }

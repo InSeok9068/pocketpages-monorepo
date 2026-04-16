@@ -1788,6 +1788,16 @@ function buildSchemaFieldDiagnostic(projectIndex, filePathOrContext, contextOrAn
   };
 }
 
+function extractTypedCollectionName(typeText, typeName) {
+  if (!typeText || !typeName) {
+    return null;
+  }
+
+  const escapedTypeName = String(typeName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = String(typeText).match(new RegExp(`\\b${escapedTypeName}<"([^"]+)"`));
+  return match ? match[1] : null;
+}
+
 function buildSchemaCollectionDiagnostic(context, offsetBase = 0) {
   return {
     code: "pp-schema-collection",
@@ -1855,6 +1865,7 @@ class ProjectLanguageService {
     this.includeContractCache = new Map();
     this.includeCallEntriesCache = new Map();
     this.includePreludeCache = new Map();
+    this.schemaTypePreludeCache = null;
 
     this.languageService = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry());
   }
@@ -1895,6 +1906,7 @@ class ProjectLanguageService {
     this.includeCallEntriesCache.clear();
     this.includePreludeCache.clear();
     this.includePreludeStack.clear();
+    this.schemaTypePreludeCache = null;
     this.staticFiles.clear();
     this.virtualFiles.clear();
     this.preparedDocumentStates.clear();
@@ -2153,6 +2165,11 @@ class ProjectLanguageService {
       parts.push(routeParamLines.join("\n"));
     }
 
+    const schemaTypePrelude = this.buildSchemaTypePrelude();
+    if (schemaTypePrelude) {
+      parts.push(schemaTypePrelude);
+    }
+
     const recordGetPrelude = this.buildRecordGetTypePrelude(analysisText);
     if (recordGetPrelude) {
       parts.push(recordGetPrelude);
@@ -2181,6 +2198,85 @@ class ProjectLanguageService {
     }
 
     return `${parts.join("\n\n")}\n\n`;
+  }
+
+  buildSchemaTypePrelude() {
+    const schemaState = this.projectIndex.getSchemaState();
+    const snapshotKey = `${normalizePath(schemaState.schemaPath)}:${schemaState.mtimeMs}:${schemaState.size}`;
+    if (this.schemaTypePreludeCache && this.schemaTypePreludeCache.snapshotKey === snapshotKey) {
+      return this.schemaTypePreludeCache.preludeText;
+    }
+
+    const collectionNames = this.projectIndex.getCollectionNames();
+    if (!collectionNames.length) {
+      this.schemaTypePreludeCache = {
+        snapshotKey,
+        preludeText: "",
+      };
+      return "";
+    }
+
+    const collectionUnion = collectionNames.map((collectionName) => JSON.stringify(collectionName)).join(" | ");
+    const schemaLines = [
+      `type PocketPagesCollectionName = ${collectionUnion};`,
+      "interface PocketPagesSchemaByCollection {",
+    ];
+
+    for (const collectionName of collectionNames) {
+      schemaLines.push(`  ${JSON.stringify(collectionName)}: {`);
+      const fields = this.projectIndex.getFields(collectionName);
+      for (const field of fields) {
+        const typeText = this.projectIndex.getFieldTypeText(collectionName, field.name) || "any";
+        schemaLines.push(`    ${JSON.stringify(field.name)}: ${typeText};`);
+      }
+      schemaLines.push("  };");
+    }
+
+    schemaLines.push("}");
+    schemaLines.push("type PocketPagesCollectionModel<C extends PocketPagesCollectionName> = Omit<pocketbase.Collection, \"name\"> & { name: C };");
+    schemaLines.push("type PocketPagesCollectionRef<C extends PocketPagesCollectionName> = C | PocketPagesCollectionModel<C>;");
+    schemaLines.push("type PocketPagesRecordInitData = { [key: string]: any };");
+    schemaLines.push("type PocketPagesFieldMap<C extends PocketPagesCollectionName> = PocketPagesSchemaByCollection[C];");
+    schemaLines.push("type PocketPagesFieldName<C extends PocketPagesCollectionName> = Extract<keyof PocketPagesFieldMap<C>, string>;");
+    schemaLines.push("type PocketPagesFieldValue<C extends PocketPagesCollectionName, K extends PocketPagesFieldName<C>> = PocketPagesFieldMap<C>[K];");
+    schemaLines.push(
+      "type PocketPagesTypedRecord<C extends PocketPagesCollectionName> = Omit<core.Record, \"get\" | \"set\" | \"tableName\" | \"collection\"> & {"
+    );
+    schemaLines.push("  get<K extends PocketPagesFieldName<C>>(name: K): PocketPagesFieldValue<C, K>;");
+    schemaLines.push("  get(name: string): any;");
+    schemaLines.push("  set<K extends PocketPagesFieldName<C>>(name: K, value: PocketPagesFieldValue<C, K>): void;");
+    schemaLines.push("  set(name: string, value: any): void;");
+    schemaLines.push("  tableName(): C;");
+    schemaLines.push("  collection(): PocketPagesCollectionModel<C>;");
+    schemaLines.push("};");
+    schemaLines.push("type PocketPagesTypedRecordConstructor = {");
+    schemaLines.push("  new<C extends PocketPagesCollectionName>(collection?: PocketPagesCollectionModel<C>, data?: PocketPagesRecordInitData): PocketPagesTypedRecord<C>;");
+    schemaLines.push("  new(collection?: pocketbase.Collection, data?: PocketPagesRecordInitData): core.Record;");
+    schemaLines.push("};");
+    schemaLines.push("declare global {");
+    schemaLines.push("  namespace pocketbase {");
+    schemaLines.push("    interface PocketBase {");
+    schemaLines.push("      findCollectionByNameOrId<C extends PocketPagesCollectionName>(nameOrId: C): PocketPagesCollectionModel<C>;");
+    schemaLines.push("      findCachedCollectionByNameOrId<C extends PocketPagesCollectionName>(nameOrId: C): PocketPagesCollectionModel<C>;");
+    schemaLines.push("      findRecordById<C extends PocketPagesCollectionName>(collectionModelOrIdentifier: PocketPagesCollectionRef<C>, recordId: string): PocketPagesTypedRecord<C>;");
+    schemaLines.push("      findRecordsByIds<C extends PocketPagesCollectionName>(collectionModelOrIdentifier: PocketPagesCollectionRef<C>, recordIds: string[]): Array<PocketPagesTypedRecord<C>>;");
+    schemaLines.push("      findAllRecords<C extends PocketPagesCollectionName>(collectionModelOrIdentifier: PocketPagesCollectionRef<C>): Array<PocketPagesTypedRecord<C>>;");
+    schemaLines.push("      findFirstRecordByData<C extends PocketPagesCollectionName>(collectionModelOrIdentifier: PocketPagesCollectionRef<C>, key: string, value: any): PocketPagesTypedRecord<C>;");
+    schemaLines.push("      findRecordsByFilter<C extends PocketPagesCollectionName>(collectionModelOrIdentifier: PocketPagesCollectionRef<C>, filter?: string, sort?: string, limit?: number, offset?: number, params?: Record<string, any>): Array<PocketPagesTypedRecord<C>>;");
+    schemaLines.push("      findFirstRecordByFilter<C extends PocketPagesCollectionName>(collectionModelOrIdentifier: PocketPagesCollectionRef<C>, filter: string, params?: Record<string, any>): PocketPagesTypedRecord<C>;");
+    schemaLines.push("      findAuthRecordByEmail<C extends PocketPagesCollectionName>(collectionModelOrIdentifier: PocketPagesCollectionRef<C>, email: string): PocketPagesTypedRecord<C>;");
+    schemaLines.push("      findRecordByViewFile<C extends PocketPagesCollectionName>(viewCollectionModelOrIdentifier: PocketPagesCollectionRef<C>, fileKey: string): PocketPagesTypedRecord<C>;");
+    schemaLines.push("    }");
+    schemaLines.push("  }");
+    schemaLines.push("}");
+    schemaLines.push("const Record: PocketPagesTypedRecordConstructor = (globalThis as any).Record as PocketPagesTypedRecordConstructor;");
+
+    const preludeText = schemaLines.join("\n");
+    this.schemaTypePreludeCache = {
+      snapshotKey,
+      preludeText,
+    };
+    return preludeText;
   }
 
   buildRequireTypePrelude(analysisText) {
@@ -2392,6 +2488,71 @@ class ProjectLanguageService {
     }
 
     return checker.typeToString(targetType, targetNode, ts.TypeFormatFlags.NoTruncation);
+  }
+
+  resolveSchemaFieldCollectionReference(filePath, documentText, context, options = {}) {
+    if (!context || !context.receiverExpression) {
+      return null;
+    }
+
+    const normalizedFilePath = normalizePath(filePath);
+    const analysisText = typeof options.analysisText === "string" ? options.analysisText : documentText;
+    const analysisStart = typeof options.analysisStart === "number" ? options.analysisStart : 0;
+
+    if (typeof context.receiverStart === "number") {
+      const receiverStart = analysisStart + context.receiverStart;
+      const receiverEnd =
+        analysisStart +
+        (typeof context.receiverEnd === "number"
+          ? context.receiverEnd
+          : context.receiverStart + String(context.receiverExpression || "").length);
+      const receiverTypeText = this.getTypeTextAtDocumentSpan(
+        normalizedFilePath,
+        documentText,
+        receiverStart,
+        receiverEnd
+      );
+      const typedCollectionName = extractTypedCollectionName(receiverTypeText, "PocketPagesTypedRecord");
+      if (typedCollectionName && this.projectIndex.hasCollection(typedCollectionName)) {
+        return {
+          collectionName: typedCollectionName,
+          confidence: "high",
+          strategy: "typed-record",
+        };
+      }
+    }
+
+    return this.projectIndex.inferCollectionReference(
+      context.receiverExpression,
+      analysisText,
+      context.start,
+      { filePath: normalizedFilePath }
+    );
+  }
+
+  buildDocumentSchemaFieldDiagnostic(filePath, documentText, context, options = {}) {
+    const analysisText = typeof options.analysisText === "string" ? options.analysisText : documentText;
+    const analysisStart = typeof options.analysisStart === "number" ? options.analysisStart : 0;
+    const reference = this.resolveSchemaFieldCollectionReference(filePath, documentText, context, {
+      analysisText,
+      analysisStart,
+    });
+
+    if (!reference || this.projectIndex.hasField(reference.collectionName, context.value)) {
+      return null;
+    }
+
+    if (reference.confidence !== "high") {
+      return null;
+    }
+
+    return {
+      code: "pp-schema-field",
+      category: ts.DiagnosticCategory.Warning,
+      message: `Unknown field "${context.value}" for collection "${reference.collectionName}".`,
+      start: analysisStart + context.start,
+      end: analysisStart + context.end,
+    };
   }
 
   getIncludeContractLocals(targetFilePath, options = {}) {
@@ -4548,7 +4709,7 @@ class ProjectLanguageService {
     }));
   }
 
-  collectServerBlockDiagnostics(filePath, blocks, collectionMethodNames, documentAnalysis) {
+  collectServerBlockDiagnostics(filePath, documentText, blocks, collectionMethodNames, documentAnalysis) {
     const diagnostics = [];
 
     for (const block of blocks) {
@@ -4596,12 +4757,14 @@ class ProjectLanguageService {
         }
 
         if (context.kind === "record-field") {
-          const fieldDiagnostic = buildSchemaFieldDiagnostic(
-            this.projectIndex,
+          const fieldDiagnostic = this.buildDocumentSchemaFieldDiagnostic(
             filePath,
+            documentText,
             context,
-            block.content,
-            block.contentStart
+            {
+              analysisText: block.content,
+              analysisStart: block.contentStart,
+            }
           );
 
           if (fieldDiagnostic) {
@@ -4672,11 +4835,13 @@ class ProjectLanguageService {
       }
 
       if (context.kind === "record-field") {
-        const fieldDiagnostic = buildSchemaFieldDiagnostic(
-          this.projectIndex,
+        const fieldDiagnostic = this.buildDocumentSchemaFieldDiagnostic(
           filePath,
+          documentText,
           context,
-          templateVirtualText
+          {
+            analysisText: templateVirtualText,
+          }
         );
 
         if (fieldDiagnostic) {
@@ -4701,11 +4866,13 @@ class ProjectLanguageService {
       }
 
       if (context.kind === "record-field") {
-        const fieldDiagnostic = buildSchemaFieldDiagnostic(
-          this.projectIndex,
+        const fieldDiagnostic = this.buildDocumentSchemaFieldDiagnostic(
           filePath,
+          documentText,
           context,
-          documentText
+          {
+            analysisText: documentText,
+          }
         );
 
         if (fieldDiagnostic) {

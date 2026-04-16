@@ -3333,6 +3333,34 @@ boardService.readAuthState(
       throw new Error(`Expected EJS template field completions. Got: ${templateFieldNames.slice(0, 20).join(', ')}`)
     }
 
+    const removedLatestCollectionFallbackText = `const records = $app.findRecordsByFilter('posts')\ncurrent.get('na')\n`
+    const removedLatestCollectionFallbackOffset = removedLatestCollectionFallbackText.lastIndexOf('na') + 'na'.length
+    const removedLatestCollectionFallbackCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      removedLatestCollectionFallbackText,
+      removedLatestCollectionFallbackOffset
+    )
+    const removedLatestCollectionFallbackNames = removedLatestCollectionFallbackCompletion
+      ? removedLatestCollectionFallbackCompletion.items.map((entry) => entry.label)
+      : []
+    if (removedLatestCollectionFallbackNames.includes('title') || removedLatestCollectionFallbackNames.includes('board')) {
+      throw new Error(`Expected latest-collection-call fallback completions to stay removed. Got: ${removedLatestCollectionFallbackNames.slice(0, 20).join(', ')}`)
+    }
+
+    const removedSingleCollectionFallbackText = `row.get('na')\nconst records = $app.findRecordsByFilter('posts')\n`
+    const removedSingleCollectionFallbackOffset = removedSingleCollectionFallbackText.indexOf('na') + 'na'.length
+    const removedSingleCollectionFallbackCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      removedSingleCollectionFallbackText,
+      removedSingleCollectionFallbackOffset
+    )
+    const removedSingleCollectionFallbackNames = removedSingleCollectionFallbackCompletion
+      ? removedSingleCollectionFallbackCompletion.items.map((entry) => entry.label)
+      : []
+    if (removedSingleCollectionFallbackNames.includes('title') || removedSingleCollectionFallbackNames.includes('board')) {
+      throw new Error(`Expected single-collection-in-file fallback completions to stay removed. Got: ${removedSingleCollectionFallbackNames.slice(0, 20).join(', ')}`)
+    }
+
     const resolveDefinition = service.getDefinitionTarget(
       fixture.boardsFilePath,
       `<script server>\nresolve('board-service')\n</script>\n`,
@@ -5012,6 +5040,24 @@ weekTextRows.map((row) => String(row.get('title') || '').trim())
       )
     }
 
+    const systemFieldText = `<script server>
+const board = $app.findRecordById('boards', 'board-1')
+const boardId = board.get('id')
+boardId.trim()
+</script>\n`
+    const boardIdQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      systemFieldText,
+      systemFieldText.indexOf('boardId =') + 2
+    )
+    if (!boardIdQuickInfo || !boardIdQuickInfo.displayText.includes('const boardId: string')) {
+      throw new Error(`Expected record.get('id') quick info to resolve to string. Got: ${JSON.stringify(boardIdQuickInfo)}`)
+    }
+    const systemFieldDiagnostics = service.getDiagnostics(fixture.boardsFilePath, systemFieldText)
+    if (systemFieldDiagnostics.some((entry) => String(entry.message).includes('Unknown field "id"'))) {
+      throw new Error(`Expected record.get('id') to be treated as a built-in field. Got: ${systemFieldDiagnostics.map((entry) => String(entry.message)).join(' | ')}`)
+    }
+
     const typedRecordGetText = `<script server>
 const board = $app.findRecordById('boards', 'board-1')
 const boardName = board.get('name')
@@ -5081,6 +5127,88 @@ metaPayload.trim()
     }
     if (!typedRecordGetInlayHints.some((entry) => entry.label === ': boolean')) {
       throw new Error(`Expected record.get() boolean inlay hint. Got: ${JSON.stringify(typedRecordGetInlayHints)}`)
+    }
+
+    const typedConstructorText = `<script server>
+const postCollection = $app.findCollectionByNameOrId('posts')
+const postRecord = new Record(postCollection)
+const postTableName = postRecord.tableName()
+const postCollectionName = postRecord.collection().name
+</script>\n`
+    const postRecordQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedConstructorText,
+      typedConstructorText.indexOf('postRecord =') + 2
+    )
+    if (!postRecordQuickInfo || !postRecordQuickInfo.displayText.includes('const postRecord: PocketPagesTypedRecord<"posts">')) {
+      throw new Error(`Expected new Record(collection) quick info to resolve to PocketPagesTypedRecord<'posts'>. Got: ${JSON.stringify(postRecordQuickInfo)}`)
+    }
+    const postTableNameQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedConstructorText,
+      typedConstructorText.indexOf('postTableName =') + 2
+    )
+    if (!postTableNameQuickInfo || !postTableNameQuickInfo.displayText.includes('const postTableName: "posts"')) {
+      throw new Error(`Expected new Record(collection).tableName() quick info to resolve to the posts literal. Got: ${JSON.stringify(postTableNameQuickInfo)}`)
+    }
+    const postCollectionNameQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedConstructorText,
+      typedConstructorText.indexOf('postCollectionName =') + 2
+    )
+    if (!postCollectionNameQuickInfo || !postCollectionNameQuickInfo.displayText.includes('const postCollectionName: "posts"')) {
+      throw new Error(`Expected new Record(collection).collection().name quick info to resolve to the posts literal. Got: ${JSON.stringify(postCollectionNameQuickInfo)}`)
+    }
+    const typedConstructorFieldText = `const postCollection = $app.findCollectionByNameOrId('posts')\nconst postRecord = new Record(postCollection)\npostRecord.get('ti')\n`
+    const typedConstructorFieldOffset = typedConstructorFieldText.lastIndexOf('ti') + 'ti'.length
+    const typedConstructorFieldCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      typedConstructorFieldText,
+      typedConstructorFieldOffset
+    )
+    const typedConstructorFieldNames = typedConstructorFieldCompletion ? typedConstructorFieldCompletion.items.map((entry) => entry.label) : []
+    if (!typedConstructorFieldNames.includes('title') || !typedConstructorFieldNames.includes('board')) {
+      throw new Error(`Expected new Record(collection) field completions. Got: ${typedConstructorFieldNames.slice(0, 20).join(', ')}`)
+    }
+
+    const typedCollectionFlowText = `<script server>
+const boardCollection = $app.findCollectionByNameOrId('boards')
+const board = $app.findFirstRecordByFilter(boardCollection, 'id != ""')
+const boardTableName = board.tableName()
+const boardCollectionName = board.collection().name
+const boardTableNames = $app.findRecordsByFilter('boards', '').map((entry) => entry.tableName())
+</script>\n`
+    const boardCollectionQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedCollectionFlowText,
+      typedCollectionFlowText.indexOf('boardCollection =') + 2
+    )
+    if (!boardCollectionQuickInfo || !boardCollectionQuickInfo.displayText.includes('PocketPagesCollectionModel<"boards">')) {
+      throw new Error(`Expected findCollectionByNameOrId() quick info to resolve to PocketPagesCollectionModel<'boards'>. Got: ${JSON.stringify(boardCollectionQuickInfo)}`)
+    }
+    const boardTableNameQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedCollectionFlowText,
+      typedCollectionFlowText.indexOf('boardTableName =') + 2
+    )
+    if (!boardTableNameQuickInfo || !boardTableNameQuickInfo.displayText.includes('const boardTableName: "boards"')) {
+      throw new Error(`Expected board.tableName() quick info to resolve to the boards literal. Got: ${JSON.stringify(boardTableNameQuickInfo)}`)
+    }
+    const boardCollectionNameQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedCollectionFlowText,
+      typedCollectionFlowText.indexOf('boardCollectionName =') + 2
+    )
+    if (!boardCollectionNameQuickInfo || !boardCollectionNameQuickInfo.displayText.includes('const boardCollectionName: "boards"')) {
+      throw new Error(`Expected board.collection().name quick info to resolve to the boards literal. Got: ${JSON.stringify(boardCollectionNameQuickInfo)}`)
+    }
+    const boardTableNamesQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedCollectionFlowText,
+      typedCollectionFlowText.indexOf('boardTableNames =') + 2
+    )
+    if (!boardTableNamesQuickInfo || !boardTableNamesQuickInfo.displayText.includes('const boardTableNames: "boards"[]')) {
+      throw new Error(`Expected array callback tableName() quick info to resolve to boards[]. Got: ${JSON.stringify(boardTableNamesQuickInfo)}`)
     }
 
     const resolveInlayHintText = `<script server>\nconst boardService = resolve('board-service')\n</script>\n`

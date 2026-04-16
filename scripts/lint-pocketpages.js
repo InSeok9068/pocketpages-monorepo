@@ -51,7 +51,7 @@ const { extractServerBlocks } = require('../tools/vscode-pocketpages/packages/la
 const { collectParamsFlowDiagnostics } = require('../tools/vscode-pocketpages/packages/language-service/flow-analysis')
 const { PocketPagesProjectIndex } = require('../tools/vscode-pocketpages/packages/language-service/project-index')
 const {
-  buildSchemaFieldDiagnostic,
+  PocketPagesLanguageServiceManager,
   collectRedirectReturnDiagnostics,
   ts,
 } = require('../tools/vscode-pocketpages/packages/language-service/language-service')
@@ -117,6 +117,7 @@ const RE = {
 
 let errors = 0
 let warnings = 0
+const lintLanguageServiceManager = new PocketPagesLanguageServiceManager()
 
 function fromMsysPath(value) {
   if (process.platform === 'win32' && /^\/[a-zA-Z](\/|$)/.test(value)) {
@@ -223,6 +224,7 @@ function buildServiceContext(serviceDir) {
   const pagesRoot = path.join(hooksRoot, 'pages')
   const configFile = path.join(pagesRoot, '+config.js')
   const projectIndex = new PocketPagesProjectIndex(serviceDir)
+  const languageService = lintLanguageServiceManager.getServiceForFile(configFile)
   const files = walkFiles(hooksRoot).map((filePath) => buildFileInfo(filePath, hooksRoot, pagesRoot))
 
   const hooksCodeFiles = files.filter((file) => file.isCode)
@@ -236,6 +238,7 @@ function buildServiceContext(serviceDir) {
     hooksRoot,
     pagesRoot,
     projectIndex,
+    languageService,
     collectionMethodNames: projectIndex.getCollectionMethodNames(),
     configFile,
     configFileInfo: pagesCodeFiles.find((file) => file.absPath === configFile) || null,
@@ -997,7 +1000,16 @@ function collectUnknownFieldMatches(context) {
         continue
       }
 
-      const diagnostic = buildSchemaFieldDiagnostic(context.projectIndex, file.absPath, schemaContext, analysisText)
+      if (!context.languageService) {
+        continue
+      }
+
+      const diagnostic = context.languageService.buildDocumentSchemaFieldDiagnostic(
+        file.absPath,
+        file.content,
+        schemaContext,
+        { analysisText }
+      )
       if (!diagnostic || diagnostic.code !== 'pp-schema-field' || typeof diagnostic.start !== 'number') {
         continue
       }

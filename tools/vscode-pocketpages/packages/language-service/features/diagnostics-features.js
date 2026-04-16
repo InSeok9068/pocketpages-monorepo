@@ -48,6 +48,7 @@ function createDiagnosticsFeatureHandlers(deps) {
       diagnostics.push(
         ...service.collectServerBlockDiagnostics(
           filePath,
+          documentText,
           blocks,
           collectionMethodNames,
           documentAnalysis
