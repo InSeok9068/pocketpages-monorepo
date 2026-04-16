@@ -5,7 +5,7 @@ const path = require('path')
 const ts = require('typescript')
 const { buildTemplateVirtualText } = require('../language-core/ejs-template')
 
-const RESOLVE_EXTENSIONS = ['.js', '.ejs', '.json', '.cjs', '.mjs']
+const RESOLVE_EXTENSIONS = ['.js', '.json', '.cjs', '.mjs']
 const REQUIRE_EXTENSIONS = ['.js', '.json', '.cjs', '.mjs']
 const INCLUDE_EXTENSIONS = ['.ejs']
 const ROUTE_EXTENSIONS = ['.ejs', '.js', '.cjs', '.mjs']

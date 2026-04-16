@@ -2754,6 +2754,17 @@ boardService.readAuthState(
       throw new Error(`Expected resolve() completion to include explicit relative variants. Got: ${resolveNames.slice(0, 20).join(', ')}`)
     }
 
+    const resolveSharedText = `<script server>\nresolve('sh')\n</script>\n`
+    const resolveSharedOffset = resolveSharedText.indexOf('sh') + 'sh'.length
+    const resolveSharedCompletion = service.getCustomCompletionData(fixture.boardsFilePath, resolveSharedText, resolveSharedOffset)
+    const resolveSharedNames = resolveSharedCompletion ? resolveSharedCompletion.items.map((entry) => entry.label) : []
+    if (!resolveSharedNames.includes('shared-service')) {
+      throw new Error(`Expected resolve() completion for "shared-service". Got: ${resolveSharedNames.slice(0, 20).join(', ')}`)
+    }
+    if (resolveSharedNames.includes('shared-panel') || resolveSharedNames.includes('shared-panel.ejs')) {
+      throw new Error(`Expected resolve() completion to exclude .ejs partials. Got: ${resolveSharedNames.slice(0, 20).join(', ')}`)
+    }
+
     const resolveBacktickText = `<script server>\nresolve(\`bo\`)\n</script>\n`
     const resolveBacktickOffset = resolveBacktickText.indexOf('bo') + 'bo'.length
     const resolveBacktickCompletion = service.getCustomCompletionData(fixture.boardsFilePath, resolveBacktickText, resolveBacktickOffset)
@@ -5123,6 +5134,14 @@ metaPayload.trim()
     )
     if (!missingResolveDiagnostics.some((entry) => entry.code === 'pp-unresolved-resolve-path')) {
       throw new Error(`Expected unresolved resolve() path diagnostic for missing module. Got: ${JSON.stringify(missingResolveDiagnostics)}`)
+    }
+
+    const partialResolveDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nresolve('flash-alert')\n</script>\n`
+    )
+    if (!partialResolveDiagnostics.some((entry) => entry.code === 'pp-unresolved-resolve-path')) {
+      throw new Error(`Expected resolve() to reject .ejs partial targets. Got: ${JSON.stringify(partialResolveDiagnostics)}`)
     }
 
     const unresolvedIncludeDiagnostics = service.getDiagnostics(
