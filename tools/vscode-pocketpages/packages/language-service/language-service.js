@@ -28,7 +28,6 @@ const { createDiagnosticsFeatureHandlers } = require("./features/diagnostics-fea
 const { createNavigationFeatureHandlers } = require("./features/navigation-features");
 const { createPocketPagesLanguageServiceManager } = require("./service-manager");
 
-const CACHE_ROOT = path.resolve(__dirname, "..", "..", ".cache");
 const COMPILER_OPTIONS = {
   allowJs: true,
   checkJs: false,
@@ -350,8 +349,16 @@ function findAppRoot(filePath) {
   }
 }
 
-function sanitizeFileName(filePath) {
-  return filePath.replace(/[:\\/()[\]\s]+/g, "_");
+function getSourceAdjacentVirtualFilePath(filePath, suffix) {
+  return normalizePath(`${normalizePath(filePath)}.__${suffix}.ts`);
+}
+
+function toTypedRequireImportSpecifier(context) {
+  if (!context || context.kind !== "require-path" || context.rootKind) {
+    return null;
+  }
+
+  return context.value ? String(context.value) : null;
 }
 
 function flattenDiagnosticMessage(messageText) {
@@ -2168,7 +2175,34 @@ class ProjectLanguageService {
       parts.push(resolveTypePrelude);
     }
 
+    const requireTypePrelude = this.buildRequireTypePrelude(analysisText);
+    if (requireTypePrelude) {
+      parts.push(requireTypePrelude);
+    }
+
     return `${parts.join("\n\n")}\n\n`;
+  }
+
+  buildRequireTypePrelude(analysisText) {
+    const importSpecifiers = [...new Set(
+      collectStaticRequireCallContexts(analysisText)
+        .map((context) => toTypedRequireImportSpecifier(context))
+        .filter(Boolean)
+    )];
+
+    if (!importSpecifiers.length) {
+      return "";
+    }
+
+    const overloadLines = importSpecifiers.map(
+      (importSpecifier) => `  (requestPath: ${JSON.stringify(importSpecifier)}): typeof import(${JSON.stringify(importSpecifier)});`
+    );
+
+    return [
+      "declare const require: ((requestPath: string) => any) & {",
+      ...overloadLines,
+      "};",
+    ].join("\n");
   }
 
   buildRecordGetTypePrelude(analysisText) {
@@ -2385,7 +2419,7 @@ class ProjectLanguageService {
         skipResolveTypePrelude: true,
       });
       const tempText = `${preludeText}${analysisText}`;
-      const tempFilePath = normalizePath(path.join(CACHE_ROOT, `${sanitizeFileName(normalizedTargetFilePath)}__include_contract.ts`));
+      const tempFilePath = getSourceAdjacentVirtualFilePath(normalizedTargetFilePath, "include_contract");
       const ambientFiles = getAppAmbientTypeFiles(this.appRoot).filter((filePath) => fileExists(filePath)).map((filePath) => normalizePath(filePath));
       const compilerHost = ts.createCompilerHost(COMPILER_OPTIONS, true);
       const defaultReadFile = compilerHost.readFile.bind(compilerHost);
@@ -2838,9 +2872,7 @@ class ProjectLanguageService {
     this.refreshStaticFiles();
 
     const resolvedPath = normalizePath(filePath);
-    const relativePath = path.relative(this.appRoot, resolvedPath);
-    const virtualDir = path.join(CACHE_ROOT, sanitizeFileName(this.appRoot));
-    const virtualFileName = normalizePath(path.join(virtualDir, `${sanitizeFileName(relativePath)}__block_${block.index}.ts`));
+    const virtualFileName = getSourceAdjacentVirtualFilePath(resolvedPath, `block_${block.index}`);
 
     const prelude = this.buildPrelude(resolvedPath, block.content);
     const text = `${prelude}${block.content}`;
@@ -2891,9 +2923,7 @@ class ProjectLanguageService {
     this.refreshStaticFiles();
 
     const resolvedPath = normalizePath(filePath);
-    const relativePath = path.relative(this.appRoot, resolvedPath);
-    const virtualDir = path.join(CACHE_ROOT, sanitizeFileName(this.appRoot));
-    const virtualFileName = normalizePath(path.join(virtualDir, `${sanitizeFileName(relativePath)}__template.ts`));
+    const virtualFileName = getSourceAdjacentVirtualFilePath(resolvedPath, "template");
 
     const prelude = this.buildPrelude(resolvedPath, templateVirtualText);
     const text = `${prelude}${templateVirtualText}`;
@@ -2953,9 +2983,7 @@ class ProjectLanguageService {
     this.refreshStaticFiles();
 
     const resolvedPath = normalizePath(filePath);
-    const relativePath = path.relative(this.appRoot, resolvedPath);
-    const virtualDir = path.join(CACHE_ROOT, sanitizeFileName(this.appRoot));
-    const virtualFileName = normalizePath(path.join(virtualDir, `${sanitizeFileName(relativePath)}__script.ts`));
+    const virtualFileName = getSourceAdjacentVirtualFilePath(resolvedPath, "script");
 
     const prelude = this.buildPrelude(resolvedPath, documentText);
     const text = `${prelude}${documentText}`;

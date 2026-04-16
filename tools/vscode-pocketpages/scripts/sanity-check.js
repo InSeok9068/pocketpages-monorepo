@@ -831,6 +831,48 @@ export {}
     )
   )
 
+  writeFile(
+    path.join(appRoot, 'node_modules', '@pocketpages', 'utils', 'package.json'),
+    JSON.stringify(
+      {
+        name: '@pocketpages/utils',
+        version: '0.0.1',
+        main: './index.js',
+        types: './index.d.ts',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(appRoot, 'node_modules', '@pocketpages', 'utils', 'index.js'),
+    `module.exports = {
+  dateutil: {
+    formatDate(value) {
+      return String(value)
+    },
+    startOfDay(value) {
+      return value
+    },
+  },
+}
+`
+  )
+  writeFile(
+    path.join(appRoot, 'node_modules', '@pocketpages', 'utils', 'index.d.ts'),
+    `interface DateutilApi {
+  formatDate(value: string): string
+  startOfDay(value: string): Date
+}
+
+declare const pocketpagesUtils: {
+  dateutil: DateutilApi
+}
+
+export = pocketpagesUtils
+`
+  )
+
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'), `<a href="/boards">Boards</a>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'sign-in.ejs'), `<h1>Sign In</h1>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'feedback', 'index.ejs'), `<h1>Feedback</h1>\n`)
@@ -2627,6 +2669,46 @@ const pageData = { boardName: 'Boards', boardCount: 1, postSlugs: ['welcome'] }
       !typedTemplateQuickInfo.displayText.includes('postSlugs: string[];')
     ) {
       throw new Error(`Expected JSDoc-backed hover info inside EJS template. Got: ${JSON.stringify(typedTemplateQuickInfo)}`)
+    }
+
+    const typedRequireCompletionText = `<script server>
+const { dateutil } = require('@pocketpages/utils')
+dateutil.
+</script>
+`
+    const typedRequireCompletionOffset =
+      typedRequireCompletionText.indexOf('dateutil.') + 'dateutil.'.length
+    const typedRequireCompletion = service.getCompletionData(
+      fixture.boardsFilePath,
+      typedRequireCompletionText,
+      typedRequireCompletionOffset
+    )
+    const typedRequireCompletionNames = typedRequireCompletion
+      ? typedRequireCompletion.entries.map((entry) => entry.name)
+      : []
+    if (!typedRequireCompletionNames.includes('formatDate') || !typedRequireCompletionNames.includes('startOfDay')) {
+      throw new Error(
+        `Expected typed require() completion from app-local node_modules package types. Got: ${typedRequireCompletionNames
+          .slice(0, 20)
+          .join(', ')}`
+      )
+    }
+
+    const typedRequireHoverText = `<script server>
+const { dateutil } = require('@pocketpages/utils')
+</script>
+`
+    const typedRequireHoverOffset = typedRequireHoverText.indexOf('dateutil } = require') + 2
+    const typedRequireQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRequireHoverText,
+      typedRequireHoverOffset
+    )
+    if (
+      !typedRequireQuickInfo ||
+      !typedRequireQuickInfo.displayText.includes('const dateutil: DateutilApi')
+    ) {
+      throw new Error(`Expected typed require() hover info from package declarations. Got: ${JSON.stringify(typedRequireQuickInfo)}`)
     }
 
     const typedResolveCompletionText = `<script server>
