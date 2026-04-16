@@ -176,7 +176,7 @@ function hasRequiredPostInput(input) {
 
 /**
  * 게시글 record에 수정 가능한 필드를 반영합니다.
- * @param {core.Record} post 게시글 record입니다.
+ * @param {types.PostWritableRecord} post 게시글 record입니다.
  * @param {types.PostFormInput} input 정규화한 게시글 입력값입니다.
  * @returns {void}
  */
@@ -191,7 +191,7 @@ function applyEditableFields(post, input) {
 
 /**
  * 게시글 record를 목록 카드용 plain object로 바꿉니다.
- * @param {core.Record | null | undefined} post 게시글 record입니다.
+ * @param {types.PostReadableRecord | null | undefined} post 게시글 record입니다.
  * @param {unknown} boardSlug 게시판 slug 값입니다.
  * @returns {types.PostCard | null} 템플릿에서 바로 쓸 게시글 카드 값입니다.
  */
@@ -239,7 +239,7 @@ function toPostCards(posts, boardSlug) {
 
 /**
  * 게시글 record를 HTMX 패널용 plain object로 바꿉니다.
- * @param {core.Record | null | undefined} post 게시글 record입니다.
+ * @param {types.PostReadableRecord | null | undefined} post 게시글 record입니다.
  * @param {unknown} boardSlug 게시판 slug 값입니다.
  * @returns {types.PostPanelItem | null} HTMX 패널에서 바로 쓸 게시글 값입니다.
  */
@@ -282,7 +282,7 @@ function toPostPanelItems(posts, boardSlug) {
 
 /**
  * 게시글 record를 상세 화면용 plain object로 바꿉니다.
- * @param {core.Record | null | undefined} post 게시글 record입니다.
+ * @param {types.PostReadableRecord | null | undefined} post 게시글 record입니다.
  * @param {unknown} boardSlug 게시판 slug 값입니다.
  * @returns {types.PostDetail | null} 상세 화면에서 바로 쓸 게시글 값입니다.
  */
@@ -310,7 +310,7 @@ function toPostDetail(post, boardSlug) {
 
 /**
  * 게시글 record를 수정 폼 기본값으로 바꿉니다.
- * @param {core.Record | null | undefined} post 게시글 record입니다.
+ * @param {types.PostReadableRecord | null | undefined} post 게시글 record입니다.
  * @returns {types.PostFormValues} 수정 폼에 넣을 게시글 기본값입니다.
  */
 function toPostFormValues(post) {

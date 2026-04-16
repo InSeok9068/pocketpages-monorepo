@@ -41,7 +41,6 @@
 // 37) 존재하지 않는 PocketBase collection 문자열 사용
 // 38) params를 query처럼 읽는 패턴
 // 39) redirect() 뒤 return 누락
-// 40) 존재하지 않는 PocketBase field 문자열 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -51,7 +50,6 @@ const { extractServerBlocks } = require('../tools/vscode-pocketpages/packages/la
 const { collectParamsFlowDiagnostics } = require('../tools/vscode-pocketpages/packages/language-service/flow-analysis')
 const { PocketPagesProjectIndex } = require('../tools/vscode-pocketpages/packages/language-service/project-index')
 const {
-  PocketPagesLanguageServiceManager,
   collectRedirectReturnDiagnostics,
   ts,
 } = require('../tools/vscode-pocketpages/packages/language-service/language-service')
@@ -117,7 +115,6 @@ const RE = {
 
 let errors = 0
 let warnings = 0
-const lintLanguageServiceManager = new PocketPagesLanguageServiceManager()
 
 function fromMsysPath(value) {
   if (process.platform === 'win32' && /^\/[a-zA-Z](\/|$)/.test(value)) {
@@ -224,7 +221,6 @@ function buildServiceContext(serviceDir) {
   const pagesRoot = path.join(hooksRoot, 'pages')
   const configFile = path.join(pagesRoot, '+config.js')
   const projectIndex = new PocketPagesProjectIndex(serviceDir)
-  const languageService = lintLanguageServiceManager.getServiceForFile(configFile)
   const files = walkFiles(hooksRoot).map((filePath) => buildFileInfo(filePath, hooksRoot, pagesRoot))
 
   const hooksCodeFiles = files.filter((file) => file.isCode)
@@ -238,7 +234,6 @@ function buildServiceContext(serviceDir) {
     hooksRoot,
     pagesRoot,
     projectIndex,
-    languageService,
     collectionMethodNames: projectIndex.getCollectionMethodNames(),
     configFile,
     configFileInfo: pagesCodeFiles.find((file) => file.absPath === configFile) || null,
@@ -986,42 +981,6 @@ function collectRedirectMissingReturnMatches(context) {
   return unique(matches)
 }
 
-function collectUnknownFieldMatches(context) {
-  const matches = []
-
-  for (const file of context.lintCodeFiles) {
-    const analysisText = getLintAnalysisText(file)
-    const schemaContexts = collectSchemaContexts(analysisText, {
-      collectionMethodNames: context.collectionMethodNames,
-    })
-
-    for (const schemaContext of schemaContexts) {
-      if (schemaContext.kind !== 'record-field') {
-        continue
-      }
-
-      if (!context.languageService) {
-        continue
-      }
-
-      const diagnostic = context.languageService.buildDocumentSchemaFieldDiagnostic(
-        file.absPath,
-        file.content,
-        schemaContext,
-        { analysisText }
-      )
-      if (!diagnostic || diagnostic.code !== 'pp-schema-field' || typeof diagnostic.start !== 'number') {
-        continue
-      }
-
-      const lineNumber = lineNumberAt(analysisText, diagnostic.start)
-      matches.push(formatLintLineMatch(file, lineNumber))
-    }
-  }
-
-  return unique(matches)
-}
-
 function lintService(context) {
   console.log(`Checking service: ${context.serviceName}`)
 
@@ -1305,12 +1264,6 @@ function lintService(context) {
     context.serviceName,
     'Invalid PocketBase collection name. Use a collection that exists in pb_schema.json.',
     unknownCollectionMatches,
-  )
-  const unknownFieldMatches = collectUnknownFieldMatches(context)
-  printMatches(
-    context.serviceName,
-    'Invalid PocketBase field name. Use a field that exists in pb_schema.json for the inferred collection.',
-    unknownFieldMatches,
   )
 
   const queryViaParamsMatches = collectQueryViaParamsMatches(context)

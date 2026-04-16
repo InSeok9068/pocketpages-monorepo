@@ -27,6 +27,15 @@ declare namespace types {
 
   interface PostFormValues extends PostFormInput {}
 
+  interface PostReadableRecord {
+    created?: string;
+    get(name: string): any;
+  }
+
+  interface PostWritableRecord extends PostReadableRecord {
+    set(name: string, value: any): void;
+  }
+
   interface PostCard {
     slug: string;
     title: string;
