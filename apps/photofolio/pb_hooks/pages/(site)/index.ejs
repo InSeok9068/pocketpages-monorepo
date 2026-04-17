@@ -535,10 +535,15 @@
       x-show="isUploading"
       class="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(15,23,42,0.40)] px-6"
       style="display: none">
-      <section class="w-full max-w-[20rem] rounded-[1.8rem] bg-white px-5 py-6 text-center shadow-[0_28px_60px_rgba(15,23,42,0.20)]">
-        <div class="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[rgba(49,130,246,0.18)] border-t-[var(--pf-primary)]"></div>
-        <p class="m-0 mt-4 text-[15px] font-semibold text-[var(--pf-text)]">이미지를 분석하고 있다</p>
-        <p class="m-0 mt-2 text-[13px] leading-6 text-[var(--pf-text-soft)]">자산 반영 중. 잠시만 기다려 달라.</p>
+      <section class="w-full max-w-[18rem] rounded-[1.8rem] bg-white px-5 py-5 text-center shadow-[0_28px_60px_rgba(15,23,42,0.20)]">
+        <div class="mx-auto flex w-fit items-center justify-center gap-2">
+          <span class="h-3 w-3 animate-pulse rounded-full bg-[var(--pf-primary)]"></span>
+          <span class="h-3 w-3 animate-pulse rounded-full bg-[var(--pf-primary)] opacity-80 [animation-delay:160ms]"></span>
+          <span class="h-3 w-3 animate-pulse rounded-full bg-[var(--pf-primary)] opacity-60 [animation-delay:320ms]"></span>
+        </div>
+        <div class="mx-auto mt-4 h-11 w-11 animate-spin rounded-full border-[3px] border-[rgba(49,130,246,0.16)] border-t-[var(--pf-primary)]"></div>
+        <p class="m-0 mt-4 text-[15px] font-semibold text-[var(--pf-text)]">이미지 분석 중</p>
+        <p class="m-0 mt-1 text-[13px] font-medium text-[var(--pf-text-soft)]">자산 반영 중</p>
       </section>
     </div>
   </template>
