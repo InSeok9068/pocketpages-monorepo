@@ -1,3 +1,21 @@
 @view-transition {
   navigation: auto;
 }
+
+.ios-safe-screen {
+  min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+}
+
+.ios-safe-screen-fill {
+  height: 100vh;
+  height: 100svh;
+  height: 100dvh;
+}
+
+.ios-safe-sheet {
+  max-height: calc(100vh - 1rem);
+  max-height: calc(100svh - 1rem);
+  max-height: calc(100dvh - 1rem);
+}

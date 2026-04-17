@@ -299,7 +299,7 @@
     },
   }"
   x-init="window.booklogReaderLogic.init($data)"
-  class="relative min-h-screen bg-[#f5f1e7]">
+  class="ios-safe-screen relative min-h-screen bg-[#f5f1e7]">
   <button
     type="button"
     x-cloak
@@ -435,7 +435,7 @@
     x-show="readAloudOpen"
     x-cloak
     class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.2)] backdrop-blur-[2px]">
-    <div class="mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
+    <div class="ios-safe-screen mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
       <div class="w-full rounded-[1.75rem] bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
         <div class="mb-3 flex items-center justify-between gap-3">
           <div>
@@ -542,7 +542,7 @@
     x-show="searchOpen"
     x-cloak
     class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.2)] backdrop-blur-[2px]">
-    <div class="mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
+    <div class="ios-safe-screen mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
       <div class="bg-white/88 w-full rounded-[1.75rem] border border-stone-200/80 p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] backdrop-blur-sm">
         <div class="mb-3 flex items-center justify-between gap-3">
           <h2 class="text-base font-semibold text-stone-950">책 전체 검색</h2>
@@ -615,7 +615,7 @@
     x-show="tocOpen"
     x-cloak
     class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.2)] backdrop-blur-[2px]">
-    <div class="mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
+    <div class="ios-safe-screen mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
       <div class="bg-white/92 w-full rounded-[1.75rem] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] backdrop-blur-sm">
         <div class="mb-3 flex items-center justify-between gap-3">
           <div>
@@ -686,7 +686,7 @@
     x-show="highlightOpen"
     x-cloak
     class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.2)] backdrop-blur-[2px]">
-    <div class="mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
+    <div class="ios-safe-screen mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
       <div class="w-full rounded-[1.75rem] bg-white p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
         <div class="mb-3 flex items-center justify-between gap-3">
           <div>
@@ -761,7 +761,7 @@
     </div>
   </div>
 
-  <div class="mx-auto flex min-h-screen max-w-none flex-col px-0 pb-0 pt-0 sm:px-0">
+  <div class="ios-safe-screen mx-auto flex min-h-screen max-w-none flex-col px-0 pb-0 pt-0 sm:px-0">
     <div
       x-cloak
       x-show="loading"
@@ -784,7 +784,7 @@
     <div class="min-h-0 flex-1 bg-white">
       <div
         id="epub-reader"
-        class="h-screen overflow-y-auto px-0 py-0 sm:px-0 sm:py-0"></div>
+        class="ios-safe-screen-fill h-screen overflow-y-auto px-0 py-0 sm:px-0 sm:py-0"></div>
     </div>
   </div>
 </section>

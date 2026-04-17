@@ -2195,7 +2195,17 @@ window.booklogReaderLogic = (function () {
 
     readerContainer = container
 
-    readCachedBookBuffer()
+    Promise.resolve()
+      .then(function () {
+        return readCachedBookBuffer()
+      })
+      .catch(function (exception) {
+        console.warn('page/books/[bookId]/read:cache-read-skipped', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+
+        return null
+      })
       .then(function (cachedBuffer) {
         if (cachedBuffer) {
           console.debug('page/books/[bookId]/read:cache-hit', {

@@ -172,12 +172,39 @@
     }
 
     /**
+     * 현재 기기가 iPhone/iPad 계열인지 확인합니다.
+     *
+     * @returns {boolean} iOS 계열 기기 여부
+     */
+    function isIosDevice() {
+      const platform = typeof navigator !== 'undefined' ? String(navigator.platform || '') : ''
+      const userAgent = typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : ''
+      const touchPoints = typeof navigator !== 'undefined' && typeof navigator.maxTouchPoints === 'number' ? navigator.maxTouchPoints : 0
+
+      return /iPad|iPhone|iPod/i.test(userAgent) || /iPad|iPhone|iPod/i.test(platform) || (platform === 'MacIntel' && touchPoints > 1)
+    }
+
+    /**
+     * 현재 페이지가 홈 화면 웹앱으로 실행 중인지 확인합니다.
+     *
+     * @returns {boolean} standalone 실행 여부
+     */
+    function isStandaloneWebApp() {
+      const displayModeStandalone = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches
+      const navigatorStandalone = typeof navigator !== 'undefined' && navigator.standalone === true
+
+      return !!(displayModeStandalone || navigatorStandalone)
+    }
+
+    /**
      * 현재 푸시 상태 안내 문구를 갱신합니다.
      */
     function renderPushStateNotice() {
       let message = ''
 
-      if (!state.pushState.supported) {
+      if (isIosDevice() && !isStandaloneWebApp()) {
+        message = 'iPhone/iPad에서는 북로그를 홈 화면에 추가한 뒤 앱처럼 연 상태에서만 푸시 알림을 켤 수 있습니다.'
+      } else if (!state.pushState.supported) {
         message = '현재 브라우저에서는 웹 푸시 알림을 지원하지 않습니다.'
       } else if (!state.pushState.ready) {
         message = pushEnabledInput.checked ? '브라우저 알림 상태를 확인하는 중입니다.' : ''
@@ -188,7 +215,7 @@
       } else if (state.pushState.permission === 'denied') {
         message = '브라우저 알림 권한이 차단되어 있습니다. 브라우저 설정에서 권한을 다시 허용해야 북로그 알림을 받을 수 있습니다.'
       } else {
-        message = '북로그 알림은 켜져 있지만 현재 브라우저 구독은 연결되지 않았습니다. 다시 저장하면 권한을 다시 확인합니다.'
+        message = '북로그 알림은 켜져 있지만 현재 브라우저 구독은 연결되지 않았습니다. 설정을 저장하면 브라우저 구독을 다시 확인합니다.'
       }
 
       renderMessage(pushStateNoticeElement, message)
@@ -229,6 +256,20 @@
     }
 
     /**
+     * OneSignal 푸시 구독 객체를 읽습니다.
+     *
+     * @param {any} oneSignal OneSignal SDK 객체
+     * @returns {any | null} 푸시 구독 객체
+     */
+    function findPushSubscription(oneSignal) {
+      if (oneSignal && oneSignal.User && oneSignal.User.PushSubscription) {
+        return oneSignal.User.PushSubscription
+      }
+
+      return null
+    }
+
+    /**
      * 실제 form submit을 실행합니다.
      */
     function finishSubmit() {
@@ -252,11 +293,116 @@
      * @param {any} oneSignal OneSignal SDK 객체
      */
     function updatePushStateFromOneSignal(oneSignal) {
+      const pushSubscription = findPushSubscription(oneSignal)
+
       applyPushState({
         ready: true,
         supported: typeof window !== 'undefined' && 'Notification' in window,
         permission: readPermission(oneSignal),
-        optedIn: !!(oneSignal && oneSignal.User && oneSignal.User.PushSubscription && oneSignal.User.PushSubscription.optedIn),
+        optedIn: !!(pushSubscription && pushSubscription.optedIn),
+      })
+    }
+
+    /**
+     * 현재 저장에서 브라우저 푸시 상태를 함께 맞춰야 하는지 확인합니다.
+     *
+     * @returns {boolean} 재동기화 필요 여부
+     */
+    function isPushSyncRequired() {
+      const pushEnabled = pushEnabledInput.checked
+      const pushIntentChanged = pushEnabled !== initialPushEnabled
+
+      if (pushEnabled) {
+        return pushIntentChanged || !state.pushState.ready || !state.pushState.supported || !state.pushState.optedIn
+      }
+
+      return pushIntentChanged || state.pushState.optedIn
+    }
+
+    /**
+     * 브라우저에서 푸시 끄기를 먼저 반영한 뒤 저장합니다.
+     *
+     * @param {any} oneSignal OneSignal SDK 객체
+     */
+    function syncPushDisableAndSubmit(oneSignal) {
+      const pushSubscription = findPushSubscription(oneSignal)
+
+      if (!pushSubscription || typeof pushSubscription.optOut !== 'function') {
+        stopSubmit('푸시 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
+        return
+      }
+
+      Promise.resolve(pushSubscription.optOut())
+        .then(function () {
+          updatePushStateFromOneSignal(oneSignal)
+
+          if (pushSubscription.optedIn) {
+            stopSubmit('브라우저 구독을 끄지 못했습니다. 잠시 후 다시 시도해주세요.')
+            return
+          }
+
+          finishSubmit()
+        })
+        .catch(function (error) {
+          console.warn('OneSignal optOut failed', error)
+          stopSubmit('브라우저 구독을 끄지 못했습니다. 잠시 후 다시 시도해주세요.')
+        })
+    }
+
+    /**
+     * 브라우저에서 푸시 켜기를 먼저 반영한 뒤 저장합니다.
+     *
+     * @param {any} oneSignal OneSignal SDK 객체
+     */
+    function syncPushEnableAndSubmit(oneSignal) {
+      const pushSubscription = findPushSubscription(oneSignal)
+
+      if (!pushSubscription || typeof pushSubscription.optIn !== 'function') {
+        stopSubmit('푸시 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
+        return
+      }
+
+      Promise.resolve(pushSubscription.optIn())
+        .then(function () {
+          updatePushStateFromOneSignal(oneSignal)
+
+          if (pushSubscription.optedIn) {
+            finishSubmit()
+            return
+          }
+
+          stopSubmit('브라우저 알림 권한이 허용되지 않아 푸시 사용을 켤 수 없습니다.')
+        })
+        .catch(function (error) {
+          console.warn('OneSignal optIn failed', error)
+          stopSubmit('브라우저 알림 권한 요청에 실패했습니다. 다시 시도해주세요.')
+        })
+    }
+
+    /**
+     * OneSignal SDK 준비를 기다린 뒤 콜백을 실행합니다.
+     *
+     * @param {(oneSignal: any) => void} callback SDK 준비 후 실행할 콜백
+     */
+    function runWithOneSignal(callback) {
+      let handled = false
+      const timeoutId = window.setTimeout(function () {
+        if (handled) {
+          return
+        }
+
+        handled = true
+        stopSubmit('푸시 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
+      }, 4000)
+
+      window.OneSignalDeferred.push(function (OneSignal) {
+        if (handled) {
+          return
+        }
+
+        handled = true
+        window.clearTimeout(timeoutId)
+        callback(OneSignal)
       })
     }
 
@@ -302,45 +448,34 @@
         }
       }
 
-      if (pushEnabledInput.checked === initialPushEnabled) {
+      if (!isPushSyncRequired()) {
         return
       }
 
       event.preventDefault()
+
+      if (pushEnabledInput.checked && isIosDevice() && !isStandaloneWebApp()) {
+        stopSubmit('iPhone/iPad에서는 북로그를 홈 화면에 추가한 뒤 앱처럼 연 상태에서만 푸시를 켤 수 있습니다.')
+        return
+      }
+
+      if (pushEnabledInput.checked && state.pushState.ready && !state.pushState.supported) {
+        stopSubmit('현재 브라우저에서는 웹 푸시 알림을 지원하지 않습니다.')
+        return
+      }
 
       if (typeof window.OneSignalDeferred === 'undefined') {
         stopSubmit('푸시 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
         return
       }
 
-      window.OneSignalDeferred.push(function (OneSignal) {
+      runWithOneSignal(function (OneSignal) {
         if (!pushEnabledInput.checked) {
-          Promise.resolve(OneSignal.User.PushSubscription.optOut())
-            .catch(function (error) {
-              console.warn('OneSignal optOut failed', error)
-            })
-            .then(function () {
-              updatePushStateFromOneSignal(OneSignal)
-              finishSubmit()
-            })
+          syncPushDisableAndSubmit(OneSignal)
           return
         }
 
-        Promise.resolve(OneSignal.User.PushSubscription.optIn())
-          .then(function () {
-            updatePushStateFromOneSignal(OneSignal)
-
-            if (OneSignal.User.PushSubscription.optedIn) {
-              finishSubmit()
-              return
-            }
-
-            stopSubmit('브라우저 알림 권한이 허용되지 않아 푸시 사용을 켤 수 없습니다.')
-          })
-          .catch(function (error) {
-            console.warn('OneSignal optIn failed', error)
-            stopSubmit('브라우저 알림 권한 요청에 실패했습니다. 다시 시도해주세요.')
-          })
+        syncPushEnableAndSubmit(OneSignal)
       })
     })
   })()

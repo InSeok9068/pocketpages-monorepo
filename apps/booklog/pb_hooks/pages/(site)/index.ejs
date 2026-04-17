@@ -178,6 +178,22 @@
     selectUploadFile: function (component, event) {
       component.uploadFileName = event.target.files && event.target.files[0] ? event.target.files[0].name : ''
     },
+    requestUploadPaint: function (callback) {
+      const runCallback = function () {
+        if (typeof callback === 'function') {
+          callback()
+        }
+      }
+
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(runCallback)
+        })
+        return
+      }
+
+      window.setTimeout(runCallback, 34)
+    },
     stopUploadTimers: function (component) {
       if (component.uploadTickTimerId) {
         window.clearInterval(component.uploadTickTimerId)
@@ -210,12 +226,31 @@
         }
       }, 2600)
     },
+    submitUpload: function (component, form) {
+      const uploadForm = form && form.tagName === 'FORM' ? form : null
+
+      if (!uploadForm || component.uploading || component.uploadSubmitQueued) {
+        return
+      }
+
+      if (typeof uploadForm.reportValidity === 'function' && !uploadForm.reportValidity()) {
+        return
+      }
+
+      component.uploadSubmitQueued = true
+      this.beginUpload(component)
+
+      this.requestUploadPaint(function () {
+        HTMLFormElement.prototype.submit.call(uploadForm)
+      })
+    },
   }
 </script>
 <section
   x-data="{
     uploadOpen: false,
     uploading: false,
+    uploadSubmitQueued: false,
     uploadFileName: '',
     uploadElapsedSeconds: 0,
     uploadStageIndex: 0,
@@ -236,6 +271,9 @@
     },
     beginUpload() {
       window.booklogHomeUpload.beginUpload(this)
+    },
+    submitUpload(event) {
+      window.booklogHomeUpload.submitUpload(this, event.currentTarget)
     },
   }"
   class="mt-6">
@@ -361,7 +399,7 @@
     class="bg-stone-950/42 fixed inset-0 z-[80] flex items-end justify-center px-0 pt-0 sm:items-center sm:px-6 sm:py-6">
     <div
       x-on:click.outside="if (!uploading) { uploadOpen = false }"
-      class="w-full max-w-lg rounded-t-[2rem] border-none bg-[linear-gradient(180deg,#fffdf8,#f8f0e4)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-18px_50px_rgba(41,28,17,0.18)] sm:rounded-[2.1rem] sm:px-6 sm:pb-6 sm:pt-5 sm:shadow-[0_30px_90px_rgba(41,28,17,0.2)]">
+      class="ios-safe-sheet w-full max-w-lg overflow-y-auto rounded-t-[2rem] border-none bg-[linear-gradient(180deg,#fffdf8,#f8f0e4)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-18px_50px_rgba(41,28,17,0.18)] sm:rounded-[2.1rem] sm:px-6 sm:pb-6 sm:pt-5 sm:shadow-[0_30px_90px_rgba(41,28,17,0.2)]">
       <div class="flex items-start justify-between gap-4">
         <div class="space-y-1">
           <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-stone-500">Upload</p>
@@ -382,7 +420,7 @@
         method="post"
         action="/xapi/epub/upload"
         enctype="multipart/form-data"
-        x-on:submit="beginUpload()">
+        x-on:submit.prevent="submitUpload($event)">
         <label class="block space-y-2">
           <span class="text-sm font-medium text-stone-700">EPUB 파일</span>
           <div class="rounded-[1.35rem] border border-stone-200 bg-white/90 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
@@ -442,7 +480,7 @@
     <div class="bg-stone-950/58 absolute inset-0 backdrop-blur-[2px]"></div>
 
     <section
-      class="relative w-full max-w-xl rounded-t-[2rem] bg-[linear-gradient(180deg,#fffdf8,#f5ead7)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-[0_-18px_50px_rgba(41,28,17,0.24)] sm:rounded-[2.2rem] sm:px-6 sm:pb-6 sm:pt-6 sm:shadow-[0_30px_90px_rgba(41,28,17,0.28)]">
+      class="ios-safe-sheet relative w-full max-w-xl overflow-y-auto rounded-t-[2rem] bg-[linear-gradient(180deg,#fffdf8,#f5ead7)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-[0_-18px_50px_rgba(41,28,17,0.24)] sm:rounded-[2.2rem] sm:px-6 sm:pb-6 sm:pt-6 sm:shadow-[0_30px_90px_rgba(41,28,17,0.28)]">
       <div class="flex items-start justify-between gap-4">
         <div class="space-y-2">
           <div
