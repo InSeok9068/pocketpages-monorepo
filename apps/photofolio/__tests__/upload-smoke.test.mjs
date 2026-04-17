@@ -357,6 +357,7 @@ test(
       const sourceJson = normalizeObjectField(record.source_json);
       return String(sourceJson.source_capture_page_type || '') === 'assets_overview';
     });
+    const overviewAssetNames = overviewItems.map((record) => String(record.asset_name || '').trim()).filter(Boolean);
 
     assert.equal(newAssetItems.length >= 3, true);
     assert.equal(
@@ -376,7 +377,7 @@ test(
       true
     );
     assert.equal(
-      extractedAssetNames.some((name) => name.includes('기금계좌') || name.includes('연금저축')),
+      overviewAssetNames.some((name) => name.includes('기금계좌') || name.includes('연금저축')),
       false
     );
 

@@ -105,7 +105,7 @@
 
     return {
       id: String(fields.id || ''),
-      institution: String(fields.institution || '').trim() || '기관 정보 없음',
+      institution: String(fields.institution || '').trim() || '기관 없음',
       name: String(fields.name || '').trim() || '자산명 없음',
       classCode: classCode,
       classLabel: assetClassMeta[classCode].label,
@@ -303,12 +303,12 @@
         goalAssetGroups
       )
       assetAccounts = []
-      latestSnapshotTitle = '아직 업로드된 스냅샷이 없다'
+      latestSnapshotTitle = '업로드 없음'
       rebalanceGapPercent = 0
     }
   }
 
-  const goalCardCountLabel = summaryGoalCards.length ? summaryGoalCards.length + '개 분류' : '데이터 없음'
+  const goalCardCountLabel = summaryGoalCards.length ? summaryGoalCards.length + '개 분류' : '없음'
   const goalAssetsByCode = summaryGoalCards.reduce(function (grouped, goalCard) {
     grouped[goalCard.code] = goalCard.assets || []
     return grouped
@@ -438,7 +438,7 @@
     <div class="flex items-center justify-between gap-4">
         <div class="min-w-0 space-y-1">
           <p class="m-0 text-sm font-semibold text-[var(--pf-text)]">토스 캡처 업로드</p>
-          <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">내 자산 요약과 투자 상세 화면을 같이 올리면 AI가 섹션 합계와 자산 항목을 함께 정리한다.</p>
+          <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">요약·상세 캡처 함께 업로드.</p>
         </div>
       <button
         type="button"
@@ -451,7 +451,7 @@
   <% } else { %>
   <section class="rounded-[1.8rem] bg-[var(--pf-primary-soft)] px-5 py-5">
     <p class="m-0 text-sm font-semibold text-[var(--pf-primary)]">로그인 후 시작</p>
-    <p class="m-0 mt-2 text-[14px] leading-6 text-[var(--pf-text-soft)]">업로드한 토스 자산 캡처를 AI가 읽고, 현재 스키마에 맞는 자산 항목으로 정리한다.</p>
+    <p class="m-0 mt-2 text-[14px] leading-6 text-[var(--pf-text-soft)]">로그인 후 캡처 업로드 가능.</p>
     <div class="mt-4">
       <a
         href="/auth"
@@ -477,7 +477,7 @@
           <div class="space-y-1">
             <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
             <h2 class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">토스 캡처 업로드</h2>
-            <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">내 자산 요약, 내 투자 요약, 보유 종목 상세 화면을 여러 장 함께 올리면 한 번에 합쳐 반영한다.</p>
+            <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">요약·상세 캡처 업로드.</p>
           </div>
 
           <button
@@ -508,7 +508,7 @@
               multiple
               required
               class="mt-3 box-border block w-full text-sm text-[var(--pf-text)] file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--pf-text)]" />
-            <p class="m-0 mt-3 text-[12px] leading-5 text-[var(--pf-text-faint)]">지원 형식은 PNG, JPG, WEBP다. 내 자산 요약과 투자 상세 화면을 여러 장 같이 올려도 된다.</p>
+            <p class="m-0 mt-3 text-[12px] leading-5 text-[var(--pf-text-faint)]">PNG, JPG, WEBP · 여러 장 가능</p>
           </div>
 
           <div class="grid grid-cols-2 gap-2">
@@ -538,7 +538,7 @@
       <section class="w-full max-w-[20rem] rounded-[1.8rem] bg-white px-5 py-6 text-center shadow-[0_28px_60px_rgba(15,23,42,0.20)]">
         <div class="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[rgba(49,130,246,0.18)] border-t-[var(--pf-primary)]"></div>
         <p class="m-0 mt-4 text-[15px] font-semibold text-[var(--pf-text)]">이미지를 분석하고 있다</p>
-        <p class="m-0 mt-2 text-[13px] leading-6 text-[var(--pf-text-soft)]">섹션 합계와 자산 항목을 읽어서 현재 자산에 반영하는 중이다. 잠시만 기다려 달라.</p>
+        <p class="m-0 mt-2 text-[13px] leading-6 text-[var(--pf-text-soft)]">자산 반영 중. 잠시만 기다려 달라.</p>
       </section>
     </div>
   </template>
@@ -615,14 +615,14 @@
     <% } else { %>
     <article class="pf-card px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)]">
       <% if (isSignedIn) { %>
-      아직 설정한 목표 비율이 없다.
+      목표 비율이 없다.
       <a
         href="/targets"
         class="font-semibold text-[var(--pf-primary)] no-underline"
         >목표 페이지</a
-      >에서 자산 카테고리별 목표를 입력하면 이 구간에 설정한 분류만 보인다.
+      >에서 설정해 주세요.
       <% } else { %>
-      로그인 전에는 예시 구성만 보여준다. 로그인하면 실제 업로드한 자산 기준으로 이 구간이 채워진다.
+      로그인 후 실제 데이터가 보인다.
       <% } %>
     </article>
     <% } %>
@@ -668,7 +668,7 @@
     </div>
     <% } else { %>
     <article class="pf-card px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)]">
-      첫 이미지 업로드가 끝나면 추출된 자산 항목이 여기에 순서대로 정리된다.
+      업로드 후 자산이 표시된다.
     </article>
     <% } %>
   </section>
@@ -686,7 +686,7 @@
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0">
             <p class="m-0 text-sm font-semibold text-[var(--pf-text)]"><%= snapshot.title %></p>
-            <p class="m-0 mt-1 text-[13px] text-[var(--pf-text-faint)]">저장된 스냅샷</p>
+            <p class="m-0 mt-1 text-[13px] text-[var(--pf-text-faint)]">스냅샷</p>
           </div>
           <div class="text-right">
             <p class="m-0 text-sm font-semibold text-[var(--pf-text)]"><%= snapshot.totalAmountLabel %></p>
@@ -778,7 +778,7 @@
           <article
             x-show="goalAssetsModel.items.length === 0"
             class="pf-card rounded-[1.4rem] px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)] shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
-            현재 업로드된 자산이 없거나, 아직 이 카테고리에 연결된 자산 항목이 없다.
+            연결 자산이 없다.
           </article>
         </div>
       </section>
@@ -799,7 +799,7 @@
           <div class="space-y-1">
             <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
             <h2 class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">자산 수정</h2>
-            <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">카테고리와 현재 금액만 빠르게 조정할 수 있다.</p>
+            <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">카테고리 · 금액 수정</p>
           </div>
 
           <button
@@ -811,9 +811,9 @@
         </div>
 
         <div class="mt-5 rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
-          <p class="m-0 text-[12px] font-semibold text-[var(--pf-text-faint)]" x-text="assetEditorModel.institution || '기관 정보 없음'"></p>
+          <p class="m-0 text-[12px] font-semibold text-[var(--pf-text-faint)]" x-text="assetEditorModel.institution || '기관 없음'"></p>
           <p class="m-0 mt-1 text-[15px] font-semibold text-[var(--pf-text)]" x-text="assetEditorModel.name || '자산명 없음'"></p>
-          <p class="m-0 mt-2 text-[13px] text-[var(--pf-text-soft)]" x-text="assetEditorModel.accountLabel || '계좌 표시명 없음'"></p>
+          <p class="m-0 mt-2 text-[13px] text-[var(--pf-text-soft)]" x-text="assetEditorModel.accountLabel || '계좌명 없음'"></p>
         </div>
 
         <form

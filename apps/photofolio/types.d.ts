@@ -62,4 +62,21 @@ declare namespace types {
     start_value: number | null
     latest_date: string
   }
+
+  type PhotofolioTrendCacheSource = 'live' | 'cache' | 'stale_cache'
+
+  interface PhotofolioTrendCacheState {
+    source: PhotofolioTrendCacheSource
+    fetched_at: string
+    is_stale: boolean
+  }
+
+  interface PhotofolioTrendDashboard {
+    range_meta: { code: PhotofolioTrendRangeCode; label: string; days: number }
+    observation_start: string
+    series_list: PhotofolioTrendSeries[]
+    series_by_key: Record<string, PhotofolioTrendSeries>
+    latest_date: string
+    cache_state: PhotofolioTrendCacheState
+  }
 }
