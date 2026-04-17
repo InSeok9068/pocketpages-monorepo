@@ -383,6 +383,45 @@
       if (this.assetEditorSubmitting) return
       this.assetEditorOpen = false
     },
+    async submitCaptureUpload(formElement) {
+      if (this.isUploading) return
+
+      const fileInput = this.$refs.captureImageInput
+      const selectedFiles = Array.from((fileInput && fileInput.files) || [])
+
+      if (!selectedFiles.length) {
+        return
+      }
+
+      this.isUploading = true
+      this.uploadModalOpen = false
+
+      try {
+        const preprocessor = window.photofolioUploadPreprocessor
+        const preparedFiles =
+          preprocessor && typeof preprocessor.expandTallCaptureFiles === 'function'
+            ? await preprocessor.expandTallCaptureFiles(selectedFiles)
+            : selectedFiles
+
+        if (window.DataTransfer && preparedFiles.length > 0) {
+          const dataTransfer = new DataTransfer()
+
+          for (let index = 0; index < preparedFiles.length; index += 1) {
+            dataTransfer.items.add(preparedFiles[index])
+          }
+
+          fileInput.files = dataTransfer.files
+        }
+
+        this.$nextTick(function () {
+          formElement.submit()
+        })
+      } catch (exception) {
+        this.isUploading = false
+        this.uploadModalOpen = true
+        window.alert(String((exception && exception.message) || exception || '이미지 준비 실패'))
+      }
+    },
   }"
   @keydown.escape.window="if (!isUploading) uploadModalOpen = false; goalAssetsOpen = false; if (!assetEditorSubmitting) assetEditorOpen = false"
   class="space-y-5">
@@ -493,7 +532,7 @@
           action="/xapi/snapshots/upload"
           enctype="multipart/form-data"
           class="mt-5 space-y-3"
-          @submit.prevent="if (isUploading) return; isUploading = true; uploadModalOpen = false; $nextTick(() => $el.submit())">
+          @submit.prevent="submitCaptureUpload($el)">
           <div class="rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
             <label
               for="capture-image-modal"
@@ -501,6 +540,7 @@
               자산 캡처 이미지
             </label>
             <input
+              x-ref="captureImageInput"
               id="capture-image-modal"
               name="captureImage"
               type="file"
@@ -900,3 +940,5 @@
 
   <%- include('photofolio-bottom-nav.ejs', { activeTab: 'home' }) %>
 </section>
+
+<script src="<%= asset('/assets/photofolio-upload-preprocessor.js') %>"></script>

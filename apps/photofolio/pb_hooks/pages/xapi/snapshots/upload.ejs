@@ -13,6 +13,70 @@
     return 'image/png'
   }
 
+  function parseCaptureUploadPart(uploadedFile, sourceIndex) {
+    const originalName = String((uploadedFile && (uploadedFile.originalName || uploadedFile.name)) || '').trim()
+    const splitMatch = originalName.match(/^(.*)__ppslice_(\d{2})of(\d{2})\.[^.]+$/i)
+
+    if (!splitMatch) {
+      return {
+        groupKey: String(sourceIndex) + ':' + originalName.toLowerCase(),
+        originalName: originalName,
+        partIndex: 1,
+        partCount: 1,
+        isSplitPart: false,
+        sourceIndex: sourceIndex,
+      }
+    }
+
+    const baseName = photofolioAssetUtils.normalizeText(splitMatch[1], 255) || originalName
+
+    return {
+      groupKey: baseName.toLowerCase(),
+      originalName: baseName,
+      partIndex: Number(splitMatch[2] || 1),
+      partCount: Number(splitMatch[3] || 1),
+      isSplitPart: true,
+      sourceIndex: sourceIndex,
+    }
+  }
+
+  function groupUploadedCaptureFiles(uploadedFiles) {
+    const groupedCapturesByKey = {}
+    const groupedCaptures = []
+
+    for (let index = 0; index < uploadedFiles.length; index += 1) {
+      const uploadedFile = uploadedFiles[index]
+      const partMeta = parseCaptureUploadPart(uploadedFile, index)
+
+      if (!groupedCapturesByKey[partMeta.groupKey]) {
+        groupedCapturesByKey[partMeta.groupKey] = {
+          groupKey: partMeta.groupKey,
+          originalName: partMeta.originalName,
+          parts: [],
+          sourceIndex: index,
+        }
+        groupedCaptures.push(groupedCapturesByKey[partMeta.groupKey])
+      }
+
+      groupedCapturesByKey[partMeta.groupKey].parts.push({
+        uploadedFile: uploadedFile,
+        partMeta: partMeta,
+      })
+    }
+
+    groupedCaptures.sort(function (leftGroup, rightGroup) {
+      return Number(leftGroup.sourceIndex || 0) - Number(rightGroup.sourceIndex || 0)
+    })
+
+    for (let index = 0; index < groupedCaptures.length; index += 1) {
+      groupedCaptures[index].parts.sort(function (leftPart, rightPart) {
+        return Number(leftPart.partMeta.partIndex || 0) - Number(rightPart.partMeta.partIndex || 0)
+      })
+    }
+
+    return groupedCaptures
+  }
+
   function stripDateText(value) {
     return photofolioAssetUtils
       .normalizeText(value, 200)
@@ -600,47 +664,63 @@
     const uploadedFiles = request.event.findUploadedFiles('captureImage') || []
     const geminiApiKey = photofolioAiService.readGeminiApiKey(env)
     const extractedCaptures = []
+    const groupedCaptureFiles = groupUploadedCaptureFiles(uploadedFiles)
 
     if (!uploadedFiles.length) {
       throw new Error('업로드할 이미지 파일이 필요합니다.')
     }
 
-    for (let index = 0; index < uploadedFiles.length; index += 1) {
-      const uploadedImage = uploadedFiles[index]
-      const imageSize = Number(uploadedImage.size || 0)
+    for (let groupIndex = 0; groupIndex < groupedCaptureFiles.length; groupIndex += 1) {
+      const groupedCapture = groupedCaptureFiles[groupIndex]
+      const segmentResults = []
 
-      if (imageSize > MAX_IMAGE_BYTES) {
-        throw new Error('이미지 파일은 최대 20MB까지 업로드할 수 있습니다.')
+      for (let partIndex = 0; partIndex < groupedCapture.parts.length; partIndex += 1) {
+        const capturePart = groupedCapture.parts[partIndex]
+        const uploadedImage = capturePart.uploadedFile
+        const imageSize = Number(uploadedImage.size || 0)
+
+        if (imageSize > MAX_IMAGE_BYTES) {
+          throw new Error('이미지 파일은 최대 20MB까지 업로드할 수 있습니다.')
+        }
+
+        dbg('xapi/snapshots/upload:selected-file', {
+          name: uploadedImage.name,
+          originalName: uploadedImage.originalName,
+          imageSize: imageSize,
+          imageIndex: capturePart.partMeta.sourceIndex + 1,
+          captureGroup: groupedCapture.originalName,
+          capturePartIndex: capturePart.partMeta.partIndex,
+          capturePartCount: capturePart.partMeta.partCount,
+        })
+
+        const reader = uploadedImage.reader.open()
+        const imageBytes = toBytes(reader, imageSize || MAX_IMAGE_BYTES)
+        reader.close()
+
+        const mimeType = inferImageMimeType(uploadedImage)
+        const extractedSnapshot = photofolioAiService.extractAssetSnapshot({
+          geminiApiKey: geminiApiKey,
+          mimeType: mimeType,
+          fileBase64: photofolioAssetUtils.encodeBase64(imageBytes),
+          extractionMode: groupedCapture.parts.length > 1 ? 'slice' : 'full',
+          logger: {
+            dbg: dbg,
+            info: info,
+            warn: warn,
+            error: error,
+          },
+        })
+
+        segmentResults.push(extractedSnapshot)
       }
 
-      dbg('xapi/snapshots/upload:selected-file', {
-        name: uploadedImage.name,
-        originalName: uploadedImage.originalName,
-        imageSize: imageSize,
-        imageIndex: index + 1,
-      })
-
-      const reader = uploadedImage.reader.open()
-      const imageBytes = toBytes(reader, imageSize || MAX_IMAGE_BYTES)
-      reader.close()
-
-      const mimeType = inferImageMimeType(uploadedImage)
-      const extractedSnapshot = photofolioAiService.extractAssetSnapshot({
-        geminiApiKey: geminiApiKey,
-        mimeType: mimeType,
-        fileBase64: photofolioAssetUtils.encodeBase64(imageBytes),
-        logger: {
-          dbg: dbg,
-          info: info,
-          warn: warn,
-          error: error,
-        },
-      })
-
       extractedCaptures.push({
-        uploadedImage: uploadedImage,
-        mimeType: mimeType,
-        extractedSnapshot: extractedSnapshot,
+        uploadedImage: groupedCapture.parts[0].uploadedFile,
+        mimeType: inferImageMimeType(groupedCapture.parts[0].uploadedFile),
+        extractedSnapshot:
+          groupedCapture.parts.length > 1 ? photofolioAiService.mergeExtractResults(segmentResults) : segmentResults[0],
+        originalName: groupedCapture.originalName,
+        segmentCount: groupedCapture.parts.length,
       })
     }
 
@@ -672,6 +752,7 @@
       snapshotId: snapshotRecord.get('id'),
       userId: request.auth.get('id'),
       captureCount: extractedCaptures.length,
+      uploadedFileCount: uploadedFiles.length,
       isNewSnapshot: isNewSnapshot,
     })
 
@@ -749,6 +830,8 @@
       savedCaptureSummaries.push({
         captureImageId: captureRecord.get('id'),
         imageOrder: nextImageOrder,
+        originalName: extractedCapture.originalName || extractedCapture.uploadedImage.originalName || extractedCapture.uploadedImage.name,
+        segmentCount: Number(extractedCapture.segmentCount || 1),
         pageType: extractedSnapshot.page_type,
         sectionCount: extractedSnapshot.sections.length,
         itemCount: preparedItems.length,

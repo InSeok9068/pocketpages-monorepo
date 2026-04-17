@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 import { load } from 'cheerio';
 
@@ -10,6 +12,7 @@ import { startService } from '@pocketpages/test-support/service-harness';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const serviceDir = path.resolve(__dirname, '..');
+const splitHelperPath = path.join(serviceDir, '__tests__', 'helpers', 'split_tall_capture.py');
 const serviceEnv = parseEnvFile(path.join(serviceDir, '.env'));
 const loginId = String(process.env.LOGIN_ID || serviceEnv.LOGIN_ID || '').trim();
 const loginPw = String(process.env.LOGIN_PW || serviceEnv.LOGIN_PW || '').trim();
@@ -112,6 +115,28 @@ function inferMimeType(filePath) {
   }
 
   return 'image/png';
+}
+
+/**
+ * 긴 캡처를 실제 업로드 전처리와 비슷하게 분할합니다.
+ * @param {string} filePath 원본 이미지 경로입니다.
+ * @returns {string[]} 업로드할 분할 이미지 경로 목록입니다.
+ */
+function splitTallCapture(filePath) {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'photofolio-smoke-'));
+  const commandResult = spawnSync('python', [splitHelperPath, filePath, tempDir], {
+    encoding: 'utf8',
+  });
+
+  assert.equal(commandResult.status, 0, commandResult.stderr || '캡처 분할 helper 실행에 실패했습니다.');
+
+  const splitPaths = String(commandResult.stdout || '')
+    .split(/\r?\n/u)
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  assert.equal(splitPaths.length > 0, true, '분할된 이미지 경로를 찾지 못했습니다.');
+  return splitPaths;
 }
 
 /**
@@ -232,6 +257,7 @@ test(
     timeout: 180000,
   },
   async () => {
+    const tempPathsToCleanup = [];
     const authPageResponse = await fetch(`${service.baseUrl}/auth`);
     const authPageBody = await authPageResponse.text();
     const authPage$ = load(authPageBody);
@@ -242,6 +268,15 @@ test(
 
     const cookieHeader = await signInWithAppRoute(service.baseUrl);
     const apiToken = await signInWithApi(service.baseUrl);
+    const initialClearResponse = await fetch(`${service.baseUrl}/xapi/settings/clear-assets`, {
+      method: 'POST',
+      headers: {
+        cookie: cookieHeader,
+      },
+      redirect: 'manual',
+    });
+
+    assert.equal(initialClearResponse.status, 303);
 
     const beforeLatestSnapshots = await listRecords(service.baseUrl, 'asset_snapshots', apiToken, {
       sort: '-updated,-created',
@@ -258,14 +293,15 @@ test(
       : 0;
 
     const uploadFormData = new FormData();
-    uploadFormData.append(
-      'captureImage',
-      new File([readFileSync(overviewImagePath)], path.basename(overviewImagePath), { type: inferMimeType(overviewImagePath) })
-    );
-    uploadFormData.append(
-      'captureImage',
-      new File([readFileSync(detailImagePath)], path.basename(detailImagePath), { type: inferMimeType(detailImagePath) })
-    );
+    const splitOverviewPaths = splitTallCapture(overviewImagePath);
+    const splitDetailPaths = splitTallCapture(detailImagePath);
+
+    tempPathsToCleanup.push(...splitOverviewPaths.map((filePath) => path.dirname(filePath)));
+    tempPathsToCleanup.push(...splitDetailPaths.map((filePath) => path.dirname(filePath)));
+
+    for (const splitPath of [...splitOverviewPaths, ...splitDetailPaths]) {
+      uploadFormData.append('captureImage', new File([readFileSync(splitPath)], path.basename(splitPath), { type: inferMimeType(splitPath) }));
+    }
 
     const uploadResponse = await fetch(`${service.baseUrl}/xapi/snapshots/upload`, {
       method: 'POST',
@@ -318,6 +354,7 @@ test(
     assert.equal(Number(rawPayload.captureCount || 0), 2);
     assert.equal(captureSummaries.length, 2);
     assert.equal(Number(rawPayload.mergedItemCount || 0) > 0, true);
+    assert.equal(captureSummaries.some((item) => Number(item.segmentCount || 0) >= 2), true);
 
     const latestCaptureRecords = await listRecords(service.baseUrl, 'snapshot_capture_images', apiToken, {
       filter: `snapshot_id="${latestSnapshotId}"`,
@@ -362,6 +399,10 @@ test(
     assert.equal(newAssetItems.length >= 3, true);
     assert.equal(
       extractedAssetNames.some((name) => ['schd', 'jepi', 'jepq', 'spy', 'qqq', 'aapl', 'tsla'].includes(name.toLowerCase())),
+      true
+    );
+    assert.equal(
+      extractedAssetNames.some((name) => name.includes('KB온국민') || name.includes('농협') || name.includes('현금성자산')),
       true
     );
     assert.equal(
@@ -496,5 +537,9 @@ test(
     assert.equal(clearedCaptureRecords.length, 0);
     assert.equal(clearedSectionRecords.length, 0);
     assert.equal(clearedAssetItems.length, 0);
+
+    for (const tempDir of new Set(tempPathsToCleanup)) {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   }
 );
