@@ -121,15 +121,7 @@
       context.drawImage(image, 0, sliceBound.top, sourceWidth, sliceBound.height, 0, 0, TARGET_SLICE_WIDTH, targetHeight)
 
       const blob = await canvasToJpegBlob(canvas)
-      const sliceFileName =
-        baseName +
-        '__' +
-        sourceToken +
-        '__ppslice_' +
-        padSliceNumber(index + 1) +
-        'of' +
-        padSliceNumber(sliceBounds.length) +
-        '.jpg'
+      const sliceFileName = baseName + '__' + sourceToken + '__ppslice_' + padSliceNumber(index + 1) + 'of' + padSliceNumber(sliceBounds.length) + '.jpg'
 
       splitFiles.push(
         new File([blob], sliceFileName, {
