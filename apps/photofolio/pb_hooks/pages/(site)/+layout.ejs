@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1" />
+    <title><%= meta('title') %></title>
+    <meta
+      name="description"
+      content="<%= meta('description') %>" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@unocss/runtime/uno.global.js"></script>
+    <style>
+      :root {
+        --pf-bg: #f2f4f6;
+        --pf-surface: #ffffff;
+        --pf-surface-soft: #f9fafb;
+        --pf-line: rgba(15, 23, 42, 0.06);
+        --pf-text: #191f28;
+        --pf-text-soft: #4e5968;
+        --pf-text-faint: #8b95a1;
+        --pf-primary: #3182f6;
+        --pf-primary-soft: #e8f3ff;
+        --pf-success-soft: #edf8f1;
+      }
+
+      html {
+        background: var(--pf-bg);
+        color: var(--pf-text);
+        font-family: 'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+      }
+
+      body {
+        background:
+          radial-gradient(circle at top, rgba(49, 130, 246, 0.11), transparent 24rem),
+          linear-gradient(180deg, #f7f9fb 0%, var(--pf-bg) 26%, #edf1f5 100%);
+      }
+
+      [x-cloak] {
+        display: none !important;
+      }
+
+      .pf-page-enter {
+        animation: pf-page-fade 0.24s ease-out;
+      }
+
+      @keyframes pf-page-fade {
+        0% {
+          opacity: 0;
+        }
+
+        100% {
+          opacity: 1;
+        }
+      }
+    </style>
+    <script>
+      window.__unocss = {
+        presets: [() => window.__unocss_runtime.presets.presetUno()],
+      }
+    </script>
+    <%- slots.head %>
+  </head>
+  <body class="m-0 min-h-screen text-[var(--pf-text)] antialiased">
+    <main class="pf-page-enter mx-auto min-h-screen max-w-[30rem] px-4 pb-28 pt-5 sm:px-5 sm:pt-6">
+      <%- slots.body || slot %>
+    </main>
+  </body>
+</html>

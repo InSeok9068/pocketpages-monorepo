@@ -1,0 +1,88 @@
+erDiagram
+    USERS {
+        string id PK "사용자 레코드 ID"
+        string email UK "로그인 이메일"
+        string password "비밀번호 해시"
+        bool verified "이메일 인증 여부"
+        select role "권한(user=일반 사용자|admin=관리자)"
+        datetime created "가입 시각"
+        datetime updated "수정 시각"
+    }
+
+    USER_TARGET_ALLOCATIONS {
+        string id PK "사용자 목표 비율 ID"
+        string user_id FK "사용자 ID"
+        select asset_class_code "대상 자산 분류(cash=현금|stock_growth=주식 성장형|stock_dividend=주식 배당형|bond=채권|gold=금|real_estate=부동산|other=기타)"
+        number target_percent "목표 비율 0~100"
+        datetime created "생성 시각"
+        datetime updated "수정 시각"
+    }
+
+    ASSET_SNAPSHOTS {
+        string id PK "자산 스냅샷 레코드 ID"
+        string user_id FK "사용자 ID"
+        select source_type "입력 방식(manual=수기 입력|capture=캡처 업로드)"
+        date snapshot_date "기준 일자"
+        string title "스냅샷 제목"
+        number total_amount_krw "총 자산 평가액(KRW)"
+        text note "업로드/정리 메모"
+        select ocr_status "OCR 상태(pending=대기|parsed=파싱 완료|confirmed=확정|failed=실패)"
+        json raw_payload_json "OCR/입력 원본 JSON"
+        datetime created "생성 시각"
+        datetime updated "수정 시각"
+    }
+
+    SNAPSHOT_CAPTURE_IMAGES {
+        string id PK "캡처 이미지 레코드 ID"
+        string snapshot_id FK "연결된 스냅샷 ID"
+        string image_file "업로드 이미지 파일"
+        number image_order "이미지 순서"
+        text ocr_text "추출 텍스트"
+        json ocr_result_json "이미지별 OCR 결과 JSON"
+        datetime created "생성 시각"
+        datetime updated "수정 시각"
+    }
+
+    ASSET_ITEMS {
+        string id PK "개별 자산 항목 레코드 ID"
+        string snapshot_id FK "소속 스냅샷 ID"
+        select asset_class_code "자산 분류(cash=현금|stock_growth=주식 성장형|stock_dividend=주식 배당형|bond=채권|gold=금|real_estate=부동산|other=기타)"
+        string institution_name "금융사/계좌 기관명"
+        string account_label "계좌/상품 표시명"
+        string asset_name "자산명"
+        string market_code "시장 코드(KR|US 등)"
+        string currency_code "통화 코드(KRW|USD 등)"
+        number quantity "수량"
+        number unit_price "단가"
+        number amount_original "원통화 평가액"
+        number exchange_rate "적용 환율"
+        number amount_krw "원화 환산 평가액"
+        bool is_manual_adjusted "수기 보정 여부"
+        text memo "항목 메모"
+        json source_json "원본 파싱 데이터"
+        datetime created "생성 시각"
+        datetime updated "수정 시각"
+    }
+
+    USERS ||--o{ USER_TARGET_ALLOCATIONS : "targets"
+    USERS ||--o{ ASSET_SNAPSHOTS : "records"
+
+    ASSET_SNAPSHOTS ||--o{ SNAPSHOT_CAPTURE_IMAGES : "imports"
+    ASSET_SNAPSHOTS ||--o{ ASSET_ITEMS : "contains"
+
+%% Draft Notes
+%% 1. 초기 단계는 "사용자별 단일 목표 비율"과 "특정 시점의 자산 스냅샷"만 저장한다.
+%% 2. 환율/국채 금리 그래프는 외부 API 조회로 시작하고, 캐시는 필요해질 때 별도 컬렉션으로 분리한다.
+%% 3. OCR 자동 보정 이력이나 안드로이드 자동화 로그도 현재는 raw_payload_json/source_json으로만 흡수한다.
+%% 4. 자산 분류는 select 코드값으로 고정 관리하고, 초기 권장값은 cash/stock_growth/stock_dividend/bond/gold/real_estate/other다.
+%%
+%% Index Notes
+%% DB 방어용
+%% USER_TARGET_ALLOCATIONS: UNIQUE(user_id, asset_class_code) - 사용자별 같은 자산 분류 목표 중복 방지
+%% SNAPSHOT_CAPTURE_IMAGES: UNIQUE(snapshot_id, image_order) - 스냅샷 내 이미지 순서 중복 방지
+%%
+%% 검색/조회용
+%% USER_TARGET_ALLOCATIONS: INDEX(user_id) - 사용자 목표 비율 조회
+%% ASSET_SNAPSHOTS: INDEX(user_id, snapshot_date desc) - 사용자별 최근 스냅샷 조회
+%% ASSET_ITEMS: INDEX(snapshot_id, asset_class_code) - 스냅샷 상세/자산 분류 합산 조회
+%% ASSET_ITEMS: INDEX(snapshot_id, institution_name) - 자산 목록 기관별 조회
