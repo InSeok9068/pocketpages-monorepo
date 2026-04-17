@@ -180,20 +180,6 @@ function isSchemaSupportOnlyHookScriptPath(filePath) {
   );
 }
 
-function hasPrivatePagesSegment(filePath) {
-  const normalizedPath = normalizeDocumentPath(filePath);
-  const pagesMarker = "/pb_hooks/pages/";
-  const markerIndex = normalizedPath.indexOf(pagesMarker);
-  if (markerIndex === -1) {
-    return false;
-  }
-
-  return normalizedPath
-    .slice(markerIndex + pagesMarker.length)
-    .split("/")
-    .includes("_private");
-}
-
 function shouldSkipInvokeBeforeMemberAccess(documentText, offset, context) {
   if (!isFinite(offset) || !context || context.triggerKind !== 1) {
     return false;
