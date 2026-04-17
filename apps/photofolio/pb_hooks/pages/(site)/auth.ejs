@@ -2,6 +2,19 @@
   meta('title', 'Photofolio 로그인')
   meta('description', 'Photofolio에 로그인하거나 회원가입해서 목표 비율과 자산 스냅샷을 정리할 수 있다.')
 
+  if (request.auth) {
+    dbg('site/auth:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '이미 로그인되어 있습니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '이미 로그인되어 있습니다.',
+    })
+    return
+  }
+
   const flashMessage = params.__flash ? String(params.__flash) : ''
 </script>
 
@@ -49,6 +62,8 @@
     <form
       x-show="tab === 'signin'"
       x-cloak
+      method="post"
+      action="/xapi/auth/sign-in"
       class="space-y-4 px-3 pb-3 pt-5">
       <div class="space-y-2">
         <label
@@ -88,6 +103,8 @@
     <form
       x-show="tab === 'signup'"
       x-cloak
+      method="post"
+      action="/xapi/auth/sign-up"
       class="space-y-4 px-3 pb-3 pt-5">
       <div class="space-y-2">
         <label

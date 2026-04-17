@@ -3,30 +3,262 @@
   meta('description', '자산 캡처를 올리고 목표 비율과 현재 비율을 함께 정리하는 개인 자산 기록 서비스.')
 
   const flashMessage = params.__flash ? String(params.__flash) : ''
-  const goalCards = [
-    { code: 'cash', label: '현금', target: 10, current: 14, tone: 'bg-[#eef6ff] text-[#3182f6]' },
-    { code: 'stock_growth', label: '주식(성장형)', target: 35, current: 31, tone: 'bg-[#f1f6ff] text-[#2563eb]' },
-    { code: 'stock_dividend', label: '주식(배당형)', target: 20, current: 18, tone: 'bg-[#f5f7ff] text-[#4f46e5]' },
-    { code: 'bond', label: '채권', target: 15, current: 17, tone: 'bg-[#f2fbf7] text-[#0f9f6e]' },
-    { code: 'gold', label: '금', target: 10, current: 11, tone: 'bg-[#fff8e8] text-[#d97706]' },
-    { code: 'real_estate', label: '부동산', target: 10, current: 9, tone: 'bg-[#fff3f1] text-[#e85d3f]' },
+  const isSignedIn = !!request.auth
+  const assetClassOrder = ['cash', 'stock_growth', 'stock_dividend', 'bond', 'gold', 'real_estate', 'other']
+  const assetClassMeta = {
+    cash: { label: '현금', tone: 'bg-[#eef6ff] text-[#3182f6]' },
+    stock_growth: { label: '주식(성장형)', tone: 'bg-[#f1f6ff] text-[#2563eb]' },
+    stock_dividend: { label: '주식(배당형)', tone: 'bg-[#f5f7ff] text-[#4f46e5]' },
+    bond: { label: '채권', tone: 'bg-[#f2fbf7] text-[#0f9f6e]' },
+    gold: { label: '금', tone: 'bg-[#fff8e8] text-[#d97706]' },
+    real_estate: { label: '부동산', tone: 'bg-[#fff3f1] text-[#e85d3f]' },
+    other: { label: '기타', tone: 'bg-[#f4f6f8] text-[#6b7684]' },
+  }
+
+  function formatNumber(value) {
+    const normalizedValue = Math.round(Number(value || 0))
+    return String(normalizedValue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  }
+
+  function formatMoney(value) {
+    return '₩' + formatNumber(value)
+  }
+
+  function formatSignedMoney(value) {
+    const normalizedValue = Number(value || 0)
+
+    if (normalizedValue > 0) {
+      return '+' + formatMoney(normalizedValue)
+    }
+
+    if (normalizedValue < 0) {
+      return '-' + formatMoney(Math.abs(normalizedValue))
+    }
+
+    return formatMoney(0)
+  }
+
+  function formatPercent(value) {
+    const normalizedValue = Math.round(Number(value || 0) * 10) / 10
+
+    if (Math.abs(normalizedValue - Math.round(normalizedValue)) < 0.05) {
+      return String(Math.round(normalizedValue))
+    }
+
+    return normalizedValue.toFixed(1)
+  }
+
+  function stripDateText(value) {
+    return String(value || '')
+      .replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:[ t]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:z)?)?\b/gi, '')
+      .replace(/\b\d{4}년\s*\d{1,2}월\s*\d{1,2}일\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  function formatSnapshotStatus(status) {
+    const normalizedStatus = String(status || '').trim()
+
+    if (normalizedStatus === 'parsed') {
+      return '완료'
+    }
+
+    if (normalizedStatus === 'confirmed') {
+      return '확인'
+    }
+
+    if (normalizedStatus === 'failed') {
+      return '실패'
+    }
+
+    if (normalizedStatus === 'pending') {
+      return '대기'
+    }
+
+    return '저장'
+  }
+
+  function buildGoalCard(code, target, current, totalAmount) {
+    const normalizedTarget = Number(target || 0)
+    const normalizedCurrent = Number(current || 0)
+    const normalizedTotalAmount = Number(totalAmount || 0)
+    const targetAmount = normalizedTotalAmount > 0 ? (normalizedTotalAmount * normalizedTarget) / 100 : 0
+    const currentAmount = normalizedTotalAmount > 0 ? (normalizedTotalAmount * normalizedCurrent) / 100 : 0
+
+    return {
+      code: code,
+      label: assetClassMeta[code].label,
+      tone: assetClassMeta[code].tone,
+      target: normalizedTarget,
+      current: normalizedCurrent,
+      targetAmount: targetAmount,
+      currentAmount: currentAmount,
+      differenceAmount: currentAmount - targetAmount,
+    }
+  }
+
+  const demoTotalAmountKrw = 42930000
+  const demoGoalCards = [
+    buildGoalCard('cash', 10, 14, demoTotalAmountKrw),
+    buildGoalCard('stock_growth', 35, 31, demoTotalAmountKrw),
+    buildGoalCard('stock_dividend', 20, 18, demoTotalAmountKrw),
+    buildGoalCard('bond', 15, 17, demoTotalAmountKrw),
+    buildGoalCard('gold', 10, 11, demoTotalAmountKrw),
+    buildGoalCard('real_estate', 10, 9, demoTotalAmountKrw),
   ]
-  const accounts = [
-    { institution: '토스증권', name: '미국 성장주 ETF', classLabel: '주식(성장형)', amount: '₩12,480,000', change: '+3.2%' },
-    { institution: '미래에셋', name: '월배당 ETF', classLabel: '주식(배당형)', amount: '₩7,320,000', change: '+1.4%' },
-    { institution: '카카오뱅크', name: '생활비 통장', classLabel: '현금', amount: '₩4,180,000', change: '대기자금' },
-    { institution: '삼성증권', name: '국채 ETF', classLabel: '채권', amount: '₩6,210,000', change: '+0.6%' },
+  const demoAccounts = [
+    { institution: '토스증권', name: '미국 성장주 ETF', classLabel: '주식(성장형)', amountLabel: '₩12,480,000', metaLabel: '+3.2%' },
+    { institution: '미래에셋', name: '월배당 ETF', classLabel: '주식(배당형)', amountLabel: '₩7,320,000', metaLabel: '+1.4%' },
+    { institution: '카카오뱅크', name: '생활비 통장', classLabel: '현금', amountLabel: '₩4,180,000', metaLabel: '대기자금' },
+    { institution: '삼성증권', name: '국채 ETF', classLabel: '채권', amountLabel: '₩6,210,000', metaLabel: '+0.6%' },
   ]
+
+  let totalAmountKrw = demoTotalAmountKrw
+  let summaryGoalCards = demoGoalCards
+  let assetAccounts = demoAccounts
+  let recentSnapshots = []
+  let latestSnapshotTitle = '최근 스냅샷'
+  let rebalanceGapPercent = 3.8
+
+  if (isSignedIn) {
+    const userId = request.auth.get('id')
+    const targetRecords = $app.findRecordsByFilter('user_target_allocations', 'user_id = {:userId}', 'created', 50, 0, { userId: userId }) || []
+    const snapshotRecords = $app.findRecordsByFilter('asset_snapshots', 'user_id = {:userId}', '-snapshot_date,-created', 10, 0, { userId: userId }) || []
+    const latestSnapshot = snapshotRecords[0] || null
+    const targetByClass = {}
+    const currentByClass = {}
+    const configuredTargetCodes = []
+    let latestItems = []
+
+    for (let index = 0; index < assetClassOrder.length; index += 1) {
+      targetByClass[assetClassOrder[index]] = 0
+      currentByClass[assetClassOrder[index]] = 0
+    }
+
+    for (let index = 0; index < targetRecords.length; index += 1) {
+      const record = targetRecords[index]
+      const code = String(record.get('asset_class_code') || '')
+      if (targetByClass[code] !== undefined) {
+        targetByClass[code] = Number(record.get('target_percent') || 0)
+      }
+    }
+
+    for (let index = 0; index < assetClassOrder.length; index += 1) {
+      const code = assetClassOrder[index]
+      if (Number(targetByClass[code] || 0) > 0) {
+        configuredTargetCodes.push(code)
+      }
+    }
+
+    if (latestSnapshot) {
+      const latestSnapshotId = String(latestSnapshot.get('id') || '')
+
+      latestSnapshotTitle = stripDateText(latestSnapshot.get('title')) || '현재 자산 현황'
+      latestItems = $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', '-amount_krw,-created', 100, 0, { snapshotId: latestSnapshotId }) || []
+      totalAmountKrw = Number(latestSnapshot.get('total_amount_krw') || 0)
+
+      if (totalAmountKrw <= 0) {
+        totalAmountKrw = 0
+        for (let index = 0; index < latestItems.length; index += 1) {
+          totalAmountKrw += Number(latestItems[index].get('amount_krw') || 0)
+        }
+      }
+
+      for (let index = 0; index < latestItems.length; index += 1) {
+        const itemRecord = latestItems[index]
+        const code = String(itemRecord.get('asset_class_code') || '')
+        const amountKrw = Number(itemRecord.get('amount_krw') || 0)
+
+        if (currentByClass[code] !== undefined) {
+          currentByClass[code] += amountKrw
+        }
+      }
+
+      summaryGoalCards = configuredTargetCodes
+        .map(function (code) {
+          const target = Number(targetByClass[code] || 0)
+          const current = totalAmountKrw > 0 ? (Number(currentByClass[code] || 0) / totalAmountKrw) * 100 : 0
+
+          return buildGoalCard(code, target, current, totalAmountKrw)
+        })
+        .filter(function (item) {
+          return !!item
+        })
+
+      assetAccounts = latestItems.slice(0, 8).map(function (itemRecord) {
+        const code = String(itemRecord.get('asset_class_code') || 'other')
+        return {
+          institution: String(itemRecord.get('institution_name') || '').trim() || '기관 정보 없음',
+          name: String(itemRecord.get('asset_name') || '').trim() || '자산명 없음',
+          classLabel: assetClassMeta[code] ? assetClassMeta[code].label : assetClassMeta.other.label,
+          amountLabel: formatMoney(itemRecord.get('amount_krw') || 0),
+          metaLabel: String(itemRecord.get('account_label') || '').trim() || (String(itemRecord.get('currency_code') || '').trim() || 'KRW'),
+        }
+      })
+
+      recentSnapshots = snapshotRecords.slice(0, 5).map(function (snapshotRecord) {
+        return {
+          title: stripDateText(snapshotRecord.get('title')) || '자산 스냅샷',
+          totalAmountLabel: formatMoney(snapshotRecord.get('total_amount_krw') || 0),
+          status: formatSnapshotStatus(snapshotRecord.get('ocr_status')),
+        }
+      })
+
+      let matchedClassCount = 0
+      let totalGap = 0
+
+      for (let index = 0; index < summaryGoalCards.length; index += 1) {
+        const card = summaryGoalCards[index]
+        totalGap += Math.abs(Number(card.current || 0) - Number(card.target || 0))
+        if (Number(card.target || 0) > 0) {
+          matchedClassCount += 1
+        }
+      }
+
+      rebalanceGapPercent = matchedClassCount > 0 ? Math.round((totalGap / matchedClassCount) * 10) / 10 : 0
+    } else {
+      totalAmountKrw = 0
+      summaryGoalCards = configuredTargetCodes.map(function (code) {
+        return buildGoalCard(code, Number(targetByClass[code] || 0), 0, totalAmountKrw)
+      })
+      assetAccounts = []
+      latestSnapshotTitle = '아직 업로드된 스냅샷이 없다'
+      rebalanceGapPercent = 0
+    }
+  }
+
+  const goalCardCountLabel = summaryGoalCards.length ? summaryGoalCards.length + '개 분류' : '데이터 없음'
 </script>
 
-<section class="space-y-5">
+<section
+  x-data="{ uploadModalOpen: false, isUploading: false }"
+  @keydown.escape.window="if (!isUploading) uploadModalOpen = false"
+  class="space-y-5">
   <header class="flex items-start justify-between gap-4">
-    <p class="m-0 pt-2 text-[13px] font-semibold tracking-[-0.01em] text-[var(--pf-primary)]">Photofolio</p>
+    <div class="space-y-1">
+      <p class="m-0 pt-2 text-[13px] font-semibold tracking-[-0.01em] text-[var(--pf-primary)]">Photofolio</p>
+      <% if (isSignedIn) { %>
+      <p class="m-0 text-[13px] leading-5 text-[var(--pf-text-faint)]"><%= String(request.auth.get('email') || '').trim() %></p>
+      <% } %>
+    </div>
+
+    <% if (isSignedIn) { %>
+    <form
+      method="post"
+      action="/xapi/auth/sign-out">
+      <button
+        type="submit"
+        class="inline-flex min-h-11 min-w-18 items-center justify-center whitespace-nowrap rounded-full border-none bg-white px-5 text-sm font-semibold text-[var(--pf-text)] shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+        로그아웃
+      </button>
+    </form>
+    <% } else { %>
     <a
       href="/auth"
       class="inline-flex min-h-11 min-w-18 items-center justify-center whitespace-nowrap rounded-full bg-white px-5 text-sm font-semibold text-[var(--pf-text)] no-underline shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
       로그인
     </a>
+    <% } %>
   </header>
 
   <% if (flashMessage) { %>
@@ -36,44 +268,177 @@
   <% } %>
 
   <section class="rounded-[2rem] bg-[var(--pf-primary)] px-5 py-5 text-white shadow-[0_24px_50px_rgba(49,130,246,0.30)]">
-    <p class="m-0 text-[13px] font-medium text-white/78">총 자산</p>
-    <h2 class="mt-2 m-0 text-[2.1rem] font-bold tracking-[-0.05em]">₩42,930,000</h2>
-    <p class="mt-2 m-0 text-sm leading-6 text-white/78">이번 달 캡처 3건 기준으로 정리한 더미 화면이다.</p>
-    <div class="mt-5 grid grid-cols-3 gap-2">
-      <div class="rounded-[1.3rem] bg-white/16 px-3 py-3 backdrop-blur-sm">
-        <p class="m-0 text-[12px] text-white/72">목표 달성도</p>
-        <p class="mt-1 m-0 text-lg font-semibold">89%</p>
-      </div>
-      <div class="rounded-[1.3rem] bg-white/16 px-3 py-3 backdrop-blur-sm">
+    <p class="m-0 text-[13px] font-medium text-white/78"><%= latestSnapshotTitle %></p>
+    <h2 class="mt-2 m-0 text-[2.1rem] font-bold tracking-[-0.05em]"><%= formatMoney(totalAmountKrw) %></h2>
+    <div class="mt-5 grid grid-cols-1 gap-2">
+      <div class="rounded-[1.3rem] bg-white/16 px-4 py-4 backdrop-blur-sm">
         <p class="m-0 text-[12px] text-white/72">리밸런싱 차이</p>
-        <p class="mt-1 m-0 text-lg font-semibold">3.8%</p>
-      </div>
-      <div class="rounded-[1.3rem] bg-white/16 px-3 py-3 backdrop-blur-sm">
-        <p class="m-0 text-[12px] text-white/72">최근 업데이트</p>
-        <p class="mt-1 m-0 text-lg font-semibold">오늘</p>
+        <p class="mt-1 m-0 text-[1.25rem] font-semibold"><%= formatPercent(rebalanceGapPercent) %>%</p>
       </div>
     </div>
   </section>
 
-  <section class="space-y-3">
+  <% if (isSignedIn) { %>
+  <section
+    id="captures"
+    class="rounded-[1.8rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] p-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <div class="flex items-center justify-between gap-4">
+      <div class="min-w-0 space-y-1">
+        <p class="m-0 text-sm font-semibold text-[var(--pf-text)]">토스 캡처 업로드</p>
+        <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">캡처 이미지를 올리면 AI가 자산 항목을 읽고 현재 자산에 바로 반영한다.</p>
+      </div>
+      <button
+        type="button"
+        @click="uploadModalOpen = true"
+        class="shrink-0 rounded-[1.2rem] border-none bg-[var(--pf-primary)] px-4 py-3 text-[14px] font-semibold text-white shadow-[0_18px_28px_rgba(49,130,246,0.24)]">
+        업로드
+      </button>
+    </div>
+  </section>
+  <% } else { %>
+  <section class="rounded-[1.8rem] bg-[var(--pf-primary-soft)] px-5 py-5">
+    <p class="m-0 text-sm font-semibold text-[var(--pf-primary)]">로그인 후 시작</p>
+    <p class="mt-2 m-0 text-[14px] leading-6 text-[var(--pf-text-soft)]">업로드한 토스 자산 캡처를 AI가 읽고, 현재 스키마에 맞는 자산 항목으로 정리한다.</p>
+    <div class="mt-4">
+      <a
+        href="/auth"
+        class="inline-flex min-h-11 items-center rounded-full bg-white px-4 text-sm font-semibold text-[var(--pf-text)] no-underline shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+        로그인하고 업로드하기
+      </a>
+    </div>
+  </section>
+  <% } %>
+
+  <% if (isSignedIn) { %>
+  <div
+    x-cloak
+    x-show="uploadModalOpen"
+    class="fixed inset-0 z-30 flex items-end justify-center px-4 py-4 sm:items-center"
+    style="display: none">
+    <div
+      @click="if (!isUploading) uploadModalOpen = false"
+      class="absolute inset-0 bg-[rgba(15,23,42,0.42)] backdrop-blur-[2px]"></div>
+
+    <section
+      @click.stop
+      class="relative z-10 w-full max-w-[28rem] rounded-[2rem] bg-white p-5 shadow-[0_28px_60px_rgba(15,23,42,0.20)]">
+      <div class="flex items-start justify-between gap-4">
+        <div class="space-y-1">
+          <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
+          <h2 class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">토스 캡처 업로드</h2>
+          <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">이미지 1장을 올리면 AI가 자산을 추출해서 현재 자산에 합쳐 반영한다.</p>
+        </div>
+
+        <button
+          type="button"
+          @click="if (!isUploading) uploadModalOpen = false"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-[var(--pf-surface-soft)] text-lg font-semibold text-[var(--pf-text-faint)]">
+          ×
+        </button>
+      </div>
+
+      <form
+        method="post"
+        action="/xapi/snapshots/upload"
+        enctype="multipart/form-data"
+        class="mt-5 space-y-3"
+        @submit.prevent="if (isUploading) return; isUploading = true; uploadModalOpen = false; $nextTick(() => $el.submit())">
+        <div class="rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
+          <label
+            for="capture-image-modal"
+            class="block text-sm font-semibold text-[var(--pf-text)]">
+            자산 캡처 이미지
+          </label>
+          <input
+            id="capture-image-modal"
+            name="captureImage"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            required
+            class="mt-3 box-border block w-full text-sm text-[var(--pf-text)] file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--pf-text)]" />
+          <p class="mt-3 m-0 text-[12px] leading-5 text-[var(--pf-text-faint)]">지원 형식은 PNG, JPG, WEBP이고 한 번에 한 장만 업로드한다.</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            @click="if (!isUploading) uploadModalOpen = false"
+            class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-surface-soft)] px-4 text-[14px] font-semibold text-[var(--pf-text)]">
+            닫기
+          </button>
+          <button
+            type="submit"
+            class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-primary)] px-4 text-[14px] font-semibold text-white shadow-[0_18px_28px_rgba(49,130,246,0.24)]">
+            분석하고 반영
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div
+    x-cloak
+    x-show="isUploading"
+    class="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(15,23,42,0.40)] px-6"
+    style="display: none">
+    <section class="w-full max-w-[20rem] rounded-[1.8rem] bg-white px-5 py-6 text-center shadow-[0_28px_60px_rgba(15,23,42,0.20)]">
+      <div class="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[rgba(49,130,246,0.18)] border-t-[var(--pf-primary)]"></div>
+      <p class="mt-4 m-0 text-[15px] font-semibold text-[var(--pf-text)]">이미지를 분석하고 있다</p>
+      <p class="mt-2 m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">자산 항목을 추출해서 현재 자산에 반영하는 중이다. 잠시만 기다려 달라.</p>
+    </section>
+  </div>
+  <% } %>
+
+  <section
+    id="targets"
+    class="space-y-3">
     <div class="flex items-center justify-between">
       <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">목표와 현재</h2>
-      <span class="text-sm font-medium text-[var(--pf-text-faint)]">6개 분류</span>
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-medium text-[var(--pf-text-faint)]"><%= goalCardCountLabel %></span>
+        <% if (isSignedIn) { %>
+        <a
+          href="/targets"
+          class="inline-flex min-h-9 items-center rounded-full bg-white px-3 text-[12px] font-semibold text-[var(--pf-text)] no-underline shadow-[0_10px_20px_rgba(15,23,42,0.08)]">
+          목표 조정
+        </a>
+        <% } %>
+      </div>
     </div>
+
+    <% if (summaryGoalCards.length > 0) { %>
     <div class="space-y-3">
-      <% for (let index = 0; index < goalCards.length; index += 1) { const goalCard = goalCards[index] %>
+      <% for (let index = 0; index < summaryGoalCards.length; index += 1) { const goalCard = summaryGoalCards[index] %>
       <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0">
             <div class="<%= goalCard.tone %> inline-flex rounded-full px-2.5 py-1 text-[12px] font-semibold">
               <%= goalCard.label %>
             </div>
-            <p class="mt-3 m-0 text-sm font-semibold text-[var(--pf-text)]">목표 <%= goalCard.target %>% / 현재 <%= goalCard.current %>%</p>
+            <p class="mt-3 m-0 text-sm font-semibold text-[var(--pf-text)]">
+              목표 <%= formatPercent(goalCard.target) %>% / 현재 <%= formatPercent(goalCard.current) %>%
+            </p>
           </div>
           <p class="m-0 text-sm font-semibold <%= goalCard.current > goalCard.target ? 'text-[#e85d3f]' : 'text-[#3182f6]' %>">
-            <%= goalCard.current > goalCard.target ? '+' : '' %><%= goalCard.current - goalCard.target %>%
+            <%= goalCard.current > goalCard.target ? '+' : '' %><%= formatPercent(goalCard.current - goalCard.target) %>%
           </p>
         </div>
+        <div class="mt-3 grid grid-cols-2 gap-2">
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">목표 금액</p>
+            <p class="mt-1 m-0 text-[13px] font-semibold text-[var(--pf-text)]"><%= formatMoney(goalCard.targetAmount) %></p>
+          </div>
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">현재 금액</p>
+            <p class="mt-1 m-0 text-[13px] font-semibold text-[var(--pf-text)]"><%= formatMoney(goalCard.currentAmount) %></p>
+          </div>
+        </div>
+        <p class="mt-3 m-0 text-[13px] font-medium text-[var(--pf-text-soft)]">
+          금액 차이
+          <span class="<%= goalCard.differenceAmount > 0 ? 'text-[#e85d3f]' : goalCard.differenceAmount < 0 ? 'text-[#3182f6]' : 'text-[var(--pf-text)]' %> font-semibold">
+            <%= formatSignedMoney(goalCard.differenceAmount) %>
+          </span>
+        </p>
         <div class="mt-3 h-3 rounded-full bg-[#eef2f6]">
           <div
             class="h-3 rounded-full bg-[var(--pf-primary)]"
@@ -82,19 +447,28 @@
       </article>
       <% } %>
     </div>
+    <% } else { %>
+    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)] shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+      <% if (isSignedIn) { %>
+      아직 설정한 목표 비율이 없다. <a
+        href="/targets"
+        class="font-semibold text-[var(--pf-primary)] no-underline">목표 페이지</a>에서 자산 카테고리별 목표를 입력하면 이 구간에 설정한 분류만 보인다.
+      <% } else { %>
+      로그인 전에는 예시 구성만 보여준다. 로그인하면 실제 업로드한 자산 기준으로 이 구간이 채워진다.
+      <% } %>
+    </article>
+    <% } %>
   </section>
 
   <section class="space-y-3">
     <div class="flex items-center justify-between">
       <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">자산 목록</h2>
-      <button
-        type="button"
-        class="h-9 rounded-full border-none bg-white px-3.5 text-sm font-semibold text-[var(--pf-text)] shadow-[0_10px_20px_rgba(15,23,42,0.06)]">
-        캡처 추가
-      </button>
+      <span class="text-sm font-medium text-[var(--pf-text-faint)]"><%= assetAccounts.length ? assetAccounts.length + '개 항목' : '목록 없음' %></span>
     </div>
+
+    <% if (assetAccounts.length > 0) { %>
     <div class="space-y-3">
-      <% for (let index = 0; index < accounts.length; index += 1) { const account = accounts[index] %>
+      <% for (let index = 0; index < assetAccounts.length; index += 1) { const account = assetAccounts[index] %>
       <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
@@ -103,14 +477,45 @@
             <p class="mt-2 m-0 text-[13px] text-[var(--pf-text-soft)]"><%= account.classLabel %></p>
           </div>
           <div class="text-right">
-            <p class="m-0 text-[15px] font-semibold tracking-[-0.02em] text-[var(--pf-text)]"><%= account.amount %></p>
-            <p class="mt-1 m-0 text-[13px] font-medium text-[var(--pf-text-faint)]"><%= account.change %></p>
+            <p class="m-0 text-[15px] font-semibold tracking-[-0.02em] text-[var(--pf-text)]"><%= account.amountLabel %></p>
+            <p class="mt-1 m-0 text-[13px] font-medium text-[var(--pf-text-faint)]"><%= account.metaLabel %></p>
+          </div>
+        </div>
+      </article>
+      <% } %>
+    </div>
+    <% } else { %>
+    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)] shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+      첫 이미지 업로드가 끝나면 추출된 자산 항목이 여기에 순서대로 정리된다.
+    </article>
+    <% } %>
+  </section>
+
+  <% if (isSignedIn && recentSnapshots.length > 0) { %>
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">최근 스냅샷</h2>
+      <span class="text-sm font-medium text-[var(--pf-text-faint)]"><%= recentSnapshots.length %>건</span>
+    </div>
+
+    <div class="space-y-3">
+      <% for (let index = 0; index < recentSnapshots.length; index += 1) { const snapshot = recentSnapshots[index] %>
+      <article class="rounded-[1.6rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="m-0 text-sm font-semibold text-[var(--pf-text)]"><%= snapshot.title %></p>
+            <p class="mt-1 m-0 text-[13px] text-[var(--pf-text-faint)]">저장된 스냅샷</p>
+          </div>
+          <div class="text-right">
+            <p class="m-0 text-sm font-semibold text-[var(--pf-text)]"><%= snapshot.totalAmountLabel %></p>
+            <p class="mt-1 m-0 text-[13px] font-medium text-[var(--pf-text-faint)]"><%= snapshot.status %></p>
           </div>
         </div>
       </article>
       <% } %>
     </div>
   </section>
+  <% } %>
 
   <nav class="fixed bottom-4 left-1/2 z-20 w-[calc(100%-2rem)] max-w-[28rem] -translate-x-1/2 rounded-[1.7rem] border border-white/70 bg-white/92 px-3 py-3 shadow-[0_18px_36px_rgba(15,23,42,0.12)] backdrop-blur-sm">
     <div class="grid grid-cols-4 gap-2">
@@ -120,15 +525,24 @@
         홈
       </a>
       <a
-        href="#"
+        href="/targets"
         class="rounded-[1.1rem] px-2 py-2 text-center text-[12px] font-semibold text-[var(--pf-text-faint)] no-underline">
         목표
       </a>
+      <% if (isSignedIn) { %>
+      <button
+        type="button"
+        @click="uploadModalOpen = true"
+        class="rounded-[1.1rem] border-none bg-transparent px-2 py-2 text-center text-[12px] font-semibold text-[var(--pf-text-faint)]">
+        캡처
+      </button>
+      <% } else { %>
       <a
-        href="#"
+        href="/auth"
         class="rounded-[1.1rem] px-2 py-2 text-center text-[12px] font-semibold text-[var(--pf-text-faint)] no-underline">
         캡처
       </a>
+      <% } %>
       <a
         href="/auth"
         class="rounded-[1.1rem] px-2 py-2 text-center text-[12px] font-semibold text-[var(--pf-text-faint)] no-underline">

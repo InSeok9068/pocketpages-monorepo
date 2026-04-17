@@ -1,0 +1,534 @@
+<script server>
+  const photofolioAssetUtils = resolve('photofolio-asset-utils')
+  const photofolioAiService = resolve('photofolio-ai-service')
+  const MAX_IMAGE_BYTES = 20 * 1024 * 1024
+
+  function inferImageMimeType(uploadedFile) {
+    const originalName = String((uploadedFile && (uploadedFile.originalName || uploadedFile.name)) || '').toLowerCase()
+
+    if (/\.jpe?g$/i.test(originalName)) return 'image/jpeg'
+    if (/\.png$/i.test(originalName)) return 'image/png'
+    if (/\.webp$/i.test(originalName)) return 'image/webp'
+
+    return 'image/png'
+  }
+
+  function stripDateText(value) {
+    return photofolioAssetUtils
+      .normalizeText(value, 200)
+      .replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:[ t]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:z)?)?\b/gi, '')
+      .replace(/\b\d{4}년\s*\d{1,2}월\s*\d{1,2}일\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  function buildSnapshotTitle(extractedTitle) {
+    const normalizedTitle = stripDateText(extractedTitle)
+
+    if (normalizedTitle) {
+      return normalizedTitle
+    }
+
+    return '자산 스냅샷'
+  }
+
+  function buildAssetMergeKey(fields) {
+    return photofolioAssetUtils.normalizeText(fields && fields.asset_name, 255).toLowerCase()
+  }
+
+  function buildAssetMergeKeyFromRecord(record) {
+    return buildAssetMergeKey({
+      asset_name: record.get('asset_name'),
+    })
+  }
+
+  function sumNullableNumbers(leftValue, rightValue) {
+    const hasLeft = typeof leftValue === 'number' && isFinite(leftValue)
+    const hasRight = typeof rightValue === 'number' && isFinite(rightValue)
+
+    if (!hasLeft && !hasRight) {
+      return null
+    }
+
+    return Number(leftValue || 0) + Number(rightValue || 0)
+  }
+
+  function mergeTextValues(leftValue, rightValue, multipleValue, maxLength) {
+    const leftText = photofolioAssetUtils.normalizeText(leftValue, maxLength || 255)
+    const rightText = photofolioAssetUtils.normalizeText(rightValue, maxLength || 255)
+
+    if (!leftText) {
+      return rightText
+    }
+
+    if (!rightText || leftText === rightText) {
+      return leftText
+    }
+
+    return photofolioAssetUtils.normalizeText(multipleValue, maxLength || 255)
+  }
+
+  function mergeCodeValues(leftValue, rightValue, maxLength) {
+    const leftCode = photofolioAssetUtils.normalizeUpperCode(leftValue, maxLength || 20)
+    const rightCode = photofolioAssetUtils.normalizeUpperCode(rightValue, maxLength || 20)
+
+    if (!leftCode) {
+      return rightCode
+    }
+
+    if (!rightCode || leftCode === rightCode) {
+      return leftCode
+    }
+
+    return leftCode
+  }
+
+  function buildAggregateAssetItem(fields) {
+    const quantity = typeof fields.quantity === 'number' && isFinite(fields.quantity) ? fields.quantity : null
+    const amountOriginal = typeof fields.amount_original === 'number' && isFinite(fields.amount_original) ? fields.amount_original : null
+    let unitPrice = typeof fields.unit_price === 'number' && isFinite(fields.unit_price) ? fields.unit_price : null
+
+    if (quantity !== null && quantity > 0 && amountOriginal !== null) {
+      unitPrice = amountOriginal / quantity
+    }
+
+    return {
+      asset_class_code: fields.asset_class_code || 'other',
+      institution_name: photofolioAssetUtils.normalizeText(fields.institution_name, 255),
+      account_label: photofolioAssetUtils.normalizeText(fields.account_label, 255),
+      asset_name: photofolioAssetUtils.normalizeText(fields.asset_name, 255),
+      market_code: photofolioAssetUtils.normalizeUpperCode(fields.market_code, 20),
+      currency_code: photofolioAssetUtils.normalizeUpperCode(fields.currency_code || 'KRW', 10) || 'KRW',
+      quantity: quantity,
+      unit_price: unitPrice,
+      amount_original: amountOriginal,
+      exchange_rate: typeof fields.exchange_rate === 'number' && isFinite(fields.exchange_rate) ? fields.exchange_rate : null,
+      amount_krw: typeof fields.amount_krw === 'number' && isFinite(fields.amount_krw) ? fields.amount_krw : null,
+      memo: photofolioAssetUtils.normalizeText(fields.memo, 5000),
+      source_json: fields.source_json || {},
+      merge_count: Number(fields.merge_count || 1),
+    }
+  }
+
+  function buildAggregateAssetItemFromRecord(record) {
+    return buildAggregateAssetItem({
+      asset_class_code: record.get('asset_class_code'),
+      institution_name: record.get('institution_name'),
+      account_label: record.get('account_label'),
+      asset_name: record.get('asset_name'),
+      market_code: record.get('market_code'),
+      currency_code: record.get('currency_code'),
+      quantity: record.get('quantity'),
+      unit_price: record.get('unit_price'),
+      amount_original: record.get('amount_original'),
+      exchange_rate: record.get('exchange_rate'),
+      amount_krw: record.get('amount_krw'),
+      memo: record.get('memo'),
+      source_json: record.get('source_json'),
+      merge_count: 1,
+    })
+  }
+
+  function mergeAggregateAssetItems(baseItem, incomingItem) {
+    const mergedQuantity = sumNullableNumbers(baseItem.quantity, incomingItem.quantity)
+    const mergedAmountOriginal = sumNullableNumbers(baseItem.amount_original, incomingItem.amount_original)
+    let mergedUnitPrice = incomingItem.unit_price !== null ? incomingItem.unit_price : baseItem.unit_price
+
+    if (mergedQuantity !== null && mergedQuantity > 0 && mergedAmountOriginal !== null) {
+      mergedUnitPrice = mergedAmountOriginal / mergedQuantity
+    }
+
+    return buildAggregateAssetItem({
+      asset_class_code: incomingItem.asset_class_code || baseItem.asset_class_code,
+      institution_name: mergeTextValues(baseItem.institution_name, incomingItem.institution_name, '여러 기관', 255),
+      account_label: mergeTextValues(baseItem.account_label, incomingItem.account_label, '여러 계좌 합산', 255),
+      asset_name: incomingItem.asset_name || baseItem.asset_name,
+      market_code: mergeCodeValues(baseItem.market_code, incomingItem.market_code, 20),
+      currency_code: mergeCodeValues(baseItem.currency_code, incomingItem.currency_code, 10) || 'KRW',
+      quantity: mergedQuantity,
+      unit_price: mergedUnitPrice,
+      amount_original: mergedAmountOriginal,
+      exchange_rate: incomingItem.exchange_rate !== null ? incomingItem.exchange_rate : baseItem.exchange_rate,
+      amount_krw: sumNullableNumbers(baseItem.amount_krw, incomingItem.amount_krw),
+      memo: mergeTextValues(baseItem.memo, incomingItem.memo, '합산 항목', 5000),
+      source_json: {
+        merge_key: buildAssetMergeKey(incomingItem),
+        merge_count: Number(baseItem.merge_count || 1) + Number(incomingItem.merge_count || 1),
+        latest_source_json: incomingItem.source_json || {},
+      },
+      merge_count: Number(baseItem.merge_count || 1) + Number(incomingItem.merge_count || 1),
+    })
+  }
+
+  function overwriteAggregateAssetItem(baseItem, incomingItem) {
+    return buildAggregateAssetItem({
+      asset_class_code: incomingItem.asset_class_code || baseItem.asset_class_code,
+      institution_name: incomingItem.institution_name || baseItem.institution_name,
+      account_label: incomingItem.account_label || baseItem.account_label,
+      asset_name: incomingItem.asset_name || baseItem.asset_name,
+      market_code: incomingItem.market_code || baseItem.market_code,
+      currency_code: incomingItem.currency_code || baseItem.currency_code || 'KRW',
+      quantity: incomingItem.quantity !== null ? incomingItem.quantity : baseItem.quantity,
+      unit_price: incomingItem.unit_price !== null ? incomingItem.unit_price : baseItem.unit_price,
+      amount_original: incomingItem.amount_original !== null ? incomingItem.amount_original : baseItem.amount_original,
+      exchange_rate: incomingItem.exchange_rate !== null ? incomingItem.exchange_rate : baseItem.exchange_rate,
+      amount_krw: incomingItem.amount_krw !== null ? incomingItem.amount_krw : baseItem.amount_krw,
+      memo: incomingItem.memo || baseItem.memo,
+      source_json: {
+        overwrite_key: buildAssetMergeKey(incomingItem),
+        latest_source_json: incomingItem.source_json || {},
+      },
+      merge_count: Number(incomingItem.merge_count || 1),
+    })
+  }
+
+  function applyAssetItemToRecord(assetRecord, snapshotId, item, isNewRecord) {
+    assetRecord.set('snapshot_id', snapshotId)
+    assetRecord.set('asset_class_code', item.asset_class_code)
+    assetRecord.set('amount_krw', item.amount_krw)
+    assetRecord.set('source_json', item.source_json)
+
+    if (isNewRecord) {
+      assetRecord.set('is_manual_adjusted', false)
+    }
+
+    if (item.institution_name) {
+      assetRecord.set('institution_name', item.institution_name)
+    }
+
+    if (item.account_label) {
+      assetRecord.set('account_label', item.account_label)
+    }
+
+    if (item.asset_name) {
+      assetRecord.set('asset_name', item.asset_name)
+    }
+
+    if (item.market_code) {
+      assetRecord.set('market_code', item.market_code)
+    }
+
+    if (item.currency_code) {
+      assetRecord.set('currency_code', item.currency_code)
+    } else if (isNewRecord) {
+      assetRecord.set('currency_code', 'KRW')
+    }
+
+    if (item.quantity !== null) {
+      assetRecord.set('quantity', item.quantity)
+    }
+
+    if (item.unit_price !== null) {
+      assetRecord.set('unit_price', item.unit_price)
+    }
+
+    if (item.amount_original !== null) {
+      assetRecord.set('amount_original', item.amount_original)
+    }
+
+    if (item.exchange_rate !== null) {
+      assetRecord.set('exchange_rate', item.exchange_rate)
+    }
+
+    assetRecord.set('memo', item.memo)
+  }
+
+  function buildTodayDate() {
+    const today = new Date()
+    const year = String(today.getFullYear())
+    const month = String(today.getMonth() + 1).padStart(2, '0')
+    const day = String(today.getDate()).padStart(2, '0')
+
+    return year + '-' + month + '-' + day
+  }
+
+  if (!request.auth) {
+    warn('xapi/snapshots/upload:unauthorized', {
+      method: request.method,
+    })
+    dbg('xapi/snapshots/upload:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인 후 이미지 업로드를 진행해 주세요.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인 후 이미지 업로드를 진행해 주세요.',
+    })
+    return
+  }
+
+  if (request.method !== 'POST') {
+    dbg('xapi/snapshots/upload:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  dbg('xapi/snapshots/upload:start', {
+    method: request.method,
+    userId: request.auth.get('id'),
+  })
+
+  try {
+    const uploadedFiles = request.event.findUploadedFiles('captureImage') || []
+    const uploadedImage = uploadedFiles[0]
+
+    if (!uploadedImage) {
+      throw new Error('업로드할 이미지 파일이 필요합니다.')
+    }
+
+    const imageSize = Number(uploadedImage.size || 0)
+    if (imageSize > MAX_IMAGE_BYTES) {
+      throw new Error('이미지 파일은 최대 20MB까지 업로드할 수 있습니다.')
+    }
+
+    dbg('xapi/snapshots/upload:selected-file', {
+      name: uploadedImage.name,
+      originalName: uploadedImage.originalName,
+      imageSize: imageSize,
+    })
+
+    const reader = uploadedImage.reader.open()
+    const imageBytes = toBytes(reader, imageSize || MAX_IMAGE_BYTES)
+    reader.close()
+
+    const mimeType = inferImageMimeType(uploadedImage)
+    const geminiApiKey = String(env('GEMINI_API_KEY') || env('GEMINI_AI_KEY') || '').trim()
+    const extractedSnapshot = photofolioAiService.extractAssetSnapshot({
+      geminiApiKey: geminiApiKey,
+      mimeType: mimeType,
+      fileBase64: photofolioAssetUtils.encodeBase64(imageBytes),
+      logger: {
+        dbg: dbg,
+        info: info,
+        warn: warn,
+        error: error,
+      },
+    })
+    const validItems = extractedSnapshot.items.filter(function (item) {
+      return item.asset_name && item.amount_krw !== null && item.amount_krw > 0
+    })
+
+    if (!validItems.length) {
+      throw new Error('이미지에서 저장할 자산 항목을 찾지 못했습니다.')
+    }
+
+    const snapshotDate = extractedSnapshot.snapshot_date || buildTodayDate()
+    const snapshotCollection = $app.findCollectionByNameOrId('asset_snapshots')
+    const latestSnapshotRecords =
+      $app.findRecordsByFilter('asset_snapshots', 'user_id = {:userId}', '-snapshot_date,-updated,-created', 1, 0, {
+        userId: request.auth.get('id'),
+      }) || []
+    const snapshotRecord = latestSnapshotRecords[0] || new Record(snapshotCollection)
+    const isNewSnapshot = !latestSnapshotRecords.length
+
+    if (isNewSnapshot) {
+      snapshotRecord.set('user_id', request.auth.get('id'))
+    }
+
+    snapshotRecord.set('source_type', 'capture')
+    snapshotRecord.set('snapshot_date', snapshotDate)
+    snapshotRecord.set('title', buildSnapshotTitle(extractedSnapshot.snapshot_title))
+    snapshotRecord.set('total_amount_krw', 0)
+    snapshotRecord.set('ocr_status', 'parsed')
+    snapshotRecord.set('raw_payload_json', {})
+    $app.save(snapshotRecord)
+
+    info('xapi/snapshots/upload:snapshot-ready', {
+      snapshotId: snapshotRecord.get('id'),
+      userId: request.auth.get('id'),
+      itemCount: validItems.length,
+      isNewSnapshot: isNewSnapshot,
+    })
+
+    const captureCollection = $app.findCollectionByNameOrId('snapshot_capture_images')
+    const latestCaptureImageRecords =
+      $app.findRecordsByFilter('snapshot_capture_images', 'snapshot_id = {:snapshotId}', '-image_order,-created', 1, 0, {
+        snapshotId: snapshotRecord.get('id'),
+      }) || []
+    const nextImageOrder = latestCaptureImageRecords.length ? Number(latestCaptureImageRecords[0].get('image_order') || 0) + 1 : 1
+    const captureRecord = new Record(captureCollection)
+    captureRecord.set('snapshot_id', snapshotRecord.get('id'))
+    captureRecord.set('image_file', uploadedImage)
+    captureRecord.set('image_order', nextImageOrder)
+    captureRecord.set('ocr_text', extractedSnapshot.raw_text)
+    captureRecord.set('ocr_result_json', extractedSnapshot.raw_json)
+    $app.save(captureRecord)
+
+    const assetCollection = $app.findCollectionByNameOrId('asset_items')
+    const existingAssetRecords =
+      $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', 'created', 500, 0, {
+        snapshotId: snapshotRecord.get('id'),
+      }) || []
+    const existingAssetByKey = {}
+    const incomingAssetByKey = {}
+    let createdCount = 0
+    let updatedCount = 0
+    let deletedDuplicateCount = 0
+
+    for (let index = 0; index < existingAssetRecords.length; index += 1) {
+      const record = existingAssetRecords[index]
+      const assetKey = buildAssetMergeKeyFromRecord(record)
+
+      if (!assetKey) {
+        continue
+      }
+
+      if (!existingAssetByKey[assetKey]) {
+        existingAssetByKey[assetKey] = {
+          primaryRecord: record,
+          aggregateItem: buildAggregateAssetItemFromRecord(record),
+          duplicateRecords: [],
+        }
+        continue
+      }
+
+      existingAssetByKey[assetKey].aggregateItem = mergeAggregateAssetItems(
+        existingAssetByKey[assetKey].aggregateItem,
+        buildAggregateAssetItemFromRecord(record)
+      )
+      existingAssetByKey[assetKey].duplicateRecords.push(record)
+    }
+
+    // 이번 업로드 안에서 같은 자산명은 하나로 보고 금액을 합산합니다.
+    for (let index = 0; index < validItems.length; index += 1) {
+      const item = validItems[index]
+      const assetKey = buildAssetMergeKey(item)
+
+      if (!assetKey) {
+        continue
+      }
+
+      if (!incomingAssetByKey[assetKey]) {
+        incomingAssetByKey[assetKey] = buildAggregateAssetItem(item)
+        continue
+      }
+
+      incomingAssetByKey[assetKey] = mergeAggregateAssetItems(incomingAssetByKey[assetKey], buildAggregateAssetItem(item))
+    }
+
+    const incomingAssetKeys = Object.keys(incomingAssetByKey)
+
+    const existingAssetKeys = Object.keys(existingAssetByKey)
+
+    for (let index = 0; index < existingAssetKeys.length; index += 1) {
+      const assetKey = existingAssetKeys[index]
+      const existingAssetGroup = existingAssetByKey[assetKey]
+      let aggregateItem = existingAssetGroup.aggregateItem
+
+      if (incomingAssetByKey[assetKey]) {
+        // 기존 잔액에 더하지 않고, 이번 업로드 기준 값으로 덮어씁니다.
+        aggregateItem = overwriteAggregateAssetItem(aggregateItem, incomingAssetByKey[assetKey])
+      }
+
+      applyAssetItemToRecord(existingAssetGroup.primaryRecord, snapshotRecord.get('id'), aggregateItem, false)
+      $app.save(existingAssetGroup.primaryRecord)
+
+      if (incomingAssetByKey[assetKey] || existingAssetGroup.duplicateRecords.length > 0) {
+        updatedCount += 1
+      }
+
+      for (let duplicateIndex = 0; duplicateIndex < existingAssetGroup.duplicateRecords.length; duplicateIndex += 1) {
+        const duplicateRecord = existingAssetGroup.duplicateRecords[duplicateIndex]
+
+        info('xapi/snapshots/upload:delete-duplicate-asset', {
+          snapshotId: snapshotRecord.get('id'),
+          assetKey: assetKey,
+          recordId: duplicateRecord.get('id'),
+        })
+        $app.delete(duplicateRecord)
+        deletedDuplicateCount += 1
+      }
+    }
+
+    for (let index = 0; index < incomingAssetKeys.length; index += 1) {
+      const assetKey = incomingAssetKeys[index]
+
+      if (existingAssetByKey[assetKey]) {
+        continue
+      }
+
+      const assetRecord = new Record(assetCollection)
+
+      applyAssetItemToRecord(assetRecord, snapshotRecord.get('id'), incomingAssetByKey[assetKey], true)
+      $app.save(assetRecord)
+      createdCount += 1
+    }
+
+    const mergedAssetRecords =
+      $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', '-amount_krw,-created', 500, 0, {
+        snapshotId: snapshotRecord.get('id'),
+      }) || []
+    const totalAmountKrw = mergedAssetRecords.reduce(function (sum, assetRecord) {
+      return sum + Number(assetRecord.get('amount_krw') || 0)
+    }, 0)
+
+    snapshotRecord.set('total_amount_krw', totalAmountKrw)
+    snapshotRecord.set('raw_payload_json', {
+      model: 'gemini-2.5-flash-lite',
+      extracted: extractedSnapshot.raw_json,
+      importedItemCount: validItems.length,
+      mergedItemCount: incomingAssetKeys.length,
+      createdCount: createdCount,
+      updatedCount: updatedCount,
+      deletedDuplicateCount: deletedDuplicateCount,
+      captureImageId: captureRecord.get('id'),
+    })
+    $app.save(snapshotRecord)
+
+    dbg('xapi/snapshots/upload:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash:
+        '자산 ' +
+        incomingAssetKeys.length +
+        '건을 반영했습니다. 추가 ' +
+        createdCount +
+        '건, 업데이트 ' +
+        updatedCount +
+        '건, 중복 정리 ' +
+        deletedDuplicateCount +
+        '건.',
+      snapshotId: snapshotRecord.get('id'),
+    })
+    redirect('/', {
+      status: 303,
+      message:
+        '자산 ' +
+        incomingAssetKeys.length +
+        '건을 반영했습니다. 추가 ' +
+        createdCount +
+        '건, 업데이트 ' +
+        updatedCount +
+        '건, 중복 정리 ' +
+        deletedDuplicateCount +
+        '건.',
+    })
+    return
+  } catch (exception) {
+    const errorMessage = String(exception.message || exception)
+
+    error('xapi/snapshots/upload:failed', {
+      error: errorMessage,
+      userId: request.auth.get('id'),
+    })
+
+    dbg('xapi/snapshots/upload:redirect', {
+      status: 303,
+      redirectTo: '/',
+      error: errorMessage,
+    })
+    redirect('/', {
+      status: 303,
+      message: errorMessage,
+    })
+    return
+  }
+</script>
