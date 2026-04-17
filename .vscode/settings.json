@@ -17,7 +17,7 @@
     // 개발중인 서비스만 주석
     "apps/sample/**": true,
     "apps/kjca/**": true,
-    // "apps/booklog/**": true,
+    "apps/booklog/**": true,
     // "apps/photofolio/**": true,
   },
   // prettier-ignore
@@ -30,7 +30,7 @@
     // 개발중인 서비스만 주석
     "apps/sample/**": true,
     "apps/kjca/**": true,
-    // "apps/booklog/**": true,
+    "apps/booklog/**": true,
     // "apps/photofolio/**": true,
   },
   "tailwindCSS.includeLanguages": {
