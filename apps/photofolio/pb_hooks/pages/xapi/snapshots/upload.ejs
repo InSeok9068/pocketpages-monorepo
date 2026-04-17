@@ -390,10 +390,7 @@
         continue
       }
 
-      existingAssetByKey[assetKey].aggregateItem = mergeAggregateAssetItems(
-        existingAssetByKey[assetKey].aggregateItem,
-        buildAggregateAssetItemFromRecord(record)
-      )
+      existingAssetByKey[assetKey].aggregateItem = mergeAggregateAssetItems(existingAssetByKey[assetKey].aggregateItem, buildAggregateAssetItemFromRecord(record))
       existingAssetByKey[assetKey].duplicateRecords.push(record)
     }
 
@@ -486,30 +483,12 @@
     dbg('xapi/snapshots/upload:redirect', {
       status: 303,
       redirectTo: '/',
-      flash:
-        '자산 ' +
-        incomingAssetKeys.length +
-        '건을 반영했습니다. 추가 ' +
-        createdCount +
-        '건, 업데이트 ' +
-        updatedCount +
-        '건, 중복 정리 ' +
-        deletedDuplicateCount +
-        '건.',
+      flash: '자산 ' + incomingAssetKeys.length + '건을 반영했습니다. 추가 ' + createdCount + '건, 업데이트 ' + updatedCount + '건, 중복 정리 ' + deletedDuplicateCount + '건.',
       snapshotId: snapshotRecord.get('id'),
     })
     redirect('/', {
       status: 303,
-      message:
-        '자산 ' +
-        incomingAssetKeys.length +
-        '건을 반영했습니다. 추가 ' +
-        createdCount +
-        '건, 업데이트 ' +
-        updatedCount +
-        '건, 중복 정리 ' +
-        deletedDuplicateCount +
-        '건.',
+      message: '자산 ' + incomingAssetKeys.length + '건을 반영했습니다. 추가 ' + createdCount + '건, 업데이트 ' + updatedCount + '건, 중복 정리 ' + deletedDuplicateCount + '건.',
     })
     return
   } catch (exception) {

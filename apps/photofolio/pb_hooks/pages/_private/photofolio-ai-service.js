@@ -1,12 +1,4 @@
-const {
-  extractJsonObjectText,
-  normalizeAssetClassCode,
-  normalizeIsoDate,
-  normalizeText,
-  normalizeUpperCode,
-  parseJsonSafely,
-  parseNumber,
-} = require('./photofolio-asset-utils')
+const { extractJsonObjectText, normalizeAssetClassCode, normalizeIsoDate, normalizeText, normalizeUpperCode, parseJsonSafely, parseNumber } = require('./photofolio-asset-utils')
 
 const GEMINI_MODEL_NAME = 'gemini-2.5-flash-lite'
 
@@ -88,38 +80,17 @@ function readGeminiText(responseJson) {
 
 function normalizeItem(rawItem) {
   const sourceJson = rawItem && typeof rawItem === 'object' ? rawItem : {}
-  const institutionName = normalizeText(
-    pickFirstValue([sourceJson.institution_name, sourceJson.institutionName, sourceJson['기관명'], sourceJson['금융사명']]),
-    255
-  )
-  const accountLabel = normalizeText(
-    pickFirstValue([sourceJson.account_label, sourceJson.accountLabel, sourceJson['계좌명'], sourceJson['상품명']]),
-    255
-  )
-  const assetName = normalizeText(
-    pickFirstValue([sourceJson.asset_name, sourceJson.assetName, sourceJson.name, sourceJson['자산명'], sourceJson['종목명'], accountLabel]),
-    255
-  )
-  const assetClassCode = normalizeAssetClassCode(
-    pickFirstValue([sourceJson.asset_class_code, sourceJson.assetClassCode, sourceJson.category, sourceJson['자산분류']])
-  )
-  const marketCode = normalizeUpperCode(
-    pickFirstValue([sourceJson.market_code, sourceJson.marketCode, sourceJson['시장코드']]),
-    20
-  )
-  const currencyCode = normalizeUpperCode(
-    pickFirstValue([sourceJson.currency_code, sourceJson.currencyCode, sourceJson['통화코드']]),
-    10
-  )
+  const institutionName = normalizeText(pickFirstValue([sourceJson.institution_name, sourceJson.institutionName, sourceJson['기관명'], sourceJson['금융사명']]), 255)
+  const accountLabel = normalizeText(pickFirstValue([sourceJson.account_label, sourceJson.accountLabel, sourceJson['계좌명'], sourceJson['상품명']]), 255)
+  const assetName = normalizeText(pickFirstValue([sourceJson.asset_name, sourceJson.assetName, sourceJson.name, sourceJson['자산명'], sourceJson['종목명'], accountLabel]), 255)
+  const assetClassCode = normalizeAssetClassCode(pickFirstValue([sourceJson.asset_class_code, sourceJson.assetClassCode, sourceJson.category, sourceJson['자산분류']]))
+  const marketCode = normalizeUpperCode(pickFirstValue([sourceJson.market_code, sourceJson.marketCode, sourceJson['시장코드']]), 20)
+  const currencyCode = normalizeUpperCode(pickFirstValue([sourceJson.currency_code, sourceJson.currencyCode, sourceJson['통화코드']]), 10)
   const quantity = parseNumber(pickFirstValue([sourceJson.quantity, sourceJson['수량']]))
   let unitPrice = parseNumber(pickFirstValue([sourceJson.unit_price, sourceJson.unitPrice, sourceJson['단가']]))
-  const amountOriginal = parseNumber(
-    pickFirstValue([sourceJson.amount_original, sourceJson.amountOriginal, sourceJson.amount, sourceJson['평가금액'], sourceJson['금액']])
-  )
+  const amountOriginal = parseNumber(pickFirstValue([sourceJson.amount_original, sourceJson.amountOriginal, sourceJson.amount, sourceJson['평가금액'], sourceJson['금액']]))
   const exchangeRate = parseNumber(pickFirstValue([sourceJson.exchange_rate, sourceJson.exchangeRate, sourceJson['환율']]))
-  let amountKrw = parseNumber(
-    pickFirstValue([sourceJson.amount_krw, sourceJson.amountKrw, sourceJson['원화금액'], sourceJson['평가액']])
-  )
+  let amountKrw = parseNumber(pickFirstValue([sourceJson.amount_krw, sourceJson.amountKrw, sourceJson['원화금액'], sourceJson['평가액']]))
   const memo = normalizeText(pickFirstValue([sourceJson.memo, sourceJson.note, sourceJson['메모']]), 5000)
 
   if (unitPrice === null && quantity && amountOriginal !== null && quantity > 0) {

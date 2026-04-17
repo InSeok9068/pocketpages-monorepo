@@ -149,64 +149,21 @@ function normalizeIsoDate(value) {
  * @returns {types.PhotofolioAssetClassCode} 정규화된 자산 분류 코드입니다.
  */
 function normalizeAssetClassCode(value) {
-  const normalized = normalizeText(value, 80)
-    .toLowerCase()
-    .replace(/[()]/g, '')
-    .replace(/\s+/g, '')
+  const normalized = normalizeText(value, 80).toLowerCase().replace(/[()]/g, '').replace(/\s+/g, '')
 
   if (!normalized) {
     return 'other'
   }
 
-  if (
-    [
-      'cash',
-      '현금',
-      '예금',
-      '적금',
-      '예적금',
-      '현금성',
-      'cma',
-      'mmf',
-      '파킹통장',
-      '입출금',
-      '보통예금',
-    ].includes(normalized)
-  ) {
+  if (['cash', '현금', '예금', '적금', '예적금', '현금성', 'cma', 'mmf', '파킹통장', '입출금', '보통예금'].includes(normalized)) {
     return 'cash'
   }
 
-  if (
-    [
-      'stockgrowth',
-      'stock',
-      'growth',
-      '주식',
-      '성장',
-      '성장형',
-      '성장주',
-      '주식성장형',
-      '주식성장',
-      'growthstock',
-      'equity',
-    ].includes(normalized)
-  ) {
+  if (['stockgrowth', 'stock', 'growth', '주식', '성장', '성장형', '성장주', '주식성장형', '주식성장', 'growthstock', 'equity'].includes(normalized)) {
     return 'stock_growth'
   }
 
-  if (
-    [
-      'stockdividend',
-      'dividend',
-      'dividendstock',
-      '배당',
-      '배당형',
-      '배당주',
-      '주식배당형',
-      '주식배당',
-      '고배당',
-    ].includes(normalized)
-  ) {
+  if (['stockdividend', 'dividend', 'dividendstock', '배당', '배당형', '배당주', '주식배당형', '주식배당', '고배당'].includes(normalized)) {
     return 'stock_dividend'
   }
 

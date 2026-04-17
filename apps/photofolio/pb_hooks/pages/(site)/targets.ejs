@@ -110,7 +110,7 @@
 
     <a
       href="/"
-      class="inline-flex min-h-11 min-w-18 items-center justify-center whitespace-nowrap rounded-full bg-white px-5 text-sm font-semibold text-[var(--pf-text)] no-underline shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+      class="min-w-18 inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full bg-white px-5 text-sm font-semibold text-[var(--pf-text)] no-underline shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
       홈으로
     </a>
   </header>
@@ -124,15 +124,15 @@
   <section class="rounded-[2rem] bg-[var(--pf-primary)] px-5 py-5 text-white shadow-[0_24px_50px_rgba(49,130,246,0.30)]">
     <div class="flex items-start justify-between gap-4">
       <div>
-        <p class="m-0 text-[13px] font-medium text-white/78">설정된 목표</p>
-        <h2 class="mt-2 m-0 text-[2.1rem] font-bold tracking-[-0.05em]"><%= configuredCount %>개</h2>
+        <p class="text-white/78 m-0 text-[13px] font-medium">설정된 목표</p>
+        <h2 class="m-0 mt-2 text-[2.1rem] font-bold tracking-[-0.05em]"><%= configuredCount %>개</h2>
       </div>
-      <div class="rounded-[1.35rem] bg-white/16 px-4 py-3 text-right backdrop-blur-sm">
-        <p class="m-0 text-[12px] text-white/72">남은 비율</p>
-        <p class="mt-1 m-0 text-lg font-semibold"><%= remainingTargetPercent %>%</p>
+      <div class="bg-white/16 rounded-[1.35rem] px-4 py-3 text-right backdrop-blur-sm">
+        <p class="text-white/72 m-0 text-[12px]">남은 비율</p>
+        <p class="m-0 mt-1 text-lg font-semibold"><%= remainingTargetPercent %>%</p>
       </div>
     </div>
-    <p class="mt-3 m-0 text-sm leading-6 text-white/78">값을 비워두거나 0으로 저장하면 메인 화면에서 숨긴다. 합계는 100%를 넘을 수 없다.</p>
+    <p class="text-white/78 m-0 mt-3 text-sm leading-6">값을 비워두거나 0으로 저장하면 메인 화면에서 숨긴다. 합계는 100%를 넘을 수 없다.</p>
   </section>
 
   <form
@@ -146,7 +146,7 @@
           <div class="<%= assetClass.tone %> inline-flex rounded-full px-2.5 py-1 text-[12px] font-semibold">
             <%= assetClass.label %>
           </div>
-          <p class="mt-3 m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]"><%= assetClass.description %></p>
+          <p class="m-0 mt-3 text-[13px] leading-6 text-[var(--pf-text-soft)]"><%= assetClass.description %></p>
         </div>
         <div class="w-28 shrink-0">
           <label
@@ -180,7 +180,8 @@
     </button>
   </form>
 
-  <nav class="fixed bottom-4 left-1/2 z-20 w-[calc(100%-2rem)] max-w-[28rem] -translate-x-1/2 rounded-[1.7rem] border border-white/70 bg-white/92 px-3 py-3 shadow-[0_18px_36px_rgba(15,23,42,0.12)] backdrop-blur-sm">
+  <nav
+    class="bg-white/92 fixed bottom-4 left-1/2 z-20 w-[calc(100%-2rem)] max-w-[28rem] -translate-x-1/2 rounded-[1.7rem] border border-white/70 px-3 py-3 shadow-[0_18px_36px_rgba(15,23,42,0.12)] backdrop-blur-sm">
     <div class="grid grid-cols-4 gap-2">
       <a
         href="/"
