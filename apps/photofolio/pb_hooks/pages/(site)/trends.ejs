@@ -190,32 +190,30 @@
       action="/xapi/auth/sign-out">
       <button
         type="submit"
-        class="min-w-18 inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full border-none bg-white px-5 text-sm font-semibold text-[var(--pf-text)] shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+        class="pf-top-action">
         로그아웃
       </button>
     </form>
     <% } else { %>
     <a
       href="/auth"
-      class="min-w-18 inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full bg-white px-5 text-sm font-semibold text-[var(--pf-text)] no-underline shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+      class="pf-top-action">
       로그인
     </a>
     <% } %>
   </header>
 
   <% if (flashMessage) { %>
-  <section class="rounded-[1.5rem] border border-[var(--pf-line)] bg-[var(--pf-primary-soft)] px-4 py-4 text-sm font-medium text-[var(--pf-primary)] shadow-[0_10px_30px_rgba(49,130,246,0.10)]">
-    <%= flashMessage %>
-  </section>
+  <%- include('photofolio-flash-banner.ejs', { message: flashMessage }) %>
   <% } %>
 
-  <section class="rounded-[2rem] bg-[var(--pf-primary)] px-5 py-5 text-white shadow-[0_24px_50px_rgba(49,130,246,0.30)]">
+  <section class="pf-hero-card">
     <div class="flex items-start justify-between gap-4">
       <div>
         <p class="text-white/78 m-0 text-[13px] font-medium">기준 범위</p>
         <h2 class="m-0 mt-2 text-[2.1rem] font-bold tracking-[-0.05em]"><%= selectedRangeMeta.label %></h2>
       </div>
-      <div class="bg-white/16 rounded-[1.35rem] px-4 py-3 text-right backdrop-blur-sm">
+      <div class="pf-hero-metric text-right">
         <p class="text-white/72 m-0 text-[12px]">최근 기준일</p>
         <p class="m-0 mt-1 text-lg font-semibold"><%= latestDateLabel %></p>
       </div>
@@ -234,7 +232,7 @@
   </section>
 
   <% if (trendErrorMessage) { %>
-  <section class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-5 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+  <section class="pf-card px-4 py-5">
     <p class="m-0 text-sm font-semibold text-[var(--pf-text)]">추이 데이터를 아직 불러오지 못했다.</p>
     <p class="m-0 mt-2 text-[13px] leading-6 text-[var(--pf-text-soft)]"><%= trendErrorMessage %></p>
     <p class="m-0 mt-2 text-[12px] leading-5 text-[var(--pf-text-faint)]">`.env`에 `FRED_APIKEY`를 넣으면 서버에서 FRED API를 호출한다.</p>
@@ -242,19 +240,19 @@
   <% } %>
 
   <section class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <article class="pf-card px-4 py-4">
       <p class="m-0 text-[12px] font-semibold text-[var(--pf-primary)]">원/달러 환율</p>
       <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(usdKrwSeries) %></p>
       <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">범위 변화 <span class="<%= usdKrwSeries && usdKrwSeries.latest_value !== null && usdKrwSeries.start_value !== null && usdKrwSeries.latest_value - usdKrwSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(usdKrwSeries) %></span></p>
     </article>
 
-    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <article class="pf-card px-4 py-4">
       <p class="m-0 text-[12px] font-semibold text-[#0f9f6e]">미국 2년물</p>
       <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(treasury2ySeries) %></p>
       <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">범위 변화 <span class="<%= treasury2ySeries && treasury2ySeries.latest_value !== null && treasury2ySeries.start_value !== null && treasury2ySeries.latest_value - treasury2ySeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(treasury2ySeries) %></span></p>
     </article>
 
-    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <article class="pf-card px-4 py-4">
       <p class="m-0 text-[12px] font-semibold text-[#4f46e5]">미국 10년물</p>
       <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(treasury10ySeries) %></p>
       <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">범위 변화 <span class="<%= treasury10ySeries && treasury10ySeries.latest_value !== null && treasury10ySeries.start_value !== null && treasury10ySeries.latest_value - treasury10ySeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(treasury10ySeries) %></span></p>
@@ -267,7 +265,7 @@
       <span class="text-sm font-medium text-[var(--pf-text-faint)]">FRED · DEXKOUS</span>
     </div>
 
-    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <article class="pf-card px-4 py-4">
       <div class="h-[18rem]">
         <% if (exchangeChartPayload) { %>
         <canvas id="exchange-trend-chart"></canvas>
@@ -286,7 +284,7 @@
       <span class="text-sm font-medium text-[var(--pf-text-faint)]">FRED · DGS2 / DGS10</span>
     </div>
 
-    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <article class="pf-card px-4 py-4">
       <div class="h-[18rem]">
         <% if (treasuryChartPayload) { %>
         <canvas id="treasury-trend-chart"></canvas>

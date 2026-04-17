@@ -22,50 +22,6 @@
       .trim()
   }
 
-  function decodeJsonByteArray(value) {
-    if (!Array.isArray(value) || value.length === 0) {
-      return ''
-    }
-
-    try {
-      return new TextDecoder('utf-8').decode(Uint8Array.from(value))
-    } catch (exception) {
-      warn('xapi/snapshots/upload:decode-json-byte-array-failed', {
-        error: String(exception.message || exception),
-      })
-    }
-
-    return ''
-  }
-
-  function normalizeJsonObject(value) {
-    if (!value) {
-      return {}
-    }
-
-    if (typeof value === 'string') {
-      try {
-        const parsedValue = JSON.parse(value)
-        return parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue) ? parsedValue : {}
-      } catch (exception) {
-        warn('xapi/snapshots/upload:parse-json-string-failed', {
-          error: String(exception.message || exception),
-        })
-        return {}
-      }
-    }
-
-    if (Array.isArray(value)) {
-      return normalizeJsonObject(decodeJsonByteArray(value))
-    }
-
-    if (typeof value === 'object') {
-      return JSON.parse(JSON.stringify(value))
-    }
-
-    return {}
-  }
-
   function buildSnapshotTitle(extractedCaptures) {
     const preferredTitle = pickPreferredCaptureValue(extractedCaptures, function (capture) {
       return stripDateText(capture.extractedSnapshot.snapshot_title)
@@ -201,7 +157,7 @@
   }
 
   function buildAggregateAssetItemFromRecord(record) {
-    const sourceJson = normalizeJsonObject(record.get('source_json'))
+    const sourceJson = photofolioAssetUtils.normalizeJsonObject(record.get('source_json'))
 
     return buildAggregateAssetItem({
       asset_class_code: record.get('asset_class_code'),
@@ -882,9 +838,7 @@
       $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', '-amount_krw,-created', 500, 0, {
         snapshotId: snapshotRecord.get('id'),
       }) || []
-    const mergedAssetTotalAmountKrw = mergedAssetRecords.reduce(function (sum, assetRecord) {
-      return sum + Number(assetRecord.get('amount_krw') || 0)
-    }, 0)
+    const mergedAssetTotalAmountKrw = photofolioAssetUtils.sumRecordNumber(mergedAssetRecords, 'amount_krw')
     const overviewReportedTotalAmountKrw =
       pickPreferredCaptureValue(extractedCaptures, function (capture) {
         if (capture.extractedSnapshot.page_type !== 'assets_overview') {

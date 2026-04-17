@@ -309,10 +309,15 @@
   }
 
   const goalCardCountLabel = summaryGoalCards.length ? summaryGoalCards.length + '개 분류' : '데이터 없음'
+  const goalAssetsByCode = summaryGoalCards.reduce(function (grouped, goalCard) {
+    grouped[goalCard.code] = goalCard.assets || []
+    return grouped
+  }, {})
 </script>
 
 <section
   x-data="{
+    goalAssetsByCode: JSON.parse(document.getElementById('goal-assets-by-code').value || '{}'),
     uploadModalOpen: false,
     isUploading: false,
     goalAssetsOpen: false,
@@ -348,19 +353,13 @@
         assetClassCode: dataset.itemClassCode || 'cash',
         amountKrw: dataset.itemAmountKrw || '0',
       }
+      this.uploadModalOpen = false
       this.goalAssetsOpen = false
       this.assetEditorOpen = true
     },
     openGoalAssets(dataset) {
-      let parsedItems = []
-
       if (!dataset || !dataset.goalCode) return
-
-      try {
-        parsedItems = JSON.parse(dataset.goalItemsJson || '[]')
-      } catch (error) {
-        parsedItems = []
-      }
+      const groupedItems = this.goalAssetsByCode[dataset.goalCode] || []
 
       this.goalAssetsModel = {
         label: dataset.goalLabel || '',
@@ -371,8 +370,9 @@
         differenceAmountLabel: dataset.goalDifferenceAmountLabel || '₩0',
         differenceToneClass: dataset.goalDifferenceToneClass || 'text-[var(--pf-text)]',
         assetCountLabel: dataset.goalAssetCountLabel || '0개 자산',
-        items: Array.isArray(parsedItems) ? parsedItems : [],
+        items: Array.isArray(groupedItems) ? groupedItems : [],
       }
+      this.uploadModalOpen = false
       this.assetEditorOpen = false
       this.goalAssetsOpen = true
     },
@@ -386,6 +386,9 @@
   }"
   @keydown.escape.window="if (!isUploading) uploadModalOpen = false; goalAssetsOpen = false; if (!assetEditorSubmitting) assetEditorOpen = false"
   class="space-y-5">
+  <textarea
+    id="goal-assets-by-code"
+    hidden><%= JSON.stringify(goalAssetsByCode) %></textarea>
   <header class="flex items-start justify-between gap-4">
     <div class="space-y-1">
       <p class="m-0 pt-2 text-[13px] font-semibold tracking-[-0.01em] text-[var(--pf-primary)]">Photofolio</p>
@@ -400,30 +403,28 @@
       action="/xapi/auth/sign-out">
       <button
         type="submit"
-        class="min-w-18 inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full border-none bg-white px-5 text-sm font-semibold text-[var(--pf-text)] shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+        class="pf-top-action">
         로그아웃
       </button>
     </form>
     <% } else { %>
     <a
       href="/auth"
-      class="min-w-18 inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full bg-white px-5 text-sm font-semibold text-[var(--pf-text)] no-underline shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+      class="pf-top-action">
       로그인
     </a>
     <% } %>
   </header>
 
   <% if (flashMessage) { %>
-  <section class="rounded-[1.5rem] border border-[var(--pf-line)] bg-[var(--pf-primary-soft)] px-4 py-4 text-sm font-medium text-[var(--pf-primary)] shadow-[0_10px_30px_rgba(49,130,246,0.10)]">
-    <%= flashMessage %>
-  </section>
+  <%- include('photofolio-flash-banner.ejs', { message: flashMessage }) %>
   <% } %>
 
-  <section class="rounded-[2rem] bg-[var(--pf-primary)] px-5 py-5 text-white shadow-[0_24px_50px_rgba(49,130,246,0.30)]">
+  <section class="pf-hero-card">
     <p class="text-white/78 m-0 text-[13px] font-medium"><%= latestSnapshotTitle %></p>
     <h2 class="m-0 mt-2 text-[2.1rem] font-bold tracking-[-0.05em]"><%= formatMoney(totalAmountKrw) %></h2>
     <div class="mt-5 grid grid-cols-1 gap-2">
-      <div class="bg-white/16 rounded-[1.3rem] px-4 py-4 backdrop-blur-sm">
+      <div class="pf-hero-metric px-4 py-4">
         <p class="text-white/72 m-0 text-[12px]">리밸런싱 차이</p>
         <p class="m-0 mt-1 text-[1.25rem] font-semibold"><%= formatPercent(rebalanceGapPercent) %>%</p>
       </div>
@@ -433,7 +434,7 @@
   <% if (isSignedIn) { %>
   <section
     id="captures"
-    class="rounded-[1.8rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] p-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    class="pf-card rounded-[1.8rem] p-4">
     <div class="flex items-center justify-between gap-4">
         <div class="min-w-0 space-y-1">
           <p class="m-0 text-sm font-semibold text-[var(--pf-text)]">토스 캡처 업로드</p>
@@ -441,7 +442,7 @@
         </div>
       <button
         type="button"
-        @click="uploadModalOpen = true"
+        @click="goalAssetsOpen = false; if (!assetEditorSubmitting) assetEditorOpen = false; uploadModalOpen = true"
         class="shrink-0 rounded-[1.2rem] border-none bg-[var(--pf-primary)] px-4 py-3 text-[14px] font-semibold text-white shadow-[0_18px_28px_rgba(49,130,246,0.24)]">
         업로드
       </button>
@@ -462,84 +463,85 @@
   <% } %>
 
   <% if (isSignedIn) { %>
-  <div
-    x-cloak
-    x-show="uploadModalOpen"
-    class="fixed inset-0 z-30 flex items-end justify-center px-4 py-4 sm:items-center"
-    style="display: none">
+  <template x-teleport="body">
     <div
+      x-cloak
+      x-show="uploadModalOpen"
       @click="if (!isUploading) uploadModalOpen = false"
-      class="absolute inset-0 bg-[rgba(15,23,42,0.42)] backdrop-blur-[2px]"></div>
+      class="pf-modal-overlay"
+      style="display: none">
+      <section
+        @click.stop
+        class="pf-modal-sheet max-w-[28rem]">
+        <div class="flex items-start justify-between gap-4">
+          <div class="space-y-1">
+            <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
+            <h2 class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">토스 캡처 업로드</h2>
+            <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">내 자산 요약, 내 투자 요약, 보유 종목 상세 화면을 여러 장 함께 올리면 한 번에 합쳐 반영한다.</p>
+          </div>
 
-    <section
-      @click.stop
-      class="relative z-10 w-full max-w-[28rem] rounded-[2rem] bg-white p-5 shadow-[0_28px_60px_rgba(15,23,42,0.20)]">
-      <div class="flex items-start justify-between gap-4">
-        <div class="space-y-1">
-          <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
-          <h2 class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">토스 캡처 업로드</h2>
-          <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">내 자산 요약, 내 투자 요약, 보유 종목 상세 화면을 여러 장 함께 올리면 한 번에 합쳐 반영한다.</p>
-        </div>
-
-        <button
-          type="button"
-          @click="if (!isUploading) uploadModalOpen = false"
-          class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-[var(--pf-surface-soft)] text-lg font-semibold text-[var(--pf-text-faint)]">
-          ×
-        </button>
-      </div>
-
-      <form
-        method="post"
-        action="/xapi/snapshots/upload"
-        enctype="multipart/form-data"
-        class="mt-5 space-y-3"
-        @submit.prevent="if (isUploading) return; isUploading = true; uploadModalOpen = false; $nextTick(() => $el.submit())">
-        <div class="rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
-          <label
-            for="capture-image-modal"
-            class="block text-sm font-semibold text-[var(--pf-text)]">
-            자산 캡처 이미지
-          </label>
-          <input
-            id="capture-image-modal"
-            name="captureImage"
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            multiple
-            required
-            class="mt-3 box-border block w-full text-sm text-[var(--pf-text)] file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--pf-text)]" />
-          <p class="m-0 mt-3 text-[12px] leading-5 text-[var(--pf-text-faint)]">지원 형식은 PNG, JPG, WEBP다. 내 자산 요약과 투자 상세 화면을 여러 장 같이 올려도 된다.</p>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2">
           <button
             type="button"
             @click="if (!isUploading) uploadModalOpen = false"
-            class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-surface-soft)] px-4 text-[14px] font-semibold text-[var(--pf-text)]">
-            닫기
-          </button>
-          <button
-            type="submit"
-            class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-primary)] px-4 text-[14px] font-semibold text-white shadow-[0_18px_28px_rgba(49,130,246,0.24)]">
-            분석하고 반영
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-[var(--pf-surface-soft)] text-lg font-semibold text-[var(--pf-text-faint)]">
+            ×
           </button>
         </div>
-      </form>
-    </section>
-  </div>
 
-  <div
-    x-cloak
-    x-show="isUploading"
-    class="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(15,23,42,0.40)] px-6"
-    style="display: none">
-    <section class="w-full max-w-[20rem] rounded-[1.8rem] bg-white px-5 py-6 text-center shadow-[0_28px_60px_rgba(15,23,42,0.20)]">
-      <div class="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[rgba(49,130,246,0.18)] border-t-[var(--pf-primary)]"></div>
-      <p class="m-0 mt-4 text-[15px] font-semibold text-[var(--pf-text)]">이미지를 분석하고 있다</p>
-      <p class="m-0 mt-2 text-[13px] leading-6 text-[var(--pf-text-soft)]">섹션 합계와 자산 항목을 읽어서 현재 자산에 반영하는 중이다. 잠시만 기다려 달라.</p>
-    </section>
-  </div>
+        <form
+          method="post"
+          action="/xapi/snapshots/upload"
+          enctype="multipart/form-data"
+          class="mt-5 space-y-3"
+          @submit.prevent="if (isUploading) return; isUploading = true; uploadModalOpen = false; $nextTick(() => $el.submit())">
+          <div class="rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
+            <label
+              for="capture-image-modal"
+              class="block text-sm font-semibold text-[var(--pf-text)]">
+              자산 캡처 이미지
+            </label>
+            <input
+              id="capture-image-modal"
+              name="captureImage"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              required
+              class="mt-3 box-border block w-full text-sm text-[var(--pf-text)] file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--pf-text)]" />
+            <p class="m-0 mt-3 text-[12px] leading-5 text-[var(--pf-text-faint)]">지원 형식은 PNG, JPG, WEBP다. 내 자산 요약과 투자 상세 화면을 여러 장 같이 올려도 된다.</p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              @click="if (!isUploading) uploadModalOpen = false"
+              class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-surface-soft)] px-4 text-[14px] font-semibold text-[var(--pf-text)]">
+              닫기
+            </button>
+            <button
+              type="submit"
+              class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-primary)] px-4 text-[14px] font-semibold text-white shadow-[0_18px_28px_rgba(49,130,246,0.24)]">
+              분석하고 반영
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </template>
+
+  <template x-teleport="body">
+    <div
+      x-cloak
+      x-show="isUploading"
+      class="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(15,23,42,0.40)] px-6"
+      style="display: none">
+      <section class="w-full max-w-[20rem] rounded-[1.8rem] bg-white px-5 py-6 text-center shadow-[0_28px_60px_rgba(15,23,42,0.20)]">
+        <div class="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[rgba(49,130,246,0.18)] border-t-[var(--pf-primary)]"></div>
+        <p class="m-0 mt-4 text-[15px] font-semibold text-[var(--pf-text)]">이미지를 분석하고 있다</p>
+        <p class="m-0 mt-2 text-[13px] leading-6 text-[var(--pf-text-soft)]">섹션 합계와 자산 항목을 읽어서 현재 자산에 반영하는 중이다. 잠시만 기다려 달라.</p>
+      </section>
+    </div>
+  </template>
   <% } %>
 
   <section
@@ -574,8 +576,7 @@
         data-goal-difference-amount-label="<%= serializeAttributeValue(formatSignedMoney(goalCard.differenceAmount)) %>"
         data-goal-difference-tone-class="<%= serializeAttributeValue(goalCard.differenceAmount > 0 ? 'text-[#e85d3f]' : goalCard.differenceAmount < 0 ? 'text-[#3182f6]' : 'text-[var(--pf-text)]') %>"
         data-goal-asset-count-label="<%= serializeAttributeValue(goalCard.assetCount + '개 자산') %>"
-        data-goal-items-json="<%= serializeAttributeValue(JSON.stringify(goalCard.assets || [])) %>"
-        class="block w-full rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 text-left shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+        class="pf-card block w-full px-4 py-4 text-left">
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0">
             <div class="<%= goalCard.tone %> inline-flex rounded-full px-2.5 py-1 text-[12px] font-semibold">
@@ -612,7 +613,7 @@
       <% } %>
     </div>
     <% } else { %>
-    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)] shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <article class="pf-card px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)]">
       <% if (isSignedIn) { %>
       아직 설정한 목표 비율이 없다.
       <a
@@ -636,7 +637,7 @@
   <% if (assetAccounts.length > 0) { %>
     <div class="space-y-3">
       <% for (let index = 0; index < assetAccounts.length; index += 1) { const account = assetAccounts[index] %>
-      <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+      <article class="pf-card px-4 py-4">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <p class="m-0 text-[13px] font-medium text-[var(--pf-text-faint)]"><%= account.institution %></p>
@@ -666,7 +667,7 @@
       <% } %>
     </div>
     <% } else { %>
-    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)] shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <article class="pf-card px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)]">
       첫 이미지 업로드가 끝나면 추출된 자산 항목이 여기에 순서대로 정리된다.
     </article>
     <% } %>
@@ -699,199 +700,197 @@
   <% } %>
 
   <% if (isSignedIn) { %>
-  <div
-    x-cloak
-    x-show="goalAssetsOpen"
-    class="fixed inset-0 z-30 flex items-end justify-center px-4 py-4 sm:items-center"
-    style="display: none">
+  <template x-teleport="body">
     <div
+      x-cloak
+      x-show="goalAssetsOpen"
       @click="closeGoalAssets()"
-      class="absolute inset-0 bg-[rgba(15,23,42,0.42)] backdrop-blur-[2px]"></div>
+      class="pf-modal-overlay"
+      style="display: none">
+      <section
+        @click.stop
+        class="pf-modal-sheet flex max-h-[84vh] max-w-[30rem] flex-col">
+        <div class="flex items-start justify-between gap-4">
+          <div class="space-y-1">
+            <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
+            <h2 class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]" x-text="goalAssetsModel.label || '자산 분류'"></h2>
+            <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]" x-text="goalAssetsModel.assetCountLabel"></p>
+          </div>
 
-    <section
-      @click.stop
-      class="relative z-10 flex max-h-[84vh] w-full max-w-[30rem] flex-col rounded-[2rem] bg-white p-5 shadow-[0_28px_60px_rgba(15,23,42,0.20)]">
-      <div class="flex items-start justify-between gap-4">
-        <div class="space-y-1">
-          <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
-          <h2 class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]" x-text="goalAssetsModel.label || '자산 분류'"></h2>
-          <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]" x-text="goalAssetsModel.assetCountLabel"></p>
+          <button
+            type="button"
+            @click="closeGoalAssets()"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-[var(--pf-surface-soft)] text-lg font-semibold text-[var(--pf-text-faint)]">
+            ×
+          </button>
         </div>
 
-        <button
-          type="button"
-          @click="closeGoalAssets()"
-          class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-[var(--pf-surface-soft)] text-lg font-semibold text-[var(--pf-text-faint)]">
-          ×
-        </button>
-      </div>
-
-      <div class="mt-5 grid grid-cols-2 gap-2">
-        <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
-          <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">목표 / 현재</p>
-          <p class="m-0 mt-1 text-[13px] font-semibold text-[var(--pf-text)]">
-            목표 <span x-text="goalAssetsModel.targetPercentLabel"></span>% / 현재 <span x-text="goalAssetsModel.currentPercentLabel"></span>%
-          </p>
-        </div>
-        <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
-          <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">금액 차이</p>
-          <p
-            class="m-0 mt-1 text-[13px] font-semibold"
-            :class="goalAssetsModel.differenceToneClass"
-            x-text="goalAssetsModel.differenceAmountLabel"></p>
-        </div>
-        <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
-          <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">목표 금액</p>
-          <p class="m-0 mt-1 text-[13px] font-semibold text-[var(--pf-text)]" x-text="goalAssetsModel.targetAmountLabel"></p>
-        </div>
-        <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
-          <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">현재 금액</p>
-          <p class="m-0 mt-1 text-[13px] font-semibold text-[var(--pf-text)]" x-text="goalAssetsModel.currentAmountLabel"></p>
-        </div>
-      </div>
-
-      <div class="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
-        <div class="space-y-3" x-show="goalAssetsModel.items.length > 0">
-          <template x-for="asset in goalAssetsModel.items" :key="asset.id || asset.name">
-            <article class="rounded-[1.4rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <p class="m-0 text-[13px] font-medium text-[var(--pf-text-faint)]" x-text="asset.institution || '기관 정보 없음'"></p>
-                  <p class="m-0 mt-1 truncate text-[15px] font-semibold text-[var(--pf-text)]" x-text="asset.name || '자산명 없음'"></p>
-                  <p class="m-0 mt-2 text-[13px] text-[var(--pf-text-soft)]" x-text="asset.metaLabel || asset.accountLabel || 'KRW'"></p>
-                </div>
-                <div class="text-right">
-                  <p class="m-0 text-[15px] font-semibold tracking-[-0.02em] text-[var(--pf-text)]" x-text="asset.amountLabel || '₩0'"></p>
-                  <template x-if="asset.id">
-                    <button
-                      type="button"
-                      @click="openAssetEditor({ itemId: asset.id, itemInstitution: asset.institution, itemName: asset.name, itemAccountLabel: asset.accountLabel, itemClassCode: asset.classCode, itemAmountKrw: asset.amountValue })"
-                      class="mt-3 inline-flex min-h-9 items-center rounded-full border-none bg-[var(--pf-surface-soft)] px-3 text-[12px] font-semibold text-[var(--pf-text)]">
-                      수정
-                    </button>
-                  </template>
-                </div>
-              </div>
-            </article>
-          </template>
-        </div>
-
-        <article
-          x-show="goalAssetsModel.items.length === 0"
-          class="rounded-[1.4rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)] shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
-          아직 이 카테고리에 연결된 자산 항목이 없다.
-        </article>
-      </div>
-    </section>
-  </div>
-
-  <div
-    x-cloak
-    x-show="assetEditorOpen"
-    class="fixed inset-0 z-30 flex items-end justify-center px-4 py-4 sm:items-center"
-    style="display: none">
-    <div
-      @click="closeAssetEditor()"
-      class="absolute inset-0 bg-[rgba(15,23,42,0.42)] backdrop-blur-[2px]"></div>
-
-    <section
-      @click.stop
-      class="relative z-10 w-full max-w-[28rem] rounded-[2rem] bg-white p-5 shadow-[0_28px_60px_rgba(15,23,42,0.20)]">
-      <div class="flex items-start justify-between gap-4">
-        <div class="space-y-1">
-          <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
-          <h2 class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">자산 수정</h2>
-          <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">카테고리와 현재 금액만 빠르게 조정할 수 있다.</p>
-        </div>
-
-        <button
-          type="button"
-          @click="closeAssetEditor()"
-          class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-[var(--pf-surface-soft)] text-lg font-semibold text-[var(--pf-text-faint)]">
-          ×
-        </button>
-      </div>
-
-      <div class="mt-5 rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
-        <p class="m-0 text-[12px] font-semibold text-[var(--pf-text-faint)]" x-text="assetEditorModel.institution || '기관 정보 없음'"></p>
-        <p class="m-0 mt-1 text-[15px] font-semibold text-[var(--pf-text)]" x-text="assetEditorModel.name || '자산명 없음'"></p>
-        <p class="m-0 mt-2 text-[13px] text-[var(--pf-text-soft)]" x-text="assetEditorModel.accountLabel || '계좌 표시명 없음'"></p>
-      </div>
-
-      <form
-        method="post"
-        action="/xapi/asset-items/update"
-        class="mt-4 space-y-3"
-        @submit="assetEditorSubmitting = true">
-        <input
-          type="hidden"
-          name="itemId"
-          x-model="assetEditorModel.id" />
-
-        <div class="rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
-          <label class="block text-sm font-semibold text-[var(--pf-text)]">자산 카테고리</label>
-          <select
-            name="assetClassCode"
-            x-model="assetEditorModel.assetClassCode"
-            class="mt-3 box-border block min-h-12 w-full rounded-[1rem] border-none bg-white px-3 text-[14px] font-medium text-[var(--pf-text)]">
-            <% for (let index = 0; index < assetClassOptions.length; index += 1) { const assetClass = assetClassOptions[index] %>
-            <option value="<%= assetClass.code %>"><%= assetClass.label %></option>
-            <% } %>
-          </select>
-        </div>
-
-        <div class="rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
-          <label
-            for="asset-editor-amount"
-            class="block text-sm font-semibold text-[var(--pf-text)]">
-            현재 금액
-          </label>
-          <div class="mt-3 flex items-center rounded-[1rem] bg-white px-3 py-3">
-            <span class="mr-2 text-sm font-semibold text-[var(--pf-text-faint)]">₩</span>
-            <input
-              id="asset-editor-amount"
-              name="amountKrw"
-              type="number"
-              min="0"
-              step="1"
-              inputmode="numeric"
-              x-model="assetEditorModel.amountKrw"
-              class="w-full border-none bg-transparent p-0 text-right text-[15px] font-semibold text-[var(--pf-text)] outline-none" />
+        <div class="mt-5 grid grid-cols-2 gap-2">
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">목표 / 현재</p>
+            <p class="m-0 mt-1 text-[13px] font-semibold text-[var(--pf-text)]">
+              목표 <span x-text="goalAssetsModel.targetPercentLabel"></span>% / 현재 <span x-text="goalAssetsModel.currentPercentLabel"></span>%
+            </p>
+          </div>
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">금액 차이</p>
+            <p
+              class="m-0 mt-1 text-[13px] font-semibold"
+              :class="goalAssetsModel.differenceToneClass"
+              x-text="goalAssetsModel.differenceAmountLabel"></p>
+          </div>
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">목표 금액</p>
+            <p class="m-0 mt-1 text-[13px] font-semibold text-[var(--pf-text)]" x-text="goalAssetsModel.targetAmountLabel"></p>
+          </div>
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">현재 금액</p>
+            <p class="m-0 mt-1 text-[13px] font-semibold text-[var(--pf-text)]" x-text="goalAssetsModel.currentAmountLabel"></p>
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
+        <div class="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
+          <div class="space-y-3" x-show="goalAssetsModel.items.length > 0">
+            <template x-for="asset in goalAssetsModel.items" :key="asset.id || asset.name">
+              <article class="pf-card rounded-[1.4rem] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="m-0 text-[13px] font-medium text-[var(--pf-text-faint)]" x-text="asset.institution || '기관 정보 없음'"></p>
+                    <p class="m-0 mt-1 truncate text-[15px] font-semibold text-[var(--pf-text)]" x-text="asset.name || '자산명 없음'"></p>
+                    <p class="m-0 mt-2 text-[13px] text-[var(--pf-text-soft)]" x-text="asset.metaLabel || asset.accountLabel || 'KRW'"></p>
+                  </div>
+                  <div class="text-right">
+                    <p class="m-0 text-[15px] font-semibold tracking-[-0.02em] text-[var(--pf-text)]" x-text="asset.amountLabel || '₩0'"></p>
+                    <template x-if="asset.id">
+                      <button
+                        type="button"
+                        @click="openAssetEditor({ itemId: asset.id, itemInstitution: asset.institution, itemName: asset.name, itemAccountLabel: asset.accountLabel, itemClassCode: asset.classCode, itemAmountKrw: asset.amountValue })"
+                        class="mt-3 inline-flex min-h-9 items-center rounded-full border-none bg-[var(--pf-surface-soft)] px-3 text-[12px] font-semibold text-[var(--pf-text)]">
+                        수정
+                      </button>
+                    </template>
+                  </div>
+                </div>
+              </article>
+            </template>
+          </div>
+
+          <article
+            x-show="goalAssetsModel.items.length === 0"
+            class="pf-card rounded-[1.4rem] px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)] shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
+            현재 업로드된 자산이 없거나, 아직 이 카테고리에 연결된 자산 항목이 없다.
+          </article>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <template x-teleport="body">
+    <div
+      x-cloak
+      x-show="assetEditorOpen"
+      @click="closeAssetEditor()"
+      class="pf-modal-overlay"
+      style="display: none">
+      <section
+        @click.stop
+        class="pf-modal-sheet max-w-[28rem]">
+        <div class="flex items-start justify-between gap-4">
+          <div class="space-y-1">
+            <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
+            <h2 class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">자산 수정</h2>
+            <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">카테고리와 현재 금액만 빠르게 조정할 수 있다.</p>
+          </div>
+
           <button
             type="button"
             @click="closeAssetEditor()"
-            class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-surface-soft)] px-4 text-[14px] font-semibold text-[var(--pf-text)]">
-            닫기
-          </button>
-          <button
-            type="submit"
-            class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-primary)] px-4 text-[14px] font-semibold text-white shadow-[0_18px_28px_rgba(49,130,246,0.24)]">
-            수정 저장
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-[var(--pf-surface-soft)] text-lg font-semibold text-[var(--pf-text-faint)]">
+            ×
           </button>
         </div>
-      </form>
 
-      <form
-        method="post"
-        action="/xapi/asset-items/delete"
-        class="mt-3"
-        @submit="if (!window.confirm('이 자산 항목을 삭제할까요?')) { $event.preventDefault(); return } assetEditorSubmitting = true">
-        <input
-          type="hidden"
-          name="itemId"
-          x-model="assetEditorModel.id" />
-        <button
-          type="submit"
-          class="min-h-12 w-full rounded-[1.1rem] border-none bg-[#fff3f1] px-4 text-[14px] font-semibold text-[#e85d3f]">
-          해당 자산 삭제
-        </button>
-      </form>
-    </section>
-  </div>
+        <div class="mt-5 rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
+          <p class="m-0 text-[12px] font-semibold text-[var(--pf-text-faint)]" x-text="assetEditorModel.institution || '기관 정보 없음'"></p>
+          <p class="m-0 mt-1 text-[15px] font-semibold text-[var(--pf-text)]" x-text="assetEditorModel.name || '자산명 없음'"></p>
+          <p class="m-0 mt-2 text-[13px] text-[var(--pf-text-soft)]" x-text="assetEditorModel.accountLabel || '계좌 표시명 없음'"></p>
+        </div>
+
+        <form
+          method="post"
+          action="/xapi/asset-items/update"
+          class="mt-4 space-y-3"
+          @submit="assetEditorSubmitting = true">
+          <input
+            type="hidden"
+            name="itemId"
+            x-model="assetEditorModel.id" />
+
+          <div class="rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
+            <label class="block text-sm font-semibold text-[var(--pf-text)]">자산 카테고리</label>
+            <select
+              name="assetClassCode"
+              x-model="assetEditorModel.assetClassCode"
+              class="mt-3 box-border block min-h-12 w-full rounded-[1rem] border-none bg-white px-3 text-[14px] font-medium text-[var(--pf-text)]">
+              <% for (let index = 0; index < assetClassOptions.length; index += 1) { const assetClass = assetClassOptions[index] %>
+              <option value="<%= assetClass.code %>"><%= assetClass.label %></option>
+              <% } %>
+            </select>
+          </div>
+
+          <div class="rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
+            <label
+              for="asset-editor-amount"
+              class="block text-sm font-semibold text-[var(--pf-text)]">
+              현재 금액
+            </label>
+            <div class="mt-3 flex items-center rounded-[1rem] bg-white px-3 py-3">
+              <span class="mr-2 text-sm font-semibold text-[var(--pf-text-faint)]">₩</span>
+              <input
+                id="asset-editor-amount"
+                name="amountKrw"
+                type="number"
+                min="0"
+                step="1"
+                inputmode="numeric"
+                x-model="assetEditorModel.amountKrw"
+                class="w-full border-none bg-transparent p-0 text-right text-[15px] font-semibold text-[var(--pf-text)] outline-none" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              @click="closeAssetEditor()"
+              class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-surface-soft)] px-4 text-[14px] font-semibold text-[var(--pf-text)]">
+              닫기
+            </button>
+            <button
+              type="submit"
+              class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-primary)] px-4 text-[14px] font-semibold text-white shadow-[0_18px_28px_rgba(49,130,246,0.24)]">
+              수정 저장
+            </button>
+          </div>
+        </form>
+
+        <form
+          method="post"
+          action="/xapi/asset-items/delete"
+          class="mt-3"
+          @submit="if (!window.confirm('이 자산 항목을 삭제할까요?')) { $event.preventDefault(); return } assetEditorSubmitting = true">
+          <input
+            type="hidden"
+            name="itemId"
+            x-model="assetEditorModel.id" />
+          <button
+            type="submit"
+            class="min-h-12 w-full rounded-[1.1rem] border-none bg-[#fff3f1] px-4 text-[14px] font-semibold text-[#e85d3f]">
+            해당 자산 삭제
+          </button>
+        </form>
+      </section>
+    </div>
+  </template>
   <% } %>
 
   <%- include('photofolio-bottom-nav.ejs', { activeTab: 'home' }) %>

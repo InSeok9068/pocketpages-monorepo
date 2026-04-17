@@ -36,9 +36,7 @@
   </div>
 
   <% if (flashMessage) { %>
-  <section class="rounded-[1.5rem] border border-[var(--pf-line)] bg-[var(--pf-primary-soft)] px-4 py-4 text-sm font-medium text-[var(--pf-primary)] shadow-[0_10px_30px_rgba(49,130,246,0.10)]">
-    <%= flashMessage %>
-  </section>
+  <%- include('photofolio-flash-banner.ejs', { message: flashMessage }) %>
   <% } %>
 
   <section class="rounded-[2rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] p-3 shadow-[0_22px_50px_rgba(15,23,42,0.08)]">

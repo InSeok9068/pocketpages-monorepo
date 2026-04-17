@@ -69,24 +69,22 @@
 
     <a
       href="/"
-      class="min-w-18 inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full bg-white px-5 text-sm font-semibold text-[var(--pf-text)] no-underline shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+      class="pf-top-action">
       홈으로
     </a>
   </header>
 
   <% if (flashMessage) { %>
-  <section class="rounded-[1.5rem] border border-[var(--pf-line)] bg-[var(--pf-primary-soft)] px-4 py-4 text-sm font-medium text-[var(--pf-primary)] shadow-[0_10px_30px_rgba(49,130,246,0.10)]">
-    <%= flashMessage %>
-  </section>
+  <%- include('photofolio-flash-banner.ejs', { message: flashMessage }) %>
   <% } %>
 
-  <section class="rounded-[2rem] bg-[var(--pf-primary)] px-5 py-5 text-white shadow-[0_24px_50px_rgba(49,130,246,0.30)]">
+  <section class="pf-hero-card">
     <div class="flex items-start justify-between gap-4">
       <div>
         <p class="text-white/78 m-0 text-[13px] font-medium">설정된 목표</p>
         <h2 class="m-0 mt-2 text-[2.1rem] font-bold tracking-[-0.05em]"><%= configuredCount %>개</h2>
       </div>
-      <div class="bg-white/16 rounded-[1.35rem] px-4 py-3 text-right backdrop-blur-sm">
+      <div class="pf-hero-metric text-right">
         <p class="text-white/72 m-0 text-[12px]">남은 비율</p>
         <p class="m-0 mt-1 text-lg font-semibold"><%= remainingTargetPercent %>%</p>
       </div>
@@ -99,7 +97,7 @@
     action="/xapi/targets/save"
     class="space-y-3">
     <% for (let index = 0; index < assetClasses.length; index += 1) { const assetClass = assetClasses[index] %>
-    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <article class="pf-card px-4 py-4">
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0">
           <div class="<%= assetClass.tone %> inline-flex rounded-full px-2.5 py-1 text-[12px] font-semibold">

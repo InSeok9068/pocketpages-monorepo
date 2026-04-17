@@ -1,5 +1,6 @@
 <script server>
-  const assetClassOrder = ['cash', 'stock_growth', 'stock_dividend', 'bond', 'gold', 'real_estate', 'other']
+  const photofolioAssetMeta = resolve('photofolio-asset-meta')
+  const assetClassOrder = photofolioAssetMeta.ASSET_CLASS_ORDER
 
   function normalizePercentValue(rawValue) {
     const text = String(rawValue || '').trim()

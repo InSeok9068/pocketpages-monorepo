@@ -1,3 +1,5 @@
+/* global TextDecoder */
+
 const ASSET_CLASS_CODES = ['cash', 'stock_growth', 'stock_dividend', 'bond', 'gold', 'real_estate', 'other']
 const CAPTURE_PAGE_TYPES = ['assets_overview', 'invest_overview', 'invest_holdings', 'unknown']
 
@@ -30,6 +32,23 @@ function encodeBase64(bytes) {
 }
 
 /**
+ * JSON 바이트 배열을 문자열로 바꿉니다.
+ * @param {any} value 원본 JSON 필드 값입니다.
+ * @returns {string} UTF-8 문자열입니다.
+ */
+function decodeJsonByteArray(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return ''
+  }
+
+  try {
+    return new TextDecoder('utf-8').decode(Uint8Array.from(value))
+  } catch (_error) {
+    return ''
+  }
+}
+
+/**
  * JSON 파싱 실패 시 fallback을 돌려줍니다.
  * @param {string} text JSON 문자열입니다.
  * @param {any} fallback 실패 시 기본값입니다.
@@ -41,6 +60,32 @@ function parseJsonSafely(text, fallback) {
   } catch (_error) {
     return fallback
   }
+}
+
+/**
+ * PocketBase JSON 필드를 일반 객체로 정리합니다.
+ * @param {any} value 원본 JSON 필드 값입니다.
+ * @returns {Record<string, any>} 정규화된 객체입니다.
+ */
+function normalizeJsonObject(value) {
+  if (!value) {
+    return {}
+  }
+
+  if (typeof value === 'string') {
+    const parsedValue = parseJsonSafely(value, {})
+    return parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue) ? parsedValue : {}
+  }
+
+  if (Array.isArray(value)) {
+    return normalizeJsonObject(decodeJsonByteArray(value))
+  }
+
+  if (typeof value === 'object') {
+    return JSON.parse(JSON.stringify(value))
+  }
+
+  return {}
 }
 
 /**
@@ -218,11 +263,30 @@ function normalizeCapturePageType(value) {
   return 'unknown'
 }
 
+/**
+ * 레코드 목록의 number 필드 합계를 계산합니다.
+ * @param {Array<{ get: (field: string) => any }>} records PocketBase 레코드 목록입니다.
+ * @param {string} fieldName 합계를 구할 필드명입니다.
+ * @returns {number} 합계입니다.
+ */
+function sumRecordNumber(records, fieldName) {
+  let sum = 0
+
+  for (let index = 0; index < (records || []).length; index += 1) {
+    const record = records[index]
+    sum += Number(record.get(fieldName) || 0)
+  }
+
+  return sum
+}
+
 module.exports = {
   ASSET_CLASS_CODES,
   CAPTURE_PAGE_TYPES,
   encodeBase64,
+  decodeJsonByteArray,
   parseJsonSafely,
+  normalizeJsonObject,
   extractJsonObjectText,
   parseNumber,
   normalizeText,
@@ -230,4 +294,5 @@ module.exports = {
   normalizeIsoDate,
   normalizeAssetClassCode,
   normalizeCapturePageType,
+  sumRecordNumber,
 }

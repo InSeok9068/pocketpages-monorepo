@@ -1,5 +1,6 @@
 <script server>
   const photofolioAssetMeta = resolve('photofolio-asset-meta')
+  const photofolioAssetUtils = resolve('photofolio-asset-utils')
 
   function normalizeAmountKrw(rawValue) {
     const text = String(rawValue === undefined || rawValue === null ? '' : rawValue).trim()
@@ -15,50 +16,6 @@
     }
 
     return Math.round(amountValue)
-  }
-
-  function decodeJsonByteArray(value) {
-    if (!Array.isArray(value) || value.length === 0) {
-      return ''
-    }
-
-    try {
-      return new TextDecoder('utf-8').decode(Uint8Array.from(value))
-    } catch (exception) {
-      warn('xapi/asset-items/update:decode-json-byte-array-failed', {
-        error: String(exception.message || exception),
-      })
-    }
-
-    return ''
-  }
-
-  function normalizeJsonObject(value) {
-    if (!value) {
-      return {}
-    }
-
-    if (typeof value === 'string') {
-      try {
-        const parsedValue = JSON.parse(value)
-        return parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue) ? parsedValue : {}
-      } catch (exception) {
-        warn('xapi/asset-items/update:parse-json-string-failed', {
-          error: String(exception.message || exception),
-        })
-        return {}
-      }
-    }
-
-    if (Array.isArray(value)) {
-      return normalizeJsonObject(decodeJsonByteArray(value))
-    }
-
-    if (typeof value === 'object') {
-      return JSON.parse(JSON.stringify(value))
-    }
-
-    return {}
   }
 
   if (request.method !== 'POST') {
@@ -118,7 +75,7 @@
       snapshotId: snapshotId,
       userId: userId,
     })
-    const sourceJson = normalizeJsonObject(itemRecord.get('source_json'))
+    const sourceJson = photofolioAssetUtils.normalizeJsonObject(itemRecord.get('source_json'))
     const currencyCode = String(itemRecord.get('currency_code') || '').trim().toUpperCase()
 
     dbg('xapi/asset-items/update:db-read', {
@@ -148,9 +105,7 @@
     const snapshotItemRecords = $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', '-amount_krw,-created', 500, 0, {
       snapshotId: snapshotId,
     }) || []
-    const totalAmountKrw = snapshotItemRecords.reduce(function (sum, record) {
-      return sum + Number(record.get('amount_krw') || 0)
-    }, 0)
+    const totalAmountKrw = photofolioAssetUtils.sumRecordNumber(snapshotItemRecords, 'amount_krw')
 
     snapshotRecord.set('total_amount_krw', totalAmountKrw)
     $app.save(snapshotRecord)

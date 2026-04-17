@@ -51,25 +51,23 @@
       action="/xapi/auth/sign-out">
       <button
         type="submit"
-        class="min-w-18 inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full border-none bg-white px-5 text-sm font-semibold text-[var(--pf-text)] shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+        class="pf-top-action">
         로그아웃
       </button>
     </form>
   </header>
 
   <% if (flashMessage) { %>
-  <section class="rounded-[1.5rem] border border-[var(--pf-line)] bg-[var(--pf-primary-soft)] px-4 py-4 text-sm font-medium text-[var(--pf-primary)] shadow-[0_10px_30px_rgba(49,130,246,0.10)]">
-    <%= flashMessage %>
-  </section>
+  <%- include('photofolio-flash-banner.ejs', { message: flashMessage }) %>
   <% } %>
 
-  <section class="rounded-[2rem] bg-[var(--pf-primary)] px-5 py-5 text-white shadow-[0_24px_50px_rgba(49,130,246,0.30)]">
+  <section class="pf-hero-card">
     <div class="flex items-start justify-between gap-4">
       <div>
         <p class="text-white/78 m-0 text-[13px] font-medium">현재 자산 데이터</p>
         <h2 class="m-0 mt-2 text-[2.1rem] font-bold tracking-[-0.05em]"><%= formatNumber(assetRecords.length) %>개</h2>
       </div>
-      <div class="bg-white/16 rounded-[1.35rem] px-4 py-3 text-right backdrop-blur-sm">
+      <div class="pf-hero-metric text-right">
         <p class="text-white/72 m-0 text-[12px]">스냅샷</p>
         <p class="m-0 mt-1 text-lg font-semibold"><%= formatNumber(snapshotRecords.length) %>건</p>
       </div>
@@ -78,11 +76,11 @@
   </section>
 
   <section class="grid grid-cols-2 gap-3">
-    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <article class="pf-card px-4 py-4">
       <p class="m-0 text-[12px] font-semibold text-[var(--pf-primary)]">캡처 이미지</p>
       <p class="m-0 mt-2 text-[1.4rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatNumber(captureRecords.length) %>건</p>
     </article>
-    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <article class="pf-card px-4 py-4">
       <p class="m-0 text-[12px] font-semibold text-[#0f9f6e]">섹션 합계</p>
       <p class="m-0 mt-2 text-[1.4rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatNumber(sectionRecords.length) %>건</p>
     </article>

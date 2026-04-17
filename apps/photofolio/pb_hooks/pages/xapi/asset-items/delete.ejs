@@ -1,4 +1,6 @@
 <script server>
+  const photofolioAssetUtils = resolve('photofolio-asset-utils')
+
   if (request.method !== 'POST') {
     dbg('xapi/asset-items/delete:redirect', {
       status: 303,
@@ -64,9 +66,7 @@
     const snapshotItemRecords = $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', '-amount_krw,-created', 500, 0, {
       snapshotId: snapshotId,
     }) || []
-    const totalAmountKrw = snapshotItemRecords.reduce(function (sum, record) {
-      return sum + Number(record.get('amount_krw') || 0)
-    }, 0)
+    const totalAmountKrw = photofolioAssetUtils.sumRecordNumber(snapshotItemRecords, 'amount_krw')
 
     snapshotRecord.set('total_amount_krw', totalAmountKrw)
     $app.save(snapshotRecord)
