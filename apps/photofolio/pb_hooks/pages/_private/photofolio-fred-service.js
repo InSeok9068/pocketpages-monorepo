@@ -17,20 +17,20 @@ const FRED_SERIES_META = {
   },
   fedFunds: {
     key: 'fedFunds',
-    seriesId: 'FEDFUNDS',
-    label: '미국 기준금리',
+    seriesId: 'DFEDTARU',
+    label: '기준금리',
     unit: '%',
   },
   treasury2y: {
     key: 'treasury2y',
     seriesId: 'DGS2',
-    label: '미국 2년물',
+    label: '2년물',
     unit: '%',
   },
   treasury10y: {
     key: 'treasury10y',
     seriesId: 'DGS10',
-    label: '미국 10년물',
+    label: '10년물',
     unit: '%',
   },
   unemployment: {

@@ -1,0 +1,113 @@
+@view-transition {
+  navigation: auto;
+}
+
+[un-cloak] {
+  display: none !important;
+}
+
+[x-cloak] {
+  display: none !important;
+}
+
+:root {
+  --pf-bg: #f2f4f6;
+  --pf-surface: #ffffff;
+  --pf-surface-soft: #f9fafb;
+  --pf-line: rgba(15, 23, 42, 0.06);
+  --pf-text: #191f28;
+  --pf-text-soft: #4e5968;
+  --pf-text-faint: #8b95a1;
+  --pf-primary: #3182f6;
+  --pf-primary-soft: #e8f3ff;
+  --pf-success-soft: #edf8f1;
+}
+
+html {
+  background: var(--pf-bg);
+  color: var(--pf-text);
+  font-family: 'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+}
+
+body {
+  background: radial-gradient(circle at top, rgba(49, 130, 246, 0.11), transparent 24rem), linear-gradient(180deg, #f7f9fb 0%, var(--pf-bg) 26%, #edf1f5 100%);
+}
+
+.pf-top-action {
+  min-width: 4.5rem;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: var(--pf-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.pf-flash-banner {
+  border: 1px solid var(--pf-line);
+  border-radius: 1.5rem;
+  background: var(--pf-primary-soft);
+  padding: 1rem;
+  color: var(--pf-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: 0 10px 30px rgba(49, 130, 246, 0.1);
+}
+
+.pf-hero-card {
+  border-radius: 2rem;
+  background: var(--pf-primary);
+  padding: 1.25rem;
+  color: #ffffff;
+  box-shadow: 0 24px 50px rgba(49, 130, 246, 0.3);
+}
+
+.pf-hero-metric {
+  border-radius: 1.35rem;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 0.75rem 1rem;
+  backdrop-filter: blur(8px);
+}
+
+.pf-card {
+  border: 1px solid var(--pf-line);
+  border-radius: 1.7rem;
+  background: var(--pf-surface);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+}
+
+.pf-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.pf-modal-sheet {
+  width: 100%;
+  border-radius: 2rem;
+  background: #ffffff;
+  padding: 1.25rem;
+  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.2);
+}
+
+@media (min-width: 640px) {
+  .pf-modal-overlay {
+    align-items: center;
+    padding: 1.5rem;
+  }
+}

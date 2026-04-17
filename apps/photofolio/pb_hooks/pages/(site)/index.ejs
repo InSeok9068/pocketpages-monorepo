@@ -278,18 +278,14 @@
         }
       })
 
-      let matchedClassCount = 0
       let totalGap = 0
 
       for (let index = 0; index < summaryGoalCards.length; index += 1) {
         const card = summaryGoalCards[index]
         totalGap += Math.abs(Number(card.current || 0) - Number(card.target || 0))
-        if (Number(card.target || 0) > 0) {
-          matchedClassCount += 1
-        }
       }
 
-      rebalanceGapPercent = matchedClassCount > 0 ? Math.round((totalGap / matchedClassCount) * 10) / 10 : 0
+      rebalanceGapPercent = Math.round(totalGap * 10) / 10
     } else {
       totalAmountKrw = 0
       summaryGoalCards = attachGoalCardAssets(
