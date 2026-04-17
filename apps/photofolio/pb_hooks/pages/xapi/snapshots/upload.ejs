@@ -96,7 +96,7 @@
   }
 
   function buildAssetMergeKey(fields) {
-    return photofolioAssetUtils.normalizeText(fields && fields.asset_name, 255).toLowerCase()
+    return photofolioAssetUtils.normalizeAssetIdentityText(fields && fields.asset_name, 255)
   }
 
   function buildAssetMergeKeyFromRecord(record) {

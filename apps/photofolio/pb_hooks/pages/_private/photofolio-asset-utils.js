@@ -154,6 +154,24 @@ function normalizeText(value, maxLength) {
 }
 
 /**
+ * 자산 식별 비교용 텍스트를 단순 영숫자/한글 형태로 정리합니다.
+ * @param {any} value 원본 값입니다.
+ * @param {number} maxLength 최대 길이입니다.
+ * @returns {string} 특수문자와 공백을 제거한 비교용 문자열입니다.
+ */
+function normalizeAssetIdentityText(value, maxLength) {
+  let normalized = normalizeText(value, maxLength)
+
+  if (normalized && typeof normalized.normalize === 'function') {
+    normalized = normalized.normalize('NFKC')
+  }
+
+  return normalized
+    .toLowerCase()
+    .replace(/[^0-9a-z가-힣]/g, '')
+}
+
+/**
  * 코드형 텍스트를 대문자 영숫자 중심으로 정리합니다.
  * @param {any} value 원본 값입니다.
  * @param {number} maxLength 최대 길이입니다.
@@ -290,6 +308,7 @@ module.exports = {
   extractJsonObjectText,
   parseNumber,
   normalizeText,
+  normalizeAssetIdentityText,
   normalizeUpperCode,
   normalizeIsoDate,
   normalizeAssetClassCode,

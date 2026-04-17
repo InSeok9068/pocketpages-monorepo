@@ -1,6 +1,7 @@
 const {
   extractJsonObjectText,
   normalizeAssetClassCode,
+  normalizeAssetIdentityText,
   normalizeCapturePageType,
   normalizeIsoDate,
   normalizeText,
@@ -257,7 +258,7 @@ function shouldDemoteToAssetsOverview(pageType, sections, items) {
 }
 
 function buildExtractItemMergeKey(item) {
-  return normalizeText(item && item.asset_name, 255).toLowerCase()
+  return normalizeAssetIdentityText(item && item.asset_name, 255)
 }
 
 function getExtractPageTypePriority(pageType) {
