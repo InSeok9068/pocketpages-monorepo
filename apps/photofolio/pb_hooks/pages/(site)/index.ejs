@@ -266,7 +266,7 @@
         goalAssetGroups[assetAccount.classCode].push(assetAccount)
         return assetAccount
       })
-      assetAccounts = latestAssetAccounts.slice(0, 8)
+      assetAccounts = latestAssetAccounts
       goalAssetGroups = sortGoalAssetGroups(goalAssetGroups)
       summaryGoalCards = attachGoalCardAssets(summaryGoalCards, goalAssetGroups)
 

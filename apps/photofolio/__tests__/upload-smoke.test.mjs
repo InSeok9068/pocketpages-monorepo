@@ -120,11 +120,12 @@ function inferMimeType(filePath) {
 /**
  * 긴 캡처를 실제 업로드 전처리와 비슷하게 분할합니다.
  * @param {string} filePath 원본 이미지 경로입니다.
+ * @param {number} sourceIndex 업로드 순서입니다.
  * @returns {string[]} 업로드할 분할 이미지 경로 목록입니다.
  */
-function splitTallCapture(filePath) {
+function splitTallCapture(filePath, sourceIndex) {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), 'photofolio-smoke-'));
-  const commandResult = spawnSync('python', [splitHelperPath, filePath, tempDir], {
+  const commandResult = spawnSync('python', [splitHelperPath, filePath, tempDir, String(sourceIndex)], {
     encoding: 'utf8',
   });
 
@@ -293,8 +294,8 @@ test(
       : 0;
 
     const uploadFormData = new FormData();
-    const splitOverviewPaths = splitTallCapture(overviewImagePath);
-    const splitDetailPaths = splitTallCapture(detailImagePath);
+    const splitOverviewPaths = splitTallCapture(overviewImagePath, 1);
+    const splitDetailPaths = splitTallCapture(detailImagePath, 2);
 
     tempPathsToCleanup.push(...splitOverviewPaths.map((filePath) => path.dirname(filePath)));
     tempPathsToCleanup.push(...splitDetailPaths.map((filePath) => path.dirname(filePath)));

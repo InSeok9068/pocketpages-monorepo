@@ -36,14 +36,20 @@ def build_slice_bounds(height: int, slice_count: int) -> list[tuple[int, int]]:
     return bounds
 
 
+def build_source_token(source_index_text: str) -> str:
+    source_index = int(source_index_text)
+    return f"ppsrc_{source_index:02d}"
+
+
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: split_tall_capture.py <input> <output_dir>", file=sys.stderr)
+    if len(sys.argv) not in (3, 4):
+        print("usage: split_tall_capture.py <input> <output_dir> [source_index]", file=sys.stderr)
         return 1
 
     input_path = Path(sys.argv[1])
     output_dir = Path(sys.argv[2])
     output_dir.mkdir(parents=True, exist_ok=True)
+    source_token = build_source_token(sys.argv[3]) if len(sys.argv) == 4 else "ppsrc_01"
 
     image = Image.open(input_path)
     width, height = image.size
@@ -61,7 +67,7 @@ def main() -> int:
         cropped = image.crop((0, top, width, bottom))
         target_height = max(1, round((cropped.size[1] * TARGET_SLICE_WIDTH) / width))
         resized = cropped.resize((TARGET_SLICE_WIDTH, target_height), Image.Resampling.LANCZOS)
-        output_path = output_dir / f"{base_name}__ppslice_{index:02d}of{slice_count:02d}.jpg"
+        output_path = output_dir / f"{base_name}__{source_token}__ppslice_{index:02d}of{slice_count:02d}.jpg"
         resized.save(output_path, quality=94)
         print(output_path)
 

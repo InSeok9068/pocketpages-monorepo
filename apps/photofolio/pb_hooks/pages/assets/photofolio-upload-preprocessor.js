@@ -13,6 +13,10 @@
     return String(value).padStart(2, '0')
   }
 
+  function buildSourceToken(sourceIndex) {
+    return 'ppsrc_' + padSliceNumber(Number(sourceIndex || 0) + 1)
+  }
+
   function loadImageFromFile(file) {
     return new Promise(function (resolve, reject) {
       const image = new Image()
@@ -86,7 +90,7 @@
     return bounds
   }
 
-  async function splitTallCaptureFile(file) {
+  async function splitTallCaptureFile(file, sourceIndex) {
     const image = await loadImageFromFile(file)
 
     if (!shouldSplitImage(image)) {
@@ -98,6 +102,7 @@
     const sliceCount = resolveSliceCount(sourceHeight)
     const sliceBounds = buildSliceBounds(sourceHeight, sliceCount)
     const baseName = stripFileExtension(file.name)
+    const sourceToken = buildSourceToken(sourceIndex)
     const splitFiles = []
 
     for (let index = 0; index < sliceBounds.length; index += 1) {
@@ -116,7 +121,15 @@
       context.drawImage(image, 0, sliceBound.top, sourceWidth, sliceBound.height, 0, 0, TARGET_SLICE_WIDTH, targetHeight)
 
       const blob = await canvasToJpegBlob(canvas)
-      const sliceFileName = baseName + '__ppslice_' + padSliceNumber(index + 1) + 'of' + padSliceNumber(sliceBounds.length) + '.jpg'
+      const sliceFileName =
+        baseName +
+        '__' +
+        sourceToken +
+        '__ppslice_' +
+        padSliceNumber(index + 1) +
+        'of' +
+        padSliceNumber(sliceBounds.length) +
+        '.jpg'
 
       splitFiles.push(
         new File([blob], sliceFileName, {
@@ -134,7 +147,7 @@
 
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index]
-      const splitFiles = await splitTallCaptureFile(file)
+      const splitFiles = await splitTallCaptureFile(file, index)
 
       for (let splitIndex = 0; splitIndex < splitFiles.length; splitIndex += 1) {
         expandedFiles.push(splitFiles[splitIndex])

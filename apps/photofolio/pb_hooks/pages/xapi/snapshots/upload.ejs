@@ -15,7 +15,7 @@
 
   function parseCaptureUploadPart(uploadedFile, sourceIndex) {
     const originalName = String((uploadedFile && (uploadedFile.originalName || uploadedFile.name)) || '').trim()
-    const splitMatch = originalName.match(/^(.*)__ppslice_(\d{2})of(\d{2})\.[^.]+$/i)
+    const splitMatch = originalName.match(/^(.*?)(?:__(ppsrc_\d{2,}))?__ppslice_(\d{2})of(\d{2})\.[^.]+$/i)
 
     if (!splitMatch) {
       return {
@@ -29,12 +29,13 @@
     }
 
     const baseName = photofolioAssetUtils.normalizeText(splitMatch[1], 255) || originalName
+    const sourceToken = photofolioAssetUtils.normalizeText(splitMatch[2], 40) || 'ppsrc_' + String(sourceIndex + 1).padStart(2, '0')
 
     return {
-      groupKey: baseName.toLowerCase(),
+      groupKey: baseName.toLowerCase() + ':' + sourceToken.toLowerCase(),
       originalName: baseName,
-      partIndex: Number(splitMatch[2] || 1),
-      partCount: Number(splitMatch[3] || 1),
+      partIndex: Number(splitMatch[3] || 1),
+      partCount: Number(splitMatch[4] || 1),
       isSplitPart: true,
       sourceIndex: sourceIndex,
     }

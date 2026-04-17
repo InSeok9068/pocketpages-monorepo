@@ -12,6 +12,8 @@ const {
 const GEMINI_MODEL_NAME = 'gemini-2.5-flash-lite'
 const PROMPT_PAGE_TYPE_ENUM = '[assets_overview,invest_overview,invest_holdings,unknown]'
 const PROMPT_ASSET_CLASS_ENUM = '[cash,stock_growth,stock_dividend,bond,gold,real_estate,other]'
+const ASSETS_OVERVIEW_SECTION_KEYWORDS = ['입출금', '저축', '증권', '연금', '외화']
+const OVERVIEW_SUMMARY_NAME_KEYWORDS = ['증권', '투자증권', '은행', '뱅크', '카드', '페이', '월렛', '조합', '예금', '적금', '연금', '입출금', '고유계정', '보유계정', '계좌']
 const PROMPT_RESPONSE_SCHEMA =
   '{"page_type":"","snapshot_title":"","snapshot_date":null,"total_amount_krw":null,"sections":[{"section_label":"","reported_amount_krw":null}],"items":[{"institution_name":"","account_label":"","asset_name":"","asset_class_code":"","source_section_label":"","market_code":"","currency_code":"","quantity":null,"unit_price":null,"amount_original":null,"exchange_rate":null,"amount_krw":null,"memo":""}]}'
 
@@ -178,7 +180,25 @@ function hasAssetsOverviewSection(sections) {
   for (let index = 0; index < sections.length; index += 1) {
     const sectionKey = normalizeSectionKey(sections[index].section_label)
 
-    if (sectionKey.indexOf('입출금') !== -1 || sectionKey.indexOf('저축') !== -1 || sectionKey.indexOf('증권') !== -1 || sectionKey.indexOf('연금') !== -1 || sectionKey.indexOf('외화') !== -1) {
+    for (let keywordIndex = 0; keywordIndex < ASSETS_OVERVIEW_SECTION_KEYWORDS.length; keywordIndex += 1) {
+      if (sectionKey.indexOf(normalizeSectionKey(ASSETS_OVERVIEW_SECTION_KEYWORDS[keywordIndex])) !== -1) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
+function containsOverviewSummaryKeyword(value) {
+  const normalizedValue = normalizeSectionKey(value)
+
+  if (!normalizedValue) {
+    return false
+  }
+
+  for (let index = 0; index < OVERVIEW_SUMMARY_NAME_KEYWORDS.length; index += 1) {
+    if (normalizedValue.indexOf(normalizeSectionKey(OVERVIEW_SUMMARY_NAME_KEYWORDS[index])) !== -1) {
       return true
     }
   }
@@ -186,62 +206,30 @@ function hasAssetsOverviewSection(sections) {
   return false
 }
 
-function isInstitutionLikeAssetName(assetName) {
-  const normalizedName = normalizeText(assetName, 255).replace(/\s+/g, '').toLowerCase()
+function isShortNonTickerText(value) {
+  const normalizedValue = normalizeText(value, 255).replace(/\s+/g, '')
 
-  if (!normalizedName) {
+  if (!normalizedValue || normalizedValue.length > 4) {
     return false
   }
 
-  if (
-    normalizedName.indexOf('kodex') !== -1 ||
-    normalizedName.indexOf('tiger') !== -1 ||
-    normalizedName.indexOf('ace') !== -1 ||
-    normalizedName.indexOf('arirang') !== -1 ||
-    normalizedName.indexOf('sol') !== -1 ||
-    normalizedName.indexOf('schd') !== -1 ||
-    normalizedName.indexOf('jepi') !== -1 ||
-    normalizedName.indexOf('jepq') !== -1 ||
-    normalizedName.indexOf('spy') !== -1 ||
-    normalizedName.indexOf('qqq') !== -1 ||
-    normalizedName.indexOf('s&p') !== -1 ||
-    normalizedName.indexOf('나스닥') !== -1 ||
-    normalizedName.indexOf('국채') !== -1 ||
-    normalizedName.indexOf('채권') !== -1 ||
-    normalizedName.indexOf('etf') !== -1 ||
-    normalizedName.indexOf('tdf') !== -1 ||
-    normalizedName.indexOf('삼성전자') !== -1 ||
-    normalizedName.indexOf('알파벳') !== -1 ||
-    normalizedName.indexOf('애플') !== -1 ||
-    normalizedName.indexOf('아마존') !== -1 ||
-    normalizedName.indexOf('테슬라') !== -1 ||
-    normalizedName.indexOf('마이크로소프트') !== -1 ||
-    normalizedName.indexOf('엔비디아') !== -1 ||
-    normalizedName.indexOf('현금성자산') !== -1
-  ) {
+  return !/[a-z0-9]/i.test(normalizedValue)
+}
+
+function isOverviewSummaryLikeItem(item) {
+  const assetName = normalizeText(item && item.asset_name, 255)
+  const accountLabel = normalizeText(item && item.account_label, 255)
+  const institutionName = normalizeText(item && item.institution_name, 255)
+
+  if (!assetName) {
     return false
   }
 
-  if (
-    normalizedName.indexOf('증권') !== -1 ||
-    normalizedName.indexOf('투자증권') !== -1 ||
-    normalizedName.indexOf('은행') !== -1 ||
-    normalizedName.indexOf('뱅크') !== -1 ||
-    normalizedName.indexOf('카드') !== -1 ||
-    normalizedName.indexOf('페이') !== -1 ||
-    normalizedName.indexOf('예금') !== -1 ||
-    normalizedName.indexOf('적금') !== -1 ||
-    normalizedName.indexOf('연금') !== -1 ||
-    normalizedName.indexOf('월렛') !== -1 ||
-    normalizedName.indexOf('조합') !== -1 ||
-    normalizedName.indexOf('입출금') !== -1 ||
-    normalizedName.indexOf('고유계정') !== -1 ||
-    normalizedName.indexOf('보유계정') !== -1
-  ) {
+  if (containsOverviewSummaryKeyword(assetName) || containsOverviewSummaryKeyword(accountLabel) || containsOverviewSummaryKeyword(institutionName)) {
     return true
   }
 
-  return normalizedName.length <= 4
+  return isShortNonTickerText(assetName)
 }
 
 function shouldDemoteToAssetsOverview(pageType, sections, items) {
@@ -260,7 +248,7 @@ function shouldDemoteToAssetsOverview(pageType, sections, items) {
   let institutionLikeCount = 0
 
   for (let index = 0; index < items.length; index += 1) {
-    if (isInstitutionLikeAssetName(items[index].asset_name)) {
+    if (isOverviewSummaryLikeItem(items[index])) {
       institutionLikeCount += 1
     }
   }
