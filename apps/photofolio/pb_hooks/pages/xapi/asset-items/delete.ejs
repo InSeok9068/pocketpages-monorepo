@@ -1,0 +1,111 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/asset-items/delete:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/asset-items/delete:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인 후 자산을 삭제해 주세요.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인 후 자산을 삭제해 주세요.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const itemId = String(form.itemId || '').trim()
+  let errorMessage = ''
+
+  dbg('xapi/asset-items/delete:start', {
+    userId: userId,
+    itemId: itemId,
+  })
+
+  try {
+    if (!itemId) {
+      throw new Error('삭제할 자산 항목이 필요합니다.')
+    }
+
+    const itemRecord = $app.findFirstRecordByFilter('asset_items', 'id = {:itemId} && snapshot_id.user_id = {:userId}', {
+      itemId: itemId,
+      userId: userId,
+    })
+    const snapshotId = String(itemRecord.get('snapshot_id') || '')
+    const snapshotRecord = $app.findFirstRecordByFilter('asset_snapshots', 'id = {:snapshotId} && user_id = {:userId}', {
+      snapshotId: snapshotId,
+      userId: userId,
+    })
+    const assetName = String(itemRecord.get('asset_name') || '').trim() || '자산 항목'
+
+    dbg('xapi/asset-items/delete:db-read', {
+      userId: userId,
+      itemId: itemId,
+      snapshotId: snapshotId,
+      assetName: assetName,
+      amountKrw: Number(itemRecord.get('amount_krw') || 0),
+    })
+
+    $app.delete(itemRecord)
+
+    const snapshotItemRecords = $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', '-amount_krw,-created', 500, 0, {
+      snapshotId: snapshotId,
+    }) || []
+    const totalAmountKrw = snapshotItemRecords.reduce(function (sum, record) {
+      return sum + Number(record.get('amount_krw') || 0)
+    }, 0)
+
+    snapshotRecord.set('total_amount_krw', totalAmountKrw)
+    $app.save(snapshotRecord)
+
+    info('xapi/asset-items/delete:deleted', {
+      userId: userId,
+      itemId: itemId,
+      snapshotId: snapshotId,
+      assetName: assetName,
+      totalAmountKrw: totalAmountKrw,
+    })
+
+    dbg('xapi/asset-items/delete:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: assetName + ' 항목을 삭제했습니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: assetName + ' 항목을 삭제했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/asset-items/delete:failed', {
+      userId: userId,
+      itemId: itemId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/asset-items/delete:redirect', {
+    status: 303,
+    redirectTo: '/',
+    error: errorMessage || '자산 항목 삭제에 실패했습니다.',
+  })
+  redirect('/', {
+    status: 303,
+    message: errorMessage || '자산 항목 삭제에 실패했습니다.',
+  })
+  return
+</script>

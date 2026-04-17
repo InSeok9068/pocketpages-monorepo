@@ -1,0 +1,494 @@
+<script server>
+  const photofolioFredService = resolve('photofolio-fred-service')
+
+  meta('title', '추이 | Photofolio')
+  meta('description', 'FRED 시계열로 원/달러 환율과 미국 국채 금리 변동 추이를 확인하는 페이지.')
+
+  const flashMessage = params.__flash ? String(params.__flash) : ''
+  const isSignedIn = !!request.auth
+  const requestedRange = String(request.url.query.range || '1y').trim()
+  const selectedRangeMeta = photofolioFredService.normalizeTrendRange(requestedRange)
+  const rangeOptions = [
+    { code: '3m', label: '3개월' },
+    { code: '6m', label: '6개월' },
+    { code: '1y', label: '1년' },
+    { code: '3y', label: '3년' },
+  ]
+  let trendDashboard = null
+  let trendErrorMessage = ''
+  let usdKrwSeries = null
+  let treasury2ySeries = null
+  let treasury10ySeries = null
+  let exchangeChartPayload = null
+  let treasuryChartPayload = null
+  let latestDateLabel = '데이터 없음'
+
+  function formatNumber(value, fractionDigits) {
+    const normalizedValue = Number(value)
+    const normalizedFractionDigits = typeof fractionDigits === 'number' ? Math.max(0, Math.min(6, Math.floor(fractionDigits))) : 0
+
+    if (!isFinite(normalizedValue)) {
+      return '-'
+    }
+
+    const fixedText = normalizedValue.toFixed(normalizedFractionDigits)
+    const parts = fixedText.split('.')
+    const integerText = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+
+    if (parts.length === 1 || !parts[1]) {
+      return integerText
+    }
+
+    return integerText + '.' + parts[1]
+  }
+
+  function formatSeriesValue(series) {
+    if (!series || series.latest_value === null) {
+      return '-'
+    }
+
+    if (series.unit === 'KRW') {
+      return '₩' + formatNumber(series.latest_value, 2)
+    }
+
+    return formatNumber(series.latest_value, 2) + '%'
+  }
+
+  function formatSeriesChange(series) {
+    if (!series || series.latest_value === null || series.start_value === null) {
+      return '-'
+    }
+
+    const deltaValue = Number(series.latest_value || 0) - Number(series.start_value || 0)
+    const sign = deltaValue > 0 ? '+' : ''
+
+    if (series.unit === 'KRW') {
+      return sign + '₩' + formatNumber(deltaValue, 2)
+    }
+
+    return sign + formatNumber(deltaValue, 2) + '%'
+  }
+
+  function formatShortDate(isoDate) {
+    const normalizedDate = String(isoDate || '').trim()
+    const match = normalizedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+
+    if (!match) {
+      return '데이터 없음'
+    }
+
+    return match[2] + '.' + match[3]
+  }
+
+  function serializeJsonForDom(value) {
+    return JSON.stringify(value || {})
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026')
+      .replace(/'/g, '\\u0027')
+  }
+
+  function buildExchangeChartPayload(series) {
+    return {
+      labels: series.points.map(function (point) {
+        return point.date
+      }),
+      datasets: [
+        {
+          label: series.label,
+          values: series.points.map(function (point) {
+            return point.value
+          }),
+        },
+      ],
+    }
+  }
+
+  function buildTreasuryChartPayload(seriesList) {
+    const dateMap = {}
+    const labels = []
+
+    for (let index = 0; index < seriesList.length; index += 1) {
+      const series = seriesList[index]
+
+      for (let pointIndex = 0; pointIndex < series.points.length; pointIndex += 1) {
+        const point = series.points[pointIndex]
+
+        if (!dateMap[point.date]) {
+          dateMap[point.date] = {}
+          labels.push(point.date)
+        }
+
+        dateMap[point.date][series.key] = point.value
+      }
+    }
+
+    labels.sort()
+
+    return {
+      labels: labels,
+      datasets: seriesList.map(function (series) {
+        return {
+          key: series.key,
+          label: series.label,
+          values: labels.map(function (label) {
+            return dateMap[label][series.key] === undefined ? null : dateMap[label][series.key]
+          }),
+        }
+      }),
+    }
+  }
+
+  try {
+    trendDashboard = photofolioFredService.buildTrendDashboard({
+      envGetter: env,
+      rangeCode: selectedRangeMeta.code,
+      logger: {
+        dbg: dbg,
+        info: info,
+        warn: warn,
+        error: error,
+      },
+    })
+    usdKrwSeries = trendDashboard.series_list[0] || null
+    treasury2ySeries = trendDashboard.series_list[1] || null
+    treasury10ySeries = trendDashboard.series_list[2] || null
+    latestDateLabel = formatShortDate(trendDashboard.latest_date)
+
+    if (usdKrwSeries && usdKrwSeries.points.length) {
+      exchangeChartPayload = buildExchangeChartPayload(usdKrwSeries)
+    }
+
+    if (treasury2ySeries && treasury10ySeries && (treasury2ySeries.points.length || treasury10ySeries.points.length)) {
+      treasuryChartPayload = buildTreasuryChartPayload([treasury2ySeries, treasury10ySeries])
+    }
+  } catch (exception) {
+    trendErrorMessage = String(exception.message || exception)
+
+    warn('page/trends:fred-unavailable', {
+      error: trendErrorMessage,
+      rangeCode: selectedRangeMeta.code,
+    })
+  }
+</script>
+
+<section class="space-y-5">
+  <header class="flex items-start justify-between gap-4">
+    <div class="space-y-1">
+      <p class="m-0 pt-2 text-[13px] font-semibold tracking-[-0.01em] text-[var(--pf-primary)]">Photofolio</p>
+      <h1 class="m-0 text-[1.65rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">추이</h1>
+      <% if (isSignedIn) { %>
+      <p class="m-0 text-[13px] leading-5 text-[var(--pf-text-faint)]"><%= String(request.auth.get('email') || '').trim() %></p>
+      <% } else { %>
+      <p class="m-0 text-[13px] leading-5 text-[var(--pf-text-faint)]">FRED 기준 환율과 금리 흐름을 본다.</p>
+      <% } %>
+    </div>
+
+    <% if (isSignedIn) { %>
+    <form
+      method="post"
+      action="/xapi/auth/sign-out">
+      <button
+        type="submit"
+        class="min-w-18 inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full border-none bg-white px-5 text-sm font-semibold text-[var(--pf-text)] shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+        로그아웃
+      </button>
+    </form>
+    <% } else { %>
+    <a
+      href="/auth"
+      class="min-w-18 inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full bg-white px-5 text-sm font-semibold text-[var(--pf-text)] no-underline shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+      로그인
+    </a>
+    <% } %>
+  </header>
+
+  <% if (flashMessage) { %>
+  <section class="rounded-[1.5rem] border border-[var(--pf-line)] bg-[var(--pf-primary-soft)] px-4 py-4 text-sm font-medium text-[var(--pf-primary)] shadow-[0_10px_30px_rgba(49,130,246,0.10)]">
+    <%= flashMessage %>
+  </section>
+  <% } %>
+
+  <section class="rounded-[2rem] bg-[var(--pf-primary)] px-5 py-5 text-white shadow-[0_24px_50px_rgba(49,130,246,0.30)]">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-white/78 m-0 text-[13px] font-medium">기준 범위</p>
+        <h2 class="m-0 mt-2 text-[2.1rem] font-bold tracking-[-0.05em]"><%= selectedRangeMeta.label %></h2>
+      </div>
+      <div class="bg-white/16 rounded-[1.35rem] px-4 py-3 text-right backdrop-blur-sm">
+        <p class="text-white/72 m-0 text-[12px]">최근 기준일</p>
+        <p class="m-0 mt-1 text-lg font-semibold"><%= latestDateLabel %></p>
+      </div>
+    </div>
+    <p class="text-white/78 m-0 mt-3 text-sm leading-6">원/달러 환율과 미국 2년물, 10년물 국채 금리 시계열을 같은 화면에서 비교한다.</p>
+  </section>
+
+  <section class="flex flex-wrap gap-2">
+    <% for (let index = 0; index < rangeOptions.length; index += 1) { const rangeOption = rangeOptions[index] %>
+    <a
+      href="/trends?range=<%= rangeOption.code %>"
+      class="<%= selectedRangeMeta.code === rangeOption.code ? 'bg-[var(--pf-primary)] text-white shadow-[0_16px_26px_rgba(49,130,246,0.22)]' : 'bg-white text-[var(--pf-text-faint)]' %> inline-flex min-h-10 items-center rounded-full px-4 text-[13px] font-semibold no-underline">
+      <%= rangeOption.label %>
+    </a>
+    <% } %>
+  </section>
+
+  <% if (trendErrorMessage) { %>
+  <section class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-5 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <p class="m-0 text-sm font-semibold text-[var(--pf-text)]">추이 데이터를 아직 불러오지 못했다.</p>
+    <p class="m-0 mt-2 text-[13px] leading-6 text-[var(--pf-text-soft)]"><%= trendErrorMessage %></p>
+    <p class="m-0 mt-2 text-[12px] leading-5 text-[var(--pf-text-faint)]">`.env`에 `FRED_APIKEY`를 넣으면 서버에서 FRED API를 호출한다.</p>
+  </section>
+  <% } %>
+
+  <section class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+      <p class="m-0 text-[12px] font-semibold text-[var(--pf-primary)]">원/달러 환율</p>
+      <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(usdKrwSeries) %></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">범위 변화 <span class="<%= usdKrwSeries && usdKrwSeries.latest_value !== null && usdKrwSeries.start_value !== null && usdKrwSeries.latest_value - usdKrwSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(usdKrwSeries) %></span></p>
+    </article>
+
+    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+      <p class="m-0 text-[12px] font-semibold text-[#0f9f6e]">미국 2년물</p>
+      <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(treasury2ySeries) %></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">범위 변화 <span class="<%= treasury2ySeries && treasury2ySeries.latest_value !== null && treasury2ySeries.start_value !== null && treasury2ySeries.latest_value - treasury2ySeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(treasury2ySeries) %></span></p>
+    </article>
+
+    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+      <p class="m-0 text-[12px] font-semibold text-[#4f46e5]">미국 10년물</p>
+      <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(treasury10ySeries) %></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">범위 변화 <span class="<%= treasury10ySeries && treasury10ySeries.latest_value !== null && treasury10ySeries.start_value !== null && treasury10ySeries.latest_value - treasury10ySeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(treasury10ySeries) %></span></p>
+    </article>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">원/달러 환율</h2>
+      <span class="text-sm font-medium text-[var(--pf-text-faint)]">FRED · DEXKOUS</span>
+    </div>
+
+    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+      <div class="h-[18rem]">
+        <% if (exchangeChartPayload) { %>
+        <canvas id="exchange-trend-chart"></canvas>
+        <% } else { %>
+        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">
+          표시할 환율 데이터가 아직 없다.
+        </div>
+        <% } %>
+      </div>
+    </article>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">미국 국채 금리</h2>
+      <span class="text-sm font-medium text-[var(--pf-text-faint)]">FRED · DGS2 / DGS10</span>
+    </div>
+
+    <article class="rounded-[1.7rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+      <div class="h-[18rem]">
+        <% if (treasuryChartPayload) { %>
+        <canvas id="treasury-trend-chart"></canvas>
+        <% } else { %>
+        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">
+          표시할 금리 데이터가 아직 없다.
+        </div>
+        <% } %>
+      </div>
+    </article>
+  </section>
+
+  <section class="rounded-[1.7rem] bg-[var(--pf-primary-soft)] px-4 py-4">
+    <p class="m-0 text-sm font-semibold text-[var(--pf-primary)]">데이터 기준</p>
+    <p class="m-0 mt-2 text-[13px] leading-6 text-[var(--pf-text-soft)]">환율은 FRED `DEXKOUS`, 국채 금리는 `DGS2`, `DGS10` 시리즈를 사용한다. 값은 FRED 일별 관측치 기준이며, 장이 쉬는 날은 빠질 수 있다.</p>
+  </section>
+
+  <%- include('photofolio-bottom-nav.ejs', { activeTab: 'trends' }) %>
+
+  <% if (exchangeChartPayload || treasuryChartPayload) { %>
+  <script
+    defer
+    src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <% } %>
+
+  <% if (exchangeChartPayload) { %>
+  <div
+    id="exchange-trend-data"
+    data-payload="<%= serializeJsonForDom(exchangeChartPayload) %>"
+    hidden></div>
+  <% } %>
+
+  <% if (treasuryChartPayload) { %>
+  <div
+    id="treasury-trend-data"
+    data-payload="<%= serializeJsonForDom(treasuryChartPayload) %>"
+    hidden></div>
+  <% } %>
+
+  <% if (exchangeChartPayload || treasuryChartPayload) { %>
+  <script>
+    ;(() => {
+      function readJsonScript(scriptId) {
+        const element = document.getElementById(scriptId)
+        if (!element) return null
+
+        try {
+          return JSON.parse(element.dataset.payload || 'null')
+        } catch {
+          return null
+        }
+      }
+
+      function formatShortDateLabel(isoDate) {
+        const source = String(isoDate || '')
+        const parts = source.split('-')
+        if (parts.length !== 3) return source
+        return parts[1] + '.' + parts[2]
+      }
+
+      function createCommonOptions(valueSuffix) {
+        return {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false,
+          },
+          plugins: {
+            legend: {
+              labels: {
+                boxWidth: 10,
+                boxHeight: 10,
+                color: '#4e5968',
+                usePointStyle: true,
+              },
+            },
+            tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.92)',
+              displayColors: true,
+              padding: 12,
+              callbacks: {
+                title: function (items) {
+                  return items.length ? String(items[0].label || '') : ''
+                },
+                label: function (context) {
+                  const rawValue = typeof context.raw === 'number' ? context.raw : Number(context.raw || 0)
+                  const formattedValue = rawValue.toLocaleString('ko-KR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                  return context.dataset.label + ': ' + formattedValue + valueSuffix
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: {
+                display: false,
+              },
+              ticks: {
+                autoSkip: true,
+                maxTicksLimit: 6,
+                color: '#8b95a1',
+                callback: function (_value, index) {
+                  return formatShortDateLabel(this.getLabelForValue(index))
+                },
+              },
+              border: {
+                display: false,
+              },
+            },
+            y: {
+              grid: {
+                color: 'rgba(15, 23, 42, 0.06)',
+              },
+              ticks: {
+                color: '#8b95a1',
+                callback: function (value) {
+                  const normalizedValue = Number(value || 0)
+                  return normalizedValue.toLocaleString('ko-KR', {
+                    minimumFractionDigits: valueSuffix === '%' ? 2 : 0,
+                    maximumFractionDigits: valueSuffix === '%' ? 2 : 0,
+                  }) + valueSuffix
+                },
+              },
+              border: {
+                display: false,
+              },
+            },
+          },
+        }
+      }
+
+      function renderExchangeChart() {
+        const chartPayload = readJsonScript('exchange-trend-data')
+        const canvas = document.getElementById('exchange-trend-chart')
+
+        if (!chartPayload || !canvas || !window.Chart) {
+          return
+        }
+
+        new window.Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: chartPayload.labels || [],
+            datasets: [
+              {
+                label: chartPayload.datasets[0].label,
+                data: chartPayload.datasets[0].values || [],
+                borderColor: '#3182f6',
+                backgroundColor: 'rgba(49,130,246,0.12)',
+                borderWidth: 2.5,
+                pointRadius: 0,
+                pointHoverRadius: 3,
+                fill: true,
+                tension: 0.25,
+              },
+            ],
+          },
+          options: createCommonOptions('원'),
+        })
+      }
+
+      function renderTreasuryChart() {
+        const chartPayload = readJsonScript('treasury-trend-data')
+        const canvas = document.getElementById('treasury-trend-chart')
+
+        if (!chartPayload || !canvas || !window.Chart) {
+          return
+        }
+
+        new window.Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: chartPayload.labels || [],
+            datasets: (chartPayload.datasets || []).map((dataset) => {
+              const isTenYear = dataset.key === 'treasury10y'
+
+              return {
+                label: dataset.label,
+                data: dataset.values || [],
+                borderColor: isTenYear ? '#4f46e5' : '#0f9f6e',
+                backgroundColor: isTenYear ? 'rgba(79,70,229,0.08)' : 'rgba(15,159,110,0.08)',
+                borderWidth: 2.4,
+                pointRadius: 0,
+                pointHoverRadius: 3,
+                fill: false,
+                tension: 0.24,
+              }
+            }),
+          },
+          options: createCommonOptions('%'),
+        })
+      }
+
+      window.addEventListener('load', function () {
+        renderExchangeChart()
+        renderTreasuryChart()
+      })
+    })()
+  </script>
+  <% } %>
+</section>

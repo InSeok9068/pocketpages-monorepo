@@ -1107,6 +1107,22 @@
         "type": "number"
       },
       {
+        "hidden": false,
+        "id": "select2201001006",
+        "maxSelect": 1,
+        "name": "page_type",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "select",
+        "values": [
+          "assets_overview",
+          "invest_overview",
+          "invest_holdings",
+          "unknown"
+        ]
+      },
+      {
         "autogeneratePattern": "",
         "hidden": false,
         "id": "text2201001003",
@@ -1157,6 +1173,159 @@
     "system": false
   },
   {
+    "id": "pbc_2201001005",
+    "listRule": "@request.auth.id != \"\" && snapshot_id.user_id = @request.auth.id",
+    "viewRule": "@request.auth.id != \"\" && snapshot_id.user_id = @request.auth.id",
+    "createRule": "@request.auth.id != \"\" && snapshot_id.user_id = @request.auth.id",
+    "updateRule": "@request.auth.id != \"\" && snapshot_id.user_id = @request.auth.id",
+    "deleteRule": "@request.auth.id != \"\" && snapshot_id.user_id = @request.auth.id",
+    "name": "snapshot_sections",
+    "type": "base",
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "hidden": false,
+        "id": "text3208210256",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "cascadeDelete": true,
+        "collectionId": "pbc_2201001002",
+        "hidden": false,
+        "id": "relation2201001005",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "snapshot_id",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "cascadeDelete": true,
+        "collectionId": "pbc_2201001003",
+        "hidden": false,
+        "id": "relation2201001006",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "capture_image_id",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "hidden": false,
+        "id": "select2201001007",
+        "maxSelect": 1,
+        "name": "page_type",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "select",
+        "values": [
+          "assets_overview",
+          "invest_overview",
+          "invest_holdings",
+          "unknown"
+        ]
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text2201001010",
+        "max": 255,
+        "min": 1,
+        "name": "section_label",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "number2201001009",
+        "max": null,
+        "min": 0,
+        "name": "reported_amount_krw",
+        "onlyInt": false,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "hidden": false,
+        "id": "number2201001010",
+        "max": null,
+        "min": 0,
+        "name": "itemized_amount_krw",
+        "onlyInt": false,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "hidden": false,
+        "id": "number2201001011",
+        "max": null,
+        "min": null,
+        "name": "gap_amount_krw",
+        "onlyInt": false,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "hidden": false,
+        "id": "json2201001004",
+        "maxSize": 500000,
+        "name": "source_json",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
+        "id": "autodate2990389176",
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      },
+      {
+        "hidden": false,
+        "id": "autodate3332085495",
+        "name": "updated",
+        "onCreate": true,
+        "onUpdate": true,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      }
+    ],
+    "indexes": [
+      "CREATE INDEX idx_snapshot_sections_snapshot_label ON snapshot_sections (snapshot_id, section_label)",
+      "CREATE INDEX idx_snapshot_sections_capture_image_id ON snapshot_sections (capture_image_id)"
+    ],
+    "system": false
+  },
+  {
     "id": "pbc_2201001004",
     "listRule": "@request.auth.id != \"\" && snapshot_id.user_id = @request.auth.id",
     "viewRule": "@request.auth.id != \"\" && snapshot_id.user_id = @request.auth.id",
@@ -1190,6 +1359,19 @@
         "name": "snapshot_id",
         "presentable": false,
         "required": true,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "cascadeDelete": false,
+        "collectionId": "pbc_2201001003",
+        "hidden": false,
+        "id": "relation2201001007",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "source_capture_image_id",
+        "presentable": false,
+        "required": false,
         "system": false,
         "type": "relation"
       },
@@ -1398,7 +1580,8 @@
     ],
     "indexes": [
       "CREATE INDEX idx_asset_items_snapshot_asset_class ON asset_items (snapshot_id, asset_class_code)",
-      "CREATE INDEX idx_asset_items_snapshot_institution ON asset_items (snapshot_id, institution_name)"
+      "CREATE INDEX idx_asset_items_snapshot_institution ON asset_items (snapshot_id, institution_name)",
+      "CREATE INDEX idx_asset_items_source_capture_image_id ON asset_items (source_capture_image_id)"
     ],
     "system": false
   }

@@ -1,4 +1,5 @@
 const ASSET_CLASS_CODES = ['cash', 'stock_growth', 'stock_dividend', 'bond', 'gold', 'real_estate', 'other']
+const CAPTURE_PAGE_TYPES = ['assets_overview', 'invest_overview', 'invest_holdings', 'unknown']
 
 /**
  * 이미지 바이트를 Base64 문자열로 바꿉니다.
@@ -186,8 +187,40 @@ function normalizeAssetClassCode(value) {
   return 'other'
 }
 
+/**
+ * 캡처 화면 타입을 허용 enum으로 정리합니다.
+ * @param {any} value 원본 화면 타입 값입니다.
+ * @returns {types.PhotofolioCapturePageType} 정규화된 화면 타입입니다.
+ */
+function normalizeCapturePageType(value) {
+  const normalized = normalizeText(value, 80).toLowerCase().replace(/[()]/g, '').replace(/\s+/g, '')
+
+  if (!normalized) {
+    return 'unknown'
+  }
+
+  if (['assets_overview', 'assetsoverview', 'assetoverview', 'overview_assets', 'overviewassets', '내자산', '자산요약', '전체자산', '자산개요'].includes(normalized)) {
+    return 'assets_overview'
+  }
+
+  if (['invest_overview', 'investoverview', 'investmentoverview', '내투자', '투자요약', '투자개요', '투자'].includes(normalized)) {
+    return 'invest_overview'
+  }
+
+  if (['invest_holdings', 'investholdings', 'holdingdetail', 'holdingdetails', 'holdings', '보유종목', '종목상세', '투자상세', '보유자산상세'].includes(normalized)) {
+    return 'invest_holdings'
+  }
+
+  if (CAPTURE_PAGE_TYPES.includes(normalized)) {
+    return normalized
+  }
+
+  return 'unknown'
+}
+
 module.exports = {
   ASSET_CLASS_CODES,
+  CAPTURE_PAGE_TYPES,
   encodeBase64,
   parseJsonSafely,
   extractJsonObjectText,
@@ -196,4 +229,5 @@ module.exports = {
   normalizeUpperCode,
   normalizeIsoDate,
   normalizeAssetClassCode,
+  normalizeCapturePageType,
 }

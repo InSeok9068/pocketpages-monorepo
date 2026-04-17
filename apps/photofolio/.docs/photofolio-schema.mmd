@@ -37,8 +37,23 @@ erDiagram
         string snapshot_id FK "연결된 스냅샷 ID"
         string image_file "업로드 이미지 파일"
         number image_order "이미지 순서"
+        select page_type "화면 타입(assets_overview=내 자산 요약|invest_overview=내 투자 요약|invest_holdings=보유 종목 상세|unknown=미분류)"
         text ocr_text "추출 텍스트"
         json ocr_result_json "이미지별 OCR 결과 JSON"
+        datetime created "생성 시각"
+        datetime updated "수정 시각"
+    }
+
+    SNAPSHOT_SECTIONS {
+        string id PK "스냅샷 섹션 레코드 ID"
+        string snapshot_id FK "소속 스냅샷 ID"
+        string capture_image_id FK "원본 캡처 이미지 ID"
+        select page_type "화면 타입(assets_overview=내 자산 요약|invest_overview=내 투자 요약|invest_holdings=보유 종목 상세|unknown=미분류)"
+        string section_label "원본 섹션명(현금|저축|해외 주식 등)"
+        number reported_amount_krw "화면에 보인 섹션 합계(KRW)"
+        number itemized_amount_krw "같은 섹션의 자산 항목 합계(KRW)"
+        number gap_amount_krw "합계와 항목 차이(KRW)"
+        json source_json "섹션 원본 JSON"
         datetime created "생성 시각"
         datetime updated "수정 시각"
     }
@@ -46,6 +61,7 @@ erDiagram
     ASSET_ITEMS {
         string id PK "개별 자산 항목 레코드 ID"
         string snapshot_id FK "소속 스냅샷 ID"
+        string source_capture_image_id FK "원본 캡처 이미지 ID"
         select asset_class_code "자산 분류(cash=현금|stock_growth=주식 성장형|stock_dividend=주식 배당형|bond=채권|gold=금|real_estate=부동산|other=기타)"
         string institution_name "금융사/계좌 기관명"
         string account_label "계좌/상품 표시명"
@@ -68,12 +84,15 @@ erDiagram
     USERS ||--o{ ASSET_SNAPSHOTS : "records"
 
     ASSET_SNAPSHOTS ||--o{ SNAPSHOT_CAPTURE_IMAGES : "imports"
+    ASSET_SNAPSHOTS ||--o{ SNAPSHOT_SECTIONS : "summaries"
     ASSET_SNAPSHOTS ||--o{ ASSET_ITEMS : "contains"
+    SNAPSHOT_CAPTURE_IMAGES ||--o{ SNAPSHOT_SECTIONS : "extracts"
+    SNAPSHOT_CAPTURE_IMAGES ||--o{ ASSET_ITEMS : "sources"
 
 %% Draft Notes
 %% 1. 초기 단계는 "사용자별 단일 목표 비율"과 "특정 시점의 자산 스냅샷"만 저장한다.
 %% 2. 환율/국채 금리 그래프는 외부 API 조회로 시작하고, 캐시는 필요해질 때 별도 컬렉션으로 분리한다.
-%% 3. OCR 자동 보정 이력이나 안드로이드 자동화 로그도 현재는 raw_payload_json/source_json으로만 흡수한다.
+%% 3. 토스 캡처는 화면이 여러 장으로 나뉘므로, 이미지 원본 구조는 snapshot_capture_images/page_type/snapshot_sections에 먼저 보존한다.
 %% 4. 자산 분류는 select 코드값으로 고정 관리하고, 초기 권장값은 cash/stock_growth/stock_dividend/bond/gold/real_estate/other다.
 %%
 %% Index Notes
@@ -84,5 +103,8 @@ erDiagram
 %% 검색/조회용
 %% USER_TARGET_ALLOCATIONS: INDEX(user_id) - 사용자 목표 비율 조회
 %% ASSET_SNAPSHOTS: INDEX(user_id, snapshot_date desc) - 사용자별 최근 스냅샷 조회
+%% SNAPSHOT_SECTIONS: INDEX(snapshot_id, section_label) - 스냅샷 섹션 합계 조회
+%% SNAPSHOT_SECTIONS: INDEX(capture_image_id) - 캡처 원본별 섹션 추적
 %% ASSET_ITEMS: INDEX(snapshot_id, asset_class_code) - 스냅샷 상세/자산 분류 합산 조회
 %% ASSET_ITEMS: INDEX(snapshot_id, institution_name) - 자산 목록 기관별 조회
+%% ASSET_ITEMS: INDEX(source_capture_image_id) - 자산 항목 원본 캡처 추적
