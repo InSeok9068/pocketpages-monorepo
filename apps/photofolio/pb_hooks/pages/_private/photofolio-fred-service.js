@@ -8,6 +8,12 @@ const FRED_SERIES_META = {
     label: '원/달러 환율',
     unit: 'KRW',
   },
+  fedFunds: {
+    key: 'fedFunds',
+    seriesId: 'FEDFUNDS',
+    label: '미국 기준금리',
+    unit: '%',
+  },
   treasury2y: {
     key: 'treasury2y',
     seriesId: 'DGS2',
@@ -19,6 +25,19 @@ const FRED_SERIES_META = {
     seriesId: 'DGS10',
     label: '미국 10년물',
     unit: '%',
+  },
+  unemployment: {
+    key: 'unemployment',
+    seriesId: 'UNRATE',
+    label: '실업률',
+    unit: '%',
+  },
+  cpiInflation: {
+    key: 'cpiInflation',
+    seriesId: 'CPIAUCSL',
+    label: 'CPI 상승률',
+    unit: '%',
+    units: 'pc1',
   },
 }
 const TREND_RANGE_META = {
@@ -106,6 +125,10 @@ function buildObservationsUrl(input) {
     ['observation_start', input.observationStart],
   ]
 
+  if (input.units) {
+    query.push(['units', input.units])
+  }
+
   return (
     FRED_OBSERVATIONS_URL +
     '?' +
@@ -160,6 +183,7 @@ function fetchTrendSeries(input) {
     apiKey: apiKey,
     seriesId: input.seriesMeta.seriesId,
     observationStart: input.observationStart,
+    units: input.seriesMeta.units,
   })
 
   logger.info('photofolio/fred:series:start', {
@@ -225,6 +249,12 @@ function buildTrendDashboard(input) {
     }),
     fetchTrendSeries({
       envGetter: input.envGetter,
+      seriesMeta: FRED_SERIES_META.fedFunds,
+      observationStart: observationStart,
+      logger: logger,
+    }),
+    fetchTrendSeries({
+      envGetter: input.envGetter,
       seriesMeta: FRED_SERIES_META.treasury2y,
       observationStart: observationStart,
       logger: logger,
@@ -235,11 +265,28 @@ function buildTrendDashboard(input) {
       observationStart: observationStart,
       logger: logger,
     }),
+    fetchTrendSeries({
+      envGetter: input.envGetter,
+      seriesMeta: FRED_SERIES_META.unemployment,
+      observationStart: observationStart,
+      logger: logger,
+    }),
+    fetchTrendSeries({
+      envGetter: input.envGetter,
+      seriesMeta: FRED_SERIES_META.cpiInflation,
+      observationStart: observationStart,
+      logger: logger,
+    }),
   ]
   let latestDate = ''
+  const seriesByKey = {}
 
   for (let index = 0; index < seriesList.length; index += 1) {
-    const latestSeriesDate = String(seriesList[index].latest_date || '')
+    const series = seriesList[index]
+    const latestSeriesDate = String(series.latest_date || '')
+
+    seriesByKey[series.key] = series
+
     if (latestSeriesDate && latestSeriesDate > latestDate) {
       latestDate = latestSeriesDate
     }
@@ -249,6 +296,7 @@ function buildTrendDashboard(input) {
     range_meta: rangeMeta,
     observation_start: observationStart,
     series_list: seriesList,
+    series_by_key: seriesByKey,
     latest_date: latestDate,
   }
 }

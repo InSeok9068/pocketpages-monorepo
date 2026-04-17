@@ -27,6 +27,8 @@ test('GET /trends renders the trend page without template errors', async () => {
   assert.equal(response.status, 200);
   assert.equal($('h1').first().text().trim(), '추이');
   assert.equal(body.includes('원/달러 환율'), true);
-  assert.equal(body.includes('미국 국채 금리'), true);
+  assert.equal(body.includes('미국 기준금리 · 국채 금리'), true);
+  assert.equal(body.includes('실업률'), true);
+  assert.equal(body.includes('CPI 상승률'), true);
   assert.equal(body.includes('PocketPages Error'), false);
 });
