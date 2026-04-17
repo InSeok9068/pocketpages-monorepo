@@ -78,13 +78,7 @@ function cloneJsonValue(value) {
  * @returns {string} FRED API 키입니다.
  */
 function readFredApiKey(envGetter) {
-  return String(
-    envGetter('FRED_APIKEY') ||
-      envGetter('FRED_API_KEY') ||
-      envGetter('FRED_KEY') ||
-      envGetter('FRED_API_TOKEN') ||
-      ''
-  ).trim()
+  return String(envGetter('FRED_APIKEY') || envGetter('FRED_API_KEY') || envGetter('FRED_KEY') || envGetter('FRED_API_TOKEN') || '').trim()
 }
 
 /**

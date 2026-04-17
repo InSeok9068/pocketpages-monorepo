@@ -19,18 +19,22 @@
 
   const userId = String(request.auth.get('id') || '')
   const email = String(request.auth.get('email') || '').trim()
-  const snapshotRecords = $app.findRecordsByFilter('asset_snapshots', 'user_id = {:userId}', '-updated,-created', 500, 0, {
-    userId: userId,
-  }) || []
-  const captureRecords = $app.findRecordsByFilter('snapshot_capture_images', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
-    userId: userId,
-  }) || []
-  const sectionRecords = $app.findRecordsByFilter('snapshot_sections', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
-    userId: userId,
-  }) || []
-  const assetRecords = $app.findRecordsByFilter('asset_items', 'snapshot_id.user_id = {:userId}', '-updated,-created', 1000, 0, {
-    userId: userId,
-  }) || []
+  const snapshotRecords =
+    $app.findRecordsByFilter('asset_snapshots', 'user_id = {:userId}', '-updated,-created', 500, 0, {
+      userId: userId,
+    }) || []
+  const captureRecords =
+    $app.findRecordsByFilter('snapshot_capture_images', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
+      userId: userId,
+    }) || []
+  const sectionRecords =
+    $app.findRecordsByFilter('snapshot_sections', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
+      userId: userId,
+    }) || []
+  const assetRecords =
+    $app.findRecordsByFilter('asset_items', 'snapshot_id.user_id = {:userId}', '-updated,-created', 1000, 0, {
+      userId: userId,
+    }) || []
 
   function formatNumber(value) {
     const normalizedValue = Math.round(Number(value || 0))

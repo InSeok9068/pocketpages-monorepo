@@ -36,18 +36,22 @@
       throw new Error('로그인이 필요합니다.')
     }
 
-    const snapshotRecords = $app.findRecordsByFilter('asset_snapshots', 'user_id = {:userId}', '-created', 1000, 0, {
-      userId: userId,
-    }) || []
-    const captureRecords = $app.findRecordsByFilter('snapshot_capture_images', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
-      userId: userId,
-    }) || []
-    const sectionRecords = $app.findRecordsByFilter('snapshot_sections', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
-      userId: userId,
-    }) || []
-    const assetRecords = $app.findRecordsByFilter('asset_items', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
-      userId: userId,
-    }) || []
+    const snapshotRecords =
+      $app.findRecordsByFilter('asset_snapshots', 'user_id = {:userId}', '-created', 1000, 0, {
+        userId: userId,
+      }) || []
+    const captureRecords =
+      $app.findRecordsByFilter('snapshot_capture_images', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
+        userId: userId,
+      }) || []
+    const sectionRecords =
+      $app.findRecordsByFilter('snapshot_sections', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
+        userId: userId,
+      }) || []
+    const assetRecords =
+      $app.findRecordsByFilter('asset_items', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
+        userId: userId,
+      }) || []
 
     dbg('xapi/settings/clear-assets:db-read', {
       userId: userId,
@@ -70,29 +74,11 @@
     dbg('xapi/settings/clear-assets:redirect', {
       status: 303,
       redirectTo: '/settings',
-      flash:
-        '자산 스냅샷 ' +
-        snapshotRecords.length +
-        '건, 캡처 ' +
-        captureRecords.length +
-        '건, 섹션 ' +
-        sectionRecords.length +
-        '건, 자산 항목 ' +
-        assetRecords.length +
-        '건을 정리했습니다.',
+      flash: '자산 스냅샷 ' + snapshotRecords.length + '건, 캡처 ' + captureRecords.length + '건, 섹션 ' + sectionRecords.length + '건, 자산 항목 ' + assetRecords.length + '건을 정리했습니다.',
     })
     redirect('/settings', {
       status: 303,
-      message:
-        '자산 스냅샷 ' +
-        snapshotRecords.length +
-        '건, 캡처 ' +
-        captureRecords.length +
-        '건, 섹션 ' +
-        sectionRecords.length +
-        '건, 자산 항목 ' +
-        assetRecords.length +
-        '건을 정리했습니다.',
+      message: '자산 스냅샷 ' + snapshotRecords.length + '건, 캡처 ' + captureRecords.length + '건, 섹션 ' + sectionRecords.length + '건, 자산 항목 ' + assetRecords.length + '건을 정리했습니다.',
     })
     return
   } catch (exception) {

@@ -1,4 +1,4 @@
-(function () {
+;(function () {
   const MAX_NARROW_WIDTH = 320
   const MIN_SPLIT_HEIGHT = 1600
   const MIN_SPLIT_RATIO = 4.2
@@ -113,26 +113,10 @@
         throw new Error('이미지 분할 컨텍스트를 만들지 못했습니다.')
       }
 
-      context.drawImage(
-        image,
-        0,
-        sliceBound.top,
-        sourceWidth,
-        sliceBound.height,
-        0,
-        0,
-        TARGET_SLICE_WIDTH,
-        targetHeight
-      )
+      context.drawImage(image, 0, sliceBound.top, sourceWidth, sliceBound.height, 0, 0, TARGET_SLICE_WIDTH, targetHeight)
 
       const blob = await canvasToJpegBlob(canvas)
-      const sliceFileName =
-        baseName +
-        '__ppslice_' +
-        padSliceNumber(index + 1) +
-        'of' +
-        padSliceNumber(sliceBounds.length) +
-        '.jpg'
+      const sliceFileName = baseName + '__ppslice_' + padSliceNumber(index + 1) + 'of' + padSliceNumber(sliceBounds.length) + '.jpg'
 
       splitFiles.push(
         new File([blob], sliceFileName, {

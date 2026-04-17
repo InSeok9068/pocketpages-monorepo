@@ -63,9 +63,10 @@
 
     $app.delete(itemRecord)
 
-    const snapshotItemRecords = $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', '-amount_krw,-created', 500, 0, {
-      snapshotId: snapshotId,
-    }) || []
+    const snapshotItemRecords =
+      $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', '-amount_krw,-created', 500, 0, {
+        snapshotId: snapshotId,
+      }) || []
     const totalAmountKrw = photofolioAssetUtils.sumRecordNumber(snapshotItemRecords, 'amount_krw')
 
     snapshotRecord.set('total_amount_krw', totalAmountKrw)

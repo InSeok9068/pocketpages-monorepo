@@ -1,4 +1,13 @@
-const { extractJsonObjectText, normalizeAssetClassCode, normalizeCapturePageType, normalizeIsoDate, normalizeText, normalizeUpperCode, parseJsonSafely, parseNumber } = require('./photofolio-asset-utils')
+const {
+  extractJsonObjectText,
+  normalizeAssetClassCode,
+  normalizeCapturePageType,
+  normalizeIsoDate,
+  normalizeText,
+  normalizeUpperCode,
+  parseJsonSafely,
+  parseNumber,
+} = require('./photofolio-asset-utils')
 
 const GEMINI_MODEL_NAME = 'gemini-2.5-flash-lite'
 const PROMPT_PAGE_TYPE_ENUM = '[assets_overview,invest_overview,invest_holdings,unknown]'
@@ -60,12 +69,7 @@ function buildPrompt(extractionMode) {
  * @returns {string} Gemini API 키입니다.
  */
 function readGeminiApiKey(envGetter) {
-  return String(
-    envGetter('GEMINI_APIKEY') ||
-      envGetter('GEMINI_API_KEY') ||
-      envGetter('GEMINI_AI_KEY') ||
-      ''
-  ).trim()
+  return String(envGetter('GEMINI_APIKEY') || envGetter('GEMINI_API_KEY') || envGetter('GEMINI_AI_KEY') || '').trim()
 }
 
 /**
@@ -100,7 +104,10 @@ function normalizeItem(rawItem) {
   const accountLabel = normalizeText(pickFirstValue([sourceJson.account_label, sourceJson.accountLabel, sourceJson['계좌명'], sourceJson['상품명']]), 255)
   const assetName = normalizeText(pickFirstValue([sourceJson.asset_name, sourceJson.assetName, sourceJson.name, sourceJson['자산명'], sourceJson['종목명'], accountLabel]), 255)
   const assetClassCode = normalizeAssetClassCode(pickFirstValue([sourceJson.asset_class_code, sourceJson.assetClassCode, sourceJson.category, sourceJson['자산분류']]))
-  const sourceSectionLabel = normalizeText(pickFirstValue([sourceJson.source_section_label, sourceJson.sourceSectionLabel, sourceJson.section_label, sourceJson.sectionLabel, sourceJson['섹션명']]), 255)
+  const sourceSectionLabel = normalizeText(
+    pickFirstValue([sourceJson.source_section_label, sourceJson.sourceSectionLabel, sourceJson.section_label, sourceJson.sectionLabel, sourceJson['섹션명']]),
+    255
+  )
   const marketCode = normalizeUpperCode(pickFirstValue([sourceJson.market_code, sourceJson.marketCode, sourceJson['시장코드']]), 20)
   const currencyCode = normalizeUpperCode(pickFirstValue([sourceJson.currency_code, sourceJson.currencyCode, sourceJson['통화코드']]), 10)
   const quantity = parseNumber(pickFirstValue([sourceJson.quantity, sourceJson['수량']]))
@@ -171,13 +178,7 @@ function hasAssetsOverviewSection(sections) {
   for (let index = 0; index < sections.length; index += 1) {
     const sectionKey = normalizeSectionKey(sections[index].section_label)
 
-    if (
-      sectionKey.indexOf('입출금') !== -1 ||
-      sectionKey.indexOf('저축') !== -1 ||
-      sectionKey.indexOf('증권') !== -1 ||
-      sectionKey.indexOf('연금') !== -1 ||
-      sectionKey.indexOf('외화') !== -1
-    ) {
+    if (sectionKey.indexOf('입출금') !== -1 || sectionKey.indexOf('저축') !== -1 || sectionKey.indexOf('증권') !== -1 || sectionKey.indexOf('연금') !== -1 || sectionKey.indexOf('외화') !== -1) {
       return true
     }
   }
@@ -336,17 +337,14 @@ function normalizeExtractResult(parsedJson, rawText) {
   const extractableItems = normalizedItems.filter(function (item) {
     return item.asset_name && item.amount_krw !== null && item.amount_krw > 0
   })
-  let resolvedPageType =
-    (pageType === 'assets_overview' || pageType === 'invest_overview') && extractableItems.length >= 3 ? 'invest_holdings' : pageType
+  let resolvedPageType = (pageType === 'assets_overview' || pageType === 'invest_overview') && extractableItems.length >= 3 ? 'invest_holdings' : pageType
 
   if (shouldDemoteToAssetsOverview(resolvedPageType, validSections, extractableItems)) {
     resolvedPageType = 'assets_overview'
   }
 
   const allowsDetailItems = resolvedPageType === 'invest_holdings' || resolvedPageType === 'unknown'
-  const validItems = allowsDetailItems
-    ? extractableItems
-    : []
+  const validItems = allowsDetailItems ? extractableItems : []
   let totalAmountKrw = parseNumber(pickFirstValue([sourceJson.total_amount_krw, sourceJson.totalAmountKrw]))
 
   if (totalAmountKrw === null) {

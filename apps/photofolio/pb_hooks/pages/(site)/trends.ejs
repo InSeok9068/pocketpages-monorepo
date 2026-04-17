@@ -160,11 +160,7 @@
       exchangeChartPayload = buildLineChartPayload([usdKrwSeries])
     }
 
-    if (
-      (fedFundsSeries && fedFundsSeries.points.length) ||
-      (treasury2ySeries && treasury2ySeries.points.length) ||
-      (treasury10ySeries && treasury10ySeries.points.length)
-    ) {
+    if ((fedFundsSeries && fedFundsSeries.points.length) || (treasury2ySeries && treasury2ySeries.points.length) || (treasury10ySeries && treasury10ySeries.points.length)) {
       rateChartPayload = buildLineChartPayload(
         [fedFundsSeries, treasury2ySeries, treasury10ySeries].filter(function (series) {
           return !!(series && series.points.length)
@@ -261,37 +257,73 @@
     <article class="pf-card px-4 py-4">
       <p class="m-0 text-[12px] font-semibold text-[var(--pf-primary)]">원/달러 환율</p>
       <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(usdKrwSeries) %></p>
-      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">변화 <span class="<%= usdKrwSeries && usdKrwSeries.latest_value !== null && usdKrwSeries.start_value !== null && usdKrwSeries.latest_value - usdKrwSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(usdKrwSeries) %></span></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= usdKrwSeries && usdKrwSeries.latest_value !== null && usdKrwSeries.start_value !== null && usdKrwSeries.latest_value - usdKrwSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(usdKrwSeries) %></span
+        >
+      </p>
     </article>
 
     <article class="pf-card px-4 py-4">
       <p class="m-0 text-[12px] font-semibold text-[#d97706]">미국 기준금리</p>
       <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(fedFundsSeries) %></p>
-      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">변화 <span class="<%= fedFundsSeries && fedFundsSeries.latest_value !== null && fedFundsSeries.start_value !== null && fedFundsSeries.latest_value - fedFundsSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(fedFundsSeries) %></span></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= fedFundsSeries && fedFundsSeries.latest_value !== null && fedFundsSeries.start_value !== null && fedFundsSeries.latest_value - fedFundsSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(fedFundsSeries) %></span
+        >
+      </p>
     </article>
 
     <article class="pf-card px-4 py-4">
       <p class="m-0 text-[12px] font-semibold text-[#0f9f6e]">미국 2년물</p>
       <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(treasury2ySeries) %></p>
-      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">변화 <span class="<%= treasury2ySeries && treasury2ySeries.latest_value !== null && treasury2ySeries.start_value !== null && treasury2ySeries.latest_value - treasury2ySeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(treasury2ySeries) %></span></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= treasury2ySeries && treasury2ySeries.latest_value !== null && treasury2ySeries.start_value !== null && treasury2ySeries.latest_value - treasury2ySeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(treasury2ySeries) %></span
+        >
+      </p>
     </article>
 
     <article class="pf-card px-4 py-4">
       <p class="m-0 text-[12px] font-semibold text-[#4f46e5]">미국 10년물</p>
       <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(treasury10ySeries) %></p>
-      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">변화 <span class="<%= treasury10ySeries && treasury10ySeries.latest_value !== null && treasury10ySeries.start_value !== null && treasury10ySeries.latest_value - treasury10ySeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(treasury10ySeries) %></span></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= treasury10ySeries && treasury10ySeries.latest_value !== null && treasury10ySeries.start_value !== null && treasury10ySeries.latest_value - treasury10ySeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(treasury10ySeries) %></span
+        >
+      </p>
     </article>
 
     <article class="pf-card px-4 py-4">
       <p class="m-0 text-[12px] font-semibold text-[#ef4444]">실업률</p>
       <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(unemploymentSeries) %></p>
-      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">변화 <span class="<%= unemploymentSeries && unemploymentSeries.latest_value !== null && unemploymentSeries.start_value !== null && unemploymentSeries.latest_value - unemploymentSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(unemploymentSeries) %></span></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= unemploymentSeries && unemploymentSeries.latest_value !== null && unemploymentSeries.start_value !== null && unemploymentSeries.latest_value - unemploymentSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(unemploymentSeries) %></span
+        >
+      </p>
     </article>
 
     <article class="pf-card px-4 py-4">
       <p class="m-0 text-[12px] font-semibold text-[#e85d3f]">CPI 상승률</p>
       <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(cpiInflationSeries) %></p>
-      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">변화 <span class="<%= cpiInflationSeries && cpiInflationSeries.latest_value !== null && cpiInflationSeries.start_value !== null && cpiInflationSeries.latest_value - cpiInflationSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"><%= formatSeriesChange(cpiInflationSeries) %></span></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= cpiInflationSeries && cpiInflationSeries.latest_value !== null && cpiInflationSeries.start_value !== null && cpiInflationSeries.latest_value - cpiInflationSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(cpiInflationSeries) %></span
+        >
+      </p>
     </article>
   </section>
 
@@ -306,9 +338,7 @@
         <% if (exchangeChartPayload) { %>
         <canvas id="exchange-trend-chart"></canvas>
         <% } else { %>
-        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">
-          데이터 없음
-        </div>
+        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">데이터 없음</div>
         <% } %>
       </div>
     </article>
@@ -325,9 +355,7 @@
         <% if (rateChartPayload) { %>
         <canvas id="rate-trend-chart"></canvas>
         <% } else { %>
-        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">
-          데이터 없음
-        </div>
+        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">데이터 없음</div>
         <% } %>
       </div>
     </article>
@@ -344,9 +372,7 @@
         <% if (unemploymentChartPayload) { %>
         <canvas id="unemployment-trend-chart"></canvas>
         <% } else { %>
-        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">
-          데이터 없음
-        </div>
+        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">데이터 없음</div>
         <% } %>
       </div>
     </article>
@@ -363,9 +389,7 @@
         <% if (inflationChartPayload) { %>
         <canvas id="inflation-trend-chart"></canvas>
         <% } else { %>
-        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">
-          데이터 없음
-        </div>
+        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">데이터 없음</div>
         <% } %>
       </div>
     </article>
@@ -494,10 +518,12 @@
                 color: '#8b95a1',
                 callback: function (value) {
                   const normalizedValue = Number(value || 0)
-                  return normalizedValue.toLocaleString('ko-KR', {
-                    minimumFractionDigits: valueSuffix === '%' ? 2 : 0,
-                    maximumFractionDigits: valueSuffix === '%' ? 2 : 0,
-                  }) + valueSuffix
+                  return (
+                    normalizedValue.toLocaleString('ko-KR', {
+                      minimumFractionDigits: valueSuffix === '%' ? 2 : 0,
+                      maximumFractionDigits: valueSuffix === '%' ? 2 : 0,
+                    }) + valueSuffix
+                  )
                 },
               },
               border: {

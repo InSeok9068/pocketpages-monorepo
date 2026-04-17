@@ -76,7 +76,9 @@
       userId: userId,
     })
     const sourceJson = photofolioAssetUtils.normalizeJsonObject(itemRecord.get('source_json'))
-    const currencyCode = String(itemRecord.get('currency_code') || '').trim().toUpperCase()
+    const currencyCode = String(itemRecord.get('currency_code') || '')
+      .trim()
+      .toUpperCase()
 
     dbg('xapi/asset-items/update:db-read', {
       userId: userId,
@@ -102,9 +104,10 @@
     itemRecord.set('source_json', sourceJson)
     $app.save(itemRecord)
 
-    const snapshotItemRecords = $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', '-amount_krw,-created', 500, 0, {
-      snapshotId: snapshotId,
-    }) || []
+    const snapshotItemRecords =
+      $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', '-amount_krw,-created', 500, 0, {
+        snapshotId: snapshotId,
+      }) || []
     const totalAmountKrw = photofolioAssetUtils.sumRecordNumber(snapshotItemRecords, 'amount_krw')
 
     snapshotRecord.set('total_amount_krw', totalAmountKrw)

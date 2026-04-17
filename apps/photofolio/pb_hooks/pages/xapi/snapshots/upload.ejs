@@ -552,8 +552,7 @@
     const preparedItems = []
     const itemizedAmountBySection = {}
     const normalizedSections = Array.isArray(extractedSnapshot.sections) ? extractedSnapshot.sections : []
-    const defaultSectionLabel =
-      normalizedSections.length === 1 ? normalizeSectionLabel(extractedSnapshot.page_type, normalizedSections[0].section_label) : ''
+    const defaultSectionLabel = normalizedSections.length === 1 ? normalizeSectionLabel(extractedSnapshot.page_type, normalizedSections[0].section_label) : ''
 
     for (let index = 0; index < extractedSnapshot.items.length; index += 1) {
       const item = extractedSnapshot.items[index]
@@ -603,14 +602,7 @@
         continue
       }
 
-      const gapItem = buildSectionGapItem(
-        extractedSnapshot,
-        captureRecordId,
-        normalizedSectionLabel,
-        gapAmountKrw,
-        section.source_json || {},
-        hasInvestHoldingsCapture
-      )
+      const gapItem = buildSectionGapItem(extractedSnapshot, captureRecordId, normalizedSectionLabel, gapAmountKrw, section.source_json || {}, hasInvestHoldingsCapture)
 
       if (!gapItem) {
         continue
@@ -717,8 +709,7 @@
       extractedCaptures.push({
         uploadedImage: groupedCapture.parts[0].uploadedFile,
         mimeType: inferImageMimeType(groupedCapture.parts[0].uploadedFile),
-        extractedSnapshot:
-          groupedCapture.parts.length > 1 ? photofolioAiService.mergeExtractResults(segmentResults) : segmentResults[0],
+        extractedSnapshot: groupedCapture.parts.length > 1 ? photofolioAiService.mergeExtractResults(segmentResults) : segmentResults[0],
         originalName: groupedCapture.originalName,
         segmentCount: groupedCapture.parts.length,
       })
