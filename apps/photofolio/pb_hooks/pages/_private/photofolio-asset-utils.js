@@ -166,9 +166,7 @@ function normalizeAssetIdentityText(value, maxLength) {
     normalized = normalized.normalize('NFKC')
   }
 
-  return normalized
-    .toLowerCase()
-    .replace(/[^0-9a-z가-힣]/g, '')
+  return normalized.toLowerCase().replace(/[^0-9a-z가-힣]/g, '')
 }
 
 /**
