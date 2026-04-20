@@ -64,11 +64,11 @@
     "install:vscode-pocketpages": "npm run package:vsix && node ./scripts/install-vscode-pocketpages.js"
   },
   "devDependencies": {
-    "@vscode/vsce": "^3.6.1"
+    "@vscode/vsce": "^3.9.1"
   },
   "dependencies": {
     "@dlstj-local/pocketpages-typescript-plugin": "file:./packages/typescript-plugin",
-    "typescript": "^5.8.2",
+    "typescript": "^5.9.3",
     "vscode-languageclient": "^9.0.1",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
