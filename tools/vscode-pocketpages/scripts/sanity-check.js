@@ -324,6 +324,21 @@ function assertClientContracts(repoRoot) {
     throw new Error('Expected the legacy extension-host fallback source to be removed once LSP parity is the only runtime path.')
   }
 
+  const activationEvents = Array.isArray(packageJson.activationEvents) ? packageJson.activationEvents : []
+  assertIncludes(
+    activationEvents,
+    'onLanguage:ejs',
+    'Expected PocketPages to activate when an EJS document is opened.'
+  )
+  assertIncludes(
+    activationEvents,
+    'workspaceContains:**/pocketpages-globals.d.ts',
+    'Expected PocketPages to activate for workspaces that declare PocketPages globals.'
+  )
+  if (activationEvents.includes('onStartupFinished')) {
+    throw new Error('Expected PocketPages to stop activating eagerly onStartupFinished.')
+  }
+
   assertMatches(
     clientSource,
     /const LSP_DOCUMENT_SELECTOR = \[\.\.\.EJS_DOCUMENT_SELECTOR,\s*\.\.\.HOOK_SCRIPT_DOCUMENT_SELECTOR\]/,
@@ -364,8 +379,26 @@ function assertClientContracts(repoRoot) {
   )
   assertMatches(
     clientSource,
+    /async function ensureLspStarted\(context\) \{[\s\S]*activateLsp\(context\)/,
+    'Expected the PocketPages client to expose a lazy LSP bootstrap helper.'
+  )
+  assertMatches(
+    clientSource,
+    /function maybeStartLspForDocument\(document\) \{[\s\S]*isManagedLspDocument\(document\)[\s\S]*void ensureLspStarted\(context\);[\s\S]*\}/,
+    'Expected the PocketPages client to defer LSP startup until a managed PocketPages document is opened.'
+  )
+  if (clientSource.includes('return await activateLsp(context);')) {
+    throw new Error('Expected PocketPages activate() to stop eagerly starting the LSP during extension activation.')
+  }
+  assertMatches(
+    clientSource,
     /vscode\.commands\.registerCommand\("pocketpagesServerScript\.reloadCaches", async \(\) => \{/,
     'Expected the PocketPages client to keep the reloadCaches command on the LSP runtime path.'
+  )
+  assertMatches(
+    clientSource,
+    /vscode\.commands\.registerCommand\("pocketpagesServerScript\.reloadCaches", async \(\) => \{[\s\S]*await ensureLspStarted\(context\)/,
+    'Expected PocketPages commands to start the LSP lazily before sending reloadCaches requests.'
   )
   assertMatches(
     clientSource,

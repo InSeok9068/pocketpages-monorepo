@@ -14,8 +14,8 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "onLanguage:ejs"
+    "onLanguage:ejs",
+    "workspaceContains:**/pocketpages-globals.d.ts"
   ],
   "main": "./packages/vscode-pocketpages/index.js",
   "extensionDependencies": [

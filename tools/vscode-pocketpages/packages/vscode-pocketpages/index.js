@@ -22,6 +22,7 @@ let client = null;
 let lspStatusController = null;
 let outputChannel = null;
 let clientLogger = null;
+let lspStartPromise = null;
 const saveReasons = new Map();
 
 function getLogTimestamp() {
@@ -428,10 +429,18 @@ async function applyManagedFileRenameEdits({ logger, event }) {
 }
 
 async function activateLsp(context) {
-  outputChannel = vscode.window.createOutputChannel("VSCode PocketPages");
-  clientLogger = createOutputLogger(outputChannel);
+  if (!outputChannel) {
+    outputChannel = vscode.window.createOutputChannel("VSCode PocketPages");
+    context.subscriptions.push(outputChannel);
+  }
+  if (!clientLogger) {
+    clientLogger = createOutputLogger(outputChannel);
+  }
   const logger = clientLogger;
-  lspStatusController = createLspStatusController(context, outputChannel);
+  if (!lspStatusController) {
+    lspStatusController = createLspStatusController(context, outputChannel);
+    context.subscriptions.push(lspStatusController.item);
+  }
   lspStatusController.setStarting();
   const serverModule = context.asAbsolutePath(path.join("packages", "language-server", "server.js"));
   const serverOptions = {
@@ -460,7 +469,7 @@ async function activateLsp(context) {
     clientOptions
   );
 
-  context.subscriptions.push(...synchronizedFileWatchers, outputChannel, lspStatusController.item);
+  context.subscriptions.push(...synchronizedFileWatchers);
   logger.info("lsp", "start", {
     serverModule,
     selector: ["ejs", "pb_hooks-scripts"],
@@ -555,73 +564,7 @@ async function activateLsp(context) {
     vscode.window.onDidChangeVisibleTextEditors((editors) => {
       lspStatusController.refreshVisibility();
       editors.forEach((editor) => updateServerTemplateBoundaries(editor, serverTemplateBoundaryDecoration));
-    }),
-    vscode.commands.registerCommand("pocketpagesServerScript.probeCurrentFile", async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showWarningMessage("No active editor.");
-        return;
-      }
-
-      const result = await client.sendRequest(REQUESTS.probeCurrentFile, { uri: editor.document.uri.toString() });
-      const message = [
-        `path=${result.filePath}`,
-        `hasAppRoot=${result.hasAppRoot ? "yes" : "no"}`,
-        `diagnostics=${result.diagnostics}`,
-      ].join(" | ");
-      logger.info("command", "probe", {
-        file: vscode.workspace.asRelativePath(editor.document.uri.fsPath, false),
-        hasAppRoot: result.hasAppRoot,
-        diagnostics: result.diagnostics,
-      });
-      outputChannel.show(true);
-      vscode.window.showInformationMessage(message);
-    }),
-    vscode.commands.registerCommand("pocketpagesServerScript.refreshDiagnostics", async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showWarningMessage("No active editor.");
-        return;
-      }
-
-      logger.info("command", "refresh-diagnostics", {
-        file: vscode.workspace.asRelativePath(editor.document.uri.fsPath, false),
-      });
-      await client.sendRequest(REQUESTS.refreshDiagnostics, { uri: editor.document.uri.toString() });
-      updateServerTemplateBoundaries(editor, serverTemplateBoundaryDecoration);
-    }),
-    vscode.commands.registerCommand("pocketpagesServerScript.reloadCaches", async () => {
-      const editor = vscode.window.activeTextEditor;
-      const result = await client.sendRequest(REQUESTS.reloadCaches, {
-        uri: editor ? editor.document.uri.toString() : null,
-      });
-      logger.info("cache", "reload", {
-        file: editor && editor.document ? vscode.workspace.asRelativePath(editor.document.uri.fsPath, false) : null,
-        scoped: result.scoped,
-      });
-      outputChannel.show(true);
-      vscode.window.showInformationMessage(result.message);
-    }),
-    vscode.commands.registerCommand("pocketpagesServerScript.allFileReferences", async (resourceUri) => {
-      const editor = vscode.window.activeTextEditor;
-      const fileUri = toVscodeUri(resourceUri) || (editor ? editor.document.uri : null);
-      if (!fileUri) {
-        vscode.window.showWarningMessage("No active editor.");
-        return;
-      }
-
-      await showFileReferences({ logger, fileUri });
-    }),
-    vscode.commands.registerCommand("pocketpagesServerScript.openCodeLensTarget", async (resourceUri) => {
-      const fileUri = toVscodeUri(resourceUri);
-      if (!fileUri) {
-        vscode.window.showWarningMessage("Unable to resolve the target file.");
-        return;
-      }
-
-      await vscode.commands.executeCommand("vscode.open", fileUri);
-    }),
-    vscode.commands.registerCommand("pocketpagesServerScript.noopCodeLens", () => {})
+    })
   );
 
   for (const document of vscode.workspace.textDocuments) {
@@ -633,31 +576,152 @@ async function activateLsp(context) {
   });
 }
 
+async function handleLspStartupFailure(context, error) {
+  if (client) {
+    try {
+      await client.stop();
+    } catch (_stopError) {}
+    client = null;
+  }
+  if (!outputChannel) {
+    outputChannel = vscode.window.createOutputChannel("VSCode PocketPages");
+    context.subscriptions.push(outputChannel);
+  }
+  if (!clientLogger) {
+    clientLogger = createOutputLogger(outputChannel);
+  }
+  if (!lspStatusController) {
+    lspStatusController = createLspStatusController(context, outputChannel);
+    context.subscriptions.push(lspStatusController.item);
+  }
+  lspStatusController.setFailed();
+  const message = error && error.message ? error.message : String(error);
+  clientLogger.error("lsp", "startup-failed", { message });
+  vscode.window.showErrorMessage(`PocketPages LSP failed to start. (${message})`);
+}
+
+async function ensureLspStarted(context) {
+  if (client) {
+    return client;
+  }
+
+  if (!lspStartPromise) {
+    lspStartPromise = activateLsp(context)
+      .catch(async (error) => {
+        await handleLspStartupFailure(context, error);
+      })
+      .finally(() => {
+        if (!client) {
+          lspStartPromise = null;
+        }
+      });
+  }
+
+  await lspStartPromise;
+  return client;
+}
+
 async function activate(context) {
-  try {
-    return await activateLsp(context);
-  } catch (error) {
-    if (client) {
-      try {
-        await client.stop();
-      } catch (_stopError) {}
-      client = null;
+  function maybeStartLspForDocument(document) {
+    if (document && isManagedLspDocument(document)) {
+      void ensureLspStarted(context);
     }
-    if (!outputChannel) {
-      outputChannel = vscode.window.createOutputChannel("VSCode PocketPages");
-      context.subscriptions.push(outputChannel);
-    }
-    if (!clientLogger) {
-      clientLogger = createOutputLogger(outputChannel);
-    }
-    if (!lspStatusController) {
-      lspStatusController = createLspStatusController(context, outputChannel);
-      context.subscriptions.push(lspStatusController.item);
-    }
-    lspStatusController.setFailed();
-    const message = error && error.message ? error.message : String(error);
-    clientLogger.error("lsp", "startup-failed", { message });
-    vscode.window.showErrorMessage(`PocketPages LSP failed to start. (${message})`);
+  }
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("pocketpagesServerScript.probeCurrentFile", async () => {
+      const activeClient = await ensureLspStarted(context);
+      if (!activeClient) {
+        return;
+      }
+
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showWarningMessage("No active editor.");
+        return;
+      }
+
+      const result = await activeClient.sendRequest(REQUESTS.probeCurrentFile, { uri: editor.document.uri.toString() });
+      const message = [
+        `path=${result.filePath}`,
+        `hasAppRoot=${result.hasAppRoot ? "yes" : "no"}`,
+        `diagnostics=${result.diagnostics}`,
+      ].join(" | ");
+      clientLogger.info("command", "probe", {
+        file: vscode.workspace.asRelativePath(editor.document.uri.fsPath, false),
+        hasAppRoot: result.hasAppRoot,
+        diagnostics: result.diagnostics,
+      });
+      outputChannel.show(true);
+      vscode.window.showInformationMessage(message);
+    }),
+    vscode.commands.registerCommand("pocketpagesServerScript.refreshDiagnostics", async () => {
+      const activeClient = await ensureLspStarted(context);
+      if (!activeClient) {
+        return;
+      }
+
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showWarningMessage("No active editor.");
+        return;
+      }
+
+      clientLogger.info("command", "refresh-diagnostics", {
+        file: vscode.workspace.asRelativePath(editor.document.uri.fsPath, false),
+      });
+      await activeClient.sendRequest(REQUESTS.refreshDiagnostics, { uri: editor.document.uri.toString() });
+    }),
+    vscode.commands.registerCommand("pocketpagesServerScript.reloadCaches", async () => {
+      const activeClient = await ensureLspStarted(context);
+      if (!activeClient) {
+        return;
+      }
+
+      const editor = vscode.window.activeTextEditor;
+      const result = await activeClient.sendRequest(REQUESTS.reloadCaches, {
+        uri: editor ? editor.document.uri.toString() : null,
+      });
+      clientLogger.info("cache", "reload", {
+        file: editor && editor.document ? vscode.workspace.asRelativePath(editor.document.uri.fsPath, false) : null,
+        scoped: result.scoped,
+      });
+      outputChannel.show(true);
+      vscode.window.showInformationMessage(result.message);
+    }),
+    vscode.commands.registerCommand("pocketpagesServerScript.allFileReferences", async (resourceUri) => {
+      const activeClient = await ensureLspStarted(context);
+      if (!activeClient) {
+        return;
+      }
+
+      const editor = vscode.window.activeTextEditor;
+      const fileUri = toVscodeUri(resourceUri) || (editor ? editor.document.uri : null);
+      if (!fileUri) {
+        vscode.window.showWarningMessage("No active editor.");
+        return;
+      }
+
+      await showFileReferences({ logger: clientLogger, fileUri });
+    }),
+    vscode.commands.registerCommand("pocketpagesServerScript.openCodeLensTarget", async (resourceUri) => {
+      const fileUri = toVscodeUri(resourceUri);
+      if (!fileUri) {
+        vscode.window.showWarningMessage("Unable to resolve the target file.");
+        return;
+      }
+
+      await vscode.commands.executeCommand("vscode.open", fileUri);
+    }),
+    vscode.commands.registerCommand("pocketpagesServerScript.noopCodeLens", () => {}),
+    vscode.workspace.onDidOpenTextDocument((document) => maybeStartLspForDocument(document)),
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      maybeStartLspForDocument(editor && editor.document);
+    })
+  );
+
+  for (const document of vscode.workspace.textDocuments) {
+    maybeStartLspForDocument(document);
   }
 }
 
@@ -665,12 +729,14 @@ async function deactivate() {
   if (client) {
     const activeClient = client;
     client = null;
+    lspStartPromise = null;
     if (lspStatusController) {
       lspStatusController.setStopped();
     }
     return activeClient.stop();
   }
 
+  lspStartPromise = null;
   if (lspStatusController) {
     lspStatusController.setStopped();
   }
