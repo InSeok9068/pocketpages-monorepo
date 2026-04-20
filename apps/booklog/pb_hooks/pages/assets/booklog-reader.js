@@ -21,6 +21,8 @@ window.booklogReaderLogic = (function () {
   var boundAutoPagingTarget = null
   var boundAutoPagingHandler = null
   var lastContainerScrollTop = 0
+  var readerLayoutSyncFrameId = 0
+  var readerLayoutSyncTimerId = 0
   var EDGE_TRIGGER_DISTANCE = 32
   var EDGE_RELEASE_DISTANCE = 96
   var EDGE_INTENT_MS = 140
@@ -1745,6 +1747,75 @@ window.booklogReaderLogic = (function () {
   }
 
   /**
+   * 예약된 리더 레이아웃 재동기화를 정리합니다.
+   * @returns {void}
+   */
+  function resetScheduledReaderLayoutSync() {
+    if (readerLayoutSyncFrameId) {
+      window.cancelAnimationFrame(readerLayoutSyncFrameId)
+      readerLayoutSyncFrameId = 0
+    }
+
+    if (readerLayoutSyncTimerId) {
+      window.clearTimeout(readerLayoutSyncTimerId)
+      readerLayoutSyncTimerId = 0
+    }
+  }
+
+  /**
+   * 현재 리더 레이아웃 기준으로 스크롤 컨테이너를 다시 맞춥니다.
+   * @param {any} component Alpine 컴포넌트 상태
+   * @returns {void}
+   */
+  function syncReaderLayout(component) {
+    var target = null
+
+    getAutoPagingTargets().forEach(function (candidateTarget) {
+      disableScrollAnchoring(candidateTarget)
+    })
+    target = syncAutoPagingTarget()
+
+    if (target) {
+      bindAutoPaging(component, target)
+    }
+  }
+
+  /**
+   * 최초 렌더 직후 늦게 커지는 본문 높이를 반영하기 위해 재측정을 예약합니다.
+   * @param {any} component Alpine 컴포넌트 상태
+   * @param {{ frameCount?: number, delayMs?: number }=} options 재측정 옵션
+   * @returns {void}
+   */
+  function scheduleReaderLayoutSync(component, options) {
+    var remainingFrames = options && typeof options.frameCount === 'number' ? Math.max(1, options.frameCount) : 2
+    var delayMs = options && typeof options.delayMs === 'number' ? Math.max(0, options.delayMs) : 160
+
+    resetScheduledReaderLayoutSync()
+
+    function runOnNextFrame() {
+      readerLayoutSyncFrameId = window.requestAnimationFrame(function () {
+        if (remainingFrames > 1) {
+          remainingFrames -= 1
+          runOnNextFrame()
+          return
+        }
+
+        readerLayoutSyncFrameId = 0
+        syncReaderLayout(component)
+
+        if (delayMs > 0) {
+          readerLayoutSyncTimerId = window.setTimeout(function () {
+            readerLayoutSyncTimerId = 0
+            syncReaderLayout(component)
+          }, delayMs)
+        }
+      })
+    }
+
+    runOnNextFrame()
+  }
+
+  /**
    * 현재 방향 기준으로 경계까지 남은 거리를 계산합니다.
    * @param {HTMLElement | null} target 현재 스크롤 컨테이너
    * @param {'next' | 'prev'} direction 이동 방향
@@ -2101,6 +2172,11 @@ window.booklogReaderLogic = (function () {
           '.booklog-read-aloud-active{background:rgba(245,204,96,0.38)!important;border-radius:0.4rem;box-shadow:0 0 0 0.18rem rgba(245,204,96,0.16);transition:background-color 120ms ease;}'
         doc.head.appendChild(styleElement)
       }
+
+      scheduleReaderLayoutSync(component, {
+        frameCount: 2,
+        delayMs: 180,
+      })
     })
 
     renditionInstance.on('relocated', function (location) {
@@ -2143,16 +2219,11 @@ window.booklogReaderLogic = (function () {
 
       return locationsPromise.then(function () {
         return renditionInstance.display().then(function (location) {
-          var target = null
-
-          getAutoPagingTargets().forEach(function (candidateTarget) {
-            disableScrollAnchoring(candidateTarget)
+          syncReaderLayout(component)
+          scheduleReaderLayoutSync(component, {
+            frameCount: 2,
+            delayMs: 180,
           })
-          target = syncAutoPagingTarget()
-
-          if (target) {
-            bindAutoPaging(component, target)
-          }
           updateCurrentLocation(component, location || renditionInstance.currentLocation())
         })
       })
