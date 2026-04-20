@@ -1,4 +1,4 @@
-FROM node:20-alpine AS deps
+FROM node:24-bookworm-slim AS deps
 
 WORKDIR /app/apps/kjca
 COPY apps/kjca/package*.json ./
@@ -6,7 +6,7 @@ COPY packages /app/packages
 RUN cd /app/packages/utils && npm ci --omit=dev
 RUN npm ci --omit=dev
 
-FROM alpine:3.20 AS pocketbase
+FROM alpine:3.22 AS pocketbase
 
 ARG TARGETARCH
 
@@ -21,7 +21,7 @@ RUN case "${TARGETARCH}" in \
   && unzip /tmp/pocketbase.zip -d /out \
   && chmod +x /out/pocketbase
 
-FROM alpine:3.20
+FROM alpine:3.22
 
 ENV CODE_ROOT=/app/apps/kjca
 ENV APP_ROOT=/app/apps/kjca
