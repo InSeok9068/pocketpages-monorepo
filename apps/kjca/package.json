@@ -2,7 +2,7 @@
   "name": "kjca",
   "private": true,
   "scripts": {
-    "postinstall": "node -e \"try{require.resolve('patch-package');require('child_process').execSync('patch-package',{stdio:'inherit'})}catch(e){console.log('patch-package not installed, skip')}\""
+    "postinstall": "node ../../scripts/run-patch-package.js"
   },
   "dependencies": {
     "linkify-it": "^5.0.0",
