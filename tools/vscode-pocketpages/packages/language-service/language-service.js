@@ -2360,6 +2360,9 @@ class ProjectLanguageService {
       parts.push(routeParamLines.join("\n"));
     }
 
+    // PocketPages-specific path and caller analysis stays in custom code.
+    // Once those semantics are resolved, we hand ambient declarations to TS so
+    // hover/completion/definition/rename/diagnostics come from one type engine.
     const schemaTypePrelude = this.buildSchemaTypePrelude();
     if (schemaTypePrelude) {
       parts.push(schemaTypePrelude);

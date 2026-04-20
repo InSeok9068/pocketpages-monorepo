@@ -3122,15 +3122,6 @@ class PocketPagesProjectIndex {
     return bindings.sort((left, right) => left.name.localeCompare(right.name))
   }
 
-  buildIncludeLocalsPrelude(targetFilePath, options = {}) {
-    const bindings = this.getIncludeLocalBindings(targetFilePath, options)
-    if (!bindings.length) {
-      return ''
-    }
-
-    return bindings.map((binding) => `declare const ${binding.name}: ${binding.typeText};`).join('\n')
-  }
-
   getIncludeTargetCallSites(targetFilePath, options = {}) {
     const targetState = this.getIncludeLocalsState(options).byTargetFile.get(normalizePath(targetFilePath))
     return targetState ? [...targetState.callSites] : []

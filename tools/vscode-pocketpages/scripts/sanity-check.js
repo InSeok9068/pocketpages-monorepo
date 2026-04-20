@@ -3057,6 +3057,17 @@ boardService.readAuthState(
     if (!typedResolveSignatureLabel.includes('readAuthState(') || !typedResolveSignatureLabel.includes('method: string')) {
       throw new Error(`Expected typed resolve() signature help. Got: ${JSON.stringify(typedResolveSignatureHelp)}`)
     }
+    const typedResolvePrelude = service.buildPrelude(fixture.boardsFilePath, typedResolveCompletionText)
+    if (
+      !typedResolvePrelude.includes('declare const resolve: ((requestPath: string, ...args: any[]) => any) & {') ||
+      !typedResolvePrelude.includes(
+        `(requestPath: "board-service", ...args: any[]): typeof import(${JSON.stringify(
+          normalizeFilePath(fixture.boardServiceFilePath)
+        )});`
+      )
+    ) {
+      throw new Error(`Expected buildPrelude() to expose typed resolve() overloads for TS. Got: ${typedResolvePrelude}`)
+    }
 
     const paramsText = `<script server>\nparams.\n</script>\n`
     const paramsOffset = paramsText.indexOf('params.') + 'params.'.length
@@ -4166,6 +4177,10 @@ function loadPostRole() {
     )
     if (!privateTemplateQuickInfo || !privateTemplateQuickInfo.displayText.includes('const flashMessage: string')) {
       throw new Error(`Expected include() locals hover in _private partial. Got: ${JSON.stringify(privateTemplateQuickInfo)}`)
+    }
+    const flashAlertPrelude = service.buildPrelude(fixture.flashAlertFilePath, privateTemplateHoverText)
+    if (!flashAlertPrelude.includes('declare const flashMessage: string;')) {
+      throw new Error(`Expected buildPrelude() to declare include locals for partial TS analysis. Got: ${flashAlertPrelude}`)
     }
 
     const typedPanelCompletionText = `<div><%= authState. %></div>\n`
@@ -5685,6 +5700,14 @@ metaPayload.trim()
     }
     if (typedRecordGetMessages.some((message) => message.includes("Property 'trim' does not exist on type 'any'"))) {
       throw new Error(`Expected json record.get() typing to stay permissive. Got: ${typedRecordGetMessages.join(' | ')}`)
+    }
+    const typedRecordGetPrelude = service.buildPrelude(fixture.boardsFilePath, typedRecordGetText)
+    if (
+      !typedRecordGetPrelude.includes('get(name: "name"): string;') ||
+      !typedRecordGetPrelude.includes('get(name: "is_active"): boolean;') ||
+      !typedRecordGetPrelude.includes('get(name: "sort_order"): number;')
+    ) {
+      throw new Error(`Expected buildPrelude() to expose typed record.get() overloads for TS. Got: ${typedRecordGetPrelude}`)
     }
 
     const typedRecordGetInlayHints = service.getInlayHintEntries(fixture.boardsFilePath, typedRecordGetText)
