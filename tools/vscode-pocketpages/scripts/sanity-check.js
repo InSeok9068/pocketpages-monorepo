@@ -25,6 +25,7 @@ const {
   isPocketPagesEjsFile,
 } = require('../packages/typescript-plugin/shared')
 const { getTokenTypeIndex } = require('../packages/language-server/ejs-semantic-tokens')
+const { runExtensionHostSanityCheck } = require('./extension-host-sanity')
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true })
@@ -1389,10 +1390,11 @@ module.exports = {
   }
 }
 
-function run() {
+async function run() {
   const repoRoot = path.resolve(__dirname, '..', '..', '..')
   assertClientContracts(repoRoot)
   assertLspRuntimeContracts(repoRoot)
+  await runExtensionHostSanityCheck(repoRoot)
   const fixture = createFixtureApp(repoRoot)
   const realHighlightsFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', '(site)', 'highlights.ejs')
   const realUploadFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', 'xapi', 'epub', 'upload.ejs')
@@ -7080,4 +7082,7 @@ const authState = resolve('auth-service')
   }
 }
 
-run()
+run().catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+})

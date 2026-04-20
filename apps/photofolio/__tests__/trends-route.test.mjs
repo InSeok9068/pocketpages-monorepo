@@ -30,5 +30,6 @@ test('GET /trends renders the trend page without template errors', async () => {
   assert.equal(body.includes('미국 기준금리 · 국채 금리'), true);
   assert.equal(body.includes('실업률'), true);
   assert.equal(body.includes('CPI 상승률'), true);
+  assert.equal(body.includes('조회 '), true);
   assert.equal(body.includes('PocketPages Error'), false);
 });

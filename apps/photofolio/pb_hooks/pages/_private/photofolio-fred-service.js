@@ -128,6 +128,14 @@ function buildTrendDashboardCacheKey(rangeCode) {
 }
 
 /**
+ * 캐시 엔트리를 비웁니다.
+ * @param {string} rangeCode 추이 범위 코드입니다.
+ */
+function clearTrendDashboardCache(rangeCode) {
+  store(buildTrendDashboardCacheKey(rangeCode), null)
+}
+
+/**
  * ISO 문자열을 epoch ms로 바꿉니다.
  * @param {string} value 원본 문자열입니다.
  * @returns {number} epoch ms입니다.
@@ -198,6 +206,36 @@ function withCacheState(data, source, fetchedAtIso) {
   }
 
   return dashboard
+}
+
+/**
+ * 만료 지난 캐시를 정리합니다.
+ * @param {{ rangeCode: string, cacheEntry: { fetched_at: string, stale_at: string, expires_at: string, data: any } | null, nowMs: number, logger?: { dbg?: Function, info?: Function, warn?: Function, error?: Function } }} input 정리 입력입니다.
+ * @returns {{ fetched_at: string, stale_at: string, expires_at: string, data: any } | null} 유지할 캐시 엔트리입니다.
+ */
+function purgeExpiredTrendDashboardCache(input) {
+  const logger = input && input.logger ? input.logger : createEmptyLogger()
+  const cacheEntry = input && input.cacheEntry ? input.cacheEntry : null
+
+  if (!cacheEntry) {
+    return null
+  }
+
+  const rangeCode = normalizeText(input.rangeCode, 10).toLowerCase() || '1y'
+  const cacheExpiresAtMs = parseTimestampMs(cacheEntry.expires_at)
+
+  if (cacheExpiresAtMs > Number(input.nowMs || 0)) {
+    return cacheEntry
+  }
+
+  clearTrendDashboardCache(rangeCode)
+  logger.info('photofolio/fred:cache-purge-expired', {
+    cacheKey: buildTrendDashboardCacheKey(rangeCode),
+    rangeCode: rangeCode,
+    expiresAt: cacheEntry.expires_at,
+  })
+
+  return null
 }
 
 /**
@@ -337,9 +375,14 @@ function buildTrendDashboard(input) {
   const logger = input && input.logger ? input.logger : createEmptyLogger()
   const rangeMeta = normalizeTrendRange(input.rangeCode)
   const cacheKey = buildTrendDashboardCacheKey(rangeMeta.code)
-  const cacheEntry = readTrendDashboardCache(rangeMeta.code)
   const now = new Date()
   const nowMs = now.getTime()
+  const cacheEntry = purgeExpiredTrendDashboardCache({
+    rangeCode: rangeMeta.code,
+    cacheEntry: readTrendDashboardCache(rangeMeta.code),
+    nowMs: nowMs,
+    logger: logger,
+  })
   const cacheStaleAtMs = cacheEntry ? parseTimestampMs(cacheEntry.stale_at) : 0
   const cacheExpiresAtMs = cacheEntry ? parseTimestampMs(cacheEntry.expires_at) : 0
 

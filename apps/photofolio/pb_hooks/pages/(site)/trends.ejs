@@ -28,6 +28,7 @@
   let inflationChartPayload = null
   let latestDateLabel = '데이터 없음'
   let cacheStatusLabel = '실시간'
+  let fetchedAtLabel = ''
 
   function formatNumber(value, fractionDigits) {
     const normalizedValue = Number(value)
@@ -84,6 +85,22 @@
     }
 
     return match[2] + '.' + match[3]
+  }
+
+  function formatShortDateTime(isoTimestamp) {
+    const normalizedValue = String(isoTimestamp || '').trim()
+    const date = new Date(normalizedValue)
+
+    if (!normalizedValue || isNaN(date.getTime())) {
+      return ''
+    }
+
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+
+    return month + '.' + day + ' ' + hours + ':' + minutes
   }
 
   function serializeJsonForDom(value) {
@@ -147,6 +164,7 @@
     unemploymentSeries = trendDashboard.series_by_key.unemployment || null
     cpiInflationSeries = trendDashboard.series_by_key.cpiInflation || null
     latestDateLabel = formatShortDate(trendDashboard.latest_date)
+    fetchedAtLabel = formatShortDateTime(trendDashboard.cache_state ? trendDashboard.cache_state.fetched_at : '')
 
     if (trendDashboard.cache_state && trendDashboard.cache_state.source === 'cache') {
       cacheStatusLabel = '캐시'
@@ -230,6 +248,9 @@
         <p class="text-white/72 m-0 text-[12px]">최근 기준일</p>
         <p class="m-0 mt-1 text-lg font-semibold"><%= latestDateLabel %></p>
         <p class="text-white/72 m-0 mt-1 text-[11px] font-medium"><%= cacheStatusLabel %></p>
+        <% if (fetchedAtLabel) { %>
+        <p class="text-white/72 m-0 mt-1 text-[11px] font-medium">조회 <%= fetchedAtLabel %></p>
+        <% } %>
       </div>
     </div>
     <p class="text-white/78 m-0 mt-3 text-sm leading-6">환율 · 금리 · 실업률 · 물가.</p>
