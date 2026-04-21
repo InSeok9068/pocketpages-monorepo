@@ -5,7 +5,7 @@ const os = require('os')
 const path = require('path')
 const Module = require('module')
 const { URI } = require('vscode-uri')
-const { REQUESTS } = require('../packages/language-server/protocol')
+const { REQUESTS, NOTIFICATIONS } = require('../packages/language-server/protocol')
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true })
@@ -533,6 +533,18 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
         rememberDocument(document)
         await openDocumentEvents.fire(document)
       },
+      async fireWillSaveDocument(event) {
+        if (event && event.document) {
+          rememberDocument(event.document)
+        }
+        await willSaveDocumentEvents.fire(event)
+      },
+      async fireDidSaveDocument(document) {
+        if (document) {
+          rememberDocument(document)
+        }
+        await didSaveDocumentEvents.fire(document)
+      },
       async fireRenameFiles(event) {
         await renameFilesEvents.fire(event)
       },
@@ -833,6 +845,176 @@ async function runRenameBoundaryTest(repoRoot, fixture) {
   })
 }
 
+async function runManualSaveNotificationBoundaryTest(repoRoot, fixture) {
+  const harness = createMockExtensionHost({
+    repoRoot,
+    fixture,
+    languageClientOptions: {
+      async sendNotification(method) {
+        if (method === NOTIFICATIONS.didManualSave) {
+          return null
+        }
+
+        throw new Error(`Unexpected notification during manual-save boundary test: ${method}`)
+      },
+    },
+  })
+
+  await withMockedExtensionModule(repoRoot, harness.mocks, async (extensionModule) => {
+    const routeDocument = createMockDocument(fixture.routeFilePath)
+    const hookScriptDocument = createMockDocument(fixture.hookScriptFilePath)
+
+    await extensionModule.activate(harness.context)
+    await harness.controls.fireOpenDocument(routeDocument)
+    await flushAsyncWork()
+
+    await harness.controls.fireWillSaveDocument({
+      document: routeDocument,
+      reason: harness.mocks.vscode.TextDocumentSaveReason.Manual,
+    })
+    await harness.controls.fireDidSaveDocument(routeDocument)
+
+    const firstManualSaveNotifications = harness.controls.clientState.notificationCalls.filter(
+      (entry) => entry.method === NOTIFICATIONS.didManualSave
+    )
+    if (firstManualSaveNotifications.length !== 1) {
+      throw new Error(
+        `Expected manual EJS save to notify the LSP once. Got: ${JSON.stringify(harness.controls.clientState.notificationCalls)}`
+      )
+    }
+    if (firstManualSaveNotifications[0].params.uri !== routeDocument.uri.toString()) {
+      throw new Error(
+        `Expected manual-save notification URI to match the saved EJS document. Got: ${JSON.stringify(firstManualSaveNotifications[0])}`
+      )
+    }
+
+    await harness.controls.fireWillSaveDocument({
+      document: routeDocument,
+      reason: harness.mocks.vscode.TextDocumentSaveReason.AfterDelay,
+    })
+    await harness.controls.fireDidSaveDocument(routeDocument)
+
+    const afterDelayNotifications = harness.controls.clientState.notificationCalls.filter(
+      (entry) => entry.method === NOTIFICATIONS.didManualSave
+    )
+    if (afterDelayNotifications.length !== 1) {
+      throw new Error(
+        `Expected after-delay saves to skip manual-save notifications. Got: ${JSON.stringify(afterDelayNotifications)}`
+      )
+    }
+
+    await harness.controls.fireWillSaveDocument({
+      document: hookScriptDocument,
+      reason: harness.mocks.vscode.TextDocumentSaveReason.Manual,
+    })
+    await harness.controls.fireDidSaveDocument(hookScriptDocument)
+
+    const hookScriptNotifications = harness.controls.clientState.notificationCalls.filter(
+      (entry) => entry.method === NOTIFICATIONS.didManualSave
+    )
+    if (hookScriptNotifications.length !== 1) {
+      throw new Error(
+        `Expected non-EJS managed documents to skip manual-save notifications. Got: ${JSON.stringify(hookScriptNotifications)}`
+      )
+    }
+  })
+}
+
+async function runCommandBoundaryTest(repoRoot, fixture) {
+  const probeResult = {
+    filePath: fixture.routeFilePath,
+    hasAppRoot: true,
+    diagnostics: 2,
+  }
+  const reloadResult = {
+    scoped: false,
+    message: 'PocketPages caches reloaded for every open app.',
+  }
+  const harness = createMockExtensionHost({
+    repoRoot,
+    fixture,
+    languageClientOptions: {
+      async sendRequest(method, params) {
+        if (method === REQUESTS.probeCurrentFile) {
+          return probeResult
+        }
+
+        if (method === REQUESTS.reloadCaches) {
+          return reloadResult
+        }
+
+        throw new Error(`Unexpected request during command boundary test: ${method} ${JSON.stringify(params)}`)
+      },
+    },
+  })
+
+  await withMockedExtensionModule(repoRoot, harness.mocks, async (extensionModule) => {
+    const routeDocument = createMockDocument(fixture.routeFilePath)
+    const routeEditor = harness.controls.createEditor(routeDocument, new MockPosition(1, 0))
+    const targetUri = URI.file(fixture.partialFilePath)
+    const serializedTargetUri = typeof targetUri.toJSON === 'function' ? targetUri.toJSON() : {
+      scheme: targetUri.scheme,
+      authority: targetUri.authority,
+      path: targetUri.path,
+      query: targetUri.query,
+      fragment: targetUri.fragment,
+      fsPath: targetUri.fsPath,
+    }
+
+    await extensionModule.activate(harness.context)
+    await harness.controls.fireActiveEditorChange(routeEditor)
+    await flushAsyncWork()
+
+    await harness.controls.executeCommand('pocketpagesServerScript.probeCurrentFile')
+    const probeRequests = harness.controls.clientState.requestCalls.filter(
+      (entry) => entry.method === REQUESTS.probeCurrentFile
+    )
+    if (probeRequests.length !== 1 || probeRequests[0].params.uri !== routeDocument.uri.toString()) {
+      throw new Error(`Expected probeCurrentFile to forward the active document URI. Got: ${JSON.stringify(probeRequests)}`)
+    }
+    if (!harness.controls.informationMessages.some((message) => String(message).includes('diagnostics=2'))) {
+      throw new Error(
+        `Expected probeCurrentFile to surface the probe result summary. Got: ${JSON.stringify(harness.controls.informationMessages)}`
+      )
+    }
+    if (harness.controls.outputShows.length === 0) {
+      throw new Error('Expected probeCurrentFile to reveal the shared output channel.')
+    }
+
+    await harness.controls.fireActiveEditorChange(null)
+    await flushAsyncWork()
+    await harness.controls.executeCommand('pocketpagesServerScript.reloadCaches')
+
+    const reloadRequests = harness.controls.clientState.requestCalls.filter(
+      (entry) => entry.method === REQUESTS.reloadCaches
+    )
+    if (reloadRequests.length !== 1 || reloadRequests[0].params.uri !== null) {
+      throw new Error(`Expected reloadCaches to allow a null URI when no active editor is open. Got: ${JSON.stringify(reloadRequests)}`)
+    }
+    if (!harness.controls.informationMessages.includes(reloadResult.message)) {
+      throw new Error(
+        `Expected reloadCaches to surface the server reload message. Got: ${JSON.stringify(harness.controls.informationMessages)}`
+      )
+    }
+
+    await harness.controls.executeCommand('pocketpagesServerScript.openCodeLensTarget', serializedTargetUri)
+    const openCommandCall = harness.controls.executedCommands.find((entry) => entry.commandId === 'vscode.open')
+    if (!openCommandCall) {
+      throw new Error('Expected openCodeLensTarget to delegate to vscode.open.')
+    }
+    if (normalizeFilePath(openCommandCall.args[0].fsPath) !== normalizeFilePath(fixture.partialFilePath)) {
+      throw new Error(`Expected openCodeLensTarget to revive the serialized URI target. Got: ${JSON.stringify(openCommandCall.args)}`)
+    }
+
+    await harness.controls.executeCommand('pocketpagesServerScript.openCodeLensTarget', { bad: true })
+    if (!harness.controls.warningMessages.includes('Unable to resolve the target file.')) {
+      throw new Error(
+        `Expected openCodeLensTarget to warn on invalid URI payloads. Got: ${JSON.stringify(harness.controls.warningMessages)}`
+      )
+    }
+  })
+}
+
 async function runExtensionHostSanityCheck(repoRoot) {
   const fixture = createExtensionHostFixture()
 
@@ -841,6 +1023,8 @@ async function runExtensionHostSanityCheck(repoRoot) {
     await runLifecycleRetryTest(repoRoot, fixture)
     await runReferencesBoundaryTest(repoRoot, fixture)
     await runRenameBoundaryTest(repoRoot, fixture)
+    await runManualSaveNotificationBoundaryTest(repoRoot, fixture)
+    await runCommandBoundaryTest(repoRoot, fixture)
   } finally {
     fs.rmSync(fixture.fixtureRoot, { recursive: true, force: true })
   }
