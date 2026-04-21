@@ -3487,11 +3487,13 @@ class ProjectLanguageService {
     return preparedState;
   }
 
-  getPreparedVirtualStateAtOffset(filePath, offset) {
+  getPreparedVirtualStateAtOffset(filePath, offset, options = {}) {
     const preparedState = this.preparedDocumentStates.get(normalizePath(filePath));
     if (!preparedState) {
       return null;
     }
+
+    const preferTemplateDocument = !!(options && options.preferTemplateDocument);
 
     if (preparedState.kind === "script" && preparedState.script) {
       return {
@@ -3506,6 +3508,26 @@ class ProjectLanguageService {
 
     if (preparedState.kind !== "ejs") {
       return null;
+    }
+
+    const isServerOffset = (preparedState.serverBlocks || []).some(
+      (block) => offset >= block.contentStart && offset <= block.contentEnd
+    );
+    const isTemplateOffset =
+      !!preparedState.template &&
+      (preparedState.template.blocks || []).some(
+        (block) => offset >= block.contentStart && offset <= block.contentEnd
+      );
+
+    if (preferTemplateDocument && preparedState.template && (isServerOffset || isTemplateOffset)) {
+      return {
+        block: null,
+        virtual: {
+          fileName: preparedState.template.fileName,
+          preludeLength: preparedState.template.preludeLength,
+        },
+        virtualOffset: preparedState.template.preludeLength + offset,
+      };
     }
 
     for (const block of preparedState.serverBlocks || []) {
@@ -3639,7 +3661,9 @@ class ProjectLanguageService {
   }
 
   getTypeScriptDefinitionTarget(filePath, documentText, offset) {
-    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset, {
+      preferTemplateDocument: true,
+    });
     if (!virtualState) {
       return null;
     }
@@ -3707,7 +3731,9 @@ class ProjectLanguageService {
   }
 
   getTypeScriptReferenceTargets(filePath, documentText, offset, options = {}) {
-    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset);
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset, {
+      preferTemplateDocument: true,
+    });
     if (!virtualState) {
       return null;
     }
@@ -3772,8 +3798,9 @@ class ProjectLanguageService {
 
   getVirtualStateAtOffset(filePath, documentText, offset, options = {}) {
     const profile = options && typeof options === "object" ? options.profile : null;
+    const preferTemplateDocument = !!(options && options.preferTemplateDocument);
     const startedAt = profile ? process.hrtime.bigint() : null;
-    const preparedVirtualState = this.getPreparedVirtualStateAtOffset(filePath, offset);
+    const preparedVirtualState = this.getPreparedVirtualStateAtOffset(filePath, offset, options);
     if (preparedVirtualState) {
       if (profile && startedAt) {
         profile.upsertKind =
@@ -3806,12 +3833,16 @@ class ProjectLanguageService {
     }
 
     const block = getServerBlockAtOffset(documentText, offset);
+    const templateCodeBlock = getTemplateCodeBlockAtOffset(documentText, offset);
     const upsertStartedAt = profile ? process.hrtime.bigint() : null;
-    const virtual = block
-      ? this.upsertVirtualFile(filePath, block)
-      : getTemplateCodeBlockAtOffset(documentText, offset)
-        ? this.upsertTemplateVirtualFile(filePath, documentText)
-        : null;
+    const shouldUseTemplateVirtual = preferTemplateDocument && (block || templateCodeBlock);
+    const virtual = shouldUseTemplateVirtual
+      ? this.upsertTemplateVirtualFile(filePath, documentText)
+      : block
+        ? this.upsertVirtualFile(filePath, block)
+        : templateCodeBlock
+          ? this.upsertTemplateVirtualFile(filePath, documentText)
+          : null;
 
     if (!virtual) {
       if (profile && startedAt) {
@@ -3823,15 +3854,18 @@ class ProjectLanguageService {
     }
 
     if (profile && startedAt) {
-      profile.upsertKind = block ? "server-block" : "template";
+      profile.upsertKind = shouldUseTemplateVirtual ? "template" : block ? "server-block" : "template";
       profile.upsertMs = upsertStartedAt ? elapsedMilliseconds(upsertStartedAt) : 0;
       profile.getVirtualStateAtOffsetMs = elapsedMilliseconds(startedAt);
     }
 
     return {
-      block,
+      block: shouldUseTemplateVirtual ? null : block,
       virtual,
-      virtualOffset: block ? virtual.preludeLength + (offset - block.contentStart) : virtual.preludeLength + offset,
+      virtualOffset:
+        shouldUseTemplateVirtual || !block
+          ? virtual.preludeLength + offset
+          : virtual.preludeLength + (offset - block.contentStart),
     };
   }
 

@@ -675,6 +675,11 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected lifecycle-features.js to suppress diagnostics for excluded PocketPages vendor and minified scripts.'
   )
   assertMatches(
+    serverSource,
+    /helpers:\s*\{[\s\S]*isEjsFilePath,\s*isExcludedPocketPagesScriptPath,\s*isScriptFilePath,\s*isSchemaSupportOnlyHookScriptPath,/,
+    'Expected server.js helper wiring to expose isScriptFilePath to lifecycle-features.'
+  )
+  assertMatches(
     tsPluginSource,
     /core\.isFeatureEnabledAtOffset\(\s*documentContext\.uri,\s*position,\s*capabilityName\s*\)/,
     'Expected PocketPages TS plugin to respect mapper ownership before serving TS features for .ejs.'
@@ -1802,6 +1807,29 @@ const isSignedIn = !!authState && authState.isSignedIn
     if (!Array.isArray(lspSmokeReferences) || lspSmokeReferences.length < 3) {
       throw new Error(`Expected TS feature references to include declaration and script usage. Got: ${JSON.stringify(lspSmokeReferences)}`)
     }
+    const lspSmokeTemplateLinkedReferences = tsFeatureService.provideReferences({
+      textDocument: { uri: lspSmokeUri },
+      position: lspSmokeDocument.positionAt(lspSmokeText.indexOf('localValue =') + 2),
+      context: { includeDeclaration: true },
+    })
+    if (!Array.isArray(lspSmokeTemplateLinkedReferences) || lspSmokeTemplateLinkedReferences.length !== 2) {
+      throw new Error(`Expected TS feature references from server declaration to include template usages. Got: ${JSON.stringify(lspSmokeTemplateLinkedReferences)}`)
+    }
+    const lspSmokeTemplateLinkedRenameEdits = tsFeatureService.provideRename({
+      textDocument: { uri: lspSmokeUri },
+      position: lspSmokeDocument.positionAt(lspSmokeText.indexOf('localValue =') + 2),
+      newName: 'pageState',
+    })
+    if (!Array.isArray(lspSmokeTemplateLinkedRenameEdits) || lspSmokeTemplateLinkedRenameEdits.length !== 2) {
+      throw new Error(`Expected TS feature rename from server declaration to update template usages. Got: ${JSON.stringify(lspSmokeTemplateLinkedRenameEdits)}`)
+    }
+    const renamedLspSmokeText = applyEditsToText(lspSmokeText, lspSmokeTemplateLinkedRenameEdits)
+    if (
+      !renamedLspSmokeText.includes("const pageState = { title: 'Boards' }") ||
+      !renamedLspSmokeText.includes('<div><%= pageState.title %></div>')
+    ) {
+      throw new Error(`Expected TS feature rename from server declaration to update the template usage. Got: ${renamedLspSmokeText}`)
+    }
 
     const schemaOnlyCustomFeatureCore = new PocketPagesLanguageCore()
     const schemaOnlyCustomFeatureText = `redirect('/')\n`
@@ -1891,6 +1919,59 @@ const isSignedIn = !!authState && authState.isSignedIn
     })
     if (!Array.isArray(lspSmokeRename) || lspSmokeRename.length < 3) {
       throw new Error(`Expected TS feature rename to include declaration and script usage edits. Got: ${JSON.stringify(lspSmokeRename)}`)
+    }
+    const jsRenameText = `const sessionState = { signedIn: true }\nconsole.log(sessionState.signedIn)\n`
+    const jsRenameDocument = createTestDocument(
+      fixture.middlewareFilePath,
+      'javascript',
+      1,
+      jsRenameText
+    )
+    const jsRenameUri = jsRenameDocument.uri
+    lspSmokeCore.openDocument({
+      uri: jsRenameUri,
+      languageId: 'javascript',
+      version: 1,
+      text: jsRenameText,
+    })
+    const jsRenameContext = createLspServiceSmokeContext(
+      lspSmokeCore,
+      new Map([
+        [lspSmokeUri, lspSmokeDocument],
+        [jsRenameUri, jsRenameDocument],
+      ])
+    )
+    const jsRenameFeatureService = createTypeScriptFeatureService(jsRenameContext.context)
+    const jsRenamePosition = jsRenameDocument.positionAt(jsRenameText.indexOf('sessionState =') + 2)
+    const jsPrepareRename = jsRenameFeatureService.providePrepareRename({
+      textDocument: { uri: jsRenameUri },
+      position: jsRenamePosition,
+    })
+    if (!jsPrepareRename || jsPrepareRename.placeholder !== 'sessionState') {
+      throw new Error(`Expected JS TS prepareRename placeholder for sessionState. Got: ${JSON.stringify(jsPrepareRename)}`)
+    }
+    const jsRenameReferences = jsRenameFeatureService.provideReferences({
+      textDocument: { uri: jsRenameUri },
+      position: jsRenamePosition,
+      context: { includeDeclaration: true },
+    })
+    if (!Array.isArray(jsRenameReferences) || jsRenameReferences.length !== 2) {
+      throw new Error(`Expected JS TS references to include declaration and local usage. Got: ${JSON.stringify(jsRenameReferences)}`)
+    }
+    const jsRenameEdits = jsRenameFeatureService.provideRename({
+      textDocument: { uri: jsRenameUri },
+      position: jsRenamePosition,
+      newName: 'authSnapshot',
+    })
+    if (!Array.isArray(jsRenameEdits) || jsRenameEdits.length !== 2) {
+      throw new Error(`Expected JS TS rename to update declaration and local usage. Got: ${JSON.stringify(jsRenameEdits)}`)
+    }
+    const renamedJsRenameText = applyEditsToText(jsRenameText, jsRenameEdits)
+    if (
+      !renamedJsRenameText.includes('const authSnapshot = { signedIn: true }') ||
+      !renamedJsRenameText.includes('console.log(authSnapshot.signedIn)')
+    ) {
+      throw new Error(`Expected JS TS rename to update declaration and local usage text. Got: ${renamedJsRenameText}`)
     }
     const templateRenameText = `<%
 const flashClasses = 'notice'

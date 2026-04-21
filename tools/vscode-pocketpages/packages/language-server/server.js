@@ -604,6 +604,7 @@ const featureServiceContext = {
     isActiveDiagnosticRun,
     isEjsFilePath,
     isExcludedPocketPagesScriptPath,
+    isScriptFilePath,
     isSchemaSupportOnlyHookScriptPath,
     isStaleDocumentVersion,
     logServer,

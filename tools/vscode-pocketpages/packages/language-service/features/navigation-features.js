@@ -136,7 +136,9 @@ function createNavigationFeatureHandlers(deps) {
     },
 
     getTypeScriptRenameInfo(service, filePath, documentText, offset) {
-      const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset);
+      const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset, {
+        preferTemplateDocument: true,
+      });
       if (!virtualState) {
         return null;
       }
@@ -274,7 +276,9 @@ function createNavigationFeatureHandlers(deps) {
         };
       }
 
-      const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset);
+      const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset, {
+        preferTemplateDocument: true,
+      });
       if (!virtualState) {
         return null;
       }
