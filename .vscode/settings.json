@@ -53,6 +53,5 @@
         "progressive": false
       }
     }
-  ],
-  "livePreview.defaultPreviewPath": "/apps/kjca/pb_hooks/pages/_private/flash-alert.ejs"
+  ]
 }
