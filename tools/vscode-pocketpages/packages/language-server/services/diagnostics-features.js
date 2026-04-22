@@ -1,5 +1,10 @@
 "use strict";
 
+const ALWAYS_REPORTED_EJS_DIAGNOSTIC_CODES = new Set([
+  "pp-manual-flash-query",
+  "pp-unresolved-route-path",
+]);
+
 function createDiagnosticsFeatureService(context) {
   const {
     connection,
@@ -26,6 +31,13 @@ function createDiagnosticsFeatureService(context) {
 
   function shouldReportDiagnostic(uri, documentContext, diagnostic) {
     if (!documentContext || !helpers.isEjsFilePath(documentContext.filePath)) {
+      return true;
+    }
+
+    if (
+      diagnostic &&
+      ALWAYS_REPORTED_EJS_DIAGNOSTIC_CODES.has(String(diagnostic.code || ""))
+    ) {
       return true;
     }
 

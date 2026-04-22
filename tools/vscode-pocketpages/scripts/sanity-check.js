@@ -2064,7 +2064,7 @@ const flashClasses = 'notice'
 
     const diagnosticsEvents = []
     const diagnosticsSmokeCore = new PocketPagesLanguageCore()
-    const diagnosticsSmokeText = `<script server>\nresolve('/_private/board-service')\n</script>\n<div>ok</div>\n`
+    const diagnosticsSmokeText = `<a href="/missing"></a>\n<script server>\nresolve('/_private/board-service')\n</script>\n<div>ok</div>\n`
     const diagnosticsSmokeDocument = createTestDocument(fixture.boardsFilePath, 'ejs', 1, diagnosticsSmokeText)
     const diagnosticsSmokeUri = diagnosticsSmokeDocument.uri
     diagnosticsSmokeCore.openDocument({
@@ -2095,6 +2095,9 @@ const flashClasses = 'notice'
       )
     ) {
       throw new Error(`Expected diagnostics feature service to keep resolve() path diagnostics reportable. Got: ${JSON.stringify(diagnosticsEvents[0].diagnostics)}`)
+    }
+    if (!diagnosticsEvents[0].diagnostics.some((entry) => String(entry.code) === 'pp-unresolved-route-path')) {
+      throw new Error(`Expected diagnostics feature service to publish route-path diagnostics from EJS markup. Got: ${JSON.stringify(diagnosticsEvents[0].diagnostics)}`)
     }
 
     const schemaOnlyDiagnosticsEvents = []
