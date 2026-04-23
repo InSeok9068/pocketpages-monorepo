@@ -1,4 +1,4 @@
-import type { PagesGlobalContext, PagesRequestContext, PagesResponse } from 'pocketpages'
+import type { MiddlewareNextFunc, PagesGlobalContext, PagesRequestContext, PagesResponse } from 'pocketpages'
 import type { Client, ClientId, RealtimeOptions } from 'pocketpages-plugin-realtime'
 
 // Editor-only mirror for globals injected by PocketPages core and plugins in
@@ -20,6 +20,7 @@ declare module 'pocketpages' {
 
 declare global {
   interface PocketPagesRouteParams {}
+  type PocketPagesNextMiddlewareFunc<TData = any> = (api: PagesRequestContext<TData>, next: MiddlewareNextFunc) => void
 
   // `pocketpages` core request/context globals
   const api: PocketPagesEditorApi<any>

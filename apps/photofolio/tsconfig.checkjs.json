@@ -11,14 +11,6 @@
     "maxNodeModuleJsDepth": 0,
     "skipLibCheck": true
   },
-  "include": [
-    "pb_data/types.d.ts",
-    "pocketpages-globals.d.ts",
-    "types.d.ts",
-    "pb_hooks/pages/_private/**/*.js"
-  ],
-  "exclude": [
-    "pb_hooks/pages/_private/vendor/**",
-    "node_modules/**"
-  ]
+  "include": ["pb_data/types.d.ts", "pocketpages-globals.d.ts", "types.d.ts", "pb_hooks/**/*.js"],
+  "exclude": ["node_modules/**", "pb_hooks/pages/assets/**", "pb_hooks/pages/**/vendor/**"]
 }

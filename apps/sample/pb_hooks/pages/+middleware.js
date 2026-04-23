@@ -13,10 +13,10 @@ function isApiPath(pathname) {
  * @returns {string}
  */
 function escapeHtml(value) {
-  return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;')
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
-/** @type {import('pocketpages').MiddlewareLoaderFunc} */
+/** @type {PocketPagesNextMiddlewareFunc} */
 module.exports = function (api, next) {
   const { env, error, request, response } = api
   const pathname = String(request.url.pathname || '')

@@ -15,8 +15,8 @@
     "tools/**": true,
     "scripts/**": true,
     // 개발중인 서비스만 주석
-    "apps/sample/**": true,
-    "apps/kjca/**": true,
+    // "apps/sample/**": true,
+    // "apps/kjca/**": true,
     // "apps/booklog/**": true,
     // "apps/photofolio/**": true,
   },
@@ -28,8 +28,8 @@
     "**/pb_schema.json": true,
     "package-lock.json": true,
     // 개발중인 서비스만 주석
-    "apps/sample/**": true,
-    "apps/kjca/**": true,
+    // "apps/sample/**": true,
+    // "apps/kjca/**": true,
     // "apps/booklog/**": true,
     // "apps/photofolio/**": true,
   },

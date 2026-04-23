@@ -60,6 +60,21 @@ const kjcaLinkify = new LinkifyIt().set({
 })
 
 /**
+ * 문자열 왼쪽을 지정한 문자로 채웁니다.
+ * @param {unknown} value 원본 문자열 값입니다.
+ * @param {number} width 최소 길이입니다.
+ * @param {string} fillChar 채움 문자입니다.
+ * @returns {string} 왼쪽이 채워진 문자열입니다.
+ */
+function padLeftText(value, width, fillChar) {
+  const text = String(value || '')
+  const safeWidth = Math.max(0, Math.trunc(Number(width) || 0))
+  const filler = String(fillChar || ' ')
+  if (text.length >= safeWidth || !filler) return text
+  return new Array(safeWidth - text.length + 1).join(filler) + text
+}
+
+/**
  * JSON 문자열을 안전하게 파싱합니다.
  * @param {unknown} text 파싱할 원본 값입니다.
  * @template T
@@ -693,7 +708,7 @@ function hasRecruitingHeaderLabels(rows) {
     })
   })
 
-  const hasWeekdayHeader = labels.includes('요일')
+  const hasWeekdayHeader = labels.indexOf('요일') !== -1
   const hasChannelHeader = labels.some((label) => /모집\s*홍보(?:처|기관)/.test(label))
   const hasContentHeader = labels.some((label) => /모집\s*홍보내용/.test(label))
   const hasRecruitingHint = labels.some((label) => /주간\s*홍보\s*계획|배정목표|모집\s*[/.]?\s*홍보|홍보\s*모집|결과/.test(label))
@@ -1714,8 +1729,8 @@ function buildBrowserLikeHeaders(host, cookieHeader, referer) {
 function buildTodayDateText() {
   const now = new Date()
   const year = now.getFullYear()
-  const month = `${now.getMonth() + 1}`.padStart(2, '0')
-  const day = `${now.getDate()}`.padStart(2, '0')
+  const month = padLeftText(now.getMonth() + 1, 2, '0')
+  const day = padLeftText(now.getDate(), 2, '0')
   return `${year}-${month}-${day}`
 }
 
@@ -1724,8 +1739,8 @@ function buildTodayDateText() {
  */
 function formatUtcDateText(date) {
   const year = date.getUTCFullYear()
-  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0')
-  const day = `${date.getUTCDate()}`.padStart(2, '0')
+  const month = padLeftText(date.getUTCMonth() + 1, 2, '0')
+  const day = padLeftText(date.getUTCDate(), 2, '0')
   return `${year}-${month}-${day}`
 }
 
@@ -1770,7 +1785,7 @@ function buildIsoWeekValue(dateText) {
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
   const weekNumber = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
 
-  return `${date.getUTCFullYear()}-W${String(weekNumber).padStart(2, '0')}`
+  return `${date.getUTCFullYear()}-W${padLeftText(weekNumber, 2, '0')}`
 }
 
 /**
@@ -1781,7 +1796,7 @@ function buildIsoWeekValue(dateText) {
  */
 function normalizeReferenceWeek(value, fallbackDateText) {
   const parsed = parseReferenceWeekParts(value)
-  if (parsed) return `${parsed.year}-W${String(parsed.week).padStart(2, '0')}`
+  if (parsed) return `${parsed.year}-W${padLeftText(parsed.week, 2, '0')}`
   return buildIsoWeekValue(fallbackDateText)
 }
 
@@ -1891,7 +1906,7 @@ function hashText(text) {
     hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)
     hash >>>= 0
   }
-  return `${hash.toString(16).padStart(8, '0')}-${source.length}`
+  return `${padLeftText(hash.toString(16), 8, '0')}-${source.length}`
 }
 
 /**
@@ -2047,8 +2062,8 @@ function parseDateText(value) {
  */
 function formatDateText(date) {
   const year = date.getFullYear()
-  const month = `${date.getMonth() + 1}`.padStart(2, '0')
-  const day = `${date.getDate()}`.padStart(2, '0')
+  const month = padLeftText(date.getMonth() + 1, 2, '0')
+  const day = padLeftText(date.getDate(), 2, '0')
   return `${year}-${month}-${day}`
 }
 

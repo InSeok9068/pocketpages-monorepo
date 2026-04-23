@@ -1,7 +1,11 @@
 {
-  "include": ["pb_data/types.d.ts", "pocketpages-globals.d.ts", "types.d.ts", "**/*.ejs", "**/*.js"],
+  "include": ["pb_data/types.d.ts", "pocketpages-globals.d.ts", "types.d.ts", "pb_hooks/**/*.ejs", "pb_hooks/**/*.js"],
+  "exclude": ["node_modules/**", "pb_hooks/pages/assets/**", "pb_hooks/pages/**/vendor/**"],
   "compilerOptions": {
     "target": "es6",
-    "module": "commonjs"
+    "module": "commonjs",
+    "checkJs": true,
+    "strict": false,
+    "maxNodeModuleJsDepth": 0
   }
 }

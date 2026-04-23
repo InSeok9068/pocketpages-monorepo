@@ -196,24 +196,16 @@ function getSentHighlightIdsWithinDays(userId, notificationKey, days) {
 /**
  * 푸시 발송 로그를 저장합니다.
  *
- * @param {object} input 로그 입력값
- * @param {string} input.userId 사용자 ID
- * @param {string} input.notificationKey 알림 종류 코드
- * @param {string} input.channel 채널 코드
- * @param {string} input.sendStatus 발송 결과 상태
- * @param {string} [input.dedupeKey] 중복 방지 키
- * @param {string} [input.bookId] 관련 책 ID
- * @param {string} [input.shelfId] 관련 책장 ID
- * @param {string} [input.highlightId] 관련 하이라이트 ID
- * @param {string} [input.title] 발송 제목
- * @param {string} [input.bodyText] 발송 본문
- * @param {string} [input.providerMessageId] 외부 발송 ID
- * @param {string} [input.errorMessage] 실패 메시지
- * @param {string} [input.sentAt] 발송 일자
- * @param {object} [input.payloadJson] 원본 payload
+ * @param {types.BooklogPushSendLogInput} input 로그 입력값
  */
 function createLog(input) {
-  const source = input || {}
+  /** @type {types.BooklogPushSendLogInput} */
+  const source = input || {
+    userId: '',
+    notificationKey: '',
+    channel: 'push',
+    sendStatus: '',
+  }
   const collection = $app.findCollectionByNameOrId(COLLECTION_NAME)
   const logRecord = new Record(collection)
 

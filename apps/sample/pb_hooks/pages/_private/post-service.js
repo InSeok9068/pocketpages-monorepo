@@ -1,9 +1,19 @@
 const { slugify } = require('./slugify')
 
+/** @type {Record<types.PostStatus, true>} */
 var POST_STATUS_VALUES = {
   draft: true,
   published: true,
   archived: true,
+}
+
+/**
+ * 게시글 상태값인지 확인합니다.
+ * @param {string} value 확인할 상태값입니다.
+ * @returns {value is types.PostStatus} 허용된 게시글 상태값 여부입니다.
+ */
+function isPostStatus(value) {
+  return Object.prototype.hasOwnProperty.call(POST_STATUS_VALUES, value)
 }
 
 /**
@@ -19,16 +29,18 @@ function normalizePostStatus(value, fallbackStatus) {
   var nextStatus = String(value || fallback)
     .trim()
     .toLowerCase()
+  /** @type {types.PostStatus} */
+  var normalizedFallback = 'draft'
 
-  if (!POST_STATUS_VALUES[fallback]) {
-    fallback = 'draft'
+  if (isPostStatus(fallback)) {
+    normalizedFallback = fallback
   }
 
-  if (!POST_STATUS_VALUES[nextStatus]) {
-    return /** @type {types.PostStatus} */ (fallback)
+  if (!isPostStatus(nextStatus)) {
+    return normalizedFallback
   }
 
-  return /** @type {types.PostStatus} */ (nextStatus)
+  return nextStatus
 }
 
 /**
