@@ -1,5 +1,4 @@
-/** @type {import('pocketpages').PagesGlobalContext} */
-const globalApi = require('pocketpages').globalApi
+const { globalApi } = require('pocketpages')
 const { env, warn, info } = globalApi
 const {
   CACHE_COLLECTION_NAME,
@@ -24,6 +23,7 @@ const {
   htmlToText,
   normalizeStringArray,
   normalizeJsonArrayField,
+  normalizeTeamLeadRows,
   inferGemini429Cause,
   stringifyGeminiErrorDetails,
   normalizeRecruitingExtract,
@@ -32,6 +32,11 @@ const {
 const kjcaAuth = require('./kjca-auth')
 const { createKjcaSession } = kjcaAuth
 
+/**
+ * Retry-After 헤더를 ms 단위로 읽습니다.
+ * @param {unknown} value Retry-After 헤더 값입니다.
+ * @returns {number} 재시도 대기 ms입니다.
+ */
 function parseRetryAfterMs(value) {
   const text = String(value || '').trim()
   if (!text) return 0
@@ -40,6 +45,12 @@ function parseRetryAfterMs(value) {
   return Math.trunc(parsed * 1000)
 }
 
+/**
+ * 재시도 대기 시간을 계산합니다.
+ * @param {unknown} attempt 현재 시도 횟수입니다.
+ * @param {unknown} retryAfterHeader Retry-After 헤더 값입니다.
+ * @returns {number} 다음 재시도까지 기다릴 ms입니다.
+ */
 function computeRetryDelayMs(attempt, retryAfterHeader) {
   const retryAfterMs = parseRetryAfterMs(retryAfterHeader)
   if (retryAfterMs > 0) return retryAfterMs
@@ -49,11 +60,22 @@ function computeRetryDelayMs(attempt, retryAfterHeader) {
   return backoffMs + jitterMs
 }
 
+/**
+ * HTTP 상태 코드 기준으로 재시도 가능 여부를 판단합니다.
+ * @param {unknown} statusCode 응답 상태 코드입니다.
+ * @param {unknown} rateLimitCauseGuess 429 원인 추정값입니다.
+ * @returns {boolean} 재시도 가능하면 true입니다.
+ */
 function isRetryableGeminiHttp(statusCode, rateLimitCauseGuess) {
   if (statusCode === 429 && rateLimitCauseGuess === 'quota-or-billing-limit') return false
   return statusCode === 429 || statusCode === 500 || statusCode === 502 || statusCode === 503 || statusCode === 504
 }
 
+/**
+ * 전송 계층 오류가 재시도 가능한지 확인합니다.
+ * @param {unknown} errorText 오류 메시지 값입니다.
+ * @returns {boolean} 재시도 가능하면 true입니다.
+ */
 function isRetryableGeminiTransportError(errorText) {
   const text = String(errorText || '').toLowerCase()
   if (!text) return false
@@ -67,6 +89,23 @@ function isRetryableGeminiTransportError(errorText) {
   )
 }
 
+/**
+ * JSON 응답을 느슨한 object로 정리합니다.
+ * @param {unknown} text JSON 문자열 또는 원본 응답입니다.
+ * @returns {Record<string, any>} 프로퍼티 접근이 가능한 object입니다.
+ */
+function parseJsonObject(text) {
+  const parsed = parseJsonSafely(text, {})
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+  return parsed
+}
+
+/**
+ * Gemini 호출을 재시도 정책과 함께 실행합니다.
+ * @param {Record<string, any>} geminiPayload Gemini 요청 payload입니다.
+ * @param {{ geminiApiKey: string, index: number, dept: string }} context 재시도 로그에 쓸 호출 문맥입니다.
+ * @returns {{ statusCode: number, responseBody: string, headers: object, attempts: number, elapsedMs: number, transportError: string }} 호출 결과입니다.
+ */
 function requestGeminiWithRetry(geminiPayload, context) {
   let lastStatusCode = 0
   let lastResponseBody = ''
@@ -94,7 +133,7 @@ function requestGeminiWithRetry(geminiPayload, context) {
       const responseBody = toString(response.body)
       const headers = response.headers || {}
       const retryAfter = getHeaderValues(headers, 'Retry-After')[0] || ''
-      const parsedErrorBody = parseJsonSafely(responseBody, {})
+      const parsedErrorBody = parseJsonObject(responseBody)
       const geminiError = parsedErrorBody && parsedErrorBody.error ? parsedErrorBody.error : {}
       const geminiErrorMessage = String(geminiError.message || '').trim()
       const geminiErrorDetailsText = stringifyGeminiErrorDetails(geminiError.details)
@@ -158,6 +197,11 @@ function requestGeminiWithRetry(geminiPayload, context) {
   }
 }
 
+/**
+ * 분석 결과 1건을 화면/캐시 공용 shape로 정리합니다.
+ * @param {Partial<types.KjcaAnalyzeResult> | null | undefined} resultInput 원본 분석 결과입니다.
+ * @returns {types.KjcaAnalyzeResult} 정규화한 분석 결과입니다.
+ */
 function buildAnalyzeResult(resultInput) {
   return {
     dept: String(resultInput.dept || '').trim(),
@@ -174,6 +218,12 @@ function buildAnalyzeResult(resultInput) {
   }
 }
 
+/**
+ * recruiting 값 두 개를 병합하되 HTML 파싱 결과를 우선합니다.
+ * @param {unknown} primaryRecruiting 우선 사용할 recruiting 값입니다.
+ * @param {unknown} fallbackRecruiting 보완용 recruiting 값입니다.
+ * @returns {types.KjcaRecruitingExtract} 병합한 recruiting 값입니다.
+ */
 function mergeRecruitingPreferHtml(primaryRecruiting, fallbackRecruiting) {
   const primary = normalizeRecruitingExtract(primaryRecruiting)
   const fallback = normalizeRecruitingExtract(fallbackRecruiting)
@@ -189,6 +239,11 @@ function mergeRecruitingPreferHtml(primaryRecruiting, fallbackRecruiting) {
   })
 }
 
+/**
+ * 업무일지 분석용 Gemini 프롬프트를 만듭니다.
+ * @param {{ dept?: unknown, staffName?: unknown, docText?: unknown }} promptInput 프롬프트 입력값입니다.
+ * @returns {string} Gemini 프롬프트 문자열입니다.
+ */
 function buildPrompt(promptInput) {
   return (
     '아래는 업무일지 본문 텍스트야. 부서별로 "모집/홍보", "휴가", "특이사항"을 최대한 빠짐없이 추출해.\n' +
@@ -245,6 +300,11 @@ function buildPrompt(promptInput) {
   )
 }
 
+/**
+ * 분석 캐시 식별 filter를 만듭니다.
+ * @param {{ reportDate?: unknown, dept?: unknown, printUrl?: unknown, sourceHash?: unknown, promptVersion?: unknown }} cacheIdentityInput 캐시 식별 입력값입니다.
+ * @returns {string} PocketBase filter 문자열입니다.
+ */
 function buildCacheIdentityFilter(cacheIdentityInput) {
   const reportDateExact = String(cacheIdentityInput.reportDate || '').trim()
   const reportDateLike = `${reportDateExact}%`
@@ -257,6 +317,11 @@ function buildCacheIdentityFilter(cacheIdentityInput) {
   )
 }
 
+/**
+ * 동일 본문 해시의 성공 캐시를 찾습니다.
+ * @param {{ reportDate?: unknown, dept?: unknown, printUrl?: unknown, sourceHash?: unknown, promptVersion?: unknown }} cacheIdentityInput 캐시 식별 입력값입니다.
+ * @returns {core.Record | null} 찾은 성공 캐시 record입니다.
+ */
 function findSuccessCache(cacheIdentityInput) {
   const filter = `${buildCacheIdentityFilter(cacheIdentityInput)} && status = 'success'`
   try {
@@ -266,6 +331,11 @@ function findSuccessCache(cacheIdentityInput) {
   }
 }
 
+/**
+ * 분석 성공 결과를 캐시에 저장합니다.
+ * @param {types.KjcaStaffDiaryAnalysisCacheRole | null | undefined} staffDiaryAnalysisCacheRole 저장 전 검증 role입니다.
+ * @param {{ reportDate?: unknown, dept?: unknown, staffName?: unknown, printUrl?: unknown, sourceHash?: unknown, promotion?: unknown, vacation?: unknown, special?: unknown, recruiting?: unknown, promptVersion?: unknown }} cacheRecordInput 저장할 캐시 값입니다.
+ */
 function upsertSuccessCache(staffDiaryAnalysisCacheRole, cacheRecordInput) {
   const collection = $app.findCollectionByNameOrId(CACHE_COLLECTION_NAME)
   const lookupFilter = buildCacheIdentityFilter(cacheRecordInput)
@@ -315,7 +385,7 @@ function upsertSuccessCache(staffDiaryAnalysisCacheRole, cacheRecordInput) {
  */
 function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, session = null) {
   const safeSession = session || createKjcaSession(request)
-  const targets = Array.isArray(payload && payload.targets) ? payload.targets : []
+  const targets = normalizeTeamLeadRows(payload && payload.targets)
   const reportDate = normalizeReportDate(payload && payload.reportDate)
   const geminiApiKey = String(env('GEMINI_API_KEY') || env('GEMINI_AI_KEY') || '').trim()
 
@@ -333,7 +403,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
   let alertMessage = ''
 
   for (let index = 0; index < targets.length; index += 1) {
-    const target = targets[index] || {}
+    const target = targets[index] || { dept: '', position: '', staffName: '', printUrl: '' }
     const dept = String(target.dept || '').trim()
     const position = String(target.position || '').trim()
     const staffName = String(target.staffName || '').trim()
@@ -436,7 +506,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
 
     const responseBody = String(geminiAttemptResult.responseBody || '')
     const geminiStatusCode = Number(geminiAttemptResult.statusCode || 0)
-    const parsedErrorBody = parseJsonSafely(responseBody, {})
+    const parsedErrorBody = parseJsonObject(responseBody)
     const geminiError = parsedErrorBody && parsedErrorBody.error ? parsedErrorBody.error : {}
     const geminiErrorMessage = String(geminiError.message || '').trim()
     const geminiErrorDetailsText = stringifyGeminiErrorDetails(geminiError.details)
@@ -455,7 +525,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
       continue
     }
 
-    const geminiPayloadJson = parseJsonSafely(responseBody, {})
+    const geminiPayloadJson = parseJsonObject(responseBody)
     const geminiText =
       geminiPayloadJson &&
       geminiPayloadJson.candidates &&
@@ -465,7 +535,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
       geminiPayloadJson.candidates[0].content.parts[0]
         ? geminiPayloadJson.candidates[0].content.parts[0].text || ''
         : ''
-    const parsed = parseJsonSafely(extractJsonObjectText(geminiText), {})
+    const parsed = parseJsonObject(extractJsonObjectText(geminiText))
     const promotion = normalizeStringArray(parsed && parsed.promotion)
     const vacation = normalizeStringArray(parsed && parsed.vacation)
     const special = normalizeStringArray(parsed && parsed.special)

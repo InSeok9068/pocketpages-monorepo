@@ -102,6 +102,7 @@
 ./task.sh rollback <service> <version>
 ./task.sh test [service]
 ./task.sh lint [service]
+./task.sh tsc [service]
 ./task.sh diag [file-or-service]
 ./task.sh verify [service]
 ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
@@ -115,8 +116,9 @@
 - `rollback`: 배포 롤백
 - `test`: 테스트 실행
 - `lint`: 린트 실행
+- `tsc`: checkJs TypeScript 검증 실행
 - `diag`: 진단 실행
-- `verify`: 린트 + 진단 실행
+- `verify`: 린트 + `tsc` + 진단 실행
 - `index`: 프로젝트 인덱스 조회
 - `bundle`: vendor 번들링
 - `format`: 포맷 실행

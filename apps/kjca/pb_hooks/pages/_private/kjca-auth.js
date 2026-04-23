@@ -1,5 +1,4 @@
-/** @type {import('pocketpages').PagesGlobalContext} */
-const globalApi = require('pocketpages').globalApi
+const { globalApi } = require('pocketpages')
 const { info, dbg } = globalApi
 const {
   KJCA_EMAIL_DOMAIN,
@@ -57,6 +56,11 @@ function ensureSuperuserRequest(request) {
   return authState
 }
 
+/**
+ * 현재 슈퍼유저와 연결된 KJCA 계정 정보를 읽습니다.
+ * @param {types.KjcaRequestLike | null | undefined} request PocketPages 요청 객체입니다.
+ * @returns {{ authState: types.KjcaAuthState, userRecord: core.Record, mngId: string, mngPw: string }} KJCA 로그인에 필요한 계정 정보입니다.
+ */
 function readMappedKjcaCredentials(request) {
   const authState = ensureSuperuserRequest(request)
   const superuserEmail = String(authState.email || '').trim()
@@ -144,6 +148,12 @@ function createKjcaSession(request) {
   }
 }
 
+/**
+ * KJCA 업무일지 목록을 조회해 접근 가능 여부와 팀장 목록을 반환합니다.
+ * @param {types.KjcaSession} session 재사용할 로그인 세션입니다.
+ * @param {unknown} scDay 조회할 날짜 값입니다.
+ * @returns {types.KjcaProbeResult} 접근 가능 여부와 팀장 목록입니다.
+ */
 function fetchDiaryList(session, scDay) {
   const safeDay = normalizeReportDate(scDay)
   const diaryListUrl =

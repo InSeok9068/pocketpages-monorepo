@@ -1,5 +1,4 @@
-/** @type {import('pocketpages').PagesGlobalContext} */
-const globalApi = require('pocketpages').globalApi
+const { globalApi } = require('pocketpages')
 const { info, dbg, warn } = globalApi
 const { createKjcaSession } = require('./kjca-auth')
 const {
@@ -26,6 +25,13 @@ const WEEKLY_SEARCH_SOURCES = [
   },
 ]
 
+/**
+ * 주간 보고 목록 조회 URL을 만듭니다.
+ * @param {string} host KJCA 호스트입니다.
+ * @param {{ label?: string, mn: string, type2: string }} source 조회할 목록 출처입니다.
+ * @param {{ weekStartDate: string, weekEndDate: string }} weekRange 조회할 날짜 범위입니다.
+ * @returns {string} 목록 조회 URL입니다.
+ */
 function buildWeeklyReportSearchUrl(host, source, weekRange) {
   return (
     `${host}/appr/appr_doc/?site=groupware` +
@@ -43,6 +49,13 @@ function buildWeeklyReportSearchUrl(host, source, weekRange) {
   )
 }
 
+/**
+ * 목록 출처 1곳에서 주간 보고 행을 읽습니다.
+ * @param {types.KjcaSession} session 재사용할 로그인 세션입니다.
+ * @param {{ label?: string, mn: string, type2: string }} source 조회할 목록 출처입니다.
+ * @param {{ weekStartDate: string, weekEndDate: string }} weekRange 조회할 날짜 범위입니다.
+ * @returns {{ rows: types.KjcaWeeklyReportRow[], warningMessage: string }} 읽은 행 목록과 경고 메시지입니다.
+ */
 function fetchWeeklyReportRowsFromSource(session, source, weekRange) {
   const searchUrl = buildWeeklyReportSearchUrl(session.host, source, weekRange)
   const response = $http.send({
@@ -88,6 +101,12 @@ function fetchWeeklyReportRowsFromSource(session, source, weekRange) {
   }
 }
 
+/**
+ * 주간 보고 상세 실패 결과 1건을 만듭니다.
+ * @param {types.KjcaWeeklyReportRow | null | undefined} row 실패한 문서 행입니다.
+ * @param {unknown} errorMessage 실패 메시지 값입니다.
+ * @returns {types.KjcaWeeklyReportDetail} 실패 상태를 담은 상세 결과입니다.
+ */
 function buildWeeklyReportDetailError(row, errorMessage) {
   const normalizedRow = normalizeWeeklyReportRows([row])[0]
   const safeRow = normalizedRow && typeof normalizedRow === 'object' ? normalizedRow : {}
@@ -111,6 +130,12 @@ function buildWeeklyReportDetailError(row, errorMessage) {
   }
 }
 
+/**
+ * 주간 보고 본문 HTML을 가져옵니다.
+ * @param {types.KjcaSession} session 재사용할 로그인 세션입니다.
+ * @param {types.KjcaWeeklyReportRow | null | undefined} reportRow 조회할 문서 행입니다.
+ * @returns {string} 주간 보고 상세 HTML입니다.
+ */
 function fetchWeeklyReportDocumentHtml(session, reportRow) {
   const viewUrl = String((reportRow && reportRow.viewUrl) || '').trim()
   if (!viewUrl) throw new Error('주간 보고 URL이 비어 있습니다.')

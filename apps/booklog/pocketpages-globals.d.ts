@@ -47,9 +47,30 @@ type PocketPagesPasswordlessUserData = {
 type PocketPagesOtpRequestData = {
   otpId: string
 }
+
 type PocketPagesRealtimeApi = {
   getClientById: (clientId: ClientId) => Client | undefined
   send: (topic: string, message: string, options?: RealtimeOptions) => void
+}
+
+type PocketPagesPocketBasePasswordAuthResult = {
+  token: string
+  record: any
+}
+type PocketPagesPocketBaseClient = {
+  collection: (name: string) => {
+    authWithPassword: (email: string, password: string) => PocketPagesPocketBasePasswordAuthResult
+  }
+}
+type PocketPagesPocketBaseCtor = new (baseUrl?: string, authStore?: any, lang?: string) => PocketPagesPocketBaseClient
+
+declare module 'pocketpages' {
+  export const globalApi: PagesGlobalContext
+}
+
+declare module 'pocketbase-js-sdk-jsvm' {
+  const PocketBase: PocketPagesPocketBaseCtor
+  export = PocketBase
 }
 
 declare global {
@@ -78,21 +99,13 @@ declare global {
   const createAnonymousUser: (options?: PocketPagesAuthOptions) => PocketPagesAnonymousUserData
   const createPasswordlessUser: (email: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesPasswordlessUserData
   const signInWithPassword: (email: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
-  const registerWithPassword: (
-    email: string,
-    password: string,
-    options?: PocketPagesAuthVerificationOptions
-  ) => PocketPagesRegisterAuthData
+  const registerWithPassword: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesRegisterAuthData
   const signInAnonymously: (options?: PocketPagesAuthOptions) => PocketPagesAuthData
   const requestOTP: (email: string, options?: PocketPagesAuthOptions) => PocketPagesOtpRequestData
   const signInWithOTP: (otpId: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
   const signInWithToken: (token: string) => void
   const requestOAuth2Login: (providerName: string, options?: PocketPagesOAuth2RequestOptions) => string
-  const signInWithOAuth2: (
-    state: string,
-    code: string,
-    options?: PocketPagesOAuth2ConfirmOptions
-  ) => PocketPagesAuthData
+  const signInWithOAuth2: (state: string, code: string, options?: PocketPagesOAuth2ConfirmOptions) => PocketPagesAuthData
   const signOut: () => void
   const requestVerification: (email: string, options?: PocketPagesAuthOptions) => void
   const confirmVerification: (token: string, options?: PocketPagesAuthOptions) => void

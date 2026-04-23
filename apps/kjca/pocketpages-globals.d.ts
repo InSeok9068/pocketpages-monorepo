@@ -52,6 +52,10 @@ type PocketPagesRealtimeApi = {
   send: (topic: string, message: string, options?: RealtimeOptions) => void
 }
 
+declare module 'pocketpages' {
+  export const globalApi: PagesGlobalContext
+}
+
 declare global {
   interface PocketPagesRouteParams {}
 

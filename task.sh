@@ -14,6 +14,7 @@ Usage:
   ./task.sh rollback <service> <1|2|3>
   ./task.sh test [service]
   ./task.sh lint [service]
+  ./task.sh tsc [service]
   ./task.sh diag [file-or-service]
   ./task.sh verify [service]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
@@ -28,8 +29,9 @@ Commands:
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
   test      Run node:test files under __tests__ for one service or all services
   lint      Run PocketPages self-validation checks and ESLint for one service or all services
+  tsc       Run checkJs TypeScript verification with tsconfig.checkjs.json for one service or all services
   diag      Run PocketPages editor diagnostics for one file, one service, or all services when omitted
-  verify    Run lint and diag together for one service or all services
+  verify    Run lint, tsc, and diag together for one service or all services
   index     Query AI-friendly PocketPages project index JSON for one service
   bundle    Interactively bundle one service dependency into pb_hooks/pages/_private/vendor
   format    Run npm run format
@@ -331,6 +333,30 @@ run_lint() {
   fi
 }
 
+resolve_tsc_bin() {
+  local candidate="$ROOT_DIR/node_modules/typescript/bin/tsc"
+  [[ -f "$candidate" ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
+run_tsc_for_service() {
+  local tsc_bin="$1"
+  local service_dir="$2"
+  local service_name
+  local config_file
+
+  service_name="$(basename "$service_dir")"
+  config_file="$service_dir/tsconfig.checkjs.json"
+
+  if [[ ! -f "$config_file" ]]; then
+    echo "Skipping $service_name: missing tsconfig.checkjs.json."
+    return 0
+  fi
+
+  echo "Running TypeScript check for service: $service_name"
+  node "$tsc_bin" -p "$config_file" --pretty false
+}
+
 run_test() {
   local service="${1:-}"
 
@@ -392,6 +418,53 @@ run_test() {
   fi
 }
 
+run_tsc() {
+  local service="${1:-}"
+  local tsc_bin=""
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run tsc command." >&2
+    exit 1
+  fi
+
+  if ! tsc_bin="$(resolve_tsc_bin)"; then
+    echo "Missing local TypeScript install." >&2
+    echo "Run npm install in the repository root first." >&2
+    echo "Expected:" >&2
+    echo "  - $ROOT_DIR/node_modules/typescript/bin/tsc" >&2
+    exit 1
+  fi
+
+  if [[ -n "$service" ]]; then
+    local service_dir
+    if ! service_dir="$(resolve_service_dir "$service")"; then
+      echo "Unknown service: $service" >&2
+      echo "Available services:" >&2
+      list_services >&2
+      exit 1
+    fi
+
+    run_tsc_for_service "$tsc_bin" "$service_dir"
+    return 0
+  fi
+
+  local service_name=""
+  local service_dir=""
+  local failed=0
+
+  while IFS= read -r service_name; do
+    service_dir="$APPS_DIR/$service_name"
+
+    if ! run_tsc_for_service "$tsc_bin" "$service_dir"; then
+      failed=1
+    fi
+  done < <(list_services)
+
+  if [[ "$failed" -ne 0 ]]; then
+    exit 1
+  fi
+}
+
 run_diag() {
   local diag_script="$ROOT_DIR/scripts/diag-pocketpages.js"
   local target="${1:-}"
@@ -430,6 +503,7 @@ run_verify() {
   local service="${1:-}"
 
   run_lint "$service"
+  run_tsc "$service"
   run_diag "$service"
 }
 
@@ -1151,6 +1225,10 @@ case "${1:-help}" in
   lint)
     shift || true
     run_lint "${1:-}"
+    ;;
+  tsc)
+    shift || true
+    run_tsc "${1:-}"
     ;;
   diag)
     shift || true

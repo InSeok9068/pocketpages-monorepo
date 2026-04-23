@@ -18,6 +18,10 @@ const OVERVIEW_SUMMARY_NAME_KEYWORDS = ['증권', '투자증권', '은행', '뱅
 const PROMPT_RESPONSE_SCHEMA =
   '{"page_type":"","snapshot_title":"","snapshot_date":null,"total_amount_krw":null,"sections":[{"section_label":"","reported_amount_krw":null}],"items":[{"institution_name":"","account_label":"","asset_name":"","asset_class_code":"","source_section_label":"","market_code":"","currency_code":"","quantity":null,"unit_price":null,"amount_original":null,"exchange_rate":null,"amount_krw":null,"memo":""}]}'
 
+/**
+ * 기본 logger shape를 만듭니다.
+ * @returns {{ dbg: Function, info: Function, warn: Function, error: Function }} 비어 있는 logger입니다.
+ */
 function createEmptyLogger() {
   return {
     dbg: function () {},
@@ -27,10 +31,18 @@ function createEmptyLogger() {
   }
 }
 
+/**
+ * 프롬프트에 붙일 응답 스키마 안내를 만듭니다.
+ * @returns {string} 응답 스키마 안내 문자열입니다.
+ */
 function buildResponseSchemaPrompt() {
   return 'Schema: ' + PROMPT_RESPONSE_SCHEMA
 }
 
+/**
+ * 전체 스크린샷 추출 프롬프트를 만듭니다.
+ * @returns {string} Gemini 전체 추출 프롬프트입니다.
+ */
 function buildFullPrompt() {
   return [
     'Return one JSON object only. No markdown. No code fence.',
@@ -47,6 +59,10 @@ function buildFullPrompt() {
   ].join('\n')
 }
 
+/**
+ * 분할 스크린샷 추출 프롬프트를 만듭니다.
+ * @returns {string} Gemini 분할 추출 프롬프트입니다.
+ */
 function buildSlicePrompt() {
   return [
     'Return one JSON object only. No markdown. No code fence.',
@@ -62,6 +78,11 @@ function buildSlicePrompt() {
   ].join('\n')
 }
 
+/**
+ * 추출 모드에 맞는 프롬프트를 고릅니다.
+ * @param {unknown} extractionMode 추출 모드 값입니다.
+ * @returns {string} 사용할 Gemini 프롬프트입니다.
+ */
 function buildPrompt(extractionMode) {
   return extractionMode === 'slice' ? buildSlicePrompt() : buildFullPrompt()
 }
@@ -91,6 +112,11 @@ function pickFirstValue(values) {
   return ''
 }
 
+/**
+ * Gemini 응답 JSON에서 본문 텍스트를 꺼냅니다.
+ * @param {Record<string, any> | null | undefined} responseJson Gemini 응답 JSON입니다.
+ * @returns {string} 추출한 본문 텍스트입니다.
+ */
 function readGeminiText(responseJson) {
   const candidates = responseJson && Array.isArray(responseJson.candidates) ? responseJson.candidates : []
   const firstCandidate = candidates.length > 0 && candidates[0] && typeof candidates[0] === 'object' ? candidates[0] : {}
@@ -101,6 +127,11 @@ function readGeminiText(responseJson) {
   return normalizeText(firstPart.text || '', 0)
 }
 
+/**
+ * AI item 1건을 photofolio item shape로 정리합니다.
+ * @param {Record<string, any> | null | undefined} rawItem AI가 돌려준 원본 item입니다.
+ * @returns {types.PhotofolioAiExtractItem} 정규화한 item입니다.
+ */
 function normalizeItem(rawItem) {
   const sourceJson = rawItem && typeof rawItem === 'object' ? rawItem : {}
   const institutionName = normalizeText(pickFirstValue([sourceJson.institution_name, sourceJson.institutionName, sourceJson['기관명'], sourceJson['금융사명']]), 255)
@@ -150,6 +181,11 @@ function normalizeItem(rawItem) {
   }
 }
 
+/**
+ * AI section 1건을 photofolio section shape로 정리합니다.
+ * @param {Record<string, any> | null | undefined} rawSection AI가 돌려준 원본 section입니다.
+ * @returns {types.PhotofolioAiExtractSection} 정규화한 section입니다.
+ */
 function normalizeSection(rawSection) {
   const sourceJson = rawSection && typeof rawSection === 'object' ? rawSection : {}
 
@@ -173,10 +209,20 @@ function normalizeSection(rawSection) {
   }
 }
 
+/**
+ * 섹션 비교용 키를 만듭니다.
+ * @param {unknown} value 원본 섹션명 값입니다.
+ * @returns {string} 공백 없는 소문자 키입니다.
+ */
 function normalizeSectionKey(value) {
   return normalizeText(value, 255).replace(/\s+/g, '').toLowerCase()
 }
 
+/**
+ * 자산 개요 섹션이 포함됐는지 확인합니다.
+ * @param {types.PhotofolioAiExtractSection[]} sections 섹션 목록입니다.
+ * @returns {boolean} 자산 개요 섹션이 있으면 true입니다.
+ */
 function hasAssetsOverviewSection(sections) {
   for (let index = 0; index < sections.length; index += 1) {
     const sectionKey = normalizeSectionKey(sections[index].section_label)
@@ -191,6 +237,11 @@ function hasAssetsOverviewSection(sections) {
   return false
 }
 
+/**
+ * 요약형 기관명 키워드가 들어 있는지 확인합니다.
+ * @param {unknown} value 검사할 텍스트입니다.
+ * @returns {boolean} 기관/계좌 요약형 키워드가 있으면 true입니다.
+ */
 function containsOverviewSummaryKeyword(value) {
   const normalizedValue = normalizeSectionKey(value)
 
@@ -207,6 +258,11 @@ function containsOverviewSummaryKeyword(value) {
   return false
 }
 
+/**
+ * 짧은 비티커 텍스트인지 확인합니다.
+ * @param {unknown} value 검사할 텍스트입니다.
+ * @returns {boolean} 짧고 티커처럼 보이지 않으면 true입니다.
+ */
 function isShortNonTickerText(value) {
   const normalizedValue = normalizeText(value, 255).replace(/\s+/g, '')
 
@@ -217,6 +273,11 @@ function isShortNonTickerText(value) {
   return !/[a-z0-9]/i.test(normalizedValue)
 }
 
+/**
+ * item이 요약형 기관/계좌 행인지 확인합니다.
+ * @param {Partial<types.PhotofolioAiExtractItem> | null | undefined} item 검사할 item입니다.
+ * @returns {boolean} 요약형 행이면 true입니다.
+ */
 function isOverviewSummaryLikeItem(item) {
   const assetName = normalizeText(item && item.asset_name, 255)
   const accountLabel = normalizeText(item && item.account_label, 255)
@@ -233,6 +294,13 @@ function isOverviewSummaryLikeItem(item) {
   return isShortNonTickerText(assetName)
 }
 
+/**
+ * 보유종목 화면을 자산 개요 화면으로 낮춰야 하는지 확인합니다.
+ * @param {types.PhotofolioCapturePageType} pageType 현재 판단한 화면 타입입니다.
+ * @param {types.PhotofolioAiExtractSection[]} sections 섹션 목록입니다.
+ * @param {types.PhotofolioAiExtractItem[]} items item 목록입니다.
+ * @returns {boolean} 자산 개요로 낮춰야 하면 true입니다.
+ */
 function shouldDemoteToAssetsOverview(pageType, sections, items) {
   if (!items.length) {
     return false
@@ -257,10 +325,20 @@ function shouldDemoteToAssetsOverview(pageType, sections, items) {
   return institutionLikeCount >= Math.max(2, Math.ceil(items.length * 0.5))
 }
 
+/**
+ * 병합용 item 식별 키를 만듭니다.
+ * @param {Partial<types.PhotofolioAiExtractItem> | null | undefined} item 병합할 item입니다.
+ * @returns {string} 병합 식별 키입니다.
+ */
 function buildExtractItemMergeKey(item) {
   return normalizeAssetIdentityText(item && item.asset_name, 255)
 }
 
+/**
+ * 화면 타입 우선순위를 숫자로 돌립니다.
+ * @param {unknown} pageType 비교할 화면 타입 값입니다.
+ * @returns {number} 병합 비교용 우선순위입니다.
+ */
 function getExtractPageTypePriority(pageType) {
   const normalizedPageType = normalizeCapturePageType(pageType)
 
@@ -279,6 +357,11 @@ function getExtractPageTypePriority(pageType) {
   return 1
 }
 
+/**
+ * item 정보량 점수를 계산합니다.
+ * @param {Partial<types.PhotofolioAiExtractItem> | null | undefined} item 점수 계산 대상입니다.
+ * @returns {number} 정보량 점수입니다.
+ */
 function scoreExtractItem(item) {
   let score = 0
 
@@ -296,6 +379,12 @@ function scoreExtractItem(item) {
   return score
 }
 
+/**
+ * 두 item 중 더 나은 값을 고릅니다.
+ * @param {types.PhotofolioAiExtractItem} baseItem 기존 item입니다.
+ * @param {types.PhotofolioAiExtractItem} incomingItem 새 item입니다.
+ * @returns {types.PhotofolioAiExtractItem} 더 나은 item입니다.
+ */
 function pickPreferredExtractItem(baseItem, incomingItem) {
   const baseScore = scoreExtractItem(baseItem)
   const incomingScore = scoreExtractItem(incomingItem)
@@ -315,6 +404,12 @@ function pickPreferredExtractItem(baseItem, incomingItem) {
   return baseItem
 }
 
+/**
+ * AI 원본 JSON을 photofolio 추출 결과 shape로 정리합니다.
+ * @param {Record<string, any> | null | undefined} parsedJson AI 응답 JSON입니다.
+ * @param {string} rawText 원본 응답 텍스트입니다.
+ * @returns {types.PhotofolioAiExtractResult} 정규화한 추출 결과입니다.
+ */
 function normalizeExtractResult(parsedJson, rawText) {
   const sourceJson = parsedJson && typeof parsedJson === 'object' ? parsedJson : {}
   const pageType = normalizeCapturePageType(pickFirstValue([sourceJson.page_type, sourceJson.pageType, sourceJson.screen_type, sourceJson.screenType]))
@@ -361,6 +456,16 @@ function normalizeExtractResult(parsedJson, rawText) {
 }
 
 /**
+ * 병합 결과에 쓸 최종 화면 타입을 정합니다.
+ * @param {number} itemCount 병합된 item 개수입니다.
+ * @param {types.PhotofolioCapturePageType} resolvedPageType 현재까지 계산한 화면 타입입니다.
+ * @returns {types.PhotofolioCapturePageType} 최종 화면 타입입니다.
+ */
+function resolveMergedPageType(itemCount, resolvedPageType) {
+  return itemCount > 0 ? 'invest_holdings' : resolvedPageType
+}
+
+/**
  * 세로 분할된 추출 결과를 하나의 캡처 결과로 병합합니다.
  * @param {types.PhotofolioAiExtractResult[]} extractResults 추출 결과 목록입니다.
  * @returns {types.PhotofolioAiExtractResult} 병합된 추출 결과입니다.
@@ -372,7 +477,7 @@ function mergeExtractResults(extractResults) {
   let snapshotTitle = ''
   let snapshotDate = ''
   let totalAmountKrw = null
-  let resolvedPageType = 'unknown'
+  let resolvedPageType = normalizeCapturePageType('')
   const rawTexts = []
   const rawSegments = []
 
@@ -471,7 +576,7 @@ function mergeExtractResults(extractResults) {
   }
 
   return {
-    page_type: mergedItems.length > 0 ? 'invest_holdings' : resolvedPageType,
+    page_type: resolveMergedPageType(mergedItems.length, resolvedPageType),
     snapshot_title: snapshotTitle,
     snapshot_date: snapshotDate,
     total_amount_krw: totalAmountKrw > 0 ? totalAmountKrw : null,

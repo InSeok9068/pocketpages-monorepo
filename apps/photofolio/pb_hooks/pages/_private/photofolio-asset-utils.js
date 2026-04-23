@@ -1,7 +1,44 @@
 /* global TextDecoder */
 
+/** @type {types.PhotofolioAssetClassCode[]} */
 const ASSET_CLASS_CODES = ['cash', 'stock_growth', 'stock_dividend', 'bond', 'gold', 'real_estate', 'other']
+/** @type {types.PhotofolioCapturePageType[]} */
 const CAPTURE_PAGE_TYPES = ['assets_overview', 'invest_overview', 'invest_holdings', 'unknown']
+/** @type {Record<types.PhotofolioAssetClassCode, true>} */
+const ASSET_CLASS_CODE_MAP = {
+  cash: true,
+  stock_growth: true,
+  stock_dividend: true,
+  bond: true,
+  gold: true,
+  real_estate: true,
+  other: true,
+}
+/** @type {Record<types.PhotofolioCapturePageType, true>} */
+const CAPTURE_PAGE_TYPE_MAP = {
+  assets_overview: true,
+  invest_overview: true,
+  invest_holdings: true,
+  unknown: true,
+}
+
+/**
+ * 자산 분류 코드인지 확인합니다.
+ * @param {string} value 확인할 코드값입니다.
+ * @returns {value is types.PhotofolioAssetClassCode} 허용 자산 분류 코드 여부입니다.
+ */
+function isAssetClassCode(value) {
+  return Object.prototype.hasOwnProperty.call(ASSET_CLASS_CODE_MAP, value)
+}
+
+/**
+ * 캡처 화면 타입인지 확인합니다.
+ * @param {string} value 확인할 화면 타입입니다.
+ * @returns {value is types.PhotofolioCapturePageType} 허용 화면 타입 여부입니다.
+ */
+function isCapturePageType(value) {
+  return Object.prototype.hasOwnProperty.call(CAPTURE_PAGE_TYPE_MAP, value)
+}
 
 /**
  * 이미지 바이트를 Base64 문자열로 바꿉니다.
@@ -241,7 +278,7 @@ function normalizeAssetClassCode(value) {
     return 'real_estate'
   }
 
-  if (ASSET_CLASS_CODES.includes(normalized)) {
+  if (isAssetClassCode(normalized)) {
     return normalized
   }
 
@@ -272,7 +309,7 @@ function normalizeCapturePageType(value) {
     return 'invest_holdings'
   }
 
-  if (CAPTURE_PAGE_TYPES.includes(normalized)) {
+  if (isCapturePageType(normalized)) {
     return normalized
   }
 

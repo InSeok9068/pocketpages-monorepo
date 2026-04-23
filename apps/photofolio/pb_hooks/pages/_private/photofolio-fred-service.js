@@ -1,5 +1,4 @@
-/** @type {import('pocketpages').PagesGlobalContext} */
-const globalApi = require('pocketpages').globalApi
+const { globalApi } = require('pocketpages')
 const store = globalApi.store
 
 const { normalizeIsoDate, normalizeText, parseJsonSafely, parseNumber } = require('./photofolio-asset-utils')
@@ -8,6 +7,7 @@ const FRED_OBSERVATIONS_URL = 'https://api.stlouisfed.org/fred/series/observatio
 const FRED_CACHE_KEY_PREFIX = 'photofolio:fred:dashboard:v1:'
 const FRED_CACHE_TTL_MS = 6 * 60 * 60 * 1000
 const FRED_CACHE_MAX_STALE_MS = 7 * 24 * 60 * 60 * 1000
+/** @type {Record<string, { key: string, seriesId: string, label: string, unit: string, units?: string }>} */
 const FRED_SERIES_META = {
   usdkrw: {
     key: 'usdkrw',
@@ -47,6 +47,7 @@ const FRED_SERIES_META = {
     units: 'pc1',
   },
 }
+/** @type {Record<types.PhotofolioTrendRangeCode, { code: types.PhotofolioTrendRangeCode, label: string, days: number }>} */
 const TREND_RANGE_META = {
   '3m': { code: '3m', label: '3개월', days: 92 },
   '6m': { code: '6m', label: '6개월', days: 183 },
@@ -54,6 +55,10 @@ const TREND_RANGE_META = {
   '3y': { code: '3y', label: '3년', days: 1096 },
 }
 
+/**
+ * 기본 logger shape를 만듭니다.
+ * @returns {{ dbg: Function, info: Function, warn: Function, error: Function }} 비어 있는 logger입니다.
+ */
 function createEmptyLogger() {
   return {
     dbg: function () {},
@@ -252,7 +257,7 @@ function buildObservationStart(rangeMeta) {
 
 /**
  * FRED 관측치 조회 URL을 만듭니다.
- * @param {{ apiKey: string, seriesId: string, observationStart: string }} input 조회 입력입니다.
+ * @param {{ apiKey: string, seriesId: string, observationStart: string, units?: string }} input 조회 입력입니다.
  * @returns {string} 호출 URL입니다.
  */
 function buildObservationsUrl(input) {
@@ -307,7 +312,7 @@ function normalizeObservations(rawObservations) {
 
 /**
  * 개별 FRED 시리즈를 조회합니다.
- * @param {{ apiKey: string, seriesMeta: { key: string, seriesId: string, label: string, unit: string }, observationStart: string, logger?: { dbg?: Function, info?: Function, warn?: Function, error?: Function } }} input 조회 입력입니다.
+ * @param {{ apiKey: string, seriesMeta: { key: string, seriesId: string, label: string, unit: string, units?: string }, observationStart: string, logger?: { dbg?: Function, info?: Function, warn?: Function, error?: Function } }} input 조회 입력입니다.
  * @returns {types.PhotofolioTrendSeries} 정규화된 시리즈 정보입니다.
  */
 function fetchTrendSeries(input) {

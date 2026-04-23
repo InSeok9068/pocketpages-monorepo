@@ -1,4 +1,4 @@
-const { compile: compileHtmlToText } = require(`${__hooks}/pages/_private/vendor/html-to-text.bundle.js`)
+﻿const { compile: compileHtmlToText } = require(`${__hooks}/pages/_private/vendor/html-to-text.bundle.js`)
 const LinkifyIt = require('linkify-it')
 
 const KJCA_EMAIL_DOMAIN = 'kjca.local'
@@ -10,8 +10,10 @@ const GEMINI_MODEL_NAME = 'gemini-2.5-flash-lite'
 const PROMPT_VERSION = 4
 const GEMINI_MAX_ATTEMPTS = 3
 
+/** @type {types.KjcaWeekday[]} */
 const WEEKDAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri']
 
+/** @type {Record<types.KjcaWeekday, string>} */
 const weekdayLabelMap = {
   mon: '월',
   tue: '화',
@@ -60,15 +62,36 @@ const kjcaLinkify = new LinkifyIt().set({
 /**
  * JSON 문자열을 안전하게 파싱합니다.
  * @param {unknown} text 파싱할 원본 값입니다.
- * @param {unknown} fallback 파싱 실패 시 돌려줄 기본값입니다.
- * @returns {unknown} 파싱 결과 또는 기본값입니다.
+ * @template T
+ * @param {T} fallback 파싱 실패 시 돌려줄 기본값입니다.
+ * @returns {T} 파싱 결과 또는 기본값입니다.
  */
 function parseJsonSafely(text, fallback) {
   try {
-    return JSON.parse(text)
+    return JSON.parse(String(text))
   } catch (_error) {
     return fallback
   }
+}
+
+/**
+ * 값이 object면 프로퍼티 접근이 쉬운 느슨한 객체로 돌려줍니다.
+ * @param {unknown} value 확인할 원본 값입니다.
+ * @returns {Record<string, any>} 프로퍼티 접근이 가능한 객체입니다.
+ */
+function toLooseObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return value
+}
+
+/**
+ * 값이 object면 느슨한 객체를, 아니면 null을 돌려줍니다.
+ * @param {unknown} value 확인할 원본 값입니다.
+ * @returns {Record<string, any> | null} 프로퍼티 접근용 객체 또는 null입니다.
+ */
+function toLooseObjectOrNull(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value
 }
 
 /**
@@ -112,6 +135,9 @@ function getHeaderValues(headers, key) {
   return []
 }
 
+/**
+ * 쿠키 헤더 문자열을 정리합니다.
+ */
 function normalizeCookieHeader(cookieHeader) {
   if (!cookieHeader) return ''
 
@@ -134,6 +160,10 @@ function normalizeCookieHeader(cookieHeader) {
     .join('; ')
 }
 
+/** `Set-Cookie` 헤더 배열을 cookie header 문자열로 바꿉니다. */
+/**
+ * Set-Cookie 헤더 배열을 cookie header 문자열로 바꿉니다.
+ */
 function extractCookieHeaderFromSetCookie(setCookieHeaders) {
   const cookieMap = {}
 
@@ -186,6 +216,9 @@ function detectAuthRequiredHtml(html) {
   return redirectRegex.test(text)
 }
 
+/**
+ * HTML entity를 일반 문자열로 복원합니다.
+ */
 function decodeHtmlEntities(text) {
   const source = String(text || '')
   return source
@@ -197,6 +230,9 @@ function decodeHtmlEntities(text) {
     .replace(/&#39;/g, "'")
 }
 
+/**
+ * 줄바꿈 없는 짧은 텍스트로 정리합니다.
+ */
 function normalizeSingleLineText(text) {
   return decodeHtmlEntities(String(text || ''))
     .replace(/\u00a0/g, ' ')
@@ -205,6 +241,9 @@ function normalizeSingleLineText(text) {
     .trim()
 }
 
+/**
+ * 구조화 텍스트 한 줄을 읽기 쉽게 정리합니다.
+ */
 function normalizeStructuredTextLine(line) {
   const trimmed = String(line || '')
     .replace(/\u00a0/g, ' ')
@@ -215,6 +254,9 @@ function normalizeStructuredTextLine(line) {
   return trimmed
 }
 
+/**
+ * 여러 줄 구조화 텍스트를 화면용으로 정리합니다.
+ */
 function normalizeStructuredText(text) {
   return String(text || '')
     .replace(/\r/g, '')
@@ -225,10 +267,16 @@ function normalizeStructuredText(text) {
     .trim()
 }
 
+/**
+ * HTML 태그를 제거하고 한 줄 텍스트로 정리합니다.
+ */
 function stripTags(html) {
   return normalizeSingleLineText(inlineHtmlToText(String(html || '')))
 }
 
+/**
+ * 알선취업자 현황 표 행 키를 정규화합니다.
+ */
 function normalizeJobStatusMetricKey(label, index) {
   const compact = normalizeSingleLineText(label).replace(/\s+/g, '').replace(/[()]/g, '')
   if (!compact) return `row-${Math.max(0, Math.trunc(Number(index) || 0))}`
@@ -240,6 +288,9 @@ function normalizeJobStatusMetricKey(label, index) {
   return `row-${Math.max(0, Math.trunc(Number(index) || 0))}`
 }
 
+/**
+ * 현황 표 셀 텍스트에서 숫자 값을 읽습니다.
+ */
 function parseJobStatusValue(cellText) {
   const text = normalizeSingleLineText(cellText)
   if (!text || text === '-' || text === '--') {
@@ -257,10 +308,16 @@ function parseJobStatusValue(cellText) {
   }
 }
 
+/**
+ * 상담사 이름이 비었을 때 쓸 기본 이름을 만듭니다.
+ */
 function buildJobStatusFallbackStaffName(columnIndex) {
   return `미기재 ${Math.max(1, Math.trunc(Number(columnIndex) || 1))}`
 }
 
+/**
+ * HTML table을 셀 HTML과 텍스트까지 보존한 행 목록으로 파싱합니다.
+ */
 function parseHtmlTableCellsDetailed(tableHtml) {
   const rows = []
   const trRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
@@ -286,10 +343,16 @@ function parseHtmlTableCellsDetailed(tableHtml) {
   return rows
 }
 
+/**
+ * HTML table을 순수 텍스트 행 목록으로 파싱합니다.
+ */
 function parseHtmlTableRows(tableHtml) {
   return parseHtmlTableCellsDetailed(tableHtml).map((row) => row.map((cell) => cell.text))
 }
 
+/**
+ * HTML 안의 table 블록 목록을 순서대로 추출합니다.
+ */
 function extractTableHtmlBlocks(html) {
   const source = String(html || '')
   const blocks = []
@@ -317,10 +380,17 @@ function extractTableHtmlBlocks(html) {
   return blocks.sort((a, b) => a.startIndex - b.startIndex)
 }
 
+/**
+ * compact 검색 인덱스에 포함할 문자만 통과시킵니다.
+ */
 function isCompactSearchChar(char) {
   return /[0-9A-Za-z가-힣]/.test(String(char || ''))
 }
 
+/** HTML/공백 변형을 무시한 compact 검색용 텍스트를 만듭니다. */
+/**
+ * HTML과 공백 변형을 무시한 compact 검색용 텍스트를 만듭니다.
+ */
 function normalizeCompactSearchText(text) {
   return decodeHtmlEntities(String(text || ''))
     .replace(/<[^>]*>/g, ' ')
@@ -330,6 +400,9 @@ function normalizeCompactSearchText(text) {
     .toLowerCase()
 }
 
+/**
+ * HTML 원문에서 compact 검색 인덱스를 만듭니다.
+ */
 function buildCompactHtmlTextIndex(html) {
   const source = String(html || '')
   const compactChars = []
@@ -372,6 +445,9 @@ function buildCompactHtmlTextIndex(html) {
   }
 }
 
+/**
+ * compact 인덱스에서 가장 빠른 키워드 변형을 찾습니다.
+ */
 function findCompactTextVariant(compactIndex, variants, startOffset = 0) {
   const compactText = String((compactIndex && compactIndex.compactText) || '')
   const safeStartOffset = Math.max(0, Math.trunc(Number(startOffset) || 0))
@@ -397,6 +473,9 @@ function findCompactTextVariant(compactIndex, variants, startOffset = 0) {
   return best
 }
 
+/**
+ * 현황 표 셀에 의미 있는 내용이 있는지 확인합니다.
+ */
 function isMeaningfulJobStatusCellText(text) {
   const normalized = normalizeSingleLineText(text)
   if (!normalized) return false
@@ -404,10 +483,16 @@ function isMeaningfulJobStatusCellText(text) {
   return true
 }
 
+/**
+ * 인식 가능한 현황 표 metric key인지 확인합니다.
+ */
 function isRecognizedJobStatusMetricKey(key) {
   return key === 'month-target' || key === 'daily-count' || key === 'scheduled-count' || key === 'interview-count' || key === 'cumulative-count'
 }
 
+/**
+ * 행 목록이 알선취업자 현황 표인지 확인합니다.
+ */
 function isJobStatusTableRows(rows) {
   if (!Array.isArray(rows) || rows.length < 3) return false
 
@@ -429,6 +514,9 @@ function isJobStatusTableRows(rows) {
   return recognizedMetricCount >= 3
 }
 
+/**
+ * 표 앞 문맥에서 현황 표 제목을 읽습니다.
+ */
 function buildJobStatusTitleFromContext(contextHtml) {
   const text = inlineHtmlToText(String(contextHtml || ''))
     .replace(/\r/g, '\n')
@@ -508,12 +596,18 @@ function parseJobStatusTableFromDiaryHtml(diaryHtml) {
   }
 }
 
+/**
+ * 모집/홍보 표 셀 텍스트를 정리합니다.
+ */
 function normalizeRecruitingCellText(text) {
   const normalized = normalizeSingleLineText(text)
   if (!normalized || normalized === '-' || normalized === '--') return ''
   return normalized
 }
 
+/**
+ * 모집 건수 텍스트에서 확정 숫자만 읽습니다.
+ */
 function parseStrictRecruitingCount(text) {
   const normalized = normalizeRecruitingCellText(text).replace(/,/g, '')
   if (!normalized) return null
@@ -524,6 +618,9 @@ function parseStrictRecruitingCount(text) {
   return Math.max(0, Math.trunc(Number(matched[1] || 0)))
 }
 
+/**
+ * 모집 요약 문장에서 월 목표를 읽습니다.
+ */
 function parseRecruitingMonthTarget(summaryText) {
   const text = normalizeSingleLineText(summaryText)
   if (!text) return null
@@ -538,6 +635,9 @@ function parseRecruitingMonthTarget(summaryText) {
   return null
 }
 
+/**
+ * 모집 요약 문장에서 월 현재 달성값을 읽습니다.
+ */
 function parseRecruitingMonthAssignedCurrent(summaryText) {
   const text = normalizeSingleLineText(summaryText)
   if (!text) return null
@@ -558,6 +658,9 @@ function parseRecruitingMonthAssignedCurrent(summaryText) {
   return null
 }
 
+/**
+ * 업무일지 HTML에서 모집/홍보 구간만 잘라냅니다.
+ */
 function extractRecruitingSectionHtml(diaryHtml) {
   const source = String(diaryHtml || '')
   if (!source) return ''
@@ -578,6 +681,9 @@ function extractRecruitingSectionHtml(diaryHtml) {
   return source.slice(sectionStart, sectionEnd)
 }
 
+/**
+ * 모집/홍보 표 헤더 구성이 맞는지 확인합니다.
+ */
 function hasRecruitingHeaderLabels(rows) {
   const labels = []
   ;(Array.isArray(rows) ? rows : []).forEach((row) => {
@@ -594,6 +700,9 @@ function hasRecruitingHeaderLabels(rows) {
   return hasWeekdayHeader && hasChannelHeader && hasContentHeader && hasRecruitingHint
 }
 
+/**
+ * 행 목록이 모집/홍보 주간표인지 확인합니다.
+ */
 function isRecruitingTableRows(rows) {
   if (!Array.isArray(rows) || rows.length < 4) return false
   if (!hasRecruitingHeaderLabels(rows)) return false
@@ -602,6 +711,9 @@ function isRecruitingTableRows(rows) {
   return weekdayRows.length >= 2
 }
 
+/**
+ * 모집/홍보 표 헤더 구성에서 컬럼 스키마를 추정합니다.
+ */
 function detectRecruitingSchema(headerRows) {
   const labels = []
   ;(Array.isArray(headerRows) ? headerRows : []).forEach((row) => {
@@ -618,6 +730,9 @@ function detectRecruitingSchema(headerRows) {
   return 'standard'
 }
 
+/**
+ * 모집/홍보 행의 결과와 비고 텍스트를 합칩니다.
+ */
 function buildRecruitingRowNote(resultText, noteText) {
   const result = normalizeRecruitingCellText(resultText)
   const note = normalizeRecruitingCellText(noteText)
@@ -628,6 +743,9 @@ function buildRecruitingRowNote(resultText, noteText) {
   return `${result} / ${note}`
 }
 
+/**
+ * 모집/홍보 행 본문 셀을 내부 row shape로 매핑합니다.
+ */
 function mapRecruitingBodyCells(bodyCells, schema) {
   const cells = Array.isArray(bodyCells) ? bodyCells.map((cell) => normalizeRecruitingCellText(cell)) : []
 
@@ -676,6 +794,9 @@ function mapRecruitingBodyCells(bodyCells, schema) {
   }
 }
 
+/**
+ * 모집/홍보 표에서 주간 계획과 실적 row 목록을 만듭니다.
+ */
 function buildRecruitingWeekTableRows(rows, reportDate) {
   const plainRows = Array.isArray(rows) ? rows : []
   const firstWeekdayRowIndex = plainRows.findIndex((row) => !!normalizeWeekday(row && row[0]))
@@ -759,6 +880,9 @@ function buildRecruitingWeekTableRows(rows, reportDate) {
   }
 }
 
+/**
+ * 모집 표 후보에 다른 섹션 텍스트가 섞였는지 확인합니다.
+ */
 function isRecruitingLeakText(text) {
   const compact = normalizeCompactSearchText(text)
   if (!compact) return false
@@ -782,6 +906,9 @@ function isRecruitingLeakText(text) {
   )
 }
 
+/**
+ * 모집 표 후보의 품질 점수를 계산합니다.
+ */
 function scoreRecruitingCandidate(parsedCandidate, blockHtml) {
   const rows = Array.isArray(parsedCandidate && parsedCandidate.rows) ? parsedCandidate.rows : []
   const distinctWeekdays = getDistinctWeekdayCount(rows)
@@ -809,6 +936,9 @@ function scoreRecruitingCandidate(parsedCandidate, blockHtml) {
   return score
 }
 
+/**
+ * 여러 table 후보 중 가장 좋은 모집/홍보 표를 고릅니다.
+ */
 function findBestRecruitingTableCandidate(html, reportDate) {
   return extractTableHtmlBlocks(html)
     .map((block) => {
@@ -865,6 +995,9 @@ function parseRecruitingExtractFromDiaryHtml(diaryHtml, reportDate) {
   })
 }
 
+/**
+ * 기타 사항 항목 키를 정규화합니다.
+ */
 function normalizeMiscSectionKey(label, index) {
   const compact = normalizeSingleLineText(label).replace(/\s+/g, '').replace(/[()]/g, '').replace(/[.:]/g, '')
   if (!compact) return `item-${Math.max(0, Math.trunc(Number(index) || 0))}`
@@ -874,6 +1007,9 @@ function normalizeMiscSectionKey(label, index) {
   return `item-${Math.max(0, Math.trunc(Number(index) || 0))}`
 }
 
+/**
+ * 기타 사항 항목 key에 맞는 표시 라벨을 만듭니다.
+ */
 function buildMiscItemLabel(key, fallbackLabel) {
   const fallback = normalizeSingleLineText(fallbackLabel || '')
   if (key === 'employment-center') return '고용센터 전달사항'
@@ -882,6 +1018,9 @@ function buildMiscItemLabel(key, fallbackLabel) {
   return fallback
 }
 
+/**
+ * 기타 사항 섹션 제목을 고정된 형태로 정리합니다.
+ */
 function normalizeMiscSectionTitleText(title) {
   const text = normalizeSingleLineText(title || '')
   if (!text) return '기타 사항'
@@ -889,6 +1028,9 @@ function normalizeMiscSectionTitleText(title) {
   return '기타 사항'
 }
 
+/**
+ * 기타 사항 본문 텍스트를 줄 단위로 정리합니다.
+ */
 function normalizeMiscContentText(text) {
   return String(text || '')
     .replace(/\r/g, '\n')
@@ -900,6 +1042,9 @@ function normalizeMiscContentText(text) {
     .trim()
 }
 
+/**
+ * 앞 문맥에서 기타 사항 섹션 제목을 찾습니다.
+ */
 function buildMiscSectionTitleFromContext(contextHtml) {
   const text = inlineHtmlToText(String(contextHtml || ''))
     .replace(/\r/g, '\n')
@@ -911,10 +1056,16 @@ function buildMiscSectionTitleFromContext(contextHtml) {
   return normalizeMiscSectionTitleText(matched.replace(/^(?:['"]+|(?:\d+\s*[.)]?\s*|[○●■]\s*))+/, '').trim())
 }
 
+/**
+ * 인식 가능한 기타 사항 항목 key인지 확인합니다.
+ */
 function isRecognizedMiscKey(key) {
   return key === 'employment-center' || key === 'branch-notes' || key === 'suggestions'
 }
 
+/**
+ * 행 목록이 기타 사항 표인지 확인합니다.
+ */
 function isMiscRowTable(rows) {
   if (!Array.isArray(rows) || rows.length < 2) return false
   const firstRow = rows[0] || []
@@ -928,6 +1079,9 @@ function isMiscRowTable(rows) {
   return recognizedCount >= 2
 }
 
+/**
+ * 기타 사항 표에서 항목 목록을 추출합니다.
+ */
 function parseMiscItemsFromRowTable(detailedRows) {
   return detailedRows
     .slice(1)
@@ -947,6 +1101,9 @@ function parseMiscItemsFromRowTable(detailedRows) {
     .filter((item) => !!item && !!item.content)
 }
 
+/**
+ * bullet 텍스트에서 기타 사항 항목 목록을 추출합니다.
+ */
 function parseMiscItemsFromBulletText(text) {
   const lines = String(text || '')
     .replace(/\r/g, '\n')
@@ -1066,6 +1223,9 @@ function isAllowedKjcaUrl(host, url) {
   return normalized.startsWith(`${host}/`) || normalized.startsWith('http://www.kjca.co.kr/') || normalized.startsWith('https://www.kjca.co.kr/')
 }
 
+/**
+ * 따옴표 안 URL 문자열을 KJCA 절대 URL로 바꿉니다.
+ */
 function absolutizeQuotedKjcaUrl(host, rawUrl) {
   const candidate = String(rawUrl || '').trim()
   if (!candidate) return ''
@@ -1080,6 +1240,9 @@ function absolutizeQuotedKjcaUrl(host, rawUrl) {
   return ''
 }
 
+/**
+ * 결재 문서 링크를 절대 URL로 바꿉니다.
+ */
 function toAbsoluteApprovalDocUrl(host, maybeRelativeUrl) {
   const url = decodeHtmlEntities(String(maybeRelativeUrl || '').trim())
   if (!url) return ''
@@ -1091,6 +1254,9 @@ function toAbsoluteApprovalDocUrl(host, maybeRelativeUrl) {
   return `${host}/appr/appr_doc/${url.replace(/^\.?\//, '')}`
 }
 
+/**
+ * cell HTML 안의 상대 링크를 linkify 가능한 절대 URL로 치환합니다.
+ */
 function buildLinkifySourceFromCell(host, cellHtml) {
   const source = decodeHtmlEntities(String(cellHtml || ''))
   if (!source) return ''
@@ -1102,6 +1268,9 @@ function buildLinkifySourceFromCell(host, cellHtml) {
   })
 }
 
+/**
+ * 업무일지 목록 cell에서 인쇄 URL을 추출합니다.
+ */
 function extractPrintUrlFromCell(host, cellHtml) {
   const source = buildLinkifySourceFromCell(host, cellHtml)
   if (!source) return ''
@@ -1126,12 +1295,18 @@ function extractPrintUrlFromCell(host, cellHtml) {
   return toAbsoluteKjcaUrl(host, preferred)
 }
 
+/**
+ * HTML 조각에서 첫 번째 href 값을 읽습니다.
+ */
 function extractHrefFromHtml(html) {
   const matched = String(html || '').match(/\bhref\s*=\s*(['"])([^'"]+)\1/i)
   if (!matched) return ''
   return decodeHtmlEntities(String(matched[2] || '').trim())
 }
 
+/**
+ * 결재 목록 cell에서 상세 보기 URL을 추출합니다.
+ */
 function extractApprovalViewUrlFromCell(host, cellHtml) {
   const href = extractHrefFromHtml(cellHtml)
   const absoluteUrl = toAbsoluteApprovalDocUrl(host, href)
@@ -1251,6 +1426,9 @@ function parseWeeklyReportRowsFromListHtml(listHtml, host, sourceInfo) {
   }
 }
 
+/**
+ * 주간 보고 표 셀 텍스트를 화면용으로 정리합니다.
+ */
 function normalizeWeeklySectionTableText(text) {
   return String(text || '')
     .replace(/\r/g, '')
@@ -1261,16 +1439,25 @@ function normalizeWeeklySectionTableText(text) {
     .trim()
 }
 
+/**
+ * 주간 보고 표 비교용 compact 텍스트를 만듭니다.
+ */
 function normalizeWeeklySectionCompactText(text) {
   return normalizeSingleLineText(text).replace(/\s+/g, '').replace(/[.:]/g, '')
 }
 
+/**
+ * 주간 보고 table을 화면 표시용 행 목록으로 읽습니다.
+ */
 function parseWeeklyDisplayTableRows(tableHtml) {
   return parseHtmlTableCellsDetailed(tableHtml)
     .map((row) => row.map((cell) => normalizeWeeklySectionTableText(htmlToText(cell.html || '')) || stripTags(cell.html || '')))
     .filter((row) => row.some((cell) => !!normalizeSingleLineText(cell)))
 }
 
+/**
+ * 주간 보고 HTML에서 table 후보 목록을 만듭니다.
+ */
 function buildWeeklyReportTableCandidates(html) {
   return extractTableHtmlBlocks(html)
     .map((block) => {
@@ -1285,11 +1472,17 @@ function buildWeeklyReportTableCandidates(html) {
     .filter((item) => item.plainRows.length > 0 && item.displayRows.length > 0)
 }
 
+/**
+ * 한 행이 필요한 주간 보고 키워드를 모두 포함하는지 확인합니다.
+ */
 function rowHasWeeklyKeywords(compactRow, keywords) {
   const safeRow = Array.isArray(compactRow) ? compactRow : []
   return keywords.every((keyword) => safeRow.some((cell) => cell === keyword || cell.includes(keyword)))
 }
 
+/**
+ * 조건에 맞는 table 후보 중 가장 작은 표를 고릅니다.
+ */
 function pickSmallestWeeklyTableCandidate(candidates, matcher) {
   return (
     (Array.isArray(candidates) ? candidates : [])
@@ -1304,16 +1497,25 @@ function pickSmallestWeeklyTableCandidate(candidates, matcher) {
   )
 }
 
+/**
+ * 기본 현황 표 후보인지 확인합니다.
+ */
 function isWeeklyBasicStatusCandidate(candidate) {
   const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
   return rowHasWeeklyKeywords(headerRow, ['지점명', '팀장', '상담사', '총진행인원', '평균진행인원', '관리자']) && candidate.displayRows.length >= 2
 }
 
+/**
+ * 취업실적 현황 표 후보인지 확인합니다.
+ */
 function isWeeklyEmploymentStatusCandidate(candidate) {
   const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
   return rowHasWeeklyKeywords(headerRow, ['월목표알선취업자', '알선취업자달성', '월목표본인취업', '본인취업달성', '기간만료', '중단', '취업률', '알선취업률']) && candidate.displayRows.length >= 2
 }
 
+/**
+ * 배정 및 IAP 수립 현황 표 후보인지 확인합니다.
+ */
 function isWeeklyAssignmentIapCandidate(candidate) {
   const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
   return (
@@ -1327,16 +1529,25 @@ function isWeeklyAssignmentIapCandidate(candidate) {
   )
 }
 
+/**
+ * 지난주 업무결과 표 후보인지 확인합니다.
+ */
 function isWeeklyLastWeekCandidate(candidate) {
   const firstCells = (candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows : []).map((row) => row[0] || '')
   return firstCells.includes('지난주업무계획') && firstCells.includes('지난주업무결과')
 }
 
+/**
+ * 차주 업무계획 표 후보인지 확인합니다.
+ */
 function isWeeklyNextWeekCandidate(candidate) {
   const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
   return rowHasWeeklyKeywords(headerRow, ['요일', '차주업무계획상세']) && candidate.displayRows.length >= 2
 }
 
+/**
+ * 특이사항 표 후보인지 확인합니다.
+ */
 function isWeeklySpecialNotesCandidate(candidate) {
   const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
   const bodyFirstCells = (candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows.slice(1) : []).map((row) => row[0] || '')
@@ -1348,11 +1559,17 @@ function isWeeklySpecialNotesCandidate(candidate) {
   )
 }
 
+/**
+ * 입퇴사자 표 후보인지 확인합니다.
+ */
 function isWeeklyHrChangesCandidate(candidate) {
   const compactRows = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows : []
   return compactRows.some((row) => row.includes('퇴사자') && row.includes('입사예정자')) && compactRows.some((row) => row.includes('상담사명') && row.includes('퇴사일'))
 }
 
+/**
+ * 휴가 및 외근 현황 표 후보인지 확인합니다.
+ */
 function isWeeklyLeaveStatusCandidate(candidate) {
   const headerRow = candidate && Array.isArray(candidate.compactRows) ? candidate.compactRows[0] || [] : []
   return (
@@ -1362,6 +1579,9 @@ function isWeeklyLeaveStatusCandidate(candidate) {
   )
 }
 
+/**
+ * 주간 보고 표의 한 행을 열 수에 맞춰 정규화합니다.
+ */
 function normalizeWeeklySectionRow(row, columnCount) {
   const safeRow = Array.isArray(row) ? row : []
   const targetLength = Math.max(1, Math.trunc(Number(columnCount) || 0))
@@ -1372,6 +1592,9 @@ function normalizeWeeklySectionRow(row, columnCount) {
   return normalized
 }
 
+/**
+ * 주간 보고 섹션 표 shape를 만듭니다.
+ */
 function buildWeeklySectionTable(key, title, headers, rows) {
   const safeHeaders = Array.isArray(headers) ? headers.map((header) => normalizeWeeklySectionTableText(header)) : []
   const columnCount = safeHeaders.length > 0 ? safeHeaders.length : Math.max(0, ...(Array.isArray(rows) ? rows.map((row) => (Array.isArray(row) ? row.length : 0)) : [0]))
@@ -1385,16 +1608,25 @@ function buildWeeklySectionTable(key, title, headers, rows) {
   }
 }
 
+/**
+ * header가 있는 표 후보를 공용 섹션 표로 바꿉니다.
+ */
 function buildWeeklySectionTableFromHeaderCandidate(key, title, candidate) {
   if (!candidate || !Array.isArray(candidate.displayRows) || candidate.displayRows.length < 2) return null
   return buildWeeklySectionTable(key, title, candidate.displayRows[0], candidate.displayRows.slice(1))
 }
 
+/**
+ * 지난주 업무결과 표를 섹션 표 shape로 바꿉니다.
+ */
 function buildWeeklyLastWeekSectionTable(candidate) {
   if (!candidate || !Array.isArray(candidate.displayRows) || candidate.displayRows.length === 0) return null
   return buildWeeklySectionTable('last-week', '지난주 업무결과 보고', ['구분', '내용'], candidate.displayRows)
 }
 
+/**
+ * 입퇴사자 표를 섹션 표 shape로 바꿉니다.
+ */
 function buildWeeklyHrChangesSectionTable(candidate) {
   if (!candidate || !Array.isArray(candidate.displayRows) || candidate.displayRows.length < 3) return null
   return buildWeeklySectionTable('hr-changes', '입퇴사자', ['지점명', '퇴사자명', '퇴사일', '입사예정자명', '입사일', '비고'], candidate.displayRows.slice(2))
@@ -1476,6 +1708,9 @@ function buildBrowserLikeHeaders(host, cookieHeader, referer) {
   return headers
 }
 
+/**
+ * 오늘 날짜를 YYYY-MM-DD 문자열로 만듭니다.
+ */
 function buildTodayDateText() {
   const now = new Date()
   const year = now.getFullYear()
@@ -1484,6 +1719,9 @@ function buildTodayDateText() {
   return `${year}-${month}-${day}`
 }
 
+/**
+ * UTC Date를 YYYY-MM-DD 문자열로 바꿉니다.
+ */
 function formatUtcDateText(date) {
   const year = date.getUTCFullYear()
   const month = `${date.getUTCMonth() + 1}`.padStart(2, '0')
@@ -1491,6 +1729,9 @@ function formatUtcDateText(date) {
   return `${year}-${month}-${day}`
 }
 
+/**
+ * YYYY-Www 형식 주차 문자열을 숫자 parts로 읽습니다.
+ */
 function parseReferenceWeekParts(value) {
   const matched = String(value || '')
     .trim()
@@ -1527,7 +1768,7 @@ function buildIsoWeekValue(dateText) {
   const weekday = date.getUTCDay() || 7
   date.setUTCDate(date.getUTCDate() + 4 - weekday)
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
-  const weekNumber = Math.ceil(((date - yearStart) / 86400000 + 1) / 7)
+  const weekNumber = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
 
   return `${date.getUTCFullYear()}-W${String(weekNumber).padStart(2, '0')}`
 }
@@ -1601,7 +1842,7 @@ function buildWeeklyReportSearchRangeFromReferenceWeek(referenceWeek, fallbackDa
 
 /**
  * 날짜 입력값을 `YYYY-MM-DD` 형식으로 정규화합니다.
- * @param {string | string[] | null | undefined} value 폼이나 params에서 받은 날짜 값입니다.
+ * @param {unknown} value 폼이나 params에서 받은 날짜 값입니다.
  * @returns {string} 정규화된 날짜 문자열입니다.
  */
 function normalizeReportDate(value) {
@@ -1717,6 +1958,9 @@ function normalizeStringArray(value) {
   return value.map((item) => String(item || '').trim()).filter((item) => !!item)
 }
 
+/**
+ * 숫자 바이트 배열인지 확인합니다.
+ */
 function isNumericByteArray(value) {
   if (!Array.isArray(value)) return false
   if (!value.length) return false
@@ -1788,6 +2032,9 @@ function stringifyGeminiErrorDetails(details) {
     .join(' | ')
 }
 
+/**
+ * YYYY-MM-DD 문자열을 Date로 바꿉니다.
+ */
 function parseDateText(value) {
   const text = String(value || '').trim()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return new Date()
@@ -1795,6 +2042,9 @@ function parseDateText(value) {
   return new Date(year, month - 1, day)
 }
 
+/**
+ * Date를 YYYY-MM-DD 문자열로 바꿉니다.
+ */
 function formatDateText(date) {
   const year = date.getFullYear()
   const month = `${date.getMonth() + 1}`.padStart(2, '0')
@@ -1886,7 +2136,7 @@ function normalizeRequiredInt(value, fallback) {
 
 /**
  * 다양한 불리언 표현을 실제 boolean 값으로 정규화합니다.
- * @param {boolean | string | string[] | null | undefined} value 폼이나 params에서 받은 원본 값입니다.
+ * @param {unknown} value 폼이나 params에서 받은 원본 값입니다.
  * @returns {boolean} 정규화된 불리언 값입니다.
  */
 function normalizeBool(value) {
@@ -1907,6 +2157,9 @@ function normalizeCollectionMode(value) {
   return String(value || '').trim() === 'weekly' ? 'weekly' : 'daily'
 }
 
+/**
+ * 현황 표 metric 값 배열을 열 수에 맞춰 정리합니다.
+ */
 function normalizeJobStatusMetricValues(values, expectedLength) {
   const source = Array.isArray(values) ? values : []
   const normalized = source.slice(0, expectedLength).map((item) => {
@@ -1933,13 +2186,13 @@ function normalizeJobStatusMetricValues(values, expectedLength) {
  * @returns {types.KjcaMiscSection | null} 정리된 기타 사항 섹션입니다.
  */
 function normalizeMiscSection(value) {
-  const source = value && typeof value === 'object' ? value : null
+  const source = toLooseObjectOrNull(value)
   if (!source) return null
 
   const items = Array.isArray(source.items)
     ? source.items
         .map((item, index) => {
-          const row = item && typeof item === 'object' ? item : {}
+          const row = toLooseObject(item)
           const key = String(row.key || normalizeMiscSectionKey(row.label, index)).trim()
           if (!isRecognizedMiscKey(key)) return null
 
@@ -1969,7 +2222,7 @@ function normalizeMiscSection(value) {
  * @returns {types.KjcaJobStatusTable | null} 정리된 표 값입니다.
  */
 function normalizeJobStatusTable(value) {
-  const source = value && typeof value === 'object' ? value : null
+  const source = toLooseObjectOrNull(value)
   if (!source) return null
 
   const staffNames = Array.isArray(source.staffNames) ? source.staffNames.map((item, index) => normalizeSingleLineText(item) || buildJobStatusFallbackStaffName(index + 1)).filter(Boolean) : []
@@ -1979,7 +2232,7 @@ function normalizeJobStatusTable(value) {
   const rows = Array.isArray(source.rows)
     ? source.rows
         .map((item, index) => {
-          const row = item && typeof item === 'object' ? item : {}
+          const row = toLooseObject(item)
           const label = normalizeSingleLineText(row.label || '')
           if (!label) return null
 
@@ -2007,11 +2260,11 @@ function normalizeJobStatusTable(value) {
  * @returns {types.KjcaRecruitingExtract} 정리된 recruiting 값입니다.
  */
 function normalizeRecruitingExtract(value) {
-  const source = value && typeof value === 'object' ? value : {}
+  const source = toLooseObject(value)
   const dailyPlanRaw = Array.isArray(source.dailyPlan) ? source.dailyPlan : []
   const dailyPlan = dailyPlanRaw
     .map((item) => {
-      const row = item && typeof item === 'object' ? item : {}
+      const row = toLooseObject(item)
       const weekday = normalizeWeekday(row.weekday)
       if (!weekday) return null
 
@@ -2029,7 +2282,7 @@ function normalizeRecruitingExtract(value) {
   const weekTableRowsRaw = Array.isArray(source.weekTableRows) ? source.weekTableRows : []
   const weekTableRowsNormalized = weekTableRowsRaw
     .map((item) => {
-      const row = item && typeof item === 'object' ? item : {}
+      const row = toLooseObject(item)
       const weekday = normalizeWeekday(row.weekday)
       if (!weekday) return null
 
@@ -2362,7 +2615,7 @@ function getDistinctWeekdayCount(rows) {
 
 /**
  * 부서 기준으로 중복 없는 타깃 목록을 만듭니다.
- * @param {types.KjcaAnalyzeResult[]} rows 분석 결과 목록입니다.
+ * @param {Array<types.KjcaAnalyzeResult | types.KjcaTeamLeadRow>} rows 분석 결과 또는 팀장 목록입니다.
  * @returns {types.KjcaTeamLeadRow[]} 부서별 대표 타깃 목록입니다.
  */
 function buildUniqueTargets(rows) {
@@ -2411,6 +2664,7 @@ function hasWeekPlanData(recruiting) {
  * @returns {types.KjcaSnapshotRow[]} 요일별 스냅샷 행 목록입니다.
  */
 function buildSnapshotRows(planItems, weekResults) {
+  /** @type {Record<types.KjcaWeekday, number>} */
   const targetMap = {
     mon: 0,
     tue: 0,
@@ -2419,6 +2673,7 @@ function buildSnapshotRows(planItems, weekResults) {
     fri: 0,
   }
 
+  /** @type {Record<types.KjcaWeekday, number>} */
   const actualMap = {
     mon: 0,
     tue: 0,
@@ -2445,6 +2700,32 @@ function buildSnapshotRows(planItems, weekResults) {
     actual: actualMap[weekday],
     gap: actualMap[weekday] - targetMap[weekday],
   }))
+}
+
+/**
+ * 스냅샷 행 1건을 화면용 shape로 정리합니다.
+ * @param {unknown} value 원본 스냅샷 행 값입니다.
+ * @param {types.KjcaWeekday} fallbackWeekday 요일이 없을 때 쓸 기본 요일입니다.
+ * @returns {types.KjcaSnapshotRow} 정리된 스냅샷 행입니다.
+ */
+function normalizeSnapshotRow(value, fallbackWeekday) {
+  const source = toLooseObject(value)
+  return {
+    weekday: normalizeWeekday(source.weekday) || fallbackWeekday,
+    target: normalizeRequiredInt(source.target, 0),
+    actual: normalizeRequiredInt(source.actual, 0),
+    gap: Number.isFinite(Number(source.gap)) ? Math.trunc(Number(source.gap)) : 0,
+  }
+}
+
+/**
+ * 예전 상태 직렬화에 남은 referenceWeek 값을 읽습니다.
+ * @param {unknown} value 대시보드 상태 또는 fallback 값입니다.
+ * @returns {unknown} legacy referenceWeek 값입니다.
+ */
+function readLegacyReferenceWeek(value) {
+  const source = toLooseObject(value)
+  return source.referenceWeek
 }
 
 /**
@@ -2476,35 +2757,18 @@ function normalizeDeptSnapshots(value) {
   if (!Array.isArray(value)) return []
   return value
     .map((item) => {
-      const source = item && typeof item === 'object' ? item : {}
+      const source = toLooseObject(item)
       return {
         dept: String(source.dept || '').trim(),
         monthTarget: normalizeNullableInt(source.monthTarget),
         weekTarget: normalizeNullableInt(source.weekTarget),
         rows: Array.isArray(source.rows)
-          ? source.rows
-              .map((row) => ({
-                weekday: normalizeWeekday(row && row.weekday) || 'mon',
-                target: normalizeRequiredInt(row && row.target, 0),
-                actual: normalizeRequiredInt(row && row.actual, 0),
-                gap: Number.isFinite(Number(row && row.gap)) ? Math.trunc(Number(row.gap)) : 0,
-              }))
-              .filter((row) => !!row.weekday)
+          ? source.rows.map((row) => normalizeSnapshotRow(row, 'mon'))
           : [],
         today:
           source.today && typeof source.today === 'object'
-            ? {
-                weekday: normalizeWeekday(source.today.weekday) || 'fri',
-                target: normalizeRequiredInt(source.today.target, 0),
-                actual: normalizeRequiredInt(source.today.actual, 0),
-                gap: Number.isFinite(Number(source.today.gap)) ? Math.trunc(Number(source.today.gap)) : 0,
-              }
-            : {
-                weekday: 'fri',
-                target: 0,
-                actual: 0,
-                gap: 0,
-              },
+            ? normalizeSnapshotRow(source.today, 'fri')
+            : normalizeSnapshotRow(null, 'fri'),
         cumulative:
           source.cumulative && typeof source.cumulative === 'object'
             ? {
@@ -2530,8 +2794,9 @@ function normalizeDeptSnapshots(value) {
  */
 function buildDashboardState(input) {
   const source = input && typeof input === 'object' ? input : {}
+  const legacyReferenceWeek = readLegacyReferenceWeek(input)
   const reportDate = normalizeReportDate(source.reportDate)
-  const weeklyReferenceWeek = normalizeReferenceWeek(source.weeklyReferenceWeek || source.referenceWeek, reportDate)
+  const weeklyReferenceWeek = normalizeReferenceWeek(source.weeklyReferenceWeek || legacyReferenceWeek, reportDate)
   const weekRange = buildWeekDateRangeFromReferenceWeek(weeklyReferenceWeek, reportDate)
 
   return {
@@ -2621,6 +2886,9 @@ function isFocusWeekday(weekday, todayWeekday) {
   return weekday === todayWeekday
 }
 
+/**
+ * 날짜에서 월 라벨을 만듭니다.
+ */
 function buildMonthLabel(dateText) {
   const text = String(dateText || '').trim()
   const matched = text.match(/^\d{4}-(\d{2})-\d{2}$/)
@@ -2638,7 +2906,7 @@ function buildMonthLabel(dateText) {
 function buildDeptSummaryText(summaryInput) {
   const dept = String((summaryInput && summaryInput.dept) || '').trim()
   const reportDate = String((summaryInput && summaryInput.reportDate) || '').trim()
-  const analysisResults = Array.isArray(summaryInput && summaryInput.analysisResults) ? summaryInput.analysisResults : []
+  const analysisResults = normalizeAnalyzeResults(summaryInput && summaryInput.analysisResults)
   const item = analysisResults.find((row) => row.dept === dept && row.ok)
   const monthTarget = item && item.recruiting ? item.recruiting.monthTarget : null
   const monthAssignedCurrent = item && item.recruiting ? item.recruiting.monthAssignedCurrent : null
@@ -2846,3 +3114,5 @@ module.exports = {
   buildDeptSummaryText,
   buildPromotionDisplayItems,
 }
+
+

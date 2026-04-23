@@ -28,12 +28,23 @@ const kjcaAnalyzeService = require('./kjca-analyze-service')
 const { ensureSuperuserRequest, createKjcaSession, probeStaffAuth } = kjcaAuth
 const { analyzeStaffDiary } = kjcaAnalyzeService
 
+/**
+ * 분석 오류가 재시도 후보인지 확인합니다.
+ * @param {unknown} errorText 오류 메시지 값입니다.
+ * @returns {boolean} 재시도 후보면 true입니다.
+ */
 function shouldRetryAnalyzeError(errorText) {
   const text = String(errorText || '').toLowerCase()
   if (!text) return false
   return text.includes('http 503') || text.includes('http 429') || text.includes('timeout') || text.includes('temporarily unavailable') || text.includes('connection reset')
 }
 
+/**
+ * 부서의 주간 텍스트 계획 record를 찾습니다.
+ * @param {unknown} weekStartDate 주 시작일입니다.
+ * @param {unknown} dept 부서명입니다.
+ * @returns {core.Record | null} 찾은 계획 record입니다.
+ */
 function findWeekTextPlan(weekStartDate, dept) {
   const weekDate = buildDateMatchParams(weekStartDate)
   try {
@@ -47,6 +58,11 @@ function findWeekTextPlan(weekStartDate, dept) {
   }
 }
 
+/**
+ * 주간 텍스트 계획에 연결된 행 목록을 읽습니다.
+ * @param {string} planId 계획 record id입니다.
+ * @returns {core.Record[]} 연결된 주간 텍스트 행 목록입니다.
+ */
 function findWeekTextRows(planId) {
   try {
     return $app.findRecordsByFilter('recruiting_week_text_rows', 'planId = {:planId}', 'weekday,sortOrder,created', 1000, 0, { planId })
@@ -55,10 +71,22 @@ function findWeekTextRows(planId) {
   }
 }
 
+/**
+ * unique 제약 오류인지 확인합니다.
+ * @param {unknown} error 오류 객체나 메시지 값입니다.
+ * @returns {boolean} unique 제약 오류면 true입니다.
+ */
 function isUniqueValueError(error) {
   return String(error || '').includes('Value must be unique')
 }
 
+/**
+ * 부서별 주간 텍스트 계획과 행을 저장합니다.
+ * @param {types.KjcaRecruitingWeekTextPlanRole | null | undefined} recruitingWeekTextPlanRole 계획 저장 전 검증 role입니다.
+ * @param {types.KjcaRecruitingWeekTextRowRole | null | undefined} recruitingWeekTextRowRole 행 저장 전 검증 role입니다.
+ * @param {{ weekStartDate?: unknown, dept?: unknown, rows?: unknown }} weekTextPlanInput 저장할 주간 텍스트 계획 입력값입니다.
+ * @returns {{ ok: boolean, reason?: string, planId?: string }} 저장 결과입니다.
+ */
 function upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRole, weekTextPlanInput) {
   const safeWeekStartDate = formatDateText(parseDateText(weekTextPlanInput.weekStartDate))
   const dept = String(weekTextPlanInput.dept || '').trim()
@@ -83,7 +111,7 @@ function upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRol
 
   try {
     $app.save(plan)
-  } catch (_error) {
+  } catch (error) {
     if (!wasNew || !isUniqueValueError(error)) throw error
     const existing = findWeekTextPlan(safeWeekStartDate, dept)
     if (!existing) throw error
@@ -123,6 +151,13 @@ function upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRol
   return { ok: true, planId: plan.id }
 }
 
+/**
+ * 특정 요일의 주간 텍스트 행만 다시 저장합니다.
+ * @param {types.KjcaRecruitingWeekTextPlanRole | null | undefined} recruitingWeekTextPlanRole 계획 저장 전 검증 role입니다.
+ * @param {types.KjcaRecruitingWeekTextRowRole | null | undefined} recruitingWeekTextRowRole 행 저장 전 검증 role입니다.
+ * @param {{ weekStartDate?: unknown, dept?: unknown, weekday?: unknown, rows?: unknown }} weekdayRowsInput 저장할 요일별 입력값입니다.
+ * @returns {{ ok: boolean, reason?: string, planId?: string }} 저장 결과입니다.
+ */
 function upsertWeekTextRowsForWeekday(recruitingWeekTextPlanRole, recruitingWeekTextRowRole, weekdayRowsInput) {
   const safeWeekStartDate = formatDateText(parseDateText(weekdayRowsInput.weekStartDate))
   const dept = String(weekdayRowsInput.dept || '').trim()
@@ -176,6 +211,12 @@ function upsertWeekTextRowsForWeekday(recruitingWeekTextPlanRole, recruitingWeek
   return { ok: true }
 }
 
+/**
+ * 부서의 주간 계획 record를 찾습니다.
+ * @param {unknown} weekStartDate 주 시작일입니다.
+ * @param {unknown} dept 부서명입니다.
+ * @returns {core.Record | null} 찾은 주간 계획 record입니다.
+ */
 function findWeekPlan(weekStartDate, dept) {
   const weekDate = buildDateMatchParams(weekStartDate)
   try {
@@ -185,6 +226,11 @@ function findWeekPlan(weekStartDate, dept) {
   }
 }
 
+/**
+ * 주간 계획에 연결된 상세 항목 목록을 읽습니다.
+ * @param {string} planId 주간 계획 record id입니다.
+ * @returns {core.Record[]} 주간 계획 항목 목록입니다.
+ */
 function findWeekPlanItems(planId) {
   try {
     return $app.findRecordsByFilter('recruiting_week_plan_items', 'planId = {:planId}', 'weekday,sortOrder,created', 500, 0, { planId })
@@ -193,6 +239,12 @@ function findWeekPlanItems(planId) {
   }
 }
 
+/**
+ * 부서의 주간 실적 record 목록을 읽습니다.
+ * @param {unknown} weekStartDate 주 시작일입니다.
+ * @param {unknown} dept 부서명입니다.
+ * @returns {core.Record[]} 주간 실적 record 목록입니다.
+ */
 function findWeekResults(weekStartDate, dept) {
   const weekDate = buildDateMatchParams(weekStartDate)
   try {
@@ -206,12 +258,22 @@ function findWeekResults(weekStartDate, dept) {
   }
 }
 
+/**
+ * record 목록을 순서대로 삭제합니다.
+ * @param {core.Record[] | null | undefined} rows 삭제할 record 목록입니다.
+ */
 function deleteRecords(rows) {
   ;(Array.isArray(rows) ? rows : []).forEach((row) => {
     $app.delete(row)
   })
 }
 
+/**
+ * 특정 날짜/부서에서 파생된 주간 집계 record를 모두 지웁니다.
+ * @param {unknown} reportDate 기준 보고일입니다.
+ * @param {unknown} dept 부서명입니다.
+ * @returns {number} 삭제한 record 수입니다.
+ */
 function clearDerivedWeeklyRecords(reportDate, dept) {
   const safeWeekStartDate = buildWeekStartDate(reportDate)
   let deletedCount = 0
@@ -241,6 +303,13 @@ function clearDerivedWeeklyRecords(reportDate, dept) {
   return deletedCount
 }
 
+/**
+ * 모집/홍보 주간 계획과 상세 항목을 저장합니다.
+ * @param {types.KjcaRecruitingWeekPlanRole | null | undefined} recruitingWeekPlanRole 계획 저장 전 검증 role입니다.
+ * @param {types.KjcaRecruitingWeekPlanItemRole | null | undefined} recruitingWeekPlanItemRole 항목 저장 전 검증 role입니다.
+ * @param {{ weekStartDate?: unknown, dept?: unknown, monthTarget?: unknown, weekTarget?: unknown, items?: unknown }} weekPlanInput 저장할 주간 계획 입력값입니다.
+ * @returns {{ ok: boolean, reason?: string }} 저장 결과입니다.
+ */
 function upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItemRole, weekPlanInput) {
   const dept = String((weekPlanInput && weekPlanInput.dept) || '').trim()
   if (!dept) return { ok: false, reason: 'dept-empty' }
@@ -267,7 +336,7 @@ function upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItem
 
   try {
     $app.save(plan)
-  } catch (_error) {
+  } catch (error) {
     if (!wasNew || !isUniqueValueError(error)) throw error
 
     const existing = findWeekPlan(safeWeekStartDate, dept)
@@ -340,6 +409,12 @@ function upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItem
   return { ok: true }
 }
 
+/**
+ * 일일 모집 실적 record를 저장합니다.
+ * @param {types.KjcaRecruitingDailyResultRole | null | undefined} recruitingDailyResultRole 저장 전 검증 role입니다.
+ * @param {{ reportDate?: unknown, weekStartDate?: unknown, dept?: unknown, weekday?: unknown, actualCount?: unknown }} dailyResultInput 저장할 실적 입력값입니다.
+ * @returns {{ ok: boolean, reason?: string }} 저장 결과입니다.
+ */
 function upsertRecruitingDailyResult(recruitingDailyResultRole, dailyResultInput) {
   const dept = String((dailyResultInput && dailyResultInput.dept) || '').trim()
   if (!dept) return { ok: false, reason: 'dept-empty' }
@@ -377,7 +452,7 @@ function upsertRecruitingDailyResult(recruitingDailyResultRole, dailyResultInput
 
   try {
     $app.save(target)
-  } catch (_error) {
+  } catch (error) {
     if (!!record || !isUniqueValueError(error)) throw error
 
     const existing = $app.findFirstRecordByFilter('recruiting_daily_results', '(reportDate = {:exact} || reportDate ~ {:like}) && dept = {:dept}', {

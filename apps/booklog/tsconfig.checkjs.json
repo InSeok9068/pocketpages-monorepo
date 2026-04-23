@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "target": "es6",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "maxNodeModuleJsDepth": 0,
+    "skipLibCheck": true
+  },
+  "include": ["pb_data/types.d.ts", "pocketpages-globals.d.ts", "types.d.ts", "pb_hooks/pages/_private/**/*.js"],
+  "exclude": ["pb_hooks/pages/_private/vendor/**", "node_modules/**"]
+}
