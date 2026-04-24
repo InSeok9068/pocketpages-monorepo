@@ -41,6 +41,7 @@
 // 37) 존재하지 않는 PocketBase collection 문자열 사용
 // 38) params를 query처럼 읽는 패턴
 // 39) redirect() 뒤 return 누락
+// 40) +config.js plugin이 package.json 직접 의존성에 없는 경우
 
 const fs = require('fs')
 const path = require('path')
@@ -220,6 +221,7 @@ function buildServiceContext(serviceDir) {
   const hooksRoot = path.join(serviceDir, 'pb_hooks')
   const pagesRoot = path.join(hooksRoot, 'pages')
   const configFile = path.join(pagesRoot, '+config.js')
+  const packageFile = path.join(serviceDir, 'package.json')
   const projectIndex = new PocketPagesProjectIndex(serviceDir)
   const files = walkFiles(hooksRoot).map((filePath) => buildFileInfo(filePath, hooksRoot, pagesRoot))
 
@@ -233,6 +235,7 @@ function buildServiceContext(serviceDir) {
     serviceName: path.basename(serviceDir),
     hooksRoot,
     pagesRoot,
+    packageFile,
     projectIndex,
     collectionMethodNames: projectIndex.getCollectionMethodNames(),
     configFile,
@@ -254,6 +257,18 @@ function buildServiceContext(serviceDir) {
     loadFiles: pagesCodeFiles.filter((file) => file.basename === '+load.js'),
     configFiles: pagesCodeFiles.filter((file) => file.basename === '+config.js'),
     specialPlusFiles: pagesCodeFiles.filter((file) => file.basename.startsWith('+')),
+  }
+}
+
+function readJsonFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return null
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'))
+  } catch (_error) {
+    return null
   }
 }
 
@@ -981,6 +996,26 @@ function collectRedirectMissingReturnMatches(context) {
   return unique(matches)
 }
 
+function collectConfigPluginDependencyMatches(context) {
+  if (!context.configFileInfo) {
+    return []
+  }
+
+  const packageJson = readJsonFile(context.packageFile)
+  if (!packageJson) {
+    return []
+  }
+
+  const dependencies = Object.assign({}, packageJson.dependencies || {}, packageJson.devDependencies || {})
+  const pluginNames = unique(
+    Array.from(context.configFileInfo.content.matchAll(/["'](pocketpages-plugin-[^"']+)["']/g)).map((match) => match[1]),
+  )
+
+  return pluginNames
+    .filter((pluginName) => !dependencies[pluginName])
+    .map((pluginName) => `${toDisplayPath(context.configFile)} uses ${pluginName}, but ${toDisplayPath(context.packageFile)} does not list it`)
+}
+
 function lintService(context) {
   console.log(`Checking service: ${context.serviceName}`)
 
@@ -1347,6 +1382,13 @@ function lintService(context) {
   )
 
   const compactConfig = context.configFileInfo ? context.configFileInfo.content.replace(/\s+/g, '') : ''
+  const missingConfigPluginDependencyMatches = collectConfigPluginDependencyMatches(context)
+  printMatches(
+    context.serviceName,
+    'Invalid plugin dependency setup. Every pocketpages-plugin-* listed in +config.js must be listed directly in package.json.',
+    missingConfigPluginDependencyMatches,
+  )
+
   const authHelperMatches = collectLineMatches(context.pagesCodeFiles, RE.authHelper)
   if (authHelperMatches.length > 0 && !compactConfig.includes('pocketpages-plugin-auth')) {
     printMatches(
