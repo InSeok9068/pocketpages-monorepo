@@ -57,6 +57,9 @@ declare module 'pocketpages' {
 }
 
 declare global {
+  const process: {
+    env: Record<string, string | undefined>
+  }
   interface PocketPagesRouteParams {}
 
   // `pocketpages` core request/context globals
@@ -82,21 +85,13 @@ declare global {
   const createAnonymousUser: (options?: PocketPagesAuthOptions) => PocketPagesAnonymousUserData
   const createPasswordlessUser: (email: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesPasswordlessUserData
   const signInWithPassword: (email: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
-  const registerWithPassword: (
-    email: string,
-    password: string,
-    options?: PocketPagesAuthVerificationOptions
-  ) => PocketPagesRegisterAuthData
+  const registerWithPassword: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesRegisterAuthData
   const signInAnonymously: (options?: PocketPagesAuthOptions) => PocketPagesAuthData
   const requestOTP: (email: string, options?: PocketPagesAuthOptions) => PocketPagesOtpRequestData
   const signInWithOTP: (otpId: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
   const signInWithToken: (token: string) => void
   const requestOAuth2Login: (providerName: string, options?: PocketPagesOAuth2RequestOptions) => string
-  const signInWithOAuth2: (
-    state: string,
-    code: string,
-    options?: PocketPagesOAuth2ConfirmOptions
-  ) => PocketPagesAuthData
+  const signInWithOAuth2: (state: string, code: string, options?: PocketPagesOAuth2ConfirmOptions) => PocketPagesAuthData
   const signOut: () => void
   const requestVerification: (email: string, options?: PocketPagesAuthOptions) => void
   const confirmVerification: (token: string, options?: PocketPagesAuthOptions) => void

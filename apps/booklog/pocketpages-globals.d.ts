@@ -74,6 +74,9 @@ declare module 'pocketbase-js-sdk-jsvm' {
 }
 
 declare global {
+  const process: {
+    env: Record<string, string | undefined>
+  }
   interface PocketPagesRouteParams {}
 
   // `pocketpages` core request/context globals
