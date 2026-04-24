@@ -103,11 +103,18 @@ function createPocketPagesLanguageServiceManager(deps) {
           continue;
         }
 
-        service.resetCaches();
+        const invalidationKinds = [];
+        for (const change of appChanges) {
+          invalidationKinds.push(service.invalidateManagedFile(change.filePath, {
+            type: change.type,
+          }));
+        }
+
         results.push({
           appRoot,
           service,
           changes: appChanges,
+          invalidationKinds,
         });
       }
 

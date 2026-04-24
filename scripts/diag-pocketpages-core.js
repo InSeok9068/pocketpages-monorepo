@@ -110,7 +110,7 @@ function collectPagesCodeFiles(serviceDir) {
       const absolutePath = path.join(currentDir, entry.name);
 
       if (entry.isDirectory()) {
-        if (entry.name === 'assets') {
+        if (entry.name === 'assets' || entry.name === 'vendor') {
           continue;
         }
 
@@ -123,6 +123,10 @@ function collectPagesCodeFiles(serviceDir) {
       }
 
       if (!DIAGNOSTIC_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+        continue;
+      }
+
+      if (/\.min\.(?:js|cjs|mjs)$/i.test(entry.name)) {
         continue;
       }
 

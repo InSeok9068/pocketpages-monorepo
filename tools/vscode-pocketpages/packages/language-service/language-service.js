@@ -2061,6 +2061,7 @@ class ProjectLanguageService {
     this.includeCallEntriesCache = new Map();
     this.includePreludeCache = new Map();
     this.schemaTypePreludeCache = null;
+    this.scriptSchemaDiagnosticsCache = new Map();
 
     this.languageService = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry());
   }
@@ -2102,11 +2103,85 @@ class ProjectLanguageService {
     this.includePreludeCache.clear();
     this.includePreludeStack.clear();
     this.schemaTypePreludeCache = null;
+    this.scriptSchemaDiagnosticsCache.clear();
     this.staticFiles.clear();
     this.virtualFiles.clear();
     this.preparedDocumentStates.clear();
     this.projectIndex.resetCaches();
     this.projectVersion += 1;
+  }
+
+  clearVirtualFilesForSource(filePath) {
+    const normalizedFilePath = normalizePath(filePath);
+    let changed = false;
+
+    for (const [virtualFileName, state] of this.virtualFiles.entries()) {
+      if (!state || normalizePath(state.filePath || "") !== normalizedFilePath) {
+        continue;
+      }
+
+      this.virtualFiles.delete(virtualFileName);
+      changed = true;
+    }
+
+    return changed;
+  }
+
+  invalidateManagedFile(filePath, options = {}) {
+    const normalizedFilePath = normalizePath(filePath);
+    const changeType = typeof options.type === "string" ? options.type : "change";
+    const pagesRootPath = normalizePath(path.join(this.appRoot, "pb_hooks", "pages"));
+    const schemaPath = normalizePath(path.join(this.appRoot, "pb_schema.json"));
+    const pbTypesPath = normalizePath(path.join(this.appRoot, "pb_data", "types.d.ts"));
+    const globalsPath = normalizePath(path.join(this.appRoot, "pocketpages-globals.d.ts"));
+    const serviceTypesPath = normalizePath(path.join(this.appRoot, "types.d.ts"));
+
+    if (
+      normalizedFilePath === schemaPath ||
+      normalizedFilePath === pbTypesPath ||
+      normalizedFilePath === globalsPath ||
+      normalizedFilePath === serviceTypesPath ||
+      changeType === "create" ||
+      changeType === "delete"
+    ) {
+      this.resetCaches();
+      return "reset";
+    }
+
+    let changed =
+      normalizedFilePath === pagesRootPath ||
+      normalizedFilePath.startsWith(`${pagesRootPath}/`);
+
+    this.projectIndex.invalidateContentForFile(normalizedFilePath);
+
+    if (this.preparedDocumentStates.delete(normalizedFilePath)) {
+      changed = true;
+    }
+
+    if (this.clearVirtualFilesForSource(normalizedFilePath)) {
+      changed = true;
+    }
+
+    if (this.scriptSchemaDiagnosticsCache.delete(normalizedFilePath)) {
+      changed = true;
+    }
+
+    if (
+      this.includeContractCache.size > 0 ||
+      this.includeCallEntriesCache.size > 0 ||
+      this.includePreludeCache.size > 0
+    ) {
+      this.includeContractCache.clear();
+      this.includeCallEntriesCache.clear();
+      this.includePreludeCache.clear();
+      changed = true;
+    }
+
+    if (changed) {
+      this.projectVersion += 1;
+    }
+
+    return changed ? "partial" : "noop";
   }
 
   getDocumentOverride(filePath) {
@@ -5537,6 +5612,23 @@ class ProjectLanguageService {
       return [];
     }
 
+    const normalizedFilePath = normalizePath(filePath);
+    const ambientSnapshotKey = this.getAmbientSnapshotKey();
+    const collectionMethodKey = Array.isArray(collectionMethodNames)
+      ? [...collectionMethodNames].join("|")
+      : "";
+    const pagesContentVersion = this.projectIndex.pagesContentVersion;
+    const cachedEntry = this.scriptSchemaDiagnosticsCache.get(normalizedFilePath);
+    if (
+      cachedEntry &&
+      cachedEntry.documentText === documentText &&
+      cachedEntry.ambientSnapshotKey === ambientSnapshotKey &&
+      cachedEntry.collectionMethodKey === collectionMethodKey &&
+      cachedEntry.pagesContentVersion === pagesContentVersion
+    ) {
+      return cachedEntry.diagnostics.slice();
+    }
+
     const diagnostics = [];
 
     for (const context of collectSchemaContexts(documentText, { collectionMethodNames })) {
@@ -5559,6 +5651,14 @@ class ProjectLanguageService {
         }
       }
     }
+
+    this.scriptSchemaDiagnosticsCache.set(normalizedFilePath, {
+      documentText,
+      ambientSnapshotKey,
+      collectionMethodKey,
+      pagesContentVersion,
+      diagnostics: diagnostics.slice(),
+    });
 
     return diagnostics;
   }

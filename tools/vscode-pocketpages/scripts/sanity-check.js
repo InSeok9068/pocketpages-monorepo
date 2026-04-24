@@ -26,6 +26,7 @@ const {
 } = require('../packages/typescript-plugin/shared')
 const { getTokenTypeIndex } = require('../packages/language-server/ejs-semantic-tokens')
 const { runExtensionHostSanityCheck } = require('./extension-host-sanity')
+const { collectPagesCodeFiles } = require('../../../scripts/diag-pocketpages-core')
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true })
@@ -2297,6 +2298,142 @@ const flashClasses = 'notice'
       throw new Error('Expected watched-file manager to reset the secondary app service after a managed file change.')
     }
 
+    const schemaCacheFilePath = path.join(fixture.appRoot, 'pb_hooks', 'pages', '_private', 'schema-cache-check.js')
+    writeFile(
+      schemaCacheFilePath,
+      `const board = $app.findFirstRecordByFilter('boards', 'id != ""')
+board.get('na')
+board.get('name')
+
+module.exports = {
+  board,
+}
+`
+    )
+    const schemaCacheText = fs.readFileSync(schemaCacheFilePath, 'utf8')
+    const schemaCacheCollectionMethodNames = service.projectIndex.getCollectionMethodNames()
+    const originalBuildDocumentSchemaFieldDiagnostic = service.buildDocumentSchemaFieldDiagnostic
+    let schemaFieldDiagnosticBuildCount = 0
+    service.buildDocumentSchemaFieldDiagnostic = function patchedBuildDocumentSchemaFieldDiagnostic(...args) {
+      schemaFieldDiagnosticBuildCount += 1
+      return originalBuildDocumentSchemaFieldDiagnostic.apply(this, args)
+    }
+    try {
+      const firstScriptSchemaDiagnostics = serializeDiagnostics(
+        service.collectScriptSchemaDiagnostics(schemaCacheFilePath, schemaCacheText, schemaCacheCollectionMethodNames)
+      )
+      const buildCountAfterFirstRun = schemaFieldDiagnosticBuildCount
+      if (buildCountAfterFirstRun === 0) {
+        throw new Error('Expected script schema diagnostics cache probe to evaluate at least one record-field context on the first run.')
+      }
+      const secondScriptSchemaDiagnostics = serializeDiagnostics(
+        service.collectScriptSchemaDiagnostics(schemaCacheFilePath, schemaCacheText, schemaCacheCollectionMethodNames)
+      )
+      if (JSON.stringify(firstScriptSchemaDiagnostics) !== JSON.stringify(secondScriptSchemaDiagnostics)) {
+        throw new Error(
+          `Expected cached script schema diagnostics to stay stable across repeated runs. Got: ${JSON.stringify({ firstScriptSchemaDiagnostics, secondScriptSchemaDiagnostics })}`
+        )
+      }
+      if (schemaFieldDiagnosticBuildCount !== buildCountAfterFirstRun) {
+        throw new Error('Expected script schema diagnostics cache to skip record-field recomputation on a repeated run.')
+      }
+
+      service.invalidateManagedFile(schemaCacheFilePath, { type: 'change' })
+      service.collectScriptSchemaDiagnostics(schemaCacheFilePath, schemaCacheText, schemaCacheCollectionMethodNames)
+      const buildCountAfterSelfInvalidation = schemaFieldDiagnosticBuildCount
+      if (buildCountAfterSelfInvalidation <= buildCountAfterFirstRun) {
+        throw new Error('Expected script schema diagnostics cache to invalidate after a managed file change.')
+      }
+
+      const originalBoardServiceTextForCacheProbe = fs.readFileSync(fixture.boardServiceFilePath, 'utf8')
+      writeFile(
+        fixture.boardServiceFilePath,
+        `${originalBoardServiceTextForCacheProbe}\nconst CACHE_BREAKER = 'boards'\n`
+      )
+      try {
+        service.invalidateManagedFile(fixture.boardServiceFilePath, { type: 'change' })
+        service.collectScriptSchemaDiagnostics(schemaCacheFilePath, schemaCacheText, schemaCacheCollectionMethodNames)
+        if (schemaFieldDiagnosticBuildCount <= buildCountAfterSelfInvalidation) {
+          throw new Error(
+            'Expected script schema diagnostics cache to invalidate when another PocketPages content file changes.'
+          )
+        }
+      } finally {
+        writeFile(fixture.boardServiceFilePath, originalBoardServiceTextForCacheProbe)
+        service.invalidateManagedFile(fixture.boardServiceFilePath, { type: 'change' })
+      }
+    } finally {
+      service.buildDocumentSchemaFieldDiagnostic = originalBuildDocumentSchemaFieldDiagnostic
+    }
+
+    const partialWatchManager = new PocketPagesLanguageServiceManager()
+    const partialWatchService = partialWatchManager.getServiceForFile(fixture.boardsFilePath)
+    if (!partialWatchService) {
+      throw new Error('Expected partial watched-file manager smoke to resolve the primary app service.')
+    }
+    partialWatchService.getDiagnostics(fixture.boardsFilePath, fs.readFileSync(fixture.boardsFilePath, 'utf8'))
+    partialWatchService.getDiagnostics(fixture.localsTypeCheckFilePath, fs.readFileSync(fixture.localsTypeCheckFilePath, 'utf8'))
+    partialWatchService.collectScriptSchemaDiagnostics(
+      schemaCacheFilePath,
+      schemaCacheText,
+      partialWatchService.projectIndex.getCollectionMethodNames()
+    )
+    const partialWatchStaticFileCountBefore = partialWatchService.staticFiles.size
+    const partialWatchScriptSchemaCacheSizeBefore = partialWatchService.scriptSchemaDiagnosticsCache.size
+    const changedVirtualFileCountBefore = [...partialWatchService.virtualFiles.values()].filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
+    ).length
+    const unrelatedVirtualFileCountBefore = [...partialWatchService.virtualFiles.values()].filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.localsTypeCheckFilePath)
+    ).length
+    if (changedVirtualFileCountBefore === 0) {
+      throw new Error('Expected partial watched-file smoke to warm virtual files for the changed file before invalidation.')
+    }
+    if (unrelatedVirtualFileCountBefore === 0) {
+      throw new Error('Expected partial watched-file smoke to warm virtual files for the unrelated file before invalidation.')
+    }
+    if (partialWatchStaticFileCountBefore === 0) {
+      throw new Error('Expected partial watched-file smoke to warm ambient static files before invalidation.')
+    }
+    if (partialWatchScriptSchemaCacheSizeBefore === 0) {
+      throw new Error('Expected partial watched-file smoke to warm script schema diagnostics cache before invalidation.')
+    }
+    const partialWatchResults = partialWatchManager.handleWatchedFileChanges([
+      { filePath: fixture.boardsFilePath, type: 'change' },
+    ])
+    if (partialWatchResults.length !== 1 || !partialWatchResults[0].invalidationKinds.includes('partial')) {
+      throw new Error(
+        `Expected watched-file manager to report partial invalidation for plain content changes. Got: ${JSON.stringify(
+          partialWatchResults.map((entry) => ({
+            appRoot: entry.appRoot,
+            changes: entry.changes,
+            invalidationKinds: entry.invalidationKinds,
+          }))
+        )}`
+      )
+    }
+    const changedVirtualFileCountAfter = [...partialWatchService.virtualFiles.values()].filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
+    ).length
+    const unrelatedVirtualFileCountAfter = [...partialWatchService.virtualFiles.values()].filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.localsTypeCheckFilePath)
+    ).length
+    if (changedVirtualFileCountAfter !== 0) {
+      throw new Error('Expected partial watched-file invalidation to drop virtual files for the changed file only.')
+    }
+    if (unrelatedVirtualFileCountAfter !== unrelatedVirtualFileCountBefore) {
+      throw new Error('Expected partial watched-file invalidation to keep unrelated virtual files warm.')
+    }
+    if (partialWatchService.preparedDocumentStates.size !== 0) {
+      throw new Error('Expected service-only diagnostics warmup not to depend on preparedDocumentStates in partial watched-file smoke.')
+    }
+    if (partialWatchService.staticFiles.size !== partialWatchStaticFileCountBefore) {
+      throw new Error('Expected partial watched-file invalidation to preserve ambient static files instead of resetting the whole service.')
+    }
+    if (partialWatchService.scriptSchemaDiagnosticsCache.size !== partialWatchScriptSchemaCacheSizeBefore) {
+      throw new Error('Expected partial watched-file invalidation to keep unrelated script schema diagnostics cache entries warm.')
+    }
+
     const watchedRouteCore = new PocketPagesLanguageCore()
     const watchedRouteBoardsText = fs.readFileSync(fixture.boardsFilePath, 'utf8')
     const watchedRouteBoardsUri = URI.file(fixture.boardsFilePath).toString()
@@ -2895,6 +3032,17 @@ const flashClasses = 'notice'
     }
     if (!indexedCodeFilePaths.includes(normalizeFilePath(fixture.htmlToTextBundleFilePath))) {
       throw new Error(`Expected pages code index to keep _private vendor modules. Got: ${indexedCodeFilePaths.join(', ')}`)
+    }
+
+    const diagCodeFilePaths = collectPagesCodeFiles(fixture.appRoot).map((filePath) => normalizeFilePath(filePath))
+    if (diagCodeFilePaths.includes(normalizeFilePath(fixture.vendorAssetFilePath))) {
+      throw new Error(`Expected CLI diag file scan to exclude asset vendor scripts. Got: ${diagCodeFilePaths.join(', ')}`)
+    }
+    if (diagCodeFilePaths.includes(normalizeFilePath(fixture.routeVendorScriptFilePath))) {
+      throw new Error(`Expected CLI diag file scan to exclude route-exposed vendor scripts. Got: ${diagCodeFilePaths.join(', ')}`)
+    }
+    if (diagCodeFilePaths.includes(normalizeFilePath(fixture.htmlToTextBundleFilePath))) {
+      throw new Error(`Expected CLI diag file scan to exclude _private vendor modules. Got: ${diagCodeFilePaths.join(', ')}`)
     }
 
     const completionText = `<script server>\nmet\n</script>\n`
