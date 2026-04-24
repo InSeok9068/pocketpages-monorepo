@@ -103,7 +103,7 @@
 ./task.sh test [service]
 ./task.sh lint [service]
 ./task.sh tsc [service]
-./task.sh diag [file-or-service]
+./task.sh diag [file-or-service] [--profile] [--no-daemon]
 ./task.sh verify [service]
 ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
 ./task.sh bundle

@@ -15,7 +15,7 @@ Usage:
   ./task.sh test [service]
   ./task.sh lint [service]
   ./task.sh tsc [service]
-  ./task.sh diag [file-or-service]
+  ./task.sh diag [file-or-service] [--profile] [--no-daemon]
   ./task.sh verify [service]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
   ./task.sh bundle
@@ -31,6 +31,7 @@ Commands:
   lint      Run PocketPages self-validation checks and ESLint for one service or all services
   tsc       Run checkJs TypeScript verification with tsconfig.checkjs.json for one service or all services
   diag      Run PocketPages editor diagnostics for one file, one service, or all services when omitted
+            `--profile` prints slow-file timings, `--no-daemon` disables the warm background cache
   verify    Run lint, tsc, and diag together for one service or all services
   index     Query AI-friendly PocketPages project index JSON for one service
   bundle    Interactively bundle one service dependency into pb_hooks/pages/_private/vendor
@@ -468,6 +469,15 @@ run_tsc() {
 run_diag() {
   local diag_script="$ROOT_DIR/scripts/diag-pocketpages.js"
   local target="${1:-}"
+  local extra_args=()
+
+  if [[ -n "$target" && "$target" == --* ]]; then
+    target=""
+  elif [[ -n "$target" ]]; then
+    shift || true
+  fi
+
+  extra_args=("$@")
 
   if [[ ! -f "$diag_script" ]]; then
     echo "Missing diag script: $diag_script" >&2
@@ -481,7 +491,7 @@ run_diag() {
 
   if [[ -n "$target" ]]; then
     if [[ -f "$target" ]]; then
-      node "$diag_script" "$target"
+      node "$diag_script" "${extra_args[@]}" "$target"
       return 0
     fi
 
@@ -492,11 +502,11 @@ run_diag() {
       list_services >&2
       exit 1
     fi
-    node "$diag_script" "$service_dir"
+    node "$diag_script" "${extra_args[@]}" "$service_dir"
     return 0
   fi
 
-  node "$diag_script"
+  node "$diag_script" "${extra_args[@]}"
 }
 
 run_verify() {
@@ -1232,7 +1242,7 @@ case "${1:-help}" in
     ;;
   diag)
     shift || true
-    run_diag "${1:-}"
+    run_diag "$@"
     ;;
   verify)
     shift || true
