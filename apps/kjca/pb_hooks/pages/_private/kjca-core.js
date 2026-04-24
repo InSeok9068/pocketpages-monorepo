@@ -2777,13 +2777,8 @@ function normalizeDeptSnapshots(value) {
         dept: String(source.dept || '').trim(),
         monthTarget: normalizeNullableInt(source.monthTarget),
         weekTarget: normalizeNullableInt(source.weekTarget),
-        rows: Array.isArray(source.rows)
-          ? source.rows.map((row) => normalizeSnapshotRow(row, 'mon'))
-          : [],
-        today:
-          source.today && typeof source.today === 'object'
-            ? normalizeSnapshotRow(source.today, 'fri')
-            : normalizeSnapshotRow(null, 'fri'),
+        rows: Array.isArray(source.rows) ? source.rows.map((row) => normalizeSnapshotRow(row, 'mon')) : [],
+        today: source.today && typeof source.today === 'object' ? normalizeSnapshotRow(source.today, 'fri') : normalizeSnapshotRow(null, 'fri'),
         cumulative:
           source.cumulative && typeof source.cumulative === 'object'
             ? {
@@ -3129,5 +3124,3 @@ module.exports = {
   buildDeptSummaryText,
   buildPromotionDisplayItems,
 }
-
-
