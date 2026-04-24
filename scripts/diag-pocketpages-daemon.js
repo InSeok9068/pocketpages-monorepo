@@ -9,7 +9,7 @@ const {
   getDiagIpcPath,
   resolveTarget,
   ROOT_DIR,
-  runDiagnostics,
+  runDiagnosticsAsync,
   readFileToken,
 } = require('./diag-pocketpages-core');
 const {
@@ -147,7 +147,20 @@ function syncManagerForTarget(rawTarget) {
   }
 }
 
-function sendResponse(socket, payload) {
+function sendResponseAndWait(socket, payload) {
+  return new Promise((resolve, reject) => {
+    socket.write(`${JSON.stringify(payload)}\n`, (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
+function sendFinalResponse(socket, payload) {
   socket.end(`${JSON.stringify(payload)}\n`);
 }
 
@@ -158,18 +171,26 @@ async function handleRequest(socket, rawText) {
     const profile = !!(request && request.profile);
 
     syncManagerForTarget(rawTarget);
-    const result = runDiagnostics(rawTarget, {
+    const result = await runDiagnosticsAsync(rawTarget, {
       manager,
       profile,
+      onLine(line) {
+        return sendResponseAndWait(socket, {
+          type: 'line',
+          line,
+        });
+      },
     });
 
-    sendResponse(socket, {
+    sendFinalResponse(socket, {
       ok: true,
+      type: 'result',
       result,
     });
   } catch (error) {
-    sendResponse(socket, {
+    sendFinalResponse(socket, {
       ok: false,
+      type: 'result',
       error: String(error && error.message ? error.message : error),
     });
   }

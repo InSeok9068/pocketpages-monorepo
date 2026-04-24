@@ -40,7 +40,7 @@ function toDisplayPath(filePath) {
 }
 
 function getDiagIpcPath() {
-  const hash = crypto.createHash('sha1').update(ROOT_DIR).digest('hex').slice(0, 12);
+  const hash = crypto.createHash('sha1').update(`${ROOT_DIR}:stream-v2`).digest('hex').slice(0, 12);
 
   if (process.platform === 'win32') {
     return `\\\\.\\pipe\\pocketpages-diag-${hash}`;
@@ -297,7 +297,7 @@ function runFileDiagnostics(filePath, manager, options = {}) {
 
 function runServiceDiagnostics(serviceDir, manager, options = {}) {
   const serviceName = path.basename(serviceDir);
-  const filePaths = collectPagesCodeFiles(serviceDir);
+  const filePaths = Array.isArray(options.filePaths) ? options.filePaths : collectPagesCodeFiles(serviceDir);
   const startedAt = performance.now();
   const issues = [];
   const fileProfiles = [];
@@ -382,8 +382,6 @@ function appendProfileLines(lines, profiles, totalMs) {
 }
 
 function printServiceResult(lines, result, options = {}) {
-  lines.push(`Checking service: ${result.serviceName} (${result.fileCount} files)`);
-
   if (result.issues.length === 0) {
     lines.push(`PocketPages editor diagnostics passed in ${(result.totalMs / 1000).toFixed(2)}s.`);
     if (options.profile) {
@@ -423,8 +421,6 @@ function printServiceResult(lines, result, options = {}) {
 }
 
 function printFileResult(lines, result, options = {}) {
-  lines.push(`Checking file: ${toDisplayPath(result.filePath)}`);
-
   if (result.issues.length === 0) {
     lines.push(`PocketPages editor diagnostics passed in ${(result.totalMs / 1000).toFixed(2)}s.`);
     if (options.profile && result.profile) {
@@ -463,23 +459,39 @@ function printFileResult(lines, result, options = {}) {
   };
 }
 
-function runDiagnostics(rawArg, options = {}) {
+function* appendLine(lines, line) {
+  lines.push(line);
+  yield line;
+}
+
+function* appendLines(lines, newLines) {
+  for (const line of newLines) {
+    yield* appendLine(lines, line);
+  }
+}
+
+function* runDiagnosticsSteps(rawArg, options = {}) {
   const manager = options.manager || new PocketPagesLanguageServiceManager();
   const profile = !!options.profile;
-  const lines = ['Running PocketPages editor diagnostics...'];
+  const lines = [];
   let blockingIssueCount = 0;
   let advisoryIssueCount = 0;
+
+  yield* appendLine(lines, 'Running PocketPages editor diagnostics...');
 
   const target = resolveTarget(rawArg);
 
   if (target.mode === 'file') {
+    yield* appendLine(lines, `Checking file: ${toDisplayPath(target.filePath)}`);
     const result = runFileDiagnostics(target.filePath, manager, { profile });
-    const counts = printFileResult(lines, result, { profile });
+    const resultLines = [];
+    const counts = printFileResult(resultLines, result, { profile });
+    yield* appendLines(lines, resultLines);
     blockingIssueCount += counts.blockingIssueCount;
     advisoryIssueCount += counts.advisoryIssueCount;
   } else {
     if (target.serviceDirs.length === 0) {
-      lines.push('No services found.');
+      yield* appendLine(lines, 'No services found.');
       return {
         output: lines.join('\n'),
         exitCode: 0,
@@ -490,21 +502,25 @@ function runDiagnostics(rawArg, options = {}) {
     }
 
     for (const serviceDir of target.serviceDirs) {
-      const result = runServiceDiagnostics(serviceDir, manager, { profile });
-      const counts = printServiceResult(lines, result, { profile });
+      const filePaths = collectPagesCodeFiles(serviceDir);
+      yield* appendLine(lines, `Checking service: ${path.basename(serviceDir)} (${filePaths.length} files)`);
+      const result = runServiceDiagnostics(serviceDir, manager, { profile, filePaths });
+      const resultLines = [];
+      const counts = printServiceResult(resultLines, result, { profile });
+      yield* appendLines(lines, resultLines);
       blockingIssueCount += counts.blockingIssueCount;
       advisoryIssueCount += counts.advisoryIssueCount;
     }
   }
 
   if (blockingIssueCount > 0) {
-    lines.push('');
-    lines.push(`PocketPages editor diagnostics failed with ${blockingIssueCount} blocking issue(s).`);
+    yield* appendLine(lines, '');
+    yield* appendLine(lines, `PocketPages editor diagnostics failed with ${blockingIssueCount} blocking issue(s).`);
   } else if (advisoryIssueCount > 0) {
-    lines.push('');
-    lines.push(`PocketPages editor diagnostics passed with ${advisoryIssueCount} advisory issue(s).`);
+    yield* appendLine(lines, '');
+    yield* appendLine(lines, `PocketPages editor diagnostics passed with ${advisoryIssueCount} advisory issue(s).`);
   } else {
-    lines.push('PocketPages editor diagnostics passed.');
+    yield* appendLine(lines, 'PocketPages editor diagnostics passed.');
   }
 
   return {
@@ -516,6 +532,36 @@ function runDiagnostics(rawArg, options = {}) {
   };
 }
 
+function runDiagnostics(rawArg, options = {}) {
+  const onLine = typeof options.onLine === 'function' ? options.onLine : null;
+  const steps = runDiagnosticsSteps(rawArg, options);
+  let current = steps.next();
+
+  while (!current.done) {
+    if (onLine) {
+      onLine(current.value);
+    }
+    current = steps.next();
+  }
+
+  return current.value;
+}
+
+async function runDiagnosticsAsync(rawArg, options = {}) {
+  const onLine = typeof options.onLine === 'function' ? options.onLine : null;
+  const steps = runDiagnosticsSteps(rawArg, options);
+  let current = steps.next();
+
+  while (!current.done) {
+    if (onLine) {
+      await onLine(current.value);
+    }
+    current = steps.next();
+  }
+
+  return current.value;
+}
+
 module.exports = {
   ROOT_DIR,
   collectManagedWatchedFiles,
@@ -524,4 +570,5 @@ module.exports = {
   readFileToken,
   resolveTarget,
   runDiagnostics,
+  runDiagnosticsAsync,
 };

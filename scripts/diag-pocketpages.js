@@ -49,8 +49,13 @@ function printRunResult(result) {
 
 function runLocally(options) {
   try {
-    const result = runDiagnostics(options.rawTarget, { profile: options.profile });
-    printRunResult(result);
+    const result = runDiagnostics(options.rawTarget, {
+      profile: options.profile,
+      onLine(line) {
+        process.stdout.write(`${line}\n`);
+      },
+    });
+    process.exit(result && Number.isInteger(result.exitCode) ? result.exitCode : 1);
   } catch (error) {
     console.error(String(error && error.message ? error.message : error));
     process.exit(1);
@@ -110,27 +115,40 @@ async function runViaDaemon(options) {
     });
 
     let responseText = '';
+    let sawStreamedLine = false;
     socket.setEncoding('utf8');
     socket.on('data', (chunk) => {
       responseText += chunk;
-      const newlineIndex = responseText.indexOf('\n');
-      if (newlineIndex === -1) {
-        return;
-      }
-
-      const rawResponse = responseText.slice(0, newlineIndex);
-      socket.end();
-
-      try {
-        const response = JSON.parse(rawResponse);
-        if (!response || response.ok !== true || !response.result) {
-          throw new Error(response && response.error ? response.error : 'PocketPages diag daemon returned an invalid response.');
+      while (true) {
+        const newlineIndex = responseText.indexOf('\n');
+        if (newlineIndex === -1) {
+          return;
         }
 
-        printRunResult(response.result);
-      } catch (error) {
-        console.error(String(error && error.message ? error.message : error));
-        process.exit(1);
+        const rawResponse = responseText.slice(0, newlineIndex);
+        responseText = responseText.slice(newlineIndex + 1);
+
+        try {
+          const response = JSON.parse(rawResponse);
+          if (response && response.type === 'line') {
+            sawStreamedLine = true;
+            process.stdout.write(`${response.line || ''}\n`);
+            continue;
+          }
+
+          if (!response || response.ok !== true || !response.result) {
+            throw new Error(response && response.error ? response.error : 'PocketPages diag daemon returned an invalid response.');
+          }
+
+          if (sawStreamedLine) {
+            process.exit(Number.isInteger(response.result.exitCode) ? response.result.exitCode : 1);
+          }
+
+          printRunResult(response.result);
+        } catch (error) {
+          console.error(String(error && error.message ? error.message : error));
+          process.exit(1);
+        }
       }
     });
     socket.on('error', (error) => {
