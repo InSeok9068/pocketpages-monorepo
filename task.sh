@@ -10,7 +10,7 @@ Usage:
   ./task.sh start <service> [-- <extra args>]
   ./task.sh kill
   ./task.sh update <npm|pocketbase> [-- <extra args>]
-  ./task.sh deploy <service>
+  ./task.sh deploy <service> [--skip-verify]
   ./task.sh rollback <service> <1|2|3>
   ./task.sh test [service]
   ./task.sh lint [service]
@@ -25,7 +25,7 @@ Commands:
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
   update    `npm` runs npm up in root and app package.json dirs; `pocketbase` runs pocketbase update in app dirs
-  deploy    Upload one service deploy targets using .vscode/sftp.json
+  deploy    Verify and upload one service deploy targets using .vscode/sftp.json
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
   test      Run node:test files under __tests__ for one service or all services
   lint      Run PocketPages self-validation checks and ESLint for one service or all services
@@ -38,6 +38,8 @@ Commands:
   format    Run npm run format
 
 Examples:
+  ./task.sh deploy booklog
+  ./task.sh deploy booklog --skip-verify
   ./task.sh update npm
   ./task.sh update npm -- --save
   ./task.sh update pocketbase
@@ -980,8 +982,16 @@ EOF
 
 run_deploy() {
   local service="$1"
+  local skip_verify="${2:-false}"
   local deploy_targets=()
   local target_name=""
+
+  if [[ "$skip_verify" != "true" ]]; then
+    echo "Running pre-deploy verification: $service"
+    run_verify "$service"
+  else
+    echo "Skipping pre-deploy verification: $service"
+  fi
 
   if ! mapfile -t deploy_targets < <(resolve_deploy_targets "$service"); then
     exit 1
@@ -1220,8 +1230,24 @@ case "${1:-help}" in
     ;;
   deploy)
     shift
-    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh deploy <service>" >&2; exit 1; }
-    run_deploy "$1"
+    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh deploy <service> [--skip-verify]" >&2; exit 1; }
+    service="$1"
+    shift || true
+    skip_verify="false"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --skip-verify)
+          skip_verify="true"
+          shift
+          ;;
+        *)
+          echo "Unknown deploy option: $1" >&2
+          echo "Usage: ./task.sh deploy <service> [--skip-verify]" >&2
+          exit 1
+          ;;
+      esac
+    done
+    run_deploy "$service" "$skip_verify"
     ;;
   rollback)
     shift
