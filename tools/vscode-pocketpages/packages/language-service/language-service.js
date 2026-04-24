@@ -30,10 +30,10 @@ const { createPocketPagesLanguageServiceManager } = require("./service-manager")
 
 const COMPILER_OPTIONS = {
   allowJs: true,
-  checkJs: false,
+  checkJs: true,
   strict: false,
   noEmit: true,
-  target: ts.ScriptTarget.ES2022,
+  target: ts.ScriptTarget.ES2015,
   module: ts.ModuleKind.CommonJS,
   moduleResolution: ts.ModuleResolutionKind.NodeJs,
   allowSyntheticDefaultImports: true,
