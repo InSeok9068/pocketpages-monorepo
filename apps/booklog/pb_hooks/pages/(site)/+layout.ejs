@@ -71,20 +71,34 @@
       data-fallback-src="<%= asset('/assets/vendor/alpine-3.15.11-cdn.min.js') %>"
       onerror="window.__assetFallback(this)"></script>
     <script
-      src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.6.8/uno.global.js"
-      data-fallback-src="<%= asset('/assets/vendor/uno-66.6.8.global.js') %>"
+      src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.5.12/preset-wind3.global.js"
+      data-fallback-src="<%= asset('/assets/vendor/preset-wind3-66.5.12.global.js') %>"
       onerror="window.__assetFallback(this)"></script>
     <script
-      src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
-      defer></script>
+      src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.5.12/preset-icons.global.js"
+      data-fallback-src="<%= asset('/assets/vendor/preset-icons-66.5.12.global.js') %>"
+      onerror="window.__assetFallback(this)"></script>
     <script>
       window.__unocss = {
-        presets: [() => window.__unocss_runtime.presets.presetUno()],
+        presets: [
+          () => window.__unocss_runtime.presets.presetWind3(),
+          () =>
+            window.__unocss_runtime.presets.presetIcons({
+              cdn: 'https://esm.sh/',
+            }),
+        ],
         ready: () => {
           document.body.removeAttribute('un-cloak')
         },
       }
     </script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.5.12/core.global.js"
+      data-fallback-src="<%= asset('/assets/vendor/unocss-core-66.5.12.global.js') %>"
+      onerror="window.__assetFallback(this)"></script>
+    <script
+      src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+      defer></script>
     <script>
       window.__booklogPushBridge =
         window.__booklogPushBridge ||
