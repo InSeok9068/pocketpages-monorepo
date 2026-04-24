@@ -41,6 +41,11 @@ _pp_dev_complete() {
     return
   fi
 
+  if [[ "$cmd" == "deploy" && $COMP_CWORD -ge 3 && "$cur" == --* ]]; then
+    COMPREPLY=( $(compgen -W "--skip-verify" -- "$cur") )
+    return
+  fi
+
   if [[ "$cmd" == "index" ]]; then
     if [[ "$cur" == --* ]]; then
       COMPREPLY=( $(compgen -W "--section --file --json --pretty" -- "$cur") )
