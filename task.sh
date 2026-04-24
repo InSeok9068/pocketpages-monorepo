@@ -29,7 +29,7 @@ Commands:
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
   test      Run node:test files under __tests__ for one service or all services
   lint      Run PocketPages self-validation checks and ESLint for one service or all services
-  tsc       Run checkJs TypeScript verification with tsconfig.checkjs.json for one service or all services
+  tsc       Run checkJs TypeScript verification with jsconfig.json for one service or all services
   diag      Run PocketPages editor diagnostics for one file, one service, or all services when omitted
             `--profile` prints slow-file timings, `--no-daemon` disables the warm background cache
   verify    Run lint, tsc, and diag together for one service or all services
@@ -347,10 +347,10 @@ run_tsc_for_service() {
   local config_file
 
   service_name="$(basename "$service_dir")"
-  config_file="$service_dir/tsconfig.checkjs.json"
+  config_file="$service_dir/jsconfig.json"
 
   if [[ ! -f "$config_file" ]]; then
-    echo "Skipping $service_name: missing tsconfig.checkjs.json."
+    echo "Skipping $service_name: missing jsconfig.json."
     return 0
   fi
 
