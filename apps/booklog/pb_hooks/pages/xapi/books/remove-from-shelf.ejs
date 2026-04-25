@@ -75,12 +75,12 @@
 
     dbg('xapi/books/remove-from-shelf:redirect', {
       status: 303,
-      redirectTo: '/',
+      redirectTo: '/library',
       flash: '내 도서함에서 책을 제거했습니다.',
       removedReviewCount: reviewRecords.length,
       removedHighlightCount: highlightRecords.length,
     })
-    redirect('/', {
+    redirect('/library', {
       status: 303,
       message: '내 도서함에서 책을 제거했습니다.',
     })
