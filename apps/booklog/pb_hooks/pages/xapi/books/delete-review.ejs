@@ -28,8 +28,13 @@
   const form = body()
   const userId = String(request.auth.get('id') || '')
   const bookId = String(form.bookId || '').trim()
-  const bookDetailPath = '/books/' + bookId
+  const fromPath = String(form.from || '').trim()
+  let bookDetailPath = '/books/' + bookId
   let errorMessage = ''
+
+  if (fromPath === '/' || fromPath === '/library' || fromPath === '/reviews' || fromPath === '/highlights') {
+    bookDetailPath += '?from=' + encodeURIComponent(fromPath)
+  }
 
   dbg('xapi/books/delete-review:start', {
     userId: userId,

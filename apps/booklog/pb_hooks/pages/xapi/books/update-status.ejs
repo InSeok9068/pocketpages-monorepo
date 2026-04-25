@@ -28,10 +28,15 @@
   const form = body()
   const userId = String(request.auth.get('id') || '')
   const bookId = String(form.bookId || '').trim()
-  const bookDetailPath = '/books/' + bookId
+  const fromPath = String(form.from || '').trim()
+  let bookDetailPath = '/books/' + bookId
   const status = String(form.status || '').trim()
   const nowIso = new Date().toISOString()
   let errorMessage = ''
+
+  if (fromPath === '/' || fromPath === '/library' || fromPath === '/reviews' || fromPath === '/highlights') {
+    bookDetailPath += '?from=' + encodeURIComponent(fromPath)
+  }
 
   /**
    * 책에 연결된 EPUB 파일이 하나뿐일 때 그 파일 ID를 반환합니다.

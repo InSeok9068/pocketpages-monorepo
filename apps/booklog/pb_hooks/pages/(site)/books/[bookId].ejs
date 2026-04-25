@@ -6,11 +6,29 @@
   const flashMessage = params.__flash ? String(params.__flash) : ''
   const bookId = String(params.bookId || '').trim()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const backSource = String(request.url.query.from || '').trim()
+  let bookBackHref = '/'
+  let bookBackLabel = '메인으로'
   const shelfStatusLabels = {
     queued: '읽을 예정',
     reading: '읽는 중',
     finished: '완독',
     dropped: '중단함',
+  }
+
+  if (backSource === '/library') {
+    bookBackHref = '/library'
+    bookBackLabel = '도서함으로'
+  }
+
+  if (backSource === '/reviews') {
+    bookBackHref = '/reviews'
+    bookBackLabel = '감상평으로'
+  }
+
+  if (backSource === '/highlights') {
+    bookBackHref = '/highlights'
+    bookBackLabel = '문구로'
   }
 
   if (!request.auth) {
@@ -191,12 +209,12 @@
 <section class="space-y-7">
   <div class="space-y-3">
     <a
-      href="/library"
+      href="<%= bookBackHref %>"
       class="bg-white/78 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0">
       <span
         class="i-lucide-arrow-left h-4 w-4"
         aria-hidden="true"></span>
-      도서함으로
+      <%= bookBackLabel %>
     </a>
     <h1 class="text-4xl font-semibold tracking-tight text-stone-950">책 상세</h1>
   </div>
@@ -296,6 +314,10 @@
               value="<%= bookId %>" />
             <input
               type="hidden"
+              name="from"
+              value="<%= bookBackHref %>" />
+            <input
+              type="hidden"
               name="status"
               value="<%= shelfStatus === 'reading' ? 'queued' : 'reading' %>" />
             <button
@@ -312,6 +334,10 @@
               type="hidden"
               name="bookId"
               value="<%= bookId %>" />
+            <input
+              type="hidden"
+              name="from"
+              value="<%= bookBackHref %>" />
             <input
               type="hidden"
               name="status"
@@ -365,6 +391,10 @@
         type="hidden"
         name="bookId"
         value="<%= bookId %>" />
+      <input
+        type="hidden"
+        name="from"
+        value="<%= bookBackHref %>" />
       <button
         type="submit"
         aria-label="감상평 삭제"
@@ -383,6 +413,10 @@
           type="hidden"
           name="bookId"
           value="<%= bookId %>" />
+        <input
+          type="hidden"
+          name="from"
+          value="<%= bookBackHref %>" />
         <label class="block space-y-2">
           <span class="text-sm font-medium text-stone-700">내 감상</span>
           <textarea
@@ -433,6 +467,10 @@
               type="hidden"
               name="bookId"
               value="<%= bookId %>" />
+            <input
+              type="hidden"
+              name="from"
+              value="<%= bookBackHref %>" />
             <input
               type="hidden"
               name="highlightId"

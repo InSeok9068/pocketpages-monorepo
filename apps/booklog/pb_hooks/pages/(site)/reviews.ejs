@@ -68,7 +68,7 @@
     <div class="space-y-2.5">
       <% for (let index = 0; index < reviewItems.length; index += 1) { const item = reviewItems[index] %>
       <a
-        href="/books/<%= item.bookId %>"
+        href="/books/<%= item.bookId %>?from=/reviews"
         class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-3.5 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
         <p class="text-[15px] font-semibold leading-[1.65] tracking-[-0.02em] text-stone-900 sm:text-base"><%= item.reviewText %></p>
         <p class="mt-2.5 text-[12px] leading-5 text-stone-500">
