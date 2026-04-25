@@ -86,9 +86,7 @@
         <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">My Shelf</p>
         <h1 class="text-4xl font-semibold tracking-tight text-stone-950">도서함</h1>
       </div>
-      <p class="inline-flex w-max items-center rounded-full bg-white/78 px-3 py-1.5 text-sm font-medium text-stone-600 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
-        <%= libraryBooks.length %>권
-      </p>
+      <p class="bg-white/78 inline-flex w-max items-center rounded-full px-3 py-1.5 text-sm font-medium text-stone-600 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]"><%= libraryBooks.length %>권</p>
     </div>
   </div>
 
@@ -105,7 +103,8 @@
       <a
         href="/books/<%= book.bookId %>"
         class="group block min-w-0 text-stone-900 no-underline">
-        <div class="relative aspect-[5/7] overflow-hidden rounded-[1.3rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] shadow-[0_16px_26px_rgba(74,50,28,0.12)] transition group-hover:translate-y-[-1px]">
+        <div
+          class="relative aspect-[5/7] overflow-hidden rounded-[1.3rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] shadow-[0_16px_26px_rgba(74,50,28,0.12)] transition group-hover:translate-y-[-1px]">
           <% if (book.statusBadgeLabel) { %>
           <span class="<%= book.statusBadgeClass %> absolute right-2 top-2 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
             <%= book.statusBadgeLabel %>
