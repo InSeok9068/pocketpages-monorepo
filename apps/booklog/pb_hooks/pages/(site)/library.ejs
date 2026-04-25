@@ -112,10 +112,12 @@
           </span>
           <% } %>
           <% if (book.coverUrl) { %>
-          <div class="flex h-full w-full items-center justify-center bg-white px-1.5 py-1.5">
+          <div class="box-border flex h-full w-full items-center justify-center bg-white px-1.5 py-1.5">
             <img
               src="<%= book.coverUrl %>"
               alt="<%= book.title %> 표지"
+              loading="lazy"
+              decoding="async"
               class="block h-full w-full object-contain" />
           </div>
           <% } else { %>

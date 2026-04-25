@@ -392,6 +392,8 @@
                 <img
                   src="<%= book.coverUrl %>"
                   alt="<%= book.title %> 표지"
+                  loading="lazy"
+                  decoding="async"
                   class="h-full w-full object-cover" />
                 <% } else { %>
                 <div class="absolute inset-0 box-border px-3 py-4 text-white">
@@ -415,6 +417,8 @@
               <img
                 src="<%= book.coverUrl %>"
                 alt="<%= book.title %> 표지"
+                loading="lazy"
+                decoding="async"
                 class="h-full w-full object-cover" />
               <% } else { %>
               <div class="absolute inset-0 box-border px-3 py-4 text-white">
