@@ -641,75 +641,75 @@
     x-show="uploading"
     x-cloak
     x-transition.opacity
-    class="fixed inset-0 z-[90] flex items-end justify-center px-0 pt-0 sm:items-center sm:px-6 sm:py-6">
-    <div class="bg-stone-950/58 absolute inset-0 backdrop-blur-[2px]"></div>
-
+    class="fixed inset-0 z-[90] overflow-y-auto bg-[linear-gradient(180deg,#fffdf8,#f5ead7)] text-stone-950">
     <section
-      class="ios-safe-sheet relative w-full max-w-xl overflow-y-auto rounded-t-[2rem] bg-[linear-gradient(180deg,#fffdf8,#f5ead7)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-[0_-18px_50px_rgba(41,28,17,0.24)] sm:rounded-[2.2rem] sm:px-6 sm:pb-6 sm:pt-6 sm:shadow-[0_30px_90px_rgba(41,28,17,0.28)]">
-      <div class="flex items-start justify-between gap-4">
-        <div class="space-y-2">
-          <div
-            class="inline-flex items-center gap-2 rounded-full bg-[#f2e4cd] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#8a5a2b] shadow-[inset_0_0_0_1px_rgba(138,90,43,0.08)]">
-            <span class="inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-[#b06d2f]"></span>
-            처리 중
-          </div>
-          <h3 class="text-[1.85rem] font-semibold tracking-tight text-stone-950">업로드를 계속 진행하고 있습니다</h3>
-          <p class="max-w-xl text-sm leading-6 text-stone-600">이 화면이 보이는 동안 정상적으로 작업 중입니다. 완료되면 다음 화면으로 자동 이동합니다.</p>
+      class="ios-safe-sheet box-border mx-auto flex min-h-[100dvh] w-full max-w-xl flex-col px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6 sm:py-8">
+      <div class="flex items-center justify-between gap-3">
+        <div
+          class="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#8a5a2b]">
+          <span class="inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-[#b06d2f]"></span>
+          Upload
         </div>
 
-        <div class="bg-white/78 rounded-[1.2rem] px-3 py-2 text-right shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">경과 시간</p>
+        <div class="rounded-full bg-white/72 px-3 py-1.5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
           <p
             x-text="uploadElapsedLabel"
-            class="mt-1 text-lg font-semibold tracking-tight text-stone-900"></p>
+            class="text-[13px] font-semibold text-stone-700"></p>
         </div>
       </div>
 
-      <div class="bg-white/78 mt-5 rounded-[1.4rem] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
-        <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">선택한 파일</p>
-        <p
-          x-text="uploadFileName || 'EPUB 파일'"
-          class="mt-2 break-all text-sm font-medium leading-6 text-stone-900"></p>
-        <p
-          x-text="activeUploadStage.detail"
-          class="mt-2 text-[13px] leading-6 text-stone-600"></p>
-      </div>
+      <div class="flex flex-1 flex-col justify-center py-10">
+        <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-stone-900 text-white shadow-[0_18px_40px_rgba(24,19,16,0.18)]">
+          <span
+            class="i-lucide-loader-circle h-10 w-10 animate-spin"
+            aria-hidden="true"></span>
+        </div>
 
-      <div class="mt-5 space-y-2.5">
-        <template
-          x-for="(stage, index) in uploadStages"
-          :key="stage.label">
-          <div
-            class="rounded-[1.35rem] px-4 py-3 transition"
-            x-bind:class="index === uploadStageIndex ? 'bg-[#f6ebd8] text-stone-900 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.10)]' : (index < uploadStageIndex ? 'bg-white/82 text-stone-700 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]' : 'bg-stone-100/82 text-stone-400 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.06)]')">
-            <div class="flex items-start gap-3">
-              <span
-                class="inline-flex h-8 w-8 flex-none items-center justify-center rounded-full text-sm font-semibold"
-                x-bind:class="index === uploadStageIndex ? 'bg-stone-900 text-white' : (index < uploadStageIndex ? 'bg-[#c98a49] text-white' : 'bg-white/70 text-stone-400')"
-                x-text="index < uploadStageIndex ? '✓' : String(index + 1)"></span>
+        <div class="mt-6 text-center">
+          <h3 class="text-[2rem] font-semibold tracking-tight text-stone-950">업로드 중입니다</h3>
+          <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-stone-600">EPUB를 읽고 도서 정보를 찾고 있어요. 완료되면 자동으로 이동합니다.</p>
+        </div>
 
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center justify-between gap-3">
-                  <p
-                    x-text="stage.label"
-                    class="text-sm font-semibold leading-6"></p>
-                  <p
-                    x-text="index === uploadStageIndex ? '진행 중' : (index < uploadStageIndex ? '완료' : '대기')"
-                    class="text-[11px] font-semibold uppercase tracking-[0.18em]"></p>
-                </div>
-                <p
-                  x-show="index === uploadStageIndex"
-                  x-cloak
-                  x-text="stage.detail"
-                  class="mt-1 text-[13px] leading-5 text-stone-600"></p>
-              </div>
-            </div>
+        <div class="mt-8 rounded-[1.7rem] bg-white/76 px-5 py-5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08),0_18px_45px_rgba(73,54,31,0.08)]">
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">현재 단계</p>
+            <p
+              x-text="'단계 ' + String(uploadStageIndex + 1) + '/' + String(uploadStages.length)"
+              class="text-[12px] font-semibold text-stone-500"></p>
           </div>
-        </template>
-      </div>
 
-      <div class="mt-5 rounded-[1.35rem] border border-[#dcc5a3] bg-[#fff8ec] px-4 py-4 text-[13px] leading-6 text-stone-600">
-        브라우저를 새로고침하거나 닫지 마세요. EPUB 업로드와 메타데이터 조회가 모두 끝나면 서재 화면으로 돌아갑니다.
+          <p
+            x-text="activeUploadStage.label"
+            class="mt-3 text-xl font-semibold tracking-tight text-stone-950"></p>
+          <p
+            x-text="activeUploadStage.detail"
+            class="mt-2 text-sm leading-6 text-stone-600"></p>
+
+          <div class="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-stone-200/80">
+            <div
+              class="h-full rounded-full bg-stone-900 transition-all duration-700"
+              x-bind:style="'width: ' + String(Math.round(((uploadStageIndex + 1) / uploadStages.length) * 100)) + '%'"></div>
+          </div>
+
+          <div class="mt-5 grid grid-cols-4 gap-2">
+            <template
+              x-for="(stage, index) in uploadStages"
+              :key="stage.label">
+              <span
+                class="h-2.5 rounded-full transition"
+                x-bind:class="index <= uploadStageIndex ? 'bg-stone-900' : 'bg-stone-200'"
+                x-bind:aria-label="stage.label"></span>
+            </template>
+          </div>
+
+          <p
+            x-text="uploadFileName || 'EPUB 파일'"
+            class="mt-5 break-all text-[13px] font-medium leading-5 text-stone-500"></p>
+        </div>
+
+        <p class="mx-auto mt-5 max-w-sm text-center text-[13px] leading-6 text-stone-500">
+          브라우저를 새로고침하거나 닫지 마세요.
+        </p>
       </div>
     </section>
   </div>
