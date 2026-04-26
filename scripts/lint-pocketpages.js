@@ -39,9 +39,10 @@
 // 35) api 엔드포인트에서 HTML 응답 반환
 // 36) resolve/include/asset/route 경로가 실제로 없는 정적 경로
 // 37) 존재하지 않는 PocketBase collection 문자열 사용
-// 38) params를 query처럼 읽는 패턴
-// 39) redirect() 뒤 return 누락
-// 40) +config.js plugin이 package.json 직접 의존성에 없는 경우
+// 38) 존재하지 않는 PocketBase Record field 문자열 사용
+// 39) params를 query처럼 읽는 패턴
+// 40) redirect() 뒤 return 누락
+// 41) +config.js plugin이 package.json 직접 의존성에 없는 경우
 
 const fs = require('fs')
 const path = require('path')
@@ -1006,8 +1007,11 @@ function collectUnresolvedPathMatches(context) {
   }
 }
 
-function collectUnknownCollectionMatches(context) {
-  const matches = []
+function collectSchemaMatches(context) {
+  const matches = {
+    collections: [],
+    fields: [],
+  }
 
   for (const file of context.lintCodeFiles) {
     const analysisText = getLintAnalysisText(file)
@@ -1016,16 +1020,39 @@ function collectUnknownCollectionMatches(context) {
     })
 
     for (const schemaContext of schemaContexts) {
-      if (schemaContext.kind !== 'collection-name' || context.projectIndex.hasCollection(schemaContext.value)) {
+      if (schemaContext.kind === 'collection-name') {
+        if (context.projectIndex.hasCollection(schemaContext.value)) {
+          continue
+        }
+
+        const lineNumber = lineNumberAt(analysisText, schemaContext.start)
+        matches.collections.push(formatLintLineMatch(file, lineNumber))
+        continue
+      }
+
+      if (schemaContext.kind !== 'record-field') {
+        continue
+      }
+
+      const reference = context.projectIndex.inferCollectionReference(
+        schemaContext.receiverExpression,
+        analysisText,
+        schemaContext.start,
+        { filePath: file.absPath },
+      )
+      if (!reference || reference.confidence !== 'high' || context.projectIndex.hasField(reference.collectionName, schemaContext.value)) {
         continue
       }
 
       const lineNumber = lineNumberAt(analysisText, schemaContext.start)
-      matches.push(formatLintLineMatch(file, lineNumber))
+      matches.fields.push(formatLintLineMatch(file, lineNumber))
     }
   }
 
-  return unique(matches)
+  return {
+    collections: unique(matches.collections),
+    fields: unique(matches.fields),
+  }
 }
 
 function collectQueryViaParamsMatches(context) {
@@ -1389,11 +1416,16 @@ function lintService(context) {
     unresolvedPathMatches.route,
   )
 
-  const unknownCollectionMatches = collectUnknownCollectionMatches(context)
+  const schemaMatches = collectSchemaMatches(context)
   printMatches(
     context.serviceName,
     'Invalid PocketBase collection name. Use a collection that exists in pb_schema.json.',
-    unknownCollectionMatches,
+    schemaMatches.collections,
+  )
+  printMatches(
+    context.serviceName,
+    "Invalid PocketBase record field name. Use a field that exists in pb_schema.json when calling record.get('field') or record.set('field', value).",
+    schemaMatches.fields,
   )
 
   const queryViaParamsMatches = collectQueryViaParamsMatches(context)
