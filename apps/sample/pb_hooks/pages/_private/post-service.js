@@ -221,7 +221,7 @@ function toPostCard(post, boardSlug) {
     authorName: String(post.get('author_name') || '').trim() || 'unknown',
     status: normalizePostStatus(post.get('status'), 'draft'),
     isNotice: !!post.get('is_notice'),
-    publishedAt: String(post.get('published_at') || post.created || ''),
+    publishedAt: String(post.get('published_at') || post.get('created') || ''),
     viewCount: Number(post.get('view_count') || 0),
     preview: content.replace(/<[^>]*>/g, '').slice(0, 180),
     path: buildPostPath(boardSlug, slug),
@@ -266,7 +266,7 @@ function toPostPanelItem(post, boardSlug) {
     title: String(post.get('title') || '').trim() || '(untitled post)',
     authorName: String(post.get('author_name') || '').trim() || 'unknown',
     isNotice: !!post.get('is_notice'),
-    publishedAt: String(post.get('published_at') || post.created || ''),
+    publishedAt: String(post.get('published_at') || post.get('created') || ''),
     path: buildPostPath(boardSlug, slug),
   }
 }
@@ -312,7 +312,7 @@ function toPostDetail(post, boardSlug) {
     authorName: String(post.get('author_name') || '').trim() || 'unknown',
     status: normalizePostStatus(post.get('status'), 'draft'),
     isNotice: !!post.get('is_notice'),
-    publishedAt: String(post.get('published_at') || post.created || ''),
+    publishedAt: String(post.get('published_at') || post.get('created') || ''),
     viewCount: Number(post.get('view_count') || 0),
     content: String(post.get('content') || ''),
     path: path,

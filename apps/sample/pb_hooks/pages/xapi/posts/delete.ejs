@@ -18,7 +18,7 @@
   }
 
   if (!errorMessage) {
-    post = postService.findPostByBoardAndSlug(board.id, postSlug)
+    post = postService.findPostByBoardAndSlug(board.get('id'), postSlug)
 
     if (!post) {
       warn('api/posts/delete:post-not-found', { boardSlug, postSlug })

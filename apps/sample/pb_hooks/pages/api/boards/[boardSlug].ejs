@@ -28,7 +28,7 @@
 
   try {
     const boardSummary = boardService.toBoardSummary(board)
-    const posts = postService.listPostsByBoard(board.id)
+    const posts = postService.listPostsByBoard(board.get('id'))
     const postCards = postService.toPostCards(posts, boardSummary.slug)
     const stats = {
       totalPosts: posts.length,

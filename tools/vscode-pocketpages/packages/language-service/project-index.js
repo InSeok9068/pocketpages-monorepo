@@ -1814,6 +1814,8 @@ function mergeTypeTexts(typeTexts) {
 
 const SYSTEM_RECORD_FIELDS = Object.freeze([
   { name: 'id', type: 'text', isSystem: true },
+  { name: 'created', type: 'date', isSystem: true },
+  { name: 'updated', type: 'date', isSystem: true },
 ])
 
 function mergeRecordFieldEntries(fieldEntries = []) {
@@ -1847,6 +1849,8 @@ function mapSchemaFieldTypeToTypeText(fieldType) {
       return 'boolean'
     case 'number':
       return 'number'
+    case 'date':
+      return 'string'
     case 'json':
       return 'any'
     default:

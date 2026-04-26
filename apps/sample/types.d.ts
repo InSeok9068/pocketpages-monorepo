@@ -28,7 +28,6 @@ declare namespace types {
   interface PostFormValues extends PostFormInput {}
 
   interface PostReadableRecord {
-    created?: string;
     get(name: string): any;
   }
 

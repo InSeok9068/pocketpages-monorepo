@@ -31,7 +31,7 @@
       authorName: postInput.authorName,
     })
     errorMessage = 'All fields are required.'
-  } else if (postService.findPostByBoardAndSlug(selectedBoard.id, postInput.slug)) {
+  } else if (postService.findPostByBoardAndSlug(selectedBoard.get('id'), postInput.slug)) {
     warn('api/posts/create:validation-failed', {
       boardSlug: boardSlug,
       slug: postInput.slug,
@@ -44,7 +44,7 @@
     try {
       const collection = $app.findCollectionByNameOrId('posts')
       const record = new Record(collection)
-      record.set('board', selectedBoard.id)
+      record.set('board', selectedBoard.get('id'))
       postService.applyEditableFields(record, postInput)
       record.set('view_count', 0)
       if (postInput.status === 'published') {

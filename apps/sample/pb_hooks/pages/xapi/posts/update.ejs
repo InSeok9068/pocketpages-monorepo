@@ -29,7 +29,7 @@
   }
 
   if (!errorMessage) {
-    post = postService.findPostByBoardAndSlug(board.id, postSlug)
+    post = postService.findPostByBoardAndSlug(board.get('id'), postSlug)
 
     if (!post) {
       warn('api/posts/update:post-not-found', { boardSlug, postSlug })
@@ -47,9 +47,9 @@
   }
 
   if (!errorMessage) {
-    const conflictingPost = postService.findPostByBoardAndSlug(board.id, postInput.slug)
+    const conflictingPost = postService.findPostByBoardAndSlug(board.get('id'), postInput.slug)
 
-    if (conflictingPost && conflictingPost.id !== post.id) {
+    if (conflictingPost && conflictingPost.get('id') !== post.get('id')) {
       warn('api/posts/update:validation-failed', {
         boardSlug: boardSlug,
         postSlug: postSlug,

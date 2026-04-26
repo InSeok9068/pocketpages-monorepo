@@ -4,7 +4,7 @@
 // PocketPages lint rules:
 // 1) resolve('/_private/...') 같이 _private 기준 규칙에 어긋나는 resolve 사용
 // 2) include('/_private/...') 같이 _private 절대 경로 include 사용
-// 3) EJS/JS에서 record.fieldName 형태의 직접 필드 접근
+// 3) EJS/JS에서 PocketBase Record field 직접 접근
 // 4) +middleware.js 에서 인자로 받은 resolve 대신 전역 resolve() 직접 사용
 // 5) api/xapi 아래에 +layout.ejs 를 두는 잘못된 레이아웃 구성
 // 6) xapi 엔드포인트에서 <!DOCTYPE>, <html>, <body> 같은 전체 문서 응답 반환
@@ -73,9 +73,12 @@ const ALLOWED_SPECIAL_FILES = new Set([
 const RE = {
   resolvePrivate: /resolve\(\s*["']\/?_private\//,
   includePrivate: /include\(\s*["']\/?_private\//,
-  recordField: /(^|[^.$A-Za-z0-9_])record\.[A-Za-z_][A-Za-z0-9_]*/,
-  recordFieldAllowed:
-    /record\.(get|set|email|verified|isSuperuser|collection|publicExport|original|fresh)\s*\(/,
+  recordParamTag:
+    /@param\s+\{([^}]*(?:core\.Record|types\.[A-Za-z_$][A-Za-z0-9_$]*Record)[^}]*)\}\s+([A-Za-z_$][A-Za-z0-9_$]*|\[[A-Za-z_$][A-Za-z0-9_$]*(?:=[^\]]*)?\])/g,
+  recordFindDeclaration:
+    /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:\$app|[A-Za-z_$][A-Za-z0-9_$]*Service)\.find(?!Records\b|Records[A-Za-z0-9_$])(?:[A-Za-z0-9_$]*Record[A-Za-z0-9_$]*|[A-Za-z0-9_$]*By[A-Za-z0-9_$]*)\s*\(/g,
+  recordFindAssignment:
+    /(^|[^A-Za-z0-9_$])([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:\$app|[A-Za-z_$][A-Za-z0-9_$]*Service)\.find(?!Records\b|Records[A-Za-z0-9_$])(?:[A-Za-z0-9_$]*Record[A-Za-z0-9_$]*|[A-Za-z0-9_$]*By[A-Za-z0-9_$]*)\s*\(/g,
   middlewareUsesResolve: /\bresolve\s*\(/,
   middlewareHasResolveArg:
     /module\.exports\s*=\s*function\s*\(\s*\{[\s\S]*?\bresolve\b[\s\S]*?\}\s*(?:,|\))/,
@@ -312,6 +315,99 @@ function collectLineMatches(files, regex) {
   }
 
   return matches
+}
+
+const RECORD_ACCESS_ALLOWED_METHODS = new Set([
+  'get',
+  'set',
+  'collection',
+  'publicExport',
+  'original',
+  'fresh',
+  'isSuperuser',
+  'baseFilesPath',
+])
+
+const RECORD_FIELD_ACCESS_RE = /(^|[^.$A-Za-z0-9_])([A-Za-z_$][A-Za-z0-9_$]*)(\?\.|\.)([A-Za-z_$][A-Za-z0-9_$]*)/g
+
+function isRecordLikeName(name) {
+  return name === 'record' || /Record$/.test(name)
+}
+
+function normalizeJSDocParamName(rawName) {
+  return String(rawName || '')
+    .replace(/^\[/, '')
+    .replace(/\]$/, '')
+    .split('=')[0]
+    .split('.')[0]
+    .trim()
+}
+
+function collectRecordVariableNames(content) {
+  const names = new Set(['record'])
+  RE.recordParamTag.lastIndex = 0
+  let match = RE.recordParamTag.exec(content)
+
+  while (match) {
+    const typeText = String(match[1] || '')
+    const name = normalizeJSDocParamName(match[2])
+
+    if (name && !/\[\]|\bArray\s*</.test(typeText)) {
+      names.add(name)
+    }
+
+    match = RE.recordParamTag.exec(content)
+  }
+
+  RE.recordFindDeclaration.lastIndex = 0
+  match = RE.recordFindDeclaration.exec(content)
+  while (match) {
+    names.add(match[1])
+    match = RE.recordFindDeclaration.exec(content)
+  }
+
+  RE.recordFindAssignment.lastIndex = 0
+  match = RE.recordFindAssignment.exec(content)
+  while (match) {
+    names.add(match[2])
+    match = RE.recordFindAssignment.exec(content)
+  }
+
+  return names
+}
+
+function collectDirectRecordFieldMatches(files) {
+  const matches = []
+
+  for (const file of files) {
+    const recordVariableNames = collectRecordVariableNames(file.content)
+
+    for (let lineIndex = 0; lineIndex < file.lines.length; lineIndex += 1) {
+      const line = file.lines[lineIndex]
+      let match = RECORD_FIELD_ACCESS_RE.exec(line)
+
+      while (match) {
+        const receiverName = match[2]
+        const propertyName = match[4]
+        const prefix = match[1]
+
+        if (
+          !/['"`]$/.test(prefix) &&
+          (recordVariableNames.has(receiverName) || isRecordLikeName(receiverName)) &&
+          !RECORD_ACCESS_ALLOWED_METHODS.has(propertyName)
+        ) {
+          matches.push(`${file.displayPath}:${lineIndex + 1}:${line}`)
+          break
+        }
+
+        match = RECORD_FIELD_ACCESS_RE.exec(line)
+      }
+
+      RECORD_FIELD_ACCESS_RE.lastIndex = 0
+    }
+  }
+
+  return unique(matches)
 }
 
 function filterLinesExcluding(lines, regex) {
@@ -1033,8 +1129,7 @@ function lintService(context) {
     includePrivateMatches,
   )
 
-  const rawRecordFieldMatches = collectLineMatches(context.lintCodeFiles, RE.recordField)
-  const recordFieldMatches = filterLinesExcluding(rawRecordFieldMatches, RE.recordFieldAllowed)
+  const recordFieldMatches = collectDirectRecordFieldMatches(context.lintCodeFiles)
   printMatches(
     context.serviceName,
     "Invalid direct Record field access. Read PocketBase fields with record.get('fieldName').",

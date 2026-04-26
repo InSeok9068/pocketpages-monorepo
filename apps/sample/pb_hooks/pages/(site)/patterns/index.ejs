@@ -37,7 +37,7 @@
       selectedBoard = boardService.toBoardSummary(selectedBoardRecord)
 
       try {
-        postItems = postService.toPostPanelItems(postService.listPublishedPostsByBoard(selectedBoardRecord.id), selectedBoardSlug)
+        postItems = postService.toPostPanelItems(postService.listPublishedPostsByBoard(selectedBoardRecord.get('id')), selectedBoardSlug)
       } catch (error) {
         warn('page/patterns:index:post-list-failed', {
           boardSlug: selectedBoardSlug,

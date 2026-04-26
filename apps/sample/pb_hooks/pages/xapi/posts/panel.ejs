@@ -11,7 +11,7 @@
 
   if (selectedBoardRecord) {
     try {
-      postItems = postService.toPostPanelItems(postService.listPublishedPostsByBoard(selectedBoardRecord.id), boardSlug)
+      postItems = postService.toPostPanelItems(postService.listPublishedPostsByBoard(selectedBoardRecord.get('id')), boardSlug)
     } catch (error) {
       warn('xapi/posts/panel:load-failed', {
         boardSlug: boardSlug,

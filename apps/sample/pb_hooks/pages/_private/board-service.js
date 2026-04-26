@@ -90,7 +90,7 @@ function toBoardSummary(board) {
   const slug = String(board.get('slug') || '').trim()
 
   return {
-    id: String(board.id || ''),
+    id: String(board.get('id') || ''),
     name: String(board.get('name') || '').trim(),
     slug: slug,
     description: String(board.get('description') || '').trim(),

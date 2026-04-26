@@ -15,7 +15,7 @@
     meta('description', boardSummary.description || `Board ${boardSummary.slug}`)
 
     try {
-      postCards = postService.toPostCards(postService.listPostsByBoard(board.id), boardSummary.slug)
+      postCards = postService.toPostCards(postService.listPostsByBoard(board.get('id')), boardSummary.slug)
     } catch (error) {
       warn('page/boards/show:posts-load-failed', {
         boardSlug: boardSummary.slug,
