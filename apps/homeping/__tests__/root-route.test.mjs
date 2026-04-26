@@ -112,6 +112,7 @@ test('GET / renders the live Homeping search page through the service harness', 
   assert.equal($('title').text().trim(), 'Homeping')
   assert.equal($('h1').first().text().trim(), '안양시 청약 공고')
   assert.equal($('.hp-meta').first().text().includes('최근 6개월'), true)
+  assert.equal($('.hp-meta').first().text().includes('위치정보 미사용'), false)
   assert.equal($('input[name="showClosed"]').prop('checked'), true)
   assert.equal($('[data-hp-notification-button]').attr('data-region'), 'anyang')
   assert.equal($('[data-hp-notification-button]').attr('data-include-closed'), '1')
