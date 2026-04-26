@@ -1,0 +1,189 @@
+<script server>
+  const applyhomeService = resolve('applyhome-service')
+
+  meta('title', 'Homeping')
+  meta('description', '안양시, 의왕시, 과천시 청약홈/LH 공고 조회')
+
+  const regionOptions = applyhomeService.listRegions()
+  const selectedRegion = applyhomeService.getRegion(request.url.query.region)
+  const includeClosed = String(request.url.query.showClosed || '').trim() === '1'
+  const apiKey = String(env('DATAGOKR_APIKEY') || '').trim()
+  let searchResult = {
+    region: selectedRegion,
+    notices: [],
+    summaries: [],
+    errors: apiKey ? [] : ['DATAGOKR_APIKEY 환경변수가 필요합니다.'],
+  }
+
+  function isSelectedRegion(region) {
+    return region.slug === selectedRegion.slug
+  }
+
+  function getStatusClass(statusCode) {
+    const code = String(statusCode || '')
+
+    if (code === 'open') {
+      return 'hp-status-open'
+    }
+
+    if (code === 'upcoming') {
+      return 'hp-status-upcoming'
+    }
+
+    if (code === 'closed') {
+      return 'hp-status-closed'
+    }
+
+    return ''
+  }
+
+  if (apiKey) {
+    info('homeping/index:search:start', {
+      region: selectedRegion.slug,
+      includeClosed: includeClosed,
+    })
+
+    searchResult = applyhomeService.searchRegionNotices(
+      {
+        apiKey: apiKey,
+        perPage: 50,
+      },
+      {
+        regionSlug: selectedRegion.slug,
+        includeClosed: includeClosed,
+      }
+    )
+
+    info('homeping/index:search:done', {
+      region: selectedRegion.slug,
+      includeClosed: includeClosed,
+      noticeCount: searchResult.notices.length,
+      errorCount: searchResult.errors.length,
+    })
+  }
+</script>
+
+<header class="hp-header">
+  <div class="hp-title-group">
+    <p class="hp-brand">Homeping</p>
+    <h1 class="hp-title"><%= selectedRegion.label %> 청약 공고</h1>
+    <p class="hp-meta">최근 6개월 청약홈 분양정보 + LH 분양주택 기준 · 실시간 위치정보 미사용</p>
+  </div>
+</header>
+
+<section class="hp-panel">
+  <form
+    class="hp-filter"
+    method="get"
+    action="/">
+    <div>
+      <p class="hp-filter-label">지역</p>
+      <div class="hp-region-options">
+        <% for (let index = 0; index < regionOptions.length; index += 1) { const region = regionOptions[index] %>
+        <label class="hp-region-option">
+          <input
+            type="radio"
+            name="region"
+            value="<%= region.slug %>"
+            <%= isSelectedRegion(region) ? 'checked' : '' %> />
+          <span><%= region.label %></span>
+        </label>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="hp-filter-actions">
+      <label class="hp-closed-toggle">
+        <input
+          type="checkbox"
+          name="showClosed"
+          value="1"
+          <%= includeClosed ? 'checked' : '' %> />
+        <span>마감 포함</span>
+      </label>
+
+      <button
+        class="hp-submit"
+        type="submit">
+        조회
+      </button>
+    </div>
+  </form>
+</section>
+
+<section class="hp-summary">
+  <% for (let index = 0; index < searchResult.summaries.length; index += 1) { const summary = searchResult.summaries[index] %>
+  <article class="hp-summary-item">
+    <p class="hp-summary-name"><%= summary.label %></p>
+    <p class="hp-summary-count"><%= summary.count %></p>
+  </article>
+  <% } %>
+</section>
+
+<% if (searchResult.errors.length > 0) { %>
+<section class="hp-error">
+  <% for (let index = 0; index < searchResult.errors.length; index += 1) { %>
+  <div><%= searchResult.errors[index] %></div>
+  <% } %>
+</section>
+<% } %>
+
+<section>
+  <div class="hp-list-header">
+    <h2 class="hp-section-title">공고 목록</h2>
+    <span class="hp-count"><%= searchResult.notices.length %>건</span>
+  </div>
+
+  <% if (searchResult.notices.length > 0) { %>
+  <div class="hp-list">
+    <% for (let index = 0; index < searchResult.notices.length; index += 1) { const notice = searchResult.notices[index] %>
+    <article class="hp-card">
+      <div class="hp-card-main">
+        <div class="hp-badges">
+          <span class="hp-badge"><%= notice.sourceLabel %></span>
+          <span class="hp-badge"><%= notice.categoryLabel %></span>
+          <span class="hp-badge <%= getStatusClass(notice.statusCode) %>"><%= notice.statusLabel %></span>
+        </div>
+
+        <h3 class="hp-card-title"><%= notice.name %></h3>
+        <p class="hp-address"><%= notice.address %></p>
+
+        <div class="hp-facts">
+          <div>
+            <p class="hp-fact-label">공고일</p>
+            <p class="hp-fact-value"><%= notice.recruitDateLabel %></p>
+          </div>
+          <div>
+            <p class="hp-fact-label">접수</p>
+            <p class="hp-fact-value"><%= notice.applyDateLabel %></p>
+          </div>
+          <div>
+            <p class="hp-fact-label">당첨자 발표</p>
+            <p class="hp-fact-value"><%= notice.winnerDateLabel %></p>
+          </div>
+          <div>
+            <p class="hp-fact-label">입주 예정</p>
+            <p class="hp-fact-value"><%= notice.moveInLabel %></p>
+          </div>
+        </div>
+      </div>
+
+      <aside class="hp-card-side">
+        <p class="hp-households"><%= notice.householdCountLabel %></p>
+        <% if (notice.detailUrl) { %>
+        <a
+          class="hp-link"
+          href="<%= notice.detailUrl %>"
+          target="_blank"
+          rel="noreferrer">
+          공고 보기
+        </a>
+        <% } %>
+      </aside>
+    </article>
+    <% } %>
+  </div>
+  <% } else { %>
+  <div class="hp-empty"><%= selectedRegion.label %> 조건으로 조회된 청약홈/LH 공고가 없습니다.</div>
+  <% } %>
+</section>

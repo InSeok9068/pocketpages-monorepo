@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1" />
+    <title><%= meta('title') %></title>
+    <meta
+      name="description"
+      content="<%= meta('description') %>" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="<%= asset('/assets/favicon.svg') %>" />
+    <link
+      rel="stylesheet"
+      href="<%= asset('/assets/style.css') %>" />
+    <%- slots.head %>
+  </head>
+
+  <body>
+    <main class="hp-shell"><%- slots.body || slot %></main>
+  </body>
+</html>
