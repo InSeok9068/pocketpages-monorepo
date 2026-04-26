@@ -24,7 +24,9 @@ function getRequiredDataApiKey() {
  * @returns {string} 공개 URL
  */
 function getPublicUrl() {
-  return String(process.env.HOMEPING_PUBLIC_URL || process.env.APP_URL || '').trim().replace(/\/+$/, '')
+  return String(process.env.HOMEPING_PUBLIC_URL || process.env.APP_URL || '')
+    .trim()
+    .replace(/\/+$/, '')
 }
 
 /**
@@ -212,15 +214,7 @@ function runWithServices(services, options) {
   })
   const newEntries = filterNewEntries(notifiedService, collectedResult.entries)
 
-  $app.logger().info(
-    'jobs/homeping-notice-daily:checked',
-    'checkedCount',
-    collectedResult.entries.length,
-    'newCount',
-    newEntries.length,
-    'errorCount',
-    collectedResult.errorCount
-  )
+  $app.logger().info('jobs/homeping-notice-daily:checked', 'checkedCount', collectedResult.entries.length, 'newCount', newEntries.length, 'errorCount', collectedResult.errorCount)
 
   if (newEntries.length === 0) {
     return {

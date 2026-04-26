@@ -145,6 +145,10 @@ function sendPushNotification(input) {
     throw new Error('OneSignal 푸시 발송에 실패했습니다. status=' + response.statusCode)
   }
 
+  if (response.json && response.json.errors) {
+    throw new Error('OneSignal 푸시 발송에 실패했습니다. error=' + JSON.stringify(response.json.errors))
+  }
+
   return response.json || {}
 }
 

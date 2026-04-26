@@ -158,7 +158,9 @@ function cloneJsonValue(value) {
 function redactApiKey(urlValue, apiKey) {
   const encodedApiKey = encodeURIComponent(apiKey)
 
-  return String(urlValue || '').replace(apiKey, '[REDACTED]').replace(encodedApiKey, '[REDACTED]')
+  return String(urlValue || '')
+    .replace(apiKey, '[REDACTED]')
+    .replace(encodedApiKey, '[REDACTED]')
 }
 
 /**
@@ -188,13 +190,9 @@ function buildApplyhomeRequestQuery(query) {
 function buildApplyhomeUrl(config, path, query, options) {
   const baseUrl = String(config && config.baseUrl ? config.baseUrl : APPLYHOME_BASE_URL).replace(/\/+$/, '')
   const apiKey = String(config && config.apiKey ? config.apiKey : '').trim()
-  const requestQuery = Object.assign(
-    {},
-    buildApplyhomeRequestQuery(query),
-    {
-      serviceKey: apiKey,
-    }
-  )
+  const requestQuery = Object.assign({}, buildApplyhomeRequestQuery(query), {
+    serviceKey: apiKey,
+  })
 
   return baseUrl + path + '?' + toQueryString(requestQuery, options || {})
 }

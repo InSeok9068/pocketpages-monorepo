@@ -25,11 +25,11 @@ body {
   color: var(--hp-text);
   font-family:
     Pretendard,
-    "Noto Sans KR",
+    'Noto Sans KR',
     system-ui,
     -apple-system,
     BlinkMacSystemFont,
-    "Segoe UI",
+    'Segoe UI',
     sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -125,16 +125,16 @@ input {
   background: var(--hp-text-faint);
 }
 
-.hp-notification-button[data-state="enabled"] .hp-notification-dot {
+.hp-notification-button[data-state='enabled'] .hp-notification-dot {
   background: var(--hp-primary);
 }
 
-.hp-notification-button[data-state="blocked"] .hp-notification-dot,
-.hp-notification-button[data-state="unsupported"] .hp-notification-dot {
+.hp-notification-button[data-state='blocked'] .hp-notification-dot,
+.hp-notification-button[data-state='unsupported'] .hp-notification-dot {
   background: var(--hp-red);
 }
 
-.hp-notification-button[data-state="pending"] .hp-notification-dot {
+.hp-notification-button[data-state='pending'] .hp-notification-dot {
   background: var(--hp-amber);
 }
 

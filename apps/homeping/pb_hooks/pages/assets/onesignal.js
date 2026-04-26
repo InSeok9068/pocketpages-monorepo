@@ -1,4 +1,4 @@
-(function () {
+;(function () {
   const button = document.querySelector('[data-hp-notification-button]')
   const label = document.querySelector('[data-hp-notification-label]')
   const status = document.querySelector('[data-hp-notification-status]')
@@ -30,14 +30,40 @@
     return OneSignal.User.PushSubscription
   }
 
+  function getPushSubscriptionId(OneSignal) {
+    const pushSubscription = getPushSubscription(OneSignal)
+
+    return String(pushSubscription && pushSubscription.id ? pushSubscription.id : '').trim()
+  }
+
   function isPushOptedIn(OneSignal) {
     const pushSubscription = getPushSubscription(OneSignal)
 
     if (pushSubscription && typeof pushSubscription.optedIn === 'boolean') {
-      return pushSubscription.optedIn
+      return pushSubscription.optedIn && !!getPushSubscriptionId(OneSignal)
     }
 
-    return getNativePermission() === 'granted'
+    return false
+  }
+
+  function delay(milliseconds) {
+    return new Promise(function (resolve) {
+      window.setTimeout(resolve, milliseconds)
+    })
+  }
+
+  async function waitForSubscriptionId(OneSignal) {
+    for (let index = 0; index < 20; index += 1) {
+      const subscriptionId = getPushSubscriptionId(OneSignal)
+
+      if (subscriptionId) {
+        return subscriptionId
+      }
+
+      await delay(300)
+    }
+
+    return ''
   }
 
   async function syncTags(OneSignal) {
@@ -149,6 +175,7 @@
 
         if (permission === 'granted') {
           await setPushOptedIn(OneSignal, true)
+          await waitForSubscriptionId(OneSignal)
           await syncTags(OneSignal)
         }
 
