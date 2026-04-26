@@ -1,7 +1,7 @@
 {
   "name": "Homeping 공공주택알리미",
   "short_name": "Homeping",
-  "description": "안양시, 의왕시, 과천시 청약홈/LH 공고 조회",
+  "description": "안양시, 의왕시, 과천시, 성남시, 용인시 청약홈/LH 공고 조회",
   "lang": "ko",
   "start_url": "/",
   "scope": "/",

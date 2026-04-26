@@ -422,6 +422,13 @@ input {
   font-weight: 800;
 }
 
+.hp-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
 .hp-link {
   display: inline-flex;
   min-height: 38px;
@@ -434,6 +441,165 @@ input {
   font-size: 13px;
   font-weight: 800;
   text-decoration: none;
+}
+
+button.hp-link {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.hp-link-secondary {
+  border: 1px solid var(--hp-line);
+  background: #ffffff;
+  color: var(--hp-text);
+}
+
+.hp-detail-modal-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 19, 0.42);
+  padding: 18px;
+}
+
+.hp-detail-modal-backdrop[hidden] {
+  display: none;
+}
+
+.hp-modal-open {
+  overflow: hidden;
+}
+
+.hp-detail-modal {
+  width: min(720px, 100%);
+  max-height: min(780px, calc(100vh - 36px));
+  overflow: hidden;
+  border: 1px solid var(--hp-line);
+  border-radius: 8px;
+  background: var(--hp-bg);
+  box-shadow: 0 22px 60px rgba(15, 23, 19, 0.28);
+}
+
+.hp-detail-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--hp-line);
+  background: #ffffff;
+  padding: 16px;
+}
+
+.hp-detail-modal-kicker {
+  margin: 0;
+  color: var(--hp-primary-dark);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.hp-detail-modal-title {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 19px;
+  line-height: 1.35;
+  font-weight: 800;
+}
+
+.hp-detail-modal-close {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hp-line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--hp-text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hp-detail-modal-body {
+  max-height: calc(min(780px, 100vh - 36px) - 80px);
+  overflow: auto;
+  padding: 14px 16px 18px;
+}
+
+.hp-detail-modal-status {
+  margin: 0;
+  border: 1px dashed var(--hp-line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 22px 14px;
+  color: var(--hp-text-soft);
+  font-size: 14px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.hp-detail-section {
+  border: 1px solid var(--hp-line);
+  border-radius: 8px;
+  background: var(--hp-surface);
+  padding: 13px;
+}
+
+.hp-detail-section + .hp-detail-section {
+  margin-top: 10px;
+}
+
+.hp-detail-section h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.hp-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.hp-detail-grid > div {
+  min-width: 0;
+}
+
+.hp-detail-grid dt {
+  margin: 0;
+  color: var(--hp-text-faint);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.hp-detail-grid dd {
+  margin: 4px 0 0;
+  color: var(--hp-text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.hp-detail-grid a {
+  color: var(--hp-primary-dark);
+}
+
+.hp-detail-content {
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  color: var(--hp-text-soft);
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-line;
 }
 
 .hp-empty {
@@ -488,13 +654,25 @@ input {
     align-items: stretch;
   }
 
+  .hp-card-actions {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: flex-end;
+  }
+
   .hp-households {
     font-size: 16px;
   }
 
   .hp-submit,
-  .hp-closed-toggle {
+  .hp-closed-toggle,
+  .hp-link {
     justify-content: center;
+  }
+
+  .hp-detail-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -610,6 +788,28 @@ input {
     padding: 12px;
   }
 
+  .hp-detail-modal-backdrop {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .hp-detail-modal {
+    max-height: calc(100vh - 20px);
+  }
+
+  .hp-detail-modal-header {
+    padding: 13px;
+  }
+
+  .hp-detail-modal-title {
+    font-size: 17px;
+  }
+
+  .hp-detail-modal-body {
+    max-height: calc(100vh - 98px);
+    padding: 12px;
+  }
+
   .hp-badges {
     gap: 5px;
     margin-bottom: 8px;
@@ -656,6 +856,10 @@ input {
     align-items: center;
   }
 
+  .hp-card-actions:has(.hp-link-secondary) {
+    flex-direction: row;
+  }
+
   .hp-households {
     font-size: 15px;
   }
@@ -664,6 +868,10 @@ input {
     min-height: 34px;
     padding: 0 11px;
     font-size: 12px;
+  }
+
+  .hp-card-actions {
+    gap: 6px;
   }
 
   .hp-empty {

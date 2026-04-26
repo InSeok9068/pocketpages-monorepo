@@ -2,7 +2,7 @@
   const applyhomeService = resolve('applyhome-service')
 
   meta('title', 'Homeping')
-  meta('description', '안양시, 의왕시, 과천시 청약홈/LH 공고 조회')
+  meta('description', '안양시, 의왕시, 과천시, 성남시, 용인시 청약홈/LH 공고 조회')
 
   const regionOptions = applyhomeService.listRegions()
   const selectedRegion = applyhomeService.getRegion(request.url.query.region)
@@ -35,6 +35,18 @@
     }
 
     return ''
+  }
+
+  function hasLhDetail(notice) {
+    const detailParams = notice && notice.lhDetailParams ? notice.lhDetailParams : null
+
+    return !!(
+      detailParams &&
+      detailParams.panId &&
+      detailParams.splInfTpCd &&
+      detailParams.ccrCnntSysDsCd &&
+      detailParams.uppAisTpCd
+    )
   }
 
   if (apiKey) {
@@ -189,6 +201,21 @@
 
       <aside class="hp-card-side">
         <p class="hp-households"><%= notice.householdCountLabel %></p>
+        <div class="hp-card-actions">
+          <% if (hasLhDetail(notice)) { const detailParams = notice.lhDetailParams %>
+          <button
+            class="hp-link hp-link-secondary"
+            type="button"
+            data-hp-lh-detail-button
+            data-notice-title="<%= notice.name %>"
+            data-pan-id="<%= detailParams.panId %>"
+            data-spl-inf-tp-cd="<%= detailParams.splInfTpCd %>"
+            data-ccr-cnnt-sys-ds-cd="<%= detailParams.ccrCnntSysDsCd %>"
+            data-upp-ais-tp-cd="<%= detailParams.uppAisTpCd %>"
+            data-ais-tp-cd="<%= detailParams.aisTpCd %>">
+            상세보기
+          </button>
+          <% } %>
         <% if (notice.detailUrl) { %>
         <a
           class="hp-link"
@@ -198,6 +225,7 @@
           공고 보기
         </a>
         <% } %>
+        </div>
       </aside>
     </article>
     <% } %>
@@ -206,3 +234,39 @@
   <div class="hp-empty"><%= selectedRegion.label %> 조건으로 조회된 청약홈/LH 공고가 없습니다.</div>
   <% } %>
 </section>
+
+<div
+  class="hp-detail-modal-backdrop"
+  data-hp-detail-modal
+  hidden>
+  <section
+    class="hp-detail-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="hp-detail-modal-title">
+    <header class="hp-detail-modal-header">
+      <div>
+        <p class="hp-detail-modal-kicker">LH 상세정보</p>
+        <h2
+          class="hp-detail-modal-title"
+          id="hp-detail-modal-title"
+          data-hp-detail-modal-title>
+          공고 상세
+        </h2>
+      </div>
+      <button
+        class="hp-detail-modal-close"
+        type="button"
+        aria-label="닫기"
+        data-hp-detail-modal-close>
+        ×
+      </button>
+    </header>
+
+    <div
+      class="hp-detail-modal-body"
+      data-hp-detail-modal-body>
+      <p class="hp-detail-modal-status">상세정보를 불러오는 중입니다.</p>
+    </div>
+  </section>
+</div>

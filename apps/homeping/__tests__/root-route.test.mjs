@@ -107,6 +107,9 @@ test('GET / renders the live Homeping search page through the service harness', 
   const summaryLabels = $('.hp-summary-name')
     .map((_, element) => $(element).text().trim())
     .get()
+  const regionLabels = $('.hp-region-option span')
+    .map((_, element) => $(element).text().trim())
+    .get()
 
   assert.equal(response.status, 200)
   assert.equal($('title').text().trim(), 'Homeping')
@@ -117,6 +120,8 @@ test('GET / renders the live Homeping search page through the service harness', 
   assert.equal($('[data-hp-notification-button]').attr('data-region'), 'anyang')
   assert.equal($('[data-hp-notification-button]').attr('data-include-closed'), '1')
   assert.equal($('[data-hp-notification-label]').first().text().trim(), '알림 받기')
+  assert.deepEqual(regionLabels, ['안양시', '의왕시', '과천시', '성남시', '용인시'])
+  assert.equal($('[data-hp-detail-modal]').length, 1)
   assert.match(countText, /^\d+건$/u)
   assert.equal(summaryLabels.includes('APT 분양'), true)
   assert.equal(summaryLabels.includes('LH 분양주택'), true)
@@ -132,6 +137,7 @@ test('GET / serves Homeping static assets through hashed asset links', { skip: l
   const faviconHref = $('link[rel="icon"]').attr('href') || ''
   const manifestHref = $('link[rel="manifest"]').attr('href') || ''
   const oneSignalSdkSrc = $('script[src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"]').attr('src') || ''
+  const lhDetailAssetSrc = $('script[src*="/assets/lh-detail."]').attr('src') || ''
   const oneSignalAssetSrc = $('script[src*="/assets/onesignal."]').attr('src') || ''
 
   assert.equal(response.status, 200)
@@ -139,6 +145,7 @@ test('GET / serves Homeping static assets through hashed asset links', { skip: l
   assert.match(faviconHref, /^\/assets\/favicon\.[a-f0-9]+\.svg$/u)
   assert.match(manifestHref, /^\/assets\/manifest\.[a-f0-9]+\.json$/u)
   assert.equal(oneSignalSdkSrc, 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js')
+  assert.match(lhDetailAssetSrc, /^\/assets\/lh-detail\.[a-f0-9]+\.js$/u)
   assert.match(oneSignalAssetSrc, /^\/assets\/onesignal\.[a-f0-9]+\.js$/u)
   assert.equal(body.includes('5bb6b0ff-fe97-4753-9ce8-508e6048a518'), true)
   assert.equal($('meta[name="theme-color"]').attr('content'), '#f5f6f2')
@@ -146,10 +153,12 @@ test('GET / serves Homeping static assets through hashed asset links', { skip: l
   const stylesheetResponse = await fetch(`${service.baseUrl}${stylesheetHref}`)
   const faviconResponse = await fetch(`${service.baseUrl}${faviconHref}`)
   const manifestResponse = await fetch(`${service.baseUrl}${manifestHref}`)
+  const lhDetailAssetResponse = await fetch(`${service.baseUrl}${lhDetailAssetSrc}`)
   const oneSignalAssetResponse = await fetch(`${service.baseUrl}${oneSignalAssetSrc}`)
   const oneSignalWorkerResponse = await fetch(`${service.baseUrl}/OneSignalSDKWorker.js`)
   const faviconBody = await faviconResponse.text()
   const manifestPayload = await manifestResponse.json()
+  const lhDetailAssetBody = await lhDetailAssetResponse.text()
   const oneSignalAssetBody = await oneSignalAssetResponse.text()
   const oneSignalWorkerBody = await oneSignalWorkerResponse.text()
 
@@ -163,6 +172,9 @@ test('GET / serves Homeping static assets through hashed asset links', { skip: l
   assert.equal(manifestPayload.short_name, 'Homeping')
   assert.equal(manifestPayload.display, 'standalone')
   assert.equal(manifestPayload.icons[0].src, '/assets/favicon.svg')
+  assert.equal(lhDetailAssetResponse.status, 200)
+  assert.match(lhDetailAssetResponse.headers.get('content-type') || '', /javascript/u)
+  assert.equal(lhDetailAssetBody.includes('/api/lh-notice-detail'), true)
   assert.equal(oneSignalAssetResponse.status, 200)
   assert.match(oneSignalAssetResponse.headers.get('content-type') || '', /javascript/u)
   assert.equal(oneSignalAssetBody.includes('OneSignalDeferred'), true)

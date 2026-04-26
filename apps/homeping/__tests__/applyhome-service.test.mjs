@@ -61,6 +61,10 @@ function createApplyhomeRow(input) {
 function createLhRow(input) {
   return {
     PAN_ID: input.id || input.name,
+    SPL_INF_TP_CD: input.splInfTpCd || '050',
+    CCR_CNNT_SYS_DS_CD: input.ccrCnntSysDsCd || '02',
+    UPP_AIS_TP_CD: input.uppAisTpCd || '05',
+    AIS_TP_CD: input.aisTpCd || '05',
     PAN_DT: input.recruitDate,
     PAN_NT_ST_DT: input.noticeStartDate,
     CLSG_DT: input.closeDate,
@@ -132,6 +136,13 @@ function createHarness(options = {}) {
       }
 
       if (requestUrl.hostname === 'apis.data.go.kr') {
+        if (requestUrl.pathname.indexOf('/lhLeaseNoticeDtlInfo1/') !== -1) {
+          return {
+            statusCode: 200,
+            json: options.lhDetailPayload || [],
+          }
+        }
+
         return {
           statusCode: 200,
           json: [
@@ -304,6 +315,129 @@ test('searchRegionNotices caches API responses for the current day', () => {
     assert.equal(harness.logs.filter((entry) => entry.name === 'homeping/cache:hit').length, 6)
     assert.equal(countRequests(harness.requests, 'api.odcloud.kr'), 5)
     assert.equal(countRequests(harness.requests, 'apis.data.go.kr'), 1)
+  } finally {
+    harness.cleanup()
+  }
+})
+
+test('searchRegionNotices keeps LH detail lookup keys on LH notices', () => {
+  const harness = createHarness({
+    lhRows: [
+      createLhRow({
+        id: '0000061077',
+        name: '안양 LH 일반공급',
+        recruitDate: '2026-04-20',
+        noticeStartDate: '2026-04-20',
+        closeDate: '2026-05-03',
+        statusLabel: '접수중',
+        splInfTpCd: '050',
+        ccrCnntSysDsCd: '02',
+        uppAisTpCd: '05',
+        aisTpCd: '05',
+      }),
+    ],
+  })
+
+  try {
+    const result = harness.service.searchRegionNotices(
+      {
+        apiKey: 'test-key',
+        perPage: 50,
+      },
+      {
+        regionSlug: 'anyang',
+      }
+    )
+    const lhNotice = result.notices.find((notice) => notice.sourceLabel === 'LH')
+
+    assert.equal(lhNotice.lhDetailParams.panId, '0000061077')
+    assert.equal(lhNotice.lhDetailParams.splInfTpCd, '050')
+    assert.equal(lhNotice.lhDetailParams.ccrCnntSysDsCd, '02')
+    assert.equal(lhNotice.lhDetailParams.uppAisTpCd, '05')
+    assert.equal(lhNotice.lhDetailParams.aisTpCd, '05')
+  } finally {
+    harness.cleanup()
+  }
+})
+
+test('getLhNoticeDetail normalizes schedule, complex, office, and file metadata', () => {
+  const harness = createHarness({
+    lhDetailPayload: [
+      {
+        dsSplScdl: [
+          {
+            RMK: '인터넷접수',
+            HS_SBSC_ACP_TRG_CD_NM: '무순위',
+            ACP_DTTM: '2026.05.06 10:00 ~ 2026.05.08 17:00',
+            PZWR_ANC_DT: '20260513',
+            PZWR_PPR_SBM_ST_DT: '20260518',
+            PZWR_PPR_SBM_ED_DT: '20260520',
+            CTRT_ST_DT: '20260617',
+            CTRT_ED_DT: '20260619',
+          },
+        ],
+        dsSbd: [
+          {
+            BZDT_NM: '안양 테스트 단지',
+            LCT_ARA_ADR: '경기도 안양시',
+            LCT_ARA_DTL_ADR: '동안구',
+            MIN_MAX_RSDN_DDO_AR: '59.14 ~ 59.98',
+            SUM_TOT_HSH_CNT: '538',
+            MVIN_XPC_YM: '2028년 06월',
+            HTN_FMLA_DS_CD_NM: '지역난방',
+          },
+        ],
+        dsCtrtPlc: [
+          {
+            SIL_OFC_DT: '2026.05.01~2026.05.03',
+            CTRT_PLC_ADR: '경기도 안양시',
+            CTRT_PLC_DTL_ADR: '홍보관',
+            SIL_OFC_TLNO: '031-000-0000',
+          },
+        ],
+        dsAhflInfo: [
+          {
+            SL_PAN_AHFL_DS_CD_NM: '공고문(PDF)',
+            CMN_AHFL_NM: '테스트공고.pdf',
+            AHFL_URL: 'https://apply.lh.or.kr/file.pdf',
+          },
+        ],
+        dsEtcInfo: [
+          {
+            PAN_DTL_CTS: '공고 상세 내용입니다.',
+          },
+        ],
+      },
+    ],
+  })
+
+  try {
+    const detail = harness.service.getLhNoticeDetail(
+      {
+        apiKey: 'test-key',
+      },
+      {
+        panId: '0000061077',
+        splInfTpCd: '050',
+        ccrCnntSysDsCd: '02',
+        uppAisTpCd: '05',
+        aisTpCd: '05',
+      }
+    )
+    const request = harness.requests[0]
+
+    assert.equal(request.pathname, '/B552555/lhLeaseNoticeDtlInfo1/getLeaseNoticeDtlInfo1')
+    assert.equal(request.searchParams.get('PAN_ID'), '0000061077')
+    assert.equal(request.searchParams.get('SPL_INF_TP_CD'), '050')
+    assert.equal(request.searchParams.get('CCR_CNNT_SYS_DS_CD'), '02')
+    assert.equal(request.searchParams.get('UPP_AIS_TP_CD'), '05')
+    assert.equal(request.searchParams.get('AIS_TP_CD'), '05')
+    assert.equal(detail.sections[0].title, '공급 일정')
+    assert.equal(detail.sections[0].items.some((item) => item.label === '당첨자 발표' && item.value === '2026-05-13'), true)
+    assert.equal(detail.sections[1].items.some((item) => item.label === '단지명' && item.value === '안양 테스트 단지'), true)
+    assert.equal(detail.files[0].value, '테스트공고.pdf')
+    assert.equal(detail.files[0].url, 'https://apply.lh.or.kr/file.pdf')
+    assert.equal(detail.content, '공고 상세 내용입니다.')
   } finally {
     harness.cleanup()
   }

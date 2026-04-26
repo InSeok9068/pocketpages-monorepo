@@ -5,6 +5,7 @@ const store = globalApi.store
 
 const APPLYHOME_BASE_URL = 'https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1'
 const LH_NOTICE_URL = 'https://apis.data.go.kr/B552555/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1'
+const LH_NOTICE_DETAIL_URL = 'https://apis.data.go.kr/B552555/lhLeaseNoticeDtlInfo1/getLeaseNoticeDtlInfo1'
 const DEFAULT_TIMEOUT_SECONDS = 15
 const DEFAULT_PER_PAGE = 50
 const NOTICE_LOOKBACK_MONTHS = 6
@@ -15,6 +16,8 @@ const REGIONS = [
   { slug: 'anyang', label: '안양시', searchText: '안양' },
   { slug: 'uiwang', label: '의왕시', searchText: '의왕' },
   { slug: 'gwacheon', label: '과천시', searchText: '과천' },
+  { slug: 'seongnam', label: '성남시', searchText: '성남' },
+  { slug: 'yongin', label: '용인시', searchText: '용인' },
 ]
 
 const ENDPOINTS = [
@@ -206,6 +209,23 @@ function buildApplyhomeUrl(config, path, query, options) {
  */
 function buildLhNoticeUrl(config, query, options) {
   const requestUrl = String(config && config.lhNoticeUrl ? config.lhNoticeUrl : LH_NOTICE_URL).trim()
+  const apiKey = String(config && config.apiKey ? config.apiKey : '').trim()
+  const requestQuery = Object.assign({}, query || {}, {
+    serviceKey: apiKey,
+  })
+
+  return requestUrl + '?' + toQueryString(requestQuery, options || {})
+}
+
+/**
+ * LH 분양임대공고별 상세정보 API GET 요청 URL을 만듭니다.
+ * @param {{ apiKey: string, lhNoticeDetailUrl?: string }} config 호출 설정
+ * @param {{ [key: string]: unknown }} query 요청 query
+ * @param {{ rawServiceKey?: boolean }} options URL 옵션
+ * @returns {string} 요청 URL
+ */
+function buildLhNoticeDetailUrl(config, query, options) {
+  const requestUrl = String(config && config.lhNoticeDetailUrl ? config.lhNoticeDetailUrl : LH_NOTICE_DETAIL_URL).trim()
   const apiKey = String(config && config.apiKey ? config.apiKey : '').trim()
   const requestQuery = Object.assign({}, query || {}, {
     serviceKey: apiKey,
@@ -477,6 +497,78 @@ function requestLhNoticeJson(config, query) {
 }
 
 /**
+ * LH 분양임대공고별 상세정보 API JSON 응답을 조회합니다.
+ * @param {{ apiKey: string, lhNoticeDetailUrl?: string, timeout?: number, cacheDateKey?: string }} config 호출 설정
+ * @param {{ [key: string]: unknown }} query 요청 query
+ * @returns {any[]} 파싱된 JSON 응답 배열
+ */
+function requestLhNoticeDetailJson(config, query) {
+  const apiKey = String(config && config.apiKey ? config.apiKey : '').trim()
+  const timeout = config && config.timeout ? config.timeout : DEFAULT_TIMEOUT_SECONDS
+
+  if (!apiKey) {
+    throw new Error('DATAGOKR_APIKEY 환경변수가 필요합니다.')
+  }
+
+  const cacheDateKey = String(config && config.cacheDateKey ? config.cacheDateKey : getTodayCacheDateKey())
+  const cacheRequestUrl = String(config && config.lhNoticeDetailUrl ? config.lhNoticeDetailUrl : LH_NOTICE_DETAIL_URL).trim()
+  const cacheKey = buildDailyApiCacheKey(cacheDateKey, 'lh-notice-detail', cacheRequestUrl + '?' + toCacheQueryString(query || {}))
+  const cachedPayload = readDailyApiCache(cacheDateKey, cacheKey)
+
+  if (cachedPayload !== null) {
+    info('homeping/cache:hit', {
+      source: 'lh-notice-detail',
+      date: cacheDateKey,
+    })
+    return cachedPayload
+  }
+
+  let requestUrl = buildLhNoticeDetailUrl(config, query, { rawServiceKey: false })
+
+  dbg('lh-notice-detail:request', {
+    url: redactApiKey(requestUrl, apiKey),
+  })
+
+  let response = $http.send({
+    url: requestUrl,
+    method: 'GET',
+    timeout: timeout,
+  })
+
+  if (response.statusCode === 401 && requestUrl.indexOf('%25') !== -1) {
+    requestUrl = buildLhNoticeDetailUrl(config, query, { rawServiceKey: true })
+    dbg('lh-notice-detail:request:retry-raw-key', {
+      url: redactApiKey(requestUrl, apiKey),
+    })
+    response = $http.send({
+      url: requestUrl,
+      method: 'GET',
+      timeout: timeout,
+    })
+  }
+
+  dbg('lh-notice-detail:response', {
+    statusCode: response.statusCode,
+  })
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error('LH 분양임대공고별 상세정보 API 요청에 실패했습니다. status=' + response.statusCode)
+  }
+
+  if (Array.isArray(response.json)) {
+    writeDailyApiCache(cacheDateKey, cacheKey, response.json)
+    return response.json
+  }
+
+  if (response.json && Array.isArray(response.json.value)) {
+    writeDailyApiCache(cacheDateKey, cacheKey, response.json.value)
+    return response.json.value
+  }
+
+  throw new Error('LH 분양임대공고별 상세정보 API 응답 형식이 올바르지 않습니다.')
+}
+
+/**
  * 날짜 문자열을 YYYY-MM-DD 형태로 정규화합니다.
  * @param {unknown} value 날짜 값
  * @returns {string} 정규화된 날짜
@@ -562,6 +654,187 @@ function formatHouseholdCount(value) {
   }
 
   return String(Math.round(count)).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '세대'
+}
+
+/**
+ * 화면 표시용 텍스트 값을 정리합니다.
+ * @param {unknown} value 원본 값
+ * @returns {string} 정리된 텍스트
+ */
+function cleanText(value) {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
+ * 긴 공고 본문을 모달 표시용으로 줄입니다.
+ * @param {unknown} value 원본 본문
+ * @param {number} maxLength 최대 글자 수
+ * @returns {string} 줄인 본문
+ */
+function truncateDetailText(value, maxLength) {
+  const text = cleanText(value)
+  const limit = Number(maxLength || 0)
+
+  if (!limit || text.length <= limit) {
+    return text
+  }
+
+  return text.slice(0, limit).trim() + '...'
+}
+
+/**
+ * LH 상세 API 배열 응답에서 특정 테이블 rows를 모읍니다.
+ * @param {any[]} payload API 응답 배열
+ * @param {string} tableName 테이블명
+ * @returns {any[]} 테이블 rows
+ */
+function collectLhDetailRows(payload, tableName) {
+  const rows = []
+
+  if (!Array.isArray(payload)) {
+    return rows
+  }
+
+  for (let index = 0; index < payload.length; index += 1) {
+    const block = payload[index]
+    const tableRows = block && Array.isArray(block[tableName]) ? block[tableName] : []
+
+    for (let rowIndex = 0; rowIndex < tableRows.length; rowIndex += 1) {
+      rows.push(tableRows[rowIndex])
+    }
+  }
+
+  return rows
+}
+
+/**
+ * 상세 모달 항목을 만듭니다.
+ * @param {string} label 라벨
+ * @param {unknown} value 값
+ * @param {string} [urlValue] 링크 URL
+ * @returns {types.HomepingLhNoticeDetailItem | null} 항목
+ */
+function createDetailItem(label, value, urlValue) {
+  const text = cleanText(value)
+  const itemUrl = String(urlValue || '').trim()
+
+  if (!text && !itemUrl) {
+    return null
+  }
+
+  const item = {
+    label: label,
+    value: text || itemUrl,
+  }
+
+  if (itemUrl) {
+    item.url = itemUrl
+  }
+
+  return item
+}
+
+/**
+ * 빈 값이 제거된 상세 섹션을 만듭니다.
+ * @param {string} title 섹션 제목
+ * @param {(types.HomepingLhNoticeDetailItem | null)[]} items 항목 후보
+ * @returns {types.HomepingLhNoticeDetailSection | null} 섹션
+ */
+function createDetailSection(title, items) {
+  const filteredItems = []
+
+  for (let index = 0; index < items.length; index += 1) {
+    if (items[index]) {
+      filteredItems.push(items[index])
+    }
+  }
+
+  if (filteredItems.length === 0) {
+    return null
+  }
+
+  return {
+    title: title,
+    items: filteredItems,
+  }
+}
+
+/**
+ * YYYYMMDD 형태의 LH 날짜를 화면 문자열로 정리합니다.
+ * @param {unknown} value 날짜 값
+ * @returns {string} 날짜 문자열
+ */
+function formatLhDateValue(value) {
+  return normalizeDate(value) || cleanText(value)
+}
+
+/**
+ * LH 상세 API 응답을 모달 표시용 데이터로 정리합니다.
+ * @param {any[]} payload API 응답 배열
+ * @returns {types.HomepingLhNoticeDetail} 상세 정보
+ */
+function normalizeLhNoticeDetail(payload) {
+  const schedule = collectLhDetailRows(payload, 'dsSplScdl')[0] || null
+  const complex = collectLhDetailRows(payload, 'dsSbd')[0] || null
+  const office = collectLhDetailRows(payload, 'dsCtrtPlc')[0] || null
+  const etcInfo = collectLhDetailRows(payload, 'dsEtcInfo')[0] || null
+  const files = collectLhDetailRows(payload, 'dsAhflInfo')
+  const sections = []
+  const scheduleSection = createDetailSection('공급 일정', [
+    createDetailItem('구분', schedule && schedule.HS_SBSC_ACP_TRG_CD_NM),
+    createDetailItem('신청방법', schedule && schedule.RMK),
+    createDetailItem('신청일시', schedule && schedule.ACP_DTTM),
+    createDetailItem('당첨자 발표', schedule && formatLhDateValue(schedule.PZWR_ANC_DT)),
+    createDetailItem('서류 제출', schedule && formatDateRange(formatLhDateValue(schedule.PZWR_PPR_SBM_ST_DT), formatLhDateValue(schedule.PZWR_PPR_SBM_ED_DT))),
+    createDetailItem('계약 체결', schedule && formatDateRange(formatLhDateValue(schedule.CTRT_ST_DT), formatLhDateValue(schedule.CTRT_ED_DT))),
+    createDetailItem('안내사항', schedule && schedule.SPL_SCD_GUD_FCTS),
+  ])
+  const complexSection = createDetailSection('단지 정보', [
+    createDetailItem('단지명', complex && complex.BZDT_NM),
+    createDetailItem('주소', complex && ((complex.LCT_ARA_ADR || '') + ' ' + (complex.LCT_ARA_DTL_ADR || '')).trim()),
+    createDetailItem('전용면적', complex && complex.MIN_MAX_RSDN_DDO_AR),
+    createDetailItem('총세대수', complex && formatHouseholdCount(complex.SUM_TOT_HSH_CNT)),
+    createDetailItem('입주예정', complex && complex.MVIN_XPC_YM),
+    createDetailItem('난방방식', complex && complex.HTN_FMLA_DS_CD_NM),
+    createDetailItem('교통', complex && complex.TFFC_FCL_CTS),
+    createDetailItem('편의시설', complex && complex.CVN_FCL_CTS),
+  ])
+  const officeSection = createDetailSection('접수처/문의', [
+    createDetailItem('운영기간', office && office.SIL_OFC_DT),
+    createDetailItem('주소', office && ((office.CTRT_PLC_ADR || '') + ' ' + (office.CTRT_PLC_DTL_ADR || '')).trim()),
+    createDetailItem('전화번호', office && office.SIL_OFC_TLNO),
+    createDetailItem('안내사항', office && office.SIL_OFC_GUD_FCTS),
+  ])
+  const fileItems = []
+
+  if (scheduleSection) sections.push(scheduleSection)
+  if (complexSection) sections.push(complexSection)
+  if (officeSection) sections.push(officeSection)
+
+  for (let index = 0; index < files.length && fileItems.length < 6; index += 1) {
+    const row = files[index]
+    const fileItem = createDetailItem(
+      cleanText(row && row.SL_PAN_AHFL_DS_CD_NM) || '첨부파일',
+      row && row.CMN_AHFL_NM,
+      row && row.AHFL_URL
+    )
+
+    if (fileItem) {
+      fileItems.push(fileItem)
+    }
+  }
+
+  return {
+    sections: sections,
+    files: fileItems,
+    content: truncateDetailText(etcInfo && etcInfo.PAN_DTL_CTS, 900),
+    fetchedAt: new Date().toISOString(),
+  }
 }
 
 /**
@@ -731,6 +1004,7 @@ function toLhNotice(row) {
   const status = resolveLhStatus(row, closeDate)
   const noticeId = String(row && row.PAN_ID ? row.PAN_ID : '').trim()
   const provinceName = String(row && row.CNP_CD_NM ? row.CNP_CD_NM : '').trim()
+  const upperTypeCode = String(row && row.UPP_AIS_TP_CD ? row.UPP_AIS_TP_CD : LH_ENDPOINT.upperTypeCode).trim()
 
   return {
     id: 'lh:' + noticeId,
@@ -753,6 +1027,13 @@ function toLhNotice(row) {
     householdCountLabel: '-',
     statusLabel: status.label,
     statusCode: status.code,
+    lhDetailParams: {
+      panId: noticeId,
+      splInfTpCd: String(row && row.SPL_INF_TP_CD ? row.SPL_INF_TP_CD : '').trim(),
+      ccrCnntSysDsCd: String(row && row.CCR_CNNT_SYS_DS_CD ? row.CCR_CNNT_SYS_DS_CD : '').trim(),
+      uppAisTpCd: upperTypeCode,
+      aisTpCd: String(row && row.AIS_TP_CD ? row.AIS_TP_CD : '').trim(),
+    },
   }
 }
 
@@ -872,6 +1153,43 @@ function searchLhSaleNotices(config, region, includeClosed) {
 }
 
 /**
+ * LH 공고 상세정보를 조회합니다.
+ * @param {{ apiKey: string, lhNoticeDetailUrl?: string, timeout?: number }} config 호출 설정
+ * @param {types.HomepingLhDetailParams} input 상세 조회 키
+ * @returns {types.HomepingLhNoticeDetail} 상세 정보
+ */
+function getLhNoticeDetail(config, input) {
+  const cacheDateKey = getTodayCacheDateKey()
+  const requestConfig = {
+    apiKey: String(config && config.apiKey ? config.apiKey : ''),
+    lhNoticeDetailUrl: config && config.lhNoticeDetailUrl,
+    timeout: config && config.timeout,
+    cacheDateKey: cacheDateKey,
+  }
+  const panId = String(input && input.panId ? input.panId : '').trim()
+  const splInfTpCd = String(input && input.splInfTpCd ? input.splInfTpCd : '').trim()
+  const ccrCnntSysDsCd = String(input && input.ccrCnntSysDsCd ? input.ccrCnntSysDsCd : '').trim()
+  const uppAisTpCd = String(input && input.uppAisTpCd ? input.uppAisTpCd : '').trim()
+  const aisTpCd = String(input && input.aisTpCd ? input.aisTpCd : '').trim()
+
+  if (!panId || !splInfTpCd || !ccrCnntSysDsCd || !uppAisTpCd) {
+    throw new Error('LH 상세 조회에 필요한 공고 키가 부족합니다.')
+  }
+
+  purgeOtherDailyApiCaches(cacheDateKey)
+
+  const payload = requestLhNoticeDetailJson(requestConfig, {
+    SPL_INF_TP_CD: splInfTpCd,
+    CCR_CNNT_SYS_DS_CD: ccrCnntSysDsCd,
+    PAN_ID: panId,
+    UPP_AIS_TP_CD: uppAisTpCd,
+    AIS_TP_CD: aisTpCd,
+  })
+
+  return normalizeLhNoticeDetail(payload)
+}
+
+/**
  * 선택 지역의 청약홈 공고를 조회합니다.
  * @param {{ apiKey: string, baseUrl?: string, lhNoticeUrl?: string, timeout?: number, perPage?: number }} config 호출 설정
  * @param {types.HomepingSearchInput} input 검색 조건
@@ -980,6 +1298,7 @@ function searchRegionNotices(config, input) {
 }
 
 module.exports = {
+  getLhNoticeDetail,
   getRegion,
   listRegions,
   searchRegionNotices,

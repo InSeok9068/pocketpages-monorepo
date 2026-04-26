@@ -138,6 +138,8 @@ test('daily notice job sends one summary push and records every new notice', () 
     anyang: [createNotice({ id: 'applyhome:apt:1:1', name: '안양 신규 공고' })],
     uiwang: [createNotice({ id: 'applyhome:apt:2:2', name: '의왕 신규 공고', address: '경기도 의왕시' })],
     gwacheon: [createNotice({ id: 'applyhome:apt:1:1', name: '안양 신규 공고' })],
+    seongnam: [],
+    yongin: [],
   }
   const originalApp = globalThis.$app
 
@@ -187,7 +189,7 @@ test('daily notice job sends one summary push and records every new notice', () 
     assert.equal(result.notificationId, 'onesignal-message-id')
     assert.deepEqual(
       searchCalls.map((call) => call.regionSlug),
-      ['anyang', 'uiwang', 'gwacheon']
+      ['anyang', 'uiwang', 'gwacheon', 'seongnam', 'yongin']
     )
     assert.equal(sentPushes.length, 1)
     assert.equal(sentPushes[0].title, 'Homeping 신규 공고 2건')

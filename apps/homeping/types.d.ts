@@ -26,6 +26,33 @@ declare namespace types {
     householdCountLabel: string
     statusLabel: string
     statusCode: string
+    lhDetailParams?: HomepingLhDetailParams
+  }
+
+  type HomepingLhDetailParams = {
+    panId: string
+    splInfTpCd: string
+    ccrCnntSysDsCd: string
+    uppAisTpCd: string
+    aisTpCd: string
+  }
+
+  type HomepingLhNoticeDetailItem = {
+    label: string
+    value: string
+    url?: string
+  }
+
+  type HomepingLhNoticeDetailSection = {
+    title: string
+    items: HomepingLhNoticeDetailItem[]
+  }
+
+  type HomepingLhNoticeDetail = {
+    sections: HomepingLhNoticeDetailSection[]
+    files: HomepingLhNoticeDetailItem[]
+    content: string
+    fetchedAt: string
   }
 
   type HomepingEndpointSummary = {

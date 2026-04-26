@@ -2,7 +2,7 @@ const applyhomeService = require('../pages/_private/applyhome-service')
 const notifiedNoticeService = require('./notified-notice-service')
 const oneSignalService = require('./onesignal-service')
 
-const REGION_SLUGS = ['anyang', 'uiwang', 'gwacheon']
+const REGION_SLUGS = ['anyang', 'uiwang', 'gwacheon', 'seongnam', 'yongin']
 const DEFAULT_PER_PAGE = 50
 
 /**
