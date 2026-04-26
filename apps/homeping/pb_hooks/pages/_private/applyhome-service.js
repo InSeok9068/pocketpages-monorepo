@@ -12,6 +12,8 @@ const NOTICE_LOOKBACK_MONTHS = 6
 const API_CACHE_KEY_PREFIX = 'homeping:notices:api-cache:v1:'
 const API_CACHE_INDEX_KEY = 'homeping:notices:api-cache-index:v1'
 
+const ALL_REGION = { slug: 'all', label: '전체', searchText: '' }
+
 const REGIONS = [
   { slug: 'anyang', label: '안양시', searchText: '안양' },
   { slug: 'uiwang', label: '의왕시', searchText: '의왕' },
@@ -75,7 +77,7 @@ const LH_ENDPOINT = {
  * @returns {types.HomepingRegion[]} 지역 옵션 목록
  */
 function listRegions() {
-  return REGIONS.slice()
+  return [ALL_REGION].concat(REGIONS)
 }
 
 /**
@@ -86,13 +88,17 @@ function listRegions() {
 function getRegion(regionSlug) {
   const slug = String(regionSlug || '').trim()
 
+  if (!slug || slug === ALL_REGION.slug) {
+    return ALL_REGION
+  }
+
   for (let index = 0; index < REGIONS.length; index += 1) {
     if (REGIONS[index].slug === slug) {
       return REGIONS[index]
     }
   }
 
-  return REGIONS[0]
+  return ALL_REGION
 }
 
 /**
@@ -1084,6 +1090,84 @@ function compareNotices(left, right) {
 }
 
 /**
+ * 지역 선택값으로 실제 조회할 지역 목록을 만듭니다.
+ * @param {types.HomepingRegion} region 선택 지역
+ * @returns {types.HomepingRegion[]} 조회 대상 지역 목록
+ */
+function getSearchRegions(region) {
+  if (region && region.slug === ALL_REGION.slug) {
+    return REGIONS.slice()
+  }
+
+  return [region]
+}
+
+/**
+ * 요약 집계용 맵을 만듭니다.
+ * @returns {{ [code: string]: types.HomepingEndpointSummary }} 요약 맵
+ */
+function createSummaryMap() {
+  /** @type {{ [code: string]: types.HomepingEndpointSummary }} */
+  const summaryMap = {}
+
+  for (let index = 0; index < ENDPOINTS.length; index += 1) {
+    const endpoint = ENDPOINTS[index]
+
+    summaryMap[endpoint.code] = {
+      code: endpoint.code,
+      label: endpoint.label,
+      count: 0,
+      error: '',
+    }
+  }
+
+  summaryMap[LH_ENDPOINT.code] = {
+    code: LH_ENDPOINT.code,
+    label: LH_ENDPOINT.label,
+    count: 0,
+    error: '',
+  }
+
+  return summaryMap
+}
+
+/**
+ * 지역별 요약을 전체 요약에 합산합니다.
+ * @param {{ [code: string]: types.HomepingEndpointSummary }} summaryMap 요약 맵
+ * @param {types.HomepingEndpointSummary} summary 지역별 요약
+ */
+function addSummaryToMap(summaryMap, summary) {
+  const code = String(summary && summary.code ? summary.code : '')
+
+  if (!code || !summaryMap[code]) {
+    return
+  }
+
+  summaryMap[code].count += Number(summary.count || 0)
+
+  if (summary.error) {
+    summaryMap[code].error = summaryMap[code].error || summary.error
+  }
+}
+
+/**
+ * 요약 맵을 화면 순서에 맞는 배열로 변환합니다.
+ * @param {{ [code: string]: types.HomepingEndpointSummary }} summaryMap 요약 맵
+ * @returns {types.HomepingEndpointSummary[]} 요약 목록
+ */
+function toSummaryList(summaryMap) {
+  const summaries = []
+
+  for (let index = 0; index < ENDPOINTS.length; index += 1) {
+    summaries.push(summaryMap[ENDPOINTS[index].code])
+  }
+
+  summaries.push(summaryMap[LH_ENDPOINT.code])
+
+  return summaries
+}
+
+/**
  * 선택 지역의 LH 분양주택 공고를 조회합니다.
  * @param {{ apiKey: string, lhNoticeUrl?: string, timeout?: number, perPage?: number, cacheDateKey?: string }} config 호출 설정
  * @param {types.HomepingRegion} region 선택 지역
@@ -1190,30 +1274,18 @@ function getLhNoticeDetail(config, input) {
 }
 
 /**
- * 선택 지역의 청약홈 공고를 조회합니다.
- * @param {{ apiKey: string, baseUrl?: string, lhNoticeUrl?: string, timeout?: number, perPage?: number }} config 호출 설정
- * @param {types.HomepingSearchInput} input 검색 조건
- * @returns {types.HomepingSearchResult} 검색 결과
+ * 단일 지역의 청약홈/LH 공고를 조회합니다.
+ * @param {{ apiKey: string, baseUrl?: string, lhNoticeUrl?: string, timeout?: number, perPage?: number, cacheDateKey?: string }} requestConfig 호출 설정
+ * @param {types.HomepingRegion} region 조회 지역
+ * @param {boolean} includeClosed 마감 공고 포함 여부
+ * @param {number} perPage 페이지 크기
+ * @param {string} sinceDate 최근 공고 기준일
+ * @returns {{ notices: types.HomepingNotice[], summaries: types.HomepingEndpointSummary[], errors: string[] }} 지역 검색 결과
  */
-function searchRegionNotices(config, input) {
-  const region = getRegion(input && input.regionSlug)
-  const includeClosed = !!(input && input.includeClosed)
-  const cacheDateKey = getTodayCacheDateKey()
-  const requestConfig = {
-    apiKey: String(config && config.apiKey ? config.apiKey : ''),
-    baseUrl: config && config.baseUrl,
-    lhNoticeUrl: config && config.lhNoticeUrl,
-    timeout: config && config.timeout,
-    perPage: config && config.perPage,
-    cacheDateKey: cacheDateKey,
-  }
-  const perPage = Number(config && config.perPage ? config.perPage : DEFAULT_PER_PAGE)
-  const sinceDate = formatDateIso(monthsAgo(NOTICE_LOOKBACK_MONTHS))
+function searchSingleRegionNotices(requestConfig, region, includeClosed, perPage, sinceDate) {
   const notices = []
   const summaries = []
   const errors = []
-
-  purgeOtherDailyApiCaches(cacheDateKey)
 
   for (let index = 0; index < ENDPOINTS.length; index += 1) {
     const endpoint = ENDPOINTS[index]
@@ -1257,7 +1329,7 @@ function searchRegionNotices(config, input) {
     } catch (exception) {
       const message = String(exception && exception.message ? exception.message : exception)
 
-      errors.push(endpoint.label + ': ' + message)
+      errors.push(region.label + ' ' + endpoint.label + ': ' + message)
       summaries.push({
         code: endpoint.code,
         label: endpoint.label,
@@ -1278,7 +1350,7 @@ function searchRegionNotices(config, input) {
   } catch (exception) {
     const message = String(exception && exception.message ? exception.message : exception)
 
-    errors.push(LH_ENDPOINT.label + ': ' + message)
+    errors.push(region.label + ' ' + LH_ENDPOINT.label + ': ' + message)
     summaries.push({
       code: LH_ENDPOINT.code,
       label: LH_ENDPOINT.label,
@@ -1287,12 +1359,67 @@ function searchRegionNotices(config, input) {
     })
   }
 
+  return {
+    notices: notices,
+    summaries: summaries,
+    errors: errors,
+  }
+}
+
+/**
+ * 선택 지역의 청약홈 공고를 조회합니다.
+ * @param {{ apiKey: string, baseUrl?: string, lhNoticeUrl?: string, timeout?: number, perPage?: number }} config 호출 설정
+ * @param {types.HomepingSearchInput} input 검색 조건
+ * @returns {types.HomepingSearchResult} 검색 결과
+ */
+function searchRegionNotices(config, input) {
+  const region = getRegion(input && input.regionSlug)
+  const includeClosed = !!(input && input.includeClosed)
+  const cacheDateKey = getTodayCacheDateKey()
+  const requestConfig = {
+    apiKey: String(config && config.apiKey ? config.apiKey : ''),
+    baseUrl: config && config.baseUrl,
+    lhNoticeUrl: config && config.lhNoticeUrl,
+    timeout: config && config.timeout,
+    perPage: config && config.perPage,
+    cacheDateKey: cacheDateKey,
+  }
+  const perPage = Number(config && config.perPage ? config.perPage : DEFAULT_PER_PAGE)
+  const sinceDate = formatDateIso(monthsAgo(NOTICE_LOOKBACK_MONTHS))
+  const searchRegions = getSearchRegions(region)
+  const summaryMap = region.slug === ALL_REGION.slug ? createSummaryMap() : null
+  const notices = []
+  const summaries = []
+  const errors = []
+
+  purgeOtherDailyApiCaches(cacheDateKey)
+
+  for (let regionIndex = 0; regionIndex < searchRegions.length; regionIndex += 1) {
+    const regionResult = searchSingleRegionNotices(requestConfig, searchRegions[regionIndex], includeClosed, perPage, sinceDate)
+
+    for (let noticeIndex = 0; noticeIndex < regionResult.notices.length; noticeIndex += 1) {
+      notices.push(regionResult.notices[noticeIndex])
+    }
+
+    for (let errorIndex = 0; errorIndex < regionResult.errors.length; errorIndex += 1) {
+      errors.push(regionResult.errors[errorIndex])
+    }
+
+    for (let summaryIndex = 0; summaryIndex < regionResult.summaries.length; summaryIndex += 1) {
+      if (summaryMap) {
+        addSummaryToMap(summaryMap, regionResult.summaries[summaryIndex])
+      } else {
+        summaries.push(regionResult.summaries[summaryIndex])
+      }
+    }
+  }
+
   const sortedNotices = dedupeNotices(notices).sort(compareNotices)
 
   return {
     region: region,
     notices: sortedNotices,
-    summaries: summaries,
+    summaries: summaryMap ? toSummaryList(summaryMap) : summaries,
     errors: errors,
   }
 }

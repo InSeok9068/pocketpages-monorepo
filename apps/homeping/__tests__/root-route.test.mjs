@@ -120,7 +120,7 @@ test('GET / renders the live Homeping search page through the service harness', 
   assert.equal($('[data-hp-notification-button]').attr('data-region'), 'anyang')
   assert.equal($('[data-hp-notification-button]').attr('data-include-closed'), '1')
   assert.equal($('[data-hp-notification-label]').first().text().trim(), '알림 받기')
-  assert.deepEqual(regionLabels, ['안양시', '의왕시', '과천시', '성남시', '용인시'])
+  assert.deepEqual(regionLabels, ['전체', '안양시', '의왕시', '과천시', '성남시', '용인시'])
   assert.equal($('[data-hp-detail-modal]').length, 1)
   assert.match(countText, /^\d+건$/u)
   assert.equal(summaryLabels.includes('APT 분양'), true)

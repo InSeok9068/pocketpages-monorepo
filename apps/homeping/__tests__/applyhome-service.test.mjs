@@ -360,6 +360,71 @@ test('searchRegionNotices keeps LH detail lookup keys on LH notices', () => {
   }
 })
 
+test('searchRegionNotices aggregates every configured city when all is selected', () => {
+  const harness = createHarness({
+    applyhome: {
+      '/api/ApplyhomeInfoDetailSvc/v1/getAPTLttotPblancDetail': [
+        createApplyhomeRow({
+          name: '안양 전체 조회 아파트',
+          address: '경기도 안양시 동안구',
+          recruitDate: '2026-04-20',
+          applyStartDate: '2026-04-20',
+          applyEndDate: '2026-05-03',
+        }),
+        createApplyhomeRow({
+          name: '성남 전체 조회 아파트',
+          address: '경기도 성남시 분당구',
+          recruitDate: '2026-04-21',
+          applyStartDate: '2026-04-22',
+          applyEndDate: '2026-05-04',
+        }),
+      ],
+    },
+    lhRows: [
+      createLhRow({
+        id: 'lh-yongin-1',
+        name: '용인 LH 일반공급',
+        recruitDate: '2026-04-22',
+        noticeStartDate: '2026-04-23',
+        closeDate: '2026-05-05',
+        statusLabel: '접수중',
+      }),
+    ],
+  })
+
+  try {
+    const result = harness.service.searchRegionNotices(
+      {
+        apiKey: 'test-key',
+        perPage: 50,
+      },
+      {
+        regionSlug: 'all',
+      }
+    )
+    const names = result.notices.map((notice) => notice.name).sort()
+    const aptSummary = result.summaries.find((summary) => summary.code === 'apt')
+    const lhSummary = result.summaries.find((summary) => summary.code === 'lh-sale')
+    const aptRegionQueries = harness.requests
+      .filter((requestUrl) => requestUrl.pathname === '/api/ApplyhomeInfoDetailSvc/v1/getAPTLttotPblancDetail')
+      .map((requestUrl) => requestUrl.searchParams.get('cond[HSSPLY_ADRES::LIKE]'))
+    const lhRegionQueries = harness.requests
+      .filter((requestUrl) => requestUrl.pathname.indexOf('/lhLeaseNoticeInfo1/') !== -1)
+      .map((requestUrl) => requestUrl.searchParams.get('PAN_NM'))
+
+    assert.equal(result.region.slug, 'all')
+    assert.deepEqual(names, ['성남 전체 조회 아파트', '안양 전체 조회 아파트', '용인 LH 일반공급'].sort())
+    assert.equal(aptSummary.count, 2)
+    assert.equal(lhSummary.count, 1)
+    assert.deepEqual(aptRegionQueries, ['안양', '의왕', '과천', '성남', '용인'])
+    assert.deepEqual(lhRegionQueries, ['안양', '의왕', '과천', '성남', '용인'])
+    assert.equal(countRequests(harness.requests, 'api.odcloud.kr'), 25)
+    assert.equal(countRequests(harness.requests, 'apis.data.go.kr'), 5)
+  } finally {
+    harness.cleanup()
+  }
+})
+
 test('getLhNoticeDetail normalizes schedule, complex, office, and file metadata', () => {
   const harness = createHarness({
     lhDetailPayload: [
