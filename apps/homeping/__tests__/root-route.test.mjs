@@ -126,18 +126,28 @@ test('GET / serves Homeping static assets through hashed asset links', { skip: l
   const $ = load(body)
   const stylesheetHref = $('link[rel="stylesheet"]').attr('href') || ''
   const faviconHref = $('link[rel="icon"]').attr('href') || ''
+  const manifestHref = $('link[rel="manifest"]').attr('href') || ''
 
   assert.equal(response.status, 200)
   assert.match(stylesheetHref, /^\/assets\/style\.[a-f0-9]+\.css$/u)
   assert.match(faviconHref, /^\/assets\/favicon\.[a-f0-9]+\.svg$/u)
+  assert.match(manifestHref, /^\/assets\/manifest\.[a-f0-9]+\.json$/u)
+  assert.equal($('meta[name="theme-color"]').attr('content'), '#f5f6f2')
 
   const stylesheetResponse = await fetch(`${service.baseUrl}${stylesheetHref}`)
   const faviconResponse = await fetch(`${service.baseUrl}${faviconHref}`)
+  const manifestResponse = await fetch(`${service.baseUrl}${manifestHref}`)
   const faviconBody = await faviconResponse.text()
+  const manifestPayload = await manifestResponse.json()
 
   assert.equal(stylesheetResponse.status, 200)
   assert.match(stylesheetResponse.headers.get('content-type') || '', /^text\/css/u)
   assert.equal(faviconResponse.status, 200)
   assert.match(faviconResponse.headers.get('content-type') || '', /^image\/svg\+xml/u)
   assert.equal(faviconBody.includes('Homeping'), true)
+  assert.equal(manifestResponse.status, 200)
+  assert.match(manifestResponse.headers.get('content-type') || '', /manifest|json/u)
+  assert.equal(manifestPayload.short_name, 'Homeping')
+  assert.equal(manifestPayload.display, 'standalone')
+  assert.equal(manifestPayload.icons[0].src, '/assets/favicon.svg')
 })

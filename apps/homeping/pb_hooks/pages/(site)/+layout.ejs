@@ -14,6 +14,12 @@
       type="image/svg+xml"
       href="<%= asset('/assets/favicon.svg') %>" />
     <link
+      rel="manifest"
+      href="<%= asset('/assets/manifest.json') %>" />
+    <meta
+      name="theme-color"
+      content="#f5f6f2" />
+    <link
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
     <%- slots.head %>

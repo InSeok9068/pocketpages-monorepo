@@ -1,0 +1,19 @@
+{
+  "name": "Homeping 공공주택알리미",
+  "short_name": "Homeping",
+  "description": "안양시, 의왕시, 과천시 청약홈/LH 공고 조회",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f6f2",
+  "theme_color": "#f5f6f2",
+  "icons": [
+    {
+      "src": "/assets/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
