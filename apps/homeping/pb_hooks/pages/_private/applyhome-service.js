@@ -824,11 +824,7 @@ function normalizeLhNoticeDetail(payload) {
 
   for (let index = 0; index < files.length && fileItems.length < 6; index += 1) {
     const row = files[index]
-    const fileItem = createDetailItem(
-      cleanText(row && row.SL_PAN_AHFL_DS_CD_NM) || '첨부파일',
-      row && row.CMN_AHFL_NM,
-      row && row.AHFL_URL
-    )
+    const fileItem = createDetailItem(cleanText(row && row.SL_PAN_AHFL_DS_CD_NM) || '첨부파일', row && row.CMN_AHFL_NM, row && row.AHFL_URL)
 
     if (fileItem) {
       fileItems.push(fileItem)

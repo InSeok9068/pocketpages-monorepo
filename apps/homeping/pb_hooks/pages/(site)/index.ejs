@@ -40,13 +40,7 @@
   function hasLhDetail(notice) {
     const detailParams = notice && notice.lhDetailParams ? notice.lhDetailParams : null
 
-    return !!(
-      detailParams &&
-      detailParams.panId &&
-      detailParams.splInfTpCd &&
-      detailParams.ccrCnntSysDsCd &&
-      detailParams.uppAisTpCd
-    )
+    return !!(detailParams && detailParams.panId && detailParams.splInfTpCd && detailParams.ccrCnntSysDsCd && detailParams.uppAisTpCd)
   }
 
   if (apiKey) {
@@ -216,15 +210,15 @@
             상세보기
           </button>
           <% } %>
-        <% if (notice.detailUrl) { %>
-        <a
-          class="hp-link"
-          href="<%= notice.detailUrl %>"
-          target="_blank"
-          rel="noreferrer">
-          공고 보기
-        </a>
-        <% } %>
+          <% if (notice.detailUrl) { %>
+          <a
+            class="hp-link"
+            href="<%= notice.detailUrl %>"
+            target="_blank"
+            rel="noreferrer">
+            공고 보기
+          </a>
+          <% } %>
         </div>
       </aside>
     </article>
