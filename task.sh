@@ -735,7 +735,7 @@ check_remote_deploy_permissions() {
 
   local ssh_cmd=("$@")
 
-  echo "Checking remote sudo permissions: $remote_path"
+  echo "Checking remote write permissions: $remote_path"
   "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$remote_path" "$create_history_dir" <<'EOF'
 set -euo pipefail
 
@@ -743,26 +743,38 @@ remote_path="$1"
 create_history_dir="$2"
 remote_parent_dir="$(dirname "$remote_path")"
 remote_base_name="$(basename "$remote_path")"
-history_dir="${remote_parent_dir}/.deploy-history/${remote_base_name}"
+history_root="${remote_parent_dir}/.deploy-history"
+history_dir="${history_root}/${remote_base_name}"
 
-if ! command -v sudo >/dev/null 2>&1; then
-  echo "sudo not found on remote host." >&2
-  exit 1
-fi
+check_writable_dir() {
+  local path="$1"
 
-if ! sudo -n true >/dev/null 2>&1; then
-  echo "Remote sudo requires a password or is not allowed for this account." >&2
-  exit 1
-fi
+  if [[ ! -d "$path" ]]; then
+    echo "Remote path is not a directory: $path" >&2
+    exit 1
+  fi
 
-if [[ -d "$remote_path" ]]; then
-  sudo -n test -w "$remote_path"
+  if [[ ! -w "$path" ]]; then
+    echo "Remote deploy user cannot write to: $path" >&2
+    echo "Grant write permissions to the deploy user or update remotePath ownership before deploying." >&2
+    exit 1
+  fi
+}
+
+if [[ -e "$remote_path" || -L "$remote_path" ]]; then
+  check_writable_dir "$remote_path"
 else
-  sudo -n test -w "$remote_parent_dir"
+  check_writable_dir "$remote_parent_dir"
 fi
 
-if [[ "$create_history_dir" = "true" && -d "$history_dir" ]]; then
-  sudo -n test -w "$history_dir"
+if [[ "$create_history_dir" = "true" ]]; then
+  if [[ -e "$history_dir" || -L "$history_dir" ]]; then
+    check_writable_dir "$history_dir"
+  elif [[ -e "$history_root" || -L "$history_root" ]]; then
+    check_writable_dir "$history_root"
+  else
+    check_writable_dir "$remote_parent_dir"
+  fi
 fi
 EOF
 }
