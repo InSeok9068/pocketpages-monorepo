@@ -46,4 +46,26 @@ declare namespace types {
     summaries: HomepingEndpointSummary[]
     errors: string[]
   }
+
+  type HomepingNoticePushInput = {
+    title: string
+    contents: string
+    url?: string
+    timeout?: number
+  }
+
+  type HomepingNotifiedNoticeInput = {
+    notice: HomepingNotice | null
+    region?: string
+    notifiedAt?: string
+    providerMessageId?: string
+  }
+
+  type HomepingDailyNoticeJobResult = {
+    checkedCount: number
+    newCount: number
+    sent: boolean
+    notificationId: string
+    errorCount: number
+  }
 }
