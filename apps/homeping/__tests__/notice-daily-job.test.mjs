@@ -36,6 +36,27 @@ function createNotice(input) {
   }
 }
 
+function createApplyhomeApiRow(input) {
+  return {
+    RCRIT_PBLANC_DE: input.recruitDate || '2099-04-26',
+    RCEPT_BGNDE: input.applyStartDate || '2099-04-26',
+    RCEPT_ENDDE: input.applyEndDate || '2099-05-01',
+    PRZWNER_PRESNATN_DE: '',
+    HOUSE_MANAGE_NO: input.houseManageNo || input.id || input.name,
+    PBLANC_NO: input.pblancNo || input.id || input.name,
+    HOUSE_DTL_SECD_NM: input.detailName || '민영',
+    HOUSE_SECD_NM: input.houseSectionName || 'APT',
+    HOUSE_NM: input.name,
+    HSSPLY_ADRES: input.address || '경기도 안양시 동안구',
+    SUBSCRPT_AREA_CODE_NM: '경기',
+    BSNS_MBY_NM: '사업주체',
+    MDHS_TELNO: '',
+    PBLANC_URL: input.detailUrl || 'https://applyhome.test/' + encodeURIComponent(input.id || input.name),
+    MVN_PREARNGE_YM: '',
+    TOT_SUPLY_HSHLDCO: input.householdCount || 12,
+  }
+}
+
 function createLogger() {
   const logs = []
 
@@ -56,6 +77,40 @@ function createLogger() {
           logs.push(['error'].concat(args))
         },
       }
+    },
+  }
+}
+
+function createFakeHttp(applyhomeRows) {
+  const requests = []
+
+  return {
+    requests,
+    send(config) {
+      const requestUrl = new URL(config.url)
+      requests.push(requestUrl)
+
+      if (requestUrl.hostname === 'api.odcloud.kr') {
+        return {
+          statusCode: 200,
+          json: {
+            data: requestUrl.pathname.indexOf('/getAPTLttotPblancDetail') !== -1 ? applyhomeRows : [],
+          },
+        }
+      }
+
+      if (requestUrl.hostname === 'apis.data.go.kr') {
+        return {
+          statusCode: 200,
+          json: [
+            {
+              dsList: [],
+            },
+          ],
+        }
+      }
+
+      throw new Error('Unexpected request URL: ' + config.url)
     },
   }
 }
@@ -82,6 +137,36 @@ function installPocketpagesMock() {
     } else {
       delete require.cache[pocketpagesModulePath]
     }
+  }
+}
+
+function loadJobWithRealApplyhome() {
+  const restorePocketpagesMock = installPocketpagesMock()
+  const originalJobCache = require.cache[jobPath]
+  const originalApplyhomeCache = require.cache[applyhomeServicePath]
+
+  delete require.cache[jobPath]
+  delete require.cache[applyhomeServicePath]
+
+  const job = require(jobPath)
+
+  return {
+    job,
+    cleanup() {
+      if (originalJobCache) {
+        require.cache[jobPath] = originalJobCache
+      } else {
+        delete require.cache[jobPath]
+      }
+
+      if (originalApplyhomeCache) {
+        require.cache[applyhomeServicePath] = originalApplyhomeCache
+      } else {
+        delete require.cache[applyhomeServicePath]
+      }
+
+      restorePocketpagesMock()
+    },
   }
 }
 
@@ -127,6 +212,74 @@ function loadJob() {
     },
   }
 }
+
+test('daily notice job can use the real pages _private applyhome service', () => {
+  const harness = loadJobWithRealApplyhome()
+  const appMock = createLogger()
+  const httpMock = createFakeHttp([
+    createApplyhomeApiRow({
+      id: 'applyhome-real-private-1',
+      name: '안양 실제 _private 공고',
+    }),
+  ])
+  const sentPushes = []
+  const savedNotices = []
+  const originalApp = globalThis.$app
+  const originalHttp = globalThis.$http
+
+  globalThis.$app = appMock
+  globalThis.$http = httpMock
+
+  try {
+    const result = harness.job.runWithServices(
+      {
+        notifiedNoticeService: {
+          BROADCAST_REGION: 'all',
+          getNoticeKey(notice) {
+            return notice.id
+          },
+          hasNotifiedNotice() {
+            return false
+          },
+          createNotifiedNotice(input) {
+            savedNotices.push(input)
+          },
+        },
+        oneSignalService: {
+          sendPushNotification(input) {
+            sentPushes.push(input)
+            return {
+              id: 'onesignal-real-private-message-id',
+            }
+          },
+        },
+      },
+      {
+        apiKey: 'data-api-key',
+        regionSlugs: ['anyang'],
+      }
+    )
+    const applyhomeRequests = httpMock.requests.filter((requestUrl) => requestUrl.hostname === 'api.odcloud.kr')
+    const lhRequests = httpMock.requests.filter((requestUrl) => requestUrl.hostname === 'apis.data.go.kr')
+
+    assert.equal(result.checkedCount, 1)
+    assert.equal(result.newCount, 1)
+    assert.equal(result.sent, true)
+    assert.equal(result.notificationId, 'onesignal-real-private-message-id')
+    assert.equal(applyhomeRequests.length, 5)
+    assert.equal(lhRequests.length, 1)
+    assert.equal(applyhomeRequests[0].searchParams.get('cond[HSSPLY_ADRES::LIKE]'), '안양')
+    assert.equal(sentPushes.length, 1)
+    assert.equal(sentPushes[0].title, 'Homeping 신규 공고')
+    assert.equal(sentPushes[0].contents.includes('안양 실제 _private 공고'), true)
+    assert.equal(savedNotices.length, 1)
+    assert.equal(savedNotices[0].notice.name, '안양 실제 _private 공고')
+  } finally {
+    globalThis.$app = originalApp
+    globalThis.$http = originalHttp
+    harness.cleanup()
+  }
+})
 
 test('daily notice job sends one summary push and records every new notice', () => {
   const harness = loadJob()
