@@ -69,6 +69,25 @@
     <h1 class="hp-title"><%= selectedRegion.label %> 청약 공고</h1>
     <p class="hp-meta">최근 6개월 · 청약홈/LH · 위치정보 미사용</p>
   </div>
+
+  <div class="hp-header-actions">
+    <button
+      class="hp-notification-button"
+      type="button"
+      data-hp-notification-button
+      data-region="<%= selectedRegion.slug %>"
+      data-include-closed="<%= includeClosed ? '1' : '0' %>">
+      <span
+        class="hp-notification-dot"
+        data-hp-notification-dot></span>
+      <span data-hp-notification-label>알림 받기</span>
+    </button>
+    <p
+      class="hp-notification-status"
+      data-hp-notification-status>
+      브라우저 알림
+    </p>
+  </div>
 </header>
 
 <section class="hp-panel">

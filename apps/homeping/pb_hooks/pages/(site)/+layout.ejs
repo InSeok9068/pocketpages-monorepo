@@ -22,10 +22,22 @@
     <link
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
+    <script
+      src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+      defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || []
+      OneSignalDeferred.push(async function (OneSignal) {
+        await OneSignal.init({
+          appId: '5bb6b0ff-fe97-4753-9ce8-508e6048a518',
+        })
+      })
+    </script>
     <%- slots.head %>
   </head>
 
   <body>
     <main class="hp-shell"><%- slots.body || slot %></main>
+    <script src="<%= asset('/assets/onesignal.js') %>"></script>
   </body>
 </html>

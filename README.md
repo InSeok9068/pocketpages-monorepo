@@ -232,6 +232,20 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
     }
   },
   {
+    "name": "homeping-public",
+    "host": "146.56.177.250",
+    "protocol": "sftp",
+    "port": 22,
+    "username": "ubuntu",
+    "privateKeyPath": "~/.ssh/ssh-key-2023-04-17-DOCKER.key",
+    "context": "apps/homeping/pb_public",
+    "remotePath": "/path/to/homeping/public",
+    "connectTimeout": 100000,
+    "syncOption": {
+      "delete": true
+    }
+  },
+  {
     "name": "homeping-hooks",
     "host": "146.56.177.250",
     "protocol": "sftp",
