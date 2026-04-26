@@ -19,6 +19,7 @@
     // "apps/kjca/**": true,
     // "apps/booklog/**": true,
     // "apps/photofolio/**": true,
+    // "apps/homeping/**": true,
   },
   // prettier-ignore
   "search.exclude": {
@@ -32,6 +33,7 @@
     // "apps/kjca/**": true,
     // "apps/booklog/**": true,
     // "apps/photofolio/**": true,
+    // "apps/homeping/**": true,
   },
   "tailwindCSS.includeLanguages": {
     "ejs": "html"
