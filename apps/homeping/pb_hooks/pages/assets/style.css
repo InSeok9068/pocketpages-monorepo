@@ -50,23 +50,27 @@ input {
 }
 
 .hp-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
+  position: relative;
+  min-height: 94px;
+  padding-right: 142px;
   margin-bottom: 22px;
 }
 
 .hp-title-group {
+  display: grid;
+  gap: 0;
   min-width: 0;
 }
 
-.hp-header-actions {
+.hp-notification-layer {
+  position: absolute;
+  top: 14px;
+  right: 0;
   display: flex;
-  min-width: 148px;
+  width: 124px;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 5px;
 }
 
 .hp-brand {
@@ -444,23 +448,20 @@ input {
 }
 
 @media (max-width: 780px) {
-  .hp-header,
   .hp-filter,
   .hp-card {
     grid-template-columns: 1fr;
   }
 
   .hp-header {
-    display: block;
+    min-height: 94px;
+    padding-right: 116px;
     margin-bottom: 14px;
   }
 
-  .hp-header-actions {
-    min-width: 0;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 12px;
+  .hp-notification-layer {
+    top: 12px;
+    width: 104px;
   }
 
   .hp-notification-status {
@@ -507,6 +508,7 @@ input {
   }
 
   .hp-title {
+    max-width: 238px;
     margin-top: 4px;
     font-size: 27px;
     line-height: 1.12;
@@ -516,10 +518,6 @@ input {
     margin-top: 7px;
     font-size: 13px;
     line-height: 1.5;
-  }
-
-  .hp-header-actions {
-    margin-top: 10px;
   }
 
   .hp-notification-button {
