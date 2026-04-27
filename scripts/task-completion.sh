@@ -19,7 +19,7 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill update deploy rollback test lint tsc diag verify index bundle format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill update install deploy rollback test lint tsc diag verify index bundle format help" -- "$cur") )
     return
   fi
 
@@ -27,6 +27,13 @@ _pp_dev_complete() {
     local update_targets
     update_targets="$("$script" __complete_update_targets 2>/dev/null)"
     COMPREPLY=( $(compgen -W "$update_targets" -- "$cur") )
+    return
+  fi
+
+  if [[ $COMP_CWORD -eq 2 && "$cmd" == "install" ]]; then
+    local install_targets
+    install_targets="$("$script" __complete_install_targets 2>/dev/null)"
+    COMPREPLY=( $(compgen -W "$install_targets" -- "$cur") )
     return
   fi
 
@@ -60,11 +67,11 @@ _pp_dev_complete() {
     fi
   fi
 
-  if [[ "$cmd" == "update" && "$cur" == --* ]]; then
+  if [[ ( "$cmd" == "update" || "$cmd" == "install" ) && "$cur" == --* ]]; then
     local target
     target="${COMP_WORDS[2]}"
 
-    if [[ "$target" == "pocketbase" ]]; then
+    if [[ "$cmd" == "update" && "$target" == "pocketbase" ]]; then
       COMPREPLY=( $(compgen -W "--backup --backup=false --help" -- "$cur") )
       return
     fi
