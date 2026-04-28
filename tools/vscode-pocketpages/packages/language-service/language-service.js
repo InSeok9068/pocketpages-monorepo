@@ -3,7 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 const ts = require("typescript");
-const { createScriptSnapshot } = require("../language-core/snapshot");
+const { URI } = require("vscode-uri");
+const { createVirtualCode } = require("../language-core/virtual-code");
 const {
   buildTemplateVirtualText,
   extractTemplateCodeBlocks: _extractTemplateCodeBlocks,
@@ -26,6 +27,7 @@ const { collectParamsFlowDiagnostics } = require("./flow-analysis");
 const { createCompletionFeatureHandlers } = require("./features/completion-features");
 const { createDiagnosticsFeatureHandlers } = require("./features/diagnostics-features");
 const { createNavigationFeatureHandlers } = require("./features/navigation-features");
+const { DocumentSnapshotManager } = require("./document-snapshot-manager");
 const { createPocketPagesLanguageServiceManager } = require("./service-manager");
 
 const COMPILER_OPTIONS = {
@@ -74,14 +76,14 @@ function readFileText(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
-function createVersionedFileState(previousState, state) {
-  const currentText = String(state && state.text ? state.text : "");
-  return {
-    ...state,
-    text: currentText,
-    version: previousState ? String(Number(previousState.version) + 1) : "1",
-    snapshot: createScriptSnapshot(currentText, previousState ? previousState.snapshot : null),
-  };
+function hashText(value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 function getMappingSegments(mappings) {
@@ -2016,6 +2018,110 @@ function dedupeDiagnostics(diagnostics) {
   return [...uniqueDiagnostics.values()];
 }
 
+function toDiagnosticRegion(region) {
+  if (!region || typeof region !== "object") {
+    return null;
+  }
+
+  const sourceStart = Number(region.sourceStart);
+  const sourceEnd = Number(region.sourceEnd);
+  if (!Number.isFinite(sourceStart) || !Number.isFinite(sourceEnd) || sourceEnd < sourceStart) {
+    return null;
+  }
+
+  return {
+    id: String(region.id || `${region.kind || "region"}:${sourceStart}:${sourceEnd}`),
+    kind: String(region.kind || "region"),
+    contentHash: String(region.contentHash || region.virtualTextHash || ""),
+    sourceStart,
+    sourceEnd,
+    fullStart: Number.isFinite(Number(region.fullStart)) ? Number(region.fullStart) : sourceStart,
+    fullEnd: Number.isFinite(Number(region.fullEnd)) ? Number(region.fullEnd) : sourceEnd,
+  };
+}
+
+function createRegionSetIdentity(regions, options = {}) {
+  const includeOffsets = options.includeOffsets === true;
+  return (Array.isArray(regions) ? regions : [])
+    .map(toDiagnosticRegion)
+    .filter(Boolean)
+    .map((region) => [
+      region.kind,
+      region.id,
+      region.contentHash,
+      includeOffsets ? `${region.sourceStart}-${region.sourceEnd}` : "",
+    ].join(":"))
+    .join("|") || "none";
+}
+
+function findContainingRegion(regions, start, end) {
+  return (Array.isArray(regions) ? regions : [])
+    .map(toDiagnosticRegion)
+    .filter(Boolean)
+    .find((region) => start >= region.sourceStart && end <= region.sourceEnd) || null;
+}
+
+function remapDiagnosticRangeByRegions(diagnostic, previousRegions, currentRegions) {
+  if (
+    !diagnostic ||
+    typeof diagnostic.start !== "number" ||
+    typeof diagnostic.end !== "number"
+  ) {
+    return diagnostic;
+  }
+
+  const previousRegion = findContainingRegion(previousRegions, diagnostic.start, diagnostic.end);
+  if (!previousRegion) {
+    return diagnostic;
+  }
+
+  const currentRegion = (Array.isArray(currentRegions) ? currentRegions : [])
+    .map(toDiagnosticRegion)
+    .filter(Boolean)
+    .find((region) =>
+      region.id === previousRegion.id &&
+      region.contentHash === previousRegion.contentHash
+    );
+  if (!currentRegion) {
+    return diagnostic;
+  }
+
+  const delta = currentRegion.sourceStart - previousRegion.sourceStart;
+  if (!delta) {
+    return diagnostic;
+  }
+
+  const remapEdit = (edit) => {
+    if (
+      !edit ||
+      typeof edit.start !== "number" ||
+      typeof edit.end !== "number" ||
+      edit.start < previousRegion.sourceStart ||
+      edit.end > previousRegion.sourceEnd
+    ) {
+      return edit;
+    }
+
+    return {
+      ...edit,
+      start: edit.start + delta,
+      end: edit.end + delta,
+    };
+  };
+
+  return {
+    ...diagnostic,
+    start: diagnostic.start + delta,
+    end: diagnostic.end + delta,
+    fixes: Array.isArray(diagnostic.fixes)
+      ? diagnostic.fixes.map((fix) => ({
+          ...fix,
+          edits: Array.isArray(fix.edits) ? fix.edits.map(remapEdit) : fix.edits,
+        }))
+      : diagnostic.fixes,
+  };
+}
+
 const completionFeatureHandlers = createCompletionFeatureHandlers({
   elapsedMilliseconds,
   getAnalysisContextAtOffset,
@@ -2050,13 +2156,13 @@ class ProjectLanguageService {
     this.appRoot = appRoot;
     this.projectIndex = new PocketPagesProjectIndex(appRoot);
     this.projectVersion = 0;
-    this.staticFiles = new Map();
-    this.virtualFiles = new Map();
-    this.preparedDocumentStates = new Map();
+    this.documentSnapshotManager = new DocumentSnapshotManager({ normalizePath });
+    this.staticFiles = this.documentSnapshotManager.staticFiles;
+    this.virtualFiles = this.documentSnapshotManager.virtualFiles;
+    this.documentSnapshots = this.documentSnapshotManager.sourceDocuments;
+    this.preparedDocumentStates = this.documentSnapshotManager.preparedDocuments;
     this.includePreludeStack = new Set();
     this.documentOverrides = new Map();
-    this.documentOverrideSnapshotVersions = new Map();
-    this.nextDocumentOverrideSnapshotVersion = 1;
     this.includeContractCache = new Map();
     this.includeCallEntriesCache = new Map();
     this.includePreludeCache = new Map();
@@ -2066,19 +2172,44 @@ class ProjectLanguageService {
     this.languageService = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry());
   }
 
-  setDocumentOverride(filePath, text) {
+  upsertDocumentSnapshot(filePath, text, options = {}) {
+    return this.documentSnapshotManager.upsertSourceDocument(filePath, text, options);
+  }
+
+  getDocumentSnapshot(filePath) {
+    return this.documentSnapshotManager.getSourceDocument(filePath);
+  }
+
+  getDocumentSnapshotForText(filePath, text) {
+    return this.documentSnapshotManager.getSourceDocumentForText(filePath, text);
+  }
+
+  getDocumentSnapshotId(filePath, text = null) {
+    return this.documentSnapshotManager.getSourceDocumentIdentity(filePath, text);
+  }
+
+  getDocumentSnapshotIdentity(filePath, text = null) {
+    return this.getDocumentSnapshotId(filePath, text);
+  }
+
+  isPreparedDocumentStateCurrent(preparedState, filePath, documentText) {
+    if (!preparedState) {
+      return false;
+    }
+
+    return this.documentSnapshotManager.isPreparedDocumentStateCurrent(preparedState, filePath, documentText);
+  }
+
+  setDocumentOverride(filePath, text, options = {}) {
     const normalizedFilePath = normalizePath(filePath);
     const currentText = typeof text === "string" ? text : "";
+    this.upsertDocumentSnapshot(normalizedFilePath, currentText, options);
     const previousText = this.documentOverrides.get(normalizedFilePath);
     if (previousText === currentText) {
       return;
     }
 
     this.documentOverrides.set(normalizedFilePath, currentText);
-    this.documentOverrideSnapshotVersions.set(
-      normalizedFilePath,
-      `override:${this.nextDocumentOverrideSnapshotVersion++}`
-    );
     this.projectIndex.invalidateContentForFile(normalizedFilePath);
     this.includeCallEntriesCache.delete(normalizedFilePath);
     this.includeContractCache.delete(normalizedFilePath);
@@ -2088,11 +2219,11 @@ class ProjectLanguageService {
   clearDocumentOverride(filePath) {
     const normalizedFilePath = normalizePath(filePath);
     if (this.documentOverrides.delete(normalizedFilePath)) {
-      this.documentOverrideSnapshotVersions.delete(normalizedFilePath);
+      this.documentSnapshotManager.deleteSourceDocument(normalizedFilePath);
       this.projectIndex.invalidateContentForFile(normalizedFilePath);
       this.includeCallEntriesCache.delete(normalizedFilePath);
       this.includeContractCache.delete(normalizedFilePath);
-      this.preparedDocumentStates.delete(normalizedFilePath);
+      this.documentSnapshotManager.clearPreparedDocumentState(normalizedFilePath);
       this.projectVersion += 1;
     }
   }
@@ -2104,27 +2235,15 @@ class ProjectLanguageService {
     this.includePreludeStack.clear();
     this.schemaTypePreludeCache = null;
     this.scriptSchemaDiagnosticsCache.clear();
-    this.staticFiles.clear();
-    this.virtualFiles.clear();
-    this.preparedDocumentStates.clear();
+    this.documentSnapshotManager.clearTsFileStates();
+    this.documentSnapshotManager.clearSourceDocuments();
+    this.documentSnapshotManager.clearPreparedDocumentStates();
     this.projectIndex.resetCaches();
     this.projectVersion += 1;
   }
 
   clearVirtualFilesForSource(filePath) {
-    const normalizedFilePath = normalizePath(filePath);
-    let changed = false;
-
-    for (const [virtualFileName, state] of this.virtualFiles.entries()) {
-      if (!state || normalizePath(state.filePath || "") !== normalizedFilePath) {
-        continue;
-      }
-
-      this.virtualFiles.delete(virtualFileName);
-      changed = true;
-    }
-
-    return changed;
+    return this.documentSnapshotManager.deleteVirtualFileStatesForSource(filePath);
   }
 
   invalidateManagedFile(filePath, options = {}) {
@@ -2154,9 +2273,15 @@ class ProjectLanguageService {
 
     this.projectIndex.invalidateContentForFile(normalizedFilePath);
 
-    if (this.preparedDocumentStates.delete(normalizedFilePath)) {
+    if (this.documentSnapshotManager.deleteSourceDocument(normalizedFilePath)) {
       changed = true;
     }
+
+    if (this.documentSnapshotManager.clearPreparedDocumentState(normalizedFilePath)) {
+      changed = true;
+    }
+
+    this.documentSnapshotManager.deleteDiskFileState(normalizedFilePath);
 
     if (this.clearVirtualFilesForSource(normalizedFilePath)) {
       changed = true;
@@ -2231,7 +2356,10 @@ class ProjectLanguageService {
   getDocumentSnapshotToken(filePath) {
     const normalizedFilePath = normalizePath(filePath);
     if (this.documentOverrides.has(normalizedFilePath)) {
-      return this.documentOverrideSnapshotVersions.get(normalizedFilePath) || "override:unknown";
+      const documentSnapshot = this.getDocumentSnapshot(normalizedFilePath);
+      return documentSnapshot && documentSnapshot.snapshotId
+        ? documentSnapshot.snapshotId
+        : "override:unknown";
     }
 
     if (!fileExists(normalizedFilePath)) {
@@ -2240,6 +2368,243 @@ class ProjectLanguageService {
 
     const stats = fs.statSync(normalizedFilePath);
     return `disk:${stats.mtimeMs}:${stats.size}`;
+  }
+
+  getDocumentTextIdentity(filePath, documentText) {
+    return (
+      this.getDocumentSnapshotIdentity(filePath, documentText) ||
+      `text:${String(documentText || "").length}:${hashText(documentText)}`
+    );
+  }
+
+  getVirtualFileIdentity(fileName) {
+    const normalizedFileName = normalizePath(fileName);
+    const state = this.getFileState(normalizedFileName);
+    return state ? `${normalizedFileName}@${state.version}` : `${normalizedFileName}@missing`;
+  }
+
+  getPreparedVirtualLaneIdentity(filePath, documentText, lane) {
+    const preparedState = this.getPreparedDocumentState(filePath);
+    if (!this.isPreparedDocumentStateCurrent(preparedState, filePath, documentText)) {
+      return "prepared:missing";
+    }
+
+    if (preparedState.kind === "script" && lane === "server") {
+      return preparedState.script && preparedState.script.fileName
+        ? this.getVirtualFileIdentity(preparedState.script.fileName)
+        : "script:missing";
+    }
+
+    if (preparedState.kind !== "ejs") {
+      return "prepared:not-ejs";
+    }
+
+    if (lane === "server") {
+      const serverBlocks = Array.isArray(preparedState.serverBlocks)
+        ? preparedState.serverBlocks
+        : [];
+      return serverBlocks.length
+        ? serverBlocks.map((block) => this.getVirtualFileIdentity(block.fileName)).join("|")
+        : "server:none";
+    }
+
+    if (lane === "template") {
+      return preparedState.template && preparedState.template.fileName
+        ? this.getVirtualFileIdentity(preparedState.template.fileName)
+        : "template:missing";
+    }
+
+    return "prepared:unknown";
+  }
+
+  getPreparedRegionGraph(filePath, documentText) {
+    const preparedState = this.getPreparedDocumentState(filePath);
+    if (!this.isPreparedDocumentStateCurrent(preparedState, filePath, documentText)) {
+      return null;
+    }
+
+    return preparedState && preparedState.regionGraph
+      ? preparedState.regionGraph
+      : null;
+  }
+
+  getDiagnosticsLaneMetadata(filePath, documentText, options = {}) {
+    const normalizedFilePath = normalizePath(filePath);
+    const graph = this.getPreparedRegionGraph(normalizedFilePath, documentText);
+    const regions = graph && Array.isArray(graph.regions) ? graph.regions : [];
+    const serverRegions = regions.filter((region) => region && region.kind === "server-script");
+    const templateRegions = regions.filter((region) => region && region.kind === "template-block");
+    const pathRegions = [];
+
+    if (options.includeProjectRuleDiagnostics !== false) {
+      for (const context of collectPathContexts(documentText)) {
+        pathRegions.push({
+          id: `path:${context.kind}:${context.start}:${context.value}`,
+          kind: `path:${context.kind}`,
+          contentHash: hashText(`${context.kind}:${context.value}:${context.routeSource || ""}`),
+          sourceStart: context.start,
+          sourceEnd: context.end,
+          fullStart: context.start,
+          fullEnd: context.end,
+        });
+      }
+    }
+
+    return {
+      server: {
+        regions: serverRegions.map(toDiagnosticRegion).filter(Boolean),
+      },
+      template: {
+        regions: templateRegions.map(toDiagnosticRegion).filter(Boolean),
+        dependencyRegions: serverRegions.map(toDiagnosticRegion).filter(Boolean),
+      },
+      "project-rule:agents": {
+        regions: [
+          ...serverRegions.map(toDiagnosticRegion).filter(Boolean),
+          ...templateRegions.map(toDiagnosticRegion).filter(Boolean),
+          ...pathRegions.map(toDiagnosticRegion).filter(Boolean),
+        ],
+      },
+      "project-rule:include-callers": {
+        regions: pathRegions
+          .filter((region) => region.kind === "path:include-path")
+          .map(toDiagnosticRegion)
+          .filter(Boolean),
+      },
+    };
+  }
+
+  getDiagnosticsRegionLaneIdentity(metadata, options = {}) {
+    if (!metadata || typeof metadata !== "object") {
+      return "regions:none";
+    }
+
+    const regionIdentity = createRegionSetIdentity(metadata.regions, {
+      includeOffsets: options.includeOffsets === true,
+    });
+    const dependencyIdentity = createRegionSetIdentity(metadata.dependencyRegions, {
+      includeOffsets: false,
+    });
+    return `regions:${regionIdentity}|deps:${dependencyIdentity}`;
+  }
+
+  remapReusableLaneDiagnostics(lane, diagnostics, previousMetadata, currentMetadata) {
+    const previousRegions = previousMetadata && Array.isArray(previousMetadata.regions)
+      ? previousMetadata.regions
+      : [];
+    const currentRegions = currentMetadata && Array.isArray(currentMetadata.regions)
+      ? currentMetadata.regions
+      : [];
+
+    if (!previousRegions.length || !currentRegions.length) {
+      return Array.isArray(diagnostics) ? diagnostics.slice() : [];
+    }
+
+    return (Array.isArray(diagnostics) ? diagnostics : [])
+      .map((diagnostic) => remapDiagnosticRangeByRegions(diagnostic, previousRegions, currentRegions));
+  }
+
+  getSchemaDiagnosticsIdentity() {
+    const schemaState = this.projectIndex.getSchemaState();
+    return [
+      "schema",
+      schemaState && schemaState.schemaPath ? normalizePath(schemaState.schemaPath) : "missing",
+      schemaState && schemaState.mtimeMs !== undefined ? schemaState.mtimeMs : "0",
+      schemaState && schemaState.size !== undefined ? schemaState.size : "0",
+      `content:${this.projectIndex.pagesContentVersion}`,
+    ].join(":");
+  }
+
+  getSchemaTypeIdentity() {
+    const schemaState = this.projectIndex.getSchemaState();
+    return [
+      "schema",
+      schemaState && schemaState.schemaPath ? normalizePath(schemaState.schemaPath) : "missing",
+      schemaState && schemaState.mtimeMs !== undefined ? schemaState.mtimeMs : "0",
+      schemaState && schemaState.size !== undefined ? schemaState.size : "0",
+    ].join(":");
+  }
+
+  getDiagnosticsLaneResultIds(filePath, documentText, options = {}) {
+    const normalizedFilePath = normalizePath(filePath);
+    const sourceIdentity = this.getDocumentTextIdentity(normalizedFilePath, documentText);
+    const semanticMode = options.includeSemanticDiagnostics === false ? "syntactic" : "semantic";
+    const typeScriptMode = options.includeTypeScriptDiagnostics === false ? "no-ts" : "ts";
+    const laneMetadata =
+      options.laneMetadata && typeof options.laneMetadata === "object"
+        ? options.laneMetadata
+        : this.getDiagnosticsLaneMetadata(normalizedFilePath, documentText, options);
+    const sourceLane = `source:${sourceIdentity}`;
+    const schemaIdentity = this.getSchemaDiagnosticsIdentity();
+    const schemaTypeIdentity = this.getSchemaTypeIdentity();
+    const schemaLane = `${sourceLane}|${schemaIdentity}`;
+    const ambientLane = `ambient:${this.getAmbientSnapshotKey()}`;
+    const structureLane = `structure:${this.projectIndex.pagesStructureVersion}`;
+    const pagesContentLane = `pages:${this.projectIndex.pagesContentVersion}`;
+    const serverRegionLane = this.getDiagnosticsRegionLaneIdentity(laneMetadata.server);
+    const templateRegionLane = this.getDiagnosticsRegionLaneIdentity(laneMetadata.template);
+    const projectRuleAgentsLane = this.getDiagnosticsRegionLaneIdentity(laneMetadata["project-rule:agents"]);
+    const projectRuleIncludeCallersLane = this.getDiagnosticsRegionLaneIdentity(laneMetadata["project-rule:include-callers"]);
+
+    return {
+      "client-syntax": sourceLane,
+      "private-resolve": `${sourceLane}|${pagesContentLane}`,
+      server:
+        options.includeServerBlockDiagnostics === false
+          ? "disabled"
+          : [
+              "server",
+              typeScriptMode,
+              semanticMode,
+              serverRegionLane,
+              schemaTypeIdentity,
+              structureLane,
+              ambientLane,
+            ].join("|"),
+      template:
+        options.includeTemplateDiagnostics === false
+          ? "disabled"
+          : [
+              "template",
+              typeScriptMode,
+              semanticMode,
+              templateRegionLane,
+              schemaTypeIdentity,
+              structureLane,
+              ambientLane,
+            ].join("|"),
+      "script-schema":
+        options.includeScriptSchemaDiagnostics === false
+          ? "disabled"
+          : schemaLane,
+      "project-rule:agents":
+        options.includeProjectRuleDiagnostics === false
+          ? "disabled"
+          : `${projectRuleAgentsLane}|${structureLane}|${schemaIdentity}`,
+      "project-rule:include-callers":
+        options.includeProjectRuleDiagnostics === false
+          ? "disabled"
+          : `${projectRuleIncludeCallersLane}|${pagesContentLane}`,
+      "project-rule":
+        options.includeProjectRuleDiagnostics === false
+          ? "disabled"
+          : [
+              "project-rule",
+              projectRuleAgentsLane,
+              projectRuleIncludeCallersLane,
+              structureLane,
+              pagesContentLane,
+              schemaIdentity,
+            ].join("|"),
+    };
+  }
+
+  getDiagnosticsResultId(filePath, documentText, options = {}) {
+    const laneResultIds =
+      options.laneResultIds && typeof options.laneResultIds === "object"
+        ? options.laneResultIds
+        : this.getDiagnosticsLaneResultIds(filePath, documentText, options);
+    return JSON.stringify(laneResultIds);
   }
 
   getAmbientSnapshotKey() {
@@ -2259,6 +2624,43 @@ class ProjectLanguageService {
         return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}`;
       })
       .join("|");
+  }
+
+  getPreludeSnapshotKey(filePath, analysisText = "", options = {}) {
+    const currentAnalysisText = String(analysisText || "");
+    const normalizedFilePath = normalizePath(filePath);
+    const includeLocalsIdentity =
+      !options.skipIncludeLocals && isEjsFile(normalizedFilePath) && isPrivatePagesFile(normalizedFilePath)
+        ? `include-locals:content:${this.projectIndex.pagesContentVersion}`
+        : options.skipIncludeLocals
+          ? "include-locals:skip"
+          : "include-locals:none";
+    return [
+      "prelude",
+      normalizedFilePath,
+      `analysis:${currentAnalysisText.length}:${hashText(currentAnalysisText)}`,
+      `ambient:${this.getAmbientSnapshotKey()}`,
+      `structure:${this.projectIndex.pagesStructureVersion}`,
+      includeLocalsIdentity,
+      options.skipResolveTypePrelude ? "resolve-types:skip" : "resolve-types:on",
+    ].join("|");
+  }
+
+  getTemplatePreludeSnapshotKey(filePath, metadata = {}) {
+    const normalizedFilePath = normalizePath(filePath);
+    const serverRegions = (Array.isArray(metadata.serverBlocks) ? metadata.serverBlocks : [])
+      .map((block) => `server:${block.index}:${hashText(block.content)}`);
+    const templateRegions = (Array.isArray(metadata.templateRegionBlocks) ? metadata.templateRegionBlocks : [])
+      .map((region) => `${region.id}:${region.contentHash}`);
+    return [
+      "template-prelude",
+      normalizedFilePath,
+      `code:${serverRegions.join("|")}`,
+      `template:${templateRegions.join("|")}`,
+      `ambient:${this.getAmbientSnapshotKey()}`,
+      `structure:${this.projectIndex.pagesStructureVersion}`,
+      "resolve-types:on",
+    ].join("|");
   }
 
   getIncludeCallEntries(filePath, analysisText) {
@@ -2320,20 +2722,9 @@ class ProjectLanguageService {
   createHost() {
     return {
       getCompilationSettings: () => COMPILER_OPTIONS,
-      getScriptFileNames: () => [...Array.from(this.staticFiles.keys()), ...Array.from(this.virtualFiles.keys())],
-      getScriptVersion: (fileName) => this.getFileState(fileName)?.version || "0",
-      getScriptSnapshot: (fileName) => {
-        const state = this.getFileState(fileName);
-        if (state) {
-          return state.snapshot;
-        }
-
-        if (!ts.sys.fileExists(fileName)) {
-          return undefined;
-        }
-
-        return createScriptSnapshot(ts.sys.readFile(fileName) || "");
-      },
+      getScriptFileNames: () => this.documentSnapshotManager.getTsFileNames(),
+      getScriptVersion: (fileName) => this.documentSnapshotManager.getScriptVersion(fileName),
+      getScriptSnapshot: (fileName) => this.documentSnapshotManager.getScriptSnapshot(fileName),
       getCurrentDirectory: () => this.appRoot,
       getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
       fileExists: (fileName) => this.hasFile(fileName),
@@ -2349,27 +2740,22 @@ class ProjectLanguageService {
   }
 
   getFileState(fileName) {
-    return this.virtualFiles.get(fileName) || this.staticFiles.get(fileName) || null;
+    return this.documentSnapshotManager.getManagedTsFileState(fileName);
   }
 
   hasFile(fileName) {
-    return this.virtualFiles.has(fileName) || this.staticFiles.has(fileName) || ts.sys.fileExists(fileName);
+    return this.documentSnapshotManager.hasFile(fileName);
   }
 
   readFile(fileName) {
-    const state = this.getFileState(fileName);
-    if (state) {
-      return state.text;
-    }
-
-    return ts.sys.readFile(fileName);
+    return this.documentSnapshotManager.readFile(fileName);
   }
 
   ensureStaticFile(filePath) {
     const resolvedPath = normalizePath(filePath);
 
     if (!fileExists(resolvedPath)) {
-      if (this.staticFiles.delete(resolvedPath)) {
+      if (this.documentSnapshotManager.deleteStaticFileState(resolvedPath)) {
         this.projectVersion += 1;
       }
       return;
@@ -2383,10 +2769,10 @@ class ProjectLanguageService {
       return;
     }
 
-    this.staticFiles.set(resolvedPath, createVersionedFileState(previous, {
+    this.documentSnapshotManager.setStaticFileState(resolvedPath, {
       text,
       mtimeMs: stats.mtimeMs,
-    }));
+    });
     this.projectVersion += 1;
   }
 
@@ -2398,14 +2784,18 @@ class ProjectLanguageService {
       return;
     }
 
-    this.staticFiles.set(resolvedPath, createVersionedFileState(previous, {
+    this.documentSnapshotManager.setStaticFileState(resolvedPath, {
       text,
       mtimeMs: previous ? previous.mtimeMs : 0,
-    }));
+    });
     this.projectVersion += 1;
   }
 
-  refreshStaticFiles() {
+  refreshStaticFiles(options = {}) {
+    if (options.skipStaticRefresh === true) {
+      return;
+    }
+
     for (const filePath of getAppAmbientTypeFiles(this.appRoot)) {
       this.ensureStaticFile(filePath);
     }
@@ -3289,35 +3679,62 @@ class ProjectLanguageService {
   }
 
   setPreparedDocumentState(filePath, preparedState) {
-    const normalizedFilePath = normalizePath(filePath);
-    if (!preparedState) {
-      this.preparedDocumentStates.delete(normalizedFilePath);
-      return;
-    }
-
-    this.preparedDocumentStates.set(normalizedFilePath, preparedState);
+    this.documentSnapshotManager.setPreparedDocumentState(filePath, preparedState);
   }
 
   clearPreparedDocumentState(filePath) {
-    this.preparedDocumentStates.delete(normalizePath(filePath));
+    return this.documentSnapshotManager.clearPreparedDocumentState(filePath);
+  }
+
+  getPreparedDocumentState(filePath) {
+    return this.documentSnapshotManager.getPreparedDocumentState(filePath);
   }
 
   upsertVirtualFile(filePath, block, options = {}) {
-    this.refreshStaticFiles();
+    this.refreshStaticFiles(options);
 
     const resolvedPath = normalizePath(filePath);
-    const virtualFileName = getSourceAdjacentVirtualFilePath(resolvedPath, `block_${block.index}`);
+    const virtualBlockId =
+      block && block.stableId !== undefined && block.stableId !== null
+        ? String(block.stableId).replace(/[^a-zA-Z0-9_-]/g, "_")
+        : String(block.index);
+    const virtualFileName = getSourceAdjacentVirtualFilePath(resolvedPath, `block_${virtualBlockId}`);
+    const previous = this.virtualFiles.get(virtualFileName);
+    const preludeSnapshotKey = this.getPreludeSnapshotKey(resolvedPath, block.content);
+
+    if (
+      options.dirty === false &&
+      previous &&
+      previous.preludeSnapshotKey === preludeSnapshotKey
+    ) {
+      previous.block = block;
+      previous.mappings = Array.isArray(options.mappings)
+        ? options.mappings
+        : previous.mappings;
+      previous.associatedScriptMappings =
+        options.associatedScriptMappings instanceof Map
+          ? options.associatedScriptMappings
+          : previous.associatedScriptMappings instanceof Map
+            ? previous.associatedScriptMappings
+            : new Map();
+      return {
+        fileName: virtualFileName,
+        preludeLength: previous.preludeLength,
+        block,
+        reused: true,
+      };
+    }
 
     const prelude = this.buildPrelude(resolvedPath, block.content);
     const text = `${prelude}${block.content}`;
-    const previous = this.virtualFiles.get(virtualFileName);
 
     if (!previous || previous.text !== text) {
-      this.virtualFiles.set(virtualFileName, createVersionedFileState(previous, {
+      this.documentSnapshotManager.setVirtualFileState(virtualFileName, {
         text,
         filePath: resolvedPath,
         blockIndex: block.index,
         preludeLength: prelude.length,
+        preludeSnapshotKey,
         block,
         mappings: Array.isArray(options.mappings)
           ? options.mappings
@@ -3330,11 +3747,12 @@ class ProjectLanguageService {
             ],
         associatedScriptMappings:
           options.associatedScriptMappings instanceof Map ? options.associatedScriptMappings : new Map(),
-      }));
+      });
       this.projectVersion += 1;
     } else {
       previous.block = block;
       previous.preludeLength = prelude.length;
+      previous.preludeSnapshotKey = preludeSnapshotKey;
       previous.mappings = Array.isArray(options.mappings)
         ? options.mappings
         : previous.mappings;
@@ -3354,20 +3772,53 @@ class ProjectLanguageService {
   }
 
   upsertTemplateVirtualFileState(filePath, templateVirtualText, documentLength, options = {}) {
-    this.refreshStaticFiles();
+    this.refreshStaticFiles(options);
 
     const resolvedPath = normalizePath(filePath);
     const virtualFileName = getSourceAdjacentVirtualFilePath(resolvedPath, "template");
-
-    const prelude = this.buildPrelude(resolvedPath, templateVirtualText);
-    const text = `${prelude}${templateVirtualText}`;
     const previous = this.virtualFiles.get(virtualFileName);
+    const preludeSnapshotKey =
+      typeof options.preludeSnapshotKey === "string"
+        ? options.preludeSnapshotKey
+        : this.getPreludeSnapshotKey(resolvedPath, templateVirtualText);
+
+    if (
+      options.dirty === false &&
+      previous &&
+      previous.preludeSnapshotKey === preludeSnapshotKey
+    ) {
+      previous.documentLength = documentLength;
+      previous.mappings = Array.isArray(options.mappings)
+        ? options.mappings
+        : previous.mappings;
+      previous.associatedScriptMappings =
+        options.associatedScriptMappings instanceof Map
+          ? options.associatedScriptMappings
+          : previous.associatedScriptMappings instanceof Map
+            ? previous.associatedScriptMappings
+            : new Map();
+      return {
+        fileName: virtualFileName,
+        preludeLength: previous.preludeLength,
+        reused: true,
+      };
+    }
+
+    const prelude =
+      previous && previous.preludeSnapshotKey === preludeSnapshotKey
+        ? previous.text.slice(0, previous.preludeLength)
+        : this.buildPrelude(resolvedPath, templateVirtualText);
+    const text = `${prelude}${templateVirtualText}`;
 
     if (!previous || previous.text !== text) {
-      this.virtualFiles.set(virtualFileName, createVersionedFileState(previous, {
+      this.documentSnapshotManager.setVirtualFileState(virtualFileName, {
         text,
         filePath: resolvedPath,
         preludeLength: prelude.length,
+        preludeSnapshotKey,
+        templateRegionBlocks: Array.isArray(options.templateRegionBlocks)
+          ? options.templateRegionBlocks
+          : [],
         kind: "template-document",
         documentLength,
         mappings: Array.isArray(options.mappings)
@@ -3381,10 +3832,14 @@ class ProjectLanguageService {
             ],
         associatedScriptMappings:
           options.associatedScriptMappings instanceof Map ? options.associatedScriptMappings : new Map(),
-      }));
+      });
       this.projectVersion += 1;
     } else {
       previous.preludeLength = prelude.length;
+      previous.preludeSnapshotKey = preludeSnapshotKey;
+      previous.templateRegionBlocks = Array.isArray(options.templateRegionBlocks)
+        ? options.templateRegionBlocks
+        : previous.templateRegionBlocks;
       previous.documentLength = documentLength;
       previous.mappings = Array.isArray(options.mappings)
         ? options.mappings
@@ -3414,7 +3869,7 @@ class ProjectLanguageService {
   }
 
   upsertScriptVirtualFile(filePath, documentText, options = {}) {
-    this.refreshStaticFiles();
+    this.refreshStaticFiles(options);
 
     const resolvedPath = normalizePath(filePath);
     const virtualFileName = getSourceAdjacentVirtualFilePath(resolvedPath, "script");
@@ -3424,7 +3879,7 @@ class ProjectLanguageService {
     const previous = this.virtualFiles.get(virtualFileName);
 
     if (!previous || previous.text !== text) {
-      this.virtualFiles.set(virtualFileName, createVersionedFileState(previous, {
+      this.documentSnapshotManager.setVirtualFileState(virtualFileName, {
         text,
         filePath: resolvedPath,
         preludeLength: prelude.length,
@@ -3441,7 +3896,7 @@ class ProjectLanguageService {
             ],
         associatedScriptMappings:
           options.associatedScriptMappings instanceof Map ? options.associatedScriptMappings : new Map(),
-      }));
+      });
       this.projectVersion += 1;
     } else {
       previous.preludeLength = prelude.length;
@@ -3463,15 +3918,24 @@ class ProjectLanguageService {
     };
   }
 
-  syncPreparedDocumentVirtualCode(filePath, documentText, virtualCode) {
+  syncPreparedDocumentVirtualCode(filePath, documentText, virtualCode, options = {}) {
     const normalizedFilePath = normalizePath(filePath);
+    const currentDocumentText = String(documentText || "");
     if (!virtualCode || typeof virtualCode.getEmbeddedCodes !== "function") {
       this.clearPreparedDocumentState(normalizedFilePath);
       return null;
     }
 
+    const documentSnapshot = this.upsertDocumentSnapshot(normalizedFilePath, currentDocumentText, options);
+    const snapshotFields = {
+      snapshotId: documentSnapshot.snapshotId,
+      contentVersion: documentSnapshot.contentVersion,
+      lspVersion: documentSnapshot.lspVersion,
+    };
+
     if (isScriptFile(normalizedFilePath)) {
-      const scriptVirtual = this.upsertScriptVirtualFile(normalizedFilePath, documentText, {
+      const scriptVirtual = this.upsertScriptVirtualFile(normalizedFilePath, currentDocumentText, {
+        skipStaticRefresh: options.skipStaticRefresh === true,
         mappings: Array.isArray(virtualCode.mappings) ? virtualCode.mappings : undefined,
         associatedScriptMappings:
           virtualCode.associatedScriptMappings instanceof Map
@@ -3481,6 +3945,9 @@ class ProjectLanguageService {
       const preparedState = {
         kind: "script",
         filePath: normalizedFilePath,
+        ...snapshotFields,
+        documentText: currentDocumentText,
+        documentLength: currentDocumentText.length,
         script: {
           fileName: scriptVirtual.fileName,
           preludeLength: scriptVirtual.preludeLength,
@@ -3498,12 +3965,60 @@ class ProjectLanguageService {
     const preparedState = {
       kind: "ejs",
       filePath: normalizedFilePath,
+      ...snapshotFields,
+      documentText: currentDocumentText,
+      documentLength: currentDocumentText.length,
+      partial: Number.isFinite(Number(options.preferredOffset)) && options.skipUnrelatedRegions === true,
+      operation: options.operation || null,
+      regionGraph:
+        virtualCode && typeof virtualCode.getRegionGraph === "function"
+          ? virtualCode.getRegionGraph()
+          : null,
       serverBlocks: [],
       template: null,
+    };
+    const preferredOffset = Number(options.preferredOffset);
+    const shouldSkipUnrelatedRegions =
+      Number.isFinite(preferredOffset) && options.skipUnrelatedRegions === true;
+    const isOffsetInsideBlock = (block) =>
+      block &&
+      Number.isFinite(block.contentStart) &&
+      Number.isFinite(block.contentEnd) &&
+      preferredOffset >= block.contentStart &&
+      preferredOffset <= block.contentEnd;
+    const shouldPrepareEmbeddedCode = (embeddedCode) => {
+      if (!shouldSkipUnrelatedRegions) {
+        return true;
+      }
+
+      const metadata = embeddedCode && embeddedCode.metadata ? embeddedCode.metadata : {};
+      if (embeddedCode.kind === "server-script") {
+        return (
+          Number.isFinite(metadata.sourceStart) &&
+          Number.isFinite(metadata.sourceEnd) &&
+          preferredOffset >= metadata.sourceStart &&
+          preferredOffset <= metadata.sourceEnd
+        );
+      }
+
+      if (embeddedCode.kind === "template") {
+        const templateBlocks = Array.isArray(metadata.templateBlocks)
+          ? metadata.templateBlocks
+          : [];
+        const serverBlocks = options.preferTemplateDocument && Array.isArray(metadata.serverBlocks)
+          ? metadata.serverBlocks
+          : [];
+        return [...templateBlocks, ...serverBlocks].some(isOffsetInsideBlock);
+      }
+
+      return true;
     };
 
     for (const embeddedCode of virtualCode.getEmbeddedCodes()) {
       if (!embeddedCode || !embeddedCode.metadata) {
+        continue;
+      }
+      if (!shouldPrepareEmbeddedCode(embeddedCode)) {
         continue;
       }
 
@@ -3519,8 +4034,11 @@ class ProjectLanguageService {
           contentStart: embeddedCode.metadata.sourceStart,
           contentEnd: embeddedCode.metadata.sourceEnd,
           content: embeddedText,
+          stableId: embeddedCode.metadata.stableId,
         };
         const serverVirtual = this.upsertVirtualFile(normalizedFilePath, block, {
+          dirty: embeddedCode.metadata.dirty,
+          skipStaticRefresh: options.skipStaticRefresh === true,
           mappings: Array.isArray(embeddedCode.mappings) ? embeddedCode.mappings : undefined,
           associatedScriptMappings:
             embeddedCode.associatedScriptMappings instanceof Map
@@ -3541,8 +4059,17 @@ class ProjectLanguageService {
         const templateVirtual = this.upsertTemplateVirtualFileState(
           normalizedFilePath,
           embeddedText,
-          documentText.length,
+          currentDocumentText.length,
           {
+            dirty: embeddedCode.metadata.dirty,
+            preludeSnapshotKey: this.getTemplatePreludeSnapshotKey(
+              normalizedFilePath,
+              embeddedCode.metadata
+            ),
+            templateRegionBlocks: Array.isArray(embeddedCode.metadata.templateRegionBlocks)
+              ? embeddedCode.metadata.templateRegionBlocks
+              : [],
+            skipStaticRefresh: options.skipStaticRefresh === true,
             mappings: Array.isArray(embeddedCode.mappings) ? embeddedCode.mappings : undefined,
             associatedScriptMappings:
               embeddedCode.associatedScriptMappings instanceof Map
@@ -3554,6 +4081,9 @@ class ProjectLanguageService {
           fileName: templateVirtual.fileName,
           preludeLength: templateVirtual.preludeLength,
           blocks: Array.isArray(embeddedCode.metadata.templateBlocks) ? embeddedCode.metadata.templateBlocks : [],
+          regionBlocks: Array.isArray(embeddedCode.metadata.templateRegionBlocks)
+            ? embeddedCode.metadata.templateRegionBlocks
+            : [],
         };
       }
     }
@@ -3562,9 +4092,115 @@ class ProjectLanguageService {
     return preparedState;
   }
 
-  getPreparedVirtualStateAtOffset(filePath, offset, options = {}) {
-    const preparedState = this.preparedDocumentStates.get(normalizePath(filePath));
+  prepareDiagnosticsVirtualState(filePath, documentText, options = {}) {
+    const normalizedFilePath = normalizePath(filePath);
+    const currentDocumentText = String(documentText || "");
+    const preparedState = this.getPreparedDocumentState(normalizedFilePath);
+
+    if (this.isPreparedDocumentStateCurrent(preparedState, normalizedFilePath, currentDocumentText)) {
+      return {
+        kind: "prepared",
+        state: preparedState,
+      };
+    }
+
+    if (options.requirePreparedVirtualState === true) {
+      return {
+        kind: preparedState ? "stale-prepared" : "missing-prepared",
+        state: null,
+      };
+    }
+
+    if (!isEjsFile(normalizedFilePath) && !isScriptFile(normalizedFilePath)) {
+      return {
+        kind: "not-applicable",
+        state: null,
+      };
+    }
+
+    const virtualCode = createVirtualCode(
+      URI.file(normalizedFilePath).toString(),
+      isEjsFile(normalizedFilePath) ? "ejs" : "javascript",
+      1,
+      currentDocumentText
+    );
+    const state = this.syncPreparedDocumentVirtualCode(
+      normalizedFilePath,
+      currentDocumentText,
+      virtualCode,
+      options
+    );
+
+    return {
+      kind: state ? "fallback-prepared" : "missing-prepared",
+      state,
+    };
+  }
+
+  getPreparedServerBlockVirtual(filePath, documentText, block, preparedState = null) {
+    if (!block) {
+      return null;
+    }
+
+    const state = preparedState || this.getPreparedDocumentState(filePath);
+    if (
+      !state ||
+      state.kind !== "ejs" ||
+      !this.isPreparedDocumentStateCurrent(state, filePath, documentText)
+    ) {
+      return null;
+    }
+
+    const preparedBlock = (state.serverBlocks || []).find((entry) =>
+      entry &&
+      entry.index === block.index &&
+      entry.contentStart === block.contentStart &&
+      entry.contentEnd === block.contentEnd
+    );
+    if (!preparedBlock || !preparedBlock.fileName) {
+      return null;
+    }
+
+    if (!this.virtualFiles.has(preparedBlock.fileName)) {
+      return null;
+    }
+
+    return {
+      fileName: preparedBlock.fileName,
+      preludeLength: preparedBlock.preludeLength,
+      block,
+    };
+  }
+
+  getPreparedTemplateVirtual(filePath, documentText, preparedState = null) {
+    const state = preparedState || this.getPreparedDocumentState(filePath);
+    if (
+      !state ||
+      state.kind !== "ejs" ||
+      !this.isPreparedDocumentStateCurrent(state, filePath, documentText) ||
+      !state.template ||
+      !state.template.fileName
+    ) {
+      return null;
+    }
+
+    if (!this.virtualFiles.has(state.template.fileName)) {
+      return null;
+    }
+
+    return {
+      fileName: state.template.fileName,
+      preludeLength: state.template.preludeLength,
+    };
+  }
+
+  getPreparedVirtualStateAtOffset(filePath, documentText, offset, options = {}) {
+    const preparedState = this.getPreparedDocumentState(filePath);
     if (!preparedState) {
+      return null;
+    }
+
+    if (!this.isPreparedDocumentStateCurrent(preparedState, filePath, documentText)) {
       return null;
     }
 
@@ -3735,9 +4371,10 @@ class ProjectLanguageService {
     return this.toOffsetDefinitionTarget(definitionFileName, targetDocumentText, definitionInfo.textSpan.start);
   }
 
-  getTypeScriptDefinitionTarget(filePath, documentText, offset) {
+  getTypeScriptDefinitionTarget(filePath, documentText, offset, options = {}) {
     const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset, {
       preferTemplateDocument: true,
+      requirePreparedVirtualState: options.requirePreparedVirtualState === true,
     });
     if (!virtualState) {
       return null;
@@ -3808,6 +4445,7 @@ class ProjectLanguageService {
   getTypeScriptReferenceTargets(filePath, documentText, offset, options = {}) {
     const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset, {
       preferTemplateDocument: true,
+      requirePreparedVirtualState: options.requirePreparedVirtualState === true,
     });
     if (!virtualState) {
       return null;
@@ -3875,7 +4513,7 @@ class ProjectLanguageService {
     const profile = options && typeof options === "object" ? options.profile : null;
     const preferTemplateDocument = !!(options && options.preferTemplateDocument);
     const startedAt = profile ? process.hrtime.bigint() : null;
-    const preparedVirtualState = this.getPreparedVirtualStateAtOffset(filePath, offset, options);
+    const preparedVirtualState = this.getPreparedVirtualStateAtOffset(filePath, documentText, offset, options);
     if (preparedVirtualState) {
       if (profile && startedAt) {
         profile.upsertKind =
@@ -3889,6 +4527,16 @@ class ProjectLanguageService {
       }
 
       return preparedVirtualState;
+    }
+
+    if (options.requirePreparedVirtualState === true) {
+      if (profile && startedAt) {
+        profile.upsertKind = "missing-prepared";
+        profile.upsertMs = 0;
+        profile.getVirtualStateAtOffsetMs = elapsedMilliseconds(startedAt);
+      }
+
+      return null;
     }
 
     if (isScriptFile(filePath)) {
@@ -5302,8 +5950,8 @@ class ProjectLanguageService {
     );
   }
 
-  getQuickInfo(filePath, documentText, offset) {
-    return completionFeatureHandlers.getQuickInfo(this, filePath, documentText, offset);
+  getQuickInfo(filePath, documentText, offset, options = {}) {
+    return completionFeatureHandlers.getQuickInfo(this, filePath, documentText, offset, options);
   }
 
   getSignatureHelp(filePath, documentText, offset, options = {}) {
@@ -5465,45 +6113,70 @@ class ProjectLanguageService {
 
   collectServerBlockDiagnostics(filePath, documentText, blocks, collectionMethodNames, documentAnalysis, options = {}) {
     const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false;
+    const includeTypeScriptDiagnostics = options.includeTypeScriptDiagnostics !== false;
+    const preparedDocumentState = options.preparedDocumentState || null;
+    const profile = options.profile || null;
+    const shouldCancel =
+      options && typeof options.shouldCancel === "function"
+        ? options.shouldCancel
+        : null;
     const diagnostics = [];
 
     for (const block of blocks) {
-      const virtual = this.upsertVirtualFile(filePath, block);
-      const relaxedBodyDiagnosticSpans = collectRelaxedBodyDiagnosticSpans(block.content, {
-        sourceFile: documentAnalysis.getBlockSourceFile(block),
-      });
-      const rawDiagnostics = this.languageService.getSyntacticDiagnostics(virtual.fileName);
-      if (includeSemanticDiagnostics) {
-        rawDiagnostics.push(...this.languageService.getSemanticDiagnostics(virtual.fileName));
+      if (shouldCancel && shouldCancel("before-server-block-diagnostics")) {
+        return diagnostics;
       }
 
-      for (const diagnostic of rawDiagnostics) {
-        if (diagnostic && diagnostic.code === 1108) {
-          continue;
+      if (includeTypeScriptDiagnostics) {
+        const virtual = this.getPreparedServerBlockVirtual(
+          filePath,
+          documentText,
+          block,
+          preparedDocumentState
+        );
+        if (!virtual) {
+          if (profile) {
+            profile.skippedUnpreparedServerBlockDiagnostics =
+              (profile.skippedUnpreparedServerBlockDiagnostics || 0) + 1;
+          }
+        } else {
+          const relaxedBodyDiagnosticSpans = collectRelaxedBodyDiagnosticSpans(block.content, {
+            sourceFile: documentAnalysis.getBlockSourceFile(block),
+          });
+          const rawDiagnostics = this.languageService.getSyntacticDiagnostics(virtual.fileName);
+          if (includeSemanticDiagnostics) {
+            rawDiagnostics.push(...this.languageService.getSemanticDiagnostics(virtual.fileName));
+          }
+
+          for (const diagnostic of rawDiagnostics) {
+            if (diagnostic && diagnostic.code === 1108) {
+              continue;
+            }
+
+            if (shouldSuppressDiagnosticForRelaxedBodyAccess(diagnostic, virtual, relaxedBodyDiagnosticSpans)) {
+              continue;
+            }
+
+            if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number") {
+              continue;
+            }
+
+            const start = this.mapVirtualOffsetToDocumentOffset(virtual.fileName, diagnostic.start);
+            const end = this.mapVirtualOffsetToDocumentOffset(virtual.fileName, diagnostic.start + diagnostic.length);
+
+            if (start === null || end === null) {
+              continue;
+            }
+
+            diagnostics.push({
+              code: diagnostic.code,
+              category: diagnostic.category,
+              message: flattenDiagnosticMessage(diagnostic.messageText),
+              start,
+              end,
+            });
+          }
         }
-
-        if (shouldSuppressDiagnosticForRelaxedBodyAccess(diagnostic, virtual, relaxedBodyDiagnosticSpans)) {
-          continue;
-        }
-
-        if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number") {
-          continue;
-        }
-
-        const start = this.mapVirtualOffsetToDocumentOffset(virtual.fileName, diagnostic.start);
-        const end = this.mapVirtualOffsetToDocumentOffset(virtual.fileName, diagnostic.start + diagnostic.length);
-
-        if (start === null || end === null) {
-          continue;
-        }
-
-        diagnostics.push({
-          code: diagnostic.code,
-          category: diagnostic.category,
-          message: flattenDiagnosticMessage(diagnostic.messageText),
-          start,
-          end,
-        });
       }
 
       for (const context of collectSchemaContexts(block.content, { collectionMethodNames })) {
@@ -5533,6 +6206,10 @@ class ProjectLanguageService {
         useTopLevelStatements: true,
         offsetBase: block.contentStart,
       }));
+
+      if (shouldCancel && shouldCancel("after-server-block-diagnostics")) {
+        return diagnostics;
+      }
     }
 
     return diagnostics;
@@ -5544,44 +6221,73 @@ class ProjectLanguageService {
     }
 
     const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false;
+    const includeTypeScriptDiagnostics = options.includeTypeScriptDiagnostics !== false;
+    const preparedDocumentState = options.preparedDocumentState || null;
+    const profile = options.profile || null;
+    const shouldCancel =
+      options && typeof options.shouldCancel === "function"
+        ? options.shouldCancel
+        : null;
     const diagnostics = [];
-    const templateVirtual = this.upsertTemplateVirtualFile(filePath, documentText);
     const templateVirtualText = documentAnalysis.getTemplateVirtualText();
-    const rawDiagnostics = this.languageService.getSyntacticDiagnostics(templateVirtual.fileName);
-    if (includeSemanticDiagnostics) {
-      rawDiagnostics.push(...this.languageService.getSemanticDiagnostics(templateVirtual.fileName));
-    }
     const overlapsTemplateBlock = (start, end) =>
       templateBlocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
     const overlapsServerBlock = (start, end) =>
       blocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
 
-    for (const diagnostic of rawDiagnostics) {
-      if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number") {
-        continue;
+    if (includeTypeScriptDiagnostics) {
+      const templateVirtual = this.getPreparedTemplateVirtual(
+        filePath,
+        documentText,
+        preparedDocumentState
+      );
+      if (!templateVirtual) {
+        if (profile) {
+          profile.skippedUnpreparedTemplateDiagnostics =
+            (profile.skippedUnpreparedTemplateDiagnostics || 0) + 1;
+        }
+      } else {
+        const rawDiagnostics = this.languageService.getSyntacticDiagnostics(templateVirtual.fileName);
+        if (includeSemanticDiagnostics) {
+          rawDiagnostics.push(...this.languageService.getSemanticDiagnostics(templateVirtual.fileName));
+        }
+
+        for (const diagnostic of rawDiagnostics) {
+          if (shouldCancel && shouldCancel("before-template-diagnostics")) {
+            return diagnostics;
+          }
+
+          if (typeof diagnostic.start !== "number" || typeof diagnostic.length !== "number") {
+            continue;
+          }
+
+          const start = this.mapVirtualOffsetToDocumentOffset(templateVirtual.fileName, diagnostic.start);
+          const end = this.mapVirtualOffsetToDocumentOffset(templateVirtual.fileName, diagnostic.start + diagnostic.length);
+
+          if (start === null || end === null) {
+            continue;
+          }
+
+          if (!overlapsTemplateBlock(start, end) || overlapsServerBlock(start, end)) {
+            continue;
+          }
+
+          diagnostics.push({
+            code: diagnostic.code,
+            category: diagnostic.category,
+            message: flattenDiagnosticMessage(diagnostic.messageText),
+            start,
+            end,
+          });
+        }
       }
-
-      const start = this.mapVirtualOffsetToDocumentOffset(templateVirtual.fileName, diagnostic.start);
-      const end = this.mapVirtualOffsetToDocumentOffset(templateVirtual.fileName, diagnostic.start + diagnostic.length);
-
-      if (start === null || end === null) {
-        continue;
-      }
-
-      if (!overlapsTemplateBlock(start, end) || overlapsServerBlock(start, end)) {
-        continue;
-      }
-
-      diagnostics.push({
-        code: diagnostic.code,
-        category: diagnostic.category,
-        message: flattenDiagnosticMessage(diagnostic.messageText),
-        start,
-        end,
-      });
     }
 
     for (const context of collectSchemaContexts(templateVirtualText, { collectionMethodNames })) {
+      if (shouldCancel && shouldCancel("before-template-schema-diagnostics")) {
+        return diagnostics;
+      }
+
       if (!overlapsTemplateBlock(context.start, context.end) || overlapsServerBlock(context.start, context.end)) {
         continue;
       }
@@ -5607,6 +6313,60 @@ class ProjectLanguageService {
     }
 
     return diagnostics;
+  }
+
+  getWarmupOffset(filePath, documentText, options = {}) {
+    const preferredOffset = Number(options.preferredOffset);
+    if (Number.isFinite(preferredOffset) && preferredOffset >= 0 && preferredOffset <= String(documentText || "").length) {
+      return preferredOffset;
+    }
+
+    if (isScriptFile(filePath)) {
+      return 0;
+    }
+
+    if (!isEjsFile(filePath)) {
+      return null;
+    }
+
+    const blocks = _extractServerBlocks(documentText);
+    if (blocks.length) {
+      return blocks[0].contentStart;
+    }
+
+    const templateBlocks = _extractTemplateCodeBlocks(documentText);
+    if (templateBlocks.length) {
+      return templateBlocks[0].contentStart;
+    }
+
+    return null;
+  }
+
+  warmupDocument(filePath, documentText, options = {}) {
+    const offset = this.getWarmupOffset(filePath, documentText, options);
+    if (offset === null) {
+      return {
+        warmed: false,
+        reason: "no-virtual-region",
+      };
+    }
+
+    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset, {
+      preferTemplateDocument: true,
+    });
+    if (!virtualState) {
+      return {
+        warmed: false,
+        reason: "no-virtual-state",
+      };
+    }
+
+    this.languageService.getSyntacticDiagnostics(virtualState.virtual.fileName);
+    return {
+      warmed: true,
+      fileName: virtualState.virtual.fileName,
+      offset,
+    };
   }
 
   collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames) {
@@ -5666,29 +6426,54 @@ class ProjectLanguageService {
   }
 
   collectProjectRuleDiagnostics(filePath, documentText, documentAnalysis) {
-    const diagnostics = [];
+    const laneDiagnostics = this.collectProjectRuleDiagnosticsByLane(
+      filePath,
+      documentText,
+      documentAnalysis
+    );
+    return [
+      ...laneDiagnostics["project-rule:agents"],
+      ...laneDiagnostics["project-rule:include-callers"],
+    ];
+  }
 
-    for (const diagnostic of collectAgentsRuleDiagnostics(this.projectIndex, filePath, documentText, {
+  collectProjectRuleLaneDiagnostics(lane, filePath, documentText, documentAnalysis) {
+    if (lane === "project-rule:agents") {
+      return this.collectProjectRuleAgentsDiagnostics(filePath, documentText, documentAnalysis);
+    }
+
+    if (lane === "project-rule:include-callers") {
+      return this.collectProjectRuleIncludeCallerDiagnostics(filePath, documentText);
+    }
+
+    return this.collectProjectRuleDiagnostics(filePath, documentText, documentAnalysis);
+  }
+
+  collectProjectRuleDiagnosticsByLane(filePath, documentText, documentAnalysis) {
+    return {
+      "project-rule:agents": this.collectProjectRuleAgentsDiagnostics(filePath, documentText, documentAnalysis),
+      "project-rule:include-callers": this.collectProjectRuleIncludeCallerDiagnostics(filePath, documentText),
+    };
+  }
+
+  collectProjectRuleAgentsDiagnostics(filePath, documentText, documentAnalysis) {
+    return collectAgentsRuleDiagnostics(this.projectIndex, filePath, documentText, {
       analysisText: documentAnalysis.getAnalysisText(),
       analysisSourceFile: documentAnalysis.getAnalysisSourceFile(),
       pathContexts: documentAnalysis.getPathContexts(),
-    })) {
-      diagnostics.push(diagnostic);
-    }
+    });
+  }
 
-    for (const diagnostic of this.getIncludeCallerDiagnostics(filePath, documentText)) {
-      diagnostics.push(diagnostic);
-    }
-
-    return diagnostics;
+  collectProjectRuleIncludeCallerDiagnostics(filePath, documentText) {
+    return this.getIncludeCallerDiagnostics(filePath, documentText);
   }
 
   getDiagnostics(filePath, documentText, options = {}) {
     return diagnosticsFeatureHandlers.getDiagnostics(this, filePath, documentText, options);
   }
 
-  getCodeActions(filePath, documentText, range) {
-    return diagnosticsFeatureHandlers.getCodeActions(this, filePath, documentText, range);
+  getCodeActions(filePath, documentText, range, options = {}) {
+    return diagnosticsFeatureHandlers.getCodeActions(this, filePath, documentText, range, options);
   }
 
   getDefinitionTarget(filePath, documentText, offset) {
@@ -5707,8 +6492,8 @@ class ProjectLanguageService {
     return navigationFeatureHandlers.getCustomRenameInfo(this, filePath, documentText, offset);
   }
 
-  getTypeScriptRenameInfo(filePath, documentText, offset) {
-    return navigationFeatureHandlers.getTypeScriptRenameInfo(this, filePath, documentText, offset);
+  getTypeScriptRenameInfo(filePath, documentText, offset, options = {}) {
+    return navigationFeatureHandlers.getTypeScriptRenameInfo(this, filePath, documentText, offset, options);
   }
 
   getRenameEdits(filePath, documentText, offset, newName) {
@@ -5731,13 +6516,14 @@ class ProjectLanguageService {
     );
   }
 
-  getTypeScriptRenameEdits(filePath, documentText, offset, newName) {
+  getTypeScriptRenameEdits(filePath, documentText, offset, newName, options = {}) {
     return navigationFeatureHandlers.getTypeScriptRenameEdits(
       this,
       filePath,
       documentText,
       offset,
-      newName
+      newName,
+      options
     );
   }
 

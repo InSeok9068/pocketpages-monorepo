@@ -4,14 +4,18 @@ function createLifecycleFeatureService(context) {
   const { core, documents, helpers } = context;
   const {
     clearCachedCompletionItemsForUri,
-    cancelScheduledDiagnostics,
+    cancelScheduledDocumentRequests,
+    clearDocumentRuntimeState,
+    cancelFirstRequestWarmup,
     getRelativePathLabel,
     isEjsFilePath,
     isExcludedPocketPagesScriptPath,
     isScriptFilePath,
     logServer,
-    publishDiagnostics,
-    scheduleDiagnostics,
+    refreshPullDiagnostics,
+    scheduleDiagnosticsRefreshForDocument,
+    scheduleFirstRequestWarmup,
+    updateDocumentRuntimeState,
     uriToFilePath,
   } = helpers;
 
@@ -41,12 +45,7 @@ function createLifecycleFeatureService(context) {
       clearCachedCompletionItemsForUri(uri);
       const filePath = uriToFilePath(uri);
       if (shouldRunDiagnosticsForFile(filePath)) {
-        scheduleDiagnostics(uri);
-        continue;
-      }
-
-      if (isExcludedPocketPagesScriptPath(filePath)) {
-        context.connection.sendDiagnostics({ uri, diagnostics: [] });
+        scheduleDiagnosticsRefreshForDocument(uri, { reason: "file-watch" });
       }
     }
 
@@ -71,19 +70,19 @@ function createLifecycleFeatureService(context) {
         version: event.document.version,
         text: event.document.getText(),
       });
+      if (typeof updateDocumentRuntimeState === "function") {
+        updateDocumentRuntimeState(event.document.uri, event.document, {
+          opened: true,
+        });
+      }
       logServer("info", "document", "open", {
         file: getRelativePathLabel(uriToFilePath(event.document.uri)),
         languageId: event.document.languageId,
         version: event.document.version,
       });
       const filePath = uriToFilePath(event.document.uri);
-      if (shouldRunDiagnosticsForFile(filePath)) {
-        publishDiagnostics(event.document.uri, { reason: "open" });
-        return;
-      }
-
-      if (isExcludedPocketPagesScriptPath(filePath)) {
-        context.connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
+      if (shouldRunDiagnosticsForFile(filePath) && typeof scheduleFirstRequestWarmup === "function") {
+        scheduleFirstRequestWarmup(event.document.uri, { reason: "open" });
       }
     },
 
@@ -94,33 +93,39 @@ function createLifecycleFeatureService(context) {
         languageId: event.document.languageId,
         version: event.document.version,
         text: event.document.getText(),
+      }, {
+        prepareVirtualCode: false,
       });
+      if (typeof updateDocumentRuntimeState === "function") {
+        updateDocumentRuntimeState(event.document.uri, event.document, {
+          changed: true,
+        });
+      }
       logServer("perf", "document", "change", {
         file: getRelativePathLabel(uriToFilePath(event.document.uri)),
         version: event.document.version,
         changes: Array.isArray(event.contentChanges) ? event.contentChanges.length : 0,
       });
-
-      const filePath = uriToFilePath(event.document.uri);
-      if (shouldRunDiagnosticsForFile(filePath)) {
-        scheduleDiagnostics(event.document.uri);
-        return;
-      }
-
-      if (isExcludedPocketPagesScriptPath(filePath)) {
-        context.connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
-      }
     },
 
     handleDidClose(event) {
       clearCachedCompletionItemsForUri(event.document.uri);
-      cancelScheduledDiagnostics(event.document.uri);
-      context.state.diagnosticRunIds.delete(event.document.uri);
+      if (typeof cancelScheduledDocumentRequests === "function") {
+        cancelScheduledDocumentRequests(event.document.uri);
+      }
+      if (typeof cancelFirstRequestWarmup === "function") {
+        cancelFirstRequestWarmup(event.document.uri);
+      }
+      if (typeof clearDocumentRuntimeState === "function") {
+        clearDocumentRuntimeState(event.document.uri);
+      }
+      if (context.state.diagnosticRunIds instanceof Map) {
+        context.state.diagnosticRunIds.delete(event.document.uri);
+      }
       core.closeDocument(event.document.uri);
       logServer("info", "document", "close", {
         file: getRelativePathLabel(uriToFilePath(event.document.uri)),
       });
-      context.connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
     },
 
     handleDidChangeWatchedFiles(event) {
@@ -145,11 +150,10 @@ function createLifecycleFeatureService(context) {
     },
 
     handleDidManualSave({ uri }) {
-      cancelScheduledDiagnostics(uri);
       logServer("info", "diagnostics", "manual-save", {
         file: getRelativePathLabel(uriToFilePath(uri)),
       });
-      publishDiagnostics(uri, { reason: "manual-save" });
+      refreshPullDiagnostics("manual-save");
     },
   };
 }

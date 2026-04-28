@@ -3,12 +3,11 @@
 function createMaintenanceFeatureService(context) {
   const { core, helpers } = context;
   const {
-    cancelScheduledDiagnostics,
     clearCachedCompletionItemsForUri,
     elapsedMilliseconds,
     getRelativePathLabel,
     logServer,
-    publishDiagnostics,
+    refreshPullDiagnostics,
     uriToFilePath,
   } = helpers;
 
@@ -25,10 +24,7 @@ function createMaintenanceFeatureService(context) {
     },
 
     provideRefreshDiagnostics({ uri }) {
-      if (typeof cancelScheduledDiagnostics === "function") {
-        cancelScheduledDiagnostics(uri);
-      }
-      publishDiagnostics(uri, { reason: "refresh" });
+      refreshPullDiagnostics("command");
       return { ok: true };
     },
 

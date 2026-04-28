@@ -11,8 +11,11 @@ function createCompletionFeatureHandlers(deps) {
 
   return {
     getCompletionData(service, filePath, documentText, offset, options = {}) {
-      const profile = {};
-      const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset, { profile });
+      const profile = options && options.profile ? options.profile : {};
+      const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset, {
+        profile,
+        requirePreparedVirtualState: options.requirePreparedVirtualState === true,
+      });
       if (!virtualState) {
         return null;
       }
@@ -160,8 +163,10 @@ function createCompletionFeatureHandlers(deps) {
       );
     },
 
-    getQuickInfo(service, filePath, documentText, offset) {
-      const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset);
+    getQuickInfo(service, filePath, documentText, offset, options = {}) {
+      const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset, {
+        requirePreparedVirtualState: options.requirePreparedVirtualState === true,
+      });
       if (!virtualState) {
         return null;
       }
@@ -195,7 +200,9 @@ function createCompletionFeatureHandlers(deps) {
         return includeSignatureHelp;
       }
 
-      const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset);
+      const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset, {
+        requirePreparedVirtualState: options.requirePreparedVirtualState === true,
+      });
       if (!virtualState) {
         return null;
       }

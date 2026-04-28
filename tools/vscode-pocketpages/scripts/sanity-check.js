@@ -5,6 +5,7 @@ const os = require('os')
 const path = require('path')
 const { URI } = require('vscode-uri')
 const { PocketPagesLanguageServiceManager, ts } = require('../packages/language-service/language-service')
+const { DocumentSnapshotManager } = require('../packages/language-service/document-snapshot-manager')
 const { PocketPagesLanguageCore } = require('../packages/language-core/language-core')
 const { createPocketPagesLanguagePlugin } = require('../packages/language-core/language-plugin')
 const { createScriptSnapshot } = require('../packages/language-core/snapshot')
@@ -18,6 +19,8 @@ const { createDiagnosticsFeatureService } = require('../packages/language-server
 const { createLifecycleFeatureService } = require('../packages/language-server/services/lifecycle-features')
 const { createMaintenanceFeatureService } = require('../packages/language-server/services/maintenance-features')
 const { createStructureFeatureService } = require('../packages/language-server/services/structure-features')
+const { createDocumentRuntimeStateRegistry } = require('../packages/language-server/document-runtime-state')
+const { createRequestCoordinator } = require('../packages/language-server/request-coordinator')
 const {
   createStableCompletionTextEdit,
   isTypeScriptCompletionTriggerAllowed,
@@ -186,6 +189,13 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
   const insertTextFormatPlainText = 1
   const codeActionKindQuickFix = 'quickfix'
   const completionKindMap = {}
+  const runtimeState = extra.runtimeState || createDocumentRuntimeStateRegistry()
+  const requestCoordinator = extra.requestCoordinator || createRequestCoordinator({ runtimeState })
+  for (const [uri, document] of documentEntries.entries()) {
+    runtimeState.updateDocument(uri, {
+      version: document ? document.version : null,
+    })
+  }
 
   function isSchemaSupportOnlyHookScriptPath(filePath) {
     const normalizedPath = normalizeFilePath(filePath)
@@ -198,10 +208,8 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
 
   const helpers = {
     COMPLETION_KIND_MAP: completionKindMap,
-    SCRIPT_DIAGNOSTICS_DEBOUNCE_MS: 10,
-    SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS: 20,
     LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT: 50000,
-    LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS: 50,
+    LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS: 3000,
     customCompletionKind() {
       return completionKindText
     },
@@ -226,11 +234,29 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
     getDiagnosticsProfileFields(profile) {
       return profile || {}
     },
+    getCachedDiagnosticsResult(uri, key) {
+      return typeof runtimeState.getDiagnostics === 'function'
+        ? runtimeState.getDiagnostics(uri, key)
+        : null
+    },
+    setCachedDiagnosticsResult(uri, key, value) {
+      return typeof runtimeState.setDiagnostics === 'function'
+        ? runtimeState.setDiagnostics(uri, key, value)
+        : value
+    },
+    ensureDocumentPrepared(uri, options = {}) {
+      return typeof core.prepareDocument === 'function' ? core.prepareDocument(uri, options) : null
+    },
     getDocumentByUri(uri) {
       return documentEntries.get(uri) || null
     },
     getDocumentContextByUri(uri) {
       return core.getDocumentContextByUri(uri)
+    },
+    getDocumentRuntimeState(uri) {
+      return typeof runtimeState.getDocument === 'function'
+        ? runtimeState.getDocument(uri)
+        : null
     },
     getDocumentContextByFilePath(filePath) {
       const document = [...documentEntries.values()].find(
@@ -247,6 +273,31 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
     isStaleDocumentVersion() {
       return false
     },
+    scheduleDocumentRequest(uri, key, version, delayMs, callback) {
+      return requestCoordinator.schedule(
+        { uri, key, version, delayMs },
+        callback
+      )
+    },
+    cancelScheduledDocumentRequest(uri, key) {
+      requestCoordinator.cancel(uri, key)
+    },
+    cancelScheduledDocumentRequests(uri) {
+      requestCoordinator.cancel(uri)
+    },
+    updateDocumentRuntimeState(uri, document, options = {}) {
+      return runtimeState.updateDocument(uri, {
+        version: document ? document.version : null,
+        textLength: document && typeof document.getText === 'function' ? document.getText().length : 0,
+        opened: options.opened === true,
+        changed: options.changed === true,
+      })
+    },
+    clearDocumentRuntimeState(uri) {
+      runtimeState.deleteDocument(uri)
+    },
+    scheduleFirstRequestWarmup() {},
+    cancelFirstRequestWarmup() {},
     shouldAbortDocumentRequest() {
       return false
     },
@@ -258,6 +309,9 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
     },
     isEjsFilePath(filePath) {
       return String(filePath || '').endsWith('.ejs')
+    },
+    isPullDiagnosticRefreshSupported() {
+      return false
     },
     isScriptFilePath(filePath) {
       return /\.(js|cjs|mjs)$/i.test(String(filePath || ''))
@@ -311,12 +365,9 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
         QuickFix: codeActionKindQuickFix,
       },
       URI,
-      connection: extra.connection || {
-        sendDiagnostics() {},
-      },
+      connection: extra.connection || {},
       state: extra.state || {
-        diagnosticTimeouts: new Map(),
-        semanticDiagnosticTimeouts: new Map(),
+        diagnosticRunIds: new Map(),
       },
     },
     helpers,
@@ -653,6 +704,14 @@ function assertLspRuntimeContracts(repoRoot) {
     ),
     'utf8'
   )
+  const languageServiceSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-service', 'language-service.js'),
+    'utf8'
+  )
+  const documentSnapshotManagerSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-service', 'document-snapshot-manager.js'),
+    'utf8'
+  )
   const lifecycleFeatureSource = fs.readFileSync(
     path.join(
       repoRoot,
@@ -812,6 +871,16 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected completion cache invalidation to clear reusable completion results too.'
   )
   assertMatches(
+    serverSource,
+    /function completionCacheKey\(uri, version, offset, context = \{\}\)[\s\S]*triggerKind[\s\S]*triggerCharacter/,
+    'Expected completion cache keys to include trigger kind and trigger character.'
+  )
+  assertMatches(
+    serverSource,
+    /completionCacheKey\(document\.uri, document\.version, offset, params\.context\)/,
+    'Expected completion cache lookups to pass the active LSP completion trigger context.'
+  )
+  assertMatches(
     tsFeatureSource,
     /isTypeScriptCompletionTriggerAllowed\(params\.context,\s*\{/,
     'Expected ts-features.js to guard TypeScript completion by trigger character before calling TS.'
@@ -871,21 +940,106 @@ function assertLspRuntimeContracts(repoRoot) {
     /helpers\.isExcludedPocketPagesScriptPath\(documentContext\.filePath\)/,
     'Expected diagnostics feature service to skip excluded PocketPages vendor and minified scripts.'
   )
+  if (/connection\.sendDiagnostics|mode:\s*"push-lanes"|includeSemanticDiagnostics:\s*false/.test(diagnosticsFeatureSource)) {
+    throw new Error('Expected diagnostics feature service to stay pull-only without push publish lanes.')
+  }
   assertMatches(
     diagnosticsFeatureSource,
-    /includeSemanticDiagnostics:\s*false/,
-    'Expected scheduled change diagnostics to use the fast non-semantic path.'
+    /previousResultId[\s\S]*kind:\s*"unchanged"[\s\S]*resultId/,
+    'Expected pull diagnostics to support resultId-based unchanged responses.'
+  )
+  assertMatches(
+    languageServiceSource,
+    /getDocumentTextIdentity\(filePath, documentText\)[\s\S]*getDocumentSnapshotIdentity\(filePath, documentText\)/,
+    'Expected diagnostics result identities to use the service-owned document snapshot identity.'
+  )
+  assertMatches(
+    languageServiceSource,
+    /getDiagnosticsLaneResultIds\(filePath, documentText, options = \{\}\)[\s\S]*"project-rule"/,
+    'Expected language-service to expose lane-level diagnostics result identities.'
   )
   assertMatches(
     diagnosticsFeatureSource,
-    /SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS/,
-    'Expected diagnostics feature service to schedule semantic diagnostics after an idle delay.'
+    /previousLaneResultIds[\s\S]*previousLaneDiagnostics[\s\S]*laneDiagnosticsOut/,
+    'Expected pull diagnostics to pass lane cache state into language-service diagnostics.'
   )
   assertMatches(
     diagnosticsFeatureSource,
-    /mode:\s*"large-idle"/,
-    'Expected diagnostics feature service to defer large EJS diagnostics to a single idle pass.'
+    /async function providePullDiagnostics\(params, token\)[\s\S]*yieldBeforeHeavyDiagnostics\(token, shouldCancel\)/,
+    'Expected pull diagnostics to yield before heavy diagnostics work so stale requests can cancel.'
   )
+  assertMatches(
+    serverSource,
+    /PULL_DIAGNOSTICS_INITIAL_YIELD_MS/,
+    'Expected language server to configure an initial pull diagnostics yield delay.'
+  )
+  assertMatches(
+    fs.readFileSync(
+      path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-service', 'features', 'diagnostics-features.js'),
+      'utf8'
+    ),
+    /getReusableLaneDiagnostics\([\s\S]*reusedDiagnosticLanes[\s\S]*pushLaneDiagnostics/,
+    'Expected diagnostics feature handlers to reuse unchanged diagnostic lanes.'
+  )
+  assertMatches(
+    languageServiceSource,
+    /new DocumentSnapshotManager\(\{ normalizePath \}\)/,
+    'Expected language-service to centralize document snapshots through DocumentSnapshotManager.'
+  )
+  assertMatches(
+    languageServiceSource,
+    /getScriptSnapshot:\s*\(fileName\) => this\.documentSnapshotManager\.getScriptSnapshot\(fileName\)/,
+    'Expected the TypeScript host to read script snapshots from DocumentSnapshotManager.'
+  )
+  assertMatches(
+    documentSnapshotManagerSource,
+    /sourceDocuments = new Map\(\)[\s\S]*preparedDocuments = new Map\(\)[\s\S]*virtualFiles = new Map\(\)/,
+    'Expected DocumentSnapshotManager to own source documents, prepared documents, and virtual files together.'
+  )
+  assertMatches(
+    serverSource,
+    /diagnosticProvider:\s*\{[\s\S]*interFileDependencies:\s*true,[\s\S]*workspaceDiagnostics:\s*false/,
+    'Expected language server to always advertise LSP pull diagnostics for the VS Code client.'
+  )
+  assertMatches(
+    serverSource,
+    /pullDiagnosticRefreshSupported[\s\S]*workspace[\s\S]*diagnostics[\s\S]*refreshSupport/,
+    'Expected language server to track client support for Svelte-style pull diagnostics refresh requests.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.languages\.diagnostics\.on\(\(params, token\) => \{[\s\S]*providePullDiagnostics\(params, token\)/,
+    'Expected language server to route LSP pull diagnostics directly into the diagnostics provider.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /scheduleDiagnosticsRefreshForDocument[\s\S]*schedulePullDiagnosticsRefresh\(options\.reason \|\| "schedule"\)/,
+    'Expected diagnostics feature service to use workspace refresh instead of publishing diagnostics.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /getDiagnostics\([\s\S]*requirePreparedVirtualState:\s*true/,
+    'Expected pull diagnostics to require the prepared virtual state produced by ensureDocumentPrepared().'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /getCachedCodeActionDiagnostics\([\s\S]*laneDiagnostics[\s\S]*documentVersion/,
+    'Expected code actions to reuse cached pull diagnostics instead of recomputing full diagnostics.'
+  )
+  const collectServerBlockDiagnosticsSource = languageServiceSource.slice(
+    languageServiceSource.indexOf('collectServerBlockDiagnostics('),
+    languageServiceSource.indexOf('collectTemplateDiagnostics(')
+  )
+  const collectTemplateDiagnosticsSource = languageServiceSource.slice(
+    languageServiceSource.indexOf('collectTemplateDiagnostics('),
+    languageServiceSource.indexOf('getWarmupOffset(')
+  )
+  if (!/getPreparedServerBlockVirtual\(/.test(collectServerBlockDiagnosticsSource) || /upsertVirtualFile\(/.test(collectServerBlockDiagnosticsSource)) {
+    throw new Error('Expected server diagnostics to reuse prepared virtual files without ad-hoc upserts.')
+  }
+  if (!/getPreparedTemplateVirtual\(/.test(collectTemplateDiagnosticsSource) || /upsertTemplateVirtualFile/.test(collectTemplateDiagnosticsSource)) {
+    throw new Error('Expected template diagnostics to reuse prepared virtual files without ad-hoc upserts.')
+  }
   assertMatches(
     lifecycleFeatureSource,
     /function shouldRunDiagnosticsForFile\(filePath\) \{[\s\S]*!isExcludedPocketPagesScriptPath\(filePath\)/,
@@ -893,18 +1047,53 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     lifecycleFeatureSource,
-    /handleDidManualSave\(\{ uri \}\) \{[\s\S]*cancelScheduledDiagnostics\(uri\);[\s\S]*publishDiagnostics\(uri, \{ reason: "manual-save" \}\)/,
-    'Expected manual-save diagnostics to cancel pending fast/idle diagnostics before publishing full diagnostics.'
+    /handleDidManualSave\(\{ uri \}\) \{[\s\S]*refreshPullDiagnostics\("manual-save"\)/,
+    'Expected manual-save diagnostics to request a pull diagnostics refresh.'
   )
   assertMatches(
     serverSource,
-    /helpers:\s*\{[\s\S]*isEjsFilePath,\s*isExcludedPocketPagesScriptPath,\s*isScriptFilePath,\s*isSchemaSupportOnlyHookScriptPath,/,
-    'Expected server.js helper wiring to expose isScriptFilePath to lifecycle-features.'
+    /helpers:\s*\{[\s\S]*isEjsFilePath,[\s\S]*isExcludedPocketPagesScriptPath,[\s\S]*isScriptFilePath,[\s\S]*isSchemaSupportOnlyHookScriptPath,/,
+    'Expected server.js helper wiring to expose script and EJS path helpers to lifecycle-features.'
   )
   assertMatches(
     tsPluginSource,
     /core\.isFeatureEnabledAtOffset\(\s*documentContext\.uri,\s*position,\s*capabilityName\s*\)/,
     'Expected PocketPages TS plugin to respect mapper ownership before serving TS features for .ejs.'
+  )
+  assertMatches(
+    tsFeatureSource,
+    /large-ejs-quote-trigger/,
+    'Expected TypeScript completion routing to skip large-EJS quote triggers after custom completions decline.'
+  )
+  assertMatches(
+    tsFeatureSource,
+    /requirePreparedVirtualState:\s*true/,
+    'Expected TypeScript LSP feature requests to use prepared virtual state instead of ad-hoc virtual upserts.'
+  )
+  assertMatches(
+    tsFeatureSource,
+    /operation:\s*"completion"[\s\S]*preferredOffset:\s*offset[\s\S]*skipUnrelatedRegions:\s*true/,
+    'Expected completion requests to prepare only the region around the requested offset.'
+  )
+  assertMatches(
+    tsFeatureSource,
+    /operation:\s*"hover"[\s\S]*preferredOffset:\s*offset[\s\S]*skipUnrelatedRegions:\s*true/,
+    'Expected hover requests to prepare only the region around the requested offset.'
+  )
+  assertMatches(
+    languageServiceSource,
+    /getPreludeSnapshotKey\(filePath, analysisText = "", options = \{\}\)[\s\S]*options\.dirty === false[\s\S]*preludeSnapshotKey/,
+    'Expected unchanged virtual regions to skip buildPrelude() through prelude snapshot keys.'
+  )
+  assertMatches(
+    languageServiceSource,
+    /skipUnrelatedRegions[\s\S]*preferredOffset[\s\S]*shouldPrepareEmbeddedCode\(embeddedCode\)/,
+    'Expected prepared virtual-code sync to skip embedded regions unrelated to the requested offset.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.onReferences\([\s\S]*core\.isFeatureEnabledAtOffset\(params\.textDocument\.uri,\s*offset,\s*"references"\)[\s\S]*ensureDocumentPrepared\(document\.uri\)[\s\S]*requirePreparedVirtualState:\s*true/,
+    'Expected references routing to keep TypeScript references on the prepared-only mapped feature path.'
   )
   assertMatches(
     tsPluginSource,
@@ -1622,6 +1811,126 @@ async function run() {
   assertClientContracts(repoRoot)
   assertLspRuntimeContracts(repoRoot)
   assertCompletionHelperContracts()
+  const runtimeProbe = createDocumentRuntimeStateRegistry()
+  runtimeProbe.updateDocument('file:///runtime.ejs', {
+    version: 1,
+  })
+  if (runtimeProbe.isStaleVersion('file:///runtime.ejs', 1)) {
+    throw new Error('Expected document runtime state to track the current document version.')
+  }
+  runtimeProbe.updateDocument('file:///runtime.ejs', {
+    version: 2,
+  })
+  if (!runtimeProbe.isStaleVersion('file:///runtime.ejs', 1)) {
+    throw new Error('Expected document runtime state to report older versions as stale.')
+  }
+  const coordinatorEvents = []
+  const coordinatorTimers = []
+  const coordinator = createRequestCoordinator({
+    runtimeState: runtimeProbe,
+    setTimeout(callback, delayMs) {
+      coordinatorTimers.push({ callback, delayMs })
+      return coordinatorTimers.length
+    },
+    clearTimeout(timerId) {
+      coordinatorEvents.push(`clear:${timerId}`)
+    },
+  })
+  coordinator.schedule(
+    {
+      uri: 'file:///runtime.ejs',
+      key: 'low',
+      version: 2,
+      delayMs: 5,
+    },
+    () => coordinatorEvents.push('low-ran')
+  )
+  if (!coordinator.hasScheduled('file:///runtime.ejs', 'low') || coordinatorTimers[0].delayMs !== 5) {
+    throw new Error(`Expected request coordinator to schedule stale-guarded work with the requested delay. Got: ${JSON.stringify(coordinatorTimers)}`)
+  }
+  runtimeProbe.setDiagnostics('file:///runtime.ejs', 'pull', {
+    resultId: 'pull:2:1',
+    items: [{ code: 'cached' }],
+  })
+  const cachedRuntimeDiagnostics = runtimeProbe.getDiagnostics('file:///runtime.ejs', 'pull')
+  if (!cachedRuntimeDiagnostics || cachedRuntimeDiagnostics.resultId !== 'pull:2:1') {
+    throw new Error(`Expected document runtime state to cache diagnostics results. Got: ${JSON.stringify(cachedRuntimeDiagnostics)}`)
+  }
+  runtimeProbe.updateDocument('file:///runtime.ejs', {
+    version: 3,
+  })
+  coordinatorTimers[0].callback()
+  if (coordinatorEvents.includes('low-ran')) {
+    throw new Error('Expected request coordinator to skip stale scheduled work.')
+  }
+
+  const snapshotProbeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-snapshot-manager-'))
+  const normalizeProbePath = (filePath) => path.resolve(filePath).replace(/\\/g, '/').replace(/^[A-Z]:/, (value) => value.toLowerCase())
+  const snapshotProbe = new DocumentSnapshotManager({ normalizePath: normalizeProbePath })
+  const snapshotProbeFilePath = path.join(snapshotProbeRoot, 'page.ejs')
+  const snapshotSourceV1 = snapshotProbe.upsertSourceDocument(snapshotProbeFilePath, 'const value = 1\n', {
+    uri: URI.file(snapshotProbeFilePath).toString(),
+    version: 1,
+    opened: true,
+  })
+  const snapshotSourceV2 = snapshotProbe.upsertSourceDocument(snapshotProbeFilePath, 'const value = 1\n', {
+    uri: URI.file(snapshotProbeFilePath).toString(),
+    version: 2,
+    changed: true,
+  })
+  if (
+    snapshotSourceV2.snapshotId !== snapshotSourceV1.snapshotId ||
+    snapshotSourceV2.lspVersion !== 2 ||
+    !snapshotSourceV2.changedAt
+  ) {
+    throw new Error(`Expected same-text source updates to keep snapshot identity and advance LSP metadata. Got: ${JSON.stringify(snapshotSourceV2)}`)
+  }
+  const snapshotSourceV3 = snapshotProbe.upsertSourceDocument(snapshotProbeFilePath, 'const value = 12\n', {
+    version: 3,
+  })
+  const snapshotChangeRange = snapshotSourceV3.snapshot.getChangeRange(snapshotSourceV1.snapshot)
+  if (
+    snapshotSourceV3.snapshotId === snapshotSourceV1.snapshotId ||
+    !snapshotChangeRange ||
+    typeof snapshotChangeRange.span.start !== 'number'
+  ) {
+    throw new Error(`Expected changed source updates to advance snapshot identity with a change range. Got: ${JSON.stringify({ snapshotSourceV3, snapshotChangeRange })}`)
+  }
+  snapshotProbe.setPreparedDocumentState(snapshotProbeFilePath, {
+    snapshotId: snapshotSourceV3.snapshotId,
+    documentText: snapshotSourceV3.text,
+  })
+  if (
+    !snapshotProbe.isPreparedDocumentStateCurrent(snapshotProbe.getPreparedDocumentState(snapshotProbeFilePath), snapshotProbeFilePath, snapshotSourceV3.text) ||
+    snapshotProbe.isPreparedDocumentStateCurrent(snapshotProbe.getPreparedDocumentState(snapshotProbeFilePath), snapshotProbeFilePath, snapshotSourceV1.text)
+  ) {
+    throw new Error('Expected prepared document current checks to follow source snapshot identity.')
+  }
+  const snapshotProbeVirtualFilePath = path.join(snapshotProbeRoot, 'page.ejs.__virtual.js')
+  snapshotProbe.setVirtualFileState(snapshotProbeVirtualFilePath, {
+    text: 'const virtualValue = 1\n',
+    filePath: snapshotProbeFilePath,
+    kind: 'probe-virtual',
+  })
+  if (
+    !snapshotProbe.getTsFileNames().includes(normalizeProbePath(snapshotProbeVirtualFilePath)) ||
+    snapshotProbe.readFile(snapshotProbeVirtualFilePath) !== 'const virtualValue = 1\n' ||
+    !snapshotProbe.getScriptSnapshot(snapshotProbeVirtualFilePath)
+  ) {
+    throw new Error('Expected DocumentSnapshotManager to serve virtual files as TypeScript host source-of-truth.')
+  }
+  const snapshotProbeDiskFilePath = path.join(snapshotProbeRoot, 'ambient.d.ts')
+  writeFile(snapshotProbeDiskFilePath, 'declare const ambientValue: 1\n')
+  const snapshotDiskVersionV1 = snapshotProbe.getScriptVersion(snapshotProbeDiskFilePath)
+  writeFile(snapshotProbeDiskFilePath, 'declare const ambientValue: 123\n')
+  const snapshotDiskTextV2 = snapshotProbe.readFile(snapshotProbeDiskFilePath)
+  const snapshotDiskVersionV2 = snapshotProbe.getScriptVersion(snapshotProbeDiskFilePath)
+  if (
+    snapshotDiskTextV2 !== 'declare const ambientValue: 123\n' ||
+    snapshotDiskVersionV2 === snapshotDiskVersionV1
+  ) {
+    throw new Error(`Expected disk fallback snapshots to refresh through DocumentSnapshotManager. Got: ${JSON.stringify({ snapshotDiskVersionV1, snapshotDiskVersionV2, snapshotDiskTextV2 })}`)
+  }
   await runExtensionHostSanityCheck(repoRoot)
   const fixture = createFixtureApp(repoRoot)
   const realHighlightsFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', '(site)', 'highlights.ejs')
@@ -1649,6 +1958,219 @@ async function run() {
     }
     if (secondaryService === service) {
       throw new Error('Expected PocketPages manager to isolate services per app root in a monorepo.')
+    }
+
+    const laneDiagnosticsText = `<script server>
+const laneValue = missingLaneValue
+redirect('/boards')
+</script>
+<div><%= laneValue %></div>
+`
+    const laneCalls = []
+    const originalLaneCollectServerBlockDiagnostics = service.collectServerBlockDiagnostics.bind(service)
+    const originalLaneCollectTemplateDiagnostics = service.collectTemplateDiagnostics.bind(service)
+    const originalLaneCollectScriptSchemaDiagnostics = service.collectScriptSchemaDiagnostics.bind(service)
+    const originalLaneCollectProjectRuleDiagnostics = service.collectProjectRuleDiagnostics.bind(service)
+    service.collectServerBlockDiagnostics = function collectServerLaneProbe(
+      _filePath,
+      _documentText,
+      _blocks,
+      _collectionMethodNames,
+      _documentAnalysis,
+      options = {}
+    ) {
+      laneCalls.push({
+        step: 'server',
+        semantic: options.includeSemanticDiagnostics !== false,
+        ts: options.includeTypeScriptDiagnostics !== false,
+      })
+      return []
+    }
+    service.collectTemplateDiagnostics = function collectTemplateLaneProbe(
+      _filePath,
+      _documentText,
+      _blocks,
+      _templateBlocks,
+      _collectionMethodNames,
+      _documentAnalysis,
+      options = {}
+    ) {
+      laneCalls.push({
+        step: 'template',
+        semantic: options.includeSemanticDiagnostics !== false,
+        ts: options.includeTypeScriptDiagnostics !== false,
+      })
+      return []
+    }
+    service.collectScriptSchemaDiagnostics = function collectScriptSchemaLaneProbe() {
+      laneCalls.push({ step: 'script-schema' })
+      return []
+    }
+    service.collectProjectRuleDiagnostics = function collectProjectLaneProbe() {
+      laneCalls.push({ step: 'project' })
+      return []
+    }
+    try {
+      service.getDiagnostics(fixture.boardsFilePath, laneDiagnosticsText, {
+        includeSemanticDiagnostics: false,
+        includeProjectRuleDiagnostics: false,
+        includeTypeScriptDiagnostics: false,
+        includeServerBlockDiagnostics: false,
+        includeTemplateDiagnostics: false,
+        includeScriptSchemaDiagnostics: false,
+      })
+      if (laneCalls.length !== 0) {
+        throw new Error(`Expected cheap fast diagnostics lane to skip server/template/schema/project work. Got: ${JSON.stringify(laneCalls)}`)
+      }
+      laneCalls.length = 0
+      service.getDiagnostics(fixture.boardsFilePath, laneDiagnosticsText, {
+        includeSemanticDiagnostics: true,
+        includeProjectRuleDiagnostics: false,
+        includeTypeScriptDiagnostics: true,
+      })
+      if (
+        laneCalls.some((entry) => entry.step === 'project') ||
+        !laneCalls.some((entry) => entry.step === 'server' && entry.semantic === true && entry.ts === true) ||
+        !laneCalls.some((entry) => entry.step === 'template' && entry.semantic === true && entry.ts === true) ||
+        !laneCalls.some((entry) => entry.step === 'script-schema')
+      ) {
+        throw new Error(`Expected semantic diagnostics lane to include TS diagnostics and skip project rules. Got: ${JSON.stringify(laneCalls)}`)
+      }
+      laneCalls.length = 0
+      const cancellationProfile = {}
+      const cancelledDiagnostics = service.getDiagnostics(fixture.boardsFilePath, laneDiagnosticsText, {
+        profile: cancellationProfile,
+        shouldCancel(stage) {
+          return stage === 'after-server-block-diagnostics'
+        },
+      })
+      if (!cancellationProfile.cancelled || cancellationProfile.cancelledAt !== 'after-server-block-diagnostics') {
+        throw new Error(`Expected diagnostics cancellation to mark the cancellation stage. Got: ${JSON.stringify(cancellationProfile)}`)
+      }
+      if (cancelledDiagnostics.length !== 0 || laneCalls.some((entry) => entry.step === 'project')) {
+        throw new Error(`Expected cancelled diagnostics to stop before project-rule diagnostics. Got: ${JSON.stringify({ cancelledDiagnostics, laneCalls })}`)
+      }
+    } finally {
+      service.collectServerBlockDiagnostics = originalLaneCollectServerBlockDiagnostics
+      service.collectTemplateDiagnostics = originalLaneCollectTemplateDiagnostics
+      service.collectScriptSchemaDiagnostics = originalLaneCollectScriptSchemaDiagnostics
+      service.collectProjectRuleDiagnostics = originalLaneCollectProjectRuleDiagnostics
+    }
+
+    const warmupResult = service.warmupDocument(fixture.boardsFilePath, laneDiagnosticsText)
+    if (!warmupResult || !warmupResult.warmed || !service.virtualFiles.has(warmupResult.fileName)) {
+      throw new Error(`Expected warmupDocument to prepare a TypeScript virtual file. Got: ${JSON.stringify(warmupResult)}`)
+    }
+
+    const syncSkipCore = new PocketPagesLanguageCore()
+    const syncSkipDocument = createTestDocument(fixture.boardsFilePath, 'ejs', 1, laneDiagnosticsText)
+    syncSkipCore.openDocument({
+      uri: syncSkipDocument.uri,
+      languageId: 'ejs',
+      version: 1,
+      text: laneDiagnosticsText,
+    })
+    const syncSkipContext = syncSkipCore.getDocumentContextByUri(syncSkipDocument.uri)
+    const syncSkipService = syncSkipContext && syncSkipContext.service
+    if (!syncSkipService) {
+      throw new Error('Expected sync-skip smoke context to expose a language service.')
+    }
+    let preparedSyncCount = 0
+    const originalSyncPreparedDocumentVirtualCode = syncSkipService.syncPreparedDocumentVirtualCode.bind(syncSkipService)
+    syncSkipService.syncPreparedDocumentVirtualCode = function patchedSyncPreparedDocumentVirtualCode(...args) {
+      preparedSyncCount += 1
+      return originalSyncPreparedDocumentVirtualCode(...args)
+    }
+    try {
+      syncSkipCore.updateDocument({
+        uri: syncSkipDocument.uri,
+        languageId: 'ejs',
+        version: 2,
+        text: `${laneDiagnosticsText}\n<div>changed</div>\n`,
+      }, {
+        prepareVirtualCode: false,
+      })
+      if (preparedSyncCount !== 0 || syncSkipService.preparedDocumentStates.has(normalizeFilePath(fixture.boardsFilePath))) {
+        throw new Error(`Expected updateDocument(..., prepareVirtualCode:false) to skip prepared virtual-code sync. count=${preparedSyncCount}`)
+      }
+      const syncSkipSnapshot = syncSkipService.getDocumentSnapshot(fixture.boardsFilePath)
+      if (
+        !syncSkipSnapshot ||
+        syncSkipSnapshot.text !== `${laneDiagnosticsText}\n<div>changed</div>\n` ||
+        syncSkipSnapshot.lspVersion !== 2
+      ) {
+        throw new Error(
+          `Expected updateDocument(..., prepareVirtualCode:false) to keep the service document snapshot current. Got: ${JSON.stringify(syncSkipSnapshot && {
+            snapshotId: syncSkipSnapshot.snapshotId,
+            lspVersion: syncSkipSnapshot.lspVersion,
+            textLength: syncSkipSnapshot.textLength,
+          })}`
+        )
+      }
+      const missingPreparedProfile = {}
+      const missingPreparedState = syncSkipService.getVirtualStateAtOffset(
+        fixture.boardsFilePath,
+        `${laneDiagnosticsText}\n<div>changed</div>\n`,
+        laneDiagnosticsText.indexOf('laneValue =') + 2,
+        {
+          profile: missingPreparedProfile,
+          requirePreparedVirtualState: true,
+        }
+      )
+      if (missingPreparedState !== null || missingPreparedProfile.upsertKind !== 'missing-prepared') {
+        throw new Error(
+          `Expected prepared-only synthetic requests to avoid fallback virtual upserts before warmup. Got: ${JSON.stringify({ missingPreparedState, missingPreparedProfile })}`
+        )
+      }
+      const missingPreparedReferences = syncSkipService.getTypeScriptReferenceTargets(
+        fixture.boardsFilePath,
+        `${laneDiagnosticsText}\n<div>changed</div>\n`,
+        laneDiagnosticsText.indexOf('laneValue =') + 2,
+        {
+          includeDeclaration: true,
+          requirePreparedVirtualState: true,
+        }
+      )
+      if (missingPreparedReferences !== null) {
+        throw new Error(
+          `Expected prepared-only TypeScript references to avoid fallback virtual upserts before warmup. Got: ${JSON.stringify(missingPreparedReferences)}`
+        )
+      }
+      syncSkipCore.prepareDocument(syncSkipDocument.uri)
+      if (preparedSyncCount !== 1 || !syncSkipService.preparedDocumentStates.has(normalizeFilePath(fixture.boardsFilePath))) {
+        throw new Error(`Expected prepareDocument() to restore prepared virtual-code sync on demand. count=${preparedSyncCount}`)
+      }
+      const preparedOnlyProfile = {}
+      const preparedOnlyState = syncSkipService.getVirtualStateAtOffset(
+        fixture.boardsFilePath,
+        `${laneDiagnosticsText}\n<div>changed</div>\n`,
+        laneDiagnosticsText.indexOf('laneValue =') + 2,
+        {
+          profile: preparedOnlyProfile,
+          requirePreparedVirtualState: true,
+        }
+      )
+      if (!preparedOnlyState || preparedOnlyProfile.upsertKind !== 'server-block-prepared' || preparedOnlyProfile.upsertMs !== 0) {
+        throw new Error(
+          `Expected prepared-only synthetic requests to reuse prepared virtual state after warmup. Got: ${JSON.stringify({ preparedOnlyState, preparedOnlyProfile })}`
+        )
+      }
+      const preparedReferences = syncSkipService.getTypeScriptReferenceTargets(
+        fixture.boardsFilePath,
+        `${laneDiagnosticsText}\n<div>changed</div>\n`,
+        laneDiagnosticsText.indexOf('laneValue =') + 2,
+        {
+          includeDeclaration: true,
+          requirePreparedVirtualState: true,
+        }
+      )
+      if (!preparedReferences || !Array.isArray(preparedReferences.locations)) {
+        throw new Error(
+          `Expected prepared-only TypeScript references to use prepared virtual state after warmup. Got: ${JSON.stringify(preparedReferences)}`
+        )
+      }
+    } finally {
+      syncSkipService.syncPreparedDocumentVirtualCode = originalSyncPreparedDocumentVirtualCode
     }
 
     if (fs.existsSync(realHighlightsFilePath)) {
@@ -1756,6 +2278,195 @@ async function run() {
     if (typeof serverEmbeddedCode.snapshot.getChangeRange !== 'function') {
       throw new Error(`Expected embedded virtual code snapshot to implement getChangeRange().`)
     }
+    const stableIdentityText = `<script server>
+const firstValue = 1
+</script>
+<script server>
+const secondValue = 2
+</script>
+`
+    const stableIdentityCode = createVirtualCode(boardShowUri, 'ejs', 1, stableIdentityText)
+    const stableSecondCode = stableIdentityCode.embeddedCodes.find(
+      (entry) => entry.kind === 'server-script' && entry.snapshot.getText(0, entry.snapshot.getLength()).includes('secondValue')
+    )
+    const shiftedStableIdentityCode = updateVirtualCode(
+      stableIdentityCode,
+      2,
+      `<script server>
+const insertedValue = 0
+</script>
+${stableIdentityText}`,
+      'ejs'
+    )
+    const shiftedSecondCode = shiftedStableIdentityCode.embeddedCodes.find(
+      (entry) => entry.kind === 'server-script' && entry.snapshot.getText(0, entry.snapshot.getLength()).includes('secondValue')
+    )
+    if (!stableSecondCode || !shiftedSecondCode || stableSecondCode.id !== shiftedSecondCode.id) {
+      throw new Error(
+        `Expected server embedded code identity to survive block index shifts. before=${stableSecondCode && stableSecondCode.id} after=${shiftedSecondCode && shiftedSecondCode.id}`
+      )
+    }
+    const shiftedRegionGraph = shiftedStableIdentityCode.getRegionGraph()
+    const shiftedSecondRegion = shiftedRegionGraph.regions.find((entry) => entry.id === shiftedSecondCode.id)
+    if (!shiftedSecondRegion || shiftedSecondRegion.dirty !== false) {
+      throw new Error(`Expected unchanged shifted server region to be marked clean. Got: ${JSON.stringify(shiftedSecondRegion)}`)
+    }
+    const shiftedSecondChangeRange = shiftedSecondCode.snapshot.getChangeRange(stableSecondCode.snapshot)
+    if (!shiftedSecondChangeRange || shiftedSecondChangeRange.span.length !== 0 || shiftedSecondChangeRange.newLength !== 0) {
+      throw new Error(
+        `Expected stable server embedded snapshot to report a no-op change for unchanged shifted block. Got: ${JSON.stringify(shiftedSecondChangeRange)}`
+      )
+    }
+    const editableStableIdentityCode = createVirtualCode(boardShowUri, 'ejs', 3, stableIdentityText)
+    const editableStableSecondCode = editableStableIdentityCode.embeddedCodes.find(
+      (entry) => entry.kind === 'server-script' && entry.snapshot.getText(0, entry.snapshot.getLength()).includes('secondValue')
+    )
+    const editedStableIdentityCode = updateVirtualCode(
+      editableStableIdentityCode,
+      3,
+      stableIdentityText.replace('const secondValue = 2', 'const secondValue = 3'),
+      'ejs'
+    )
+    const editedSecondCode = editedStableIdentityCode.embeddedCodes.find(
+      (entry) => entry.kind === 'server-script' && entry.snapshot.getText(0, entry.snapshot.getLength()).includes('secondValue')
+    )
+    if (!editableStableSecondCode || !editedSecondCode || editedSecondCode.id !== editableStableSecondCode.id) {
+      throw new Error(
+        `Expected edited server block to preserve its stable embedded code identity. before=${editableStableSecondCode && editableStableSecondCode.id} after=${editedSecondCode && editedSecondCode.id}`
+      )
+    }
+    const editedSecondRegion = editedStableIdentityCode.getRegionGraph().regions.find((entry) => entry.id === editedSecondCode.id)
+    if (!editedSecondRegion || editedSecondRegion.dirty !== true) {
+      throw new Error(`Expected edited server region to be marked dirty. Got: ${JSON.stringify(editedSecondRegion)}`)
+    }
+    const stableTemplateRegionText = `<%= firstValue %>
+<%= secondValue %>
+`
+    const stableTemplateRegionCode = createVirtualCode(boardShowUri, 'ejs', 1, stableTemplateRegionText)
+    const shiftedTemplateRegionText = `<%= insertedValue %>
+${stableTemplateRegionText}`
+    const shiftedTemplateRegionCode = updateVirtualCode(
+      stableTemplateRegionCode,
+      2,
+      shiftedTemplateRegionText,
+      'ejs'
+    )
+    const shiftedTemplateSecondOffset = shiftedTemplateRegionText.indexOf('secondValue')
+    const shiftedTemplateSecondRegion = shiftedTemplateRegionCode.getRegionGraph().regions.find(
+      (entry) =>
+        entry.kind === 'template-block' &&
+        entry.sourceStart <= shiftedTemplateSecondOffset &&
+        entry.sourceEnd >= shiftedTemplateSecondOffset
+    )
+    if (!shiftedTemplateSecondRegion || shiftedTemplateSecondRegion.dirty !== false) {
+      throw new Error(`Expected unchanged shifted template block region to be marked clean. Got: ${JSON.stringify(shiftedTemplateSecondRegion)}`)
+    }
+    const unchangedRegionSkipCore = new PocketPagesLanguageCore()
+    unchangedRegionSkipCore.openDocument({
+      uri: boardShowUri,
+      languageId: 'ejs',
+      version: 1,
+      text: stableIdentityText,
+    })
+    const unchangedRegionSkipContext = unchangedRegionSkipCore.getDocumentContextByUri(boardShowUri)
+    const unchangedRegionSkipService = unchangedRegionSkipContext && unchangedRegionSkipContext.service
+    if (!unchangedRegionSkipService) {
+      throw new Error('Expected unchanged-region skip test to expose a language service.')
+    }
+    const originalRegionSkipBuildPrelude = unchangedRegionSkipService.buildPrelude.bind(unchangedRegionSkipService)
+    const regionSkipPreludeInputs = []
+    unchangedRegionSkipService.buildPrelude = function patchedRegionSkipBuildPrelude(filePath, analysisText, options) {
+      regionSkipPreludeInputs.push(String(analysisText || ''))
+      return originalRegionSkipBuildPrelude(filePath, analysisText, options)
+    }
+    try {
+      unchangedRegionSkipCore.updateDocument({
+        uri: boardShowUri,
+        languageId: 'ejs',
+        version: 2,
+        text: `<script server>
+const insertedValue = 0
+</script>
+${stableIdentityText}`,
+      })
+    } finally {
+      unchangedRegionSkipService.buildPrelude = originalRegionSkipBuildPrelude
+    }
+    if (regionSkipPreludeInputs.some((entry) => entry.trim() === 'const secondValue = 2')) {
+      throw new Error(`Expected unchanged server region prepare to skip buildPrelude(). Got inputs: ${JSON.stringify(regionSkipPreludeInputs)}`)
+    }
+    const offsetScopedCore = new PocketPagesLanguageCore()
+    offsetScopedCore.openDocument({
+      uri: boardShowUri,
+      languageId: 'ejs',
+      version: 1,
+      text: stableIdentityText,
+    }, {
+      prepareVirtualCode: false,
+    })
+    const offsetScopedContext = offsetScopedCore.getDocumentContextByUri(boardShowUri)
+    const offsetScopedService = offsetScopedContext && offsetScopedContext.service
+    if (!offsetScopedService) {
+      throw new Error('Expected offset-scoped prepare test to expose a language service.')
+    }
+    const originalOffsetScopedUpsertVirtualFile = offsetScopedService.upsertVirtualFile.bind(offsetScopedService)
+    const offsetScopedServerInputs = []
+    offsetScopedService.upsertVirtualFile = function patchedOffsetScopedUpsertVirtualFile(filePath, block, options) {
+      offsetScopedServerInputs.push(String(block && block.content || '').trim())
+      return originalOffsetScopedUpsertVirtualFile(filePath, block, options)
+    }
+    try {
+      offsetScopedCore.prepareDocument(boardShowUri, {
+        operation: 'completion',
+        preferredOffset: stableIdentityText.indexOf('secondValue') + 1,
+        skipUnrelatedRegions: true,
+        skipStaticRefresh: true,
+      })
+    } finally {
+      offsetScopedService.upsertVirtualFile = originalOffsetScopedUpsertVirtualFile
+    }
+    if (
+      offsetScopedServerInputs.length !== 1 ||
+      offsetScopedServerInputs[0] !== 'const secondValue = 2'
+    ) {
+      throw new Error(`Expected offset-scoped prepare to upsert only the requested server region. Got: ${JSON.stringify(offsetScopedServerInputs)}`)
+    }
+    const templatePreludeCacheCore = new PocketPagesLanguageCore()
+    const templatePreludeCacheText = `<main>
+<%= firstValue %>
+</main>
+`
+    templatePreludeCacheCore.openDocument({
+      uri: boardShowUri,
+      languageId: 'ejs',
+      version: 1,
+      text: templatePreludeCacheText,
+    })
+    const templatePreludeCacheContext = templatePreludeCacheCore.getDocumentContextByUri(boardShowUri)
+    const templatePreludeCacheService = templatePreludeCacheContext && templatePreludeCacheContext.service
+    if (!templatePreludeCacheService) {
+      throw new Error('Expected template prelude cache test to expose a language service.')
+    }
+    const originalTemplatePreludeBuildPrelude = templatePreludeCacheService.buildPrelude.bind(templatePreludeCacheService)
+    const templatePreludeInputs = []
+    templatePreludeCacheService.buildPrelude = function patchedTemplatePreludeBuildPrelude(filePath, analysisText, options) {
+      templatePreludeInputs.push(String(analysisText || ''))
+      return originalTemplatePreludeBuildPrelude(filePath, analysisText, options)
+    }
+    try {
+      templatePreludeCacheCore.updateDocument({
+        uri: boardShowUri,
+        languageId: 'ejs',
+        version: 2,
+        text: `<section>plain html moved</section>
+${templatePreludeCacheText}`,
+      })
+    } finally {
+      templatePreludeCacheService.buildPrelude = originalTemplatePreludeBuildPrelude
+    }
+    if (templatePreludeInputs.length !== 0) {
+      throw new Error(`Expected unchanged template code regions to reuse the cached prelude across plain HTML shifts. Got: ${JSON.stringify(templatePreludeInputs)}`)
+    }
     const fineGrainedText = `<script server>
 const boardService = resolve('board-service')
 </script>
@@ -1842,7 +2553,7 @@ const boardService = resolve('board-service')
       throw new Error(`Expected linked code mapper to resolve server generated offsets back to source. Got: ${JSON.stringify(linkedRootLocations)}`)
     }
     const embeddedLinkedCodeMap = fineGrainedCore.linkedCodeMaps.get(managedFineGrainedVirtualCode)
-    if (!embeddedLinkedCodeMap || !embeddedLinkedCodeMap.has('server:0')) {
+    if (!embeddedLinkedCodeMap || !embeddedLinkedCodeMap.has(managedFineGrainedServerCode.id)) {
       throw new Error('Expected linked code precision to expose a root -> embedded-code mapper.')
     }
 
@@ -1878,6 +2589,28 @@ const boardService = resolve('board-service')
       : null
     if (!preparedService || !preparedState) {
       throw new Error(`Expected prepared document state after openDocument(). Got service=${!!preparedService} keys=${JSON.stringify(preparedService ? [...preparedService.preparedDocumentStates.keys()] : [])}`)
+    }
+    const preparedInitialDocumentSnapshot = preparedService.getDocumentSnapshot(fixture.boardShowFilePath)
+    if (
+      !preparedInitialDocumentSnapshot ||
+      preparedInitialDocumentSnapshot.text !== preparedBoardShowText ||
+      preparedInitialDocumentSnapshot.lspVersion !== 1 ||
+      preparedState.snapshotId !== preparedInitialDocumentSnapshot.snapshotId
+    ) {
+      throw new Error(
+        `Expected prepared document state to share the service document snapshot identity. Got: ${JSON.stringify({
+          preparedState: preparedState && {
+            snapshotId: preparedState.snapshotId,
+            contentVersion: preparedState.contentVersion,
+            lspVersion: preparedState.lspVersion,
+          },
+          documentSnapshot: preparedInitialDocumentSnapshot && {
+            snapshotId: preparedInitialDocumentSnapshot.snapshotId,
+            contentVersion: preparedInitialDocumentSnapshot.contentVersion,
+            lspVersion: preparedInitialDocumentSnapshot.lspVersion,
+          },
+        })}`
+      )
     }
     const preparedCompletion = preparedService.getCompletionData(
       fixture.boardShowFilePath,
@@ -1919,6 +2652,37 @@ const localValue = { title: 'Boards' }
       version: 2,
       text: preparedLinkedConsumerText,
     })
+    const preparedLinkedState = preparedService.getPreparedDocumentState(fixture.boardShowFilePath)
+    const preparedLinkedDocumentSnapshot = preparedService.getDocumentSnapshot(fixture.boardShowFilePath)
+    const preparedLinkedChangeRange =
+      preparedLinkedDocumentSnapshot && preparedInitialDocumentSnapshot
+        ? preparedLinkedDocumentSnapshot.snapshot.getChangeRange(preparedInitialDocumentSnapshot.snapshot)
+        : null
+    if (
+      !preparedLinkedState ||
+      !preparedLinkedDocumentSnapshot ||
+      preparedLinkedState.snapshotId !== preparedLinkedDocumentSnapshot.snapshotId ||
+      preparedLinkedDocumentSnapshot.snapshotId === preparedInitialDocumentSnapshot.snapshotId ||
+      preparedLinkedDocumentSnapshot.lspVersion !== 2 ||
+      !preparedLinkedChangeRange ||
+      typeof preparedLinkedChangeRange.span.start !== 'number'
+    ) {
+      throw new Error(
+        `Expected document snapshot lifecycle to advance prepared state on text change. Got: ${JSON.stringify({
+          preparedLinkedState: preparedLinkedState && {
+            snapshotId: preparedLinkedState.snapshotId,
+            contentVersion: preparedLinkedState.contentVersion,
+            lspVersion: preparedLinkedState.lspVersion,
+          },
+          preparedLinkedDocumentSnapshot: preparedLinkedDocumentSnapshot && {
+            snapshotId: preparedLinkedDocumentSnapshot.snapshotId,
+            contentVersion: preparedLinkedDocumentSnapshot.contentVersion,
+            lspVersion: preparedLinkedDocumentSnapshot.lspVersion,
+          },
+          preparedLinkedChangeRange,
+        })}`
+      )
+    }
     const preparedDefinition = preparedService.getTypeScriptDefinitionTarget(
       fixture.boardShowFilePath,
       preparedLinkedConsumerText,
@@ -1963,6 +2727,129 @@ const nextValue = localValue + 1
     const renamedPreparedLinkedText = applyEditsToText(preparedRenameServerText, preparedRenameEdits.edits)
     if (!renamedPreparedLinkedText.includes('const renamedValue = 1') || !renamedPreparedLinkedText.includes('const nextValue = renamedValue + 1')) {
       throw new Error(`Expected prepared linked rename to update both declaration and server usage. Got: ${renamedPreparedLinkedText}`)
+    }
+    const preparedDiagnosticsText = `<script server>
+const countValue = 1
+countValue.trim()
+</script>
+<div><%= missingAuthState.email %></div>
+`
+    preparedCore.updateDocument({
+      uri: boardShowUri,
+      languageId: 'ejs',
+      version: 4,
+      text: preparedDiagnosticsText,
+    })
+    const preparedDiagnosticsState = preparedService.getPreparedDocumentState(fixture.boardShowFilePath)
+    if (!preparedDiagnosticsState || preparedDiagnosticsState.documentText !== preparedDiagnosticsText) {
+      throw new Error(`Expected prepared diagnostics state to match the current document text. Got: ${JSON.stringify(preparedDiagnosticsState && { kind: preparedDiagnosticsState.kind, documentLength: preparedDiagnosticsState.documentLength })}`)
+    }
+    const originalPreparedDiagnosticsUpsertVirtualFile = preparedService.upsertVirtualFile.bind(preparedService)
+    const originalPreparedDiagnosticsUpsertTemplateVirtualFile = preparedService.upsertTemplateVirtualFile.bind(preparedService)
+    const originalPreparedDiagnosticsUpsertTemplateVirtualFileState = preparedService.upsertTemplateVirtualFileState.bind(preparedService)
+    const preparedDiagnosticsProjectVersion = preparedService.projectVersion
+    const preparedDiagnosticsUpsertCalls = []
+    preparedService.upsertVirtualFile = function unexpectedPreparedDiagnosticsServerUpsert(...args) {
+      preparedDiagnosticsUpsertCalls.push('server')
+      return originalPreparedDiagnosticsUpsertVirtualFile(...args)
+    }
+    preparedService.upsertTemplateVirtualFile = function unexpectedPreparedDiagnosticsTemplateUpsert(...args) {
+      preparedDiagnosticsUpsertCalls.push('template')
+      return originalPreparedDiagnosticsUpsertTemplateVirtualFile(...args)
+    }
+    preparedService.upsertTemplateVirtualFileState = function unexpectedPreparedDiagnosticsTemplateStateUpsert(...args) {
+      preparedDiagnosticsUpsertCalls.push('template-state')
+      return originalPreparedDiagnosticsUpsertTemplateVirtualFileState(...args)
+    }
+    try {
+      const preparedDiagnosticsProfile = {}
+      const preparedDiagnostics = preparedService.getDiagnostics(
+        fixture.boardShowFilePath,
+        preparedDiagnosticsText,
+        {
+          profile: preparedDiagnosticsProfile,
+          requirePreparedVirtualState: true,
+        }
+      )
+      const preparedDiagnosticsMessages = preparedDiagnostics.map((entry) => String(entry.message))
+      if (preparedDiagnosticsUpsertCalls.length) {
+        throw new Error(`Expected prepared diagnostics to reuse prepared virtual files without ad-hoc upserts. Got: ${JSON.stringify(preparedDiagnosticsUpsertCalls)}`)
+      }
+      if (preparedService.projectVersion !== preparedDiagnosticsProjectVersion) {
+        throw new Error(`Expected prepared diagnostics to keep projectVersion stable. before=${preparedDiagnosticsProjectVersion} after=${preparedService.projectVersion}`)
+      }
+      if (preparedDiagnosticsProfile.preparedVirtualStateKind !== 'prepared') {
+        throw new Error(`Expected diagnostics to use existing prepared virtual state. Got: ${JSON.stringify(preparedDiagnosticsProfile)}`)
+      }
+      if (!preparedDiagnosticsMessages.some((message) => message.includes("Property 'trim' does not exist"))) {
+        throw new Error(`Expected prepared server diagnostics to report number trim(). Got: ${preparedDiagnosticsMessages.join(' | ')}`)
+      }
+      if (!preparedDiagnostics.some((entry) => entry.code === 2304 && String(entry.message).includes('missingAuthState'))) {
+        throw new Error(`Expected prepared template diagnostics to report missingAuthState. Got: ${preparedDiagnosticsMessages.join(' | ')}`)
+      }
+    } finally {
+      preparedService.upsertVirtualFile = originalPreparedDiagnosticsUpsertVirtualFile
+      preparedService.upsertTemplateVirtualFile = originalPreparedDiagnosticsUpsertTemplateVirtualFile
+      preparedService.upsertTemplateVirtualFileState = originalPreparedDiagnosticsUpsertTemplateVirtualFileState
+    }
+
+    const coldPreparedDiagnosticsManager = new PocketPagesLanguageServiceManager()
+    const coldPreparedDiagnosticsService = coldPreparedDiagnosticsManager.getServiceForFile(fixture.boardsFilePath)
+    if (!coldPreparedDiagnosticsService) {
+      throw new Error('Expected cold prepared diagnostics manager to resolve a service.')
+    }
+    const coldPreparedDiagnosticsText = `<script server>
+const countValue = 1
+countValue.trim()
+</script>
+`
+    const originalColdPreparedUpsertVirtualFile = coldPreparedDiagnosticsService.upsertVirtualFile.bind(coldPreparedDiagnosticsService)
+    const originalColdPreparedUpsertTemplateVirtualFile = coldPreparedDiagnosticsService.upsertTemplateVirtualFile.bind(coldPreparedDiagnosticsService)
+    const originalColdPreparedUpsertTemplateVirtualFileState = coldPreparedDiagnosticsService.upsertTemplateVirtualFileState.bind(coldPreparedDiagnosticsService)
+    const coldPreparedUpsertCalls = []
+    coldPreparedDiagnosticsService.upsertVirtualFile = function unexpectedColdPreparedServerUpsert(...args) {
+      coldPreparedUpsertCalls.push('server')
+      return originalColdPreparedUpsertVirtualFile(...args)
+    }
+    coldPreparedDiagnosticsService.upsertTemplateVirtualFile = function unexpectedColdPreparedTemplateUpsert(...args) {
+      coldPreparedUpsertCalls.push('template')
+      return originalColdPreparedUpsertTemplateVirtualFile(...args)
+    }
+    coldPreparedDiagnosticsService.upsertTemplateVirtualFileState = function unexpectedColdPreparedTemplateStateUpsert(...args) {
+      coldPreparedUpsertCalls.push('template-state')
+      return originalColdPreparedUpsertTemplateVirtualFileState(...args)
+    }
+    try {
+      const coldPreparedProfile = {}
+      const coldPreparedVersion = coldPreparedDiagnosticsService.projectVersion
+      const coldPreparedVirtualFileCount = coldPreparedDiagnosticsService.virtualFiles.size
+      const coldPreparedDiagnostics = coldPreparedDiagnosticsService.getDiagnostics(
+        fixture.boardsFilePath,
+        coldPreparedDiagnosticsText,
+        {
+          profile: coldPreparedProfile,
+          requirePreparedVirtualState: true,
+        }
+      )
+      if (coldPreparedUpsertCalls.length || coldPreparedDiagnosticsService.virtualFiles.size !== coldPreparedVirtualFileCount) {
+        throw new Error(`Expected prepared-only diagnostics to avoid cold virtual upserts. Got: ${JSON.stringify({ calls: coldPreparedUpsertCalls, before: coldPreparedVirtualFileCount, after: coldPreparedDiagnosticsService.virtualFiles.size })}`)
+      }
+      if (coldPreparedDiagnosticsService.projectVersion !== coldPreparedVersion) {
+        throw new Error(`Expected prepared-only cold diagnostics to keep projectVersion stable. before=${coldPreparedVersion} after=${coldPreparedDiagnosticsService.projectVersion}`)
+      }
+      if (
+        coldPreparedProfile.preparedVirtualStateKind !== 'missing-prepared' ||
+        coldPreparedProfile.skippedUnpreparedServerBlockDiagnostics !== 1
+      ) {
+        throw new Error(`Expected cold prepared-only diagnostics to skip TS work when no prepared state exists. Got: ${JSON.stringify(coldPreparedProfile)}`)
+      }
+      if (coldPreparedDiagnostics.some((entry) => String(entry.message).includes("Property 'trim' does not exist"))) {
+        throw new Error(`Expected cold prepared-only diagnostics to skip TS semantic diagnostics. Got: ${JSON.stringify(coldPreparedDiagnostics)}`)
+      }
+    } finally {
+      coldPreparedDiagnosticsService.upsertVirtualFile = originalColdPreparedUpsertVirtualFile
+      coldPreparedDiagnosticsService.upsertTemplateVirtualFile = originalColdPreparedUpsertTemplateVirtualFile
+      coldPreparedDiagnosticsService.upsertTemplateVirtualFileState = originalColdPreparedUpsertTemplateVirtualFileState
     }
 
     const lspSmokeCore = new PocketPagesLanguageCore()
@@ -2121,6 +3008,71 @@ const localValue = {
       throw new Error(
         `Expected template-string trigger to reach TypeScript completion with incomplete metadata. trigger=${templateStringTriggerCharacter} result=${JSON.stringify(templateStringCompletion)}`
       )
+    }
+
+    const largeQuoteCompletionCore = new PocketPagesLanguageCore()
+    const largeQuoteCompletionText = `<script server>
+${'const fillerValue = 1\n'.repeat(80)}
+const quoteTarget = ""
+const memberTarget = { value: 1 }
+memberTarget.
+</script>
+`
+    const largeQuoteCompletionDocument = createTestDocument(
+      fixture.signInFilePath,
+      'ejs',
+      1,
+      largeQuoteCompletionText
+    )
+    largeQuoteCompletionCore.openDocument({
+      uri: largeQuoteCompletionDocument.uri,
+      languageId: 'ejs',
+      version: 1,
+      text: largeQuoteCompletionText,
+    })
+    const largeQuoteCompletionContext = createLspServiceSmokeContext(
+      largeQuoteCompletionCore,
+      new Map([[largeQuoteCompletionDocument.uri, largeQuoteCompletionDocument]])
+    )
+    largeQuoteCompletionContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 1000
+    const largeQuoteCompletionDocumentContext = largeQuoteCompletionCore.getDocumentContextByUri(
+      largeQuoteCompletionDocument.uri
+    )
+    let largeQuoteCompletionCallCount = 0
+    const originalLargeQuoteCompletionData =
+      largeQuoteCompletionDocumentContext.service.getCompletionData.bind(
+        largeQuoteCompletionDocumentContext.service
+      )
+    largeQuoteCompletionDocumentContext.service.getCompletionData = function getLargeQuoteCompletionDataStub() {
+      largeQuoteCompletionCallCount += 1
+      return null
+    }
+    const largeQuoteCompletionFeatureService = createTypeScriptFeatureService(
+      largeQuoteCompletionContext.context
+    )
+    try {
+      const largeQuoteCompletionResult = largeQuoteCompletionFeatureService.provideCompletionItems({
+        textDocument: { uri: largeQuoteCompletionDocument.uri },
+        position: largeQuoteCompletionDocument.positionAt(largeQuoteCompletionText.indexOf('""') + 1),
+        context: { triggerKind: 2, triggerCharacter: '"' },
+      })
+      if (largeQuoteCompletionResult !== null || largeQuoteCompletionCallCount !== 0) {
+        throw new Error(
+          `Expected large-EJS quote trigger to skip TypeScript completion. calls=${largeQuoteCompletionCallCount} result=${JSON.stringify(largeQuoteCompletionResult)}`
+        )
+      }
+      const largeDotCompletionResult = largeQuoteCompletionFeatureService.provideCompletionItems({
+        textDocument: { uri: largeQuoteCompletionDocument.uri },
+        position: largeQuoteCompletionDocument.positionAt(largeQuoteCompletionText.indexOf('memberTarget.') + 'memberTarget.'.length),
+        context: { triggerKind: 2, triggerCharacter: '.' },
+      })
+      if (largeDotCompletionResult !== null || largeQuoteCompletionCallCount !== 1) {
+        throw new Error(
+          `Expected large-EJS member trigger to keep TypeScript completion routing. calls=${largeQuoteCompletionCallCount} result=${JSON.stringify(largeDotCompletionResult)}`
+        )
+      }
+    } finally {
+      largeQuoteCompletionDocumentContext.service.getCompletionData = originalLargeQuoteCompletionData
     }
 
     const completionTextEditCore = new PocketPagesLanguageCore()
@@ -2451,7 +3403,6 @@ const flashClasses = 'notice'
       throw new Error(`Expected custom feature document links to preserve asset() tooltips. Got: ${JSON.stringify(assetFeatureDocumentLinks)}`)
     }
 
-    const diagnosticsEvents = []
     const diagnosticsSmokeCore = new PocketPagesLanguageCore()
     const diagnosticsSmokeText = `<a href="/missing"></a>\n<script server>\nresolve('/_private/board-service')\n</script>\n<div>ok</div>\n`
     const diagnosticsSmokeDocument = createTestDocument(fixture.boardsFilePath, 'ejs', 1, diagnosticsSmokeText)
@@ -2464,207 +3415,92 @@ const flashClasses = 'notice'
     })
     const diagnosticsSmokeContext = createLspServiceSmokeContext(
       diagnosticsSmokeCore,
-      new Map([[diagnosticsSmokeUri, diagnosticsSmokeDocument]]),
-      {
-        connection: {
-          sendDiagnostics(payload) {
-            diagnosticsEvents.push(payload)
-          },
-        },
-      }
+      new Map([[diagnosticsSmokeUri, diagnosticsSmokeDocument]])
     )
     const diagnosticsFeatureService = createDiagnosticsFeatureService(diagnosticsSmokeContext.context)
-    diagnosticsFeatureService.publishDiagnostics(diagnosticsSmokeUri)
-    if (!diagnosticsEvents.length || !Array.isArray(diagnosticsEvents[0].diagnostics) || diagnosticsEvents[0].diagnostics.length === 0) {
-      throw new Error(`Expected diagnostics feature service to publish mapper-filtered diagnostics. Got: ${JSON.stringify(diagnosticsEvents)}`)
+    const diagnosticsSmokeReport = await diagnosticsFeatureService.providePullDiagnostics(
+      { textDocument: { uri: diagnosticsSmokeUri } },
+      { isCancellationRequested: false }
+    )
+    if (!diagnosticsSmokeReport || !Array.isArray(diagnosticsSmokeReport.items) || diagnosticsSmokeReport.items.length === 0) {
+      throw new Error(`Expected diagnostics feature service to return mapper-filtered pull diagnostics. Got: ${JSON.stringify(diagnosticsSmokeReport)}`)
     }
     if (
-      !diagnosticsEvents[0].diagnostics.some((entry) =>
+      !diagnosticsSmokeReport.items.some((entry) =>
         ['pp-private-resolve-path', 'pp-resolve-private-prefix'].includes(String(entry.code))
       )
     ) {
-      throw new Error(`Expected diagnostics feature service to keep resolve() path diagnostics reportable. Got: ${JSON.stringify(diagnosticsEvents[0].diagnostics)}`)
+      throw new Error(`Expected diagnostics feature service to keep resolve() path diagnostics reportable. Got: ${JSON.stringify(diagnosticsSmokeReport.items)}`)
     }
-    if (!diagnosticsEvents[0].diagnostics.some((entry) => String(entry.code) === 'pp-unresolved-route-path')) {
-      throw new Error(`Expected diagnostics feature service to publish route-path diagnostics from EJS markup. Got: ${JSON.stringify(diagnosticsEvents[0].diagnostics)}`)
-    }
-
-    const scheduledDiagnosticsEvents = []
-    const scheduledDiagnosticsCalls = []
-    const scheduledDiagnosticsCore = new PocketPagesLanguageCore()
-    const scheduledDiagnosticsText = `const value = 1\n`
-    const scheduledDiagnosticsDocument = createTestDocument(
-      fixture.globalAssetFilePath,
-      'javascript',
-      1,
-      scheduledDiagnosticsText
-    )
-    const scheduledDiagnosticsUri = scheduledDiagnosticsDocument.uri
-    scheduledDiagnosticsCore.openDocument({
-      uri: scheduledDiagnosticsUri,
-      languageId: 'javascript',
-      version: 1,
-      text: scheduledDiagnosticsText,
-    })
-    const scheduledDiagnosticsContext = createLspServiceSmokeContext(
-      scheduledDiagnosticsCore,
-      new Map([[scheduledDiagnosticsUri, scheduledDiagnosticsDocument]]),
-      {
-        connection: {
-          sendDiagnostics(payload) {
-            scheduledDiagnosticsEvents.push(payload)
-          },
-        },
-        state: {
-          diagnosticTimeouts: new Map(),
-          semanticDiagnosticTimeouts: new Map(),
-        },
-      }
-    )
-    scheduledDiagnosticsContext.context.helpers.SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 1
-    scheduledDiagnosticsContext.context.helpers.SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS = 5
-    const scheduledDocumentContext = scheduledDiagnosticsCore.getDocumentContextByUri(scheduledDiagnosticsUri)
-    const scheduledService = scheduledDocumentContext && scheduledDocumentContext.service
-    const originalScheduledGetDiagnostics =
-      scheduledService && typeof scheduledService.getDiagnostics === 'function'
-        ? scheduledService.getDiagnostics.bind(scheduledService)
-        : null
-    if (!scheduledService || !originalScheduledGetDiagnostics) {
-      throw new Error('Expected scheduled diagnostics smoke context to expose a language service.')
-    }
-    scheduledService.getDiagnostics = (_filePath, _documentText, options = {}) => {
-      const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false
-      scheduledDiagnosticsCalls.push(includeSemanticDiagnostics)
-      return [
-        {
-          code: includeSemanticDiagnostics ? 'semantic-diagnostics' : 'fast-diagnostics',
-          category: ts.DiagnosticCategory.Error,
-          message: includeSemanticDiagnostics ? 'semantic diagnostics' : 'fast diagnostics',
-          start: 0,
-          end: 5,
-        },
-      ]
-    }
-    const scheduledDiagnosticsFeatureService = createDiagnosticsFeatureService(
-      scheduledDiagnosticsContext.context
-    )
-    try {
-      scheduledDiagnosticsFeatureService.scheduleDiagnostics(scheduledDiagnosticsUri)
-      await new Promise((resolve) => setTimeout(resolve, 30))
-    } finally {
-      scheduledService.getDiagnostics = originalScheduledGetDiagnostics
-    }
-    if (
-      scheduledDiagnosticsCalls.length !== 2 ||
-      scheduledDiagnosticsCalls[0] !== false ||
-      scheduledDiagnosticsCalls[1] !== true
-    ) {
-      throw new Error(
-        `Expected scheduled diagnostics to run fast first and semantic after idle. Got: ${JSON.stringify(scheduledDiagnosticsCalls)}`
-      )
-    }
-    const scheduledDiagnosticCodes = scheduledDiagnosticsEvents.flatMap((event) =>
-      (event.diagnostics || []).map((entry) => String(entry.code))
-    )
-    if (
-      scheduledDiagnosticCodes[0] !== 'fast-diagnostics' ||
-      scheduledDiagnosticCodes[1] !== 'semantic-diagnostics'
-    ) {
-      throw new Error(
-        `Expected scheduled diagnostics publish order to stay fast then semantic. Got: ${JSON.stringify(scheduledDiagnosticCodes)}`
-      )
+    if (!diagnosticsSmokeReport.items.some((entry) => String(entry.code) === 'pp-unresolved-route-path')) {
+      throw new Error(`Expected diagnostics feature service to return route-path diagnostics from EJS markup. Got: ${JSON.stringify(diagnosticsSmokeReport.items)}`)
     }
 
-    const smallEjsDiagnosticsEvents = []
-    const smallEjsDiagnosticsCalls = []
-    const smallEjsDiagnosticsCore = new PocketPagesLanguageCore()
-    const smallEjsDiagnosticsText = `<script server>\nconst value = 1\n</script>\n`
-    const smallEjsDiagnosticsDocument = createTestDocument(
+    const cachedCodeActionCore = new PocketPagesLanguageCore()
+    const cachedCodeActionText = `<script server>\nparams.sort\n</script>\n`
+    const cachedCodeActionDocument = createTestDocument(
       fixture.boardsFilePath,
       'ejs',
       1,
-      smallEjsDiagnosticsText
+      cachedCodeActionText
     )
-    const smallEjsDiagnosticsUri = smallEjsDiagnosticsDocument.uri
-    smallEjsDiagnosticsCore.openDocument({
-      uri: smallEjsDiagnosticsUri,
+    cachedCodeActionCore.openDocument({
+      uri: cachedCodeActionDocument.uri,
       languageId: 'ejs',
       version: 1,
-      text: smallEjsDiagnosticsText,
+      text: cachedCodeActionText,
     })
-    const smallEjsDiagnosticsContext = createLspServiceSmokeContext(
-      smallEjsDiagnosticsCore,
-      new Map([[smallEjsDiagnosticsUri, smallEjsDiagnosticsDocument]]),
-      {
-        connection: {
-          sendDiagnostics(payload) {
-            smallEjsDiagnosticsEvents.push(payload)
-          },
-        },
-        state: {
-          diagnosticTimeouts: new Map(),
-          semanticDiagnosticTimeouts: new Map(),
-        },
-      }
+    const cachedCodeActionContext = createLspServiceSmokeContext(
+      cachedCodeActionCore,
+      new Map([[cachedCodeActionDocument.uri, cachedCodeActionDocument]])
     )
-    smallEjsDiagnosticsContext.context.helpers.SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 1
-    smallEjsDiagnosticsContext.context.helpers.SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS = 5
-    smallEjsDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 1000
-    smallEjsDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS = 5
-    const smallEjsDocumentContext = smallEjsDiagnosticsCore.getDocumentContextByUri(smallEjsDiagnosticsUri)
-    const smallEjsService = smallEjsDocumentContext && smallEjsDocumentContext.service
-    const originalSmallEjsGetDiagnostics =
-      smallEjsService && typeof smallEjsService.getDiagnostics === 'function'
-        ? smallEjsService.getDiagnostics.bind(smallEjsService)
+    const cachedCodeActionFeatureService = createDiagnosticsFeatureService(cachedCodeActionContext.context)
+    const cachedCodeActionReport = await cachedCodeActionFeatureService.providePullDiagnostics(
+      { textDocument: { uri: cachedCodeActionDocument.uri } },
+      { isCancellationRequested: false }
+    )
+    const cachedCodeActionDiagnostic =
+      cachedCodeActionReport &&
+      Array.isArray(cachedCodeActionReport.items)
+        ? cachedCodeActionReport.items.find((entry) => String(entry.code) === 'pp-query-via-params')
         : null
-    if (!smallEjsService || !originalSmallEjsGetDiagnostics) {
-      throw new Error('Expected small EJS diagnostics smoke context to expose a language service.')
+    if (!cachedCodeActionDiagnostic) {
+      throw new Error(`Expected cached code-action probe to publish params diagnostics. Got: ${JSON.stringify(cachedCodeActionReport)}`)
     }
-    smallEjsService.getDiagnostics = (_filePath, _documentText, options = {}) => {
-      const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false
-      smallEjsDiagnosticsCalls.push(includeSemanticDiagnostics)
-      return [
-        {
-          code: includeSemanticDiagnostics ? 'small-ejs-semantic-diagnostics' : 'small-ejs-fast-diagnostics',
-          category: ts.DiagnosticCategory.Error,
-          message: includeSemanticDiagnostics ? 'small EJS semantic diagnostics' : 'small EJS fast diagnostics',
-          start: smallEjsDiagnosticsText.indexOf('value'),
-          end: smallEjsDiagnosticsText.indexOf('value') + 'value'.length,
-        },
-      ]
+    const cachedCodeActionDocumentContext = cachedCodeActionCore.getDocumentContextByUri(cachedCodeActionDocument.uri)
+    const cachedCodeActionService = cachedCodeActionDocumentContext && cachedCodeActionDocumentContext.service
+    const originalCachedCodeActionGetDiagnostics =
+      cachedCodeActionService && typeof cachedCodeActionService.getDiagnostics === 'function'
+        ? cachedCodeActionService.getDiagnostics.bind(cachedCodeActionService)
+        : null
+    if (!cachedCodeActionService || !originalCachedCodeActionGetDiagnostics) {
+      throw new Error('Expected cached code-action smoke context to expose a language service.')
     }
-    const smallEjsDiagnosticsFeatureService = createDiagnosticsFeatureService(
-      smallEjsDiagnosticsContext.context
-    )
+    let cachedCodeActions = null
     try {
-      smallEjsDiagnosticsFeatureService.scheduleDiagnostics(smallEjsDiagnosticsUri)
-      await new Promise((resolve) => setTimeout(resolve, 30))
+      cachedCodeActionService.getDiagnostics = () => {
+        throw new Error('Expected code actions to reuse cached pull diagnostics instead of recomputing diagnostics.')
+      }
+      cachedCodeActions = cachedCodeActionFeatureService.provideCodeActions({
+        textDocument: { uri: cachedCodeActionDocument.uri },
+        range: cachedCodeActionDiagnostic.range,
+        context: {
+          diagnostics: [cachedCodeActionDiagnostic],
+        },
+      })
     } finally {
-      smallEjsService.getDiagnostics = originalSmallEjsGetDiagnostics
+      cachedCodeActionService.getDiagnostics = originalCachedCodeActionGetDiagnostics
     }
     if (
-      smallEjsDiagnosticsCalls.length !== 2 ||
-      smallEjsDiagnosticsCalls[0] !== false ||
-      smallEjsDiagnosticsCalls[1] !== true
-    ) {
-      throw new Error(
-        `Expected small EJS diagnostics to keep fast then semantic scheduling. Got: ${JSON.stringify(smallEjsDiagnosticsCalls)}`
+      !Array.isArray(cachedCodeActions) ||
+      !cachedCodeActions.some((entry) =>
+        Array.isArray(entry.edit) &&
+        entry.edit.some((edit) => edit.newText === 'request.url.query')
       )
-    }
-    const smallEjsDiagnosticCodes = smallEjsDiagnosticsEvents.flatMap((event) =>
-      (event.diagnostics || []).map((entry) => String(entry.code))
-    )
-    if (
-      smallEjsDiagnosticCodes[0] !== 'small-ejs-fast-diagnostics' ||
-      smallEjsDiagnosticCodes[1] !== 'small-ejs-semantic-diagnostics'
     ) {
-      throw new Error(
-        `Expected small EJS diagnostics publish order to stay fast then semantic. Got: ${JSON.stringify(smallEjsDiagnosticCodes)}`
-      )
+      throw new Error(`Expected cached pull diagnostics to drive params code actions. Got: ${JSON.stringify(cachedCodeActions)}`)
     }
 
-    const largeDiagnosticsEvents = []
-    const largeDiagnosticsCalls = []
     const largeDiagnosticsCore = new PocketPagesLanguageCore()
     const largeDiagnosticsText = `<script server>\n${'const value = 1\n'.repeat(80)}</script>\n`
     const largeDiagnosticsDocument = createTestDocument(
@@ -2682,23 +3518,8 @@ const flashClasses = 'notice'
     })
     const largeDiagnosticsContext = createLspServiceSmokeContext(
       largeDiagnosticsCore,
-      new Map([[largeDiagnosticsUri, largeDiagnosticsDocument]]),
-      {
-        connection: {
-          sendDiagnostics(payload) {
-            largeDiagnosticsEvents.push(payload)
-          },
-        },
-        state: {
-          diagnosticTimeouts: new Map(),
-          semanticDiagnosticTimeouts: new Map(),
-        },
-      }
+      new Map([[largeDiagnosticsUri, largeDiagnosticsDocument]])
     )
-    largeDiagnosticsContext.context.helpers.SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 1
-    largeDiagnosticsContext.context.helpers.SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS = 2
-    largeDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 1000
-    largeDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS = 5
     const largeDocumentContext = largeDiagnosticsCore.getDocumentContextByUri(largeDiagnosticsUri)
     const largeService = largeDocumentContext && largeDocumentContext.service
     const originalLargeGetDiagnostics =
@@ -2708,14 +3529,21 @@ const flashClasses = 'notice'
     if (!largeService || !originalLargeGetDiagnostics) {
       throw new Error('Expected large diagnostics smoke context to expose a language service.')
     }
+    const largePullDiagnosticsCalls = []
     largeService.getDiagnostics = (_filePath, _documentText, options = {}) => {
-      const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false
-      largeDiagnosticsCalls.push(includeSemanticDiagnostics)
+      largePullDiagnosticsCalls.push({
+        semantic: options.includeSemanticDiagnostics !== false,
+        project: options.includeProjectRuleDiagnostics !== false,
+        ts: options.includeTypeScriptDiagnostics !== false,
+        server: options.includeServerBlockDiagnostics !== false,
+        template: options.includeTemplateDiagnostics !== false,
+        scriptSchema: options.includeScriptSchemaDiagnostics !== false,
+      })
       return [
         {
-          code: includeSemanticDiagnostics ? 'large-semantic-diagnostics' : 'large-fast-diagnostics',
+          code: 'large-pull-diagnostics',
           category: ts.DiagnosticCategory.Error,
-          message: includeSemanticDiagnostics ? 'large semantic diagnostics' : 'large fast diagnostics',
+          message: 'large pull diagnostics',
           start: largeDiagnosticsText.indexOf('value'),
           end: largeDiagnosticsText.indexOf('value') + 'value'.length,
         },
@@ -2724,130 +3552,566 @@ const flashClasses = 'notice'
     const largeDiagnosticsFeatureService = createDiagnosticsFeatureService(
       largeDiagnosticsContext.context
     )
+    let largePullDiagnosticsReport = null
+    let largePullDiagnosticsUnchangedReport = null
+    let largePullDiagnosticsInvalidatedReport = null
+    const originalLargePagesContentVersion = largeService.projectIndex.pagesContentVersion
     try {
-      largeDiagnosticsFeatureService.scheduleDiagnostics(largeDiagnosticsUri)
-      await new Promise((resolve) => setTimeout(resolve, 30))
+      largePullDiagnosticsReport = await largeDiagnosticsFeatureService.providePullDiagnostics(
+        { textDocument: { uri: largeDiagnosticsUri } },
+        { isCancellationRequested: false }
+      )
+      largePullDiagnosticsUnchangedReport = await largeDiagnosticsFeatureService.providePullDiagnostics(
+        {
+          textDocument: { uri: largeDiagnosticsUri },
+          previousResultId: largePullDiagnosticsReport && largePullDiagnosticsReport.resultId,
+        },
+        { isCancellationRequested: false }
+      )
+      largeService.projectIndex.pagesContentVersion += 1
+      largePullDiagnosticsInvalidatedReport = await largeDiagnosticsFeatureService.providePullDiagnostics(
+        {
+          textDocument: { uri: largeDiagnosticsUri },
+          previousResultId: largePullDiagnosticsReport && largePullDiagnosticsReport.resultId,
+        },
+        { isCancellationRequested: false }
+      )
     } finally {
       largeService.getDiagnostics = originalLargeGetDiagnostics
+      largeService.projectIndex.pagesContentVersion = originalLargePagesContentVersion
     }
     if (
-      largeDiagnosticsCalls.length !== 1 ||
-      largeDiagnosticsCalls[0] !== true
+      !largePullDiagnosticsReport ||
+      largePullDiagnosticsReport.kind !== 'full' ||
+      typeof largePullDiagnosticsReport.resultId !== 'string' ||
+      !Array.isArray(largePullDiagnosticsReport.items) ||
+      largePullDiagnosticsReport.items[0].code !== 'large-pull-diagnostics' ||
+      !largePullDiagnosticsUnchangedReport ||
+      largePullDiagnosticsUnchangedReport.kind !== 'unchanged' ||
+      largePullDiagnosticsUnchangedReport.resultId !== largePullDiagnosticsReport.resultId ||
+      !largePullDiagnosticsInvalidatedReport ||
+      largePullDiagnosticsInvalidatedReport.kind !== 'full' ||
+      largePullDiagnosticsInvalidatedReport.resultId === largePullDiagnosticsReport.resultId ||
+      largePullDiagnosticsCalls.length !== 2 ||
+      largePullDiagnosticsCalls[0].semantic !== true ||
+      largePullDiagnosticsCalls[0].project !== true ||
+      largePullDiagnosticsCalls[0].ts !== true ||
+      largePullDiagnosticsCalls[0].server !== true ||
+      largePullDiagnosticsCalls[0].template !== true ||
+      largePullDiagnosticsCalls[0].scriptSchema !== true
     ) {
       throw new Error(
-        `Expected large EJS diagnostics to skip fast diagnostics and run one semantic idle pass. Got: ${JSON.stringify(largeDiagnosticsCalls)}`
-      )
-    }
-    const largeDiagnosticCodes = largeDiagnosticsEvents.flatMap((event) =>
-      (event.diagnostics || []).map((entry) => String(entry.code))
-    )
-    if (
-      largeDiagnosticCodes.length !== 1 ||
-      largeDiagnosticCodes[0] !== 'large-semantic-diagnostics'
-    ) {
-      throw new Error(
-        `Expected large EJS diagnostics to publish only the large semantic idle result. Got: ${JSON.stringify(largeDiagnosticCodes)}`
+        `Expected pull diagnostics to cache resultId, return unchanged for repeated pulls, and invalidate on lane-relevant project changes. Got: ${JSON.stringify({ largePullDiagnosticsReport, largePullDiagnosticsUnchangedReport, largePullDiagnosticsInvalidatedReport, largePullDiagnosticsCalls })}`
       )
     }
 
-    const largeOpenDiagnosticsEvents = []
-    const largeOpenDiagnosticsCalls = []
-    const largeOpenDiagnosticsCore = new PocketPagesLanguageCore()
-    const largeOpenDiagnosticsText = `<script server>\n${'const openedValue = 1\n'.repeat(80)}</script>\n`
-    const largeOpenDiagnosticsDocument = createTestDocument(
+    const stableResultIdCore = new PocketPagesLanguageCore()
+    const stableResultIdText = `<script server>\nconst stableResultIdValue = 1\nstableResultIdValue.toFixed()\n</script>\n`
+    const stableResultIdDocumentV1 = createTestDocument(
       fixture.boardsFilePath,
       'ejs',
       1,
-      largeOpenDiagnosticsText
+      stableResultIdText
     )
-    const largeOpenDiagnosticsUri = largeOpenDiagnosticsDocument.uri
-    largeOpenDiagnosticsCore.openDocument({
-      uri: largeOpenDiagnosticsUri,
+    const stableResultIdUri = stableResultIdDocumentV1.uri
+    stableResultIdCore.openDocument({
+      uri: stableResultIdUri,
       languageId: 'ejs',
       version: 1,
-      text: largeOpenDiagnosticsText,
+      text: stableResultIdText,
     })
-    const largeOpenDiagnosticsContext = createLspServiceSmokeContext(
-      largeOpenDiagnosticsCore,
-      new Map([[largeOpenDiagnosticsUri, largeOpenDiagnosticsDocument]]),
-      {
-        connection: {
-          sendDiagnostics(payload) {
-            largeOpenDiagnosticsEvents.push(payload)
-          },
-        },
-        state: {
-          diagnosticTimeouts: new Map(),
-          semanticDiagnosticTimeouts: new Map(),
-        },
-      }
+    const stableResultIdDocuments = new Map([[stableResultIdUri, stableResultIdDocumentV1]])
+    const stableResultIdContext = createLspServiceSmokeContext(
+      stableResultIdCore,
+      stableResultIdDocuments
     )
-    largeOpenDiagnosticsContext.context.helpers.SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 1
-    largeOpenDiagnosticsContext.context.helpers.SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS = 2
-    largeOpenDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 1000
-    largeOpenDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS = 5
-    const largeOpenDocumentContext = largeOpenDiagnosticsCore.getDocumentContextByUri(largeOpenDiagnosticsUri)
-    const largeOpenService = largeOpenDocumentContext && largeOpenDocumentContext.service
-    const originalLargeOpenGetDiagnostics =
-      largeOpenService && typeof largeOpenService.getDiagnostics === 'function'
-        ? largeOpenService.getDiagnostics.bind(largeOpenService)
+    const stableResultIdDocumentContext = stableResultIdCore.getDocumentContextByUri(stableResultIdUri)
+    const stableResultIdService = stableResultIdDocumentContext && stableResultIdDocumentContext.service
+    const originalStableResultIdGetDiagnostics =
+      stableResultIdService && typeof stableResultIdService.getDiagnostics === 'function'
+        ? stableResultIdService.getDiagnostics.bind(stableResultIdService)
         : null
-    if (!largeOpenService || !originalLargeOpenGetDiagnostics) {
-      throw new Error('Expected large open diagnostics smoke context to expose a language service.')
+    if (!stableResultIdService || !originalStableResultIdGetDiagnostics) {
+      throw new Error('Expected stable resultId smoke context to expose a language service.')
     }
-    largeOpenService.getDiagnostics = (_filePath, _documentText, options = {}) => {
-      const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false
-      largeOpenDiagnosticsCalls.push(includeSemanticDiagnostics)
-      return [
-        {
-          code: includeSemanticDiagnostics ? 'large-open-semantic-diagnostics' : 'large-open-fast-diagnostics',
-          category: ts.DiagnosticCategory.Error,
-          message: includeSemanticDiagnostics ? 'large open semantic diagnostics' : 'large open fast diagnostics',
-          start: largeOpenDiagnosticsText.indexOf('openedValue'),
-          end: largeOpenDiagnosticsText.indexOf('openedValue') + 'openedValue'.length,
-        },
-      ]
+    let stableResultIdDiagnosticCalls = 0
+    stableResultIdService.getDiagnostics = () => {
+      stableResultIdDiagnosticCalls += 1
+      return []
     }
-    const largeOpenDiagnosticsFeatureService = createDiagnosticsFeatureService(
-      largeOpenDiagnosticsContext.context
+    const stableResultIdFeatureService = createDiagnosticsFeatureService(
+      stableResultIdContext.context
     )
+    let stableResultIdFirstReport = null
+    let stableResultIdSecondReport = null
     try {
-      largeOpenDiagnosticsFeatureService.publishDiagnostics(largeOpenDiagnosticsUri, {
-        reason: 'open',
-      })
-      if (largeOpenDiagnosticsCalls.length || largeOpenDiagnosticsEvents.length) {
-        throw new Error(
-          `Expected large EJS open diagnostics to defer immediate publish. Got: ${JSON.stringify({
-            calls: largeOpenDiagnosticsCalls,
-            events: largeOpenDiagnosticsEvents,
-          })}`
-        )
-      }
-      await new Promise((resolve) => setTimeout(resolve, 30))
-    } finally {
-      largeOpenService.getDiagnostics = originalLargeOpenGetDiagnostics
-    }
-    if (
-      largeOpenDiagnosticsCalls.length !== 1 ||
-      largeOpenDiagnosticsCalls[0] !== true
-    ) {
-      throw new Error(
-        `Expected large EJS open diagnostics to schedule one semantic idle pass. Got: ${JSON.stringify(largeOpenDiagnosticsCalls)}`
+      stableResultIdFirstReport = await stableResultIdFeatureService.providePullDiagnostics(
+        { textDocument: { uri: stableResultIdUri } },
+        { isCancellationRequested: false }
       )
+      stableResultIdCore.updateDocument({
+        uri: stableResultIdUri,
+        languageId: 'ejs',
+        version: 2,
+        text: stableResultIdText,
+      })
+      stableResultIdDocuments.set(
+        stableResultIdUri,
+        createTestDocument(fixture.boardsFilePath, 'ejs', 2, stableResultIdText)
+      )
+      stableResultIdSecondReport = await stableResultIdFeatureService.providePullDiagnostics(
+        {
+          textDocument: { uri: stableResultIdUri },
+          previousResultId: stableResultIdFirstReport && stableResultIdFirstReport.resultId,
+        },
+        { isCancellationRequested: false }
+      )
+    } finally {
+      stableResultIdService.getDiagnostics = originalStableResultIdGetDiagnostics
     }
-    const largeOpenDiagnosticCodes = largeOpenDiagnosticsEvents.flatMap((event) =>
-      (event.diagnostics || []).map((entry) => String(entry.code))
-    )
     if (
-      largeOpenDiagnosticCodes.length !== 1 ||
-      largeOpenDiagnosticCodes[0] !== 'large-open-semantic-diagnostics'
+      !stableResultIdFirstReport ||
+      stableResultIdFirstReport.kind !== 'full' ||
+      !stableResultIdSecondReport ||
+      stableResultIdSecondReport.kind !== 'unchanged' ||
+      stableResultIdSecondReport.resultId !== stableResultIdFirstReport.resultId ||
+      stableResultIdDiagnosticCalls !== 1
     ) {
       throw new Error(
-        `Expected large EJS open diagnostics to publish only the large semantic idle result. Got: ${JSON.stringify(largeOpenDiagnosticCodes)}`
+        `Expected unchanged pull diagnostics to use stable snapshot identity across LSP version-only updates. Got: ${JSON.stringify({
+          stableResultIdFirstReport,
+          stableResultIdSecondReport,
+          stableResultIdDiagnosticCalls,
+        })}`
       )
     }
 
-    const schemaOnlyDiagnosticsEvents = []
+    const laneReuseCore = new PocketPagesLanguageCore()
+    const laneReuseText = `<script server>
+const laneReuseValue = 1
+laneReuseValue.toFixed()
+</script>
+<div><%= laneReuseValue %></div>
+`
+    const laneReuseDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      laneReuseText
+    )
+    laneReuseCore.openDocument({
+      uri: laneReuseDocument.uri,
+      languageId: 'ejs',
+      version: 1,
+      text: laneReuseText,
+    })
+    const laneReuseContext = laneReuseCore.getDocumentContextByUri(laneReuseDocument.uri)
+    const laneReuseService = laneReuseContext && laneReuseContext.service
+    if (!laneReuseService) {
+      throw new Error('Expected lane reuse smoke context to expose a language service.')
+    }
+    const laneReuseFirstMetadata = laneReuseService.getDiagnosticsLaneMetadata(
+      fixture.boardsFilePath,
+      laneReuseText
+    )
+    const laneReuseFirstResultIds = laneReuseService.getDiagnosticsLaneResultIds(
+      fixture.boardsFilePath,
+      laneReuseText,
+      { laneMetadata: laneReuseFirstMetadata }
+    )
+    const laneReuseFirstDiagnosticsByLane = {}
+    laneReuseService.getDiagnostics(fixture.boardsFilePath, laneReuseText, {
+      currentLaneResultIds: laneReuseFirstResultIds,
+      currentLaneMetadata: laneReuseFirstMetadata,
+      laneDiagnosticsOut: laneReuseFirstDiagnosticsByLane,
+    })
+    if (
+      !Array.isArray(laneReuseFirstDiagnosticsByLane.server) ||
+      !Array.isArray(laneReuseFirstDiagnosticsByLane.template) ||
+      !Array.isArray(laneReuseFirstDiagnosticsByLane['script-schema']) ||
+      !Array.isArray(laneReuseFirstDiagnosticsByLane['project-rule'])
+    ) {
+      throw new Error(`Expected diagnostics to expose per-lane cached diagnostics. Got: ${JSON.stringify(laneReuseFirstDiagnosticsByLane)}`)
+    }
+    const originalLaneReuseServerDiagnostics = laneReuseService.collectServerBlockDiagnostics.bind(laneReuseService)
+    const originalLaneReuseTemplateDiagnostics = laneReuseService.collectTemplateDiagnostics.bind(laneReuseService)
+    const originalLaneReuseScriptSchemaDiagnostics = laneReuseService.collectScriptSchemaDiagnostics.bind(laneReuseService)
+    const originalLaneReuseProjectRuleAgentsDiagnostics = laneReuseService.collectProjectRuleAgentsDiagnostics.bind(laneReuseService)
+    const originalLaneReuseProjectRuleIncludeCallerDiagnostics = laneReuseService.collectProjectRuleIncludeCallerDiagnostics.bind(laneReuseService)
+    let laneReuseProjectRuleAgentsCalls = 0
+    let laneReuseProjectRuleIncludeCallerCalls = 0
+    try {
+      laneReuseService.collectServerBlockDiagnostics = () => {
+        throw new Error('Expected unchanged server diagnostics lane to be reused.')
+      }
+      laneReuseService.collectTemplateDiagnostics = () => {
+        throw new Error('Expected unchanged template diagnostics lane to be reused.')
+      }
+      laneReuseService.collectScriptSchemaDiagnostics = () => {
+        throw new Error('Expected unchanged script-schema diagnostics lane to be reused.')
+      }
+      laneReuseService.collectProjectRuleAgentsDiagnostics = function collectChangedProjectRuleAgentsLane(...args) {
+        laneReuseProjectRuleAgentsCalls += 1
+        return originalLaneReuseProjectRuleAgentsDiagnostics(...args)
+      }
+      laneReuseService.collectProjectRuleIncludeCallerDiagnostics = function collectReusedProjectRuleIncludeLane(...args) {
+        laneReuseProjectRuleIncludeCallerCalls += 1
+        return originalLaneReuseProjectRuleIncludeCallerDiagnostics(...args)
+      }
+      const laneReuseSecondResultIds = {
+        ...laneReuseFirstResultIds,
+        'project-rule:agents': `${laneReuseFirstResultIds['project-rule:agents']}|changed`,
+      }
+      const laneReuseProfile = {}
+      laneReuseService.getDiagnostics(fixture.boardsFilePath, laneReuseText, {
+        currentLaneResultIds: laneReuseSecondResultIds,
+        currentLaneMetadata: laneReuseFirstMetadata,
+        previousLaneResultIds: laneReuseFirstResultIds,
+        previousLaneMetadata: laneReuseFirstMetadata,
+        previousLaneDiagnostics: laneReuseFirstDiagnosticsByLane,
+        laneDiagnosticsOut: {},
+        profile: laneReuseProfile,
+      })
+      if (
+        laneReuseProjectRuleAgentsCalls !== 1 ||
+        laneReuseProjectRuleIncludeCallerCalls !== 0 ||
+        !Array.isArray(laneReuseProfile.reusedDiagnosticLanes) ||
+        !laneReuseProfile.reusedDiagnosticLanes.includes('server') ||
+        !laneReuseProfile.reusedDiagnosticLanes.includes('template') ||
+        !laneReuseProfile.reusedDiagnosticLanes.includes('script-schema') ||
+        !laneReuseProfile.reusedDiagnosticLanes.includes('project-rule:include-callers') ||
+        laneReuseProfile.reusedDiagnosticLanes.includes('project-rule:agents')
+      ) {
+        throw new Error(`Expected diagnostics lane cache to recompute only the changed sublane. Got: ${JSON.stringify({ laneReuseProjectRuleAgentsCalls, laneReuseProjectRuleIncludeCallerCalls, laneReuseProfile })}`)
+      }
+    } finally {
+      laneReuseService.collectServerBlockDiagnostics = originalLaneReuseServerDiagnostics
+      laneReuseService.collectTemplateDiagnostics = originalLaneReuseTemplateDiagnostics
+      laneReuseService.collectScriptSchemaDiagnostics = originalLaneReuseScriptSchemaDiagnostics
+      laneReuseService.collectProjectRuleAgentsDiagnostics = originalLaneReuseProjectRuleAgentsDiagnostics
+      laneReuseService.collectProjectRuleIncludeCallerDiagnostics = originalLaneReuseProjectRuleIncludeCallerDiagnostics
+    }
+
+    const regionRemapCore = new PocketPagesLanguageCore()
+    const regionRemapText = `<script server>
+missingRegionValue.toString()
+</script>
+`
+    const regionRemapDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      regionRemapText
+    )
+    regionRemapCore.openDocument({
+      uri: regionRemapDocument.uri,
+      languageId: 'ejs',
+      version: 1,
+      text: regionRemapText,
+    })
+    const regionRemapContext = regionRemapCore.getDocumentContextByUri(regionRemapDocument.uri)
+    const regionRemapService = regionRemapContext && regionRemapContext.service
+    if (!regionRemapService) {
+      throw new Error('Expected region-remap smoke context to expose a language service.')
+    }
+    const regionRemapFirstMetadata = regionRemapService.getDiagnosticsLaneMetadata(
+      fixture.boardsFilePath,
+      regionRemapText
+    )
+    const regionRemapFirstResultIds = regionRemapService.getDiagnosticsLaneResultIds(
+      fixture.boardsFilePath,
+      regionRemapText,
+      { laneMetadata: regionRemapFirstMetadata }
+    )
+    const regionRemapFirstDiagnosticsByLane = {}
+    regionRemapService.getDiagnostics(fixture.boardsFilePath, regionRemapText, {
+      currentLaneResultIds: regionRemapFirstResultIds,
+      currentLaneMetadata: regionRemapFirstMetadata,
+      laneDiagnosticsOut: regionRemapFirstDiagnosticsByLane,
+    })
+    const regionRemapFirstDiagnostic = regionRemapFirstDiagnosticsByLane.server.find(
+      (entry) => entry.code === 2304 && String(entry.message).includes('missingRegionValue')
+    )
+    if (!regionRemapFirstDiagnostic) {
+      throw new Error(`Expected first server diagnostics to include missingRegionValue. Got: ${JSON.stringify(regionRemapFirstDiagnosticsByLane.server)}`)
+    }
+    const regionRemapPrefix = '<div>plain html shift</div>\n'
+    const regionRemapShiftedText = `${regionRemapPrefix}${regionRemapText}`
+    regionRemapCore.updateDocument({
+      uri: regionRemapDocument.uri,
+      languageId: 'ejs',
+      version: 2,
+      text: regionRemapShiftedText,
+    })
+    const regionRemapSecondMetadata = regionRemapService.getDiagnosticsLaneMetadata(
+      fixture.boardsFilePath,
+      regionRemapShiftedText
+    )
+    const regionRemapSecondResultIds = regionRemapService.getDiagnosticsLaneResultIds(
+      fixture.boardsFilePath,
+      regionRemapShiftedText,
+      { laneMetadata: regionRemapSecondMetadata }
+    )
+    if (regionRemapSecondResultIds.server !== regionRemapFirstResultIds.server) {
+      throw new Error(`Expected unchanged server region diagnostics resultId to survive source shifts. Got: ${JSON.stringify({ before: regionRemapFirstResultIds.server, after: regionRemapSecondResultIds.server })}`)
+    }
+    const originalRegionRemapServerDiagnostics = regionRemapService.collectServerBlockDiagnostics.bind(regionRemapService)
+    try {
+      regionRemapService.collectServerBlockDiagnostics = () => {
+        throw new Error('Expected shifted unchanged server region diagnostics to be remapped from cache.')
+      }
+      const regionRemapProfile = {}
+      const regionRemapSecondDiagnostics = regionRemapService.getDiagnostics(
+        fixture.boardsFilePath,
+        regionRemapShiftedText,
+        {
+          currentLaneResultIds: regionRemapSecondResultIds,
+          currentLaneMetadata: regionRemapSecondMetadata,
+          previousLaneResultIds: regionRemapFirstResultIds,
+          previousLaneMetadata: regionRemapFirstMetadata,
+          previousLaneDiagnostics: regionRemapFirstDiagnosticsByLane,
+          laneDiagnosticsOut: {},
+          profile: regionRemapProfile,
+        }
+      )
+      const regionRemapSecondDiagnostic = regionRemapSecondDiagnostics.find(
+        (entry) => entry.code === 2304 && String(entry.message).includes('missingRegionValue')
+      )
+      if (
+        !regionRemapSecondDiagnostic ||
+        regionRemapSecondDiagnostic.start !== regionRemapFirstDiagnostic.start + regionRemapPrefix.length ||
+        !Array.isArray(regionRemapProfile.reusedDiagnosticLanes) ||
+        !regionRemapProfile.reusedDiagnosticLanes.includes('server')
+      ) {
+        throw new Error(
+          `Expected cached server diagnostics to remap to the shifted source region. Got: ${JSON.stringify({ regionRemapSecondDiagnostic, regionRemapProfile })}`
+        )
+      }
+    } finally {
+      regionRemapService.collectServerBlockDiagnostics = originalRegionRemapServerDiagnostics
+    }
+
+    const yieldCancelCore = new PocketPagesLanguageCore()
+    const yieldCancelText = `<script server>\nconst yieldCancelValue = 1\n</script>\n`
+    const yieldCancelDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      yieldCancelText
+    )
+    yieldCancelCore.openDocument({
+      uri: yieldCancelDocument.uri,
+      languageId: 'ejs',
+      version: 1,
+      text: yieldCancelText,
+    })
+    const yieldCancelContext = createLspServiceSmokeContext(
+      yieldCancelCore,
+      new Map([[yieldCancelDocument.uri, yieldCancelDocument]])
+    )
+    yieldCancelContext.context.helpers.PULL_DIAGNOSTICS_INITIAL_YIELD_MS = 1
+    const yieldCancelDocumentContext = yieldCancelCore.getDocumentContextByUri(yieldCancelDocument.uri)
+    const yieldCancelService = yieldCancelDocumentContext && yieldCancelDocumentContext.service
+    const originalYieldCancelGetDiagnostics =
+      yieldCancelService && typeof yieldCancelService.getDiagnostics === 'function'
+        ? yieldCancelService.getDiagnostics.bind(yieldCancelService)
+        : null
+    if (!yieldCancelService || !originalYieldCancelGetDiagnostics) {
+      throw new Error('Expected yield cancellation smoke context to expose a language service.')
+    }
+    yieldCancelService.getDiagnostics = () => {
+      throw new Error('Expected pull diagnostics cancellation after initial yield to skip heavy diagnostics.')
+    }
+    const yieldCancelDiagnosticsFeatureService = createDiagnosticsFeatureService(
+      yieldCancelContext.context
+    )
+    const yieldCancelToken = { isCancellationRequested: false }
+    let yieldCancelReport = null
+    try {
+      const yieldCancelPromise = yieldCancelDiagnosticsFeatureService.providePullDiagnostics(
+        { textDocument: { uri: yieldCancelDocument.uri } },
+        yieldCancelToken
+      )
+      yieldCancelToken.isCancellationRequested = true
+      yieldCancelReport = await yieldCancelPromise
+    } finally {
+      yieldCancelService.getDiagnostics = originalYieldCancelGetDiagnostics
+    }
+    if (yieldCancelReport !== null) {
+      throw new Error(`Expected pull diagnostics to return null when cancelled after initial yield. Got: ${JSON.stringify(yieldCancelReport)}`)
+    }
+
+    const quietLargeDiagnosticsCore = new PocketPagesLanguageCore()
+    const quietLargeDiagnosticsText = `<script server>\n${'const quietValue = 1\n'.repeat(80)}</script>\n`
+    const quietLargeDiagnosticsDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      7,
+      quietLargeDiagnosticsText
+    )
+    const quietLargeDiagnosticsUri = quietLargeDiagnosticsDocument.uri
+    quietLargeDiagnosticsCore.openDocument({
+      uri: quietLargeDiagnosticsUri,
+      languageId: 'ejs',
+      version: quietLargeDiagnosticsDocument.version,
+      text: quietLargeDiagnosticsText,
+    })
+    const quietRuntimeState = createDocumentRuntimeStateRegistry()
+    quietRuntimeState.updateDocument(quietLargeDiagnosticsUri, {
+      version: quietLargeDiagnosticsDocument.version,
+      textLength: quietLargeDiagnosticsText.length,
+      changed: true,
+    })
+    const quietLargeDiagnosticsContext = createLspServiceSmokeContext(
+      quietLargeDiagnosticsCore,
+      new Map([[quietLargeDiagnosticsUri, quietLargeDiagnosticsDocument]]),
+      { runtimeState: quietRuntimeState }
+    )
+    const quietLargeDocumentContext = quietLargeDiagnosticsCore.getDocumentContextByUri(quietLargeDiagnosticsUri)
+    const quietLargeService = quietLargeDocumentContext && quietLargeDocumentContext.service
+    const originalQuietLargeGetDiagnostics =
+      quietLargeService && typeof quietLargeService.getDiagnostics === 'function'
+        ? quietLargeService.getDiagnostics.bind(quietLargeService)
+        : null
+    if (!quietLargeService || !originalQuietLargeGetDiagnostics) {
+      throw new Error('Expected quiet large diagnostics smoke context to expose a language service.')
+    }
+    const quietLargeSchedules = []
+    quietLargeDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 1000
+    quietLargeDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS = 10000
+    quietLargeDiagnosticsContext.context.helpers.isPullDiagnosticRefreshSupported = () => true
+    quietLargeDiagnosticsContext.context.helpers.scheduleDocumentRequest = (uri, key, version, delayMs, callback) => {
+      quietLargeSchedules.push({ uri, key, version, delayMs, callback })
+      return { uri, key, version, delayMs }
+    }
+    let quietLargePrepareCalls = 0
+    quietLargeDiagnosticsContext.context.helpers.ensureDocumentPrepared = () => {
+      quietLargePrepareCalls += 1
+      throw new Error('Expected recent large-file pull diagnostics to defer before preparing virtual state.')
+    }
+    quietLargeDiagnosticsContext.context.connection.languages = {
+      diagnostics: {
+        refresh() {},
+      },
+    }
+    quietLargeService.getDiagnosticsLaneMetadata = () => {
+      throw new Error('Expected recent large-file pull diagnostics to defer before computing lane metadata.')
+    }
+    quietLargeService.getDiagnostics = () => {
+      throw new Error('Expected recent large-file pull diagnostics to defer heavy diagnostics.')
+    }
+    const quietLargeDiagnosticsFeatureService = createDiagnosticsFeatureService(
+      quietLargeDiagnosticsContext.context
+    )
+    let quietLargeDiagnosticsReport = null
+    try {
+      quietLargeDiagnosticsReport = await quietLargeDiagnosticsFeatureService.providePullDiagnostics(
+        { textDocument: { uri: quietLargeDiagnosticsUri } },
+        { isCancellationRequested: false }
+      )
+    } finally {
+      quietLargeService.getDiagnostics = originalQuietLargeGetDiagnostics
+    }
+    if (
+      !quietLargeDiagnosticsReport ||
+      quietLargeDiagnosticsReport.kind !== 'full' ||
+      quietLargeDiagnosticsReport.items.length !== 0 ||
+      quietLargePrepareCalls !== 0 ||
+      quietLargeSchedules.length !== 1 ||
+      quietLargeSchedules[0].uri !== 'workspace' ||
+      quietLargeSchedules[0].key !== 'diagnostics:refresh' ||
+      quietLargeSchedules[0].delayMs <= 0
+    ) {
+      throw new Error(
+        `Expected recent large-file pull diagnostics to return immediately and schedule a refresh. Got: ${JSON.stringify({ quietLargeDiagnosticsReport, quietLargePrepareCalls, quietLargeSchedules })}`
+      )
+    }
+    if (quietRuntimeState.getDiagnostics(quietLargeDiagnosticsUri, 'pull')) {
+      throw new Error('Expected deferred large-file diagnostics not to cache an empty quiet result as the real pull result.')
+    }
+
+    const pullRefreshDiagnosticsEvents = []
+    const pullRefreshSchedules = []
+    const pullRefreshCore = new PocketPagesLanguageCore()
+    const pullRefreshText = `<script server>\nconst refreshValue = 1\n</script>\n`
+    const pullRefreshDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      pullRefreshText
+    )
+    const pullRefreshUri = pullRefreshDocument.uri
+    pullRefreshCore.openDocument({
+      uri: pullRefreshUri,
+      languageId: 'ejs',
+      version: 1,
+      text: pullRefreshText,
+    })
+    const pullRefreshContext = createLspServiceSmokeContext(
+      pullRefreshCore,
+      new Map([[pullRefreshUri, pullRefreshDocument]]),
+      {
+        connection: {
+          languages: {
+            diagnostics: {
+              refresh() {
+                pullRefreshDiagnosticsEvents.push('refresh')
+              },
+            },
+          },
+        },
+        requestCoordinator: {
+          schedule(request, callback) {
+            pullRefreshSchedules.push(request)
+            callback()
+            return request
+          },
+          cancel() {},
+        },
+      }
+    )
+    let pullRefreshSupported = true
+    pullRefreshContext.context.helpers.isPullDiagnosticRefreshSupported = () => pullRefreshSupported
+    const pullRefreshDocumentContext = pullRefreshCore.getDocumentContextByUri(pullRefreshUri)
+    const pullRefreshService = pullRefreshDocumentContext && pullRefreshDocumentContext.service
+    const originalPullRefreshGetDiagnostics =
+      pullRefreshService && typeof pullRefreshService.getDiagnostics === 'function'
+        ? pullRefreshService.getDiagnostics.bind(pullRefreshService)
+        : null
+    if (!pullRefreshService || !originalPullRefreshGetDiagnostics) {
+      throw new Error('Expected pull refresh diagnostics smoke context to expose a language service.')
+    }
+    pullRefreshService.getDiagnostics = () => {
+      throw new Error('Expected diagnostics refresh path not to compute diagnostics.')
+    }
+    const pullRefreshDiagnosticsFeatureService = createDiagnosticsFeatureService(
+      pullRefreshContext.context
+    )
+    try {
+      pullRefreshDiagnosticsFeatureService.refreshPullDiagnostics('manual-save')
+      pullRefreshDiagnosticsFeatureService.scheduleDiagnosticsRefreshForDocument(pullRefreshUri, {
+        reason: 'file-watch',
+      })
+      pullRefreshSupported = false
+      pullRefreshDiagnosticsFeatureService.refreshPullDiagnostics('manual-save')
+    } finally {
+      pullRefreshService.getDiagnostics = originalPullRefreshGetDiagnostics
+    }
+    if (
+      pullRefreshDiagnosticsEvents.length !== 2 ||
+      pullRefreshSchedules.length !== 1 ||
+      pullRefreshSchedules.some((request) =>
+        request.uri !== 'workspace' || request.key !== 'diagnostics:refresh'
+      )
+    ) {
+      throw new Error(
+        `Expected pull diagnostics mode to request workspace diagnostic refreshes without computing diagnostics. Got: ${JSON.stringify({
+          refreshes: pullRefreshDiagnosticsEvents,
+          schedules: pullRefreshSchedules,
+        })}`
+      )
+    }
+
     const schemaOnlyDiagnosticsCore = new PocketPagesLanguageCore()
     const schemaOnlyDiagnosticsText = `missingGlobal()\n$app.findRecordsByFilter('missing_collection')\n`
     const schemaOnlyDiagnosticsDocument = createTestDocument(
@@ -2865,14 +4129,7 @@ const flashClasses = 'notice'
     })
     const schemaOnlyDiagnosticsSmokeContext = createLspServiceSmokeContext(
       schemaOnlyDiagnosticsCore,
-      new Map([[schemaOnlyDiagnosticsUri, schemaOnlyDiagnosticsDocument]]),
-      {
-        connection: {
-          sendDiagnostics(payload) {
-            schemaOnlyDiagnosticsEvents.push(payload)
-          },
-        },
-      }
+      new Map([[schemaOnlyDiagnosticsUri, schemaOnlyDiagnosticsDocument]])
     )
     const schemaOnlyDocumentContext = schemaOnlyDiagnosticsCore.getDocumentContextByUri(
       schemaOnlyDiagnosticsUri
@@ -2904,34 +4161,37 @@ const flashClasses = 'notice'
     const schemaOnlyDiagnosticsFeatureService = createDiagnosticsFeatureService(
       schemaOnlyDiagnosticsSmokeContext.context
     )
+    let schemaOnlyDiagnosticsReport = null
     try {
-      schemaOnlyDiagnosticsFeatureService.publishDiagnostics(schemaOnlyDiagnosticsUri)
+      schemaOnlyDiagnosticsReport = await schemaOnlyDiagnosticsFeatureService.providePullDiagnostics(
+        { textDocument: { uri: schemaOnlyDiagnosticsUri } },
+        { isCancellationRequested: false }
+      )
     } finally {
       schemaOnlyService.getDiagnostics = originalSchemaOnlyGetDiagnostics
     }
-    if (!schemaOnlyDiagnosticsEvents.length || !Array.isArray(schemaOnlyDiagnosticsEvents[0].diagnostics)) {
+    if (!schemaOnlyDiagnosticsReport || !Array.isArray(schemaOnlyDiagnosticsReport.items)) {
       throw new Error(
-        `Expected schema-support-only hook diagnostics publish event. Got: ${JSON.stringify(schemaOnlyDiagnosticsEvents)}`
+        `Expected schema-support-only hook diagnostics pull report. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport)}`
       )
     }
     if (
-      schemaOnlyDiagnosticsEvents[0].diagnostics.some(
+      schemaOnlyDiagnosticsReport.items.some(
         (entry) =>
           String(entry.code) !== 'pp-schema-collection' &&
           String(entry.code) !== 'pp-schema-field'
       )
     ) {
       throw new Error(
-        `Expected schema-support-only hook diagnostics publishing to drop non-schema entries. Got: ${JSON.stringify(schemaOnlyDiagnosticsEvents[0].diagnostics)}`
+        `Expected schema-support-only hook diagnostics to drop non-schema entries. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
       )
     }
-    if (!schemaOnlyDiagnosticsEvents[0].diagnostics.some((entry) => String(entry.code) === 'pp-schema-collection')) {
+    if (!schemaOnlyDiagnosticsReport.items.some((entry) => String(entry.code) === 'pp-schema-collection')) {
       throw new Error(
-        `Expected schema-support-only hook diagnostics publishing to keep collection diagnostics. Got: ${JSON.stringify(schemaOnlyDiagnosticsEvents[0].diagnostics)}`
+        `Expected schema-support-only hook diagnostics to keep collection diagnostics. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
       )
     }
 
-    const excludedVendorDiagnosticsEvents = []
     const excludedVendorDiagnosticsCore = new PocketPagesLanguageCore()
     const excludedVendorDiagnosticsText = `window.JSZip = {}\n`
     const excludedVendorDiagnosticsDocument = createTestDocument(
@@ -2949,28 +4209,24 @@ const flashClasses = 'notice'
     })
     const excludedVendorDiagnosticsContext = createLspServiceSmokeContext(
       excludedVendorDiagnosticsCore,
-      new Map([[excludedVendorDiagnosticsUri, excludedVendorDiagnosticsDocument]]),
-      {
-        connection: {
-          sendDiagnostics(payload) {
-            excludedVendorDiagnosticsEvents.push(payload)
-          },
-        },
-      }
+      new Map([[excludedVendorDiagnosticsUri, excludedVendorDiagnosticsDocument]])
     )
     excludedVendorDiagnosticsContext.context.helpers.isExcludedPocketPagesScriptPath = (filePath) =>
       normalizeFilePath(filePath) === normalizeFilePath(fixture.vendorAssetFilePath)
     const excludedVendorDiagnosticsFeatureService = createDiagnosticsFeatureService(
       excludedVendorDiagnosticsContext.context
     )
-    excludedVendorDiagnosticsFeatureService.publishDiagnostics(excludedVendorDiagnosticsUri)
+    const excludedVendorDiagnosticsReport = await excludedVendorDiagnosticsFeatureService.providePullDiagnostics(
+      { textDocument: { uri: excludedVendorDiagnosticsUri } },
+      { isCancellationRequested: false }
+    )
     if (
-      !excludedVendorDiagnosticsEvents.length ||
-      !Array.isArray(excludedVendorDiagnosticsEvents[0].diagnostics) ||
-      excludedVendorDiagnosticsEvents[0].diagnostics.length !== 0
+      !excludedVendorDiagnosticsReport ||
+      !Array.isArray(excludedVendorDiagnosticsReport.items) ||
+      excludedVendorDiagnosticsReport.items.length !== 0
     ) {
       throw new Error(
-        `Expected excluded PocketPages vendor scripts to publish empty diagnostics. Got: ${JSON.stringify(excludedVendorDiagnosticsEvents)}`
+        `Expected excluded PocketPages vendor scripts to return empty pull diagnostics. Got: ${JSON.stringify(excludedVendorDiagnosticsReport)}`
       )
     }
 
@@ -2997,7 +4253,7 @@ const flashClasses = 'notice'
           return normalizeFilePath(filePath)
         },
         logServer() {},
-        publishDiagnostics() {},
+        refreshPullDiagnostics() {},
         uriToFilePath(uri) {
           return URI.parse(uri).fsPath
         },
@@ -3132,6 +4388,8 @@ module.exports = {
     const unrelatedVirtualFileCountBefore = [...partialWatchService.virtualFiles.values()].filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.localsTypeCheckFilePath)
     ).length
+    const changedPreparedStateBefore = partialWatchService.preparedDocumentStates.has(normalizeFilePath(fixture.boardsFilePath))
+    const unrelatedPreparedStateBefore = partialWatchService.preparedDocumentStates.has(normalizeFilePath(fixture.localsTypeCheckFilePath))
     if (changedVirtualFileCountBefore === 0) {
       throw new Error('Expected partial watched-file smoke to warm virtual files for the changed file before invalidation.')
     }
@@ -3143,6 +4401,9 @@ module.exports = {
     }
     if (partialWatchScriptSchemaCacheSizeBefore === 0) {
       throw new Error('Expected partial watched-file smoke to warm script schema diagnostics cache before invalidation.')
+    }
+    if (!changedPreparedStateBefore || !unrelatedPreparedStateBefore) {
+      throw new Error('Expected service-only diagnostics warmup to prepare diagnostics virtual state before invalidation.')
     }
     const partialWatchResults = partialWatchManager.handleWatchedFileChanges([
       { filePath: fixture.boardsFilePath, type: 'change' },
@@ -3170,8 +4431,11 @@ module.exports = {
     if (unrelatedVirtualFileCountAfter !== unrelatedVirtualFileCountBefore) {
       throw new Error('Expected partial watched-file invalidation to keep unrelated virtual files warm.')
     }
-    if (partialWatchService.preparedDocumentStates.size !== 0) {
-      throw new Error('Expected service-only diagnostics warmup not to depend on preparedDocumentStates in partial watched-file smoke.')
+    if (partialWatchService.preparedDocumentStates.has(normalizeFilePath(fixture.boardsFilePath))) {
+      throw new Error('Expected partial watched-file invalidation to drop prepared diagnostics state for the changed file.')
+    }
+    if (!partialWatchService.preparedDocumentStates.has(normalizeFilePath(fixture.localsTypeCheckFilePath))) {
+      throw new Error('Expected partial watched-file invalidation to keep unrelated prepared diagnostics state warm.')
     }
     if (partialWatchService.staticFiles.size !== partialWatchStaticFileCountBefore) {
       throw new Error('Expected partial watched-file invalidation to preserve ambient static files instead of resetting the whole service.')
@@ -3304,11 +4568,11 @@ module.exports = {
     }
     writeFile(fixture.schemaFilePath, originalFixtureSchemaText)
 
-    const lifecycleOpenPublishCalls = []
-    const lifecycleScheduledUris = []
-    const lifecycleCancelledUris = []
+    const lifecycleWarmupUris = []
+    const lifecycleScheduledRefreshes = []
+    const lifecycleRefreshReasons = []
+    const lifecycleCancelledRequestUris = []
     const lifecycleClearedCompletionUris = []
-    const lifecycleSentDiagnostics = []
     const lifecycleWatchedChanges = []
     const lifecycleCoreCalls = {
       open: [],
@@ -3360,11 +4624,7 @@ module.exports = {
     const lifecycleFeatureService = createLifecycleFeatureService({
       core: lifecycleCore,
       documents: lifecycleDocs,
-      connection: {
-        sendDiagnostics(payload) {
-          lifecycleSentDiagnostics.push(payload)
-        },
-      },
+      connection: {},
       state: {
         diagnosticRunIds: new Map([[lifecycleBoardsUri, 1]]),
       },
@@ -3377,8 +4637,11 @@ module.exports = {
         clearCachedCompletionItemsForUri(uri) {
           lifecycleClearedCompletionUris.push(uri)
         },
-        cancelScheduledDiagnostics(uri) {
-          lifecycleCancelledUris.push(uri)
+        cancelScheduledDocumentRequests(uri) {
+          lifecycleCancelledRequestUris.push(uri)
+        },
+        cancelFirstRequestWarmup(uri) {
+          lifecycleCancelledRequestUris.push(`${uri}:warmup`)
         },
         getRelativePathLabel(filePath) {
           return normalizeFilePath(filePath)
@@ -3393,11 +4656,14 @@ module.exports = {
           return /\.(js|cjs|mjs)$/i.test(String(filePath || ''))
         },
         logServer() {},
-        publishDiagnostics(uri) {
-          lifecycleOpenPublishCalls.push(uri)
+        refreshPullDiagnostics(reason) {
+          lifecycleRefreshReasons.push(reason)
         },
-        scheduleDiagnostics(uri) {
-          lifecycleScheduledUris.push(uri)
+        scheduleDiagnosticsRefreshForDocument(uri, options = {}) {
+          lifecycleScheduledRefreshes.push({ uri, reason: options.reason })
+        },
+        scheduleFirstRequestWarmup(uri) {
+          lifecycleWarmupUris.push(uri)
         },
         uriToFilePath(uri) {
           return URI.parse(uri).fsPath
@@ -3409,15 +4675,14 @@ module.exports = {
     if (lifecycleCoreCalls.open.length !== 2) {
       throw new Error(`Expected lifecycle open to forward both documents to core. Got: ${JSON.stringify(lifecycleCoreCalls.open)}`)
     }
-    if (!lifecycleOpenPublishCalls.includes(lifecycleBoardsUri)) {
-      throw new Error(`Expected lifecycle open to publish diagnostics for regular EJS documents. Got: ${JSON.stringify(lifecycleOpenPublishCalls)}`)
-    }
     if (
-      !lifecycleSentDiagnostics.some(
-        (entry) => entry.uri === lifecycleVendorDocument.uri && Array.isArray(entry.diagnostics) && entry.diagnostics.length === 0
-      )
+      !lifecycleWarmupUris.includes(lifecycleBoardsUri) ||
+      lifecycleRefreshReasons.length !== 0 ||
+      lifecycleScheduledRefreshes.length !== 0
     ) {
-      throw new Error(`Expected lifecycle open to publish empty diagnostics for excluded vendor scripts. Got: ${JSON.stringify(lifecycleSentDiagnostics)}`)
+      throw new Error(
+        `Expected lifecycle open to warm regular documents without push diagnostics. Got: ${JSON.stringify({ warmup: lifecycleWarmupUris, refresh: lifecycleRefreshReasons, scheduled: lifecycleScheduledRefreshes })}`
+      )
     }
     lifecycleFeatureService.handleDidChangeContent({
       document: lifecycleBoardsDocument,
@@ -3436,15 +4701,14 @@ module.exports = {
         `Expected lifecycle change handling to update core state and clear completion caches for both document kinds. Got updates=${JSON.stringify(lifecycleCoreCalls.update)} cleared=${JSON.stringify(lifecycleClearedCompletionUris)}`
       )
     }
-    if (!lifecycleScheduledUris.includes(lifecycleBoardsUri)) {
-      throw new Error(`Expected lifecycle change to schedule diagnostics for regular documents. Got: ${JSON.stringify(lifecycleScheduledUris)}`)
+    if (lifecycleScheduledRefreshes.length !== 0 || lifecycleRefreshReasons.length !== 0) {
+      throw new Error(
+        `Expected lifecycle change to rely on client pull diagnostics without server refresh. Got: ${JSON.stringify({ refresh: lifecycleRefreshReasons, scheduled: lifecycleScheduledRefreshes })}`
+      )
     }
     lifecycleFeatureService.handleDidManualSave({ uri: lifecycleBoardsUri })
-    if (!lifecycleCancelledUris.includes(lifecycleBoardsUri)) {
-      throw new Error(`Expected manual save to cancel pending diagnostics before full publish. Got: ${JSON.stringify(lifecycleCancelledUris)}`)
-    }
-    if (lifecycleOpenPublishCalls.filter((uri) => uri === lifecycleBoardsUri).length < 2) {
-      throw new Error(`Expected manual save to republish diagnostics for the requested document. Got: ${JSON.stringify(lifecycleOpenPublishCalls)}`)
+    if (!lifecycleRefreshReasons.includes('manual-save')) {
+      throw new Error(`Expected manual save to request pull diagnostics refresh. Got: ${JSON.stringify(lifecycleRefreshReasons)}`)
     }
     lifecycleFeatureService.handleDidChangeWatchedFiles({
       changes: [
@@ -3463,17 +4727,20 @@ module.exports = {
     ) {
       throw new Error(`Expected lifecycle watched-file handling to ignore open changed docs and normalize change kinds. Got: ${JSON.stringify(lifecycleWatchedChanges)}`)
     }
+    if (!lifecycleScheduledRefreshes.some((entry) => entry.uri === lifecycleBoardsUri && entry.reason === 'file-watch')) {
+      throw new Error(`Expected watched-file handling to request pull diagnostics refresh for affected regular docs. Got: ${JSON.stringify(lifecycleScheduledRefreshes)}`)
+    }
     lifecycleFeatureService.handleDidClose({ document: lifecycleBoardsDocument })
     if (
       lifecycleCoreCalls.close.length !== 1 ||
       lifecycleCoreCalls.close[0] !== lifecycleBoardsUri ||
-      !lifecycleCancelledUris.includes(lifecycleBoardsUri)
+      !lifecycleCancelledRequestUris.includes(lifecycleBoardsUri)
     ) {
-      throw new Error(`Expected lifecycle close to clear state, cancel diagnostics, and close the core document. Got: ${JSON.stringify({ close: lifecycleCoreCalls.close, cancelled: lifecycleCancelledUris })}`)
+      throw new Error(`Expected lifecycle close to clear state, cancel document requests, and close the core document. Got: ${JSON.stringify({ close: lifecycleCoreCalls.close, cancelled: lifecycleCancelledRequestUris })}`)
     }
 
     const maintenanceProbeCalls = []
-    const maintenanceRefreshUris = []
+    const maintenanceRefreshReasons = []
     const maintenanceReferenceCalls = []
     const maintenanceRenameCalls = []
     const maintenanceFeatureServiceFull = createMaintenanceFeatureService({
@@ -3508,8 +4775,8 @@ module.exports = {
           return normalizeFilePath(filePath)
         },
         logServer() {},
-        publishDiagnostics(uri) {
-          maintenanceRefreshUris.push(uri)
+        refreshPullDiagnostics(reason) {
+          maintenanceRefreshReasons.push(reason)
         },
         uriToFilePath(uri) {
           return URI.parse(uri).fsPath
@@ -3524,8 +4791,8 @@ module.exports = {
       throw new Error(`Expected maintenance probe to forward the normalized file path and return core results. Got: ${JSON.stringify({ maintenanceProbeResult, maintenanceProbeCalls })}`)
     }
     const maintenanceRefreshResult = maintenanceFeatureServiceFull.provideRefreshDiagnostics({ uri: lifecycleBoardsUri })
-    if (!maintenanceRefreshResult.ok || !maintenanceRefreshUris.includes(lifecycleBoardsUri)) {
-      throw new Error(`Expected maintenance refreshDiagnostics to republish diagnostics for the requested URI. Got: ${JSON.stringify({ maintenanceRefreshResult, maintenanceRefreshUris })}`)
+    if (!maintenanceRefreshResult.ok || !maintenanceRefreshReasons.includes('command')) {
+      throw new Error(`Expected maintenance refreshDiagnostics to request a pull refresh. Got: ${JSON.stringify({ maintenanceRefreshResult, maintenanceRefreshReasons })}`)
     }
     const maintenanceReferencesResult = maintenanceFeatureServiceFull.provideAllFileReferences({ uri: lifecycleBoardsUri })
     if (

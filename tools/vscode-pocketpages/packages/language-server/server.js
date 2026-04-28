@@ -30,6 +30,8 @@ const { createLifecycleFeatureService } = require("./services/lifecycle-features
 const { createMaintenanceFeatureService } = require("./services/maintenance-features");
 const { createStructureFeatureService } = require("./services/structure-features");
 const { shouldReuseLastCompletion } = require("./services/completion-helpers");
+const { createDocumentRuntimeStateRegistry } = require("./document-runtime-state");
+const { createRequestCoordinator } = require("./request-coordinator");
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -41,17 +43,18 @@ const core = new PocketPagesLanguageCore({
   },
 });
 
-const SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 400;
-const SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS = 1800;
 const LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 50000;
-const LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS = 5000;
+const LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS = 3000;
+const PULL_DIAGNOSTICS_INITIAL_YIELD_MS = 120;
+const FIRST_REQUEST_WARMUP_IDLE_MS = 700;
 const COMPLETION_TRIGGER_CHARACTERS = [".", "'", "\"", "`", "/", "{", ","];
 const SIGNATURE_TRIGGER_CHARACTERS = ["(", ","];
-const diagnosticTimeouts = new Map();
-const semanticDiagnosticTimeouts = new Map();
 const diagnosticRunIds = new Map();
 const completionCache = new Map();
 const lastCompletionByUri = new Map();
+const documentRuntimeState = createDocumentRuntimeStateRegistry();
+const requestCoordinator = createRequestCoordinator({ runtimeState: documentRuntimeState });
+let pullDiagnosticRefreshSupported = false;
 
 function getLogTimestamp() {
   return new Date().toISOString().slice(11, 23);
@@ -468,8 +471,16 @@ function toSignatureHelp(signatureHelpItems) {
   };
 }
 
-function completionCacheKey(uri, version, offset) {
-  return `${uri}::${version}::${offset}`;
+function completionCacheKey(uri, version, offset, context = {}) {
+  const triggerKind =
+    context && context.triggerKind !== undefined && context.triggerKind !== null
+      ? String(context.triggerKind)
+      : "none";
+  const triggerCharacter =
+    context && typeof context.triggerCharacter === "string"
+      ? context.triggerCharacter
+      : "";
+  return `${uri}::${version}::${offset}::${triggerKind}::${triggerCharacter}`;
 }
 
 function getCachedCompletionItems(cacheKey) {
@@ -534,6 +545,129 @@ function clearCachedCompletionItemsForUri(uri) {
   lastCompletionByUri.delete(uri);
 }
 
+function updateDocumentRuntimeState(uri, document, options = {}) {
+  return documentRuntimeState.updateDocument(uri, {
+    version: document ? document.version : null,
+    textLength: document && typeof document.getText === "function" ? document.getText().length : 0,
+    opened: options.opened === true,
+    changed: options.changed === true,
+  });
+}
+
+function getDocumentRuntimeState(uri) {
+  return typeof documentRuntimeState.getDocument === "function"
+    ? documentRuntimeState.getDocument(uri)
+    : null;
+}
+
+function getCachedDiagnosticsResult(uri, key) {
+  return typeof documentRuntimeState.getDiagnostics === "function"
+    ? documentRuntimeState.getDiagnostics(uri, key)
+    : null;
+}
+
+function setCachedDiagnosticsResult(uri, key, value) {
+  return typeof documentRuntimeState.setDiagnostics === "function"
+    ? documentRuntimeState.setDiagnostics(uri, key, value)
+    : value;
+}
+
+function clearDocumentRuntimeState(uri) {
+  documentRuntimeState.deleteDocument(uri);
+}
+
+function scheduleDocumentRequest(uri, key, version, delayMs, callback) {
+  return requestCoordinator.schedule(
+    {
+      uri,
+      key,
+      version,
+      delayMs,
+    },
+    callback
+  );
+}
+
+function cancelScheduledDocumentRequest(uri, key) {
+  requestCoordinator.cancel(uri, key);
+}
+
+function cancelScheduledDocumentRequests(uri) {
+  requestCoordinator.cancel(uri);
+}
+
+function isPullDiagnosticRefreshSupported() {
+  return pullDiagnosticRefreshSupported;
+}
+
+function ensureDocumentPrepared(uri, options = {}) {
+  if (typeof core.prepareDocument !== "function") {
+    return null;
+  }
+
+  return core.prepareDocument(uri, options);
+}
+
+function cancelFirstRequestWarmup(uri) {
+  cancelScheduledDocumentRequest(uri, "first-request-warmup");
+}
+
+function scheduleFirstRequestWarmup(uri, options = {}) {
+  cancelFirstRequestWarmup(uri);
+
+  const document = documents.get(uri);
+  if (!document) {
+    return;
+  }
+
+  const documentContext = core.getDocumentContextByUri(uri);
+  if (!documentContext || !documentContext.service) {
+    return;
+  }
+
+  const filePath = documentContext.filePath;
+  if (!isEjsFilePath(filePath) && !isScriptFilePath(filePath)) {
+    return;
+  }
+
+  const version = document.version;
+  scheduleDocumentRequest(
+    uri,
+    "first-request-warmup",
+    version,
+    FIRST_REQUEST_WARMUP_IDLE_MS,
+    () => {
+      if (isStaleDocumentVersion(uri, version)) {
+        return;
+      }
+
+      ensureDocumentPrepared(uri);
+      const freshDocument = documents.get(uri);
+      const freshContext = core.getDocumentContextByUri(uri);
+      if (!freshDocument || !freshContext || !freshContext.service) {
+        return;
+      }
+
+      const startedAt = process.hrtime.bigint();
+      const result =
+        typeof freshContext.service.warmupDocument === "function"
+          ? freshContext.service.warmupDocument(
+              freshContext.filePath,
+              freshDocument.getText(),
+              options
+            )
+          : { warmed: false, reason: "unsupported" };
+      logServer("perf", "warmup", result && result.warmed ? "warmed" : "skipped", {
+        file: getRelativePathLabel(freshContext.filePath),
+        version,
+        reason: options.reason || "",
+        warmupReason: result && result.reason,
+        totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+      });
+    }
+  );
+}
+
 function isCancellationRequested(token) {
   return !!(token && token.isCancellationRequested);
 }
@@ -555,14 +689,6 @@ function beginDiagnosticRun(uri) {
 
 function isActiveDiagnosticRun(uri, runId) {
   return diagnosticRunIds.get(uri) === runId;
-}
-
-function scheduleDiagnostics(uri) {
-  return diagnosticsFeatureService.scheduleDiagnostics(uri);
-}
-
-function cancelScheduledDiagnostics(uri, options) {
-  return diagnosticsFeatureService.cancelScheduledDiagnostics(uri, options);
 }
 
 function getSemanticTokens(documentText, document) {
@@ -621,28 +747,31 @@ const featureServiceContext = {
   getTokenTypeIndex,
   getServerTemplateBoundaryLineNumbers,
   state: {
-    diagnosticTimeouts,
-    semanticDiagnosticTimeouts,
     diagnosticRunIds,
     completionCache,
     lastCompletionByUri,
   },
   helpers: {
     COMPLETION_KIND_MAP,
-    SCRIPT_DIAGNOSTICS_DEBOUNCE_MS,
-    SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS,
     LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT,
-    LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS,
+    LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS,
+    PULL_DIAGNOSTICS_INITIAL_YIELD_MS,
     beginDiagnosticRun,
-    cancelScheduledDiagnostics,
+    cancelFirstRequestWarmup,
+    cancelScheduledDocumentRequest,
+    cancelScheduledDocumentRequests,
+    clearDocumentRuntimeState,
     clearCachedCompletionItemsForUri,
     customCompletionKind,
     diagnosticSeverity,
     elapsedMilliseconds,
+    ensureDocumentPrepared,
     formatCompletionTrigger,
     getDocumentByUri: (uri) => documents.get(uri),
     getDocumentContextByFilePath: (filePath) => core.getDocumentContextByFilePath(filePath),
     getDocumentContextByUri: (uri) => core.getDocumentContextByUri(uri),
+    getDocumentRuntimeState,
+    getCachedDiagnosticsResult,
     getCompletionProfileFields,
     getDiagnosticsProfileFields,
     getRelativePathLabel,
@@ -650,18 +779,24 @@ const featureServiceContext = {
     isActiveDiagnosticRun,
     isEjsFilePath,
     isExcludedPocketPagesScriptPath,
+    isPullDiagnosticRefreshSupported,
     isScriptFilePath,
     isSchemaSupportOnlyHookScriptPath,
     isStaleDocumentVersion,
     logServer,
-    publishDiagnostics,
-    scheduleDiagnostics,
+    refreshPullDiagnostics: (...args) => diagnosticsFeatureService.refreshPullDiagnostics(...args),
+    scheduleDiagnosticsRefreshForDocument: (...args) =>
+      diagnosticsFeatureService.scheduleDiagnosticsRefreshForDocument(...args),
+    scheduleFirstRequestWarmup,
+    scheduleDocumentRequest,
+    setCachedDiagnosticsResult,
     shouldAbortDocumentRequest,
     toLocation,
     toMarkupContent,
     toRange,
     toSignatureHelp,
     toWorkspaceEdit,
+    updateDocumentRuntimeState,
     uriToFilePath,
   },
 };
@@ -673,56 +808,67 @@ const lifecycleFeatureService = createLifecycleFeatureService(featureServiceCont
 const maintenanceFeatureService = createMaintenanceFeatureService(featureServiceContext);
 const structureFeatureService = createStructureFeatureService(featureServiceContext);
 
-function publishDiagnostics(uri, options) {
-  return diagnosticsFeatureService.publishDiagnostics(uri, options);
+function refreshManagedDiagnostics() {
+  return diagnosticsFeatureService.refreshManagedDiagnostics();
 }
 
-function publishManagedDiagnostics() {
-  return diagnosticsFeatureService.publishManagedDiagnostics();
-}
-
-connection.onInitialize(() => {
+connection.onInitialize((params) => {
+  pullDiagnosticRefreshSupported = !!(
+    params &&
+    params.capabilities &&
+    params.capabilities.workspace &&
+    params.capabilities.workspace.diagnostics &&
+    params.capabilities.workspace.diagnostics.refreshSupport
+  );
   logServer("info", "lifecycle", "initialize", {
     pid: process.pid,
     cwd: process.cwd(),
+    diagnostics: "pull",
+    pullDiagnosticsRefresh: pullDiagnosticRefreshSupported,
   });
-  return {
-    capabilities: {
-      textDocumentSync: {
-        openClose: true,
-        change: TextDocumentSyncKind.Incremental,
-        save: false,
-      },
-      completionProvider: {
-        resolveProvider: true,
-        triggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
-      },
-      hoverProvider: true,
-      definitionProvider: true,
-      referencesProvider: true,
-      renameProvider: {
-        prepareProvider: true,
-      },
-      codeActionProvider: true,
-      documentLinkProvider: {},
-      signatureHelpProvider: {
-        triggerCharacters: SIGNATURE_TRIGGER_CHARACTERS,
-        retriggerCharacters: SIGNATURE_TRIGGER_CHARACTERS,
-      },
-      inlayHintProvider: true,
-      documentSymbolProvider: true,
-      workspaceSymbolProvider: true,
-      semanticTokensProvider: {
-        legend: {
-          tokenTypes: TOKEN_TYPES,
-          tokenModifiers: [],
-        },
-        full: true,
-      },
-      codeLensProvider: {
-        resolveProvider: false,
-      },
+  const capabilities = {
+    textDocumentSync: {
+      openClose: true,
+      change: TextDocumentSyncKind.Incremental,
+      save: false,
     },
+    completionProvider: {
+      resolveProvider: true,
+      triggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
+    },
+    hoverProvider: true,
+    definitionProvider: true,
+    referencesProvider: true,
+    renameProvider: {
+      prepareProvider: true,
+    },
+    codeActionProvider: true,
+    documentLinkProvider: {},
+    signatureHelpProvider: {
+      triggerCharacters: SIGNATURE_TRIGGER_CHARACTERS,
+      retriggerCharacters: SIGNATURE_TRIGGER_CHARACTERS,
+    },
+    inlayHintProvider: true,
+    documentSymbolProvider: true,
+    workspaceSymbolProvider: true,
+    semanticTokensProvider: {
+      legend: {
+        tokenTypes: TOKEN_TYPES,
+        tokenModifiers: [],
+      },
+      full: true,
+    },
+    codeLensProvider: {
+      resolveProvider: false,
+    },
+    diagnosticProvider: {
+      interFileDependencies: true,
+      workspaceDiagnostics: false,
+    },
+  };
+
+  return {
+    capabilities,
   };
 });
 
@@ -763,7 +909,7 @@ connection.onCompletion((params, token) => {
     return null;
   }
 
-  const cacheKey = completionCacheKey(document.uri, document.version, offset);
+  const cacheKey = completionCacheKey(document.uri, document.version, offset, params.context);
   const cachedItems = getCachedCompletionItems(cacheKey);
   if (cachedItems !== undefined) {
     logServer("perf", "completion", "cache-hit", {
@@ -921,12 +1067,22 @@ connection.onReferences((params) => {
 
   const offset = document.offsetAt(params.position);
   const includeDeclaration = !!(params.context && params.context.includeDeclaration);
-  const typeScriptReferenceResult = context.service.getTypeScriptReferenceTargets(
-    context.filePath,
-    document.getText(),
-    offset,
-    { includeDeclaration }
-  );
+  const shouldTryTypeScriptReferences =
+    !isEjsFilePath(context.filePath) ||
+    core.isFeatureEnabledAtOffset(params.textDocument.uri, offset, "references");
+  let typeScriptReferenceResult = null;
+  if (shouldTryTypeScriptReferences) {
+    ensureDocumentPrepared(document.uri);
+    typeScriptReferenceResult = context.service.getTypeScriptReferenceTargets(
+      context.filePath,
+      document.getText(),
+      offset,
+      {
+        includeDeclaration,
+        requirePreparedVirtualState: true,
+      }
+    );
+  }
   const fileReferenceContext = context.service.getPrivateIncludeReferenceContext(context.filePath);
 
   if (
@@ -1009,6 +1165,10 @@ connection.languages.semanticTokens.on((params) => {
   return structureFeatureService.provideSemanticTokens(params);
 });
 
+connection.languages.diagnostics.on((params, token) => {
+  return diagnosticsFeatureService.providePullDiagnostics(params, token);
+});
+
 connection.onDocumentSymbol((params) => {
   return structureFeatureService.provideDocumentSymbols(params);
 });
@@ -1031,7 +1191,7 @@ connection.onRequest(REQUESTS.refreshDiagnostics, ({ uri }) => {
 
 connection.onRequest(REQUESTS.reloadCaches, ({ uri }) => {
   const result = maintenanceFeatureService.provideReloadCaches({ uri });
-  publishManagedDiagnostics();
+  refreshManagedDiagnostics();
   return result;
 });
 

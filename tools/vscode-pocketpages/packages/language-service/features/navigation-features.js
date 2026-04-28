@@ -135,9 +135,10 @@ function createNavigationFeatureHandlers(deps) {
       };
     },
 
-    getTypeScriptRenameInfo(service, filePath, documentText, offset) {
+    getTypeScriptRenameInfo(service, filePath, documentText, offset, options = {}) {
       const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset, {
         preferTemplateDocument: true,
+        requirePreparedVirtualState: options.requirePreparedVirtualState === true,
       });
       if (!virtualState) {
         return null;
@@ -254,8 +255,8 @@ function createNavigationFeatureHandlers(deps) {
       };
     },
 
-    getTypeScriptRenameEdits(service, filePath, documentText, offset, newName) {
-      const renameInfo = service.getTypeScriptRenameInfo(filePath, documentText, offset);
+    getTypeScriptRenameEdits(service, filePath, documentText, offset, newName, options = {}) {
+      const renameInfo = service.getTypeScriptRenameInfo(filePath, documentText, offset, options);
       if (!renameInfo) {
         return null;
       }
@@ -278,6 +279,7 @@ function createNavigationFeatureHandlers(deps) {
 
       const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset, {
         preferTemplateDocument: true,
+        requirePreparedVirtualState: options.requirePreparedVirtualState === true,
       });
       if (!virtualState) {
         return null;

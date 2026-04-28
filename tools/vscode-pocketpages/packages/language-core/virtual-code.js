@@ -178,6 +178,22 @@ function toPathLiteralRanges(text, rangeOffset = 0) {
     .filter((range) => range.end > range.start);
 }
 
+function hashText(text) {
+  const value = String(text || "");
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function sanitizeVirtualIdPart(value) {
+  return String(value || "")
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 48) || "0";
+}
+
 function createSegmentMappings({
   sourceBaseOffset,
   generatedBaseOffset,
@@ -239,22 +255,172 @@ function createEmbeddedCode({
   };
 }
 
-function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodeMap) {
+function createPreviousServerBlockMatcher(previousEmbeddedCodes) {
+  const previousServerCodes = (Array.isArray(previousEmbeddedCodes) ? previousEmbeddedCodes : [])
+    .filter((embeddedCode) => embeddedCode && embeddedCode.kind === "server-script");
+  const usedPreviousIds = new Set();
+  const byContentHash = new Map();
+  const byBlockIndex = new Map();
+
+  for (const embeddedCode of previousServerCodes) {
+    const metadata = embeddedCode.metadata || {};
+    const contentHash = metadata.contentHash;
+    if (contentHash) {
+      if (!byContentHash.has(contentHash)) {
+        byContentHash.set(contentHash, []);
+      }
+      byContentHash.get(contentHash).push(embeddedCode);
+    }
+
+    if (typeof metadata.blockIndex === "number") {
+      byBlockIndex.set(metadata.blockIndex, embeddedCode);
+    }
+  }
+
+  function takeCandidate(candidates, block) {
+    const available = (candidates || []).filter((candidate) => !usedPreviousIds.has(candidate.id));
+    if (!available.length) {
+      return null;
+    }
+
+    available.sort((left, right) => {
+      const leftDistance = Math.abs(((left.metadata || {}).sourceStart || 0) - block.contentStart);
+      const rightDistance = Math.abs(((right.metadata || {}).sourceStart || 0) - block.contentStart);
+      return leftDistance - rightDistance;
+    });
+
+    const selected = available[0];
+    usedPreviousIds.add(selected.id);
+    return selected;
+  }
+
+  return {
+    matchByContent(block, contentHash) {
+      return takeCandidate(byContentHash.get(contentHash), block);
+    },
+    matchByIndex(block) {
+      return takeCandidate([byBlockIndex.get(block.index)].filter(Boolean), block);
+    },
+  };
+}
+
+function createPreviousTemplateBlockMatcher(previousTemplateCode) {
+  const previousBlocks =
+    previousTemplateCode &&
+    previousTemplateCode.metadata &&
+    Array.isArray(previousTemplateCode.metadata.templateRegionBlocks)
+      ? previousTemplateCode.metadata.templateRegionBlocks
+      : [];
+  const usedPreviousIndexes = new Set();
+  const byContentHash = new Map();
+  const byBlockIndex = new Map();
+
+  for (const block of previousBlocks) {
+    if (block.contentHash) {
+      if (!byContentHash.has(block.contentHash)) {
+        byContentHash.set(block.contentHash, []);
+      }
+      byContentHash.get(block.contentHash).push(block);
+    }
+
+    if (typeof block.blockIndex === "number") {
+      byBlockIndex.set(block.blockIndex, block);
+    }
+  }
+
+  function takeCandidate(candidates, currentBlock) {
+    const available = (candidates || []).filter((candidate) => !usedPreviousIndexes.has(candidate.blockIndex));
+    if (!available.length) {
+      return null;
+    }
+
+    available.sort((left, right) => {
+      const leftDistance = Math.abs((left.sourceStart || 0) - currentBlock.contentStart);
+      const rightDistance = Math.abs((right.sourceStart || 0) - currentBlock.contentStart);
+      return leftDistance - rightDistance;
+    });
+
+    const selected = available[0];
+    usedPreviousIndexes.add(selected.blockIndex);
+    return selected;
+  }
+
+  return {
+    matchByContent(block, contentHash) {
+      return takeCandidate(byContentHash.get(contentHash), block);
+    },
+    matchByIndex(block) {
+      return takeCandidate([byBlockIndex.get(block.index)].filter(Boolean), block);
+    },
+  };
+}
+
+function createEmptyRegionGraph(documentLength = 0) {
+  return {
+    documentLength,
+    regions: [],
+  };
+}
+
+function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodes) {
   if (normalizeLanguageId(languageId, filePath) !== "ejs") {
-    return [];
+    return {
+      embeddedCodes: [],
+      regionGraph: createEmptyRegionGraph(String(text || "").length),
+    };
   }
 
   const embeddedCodes = [];
+  const regions = [];
+  const previousEmbeddedCodeMap = new Map(
+    (Array.isArray(previousEmbeddedCodes) ? previousEmbeddedCodes : []).map((embeddedCode) => [embeddedCode.id, embeddedCode])
+  );
+  const previousServerBlockMatcher = createPreviousServerBlockMatcher(previousEmbeddedCodes);
   const serverBlocks = extractServerBlocks(text);
-  for (const block of serverBlocks) {
-    const id = `server:${block.index}`;
+  const serverBlockEntries = serverBlocks.map((block) => {
+    const contentHash = hashText(block.content);
+    return {
+      block,
+      contentHash,
+      previousServerCode: previousServerBlockMatcher.matchByContent(block, contentHash),
+    };
+  });
+  for (const entry of serverBlockEntries) {
+    if (!entry.previousServerCode) {
+      entry.previousServerCode = previousServerBlockMatcher.matchByIndex(entry.block);
+    }
+  }
+  for (const { block, contentHash, previousServerCode } of serverBlockEntries) {
+    const stableId = sanitizeVirtualIdPart(
+      previousServerCode && previousServerCode.metadata && previousServerCode.metadata.stableId
+        ? previousServerCode.metadata.stableId
+        : `${contentHash}_${block.index}`
+    );
+    const id = `server:${stableId}`;
+    const previousContentHash =
+      previousServerCode && previousServerCode.metadata
+        ? previousServerCode.metadata.contentHash
+        : null;
+    const dirty = previousContentHash !== contentHash;
+    regions.push({
+      kind: "server-script",
+      id,
+      stableId,
+      blockIndex: block.index,
+      contentHash,
+      dirty,
+      sourceStart: block.contentStart,
+      sourceEnd: block.contentEnd,
+      fullStart: block.fullStart,
+      fullEnd: block.fullEnd,
+    });
     embeddedCodes.push(
       createEmbeddedCode({
         id,
         kind: "server-script",
         languageId: "typescript",
         text: block.content,
-        previous: previousEmbeddedCodeMap.get(id),
+        previous: previousEmbeddedCodeMap.get(id) || previousServerCode,
         mappings: createSegmentMappings({
           sourceBaseOffset: block.contentStart,
           generatedBaseOffset: 0,
@@ -264,10 +430,15 @@ function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodeMap)
         }),
         metadata: {
           blockIndex: block.index,
+          stableId,
+          contentHash,
           sourceStart: block.contentStart,
           sourceEnd: block.contentEnd,
           fullStart: block.fullStart,
           fullEnd: block.fullEnd,
+          regionKind: "server-script",
+          regionId: id,
+          dirty,
         },
       })
     );
@@ -276,8 +447,56 @@ function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodeMap)
   const templateBlocks = extractTemplateCodeBlocks(text);
   if (templateBlocks.length || serverBlocks.length) {
     const templateVirtualText = buildTemplateVirtualText(text);
+    const templateVirtualTextHash = hashText(templateVirtualText);
+    const previousTemplateCode = previousEmbeddedCodeMap.get("template");
+    const previousTemplateMetadata = previousTemplateCode && previousTemplateCode.metadata
+      ? previousTemplateCode.metadata
+      : null;
+    const previousTemplateBlockMatcher = createPreviousTemplateBlockMatcher(previousTemplateCode);
+    const templateRegionBlockEntries = templateBlocks.map((block) => {
+      const contentHash = hashText(block.content);
+      return {
+        block,
+        contentHash,
+        previousTemplateBlock: previousTemplateBlockMatcher.matchByContent(block, contentHash),
+      };
+    });
+    for (const entry of templateRegionBlockEntries) {
+      if (!entry.previousTemplateBlock) {
+        entry.previousTemplateBlock = previousTemplateBlockMatcher.matchByIndex(entry.block);
+      }
+    }
+    const templateRegionBlocks = [];
+    const templateDirty =
+      !previousTemplateMetadata ||
+      previousTemplateMetadata.virtualTextHash !== templateVirtualTextHash ||
+      previousTemplateMetadata.documentLength !== text.length;
     const templateMappings = [];
-    for (const block of templateBlocks) {
+    for (const { block, contentHash, previousTemplateBlock } of templateRegionBlockEntries) {
+      const stableId = sanitizeVirtualIdPart(
+        previousTemplateBlock && previousTemplateBlock.stableId
+          ? previousTemplateBlock.stableId
+          : `${contentHash}_${block.index}`
+      );
+      const previousContentHash = previousTemplateBlock
+        ? previousTemplateBlock.contentHash
+        : null;
+      const dirty = previousContentHash !== contentHash;
+      const templateRegionBlock = {
+        kind: "template-block",
+        id: `template:${stableId}`,
+        parentId: "template",
+        stableId,
+        blockIndex: block.index,
+        contentHash,
+        dirty,
+        sourceStart: block.contentStart,
+        sourceEnd: block.contentEnd,
+        fullStart: block.fullStart,
+        fullEnd: block.fullEnd,
+      };
+      templateRegionBlocks.push(templateRegionBlock);
+      regions.push(templateRegionBlock);
       templateMappings.push(
         ...createSegmentMappings({
           sourceBaseOffset: block.contentStart,
@@ -289,23 +508,45 @@ function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodeMap)
       );
     }
 
+    regions.push({
+      kind: "template",
+      id: "template",
+      virtualTextHash: templateVirtualTextHash,
+      dirty: templateDirty,
+      documentLength: text.length,
+      templateBlockCount: templateBlocks.length,
+      serverBlockCount: serverBlocks.length,
+    });
+
     embeddedCodes.push(
       createEmbeddedCode({
         id: "template",
         kind: "template",
         languageId: "typescript",
         text: templateVirtualText,
-        previous: previousEmbeddedCodeMap.get("template"),
+        previous: previousTemplateCode,
         mappings: templateMappings,
         metadata: {
           templateBlocks,
           serverBlocks,
+          templateRegionBlocks,
+          virtualTextHash: templateVirtualTextHash,
+          documentLength: text.length,
+          regionKind: "template",
+          regionId: "template",
+          dirty: templateDirty,
         },
       })
     );
   }
 
-  return embeddedCodes;
+  return {
+    embeddedCodes,
+    regionGraph: {
+      documentLength: text.length,
+      regions,
+    },
+  };
 }
 
 class PocketPagesVirtualCode {
@@ -319,6 +560,7 @@ class PocketPagesVirtualCode {
     this.mappings = createIdentityMapping(this.text.length, ROOT_CODE_INFORMATION);
     this.associatedScriptMappings = new Map();
     this.embeddedCodes = [];
+    this.regionGraph = createEmptyRegionGraph(this.text.length);
     this.snapshot = createScriptSnapshot(this.text);
     this.updateEmbeddedCodes(null);
   }
@@ -337,10 +579,9 @@ class PocketPagesVirtualCode {
   }
 
   updateEmbeddedCodes(previousEmbeddedCodes) {
-    const previousEmbeddedCodeMap = new Map(
-      (Array.isArray(previousEmbeddedCodes) ? previousEmbeddedCodes : []).map((embeddedCode) => [embeddedCode.id, embeddedCode])
-    );
-    this.embeddedCodes = buildEmbeddedCodes(this.filePath, this.languageId, this.text, previousEmbeddedCodeMap);
+    const result = buildEmbeddedCodes(this.filePath, this.languageId, this.text, previousEmbeddedCodes);
+    this.embeddedCodes = result.embeddedCodes;
+    this.regionGraph = result.regionGraph || createEmptyRegionGraph(this.text.length);
     this.associatedScriptMappings = new Map();
 
     for (const embeddedCode of this.embeddedCodes) {
@@ -369,6 +610,13 @@ class PocketPagesVirtualCode {
 
   getEmbeddedCodes() {
     return this.embeddedCodes.slice();
+  }
+
+  getRegionGraph() {
+    return {
+      documentLength: this.regionGraph.documentLength,
+      regions: this.regionGraph.regions.slice(),
+    };
   }
 }
 

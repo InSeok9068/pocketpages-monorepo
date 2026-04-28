@@ -22,8 +22,10 @@ function createTypeScriptFeatureService(context) {
     shouldAbortDocumentRequest,
     getRelativePathLabel,
     getCompletionProfileFields,
+    LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT,
     elapsedMilliseconds,
     formatCompletionTrigger,
+    ensureDocumentPrepared,
     logServer,
   } = helpers;
 
@@ -58,6 +60,27 @@ function createTypeScriptFeatureService(context) {
     );
   }
 
+  function isLargeEjsQuoteTrigger(documentContext, document, context) {
+    if (!helpers.isEjsFilePath(documentContext.filePath)) {
+      return false;
+    }
+
+    if (
+      !context ||
+      context.triggerKind !== 2 ||
+      (context.triggerCharacter !== "\"" && context.triggerCharacter !== "'")
+    ) {
+      return false;
+    }
+
+    const limit = Number(LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT);
+    return (
+      Number.isFinite(limit) &&
+      typeof document.getText === "function" &&
+      document.getText().length >= limit
+    );
+  }
+
   return {
     provideCompletionItems(params, token) {
       const requestContext = getDocumentRequestContext(params);
@@ -74,6 +97,16 @@ function createTypeScriptFeatureService(context) {
       }
 
       if (!isMappedFeatureEnabled(documentContext, document, offset, "completion")) {
+        return null;
+      }
+
+      if (isLargeEjsQuoteTrigger(documentContext, document, params.context)) {
+        logServer("info", "completion", "skip", {
+          file: getRelativePathLabel(documentContext.filePath),
+          trigger: formatCompletionTrigger(params.context),
+          offset,
+          reason: "large-ejs-quote-trigger",
+        });
         return null;
       }
 
@@ -96,11 +129,22 @@ function createTypeScriptFeatureService(context) {
       const relativePath = getRelativePathLabel(documentContext.filePath);
       const trigger = formatCompletionTrigger(params.context);
       const completionStartedAt = process.hrtime.bigint();
+      if (typeof ensureDocumentPrepared === "function") {
+        ensureDocumentPrepared(document.uri, {
+          operation: "completion",
+          preferredOffset: offset,
+          skipUnrelatedRegions: true,
+          skipStaticRefresh: true,
+        });
+      }
+      const completionProfile = {};
       const completionData = documentContext.service.getCompletionData(
         documentContext.filePath,
         documentText,
         offset,
         {
+          profile: completionProfile,
+          requirePreparedVirtualState: true,
           triggerCharacter: getCompletionTriggerCharacter(params.context),
         }
       );
@@ -216,10 +260,19 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
+      if (typeof ensureDocumentPrepared === "function") {
+        ensureDocumentPrepared(document.uri, {
+          operation: "hover",
+          preferredOffset: offset,
+          skipUnrelatedRegions: true,
+          skipStaticRefresh: true,
+        });
+      }
       return documentContext.service.getQuickInfo(
         documentContext.filePath,
         documentText,
-        offset
+        offset,
+        { requirePreparedVirtualState: true }
       );
     },
 
@@ -234,10 +287,14 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
+      if (typeof ensureDocumentPrepared === "function") {
+        ensureDocumentPrepared(document.uri);
+      }
       return documentContext.service.getTypeScriptDefinitionTarget(
         documentContext.filePath,
         documentText,
-        offset
+        offset,
+        { requirePreparedVirtualState: true }
       );
     },
 
@@ -252,11 +309,17 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
+      if (typeof ensureDocumentPrepared === "function") {
+        ensureDocumentPrepared(document.uri);
+      }
       const referenceResult = documentContext.service.getTypeScriptReferenceTargets(
         documentContext.filePath,
         documentText,
         offset,
-        { includeDeclaration: !!(params.context && params.context.includeDeclaration) }
+        {
+          includeDeclaration: !!(params.context && params.context.includeDeclaration),
+          requirePreparedVirtualState: true,
+        }
       );
       const references = referenceResult ? referenceResult.locations : null;
       if (!references || !references.length) {
@@ -291,10 +354,14 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
+      if (typeof ensureDocumentPrepared === "function") {
+        ensureDocumentPrepared(document.uri);
+      }
       const renameInfo = documentContext.service.getTypeScriptRenameInfo(
         documentContext.filePath,
         documentText,
-        offset
+        offset,
+        { requirePreparedVirtualState: true }
       );
       if (!renameInfo) {
         return null;
@@ -320,11 +387,15 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
+      if (typeof ensureDocumentPrepared === "function") {
+        ensureDocumentPrepared(document.uri);
+      }
       const renameResult = documentContext.service.getTypeScriptRenameEdits(
         documentContext.filePath,
         documentText,
         offset,
-        params.newName
+        params.newName,
+        { requirePreparedVirtualState: true }
       );
       if (!renameResult) {
         return null;
@@ -345,6 +416,9 @@ function createTypeScriptFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
+      if (typeof ensureDocumentPrepared === "function") {
+        ensureDocumentPrepared(requestContext.document.uri);
+      }
       return toSignatureHelp(
         documentContext.service.getSignatureHelp(
           documentContext.filePath,
@@ -353,6 +427,7 @@ function createTypeScriptFeatureService(context) {
           {
             triggerCharacter: params.context && params.context.triggerCharacter,
             isRetrigger: params.context && params.context.isRetrigger,
+            requirePreparedVirtualState: true,
           }
         )
       );
@@ -369,6 +444,9 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
+      if (typeof ensureDocumentPrepared === "function") {
+        ensureDocumentPrepared(document.uri);
+      }
       return documentContext.service
         .getInlayHintEntries(documentContext.filePath, document.getText(), {
           start: document.offsetAt(params.range.start),

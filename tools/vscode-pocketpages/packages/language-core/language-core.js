@@ -389,20 +389,45 @@ class PocketPagesLanguageCore {
     this.sourceScripts.delete(uri);
   }
 
-  openDocument(document) {
-    return this.upsertDocument(document);
+  openDocument(document, options = {}) {
+    return this.upsertDocument(document, {
+      ...options,
+      opened: true,
+    });
   }
 
-  updateDocument(document) {
-    return this.upsertDocument(document);
+  updateDocument(document, options = {}) {
+    return this.upsertDocument(document, {
+      ...options,
+      changed: true,
+    });
   }
 
-  upsertDocument(document) {
+  upsertDocument(document, options = {}) {
     const previousSourceScript = this.sourceScripts.get(document.uri);
     const snapshot = this.createSnapshot(document.text, previousSourceScript ? previousSourceScript.snapshot : null);
     const sourceScript = this.setSourceScript(document.uri, snapshot, document.languageId, document.version);
-    this.syncDocumentOverride(sourceScript);
+    this.syncDocumentOverride(sourceScript, {
+      prepareVirtualCode: options.prepareVirtualCode !== false,
+      opened: options.opened === true,
+      changed: options.changed === true,
+    });
     return sourceScript.generated.root;
+  }
+
+  prepareDocument(uri, options = {}) {
+    const sourceScript = this.sourceScripts.get(uri);
+    if (!sourceScript) {
+      return null;
+    }
+
+    this.syncDocumentOverride(sourceScript, {
+      ...options,
+      prepareVirtualCode: true,
+    });
+    return sourceScript.generated && sourceScript.generated.root
+      ? sourceScript.generated.root
+      : null;
   }
 
   closeDocument(uri) {
@@ -512,7 +537,7 @@ class PocketPagesLanguageCore {
       .filter(Boolean);
   }
 
-  syncDocumentOverride(sourceScript) {
+  syncDocumentOverride(sourceScript, options = {}) {
     if (!sourceScript || !sourceScript.generated || !sourceScript.generated.root) {
       return;
     }
@@ -523,12 +548,30 @@ class PocketPagesLanguageCore {
       return;
     }
 
-    service.setDocumentOverride(virtualCode.filePath, virtualCode.getText());
+    const syncOptions = {
+      uri: sourceScript.id,
+      version: sourceScript.version,
+      opened: options.opened === true,
+      changed: options.changed === true,
+      operation: options.operation,
+      preferredOffset: options.preferredOffset,
+      skipUnrelatedRegions: options.skipUnrelatedRegions === true,
+      skipStaticRefresh: options.skipStaticRefresh === true,
+    };
+    service.setDocumentOverride(virtualCode.filePath, virtualCode.getText(), syncOptions);
+    if (options.prepareVirtualCode === false) {
+      if (typeof service.clearPreparedDocumentState === "function") {
+        service.clearPreparedDocumentState(virtualCode.filePath);
+      }
+      return;
+    }
+
     if (typeof service.syncPreparedDocumentVirtualCode === "function") {
       service.syncPreparedDocumentVirtualCode(
         virtualCode.filePath,
         virtualCode.getText(),
-        virtualCode
+        virtualCode,
+        syncOptions
       );
     }
   }
@@ -607,12 +650,17 @@ class PocketPagesLanguageCore {
         continue;
       }
 
-      service.setDocumentOverride(virtualCode.filePath, virtualCode.getText());
+      const syncOptions = {
+        uri: sourceScript.id,
+        version: sourceScript.version,
+      };
+      service.setDocumentOverride(virtualCode.filePath, virtualCode.getText(), syncOptions);
       if (typeof service.syncPreparedDocumentVirtualCode === "function") {
         service.syncPreparedDocumentVirtualCode(
           virtualCode.filePath,
           virtualCode.getText(),
-          virtualCode
+          virtualCode,
+          syncOptions
         );
       }
       affectedUris.push(sourceScript.id);

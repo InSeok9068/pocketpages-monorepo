@@ -15,9 +15,104 @@ function createDiagnosticsFeatureHandlers(deps) {
     getDiagnostics(service, filePath, documentText, options = {}) {
       const profile = options && options.profile ? options.profile : null;
       const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false;
+      const includeTypeScriptDiagnostics = options.includeTypeScriptDiagnostics !== false;
+      const includeProjectRuleDiagnostics = options.includeProjectRuleDiagnostics !== false;
+      const includeScriptSchemaDiagnostics = options.includeScriptSchemaDiagnostics !== false;
+      const includeServerBlockDiagnostics = options.includeServerBlockDiagnostics !== false;
+      const includeTemplateDiagnostics = options.includeTemplateDiagnostics !== false;
+      const requirePreparedVirtualState = options.requirePreparedVirtualState === true;
+      const shouldCancel =
+        options && typeof options.shouldCancel === "function"
+          ? options.shouldCancel
+          : null;
+      const currentLaneResultIds =
+        options && options.currentLaneResultIds && typeof options.currentLaneResultIds === "object"
+          ? options.currentLaneResultIds
+          : null;
+      const previousLaneResultIds =
+        options && options.previousLaneResultIds && typeof options.previousLaneResultIds === "object"
+          ? options.previousLaneResultIds
+          : null;
+      const currentLaneMetadata =
+        options && options.currentLaneMetadata && typeof options.currentLaneMetadata === "object"
+          ? options.currentLaneMetadata
+          : null;
+      const previousLaneMetadata =
+        options && options.previousLaneMetadata && typeof options.previousLaneMetadata === "object"
+          ? options.previousLaneMetadata
+          : null;
+      const previousLaneDiagnostics =
+        options && options.previousLaneDiagnostics && typeof options.previousLaneDiagnostics === "object"
+          ? options.previousLaneDiagnostics
+          : null;
+      const laneDiagnosticsOut =
+        options && options.laneDiagnosticsOut && typeof options.laneDiagnosticsOut === "object"
+          ? options.laneDiagnosticsOut
+          : null;
       const totalStartedAt = profile ? process.hrtime.bigint() : null;
       if (profile) {
         profile.includeSemanticDiagnostics = includeSemanticDiagnostics;
+        profile.includeTypeScriptDiagnostics = includeTypeScriptDiagnostics;
+        profile.includeProjectRuleDiagnostics = includeProjectRuleDiagnostics;
+        profile.includeScriptSchemaDiagnostics = includeScriptSchemaDiagnostics;
+        profile.includeServerBlockDiagnostics = includeServerBlockDiagnostics;
+        profile.includeTemplateDiagnostics = includeTemplateDiagnostics;
+        profile.requirePreparedVirtualState = requirePreparedVirtualState;
+      }
+
+      function isCancelled(stage) {
+        if (!shouldCancel || !shouldCancel(stage)) {
+          return false;
+        }
+
+        if (profile) {
+          profile.cancelled = true;
+          profile.cancelledAt = stage;
+          if (totalStartedAt) {
+            profile.getDiagnosticsMs = elapsedMilliseconds(totalStartedAt);
+          }
+        }
+        return true;
+      }
+
+      function getReusableLaneDiagnostics(lane) {
+        if (
+          !currentLaneResultIds ||
+          !previousLaneResultIds ||
+          !previousLaneDiagnostics ||
+          previousLaneResultIds[lane] !== currentLaneResultIds[lane] ||
+          !Array.isArray(previousLaneDiagnostics[lane])
+        ) {
+          return null;
+        }
+
+        if (profile) {
+          if (!Array.isArray(profile.reusedDiagnosticLanes)) {
+            profile.reusedDiagnosticLanes = [];
+          }
+          profile.reusedDiagnosticLanes.push(lane);
+        }
+        if (
+          typeof service.remapReusableLaneDiagnostics === "function" &&
+          currentLaneMetadata &&
+          previousLaneMetadata
+        ) {
+          return service.remapReusableLaneDiagnostics(
+            lane,
+            previousLaneDiagnostics[lane],
+            previousLaneMetadata[lane],
+            currentLaneMetadata[lane]
+          );
+        }
+        return previousLaneDiagnostics[lane].slice();
+      }
+
+      function pushLaneDiagnostics(lane, laneDiagnostics) {
+        const normalizedDiagnostics = Array.isArray(laneDiagnostics) ? laneDiagnostics : [];
+        if (laneDiagnosticsOut) {
+          laneDiagnosticsOut[lane] = normalizedDiagnostics.slice();
+        }
+        diagnostics.push(...normalizedDiagnostics);
       }
 
       let stepStartedAt = profile ? process.hrtime.bigint() : null;
@@ -31,66 +126,196 @@ function createDiagnosticsFeatureHandlers(deps) {
       if (profile) {
         profile.createDocumentAnalysisMs = elapsedMilliseconds(stepStartedAt);
       }
+      if (isCancelled("after-document-analysis")) {
+        return [];
+      }
 
       const blocks = documentAnalysis.getBlocks();
       const templateBlocks = documentAnalysis.getTemplateBlocks();
       const collectionMethodNames = service.projectIndex.getCollectionMethodNames();
+      if (isCancelled("after-block-analysis")) {
+        return [];
+      }
+
+      let preparedDocumentState = null;
+      if (includeTypeScriptDiagnostics && typeof service.prepareDiagnosticsVirtualState === "function") {
+        stepStartedAt = profile ? process.hrtime.bigint() : null;
+        const preparedResult = service.prepareDiagnosticsVirtualState(filePath, documentText, {
+          requirePreparedVirtualState,
+        });
+        preparedDocumentState = preparedResult && preparedResult.state ? preparedResult.state : null;
+        if (profile) {
+          profile.prepareDiagnosticsVirtualStateMs = elapsedMilliseconds(stepStartedAt);
+          profile.preparedVirtualStateKind =
+            preparedResult && preparedResult.kind ? preparedResult.kind : "unknown";
+        }
+      } else if (profile) {
+        profile.prepareDiagnosticsVirtualStateMs = 0;
+      }
+      if (isCancelled("after-prepare-diagnostics-virtual-state")) {
+        return [];
+      }
 
       stepStartedAt = profile ? process.hrtime.bigint() : null;
-      const diagnostics = collectClientScriptSyntacticDiagnostics(documentText);
+      const diagnostics = [];
+      const reusableClientSyntaxDiagnostics = getReusableLaneDiagnostics("client-syntax");
+      if (reusableClientSyntaxDiagnostics) {
+        pushLaneDiagnostics("client-syntax", reusableClientSyntaxDiagnostics);
+      } else {
+        pushLaneDiagnostics("client-syntax", collectClientScriptSyntacticDiagnostics(documentText));
+      }
       if (profile) {
         profile.collectClientScriptSyntacticDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
       }
+      if (isCancelled("after-client-script-diagnostics")) {
+        return [];
+      }
 
       stepStartedAt = profile ? process.hrtime.bigint() : null;
-      diagnostics.push(...service.collectPrivateResolveDiagnostics(filePath, documentAnalysis));
+      const reusablePrivateResolveDiagnostics = getReusableLaneDiagnostics("private-resolve");
+      if (reusablePrivateResolveDiagnostics) {
+        pushLaneDiagnostics("private-resolve", reusablePrivateResolveDiagnostics);
+      } else {
+        pushLaneDiagnostics("private-resolve", service.collectPrivateResolveDiagnostics(filePath, documentAnalysis));
+      }
       if (profile) {
         profile.collectPrivateResolveDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
       }
-
-      stepStartedAt = profile ? process.hrtime.bigint() : null;
-      diagnostics.push(
-        ...service.collectServerBlockDiagnostics(
-          filePath,
-          documentText,
-          blocks,
-          collectionMethodNames,
-          documentAnalysis,
-          { includeSemanticDiagnostics }
-        )
-      );
-      if (profile) {
-        profile.collectServerBlockDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+      if (isCancelled("after-private-resolve-diagnostics")) {
+        return [];
       }
 
-      stepStartedAt = profile ? process.hrtime.bigint() : null;
-      diagnostics.push(
-        ...service.collectTemplateDiagnostics(
-          filePath,
-          documentText,
-          blocks,
-          templateBlocks,
-          collectionMethodNames,
-          documentAnalysis,
-          { includeSemanticDiagnostics }
-        )
-      );
-      if (profile) {
-        profile.collectTemplateDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+      if (includeServerBlockDiagnostics) {
+        stepStartedAt = profile ? process.hrtime.bigint() : null;
+        const reusableServerDiagnostics = getReusableLaneDiagnostics("server");
+        if (reusableServerDiagnostics) {
+          pushLaneDiagnostics("server", reusableServerDiagnostics);
+        } else {
+          pushLaneDiagnostics("server", service.collectServerBlockDiagnostics(
+            filePath,
+            documentText,
+            blocks,
+            collectionMethodNames,
+            documentAnalysis,
+            {
+              includeSemanticDiagnostics,
+              includeTypeScriptDiagnostics,
+              preparedDocumentState,
+              profile,
+              shouldCancel,
+            }
+          ));
+        }
+        if (profile) {
+          profile.collectServerBlockDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+        }
+        if (isCancelled("after-server-block-diagnostics")) {
+          return [];
+        }
+      } else if (profile) {
+        profile.collectServerBlockDiagnosticsMs = 0;
       }
 
-      stepStartedAt = profile ? process.hrtime.bigint() : null;
-      diagnostics.push(
-        ...service.collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames)
-      );
-      if (profile) {
-        profile.collectScriptSchemaDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+      if (includeTemplateDiagnostics) {
+        stepStartedAt = profile ? process.hrtime.bigint() : null;
+        const reusableTemplateDiagnostics = getReusableLaneDiagnostics("template");
+        if (reusableTemplateDiagnostics) {
+          pushLaneDiagnostics("template", reusableTemplateDiagnostics);
+        } else {
+          pushLaneDiagnostics("template", service.collectTemplateDiagnostics(
+            filePath,
+            documentText,
+            blocks,
+            templateBlocks,
+            collectionMethodNames,
+            documentAnalysis,
+            {
+              includeSemanticDiagnostics,
+              includeTypeScriptDiagnostics,
+              preparedDocumentState,
+              profile,
+              shouldCancel,
+            }
+          ));
+        }
+        if (profile) {
+          profile.collectTemplateDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+        }
+        if (isCancelled("after-template-diagnostics")) {
+          return [];
+        }
+      } else if (profile) {
+        profile.collectTemplateDiagnosticsMs = 0;
       }
 
-      stepStartedAt = profile ? process.hrtime.bigint() : null;
-      diagnostics.push(...service.collectProjectRuleDiagnostics(filePath, documentText, documentAnalysis));
-      if (profile) {
-        profile.collectProjectRuleDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+      if (includeScriptSchemaDiagnostics) {
+        stepStartedAt = profile ? process.hrtime.bigint() : null;
+        const reusableScriptSchemaDiagnostics = getReusableLaneDiagnostics("script-schema");
+        if (reusableScriptSchemaDiagnostics) {
+          pushLaneDiagnostics("script-schema", reusableScriptSchemaDiagnostics);
+        } else {
+          pushLaneDiagnostics(
+            "script-schema",
+            service.collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames)
+          );
+        }
+        if (profile) {
+          profile.collectScriptSchemaDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+        }
+        if (isCancelled("after-script-schema-diagnostics")) {
+          return [];
+        }
+      } else if (profile) {
+        profile.collectScriptSchemaDiagnosticsMs = 0;
+      }
+
+      if (includeProjectRuleDiagnostics) {
+        stepStartedAt = profile ? process.hrtime.bigint() : null;
+        const projectRuleLaneDiagnostics = [];
+        const projectRuleLanes = [
+          "project-rule:agents",
+          "project-rule:include-callers",
+        ];
+        const reusableProjectRuleDiagnostics = getReusableLaneDiagnostics("project-rule");
+        if (reusableProjectRuleDiagnostics && !projectRuleLanes.some((lane) => currentLaneResultIds && currentLaneResultIds[lane])) {
+          projectRuleLaneDiagnostics.push(...reusableProjectRuleDiagnostics);
+        } else {
+          const collectProjectRuleLane = (lane) => {
+            if (typeof service.collectProjectRuleLaneDiagnostics === "function") {
+              return service.collectProjectRuleLaneDiagnostics(
+                lane,
+                filePath,
+                documentText,
+                documentAnalysis
+              );
+            }
+
+            const projectRuleCollectors =
+              typeof service.collectProjectRuleDiagnosticsByLane === "function"
+                ? service.collectProjectRuleDiagnosticsByLane(filePath, documentText, documentAnalysis)
+                : {
+                    "project-rule:agents": service.collectProjectRuleDiagnostics(filePath, documentText, documentAnalysis),
+                    "project-rule:include-callers": [],
+                  };
+            return projectRuleCollectors[lane] || [];
+          };
+
+          for (const lane of projectRuleLanes) {
+            const reusableLaneDiagnostics = getReusableLaneDiagnostics(lane);
+            const laneDiagnostics = reusableLaneDiagnostics || collectProjectRuleLane(lane);
+            pushLaneDiagnostics(lane, laneDiagnostics);
+            projectRuleLaneDiagnostics.push(...laneDiagnostics);
+          }
+        }
+        pushLaneDiagnostics("project-rule", projectRuleLaneDiagnostics);
+        if (profile) {
+          profile.collectProjectRuleDiagnosticsMs = elapsedMilliseconds(stepStartedAt);
+        }
+        if (isCancelled("after-project-rule-diagnostics")) {
+          return [];
+        }
+      } else if (profile) {
+        profile.collectProjectRuleDiagnosticsMs = 0;
       }
 
       stepStartedAt = profile ? process.hrtime.bigint() : null;
@@ -103,15 +328,18 @@ function createDiagnosticsFeatureHandlers(deps) {
       return dedupedDiagnostics;
     },
 
-    getCodeActions(service, filePath, documentText, range) {
+    getCodeActions(service, filePath, documentText, range, options = {}) {
       if (!range || typeof range.start !== "number" || typeof range.end !== "number") {
         return [];
       }
 
       const actions = [];
       const actionKeys = new Set();
+      const diagnostics = Array.isArray(options.diagnostics)
+        ? options.diagnostics
+        : service.getDiagnostics(filePath, documentText);
 
-      for (const diagnostic of service.getDiagnostics(filePath, documentText)) {
+      for (const diagnostic of diagnostics) {
         if (!Array.isArray(diagnostic.fixes) || !diagnostic.fixes.length) {
           continue;
         }
