@@ -2033,6 +2033,7 @@ function toDiagnosticRegion(region) {
     id: String(region.id || `${region.kind || "region"}:${sourceStart}:${sourceEnd}`),
     kind: String(region.kind || "region"),
     contentHash: String(region.contentHash || region.virtualTextHash || ""),
+    dirty: region.dirty === true,
     sourceStart,
     sourceEnd,
     fullStart: Number.isFinite(Number(region.fullStart)) ? Number(region.fullStart) : sourceStart,
@@ -2435,6 +2436,15 @@ class ProjectLanguageService {
     const serverRegions = regions.filter((region) => region && region.kind === "server-script");
     const templateRegions = regions.filter((region) => region && region.kind === "template-block");
     const pathRegions = [];
+    const semanticMode = options.includeSemanticDiagnostics === false ? "syntactic" : "semantic";
+    const typeScriptMode = options.includeTypeScriptDiagnostics === false ? "no-ts" : "ts";
+    const tsDependencyIdentity = [
+      typeScriptMode,
+      semanticMode,
+      `schema-type:${this.getSchemaTypeIdentity()}`,
+      `structure:${this.projectIndex.pagesStructureVersion}`,
+      `ambient:${this.getAmbientSnapshotKey()}`,
+    ].join("|");
 
     if (options.includeProjectRuleDiagnostics !== false) {
       for (const context of collectPathContexts(documentText)) {
@@ -2453,10 +2463,12 @@ class ProjectLanguageService {
     return {
       server: {
         regions: serverRegions.map(toDiagnosticRegion).filter(Boolean),
+        dependencyIdentity: tsDependencyIdentity,
       },
       template: {
         regions: templateRegions.map(toDiagnosticRegion).filter(Boolean),
         dependencyRegions: serverRegions.map(toDiagnosticRegion).filter(Boolean),
+        dependencyIdentity: tsDependencyIdentity,
       },
       "project-rule:agents": {
         regions: [
@@ -2502,6 +2514,40 @@ class ProjectLanguageService {
 
     return (Array.isArray(diagnostics) ? diagnostics : [])
       .map((diagnostic) => remapDiagnosticRangeByRegions(diagnostic, previousRegions, currentRegions));
+  }
+
+  getReusableRegionDiagnostics(_lane, currentRegion, previousDiagnostics, previousMetadata, currentMetadata) {
+    const normalizedCurrentRegion = toDiagnosticRegion(currentRegion);
+    if (!normalizedCurrentRegion) {
+      return null;
+    }
+
+    if (
+      !previousMetadata ||
+      !currentMetadata ||
+      previousMetadata.dependencyIdentity !== currentMetadata.dependencyIdentity
+    ) {
+      return null;
+    }
+
+    const previousRegions = Array.isArray(previousMetadata.regions)
+      ? previousMetadata.regions.map(toDiagnosticRegion).filter(Boolean)
+      : [];
+    const previousRegion = previousRegions.find((region) =>
+      region.id === normalizedCurrentRegion.id &&
+      region.contentHash === normalizedCurrentRegion.contentHash
+    );
+    if (!previousRegion) {
+      return null;
+    }
+
+    const containedDiagnostics = (Array.isArray(previousDiagnostics) ? previousDiagnostics : [])
+      .filter((diagnostic) =>
+        findContainingRegion([previousRegion], diagnostic && diagnostic.start, diagnostic && diagnostic.end)
+      );
+    return containedDiagnostics.map((diagnostic) =>
+      remapDiagnosticRangeByRegions(diagnostic, [previousRegion], [normalizedCurrentRegion])
+    );
   }
 
   getSchemaDiagnosticsIdentity() {
@@ -6120,11 +6166,112 @@ class ProjectLanguageService {
       options && typeof options.shouldCancel === "function"
         ? options.shouldCancel
         : null;
+    const regionCache =
+      options && options.regionCache && typeof options.regionCache === "object"
+        ? options.regionCache
+        : null;
+    const semanticBudget =
+      options && options.semanticBudget && typeof options.semanticBudget === "object"
+        ? options.semanticBudget
+        : null;
+    const serverRegions =
+      regionCache &&
+      regionCache.currentMetadata &&
+      Array.isArray(regionCache.currentMetadata.regions)
+        ? regionCache.currentMetadata.regions
+        : [];
+    const canUseRegionCache =
+      !!(
+        regionCache &&
+        regionCache.previousMetadata &&
+        regionCache.currentMetadata &&
+        Array.isArray(regionCache.previousDiagnostics)
+      );
+    const semanticBudgetEnabled =
+      !!(
+        semanticBudget &&
+        semanticBudget.enabled === true &&
+        canUseRegionCache &&
+        includeSemanticDiagnostics &&
+        includeTypeScriptDiagnostics
+      );
+    const semanticBudgetMaxValue = Number(semanticBudget && semanticBudget.maxSemanticRegions);
+    const semanticBudgetMax = Math.max(
+      0,
+      Number.isFinite(semanticBudgetMaxValue) ? semanticBudgetMaxValue : 0
+    );
+    const preferredOffset = Number(semanticBudget && semanticBudget.preferredOffset);
+    let semanticBudgetUsed = 0;
     const diagnostics = [];
+    const getCurrentRegionForBlock = (block) =>
+      serverRegions.find((region) =>
+        region &&
+        region.sourceStart === block.contentStart &&
+        region.sourceEnd === block.contentEnd
+      ) || null;
+    const hasPreferredOffset = (region) =>
+      Number.isFinite(preferredOffset) &&
+      region &&
+      preferredOffset >= region.sourceStart &&
+      preferredOffset <= region.sourceEnd;
+    const shouldRunSemanticForRegion = (region) => {
+      if (!semanticBudgetEnabled) {
+        return includeSemanticDiagnostics;
+      }
+
+      if (hasPreferredOffset(region)) {
+        semanticBudgetUsed += 1;
+        return true;
+      }
+
+      if (semanticBudgetUsed < semanticBudgetMax) {
+        semanticBudgetUsed += 1;
+        return true;
+      }
+
+      if (profile) {
+        profile.deferredServerSemanticRegions =
+          (profile.deferredServerSemanticRegions || 0) + 1;
+      }
+      if (semanticBudget) {
+        semanticBudget.deferred = true;
+      }
+      return false;
+    };
+    const pushCachedRegionDiagnostics = (region) => {
+      if (!canUseRegionCache || !region || region.dirty === true) {
+        return false;
+      }
+
+      const cachedDiagnostics = this.getReusableRegionDiagnostics(
+        "server",
+        region,
+        regionCache.previousDiagnostics,
+        regionCache.previousMetadata,
+        regionCache.currentMetadata
+      );
+      if (!cachedDiagnostics) {
+        return false;
+      }
+
+      diagnostics.push(...cachedDiagnostics);
+      if (profile) {
+        if (!Array.isArray(profile.reusedDiagnosticRegions)) {
+          profile.reusedDiagnosticRegions = [];
+        }
+        profile.reusedDiagnosticRegions.push(region.id);
+      }
+      return true;
+    };
 
     for (const block of blocks) {
       if (shouldCancel && shouldCancel("before-server-block-diagnostics")) {
         return diagnostics;
+      }
+
+      const currentRegion = getCurrentRegionForBlock(block);
+      if (pushCachedRegionDiagnostics(currentRegion)) {
+        continue;
       }
 
       if (includeTypeScriptDiagnostics) {
@@ -6144,7 +6291,8 @@ class ProjectLanguageService {
             sourceFile: documentAnalysis.getBlockSourceFile(block),
           });
           const rawDiagnostics = this.languageService.getSyntacticDiagnostics(virtual.fileName);
-          if (includeSemanticDiagnostics) {
+          const runSemanticDiagnostics = shouldRunSemanticForRegion(currentRegion);
+          if (runSemanticDiagnostics) {
             rawDiagnostics.push(...this.languageService.getSemanticDiagnostics(virtual.fileName));
           }
 
@@ -6228,14 +6376,85 @@ class ProjectLanguageService {
       options && typeof options.shouldCancel === "function"
         ? options.shouldCancel
         : null;
+    const regionCache =
+      options && options.regionCache && typeof options.regionCache === "object"
+        ? options.regionCache
+        : null;
+    const semanticBudget =
+      options && options.semanticBudget && typeof options.semanticBudget === "object"
+        ? options.semanticBudget
+        : null;
+    const canUseRegionCache =
+      !!(
+        regionCache &&
+        regionCache.previousMetadata &&
+        regionCache.currentMetadata &&
+        Array.isArray(regionCache.previousDiagnostics)
+      );
+    const semanticBudgetEnabled =
+      !!(
+        semanticBudget &&
+        semanticBudget.enabled === true &&
+        canUseRegionCache &&
+        includeSemanticDiagnostics &&
+        includeTypeScriptDiagnostics
+      );
     const diagnostics = [];
     const templateVirtualText = documentAnalysis.getTemplateVirtualText();
     const overlapsTemplateBlock = (start, end) =>
       templateBlocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
     const overlapsServerBlock = (start, end) =>
       blocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
+    const cachedTemplateRegionIds = new Set();
 
-    if (includeTypeScriptDiagnostics) {
+    if (semanticBudgetEnabled) {
+      const currentRegions =
+        regionCache.currentMetadata && Array.isArray(regionCache.currentMetadata.regions)
+          ? regionCache.currentMetadata.regions
+          : [];
+      for (const region of currentRegions) {
+        if (!region || region.dirty === true) {
+          continue;
+        }
+
+        const cachedDiagnostics = this.getReusableRegionDiagnostics(
+          "template",
+          region,
+          regionCache.previousDiagnostics,
+          regionCache.previousMetadata,
+          regionCache.currentMetadata
+        );
+        if (!cachedDiagnostics) {
+          continue;
+        }
+
+        diagnostics.push(...cachedDiagnostics);
+        cachedTemplateRegionIds.add(region.id);
+      }
+
+      const deferredRegionCount = currentRegions.filter((region) =>
+        region && !cachedTemplateRegionIds.has(region.id)
+      ).length;
+      if (deferredRegionCount > 0) {
+        if (profile) {
+          profile.deferredTemplateSemanticRegions =
+            (profile.deferredTemplateSemanticRegions || 0) + deferredRegionCount;
+        }
+        if (semanticBudget) {
+          semanticBudget.deferred = true;
+        }
+      }
+      if (cachedTemplateRegionIds.size && profile) {
+        if (!Array.isArray(profile.reusedDiagnosticRegions)) {
+          profile.reusedDiagnosticRegions = [];
+        }
+        for (const regionId of cachedTemplateRegionIds) {
+          profile.reusedDiagnosticRegions.push(regionId);
+        }
+      }
+    }
+
+    if (includeTypeScriptDiagnostics && !semanticBudgetEnabled) {
       const templateVirtual = this.getPreparedTemplateVirtual(
         filePath,
         documentText,

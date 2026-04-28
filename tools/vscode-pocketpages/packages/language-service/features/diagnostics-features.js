@@ -49,6 +49,10 @@ function createDiagnosticsFeatureHandlers(deps) {
         options && options.laneDiagnosticsOut && typeof options.laneDiagnosticsOut === "object"
           ? options.laneDiagnosticsOut
           : null;
+      const semanticBudget =
+        options && options.semanticBudget && typeof options.semanticBudget === "object"
+          ? options.semanticBudget
+          : null;
       const totalStartedAt = profile ? process.hrtime.bigint() : null;
       if (profile) {
         profile.includeSemanticDiagnostics = includeSemanticDiagnostics;
@@ -202,6 +206,12 @@ function createDiagnosticsFeatureHandlers(deps) {
               includeTypeScriptDiagnostics,
               preparedDocumentState,
               profile,
+              regionCache: {
+                currentMetadata: currentLaneMetadata && currentLaneMetadata.server,
+                previousMetadata: previousLaneMetadata && previousLaneMetadata.server,
+                previousDiagnostics: previousLaneDiagnostics && previousLaneDiagnostics.server,
+              },
+              semanticBudget,
               shouldCancel,
             }
           ));
@@ -234,6 +244,12 @@ function createDiagnosticsFeatureHandlers(deps) {
               includeTypeScriptDiagnostics,
               preparedDocumentState,
               profile,
+              regionCache: {
+                currentMetadata: currentLaneMetadata && currentLaneMetadata.template,
+                previousMetadata: previousLaneMetadata && previousLaneMetadata.template,
+                previousDiagnostics: previousLaneDiagnostics && previousLaneDiagnostics.template,
+              },
+              semanticBudget,
               shouldCancel,
             }
           ));

@@ -13,6 +13,7 @@ function createDiagnosticsFeatureService(context) {
   const {
     LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT,
     LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS,
+    LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET,
     PULL_DIAGNOSTICS_INITIAL_YIELD_MS,
     diagnosticSeverity,
     elapsedMilliseconds,
@@ -22,6 +23,7 @@ function createDiagnosticsFeatureService(context) {
     getDocumentContextByUri,
     getDocumentRuntimeState,
     getDiagnosticsProfileFields,
+    getPreferredDiagnosticOffset,
     getRelativePathLabel,
     isActiveDiagnosticRun,
     isStaleDocumentVersion,
@@ -299,6 +301,32 @@ function createDiagnosticsFeatureService(context) {
     return Math.max(1, quietMs - elapsedMs);
   }
 
+  function createSemanticBudget(uri, documentContext, document, cachedResult) {
+    if (!isLargeEjsDocument(documentContext, document)) {
+      return null;
+    }
+
+    if (!cachedResult || cachedResult.budgetDeferred === true) {
+      return null;
+    }
+
+    const maxSemanticRegions = Number(LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET);
+    if (!Number.isFinite(maxSemanticRegions) || maxSemanticRegions <= 0) {
+      return null;
+    }
+
+    const preferredOffset =
+      typeof getPreferredDiagnosticOffset === "function"
+        ? getPreferredDiagnosticOffset(uri)
+        : null;
+    return {
+      enabled: true,
+      maxSemanticRegions,
+      preferredOffset,
+      deferred: false,
+    };
+  }
+
   function canRefreshPullDiagnostics() {
     return (
       typeof isPullDiagnosticRefreshSupported === "function" &&
@@ -484,6 +512,12 @@ function createDiagnosticsFeatureService(context) {
     }
 
     const laneDiagnosticsOut = {};
+    const semanticBudget = createSemanticBudget(
+      uri,
+      documentContext,
+      document,
+      cachedResult
+    );
     const rawDiagnostics = documentContext.service.getDiagnostics(
       documentContext.filePath,
       document.getText(),
@@ -502,6 +536,7 @@ function createDiagnosticsFeatureService(context) {
         previousLaneMetadata: cachedResult && cachedResult.laneMetadata,
         previousLaneDiagnostics: cachedResult && cachedResult.laneDiagnostics,
         laneDiagnosticsOut,
+        semanticBudget,
         shouldCancel,
       }
     );
@@ -531,10 +566,19 @@ function createDiagnosticsFeatureService(context) {
       ...getDiagnosticsProfileFields(diagnosticsProfile),
     });
 
+    const budgetDeferred = !!(semanticBudget && semanticBudget.deferred);
+    if (budgetDeferred) {
+      schedulePullDiagnosticsRefresh("large-semantic-budget", 800);
+    }
+
     const result = {
       kind: "full",
-      resultId,
+      resultId: budgetDeferred
+        ? `${resultId}|budget:${requestedVersion}:${Date.now()}`
+        : resultId,
       documentVersion: requestedVersion,
+      budgetDeferred,
+      finalResultId: budgetDeferred ? resultId : undefined,
       laneResultIds,
       laneMetadata,
       laneDiagnostics: laneDiagnosticsOut,

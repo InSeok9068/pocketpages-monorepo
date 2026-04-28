@@ -210,6 +210,7 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
     COMPLETION_KIND_MAP: completionKindMap,
     LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT: 50000,
     LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS: 3000,
+    LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET: 2,
     customCompletionKind() {
       return completionKindText
     },
@@ -233,6 +234,9 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
     },
     getDiagnosticsProfileFields(profile) {
       return profile || {}
+    },
+    getPreferredDiagnosticOffset() {
+      return null
     },
     getCachedDiagnosticsResult(uri, key) {
       return typeof runtimeState.getDiagnostics === 'function'
@@ -3891,6 +3895,102 @@ missingRegionValue.toString()
       regionRemapService.collectServerBlockDiagnostics = originalRegionRemapServerDiagnostics
     }
 
+    const serverRegionCacheCore = new PocketPagesLanguageCore()
+    const serverRegionCacheText = `<script server>
+const unchangedServerRegion = 1
+</script>
+<script server>
+missingServerRegionOne.toString()
+</script>
+`
+    const serverRegionCacheDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      serverRegionCacheText
+    )
+    serverRegionCacheCore.openDocument({
+      uri: serverRegionCacheDocument.uri,
+      languageId: 'ejs',
+      version: 1,
+      text: serverRegionCacheText,
+    })
+    const serverRegionCacheContext = serverRegionCacheCore.getDocumentContextByUri(serverRegionCacheDocument.uri)
+    const serverRegionCacheService = serverRegionCacheContext && serverRegionCacheContext.service
+    if (!serverRegionCacheService) {
+      throw new Error('Expected server-region cache smoke context to expose a language service.')
+    }
+    const serverRegionCacheFirstMetadata = serverRegionCacheService.getDiagnosticsLaneMetadata(
+      fixture.boardsFilePath,
+      serverRegionCacheText
+    )
+    const serverRegionCacheFirstResultIds = serverRegionCacheService.getDiagnosticsLaneResultIds(
+      fixture.boardsFilePath,
+      serverRegionCacheText,
+      { laneMetadata: serverRegionCacheFirstMetadata }
+    )
+    const serverRegionCacheFirstDiagnosticsByLane = {}
+    serverRegionCacheService.getDiagnostics(fixture.boardsFilePath, serverRegionCacheText, {
+      currentLaneResultIds: serverRegionCacheFirstResultIds,
+      currentLaneMetadata: serverRegionCacheFirstMetadata,
+      laneDiagnosticsOut: serverRegionCacheFirstDiagnosticsByLane,
+    })
+    const serverRegionCacheChangedText = serverRegionCacheText.replace(
+      'missingServerRegionOne',
+      'missingServerRegionTwo'
+    )
+    serverRegionCacheCore.updateDocument({
+      uri: serverRegionCacheDocument.uri,
+      languageId: 'ejs',
+      version: 2,
+      text: serverRegionCacheChangedText,
+    })
+    const serverRegionCacheSecondMetadata = serverRegionCacheService.getDiagnosticsLaneMetadata(
+      fixture.boardsFilePath,
+      serverRegionCacheChangedText
+    )
+    const serverRegionCacheSecondResultIds = serverRegionCacheService.getDiagnosticsLaneResultIds(
+      fixture.boardsFilePath,
+      serverRegionCacheChangedText,
+      { laneMetadata: serverRegionCacheSecondMetadata }
+    )
+    const originalServerRegionSemanticDiagnostics = serverRegionCacheService.languageService.getSemanticDiagnostics.bind(
+      serverRegionCacheService.languageService
+    )
+    let serverRegionSemanticCalls = 0
+    try {
+      serverRegionCacheService.languageService.getSemanticDiagnostics = function countServerRegionSemanticDiagnostics(...args) {
+        serverRegionSemanticCalls += 1
+        return originalServerRegionSemanticDiagnostics(...args)
+      }
+      const serverRegionCacheProfile = {}
+      const serverRegionCacheDiagnostics = serverRegionCacheService.getDiagnostics(
+        fixture.boardsFilePath,
+        serverRegionCacheChangedText,
+        {
+          currentLaneResultIds: serverRegionCacheSecondResultIds,
+          currentLaneMetadata: serverRegionCacheSecondMetadata,
+          previousLaneResultIds: serverRegionCacheFirstResultIds,
+          previousLaneMetadata: serverRegionCacheFirstMetadata,
+          previousLaneDiagnostics: serverRegionCacheFirstDiagnosticsByLane,
+          laneDiagnosticsOut: {},
+          profile: serverRegionCacheProfile,
+        }
+      )
+      if (
+        serverRegionSemanticCalls !== 1 ||
+        !Array.isArray(serverRegionCacheProfile.reusedDiagnosticRegions) ||
+        !serverRegionCacheProfile.reusedDiagnosticRegions.some((regionId) => String(regionId).startsWith('server:')) ||
+        !serverRegionCacheDiagnostics.some((entry) => String(entry.message).includes('missingServerRegionTwo'))
+      ) {
+        throw new Error(
+          `Expected unchanged server region diagnostics to reuse cache and compute only the dirty block. Got: ${JSON.stringify({ serverRegionSemanticCalls, serverRegionCacheProfile, serverRegionCacheDiagnostics: serializeDiagnostics(serverRegionCacheDiagnostics) })}`
+        )
+      }
+    } finally {
+      serverRegionCacheService.languageService.getSemanticDiagnostics = originalServerRegionSemanticDiagnostics
+    }
+
     const yieldCancelCore = new PocketPagesLanguageCore()
     const yieldCancelText = `<script server>\nconst yieldCancelValue = 1\n</script>\n`
     const yieldCancelDocument = createTestDocument(
@@ -4028,6 +4128,109 @@ missingRegionValue.toString()
     }
     if (quietRuntimeState.getDiagnostics(quietLargeDiagnosticsUri, 'pull')) {
       throw new Error('Expected deferred large-file diagnostics not to cache an empty quiet result as the real pull result.')
+    }
+
+    const semanticBudgetCore = new PocketPagesLanguageCore()
+    const semanticBudgetText = `<script server>
+missingBudgetOne.toString()
+</script>
+<script server>
+missingBudgetTwo.toString()
+</script>
+`
+    const semanticBudgetDocumentV1 = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      semanticBudgetText
+    )
+    const semanticBudgetUri = semanticBudgetDocumentV1.uri
+    semanticBudgetCore.openDocument({
+      uri: semanticBudgetUri,
+      languageId: 'ejs',
+      version: 1,
+      text: semanticBudgetText,
+    })
+    const semanticBudgetDocuments = new Map([[semanticBudgetUri, semanticBudgetDocumentV1]])
+    const semanticBudgetSchedules = []
+    const semanticBudgetRefreshes = []
+    const semanticBudgetContext = createLspServiceSmokeContext(
+      semanticBudgetCore,
+      semanticBudgetDocuments,
+      {
+        connection: {
+          languages: {
+            diagnostics: {
+              refresh() {
+                semanticBudgetRefreshes.push('refresh')
+              },
+            },
+          },
+        },
+      }
+    )
+    semanticBudgetContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 50
+    semanticBudgetContext.context.helpers.LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET = 1
+    semanticBudgetContext.context.helpers.isPullDiagnosticRefreshSupported = () => true
+    semanticBudgetContext.context.helpers.scheduleDocumentRequest = (uri, key, version, delayMs, callback) => {
+      semanticBudgetSchedules.push({ uri, key, version, delayMs, callback })
+      return { uri, key, version, delayMs }
+    }
+    const semanticBudgetFeatureService = createDiagnosticsFeatureService(
+      semanticBudgetContext.context
+    )
+    const semanticBudgetFirstReport = await semanticBudgetFeatureService.providePullDiagnostics(
+      { textDocument: { uri: semanticBudgetUri } },
+      { isCancellationRequested: false }
+    )
+    const semanticBudgetTextV2 = semanticBudgetText
+      .replace('missingBudgetOne', 'missingBudgetThree')
+      .replace('missingBudgetTwo', 'missingBudgetFour')
+    const semanticBudgetDocumentV2 = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      2,
+      semanticBudgetTextV2
+    )
+    semanticBudgetDocuments.set(semanticBudgetUri, semanticBudgetDocumentV2)
+    semanticBudgetCore.updateDocument({
+      uri: semanticBudgetUri,
+      languageId: 'ejs',
+      version: 2,
+      text: semanticBudgetTextV2,
+    })
+    const semanticBudgetService = semanticBudgetCore.getDocumentContextByUri(semanticBudgetUri).service
+    const originalSemanticBudgetDiagnostics = semanticBudgetService.languageService.getSemanticDiagnostics.bind(
+      semanticBudgetService.languageService
+    )
+    let semanticBudgetCalls = 0
+    let semanticBudgetSecondReport = null
+    try {
+      semanticBudgetService.languageService.getSemanticDiagnostics = function countBudgetedSemanticDiagnostics(...args) {
+        semanticBudgetCalls += 1
+        return originalSemanticBudgetDiagnostics(...args)
+      }
+      semanticBudgetSecondReport = await semanticBudgetFeatureService.providePullDiagnostics(
+        {
+          textDocument: { uri: semanticBudgetUri },
+          previousResultId: semanticBudgetFirstReport && semanticBudgetFirstReport.resultId,
+        },
+        { isCancellationRequested: false }
+      )
+    } finally {
+      semanticBudgetService.languageService.getSemanticDiagnostics = originalSemanticBudgetDiagnostics
+    }
+    if (
+      !semanticBudgetSecondReport ||
+      semanticBudgetSecondReport.budgetDeferred !== true ||
+      semanticBudgetCalls !== 1 ||
+      semanticBudgetSchedules.length !== 1 ||
+      semanticBudgetSchedules[0].uri !== 'workspace' ||
+      semanticBudgetSchedules[0].key !== 'diagnostics:refresh'
+    ) {
+      throw new Error(
+        `Expected large EJS semantic diagnostics to respect the per-region budget and schedule a follow-up refresh. Got: ${JSON.stringify({ semanticBudgetSecondReport, semanticBudgetCalls, semanticBudgetSchedules, semanticBudgetRefreshes })}`
+      )
     }
 
     const pullRefreshDiagnosticsEvents = []

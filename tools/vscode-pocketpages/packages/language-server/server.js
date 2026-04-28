@@ -46,12 +46,14 @@ const core = new PocketPagesLanguageCore({
 const LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 50000;
 const LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS = 3000;
 const PULL_DIAGNOSTICS_INITIAL_YIELD_MS = 120;
+const LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET = 2;
 const FIRST_REQUEST_WARMUP_IDLE_MS = 700;
 const COMPLETION_TRIGGER_CHARACTERS = [".", "'", "\"", "`", "/", "{", ","];
 const SIGNATURE_TRIGGER_CHARACTERS = ["(", ","];
 const diagnosticRunIds = new Map();
 const completionCache = new Map();
 const lastCompletionByUri = new Map();
+const lastInteractiveOffsetByUri = new Map();
 const documentRuntimeState = createDocumentRuntimeStateRegistry();
 const requestCoordinator = createRequestCoordinator({ runtimeState: documentRuntimeState });
 let pullDiagnosticRefreshSupported = false;
@@ -524,8 +526,26 @@ function rememberReusableCompletionItems(uri, document, offset, result) {
     version: document.version,
     line: position.line,
     character: position.character,
+    offset,
     result,
   });
+}
+
+function rememberInteractiveOffset(uri, offset, operation) {
+  if (!uri || !Number.isFinite(Number(offset))) {
+    return;
+  }
+
+  lastInteractiveOffsetByUri.set(uri, {
+    offset: Number(offset),
+    operation: operation || "request",
+    updatedAt: Date.now(),
+  });
+}
+
+function getPreferredDiagnosticOffset(uri) {
+  const entry = lastInteractiveOffsetByUri.get(uri);
+  return entry && Number.isFinite(Number(entry.offset)) ? Number(entry.offset) : null;
 }
 
 function setCachedCompletionItems(cacheKey, value) {
@@ -543,6 +563,7 @@ function clearCachedCompletionItemsForUri(uri) {
     }
   }
   lastCompletionByUri.delete(uri);
+  lastInteractiveOffsetByUri.delete(uri);
 }
 
 function updateDocumentRuntimeState(uri, document, options = {}) {
@@ -755,6 +776,7 @@ const featureServiceContext = {
     COMPLETION_KIND_MAP,
     LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT,
     LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS,
+    LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET,
     PULL_DIAGNOSTICS_INITIAL_YIELD_MS,
     beginDiagnosticRun,
     cancelFirstRequestWarmup,
@@ -774,6 +796,7 @@ const featureServiceContext = {
     getCachedDiagnosticsResult,
     getCompletionProfileFields,
     getDiagnosticsProfileFields,
+    getPreferredDiagnosticOffset,
     getRelativePathLabel,
     hasPrivatePagesSegment,
     isActiveDiagnosticRun,
@@ -897,6 +920,7 @@ connection.onCompletion((params, token) => {
   const requestedVersion = document.version;
   const relativePath = getRelativePathLabel(context.filePath);
   const trigger = formatCompletionTrigger(params.context);
+  rememberInteractiveOffset(document.uri, offset, "completion");
 
   if (shouldSkipInvokeBeforeMemberAccess(documentText, offset, params.context)) {
     logServer("info", "completion", "skip", {
@@ -990,6 +1014,7 @@ connection.onHover((params) => {
   if (!documentContext) {
     return null;
   }
+  rememberInteractiveOffset(params.textDocument.uri, document.offsetAt(params.position), "hover");
 
   const pathTargetInfo = customFeatureService.provideHover(params);
   if (pathTargetInfo) {
