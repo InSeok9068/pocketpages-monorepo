@@ -5284,8 +5284,8 @@ class ProjectLanguageService {
     }));
   }
 
-  getCompletionData(filePath, documentText, offset) {
-    return completionFeatureHandlers.getCompletionData(this, filePath, documentText, offset);
+  getCompletionData(filePath, documentText, offset, options = {}) {
+    return completionFeatureHandlers.getCompletionData(this, filePath, documentText, offset, options);
   }
 
   getCustomCompletionData(filePath, documentText, offset) {

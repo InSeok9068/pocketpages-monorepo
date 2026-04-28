@@ -18,6 +18,11 @@ const { createDiagnosticsFeatureService } = require('../packages/language-server
 const { createLifecycleFeatureService } = require('../packages/language-server/services/lifecycle-features')
 const { createMaintenanceFeatureService } = require('../packages/language-server/services/maintenance-features')
 const { createStructureFeatureService } = require('../packages/language-server/services/structure-features')
+const {
+  createStableCompletionTextEdit,
+  isTypeScriptCompletionTriggerAllowed,
+  shouldReuseLastCompletion,
+} = require('../packages/language-server/services/completion-helpers')
 const initTypeScriptPlugin = require('../packages/typescript-plugin')
 const {
   buildScriptServerMirrorText,
@@ -318,6 +323,123 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
   }
 }
 
+function assertCompletionHelperContracts() {
+  if (!isTypeScriptCompletionTriggerAllowed({ triggerKind: 1 })) {
+    throw new Error('Expected invoked completions to stay routed to TypeScript completion.')
+  }
+  if (!isTypeScriptCompletionTriggerAllowed({ triggerKind: 2, triggerCharacter: '.' })) {
+    throw new Error('Expected member-access completion trigger to stay routed to TypeScript completion.')
+  }
+  if (!isTypeScriptCompletionTriggerAllowed({ triggerKind: 2, triggerCharacter: '`' })) {
+    throw new Error('Expected template-string completion trigger to stay routed to TypeScript completion.')
+  }
+  if (isTypeScriptCompletionTriggerAllowed({ triggerKind: 2, triggerCharacter: '{' })) {
+    throw new Error('Expected PocketPages custom trigger "{" to skip TypeScript completion.')
+  }
+  if (isTypeScriptCompletionTriggerAllowed({ triggerKind: 2, triggerCharacter: '/' })) {
+    throw new Error('Expected EJS path trigger "/" to skip TypeScript completion by default.')
+  }
+  if (!isTypeScriptCompletionTriggerAllowed({ triggerKind: 2, triggerCharacter: '/' }, { allowPathLikeTrigger: true })) {
+    throw new Error('Expected plain JS path trigger "/" to stay available for TypeScript completion.')
+  }
+
+  const reusableCompletion = {
+    uri: 'file:///workspace/page.ejs',
+    version: 3,
+    line: 4,
+    character: 12,
+    result: { isIncomplete: true, items: [{ label: 'value' }] },
+  }
+  if (
+    !shouldReuseLastCompletion(reusableCompletion, {
+      uri: 'file:///workspace/page.ejs',
+      version: 3,
+      line: 4,
+      character: 13,
+      triggerKind: 3,
+    })
+  ) {
+    throw new Error('Expected nearby incomplete completion requests to reuse the previous completion result.')
+  }
+  if (
+    shouldReuseLastCompletion(reusableCompletion, {
+      uri: 'file:///workspace/page.ejs',
+      version: 4,
+      line: 4,
+      character: 13,
+      triggerKind: 3,
+    })
+  ) {
+    throw new Error('Expected completion reuse to be disabled after a document version change.')
+  }
+  if (
+    shouldReuseLastCompletion(reusableCompletion, {
+      uri: 'file:///workspace/page.ejs',
+      version: 3,
+      line: 4,
+      character: 13,
+      triggerKind: 1,
+    })
+  ) {
+    throw new Error('Expected completion reuse to be limited to incomplete retrigger requests.')
+  }
+  if (
+    shouldReuseLastCompletion(
+      { ...reusableCompletion, result: { isIncomplete: false, items: [{ label: 'value' }] } },
+      {
+        uri: 'file:///workspace/page.ejs',
+        version: 3,
+        line: 4,
+        character: 13,
+        triggerKind: 3,
+      }
+    )
+  ) {
+    throw new Error('Expected complete completion lists to avoid near-position reuse.')
+  }
+
+  const completionText = 'const value = foo.ba\n'
+  const completionDocument = createTestDocument('C:\\workspace\\page.ejs', 'ejs', 1, completionText)
+  const wordOffset = completionText.indexOf('ba') + 'ba'.length
+  const stableEdit = createStableCompletionTextEdit(
+    completionDocument,
+    completionText,
+    wordOffset,
+    {
+      start: completionText.indexOf('foo.ba'),
+      end: completionText.indexOf('foo.ba') + 'foo.ba'.length,
+    },
+    'foo.bar'
+  )
+  if (!stableEdit || !stableEdit.textEdit || stableEdit.textEdit.newText !== 'bar') {
+    throw new Error(`Expected wide TS replacement span to be narrowed to the current word. Got: ${JSON.stringify(stableEdit)}`)
+  }
+  if (completionDocument.offsetAt(stableEdit.textEdit.range.start) !== completionText.indexOf('ba')) {
+    throw new Error(`Expected stable completion edit to start at the current word. Got: ${JSON.stringify(stableEdit.textEdit.range)}`)
+  }
+  if (
+    !Array.isArray(stableEdit.additionalTextEdits) ||
+    stableEdit.additionalTextEdits.length !== 1 ||
+    stableEdit.additionalTextEdits[0].newText !== 'foo.'
+  ) {
+    throw new Error(`Expected stable completion edit to preserve the existing prefix separately. Got: ${JSON.stringify(stableEdit)}`)
+  }
+
+  const directEdit = createStableCompletionTextEdit(
+    completionDocument,
+    completionText,
+    wordOffset,
+    {
+      start: completionText.indexOf('ba'),
+      end: completionText.indexOf('ba') + 'ba'.length,
+    },
+    'bar'
+  )
+  if (!directEdit || directEdit.additionalTextEdits !== undefined || directEdit.textEdit.newText !== 'bar') {
+    throw new Error(`Expected already-local TS replacement span to stay unchanged. Got: ${JSON.stringify(directEdit)}`)
+  }
+}
+
 function assertClientContracts(repoRoot) {
   const legacyExtensionFilePath = path.join(repoRoot, 'tools', 'vscode-pocketpages', 'src', 'extension.js')
   const clientSource = fs.readFileSync(
@@ -495,6 +617,26 @@ function assertLspRuntimeContracts(repoRoot) {
     path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-server', 'server.js'),
     'utf8'
   )
+  const tsFeatureSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-server', 'services', 'ts-features.js'),
+    'utf8'
+  )
+  const completionHelperSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-server', 'services', 'completion-helpers.js'),
+    'utf8'
+  )
+  const completionFeatureSource = fs.readFileSync(
+    path.join(
+      repoRoot,
+      'tools',
+      'vscode-pocketpages',
+      'packages',
+      'language-service',
+      'features',
+      'completion-features.js'
+    ),
+    'utf8'
+  )
   const customFeatureSource = fs.readFileSync(
     path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-server', 'services', 'custom-features.js'),
     'utf8'
@@ -648,6 +790,61 @@ function assertLspRuntimeContracts(repoRoot) {
     serverSource,
     /const customResult = customFeatureService\.provideCompletionItems\(params\)/,
     'Expected server.js completion path to preserve custom PocketPages completions before TS completions.'
+  )
+  assertMatches(
+    serverSource,
+    /COMPLETION_TRIGGER_CHARACTERS = \[[^\]]*"`"[^\]]*\]/,
+    'Expected server.js to request completion on template-string triggers.'
+  )
+  assertMatches(
+    serverSource,
+    /const lastCompletionByUri = new Map\(\)/,
+    'Expected server.js to keep a per-document reusable completion result cache.'
+  )
+  assertMatches(
+    serverSource,
+    /shouldReuseLastCompletion\(lastCompletion,\s*\{/,
+    'Expected server.js to reuse nearby incomplete completion requests before recomputing TS completions.'
+  )
+  assertMatches(
+    serverSource,
+    /lastCompletionByUri\.delete\(uri\)/,
+    'Expected completion cache invalidation to clear reusable completion results too.'
+  )
+  assertMatches(
+    tsFeatureSource,
+    /isTypeScriptCompletionTriggerAllowed\(params\.context,\s*\{/,
+    'Expected ts-features.js to guard TypeScript completion by trigger character before calling TS.'
+  )
+  assertMatches(
+    tsFeatureSource,
+    /triggerCharacter:\s*getCompletionTriggerCharacter\(params\.context\)/,
+    'Expected ts-features.js to pass the LSP trigger character into TypeScript completions.'
+  )
+  assertMatches(
+    tsFeatureSource,
+    /createStableCompletionTextEdit\(/,
+    'Expected ts-features.js to stabilize TypeScript completion replacement ranges before returning LSP edits.'
+  )
+  assertMatches(
+    completionFeatureSource,
+    /triggerCharacter:\s*options\.triggerCharacter \|\| undefined/,
+    'Expected language-service completion to forward triggerCharacter to getCompletionsAtPosition().'
+  )
+  assertMatches(
+    completionFeatureSource,
+    /isIncomplete:\s*!!info\.isIncomplete/,
+    'Expected language-service completion to preserve TypeScript incomplete-list metadata.'
+  )
+  assertMatches(
+    completionHelperSource,
+    /DEFAULT_TS_TRIGGER_CHARACTERS = new Set\(\[[^\]]*"`"[^\]]*\]\)/,
+    'Expected completion helper to restrict TypeScript character triggers to TS-owned characters.'
+  )
+  assertMatches(
+    completionHelperSource,
+    /triggerCharacter === "\/" && !!options\.allowPathLikeTrigger/,
+    'Expected completion helper to reserve slash completions for non-EJS TS-owned files.'
   )
   assertMatches(
     customFeatureSource,
@@ -1424,6 +1621,7 @@ async function run() {
   const repoRoot = path.resolve(__dirname, '..', '..', '..')
   assertClientContracts(repoRoot)
   assertLspRuntimeContracts(repoRoot)
+  assertCompletionHelperContracts()
   await runExtensionHostSanityCheck(repoRoot)
   const fixture = createFixtureApp(repoRoot)
   const realHighlightsFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', '(site)', 'highlights.ejs')
@@ -1854,6 +2052,172 @@ const isSignedIn = !!authState && authState.isSignedIn
       !renamedLspSmokeText.includes('<div><%= pageState.title %></div>')
     ) {
       throw new Error(`Expected TS feature rename from server declaration to update the template usage. Got: ${renamedLspSmokeText}`)
+    }
+
+    const completionGuardCore = new PocketPagesLanguageCore()
+    const completionGuardText = `<script server>
+const localValue = {
+</script>
+`
+    const completionGuardDocument = createTestDocument(fixture.signInFilePath, 'ejs', 1, completionGuardText)
+    completionGuardCore.openDocument({
+      uri: completionGuardDocument.uri,
+      languageId: 'ejs',
+      version: 1,
+      text: completionGuardText,
+    })
+    const completionGuardContext = createLspServiceSmokeContext(
+      completionGuardCore,
+      new Map([[completionGuardDocument.uri, completionGuardDocument]])
+    )
+    const completionGuardDocumentContext = completionGuardCore.getDocumentContextByUri(completionGuardDocument.uri)
+    let completionGuardCallCount = 0
+    completionGuardDocumentContext.service.getCompletionData = function getCompletionDataGuardStub() {
+      completionGuardCallCount += 1
+      return {
+        entries: [],
+        isIncomplete: false,
+        replacementSpan: null,
+        virtualFileName: 'guard.ts',
+        virtualOffset: 0,
+        profile: {},
+      }
+    }
+    const completionGuardFeatureService = createTypeScriptFeatureService(completionGuardContext.context)
+    const guardedCompletionResult = completionGuardFeatureService.provideCompletionItems({
+      textDocument: { uri: completionGuardDocument.uri },
+      position: completionGuardDocument.positionAt(completionGuardText.indexOf('{') + 1),
+      context: { triggerKind: 2, triggerCharacter: '{' },
+    })
+    if (guardedCompletionResult !== null || completionGuardCallCount !== 0) {
+      throw new Error(
+        `Expected custom-only "{" trigger to avoid TypeScript completion. calls=${completionGuardCallCount} result=${JSON.stringify(guardedCompletionResult)}`
+      )
+    }
+
+    let templateStringTriggerCharacter = null
+    completionGuardDocumentContext.service.getCompletionData = function getCompletionDataTemplateTriggerStub(
+      _filePath,
+      _documentText,
+      _offset,
+      options
+    ) {
+      templateStringTriggerCharacter = options && options.triggerCharacter
+      return {
+        entries: [{ name: 'localValue', kind: ts.ScriptElementKind.localVariableElement, sortText: '0' }],
+        isIncomplete: true,
+        replacementSpan: null,
+        virtualFileName: 'guard.ts',
+        virtualOffset: 0,
+        profile: {},
+      }
+    }
+    const templateStringCompletion = completionGuardFeatureService.provideCompletionItems({
+      textDocument: { uri: completionGuardDocument.uri },
+      position: completionGuardDocument.positionAt(completionGuardText.indexOf('{') + 1),
+      context: { triggerKind: 2, triggerCharacter: '`' },
+    })
+    if (!templateStringCompletion || templateStringTriggerCharacter !== '`' || !templateStringCompletion.isIncomplete) {
+      throw new Error(
+        `Expected template-string trigger to reach TypeScript completion with incomplete metadata. trigger=${templateStringTriggerCharacter} result=${JSON.stringify(templateStringCompletion)}`
+      )
+    }
+
+    const completionTextEditCore = new PocketPagesLanguageCore()
+    const completionTextEditText = `<script server>
+const localValue = foo.ba
+</script>
+`
+    const completionTextEditDocument = createTestDocument(fixture.siteSignInFilePath, 'ejs', 1, completionTextEditText)
+    completionTextEditCore.openDocument({
+      uri: completionTextEditDocument.uri,
+      languageId: 'ejs',
+      version: 1,
+      text: completionTextEditText,
+    })
+    const completionTextEditContext = createLspServiceSmokeContext(
+      completionTextEditCore,
+      new Map([[completionTextEditDocument.uri, completionTextEditDocument]])
+    )
+    const completionTextEditDocumentContext = completionTextEditCore.getDocumentContextByUri(completionTextEditDocument.uri)
+    let completionTextEditTriggerCharacter = null
+    completionTextEditDocumentContext.service.getCompletionData = function getCompletionDataTextEditStub(
+      _filePath,
+      _documentText,
+      _offset,
+      options
+    ) {
+      completionTextEditTriggerCharacter = options && options.triggerCharacter
+      return {
+        entries: [{ name: 'foo.bar', kind: ts.ScriptElementKind.memberVariableElement, sortText: '0', insertText: 'foo.bar' }],
+        isIncomplete: true,
+        replacementSpan: {
+          start: completionTextEditText.indexOf('foo.ba'),
+          end: completionTextEditText.indexOf('foo.ba') + 'foo.ba'.length,
+        },
+        virtualFileName: 'text-edit.ts',
+        virtualOffset: 0,
+        profile: {},
+      }
+    }
+    const completionTextEditFeatureService = createTypeScriptFeatureService(completionTextEditContext.context)
+    const completionTextEditResult = completionTextEditFeatureService.provideCompletionItems({
+      textDocument: { uri: completionTextEditDocument.uri },
+      position: completionTextEditDocument.positionAt(completionTextEditText.indexOf('ba') + 'ba'.length),
+      context: { triggerKind: 2, triggerCharacter: '.' },
+    })
+    const completionTextEditItem =
+      completionTextEditResult && completionTextEditResult.items ? completionTextEditResult.items[0] : null
+    if (
+      !completionTextEditItem ||
+      !completionTextEditItem.textEdit ||
+      completionTextEditTriggerCharacter !== '.' ||
+      completionTextEditDocument.offsetAt(completionTextEditItem.textEdit.range.start) !== completionTextEditText.indexOf('ba') ||
+      completionTextEditItem.textEdit.newText !== 'bar' ||
+      !Array.isArray(completionTextEditItem.additionalTextEdits) ||
+      completionTextEditItem.additionalTextEdits[0].newText !== 'foo.'
+    ) {
+      throw new Error(
+        `Expected TypeScript completion text edits to be narrowed around the current word. trigger=${completionTextEditTriggerCharacter} result=${JSON.stringify(completionTextEditResult)}`
+      )
+    }
+
+    const jsSlashCompletionCore = new PocketPagesLanguageCore()
+    const jsSlashCompletionText = `const pathValue = '/'\n`
+    const jsSlashCompletionDocument = createTestDocument(fixture.middlewareFilePath, 'javascript', 1, jsSlashCompletionText)
+    jsSlashCompletionCore.openDocument({
+      uri: jsSlashCompletionDocument.uri,
+      languageId: 'javascript',
+      version: 1,
+      text: jsSlashCompletionText,
+    })
+    const jsSlashCompletionContext = createLspServiceSmokeContext(
+      jsSlashCompletionCore,
+      new Map([[jsSlashCompletionDocument.uri, jsSlashCompletionDocument]])
+    )
+    const jsSlashDocumentContext = jsSlashCompletionCore.getDocumentContextByUri(jsSlashCompletionDocument.uri)
+    let jsSlashCompletionCallCount = 0
+    jsSlashDocumentContext.service.getCompletionData = function getCompletionDataSlashStub() {
+      jsSlashCompletionCallCount += 1
+      return {
+        entries: [{ name: 'pathValue', kind: ts.ScriptElementKind.localVariableElement, sortText: '0' }],
+        isIncomplete: false,
+        replacementSpan: null,
+        virtualFileName: 'slash.js',
+        virtualOffset: 0,
+        profile: {},
+      }
+    }
+    const jsSlashFeatureService = createTypeScriptFeatureService(jsSlashCompletionContext.context)
+    const jsSlashCompletionResult = jsSlashFeatureService.provideCompletionItems({
+      textDocument: { uri: jsSlashCompletionDocument.uri },
+      position: jsSlashCompletionDocument.positionAt(jsSlashCompletionText.indexOf('/') + 1),
+      context: { triggerKind: 2, triggerCharacter: '/' },
+    })
+    if (!jsSlashCompletionResult || jsSlashCompletionCallCount !== 1) {
+      throw new Error(
+        `Expected slash trigger to remain available in plain JS completion. calls=${jsSlashCompletionCallCount} result=${JSON.stringify(jsSlashCompletionResult)}`
+      )
     }
 
     const schemaOnlyCustomFeatureCore = new PocketPagesLanguageCore()

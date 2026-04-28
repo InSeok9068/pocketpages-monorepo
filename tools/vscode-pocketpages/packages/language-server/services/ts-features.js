@@ -1,5 +1,11 @@
 "use strict";
 
+const {
+  createStableCompletionTextEdit,
+  getCompletionTriggerCharacter,
+  isTypeScriptCompletionTriggerAllowed,
+} = require("./completion-helpers");
+
 function createTypeScriptFeatureService(context) {
   const { ts, helpers, InsertTextFormat, TextDocument, URI } = context;
   const {
@@ -71,6 +77,20 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
+      if (
+        !isTypeScriptCompletionTriggerAllowed(params.context, {
+          allowPathLikeTrigger: !helpers.isEjsFilePath(documentContext.filePath),
+        })
+      ) {
+        logServer("info", "completion", "skip", {
+          file: getRelativePathLabel(documentContext.filePath),
+          trigger: formatCompletionTrigger(params.context),
+          offset,
+          reason: "ts-trigger",
+        });
+        return null;
+      }
+
       const startedAt = process.hrtime.bigint();
       const requestedVersion = document.version;
       const relativePath = getRelativePathLabel(documentContext.filePath);
@@ -79,7 +99,10 @@ function createTypeScriptFeatureService(context) {
       const completionData = documentContext.service.getCompletionData(
         documentContext.filePath,
         documentText,
-        offset
+        offset,
+        {
+          triggerCharacter: getCompletionTriggerCharacter(params.context),
+        }
       );
       const completionElapsedMs = elapsedMilliseconds(completionStartedAt);
 
@@ -106,34 +129,36 @@ function createTypeScriptFeatureService(context) {
       }
 
       const result = {
-        isIncomplete: false,
-        items: completionData.entries.map((entry) => ({
-          label: entry.name,
-          kind: COMPLETION_KIND_MAP[entry.kind] || context.CompletionItemKind.Text,
-          sortText: entry.sortText,
-          filterText: entry.insertText || entry.name,
-          insertText: entry.insertText || entry.name,
-          insertTextFormat: InsertTextFormat.PlainText,
-          detail: entry.kindModifiers ? `${entry.kind} ${entry.kindModifiers}` : entry.kind,
-          textEdit: completionData.replacementSpan
-            ? {
-                range: toRange(
-                  document,
-                  completionData.replacementSpan.start,
-                  completionData.replacementSpan.end
-                ),
-                newText: entry.insertText || entry.name,
-              }
-            : undefined,
-          data: {
-            kind: "ts",
-            filePath: documentContext.filePath,
-            virtualFileName: completionData.virtualFileName,
-            virtualOffset: completionData.virtualOffset,
-            name: entry.name,
-            source: entry.source,
-          },
-        })),
+        isIncomplete: !!completionData.isIncomplete,
+        items: completionData.entries.map((entry) => {
+          const insertText = entry.insertText || entry.name;
+          const stableEdit = createStableCompletionTextEdit(
+            document,
+            documentText,
+            offset,
+            completionData.replacementSpan,
+            insertText
+          );
+          return {
+            label: entry.name,
+            kind: COMPLETION_KIND_MAP[entry.kind] || context.CompletionItemKind.Text,
+            sortText: entry.sortText,
+            filterText: insertText,
+            insertText,
+            insertTextFormat: InsertTextFormat.PlainText,
+            detail: entry.kindModifiers ? `${entry.kind} ${entry.kindModifiers}` : entry.kind,
+            textEdit: stableEdit ? stableEdit.textEdit : undefined,
+            additionalTextEdits: stableEdit ? stableEdit.additionalTextEdits : undefined,
+            data: {
+              kind: "ts",
+              filePath: documentContext.filePath,
+              virtualFileName: completionData.virtualFileName,
+              virtualOffset: completionData.virtualOffset,
+              name: entry.name,
+              source: entry.source,
+            },
+          };
+        }),
       };
 
       logServer("perf", "completion", "ts", {

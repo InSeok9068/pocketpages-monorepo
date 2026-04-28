@@ -10,7 +10,7 @@ function createCompletionFeatureHandlers(deps) {
   } = deps;
 
   return {
-    getCompletionData(service, filePath, documentText, offset) {
+    getCompletionData(service, filePath, documentText, offset, options = {}) {
       const profile = {};
       const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset, { profile });
       if (!virtualState) {
@@ -22,6 +22,7 @@ function createCompletionFeatureHandlers(deps) {
       const info = service.languageService.getCompletionsAtPosition(virtual.fileName, virtualOffset, {
         includeCompletionsWithInsertText: true,
         includeCompletionsForModuleExports: false,
+        triggerCharacter: options.triggerCharacter || undefined,
       });
       profile.getCompletionsAtPositionMs = elapsedMilliseconds(completionsStartedAt);
 
@@ -47,6 +48,7 @@ function createCompletionFeatureHandlers(deps) {
 
       return {
         entries: info.entries,
+        isIncomplete: !!info.isIncomplete,
         replacementSpan,
         profile,
         virtualFileName: virtual.fileName,

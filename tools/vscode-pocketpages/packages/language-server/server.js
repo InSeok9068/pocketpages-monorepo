@@ -29,6 +29,7 @@ const { createDiagnosticsFeatureService } = require("./services/diagnostics-feat
 const { createLifecycleFeatureService } = require("./services/lifecycle-features");
 const { createMaintenanceFeatureService } = require("./services/maintenance-features");
 const { createStructureFeatureService } = require("./services/structure-features");
+const { shouldReuseLastCompletion } = require("./services/completion-helpers");
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -44,12 +45,13 @@ const SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 400;
 const SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS = 1800;
 const LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 50000;
 const LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS = 5000;
-const COMPLETION_TRIGGER_CHARACTERS = [".", "'", "\"", "/", "{", ","];
+const COMPLETION_TRIGGER_CHARACTERS = [".", "'", "\"", "`", "/", "{", ","];
 const SIGNATURE_TRIGGER_CHARACTERS = ["(", ","];
 const diagnosticTimeouts = new Map();
 const semanticDiagnosticTimeouts = new Map();
 const diagnosticRunIds = new Map();
 const completionCache = new Map();
+const lastCompletionByUri = new Map();
 
 function getLogTimestamp() {
   return new Date().toISOString().slice(11, 23);
@@ -481,6 +483,40 @@ function getCachedCompletionItems(cacheKey) {
   return cachedValue;
 }
 
+function getReusableCompletionItems(uri, document, offset, context) {
+  const position = document.positionAt(offset);
+  const lastCompletion = lastCompletionByUri.get(uri);
+  if (
+    shouldReuseLastCompletion(lastCompletion, {
+      uri,
+      version: document.version,
+      line: position.line,
+      character: position.character,
+      triggerKind: context && context.triggerKind,
+    })
+  ) {
+    return lastCompletion.result;
+  }
+
+  return undefined;
+}
+
+function rememberReusableCompletionItems(uri, document, offset, result) {
+  if (!result) {
+    lastCompletionByUri.delete(uri);
+    return;
+  }
+
+  const position = document.positionAt(offset);
+  lastCompletionByUri.set(uri, {
+    uri,
+    version: document.version,
+    line: position.line,
+    character: position.character,
+    result,
+  });
+}
+
 function setCachedCompletionItems(cacheKey, value) {
   completionCache.set(cacheKey, value);
   while (completionCache.size > 60) {
@@ -495,6 +531,7 @@ function clearCachedCompletionItemsForUri(uri) {
       completionCache.delete(key);
     }
   }
+  lastCompletionByUri.delete(uri);
 }
 
 function isCancellationRequested(token) {
@@ -588,6 +625,7 @@ const featureServiceContext = {
     semanticDiagnosticTimeouts,
     diagnosticRunIds,
     completionCache,
+    lastCompletionByUri,
   },
   helpers: {
     COMPLETION_KIND_MAP,
@@ -738,6 +776,18 @@ connection.onCompletion((params, token) => {
     return cachedItems;
   }
 
+  const reusableItems = getReusableCompletionItems(document.uri, document, offset, params.context);
+  if (reusableItems !== undefined) {
+    logServer("perf", "completion", "near-cache-hit", {
+      file: relativePath,
+      trigger,
+      offset,
+      count: reusableItems ? reusableItems.items.length : 0,
+      totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+    });
+    return reusableItems;
+  }
+
   const customStartedAt = process.hrtime.bigint();
   const customResult = customFeatureService.provideCompletionItems(params);
   const customElapsedMs = elapsedMilliseconds(customStartedAt);
@@ -757,6 +807,7 @@ connection.onCompletion((params, token) => {
   if (customResult) {
     const result = customResult.items.length ? customResult : null;
     setCachedCompletionItems(cacheKey, result);
+    rememberReusableCompletionItems(document.uri, document, offset, result);
     logServer("perf", "completion", "custom", {
       file: relativePath,
       trigger,
@@ -775,6 +826,7 @@ connection.onCompletion((params, token) => {
 
   const result = typeScriptFeatureService.provideCompletionItems(params, token);
   setCachedCompletionItems(cacheKey, result || null);
+  rememberReusableCompletionItems(document.uri, document, offset, result || null);
   return result;
 });
 
