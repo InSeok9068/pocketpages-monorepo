@@ -78,7 +78,7 @@ function createLifecycleFeatureService(context) {
       });
       const filePath = uriToFilePath(event.document.uri);
       if (shouldRunDiagnosticsForFile(filePath)) {
-        publishDiagnostics(event.document.uri);
+        publishDiagnostics(event.document.uri, { reason: "open" });
         return;
       }
 
@@ -145,10 +145,11 @@ function createLifecycleFeatureService(context) {
     },
 
     handleDidManualSave({ uri }) {
+      cancelScheduledDiagnostics(uri);
       logServer("info", "diagnostics", "manual-save", {
         file: getRelativePathLabel(uriToFilePath(uri)),
       });
-      publishDiagnostics(uri);
+      publishDiagnostics(uri, { reason: "manual-save" });
     },
   };
 }

@@ -41,9 +41,13 @@ const core = new PocketPagesLanguageCore({
 });
 
 const SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 400;
+const SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS = 1800;
+const LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 50000;
+const LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS = 5000;
 const COMPLETION_TRIGGER_CHARACTERS = [".", "'", "\"", "/", "{", ","];
 const SIGNATURE_TRIGGER_CHARACTERS = ["(", ","];
 const diagnosticTimeouts = new Map();
+const semanticDiagnosticTimeouts = new Map();
 const diagnosticRunIds = new Map();
 const completionCache = new Map();
 
@@ -520,8 +524,8 @@ function scheduleDiagnostics(uri) {
   return diagnosticsFeatureService.scheduleDiagnostics(uri);
 }
 
-function cancelScheduledDiagnostics(uri) {
-  return diagnosticsFeatureService.cancelScheduledDiagnostics(uri);
+function cancelScheduledDiagnostics(uri, options) {
+  return diagnosticsFeatureService.cancelScheduledDiagnostics(uri, options);
 }
 
 function getSemanticTokens(documentText, document) {
@@ -581,12 +585,16 @@ const featureServiceContext = {
   getServerTemplateBoundaryLineNumbers,
   state: {
     diagnosticTimeouts,
+    semanticDiagnosticTimeouts,
     diagnosticRunIds,
     completionCache,
   },
   helpers: {
     COMPLETION_KIND_MAP,
     SCRIPT_DIAGNOSTICS_DEBOUNCE_MS,
+    SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS,
+    LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT,
+    LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS,
     beginDiagnosticRun,
     cancelScheduledDiagnostics,
     clearCachedCompletionItemsForUri,
@@ -627,8 +635,8 @@ const lifecycleFeatureService = createLifecycleFeatureService(featureServiceCont
 const maintenanceFeatureService = createMaintenanceFeatureService(featureServiceContext);
 const structureFeatureService = createStructureFeatureService(featureServiceContext);
 
-function publishDiagnostics(uri) {
-  return diagnosticsFeatureService.publishDiagnostics(uri);
+function publishDiagnostics(uri, options) {
+  return diagnosticsFeatureService.publishDiagnostics(uri, options);
 }
 
 function publishManagedDiagnostics() {

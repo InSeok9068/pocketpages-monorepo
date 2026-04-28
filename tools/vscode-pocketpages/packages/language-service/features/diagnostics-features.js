@@ -14,7 +14,11 @@ function createDiagnosticsFeatureHandlers(deps) {
   return {
     getDiagnostics(service, filePath, documentText, options = {}) {
       const profile = options && options.profile ? options.profile : null;
+      const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false;
       const totalStartedAt = profile ? process.hrtime.bigint() : null;
+      if (profile) {
+        profile.includeSemanticDiagnostics = includeSemanticDiagnostics;
+      }
 
       let stepStartedAt = profile ? process.hrtime.bigint() : null;
       const documentAnalysis = createDocumentAnalysis({
@@ -51,7 +55,8 @@ function createDiagnosticsFeatureHandlers(deps) {
           documentText,
           blocks,
           collectionMethodNames,
-          documentAnalysis
+          documentAnalysis,
+          { includeSemanticDiagnostics }
         )
       );
       if (profile) {
@@ -66,7 +71,8 @@ function createDiagnosticsFeatureHandlers(deps) {
           blocks,
           templateBlocks,
           collectionMethodNames,
-          documentAnalysis
+          documentAnalysis,
+          { includeSemanticDiagnostics }
         )
       );
       if (profile) {

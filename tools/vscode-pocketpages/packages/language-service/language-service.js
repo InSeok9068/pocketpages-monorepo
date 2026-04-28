@@ -5463,7 +5463,8 @@ class ProjectLanguageService {
     }));
   }
 
-  collectServerBlockDiagnostics(filePath, documentText, blocks, collectionMethodNames, documentAnalysis) {
+  collectServerBlockDiagnostics(filePath, documentText, blocks, collectionMethodNames, documentAnalysis, options = {}) {
+    const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false;
     const diagnostics = [];
 
     for (const block of blocks) {
@@ -5471,10 +5472,10 @@ class ProjectLanguageService {
       const relaxedBodyDiagnosticSpans = collectRelaxedBodyDiagnosticSpans(block.content, {
         sourceFile: documentAnalysis.getBlockSourceFile(block),
       });
-      const rawDiagnostics = [
-        ...this.languageService.getSyntacticDiagnostics(virtual.fileName),
-        ...this.languageService.getSemanticDiagnostics(virtual.fileName),
-      ];
+      const rawDiagnostics = this.languageService.getSyntacticDiagnostics(virtual.fileName);
+      if (includeSemanticDiagnostics) {
+        rawDiagnostics.push(...this.languageService.getSemanticDiagnostics(virtual.fileName));
+      }
 
       for (const diagnostic of rawDiagnostics) {
         if (diagnostic && diagnostic.code === 1108) {
@@ -5537,18 +5538,19 @@ class ProjectLanguageService {
     return diagnostics;
   }
 
-  collectTemplateDiagnostics(filePath, documentText, blocks, templateBlocks, collectionMethodNames, documentAnalysis) {
+  collectTemplateDiagnostics(filePath, documentText, blocks, templateBlocks, collectionMethodNames, documentAnalysis, options = {}) {
     if (!templateBlocks.length) {
       return [];
     }
 
+    const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false;
     const diagnostics = [];
     const templateVirtual = this.upsertTemplateVirtualFile(filePath, documentText);
     const templateVirtualText = documentAnalysis.getTemplateVirtualText();
-    const rawDiagnostics = [
-      ...this.languageService.getSyntacticDiagnostics(templateVirtual.fileName),
-      ...this.languageService.getSemanticDiagnostics(templateVirtual.fileName),
-    ];
+    const rawDiagnostics = this.languageService.getSyntacticDiagnostics(templateVirtual.fileName);
+    if (includeSemanticDiagnostics) {
+      rawDiagnostics.push(...this.languageService.getSemanticDiagnostics(templateVirtual.fileName));
+    }
     const overlapsTemplateBlock = (start, end) =>
       templateBlocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
     const overlapsServerBlock = (start, end) =>

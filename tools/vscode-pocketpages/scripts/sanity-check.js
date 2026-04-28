@@ -194,6 +194,9 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
   const helpers = {
     COMPLETION_KIND_MAP: completionKindMap,
     SCRIPT_DIAGNOSTICS_DEBOUNCE_MS: 10,
+    SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS: 20,
+    LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT: 50000,
+    LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS: 50,
     customCompletionKind() {
       return completionKindText
     },
@@ -308,6 +311,7 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
       },
       state: extra.state || {
         diagnosticTimeouts: new Map(),
+        semanticDiagnosticTimeouts: new Map(),
       },
     },
     helpers,
@@ -671,9 +675,29 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected diagnostics feature service to skip excluded PocketPages vendor and minified scripts.'
   )
   assertMatches(
+    diagnosticsFeatureSource,
+    /includeSemanticDiagnostics:\s*false/,
+    'Expected scheduled change diagnostics to use the fast non-semantic path.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS/,
+    'Expected diagnostics feature service to schedule semantic diagnostics after an idle delay.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /mode:\s*"large-idle"/,
+    'Expected diagnostics feature service to defer large EJS diagnostics to a single idle pass.'
+  )
+  assertMatches(
     lifecycleFeatureSource,
     /function shouldRunDiagnosticsForFile\(filePath\) \{[\s\S]*!isExcludedPocketPagesScriptPath\(filePath\)/,
     'Expected lifecycle-features.js to suppress diagnostics for excluded PocketPages vendor and minified scripts.'
+  )
+  assertMatches(
+    lifecycleFeatureSource,
+    /handleDidManualSave\(\{ uri \}\) \{[\s\S]*cancelScheduledDiagnostics\(uri\);[\s\S]*publishDiagnostics\(uri, \{ reason: "manual-save" \}\)/,
+    'Expected manual-save diagnostics to cancel pending fast/idle diagnostics before publishing full diagnostics.'
   )
   assertMatches(
     serverSource,
@@ -2101,6 +2125,364 @@ const flashClasses = 'notice'
       throw new Error(`Expected diagnostics feature service to publish route-path diagnostics from EJS markup. Got: ${JSON.stringify(diagnosticsEvents[0].diagnostics)}`)
     }
 
+    const scheduledDiagnosticsEvents = []
+    const scheduledDiagnosticsCalls = []
+    const scheduledDiagnosticsCore = new PocketPagesLanguageCore()
+    const scheduledDiagnosticsText = `const value = 1\n`
+    const scheduledDiagnosticsDocument = createTestDocument(
+      fixture.globalAssetFilePath,
+      'javascript',
+      1,
+      scheduledDiagnosticsText
+    )
+    const scheduledDiagnosticsUri = scheduledDiagnosticsDocument.uri
+    scheduledDiagnosticsCore.openDocument({
+      uri: scheduledDiagnosticsUri,
+      languageId: 'javascript',
+      version: 1,
+      text: scheduledDiagnosticsText,
+    })
+    const scheduledDiagnosticsContext = createLspServiceSmokeContext(
+      scheduledDiagnosticsCore,
+      new Map([[scheduledDiagnosticsUri, scheduledDiagnosticsDocument]]),
+      {
+        connection: {
+          sendDiagnostics(payload) {
+            scheduledDiagnosticsEvents.push(payload)
+          },
+        },
+        state: {
+          diagnosticTimeouts: new Map(),
+          semanticDiagnosticTimeouts: new Map(),
+        },
+      }
+    )
+    scheduledDiagnosticsContext.context.helpers.SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 1
+    scheduledDiagnosticsContext.context.helpers.SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS = 5
+    const scheduledDocumentContext = scheduledDiagnosticsCore.getDocumentContextByUri(scheduledDiagnosticsUri)
+    const scheduledService = scheduledDocumentContext && scheduledDocumentContext.service
+    const originalScheduledGetDiagnostics =
+      scheduledService && typeof scheduledService.getDiagnostics === 'function'
+        ? scheduledService.getDiagnostics.bind(scheduledService)
+        : null
+    if (!scheduledService || !originalScheduledGetDiagnostics) {
+      throw new Error('Expected scheduled diagnostics smoke context to expose a language service.')
+    }
+    scheduledService.getDiagnostics = (_filePath, _documentText, options = {}) => {
+      const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false
+      scheduledDiagnosticsCalls.push(includeSemanticDiagnostics)
+      return [
+        {
+          code: includeSemanticDiagnostics ? 'semantic-diagnostics' : 'fast-diagnostics',
+          category: ts.DiagnosticCategory.Error,
+          message: includeSemanticDiagnostics ? 'semantic diagnostics' : 'fast diagnostics',
+          start: 0,
+          end: 5,
+        },
+      ]
+    }
+    const scheduledDiagnosticsFeatureService = createDiagnosticsFeatureService(
+      scheduledDiagnosticsContext.context
+    )
+    try {
+      scheduledDiagnosticsFeatureService.scheduleDiagnostics(scheduledDiagnosticsUri)
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    } finally {
+      scheduledService.getDiagnostics = originalScheduledGetDiagnostics
+    }
+    if (
+      scheduledDiagnosticsCalls.length !== 2 ||
+      scheduledDiagnosticsCalls[0] !== false ||
+      scheduledDiagnosticsCalls[1] !== true
+    ) {
+      throw new Error(
+        `Expected scheduled diagnostics to run fast first and semantic after idle. Got: ${JSON.stringify(scheduledDiagnosticsCalls)}`
+      )
+    }
+    const scheduledDiagnosticCodes = scheduledDiagnosticsEvents.flatMap((event) =>
+      (event.diagnostics || []).map((entry) => String(entry.code))
+    )
+    if (
+      scheduledDiagnosticCodes[0] !== 'fast-diagnostics' ||
+      scheduledDiagnosticCodes[1] !== 'semantic-diagnostics'
+    ) {
+      throw new Error(
+        `Expected scheduled diagnostics publish order to stay fast then semantic. Got: ${JSON.stringify(scheduledDiagnosticCodes)}`
+      )
+    }
+
+    const smallEjsDiagnosticsEvents = []
+    const smallEjsDiagnosticsCalls = []
+    const smallEjsDiagnosticsCore = new PocketPagesLanguageCore()
+    const smallEjsDiagnosticsText = `<script server>\nconst value = 1\n</script>\n`
+    const smallEjsDiagnosticsDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      smallEjsDiagnosticsText
+    )
+    const smallEjsDiagnosticsUri = smallEjsDiagnosticsDocument.uri
+    smallEjsDiagnosticsCore.openDocument({
+      uri: smallEjsDiagnosticsUri,
+      languageId: 'ejs',
+      version: 1,
+      text: smallEjsDiagnosticsText,
+    })
+    const smallEjsDiagnosticsContext = createLspServiceSmokeContext(
+      smallEjsDiagnosticsCore,
+      new Map([[smallEjsDiagnosticsUri, smallEjsDiagnosticsDocument]]),
+      {
+        connection: {
+          sendDiagnostics(payload) {
+            smallEjsDiagnosticsEvents.push(payload)
+          },
+        },
+        state: {
+          diagnosticTimeouts: new Map(),
+          semanticDiagnosticTimeouts: new Map(),
+        },
+      }
+    )
+    smallEjsDiagnosticsContext.context.helpers.SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 1
+    smallEjsDiagnosticsContext.context.helpers.SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS = 5
+    smallEjsDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 1000
+    smallEjsDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS = 5
+    const smallEjsDocumentContext = smallEjsDiagnosticsCore.getDocumentContextByUri(smallEjsDiagnosticsUri)
+    const smallEjsService = smallEjsDocumentContext && smallEjsDocumentContext.service
+    const originalSmallEjsGetDiagnostics =
+      smallEjsService && typeof smallEjsService.getDiagnostics === 'function'
+        ? smallEjsService.getDiagnostics.bind(smallEjsService)
+        : null
+    if (!smallEjsService || !originalSmallEjsGetDiagnostics) {
+      throw new Error('Expected small EJS diagnostics smoke context to expose a language service.')
+    }
+    smallEjsService.getDiagnostics = (_filePath, _documentText, options = {}) => {
+      const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false
+      smallEjsDiagnosticsCalls.push(includeSemanticDiagnostics)
+      return [
+        {
+          code: includeSemanticDiagnostics ? 'small-ejs-semantic-diagnostics' : 'small-ejs-fast-diagnostics',
+          category: ts.DiagnosticCategory.Error,
+          message: includeSemanticDiagnostics ? 'small EJS semantic diagnostics' : 'small EJS fast diagnostics',
+          start: smallEjsDiagnosticsText.indexOf('value'),
+          end: smallEjsDiagnosticsText.indexOf('value') + 'value'.length,
+        },
+      ]
+    }
+    const smallEjsDiagnosticsFeatureService = createDiagnosticsFeatureService(
+      smallEjsDiagnosticsContext.context
+    )
+    try {
+      smallEjsDiagnosticsFeatureService.scheduleDiagnostics(smallEjsDiagnosticsUri)
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    } finally {
+      smallEjsService.getDiagnostics = originalSmallEjsGetDiagnostics
+    }
+    if (
+      smallEjsDiagnosticsCalls.length !== 2 ||
+      smallEjsDiagnosticsCalls[0] !== false ||
+      smallEjsDiagnosticsCalls[1] !== true
+    ) {
+      throw new Error(
+        `Expected small EJS diagnostics to keep fast then semantic scheduling. Got: ${JSON.stringify(smallEjsDiagnosticsCalls)}`
+      )
+    }
+    const smallEjsDiagnosticCodes = smallEjsDiagnosticsEvents.flatMap((event) =>
+      (event.diagnostics || []).map((entry) => String(entry.code))
+    )
+    if (
+      smallEjsDiagnosticCodes[0] !== 'small-ejs-fast-diagnostics' ||
+      smallEjsDiagnosticCodes[1] !== 'small-ejs-semantic-diagnostics'
+    ) {
+      throw new Error(
+        `Expected small EJS diagnostics publish order to stay fast then semantic. Got: ${JSON.stringify(smallEjsDiagnosticCodes)}`
+      )
+    }
+
+    const largeDiagnosticsEvents = []
+    const largeDiagnosticsCalls = []
+    const largeDiagnosticsCore = new PocketPagesLanguageCore()
+    const largeDiagnosticsText = `<script server>\n${'const value = 1\n'.repeat(80)}</script>\n`
+    const largeDiagnosticsDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      largeDiagnosticsText
+    )
+    const largeDiagnosticsUri = largeDiagnosticsDocument.uri
+    largeDiagnosticsCore.openDocument({
+      uri: largeDiagnosticsUri,
+      languageId: 'ejs',
+      version: 1,
+      text: largeDiagnosticsText,
+    })
+    const largeDiagnosticsContext = createLspServiceSmokeContext(
+      largeDiagnosticsCore,
+      new Map([[largeDiagnosticsUri, largeDiagnosticsDocument]]),
+      {
+        connection: {
+          sendDiagnostics(payload) {
+            largeDiagnosticsEvents.push(payload)
+          },
+        },
+        state: {
+          diagnosticTimeouts: new Map(),
+          semanticDiagnosticTimeouts: new Map(),
+        },
+      }
+    )
+    largeDiagnosticsContext.context.helpers.SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 1
+    largeDiagnosticsContext.context.helpers.SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS = 2
+    largeDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 1000
+    largeDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS = 5
+    const largeDocumentContext = largeDiagnosticsCore.getDocumentContextByUri(largeDiagnosticsUri)
+    const largeService = largeDocumentContext && largeDocumentContext.service
+    const originalLargeGetDiagnostics =
+      largeService && typeof largeService.getDiagnostics === 'function'
+        ? largeService.getDiagnostics.bind(largeService)
+        : null
+    if (!largeService || !originalLargeGetDiagnostics) {
+      throw new Error('Expected large diagnostics smoke context to expose a language service.')
+    }
+    largeService.getDiagnostics = (_filePath, _documentText, options = {}) => {
+      const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false
+      largeDiagnosticsCalls.push(includeSemanticDiagnostics)
+      return [
+        {
+          code: includeSemanticDiagnostics ? 'large-semantic-diagnostics' : 'large-fast-diagnostics',
+          category: ts.DiagnosticCategory.Error,
+          message: includeSemanticDiagnostics ? 'large semantic diagnostics' : 'large fast diagnostics',
+          start: largeDiagnosticsText.indexOf('value'),
+          end: largeDiagnosticsText.indexOf('value') + 'value'.length,
+        },
+      ]
+    }
+    const largeDiagnosticsFeatureService = createDiagnosticsFeatureService(
+      largeDiagnosticsContext.context
+    )
+    try {
+      largeDiagnosticsFeatureService.scheduleDiagnostics(largeDiagnosticsUri)
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    } finally {
+      largeService.getDiagnostics = originalLargeGetDiagnostics
+    }
+    if (
+      largeDiagnosticsCalls.length !== 1 ||
+      largeDiagnosticsCalls[0] !== true
+    ) {
+      throw new Error(
+        `Expected large EJS diagnostics to skip fast diagnostics and run one semantic idle pass. Got: ${JSON.stringify(largeDiagnosticsCalls)}`
+      )
+    }
+    const largeDiagnosticCodes = largeDiagnosticsEvents.flatMap((event) =>
+      (event.diagnostics || []).map((entry) => String(entry.code))
+    )
+    if (
+      largeDiagnosticCodes.length !== 1 ||
+      largeDiagnosticCodes[0] !== 'large-semantic-diagnostics'
+    ) {
+      throw new Error(
+        `Expected large EJS diagnostics to publish only the large semantic idle result. Got: ${JSON.stringify(largeDiagnosticCodes)}`
+      )
+    }
+
+    const largeOpenDiagnosticsEvents = []
+    const largeOpenDiagnosticsCalls = []
+    const largeOpenDiagnosticsCore = new PocketPagesLanguageCore()
+    const largeOpenDiagnosticsText = `<script server>\n${'const openedValue = 1\n'.repeat(80)}</script>\n`
+    const largeOpenDiagnosticsDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      largeOpenDiagnosticsText
+    )
+    const largeOpenDiagnosticsUri = largeOpenDiagnosticsDocument.uri
+    largeOpenDiagnosticsCore.openDocument({
+      uri: largeOpenDiagnosticsUri,
+      languageId: 'ejs',
+      version: 1,
+      text: largeOpenDiagnosticsText,
+    })
+    const largeOpenDiagnosticsContext = createLspServiceSmokeContext(
+      largeOpenDiagnosticsCore,
+      new Map([[largeOpenDiagnosticsUri, largeOpenDiagnosticsDocument]]),
+      {
+        connection: {
+          sendDiagnostics(payload) {
+            largeOpenDiagnosticsEvents.push(payload)
+          },
+        },
+        state: {
+          diagnosticTimeouts: new Map(),
+          semanticDiagnosticTimeouts: new Map(),
+        },
+      }
+    )
+    largeOpenDiagnosticsContext.context.helpers.SCRIPT_DIAGNOSTICS_DEBOUNCE_MS = 1
+    largeOpenDiagnosticsContext.context.helpers.SCRIPT_SEMANTIC_DIAGNOSTICS_IDLE_MS = 2
+    largeOpenDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 1000
+    largeOpenDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_IDLE_MS = 5
+    const largeOpenDocumentContext = largeOpenDiagnosticsCore.getDocumentContextByUri(largeOpenDiagnosticsUri)
+    const largeOpenService = largeOpenDocumentContext && largeOpenDocumentContext.service
+    const originalLargeOpenGetDiagnostics =
+      largeOpenService && typeof largeOpenService.getDiagnostics === 'function'
+        ? largeOpenService.getDiagnostics.bind(largeOpenService)
+        : null
+    if (!largeOpenService || !originalLargeOpenGetDiagnostics) {
+      throw new Error('Expected large open diagnostics smoke context to expose a language service.')
+    }
+    largeOpenService.getDiagnostics = (_filePath, _documentText, options = {}) => {
+      const includeSemanticDiagnostics = options.includeSemanticDiagnostics !== false
+      largeOpenDiagnosticsCalls.push(includeSemanticDiagnostics)
+      return [
+        {
+          code: includeSemanticDiagnostics ? 'large-open-semantic-diagnostics' : 'large-open-fast-diagnostics',
+          category: ts.DiagnosticCategory.Error,
+          message: includeSemanticDiagnostics ? 'large open semantic diagnostics' : 'large open fast diagnostics',
+          start: largeOpenDiagnosticsText.indexOf('openedValue'),
+          end: largeOpenDiagnosticsText.indexOf('openedValue') + 'openedValue'.length,
+        },
+      ]
+    }
+    const largeOpenDiagnosticsFeatureService = createDiagnosticsFeatureService(
+      largeOpenDiagnosticsContext.context
+    )
+    try {
+      largeOpenDiagnosticsFeatureService.publishDiagnostics(largeOpenDiagnosticsUri, {
+        reason: 'open',
+      })
+      if (largeOpenDiagnosticsCalls.length || largeOpenDiagnosticsEvents.length) {
+        throw new Error(
+          `Expected large EJS open diagnostics to defer immediate publish. Got: ${JSON.stringify({
+            calls: largeOpenDiagnosticsCalls,
+            events: largeOpenDiagnosticsEvents,
+          })}`
+        )
+      }
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    } finally {
+      largeOpenService.getDiagnostics = originalLargeOpenGetDiagnostics
+    }
+    if (
+      largeOpenDiagnosticsCalls.length !== 1 ||
+      largeOpenDiagnosticsCalls[0] !== true
+    ) {
+      throw new Error(
+        `Expected large EJS open diagnostics to schedule one semantic idle pass. Got: ${JSON.stringify(largeOpenDiagnosticsCalls)}`
+      )
+    }
+    const largeOpenDiagnosticCodes = largeOpenDiagnosticsEvents.flatMap((event) =>
+      (event.diagnostics || []).map((entry) => String(entry.code))
+    )
+    if (
+      largeOpenDiagnosticCodes.length !== 1 ||
+      largeOpenDiagnosticCodes[0] !== 'large-open-semantic-diagnostics'
+    ) {
+      throw new Error(
+        `Expected large EJS open diagnostics to publish only the large semantic idle result. Got: ${JSON.stringify(largeOpenDiagnosticCodes)}`
+      )
+    }
+
     const schemaOnlyDiagnosticsEvents = []
     const schemaOnlyDiagnosticsCore = new PocketPagesLanguageCore()
     const schemaOnlyDiagnosticsText = `missingGlobal()\n$app.findRecordsByFilter('missing_collection')\n`
@@ -2694,6 +3076,9 @@ module.exports = {
       throw new Error(`Expected lifecycle change to schedule diagnostics for regular documents. Got: ${JSON.stringify(lifecycleScheduledUris)}`)
     }
     lifecycleFeatureService.handleDidManualSave({ uri: lifecycleBoardsUri })
+    if (!lifecycleCancelledUris.includes(lifecycleBoardsUri)) {
+      throw new Error(`Expected manual save to cancel pending diagnostics before full publish. Got: ${JSON.stringify(lifecycleCancelledUris)}`)
+    }
     if (lifecycleOpenPublishCalls.filter((uri) => uri === lifecycleBoardsUri).length < 2) {
       throw new Error(`Expected manual save to republish diagnostics for the requested document. Got: ${JSON.stringify(lifecycleOpenPublishCalls)}`)
     }
@@ -5933,6 +6318,22 @@ metaPayload.trim()
     if (typedRecordGetMessages.some((message) => message.includes("Property 'trim' does not exist on type 'any'"))) {
       throw new Error(`Expected json record.get() typing to stay permissive. Got: ${typedRecordGetMessages.join(' | ')}`)
     }
+    const typedRecordGetFastDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      { includeSemanticDiagnostics: false }
+    )
+    const typedRecordGetFastMessages = typedRecordGetFastDiagnostics.map((entry) => String(entry.message))
+    if (
+      typedRecordGetFastMessages.some((message) =>
+        message.includes("Property 'trim' does not exist on type 'boolean'") ||
+        message.includes("Property 'trim' does not exist on type 'number'")
+      )
+    ) {
+      throw new Error(
+        `Expected fast diagnostics to skip TS semantic record.get() errors. Got: ${typedRecordGetFastMessages.join(' | ')}`
+      )
+    }
     const typedRecordGetPrelude = service.buildPrelude(fixture.boardsFilePath, typedRecordGetText)
     if (
       !typedRecordGetPrelude.includes('get(name: "name"): string;') ||
@@ -6052,6 +6453,18 @@ const boardTableNames = $app.findRecordsByFilter('boards', '').map((entry) => en
     if (!templateDiagnostics.some((entry) => entry.code === 2304 && String(entry.message).includes('missingAuthState'))) {
       throw new Error(
         `Expected EJS template semantic diagnostic for missingAuthState. Got: ${templateDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+    const fastTemplateDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\nconst authState = { email: '' }\n</script>\n<p><%= authState.email %></p>\n<p><%= missingAuthState.email %></p>\n`,
+      { includeSemanticDiagnostics: false }
+    )
+    if (fastTemplateDiagnostics.some((entry) => entry.code === 2304 && String(entry.message).includes('missingAuthState'))) {
+      throw new Error(
+        `Expected fast EJS template diagnostics to skip missingAuthState semantic errors. Got: ${fastTemplateDiagnostics
           .map((entry) => String(entry.message))
           .join(' | ')}`
       )
