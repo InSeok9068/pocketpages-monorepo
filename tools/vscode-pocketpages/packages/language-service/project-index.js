@@ -184,6 +184,10 @@ function hasKnownExtension(filePath, extensions) {
   return extensions.includes(path.extname(String(filePath || '')).toLowerCase())
 }
 
+function isJavaScriptModuleFile(filePath) {
+  return ['.js', '.cjs', '.mjs'].includes(path.extname(String(filePath || '')).toLowerCase())
+}
+
 function shouldKeepPathCompletionExtension(requestPath, extensions) {
   const normalizedRequestPath = String(requestPath || '').trim()
   if (hasKnownExtension(normalizedRequestPath, extensions)) {
@@ -2428,7 +2432,9 @@ class PocketPagesProjectIndex {
     }
 
     if (isPagesCodeFile(this.pagesRoot, normalizedFilePath)) {
-      this.moduleExportedStringConstantsCache.clear()
+      if (isJavaScriptModuleFile(normalizedFilePath)) {
+        this.moduleExportedStringConstantsCache.delete(normalizedFilePath)
+      }
       this.includeLocalsCache = null
       this.pagesContentVersion += 1
     }

@@ -4649,6 +4649,128 @@ module.exports = {
       throw new Error('Expected partial watched-file invalidation to keep unrelated script schema diagnostics cache entries warm.')
     }
 
+    const fineInvalidationManager = new PocketPagesLanguageServiceManager()
+    const fineInvalidationService = fineInvalidationManager.getServiceForFile(fixture.boardsFilePath)
+    const moduleConstantsAFilePath = path.join(
+      fixture.appRoot,
+      'pb_hooks',
+      'pages',
+      '_private',
+      'cache-constants-a.js'
+    )
+    const moduleConstantsBFilePath = path.join(
+      fixture.appRoot,
+      'pb_hooks',
+      'pages',
+      '_private',
+      'cache-constants-b.js'
+    )
+    writeFile(moduleConstantsAFilePath, `const CACHE_A = 'boards'\nmodule.exports = { CACHE_A }\n`)
+    writeFile(moduleConstantsBFilePath, `const CACHE_B = 'posts'\nmodule.exports = { CACHE_B }\n`)
+    fineInvalidationService.projectIndex.getModuleExportedStringConstants(moduleConstantsAFilePath)
+    fineInvalidationService.projectIndex.getModuleExportedStringConstants(moduleConstantsBFilePath)
+    if (
+      !fineInvalidationService.projectIndex.moduleExportedStringConstantsCache.has(normalizeFilePath(moduleConstantsAFilePath)) ||
+      !fineInvalidationService.projectIndex.moduleExportedStringConstantsCache.has(normalizeFilePath(moduleConstantsBFilePath))
+    ) {
+      throw new Error('Expected module string constant cache probe to warm both module cache entries.')
+    }
+    fineInvalidationService.invalidateManagedFile(moduleConstantsAFilePath, { type: 'change' })
+    if (fineInvalidationService.projectIndex.moduleExportedStringConstantsCache.has(normalizeFilePath(moduleConstantsAFilePath))) {
+      throw new Error('Expected module string constant invalidation to drop only the changed module cache entry.')
+    }
+    if (!fineInvalidationService.projectIndex.moduleExportedStringConstantsCache.has(normalizeFilePath(moduleConstantsBFilePath))) {
+      throw new Error('Expected module string constant invalidation to preserve unrelated module cache entries.')
+    }
+    fs.rmSync(moduleConstantsAFilePath, { force: true })
+    fs.rmSync(moduleConstantsBFilePath, { force: true })
+
+    const fineBoardsAnalysisText = buildTemplateVirtualText(fs.readFileSync(fixture.boardsFilePath, 'utf8'))
+    const fineLocalsAnalysisText = buildTemplateVirtualText(fs.readFileSync(fixture.localsTypeCheckFilePath, 'utf8'))
+    fineInvalidationService.getIncludeCallEntries(fixture.boardsFilePath, fineBoardsAnalysisText)
+    fineInvalidationService.getIncludeCallEntries(fixture.localsTypeCheckFilePath, fineLocalsAnalysisText)
+    if (
+      !fineInvalidationService.includeCallEntriesCache.has(normalizeFilePath(fixture.boardsFilePath)) ||
+      !fineInvalidationService.includeCallEntriesCache.has(normalizeFilePath(fixture.localsTypeCheckFilePath))
+    ) {
+      throw new Error('Expected include call entry cache probe to warm both caller cache entries.')
+    }
+    fineInvalidationService.invalidateManagedFile(fixture.boardsFilePath, { type: 'change' })
+    if (fineInvalidationService.includeCallEntriesCache.has(normalizeFilePath(fixture.boardsFilePath))) {
+      throw new Error('Expected include call invalidation to drop only the changed caller cache entry.')
+    }
+    if (!fineInvalidationService.includeCallEntriesCache.has(normalizeFilePath(fixture.localsTypeCheckFilePath))) {
+      throw new Error('Expected include call invalidation to preserve unrelated caller cache entries.')
+    }
+
+    fineInvalidationService.getIncludeContractLocals(fixture.flashAlertFilePath)
+    fineInvalidationService.getIncludeContractLocals(fixture.typedPanelFilePath)
+    if (
+      !fineInvalidationService.includeContractCache.has(normalizeFilePath(fixture.flashAlertFilePath)) ||
+      !fineInvalidationService.includeContractCache.has(normalizeFilePath(fixture.typedPanelFilePath))
+    ) {
+      throw new Error('Expected include contract cache probe to warm both target cache entries.')
+    }
+    fineInvalidationService.buildPrelude(
+      fixture.flashAlertFilePath,
+      fs.readFileSync(fixture.flashAlertFilePath, 'utf8')
+    )
+    const fineFlashPreludeCacheEntry = fineInvalidationService.includePreludeCache.get(
+      normalizeFilePath(fixture.flashAlertFilePath)
+    )
+    if (!fineFlashPreludeCacheEntry) {
+      throw new Error('Expected include prelude cache probe to warm the partial prelude cache entry.')
+    }
+    fineInvalidationService.invalidateManagedFile(fixture.flashAlertFilePath, { type: 'change' })
+    if (fineInvalidationService.includeContractCache.has(normalizeFilePath(fixture.flashAlertFilePath))) {
+      throw new Error('Expected include contract invalidation to drop only the changed target cache entry.')
+    }
+    if (!fineInvalidationService.includeContractCache.has(normalizeFilePath(fixture.typedPanelFilePath))) {
+      throw new Error('Expected include contract invalidation to preserve unrelated target cache entries.')
+    }
+    if (
+      fineInvalidationService.includePreludeCache.get(normalizeFilePath(fixture.flashAlertFilePath)) !==
+      fineFlashPreludeCacheEntry
+    ) {
+      throw new Error('Expected plain content invalidation to leave include prelude cache entries to snapshot-key reuse checks.')
+    }
+
+    fineInvalidationService.projectIndex.getSchemaState()
+    fineInvalidationService.projectIndex.getCollectionMethodState()
+    fineInvalidationService.projectIndex.getRouteState()
+    fineInvalidationService.projectIndex.getIncludeCandidates(fixture.boardsFilePath)
+    const fineSchemaCacheBeforeStructureChange = fineInvalidationService.projectIndex.schemaCache
+    const fineCollectionMethodCacheBeforeStructureChange = fineInvalidationService.projectIndex.collectionMethodCache
+    const structureProbeRouteFilePath = path.join(
+      fixture.appRoot,
+      'pb_hooks',
+      'pages',
+      '(site)',
+      'cache-invalidation-probe.ejs'
+    )
+    writeFile(structureProbeRouteFilePath, `<h1>Probe</h1>\n`)
+    const fineStructureInvalidationKind = fineInvalidationService.invalidateManagedFile(
+      structureProbeRouteFilePath,
+      { type: 'create' }
+    )
+    if (fineStructureInvalidationKind !== 'structure') {
+      throw new Error(`Expected page create invalidation to report structure. Got: ${fineStructureInvalidationKind}`)
+    }
+    if (fineInvalidationService.projectIndex.schemaCache !== fineSchemaCacheBeforeStructureChange) {
+      throw new Error('Expected page structure invalidation to preserve schema cache.')
+    }
+    if (fineInvalidationService.projectIndex.collectionMethodCache !== fineCollectionMethodCacheBeforeStructureChange) {
+      throw new Error('Expected page structure invalidation to preserve pb_data collection method cache.')
+    }
+    if (
+      fineInvalidationService.projectIndex.pagesGraphCache !== null ||
+      fineInvalidationService.projectIndex.routeStateCache !== null ||
+      fineInvalidationService.projectIndex.searchRootFileCache.size !== 0
+    ) {
+      throw new Error('Expected page structure invalidation to clear route/search graph caches only.')
+    }
+    fs.rmSync(structureProbeRouteFilePath, { force: true })
+
     const watchedRouteCore = new PocketPagesLanguageCore()
     const watchedRouteBoardsText = fs.readFileSync(fixture.boardsFilePath, 'utf8')
     const watchedRouteBoardsUri = URI.file(fixture.boardsFilePath).toString()
@@ -7615,6 +7737,35 @@ module.exports = {
       throw new Error(`Expected hx-post caller to stay on /feedback while +post.js still exists. Got: ${feedbackRouteReferenceRenamedText}`)
     }
 
+    const oldFeedbackRouteDirectoryPath = path.dirname(fixture.feedbackPageFilePath)
+    const newFeedbackRouteDirectoryPath = path.join(path.dirname(oldFeedbackRouteDirectoryPath), 'responses')
+    const feedbackDirectoryRenameEdits = service.getFileRenameEdits(
+      oldFeedbackRouteDirectoryPath,
+      newFeedbackRouteDirectoryPath
+    )
+    const feedbackDirectoryRouteReferenceEdits = feedbackDirectoryRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
+    )
+    if (feedbackDirectoryRouteReferenceEdits.length !== 6) {
+      throw new Error(`Expected all method-aware feedback route callers to rewrite on folder rename. Got: ${JSON.stringify(feedbackDirectoryRenameEdits)}`)
+    }
+    const feedbackDirectoryRenamedText = applyEditsToText(
+      fs.readFileSync(fixture.routeMethodReferenceCheckFilePath, 'utf8'),
+      feedbackDirectoryRouteReferenceEdits
+    )
+    for (const expectedRouteCaller of [
+      'href="/responses"',
+      'action="/responses"',
+      'hx-post="/responses"',
+      'hx-delete="/responses"',
+      'hx-put="/responses"',
+      'hx-patch="/responses"',
+    ]) {
+      if (!feedbackDirectoryRenamedText.includes(expectedRouteCaller)) {
+        throw new Error(`Expected feedback folder rename to rewrite ${expectedRouteCaller}. Got: ${feedbackDirectoryRenamedText}`)
+      }
+    }
+
     const routeReferenceQuery = service.getFileReferenceQuery(fixture.boardsFilePath)
     if (!routeReferenceQuery || routeReferenceQuery.kind !== 'route-file' || routeReferenceQuery.routePath !== '/boards') {
       throw new Error(`Expected static route file reference query for /boards. Got: ${JSON.stringify(routeReferenceQuery)}`)
@@ -7717,6 +7868,59 @@ redirect('/boards/demo-board')
     const dynamicRouteRenamedText = applyEditsToText(dynamicRouteCallerText, dynamicRouteReferenceEdits)
     if ((dynamicRouteRenamedText.match(/\/boards\/demo-board\/details/g) || []).length !== 3) {
       throw new Error(`Expected dynamic route callers to rewrite to /boards/demo-board/details. Got: ${dynamicRouteRenamedText}`)
+    }
+    service.clearDocumentOverride(fixture.routeReferenceCheckFilePath)
+
+    const routeDirectoryCallerText = `<a href="/boards">Boards</a>
+<a href="/boards/demo-board">Demo</a>
+<button hx-get="/boards/demo-board?tab=posts#top"></button>
+<script server>
+redirect('/boards/demo-board')
+</script>
+`
+    service.setDocumentOverride(fixture.routeReferenceCheckFilePath, routeDirectoryCallerText)
+    const oldBoardsRouteDirectoryPath = path.dirname(fixture.boardsFilePath)
+    const newBoardsRouteDirectoryPath = path.join(path.dirname(oldBoardsRouteDirectoryPath), 'topics')
+    const renamedRouteReferenceCheckFilePath = path.join(
+      newBoardsRouteDirectoryPath,
+      path.relative(oldBoardsRouteDirectoryPath, fixture.routeReferenceCheckFilePath)
+    )
+    const routeDirectoryRenameEdits = service.getFileRenameEdits(oldBoardsRouteDirectoryPath, newBoardsRouteDirectoryPath)
+    const routeDirectorySiteIndexEdits = routeDirectoryRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.siteIndexFilePath)
+    )
+    const routeDirectoryMovedCallerEdits = routeDirectoryRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(renamedRouteReferenceCheckFilePath)
+    )
+    if (routeDirectorySiteIndexEdits.length !== 1) {
+      throw new Error(`Expected /boards href outside the renamed folder to rewrite on route directory rename. Got: ${JSON.stringify(routeDirectoryRenameEdits)}`)
+    }
+    if (routeDirectoryMovedCallerEdits.length !== 4) {
+      throw new Error(`Expected moved route caller edits to target the renamed folder path. Got: ${JSON.stringify(routeDirectoryRenameEdits)}`)
+    }
+    if (
+      routeDirectoryRenameEdits.some(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath)
+      )
+    ) {
+      throw new Error(`Expected route directory rename edits to avoid stale old folder paths. Got: ${JSON.stringify(routeDirectoryRenameEdits)}`)
+    }
+    const routeDirectorySiteIndexRenamedText = applyEditsToText(
+      fs.readFileSync(fixture.siteIndexFilePath, 'utf8'),
+      routeDirectorySiteIndexEdits
+    )
+    if (!routeDirectorySiteIndexRenamedText.includes('href="/topics"')) {
+      throw new Error(`Expected outside route caller to rewrite to /topics. Got: ${routeDirectorySiteIndexRenamedText}`)
+    }
+    const routeDirectoryMovedCallerRenamedText = applyEditsToText(
+      routeDirectoryCallerText,
+      routeDirectoryMovedCallerEdits
+    )
+    if ((routeDirectoryMovedCallerRenamedText.match(/\/topics/g) || []).length !== 4) {
+      throw new Error(`Expected moved route callers to rewrite to /topics while preserving suffixes. Got: ${routeDirectoryMovedCallerRenamedText}`)
+    }
+    if (routeDirectoryMovedCallerRenamedText.includes('/boards')) {
+      throw new Error(`Expected moved route callers to remove old /boards paths. Got: ${routeDirectoryMovedCallerRenamedText}`)
     }
     service.clearDocumentOverride(fixture.routeReferenceCheckFilePath)
 
@@ -9678,7 +9882,12 @@ const authState = resolve('auth-service')
 
     const pluginRuntimeFactory = initTypeScriptPlugin({ typescript: ts })
     let pluginProjectVersion = '1'
+    let pluginNow = 1000
     const pluginSnapshotOverrides = new Map()
+    const pluginScriptFileNames = [
+      fixture.signInFilePath,
+      fixture.boardServiceFilePath,
+    ]
     const pluginBaseLanguageService = {
       getCompletionsAtPosition() {
         return null
@@ -9710,6 +9919,9 @@ const authState = resolve('auth-service')
       getScriptVersion() {
         return ''
       },
+      getScriptFileNames() {
+        return pluginScriptFileNames.slice()
+      },
       getProjectVersion() {
         return pluginProjectVersion
       },
@@ -9736,8 +9948,21 @@ const authState = resolve('auth-service')
     }
     const originalPluginReloadCachesForAppRoot = PocketPagesLanguageCore.prototype.reloadCachesForAppRoot
     const originalPluginCloseDocument = PocketPagesLanguageCore.prototype.closeDocument
+    const originalPluginDateNow = Date.now
+    const originalPluginReaddirSync = fs.readdirSync
     const pluginReloadAppRoots = []
     const pluginClosedUris = []
+    let pluginPagesReaddirCount = 0
+    Date.now = function patchedPluginDateNow() {
+      return pluginNow
+    }
+    fs.readdirSync = function patchedPluginReaddirSync(dirPath, ...args) {
+      if (normalizeFilePath(dirPath).startsWith(`${normalizeFilePath(fixture.appRoot)}/pb_hooks/pages`)) {
+        pluginPagesReaddirCount += 1
+      }
+
+      return originalPluginReaddirSync.call(fs, dirPath, ...args)
+    }
     PocketPagesLanguageCore.prototype.reloadCachesForAppRoot = function patchedReloadCachesForAppRoot(appRoot) {
       pluginReloadAppRoots.push(normalizeFilePath(appRoot))
       return originalPluginReloadCachesForAppRoot.call(this, appRoot)
@@ -9769,17 +9994,136 @@ const authState = resolve('auth-service')
       }
       pluginSnapshotOverrides.delete(fixture.signInFilePath)
       pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      const cachedTrackedFileListReaddirCount = pluginPagesReaddirCount
+      pluginProjectVersion = '2'
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginPagesReaddirCount !== cachedTrackedFileListReaddirCount) {
+        throw new Error(
+          `Expected TS plugin runtime to reuse the app file list cache across quick project-version changes. Before=${cachedTrackedFileListReaddirCount}, after=${pluginPagesReaddirCount}`
+        )
+      }
+
+      const pluginReloadCountBeforeCssChange = pluginReloadAppRoots.length
+      writeFile(fixture.localAssetFilePath, `.board-card { color: #444; }\n`)
+      pluginProjectVersion = '3'
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginReloadAppRoots.length !== pluginReloadCountBeforeCssChange) {
+        throw new Error(
+          `Expected TS plugin runtime to ignore non-code page assets when reconciling app caches. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
+      }
+
+      const pluginReloadCountBeforeAssetScriptChange = pluginReloadAppRoots.length
+      writeFile(fixture.globalAssetFilePath, `console.log('reader v2')\n`)
+      writeFile(fixture.vendorAssetFilePath, `window.JSZip = { version: 'test' }\n`)
+      pluginProjectVersion = 'asset-script-change'
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginReloadAppRoots.length !== pluginReloadCountBeforeAssetScriptChange) {
+        throw new Error(
+          `Expected TS plugin runtime to ignore public page asset scripts. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
+      }
+
+      const originalHtmlToTextBundleText = fs.readFileSync(fixture.htmlToTextBundleFilePath, 'utf8')
+      const pluginReloadCountBeforePrivateVendorChange = pluginReloadAppRoots.length
+      writeFile(
+        fixture.htmlToTextBundleFilePath,
+        `${originalHtmlToTextBundleText}\nmodule.exports.__pluginTracked = true\n`
+      )
+      pluginProjectVersion = 'private-vendor-change'
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginReloadAppRoots.length === pluginReloadCountBeforePrivateVendorChange) {
+        throw new Error(
+          `Expected TS plugin runtime to keep server-side _private vendor modules in the tracked app set. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
+      }
+
       const originalBoardServiceText = fs.readFileSync(fixture.boardServiceFilePath, 'utf8')
+      const pluginReloadCountBeforeServiceChange = pluginReloadAppRoots.length
       writeFile(
         fixture.boardServiceFilePath,
         `${originalBoardServiceText}\nmodule.exports.readMethod = function readMethod() { return 'ok' }\n`
       )
-      pluginProjectVersion = '2'
+      pluginProjectVersion = '4'
       pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
-      if (!pluginReloadAppRoots.includes(normalizeFilePath(fixture.appRoot))) {
+      if (pluginReloadAppRoots.length === pluginReloadCountBeforeServiceChange) {
         throw new Error(
           `Expected TS plugin runtime to reload app-scoped caches after sibling file changes. Got: ${JSON.stringify(pluginReloadAppRoots)}`
         )
+      }
+
+      const pluginReloadCountBeforeSchemaChange = pluginReloadAppRoots.length
+      writeFile(fixture.schemaFilePath, `${fs.readFileSync(fixture.schemaFilePath, 'utf8')}\n`)
+      pluginProjectVersion = '5'
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginReloadAppRoots.length === pluginReloadCountBeforeSchemaChange) {
+        throw new Error(
+          `Expected TS plugin runtime to keep root schema files in the tracked app set. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
+      }
+
+      const pluginKnownTrackedFilePath = path.join(
+        fixture.appRoot,
+        'pb_hooks',
+        'pages',
+        '_private',
+        'plugin-known-service.js'
+      )
+      const pluginReloadCountBeforeKnownFile = pluginReloadAppRoots.length
+      writeFile(pluginKnownTrackedFilePath, `module.exports = { known: true }\n`)
+      pluginScriptFileNames.push(pluginKnownTrackedFilePath)
+      pluginProjectVersion = '6'
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginReloadAppRoots.length === pluginReloadCountBeforeKnownFile) {
+        throw new Error(
+          `Expected TS plugin runtime to merge TS project file names into the tracked app set. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
+      }
+
+      const pluginReloadCountBeforeKnownDelete = pluginReloadAppRoots.length
+      fs.rmSync(pluginKnownTrackedFilePath, { force: true })
+      pluginScriptFileNames.splice(pluginScriptFileNames.indexOf(pluginKnownTrackedFilePath), 1)
+      pluginProjectVersion = '7'
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginReloadAppRoots.length === pluginReloadCountBeforeKnownDelete) {
+        throw new Error(
+          `Expected TS plugin runtime to detect deleted files already present in the cached tracked app set. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
+      }
+
+      const pluginHiddenTrackedFilePath = path.join(
+        fixture.appRoot,
+        'pb_hooks',
+        'pages',
+        '_private',
+        'plugin-hidden-service.js'
+      )
+      const pluginReloadCountBeforeHiddenFile = pluginReloadAppRoots.length
+      const pluginReaddirCountBeforeHiddenFile = pluginPagesReaddirCount
+      writeFile(pluginHiddenTrackedFilePath, `module.exports = { hidden: true }\n`)
+      pluginProjectVersion = '8'
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginReloadAppRoots.length !== pluginReloadCountBeforeHiddenFile) {
+        throw new Error(
+          `Expected TS plugin runtime to defer unknown new sibling files until the file-list scan window expires. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
+      }
+      if (pluginPagesReaddirCount !== pluginReaddirCountBeforeHiddenFile) {
+        throw new Error(
+          `Expected TS plugin runtime to avoid an immediate disk rescan for unknown new sibling files. Before=${pluginReaddirCountBeforeHiddenFile}, after=${pluginPagesReaddirCount}`
+        )
+      }
+
+      pluginNow += 2500
+      pluginProjectVersion = '9'
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginReloadAppRoots.length === pluginReloadCountBeforeHiddenFile) {
+        throw new Error(
+          `Expected TS plugin runtime to pick up unknown new sibling files after the file-list scan window expires. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
+      }
+      if (pluginPagesReaddirCount === pluginReaddirCountBeforeHiddenFile) {
+        throw new Error('Expected TS plugin runtime to rescan the app file list after the scan window expires.')
       }
 
       const pluginLruFiles = []
@@ -9803,6 +10147,8 @@ const authState = resolve('auth-service')
         throw new Error('Expected TS plugin runtime to prune visited EJS documents once the managed cache grows past the limit.')
       }
     } finally {
+      fs.readdirSync = originalPluginReaddirSync
+      Date.now = originalPluginDateNow
       PocketPagesLanguageCore.prototype.reloadCachesForAppRoot = originalPluginReloadCachesForAppRoot
       PocketPagesLanguageCore.prototype.closeDocument = originalPluginCloseDocument
     }

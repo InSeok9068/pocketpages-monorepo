@@ -71,6 +71,10 @@ function createCompletionInfo(filePath, completionData) {
 function init(modules) {
   const ts = modules.typescript;
   const MAX_MANAGED_EJS_DOCUMENTS = 40;
+  const TRACKED_APP_FILE_SCAN_INTERVAL_MS = 2000;
+  const MAX_TRACKED_APP_FILES_PER_SCAN = 5000;
+  const MAX_TRACKED_APP_DIRECTORY_ENTRIES_PER_SCAN = 20000;
+  const TRACKED_PAGES_FILE_EXTENSIONS = new Set([".ejs", ".js", ".cjs", ".mjs", ".json"]);
 
   return {
     create(info) {
@@ -85,6 +89,8 @@ function init(modules) {
         typeof host.getScriptVersion === "function" ? host.getScriptVersion.bind(host) : null;
       const baseGetProjectVersion =
         typeof host.getProjectVersion === "function" ? host.getProjectVersion.bind(host) : null;
+      const baseGetScriptFileNames =
+        typeof host.getScriptFileNames === "function" ? host.getScriptFileNames.bind(host) : null;
       const core = new PocketPagesLanguageCore();
       const trackedAppState = new Map();
       const managedDocumentLru = new Map();
@@ -105,6 +111,51 @@ function init(modules) {
         }
 
         return normalizedFileName.slice(0, markerIndex);
+      }
+
+      function isTrackedPagesFile(fileName) {
+        const normalizedFileName = normalizeTrackedPath(fileName).toLowerCase();
+        if (normalizedFileName.endsWith(".d.ts")) {
+          return true;
+        }
+
+        return TRACKED_PAGES_FILE_EXTENSIONS.has(path.extname(normalizedFileName));
+      }
+
+      function getPagesRoot(appRoot) {
+        return normalizeTrackedPath(path.join(normalizeTrackedPath(appRoot), "pb_hooks", "pages"));
+      }
+
+      function isUnderPagesRoot(fileName, appRoot) {
+        const normalizedFileName = normalizeTrackedPath(fileName);
+        return normalizedFileName.startsWith(`${getPagesRoot(appRoot)}/`);
+      }
+
+      function isPagesAssetFile(fileName, appRoot) {
+        const normalizedFileName = normalizeTrackedPath(fileName);
+        return normalizedFileName.startsWith(`${getPagesRoot(appRoot)}/assets/`);
+      }
+
+      function addAlwaysTrackedAppFiles(trackedFiles, appRoot) {
+        const normalizedAppRoot = normalizeTrackedPath(appRoot);
+        trackedFiles.add(normalizeTrackedPath(path.join(normalizedAppRoot, "pb_schema.json")));
+        trackedFiles.add(normalizeTrackedPath(path.join(normalizedAppRoot, "pb_data", "types.d.ts")));
+        trackedFiles.add(normalizeTrackedPath(path.join(normalizedAppRoot, "pocketpages-globals.d.ts")));
+        trackedFiles.add(normalizeTrackedPath(path.join(normalizedAppRoot, "types.d.ts")));
+      }
+
+      function addTrackedPagesFile(trackedFiles, appRoot, fileName) {
+        const normalizedFileName = normalizeTrackedPath(fileName);
+        if (
+          !isUnderPagesRoot(normalizedFileName, appRoot) ||
+          isPagesAssetFile(normalizedFileName, appRoot) ||
+          !isTrackedPagesFile(normalizedFileName)
+        ) {
+          return false;
+        }
+
+        trackedFiles.add(normalizedFileName);
+        return true;
       }
 
       function readProjectVersionToken() {
@@ -138,18 +189,47 @@ function init(modules) {
         }
       }
 
-      function collectTrackedAppFiles(appRoot) {
+      function collectProjectTrackedAppFiles(appRoot) {
         const trackedFiles = new Set();
-        const normalizedAppRoot = normalizeTrackedPath(appRoot);
-        const pagesRoot = path.join(normalizedAppRoot, "pb_hooks", "pages");
+        if (!baseGetScriptFileNames) {
+          return trackedFiles;
+        }
+
+        let scriptFileNames = [];
+        try {
+          scriptFileNames = baseGetScriptFileNames() || [];
+        } catch (_error) {
+          scriptFileNames = [];
+        }
+
+        if (!Array.isArray(scriptFileNames)) {
+          return trackedFiles;
+        }
+
+        for (const scriptFileName of scriptFileNames) {
+          addTrackedPagesFile(trackedFiles, appRoot, scriptFileName);
+        }
+
+        return trackedFiles;
+      }
+
+      function collectTrackedAppFilesFromDisk(appRoot) {
+        const trackedFiles = new Set();
+        const pagesRoot = getPagesRoot(appRoot);
         const pendingDirectories = [pagesRoot];
+        let visitedEntries = 0;
+        let complete = true;
 
         while (pendingDirectories.length) {
-          const currentDir = pendingDirectories.pop();
-          if (!fs.existsSync(currentDir)) {
-            continue;
+          if (
+            trackedFiles.size >= MAX_TRACKED_APP_FILES_PER_SCAN ||
+            visitedEntries >= MAX_TRACKED_APP_DIRECTORY_ENTRIES_PER_SCAN
+          ) {
+            complete = false;
+            break;
           }
 
+          const currentDir = pendingDirectories.pop();
           let entries = [];
           try {
             entries = fs.readdirSync(currentDir, { withFileTypes: true });
@@ -158,6 +238,12 @@ function init(modules) {
           }
 
           for (const entry of entries) {
+            visitedEntries += 1;
+            if (visitedEntries > MAX_TRACKED_APP_DIRECTORY_ENTRIES_PER_SCAN) {
+              complete = false;
+              break;
+            }
+
             const absolutePath = path.join(currentDir, entry.name);
             if (entry.isDirectory()) {
               pendingDirectories.push(absolutePath);
@@ -168,16 +254,66 @@ function init(modules) {
               continue;
             }
 
-            trackedFiles.add(normalizeTrackedPath(absolutePath));
+            addTrackedPagesFile(trackedFiles, appRoot, absolutePath);
+            if (trackedFiles.size >= MAX_TRACKED_APP_FILES_PER_SCAN) {
+              complete = false;
+              break;
+            }
           }
         }
 
-        trackedFiles.add(normalizeTrackedPath(path.join(normalizedAppRoot, "pb_schema.json")));
-        trackedFiles.add(normalizeTrackedPath(path.join(normalizedAppRoot, "pb_data", "types.d.ts")));
-        trackedFiles.add(normalizeTrackedPath(path.join(normalizedAppRoot, "pocketpages-globals.d.ts")));
-        trackedFiles.add(normalizeTrackedPath(path.join(normalizedAppRoot, "types.d.ts")));
+        return {
+          complete,
+          trackedFiles,
+        };
+      }
 
-        return trackedFiles;
+      function shouldRefreshTrackedAppFileList(previousState, now) {
+        if (!previousState || !previousState.trackedFiles) {
+          return true;
+        }
+
+        const lastScanTime = previousState.trackedFileScanTime || 0;
+        return now - lastScanTime >= TRACKED_APP_FILE_SCAN_INTERVAL_MS;
+      }
+
+      function collectTrackedAppFiles(appRoot, activeFilePath, previousState) {
+        const now = Date.now();
+        const projectTrackedFiles = collectProjectTrackedAppFiles(appRoot);
+        const shouldRefreshFileList = shouldRefreshTrackedAppFileList(previousState, now);
+        let trackedFiles = previousState && previousState.trackedFiles
+          ? new Set(previousState.trackedFiles)
+          : new Set();
+        let trackedFileScanTime = previousState ? previousState.trackedFileScanTime || 0 : 0;
+        let trackedFileScanComplete = previousState ? previousState.trackedFileScanComplete !== false : true;
+
+        if (shouldRefreshFileList) {
+          const diskTrackedFiles = collectTrackedAppFilesFromDisk(appRoot);
+          trackedFiles =
+            diskTrackedFiles.complete || !previousState || !previousState.trackedFiles
+              ? new Set()
+              : new Set(previousState.trackedFiles);
+
+          for (const trackedFilePath of diskTrackedFiles.trackedFiles) {
+            trackedFiles.add(trackedFilePath);
+          }
+
+          trackedFileScanTime = now;
+          trackedFileScanComplete = diskTrackedFiles.complete;
+        }
+
+        for (const trackedFilePath of projectTrackedFiles) {
+          trackedFiles.add(trackedFilePath);
+        }
+
+        trackedFiles.add(activeFilePath);
+        addAlwaysTrackedAppFiles(trackedFiles, appRoot);
+
+        return {
+          trackedFiles,
+          trackedFileScanTime,
+          trackedFileScanComplete,
+        };
       }
 
       function readTrackedFileVersionToken(fileName) {
@@ -246,14 +382,23 @@ function init(modules) {
           return;
         }
 
-        const nextTrackedFiles = collectTrackedAppFiles(appRoot);
-        nextTrackedFiles.add(activeFilePath);
+        const trackedFilesState = collectTrackedAppFiles(appRoot, activeFilePath, previousState);
+        const nextTrackedFiles = trackedFilesState.trackedFiles;
         const nextTrackedVersions = new Map();
+        const missingTrackedFiles = new Set();
+        const alwaysTrackedFiles = new Set();
+        addAlwaysTrackedAppFiles(alwaysTrackedFiles, appRoot);
         for (const trackedFilePath of nextTrackedFiles) {
-          nextTrackedVersions.set(
-            trackedFilePath,
-            readTrackedFileVersionToken(trackedFilePath)
-          );
+          const trackedVersionToken = readTrackedFileVersionToken(trackedFilePath);
+          nextTrackedVersions.set(trackedFilePath, trackedVersionToken);
+
+          if (
+            trackedVersionToken === "missing" &&
+            trackedFilePath !== activeFilePath &&
+            !alwaysTrackedFiles.has(trackedFilePath)
+          ) {
+            missingTrackedFiles.add(trackedFilePath);
+          }
         }
 
         const changedFiles = new Set();
@@ -276,7 +421,8 @@ function init(modules) {
             continue;
           }
 
-          if (!nextTrackedVersions.has(normalizeTrackedPath(virtualCode.filePath))) {
+          const virtualFilePath = normalizeTrackedPath(virtualCode.filePath);
+          if (!nextTrackedVersions.has(virtualFilePath) || missingTrackedFiles.has(virtualFilePath)) {
             closeManagedDocument(virtualCode.uri);
           }
         }
@@ -288,6 +434,9 @@ function init(modules) {
         trackedAppState.set(appRoot, {
           projectChangeGeneration,
           fileVersions: nextTrackedVersions,
+          trackedFiles: nextTrackedFiles,
+          trackedFileScanTime: trackedFilesState.trackedFileScanTime,
+          trackedFileScanComplete: trackedFilesState.trackedFileScanComplete,
         });
       }
 

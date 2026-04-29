@@ -208,6 +208,21 @@ function isSameOrChildPath(parentPath, candidatePath) {
   return !relativePath || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 }
 
+function isChildPath(parentPath, candidatePath) {
+  const relativePath = path.relative(parentPath, candidatePath);
+  return !!relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
+}
+
+function rewriteDirectoryChildPath(candidatePath, oldDirectoryPath, newDirectoryPath) {
+  const normalizedCandidatePath = normalizePath(candidatePath);
+  const relativePath = path.relative(oldDirectoryPath, normalizedCandidatePath);
+  if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    return normalizedCandidatePath;
+  }
+
+  return normalizePath(path.join(newDirectoryPath, relativePath));
+}
+
 function toRelativeSpecifier(relativePath, options = {}) {
   const normalizedPath = toPortablePath(relativePath);
   if (!normalizedPath || normalizedPath === ".") {
@@ -2265,24 +2280,28 @@ class ProjectLanguageService {
     const pbTypesPath = normalizePath(path.join(this.appRoot, "pb_data", "types.d.ts"));
     const globalsPath = normalizePath(path.join(this.appRoot, "pocketpages-globals.d.ts"));
     const serviceTypesPath = normalizePath(path.join(this.appRoot, "types.d.ts"));
-
-    if (
+    const isAppTypeFile =
       normalizedFilePath === schemaPath ||
       normalizedFilePath === pbTypesPath ||
       normalizedFilePath === globalsPath ||
-      normalizedFilePath === serviceTypesPath ||
-      changeType === "create" ||
-      changeType === "delete"
-    ) {
+      normalizedFilePath === serviceTypesPath;
+    const isPagesPath =
+      normalizedFilePath === pagesRootPath ||
+      normalizedFilePath.startsWith(`${pagesRootPath}/`);
+
+    if (isAppTypeFile) {
       this.resetCaches();
       return "reset";
     }
 
-    let changed =
-      normalizedFilePath === pagesRootPath ||
-      normalizedFilePath.startsWith(`${pagesRootPath}/`);
+    let changed = isPagesPath;
+    const isStructureChange = isPagesPath && (changeType === "create" || changeType === "delete");
 
-    this.projectIndex.invalidateContentForFile(normalizedFilePath);
+    if (isStructureChange) {
+      this.projectIndex.invalidateStructureForFile(normalizedFilePath);
+    } else {
+      this.projectIndex.invalidateContentForFile(normalizedFilePath);
+    }
 
     if (this.documentSnapshotManager.deleteSourceDocument(normalizedFilePath)) {
       changed = true;
@@ -2302,14 +2321,11 @@ class ProjectLanguageService {
       changed = true;
     }
 
-    if (
-      this.includeContractCache.size > 0 ||
-      this.includeCallEntriesCache.size > 0 ||
-      this.includePreludeCache.size > 0
-    ) {
-      this.includeContractCache.clear();
-      this.includeCallEntriesCache.clear();
-      this.includePreludeCache.clear();
+    if (this.includeContractCache.delete(normalizedFilePath)) {
+      changed = true;
+    }
+
+    if (this.includeCallEntriesCache.delete(normalizedFilePath)) {
       changed = true;
     }
 
@@ -2317,7 +2333,11 @@ class ProjectLanguageService {
       this.projectVersion += 1;
     }
 
-    return changed ? "partial" : "noop";
+    if (!changed) {
+      return "noop";
+    }
+
+    return isStructureChange ? "structure" : "partial";
   }
 
   getDocumentOverride(filePath) {
@@ -5039,15 +5059,24 @@ class ProjectLanguageService {
   }
 
   getFileRenameEdits(oldFilePath, newFilePath) {
-    const referenceQuery = this.getFileReferenceQuery(oldFilePath);
-    if (!referenceQuery) {
-      return [];
-    }
-
     const normalizedOldFilePath = normalizePath(oldFilePath);
     const normalizedNewFilePath = normalizePath(newFilePath);
     const overrides = this.getPagesCodeOverrides();
     const uniqueEdits = new Map();
+
+    for (const edit of this.getRouteDirectoryRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
+      uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+    }
+
+    const referenceQuery = this.getFileReferenceQuery(normalizedOldFilePath);
+    if (!referenceQuery) {
+      if (uniqueEdits.size > 0) {
+        this.projectIndex.invalidateStructureForFile(normalizedOldFilePath);
+        this.projectIndex.invalidateStructureForFile(normalizedNewFilePath);
+      }
+
+      return [...uniqueEdits.values()];
+    }
 
     if (referenceQuery.kind === "private-partial") {
       for (const edit of this.getIncludeFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
@@ -5515,11 +5544,18 @@ class ProjectLanguageService {
 
     const preferredMethods = getPreferredRouteMethods(routeSource);
     const requestSegments = splitNormalizedRouteRequestPath(normalizedRequestPath);
-    const excludedFilePath = options.excludeFilePath ? normalizePath(options.excludeFilePath) : "";
+    const excludedFilePaths = new Set(
+      [
+        options.excludeFilePath,
+        ...(Array.isArray(options.excludeFilePaths) ? options.excludeFilePaths : []),
+      ]
+        .filter(Boolean)
+        .map((filePath) => normalizePath(filePath))
+    );
     const matchingEntries = [];
 
     for (const descriptor of this.projectIndex.getRouteState().descriptors) {
-      if (excludedFilePath && normalizePath(descriptor.filePath) === excludedFilePath) {
+      if (excludedFilePaths.has(normalizePath(descriptor.filePath))) {
         continue;
       }
 
@@ -5537,7 +5573,7 @@ class ProjectLanguageService {
     const syntheticDescriptor = options.syntheticDescriptor || null;
     if (
       syntheticDescriptor &&
-      (!excludedFilePath || normalizePath(syntheticDescriptor.filePath) !== excludedFilePath)
+      !excludedFilePaths.has(normalizePath(syntheticDescriptor.filePath))
     ) {
       const matchState = getRouteRequestMatchState(
         syntheticDescriptor.routeSegments,
@@ -5673,10 +5709,14 @@ class ProjectLanguageService {
       return false;
     }
 
+    const excludeFilePaths = [
+      routeRenameContext.oldFilePath,
+      ...(Array.isArray(routeRenameContext.excludeFilePaths) ? routeRenameContext.excludeFilePaths : []),
+    ];
     const bestEntryWithoutOld = this.getBestRouteDescriptorForRequestPath(
       normalizedCurrentRequestPath,
       pathContext.routeSource,
-      { excludeFilePath: routeRenameContext.oldFilePath }
+      { excludeFilePaths }
     );
     return !bestEntryWithoutOld;
   }
@@ -5706,6 +5746,67 @@ class ProjectLanguageService {
           start: pathContext.start,
           end: pathContext.end,
           newText: newValue,
+        });
+      }
+    }
+
+    return edits;
+  }
+
+  getRouteDirectoryRenameEdits(oldDirectoryPath, newDirectoryPath, overrides = {}) {
+    const normalizedOldDirectoryPath = normalizePath(oldDirectoryPath);
+    const normalizedNewDirectoryPath = normalizePath(newDirectoryPath);
+    if (
+      normalizedOldDirectoryPath === normalizedNewDirectoryPath ||
+      normalizedOldDirectoryPath === this.projectIndex.pagesRoot ||
+      !isChildPath(this.projectIndex.pagesRoot, normalizedOldDirectoryPath)
+    ) {
+      return [];
+    }
+
+    const oldRelativeSegments = toPortablePath(path.relative(this.projectIndex.pagesRoot, normalizedOldDirectoryPath))
+      .split("/")
+      .filter(Boolean);
+    if (oldRelativeSegments.includes("_private") || oldRelativeSegments.includes("assets")) {
+      return [];
+    }
+
+    const edits = [];
+    const routeDescriptors = this.projectIndex.getRouteState().descriptors.filter((descriptor) =>
+      descriptor && isChildPath(normalizedOldDirectoryPath, normalizePath(descriptor.filePath))
+    );
+    const oldRouteFilePaths = routeDescriptors.map((descriptor) => normalizePath(descriptor.filePath));
+    for (const oldRouteDescriptor of routeDescriptors) {
+      const oldRouteFilePath = normalizePath(oldRouteDescriptor.filePath);
+      const newRouteFilePath = rewriteDirectoryChildPath(
+        oldRouteFilePath,
+        normalizedOldDirectoryPath,
+        normalizedNewDirectoryPath
+      );
+      const newRouteDescriptor = this.projectIndex.describeRouteFilePath(newRouteFilePath);
+      const oldRouteMethod = normalizeRouteMethod(oldRouteDescriptor.method);
+      if (!newRouteDescriptor || normalizeRouteMethod(newRouteDescriptor.method) !== oldRouteMethod) {
+        continue;
+      }
+
+      const routeFileRenameEdits = this.getRouteFileRenameEdits({
+        oldFilePath: oldRouteFilePath,
+        oldRouteDescriptor,
+        oldRoutePath: oldRouteDescriptor.routePath,
+        oldRouteMethod,
+        excludeFilePaths: oldRouteFilePaths,
+        newRouteDescriptor,
+        newRoutePath: newRouteDescriptor.routePath,
+      }, overrides);
+
+      for (const edit of routeFileRenameEdits) {
+        edits.push({
+          ...edit,
+          filePath: rewriteDirectoryChildPath(
+            edit.filePath,
+            normalizedOldDirectoryPath,
+            normalizedNewDirectoryPath
+          ),
         });
       }
     }
