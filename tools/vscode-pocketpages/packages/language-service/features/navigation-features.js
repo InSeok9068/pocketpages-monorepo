@@ -21,7 +21,7 @@ function createNavigationFeatureHandlers(deps) {
     },
 
     getCustomDefinitionTarget(service, filePath, documentText, offset) {
-      const pathContext = getPathContextAtOffset(documentText, offset);
+      const pathContext = getPathContextAtOffset(documentText, offset, { filePath });
       if (pathContext) {
         if (pathContext.kind === "resolve-path") {
           return service.projectIndex.resolveResolveTarget(filePath, pathContext.value);
@@ -429,7 +429,7 @@ function createNavigationFeatureHandlers(deps) {
     getDocumentLinks(service, filePath, documentText) {
       const links = [];
 
-      for (const pathContext of collectPathContexts(documentText)) {
+      for (const pathContext of collectPathContexts(documentText, { filePath })) {
         let targetFilePath = null;
 
         if (pathContext.kind === "resolve-path") {

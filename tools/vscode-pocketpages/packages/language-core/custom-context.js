@@ -1,19 +1,15 @@
 'use strict'
 
 const ts = require('typescript')
+const { extractTemplateCodeBlocks } = require('./ejs-template')
+const { extractServerBlocks } = require('./script-server')
 
-const PATH_OPEN_RE = /\b(resolve|include)\(\s*(['"`])((?:(?!\2)[\s\S])*)$/s
-const PATH_CLOSED_RE = /\b(resolve|include)\(\s*(['"`])((?:(?!\2)[\s\S])*?)\2/g
-const ASSET_OPEN_RE = /\b(?:asset|api\.asset)\(\s*(['"`])((?:(?!\1)[\s\S])*)$/s
-const ASSET_CLOSED_RE = /\b(?:asset|api\.asset)\(\s*(['"`])((?:(?!\1)[\s\S])*?)\1/g
 const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])([^'"]*)$/s
-const ROUTE_ATTR_CLOSED_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])(\/[^'"]*)\2/g
-const ROUTE_CALL_OPEN_RE = /\b(redirect)\(\s*(['"`])((?:(?!\2)[\s\S])*)$/s
-const ROUTE_CALL_CLOSED_RE = /\b(redirect)\(\s*(['"`])((?:(?!\2)[\s\S])*?)\2(?=\s*[,)\]])/g
 const FIELD_RECEIVER_PATTERN = '([A-Za-z_$][\\w$]*(?:(?:\\.[A-Za-z_$][\\w$]*)|\\[(?:\\d+|[A-Za-z_$][\\w$]*)\\])*)'
 const FIELD_OPEN_RE = new RegExp(`${FIELD_RECEIVER_PATTERN}\\.(get|set)\\(\\s*(['"])([^'"]*)$`, 's')
 const FIELD_CLOSED_RE = new RegExp(`${FIELD_RECEIVER_PATTERN}\\.(get|set)\\(\\s*(['"])([^'"]+)\\3`, 'g')
 const COLLECTION_REGEX_CACHE = new Map()
+const ROUTE_ATTRIBUTE_NAMES = new Set(['href', 'action', 'hx-get', 'hx-post', 'hx-put', 'hx-delete', 'hx-patch'])
 
 function getLastPathSegment(value) {
   return String(value || '')
@@ -228,6 +224,399 @@ function isDynamicRoutePathValue(value) {
   return /<%[\s\S]*?%>|\$\{[\s\S]*?\}/.test(String(value || ''))
 }
 
+function isEjsFilePath(filePath) {
+  return /\.ejs$/i.test(String(filePath || ''))
+}
+
+function isScriptFilePath(filePath) {
+  return /\.(?:[cm]?js|ts)$/i.test(String(filePath || ''))
+}
+
+function looksLikeEjsOrHtml(text) {
+  const sourceText = String(text || '')
+  return /<%|^\s*<[A-Za-z][\w:-]*(?:\s|>|\/>)/.test(sourceText)
+}
+
+function resolvePathContextMode(documentText, options = {}) {
+  if (options.mode) {
+    return options.mode
+  }
+
+  if (isEjsFilePath(options.filePath)) {
+    return 'ejs'
+  }
+
+  if (isScriptFilePath(options.filePath)) {
+    return 'script'
+  }
+
+  return looksLikeEjsOrHtml(documentText) ? 'ejs' : 'script'
+}
+
+function isHtmlNameChar(char) {
+  return /[A-Za-z0-9:_-]/.test(String(char || ''))
+}
+
+function skipEjsTag(text, startIndex) {
+  const closeIndex = String(text || '').indexOf('%>', startIndex + 2)
+  if (closeIndex === -1) {
+    return text.length
+  }
+
+  return closeIndex + 2
+}
+
+function skipHtmlComment(text, startIndex) {
+  const closeIndex = String(text || '').indexOf('-->', startIndex + 4)
+  if (closeIndex === -1) {
+    return text.length
+  }
+
+  return closeIndex + 3
+}
+
+function findHtmlStartTagEnd(text, startIndex) {
+  let quote = ''
+  let cursor = startIndex + 1
+
+  while (cursor < text.length) {
+    const currentChar = text.charAt(cursor)
+
+    if (quote) {
+      if (text.slice(cursor, cursor + 2) === '<%') {
+        cursor = skipEjsTag(text, cursor)
+        continue
+      }
+
+      if (currentChar === quote) {
+        quote = ''
+      }
+      cursor += 1
+      continue
+    }
+
+    if (currentChar === '"' || currentChar === "'") {
+      quote = currentChar
+      cursor += 1
+      continue
+    }
+
+    if (text.slice(cursor, cursor + 2) === '<%') {
+      cursor = skipEjsTag(text, cursor)
+      continue
+    }
+
+    if (currentChar === '>') {
+      return cursor
+    }
+
+    cursor += 1
+  }
+
+  return -1
+}
+
+function findHtmlCloseTag(text, tagName, startIndex) {
+  const sourceText = String(text || '')
+  const lowerText = sourceText.toLowerCase()
+  const normalizedTagName = String(tagName || '').toLowerCase()
+  let cursor = startIndex
+
+  while (cursor < sourceText.length) {
+    const closeStart = lowerText.indexOf(`</${normalizedTagName}`, cursor)
+    if (closeStart === -1) {
+      return null
+    }
+
+    const nextChar = sourceText.charAt(closeStart + normalizedTagName.length + 2)
+    if (nextChar && isHtmlNameChar(nextChar)) {
+      cursor = closeStart + normalizedTagName.length + 2
+      continue
+    }
+
+    const closeTagEnd = sourceText.indexOf('>', closeStart + normalizedTagName.length + 2)
+    if (closeTagEnd === -1) {
+      return null
+    }
+
+    return {
+      start: closeStart,
+      end: closeTagEnd + 1,
+    }
+  }
+
+  return null
+}
+
+function readHtmlStartTag(text, startIndex) {
+  if (text.charAt(startIndex) !== '<') {
+    return null
+  }
+
+  if (
+    text.slice(startIndex, startIndex + 2) === '<%' ||
+    text.slice(startIndex, startIndex + 4) === '<!--'
+  ) {
+    return null
+  }
+
+  const nextChar = text.charAt(startIndex + 1)
+  if (!nextChar || nextChar === '/' || nextChar === '!' || nextChar === '?') {
+    return null
+  }
+
+  let cursor = startIndex + 1
+  if (!/[A-Za-z]/.test(text.charAt(cursor))) {
+    return null
+  }
+
+  const tagNameStart = cursor
+  while (cursor < text.length && isHtmlNameChar(text.charAt(cursor))) {
+    cursor += 1
+  }
+
+  const tagName = text.slice(tagNameStart, cursor)
+  const tagEnd = findHtmlStartTagEnd(text, startIndex)
+  const attributesEnd = tagEnd === -1 ? text.length : tagEnd
+
+  return {
+    tagName,
+    start: startIndex,
+    end: tagEnd === -1 ? text.length : tagEnd + 1,
+    attributesStart: cursor,
+    attributesEnd,
+  }
+}
+
+function forEachHtmlStartTag(text, callback) {
+  const sourceText = String(text || '')
+  let cursor = 0
+
+  while (cursor < sourceText.length) {
+    const tagStart = sourceText.indexOf('<', cursor)
+    if (tagStart === -1) {
+      return
+    }
+
+    if (sourceText.slice(tagStart, tagStart + 2) === '<%') {
+      cursor = skipEjsTag(sourceText, tagStart)
+      continue
+    }
+
+    if (sourceText.slice(tagStart, tagStart + 4) === '<!--') {
+      cursor = skipHtmlComment(sourceText, tagStart)
+      continue
+    }
+
+    const tag = readHtmlStartTag(sourceText, tagStart)
+    if (!tag) {
+      cursor = tagStart + 1
+      continue
+    }
+
+    if (callback(tag) === false) {
+      return
+    }
+
+    const normalizedTagName = String(tag.tagName || '').toLowerCase()
+    if (normalizedTagName === 'script' || normalizedTagName === 'style') {
+      const closeTag = findHtmlCloseTag(sourceText, tag.tagName, tag.end)
+      if (closeTag) {
+        cursor = closeTag.end
+        continue
+      }
+
+      cursor = sourceText.length
+      continue
+    }
+
+    cursor = tag.end
+  }
+}
+
+function findQuotedAttributeValueEnd(text, quoteStart, upperBound) {
+  const quote = text.charAt(quoteStart)
+  let cursor = quoteStart + 1
+
+  while (cursor < upperBound) {
+    if (text.slice(cursor, cursor + 2) === '<%') {
+      cursor = skipEjsTag(text, cursor)
+      continue
+    }
+
+    if (text.charAt(cursor) === quote) {
+      return {
+        end: cursor,
+        closed: true,
+      }
+    }
+
+    cursor += 1
+  }
+
+  return {
+    end: upperBound,
+    closed: false,
+  }
+}
+
+function skipUnquotedAttributeValue(text, startIndex, upperBound) {
+  let cursor = startIndex
+
+  while (cursor < upperBound) {
+    if (text.slice(cursor, cursor + 2) === '<%') {
+      cursor = skipEjsTag(text, cursor)
+      continue
+    }
+
+    const currentChar = text.charAt(cursor)
+    if (/\s/.test(currentChar) || currentChar === '>' || currentChar === '/') {
+      return cursor
+    }
+
+    cursor += 1
+  }
+
+  return cursor
+}
+
+function collectRouteAttributeContexts(documentText) {
+  const sourceText = String(documentText || '')
+  const contexts = []
+
+  forEachHtmlStartTag(sourceText, (tag) => {
+    let cursor = tag.attributesStart
+
+    while (cursor < tag.attributesEnd) {
+      while (cursor < tag.attributesEnd && /\s/.test(sourceText.charAt(cursor))) {
+        cursor += 1
+      }
+
+      if (cursor >= tag.attributesEnd) {
+        break
+      }
+
+      if (sourceText.slice(cursor, cursor + 2) === '<%') {
+        cursor = skipEjsTag(sourceText, cursor)
+        continue
+      }
+
+      if (sourceText.charAt(cursor) === '/') {
+        cursor += 1
+        continue
+      }
+
+      const nameStart = cursor
+      while (cursor < tag.attributesEnd) {
+        if (sourceText.slice(cursor, cursor + 2) === '<%') {
+          break
+        }
+
+        const currentChar = sourceText.charAt(cursor)
+        if (/\s/.test(currentChar) || currentChar === '=' || currentChar === '>' || currentChar === '/') {
+          break
+        }
+
+        cursor += 1
+      }
+
+      const attributeName = sourceText.slice(nameStart, cursor).trim().toLowerCase()
+      if (!attributeName) {
+        cursor += 1
+        continue
+      }
+
+      while (cursor < tag.attributesEnd && /\s/.test(sourceText.charAt(cursor))) {
+        cursor += 1
+      }
+
+      if (sourceText.charAt(cursor) !== '=') {
+        continue
+      }
+
+      cursor += 1
+      while (cursor < tag.attributesEnd && /\s/.test(sourceText.charAt(cursor))) {
+        cursor += 1
+      }
+
+      const quote = sourceText.charAt(cursor)
+      if (quote !== '"' && quote !== "'") {
+        cursor = skipUnquotedAttributeValue(sourceText, cursor, tag.attributesEnd)
+        continue
+      }
+
+      const valueStart = cursor + 1
+      const valueRange = findQuotedAttributeValueEnd(sourceText, cursor, tag.attributesEnd)
+      const valueEnd = valueRange.end
+      const value = sourceText.slice(valueStart, valueEnd)
+
+      if (valueRange.closed && ROUTE_ATTRIBUTE_NAMES.has(attributeName) && value.startsWith('/')) {
+        contexts.push({
+          kind: 'route-path',
+          quote,
+          routeSource: attributeName,
+          value,
+          start: valueStart,
+          end: valueEnd,
+          isDynamic: isDynamicRoutePathValue(value),
+          matchText: sourceText.slice(nameStart, valueRange.closed ? valueEnd + 1 : valueEnd),
+        })
+      }
+
+      cursor = valueRange.closed ? valueEnd + 1 : valueEnd
+    }
+  })
+
+  return contexts
+}
+
+function getHtmlStartTagAtOffset(documentText, offset) {
+  const sourceText = String(documentText || '')
+  let foundTag = null
+
+  forEachHtmlStartTag(sourceText, (tag) => {
+    if (offset >= tag.start && offset <= tag.end) {
+      foundTag = tag
+      return false
+    }
+
+    return undefined
+  })
+
+  return foundTag
+}
+
+function getRouteAttributeContextAtOffset(documentText, offset) {
+  const sourceText = String(documentText || '')
+
+  for (const context of collectRouteAttributeContexts(sourceText)) {
+    if (offset >= context.start && offset <= context.end) {
+      return context
+    }
+  }
+
+  const tag = getHtmlStartTagAtOffset(sourceText, offset)
+  if (!tag || offset < tag.attributesStart || offset > tag.end) {
+    return null
+  }
+
+  return getOpenMatchContext(
+    sourceText.slice(tag.attributesStart, offset),
+    offset - tag.attributesStart,
+    ROUTE_ATTR_OPEN_RE,
+    ({ value, start, end, match }) => ({
+      kind: 'route-path',
+      routeSource: match[1],
+      quote: match[2],
+      value,
+      start: tag.attributesStart + start,
+      end: tag.attributesStart + end,
+      isOpen: true,
+      isDynamic: isDynamicRoutePathValue(value),
+    })
+  )
+}
+
 function getOpenMatchContext(documentText, offset, regex, mapper) {
   const windowStart = Math.max(0, offset - 400)
   const prefix = documentText.slice(windowStart, offset)
@@ -274,171 +663,303 @@ function getCollectionRegexState(collectionMethodNames = []) {
   return state
 }
 
-function getModulePathContextAtOffset(documentText, offset) {
-  for (const match of documentText.matchAll(PATH_CLOSED_RE)) {
-    const context = toClosedMatchContext(match, `${match[1]}-path`)
-    if (!isStaticPathContext(context)) {
-      continue
-    }
-    if (offset >= context.start && offset <= context.end) {
-      return context
-    }
+function getPathCallDescriptor(expression) {
+  const target = skipParenthesizedExpression(expression)
+  if (!target) {
+    return null
   }
 
-  const openContext = getOpenMatchContext(documentText, offset, PATH_OPEN_RE, ({ value, start, end, match }) => ({
-    kind: `${match[1]}-path`,
-    quote: match[2],
-    value,
-    start,
-    end,
-    isOpen: true,
-  }))
-
-  return isStaticPathContext(openContext) ? openContext : null
-}
-
-function getRoutePathContextAtOffset(documentText, offset) {
-  for (const match of documentText.matchAll(ROUTE_ATTR_CLOSED_RE)) {
-    const context = toClosedMatchContext(match, 'route-path')
-    context.routeSource = match[1]
-    context.isDynamic = isDynamicRoutePathValue(context.value)
-    if (offset >= context.start && offset <= context.end) {
-      return context
-    }
-  }
-
-  for (const match of documentText.matchAll(ROUTE_CALL_CLOSED_RE)) {
-    const context = toClosedMatchContext(match, 'route-path')
-    if (!isStaticPathContext(context)) {
-      continue
-    }
-    context.routeSource = match[1]
-    context.isDynamic = isDynamicRoutePathValue(context.value)
-    if (offset >= context.start && offset <= context.end) {
-      return context
-    }
-  }
-
-  const openAttributeContext = getOpenMatchContext(documentText, offset, ROUTE_ATTR_OPEN_RE, ({ value, start, end, match }) => ({
-    kind: 'route-path',
-    routeSource: match[1],
-    value,
-    start,
-    end,
-    isOpen: true,
-    isDynamic: isDynamicRoutePathValue(value),
-  }))
-  if (openAttributeContext) {
-    return openAttributeContext
-  }
-
-  return getOpenMatchContext(documentText, offset, ROUTE_CALL_OPEN_RE, ({ value, start, end, match }) => ({
-    kind: 'route-path',
-    routeSource: match[1],
-    quote: match[2],
-    value,
-    start,
-    end,
-    isOpen: true,
-    isDynamic: isDynamicRoutePathValue(value),
-  }))
-}
-
-function getPathContextAtOffset(documentText, offset) {
-  const modulePathContext = getModulePathContextAtOffset(documentText, offset)
-  if (modulePathContext) {
-    return modulePathContext
-  }
-
-  for (const match of documentText.matchAll(ASSET_CLOSED_RE)) {
-    const fullText = match[0]
-    const quote = match[1]
-    const value = match[2]
-    const quoteOffset = fullText.indexOf(quote)
-    const start = match.index + quoteOffset + 1
-    const end = start + value.length
-
-    if (quote === '`' && String(value || '').includes('${')) {
-      continue
+  if (ts.isIdentifier(target)) {
+    if (target.text === 'resolve' || target.text === 'include') {
+      return {
+        kind: `${target.text}-path`,
+      }
     }
 
-    if (offset >= start && offset <= end) {
+    if (target.text === 'asset') {
       return {
         kind: 'asset-path',
-        quote,
-        value,
-        start,
-        end,
-        matchText: fullText,
+      }
+    }
+
+    if (target.text === 'redirect') {
+      return {
+        kind: 'route-path',
+        routeSource: 'redirect',
       }
     }
   }
 
-  const openAssetContext = getOpenMatchContext(documentText, offset, ASSET_OPEN_RE, ({ value, start, end, match }) => ({
-    kind: 'asset-path',
-    quote: match[1],
-    value,
-    start,
-    end,
-    isOpen: true,
-  }))
-  if (isStaticPathContext(openAssetContext)) {
-    return openAssetContext
+  if (
+    ts.isPropertyAccessExpression(target) &&
+    ts.isIdentifier(target.expression) &&
+    target.expression.text === 'api' &&
+    target.name.text === 'asset'
+  ) {
+    return {
+      kind: 'asset-path',
+    }
   }
 
-  return getRoutePathContextAtOffset(documentText, offset)
+  return null
 }
 
-function collectPathContexts(documentText) {
+function getStringLiteralPathRange(argument, sourceFile, scriptText, offsetBase = 0, options = {}) {
+  const target = skipParenthesizedExpression(argument)
+  if (!target || !ts.isStringLiteralLike(target)) {
+    return null
+  }
+
+  const quoteStart = target.getStart(sourceFile)
+  const quoteEnd = target.getEnd()
+  const quote = scriptText.charAt(quoteStart)
+  if (quote !== '"' && quote !== "'" && quote !== '`') {
+    return null
+  }
+
+  const hasClosingQuote = quoteEnd > quoteStart && scriptText.charAt(quoteEnd - 1) === quote
+  if (options.requireClosed !== false && !hasClosingQuote) {
+    return null
+  }
+
+  const valueStart = quoteStart + 1
+  const valueEnd = Math.max(valueStart, hasClosingQuote ? quoteEnd - 1 : quoteEnd)
+  const value = scriptText.slice(valueStart, valueEnd)
+  if (quote === '`' && String(value || '').includes('${')) {
+    return null
+  }
+
+  return {
+    quote,
+    value,
+    start: offsetBase + valueStart,
+    end: offsetBase + valueEnd,
+    isClosed: hasClosingQuote,
+  }
+}
+
+function createScriptPathContextFromCall(node, descriptor, pathRange, sourceFile, sourceText) {
+  const context = {
+    quote: pathRange.quote,
+    value: pathRange.value,
+    start: pathRange.start,
+    end: pathRange.end,
+    kind: descriptor.kind,
+    matchText: sourceText.slice(node.getStart(sourceFile), node.getEnd()),
+  }
+
+  if (!pathRange.isClosed) {
+    context.isOpen = true
+  }
+
+  if (descriptor.kind === 'route-path') {
+    context.routeSource = descriptor.routeSource
+    context.isDynamic = isDynamicRoutePathValue(context.value)
+  }
+
+  return context
+}
+
+function collectScriptPathContexts(scriptText, options = {}) {
+  const sourceText = String(scriptText || '')
+  const offsetBase = Number(options.offsetBase) || 0
+  const sourceFile = options.sourceFile || ts.createSourceFile(
+    'pocketpages-path-contexts.js',
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS
+  )
   const contexts = []
 
-  for (const match of documentText.matchAll(PATH_CLOSED_RE)) {
-    const context = toClosedMatchContext(match, `${match[1]}-path`)
-    if (isStaticPathContext(context)) {
-      contexts.push(context)
+  const visit = (node) => {
+    if (ts.isCallExpression(node) && node.arguments.length) {
+      const descriptor = getPathCallDescriptor(node.expression)
+      if (descriptor) {
+        const pathRange = getStringLiteralPathRange(node.arguments[0], sourceFile, sourceText, offsetBase)
+        if (pathRange) {
+          contexts.push(createScriptPathContextFromCall(node, descriptor, pathRange, sourceFile, sourceText))
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return contexts.sort((left, right) => left.start - right.start || left.end - right.end)
+}
+
+function getOpenScriptPathContextAtOffset(scriptText, offset, options = {}) {
+  const sourceText = String(scriptText || '')
+  const offsetBase = Number(options.offsetBase) || 0
+  const sourceFile = options.sourceFile || ts.createSourceFile(
+    'pocketpages-open-path-context.js',
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS
+  )
+  let openContext = null
+
+  const visit = (node) => {
+    if (openContext) {
+      return
+    }
+
+    if (ts.isCallExpression(node) && node.arguments.length) {
+      const descriptor = getPathCallDescriptor(node.expression)
+      if (descriptor) {
+        const pathRange = getStringLiteralPathRange(
+          node.arguments[0],
+          sourceFile,
+          sourceText,
+          offsetBase,
+          { requireClosed: false }
+        )
+        if (pathRange && offset >= pathRange.start && offset <= pathRange.end) {
+          const boundedPathRange = pathRange.isClosed
+            ? pathRange
+            : {
+                ...pathRange,
+                value: sourceText.slice(pathRange.start - offsetBase, offset - offsetBase),
+                end: offset,
+              }
+          openContext = createScriptPathContextFromCall(node, descriptor, boundedPathRange, sourceFile, sourceText)
+          return
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return openContext
+}
+
+function getScriptPathContextAtOffset(scriptText, offset, options = {}) {
+  const sourceText = String(scriptText || '')
+  const offsetBase = Number(options.offsetBase) || 0
+  const localOffset = offset - offsetBase
+  if (localOffset < 0 || localOffset > sourceText.length) {
+    return null
+  }
+
+  for (const context of collectScriptPathContexts(sourceText, options)) {
+    if (offset >= context.start && offset <= context.end) {
+      return context
     }
   }
 
-  for (const match of documentText.matchAll(ASSET_CLOSED_RE)) {
-    const fullText = match[0]
-    const quote = match[1]
-    const value = match[2]
-    const quoteOffset = fullText.indexOf(quote)
-    const start = match.index + quoteOffset + 1
-    const end = start + value.length
+  return getOpenScriptPathContextAtOffset(sourceText, offset, options)
+}
 
-    if (quote === '`' && String(value || '').includes('${')) {
-      continue
+function isTemplateBlockInsideServerBlock(block, serverBlocks) {
+  return serverBlocks.some((serverBlock) =>
+    block.fullStart >= serverBlock.fullStart &&
+    block.fullEnd <= serverBlock.fullEnd
+  )
+}
+
+function getEjsExecutablePathSegments(documentText) {
+  const sourceText = String(documentText || '')
+  const serverBlocks = extractServerBlocks(sourceText)
+  const templateBlocks = extractTemplateCodeBlocks(sourceText)
+    .filter((block) => !isTemplateBlockInsideServerBlock(block, serverBlocks))
+
+  return [
+    ...serverBlocks.map((block) => ({
+      kind: 'server-script',
+      text: block.content,
+      offsetBase: block.contentStart,
+      start: block.contentStart,
+      end: block.contentEnd,
+    })),
+    ...templateBlocks.map((block) => ({
+      kind: 'template-code',
+      text: block.content,
+      offsetBase: block.contentStart,
+      start: block.contentStart,
+      end: block.contentEnd,
+    })),
+  ].sort((left, right) => left.start - right.start || left.end - right.end)
+}
+
+function getEjsExecutableSegmentAtOffset(documentText, offset) {
+  return getEjsExecutablePathSegments(documentText)
+    .find((segment) => offset >= segment.start && offset <= segment.end) || null
+}
+
+function collectEjsPathContexts(documentText) {
+  const contexts = []
+  const seen = new Set()
+
+  function addContext(context) {
+    if (!context) {
+      return
     }
 
-    contexts.push({
-      kind: 'asset-path',
-      quote,
-      value,
-      start,
-      end,
-      matchText: fullText,
+    const key = `${context.kind}:${context.start}:${context.end}:${context.value}:${context.routeSource || ''}`
+    if (seen.has(key)) {
+      return
+    }
+
+    seen.add(key)
+    contexts.push(context)
+  }
+
+  for (const segment of getEjsExecutablePathSegments(documentText)) {
+    for (const context of collectScriptPathContexts(segment.text, { offsetBase: segment.offsetBase })) {
+      addContext(context)
+    }
+  }
+
+  for (const context of collectRouteAttributeContexts(documentText)) {
+    addContext(context)
+  }
+
+  return contexts.sort((left, right) => left.start - right.start || left.end - right.end)
+}
+
+function getEjsPathContextAtOffset(documentText, offset) {
+  const segment = getEjsExecutableSegmentAtOffset(documentText, offset)
+  if (segment) {
+    const scriptContext = getScriptPathContextAtOffset(segment.text, offset, {
+      offsetBase: segment.offsetBase,
     })
-  }
-
-  for (const match of documentText.matchAll(ROUTE_ATTR_CLOSED_RE)) {
-    const context = toClosedMatchContext(match, 'route-path')
-    context.routeSource = match[1]
-    context.isDynamic = isDynamicRoutePathValue(context.value)
-    contexts.push(context)
-  }
-
-  for (const match of documentText.matchAll(ROUTE_CALL_CLOSED_RE)) {
-    const context = toClosedMatchContext(match, 'route-path')
-    if (!isStaticPathContext(context)) {
-      continue
+    if (scriptContext) {
+      return scriptContext
     }
-    context.routeSource = match[1]
-    context.isDynamic = isDynamicRoutePathValue(context.value)
-    contexts.push(context)
   }
 
-  return contexts
+  return getRouteAttributeContextAtOffset(documentText, offset)
+}
+
+function getPathContextAtOffset(documentText, offset, options = {}) {
+  const mode = resolvePathContextMode(documentText, options)
+  if (mode === 'ejs' || mode === 'html') {
+    return getEjsPathContextAtOffset(documentText, offset)
+  }
+
+  if (mode === 'script') {
+    return getScriptPathContextAtOffset(documentText, offset)
+  }
+
+  return null
+}
+
+function collectPathContexts(documentText, options = {}) {
+  const mode = resolvePathContextMode(documentText, options)
+  if (mode === 'ejs' || mode === 'html') {
+    return collectEjsPathContexts(documentText)
+  }
+
+  if (mode === 'script') {
+    return collectScriptPathContexts(documentText)
+  }
+
+  return []
 }
 
 function getScriptCollectionContext(scriptText, offset, options = {}) {

@@ -831,6 +831,7 @@ function shouldSuppressDiagnosticForRelaxedBodyAccess(diagnostic, block, relaxed
 
 function collectResolveCallSpansFromScript(scriptText, options = {}) {
   const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-private-resolve.ts", scriptText);
+  const offsetBase = Number(options.offsetBase) || 0;
   const spans = [];
 
   const visit = (node) => {
@@ -840,8 +841,8 @@ function collectResolveCallSpansFromScript(scriptText, options = {}) {
       node.expression.text === "resolve"
     ) {
       spans.push({
-        start: node.expression.getStart(sourceFile),
-        end: node.expression.getEnd(),
+        start: offsetBase + node.expression.getStart(sourceFile),
+        end: offsetBase + node.expression.getEnd(),
       });
     }
 
@@ -854,15 +855,20 @@ function collectResolveCallSpansFromScript(scriptText, options = {}) {
 
 function collectResolveCallSpansFromTemplate(documentText) {
   const spans = [];
-  const regex = /\bresolve\s*\(/g;
-  let match = regex.exec(documentText);
+  const text = String(documentText || "");
+  const serverBlocks = _extractServerBlocks(text);
+  const templateBlocks = _extractTemplateCodeBlocks(text)
+    .filter((block) =>
+      !serverBlocks.some((serverBlock) =>
+        block.fullStart >= serverBlock.fullStart &&
+        block.fullEnd <= serverBlock.fullEnd
+      )
+    );
 
-  while (match) {
-    spans.push({
-      start: match.index,
-      end: match.index + "resolve".length,
-    });
-    match = regex.exec(documentText);
+  for (const block of [...serverBlocks, ...templateBlocks]) {
+    spans.push(...collectResolveCallSpansFromScript(block.content, {
+      offsetBase: block.contentStart,
+    }));
   }
 
   return spans;
@@ -1821,7 +1827,7 @@ function resolvePathContextTargetWithIndex(projectIndex, filePath, context) {
 
 function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText, options = {}) {
   const diagnostics = [];
-  const pathContexts = Array.isArray(options.pathContexts) ? options.pathContexts : collectPathContexts(documentText);
+  const pathContexts = Array.isArray(options.pathContexts) ? options.pathContexts : collectPathContexts(documentText, { filePath });
 
   for (const context of pathContexts) {
     if (context.kind === "resolve-path" && /^\/?_private\//.test(context.value)) {
@@ -1883,7 +1889,7 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText, opti
       ? buildTemplateVirtualText(documentText)
       : documentText;
   const analysisSourceFile = options.analysisSourceFile || null;
-  const pathContexts = Array.isArray(options.pathContexts) ? options.pathContexts : collectPathContexts(documentText);
+  const pathContexts = Array.isArray(options.pathContexts) ? options.pathContexts : collectPathContexts(documentText, { filePath });
   const routeParamNames = projectIndex.getRouteParamEntries(filePath).map((entry) => entry.name);
 
   for (const diagnostic of collectParamsFlowDiagnostics(analysisText, routeParamNames, { sourceFile: analysisSourceFile })) {
@@ -2447,7 +2453,7 @@ class ProjectLanguageService {
     ].join("|");
 
     if (options.includeProjectRuleDiagnostics !== false) {
-      for (const context of collectPathContexts(documentText)) {
+      for (const context of collectPathContexts(documentText, { filePath: normalizedFilePath })) {
         pathRegions.push({
           id: `path:${context.kind}:${context.start}:${context.value}`,
           kind: `path:${context.kind}`,
@@ -4791,7 +4797,7 @@ class ProjectLanguageService {
   }
 
   getPathReferenceContext(filePath, documentText, offset) {
-    const pathContext = getPathContextAtOffset(documentText, offset);
+    const pathContext = getPathContextAtOffset(documentText, offset, { filePath });
     if (!pathContext) {
       return null;
     }
@@ -4915,7 +4921,7 @@ class ProjectLanguageService {
       const documentText =
         Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
 
-      for (const pathContext of collectPathContexts(documentText)) {
+      for (const pathContext of collectPathContexts(documentText, { filePath: codeFilePath })) {
         if (pathContext.kind !== pathKind) {
           continue;
         }
@@ -5223,7 +5229,7 @@ class ProjectLanguageService {
       childSymbols.push(templateSymbolEntry);
     }
 
-    for (const pathContext of collectPathContexts(sourceText)) {
+    for (const pathContext of collectPathContexts(sourceText, { filePath })) {
       if (pathContext.kind !== "include-path") {
         continue;
       }
@@ -5331,7 +5337,7 @@ class ProjectLanguageService {
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
       const filePath = normalizePath(entry.filePath);
       const documentText = this.getCallerDocumentText(filePath, overrides);
-      const pathContexts = collectPathContexts(documentText);
+      const pathContexts = collectPathContexts(documentText, { filePath });
 
       for (const pathContext of pathContexts) {
         if (pathContext.kind !== "include-path") {
@@ -5364,7 +5370,7 @@ class ProjectLanguageService {
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
       const filePath = normalizePath(entry.filePath);
       const documentText = this.getCallerDocumentText(filePath, overrides);
-      const pathContexts = collectPathContexts(documentText);
+      const pathContexts = collectPathContexts(documentText, { filePath });
 
       for (const pathContext of pathContexts) {
         if (pathContext.kind !== "resolve-path") {
@@ -5455,7 +5461,7 @@ class ProjectLanguageService {
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
       const filePath = normalizePath(entry.filePath);
       const documentText = this.getCallerDocumentText(filePath, overrides);
-      const pathContexts = collectPathContexts(documentText);
+      const pathContexts = collectPathContexts(documentText, { filePath });
 
       for (const pathContext of pathContexts) {
         if (pathContext.kind !== "asset-path") {
@@ -5667,7 +5673,7 @@ class ProjectLanguageService {
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
       const filePath = normalizePath(entry.filePath);
       const documentText = this.getCallerDocumentText(filePath, overrides);
-      const pathContexts = collectPathContexts(documentText);
+      const pathContexts = collectPathContexts(documentText, { filePath });
 
       for (const pathContext of pathContexts) {
         if (!this.shouldRenameRoutePathContext(pathContext, routeRenameContext)) {
@@ -6027,7 +6033,7 @@ class ProjectLanguageService {
       });
     }
 
-    for (const pathContext of collectPathContexts(documentText)) {
+    for (const pathContext of collectPathContexts(documentText, { filePath })) {
       if (pathContext.kind !== "include-path") {
         continue;
       }
@@ -6102,7 +6108,7 @@ class ProjectLanguageService {
       });
     };
 
-    for (const pathContext of collectPathContexts(documentText)) {
+    for (const pathContext of collectPathContexts(documentText, { filePath })) {
       if (pathContext.kind !== "resolve-path") {
         continue;
       }

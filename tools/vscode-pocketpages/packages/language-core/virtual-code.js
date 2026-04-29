@@ -170,7 +170,7 @@ function subtractRanges(start, end, exclusions) {
 }
 
 function toPathLiteralRanges(text, rangeOffset = 0) {
-  return collectPathContexts(String(text || ""))
+  return collectPathContexts(String(text || ""), { mode: "script" })
     .map((context) => ({
       start: rangeOffset + context.start,
       end: rangeOffset + context.end,

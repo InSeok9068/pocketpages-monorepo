@@ -5112,6 +5112,20 @@ module.exports = {
     if (!structureSemanticTokens || !Array.isArray(structureSemanticTokens.data) || structureSemanticTokens.data.length === 0) {
       throw new Error(`Expected structure service to emit semantic tokens for EJS documents. Got: ${JSON.stringify(structureSemanticTokens)}`)
     }
+    const multilineTokenDocument = createTestDocument(
+      path.join(path.dirname(fixture.boardsFilePath), 'semantic-empty-line.ejs'),
+      'ejs',
+      1,
+      `<% /* first line\n\nsecond line */ %>\n`
+    )
+    structureDocuments.set(multilineTokenDocument.uri, multilineTokenDocument)
+    const multilineSemanticTokens = structureFeatureService.provideSemanticTokens({
+      textDocument: { uri: multilineTokenDocument.uri },
+    })
+    const hasZeroLengthSemanticToken = multilineSemanticTokens.data.some((value, index) => index % 5 === 2 && value === 0)
+    if (hasZeroLengthSemanticToken) {
+      throw new Error(`Expected semantic tokens to skip empty multiline chunks. Got: ${JSON.stringify(multilineSemanticTokens)}`)
+    }
     const structureMissingSemanticTokens = structureFeatureService.provideSemanticTokens({
       textDocument: { uri: URI.file(fixture.boardServiceFilePath).toString() },
     })
@@ -5751,6 +5765,43 @@ boardService.readAuthState(
     }
     if (routeNames.includes('/api')) {
       throw new Error(`Expected route path completion to exclude JS route handlers. Got: ${routeNames.slice(0, 20).join(', ')}`)
+    }
+
+    const commentedResolveCompletionText = `<script server>\n// resolve('bo')\n</script>\n`
+    const commentedResolveCompletion = service.getCustomCompletionData(
+      fixture.boardsFilePath,
+      commentedResolveCompletionText,
+      commentedResolveCompletionText.indexOf('bo') + 'bo'.length
+    )
+    if (commentedResolveCompletion) {
+      throw new Error(`Expected path completion to ignore commented resolve() calls. Got: ${JSON.stringify(commentedResolveCompletion)}`)
+    }
+
+    const stringRouteCompletionText = `<script server>\nconst html = '<a href="/si"></a>'\n</script>\n`
+    const stringRouteCompletion = service.getCustomCompletionData(
+      fixture.boardsFilePath,
+      stringRouteCompletionText,
+      stringRouteCompletionText.indexOf('/si') + '/si'.length
+    )
+    if (stringRouteCompletion) {
+      throw new Error(`Expected path completion to ignore route attributes inside server strings. Got: ${JSON.stringify(stringRouteCompletion)}`)
+    }
+
+    const clientScriptPathCompletionText = `<script>\nconst call = "resolve('bo')"\nconst html = '<a href="/si"></a>'\n</script>\n`
+    const clientResolveCompletion = service.getCustomCompletionData(
+      fixture.siteIndexFilePath,
+      clientScriptPathCompletionText,
+      clientScriptPathCompletionText.indexOf('bo') + 'bo'.length
+    )
+    const clientRouteCompletion = service.getCustomCompletionData(
+      fixture.siteIndexFilePath,
+      clientScriptPathCompletionText,
+      clientScriptPathCompletionText.indexOf('/si') + '/si'.length
+    )
+    if (clientResolveCompletion || clientRouteCompletion) {
+      throw new Error(
+        `Expected path completion to ignore client script strings. Got: ${JSON.stringify({ clientResolveCompletion, clientRouteCompletion })}`
+      )
     }
 
     const emptyRouteAttributeCompletionText = `<form action=""></form>\n`
@@ -8923,6 +8974,51 @@ const boardTableNames = $app.findRecordsByFilter('boards', '').map((entry) => en
     )
     if (dynamicTemplateRouteDiagnostics.some((entry) => entry.code === 'pp-unresolved-route-path')) {
       throw new Error(`Expected \${...} route paths to skip unresolved-route diagnostics. Got: ${JSON.stringify(dynamicTemplateRouteDiagnostics)}`)
+    }
+
+    const ejsRegionBoundaryText = `<script server>
+const serverHtml = '<a href="/missing-server-string"></a>'
+const serverIncludeText = "include('missing-server-string.ejs')"
+resolve('board-service')
+</script>
+<script>
+const clientHtml = '<a href="/missing-client-string"></a>'
+const clientResolve = "resolve('missing-client-service')"
+</script>
+plain include('missing-plain-text.ejs')
+<%# include('missing-comment.ejs') %>
+<a href="/missing-real-route"></a>
+<%- include('missing-real-partial.ejs') %>
+`
+    const ejsRegionBoundaryDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      ejsRegionBoundaryText
+    )
+    const ejsRegionBoundaryFalsePositiveValues = [
+      '/missing-server-string',
+      'missing-server-string.ejs',
+      '/missing-client-string',
+      'missing-client-service',
+      'missing-plain-text.ejs',
+      'missing-comment.ejs',
+    ]
+    const ejsRegionBoundaryFalsePositive = ejsRegionBoundaryDiagnostics.find((entry) =>
+      ejsRegionBoundaryFalsePositiveValues.some((value) => String(entry.message || '').includes(value))
+    )
+    if (ejsRegionBoundaryFalsePositive) {
+      throw new Error(`Expected path diagnostics to ignore strings, client scripts, plain text, and EJS comments. Got: ${JSON.stringify(ejsRegionBoundaryDiagnostics)}`)
+    }
+    if (
+      !ejsRegionBoundaryDiagnostics.some((entry) =>
+        entry.code === 'pp-unresolved-route-path' &&
+        String(entry.message || '').includes('/missing-real-route')
+      ) ||
+      !ejsRegionBoundaryDiagnostics.some((entry) =>
+        entry.code === 'pp-unresolved-include-path' &&
+        String(entry.message || '').includes('missing-real-partial.ejs')
+      )
+    ) {
+      throw new Error(`Expected path diagnostics to keep real route/include contexts. Got: ${JSON.stringify(ejsRegionBoundaryDiagnostics)}`)
     }
 
     const partialContextDiagnostics = service.getDiagnostics(

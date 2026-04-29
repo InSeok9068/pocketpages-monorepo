@@ -375,7 +375,7 @@ function buildRouteLinks(projectIndex, codeFiles) {
   const links = []
 
   for (const entry of codeFiles) {
-    const contexts = collectPathContexts(entry.sourceText).filter((context) => context.kind === 'route-path')
+    const contexts = collectPathContexts(entry.sourceText, { filePath: entry.filePath }).filter((context) => context.kind === 'route-path')
 
     for (const context of contexts) {
       const isDynamic = !!context.isDynamic

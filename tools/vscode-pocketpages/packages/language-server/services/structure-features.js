@@ -36,13 +36,16 @@ function createStructureFeatureService(context) {
           lineEndOffset = endOffset;
         }
 
-        builder.push(
-          start.line,
-          start.character,
-          lineEndOffset - currentOffset,
-          tokenTypeIndex,
-          0
-        );
+        const chunkLength = lineEndOffset - currentOffset;
+        if (chunkLength > 0) {
+          builder.push(
+            start.line,
+            start.character,
+            chunkLength,
+            tokenTypeIndex,
+            0
+          );
+        }
         currentOffset = lineEndOffset + 1;
       }
     }

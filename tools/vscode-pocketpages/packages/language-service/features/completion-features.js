@@ -61,7 +61,7 @@ function createCompletionFeatureHandlers(deps) {
 
     getCustomCompletionData(service, filePath, documentText, offset) {
       const collectionMethodNames = service.projectIndex.getCollectionMethodNames();
-      const pathContext = getPathContextAtOffset(documentText, offset);
+      const pathContext = getPathContextAtOffset(documentText, offset, { filePath });
       if (
         pathContext &&
         (pathContext.kind === "resolve-path" ||

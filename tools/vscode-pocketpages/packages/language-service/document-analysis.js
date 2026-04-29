@@ -24,7 +24,7 @@ function createSourceFileForText(fileName, text) {
 
 /**
  * 한 문서 진단 호출에서 반복 사용하는 파생 분석 결과를 모아둔다.
- * @param {{ filePath: string, documentText: string, collectResolveCallSpansFromScript: (text: string, options?: object) => Array<object>, collectResolveCallSpansFromTemplate: (text: string) => Array<object>, collectPathContexts: (text: string) => Array<object> }} options
+ * @param {{ filePath: string, documentText: string, collectResolveCallSpansFromScript: (text: string, options?: object) => Array<object>, collectResolveCallSpansFromTemplate: (text: string) => Array<object>, collectPathContexts: (text: string, options?: object) => Array<object> }} options
  * @returns {{
  *   getBlocks: () => Array<object>,
  *   getTemplateBlocks: () => Array<object>,
@@ -87,7 +87,7 @@ function createDocumentAnalysis(options) {
 
     getPathContexts() {
       if (!pathContexts) {
-        pathContexts = options.collectPathContexts(currentText);
+        pathContexts = options.collectPathContexts(currentText, { filePath: normalizedFilePath });
       }
 
       return pathContexts;
