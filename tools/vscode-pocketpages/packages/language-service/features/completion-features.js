@@ -180,6 +180,7 @@ function createCompletionFeatureHandlers(deps) {
         {
           analysisText,
           analysisStart,
+          analysisSourceFile: schemaSourceFile,
         }
       );
       if (!collectionReference) {

@@ -3491,9 +3491,16 @@ class PocketPagesProjectIndex {
   inferCollectionReference(receiverExpression, scriptText, beforeOffset, options = {}) {
     const receiverName = getLastPathSegment(receiverExpression)
     const collectionNames = this.getCollectionNames()
-    const inferenceSourceFile = ts.createSourceFile(
+    const sourceText = String(scriptText || '')
+    const providedSourceFile =
+      options.sourceFile &&
+      typeof options.sourceFile.text === 'string' &&
+      options.sourceFile.text === sourceText
+        ? options.sourceFile
+        : null
+    const inferenceSourceFile = providedSourceFile || ts.createSourceFile(
       'pocketpages-explicit-record-reference.ts',
-      scriptText,
+      sourceText,
       ts.ScriptTarget.Latest,
       true
     )

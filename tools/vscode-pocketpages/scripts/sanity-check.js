@@ -5823,6 +5823,29 @@ boardService.readAuthState(
       throw new Error(`Expected schema contexts to ignore comments/strings and keep real calls. Got: ${schemaContextValues.join(', ')}`)
     }
 
+    const schemaInferenceReuseText = [
+      `const board = $app.findFirstRecordByFilter('boards', 'id != ""')`,
+      `board.get('name')`,
+    ].join('\n')
+    const schemaInferenceSourceFile = ts.createSourceFile(
+      'schema-inference-reuse.js',
+      schemaInferenceReuseText,
+      ts.ScriptTarget.Latest,
+      true
+    )
+    const inferredCollection = service.projectIndex.inferCollectionReference(
+      'board',
+      schemaInferenceReuseText,
+      schemaInferenceReuseText.indexOf("board.get('name')"),
+      {
+        filePath: fixture.boardsFilePath,
+        sourceFile: schemaInferenceSourceFile,
+      }
+    )
+    if (!inferredCollection || inferredCollection.collectionName !== 'boards') {
+      throw new Error(`Expected schema collection inference to keep working with a provided SourceFile. Got: ${JSON.stringify(inferredCollection)}`)
+    }
+
     const commentedSchemaCompletionText = `<script server>\n// $app.findRecordsByFilter('bo')\n</script>\n`
     const commentedSchemaCompletion = service.getCustomCompletionData(
       fixture.boardsFilePath,

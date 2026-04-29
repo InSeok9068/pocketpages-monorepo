@@ -3221,6 +3221,7 @@ class ProjectLanguageService {
     const normalizedFilePath = normalizePath(filePath);
     const analysisText = typeof options.analysisText === "string" ? options.analysisText : documentText;
     const analysisStart = typeof options.analysisStart === "number" ? options.analysisStart : 0;
+    const analysisSourceFile = options.analysisSourceFile || options.sourceFile || null;
 
     if (typeof context.receiverStart === "number") {
       const receiverStart = analysisStart + context.receiverStart;
@@ -3249,7 +3250,10 @@ class ProjectLanguageService {
       context.receiverExpression,
       analysisText,
       context.start,
-      { filePath: normalizedFilePath }
+      {
+        filePath: normalizedFilePath,
+        sourceFile: analysisSourceFile,
+      }
     );
   }
 
@@ -3259,6 +3263,7 @@ class ProjectLanguageService {
     const reference = this.resolveSchemaFieldCollectionReference(filePath, documentText, context, {
       analysisText,
       analysisStart,
+      analysisSourceFile: options.analysisSourceFile || options.sourceFile || null,
     });
 
     if (!reference || this.projectIndex.hasField(reference.collectionName, context.value)) {
@@ -6146,6 +6151,7 @@ class ProjectLanguageService {
       const collectionReference = this.resolveSchemaFieldCollectionReference(filePath, documentText, context, {
         analysisText,
         analysisStart: 0,
+        analysisSourceFile: sourceFile,
       });
       if (!collectionReference || collectionReference.confidence !== "high") {
         continue;
@@ -6368,6 +6374,10 @@ class ProjectLanguageService {
             {
               analysisText: block.content,
               analysisStart: block.contentStart,
+              analysisSourceFile:
+                documentAnalysis && typeof documentAnalysis.getBlockSourceFile === "function"
+                  ? documentAnalysis.getBlockSourceFile(block)
+                  : null,
             }
           );
 
@@ -6561,6 +6571,10 @@ class ProjectLanguageService {
           context,
           {
             analysisText: templateVirtualText,
+            analysisSourceFile:
+              documentAnalysis && typeof documentAnalysis.getAnalysisSourceFile === "function"
+                ? documentAnalysis.getAnalysisSourceFile()
+                : null,
           }
         );
 
@@ -6674,6 +6688,10 @@ class ProjectLanguageService {
           context,
           {
             analysisText: documentText,
+            analysisSourceFile:
+              documentAnalysis && typeof documentAnalysis.getDocumentSourceFile === "function"
+                ? documentAnalysis.getDocumentSourceFile()
+                : null,
           }
         );
 
