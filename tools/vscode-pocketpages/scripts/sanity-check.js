@@ -26,6 +26,8 @@ const {
   isTypeScriptCompletionTriggerAllowed,
   shouldReuseLastCompletion,
 } = require('../packages/language-server/services/completion-helpers')
+const { buildTemplateVirtualText } = require('../packages/language-core/ejs-template')
+const { collectSchemaContexts } = require('../packages/language-core/custom-context')
 const initTypeScriptPlugin = require('../packages/typescript-plugin')
 const {
   buildScriptServerMirrorText,
@@ -5804,6 +5806,43 @@ boardService.readAuthState(
       )
     }
 
+    const schemaContextFalsePositiveText = [
+      `// $app.findRecordsByFilter('missing_collection')`,
+      `const literal = "board.get('missing_field')"`,
+      `const records = $app.findRecordsByFilter('boards')`,
+    ].join('\n')
+    const schemaContextFalsePositives = collectSchemaContexts(schemaContextFalsePositiveText, {
+      collectionMethodNames: service.projectIndex.getCollectionMethodNames(),
+    })
+    const schemaContextValues = schemaContextFalsePositives.map((entry) => `${entry.kind}:${entry.value}`)
+    if (
+      schemaContextValues.includes('collection-name:missing_collection') ||
+      schemaContextValues.includes('record-field:missing_field') ||
+      !schemaContextValues.includes('collection-name:boards')
+    ) {
+      throw new Error(`Expected schema contexts to ignore comments/strings and keep real calls. Got: ${schemaContextValues.join(', ')}`)
+    }
+
+    const commentedSchemaCompletionText = `<script server>\n// $app.findRecordsByFilter('bo')\n</script>\n`
+    const commentedSchemaCompletion = service.getCustomCompletionData(
+      fixture.boardsFilePath,
+      commentedSchemaCompletionText,
+      commentedSchemaCompletionText.indexOf('bo') + 'bo'.length
+    )
+    if (commentedSchemaCompletion) {
+      throw new Error(`Expected collection completion to ignore commented schema calls. Got: ${JSON.stringify(commentedSchemaCompletion)}`)
+    }
+
+    const stringFieldCompletionText = `<script server>\nconst literal = "board.get('na')"\n</script>\n`
+    const stringFieldCompletion = service.getCustomCompletionData(
+      fixture.boardsFilePath,
+      stringFieldCompletionText,
+      stringFieldCompletionText.indexOf('na') + 'na'.length
+    )
+    if (stringFieldCompletion) {
+      throw new Error(`Expected field completion to ignore schema-looking calls inside strings. Got: ${JSON.stringify(stringFieldCompletion)}`)
+    }
+
     const emptyRouteAttributeCompletionText = `<form action=""></form>\n`
     const emptyRouteAttributeCompletionOffset = emptyRouteAttributeCompletionText.indexOf('action="') + 'action="'.length
     const emptyRouteAttributeCompletion = service.getCustomCompletionData(
@@ -7938,6 +7977,22 @@ redirect('/boards/demo-board')
       throw new Error(`Expected unknown field diagnostic. Got: ${diagnosticMessages.join(' | ')}`)
     }
 
+    const schemaStringCommentDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>\n// $app.findRecordsByFilter('missing_collection')\nconst literal = "board.get('missing_field')"\n</script>\n`
+    )
+    const schemaStringCommentMessages = schemaStringCommentDiagnostics.map((entry) => String(entry.message))
+    if (
+      schemaStringCommentMessages.some((message) => message.includes('missing_collection')) ||
+      schemaStringCommentMessages.some((message) => message.includes('missing_field'))
+    ) {
+      throw new Error(
+        `Expected schema diagnostics to ignore comments and strings. Got: ${schemaStringCommentDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
     const recordSetDiagnostics = service.getDiagnostics(
       fixture.boardsFilePath,
       `<script server>\nconst board = $app.findRecordById('boards', 'board-1')\nboard.set('missing_field', request.url.query.sort)\n</script>\n`
@@ -8236,6 +8291,17 @@ metaPayload.trim()
       throw new Error(`Expected record.get() boolean inlay hint. Got: ${JSON.stringify(typedRecordGetInlayHints)}`)
     }
 
+    const nonRecordGetInlayText = `<script server>
+const params = new URLSearchParams('name=PocketPages')
+params.get('name')
+const headers = new Headers()
+headers.get('slug')
+</script>\n`
+    const nonRecordGetInlayHints = service.getInlayHintEntries(fixture.boardsFilePath, nonRecordGetInlayText)
+    if (nonRecordGetInlayHints.some((entry) => String(entry.tooltip || '').includes('Field type:'))) {
+      throw new Error(`Expected non-record .get() calls to avoid schema field inlay hints. Got: ${JSON.stringify(nonRecordGetInlayHints)}`)
+    }
+
     const typedConstructorText = `<script server>
 const postCollection = $app.findCollectionByNameOrId('posts')
 const postRecord = new Record(postCollection)
@@ -8374,6 +8440,42 @@ const boardTableNames = $app.findRecordsByFilter('boards', '').map((entry) => en
     if (templateLiteralContinuationDiagnostics.some((entry) => entry.code === 2349)) {
       throw new Error(
         `Expected multiline EJS expressions before template literals to avoid callable false positives. Got: ${templateLiteralContinuationDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const templateControlFlowText = [
+      `<% if (true) { %>`,
+      `<p>yes</p>`,
+      `<% } else { %>`,
+      `<p>no</p>`,
+      `<% } %>`,
+      `<% try { %>`,
+      `<% throw new Error('test') %>`,
+      `<% } catch (error) { %>`,
+      `<p><%= error.message %></p>`,
+      `<% } finally { %>`,
+      `<p>done</p>`,
+      `<% } %>`,
+      `<% let loopIndex = 0; do { %>`,
+      `<% loopIndex += 1 %>`,
+      `<% } while (loopIndex < 1) %>`,
+    ].join('\n')
+    const templateControlFlowVirtualText = buildTemplateVirtualText(templateControlFlowText)
+    for (const pattern of [/\}\s*;\s*else\b/, /\}\s*;\s*catch\b/, /\}\s*;\s*finally\b/, /\}\s*;\s*while\b/]) {
+      if (pattern.test(templateControlFlowVirtualText)) {
+        throw new Error(`Expected EJS control-flow tag joins to avoid injected semicolons. Pattern: ${pattern}`)
+      }
+    }
+    const templateControlFlowDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      templateControlFlowText,
+      { includeSemanticDiagnostics: false }
+    )
+    if (templateControlFlowDiagnostics.some((entry) => entry.category === ts.DiagnosticCategory.Error)) {
+      throw new Error(
+        `Expected EJS control-flow tag joins to stay syntactically valid. Got: ${templateControlFlowDiagnostics
           .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
           .join(' | ')}`
       )

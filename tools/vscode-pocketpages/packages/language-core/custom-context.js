@@ -5,10 +5,6 @@ const { extractTemplateCodeBlocks } = require('./ejs-template')
 const { extractServerBlocks } = require('./script-server')
 
 const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])([^'"]*)$/s
-const FIELD_RECEIVER_PATTERN = '([A-Za-z_$][\\w$]*(?:(?:\\.[A-Za-z_$][\\w$]*)|\\[(?:\\d+|[A-Za-z_$][\\w$]*)\\])*)'
-const FIELD_OPEN_RE = new RegExp(`${FIELD_RECEIVER_PATTERN}\\.(get|set)\\(\\s*(['"])([^'"]*)$`, 's')
-const FIELD_CLOSED_RE = new RegExp(`${FIELD_RECEIVER_PATTERN}\\.(get|set)\\(\\s*(['"])([^'"]+)\\3`, 'g')
-const COLLECTION_REGEX_CACHE = new Map()
 const ROUTE_ATTRIBUTE_NAMES = new Set(['href', 'action', 'hx-get', 'hx-post', 'hx-put', 'hx-delete', 'hx-patch'])
 
 function getLastPathSegment(value) {
@@ -196,24 +192,6 @@ function getResolveRequestPathFromExpression(node, scope) {
   }
 
   return readResolveRequestPath(target)
-}
-
-function toClosedMatchContext(match, kind) {
-  const fullText = match[0]
-  const quote = match[2]
-  const value = match[3]
-  const quoteOffset = fullText.indexOf(quote)
-  const start = match.index + quoteOffset + 1
-  const end = start + value.length
-
-  return {
-    kind,
-    quote,
-    value,
-    start,
-    end,
-    matchText: fullText,
-  }
 }
 
 function isStaticPathContext(context) {
@@ -637,32 +615,6 @@ function getOpenMatchContext(documentText, offset, regex, mapper) {
   })
 }
 
-function getCollectionRegexState(collectionMethodNames = []) {
-  const methodNames = [...new Set((Array.isArray(collectionMethodNames) ? collectionMethodNames : []).filter(Boolean))].sort()
-  const cacheKey = methodNames.join('\u0000')
-  const cached = COLLECTION_REGEX_CACHE.get(cacheKey)
-  if (cached) {
-    return cached
-  }
-
-  if (!methodNames.length) {
-    const emptyState = {
-      openRe: null,
-      closedRe: null,
-    }
-    COLLECTION_REGEX_CACHE.set(cacheKey, emptyState)
-    return emptyState
-  }
-
-  const pattern = methodNames.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-  const state = {
-    openRe: new RegExp(`\\$app\\.(${pattern})\\(\\s*(['"])([^'"]*)$`, 's'),
-    closedRe: new RegExp(`\\$app\\.(${pattern})\\(\\s*(['"])([^'"]+)\\2`, 'g'),
-  }
-  COLLECTION_REGEX_CACHE.set(cacheKey, state)
-  return state
-}
-
 function getPathCallDescriptor(expression) {
   const target = skipParenthesizedExpression(expression)
   if (!target) {
@@ -962,33 +914,187 @@ function collectPathContexts(documentText, options = {}) {
   return []
 }
 
-function getScriptCollectionContext(scriptText, offset, options = {}) {
-  const collectionRegexState = getCollectionRegexState(options.collectionMethodNames)
-  if (!collectionRegexState.openRe) {
+function createSchemaSourceFile(scriptText, options = {}) {
+  return options.sourceFile || ts.createSourceFile(
+    'pocketpages-schema-contexts.js',
+    String(scriptText || ''),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS
+  )
+}
+
+function getCollectionMethodName(expression, collectionMethodNames = []) {
+  const methodNames = new Set((Array.isArray(collectionMethodNames) ? collectionMethodNames : []).filter(Boolean))
+  if (!methodNames.size) {
     return null
   }
 
-  return getOpenMatchContext(scriptText, offset, collectionRegexState.openRe, ({ value, start, end, match }) => ({
-    kind: 'collection-name',
-    methodName: match[1],
-    value,
-    start,
-    end,
-  }))
+  const target = skipParenthesizedExpression(expression)
+  if (
+    !target ||
+    !ts.isPropertyAccessExpression(target) ||
+    !ts.isIdentifier(target.expression) ||
+    target.expression.text !== '$app'
+  ) {
+    return null
+  }
+
+  return methodNames.has(target.name.text) ? target.name.text : null
 }
 
-function getScriptFieldContext(scriptText, offset) {
-  return getOpenMatchContext(scriptText, offset, FIELD_OPEN_RE, ({ value, start, end, match, matchStart }) => ({
+function getRecordFieldCallDescriptor(expression, sourceFile, scriptText) {
+  const target = skipParenthesizedExpression(expression)
+  if (!target || !ts.isPropertyAccessExpression(target)) {
+    return null
+  }
+
+  if (target.name.text !== 'get' && target.name.text !== 'set') {
+    return null
+  }
+
+  const receiverStart = target.expression.getStart(sourceFile)
+  const receiverEnd = target.expression.getEnd()
+  const receiverExpression = String(scriptText || '').slice(receiverStart, receiverEnd)
+
+  return {
+    accessMethod: target.name.text,
+    receiverExpression,
+    receiverName: getLastPathSegment(receiverExpression),
+    receiverStart,
+    receiverEnd,
+  }
+}
+
+function getBoundedStringLiteralRange(pathRange, offset, offsetBase, scriptText) {
+  if (!pathRange || pathRange.isClosed) {
+    return pathRange
+  }
+
+  return {
+    ...pathRange,
+    value: String(scriptText || '').slice(pathRange.start - offsetBase, offset - offsetBase),
+    end: offset,
+  }
+}
+
+function createCollectionSchemaContext(node, methodName, pathRange, sourceFile, scriptText, offsetBase = 0) {
+  return {
+    kind: 'collection-name',
+    methodName,
+    quote: pathRange.quote,
+    value: pathRange.value,
+    start: pathRange.start,
+    end: pathRange.end,
+    callStart: offsetBase + node.getStart(sourceFile),
+    callEnd: offsetBase + node.getEnd(),
+    matchText: String(scriptText || '').slice(node.getStart(sourceFile), node.getEnd()),
+  }
+}
+
+function createRecordFieldSchemaContext(node, descriptor, pathRange, sourceFile, scriptText, offsetBase = 0) {
+  return {
     kind: 'record-field',
-    receiverExpression: match[1],
-    receiverName: getLastPathSegment(match[1]),
-    receiverStart: matchStart,
-    receiverEnd: matchStart + String(match[1] || '').length,
-    accessMethod: match[2],
-    value,
-    start,
-    end,
-  }))
+    quote: pathRange.quote,
+    value: pathRange.value,
+    start: pathRange.start,
+    end: pathRange.end,
+    callStart: offsetBase + node.getStart(sourceFile),
+    callEnd: offsetBase + node.getEnd(),
+    matchText: String(scriptText || '').slice(node.getStart(sourceFile), node.getEnd()),
+    receiverExpression: descriptor.receiverExpression,
+    receiverName: descriptor.receiverName,
+    receiverStart: offsetBase + descriptor.receiverStart,
+    receiverEnd: offsetBase + descriptor.receiverEnd,
+    accessMethod: descriptor.accessMethod,
+  }
+}
+
+function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind = null) {
+  const sourceText = String(scriptText || '')
+  const offsetBase = Number(options.offsetBase) || 0
+  const localOffset = offset - offsetBase
+  if (localOffset < 0 || localOffset > sourceText.length) {
+    return null
+  }
+
+  const sourceFile = createSchemaSourceFile(sourceText, options)
+  let foundContext = null
+  const includeCollectionContext = !contextKind || contextKind === 'collection-name'
+  const includeFieldContext = !contextKind || contextKind === 'record-field'
+
+  const visit = (node) => {
+    if (foundContext) {
+      return
+    }
+
+    if (ts.isCallExpression(node) && node.arguments.length) {
+      if (includeCollectionContext) {
+        const methodName = getCollectionMethodName(node.expression, options.collectionMethodNames)
+        if (methodName) {
+          const pathRange = getStringLiteralPathRange(
+            node.arguments[0],
+            sourceFile,
+            sourceText,
+            offsetBase,
+            { requireClosed: false }
+          )
+          if (pathRange && offset >= pathRange.start && offset <= pathRange.end) {
+            foundContext = createCollectionSchemaContext(
+              node,
+              methodName,
+              getBoundedStringLiteralRange(pathRange, offset, offsetBase, sourceText),
+              sourceFile,
+              sourceText,
+              offsetBase
+            )
+            return
+          }
+        }
+      }
+
+      if (includeFieldContext) {
+        const descriptor = getRecordFieldCallDescriptor(node.expression, sourceFile, sourceText)
+        if (descriptor) {
+          const pathRange = getStringLiteralPathRange(
+            node.arguments[0],
+            sourceFile,
+            sourceText,
+            offsetBase,
+            { requireClosed: false }
+          )
+          if (pathRange && offset >= pathRange.start && offset <= pathRange.end) {
+            foundContext = createRecordFieldSchemaContext(
+              node,
+              descriptor,
+              getBoundedStringLiteralRange(pathRange, offset, offsetBase, sourceText),
+              sourceFile,
+              sourceText,
+              offsetBase
+            )
+            return
+          }
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return foundContext
+}
+
+function getScriptCollectionContext(scriptText, offset, options = {}) {
+  return getSchemaContextAtOffset(scriptText, offset, options, 'collection-name')
+}
+
+function getScriptFieldContext(scriptText, offset, options = {}) {
+  return getSchemaContextAtOffset(scriptText, offset, options, 'record-field')
+}
+
+function getScriptSchemaContextAtOffset(scriptText, offset, options = {}) {
+  return getSchemaContextAtOffset(scriptText, offset, options)
 }
 
 function getResolvedModuleMemberContext(scriptText, offset) {
@@ -1089,38 +1195,50 @@ function collectResolvedModuleMemberContexts(scriptText) {
 }
 
 function collectSchemaContexts(scriptText, options = {}) {
+  const sourceText = String(scriptText || '')
+  const offsetBase = Number(options.offsetBase) || 0
+  const sourceFile = createSchemaSourceFile(sourceText, options)
   const contexts = []
 
-  const collectionRegexState = getCollectionRegexState(options.collectionMethodNames)
-  if (collectionRegexState.closedRe) {
-    for (const match of scriptText.matchAll(collectionRegexState.closedRe)) {
-      const context = toClosedMatchContext(match, 'collection-name')
-      context.methodName = match[1]
-      contexts.push(context)
+  const visit = (node) => {
+    if (ts.isCallExpression(node) && node.arguments.length) {
+      const collectionMethodName = getCollectionMethodName(node.expression, options.collectionMethodNames)
+      if (collectionMethodName) {
+        const pathRange = getStringLiteralPathRange(node.arguments[0], sourceFile, sourceText)
+        if (pathRange) {
+          contexts.push(createCollectionSchemaContext(
+            node,
+            collectionMethodName,
+            pathRange,
+            sourceFile,
+            sourceText,
+            offsetBase
+          ))
+        }
+      }
+
+      const fieldDescriptor = getRecordFieldCallDescriptor(node.expression, sourceFile, sourceText)
+      if (fieldDescriptor) {
+        const pathRange = getStringLiteralPathRange(node.arguments[0], sourceFile, sourceText)
+        if (pathRange) {
+          contexts.push(createRecordFieldSchemaContext(
+            node,
+            fieldDescriptor,
+            pathRange,
+            sourceFile,
+            sourceText,
+            offsetBase
+          ))
+        }
+      }
     }
+
+    ts.forEachChild(node, visit)
   }
 
-  for (const match of scriptText.matchAll(FIELD_CLOSED_RE)) {
-    const fullText = match[0]
-    const quote = match[3]
-    const value = match[4]
-    const quoteOffset = fullText.indexOf(quote)
-    const context = {
-      kind: 'record-field',
-      value,
-      start: match.index + quoteOffset + 1,
-      end: match.index + quoteOffset + 1 + value.length,
-      matchText: fullText,
-    }
-    context.receiverExpression = match[1]
-    context.receiverName = getLastPathSegment(match[1])
-    context.receiverStart = match.index
-    context.receiverEnd = match.index + String(match[1] || '').length
-    context.accessMethod = match[2]
-    contexts.push(context)
-  }
+  visit(sourceFile)
 
-  return contexts
+  return contexts.sort((left, right) => left.start - right.start || left.end - right.end)
 }
 
 module.exports = {
@@ -1132,4 +1250,5 @@ module.exports = {
   getResolvedModuleMemberContext,
   getScriptCollectionContext,
   getScriptFieldContext,
+  getScriptSchemaContextAtOffset,
 }

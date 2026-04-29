@@ -1,13 +1,51 @@
 "use strict";
 
+const SCHEMA_COMPLETION_SIGNAL_WINDOW = 400;
+const SCHEMA_COMPLETION_SOURCE_FILE_CACHE_LIMIT = 12;
+
+function hasSchemaCompletionSignal(analysisText, analysisOffset) {
+  const text = String(analysisText || "");
+  const offset = Math.max(0, Math.min(Number(analysisOffset) || 0, text.length));
+  const prefix = text.slice(Math.max(0, offset - SCHEMA_COMPLETION_SIGNAL_WINDOW), offset);
+  return /\$app\./.test(prefix) || /\.(?:get|set)\s*\(/.test(prefix);
+}
+
 function createCompletionFeatureHandlers(deps) {
   const {
+    createSourceFileForText,
     elapsedMilliseconds,
     getAnalysisContextAtOffset,
     getPathContextAtOffset,
     getScriptCollectionContext,
     getScriptFieldContext,
+    getScriptSchemaContextAtOffset,
   } = deps;
+  const schemaCompletionSourceFileCache = new Map();
+
+  const getSchemaCompletionSourceFile = (filePath, analysisStart, analysisText) => {
+    if (typeof createSourceFileForText !== "function") {
+      return null;
+    }
+
+    const cacheKey = `${filePath}:${analysisStart}`;
+    const cached = schemaCompletionSourceFileCache.get(cacheKey);
+    if (cached && cached.analysisText === analysisText) {
+      return cached.sourceFile;
+    }
+
+    const sourceFile = createSourceFileForText(`${filePath}.__schema_completion__.js`, analysisText);
+    schemaCompletionSourceFileCache.set(cacheKey, {
+      analysisText,
+      sourceFile,
+    });
+
+    while (schemaCompletionSourceFileCache.size > SCHEMA_COMPLETION_SOURCE_FILE_CACHE_LIMIT) {
+      const firstKey = schemaCompletionSourceFileCache.keys().next().value;
+      schemaCompletionSourceFileCache.delete(firstKey);
+    }
+
+    return sourceFile;
+  };
 
   return {
     getCompletionData(service, filePath, documentText, offset, options = {}) {
@@ -103,13 +141,24 @@ function createCompletionFeatureHandlers(deps) {
       }
 
       const { analysisText, analysisOffset, analysisStart } = analysisContext;
-      const collectionContext = getScriptCollectionContext(analysisText, analysisOffset, {
-        collectionMethodNames,
-      });
-      if (collectionContext) {
+      if (!hasSchemaCompletionSignal(analysisText, analysisOffset)) {
+        return null;
+      }
+
+      const schemaSourceFile = getSchemaCompletionSourceFile(filePath, analysisStart, analysisText);
+      const schemaContext =
+        typeof getScriptSchemaContextAtOffset === "function"
+          ? getScriptSchemaContextAtOffset(analysisText, analysisOffset, {
+              collectionMethodNames,
+              sourceFile: schemaSourceFile,
+            })
+          : getScriptCollectionContext(analysisText, analysisOffset, { collectionMethodNames }) ||
+            getScriptFieldContext(analysisText, analysisOffset);
+
+      if (schemaContext && schemaContext.kind === "collection-name") {
         return {
-          start: analysisStart + collectionContext.start,
-          end: analysisStart + collectionContext.end,
+          start: analysisStart + schemaContext.start,
+          end: analysisStart + schemaContext.end,
           items: service.projectIndex.getCollectionNames().map((collectionName) => ({
             label: collectionName,
             insertText: collectionName,
@@ -120,15 +169,14 @@ function createCompletionFeatureHandlers(deps) {
         };
       }
 
-      const fieldContext = getScriptFieldContext(analysisText, analysisOffset);
-      if (!fieldContext) {
+      if (!schemaContext || schemaContext.kind !== "record-field") {
         return null;
       }
 
       const collectionReference = service.resolveSchemaFieldCollectionReference(
         filePath,
         documentText,
-        fieldContext,
+        schemaContext,
         {
           analysisText,
           analysisStart,
@@ -140,8 +188,8 @@ function createCompletionFeatureHandlers(deps) {
 
       const collectionName = collectionReference.collectionName;
       return {
-        start: analysisStart + fieldContext.start,
-        end: analysisStart + fieldContext.end,
+        start: analysisStart + schemaContext.start,
+        end: analysisStart + schemaContext.end,
         items: service.projectIndex.getFields(collectionName).map((field) => ({
           label: field.name,
           insertText: field.name,

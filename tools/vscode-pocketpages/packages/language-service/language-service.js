@@ -22,6 +22,7 @@ const {
   getResolvedModuleMemberContext,
   getScriptCollectionContext,
   getScriptFieldContext,
+  getScriptSchemaContextAtOffset,
 } = require("../language-core/custom-context");
 const { collectParamsFlowDiagnostics } = require("./flow-analysis");
 const { createCompletionFeatureHandlers } = require("./features/completion-features");
@@ -2130,11 +2131,13 @@ function remapDiagnosticRangeByRegions(diagnostic, previousRegions, currentRegio
 }
 
 const completionFeatureHandlers = createCompletionFeatureHandlers({
+  createSourceFileForText,
   elapsedMilliseconds,
   getAnalysisContextAtOffset,
   getPathContextAtOffset,
   getScriptCollectionContext,
   getScriptFieldContext,
+  getScriptSchemaContextAtOffset,
   ts,
 });
 const diagnosticsFeatureHandlers = createDiagnosticsFeatureHandlers({
@@ -2142,6 +2145,7 @@ const diagnosticsFeatureHandlers = createDiagnosticsFeatureHandlers({
   collectPathContexts,
   collectResolveCallSpansFromScript,
   collectResolveCallSpansFromTemplate,
+  collectSchemaContexts,
   createDocumentAnalysis,
   dedupeDiagnostics,
   elapsedMilliseconds,
@@ -2885,7 +2889,7 @@ class ProjectLanguageService {
       parts.push(schemaTypePrelude);
     }
 
-    const recordGetPrelude = this.buildRecordGetTypePrelude(analysisText);
+    const recordGetPrelude = this.buildRecordGetTypePrelude(filePath, analysisText);
     if (recordGetPrelude) {
       parts.push(recordGetPrelude);
     }
@@ -3016,19 +3020,23 @@ class ProjectLanguageService {
     ].join("\n");
   }
 
-  buildRecordGetTypePrelude(analysisText) {
+  buildRecordGetTypePrelude(filePath, analysisText) {
     if (!analysisText) {
       return "";
     }
 
-    const fieldNames = [...new Set(
-      collectSchemaContexts(analysisText, {
+    const collectRecordGetFieldNames = (schemaAnalysisText) => [...new Set(
+      collectSchemaContexts(schemaAnalysisText, {
         collectionMethodNames: this.projectIndex.getCollectionMethodNames(),
       })
         .filter((context) => context.kind === "record-field" && context.accessMethod === "get")
         .map((context) => context.value)
         .filter(Boolean)
     )];
+    let fieldNames = collectRecordGetFieldNames(analysisText);
+    if (!fieldNames.length && isEjsFile(filePath) && /<%|<script\b/i.test(String(analysisText || ""))) {
+      fieldNames = collectRecordGetFieldNames(buildTemplateVirtualText(analysisText));
+    }
     const overloadLines = fieldNames
       .map((fieldName) => {
         const typeText = this.projectIndex.getRecordFieldTypeText(fieldName);
@@ -6088,7 +6096,7 @@ class ProjectLanguageService {
     const entries = [];
     const seen = new Set();
     const analysisText = toAnalysisText(filePath, documentText);
-    const sourceFile = ts.createSourceFile(filePath, analysisText, ts.ScriptTarget.Latest, true);
+    const sourceFile = createSourceFileForText(`${filePath}.__inlay__.js`, analysisText);
     const addEntry = (position, label, tooltip, kind = "type") => {
       if (typeof position !== "number" || position < startOffset || position > endOffset) {
         return;
@@ -6126,26 +6134,29 @@ class ProjectLanguageService {
       );
     }
 
-    const visit = (node) => {
-      if (
-        ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.name.text === "get" &&
-        node.arguments.length &&
-        readStringLiteralText(node.arguments[0])
-      ) {
-        const callStart = node.getStart(sourceFile);
-        const callEnd = node.getEnd();
-        const typeText = this.getTypeTextAtDocumentSpan(filePath, documentText, callStart, callEnd);
-        if (typeText) {
-          addEntry(callEnd, `: ${typeText}`, `Field type: ${typeText}`);
-        }
+    const schemaContexts = collectSchemaContexts(analysisText, {
+      collectionMethodNames: this.projectIndex.getCollectionMethodNames(),
+      sourceFile,
+    });
+    for (const context of schemaContexts) {
+      if (context.kind !== "record-field" || context.accessMethod !== "get") {
+        continue;
       }
 
-      ts.forEachChild(node, visit);
-    };
+      const collectionReference = this.resolveSchemaFieldCollectionReference(filePath, documentText, context, {
+        analysisText,
+        analysisStart: 0,
+      });
+      if (!collectionReference || collectionReference.confidence !== "high") {
+        continue;
+      }
 
-    visit(sourceFile);
+      const typeText = this.projectIndex.getFieldTypeText(collectionReference.collectionName, context.value);
+      if (typeText && typeof context.callEnd === "number") {
+        addEntry(context.callEnd, `: ${typeText}`, `Field type: ${typeText}`);
+      }
+    }
+
     return entries;
   }
 
@@ -6333,7 +6344,18 @@ class ProjectLanguageService {
         }
       }
 
-      for (const context of collectSchemaContexts(block.content, { collectionMethodNames })) {
+      const schemaContexts =
+        documentAnalysis && typeof documentAnalysis.getBlockSchemaContexts === "function"
+          ? documentAnalysis.getBlockSchemaContexts(block, collectionMethodNames)
+          : collectSchemaContexts(block.content, {
+              collectionMethodNames,
+              sourceFile:
+                documentAnalysis && typeof documentAnalysis.getBlockSourceFile === "function"
+                  ? documentAnalysis.getBlockSourceFile(block)
+                  : undefined,
+            });
+
+      for (const context of schemaContexts) {
         if (context.kind === "collection-name" && !this.projectIndex.hasCollection(context.value)) {
           diagnostics.push(buildSchemaCollectionDiagnostic(context, block.contentStart));
         }
@@ -6508,7 +6530,18 @@ class ProjectLanguageService {
       }
     }
 
-    for (const context of collectSchemaContexts(templateVirtualText, { collectionMethodNames })) {
+    const schemaContexts =
+      documentAnalysis && typeof documentAnalysis.getAnalysisSchemaContexts === "function"
+        ? documentAnalysis.getAnalysisSchemaContexts(collectionMethodNames)
+        : collectSchemaContexts(templateVirtualText, {
+            collectionMethodNames,
+            sourceFile:
+              documentAnalysis && typeof documentAnalysis.getAnalysisSourceFile === "function"
+                ? documentAnalysis.getAnalysisSourceFile()
+                : undefined,
+          });
+
+    for (const context of schemaContexts) {
       if (shouldCancel && shouldCancel("before-template-schema-diagnostics")) {
         return diagnostics;
       }
@@ -6594,7 +6627,7 @@ class ProjectLanguageService {
     };
   }
 
-  collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames) {
+  collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames, documentAnalysis = null) {
     if (!isScriptFile(filePath)) {
       return [];
     }
@@ -6618,7 +6651,18 @@ class ProjectLanguageService {
 
     const diagnostics = [];
 
-    for (const context of collectSchemaContexts(documentText, { collectionMethodNames })) {
+    const schemaContexts =
+      documentAnalysis && typeof documentAnalysis.getDocumentSchemaContexts === "function"
+        ? documentAnalysis.getDocumentSchemaContexts(collectionMethodNames)
+        : collectSchemaContexts(documentText, {
+            collectionMethodNames,
+            sourceFile:
+              documentAnalysis && typeof documentAnalysis.getDocumentSourceFile === "function"
+                ? documentAnalysis.getDocumentSourceFile()
+                : undefined,
+          });
+
+    for (const context of schemaContexts) {
       if (context.kind === "collection-name" && !this.projectIndex.hasCollection(context.value)) {
         diagnostics.push(buildSchemaCollectionDiagnostic(context));
       }

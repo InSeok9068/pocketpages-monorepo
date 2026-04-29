@@ -6,6 +6,7 @@ function createDiagnosticsFeatureHandlers(deps) {
     collectPathContexts,
     collectResolveCallSpansFromScript,
     collectResolveCallSpansFromTemplate,
+    collectSchemaContexts,
     createDocumentAnalysis,
     dedupeDiagnostics,
     elapsedMilliseconds,
@@ -126,6 +127,7 @@ function createDiagnosticsFeatureHandlers(deps) {
         collectResolveCallSpansFromScript,
         collectResolveCallSpansFromTemplate,
         collectPathContexts,
+        collectSchemaContexts,
       });
       if (profile) {
         profile.createDocumentAnalysisMs = elapsedMilliseconds(stepStartedAt);
@@ -272,7 +274,7 @@ function createDiagnosticsFeatureHandlers(deps) {
         } else {
           pushLaneDiagnostics(
             "script-schema",
-            service.collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames)
+            service.collectScriptSchemaDiagnostics(filePath, documentText, collectionMethodNames, documentAnalysis)
           );
         }
         if (profile) {

@@ -24,7 +24,7 @@ function createSourceFileForText(fileName, text) {
 
 /**
  * 한 문서 진단 호출에서 반복 사용하는 파생 분석 결과를 모아둔다.
- * @param {{ filePath: string, documentText: string, collectResolveCallSpansFromScript: (text: string, options?: object) => Array<object>, collectResolveCallSpansFromTemplate: (text: string) => Array<object>, collectPathContexts: (text: string, options?: object) => Array<object> }} options
+ * @param {{ filePath: string, documentText: string, collectResolveCallSpansFromScript: (text: string, options?: object) => Array<object>, collectResolveCallSpansFromTemplate: (text: string) => Array<object>, collectPathContexts: (text: string, options?: object) => Array<object>, collectSchemaContexts?: (text: string, options?: object) => Array<object> }} options
  * @returns {{
  *   getBlocks: () => Array<object>,
  *   getTemplateBlocks: () => Array<object>,
@@ -34,6 +34,9 @@ function createSourceFileForText(fileName, text) {
  *   getDocumentSourceFile: () => ts.SourceFile,
  *   getAnalysisSourceFile: () => ts.SourceFile,
  *   getBlockSourceFile: (block: { content: string, contentStart: number, contentEnd: number }) => ts.SourceFile,
+ *   getDocumentSchemaContexts: (collectionMethodNames: Array<string>) => Array<object>,
+ *   getAnalysisSchemaContexts: (collectionMethodNames: Array<string>) => Array<object>,
+ *   getBlockSchemaContexts: (block: { content: string, contentStart: number, contentEnd: number }, collectionMethodNames: Array<string>) => Array<object>,
  *   getPrivateResolveCallSpans: () => Array<object>,
  * }}
  */
@@ -49,6 +52,7 @@ function createDocumentAnalysis(options) {
   let analysisSourceFile = null;
   let documentSourceFile = null;
   let privateResolveCallSpans = null;
+  const schemaContextsByKey = new Map();
 
   const getCachedSourceFile = (cacheKey, textValue, fileName) => {
     if (sourceFilesByKey.has(cacheKey)) {
@@ -58,6 +62,25 @@ function createDocumentAnalysis(options) {
     const sourceFile = createSourceFileForText(fileName, textValue);
     sourceFilesByKey.set(cacheKey, sourceFile);
     return sourceFile;
+  };
+
+  const getCollectionMethodKey = (collectionMethodNames) =>
+    [...new Set((Array.isArray(collectionMethodNames) ? collectionMethodNames : []).filter(Boolean))]
+      .sort()
+      .join("\u0000");
+
+  const getCachedSchemaContexts = (cacheKey, textValue, sourceFile, collectionMethodNames) => {
+    const schemaKey = `${cacheKey}:${getCollectionMethodKey(collectionMethodNames)}`;
+    if (schemaContextsByKey.has(schemaKey)) {
+      return schemaContextsByKey.get(schemaKey);
+    }
+
+    const contexts =
+      typeof options.collectSchemaContexts === "function"
+        ? options.collectSchemaContexts(textValue, { collectionMethodNames, sourceFile })
+        : [];
+    schemaContextsByKey.set(schemaKey, contexts);
+    return contexts;
   };
 
   return {
@@ -127,6 +150,34 @@ function createDocumentAnalysis(options) {
         `block:${block.contentStart}:${block.contentEnd}`,
         block.content,
         `${normalizedFilePath}.__block_${block.contentStart}.ts`
+      );
+    },
+
+    getDocumentSchemaContexts(collectionMethodNames) {
+      return getCachedSchemaContexts(
+        "document",
+        currentText,
+        this.getDocumentSourceFile(),
+        collectionMethodNames
+      );
+    },
+
+    getAnalysisSchemaContexts(collectionMethodNames) {
+      const currentAnalysisText = this.getAnalysisText();
+      return getCachedSchemaContexts(
+        currentAnalysisText === currentText ? "document" : "analysis",
+        currentAnalysisText,
+        this.getAnalysisSourceFile(),
+        collectionMethodNames
+      );
+    },
+
+    getBlockSchemaContexts(block, collectionMethodNames) {
+      return getCachedSchemaContexts(
+        `block:${block.contentStart}:${block.contentEnd}`,
+        block.content,
+        this.getBlockSourceFile(block),
+        collectionMethodNames
       );
     },
 
