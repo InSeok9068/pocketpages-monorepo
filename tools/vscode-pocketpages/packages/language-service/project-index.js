@@ -2470,6 +2470,14 @@ class PocketPagesProjectIndex {
     }
   }
 
+  isPagesCodeFile(filePath) {
+    return isPagesCodeFile(this.pagesRoot, normalizePath(filePath))
+  }
+
+  isAssetCandidateFile(filePath) {
+    return isAssetCandidateFile(this.pagesRoot, normalizePath(filePath))
+  }
+
   getSchemaState() {
     const schemaPath = normalizePath(path.join(this.appRoot, 'pb_schema.json'))
     if (!fileExists(schemaPath)) {

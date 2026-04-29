@@ -4866,6 +4866,29 @@ module.exports = {
       throw new Error('Expected partial watched-file invalidation to keep unrelated script schema diagnostics cache entries warm.')
     }
 
+    const assetContentWatchManager = new PocketPagesLanguageServiceManager()
+    const assetContentWatchService = assetContentWatchManager.getServiceForFile(fixture.boardsFilePath)
+    if (!assetContentWatchService) {
+      throw new Error('Expected asset content watched-file smoke to resolve the primary app service.')
+    }
+    const assetContentProjectVersionBefore = assetContentWatchService.projectVersion
+    const assetContentWatchResults = assetContentWatchManager.handleWatchedFileChanges([
+      { filePath: fixture.globalAssetFilePath, type: 'change' },
+    ])
+    if (assetContentWatchResults.length !== 0 || assetContentWatchService.projectVersion !== assetContentProjectVersionBefore) {
+      throw new Error(
+        `Expected public asset content changes to avoid app cache resync. Got: ${JSON.stringify({
+          results: assetContentWatchResults.map((entry) => ({
+            appRoot: entry.appRoot,
+            changes: entry.changes,
+            invalidationKinds: entry.invalidationKinds,
+          })),
+          before: assetContentProjectVersionBefore,
+          after: assetContentWatchService.projectVersion,
+        })}`
+      )
+    }
+
     const fineInvalidationManager = new PocketPagesLanguageServiceManager()
     const fineInvalidationService = fineInvalidationManager.getServiceForFile(fixture.boardsFilePath)
     const moduleConstantsAFilePath = path.join(

@@ -2289,6 +2289,15 @@ class ProjectLanguageService {
       normalizedFilePath === pagesRootPath ||
       normalizedFilePath.startsWith(`${pagesRootPath}/`);
 
+    if (
+      isPagesPath &&
+      changeType === "change" &&
+      !this.projectIndex.isPagesCodeFile(normalizedFilePath) &&
+      this.projectIndex.isAssetCandidateFile(normalizedFilePath)
+    ) {
+      return "noop";
+    }
+
     if (isAppTypeFile) {
       this.resetCaches();
       return "reset";

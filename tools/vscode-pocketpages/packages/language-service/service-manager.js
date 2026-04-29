@@ -109,6 +109,9 @@ function createPocketPagesLanguageServiceManager(deps) {
             type: change.type,
           }));
         }
+        if (!invalidationKinds.some((kind) => kind && kind !== "noop")) {
+          continue;
+        }
 
         results.push({
           appRoot,
