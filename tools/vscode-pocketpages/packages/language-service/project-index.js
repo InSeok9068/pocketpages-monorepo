@@ -122,6 +122,16 @@ function directoryExists(dirPath) {
   }
 }
 
+function hashText(value) {
+  const text = String(value || '')
+  let hash = 2166136261
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(36)
+}
+
 function ensureArray(value) {
   if (Array.isArray(value)) {
     return value
@@ -3018,7 +3028,7 @@ class PocketPagesProjectIndex {
       .filter(([, text]) => typeof text === 'string')
       .map(([filePath, text]) => {
         const normalizedFilePath = normalizePath(filePath)
-        return `${normalizedFilePath}:override:${text.length}:${text}`
+        return `${normalizedFilePath}:override:${text.length}:${hashText(text)}`
       })
       .sort()
       .join('|')

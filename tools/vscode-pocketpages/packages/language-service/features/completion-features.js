@@ -98,7 +98,6 @@ function createCompletionFeatureHandlers(deps) {
     },
 
     getCustomCompletionData(service, filePath, documentText, offset) {
-      const collectionMethodNames = service.projectIndex.getCollectionMethodNames();
       const pathContext = getPathContextAtOffset(documentText, offset, { filePath });
       if (
         pathContext &&
@@ -145,6 +144,7 @@ function createCompletionFeatureHandlers(deps) {
         return null;
       }
 
+      const collectionMethodNames = service.projectIndex.getCollectionMethodNames();
       const schemaSourceFile = getSchemaCompletionSourceFile(filePath, analysisStart, analysisText);
       const schemaContext =
         typeof getScriptSchemaContextAtOffset === "function"

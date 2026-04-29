@@ -201,8 +201,19 @@ function createSegmentMappings({
   defaultData,
   specialRanges = [],
 }) {
-  if (length <= 0) {
+  if (length < 0) {
     return [];
+  }
+
+  if (length === 0) {
+    return [
+      {
+        sourceOffsets: [sourceBaseOffset],
+        generatedOffsets: [generatedBaseOffset],
+        lengths: [0],
+        data: defaultData,
+      },
+    ];
   }
 
   const mappings = [];

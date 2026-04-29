@@ -64,7 +64,7 @@ function getMappingSegments(mapping) {
     const sourceStart = Number(mapping.sourceOffsets[index]) || 0;
     const generatedStart = Number(mapping.generatedOffsets[index]) || 0;
     const length = Number(mapping.lengths[index]) || 0;
-    if (length <= 0) {
+    if (length < 0) {
       continue;
     }
 
@@ -84,6 +84,12 @@ function getMappingSegments(mapping) {
 
 function doesRangeOverlap(start, end, rangeStart, rangeEnd) {
   return start < rangeEnd && end > rangeStart;
+}
+
+function hasOtherSegmentStartingAtSourceOffset(segments, segment, sourceOffset) {
+  return segments.some(
+    (entry) => entry !== segment && entry.sourceStart === sourceOffset
+  );
 }
 
 function isCapabilityEnabled(value) {
@@ -198,10 +204,19 @@ function createMapper(mappings) {
     },
     *toGeneratedLocation(sourceOffset, filter) {
       for (const segment of segments) {
+        const atSegmentEnd = sourceOffset === segment.sourceEnd;
+        if (sourceOffset < segment.sourceStart || sourceOffset > segment.sourceEnd) {
+          continue;
+        }
+
         if (
-          sourceOffset < segment.sourceStart ||
-          sourceOffset >= segment.sourceEnd
+          atSegmentEnd &&
+          hasOtherSegmentStartingAtSourceOffset(segments, segment, sourceOffset)
         ) {
+          continue;
+        }
+
+        if (!atSegmentEnd && sourceOffset >= segment.sourceEnd) {
           continue;
         }
 
@@ -334,12 +349,60 @@ class PocketPagesLanguageCore {
     return plugin.createSnapshot(text, previousSnapshot);
   }
 
-  setSourceScript(uri, snapshot, explicitLanguageId, documentVersion = null) {
+  getLanguagePlugin(uri, languageId) {
+    return (
+      this.plugins.find((entry) => !entry.getLanguageId || entry.getLanguageId(uri) === languageId) ||
+      this.plugins[0]
+    );
+  }
+
+  refreshGeneratedState(sourceScript, plugin = null) {
+    if (!sourceScript) {
+      return null;
+    }
+
+    const languagePlugin = plugin || sourceScript.languagePlugin || this.getLanguagePlugin(sourceScript.id, sourceScript.languageId);
+    if (!languagePlugin || typeof languagePlugin.createVirtualCode !== "function") {
+      throw new Error("PocketPages language plugin is missing createVirtualCode().");
+    }
+
+    if (
+      sourceScript.generated &&
+      sourceScript.generated.root &&
+      typeof languagePlugin.updateVirtualCode === "function"
+    ) {
+      sourceScript.generated = createGeneratedState(
+        languagePlugin.updateVirtualCode(sourceScript.id, sourceScript.generated.root, sourceScript.snapshot),
+        languagePlugin
+      );
+    } else {
+      sourceScript.generated = createGeneratedState(
+        languagePlugin.createVirtualCode(sourceScript.id, sourceScript.languageId, sourceScript.snapshot),
+        languagePlugin
+      );
+    }
+
+    sourceScript.languagePlugin = languagePlugin;
+    sourceScript.generatedStale = false;
+    return sourceScript.generated;
+  }
+
+  ensureGeneratedState(sourceScript) {
+    if (!sourceScript) {
+      return null;
+    }
+
+    if (!sourceScript.generated || sourceScript.generatedStale === true) {
+      return this.refreshGeneratedState(sourceScript);
+    }
+
+    return sourceScript.generated;
+  }
+
+  setSourceScript(uri, snapshot, explicitLanguageId, documentVersion = null, options = {}) {
     const existing = this.sourceScripts.get(uri);
     const languageId = this.resolveLanguageId(uri, explicitLanguageId || (existing && existing.languageId));
-    const plugin =
-      this.plugins.find((entry) => !entry.getLanguageId || entry.getLanguageId(uri) === languageId) ||
-      this.plugins[0];
+    const plugin = this.getLanguagePlugin(uri, languageId);
 
     if (!plugin || typeof plugin.createVirtualCode !== "function") {
       throw new Error("PocketPages language plugin is missing createVirtualCode().");
@@ -349,25 +412,16 @@ class PocketPagesLanguageCore {
       existing.languageId = languageId;
       existing.snapshot = snapshot;
       existing.version = documentVersion;
-      if (existing.generated) {
-        if (typeof plugin.updateVirtualCode === "function") {
-          existing.generated = createGeneratedState(
-            plugin.updateVirtualCode(uri, existing.generated.root, snapshot),
-            plugin
-          );
-        } else {
-          existing.generated = createGeneratedState(
-            plugin.createVirtualCode(uri, languageId, snapshot),
-            plugin
-          );
+      existing.languagePlugin = plugin;
+
+      if (options.updateGenerated === false && existing.generated) {
+        if (options.markGeneratedStale === true) {
+          existing.generatedStale = true;
         }
-      } else {
-        existing.generated = createGeneratedState(
-          plugin.createVirtualCode(uri, languageId, snapshot),
-          plugin
-        );
+        return existing;
       }
 
+      this.refreshGeneratedState(existing, plugin);
       return existing;
     }
 
@@ -376,11 +430,11 @@ class PocketPagesLanguageCore {
       languageId,
       snapshot,
       version: documentVersion,
-      generated: createGeneratedState(
-        plugin.createVirtualCode(uri, languageId, snapshot),
-        plugin
-      ),
+      languagePlugin: plugin,
+      generated: null,
+      generatedStale: false,
     };
+    this.refreshGeneratedState(sourceScript, plugin);
     this.sourceScripts.set(uri, sourceScript);
     return sourceScript;
   }
@@ -405,14 +459,27 @@ class PocketPagesLanguageCore {
 
   upsertDocument(document, options = {}) {
     const previousSourceScript = this.sourceScripts.get(document.uri);
-    const snapshot = this.createSnapshot(document.text, previousSourceScript ? previousSourceScript.snapshot : null);
-    const sourceScript = this.setSourceScript(document.uri, snapshot, document.languageId, document.version);
+    const currentText = String(document.text || "");
+    const previousText = previousSourceScript ? readSnapshotText(previousSourceScript.snapshot) : null;
+    const canReuseGenerated =
+      !!previousSourceScript &&
+      previousSourceScript.generated &&
+      previousSourceScript.generatedStale !== true &&
+      previousText === currentText;
+    const snapshot = previousText === currentText
+      ? previousSourceScript.snapshot
+      : this.createSnapshot(currentText, previousSourceScript ? previousSourceScript.snapshot : null);
+    const shouldPrepareVirtualCode = options.prepareVirtualCode !== false;
+    const sourceScript = this.setSourceScript(document.uri, snapshot, document.languageId, document.version, {
+      updateGenerated: shouldPrepareVirtualCode && !canReuseGenerated,
+      markGeneratedStale: !shouldPrepareVirtualCode && !canReuseGenerated,
+    });
     this.syncDocumentOverride(sourceScript, {
-      prepareVirtualCode: options.prepareVirtualCode !== false,
+      prepareVirtualCode: shouldPrepareVirtualCode,
       opened: options.opened === true,
       changed: options.changed === true,
     });
-    return sourceScript.generated.root;
+    return sourceScript.generated && sourceScript.generated.root ? sourceScript.generated.root : null;
   }
 
   prepareDocument(uri, options = {}) {
@@ -421,6 +488,7 @@ class PocketPagesLanguageCore {
       return null;
     }
 
+    this.ensureGeneratedState(sourceScript);
     this.syncDocumentOverride(sourceScript, {
       ...options,
       prepareVirtualCode: true,
@@ -458,7 +526,7 @@ class PocketPagesLanguageCore {
 
   getFeatureOwnersAtOffset(uri, offset, capabilityName, options = {}) {
     const sourceScript = this.getSourceScript(uri);
-    if (!sourceScript || !sourceScript.generated) {
+    if (!sourceScript || !this.ensureGeneratedState(sourceScript)) {
       return [];
     }
 
@@ -497,7 +565,7 @@ class PocketPagesLanguageCore {
 
   hasFeatureCoverageForRange(uri, start, end, capabilityName, options = {}) {
     const sourceScript = this.getSourceScript(uri);
-    if (!sourceScript || !sourceScript.generated) {
+    if (!sourceScript || !this.ensureGeneratedState(sourceScript)) {
       return false;
     }
 
@@ -542,6 +610,10 @@ class PocketPagesLanguageCore {
       return;
     }
 
+    if (options.prepareVirtualCode !== false) {
+      this.ensureGeneratedState(sourceScript);
+    }
+
     const virtualCode = sourceScript.generated.root;
     const service = this.manager.getServiceForFile(virtualCode.filePath);
     if (!service) {
@@ -558,7 +630,8 @@ class PocketPagesLanguageCore {
       skipUnrelatedRegions: options.skipUnrelatedRegions === true,
       skipStaticRefresh: options.skipStaticRefresh === true,
     };
-    service.setDocumentOverride(virtualCode.filePath, virtualCode.getText(), syncOptions);
+    const documentText = readSnapshotText(sourceScript.snapshot);
+    service.setDocumentOverride(virtualCode.filePath, documentText, syncOptions);
     if (options.prepareVirtualCode === false) {
       if (typeof service.clearPreparedDocumentState === "function") {
         service.clearPreparedDocumentState(virtualCode.filePath);
@@ -569,7 +642,7 @@ class PocketPagesLanguageCore {
     if (typeof service.syncPreparedDocumentVirtualCode === "function") {
       service.syncPreparedDocumentVirtualCode(
         virtualCode.filePath,
-        virtualCode.getText(),
+        documentText,
         virtualCode,
         syncOptions
       );
@@ -640,12 +713,23 @@ class PocketPagesLanguageCore {
     const affectedUris = [];
 
     for (const sourceScript of this.sourceScripts.values()) {
-      const virtualCode = sourceScript.generated && sourceScript.generated.root;
+      const currentVirtualCode = sourceScript.generated && sourceScript.generated.root;
+      if (!currentVirtualCode) {
+        continue;
+      }
+
+      let service = this.manager.getServiceForFile(currentVirtualCode.filePath);
+      if (!service || (targetService && service !== targetService)) {
+        continue;
+      }
+
+      const generated = this.ensureGeneratedState(sourceScript);
+      const virtualCode = generated && generated.root;
       if (!virtualCode) {
         continue;
       }
 
-      const service = this.manager.getServiceForFile(virtualCode.filePath);
+      service = this.manager.getServiceForFile(virtualCode.filePath);
       if (!service || (targetService && service !== targetService)) {
         continue;
       }
@@ -654,11 +738,12 @@ class PocketPagesLanguageCore {
         uri: sourceScript.id,
         version: sourceScript.version,
       };
-      service.setDocumentOverride(virtualCode.filePath, virtualCode.getText(), syncOptions);
+      const documentText = readSnapshotText(sourceScript.snapshot);
+      service.setDocumentOverride(virtualCode.filePath, documentText, syncOptions);
       if (typeof service.syncPreparedDocumentVirtualCode === "function") {
         service.syncPreparedDocumentVirtualCode(
           virtualCode.filePath,
-          virtualCode.getText(),
+          documentText,
           virtualCode,
           syncOptions
         );

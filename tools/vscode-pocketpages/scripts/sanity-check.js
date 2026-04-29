@@ -2088,6 +2088,12 @@ redirect('/boards')
       return originalSyncPreparedDocumentVirtualCode(...args)
     }
     try {
+      const syncSkipSourceScriptBefore = syncSkipCore.getSourceScript(syncSkipDocument.uri)
+      const syncSkipGeneratedBefore =
+        syncSkipSourceScriptBefore &&
+        syncSkipSourceScriptBefore.generated &&
+        syncSkipSourceScriptBefore.generated.root
+      const syncSkipGeneratedTextBefore = syncSkipGeneratedBefore ? syncSkipGeneratedBefore.getText() : ''
       syncSkipCore.updateDocument({
         uri: syncSkipDocument.uri,
         languageId: 'ejs',
@@ -2098,6 +2104,25 @@ redirect('/boards')
       })
       if (preparedSyncCount !== 0 || syncSkipService.preparedDocumentStates.has(normalizeFilePath(fixture.boardsFilePath))) {
         throw new Error(`Expected updateDocument(..., prepareVirtualCode:false) to skip prepared virtual-code sync. count=${preparedSyncCount}`)
+      }
+      const syncSkipSourceScriptAfter = syncSkipCore.getSourceScript(syncSkipDocument.uri)
+      const syncSkipGeneratedAfter =
+        syncSkipSourceScriptAfter &&
+        syncSkipSourceScriptAfter.generated &&
+        syncSkipSourceScriptAfter.generated.root
+      if (
+        syncSkipGeneratedAfter !== syncSkipGeneratedBefore ||
+        syncSkipGeneratedAfter.getText() !== syncSkipGeneratedTextBefore ||
+        syncSkipSourceScriptAfter.generatedStale !== true
+      ) {
+        throw new Error(
+          `Expected updateDocument(..., prepareVirtualCode:false) to defer generated virtual-code rebuild. Got: ${JSON.stringify({
+            sameRoot: syncSkipGeneratedAfter === syncSkipGeneratedBefore,
+            beforeLength: syncSkipGeneratedTextBefore.length,
+            afterLength: syncSkipGeneratedAfter && syncSkipGeneratedAfter.getText().length,
+            generatedStale: syncSkipSourceScriptAfter && syncSkipSourceScriptAfter.generatedStale,
+          })}`
+        )
       }
       const syncSkipSnapshot = syncSkipService.getDocumentSnapshot(fixture.boardsFilePath)
       if (
@@ -2146,6 +2171,23 @@ redirect('/boards')
       if (preparedSyncCount !== 1 || !syncSkipService.preparedDocumentStates.has(normalizeFilePath(fixture.boardsFilePath))) {
         throw new Error(`Expected prepareDocument() to restore prepared virtual-code sync on demand. count=${preparedSyncCount}`)
       }
+      const syncSkipSourceScriptPrepared = syncSkipCore.getSourceScript(syncSkipDocument.uri)
+      const syncSkipGeneratedPrepared =
+        syncSkipSourceScriptPrepared &&
+        syncSkipSourceScriptPrepared.generated &&
+        syncSkipSourceScriptPrepared.generated.root
+      if (
+        !syncSkipGeneratedPrepared ||
+        !syncSkipGeneratedPrepared.getText().includes('<div>changed</div>') ||
+        syncSkipSourceScriptPrepared.generatedStale === true
+      ) {
+        throw new Error(
+          `Expected prepareDocument() to rebuild stale generated virtual-code on demand. Got: ${JSON.stringify({
+            generatedTextLength: syncSkipGeneratedPrepared && syncSkipGeneratedPrepared.getText().length,
+            generatedStale: syncSkipSourceScriptPrepared && syncSkipSourceScriptPrepared.generatedStale,
+          })}`
+        )
+      }
       const preparedOnlyProfile = {}
       const preparedOnlyState = syncSkipService.getVirtualStateAtOffset(
         fixture.boardsFilePath,
@@ -2177,6 +2219,86 @@ redirect('/boards')
       }
     } finally {
       syncSkipService.syncPreparedDocumentVirtualCode = originalSyncPreparedDocumentVirtualCode
+    }
+
+    const reloadStaleCore = new PocketPagesLanguageCore()
+    const reloadStaleUri = URI.file(fixture.boardsFilePath).toString()
+    const reloadStaleTextBefore = laneDiagnosticsText
+    const reloadStaleTextAfter = `${laneDiagnosticsText}\n<div>reload stale marker</div>\n`
+    reloadStaleCore.openDocument({
+      uri: reloadStaleUri,
+      languageId: 'ejs',
+      version: 1,
+      text: reloadStaleTextBefore,
+    })
+    const reloadStaleContext = reloadStaleCore.getDocumentContextByUri(reloadStaleUri)
+    const reloadStaleService = reloadStaleContext && reloadStaleContext.service
+    if (!reloadStaleService) {
+      throw new Error('Expected reload-stale smoke context to expose a language service.')
+    }
+    const reloadStaleSourceScriptBefore = reloadStaleCore.getSourceScript(reloadStaleUri)
+    const reloadStaleGeneratedBefore =
+      reloadStaleSourceScriptBefore &&
+      reloadStaleSourceScriptBefore.generated &&
+      reloadStaleSourceScriptBefore.generated.root
+    reloadStaleCore.updateDocument({
+      uri: reloadStaleUri,
+      languageId: 'ejs',
+      version: 2,
+      text: reloadStaleTextAfter,
+    }, {
+      prepareVirtualCode: false,
+    })
+    const reloadStaleSourceScriptChanged = reloadStaleCore.getSourceScript(reloadStaleUri)
+    if (
+      !reloadStaleSourceScriptChanged ||
+      reloadStaleSourceScriptChanged.generatedStale !== true ||
+      !reloadStaleSourceScriptChanged.generated ||
+      reloadStaleSourceScriptChanged.generated.root !== reloadStaleGeneratedBefore
+    ) {
+      throw new Error(
+        `Expected reload-stale setup to keep stale generated virtual code before reload. Got: ${JSON.stringify({
+          generatedStale: reloadStaleSourceScriptChanged && reloadStaleSourceScriptChanged.generatedStale,
+          sameRoot:
+            reloadStaleSourceScriptChanged &&
+            reloadStaleSourceScriptChanged.generated &&
+            reloadStaleSourceScriptChanged.generated.root === reloadStaleGeneratedBefore,
+        })}`
+      )
+    }
+    const reloadStaleResult = reloadStaleCore.reloadCachesForAppRoot(fixture.appRoot)
+    const reloadStaleSnapshot = reloadStaleService.getDocumentSnapshot(fixture.boardsFilePath)
+    const reloadStaleSourceScriptReloaded = reloadStaleCore.getSourceScript(reloadStaleUri)
+    const reloadStaleGeneratedReloaded =
+      reloadStaleSourceScriptReloaded &&
+      reloadStaleSourceScriptReloaded.generated &&
+      reloadStaleSourceScriptReloaded.generated.root
+    if (!reloadStaleResult.affectedUris.includes(reloadStaleUri)) {
+      throw new Error(`Expected cache reload to resync the changed open document. Got: ${JSON.stringify(reloadStaleResult)}`)
+    }
+    if (
+      !reloadStaleSnapshot ||
+      reloadStaleSnapshot.text !== reloadStaleTextAfter ||
+      reloadStaleSnapshot.lspVersion !== 2
+    ) {
+      throw new Error(
+        `Expected cache reload resync to preserve the current source snapshot text. Got: ${JSON.stringify(reloadStaleSnapshot && {
+          lspVersion: reloadStaleSnapshot.lspVersion,
+          text: reloadStaleSnapshot.text,
+        })}`
+      )
+    }
+    if (
+      !reloadStaleGeneratedReloaded ||
+      !reloadStaleGeneratedReloaded.getText().includes('reload stale marker') ||
+      reloadStaleSourceScriptReloaded.generatedStale === true
+    ) {
+      throw new Error(
+        `Expected cache reload resync to rebuild stale generated virtual code from the current source snapshot. Got: ${JSON.stringify({
+          generatedTextLength: reloadStaleGeneratedReloaded && reloadStaleGeneratedReloaded.getText().length,
+          generatedStale: reloadStaleSourceScriptReloaded && reloadStaleSourceScriptReloaded.generatedStale,
+        })}`
+      )
     }
 
     if (fs.existsSync(realHighlightsFilePath)) {
@@ -2524,6 +2646,38 @@ const boardService = resolve('board-service')
       )
     ) {
       throw new Error('Expected include() path literals to stay outside TS completion ownership mappings.')
+    }
+    const fineGrainedServerBlock = extractServerBlocks(fineGrainedText)[0]
+    if (
+      !fineGrainedServerBlock ||
+      !fineGrainedCore.isFeatureEnabledAtOffset(
+        fineGrainedUri,
+        fineGrainedServerBlock.contentEnd,
+        'completion'
+      )
+    ) {
+      throw new Error('Expected server block end offset to stay inside TS completion ownership mappings.')
+    }
+    const emptyServerText = `<script server></script>
+`
+    const emptyServerUri = URI.file(fixture.signInFilePath).toString()
+    const emptyServerCore = new PocketPagesLanguageCore()
+    emptyServerCore.openDocument({
+      uri: emptyServerUri,
+      languageId: 'ejs',
+      version: 1,
+      text: emptyServerText,
+    })
+    const emptyServerBlock = extractServerBlocks(emptyServerText)[0]
+    if (
+      !emptyServerBlock ||
+      !emptyServerCore.isFeatureEnabledAtOffset(
+        emptyServerUri,
+        emptyServerBlock.contentEnd,
+        'completion'
+      )
+    ) {
+      throw new Error('Expected empty server block offset to have TS completion ownership.')
     }
     if (
       !fineGrainedCore.hasFeatureCoverageForRange(
@@ -3796,6 +3950,69 @@ laneReuseValue.toFixed()
       laneReuseService.collectScriptSchemaDiagnostics = originalLaneReuseScriptSchemaDiagnostics
       laneReuseService.collectProjectRuleAgentsDiagnostics = originalLaneReuseProjectRuleAgentsDiagnostics
       laneReuseService.collectProjectRuleIncludeCallerDiagnostics = originalLaneReuseProjectRuleIncludeCallerDiagnostics
+    }
+
+    const dependencyLaneCore = new PocketPagesLanguageCore()
+    const dependencyLaneText = `<script server>
+const boardService = resolve('board-service')
+boardService.readAuthState({ request })
+</script>
+`
+    const dependencyLaneUri = URI.file(fixture.boardsFilePath).toString()
+    dependencyLaneCore.openDocument({
+      uri: dependencyLaneUri,
+      languageId: 'ejs',
+      version: 1,
+      text: dependencyLaneText,
+    })
+    const dependencyLaneContext = dependencyLaneCore.getDocumentContextByUri(dependencyLaneUri)
+    const dependencyLaneService = dependencyLaneContext && dependencyLaneContext.service
+    if (!dependencyLaneService) {
+      throw new Error('Expected dependency lane smoke context to expose a language service.')
+    }
+    const dependencyLaneFirstMetadata = dependencyLaneService.getDiagnosticsLaneMetadata(
+      fixture.boardsFilePath,
+      dependencyLaneText
+    )
+    const dependencyLaneFirstResultIds = dependencyLaneService.getDiagnosticsLaneResultIds(
+      fixture.boardsFilePath,
+      dependencyLaneText,
+      { laneMetadata: dependencyLaneFirstMetadata }
+    )
+    const originalBoardServiceText = fs.readFileSync(fixture.boardServiceFilePath, 'utf8')
+    try {
+      writeFile(
+        fixture.boardServiceFilePath,
+        `${originalBoardServiceText}
+module.exports.__diagnosticsLaneProbe = 1
+`
+      )
+      dependencyLaneService.invalidateManagedFile(fixture.boardServiceFilePath, { type: 'change' })
+      const dependencyLaneSecondMetadata = dependencyLaneService.getDiagnosticsLaneMetadata(
+        fixture.boardsFilePath,
+        dependencyLaneText
+      )
+      const dependencyLaneSecondResultIds = dependencyLaneService.getDiagnosticsLaneResultIds(
+        fixture.boardsFilePath,
+        dependencyLaneText,
+        { laneMetadata: dependencyLaneSecondMetadata }
+      )
+      if (
+        dependencyLaneSecondResultIds.server === dependencyLaneFirstResultIds.server ||
+        dependencyLaneSecondResultIds.template === dependencyLaneFirstResultIds.template
+      ) {
+        throw new Error(
+          `Expected resolved module changes to invalidate TypeScript diagnostics lanes. Got: ${JSON.stringify({
+            firstServer: dependencyLaneFirstResultIds.server,
+            secondServer: dependencyLaneSecondResultIds.server,
+            firstTemplate: dependencyLaneFirstResultIds.template,
+            secondTemplate: dependencyLaneSecondResultIds.template,
+          })}`
+        )
+      }
+    } finally {
+      writeFile(fixture.boardServiceFilePath, originalBoardServiceText)
+      dependencyLaneService.invalidateManagedFile(fixture.boardServiceFilePath, { type: 'change' })
     }
 
     const regionRemapCore = new PocketPagesLanguageCore()
@@ -5831,6 +6048,23 @@ boardService.readAuthState(
     if (service.projectIndex.includeLocalsCache !== null || service.projectIndex.schemaCache !== null || service.projectIndex.collectionMethodCache !== null) {
       throw new Error('Expected resetCaches() to clear PocketPages project index caches.')
     }
+    const resolveCompletionAfterReset = service.getCustomCompletionData(fixture.boardsFilePath, resolveText, resolveOffset)
+    if (!resolveCompletionAfterReset || service.projectIndex.collectionMethodCache !== null) {
+      throw new Error('Expected path completion to avoid initializing schema collection method cache.')
+    }
+    const rawOverrideCacheKeyMarker = 'raw-override-cache-key-marker'
+    service.projectIndex.getIncludeLocalsState({
+      overrides: {
+        [fixture.boardsFilePath]: `<script server>\n// ${rawOverrideCacheKeyMarker}\n</script>\n`,
+      },
+      readFileText: (filePath) => service.getDocumentText(filePath),
+    })
+    if (
+      !service.projectIndex.includeLocalsCache ||
+      service.projectIndex.includeLocalsCache.snapshotKey.includes(rawOverrideCacheKeyMarker)
+    ) {
+      throw new Error('Expected include locals cache key to use a compact override identity instead of raw document text.')
+    }
     const includeLocalCompletionAfterReset = service.getCustomCompletionData(
       fixture.boardsFilePath,
       includeLocalCompletionText,
@@ -7171,8 +7405,15 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.middlewareFilePath)
     )
 
-    if (moduleInitiatedBoardServiceEdits.length !== 0) {
-      throw new Error(`Expected JS-initiated custom rename edits to skip module file edits. Got: ${JSON.stringify(moduleInitiatedBoardServiceEdits)}`)
+    if (moduleInitiatedBoardServiceEdits.length !== 2) {
+      throw new Error(`Expected JS-initiated custom rename edits to update module declaration + export. Got: ${JSON.stringify(moduleInitiatedBoardServiceEdits)}`)
+    }
+    const renamedModuleInitiatedBoardServiceText = applyEditsToText(moduleRenameText, moduleInitiatedBoardServiceEdits)
+    if (
+      !renamedModuleInitiatedBoardServiceText.includes('function readSessionState(params)') ||
+      !renamedModuleInitiatedBoardServiceText.includes('module.exports = {\n  readSessionState,')
+    ) {
+      throw new Error(`Expected JS-initiated custom rename to update module file text. Got: ${renamedModuleInitiatedBoardServiceText}`)
     }
     if (moduleInitiatedRenameCheckEdits.length !== 1) {
       throw new Error(`Expected JS-initiated rename to update EJS usage. Got: ${JSON.stringify(moduleInitiatedRenameCheckEdits)}`)
@@ -9888,6 +10129,30 @@ const authState = resolve('auth-service')
       fixture.signInFilePath,
       fixture.boardServiceFilePath,
     ]
+    const pluginDirectoryWatchers = []
+    let pluginBaseDisposed = false
+    function triggerPluginFileWatch(filePath) {
+      const normalizedFilePath = normalizeFilePath(filePath)
+      let triggered = 0
+      for (const watcher of pluginDirectoryWatchers) {
+        if (watcher.closed) {
+          continue
+        }
+
+        const normalizedDirectory = normalizeFilePath(watcher.directory)
+        const matched = watcher.recursive
+          ? normalizedFilePath === normalizedDirectory || normalizedFilePath.startsWith(`${normalizedDirectory}/`)
+          : normalizeFilePath(path.dirname(filePath)) === normalizedDirectory
+        if (!matched) {
+          continue
+        }
+
+        watcher.callback(filePath)
+        triggered += 1
+      }
+
+      return triggered
+    }
     const pluginBaseLanguageService = {
       getCompletionsAtPosition() {
         return null
@@ -9903,6 +10168,9 @@ const authState = resolve('auth-service')
       },
       getDefinitionAndBoundSpan() {
         return null
+      },
+      dispose() {
+        pluginBaseDisposed = true
       },
     }
     const pluginHost = {
@@ -9945,13 +10213,33 @@ const authState = resolve('auth-service')
       getCurrentDirectory() {
         return fixture.appRoot
       },
+      projectService: {
+        host: {
+          watchDirectory(directory, callback, recursive) {
+            const watcher = {
+              directory,
+              callback,
+              recursive: recursive === true,
+              closed: false,
+            }
+            pluginDirectoryWatchers.push(watcher)
+            return {
+              close() {
+                watcher.closed = true
+              },
+            }
+          },
+        },
+      },
     }
     const originalPluginReloadCachesForAppRoot = PocketPagesLanguageCore.prototype.reloadCachesForAppRoot
     const originalPluginCloseDocument = PocketPagesLanguageCore.prototype.closeDocument
+    const originalPluginUpdateDocument = PocketPagesLanguageCore.prototype.updateDocument
     const originalPluginDateNow = Date.now
     const originalPluginReaddirSync = fs.readdirSync
     const pluginReloadAppRoots = []
     const pluginClosedUris = []
+    const pluginUpdatedUris = []
     let pluginPagesReaddirCount = 0
     Date.now = function patchedPluginDateNow() {
       return pluginNow
@@ -9970,6 +10258,10 @@ const authState = resolve('auth-service')
     PocketPagesLanguageCore.prototype.closeDocument = function patchedCloseDocument(uri) {
       pluginClosedUris.push(uri)
       return originalPluginCloseDocument.call(this, uri)
+    }
+    PocketPagesLanguageCore.prototype.updateDocument = function patchedUpdateDocument(document, options) {
+      pluginUpdatedUris.push(document && document.uri)
+      return originalPluginUpdateDocument.call(this, document, options)
     }
     try {
       const pluginProxy = pluginRuntimeFactory.create({
@@ -9993,7 +10285,27 @@ const authState = resolve('auth-service')
         throw new Error(`Expected empty editor snapshot to bypass stale disk quick info. Got: ${JSON.stringify(emptySignInQuickInfo)}`)
       }
       pluginSnapshotOverrides.delete(fixture.signInFilePath)
+      const pluginUpdateCountBeforeContextCache = pluginUpdatedUris.length
       pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      const pluginUpdateCountAfterContextCacheWarmup = pluginUpdatedUris.length
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (
+        !pluginDirectoryWatchers.some(
+          (watcher) =>
+            watcher.recursive === true &&
+            normalizeFilePath(watcher.directory).endsWith('/pb_hooks/pages')
+        )
+      ) {
+        throw new Error(`Expected TS plugin runtime to register a recursive pages watcher. Got: ${JSON.stringify(pluginDirectoryWatchers)}`)
+      }
+      if (
+        pluginUpdateCountAfterContextCacheWarmup <= pluginUpdateCountBeforeContextCache ||
+        pluginUpdatedUris.length !== pluginUpdateCountAfterContextCacheWarmup
+      ) {
+        throw new Error(
+          `Expected TS plugin runtime to reuse unchanged EJS document context. Before=${pluginUpdateCountBeforeContextCache}, afterWarmup=${pluginUpdateCountAfterContextCacheWarmup}, afterCached=${pluginUpdatedUris.length}`
+        )
+      }
       const cachedTrackedFileListReaddirCount = pluginPagesReaddirCount
       pluginProjectVersion = '2'
       pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
@@ -10115,15 +10427,68 @@ const authState = resolve('auth-service')
       }
 
       pluginNow += 2500
-      pluginProjectVersion = '9'
       pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
       if (pluginReloadAppRoots.length === pluginReloadCountBeforeHiddenFile) {
         throw new Error(
-          `Expected TS plugin runtime to pick up unknown new sibling files after the file-list scan window expires. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+          `Expected TS plugin runtime to pick up unknown new sibling files after the file-list scan window expires without a project version bump. Got: ${JSON.stringify(pluginReloadAppRoots)}`
         )
       }
       if (pluginPagesReaddirCount === pluginReaddirCountBeforeHiddenFile) {
         throw new Error('Expected TS plugin runtime to rescan the app file list after the scan window expires.')
+      }
+
+      const pluginWatchedTrackedFilePath = path.join(
+        fixture.appRoot,
+        'pb_hooks',
+        'pages',
+        '_private',
+        'plugin-watched-service.js'
+      )
+      const pluginReloadCountBeforeWatchedCreate = pluginReloadAppRoots.length
+      const pluginReaddirCountBeforeWatchedCreate = pluginPagesReaddirCount
+      writeFile(pluginWatchedTrackedFilePath, `module.exports = { watched: true }\n`)
+      if (triggerPluginFileWatch(pluginWatchedTrackedFilePath) === 0) {
+        throw new Error('Expected TS plugin watcher test to trigger at least one directory watcher for a new _private module.')
+      }
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginReloadAppRoots.length === pluginReloadCountBeforeWatchedCreate) {
+        throw new Error(
+          `Expected TS plugin watcher dirty state to pick up a new sibling file without a project version bump. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
+      }
+      if (pluginPagesReaddirCount === pluginReaddirCountBeforeWatchedCreate) {
+        throw new Error('Expected TS plugin watcher dirty state to force an app file-list rescan.')
+      }
+
+      const pluginReloadCountBeforeWatchedAsset = pluginReloadAppRoots.length
+      const pluginReaddirCountBeforeWatchedAsset = pluginPagesReaddirCount
+      writeFile(fixture.globalAssetFilePath, `console.log('reader watcher ignored')\n`)
+      triggerPluginFileWatch(fixture.globalAssetFilePath)
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (
+        pluginReloadAppRoots.length !== pluginReloadCountBeforeWatchedAsset ||
+        pluginPagesReaddirCount !== pluginReaddirCountBeforeWatchedAsset
+      ) {
+        throw new Error(
+          `Expected TS plugin watcher dirty state to ignore public page assets. Got: ${JSON.stringify({
+            reloadBefore: pluginReloadCountBeforeWatchedAsset,
+            reloadAfter: pluginReloadAppRoots.length,
+            readdirBefore: pluginReaddirCountBeforeWatchedAsset,
+            readdirAfter: pluginPagesReaddirCount,
+          })}`
+        )
+      }
+
+      const pluginReloadCountBeforeWatchedDelete = pluginReloadAppRoots.length
+      fs.rmSync(pluginWatchedTrackedFilePath, { force: true })
+      if (triggerPluginFileWatch(pluginWatchedTrackedFilePath) === 0) {
+        throw new Error('Expected TS plugin watcher test to trigger at least one directory watcher for a deleted _private module.')
+      }
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginReloadAppRoots.length === pluginReloadCountBeforeWatchedDelete) {
+        throw new Error(
+          `Expected TS plugin watcher dirty state to pick up a deleted sibling file without a project version bump. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
       }
 
       const pluginLruFiles = []
@@ -10146,11 +10511,20 @@ const authState = resolve('auth-service')
       if (!pluginClosedUris.length) {
         throw new Error('Expected TS plugin runtime to prune visited EJS documents once the managed cache grows past the limit.')
       }
+      const openPluginWatcherCountBeforeDispose = pluginDirectoryWatchers.filter((watcher) => !watcher.closed).length
+      pluginProxy.dispose()
+      if (openPluginWatcherCountBeforeDispose > 0 && pluginDirectoryWatchers.some((watcher) => !watcher.closed)) {
+        throw new Error('Expected TS plugin runtime to close app directory watchers on dispose.')
+      }
+      if (!pluginBaseDisposed) {
+        throw new Error('Expected TS plugin runtime dispose to delegate to the base language service dispose.')
+      }
     } finally {
       fs.readdirSync = originalPluginReaddirSync
       Date.now = originalPluginDateNow
       PocketPagesLanguageCore.prototype.reloadCachesForAppRoot = originalPluginReloadCachesForAppRoot
       PocketPagesLanguageCore.prototype.closeDocument = originalPluginCloseDocument
+      PocketPagesLanguageCore.prototype.updateDocument = originalPluginUpdateDocument
     }
 
     if (!routeDocumentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/(site)/index.ejs'))) {

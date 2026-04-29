@@ -2601,6 +2601,40 @@ class ProjectLanguageService {
     ].join(":");
   }
 
+  getTypeScriptDependencyIdentity(filePath, documentText) {
+    const normalizedFilePath = normalizePath(filePath);
+    const analysisText = toAnalysisText(normalizedFilePath, documentText);
+    const dependencyTokens = new Set();
+
+    for (const requestPath of collectResolveRequestPaths(analysisText)) {
+      const targetFilePath = this.projectIndex.resolveResolveTarget(normalizedFilePath, requestPath);
+      if (targetFilePath && isScriptFile(targetFilePath)) {
+        const normalizedTargetFilePath = normalizePath(targetFilePath);
+        dependencyTokens.add(`resolve:${normalizedTargetFilePath}:${this.getDocumentSnapshotToken(normalizedTargetFilePath)}`);
+      }
+    }
+
+    for (const requireContext of collectStaticRequireCallContexts(analysisText, { filePath: normalizedFilePath })) {
+      const targetFilePath = this.projectIndex.resolveRequireTarget(
+        normalizedFilePath,
+        requireContext.value,
+        requireContext
+      );
+      if (targetFilePath && isScriptFile(targetFilePath)) {
+        const normalizedTargetFilePath = normalizePath(targetFilePath);
+        dependencyTokens.add(`require:${normalizedTargetFilePath}:${this.getDocumentSnapshotToken(normalizedTargetFilePath)}`);
+      }
+    }
+
+    if (isEjsFile(normalizedFilePath) && isPrivatePagesFile(normalizedFilePath)) {
+      dependencyTokens.add(`include-locals:${this.projectIndex.pagesContentVersion}`);
+    }
+
+    return dependencyTokens.size
+      ? `ts-deps:${[...dependencyTokens].sort().join("|")}`
+      : "ts-deps:none";
+  }
+
   getDiagnosticsLaneResultIds(filePath, documentText, options = {}) {
     const normalizedFilePath = normalizePath(filePath);
     const sourceIdentity = this.getDocumentTextIdentity(normalizedFilePath, documentText);
@@ -2617,6 +2651,9 @@ class ProjectLanguageService {
     const ambientLane = `ambient:${this.getAmbientSnapshotKey()}`;
     const structureLane = `structure:${this.projectIndex.pagesStructureVersion}`;
     const pagesContentLane = `pages:${this.projectIndex.pagesContentVersion}`;
+    const typeScriptDependencyLane = this.getTypeScriptDependencyIdentity(normalizedFilePath, documentText);
+    const preparedServerLane = `prepared-server:${this.getPreparedVirtualLaneIdentity(normalizedFilePath, documentText, "server")}`;
+    const preparedTemplateLane = `prepared-template:${this.getPreparedVirtualLaneIdentity(normalizedFilePath, documentText, "template")}`;
     const serverRegionLane = this.getDiagnosticsRegionLaneIdentity(laneMetadata.server);
     const templateRegionLane = this.getDiagnosticsRegionLaneIdentity(laneMetadata.template);
     const projectRuleAgentsLane = this.getDiagnosticsRegionLaneIdentity(laneMetadata["project-rule:agents"]);
@@ -2633,6 +2670,8 @@ class ProjectLanguageService {
               typeScriptMode,
               semanticMode,
               serverRegionLane,
+              preparedServerLane,
+              typeScriptDependencyLane,
               schemaTypeIdentity,
               structureLane,
               ambientLane,
@@ -2645,6 +2684,8 @@ class ProjectLanguageService {
               typeScriptMode,
               semanticMode,
               templateRegionLane,
+              preparedTemplateLane,
+              typeScriptDependencyLane,
               schemaTypeIdentity,
               structureLane,
               ambientLane,

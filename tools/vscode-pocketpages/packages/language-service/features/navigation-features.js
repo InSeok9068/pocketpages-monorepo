@@ -223,17 +223,15 @@ function createNavigationFeatureHandlers(deps) {
 
       const uniqueEdits = new Map();
 
-      if (renameInfo.source !== "module-export") {
-        for (const location of moduleRename.locations) {
-          const editKey = `${normalizePath(location.fileName)}:${location.textSpan.start}:${location.textSpan.start + location.textSpan.length}:${newName}`;
-          if (!uniqueEdits.has(editKey)) {
-            uniqueEdits.set(editKey, {
-              filePath: normalizePath(location.fileName),
-              start: location.textSpan.start,
-              end: location.textSpan.start + location.textSpan.length,
-              newText: `${location.prefixText || ""}${newName}${location.suffixText || ""}`,
-            });
-          }
+      for (const location of moduleRename.locations) {
+        const editKey = `${normalizePath(location.fileName)}:${location.textSpan.start}:${location.textSpan.start + location.textSpan.length}:${newName}`;
+        if (!uniqueEdits.has(editKey)) {
+          uniqueEdits.set(editKey, {
+            filePath: normalizePath(location.fileName),
+            start: location.textSpan.start,
+            end: location.textSpan.start + location.textSpan.length,
+            newText: `${location.prefixText || ""}${newName}${location.suffixText || ""}`,
+          });
         }
       }
 
