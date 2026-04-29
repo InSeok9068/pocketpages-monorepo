@@ -621,10 +621,15 @@ async function runLifecycleExecutionTest(repoRoot, fixture) {
       )
     }
 
-    startDeferred.resolve()
+    const pendingRefreshPromise = harness.controls.executeCommand('pocketpagesServerScript.refreshDiagnostics')
     await flushAsyncWork()
+    if (harness.controls.clientState.requestCalls.some((entry) => entry.method === REQUESTS.refreshDiagnostics)) {
+      throw new Error('Expected commands issued during LSP startup to wait until client.start() completes.')
+    }
 
-    await harness.controls.executeCommand('pocketpagesServerScript.refreshDiagnostics')
+    startDeferred.resolve()
+    await pendingRefreshPromise
+    await flushAsyncWork()
     if (harness.controls.clientState.startCalls !== 1) {
       throw new Error(
         `Expected PocketPages commands to reuse the active LSP client after bootstrap. Got: ${harness.controls.clientState.startCalls}`

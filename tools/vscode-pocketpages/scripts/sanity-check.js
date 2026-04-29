@@ -9678,6 +9678,7 @@ const authState = resolve('auth-service')
 
     const pluginRuntimeFactory = initTypeScriptPlugin({ typescript: ts })
     let pluginProjectVersion = '1'
+    const pluginSnapshotOverrides = new Map()
     const pluginBaseLanguageService = {
       getCompletionsAtPosition() {
         return null
@@ -9697,6 +9698,10 @@ const authState = resolve('auth-service')
     }
     const pluginHost = {
       getScriptSnapshot(fileName) {
+        if (pluginSnapshotOverrides.has(fileName)) {
+          return ts.ScriptSnapshot.fromString(pluginSnapshotOverrides.get(fileName))
+        }
+
         if (!fs.existsSync(fileName)) {
           return undefined
         }
@@ -9747,6 +9752,22 @@ const authState = resolve('auth-service')
         languageService: pluginBaseLanguageService,
         project: pluginProject,
       })
+      const originalSignInText = fs.readFileSync(fixture.signInFilePath, 'utf8')
+      pluginSnapshotOverrides.set(fixture.signInFilePath, '')
+      const emptySignInSnapshot = pluginHost.getScriptSnapshot(fixture.signInFilePath)
+      if (!emptySignInSnapshot || emptySignInSnapshot.getLength() !== 0) {
+        throw new Error(
+          `Expected TS plugin host to preserve an empty editor snapshot instead of falling back to disk. Got length=${emptySignInSnapshot && emptySignInSnapshot.getLength()}`
+        )
+      }
+      const emptySignInQuickInfo = pluginProxy.getQuickInfoAtPosition(
+        fixture.signInFilePath,
+        originalSignInText.indexOf('signInWithPassword')
+      )
+      if (emptySignInQuickInfo) {
+        throw new Error(`Expected empty editor snapshot to bypass stale disk quick info. Got: ${JSON.stringify(emptySignInQuickInfo)}`)
+      }
+      pluginSnapshotOverrides.delete(fixture.signInFilePath)
       pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
       const originalBoardServiceText = fs.readFileSync(fixture.boardServiceFilePath, 'utf8')
       writeFile(

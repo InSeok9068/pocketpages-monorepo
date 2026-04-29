@@ -294,7 +294,7 @@ function init(modules) {
       function readOriginalDocumentText(fileName) {
         const snapshot = baseGetScriptSnapshot ? baseGetScriptSnapshot(fileName) : null;
         const snapshotText = readSnapshotText(snapshot);
-        if (snapshotText) {
+        if (snapshot) {
           return snapshotText;
         }
 

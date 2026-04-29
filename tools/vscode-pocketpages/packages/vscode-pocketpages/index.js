@@ -601,21 +601,22 @@ async function handleLspStartupFailure(context, error) {
 }
 
 async function ensureLspStarted(context) {
+  if (lspStartPromise) {
+    await lspStartPromise;
+    return client;
+  }
+
   if (client) {
     return client;
   }
 
-  if (!lspStartPromise) {
-    lspStartPromise = activateLsp(context)
-      .catch(async (error) => {
-        await handleLspStartupFailure(context, error);
-      })
-      .finally(() => {
-        if (!client) {
-          lspStartPromise = null;
-        }
-      });
-  }
+  lspStartPromise = activateLsp(context)
+    .catch(async (error) => {
+      await handleLspStartupFailure(context, error);
+    })
+    .finally(() => {
+      lspStartPromise = null;
+    });
 
   await lspStartPromise;
   return client;
