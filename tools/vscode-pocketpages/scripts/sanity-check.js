@@ -8296,6 +8296,102 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
       throw new Error(`Expected module export references to include JS and EJS usages. Got: ${JSON.stringify(moduleExportReferences)}`)
     }
 
+    const requiredModuleText = fs.readFileSync(fixture.importedCollectionConstantsFilePath, 'utf8')
+    const requiredModuleOffset = requiredModuleText.indexOf('CACHE_COLLECTION_NAME') + 2
+    const requiredModuleReferences = service.getReferenceTargets(
+      fixture.importedCollectionConstantsFilePath,
+      requiredModuleText,
+      requiredModuleOffset,
+      { includeDeclaration: true }
+    )
+    const requiredConsumerReferences = (requiredModuleReferences || []).filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.importedCollectionConsumerFilePath)
+    )
+    if (!requiredModuleReferences || requiredConsumerReferences.length !== 3) {
+      throw new Error(`Expected CommonJS require() member references to include binding and usages. Got: ${JSON.stringify(requiredModuleReferences)}`)
+    }
+
+    const requiredConsumerText = fs.readFileSync(fixture.importedCollectionConsumerFilePath, 'utf8')
+    const requiredUsageOffset = requiredConsumerText.indexOf('CACHE_COLLECTION_NAME,') + 2
+    const requiredMemberDefinition = service.getDefinitionTarget(
+      fixture.importedCollectionConsumerFilePath,
+      requiredConsumerText,
+      requiredUsageOffset
+    )
+    if (
+      !requiredMemberDefinition ||
+      typeof requiredMemberDefinition === 'string' ||
+      normalizeFilePath(requiredMemberDefinition.filePath) !== normalizeFilePath(fixture.importedCollectionConstantsFilePath)
+    ) {
+      throw new Error(`Expected CommonJS require() member definition to resolve to exported member. Got: ${JSON.stringify(requiredMemberDefinition)}`)
+    }
+
+    const requiredUsageReferences = service.getReferenceTargets(
+      fixture.importedCollectionConsumerFilePath,
+      requiredConsumerText,
+      requiredUsageOffset,
+      { includeDeclaration: true }
+    )
+    if (
+      !requiredUsageReferences ||
+      !requiredUsageReferences.some(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.importedCollectionConstantsFilePath)
+      ) ||
+      requiredUsageReferences.filter(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.importedCollectionConsumerFilePath)
+      ).length !== 3
+    ) {
+      throw new Error(`Expected CommonJS require() member references from usage to include export and local usages. Got: ${JSON.stringify(requiredUsageReferences)}`)
+    }
+
+    const requiredModuleRenameEdits = service.getRenameEdits(
+      fixture.importedCollectionConstantsFilePath,
+      requiredModuleText,
+      requiredModuleOffset,
+      'BOARD_COLLECTION_NAME'
+    )
+    if (!requiredModuleRenameEdits || !requiredModuleRenameEdits.canRename) {
+      throw new Error(`Expected CommonJS require() member rename from export to be available. Got: ${JSON.stringify(requiredModuleRenameEdits)}`)
+    }
+
+    const requiredModuleFileRenameEdits = requiredModuleRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.importedCollectionConstantsFilePath)
+    )
+    const requiredConsumerRenameEdits = requiredModuleRenameEdits.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.importedCollectionConsumerFilePath)
+    )
+    if (requiredModuleFileRenameEdits.length < 2 || requiredConsumerRenameEdits.length !== 3) {
+      throw new Error(`Expected CommonJS require() rename to update export and require consumer. Got: ${JSON.stringify(requiredModuleRenameEdits)}`)
+    }
+
+    const renamedRequiredConsumerText = applyEditsToText(requiredConsumerText, requiredConsumerRenameEdits)
+    if (
+      !renamedRequiredConsumerText.includes("const { BOARD_COLLECTION_NAME } = require('./collection-constants')") ||
+      renamedRequiredConsumerText.includes('CACHE_COLLECTION_NAME')
+    ) {
+      throw new Error(`Expected CommonJS require() rename to update binding and usages. Got: ${renamedRequiredConsumerText}`)
+    }
+
+    const requiredUsageRenameEdits = service.getRenameEdits(
+      fixture.importedCollectionConsumerFilePath,
+      requiredConsumerText,
+      requiredUsageOffset,
+      'BOARD_COLLECTION_NAME'
+    )
+    if (!requiredUsageRenameEdits || !requiredUsageRenameEdits.canRename) {
+      throw new Error(`Expected CommonJS require() member rename from usage to be available. Got: ${JSON.stringify(requiredUsageRenameEdits)}`)
+    }
+    if (
+      requiredUsageRenameEdits.edits.filter(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.importedCollectionConstantsFilePath)
+      ).length < 2 ||
+      requiredUsageRenameEdits.edits.filter(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.importedCollectionConsumerFilePath)
+      ).length !== 3
+    ) {
+      throw new Error(`Expected CommonJS require() rename from usage to update export and require consumer. Got: ${JSON.stringify(requiredUsageRenameEdits)}`)
+    }
+
     const overriddenBoardServiceText = `/**
  * @param {{ request: { method: string } }} params
  * @returns {types.FixtureAuthState}

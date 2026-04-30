@@ -53,7 +53,22 @@ function createNavigationFeatureHandlers(deps) {
         offset
       );
       if (!resolvedModuleMemberContext) {
-        return null;
+        const requiredModuleMemberContext = service.getRequiredModuleMemberContextForNavigation(
+          filePath,
+          documentText,
+          offset
+        );
+        const requiredModuleDefinitionInfo = service.getRequiredModuleMemberDefinitionInfo(
+          filePath,
+          requiredModuleMemberContext
+        );
+        return requiredModuleDefinitionInfo
+          ? {
+              filePath: requiredModuleDefinitionInfo.filePath,
+              line: requiredModuleDefinitionInfo.line,
+              character: requiredModuleDefinitionInfo.character,
+            }
+          : null;
       }
 
       const moduleFilePath = service.projectIndex.resolveResolveTarget(
@@ -84,6 +99,44 @@ function createNavigationFeatureHandlers(deps) {
         offset
       );
       if (!resolvedModuleMemberContext) {
+        const requiredModuleMemberContext = service.getRequiredModuleMemberContextForNavigation(
+          filePath,
+          documentText,
+          offset
+        );
+        if (requiredModuleMemberContext && requiredModuleMemberContext.canRenameModuleMember !== false) {
+          const requiredModuleDefinitionInfo = service.getRequiredModuleMemberDefinitionInfo(
+            filePath,
+            requiredModuleMemberContext
+          );
+          if (requiredModuleDefinitionInfo) {
+            const requiredModuleRename = service.getModuleRenameLocations(requiredModuleDefinitionInfo, {
+              [normalizePath(requiredModuleDefinitionInfo.filePath)]: service.getDocumentOverride(
+                requiredModuleDefinitionInfo.filePath
+              ),
+            });
+            if (!requiredModuleRename.canRename) {
+              return {
+                canRename: false,
+                localizedErrorMessage:
+                  requiredModuleRename.localizedErrorMessage || "Unable to rename this module member.",
+                start: requiredModuleMemberContext.start,
+                end: requiredModuleMemberContext.end,
+                placeholder: requiredModuleMemberContext.memberName,
+              };
+            }
+
+            return {
+              canRename: true,
+              source: requiredModuleMemberContext.source,
+              start: requiredModuleMemberContext.start,
+              end: requiredModuleMemberContext.end,
+              placeholder: requiredModuleDefinitionInfo.memberName,
+              moduleDefinitionInfo: requiredModuleDefinitionInfo,
+            };
+          }
+        }
+
         const moduleExportContext = service.getModuleExportRenameContext(filePath, documentText, offset);
         return moduleExportContext
           ? {
@@ -247,6 +300,18 @@ function createNavigationFeatureHandlers(deps) {
         }
       }
 
+      for (const edit of service.collectRequiredModuleMemberUsageEdits(
+        renameInfo.moduleDefinitionInfo.filePath,
+        renameInfo.placeholder,
+        newName,
+        service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
+      )) {
+        const editKey = `${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`;
+        if (!uniqueEdits.has(editKey)) {
+          uniqueEdits.set(editKey, edit);
+        }
+      }
+
       return {
         canRename: true,
         edits: [...uniqueEdits.values()],
@@ -366,9 +431,29 @@ function createNavigationFeatureHandlers(deps) {
         );
       }
 
-      const renameInfo = service.getCustomRenameInfo(filePath, documentText, offset);
+      let renameInfo = service.getCustomRenameInfo(filePath, documentText, offset);
       if (!renameInfo) {
-        return null;
+        const requiredModuleMemberContext = service.getRequiredModuleMemberContextForNavigation(
+          filePath,
+          documentText,
+          offset
+        );
+        const requiredModuleDefinitionInfo = service.getRequiredModuleMemberDefinitionInfo(
+          filePath,
+          requiredModuleMemberContext
+        );
+        if (!requiredModuleDefinitionInfo) {
+          return null;
+        }
+
+        renameInfo = {
+          canRename: true,
+          source: "required-module-member",
+          start: requiredModuleMemberContext.start,
+          end: requiredModuleMemberContext.end,
+          placeholder: requiredModuleDefinitionInfo.memberName,
+          moduleDefinitionInfo: requiredModuleDefinitionInfo,
+        };
       }
 
       const moduleRename = service.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, service.getPagesCodeOverrides({
@@ -414,6 +499,14 @@ function createNavigationFeatureHandlers(deps) {
       }
 
       for (const location of service.collectResolvedModuleMemberUsageLocations(
+        renameInfo.moduleDefinitionInfo.filePath,
+        renameInfo.placeholder,
+        service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
+      )) {
+        addLocation(location);
+      }
+
+      for (const location of service.collectRequiredModuleMemberUsageLocations(
         renameInfo.moduleDefinitionInfo.filePath,
         renameInfo.placeholder,
         service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })

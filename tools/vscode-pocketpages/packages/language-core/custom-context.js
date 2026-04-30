@@ -44,6 +44,28 @@ function readResolveRequestPath(node) {
   return firstArgument.text
 }
 
+function readRequireRequestPath(node) {
+  const target = skipParenthesizedExpression(node)
+  if (!target || !ts.isCallExpression(target)) {
+    return null
+  }
+
+  if (!ts.isIdentifier(target.expression) || target.expression.text !== 'require') {
+    return null
+  }
+
+  if (!target.arguments.length) {
+    return null
+  }
+
+  const firstArgument = target.arguments[0]
+  if (!ts.isStringLiteralLike(firstArgument)) {
+    return null
+  }
+
+  return firstArgument.text
+}
+
 function createResolveAliasScope(parent = null, kind = 'block') {
   return {
     parent,
@@ -179,6 +201,265 @@ function declareNamedScopeBinding(scope, name) {
   }
 
   declareResolveAliasBinding(scope, name.text, null)
+}
+
+function createRequireMemberScope(parent = null, kind = 'block') {
+  return {
+    parent,
+    kind,
+    moduleBindings: new Map(),
+    memberBindings: new Map(),
+  }
+}
+
+function getNearestFunctionRequireMemberScope(scope) {
+  let current = scope
+  while (current) {
+    if (current.kind === 'function') {
+      return current
+    }
+    current = current.parent
+  }
+
+  return scope
+}
+
+function declareRequireBinding(scope, name, options = {}) {
+  const normalizedName = String(name || '')
+  if (!normalizedName) {
+    return
+  }
+
+  const targetScope = options.functionScoped
+    ? getNearestFunctionRequireMemberScope(scope)
+    : scope
+  targetScope.moduleBindings.set(normalizedName, options.modulePath || null)
+  targetScope.memberBindings.set(normalizedName, options.memberInfo || null)
+}
+
+function assignRequireModuleBinding(scope, name, requestPath) {
+  const normalizedName = String(name || '')
+  if (!normalizedName) {
+    return
+  }
+
+  let current = scope
+  while (current) {
+    if (current.moduleBindings.has(normalizedName) || current.memberBindings.has(normalizedName)) {
+      current.moduleBindings.set(normalizedName, requestPath || null)
+      current.memberBindings.set(normalizedName, null)
+      return
+    }
+    current = current.parent
+  }
+
+  const functionScope = getNearestFunctionRequireMemberScope(scope)
+  functionScope.moduleBindings.set(normalizedName, requestPath || null)
+  functionScope.memberBindings.set(normalizedName, null)
+}
+
+function getRequireModuleRequestPath(scope, name) {
+  const normalizedName = String(name || '')
+  if (!normalizedName) {
+    return null
+  }
+
+  let current = scope
+  while (current) {
+    if (current.moduleBindings.has(normalizedName)) {
+      return current.moduleBindings.get(normalizedName) || null
+    }
+    current = current.parent
+  }
+
+  return null
+}
+
+function getRequireMemberInfo(scope, name) {
+  const normalizedName = String(name || '')
+  if (!normalizedName) {
+    return null
+  }
+
+  let current = scope
+  while (current) {
+    if (current.memberBindings.has(normalizedName)) {
+      return current.memberBindings.get(normalizedName) || null
+    }
+    current = current.parent
+  }
+
+  return null
+}
+
+function declareParameterRequireBindings(scope, parameters = []) {
+  for (const parameter of parameters) {
+    for (const name of collectBindingIdentifierNames(parameter.name)) {
+      declareRequireBinding(scope, name)
+    }
+  }
+}
+
+function declareNamedRequireBinding(scope, name) {
+  if (!name || !ts.isIdentifier(name)) {
+    return
+  }
+
+  declareRequireBinding(scope, name.text)
+}
+
+function getPropertyNameText(node) {
+  if (!node) {
+    return null
+  }
+
+  if (ts.isIdentifier(node) || ts.isStringLiteralLike(node) || ts.isNumericLiteral(node)) {
+    return node.text
+  }
+
+  return null
+}
+
+function getBindingIdentifier(node) {
+  return node && ts.isIdentifier(node) ? node : null
+}
+
+function getRequireRequestPathFromExpression(node, scope) {
+  const target = skipParenthesizedExpression(node)
+  const directRequestPath = readRequireRequestPath(target)
+  if (directRequestPath) {
+    return directRequestPath
+  }
+
+  if (target && ts.isIdentifier(target)) {
+    return getRequireModuleRequestPath(scope, target.text)
+  }
+
+  return null
+}
+
+function addRequiredModuleMemberContext(contexts, sourceFile, modulePath, memberName, node, rangeKind, options = {}) {
+  if (!modulePath || !memberName || !node) {
+    return
+  }
+
+  contexts.push({
+    kind: 'required-module-member',
+    modulePath,
+    memberName,
+    start: node.getStart(sourceFile),
+    end: node.getEnd(),
+    rangeKind,
+    canRenameModuleMember: options.canRenameModuleMember !== false,
+  })
+}
+
+function declareObjectBindingRequireMembers(scope, bindingPattern, requestPath, sourceFile, contexts, options = {}) {
+  for (const element of bindingPattern.elements) {
+    if (!ts.isBindingElement(element)) {
+      continue
+    }
+
+    const localIdentifier = getBindingIdentifier(element.name)
+    if (!localIdentifier) {
+      for (const name of collectBindingIdentifierNames(element.name)) {
+        declareRequireBinding(scope, name, { functionScoped: options.functionScoped })
+      }
+      continue
+    }
+
+    const memberName = getPropertyNameText(element.propertyName) || localIdentifier.text
+    const canRenameLocal = !element.propertyName || localIdentifier.text === memberName
+    declareRequireBinding(scope, localIdentifier.text, {
+      functionScoped: options.functionScoped,
+      memberInfo: {
+        modulePath: requestPath,
+        memberName,
+        canRenameModuleMember: canRenameLocal,
+      },
+    })
+
+    if (element.propertyName) {
+      addRequiredModuleMemberContext(
+        contexts,
+        sourceFile,
+        requestPath,
+        memberName,
+        element.propertyName,
+        'property'
+      )
+    }
+
+    addRequiredModuleMemberContext(
+      contexts,
+      sourceFile,
+      requestPath,
+      memberName,
+      localIdentifier,
+      'binding',
+      { canRenameModuleMember: canRenameLocal }
+    )
+  }
+}
+
+function declareVariableRequireBinding(scope, node, sourceFile, contexts) {
+  if (!node || !node.name) {
+    return
+  }
+
+  const requestPath = readRequireRequestPath(node.initializer)
+  const functionScoped = isFunctionScopedVariableDeclaration(node)
+  if (requestPath && ts.isIdentifier(node.name)) {
+    declareRequireBinding(scope, node.name.text, {
+      functionScoped,
+      modulePath: requestPath,
+    })
+    return
+  }
+
+  if (requestPath && ts.isObjectBindingPattern(node.name)) {
+    declareObjectBindingRequireMembers(scope, node.name, requestPath, sourceFile, contexts, {
+      functionScoped,
+    })
+    return
+  }
+
+  for (const name of collectBindingIdentifierNames(node.name)) {
+    declareRequireBinding(scope, name, { functionScoped })
+  }
+}
+
+function isRequiredMemberReferenceIdentifier(node) {
+  if (!node || !ts.isIdentifier(node) || !node.parent) {
+    return false
+  }
+
+  const parent = node.parent
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) {
+    return false
+  }
+
+  if (ts.isPropertyAssignment(parent) && parent.name === node) {
+    return false
+  }
+
+  if (ts.isBindingElement(parent) && (parent.name === node || parent.propertyName === node)) {
+    return false
+  }
+
+  if (ts.isVariableDeclaration(parent) && parent.name === node) {
+    return false
+  }
+
+  if ((ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent)) && parent.name === node) {
+    return false
+  }
+
+  if (ts.isParameter(parent) && parent.name === node) {
+    return false
+  }
+
+  return true
 }
 
 function getResolveRequestPathFromExpression(node, scope) {
@@ -1142,6 +1423,10 @@ function getResolvedModuleMemberContext(scriptText, offset) {
   return collectResolvedModuleMemberContexts(scriptText).find((context) => offset >= context.start && offset <= context.end) || null
 }
 
+function getRequiredModuleMemberContext(scriptText, offset) {
+  return collectRequiredModuleMemberContexts(scriptText).find((context) => offset >= context.start && offset <= context.end) || null
+}
+
 function collectResolveRequestPaths(scriptText) {
   const sourceFile = ts.createSourceFile('pocketpages-resolve-paths.ts', scriptText, ts.ScriptTarget.Latest, true)
   const requestPaths = []
@@ -1235,6 +1520,96 @@ function collectResolvedModuleMemberContexts(scriptText) {
   return contexts
 }
 
+function collectRequiredModuleMemberContexts(scriptText) {
+  const sourceFile = ts.createSourceFile('pocketpages-require-member.ts', scriptText, ts.ScriptTarget.Latest, true)
+  const contexts = []
+  const rootScope = createRequireMemberScope(null, 'function')
+
+  const visit = (node, scope) => {
+    if (
+      node !== sourceFile &&
+      (ts.isArrowFunction(node) ||
+        ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isConstructorDeclaration(node) ||
+        ts.isGetAccessorDeclaration(node) ||
+        ts.isSetAccessorDeclaration(node))
+    ) {
+      const functionScope = createRequireMemberScope(scope, 'function')
+      declareParameterRequireBindings(functionScope, node.parameters)
+      declareNamedRequireBinding(functionScope, node.name)
+      if (node.body) {
+        visit(node.body, functionScope)
+      }
+      return
+    }
+
+    if (
+      node !== sourceFile &&
+      (ts.isBlock(node) || ts.isModuleBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node))
+    ) {
+      const blockScope = createRequireMemberScope(scope, 'block')
+      ts.forEachChild(node, (child) => visit(child, blockScope))
+      return
+    }
+
+    if (ts.isVariableDeclaration(node)) {
+      declareVariableRequireBinding(scope, node, sourceFile, contexts)
+      if (node.initializer) {
+        visit(node.initializer, scope)
+      }
+      return
+    }
+
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(node.left)
+    ) {
+      visit(node.right, scope)
+      assignRequireModuleBinding(scope, node.left.text, readRequireRequestPath(node.right))
+      return
+    }
+
+    if (ts.isPropertyAccessExpression(node)) {
+      const requestPath = getRequireRequestPathFromExpression(node.expression, scope)
+      if (requestPath) {
+        addRequiredModuleMemberContext(
+          contexts,
+          sourceFile,
+          requestPath,
+          node.name.text,
+          node.name,
+          'property'
+        )
+        return
+      }
+    }
+
+    if (isRequiredMemberReferenceIdentifier(node)) {
+      const memberInfo = getRequireMemberInfo(scope, node.text)
+      if (memberInfo) {
+        addRequiredModuleMemberContext(
+          contexts,
+          sourceFile,
+          memberInfo.modulePath,
+          memberInfo.memberName,
+          node,
+          'local',
+          { canRenameModuleMember: memberInfo.canRenameModuleMember !== false }
+        )
+        return
+      }
+    }
+
+    ts.forEachChild(node, (child) => visit(child, scope))
+  }
+
+  visit(sourceFile, rootScope)
+  return contexts
+}
+
 function collectSchemaContexts(scriptText, options = {}) {
   const sourceText = String(scriptText || '')
   const offsetBase = Number(options.offsetBase) || 0
@@ -1284,10 +1659,12 @@ function collectSchemaContexts(scriptText, options = {}) {
 
 module.exports = {
   collectResolveRequestPaths,
+  collectRequiredModuleMemberContexts,
   collectResolvedModuleMemberContexts,
   collectSchemaContexts,
   collectPathContexts,
   getPathContextAtOffset,
+  getRequiredModuleMemberContext,
   getResolvedModuleMemberContext,
   getScriptCollectionContext,
   getScriptFieldContext,
