@@ -7,6 +7,15 @@ const ALWAYS_REPORTED_EJS_DIAGNOSTIC_CODES = new Set([
   "pp-unresolved-route-path",
 ]);
 
+const PULL_DIAGNOSTICS_MODE = Object.freeze({
+  FULL: "full",
+  QUIET_REUSE: "quietReuse",
+  LARGE_PARTIAL: "largePartial",
+  LARGE_FULL_WITH_BUDGET: "largeFullWithBudget",
+  OPEN_WARMUP: "openWarmup",
+  LARGE_OPEN_WARMUP: "largeOpenWarmup",
+});
+
 function createDiagnosticsFeatureService(context) {
   const {
     connection,
@@ -379,6 +388,40 @@ function createDiagnosticsFeatureService(context) {
     return Number.isFinite(numericOffset) ? numericOffset : null;
   }
 
+  function isValidPreferredOffset(document, preferredOffset) {
+    return (
+      preferredOffset !== null &&
+      preferredOffset >= 0 &&
+      preferredOffset <= document.getText().length
+    );
+  }
+
+  function getQuietDiagnosticsMode(document, quietDelayMs, preferredOffset) {
+    if (quietDelayMs <= 0) {
+      return null;
+    }
+
+    return isValidPreferredOffset(document, preferredOffset)
+      ? PULL_DIAGNOSTICS_MODE.LARGE_PARTIAL
+      : PULL_DIAGNOSTICS_MODE.QUIET_REUSE;
+  }
+
+  function getOpenWarmupDiagnosticsMode(openWarmupDelayMs, isLargeEjs) {
+    if (openWarmupDelayMs <= 0) {
+      return null;
+    }
+
+    return isLargeEjs
+      ? PULL_DIAGNOSTICS_MODE.LARGE_OPEN_WARMUP
+      : PULL_DIAGNOSTICS_MODE.OPEN_WARMUP;
+  }
+
+  function getFullDiagnosticsMode(semanticBudget) {
+    return semanticBudget && semanticBudget.enabled === true
+      ? PULL_DIAGNOSTICS_MODE.LARGE_FULL_WITH_BUDGET
+      : PULL_DIAGNOSTICS_MODE.FULL;
+  }
+
   function createSemanticBudget(uri, documentContext, document, cachedResult) {
     if (!isLargeEjsDocument(documentContext, document)) {
       return null;
@@ -711,16 +754,18 @@ function createDiagnosticsFeatureService(context) {
       !isActiveDiagnosticRun(uri, runId) ||
       isStaleDocumentVersion(uri, requestedVersion) ||
       !!(token && token.isCancellationRequested);
-    const quietDelayMs = isLargeEjsDocument(documentContext, document)
+    const largeEjsDocument = isLargeEjsDocument(documentContext, document);
+    const quietDelayMs = largeEjsDocument
       ? getRecentChangeQuietDelayMs(uri)
       : 0;
-    if (quietDelayMs > 0) {
-      const preferredOffset = getPreferredOffset(uri);
-      if (
-        preferredOffset !== null &&
-        preferredOffset >= 0 &&
-        preferredOffset <= document.getText().length
-      ) {
+    const preferredOffset = quietDelayMs > 0 ? getPreferredOffset(uri) : null;
+    const quietDiagnosticsMode = getQuietDiagnosticsMode(
+      document,
+      quietDelayMs,
+      preferredOffset
+    );
+    if (quietDiagnosticsMode) {
+      if (quietDiagnosticsMode === PULL_DIAGNOSTICS_MODE.LARGE_PARTIAL) {
         return provideLargeQuietPartialDiagnostics({
           params,
           token,
@@ -736,6 +781,7 @@ function createDiagnosticsFeatureService(context) {
         });
       }
 
+      const diagnosticsMode = PULL_DIAGNOSTICS_MODE.QUIET_REUSE;
       schedulePullDiagnosticsRefresh("large-quiet", quietDelayMs + 100);
       if (
         params.previousResultId &&
@@ -748,6 +794,7 @@ function createDiagnosticsFeatureService(context) {
           file: getRelativePathLabel(documentContext.filePath),
           version: requestedVersion,
           mode: "large-quiet",
+          diagnosticsMode,
           delayMs: quietDelayMs,
           result: "unchanged",
         });
@@ -768,6 +815,7 @@ function createDiagnosticsFeatureService(context) {
           file: getRelativePathLabel(documentContext.filePath),
           version: requestedVersion,
           mode: "large-quiet",
+          diagnosticsMode,
           delayMs: quietDelayMs,
           result: "cached-full",
         });
@@ -789,6 +837,7 @@ function createDiagnosticsFeatureService(context) {
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
         mode: "large-quiet",
+        diagnosticsMode,
         delayMs: quietDelayMs,
         result: "empty",
       });
@@ -802,23 +851,31 @@ function createDiagnosticsFeatureService(context) {
     const openWarmupDelayMs = !cachedResult
       ? getRecentOpenWarmupDelayMs(uri)
       : 0;
-    if (openWarmupDelayMs > 0) {
-      const largeEjsOpenWarmup = isLargeEjsDocument(documentContext, document);
+    const openWarmupDiagnosticsMode = getOpenWarmupDiagnosticsMode(
+      openWarmupDelayMs,
+      largeEjsDocument
+    );
+    if (openWarmupDiagnosticsMode) {
+      const openWarmupLogMode =
+        openWarmupDiagnosticsMode === PULL_DIAGNOSTICS_MODE.LARGE_OPEN_WARMUP
+          ? "large-open-warmup"
+          : "open-warmup";
       schedulePullDiagnosticsRefresh(
-        largeEjsOpenWarmup ? "large-open-warmup" : "open-warmup",
+        openWarmupLogMode,
         openWarmupDelayMs + 100
       );
       const openWarmupResultId = [
-        largeEjsOpenWarmup ? "large-open-warmup" : "open-warmup",
+        openWarmupLogMode,
         requestedVersion,
         document.getText().length,
       ].join(":");
       logServer("perf", "diagnostics", "pull-deferred", {
         req: requestId,
-        case: largeEjsOpenWarmup ? "large-open-warmup" : "open-warmup",
+        case: openWarmupLogMode,
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
-        mode: largeEjsOpenWarmup ? "large-open-warmup" : "open-warmup",
+        mode: openWarmupLogMode,
+        diagnosticsMode: openWarmupDiagnosticsMode,
         delayMs: openWarmupDelayMs,
         result: "empty",
       });
@@ -890,6 +947,7 @@ function createDiagnosticsFeatureService(context) {
       document,
       cachedResult
     );
+    const fullDiagnosticsMode = getFullDiagnosticsMode(semanticBudget);
     const rawDiagnostics = documentContext.service.getDiagnostics(
       documentContext.filePath,
       document.getText(),
@@ -938,6 +996,7 @@ function createDiagnosticsFeatureService(context) {
       count: reportedDiagnostics.length,
       rawCount: rawDiagnostics.length,
       mode: "pull",
+      diagnosticsMode: fullDiagnosticsMode,
       totalMs: elapsedMs.toFixed(1),
       perf: typeof getPerformanceBucket === "function"
         ? getPerformanceBucket("diagnostics", elapsedMs)
