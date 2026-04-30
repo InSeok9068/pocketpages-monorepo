@@ -1,5 +1,7 @@
 "use strict";
 
+const crypto = require("crypto");
+
 const ALWAYS_REPORTED_EJS_DIAGNOSTIC_CODES = new Set([
   "pp-manual-flash-query",
   "pp-unresolved-route-path",
@@ -39,6 +41,37 @@ function createDiagnosticsFeatureService(context) {
 
   function isSchemaDiagnosticCode(code) {
     return code === "pp-schema-collection" || code === "pp-schema-field";
+  }
+
+  function hashText(value) {
+    return crypto
+      .createHash("sha1")
+      .update(String(value || ""))
+      .digest("hex")
+      .slice(0, 12);
+  }
+
+  function getResultIdLogFields(resultId, laneResultIds) {
+    const resultIdText = String(resultId || "");
+    const lanes =
+      laneResultIds && typeof laneResultIds === "object"
+        ? Object.keys(laneResultIds)
+        : [];
+    const laneHashes = {};
+    for (const lane of lanes) {
+      laneHashes[lane] = hashText(laneResultIds[lane]);
+    }
+
+    return {
+      resultIdHash: hashText(resultIdText),
+      resultIdBytes: Buffer.byteLength(resultIdText, "utf8"),
+      laneCount: lanes.length,
+      lanes,
+      laneHashes,
+      resultId: process.env.POCKETPAGES_LOG_FULL_RESULT_IDS === "1"
+        ? resultIdText
+        : null,
+    };
   }
 
   function shouldReportDiagnostic(uri, documentContext, diagnostic) {
@@ -766,22 +799,26 @@ function createDiagnosticsFeatureService(context) {
       };
     }
 
-    const openWarmupDelayMs = isLargeEjsDocument(documentContext, document) && !cachedResult
+    const openWarmupDelayMs = !cachedResult
       ? getRecentOpenWarmupDelayMs(uri)
       : 0;
     if (openWarmupDelayMs > 0) {
-      schedulePullDiagnosticsRefresh("large-open-warmup", openWarmupDelayMs + 100);
+      const largeEjsOpenWarmup = isLargeEjsDocument(documentContext, document);
+      schedulePullDiagnosticsRefresh(
+        largeEjsOpenWarmup ? "large-open-warmup" : "open-warmup",
+        openWarmupDelayMs + 100
+      );
       const openWarmupResultId = [
-        "open-warmup",
+        largeEjsOpenWarmup ? "large-open-warmup" : "open-warmup",
         requestedVersion,
         document.getText().length,
       ].join(":");
       logServer("perf", "diagnostics", "pull-deferred", {
         req: requestId,
-        case: "large-open-warmup",
+        case: largeEjsOpenWarmup ? "large-open-warmup" : "open-warmup",
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
-        mode: "large-open-warmup",
+        mode: largeEjsOpenWarmup ? "large-open-warmup" : "open-warmup",
         delayMs: openWarmupDelayMs,
         result: "empty",
       });
@@ -811,7 +848,7 @@ function createDiagnosticsFeatureService(context) {
         case: "unchanged",
         file: getRelativePathLabel(documentContext.filePath),
         version: document.version,
-        resultId,
+        ...getResultIdLogFields(resultId, laneResultIds),
       });
       return {
         kind: "unchanged",
@@ -933,6 +970,16 @@ function createDiagnosticsFeatureService(context) {
   function provideCodeActions(params) {
     const document = getDocumentByUri(params.textDocument.uri);
     if (!document) {
+      return null;
+    }
+
+    const contextDiagnostics =
+      params &&
+      params.context &&
+      Array.isArray(params.context.diagnostics)
+        ? params.context.diagnostics
+        : [];
+    if (!contextDiagnostics.length) {
       return null;
     }
 

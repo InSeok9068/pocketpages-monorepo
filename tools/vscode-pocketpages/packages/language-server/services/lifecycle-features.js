@@ -127,11 +127,13 @@ function createLifecycleFeatureService(context) {
     },
 
     handleDidChangeContent(event) {
-      clearCachedCompletionItemsForUri(event.document.uri);
       const filePath = uriToFilePath(event.document.uri);
       const hasContentChanges = Array.isArray(event.contentChanges) && event.contentChanges.length > 0;
       const preferredChangeOffset = getPreferredChangeOffset(event.document, event.contentChanges);
       let rememberedOffset = false;
+      if (hasContentChanges) {
+        clearCachedCompletionItemsForUri(event.document.uri);
+      }
       if (
         shouldRunDiagnosticsForFile(filePath) &&
         preferredChangeOffset !== null &&
@@ -143,14 +145,16 @@ function createLifecycleFeatureService(context) {
         rememberInteractiveOffset(event.document.uri, preferredChangeOffset, "edit");
         rememberedOffset = true;
       }
-      core.updateDocument({
-        uri: event.document.uri,
-        languageId: event.document.languageId,
-        version: event.document.version,
-        text: event.document.getText(),
-      }, {
-        prepareVirtualCode: false,
-      });
+      if (hasContentChanges) {
+        core.updateDocument({
+          uri: event.document.uri,
+          languageId: event.document.languageId,
+          version: event.document.version,
+          text: event.document.getText(),
+        }, {
+          prepareVirtualCode: false,
+        });
+      }
       if (typeof updateDocumentRuntimeState === "function") {
         updateDocumentRuntimeState(event.document.uri, event.document, {
           changed: hasContentChanges,
@@ -163,7 +167,7 @@ function createLifecycleFeatureService(context) {
         changeSource: hasContentChanges ? "lsp-content-change" : "document-sync",
         preferredOffset: rememberedOffset ? preferredChangeOffset : null,
         diagnosticsQuiet: shouldRunDiagnosticsForFile(filePath) && hasContentChanges,
-        prepared: "deferred",
+        prepared: hasContentChanges ? "deferred" : "unchanged",
       });
     },
 

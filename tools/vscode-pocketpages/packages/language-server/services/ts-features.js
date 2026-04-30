@@ -315,12 +315,21 @@ function createTypeScriptFeatureService(context) {
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      const requestId =
+        params.__pocketpagesRequestId ||
+        (typeof createRequestId === "function" ? createRequestId("def") : null);
       if (!isMappedFeatureEnabled(documentContext, document, offset, "definition")) {
         return null;
       }
 
       if (typeof ensureDocumentPrepared === "function") {
-        ensureDocumentPrepared(document.uri);
+        ensureDocumentPrepared(document.uri, {
+          requestId,
+          operation: "definition",
+          preferredOffset: offset,
+          skipUnrelatedRegions: true,
+          skipStaticRefresh: true,
+        });
       }
       return documentContext.service.getTypeScriptDefinitionTarget(
         documentContext.filePath,

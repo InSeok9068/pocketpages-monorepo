@@ -1052,6 +1052,16 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
+    /connection\.onCodeAction\(\(params\) => \{[\s\S]*const diagnosticCount[\s\S]*diagnosticCount[\s\S]*provideCodeActions\(params\)[\s\S]*case:\s*diagnosticCount \? "diagnostic-actions" : "no-diagnostics"/,
+    'Expected empty code-action requests to skip full diagnostics and log the no-diagnostics case.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.languages\.inlayHint\.on\(\(params\) => \{[\s\S]*const isLargeEjs[\s\S]*case:\s*"large-ejs-skipped"[\s\S]*return null;[\s\S]*provideInlayHints\(params\)/,
+    'Expected large EJS inlay-hint requests to be skipped before expensive TS inlay work.'
+  )
+  assertMatches(
+    serverSource,
     /connection\.onDocumentLinks\(\(params\) => \{[\s\S]*case:\s*"document-links"[\s\S]*connection\.languages\.semanticTokens\.on\(\(params\) => \{[\s\S]*case:\s*"ejs-semantic-tokens"/,
     'Expected structural LSP features to log document links and semantic token requests.'
   )
@@ -1072,13 +1082,23 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     diagnosticsFeatureSource,
-    /getRecentOpenWarmupDelayMs\([\s\S]*large-open-warmup/,
-    'Expected large EJS open diagnostics to defer briefly so first-request warmup can run before full diagnostics.'
+    /const openWarmupDelayMs = !cachedResult[\s\S]*getRecentOpenWarmupDelayMs\(uri\)[\s\S]*large-open-warmup[\s\S]*open-warmup/,
+    'Expected initial open diagnostics to defer briefly so first-request warmup can run before full diagnostics.'
   )
   assertMatches(
     diagnosticsFeatureSource,
     /createRequestId\("diag"\)[\s\S]*case:\s*"full-pull"[\s\S]*budgetDeferred/,
     'Expected diagnostics logs to include request ids, case labels, budget status, and bottleneck fields.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /function getResultIdLogFields\(resultId, laneResultIds\) \{[\s\S]*resultIdHash[\s\S]*resultIdBytes[\s\S]*laneHashes[\s\S]*POCKETPAGES_LOG_FULL_RESULT_IDS/,
+    'Expected unchanged diagnostics logs to summarize result IDs with hashes, sizes, and optional full detail.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /case:\s*"unchanged"[\s\S]*\.\.\.getResultIdLogFields\(resultId, laneResultIds\)/,
+    'Expected unchanged pull diagnostics to log compact result ID comparison fields instead of the full result ID by default.'
   )
   assertMatches(
     diagnosticsFeatureSource,
@@ -1089,6 +1109,11 @@ function assertLspRuntimeContracts(repoRoot) {
     diagnosticsFeatureSource,
     /getCachedCodeActionDiagnostics\([\s\S]*laneDiagnostics[\s\S]*documentVersion/,
     'Expected code actions to reuse cached pull diagnostics instead of recomputing full diagnostics.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /const contextDiagnostics =[\s\S]*params\.context\.diagnostics[\s\S]*if \(!contextDiagnostics\.length\) \{[\s\S]*return null;/,
+    'Expected code-action provider to avoid full diagnostics when VS Code sends no diagnostics for the range.'
   )
   const collectServerBlockDiagnosticsSource = languageServiceSource.slice(
     languageServiceSource.indexOf('collectServerBlockDiagnostics('),
@@ -1126,8 +1151,8 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     lifecycleFeatureSource,
-    /changeSource:\s*hasContentChanges[\s\S]*diagnosticsQuiet:[\s\S]*prepared:\s*"deferred"/,
-    'Expected lifecycle change logs to expose whether diagnostics quiet handling and deferred preparation are in effect.'
+    /changeSource:\s*hasContentChanges[\s\S]*diagnosticsQuiet:[\s\S]*prepared:\s*hasContentChanges \? "deferred" : "unchanged"/,
+    'Expected lifecycle change logs to expose whether diagnostics quiet handling and prepared-state preservation are in effect.'
   )
   assertMatches(
     lifecycleFeatureSource,
@@ -1168,6 +1193,11 @@ function assertLspRuntimeContracts(repoRoot) {
     tsFeatureSource,
     /operation:\s*"hover"[\s\S]*preferredOffset:\s*offset[\s\S]*skipUnrelatedRegions:\s*true/,
     'Expected hover requests to prepare only the region around the requested offset.'
+  )
+  assertMatches(
+    tsFeatureSource,
+    /provideDefinition\(params\) \{[\s\S]*requestId[\s\S]*operation:\s*"definition"[\s\S]*preferredOffset:\s*offset[\s\S]*skipUnrelatedRegions:\s*true[\s\S]*skipStaticRefresh:\s*true/,
+    'Expected definition requests to prepare only the region around the requested offset.'
   )
   assertMatches(
     languageServiceSource,
@@ -2840,7 +2870,7 @@ const boardService = resolve('board-service')
     const preparedBoardShowText = `<script server>\nparams.\n</script>\n`
     preparedCore.openDocument({
       uri: boardShowUri,
-      languageId: 'ejs',
+      languageId: 'html',
       version: 1,
       text: preparedBoardShowText,
     })
@@ -2852,6 +2882,9 @@ const boardService = resolve('board-service')
       : null
     if (!preparedService || !preparedState) {
       throw new Error(`Expected prepared document state after openDocument(). Got service=${!!preparedService} keys=${JSON.stringify(preparedService ? [...preparedService.preparedDocumentStates.keys()] : [])}`)
+    }
+    if (!preparedCore.isFeatureEnabledAtOffset(boardShowUri, preparedBoardShowText.indexOf('params') + 2, 'hover')) {
+      throw new Error('Expected .ejs files opened by VS Code as html to enable mapped hover features immediately after openDocument().')
     }
     const preparedInitialDocumentSnapshot = preparedService.getDocumentSnapshot(fixture.boardShowFilePath)
     if (
@@ -4622,7 +4655,7 @@ ${'<div>open warmup filler</div>\n'.repeat(4)}
     }
     if (
       !openWarmupReport ||
-      !String(openWarmupReport.resultId || '').startsWith('open-warmup:') ||
+      !String(openWarmupReport.resultId || '').startsWith('large-open-warmup:') ||
       !Array.isArray(openWarmupReport.items) ||
       openWarmupReport.items.length !== 0 ||
       openWarmupSchedules.length !== 1 ||
@@ -5922,12 +5955,13 @@ module.exports = {
       contentChanges: [],
     })
     if (
-      lifecycleCoreCalls.update.length !== 3 ||
+      lifecycleCoreCalls.update.length !== 2 ||
       !lifecycleClearedCompletionUris.includes(lifecycleBoardsUri) ||
-      !lifecycleClearedCompletionUris.includes(lifecycleVendorDocument.uri)
+      !lifecycleClearedCompletionUris.includes(lifecycleVendorDocument.uri) ||
+      lifecycleClearedCompletionUris.filter((uri) => uri === lifecycleBoardsUri).length !== 1
     ) {
       throw new Error(
-        `Expected lifecycle change handling to update core state and clear completion caches for both document kinds. Got updates=${JSON.stringify(lifecycleCoreCalls.update)} cleared=${JSON.stringify(lifecycleClearedCompletionUris)}`
+        `Expected lifecycle change handling to update core state for real content changes while preserving prepared state on empty sync changes. Got updates=${JSON.stringify(lifecycleCoreCalls.update)} cleared=${JSON.stringify(lifecycleClearedCompletionUris)}`
       )
     }
     if (

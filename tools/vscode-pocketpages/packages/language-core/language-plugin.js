@@ -20,7 +20,12 @@ function createPocketPagesLanguagePlugin() {
   return {
     getLanguageId,
     createVirtualCode(uri, languageId, snapshot) {
-      return createVirtualCode(uri, languageId, 1, snapshot.getText(0, snapshot.getLength()));
+      return createVirtualCode(
+        uri,
+        getLanguageId(uri) || languageId,
+        1,
+        snapshot.getText(0, snapshot.getLength())
+      );
     },
     updateVirtualCode(uri, virtualCode, snapshot) {
       return updateVirtualCode(

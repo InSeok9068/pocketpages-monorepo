@@ -1410,6 +1410,7 @@ connection.onDefinition((params) => {
   const document = documents.get(params.textDocument.uri);
   const context = core.getDocumentContextByUri(params.textDocument.uri);
   const offset = document ? document.offsetAt(params.position) : null;
+  params.__pocketpagesRequestId = requestId;
   const customTarget = customFeatureService.provideDefinition(params);
   if (customTarget) {
     const result = toLocation(customTarget);
@@ -1608,15 +1609,18 @@ connection.onCodeAction((params) => {
   const requestId = nextRequestId("act");
   const document = documents.get(params.textDocument.uri);
   const context = core.getDocumentContextByUri(params.textDocument.uri);
-  const result = diagnosticsFeatureService.provideCodeActions(params);
+  const diagnosticCount = params.context && Array.isArray(params.context.diagnostics)
+    ? params.context.diagnostics.length
+    : 0;
+  const result = diagnosticCount
+    ? diagnosticsFeatureService.provideCodeActions(params)
+    : null;
   logRequestResult("code-action", "result", startedAt, {
     req: requestId,
-    case: "diagnostic-actions",
+    case: diagnosticCount ? "diagnostic-actions" : "no-diagnostics",
     file: context ? getRelativePathLabel(context.filePath) : null,
     version: document ? document.version : null,
-    diagnostics: params.context && Array.isArray(params.context.diagnostics)
-      ? params.context.diagnostics.length
-      : 0,
+    diagnostics: diagnosticCount,
     result: resultCount(result) ? "hit" : "none",
     count: resultCount(result),
   });
@@ -1777,6 +1781,24 @@ connection.languages.inlayHint.on((params) => {
   const requestId = nextRequestId("inlay");
   const document = documents.get(params.textDocument.uri);
   const context = core.getDocumentContextByUri(params.textDocument.uri);
+  const isLargeEjs =
+    document &&
+    context &&
+    isEjsFilePath(context.filePath) &&
+    document.getText().length >= LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT;
+  if (isLargeEjs) {
+    logRequestResult("inlay", "result", startedAt, {
+      req: requestId,
+      case: "large-ejs-skipped",
+      file: getRelativePathLabel(context.filePath),
+      version: document.version,
+      result: "none",
+      count: 0,
+      reason: "large-ejs",
+    }, "structure");
+    return null;
+  }
+
   const result = typeScriptFeatureService.provideInlayHints(params);
   logRequestResult("inlay", "result", startedAt, {
     req: requestId,
