@@ -7,6 +7,7 @@ function createDocumentRuntimeState(uri) {
     textLength: 0,
     openedAt: 0,
     changedAt: 0,
+    savedAt: 0,
     updatedAt: 0,
     diagnostics: new Map(),
   };
@@ -38,6 +39,10 @@ function createDocumentRuntimeStateRegistry() {
     }
     if (documentInfo.changed === true) {
       state.changedAt = now;
+    }
+    if (documentInfo.saved === true) {
+      state.savedAt = now;
+      state.changedAt = 0;
     }
     return state;
   }

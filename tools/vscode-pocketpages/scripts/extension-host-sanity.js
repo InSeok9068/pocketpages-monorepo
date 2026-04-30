@@ -850,6 +850,66 @@ async function runRenameBoundaryTest(repoRoot, fixture) {
   })
 }
 
+async function runRenameLazyStartupBoundaryTest(repoRoot, fixture) {
+  const harness = createMockExtensionHost({
+    repoRoot,
+    fixture,
+    languageClientOptions: {
+      async sendRequest(method, params) {
+        if (method === REQUESTS.fileRenameEdits) {
+          return [
+            {
+              filePath: fixture.routeFilePath,
+              start: 24,
+              end: 33,
+              newText: 'Dashboard Renamed',
+            },
+          ]
+        }
+
+        if (method === REQUESTS.refreshDiagnostics) {
+          return null
+        }
+
+        throw new Error(`Unexpected request during pre-start rename test: ${method} ${JSON.stringify(params)}`)
+      },
+    },
+  })
+
+  await withMockedExtensionModule(repoRoot, harness.mocks, async (extensionModule) => {
+    await extensionModule.activate(harness.context)
+    if (harness.controls.clientState.startCalls !== 0) {
+      throw new Error('Expected PocketPages activate() to keep the LSP stopped before a rename event.')
+    }
+
+    await harness.controls.fireRenameFiles({
+      files: [
+        {
+          oldUri: URI.file(fixture.renameTargetFilePath),
+          newUri: URI.file(fixture.renamedRouteFilePath),
+        },
+      ],
+    })
+    await flushAsyncWork()
+
+    if (harness.controls.clientState.startCalls !== 1) {
+      throw new Error(
+        `Expected managed file rename to lazy-start the LSP before requesting edits. Got: ${harness.controls.clientState.startCalls}`
+      )
+    }
+
+    const renameRequests = harness.controls.clientState.requestCalls.filter(
+      (entry) => entry.method === REQUESTS.fileRenameEdits
+    )
+    if (renameRequests.length !== 1) {
+      throw new Error(`Expected one pre-start managed fileRenameEdits request. Got: ${JSON.stringify(renameRequests)}`)
+    }
+    if (harness.controls.applyEditCalls.length !== 1) {
+      throw new Error(`Expected pre-start rename to apply one workspace edit. Got: ${harness.controls.applyEditCalls.length}`)
+    }
+  })
+}
+
 async function runManualSaveNotificationBoundaryTest(repoRoot, fixture) {
   const harness = createMockExtensionHost({
     repoRoot,
@@ -1027,6 +1087,7 @@ async function runExtensionHostSanityCheck(repoRoot) {
     await runLifecycleExecutionTest(repoRoot, fixture)
     await runLifecycleRetryTest(repoRoot, fixture)
     await runReferencesBoundaryTest(repoRoot, fixture)
+    await runRenameLazyStartupBoundaryTest(repoRoot, fixture)
     await runRenameBoundaryTest(repoRoot, fixture)
     await runManualSaveNotificationBoundaryTest(repoRoot, fixture)
     await runCommandBoundaryTest(repoRoot, fixture)

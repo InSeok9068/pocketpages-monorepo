@@ -140,6 +140,20 @@ function init(modules) {
         return TRACKED_PAGES_FILE_EXTENSIONS.has(path.extname(normalizedFileName));
       }
 
+      function isPocketPagesSourceFile(fileName) {
+        const appRoot = getAppRootForPocketPagesFile(fileName);
+        if (!appRoot) {
+          return false;
+        }
+
+        const normalizedFileName = normalizeTrackedPath(fileName);
+        return (
+          isUnderPagesRoot(normalizedFileName, appRoot) &&
+          !isPagesAssetFile(normalizedFileName, appRoot) &&
+          isTrackedPagesFile(normalizedFileName)
+        );
+      }
+
       function getPagesRoot(appRoot) {
         return normalizeTrackedPath(path.join(normalizeTrackedPath(appRoot), "pb_hooks", "pages"));
       }
@@ -522,7 +536,7 @@ function init(modules) {
       }
 
       function reconcileTrackedAppState(fileName) {
-        if (!isPocketPagesEjsFile(fileName)) {
+        if (!isPocketPagesSourceFile(fileName)) {
           return;
         }
 
@@ -635,7 +649,7 @@ function init(modules) {
         return cachedContext.context;
       }
 
-      function ensureDocumentContext(fileName) {
+      function ensureEjsDocumentContext(fileName) {
         if (!isPocketPagesEjsFile(fileName)) {
           return null;
         }
@@ -696,6 +710,40 @@ function init(modules) {
         });
       }
 
+      function ensureScriptDocumentContext(fileName) {
+        if (!isPocketPagesSourceFile(fileName) || isPocketPagesEjsFile(fileName)) {
+          return null;
+        }
+
+        reconcileTrackedAppState(fileName);
+
+        const documentText = readOriginalDocumentText(fileName);
+        if (!documentText) {
+          return null;
+        }
+
+        const documentContext = core.getDocumentContextByFilePath(fileName);
+        if (!documentContext) {
+          return null;
+        }
+
+        documentContext.service.setDocumentOverride(fileName, documentText, {
+          uri: URI.file(fileName).toString(),
+          version: readScriptVersionToken(fileName) || "0",
+        });
+
+        return {
+          ...documentContext,
+          documentText,
+        };
+      }
+
+      function ensureDocumentContext(fileName) {
+        return isPocketPagesEjsFile(fileName)
+          ? ensureEjsDocumentContext(fileName)
+          : ensureScriptDocumentContext(fileName);
+      }
+
       function isTsOwnedPosition(documentContext, position, capabilityName) {
         if (!documentContext) {
           return false;
@@ -752,6 +800,193 @@ function init(modules) {
             containerName: "",
           },
         ];
+      }
+
+      function getBaseLanguageServiceResult(methodName, args, fallbackValue) {
+        const method = baseLanguageService && baseLanguageService[methodName];
+        if (typeof method !== "function") {
+          return fallbackValue;
+        }
+
+        return method.apply(baseLanguageService, args);
+      }
+
+      function isReferenceAllowedAtPosition(documentContext, position) {
+        if (!documentContext) {
+          return false;
+        }
+
+        if (!isPocketPagesEjsFile(documentContext.filePath)) {
+          return true;
+        }
+
+        return isTsOwnedPosition(documentContext, position, "references") ||
+          !!documentContext.service.getPathReferenceContext(
+            documentContext.filePath,
+            documentContext.documentText,
+            position
+          );
+      }
+
+      function isRenameAllowedAtPosition(documentContext, position) {
+        if (!documentContext) {
+          return false;
+        }
+
+        return !isPocketPagesEjsFile(documentContext.filePath) ||
+          isTsOwnedPosition(documentContext, position, "rename");
+      }
+
+      function getLocationKey(fileName, start, length) {
+        const safeStart = Math.max(0, Number(start) || 0);
+        const safeLength = Math.max(0, Number(length) || 0);
+        return `${normalizeTrackedPath(fileName)}:${safeStart}:${safeLength}`;
+      }
+
+      function getReferenceKey(reference) {
+        if (!reference || !reference.fileName || !reference.textSpan) {
+          return null;
+        }
+
+        return getLocationKey(
+          reference.fileName,
+          reference.textSpan.start,
+          reference.textSpan.length
+        );
+      }
+
+      function getRenameLocationKey(location) {
+        if (!location || !location.fileName || !location.textSpan) {
+          return null;
+        }
+
+        return getLocationKey(
+          location.fileName,
+          location.textSpan.start,
+          location.textSpan.length
+        );
+      }
+
+      function isRenameDefinitionLocation(documentContext, renameInfo, location) {
+        if (!documentContext || !renameInfo || !location) {
+          return false;
+        }
+
+        return (
+          normalizeTrackedPath(location.filePath) === normalizeTrackedPath(documentContext.filePath) &&
+          Number(location.start) === Number(renameInfo.start) &&
+          Number(location.end) === Number(renameInfo.end)
+        );
+      }
+
+      function toReferenceEntry(documentContext, renameInfo, location) {
+        if (
+          !location ||
+          !location.filePath ||
+          !Number.isFinite(Number(location.start)) ||
+          !Number.isFinite(Number(location.end))
+        ) {
+          return null;
+        }
+
+        const start = Number(location.start);
+        const end = Math.max(start, Number(location.end));
+        return {
+          fileName: location.filePath,
+          textSpan: {
+            start,
+            length: end - start,
+          },
+          isWriteAccess: false,
+          isDefinition: isRenameDefinitionLocation(documentContext, renameInfo, location),
+        };
+      }
+
+      function toRenameLocation(location) {
+        if (
+          !location ||
+          !location.filePath ||
+          !Number.isFinite(Number(location.start)) ||
+          !Number.isFinite(Number(location.end))
+        ) {
+          return null;
+        }
+
+        const start = Number(location.start);
+        const end = Math.max(start, Number(location.end));
+        return {
+          fileName: location.filePath,
+          textSpan: {
+            start,
+            length: end - start,
+          },
+        };
+      }
+
+      function mergeReferenceEntries(baseReferences, pocketPagesReferences) {
+        const merged = new Map();
+        for (const reference of Array.isArray(baseReferences) ? baseReferences : []) {
+          const key = getReferenceKey(reference);
+          if (key && !merged.has(key)) {
+            merged.set(key, reference);
+          }
+        }
+
+        for (const reference of Array.isArray(pocketPagesReferences) ? pocketPagesReferences : []) {
+          const key = getReferenceKey(reference);
+          if (key && !merged.has(key)) {
+            merged.set(key, reference);
+          }
+        }
+
+        return [...merged.values()];
+      }
+
+      function mergeRenameLocations(baseLocations, pocketPagesLocations) {
+        const merged = new Map();
+        for (const location of Array.isArray(baseLocations) ? baseLocations : []) {
+          const key = getRenameLocationKey(location);
+          if (key && !merged.has(key)) {
+            merged.set(key, location);
+          }
+        }
+
+        for (const location of Array.isArray(pocketPagesLocations) ? pocketPagesLocations : []) {
+          const key = getRenameLocationKey(location);
+          if (key && !merged.has(key)) {
+            merged.set(key, location);
+          }
+        }
+
+        return [...merged.values()];
+      }
+
+      function toTypeScriptRenameInfo(renameInfo) {
+        if (!renameInfo) {
+          return null;
+        }
+
+        if (!renameInfo.canRename) {
+          return {
+            canRename: false,
+            localizedErrorMessage: renameInfo.localizedErrorMessage || "Unable to rename this symbol.",
+          };
+        }
+
+        const start = Number(renameInfo.start);
+        const end = Math.max(start, Number(renameInfo.end));
+        const displayName = renameInfo.placeholder || "";
+        return {
+          canRename: true,
+          displayName,
+          fullDisplayName: displayName,
+          kind: ts.ScriptElementKind.unknown,
+          kindModifiers: "",
+          triggerSpan: {
+            start,
+            length: end - start,
+          },
+        };
       }
 
       host.getScriptKind = (fileName) => {
@@ -948,6 +1183,115 @@ function init(modules) {
           textSpan,
           definitions: toDefinitionInfo(target),
         };
+      };
+
+      proxy.getReferencesAtPosition = (fileName, position) => {
+        const baseReferences = getBaseLanguageServiceResult(
+          "getReferencesAtPosition",
+          [fileName, position],
+          undefined
+        );
+        const documentContext = ensureDocumentContext(fileName);
+        if (!documentContext || !isReferenceAllowedAtPosition(documentContext, position)) {
+          return baseReferences;
+        }
+
+        const renameInfo = documentContext.service.getRenameInfo(
+          documentContext.filePath,
+          documentContext.documentText,
+          position
+        );
+        const referenceTargets = documentContext.service.getReferenceTargets(
+          documentContext.filePath,
+          documentContext.documentText,
+          position,
+          { includeDeclaration: true }
+        );
+        const pocketPagesReferences = (referenceTargets || [])
+          .map((location) => toReferenceEntry(documentContext, renameInfo, location))
+          .filter(Boolean);
+        if (!pocketPagesReferences.length) {
+          return baseReferences;
+        }
+
+        return mergeReferenceEntries(baseReferences, pocketPagesReferences);
+      };
+
+      proxy.getRenameInfo = (fileName, position, options) => {
+        const baseRenameInfo = getBaseLanguageServiceResult(
+          "getRenameInfo",
+          [fileName, position, options],
+          undefined
+        );
+        const documentContext = ensureDocumentContext(fileName);
+        if (!documentContext || !isRenameAllowedAtPosition(documentContext, position)) {
+          return baseRenameInfo;
+        }
+
+        const renameInfo = documentContext.service.getRenameInfo(
+          documentContext.filePath,
+          documentContext.documentText,
+          position
+        );
+        if (!renameInfo) {
+          return baseRenameInfo;
+        }
+
+        const typeScriptRenameInfo = toTypeScriptRenameInfo(renameInfo);
+        if (!typeScriptRenameInfo) {
+          return baseRenameInfo;
+        }
+
+        if (baseRenameInfo && baseRenameInfo.canRename && typeScriptRenameInfo.canRename) {
+          return {
+            ...baseRenameInfo,
+            triggerSpan: typeScriptRenameInfo.triggerSpan || baseRenameInfo.triggerSpan,
+          };
+        }
+
+        return typeScriptRenameInfo;
+      };
+
+      proxy.findRenameLocations = (
+        fileName,
+        position,
+        findInStrings,
+        findInComments,
+        providePrefixAndSuffixTextForRename
+      ) => {
+        const baseLocations = getBaseLanguageServiceResult(
+          "findRenameLocations",
+          [fileName, position, findInStrings, findInComments, providePrefixAndSuffixTextForRename],
+          undefined
+        );
+        const documentContext = ensureDocumentContext(fileName);
+        if (!documentContext || !isRenameAllowedAtPosition(documentContext, position)) {
+          return baseLocations;
+        }
+
+        const renameInfo = documentContext.service.getRenameInfo(
+          documentContext.filePath,
+          documentContext.documentText,
+          position
+        );
+        if (!renameInfo || !renameInfo.canRename) {
+          return baseLocations;
+        }
+
+        const referenceTargets = documentContext.service.getReferenceTargets(
+          documentContext.filePath,
+          documentContext.documentText,
+          position,
+          { includeDeclaration: true }
+        );
+        const pocketPagesLocations = (referenceTargets || [])
+          .map((location) => toRenameLocation(location))
+          .filter(Boolean);
+        if (!pocketPagesLocations.length) {
+          return baseLocations;
+        }
+
+        return mergeRenameLocations(baseLocations, pocketPagesLocations);
       };
 
       const baseDispose = typeof proxy.dispose === "function" ? proxy.dispose.bind(proxy) : null;

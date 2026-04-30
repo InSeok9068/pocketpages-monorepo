@@ -572,6 +572,7 @@ function updateDocumentRuntimeState(uri, document, options = {}) {
     textLength: document && typeof document.getText === "function" ? document.getText().length : 0,
     opened: options.opened === true,
     changed: options.changed === true,
+    saved: options.saved === true,
   });
 }
 
@@ -807,6 +808,7 @@ const featureServiceContext = {
     isSchemaSupportOnlyHookScriptPath,
     isStaleDocumentVersion,
     logServer,
+    rememberInteractiveOffset,
     refreshPullDiagnostics: (...args) => diagnosticsFeatureService.refreshPullDiagnostics(...args),
     scheduleDiagnosticsRefreshForDocument: (...args) =>
       diagnosticsFeatureService.scheduleDiagnosticsRefreshForDocument(...args),

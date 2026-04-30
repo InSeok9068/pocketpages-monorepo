@@ -351,12 +351,22 @@ async function showFileReferences({ logger, fileUri }) {
 
   const uniqueFilePaths = [...new Set(references.map((entry) => entry.filePath))];
   const referenceDocuments = await Promise.all(
-    uniqueFilePaths.map(async (referenceFilePath) => [
-      referenceFilePath,
-      await vscode.workspace.openTextDocument(vscode.Uri.file(referenceFilePath)),
-    ])
+    uniqueFilePaths.map(async (referenceFilePath) => {
+      try {
+        return [
+          referenceFilePath,
+          await vscode.workspace.openTextDocument(vscode.Uri.file(referenceFilePath)),
+        ];
+      } catch (error) {
+        logger.warn("references", "open-target-failed", {
+          file: vscode.workspace.asRelativePath(referenceFilePath, false),
+          message: error && error.message ? error.message : String(error),
+        });
+        return null;
+      }
+    })
   );
-  const documentMap = new Map(referenceDocuments);
+  const documentMap = new Map(referenceDocuments.filter(Boolean));
   const locations = references
     .map((reference) => {
       const referenceDocument = documentMap.get(reference.filePath);
@@ -426,6 +436,30 @@ async function applyManagedFileRenameEdits({ logger, event }) {
   if (editCount > 0) {
     await vscode.workspace.applyEdit(workspaceEdit);
   }
+}
+
+function hasManagedFileRenameTargets(event) {
+  return (event.files || []).some(
+    (entry) =>
+      entry.oldUri &&
+      entry.newUri &&
+      entry.oldUri.scheme === "file" &&
+      entry.newUri.scheme === "file" &&
+      isManagedRenameTargetPath(entry.oldUri.fsPath)
+  );
+}
+
+async function handleManagedFileRenameEvent(context, event) {
+  if (!hasManagedFileRenameTargets(event)) {
+    return;
+  }
+
+  const activeClient = await ensureLspStarted(context);
+  if (!activeClient) {
+    return;
+  }
+
+  await applyManagedFileRenameEdits({ logger: clientLogger, event });
 }
 
 async function activateLsp(context) {
@@ -549,7 +583,6 @@ async function activateLsp(context) {
       });
       await client.sendNotification(NOTIFICATIONS.didManualSave, { uri: document.uri.toString() });
     }),
-    vscode.workspace.onDidRenameFiles((event) => applyManagedFileRenameEdits({ logger, event })),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       lspStatusController.refreshVisibility();
       if (editor) {
@@ -715,6 +748,7 @@ async function activate(context) {
       await vscode.commands.executeCommand("vscode.open", fileUri);
     }),
     vscode.commands.registerCommand("pocketpagesServerScript.noopCodeLens", () => {}),
+    vscode.workspace.onDidRenameFiles((event) => handleManagedFileRenameEvent(context, event)),
     vscode.workspace.onDidOpenTextDocument((document) => maybeStartLspForDocument(document)),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       maybeStartLspForDocument(editor && editor.document);

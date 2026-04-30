@@ -458,90 +458,131 @@ function skipUnquotedAttributeValue(text, startIndex, upperBound) {
   return cursor
 }
 
+function collectHtmlAttributeEntries(sourceText, tag) {
+  const attributes = []
+  let cursor = tag.attributesStart
+
+  while (cursor < tag.attributesEnd) {
+    while (cursor < tag.attributesEnd && /\s/.test(sourceText.charAt(cursor))) {
+      cursor += 1
+    }
+
+    if (cursor >= tag.attributesEnd) {
+      break
+    }
+
+    if (sourceText.slice(cursor, cursor + 2) === '<%') {
+      cursor = skipEjsTag(sourceText, cursor)
+      continue
+    }
+
+    if (sourceText.charAt(cursor) === '/') {
+      cursor += 1
+      continue
+    }
+
+    const nameStart = cursor
+    while (cursor < tag.attributesEnd) {
+      if (sourceText.slice(cursor, cursor + 2) === '<%') {
+        break
+      }
+
+      const currentChar = sourceText.charAt(cursor)
+      if (/\s/.test(currentChar) || currentChar === '=' || currentChar === '>' || currentChar === '/') {
+        break
+      }
+
+      cursor += 1
+    }
+
+    const attributeName = sourceText.slice(nameStart, cursor).trim().toLowerCase()
+    if (!attributeName) {
+      cursor += 1
+      continue
+    }
+
+    while (cursor < tag.attributesEnd && /\s/.test(sourceText.charAt(cursor))) {
+      cursor += 1
+    }
+
+    if (sourceText.charAt(cursor) !== '=') {
+      continue
+    }
+
+    cursor += 1
+    while (cursor < tag.attributesEnd && /\s/.test(sourceText.charAt(cursor))) {
+      cursor += 1
+    }
+
+    const quote = sourceText.charAt(cursor)
+    if (quote !== '"' && quote !== "'") {
+      cursor = skipUnquotedAttributeValue(sourceText, cursor, tag.attributesEnd)
+      continue
+    }
+
+    const valueStart = cursor + 1
+    const valueRange = findQuotedAttributeValueEnd(sourceText, cursor, tag.attributesEnd)
+    const valueEnd = valueRange.end
+    attributes.push({
+      name: attributeName,
+      quote,
+      value: sourceText.slice(valueStart, valueEnd),
+      valueStart,
+      valueEnd,
+      closed: valueRange.closed,
+      matchText: sourceText.slice(nameStart, valueRange.closed ? valueEnd + 1 : valueEnd),
+    })
+
+    cursor = valueRange.closed ? valueEnd + 1 : valueEnd
+  }
+
+  return attributes
+}
+
+function getRouteSourceForAttribute(tag, attributeName, attributes) {
+  if (attributeName !== 'action' || String(tag.tagName || '').toLowerCase() !== 'form') {
+    return attributeName
+  }
+
+  const methodAttribute = attributes.find((attribute) => attribute.name === 'method')
+  if (!methodAttribute) {
+    return 'action-get'
+  }
+
+  const methodValue = String(methodAttribute.value || '').trim()
+  if (!methodValue || isDynamicRoutePathValue(methodValue)) {
+    return 'action'
+  }
+
+  const method = methodValue.toLowerCase()
+  return method === 'post' ? 'action-post' : 'action-get'
+}
+
 function collectRouteAttributeContexts(documentText) {
   const sourceText = String(documentText || '')
   const contexts = []
 
   forEachHtmlStartTag(sourceText, (tag) => {
-    let cursor = tag.attributesStart
-
-    while (cursor < tag.attributesEnd) {
-      while (cursor < tag.attributesEnd && /\s/.test(sourceText.charAt(cursor))) {
-        cursor += 1
-      }
-
-      if (cursor >= tag.attributesEnd) {
-        break
-      }
-
-      if (sourceText.slice(cursor, cursor + 2) === '<%') {
-        cursor = skipEjsTag(sourceText, cursor)
+    const attributes = collectHtmlAttributeEntries(sourceText, tag)
+    for (const attribute of attributes) {
+      if (
+        !attribute.closed ||
+        !ROUTE_ATTRIBUTE_NAMES.has(attribute.name) ||
+        !attribute.value.startsWith('/')
+      ) {
         continue
       }
 
-      if (sourceText.charAt(cursor) === '/') {
-        cursor += 1
-        continue
-      }
-
-      const nameStart = cursor
-      while (cursor < tag.attributesEnd) {
-        if (sourceText.slice(cursor, cursor + 2) === '<%') {
-          break
-        }
-
-        const currentChar = sourceText.charAt(cursor)
-        if (/\s/.test(currentChar) || currentChar === '=' || currentChar === '>' || currentChar === '/') {
-          break
-        }
-
-        cursor += 1
-      }
-
-      const attributeName = sourceText.slice(nameStart, cursor).trim().toLowerCase()
-      if (!attributeName) {
-        cursor += 1
-        continue
-      }
-
-      while (cursor < tag.attributesEnd && /\s/.test(sourceText.charAt(cursor))) {
-        cursor += 1
-      }
-
-      if (sourceText.charAt(cursor) !== '=') {
-        continue
-      }
-
-      cursor += 1
-      while (cursor < tag.attributesEnd && /\s/.test(sourceText.charAt(cursor))) {
-        cursor += 1
-      }
-
-      const quote = sourceText.charAt(cursor)
-      if (quote !== '"' && quote !== "'") {
-        cursor = skipUnquotedAttributeValue(sourceText, cursor, tag.attributesEnd)
-        continue
-      }
-
-      const valueStart = cursor + 1
-      const valueRange = findQuotedAttributeValueEnd(sourceText, cursor, tag.attributesEnd)
-      const valueEnd = valueRange.end
-      const value = sourceText.slice(valueStart, valueEnd)
-
-      if (valueRange.closed && ROUTE_ATTRIBUTE_NAMES.has(attributeName) && value.startsWith('/')) {
-        contexts.push({
-          kind: 'route-path',
-          quote,
-          routeSource: attributeName,
-          value,
-          start: valueStart,
-          end: valueEnd,
-          isDynamic: isDynamicRoutePathValue(value),
-          matchText: sourceText.slice(nameStart, valueRange.closed ? valueEnd + 1 : valueEnd),
-        })
-      }
-
-      cursor = valueRange.closed ? valueEnd + 1 : valueEnd
+      contexts.push({
+        kind: 'route-path',
+        quote: attribute.quote,
+        routeSource: getRouteSourceForAttribute(tag, attribute.name, attributes),
+        value: attribute.value,
+        start: attribute.valueStart,
+        end: attribute.valueEnd,
+        isDynamic: isDynamicRoutePathValue(attribute.value),
+        matchText: attribute.matchText,
+      })
     }
   })
 

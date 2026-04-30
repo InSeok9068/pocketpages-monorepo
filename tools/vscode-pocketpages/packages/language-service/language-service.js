@@ -1443,8 +1443,12 @@ function buildConcreteRoutePathFromSegments(routeSegments, dynamicValueGroups) {
 
 function getPreferredRouteMethods(routeSource) {
   switch (String(routeSource || "").toLowerCase()) {
-    case "action":
+    case "action-post":
     case "hx-post":
+      return ["POST", "GET"];
+    case "action-get":
+      return ["PAGE"];
+    case "action":
       return ["POST", "GET"];
     case "hx-put":
       return ["PUT", "GET"];
@@ -2082,6 +2086,52 @@ function findContainingRegion(regions, start, end) {
     .map(toDiagnosticRegion)
     .filter(Boolean)
     .find((region) => start >= region.sourceStart && end <= region.sourceEnd) || null;
+}
+
+function containsOffset(region, offset) {
+  return (
+    region &&
+    Number.isFinite(Number(offset)) &&
+    Number(offset) >= region.sourceStart &&
+    Number(offset) <= region.sourceEnd
+  );
+}
+
+function orderBlocksForPreferredDiagnostics(blocks, getRegion, preferredOffset) {
+  const normalizedBlocks = Array.isArray(blocks) ? blocks : [];
+  if (!Number.isFinite(Number(preferredOffset))) {
+    return normalizedBlocks.map((block) => ({
+      block,
+      region: typeof getRegion === "function" ? getRegion(block) : null,
+    }));
+  }
+
+  const offset = Number(preferredOffset);
+  return normalizedBlocks
+    .map((block, index) => {
+      const region = typeof getRegion === "function" ? getRegion(block) : null;
+      return {
+        block,
+        region,
+        index,
+        preferred:
+          containsOffset(region, offset) ||
+          (
+            block &&
+            Number.isFinite(Number(block.contentStart)) &&
+            Number.isFinite(Number(block.contentEnd)) &&
+            offset >= Number(block.contentStart) &&
+            offset <= Number(block.contentEnd)
+          ),
+      };
+    })
+    .sort((left, right) => {
+      if (left.preferred !== right.preferred) {
+        return left.preferred ? -1 : 1;
+      }
+
+      return left.index - right.index;
+    });
 }
 
 function remapDiagnosticRangeByRegions(diagnostic, previousRegions, currentRegions) {
@@ -5737,7 +5787,7 @@ class ProjectLanguageService {
   }
 
   shouldRenameRoutePathContext(pathContext, routeRenameContext) {
-    if (!pathContext || pathContext.kind !== "route-path" || pathContext.isDynamic) {
+    if (!pathContext || pathContext.kind !== "route-path") {
       return false;
     }
 
@@ -6369,12 +6419,16 @@ class ProjectLanguageService {
         includeSemanticDiagnostics &&
         includeTypeScriptDiagnostics
       );
-    const semanticBudgetMaxValue = Number(semanticBudget && semanticBudget.maxSemanticRegions);
+    const semanticBudgetMaxValue = semanticBudget
+      ? Number(semanticBudget.maxSemanticRegions)
+      : NaN;
     const semanticBudgetMax = Math.max(
       0,
       Number.isFinite(semanticBudgetMaxValue) ? semanticBudgetMaxValue : 0
     );
-    const preferredOffset = Number(semanticBudget && semanticBudget.preferredOffset);
+    const preferredOffset = semanticBudget
+      ? Number(semanticBudget.preferredOffset)
+      : NaN;
     let semanticBudgetUsed = 0;
     const diagnostics = [];
     const getCurrentRegionForBlock = (block) =>
@@ -6437,13 +6491,19 @@ class ProjectLanguageService {
       }
       return true;
     };
+    const orderedBlocks = orderBlocksForPreferredDiagnostics(
+      blocks,
+      getCurrentRegionForBlock,
+      preferredOffset
+    );
 
-    for (const block of blocks) {
+    for (const blockEntry of orderedBlocks) {
+      const block = blockEntry.block;
       if (shouldCancel && shouldCancel("before-server-block-diagnostics")) {
         return diagnostics;
       }
 
-      const currentRegion = getCurrentRegionForBlock(block);
+      const currentRegion = blockEntry.region || getCurrentRegionForBlock(block);
       if (pushCachedRegionDiagnostics(currentRegion)) {
         continue;
       }
@@ -6580,6 +6640,12 @@ class ProjectLanguageService {
         regionCache.currentMetadata &&
         Array.isArray(regionCache.previousDiagnostics)
       );
+    const currentTemplateRegions =
+      regionCache &&
+      regionCache.currentMetadata &&
+      Array.isArray(regionCache.currentMetadata.regions)
+        ? regionCache.currentMetadata.regions.map(toDiagnosticRegion).filter(Boolean)
+        : [];
     const semanticBudgetEnabled =
       !!(
         semanticBudget &&
@@ -6595,13 +6661,16 @@ class ProjectLanguageService {
     const overlapsServerBlock = (start, end) =>
       blocks.some((block) => end >= block.contentStart && start <= block.contentEnd);
     const cachedTemplateRegionIds = new Set();
+    const preferredOffset = semanticBudget
+      ? Number(semanticBudget.preferredOffset)
+      : NaN;
+    const preferredTemplateRegion =
+      semanticBudgetEnabled && Number.isFinite(preferredOffset)
+        ? currentTemplateRegions.find((region) => containsOffset(region, preferredOffset)) || null
+        : null;
 
     if (semanticBudgetEnabled) {
-      const currentRegions =
-        regionCache.currentMetadata && Array.isArray(regionCache.currentMetadata.regions)
-          ? regionCache.currentMetadata.regions
-          : [];
-      for (const region of currentRegions) {
+      for (const region of currentTemplateRegions) {
         if (!region || region.dirty === true) {
           continue;
         }
@@ -6621,8 +6690,10 @@ class ProjectLanguageService {
         cachedTemplateRegionIds.add(region.id);
       }
 
-      const deferredRegionCount = currentRegions.filter((region) =>
-        region && !cachedTemplateRegionIds.has(region.id)
+      const deferredRegionCount = currentTemplateRegions.filter((region) =>
+        region &&
+        !cachedTemplateRegionIds.has(region.id) &&
+        (!preferredTemplateRegion || region.id !== preferredTemplateRegion.id)
       ).length;
       if (deferredRegionCount > 0) {
         if (profile) {
@@ -6643,7 +6714,7 @@ class ProjectLanguageService {
       }
     }
 
-    if (includeTypeScriptDiagnostics && !semanticBudgetEnabled) {
+    if (includeTypeScriptDiagnostics && (!semanticBudgetEnabled || preferredTemplateRegion)) {
       const templateVirtual = this.getPreparedTemplateVirtual(
         filePath,
         documentText,
@@ -6677,6 +6748,16 @@ class ProjectLanguageService {
           }
 
           if (!overlapsTemplateBlock(start, end) || overlapsServerBlock(start, end)) {
+            continue;
+          }
+          if (
+            semanticBudgetEnabled &&
+            (
+              !preferredTemplateRegion ||
+              start < preferredTemplateRegion.sourceStart ||
+              end > preferredTemplateRegion.sourceEnd
+            )
+          ) {
             continue;
           }
 

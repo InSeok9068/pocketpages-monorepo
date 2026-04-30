@@ -208,7 +208,7 @@ function createDiagnosticsFeatureService(context) {
     return !!(token && token.isCancellationRequested) || shouldCancel("after-initial-yield");
   }
 
-  function getDiagnosticsResultState(document, documentContext) {
+  function getDiagnosticsResultState(document, documentContext, options = {}) {
     if (
       documentContext &&
       documentContext.service &&
@@ -217,27 +217,28 @@ function createDiagnosticsFeatureService(context) {
       typeof documentContext.service.getDiagnosticsLaneResultIds === "function" &&
       typeof documentContext.service.getDiagnosticsResultId === "function"
     ) {
-      const options = {
+      const diagnosticOptions = {
         includeSemanticDiagnostics: true,
         includeProjectRuleDiagnostics: true,
         includeTypeScriptDiagnostics: true,
         includeServerBlockDiagnostics: true,
         includeTemplateDiagnostics: true,
         includeScriptSchemaDiagnostics: true,
+        ...options,
       };
       const laneMetadata =
         typeof documentContext.service.getDiagnosticsLaneMetadata === "function"
           ? documentContext.service.getDiagnosticsLaneMetadata(
               documentContext.filePath,
               document.getText(),
-              options
+              diagnosticOptions
             )
           : null;
       const laneResultIds = documentContext.service.getDiagnosticsLaneResultIds(
         documentContext.filePath,
         document.getText(),
         {
-          ...options,
+          ...diagnosticOptions,
           laneMetadata,
         }
       );
@@ -248,7 +249,7 @@ function createDiagnosticsFeatureService(context) {
           documentContext.filePath,
           document.getText(),
           {
-            ...options,
+            ...diagnosticOptions,
             laneResultIds,
           }
         ),
@@ -301,6 +302,19 @@ function createDiagnosticsFeatureService(context) {
     return Math.max(1, quietMs - elapsedMs);
   }
 
+  function getPreferredOffset(uri) {
+    const preferredOffset =
+      typeof getPreferredDiagnosticOffset === "function"
+        ? getPreferredDiagnosticOffset(uri)
+        : null;
+    if (preferredOffset === null || preferredOffset === undefined || preferredOffset === "") {
+      return null;
+    }
+
+    const numericOffset = Number(preferredOffset);
+    return Number.isFinite(numericOffset) ? numericOffset : null;
+  }
+
   function createSemanticBudget(uri, documentContext, document, cachedResult) {
     if (!isLargeEjsDocument(documentContext, document)) {
       return null;
@@ -315,14 +329,10 @@ function createDiagnosticsFeatureService(context) {
       return null;
     }
 
-    const preferredOffset =
-      typeof getPreferredDiagnosticOffset === "function"
-        ? getPreferredDiagnosticOffset(uri)
-        : null;
     return {
       enabled: true,
       maxSemanticRegions,
-      preferredOffset,
+      preferredOffset: getPreferredOffset(uri),
       deferred: false,
     };
   }
@@ -389,6 +399,203 @@ function createDiagnosticsFeatureService(context) {
     }
   }
 
+  async function provideLargeQuietPartialDiagnostics({
+    params,
+    token,
+    uri,
+    document,
+    documentContext,
+    cachedResult,
+    requestedVersion,
+    quietDelayMs,
+    preferredOffset,
+    shouldCancel,
+  }) {
+    schedulePullDiagnosticsRefresh("large-quiet", quietDelayMs + 100);
+
+    if (
+      params.previousResultId &&
+      cachedResult &&
+      cachedResult.partialDiagnostics === true &&
+      cachedResult.documentVersion === requestedVersion &&
+      cachedResult.preferredOffset === preferredOffset &&
+      cachedResult.resultId === params.previousResultId
+    ) {
+      logServer("perf", "diagnostics", "pull-deferred", {
+        file: getRelativePathLabel(documentContext.filePath),
+        version: requestedVersion,
+        mode: "large-quiet-partial",
+        delayMs: quietDelayMs,
+        result: "unchanged",
+      });
+      return {
+        kind: "unchanged",
+        resultId: params.previousResultId,
+      };
+    }
+
+    if (
+      cachedResult &&
+      cachedResult.partialDiagnostics === true &&
+      cachedResult.documentVersion === requestedVersion &&
+      cachedResult.preferredOffset === preferredOffset &&
+      cachedResult.resultId
+    ) {
+      logServer("perf", "diagnostics", "pull-deferred", {
+        file: getRelativePathLabel(documentContext.filePath),
+        version: requestedVersion,
+        mode: "large-quiet-partial",
+        delayMs: quietDelayMs,
+        result: "cached-partial",
+      });
+      return {
+        kind: "full",
+        resultId: cachedResult.resultId,
+        documentVersion: requestedVersion,
+        budgetDeferred: true,
+        partialDiagnostics: true,
+        preferredOffset,
+        finalResultId: cachedResult.finalResultId,
+        items: Array.isArray(cachedResult.items) ? cachedResult.items : [],
+      };
+    }
+
+    if (shouldCancel("before-large-quiet-partial-prepare")) {
+      logServer("warn", "diagnostics", "cancelled", {
+        file: getRelativePathLabel(documentContext.filePath),
+        version: requestedVersion,
+        lane: "pull",
+        stage: "before-large-quiet-partial-prepare",
+      });
+      return null;
+    }
+
+    if (typeof ensureDocumentPrepared === "function") {
+      ensureDocumentPrepared(uri, {
+        operation: "diagnostics",
+        preferredOffset,
+        skipUnrelatedRegions: true,
+        skipStaticRefresh: true,
+      });
+    }
+    if (shouldCancel("after-large-quiet-partial-prepare")) {
+      logServer("warn", "diagnostics", "cancelled", {
+        file: getRelativePathLabel(documentContext.filePath),
+        version: requestedVersion,
+        lane: "pull",
+        stage: "after-large-quiet-partial-prepare",
+      });
+      return null;
+    }
+
+    const diagnosticOptions = {
+      includeSemanticDiagnostics: true,
+      includeProjectRuleDiagnostics: false,
+      includeTypeScriptDiagnostics: true,
+      includeServerBlockDiagnostics: true,
+      includeTemplateDiagnostics: true,
+      includeScriptSchemaDiagnostics: true,
+    };
+    const diagnosticsResultState = getDiagnosticsResultState(
+      document,
+      documentContext,
+      diagnosticOptions
+    );
+    const { laneResultIds, laneMetadata } = diagnosticsResultState;
+    const resultId = `${diagnosticsResultState.resultId}|partial:${requestedVersion}:${preferredOffset}`;
+
+    if (
+      params.previousResultId &&
+      params.previousResultId === resultId &&
+      cachedResult &&
+      cachedResult.resultId === resultId
+    ) {
+      logServer("perf", "diagnostics", "pull-deferred", {
+        file: getRelativePathLabel(documentContext.filePath),
+        version: requestedVersion,
+        mode: "large-quiet-partial",
+        delayMs: quietDelayMs,
+        result: "unchanged",
+      });
+      return {
+        kind: "unchanged",
+        resultId,
+      };
+    }
+
+    const startedAt = process.hrtime.bigint();
+    const diagnosticsProfile = {};
+    const laneDiagnosticsOut = {};
+    const semanticBudget = {
+      enabled: true,
+      maxSemanticRegions: 1,
+      preferredOffset,
+      deferred: false,
+    };
+    const rawDiagnostics = documentContext.service.getDiagnostics(
+      documentContext.filePath,
+      document.getText(),
+      {
+        ...diagnosticOptions,
+        profile: diagnosticsProfile,
+        requirePreparedVirtualState: true,
+        currentLaneResultIds: laneResultIds,
+        currentLaneMetadata: laneMetadata,
+        previousLaneResultIds: cachedResult && cachedResult.laneResultIds,
+        previousLaneMetadata: cachedResult && cachedResult.laneMetadata,
+        previousLaneDiagnostics: cachedResult && cachedResult.laneDiagnostics,
+        laneDiagnosticsOut,
+        semanticBudget,
+        shouldCancel,
+      }
+    );
+    if (diagnosticsProfile.cancelled || shouldCancel("after-large-quiet-partial-diagnostics")) {
+      logServer("warn", "diagnostics", "cancelled", {
+        file: getRelativePathLabel(documentContext.filePath),
+        version: requestedVersion,
+        lane: "pull",
+        stage: diagnosticsProfile.cancelledAt || "after-large-quiet-partial-diagnostics",
+      });
+      return null;
+    }
+
+    const reportedDiagnostics = filterReportedDiagnostics(
+      uri,
+      documentContext,
+      rawDiagnostics
+    );
+    logServer("perf", "diagnostics", "pull", {
+      file: getRelativePathLabel(documentContext.filePath),
+      version: requestedVersion,
+      count: reportedDiagnostics.length,
+      rawCount: rawDiagnostics.length,
+      mode: "large-quiet-partial",
+      delayMs: quietDelayMs,
+      preferredOffset,
+      totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+      ...getDiagnosticsProfileFields(diagnosticsProfile),
+    });
+
+    const result = {
+      kind: "full",
+      resultId,
+      documentVersion: requestedVersion,
+      budgetDeferred: true,
+      partialDiagnostics: true,
+      preferredOffset,
+      finalResultId: diagnosticsResultState.resultId,
+      laneResultIds,
+      laneMetadata,
+      laneDiagnostics: laneDiagnosticsOut,
+      items: toLspDiagnostics(document, reportedDiagnostics),
+    };
+    if (typeof setCachedDiagnosticsResult === "function") {
+      setCachedDiagnosticsResult(uri, "pull", result);
+    }
+
+    return result;
+  }
+
   async function providePullDiagnostics(params, token) {
     const uri = params && params.textDocument ? params.textDocument.uri : null;
     if (!uri || (token && token.isCancellationRequested)) {
@@ -411,10 +618,34 @@ function createDiagnosticsFeatureService(context) {
         ? getCachedDiagnosticsResult(uri, "pull")
         : null;
     const requestedVersion = document.version;
+    const shouldCancel = (stage) =>
+      !isActiveDiagnosticRun(uri, runId) ||
+      isStaleDocumentVersion(uri, requestedVersion) ||
+      !!(token && token.isCancellationRequested);
     const quietDelayMs = isLargeEjsDocument(documentContext, document)
       ? getRecentChangeQuietDelayMs(uri)
       : 0;
     if (quietDelayMs > 0) {
+      const preferredOffset = getPreferredOffset(uri);
+      if (
+        preferredOffset !== null &&
+        preferredOffset >= 0 &&
+        preferredOffset <= document.getText().length
+      ) {
+        return provideLargeQuietPartialDiagnostics({
+          params,
+          token,
+          uri,
+          document,
+          documentContext,
+          cachedResult,
+          requestedVersion,
+          quietDelayMs,
+          preferredOffset,
+          shouldCancel,
+        });
+      }
+
       schedulePullDiagnosticsRefresh("large-quiet", quietDelayMs + 100);
       if (
         params.previousResultId &&
@@ -496,10 +727,6 @@ function createDiagnosticsFeatureService(context) {
 
     const startedAt = process.hrtime.bigint();
     const diagnosticsProfile = {};
-    const shouldCancel = (stage) =>
-      !isActiveDiagnosticRun(uri, runId) ||
-      isStaleDocumentVersion(uri, requestedVersion) ||
-      !!(token && token.isCancellationRequested);
 
     if (await yieldBeforeHeavyDiagnostics(token, shouldCancel)) {
       logServer("warn", "diagnostics", "cancelled", {

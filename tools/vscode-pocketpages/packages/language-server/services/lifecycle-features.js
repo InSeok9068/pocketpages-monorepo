@@ -12,6 +12,7 @@ function createLifecycleFeatureService(context) {
     isExcludedPocketPagesScriptPath,
     isScriptFilePath,
     logServer,
+    rememberInteractiveOffset,
     refreshPullDiagnostics,
     scheduleDiagnosticsRefreshForDocument,
     scheduleFirstRequestWarmup,
@@ -36,6 +37,21 @@ function createLifecycleFeatureService(context) {
       default:
         return "change";
     }
+  }
+
+  function getPreferredChangeOffset(document, contentChanges) {
+    if (!document || typeof document.offsetAt !== "function") {
+      return null;
+    }
+
+    const changes = Array.isArray(contentChanges) ? contentChanges : [];
+    for (const change of changes) {
+      if (change && change.range && change.range.start) {
+        return document.offsetAt(change.range.start);
+      }
+    }
+
+    return changes.length ? 0 : null;
   }
 
   function applyWatchedFileChanges(changes) {
@@ -88,6 +104,15 @@ function createLifecycleFeatureService(context) {
 
     handleDidChangeContent(event) {
       clearCachedCompletionItemsForUri(event.document.uri);
+      const filePath = uriToFilePath(event.document.uri);
+      const preferredChangeOffset = getPreferredChangeOffset(event.document, event.contentChanges);
+      if (
+        shouldRunDiagnosticsForFile(filePath) &&
+        Number.isFinite(Number(preferredChangeOffset)) &&
+        typeof rememberInteractiveOffset === "function"
+      ) {
+        rememberInteractiveOffset(event.document.uri, preferredChangeOffset, "edit");
+      }
       core.updateDocument({
         uri: event.document.uri,
         languageId: event.document.languageId,
@@ -102,7 +127,7 @@ function createLifecycleFeatureService(context) {
         });
       }
       logServer("perf", "document", "change", {
-        file: getRelativePathLabel(uriToFilePath(event.document.uri)),
+        file: getRelativePathLabel(filePath),
         version: event.document.version,
         changes: Array.isArray(event.contentChanges) ? event.contentChanges.length : 0,
       });
@@ -153,6 +178,11 @@ function createLifecycleFeatureService(context) {
       logServer("info", "diagnostics", "manual-save", {
         file: getRelativePathLabel(uriToFilePath(uri)),
       });
+      if (typeof updateDocumentRuntimeState === "function") {
+        updateDocumentRuntimeState(uri, documents.get(uri), {
+          saved: true,
+        });
+      }
       refreshPullDiagnostics("manual-save");
     },
   };

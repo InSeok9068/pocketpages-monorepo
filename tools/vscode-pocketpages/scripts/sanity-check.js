@@ -240,6 +240,7 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
     getPreferredDiagnosticOffset() {
       return null
     },
+    rememberInteractiveOffset() {},
     getCachedDiagnosticsResult(uri, key) {
       return typeof runtimeState.getDiagnostics === 'function'
         ? runtimeState.getDiagnostics(uri, key)
@@ -297,6 +298,7 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
         textLength: document && typeof document.getText === 'function' ? document.getText().length : 0,
         opened: options.opened === true,
         changed: options.changed === true,
+        saved: options.saved === true,
       })
     },
     clearDocumentRuntimeState(uri) {
@@ -1029,6 +1031,16 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     diagnosticsFeatureSource,
+    /operation:\s*"diagnostics"[\s\S]*preferredOffset[\s\S]*skipUnrelatedRegions:\s*true[\s\S]*skipStaticRefresh:\s*true/,
+    'Expected recent large-file pull diagnostics to prepare only the preferred region before the full quiet-delay refresh.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /includeProjectRuleDiagnostics:\s*false[\s\S]*partialDiagnostics:\s*true/,
+    'Expected recent large-file partial diagnostics to defer project rules until the full diagnostics pass.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
     /getCachedCodeActionDiagnostics\([\s\S]*laneDiagnostics[\s\S]*documentVersion/,
     'Expected code actions to reuse cached pull diagnostics instead of recomputing full diagnostics.'
   )
@@ -1055,6 +1067,21 @@ function assertLspRuntimeContracts(repoRoot) {
     lifecycleFeatureSource,
     /handleDidManualSave\(\{ uri \}\) \{[\s\S]*refreshPullDiagnostics\("manual-save"\)/,
     'Expected manual-save diagnostics to request a pull diagnostics refresh.'
+  )
+  assertMatches(
+    lifecycleFeatureSource,
+    /getPreferredChangeOffset\([\s\S]*rememberInteractiveOffset\(event\.document\.uri,\s*preferredChangeOffset,\s*"edit"\)/,
+    'Expected lifecycle change handling to remember the edit offset for preferred diagnostics.'
+  )
+  assertMatches(
+    lifecycleFeatureSource,
+    /handleDidManualSave\(\{ uri \}\)[\s\S]*updateDocumentRuntimeState\(uri,\s*documents\.get\(uri\),\s*\{[\s\S]*saved:\s*true/,
+    'Expected manual save handling to clear the recent-change quiet window before requesting diagnostics.'
+  )
+  assertMatches(
+    languageServiceSource,
+    /orderBlocksForPreferredDiagnostics\([\s\S]*preferred[\s\S]*collectServerBlockDiagnostics\([\s\S]*orderedBlocks/,
+    'Expected server-block diagnostics to prioritize the preferred dirty region under the large-file semantic budget.'
   )
   assertMatches(
     serverSource,
@@ -3596,6 +3623,106 @@ const flashClasses = 'notice'
       throw new Error(`Expected diagnostics feature service to return route-path diagnostics from EJS markup. Got: ${JSON.stringify(diagnosticsSmokeReport.items)}`)
     }
 
+    const normalEjsDiagnosticsCore = new PocketPagesLanguageCore()
+    const normalEjsDiagnosticsText = `<script server>
+const smallNormalValue = missingSmallNormalValue
+</script>
+<div><%= smallNormalValue %></div>
+`
+    const normalEjsDiagnosticsDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      2,
+      normalEjsDiagnosticsText
+    )
+    const normalEjsDiagnosticsUri = normalEjsDiagnosticsDocument.uri
+    normalEjsDiagnosticsCore.openDocument({
+      uri: normalEjsDiagnosticsUri,
+      languageId: 'ejs',
+      version: normalEjsDiagnosticsDocument.version,
+      text: normalEjsDiagnosticsText,
+    })
+    const normalEjsDiagnosticsRuntimeState = createDocumentRuntimeStateRegistry()
+    normalEjsDiagnosticsRuntimeState.updateDocument(normalEjsDiagnosticsUri, {
+      version: normalEjsDiagnosticsDocument.version,
+      textLength: normalEjsDiagnosticsText.length,
+      changed: true,
+    })
+    const normalEjsDiagnosticsContext = createLspServiceSmokeContext(
+      normalEjsDiagnosticsCore,
+      new Map([[normalEjsDiagnosticsUri, normalEjsDiagnosticsDocument]]),
+      {
+        runtimeState: normalEjsDiagnosticsRuntimeState,
+        connection: {
+          languages: {
+            diagnostics: {
+              refresh() {},
+            },
+          },
+        },
+      }
+    )
+    const normalEjsSchedules = []
+    const normalEjsPrepareCalls = []
+    normalEjsDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 1000
+    normalEjsDiagnosticsContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS = 10000
+    normalEjsDiagnosticsContext.context.helpers.isPullDiagnosticRefreshSupported = () => true
+    normalEjsDiagnosticsContext.context.helpers.getPreferredDiagnosticOffset = () =>
+      normalEjsDiagnosticsText.indexOf('missingSmallNormalValue')
+    normalEjsDiagnosticsContext.context.helpers.scheduleDocumentRequest = (uri, key, version, delayMs, callback) => {
+      normalEjsSchedules.push({ uri, key, version, delayMs, callback })
+      return { uri, key, version, delayMs }
+    }
+    normalEjsDiagnosticsContext.context.helpers.ensureDocumentPrepared = (uri, options = {}) => {
+      normalEjsPrepareCalls.push({ uri, options })
+      return normalEjsDiagnosticsCore.prepareDocument(uri, options)
+    }
+    const normalEjsDiagnosticsService = normalEjsDiagnosticsCore.getDocumentContextByUri(normalEjsDiagnosticsUri).service
+    const originalNormalEjsGetDiagnostics = normalEjsDiagnosticsService.getDiagnostics.bind(normalEjsDiagnosticsService)
+    const normalEjsDiagnosticOptions = []
+    const normalEjsDiagnosticsFeatureService = createDiagnosticsFeatureService(
+      normalEjsDiagnosticsContext.context
+    )
+    let normalEjsDiagnosticsReport = null
+    try {
+      normalEjsDiagnosticsService.getDiagnostics = (_filePath, _documentText, options = {}) => {
+        normalEjsDiagnosticOptions.push(options)
+        return originalNormalEjsGetDiagnostics(_filePath, _documentText, options)
+      }
+      normalEjsDiagnosticsReport = await normalEjsDiagnosticsFeatureService.providePullDiagnostics(
+        { textDocument: { uri: normalEjsDiagnosticsUri } },
+        { isCancellationRequested: false }
+      )
+    } finally {
+      normalEjsDiagnosticsService.getDiagnostics = originalNormalEjsGetDiagnostics
+    }
+    if (
+      !normalEjsDiagnosticsReport ||
+      normalEjsDiagnosticsReport.kind !== 'full' ||
+      normalEjsDiagnosticsReport.partialDiagnostics === true ||
+      normalEjsDiagnosticsReport.budgetDeferred === true ||
+      normalEjsSchedules.length !== 0 ||
+      normalEjsPrepareCalls.length !== 1 ||
+      Object.keys(normalEjsPrepareCalls[0].options || {}).length !== 0 ||
+      normalEjsDiagnosticOptions.length !== 1 ||
+      normalEjsDiagnosticOptions[0].includeProjectRuleDiagnostics !== true ||
+      normalEjsDiagnosticOptions[0].requirePreparedVirtualState !== true ||
+      normalEjsDiagnosticOptions[0].semanticBudget !== null
+    ) {
+      throw new Error(
+        `Expected normal EJS diagnostics to stay on the full non-partial path even with a recent edit and preferred offset. Got: ${JSON.stringify({
+          normalEjsDiagnosticsReport,
+          normalEjsSchedules,
+          normalEjsPrepareCalls,
+          normalEjsDiagnosticOptions: normalEjsDiagnosticOptions.map((options) => ({
+            project: options.includeProjectRuleDiagnostics,
+            requirePreparedVirtualState: options.requirePreparedVirtualState,
+            semanticBudget: options.semanticBudget,
+          })),
+        })}`
+      )
+    }
+
     const cachedCodeActionCore = new PocketPagesLanguageCore()
     const cachedCodeActionText = `<script server>\nparams.sort\n</script>\n`
     const cachedCodeActionDocument = createTestDocument(
@@ -4349,6 +4476,237 @@ missingServerRegionOne.toString()
       throw new Error('Expected deferred large-file diagnostics not to cache an empty quiet result as the real pull result.')
     }
 
+    const partialQuietCore = new PocketPagesLanguageCore()
+    const partialQuietText = `<script server>
+const quietPartialStable = 1
+</script>
+${'<div>large quiet filler</div>\n'.repeat(4)}
+<script server>
+missingQuietPartial.toString()
+</script>
+`
+    const partialQuietDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      partialQuietText
+    )
+    const partialQuietUri = partialQuietDocument.uri
+    partialQuietCore.openDocument({
+      uri: partialQuietUri,
+      languageId: 'ejs',
+      version: 1,
+      text: partialQuietText,
+    })
+    const partialQuietRuntimeState = createDocumentRuntimeStateRegistry()
+    partialQuietRuntimeState.updateDocument(partialQuietUri, {
+      version: 1,
+      textLength: partialQuietText.length,
+      changed: true,
+    })
+    const partialQuietDocuments = new Map([[partialQuietUri, partialQuietDocument]])
+    const partialQuietSchedules = []
+    const partialQuietContext = createLspServiceSmokeContext(
+      partialQuietCore,
+      partialQuietDocuments,
+      {
+        runtimeState: partialQuietRuntimeState,
+        connection: {
+          languages: {
+            diagnostics: {
+              refresh() {},
+            },
+          },
+        },
+      }
+    )
+    const partialQuietOffset = partialQuietText.indexOf('missingQuietPartial')
+    partialQuietContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 50
+    partialQuietContext.context.helpers.isPullDiagnosticRefreshSupported = () => true
+    partialQuietContext.context.helpers.getPreferredDiagnosticOffset = () => partialQuietOffset
+    partialQuietContext.context.helpers.scheduleDocumentRequest = (uri, key, version, delayMs, callback) => {
+      partialQuietSchedules.push({ uri, key, version, delayMs, callback })
+      return { uri, key, version, delayMs }
+    }
+    const partialQuietPrepareCalls = []
+    partialQuietContext.context.helpers.ensureDocumentPrepared = (uri, options = {}) => {
+      partialQuietPrepareCalls.push({ uri, options })
+      return partialQuietCore.prepareDocument(uri, options)
+    }
+    const partialQuietService = partialQuietCore.getDocumentContextByUri(partialQuietUri).service
+    const originalPartialQuietGetDiagnostics = partialQuietService.getDiagnostics.bind(partialQuietService)
+    const partialQuietDiagnosticOptions = []
+    const partialQuietFeatureService = createDiagnosticsFeatureService(
+      partialQuietContext.context
+    )
+    let partialQuietReport = null
+    let partialQuietUnchangedReport = null
+    let partialQuietCachedReport = null
+    let partialQuietFullReport = null
+    try {
+      partialQuietService.getDiagnostics = (_filePath, _documentText, options = {}) => {
+        partialQuietDiagnosticOptions.push(options)
+        return [
+          {
+            code: 'partial-quiet-diagnostics',
+            category: ts.DiagnosticCategory.Error,
+            message: 'partial quiet diagnostics',
+            start: partialQuietOffset,
+            end: partialQuietOffset + 'missingQuietPartial'.length,
+          },
+        ]
+      }
+      partialQuietReport = await partialQuietFeatureService.providePullDiagnostics(
+        { textDocument: { uri: partialQuietUri } },
+        { isCancellationRequested: false }
+      )
+      partialQuietUnchangedReport = await partialQuietFeatureService.providePullDiagnostics(
+        {
+          textDocument: { uri: partialQuietUri },
+          previousResultId: partialQuietReport && partialQuietReport.resultId,
+        },
+        { isCancellationRequested: false }
+      )
+      partialQuietCachedReport = await partialQuietFeatureService.providePullDiagnostics(
+        { textDocument: { uri: partialQuietUri } },
+        { isCancellationRequested: false }
+      )
+      partialQuietRuntimeState.updateDocument(partialQuietUri, {
+        version: 1,
+        textLength: partialQuietText.length,
+        saved: true,
+      })
+      partialQuietFullReport = await partialQuietFeatureService.providePullDiagnostics(
+        {
+          textDocument: { uri: partialQuietUri },
+          previousResultId: partialQuietReport && partialQuietReport.resultId,
+        },
+        { isCancellationRequested: false }
+      )
+    } finally {
+      partialQuietService.getDiagnostics = originalPartialQuietGetDiagnostics
+    }
+    if (
+      !partialQuietReport ||
+      partialQuietReport.partialDiagnostics !== true ||
+      partialQuietReport.budgetDeferred !== true ||
+      partialQuietReport.preferredOffset !== partialQuietOffset ||
+      !partialQuietUnchangedReport ||
+      partialQuietUnchangedReport.kind !== 'unchanged' ||
+      partialQuietUnchangedReport.resultId !== partialQuietReport.resultId ||
+      !partialQuietCachedReport ||
+      partialQuietCachedReport.kind !== 'full' ||
+      partialQuietCachedReport.partialDiagnostics !== true ||
+      partialQuietCachedReport.resultId !== partialQuietReport.resultId ||
+      !Array.isArray(partialQuietReport.items) ||
+      !partialQuietReport.items.some((entry) => entry.code === 'partial-quiet-diagnostics') ||
+      partialQuietSchedules.length !== 3 ||
+      partialQuietSchedules[0].uri !== 'workspace' ||
+      partialQuietSchedules[0].key !== 'diagnostics:refresh' ||
+      partialQuietPrepareCalls.length < 2 ||
+      partialQuietPrepareCalls.length !== 2 ||
+      partialQuietPrepareCalls[0].options.operation !== 'diagnostics' ||
+      partialQuietPrepareCalls[0].options.preferredOffset !== partialQuietOffset ||
+      partialQuietPrepareCalls[0].options.skipUnrelatedRegions !== true ||
+      partialQuietPrepareCalls[0].options.skipStaticRefresh !== true ||
+      partialQuietDiagnosticOptions.length !== 2 ||
+      partialQuietDiagnosticOptions[0].includeProjectRuleDiagnostics !== false ||
+      !partialQuietDiagnosticOptions[0].semanticBudget ||
+      partialQuietDiagnosticOptions[0].semanticBudget.preferredOffset !== partialQuietOffset ||
+      partialQuietDiagnosticOptions[1].includeProjectRuleDiagnostics !== true ||
+      !partialQuietFullReport ||
+      partialQuietFullReport.partialDiagnostics === true ||
+      partialQuietFullReport.budgetDeferred === true
+    ) {
+      throw new Error(
+        `Expected recent large-file diagnostics to run a preferred-region partial pass, then run full diagnostics after save. Got: ${JSON.stringify({
+          partialQuietReport,
+          partialQuietUnchangedReport,
+          partialQuietCachedReport,
+          partialQuietFullReport,
+          partialQuietSchedules,
+          partialQuietPrepareCalls,
+          partialQuietDiagnosticOptions: partialQuietDiagnosticOptions.map((options) => ({
+            project: options.includeProjectRuleDiagnostics,
+            preferredOffset: options.semanticBudget && options.semanticBudget.preferredOffset,
+            requirePreparedVirtualState: options.requirePreparedVirtualState,
+          })),
+        })}`
+      )
+    }
+
+    const stalePartialQuietCore = new PocketPagesLanguageCore()
+    const stalePartialQuietText = `<script server>
+missingStalePartial.toString()
+</script>
+${'<div>stale quiet filler</div>\n'.repeat(4)}
+`
+    const stalePartialQuietDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      3,
+      stalePartialQuietText
+    )
+    const stalePartialQuietUri = stalePartialQuietDocument.uri
+    stalePartialQuietCore.openDocument({
+      uri: stalePartialQuietUri,
+      languageId: 'ejs',
+      version: 3,
+      text: stalePartialQuietText,
+    })
+    const stalePartialQuietRuntimeState = createDocumentRuntimeStateRegistry()
+    stalePartialQuietRuntimeState.updateDocument(stalePartialQuietUri, {
+      version: 3,
+      textLength: stalePartialQuietText.length,
+      changed: true,
+    })
+    const stalePartialQuietSchedules = []
+    const stalePartialQuietContext = createLspServiceSmokeContext(
+      stalePartialQuietCore,
+      new Map([[stalePartialQuietUri, stalePartialQuietDocument]]),
+      {
+        runtimeState: stalePartialQuietRuntimeState,
+        connection: {
+          languages: {
+            diagnostics: {
+              refresh() {},
+            },
+          },
+        },
+      }
+    )
+    stalePartialQuietContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 50
+    stalePartialQuietContext.context.helpers.isPullDiagnosticRefreshSupported = () => true
+    stalePartialQuietContext.context.helpers.getPreferredDiagnosticOffset = () => stalePartialQuietText.indexOf('missingStalePartial')
+    stalePartialQuietContext.context.helpers.isStaleDocumentVersion = () => true
+    stalePartialQuietContext.context.helpers.scheduleDocumentRequest = (uri, key, version, delayMs, callback) => {
+      stalePartialQuietSchedules.push({ uri, key, version, delayMs, callback })
+      return { uri, key, version, delayMs }
+    }
+    stalePartialQuietContext.context.helpers.ensureDocumentPrepared = () => {
+      throw new Error('Expected stale recent large-file partial diagnostics to cancel before preparing virtual state.')
+    }
+    const stalePartialQuietService = stalePartialQuietCore.getDocumentContextByUri(stalePartialQuietUri).service
+    stalePartialQuietService.getDiagnostics = () => {
+      throw new Error('Expected stale recent large-file partial diagnostics to cancel before running diagnostics.')
+    }
+    const stalePartialQuietFeatureService = createDiagnosticsFeatureService(
+      stalePartialQuietContext.context
+    )
+    const stalePartialQuietReport = await stalePartialQuietFeatureService.providePullDiagnostics(
+      { textDocument: { uri: stalePartialQuietUri } },
+      { isCancellationRequested: false }
+    )
+    if (
+      stalePartialQuietReport !== null ||
+      stalePartialQuietSchedules.length !== 1 ||
+      stalePartialQuietRuntimeState.getDiagnostics(stalePartialQuietUri, 'pull')
+    ) {
+      throw new Error(
+        `Expected stale recent large-file partial diagnostics to cancel without caching a partial result. Got: ${JSON.stringify({ stalePartialQuietReport, stalePartialQuietSchedules, cached: stalePartialQuietRuntimeState.getDiagnostics(stalePartialQuietUri, 'pull') })}`
+      )
+    }
+
     const semanticBudgetCore = new PocketPagesLanguageCore()
     const semanticBudgetText = `<script server>
 missingBudgetOne.toString()
@@ -4391,6 +4749,8 @@ missingBudgetTwo.toString()
     semanticBudgetContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 50
     semanticBudgetContext.context.helpers.LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET = 1
     semanticBudgetContext.context.helpers.isPullDiagnosticRefreshSupported = () => true
+    let semanticBudgetPreferredOffset = null
+    semanticBudgetContext.context.helpers.getPreferredDiagnosticOffset = () => semanticBudgetPreferredOffset
     semanticBudgetContext.context.helpers.scheduleDocumentRequest = (uri, key, version, delayMs, callback) => {
       semanticBudgetSchedules.push({ uri, key, version, delayMs, callback })
       return { uri, key, version, delayMs }
@@ -4405,6 +4765,7 @@ missingBudgetTwo.toString()
     const semanticBudgetTextV2 = semanticBudgetText
       .replace('missingBudgetOne', 'missingBudgetThree')
       .replace('missingBudgetTwo', 'missingBudgetFour')
+    semanticBudgetPreferredOffset = semanticBudgetTextV2.indexOf('missingBudgetFour')
     const semanticBudgetDocumentV2 = createTestDocument(
       fixture.boardsFilePath,
       'ejs',
@@ -4423,11 +4784,13 @@ missingBudgetTwo.toString()
       semanticBudgetService.languageService
     )
     let semanticBudgetCalls = 0
+    const semanticBudgetSemanticFileNames = []
     let semanticBudgetSecondReport = null
     try {
-      semanticBudgetService.languageService.getSemanticDiagnostics = function countBudgetedSemanticDiagnostics(...args) {
+      semanticBudgetService.languageService.getSemanticDiagnostics = function countBudgetedSemanticDiagnostics(fileName, ...args) {
         semanticBudgetCalls += 1
-        return originalSemanticBudgetDiagnostics(...args)
+        semanticBudgetSemanticFileNames.push(normalizeFilePath(fileName))
+        return originalSemanticBudgetDiagnostics(fileName, ...args)
       }
       semanticBudgetSecondReport = await semanticBudgetFeatureService.providePullDiagnostics(
         {
@@ -4439,16 +4802,131 @@ missingBudgetTwo.toString()
     } finally {
       semanticBudgetService.languageService.getSemanticDiagnostics = originalSemanticBudgetDiagnostics
     }
+    const semanticBudgetPreparedState = semanticBudgetService.getPreparedDocumentState(fixture.boardsFilePath)
+    const semanticBudgetPreferredPreparedBlock =
+      semanticBudgetPreparedState &&
+      Array.isArray(semanticBudgetPreparedState.serverBlocks)
+        ? semanticBudgetPreparedState.serverBlocks.find((block) =>
+            semanticBudgetPreferredOffset >= block.contentStart &&
+            semanticBudgetPreferredOffset <= block.contentEnd
+          )
+        : null
     if (
       !semanticBudgetSecondReport ||
       semanticBudgetSecondReport.budgetDeferred !== true ||
       semanticBudgetCalls !== 1 ||
+      !semanticBudgetPreferredPreparedBlock ||
+      semanticBudgetSemanticFileNames[0] !== normalizeFilePath(semanticBudgetPreferredPreparedBlock.fileName) ||
       semanticBudgetSchedules.length !== 1 ||
       semanticBudgetSchedules[0].uri !== 'workspace' ||
       semanticBudgetSchedules[0].key !== 'diagnostics:refresh'
     ) {
       throw new Error(
-        `Expected large EJS semantic diagnostics to respect the per-region budget and schedule a follow-up refresh. Got: ${JSON.stringify({ semanticBudgetSecondReport, semanticBudgetCalls, semanticBudgetSchedules, semanticBudgetRefreshes })}`
+        `Expected large EJS semantic diagnostics to prioritize the preferred dirty region, respect the per-region budget, and schedule a follow-up refresh. Got: ${JSON.stringify({ semanticBudgetSecondReport, semanticBudgetCalls, semanticBudgetSemanticFileNames, semanticBudgetPreferredPreparedBlock, semanticBudgetSchedules, semanticBudgetRefreshes })}`
+      )
+    }
+
+    const templateBudgetCore = new PocketPagesLanguageCore()
+    const templateBudgetText = `<div><%= missingTemplateOne %></div>
+<div><%= missingTemplateTwo %></div>
+`
+    const templateBudgetDocumentV1 = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      templateBudgetText
+    )
+    const templateBudgetUri = templateBudgetDocumentV1.uri
+    templateBudgetCore.openDocument({
+      uri: templateBudgetUri,
+      languageId: 'ejs',
+      version: 1,
+      text: templateBudgetText,
+    })
+    const templateBudgetDocuments = new Map([[templateBudgetUri, templateBudgetDocumentV1]])
+    const templateBudgetSchedules = []
+    const templateBudgetContext = createLspServiceSmokeContext(
+      templateBudgetCore,
+      templateBudgetDocuments,
+      {
+        connection: {
+          languages: {
+            diagnostics: {
+              refresh() {},
+            },
+          },
+        },
+      }
+    )
+    templateBudgetContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 50
+    templateBudgetContext.context.helpers.LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET = 1
+    templateBudgetContext.context.helpers.isPullDiagnosticRefreshSupported = () => true
+    let templateBudgetPreferredOffset = null
+    templateBudgetContext.context.helpers.getPreferredDiagnosticOffset = () => templateBudgetPreferredOffset
+    templateBudgetContext.context.helpers.scheduleDocumentRequest = (uri, key, version, delayMs, callback) => {
+      templateBudgetSchedules.push({ uri, key, version, delayMs, callback })
+      return { uri, key, version, delayMs }
+    }
+    const templateBudgetFeatureService = createDiagnosticsFeatureService(
+      templateBudgetContext.context
+    )
+    const templateBudgetFirstReport = await templateBudgetFeatureService.providePullDiagnostics(
+      { textDocument: { uri: templateBudgetUri } },
+      { isCancellationRequested: false }
+    )
+    const templateBudgetTextV2 = templateBudgetText
+      .replace('missingTemplateOne', 'missingTemplateThree')
+      .replace('missingTemplateTwo', 'missingTemplateFour')
+    templateBudgetPreferredOffset = templateBudgetTextV2.indexOf('missingTemplateFour')
+    const templateBudgetDocumentV2 = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      2,
+      templateBudgetTextV2
+    )
+    templateBudgetDocuments.set(templateBudgetUri, templateBudgetDocumentV2)
+    templateBudgetCore.updateDocument({
+      uri: templateBudgetUri,
+      languageId: 'ejs',
+      version: 2,
+      text: templateBudgetTextV2,
+    })
+    const templateBudgetService = templateBudgetCore.getDocumentContextByUri(templateBudgetUri).service
+    const originalTemplateBudgetDiagnostics = templateBudgetService.languageService.getSemanticDiagnostics.bind(
+      templateBudgetService.languageService
+    )
+    let templateBudgetCalls = 0
+    let templateBudgetSecondReport = null
+    try {
+      templateBudgetService.languageService.getSemanticDiagnostics = function countTemplateBudgetDiagnostics(fileName, ...args) {
+        templateBudgetCalls += 1
+        return originalTemplateBudgetDiagnostics(fileName, ...args)
+      }
+      templateBudgetSecondReport = await templateBudgetFeatureService.providePullDiagnostics(
+        {
+          textDocument: { uri: templateBudgetUri },
+          previousResultId: templateBudgetFirstReport && templateBudgetFirstReport.resultId,
+        },
+        { isCancellationRequested: false }
+      )
+    } finally {
+      templateBudgetService.languageService.getSemanticDiagnostics = originalTemplateBudgetDiagnostics
+    }
+    const templateBudgetMessages = Array.isArray(templateBudgetSecondReport && templateBudgetSecondReport.items)
+      ? templateBudgetSecondReport.items.map((entry) => String(entry.message || ''))
+      : []
+    if (
+      !templateBudgetSecondReport ||
+      templateBudgetSecondReport.budgetDeferred !== true ||
+      templateBudgetCalls !== 1 ||
+      !templateBudgetMessages.some((message) => message.includes('missingTemplateFour')) ||
+      templateBudgetMessages.some((message) => message.includes('missingTemplateThree')) ||
+      templateBudgetSchedules.length !== 1 ||
+      templateBudgetSchedules[0].uri !== 'workspace' ||
+      templateBudgetSchedules[0].key !== 'diagnostics:refresh'
+    ) {
+      throw new Error(
+        `Expected large EJS template diagnostics to publish only the preferred dirty template region under the semantic budget. Got: ${JSON.stringify({ templateBudgetSecondReport, templateBudgetCalls, templateBudgetMessages, templateBudgetSchedules })}`
       )
     }
 
@@ -5141,6 +5619,8 @@ module.exports = {
     const lifecycleCancelledRequestUris = []
     const lifecycleClearedCompletionUris = []
     const lifecycleWatchedChanges = []
+    const lifecycleRememberedOffsets = []
+    const lifecycleRuntimeUpdates = []
     const lifecycleCoreCalls = {
       open: [],
       update: [],
@@ -5223,6 +5703,9 @@ module.exports = {
           return /\.(js|cjs|mjs)$/i.test(String(filePath || ''))
         },
         logServer() {},
+        rememberInteractiveOffset(uri, offset, operation) {
+          lifecycleRememberedOffsets.push({ uri, offset, operation })
+        },
         refreshPullDiagnostics(reason) {
           lifecycleRefreshReasons.push(reason)
         },
@@ -5231,6 +5714,14 @@ module.exports = {
         },
         scheduleFirstRequestWarmup(uri) {
           lifecycleWarmupUris.push(uri)
+        },
+        updateDocumentRuntimeState(uri, document, options = {}) {
+          lifecycleRuntimeUpdates.push({
+            uri,
+            version: document ? document.version : null,
+            changed: options.changed === true,
+            saved: options.saved === true,
+          })
         },
         uriToFilePath(uri) {
           return URI.parse(uri).fsPath
@@ -5253,7 +5744,13 @@ module.exports = {
     }
     lifecycleFeatureService.handleDidChangeContent({
       document: lifecycleBoardsDocument,
-      contentChanges: [{ text: 'meta(\'description\')' }],
+      contentChanges: [{
+        range: {
+          start: lifecycleBoardsDocument.positionAt(lifecycleBoardsText.indexOf('meta')),
+          end: lifecycleBoardsDocument.positionAt(lifecycleBoardsText.indexOf('meta') + 'meta'.length),
+        },
+        text: 'meta(\'description\')',
+      }],
     })
     lifecycleFeatureService.handleDidChangeContent({
       document: lifecycleVendorDocument,
@@ -5268,14 +5765,26 @@ module.exports = {
         `Expected lifecycle change handling to update core state and clear completion caches for both document kinds. Got updates=${JSON.stringify(lifecycleCoreCalls.update)} cleared=${JSON.stringify(lifecycleClearedCompletionUris)}`
       )
     }
+    if (
+      !lifecycleRememberedOffsets.some((entry) =>
+        entry.uri === lifecycleBoardsUri &&
+        entry.offset === lifecycleBoardsText.indexOf('meta') &&
+        entry.operation === 'edit'
+      )
+    ) {
+      throw new Error(`Expected lifecycle change handling to remember the edit offset for preferred diagnostics. Got: ${JSON.stringify(lifecycleRememberedOffsets)}`)
+    }
     if (lifecycleScheduledRefreshes.length !== 0 || lifecycleRefreshReasons.length !== 0) {
       throw new Error(
         `Expected lifecycle change to rely on client pull diagnostics without server refresh. Got: ${JSON.stringify({ refresh: lifecycleRefreshReasons, scheduled: lifecycleScheduledRefreshes })}`
       )
     }
     lifecycleFeatureService.handleDidManualSave({ uri: lifecycleBoardsUri })
-    if (!lifecycleRefreshReasons.includes('manual-save')) {
-      throw new Error(`Expected manual save to request pull diagnostics refresh. Got: ${JSON.stringify(lifecycleRefreshReasons)}`)
+    if (
+      !lifecycleRefreshReasons.includes('manual-save') ||
+      !lifecycleRuntimeUpdates.some((entry) => entry.uri === lifecycleBoardsUri && entry.saved === true)
+    ) {
+      throw new Error(`Expected manual save to mark the document saved and request pull diagnostics refresh. Got: ${JSON.stringify({ lifecycleRefreshReasons, lifecycleRuntimeUpdates })}`)
     }
     lifecycleFeatureService.handleDidChangeWatchedFiles({
       changes: [
@@ -8001,6 +8510,46 @@ module.exports = {
       throw new Error(`Expected hx-post caller to stay on /feedback while +post.js still exists. Got: ${feedbackRouteReferenceRenamedText}`)
     }
 
+    const formMethodRouteCallerText = `<form action="/feedback"></form>
+<form action="/feedback" method="get"></form>
+<form action="/feedback" method="post"></form>
+<form action="/feedback" method="<%= request.method %>"></form>
+`
+    service.setDocumentOverride(fixture.routeMethodReferenceCheckFilePath, formMethodRouteCallerText)
+    const formMethodPageReferences = service.getFileReferenceTargets(
+      fixture.feedbackPageFilePath,
+      fs.readFileSync(fixture.feedbackPageFilePath, 'utf8')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath))
+    const formMethodPostReferences = service.getFileReferenceTargets(
+      fixture.feedbackPostFilePath,
+      fs.readFileSync(fixture.feedbackPostFilePath, 'utf8')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath))
+    if (formMethodPageReferences.length !== 2) {
+      throw new Error(`Expected default/get form actions to reference the page route. Got: ${JSON.stringify(formMethodPageReferences)}`)
+    }
+    if (formMethodPostReferences.length !== 2) {
+      throw new Error(`Expected post form action to reference the POST route. Got: ${JSON.stringify(formMethodPostReferences)}`)
+    }
+
+    const formMethodPageRenameEdits = service.getFileRenameEdits(fixture.feedbackPageFilePath, renamedFeedbackPageFilePath)
+    const formMethodPageCallerEdits = formMethodPageRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
+    )
+    if (formMethodPageCallerEdits.length !== 2) {
+      throw new Error(`Expected default/get form actions to rewrite when the page route is renamed. Got: ${JSON.stringify(formMethodPageCallerEdits)}`)
+    }
+    const formMethodPageRenamedText = applyEditsToText(formMethodRouteCallerText, formMethodPageCallerEdits)
+    if ((formMethodPageRenamedText.match(/action="\/feedback\/login"/g) || []).length !== 2) {
+      throw new Error(`Expected default/get form actions to rewrite to /feedback/login. Got: ${formMethodPageRenamedText}`)
+    }
+    if (
+      !formMethodPageRenamedText.includes('<form action="/feedback" method="post"></form>') ||
+      !formMethodPageRenamedText.includes('<form action="/feedback" method="<%= request.method %>"></form>')
+    ) {
+      throw new Error(`Expected post/dynamic form actions to stay on the broader action route while +post.js still exists. Got: ${formMethodPageRenamedText}`)
+    }
+    service.clearDocumentOverride(fixture.routeMethodReferenceCheckFilePath)
+
     const oldFeedbackRouteDirectoryPath = path.dirname(fixture.feedbackPageFilePath)
     const newFeedbackRouteDirectoryPath = path.join(path.dirname(oldFeedbackRouteDirectoryPath), 'responses')
     const feedbackDirectoryRenameEdits = service.getFileRenameEdits(
@@ -8132,6 +8681,33 @@ redirect('/boards/demo-board')
     const dynamicRouteRenamedText = applyEditsToText(dynamicRouteCallerText, dynamicRouteReferenceEdits)
     if ((dynamicRouteRenamedText.match(/\/boards\/demo-board\/details/g) || []).length !== 3) {
       throw new Error(`Expected dynamic route callers to rewrite to /boards/demo-board/details. Got: ${dynamicRouteRenamedText}`)
+    }
+
+    const dynamicTemplateRouteCallerText = `<a href="/boards/<%= boardSlug %>"></a>
+<button hx-get="/boards/<%= boardSlug %>?tab=posts#top"></button>
+`
+    service.setDocumentOverride(fixture.routeReferenceCheckFilePath, dynamicTemplateRouteCallerText)
+    const dynamicTemplateRouteReferences = service.getFileReferenceTargets(
+      fixture.boardShowFilePath,
+      fs.readFileSync(fixture.boardShowFilePath, 'utf8')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath))
+    if (dynamicTemplateRouteReferences.length !== 2) {
+      throw new Error(`Expected EJS-interpolated href/hx-get callers to reference the dynamic board route. Got: ${JSON.stringify(dynamicTemplateRouteReferences)}`)
+    }
+
+    const dynamicTemplateRouteRenameEdits = service.getFileRenameEdits(fixture.boardShowFilePath, renamedBoardRouteFilePath)
+    const dynamicTemplateRouteCallerEdits = dynamicTemplateRouteRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath)
+    )
+    if (dynamicTemplateRouteCallerEdits.length !== 2) {
+      throw new Error(`Expected EJS-interpolated dynamic route callers to rewrite when the dynamic route file is renamed. Got: ${JSON.stringify(dynamicTemplateRouteCallerEdits)}`)
+    }
+    const dynamicTemplateRouteRenamedText = applyEditsToText(dynamicTemplateRouteCallerText, dynamicTemplateRouteCallerEdits)
+    if (!dynamicTemplateRouteRenamedText.includes('href="/boards/<%= boardSlug %>/details"')) {
+      throw new Error(`Expected EJS-interpolated href caller to preserve the dynamic segment and append /details. Got: ${dynamicTemplateRouteRenamedText}`)
+    }
+    if (!dynamicTemplateRouteRenamedText.includes('hx-get="/boards/<%= boardSlug %>/details?tab=posts#top"')) {
+      throw new Error(`Expected EJS-interpolated hx-get caller to preserve the dynamic segment, query, and hash. Got: ${dynamicTemplateRouteRenamedText}`)
     }
     service.clearDocumentOverride(fixture.routeReferenceCheckFilePath)
 
@@ -10154,6 +10730,9 @@ const authState = resolve('auth-service')
     ]
     const pluginDirectoryWatchers = []
     let pluginBaseDisposed = false
+    let pluginBaseReferencesAtPosition = null
+    let pluginBaseRenameInfoAtPosition = null
+    let pluginBaseRenameLocationsAtPosition = null
     function triggerPluginFileWatch(filePath) {
       const normalizedFilePath = normalizeFilePath(filePath)
       let triggered = 0
@@ -10191,6 +10770,30 @@ const authState = resolve('auth-service')
       },
       getDefinitionAndBoundSpan() {
         return null
+      },
+      getReferencesAtPosition(fileName, position) {
+        return typeof pluginBaseReferencesAtPosition === 'function'
+          ? pluginBaseReferencesAtPosition(fileName, position)
+          : null
+      },
+      getRenameInfo(fileName, position, options) {
+        return typeof pluginBaseRenameInfoAtPosition === 'function'
+          ? pluginBaseRenameInfoAtPosition(fileName, position, options)
+          : {
+              canRename: false,
+              localizedErrorMessage: 'Base rename disabled in sanity test.',
+            }
+      },
+      findRenameLocations(fileName, position, findInStrings, findInComments, providePrefixAndSuffixTextForRename) {
+        return typeof pluginBaseRenameLocationsAtPosition === 'function'
+          ? pluginBaseRenameLocationsAtPosition(
+              fileName,
+              position,
+              findInStrings,
+              findInComments,
+              providePrefixAndSuffixTextForRename
+            )
+          : null
       },
       dispose() {
         pluginBaseDisposed = true
@@ -10329,6 +10932,174 @@ const authState = resolve('auth-service')
           `Expected TS plugin runtime to reuse unchanged EJS document context. Before=${pluginUpdateCountBeforeContextCache}, afterWarmup=${pluginUpdateCountAfterContextCacheWarmup}, afterCached=${pluginUpdatedUris.length}`
         )
       }
+
+      const pluginBoardServiceText = fs.readFileSync(fixture.boardServiceFilePath, 'utf8')
+      const pluginRenameCheckText = fs.readFileSync(fixture.renameCheckFilePath, 'utf8')
+      const pluginMiddlewareText = fs.readFileSync(fixture.middlewareFilePath, 'utf8')
+      const pluginModuleOffset = pluginBoardServiceText.indexOf('readAuthState') + 2
+      const pluginEjsUsageOffset = pluginRenameCheckText.indexOf('readAuthState') + 2
+      const pluginJsUsageOffset = pluginMiddlewareText.indexOf('readAuthState') + 2
+      const pluginEjsUsageSpan = {
+        start: pluginRenameCheckText.indexOf('readAuthState'),
+        length: 'readAuthState'.length,
+      }
+      const pluginLocationKey = (entry) =>
+        `${normalizeFilePath(entry.fileName)}:${entry.textSpan.start}:${entry.textSpan.length}`
+      const pluginReferenceKeySet = (entries) => new Set((entries || []).map(pluginLocationKey))
+      const expectPluginLocation = (entries, filePath, text, needle, label) => {
+        const start = text.indexOf(needle)
+        if (start < 0) {
+          throw new Error(`Expected fixture text for ${label} to contain "${needle}".`)
+        }
+
+        if (
+          !(entries || []).some(
+            (entry) =>
+              normalizeFilePath(entry.fileName) === normalizeFilePath(filePath) &&
+              entry.textSpan.start === start &&
+              entry.textSpan.length === needle.length
+          )
+        ) {
+          throw new Error(`Expected ${label} to include ${normalizeFilePath(filePath)}:${start}. Got: ${JSON.stringify(entries)}`)
+        }
+      }
+      const expectSamePluginLocations = (leftEntries, rightEntries, label) => {
+        const leftKeys = pluginReferenceKeySet(leftEntries)
+        const rightKeys = pluginReferenceKeySet(rightEntries)
+        if (
+          leftKeys.size !== rightKeys.size ||
+          [...leftKeys].some((key) => !rightKeys.has(key))
+        ) {
+          throw new Error(
+            `Expected TS plugin ${label} locations to match.\nLeft=${JSON.stringify([...leftKeys])}\nRight=${JSON.stringify([...rightKeys])}`
+          )
+        }
+      }
+      const expectNoDuplicatePluginLocations = (entries, label) => {
+        const keys = pluginReferenceKeySet(entries)
+        if (keys.size !== (entries || []).length) {
+          throw new Error(`Expected TS plugin ${label} locations to be deduped. Got: ${JSON.stringify(entries)}`)
+        }
+      }
+
+      pluginBaseReferencesAtPosition = () => [
+        {
+          fileName: fixture.renameCheckFilePath,
+          textSpan: pluginEjsUsageSpan,
+          isWriteAccess: false,
+          isDefinition: false,
+        },
+      ]
+      const pluginModuleReferences = pluginProxy.getReferencesAtPosition(
+        fixture.boardServiceFilePath,
+        pluginModuleOffset
+      )
+      expectNoDuplicatePluginLocations(pluginModuleReferences, 'module export references')
+      expectPluginLocation(
+        pluginModuleReferences,
+        fixture.boardServiceFilePath,
+        pluginBoardServiceText,
+        'readAuthState',
+        'module export references'
+      )
+      expectPluginLocation(
+        pluginModuleReferences,
+        fixture.renameCheckFilePath,
+        pluginRenameCheckText,
+        'readAuthState',
+        'module export references'
+      )
+      expectPluginLocation(
+        pluginModuleReferences,
+        fixture.middlewareFilePath,
+        pluginMiddlewareText,
+        'readAuthState',
+        'module export references'
+      )
+
+      pluginBaseReferencesAtPosition = null
+      const pluginEjsReferences = pluginProxy.getReferencesAtPosition(
+        fixture.renameCheckFilePath,
+        pluginEjsUsageOffset
+      )
+      const pluginJsUsageReferences = pluginProxy.getReferencesAtPosition(
+        fixture.middlewareFilePath,
+        pluginJsUsageOffset
+      )
+      expectSamePluginLocations(pluginModuleReferences, pluginEjsReferences, 'JS export and EJS reference')
+      expectSamePluginLocations(pluginModuleReferences, pluginJsUsageReferences, 'JS export and JS resolve() reference')
+
+      const pluginModuleRenameInfo = pluginProxy.getRenameInfo(
+        fixture.boardServiceFilePath,
+        pluginModuleOffset
+      )
+      if (
+        !pluginModuleRenameInfo ||
+        !pluginModuleRenameInfo.canRename ||
+        pluginModuleRenameInfo.displayName !== 'readAuthState'
+      ) {
+        throw new Error(`Expected TS plugin module export rename info. Got: ${JSON.stringify(pluginModuleRenameInfo)}`)
+      }
+
+      const pluginEjsRenameInfo = pluginProxy.getRenameInfo(
+        fixture.renameCheckFilePath,
+        pluginEjsUsageOffset
+      )
+      if (
+        !pluginEjsRenameInfo ||
+        !pluginEjsRenameInfo.canRename ||
+        pluginEjsRenameInfo.displayName !== 'readAuthState'
+      ) {
+        throw new Error(`Expected TS plugin EJS resolve() usage rename info. Got: ${JSON.stringify(pluginEjsRenameInfo)}`)
+      }
+
+      pluginBaseRenameLocationsAtPosition = () => [
+        {
+          fileName: fixture.renameCheckFilePath,
+          textSpan: pluginEjsUsageSpan,
+        },
+      ]
+      const pluginModuleRenameLocations = pluginProxy.findRenameLocations(
+        fixture.boardServiceFilePath,
+        pluginModuleOffset,
+        false,
+        false,
+        {}
+      )
+      expectNoDuplicatePluginLocations(pluginModuleRenameLocations, 'module export rename')
+      expectPluginLocation(
+        pluginModuleRenameLocations,
+        fixture.renameCheckFilePath,
+        pluginRenameCheckText,
+        'readAuthState',
+        'module export rename'
+      )
+      expectPluginLocation(
+        pluginModuleRenameLocations,
+        fixture.middlewareFilePath,
+        pluginMiddlewareText,
+        'readAuthState',
+        'module export rename'
+      )
+
+      pluginBaseRenameLocationsAtPosition = null
+      const pluginEjsRenameLocations = pluginProxy.findRenameLocations(
+        fixture.renameCheckFilePath,
+        pluginEjsUsageOffset,
+        false,
+        false,
+        {}
+      )
+      const pluginJsUsageRenameLocations = pluginProxy.findRenameLocations(
+        fixture.middlewareFilePath,
+        pluginJsUsageOffset,
+        false,
+        false,
+        {}
+      )
+      expectSamePluginLocations(pluginModuleRenameLocations, pluginEjsRenameLocations, 'JS export and EJS rename')
+      expectSamePluginLocations(pluginModuleRenameLocations, pluginJsUsageRenameLocations, 'JS export and JS resolve() rename')
+
       const cachedTrackedFileListReaddirCount = pluginPagesReaddirCount
       pluginProjectVersion = '2'
       pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)

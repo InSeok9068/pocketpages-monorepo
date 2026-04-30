@@ -1734,8 +1734,12 @@ function toStaticRouteEntry(descriptor) {
 
 function getPreferredRouteMethods(routeSource) {
   switch (String(routeSource || '').toLowerCase()) {
-    case 'action':
+    case 'action-post':
     case 'hx-post':
+      return ['POST', 'GET']
+    case 'action-get':
+      return ['PAGE']
+    case 'action':
       return ['POST', 'GET']
     case 'hx-put':
       return ['PUT', 'GET']
