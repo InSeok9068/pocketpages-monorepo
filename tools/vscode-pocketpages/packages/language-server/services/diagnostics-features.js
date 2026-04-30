@@ -829,12 +829,36 @@ function createDiagnosticsFeatureService(context) {
       };
     }
 
+    if (await yieldBeforeHeavyDiagnostics(token, shouldCancel)) {
+      logServer("warn", "diagnostics", "cancelled", {
+        req: requestId,
+        case: "cancelled",
+        file: getRelativePathLabel(documentContext.filePath),
+        version: requestedVersion,
+        lane: "pull",
+        stage: "before-diagnostics-prepare",
+      });
+      return null;
+    }
+
     if (typeof ensureDocumentPrepared === "function") {
       ensureDocumentPrepared(uri, {
         requestId,
         operation: "diagnostics-full",
       });
     }
+    if (shouldCancel("after-diagnostics-prepare")) {
+      logServer("warn", "diagnostics", "cancelled", {
+        req: requestId,
+        case: "cancelled",
+        file: getRelativePathLabel(documentContext.filePath),
+        version: requestedVersion,
+        lane: "pull",
+        stage: "after-diagnostics-prepare",
+      });
+      return null;
+    }
+
     const diagnosticsResultState = getDiagnosticsResultState(document, documentContext);
     const { resultId, laneResultIds, laneMetadata } = diagnosticsResultState;
     if (
@@ -858,18 +882,6 @@ function createDiagnosticsFeatureService(context) {
 
     const startedAt = process.hrtime.bigint();
     const diagnosticsProfile = {};
-
-    if (await yieldBeforeHeavyDiagnostics(token, shouldCancel)) {
-      logServer("warn", "diagnostics", "cancelled", {
-        req: requestId,
-        case: "cancelled",
-        file: getRelativePathLabel(documentContext.filePath),
-        version: requestedVersion,
-        lane: "pull",
-        stage: "after-initial-yield",
-      });
-      return null;
-    }
 
     const laneDiagnosticsOut = {};
     const semanticBudget = createSemanticBudget(

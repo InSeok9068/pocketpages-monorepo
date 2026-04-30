@@ -4472,8 +4472,12 @@ missingServerRegionOne.toString()
       yieldCancelService && typeof yieldCancelService.getDiagnostics === 'function'
         ? yieldCancelService.getDiagnostics.bind(yieldCancelService)
         : null
+    const originalYieldCancelEnsureDocumentPrepared = yieldCancelContext.context.helpers.ensureDocumentPrepared
     if (!yieldCancelService || !originalYieldCancelGetDiagnostics) {
       throw new Error('Expected yield cancellation smoke context to expose a language service.')
+    }
+    yieldCancelContext.context.helpers.ensureDocumentPrepared = () => {
+      throw new Error('Expected pull diagnostics cancellation before prepare to skip virtual document preparation.')
     }
     yieldCancelService.getDiagnostics = () => {
       throw new Error('Expected pull diagnostics cancellation after initial yield to skip heavy diagnostics.')
@@ -4492,6 +4496,7 @@ missingServerRegionOne.toString()
       yieldCancelReport = await yieldCancelPromise
     } finally {
       yieldCancelService.getDiagnostics = originalYieldCancelGetDiagnostics
+      yieldCancelContext.context.helpers.ensureDocumentPrepared = originalYieldCancelEnsureDocumentPrepared
     }
     if (yieldCancelReport !== null) {
       throw new Error(`Expected pull diagnostics to return null when cancelled after initial yield. Got: ${JSON.stringify(yieldCancelReport)}`)
