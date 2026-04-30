@@ -213,6 +213,7 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
     LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT: 50000,
     LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS: 3000,
     LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET: 2,
+    FIRST_REQUEST_WARMUP_IDLE_MS: 700,
     customCompletionKind() {
       return completionKindText
     },
@@ -825,13 +826,13 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
-    /connection\.onDocumentSymbol\(\(params\) => \{\s*return structureFeatureService\.provideDocumentSymbols\(params\);\s*\}\);/,
-    'Expected server.js to route document symbols through structure-features.'
+    /connection\.onDocumentSymbol\(\(params\) => \{[\s\S]*const result = structureFeatureService\.provideDocumentSymbols\(params\);[\s\S]*logRequestResult\("symbols",\s*"document"[\s\S]*return result;/,
+    'Expected server.js to route document symbols through structure-features and log the request result.'
   )
   assertMatches(
     serverSource,
-    /connection\.onWorkspaceSymbol\(\(params\) => \{\s*return structureFeatureService\.provideWorkspaceSymbols\(params\);\s*\}\);/,
-    'Expected server.js to route workspace symbols through structure-features.'
+    /connection\.onWorkspaceSymbol\(\(params\) => \{[\s\S]*const result = structureFeatureService\.provideWorkspaceSymbols\(params\);[\s\S]*logRequestResult\("symbols",\s*"workspace"[\s\S]*return result;/,
+    'Expected server.js to route workspace symbols through structure-features and log the request result.'
   )
   assertMatches(
     serverSource,
@@ -840,8 +841,8 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
-    /if \(!isEjsFilePath\(documentContext\.filePath\)\) \{\s*return null;\s*\}/,
-    'Expected server.js hover path to avoid generic JS hover duplication outside EJS.'
+    /if \(!isEjsFilePath\(documentContext\.filePath\)\) \{[\s\S]*case:\s*"non-ejs"[\s\S]*return null;[\s\S]*\}/,
+    'Expected server.js hover path to avoid generic JS hover duplication outside EJS and log the non-EJS case.'
   )
   assertMatches(
     serverSource,
@@ -850,7 +851,7 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
-    /const customTarget = customFeatureService\.provideDefinition\(params\);[\s\S]*if \(customTarget\) \{[\s\S]*return toLocation\(customTarget\);[\s\S]*\}[\s\S]*return toLocation\(typeScriptFeatureService\.provideDefinition\(params\)\);/,
+    /const customTarget = customFeatureService\.provideDefinition\(params\);[\s\S]*if \(customTarget\) \{[\s\S]*return result;[\s\S]*\}[\s\S]*const typeScriptTarget = typeScriptFeatureService\.provideDefinition\(params\);[\s\S]*return result;/,
     'Expected server.js definition ownership to check PocketPages custom targets before TS definition fallback.'
   )
   assertMatches(
@@ -948,7 +949,7 @@ function assertLspRuntimeContracts(repoRoot) {
     /helpers\.isExcludedPocketPagesScriptPath\(documentContext\.filePath\)/,
     'Expected diagnostics feature service to skip excluded PocketPages vendor and minified scripts.'
   )
-  if (/connection\.sendDiagnostics|mode:\s*"push-lanes"|includeSemanticDiagnostics:\s*false/.test(diagnosticsFeatureSource)) {
+  if (/connection\.sendDiagnostics|mode:\s*"push-lanes"/.test(diagnosticsFeatureSource)) {
     throw new Error('Expected diagnostics feature service to stay pull-only without push publish lanes.')
   }
   assertMatches(
@@ -1020,6 +1021,41 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected language server to route LSP pull diagnostics directly into the diagnostics provider.'
   )
   assertMatches(
+    serverSource,
+    /pendingDocumentContentChanges[\s\S]*new TextDocuments\(\{[\s\S]*update\(document, changes, version\)[\s\S]*takePendingDocumentContentChanges/,
+    'Expected language server to preserve raw LSP content changes for lifecycle edit-offset tracking.'
+  )
+  assertMatches(
+    serverSource,
+    /nextRequestId\("cmp"\)[\s\S]*case:\s*"exact-cache"[\s\S]*getPerformanceBucket\("completion"/,
+    'Expected completion logs to include request ids, execution case labels, and performance buckets.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.onCompletionResolve\(\(item\) => \{[\s\S]*nextRequestId\("cres"\)[\s\S]*logRequestResult\("completion",\s*"resolve"[\s\S]*case:[\s\S]*"ts-resolve"[\s\S]*"passthrough"/,
+    'Expected completion resolve to log whether detail resolution used TS metadata or passed through.'
+  )
+  assertMatches(
+    serverSource,
+    /function getDominantStep\([\s\S]*bottleneck[\s\S]*bottleneckMs/,
+    'Expected server performance logs to report the dominant bottleneck step.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.onHover\(\(params\) => \{[\s\S]*nextRequestId\("hover"\)[\s\S]*case:\s*"path-target"[\s\S]*case:\s*"ts-hover"/,
+    'Expected hover logs to distinguish path-target hovers from TS quick-info hovers.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.onRenameRequest\(\(params\) => \{[\s\S]*workspaceEditStats\(customResult\)[\s\S]*case:\s*"custom-rename"[\s\S]*workspaceEditStats\(typeScriptResult\)[\s\S]*case:\s*"ts-rename"/,
+    'Expected rename logs to report custom and TS edit counts separately.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.onDocumentLinks\(\(params\) => \{[\s\S]*case:\s*"document-links"[\s\S]*connection\.languages\.semanticTokens\.on\(\(params\) => \{[\s\S]*case:\s*"ejs-semantic-tokens"/,
+    'Expected structural LSP features to log document links and semantic token requests.'
+  )
+  assertMatches(
     diagnosticsFeatureSource,
     /scheduleDiagnosticsRefreshForDocument[\s\S]*schedulePullDiagnosticsRefresh\(options\.reason \|\| "schedule"\)/,
     'Expected diagnostics feature service to use workspace refresh instead of publishing diagnostics.'
@@ -1036,8 +1072,18 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     diagnosticsFeatureSource,
-    /includeProjectRuleDiagnostics:\s*false[\s\S]*partialDiagnostics:\s*true/,
-    'Expected recent large-file partial diagnostics to defer project rules until the full diagnostics pass.'
+    /getRecentOpenWarmupDelayMs\([\s\S]*large-open-warmup/,
+    'Expected large EJS open diagnostics to defer briefly so first-request warmup can run before full diagnostics.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /createRequestId\("diag"\)[\s\S]*case:\s*"full-pull"[\s\S]*budgetDeferred/,
+    'Expected diagnostics logs to include request ids, case labels, budget status, and bottleneck fields.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
+    /includeSemanticDiagnostics:\s*false[\s\S]*includeProjectRuleDiagnostics:\s*false[\s\S]*partialDiagnostics:\s*true/,
+    'Expected recent large-file partial diagnostics to defer semantic and project-rule checks until the full diagnostics pass.'
   )
   assertMatches(
     diagnosticsFeatureSource,
@@ -1070,12 +1116,22 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     lifecycleFeatureSource,
+    /handleDidChangeWatchedFiles\(event\) \{[\s\S]*requestId\("watch"\)[\s\S]*case:\s*"ignored-open-documents"[\s\S]*case:\s*"workspace-file-changes"[\s\S]*diagnosticsRefreshes:/,
+    'Expected watched-file lifecycle logs to explain ignored open-doc changes, app-scoped invalidation, and diagnostics refresh counts.'
+  )
+  assertMatches(
+    lifecycleFeatureSource,
     /getPreferredChangeOffset\([\s\S]*rememberInteractiveOffset\(event\.document\.uri,\s*preferredChangeOffset,\s*"edit"\)/,
     'Expected lifecycle change handling to remember the edit offset for preferred diagnostics.'
   )
   assertMatches(
     lifecycleFeatureSource,
-    /handleDidManualSave\(\{ uri \}\)[\s\S]*updateDocumentRuntimeState\(uri,\s*documents\.get\(uri\),\s*\{[\s\S]*saved:\s*true/,
+    /changeSource:\s*hasContentChanges[\s\S]*diagnosticsQuiet:[\s\S]*prepared:\s*"deferred"/,
+    'Expected lifecycle change logs to expose whether diagnostics quiet handling and deferred preparation are in effect.'
+  )
+  assertMatches(
+    lifecycleFeatureSource,
+    /handleDidManualSave\(\{ uri \}\)[\s\S]*requestId\("save"\)[\s\S]*case:\s*"manual-save-refresh"[\s\S]*updateDocumentRuntimeState\(uri,\s*document,\s*\{[\s\S]*saved:\s*true/,
     'Expected manual save handling to clear the recent-change quiet window before requesting diagnostics.'
   )
   assertMatches(
@@ -1125,7 +1181,7 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
-    /connection\.onReferences\([\s\S]*core\.isFeatureEnabledAtOffset\(params\.textDocument\.uri,\s*offset,\s*"references"\)[\s\S]*ensureDocumentPrepared\(document\.uri\)[\s\S]*requirePreparedVirtualState:\s*true/,
+    /connection\.onReferences\([\s\S]*core\.isFeatureEnabledAtOffset\(params\.textDocument\.uri,\s*offset,\s*"references"\)[\s\S]*ensureDocumentPrepared\(document\.uri,\s*\{[\s\S]*operation:\s*"references"[\s\S]*requirePreparedVirtualState:\s*true/,
     'Expected references routing to keep TypeScript references on the prepared-only mapped feature path.'
   )
   assertMatches(
@@ -1142,6 +1198,26 @@ function assertLspRuntimeContracts(repoRoot) {
     maintenanceFeatureSource,
     /clearCachedCompletionItemsForUri\(affectedUri\)/,
     'Expected reloadCaches maintenance flow to clear cached completion entries for affected open documents.'
+  )
+  assertMatches(
+    maintenanceFeatureSource,
+    /provideRefreshDiagnostics\(\{ uri \}\) \{[\s\S]*requestId\("diagcmd"\)[\s\S]*case:\s*"manual-command"/,
+    'Expected refreshDiagnostics maintenance requests to log command-triggered refreshes.'
+  )
+  assertMatches(
+    maintenanceFeatureSource,
+    /provideReloadCaches\(\{ uri \}\) \{[\s\S]*requestId\("cache"\)[\s\S]*affectedOpenDocuments[\s\S]*perf:/,
+    'Expected cache reload maintenance requests to log scope, affected open documents, and performance.'
+  )
+  assertMatches(
+    maintenanceFeatureSource,
+    /provideAllFileReferences\(\{ uri \}\) \{[\s\S]*case:\s*result \? "file-reference-graph" : "no-reference-query"[\s\S]*referenceKind:/,
+    'Expected all-file-reference maintenance requests to log reference graph kind and count.'
+  )
+  assertMatches(
+    maintenanceFeatureSource,
+    /provideFileRenameEdits\(\{ oldUri, newUri \}\) \{[\s\S]*case:\s*"file-rename-edits"[\s\S]*files:\s*countEditFiles\(result\)[\s\S]*edits:/,
+    'Expected file rename maintenance requests to log affected file and edit counts.'
   )
 
   if (!vscodeIgnore.includes('node_modules/**')) {
@@ -3703,7 +3779,8 @@ const smallNormalValue = missingSmallNormalValue
       normalEjsDiagnosticsReport.budgetDeferred === true ||
       normalEjsSchedules.length !== 0 ||
       normalEjsPrepareCalls.length !== 1 ||
-      Object.keys(normalEjsPrepareCalls[0].options || {}).length !== 0 ||
+      normalEjsPrepareCalls[0].options.operation !== 'diagnostics-full' ||
+      normalEjsPrepareCalls[0].options.skipUnrelatedRegions === true ||
       normalEjsDiagnosticOptions.length !== 1 ||
       normalEjsDiagnosticOptions[0].includeProjectRuleDiagnostics !== true ||
       normalEjsDiagnosticOptions[0].requirePreparedVirtualState !== true ||
@@ -4476,6 +4553,87 @@ missingServerRegionOne.toString()
       throw new Error('Expected deferred large-file diagnostics not to cache an empty quiet result as the real pull result.')
     }
 
+    const openWarmupCore = new PocketPagesLanguageCore()
+    const openWarmupText = `<script server>
+missingOpenWarmup.toString()
+</script>
+${'<div>open warmup filler</div>\n'.repeat(4)}
+`
+    const openWarmupDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      openWarmupText
+    )
+    const openWarmupUri = openWarmupDocument.uri
+    openWarmupCore.openDocument({
+      uri: openWarmupUri,
+      languageId: 'ejs',
+      version: 1,
+      text: openWarmupText,
+    })
+    const openWarmupRuntimeState = createDocumentRuntimeStateRegistry()
+    openWarmupRuntimeState.updateDocument(openWarmupUri, {
+      version: 1,
+      textLength: openWarmupText.length,
+      opened: true,
+    })
+    const openWarmupSchedules = []
+    const openWarmupContext = createLspServiceSmokeContext(
+      openWarmupCore,
+      new Map([[openWarmupUri, openWarmupDocument]]),
+      {
+        runtimeState: openWarmupRuntimeState,
+        connection: {
+          languages: {
+            diagnostics: {
+              refresh() {},
+            },
+          },
+        },
+      }
+    )
+    openWarmupContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 50
+    openWarmupContext.context.helpers.FIRST_REQUEST_WARMUP_IDLE_MS = 10000
+    openWarmupContext.context.helpers.isPullDiagnosticRefreshSupported = () => true
+    openWarmupContext.context.helpers.scheduleDocumentRequest = (uri, key, version, delayMs, callback) => {
+      openWarmupSchedules.push({ uri, key, version, delayMs, callback })
+      return { uri, key, version, delayMs }
+    }
+    openWarmupContext.context.helpers.ensureDocumentPrepared = () => {
+      throw new Error('Expected recent large-EJS open diagnostics to defer before preparing virtual state.')
+    }
+    const openWarmupService = openWarmupCore.getDocumentContextByUri(openWarmupUri).service
+    const originalOpenWarmupDiagnostics = openWarmupService.getDiagnostics.bind(openWarmupService)
+    let openWarmupReport = null
+    try {
+      openWarmupService.getDiagnostics = () => {
+        throw new Error('Expected recent large-EJS open diagnostics to defer before computing diagnostics.')
+      }
+      const openWarmupFeatureService = createDiagnosticsFeatureService(
+        openWarmupContext.context
+      )
+      openWarmupReport = await openWarmupFeatureService.providePullDiagnostics(
+        { textDocument: { uri: openWarmupUri } },
+        { isCancellationRequested: false }
+      )
+    } finally {
+      openWarmupService.getDiagnostics = originalOpenWarmupDiagnostics
+    }
+    if (
+      !openWarmupReport ||
+      !String(openWarmupReport.resultId || '').startsWith('open-warmup:') ||
+      !Array.isArray(openWarmupReport.items) ||
+      openWarmupReport.items.length !== 0 ||
+      openWarmupSchedules.length !== 1 ||
+      openWarmupSchedules[0].uri !== 'workspace' ||
+      openWarmupSchedules[0].key !== 'diagnostics:refresh'
+    ) {
+      throw new Error(
+        `Expected recent large-EJS open diagnostics to defer an empty result and schedule a refresh. Got: ${JSON.stringify({ openWarmupReport, openWarmupSchedules })}`
+      )
+    }
+
     const partialQuietCore = new PocketPagesLanguageCore()
     const partialQuietText = `<script server>
 const quietPartialStable = 1
@@ -4610,6 +4768,7 @@ missingQuietPartial.toString()
       partialQuietPrepareCalls[0].options.skipUnrelatedRegions !== true ||
       partialQuietPrepareCalls[0].options.skipStaticRefresh !== true ||
       partialQuietDiagnosticOptions.length !== 2 ||
+      partialQuietDiagnosticOptions[0].includeSemanticDiagnostics !== false ||
       partialQuietDiagnosticOptions[0].includeProjectRuleDiagnostics !== false ||
       !partialQuietDiagnosticOptions[0].semanticBudget ||
       partialQuietDiagnosticOptions[0].semanticBudget.preferredOffset !== partialQuietOffset ||
@@ -4627,6 +4786,7 @@ missingQuietPartial.toString()
           partialQuietSchedules,
           partialQuietPrepareCalls,
           partialQuietDiagnosticOptions: partialQuietDiagnosticOptions.map((options) => ({
+            semantic: options.includeSemanticDiagnostics,
             project: options.includeProjectRuleDiagnostics,
             preferredOffset: options.semanticBudget && options.semanticBudget.preferredOffset,
             requirePreparedVirtualState: options.requirePreparedVirtualState,
@@ -5756,8 +5916,13 @@ module.exports = {
       document: lifecycleVendorDocument,
       contentChanges: [{ text: 'window.JSZip = { loaded: true }' }],
     })
+    const lifecycleRememberedOffsetCountBeforeEmptyChange = lifecycleRememberedOffsets.length
+    lifecycleFeatureService.handleDidChangeContent({
+      document: lifecycleBoardsDocument,
+      contentChanges: [],
+    })
     if (
-      lifecycleCoreCalls.update.length !== 2 ||
+      lifecycleCoreCalls.update.length !== 3 ||
       !lifecycleClearedCompletionUris.includes(lifecycleBoardsUri) ||
       !lifecycleClearedCompletionUris.includes(lifecycleVendorDocument.uri)
     ) {
@@ -5770,9 +5935,23 @@ module.exports = {
         entry.uri === lifecycleBoardsUri &&
         entry.offset === lifecycleBoardsText.indexOf('meta') &&
         entry.operation === 'edit'
-      )
+      ) ||
+      lifecycleRememberedOffsets.some((entry) =>
+        entry.uri === lifecycleVendorDocument.uri &&
+        entry.offset === 0 &&
+        entry.operation === 'edit'
+      ) ||
+      lifecycleRememberedOffsets.length !== lifecycleRememberedOffsetCountBeforeEmptyChange
     ) {
-      throw new Error(`Expected lifecycle change handling to remember the edit offset for preferred diagnostics. Got: ${JSON.stringify(lifecycleRememberedOffsets)}`)
+      throw new Error(`Expected lifecycle change handling to remember only ranged edit offsets for preferred diagnostics. Got: ${JSON.stringify(lifecycleRememberedOffsets)}`)
+    }
+    const lifecycleEmptyChangeRuntimeUpdate = lifecycleRuntimeUpdates[lifecycleRuntimeUpdates.length - 1]
+    if (
+      !lifecycleEmptyChangeRuntimeUpdate ||
+      lifecycleEmptyChangeRuntimeUpdate.uri !== lifecycleBoardsUri ||
+      lifecycleEmptyChangeRuntimeUpdate.changed === true
+    ) {
+      throw new Error(`Expected empty content changes not to extend the recent-change diagnostics quiet window. Got: ${JSON.stringify(lifecycleRuntimeUpdates)}`)
     }
     if (lifecycleScheduledRefreshes.length !== 0 || lifecycleRefreshReasons.length !== 0) {
       throw new Error(

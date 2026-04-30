@@ -22,6 +22,8 @@ function createTypeScriptFeatureService(context) {
     shouldAbortDocumentRequest,
     getRelativePathLabel,
     getCompletionProfileFields,
+    createRequestId,
+    getPerformanceBucket,
     LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT,
     elapsedMilliseconds,
     formatCompletionTrigger,
@@ -89,6 +91,9 @@ function createTypeScriptFeatureService(context) {
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      const requestId =
+        params.__pocketpagesRequestId ||
+        (typeof createRequestId === "function" ? createRequestId("cmp") : null);
       if (
         isExcludedPocketPagesScriptPath(documentContext.filePath) ||
         isSchemaSupportOnlyHookScriptPath(documentContext.filePath)
@@ -102,7 +107,10 @@ function createTypeScriptFeatureService(context) {
 
       if (isLargeEjsQuoteTrigger(documentContext, document, params.context)) {
         logServer("info", "completion", "skip", {
+          req: requestId,
+          case: "large-ejs-quote-trigger",
           file: getRelativePathLabel(documentContext.filePath),
+          version: document.version,
           trigger: formatCompletionTrigger(params.context),
           offset,
           reason: "large-ejs-quote-trigger",
@@ -116,7 +124,10 @@ function createTypeScriptFeatureService(context) {
         })
       ) {
         logServer("info", "completion", "skip", {
+          req: requestId,
+          case: "unsupported-trigger",
           file: getRelativePathLabel(documentContext.filePath),
+          version: document.version,
           trigger: formatCompletionTrigger(params.context),
           offset,
           reason: "ts-trigger",
@@ -129,15 +140,18 @@ function createTypeScriptFeatureService(context) {
       const relativePath = getRelativePathLabel(documentContext.filePath);
       const trigger = formatCompletionTrigger(params.context);
       const completionStartedAt = process.hrtime.bigint();
+      const completionProfile = {};
       if (typeof ensureDocumentPrepared === "function") {
+        const prepareStartedAt = process.hrtime.bigint();
         ensureDocumentPrepared(document.uri, {
+          requestId,
           operation: "completion",
           preferredOffset: offset,
           skipUnrelatedRegions: true,
           skipStaticRefresh: true,
         });
+        completionProfile.prepareMs = elapsedMilliseconds(prepareStartedAt);
       }
-      const completionProfile = {};
       const completionData = documentContext.service.getCompletionData(
         documentContext.filePath,
         documentText,
@@ -152,7 +166,10 @@ function createTypeScriptFeatureService(context) {
 
       if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
         logServer("warn", "completion", "abort", {
+          req: requestId,
+          case: "stale-or-cancelled",
           file: relativePath,
+          version: requestedVersion,
           trigger,
           offset,
           stage: "ts",
@@ -162,12 +179,20 @@ function createTypeScriptFeatureService(context) {
       }
 
       if (!completionData) {
+        const totalMs = elapsedMilliseconds(startedAt);
         logServer("perf", "completion", "none", {
+          req: requestId,
+          case: "ts-none",
           file: relativePath,
+          version: requestedVersion,
           trigger,
           offset,
           getCompletionMs: completionElapsedMs.toFixed(1),
-          totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+          totalMs: totalMs.toFixed(1),
+          perf: typeof getPerformanceBucket === "function"
+            ? getPerformanceBucket("completion", totalMs)
+            : null,
+          ...getCompletionProfileFields(completionProfile),
         });
         return null;
       }
@@ -205,13 +230,20 @@ function createTypeScriptFeatureService(context) {
         }),
       };
 
+      const totalMs = elapsedMilliseconds(startedAt);
       logServer("perf", "completion", "ts", {
+        req: requestId,
+        case: "ts-completion",
         file: relativePath,
+        version: requestedVersion,
         trigger,
         offset,
         count: result.items.length,
         getCompletionMs: completionElapsedMs.toFixed(1),
-        totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+        totalMs: totalMs.toFixed(1),
+        perf: typeof getPerformanceBucket === "function"
+          ? getPerformanceBucket("completion", totalMs)
+          : null,
         ...getCompletionProfileFields(completionData.profile),
       });
 

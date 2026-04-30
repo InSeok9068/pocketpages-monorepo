@@ -14,10 +14,13 @@ function createDiagnosticsFeatureService(context) {
     LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT,
     LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS,
     LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET,
+    FIRST_REQUEST_WARMUP_IDLE_MS,
     PULL_DIAGNOSTICS_INITIAL_YIELD_MS,
     diagnosticSeverity,
     elapsedMilliseconds,
     ensureDocumentPrepared,
+    createRequestId,
+    getPerformanceBucket,
     getCachedDiagnosticsResult,
     getDocumentByUri,
     getDocumentContextByUri,
@@ -302,6 +305,34 @@ function createDiagnosticsFeatureService(context) {
     return Math.max(1, quietMs - elapsedMs);
   }
 
+  function getRecentOpenWarmupDelayMs(uri) {
+    const delayMs = Number(FIRST_REQUEST_WARMUP_IDLE_MS);
+    if (!Number.isFinite(delayMs) || delayMs <= 0) {
+      return 0;
+    }
+
+    const runtimeState =
+      typeof getDocumentRuntimeState === "function"
+        ? getDocumentRuntimeState(uri)
+        : null;
+    const openedAt = runtimeState && Number(runtimeState.openedAt);
+    if (!Number.isFinite(openedAt) || openedAt <= 0) {
+      return 0;
+    }
+
+    const changedAt = runtimeState && Number(runtimeState.changedAt);
+    if (Number.isFinite(changedAt) && changedAt > 0) {
+      return 0;
+    }
+
+    const elapsedMs = Date.now() - openedAt;
+    if (elapsedMs >= delayMs) {
+      return 0;
+    }
+
+    return Math.max(1, delayMs - elapsedMs);
+  }
+
   function getPreferredOffset(uri) {
     const preferredOffset =
       typeof getPreferredDiagnosticOffset === "function"
@@ -409,6 +440,7 @@ function createDiagnosticsFeatureService(context) {
     requestedVersion,
     quietDelayMs,
     preferredOffset,
+    requestId,
     shouldCancel,
   }) {
     schedulePullDiagnosticsRefresh("large-quiet", quietDelayMs + 100);
@@ -422,6 +454,8 @@ function createDiagnosticsFeatureService(context) {
       cachedResult.resultId === params.previousResultId
     ) {
       logServer("perf", "diagnostics", "pull-deferred", {
+        req: requestId,
+        case: "large-quiet-partial-unchanged",
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
         mode: "large-quiet-partial",
@@ -442,6 +476,8 @@ function createDiagnosticsFeatureService(context) {
       cachedResult.resultId
     ) {
       logServer("perf", "diagnostics", "pull-deferred", {
+        req: requestId,
+        case: "large-quiet-partial-cache",
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
         mode: "large-quiet-partial",
@@ -462,6 +498,8 @@ function createDiagnosticsFeatureService(context) {
 
     if (shouldCancel("before-large-quiet-partial-prepare")) {
       logServer("warn", "diagnostics", "cancelled", {
+        req: requestId,
+        case: "large-quiet-partial-cancelled",
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
         lane: "pull",
@@ -472,6 +510,7 @@ function createDiagnosticsFeatureService(context) {
 
     if (typeof ensureDocumentPrepared === "function") {
       ensureDocumentPrepared(uri, {
+        requestId,
         operation: "diagnostics",
         preferredOffset,
         skipUnrelatedRegions: true,
@@ -480,6 +519,8 @@ function createDiagnosticsFeatureService(context) {
     }
     if (shouldCancel("after-large-quiet-partial-prepare")) {
       logServer("warn", "diagnostics", "cancelled", {
+        req: requestId,
+        case: "large-quiet-partial-cancelled",
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
         lane: "pull",
@@ -489,7 +530,7 @@ function createDiagnosticsFeatureService(context) {
     }
 
     const diagnosticOptions = {
-      includeSemanticDiagnostics: true,
+      includeSemanticDiagnostics: false,
       includeProjectRuleDiagnostics: false,
       includeTypeScriptDiagnostics: true,
       includeServerBlockDiagnostics: true,
@@ -511,6 +552,8 @@ function createDiagnosticsFeatureService(context) {
       cachedResult.resultId === resultId
     ) {
       logServer("perf", "diagnostics", "pull-deferred", {
+        req: requestId,
+        case: "large-quiet-partial-unchanged",
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
         mode: "large-quiet-partial",
@@ -551,6 +594,8 @@ function createDiagnosticsFeatureService(context) {
     );
     if (diagnosticsProfile.cancelled || shouldCancel("after-large-quiet-partial-diagnostics")) {
       logServer("warn", "diagnostics", "cancelled", {
+        req: requestId,
+        case: "large-quiet-partial-cancelled",
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
         lane: "pull",
@@ -564,7 +609,10 @@ function createDiagnosticsFeatureService(context) {
       documentContext,
       rawDiagnostics
     );
+    const elapsedMs = elapsedMilliseconds(startedAt);
     logServer("perf", "diagnostics", "pull", {
+      req: requestId,
+      case: "large-quiet-partial",
       file: getRelativePathLabel(documentContext.filePath),
       version: requestedVersion,
       count: reportedDiagnostics.length,
@@ -572,7 +620,13 @@ function createDiagnosticsFeatureService(context) {
       mode: "large-quiet-partial",
       delayMs: quietDelayMs,
       preferredOffset,
-      totalMs: elapsedMilliseconds(startedAt).toFixed(1),
+      semantic: false,
+      rules: false,
+      budgetMax: 1,
+      totalMs: elapsedMs.toFixed(1),
+      perf: typeof getPerformanceBucket === "function"
+        ? getPerformanceBucket("diagnostics", elapsedMs)
+        : null,
       ...getDiagnosticsProfileFields(diagnosticsProfile),
     });
 
@@ -613,6 +667,8 @@ function createDiagnosticsFeatureService(context) {
       return { kind: "full", items: [] };
     }
 
+    const requestId =
+      typeof createRequestId === "function" ? createRequestId("diag") : null;
     const cachedResult =
       typeof getCachedDiagnosticsResult === "function"
         ? getCachedDiagnosticsResult(uri, "pull")
@@ -642,6 +698,7 @@ function createDiagnosticsFeatureService(context) {
           requestedVersion,
           quietDelayMs,
           preferredOffset,
+          requestId,
           shouldCancel,
         });
       }
@@ -653,6 +710,8 @@ function createDiagnosticsFeatureService(context) {
         cachedResult.resultId === params.previousResultId
       ) {
         logServer("perf", "diagnostics", "pull-deferred", {
+          req: requestId,
+          case: "large-quiet-unchanged",
           file: getRelativePathLabel(documentContext.filePath),
           version: requestedVersion,
           mode: "large-quiet",
@@ -671,6 +730,8 @@ function createDiagnosticsFeatureService(context) {
         cachedResult.resultId
       ) {
         logServer("perf", "diagnostics", "pull-deferred", {
+          req: requestId,
+          case: "large-quiet-cache",
           file: getRelativePathLabel(documentContext.filePath),
           version: requestedVersion,
           mode: "large-quiet",
@@ -690,6 +751,8 @@ function createDiagnosticsFeatureService(context) {
         document.getText().length,
       ].join(":");
       logServer("perf", "diagnostics", "pull-deferred", {
+        req: requestId,
+        case: "large-quiet-empty",
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
         mode: "large-quiet",
@@ -703,8 +766,37 @@ function createDiagnosticsFeatureService(context) {
       };
     }
 
+    const openWarmupDelayMs = isLargeEjsDocument(documentContext, document) && !cachedResult
+      ? getRecentOpenWarmupDelayMs(uri)
+      : 0;
+    if (openWarmupDelayMs > 0) {
+      schedulePullDiagnosticsRefresh("large-open-warmup", openWarmupDelayMs + 100);
+      const openWarmupResultId = [
+        "open-warmup",
+        requestedVersion,
+        document.getText().length,
+      ].join(":");
+      logServer("perf", "diagnostics", "pull-deferred", {
+        req: requestId,
+        case: "large-open-warmup",
+        file: getRelativePathLabel(documentContext.filePath),
+        version: requestedVersion,
+        mode: "large-open-warmup",
+        delayMs: openWarmupDelayMs,
+        result: "empty",
+      });
+      return {
+        kind: "full",
+        resultId: openWarmupResultId,
+        items: [],
+      };
+    }
+
     if (typeof ensureDocumentPrepared === "function") {
-      ensureDocumentPrepared(uri);
+      ensureDocumentPrepared(uri, {
+        requestId,
+        operation: "diagnostics-full",
+      });
     }
     const diagnosticsResultState = getDiagnosticsResultState(document, documentContext);
     const { resultId, laneResultIds, laneMetadata } = diagnosticsResultState;
@@ -715,6 +807,8 @@ function createDiagnosticsFeatureService(context) {
       cachedResult.resultId === resultId
     ) {
       logServer("perf", "diagnostics", "pull-unchanged", {
+        req: requestId,
+        case: "unchanged",
         file: getRelativePathLabel(documentContext.filePath),
         version: document.version,
         resultId,
@@ -730,6 +824,8 @@ function createDiagnosticsFeatureService(context) {
 
     if (await yieldBeforeHeavyDiagnostics(token, shouldCancel)) {
       logServer("warn", "diagnostics", "cancelled", {
+        req: requestId,
+        case: "cancelled",
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
         lane: "pull",
@@ -769,6 +865,8 @@ function createDiagnosticsFeatureService(context) {
     );
     if (diagnosticsProfile.cancelled || shouldCancel("after-pull-diagnostics")) {
       logServer("warn", "diagnostics", "cancelled", {
+        req: requestId,
+        case: "cancelled",
         file: getRelativePathLabel(documentContext.filePath),
         version: requestedVersion,
         lane: "pull",
@@ -784,12 +882,22 @@ function createDiagnosticsFeatureService(context) {
     );
     const elapsedMs = elapsedMilliseconds(startedAt);
     logServer("perf", "diagnostics", "pull", {
+      req: requestId,
+      case: "full-pull",
       file: getRelativePathLabel(documentContext.filePath),
       version: requestedVersion,
       count: reportedDiagnostics.length,
       rawCount: rawDiagnostics.length,
       mode: "pull",
       totalMs: elapsedMs.toFixed(1),
+      perf: typeof getPerformanceBucket === "function"
+        ? getPerformanceBucket("diagnostics", elapsedMs)
+        : null,
+      budgetDeferred: !!(semanticBudget && semanticBudget.deferred),
+      budgetMax: semanticBudget && semanticBudget.enabled === true
+        ? semanticBudget.maxSemanticRegions
+        : null,
+      preferredOffset: semanticBudget ? semanticBudget.preferredOffset : null,
       ...getDiagnosticsProfileFields(diagnosticsProfile),
     });
 

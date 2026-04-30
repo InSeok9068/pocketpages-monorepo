@@ -7,6 +7,9 @@ function createLifecycleFeatureService(context) {
     cancelScheduledDocumentRequests,
     clearDocumentRuntimeState,
     cancelFirstRequestWarmup,
+    createRequestId,
+    elapsedMilliseconds: helperElapsedMilliseconds,
+    getPerformanceBucket,
     getRelativePathLabel,
     isEjsFilePath,
     isExcludedPocketPagesScriptPath,
@@ -19,6 +22,22 @@ function createLifecycleFeatureService(context) {
     updateDocumentRuntimeState,
     uriToFilePath,
   } = helpers;
+
+  function requestId(prefix) {
+    return typeof createRequestId === "function" ? createRequestId(prefix) : null;
+  }
+
+  function elapsedMilliseconds(startTime) {
+    return typeof helperElapsedMilliseconds === "function"
+      ? helperElapsedMilliseconds(startTime)
+      : Number(process.hrtime.bigint() - startTime) / 1e6;
+  }
+
+  function performanceBucket(kind, elapsedMs) {
+    return typeof getPerformanceBucket === "function"
+      ? getPerformanceBucket(kind, elapsedMs)
+      : null;
+  }
 
   function shouldRunDiagnosticsForFile(filePath) {
     return (
@@ -51,17 +70,19 @@ function createLifecycleFeatureService(context) {
       }
     }
 
-    return changes.length ? 0 : null;
+    return null;
   }
 
   function applyWatchedFileChanges(changes) {
     const result = core.handleWatchedFileChanges(changes);
+    let scheduledDiagnostics = 0;
 
     for (const uri of result.affectedUris) {
       clearCachedCompletionItemsForUri(uri);
       const filePath = uriToFilePath(uri);
       if (shouldRunDiagnosticsForFile(filePath)) {
         scheduleDiagnosticsRefreshForDocument(uri, { reason: "file-watch" });
+        scheduledDiagnostics += 1;
       }
     }
 
@@ -75,7 +96,10 @@ function createLifecycleFeatureService(context) {
       });
     }
 
-    return result;
+    return {
+      ...result,
+      scheduledDiagnostics,
+    };
   }
 
   return {
@@ -105,13 +129,19 @@ function createLifecycleFeatureService(context) {
     handleDidChangeContent(event) {
       clearCachedCompletionItemsForUri(event.document.uri);
       const filePath = uriToFilePath(event.document.uri);
+      const hasContentChanges = Array.isArray(event.contentChanges) && event.contentChanges.length > 0;
       const preferredChangeOffset = getPreferredChangeOffset(event.document, event.contentChanges);
+      let rememberedOffset = false;
       if (
         shouldRunDiagnosticsForFile(filePath) &&
+        preferredChangeOffset !== null &&
+        preferredChangeOffset !== undefined &&
+        preferredChangeOffset !== "" &&
         Number.isFinite(Number(preferredChangeOffset)) &&
         typeof rememberInteractiveOffset === "function"
       ) {
         rememberInteractiveOffset(event.document.uri, preferredChangeOffset, "edit");
+        rememberedOffset = true;
       }
       core.updateDocument({
         uri: event.document.uri,
@@ -123,13 +153,17 @@ function createLifecycleFeatureService(context) {
       });
       if (typeof updateDocumentRuntimeState === "function") {
         updateDocumentRuntimeState(event.document.uri, event.document, {
-          changed: true,
+          changed: hasContentChanges,
         });
       }
       logServer("perf", "document", "change", {
         file: getRelativePathLabel(filePath),
         version: event.document.version,
         changes: Array.isArray(event.contentChanges) ? event.contentChanges.length : 0,
+        changeSource: hasContentChanges ? "lsp-content-change" : "document-sync",
+        preferredOffset: rememberedOffset ? preferredChangeOffset : null,
+        diagnosticsQuiet: shouldRunDiagnosticsForFile(filePath) && hasContentChanges,
+        prepared: "deferred",
       });
     },
 
@@ -154,10 +188,14 @@ function createLifecycleFeatureService(context) {
     },
 
     handleDidChangeWatchedFiles(event) {
+      const startedAt = process.hrtime.bigint();
+      const req = requestId("watch");
       const changes = [];
+      let ignoredOpenDocumentChanges = 0;
 
       for (const change of event.changes || []) {
         if (change.type === context.FileChangeType.Changed && documents.get(change.uri)) {
+          ignoredOpenDocumentChanges += 1;
           continue;
         }
 
@@ -168,22 +206,61 @@ function createLifecycleFeatureService(context) {
       }
 
       if (!changes.length) {
+        const totalMs = elapsedMilliseconds(startedAt);
+        logServer("perf", "watch", "files", {
+          req,
+          case: "ignored-open-documents",
+          incoming: Array.isArray(event.changes) ? event.changes.length : 0,
+          ignoredOpenDocuments: ignoredOpenDocumentChanges,
+          processed: 0,
+          totalMs: totalMs.toFixed(1),
+          perf: performanceBucket("structure", totalMs),
+        });
         return;
       }
 
-      applyWatchedFileChanges(changes);
+      const result = applyWatchedFileChanges(changes);
+      const totalMs = elapsedMilliseconds(startedAt);
+      logServer("perf", "watch", "files", {
+        req,
+        case: "workspace-file-changes",
+        incoming: Array.isArray(event.changes) ? event.changes.length : 0,
+        ignoredOpenDocuments: ignoredOpenDocumentChanges,
+        processed: changes.length,
+        apps: result.appResults.length,
+        affectedOpenDocuments: result.affectedUris.length,
+        diagnosticsRefreshes: result.scheduledDiagnostics,
+        changeKinds: [...new Set(changes.map((change) => change.type))],
+        totalMs: totalMs.toFixed(1),
+        perf: performanceBucket("structure", totalMs),
+      });
     },
 
     handleDidManualSave({ uri }) {
+      const startedAt = process.hrtime.bigint();
+      const req = requestId("save");
+      const document = documents.get(uri);
       logServer("info", "diagnostics", "manual-save", {
+        req,
+        case: "manual-save-refresh",
         file: getRelativePathLabel(uriToFilePath(uri)),
+        version: document ? document.version : null,
       });
       if (typeof updateDocumentRuntimeState === "function") {
-        updateDocumentRuntimeState(uri, documents.get(uri), {
+        updateDocumentRuntimeState(uri, document, {
           saved: true,
         });
       }
       refreshPullDiagnostics("manual-save");
+      const totalMs = elapsedMilliseconds(startedAt);
+      logServer("perf", "diagnostics", "manual-save-refresh", {
+        req,
+        case: "manual-save-refresh",
+        file: getRelativePathLabel(uriToFilePath(uri)),
+        version: document ? document.version : null,
+        totalMs: totalMs.toFixed(1),
+        perf: performanceBucket("structure", totalMs),
+      });
     },
   };
 }
