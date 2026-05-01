@@ -3515,6 +3515,49 @@ const localValue = foo.ba
     const schemaOnlyPathPosition = schemaOnlyCustomFeatureDocument.positionAt(
       schemaOnlyCustomFeatureText.indexOf("'/'") + 1
     )
+    const schemaOnlyCustomDocumentContext = schemaOnlyCustomFeatureCore.getDocumentContextByUri(
+      schemaOnlyCustomFeatureUri
+    )
+    const originalSchemaOnlyCustomCompletionData =
+      schemaOnlyCustomDocumentContext &&
+      schemaOnlyCustomDocumentContext.service &&
+      typeof schemaOnlyCustomDocumentContext.service.getCustomCompletionData === 'function'
+        ? schemaOnlyCustomDocumentContext.service.getCustomCompletionData.bind(
+            schemaOnlyCustomDocumentContext.service
+          )
+        : null
+    if (!originalSchemaOnlyCustomCompletionData) {
+      throw new Error('Expected schema-support-only hook custom feature smoke context to expose completion data.')
+    }
+    try {
+      schemaOnlyCustomDocumentContext.service.getCustomCompletionData = () => ({
+        start: schemaOnlyCustomFeatureText.indexOf("'/'") + 1,
+        end: schemaOnlyCustomFeatureText.indexOf("'/'") + 2,
+        items: [
+          { label: '/sign-in', category: 'route-path' },
+          { label: 'boards', category: 'collection-name' },
+          { label: 'name', category: 'record-field' },
+        ],
+      })
+      const schemaOnlyFilteredCompletion = schemaOnlyCustomFeatureService.provideCompletionItems({
+        textDocument: { uri: schemaOnlyCustomFeatureUri },
+        position: schemaOnlyPathPosition,
+        context: { triggerKind: 2, triggerCharacter: '/' },
+      })
+      const schemaOnlyFilteredLabels = schemaOnlyFilteredCompletion && schemaOnlyFilteredCompletion.items
+        ? schemaOnlyFilteredCompletion.items.map((entry) => entry.label).sort()
+        : []
+      if (
+        schemaOnlyFilteredLabels.join(',') !== 'boards,name' ||
+        schemaOnlyFilteredLabels.includes('/sign-in')
+      ) {
+        throw new Error(
+          `Expected schema-support-only hook custom completion to keep schema items and drop path items. Got: ${JSON.stringify(schemaOnlyFilteredCompletion)}`
+        )
+      }
+    } finally {
+      schemaOnlyCustomDocumentContext.service.getCustomCompletionData = originalSchemaOnlyCustomCompletionData
+    }
     if (
       schemaOnlyCustomFeatureService.provideHover({
         textDocument: { uri: schemaOnlyCustomFeatureUri },
@@ -9250,6 +9293,32 @@ const currentUser = { email: 'demo@example.com' }
     )
     if (!extractInvalidNameResult || extractInvalidNameResult.ok !== false) {
       throw new Error(`Expected Extract Partial to reject parent-directory partial names. Got: ${JSON.stringify(extractInvalidNameResult)}`)
+    }
+    const extractExistingNameResult = service.getExtractPartialEdits(
+      fixture.boardsFilePath,
+      extractPartialSourceText,
+      { start: extractSelectionStart, end: extractSelectionEnd },
+      'shared-panel.ejs'
+    )
+    if (
+      !extractExistingNameResult ||
+      extractExistingNameResult.ok !== false ||
+      !String(extractExistingNameResult.message || '').includes('already exists')
+    ) {
+      throw new Error(`Expected Extract Partial to reject an existing target partial. Got: ${JSON.stringify(extractExistingNameResult)}`)
+    }
+    const extractNonEjsResult = service.getExtractPartialEdits(
+      fixture.middlewareFilePath,
+      '<section>API</section>\n',
+      { start: 0, end: '<section>API</section>'.length },
+      'api-card'
+    )
+    if (
+      !extractNonEjsResult ||
+      extractNonEjsResult.ok !== false ||
+      !String(extractNonEjsResult.message || '').includes('EJS')
+    ) {
+      throw new Error(`Expected Extract Partial to reject non-EJS source files. Got: ${JSON.stringify(extractNonEjsResult)}`)
     }
 
     const feedbackPageReferenceQuery = service.getFileReferenceQuery(fixture.feedbackPageFilePath)

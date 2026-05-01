@@ -268,6 +268,9 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
   const inputBoxRequests = []
   const outputLines = []
   const outputShows = []
+  const clipboardWrites = []
+  const statusBarItems = []
+  const decorationTypes = []
   const fileWatchers = []
   const documentsByUri = new Map()
   const textDocuments = []
@@ -336,6 +339,7 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
   }
 
   const vscode = {
+    version: '1.85.0-test',
     Uri: URI,
     Position: MockPosition,
     Range: MockRange,
@@ -356,7 +360,20 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
       AfterDelay: 2,
       FocusOut: 3,
     },
+    env: {
+      clipboard: {
+        async writeText(text) {
+          clipboardWrites.push(String(text))
+        },
+      },
+    },
     workspace: {
+      workspaceFolders: [
+        {
+          name: 'booklog',
+          uri: URI.file(fixture.workspaceRoot),
+        },
+      ],
       get textDocuments() {
         return textDocuments
       },
@@ -414,17 +431,28 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
       createOutputChannel(name) {
         return {
           name,
+          append(value) {
+            outputLines.push(String(value))
+          },
           appendLine(line) {
             outputLines.push(String(line))
+          },
+          replace(value) {
+            outputLines.length = 0
+            outputLines.push(String(value))
+          },
+          clear() {
+            outputLines.length = 0
           },
           show(preserveFocus) {
             outputShows.push(Boolean(preserveFocus))
           },
+          hide() {},
           dispose() {},
         }
       },
       createStatusBarItem() {
-        return {
+        const item = {
           text: '',
           tooltip: '',
           name: '',
@@ -438,12 +466,16 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
           },
           dispose() {},
         }
+        statusBarItems.push(item)
+        return item
       },
       createTextEditorDecorationType(options) {
-        return {
+        const decoration = {
           options,
           dispose() {},
         }
+        decorationTypes.push(decoration)
+        return decoration
       },
       async showWarningMessage(message) {
         warningMessages.push(String(message))
@@ -539,6 +571,11 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
 
   const context = {
     subscriptions: [],
+    extension: {
+      packageJSON: {
+        version: '0.0.1-test',
+      },
+    },
     asAbsolutePath(relativePath) {
       return path.join(extensionRoot, relativePath)
     },
@@ -562,6 +599,9 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
       inputBoxRequests,
       outputLines,
       outputShows,
+      clipboardWrites,
+      statusBarItems,
+      decorationTypes,
       fileWatchers,
       getDocumentByFilePath,
       createEditor,
@@ -1221,18 +1261,379 @@ async function runCommandBoundaryTest(repoRoot, fixture) {
   })
 }
 
+async function runDecorationAndStatusBoundaryTest(repoRoot, fixture) {
+  const harness = createMockExtensionHost({
+    repoRoot,
+    fixture,
+  })
+
+  await withMockedExtensionModule(repoRoot, harness.mocks, async (extensionModule) => {
+    const routeDocument = createMockDocument(fixture.routeFilePath)
+    const routeEditor = harness.controls.createEditor(routeDocument, new MockPosition(1, 0))
+
+    await extensionModule.activate(harness.context)
+    harness.controls.setActiveTextEditor(routeEditor)
+    await harness.controls.fireOpenDocument(routeDocument)
+    await flushAsyncWork()
+
+    if (harness.controls.clientState.startCalls !== 1) {
+      throw new Error(`Expected managed EJS open to start the LSP once. Got: ${harness.controls.clientState.startCalls}`)
+    }
+    if (!harness.controls.decorationTypes.length) {
+      throw new Error('Expected LSP startup to create a server/template boundary decoration type.')
+    }
+    if (!routeEditor.decorationCalls.some((call) => Array.isArray(call.ranges) && call.ranges.length > 0)) {
+      throw new Error(`Expected visible managed EJS editors to receive server/template boundary decorations. Got: ${JSON.stringify(routeEditor.decorationCalls)}`)
+    }
+
+    const statusItem = harness.controls.statusBarItems.find((item) => item.name === 'PocketPages LSP')
+    if (!statusItem || !statusItem.visible || !String(statusItem.text || '').includes('PocketPages LSP')) {
+      throw new Error(`Expected PocketPages status item to become visible for managed documents. Got: ${JSON.stringify(statusItem)}`)
+    }
+
+    const unmanagedDocument = createMockDocument(fixture.unmanagedFilePath)
+    const unmanagedEditor = harness.controls.createEditor(unmanagedDocument, new MockPosition(0, 0))
+    await harness.controls.fireActiveEditorChange(unmanagedEditor)
+    await flushAsyncWork()
+    if (statusItem.visible) {
+      throw new Error('Expected PocketPages status item to hide when the active editor is not managed by the LSP.')
+    }
+    if (!unmanagedEditor.decorationCalls.some((call) => Array.isArray(call.ranges) && call.ranges.length === 0)) {
+      throw new Error(`Expected unmanaged EJS editors to receive an empty boundary decoration update. Got: ${JSON.stringify(unmanagedEditor.decorationCalls)}`)
+    }
+
+    await extensionModule.deactivate()
+  })
+}
+
+async function runReferencesEdgeCaseTest(repoRoot, fixture) {
+  let referencesMode = 'unsupported'
+  const missingReferenceFilePath = path.join(fixture.fixtureRoot, 'missing', 'ghost.ejs')
+  const harness = createMockExtensionHost({
+    repoRoot,
+    fixture,
+    languageClientOptions: {
+      async sendRequest(method) {
+        if (method !== REQUESTS.allFileReferences) {
+          return null
+        }
+
+        if (referencesMode === 'unsupported') {
+          return null
+        }
+        if (referencesMode === 'empty') {
+          return {
+            referenceQuery: {
+              kind: 'route-file',
+              emptyMessage: 'No route references in fixture.',
+            },
+            references: [],
+          }
+        }
+        if (referencesMode === 'missing-targets') {
+          return {
+            referenceQuery: {
+              kind: 'route-file',
+              emptyMessage: 'No references found.',
+            },
+            references: [
+              { filePath: missingReferenceFilePath, start: 0, end: 5 },
+            ],
+          }
+        }
+
+        throw new Error(`Unexpected references mode: ${referencesMode}`)
+      },
+    },
+  })
+
+  await withMockedExtensionModule(repoRoot, harness.mocks, async (extensionModule) => {
+    const managedDocument = createMockDocument(fixture.routeFilePath)
+    const managedEditor = harness.controls.createEditor(managedDocument, new MockPosition(3, 2))
+
+    await extensionModule.activate(harness.context)
+
+    await harness.controls.executeCommand('pocketpagesServerScript.allFileReferences', { bad: true })
+    if (!harness.controls.warningMessages.includes('No active editor.')) {
+      throw new Error(`Expected allFileReferences to warn when neither a valid resource nor active editor is available. Got: ${JSON.stringify(harness.controls.warningMessages)}`)
+    }
+
+    await harness.controls.fireActiveEditorChange(managedEditor)
+    await flushAsyncWork()
+
+    referencesMode = 'unsupported'
+    await harness.controls.executeCommand('pocketpagesServerScript.allFileReferences')
+    if (!harness.controls.warningMessages.some((message) => message.includes('not a supported PocketPages reference target'))) {
+      throw new Error(`Expected unsupported all-file references target warning. Got: ${JSON.stringify(harness.controls.warningMessages)}`)
+    }
+
+    referencesMode = 'empty'
+    await harness.controls.executeCommand('pocketpagesServerScript.allFileReferences')
+    if (!harness.controls.informationMessages.includes('No route references in fixture.')) {
+      throw new Error(`Expected empty all-file references result to surface the server message. Got: ${JSON.stringify(harness.controls.informationMessages)}`)
+    }
+
+    referencesMode = 'missing-targets'
+    await harness.controls.executeCommand('pocketpagesServerScript.allFileReferences')
+    if (!harness.controls.informationMessages.includes('References were found, but the target files could not be opened.')) {
+      throw new Error(`Expected all-file references to handle target open failures. Got: ${JSON.stringify(harness.controls.informationMessages)}`)
+    }
+    if (harness.controls.executedCommands.some((entry) => entry.commandId === 'editor.action.showReferences')) {
+      throw new Error(`Expected showReferences to be skipped when every reference target fails to open. Got: ${JSON.stringify(harness.controls.executedCommands)}`)
+    }
+
+    await extensionModule.deactivate()
+  })
+}
+
+async function runRenameNoopAndMixedBoundaryTest(repoRoot, fixture) {
+  const partialRenameTargetPath = path.join(path.dirname(fixture.partialFilePath), 'flash-banner.ejs')
+  const harness = createMockExtensionHost({
+    repoRoot,
+    fixture,
+    languageClientOptions: {
+      async sendRequest(method, params) {
+        if (method !== REQUESTS.fileRenameEdits) {
+          return null
+        }
+
+        if (params.oldUri === URI.file(fixture.renameTargetFilePath).toString()) {
+          return []
+        }
+        if (params.oldUri === URI.file(fixture.partialFilePath).toString()) {
+          return [
+            {
+              filePath: fixture.routeFilePath,
+              start: 54,
+              end: 63,
+              newText: 'flash-banner',
+            },
+          ]
+        }
+        if (params.oldUri === URI.file(fixture.routeReferenceFilePath).toString()) {
+          return []
+        }
+
+        throw new Error(`Unexpected rename request: ${JSON.stringify(params)}`)
+      },
+    },
+  })
+
+  await withMockedExtensionModule(repoRoot, harness.mocks, async (extensionModule) => {
+    const managedDocument = createMockDocument(fixture.routeFilePath)
+
+    await extensionModule.activate(harness.context)
+    await harness.controls.fireOpenDocument(managedDocument)
+    await flushAsyncWork()
+
+    await harness.controls.fireRenameFiles({
+      files: [
+        {
+          oldUri: URI.file(fixture.renameTargetFilePath),
+          newUri: URI.file(fixture.renamedRouteFilePath),
+        },
+        {
+          oldUri: URI.file(fixture.unmanagedFilePath),
+          newUri: URI.file(path.join(path.dirname(fixture.unmanagedFilePath), 'notes-renamed.ejs')),
+        },
+        {
+          oldUri: URI.file(fixture.partialFilePath),
+          newUri: URI.file(partialRenameTargetPath),
+        },
+      ],
+    })
+
+    const renameRequests = harness.controls.clientState.requestCalls.filter(
+      (entry) => entry.method === REQUESTS.fileRenameEdits
+    )
+    if (renameRequests.length !== 2) {
+      throw new Error(`Expected mixed rename event to request edits only for managed targets. Got: ${JSON.stringify(renameRequests)}`)
+    }
+    if (harness.controls.applyEditCalls.length !== 1) {
+      throw new Error(`Expected mixed rename event to apply edits once when at least one managed target returns edits. Got: ${harness.controls.applyEditCalls.length}`)
+    }
+    if (harness.controls.applyEditCalls[0].replacements.length !== 1) {
+      throw new Error(`Expected mixed rename event to apply only returned rename replacements. Got: ${JSON.stringify(harness.controls.applyEditCalls[0])}`)
+    }
+
+    await harness.controls.fireRenameFiles({
+      files: [
+        {
+          oldUri: URI.file(fixture.routeReferenceFilePath),
+          newUri: URI.file(path.join(path.dirname(fixture.routeReferenceFilePath), 'posts-renamed.ejs')),
+        },
+      ],
+    })
+    if (harness.controls.applyEditCalls.length !== 1) {
+      throw new Error('Expected managed file rename events with no returned edits to skip workspace.applyEdit().')
+    }
+
+    await extensionModule.deactivate()
+  })
+}
+
+async function runExtractPartialCommandEdgeTest(repoRoot, fixture) {
+  let inputValue
+  const extractRequests = []
+  const harness = createMockExtensionHost({
+    repoRoot,
+    fixture,
+    languageClientOptions: {
+      inputBoxValue() {
+        return inputValue
+      },
+      async sendRequest(method, params) {
+        if (method === REQUESTS.extractPartialEdits) {
+          extractRequests.push(params)
+          return {
+            ok: false,
+            message: 'Server rejected extraction.',
+          }
+        }
+
+        throw new Error(`Unexpected request during extract partial edge test: ${method} ${JSON.stringify(params)}`)
+      },
+    },
+  })
+
+  await withMockedExtensionModule(repoRoot, harness.mocks, async (extensionModule) => {
+    const routeText = fs.readFileSync(fixture.routeFilePath, 'utf8')
+    const selectionStart = routeText.indexOf('<section>')
+    const selectionEnd = routeText.indexOf('</section>') + '</section>'.length
+    const routeDocument = createMockDocument(fixture.routeFilePath)
+
+    await extensionModule.activate(harness.context)
+
+    await harness.controls.executeCommand('pocketpagesServerScript.extractPartial')
+    if (!harness.controls.warningMessages.includes('Open a PocketPages EJS file before extracting a partial.')) {
+      throw new Error(`Expected extractPartial to require an active managed EJS editor. Got: ${JSON.stringify(harness.controls.warningMessages)}`)
+    }
+
+    const emptySelectionEditor = harness.controls.createEditor(routeDocument, new MockPosition(2, 0))
+    await harness.controls.fireActiveEditorChange(emptySelectionEditor)
+    await flushAsyncWork()
+    await harness.controls.executeCommand('pocketpagesServerScript.extractPartial')
+    if (!harness.controls.warningMessages.includes('Select template markup before extracting a partial.')) {
+      throw new Error(`Expected extractPartial to reject empty selections before prompting. Got: ${JSON.stringify(harness.controls.warningMessages)}`)
+    }
+
+    inputValue = undefined
+    const forwardRange = {
+      start: offsetToPosition(routeText, selectionStart),
+      end: offsetToPosition(routeText, selectionEnd),
+    }
+    await harness.controls.fireActiveEditorChange(harness.controls.createEditor(routeDocument, forwardRange))
+    await flushAsyncWork()
+    await harness.controls.executeCommand('pocketpagesServerScript.extractPartial')
+    if (extractRequests.length !== 0 || harness.controls.applyEditCalls.length !== 0) {
+      throw new Error(`Expected cancelled extractPartial input to avoid LSP requests and edits. Got: ${JSON.stringify({ extractRequests, applyEditCalls: harness.controls.applyEditCalls })}`)
+    }
+
+    inputValue = 'summary-card'
+    const reversedRange = {
+      start: offsetToPosition(routeText, selectionEnd),
+      end: offsetToPosition(routeText, selectionStart),
+      active: offsetToPosition(routeText, selectionStart),
+      anchor: offsetToPosition(routeText, selectionEnd),
+    }
+    await harness.controls.fireActiveEditorChange(harness.controls.createEditor(routeDocument, reversedRange))
+    await flushAsyncWork()
+    await harness.controls.executeCommand('pocketpagesServerScript.extractPartial')
+
+    if (extractRequests.length !== 1) {
+      throw new Error(`Expected extractPartial server failure path to send one LSP request. Got: ${JSON.stringify(extractRequests)}`)
+    }
+    const extractRange = extractRequests[0].range
+    if (
+      !extractRange ||
+      extractRange.start.line !== forwardRange.start.line ||
+      extractRange.start.character !== forwardRange.start.character ||
+      extractRange.end.line !== forwardRange.end.line ||
+      extractRange.end.character !== forwardRange.end.character
+    ) {
+      throw new Error(`Expected extractPartial to normalize reversed selections before sending the request. Got: ${JSON.stringify(extractRange)}`)
+    }
+    if (!harness.controls.warningMessages.includes('Server rejected extraction.')) {
+      throw new Error(`Expected extractPartial to surface server-side rejection messages. Got: ${JSON.stringify(harness.controls.warningMessages)}`)
+    }
+    if (harness.controls.applyEditCalls.length !== 0) {
+      throw new Error(`Expected rejected extractPartial results to skip workspace.applyEdit(). Got: ${JSON.stringify(harness.controls.applyEditCalls)}`)
+    }
+
+    await extensionModule.deactivate()
+  })
+}
+
+async function runDebugBundleCommandTest(repoRoot, fixture) {
+  const probeResult = {
+    filePath: fixture.routeFilePath,
+    hasAppRoot: true,
+    diagnostics: 7,
+  }
+  const harness = createMockExtensionHost({
+    repoRoot,
+    fixture,
+    languageClientOptions: {
+      async sendRequest(method, params) {
+        if (method === REQUESTS.probeCurrentFile) {
+          if (params.uri !== URI.file(fixture.routeFilePath).toString()) {
+            throw new Error(`Expected debug bundle probe to target the active file. Got: ${params.uri}`)
+          }
+          return probeResult
+        }
+
+        return null
+      },
+    },
+  })
+
+  await withMockedExtensionModule(repoRoot, harness.mocks, async (extensionModule) => {
+    const routeDocument = createMockDocument(fixture.routeFilePath)
+    const routeEditor = harness.controls.createEditor(routeDocument, new MockPosition(1, 0))
+
+    await extensionModule.activate(harness.context)
+    await harness.controls.fireActiveEditorChange(routeEditor)
+    await flushAsyncWork()
+    await harness.controls.executeCommand('pocketpagesServerScript.copyDebugBundle')
+
+    if (harness.controls.clipboardWrites.length !== 1) {
+      throw new Error(`Expected copyDebugBundle to write one debug bundle to the clipboard. Got: ${JSON.stringify(harness.controls.clipboardWrites)}`)
+    }
+
+    const bundleText = harness.controls.clipboardWrites[0]
+    if (
+      !bundleText.includes('# PocketPages Debug Bundle') ||
+      !bundleText.includes('"ok": true') ||
+      !bundleText.includes('"diagnostics": 7') ||
+      !bundleText.includes('## Recent Logs')
+    ) {
+      throw new Error(`Expected debug bundle clipboard text to include metadata, probe result, and recent logs. Got: ${bundleText}`)
+    }
+    if (!harness.controls.informationMessages.includes('PocketPages debug bundle copied to clipboard.')) {
+      throw new Error(`Expected copyDebugBundle to surface a success message. Got: ${JSON.stringify(harness.controls.informationMessages)}`)
+    }
+
+    await extensionModule.deactivate()
+  })
+}
+
 async function runExtensionHostSanityCheck(repoRoot) {
   const fixture = createExtensionHostFixture()
 
   try {
     await runLifecycleExecutionTest(repoRoot, fixture)
     await runLifecycleRetryTest(repoRoot, fixture)
+    await runDecorationAndStatusBoundaryTest(repoRoot, fixture)
     await runReferencesBoundaryTest(repoRoot, fixture)
+    await runReferencesEdgeCaseTest(repoRoot, fixture)
     await runRenameLazyStartupBoundaryTest(repoRoot, fixture)
     await runRenameBoundaryTest(repoRoot, fixture)
+    await runRenameNoopAndMixedBoundaryTest(repoRoot, fixture)
     await runExtractPartialCommandBoundaryTest(repoRoot, fixture)
+    await runExtractPartialCommandEdgeTest(repoRoot, fixture)
     await runManualSaveNotificationBoundaryTest(repoRoot, fixture)
     await runCommandBoundaryTest(repoRoot, fixture)
+    await runDebugBundleCommandTest(repoRoot, fixture)
   } finally {
     fs.rmSync(fixture.fixtureRoot, { recursive: true, force: true })
   }
