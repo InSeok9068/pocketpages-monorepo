@@ -8544,6 +8544,27 @@ module.exports = {
       throw new Error(`Expected include() request path to update after partial file rename. Got: ${renamedPartialIncludeText}`)
     }
 
+    const extensionlessPartialCallerText = `<%- include('flash-alert', { flashMessage: 'Saved' }) %>\n`
+    service.setDocumentOverride(fixture.boardsFilePath, extensionlessPartialCallerText)
+    const extensionlessPartialRenameEdits = service.getFileRenameEdits(
+      fixture.flashAlertFilePath,
+      path.resolve(path.dirname(fixture.flashAlertFilePath), 'notice-alert.ejs')
+    )
+    const extensionlessBoardsEdits = extensionlessPartialRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
+    )
+    if (extensionlessBoardsEdits.length !== 1) {
+      throw new Error(`Expected extensionless include() rename edit. Got: ${JSON.stringify(extensionlessPartialRenameEdits)}`)
+    }
+    const renamedExtensionlessPartialText = applyEditsToText(extensionlessPartialCallerText, extensionlessBoardsEdits)
+    if (
+      !renamedExtensionlessPartialText.includes(`include('notice-alert'`) ||
+      renamedExtensionlessPartialText.includes('notice-alert.ejs')
+    ) {
+      throw new Error(`Expected extensionless include() rename to preserve extensionless style. Got: ${renamedExtensionlessPartialText}`)
+    }
+    service.clearDocumentOverride(fixture.boardsFilePath)
+
     const moduleFileRenameEdits = service.getFileRenameEdits(
       fixture.boardServiceFilePath,
       path.resolve(path.dirname(fixture.boardServiceFilePath), 'session-service.js')

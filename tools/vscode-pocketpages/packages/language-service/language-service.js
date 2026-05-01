@@ -45,6 +45,7 @@ const COMPILER_OPTIONS = {
   useUnknownInCatchVariables: false,
   maxNodeModuleJsDepth: 2,
 };
+const INCLUDE_RENAME_EXTENSIONS = [".ejs"];
 
 function normalizePath(filePath) {
   const normalizedPath = path.resolve(filePath).replace(/\\/g, "/");
@@ -236,6 +237,26 @@ function toRelativeSpecifier(relativePath, options = {}) {
   }
 
   return normalizedPath;
+}
+
+function hasIncludeRenameExtension(requestPath) {
+  return INCLUDE_RENAME_EXTENSIONS.includes(
+    path.extname(String(requestPath || "")).toLowerCase()
+  );
+}
+
+function preserveIncludeRequestExtensionStyle(currentRequestPath, nextRequestPath) {
+  const normalizedNextPath = String(nextRequestPath || "");
+  if (!normalizedNextPath || hasIncludeRenameExtension(currentRequestPath)) {
+    return normalizedNextPath;
+  }
+
+  const nextExtension = path.extname(normalizedNextPath).toLowerCase();
+  if (!INCLUDE_RENAME_EXTENSIONS.includes(nextExtension)) {
+    return normalizedNextPath;
+  }
+
+  return normalizedNextPath.slice(0, -nextExtension.length);
 }
 
 function toRequirePathRangeFromStringLiteral(node, sourceFile, offsetBase = 0) {
@@ -5975,28 +5996,14 @@ class ProjectLanguageService {
 
   isIncludeRequestForTarget(filePath, requestPath, targetFilePath) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
-    const normalizedRequestPath = String(requestPath || "").trim();
-    const currentDir = normalizePath(path.dirname(filePath));
+    return this.projectIndex.getIncludeCandidatePaths(filePath, requestPath).includes(normalizedTargetFilePath);
+  }
 
-    if (normalizedRequestPath.startsWith("./") || normalizedRequestPath.startsWith("../")) {
-      return normalizePath(path.join(currentDir, normalizedRequestPath)) === normalizedTargetFilePath;
-    }
-
-    if (normalizePath(path.join(currentDir, normalizedRequestPath)) === normalizedTargetFilePath) {
-      return true;
-    }
-
-    if (normalizePath(path.join(this.projectIndex.pagesRoot, normalizedRequestPath)) === normalizedTargetFilePath) {
-      return true;
-    }
-
-    for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
-      if (normalizePath(path.join(privateRoot, normalizedRequestPath)) === normalizedTargetFilePath) {
-        return true;
-      }
-    }
-
-    return false;
+  includeRequestMatchesTargetAtBase(basePath, requestPath, targetFilePath) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    return this.projectIndex.getIncludeRequestVariants(requestPath).some((requestVariant) =>
+      normalizePath(path.join(basePath, requestVariant)) === normalizedTargetFilePath
+    );
   }
 
   isResolveRequestForTarget(filePath, requestPath, targetFilePath) {
@@ -6028,11 +6035,10 @@ class ProjectLanguageService {
   }
 
   getMatchingIncludeRoot(filePath, requestPath, targetFilePath) {
-    const normalizedTargetFilePath = normalizePath(targetFilePath);
     const normalizedRequestPath = String(requestPath || "").trim();
 
     for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
-      if (normalizePath(path.join(privateRoot, normalizedRequestPath)) === normalizedTargetFilePath) {
+      if (this.includeRequestMatchesTargetAtBase(privateRoot, normalizedRequestPath, targetFilePath)) {
         return privateRoot;
       }
     }
@@ -6047,27 +6053,37 @@ class ProjectLanguageService {
   buildUpdatedIncludeRequestPath(filePath, currentRequestPath, oldTargetFilePath, newTargetFilePath) {
     const normalizedCurrentRequestPath = String(currentRequestPath || "").trim();
     const currentDir = normalizePath(path.dirname(filePath));
+    const formatNextRequestPath = (nextRequestPath) =>
+      preserveIncludeRequestExtensionStyle(normalizedCurrentRequestPath, nextRequestPath);
 
     if (normalizedCurrentRequestPath.startsWith("./") || normalizedCurrentRequestPath.startsWith("../")) {
-      return toRelativeSpecifier(path.relative(currentDir, newTargetFilePath), { leadingDot: true });
+      return formatNextRequestPath(
+        toRelativeSpecifier(path.relative(currentDir, newTargetFilePath), { leadingDot: true })
+      );
     }
 
-    if (normalizePath(path.join(currentDir, normalizedCurrentRequestPath)) === normalizePath(oldTargetFilePath)) {
-      return toRelativeSpecifier(path.relative(currentDir, newTargetFilePath));
+    if (this.includeRequestMatchesTargetAtBase(currentDir, normalizedCurrentRequestPath, oldTargetFilePath)) {
+      return formatNextRequestPath(toRelativeSpecifier(path.relative(currentDir, newTargetFilePath)));
     }
 
-    if (normalizePath(path.join(this.projectIndex.pagesRoot, normalizedCurrentRequestPath)) === normalizePath(oldTargetFilePath)) {
-      return toPortablePath(path.relative(this.projectIndex.pagesRoot, newTargetFilePath));
+    if (
+      this.includeRequestMatchesTargetAtBase(
+        this.projectIndex.pagesRoot,
+        normalizedCurrentRequestPath.replace(/^\/+/, ""),
+        oldTargetFilePath
+      )
+    ) {
+      return formatNextRequestPath(toPortablePath(path.relative(this.projectIndex.pagesRoot, newTargetFilePath)));
     }
 
     const matchedPrivateRoot = this.getMatchingIncludeRoot(filePath, normalizedCurrentRequestPath, oldTargetFilePath);
     if (matchedPrivateRoot && isSameOrChildPath(matchedPrivateRoot, newTargetFilePath)) {
-      return toPortablePath(path.relative(matchedPrivateRoot, newTargetFilePath));
+      return formatNextRequestPath(toPortablePath(path.relative(matchedPrivateRoot, newTargetFilePath)));
     }
 
     for (const privateRoot of this.projectIndex.getPrivateSearchRoots(filePath)) {
       if (isSameOrChildPath(privateRoot, newTargetFilePath)) {
-        return toPortablePath(path.relative(privateRoot, newTargetFilePath));
+        return formatNextRequestPath(toPortablePath(path.relative(privateRoot, newTargetFilePath)));
       }
     }
 

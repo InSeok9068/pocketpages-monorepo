@@ -3277,10 +3277,14 @@ class PocketPagesProjectIndex {
     return items
   }
 
-  resolveIncludeTarget(filePath, requestPath) {
+  getIncludeRequestVariants(requestPath) {
+    return getIncludeRequestVariants(requestPath)
+  }
+
+  getIncludeCandidatePaths(filePath, requestPath) {
     const normalizedRequestPath = String(requestPath || '').trim()
     if (!normalizedRequestPath) {
-      return null
+      return []
     }
 
     const candidatePaths = []
@@ -3326,6 +3330,16 @@ class PocketPagesProjectIndex {
       }
     }
 
+    return candidatePaths
+  }
+
+  resolveIncludeTarget(filePath, requestPath) {
+    const candidatePaths = this.getIncludeCandidatePaths(filePath, requestPath)
+    if (!candidatePaths.length) {
+      return null
+    }
+
+    const currentDir = normalizePath(path.dirname(filePath))
     const privateRoots = this.getPrivateSearchRoots(filePath)
     const rootCandidates = new Map()
     const getRootCandidates = (rootPath) => {
