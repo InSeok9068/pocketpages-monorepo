@@ -148,6 +148,20 @@ function createDiagnosticsFeatureService(context) {
     return code === undefined || code === null ? "" : String(code);
   }
 
+  function countDiagnosticCodes(diagnostics) {
+    const counts = {};
+    for (const diagnostic of Array.isArray(diagnostics) ? diagnostics : []) {
+      const code = toDiagnosticCodeValue(diagnostic && diagnostic.code);
+      if (!code) {
+        continue;
+      }
+
+      counts[code] = (counts[code] || 0) + 1;
+    }
+
+    return Object.keys(counts).length ? counts : null;
+  }
+
   function toCodeActionDiagnosticKey(code, start, end, message) {
     return [
       toDiagnosticCodeValue(code),
@@ -693,6 +707,7 @@ function createDiagnosticsFeatureService(context) {
       version: requestedVersion,
       count: reportedDiagnostics.length,
       rawCount: rawDiagnostics.length,
+      diagnosticCodes: countDiagnosticCodes(reportedDiagnostics),
       mode: "large-quiet-partial",
       delayMs: quietDelayMs,
       preferredOffset,
@@ -995,6 +1010,7 @@ function createDiagnosticsFeatureService(context) {
       version: requestedVersion,
       count: reportedDiagnostics.length,
       rawCount: rawDiagnostics.length,
+      diagnosticCodes: countDiagnosticCodes(reportedDiagnostics),
       mode: "pull",
       diagnosticsMode: fullDiagnosticsMode,
       totalMs: elapsedMs.toFixed(1),

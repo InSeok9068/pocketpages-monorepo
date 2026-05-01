@@ -780,8 +780,13 @@ function assertLspRuntimeContracts(repoRoot) {
 
   assertMatches(
     clientSource,
-    /const clientOptions = \{\s*documentSelector: LSP_DOCUMENT_SELECTOR,\s*outputChannel,(?:\s*synchronize:\s*\{[\s\S]*?\},)?\s*\}/,
+    /const clientOptions = \{\s*documentSelector: LSP_DOCUMENT_SELECTOR,\s*outputChannel,\s*initializationOptions:\s*\{[\s\S]*?logSessionId,[\s\S]*?\},\s*synchronize:\s*\{[\s\S]*?\},\s*\}/,
     'Expected client.js to route LSP logs through the shared PocketPages output channel.'
+  )
+  assertMatches(
+    clientSource,
+    /vscode\.commands\.registerCommand\("pocketpagesServerScript\.copyDebugBundle"/,
+    'Expected client.js to register the PocketPages debug bundle command.'
   )
   assertMatches(
     clientSource,

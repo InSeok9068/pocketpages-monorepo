@@ -38,6 +38,10 @@
       {
         "command": "pocketpagesServerScript.allFileReferences",
         "title": "PocketPages: All File References"
+      },
+      {
+        "command": "pocketpagesServerScript.copyDebugBundle",
+        "title": "PocketPages: Copy Debug Bundle"
       }
     ],
     "menus": {

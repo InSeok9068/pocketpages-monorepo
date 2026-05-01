@@ -17,16 +17,195 @@ const HOOK_SCRIPT_DOCUMENT_SELECTOR = [
   { scheme: "file", pattern: "**/pb_hooks/**/*.mjs" },
 ];
 const LSP_DOCUMENT_SELECTOR = [...EJS_DOCUMENT_SELECTOR, ...HOOK_SCRIPT_DOCUMENT_SELECTOR];
+const DEBUG_BUNDLE_LOG_LIMIT = 500;
+const CLIENT_LOG_SCOPES = [
+  "lsp",
+  "help",
+  "lifecycle",
+  "document",
+  "editor",
+  "diagnostics",
+  "cache",
+  "references",
+  "rename",
+  "command",
+];
+const SERVER_LOG_SCOPES = [
+  "lifecycle",
+  "prepare",
+  "warmup",
+  "document",
+  "watch",
+  "diagnostics",
+  "completion",
+  "hover",
+  "definition",
+  "references",
+  "code-action",
+  "rename",
+  "links",
+  "signature",
+  "inlay",
+  "semantic-tokens",
+  "symbols",
+  "codelens",
+  "cache",
+  "probe",
+];
+const LOG_LEVELS = ["info", "warn", "error", "perf"];
 
 let client = null;
 let lspStatusController = null;
 let outputChannel = null;
 let clientLogger = null;
 let lspStartPromise = null;
+const logSessionId = createLogSessionId();
+const logBuffer = createLogBuffer(DEBUG_BUNDLE_LOG_LIMIT);
 const saveReasons = new Map();
 
+function padNumber(value, length) {
+  return String(value).padStart(length, "0");
+}
+
 function getLogTimestamp() {
-  return new Date().toISOString().slice(11, 23);
+  const now = new Date();
+  const offsetMinutes = -now.getTimezoneOffset();
+  const offsetSign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffsetMinutes = Math.abs(offsetMinutes);
+  return [
+    now.getFullYear(),
+    "-",
+    padNumber(now.getMonth() + 1, 2),
+    "-",
+    padNumber(now.getDate(), 2),
+    "T",
+    padNumber(now.getHours(), 2),
+    ":",
+    padNumber(now.getMinutes(), 2),
+    ":",
+    padNumber(now.getSeconds(), 2),
+    ".",
+    padNumber(now.getMilliseconds(), 3),
+    offsetSign,
+    padNumber(Math.floor(absoluteOffsetMinutes / 60), 2),
+    ":",
+    padNumber(absoluteOffsetMinutes % 60, 2),
+  ].join("");
+}
+
+function createLogSessionId() {
+  return `pp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createLogBuffer(limit) {
+  const maxLines = Math.max(1, Number(limit) || 500);
+  const lines = [];
+  let pendingLine = "";
+
+  function pushLine(line) {
+    lines.push(String(line));
+    while (lines.length > maxLines) {
+      lines.shift();
+    }
+  }
+
+  function append(value) {
+    const text = String(value || "");
+    const parts = text.split(/\r?\n/);
+    if (parts.length === 1) {
+      pendingLine += parts[0];
+      return;
+    }
+
+    pushLine(pendingLine + parts[0]);
+    for (let index = 1; index < parts.length - 1; index += 1) {
+      pushLine(parts[index]);
+    }
+    pendingLine = parts[parts.length - 1];
+  }
+
+  return {
+    append,
+    appendLine(value) {
+      append(`${String(value || "")}\n`);
+    },
+    replace(value) {
+      lines.length = 0;
+      pendingLine = "";
+      append(value);
+    },
+    clear() {
+      lines.length = 0;
+      pendingLine = "";
+    },
+    getLines() {
+      return pendingLine ? [...lines, pendingLine] : [...lines];
+    },
+  };
+}
+
+function createBufferedOutputChannel(realOutput, buffer) {
+  return {
+    get name() {
+      return realOutput.name;
+    },
+    append(value) {
+      buffer.append(value);
+      realOutput.append(value);
+    },
+    appendLine(value) {
+      buffer.appendLine(value);
+      realOutput.appendLine(value);
+    },
+    replace(value) {
+      buffer.replace(value);
+      if (typeof realOutput.replace === "function") {
+        realOutput.replace(value);
+      } else {
+        realOutput.clear();
+        realOutput.append(value);
+      }
+    },
+    clear() {
+      buffer.clear();
+      realOutput.clear();
+    },
+    show(...args) {
+      return realOutput.show(...args);
+    },
+    hide() {
+      return realOutput.hide();
+    },
+    dispose() {
+      return realOutput.dispose();
+    },
+  };
+}
+
+function ensureOutputChannel(context) {
+  if (!outputChannel) {
+    const realOutput = vscode.window.createOutputChannel("VSCode PocketPages");
+    outputChannel = createBufferedOutputChannel(realOutput, logBuffer);
+    context.subscriptions.push(outputChannel);
+  }
+
+  return outputChannel;
+}
+
+function getExtensionVersion(context) {
+  return context && context.extension && context.extension.packageJSON
+    ? context.extension.packageJSON.version
+    : null;
+}
+
+function getWorkspaceFolderCount() {
+  return Array.isArray(vscode.workspace.workspaceFolders)
+    ? vscode.workspace.workspaceFolders.length
+    : 0;
+}
+
+function getWorkspaceFolderLabels() {
+  return (vscode.workspace.workspaceFolders || []).map((folder) => folder.name);
 }
 
 function formatLogFieldValue(value) {
@@ -70,7 +249,10 @@ function formatLogFields(fields = {}) {
 function createOutputLogger(output) {
   function write(level, scope, message, fields = {}) {
     output.appendLine(
-      `[${getLogTimestamp()}] [client] [${scope}] [${level}] ${message}${formatLogFields(fields)}`
+      `[${getLogTimestamp()}] [client] [${scope}] [${level}] ${message}${formatLogFields({
+        session: logSessionId,
+        ...fields,
+      })}`
     );
   }
 
@@ -462,11 +644,109 @@ async function handleManagedFileRenameEvent(context, event) {
   await applyManagedFileRenameEdits({ logger: clientLogger, event });
 }
 
-async function activateLsp(context) {
-  if (!outputChannel) {
-    outputChannel = vscode.window.createOutputChannel("VSCode PocketPages");
-    context.subscriptions.push(outputChannel);
+function getRelativePathLabel(filePath) {
+  return filePath ? vscode.workspace.asRelativePath(filePath, false) : null;
+}
+
+function getActiveEditorDebugInfo() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || !editor.document) {
+    return {
+      hasActiveEditor: false,
+    };
   }
+
+  return {
+    hasActiveEditor: true,
+    uri: editor.document.uri.toString(),
+    file: editor.document.uri.scheme === "file"
+      ? getRelativePathLabel(editor.document.uri.fsPath)
+      : editor.document.uri.toString(),
+    languageId: editor.document.languageId,
+    version: editor.document.version,
+    line: editor.selection.active.line + 1,
+    character: editor.selection.active.character + 1,
+    managed: isManagedLspDocument(editor.document),
+  };
+}
+
+function buildDebugBundle({ context, probeResult, probeError }) {
+  const activeEditor = getActiveEditorDebugInfo();
+  const workspaceFolders = (vscode.workspace.workspaceFolders || []).map((folder) => ({
+    name: folder.name,
+    uri: folder.uri.toString(),
+  }));
+  const recentLogs = logBuffer.getLines().slice(-DEBUG_BUNDLE_LOG_LIMIT);
+  const metadata = {
+    generatedAt: getLogTimestamp(),
+    session: logSessionId,
+    extensionVersion: getExtensionVersion(context),
+    vscodeVersion: vscode.version,
+    nodeVersion: process.version,
+    workspaceFolderCount: workspaceFolders.length,
+    workspaceFolders,
+    activeEditor,
+  };
+
+  return [
+    "# PocketPages Debug Bundle",
+    "",
+    "## Metadata",
+    "```json",
+    JSON.stringify(metadata, null, 2),
+    "```",
+    "",
+    "## Probe",
+    "```json",
+    JSON.stringify(
+      {
+        ok: !probeError,
+        result: probeResult || null,
+        error: probeError ? String(probeError && probeError.message ? probeError.message : probeError) : null,
+      },
+      null,
+      2
+    ),
+    "```",
+    "",
+    "## Recent Logs",
+    "```text",
+    recentLogs.join("\n"),
+    "```",
+    "",
+  ].join("\n");
+}
+
+async function copyDebugBundle(context) {
+  const activeClient = await ensureLspStarted(context);
+  const editor = vscode.window.activeTextEditor;
+  let probeResult = null;
+  let probeError = null;
+
+  if (activeClient && editor && editor.document && editor.document.uri.scheme === "file") {
+    try {
+      probeResult = await activeClient.sendRequest(REQUESTS.probeCurrentFile, {
+        uri: editor.document.uri.toString(),
+      });
+    } catch (error) {
+      probeError = error;
+    }
+  }
+
+  const bundle = buildDebugBundle({ context, probeResult, probeError });
+  await vscode.env.clipboard.writeText(bundle);
+  clientLogger.info("command", "copy-debug-bundle", {
+    file: editor && editor.document && editor.document.uri.scheme === "file"
+      ? getRelativePathLabel(editor.document.uri.fsPath)
+      : null,
+    probe: probeResult ? "ok" : probeError ? "failed" : "skipped",
+    logLines: logBuffer.getLines().length,
+  });
+  vscode.window.showInformationMessage("PocketPages debug bundle copied to clipboard.");
+}
+
+async function activateLsp(context) {
+  ensureOutputChannel(context);
   if (!clientLogger) {
     clientLogger = createOutputLogger(outputChannel);
   }
@@ -491,6 +771,14 @@ async function activateLsp(context) {
   const clientOptions = {
     documentSelector: LSP_DOCUMENT_SELECTOR,
     outputChannel,
+    initializationOptions: {
+      logSessionId,
+      extensionVersion: getExtensionVersion(context),
+      vscodeVersion: vscode.version,
+      nodeVersion: process.version,
+      workspaceFolderCount: getWorkspaceFolderCount(),
+      workspaceFolders: getWorkspaceFolderLabels(),
+    },
     synchronize: {
       fileEvents: synchronizedFileWatchers,
     },
@@ -505,6 +793,11 @@ async function activateLsp(context) {
 
   context.subscriptions.push(...synchronizedFileWatchers);
   logger.info("lsp", "start", {
+    extensionVersion: getExtensionVersion(context),
+    vscodeVersion: vscode.version,
+    nodeVersion: process.version,
+    workspaceFolders: getWorkspaceFolderCount(),
+    workspaceNames: getWorkspaceFolderLabels(),
     serverModule,
     selector: ["ejs", "pb_hooks-scripts"],
   });
@@ -514,7 +807,9 @@ async function activateLsp(context) {
     transport: "ipc",
   });
   logger.info("help", "log-groups", {
-    groups: ["lifecycle", "document", "completion", "diagnostics", "cache", "references", "rename", "command"],
+    levels: LOG_LEVELS,
+    clientScopes: CLIENT_LOG_SCOPES,
+    serverScopes: SERVER_LOG_SCOPES,
   });
 
   const serverTemplateBoundaryDecoration = vscode.window.createTextEditorDecorationType({
@@ -616,10 +911,7 @@ async function handleLspStartupFailure(context, error) {
     } catch (_stopError) {}
     client = null;
   }
-  if (!outputChannel) {
-    outputChannel = vscode.window.createOutputChannel("VSCode PocketPages");
-    context.subscriptions.push(outputChannel);
-  }
+  ensureOutputChannel(context);
   if (!clientLogger) {
     clientLogger = createOutputLogger(outputChannel);
   }
@@ -737,6 +1029,9 @@ async function activate(context) {
       }
 
       await showFileReferences({ logger: clientLogger, fileUri });
+    }),
+    vscode.commands.registerCommand("pocketpagesServerScript.copyDebugBundle", async () => {
+      await copyDebugBundle(context);
     }),
     vscode.commands.registerCommand("pocketpagesServerScript.openCodeLensTarget", async (resourceUri) => {
       const fileUri = toVscodeUri(resourceUri);

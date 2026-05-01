@@ -68,9 +68,40 @@ const documentRuntimeState = createDocumentRuntimeStateRegistry();
 const requestCoordinator = createRequestCoordinator({ runtimeState: documentRuntimeState });
 let pullDiagnosticRefreshSupported = false;
 let serverRequestSequence = 0;
+let logSessionId = null;
+
+function padNumber(value, length) {
+  return String(value).padStart(length, "0");
+}
 
 function getLogTimestamp() {
-  return new Date().toISOString().slice(11, 23);
+  const now = new Date();
+  const offsetMinutes = -now.getTimezoneOffset();
+  const offsetSign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffsetMinutes = Math.abs(offsetMinutes);
+  return [
+    now.getFullYear(),
+    "-",
+    padNumber(now.getMonth() + 1, 2),
+    "-",
+    padNumber(now.getDate(), 2),
+    "T",
+    padNumber(now.getHours(), 2),
+    ":",
+    padNumber(now.getMinutes(), 2),
+    ":",
+    padNumber(now.getSeconds(), 2),
+    ".",
+    padNumber(now.getMilliseconds(), 3),
+    offsetSign,
+    padNumber(Math.floor(absoluteOffsetMinutes / 60), 2),
+    ":",
+    padNumber(absoluteOffsetMinutes % 60, 2),
+  ].join("");
+}
+
+function createFallbackLogSessionId() {
+  return `pp-server-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function formatLogFieldValue(value) {
@@ -114,7 +145,10 @@ function formatLogFields(fields = {}) {
 
 function logServer(level, scope, message, fields = {}) {
   connection.console.log(
-    `[${getLogTimestamp()}] [server] [${scope}] [${level}] ${message}${formatLogFields(fields)}`
+    `[${getLogTimestamp()}] [server] [${scope}] [${level}] ${message}${formatLogFields({
+      session: logSessionId,
+      ...fields,
+    })}`
   );
 }
 
@@ -1091,6 +1125,14 @@ function refreshManagedDiagnostics() {
 }
 
 connection.onInitialize((params) => {
+  const initializationOptions =
+    params && params.initializationOptions && typeof params.initializationOptions === "object"
+      ? params.initializationOptions
+      : {};
+  logSessionId =
+    typeof initializationOptions.logSessionId === "string" && initializationOptions.logSessionId
+      ? initializationOptions.logSessionId
+      : createFallbackLogSessionId();
   pullDiagnosticRefreshSupported = !!(
     params &&
     params.capabilities &&
@@ -1101,8 +1143,27 @@ connection.onInitialize((params) => {
   logServer("info", "lifecycle", "initialize", {
     pid: process.pid,
     cwd: process.cwd(),
+    nodeVersion: process.version,
+    extensionVersion: initializationOptions.extensionVersion,
+    vscodeVersion: initializationOptions.vscodeVersion,
+    clientNodeVersion: initializationOptions.nodeVersion,
+    workspaceFolders: initializationOptions.workspaceFolderCount,
+    workspaceNames: initializationOptions.workspaceFolders,
+    clientName: params && params.clientInfo ? params.clientInfo.name : null,
+    clientVersion: params && params.clientInfo ? params.clientInfo.version : null,
     diagnostics: "pull",
     pullDiagnosticsRefresh: pullDiagnosticRefreshSupported,
+    thresholds: {
+      largeDocumentChars: LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT,
+      largeQuietMs: LARGE_DOCUMENT_DIAGNOSTICS_QUIET_MS,
+      initialYieldMs: PULL_DIAGNOSTICS_INITIAL_YIELD_MS,
+      semanticRegionBudget: LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET,
+      firstRequestWarmupIdleMs: FIRST_REQUEST_WARMUP_IDLE_MS,
+    },
+    triggers: {
+      completion: COMPLETION_TRIGGER_CHARACTERS,
+      signature: SIGNATURE_TRIGGER_CHARACTERS,
+    },
   });
   const capabilities = {
     textDocumentSync: {
