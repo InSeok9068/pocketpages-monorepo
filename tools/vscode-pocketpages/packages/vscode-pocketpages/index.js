@@ -28,6 +28,7 @@ const CLIENT_LOG_SCOPES = [
   "cache",
   "references",
   "rename",
+  "refactor",
   "command",
 ];
 const SERVER_LOG_SCOPES = [
@@ -43,6 +44,7 @@ const SERVER_LOG_SCOPES = [
   "references",
   "code-action",
   "rename",
+  "refactor",
   "links",
   "signature",
   "inlay",
@@ -387,6 +389,34 @@ function toReferenceLocation(document, reference) {
   return new vscode.Location(document.uri, toRange(document, reference.start, reference.end));
 }
 
+function isEmptySelection(selection) {
+  if (!selection) {
+    return true;
+  }
+
+  if (typeof selection.isEmpty === "boolean") {
+    return selection.isEmpty;
+  }
+
+  return !!selection.start && !!selection.end &&
+    selection.start.line === selection.end.line &&
+    selection.start.character === selection.end.character;
+}
+
+function normalizeSelectionRange(selection) {
+  if (!selection || !selection.start || !selection.end) {
+    return null;
+  }
+
+  const startsBeforeEnd =
+    selection.start.line < selection.end.line ||
+    (selection.start.line === selection.end.line && selection.start.character <= selection.end.character);
+
+  return startsBeforeEnd
+    ? { start: selection.start, end: selection.end }
+    : { start: selection.end, end: selection.start };
+}
+
 function createLspStatusController(context, output) {
   const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 200);
   let phase = "starting";
@@ -617,6 +647,102 @@ async function applyManagedFileRenameEdits({ logger, event }) {
 
   if (editCount > 0) {
     await vscode.workspace.applyEdit(workspaceEdit);
+  }
+}
+
+async function applyExtractPartialEdits(result) {
+  const workspaceEdit = new vscode.WorkspaceEdit();
+  const documentCache = new Map();
+  let editCount = 0;
+
+  for (const create of result && Array.isArray(result.creates) ? result.creates : []) {
+    const targetUri = vscode.Uri.file(create.filePath);
+    workspaceEdit.createFile(targetUri, { ignoreIfExists: false });
+    workspaceEdit.insert(targetUri, new vscode.Position(0, 0), String(create.text || ""));
+    editCount += 2;
+  }
+
+  for (const edit of result && Array.isArray(result.edits) ? result.edits : []) {
+    let targetDocument = documentCache.get(edit.filePath);
+    if (!targetDocument) {
+      targetDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(edit.filePath));
+      documentCache.set(edit.filePath, targetDocument);
+    }
+
+    workspaceEdit.replace(targetDocument.uri, toRange(targetDocument, edit.start, edit.end), edit.newText);
+    editCount += 1;
+  }
+
+  if (editCount > 0) {
+    await vscode.workspace.applyEdit(workspaceEdit);
+  }
+
+  return editCount;
+}
+
+async function extractPartialFromSelection(context) {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || !isManagedEjsDocument(editor.document)) {
+    vscode.window.showWarningMessage("Open a PocketPages EJS file before extracting a partial.");
+    return;
+  }
+
+  if (isEmptySelection(editor.selection)) {
+    vscode.window.showWarningMessage("Select template markup before extracting a partial.");
+    return;
+  }
+
+  const selectionRange = normalizeSelectionRange(editor.selection);
+  if (!selectionRange) {
+    vscode.window.showWarningMessage("Select template markup before extracting a partial.");
+    return;
+  }
+
+  const partialName = await vscode.window.showInputBox({
+    prompt: "Partial name",
+    placeHolder: "card or cards/card.ejs",
+    validateInput(value) {
+      const text = String(value || "").trim();
+      if (!text) {
+        return "Enter a partial name.";
+      }
+      if (text.startsWith("/") || text.includes("..")) {
+        return "Use a relative partial name.";
+      }
+      if (path.extname(text) && path.extname(text).toLowerCase() !== ".ejs") {
+        return "Partial files must use .ejs.";
+      }
+      return null;
+    },
+  });
+  if (!partialName) {
+    return;
+  }
+
+  const activeClient = await ensureLspStarted(context);
+  if (!activeClient) {
+    return;
+  }
+
+  const result = await activeClient.sendRequest(REQUESTS.extractPartialEdits, {
+    uri: editor.document.uri.toString(),
+    range: selectionRange,
+    partialName,
+  });
+
+  if (!result || result.ok === false) {
+    vscode.window.showWarningMessage(result && result.message ? result.message : "Unable to extract partial.");
+    return;
+  }
+
+  const editCount = await applyExtractPartialEdits(result);
+  clientLogger.info("refactor", "extract-partial", {
+    file: vscode.workspace.asRelativePath(editor.document.uri.fsPath, false),
+    partial: result.partialFilePath ? vscode.workspace.asRelativePath(result.partialFilePath, false) : null,
+    edits: editCount,
+  });
+  if (result.partialFilePath) {
+    vscode.window.showInformationMessage(`Extracted partial: ${vscode.workspace.asRelativePath(result.partialFilePath, false)}`);
   }
 }
 
@@ -1029,6 +1155,9 @@ async function activate(context) {
       }
 
       await showFileReferences({ logger: clientLogger, fileUri });
+    }),
+    vscode.commands.registerCommand("pocketpagesServerScript.extractPartial", async () => {
+      await extractPartialFromSelection(context);
     }),
     vscode.commands.registerCommand("pocketpagesServerScript.copyDebugBundle", async () => {
       await copyDebugBundle(context);

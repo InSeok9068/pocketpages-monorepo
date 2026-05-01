@@ -122,7 +122,17 @@ class MockLocation {
 
 class MockWorkspaceEdit {
   constructor() {
+    this.creations = []
+    this.insertions = []
     this.replacements = []
+  }
+
+  createFile(uri, options) {
+    this.creations.push({ uri, options })
+  }
+
+  insert(uri, position, newText) {
+    this.insertions.push({ uri, position, newText })
   }
 
   replace(uri, range, newText) {
@@ -255,6 +265,7 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
   const warningMessages = []
   const informationMessages = []
   const errorMessages = []
+  const inputBoxRequests = []
   const outputLines = []
   const outputShows = []
   const fileWatchers = []
@@ -287,12 +298,28 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
     return document
   }
 
-  function createEditor(document, selectionPosition = new MockPosition(0, 0)) {
+  function createEditor(document, selectionInput = new MockPosition(0, 0)) {
+    const selection = selectionInput && selectionInput.start && selectionInput.end
+      ? {
+          start: selectionInput.start,
+          end: selectionInput.end,
+          active: selectionInput.active || selectionInput.end,
+          anchor: selectionInput.anchor || selectionInput.start,
+          isEmpty:
+            selectionInput.start.line === selectionInput.end.line &&
+            selectionInput.start.character === selectionInput.end.character,
+        }
+      : {
+          active: selectionInput,
+          anchor: selectionInput,
+          start: selectionInput,
+          end: selectionInput,
+          isEmpty: true,
+        }
+
     return {
       document,
-      selection: {
-        active: selectionPosition,
-      },
+      selection,
       decorationCalls: [],
       setDecorations(decoration, ranges) {
         this.decorationCalls.push({ decoration, ranges })
@@ -430,6 +457,15 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
         errorMessages.push(String(message))
         return message
       },
+      async showInputBox(options) {
+        inputBoxRequests.push(options || {})
+        if (typeof languageClientOptions.inputBoxValue === 'function') {
+          return languageClientOptions.inputBoxValue(options)
+        }
+        return Object.prototype.hasOwnProperty.call(languageClientOptions, 'inputBoxValue')
+          ? languageClientOptions.inputBoxValue
+          : undefined
+      },
       onDidChangeActiveTextEditor(listener) {
         return activeEditorEvents.register(listener)
       },
@@ -523,6 +559,7 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
       warningMessages,
       informationMessages,
       errorMessages,
+      inputBoxRequests,
       outputLines,
       outputShows,
       fileWatchers,
@@ -850,6 +887,110 @@ async function runRenameBoundaryTest(repoRoot, fixture) {
   })
 }
 
+async function runExtractPartialCommandBoundaryTest(repoRoot, fixture) {
+  const createdPartialFilePath = path.join(
+    path.dirname(fixture.routeFilePath),
+    '_private',
+    'summary-card.ejs'
+  )
+  const routeText = fs.readFileSync(fixture.routeFilePath, 'utf8')
+  const selectionStart = routeText.indexOf('<section>')
+  const selectionEnd = routeText.indexOf('</section>') + '</section>'.length
+  const expectedRange = {
+    start: offsetToPosition(routeText, selectionStart),
+    end: offsetToPosition(routeText, selectionEnd),
+  }
+  const extractResult = {
+    ok: true,
+    partialFilePath: createdPartialFilePath,
+    edits: [
+      {
+        filePath: fixture.routeFilePath,
+        start: selectionStart,
+        end: selectionEnd,
+        newText: "<%- include('summary-card.ejs', { pageTitle }) %>",
+      },
+    ],
+    creates: [
+      {
+        filePath: createdPartialFilePath,
+        text: routeText.slice(selectionStart, selectionEnd) + '\n',
+      },
+    ],
+  }
+  const harness = createMockExtensionHost({
+    repoRoot,
+    fixture,
+    languageClientOptions: {
+      inputBoxValue: 'summary-card',
+      async sendRequest(method, params) {
+        if (method === REQUESTS.extractPartialEdits) {
+          if (params.uri !== URI.file(fixture.routeFilePath).toString()) {
+            throw new Error(`Expected extractPartialEdits URI to target the active route file. Got: ${params.uri}`)
+          }
+          if (
+            params.partialName !== 'summary-card' ||
+            params.range.start.line !== expectedRange.start.line ||
+            params.range.start.character !== expectedRange.start.character ||
+            params.range.end.line !== expectedRange.end.line ||
+            params.range.end.character !== expectedRange.end.character
+          ) {
+            throw new Error(`Expected extractPartialEdits to forward selected range and name. Got: ${JSON.stringify(params)}`)
+          }
+          return extractResult
+        }
+
+        throw new Error(`Unexpected request during extract partial command test: ${method} ${JSON.stringify(params)}`)
+      },
+    },
+  })
+
+  await withMockedExtensionModule(repoRoot, harness.mocks, async (extensionModule) => {
+    const routeDocument = createMockDocument(fixture.routeFilePath)
+    const routeEditor = harness.controls.createEditor(routeDocument, expectedRange)
+
+    await extensionModule.activate(harness.context)
+    await harness.controls.fireActiveEditorChange(routeEditor)
+    await flushAsyncWork()
+    await harness.controls.executeCommand('pocketpagesServerScript.extractPartial')
+
+    if (harness.controls.inputBoxRequests.length !== 1) {
+      throw new Error(`Expected extractPartial command to ask for a partial name. Got: ${JSON.stringify(harness.controls.inputBoxRequests)}`)
+    }
+
+    const extractRequests = harness.controls.clientState.requestCalls.filter(
+      (entry) => entry.method === REQUESTS.extractPartialEdits
+    )
+    if (extractRequests.length !== 1) {
+      throw new Error(`Expected one extractPartialEdits request. Got: ${JSON.stringify(extractRequests)}`)
+    }
+
+    if (harness.controls.applyEditCalls.length !== 1) {
+      throw new Error(`Expected extractPartial command to apply one workspace edit. Got: ${harness.controls.applyEditCalls.length}`)
+    }
+
+    const appliedWorkspaceEdit = harness.controls.applyEditCalls[0]
+    if (
+      !appliedWorkspaceEdit ||
+      appliedWorkspaceEdit.creations.length !== 1 ||
+      appliedWorkspaceEdit.insertions.length !== 1 ||
+      appliedWorkspaceEdit.replacements.length !== 1
+    ) {
+      throw new Error(`Expected extractPartial command to create, insert, and replace. Got: ${JSON.stringify(appliedWorkspaceEdit)}`)
+    }
+
+    if (normalizeFilePath(appliedWorkspaceEdit.creations[0].uri.fsPath) !== normalizeFilePath(createdPartialFilePath)) {
+      throw new Error(`Expected extractPartial to create the requested partial file. Got: ${JSON.stringify(appliedWorkspaceEdit.creations)}`)
+    }
+    if (!appliedWorkspaceEdit.insertions[0].newText.includes('<section><%= pageTitle %></section>')) {
+      throw new Error(`Expected extractPartial to insert the selected template text. Got: ${JSON.stringify(appliedWorkspaceEdit.insertions)}`)
+    }
+    if (appliedWorkspaceEdit.replacements[0].newText !== "<%- include('summary-card.ejs', { pageTitle }) %>") {
+      throw new Error(`Expected extractPartial to replace the selection with an include call. Got: ${JSON.stringify(appliedWorkspaceEdit.replacements)}`)
+    }
+  })
+}
+
 async function runRenameLazyStartupBoundaryTest(repoRoot, fixture) {
   const harness = createMockExtensionHost({
     repoRoot,
@@ -1089,6 +1230,7 @@ async function runExtensionHostSanityCheck(repoRoot) {
     await runReferencesBoundaryTest(repoRoot, fixture)
     await runRenameLazyStartupBoundaryTest(repoRoot, fixture)
     await runRenameBoundaryTest(repoRoot, fixture)
+    await runExtractPartialCommandBoundaryTest(repoRoot, fixture)
     await runManualSaveNotificationBoundaryTest(repoRoot, fixture)
     await runCommandBoundaryTest(repoRoot, fixture)
   } finally {

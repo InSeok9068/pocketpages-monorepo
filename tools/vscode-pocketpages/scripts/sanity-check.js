@@ -554,6 +554,14 @@ function assertClientContracts(repoRoot) {
   )
   assertMatches(
     clientSource,
+    /activeClient\.sendRequest\(REQUESTS\.extractPartialEdits, \{/,
+    'Expected the PocketPages client to request Extract Partial edits through the LSP.'
+  )
+  if (!JSON.stringify(packageJson.contributes || {}).includes('pocketpagesServerScript.extractPartial')) {
+    throw new Error('Expected package.json to contribute the Extract Partial command and context menu entry.')
+  }
+  assertMatches(
+    clientSource,
     /isManagedRenameTargetPath\(entry\.oldUri\.fsPath\)/,
     'Expected the PocketPages client to request rename edits for managed PocketPages targets, including assets.'
   )
@@ -1550,6 +1558,14 @@ export = pocketpagesUtils
   )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'index.ejs'), `<script server>\nboard.get('name')\n</script>\n`)
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'by-file', '[boardSlug].ejs'),
+    `<script server>
+const directBoardSlug = params.boardSlug
+</script>
+<div><%= params.boardSlug %></div>
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     `<script server>\nconst boardService = resolve('board-service')\nconst authState = boardService.readAuthState({ request })\n</script>\n`
   )
@@ -1894,6 +1910,7 @@ module.exports = {
     siteIndexFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'),
     boardsFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
     boardShowFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'index.ejs'),
+    boardFileParamFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'by-file', '[boardSlug].ejs'),
     localsTypeCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'locals-type-check.ejs'),
     overrideCardCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'override-card-check.ejs'),
     resolveParentCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'resolve-parent-check.ejs'),
@@ -9051,6 +9068,70 @@ redirect('/boards/demo-board')
     }
     service.clearDocumentOverride(fixture.routeReferenceCheckFilePath)
 
+    const routeParamRenameText = `<script server>
+const currentBoard = params.boardSlug
+const bracketBoard = params["boardSlug"]
+const { boardSlug, boardSlug: explicitBoardSlug } = params
+</script>
+<div><%= params.boardSlug %></div>
+`
+    service.setDocumentOverride(fixture.boardShowFilePath, routeParamRenameText)
+    const oldBoardParamDirectoryPath = path.dirname(fixture.boardShowFilePath)
+    const newBoardParamDirectoryPath = path.join(path.dirname(oldBoardParamDirectoryPath), '[slug]')
+    const routeParamRenameEdits = service.getFileRenameEdits(oldBoardParamDirectoryPath, newBoardParamDirectoryPath)
+    const renamedBoardShowParamFilePath = path.join(newBoardParamDirectoryPath, 'index.ejs')
+    const boardShowParamEdits = routeParamRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(renamedBoardShowParamFilePath)
+    )
+    if (boardShowParamEdits.length !== 5) {
+      throw new Error(`Expected route param directory rename to rewrite five params.boardSlug references in the moved route file. Got: ${JSON.stringify(boardShowParamEdits)}`)
+    }
+    const routeParamRenamedText = applyEditsToText(routeParamRenameText, boardShowParamEdits)
+    for (const expectedRouteParamText of [
+      'params.slug',
+      'params["slug"]',
+      'const { slug: boardSlug, slug: explicitBoardSlug } = params',
+      '<div><%= params.slug %></div>',
+    ]) {
+      if (!routeParamRenamedText.includes(expectedRouteParamText)) {
+        throw new Error(`Expected route param rename to preserve local bindings while updating ${expectedRouteParamText}. Got: ${routeParamRenamedText}`)
+      }
+    }
+    const renamedPropertyLocalsFilePath = path.join(newBoardParamDirectoryPath, 'property-locals-check.ejs')
+    const propertyLocalsParamEdits = routeParamRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(renamedPropertyLocalsFilePath)
+    )
+    if (propertyLocalsParamEdits.length !== 1) {
+      throw new Error(`Expected route param directory rename to update child route files under the moved param directory. Got: ${JSON.stringify(routeParamRenameEdits)}`)
+    }
+    const propertyLocalsParamRenamedText = applyEditsToText(
+      fs.readFileSync(fixture.propertyLocalsCheckFilePath, 'utf8'),
+      propertyLocalsParamEdits
+    )
+    if (!propertyLocalsParamRenamedText.includes('boardSlug: params.slug')) {
+      throw new Error(`Expected child route include locals to read params.slug after param directory rename. Got: ${propertyLocalsParamRenamedText}`)
+    }
+    service.clearDocumentOverride(fixture.boardShowFilePath)
+
+    const renamedBoardFileParamFilePath = path.join(path.dirname(fixture.boardFileParamFilePath), '[slug].ejs')
+    const directRouteParamRenameEdits = service.getFileRenameEdits(
+      fixture.boardFileParamFilePath,
+      renamedBoardFileParamFilePath
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(renamedBoardFileParamFilePath))
+    if (directRouteParamRenameEdits.length !== 2) {
+      throw new Error(`Expected direct [param].ejs file rename to update params references in the moved file. Got: ${JSON.stringify(directRouteParamRenameEdits)}`)
+    }
+    const directRouteParamRenamedText = applyEditsToText(
+      fs.readFileSync(fixture.boardFileParamFilePath, 'utf8'),
+      directRouteParamRenameEdits
+    )
+    if (
+      !directRouteParamRenamedText.includes('const directBoardSlug = params.slug') ||
+      !directRouteParamRenamedText.includes('<div><%= params.slug %></div>')
+    ) {
+      throw new Error(`Expected direct route param file rename to rewrite script and template params usage. Got: ${directRouteParamRenamedText}`)
+    }
+
     const routeDirectoryCallerText = `<a href="/boards">Boards</a>
 <a href="/boards/demo-board">Demo</a>
 <button hx-get="/boards/demo-board?tab=posts#top"></button>
@@ -9103,6 +9184,73 @@ redirect('/boards/demo-board')
       throw new Error(`Expected moved route callers to remove old /boards paths. Got: ${routeDirectoryMovedCallerRenamedText}`)
     }
     service.clearDocumentOverride(fixture.routeReferenceCheckFilePath)
+
+    const extractPartialSourceText = `<script server>
+const board = { title: 'Demo' }
+const currentUser = { email: 'demo@example.com' }
+</script>
+<section class="card">
+  <% const tone = currentUser ? 'ok' : 'guest' %>
+  <h2><%= board.title %></h2>
+  <span><%= tone %></span>
+  <img src="<%= asset('/logo.png') %>">
+</section>
+`
+    const extractSelectionStart = extractPartialSourceText.indexOf('<section')
+    const extractSelectionEnd = extractPartialSourceText.indexOf('</section>') + '</section>'.length
+    const extractPartialResult = service.getExtractPartialEdits(
+      fixture.boardsFilePath,
+      extractPartialSourceText,
+      { start: extractSelectionStart, end: extractSelectionEnd },
+      'cards/board-card'
+    )
+    if (!extractPartialResult || extractPartialResult.ok !== true) {
+      throw new Error(`Expected Extract Partial edits for a selected template range. Got: ${JSON.stringify(extractPartialResult)}`)
+    }
+    if (
+      normalizeFilePath(extractPartialResult.partialFilePath) !==
+      normalizeFilePath(path.join(path.dirname(fixture.boardsFilePath), '_private', 'cards', 'board-card.ejs'))
+    ) {
+      throw new Error(`Expected Extract Partial to create a route-local _private partial. Got: ${JSON.stringify(extractPartialResult)}`)
+    }
+    if (
+      !Array.isArray(extractPartialResult.locals) ||
+      extractPartialResult.locals.join(',') !== 'board,currentUser'
+    ) {
+      throw new Error(`Expected Extract Partial locals to include free template identifiers only. Got: ${JSON.stringify(extractPartialResult.locals)}`)
+    }
+    if (
+      !extractPartialResult.edits ||
+      extractPartialResult.edits.length !== 1 ||
+      extractPartialResult.edits[0].newText !== "<%- include('cards/board-card.ejs', { board, currentUser }) %>"
+    ) {
+      throw new Error(`Expected Extract Partial to replace the selection with an include call. Got: ${JSON.stringify(extractPartialResult.edits)}`)
+    }
+    if (
+      !extractPartialResult.creates ||
+      extractPartialResult.creates.length !== 1 ||
+      !extractPartialResult.creates[0].text.includes('<h2><%= board.title %></h2>')
+    ) {
+      throw new Error(`Expected Extract Partial to create a partial containing the selected template. Got: ${JSON.stringify(extractPartialResult.creates)}`)
+    }
+    const extractServerResult = service.getExtractPartialEdits(
+      fixture.boardsFilePath,
+      extractPartialSourceText,
+      { start: 0, end: extractSelectionStart },
+      'bad-server-block'
+    )
+    if (!extractServerResult || extractServerResult.ok !== false || !String(extractServerResult.message || '').includes('<script server>')) {
+      throw new Error(`Expected Extract Partial to reject server-block selections. Got: ${JSON.stringify(extractServerResult)}`)
+    }
+    const extractInvalidNameResult = service.getExtractPartialEdits(
+      fixture.boardsFilePath,
+      extractPartialSourceText,
+      { start: extractSelectionStart, end: extractSelectionEnd },
+      '../bad'
+    )
+    if (!extractInvalidNameResult || extractInvalidNameResult.ok !== false) {
+      throw new Error(`Expected Extract Partial to reject parent-directory partial names. Got: ${JSON.stringify(extractInvalidNameResult)}`)
+    }
 
     const feedbackPageReferenceQuery = service.getFileReferenceQuery(fixture.feedbackPageFilePath)
     if (!feedbackPageReferenceQuery || feedbackPageReferenceQuery.kind !== 'route-file' || feedbackPageReferenceQuery.routePath !== '/feedback' || feedbackPageReferenceQuery.routeMethod !== 'PAGE') {

@@ -6,6 +6,8 @@ function createMaintenanceFeatureService(context) {
     clearCachedCompletionItemsForUri,
     createRequestId,
     elapsedMilliseconds: helperElapsedMilliseconds,
+    getDocumentByUri,
+    getDocumentContextByUri,
     getPerformanceBucket,
     getRelativePathLabel,
     logServer,
@@ -127,6 +129,43 @@ function createMaintenanceFeatureService(context) {
         next: getRelativePathLabel(newFilePath),
         files: countEditFiles(result),
         edits: Array.isArray(result) ? result.length : 0,
+        totalMs: totalMs.toFixed(1),
+        perf: performanceBucket("navigation", totalMs),
+      });
+      return result;
+    },
+
+    provideExtractPartialEdits({ uri, range, partialName }) {
+      const req = requestId("xpart");
+      const document = uri && typeof getDocumentByUri === "function" ? getDocumentByUri(uri) : null;
+      const documentContext = uri && typeof getDocumentContextByUri === "function" ? getDocumentContextByUri(uri) : null;
+      const filePath = uriToFilePath(uri);
+      const startedAt = process.hrtime.bigint();
+      const sourceText = document && typeof document.getText === "function"
+        ? document.getText()
+        : core.getDocumentTextForFile(filePath);
+      const result = documentContext && document && range && range.start && range.end
+        ? documentContext.service.getExtractPartialEdits(
+          documentContext.filePath,
+          sourceText,
+          {
+            start: document.offsetAt(range.start),
+            end: document.offsetAt(range.end),
+          },
+          partialName
+        )
+        : {
+            ok: false,
+            message: "Unable to read the active PocketPages document.",
+          };
+      const totalMs = elapsedMilliseconds(startedAt);
+      logServer("perf", "refactor", "extract-partial", {
+        req,
+        case: result && result.ok ? "extract-partial-edits" : "extract-partial-unavailable",
+        file: getRelativePathLabel(filePath),
+        partial: result && result.partialFilePath ? getRelativePathLabel(result.partialFilePath) : null,
+        edits: result && Array.isArray(result.edits) ? result.edits.length : 0,
+        creates: result && Array.isArray(result.creates) ? result.creates.length : 0,
         totalMs: totalMs.toFixed(1),
         perf: performanceBucket("navigation", totalMs),
       });

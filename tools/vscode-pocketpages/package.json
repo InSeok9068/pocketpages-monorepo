@@ -40,6 +40,10 @@
         "title": "PocketPages: All File References"
       },
       {
+        "command": "pocketpagesServerScript.extractPartial",
+        "title": "PocketPages: Extract Partial"
+      },
+      {
         "command": "pocketpagesServerScript.copyDebugBundle",
         "title": "PocketPages: Copy Debug Bundle"
       }
@@ -50,6 +54,11 @@
           "command": "pocketpagesServerScript.allFileReferences",
           "when": "resourceScheme == file && (resourceExtname == .ejs || resourceExtname == .js || resourceExtname == .cjs || resourceExtname == .mjs)",
           "group": "navigation@20"
+        },
+        {
+          "command": "pocketpagesServerScript.extractPartial",
+          "when": "resourceScheme == file && resourceExtname == .ejs && editorHasSelection",
+          "group": "refactor@10"
         }
       ]
     },

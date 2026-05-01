@@ -1964,6 +1964,10 @@ connection.onRequest(REQUESTS.fileRenameEdits, ({ oldUri, newUri }) => {
   return maintenanceFeatureService.provideFileRenameEdits({ oldUri, newUri });
 });
 
+connection.onRequest(REQUESTS.extractPartialEdits, ({ uri, range, partialName }) => {
+  return maintenanceFeatureService.provideExtractPartialEdits({ uri, range, partialName });
+});
+
 connection.onNotification(NOTIFICATIONS.didManualSave, ({ uri }) => {
   lifecycleFeatureService.handleDidManualSave({ uri });
 });

@@ -46,6 +46,26 @@ const COMPILER_OPTIONS = {
   maxNodeModuleJsDepth: 2,
 };
 const INCLUDE_RENAME_EXTENSIONS = [".ejs"];
+const ROUTE_PARAM_CODE_EXTENSIONS = new Set([".ejs", ".js", ".cjs", ".mjs"]);
+const EXTRACT_PARTIAL_GLOBAL_NAMES = new Set([
+  ...POCKETPAGES_GLOBAL_NAMES,
+  "Array",
+  "Boolean",
+  "Date",
+  "Error",
+  "JSON",
+  "Math",
+  "Number",
+  "Object",
+  "Promise",
+  "RegExp",
+  "Set",
+  "String",
+  "URL",
+  "console",
+  "globalThis",
+  "undefined",
+]);
 
 function normalizePath(filePath) {
   const normalizedPath = path.resolve(filePath).replace(/\\/g, "/");
@@ -453,6 +473,290 @@ function getAnalysisContextAtOffset(filePath, documentText, offset) {
 
 function isValidIdentifierName(value) {
   return ts.isIdentifierText(String(value || ""), ts.ScriptTarget.Latest, ts.LanguageVariant.Standard);
+}
+
+function normalizePartialRequestPath(value) {
+  let requestPath = toPortablePath(String(value || "").trim());
+  while (requestPath.startsWith("./")) {
+    requestPath = requestPath.slice(2);
+  }
+
+  if (
+    !requestPath ||
+    requestPath.startsWith("/") ||
+    path.isAbsolute(requestPath) ||
+    requestPath.split("/").some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    return null;
+  }
+
+  if (!requestPath.endsWith(".ejs")) {
+    requestPath = `${requestPath}.ejs`;
+  }
+
+  return path.extname(requestPath).toLowerCase() === ".ejs" ? requestPath : null;
+}
+
+function hasServerBlockOverlap(documentText, start, end) {
+  return _extractServerBlocks(documentText).some((block) =>
+    block.fullStart < end && block.fullEnd > start
+  );
+}
+
+function collectBindingNames(name, targetSet) {
+  if (!name) {
+    return;
+  }
+
+  if (ts.isIdentifier(name)) {
+    targetSet.add(name.text);
+    return;
+  }
+
+  if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+    for (const element of name.elements || []) {
+      if (ts.isBindingElement(element)) {
+        collectBindingNames(element.name, targetSet);
+      }
+    }
+  }
+}
+
+function isIdentifierDeclarationName(node) {
+  const parent = node.parent;
+  if (!parent) {
+    return false;
+  }
+
+  return (
+    (ts.isVariableDeclaration(parent) && parent.name === node) ||
+    (ts.isParameter(parent) && parent.name === node) ||
+    (ts.isFunctionDeclaration(parent) && parent.name === node) ||
+    (ts.isFunctionExpression(parent) && parent.name === node) ||
+    (ts.isClassDeclaration(parent) && parent.name === node) ||
+    (ts.isBindingElement(parent) && parent.name === node)
+  );
+}
+
+function isPropertyNameOnlyIdentifier(node) {
+  const parent = node.parent;
+  if (!parent) {
+    return false;
+  }
+
+  return (
+    (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+    (ts.isPropertyAssignment(parent) && parent.name === node) ||
+    (ts.isMethodDeclaration(parent) && parent.name === node) ||
+    (ts.isPropertyDeclaration && ts.isPropertyDeclaration(parent) && parent.name === node)
+  );
+}
+
+function collectExtractPartialLocalNames(selectionText) {
+  const analysisText = buildTemplateVirtualText(selectionText);
+  const sourceFile = ts.createSourceFile("pocketpages-extract-partial.ts", analysisText, ts.ScriptTarget.Latest, true);
+  const usedNames = new Set();
+  const declaredNames = new Set();
+
+  const visitDeclarations = (node) => {
+    if (ts.isVariableDeclaration(node)) {
+      collectBindingNames(node.name, declaredNames);
+    } else if (ts.isParameter(node)) {
+      collectBindingNames(node.name, declaredNames);
+    } else if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) && node.name) {
+      declaredNames.add(node.name.text);
+    } else if (ts.isClassDeclaration(node) && node.name) {
+      declaredNames.add(node.name.text);
+    }
+
+    ts.forEachChild(node, visitDeclarations);
+  };
+
+  const visitUsages = (node) => {
+    if (ts.isIdentifier(node)) {
+      if (
+        !isIdentifierDeclarationName(node) &&
+        !isPropertyNameOnlyIdentifier(node) &&
+        !EXTRACT_PARTIAL_GLOBAL_NAMES.has(node.text)
+      ) {
+        usedNames.add(node.text);
+      }
+    }
+
+    ts.forEachChild(node, visitUsages);
+  };
+
+  visitDeclarations(sourceFile);
+  visitUsages(sourceFile);
+
+  return [...usedNames]
+    .filter((name) => !declaredNames.has(name) && isValidIdentifierName(name))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function routeParamRenamePairs(oldEntries, newEntries) {
+  const oldList = Array.isArray(oldEntries) ? oldEntries : [];
+  const newList = Array.isArray(newEntries) ? newEntries : [];
+  if (oldList.length !== newList.length) {
+    return [];
+  }
+
+  const pairs = [];
+  for (let index = 0; index < oldList.length; index += 1) {
+    const oldEntry = oldList[index];
+    const newEntry = newList[index];
+    if (
+      oldEntry &&
+      newEntry &&
+      oldEntry.name &&
+      newEntry.name &&
+      oldEntry.name !== newEntry.name &&
+      oldEntry.type === newEntry.type
+    ) {
+      pairs.push({
+        oldName: oldEntry.name,
+        newName: newEntry.name,
+      });
+    }
+  }
+
+  return pairs;
+}
+
+function isParamsIdentifier(node) {
+  return !!node && ts.isIdentifier(node) && node.text === "params";
+}
+
+function isParamsInitializer(node) {
+  return isParamsIdentifier(skipExpressionWrappers(node));
+}
+
+function stringLiteralTextRange(node, sourceFile, offsetBase) {
+  if (!ts.isStringLiteralLike(node)) {
+    return null;
+  }
+
+  return {
+    start: offsetBase + node.getStart(sourceFile) + 1,
+    end: offsetBase + node.getEnd() - 1,
+    text: node.text,
+  };
+}
+
+function collectParamsObjectBindingEdits(bindingPattern, sourceFile, offsetBase, pairMap) {
+  const edits = [];
+  for (const element of bindingPattern.elements || []) {
+    if (!ts.isBindingElement(element) || !ts.isIdentifier(element.name)) {
+      continue;
+    }
+
+    const propertyName = element.propertyName;
+    if (propertyName) {
+      const propertyText = ts.isIdentifier(propertyName) || ts.isStringLiteralLike(propertyName)
+        ? propertyName.text
+        : null;
+      const pair = propertyText ? pairMap.get(propertyText) : null;
+      if (!pair) {
+        continue;
+      }
+
+      if (ts.isIdentifier(propertyName)) {
+        if (!isValidIdentifierName(pair.newName)) {
+          continue;
+        }
+        edits.push({
+          start: offsetBase + propertyName.getStart(sourceFile),
+          end: offsetBase + propertyName.getEnd(),
+          newText: pair.newName,
+        });
+        continue;
+      }
+
+      const range = stringLiteralTextRange(propertyName, sourceFile, offsetBase);
+      if (range) {
+        edits.push({
+          start: range.start,
+          end: range.end,
+          newText: pair.newName,
+        });
+      }
+      continue;
+    }
+
+    const pair = pairMap.get(element.name.text);
+    if (!pair || !isValidIdentifierName(pair.newName)) {
+      continue;
+    }
+
+    edits.push({
+      start: offsetBase + element.name.getStart(sourceFile),
+      end: offsetBase + element.name.getEnd(),
+      newText: `${pair.newName}: ${element.name.text}`,
+    });
+  }
+
+  return edits;
+}
+
+function collectRouteParamReferenceEdits(documentText, pairs, options = {}) {
+  const pairMap = new Map(
+    (Array.isArray(pairs) ? pairs : [])
+      .filter((pair) => pair && pair.oldName && pair.newName && pair.oldName !== pair.newName)
+      .map((pair) => [pair.oldName, pair])
+  );
+  if (!pairMap.size) {
+    return [];
+  }
+
+  const filePath = options.filePath || "pocketpages-route-param-rename.js";
+  const offsetBase = Number(options.offsetBase) || 0;
+  const sourceFile = ts.createSourceFile(filePath, documentText, ts.ScriptTarget.Latest, true);
+  const edits = [];
+
+  const visit = (node) => {
+    if (ts.isPropertyAccessExpression(node) && isParamsIdentifier(skipExpressionWrappers(node.expression))) {
+      const pair = pairMap.get(node.name.text);
+      if (pair && isValidIdentifierName(pair.newName)) {
+        edits.push({
+          start: offsetBase + node.name.getStart(sourceFile),
+          end: offsetBase + node.name.getEnd(),
+          newText: pair.newName,
+        });
+      }
+    } else if (ts.isElementAccessExpression(node) && isParamsIdentifier(skipExpressionWrappers(node.expression))) {
+      const argument = skipExpressionWrappers(node.argumentExpression);
+      const range = stringLiteralTextRange(argument, sourceFile, offsetBase);
+      const pair = range ? pairMap.get(range.text) : null;
+      if (pair) {
+        edits.push({
+          start: range.start,
+          end: range.end,
+          newText: pair.newName,
+        });
+      }
+    } else if (
+      ts.isVariableDeclaration(node) &&
+      ts.isObjectBindingPattern(node.name) &&
+      isParamsInitializer(node.initializer)
+    ) {
+      edits.push(...collectParamsObjectBindingEdits(node.name, sourceFile, offsetBase, pairMap));
+    } else if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isObjectLiteralExpression(node.left) &&
+      isParamsInitializer(node.right)
+    ) {
+      // Assignment destructuring is uncommon in PocketPages route files. It is
+      // intentionally skipped because preserving local bindings safely requires
+      // broader rewrite logic than declaration destructuring.
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+
+  return edits;
 }
 
 function findAppRoot(filePath) {
@@ -5244,6 +5548,10 @@ class ProjectLanguageService {
     const overrides = this.getPagesCodeOverrides();
     const uniqueEdits = new Map();
 
+    for (const edit of this.getRouteParamFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
+      uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+    }
+
     for (const edit of this.getRouteDirectoryRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
       uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
     }
@@ -5552,6 +5860,185 @@ class ProjectLanguageService {
     const documentText = this.getDocumentText(normalizedFilePath);
     overrides[normalizedFilePath] = documentText;
     return documentText;
+  }
+
+  getRenameDocumentText(oldFilePath, newFilePath, overrides = {}) {
+    const normalizedOldFilePath = normalizePath(oldFilePath);
+    const normalizedNewFilePath = normalizePath(newFilePath);
+
+    if (Object.prototype.hasOwnProperty.call(overrides, normalizedNewFilePath)) {
+      return overrides[normalizedNewFilePath];
+    }
+
+    if (Object.prototype.hasOwnProperty.call(overrides, normalizedOldFilePath)) {
+      return overrides[normalizedOldFilePath];
+    }
+
+    if (fileExists(normalizedNewFilePath)) {
+      const documentText = readFileText(normalizedNewFilePath);
+      overrides[normalizedNewFilePath] = documentText;
+      return documentText;
+    }
+
+    return this.getCallerDocumentText(normalizedOldFilePath, overrides);
+  }
+
+  getRouteParamRenamePairsForPath(oldFilePath, newFilePath) {
+    return routeParamRenamePairs(
+      this.projectIndex.getRouteParamEntries(oldFilePath),
+      this.projectIndex.getRouteParamEntries(newFilePath)
+    );
+  }
+
+  getRouteParamRenameTargetFiles(oldPath, newPath) {
+    const normalizedOldPath = normalizePath(oldPath);
+    const normalizedNewPath = normalizePath(newPath);
+    const extension = path.extname(normalizedOldPath).toLowerCase();
+    const oldRelativeSegments = toPortablePath(path.relative(this.projectIndex.pagesRoot, normalizedOldPath))
+      .split("/")
+      .filter(Boolean);
+
+    if (
+      normalizedOldPath === this.projectIndex.pagesRoot ||
+      !isChildPath(this.projectIndex.pagesRoot, normalizedOldPath) ||
+      oldRelativeSegments.includes("_private") ||
+      oldRelativeSegments.includes("assets")
+    ) {
+      return [];
+    }
+
+    if (ROUTE_PARAM_CODE_EXTENSIONS.has(extension)) {
+      return [{
+        oldFilePath: normalizedOldPath,
+        newFilePath: normalizedNewPath,
+      }];
+    }
+
+    if (
+      normalizedOldPath === normalizedNewPath ||
+      !isChildPath(this.projectIndex.pagesRoot, normalizedOldPath)
+    ) {
+      return [];
+    }
+
+    return this.projectIndex.getPagesCodeFiles()
+      .map((entry) => normalizePath(entry.filePath))
+      .filter((filePath) => isChildPath(normalizedOldPath, filePath) || filePath === normalizedOldPath)
+      .filter((filePath) => ROUTE_PARAM_CODE_EXTENSIONS.has(path.extname(filePath).toLowerCase()))
+      .map((filePath) => ({
+        oldFilePath: filePath,
+        newFilePath: rewriteDirectoryChildPath(filePath, normalizedOldPath, normalizedNewPath),
+      }));
+  }
+
+  getRouteParamFileRenameEdits(oldPath, newPath, overrides = {}) {
+    const uniqueEdits = new Map();
+
+    for (const target of this.getRouteParamRenameTargetFiles(oldPath, newPath)) {
+      const pairs = this.getRouteParamRenamePairsForPath(target.oldFilePath, target.newFilePath);
+      if (!pairs.length) {
+        continue;
+      }
+
+      const sourceText = this.getRenameDocumentText(target.oldFilePath, target.newFilePath, overrides);
+      const analysisText = isEjsFile(target.oldFilePath)
+        ? buildTemplateVirtualText(sourceText)
+        : sourceText;
+      const edits = collectRouteParamReferenceEdits(analysisText, pairs, {
+        filePath: target.oldFilePath,
+      });
+
+      for (const edit of edits) {
+        const normalizedEdit = {
+          filePath: target.newFilePath,
+          start: edit.start,
+          end: edit.end,
+          newText: edit.newText,
+        };
+        uniqueEdits.set(
+          `${normalizedEdit.filePath}:${normalizedEdit.start}:${normalizedEdit.end}:${normalizedEdit.newText}`,
+          normalizedEdit
+        );
+      }
+    }
+
+    return [...uniqueEdits.values()];
+  }
+
+  getExtractPartialEdits(filePath, documentText, range, partialName) {
+    const normalizedFilePath = normalizePath(filePath);
+    if (!isEjsFile(normalizedFilePath)) {
+      return {
+        ok: false,
+        message: "Extract Partial is only available in EJS files.",
+      };
+    }
+
+    const sourceText = String(documentText || "");
+    const start = Math.max(0, Math.min(sourceText.length, Number(range && range.start) || 0));
+    const end = Math.max(0, Math.min(sourceText.length, Number(range && range.end) || 0));
+    if (end <= start) {
+      return {
+        ok: false,
+        message: "Select template markup before extracting a partial.",
+      };
+    }
+
+    if (hasServerBlockOverlap(sourceText, start, end)) {
+      return {
+        ok: false,
+        message: "Extract Partial cannot move <script server> content.",
+      };
+    }
+
+    const requestPath = normalizePartialRequestPath(partialName);
+    if (!requestPath) {
+      return {
+        ok: false,
+        message: "Use a relative EJS partial name, for example card or cards/card.ejs.",
+      };
+    }
+
+    const currentDirectory = normalizePath(path.dirname(normalizedFilePath));
+    const privateDirectory = isPrivatePagesFile(normalizedFilePath)
+      ? currentDirectory
+      : normalizePath(path.join(currentDirectory, "_private"));
+    const partialFilePath = normalizePath(path.join(privateDirectory, requestPath));
+    if (!isChildPath(privateDirectory, partialFilePath) && privateDirectory !== partialFilePath) {
+      return {
+        ok: false,
+        message: "Partial output must stay under the route _private directory.",
+      };
+    }
+    if (fileExists(partialFilePath)) {
+      return {
+        ok: false,
+        message: "Partial file already exists.",
+      };
+    }
+
+    const selectedText = sourceText.slice(start, end);
+    const localNames = collectExtractPartialLocalNames(selectedText);
+    const localsText = localNames.length ? `, { ${localNames.join(", ")} }` : "";
+    const replacementText = `<%- include('${requestPath}'${localsText}) %>`;
+    const partialText = selectedText.endsWith("\n") ? selectedText : `${selectedText}\n`;
+
+    return {
+      ok: true,
+      partialFilePath,
+      requestPath,
+      locals: localNames,
+      edits: [{
+        filePath: normalizedFilePath,
+        start,
+        end,
+        newText: replacementText,
+      }],
+      creates: [{
+        filePath: partialFilePath,
+        text: partialText,
+      }],
+    };
   }
 
   getIncludeFileRenameEdits(oldTargetFilePath, newTargetFilePath, overrides = {}) {

@@ -6,6 +6,7 @@ const REQUESTS = {
   reloadCaches: "pocketpages/reloadCaches",
   allFileReferences: "pocketpages/allFileReferences",
   fileRenameEdits: "pocketpages/fileRenameEdits",
+  extractPartialEdits: "pocketpages/extractPartialEdits",
 };
 
 const NOTIFICATIONS = {
