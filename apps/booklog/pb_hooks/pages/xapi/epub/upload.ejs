@@ -14,6 +14,10 @@
   const METADATA_ENTRY_PATH_PATTERN = /(rights|copyright|colophon|author|about|credit|imprint|title|cover|bookinfo|book_info|book-info)/i
   const ISBN_SCAN_ENTRY_PATTERN = /\.(opf|xml|ncx|xhtml|html|htm|txt)$/i
   const SET_ISBN_CONTEXT_PATTERN = /(?:세트|set|전집|합본)/i
+  const ZIP_EOCD_SIGNATURE = 0x06054b50
+  const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50
+  const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50
+  const ZIP_MAX_EOCD_SEARCH_BYTES = 22 + 65535
   const xmlParser = new XMLParser({
     ignoreAttributes: false,
     attributesGroupName: '@attrs',
@@ -84,6 +88,241 @@
     }
 
     return fflate.strFromU8(archiveEntries[entryPath])
+  }
+
+  function shouldExtractEpubTextEntry(entryPath) {
+    const normalizedEntryPath = String(entryPath || '')
+
+    return normalizedEntryPath === 'mimetype' || normalizedEntryPath === 'META-INF/container.xml' || /\.(opf|xml|ncx|xhtml|html|htm|txt)$/i.test(normalizedEntryPath)
+  }
+
+  function readUInt16LE(bytes, offset) {
+    return Number(bytes[offset] || 0) | (Number(bytes[offset + 1] || 0) << 8)
+  }
+
+  function readUInt32LE(bytes, offset) {
+    return (
+      Number(bytes[offset] || 0) |
+      (Number(bytes[offset + 1] || 0) << 8) |
+      (Number(bytes[offset + 2] || 0) << 16) |
+      (Number(bytes[offset + 3] || 0) << 24)
+    ) >>> 0
+  }
+
+  function readReaderRange(reader, offset, length) {
+    const byteLength = Math.max(0, Number(length || 0))
+
+    if (byteLength <= 0) {
+      return new Uint8Array(0)
+    }
+
+    reader.seek(Number(offset || 0), 0)
+    return new Uint8Array(toBytes(reader, byteLength))
+  }
+
+  function sortEntryInfos(entryInfos) {
+    return entryInfos.sort(function (left, right) {
+      return String(left.name || '').localeCompare(String(right.name || ''))
+    })
+  }
+
+  function findZipEndOfCentralDirectory(tailBytes) {
+    for (let offset = tailBytes.length - 22; offset >= 0; offset -= 1) {
+      if (readUInt32LE(tailBytes, offset) === ZIP_EOCD_SIGNATURE) {
+        return offset
+      }
+    }
+
+    return -1
+  }
+
+  function parseZipCentralDirectory(reader, fileSize) {
+    const tailLength = Math.min(Number(fileSize || 0), ZIP_MAX_EOCD_SEARCH_BYTES)
+    const tailOffset = Math.max(0, Number(fileSize || 0) - tailLength)
+    const tailBytes = readReaderRange(reader, tailOffset, tailLength)
+    const eocdOffset = findZipEndOfCentralDirectory(tailBytes)
+
+    if (eocdOffset < 0) {
+      throw new Error('EPUB ZIP 중앙 디렉터리를 찾지 못했습니다.')
+    }
+
+    const diskNumber = readUInt16LE(tailBytes, eocdOffset + 4)
+    const centralDirectoryDiskNumber = readUInt16LE(tailBytes, eocdOffset + 6)
+    const centralDirectorySize = readUInt32LE(tailBytes, eocdOffset + 12)
+    const centralDirectoryOffset = readUInt32LE(tailBytes, eocdOffset + 16)
+
+    if (diskNumber !== 0 || centralDirectoryDiskNumber !== 0) {
+      throw new Error('분할 ZIP EPUB는 지원하지 않습니다.')
+    }
+
+    if (centralDirectorySize === 0xffffffff || centralDirectoryOffset === 0xffffffff) {
+      throw new Error('ZIP64 EPUB는 전체 unzip fallback이 필요합니다.')
+    }
+
+    const centralDirectoryBytes = readReaderRange(reader, centralDirectoryOffset, centralDirectorySize)
+    const entries = []
+    let offset = 0
+
+    while (offset + 46 <= centralDirectoryBytes.length) {
+      if (readUInt32LE(centralDirectoryBytes, offset) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE) {
+        throw new Error('EPUB ZIP 중앙 디렉터리 엔트리 형식이 올바르지 않습니다.')
+      }
+
+      const compression = readUInt16LE(centralDirectoryBytes, offset + 10)
+      const compressedSize = readUInt32LE(centralDirectoryBytes, offset + 20)
+      const originalSize = readUInt32LE(centralDirectoryBytes, offset + 24)
+      const fileNameLength = readUInt16LE(centralDirectoryBytes, offset + 28)
+      const extraLength = readUInt16LE(centralDirectoryBytes, offset + 30)
+      const commentLength = readUInt16LE(centralDirectoryBytes, offset + 32)
+      const localHeaderOffset = readUInt32LE(centralDirectoryBytes, offset + 42)
+      const nameStart = offset + 46
+      const nameEnd = nameStart + fileNameLength
+      const entryName = fflate.strFromU8(centralDirectoryBytes.slice(nameStart, nameEnd))
+
+      if (compressedSize === 0xffffffff || originalSize === 0xffffffff || localHeaderOffset === 0xffffffff) {
+        throw new Error('ZIP64 EPUB 엔트리는 전체 unzip fallback이 필요합니다.')
+      }
+
+      entries.push({
+        name: entryName,
+        size: compressedSize,
+        originalSize: originalSize,
+        compression: compression,
+        localHeaderOffset: localHeaderOffset,
+      })
+
+      offset = nameEnd + extraLength + commentLength
+    }
+
+    return entries
+  }
+
+  function readZipEntryData(reader, entryInfo) {
+    const localHeaderBytes = readReaderRange(reader, entryInfo.localHeaderOffset, 30)
+
+    if (localHeaderBytes.length < 30 || readUInt32LE(localHeaderBytes, 0) !== ZIP_LOCAL_FILE_HEADER_SIGNATURE) {
+      throw new Error('EPUB ZIP 로컬 헤더 형식이 올바르지 않습니다.')
+    }
+
+    const fileNameLength = readUInt16LE(localHeaderBytes, 26)
+    const extraLength = readUInt16LE(localHeaderBytes, 28)
+    const dataOffset = entryInfo.localHeaderOffset + 30 + fileNameLength + extraLength
+    const compressedBytes = readReaderRange(reader, dataOffset, entryInfo.size)
+
+    if (entryInfo.compression === 0) {
+      return compressedBytes
+    }
+
+    if (entryInfo.compression === 8) {
+      return fflate.inflateSync(compressedBytes)
+    }
+
+    return null
+  }
+
+  function readZipTextArchiveEntries(reader, fileSize) {
+    const entryInfos = parseZipCentralDirectory(reader, fileSize)
+    const entryNames = []
+    const archiveEntries = {}
+
+    for (let index = 0; index < entryInfos.length; index += 1) {
+      const entryInfo = entryInfos[index]
+
+      if (!entryInfo.name) {
+        continue
+      }
+
+      entryNames.push(entryInfo.name)
+
+      if (!shouldExtractEpubTextEntry(entryInfo.name)) {
+        continue
+      }
+
+      const entryData = readZipEntryData(reader, entryInfo)
+
+      if (entryData) {
+        archiveEntries[entryInfo.name] = entryData
+      }
+    }
+
+    entryNames.sort()
+
+    return {
+      archiveEntries: archiveEntries,
+      entryInfos: sortEntryInfos(
+        entryInfos.map(function (entryInfo) {
+          return {
+            name: entryInfo.name,
+            size: entryInfo.size,
+            originalSize: entryInfo.originalSize,
+            compression: entryInfo.compression,
+          }
+        })
+      ),
+      entryNames: entryNames,
+      readMode: 'zip-range',
+    }
+  }
+
+  function unzipTextArchiveEntries(archiveBytes) {
+    const seenEntryNames = {}
+    const entryNames = []
+    const entryInfos = []
+    const archiveEntries = fflate.unzipSync(archiveBytes, {
+      filter: function (file) {
+        const entryName = String(file && file.name ? file.name : '')
+
+        if (entryName && !seenEntryNames[entryName]) {
+          seenEntryNames[entryName] = true
+          entryNames.push(entryName)
+          entryInfos.push({
+            name: entryName,
+            size: Number(file.size || 0),
+            originalSize: Number(file.originalSize || 0),
+            compression: Number(file.compression || 0),
+          })
+        }
+
+        return shouldExtractEpubTextEntry(entryName)
+      },
+    })
+
+    entryNames.sort()
+
+    return {
+      archiveEntries: archiveEntries,
+      entryInfos: sortEntryInfos(entryInfos),
+      entryNames: entryNames.length > 0 ? entryNames : Object.keys(archiveEntries).sort(),
+      readMode: 'full-unzip-filter',
+    }
+  }
+
+  function readUploadedFileBytes(uploadedFile, fileSize) {
+    const reader = uploadedFile.reader.open()
+    const maxReadableBytes = Number(fileSize || 0) || MAX_EPUB_BYTES
+
+    try {
+      return new Uint8Array(toBytes(reader, maxReadableBytes))
+    } finally {
+      reader.close()
+    }
+  }
+
+  function readUploadedEpubArchiveSnapshot(uploadedFile, fileSize) {
+    const reader = uploadedFile.reader.open()
+
+    try {
+      return readZipTextArchiveEntries(reader, fileSize)
+    } catch (exception) {
+      warn('xapi/epub/upload:zip-range-fallback', {
+        originalName: uploadedFile.originalName || uploadedFile.name,
+        error: String(exception.message || exception),
+      })
+    } finally {
+      reader.close()
+    }
+
+    return unzipTextArchiveEntries(readUploadedFileBytes(uploadedFile, fileSize))
   }
 
   function ensureArray(value) {
@@ -853,6 +1092,34 @@
     }
 
     return chunks.join('')
+  }
+
+  function buildEpubTextFileHash(archiveSnapshot, fileSize) {
+    const archiveEntries = archiveSnapshot && archiveSnapshot.archiveEntries ? archiveSnapshot.archiveEntries : {}
+    const entryInfos = archiveSnapshot && Array.isArray(archiveSnapshot.entryInfos) ? archiveSnapshot.entryInfos : []
+    const entryNames = archiveSnapshot && Array.isArray(archiveSnapshot.entryNames) ? archiveSnapshot.entryNames : Object.keys(archiveEntries).sort()
+    const fingerprintParts = ['epub-text-v1', String(fileSize || 0)]
+
+    for (let index = 0; index < entryInfos.length; index += 1) {
+      const entryInfo = entryInfos[index]
+
+      fingerprintParts.push([entryInfo.name, entryInfo.size, entryInfo.originalSize, entryInfo.compression].join(':'))
+    }
+
+    for (let index = 0; index < entryNames.length; index += 1) {
+      const entryName = entryNames[index]
+
+      if (archiveEntries[entryName]) {
+        fingerprintParts.push(entryName)
+        fingerprintParts.push(readArchiveText(archiveEntries, entryName))
+      }
+    }
+
+    return $security.sha256(fingerprintParts.join('\n'))
+  }
+
+  function buildLegacyBinaryFileHash(epubByteArray) {
+    return $security.sha256(bytesToBinaryString(epubByteArray))
   }
 
   function parsePublicationDate(input) {
@@ -1682,6 +1949,53 @@
     }
   }
 
+  function resolveExistingBookFileLookup(fileLookupInput) {
+    const textFileHash = buildEpubTextFileHash(fileLookupInput.archiveSnapshot, fileLookupInput.fileSize)
+    const existingTextHashRecord = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
+      fileHash: textFileHash,
+    })
+
+    if (existingTextHashRecord) {
+      return {
+        fileHash: textFileHash,
+        existingBookFile: existingTextHashRecord,
+        hashMode: 'epub-text-v1',
+      }
+    }
+
+    const legacyCandidateRecord = findFirstRecordOrNull('book_files', 'original_name = {:originalName} && file_size = {:fileSize}', {
+      originalName: fileLookupInput.originalName,
+      fileSize: fileLookupInput.fileSize,
+    })
+
+    if (!legacyCandidateRecord) {
+      return {
+        fileHash: textFileHash,
+        existingBookFile: null,
+        hashMode: 'epub-text-v1',
+      }
+    }
+
+    const legacyFileHash = buildLegacyBinaryFileHash(fileLookupInput.readEpubByteArray())
+    const existingLegacyHashRecord = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
+      fileHash: legacyFileHash,
+    })
+
+    if (existingLegacyHashRecord) {
+      return {
+        fileHash: legacyFileHash,
+        existingBookFile: existingLegacyHashRecord,
+        hashMode: 'legacy-binary-string',
+      }
+    }
+
+    return {
+      fileHash: textFileHash,
+      existingBookFile: null,
+      hashMode: 'epub-text-v1',
+    }
+  }
+
   /**
    * 책 레코드의 핵심 메타데이터 완전성을 확인합니다.
    * @param {Record|null} bookRecord 확인할 책 레코드
@@ -1913,6 +2227,7 @@
   })
 
   try {
+    const uploadStartedAt = Date.now()
     let uploadedFiles = []
 
     try {
@@ -1951,32 +2266,49 @@
       throw new Error('EPUB 파일은 최대 100MB까지 업로드할 수 있습니다.')
     }
 
-    dbg('xapi/epub/upload:reader-open:start', {
-      originalName: epubFile.originalName || epubFile.name,
-    })
-    const reader = epubFile.reader.open()
-    dbg('xapi/epub/upload:reader-open:done', {
-      hasReader: !!reader,
-    })
-    const maxReadableBytes = fileSize || MAX_EPUB_BYTES
-    dbg('xapi/epub/upload:to-bytes:start', {
-      maxReadableBytes: maxReadableBytes,
-    })
-    const epubBytes = toBytes(reader, maxReadableBytes)
-    dbg('xapi/epub/upload:to-bytes:done', {
-      bytesLength: Array.isArray(epubBytes) ? epubBytes.length : 0,
-    })
-    reader.close()
+    let cachedEpubByteArray = null
+    const readEpubByteArray = function () {
+      if (!cachedEpubByteArray) {
+        cachedEpubByteArray = readUploadedFileBytes(epubFile, fileSize)
+      }
 
-    const epubByteArray = new Uint8Array(epubBytes)
-    const fileHash = $security.sha256(bytesToBinaryString(epubByteArray))
+      return cachedEpubByteArray
+    }
+
+    const archiveReadStartedAt = Date.now()
+    dbg('xapi/epub/upload:archive-read:start', {
+      originalName: epubFile.originalName || epubFile.name,
+      fileSize: fileSize,
+      elapsedMs: archiveReadStartedAt - uploadStartedAt,
+    })
+    const archiveSnapshot = readUploadedEpubArchiveSnapshot(epubFile, fileSize)
+    const archiveEntries = archiveSnapshot.archiveEntries
+    const entryNames = archiveSnapshot.entryNames
+    const archiveReadDoneAt = Date.now()
+    dbg('xapi/epub/upload:archive-read:done', {
+      readMode: archiveSnapshot.readMode || '',
+      entryCount: entryNames.length,
+      extractedEntryCount: Object.keys(archiveEntries).length,
+      stageMs: archiveReadDoneAt - archiveReadStartedAt,
+      elapsedMs: archiveReadDoneAt - uploadStartedAt,
+    })
+    const fileLookupStartedAt = Date.now()
+    const fileLookup = resolveExistingBookFileLookup({
+      archiveSnapshot: archiveSnapshot,
+      readEpubByteArray: readEpubByteArray,
+      originalName: epubFile.originalName || epubFile.name,
+      fileSize: fileSize,
+    })
+    const fileLookupDoneAt = Date.now()
+    const fileHash = fileLookup.fileHash
+    const existingBookFile = fileLookup.existingBookFile
     dbg('xapi/epub/upload:file-ready', {
       originalName: epubFile.originalName || epubFile.name,
       fileSize: fileSize,
       fileHash: fileHash,
-    })
-    const existingBookFile = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
-      fileHash: fileHash,
+      hashMode: fileLookup.hashMode,
+      stageMs: fileLookupDoneAt - fileLookupStartedAt,
+      elapsedMs: fileLookupDoneAt - uploadStartedAt,
     })
     const existingBookId = existingBookFile && existingBookFile.get('book_id') ? String(existingBookFile.get('book_id')) : ''
     const existingBookRecord = existingBookId
@@ -1984,15 +2316,18 @@
           bookId: existingBookId,
         })
       : null
+    const existingBookMetadataComplete = hasCompleteStoredBookMetadata(existingBookRecord)
+    const canReuseExistingBookFile = !!(existingBookFile && existingBookRecord && (fileLookup.hashMode === 'epub-text-v1' || existingBookMetadataComplete))
 
     dbg('xapi/epub/upload:existing-book-file', {
       fileHash: fileHash,
       existingId: existingBookFile ? existingBookFile.get('id') : '',
       existingBookId: existingBookId,
-      hasCompleteBookMetadata: hasCompleteStoredBookMetadata(existingBookRecord),
+      hasCompleteBookMetadata: existingBookMetadataComplete,
+      canReuseExistingBookFile: canReuseExistingBookFile,
     })
 
-    if (existingBookFile && existingBookRecord && hasCompleteStoredBookMetadata(existingBookRecord)) {
+    if (canReuseExistingBookFile) {
       const shelfRecord = saveBookShelfRecord({
         userId: request.auth.get('id'),
         bookId: existingBookId,
@@ -2019,8 +2354,6 @@
       return
     }
 
-    const archiveEntries = fflate.unzipSync(epubByteArray)
-    const entryNames = Object.keys(archiveEntries).sort()
     const mimetypeText = readArchiveText(archiveEntries, 'mimetype')
     const containerXml = readArchiveText(archiveEntries, 'META-INF/container.xml')
     const containerDocument = parseXmlDocument(containerXml)
