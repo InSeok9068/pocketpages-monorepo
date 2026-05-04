@@ -101,12 +101,7 @@
   }
 
   function readUInt32LE(bytes, offset) {
-    return (
-      Number(bytes[offset] || 0) |
-      (Number(bytes[offset + 1] || 0) << 8) |
-      (Number(bytes[offset + 2] || 0) << 16) |
-      (Number(bytes[offset + 3] || 0) << 24)
-    ) >>> 0
+    return (Number(bytes[offset] || 0) | (Number(bytes[offset + 1] || 0) << 8) | (Number(bytes[offset + 2] || 0) << 16) | (Number(bytes[offset + 3] || 0) << 24)) >>> 0
   }
 
   function readReaderRange(reader, offset, length) {
