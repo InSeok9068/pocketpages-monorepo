@@ -628,6 +628,27 @@ function toMarkupContent(signature, documentation) {
   };
 }
 
+function buildPathTargetHoverMarkdown(pathTargetInfo) {
+  const parts = [`Target: \`${pathTargetInfo.targetFilePath.replace(/\\/g, "/")}\``];
+
+  if (pathTargetInfo.kind === "route-path" && pathTargetInfo.value) {
+    parts.push(`Route: \`${pathTargetInfo.routePath || pathTargetInfo.value}\``);
+    if (pathTargetInfo.routeMethod) {
+      parts.push(`Resolved as: \`${pathTargetInfo.routeMethod}\``);
+    }
+    if (pathTargetInfo.routeSource) {
+      parts.push(`Source: \`${pathTargetInfo.routeSource}\``);
+    }
+  }
+
+  if (pathTargetInfo.kind === "include-path") {
+    const includeLocalsSummary = String(pathTargetInfo.includeLocalsSummary || "locals: none inferred").replace(/^locals:\s*/, "");
+    parts.push(`Include locals: \`${includeLocalsSummary}\``);
+  }
+
+  return parts.join("\n\n");
+}
+
 function toWorkspaceEdit(edits) {
   const changes = {};
 
@@ -1402,10 +1423,7 @@ connection.onHover((params) => {
     return {
       contents: {
         kind: MarkupKind.Markdown,
-        value:
-          pathTargetInfo.kind === "route-path" && pathTargetInfo.value
-            ? `Target: \`${pathTargetInfo.targetFilePath.replace(/\\/g, "/")}\`\n\nRoute: \`${pathTargetInfo.value}\``
-            : `Target: \`${pathTargetInfo.targetFilePath.replace(/\\/g, "/")}\``,
+        value: buildPathTargetHoverMarkdown(pathTargetInfo),
       },
       range: toRange(document, pathTargetInfo.start, pathTargetInfo.end),
     };

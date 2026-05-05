@@ -1036,6 +1036,35 @@ function getLineAndCharacterFromText(text, offset) {
   return sourceFile.getLineAndCharacterOfPosition(offset);
 }
 
+function formatIncludeLocalName(local) {
+  if (!local || !local.name) {
+    return "";
+  }
+
+  return `${local.name}${local.optional ? "?" : ""}`;
+}
+
+function formatIncludeLocalsSummary(locals, options = {}) {
+  const localNames = (Array.isArray(locals) ? locals : [])
+    .map((local) => formatIncludeLocalName(local))
+    .filter(Boolean);
+  if (!localNames.length) {
+    return "locals: none inferred";
+  }
+
+  const limit = Number.isFinite(options.limit) ? options.limit : 5;
+  const visibleNames = localNames.slice(0, limit);
+  const overflowCount = localNames.length - visibleNames.length;
+  return `locals: ${visibleNames.join(", ")}${overflowCount > 0 ? `, +${overflowCount} more` : ""}`;
+}
+
+function getReferenceLocationLabel(appRoot, reference, documentText) {
+  const relativeFilePath = toPortablePath(path.relative(appRoot, reference.filePath));
+  const offset = typeof reference.start === "number" ? reference.start : 0;
+  const { line } = getLineAndCharacterFromText(documentText, offset);
+  return `${relativeFilePath}:${line + 1}`;
+}
+
 function findNarrowestNodeAtOffset(node, offset) {
   if (!node || offset < node.getFullStart() || offset > node.getEnd()) {
     return null;
@@ -1485,6 +1514,19 @@ function getRedirectControlStatementContainer(filePath, sourceFile, options = {}
   return handlerFunction ? handlerFunction.body : null;
 }
 
+function createInsertReturnFix(start) {
+  return {
+    title: "Add return before redirect()",
+    edits: [
+      {
+        start,
+        end: start,
+        newText: "return ",
+      },
+    ],
+  };
+}
+
 function collectRedirectReturnDiagnostics(filePath, scriptText, options = {}) {
   const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-redirect-control.ts", scriptText);
   const statementContainer = getRedirectControlStatementContainer(filePath, sourceFile, options);
@@ -1510,6 +1552,7 @@ function collectRedirectReturnDiagnostics(filePath, scriptText, options = {}) {
       message: "Return after redirect() so execution stops explicitly.",
       start: offsetBase + node.expression.getStart(sourceFile),
       end: offsetBase + node.expression.getEnd(),
+      fixes: [createInsertReturnFix(offsetBase + node.expression.getStart(sourceFile))],
     });
   });
 
@@ -1583,6 +1626,53 @@ function collectIncludeContextDiagnostics(scriptText, options = {}) {
   const diagnostics = [];
   const forbiddenNames = new Set(["api", "request", "response", "resolve", "params", "data"]);
 
+  function buildRemoveLocalFix(property, objectLiteral, propertyName) {
+    if (!property || !objectLiteral || !objectLiteral.properties) {
+      return null;
+    }
+
+    const properties = Array.from(objectLiteral.properties);
+    const propertyIndex = properties.indexOf(property);
+    if (propertyIndex === -1) {
+      return null;
+    }
+
+    const previousProperty = propertyIndex > 0 ? properties[propertyIndex - 1] : null;
+    const nextProperty = propertyIndex < properties.length - 1 ? properties[propertyIndex + 1] : null;
+    const propertyStart = property.getStart(sourceFile);
+    const propertyEnd = property.getEnd();
+    const nextBoundary = nextProperty
+      ? nextProperty.getStart(sourceFile)
+      : Math.max(propertyEnd, objectLiteral.getEnd() - 1);
+    const commaAfterIndex = sourceFile.text.indexOf(",", propertyEnd);
+    let start = propertyStart;
+    let end = propertyEnd;
+
+    if (commaAfterIndex !== -1 && commaAfterIndex < nextBoundary) {
+      if (!nextProperty && previousProperty) {
+        start = previousProperty.getEnd();
+        end = commaAfterIndex + 1;
+      } else {
+        start = propertyStart;
+        end = nextProperty ? nextProperty.getStart(sourceFile) : commaAfterIndex + 1;
+      }
+    } else if (previousProperty) {
+      start = previousProperty.getEnd();
+      end = propertyEnd;
+    }
+
+    return {
+      title: `Remove local "${propertyName}"`,
+      edits: [
+        {
+          start,
+          end,
+          newText: "",
+        },
+      ],
+    };
+  }
+
   const visit = (node) => {
     if (
       ts.isCallExpression(node) &&
@@ -1599,12 +1689,14 @@ function collectIncludeContextDiagnostics(scriptText, options = {}) {
           }
 
           const nameNode = getObjectPropertyNameNode(property) || property;
+          const removeLocalFix = buildRemoveLocalFix(property, localsArgument, propertyName);
           diagnostics.push({
             code: "pp-partial-full-context",
             category: ts.DiagnosticCategory.Warning,
             message: "Do not pass full PocketPages context to partials. Pass only the values the partial uses.",
             start: nameNode.getStart(sourceFile),
             end: nameNode.getEnd(),
+            fixes: removeLocalFix ? [removeLocalFix] : undefined,
           });
         }
       }
@@ -1654,6 +1746,48 @@ function splitRoutePathSuffix(routePath) {
     basePath: value.slice(0, markerIndex),
     suffix: value.slice(markerIndex),
   };
+}
+
+function getQueryParamName(part) {
+  const rawName = String(part || "").split("=")[0];
+  try {
+    return decodeURIComponent(rawName.replace(/\+/g, " "));
+  } catch (_error) {
+    return rawName;
+  }
+}
+
+function removeManualFlashQuery(routePath) {
+  const value = String(routePath || "");
+  const hashIndex = value.indexOf("#");
+  const pathAndQuery = hashIndex === -1 ? value : value.slice(0, hashIndex);
+  const hashSuffix = hashIndex === -1 ? "" : value.slice(hashIndex);
+  const queryIndex = pathAndQuery.indexOf("?");
+  if (queryIndex === -1) {
+    return null;
+  }
+
+  const basePath = pathAndQuery.slice(0, queryIndex);
+  const queryText = pathAndQuery.slice(queryIndex + 1);
+  let removed = false;
+  const keptParts = [];
+
+  for (const part of queryText.split("&")) {
+    if (getQueryParamName(part) === "__flash") {
+      removed = true;
+      continue;
+    }
+
+    if (part) {
+      keptParts.push(part);
+    }
+  }
+
+  if (!removed) {
+    return null;
+  }
+
+  return `${basePath}${keptParts.length ? `?${keptParts.join("&")}` : ""}${hashSuffix}`;
 }
 
 function isDynamicRoutePatternSegment(segment) {
@@ -2283,12 +2417,27 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText, opti
     }
 
     if (context.kind === "route-path" && /(?:\?|&)__flash=/.test(context.value)) {
+      const fixedRoutePath = removeManualFlashQuery(context.value);
       diagnostics.push({
         code: "pp-manual-flash-query",
         category: ts.DiagnosticCategory.Warning,
         message: "Do not build __flash in the URL. Use redirect(path, { message }).",
         start: context.start,
         end: context.end,
+        fixes: fixedRoutePath === null
+          ? undefined
+          : [
+              {
+                title: "Remove __flash query",
+                edits: [
+                  {
+                    start: context.start,
+                    end: context.end,
+                    newText: fixedRoutePath,
+                  },
+                ],
+              },
+            ],
       });
     }
   }
@@ -5324,10 +5473,30 @@ class ProjectLanguageService {
       return null;
     }
 
-    return {
+    const result = {
       ...pathContext,
       targetFilePath: normalizePath(targetFilePath),
     };
+
+    if (pathContext.kind === "route-path") {
+      const routeDescriptor = this.getBestRouteDescriptorForRequestPath(
+        pathContext.value,
+        pathContext.routeSource
+      );
+      if (routeDescriptor) {
+        result.routeMethod = normalizeRouteMethod(routeDescriptor.method);
+        result.routePath = routeDescriptor.routePath;
+        result.routeSource = pathContext.routeSource || "";
+      }
+    }
+
+    if (pathContext.kind === "include-path") {
+      const includeLocals = this.getIncludeContractLocals(targetFilePath);
+      result.includeLocals = includeLocals;
+      result.includeLocalsSummary = formatIncludeLocalsSummary(includeLocals);
+    }
+
+    return result;
   }
 
   getPathTargetInfo(filePath, documentText, offset) {
@@ -6857,10 +7026,7 @@ class ProjectLanguageService {
     const routeDescriptor = this.projectIndex.getRouteDescriptorByFilePath(filePath);
     if (routeDescriptor) {
       entries.push({
-        title:
-          routeDescriptor.method && routeDescriptor.method !== "PAGE"
-            ? `Route: ${routeDescriptor.method} ${routeDescriptor.routePath}`
-            : `Route: ${routeDescriptor.routePath}`,
+        title: `Route: ${normalizeRouteMethod(routeDescriptor.method)} ${routeDescriptor.routePath}`,
         start: 0,
       });
     }
@@ -6875,8 +7041,10 @@ class ProjectLanguageService {
         continue;
       }
 
+      const includeLocals = this.getIncludeContractLocals(targetFilePath);
+      const includeLocalsSummary = formatIncludeLocalsSummary(includeLocals, { limit: 4 });
       entries.push({
-        title: `-> ${toPortablePath(path.relative(this.appRoot, targetFilePath))}`,
+        title: `-> ${toPortablePath(path.relative(this.appRoot, targetFilePath))} | ${includeLocalsSummary}`,
         start: pathContext.start,
         targetFilePath: normalizePath(targetFilePath),
       });
@@ -6899,6 +7067,42 @@ class ProjectLanguageService {
           : referenceQuery.kind === "asset-file"
             ? `Asset callers: ${referenceCount}`
             : `Route callers: ${referenceCount}`;
+
+    if (referenceQuery.kind === "private-partial" && referenceCount > 0) {
+      const seenCallerLabels = new Set();
+      const callerPreviewEntries = [];
+      for (const reference of references) {
+        if (!reference || !reference.filePath) {
+          continue;
+        }
+
+        const callerText = this.getCallerDocumentText(reference.filePath);
+        const callerLabel = getReferenceLocationLabel(this.appRoot, reference, callerText);
+        if (seenCallerLabels.has(callerLabel)) {
+          continue;
+        }
+
+        seenCallerLabels.add(callerLabel);
+        callerPreviewEntries.push({
+          title: `Caller: ${callerLabel}`,
+          targetFilePath: normalizePath(reference.filePath),
+          start: 0,
+        });
+
+        if (callerPreviewEntries.length >= 3) {
+          break;
+        }
+      }
+
+      entries.push(...callerPreviewEntries);
+      if (referenceCount > callerPreviewEntries.length) {
+        entries.push({
+          title: `More callers: ${referenceCount - callerPreviewEntries.length}`,
+          command: "pocketpagesServerScript.allFileReferences",
+          start: 0,
+        });
+      }
+    }
 
     entries.push({
       title: summaryTitle,

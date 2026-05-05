@@ -1060,6 +1060,11 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
+    /function buildPathTargetHoverMarkdown\([\s\S]*Resolved as:[\s\S]*Include locals:/,
+    'Expected path-target hover markdown to show resolved route method and include locals.'
+  )
+  assertMatches(
+    serverSource,
     /connection\.onRenameRequest\(\(params\) => \{[\s\S]*workspaceEditStats\(customResult\)[\s\S]*case:\s*"custom-rename"[\s\S]*workspaceEditStats\(typeScriptResult\)[\s\S]*case:\s*"ts-rename"/,
     'Expected rename logs to report custom and TS edit counts separately.'
   )
@@ -7636,6 +7641,14 @@ function loadPostRole() {
     if (!includePathTargetInfo || normalizeFilePath(includePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.flashAlertFilePath)) {
       throw new Error(`Expected include() path target info. Got: ${JSON.stringify(includePathTargetInfo)}`)
     }
+    if (
+      !Array.isArray(includePathTargetInfo.includeLocals) ||
+      !includePathTargetInfo.includeLocals.some((entry) => entry.name === 'flashMessage') ||
+      !includePathTargetInfo.includeLocals.some((entry) => entry.name === 'flashMeta') ||
+      !String(includePathTargetInfo.includeLocalsSummary || '').includes('isErrorFlash')
+    ) {
+      throw new Error(`Expected include() path hover info to expose locals contract. Got: ${JSON.stringify(includePathTargetInfo)}`)
+    }
 
     const extlessIncludeDefinition = service.getDefinitionTarget(
       fixture.boardsFilePath,
@@ -7785,6 +7798,9 @@ function loadPostRole() {
     if (!hrefPathTargetInfo || normalizeFilePath(hrefPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.boardsFilePath)) {
       throw new Error(`Expected href path target info. Got: ${JSON.stringify(hrefPathTargetInfo)}`)
     }
+    if (hrefPathTargetInfo.routeMethod !== 'PAGE' || hrefPathTargetInfo.routePath !== '/boards' || hrefPathTargetInfo.routeSource !== 'href') {
+      throw new Error(`Expected href hover info to expose PAGE route resolution. Got: ${JSON.stringify(hrefPathTargetInfo)}`)
+    }
     const feedbackActionPathTargetInfo = indexService.getPathTargetInfo(
       fixture.siteIndexFilePath,
       `<form action="/feedback" method="post"></form>\n`,
@@ -7839,6 +7855,17 @@ function loadPostRole() {
       || normalizeFilePath(feedbackHtmxPatchPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.feedbackPatchFilePath)
     ) {
       throw new Error(`Expected hx-patch path target info for feedback PATCH route. Got: ${JSON.stringify(feedbackHtmxPatchPathTargetInfo)}`)
+    }
+    for (const [label, info, expectedMethod, expectedSource] of [
+      ['action', feedbackActionPathTargetInfo, 'POST', 'action-post'],
+      ['hx-post', feedbackHtmxPostPathTargetInfo, 'POST', 'hx-post'],
+      ['hx-delete', feedbackHtmxDeletePathTargetInfo, 'DELETE', 'hx-delete'],
+      ['hx-put', feedbackHtmxPutPathTargetInfo, 'PUT', 'hx-put'],
+      ['hx-patch', feedbackHtmxPatchPathTargetInfo, 'PATCH', 'hx-patch'],
+    ]) {
+      if (info.routeMethod !== expectedMethod || info.routePath !== '/feedback' || info.routeSource !== expectedSource) {
+        throw new Error(`Expected ${label} hover info to expose ${expectedMethod} route resolution. Got: ${JSON.stringify(info)}`)
+      }
     }
     const jsRedirectText = `module.exports = function () {\n  redirect('/sign-in')\n  return\n}\n`
     const jsRedirectPathTargetInfo = service.getPathTargetInfo(
@@ -8999,6 +9026,9 @@ module.exports = {
     if (!partialCodeLensEntries.some((entry) => entry.title.startsWith('Partial callers: '))) {
       throw new Error(`Expected partial caller CodeLens entry. Got: ${JSON.stringify(partialCodeLensEntries)}`)
     }
+    if (!partialCodeLensEntries.some((entry) => entry.title === 'Caller: pb_hooks/pages/(site)/boards/index.ejs:1')) {
+      throw new Error(`Expected partial caller CodeLens to preview the caller file and line. Got: ${JSON.stringify(partialCodeLensEntries)}`)
+    }
     if (!partialCodeLensEntries.some((entry) => entry.title.startsWith('All File References ('))) {
       throw new Error(`Expected partial all-file-references CodeLens entry. Got: ${JSON.stringify(partialCodeLensEntries)}`)
     }
@@ -9007,7 +9037,7 @@ module.exports = {
       fixture.boardsFilePath,
       fs.readFileSync(fixture.boardsFilePath, 'utf8')
     )
-    const includePathCodeLens = boardsCodeLensEntries.find((entry) => entry.title === '-> pb_hooks/pages/_private/flash-alert.ejs')
+    const includePathCodeLens = boardsCodeLensEntries.find((entry) => entry.title.startsWith('-> pb_hooks/pages/_private/flash-alert.ejs'))
     if (
       !includePathCodeLens ||
       typeof includePathCodeLens.start !== 'number' ||
@@ -9016,13 +9046,35 @@ module.exports = {
     ) {
       throw new Error(`Expected include() path CodeLens entry above the include call. Got: ${JSON.stringify(boardsCodeLensEntries)}`)
     }
+    if (
+      !includePathCodeLens.title.includes('locals:') ||
+      !includePathCodeLens.title.includes('flashMessage') ||
+      !includePathCodeLens.title.includes('flashMeta') ||
+      !includePathCodeLens.title.includes('isErrorFlash')
+    ) {
+      throw new Error(`Expected include() path CodeLens title to expose the partial locals contract. Got: ${JSON.stringify(includePathCodeLens)}`)
+    }
 
     const routeCodeLensEntries = service.getCodeLensEntries(
       fixture.boardShowFilePath,
       fs.readFileSync(fixture.boardShowFilePath, 'utf8')
     )
-    if (!routeCodeLensEntries.some((entry) => entry.title === 'Route: /boards/[boardSlug]')) {
+    if (!routeCodeLensEntries.some((entry) => entry.title === 'Route: PAGE /boards/[boardSlug]')) {
       throw new Error(`Expected dynamic route CodeLens entry. Got: ${JSON.stringify(routeCodeLensEntries)}`)
+    }
+    const feedbackGetCodeLensEntries = service.getCodeLensEntries(
+      fixture.feedbackGetFilePath,
+      fs.readFileSync(fixture.feedbackGetFilePath, 'utf8')
+    )
+    if (!feedbackGetCodeLensEntries.some((entry) => entry.title === 'Route: GET /feedback')) {
+      throw new Error(`Expected GET route CodeLens entry. Got: ${JSON.stringify(feedbackGetCodeLensEntries)}`)
+    }
+    const feedbackPostCodeLensEntries = service.getCodeLensEntries(
+      fixture.feedbackPostFilePath,
+      fs.readFileSync(fixture.feedbackPostFilePath, 'utf8')
+    )
+    if (!feedbackPostCodeLensEntries.some((entry) => entry.title === 'Route: POST /feedback')) {
+      throw new Error(`Expected POST route CodeLens entry. Got: ${JSON.stringify(feedbackPostCodeLensEntries)}`)
     }
 
     const siteSignInReferenceQuery = service.getFileReferenceQuery(fixture.siteSignInFilePath)
@@ -10759,6 +10811,65 @@ plain include('missing-plain-text.ejs')
       )
     }
 
+    const partialContextText = `<%- include('flash-alert.ejs', { params, request }) %>\n`
+    const partialContextParamsCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      partialContextText,
+      {
+        start: partialContextText.indexOf('params'),
+        end: partialContextText.indexOf('params') + 'params'.length,
+      }
+    )
+    const removeParamsAction = partialContextParamsCodeActions.find((entry) =>
+      entry.title === 'Remove local "params"'
+    )
+    if (!removeParamsAction) {
+      throw new Error(`Expected partial full-context params quick fix. Got: ${JSON.stringify(partialContextParamsCodeActions)}`)
+    }
+    const partialWithoutParamsText = applyEditsToText(partialContextText, removeParamsAction.edits)
+    if (partialWithoutParamsText !== `<%- include('flash-alert.ejs', { request }) %>\n`) {
+      throw new Error(`Expected partial full-context quick fix to remove first local cleanly. Got: ${partialWithoutParamsText}`)
+    }
+
+    const partialContextRequestCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      partialContextText,
+      {
+        start: partialContextText.indexOf('request'),
+        end: partialContextText.indexOf('request') + 'request'.length,
+      }
+    )
+    const removeRequestAction = partialContextRequestCodeActions.find((entry) =>
+      entry.title === 'Remove local "request"'
+    )
+    if (!removeRequestAction) {
+      throw new Error(`Expected partial full-context request quick fix. Got: ${JSON.stringify(partialContextRequestCodeActions)}`)
+    }
+    const partialWithoutRequestText = applyEditsToText(partialContextText, removeRequestAction.edits)
+    if (partialWithoutRequestText !== `<%- include('flash-alert.ejs', { params }) %>\n`) {
+      throw new Error(`Expected partial full-context quick fix to remove last local cleanly. Got: ${partialWithoutRequestText}`)
+    }
+
+    const partialContextTrailingText = `<%- include('flash-alert.ejs', {\n  params,\n  request,\n}) %>\n`
+    const partialContextTrailingCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      partialContextTrailingText,
+      {
+        start: partialContextTrailingText.indexOf('request'),
+        end: partialContextTrailingText.indexOf('request') + 'request'.length,
+      }
+    )
+    const removeTrailingRequestAction = partialContextTrailingCodeActions.find((entry) =>
+      entry.title === 'Remove local "request"'
+    )
+    if (!removeTrailingRequestAction) {
+      throw new Error(`Expected trailing partial full-context request quick fix. Got: ${JSON.stringify(partialContextTrailingCodeActions)}`)
+    }
+    const partialWithoutTrailingRequestText = applyEditsToText(partialContextTrailingText, removeTrailingRequestAction.edits)
+    if (partialWithoutTrailingRequestText.includes('request') || /,\s*\}/.test(partialWithoutTrailingRequestText)) {
+      throw new Error(`Expected trailing partial full-context quick fix to remove local and comma. Got: ${partialWithoutTrailingRequestText}`)
+    }
+
     const validClientScriptDiagnostics = service.getDiagnostics(
       fixture.siteIndexFilePath,
       `<script>
@@ -10823,6 +10934,25 @@ const state = {
           .join(', ')}`
       )
     }
+    const manualFlashText = `<script server>\nredirect('/boards?__flash=saved')\n</script>\n`
+    const manualFlashCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      manualFlashText,
+      {
+        start: manualFlashText.indexOf('__flash'),
+        end: manualFlashText.indexOf('__flash') + '__flash'.length,
+      }
+    )
+    const removeManualFlashAction = manualFlashCodeActions.find((entry) =>
+      entry.title === 'Remove __flash query'
+    )
+    if (!removeManualFlashAction) {
+      throw new Error(`Expected manual __flash query quick fix. Got: ${JSON.stringify(manualFlashCodeActions)}`)
+    }
+    const manualFlashPatchedText = applyEditsToText(manualFlashText, removeManualFlashAction.edits)
+    if (manualFlashPatchedText !== `<script server>\nredirect('/boards')\n</script>\n`) {
+      throw new Error(`Expected manual __flash quick fix to remove empty query. Got: ${manualFlashPatchedText}`)
+    }
 
     const manualFlashHrefDiagnostics = service.getDiagnostics(
       fixture.siteIndexFilePath,
@@ -10835,6 +10965,25 @@ const state = {
           .join(', ')}`
       )
     }
+    const manualFlashHrefText = `<a href="/boards?next=/home&__flash=saved#done"></a>\n`
+    const manualFlashHrefCodeActions = service.getCodeActions(
+      fixture.siteIndexFilePath,
+      manualFlashHrefText,
+      {
+        start: manualFlashHrefText.indexOf('__flash'),
+        end: manualFlashHrefText.indexOf('__flash') + '__flash'.length,
+      }
+    )
+    const removeManualFlashHrefAction = manualFlashHrefCodeActions.find((entry) =>
+      entry.title === 'Remove __flash query'
+    )
+    if (!removeManualFlashHrefAction) {
+      throw new Error(`Expected manual __flash href quick fix. Got: ${JSON.stringify(manualFlashHrefCodeActions)}`)
+    }
+    const manualFlashHrefPatchedText = applyEditsToText(manualFlashHrefText, removeManualFlashHrefAction.edits)
+    if (manualFlashHrefPatchedText !== `<a href="/boards?next=/home#done"></a>\n`) {
+      throw new Error(`Expected manual __flash href quick fix to preserve other query and hash. Got: ${manualFlashHrefPatchedText}`)
+    }
 
     const redirectMissingReturnDiagnostics = service.getDiagnostics(
       fixture.feedbackLoadFilePath,
@@ -10846,6 +10995,25 @@ const state = {
           .map((entry) => String(entry.code))
           .join(', ')}`
       )
+    }
+    const redirectMissingReturnText = `module.exports = function () {\n  redirect('/sign-in')\n}\n`
+    const redirectMissingReturnCodeActions = service.getCodeActions(
+      fixture.feedbackLoadFilePath,
+      redirectMissingReturnText,
+      {
+        start: redirectMissingReturnText.indexOf('redirect'),
+        end: redirectMissingReturnText.indexOf('redirect') + 'redirect'.length,
+      }
+    )
+    const addReturnAction = redirectMissingReturnCodeActions.find((entry) =>
+      entry.title === 'Add return before redirect()'
+    )
+    if (!addReturnAction) {
+      throw new Error(`Expected redirect() missing return quick fix. Got: ${JSON.stringify(redirectMissingReturnCodeActions)}`)
+    }
+    const redirectMissingReturnPatchedText = applyEditsToText(redirectMissingReturnText, addReturnAction.edits)
+    if (!redirectMissingReturnPatchedText.includes(`return redirect('/sign-in')`)) {
+      throw new Error(`Expected redirect() quick fix to add return. Got: ${redirectMissingReturnPatchedText}`)
     }
 
     const redirectFollowedByReturnDiagnostics = service.getDiagnostics(
@@ -10882,6 +11050,25 @@ const state = {
           .map((entry) => String(entry.code))
           .join(', ')}`
       )
+    }
+    const ejsRedirectMissingReturnText = `<script server>\nredirect('/sign-in')\n</script>\n`
+    const ejsRedirectMissingReturnCodeActions = service.getCodeActions(
+      fixture.signOutFilePath,
+      ejsRedirectMissingReturnText,
+      {
+        start: ejsRedirectMissingReturnText.indexOf('redirect'),
+        end: ejsRedirectMissingReturnText.indexOf('redirect') + 'redirect'.length,
+      }
+    )
+    const ejsAddReturnAction = ejsRedirectMissingReturnCodeActions.find((entry) =>
+      entry.title === 'Add return before redirect()'
+    )
+    if (!ejsAddReturnAction) {
+      throw new Error(`Expected EJS redirect() missing return quick fix. Got: ${JSON.stringify(ejsRedirectMissingReturnCodeActions)}`)
+    }
+    const ejsRedirectMissingReturnPatchedText = applyEditsToText(ejsRedirectMissingReturnText, ejsAddReturnAction.edits)
+    if (ejsRedirectMissingReturnPatchedText !== `<script server>\nreturn redirect('/sign-in')\n</script>\n`) {
+      throw new Error(`Expected EJS redirect() quick fix to add return. Got: ${ejsRedirectMissingReturnPatchedText}`)
     }
 
     const ejsRedirectFollowedByReturnDiagnostics = service.getDiagnostics(
