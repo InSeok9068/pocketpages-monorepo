@@ -10201,6 +10201,170 @@ const boardTableNames = $app.findRecordsByFilter('boards', '').map((entry) => en
       throw new Error(`Expected params query quick fix. Got: ${JSON.stringify(paramsQueryCodeActions)}`)
     }
 
+    const guardedCodeActionText = `alpha beta gamma\n`
+    const guardedCodeActionStart = guardedCodeActionText.indexOf('beta')
+    const guardedCodeActionEnd = guardedCodeActionStart + 'beta'.length
+    function getGuardedCodeActions(fixes) {
+      return service.getCodeActions(
+        fixture.boardsFilePath,
+        guardedCodeActionText,
+        {
+          start: guardedCodeActionStart,
+          end: guardedCodeActionEnd,
+        },
+        {
+          diagnostics: [
+            {
+              code: 'pp-code-action-edit-guard',
+              message: 'Synthetic edit guard diagnostic',
+              start: guardedCodeActionStart,
+              end: guardedCodeActionEnd,
+              fixes,
+            },
+          ],
+        }
+      )
+    }
+
+    const guardedInsertionActions = getGuardedCodeActions([
+      {
+        title: 'Insert known text',
+        edits: [
+          {
+            start: guardedCodeActionStart,
+            end: guardedCodeActionStart,
+            newText: 'known ',
+          },
+        ],
+      },
+    ])
+    const guardedInsertionAction = guardedInsertionActions.find((entry) => entry.title === 'Insert known text')
+    if (!guardedInsertionAction) {
+      throw new Error(`Expected valid insertion quick fix to pass edit validation. Got: ${JSON.stringify(guardedInsertionActions)}`)
+    }
+    const guardedInsertionPatchedText = applyEditsToText(guardedCodeActionText, guardedInsertionAction.edits)
+    if (guardedInsertionPatchedText !== `alpha known beta gamma\n`) {
+      throw new Error(`Expected valid insertion quick fix to apply cleanly. Got: ${guardedInsertionPatchedText}`)
+    }
+
+    const guardedMultiEditActions = getGuardedCodeActions([
+      {
+        title: 'Replace separate words',
+        edits: [
+          {
+            start: guardedCodeActionText.indexOf('alpha'),
+            end: guardedCodeActionText.indexOf('alpha') + 'alpha'.length,
+            newText: 'ALPHA',
+          },
+          {
+            start: guardedCodeActionText.indexOf('gamma'),
+            end: guardedCodeActionText.indexOf('gamma') + 'gamma'.length,
+            newText: 'GAMMA',
+          },
+        ],
+      },
+    ])
+    const guardedMultiEditAction = guardedMultiEditActions.find((entry) => entry.title === 'Replace separate words')
+    if (!guardedMultiEditAction) {
+      throw new Error(`Expected non-overlapping multi-edit quick fix to pass validation. Got: ${JSON.stringify(guardedMultiEditActions)}`)
+    }
+    const guardedMultiEditPatchedText = applyEditsToText(guardedCodeActionText, guardedMultiEditAction.edits)
+    if (guardedMultiEditPatchedText !== `ALPHA beta GAMMA\n`) {
+      throw new Error(`Expected valid multi-edit quick fix to apply cleanly. Got: ${guardedMultiEditPatchedText}`)
+    }
+
+    const guardedCrossFileTargetPath = path.join(
+      fixture.appRoot,
+      'pb_hooks',
+      'pages',
+      '_private',
+      'code-action-target.ejs'
+    )
+    const guardedCrossFileTargetText = `target local\n`
+    writeFile(guardedCrossFileTargetPath, guardedCrossFileTargetText)
+    const guardedCrossFileActions = getGuardedCodeActions([
+      {
+        title: 'Replace readable target file text',
+        edits: [
+          {
+            filePath: guardedCrossFileTargetPath,
+            start: 0,
+            end: 'target'.length,
+            newText: 'shared',
+          },
+        ],
+      },
+    ])
+    const guardedCrossFileAction = guardedCrossFileActions.find((entry) => entry.title === 'Replace readable target file text')
+    if (!guardedCrossFileAction) {
+      throw new Error(`Expected readable cross-file quick fix to pass validation. Got: ${JSON.stringify(guardedCrossFileActions)}`)
+    }
+    const guardedCrossFilePatchedText = applyEditsToText(guardedCrossFileTargetText, guardedCrossFileAction.edits)
+    if (guardedCrossFilePatchedText !== `shared local\n`) {
+      throw new Error(`Expected valid cross-file quick fix to apply cleanly. Got: ${guardedCrossFilePatchedText}`)
+    }
+
+    const invalidGuardedEditFixes = [
+      {
+        title: 'Reject negative start',
+        edits: [{ start: -1, end: 0, newText: 'x' }],
+      },
+      {
+        title: 'Reject reversed range',
+        edits: [{ start: guardedCodeActionEnd, end: guardedCodeActionStart, newText: 'x' }],
+      },
+      {
+        title: 'Reject fractional offset',
+        edits: [{ start: guardedCodeActionStart + 0.5, end: guardedCodeActionEnd, newText: 'x' }],
+      },
+      {
+        title: 'Reject out-of-bounds end',
+        edits: [{ start: 0, end: guardedCodeActionText.length + 1, newText: 'x' }],
+      },
+      {
+        title: 'Reject missing newText',
+        edits: [{ start: guardedCodeActionStart, end: guardedCodeActionEnd }],
+      },
+      {
+        title: 'Reject empty no-op insertion',
+        edits: [{ start: guardedCodeActionStart, end: guardedCodeActionStart, newText: '' }],
+      },
+      {
+        title: 'Reject overlapping edits',
+        edits: [
+          { start: guardedCodeActionText.indexOf('alpha'), end: guardedCodeActionEnd, newText: 'first' },
+          { start: guardedCodeActionStart, end: guardedCodeActionText.indexOf('gamma'), newText: 'second' },
+        ],
+      },
+      {
+        title: 'Reject duplicate insertions',
+        edits: [
+          { start: guardedCodeActionStart, end: guardedCodeActionStart, newText: 'first ' },
+          { start: guardedCodeActionStart, end: guardedCodeActionStart, newText: 'second ' },
+        ],
+      },
+      {
+        title: 'Reject unreadable target file',
+        edits: [
+          {
+            filePath: path.join(fixture.appRoot, 'pb_hooks', 'pages', '_private', 'missing-code-action-target.ejs'),
+            start: 0,
+            end: 1,
+            newText: 'x',
+          },
+        ],
+      },
+    ]
+    const invalidGuardedEditActions = getGuardedCodeActions(invalidGuardedEditFixes)
+    const leakedInvalidGuardedEditAction = invalidGuardedEditActions.find((entry) =>
+      invalidGuardedEditFixes.some((fix) => fix.title === entry.title)
+    )
+    if (leakedInvalidGuardedEditAction) {
+      throw new Error(
+        `Expected invalid quick-fix edits to be filtered centrally. Got: ${JSON.stringify(leakedInvalidGuardedEditAction)}`
+      )
+    }
+
     const routeParamDiagnostics = service.getDiagnostics(
       fixture.boardShowFilePath,
       `<script server>\nparams.boardSlug\n</script>\n`

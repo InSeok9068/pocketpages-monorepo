@@ -12,6 +12,115 @@ function createDiagnosticsFeatureHandlers(deps) {
     elapsedMilliseconds,
   } = deps;
 
+  function isValidEditOffset(value) {
+    return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value);
+  }
+
+  function getCodeActionEditDocumentText(service, currentFilePath, currentDocumentText, editFilePath) {
+    const normalizedCurrentFilePath = deps.normalizePath(currentFilePath);
+    const normalizedEditFilePath = deps.normalizePath(editFilePath);
+    if (normalizedEditFilePath === normalizedCurrentFilePath) {
+      return currentDocumentText;
+    }
+
+    if (service && typeof service.getDocumentTextForTarget === "function") {
+      const targetText = service.getDocumentTextForTarget(
+        normalizedEditFilePath,
+        normalizedCurrentFilePath,
+        currentDocumentText
+      );
+      if (typeof targetText === "string") {
+        return targetText;
+      }
+    }
+
+    if (service && typeof service.readFile === "function") {
+      const targetText = service.readFile(normalizedEditFilePath);
+      if (typeof targetText === "string") {
+        return targetText;
+      }
+    }
+
+    return null;
+  }
+
+  function normalizeCodeActionEdit(service, currentFilePath, currentDocumentText, edit) {
+    if (!edit || typeof edit !== "object") {
+      return null;
+    }
+
+    const normalizedEditFilePath = deps.normalizePath(edit.filePath || currentFilePath);
+    if (
+      !isValidEditOffset(edit.start) ||
+      !isValidEditOffset(edit.end) ||
+      edit.start < 0 ||
+      edit.end < edit.start ||
+      typeof edit.newText !== "string"
+    ) {
+      return null;
+    }
+
+    const targetText = getCodeActionEditDocumentText(
+      service,
+      currentFilePath,
+      currentDocumentText,
+      normalizedEditFilePath
+    );
+    if (typeof targetText !== "string" || edit.end > targetText.length) {
+      return null;
+    }
+
+    if (edit.start === edit.end && edit.newText.length === 0) {
+      return null;
+    }
+
+    return {
+      filePath: normalizedEditFilePath,
+      start: edit.start,
+      end: edit.end,
+      newText: edit.newText,
+    };
+  }
+
+  function normalizeCodeActionEdits(service, currentFilePath, currentDocumentText, rawEdits) {
+    if (!Array.isArray(rawEdits) || !rawEdits.length) {
+      return null;
+    }
+
+    const edits = [];
+    for (const rawEdit of rawEdits) {
+      const edit = normalizeCodeActionEdit(service, currentFilePath, currentDocumentText, rawEdit);
+      if (!edit) {
+        return null;
+      }
+      edits.push(edit);
+    }
+
+    const sortedEdits = edits.slice().sort((left, right) => {
+      if (left.filePath !== right.filePath) {
+        return left.filePath < right.filePath ? -1 : 1;
+      }
+      if (left.start !== right.start) {
+        return left.start - right.start;
+      }
+      return left.end - right.end;
+    });
+
+    let previousEdit = null;
+    for (const edit of sortedEdits) {
+      if (
+        previousEdit &&
+        previousEdit.filePath === edit.filePath &&
+        (edit.start < previousEdit.end || edit.start === previousEdit.start)
+      ) {
+        return null;
+      }
+      previousEdit = edit;
+    }
+
+    return edits;
+  }
+
   return {
     getDiagnostics(service, filePath, documentText, options = {}) {
       const profile = options && options.profile ? options.profile : null;
@@ -372,6 +481,11 @@ function createDiagnosticsFeatureHandlers(deps) {
             continue;
           }
 
+          const edits = normalizeCodeActionEdits(service, filePath, documentText, fix.edits || []);
+          if (!edits) {
+            continue;
+          }
+
           actionKeys.add(actionKey);
           actions.push({
             title: fix.title,
@@ -382,12 +496,7 @@ function createDiagnosticsFeatureHandlers(deps) {
               end: diagnostic.end,
               message: diagnostic.message,
             },
-            edits: (fix.edits || []).map((edit) => ({
-              filePath: deps.normalizePath(edit.filePath || filePath),
-              start: edit.start,
-              end: edit.end,
-              newText: edit.newText,
-            })),
+            edits,
           });
         }
       }
