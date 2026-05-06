@@ -99,6 +99,35 @@ function createMockDocument(filePath) {
   }
 }
 
+function createMutableMockDocument(filePath, initialText = null) {
+  let sourceText = initialText === null || initialText === undefined
+    ? fs.readFileSync(filePath, 'utf8')
+    : String(initialText)
+  const documentUri = URI.file(filePath)
+  const document = {
+    uri: documentUri,
+    languageId: inferLanguageId(filePath),
+    version: 1,
+    getText() {
+      return sourceText
+    },
+    positionAt(offset) {
+      const position = offsetToPosition(sourceText, offset)
+      return new MockPosition(position.line, position.character)
+    },
+    offsetAt(position) {
+      return positionToOffset(sourceText, position)
+    },
+    updateText(nextText, version = document.version + 1) {
+      sourceText = String(nextText)
+      document.version = version
+      return document
+    },
+  }
+
+  return document
+}
+
 class MockPosition {
   constructor(line, character) {
     this.line = Number(line) || 0
@@ -609,6 +638,12 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
       async fireOpenDocument(document) {
         rememberDocument(document)
         await openDocumentEvents.fire(document)
+      },
+      async fireChangeDocument(event) {
+        if (event && event.document) {
+          rememberDocument(event.document)
+        }
+        await changeDocumentEvents.fire(event)
       },
       async fireWillSaveDocument(event) {
         if (event && event.document) {
@@ -1166,6 +1201,108 @@ async function runManualSaveNotificationBoundaryTest(repoRoot, fixture) {
   })
 }
 
+async function runOpenChangeSaveEventOrderTest(repoRoot, fixture) {
+  const harness = createMockExtensionHost({
+    repoRoot,
+    fixture,
+    languageClientOptions: {
+      async sendNotification(method) {
+        if (method === NOTIFICATIONS.didManualSave) {
+          return null
+        }
+
+        throw new Error(`Unexpected notification during open/change/save event-order test: ${method}`)
+      },
+    },
+  })
+
+  await withMockedExtensionModule(repoRoot, harness.mocks, async (extensionModule) => {
+    const bootstrapDocument = createMockDocument(fixture.routeFilePath)
+    const routeDocument = createMutableMockDocument(fixture.routeReferenceFilePath)
+    const routeEditor = harness.controls.createEditor(routeDocument, new MockPosition(1, 0))
+
+    await extensionModule.activate(harness.context)
+    await harness.controls.fireOpenDocument(bootstrapDocument)
+    await flushAsyncWork()
+    if (harness.controls.clientState.startCalls !== 1) {
+      throw new Error(`Expected bootstrap document open to start the LSP once. Got: ${harness.controls.clientState.startCalls}`)
+    }
+
+    harness.controls.outputLines.length = 0
+    await harness.controls.fireActiveEditorChange(routeEditor)
+    await harness.controls.fireOpenDocument(routeDocument)
+    await flushAsyncWork()
+
+    const beforeChangeText = routeDocument.getText()
+    const changeStartOffset = beforeChangeText.indexOf('Posts')
+    const changeEndOffset = changeStartOffset + 'Posts'.length
+    if (changeStartOffset < 0) {
+      throw new Error('Expected extension-host fixture route document to contain the Posts edit marker.')
+    }
+    const changeRange = {
+      start: routeDocument.positionAt(changeStartOffset),
+      end: routeDocument.positionAt(changeEndOffset),
+    }
+    routeDocument.updateText(beforeChangeText.replace('Posts', 'Posts Edited'), 2)
+    await harness.controls.fireChangeDocument({
+      document: routeDocument,
+      contentChanges: [{
+        range: changeRange,
+        rangeOffset: changeStartOffset,
+        rangeLength: 'Posts'.length,
+        text: 'Posts Edited',
+      }],
+    })
+    await harness.controls.fireWillSaveDocument({
+      document: routeDocument,
+      reason: harness.mocks.vscode.TextDocumentSaveReason.Manual,
+    })
+    await harness.controls.fireDidSaveDocument(routeDocument)
+    await flushAsyncWork()
+
+    const manualSaveNotifications = harness.controls.clientState.notificationCalls.filter(
+      (entry) => entry.method === NOTIFICATIONS.didManualSave
+    )
+    const openLogIndex = harness.controls.outputLines.findIndex((line) =>
+      line.includes('[document] [info] open') && line.includes('posts.ejs')
+    )
+    const changeLogIndex = harness.controls.outputLines.findIndex((line) =>
+      line.includes('[document] [perf] change') &&
+      line.includes('posts.ejs') &&
+      line.includes('version=2') &&
+      line.includes('changes=1')
+    )
+    const saveLogIndex = harness.controls.outputLines.findIndex((line) =>
+      line.includes('[diagnostics] [info] manual-save') && line.includes('posts.ejs')
+    )
+
+    if (
+      manualSaveNotifications.length !== 1 ||
+      manualSaveNotifications[0].params.uri !== routeDocument.uri.toString() ||
+      openLogIndex < 0 ||
+      changeLogIndex < 0 ||
+      saveLogIndex < 0 ||
+      !(openLogIndex < changeLogIndex && changeLogIndex < saveLogIndex) ||
+      routeEditor.decorationCalls.length < 2 ||
+      harness.controls.clientState.startCalls !== 1
+    ) {
+      throw new Error(
+        `Expected extension-host open/change/manual-save order to match VS Code event flow. Got: ${JSON.stringify({
+          manualSaveNotifications,
+          openLogIndex,
+          changeLogIndex,
+          saveLogIndex,
+          decorationCalls: routeEditor.decorationCalls.length,
+          startCalls: harness.controls.clientState.startCalls,
+          outputLines: harness.controls.outputLines,
+        })}`
+      )
+    }
+
+    await extensionModule.deactivate()
+  })
+}
+
 async function runCommandBoundaryTest(repoRoot, fixture) {
   const probeResult = {
     filePath: fixture.routeFilePath,
@@ -1632,6 +1769,7 @@ async function runExtensionHostSanityCheck(repoRoot) {
     await runExtractPartialCommandBoundaryTest(repoRoot, fixture)
     await runExtractPartialCommandEdgeTest(repoRoot, fixture)
     await runManualSaveNotificationBoundaryTest(repoRoot, fixture)
+    await runOpenChangeSaveEventOrderTest(repoRoot, fixture)
     await runCommandBoundaryTest(repoRoot, fixture)
     await runDebugBundleCommandTest(repoRoot, fixture)
   } finally {

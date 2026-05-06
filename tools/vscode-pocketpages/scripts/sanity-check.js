@@ -1990,6 +1990,24 @@ async function run() {
   if (!runtimeProbe.isStaleVersion('file:///runtime.ejs', 1)) {
     throw new Error('Expected document runtime state to report older versions as stale.')
   }
+  runtimeProbe.updateDocument('file:///runtime.ejs', {
+    version: 2,
+    textLength: 20,
+    changed: true,
+  })
+  const changedRuntimeState = runtimeProbe.getDocument('file:///runtime.ejs')
+  if (!changedRuntimeState || !changedRuntimeState.changedAt) {
+    throw new Error(`Expected document runtime state to track recent edits for diagnostics quiet windows. Got: ${JSON.stringify(changedRuntimeState)}`)
+  }
+  runtimeProbe.updateDocument('file:///runtime.ejs', {
+    version: 2,
+    textLength: 20,
+    saved: true,
+  })
+  const savedRuntimeState = runtimeProbe.getDocument('file:///runtime.ejs')
+  if (!savedRuntimeState || !savedRuntimeState.savedAt || savedRuntimeState.changedAt !== 0) {
+    throw new Error(`Expected document runtime state to clear recent-change quiet windows on save. Got: ${JSON.stringify(savedRuntimeState)}`)
+  }
   const coordinatorEvents = []
   const coordinatorTimers = []
   const coordinator = createRequestCoordinator({
@@ -4735,10 +4753,90 @@ ${'<div>open warmup filler</div>\n'.repeat(4)}
       openWarmupReport.items.length !== 0 ||
       openWarmupSchedules.length !== 1 ||
       openWarmupSchedules[0].uri !== 'workspace' ||
-      openWarmupSchedules[0].key !== 'diagnostics:refresh'
+      openWarmupSchedules[0].key !== 'diagnostics:refresh' ||
+      openWarmupSchedules[0].delayMs <= 0
     ) {
       throw new Error(
         `Expected recent large-EJS open diagnostics to defer an empty result and schedule a refresh. Got: ${JSON.stringify({ openWarmupReport, openWarmupSchedules })}`
+      )
+    }
+
+    const normalOpenWarmupCore = new PocketPagesLanguageCore()
+    const normalOpenWarmupText = `<script server>\nmissingNormalOpenWarmup.toString()\n</script>\n`
+    const normalOpenWarmupDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      normalOpenWarmupText
+    )
+    const normalOpenWarmupUri = normalOpenWarmupDocument.uri
+    normalOpenWarmupCore.openDocument({
+      uri: normalOpenWarmupUri,
+      languageId: 'ejs',
+      version: 1,
+      text: normalOpenWarmupText,
+    })
+    const normalOpenWarmupRuntimeState = createDocumentRuntimeStateRegistry()
+    normalOpenWarmupRuntimeState.updateDocument(normalOpenWarmupUri, {
+      version: 1,
+      textLength: normalOpenWarmupText.length,
+      opened: true,
+    })
+    const normalOpenWarmupSchedules = []
+    const normalOpenWarmupContext = createLspServiceSmokeContext(
+      normalOpenWarmupCore,
+      new Map([[normalOpenWarmupUri, normalOpenWarmupDocument]]),
+      {
+        runtimeState: normalOpenWarmupRuntimeState,
+        connection: {
+          languages: {
+            diagnostics: {
+              refresh() {},
+            },
+          },
+        },
+      }
+    )
+    normalOpenWarmupContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 10000
+    normalOpenWarmupContext.context.helpers.FIRST_REQUEST_WARMUP_IDLE_MS = 10000
+    normalOpenWarmupContext.context.helpers.isPullDiagnosticRefreshSupported = () => true
+    normalOpenWarmupContext.context.helpers.scheduleDocumentRequest = (uri, key, version, delayMs, callback) => {
+      normalOpenWarmupSchedules.push({ uri, key, version, delayMs, callback })
+      return { uri, key, version, delayMs }
+    }
+    normalOpenWarmupContext.context.helpers.ensureDocumentPrepared = () => {
+      throw new Error('Expected recent non-large EJS open diagnostics to defer before preparing virtual state.')
+    }
+    const normalOpenWarmupService = normalOpenWarmupCore.getDocumentContextByUri(normalOpenWarmupUri).service
+    const originalNormalOpenWarmupDiagnostics = normalOpenWarmupService.getDiagnostics.bind(normalOpenWarmupService)
+    let normalOpenWarmupReport = null
+    try {
+      normalOpenWarmupService.getDiagnostics = () => {
+        throw new Error('Expected recent non-large EJS open diagnostics to defer before computing diagnostics.')
+      }
+      const normalOpenWarmupFeatureService = createDiagnosticsFeatureService(
+        normalOpenWarmupContext.context
+      )
+      normalOpenWarmupReport = await normalOpenWarmupFeatureService.providePullDiagnostics(
+        { textDocument: { uri: normalOpenWarmupUri } },
+        { isCancellationRequested: false }
+      )
+    } finally {
+      normalOpenWarmupService.getDiagnostics = originalNormalOpenWarmupDiagnostics
+    }
+    if (
+      !normalOpenWarmupReport ||
+      !String(normalOpenWarmupReport.resultId || '').startsWith('open-warmup:') ||
+      String(normalOpenWarmupReport.resultId || '').startsWith('large-open-warmup:') ||
+      !Array.isArray(normalOpenWarmupReport.items) ||
+      normalOpenWarmupReport.items.length !== 0 ||
+      normalOpenWarmupSchedules.length !== 1 ||
+      normalOpenWarmupSchedules[0].uri !== 'workspace' ||
+      normalOpenWarmupSchedules[0].key !== 'diagnostics:refresh' ||
+      normalOpenWarmupSchedules[0].delayMs <= 0
+    ) {
+      throw new Error(
+        `Expected recent non-large EJS open diagnostics to use the normal open-warmup path. Got: ${JSON.stringify({ normalOpenWarmupReport, normalOpenWarmupSchedules })}`
       )
     }
 
@@ -5195,6 +5293,154 @@ missingBudgetTwo.toString()
     ) {
       throw new Error(
         `Expected large EJS template diagnostics to publish only the preferred dirty template region under the semantic budget. Got: ${JSON.stringify({ templateBudgetSecondReport, templateBudgetCalls, templateBudgetMessages, templateBudgetSchedules })}`
+      )
+    }
+
+    const largeRealisticCore = new PocketPagesLanguageCore()
+    const largeRealisticSections = Array.from({ length: 24 }, (_, index) => `
+<script server>
+const boardList${index} = $app.findRecordsByFilter('boards', 'is_active = true', '-created', 5, 0)
+const boardCount${index} = boardList${index}.length
+</script>
+<section class="board-row" data-board-index="${index}" x-data="{ open: false }">
+  <header>
+    <button type="button" hx-get="/xapi/boards/${index}" @click="open = !open">
+      Board <%= boardCount${index} %>
+    </button>
+  </header>
+  <% for (const board of boardList${index}) { %>
+    <article class="board-card">
+      <a href="/boards/<%= board.get('slug') %>"><%= board.get('name') %></a>
+      <p><%= board.get('description') %></p>
+    </article>
+  <% } %>
+</section>
+`).join('\n')
+    const largeRealisticTextV1 = `<script server>
+const pageTitle = meta('title') || 'Boards'
+</script>
+<main class="boards-shell">
+  <h1><%= pageTitle %></h1>
+${largeRealisticSections}
+</main>
+`
+    const largeRealisticDocumentV1 = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      largeRealisticTextV1
+    )
+    const largeRealisticUri = largeRealisticDocumentV1.uri
+    largeRealisticCore.openDocument({
+      uri: largeRealisticUri,
+      languageId: 'ejs',
+      version: 1,
+      text: largeRealisticTextV1,
+    })
+    const largeRealisticDocuments = new Map([[largeRealisticUri, largeRealisticDocumentV1]])
+    const largeRealisticSchedules = []
+    const largeRealisticContext = createLspServiceSmokeContext(
+      largeRealisticCore,
+      largeRealisticDocuments,
+      {
+        connection: {
+          languages: {
+            diagnostics: {
+              refresh() {},
+            },
+          },
+        },
+      }
+    )
+    largeRealisticContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 1000
+    largeRealisticContext.context.helpers.LARGE_DOCUMENT_SEMANTIC_REGION_BUDGET = 2
+    largeRealisticContext.context.helpers.isPullDiagnosticRefreshSupported = () => true
+    let largeRealisticPreferredOffset = null
+    largeRealisticContext.context.helpers.getPreferredDiagnosticOffset = () => largeRealisticPreferredOffset
+    largeRealisticContext.context.helpers.scheduleDocumentRequest = (uri, key, version, delayMs, callback) => {
+      largeRealisticSchedules.push({ uri, key, version, delayMs, callback })
+      return { uri, key, version, delayMs }
+    }
+    const largeRealisticFeatureService = createDiagnosticsFeatureService(
+      largeRealisticContext.context
+    )
+    const largeRealisticFirstReport = await largeRealisticFeatureService.providePullDiagnostics(
+      { textDocument: { uri: largeRealisticUri } },
+      { isCancellationRequested: false }
+    )
+    const largeRealisticTextV2 = largeRealisticTextV1.replace(
+      'const boardCount17 = boardList17.length',
+      'const boardCount17 = missingLargeRealisticBoardList.length'
+    )
+    largeRealisticPreferredOffset = largeRealisticTextV2.indexOf('missingLargeRealisticBoardList')
+    const largeRealisticDocumentV2 = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      2,
+      largeRealisticTextV2
+    )
+    largeRealisticDocuments.set(largeRealisticUri, largeRealisticDocumentV2)
+    largeRealisticCore.updateDocument({
+      uri: largeRealisticUri,
+      languageId: 'ejs',
+      version: 2,
+      text: largeRealisticTextV2,
+    })
+    const largeRealisticService = largeRealisticCore.getDocumentContextByUri(largeRealisticUri).service
+    const largeRealisticPreparedState = largeRealisticService.getPreparedDocumentState(fixture.boardsFilePath)
+    const originalLargeRealisticSemanticDiagnostics = largeRealisticService.languageService.getSemanticDiagnostics.bind(
+      largeRealisticService.languageService
+    )
+    let largeRealisticSemanticCalls = 0
+    let largeRealisticSecondReport = null
+    const largeRealisticStartedAt = process.hrtime.bigint()
+    try {
+      largeRealisticService.languageService.getSemanticDiagnostics = function countLargeRealisticSemanticDiagnostics(fileName, ...args) {
+        largeRealisticSemanticCalls += 1
+        return originalLargeRealisticSemanticDiagnostics(fileName, ...args)
+      }
+      largeRealisticSecondReport = await largeRealisticFeatureService.providePullDiagnostics(
+        {
+          textDocument: { uri: largeRealisticUri },
+          previousResultId: largeRealisticFirstReport && largeRealisticFirstReport.resultId,
+        },
+        { isCancellationRequested: false }
+      )
+    } finally {
+      largeRealisticService.languageService.getSemanticDiagnostics = originalLargeRealisticSemanticDiagnostics
+    }
+    const largeRealisticSecondMs = Number(process.hrtime.bigint() - largeRealisticStartedAt) / 1000000
+    const largeRealisticServerBlockCount =
+      largeRealisticPreparedState &&
+      Array.isArray(largeRealisticPreparedState.serverBlocks)
+        ? largeRealisticPreparedState.serverBlocks.length
+        : 0
+    const largeRealisticBounds = {
+      textLength: largeRealisticTextV1.length >= 10000,
+      preparedState: !!largeRealisticPreparedState,
+      serverBlocks: largeRealisticServerBlockCount >= 20,
+      report: !!largeRealisticSecondReport && largeRealisticSecondReport.kind === 'full',
+      semanticCalls: largeRealisticSemanticCalls <= 2,
+      elapsed: largeRealisticSecondMs <= 6000,
+    }
+    if (!Object.values(largeRealisticBounds).every(Boolean)) {
+      throw new Error(
+        `Expected realistic large EJS diagnostics to stay budgeted and bounded. Got: ${JSON.stringify({
+          bounds: largeRealisticBounds,
+          textLength: largeRealisticTextV1.length,
+          serverBlocks: largeRealisticServerBlockCount,
+          report: largeRealisticSecondReport
+            ? {
+                kind: largeRealisticSecondReport.kind,
+                budgetDeferred: largeRealisticSecondReport.budgetDeferred,
+                itemCount: Array.isArray(largeRealisticSecondReport.items) ? largeRealisticSecondReport.items.length : null,
+                resultIdLength: String(largeRealisticSecondReport.resultId || '').length,
+              }
+            : null,
+          largeRealisticSemanticCalls,
+          largeRealisticSchedules,
+          largeRealisticSecondMs: largeRealisticSecondMs.toFixed(1),
+        })}`
       )
     }
 
@@ -5880,6 +6126,113 @@ module.exports = {
       )
     }
     writeFile(fixture.schemaFilePath, originalFixtureSchemaText)
+
+    const watchedTypesCore = new PocketPagesLanguageCore()
+    const watchedTypesBoardsUri = URI.file(fixture.boardsFilePath).toString()
+    watchedTypesCore.openDocument({
+      uri: watchedTypesBoardsUri,
+      languageId: 'ejs',
+      version: 1,
+      text: watchedRouteBoardsText,
+    })
+    const watchedTypesService = watchedTypesCore.getDocumentContextByUri(watchedTypesBoardsUri).service
+    const watchedTypesPath = path.join(fixture.appRoot, 'pb_data', 'types.d.ts')
+    const watchedTypesMethodName = 'findRecordBySlug'
+    const watchedTypesSecondMethodName = 'findRecordsBySlug'
+    const watchedTypesMethodNamesBefore = watchedTypesService.projectIndex.getCollectionMethodNames()
+    if (
+      watchedTypesMethodNamesBefore.includes(watchedTypesMethodName) ||
+      watchedTypesMethodNamesBefore.includes(watchedTypesSecondMethodName)
+    ) {
+      throw new Error(`Expected fixture pb_data types to start without temporary slug helpers. Got: ${watchedTypesMethodNamesBefore.join(', ')}`)
+    }
+    const originalFixtureTypesText = fs.readFileSync(watchedTypesPath, 'utf8')
+    const modifiedFixtureTypesText = originalFixtureTypesText.replace(
+      '    isCollectionNameUnique(name: string): boolean',
+      `    isCollectionNameUnique(name: string): boolean
+    ${watchedTypesMethodName}(collectionModelOrIdentifier: any, slug: string): core.Record`
+    )
+    const secondModifiedFixtureTypesText = modifiedFixtureTypesText.replace(
+      `${watchedTypesMethodName}(collectionModelOrIdentifier: any, slug: string): core.Record`,
+      `${watchedTypesSecondMethodName}(collectionModelOrIdentifier: any, slug: string): Array<core.Record>`
+    )
+    if (modifiedFixtureTypesText === originalFixtureTypesText) {
+      throw new Error('Expected fixture pb_data types to contain the collection method insertion anchor.')
+    }
+    if (secondModifiedFixtureTypesText === modifiedFixtureTypesText) {
+      throw new Error('Expected fixture pb_data types to support a second collection method mutation.')
+    }
+    try {
+      writeFile(watchedTypesPath, modifiedFixtureTypesText)
+      const modifiedFixtureTypesStats = fs.statSync(watchedTypesPath)
+      if (watchedTypesService.projectIndex.collectionMethodCache) {
+        watchedTypesService.projectIndex.collectionMethodCache = {
+          ...watchedTypesService.projectIndex.collectionMethodCache,
+          mtimeMs: modifiedFixtureTypesStats.mtimeMs,
+          size: modifiedFixtureTypesStats.size,
+        }
+      }
+      const watchedTypesChangeResult = watchedTypesCore.handleWatchedFileChanges([
+        { filePath: watchedTypesPath, type: 'change' },
+      ])
+      if (!watchedTypesChangeResult.affectedUris.includes(watchedTypesBoardsUri)) {
+        throw new Error(
+          `Expected pb_data watched-file change to resync open documents in the same app. Got: ${JSON.stringify(watchedTypesChangeResult)}`
+        )
+      }
+      const watchedTypesMethodNamesAfter = watchedTypesCore
+        .getDocumentContextByUri(watchedTypesBoardsUri)
+        .service.projectIndex.getCollectionMethodNames()
+      if (!watchedTypesMethodNamesAfter.includes(watchedTypesMethodName)) {
+        throw new Error(
+          `Expected pb_data watched-file change to refresh collection method cache. Got: ${watchedTypesMethodNamesAfter.join(', ')}`
+        )
+      }
+      writeFile(watchedTypesPath, secondModifiedFixtureTypesText)
+      const secondModifiedFixtureTypesStats = fs.statSync(watchedTypesPath)
+      if (watchedTypesService.projectIndex.collectionMethodCache) {
+        watchedTypesService.projectIndex.collectionMethodCache = {
+          ...watchedTypesService.projectIndex.collectionMethodCache,
+          mtimeMs: secondModifiedFixtureTypesStats.mtimeMs,
+          size: secondModifiedFixtureTypesStats.size,
+        }
+      }
+      const watchedTypesSecondChangeResult = watchedTypesCore.handleWatchedFileChanges([
+        { filePath: watchedTypesPath, type: 'change' },
+      ])
+      if (!watchedTypesSecondChangeResult.affectedUris.includes(watchedTypesBoardsUri)) {
+        throw new Error(
+          `Expected consecutive pb_data watched-file changes to keep resyncing open documents. Got: ${JSON.stringify(watchedTypesSecondChangeResult)}`
+        )
+      }
+      const watchedTypesMethodNamesSecond = watchedTypesCore
+        .getDocumentContextByUri(watchedTypesBoardsUri)
+        .service.projectIndex.getCollectionMethodNames()
+      if (
+        !watchedTypesMethodNamesSecond.includes(watchedTypesSecondMethodName) ||
+        watchedTypesMethodNamesSecond.includes(watchedTypesMethodName)
+      ) {
+        throw new Error(
+          `Expected consecutive pb_data watched-file change to drop stale methods and load the newest helper. Got: ${watchedTypesMethodNamesSecond.join(', ')}`
+        )
+      }
+    } finally {
+      writeFile(watchedTypesPath, originalFixtureTypesText)
+    }
+    watchedTypesCore.handleWatchedFileChanges([
+      { filePath: watchedTypesPath, type: 'change' },
+    ])
+    const watchedTypesMethodNamesRestored = watchedTypesCore
+      .getDocumentContextByUri(watchedTypesBoardsUri)
+      .service.projectIndex.getCollectionMethodNames()
+    if (
+      watchedTypesMethodNamesRestored.includes(watchedTypesMethodName) ||
+      watchedTypesMethodNamesRestored.includes(watchedTypesSecondMethodName)
+    ) {
+      throw new Error(
+        `Expected restored pb_data types to drop the temporary collection method. Got: ${watchedTypesMethodNamesRestored.join(', ')}`
+      )
+    }
 
     const lifecycleWarmupUris = []
     const lifecycleScheduledRefreshes = []
