@@ -2846,7 +2846,14 @@ class ProjectLanguageService {
       changed = true;
     }
 
-    this.documentSnapshotManager.deleteDiskFileState(normalizedFilePath);
+    if (this.staticFiles.has(normalizedFilePath)) {
+      this.ensureStaticFile(normalizedFilePath);
+      changed = true;
+    }
+
+    if (this.documentSnapshotManager.invalidateDiskFileState(normalizedFilePath)) {
+      changed = true;
+    }
 
     if (this.clearVirtualFilesForSource(normalizedFilePath)) {
       changed = true;

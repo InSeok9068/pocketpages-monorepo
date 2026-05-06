@@ -180,6 +180,304 @@ function assertIncludes(collection, value, message) {
   }
 }
 
+function createCorpusBooklogSchema(extraBookFields = []) {
+  return [
+    {
+      name: 'authors',
+      fields: [
+        { name: 'display_name', type: 'text' },
+        { name: 'slug', type: 'text' },
+        { name: 'bio', type: 'text' },
+        { name: 'is_active', type: 'bool' },
+      ],
+    },
+    {
+      name: 'books',
+      fields: [
+        { name: 'title', type: 'text' },
+        { name: 'slug', type: 'text' },
+        { name: 'summary', type: 'text' },
+        { name: 'status', type: 'text' },
+        { name: 'is_featured', type: 'bool' },
+        { name: 'author', type: 'relation' },
+        { name: 'published_at', type: 'date' },
+        { name: 'rating', type: 'number' },
+        { name: 'cover_url', type: 'text' },
+        ...extraBookFields,
+      ],
+    },
+    {
+      name: 'book_notes',
+      fields: [
+        { name: 'book', type: 'relation' },
+        { name: 'note', type: 'text' },
+        { name: 'visibility', type: 'text' },
+      ],
+    },
+    {
+      name: 'reading_lists',
+      fields: [
+        { name: 'name', type: 'text' },
+        { name: 'slug', type: 'text' },
+        { name: 'owner', type: 'relation' },
+        { name: 'is_public', type: 'bool' },
+      ],
+    },
+  ]
+}
+
+function writeCorpusBooklogSchema(schemaFilePath, extraBookFields = []) {
+  writeFile(schemaFilePath, JSON.stringify(createCorpusBooklogSchema(extraBookFields), null, 2))
+}
+
+function createCorpusBooklogApp(fixtureRoot, referenceAppRoot) {
+  const corpusAppRoot = path.join(fixtureRoot, 'apps', 'corpus-app')
+  const corpusSchemaFilePath = path.join(corpusAppRoot, 'pb_schema.json')
+  const corpusLibraryIndexFilePath = path.join(corpusAppRoot, 'pb_hooks', 'pages', '(site)', 'library', 'index.ejs')
+  const corpusLibraryShowFilePath = path.join(corpusAppRoot, 'pb_hooks', 'pages', '(site)', 'library', '[bookSlug]', 'index.ejs')
+  const corpusLibraryEditFilePath = path.join(corpusAppRoot, 'pb_hooks', 'pages', '(site)', 'library', '[bookSlug]', 'edit.ejs')
+  const corpusLargeShelfFilePath = path.join(corpusAppRoot, 'pb_hooks', 'pages', '(site)', 'library', 'stress.ejs')
+  const corpusLibraryMiddlewareFilePath = path.join(corpusAppRoot, 'pb_hooks', 'pages', '(site)', 'library', '+middleware.js')
+  const corpusLibraryServiceFilePath = path.join(corpusAppRoot, 'pb_hooks', 'pages', '(site)', 'library', '_private', 'library-service.js')
+  const corpusBookCardFilePath = path.join(corpusAppRoot, 'pb_hooks', 'pages', '(site)', 'library', '_private', 'book-card.ejs')
+  const corpusFavoriteFilePath = path.join(corpusAppRoot, 'pb_hooks', 'pages', 'xapi', 'library', '[bookSlug]', 'favorite.ejs')
+  const corpusSaveFilePath = path.join(corpusAppRoot, 'pb_hooks', 'pages', 'xapi', 'library', '[bookSlug]', 'save.ejs')
+
+  writeFile(path.join(corpusAppRoot, 'jsconfig.json'), fs.readFileSync(path.join(referenceAppRoot, 'jsconfig.json'), 'utf8'))
+  writeFile(
+    path.join(corpusAppRoot, 'pb_data', 'types.d.ts'),
+    fs.readFileSync(path.join(referenceAppRoot, 'pb_data', 'types.d.ts'), 'utf8')
+  )
+  writeFile(
+    path.join(corpusAppRoot, 'pocketpages-globals.d.ts'),
+    fs.readFileSync(path.join(referenceAppRoot, 'pocketpages-globals.d.ts'), 'utf8')
+  )
+  writeFile(
+    path.join(corpusAppRoot, 'types.d.ts'),
+    `declare namespace types {
+  type CorpusShelfFilters = {
+    status: string
+    query: string
+    includeDrafts: boolean
+  }
+
+  type CorpusBookForm = {
+    title: string
+    summary: string
+    status: string
+  }
+}
+`
+  )
+  writeCorpusBooklogSchema(corpusSchemaFilePath)
+
+  writeFile(
+    corpusLibraryServiceFilePath,
+    `/**
+ * @param {{ $app: pocketbase.PocketBase, limit?: number }} ctx
+ * @returns {Array<core.Record>}
+ */
+function listFeaturedBooks(ctx) {
+  return ctx.$app.findRecordsByFilter('books', 'is_featured = true && status = "published"', '-published_at', ctx.limit || 12, 0)
+}
+
+/**
+ * @param {Array<core.Record>} books
+ * @returns {core.Record}
+ */
+function pickFeaturedBook(books) {
+  return books[0]
+}
+
+/**
+ * @param {{ $app: pocketbase.PocketBase, slug: string }} ctx
+ * @returns {core.Record}
+ */
+function findBookBySlug(ctx) {
+  return ctx.$app.findFirstRecordByFilter('books', 'slug = "' + ctx.slug + '"')
+}
+
+/**
+ * @param {{ $app: pocketbase.PocketBase, book: core.Record }} ctx
+ * @returns {core.Record}
+ */
+function findAuthorForBook(ctx) {
+  return ctx.$app.findRecordById('authors', String(ctx.book.get('author') || ''))
+}
+
+/**
+ * @param {core.Record} book
+ * @returns {types.CorpusBookForm}
+ */
+function toBookForm(book) {
+  return {
+    title: String(book.get('title') || ''),
+    summary: String(book.get('summary') || ''),
+    status: String(book.get('status') || 'draft'),
+  }
+}
+
+module.exports = {
+  listFeaturedBooks,
+  pickFeaturedBook,
+  findBookBySlug,
+  findAuthorForBook,
+  toBookForm,
+}
+`
+  )
+  writeFile(
+    corpusBookCardFilePath,
+    `<article class="book-card" data-book="<%= book.get('slug') %>">
+  <a href="/library/<%= book.get('slug') %>"><%= book.get('title') %></a>
+  <p><%= book.get('summary') %></p>
+  <% if (showActions) { %>
+    <button hx-post="/xapi/library/<%= book.get('slug') %>/favorite" hx-target="#flash">Save</button>
+  <% } %>
+  <a href="<%= returnPath %>">Back</a>
+</article>
+`
+  )
+  writeFile(
+    corpusLibraryMiddlewareFilePath,
+    `module.exports = function ({ request }, next) {
+  info('library-request', { method: request.method })
+  return next()
+}
+`
+  )
+  writeFile(
+    corpusLibraryIndexFilePath,
+    `<script server>
+const libraryService = resolve('library-service')
+/** @type {types.CorpusShelfFilters} */
+const filters = { status: 'published', query: '', includeDrafts: false }
+const featuredBooks = libraryService.listFeaturedBooks({ $app, limit: 12 })
+const recommendedBook = libraryService.pickFeaturedBook(featuredBooks)
+const allBooks = $app.findRecordsByFilter('books', 'status = "published"', '-published_at', 24, 0)
+const bookTotal = $app.countRecords('books')
+meta('title', 'Library')
+</script>
+<section class="library-shell">
+  <nav>
+    <a href="/library">Library</a>
+    <a href="/library/<%= recommendedBook.get('slug') %>"><%= recommendedBook.get('title') %></a>
+  </nav>
+  <h1><%= recommendedBook.get('title') %></h1>
+  <%- include('book-card.ejs', { book: recommendedBook, returnPath: '/library', showActions: true }) %>
+  <p><%= filters.status %> / <%= featuredBooks.length %> / <%= bookTotal %></p>
+  <% for (const book of allBooks) { %>
+    <article data-book="<%= book.get('slug') %>">
+      <a href="/library/<%= book.get('slug') %>"><%= book.get('title') %></a>
+      <p><%= book.get('summary') %></p>
+      <button hx-post="/xapi/library/<%= book.get('slug') %>/favorite" hx-target="#flash">Save</button>
+    </article>
+  <% } %>
+</section>
+`
+  )
+  writeFile(
+    corpusLibraryShowFilePath,
+    `<script server>
+const libraryService = resolve('library-service')
+const book = libraryService.findBookBySlug({ $app, slug: params.bookSlug || '' })
+const author = libraryService.findAuthorForBook({ $app, book })
+const relatedNotes = $app.findRecordsByFilter('book_notes', 'book = "' + book.id + '"', '-created', 10, 0)
+meta('title', book.get('title'))
+</script>
+<article class="book-detail">
+  <a href="/library">Library</a>
+  <%- include('book-card.ejs', { book, returnPath: '/library/' + book.get('slug'), showActions: false }) %>
+  <p><%= author.get('display_name') %></p>
+  <% for (const note of relatedNotes) { %>
+    <p><%= note.get('note') %></p>
+  <% } %>
+  <a href="/library/<%= params.bookSlug %>/edit">Edit</a>
+</article>
+`
+  )
+  writeFile(
+    corpusLibraryEditFilePath,
+    `<script server>
+const libraryService = resolve('library-service')
+const book = libraryService.findBookBySlug({ $app, slug: params.bookSlug || '' })
+const formValues = libraryService.toBookForm(book)
+meta('title', 'Edit ' + book.get('title'))
+</script>
+<form action="/xapi/library/<%= book.get('slug') %>/save" method="post">
+  <input name="title" value="<%= formValues.title %>">
+  <textarea name="summary"><%= formValues.summary %></textarea>
+  <select name="status">
+    <option value="<%= formValues.status %>"><%= formValues.status %></option>
+  </select>
+  <button type="submit">Save</button>
+</form>
+`
+  )
+  writeFile(
+    corpusFavoriteFilePath,
+    `<script server>
+const libraryService = resolve('library-service')
+const book = libraryService.findBookBySlug({ $app, slug: params.bookSlug || '' })
+info('favorite-book', { bookId: book.id })
+redirect('/library/' + params.bookSlug, { status: 303, message: 'Saved' })
+return
+</script>
+`
+  )
+  writeFile(
+    corpusSaveFilePath,
+    `<script server>
+const libraryService = resolve('library-service')
+const book = libraryService.findBookBySlug({ $app, slug: params.bookSlug || '' })
+const values = formData()
+info('save-book', { bookId: book.id, title: values.title })
+redirect('/library/' + params.bookSlug, { status: 303, message: 'Saved' })
+return
+</script>
+`
+  )
+
+  const stressServerLines = Array.from({ length: 80 }, (_value, index) =>
+    `const stressBooks${index} = $app.findRecordsByFilter('books', 'status = "published"', '-published_at', 5, ${index})
+const stressBook${index} = stressBooks${index}[0]
+const stressTitle${index} = stressBook${index}.get('title')
+`
+  ).join('')
+  const stressMarkupRows = Array.from({ length: 80 }, (_value, index) =>
+    `  <article data-row="${index}">
+    <a href="/library/<%= stressBook${index}.get('slug') %>"><%= stressTitle${index} %></a>
+    <p><%= stressBook${index}.get('summary') %></p>
+  </article>
+`
+  ).join('')
+  writeFile(
+    corpusLargeShelfFilePath,
+    `<script server>
+const stressService = resolve('library-service')
+const stressFeatured = stressService.listFeaturedBooks({ $app, limit: 5 })
+${stressServerLines}</script>
+<main class="stress-library">
+  <h1><%= stressFeatured.length %></h1>
+${stressMarkupRows}</main>
+`
+  )
+
+  return {
+    corpusAppRoot,
+    corpusSchemaFilePath,
+    corpusLibraryIndexFilePath,
+    corpusLibraryShowFilePath,
+    corpusLibraryEditFilePath,
+    corpusLargeShelfFilePath,
+    corpusLibraryMiddlewareFilePath,
+    corpusLibraryServiceFilePath,
+    corpusBookCardFilePath,
+    corpusFavoriteFilePath,
+    corpusSaveFilePath,
+  }
+}
+
 function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
   const documentEntries =
     documentsByUri instanceof Map ? documentsByUri : new Map(Object.entries(documentsByUri || {}))
@@ -1906,11 +2204,13 @@ module.exports = {
     path.join(secondaryAppRoot, 'pb_hooks', 'pages', '_private', 'status-badge.ejs'),
     `<div><%= state %></div>\n`
   )
+  const corpusApp = createCorpusBooklogApp(fixtureRoot, appRoot)
 
   return {
     fixtureRoot,
     appRoot,
     secondaryAppRoot,
+    ...corpusApp,
     schemaFilePath: path.join(appRoot, 'pb_schema.json'),
     siteIndexFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'index.ejs'),
     boardsFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
@@ -3280,6 +3580,722 @@ const isSignedIn = !!authState && authState.isSignedIn
       !renamedLspSmokeText.includes('<div><%= pageState.title %></div>')
     ) {
       throw new Error(`Expected TS feature rename from server declaration to update the template usage. Got: ${renamedLspSmokeText}`)
+    }
+
+    const corpusCore = new PocketPagesLanguageCore()
+    const corpusIndexText = fs.readFileSync(fixture.corpusLibraryIndexFilePath, 'utf8')
+    const corpusIndexDocument = createTestDocument(fixture.corpusLibraryIndexFilePath, 'ejs', 1, corpusIndexText)
+    const corpusIndexUri = corpusIndexDocument.uri
+    corpusCore.openDocument({
+      uri: corpusIndexUri,
+      languageId: 'ejs',
+      version: 1,
+      text: corpusIndexText,
+    })
+    const corpusDocuments = new Map([[corpusIndexUri, corpusIndexDocument]])
+    const corpusContext = createLspServiceSmokeContext(corpusCore, corpusDocuments)
+    const corpusService = corpusCore.getDocumentContextByUri(corpusIndexUri).service
+    const corpusTypeScriptFeatures = createTypeScriptFeatureService(corpusContext.context)
+    const corpusCustomFeatures = createCustomFeatureService(corpusContext.context)
+    const corpusDiagnosticsFeatures = createDiagnosticsFeatureService(corpusContext.context)
+    const corpusDiagnosticsReport = await corpusDiagnosticsFeatures.providePullDiagnostics(
+      { textDocument: { uri: corpusIndexUri } },
+      { isCancellationRequested: false }
+    )
+    const corpusBlockingDiagnostics = serializeDiagnostics(corpusDiagnosticsReport && corpusDiagnosticsReport.items)
+      .filter((entry) =>
+        [
+          'pp-unresolved-route-path',
+          'pp-unresolved-include-path',
+          'pp-unresolved-resolve-path',
+          'pp-resolve-private-prefix',
+          'pp-private-resolve-path',
+          'pp-schema-collection',
+          'pp-schema-field',
+        ].includes(String(entry.code)) ||
+        /Cannot find name|Cannot find module|Property .* does not exist/.test(entry.message)
+      )
+    if (corpusBlockingDiagnostics.length) {
+      throw new Error(`Expected corpus app index to be clean for route/include/resolve/schema diagnostics. Got: ${JSON.stringify(corpusBlockingDiagnostics)}`)
+    }
+    const corpusResolveHover = corpusCustomFeatures.provideHover({
+      textDocument: { uri: corpusIndexUri },
+      position: corpusIndexDocument.positionAt(corpusIndexText.indexOf("'library-service'") + 1),
+    })
+    if (
+      !corpusResolveHover ||
+      normalizeFilePath(corpusResolveHover.targetFilePath) !== normalizeFilePath(fixture.corpusLibraryServiceFilePath)
+    ) {
+      throw new Error(`Expected corpus resolve() hover to target the local library service. Got: ${JSON.stringify(corpusResolveHover)}`)
+    }
+    const corpusResolveDefinition = corpusCustomFeatures.provideDefinition({
+      textDocument: { uri: corpusIndexUri },
+      position: corpusIndexDocument.positionAt(corpusIndexText.indexOf("'library-service'") + 1),
+    })
+    if (normalizeFilePath(corpusResolveDefinition) !== normalizeFilePath(fixture.corpusLibraryServiceFilePath)) {
+      throw new Error(`Expected corpus resolve() definition to target the local library service. Got: ${JSON.stringify(corpusResolveDefinition)}`)
+    }
+    const corpusDocumentLinks = corpusCustomFeatures.provideDocumentLinks({
+      textDocument: { uri: corpusIndexUri },
+    })
+    const corpusDocumentLinkTargets = Array.isArray(corpusDocumentLinks)
+      ? corpusDocumentLinks.map((entry) => normalizeFilePath(URI.parse(entry.target).fsPath))
+      : []
+    if (
+      !corpusDocumentLinkTargets.includes(normalizeFilePath(fixture.corpusLibraryServiceFilePath)) ||
+      !corpusDocumentLinkTargets.includes(normalizeFilePath(fixture.corpusBookCardFilePath)) ||
+      !corpusDocumentLinkTargets.includes(normalizeFilePath(fixture.corpusFavoriteFilePath))
+    ) {
+      throw new Error(`Expected corpus document links to cover resolve(), include(), and hx-post targets. Got: ${JSON.stringify(corpusDocumentLinks)}`)
+    }
+    const corpusServiceCompletionText = `<script server>
+const libraryService = resolve('library-service')
+libraryService.
+</script>
+`
+    const corpusServiceCompletionOffset =
+      corpusServiceCompletionText.indexOf('libraryService.') + 'libraryService.'.length
+    const corpusServiceCompletion = corpusService.getCompletionData(
+      fixture.corpusLibraryIndexFilePath,
+      corpusServiceCompletionText,
+      corpusServiceCompletionOffset
+    )
+    const corpusServiceCompletionNames = corpusServiceCompletion
+      ? corpusServiceCompletion.entries.map((entry) => entry.name)
+      : []
+    if (
+      !corpusServiceCompletionNames.includes('listFeaturedBooks') ||
+      !corpusServiceCompletionNames.includes('findBookBySlug') ||
+      !corpusServiceCompletionNames.includes('toBookForm')
+    ) {
+      throw new Error(`Expected corpus resolve() completion to expose service exports. Got: ${corpusServiceCompletionNames.slice(0, 30).join(', ')}`)
+    }
+    const corpusCollectionCompletionText = `<script server>
+$app.findRecordsByFilter('')
+</script>
+`
+    const corpusCollectionCompletionOffset = corpusCollectionCompletionText.indexOf("''") + 1
+    const corpusCollectionCompletion = corpusService.getCustomCompletionData(
+      fixture.corpusLibraryIndexFilePath,
+      corpusCollectionCompletionText,
+      corpusCollectionCompletionOffset
+    )
+    const corpusCollectionCompletionNames = corpusCollectionCompletion
+      ? corpusCollectionCompletion.items.map((entry) => entry.label)
+      : []
+    if (
+      !corpusCollectionCompletionNames.includes('books') ||
+      !corpusCollectionCompletionNames.includes('authors') ||
+      !corpusCollectionCompletionNames.includes('book_notes')
+    ) {
+      throw new Error(`Expected corpus collection completion to expose booklog schema collections. Got: ${corpusCollectionCompletionNames.join(', ')}`)
+    }
+    const corpusFieldCompletionText = `<script server>
+const books = $app.findRecordsByFilter('books')
+const book = books[0]
+book.get('')
+</script>
+`
+    const corpusFieldCompletionOffset = corpusFieldCompletionText.indexOf("book.get('") + "book.get('".length
+    const corpusFieldCompletion = corpusService.getCustomCompletionData(
+      fixture.corpusLibraryIndexFilePath,
+      corpusFieldCompletionText,
+      corpusFieldCompletionOffset
+    )
+    const corpusFieldCompletionNames = corpusFieldCompletion
+      ? corpusFieldCompletion.items.map((entry) => entry.label)
+      : []
+    if (
+      !corpusFieldCompletionNames.includes('title') ||
+      !corpusFieldCompletionNames.includes('summary') ||
+      !corpusFieldCompletionNames.includes('author')
+    ) {
+      throw new Error(`Expected corpus field completion to expose books fields. Got: ${corpusFieldCompletionNames.join(', ')}`)
+    }
+    const corpusServiceHover = corpusTypeScriptFeatures.provideHover({
+      textDocument: { uri: corpusIndexUri },
+      position: corpusIndexDocument.positionAt(corpusIndexText.indexOf('listFeaturedBooks') + 2),
+    })
+    if (
+      !corpusServiceHover ||
+      !String(corpusServiceHover.displayText || '').includes('listFeaturedBooks(ctx:') ||
+      !String(corpusServiceHover.displayText || '').includes('limit?: number')
+    ) {
+      throw new Error(`Expected corpus TS hover to surface JSDoc-backed service signatures. Got: ${JSON.stringify(corpusServiceHover)}`)
+    }
+    const corpusRenameEdits = corpusTypeScriptFeatures.provideRename({
+      textDocument: { uri: corpusIndexUri },
+      position: corpusIndexDocument.positionAt(corpusIndexText.indexOf('featuredBooks =') + 2),
+      newName: 'visibleBooks',
+    })
+    if (!Array.isArray(corpusRenameEdits) || corpusRenameEdits.length < 3) {
+      throw new Error(`Expected corpus rename to update script and template usages. Got: ${JSON.stringify(corpusRenameEdits)}`)
+    }
+    const renamedCorpusIndexText = applyEditsToText(corpusIndexText, corpusRenameEdits)
+    if (
+      !renamedCorpusIndexText.includes('const visibleBooks = libraryService.listFeaturedBooks') ||
+      !renamedCorpusIndexText.includes('pickFeaturedBook(visibleBooks)') ||
+      !renamedCorpusIndexText.includes('<%= visibleBooks.length %>')
+    ) {
+      throw new Error(`Expected corpus rename to rewrite server and template usages. Got: ${renamedCorpusIndexText}`)
+    }
+    const corpusIncludeReferences = corpusCustomFeatures.provideReferences({
+      textDocument: { uri: corpusIndexUri },
+      position: corpusIndexDocument.positionAt(corpusIndexText.indexOf("'book-card.ejs'") + 1),
+      context: { includeDeclaration: true },
+    })
+    if (
+      !Array.isArray(corpusIncludeReferences) ||
+      !corpusIncludeReferences.some((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.corpusLibraryIndexFilePath)) ||
+      !corpusIncludeReferences.some((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.corpusLibraryShowFilePath))
+    ) {
+      throw new Error(`Expected corpus include references to include multiple real route callers. Got: ${JSON.stringify(corpusIncludeReferences)}`)
+    }
+    const corpusPartialRenameEdits = corpusCore.getFileRenameEdits(
+      fixture.corpusBookCardFilePath,
+      path.join(path.dirname(fixture.corpusBookCardFilePath), 'volume-card.ejs')
+    )
+    if (
+      !Array.isArray(corpusPartialRenameEdits) ||
+      !corpusPartialRenameEdits.some((entry) =>
+        normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.corpusLibraryIndexFilePath) &&
+        entry.newText === 'volume-card.ejs'
+      ) ||
+      !corpusPartialRenameEdits.some((entry) =>
+        normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.corpusLibraryShowFilePath) &&
+        entry.newText === 'volume-card.ejs'
+      )
+    ) {
+      throw new Error(`Expected corpus partial file rename edits to update all include() callers. Got: ${JSON.stringify(corpusPartialRenameEdits)}`)
+    }
+
+    const corpusServiceText = fs.readFileSync(fixture.corpusLibraryServiceFilePath, 'utf8')
+    const corpusServiceMemberRename = corpusService.getRenameEdits(
+      fixture.corpusLibraryServiceFilePath,
+      corpusServiceText,
+      corpusServiceText.indexOf('listFeaturedBooks(ctx)') + 2,
+      'listPublishedBooks'
+    )
+    if (!corpusServiceMemberRename || !corpusServiceMemberRename.canRename) {
+      throw new Error(`Expected corpus service export rename to be available from the _private module. Got: ${JSON.stringify(corpusServiceMemberRename)}`)
+    }
+    const corpusServiceFileMemberEdits = corpusServiceMemberRename.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.corpusLibraryServiceFilePath)
+    )
+    const corpusIndexMemberEdits = corpusServiceMemberRename.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.corpusLibraryIndexFilePath)
+    )
+    const corpusLargeMemberEdits = corpusServiceMemberRename.edits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.corpusLargeShelfFilePath)
+    )
+    if (
+      corpusServiceFileMemberEdits.length < 2 ||
+      corpusIndexMemberEdits.length !== 1 ||
+      corpusLargeMemberEdits.length !== 1
+    ) {
+      throw new Error(`Expected corpus service export rename to update module export and resolve() callers. Got: ${JSON.stringify(corpusServiceMemberRename)}`)
+    }
+    const renamedCorpusServiceText = applyEditsToText(corpusServiceText, corpusServiceFileMemberEdits)
+    const renamedCorpusIndexMemberText = applyEditsToText(corpusIndexText, corpusIndexMemberEdits)
+    const renamedCorpusLargeMemberText = applyEditsToText(
+      fs.readFileSync(fixture.corpusLargeShelfFilePath, 'utf8'),
+      corpusLargeMemberEdits
+    )
+    if (
+      !renamedCorpusServiceText.includes('function listPublishedBooks(ctx)') ||
+      !renamedCorpusServiceText.includes('  listPublishedBooks,') ||
+      !renamedCorpusIndexMemberText.includes('libraryService.listPublishedBooks({ $app, limit: 12 })') ||
+      !renamedCorpusLargeMemberText.includes('stressService.listPublishedBooks({ $app, limit: 5 })')
+    ) {
+      throw new Error(
+        `Expected corpus service export rename to preserve real callers. Got: ${JSON.stringify({
+          renamedCorpusServiceText,
+          renamedCorpusIndexMemberText,
+          renamedCorpusLargeMemberText,
+        })}`
+      )
+    }
+
+    const corpusUsageMemberRenameEdits = corpusCustomFeatures.provideRename({
+      textDocument: { uri: corpusIndexUri },
+      position: corpusIndexDocument.positionAt(corpusIndexText.indexOf('listFeaturedBooks') + 2),
+      newName: 'listCuratedBooks',
+    })
+    const corpusUsageServiceEdits = Array.isArray(corpusUsageMemberRenameEdits)
+      ? corpusUsageMemberRenameEdits.filter(
+          (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.corpusLibraryServiceFilePath)
+        )
+      : []
+    const corpusUsageIndexEdits = Array.isArray(corpusUsageMemberRenameEdits)
+      ? corpusUsageMemberRenameEdits.filter(
+          (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.corpusLibraryIndexFilePath)
+        )
+      : []
+    const corpusUsageLargeEdits = Array.isArray(corpusUsageMemberRenameEdits)
+      ? corpusUsageMemberRenameEdits.filter(
+          (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.corpusLargeShelfFilePath)
+        )
+      : []
+    if (
+      corpusUsageServiceEdits.length < 2 ||
+      corpusUsageIndexEdits.length !== 1 ||
+      corpusUsageLargeEdits.length !== 1
+    ) {
+      throw new Error(`Expected corpus service method rename from EJS usage to update export and callers. Got: ${JSON.stringify(corpusUsageMemberRenameEdits)}`)
+    }
+    const renamedCorpusUsageIndexText = applyEditsToText(corpusIndexText, corpusUsageIndexEdits)
+    if (!renamedCorpusUsageIndexText.includes('libraryService.listCuratedBooks({ $app, limit: 12 })')) {
+      throw new Error(`Expected corpus service method rename from EJS usage to update the current caller. Got: ${renamedCorpusUsageIndexText}`)
+    }
+
+    const corpusParamDirectoryPath = path.dirname(fixture.corpusLibraryShowFilePath)
+    const renamedCorpusParamDirectoryPath = path.join(path.dirname(corpusParamDirectoryPath), '[volumeSlug]')
+    const corpusParamRenameEdits = corpusService.getFileRenameEdits(
+      corpusParamDirectoryPath,
+      renamedCorpusParamDirectoryPath
+    )
+    const renamedCorpusShowFilePath = path.join(renamedCorpusParamDirectoryPath, 'index.ejs')
+    const renamedCorpusEditFilePath = path.join(renamedCorpusParamDirectoryPath, 'edit.ejs')
+    const corpusShowParamEdits = corpusParamRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(renamedCorpusShowFilePath)
+    )
+    const corpusEditParamEdits = corpusParamRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(renamedCorpusEditFilePath)
+    )
+    if (corpusShowParamEdits.length !== 2 || corpusEditParamEdits.length !== 1) {
+      throw new Error(`Expected corpus dynamic route param rename to update show/edit params. Got: ${JSON.stringify(corpusParamRenameEdits)}`)
+    }
+    const renamedCorpusShowParamText = applyEditsToText(
+      fs.readFileSync(fixture.corpusLibraryShowFilePath, 'utf8'),
+      corpusShowParamEdits
+    )
+    const renamedCorpusEditParamText = applyEditsToText(
+      fs.readFileSync(fixture.corpusLibraryEditFilePath, 'utf8'),
+      corpusEditParamEdits
+    )
+    if (
+      !renamedCorpusShowParamText.includes('slug: params.volumeSlug') ||
+      !renamedCorpusShowParamText.includes('/library/<%= params.volumeSlug %>/edit') ||
+      renamedCorpusShowParamText.includes('params.bookSlug') ||
+      !renamedCorpusEditParamText.includes('slug: params.volumeSlug') ||
+      renamedCorpusEditParamText.includes('params.bookSlug')
+    ) {
+      throw new Error(
+        `Expected corpus dynamic route param rename to rewrite only params usage. Got: ${JSON.stringify({
+          renamedCorpusShowParamText,
+          renamedCorpusEditParamText,
+        })}`
+      )
+    }
+
+    const corpusXapiParamDirectoryPath = path.dirname(fixture.corpusFavoriteFilePath)
+    const renamedCorpusXapiParamDirectoryPath = path.join(path.dirname(corpusXapiParamDirectoryPath), '[volumeSlug]')
+    const corpusXapiParamRenameEdits = corpusService.getFileRenameEdits(
+      corpusXapiParamDirectoryPath,
+      renamedCorpusXapiParamDirectoryPath
+    )
+    const renamedCorpusFavoriteFilePath = path.join(renamedCorpusXapiParamDirectoryPath, 'favorite.ejs')
+    const renamedCorpusSaveFilePath = path.join(renamedCorpusXapiParamDirectoryPath, 'save.ejs')
+    const corpusFavoriteParamEdits = corpusXapiParamRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(renamedCorpusFavoriteFilePath)
+    )
+    const corpusSaveParamEdits = corpusXapiParamRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(renamedCorpusSaveFilePath)
+    )
+    if (corpusFavoriteParamEdits.length !== 2 || corpusSaveParamEdits.length !== 2) {
+      throw new Error(`Expected corpus xapi param directory rename to update favorite/save handlers. Got: ${JSON.stringify(corpusXapiParamRenameEdits)}`)
+    }
+    const renamedCorpusFavoriteParamText = applyEditsToText(
+      fs.readFileSync(fixture.corpusFavoriteFilePath, 'utf8'),
+      corpusFavoriteParamEdits
+    )
+    const renamedCorpusSaveParamText = applyEditsToText(
+      fs.readFileSync(fixture.corpusSaveFilePath, 'utf8'),
+      corpusSaveParamEdits
+    )
+    if (
+      !renamedCorpusFavoriteParamText.includes('slug: params.volumeSlug') ||
+      !renamedCorpusFavoriteParamText.includes("redirect('/library/' + params.volumeSlug") ||
+      renamedCorpusFavoriteParamText.includes('params.bookSlug') ||
+      !renamedCorpusSaveParamText.includes('slug: params.volumeSlug') ||
+      !renamedCorpusSaveParamText.includes("redirect('/library/' + params.volumeSlug") ||
+      renamedCorpusSaveParamText.includes('params.bookSlug')
+    ) {
+      throw new Error(
+        `Expected corpus xapi param rename to rewrite handler params. Got: ${JSON.stringify({
+          renamedCorpusFavoriteParamText,
+          renamedCorpusSaveParamText,
+        })}`
+      )
+    }
+
+    const renamedCorpusEditRouteFilePath = path.join(path.dirname(fixture.corpusLibraryEditFilePath), 'settings.ejs')
+    const corpusEditRouteRenameEdits = corpusService.getFileRenameEdits(
+      fixture.corpusLibraryEditFilePath,
+      renamedCorpusEditRouteFilePath
+    )
+    const corpusShowEditLinkEdits = corpusEditRouteRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.corpusLibraryShowFilePath)
+    )
+    if (corpusShowEditLinkEdits.length !== 1) {
+      throw new Error(`Expected corpus edit route rename to rewrite detail-page edit links. Got: ${JSON.stringify(corpusEditRouteRenameEdits)}`)
+    }
+    const renamedCorpusShowEditLinkText = applyEditsToText(
+      fs.readFileSync(fixture.corpusLibraryShowFilePath, 'utf8'),
+      corpusShowEditLinkEdits
+    )
+    if (!renamedCorpusShowEditLinkText.includes('/library/<%= params.bookSlug %>/settings')) {
+      throw new Error(`Expected corpus edit route rename to preserve dynamic segment and change suffix. Got: ${renamedCorpusShowEditLinkText}`)
+    }
+
+    const corpusPartialWatchCore = new PocketPagesLanguageCore()
+    const corpusPartialWatchDocument = createTestDocument(
+      fixture.corpusLibraryIndexFilePath,
+      'ejs',
+      1,
+      corpusIndexText
+    )
+    const corpusPartialWatchUri = corpusPartialWatchDocument.uri
+    corpusPartialWatchCore.openDocument({
+      uri: corpusPartialWatchUri,
+      languageId: 'ejs',
+      version: 1,
+      text: corpusIndexText,
+    })
+    const originalCorpusBookCardText = fs.readFileSync(fixture.corpusBookCardFilePath, 'utf8')
+    const getCorpusIncludeDiagnostics = () => serializeDiagnostics(
+      corpusPartialWatchCore.getDocumentContextByUri(corpusPartialWatchUri).service.getDiagnostics(
+        fixture.corpusLibraryIndexFilePath,
+        corpusIndexText
+      )
+    ).filter((entry) => String(entry.code).startsWith('pp-include-'))
+    const corpusIncludeDiagnosticsBefore = getCorpusIncludeDiagnostics()
+    if (corpusIncludeDiagnosticsBefore.length) {
+      throw new Error(`Expected corpus include callers to start valid. Got: ${JSON.stringify(corpusIncludeDiagnosticsBefore)}`)
+    }
+    try {
+      writeFile(fixture.corpusBookCardFilePath, originalCorpusBookCardText.replace(/returnPath/g, 'backHref'))
+      const corpusPartialChangeResult = corpusPartialWatchCore.handleWatchedFileChanges([
+        { filePath: fixture.corpusBookCardFilePath, type: 'change' },
+      ])
+      const corpusIncludeDiagnosticsAfter = getCorpusIncludeDiagnostics()
+      if (
+        !corpusPartialChangeResult.affectedUris.includes(corpusPartialWatchUri) ||
+        !corpusIncludeDiagnosticsAfter.some((entry) => entry.code === 'pp-include-missing-local' && entry.message.includes('backHref')) ||
+        !corpusIncludeDiagnosticsAfter.some((entry) => entry.code === 'pp-include-unknown-local' && entry.message.includes('returnPath'))
+      ) {
+        throw new Error(
+          `Expected corpus partial contract watcher change to refresh caller diagnostics. Got: ${JSON.stringify({
+            corpusPartialChangeResult,
+            corpusIncludeDiagnosticsAfter,
+          })}`
+        )
+      }
+      const corpusIncludeLocalCompletionText = `<script server>
+const recommendedBook = {}
+</script>
+<%- include('book-card.ejs', {  }) %>
+`
+      const corpusIncludeLocalCompletionOffset = corpusIncludeLocalCompletionText.indexOf('{  }') + 2
+      const corpusIncludeLocalCompletion = corpusPartialWatchCore
+        .getDocumentContextByUri(corpusPartialWatchUri)
+        .service.getCustomCompletionData(
+          fixture.corpusLibraryIndexFilePath,
+          corpusIncludeLocalCompletionText,
+          corpusIncludeLocalCompletionOffset
+        )
+      const corpusIncludeLocalNames = corpusIncludeLocalCompletion
+        ? corpusIncludeLocalCompletion.items.map((entry) => entry.label)
+        : []
+      if (!corpusIncludeLocalNames.includes('backHref') || corpusIncludeLocalNames.includes('returnPath')) {
+        throw new Error(`Expected corpus include local completion to reflect changed partial locals. Got: ${corpusIncludeLocalNames.join(', ')}`)
+      }
+    } finally {
+      writeFile(fixture.corpusBookCardFilePath, originalCorpusBookCardText)
+      corpusPartialWatchCore.handleWatchedFileChanges([
+        { filePath: fixture.corpusBookCardFilePath, type: 'change' },
+      ])
+    }
+
+    const corpusRouteWatchCore = new PocketPagesLanguageCore()
+    const corpusRouteWatchText = `<a href="/library/archive/all">Archive</a>\n`
+    const corpusRouteWatchDocument = createTestDocument(
+      fixture.corpusLibraryIndexFilePath,
+      'ejs',
+      1,
+      corpusRouteWatchText
+    )
+    const corpusRouteWatchUri = corpusRouteWatchDocument.uri
+    const corpusArchiveFilePath = path.join(path.dirname(fixture.corpusLibraryIndexFilePath), 'archive', 'all.ejs')
+    corpusRouteWatchCore.openDocument({
+      uri: corpusRouteWatchUri,
+      languageId: 'ejs',
+      version: 1,
+      text: corpusRouteWatchText,
+    })
+    const corpusRouteTargetBefore = corpusRouteWatchCore
+      .getDocumentContextByUri(corpusRouteWatchUri)
+      .service.getPathTargetInfo(
+        fixture.corpusLibraryIndexFilePath,
+        corpusRouteWatchText,
+        corpusRouteWatchText.indexOf('/library/archive/all') + 2
+      )
+    if (corpusRouteTargetBefore) {
+      throw new Error(`Expected corpus nested route target to be unresolved before file creation. Got: ${JSON.stringify(corpusRouteTargetBefore)}`)
+    }
+    writeFile(corpusArchiveFilePath, `<h1>Archive</h1>\n`)
+    let corpusArchiveCreated = false
+    try {
+      corpusArchiveCreated = true
+      const corpusArchiveCreateResult = corpusRouteWatchCore.handleWatchedFileChanges([
+        { filePath: corpusArchiveFilePath, type: 'create' },
+      ])
+      const corpusRouteWatchService = corpusRouteWatchCore.getDocumentContextByUri(corpusRouteWatchUri).service
+      const corpusRouteTargetAfter = corpusRouteWatchService.getPathTargetInfo(
+        fixture.corpusLibraryIndexFilePath,
+        corpusRouteWatchText,
+        corpusRouteWatchText.indexOf('/library/archive/all') + 2
+      )
+      if (
+        !corpusArchiveCreateResult.affectedUris.includes(corpusRouteWatchUri) ||
+        !corpusRouteTargetAfter ||
+        normalizeFilePath(corpusRouteTargetAfter.targetFilePath) !== normalizeFilePath(corpusArchiveFilePath)
+      ) {
+        throw new Error(
+          `Expected corpus nested route creation to refresh path targets. Got: ${JSON.stringify({
+            corpusArchiveCreateResult,
+            corpusRouteTargetAfter,
+          })}`
+        )
+      }
+      const corpusRouteCompletionText = `<a href="/library/archive/al"></a>\n`
+      const corpusRouteCompletion = corpusRouteWatchService.getCustomCompletionData(
+        fixture.corpusLibraryIndexFilePath,
+        corpusRouteCompletionText,
+        corpusRouteCompletionText.indexOf('/library/archive/al') + '/library/archive/al'.length
+      )
+      const corpusRouteCompletionNames = corpusRouteCompletion
+        ? corpusRouteCompletion.items.map((entry) => entry.label)
+        : []
+      if (!corpusRouteCompletionNames.includes('/library/archive/all')) {
+        throw new Error(`Expected corpus nested route creation to refresh route completion. Got: ${corpusRouteCompletionNames.join(', ')}`)
+      }
+    } finally {
+      fs.rmSync(corpusArchiveFilePath, { force: true })
+      const corpusArchiveDeleteResult = corpusRouteWatchCore.handleWatchedFileChanges([
+        { filePath: corpusArchiveFilePath, type: 'delete' },
+      ])
+      if (corpusArchiveCreated) {
+        const corpusRouteTargetAfterDelete = corpusRouteWatchCore
+          .getDocumentContextByUri(corpusRouteWatchUri)
+          .service.getPathTargetInfo(
+            fixture.corpusLibraryIndexFilePath,
+            corpusRouteWatchText,
+            corpusRouteWatchText.indexOf('/library/archive/all') + 2
+          )
+        if (
+          !corpusArchiveDeleteResult.affectedUris.includes(corpusRouteWatchUri) ||
+          corpusRouteTargetAfterDelete
+        ) {
+          throw new Error(
+            `Expected corpus nested route deletion to clear stale route targets. Got: ${JSON.stringify({
+              corpusArchiveDeleteResult,
+              corpusRouteTargetAfterDelete,
+            })}`
+          )
+        }
+      }
+    }
+
+    const corpusLargeCore = new PocketPagesLanguageCore()
+    const corpusLargeText = fs.readFileSync(fixture.corpusLargeShelfFilePath, 'utf8')
+    const corpusLargeDocument = createTestDocument(fixture.corpusLargeShelfFilePath, 'ejs', 1, corpusLargeText)
+    const corpusLargeUri = corpusLargeDocument.uri
+    corpusLargeCore.openDocument({
+      uri: corpusLargeUri,
+      languageId: 'ejs',
+      version: 1,
+      text: corpusLargeText,
+    })
+    const corpusLargeContext = createLspServiceSmokeContext(
+      corpusLargeCore,
+      new Map([[corpusLargeUri, corpusLargeDocument]])
+    )
+    corpusLargeContext.context.helpers.LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT = 1000
+    const corpusLargeDiagnosticsFeatures = createDiagnosticsFeatureService(corpusLargeContext.context)
+    const corpusLargeStartedAt = process.hrtime.bigint()
+    const corpusLargeReport = await corpusLargeDiagnosticsFeatures.providePullDiagnostics(
+      { textDocument: { uri: corpusLargeUri } },
+      { isCancellationRequested: false }
+    )
+    const corpusLargeElapsedMs = Number(process.hrtime.bigint() - corpusLargeStartedAt) / 1000000
+    const corpusLargeBlockingDiagnostics = serializeDiagnostics(corpusLargeReport && corpusLargeReport.items)
+      .filter((entry) =>
+        String(entry.code) === 'pp-schema-field' ||
+        String(entry.code) === 'pp-schema-collection' ||
+        /Cannot find name|Property .* does not exist/.test(entry.message)
+      )
+    if (
+      !corpusLargeReport ||
+      corpusLargeElapsedMs > 6000 ||
+      corpusLargeBlockingDiagnostics.length !== 0
+    ) {
+      throw new Error(
+        `Expected large corpus EJS diagnostics to stay bounded and clean. Got: ${JSON.stringify({
+          elapsedMs: corpusLargeElapsedMs.toFixed(1),
+          reportKind: corpusLargeReport && corpusLargeReport.kind,
+          itemCount: corpusLargeReport && Array.isArray(corpusLargeReport.items) ? corpusLargeReport.items.length : null,
+          blockingDiagnostics: corpusLargeBlockingDiagnostics,
+        })}`
+      )
+    }
+
+    const corpusWatchCore = new PocketPagesLanguageCore()
+    const corpusWatchText = `<script server>
+const watchedLibraryService = resolve('library-service')
+watchedLibraryService.
+</script>
+`
+    const corpusWatchDocument = createTestDocument(fixture.corpusLibraryIndexFilePath, 'ejs', 1, corpusWatchText)
+    const corpusWatchUri = corpusWatchDocument.uri
+    corpusWatchCore.openDocument({
+      uri: corpusWatchUri,
+      languageId: 'ejs',
+      version: 1,
+      text: corpusWatchText,
+    })
+    const getCorpusWatchCompletionNames = () => {
+      const currentCorpusWatchService = corpusWatchCore.getDocumentContextByUri(corpusWatchUri).service
+      const completion = currentCorpusWatchService.getCompletionData(
+        fixture.corpusLibraryIndexFilePath,
+        corpusWatchText,
+        corpusWatchText.indexOf('watchedLibraryService.') + 'watchedLibraryService.'.length
+      )
+      return completion ? completion.entries.map((entry) => entry.name) : []
+    }
+    const corpusWatchNamesBefore = getCorpusWatchCompletionNames()
+    if (
+      corpusWatchNamesBefore.includes('readRecentlyAddedBooks') ||
+      corpusWatchNamesBefore.includes('readSeasonalBooks')
+    ) {
+      throw new Error(`Expected corpus watch completion to start without temporary service exports. Got: ${corpusWatchNamesBefore.join(', ')}`)
+    }
+    const originalCorpusServiceText = fs.readFileSync(fixture.corpusLibraryServiceFilePath, 'utf8')
+    const corpusServiceWithRecent = originalCorpusServiceText
+      .replace(
+        '\nmodule.exports = {',
+        `
+/**
+ * @param {{ $app: pocketbase.PocketBase }} ctx
+ * @returns {Array<core.Record>}
+ */
+function readRecentlyAddedBooks(ctx) {
+  return ctx.$app.findRecordsByFilter('books', 'status = "published"', '-created', 6, 0)
+}
+
+module.exports = {`
+      )
+      .replace('  toBookForm,\n}', '  toBookForm,\n  readRecentlyAddedBooks,\n}')
+    const corpusServiceWithSeasonal = corpusServiceWithRecent
+      .replace(/readRecentlyAddedBooks/g, 'readSeasonalBooks')
+      .replace('-created', '-rating')
+    try {
+      writeFile(fixture.corpusLibraryServiceFilePath, corpusServiceWithRecent)
+      const corpusRecentWatchResult = corpusWatchCore.handleWatchedFileChanges([
+        { filePath: fixture.corpusLibraryServiceFilePath, type: 'change' },
+      ])
+      const corpusWatchNamesAfterRecent = getCorpusWatchCompletionNames()
+      if (
+        !corpusRecentWatchResult.affectedUris.includes(corpusWatchUri) ||
+        !corpusWatchNamesAfterRecent.includes('readRecentlyAddedBooks')
+      ) {
+        throw new Error(
+          `Expected corpus service watcher change to expose a newly exported method. Got: ${JSON.stringify({
+            corpusRecentWatchResult,
+            names: corpusWatchNamesAfterRecent,
+          })}`
+        )
+      }
+      writeFile(fixture.corpusLibraryServiceFilePath, corpusServiceWithSeasonal)
+      const corpusSeasonalWatchResult = corpusWatchCore.handleWatchedFileChanges([
+        { filePath: fixture.corpusLibraryServiceFilePath, type: 'change' },
+      ])
+      const corpusWatchNamesAfterSeasonal = getCorpusWatchCompletionNames()
+      if (
+        !corpusSeasonalWatchResult.affectedUris.includes(corpusWatchUri) ||
+        !corpusWatchNamesAfterSeasonal.includes('readSeasonalBooks') ||
+        corpusWatchNamesAfterSeasonal.includes('readRecentlyAddedBooks')
+      ) {
+        throw new Error(
+          `Expected consecutive corpus service watcher changes to drop stale exports. Got: ${JSON.stringify({
+            corpusSeasonalWatchResult,
+            names: corpusWatchNamesAfterSeasonal,
+          })}`
+        )
+      }
+    } finally {
+      writeFile(fixture.corpusLibraryServiceFilePath, originalCorpusServiceText)
+      corpusWatchCore.handleWatchedFileChanges([
+        { filePath: fixture.corpusLibraryServiceFilePath, type: 'change' },
+      ])
+    }
+
+    const originalCorpusSchemaText = fs.readFileSync(fixture.corpusSchemaFilePath, 'utf8')
+    const corpusSubtitleProbeText = `<script server>
+const schemaBooks = $app.findRecordsByFilter('books')
+const schemaBook = schemaBooks[0]
+schemaBook.get('subtitle')
+</script>
+`
+    const corpusIsbnProbeText = corpusSubtitleProbeText.replace("schemaBook.get('subtitle')", "schemaBook.get('isbn')")
+    const getCorpusSchemaFieldDiagnostics = (documentText) => serializeDiagnostics(
+      corpusWatchCore.getDocumentContextByUri(corpusWatchUri).service.getDiagnostics(fixture.corpusLibraryIndexFilePath, documentText)
+    ).filter((entry) => String(entry.code) === 'pp-schema-field')
+    const corpusSchemaDiagnosticsBefore = getCorpusSchemaFieldDiagnostics(corpusSubtitleProbeText)
+    if (!corpusSchemaDiagnosticsBefore.some((entry) => entry.message.includes('subtitle'))) {
+      throw new Error(`Expected corpus schema watcher probe to start with a missing subtitle field. Got: ${JSON.stringify(corpusSchemaDiagnosticsBefore)}`)
+    }
+    try {
+      writeCorpusBooklogSchema(fixture.corpusSchemaFilePath, [{ name: 'subtitle', type: 'text' }])
+      const corpusSubtitleWatchResult = corpusWatchCore.handleWatchedFileChanges([
+        { filePath: fixture.corpusSchemaFilePath, type: 'change' },
+      ])
+      const corpusSchemaDiagnosticsAfterSubtitle = getCorpusSchemaFieldDiagnostics(corpusSubtitleProbeText)
+      if (
+        !corpusSubtitleWatchResult.affectedUris.includes(corpusWatchUri) ||
+        corpusSchemaDiagnosticsAfterSubtitle.some((entry) => entry.message.includes('subtitle'))
+      ) {
+        throw new Error(
+          `Expected corpus schema watcher change to clear subtitle diagnostics. Got: ${JSON.stringify({
+            corpusSubtitleWatchResult,
+            diagnostics: corpusSchemaDiagnosticsAfterSubtitle,
+          })}`
+        )
+      }
+      writeCorpusBooklogSchema(fixture.corpusSchemaFilePath, [{ name: 'isbn', type: 'text' }])
+      const corpusIsbnWatchResult = corpusWatchCore.handleWatchedFileChanges([
+        { filePath: fixture.corpusSchemaFilePath, type: 'change' },
+      ])
+      const corpusSchemaDiagnosticsAfterIsbnForSubtitle = getCorpusSchemaFieldDiagnostics(corpusSubtitleProbeText)
+      const corpusSchemaDiagnosticsAfterIsbn = getCorpusSchemaFieldDiagnostics(corpusIsbnProbeText)
+      if (
+        !corpusIsbnWatchResult.affectedUris.includes(corpusWatchUri) ||
+        !corpusSchemaDiagnosticsAfterIsbnForSubtitle.some((entry) => entry.message.includes('subtitle')) ||
+        corpusSchemaDiagnosticsAfterIsbn.some((entry) => entry.message.includes('isbn'))
+      ) {
+        throw new Error(
+          `Expected consecutive corpus schema watcher changes to replace fields without stale cache. Got: ${JSON.stringify({
+            corpusIsbnWatchResult,
+            subtitleDiagnostics: corpusSchemaDiagnosticsAfterIsbnForSubtitle,
+            isbnDiagnostics: corpusSchemaDiagnosticsAfterIsbn,
+          })}`
+        )
+      }
+    } finally {
+      writeFile(fixture.corpusSchemaFilePath, originalCorpusSchemaText)
+      corpusWatchCore.handleWatchedFileChanges([
+        { filePath: fixture.corpusSchemaFilePath, type: 'change' },
+      ])
     }
 
     const completionGuardCore = new PocketPagesLanguageCore()

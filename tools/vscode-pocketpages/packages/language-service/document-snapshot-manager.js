@@ -245,6 +245,21 @@ class DocumentSnapshotManager {
     return this.diskFiles.delete(this.normalize(fileName));
   }
 
+  invalidateDiskFileState(fileName) {
+    const normalizedFileName = this.normalize(fileName);
+    const previous = this.diskFiles.get(normalizedFileName);
+    if (!previous) {
+      return false;
+    }
+
+    this.diskFiles.set(normalizedFileName, {
+      ...previous,
+      mtimeMs: -1,
+      size: -1,
+    });
+    return true;
+  }
+
   clearDiskFileStates() {
     this.diskFiles.clear();
   }
