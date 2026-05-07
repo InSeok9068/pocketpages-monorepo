@@ -100,8 +100,9 @@ jobs:
           port: 22
           script: |
             cd ./Docker-Compose
+            git pull --ff-only
             docker compose pull ${{ steps.svc.outputs.compose_service }}
-            docker compose up -d --no-deps --force-recreate ${{ steps.svc.outputs.compose_service }}
+            docker compose up -d --no-deps --force-recreate --wait ${{ steps.svc.outputs.compose_service }}
 
       - name: Send Build Success Message
         uses: appleboy/telegram-action@master
