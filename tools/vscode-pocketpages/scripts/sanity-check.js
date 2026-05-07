@@ -864,7 +864,7 @@ function assertClientContracts(repoRoot) {
     throw new Error('Expected package.json to contribute the Extract Partial command and context menu entry.')
   }
   if (!JSON.stringify(packageJson.contributes || {}).includes('pocketpagesServerScript.explainCurrentRoute')) {
-    throw new Error('Expected package.json to contribute the Explain Current Route command.')
+    throw new Error('Expected package.json to contribute the Explain Current File command.')
   }
   assertMatches(
     clientSource,

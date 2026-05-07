@@ -879,7 +879,7 @@ function formatRouteExplanation(result) {
   }
 
   const lines = [
-    "PocketPages Route Explanation",
+    "PocketPages File Explanation",
     "",
     `File: ${result.appRelativePath || formatExplainRelativePath(result.filePath) || result.filePath}`,
     `Kind: ${result.sourceKind || "file"}`,

@@ -25,27 +25,27 @@
     "commands": [
       {
         "command": "pocketpagesServerScript.probeCurrentFile",
-        "title": "PocketPages: Probe Current EJS File"
+        "title": "PocketPages: Inspect Current File"
       },
       {
         "command": "pocketpagesServerScript.refreshDiagnostics",
-        "title": "PocketPages: Refresh Server Script Diagnostics"
+        "title": "PocketPages: Refresh Diagnostics"
       },
       {
         "command": "pocketpagesServerScript.reloadCaches",
-        "title": "PocketPages: Reload Caches"
+        "title": "PocketPages: Reload PocketPages Cache"
       },
       {
         "command": "pocketpagesServerScript.allFileReferences",
-        "title": "PocketPages: All File References"
+        "title": "PocketPages: Find File References"
       },
       {
         "command": "pocketpagesServerScript.explainCurrentRoute",
-        "title": "PocketPages: Explain Current Route"
+        "title": "PocketPages: Explain Current File"
       },
       {
         "command": "pocketpagesServerScript.extractPartial",
-        "title": "PocketPages: Extract Partial"
+        "title": "PocketPages: Extract Selection to Partial"
       },
       {
         "command": "pocketpagesServerScript.copyDebugBundle",
