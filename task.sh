@@ -864,7 +864,7 @@ deploy_target() {
   ssh_target="${DEPLOY_USERNAME}@${DEPLOY_HOST}"
 
   cleanup_deploy_temp() {
-    rm -rf "$temp_dir"
+    [[ -n "${temp_dir:-}" ]] && rm -rf "$temp_dir"
   }
   trap cleanup_deploy_temp EXIT
 

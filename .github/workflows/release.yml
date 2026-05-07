@@ -103,9 +103,11 @@ jobs:
             git pull --ff-only
             docker compose pull ${{ steps.svc.outputs.compose_service }}
             docker compose stop ${{ steps.svc.outputs.compose_service }}
+            deploy_owner="$(id -u):$(id -g)"
             docker compose run --rm --no-deps --entrypoint sh ${{ steps.svc.outputs.compose_service }} -c '
               set -eu
               service="$1"
+              deploy_owner="$2"
               hooks_dir="/app/apps/${service}/pb_hooks"
 
               if [ ! -d /opt/defaults/pb_hooks ]; then
@@ -114,11 +116,10 @@ jobs:
               fi
 
               mkdir -p "$hooks_dir"
-              hooks_owner="$(stat -c "%u:%g" "$hooks_dir")"
               find "$hooks_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
               cp -a /opt/defaults/pb_hooks/. "$hooks_dir"/
-              chown -R "$hooks_owner" "$hooks_dir"
-            ' -- ${{ steps.svc.outputs.service }}
+              chown -R "$deploy_owner" "$hooks_dir"
+            ' -- ${{ steps.svc.outputs.service }} "$deploy_owner"
             docker compose up -d --no-deps --force-recreate --wait ${{ steps.svc.outputs.compose_service }}
 
       - name: Send Build Success
