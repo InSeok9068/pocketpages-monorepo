@@ -62,6 +62,7 @@ jobs:
           fi
 
           echo "service=${SERVICE}" >> "$GITHUB_OUTPUT"
+          echo "compose_service=${SERVICE}-pocketpages" >> "$GITHUB_OUTPUT"
           echo "app_dir=${APP_DIR}" >> "$GITHUB_OUTPUT"
           echo "dockerfile=${DOCKERFILE}" >> "$GITHUB_OUTPUT"
           echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${SERVICE}" >> "$GITHUB_OUTPUT"
@@ -99,8 +100,8 @@ jobs:
           port: 22
           script: |
             cd ./Docker-Compose
-            docker compose pull ${{ steps.svc.outputs.service }}
-            docker compose up -d --no-deps --force-recreate ${{ steps.svc.outputs.service }}
+            docker compose pull ${{ steps.svc.outputs.compose_service }}
+            docker compose up -d --no-deps --force-recreate ${{ steps.svc.outputs.compose_service }}
 
       - name: Send Build Success Message
         uses: appleboy/telegram-action@master
@@ -114,7 +115,7 @@ jobs:
 
             Branch: ${{ github.ref_name }}
 
-            Service: ${{ steps.svc.outputs.service }}
+            Service: ${{ steps.svc.outputs.compose_service }}
 
             Commit message: ${{ steps.prep_commit.outputs.commit_message }}
 
@@ -132,7 +133,7 @@ jobs:
 
             Branch: ${{ github.ref_name }}
 
-            Service: ${{ steps.svc.outputs.service }}
+            Service: ${{ steps.svc.outputs.compose_service }}
 
             Commit message: ${{ steps.prep_commit.outputs.commit_message }}
 
