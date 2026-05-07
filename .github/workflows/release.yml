@@ -114,8 +114,10 @@ jobs:
               fi
 
               mkdir -p "$hooks_dir"
+              hooks_owner="$(stat -c "%u:%g" "$hooks_dir")"
               find "$hooks_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
               cp -a /opt/defaults/pb_hooks/. "$hooks_dir"/
+              chown -R "$hooks_owner" "$hooks_dir"
             ' -- ${{ steps.svc.outputs.service }}
             docker compose up -d --no-deps --force-recreate --wait ${{ steps.svc.outputs.compose_service }}
 
