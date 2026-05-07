@@ -854,6 +854,15 @@ class PocketPagesLanguageCore {
     };
   }
 
+  getCurrentRouteExplanation(filePath) {
+    const context = this.getDocumentContextByFilePath(filePath);
+    if (!context || !context.service || typeof context.service.getCurrentRouteExplanation !== "function") {
+      return null;
+    }
+
+    return context.service.getCurrentRouteExplanation(filePath, context.documentText);
+  }
+
   getFileRenameEdits(oldFilePath, newFilePath) {
     const service = this.manager.getServiceForFile(oldFilePath) || this.manager.getServiceForFile(newFilePath);
     if (!service) {

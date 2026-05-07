@@ -1978,6 +1978,10 @@ connection.onRequest(REQUESTS.allFileReferences, ({ uri }) => {
   return maintenanceFeatureService.provideAllFileReferences({ uri });
 });
 
+connection.onRequest(REQUESTS.explainCurrentRoute, ({ uri }) => {
+  return maintenanceFeatureService.provideExplainCurrentRoute({ uri });
+});
+
 connection.onRequest(REQUESTS.fileRenameEdits, ({ oldUri, newUri }) => {
   return maintenanceFeatureService.provideFileRenameEdits({ oldUri, newUri });
 });

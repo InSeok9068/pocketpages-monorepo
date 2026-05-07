@@ -5,6 +5,7 @@ const REQUESTS = {
   refreshDiagnostics: "pocketpages/refreshDiagnostics",
   reloadCaches: "pocketpages/reloadCaches",
   allFileReferences: "pocketpages/allFileReferences",
+  explainCurrentRoute: "pocketpages/explainCurrentRoute",
   fileRenameEdits: "pocketpages/fileRenameEdits",
   extractPartialEdits: "pocketpages/extractPartialEdits",
 };

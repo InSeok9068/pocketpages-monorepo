@@ -40,6 +40,10 @@
         "title": "PocketPages: All File References"
       },
       {
+        "command": "pocketpagesServerScript.explainCurrentRoute",
+        "title": "PocketPages: Explain Current Route"
+      },
+      {
         "command": "pocketpagesServerScript.extractPartial",
         "title": "PocketPages: Extract Partial"
       },

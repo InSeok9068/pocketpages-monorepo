@@ -855,8 +855,16 @@ function assertClientContracts(repoRoot) {
     /activeClient\.sendRequest\(REQUESTS\.extractPartialEdits, \{/,
     'Expected the PocketPages client to request Extract Partial edits through the LSP.'
   )
+  assertMatches(
+    clientSource,
+    /activeClient\.sendRequest\(REQUESTS\.explainCurrentRoute, \{/,
+    'Expected the PocketPages client to request current route explanations through the LSP.'
+  )
   if (!JSON.stringify(packageJson.contributes || {}).includes('pocketpagesServerScript.extractPartial')) {
     throw new Error('Expected package.json to contribute the Extract Partial command and context menu entry.')
+  }
+  if (!JSON.stringify(packageJson.contributes || {}).includes('pocketpagesServerScript.explainCurrentRoute')) {
+    throw new Error('Expected package.json to contribute the Explain Current Route command.')
   }
   assertMatches(
     clientSource,
@@ -13596,6 +13604,61 @@ const authState = resolve('auth-service')
       PocketPagesLanguageCore.prototype.reloadCachesForAppRoot = originalPluginReloadCachesForAppRoot
       PocketPagesLanguageCore.prototype.closeDocument = originalPluginCloseDocument
       PocketPagesLanguageCore.prototype.updateDocument = originalPluginUpdateDocument
+    }
+
+    const boardShowExplanation = service.getCurrentRouteExplanation(
+      fixture.boardShowFilePath,
+      fs.readFileSync(fixture.boardShowFilePath, 'utf8')
+    )
+    if (
+      !boardShowExplanation ||
+      !boardShowExplanation.route ||
+      boardShowExplanation.route.path !== '/boards/[boardSlug]' ||
+      boardShowExplanation.route.method !== 'PAGE' ||
+      !boardShowExplanation.params.includes('boardSlug')
+    ) {
+      throw new Error(`Expected Explain Current Route to describe dynamic PAGE routes. Got: ${JSON.stringify(boardShowExplanation)}`)
+    }
+
+    const feedbackPostExplanation = service.getCurrentRouteExplanation(
+      fixture.feedbackPostFilePath,
+      fs.readFileSync(fixture.feedbackPostFilePath, 'utf8')
+    )
+    if (
+      !feedbackPostExplanation ||
+      !feedbackPostExplanation.route ||
+      feedbackPostExplanation.route.path !== '/feedback' ||
+      feedbackPostExplanation.route.method !== 'POST' ||
+      !feedbackPostExplanation.loaders.some((entry) => entry.fileName === '+post.js' && entry.method === 'POST')
+    ) {
+      throw new Error(`Expected Explain Current Route to describe method route files. Got: ${JSON.stringify(feedbackPostExplanation)}`)
+    }
+
+    const feedbackLoadExplanation = service.getCurrentRouteExplanation(
+      fixture.feedbackLoadFilePath,
+      fs.readFileSync(fixture.feedbackLoadFilePath, 'utf8')
+    )
+    if (
+      !feedbackLoadExplanation ||
+      feedbackLoadExplanation.sourceKind !== 'loader' ||
+      !feedbackLoadExplanation.route ||
+      feedbackLoadExplanation.route.path !== '/feedback' ||
+      !feedbackLoadExplanation.loaders.some((entry) => entry.fileName === '+load.js')
+    ) {
+      throw new Error(`Expected Explain Current Route to describe loader files. Got: ${JSON.stringify(feedbackLoadExplanation)}`)
+    }
+
+    const flashAlertExplanation = service.getCurrentRouteExplanation(
+      fixture.flashAlertFilePath,
+      fs.readFileSync(fixture.flashAlertFilePath, 'utf8')
+    )
+    if (
+      !flashAlertExplanation ||
+      flashAlertExplanation.sourceKind !== 'private-partial' ||
+      flashAlertExplanation.route !== null ||
+      flashAlertExplanation.references.count < 1
+    ) {
+      throw new Error(`Expected Explain Current Route to summarize private partial callers. Got: ${JSON.stringify(flashAlertExplanation)}`)
     }
 
     if (!routeDocumentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/(site)/index.ejs'))) {

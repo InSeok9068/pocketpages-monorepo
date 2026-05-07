@@ -843,6 +843,107 @@ function buildDebugBundle({ context, probeResult, probeError }) {
   ].join("\n");
 }
 
+function formatExplainRouteMethod(method) {
+  return method === "PAGE" ? "GET" : String(method || "UNKNOWN");
+}
+
+function formatExplainRelativePath(filePath) {
+  return filePath ? getRelativePathLabel(filePath) : null;
+}
+
+function formatExplainFileList(filePaths) {
+  const entries = (Array.isArray(filePaths) ? filePaths : [])
+    .map((filePath) => formatExplainRelativePath(filePath))
+    .filter(Boolean);
+  return entries.length ? entries.join(" -> ") : "(none)";
+}
+
+function formatExplainLoaderList(loaders) {
+  const entries = (Array.isArray(loaders) ? loaders : [])
+    .map((loader) => {
+      const label = loader && loader.fileName ? loader.fileName : null;
+      if (!label) {
+        return null;
+      }
+      return loader.method ? `${label} (${loader.method})` : label;
+    })
+    .filter(Boolean);
+  return entries.length ? entries.join(", ") : "(none)";
+}
+
+function formatRouteExplanation(result) {
+  if (!result || result.ok === false) {
+    return result && result.message
+      ? result.message
+      : "The current file is not a PocketPages route, partial, module, or asset target.";
+  }
+
+  const lines = [
+    "PocketPages Route Explanation",
+    "",
+    `File: ${result.appRelativePath || formatExplainRelativePath(result.filePath) || result.filePath}`,
+    `Kind: ${result.sourceKind || "file"}`,
+    "",
+    "Route",
+  ];
+
+  if (result.route) {
+    const routeLabel = `${formatExplainRouteMethod(result.route.method)} ${result.route.path}`;
+    lines.push(`  ${routeLabel}${result.route.method === "PAGE" ? " (page)" : ""}`);
+    lines.push(`  Static: ${result.route.isStaticRoute ? "yes" : "no"}`);
+  } else {
+    lines.push("  (not a routable file)");
+  }
+
+  const params = Array.isArray(result.params) ? result.params : [];
+  lines.push(`  Params: ${params.length ? params.join(", ") : "(none)"}`);
+  lines.push("");
+  lines.push("Execution");
+  lines.push(`  Layout chain: ${formatExplainFileList(result.layoutChain)}`);
+  lines.push(`  Middleware chain: ${formatExplainFileList(result.middlewareChain)}`);
+  lines.push(`  Loaders: ${formatExplainLoaderList(result.loaders)}`);
+  lines.push("");
+  lines.push("References");
+  lines.push(`  Inbound callers: ${result.references && result.references.count ? result.references.count : 0}`);
+  if (result.references && result.references.queryKind) {
+    lines.push(`  Inbound kind: ${result.references.queryKind}`);
+  }
+  lines.push(`  Route links: ${result.outgoing && result.outgoing.routeLinks ? result.outgoing.routeLinks : 0}`);
+  lines.push(`  Includes: ${result.outgoing && result.outgoing.includes ? result.outgoing.includes : 0}`);
+  lines.push(`  Resolves: ${result.outgoing && result.outgoing.resolves ? result.outgoing.resolves : 0}`);
+  lines.push(`  Assets: ${result.outgoing && result.outgoing.assets ? result.outgoing.assets : 0}`);
+
+  return lines.join("\n");
+}
+
+async function explainCurrentRoute(context) {
+  const activeClient = await ensureLspStarted(context);
+  if (!activeClient) {
+    return;
+  }
+
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || !editor.document) {
+    vscode.window.showWarningMessage("No active editor.");
+    return;
+  }
+
+  const result = await activeClient.sendRequest(REQUESTS.explainCurrentRoute, {
+    uri: editor.document.uri.toString(),
+  });
+  const text = formatRouteExplanation(result);
+  outputChannel.appendLine("");
+  outputChannel.appendLine(text);
+  outputChannel.show(true);
+  clientLogger.info("command", "explain-current-route", {
+    file: editor.document.uri.scheme === "file" ? getRelativePathLabel(editor.document.uri.fsPath) : editor.document.uri.toString(),
+    route: result && result.route ? result.route.path : null,
+    method: result && result.route ? result.route.method : null,
+    layouts: result && Array.isArray(result.layoutChain) ? result.layoutChain.length : 0,
+    middleware: result && Array.isArray(result.middlewareChain) ? result.middlewareChain.length : 0,
+  });
+}
+
 async function copyDebugBundle(context) {
   const activeClient = await ensureLspStarted(context);
   const editor = vscode.window.activeTextEditor;
@@ -1155,6 +1256,9 @@ async function activate(context) {
       }
 
       await showFileReferences({ logger: clientLogger, fileUri });
+    }),
+    vscode.commands.registerCommand("pocketpagesServerScript.explainCurrentRoute", async () => {
+      await explainCurrentRoute(context);
     }),
     vscode.commands.registerCommand("pocketpagesServerScript.extractPartial", async () => {
       await extractPartialFromSelection(context);

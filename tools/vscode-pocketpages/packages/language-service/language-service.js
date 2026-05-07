@@ -7028,6 +7028,140 @@ class ProjectLanguageService {
     return completionFeatureHandlers.getCustomSignatureHelp(this, filePath, documentText, offset);
   }
 
+  getExistingRoutePeerFiles(routeDir) {
+    const scriptExtensions = [".js", ".cjs", ".mjs"];
+    const candidates = [
+      { kind: "load", method: null, basename: "+load" },
+      { kind: "method", method: "GET", basename: "+get" },
+      { kind: "method", method: "POST", basename: "+post" },
+      { kind: "method", method: "PUT", basename: "+put" },
+      { kind: "method", method: "PATCH", basename: "+patch" },
+      { kind: "method", method: "DELETE", basename: "+delete" },
+    ].flatMap((candidate) =>
+      scriptExtensions.map((extension) => ({
+        ...candidate,
+        fileName: `${candidate.basename}${extension}`,
+      }))
+    );
+
+    return candidates
+      .map((candidate) => ({
+        kind: candidate.kind,
+        method: candidate.method,
+        fileName: candidate.fileName,
+        filePath: normalizePath(path.join(routeDir, candidate.fileName)),
+      }))
+      .filter((candidate) => fileExists(candidate.filePath));
+  }
+
+  getAncestorSpecialFileChain(routeDir, fileNames) {
+    const pagesRoot = this.projectIndex.pagesRoot;
+    const candidateFileNames = Array.isArray(fileNames) ? fileNames : [fileNames];
+    const chain = [];
+    let currentDir = normalizePath(routeDir);
+
+    while (currentDir === pagesRoot || currentDir.startsWith(`${pagesRoot}/`)) {
+      for (const fileName of candidateFileNames) {
+        const candidatePath = normalizePath(path.join(currentDir, fileName));
+        if (fileExists(candidatePath)) {
+          chain.unshift(candidatePath);
+        }
+      }
+
+      if (currentDir === pagesRoot) {
+        break;
+      }
+      currentDir = normalizePath(path.dirname(currentDir));
+    }
+
+    return chain;
+  }
+
+  getRouteExplanationDescriptor(filePath) {
+    const normalizedFilePath = normalizePath(filePath);
+    const directDescriptor = this.projectIndex.getRouteDescriptorByFilePath(normalizedFilePath) ||
+      this.projectIndex.describeRouteFilePath(normalizedFilePath);
+    if (directDescriptor) {
+      return {
+        descriptor: directDescriptor,
+        sourceKind: "route",
+        routeDir: normalizePath(path.dirname(normalizedFilePath)),
+      };
+    }
+
+    const basename = getScriptFileBasename(normalizedFilePath);
+    if (basename === "+load" || basename === "+middleware") {
+      const routeDir = normalizePath(path.dirname(normalizedFilePath));
+      return {
+        descriptor: this.projectIndex.describeRouteFilePath(path.join(routeDir, "index.ejs")),
+        sourceKind: basename === "+load" ? "loader" : "middleware",
+        routeDir,
+      };
+    }
+
+    return {
+      descriptor: null,
+      sourceKind: isPrivatePagesFile(normalizedFilePath)
+        ? isEjsFile(normalizedFilePath) ? "private-partial" : "private-module"
+        : "file",
+      routeDir: normalizePath(path.dirname(normalizedFilePath)),
+    };
+  }
+
+  getCurrentRouteExplanation(filePath, documentText = null) {
+    const normalizedFilePath = normalizePath(filePath);
+    const appRelativePath = toPortablePath(path.relative(this.appRoot, normalizedFilePath));
+    const pagesRelativePath = toPortablePath(path.relative(this.projectIndex.pagesRoot, normalizedFilePath));
+    const explanationDescriptor = this.getRouteExplanationDescriptor(normalizedFilePath);
+    const descriptor = explanationDescriptor.descriptor;
+    const sourceText =
+      typeof documentText === "string"
+        ? documentText
+        : this.getCallerDocumentText(normalizedFilePath);
+    const pathContexts = collectPathContexts(sourceText, { filePath: normalizedFilePath });
+    const referenceQuery = this.getFileReferenceQuery(normalizedFilePath);
+    const references = referenceQuery
+      ? this.getFileReferenceTargets(normalizedFilePath, sourceText, { includeDeclaration: false }) || []
+      : [];
+    const routeParamFilePath = descriptor && descriptor.filePath
+      ? descriptor.filePath
+      : normalizedFilePath;
+
+    return {
+      ok: true,
+      filePath: normalizedFilePath,
+      appRoot: this.appRoot,
+      appRelativePath,
+      pagesRelativePath,
+      sourceKind: explanationDescriptor.sourceKind,
+      route: descriptor
+        ? {
+            method: normalizeRouteMethod(descriptor.method),
+            path: descriptor.routePath,
+            filePath: descriptor.filePath,
+            isStaticRoute: !!descriptor.isStaticRoute,
+          }
+        : null,
+      params: this.projectIndex.getRouteParamEntries(routeParamFilePath).map((entry) => entry.name),
+      layoutChain: this.getAncestorSpecialFileChain(explanationDescriptor.routeDir, "+layout.ejs"),
+      middlewareChain: this.getAncestorSpecialFileChain(
+        explanationDescriptor.routeDir,
+        ["+middleware.js", "+middleware.cjs", "+middleware.mjs"]
+      ),
+      loaders: this.getExistingRoutePeerFiles(explanationDescriptor.routeDir),
+      references: {
+        queryKind: referenceQuery ? referenceQuery.kind : null,
+        count: references.length,
+      },
+      outgoing: {
+        routeLinks: pathContexts.filter((context) => context.kind === "route-path").length,
+        includes: pathContexts.filter((context) => context.kind === "include-path").length,
+        resolves: pathContexts.filter((context) => context.kind === "resolve-path").length,
+        assets: pathContexts.filter((context) => context.kind === "asset-path").length,
+      },
+    };
+  }
+
   getCodeLensEntries(filePath, documentText) {
     const entries = [];
     const routeDescriptor = this.projectIndex.getRouteDescriptorByFilePath(filePath);

@@ -115,6 +115,30 @@ function createMaintenanceFeatureService(context) {
       return result;
     },
 
+    provideExplainCurrentRoute({ uri }) {
+      const req = requestId("explain");
+      const filePath = uriToFilePath(uri);
+      const startedAt = process.hrtime.bigint();
+      const result = core.getCurrentRouteExplanation(filePath);
+      const totalMs = elapsedMilliseconds(startedAt);
+      logServer("perf", "command", "explain-current-route", {
+        req,
+        case: result ? "route-explanation" : "no-context",
+        file: getRelativePathLabel(filePath),
+        route: result && result.route ? result.route.path : null,
+        method: result && result.route ? result.route.method : null,
+        layouts: result && Array.isArray(result.layoutChain) ? result.layoutChain.length : 0,
+        middleware: result && Array.isArray(result.middlewareChain) ? result.middlewareChain.length : 0,
+        totalMs: totalMs.toFixed(1),
+        perf: performanceBucket("structure", totalMs),
+      });
+      return result || {
+        ok: false,
+        filePath,
+        message: "The current file is not inside a PocketPages app.",
+      };
+    },
+
     provideFileRenameEdits({ oldUri, newUri }) {
       const req = requestId("fren");
       const oldFilePath = uriToFilePath(oldUri);
