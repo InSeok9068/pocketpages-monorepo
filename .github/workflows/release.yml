@@ -104,7 +104,7 @@ jobs:
             docker compose pull ${{ steps.svc.outputs.compose_service }}
             docker compose up -d --no-deps --force-recreate --wait ${{ steps.svc.outputs.compose_service }}
 
-      - name: Send Build Success Message
+      - name: Send Build Success
         uses: appleboy/telegram-action@master
         if: success()
         with:
@@ -112,17 +112,13 @@ jobs:
           token: ${{ secrets.TELEGRAM_TOKEN }}
           format: markdown
           message: |
-            Status: **Success**
+            ✅ **Build Success**
+            *Branch:* `${{ github.ref_name }}`
+            *Service:* `${{ steps.svc.outputs.compose_service }}`
+            *Commit:* `${{ steps.prep_commit.outputs.commit_message }}`
+            [View Commit](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
 
-            Branch: ${{ github.ref_name }}
-
-            Service: ${{ steps.svc.outputs.compose_service }}
-
-            Commit message: ${{ steps.prep_commit.outputs.commit_message }}
-
-            [See changes](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
-
-      - name: Send Build Failure Message
+      - name: Send Build Failure
         uses: appleboy/telegram-action@master
         if: failure()
         with:
@@ -130,12 +126,8 @@ jobs:
           token: ${{ secrets.TELEGRAM_TOKEN }}
           format: markdown
           message: |
-            Status: **Failure**
-
-            Branch: ${{ github.ref_name }}
-
-            Service: ${{ steps.svc.outputs.compose_service }}
-
-            Commit message: ${{ steps.prep_commit.outputs.commit_message }}
-
-            [See workflow](https://github.com/${{ github.repository }}/actions)
+            ❌ **Build Failed**
+            *Branch:* `${{ github.ref_name }}`
+            *Service:* `${{ steps.svc.outputs.compose_service }}`
+            *Commit:* `${{ steps.prep_commit.outputs.commit_message }}`
+            [View Logs](https://github.com/${{ github.repository }}/actions)
