@@ -102,6 +102,21 @@ jobs:
             cd ./Docker-Compose
             git pull --ff-only
             docker compose pull ${{ steps.svc.outputs.compose_service }}
+            docker compose stop ${{ steps.svc.outputs.compose_service }}
+            docker compose run --rm --no-deps --entrypoint sh ${{ steps.svc.outputs.compose_service }} -c '
+              set -eu
+              service="$1"
+              hooks_dir="/app/apps/${service}/pb_hooks"
+
+              if [ ! -d /opt/defaults/pb_hooks ]; then
+                echo "Baked hooks directory not found: /opt/defaults/pb_hooks" >&2
+                exit 1
+              fi
+
+              mkdir -p "$hooks_dir"
+              find "$hooks_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+              cp -a /opt/defaults/pb_hooks/. "$hooks_dir"/
+            ' -- ${{ steps.svc.outputs.service }}
             docker compose up -d --no-deps --force-recreate --wait ${{ steps.svc.outputs.compose_service }}
 
       - name: Send Build Success
