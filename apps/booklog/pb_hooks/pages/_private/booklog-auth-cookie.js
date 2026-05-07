@@ -1,20 +1,7 @@
 const PocketBase = require('pocketbase-js-sdk-jsvm')
 
 const AUTH_COOKIE_NAME = 'pb_auth'
-const DEFAULT_AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
-
-/**
- * 환경 변수 값을 양의 정수 초 값으로 읽습니다.
- * @param {(key: string) => string} envGetter 환경 변수 조회 함수입니다.
- * @param {string} key 읽을 환경 변수 이름입니다.
- * @param {number} fallback 유효한 값이 없을 때 쓸 기본 초 값입니다.
- * @returns {number} 사용할 초 값입니다.
- */
-function readPositiveIntegerEnv(envGetter, key, fallback) {
-  var value = parseInt(String(envGetter(key) || '').trim(), 10)
-  if (!value || value < 1) return fallback
-  return value
-}
+const AUTH_COOKIE_EXPIRES_AT = new Date(Date.UTC(2999, 11, 31, 23, 59, 59))
 
 /**
  * PocketBase base URL을 읽습니다.
@@ -28,13 +15,13 @@ function readPocketBaseHost(envGetter) {
 /**
  * 로그인 쿠키 설정값을 만듭니다.
  * @param {(key: string) => string} envGetter 환경 변수 조회 함수입니다.
- * @returns {{ maxAgeSeconds: number, secure: boolean }} 쿠키 설정입니다.
+ * @returns {{ expiresAt: Date, secure: boolean }} 쿠키 설정입니다.
  */
 function readAuthCookieConfig(envGetter) {
   var appEnv = String(envGetter('APP_ENV') || 'development').trim()
 
   return {
-    maxAgeSeconds: readPositiveIntegerEnv(envGetter, 'BOOKLOG_AUTH_COOKIE_MAX_AGE_SECONDS', DEFAULT_AUTH_COOKIE_MAX_AGE_SECONDS),
+    expiresAt: new Date(AUTH_COOKIE_EXPIRES_AT.getTime()),
     secure: appEnv === 'production',
   }
 }
@@ -56,11 +43,13 @@ function toPlainObject(record) {
  */
 function createPersistedCookieOptions(envGetter) {
   var cookieConfig = readAuthCookieConfig(envGetter)
+  var maxAgeSeconds = Math.floor((cookieConfig.expiresAt.getTime() - Date.now()) / 1000)
+  if (maxAgeSeconds < 1) maxAgeSeconds = 1
 
   return {
     path: '/',
-    maxAge: cookieConfig.maxAgeSeconds,
-    expires: new Date(Date.now() + cookieConfig.maxAgeSeconds * 1000),
+    maxAge: maxAgeSeconds,
+    expires: cookieConfig.expiresAt,
     httpOnly: true,
     sameSite: 'lax',
     secure: cookieConfig.secure,
