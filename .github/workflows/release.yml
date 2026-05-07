@@ -25,6 +25,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare commit message
+        id: prep_commit
+        shell: bash
+        run: |
+          {
+            echo "commit_message<<EOF"
+            git log -1 --pretty=%B | head -n 1 | cut -c -200
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Resolve service from branch
         id: svc
         shell: bash
@@ -79,3 +89,51 @@ jobs:
           tags: |
             ${{ steps.svc.outputs.image }}:${{ github.sha }}
             ${{ steps.svc.outputs.image }}:release
+
+      - name: Restart Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.REMOTE_IP }}
+          username: ${{ secrets.REMOTE_ID }}
+          key: ${{ secrets.REMOTE_SSH_KEY }}
+          port: 22
+          script: |
+            cd ./Docker-Compose
+            docker compose pull ${{ steps.svc.outputs.service }}
+            docker compose up -d --no-deps --force-recreate ${{ steps.svc.outputs.service }}
+
+      - name: Send Build Success Message
+        uses: appleboy/telegram-action@master
+        if: success()
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            Status: **Success**
+
+            Branch: ${{ github.ref_name }}
+
+            Service: ${{ steps.svc.outputs.service }}
+
+            Commit message: ${{ steps.prep_commit.outputs.commit_message }}
+
+            [See changes](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+
+      - name: Send Build Failure Message
+        uses: appleboy/telegram-action@master
+        if: failure()
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            Status: **Failure**
+
+            Branch: ${{ github.ref_name }}
+
+            Service: ${{ steps.svc.outputs.service }}
+
+            Commit message: ${{ steps.prep_commit.outputs.commit_message }}
+
+            [See workflow](https://github.com/${{ github.repository }}/actions)
