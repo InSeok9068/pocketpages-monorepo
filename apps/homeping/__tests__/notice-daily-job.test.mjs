@@ -410,11 +410,72 @@ test('daily notice job skips push when every notice was already recorded', () =>
   }
 })
 
-test('OneSignal service targets subscribed users with Homeping env keys', () => {
+test('daily notice job keeps notices unrecorded when OneSignal has no subscribed recipients', () => {
+  const harness = loadJob()
+  const appMock = createLogger()
+  const savedNotices = []
+  const originalApp = globalThis.$app
+
+  globalThis.$app = appMock
+
+  try {
+    const result = harness.job.runWithServices(
+      {
+        applyhomeService: {
+          searchRegionNotices() {
+            return {
+              notices: [createNotice({ id: 'applyhome:new:no-recipient', name: '수신자 없는 신규 공고' })],
+              errors: [],
+            }
+          },
+        },
+        notifiedNoticeService: {
+          BROADCAST_REGION: 'all',
+          getNoticeKey(notice) {
+            return notice.id
+          },
+          hasNotifiedNotice() {
+            return false
+          },
+          createNotifiedNotice(input) {
+            savedNotices.push(input)
+          },
+        },
+        oneSignalService: {
+          isNoSubscribedRecipientsError(exception) {
+            return !!(exception && exception.code === 'ONESIGNAL_NO_SUBSCRIBED_RECIPIENTS')
+          },
+          sendPushNotification() {
+            const exception = new Error('OneSignal 푸시 메시지가 생성되지 않았습니다.')
+            exception.code = 'ONESIGNAL_NO_SUBSCRIBED_RECIPIENTS'
+            throw exception
+          },
+        },
+      },
+      {
+        apiKey: 'data-api-key',
+      }
+    )
+
+    assert.equal(result.checkedCount, 1)
+    assert.equal(result.newCount, 1)
+    assert.equal(result.sent, false)
+    assert.equal(result.notificationId, '')
+    assert.equal(savedNotices.length, 0)
+    assert.equal(appMock.logs.some((entry) => entry[0] === 'warn' && entry[1] === 'jobs/homeping-notice-daily:no-subscribed-recipients'), true)
+  } finally {
+    globalThis.$app = originalApp
+    harness.cleanup()
+  }
+})
+
+test('OneSignal service targets tagged Homeping web subscriptions with Homeping env keys', () => {
   const originalEnv = {
     appId: process.env.HOMEPING_ONESIGNAL_APPID,
     apiKey: process.env.HOMEPING_ONESIGNAL_APIKEY,
     apiUrl: process.env.HOMEPING_ONESIGNAL_APIURL,
+    segment: process.env.HOMEPING_ONESIGNAL_SEGMENT,
+    globalSegment: process.env.ONESIGNAL_SEGMENT,
   }
   const originalApp = globalThis.$app
   const originalHttp = globalThis.$http
@@ -425,6 +486,8 @@ test('OneSignal service targets subscribed users with Homeping env keys', () => 
   process.env.HOMEPING_ONESIGNAL_APPID = 'homeping-app-id'
   process.env.HOMEPING_ONESIGNAL_APIKEY = 'homeping-rest-key'
   process.env.HOMEPING_ONESIGNAL_APIURL = 'https://api.onesignal.test'
+  delete process.env.HOMEPING_ONESIGNAL_SEGMENT
+  delete process.env.ONESIGNAL_SEGMENT
   globalThis.$app = appMock
   globalThis.$http = {
     send(config) {
@@ -454,7 +517,14 @@ test('OneSignal service targets subscribed users with Homeping env keys', () => 
     assert.equal(requests[0].headers.Authorization, 'Key homeping-rest-key')
     assert.equal(payload.app_id, 'homeping-app-id')
     assert.equal(payload.target_channel, 'push')
-    assert.deepEqual(payload.included_segments, ['Subscribed Users'])
+    assert.equal(payload.isAnyWeb, true)
+    assert.deepEqual(payload.filters, [
+      {
+        field: 'tag',
+        key: 'homeping_region',
+        relation: 'exists',
+      },
+    ])
     assert.equal(payload.headings.ko, 'Homeping 신규 공고')
     assert.equal(payload.contents.ko, '안양 신규 공고')
     assert.equal(payload.url, 'https://homeping.test')
@@ -475,6 +545,106 @@ test('OneSignal service targets subscribed users with Homeping env keys', () => 
       delete process.env.HOMEPING_ONESIGNAL_APIURL
     } else {
       process.env.HOMEPING_ONESIGNAL_APIURL = originalEnv.apiUrl
+    }
+
+    if (originalEnv.segment === undefined) {
+      delete process.env.HOMEPING_ONESIGNAL_SEGMENT
+    } else {
+      process.env.HOMEPING_ONESIGNAL_SEGMENT = originalEnv.segment
+    }
+
+    if (originalEnv.globalSegment === undefined) {
+      delete process.env.ONESIGNAL_SEGMENT
+    } else {
+      process.env.ONESIGNAL_SEGMENT = originalEnv.globalSegment
+    }
+
+    globalThis.$app = originalApp
+    globalThis.$http = originalHttp
+
+    if (originalServiceCache) {
+      require.cache[oneSignalServicePath] = originalServiceCache
+    } else {
+      delete require.cache[oneSignalServicePath]
+    }
+  }
+})
+
+test('OneSignal service treats accepted responses without a message id as no subscribed recipients', () => {
+  const originalEnv = {
+    appId: process.env.HOMEPING_ONESIGNAL_APPID,
+    apiKey: process.env.HOMEPING_ONESIGNAL_APIKEY,
+    apiUrl: process.env.HOMEPING_ONESIGNAL_APIURL,
+    segment: process.env.HOMEPING_ONESIGNAL_SEGMENT,
+    globalSegment: process.env.ONESIGNAL_SEGMENT,
+  }
+  const originalApp = globalThis.$app
+  const originalHttp = globalThis.$http
+  const originalServiceCache = require.cache[oneSignalServicePath]
+  const appMock = createLogger()
+
+  process.env.HOMEPING_ONESIGNAL_APPID = 'homeping-app-id'
+  process.env.HOMEPING_ONESIGNAL_APIKEY = 'homeping-rest-key'
+  process.env.HOMEPING_ONESIGNAL_APIURL = 'https://api.onesignal.test'
+  delete process.env.HOMEPING_ONESIGNAL_SEGMENT
+  delete process.env.ONESIGNAL_SEGMENT
+  globalThis.$app = appMock
+  globalThis.$http = {
+    send() {
+      return {
+        statusCode: 200,
+        json: {},
+      }
+    },
+  }
+
+  delete require.cache[oneSignalServicePath]
+
+  try {
+    const oneSignalService = require(oneSignalServicePath)
+    let caught = null
+
+    try {
+      oneSignalService.sendPushNotification({
+        title: 'Homeping 신규 공고',
+        contents: '안양 신규 공고',
+      })
+    } catch (exception) {
+      caught = exception
+    }
+
+    assert.equal(!!caught, true)
+    assert.equal(caught.code, 'ONESIGNAL_NO_SUBSCRIBED_RECIPIENTS')
+    assert.equal(oneSignalService.isNoSubscribedRecipientsError(caught), true)
+  } finally {
+    if (originalEnv.appId === undefined) {
+      delete process.env.HOMEPING_ONESIGNAL_APPID
+    } else {
+      process.env.HOMEPING_ONESIGNAL_APPID = originalEnv.appId
+    }
+
+    if (originalEnv.apiKey === undefined) {
+      delete process.env.HOMEPING_ONESIGNAL_APIKEY
+    } else {
+      process.env.HOMEPING_ONESIGNAL_APIKEY = originalEnv.apiKey
+    }
+
+    if (originalEnv.apiUrl === undefined) {
+      delete process.env.HOMEPING_ONESIGNAL_APIURL
+    } else {
+      process.env.HOMEPING_ONESIGNAL_APIURL = originalEnv.apiUrl
+    }
+
+    if (originalEnv.segment === undefined) {
+      delete process.env.HOMEPING_ONESIGNAL_SEGMENT
+    } else {
+      process.env.HOMEPING_ONESIGNAL_SEGMENT = originalEnv.segment
+    }
+
+    if (originalEnv.globalSegment === undefined) {
+      delete process.env.ONESIGNAL_SEGMENT
+    } else {
+      process.env.ONESIGNAL_SEGMENT = originalEnv.globalSegment
     }
 
     globalThis.$app = originalApp

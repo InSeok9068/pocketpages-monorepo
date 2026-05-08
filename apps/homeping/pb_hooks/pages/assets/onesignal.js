@@ -66,6 +66,30 @@
     return ''
   }
 
+  async function waitForPushOptedIn(OneSignal) {
+    for (let index = 0; index < 20; index += 1) {
+      if (isPushOptedIn(OneSignal)) {
+        return true
+      }
+
+      await delay(300)
+    }
+
+    return isPushOptedIn(OneSignal)
+  }
+
+  async function waitForPushOptedOut(OneSignal) {
+    for (let index = 0; index < 20; index += 1) {
+      if (!isPushOptedIn(OneSignal)) {
+        return true
+      }
+
+      await delay(300)
+    }
+
+    return !isPushOptedIn(OneSignal)
+  }
+
   async function syncTags(OneSignal) {
     if (!OneSignal || !OneSignal.User) {
       return
@@ -166,7 +190,13 @@
         setState('pending', '처리 중', '브라우저 확인 중', true)
 
         if (isPushOptedIn(OneSignal)) {
+          if (!window.confirm('Homeping 알림을 끌까요?')) {
+            await syncState(OneSignal)
+            return
+          }
+
           await setPushOptedIn(OneSignal, false)
+          await waitForPushOptedOut(OneSignal)
           await syncState(OneSignal)
           return
         }
@@ -175,7 +205,14 @@
 
         if (permission === 'granted') {
           await setPushOptedIn(OneSignal, true)
-          await waitForSubscriptionId(OneSignal)
+          const subscriptionId = await waitForSubscriptionId(OneSignal)
+          const optedIn = await waitForPushOptedIn(OneSignal)
+
+          if (!subscriptionId || !optedIn) {
+            setState('idle', '알림 받기', '구독 확인 필요', false)
+            return
+          }
+
           await syncTags(OneSignal)
         }
 

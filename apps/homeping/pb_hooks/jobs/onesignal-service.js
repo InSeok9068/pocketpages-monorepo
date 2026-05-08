@@ -1,6 +1,6 @@
 const DEFAULT_BASE_URL = 'https://api.onesignal.com'
-const DEFAULT_SEGMENT = 'Subscribed Users'
 const DEFAULT_TIMEOUT_SECONDS = 15
+const NO_SUBSCRIBED_RECIPIENTS_CODE = 'ONESIGNAL_NO_SUBSCRIBED_RECIPIENTS'
 
 /**
  * 여러 환경변수 후보 중 첫 값을 읽습니다.
@@ -59,11 +59,101 @@ function getBaseUrl() {
 }
 
 /**
- * OneSignal 발송 대상 세그먼트를 읽습니다.
+ * OneSignal 발송 대상 세그먼트 설정을 읽습니다.
  * @returns {string} OneSignal 세그먼트명
  */
-function getTargetSegment() {
-  return getFirstEnv(['HOMEPING_ONESIGNAL_SEGMENT', 'ONESIGNAL_SEGMENT']) || DEFAULT_SEGMENT
+function getConfiguredTargetSegment() {
+  return getFirstEnv(['HOMEPING_ONESIGNAL_SEGMENT', 'ONESIGNAL_SEGMENT'])
+}
+
+/**
+ * Homeping 기본 발송 대상을 만듭니다.
+ * @returns {object} OneSignal 대상 payload
+ */
+function createTargetingPayload() {
+  const segment = getConfiguredTargetSegment()
+
+  if (segment) {
+    return {
+      included_segments: [segment],
+    }
+  }
+
+  return {
+    filters: [
+      {
+        field: 'tag',
+        key: 'homeping_region',
+        relation: 'exists',
+      },
+    ],
+  }
+}
+
+/**
+ * 로그용 발송 대상 설명을 만듭니다.
+ * @param {object} payload OneSignal 메시지 payload
+ * @returns {string} 발송 대상 설명
+ */
+function describeTarget(payload) {
+  if (payload && Array.isArray(payload.included_segments) && payload.included_segments.length > 0) {
+    return 'segment:' + payload.included_segments[0]
+  }
+
+  return 'tag:homeping_region:exists'
+}
+
+/**
+ * OneSignal 응답 오류 목록을 배열로 정규화합니다.
+ * @param {object} responseJson OneSignal 응답 json
+ * @returns {unknown[]} 오류 목록
+ */
+function getResponseErrors(responseJson) {
+  const source = responseJson && typeof responseJson === 'object' ? responseJson : null
+
+  if (!source || !source.errors) {
+    return []
+  }
+
+  if (Array.isArray(source.errors)) {
+    return source.errors
+  }
+
+  return [source.errors]
+}
+
+/**
+ * OneSignal 오류 객체를 만듭니다.
+ * @param {string} message 오류 메시지
+ * @param {string} code 오류 코드
+ * @returns {Error} 오류 객체
+ */
+function createOneSignalError(message, code) {
+  const exception = new Error(message)
+
+  if (code) {
+    exception.code = code
+  }
+
+  return exception
+}
+
+/**
+ * 수신 가능한 구독자가 없다는 오류인지 확인합니다.
+ * @param {unknown} value 오류 값
+ * @returns {boolean} 구독자 없음 여부
+ */
+function isNoSubscribedRecipientsMessage(value) {
+  return String(value || '').indexOf('All included players are not subscribed') !== -1
+}
+
+/**
+ * 수신 가능한 구독자가 없다는 예외인지 확인합니다.
+ * @param {unknown} exception 예외
+ * @returns {boolean} 구독자 없음 여부
+ */
+function isNoSubscribedRecipientsError(exception) {
+  return !!(exception && exception.code === NO_SUBSCRIBED_RECIPIENTS_CODE)
 }
 
 /**
@@ -80,10 +170,10 @@ function createPushPayload(input) {
   const title = String(source.title || '').trim()
   const contents = String(source.contents || '').trim()
   const url = String(source.url || '').trim()
-  const payload = {
+  const payload = Object.assign({}, createTargetingPayload(), {
     app_id: getRequiredAppId(),
     target_channel: 'push',
-    included_segments: [getTargetSegment()],
+    isAnyWeb: true,
     headings: {
       ko: title,
       en: title,
@@ -92,7 +182,7 @@ function createPushPayload(input) {
       ko: contents,
       en: contents,
     },
-  }
+  })
 
   if (url) {
     payload.url = url
@@ -129,7 +219,7 @@ function sendPushNotification(input) {
     throw new Error('OneSignal 알림 본문이 필요합니다.')
   }
 
-  $app.logger().debug('homeping/onesignal:send:start', 'segment', payload.included_segments[0], 'title', payload.headings.ko)
+  $app.logger().debug('homeping/onesignal:send:start', 'target', describeTarget(payload), 'title', payload.headings.ko)
 
   const response = $http.send({
     url: String(getBaseUrl()).replace(/\/+$/, '') + '/notifications',
@@ -145,14 +235,24 @@ function sendPushNotification(input) {
     throw new Error('OneSignal 푸시 발송에 실패했습니다. status=' + response.statusCode)
   }
 
-  if (response.json && response.json.errors) {
-    throw new Error('OneSignal 푸시 발송에 실패했습니다. error=' + JSON.stringify(response.json.errors))
+  const responseJson = response.json || {}
+  const responseErrors = getResponseErrors(responseJson)
+
+  if (responseErrors.length > 0) {
+    const code = responseErrors.some(isNoSubscribedRecipientsMessage) ? NO_SUBSCRIBED_RECIPIENTS_CODE : ''
+
+    throw createOneSignalError('OneSignal 푸시 발송에 실패했습니다. error=' + JSON.stringify(responseErrors), code)
   }
 
-  return response.json || {}
+  if (!String(responseJson.id || '').trim()) {
+    throw createOneSignalError('OneSignal 푸시 메시지가 생성되지 않았습니다. 수신 가능한 구독자가 없을 수 있습니다.', NO_SUBSCRIBED_RECIPIENTS_CODE)
+  }
+
+  return responseJson
 }
 
 module.exports = {
   createPushPayload,
+  isNoSubscribedRecipientsError,
   sendPushNotification,
 }

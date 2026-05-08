@@ -194,6 +194,20 @@ function filterNewEntries(service, entries) {
 }
 
 /**
+ * OneSignal 수신 대상 없음 오류인지 확인합니다.
+ * @param {object} service 푸시 서비스
+ * @param {unknown} exception 예외
+ * @returns {boolean} 수신 대상 없음 여부
+ */
+function isNoSubscribedRecipientsError(service, exception) {
+  if (service && typeof service.isNoSubscribedRecipientsError === 'function') {
+    return service.isNoSubscribedRecipientsError(exception)
+  }
+
+  return !!(exception && exception.code === 'ONESIGNAL_NO_SUBSCRIBED_RECIPIENTS')
+}
+
+/**
  * 신규 공고를 조회하고 전체 구독자에게 푸시를 보냅니다.
  * @param {{ applyhomeService?: object, notifiedNoticeService?: object, oneSignalService?: object }} services 의존 서비스
  * @param {{ apiKey?: string, perPage?: number, timeout?: number, regionSlugs?: string[] }} options 실행 옵션
@@ -226,11 +240,30 @@ function runWithServices(services, options) {
     }
   }
 
-  const response = pushService.sendPushNotification({
-    title: createNotificationTitle(newEntries),
-    contents: createNotificationContents(newEntries),
-    url: createNotificationUrl(newEntries),
-  })
+  let response = null
+
+  try {
+    response = pushService.sendPushNotification({
+      title: createNotificationTitle(newEntries),
+      contents: createNotificationContents(newEntries),
+      url: createNotificationUrl(newEntries),
+    })
+  } catch (exception) {
+    if (isNoSubscribedRecipientsError(pushService, exception)) {
+      $app.logger().warn('jobs/homeping-notice-daily:no-subscribed-recipients', 'newCount', newEntries.length, 'error', String(exception && exception.message ? exception.message : exception))
+
+      return {
+        checkedCount: collectedResult.entries.length,
+        newCount: newEntries.length,
+        sent: false,
+        notificationId: '',
+        errorCount: collectedResult.errorCount,
+      }
+    }
+
+    throw exception
+  }
+
   const notificationId = String(response && response.id ? response.id : '').trim()
   const notifiedAt = new Date().toISOString()
 
