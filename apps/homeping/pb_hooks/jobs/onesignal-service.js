@@ -126,9 +126,10 @@ function getResponseErrors(responseJson) {
  * OneSignal 오류 객체를 만듭니다.
  * @param {string} message 오류 메시지
  * @param {string} code 오류 코드
- * @returns {Error} 오류 객체
+ * @returns {types.HomepingOneSignalError} 오류 객체
  */
 function createOneSignalError(message, code) {
+  /** @type {types.HomepingOneSignalError} */
   const exception = new Error(message)
 
   if (code) {
@@ -136,6 +137,19 @@ function createOneSignalError(message, code) {
   }
 
   return exception
+}
+
+/**
+ * 예외 코드 값을 읽습니다.
+ * @param {unknown} exception 예외
+ * @returns {string} 예외 코드
+ */
+function getErrorCode(exception) {
+  if (!exception || typeof exception !== 'object') {
+    return ''
+  }
+
+  return String(Reflect.get(exception, 'code') || '')
 }
 
 /**
@@ -153,7 +167,7 @@ function isNoSubscribedRecipientsMessage(value) {
  * @returns {boolean} 구독자 없음 여부
  */
 function isNoSubscribedRecipientsError(exception) {
-  return !!(exception && exception.code === NO_SUBSCRIBED_RECIPIENTS_CODE)
+  return getErrorCode(exception) === NO_SUBSCRIBED_RECIPIENTS_CODE
 }
 
 /**

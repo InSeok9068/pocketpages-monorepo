@@ -204,7 +204,11 @@ function isNoSubscribedRecipientsError(service, exception) {
     return service.isNoSubscribedRecipientsError(exception)
   }
 
-  return !!(exception && exception.code === 'ONESIGNAL_NO_SUBSCRIBED_RECIPIENTS')
+  if (!exception || typeof exception !== 'object') {
+    return false
+  }
+
+  return String(Reflect.get(exception, 'code') || '') === 'ONESIGNAL_NO_SUBSCRIBED_RECIPIENTS'
 }
 
 /**
