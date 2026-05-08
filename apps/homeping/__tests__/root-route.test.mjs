@@ -125,6 +125,7 @@ test('GET / renders the live Homeping search page through the service harness', 
   assert.match(countText, /^\d+건$/u)
   assert.equal(summaryLabels.includes('APT 분양'), true)
   assert.equal(summaryLabels.includes('LH 분양주택'), true)
+  assert.equal(summaryLabels.includes('LH 임대주택'), true)
   assert.equal(body.includes('PocketPages Error'), false)
   assert.equal($('.hp-error').length, 0)
 })

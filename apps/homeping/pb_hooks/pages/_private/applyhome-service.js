@@ -65,12 +65,20 @@ const ENDPOINTS = [
   },
 ]
 
-const LH_ENDPOINT = {
-  code: 'lh-sale',
-  label: 'LH 분양주택',
-  upperTypeCode: '05',
-  provinceCode: '41',
-}
+const LH_ENDPOINTS = [
+  {
+    code: 'lh-sale',
+    label: 'LH 분양주택',
+    upperTypeCode: '05',
+    provinceCode: '41',
+  },
+  {
+    code: 'lh-rent',
+    label: 'LH 임대주택',
+    upperTypeCode: '06',
+    provinceCode: '41',
+  },
+]
 
 /**
  * 청약홈 조회 대상 지역 목록을 반환합니다.
@@ -934,13 +942,15 @@ function buildApplyhomeCategoryLabel(endpoint, detailName, houseSectionName) {
 }
 
 /**
- * LH 공고명으로 개인에게 의미 있는 분양 성격을 분류합니다.
+ * LH 공고명으로 개인에게 의미 있는 공고 성격을 분류합니다.
  * @param {any} row LH 원본 공고
+ * @param {{ label: string }} endpoint LH 엔드포인트 메타
  * @returns {string} 분류 라벨
  */
-function buildLhCategoryLabel(row) {
+function buildLhCategoryLabel(row, endpoint) {
   const noticeName = String(row && row.PAN_NM ? row.PAN_NM : '')
   const detailName = String(row && row.AIS_TP_CD_NM ? row.AIS_TP_CD_NM : '').trim()
+  const fallbackLabel = String(endpoint && endpoint.label ? endpoint.label : '').replace(/^LH\s+/, '').trim()
 
   if (/무순위|잔여세대|추가입주자|공가세대/i.test(noticeName)) {
     return '무순위/잔여세대'
@@ -950,7 +960,7 @@ function buildLhCategoryLabel(row) {
     return '일반공급/매각'
   }
 
-  return detailName || '분양주택'
+  return detailName || fallbackLabel || 'LH 공고'
 }
 
 /**
@@ -997,22 +1007,23 @@ function toNotice(row, endpoint) {
 /**
  * LH 원본 공고를 화면 표시용 공고로 정규화합니다.
  * @param {any} row LH 원본 공고
+ * @param {{ code: string, upperTypeCode: string }} endpoint LH 엔드포인트 메타
  * @returns {types.HomepingNotice} 정규화된 공고
  */
-function toLhNotice(row) {
+function toLhNotice(row, endpoint) {
   const recruitDate = normalizeDate((row && row.PAN_DT) || (row && row.PAN_NT_ST_DT))
   const noticeStartDate = normalizeDate(row && row.PAN_NT_ST_DT)
   const closeDate = normalizeDate(row && row.CLSG_DT)
   const status = resolveLhStatus(row, closeDate)
   const noticeId = String(row && row.PAN_ID ? row.PAN_ID : '').trim()
   const provinceName = String(row && row.CNP_CD_NM ? row.CNP_CD_NM : '').trim()
-  const upperTypeCode = String(row && row.UPP_AIS_TP_CD ? row.UPP_AIS_TP_CD : LH_ENDPOINT.upperTypeCode).trim()
+  const upperTypeCode = String(row && row.UPP_AIS_TP_CD ? row.UPP_AIS_TP_CD : endpoint.upperTypeCode).trim()
 
   return {
     id: 'lh:' + noticeId,
-    sourceCode: 'lh-sale',
+    sourceCode: endpoint.code,
     sourceLabel: 'LH',
-    categoryLabel: buildLhCategoryLabel(row),
+    categoryLabel: buildLhCategoryLabel(row, endpoint),
     name: String(row && row.PAN_NM ? row.PAN_NM : '').trim() || '공고명 없음',
     address: provinceName ? provinceName + ' · LH 공고문 확인 필요' : 'LH 공고문 확인 필요',
     areaName: provinceName,
@@ -1117,11 +1128,15 @@ function createSummaryMap() {
     }
   }
 
-  summaryMap[LH_ENDPOINT.code] = {
-    code: LH_ENDPOINT.code,
-    label: LH_ENDPOINT.label,
-    count: 0,
-    error: '',
+  for (let index = 0; index < LH_ENDPOINTS.length; index += 1) {
+    const endpoint = LH_ENDPOINTS[index]
+
+    summaryMap[endpoint.code] = {
+      code: endpoint.code,
+      label: endpoint.label,
+      count: 0,
+      error: '',
+    }
   }
 
   return summaryMap
@@ -1158,27 +1173,30 @@ function toSummaryList(summaryMap) {
     summaries.push(summaryMap[ENDPOINTS[index].code])
   }
 
-  summaries.push(summaryMap[LH_ENDPOINT.code])
+  for (let index = 0; index < LH_ENDPOINTS.length; index += 1) {
+    summaries.push(summaryMap[LH_ENDPOINTS[index].code])
+  }
 
   return summaries
 }
 
 /**
- * 선택 지역의 LH 분양주택 공고를 조회합니다.
+ * 선택 지역의 LH 공고를 조회합니다.
  * @param {{ apiKey: string, lhNoticeUrl?: string, timeout?: number, perPage?: number, cacheDateKey?: string }} config 호출 설정
+ * @param {{ code: string, label: string, upperTypeCode: string, provinceCode: string }} endpoint LH 엔드포인트 메타
  * @param {types.HomepingRegion} region 선택 지역
  * @param {boolean} includeClosed 마감 공고 포함 여부
  * @returns {{ notices: types.HomepingNotice[], summary: types.HomepingEndpointSummary }} LH 검색 결과
  */
-function searchLhSaleNotices(config, region, includeClosed) {
+function searchLhNotices(config, endpoint, region, includeClosed) {
   const perPage = Number(config && config.perPage ? config.perPage : DEFAULT_PER_PAGE)
   const today = new Date()
   const sinceDate = monthsAgo(NOTICE_LOOKBACK_MONTHS)
   const query = {
     PG_SZ: perPage,
     PAGE: 1,
-    UPP_AIS_TP_CD: LH_ENDPOINT.upperTypeCode,
-    CNP_CD: LH_ENDPOINT.provinceCode,
+    UPP_AIS_TP_CD: endpoint.upperTypeCode,
+    CNP_CD: endpoint.provinceCode,
     PAN_NM: region.searchText,
     PAN_ST_DT: formatDateParam(sinceDate),
     PAN_ED_DT: formatDateParam(today),
@@ -1208,7 +1226,7 @@ function searchLhSaleNotices(config, region, includeClosed) {
       continue
     }
 
-    const notice = toLhNotice(row)
+    const notice = toLhNotice(row, endpoint)
 
     if (!includeClosed && notice.statusCode === 'closed') {
       continue
@@ -1224,8 +1242,8 @@ function searchLhSaleNotices(config, region, includeClosed) {
   return {
     notices: notices,
     summary: {
-      code: LH_ENDPOINT.code,
-      label: LH_ENDPOINT.label,
+      code: endpoint.code,
+      label: endpoint.label,
       count: notices.length,
       error: '',
     },
@@ -1335,24 +1353,28 @@ function searchSingleRegionNotices(requestConfig, region, includeClosed, perPage
     }
   }
 
-  try {
-    const lhResult = searchLhSaleNotices(requestConfig, region, includeClosed)
+  for (let index = 0; index < LH_ENDPOINTS.length; index += 1) {
+    const endpoint = LH_ENDPOINTS[index]
 
-    for (let index = 0; index < lhResult.notices.length; index += 1) {
-      notices.push(lhResult.notices[index])
+    try {
+      const lhResult = searchLhNotices(requestConfig, endpoint, region, includeClosed)
+
+      for (let noticeIndex = 0; noticeIndex < lhResult.notices.length; noticeIndex += 1) {
+        notices.push(lhResult.notices[noticeIndex])
+      }
+
+      summaries.push(lhResult.summary)
+    } catch (exception) {
+      const message = String(exception && exception.message ? exception.message : exception)
+
+      errors.push(region.label + ' ' + endpoint.label + ': ' + message)
+      summaries.push({
+        code: endpoint.code,
+        label: endpoint.label,
+        count: 0,
+        error: message,
+      })
     }
-
-    summaries.push(lhResult.summary)
-  } catch (exception) {
-    const message = String(exception && exception.message ? exception.message : exception)
-
-    errors.push(region.label + ' ' + LH_ENDPOINT.label + ': ' + message)
-    summaries.push({
-      code: LH_ENDPOINT.code,
-      label: LH_ENDPOINT.label,
-      count: 0,
-      error: message,
-    })
   }
 
   return {

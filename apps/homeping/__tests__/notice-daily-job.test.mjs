@@ -267,7 +267,7 @@ test('daily notice job can use the real pages _private applyhome service', () =>
     assert.equal(result.sent, true)
     assert.equal(result.notificationId, 'onesignal-real-private-message-id')
     assert.equal(applyhomeRequests.length, 5)
-    assert.equal(lhRequests.length, 1)
+    assert.equal(lhRequests.length, 2)
     assert.equal(applyhomeRequests[0].searchParams.get('cond[HSSPLY_ADRES::LIKE]'), '안양')
     assert.equal(sentPushes.length, 1)
     assert.equal(sentPushes[0].title, 'Homeping 신규 공고')

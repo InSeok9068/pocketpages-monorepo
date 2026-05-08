@@ -59,11 +59,13 @@ function createApplyhomeRow(input) {
 }
 
 function createLhRow(input) {
+  const upperTypeCode = input.uppAisTpCd || '05'
+
   return {
     PAN_ID: input.id || input.name,
     SPL_INF_TP_CD: input.splInfTpCd || '050',
     CCR_CNNT_SYS_DS_CD: input.ccrCnntSysDsCd || '02',
-    UPP_AIS_TP_CD: input.uppAisTpCd || '05',
+    UPP_AIS_TP_CD: upperTypeCode,
     AIS_TP_CD: input.aisTpCd || '05',
     PAN_DT: input.recruitDate,
     PAN_NT_ST_DT: input.noticeStartDate,
@@ -71,7 +73,7 @@ function createLhRow(input) {
     PAN_SS: input.statusLabel || '접수마감',
     PAN_NM: input.name,
     CNP_CD_NM: '경기도',
-    AIS_TP_CD_NM: '분양주택',
+    AIS_TP_CD_NM: input.detailName || (upperTypeCode === '06' ? '임대주택' : '분양주택'),
     DTL_URL: input.url || 'https://lh.test/' + encodeURIComponent(input.name),
   }
 }
@@ -143,11 +145,14 @@ function createHarness(options = {}) {
           }
         }
 
+        const upperTypeCode = requestUrl.searchParams.get('UPP_AIS_TP_CD')
+        const rows = (options.lhRows || []).filter((row) => !upperTypeCode || row.UPP_AIS_TP_CD === upperTypeCode)
+
         return {
           statusCode: 200,
           json: [
             {
-              dsList: options.lhRows || [],
+              dsList: rows,
             },
           ],
         }
@@ -310,11 +315,11 @@ test('searchRegionNotices caches API responses for the current day', () => {
 
     assert.equal(firstResult.notices.length, 2)
     assert.equal(secondResult.notices.length, 2)
-    assert.equal(requestCountAfterFirstCall, 6)
+    assert.equal(requestCountAfterFirstCall, 7)
     assert.equal(harness.requests.length, requestCountAfterFirstCall)
-    assert.equal(harness.logs.filter((entry) => entry.name === 'homeping/cache:hit').length, 6)
+    assert.equal(harness.logs.filter((entry) => entry.name === 'homeping/cache:hit').length, 7)
     assert.equal(countRequests(harness.requests, 'api.odcloud.kr'), 5)
-    assert.equal(countRequests(harness.requests, 'apis.data.go.kr'), 1)
+    assert.equal(countRequests(harness.requests, 'apis.data.go.kr'), 2)
   } finally {
     harness.cleanup()
   }
@@ -335,6 +340,19 @@ test('searchRegionNotices keeps LH detail lookup keys on LH notices', () => {
         uppAisTpCd: '05',
         aisTpCd: '05',
       }),
+      createLhRow({
+        id: '0000061099',
+        name: '안양 LH 10년 공공임대',
+        recruitDate: '2026-04-21',
+        noticeStartDate: '2026-04-21',
+        closeDate: '2026-05-04',
+        statusLabel: '접수중',
+        splInfTpCd: '060',
+        ccrCnntSysDsCd: '02',
+        uppAisTpCd: '06',
+        aisTpCd: '06',
+        detailName: '공공임대',
+      }),
     ],
   })
 
@@ -348,13 +366,20 @@ test('searchRegionNotices keeps LH detail lookup keys on LH notices', () => {
         regionSlug: 'anyang',
       }
     )
-    const lhNotice = result.notices.find((notice) => notice.sourceLabel === 'LH')
+    const lhNotice = result.notices.find((notice) => notice.sourceCode === 'lh-sale')
+    const lhRentNotice = result.notices.find((notice) => notice.sourceCode === 'lh-rent')
 
     assert.equal(lhNotice.lhDetailParams.panId, '0000061077')
     assert.equal(lhNotice.lhDetailParams.splInfTpCd, '050')
     assert.equal(lhNotice.lhDetailParams.ccrCnntSysDsCd, '02')
     assert.equal(lhNotice.lhDetailParams.uppAisTpCd, '05')
     assert.equal(lhNotice.lhDetailParams.aisTpCd, '05')
+    assert.equal(lhRentNotice.categoryLabel, '공공임대')
+    assert.equal(lhRentNotice.lhDetailParams.panId, '0000061099')
+    assert.equal(lhRentNotice.lhDetailParams.splInfTpCd, '060')
+    assert.equal(lhRentNotice.lhDetailParams.ccrCnntSysDsCd, '02')
+    assert.equal(lhRentNotice.lhDetailParams.uppAisTpCd, '06')
+    assert.equal(lhRentNotice.lhDetailParams.aisTpCd, '06')
   } finally {
     harness.cleanup()
   }
@@ -405,6 +430,7 @@ test('searchRegionNotices aggregates every configured city when all is selected'
     const names = result.notices.map((notice) => notice.name).sort()
     const aptSummary = result.summaries.find((summary) => summary.code === 'apt')
     const lhSummary = result.summaries.find((summary) => summary.code === 'lh-sale')
+    const lhRentSummary = result.summaries.find((summary) => summary.code === 'lh-rent')
     const aptRegionQueries = harness.requests
       .filter((requestUrl) => requestUrl.pathname === '/api/ApplyhomeInfoDetailSvc/v1/getAPTLttotPblancDetail')
       .map((requestUrl) => requestUrl.searchParams.get('cond[HSSPLY_ADRES::LIKE]'))
@@ -416,10 +442,11 @@ test('searchRegionNotices aggregates every configured city when all is selected'
     assert.deepEqual(names, ['성남 전체 조회 아파트', '안양 전체 조회 아파트', '용인 LH 일반공급'].sort())
     assert.equal(aptSummary.count, 2)
     assert.equal(lhSummary.count, 1)
+    assert.equal(lhRentSummary.count, 0)
     assert.deepEqual(aptRegionQueries, ['안양', '의왕', '과천', '성남', '용인'])
-    assert.deepEqual(lhRegionQueries, ['안양', '의왕', '과천', '성남', '용인'])
+    assert.deepEqual(lhRegionQueries, ['안양', '안양', '의왕', '의왕', '과천', '과천', '성남', '성남', '용인', '용인'])
     assert.equal(countRequests(harness.requests, 'api.odcloud.kr'), 25)
-    assert.equal(countRequests(harness.requests, 'apis.data.go.kr'), 5)
+    assert.equal(countRequests(harness.requests, 'apis.data.go.kr'), 10)
   } finally {
     harness.cleanup()
   }
