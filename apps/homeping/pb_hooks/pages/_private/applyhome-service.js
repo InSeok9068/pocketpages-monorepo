@@ -1007,7 +1007,7 @@ function toNotice(row, endpoint) {
 /**
  * LH 원본 공고를 화면 표시용 공고로 정규화합니다.
  * @param {any} row LH 원본 공고
- * @param {{ code: string, upperTypeCode: string }} endpoint LH 엔드포인트 메타
+ * @param {{ code: string, label: string, upperTypeCode: string }} endpoint LH 엔드포인트 메타
  * @returns {types.HomepingNotice} 정규화된 공고
  */
 function toLhNotice(row, endpoint) {
