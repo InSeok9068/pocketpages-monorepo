@@ -84,6 +84,7 @@
 ## 6. Redirect, Roles & Logging
 
 - use `redirect('/path', { status, message })`
+- use redirect option `message`, not `flash`
 - do not build flash query manually
 - read flash via `params.__flash`
 - MUST: log before redirect with `dbg(status, redirectTo, flash or error)`

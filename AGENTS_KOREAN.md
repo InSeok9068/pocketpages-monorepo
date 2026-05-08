@@ -84,6 +84,7 @@
 ## 6. Redirect, Roles, Logging
 
 - `redirect('/path', { status, message })` 패턴을 사용한다
+- redirect option은 `flash`가 아니라 `message`를 사용한다
 - flash query를 수동으로 만들지 않는다
 - flash는 `params.__flash`로 읽는다
 - MUST: redirect 전에 `dbg(status, redirectTo, flash or error)`로 로그를 남긴다
