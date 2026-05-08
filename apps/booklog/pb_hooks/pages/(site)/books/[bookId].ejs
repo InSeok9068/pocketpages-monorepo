@@ -353,20 +353,9 @@
             href="<%= downloadFileUrl %>"
             aria-label="EPUB 다운로드"
             class="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-[#dcc6ad] text-[#6b4423] no-underline shadow-[0_12px_24px_rgba(112,84,54,0.14)] outline-none ring-0 transition hover:bg-[#d2b596]">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.9"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="h-5 w-5"
-              aria-hidden="true">
-              <path d="M12 4.5v9" />
-              <path d="M8.5 10.5 12 14l3.5-3.5" />
-              <path d="M5 18.5h14" />
-            </svg>
+            <span
+              class="i-lucide-download h-5 w-5"
+              aria-hidden="true"></span>
           </a>
           <% } %>
         </div>
@@ -399,7 +388,9 @@
         type="submit"
         aria-label="감상평 삭제"
         class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold text-[#8e5521] shadow-[0_8px_18px_rgba(132,90,47,0.08)] outline-none ring-0 transition hover:bg-[#ead9c4]">
-        ×
+        <span
+          class="i-lucide-trash-2 h-4 w-4"
+          aria-hidden="true"></span>
       </button>
     </form>
     <% } %>
@@ -446,9 +437,13 @@
     <% if (highlightCards.length > 0) { %>
     <div class="mt-5 space-y-3">
       <% for (let index = 0; index < highlightCards.length; index += 1) { const highlight = highlightCards[index] %>
-      <article class="rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
+      <article
+        x-data="{ editing: false }"
+        class="rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+        <div
+          x-show="!editing"
+          class="flex items-start justify-between gap-3">
+          <div class="min-w-0 flex-1">
             <div class="flex min-w-0 flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
               <% if (highlight.label) { %>
               <span><%= highlight.label %></span>
@@ -458,35 +453,98 @@
             <p class="mt-1 text-[12px] font-medium text-stone-400"><%= highlight.highlightedAt %></p>
             <% } %>
           </div>
-          <form
-            method="post"
-            action="/xapi/books/delete-highlight"
-            class="m-0 shrink-0"
-            onsubmit="return window.confirm('이 문구를 삭제할까요?')">
-            <input
-              type="hidden"
-              name="bookId"
-              value="<%= bookId %>" />
-            <input
-              type="hidden"
-              name="from"
-              value="<%= bookBackHref %>" />
-            <input
-              type="hidden"
-              name="highlightId"
-              value="<%= highlight.id %>" />
+          <div class="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              x-on:click="editing = true"
+              aria-label="인상 깊은 문구 수정"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold text-[#8e5521] shadow-[0_6px_14px_rgba(132,90,47,0.06)] outline-none ring-0 transition hover:bg-[#ead9c4]">
+              <span
+                class="i-lucide-pencil h-4 w-4"
+                aria-hidden="true"></span>
+            </button>
+            <form
+              method="post"
+              action="/xapi/books/delete-highlight"
+              class="m-0"
+              onsubmit="return window.confirm('이 문구를 삭제할까요?')">
+              <input
+                type="hidden"
+                name="bookId"
+                value="<%= bookId %>" />
+              <input
+                type="hidden"
+                name="from"
+                value="<%= bookBackHref %>" />
+              <input
+                type="hidden"
+                name="highlightId"
+                value="<%= highlight.id %>" />
+              <button
+                type="submit"
+                aria-label="인상 깊은 문구 삭제"
+                class="inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold text-[#8e5521] shadow-[0_6px_14px_rgba(132,90,47,0.06)] outline-none ring-0 transition hover:bg-[#ead9c4]">
+                <span
+                  class="i-lucide-trash-2 h-4 w-4"
+                  aria-hidden="true"></span>
+              </button>
+            </form>
+          </div>
+        </div>
+        <div x-show="!editing">
+          <p class="mt-3 text-base font-medium leading-7 text-stone-900"><%= highlight.quoteText %></p>
+          <% if (highlight.noteText) { %>
+          <p class="mt-3 text-sm leading-6 text-stone-600"><%= highlight.noteText %></p>
+          <% } %>
+        </div>
+        <form
+          x-show="editing"
+          x-cloak
+          x-ref="editForm"
+          method="post"
+          action="/xapi/books/update-highlight"
+          class="space-y-3">
+          <input
+            type="hidden"
+            name="bookId"
+            value="<%= bookId %>" />
+          <input
+            type="hidden"
+            name="from"
+            value="<%= bookBackHref %>" />
+          <input
+            type="hidden"
+            name="highlightId"
+            value="<%= highlight.id %>" />
+          <label class="block space-y-2">
+            <span class="text-sm font-medium text-stone-700">문구</span>
+            <textarea
+              name="quoteText"
+              rows="5"
+              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-white/80 px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none transition placeholder:text-[#b59f87]"
+              required><%= highlight.quoteText %></textarea>
+          </label>
+          <label class="block space-y-2">
+            <span class="text-sm font-medium text-stone-700">메모</span>
+            <textarea
+              name="noteText"
+              rows="3"
+              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-white/80 px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none transition placeholder:text-[#b59f87]"><%= highlight.noteText %></textarea>
+          </label>
+          <div class="flex flex-wrap gap-2">
             <button
               type="submit"
-              aria-label="인상 깊은 문구 삭제"
-              class="inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold text-[#8e5521] shadow-[0_6px_14px_rgba(132,90,47,0.06)] outline-none ring-0 transition hover:bg-[#ead9c4]">
-              ×
+              class="inline-flex items-center justify-center rounded-full border-none bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white outline-none ring-0 transition hover:bg-stone-700">
+              저장
             </button>
-          </form>
-        </div>
-        <p class="mt-3 text-base font-medium leading-7 text-stone-900"><%= highlight.quoteText %></p>
-        <% if (highlight.noteText) { %>
-        <p class="mt-3 text-sm leading-6 text-stone-600"><%= highlight.noteText %></p>
-        <% } %>
+            <button
+              type="button"
+              x-on:click="$refs.editForm.reset(); editing = false"
+              class="inline-flex items-center justify-center rounded-full border-none bg-white/80 px-4 py-2.5 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+              취소
+            </button>
+          </div>
+        </form>
       </article>
       <% } %>
     </div>

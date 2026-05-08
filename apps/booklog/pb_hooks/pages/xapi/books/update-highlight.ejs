@@ -1,0 +1,96 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/books/update-highlight:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/books/update-highlight:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const highlightId = String(form.highlightId || '').trim()
+  const quoteText = String(form.quoteText || '').trim()
+  const noteText = String(form.noteText || '').trim()
+  const fromPath = String(form.from || '').trim()
+  let bookDetailPath = '/books/' + bookId
+  let errorMessage = ''
+
+  if (fromPath === '/' || fromPath === '/library' || fromPath === '/reviews' || fromPath === '/highlights') {
+    bookDetailPath += '?from=' + encodeURIComponent(fromPath)
+  }
+
+  dbg('xapi/books/update-highlight:start', {
+    userId: userId,
+    bookId: bookId,
+    highlightId: highlightId,
+  })
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+    if (!highlightId) throw new Error('문구 정보가 필요합니다.')
+    if (!quoteText) throw new Error('문구를 입력해 주세요.')
+    if (quoteText.length > 10000) throw new Error('문구는 10000자 이하로 저장해 주세요.')
+    if (noteText.length > 5000) throw new Error('메모는 5000자 이하로 저장해 주세요.')
+
+    const highlightRecord = $app.findFirstRecordByFilter('book_highlights', 'id = {:highlightId} && user_id = {:userId} && book_id = {:bookId}', {
+      highlightId: highlightId,
+      userId: userId,
+      bookId: bookId,
+    })
+
+    highlightRecord.set('quote_text', quoteText)
+    highlightRecord.set('note_text', noteText)
+    $app.save(highlightRecord)
+
+    dbg('xapi/books/update-highlight:redirect', {
+      status: 303,
+      redirectTo: bookDetailPath,
+      flash: '인상 깊은 문구를 수정했습니다.',
+      highlightId: highlightId,
+    })
+    redirect(bookDetailPath, {
+      status: 303,
+      message: '인상 깊은 문구를 수정했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/books/update-highlight:failed', {
+      userId: userId,
+      bookId: bookId,
+      highlightId: highlightId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/books/update-highlight:redirect', {
+    status: 303,
+    redirectTo: bookId ? bookDetailPath : '/',
+    error: errorMessage || '인상 깊은 문구 수정에 실패했습니다.',
+  })
+  redirect(bookId ? bookDetailPath : '/', {
+    status: 303,
+    message: errorMessage || '인상 깊은 문구 수정에 실패했습니다.',
+  })
+  return
+</script>

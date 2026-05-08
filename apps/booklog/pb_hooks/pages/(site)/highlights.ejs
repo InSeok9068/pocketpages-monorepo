@@ -70,7 +70,7 @@
       <a
         href="/books/<%= item.bookId %>?from=/highlights"
         class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-3.5 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
-        <p class="text-[15px] font-semibold leading-[1.65] tracking-[-0.02em] text-stone-900 sm:text-base">"<%= item.quoteText %>"</p>
+        <p class="text-[15px] font-semibold leading-[1.65] tracking-[-0.02em] text-stone-900 sm:text-base"><%= item.quoteText %></p>
         <p class="mt-2.5 text-[12px] leading-5 text-stone-500"><%= item.bookTitle %></p>
         <% if (item.highlightedAt) { %>
         <p class="mt-1.5 text-[12px] font-medium text-stone-400"><%= item.highlightedAt %></p>
