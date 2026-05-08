@@ -121,6 +121,7 @@ jobs:
               chown -R "$deploy_owner" "$hooks_dir"
             ' -- ${{ steps.svc.outputs.service }} "$deploy_owner"
             docker compose up -d --no-deps --force-recreate --wait ${{ steps.svc.outputs.compose_service }}
+            docker image prune -f
 
       - name: Send Build Success
         uses: appleboy/telegram-action@master
