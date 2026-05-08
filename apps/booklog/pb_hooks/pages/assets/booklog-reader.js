@@ -29,6 +29,8 @@ window.booklogReaderLogic = (function () {
   var AUTO_PAGE_SETTLE_MS = 520
   var AUTO_SAVE_INTERVAL_MS = 5000
   var NAVIGATION_SAVE_WAIT_MS = 2000
+  var DEFAULT_FONT_SIZE_PERCENT = 100
+  var FONT_SIZE_OPTIONS = [90, 100, 110, 120, 130]
   var READER_CACHE_DB_NAME = 'booklog-reader-cache'
   var READER_CACHE_STORE_NAME = 'epubBuffers'
   var READER_CACHE_LIMIT = 3
@@ -69,6 +71,48 @@ window.booklogReaderLogic = (function () {
     }
 
     return href.split('#')[0]
+  }
+
+  function getReaderFontSizeStorageKey() {
+    var userKey = readerCacheKey ? String(readerCacheKey).split(':')[0] : 'default'
+
+    return 'booklog:reader-font-size-percent:' + userKey
+  }
+
+  /**
+   * 리더 글자 크기를 허용된 퍼센트 값으로 정리합니다.
+   * @param {number | string} value 글자 크기 값
+   * @returns {number} 허용된 글자 크기 퍼센트
+   */
+  function normalizeReaderFontSizePercent(value) {
+    var parsed = parseInt(String(value || ''), 10)
+    var index = 0
+
+    if (!isFinite(parsed)) {
+      return DEFAULT_FONT_SIZE_PERCENT
+    }
+
+    for (index = 0; index < FONT_SIZE_OPTIONS.length; index += 1) {
+      if (FONT_SIZE_OPTIONS[index] === parsed) {
+        return parsed
+      }
+    }
+
+    return DEFAULT_FONT_SIZE_PERCENT
+  }
+
+  function readStoredReaderFontSizePercent() {
+    try {
+      return normalizeReaderFontSizePercent(window.localStorage.getItem(getReaderFontSizeStorageKey()))
+    } catch (exception) {
+      return DEFAULT_FONT_SIZE_PERCENT
+    }
+  }
+
+  function storeReaderFontSizePercent(percent) {
+    try {
+      window.localStorage.setItem(getReaderFontSizeStorageKey(), String(percent))
+    } catch (exception) {}
   }
 
   function clearReadAloudHighlight() {
@@ -1326,6 +1370,81 @@ window.booklogReaderLogic = (function () {
     }, AUTO_SAVE_INTERVAL_MS)
   }
 
+  function syncReaderFontSizeState(component, percent) {
+    if (!component) {
+      return
+    }
+
+    component.readerFontSizePercent = String(normalizeReaderFontSizePercent(percent))
+  }
+
+  function getReaderFontSizeIndex(percent) {
+    var normalizedPercent = normalizeReaderFontSizePercent(percent)
+    var index = 0
+
+    for (index = 0; index < FONT_SIZE_OPTIONS.length; index += 1) {
+      if (FONT_SIZE_OPTIONS[index] === normalizedPercent) {
+        return index
+      }
+    }
+
+    return FONT_SIZE_OPTIONS.indexOf(DEFAULT_FONT_SIZE_PERCENT)
+  }
+
+  /**
+   * 저장된 글자 크기를 리더 본문에 적용합니다.
+   * @param {any} component Alpine 컴포넌트 상태
+   * @param {number | string} percent 글자 크기 퍼센트
+   * @param {{ skipStorage?: boolean, skipLayoutSync?: boolean }=} options 적용 옵션
+   * @returns {number} 적용한 글자 크기 퍼센트
+   */
+  function applyReaderFontSize(component, percent, options) {
+    var normalizedPercent = normalizeReaderFontSizePercent(percent)
+    var fontSizeValue = String(normalizedPercent) + '%'
+
+    syncReaderFontSizeState(component, normalizedPercent)
+
+    if (!options || !options.skipStorage) {
+      storeReaderFontSizePercent(normalizedPercent)
+    }
+
+    if (renditionInstance && renditionInstance.themes && typeof renditionInstance.themes.fontSize === 'function') {
+      renditionInstance.themes.fontSize(fontSizeValue)
+    }
+
+    if (!options || !options.skipLayoutSync) {
+      scheduleReaderLayoutSync(component, {
+        frameCount: 3,
+        delayMs: 260,
+      })
+    }
+
+    return normalizedPercent
+  }
+
+  function changeReaderFontSize(component, step) {
+    var currentIndex = getReaderFontSizeIndex(component && component.readerFontSizePercent)
+    var nextIndex = Math.max(0, Math.min(FONT_SIZE_OPTIONS.length - 1, currentIndex + step))
+
+    if (nextIndex === currentIndex) {
+      return
+    }
+
+    applyReaderFontSize(component, FONT_SIZE_OPTIONS[nextIndex])
+  }
+
+  function decreaseReaderFontSize(component) {
+    changeReaderFontSize(component, -1)
+  }
+
+  function increaseReaderFontSize(component) {
+    changeReaderFontSize(component, 1)
+  }
+
+  function resetReaderFontSize(component) {
+    applyReaderFontSize(component, DEFAULT_FONT_SIZE_PERCENT)
+  }
+
   function buildSearchResultLabel(result) {
     var chapterLabel = normalizeText(result && result.chapterLabel ? result.chapterLabel : '')
     var excerpt = normalizeText(result && result.excerpt ? result.excerpt : '')
@@ -2141,6 +2260,10 @@ window.booklogReaderLogic = (function () {
       flow: 'scrolled',
       allowScriptedContent: false,
     })
+    applyReaderFontSize(component, readStoredReaderFontSizePercent(), {
+      skipStorage: true,
+      skipLayoutSync: true,
+    })
 
     getAutoPagingTargets().forEach(function (target) {
       disableScrollAnchoring(target)
@@ -2234,6 +2357,7 @@ window.booklogReaderLogic = (function () {
     var container = document.getElementById('epub-reader')
 
     activeComponent = component
+    syncReaderFontSizeState(component, readStoredReaderFontSizePercent())
     syncSpeechVoices(component)
     window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
     window.addEventListener('popstate', handlePopState)
@@ -2748,5 +2872,8 @@ window.booklogReaderLogic = (function () {
     goToBookDetail: goToBookDetail,
     loadSavedPosition: loadSavedPosition,
     goToProgress: goToProgress,
+    decreaseReaderFontSize: decreaseReaderFontSize,
+    increaseReaderFontSize: increaseReaderFontSize,
+    resetReaderFontSize: resetReaderFontSize,
   }
 })()
