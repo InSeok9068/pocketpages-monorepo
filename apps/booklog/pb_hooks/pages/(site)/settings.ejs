@@ -34,7 +34,7 @@
   }
 </script>
 
-<section class="space-y-7">
+<section class="space-y-6">
   <div class="space-y-3">
     <a
       href="/"
@@ -44,81 +44,89 @@
         aria-hidden="true"></span>
       메인으로
     </a>
-    <h1 class="text-4xl font-semibold tracking-tight text-stone-950">설정 관리</h1>
+    <h1 class="text-3xl font-semibold tracking-tight text-stone-950">설정 관리</h1>
   </div>
 
   <div><%- include('flash-alert.ejs') %></div>
 
-  <section class="bg-white/78 rounded-[2rem] border border-stone-200/80 p-5 shadow-[0_20px_44px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-6">
+  <section class="rounded-[1.75rem] border border-stone-200/80 bg-white/88 px-4 py-5 shadow-[0_18px_38px_rgba(73,54,31,0.07)] backdrop-blur-sm sm:p-6">
     <form
       id="settings-form"
       action="/xapi/settings/save"
       method="post"
-      class="space-y-8">
+      class="space-y-6">
       <div class="space-y-4">
-        <div>
-          <h2 class="text-xl font-semibold tracking-tight text-stone-950">푸시 알림 설정</h2>
-          <p class="mt-1 text-sm leading-6 text-stone-600">북로그에서 실제로 사용할 푸시 설정만 간단하게 관리합니다.</p>
+        <div class="space-y-1.5">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">Notifications</p>
+          <h2 class="text-[1.35rem] font-semibold tracking-tight text-stone-950">푸시 알림</h2>
+          <p class="text-sm leading-6 text-stone-600">알림 사용 여부와 받을 주기를 관리합니다.</p>
         </div>
 
-        <label class="flex items-start gap-3 rounded-[1.4rem] bg-[#f7f2e6] px-4 py-4">
+        <label class="flex items-center justify-between gap-4 rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-semibold text-stone-900">푸시 알림 사용</span>
+            <span class="mt-1 block text-sm leading-6 text-stone-600">브라우저 구독이 허용되면 알림을 받습니다.</span>
+          </span>
           <input
             id="push-enabled-input"
             type="checkbox"
             name="pushEnabled"
             value="true"
             <% if (settings.pushEnabled) { %>checked<% } %>
-            class="mt-1 h-4 w-4 rounded border-stone-300 text-stone-900" />
-          <span class="block">
-            <span class="block text-sm font-semibold text-stone-900">푸시 알림 사용</span>
-            <span class="mt-1 block text-sm leading-6 text-stone-600">브라우저 구독이 허용된 경우 북로그 알림을 받을 수 있습니다.</span>
-          </span>
+            class="peer sr-only" />
+          <span
+            class="relative inline-flex h-7 w-12 flex-none items-center rounded-full bg-stone-200 transition after:absolute after:left-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-[0_4px_10px_rgba(24,19,16,0.18)] after:transition after:content-[''] peer-checked:bg-stone-900 peer-checked:after:translate-x-5"
+            aria-hidden="true"></span>
         </label>
 
-        <p
-          id="push-notice"
-          hidden
-          class="rounded-[1.4rem] bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800"></p>
+        <div class="space-y-2">
+          <p
+            id="push-notice"
+            hidden
+            class="rounded-[1.15rem] bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800 shadow-[inset_0_0_0_1px_rgba(180,83,9,0.08)]"></p>
 
-        <p
-          id="push-state-notice"
-          hidden
-          class="rounded-[1.4rem] bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-700"></p>
+          <p
+            id="push-state-notice"
+            hidden
+            class="rounded-[1.15rem] bg-stone-100/90 px-4 py-3 text-sm leading-6 text-stone-700 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.08)]"></p>
+        </div>
 
-        <label class="block rounded-[1.4rem] bg-[#f7f2e6] px-4 py-4">
-          <span class="mb-2 block text-sm font-semibold text-stone-900">읽기 리마인더 주기</span>
-          <span class="mb-3 block text-sm leading-6 text-stone-600">비워두면 꺼집니다. 숫자를 넣으면 마지막 읽기 후 해당 일수 뒤에 알림을 보냅니다.</span>
-          <input
-            id="reading-reminder-cycle-input"
-            type="number"
-            name="readingReminderCycle"
-            min="1"
-            max="365"
-            value="<%= settings.readingReminderCycle === '' ? '' : String(settings.readingReminderCycle) %>"
-            placeholder="off"
-            class="box-border block w-full rounded-[1rem] border-0 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.12)] outline-none" />
-        </label>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="block rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+            <span class="block text-sm font-semibold text-stone-900">읽기 리마인더</span>
+            <span class="mt-1 block text-sm leading-6 text-stone-600">마지막 읽기 후 며칠 뒤 알림을 보낼지 정합니다.</span>
+            <input
+              id="reading-reminder-cycle-input"
+              type="number"
+              name="readingReminderCycle"
+              min="1"
+              max="365"
+              value="<%= settings.readingReminderCycle === '' ? '' : String(settings.readingReminderCycle) %>"
+              placeholder="꺼짐"
+              class="mt-3 box-border block w-full rounded-[1rem] border-0 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.14)] outline-none placeholder:text-stone-400" />
+          </label>
 
-        <label class="block rounded-[1.4rem] bg-[#f7f2e6] px-4 py-4">
-          <span class="mb-2 block text-sm font-semibold text-stone-900">하이라이트 알림 주기</span>
-          <span class="mb-3 block text-sm leading-6 text-stone-600">비워두면 꺼집니다. 숫자를 넣으면 해당 일수마다 하이라이트 알림을 보냅니다.</span>
-          <input
-            id="highlight-push-cycle-input"
-            type="number"
-            name="highlightPushCycle"
-            min="1"
-            max="365"
-            value="<%= settings.highlightPushCycle === '' ? '' : String(settings.highlightPushCycle) %>"
-            placeholder="off"
-            class="box-border block w-full rounded-[1rem] border-0 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.12)] outline-none" />
-        </label>
+          <label class="block rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+            <span class="block text-sm font-semibold text-stone-900">하이라이트 알림</span>
+            <span class="mt-1 block text-sm leading-6 text-stone-600">저장한 문구를 며칠마다 다시 보여줄지 정합니다.</span>
+            <input
+              id="highlight-push-cycle-input"
+              type="number"
+              name="highlightPushCycle"
+              min="1"
+              max="365"
+              value="<%= settings.highlightPushCycle === '' ? '' : String(settings.highlightPushCycle) %>"
+              placeholder="꺼짐"
+              class="mt-3 box-border block w-full rounded-[1rem] border-0 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.14)] outline-none placeholder:text-stone-400" />
+          </label>
+        </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-3 pt-1">
+      <div class="flex flex-wrap items-center gap-3 border-t border-stone-200/80 pt-5">
         <button
           id="settings-submit-button"
           type="submit"
-          class="inline-flex items-center rounded-full border-none bg-stone-900 px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700">
+          class="inline-flex w-full items-center justify-center rounded-full border-none bg-stone-900 px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700 sm:w-auto">
           <span id="settings-submit-label">설정 저장</span>
         </button>
       </div>
