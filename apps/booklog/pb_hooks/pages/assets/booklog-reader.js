@@ -31,6 +31,7 @@ window.booklogReaderLogic = (function () {
   var NAVIGATION_SAVE_WAIT_MS = 2000
   var DEFAULT_FONT_SIZE_PERCENT = 100
   var FONT_SIZE_OPTIONS = [90, 100, 110, 120, 130]
+  var HIGHLIGHT_QUOTE_MAX_LENGTH = 10000
   var READER_CACHE_DB_NAME = 'booklog-reader-cache'
   var READER_CACHE_STORE_NAME = 'epubBuffers'
   var READER_CACHE_LIMIT = 3
@@ -53,6 +54,8 @@ window.booklogReaderLogic = (function () {
   var renderedContentEntries = []
   var activeReadAloudHighlight = null
   var activeComponent = null
+  var activeSelectionContents = null
+  var selectionSyncTimerId = 0
   var isLeavingPage = false
   var isHandlingHistoryBack = false
   var skipNextPopState = false
@@ -71,6 +74,198 @@ window.booklogReaderLogic = (function () {
     }
 
     return href.split('#')[0]
+  }
+
+  /**
+   * EPUB iframe의 window 객체를 찾습니다.
+   *
+   * @param {any} contents epub.js contents
+   * @returns {Window|null} 선택 영역을 읽을 window
+   */
+  function getContentsWindow(contents) {
+    if (contents && contents.window) {
+      return contents.window
+    }
+
+    if (contents && contents.document && contents.document.defaultView) {
+      return contents.document.defaultView
+    }
+
+    return null
+  }
+
+  /**
+   * EPUB iframe의 document 객체를 찾습니다.
+   *
+   * @param {any} contents epub.js contents
+   * @returns {Document|null} 본문 document
+   */
+  function getContentsDocument(contents) {
+    if (contents && contents.document) {
+      return contents.document
+    }
+
+    var contentsWindow = getContentsWindow(contents)
+
+    return contentsWindow && contentsWindow.document ? contentsWindow.document : null
+  }
+
+  /**
+   * EPUB 본문 선택을 CFI와 문구로 정리합니다.
+   *
+   * @param {any} contents epub.js contents
+   * @param {string} fallbackCfiRange epub.js selected 이벤트의 CFI
+   * @returns {{quoteText:string,locator:string,href:string}|null} 선택 문구 정보
+   */
+  function readSelectedHighlightPayload(contents, fallbackCfiRange) {
+    var contentsWindow = getContentsWindow(contents)
+    var contentsDocument = getContentsDocument(contents)
+    var selection = null
+    var range = null
+    var quoteText = ''
+    var locator = String(fallbackCfiRange || '').trim()
+    var href = ''
+
+    if (!contentsWindow || typeof contentsWindow.getSelection !== 'function') {
+      return null
+    }
+
+    selection = contentsWindow.getSelection()
+
+    if (!selection || selection.rangeCount < 1 || selection.isCollapsed) {
+      return null
+    }
+
+    quoteText = normalizeText(selection.toString())
+
+    if (!quoteText) {
+      return null
+    }
+
+    try {
+      range = selection.getRangeAt(0)
+    } catch (exception) {
+      range = null
+    }
+
+    if (!locator && range && contents && typeof contents.cfiFromRange === 'function') {
+      try {
+        locator = String(contents.cfiFromRange(range) || '').trim()
+      } catch (exception) {
+        locator = ''
+      }
+    }
+
+    if (!locator && range && contents && contents.section && typeof contents.section.cfiFromRange === 'function') {
+      try {
+        locator = String(contents.section.cfiFromRange(range) || '').trim()
+      } catch (exception) {
+        locator = ''
+      }
+    }
+
+    href = normalizeHref(deriveRenderedContentHref(contents, contentsDocument))
+
+    return {
+      quoteText: quoteText,
+      locator: locator,
+      href: href,
+    }
+  }
+
+  /**
+   * 선택 문구 저장 바를 현재 선택 영역으로 갱신합니다.
+   *
+   * @param {any} component Alpine component
+   * @param {any} contents epub.js contents
+   * @param {string} fallbackCfiRange epub.js selected 이벤트의 CFI
+   */
+  function syncSelectedHighlight(component, contents, fallbackCfiRange) {
+    var payload = readSelectedHighlightPayload(contents, fallbackCfiRange)
+    var progress = null
+    var href = payload && payload.href ? payload.href : ''
+    var chapterLabel = href ? getChapterLabelForHref(href) : ''
+
+    if (!component || !payload || !payload.quoteText) {
+      return
+    }
+
+    if (!payload.locator || !href) {
+      progress = getCurrentProgressPayload(component)
+      payload.locator = payload.locator || progress.locator
+      href = href || progress.href
+      chapterLabel = chapterLabel || progress.chapterLabel
+    }
+
+    component.selectedHighlightQuoteText = payload.quoteText
+    component.selectedHighlightLocator = payload.locator
+    component.selectedHighlightHref = href
+    component.selectedHighlightChapterLabel = chapterLabel || component.currentChapterLabel || getChapterLabelForHref(href)
+    component.selectedHighlightMessage = ''
+    component.selectedHighlightOpen = true
+    component.controlsVisible = false
+    activeSelectionContents = contents || null
+  }
+
+  /**
+   * 모바일 선택 UI가 안정된 뒤 선택 영역을 읽습니다.
+   *
+   * @param {any} component Alpine component
+   * @param {any} contents epub.js contents
+   * @param {string} fallbackCfiRange epub.js selected 이벤트의 CFI
+   */
+  function scheduleSelectedHighlightSync(component, contents, fallbackCfiRange) {
+    if (selectionSyncTimerId) {
+      window.clearTimeout(selectionSyncTimerId)
+    }
+
+    selectionSyncTimerId = window.setTimeout(function () {
+      selectionSyncTimerId = 0
+      syncSelectedHighlight(component, contents, fallbackCfiRange)
+    }, 160)
+  }
+
+  /**
+   * EPUB 본문 선택 이벤트를 리더 바텀바와 연결합니다.
+   *
+   * @param {any} component Alpine component
+   * @param {any} contents epub.js contents
+   */
+  function bindContentSelectionCapture(component, contents) {
+    var doc = getContentsDocument(contents)
+    var sync = null
+
+    if (!doc || doc.__booklogSelectionCaptureBound) {
+      return
+    }
+
+    doc.__booklogSelectionCaptureBound = true
+    sync = function () {
+      scheduleSelectedHighlightSync(component, contents, '')
+    }
+
+    doc.addEventListener('selectionchange', sync, false)
+    doc.addEventListener('mouseup', sync, false)
+    doc.addEventListener('touchend', sync, false)
+    doc.addEventListener('keyup', sync, false)
+  }
+
+  /**
+   * EPUB iframe에 남은 선택 표시를 지웁니다.
+   */
+  function clearActiveReaderSelection() {
+    var contentsWindow = getContentsWindow(activeSelectionContents)
+    var selection = null
+
+    if (!contentsWindow || typeof contentsWindow.getSelection !== 'function') {
+      return
+    }
+
+    selection = contentsWindow.getSelection()
+
+    if (selection && typeof selection.removeAllRanges === 'function') {
+      selection.removeAllRanges()
+    }
   }
 
   function getReaderFontSizeStorageKey() {
@@ -2279,6 +2474,7 @@ window.booklogReaderLogic = (function () {
 
       upsertRenderedContentEntry(contents)
       annotateReadableTextNodes(doc.body || doc)
+      bindContentSelectionCapture(component, contents)
 
       if (doc.documentElement && doc.documentElement.style) {
         doc.documentElement.style.setProperty('overflow-anchor', 'none', 'important')
@@ -2300,6 +2496,10 @@ window.booklogReaderLogic = (function () {
         frameCount: 2,
         delayMs: 180,
       })
+    })
+
+    renditionInstance.on('selected', function (cfiRange, contents) {
+      scheduleSelectedHighlightSync(component, contents, cfiRange)
     })
 
     renditionInstance.on('relocated', function (location) {
@@ -2675,29 +2875,23 @@ window.booklogReaderLogic = (function () {
     return !!activeKey && !!itemKey && activeKey === itemKey
   }
 
-  function saveHighlight(component) {
-    var location = currentLocation && currentLocation.start ? currentLocation.start : null
-    var locator = location && location.cfi ? String(location.cfi) : ''
-    var href = location && location.href ? String(location.href) : ''
+  /**
+   * 인상 깊은 문구 저장 요청을 보냅니다.
+   *
+   * @param {{quoteText:string,noteText?:string,locator?:string,href?:string,chapterLabel?:string}} input 저장할 문구
+   * @returns {Promise<any>} 저장 응답
+   */
+  function requestSaveHighlight(input) {
     var formData = new FormData()
 
-    component.highlightMessage = ''
-
-    if (!normalizeText(component.highlightQuoteText)) {
-      component.highlightMessage = '문구를 입력해 주세요.'
-      return
-    }
-
     formData.set('bookId', bookId)
-    formData.set('quoteText', component.highlightQuoteText)
-    formData.set('noteText', component.highlightNoteText)
-    formData.set('locator', locator)
-    formData.set('href', href)
-    formData.set('chapterLabel', component.currentChapterLabel || getChapterLabelForHref(href))
+    formData.set('quoteText', input.quoteText)
+    formData.set('noteText', input.noteText || '')
+    formData.set('locator', input.locator || '')
+    formData.set('href', input.href || '')
+    formData.set('chapterLabel', input.chapterLabel || '')
 
-    component.savingHighlight = true
-
-    fetch('/api/books/save-highlight', {
+    return fetch('/api/books/save-highlight', {
       method: 'POST',
       body: formData,
       credentials: 'same-origin',
@@ -2725,18 +2919,149 @@ window.booklogReaderLogic = (function () {
           throw new Error(String(result.payload && result.payload.message ? result.payload.message : '문구 저장에 실패했습니다.'))
         }
 
+        return result.payload || {}
+      })
+  }
+
+  /**
+   * 저장된 선택 문구를 현재 화면에 표시합니다.
+   *
+   * @param {string} locator EPUB CFI
+   */
+  function addSavedHighlightAnnotation(locator) {
+    var normalizedLocator = String(locator || '').trim()
+
+    if (!normalizedLocator || normalizedLocator.indexOf(',') < 0 || !renditionInstance || !renditionInstance.annotations || typeof renditionInstance.annotations.highlight !== 'function') {
+      return
+    }
+
+    try {
+      renditionInstance.annotations.highlight(
+        normalizedLocator,
+        {},
+        null,
+        'booklog-saved-highlight',
+        {
+          fill: '#facc15',
+          'fill-opacity': '0.36',
+          'mix-blend-mode': 'multiply',
+        }
+      )
+    } catch (exception) {
+      console.warn('page/books/[bookId]/read:highlight-annotation-skip', {
+        message: String(exception && exception.message ? exception.message : exception),
+      })
+    }
+  }
+
+  function clearSelectedHighlight(component) {
+    if (!component || component.selectedHighlightSaving) {
+      return
+    }
+
+    clearActiveReaderSelection()
+    component.selectedHighlightOpen = false
+    component.selectedHighlightMessage = ''
+    component.selectedHighlightQuoteText = ''
+    component.selectedHighlightLocator = ''
+    component.selectedHighlightHref = ''
+    component.selectedHighlightChapterLabel = ''
+    activeSelectionContents = null
+  }
+
+  function saveHighlight(component) {
+    var location = currentLocation && currentLocation.start ? currentLocation.start : null
+    var locator = location && location.cfi ? String(location.cfi) : ''
+    var href = location && location.href ? String(location.href) : ''
+    var quoteText = normalizeText(component.highlightQuoteText)
+
+    component.highlightMessage = ''
+
+    if (!quoteText) {
+      component.highlightMessage = '문구를 입력해 주세요.'
+      return
+    }
+
+    if (quoteText.length > HIGHLIGHT_QUOTE_MAX_LENGTH) {
+      component.highlightMessage = '문구는 10000자 이하로 저장해 주세요.'
+      return
+    }
+
+    component.savingHighlight = true
+
+    requestSaveHighlight({
+      quoteText: component.highlightQuoteText,
+      noteText: component.highlightNoteText,
+      locator: locator,
+      href: href,
+      chapterLabel: component.currentChapterLabel || getChapterLabelForHref(href),
+    })
+      .then(function (payload) {
         component.savingHighlight = false
         component.highlightOpen = false
         component.highlightQuoteText = ''
         component.highlightNoteText = ''
         component.highlightMessage = ''
-        component.showSavePositionMessage(String(result.payload && result.payload.message ? result.payload.message : '인상 깊은 문구를 저장했습니다.'))
+        component.showSavePositionMessage(String(payload && payload.message ? payload.message : '인상 깊은 문구를 저장했습니다.'))
       })
       .catch(function (exception) {
         component.savingHighlight = false
         component.highlightMessage = String(exception && exception.message ? exception.message : exception)
         console.error('page/books/[bookId]/read:save-highlight:failed', {
           message: component.highlightMessage,
+        })
+      })
+  }
+
+  function saveSelectedHighlight(component) {
+    var quoteText = component && component.selectedHighlightQuoteText ? normalizeText(component.selectedHighlightQuoteText) : ''
+    var locator = component && component.selectedHighlightLocator ? String(component.selectedHighlightLocator).trim() : ''
+    var href = component && component.selectedHighlightHref ? String(component.selectedHighlightHref).trim() : ''
+    var chapterLabel = component && component.selectedHighlightChapterLabel ? String(component.selectedHighlightChapterLabel).trim() : ''
+
+    if (!component || component.selectedHighlightSaving) {
+      return
+    }
+
+    component.selectedHighlightMessage = ''
+
+    if (!quoteText) {
+      component.selectedHighlightMessage = '선택한 문구가 없습니다.'
+      return
+    }
+
+    if (quoteText.length > HIGHLIGHT_QUOTE_MAX_LENGTH) {
+      component.selectedHighlightMessage = '문구는 10000자 이하로 저장해 주세요.'
+      return
+    }
+
+    component.selectedHighlightSaving = true
+
+    requestSaveHighlight({
+      quoteText: quoteText,
+      noteText: '',
+      locator: locator,
+      href: href,
+      chapterLabel: chapterLabel || getChapterLabelForHref(href),
+    })
+      .then(function (payload) {
+        component.selectedHighlightSaving = false
+        component.selectedHighlightOpen = false
+        component.selectedHighlightMessage = ''
+        component.selectedHighlightQuoteText = ''
+        component.selectedHighlightLocator = ''
+        component.selectedHighlightHref = ''
+        component.selectedHighlightChapterLabel = ''
+        clearActiveReaderSelection()
+        addSavedHighlightAnnotation(locator)
+        activeSelectionContents = null
+        component.showSavePositionMessage(String(payload && payload.message ? payload.message : '인상 깊은 문구를 저장했습니다.'))
+      })
+      .catch(function (exception) {
+        component.selectedHighlightSaving = false
+        component.selectedHighlightMessage = String(exception && exception.message ? exception.message : exception)
+        console.error('page/books/[bookId]/read:save-selected-highlight:failed', {
+          message: component.selectedHighlightMessage,
         })
       })
   }
@@ -2868,6 +3193,8 @@ window.booklogReaderLogic = (function () {
     startReadAloud: startReadAloud,
     stopReadAloud: stopReadAloud,
     saveHighlight: saveHighlight,
+    saveSelectedHighlight: saveSelectedHighlight,
+    clearSelectedHighlight: clearSelectedHighlight,
     saveCurrentPosition: saveCurrentPosition,
     goToBookDetail: goToBookDetail,
     loadSavedPosition: loadSavedPosition,
