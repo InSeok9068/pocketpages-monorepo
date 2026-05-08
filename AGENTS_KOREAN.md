@@ -1,11 +1,15 @@
 # AGENTS_KOREAN.md
 
-## 0. 원칙
+## 0. 원칙과 코드 스타일
 
-- 추상화보다 명시적인 구조를 우선한다
-- 파일 경로만 봐도 흐름이 읽혀야 한다
-- 로직은 사용하는 곳 가까이에 둔다
+- 추상화보다 명시적이고 사용처에 가까운 코드를 우선한다
+- 파일 경로와 trace path만 봐도 요청 흐름이 읽혀야 한다
+- 로직은 사용하는 곳 가까이에 두고, 가독성이나 재사용이 명확할 때만 helper를 만든다
 - SPA 복잡성보다 SSR 중심의 예측 가능한 구조를 우선한다
+- shared named shape는 `apps/<service>/types.d.ts`에 정의한다
+- JSDoc에서는 `types.*`를 직접 사용하고 local typedef bridge는 사용하지 않는다
+- shared function에는 JSDoc이 필요하다
+- 한글 설명은 짧게 쓰고, 구현보다 함수와 params의 역할을 설명한다
 - MUST = 항상 따라야 함
 - DEFAULT = 특별한 이유가 없으면 먼저 선택
 - EXCEPTION = 명확한 근거가 있을 때만 허용
@@ -66,17 +70,14 @@
 
 ## 5. \_private 와 Resolve
 
-- `_private`는 internal 전용이며 route로 노출하지 않는다
-- partial, service, util, internal module 용도로 사용한다
+- `_private`는 internal 전용이며 partial, service, util, internal module 용도로만 사용하고 route로 노출하지 않는다
 - partial에는 필요한 최소 props만 넘긴다
 - `request`, `response`, `api`, `resolve`, full `params`, full `data` 같은 전체 context는 넘기지 않는다
 - `_private` module은 CommonJS만 사용한다
-- `_private` 내부 일반 `require()`는 고정 구현 연결이면 괜찮고, request-context `resolve()` 연쇄는 피한다
-- `_private` 내부에서 `resolve()`를 기본 패턴처럼 쓰지 않는다
-- 의존성은 entry에서 먼저 고르고 주입한다
-- `resolve()`는 entry level에서 의존성을 고르는 용도로 먼저 사용한다
-- `resolve('/_private/...')`는 사용하지 않는다
-- `resolve('moduleName')`처럼 `_private` 기준 이름을 사용한다
+- `_private` 내부 일반 `require()`는 고정 구현 연결이면 괜찮다
+- request-context 의존성은 entry에서 먼저 고르고 주입한다
+- `resolve('moduleName')`처럼 `_private` 기준 이름을 사용하고 `resolve('/_private/...')`는 사용하지 않는다
+- `_private` 내부에서 `resolve()`를 연쇄하거나 기본 패턴처럼 쓰지 않는다
 
 ---
 
@@ -121,30 +122,14 @@
 
 ---
 
-## 9. Code Style
-
-- explicit > abstraction
-- trace path는 짧게 유지한다
-- 불필요한 helper를 만들지 않는다
-- shared named shape는 `apps/<service>/types.d.ts`에 정의한다
-- JSDoc에서는 `types.*`를 직접 사용한다
-- local typedef bridge는 사용하지 않는다
-- shared function에는 JSDoc이 필요하다
-- 한글 설명은 짧게 쓴다
-- 구현 설명보다 함수와 params의 역할 설명을 적는다
-
----
-
-## 10. AI Workflow
+## 9. AI Workflow 와 Structure Analysis
 
 - 먼저 이 작업이 PocketPages인지 PocketBase인지 구분한다
 - single-file, low-impact change면 바로 파일을 연다
 - multi-file change이거나 영향이 불명확하면 `./task.sh index <service>`를 실행한다
 - 서비스 수정은 반드시 **Windows Git Bash**에서 `./task.sh lint <service>`를 실행해 마무리한다
 
----
-
-## 11. Structure Analysis
+필요한 경우 index section을 확인한다:
 
 - 영향 범위가 불명확하면 `impactByFile`을 먼저 본다
 - `_private/*.ejs` partial 변경 전에는 `partials`
@@ -155,14 +140,7 @@
 
 ---
 
-## 12. Checklist
-
-- Before: layer가 맞는지, 책임 분리가 맞는지, routing 선택이 맞는지, schema/runtime source를 확인했는지
-- After: params와 query를 구분했는지, partial에 최소 props만 넘겼는지, HTMX가 partial-or-redirect만 반환하는지, flash pattern을 썼는지, `record.get()`을 썼는지, shared function JSDoc을 추가했는지, lint를 통과했는지
-
----
-
-## 13. Priority
+## 10. Priority
 
 1. `.docs/pocketpages/*`
 2. `.docs/pocketbase/*`

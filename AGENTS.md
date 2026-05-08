@@ -1,11 +1,15 @@
 # AGENTS.md
 
-## 0. Principles
+## 0. Principles & Code Style
 
-- Prefer explicit structure over abstraction
-- File path should explain flow
-- Keep logic close to usage
+- Prefer explicit, local code over abstraction
+- File paths and trace paths should make request flow easy to follow
+- Keep logic close to usage; add helpers only when readability or reuse is clear
 - SSR-first, predictable structure over SPA complexity
+- Shared named shapes live in `apps/<service>/types.d.ts`
+- Use `types.*` directly in JSDoc; do not use local typedef bridges
+- Shared functions require JSDoc
+- Keep Korean descriptions short and describe function/param roles, not implementation details
 - MUST = always follow
 - DEFAULT = choose first unless there is a clear reason
 - EXCEPTION = allow only when explicitly justified
@@ -66,17 +70,14 @@
 
 ## 5. _private & Resolve
 
-- `_private` is internal only, never route-exposed
-- use for partials, services, utils, internal modules
+- `_private` is internal only; use it for partials, services, utils, and internal modules, never route-exposed
 - partials take minimal props only
 - DO NOT pass full context such as `request`, `response`, `api`, `resolve`, full `params`, full `data`
 - `_private` modules use CommonJS only
-- plain `_private` `require()` is fine for fixed wiring; avoid request-context `resolve()` chaining
-- do not treat `resolve()` inside `_private` as default pattern
-- dependencies should be chosen at entry and injected
-- `resolve()` is for entry-level dependency selection first
-- do not use `resolve('/_private/...')`
-- use `_private`-relative names like `resolve('moduleName')`
+- plain `_private` `require()` is fine for fixed wiring
+- choose request-context dependencies at entry level, then inject them
+- use `_private`-relative names like `resolve('moduleName')`; do not use `resolve('/_private/...')`
+- do not chain or default to `resolve()` inside `_private`
 
 ---
 
@@ -121,30 +122,14 @@
 
 ---
 
-## 9. Code Style
-
-- explicit > abstraction
-- short trace path
-- avoid unnecessary helpers
-- define shared named shapes in `apps/<service>/types.d.ts`
-- use `types.*` directly in JSDoc
-- do not use local typedef bridge
-- JSDoc is required for shared functions
-- keep Korean description short
-- describe role of function and params, not implementation detail
-
----
-
-## 10. AI Workflow
+## 9. AI Workflow & Structure Analysis
 
 - identify layer first: PocketPages or PocketBase
 - single-file, low-impact change -> open file directly
 - multi-file or unclear impact -> run `./task.sh index <service>`
 - service change must end with running `./task.sh lint <service>` from **Windows Git Bash**
 
----
-
-## 11. Structure Analysis
+Use index sections when relevant:
 
 - `impactByFile` first when impact is unclear
 - `partials` before `_private/*.ejs` partial change
@@ -155,14 +140,7 @@
 
 ---
 
-## 12. Checklist
-
-- Before: correct layer, responsibility split, routing choice, schema/runtime source checked
-- After: params vs query correct, partial minimal props, HTMX partial-or-redirect only, flash pattern used, `record.get()` used, shared function JSDoc added, lint passed
-
----
-
-## 13. Priority
+## 10. Priority
 
 1. `.docs/pocketpages/*`
 2. `.docs/pocketbase/*`
