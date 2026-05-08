@@ -186,7 +186,21 @@ window.booklogReaderLogic = (function () {
     var href = payload && payload.href ? payload.href : ''
     var chapterLabel = href ? getChapterLabelForHref(href) : ''
 
-    if (!component || !payload || !payload.quoteText) {
+    if (!component) {
+      return
+    }
+
+    if (!payload || !payload.quoteText) {
+      if (!component.selectedHighlightSaving) {
+        component.selectedHighlightOpen = false
+        component.selectedHighlightMessage = ''
+        component.selectedHighlightQuoteText = ''
+        component.selectedHighlightLocator = ''
+        component.selectedHighlightHref = ''
+        component.selectedHighlightChapterLabel = ''
+        activeSelectionContents = null
+      }
+
       return
     }
 

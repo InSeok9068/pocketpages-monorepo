@@ -235,13 +235,6 @@
       this.highlightOpen = true
       this.highlightMessage = ''
       this.controlsVisible = true
-      this.$nextTick(function () {
-        var input = document.getElementById('reader-highlight-quote')
-
-        if (input) {
-          input.focus()
-        }
-      })
     },
     closeHighlight: function () {
       if (this.savingHighlight) {
