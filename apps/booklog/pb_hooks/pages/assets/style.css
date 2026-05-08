@@ -19,3 +19,16 @@
   max-height: calc(100svh - 1rem);
   max-height: calc(100dvh - 1rem);
 }
+
+.booklog-review-textarea {
+  resize: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.booklog-review-textarea::-webkit-resizer {
+  width: 0;
+  height: 0;
+  background: transparent;
+  display: none;
+}
