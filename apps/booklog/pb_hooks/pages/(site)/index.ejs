@@ -254,7 +254,9 @@
       this.beginUpload(component)
 
       this.requestUploadPaint(function () {
-        HTMLFormElement.prototype.submit.call(uploadForm)
+        window.setTimeout(function () {
+          HTMLFormElement.prototype.submit.call(uploadForm)
+        }, 150)
       })
     },
   }
