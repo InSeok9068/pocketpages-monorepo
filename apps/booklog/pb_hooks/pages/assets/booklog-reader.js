@@ -2950,17 +2950,11 @@ window.booklogReaderLogic = (function () {
     }
 
     try {
-      renditionInstance.annotations.highlight(
-        normalizedLocator,
-        {},
-        null,
-        'booklog-saved-highlight',
-        {
-          fill: '#facc15',
-          'fill-opacity': '0.36',
-          'mix-blend-mode': 'multiply',
-        }
-      )
+      renditionInstance.annotations.highlight(normalizedLocator, {}, null, 'booklog-saved-highlight', {
+        fill: '#facc15',
+        'fill-opacity': '0.36',
+        'mix-blend-mode': 'multiply',
+      })
     } catch (exception) {
       console.warn('page/books/[bookId]/read:highlight-annotation-skip', {
         message: String(exception && exception.message ? exception.message : exception),

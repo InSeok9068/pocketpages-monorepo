@@ -950,7 +950,9 @@ function buildApplyhomeCategoryLabel(endpoint, detailName, houseSectionName) {
 function buildLhCategoryLabel(row, endpoint) {
   const noticeName = String(row && row.PAN_NM ? row.PAN_NM : '')
   const detailName = String(row && row.AIS_TP_CD_NM ? row.AIS_TP_CD_NM : '').trim()
-  const fallbackLabel = String(endpoint && endpoint.label ? endpoint.label : '').replace(/^LH\s+/, '').trim()
+  const fallbackLabel = String(endpoint && endpoint.label ? endpoint.label : '')
+    .replace(/^LH\s+/, '')
+    .trim()
 
   if (/무순위|잔여세대|추가입주자|공가세대/i.test(noticeName)) {
     return '무순위/잔여세대'
