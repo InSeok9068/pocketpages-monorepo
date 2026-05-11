@@ -403,12 +403,15 @@ EJS code block 내부에 semantic token을 제공합니다.
 
 | 명령 | 설명 |
 | --- | --- |
-| `PocketPages: Probe Current EJS File` | 현재 파일의 path, app root 인식 여부, diagnostics 개수 확인 |
-| `PocketPages: Refresh Server Script Diagnostics` | 현재 문서의 diagnostics 재계산 |
-| `PocketPages: Reload Caches` | 현재 앱 또는 전체 확장의 path/schema/reference cache 재적재 |
-| `PocketPages: All File References` | `_private` partial/module/static route의 호출부 목록 표시 |
+| `PocketPages: Inspect Current File` | 현재 파일의 path, app root 인식 여부, diagnostics 개수 확인 |
+| `PocketPages: Refresh Diagnostics` | 현재 문서의 diagnostics 재계산 |
+| `PocketPages: Reload PocketPages Cache` | 현재 앱 또는 전체 확장의 path/schema/reference cache 재적재 |
+| `PocketPages: Find File References` | `_private` partial/module/static route/asset의 호출부 목록 표시 |
+| `PocketPages: Explain Current File` | 현재 파일의 route, 실행 체인, 참조 요약 표시 |
+| `PocketPages: Extract Selection to Partial` | 선택한 EJS template markup을 `_private` partial로 추출 |
+| `PocketPages: Copy Debug Bundle` | 현재 파일 진단 정보와 최근 로그를 debug bundle로 복사 |
 
-editor context menu에서도 `.ejs`, `.js`, `.cjs`, `.mjs` 파일에 대해 `All File References`를 실행할 수 있습니다.
+editor context menu에서도 `.ejs`, `.js`, `.cjs`, `.mjs` 파일에 대해 `Find File References`를 실행할 수 있습니다.
 
 ## All File References
 
