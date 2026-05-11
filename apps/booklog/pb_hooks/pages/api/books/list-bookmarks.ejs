@@ -1,0 +1,103 @@
+<script server>
+  if (request.method !== 'POST') {
+    response.json(405, {
+      ok: false,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    response.json(401, {
+      ok: false,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const bookFileId = String(form.bookFileId || '').trim()
+
+  dbg('api/books/list-bookmarks:start', {
+    userId: userId,
+    bookId: bookId,
+    bookFileId: bookFileId,
+  })
+
+  /**
+   * 레코드 값을 문자열로 정리합니다.
+   *
+   * @param {Record} record 원본 레코드
+   * @param {string} fieldName 필드명
+   * @returns {string} 표시 값
+   */
+  function readString(record, fieldName) {
+    return String(record.get(fieldName) || '').trim()
+  }
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+
+    let bookmarkRecords = []
+    const bookmarks = []
+
+    $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
+
+    if (bookFileId) {
+      bookmarkRecords = $app.findRecordsByFilter('book_bookmarks', 'user_id = {:userId} && book_id = {:bookId} && file_id = {:bookFileId}', '-bookmarked_at,-created', 100, 0, {
+        userId: userId,
+        bookId: bookId,
+        bookFileId: bookFileId,
+      })
+    } else {
+      bookmarkRecords = $app.findRecordsByFilter('book_bookmarks', 'user_id = {:userId} && book_id = {:bookId}', '-bookmarked_at,-created', 100, 0, {
+        userId: userId,
+        bookId: bookId,
+      })
+    }
+
+    for (let index = 0; index < bookmarkRecords.length; index += 1) {
+      const bookmarkRecord = bookmarkRecords[index]
+      const progressValue = bookmarkRecord.get('progress_percent')
+      const pageValue = bookmarkRecord.get('page_number')
+
+      bookmarks.push({
+        id: readString(bookmarkRecord, 'id'),
+        locator: readString(bookmarkRecord, 'locator'),
+        href: readString(bookmarkRecord, 'href'),
+        chapterLabel: readString(bookmarkRecord, 'chapter_label'),
+        progressPercent: progressValue === null || typeof progressValue === 'undefined' ? '' : String(progressValue),
+        pageNumber: pageValue === null || typeof pageValue === 'undefined' ? '' : String(pageValue),
+        label: readString(bookmarkRecord, 'label'),
+        noteText: readString(bookmarkRecord, 'note_text'),
+        bookmarkedAt: readString(bookmarkRecord, 'bookmarked_at'),
+      })
+    }
+
+    info('api/books/list-bookmarks:done', {
+      userId: userId,
+      bookId: bookId,
+      count: bookmarks.length,
+    })
+
+    response.json(200, {
+      ok: true,
+      bookmarks: bookmarks,
+    })
+  } catch (exception) {
+    const errorMessage = String(exception.message || exception)
+
+    error('api/books/list-bookmarks:failed', {
+      userId: userId,
+      bookId: bookId,
+      error: errorMessage,
+    })
+
+    response.json(400, {
+      ok: false,
+      message: errorMessage || '책갈피를 불러오지 못했습니다.',
+    })
+  }
+</script>

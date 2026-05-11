@@ -1,0 +1,158 @@
+<script server>
+  if (request.method !== 'POST') {
+    response.json(405, {
+      ok: false,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    response.json(401, {
+      ok: false,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const bookFileId = String(form.bookFileId || '').trim()
+  const locator = String(form.locator || '').trim()
+  const href = String(form.href || '').trim()
+  const chapterLabel = String(form.chapterLabel || '').trim()
+  const progressPercentRaw = String(form.progressPercent || '').trim()
+  const pageNumberRaw = String(form.pageNumber || '').trim()
+  const nowIso = new Date().toISOString()
+  const progressPercent = progressPercentRaw ? Number(progressPercentRaw) : null
+  const pageNumber = pageNumberRaw ? Number(pageNumberRaw) : null
+
+  dbg('api/books/save-bookmark:start', {
+    userId: userId,
+    bookId: bookId,
+    bookFileId: bookFileId,
+    hasLocator: !!locator,
+  })
+
+  /**
+   * 책갈피 기본 라벨을 만듭니다.
+   *
+   * @returns {string} 라벨
+   */
+  function buildBookmarkLabel() {
+    const parts = []
+
+    if (chapterLabel) {
+      parts.push(chapterLabel)
+    }
+
+    if (progressPercent !== null && !isNaN(progressPercent)) {
+      parts.push(String(progressPercent) + '%')
+    }
+
+    return parts.length ? parts.join(' · ') : '책갈피'
+  }
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+    if (!locator && !href) throw new Error('저장할 위치가 없습니다.')
+
+    const bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
+    const bookmarkCollection = $app.findCollectionByNameOrId('book_bookmarks')
+    const bookmarkRecord = new Record(bookmarkCollection)
+    let shelfRecord = null
+    let bookFileRecord = null
+
+    try {
+      shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+        userId: userId,
+        bookId: bookId,
+      })
+    } catch (exception) {
+      shelfRecord = null
+    }
+
+    if (bookFileId) {
+      try {
+        bookFileRecord = $app.findFirstRecordByFilter('book_files', 'id = {:bookFileId} && book_id = {:bookId}', {
+          bookFileId: bookFileId,
+          bookId: bookId,
+        })
+      } catch (exception) {
+        bookFileRecord = null
+      }
+    }
+
+    if (!bookFileRecord && shelfRecord && String(shelfRecord.get('book_file_id') || '').trim()) {
+      try {
+        bookFileRecord = $app.findFirstRecordByFilter('book_files', 'id = {:bookFileId}', {
+          bookFileId: String(shelfRecord.get('book_file_id') || '').trim(),
+        })
+      } catch (exception) {
+        bookFileRecord = null
+      }
+    }
+
+    bookmarkRecord.set('user_id', userId)
+    bookmarkRecord.set('book_id', String(bookRecord.get('id') || ''))
+    bookmarkRecord.set('locator', locator)
+    bookmarkRecord.set('href', href)
+    bookmarkRecord.set('chapter_label', chapterLabel)
+    bookmarkRecord.set('label', buildBookmarkLabel())
+    bookmarkRecord.set('bookmarked_at', nowIso)
+
+    if (bookFileRecord) {
+      bookmarkRecord.set('file_id', String(bookFileRecord.get('id') || ''))
+    }
+
+    if (shelfRecord) {
+      bookmarkRecord.set('shelf_id', String(shelfRecord.get('id') || ''))
+    }
+
+    if (progressPercent !== null && !isNaN(progressPercent)) {
+      bookmarkRecord.set('progress_percent', progressPercent)
+    }
+
+    if (pageNumber !== null && !isNaN(pageNumber)) {
+      bookmarkRecord.set('page_number', pageNumber)
+    }
+
+    $app.save(bookmarkRecord)
+
+    info('api/books/save-bookmark:done', {
+      userId: userId,
+      bookId: bookId,
+      bookmarkId: String(bookmarkRecord.get('id') || ''),
+    })
+
+    response.json(200, {
+      ok: true,
+      message: '책갈피를 저장했습니다.',
+      bookmark: {
+        id: String(bookmarkRecord.get('id') || ''),
+        locator: locator,
+        href: href,
+        chapterLabel: chapterLabel,
+        progressPercent: progressPercent === null || isNaN(progressPercent) ? '' : String(progressPercent),
+        pageNumber: pageNumber === null || isNaN(pageNumber) ? '' : String(pageNumber),
+        label: buildBookmarkLabel(),
+        noteText: '',
+        bookmarkedAt: nowIso,
+      },
+    })
+  } catch (exception) {
+    const errorMessage = String(exception.message || exception)
+
+    error('api/books/save-bookmark:failed', {
+      userId: userId,
+      bookId: bookId,
+      error: errorMessage,
+    })
+
+    response.json(400, {
+      ok: false,
+      message: errorMessage || '책갈피 저장에 실패했습니다.',
+    })
+  }
+</script>

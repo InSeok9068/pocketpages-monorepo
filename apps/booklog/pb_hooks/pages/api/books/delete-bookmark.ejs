@@ -1,0 +1,67 @@
+<script server>
+  if (request.method !== 'POST') {
+    response.json(405, {
+      ok: false,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    response.json(401, {
+      ok: false,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const bookmarkId = String(form.bookmarkId || '').trim()
+
+  dbg('api/books/delete-bookmark:start', {
+    userId: userId,
+    bookId: bookId,
+    bookmarkId: bookmarkId,
+  })
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+    if (!bookmarkId) throw new Error('책갈피 정보가 필요합니다.')
+
+    const bookmarkRecord = $app.findFirstRecordByFilter('book_bookmarks', 'id = {:bookmarkId} && user_id = {:userId} && book_id = {:bookId}', {
+      bookmarkId: bookmarkId,
+      userId: userId,
+      bookId: bookId,
+    })
+
+    $app.delete(bookmarkRecord)
+
+    info('api/books/delete-bookmark:done', {
+      userId: userId,
+      bookId: bookId,
+      bookmarkId: bookmarkId,
+    })
+
+    response.json(200, {
+      ok: true,
+      message: '책갈피를 삭제했습니다.',
+      id: bookmarkId,
+    })
+  } catch (exception) {
+    const errorMessage = String(exception.message || exception)
+
+    error('api/books/delete-bookmark:failed', {
+      userId: userId,
+      bookId: bookId,
+      bookmarkId: bookmarkId,
+      error: errorMessage,
+    })
+
+    response.json(400, {
+      ok: false,
+      message: errorMessage || '책갈피 삭제에 실패했습니다.',
+    })
+  }
+</script>

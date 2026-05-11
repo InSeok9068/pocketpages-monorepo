@@ -1,0 +1,96 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/books/reset-reading-sessions:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/books/reset-reading-sessions:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const fromPath = String(form.from || '').trim()
+  let bookDetailPath = '/books/' + bookId
+  let errorMessage = ''
+
+  if (fromPath === '/' || fromPath === '/library' || fromPath === '/reviews' || fromPath === '/highlights') {
+    bookDetailPath += '?from=' + encodeURIComponent(fromPath)
+  }
+
+  dbg('xapi/books/reset-reading-sessions:start', {
+    userId: userId,
+    bookId: bookId,
+  })
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+
+    const deleteResult = $app
+      .db()
+      .delete(
+        'reading_sessions',
+        $dbx.hashExp({
+          user_id: userId,
+          book_id: bookId,
+        })
+      )
+      .execute()
+    const deletedCount = deleteResult.rowsAffected()
+
+    if (deletedCount < 1) {
+      dbg('xapi/books/reset-reading-sessions:empty', {
+        userId: userId,
+        bookId: bookId,
+      })
+    }
+
+    dbg('xapi/books/reset-reading-sessions:redirect', {
+      status: 303,
+      redirectTo: bookDetailPath,
+      flash: '독서 시간을 초기화했습니다.',
+      deletedCount: deletedCount,
+    })
+    redirect(bookDetailPath, {
+      status: 303,
+      message: '독서 시간을 초기화했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/books/reset-reading-sessions:failed', {
+      userId: userId,
+      bookId: bookId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/books/reset-reading-sessions:redirect', {
+    status: 303,
+    redirectTo: bookId ? bookDetailPath : '/',
+    error: errorMessage || '독서 시간 초기화에 실패했습니다.',
+  })
+  redirect(bookId ? bookDetailPath : '/', {
+    status: 303,
+    message: errorMessage || '독서 시간 초기화에 실패했습니다.',
+  })
+  return
+</script>

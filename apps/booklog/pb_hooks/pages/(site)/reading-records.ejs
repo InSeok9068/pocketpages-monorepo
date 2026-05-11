@@ -1,0 +1,202 @@
+<script server>
+  meta('title', 'Booklog 독서 기록')
+  meta('description', '주차별 독서 시간을 확인하는 페이지')
+
+  if (!request.auth) {
+    dbg('page/reading-records:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const now = new Date()
+  const weekItems = []
+  const sessionRecords = $app.findRecordsByFilter('reading_sessions', 'user_id = {:userId}', '-ended_at', 500, 0, { userId: userId })
+
+  /**
+   * 날짜를 해당 주 월요일 0시로 맞춥니다.
+   *
+   * @param {Date} date 기준 날짜
+   * @returns {Date} 주 시작 날짜
+   */
+  function getWeekStart(date) {
+    const target = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+    const day = target.getDay()
+    const diff = day === 0 ? -6 : 1 - day
+
+    target.setDate(target.getDate() + diff)
+    target.setHours(0, 0, 0, 0)
+
+    return target
+  }
+
+  /**
+   * 숫자를 두 자리 문자열로 맞춥니다.
+   *
+   * @param {number} value 숫자
+   * @returns {string} 두 자리 문자열
+   */
+  function padTwo(value) {
+    const text = String(value)
+
+    return text.length < 2 ? '0' + text : text
+  }
+
+  /**
+   * 날짜를 YYYY-MM-DD로 표시합니다.
+   *
+   * @param {Date} date 표시할 날짜
+   * @returns {string} 날짜 문자열
+   */
+  function formatDateLabel(date) {
+    const year = String(date.getFullYear())
+    const month = padTwo(date.getMonth() + 1)
+    const day = padTwo(date.getDate())
+
+    return year + '-' + month + '-' + day
+  }
+
+  /**
+   * 시간을 짧은 한국어 문구로 표시합니다.
+   *
+   * @param {number} minutes 분
+   * @returns {string} 표시 문구
+   */
+  function formatMinutesLabel(minutes) {
+    const safeMinutes = Math.max(0, Math.round(minutes))
+    const hours = Math.floor(safeMinutes / 60)
+    const restMinutes = safeMinutes % 60
+
+    if (hours > 0 && restMinutes > 0) {
+      return hours + '시간 ' + restMinutes + '분'
+    }
+
+    if (hours > 0) {
+      return hours + '시간'
+    }
+
+    return safeMinutes + '분'
+  }
+
+  const currentWeekStart = getWeekStart(now)
+  const weeklySecondsByKey = {}
+  let totalSeconds = 0
+  let finishedBookCount = 0
+
+  try {
+    finishedBookCount = $app.countRecords(
+      'book_shelves',
+      $dbx.hashExp({
+        user_id: userId,
+        status: 'finished',
+      })
+    )
+  } catch (exception) {
+    finishedBookCount = 0
+  }
+
+  for (let weekIndex = 3; weekIndex >= 0; weekIndex -= 1) {
+    const weekStart = new Date(currentWeekStart.getTime())
+
+    weekStart.setDate(currentWeekStart.getDate() - weekIndex * 7)
+    const weekEnd = new Date(weekStart.getTime())
+
+    weekEnd.setDate(weekStart.getDate() + 6)
+
+    const weekKey = formatDateLabel(weekStart)
+    weeklySecondsByKey[weekKey] = 0
+    weekItems.push({
+      key: weekKey,
+      label: formatDateLabel(weekStart).slice(5) + ' ~ ' + formatDateLabel(weekEnd).slice(5),
+      minutes: 0,
+      minutesLabel: '0분',
+    })
+  }
+
+  for (let index = 0; index < sessionRecords.length; index += 1) {
+    const sessionRecord = sessionRecords[index]
+    const endedAtValue = String(sessionRecord.get('ended_at') || '').trim()
+    const durationSeconds = Number(sessionRecord.get('duration_seconds') || 0)
+    const endedAt = endedAtValue ? new Date(endedAtValue) : null
+
+    if (!endedAt || isNaN(endedAt.getTime()) || isNaN(durationSeconds) || durationSeconds < 1) {
+      continue
+    }
+
+    const weekKey = formatDateLabel(getWeekStart(endedAt))
+
+    if (typeof weeklySecondsByKey[weekKey] === 'number') {
+      weeklySecondsByKey[weekKey] += durationSeconds
+    }
+
+    totalSeconds += durationSeconds
+  }
+
+  for (let index = 0; index < weekItems.length; index += 1) {
+    const seconds = weeklySecondsByKey[weekItems[index].key] || 0
+    const minutes = Math.round(seconds / 60)
+
+    weekItems[index].minutes = minutes
+    weekItems[index].minutesLabel = formatMinutesLabel(minutes)
+  }
+
+  const totalMinutes = Math.round(totalSeconds / 60)
+  const currentWeekMinutes = weekItems.length ? weekItems[weekItems.length - 1].minutes : 0
+</script>
+
+<section class="space-y-6">
+  <div class="space-y-3">
+    <a
+      href="/"
+      class="bg-white/78 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0">
+      <span
+        class="i-lucide-arrow-left h-4 w-4"
+        aria-hidden="true"></span>
+      메인으로
+    </a>
+    <div class="space-y-2">
+      <p class="text-[12px] font-medium uppercase tracking-[0.18em] text-stone-500">Reading Records</p>
+      <h1 class="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">독서 기록</h1>
+    </div>
+  </div>
+
+  <section class="bg-white/82 grid grid-cols-3 overflow-hidden rounded-[1.35rem] shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)] sm:gap-3 sm:overflow-visible sm:bg-transparent sm:shadow-none">
+    <div class="min-w-0 px-3 py-3 sm:rounded-[1.5rem] sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+      <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500 sm:text-[11px] sm:tracking-[0.2em]">이번 주</p>
+      <p class="mt-1 break-keep text-lg font-semibold tracking-tight text-stone-950 sm:mt-2 sm:text-2xl"><%= formatMinutesLabel(currentWeekMinutes) %></p>
+    </div>
+    <div class="min-w-0 border-x border-stone-200/70 px-3 py-3 sm:rounded-[1.5rem] sm:border-x-0 sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+      <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500 sm:text-[11px] sm:tracking-[0.2em]">누적</p>
+      <p class="mt-1 break-keep text-lg font-semibold tracking-tight text-stone-950 sm:mt-2 sm:text-2xl"><%= formatMinutesLabel(totalMinutes) %></p>
+    </div>
+    <div class="min-w-0 px-3 py-3 sm:rounded-[1.5rem] sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+      <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500 sm:text-[11px] sm:tracking-[0.2em]">완독</p>
+      <p class="mt-1 break-keep text-lg font-semibold tracking-tight text-stone-950 sm:mt-2 sm:text-2xl"><%= finishedBookCount %>권</p>
+    </div>
+  </section>
+
+  <section class="rounded-[1.6rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:rounded-[2rem] sm:p-5">
+    <div class="mb-4 flex items-center justify-between gap-3">
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">Weekly</p>
+        <h2 class="mt-1 text-lg font-semibold tracking-tight text-stone-950 sm:text-xl">주차별 독서 시간</h2>
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <% for (let index = 0; index < weekItems.length; index += 1) { const item = weekItems[index] %>
+      <div class="flex items-center justify-between gap-3 rounded-[1rem] bg-[#fbf7ef] px-3 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] sm:rounded-[1.1rem] sm:px-4 sm:py-3">
+        <span class="font-medium text-stone-700"><%= item.label %></span>
+        <span class="font-semibold text-stone-950"><%= item.minutesLabel %></span>
+      </div>
+      <% } %>
+    </div>
+  </section>
+</section>

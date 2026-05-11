@@ -1,0 +1,172 @@
+<script server>
+  if (request.method !== 'POST') {
+    response.json(405, {
+      ok: false,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    response.json(401, {
+      ok: false,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const sessionId = String(form.sessionId || '').trim()
+  const bookId = String(form.bookId || '').trim()
+  const bookFileId = String(form.bookFileId || '').trim()
+  const startedAt = String(form.startedAt || '').trim()
+  const endedAt = String(form.endedAt || '').trim()
+  const durationSeconds = Number(String(form.durationSeconds || '').trim())
+  const startProgressPercent = String(form.startProgressPercent || '').trim()
+  const endProgressPercent = String(form.endProgressPercent || '').trim()
+  const progressDeltaPercent = String(form.progressDeltaPercent || '').trim()
+  const startPage = String(form.startPage || '').trim()
+  const endPage = String(form.endPage || '').trim()
+  const pageDelta = String(form.pageDelta || '').trim()
+  const startLocator = String(form.startLocator || '').trim()
+  const endLocator = String(form.endLocator || '').trim()
+  const startHref = String(form.startHref || '').trim()
+  const endHref = String(form.endHref || '').trim()
+  const startChapterLabel = String(form.startChapterLabel || '').trim()
+  const endChapterLabel = String(form.endChapterLabel || '').trim()
+
+  dbg('api/books/save-reading-session:start', {
+    userId: userId,
+    bookId: bookId,
+    sessionId: sessionId,
+    durationSeconds: durationSeconds,
+  })
+
+  /**
+   * 숫자 필드를 안전하게 저장합니다.
+   *
+   * @param {Record} record 저장할 레코드
+   * @param {string} fieldName 필드명
+   * @param {string} rawValue 원본 값
+   */
+  function setOptionalNumber(record, fieldName, rawValue) {
+    const value = String(rawValue || '').trim()
+    const parsedValue = value ? Number(value) : null
+
+    if (value && !isNaN(parsedValue)) {
+      record.set(fieldName, parsedValue)
+    }
+  }
+
+  try {
+    if (!bookId) throw new Error('책 정보가 필요합니다.')
+    if (!startedAt || !endedAt) throw new Error('독서 시간이 필요합니다.')
+    if (isNaN(durationSeconds) || durationSeconds < 1) throw new Error('저장할 독서 시간이 없습니다.')
+
+    const bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
+    let shelfRecord = null
+    let bookFileRecord = null
+    let sessionRecord = null
+
+    try {
+      shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+        userId: userId,
+        bookId: bookId,
+      })
+    } catch (exception) {
+      shelfRecord = null
+    }
+
+    if (bookFileId) {
+      try {
+        bookFileRecord = $app.findFirstRecordByFilter('book_files', 'id = {:bookFileId} && book_id = {:bookId}', {
+          bookFileId: bookFileId,
+          bookId: bookId,
+        })
+      } catch (exception) {
+        bookFileRecord = null
+      }
+    }
+
+    if (!bookFileRecord && shelfRecord && String(shelfRecord.get('book_file_id') || '').trim()) {
+      try {
+        bookFileRecord = $app.findFirstRecordByFilter('book_files', 'id = {:bookFileId}', {
+          bookFileId: String(shelfRecord.get('book_file_id') || '').trim(),
+        })
+      } catch (exception) {
+        bookFileRecord = null
+      }
+    }
+
+    if (sessionId) {
+      try {
+        sessionRecord = $app.findFirstRecordByFilter('reading_sessions', 'id = {:sessionId} && user_id = {:userId} && book_id = {:bookId}', {
+          sessionId: sessionId,
+          userId: userId,
+          bookId: bookId,
+        })
+      } catch (exception) {
+        sessionRecord = null
+      }
+    }
+
+    if (!sessionRecord) {
+      sessionRecord = new Record($app.findCollectionByNameOrId('reading_sessions'))
+      sessionRecord.set('user_id', userId)
+      sessionRecord.set('book_id', String(bookRecord.get('id') || ''))
+    }
+
+    if (bookFileRecord) {
+      sessionRecord.set('file_id', String(bookFileRecord.get('id') || ''))
+    }
+
+    if (shelfRecord) {
+      sessionRecord.set('shelf_id', String(shelfRecord.get('id') || ''))
+    }
+
+    sessionRecord.set('started_at', startedAt)
+    sessionRecord.set('ended_at', endedAt)
+    sessionRecord.set('duration_seconds', durationSeconds)
+    sessionRecord.set('start_locator', startLocator)
+    sessionRecord.set('end_locator', endLocator)
+    sessionRecord.set('start_href', startHref)
+    sessionRecord.set('end_href', endHref)
+    sessionRecord.set('start_chapter_label', startChapterLabel)
+    sessionRecord.set('end_chapter_label', endChapterLabel)
+
+    setOptionalNumber(sessionRecord, 'start_progress_percent', startProgressPercent)
+    setOptionalNumber(sessionRecord, 'end_progress_percent', endProgressPercent)
+    setOptionalNumber(sessionRecord, 'progress_delta_percent', progressDeltaPercent)
+    setOptionalNumber(sessionRecord, 'start_page', startPage)
+    setOptionalNumber(sessionRecord, 'end_page', endPage)
+    setOptionalNumber(sessionRecord, 'page_delta', pageDelta)
+
+    $app.save(sessionRecord)
+
+    info('api/books/save-reading-session:done', {
+      userId: userId,
+      bookId: bookId,
+      sessionId: String(sessionRecord.get('id') || ''),
+      durationSeconds: durationSeconds,
+    })
+
+    response.json(200, {
+      ok: true,
+      id: String(sessionRecord.get('id') || ''),
+    })
+  } catch (exception) {
+    const errorMessage = String(exception.message || exception)
+
+    error('api/books/save-reading-session:failed', {
+      userId: userId,
+      bookId: bookId,
+      error: errorMessage,
+    })
+
+    response.json(400, {
+      ok: false,
+      message: errorMessage || '독서 세션 저장에 실패했습니다.',
+    })
+  }
+</script>

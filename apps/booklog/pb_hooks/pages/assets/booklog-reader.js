@@ -2,6 +2,7 @@ window.booklogReaderLogic = (function () {
   var readerConfig = window.booklogReaderConfig || {}
   var readerUrl = String(readerConfig.readerUrl || '')
   var bookId = String(readerConfig.bookId || '')
+  var bookFileId = String(readerConfig.bookFileId || '')
   var readerCacheKey = String(readerConfig.readerCacheKey || '')
   var bookInstance = null
   var renditionInstance = null
@@ -28,6 +29,8 @@ window.booklogReaderLogic = (function () {
   var EDGE_INTENT_MS = 140
   var AUTO_PAGE_SETTLE_MS = 520
   var AUTO_SAVE_INTERVAL_MS = 5000
+  var READING_SESSION_SAVE_INTERVAL_MS = 60000
+  var READING_SESSION_IDLE_MS = 180000
   var NAVIGATION_SAVE_WAIT_MS = 2000
   var DEFAULT_FONT_SIZE_PERCENT = 100
   var FONT_SIZE_OPTIONS = [90, 100, 110, 120, 130]
@@ -39,6 +42,19 @@ window.booklogReaderLogic = (function () {
   var autoSaveInFlight = false
   var saveRequestInFlight = false
   var activePersistRequest = null
+  var readingSessionId = ''
+  var readingSessionStartedAtMs = 0
+  var readingSessionStartedAtIso = ''
+  var readingSessionStartProgress = null
+  var readingSessionTimerId = 0
+  var readingSessionSaveInFlight = false
+  var activeReadingSessionRequest = null
+  var lastReadingSessionSavedSeconds = 0
+  var readingSessionBeaconSent = false
+  var readingSessionActiveSeconds = 0
+  var readingSessionLastTickMs = 0
+  var readingSessionLastActivityMs = 0
+  var readingSessionActivityBound = false
   var isRestoringPosition = false
   var hasAttemptedInitialRestore = false
   var lastPersistedProgressKey = ''
@@ -1227,6 +1243,7 @@ window.booklogReaderLogic = (function () {
   function updateCurrentLocation(component, location) {
     var target = autoPagingTarget || resolveAutoPagingTarget()
 
+    markReadingSessionActivity()
     currentLocation = location || null
     syncActiveTocState(component, currentLocation)
 
@@ -1303,6 +1320,447 @@ window.booklogReaderLogic = (function () {
       .then(function (result) {
         if (!result.ok) {
           throw new Error(String(result.payload && result.payload.message ? result.payload.message : '읽기 위치를 불러오지 못했습니다.'))
+        }
+
+        return result.payload || {}
+      })
+  }
+
+  function parseOptionalInteger(value) {
+    var text = String(value || '').trim()
+    var parsed = text ? Number(text) : NaN
+
+    if (!text || !isFinite(parsed)) {
+      return null
+    }
+
+    return Math.round(parsed)
+  }
+
+  function setFormValue(formData, name, value) {
+    if (value === null || typeof value === 'undefined') {
+      formData.set(name, '')
+      return
+    }
+
+    formData.set(name, String(value))
+  }
+
+  function isDocumentVisible() {
+    return typeof document === 'undefined' || document.visibilityState !== 'hidden'
+  }
+
+  function isReadingSessionActive(nowMs) {
+    return !!readingSessionStartedAtMs && isDocumentVisible() && nowMs - readingSessionLastActivityMs <= READING_SESSION_IDLE_MS
+  }
+
+  function markReadingSessionActivity() {
+    var nowMs = Date.now()
+
+    readingSessionLastActivityMs = nowMs
+
+    if (!readingSessionLastTickMs) {
+      readingSessionLastTickMs = nowMs
+    }
+  }
+
+  function syncReadingSessionActiveSeconds() {
+    var nowMs = Date.now()
+    var elapsedMs = 0
+
+    if (!readingSessionLastTickMs) {
+      readingSessionLastTickMs = nowMs
+      return
+    }
+
+    if (isReadingSessionActive(nowMs)) {
+      elapsedMs = Math.max(0, nowMs - readingSessionLastTickMs)
+      readingSessionActiveSeconds += elapsedMs / 1000
+    }
+
+    readingSessionLastTickMs = nowMs
+  }
+
+  function buildReadingSessionFormData(component) {
+    var endProgress = null
+    var startedAt = readingSessionStartedAtMs || 0
+    var endedAtMs = Date.now()
+    var durationSeconds = 0
+    var startProgressPercent = null
+    var endProgressPercent = null
+    var startPage = null
+    var endPage = null
+    var progressDelta = null
+    var pageDelta = null
+    var formData = null
+
+    syncReadingSessionActiveSeconds()
+    durationSeconds = Math.max(0, Math.round(readingSessionActiveSeconds))
+
+    if (!startedAt || !readingSessionStartProgress || durationSeconds < 1) {
+      return null
+    }
+
+    endProgress = getCurrentProgressPayload(component)
+    startProgressPercent = parseOptionalInteger(readingSessionStartProgress.progressPercent)
+    endProgressPercent = parseOptionalInteger(endProgress.progressPercent)
+    startPage = parseOptionalInteger(readingSessionStartProgress.pageNumber)
+    endPage = parseOptionalInteger(endProgress.pageNumber)
+
+    if (startProgressPercent !== null && endProgressPercent !== null) {
+      progressDelta = endProgressPercent - startProgressPercent
+    }
+
+    if (startPage !== null && endPage !== null) {
+      pageDelta = endPage - startPage
+    }
+
+    formData = new FormData()
+    formData.set('sessionId', readingSessionId)
+    formData.set('bookId', bookId)
+    formData.set('bookFileId', bookFileId)
+    formData.set('startedAt', readingSessionStartedAtIso)
+    formData.set('endedAt', new Date(endedAtMs).toISOString())
+    formData.set('durationSeconds', String(durationSeconds))
+    setFormValue(formData, 'startProgressPercent', startProgressPercent)
+    setFormValue(formData, 'endProgressPercent', endProgressPercent)
+    setFormValue(formData, 'progressDeltaPercent', progressDelta)
+    setFormValue(formData, 'startPage', startPage)
+    setFormValue(formData, 'endPage', endPage)
+    setFormValue(formData, 'pageDelta', pageDelta)
+    formData.set('startLocator', readingSessionStartProgress.locator || '')
+    formData.set('endLocator', endProgress.locator || '')
+    formData.set('startHref', readingSessionStartProgress.href || '')
+    formData.set('endHref', endProgress.href || '')
+    formData.set('startChapterLabel', readingSessionStartProgress.chapterLabel || '')
+    formData.set('endChapterLabel', endProgress.chapterLabel || '')
+
+    return {
+      formData: formData,
+      durationSeconds: durationSeconds,
+    }
+  }
+
+  function requestSaveReadingSession(formData, options) {
+    return fetch('/api/books/save-reading-session', {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+      keepalive: !!(options && options.keepalive),
+    })
+      .then(function (response) {
+        return response
+          .json()
+          .then(function (payload) {
+            return {
+              ok: response.ok,
+              payload: payload || {},
+            }
+          })
+          .catch(function () {
+            return {
+              ok: response.ok,
+              payload: {},
+            }
+          })
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '독서 세션 저장에 실패했습니다.'))
+        }
+
+        if (result.payload && result.payload.id) {
+          readingSessionId = String(result.payload.id || '')
+        }
+
+        return true
+      })
+  }
+
+  function saveReadingSessionCheckpoint(component, options) {
+    var payload = buildReadingSessionFormData(component)
+    var finalSave = !!(options && options.final)
+
+    if (finalSave) {
+      readingSessionBeaconSent = true
+    }
+
+    if (readingSessionSaveInFlight) {
+      if (finalSave) {
+        return (activeReadingSessionRequest || Promise.resolve(false)).then(function () {
+          return saveReadingSessionCheckpoint(component, options)
+        })
+      }
+
+      return activeReadingSessionRequest || Promise.resolve(false)
+    }
+
+    if (!payload) {
+      return Promise.resolve(false)
+    }
+
+    if (!finalSave && payload.durationSeconds <= lastReadingSessionSavedSeconds) {
+      return Promise.resolve(false)
+    }
+
+    readingSessionSaveInFlight = true
+    activeReadingSessionRequest = requestSaveReadingSession(payload.formData, options)
+      .then(function (saved) {
+        lastReadingSessionSavedSeconds = Math.max(lastReadingSessionSavedSeconds, payload.durationSeconds)
+        return saved
+      })
+      .finally(function () {
+        readingSessionSaveInFlight = false
+        activeReadingSessionRequest = null
+      })
+
+    return activeReadingSessionRequest
+  }
+
+  function waitForReadingSessionSave(component, options) {
+    return new Promise(function (resolve) {
+      var waitTimerId = setTimeout(function () {
+        console.warn('page/books/[bookId]/read:session-save-timeout', {
+          waitMs: NAVIGATION_SAVE_WAIT_MS,
+        })
+        resolve(false)
+      }, NAVIGATION_SAVE_WAIT_MS)
+
+      saveReadingSessionCheckpoint(component, options)
+        .then(function (saved) {
+          clearTimeout(waitTimerId)
+          resolve(saved)
+        })
+        .catch(function (exception) {
+          clearTimeout(waitTimerId)
+          console.warn('page/books/[bookId]/read:session-save-failed', {
+            message: String(exception && exception.message ? exception.message : exception),
+          })
+          resolve(false)
+        })
+    })
+  }
+
+  function sendReadingSessionBeacon(component) {
+    var payload = null
+
+    if (readingSessionBeaconSent) {
+      return
+    }
+
+    payload = buildReadingSessionFormData(component)
+
+    if (!payload) {
+      return
+    }
+
+    readingSessionBeaconSent = true
+
+    if (window.navigator && typeof window.navigator.sendBeacon === 'function') {
+      try {
+        window.navigator.sendBeacon('/api/books/save-reading-session', payload.formData)
+        return
+      } catch (exception) {}
+    }
+
+    try {
+      requestSaveReadingSession(payload.formData, {
+        keepalive: true,
+      }).catch(function () {})
+    } catch (exception) {}
+  }
+
+  function startReadingSession(component) {
+    if (readingSessionTimerId) {
+      clearInterval(readingSessionTimerId)
+    }
+
+    readingSessionId = ''
+    readingSessionStartedAtMs = Date.now()
+    readingSessionStartedAtIso = new Date(readingSessionStartedAtMs).toISOString()
+    readingSessionStartProgress = getCurrentProgressPayload(component)
+    readingSessionActiveSeconds = 0
+    readingSessionLastTickMs = readingSessionStartedAtMs
+    readingSessionLastActivityMs = readingSessionStartedAtMs
+    lastReadingSessionSavedSeconds = 0
+    readingSessionBeaconSent = false
+
+    readingSessionTimerId = setInterval(function () {
+      syncReadingSessionActiveSeconds()
+      saveReadingSessionCheckpoint(component, {
+        final: false,
+      }).catch(function (exception) {
+        console.warn('page/books/[bookId]/read:session-auto-save:failed', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+    }, READING_SESSION_SAVE_INTERVAL_MS)
+  }
+
+  function bindReadingSessionActivityTracking(component) {
+    var markActivity = function () {
+      markReadingSessionActivity()
+    }
+
+    if (readingSessionActivityBound) {
+      return
+    }
+
+    readingSessionActivityBound = true
+
+    window.addEventListener('click', markActivity, { passive: true })
+    window.addEventListener('keydown', markActivity)
+    window.addEventListener('scroll', markActivity, { passive: true })
+    window.addEventListener('pointerdown', markActivity, { passive: true })
+    window.addEventListener('touchstart', markActivity, { passive: true })
+
+    document.addEventListener('visibilitychange', function () {
+      syncReadingSessionActiveSeconds()
+
+      if (isDocumentVisible()) {
+        markReadingSessionActivity()
+        return
+      }
+
+      saveReadingSessionCheckpoint(component, {
+        final: true,
+      }).catch(function (exception) {
+        console.warn('page/books/[bookId]/read:session-visibility-save:failed', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+    })
+  }
+
+  function requestBookmarks() {
+    var formData = new FormData()
+
+    formData.set('bookId', bookId)
+    formData.set('bookFileId', bookFileId)
+
+    return fetch('/api/books/list-bookmarks', {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+    })
+      .then(function (response) {
+        return response
+          .json()
+          .then(function (payload) {
+            return {
+              ok: response.ok,
+              payload: payload || {},
+            }
+          })
+          .catch(function () {
+            return {
+              ok: response.ok,
+              payload: {},
+            }
+          })
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '책갈피를 불러오지 못했습니다.'))
+        }
+
+        return result.payload && result.payload.bookmarks ? result.payload.bookmarks : []
+      })
+  }
+
+  function loadBookmarks(component) {
+    if (!component || component.bookmarksLoading) {
+      return
+    }
+
+    component.bookmarksLoading = true
+    component.bookmarksMessage = ''
+
+    requestBookmarks()
+      .then(function (bookmarks) {
+        component.bookmarks = bookmarks
+        component.bookmarksMessage = ''
+      })
+      .catch(function (exception) {
+        component.bookmarks = []
+        component.bookmarksMessage = String(exception && exception.message ? exception.message : exception)
+      })
+      .finally(function () {
+        component.bookmarksLoading = false
+      })
+  }
+
+  function requestSaveBookmark(input) {
+    var formData = new FormData()
+
+    formData.set('bookId', bookId)
+    formData.set('bookFileId', bookFileId)
+    formData.set('locator', input.locator || '')
+    formData.set('href', input.href || '')
+    formData.set('chapterLabel', input.chapterLabel || '')
+    setFormValue(formData, 'pageNumber', input.pageNumber)
+    setFormValue(formData, 'progressPercent', input.progressPercent)
+
+    return fetch('/api/books/save-bookmark', {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+    })
+      .then(function (response) {
+        return response
+          .json()
+          .then(function (payload) {
+            return {
+              ok: response.ok,
+              payload: payload || {},
+            }
+          })
+          .catch(function () {
+            return {
+              ok: response.ok,
+              payload: {},
+            }
+          })
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '책갈피 저장에 실패했습니다.'))
+        }
+
+        return result.payload || {}
+      })
+  }
+
+  function requestDeleteBookmark(bookmarkId) {
+    var formData = new FormData()
+
+    formData.set('bookId', bookId)
+    formData.set('bookmarkId', bookmarkId)
+
+    return fetch('/api/books/delete-bookmark', {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+    })
+      .then(function (response) {
+        return response
+          .json()
+          .then(function (payload) {
+            return {
+              ok: response.ok,
+              payload: payload || {},
+            }
+          })
+          .catch(function () {
+            return {
+              ok: response.ok,
+              payload: {},
+            }
+          })
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '책갈피 삭제에 실패했습니다.'))
         }
 
         return result.payload || {}
@@ -1426,7 +1884,12 @@ window.booklogReaderLogic = (function () {
 
     isLeavingPage = true
 
-    waitForProgressSave(component, saveOptions).finally(function () {
+    Promise.all([
+      waitForProgressSave(component, saveOptions),
+      waitForReadingSessionSave(component, {
+        final: true,
+      }),
+    ]).finally(function () {
       if (historyBack) {
         skipNextPopState = true
         window.history.back()
@@ -2440,6 +2903,8 @@ window.booklogReaderLogic = (function () {
       var currentScrollTop = boundAutoPagingTarget ? boundAutoPagingTarget.scrollTop || 0 : 0
       var direction = ''
 
+      markReadingSessionActivity()
+
       if (currentScrollTop > lastContainerScrollTop) {
         direction = 'next'
       } else if (currentScrollTop < lastContainerScrollTop) {
@@ -2575,6 +3040,7 @@ window.booklogReaderLogic = (function () {
     syncSpeechVoices(component)
     window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
     window.addEventListener('popstate', handlePopState)
+    bindReadingSessionActivityTracking(component)
 
     if (getSpeechSynthesisInstance() && !speechVoiceSyncHandler) {
       speechVoiceSyncHandler = function () {
@@ -2585,9 +3051,14 @@ window.booklogReaderLogic = (function () {
     }
 
     window.addEventListener('beforeunload', function () {
+      sendReadingSessionBeacon(activeComponent)
       stopSpeechPlayback(activeComponent, {
         keepMessage: true,
       })
+    })
+
+    window.addEventListener('pagehide', function () {
+      sendReadingSessionBeacon(activeComponent)
     })
 
     if (!container || !window.ePub) {
@@ -2662,6 +3133,7 @@ window.booklogReaderLogic = (function () {
       .then(function () {
         component.loading = false
         startAutoSave(component)
+        startReadingSession(component)
         console.debug('page/books/[bookId]/read:rendered', {
           bookId: bookId,
         })
@@ -3074,6 +3546,119 @@ window.booklogReaderLogic = (function () {
       })
   }
 
+  function saveBookmark(component) {
+    var progress = getCurrentProgressPayload(component)
+
+    if (!component || component.bookmarksSaving) {
+      return
+    }
+
+    component.bookmarksMessage = ''
+
+    if (!progress.locator && !progress.href) {
+      component.bookmarksMessage = '아직 저장할 위치를 찾지 못했습니다.'
+      return
+    }
+
+    component.bookmarksSaving = true
+
+    requestSaveBookmark(progress)
+      .then(function (payload) {
+        var bookmark = payload && payload.bookmark ? payload.bookmark : null
+
+        component.bookmarksSaving = false
+
+        if (bookmark) {
+          component.bookmarks = [bookmark].concat(component.bookmarks || [])
+        }
+
+        component.bookmarksMessage = String(payload && payload.message ? payload.message : '책갈피를 저장했습니다.')
+      })
+      .catch(function (exception) {
+        component.bookmarksSaving = false
+        component.bookmarksMessage = String(exception && exception.message ? exception.message : exception)
+        console.error('page/books/[bookId]/read:save-bookmark:failed', {
+          message: component.bookmarksMessage,
+        })
+      })
+  }
+
+  function goToBookmark(component, bookmark) {
+    var locator = bookmark && bookmark.locator ? String(bookmark.locator) : ''
+    var href = bookmark && bookmark.href ? String(bookmark.href) : ''
+    var target = locator || href
+
+    if (!target || !renditionInstance) {
+      if (component) {
+        component.bookmarksMessage = '이동할 책갈피 위치가 없습니다.'
+      }
+      return
+    }
+
+    component.bookmarksOpen = false
+    component.controlsVisible = false
+    component.loading = true
+    stopSpeechPlayback(component, {
+      keepMessage: true,
+    })
+    prepareManualNavigation()
+
+    Promise.resolve(renditionInstance.display(target))
+      .catch(function () {
+        if (locator && href) {
+          return renditionInstance.display(href)
+        }
+
+        throw new Error('책갈피 위치로 이동하지 못했습니다.')
+      })
+      .then(function (location) {
+        updateCurrentLocation(component, location || renditionInstance.currentLocation())
+        component.showSavePositionMessage('책갈피 위치로 이동했습니다.')
+      })
+      .catch(function (exception) {
+        component.bookmarksOpen = true
+        component.bookmarksMessage = String(exception && exception.message ? exception.message : exception)
+        console.error('page/books/[bookId]/read:go-to-bookmark:failed', {
+          message: component.bookmarksMessage,
+        })
+      })
+      .finally(function () {
+        component.loading = false
+      })
+  }
+
+  function deleteBookmark(component, bookmark) {
+    var bookmarkId = bookmark && bookmark.id ? String(bookmark.id) : ''
+
+    if (!component || !bookmarkId || component.deletingBookmarkId) {
+      return
+    }
+
+    if (!window.confirm('이 책갈피를 삭제하시겠습니까?')) {
+      return
+    }
+
+    component.bookmarksMessage = ''
+    component.deletingBookmarkId = bookmarkId
+
+    requestDeleteBookmark(bookmarkId)
+      .then(function (payload) {
+        component.bookmarks = (component.bookmarks || []).filter(function (item) {
+          return item && String(item.id || '') !== bookmarkId
+        })
+        component.bookmarksMessage = String(payload && payload.message ? payload.message : '책갈피를 삭제했습니다.')
+      })
+      .catch(function (exception) {
+        component.bookmarksMessage = String(exception && exception.message ? exception.message : exception)
+        console.error('page/books/[bookId]/read:delete-bookmark:failed', {
+          message: component.bookmarksMessage,
+        })
+      })
+      .finally(function () {
+        component.deletingBookmarkId = ''
+      })
+  }
+
   function saveCurrentPosition(component) {
     component.showSavePositionMessage('')
 
@@ -3200,6 +3785,10 @@ window.booklogReaderLogic = (function () {
     scrollActiveTocItemIntoView: scrollActiveTocItemIntoView,
     startReadAloud: startReadAloud,
     stopReadAloud: stopReadAloud,
+    loadBookmarks: loadBookmarks,
+    saveBookmark: saveBookmark,
+    goToBookmark: goToBookmark,
+    deleteBookmark: deleteBookmark,
     saveHighlight: saveHighlight,
     saveSelectedHighlight: saveSelectedHighlight,
     clearSelectedHighlight: clearSelectedHighlight,

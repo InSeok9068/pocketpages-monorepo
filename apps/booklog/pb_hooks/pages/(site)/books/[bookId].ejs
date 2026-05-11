@@ -63,6 +63,7 @@
   let bookFileRecord = null
   let highlightRecords = []
   let highlightCards = []
+  let readingDurationSeconds = 0
 
   try {
     bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
@@ -103,6 +104,25 @@
 
   const shelfStatus = shelfRecord ? String(shelfRecord.get('status') || 'queued') : 'queued'
   const shelfBookFileId = shelfRecord ? String(shelfRecord.get('book_file_id') || '').trim() : ''
+
+  try {
+    const readingSessionRecords = $app.findRecordsByFilter('reading_sessions', 'user_id = {:userId} && book_id = {:bookId}', '-ended_at', 500, 0, {
+      userId: userId,
+      bookId: bookId,
+    })
+
+    for (let index = 0; index < readingSessionRecords.length; index += 1) {
+      const durationSeconds = Number(readingSessionRecords[index].get('duration_seconds') || 0)
+
+      if (!isNaN(durationSeconds) && durationSeconds > 0) {
+        readingDurationSeconds += durationSeconds
+      }
+    }
+  } catch (exception) {
+    readingDurationSeconds = 0
+  }
+
+  const readingDurationMinutes = Math.round(readingDurationSeconds / 60)
 
   try {
     reviewRecord = $app.findFirstRecordByFilter('book_reviews', 'user_id = {:userId} && book_id = {:bookId}', {
@@ -300,6 +320,35 @@
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
             <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">현재 상태</dt>
             <dd class="mt-1 text-base font-medium text-stone-900"><%= shelfStatusLabels[shelfStatus] || '읽을 예정' %></dd>
+          </div>
+          <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+            <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">독서 시간</dt>
+            <dd class="mt-1 flex items-center justify-between gap-3 text-base font-medium text-stone-900">
+              <span><%= readingDurationMinutes %>분</span>
+              <form
+                method="post"
+                action="/xapi/books/reset-reading-sessions"
+                class="m-0"
+                onsubmit="return window.confirm('이 책의 독서 시간을 초기화할까요?')">
+                <input
+                  type="hidden"
+                  name="bookId"
+                  value="<%= bookId %>" />
+                <input
+                  type="hidden"
+                  name="from"
+                  value="<%= bookBackHref %>" />
+                <button
+                  type="submit"
+                  aria-label="독서 시간 초기화"
+                  <%= readingDurationMinutes > 0 ? '' : 'disabled' %>
+                  class="<%= readingDurationMinutes > 0 ? 'text-[#8e5521] hover:bg-[#ead9c4]' : 'text-stone-300' %> inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold shadow-[0_8px_18px_rgba(132,90,47,0.08)] outline-none ring-0 transition disabled:cursor-not-allowed disabled:bg-stone-100 disabled:shadow-none">
+                  <span
+                    class="i-lucide-eraser h-4 w-4"
+                    aria-hidden="true"></span>
+                </button>
+              </form>
+            </dd>
           </div>
         </dl>
 
