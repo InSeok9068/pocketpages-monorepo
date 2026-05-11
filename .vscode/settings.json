@@ -2,6 +2,7 @@
   "files.autoSave": "off",
   "html.validate.styles": false,
   "html.validate.scripts": false,
+  "color-highlight.enable": false,
   "js/ts.preferGoToSourceDefinition": true,
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
