@@ -4,8 +4,12 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@iconify-json/lucide": "^1.2.107",
     "@pocketpages/test-support": "file:packages/test-support",
     "@types/node": "^22.19.15",
+    "@unocss/cli": "66.5.12",
+    "@unocss/preset-icons": "66.5.12",
+    "@unocss/preset-wind3": "66.5.12",
     "cheerio": "^1.2.0",
     "esbuild": "^0.28.0",
     "eslint": "^10.2.0",

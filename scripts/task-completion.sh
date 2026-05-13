@@ -19,7 +19,7 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill update install deploy rollback test lint tsc diag verify index bundle format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill update install deploy rollback test lint tsc diag verify index css bundle format help" -- "$cur") )
     return
   fi
 
@@ -37,7 +37,7 @@ _pp_dev_complete() {
     return
   fi
 
-  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "start" || "$cmd" == "deploy" || "$cmd" == "rollback" || "$cmd" == "test" || "$cmd" == "lint" || "$cmd" == "tsc" || "$cmd" == "diag" || "$cmd" == "verify" || "$cmd" == "index" ) ]]; then
+  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "start" || "$cmd" == "deploy" || "$cmd" == "rollback" || "$cmd" == "test" || "$cmd" == "lint" || "$cmd" == "tsc" || "$cmd" == "diag" || "$cmd" == "verify" || "$cmd" == "index" || "$cmd" == "css" ) ]]; then
     services="$("$script" __complete_services 2>/dev/null)"
     COMPREPLY=( $(compgen -W "$services" -- "$cur") )
     return

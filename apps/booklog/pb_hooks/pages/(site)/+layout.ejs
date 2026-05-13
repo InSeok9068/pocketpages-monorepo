@@ -1,3 +1,4 @@
+<% const isProduction = String(env('APP_ENV') || 'development').trim() === 'production' %>
 <!DOCTYPE html>
 <html lang="ko">
   <head>
@@ -46,11 +47,18 @@
     <link
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
+    <% if (isProduction) { %>
+    <link
+      rel="stylesheet"
+      href="<%= asset('/assets/uno.min.css') %>" />
+    <% } else { %>
     <style>
       [un-cloak] {
         display: none !important;
       }
-
+    </style>
+    <% } %>
+    <style>
       [x-cloak] {
         display: none !important;
       }
@@ -75,6 +83,7 @@
       src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.11/dist/cdn.min.js"
       data-fallback-src="<%= asset('/assets/vendor/alpine-3.15.11-cdn.min.js') %>"
       onerror="window.__assetFallback(this)"></script>
+    <% if (!isProduction) { %>
     <script
       src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.5.12/preset-wind3.global.js"
       data-fallback-src="<%= asset('/assets/vendor/preset-wind3-66.5.12.global.js') %>"
@@ -101,6 +110,7 @@
       src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.5.12/core.global.js"
       data-fallback-src="<%= asset('/assets/vendor/unocss-core-66.5.12.global.js') %>"
       onerror="window.__assetFallback(this)"></script>
+    <% } %>
     <script
       src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
       defer></script>

@@ -1,3 +1,4 @@
+<% const isProduction = String(env('APP_ENV') || 'development').trim() === 'production' %>
 <!DOCTYPE html>
 <html lang="ko">
   <head>
@@ -25,11 +26,17 @@
     <link
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
+    <% if (isProduction) { %>
+    <link
+      rel="stylesheet"
+      href="<%= asset('/assets/uno.min.css') %>" />
+    <% } else { %>
     <style>
       [un-cloak] {
         display: none !important;
       }
     </style>
+    <% } %>
     <script>
       window.__assetFallback = function (element) {
         element.onerror = null
@@ -49,6 +56,7 @@
       src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@0.0.3/src/htmx-ext-sse.js"
       data-fallback-src="<%= asset('/assets/vendor/pocketbase-htmx-ext-sse-0.0.3.js') %>"
       onerror="window.__assetFallback(this)"></script>
+    <% if (!isProduction) { %>
     <script
       src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.5.12/preset-wind3.global.js"
       data-fallback-src="<%= asset('/assets/vendor/preset-wind3-66.5.12.global.js') %>"
@@ -75,6 +83,7 @@
       src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.5.12/core.global.js"
       data-fallback-src="<%= asset('/assets/vendor/unocss-core-66.5.12.global.js') %>"
       onerror="window.__assetFallback(this)"></script>
+    <% } %>
     <%- slots.head %>
   </head>
 

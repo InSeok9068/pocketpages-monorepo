@@ -115,6 +115,7 @@ module.exports = [
       'scripts/**',
       'tools/**',
       'eslint.config.js',
+      'unocss.config.js',
       'tailwind.config.js',
     ],
   },

@@ -19,6 +19,7 @@ Usage:
   ./task.sh diag [file-or-service] [--profile] [--no-daemon]
   ./task.sh verify [service]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
+  ./task.sh css <service>
   ./task.sh bundle
   ./task.sh format [-- <extra args>]
 
@@ -36,10 +37,12 @@ Commands:
             `--profile` prints slow-file timings, `--no-daemon` disables the warm background cache
   verify    Run lint, tsc, and diag together for one service or all services
   index     Query AI-friendly PocketPages project index JSON for one service
+  css       Build UnoCSS for one service
   bundle    Interactively bundle one service dependency into pb_hooks/pages/_private/vendor
   format    Run npm run format
 
 Examples:
+  ./task.sh css booklog
   ./task.sh deploy booklog
   ./task.sh deploy booklog --skip-verify
   ./task.sh update npm
@@ -581,6 +584,132 @@ run_index() {
   node "$index_script" "$service_dir" "$@"
 }
 
+run_css() {
+  local service="${1:-}"
+  shift || true
+
+  local unocss_bin="$ROOT_DIR/node_modules/@unocss/cli/bin/unocss.mjs"
+  local config_file="$ROOT_DIR/unocss.config.js"
+
+  if [[ -z "$service" ]]; then
+    echo "Usage: ./task.sh css <service>" >&2
+    exit 1
+  fi
+
+  if [[ $# -gt 0 ]]; then
+    echo "Unknown css option: $1" >&2
+    echo "Usage: ./task.sh css <service>" >&2
+    exit 1
+  fi
+
+  if [[ ! -f "$unocss_bin" ]]; then
+    echo "Missing local UnoCSS install: $unocss_bin" >&2
+    echo "Run npm install in the repository root first." >&2
+    exit 1
+  fi
+
+  if [[ ! -f "$config_file" ]]; then
+    echo "Missing UnoCSS config: $config_file" >&2
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run css command." >&2
+    exit 1
+  fi
+
+  local service_dir
+  if ! service_dir="$(resolve_service_dir "$service")"; then
+    echo "Unknown service: $service" >&2
+    echo "Available services:" >&2
+    list_services >&2
+    exit 1
+  fi
+
+  local pages_dir="$service_dir/pb_hooks/pages"
+  local output_file="$pages_dir/assets/uno.min.css"
+  local content_patterns=()
+  local relative_output_file=""
+
+  if [[ ! -d "$pages_dir" ]]; then
+    echo "Missing PocketPages pages directory: $pages_dir" >&2
+    exit 1
+  fi
+
+  mkdir -p "$(dirname "$output_file")"
+
+  if [[ "$service_dir" == "$ROOT_DIR"/* ]]; then
+    local relative_service_dir="${service_dir#$ROOT_DIR/}"
+    content_patterns=(
+      "$relative_service_dir/pb_hooks/pages/**/*.ejs"
+      "$relative_service_dir/pb_hooks/pages/_private/**/*.js"
+      "!$relative_service_dir/pb_hooks/pages/_private/vendor/**"
+      "$relative_service_dir/pb_hooks/pages/assets/*.js"
+    )
+    relative_output_file="$relative_service_dir/pb_hooks/pages/assets/uno.min.css"
+  else
+    content_patterns=(
+      "$pages_dir/**/*.ejs"
+      "$pages_dir/_private/**/*.js"
+      "!$pages_dir/_private/vendor/**"
+      "$pages_dir/assets/*.js"
+    )
+    relative_output_file="$output_file"
+  fi
+
+  local cmd=(
+    node
+    "$unocss_bin"
+    "${content_patterns[@]}"
+    -c
+    "$config_file"
+    -o
+    "$relative_output_file"
+    --minify
+  )
+
+  echo "Building UnoCSS for service: $(basename "$service_dir")"
+  echo "Output: $output_file"
+  (
+    cd "$ROOT_DIR"
+    "${cmd[@]}"
+  )
+}
+
+service_needs_css_build() {
+  local service="$1"
+  local service_dir=""
+  local pages_dir=""
+
+  if ! service_dir="$(resolve_service_dir "$service")"; then
+    echo "Unknown service: $service" >&2
+    echo "Available services:" >&2
+    list_services >&2
+    exit 1
+  fi
+
+  pages_dir="$service_dir/pb_hooks/pages"
+  [[ -d "$pages_dir" ]] || return 1
+
+  local file=""
+  while IFS= read -r file; do
+    if grep -q "/assets/uno.min.css" "$file"; then
+      return 0
+    fi
+  done < <(find "$pages_dir" -type f \( -name '*.ejs' -o -name '*.js' \))
+
+  return 1
+}
+
+run_css_if_needed() {
+  local service="$1"
+
+  if service_needs_css_build "$service"; then
+    echo "Running production CSS build: $service"
+    run_css "$service"
+  fi
+}
+
 run_format() {
   if ! command -v npm >/dev/null 2>&1; then
     echo "npm not found. Cannot run format command." >&2
@@ -1036,6 +1165,8 @@ run_deploy() {
     echo "Skipping pre-deploy verification: $service"
   fi
 
+  run_css_if_needed "$service"
+
   if ! mapfile -t deploy_targets < <(resolve_deploy_targets "$service"); then
     exit 1
   fi
@@ -1336,6 +1467,13 @@ case "${1:-help}" in
     service="$1"
     shift || true
     run_index "$service" "$@"
+    ;;
+  css)
+    shift
+    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh css <service>" >&2; exit 1; }
+    service="$1"
+    shift || true
+    run_css "$service" "$@"
     ;;
   bundle)
     shift || true

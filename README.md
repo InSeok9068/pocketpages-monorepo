@@ -106,6 +106,7 @@
 ./task.sh diag [file-or-service] [--profile] [--no-daemon]
 ./task.sh verify [service]
 ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
+./task.sh css <service>
 ./task.sh bundle
 ./task.sh format [-- <extra args>]
 ```
@@ -120,6 +121,7 @@
 - `diag`: 진단 실행
 - `verify`: 린트 + `tsc` + 진단 실행
 - `index`: 프로젝트 인덱스 조회
+- `css`: UnoCSS 빌드 실행
 - `bundle`: vendor 번들링
 - `format`: 포맷 실행
 
