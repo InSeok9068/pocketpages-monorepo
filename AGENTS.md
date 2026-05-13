@@ -68,7 +68,7 @@
 
 ---
 
-## 5. _private & Resolve
+## 5. \_private & Resolve
 
 - `_private` is internal only; use it for partials, services, utils, and internal modules, never route-exposed
 - partials take minimal props only
@@ -120,6 +120,7 @@
 - Alpine is UI helper only
 - no business logic or complex state
 - use for toggle, modal, tab, and short local UI state
+- UnoCSS classes must be complete literals in scanned files
 
 ---
 

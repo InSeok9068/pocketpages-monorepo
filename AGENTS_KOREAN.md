@@ -120,6 +120,7 @@
 - Alpine은 UI helper로만 사용한다
 - business logic이나 complex state를 넣지 않는다
 - toggle, modal, tab, 짧은 local UI state에 사용한다
+- UnoCSS class는 스캔되는 파일 안에 완성된 문자열로 둔다
 
 ---
 
