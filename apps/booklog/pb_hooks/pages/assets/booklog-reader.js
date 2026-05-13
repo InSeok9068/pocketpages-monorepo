@@ -67,6 +67,7 @@ window.booklogReaderLogic = (function () {
   var speechCurrentComponent = null
   var speechRestartTimerId = null
   var speechActiveToken = 0
+  var readAloudPrepared = false
   var renderedContentEntries = []
   var activeReadAloudHighlight = null
   var activeComponent = null
@@ -75,6 +76,9 @@ window.booklogReaderLogic = (function () {
   var isLeavingPage = false
   var isHandlingHistoryBack = false
   var skipNextPopState = false
+  var tocCfisResolved = false
+  var tocCfisResolving = false
+  var tocCfisPromise = null
 
   function normalizeText(value) {
     return String(value || '')
@@ -574,6 +578,20 @@ window.booklogReaderLogic = (function () {
     component.readAloudVoiceName = component.readAloudVoices[0].name
   }
 
+  function ensureReadAloudStyle(doc) {
+    var styleElement = null
+
+    if (!doc || !doc.head || doc.getElementById('booklog-read-aloud-style')) {
+      return
+    }
+
+    styleElement = doc.createElement('style')
+    styleElement.id = 'booklog-read-aloud-style'
+    styleElement.textContent =
+      '.booklog-read-aloud-active{background:rgba(245,204,96,0.38)!important;border-radius:0.4rem;box-shadow:0 0 0 0.18rem rgba(245,204,96,0.16);transition:background-color 120ms ease;}'
+    doc.head.appendChild(styleElement)
+  }
+
   function findSelectedVoice(component) {
     var targetName = component && component.readAloudVoiceName ? String(component.readAloudVoiceName) : ''
 
@@ -623,6 +641,40 @@ window.booklogReaderLogic = (function () {
     })
 
     return nodes
+  }
+
+  function prepareRenderedReadAloudContents() {
+    getRenderedContentEntries().forEach(function (entry) {
+      var doc = entry && entry.document ? entry.document : null
+
+      if (!doc) {
+        return
+      }
+
+      annotateReadableTextNodes(doc.body || doc)
+      ensureReadAloudStyle(doc)
+    })
+  }
+
+  function prepareReadAloud(component) {
+    var synth = getSpeechSynthesisInstance()
+
+    syncSpeechVoices(component)
+
+    if (synth && !speechVoiceSyncHandler) {
+      speechVoiceSyncHandler = function () {
+        syncSpeechVoices(activeComponent)
+      }
+
+      synth.addEventListener('voiceschanged', speechVoiceSyncHandler)
+    }
+
+    if (readAloudPrepared) {
+      return
+    }
+
+    readAloudPrepared = true
+    prepareRenderedReadAloudContents()
   }
 
   function findHighlightTarget(node) {
@@ -1164,13 +1216,39 @@ window.booklogReaderLogic = (function () {
   function syncTocState(component, items) {
     var tocItems = buildTocTree(items, 1)
 
+    tocCfisResolved = false
+    tocCfisResolving = false
+    tocCfisPromise = null
     component.tocItems = tocItems
     component.tocReady = true
     component.tocMessage = tocItems.length ? '' : '목차 정보가 없습니다.'
+  }
 
-    if (tocItems.length) {
-      resolveTocItemCfis(component)
+  function prepareToc(component) {
+    if (!component || tocCfisResolved) {
+      return Promise.resolve()
     }
+
+    if (tocCfisResolving) {
+      return tocCfisPromise || Promise.resolve()
+    }
+
+    if (!component.tocItems || !component.tocItems.length) {
+      return Promise.resolve()
+    }
+
+    tocCfisResolving = true
+
+    tocCfisPromise = resolveTocItemCfis(component)
+      .then(function () {
+        tocCfisResolved = true
+      })
+      .finally(function () {
+        tocCfisResolving = false
+        tocCfisPromise = null
+      })
+
+    return tocCfisPromise
   }
 
   function getPageNumberFromLocation(location) {
@@ -2945,14 +3023,12 @@ window.booklogReaderLogic = (function () {
 
     renditionInstance.hooks.content.register(function (contents) {
       var doc = contents && contents.document ? contents.document : null
-      var styleElement = null
 
       if (!doc) {
         return
       }
 
       upsertRenderedContentEntry(contents)
-      annotateReadableTextNodes(doc.body || doc)
       bindContentSelectionCapture(component, contents)
 
       if (doc.documentElement && doc.documentElement.style) {
@@ -2963,12 +3039,9 @@ window.booklogReaderLogic = (function () {
         doc.body.style.setProperty('overflow-anchor', 'none', 'important')
       }
 
-      if (doc.head && !doc.getElementById('booklog-read-aloud-style')) {
-        styleElement = doc.createElement('style')
-        styleElement.id = 'booklog-read-aloud-style'
-        styleElement.textContent =
-          '.booklog-read-aloud-active{background:rgba(245,204,96,0.38)!important;border-radius:0.4rem;box-shadow:0 0 0 0.18rem rgba(245,204,96,0.16);transition:background-color 120ms ease;}'
-        doc.head.appendChild(styleElement)
+      if (readAloudPrepared) {
+        annotateReadableTextNodes(doc.body || doc)
+        ensureReadAloudStyle(doc)
       }
 
       scheduleReaderLayoutSync(component, {
@@ -3037,18 +3110,9 @@ window.booklogReaderLogic = (function () {
 
     activeComponent = component
     syncReaderFontSizeState(component, readStoredReaderFontSizePercent())
-    syncSpeechVoices(component)
     window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
     window.addEventListener('popstate', handlePopState)
     bindReadingSessionActivityTracking(component)
-
-    if (getSpeechSynthesisInstance() && !speechVoiceSyncHandler) {
-      speechVoiceSyncHandler = function () {
-        syncSpeechVoices(activeComponent)
-      }
-
-      getSpeechSynthesisInstance().addEventListener('voiceschanged', speechVoiceSyncHandler)
-    }
 
     window.addEventListener('beforeunload', function () {
       sendReadingSessionBeacon(activeComponent)
@@ -3149,6 +3213,8 @@ window.booklogReaderLogic = (function () {
 
   function startReadAloud(component) {
     var synth = getSpeechSynthesisInstance()
+
+    prepareReadAloud(component)
 
     if (!component || !synth) {
       if (component) {
@@ -3778,6 +3844,8 @@ window.booklogReaderLogic = (function () {
 
   return {
     init: init,
+    prepareToc: prepareToc,
+    prepareReadAloud: prepareReadAloud,
     performSearch: performSearch,
     goToSearchResult: goToSearchResult,
     goToTocItem: goToTocItem,

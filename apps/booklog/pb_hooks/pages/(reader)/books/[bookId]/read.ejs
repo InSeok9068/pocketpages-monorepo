@@ -216,8 +216,10 @@
 
       this.tocOpen = true
       this.controlsVisible = true
-      this.$nextTick(function () {
-        window.booklogReaderLogic.scrollActiveTocItemIntoView(component)
+      window.booklogReaderLogic.prepareToc(component).finally(function () {
+        component.$nextTick(function () {
+          window.booklogReaderLogic.scrollActiveTocItemIntoView(component)
+        })
       })
     },
     closeToc: function () {
@@ -227,6 +229,7 @@
       this.readAloudOpen = true
       this.readAloudMessage = ''
       this.controlsVisible = true
+      window.booklogReaderLogic.prepareReadAloud(this)
       this.$nextTick(function () {
         var select = document.getElementById('reader-read-aloud-voice')
 
