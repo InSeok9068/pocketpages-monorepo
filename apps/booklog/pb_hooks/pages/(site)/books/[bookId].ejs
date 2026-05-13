@@ -339,9 +339,10 @@
                   name="from"
                   value="<%= bookBackHref %>" />
                 <button
-                  type="submit"
+                  type="<%= readingDurationMinutes > 0 ? 'submit' : 'button' %>"
                   aria-label="독서 시간 초기화"
-                  <%= readingDurationMinutes > 0 ? '' : 'disabled' %>
+                  aria-disabled="<%= readingDurationMinutes > 0 ? 'false' : 'true' %>"
+                  tabindex="<%= readingDurationMinutes > 0 ? '0' : '-1' %>"
                   class="<%= readingDurationMinutes > 0 ? 'text-[#8e5521] hover:bg-[#ead9c4]' : 'text-stone-300' %> inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold shadow-[0_8px_18px_rgba(132,90,47,0.08)] outline-none ring-0 transition disabled:cursor-not-allowed disabled:bg-stone-100 disabled:shadow-none">
                   <span
                     class="i-lucide-eraser h-4 w-4"
