@@ -1987,7 +1987,10 @@
         "type": "autodate"
       }
     ],
-    "indexes": [],
+    "indexes": [
+      "CREATE INDEX idx_book_bookmarks_user_book_file_bookmarked_created ON book_bookmarks (user_id, book_id, file_id, bookmarked_at, created)",
+      "CREATE INDEX idx_book_bookmarks_user_book_bookmarked_created ON book_bookmarks (user_id, book_id, bookmarked_at, created)"
+    ],
     "system": false
   },
   {
@@ -2277,7 +2280,10 @@
         "type": "autodate"
       }
     ],
-    "indexes": [],
+    "indexes": [
+      "CREATE INDEX idx_reading_sessions_user_ended ON reading_sessions (user_id, ended_at)",
+      "CREATE INDEX idx_reading_sessions_user_book_ended ON reading_sessions (user_id, book_id, ended_at)"
+    ],
     "system": false
   },
   {

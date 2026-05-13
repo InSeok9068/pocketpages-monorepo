@@ -38,7 +38,6 @@
     if (!bookId) throw new Error('책 정보가 필요합니다.')
     if (!locator && !href) throw new Error('저장할 읽기 위치가 없습니다.')
 
-    const bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
     let existingShelfRecord = null
     let bookFileRecord = null
 
@@ -91,6 +90,7 @@
       })
       return
     } else {
+      const bookRecord = $app.findRecordById('books', bookId)
       const shelfCollection = $app.findCollectionByNameOrId('book_shelves')
       const newShelfRecord = new Record(shelfCollection)
 

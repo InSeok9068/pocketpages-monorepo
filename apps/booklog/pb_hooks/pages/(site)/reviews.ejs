@@ -30,7 +30,7 @@
     let bookRecord = null
 
     try {
-      bookRecord = $app.findFirstRecordByFilter('books', 'id = {:id}', { id: bookId })
+      bookRecord = $app.findRecordById('books', bookId)
     } catch (exception) {
       bookRecord = null
     }

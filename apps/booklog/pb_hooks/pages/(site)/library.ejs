@@ -46,7 +46,7 @@
     }
 
     try {
-      bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
+      bookRecord = $app.findRecordById('books', bookId)
     } catch (exception) {
       bookRecord = null
     }
