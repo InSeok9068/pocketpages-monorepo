@@ -644,7 +644,8 @@ run_css() {
       "$relative_service_dir/pb_hooks/pages/**/*.ejs"
       "$relative_service_dir/pb_hooks/pages/_private/**/*.js"
       "!$relative_service_dir/pb_hooks/pages/_private/vendor/**"
-      "$relative_service_dir/pb_hooks/pages/assets/*.js"
+      "$relative_service_dir/pb_hooks/pages/assets/**/*.js"
+      "!$relative_service_dir/pb_hooks/pages/assets/vendor/**"
     )
     relative_output_file="$relative_service_dir/pb_hooks/pages/assets/uno.min.css"
   else
@@ -652,7 +653,8 @@ run_css() {
       "$pages_dir/**/*.ejs"
       "$pages_dir/_private/**/*.js"
       "!$pages_dir/_private/vendor/**"
-      "$pages_dir/assets/*.js"
+      "$pages_dir/assets/**/*.js"
+      "!$pages_dir/assets/vendor/**"
     )
     relative_output_file="$output_file"
   fi
