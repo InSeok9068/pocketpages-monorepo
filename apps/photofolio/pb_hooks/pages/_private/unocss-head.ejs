@@ -1,0 +1,45 @@
+<% if (isProduction) { %>
+<link
+  rel="stylesheet"
+  href="<%= asset('/assets/uno.min.css') %>" />
+<% } else { %>
+<style>
+  [un-cloak] {
+    display: none !important;
+  }
+</style>
+<script
+  src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.5.12/preset-wind3.global.js"
+  data-fallback-src="<%= asset('/assets/vendor/preset-wind3-66.5.12.global.js') %>"
+  onerror="window.__assetFallback(this)"></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.5.12/preset-icons.global.js"
+  data-fallback-src="<%= asset('/assets/vendor/preset-icons-66.5.12.global.js') %>"
+  onerror="window.__assetFallback(this)"></script>
+<script>
+  window.__releasePhotofolioUncloak = function () {
+    document.body.removeAttribute('un-cloak')
+  }
+
+  window.__unocss = {
+    presets: [
+      () => window.__unocss_runtime.presets.presetWind3(),
+      () =>
+        window.__unocss_runtime.presets.presetIcons({
+          cdn: 'https://esm.sh/',
+        }),
+    ],
+    ready: () => {
+      window.__releasePhotofolioUncloak()
+    },
+  }
+
+  window.addEventListener('load', function () {
+    window.setTimeout(window.__releasePhotofolioUncloak, 1200)
+  })
+</script>
+<script
+  src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.5.12/core.global.js"
+  data-fallback-src="<%= asset('/assets/vendor/unocss-core-66.5.12.global.js') %>"
+  onerror="window.__assetFallback(this)"></script>
+<% } %>
