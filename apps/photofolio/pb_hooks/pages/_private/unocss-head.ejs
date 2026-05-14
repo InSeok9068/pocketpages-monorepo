@@ -17,6 +17,10 @@
   data-fallback-src="<%= asset('/assets/vendor/preset-icons-66.5.12.global.js') %>"
   onerror="window.__assetFallback(this)"></script>
 <script>
+  const lucideIcons = fetch(
+    '<%= asset('/assets/vendor/iconify-lucide-1.2.107.icons.json') %>',
+  ).then((response) => response.json())
+
   window.__releasePhotofolioUncloak = function () {
     document.body.removeAttribute('un-cloak')
   }
@@ -26,7 +30,9 @@
       () => window.__unocss_runtime.presets.presetWind3(),
       () =>
         window.__unocss_runtime.presets.presetIcons({
-          cdn: 'https://esm.sh/',
+          collections: {
+            lucide: () => lucideIcons,
+          },
         }),
     ],
     ready: () => {
