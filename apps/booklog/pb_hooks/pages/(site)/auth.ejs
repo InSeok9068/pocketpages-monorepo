@@ -28,8 +28,10 @@
             x-text="mode === 'sign-in' ? '로그인' : '회원가입'"
             class="mt-3.5 text-[2.2rem] font-semibold leading-none tracking-[-0.06em] text-[#2d2218]"></h1>
         </div>
-        <div
-          class="mt-1 h-11 w-11 rounded-full bg-[radial-gradient(circle_at_30%_30%,#f8e5bd,#d5a565_58%,#b57a3e)] shadow-[inset_0_2px_4px_rgba(255,255,255,0.45),0_10px_20px_rgba(166,119,57,0.18)]"></div>
+        <img
+          class="mt-1 h-12 w-12 shrink-0 rounded-[1rem] shadow-[0_8px_18px_rgba(73,54,31,0.08)]"
+          src="<%= asset('/assets/favicon.svg') %>"
+          alt="" />
       </div>
 
       <div class="mt-5 rounded-[1.45rem] bg-[#efe2ce] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
@@ -128,27 +130,6 @@
           회원가입
         </button>
       </form>
-
-      <div class="mt-5 border-t border-[#eadcc7] pt-4 text-center">
-        <template x-if="mode === 'sign-in'">
-          <button
-            type="button"
-            x-on:click="mode = 'sign-up'"
-            class="inline-flex items-center gap-2 rounded-full border-none bg-white/65 px-3 py-2 text-sm font-medium text-[#7d6247] shadow-[0_8px_18px_rgba(125,98,71,0.06)] outline-none ring-0">
-            <span class="h-1.5 w-1.5 rounded-full bg-[#cd8c3d]"></span>
-            회원가입으로 전환
-          </button>
-        </template>
-        <template x-if="mode === 'sign-up'">
-          <button
-            type="button"
-            x-on:click="mode = 'sign-in'"
-            class="inline-flex items-center gap-2 rounded-full border-none bg-white/65 px-3 py-2 text-sm font-medium text-[#7d6247] shadow-[0_8px_18px_rgba(125,98,71,0.06)] outline-none ring-0">
-            <span class="h-1.5 w-1.5 rounded-full bg-[#2d2218]"></span>
-            로그인으로 전환
-          </button>
-        </template>
-      </div>
     </div>
   </div>
 </section>
