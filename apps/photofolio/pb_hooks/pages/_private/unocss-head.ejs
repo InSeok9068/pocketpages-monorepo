@@ -17,13 +17,7 @@
   data-fallback-src="<%= asset('/assets/vendor/preset-icons-66.5.12.global.js') %>"
   onerror="window.__assetFallback(this)"></script>
 <script>
-  const lucideIcons = fetch(
-    '<%= asset('/assets/vendor/iconify-lucide-1.2.107.icons.json') %>',
-  ).then((response) => response.json())
-
-  window.__releasePhotofolioUncloak = function () {
-    document.body.removeAttribute('un-cloak')
-  }
+  let lucideIcons
 
   window.__unocss = {
     presets: [
@@ -31,18 +25,22 @@
       () =>
         window.__unocss_runtime.presets.presetIcons({
           collections: {
-            lucide: () => lucideIcons,
+            lucide: () => {
+              lucideIcons =
+                lucideIcons ||
+                fetch(
+                  '<%= asset('/assets/vendor/iconify-lucide-1.2.107.icons.json') %>',
+                ).then((response) => response.json())
+
+              return lucideIcons
+            },
           },
         }),
     ],
     ready: () => {
-      window.__releasePhotofolioUncloak()
+      document.body.removeAttribute('un-cloak')
     },
   }
-
-  window.addEventListener('load', function () {
-    window.setTimeout(window.__releasePhotofolioUncloak, 1200)
-  })
 </script>
 <script
   src="https://cdn.jsdelivr.net/npm/@unocss/runtime@66.5.12/core.global.js"
