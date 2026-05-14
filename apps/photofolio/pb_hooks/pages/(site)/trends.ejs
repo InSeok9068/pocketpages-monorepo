@@ -426,9 +426,7 @@
   <% if (exchangeChartPayload || rateChartPayload || unemploymentChartPayload || inflationChartPayload) { %>
   <script
     defer
-    src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
-    data-fallback-src="<%= asset('/assets/vendor/chart-4.5.1.umd.min.js') %>"
-    onerror="window.__assetFallback(this)"></script>
+    src="<%= asset('/assets/vendor/chart-4.5.1.umd.min.js') %>"></script>
   <% } %>
 
   <% if (exchangeChartPayload) { %>

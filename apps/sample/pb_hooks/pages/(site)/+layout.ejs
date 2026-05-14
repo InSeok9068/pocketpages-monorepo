@@ -25,26 +25,14 @@
     <link
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
-    <script>
-      window.__assetFallback = function (element) {
-        element.onerror = null
-        element.src = element.dataset.fallbackSrc
-      }
-    </script>
     <%- include('unocss-head.ejs', { isProduction }) %>
     <script
-      src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
-      data-fallback-src="<%= asset('/assets/vendor/htmx-2.0.10.min.js') %>"
-      onerror="window.__assetFallback(this)"></script>
+      src="<%= asset('/assets/vendor/htmx-2.0.10.min.js') %>"></script>
     <script
       defer
-      src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.11/dist/cdn.min.js"
-      data-fallback-src="<%= asset('/assets/vendor/alpine-3.15.11-cdn.min.js') %>"
-      onerror="window.__assetFallback(this)"></script>
+      src="<%= asset('/assets/vendor/alpine-3.15.11-cdn.min.js') %>"></script>
     <script
-      src="https://cdn.jsdelivr.net/npm/pocketbase-htmx-ext-sse@0.0.3/src/htmx-ext-sse.js"
-      data-fallback-src="<%= asset('/assets/vendor/pocketbase-htmx-ext-sse-0.0.3.js') %>"
-      onerror="window.__assetFallback(this)"></script>
+      src="<%= asset('/assets/vendor/pocketbase-htmx-ext-sse-0.0.3.js') %>"></script>
     <%- slots.head %>
   </head>
 

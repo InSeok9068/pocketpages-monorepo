@@ -128,20 +128,10 @@
 </script>
 
 <!-- slot:head -->
-<script>
-  window.__assetFallback = function (element) {
-    element.onerror = null
-    element.src = element.dataset.fallbackSrc
-  }
-</script>
 <script
-  src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"
-  data-fallback-src="<%= asset('/assets/vendor/jszip-3.10.1.min.js') %>"
-  onerror="window.__assetFallback(this)"></script>
+  src="<%= asset('/assets/vendor/jszip-3.10.1.min.js') %>"></script>
 <script
-  src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"
-  data-fallback-src="<%= asset('/assets/vendor/epubjs-0.3.93.min.js') %>"
-  onerror="window.__assetFallback(this)"></script>
+  src="<%= asset('/assets/vendor/epubjs-0.3.93.min.js') %>"></script>
 
 <!-- slot:body -->
 <section

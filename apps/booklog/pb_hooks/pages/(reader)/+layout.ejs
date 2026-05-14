@@ -28,18 +28,10 @@
         display: none !important;
       }
     </style>
-    <script>
-      window.__assetFallback = function (element) {
-        element.onerror = null
-        element.src = element.dataset.fallbackSrc
-      }
-    </script>
     <%- include('unocss-head.ejs', { isProduction }) %>
     <script
       defer
-      src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.11/dist/cdn.min.js"
-      data-fallback-src="<%= asset('/assets/vendor/alpine-3.15.11-cdn.min.js') %>"
-      onerror="window.__assetFallback(this)"></script>
+      src="<%= asset('/assets/vendor/alpine-3.15.11-cdn.min.js') %>"></script>
     <%- slots.head %>
   </head>
 
