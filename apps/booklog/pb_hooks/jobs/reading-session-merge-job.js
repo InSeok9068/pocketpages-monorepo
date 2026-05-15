@@ -294,7 +294,9 @@ function run() {
         deletedCount += result.deletedCount
       }
     } catch (exception) {
-      $app.logger().error('jobs/reading-session-merge:group-failed', 'groupKey', groupKey, 'count', String(groupRecords.length), 'error', String(exception && exception.message ? exception.message : exception))
+      $app
+        .logger()
+        .error('jobs/reading-session-merge:group-failed', 'groupKey', groupKey, 'count', String(groupRecords.length), 'error', String(exception && exception.message ? exception.message : exception))
     }
   }
 
