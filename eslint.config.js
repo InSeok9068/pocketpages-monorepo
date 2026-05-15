@@ -269,6 +269,12 @@ module.exports = [
   {
     files: ['apps/**/pb_hooks/**/*.js'],
     languageOptions: {
+      globals: pocketBaseHookGlobals,
+    },
+  },
+  {
+    files: ['apps/**/pb_hooks/pages/**/*.js'],
+    languageOptions: {
       globals: pocketPagesGlobals,
     },
   },
@@ -285,6 +291,7 @@ module.exports = [
     languageOptions: {
       ecmaVersion: 2015,
       sourceType: 'script',
+      globals: pocketPagesGlobals,
     },
     rules: {
       'no-control-regex': 'off',
