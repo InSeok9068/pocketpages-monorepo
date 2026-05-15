@@ -4,6 +4,7 @@ const pushSendLogService = require('./push-send-log-service')
 const NOTIFICATION_KEY = 'highlight_reminder'
 const PUSH_CHANNEL = 'push'
 const RECENT_HIGHLIGHT_LOOKBACK_DAYS = 7
+const MAX_REMINDER_CYCLE_DAYS = 90
 
 /**
  * 하이라이트 문구를 알림 본문용으로 정리합니다.
@@ -217,7 +218,9 @@ function sendReminderForUser(settingsRecord) {
     }
   }
 
-  if (!isHighlightReminderDue(userId, highlightPushCycle)) {
+  const normalizedHighlightPushCycle = Math.min(Math.floor(highlightPushCycle), MAX_REMINDER_CYCLE_DAYS)
+
+  if (!isHighlightReminderDue(userId, normalizedHighlightPushCycle)) {
     pushSendLogService.createLog({
       userId: userId,
       notificationKey: NOTIFICATION_KEY,

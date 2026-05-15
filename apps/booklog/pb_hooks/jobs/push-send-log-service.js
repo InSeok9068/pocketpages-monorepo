@@ -194,6 +194,33 @@ function getSentHighlightIdsWithinDays(userId, notificationKey, days) {
 }
 
 /**
+ * 보관 기간이 지난 푸시 발송 로그를 삭제합니다.
+ *
+ * @param {number} retentionDays 보관 일수
+ * @returns {number} 삭제한 로그 수
+ */
+function cleanupExpiredLogs(retentionDays) {
+  const normalizedRetentionDays = Math.floor(Number(retentionDays))
+
+  if (isNaN(normalizedRetentionDays) || normalizedRetentionDays < 1) {
+    return 0
+  }
+
+  const cutoffDateText = getDateTextDaysAgo(normalizedRetentionDays)
+  const deleteResult = $app
+    .db()
+    .delete(
+      COLLECTION_NAME,
+      $dbx.exp("sent_at != '' AND sent_at < {:cutoffDate}", {
+        cutoffDate: cutoffDateText,
+      })
+    )
+    .execute()
+
+  return deleteResult.rowsAffected()
+}
+
+/**
  * 푸시 발송 로그를 저장합니다.
  *
  * @param {types.BooklogPushSendLogInput} input 로그 입력값
@@ -228,6 +255,7 @@ function createLog(input) {
 }
 
 module.exports = {
+  cleanupExpiredLogs,
   createLog,
   getDateTextDaysAgo,
   getDaysBetween,

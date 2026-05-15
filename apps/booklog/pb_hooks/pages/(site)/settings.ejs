@@ -100,7 +100,7 @@
               type="number"
               name="readingReminderCycle"
               min="1"
-              max="365"
+              max="90"
               value="<%= settings.readingReminderCycle === '' ? '' : String(settings.readingReminderCycle) %>"
               placeholder="꺼짐"
               class="mt-3 box-border block w-full rounded-[1rem] border-0 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.14)] outline-none placeholder:text-stone-400" />
@@ -114,7 +114,7 @@
               type="number"
               name="highlightPushCycle"
               min="1"
-              max="365"
+              max="90"
               value="<%= settings.highlightPushCycle === '' ? '' : String(settings.highlightPushCycle) %>"
               placeholder="꺼짐"
               class="mt-3 box-border block w-full rounded-[1rem] border-0 bg-white px-4 py-3 text-sm text-stone-900 shadow-[inset_0_0_0_1px_rgba(120,92,57,0.14)] outline-none placeholder:text-stone-400" />
@@ -144,6 +144,7 @@
     const pushStateNoticeElement = document.getElementById('push-state-notice')
     const submitButton = document.getElementById('settings-submit-button')
     const submitLabel = document.getElementById('settings-submit-label')
+    const maxReminderCycleDays = 90
 
     if (!form || !pushEnabledInput || !readingReminderCycleInput || !highlightPushCycleInput || !pushNoticeElement || !pushStateNoticeElement || !submitButton || !submitLabel) {
       return
@@ -441,9 +442,9 @@
       if (readingReminderCycleInput.value) {
         const readingReminderCycle = Number(readingReminderCycleInput.value || '')
 
-        if (isNaN(readingReminderCycle) || readingReminderCycle < 1 || readingReminderCycle > 365 || Math.floor(readingReminderCycle) !== readingReminderCycle) {
+        if (isNaN(readingReminderCycle) || readingReminderCycle < 1 || readingReminderCycle > maxReminderCycleDays || Math.floor(readingReminderCycle) !== readingReminderCycle) {
           event.preventDefault()
-          stopSubmit('읽기 리마인더 주기는 1일부터 365일 사이의 정수여야 합니다.')
+          stopSubmit('읽기 리마인더 주기는 1일부터 90일 사이의 정수여야 합니다.')
           return
         }
       }
@@ -451,9 +452,9 @@
       if (highlightPushCycleInput.value) {
         const highlightPushCycle = Number(highlightPushCycleInput.value || '')
 
-        if (isNaN(highlightPushCycle) || highlightPushCycle < 1 || highlightPushCycle > 365 || Math.floor(highlightPushCycle) !== highlightPushCycle) {
+        if (isNaN(highlightPushCycle) || highlightPushCycle < 1 || highlightPushCycle > maxReminderCycleDays || Math.floor(highlightPushCycle) !== highlightPushCycle) {
           event.preventDefault()
-          stopSubmit('하이라이트 리마인더 주기는 1일부터 365일 사이의 정수여야 합니다.')
+          stopSubmit('하이라이트 리마인더 주기는 1일부터 90일 사이의 정수여야 합니다.')
           return
         }
       }

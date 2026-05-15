@@ -2326,7 +2326,7 @@
       {
         "hidden": false,
         "id": "number1101001006",
-        "max": 365,
+        "max": 90,
         "min": 1,
         "name": "reading_reminder_cycle",
         "onlyInt": true,
@@ -2338,7 +2338,7 @@
       {
         "hidden": false,
         "id": "number1101001008",
-        "max": 365,
+        "max": 90,
         "min": 1,
         "name": "highlight_push_cycle",
         "onlyInt": true,

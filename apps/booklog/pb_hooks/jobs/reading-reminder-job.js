@@ -3,6 +3,7 @@ const pushSendLogService = require('./push-send-log-service')
 
 const NOTIFICATION_KEY = 'reading_reminder'
 const PUSH_CHANNEL = 'push'
+const MAX_REMINDER_CYCLE_DAYS = 90
 
 /**
  * 오늘 기준으로 지난 날짜 문자열을 만듭니다.
@@ -39,7 +40,7 @@ function getInactivityDays(settingsRecord) {
   const readingReminderCycle = Number(readingReminderCycleValue)
 
   if (!isNaN(readingReminderCycle) && readingReminderCycle >= 1) {
-    return Math.floor(readingReminderCycle)
+    return Math.min(Math.floor(readingReminderCycle), MAX_REMINDER_CYCLE_DAYS)
   }
 
   return 0

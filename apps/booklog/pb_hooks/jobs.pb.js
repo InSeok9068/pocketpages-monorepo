@@ -19,3 +19,14 @@ cronAdd('booklog-highlight-reminder', '0 0 * * *', function () {
     $app.logger().error('jobs/highlight-reminder:failed', 'error', String(exception && exception.message ? exception.message : exception))
   }
 })
+
+cronAdd('booklog-push-send-log-cleanup', '20 0 * * *', function () {
+  try {
+    const pushSendLogService = require(__hooks + '/jobs/push-send-log-service.js')
+    const deletedCount = pushSendLogService.cleanupExpiredLogs(90)
+
+    $app.logger().info('jobs/push-send-log-cleanup:completed', 'deletedCount', String(deletedCount))
+  } catch (exception) {
+    $app.logger().error('jobs/push-send-log-cleanup:failed', 'error', String(exception && exception.message ? exception.message : exception))
+  }
+})
