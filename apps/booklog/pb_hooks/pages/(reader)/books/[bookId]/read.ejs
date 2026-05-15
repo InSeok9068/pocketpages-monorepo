@@ -376,35 +376,13 @@
       class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
       검색
     </button>
-    <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-      <div class="mb-2 text-[11px] font-semibold tracking-[0.16em] text-stone-500">글자 크기</div>
-      <div class="grid grid-cols-[1fr_1.25fr_1fr] gap-2">
-        <button
-          type="button"
-          x-on:click="decreaseReaderFontSize()"
-          x-bind:disabled="readerFontSizePercent === '90'"
-          class="inline-flex h-9 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
-          aria-label="글자 크기 줄이기">
-          가-
-        </button>
-        <button
-          type="button"
-          x-on:click="resetReaderFontSize()"
-          x-bind:disabled="readerFontSizePercent === '100'"
-          class="inline-flex h-9 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-55"
-          aria-label="글자 크기 기본값으로 되돌리기"
-          x-text="readerFontSizePercent + '%'"></button>
-        <button
-          type="button"
-          x-on:click="increaseReaderFontSize()"
-          x-bind:disabled="readerFontSizePercent === '130'"
-          class="inline-flex h-9 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
-          aria-label="글자 크기 키우기">
-          가+
-        </button>
-      </div>
-    </div>
-    <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+    <button
+      type="button"
+      x-on:click="openToc()"
+      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
+      목차
+    </button>
+    <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
       <div class="flex items-center justify-between gap-2 text-[11px] font-semibold tracking-[0.16em] text-stone-500">
         <span>진행률 이동</span>
         <span
@@ -419,7 +397,7 @@
         min="0"
         max="100"
         step="1"
-        class="mt-3 block w-full accent-stone-900" />
+        class="mt-2 block w-full accent-stone-900" />
       <div class="mt-2 flex items-center gap-2">
         <input
           x-model="progressJumpValue"
@@ -432,12 +410,12 @@
           step="1"
           inputmode="numeric"
           placeholder="0-100"
-          class="box-border min-w-0 flex-1 rounded-full border-0 bg-white/80 px-3 py-2 text-sm text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none placeholder:text-stone-400" />
+          class="box-border min-w-0 flex-1 rounded-full border-0 bg-white/80 px-3 py-1.5 text-sm text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none placeholder:text-stone-400" />
         <button
           type="button"
           x-on:click="goToProgress()"
           x-bind:disabled="jumpingProgress || loading"
-          class="inline-flex shrink-0 items-center justify-center rounded-full border-none bg-stone-950 px-3 py-2 text-sm font-semibold text-white outline-none ring-0 disabled:opacity-60">
+          class="inline-flex shrink-0 items-center justify-center rounded-full border-none bg-stone-950 px-3 py-1.5 text-sm font-semibold text-white outline-none ring-0 disabled:opacity-60">
           <span
             x-show="!jumpingProgress"
             x-cloak
@@ -451,12 +429,34 @@
         </button>
       </div>
     </div>
-    <button
-      type="button"
-      x-on:click="openToc()"
-      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
-      목차
-    </button>
+    <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+      <div class="mb-1.5 text-[11px] font-semibold tracking-[0.16em] text-stone-500">글자 크기</div>
+      <div class="grid grid-cols-[1fr_1.25fr_1fr] gap-2">
+        <button
+          type="button"
+          x-on:click="decreaseReaderFontSize()"
+          x-bind:disabled="readerFontSizePercent === '90'"
+          class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
+          aria-label="글자 크기 줄이기">
+          가-
+        </button>
+        <button
+          type="button"
+          x-on:click="resetReaderFontSize()"
+          x-bind:disabled="readerFontSizePercent === '100'"
+          class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-55"
+          aria-label="글자 크기 기본값으로 되돌리기"
+          x-text="readerFontSizePercent + '%'"></button>
+        <button
+          type="button"
+          x-on:click="increaseReaderFontSize()"
+          x-bind:disabled="readerFontSizePercent === '130'"
+          class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
+          aria-label="글자 크기 키우기">
+          가+
+        </button>
+      </div>
+    </div>
     <button
       type="button"
       x-on:click="openReadAloud()"
