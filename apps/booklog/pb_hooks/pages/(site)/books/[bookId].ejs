@@ -145,20 +145,6 @@
     }
   }
 
-  if (!bookFileRecord && !shelfBookFileId) {
-    try {
-      const matchedBookFileRecords = $app.findRecordsByFilter('book_files', 'book_id = {:bookId}', '-updated', 2, 0, {
-        bookId: bookId,
-      })
-
-      if (matchedBookFileRecords.length === 1) {
-        bookFileRecord = matchedBookFileRecords[0]
-      }
-    } catch (exception) {
-      bookFileRecord = null
-    }
-  }
-
   const storedFileName = bookFileRecord ? String(bookFileRecord.get('stored_file') || '').trim() : ''
   const bookFileUrl =
     bookFileRecord && storedFileName

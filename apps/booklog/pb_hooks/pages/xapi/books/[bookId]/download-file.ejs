@@ -53,20 +53,6 @@
     }
   }
 
-  if (!bookFileRecord && !shelfBookFileId) {
-    try {
-      const matchedBookFileRecords = $app.findRecordsByFilter('book_files', 'book_id = {:bookId}', '-updated', 2, 0, {
-        bookId: bookId,
-      })
-
-      if (matchedBookFileRecords.length === 1) {
-        bookFileRecord = matchedBookFileRecords[0]
-      }
-    } catch (exception) {
-      bookFileRecord = null
-    }
-  }
-
   if (!bookFileRecord) {
     response.html(404, 'EPUB 파일을 찾을 수 없습니다.')
     return
