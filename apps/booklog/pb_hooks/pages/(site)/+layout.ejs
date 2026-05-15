@@ -222,19 +222,19 @@
       window.openEpubLibrary = function (event) {
         const url = 'https://ko.1lib.sk/'
         const userAgent = navigator.userAgent || ''
-        const isSafari = /Safari/i.test(userAgent) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(userAgent)
+        const isIOS = /iPad|iPhone|iPod/i.test(userAgent)
+        const isSafari = /Safari/i.test(userAgent) && !/Chrome|Chromium|CriOS|FxiOS|EdgiOS|OPiOS/i.test(userAgent)
 
-        if (!isSafari) {
+        if (!isIOS || !isSafari) {
           return
         }
 
         event.preventDefault()
 
         const shouldOpenChrome = window.confirm(
-          'Safari에서는 EPUB 다운로드가 원활하지 않을 수 있습니다.\n\n' +
-            'Chrome으로 사이트를 열어 EPUB을 다운로드한 뒤,\n' +
-            '다시 돌아와 파일을 업로드해주세요.\n\n' +
-            '확인을 누르면 Chrome으로 열기를 시도합니다.'
+          'Safari에서는 EPUB 다운로드가 제한될 수 있습니다.\n\n' +
+            '확인을 누르면 Chrome으로 열기를 시도합니다.\n' +
+            '다운로드 후 돌아와 파일을 업로드해주세요.'
         )
 
         if (shouldOpenChrome) {
