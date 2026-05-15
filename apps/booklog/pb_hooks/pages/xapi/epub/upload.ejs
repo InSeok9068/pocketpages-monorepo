@@ -5,6 +5,7 @@
   const { compile: compileHtmlToText } = require(`${__hooks}/pages/_private/vendor/html-to-text.bundle.js`)
   const data4libraryService = resolve('data4library-service')
   const MAX_EPUB_BYTES = 1024 * 1024 * 100
+  const DEFAULT_SHELF_BOOKS_PER_USER = 100
   const MIN_BOOK_SEARCH_SCORE = 80
   const MAX_METADATA_PAGE_FALLBACKS = 12
   const MAX_BOOK_SEARCH_DOCS = 100
@@ -2019,6 +2020,22 @@
   }
 
   /**
+   * 사용자 도서함 권수 제한을 확인합니다.
+   * @param {string} userId 사용자 ID
+   * @returns {number} 적용할 최대 도서 수
+   */
+  function resolveShelfBookLimit(userId) {
+    const userRecord = $app.findRecordById('users', userId)
+    const customLimit = Number(userRecord.get('shelf_book_limit') || 0)
+
+    if (customLimit > 0) {
+      return customLimit
+    }
+
+    return DEFAULT_SHELF_BOOKS_PER_USER
+  }
+
+  /**
    * 도서 메타데이터를 기존 책에 반영하거나 새 책으로 저장합니다.
    * @param {object} bookInput 저장할 도서 값
    * @param {string} [bookInput.existingBookId] 우선 재사용할 기존 책 ID
@@ -2223,6 +2240,36 @@
 
   try {
     const uploadStartedAt = Date.now()
+    const userId = request.auth.get('id')
+    const shelfBookLimit = resolveShelfBookLimit(userId)
+    const shelfBookCount = $app.countRecords(
+      'book_shelves',
+      $dbx.hashExp({
+        user_id: userId,
+      })
+    )
+
+    dbg('xapi/epub/upload:shelf-limit', {
+      userId: userId,
+      count: shelfBookCount,
+      limit: shelfBookLimit,
+    })
+
+    if (shelfBookCount >= shelfBookLimit) {
+      const shelfLimitMessage = '내 도서함은 최대 ' + shelfBookLimit + '권까지 보관할 수 있습니다.'
+
+      dbg('xapi/epub/upload:redirect', {
+        status: 303,
+        redirectTo: '/',
+        flash: shelfLimitMessage,
+      })
+      redirect('/', {
+        status: 303,
+        message: shelfLimitMessage,
+      })
+      return
+    }
+
     let uploadedFiles = []
 
     try {

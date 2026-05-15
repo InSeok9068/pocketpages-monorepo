@@ -286,6 +286,18 @@
         "type": "file"
       },
       {
+        "hidden": true,
+        "id": "number2026051501",
+        "max": 10000,
+        "min": 0,
+        "name": "shelf_book_limit",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
         "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
