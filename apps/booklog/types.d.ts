@@ -23,6 +23,10 @@ declare namespace types {
     payloadJson?: Record<string, any>
   }
 
+  interface BooklogReadingSessionGroupMap {
+    [key: string]: any[]
+  }
+
   interface BookSearchScoreDetails {
     titleExact: boolean
     titlePartial: boolean
