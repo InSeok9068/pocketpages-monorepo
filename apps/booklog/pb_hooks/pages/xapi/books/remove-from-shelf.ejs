@@ -30,6 +30,9 @@
   const bookId = String(form.bookId || '').trim()
   const bookDetailPath = '/books/' + bookId
   let errorMessage = ''
+  let removedReviewCount = 0
+  let removedHighlightCount = 0
+  let removedBookmarkCount = 0
 
   dbg('xapi/books/remove-from-shelf:start', {
     userId: userId,
@@ -39,46 +42,44 @@
   try {
     if (!bookId) throw new Error('책 정보가 필요합니다.')
 
-    let shelfRecord = null
+    $app.runInTransaction(function (txApp) {
+      let shelfRecord = null
 
-    try {
-      shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
-        userId: userId,
-        bookId: bookId,
+      try {
+        shelfRecord = txApp.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+          userId: userId,
+          bookId: bookId,
+        })
+      } catch (exception) {
+        shelfRecord = null
+      }
+
+      if (!shelfRecord) {
+        throw new Error('이미 내 도서함에서 제거된 책입니다.')
+      }
+
+      const personalRecordFilter = $dbx.hashExp({
+        user_id: userId,
+        book_id: bookId,
       })
-    } catch (exception) {
-      shelfRecord = null
-    }
+      const reviewDeleteResult = txApp.db().delete('book_reviews', personalRecordFilter).execute()
+      const highlightDeleteResult = txApp.db().delete('book_highlights', personalRecordFilter).execute()
+      const bookmarkDeleteResult = txApp.db().delete('book_bookmarks', personalRecordFilter).execute()
 
-    if (!shelfRecord) {
-      throw new Error('이미 내 도서함에서 제거된 책입니다.')
-    }
+      txApp.delete(shelfRecord)
 
-    const reviewRecords = $app.findRecordsByFilter('book_reviews', 'user_id = {:userId} && book_id = {:bookId}', '-updated', 20, 0, {
-      userId: userId,
-      bookId: bookId,
+      removedReviewCount = reviewDeleteResult.rowsAffected()
+      removedHighlightCount = highlightDeleteResult.rowsAffected()
+      removedBookmarkCount = bookmarkDeleteResult.rowsAffected()
     })
-    const highlightRecords = $app.findRecordsByFilter('book_highlights', 'user_id = {:userId} && book_id = {:bookId}', '-updated', 200, 0, {
-      userId: userId,
-      bookId: bookId,
-    })
-
-    for (let index = 0; index < reviewRecords.length; index += 1) {
-      $app.delete(reviewRecords[index])
-    }
-
-    for (let index = 0; index < highlightRecords.length; index += 1) {
-      $app.delete(highlightRecords[index])
-    }
-
-    $app.delete(shelfRecord)
 
     dbg('xapi/books/remove-from-shelf:redirect', {
       status: 303,
       redirectTo: '/library',
       flash: '내 도서함에서 책을 제거했습니다.',
-      removedReviewCount: reviewRecords.length,
-      removedHighlightCount: highlightRecords.length,
+      removedReviewCount: removedReviewCount,
+      removedHighlightCount: removedHighlightCount,
+      removedBookmarkCount: removedBookmarkCount,
     })
     redirect('/library', {
       status: 303,
