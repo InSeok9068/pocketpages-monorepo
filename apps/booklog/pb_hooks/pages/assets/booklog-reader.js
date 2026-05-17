@@ -4,6 +4,7 @@ window.booklogReaderLogic = (function () {
   var bookId = String(readerConfig.bookId || '')
   var bookFileId = String(readerConfig.bookFileId || '')
   var readerCacheKey = String(readerConfig.readerCacheKey || '')
+  var initialShelfStatus = String(readerConfig.initialShelfStatus || '')
   var bookInstance = null
   var renditionInstance = null
   var tocLabelByHref = {}
@@ -79,6 +80,9 @@ window.booklogReaderLogic = (function () {
   var tocCfisResolved = false
   var tocCfisResolving = false
   var tocCfisPromise = null
+  var finishPromptTimerId = 0
+  var finishPromptShown = false
+  var bookMarkedFinished = initialShelfStatus === 'finished'
 
   function normalizeText(value) {
     return String(value || '')
@@ -1331,6 +1335,73 @@ window.booklogReaderLogic = (function () {
     }
 
     syncCurrentProgressState(component)
+    scheduleFinishPromptIfNeeded(component)
+  }
+
+  /**
+   * 완독 유도 팝업을 표시할 수 있는 상태인지 확인합니다.
+   * @param {any} component Alpine 컴포넌트 상태
+   * @returns {boolean} 표시 가능 여부
+   */
+  function canShowFinishPrompt(component) {
+    return !!(
+      component &&
+      !component.loading &&
+      !component.finishPromptDismissed &&
+      !component.finishPromptOpen &&
+      !component.finishingBook &&
+      !component.selectedHighlightOpen &&
+      !component.searchOpen &&
+      !component.tocOpen &&
+      !component.bookmarksOpen &&
+      !component.highlightOpen &&
+      !component.readAloudOpen &&
+      !finishPromptShown &&
+      !bookMarkedFinished &&
+      currentLocation
+    )
+  }
+
+  /**
+   * 현재 위치가 마지막 읽기 지점인지 확인합니다.
+   * @returns {boolean} 마지막 지점 여부
+   */
+  function isAtBookEnd() {
+    var start = currentLocation && currentLocation.start ? currentLocation.start : null
+    var progressPercent = Number(getProgressPercentFromLocator(start && start.cfi ? String(start.cfi) : ''))
+
+    if (isAutoPagingBoundary('next')) {
+      return true
+    }
+
+    return progressPercent === 100
+  }
+
+  /**
+   * 마지막 지점이 잠시 유지되면 완독 유도 팝업을 표시합니다.
+   * @param {any} component Alpine 컴포넌트 상태
+   * @returns {void}
+   */
+  function scheduleFinishPromptIfNeeded(component) {
+    if (!canShowFinishPrompt(component) || !isAtBookEnd()) {
+      return
+    }
+
+    if (finishPromptTimerId) {
+      window.clearTimeout(finishPromptTimerId)
+    }
+
+    finishPromptTimerId = window.setTimeout(function () {
+      finishPromptTimerId = 0
+
+      if (!canShowFinishPrompt(component) || !isAtBookEnd()) {
+        return
+      }
+
+      finishPromptShown = true
+      component.finishPromptMessage = ''
+      component.finishPromptOpen = true
+    }, 1400)
   }
 
   function buildProgressKey(progress) {
@@ -1843,6 +1914,25 @@ window.booklogReaderLogic = (function () {
 
         return result.payload || {}
       })
+  }
+
+  function requestMarkBookFinished() {
+    var formData = new FormData()
+
+    formData.set('bookId', bookId)
+    formData.set('status', 'finished')
+
+    return fetch('/xapi/books/update-status', {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+    }).then(function (response) {
+      if (!response.ok) {
+        throw new Error('완독 처리에 실패했습니다.')
+      }
+
+      return true
+    })
   }
 
   function persistProgress(component, options) {
@@ -2851,6 +2941,9 @@ window.booklogReaderLogic = (function () {
 
     if (isAutoPagingBoundary(direction)) {
       resetAutoPagingIntent()
+      if (direction === 'next') {
+        scheduleFinishPromptIfNeeded(component)
+      }
       return
     }
 
@@ -3196,6 +3289,7 @@ window.booklogReaderLogic = (function () {
       })
       .then(function () {
         component.loading = false
+        scheduleFinishPromptIfNeeded(component)
         startAutoSave(component)
         startReadingSession(component)
         console.debug('page/books/[bookId]/read:rendered', {
@@ -3756,6 +3850,48 @@ window.booklogReaderLogic = (function () {
     })
   }
 
+  function markBookFinished(component) {
+    if (!component || component.finishingBook || bookMarkedFinished) {
+      return
+    }
+
+    component.finishingBook = true
+    component.finishPromptMessage = ''
+
+    persistProgress(component, {
+      silent: true,
+      skipIfUnchanged: false,
+    })
+      .catch(function (exception) {
+        console.warn('page/books/[bookId]/read:finish-progress-save-skipped', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+        return false
+      })
+      .then(function () {
+        return requestMarkBookFinished()
+      })
+      .then(function () {
+        bookMarkedFinished = true
+        component.finishPromptDismissed = true
+        component.finishPromptMessage = '완독으로 표시했습니다.'
+
+        window.setTimeout(function () {
+          component.finishPromptOpen = false
+          component.finishPromptMessage = ''
+        }, 900)
+      })
+      .catch(function (exception) {
+        component.finishPromptMessage = String(exception && exception.message ? exception.message : '완독 처리에 실패했습니다.')
+        console.error('page/books/[bookId]/read:finish-book:failed', {
+          message: component.finishPromptMessage,
+        })
+      })
+      .finally(function () {
+        component.finishingBook = false
+      })
+  }
+
   function loadSavedPosition(component) {
     if (!renditionInstance) {
       component.showSavePositionMessage('리더가 아직 준비되지 않았습니다.')
@@ -3862,6 +3998,7 @@ window.booklogReaderLogic = (function () {
     clearSelectedHighlight: clearSelectedHighlight,
     saveCurrentPosition: saveCurrentPosition,
     goToBookDetail: goToBookDetail,
+    markBookFinished: markBookFinished,
     loadSavedPosition: loadSavedPosition,
     goToProgress: goToProgress,
     decreaseReaderFontSize: decreaseReaderFontSize,
