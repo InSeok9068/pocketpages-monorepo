@@ -3844,7 +3844,7 @@ window.booklogReaderLogic = (function () {
     leavePageWithSavedProgress(component, {
       nextLocation: '/books/' + bookId,
       saveOptions: {
-        silent: false,
+        silent: true,
         skipIfUnchanged: false,
       },
     })
