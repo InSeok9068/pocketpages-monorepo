@@ -107,9 +107,7 @@
   const progressPercentValue = shelfRecord ? shelfRecord.get('progress_percent') : null
   const progressPercentNumber = Number(progressPercentValue)
   const readingProgressPercent =
-    progressPercentValue === null || typeof progressPercentValue === 'undefined' || isNaN(progressPercentNumber)
-      ? null
-      : Math.max(0, Math.min(100, Math.round(progressPercentNumber)))
+    progressPercentValue === null || typeof progressPercentValue === 'undefined' || isNaN(progressPercentNumber) ? null : Math.max(0, Math.min(100, Math.round(progressPercentNumber)))
   const hasReadingProgress = readingProgressPercent !== null && (readingProgressPercent > 0 || shelfStatus === 'reading' || shelfStatus === 'finished')
   const readingProgressText = hasReadingProgress ? readingProgressPercent + '%' : ''
 

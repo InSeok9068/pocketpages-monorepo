@@ -52,15 +52,11 @@ function hasReadingSessionThisWeek(userId, weekStartIso, weekEndIso) {
   }
 
   try {
-    return !!$app.findFirstRecordByFilter(
-      'reading_sessions',
-      'user_id = {:userId} && ended_at >= {:weekStartIso} && ended_at <= {:weekEndIso} && duration_seconds > 0',
-      {
-        userId: normalizedUserId,
-        weekStartIso: weekStartIso,
-        weekEndIso: weekEndIso,
-      }
-    )
+    return !!$app.findFirstRecordByFilter('reading_sessions', 'user_id = {:userId} && ended_at >= {:weekStartIso} && ended_at <= {:weekEndIso} && duration_seconds > 0', {
+      userId: normalizedUserId,
+      weekStartIso: weekStartIso,
+      weekEndIso: weekEndIso,
+    })
   } catch (_exception) {
     return false
   }

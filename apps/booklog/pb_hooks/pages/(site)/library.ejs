@@ -269,35 +269,35 @@
             </a>
             <label class="relative ml-auto shrink-0">
               <span class="sr-only">도서함 정렬</span>
-            <select
-              name="sort"
-              x-on:change="$el.form.requestSubmit()"
+              <select
+                name="sort"
+                x-on:change="$el.form.requestSubmit()"
                 class="bg-white/88 h-10 appearance-none rounded-full border-0 pl-4 pr-9 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none">
-              <option
-                value="recent"
-                <% if (sortMode === 'recent') { %>selected<% } %>>
-                최근 읽은 순
-              </option>
-              <option
-                value="title"
-                <% if (sortMode === 'title') { %>selected<% } %>>
-                제목순
-              </option>
-            </select>
+                <option
+                  value="recent"
+                  <% if (sortMode === 'recent') { %>selected<% } %>>
+                  최근 읽은 순
+                </option>
+                <option
+                  value="title"
+                  <% if (sortMode === 'title') { %>selected<% } %>>
+                  제목순
+                </option>
+              </select>
               <span
                 class="i-lucide-chevron-down pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
                 aria-hidden="true"></span>
-          </label>
-          <% if (queryText) { %>
-          <a
-            href="<%= buildLibraryHref({ q: '', limit: 50 }) %>"
+            </label>
+            <% if (queryText) { %>
+            <a
+              href="<%= buildLibraryHref({ q: '', limit: 50 }) %>"
               aria-label="검색어 지우기"
               class="bg-white/88 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
               <span
                 class="i-lucide-x h-4 w-4"
                 aria-hidden="true"></span>
-          </a>
-          <% } %>
+            </a>
+            <% } %>
           </div>
         </div>
       </form>
