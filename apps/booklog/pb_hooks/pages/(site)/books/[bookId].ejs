@@ -344,50 +344,77 @@
         </dl>
 
         <div class="flex flex-wrap items-center gap-2 pt-1">
-          <form
-            method="post"
-            action="/xapi/books/update-status"
-            class="m-0">
-            <input
-              type="hidden"
-              name="bookId"
-              value="<%= bookId %>" />
-            <input
-              type="hidden"
-              name="from"
-              value="<%= bookBackHref %>" />
-            <input
-              type="hidden"
-              name="status"
-              value="<%= shelfStatus === 'reading' ? 'queued' : 'reading' %>" />
-            <button
-              type="submit"
-              class="<%= shelfStatus === 'reading' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-white/88 text-stone-700 shadow-[0_10px_22px_rgba(70,52,31,0.08)] hover:bg-stone-100/80' %> inline-flex items-center rounded-full border-none px-4 py-2.5 text-sm font-medium outline-none ring-0 transition">
-              <%= shelfStatus === 'reading' ? '읽는 중 풀기' : '읽는 중' %>
-            </button>
-          </form>
-          <form
-            method="post"
-            action="/xapi/books/update-status"
-            class="m-0">
-            <input
-              type="hidden"
-              name="bookId"
-              value="<%= bookId %>" />
-            <input
-              type="hidden"
-              name="from"
-              value="<%= bookBackHref %>" />
-            <input
-              type="hidden"
-              name="status"
-              value="<%= shelfStatus === 'finished' ? 'queued' : 'finished' %>" />
-            <button
-              type="submit"
-              class="<%= shelfStatus === 'finished' ? 'bg-[#9e6125] text-white shadow-[0_10px_22px_rgba(165,103,38,0.14)]' : 'bg-white/88 text-stone-700 shadow-[0_10px_22px_rgba(70,52,31,0.08)] hover:bg-stone-100/80' %> inline-flex items-center rounded-full border-none px-4 py-2.5 text-sm font-medium outline-none ring-0 transition">
-              <%= shelfStatus === 'finished' ? '완독 풀기' : '완독' %>
-            </button>
-          </form>
+          <div class="flex min-w-0 flex-1 rounded-full bg-white/72 p-1 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.1)] sm:flex-none">
+            <form
+              method="post"
+              action="/xapi/books/update-status"
+              class="m-0 flex-1 sm:flex-none">
+              <input
+                type="hidden"
+                name="bookId"
+                value="<%= bookId %>" />
+              <input
+                type="hidden"
+                name="from"
+                value="<%= bookBackHref %>" />
+              <input
+                type="hidden"
+                name="status"
+                value="queued" />
+              <button
+                type="<%= shelfStatus === 'queued' ? 'button' : 'submit' %>"
+                aria-pressed="<%= shelfStatus === 'queued' ? 'true' : 'false' %>"
+                class="<%= shelfStatus === 'queued' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600 hover:bg-stone-100/80' %> inline-flex h-10 w-full items-center justify-center rounded-full border-none px-3 text-sm font-semibold outline-none ring-0 transition sm:w-auto sm:min-w-[5.25rem]">
+                읽을 예정
+              </button>
+            </form>
+            <form
+              method="post"
+              action="/xapi/books/update-status"
+              class="m-0 flex-1 sm:flex-none">
+              <input
+                type="hidden"
+                name="bookId"
+                value="<%= bookId %>" />
+              <input
+                type="hidden"
+                name="from"
+                value="<%= bookBackHref %>" />
+              <input
+                type="hidden"
+                name="status"
+                value="reading" />
+              <button
+                type="<%= shelfStatus === 'reading' ? 'button' : 'submit' %>"
+                aria-pressed="<%= shelfStatus === 'reading' ? 'true' : 'false' %>"
+                class="<%= shelfStatus === 'reading' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600 hover:bg-stone-100/80' %> inline-flex h-10 w-full items-center justify-center rounded-full border-none px-3 text-sm font-semibold outline-none ring-0 transition sm:w-auto sm:min-w-[5.25rem]">
+                읽는 중
+              </button>
+            </form>
+            <form
+              method="post"
+              action="/xapi/books/update-status"
+              class="m-0 flex-1 sm:flex-none">
+              <input
+                type="hidden"
+                name="bookId"
+                value="<%= bookId %>" />
+              <input
+                type="hidden"
+                name="from"
+                value="<%= bookBackHref %>" />
+              <input
+                type="hidden"
+                name="status"
+                value="finished" />
+              <button
+                type="<%= shelfStatus === 'finished' ? 'button' : 'submit' %>"
+                aria-pressed="<%= shelfStatus === 'finished' ? 'true' : 'false' %>"
+                class="<%= shelfStatus === 'finished' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600 hover:bg-stone-100/80' %> inline-flex h-10 w-full items-center justify-center rounded-full border-none px-3 text-sm font-semibold outline-none ring-0 transition sm:w-auto sm:min-w-[5.25rem]">
+                완독
+              </button>
+            </form>
+          </div>
           <% if (downloadFileUrl) { %>
           <a
             href="<%= downloadFileUrl %>"
