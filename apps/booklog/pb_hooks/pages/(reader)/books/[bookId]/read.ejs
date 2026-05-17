@@ -179,7 +179,7 @@
     bookmarksMessage: '',
     openSearch: function () {
       this.searchOpen = true
-      this.controlsVisible = true
+      this.controlsVisible = false
       this.searchMessage = ''
       this.$nextTick(function () {
         var input = document.getElementById('reader-search-input')
@@ -196,7 +196,7 @@
       var component = this
 
       this.tocOpen = true
-      this.controlsVisible = true
+      this.controlsVisible = false
       window.booklogReaderLogic.prepareToc(component).finally(function () {
         component.$nextTick(function () {
           window.booklogReaderLogic.scrollActiveTocItemIntoView(component)
@@ -209,7 +209,7 @@
     openReadAloud: function () {
       this.readAloudOpen = true
       this.readAloudMessage = ''
-      this.controlsVisible = true
+      this.controlsVisible = false
       window.booklogReaderLogic.prepareReadAloud(this)
       this.$nextTick(function () {
         var select = document.getElementById('reader-read-aloud-voice')
@@ -225,7 +225,7 @@
     openBookmarks: function () {
       this.bookmarksOpen = true
       this.bookmarksMessage = ''
-      this.controlsVisible = true
+      this.controlsVisible = false
       window.booklogReaderLogic.loadBookmarks(this)
     },
     closeBookmarks: function () {
@@ -234,7 +234,7 @@
     openHighlight: function () {
       this.highlightOpen = true
       this.highlightMessage = ''
-      this.controlsVisible = true
+      this.controlsVisible = false
     },
     closeHighlight: function () {
       if (this.savingHighlight) {
@@ -334,7 +334,8 @@
   class="ios-safe-screen relative min-h-screen bg-[#f5f1e7]">
   <div
     x-cloak
-    class="fixed bottom-4 right-4 z-30 inline-flex h-11 items-center rounded-full bg-[rgba(24,19,16,0.14)] px-1 text-stone-800/75 shadow-[0_6px_18px_rgba(24,19,16,0.08)]">
+    class="fixed right-4 z-30 inline-flex h-11 items-center rounded-full bg-[rgba(24,19,16,0.14)] px-1 text-stone-800/75 shadow-[0_6px_18px_rgba(24,19,16,0.08)]"
+    style="bottom: calc(env(safe-area-inset-bottom) + 1rem)">
     <a
       href="/books/<%= bookId %>"
       x-on:click.prevent="goToBookDetail()"
@@ -358,169 +359,170 @@
     </button>
   </div>
 
+  <div
+    class="pointer-events-none fixed inset-x-0 bottom-0 z-10 h-1 bg-stone-950/10"
+    aria-hidden="true">
+    <div
+      class="h-full bg-stone-950 transition-[width] duration-300"
+      x-bind:style="'width: ' + (currentProgressPercent ? currentProgressPercent + '%' : '0%')"></div>
+  </div>
+
   <button
     type="button"
     x-show="controlsVisible"
     x-cloak
     x-on:click="controlsVisible = false"
-    class="fixed inset-0 z-20 border-none bg-transparent outline-none ring-0"
+    class="fixed inset-0 z-20 border-none bg-stone-950/10 outline-none ring-0"
     aria-label="메뉴 닫기"></button>
 
   <div
     x-show="controlsVisible"
     x-cloak
-    class="bottom-18 fixed right-4 z-30 flex max-h-[calc(100vh-7rem)] w-52 max-w-[calc(100vw-2rem)] flex-col items-stretch gap-2 overflow-y-auto rounded-[1.5rem] bg-[rgba(255,255,255,0.92)] p-3 shadow-[0_18px_40px_rgba(24,19,16,0.18)] backdrop-blur-sm">
-    <button
-      type="button"
-      x-on:click="openSearch()"
-      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
-      검색
-    </button>
-    <button
-      type="button"
-      x-on:click="openToc()"
-      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
-      목차
-    </button>
-    <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-      <div class="flex items-center justify-between gap-2 text-[11px] font-semibold tracking-[0.16em] text-stone-500">
-        <span>진행률 이동</span>
-        <span
-          class="tracking-normal text-stone-600"
-          x-text="currentProgressPercent ? '현재 ' + currentProgressPercent + '%' : '위치 확인 중'"></span>
+    class="fixed inset-x-0 bottom-0 z-30 px-3"
+    style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem)">
+    <div class="mx-auto flex max-h-[calc(100dvh-5rem)] max-w-xl flex-col gap-3 overflow-y-auto rounded-[1.55rem] border border-stone-200/80 bg-[rgba(255,255,255,0.95)] p-3 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
+      <div class="grid grid-cols-3 gap-2">
+        <button
+          type="button"
+          x-on:click="openSearch()"
+          class="flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
+          <span
+            class="i-lucide-search h-5 w-5 text-stone-700"
+            aria-hidden="true"></span>
+          검색
+        </button>
+        <button
+          type="button"
+          x-on:click="openToc()"
+          class="flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
+          <span
+            class="i-lucide-list-tree h-5 w-5 text-stone-700"
+            aria-hidden="true"></span>
+          목차
+        </button>
+        <button
+          type="button"
+          x-on:click="openBookmarks()"
+          class="flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
+          <span
+            class="i-lucide-bookmark h-5 w-5 text-stone-700"
+            aria-hidden="true"></span>
+          책갈피
+        </button>
+        <button
+          type="button"
+          x-on:click="openReadAloud()"
+          class="flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
+          <span
+            class="i-lucide-volume-2 h-5 w-5 text-stone-700"
+            aria-hidden="true"></span>
+          읽어주기
+        </button>
+        <button
+          type="button"
+          x-on:click="openHighlight()"
+          class="flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
+          <span
+            class="i-lucide-quote h-5 w-5 text-stone-700"
+            aria-hidden="true"></span>
+          문구 추가
+        </button>
+        <a
+          href="/books/<%= bookId %>"
+          x-on:click.prevent="goToBookDetail()"
+          class="flex min-h-18 flex-col items-center justify-center gap-1.5 rounded-[1.15rem] bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-700 no-underline outline-none ring-0">
+          <span
+            class="i-lucide-book-open h-5 w-5 text-stone-700"
+            aria-hidden="true"></span>
+          책 상세
+        </a>
       </div>
-      <input
-        x-model="progressJumpValue"
-        x-on:focus="progressJumpEditing = true"
-        x-on:blur="progressJumpEditing = false"
-        type="range"
-        min="0"
-        max="100"
-        step="1"
-        class="mt-2 block w-full accent-stone-900" />
-      <div class="mt-2 flex items-center gap-2">
+
+      <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+        <div class="flex items-center justify-between gap-2 text-[11px] font-semibold tracking-[0.16em] text-stone-500">
+          <span>진행률 이동</span>
+          <span
+            class="tracking-normal text-stone-600"
+            x-text="currentProgressPercent ? '현재 ' + currentProgressPercent + '%' : '위치 확인 중'"></span>
+        </div>
         <input
           x-model="progressJumpValue"
           x-on:focus="progressJumpEditing = true"
           x-on:blur="progressJumpEditing = false"
-          x-on:keydown.enter.prevent="goToProgress()"
-          type="number"
+          type="range"
           min="0"
           max="100"
           step="1"
-          inputmode="numeric"
-          placeholder="0-100"
-          class="box-border min-w-0 flex-1 rounded-full border-0 bg-white/80 px-3 py-1.5 text-sm text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none placeholder:text-stone-400" />
-        <button
-          type="button"
-          x-on:click="goToProgress()"
-          x-bind:disabled="jumpingProgress || loading"
-          class="inline-flex shrink-0 items-center justify-center rounded-full border-none bg-stone-950 px-3 py-1.5 text-sm font-semibold text-white outline-none ring-0 disabled:opacity-60">
-          <span
-            x-show="!jumpingProgress"
-            x-cloak
-            >이동</span
-          >
-          <span
-            x-show="jumpingProgress"
-            x-cloak
-            >이동 중</span
-          >
-        </button>
+          class="mt-2 block w-full accent-stone-900" />
+        <div class="mt-2 flex items-center gap-2">
+          <input
+            x-model="progressJumpValue"
+            x-on:focus="progressJumpEditing = true"
+            x-on:blur="progressJumpEditing = false"
+            x-on:keydown.enter.prevent="goToProgress()"
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+            inputmode="numeric"
+            placeholder="0-100"
+            class="box-border min-w-0 flex-1 rounded-full border-0 bg-white/80 px-3 py-1.5 text-sm text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none placeholder:text-stone-400" />
+          <button
+            type="button"
+            x-on:click="goToProgress()"
+            x-bind:disabled="jumpingProgress || loading"
+            class="inline-flex shrink-0 items-center justify-center rounded-full border-none bg-stone-950 px-3 py-1.5 text-sm font-semibold text-white outline-none ring-0 disabled:opacity-60">
+            <span
+              x-show="!jumpingProgress"
+              x-cloak
+              >이동</span
+            >
+            <span
+              x-show="jumpingProgress"
+              x-cloak
+              >이동 중</span
+            >
+          </button>
+        </div>
+      </div>
+
+      <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+        <div class="mb-1.5 text-[11px] font-semibold tracking-[0.16em] text-stone-500">글자 크기</div>
+        <div class="grid grid-cols-[1fr_1.25fr_1fr] gap-2">
+          <button
+            type="button"
+            x-on:click="decreaseReaderFontSize()"
+            x-bind:disabled="readerFontSizePercent === '90'"
+            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
+            aria-label="글자 크기 줄이기">
+            가-
+          </button>
+          <button
+            type="button"
+            x-on:click="resetReaderFontSize()"
+            x-bind:disabled="readerFontSizePercent === '100'"
+            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-55"
+            aria-label="글자 크기 기본값으로 되돌리기"
+            x-text="readerFontSizePercent + '%'"></button>
+          <button
+            type="button"
+            x-on:click="increaseReaderFontSize()"
+            x-bind:disabled="readerFontSizePercent === '130'"
+            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
+            aria-label="글자 크기 키우기">
+            가+
+          </button>
+        </div>
       </div>
     </div>
-    <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-      <div class="mb-1.5 text-[11px] font-semibold tracking-[0.16em] text-stone-500">글자 크기</div>
-      <div class="grid grid-cols-[1fr_1.25fr_1fr] gap-2">
-        <button
-          type="button"
-          x-on:click="decreaseReaderFontSize()"
-          x-bind:disabled="readerFontSizePercent === '90'"
-          class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
-          aria-label="글자 크기 줄이기">
-          가-
-        </button>
-        <button
-          type="button"
-          x-on:click="resetReaderFontSize()"
-          x-bind:disabled="readerFontSizePercent === '100'"
-          class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-55"
-          aria-label="글자 크기 기본값으로 되돌리기"
-          x-text="readerFontSizePercent + '%'"></button>
-        <button
-          type="button"
-          x-on:click="increaseReaderFontSize()"
-          x-bind:disabled="readerFontSizePercent === '130'"
-          class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
-          aria-label="글자 크기 키우기">
-          가+
-        </button>
-      </div>
-    </div>
-    <button
-      type="button"
-      x-on:click="openReadAloud()"
-      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
-      읽어주기
-    </button>
-    <button
-      type="button"
-      x-on:click="openBookmarks()"
-      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
-      책갈피
-    </button>
-    <button
-      type="button"
-      x-on:click="saveCurrentPosition()"
-      x-bind:disabled="savingPosition || loading"
-      class="hidden items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0 disabled:opacity-60">
-      <span
-        x-show="!savingPosition"
-        x-cloak
-        >위치 저장</span
-      >
-      <span
-        x-show="savingPosition"
-        x-cloak
-        >저장 중</span
-      >
-    </button>
-    <button
-      type="button"
-      x-on:click="loadSavedPosition()"
-      x-bind:disabled="loadingSavedPosition || loading"
-      class="hidden items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0 disabled:opacity-60">
-      <span
-        x-show="!loadingSavedPosition"
-        x-cloak
-        >위치 불러오기</span
-      >
-      <span
-        x-show="loadingSavedPosition"
-        x-cloak
-        >불러오는 중</span
-      >
-    </button>
-    <button
-      type="button"
-      x-on:click="openHighlight()"
-      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
-      문구 추가
-    </button>
-    <a
-      href="/books/<%= bookId %>"
-      x-on:click.prevent="goToBookDetail()"
-      class="inline-flex items-center justify-center rounded-full border-none bg-[#f7f2e8] px-4 py-3 text-sm font-semibold text-stone-700 no-underline outline-none ring-0">
-      책 상세
-    </a>
   </div>
 
   <div
     x-show="bookmarksOpen"
     x-cloak
     class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.21)]">
-    <div class="ios-safe-screen mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
-      <div class="w-full rounded-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
+    <div class="ios-safe-screen flex min-h-screen items-end justify-center px-0 pt-0 sm:items-start sm:px-6 sm:pt-20">
+      <div class="max-h-[calc(100dvh-1rem)] w-full overflow-y-auto rounded-t-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] sm:max-h-[calc(100vh-7rem)] sm:max-w-3xl sm:rounded-[1.75rem]">
         <div class="mb-3 flex items-center justify-between gap-3">
           <div>
             <h2 class="text-base font-semibold text-stone-950">책갈피</h2>
@@ -827,8 +829,8 @@
     x-show="searchOpen"
     x-cloak
     class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.21)]">
-    <div class="ios-safe-screen mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
-      <div class="w-full rounded-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
+    <div class="ios-safe-screen flex min-h-screen items-end justify-center px-0 pt-0 sm:items-start sm:px-6 sm:pt-20">
+      <div class="max-h-[calc(100dvh-1rem)] w-full overflow-y-auto rounded-t-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] sm:max-h-[calc(100vh-7rem)] sm:max-w-3xl sm:rounded-[1.75rem]">
         <div class="mb-3 flex items-center justify-between gap-3">
           <h2 class="text-base font-semibold text-stone-950">책 전체 검색</h2>
           <button
@@ -902,8 +904,8 @@
     x-show="tocOpen"
     x-cloak
     class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.21)]">
-    <div class="ios-safe-screen mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
-      <div class="w-full rounded-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
+    <div class="ios-safe-screen flex min-h-screen items-end justify-center px-0 pt-0 sm:items-start sm:px-6 sm:pt-20">
+      <div class="max-h-[calc(100dvh-1rem)] w-full overflow-y-auto rounded-t-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] sm:max-h-[calc(100vh-7rem)] sm:max-w-3xl sm:rounded-[1.75rem]">
         <div class="mb-3 flex items-center justify-between gap-3">
           <div>
             <h2 class="text-base font-semibold text-stone-950">목차</h2>
