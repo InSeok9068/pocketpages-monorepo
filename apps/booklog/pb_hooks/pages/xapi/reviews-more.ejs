@@ -1,0 +1,163 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+
+  if (request.method !== 'GET') {
+    dbg('xapi/reviews-more:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/reviews-more:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const queryText = String(request.url.query.q || '').trim()
+  const requestedOffset = Number(request.url.query.offset || 30)
+  const maxReviewLimit = 5000
+  const pageLimit = 30
+  const pageOffset = isNaN(requestedOffset) || requestedOffset < 0 ? 30 : Math.min(Math.round(requestedOffset), maxReviewLimit)
+  const nextOffset = Math.min(pageOffset + pageLimit, maxReviewLimit)
+  const nextVisibleLimit = Math.min(nextOffset + pageLimit, maxReviewLimit)
+  const reviewItems = []
+  const normalizedQuery = queryText.toLowerCase()
+
+  /**
+   * 감상평 조회 조건을 붙입니다.
+   *
+   * @param {object} query 쿼리 빌더
+   * @returns {object} 쿼리 빌더
+   */
+  function applyReviewWhere(query) {
+    query.where($dbx.exp('book_reviews.user_id = {:userId}', { userId: request.auth.get('id') }))
+
+    if (normalizedQuery) {
+      query.andWhere($dbx.exp("(instr(lower(coalesce(book_reviews.review_text, '')), {:query}) > 0 OR instr(lower(coalesce(books.title, '')), {:query}) > 0)", {
+        query: normalizedQuery,
+      }))
+    }
+
+    return query
+  }
+
+  /**
+   * 감상평 전체 페이지 링크를 만듭니다.
+   *
+   * @param {number} visibleLimit 표시 개수
+   * @returns {string} 이동 링크
+   */
+  function buildReviewsHref(visibleLimit) {
+    const pairs = []
+
+    if (queryText) {
+      pairs.push('q=' + encodeURIComponent(queryText))
+    }
+
+    if (visibleLimit > 30) {
+      pairs.push('limit=' + encodeURIComponent(String(visibleLimit)))
+    }
+
+    return pairs.length ? '/reviews?' + pairs.join('&') : '/reviews'
+  }
+
+  /**
+   * 감상평 더 보기 조각 링크를 만듭니다.
+   *
+   * @param {number} offset 시작 위치
+   * @returns {string} 더 보기 링크
+   */
+  function buildReviewsMoreHref(offset) {
+    const pairs = [
+      'offset=' + encodeURIComponent(String(offset)),
+      'limit=30',
+    ]
+
+    if (queryText) {
+      pairs.push('q=' + encodeURIComponent(queryText))
+    }
+
+    return '/xapi/reviews-more?' + pairs.join('&')
+  }
+
+  const reviewRows = arrayOf(new DynamicModel({
+    bookId: '',
+    bookTitle: '',
+    reviewText: '',
+    reviewedAtValue: '',
+  }))
+
+  applyReviewWhere(
+    $app
+      .db()
+      .select(
+        'book_reviews.book_id as bookId',
+        'books.title as bookTitle',
+        'book_reviews.review_text as reviewText',
+        'book_reviews.reviewed_at as reviewedAtValue'
+      )
+      .from('book_reviews')
+      .innerJoin('books', $dbx.exp('books.id = book_reviews.book_id'))
+      .orderBy('book_reviews.reviewed_at DESC', 'book_reviews.updated DESC')
+      .limit(pageLimit + 1)
+      .offset(pageOffset)
+  ).all(reviewRows)
+
+  const hasMoreReviews = nextOffset < maxReviewLimit && reviewRows.length > pageLimit
+  const visibleReviewRowCount = Math.min(reviewRows.length, pageLimit)
+
+  for (let index = 0; index < visibleReviewRowCount; index += 1) {
+    const row = reviewRows[index]
+    const reviewedAtValue = String(row.reviewedAtValue || '').trim()
+    reviewItems.push({
+      bookId: String(row.bookId || '').trim(),
+      bookTitle: String(row.bookTitle || '제목 없음'),
+      reviewText: String(row.reviewText || '').trim(),
+      reviewedAt: reviewedAtValue ? dateutil.formatDate(reviewedAtValue, dateutil.FORMATS.DATE) : '',
+    })
+  }
+</script>
+
+<% for (let index = 0; index < reviewItems.length; index += 1) { const item = reviewItems[index] %>
+<a
+  href="/books/<%= item.bookId %>?from=/reviews"
+  class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-3.5 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
+  <p class="text-[15px] font-semibold leading-[1.65] tracking-[-0.02em] text-stone-900 sm:text-base"><%= item.reviewText %></p>
+  <p class="mt-2.5 text-[12px] leading-5 text-stone-500">
+    <span><%= item.bookTitle %></span>
+  </p>
+  <% if (item.reviewedAt) { %>
+  <p class="mt-1.5 text-[12px] font-medium text-stone-400"><%= item.reviewedAt %></p>
+  <% } %>
+</a>
+<% } %>
+
+<% if (hasMoreReviews) { %>
+<div
+  id="reviews-more-control"
+  class="flex justify-center">
+  <a
+    href="<%= buildReviewsHref(nextVisibleLimit) %>"
+    hx-get="<%= buildReviewsMoreHref(nextOffset) %>"
+    hx-target="#reviews-more-control"
+    hx-push-url="<%= buildReviewsHref(nextVisibleLimit) %>"
+    hx-swap="outerHTML"
+    class="inline-flex items-center rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)]">
+    더 보기
+  </a>
+</div>
+<% } %>

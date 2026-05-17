@@ -4,6 +4,12 @@
 
   const { dateutil } = require('@pocketpages/utils')
   const flashMessage = params.__flash ? String(params.__flash) : ''
+  const queryText = String(request.url.query.q || '').trim()
+  const requestedLimit = Number(request.url.query.limit || 30)
+  const maxHighlightLimit = 5000
+  const visibleLimit = isNaN(requestedLimit) || requestedLimit < 1 ? 30 : Math.min(Math.max(Math.round(requestedLimit), 30), maxHighlightLimit)
+  const nextLimit = Math.min(visibleLimit + 30, maxHighlightLimit)
+  const normalizedQuery = queryText.toLowerCase()
 
   if (!request.auth) {
     dbg('page/highlights:redirect', {
@@ -18,28 +24,100 @@
     return
   }
 
-  const highlightRecords = $app.findRecordsByFilter('book_highlights', 'user_id = {:userId}', '-highlighted_at,-updated', 100, 0, { userId: request.auth.get('id') })
-  const highlightItems = []
+  /**
+   * 문구 조회 조건을 붙입니다.
+   *
+   * @param {object} query 쿼리 빌더
+   * @returns {object} 쿼리 빌더
+   */
+  function applyHighlightWhere(query) {
+    query.where($dbx.exp('book_highlights.user_id = {:userId}', { userId: request.auth.get('id') }))
 
-  for (let index = 0; index < highlightRecords.length; index += 1) {
-    const highlightRecord = highlightRecords[index]
-    const bookId = String(highlightRecord.get('book_id') || '').trim()
-    const quoteText = String(highlightRecord.get('quote_text') || '').trim()
-    const highlightedAtValue = String(highlightRecord.get('highlighted_at') || '').trim()
-    const highlightedAt = highlightedAtValue ? dateutil.formatDate(highlightedAtValue, dateutil.FORMATS.DATE) : ''
-    let bookRecord = null
-
-    try {
-      bookRecord = $app.findRecordById('books', bookId)
-    } catch (exception) {
-      bookRecord = null
+    if (normalizedQuery) {
+      query.andWhere($dbx.exp("(instr(lower(coalesce(book_highlights.quote_text, '')), {:query}) > 0 OR instr(lower(coalesce(books.title, '')), {:query}) > 0)", {
+        query: normalizedQuery,
+      }))
     }
 
+    return query
+  }
+
+  /**
+   * 문구 리스트 이동 링크를 만듭니다.
+   *
+   * @param {{ q?: string, limit?: number }} options 링크 옵션
+   * @returns {string} 이동 링크
+   */
+  function buildHighlightsHref(options) {
+    const nextQuery = typeof options.q === 'string' ? options.q : queryText
+    const nextVisibleLimit = typeof options.limit === 'number' ? options.limit : visibleLimit
+    const pairs = []
+
+    if (nextQuery) {
+      pairs.push('q=' + encodeURIComponent(nextQuery))
+    }
+
+    if (nextVisibleLimit > 30) {
+      pairs.push('limit=' + encodeURIComponent(String(nextVisibleLimit)))
+    }
+
+    return pairs.length ? '/highlights?' + pairs.join('&') : '/highlights'
+  }
+
+  /**
+   * 문구 더 보기 조각 링크를 만듭니다.
+   *
+   * @param {number} offset 시작 위치
+   * @returns {string} 더 보기 링크
+   */
+  function buildHighlightsMoreHref(offset) {
+    const pairs = [
+      'offset=' + encodeURIComponent(String(offset)),
+      'limit=30',
+    ]
+
+    if (queryText) {
+      pairs.push('q=' + encodeURIComponent(queryText))
+    }
+
+    return '/xapi/highlights-more?' + pairs.join('&')
+  }
+
+  const highlightRows = arrayOf(new DynamicModel({
+    bookId: '',
+    bookTitle: '',
+    quoteText: '',
+    highlightedAtValue: '',
+  }))
+  const highlightItems = []
+
+  applyHighlightWhere(
+    $app
+      .db()
+      .select(
+        'book_highlights.book_id as bookId',
+        'books.title as bookTitle',
+        'book_highlights.quote_text as quoteText',
+        'book_highlights.highlighted_at as highlightedAtValue'
+      )
+      .from('book_highlights')
+      .innerJoin('books', $dbx.exp('books.id = book_highlights.book_id'))
+      .orderBy('book_highlights.highlighted_at DESC', 'book_highlights.updated DESC')
+      .limit(visibleLimit + 1)
+      .offset(0)
+  ).all(highlightRows)
+
+  const hasMoreHighlights = highlightRows.length > visibleLimit
+  const visibleHighlightRowCount = Math.min(highlightRows.length, visibleLimit)
+
+  for (let index = 0; index < visibleHighlightRowCount; index += 1) {
+    const row = highlightRows[index]
+    const highlightedAtValue = String(row.highlightedAtValue || '').trim()
     highlightItems.push({
-      bookId: bookId,
-      bookTitle: bookRecord ? String(bookRecord.get('title') || '제목 없음') : '제목 없음',
-      quoteText: quoteText,
-      highlightedAt: highlightedAt,
+      bookId: String(row.bookId || '').trim(),
+      bookTitle: String(row.bookTitle || '제목 없음'),
+      quoteText: String(row.quoteText || '').trim(),
+      highlightedAt: highlightedAtValue ? dateutil.formatDate(highlightedAtValue, dateutil.FORMATS.DATE) : '',
     })
   }
 </script>
@@ -64,6 +142,38 @@
   <% } %>
 
   <section class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-[1.2rem]">
+    <form
+      action="/highlights"
+      method="get"
+      class="mb-4 space-y-2 rounded-[1.35rem] bg-[#fbf7ef] p-3 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+      <div class="flex gap-2">
+        <label class="relative block min-w-0 flex-1">
+          <span class="sr-only">문구 검색</span>
+          <span
+            class="i-lucide-search pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+            aria-hidden="true"></span>
+          <input
+            name="q"
+            value="<%= queryText %>"
+            type="search"
+            placeholder="문구나 책 제목 검색"
+            class="bg-white/88 box-border h-11 w-full rounded-full border-0 pl-9 pr-4 text-sm font-medium text-stone-900 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none placeholder:text-stone-400" />
+        </label>
+        <button
+          type="submit"
+          class="inline-flex h-11 shrink-0 items-center justify-center rounded-full border-0 bg-stone-900 px-4 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] outline-none ring-0">
+          검색
+        </button>
+      </div>
+      <% if (queryText) { %>
+      <a
+        href="/highlights"
+        class="inline-flex h-11 items-center justify-center rounded-full bg-white/88 px-4 text-sm font-semibold text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
+        검색 해제
+      </a>
+      <% } %>
+    </form>
+
     <% if (highlightItems.length > 0) { %>
     <div class="space-y-2.5">
       <% for (let index = 0; index < highlightItems.length; index += 1) { const item = highlightItems[index] %>
@@ -77,9 +187,24 @@
         <% } %>
       </a>
       <% } %>
+    <% if (hasMoreHighlights) { %>
+    <div
+      id="highlights-more-control"
+      class="flex justify-center">
+      <a
+        href="<%= buildHighlightsHref({ limit: nextLimit }) %>"
+        hx-get="<%= buildHighlightsMoreHref(visibleLimit) %>"
+        hx-target="#highlights-more-control"
+        hx-push-url="<%= buildHighlightsHref({ limit: nextLimit }) %>"
+        hx-swap="outerHTML"
+        class="inline-flex items-center rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)]">
+        더 보기
+      </a>
+    </div>
+    <% } %>
     </div>
     <% } else { %>
-    <div class="rounded-[1.4rem] bg-[#fbf7ef] px-3.5 py-3.5 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">아직 저장된 인상 깊은 문구가 없습니다.</div>
+    <div class="rounded-[1.4rem] bg-[#fbf7ef] px-3.5 py-3.5 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]"><%= queryText ? '조건에 맞는 문구가 없습니다.' : '아직 저장된 인상 깊은 문구가 없습니다.' %></div>
     <% } %>
   </section>
 </section>

@@ -1,0 +1,228 @@
+<script server>
+  const shelfStatusLabels = {
+    queued: '읽을 예정',
+    reading: '읽는 중',
+    finished: '완독',
+    dropped: '중단함',
+  }
+
+  if (request.method !== 'GET') {
+    dbg('xapi/library-more:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/library-more:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const queryText = String(request.url.query.q || '').trim()
+  const requestedStatus = String(request.url.query.status || 'all').trim()
+  const requestedSort = String(request.url.query.sort || 'recent').trim()
+  const requestedOffset = Number(request.url.query.offset || 50)
+  const maxLibraryLimit = 5000
+  const pageLimit = 50
+  const pageOffset = isNaN(requestedOffset) || requestedOffset < 0 ? 50 : Math.min(Math.round(requestedOffset), maxLibraryLimit)
+  const nextOffset = Math.min(pageOffset + pageLimit, maxLibraryLimit)
+  const nextVisibleLimit = Math.min(nextOffset + pageLimit, maxLibraryLimit)
+  const statusFilter = requestedStatus === 'queued' || requestedStatus === 'reading' || requestedStatus === 'finished' ? requestedStatus : 'all'
+  const sortMode = requestedSort === 'title' ? 'title' : 'recent'
+  const libraryBooks = []
+  const normalizedQuery = queryText.toLowerCase()
+
+  /**
+   * 도서함 조회 조건을 붙입니다.
+   *
+   * @param {object} query 쿼리 빌더
+   * @returns {object} 쿼리 빌더
+   */
+  function applyLibraryWhere(query) {
+    query.where($dbx.exp('book_shelves.user_id = {:userId}', { userId: userId }))
+
+    if (statusFilter !== 'all') {
+      query.andWhere($dbx.exp('book_shelves.status = {:status}', { status: statusFilter }))
+    }
+
+    if (normalizedQuery) {
+      query.andWhere($dbx.exp("(instr(lower(coalesce(books.title, '')), {:query}) > 0 OR instr(lower(coalesce(books.author, '')), {:query}) > 0)", {
+        query: normalizedQuery,
+      }))
+    }
+
+    return query
+  }
+
+  /**
+   * 도서함 전체 페이지 링크를 만듭니다.
+   *
+   * @param {number} visibleLimit 표시 개수
+   * @returns {string} 이동 링크
+   */
+  function buildLibraryHref(visibleLimit) {
+    const pairs = []
+
+    if (queryText) {
+      pairs.push('q=' + encodeURIComponent(queryText))
+    }
+
+    if (statusFilter !== 'all') {
+      pairs.push('status=' + encodeURIComponent(statusFilter))
+    }
+
+    if (sortMode !== 'recent') {
+      pairs.push('sort=' + encodeURIComponent(sortMode))
+    }
+
+    if (visibleLimit > 50) {
+      pairs.push('limit=' + encodeURIComponent(String(visibleLimit)))
+    }
+
+    return pairs.length ? '/library?' + pairs.join('&') : '/library'
+  }
+
+  /**
+   * 도서함 더 보기 조각 링크를 만듭니다.
+   *
+   * @param {number} offset 시작 위치
+   * @returns {string} 더 보기 링크
+   */
+  function buildLibraryMoreHref(offset) {
+    const pairs = [
+      'offset=' + encodeURIComponent(String(offset)),
+      'limit=50',
+    ]
+
+    if (queryText) {
+      pairs.push('q=' + encodeURIComponent(queryText))
+    }
+
+    if (statusFilter !== 'all') {
+      pairs.push('status=' + encodeURIComponent(statusFilter))
+    }
+
+    if (sortMode !== 'recent') {
+      pairs.push('sort=' + encodeURIComponent(sortMode))
+    }
+
+    return '/xapi/library-more?' + pairs.join('&')
+  }
+
+  const libraryRows = arrayOf(new DynamicModel({
+    bookId: '',
+    title: '',
+    author: '',
+    coverUrl: '',
+    status: '',
+  }))
+
+  const libraryQuery = applyLibraryWhere(
+    $app
+      .db()
+      .select(
+        'books.id as bookId',
+        'books.title as title',
+        'books.author as author',
+        'books.book_image_url as coverUrl',
+        'book_shelves.status as status'
+      )
+      .from('book_shelves')
+      .innerJoin('books', $dbx.exp('books.id = book_shelves.book_id'))
+  )
+
+  if (sortMode === 'title') {
+    libraryQuery.orderBy(
+      "lower(coalesce(nullif(books.title_sort, ''), books.title, '')) ASC",
+      "lower(coalesce(books.title, '')) ASC"
+    )
+  } else {
+    libraryQuery.orderBy('book_shelves.last_read_at DESC', 'book_shelves.updated DESC')
+  }
+
+  libraryQuery.limit(pageLimit + 1).offset(pageOffset).all(libraryRows)
+
+  const hasMoreLibraryBooks = nextOffset < maxLibraryLimit && libraryRows.length > pageLimit
+  const visibleLibraryRowCount = Math.min(libraryRows.length, pageLimit)
+
+  for (let index = 0; index < visibleLibraryRowCount; index += 1) {
+    const row = libraryRows[index]
+    const status = String(row.status || 'queued').trim()
+    libraryBooks.push({
+      bookId: String(row.bookId || ''),
+      title: String(row.title || '제목 없음'),
+      author: String(row.author || '').trim(),
+      coverUrl: String(row.coverUrl || '').trim(),
+      status: status,
+      statusLabel: shelfStatusLabels[status] || '보관 중',
+      statusBadgeLabel: status === 'reading' || status === 'finished' ? shelfStatusLabels[status] : '',
+      statusBadgeClass: status === 'finished' ? 'bg-[#9e6125]/88 text-white shadow-[0_8px_18px_rgba(165,103,38,0.14)]' : 'bg-stone-900/84 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]',
+    })
+  }
+</script>
+
+<% for (let index = 0; index < libraryBooks.length; index += 1) { const book = libraryBooks[index] %>
+<a
+  href="/books/<%= book.bookId %>?from=/library"
+  class="group block min-w-0 text-stone-900 no-underline">
+  <div
+    class="relative aspect-[5/7] overflow-hidden rounded-[1.3rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] shadow-[0_16px_26px_rgba(74,50,28,0.12)] transition group-hover:translate-y-[-1px]">
+    <% if (book.statusBadgeLabel) { %>
+    <span class="<%= book.statusBadgeClass %> absolute right-2 top-2 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
+      <%= book.statusBadgeLabel %>
+    </span>
+    <% } %>
+    <% if (book.coverUrl) { %>
+    <div class="box-border flex h-full w-full items-center justify-center bg-white px-1.5 py-1.5">
+      <img
+        src="<%= book.coverUrl %>"
+        alt="<%= book.title %> 표지"
+        loading="lazy"
+        decoding="async"
+        class="block h-full w-full object-contain" />
+    </div>
+    <% } else { %>
+    <div class="absolute inset-0 box-border px-3 py-4 text-white">
+      <div class="absolute left-1/2 top-[34%] w-[78%] -translate-x-1/2 -translate-y-1/2 text-center">
+        <h2 class="m-0 break-keep text-base font-semibold leading-5"><%= book.title %></h2>
+      </div>
+    </div>
+    <% } %>
+  </div>
+  <div class="mt-3 min-w-0 space-y-1">
+    <h2 class="m-0 min-w-0 break-words text-sm font-semibold leading-5 text-stone-950"><%= book.title %></h2>
+    <p class="m-0 text-[12px] font-medium leading-5 text-stone-500"><%= book.author ? book.author + ' · ' : '' %><%= book.statusLabel %></p>
+  </div>
+</a>
+<% } %>
+
+<% if (hasMoreLibraryBooks) { %>
+<div
+  id="library-more-control"
+  class="col-span-full flex justify-center">
+  <a
+    href="<%= buildLibraryHref(nextVisibleLimit) %>"
+    hx-get="<%= buildLibraryMoreHref(nextOffset) %>"
+    hx-target="#library-more-control"
+    hx-push-url="<%= buildLibraryHref(nextVisibleLimit) %>"
+    hx-swap="outerHTML"
+    class="inline-flex items-center rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)]">
+    더 보기
+  </a>
+</div>
+<% } %>
