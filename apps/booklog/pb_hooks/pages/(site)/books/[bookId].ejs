@@ -104,6 +104,14 @@
 
   const shelfStatus = shelfRecord ? String(shelfRecord.get('status') || 'queued') : 'queued'
   const shelfBookFileId = shelfRecord ? String(shelfRecord.get('book_file_id') || '').trim() : ''
+  const progressPercentValue = shelfRecord ? shelfRecord.get('progress_percent') : null
+  const progressPercentNumber = Number(progressPercentValue)
+  const readingProgressPercent =
+    progressPercentValue === null || typeof progressPercentValue === 'undefined' || isNaN(progressPercentNumber)
+      ? null
+      : Math.max(0, Math.min(100, Math.round(progressPercentNumber)))
+  const hasReadingProgress = readingProgressPercent !== null && (readingProgressPercent > 0 || shelfStatus === 'reading' || shelfStatus === 'finished')
+  const readingProgressText = hasReadingProgress ? readingProgressPercent + '%' : ''
 
   try {
     const readingSessionRecords = $app.findRecordsByFilter('reading_sessions', 'user_id = {:userId} && book_id = {:bookId}', '-ended_at', 500, 0, {
@@ -221,7 +229,8 @@
     publicationMetaText = bookMetaText
   }
 
-  const readingRecordText = (shelfStatusLabels[shelfStatus] || '읽을 예정') + ' · ' + readingDurationMinutes + '분'
+  const readingStatusText = shelfStatusLabels[shelfStatus] || '읽을 예정'
+  const readingDurationText = readingDurationMinutes + '분'
 </script>
 
 <section class="space-y-7">
@@ -312,8 +321,23 @@
           </div>
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
             <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">독서 기록</dt>
-            <dd class="mt-1 flex items-center justify-between gap-3 text-base font-medium text-stone-900">
-              <span><%= readingRecordText %></span>
+            <dd class="mt-2 flex items-center justify-between gap-3 text-stone-900">
+              <div class="min-w-0 flex-1 space-y-2">
+                <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span class="text-base font-semibold text-stone-950"><%= readingStatusText %></span>
+                  <% if (readingProgressText) { %>
+                  <span class="text-sm font-medium text-stone-600"><%= readingProgressText %></span>
+                  <% } %>
+                  <span class="text-sm font-medium text-stone-500"><%= readingDurationText %></span>
+                </div>
+                <% if (readingProgressText) { %>
+                <div class="h-1.5 overflow-hidden rounded-full bg-stone-200/80">
+                  <div
+                    class="h-full rounded-full bg-stone-900"
+                    style="width: <%= readingProgressPercent %>%"></div>
+                </div>
+                <% } %>
+              </div>
               <form
                 method="post"
                 action="/xapi/books/reset-reading-sessions"
