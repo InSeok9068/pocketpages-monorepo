@@ -212,7 +212,7 @@
 
   <section class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
     <% if (hasLibraryBooks) { %>
-    <div class="mb-5 space-y-3 rounded-[1.35rem] bg-[#fbf7ef] p-3 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] sm:p-4">
+    <div class="mb-5 space-y-3">
       <form
         action="/library"
         method="get"
@@ -241,13 +241,38 @@
           </button>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <label class="flex items-center gap-2">
-            <span class="text-xs font-semibold text-stone-500">정렬</span>
+        <div class="-mx-1 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div class="flex w-max min-w-full items-center gap-2">
+            <a
+              href="<%= buildLibraryHref({ status: 'all', limit: 50 }) %>"
+              aria-pressed="<%= statusFilter === 'all' ? 'true' : 'false' %>"
+              class="<%= statusFilter === 'all' ? 'bg-stone-900 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline outline-none ring-0">
+              전체
+            </a>
+            <a
+              href="<%= buildLibraryHref({ status: 'queued', limit: 50 }) %>"
+              aria-pressed="<%= statusFilter === 'queued' ? 'true' : 'false' %>"
+              class="<%= statusFilter === 'queued' ? 'bg-stone-900 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline outline-none ring-0">
+              읽을 예정
+            </a>
+            <a
+              href="<%= buildLibraryHref({ status: 'reading', limit: 50 }) %>"
+              aria-pressed="<%= statusFilter === 'reading' ? 'true' : 'false' %>"
+              class="<%= statusFilter === 'reading' ? 'bg-stone-900 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline outline-none ring-0">
+              읽는 중
+            </a>
+            <a
+              href="<%= buildLibraryHref({ status: 'finished', limit: 50 }) %>"
+              aria-pressed="<%= statusFilter === 'finished' ? 'true' : 'false' %>"
+              class="<%= statusFilter === 'finished' ? 'bg-stone-900 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline outline-none ring-0">
+              완독
+            </a>
+            <label class="relative ml-auto shrink-0">
+              <span class="sr-only">도서함 정렬</span>
             <select
               name="sort"
               x-on:change="$el.form.requestSubmit()"
-              class="bg-white/88 h-10 appearance-none rounded-full border-0 px-3 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none">
+                class="bg-white/88 h-10 appearance-none rounded-full border-0 pl-4 pr-9 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none">
               <option
                 value="recent"
                 <% if (sortMode === 'recent') { %>selected<% } %>>
@@ -259,45 +284,23 @@
                 제목순
               </option>
             </select>
+              <span
+                class="i-lucide-chevron-down pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+                aria-hidden="true"></span>
           </label>
           <% if (queryText) { %>
           <a
             href="<%= buildLibraryHref({ q: '', limit: 50 }) %>"
-            class="bg-white/88 inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-semibold text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
-            검색 해제
+              aria-label="검색어 지우기"
+              class="bg-white/88 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
+              <span
+                class="i-lucide-x h-4 w-4"
+                aria-hidden="true"></span>
           </a>
           <% } %>
+          </div>
         </div>
       </form>
-
-      <div>
-        <div class="bg-white/72 inline-grid max-w-full grid-cols-4 rounded-full p-1 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]">
-          <a
-            href="<%= buildLibraryHref({ status: 'all', limit: 50 }) %>"
-            aria-pressed="<%= statusFilter === 'all' ? 'true' : 'false' %>"
-            class="<%= statusFilter === 'all' ? 'bg-stone-900 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600' %> sm:min-w-18 inline-flex h-9 items-center justify-center rounded-full border-0 px-2 text-xs font-semibold no-underline outline-none ring-0 sm:px-3 sm:text-sm">
-            전체
-          </a>
-          <a
-            href="<%= buildLibraryHref({ status: 'queued', limit: 50 }) %>"
-            aria-pressed="<%= statusFilter === 'queued' ? 'true' : 'false' %>"
-            class="<%= statusFilter === 'queued' ? 'bg-stone-900 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600' %> sm:min-w-18 inline-flex h-9 items-center justify-center rounded-full border-0 px-2 text-xs font-semibold no-underline outline-none ring-0 sm:px-3 sm:text-sm">
-            읽을 예정
-          </a>
-          <a
-            href="<%= buildLibraryHref({ status: 'reading', limit: 50 }) %>"
-            aria-pressed="<%= statusFilter === 'reading' ? 'true' : 'false' %>"
-            class="<%= statusFilter === 'reading' ? 'bg-stone-900 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600' %> sm:min-w-18 inline-flex h-9 items-center justify-center rounded-full border-0 px-2 text-xs font-semibold no-underline outline-none ring-0 sm:px-3 sm:text-sm">
-            읽는 중
-          </a>
-          <a
-            href="<%= buildLibraryHref({ status: 'finished', limit: 50 }) %>"
-            aria-pressed="<%= statusFilter === 'finished' ? 'true' : 'false' %>"
-            class="<%= statusFilter === 'finished' ? 'bg-stone-900 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600' %> sm:min-w-18 inline-flex h-9 items-center justify-center rounded-full border-0 px-2 text-xs font-semibold no-underline outline-none ring-0 sm:px-3 sm:text-sm">
-            완독
-          </a>
-        </div>
-      </div>
     </div>
 
     <% if (libraryBooks.length > 0) { %>
