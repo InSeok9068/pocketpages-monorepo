@@ -57,9 +57,11 @@
     }
 
     if (normalizedQuery) {
-      query.andWhere($dbx.exp("(instr(lower(coalesce(books.title, '')), {:query}) > 0 OR instr(lower(coalesce(books.author, '')), {:query}) > 0)", {
-        query: normalizedQuery,
-      }))
+      query.andWhere(
+        $dbx.exp("(instr(lower(coalesce(books.title, '')), {:query}) > 0 OR instr(lower(coalesce(books.author, '')), {:query}) > 0)", {
+          query: normalizedQuery,
+        })
+      )
     }
 
     return query
@@ -104,10 +106,7 @@
    * @returns {string} 더 보기 링크
    */
   function buildLibraryMoreHref(offset) {
-    const pairs = [
-      'offset=' + encodeURIComponent(String(offset)),
-      'limit=50',
-    ]
+    const pairs = ['offset=' + encodeURIComponent(String(offset)), 'limit=50']
 
     if (queryText) {
       pairs.push('q=' + encodeURIComponent(queryText))
@@ -126,13 +125,15 @@
 
   const totalShelfResult = new DynamicModel({ total: 0 })
   const totalMatchedResult = new DynamicModel({ total: 0 })
-  const libraryRows = arrayOf(new DynamicModel({
-    bookId: '',
-    title: '',
-    author: '',
-    coverUrl: '',
-    status: '',
-  }))
+  const libraryRows = arrayOf(
+    new DynamicModel({
+      bookId: '',
+      title: '',
+      author: '',
+      coverUrl: '',
+      status: '',
+    })
+  )
 
   $app
     .db()
@@ -141,38 +142,26 @@
     .where($dbx.exp('book_shelves.user_id = {:userId}', { userId: userId }))
     .one(totalShelfResult)
 
-  applyLibraryWhere(
-    $app
-      .db()
-      .select('count(*) as total')
-      .from('book_shelves')
-      .innerJoin('books', $dbx.exp('books.id = book_shelves.book_id'))
-  ).one(totalMatchedResult)
+  applyLibraryWhere($app.db().select('count(*) as total').from('book_shelves').innerJoin('books', $dbx.exp('books.id = book_shelves.book_id'))).one(totalMatchedResult)
 
   const libraryQuery = applyLibraryWhere(
     $app
       .db()
-      .select(
-        'books.id as bookId',
-        'books.title as title',
-        'books.author as author',
-        'books.book_image_url as coverUrl',
-        'book_shelves.status as status'
-      )
+      .select('books.id as bookId', 'books.title as title', 'books.author as author', 'books.book_image_url as coverUrl', 'book_shelves.status as status')
       .from('book_shelves')
       .innerJoin('books', $dbx.exp('books.id = book_shelves.book_id'))
   )
 
   if (sortMode === 'title') {
-    libraryQuery.orderBy(
-      "lower(coalesce(nullif(books.title_sort, ''), books.title, '')) ASC",
-      "lower(coalesce(books.title, '')) ASC"
-    )
+    libraryQuery.orderBy("lower(coalesce(nullif(books.title_sort, ''), books.title, '')) ASC", "lower(coalesce(books.title, '')) ASC")
   } else {
     libraryQuery.orderBy('book_shelves.last_read_at DESC', 'book_shelves.updated DESC')
   }
 
-  libraryQuery.limit(visibleLimit + 1).offset(0).all(libraryRows)
+  libraryQuery
+    .limit(visibleLimit + 1)
+    .offset(0)
+    .all(libraryRows)
 
   const totalShelfCount = Number(totalShelfResult.total || 0)
   const totalMatchedBookCount = Number(totalMatchedResult.total || 0)
@@ -261,16 +250,20 @@
               class="bg-white/88 h-10 appearance-none rounded-full border-0 px-3 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none">
               <option
                 value="recent"
-                <% if (sortMode === 'recent') { %>selected<% } %>>최근 읽은 순</option>
+                <% if (sortMode === 'recent') { %>selected<% } %>>
+                최근 읽은 순
+              </option>
               <option
                 value="title"
-                <% if (sortMode === 'title') { %>selected<% } %>>제목순</option>
+                <% if (sortMode === 'title') { %>selected<% } %>>
+                제목순
+              </option>
             </select>
           </label>
           <% if (queryText) { %>
           <a
             href="<%= buildLibraryHref({ q: '', limit: 50 }) %>"
-            class="inline-flex h-10 items-center justify-center rounded-full bg-white/88 px-4 text-sm font-semibold text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
+            class="bg-white/88 inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-semibold text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
             검색 해제
           </a>
           <% } %>
@@ -343,24 +336,25 @@
         </div>
       </a>
       <% } %>
-    <% if (hasMoreLibraryBooks) { %>
-    <div
-      id="library-more-control"
-      class="col-span-full flex justify-center">
-      <a
-        href="<%= buildLibraryHref({ limit: nextLimit }) %>"
-        hx-get="<%= buildLibraryMoreHref(visibleLimit) %>"
-        hx-target="#library-more-control"
-        hx-push-url="<%= buildLibraryHref({ limit: nextLimit }) %>"
-        hx-swap="outerHTML"
-        class="inline-flex items-center rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)]">
-        더 보기
-      </a>
-    </div>
-    <% } %>
+      <% if (hasMoreLibraryBooks) { %>
+      <div
+        id="library-more-control"
+        class="col-span-full flex justify-center">
+        <a
+          href="<%= buildLibraryHref({ limit: nextLimit }) %>"
+          hx-get="<%= buildLibraryMoreHref(visibleLimit) %>"
+          hx-target="#library-more-control"
+          hx-push-url="<%= buildLibraryHref({ limit: nextLimit }) %>"
+          hx-swap="outerHTML"
+          class="inline-flex items-center rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)]">
+          더 보기
+        </a>
+      </div>
+      <% } %>
     </div>
     <% } else { %>
-    <div class="flex flex-col gap-3 rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] sm:flex-row sm:items-center sm:justify-between">
+    <div
+      class="flex flex-col gap-3 rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] sm:flex-row sm:items-center sm:justify-between">
       <span>조건에 맞는 책이 없습니다.</span>
       <a
         href="/library"

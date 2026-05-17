@@ -34,9 +34,11 @@
     query.where($dbx.exp('book_reviews.user_id = {:userId}', { userId: request.auth.get('id') }))
 
     if (normalizedQuery) {
-      query.andWhere($dbx.exp("(instr(lower(coalesce(book_reviews.review_text, '')), {:query}) > 0 OR instr(lower(coalesce(books.title, '')), {:query}) > 0)", {
-        query: normalizedQuery,
-      }))
+      query.andWhere(
+        $dbx.exp("(instr(lower(coalesce(book_reviews.review_text, '')), {:query}) > 0 OR instr(lower(coalesce(books.title, '')), {:query}) > 0)", {
+          query: normalizedQuery,
+        })
+      )
     }
 
     return query
@@ -71,10 +73,7 @@
    * @returns {string} 더 보기 링크
    */
   function buildReviewsMoreHref(offset) {
-    const pairs = [
-      'offset=' + encodeURIComponent(String(offset)),
-      'limit=30',
-    ]
+    const pairs = ['offset=' + encodeURIComponent(String(offset)), 'limit=30']
 
     if (queryText) {
       pairs.push('q=' + encodeURIComponent(queryText))
@@ -83,23 +82,20 @@
     return '/xapi/reviews-more?' + pairs.join('&')
   }
 
-  const reviewRows = arrayOf(new DynamicModel({
-    bookId: '',
-    bookTitle: '',
-    reviewText: '',
-    reviewedAtValue: '',
-  }))
+  const reviewRows = arrayOf(
+    new DynamicModel({
+      bookId: '',
+      bookTitle: '',
+      reviewText: '',
+      reviewedAtValue: '',
+    })
+  )
   const reviewItems = []
 
   applyReviewWhere(
     $app
       .db()
-      .select(
-        'book_reviews.book_id as bookId',
-        'books.title as bookTitle',
-        'book_reviews.review_text as reviewText',
-        'book_reviews.reviewed_at as reviewedAtValue'
-      )
+      .select('book_reviews.book_id as bookId', 'books.title as bookTitle', 'book_reviews.review_text as reviewText', 'book_reviews.reviewed_at as reviewedAtValue')
       .from('book_reviews')
       .innerJoin('books', $dbx.exp('books.id = book_reviews.book_id'))
       .orderBy('book_reviews.reviewed_at DESC', 'book_reviews.updated DESC')
@@ -168,7 +164,7 @@
       <% if (queryText) { %>
       <a
         href="/reviews"
-        class="inline-flex h-11 items-center justify-center rounded-full bg-white/88 px-4 text-sm font-semibold text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
+        class="bg-white/88 inline-flex h-11 items-center justify-center rounded-full px-4 text-sm font-semibold text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
         검색 해제
       </a>
       <% } %>
@@ -189,24 +185,26 @@
         <% } %>
       </a>
       <% } %>
-    <% if (hasMoreReviews) { %>
-    <div
-      id="reviews-more-control"
-      class="flex justify-center">
-      <a
-        href="<%= buildReviewsHref({ limit: nextLimit }) %>"
-        hx-get="<%= buildReviewsMoreHref(visibleLimit) %>"
-        hx-target="#reviews-more-control"
-        hx-push-url="<%= buildReviewsHref({ limit: nextLimit }) %>"
-        hx-swap="outerHTML"
-        class="inline-flex items-center rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)]">
-        더 보기
-      </a>
-    </div>
-    <% } %>
+      <% if (hasMoreReviews) { %>
+      <div
+        id="reviews-more-control"
+        class="flex justify-center">
+        <a
+          href="<%= buildReviewsHref({ limit: nextLimit }) %>"
+          hx-get="<%= buildReviewsMoreHref(visibleLimit) %>"
+          hx-target="#reviews-more-control"
+          hx-push-url="<%= buildReviewsHref({ limit: nextLimit }) %>"
+          hx-swap="outerHTML"
+          class="inline-flex items-center rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)]">
+          더 보기
+        </a>
+      </div>
+      <% } %>
     </div>
     <% } else { %>
-    <div class="rounded-[1.4rem] bg-[#fbf7ef] px-3.5 py-3.5 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]"><%= queryText ? '조건에 맞는 감상평이 없습니다.' : '아직 저장된 감상평이 없습니다.' %></div>
+    <div class="rounded-[1.4rem] bg-[#fbf7ef] px-3.5 py-3.5 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+      <%= queryText ? '조건에 맞는 감상평이 없습니다.' : '아직 저장된 감상평이 없습니다.' %>
+    </div>
     <% } %>
   </section>
 </section>

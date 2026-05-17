@@ -47,9 +47,11 @@
     query.where($dbx.exp('book_reviews.user_id = {:userId}', { userId: request.auth.get('id') }))
 
     if (normalizedQuery) {
-      query.andWhere($dbx.exp("(instr(lower(coalesce(book_reviews.review_text, '')), {:query}) > 0 OR instr(lower(coalesce(books.title, '')), {:query}) > 0)", {
-        query: normalizedQuery,
-      }))
+      query.andWhere(
+        $dbx.exp("(instr(lower(coalesce(book_reviews.review_text, '')), {:query}) > 0 OR instr(lower(coalesce(books.title, '')), {:query}) > 0)", {
+          query: normalizedQuery,
+        })
+      )
     }
 
     return query
@@ -82,10 +84,7 @@
    * @returns {string} 더 보기 링크
    */
   function buildReviewsMoreHref(offset) {
-    const pairs = [
-      'offset=' + encodeURIComponent(String(offset)),
-      'limit=30',
-    ]
+    const pairs = ['offset=' + encodeURIComponent(String(offset)), 'limit=30']
 
     if (queryText) {
       pairs.push('q=' + encodeURIComponent(queryText))
@@ -94,22 +93,19 @@
     return '/xapi/reviews-more?' + pairs.join('&')
   }
 
-  const reviewRows = arrayOf(new DynamicModel({
-    bookId: '',
-    bookTitle: '',
-    reviewText: '',
-    reviewedAtValue: '',
-  }))
+  const reviewRows = arrayOf(
+    new DynamicModel({
+      bookId: '',
+      bookTitle: '',
+      reviewText: '',
+      reviewedAtValue: '',
+    })
+  )
 
   applyReviewWhere(
     $app
       .db()
-      .select(
-        'book_reviews.book_id as bookId',
-        'books.title as bookTitle',
-        'book_reviews.review_text as reviewText',
-        'book_reviews.reviewed_at as reviewedAtValue'
-      )
+      .select('book_reviews.book_id as bookId', 'books.title as bookTitle', 'book_reviews.review_text as reviewText', 'book_reviews.reviewed_at as reviewedAtValue')
       .from('book_reviews')
       .innerJoin('books', $dbx.exp('books.id = book_reviews.book_id'))
       .orderBy('book_reviews.reviewed_at DESC', 'book_reviews.updated DESC')
