@@ -18,6 +18,7 @@
   const userId = String(request.auth.get('id') || '')
   const now = new Date()
   const weekItems = []
+  const requestedWeekValue = String(request.url.query.week || '').trim()
   const sessionRecords = $app.findRecordsByFilter('reading_sessions', 'user_id = {:userId}', '-ended_at', 500, 0, { userId: userId })
 
   /**
@@ -64,6 +65,55 @@
   }
 
   /**
+   * 날짜를 YYYY.MM.DD로 표시합니다.
+   *
+   * @param {Date} date 표시할 날짜
+   * @returns {string} 날짜 문자열
+   */
+  function formatDateDotLabel(date) {
+    const year = String(date.getFullYear())
+    const month = padTwo(date.getMonth() + 1)
+    const day = padTwo(date.getDate())
+
+    return year + '.' + month + '.' + day
+  }
+
+  /**
+   * YYYY-MM-DD 값을 날짜로 바꿉니다.
+   *
+   * @param {string} value 날짜 값
+   * @returns {Date|null} 날짜
+   */
+  function parseDateValue(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+
+    if (!match) {
+      return null
+    }
+
+    const year = Number(match[1])
+    const month = Number(match[2])
+    const day = Number(match[3])
+    const date = new Date(year, month - 1, day)
+
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+      return null
+    }
+
+    return date
+  }
+
+  /**
+   * 주차 이동 링크를 만듭니다.
+   *
+   * @param {Date} weekStart 주 시작 날짜
+   * @returns {string} 이동 링크
+   */
+  function buildWeekHref(weekStart) {
+    return '/reading-records?week=' + encodeURIComponent(formatDateLabel(weekStart))
+  }
+
+  /**
    * 시간을 짧은 한국어 문구로 표시합니다.
    *
    * @param {number} minutes 분
@@ -85,9 +135,53 @@
     return safeMinutes + '분'
   }
 
+  /**
+   * 누적 시간을 짧게 표시합니다.
+   *
+   * @param {number} minutes 분
+   * @returns {string} 표시 문구
+   */
+  function formatTotalMinutesLabel(minutes) {
+    const safeMinutes = Math.max(0, Math.round(minutes))
+    const hours = Math.floor(safeMinutes / 60)
+
+    if (hours >= 100) {
+      return hours.toLocaleString('ko-KR') + '시간'
+    }
+
+    return formatMinutesLabel(safeMinutes)
+  }
+
   const currentWeekStart = getWeekStart(now)
+  const currentWeekKey = formatDateLabel(currentWeekStart)
+  const requestedDate = parseDateValue(requestedWeekValue)
+  let selectedWeekStart = requestedDate ? getWeekStart(requestedDate) : new Date(currentWeekStart.getTime())
+
+  if (selectedWeekStart.getTime() > currentWeekStart.getTime()) {
+    selectedWeekStart = new Date(currentWeekStart.getTime())
+  }
+
+  const previousWeekStart = new Date(selectedWeekStart.getTime())
+  const nextWeekStart = new Date(selectedWeekStart.getTime())
+  const periodStart = new Date(selectedWeekStart.getTime())
+  const periodEnd = new Date(selectedWeekStart.getTime())
+
+  previousWeekStart.setDate(selectedWeekStart.getDate() - 28)
+  nextWeekStart.setDate(selectedWeekStart.getDate() + 28)
+  periodStart.setDate(selectedWeekStart.getDate() - 21)
+  periodEnd.setDate(selectedWeekStart.getDate() + 6)
+
+  if (nextWeekStart.getTime() > currentWeekStart.getTime()) {
+    nextWeekStart.setTime(currentWeekStart.getTime())
+  }
+
+  const isCurrentPeriod = selectedWeekStart.getTime() === currentWeekStart.getTime()
+  const previousWeekHref = buildWeekHref(previousWeekStart)
+  const nextWeekHref = buildWeekHref(nextWeekStart)
+  const periodLabel = formatDateDotLabel(periodStart) + ' ~ ' + formatDateDotLabel(periodEnd)
   const weeklySecondsByKey = {}
   let totalSeconds = 0
+  let currentWeekSeconds = 0
   let finishedBookCount = 0
 
   try {
@@ -103,9 +197,9 @@
   }
 
   for (let weekIndex = 3; weekIndex >= 0; weekIndex -= 1) {
-    const weekStart = new Date(currentWeekStart.getTime())
+    const weekStart = new Date(selectedWeekStart.getTime())
 
-    weekStart.setDate(currentWeekStart.getDate() - weekIndex * 7)
+    weekStart.setDate(selectedWeekStart.getDate() - weekIndex * 7)
     const weekEnd = new Date(weekStart.getTime())
 
     weekEnd.setDate(weekStart.getDate() + 6)
@@ -136,6 +230,10 @@
       weeklySecondsByKey[weekKey] += durationSeconds
     }
 
+    if (weekKey === currentWeekKey) {
+      currentWeekSeconds += durationSeconds
+    }
+
     totalSeconds += durationSeconds
   }
 
@@ -148,7 +246,8 @@
   }
 
   const totalMinutes = Math.round(totalSeconds / 60)
-  const currentWeekMinutes = weekItems.length ? weekItems[weekItems.length - 1].minutes : 0
+  const totalMinutesLabel = formatTotalMinutesLabel(totalMinutes)
+  const currentWeekMinutes = Math.round(currentWeekSeconds / 60)
 </script>
 
 <section class="space-y-6">
@@ -174,7 +273,7 @@
     </div>
     <div class="min-w-0 border-x border-stone-200/70 px-3 py-3 sm:rounded-[1.5rem] sm:border-x-0 sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
       <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500 sm:text-[11px] sm:tracking-[0.2em]">누적</p>
-      <p class="mt-1 break-keep text-lg font-semibold tracking-tight text-stone-950 sm:mt-2 sm:text-2xl"><%= formatMinutesLabel(totalMinutes) %></p>
+      <p class="mt-1 break-keep text-lg font-semibold tracking-tight text-stone-950 sm:mt-2 sm:text-2xl"><%= totalMinutesLabel %></p>
     </div>
     <div class="min-w-0 px-3 py-3 sm:rounded-[1.5rem] sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
       <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500 sm:text-[11px] sm:tracking-[0.2em]">완독</p>
@@ -183,10 +282,51 @@
   </section>
 
   <section class="rounded-[1.6rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:rounded-[2rem] sm:p-5">
-    <div class="mb-4 flex items-center justify-between gap-3">
+    <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">Weekly</p>
         <h2 class="mt-1 text-lg font-semibold tracking-tight text-stone-950 sm:text-xl">주차별 독서 시간</h2>
+      </div>
+      <div class="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+        <div class="flex min-w-0 items-center justify-between gap-2 sm:justify-end">
+          <a
+            href="<%= previousWeekHref %>"
+            aria-label="이전 4주"
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f5efe4] text-stone-700 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+            <span
+              class="i-lucide-chevron-left h-4 w-4"
+              aria-hidden="true"></span>
+          </a>
+          <p class="min-w-0 flex-1 text-center text-sm font-semibold tracking-tight text-stone-900 sm:min-w-[13.5rem]">
+            <%= periodLabel %>
+          </p>
+          <% if (isCurrentPeriod) { %>
+          <span
+            aria-disabled="true"
+            aria-label="다음 4주"
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-100 text-stone-300 shadow-[inset_0_0_0_1px_rgba(120,113,108,0.12)]">
+            <span
+              class="i-lucide-chevron-right h-4 w-4"
+              aria-hidden="true"></span>
+          </span>
+          <% } else { %>
+          <a
+            href="<%= nextWeekHref %>"
+            aria-label="다음 4주"
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f5efe4] text-stone-700 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+            <span
+              class="i-lucide-chevron-right h-4 w-4"
+              aria-hidden="true"></span>
+          </a>
+          <% } %>
+        </div>
+        <% if (!isCurrentPeriod) { %>
+        <a
+          href="/reading-records"
+          class="self-center text-xs font-semibold text-stone-500 no-underline sm:self-auto">
+          이번 주로 돌아가기
+        </a>
+        <% } %>
       </div>
     </div>
 
