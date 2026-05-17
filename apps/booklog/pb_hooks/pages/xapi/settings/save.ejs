@@ -32,6 +32,7 @@
   const readingReminderCycle = readingReminderCycleRaw ? Number(readingReminderCycleRaw) : null
   const highlightPushCycle = highlightPushCycleRaw ? Number(highlightPushCycleRaw) : null
   const pushEnabled = String(form.pushEnabled || '').trim() === 'true'
+  const weeklyReadingNudgeEnabled = String(form.weeklyReadingNudgeEnabled || '').trim() === 'true'
   const maxReminderCycleDays = 90
   let errorMessage = ''
 
@@ -40,6 +41,7 @@
     readingReminderCycle: readingReminderCycle,
     highlightPushCycle: highlightPushCycle,
     pushEnabled: pushEnabled,
+    weeklyReadingNudgeEnabled: weeklyReadingNudgeEnabled,
   })
 
   try {
@@ -77,6 +79,7 @@
     }
 
     settingsRecord.set('push_enabled', pushEnabled)
+    settingsRecord.set('weekly_reading_nudge_enabled', weeklyReadingNudgeEnabled)
     settingsRecord.set('reading_reminder_cycle', readingReminderCycle)
     settingsRecord.set('highlight_push_cycle', highlightPushCycle)
 

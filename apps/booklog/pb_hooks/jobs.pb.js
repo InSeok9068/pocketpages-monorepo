@@ -20,6 +20,16 @@ cronAdd('booklog-highlight-reminder', '0 0 * * *', function () {
   }
 })
 
+cronAdd('booklog-weekly-reading-nudge', '0 9 * * 0', function () {
+  try {
+    const weeklyReadingNudgeJob = require(__hooks + '/jobs/weekly-reading-nudge-job.js')
+
+    weeklyReadingNudgeJob.run()
+  } catch (exception) {
+    $app.logger().error('jobs/weekly-reading-nudge:failed', 'error', String(exception && exception.message ? exception.message : exception))
+  }
+})
+
 cronAdd('booklog-push-send-log-cleanup', '20 18 * * *', function () {
   try {
     const pushSendLogService = require(__hooks + '/jobs/push-send-log-service.js')

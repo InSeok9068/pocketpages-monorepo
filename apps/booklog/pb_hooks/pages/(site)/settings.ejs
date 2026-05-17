@@ -29,6 +29,7 @@
 
   const settings = {
     pushEnabled: settingsRecord ? !!settingsRecord.get('push_enabled') : false,
+    weeklyReadingNudgeEnabled: settingsRecord ? !!settingsRecord.get('weekly_reading_nudge_enabled') : false,
     readingReminderCycle: settingsRecord && settingsRecord.get('reading_reminder_cycle') ? Number(settingsRecord.get('reading_reminder_cycle')) : '',
     highlightPushCycle: settingsRecord && settingsRecord.get('highlight_push_cycle') ? Number(settingsRecord.get('highlight_push_cycle')) : '',
   }
@@ -72,6 +73,22 @@
             name="pushEnabled"
             value="true"
             <% if (settings.pushEnabled) { %>checked<% } %>
+            class="peer sr-only" />
+          <span
+            class="relative inline-flex h-7 w-12 flex-none items-center rounded-full bg-stone-200 transition after:absolute after:left-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-[0_4px_10px_rgba(24,19,16,0.18)] after:transition after:content-[''] peer-checked:bg-stone-900 peer-checked:after:translate-x-5"
+            aria-hidden="true"></span>
+        </label>
+
+        <label class="flex items-center justify-between gap-4 rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-semibold text-stone-900">주간 독서 리마인더</span>
+            <span class="mt-1 block text-sm leading-6 text-stone-600">일요일 저녁까지 이번 주 독서 세션이 없으면 짧은 알림을 받습니다.</span>
+          </span>
+          <input
+            type="checkbox"
+            name="weeklyReadingNudgeEnabled"
+            value="true"
+            <% if (settings.weeklyReadingNudgeEnabled) { %>checked<% } %>
             class="peer sr-only" />
           <span
             class="relative inline-flex h-7 w-12 flex-none items-center rounded-full bg-stone-200 transition after:absolute after:left-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-[0_4px_10px_rgba(24,19,16,0.18)] after:transition after:content-[''] peer-checked:bg-stone-900 peer-checked:after:translate-x-5"

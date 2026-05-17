@@ -2370,6 +2370,15 @@
       },
       {
         "hidden": false,
+        "id": "bool1101001009",
+        "name": "weekly_reading_nudge_enabled",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "hidden": false,
         "id": "select1101001004",
         "maxSelect": 1,
         "name": "preferred_view_mode",
