@@ -20,7 +20,7 @@
   const bookId = String(form.bookId || '').trim()
   const bookFileId = String(form.bookFileId || '').trim()
 
-  dbg('api/books/list-bookmarks:start', {
+  dbg('api/books/list-highlights:start', {
     userId: userId,
     bookId: bookId,
     bookFileId: bookFileId,
@@ -40,50 +40,48 @@
   try {
     if (!bookId) throw new Error('책 정보가 필요합니다.')
 
-    const bookmarks = []
+    const highlights = []
 
     $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
 
     if (bookFileId) {
-      const bookmarkRecords = $app.findRecordsByFilter('book_bookmarks', 'user_id = {:userId} && book_id = {:bookId} && file_id = {:bookFileId}', '-bookmarked_at,-created', 100, 0, {
+      const highlightRecords = $app.findRecordsByFilter('book_highlights', 'user_id = {:userId} && book_id = {:bookId} && file_id = {:bookFileId}', '-highlighted_at,-created', 100, 0, {
         userId: userId,
         bookId: bookId,
         bookFileId: bookFileId,
       })
 
-      for (let index = 0; index < bookmarkRecords.length; index += 1) {
-        const bookmarkRecord = bookmarkRecords[index]
-        const progressValue = bookmarkRecord.get('progress_percent')
-        const pageValue = bookmarkRecord.get('page_number')
+      for (let index = 0; index < highlightRecords.length; index += 1) {
+        const highlightRecord = highlightRecords[index]
+        const pageValue = highlightRecord.get('page_number')
 
-        bookmarks.push({
-          id: readString(bookmarkRecord, 'id'),
-          locator: readString(bookmarkRecord, 'locator'),
-          href: readString(bookmarkRecord, 'href'),
-          chapterLabel: readString(bookmarkRecord, 'chapter_label'),
-          progressPercent: progressValue === null || typeof progressValue === 'undefined' ? '' : String(progressValue),
+        highlights.push({
+          id: readString(highlightRecord, 'id'),
+          locator: readString(highlightRecord, 'locator'),
+          href: readString(highlightRecord, 'href'),
+          chapterLabel: readString(highlightRecord, 'chapter_label'),
           pageNumber: pageValue === null || typeof pageValue === 'undefined' ? '' : String(pageValue),
-          label: readString(bookmarkRecord, 'label'),
-          noteText: readString(bookmarkRecord, 'note_text'),
-          bookmarkedAt: readString(bookmarkRecord, 'bookmarked_at'),
+          quoteText: readString(highlightRecord, 'quote_text'),
+          noteText: readString(highlightRecord, 'note_text'),
+          highlightedAt: readString(highlightRecord, 'highlighted_at'),
         })
       }
     }
 
-    info('api/books/list-bookmarks:done', {
+    info('api/books/list-highlights:done', {
       userId: userId,
       bookId: bookId,
-      count: bookmarks.length,
+      count: highlights.length,
     })
 
     response.json(200, {
       ok: true,
-      bookmarks: bookmarks,
+      highlights: highlights,
     })
   } catch (exception) {
     const errorMessage = String(exception.message || exception)
 
-    error('api/books/list-bookmarks:failed', {
+    error('api/books/list-highlights:failed', {
       userId: userId,
       bookId: bookId,
       error: errorMessage,
@@ -91,7 +89,7 @@
 
     response.json(400, {
       ok: false,
-      message: errorMessage || '책갈피를 불러오지 못했습니다.',
+      message: errorMessage || '문구를 불러오지 못했습니다.',
     })
   }
 </script>

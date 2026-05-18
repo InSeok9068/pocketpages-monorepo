@@ -35,6 +35,15 @@ window.booklogReaderLogic = (function () {
   var NAVIGATION_SAVE_WAIT_MS = 2000
   var DEFAULT_FONT_SIZE_PERCENT = 100
   var FONT_SIZE_OPTIONS = [90, 100, 110, 120, 130]
+  var DEFAULT_READER_THEME = 'paper'
+  var DEFAULT_READER_FONT_FAMILY = 'original'
+  var DEFAULT_READER_LINE_HEIGHT = 'normal'
+  var DEFAULT_READER_PAGE_MARGIN = 'normal'
+  var READER_THEME_OPTIONS = ['paper', 'sepia', 'night']
+  var READER_FONT_FAMILY_OPTIONS = ['original', 'sans', 'serif']
+  var READER_LINE_HEIGHT_OPTIONS = ['normal', 'relaxed', 'loose']
+  var READER_PAGE_MARGIN_OPTIONS = ['narrow', 'normal', 'wide']
+  var READER_SETTINGS_STYLE_ID = 'booklog-reader-settings-style'
   var HIGHLIGHT_QUOTE_MAX_LENGTH = 10000
   var READER_CACHE_DB_NAME = 'booklog-reader-cache'
   var READER_CACHE_STORE_NAME = 'epubBuffers'
@@ -312,6 +321,22 @@ window.booklogReaderLogic = (function () {
     return 'booklog:reader-font-size-percent:' + userKey
   }
 
+  function getReaderSettingsStorageKey() {
+    var userKey = readerCacheKey ? String(readerCacheKey).split(':')[0] : 'default'
+
+    return 'booklog:reader-settings:' + userKey
+  }
+
+  function getDefaultReaderSettings() {
+    return {
+      theme: DEFAULT_READER_THEME,
+      fontSizePercent: DEFAULT_FONT_SIZE_PERCENT,
+      fontFamily: DEFAULT_READER_FONT_FAMILY,
+      lineHeight: DEFAULT_READER_LINE_HEIGHT,
+      pageMargin: DEFAULT_READER_PAGE_MARGIN,
+    }
+  }
+
   /**
    * 리더 글자 크기를 허용된 퍼센트 값으로 정리합니다.
    * @param {number | string} value 글자 크기 값
@@ -334,6 +359,32 @@ window.booklogReaderLogic = (function () {
     return DEFAULT_FONT_SIZE_PERCENT
   }
 
+  function normalizeReaderOption(value, options, fallback) {
+    var normalizedValue = String(value || '').trim()
+    var index = 0
+
+    for (index = 0; index < options.length; index += 1) {
+      if (options[index] === normalizedValue) {
+        return normalizedValue
+      }
+    }
+
+    return fallback
+  }
+
+  function normalizeReaderSettings(input) {
+    var defaults = getDefaultReaderSettings()
+    var source = input && typeof input === 'object' ? input : {}
+
+    return {
+      theme: normalizeReaderOption(source.theme, READER_THEME_OPTIONS, defaults.theme),
+      fontSizePercent: normalizeReaderFontSizePercent(source.fontSizePercent),
+      fontFamily: normalizeReaderOption(source.fontFamily, READER_FONT_FAMILY_OPTIONS, defaults.fontFamily),
+      lineHeight: normalizeReaderOption(source.lineHeight, READER_LINE_HEIGHT_OPTIONS, defaults.lineHeight),
+      pageMargin: normalizeReaderOption(source.pageMargin, READER_PAGE_MARGIN_OPTIONS, defaults.pageMargin),
+    }
+  }
+
   function readStoredReaderFontSizePercent() {
     try {
       return normalizeReaderFontSizePercent(window.localStorage.getItem(getReaderFontSizeStorageKey()))
@@ -345,6 +396,44 @@ window.booklogReaderLogic = (function () {
   function storeReaderFontSizePercent(percent) {
     try {
       window.localStorage.setItem(getReaderFontSizeStorageKey(), String(percent))
+    } catch (exception) {}
+  }
+
+  function readStoredReaderSettings() {
+    var settings = getDefaultReaderSettings()
+    var storedValue = ''
+    var parsedValue = null
+
+    try {
+      storedValue = window.localStorage.getItem(getReaderSettingsStorageKey())
+    } catch (exception) {
+      storedValue = ''
+    }
+
+    if (storedValue) {
+      try {
+        parsedValue = JSON.parse(storedValue)
+      } catch (exception) {
+        parsedValue = null
+      }
+    }
+
+    if (parsedValue && typeof parsedValue === 'object') {
+      settings = normalizeReaderSettings(parsedValue)
+    } else {
+      settings.fontSizePercent = readStoredReaderFontSizePercent()
+    }
+
+    return settings
+  }
+
+  function storeReaderSettings(settings) {
+    var normalizedSettings = normalizeReaderSettings(settings)
+
+    storeReaderFontSizePercent(normalizedSettings.fontSizePercent)
+
+    try {
+      window.localStorage.setItem(getReaderSettingsStorageKey(), JSON.stringify(normalizedSettings))
     } catch (exception) {}
   }
 
@@ -1839,6 +1928,64 @@ window.booklogReaderLogic = (function () {
       })
   }
 
+  function requestHighlights() {
+    var formData = new FormData()
+
+    formData.set('bookId', bookId)
+    formData.set('bookFileId', bookFileId)
+
+    return fetch('/api/books/list-highlights', {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+    })
+      .then(function (response) {
+        return response
+          .json()
+          .then(function (payload) {
+            return {
+              ok: response.ok,
+              payload: payload || {},
+            }
+          })
+          .catch(function () {
+            return {
+              ok: response.ok,
+              payload: {},
+            }
+          })
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '문구를 불러오지 못했습니다.'))
+        }
+
+        return result.payload && result.payload.highlights ? result.payload.highlights : []
+      })
+  }
+
+  function loadHighlights(component) {
+    if (!component || component.highlightsLoading) {
+      return
+    }
+
+    component.highlightsLoading = true
+    component.highlightsMessage = ''
+
+    requestHighlights()
+      .then(function (highlights) {
+        component.highlights = highlights
+        component.highlightsMessage = ''
+      })
+      .catch(function (exception) {
+        component.highlights = []
+        component.highlightsMessage = String(exception && exception.message ? exception.message : exception)
+      })
+      .finally(function () {
+        component.highlightsLoading = false
+      })
+  }
+
   function requestSaveBookmark(input) {
     var formData = new FormData()
 
@@ -2218,6 +2365,20 @@ window.booklogReaderLogic = (function () {
     component.readerFontSizePercent = String(normalizeReaderFontSizePercent(percent))
   }
 
+  function syncReaderSettingsState(component, settings) {
+    var normalizedSettings = normalizeReaderSettings(settings)
+
+    if (!component) {
+      return
+    }
+
+    component.readerTheme = normalizedSettings.theme
+    component.readerFontSizePercent = String(normalizedSettings.fontSizePercent)
+    component.readerFontFamily = normalizedSettings.fontFamily
+    component.readerLineHeight = normalizedSettings.lineHeight
+    component.readerPageMargin = normalizedSettings.pageMargin
+  }
+
   function getReaderFontSizeIndex(percent) {
     var normalizedPercent = normalizeReaderFontSizePercent(percent)
     var index = 0
@@ -2232,25 +2393,27 @@ window.booklogReaderLogic = (function () {
   }
 
   /**
-   * 저장된 글자 크기를 리더 본문에 적용합니다.
+   * 리더 표시 설정을 EPUB 본문에 적용합니다.
    * @param {any} component Alpine 컴포넌트 상태
-   * @param {number | string} percent 글자 크기 퍼센트
+   * @param {types.ReaderSettings} settings 읽기 설정
    * @param {{ skipStorage?: boolean, skipLayoutSync?: boolean }=} options 적용 옵션
-   * @returns {number} 적용한 글자 크기 퍼센트
+   * @returns {types.ReaderSettings} 적용한 읽기 설정
    */
-  function applyReaderFontSize(component, percent, options) {
-    var normalizedPercent = normalizeReaderFontSizePercent(percent)
-    var fontSizeValue = String(normalizedPercent) + '%'
+  function applyReaderSettings(component, settings, options) {
+    var normalizedSettings = normalizeReaderSettings(settings)
+    var fontSizeValue = String(normalizedSettings.fontSizePercent) + '%'
 
-    syncReaderFontSizeState(component, normalizedPercent)
+    syncReaderSettingsState(component, normalizedSettings)
 
     if (!options || !options.skipStorage) {
-      storeReaderFontSizePercent(normalizedPercent)
+      storeReaderSettings(normalizedSettings)
     }
 
     if (renditionInstance && renditionInstance.themes && typeof renditionInstance.themes.fontSize === 'function') {
       renditionInstance.themes.fontSize(fontSizeValue)
     }
+
+    applyReaderSettingsToRenderedContents(normalizedSettings)
 
     if (!options || !options.skipLayoutSync) {
       scheduleReaderLayoutSync(component, {
@@ -2259,7 +2422,27 @@ window.booklogReaderLogic = (function () {
       })
     }
 
-    return normalizedPercent
+    return normalizedSettings
+  }
+
+  /**
+   * 저장된 글자 크기를 리더 본문에 적용합니다.
+   * @param {any} component Alpine 컴포넌트 상태
+   * @param {number | string} percent 글자 크기 퍼센트
+   * @param {{ skipStorage?: boolean, skipLayoutSync?: boolean }=} options 적용 옵션
+   * @returns {number} 적용한 글자 크기 퍼센트
+   */
+  function applyReaderFontSize(component, percent, options) {
+    var storedSettings = readStoredReaderSettings()
+    var settings = normalizeReaderSettings({
+      theme: component && component.readerTheme ? component.readerTheme : storedSettings.theme,
+      fontSizePercent: percent,
+      fontFamily: component && component.readerFontFamily ? component.readerFontFamily : storedSettings.fontFamily,
+      lineHeight: component && component.readerLineHeight ? component.readerLineHeight : storedSettings.lineHeight,
+      pageMargin: component && component.readerPageMargin ? component.readerPageMargin : storedSettings.pageMargin,
+    })
+
+    return applyReaderSettings(component, settings, options).fontSizePercent
   }
 
   function changeReaderFontSize(component, step) {
@@ -2283,6 +2466,131 @@ window.booklogReaderLogic = (function () {
 
   function resetReaderFontSize(component) {
     applyReaderFontSize(component, DEFAULT_FONT_SIZE_PERCENT)
+  }
+
+  function getComponentReaderSettings(component) {
+    return normalizeReaderSettings({
+      theme: component && component.readerTheme ? component.readerTheme : DEFAULT_READER_THEME,
+      fontSizePercent: component && component.readerFontSizePercent ? component.readerFontSizePercent : DEFAULT_FONT_SIZE_PERCENT,
+      fontFamily: component && component.readerFontFamily ? component.readerFontFamily : DEFAULT_READER_FONT_FAMILY,
+      lineHeight: component && component.readerLineHeight ? component.readerLineHeight : DEFAULT_READER_LINE_HEIGHT,
+      pageMargin: component && component.readerPageMargin ? component.readerPageMargin : DEFAULT_READER_PAGE_MARGIN,
+    })
+  }
+
+  function setReaderTheme(component, theme) {
+    var settings = getComponentReaderSettings(component)
+
+    settings.theme = theme
+    applyReaderSettings(component, settings)
+  }
+
+  function setReaderFontFamily(component, fontFamily) {
+    var settings = getComponentReaderSettings(component)
+
+    settings.fontFamily = fontFamily
+    applyReaderSettings(component, settings)
+  }
+
+  function setReaderLineHeight(component, lineHeight) {
+    var settings = getComponentReaderSettings(component)
+
+    settings.lineHeight = lineHeight
+    applyReaderSettings(component, settings)
+  }
+
+  function setReaderPageMargin(component, pageMargin) {
+    var settings = getComponentReaderSettings(component)
+
+    settings.pageMargin = pageMargin
+    applyReaderSettings(component, settings)
+  }
+
+  function resetReaderSettings(component) {
+    applyReaderSettings(component, getDefaultReaderSettings())
+  }
+
+  function buildReaderSettingsCss(settings) {
+    var normalizedSettings = normalizeReaderSettings(settings)
+    var cssRules = [
+      'html{background:#ffffff !important;}',
+      'body{background:#ffffff !important;color:#1c1917 !important;}',
+      'a{color:#57534e !important;}',
+    ]
+
+    if (normalizedSettings.theme === 'sepia') {
+      cssRules = [
+        'html{background:#f7f0df !important;}',
+        'body{background:#f7f0df !important;color:#33281f !important;}',
+        'a{color:#79553b !important;}',
+      ]
+    }
+
+    if (normalizedSettings.theme === 'night') {
+      cssRules = [
+        'html{background:#161616 !important;}',
+        'body{background:#161616 !important;color:#e8e1d6 !important;}',
+        'a{color:#d8b16d !important;}',
+      ]
+    }
+
+    if (normalizedSettings.fontFamily === 'sans') {
+      cssRules.push('body,body p,body li,body blockquote{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif !important;}')
+    }
+
+    if (normalizedSettings.fontFamily === 'serif') {
+      cssRules.push('body,body p,body li,body blockquote{font-family:Georgia,"Times New Roman","Noto Serif KR","Nanum Myeongjo",serif !important;}')
+    }
+
+    if (normalizedSettings.lineHeight === 'relaxed') {
+      cssRules.push('body,body p,body div,body li,body blockquote,body section,body article{line-height:2.05 !important;}')
+    }
+
+    if (normalizedSettings.lineHeight === 'loose') {
+      cssRules.push('body,body p,body div,body li,body blockquote,body section,body article{line-height:2.3 !important;}')
+    }
+
+    if (normalizedSettings.pageMargin === 'narrow') {
+      cssRules.push('body{box-sizing:border-box !important;width:auto !important;max-width:none !important;min-width:0 !important;margin-left:0.75rem !important;margin-right:0.75rem !important;padding-left:0 !important;padding-right:0 !important;}')
+    }
+
+    if (normalizedSettings.pageMargin === 'wide') {
+      cssRules.push('body{box-sizing:border-box !important;margin-left:0 !important;margin-right:0 !important;padding-left:3rem !important;padding-right:3rem !important;}')
+    }
+
+    return cssRules.join('\n')
+  }
+
+  function applyReaderSettingsToDocument(doc, settings) {
+    var styleElement = null
+    var target = null
+
+    if (!doc || !doc.createElement) {
+      return
+    }
+
+    target = doc.head || doc.documentElement
+
+    if (!target) {
+      return
+    }
+
+    styleElement = doc.getElementById(READER_SETTINGS_STYLE_ID)
+
+    if (!styleElement) {
+      styleElement = doc.createElement('style')
+      styleElement.id = READER_SETTINGS_STYLE_ID
+      styleElement.type = 'text/css'
+      target.appendChild(styleElement)
+    }
+
+    styleElement.textContent = buildReaderSettingsCss(settings)
+  }
+
+  function applyReaderSettingsToRenderedContents(settings) {
+    getRenderedContentEntries().forEach(function (entry) {
+      applyReaderSettingsToDocument(entry && entry.document ? entry.document : null, settings)
+    })
   }
 
   function buildSearchResultLabel(result) {
@@ -3105,7 +3413,7 @@ window.booklogReaderLogic = (function () {
       flow: 'scrolled',
       allowScriptedContent: false,
     })
-    applyReaderFontSize(component, readStoredReaderFontSizePercent(), {
+    applyReaderSettings(component, readStoredReaderSettings(), {
       skipStorage: true,
       skipLayoutSync: true,
     })
@@ -3122,6 +3430,7 @@ window.booklogReaderLogic = (function () {
       }
 
       upsertRenderedContentEntry(contents)
+      applyReaderSettingsToDocument(doc, getComponentReaderSettings(component))
       bindContentSelectionCapture(component, contents)
 
       if (doc.documentElement && doc.documentElement.style) {
@@ -3642,6 +3951,7 @@ window.booklogReaderLogic = (function () {
         component.highlightQuoteText = ''
         component.highlightNoteText = ''
         component.highlightMessage = ''
+        loadHighlights(component)
         component.showSavePositionMessage(String(payload && payload.message ? payload.message : '인상 깊은 문구를 저장했습니다.'))
       })
       .catch(function (exception) {
@@ -3695,6 +4005,7 @@ window.booklogReaderLogic = (function () {
         clearActiveReaderSelection()
         addSavedHighlightAnnotation(locator)
         activeSelectionContents = null
+        loadHighlights(component)
         component.showSavePositionMessage(String(payload && payload.message ? payload.message : '인상 깊은 문구를 저장했습니다.'))
       })
       .catch(function (exception) {
@@ -3780,6 +4091,51 @@ window.booklogReaderLogic = (function () {
         component.bookmarksMessage = String(exception && exception.message ? exception.message : exception)
         console.error('page/books/[bookId]/read:go-to-bookmark:failed', {
           message: component.bookmarksMessage,
+        })
+      })
+      .finally(function () {
+        component.loading = false
+      })
+  }
+
+  function goToHighlight(component, highlight) {
+    var locator = highlight && highlight.locator ? String(highlight.locator) : ''
+    var href = highlight && highlight.href ? String(highlight.href) : ''
+    var target = locator || href
+
+    if (!target || !renditionInstance) {
+      if (component) {
+        component.highlightsMessage = '이동할 문구 위치가 없습니다.'
+      }
+      return
+    }
+
+    component.highlightsOpen = false
+    component.controlsVisible = false
+    component.loading = true
+    stopSpeechPlayback(component, {
+      keepMessage: true,
+    })
+    prepareManualNavigation()
+
+    Promise.resolve(renditionInstance.display(target))
+      .catch(function () {
+        if (locator && href) {
+          return renditionInstance.display(href)
+        }
+
+        throw new Error('문구 위치로 이동하지 못했습니다.')
+      })
+      .then(function (location) {
+        updateCurrentLocation(component, location || renditionInstance.currentLocation())
+        addSavedHighlightAnnotation(locator)
+        component.showSavePositionMessage('문구 위치로 이동했습니다.')
+      })
+      .catch(function (exception) {
+        component.highlightsOpen = true
+        component.highlightsMessage = String(exception && exception.message ? exception.message : exception)
+        console.error('page/books/[bookId]/read:go-to-highlight:failed', {
+          message: component.highlightsMessage,
         })
       })
       .finally(function () {
@@ -3989,6 +4345,8 @@ window.booklogReaderLogic = (function () {
     scrollActiveTocItemIntoView: scrollActiveTocItemIntoView,
     startReadAloud: startReadAloud,
     stopReadAloud: stopReadAloud,
+    loadHighlights: loadHighlights,
+    goToHighlight: goToHighlight,
     loadBookmarks: loadBookmarks,
     saveBookmark: saveBookmark,
     goToBookmark: goToBookmark,
@@ -4004,5 +4362,10 @@ window.booklogReaderLogic = (function () {
     decreaseReaderFontSize: decreaseReaderFontSize,
     increaseReaderFontSize: increaseReaderFontSize,
     resetReaderFontSize: resetReaderFontSize,
+    setReaderTheme: setReaderTheme,
+    setReaderFontFamily: setReaderFontFamily,
+    setReaderLineHeight: setReaderLineHeight,
+    setReaderPageMargin: setReaderPageMargin,
+    resetReaderSettings: resetReaderSettings,
   }
 })()

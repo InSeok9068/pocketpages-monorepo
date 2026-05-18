@@ -136,7 +136,12 @@
     searching: false,
     searchMessage: '',
     currentProgressPercent: '',
+    readingSettingsOpen: false,
+    readerTheme: 'paper',
     readerFontSizePercent: '100',
+    readerFontFamily: 'original',
+    readerLineHeight: 'normal',
+    readerPageMargin: 'normal',
     tocOpen: false,
     tocItems: [],
     tocReady: false,
@@ -159,6 +164,10 @@
     highlightMessage: '',
     highlightQuoteText: '',
     highlightNoteText: '',
+    highlightsOpen: false,
+    highlightsLoading: false,
+    highlights: [],
+    highlightsMessage: '',
     selectedHighlightOpen: false,
     selectedHighlightSaving: false,
     selectedHighlightMessage: '',
@@ -222,6 +231,13 @@
     closeReadAloud: function () {
       this.readAloudOpen = false
     },
+    openReadingSettings: function () {
+      this.readingSettingsOpen = true
+      this.controlsVisible = false
+    },
+    closeReadingSettings: function () {
+      this.readingSettingsOpen = false
+    },
     openBookmarks: function () {
       this.bookmarksOpen = true
       this.bookmarksMessage = ''
@@ -231,10 +247,20 @@
     closeBookmarks: function () {
       this.bookmarksOpen = false
     },
+    openHighlights: function () {
+      this.highlightsOpen = true
+      this.highlightsMessage = ''
+      this.controlsVisible = false
+      window.booklogReaderLogic.loadHighlights(this)
+    },
+    closeHighlights: function () {
+      this.highlightsOpen = false
+    },
     openHighlight: function () {
       this.highlightOpen = true
       this.highlightMessage = ''
       this.controlsVisible = false
+      this.highlightsOpen = false
     },
     closeHighlight: function () {
       if (this.savingHighlight) {
@@ -273,6 +299,9 @@
     },
     goToBookmark: function (bookmark) {
       window.booklogReaderLogic.goToBookmark(this, bookmark)
+    },
+    goToHighlight: function (highlight) {
+      window.booklogReaderLogic.goToHighlight(this, highlight)
     },
     deleteBookmark: function (bookmark) {
       window.booklogReaderLogic.deleteBookmark(this, bookmark)
@@ -323,6 +352,21 @@
     resetReaderFontSize: function () {
       window.booklogReaderLogic.resetReaderFontSize(this)
     },
+    setReaderTheme: function (theme) {
+      window.booklogReaderLogic.setReaderTheme(this, theme)
+    },
+    setReaderFontFamily: function (fontFamily) {
+      window.booklogReaderLogic.setReaderFontFamily(this, fontFamily)
+    },
+    setReaderLineHeight: function (lineHeight) {
+      window.booklogReaderLogic.setReaderLineHeight(this, lineHeight)
+    },
+    setReaderPageMargin: function (pageMargin) {
+      window.booklogReaderLogic.setReaderPageMargin(this, pageMargin)
+    },
+    resetReaderSettings: function () {
+      window.booklogReaderLogic.resetReaderSettings(this)
+    },
     startReadAloud: function () {
       window.booklogReaderLogic.startReadAloud(this)
     },
@@ -334,24 +378,28 @@
   class="ios-safe-screen relative min-h-screen bg-[#f5f1e7]">
   <div
     x-cloak
-    class="fixed right-4 z-30 inline-flex h-11 items-center rounded-full bg-[rgba(24,19,16,0.14)] px-1 text-stone-800/75 shadow-[0_6px_18px_rgba(24,19,16,0.08)]"
+    x-bind:class="readerTheme === 'night' ? 'bg-[rgba(255,255,255,0.18)] text-stone-100 shadow-[0_8px_24px_rgba(0,0,0,0.36)]' : 'bg-[rgba(24,19,16,0.14)] text-stone-800/75 shadow-[0_6px_18px_rgba(24,19,16,0.08)]'"
+    class="fixed right-4 z-30 inline-flex h-11 items-center rounded-full px-1"
     style="bottom: calc(env(safe-area-inset-bottom) + 1rem)">
     <a
       href="/books/<%= bookId %>"
       x-on:click.prevent="goToBookDetail()"
-      class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none text-stone-800/75 no-underline outline-none ring-0 transition hover:text-stone-950 focus-visible:bg-white/30"
+      x-bind:class="readerTheme === 'night' ? 'text-stone-100 hover:text-white focus-visible:bg-white/20' : 'text-stone-800/75 hover:text-stone-950 focus-visible:bg-white/30'"
+      class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none no-underline outline-none ring-0 transition"
       aria-label="뒤로가기">
       <span
         class="i-lucide-arrow-left h-5 w-5"
         aria-hidden="true"></span>
     </a>
     <span
-      class="h-5 w-px bg-stone-700/10"
+      x-bind:class="readerTheme === 'night' ? 'bg-white/20' : 'bg-stone-700/10'"
+      class="h-5 w-px"
       aria-hidden="true"></span>
     <button
       type="button"
       x-on:click="toggleControls()"
-      class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-transparent text-stone-800/75 shadow-none outline-none ring-0 transition hover:text-stone-950 focus-visible:bg-white/30"
+      x-bind:class="readerTheme === 'night' ? 'text-stone-100 hover:text-white focus-visible:bg-white/20' : 'text-stone-800/75 hover:text-stone-950 focus-visible:bg-white/30'"
+      class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-transparent shadow-none outline-none ring-0 transition"
       aria-label="메뉴 열기">
       <span
         class="i-lucide-menu h-5 w-5"
@@ -360,10 +408,12 @@
   </div>
 
   <div
-    class="pointer-events-none fixed inset-x-0 bottom-0 z-10 h-1 bg-stone-950/10"
+    x-bind:class="readerTheme === 'night' ? 'bg-white/18' : 'bg-stone-950/10'"
+    class="pointer-events-none fixed inset-x-0 bottom-0 z-10 h-1"
     aria-hidden="true">
     <div
-      class="h-full bg-[rgba(120,93,63,0.28)] transition-[width] duration-300"
+      x-bind:class="readerTheme === 'night' ? 'bg-[rgba(232,225,214,0.58)]' : 'bg-[rgba(120,93,63,0.28)]'"
+      class="h-full transition-[width] duration-300"
       x-bind:style="'width: ' + (currentProgressPercent ? currentProgressPercent + '%' : '0%')"></div>
   </div>
 
@@ -434,12 +484,12 @@
         </button>
         <button
           type="button"
-          x-on:click="openHighlight()"
+          x-on:click="openHighlights()"
           class="min-h-18 flex flex-col items-center justify-center gap-1.5 rounded-[1.15rem] border-none bg-[#f7f2e8] px-2 py-3 text-sm font-semibold text-stone-800 outline-none ring-0">
           <span
             class="i-lucide-quote h-5 w-5 text-stone-700"
             aria-hidden="true"></span>
-          문구 추가
+          문구
         </button>
         <a
           href="/books/<%= bookId %>"
@@ -450,6 +500,46 @@
             aria-hidden="true"></span>
           책 상세
         </a>
+      </div>
+
+      <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+        <div class="mb-1.5 flex items-center justify-between gap-2">
+          <div class="text-[11px] font-semibold tracking-[0.16em] text-stone-500">글자 크기</div>
+          <button
+            type="button"
+            x-on:click="openReadingSettings()"
+            class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-none bg-white/80 text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0"
+            aria-label="상세 읽기 설정">
+            <span
+              class="i-lucide-sliders-horizontal h-3.5 w-3.5"
+              aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="grid grid-cols-[1fr_1.25fr_1fr] gap-2">
+          <button
+            type="button"
+            x-on:click="decreaseReaderFontSize()"
+            x-bind:disabled="readerFontSizePercent === '90'"
+            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
+            aria-label="글자 크기 줄이기">
+            가-
+          </button>
+          <button
+            type="button"
+            x-on:click="resetReaderFontSize()"
+            x-bind:disabled="readerFontSizePercent === '100'"
+            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-55"
+            aria-label="글자 크기 기본값으로 되돌리기"
+            x-text="readerFontSizePercent + '%'"></button>
+          <button
+            type="button"
+            x-on:click="increaseReaderFontSize()"
+            x-bind:disabled="readerFontSizePercent === '130'"
+            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
+            aria-label="글자 크기 키우기">
+            가+
+          </button>
+        </div>
       </div>
 
       <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
@@ -500,32 +590,276 @@
         </div>
       </div>
 
-      <div class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
-        <div class="mb-1.5 text-[11px] font-semibold tracking-[0.16em] text-stone-500">글자 크기</div>
-        <div class="grid grid-cols-[1fr_1.25fr_1fr] gap-2">
+    </div>
+  </div>
+
+  <div
+    x-show="readingSettingsOpen"
+    x-cloak
+    class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.21)]">
+    <div class="ios-safe-screen flex min-h-screen items-end justify-center px-0 pt-0 sm:items-start sm:px-6 sm:pt-20">
+      <div
+        class="max-h-[calc(100dvh-1rem)] w-full overflow-y-auto rounded-t-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] sm:max-h-[calc(100vh-7rem)] sm:max-w-3xl sm:rounded-[1.75rem]">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <h2 class="text-base font-semibold text-stone-950">읽기 설정</h2>
           <button
             type="button"
-            x-on:click="decreaseReaderFontSize()"
-            x-bind:disabled="readerFontSizePercent === '90'"
-            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
-            aria-label="글자 크기 줄이기">
-            가-
+            x-on:click="closeReadingSettings()"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] text-stone-700 outline-none ring-0"
+            aria-label="읽기 설정 닫기">
+            <span
+              class="i-lucide-x h-4 w-4"
+              aria-hidden="true"></span>
+          </button>
+        </div>
+
+        <div class="space-y-4">
+          <section class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <span class="text-[11px] font-semibold tracking-[0.16em] text-stone-500">글자 크기</span>
+              <span
+                class="text-sm font-semibold text-stone-700"
+                x-text="readerFontSizePercent + '%'"></span>
+            </div>
+            <div class="grid grid-cols-[1fr_1.25fr_1fr] gap-2">
+              <button
+                type="button"
+                x-on:click="decreaseReaderFontSize()"
+                x-bind:disabled="readerFontSizePercent === '90'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
+                aria-label="글자 크기 줄이기">
+                가-
+              </button>
+              <button
+                type="button"
+                x-on:click="resetReaderFontSize()"
+                x-bind:disabled="readerFontSizePercent === '100'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-55"
+                aria-label="글자 크기 기본값으로 되돌리기">
+                100%
+              </button>
+              <button
+                type="button"
+                x-on:click="increaseReaderFontSize()"
+                x-bind:disabled="readerFontSizePercent === '130'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
+                aria-label="글자 크기 키우기">
+                가+
+              </button>
+            </div>
+          </section>
+
+          <section class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+            <div class="mb-2 text-[11px] font-semibold tracking-[0.16em] text-stone-500">화면 색</div>
+            <div class="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                x-on:click="setReaderTheme('paper')"
+                x-bind:class="readerTheme === 'paper' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                기본
+              </button>
+              <button
+                type="button"
+                x-on:click="setReaderTheme('sepia')"
+                x-bind:class="readerTheme === 'sepia' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                세피아
+              </button>
+              <button
+                type="button"
+                x-on:click="setReaderTheme('night')"
+                x-bind:class="readerTheme === 'night' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                밤
+              </button>
+            </div>
+          </section>
+
+          <section class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+            <div class="mb-2 text-[11px] font-semibold tracking-[0.16em] text-stone-500">글꼴</div>
+            <div class="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                x-on:click="setReaderFontFamily('original')"
+                x-bind:class="readerFontFamily === 'original' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                원본
+              </button>
+              <button
+                type="button"
+                x-on:click="setReaderFontFamily('sans')"
+                x-bind:class="readerFontFamily === 'sans' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                고딕
+              </button>
+              <button
+                type="button"
+                x-on:click="setReaderFontFamily('serif')"
+                x-bind:class="readerFontFamily === 'serif' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                명조
+              </button>
+            </div>
+          </section>
+
+          <section class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+            <div class="mb-2 text-[11px] font-semibold tracking-[0.16em] text-stone-500">줄간격</div>
+            <div class="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                x-on:click="setReaderLineHeight('normal')"
+                x-bind:class="readerLineHeight === 'normal' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                기본
+              </button>
+              <button
+                type="button"
+                x-on:click="setReaderLineHeight('relaxed')"
+                x-bind:class="readerLineHeight === 'relaxed' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                넓게
+              </button>
+              <button
+                type="button"
+                x-on:click="setReaderLineHeight('loose')"
+                x-bind:class="readerLineHeight === 'loose' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                더 넓게
+              </button>
+            </div>
+          </section>
+
+          <section class="rounded-[1.25rem] bg-[#f7f2e8] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+            <div class="mb-2 text-[11px] font-semibold tracking-[0.16em] text-stone-500">여백</div>
+            <div class="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                x-on:click="setReaderPageMargin('narrow')"
+                x-bind:class="readerPageMargin === 'narrow' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                좁게
+              </button>
+              <button
+                type="button"
+                x-on:click="setReaderPageMargin('normal')"
+                x-bind:class="readerPageMargin === 'normal' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                기본
+              </button>
+              <button
+                type="button"
+                x-on:click="setReaderPageMargin('wide')"
+                x-bind:class="readerPageMargin === 'wide' ? 'bg-stone-950 text-white' : 'bg-white/80 text-stone-700'"
+                class="inline-flex h-10 items-center justify-center rounded-full border-none px-3 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+                넓게
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <div class="mt-4 flex gap-2">
+          <button
+            type="button"
+            x-on:click="resetReaderSettings()"
+            class="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 outline-none ring-0">
+            <span
+              class="i-lucide-rotate-ccw h-4 w-4"
+              aria-hidden="true"></span>
+            기본값
           </button>
           <button
             type="button"
-            x-on:click="resetReaderFontSize()"
-            x-bind:disabled="readerFontSizePercent === '100'"
-            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-55"
-            aria-label="글자 크기 기본값으로 되돌리기"
-            x-text="readerFontSizePercent + '%'"></button>
+            x-on:click="closeReadingSettings()"
+            class="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white outline-none ring-0">
+            완료
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    x-show="highlightsOpen"
+    x-cloak
+    class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.21)]">
+    <div class="ios-safe-screen flex min-h-screen items-end justify-center px-0 pt-0 sm:items-start sm:px-6 sm:pt-20">
+      <div
+        class="max-h-[calc(100dvh-1rem)] w-full overflow-y-auto rounded-t-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)] sm:max-h-[calc(100vh-7rem)] sm:max-w-3xl sm:rounded-[1.75rem]">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-semibold text-stone-950">문구</h2>
+            <p
+              class="mt-1 text-sm text-stone-500"
+              x-text="currentChapterLabel ? '현재 위치: ' + currentChapterLabel : '현재 위치를 확인하는 중입니다.'"></p>
+          </div>
           <button
             type="button"
-            x-on:click="increaseReaderFontSize()"
-            x-bind:disabled="readerFontSizePercent === '130'"
-            class="inline-flex h-8 items-center justify-center rounded-full border-none bg-white/80 px-3 text-sm font-semibold text-stone-800 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0 disabled:opacity-40"
-            aria-label="글자 크기 키우기">
-            가+
+            x-on:click="closeHighlights()"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] text-stone-700 outline-none ring-0"
+            aria-label="문구 닫기">
+            <span
+              class="i-lucide-x h-4 w-4"
+              aria-hidden="true"></span>
           </button>
+        </div>
+
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            x-on:click="openHighlight()"
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white outline-none ring-0">
+            문구 추가
+          </button>
+          <button
+            type="button"
+            x-on:click="window.booklogReaderLogic.loadHighlights($data)"
+            x-bind:disabled="highlightsLoading"
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 outline-none ring-0 disabled:opacity-60">
+            새로고침
+          </button>
+        </div>
+
+        <p
+          x-show="highlightsMessage"
+          x-cloak
+          class="mb-3 text-sm text-stone-500"
+          x-text="highlightsMessage"></p>
+
+        <div class="max-h-[60vh] overflow-y-auto">
+          <template x-if="highlightsLoading">
+            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">문구를 불러오는 중입니다.</p>
+          </template>
+
+          <template x-if="!highlightsLoading && !highlights.length">
+            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">아직 저장한 문구가 없습니다.</p>
+          </template>
+
+          <div
+            x-show="!highlightsLoading && highlights.length"
+            x-cloak
+            class="space-y-2">
+            <template
+              x-for="highlight in highlights"
+              :key="highlight.id">
+              <button
+                type="button"
+                x-on:click="goToHighlight(highlight)"
+                class="block w-full rounded-[1.25rem] border-none bg-[#fbf7ef] px-4 py-3 text-left text-sm leading-6 text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] outline-none ring-0 transition hover:bg-[#f7f0e3]">
+                <span
+                  class="block font-semibold leading-6 text-stone-900"
+                  x-text="highlight.quoteText || '저장한 문구'"></span>
+                <span
+                  x-show="highlight.noteText"
+                  x-cloak
+                  class="mt-1 block text-[12px] leading-5 text-stone-600"
+                  x-text="highlight.noteText"></span>
+                <span
+                  class="mt-1.5 block text-[12px] text-stone-500"
+                  x-text="highlight.chapterLabel || highlight.href || '위치 정보 없음'"></span>
+              </button>
+            </template>
+          </div>
         </div>
       </div>
     </div>

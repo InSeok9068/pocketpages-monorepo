@@ -27,6 +27,14 @@ declare namespace types {
     [key: string]: any[]
   }
 
+  interface ReaderSettings {
+    theme: string
+    fontSizePercent: number
+    fontFamily: string
+    lineHeight: string
+    pageMargin: string
+  }
+
   interface BookSearchScoreDetails {
     titleExact: boolean
     titlePartial: boolean
