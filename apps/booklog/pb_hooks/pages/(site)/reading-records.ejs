@@ -17,23 +17,24 @@
 
   const userId = String(request.auth.get('id') || '')
   const now = new Date()
+  const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000
   const weekItems = []
   const requestedWeekValue = String(request.url.query.week || '').trim()
   const sessionRecords = $app.findRecordsByFilter('reading_sessions', 'user_id = {:userId}', '-ended_at', 500, 0, { userId: userId })
 
   /**
-   * 날짜를 해당 주 월요일 0시로 맞춥니다.
+   * 날짜를 한국시간 기준 해당 주 월요일로 맞춥니다.
    *
    * @param {Date} date 기준 날짜
    * @returns {Date} 주 시작 날짜
    */
   function getWeekStart(date) {
-    const target = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-    const day = target.getDay()
+    const koreanDate = new Date(date.getTime() + KOREA_TIME_OFFSET_MS)
+    const target = new Date(Date.UTC(koreanDate.getUTCFullYear(), koreanDate.getUTCMonth(), koreanDate.getUTCDate(), 0, 0, 0, 0))
+    const day = target.getUTCDay()
     const diff = day === 0 ? -6 : 1 - day
 
-    target.setDate(target.getDate() + diff)
-    target.setHours(0, 0, 0, 0)
+    target.setUTCDate(target.getUTCDate() + diff)
 
     return target
   }
@@ -57,9 +58,9 @@
    * @returns {string} 날짜 문자열
    */
   function formatDateLabel(date) {
-    const year = String(date.getFullYear())
-    const month = padTwo(date.getMonth() + 1)
-    const day = padTwo(date.getDate())
+    const year = String(date.getUTCFullYear())
+    const month = padTwo(date.getUTCMonth() + 1)
+    const day = padTwo(date.getUTCDate())
 
     return year + '-' + month + '-' + day
   }
@@ -71,9 +72,9 @@
    * @returns {string} 날짜 문자열
    */
   function formatDateDotLabel(date) {
-    const year = String(date.getFullYear())
-    const month = padTwo(date.getMonth() + 1)
-    const day = padTwo(date.getDate())
+    const year = String(date.getUTCFullYear())
+    const month = padTwo(date.getUTCMonth() + 1)
+    const day = padTwo(date.getUTCDate())
 
     return year + '.' + month + '.' + day
   }
@@ -94,9 +95,9 @@
     const year = Number(match[1])
     const month = Number(match[2])
     const day = Number(match[3])
-    const date = new Date(year, month - 1, day)
+    const date = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0))
 
-    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
       return null
     }
 
@@ -166,10 +167,10 @@
   const periodStart = new Date(selectedWeekStart.getTime())
   const periodEnd = new Date(selectedWeekStart.getTime())
 
-  previousWeekStart.setDate(selectedWeekStart.getDate() - 28)
-  nextWeekStart.setDate(selectedWeekStart.getDate() + 28)
-  periodStart.setDate(selectedWeekStart.getDate() - 21)
-  periodEnd.setDate(selectedWeekStart.getDate() + 6)
+  previousWeekStart.setUTCDate(selectedWeekStart.getUTCDate() - 28)
+  nextWeekStart.setUTCDate(selectedWeekStart.getUTCDate() + 28)
+  periodStart.setUTCDate(selectedWeekStart.getUTCDate() - 21)
+  periodEnd.setUTCDate(selectedWeekStart.getUTCDate() + 6)
 
   if (nextWeekStart.getTime() > currentWeekStart.getTime()) {
     nextWeekStart.setTime(currentWeekStart.getTime())
@@ -199,10 +200,10 @@
   for (let weekIndex = 3; weekIndex >= 0; weekIndex -= 1) {
     const weekStart = new Date(selectedWeekStart.getTime())
 
-    weekStart.setDate(selectedWeekStart.getDate() - weekIndex * 7)
+    weekStart.setUTCDate(selectedWeekStart.getUTCDate() - weekIndex * 7)
     const weekEnd = new Date(weekStart.getTime())
 
-    weekEnd.setDate(weekStart.getDate() + 6)
+    weekEnd.setUTCDate(weekStart.getUTCDate() + 6)
 
     const weekKey = formatDateLabel(weekStart)
     weeklySecondsByKey[weekKey] = 0
