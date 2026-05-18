@@ -16,5 +16,6 @@ pbw.exe
 
 # 다운로드 폴더의 실행파일은 추적 대상
 !.download/
+.download/*
 !.download/pocketbase.exe
 !.download/pbw.exe
