@@ -382,6 +382,19 @@
     style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem)">
     <div
       class="mx-auto flex max-h-[calc(100dvh-5rem)] max-w-xl flex-col gap-3 overflow-y-auto rounded-[1.55rem] border border-stone-200/80 bg-[rgba(255,255,255,0.95)] p-3 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
+      <div class="flex items-center justify-between gap-3 px-1">
+        <h2 class="text-base font-semibold text-stone-950">메뉴</h2>
+        <button
+          type="button"
+          x-on:click="controlsVisible = false"
+          class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f7f2e8] text-stone-700 outline-none ring-0"
+          aria-label="메뉴 닫기">
+          <span
+            class="i-lucide-x h-4 w-4"
+            aria-hidden="true"></span>
+        </button>
+      </div>
+
       <div class="grid grid-cols-3 gap-2">
         <button
           type="button"
