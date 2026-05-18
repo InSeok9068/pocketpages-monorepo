@@ -19,7 +19,7 @@ Usage:
   ./task.sh diag [file-or-service] [--profile] [--no-daemon]
   ./task.sh verify [service]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
-  ./task.sh css <service>
+  ./task.sh css [service]
   ./task.sh bundle
   ./task.sh format [-- <extra args>]
 
@@ -37,7 +37,7 @@ Commands:
             `--profile` prints slow-file timings, `--no-daemon` disables the warm background cache
   verify    Run lint, tsc, and diag together for one service or all services
   index     Query AI-friendly PocketPages project index JSON for one service
-  css       Build UnoCSS for one service
+  css       Build UnoCSS for one service or all services that reference it
   bundle    Interactively bundle one service dependency into pb_hooks/pages/_private/vendor
   format    Run npm run format
 
@@ -591,14 +591,9 @@ run_css() {
   local unocss_bin="$ROOT_DIR/node_modules/@unocss/cli/bin/unocss.mjs"
   local config_file="$ROOT_DIR/unocss.config.js"
 
-  if [[ -z "$service" ]]; then
-    echo "Usage: ./task.sh css <service>" >&2
-    exit 1
-  fi
-
   if [[ $# -gt 0 ]]; then
     echo "Unknown css option: $1" >&2
-    echo "Usage: ./task.sh css <service>" >&2
+    echo "Usage: ./task.sh css [service]" >&2
     exit 1
   fi
 
@@ -616,6 +611,34 @@ run_css() {
   if ! command -v node >/dev/null 2>&1; then
     echo "Node.js not found. Cannot run css command." >&2
     exit 1
+  fi
+
+  if [[ -z "$service" ]]; then
+    local service_name=""
+    local failed=0
+    local built=0
+
+    while IFS= read -r service_name; do
+      if ! service_needs_css_build "$service_name"; then
+        echo "Skipping $service_name: no /assets/uno.min.css reference found."
+        continue
+      fi
+
+      built=1
+      if ! run_css "$service_name"; then
+        failed=1
+      fi
+    done < <(list_services)
+
+    if [[ "$built" -eq 0 ]]; then
+      echo "No services need a UnoCSS build."
+    fi
+
+    if [[ "$failed" -ne 0 ]]; then
+      exit 1
+    fi
+
+    return 0
   fi
 
   local service_dir
@@ -1471,9 +1494,8 @@ case "${1:-help}" in
     run_index "$service" "$@"
     ;;
   css)
-    shift
-    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh css <service>" >&2; exit 1; }
-    service="$1"
+    shift || true
+    service="${1:-}"
     shift || true
     run_css "$service" "$@"
     ;;
