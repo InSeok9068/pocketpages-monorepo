@@ -1551,11 +1551,12 @@ function isExcludedRouteExposedPagesScript(relativeSegments, filePath) {
   }
 
   const normalizedFilePath = normalizePath(filePath)
+  const lowerFilePath = normalizedFilePath.toLowerCase()
   return (
     normalizedSegments.includes('vendor') ||
-    normalizedFilePath.endsWith('.min.js') ||
-    normalizedFilePath.endsWith('.min.cjs') ||
-    normalizedFilePath.endsWith('.min.mjs')
+    lowerFilePath.endsWith('.min.js') ||
+    lowerFilePath.endsWith('.min.cjs') ||
+    lowerFilePath.endsWith('.min.mjs')
   )
 }
 
@@ -2476,6 +2477,18 @@ class PocketPagesProjectIndex {
 
   isPagesCodeFile(filePath) {
     return isPagesCodeFile(this.pagesRoot, normalizePath(filePath))
+  }
+
+  isExcludedRouteExposedPagesScriptFile(filePath) {
+    const normalizedFilePath = normalizePath(filePath)
+    const relativePath = toRelativePath(path.relative(this.pagesRoot, normalizedFilePath))
+    if (!relativePath || relativePath.startsWith('..')) {
+      return false
+    }
+
+    const relativeSegments = relativePath.split('/').filter(Boolean)
+    const extension = path.extname(normalizedFilePath).toLowerCase()
+    return ASSET_SCRIPT_EXTENSIONS.includes(extension) && isExcludedRouteExposedPagesScript(relativeSegments, normalizedFilePath)
   }
 
   isAssetCandidateFile(filePath) {

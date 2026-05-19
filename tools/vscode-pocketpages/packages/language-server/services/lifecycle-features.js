@@ -46,6 +46,10 @@ function createLifecycleFeatureService(context) {
     );
   }
 
+  function shouldSyncCoreDocument(filePath) {
+    return !isExcludedPocketPagesScriptPath(filePath);
+  }
+
   function toWatchedFileChangeKind(type) {
     switch (type) {
       case context.FileChangeType.Created:
@@ -104,23 +108,27 @@ function createLifecycleFeatureService(context) {
 
   return {
     handleDidOpen(event) {
-      core.openDocument({
-        uri: event.document.uri,
-        languageId: event.document.languageId,
-        version: event.document.version,
-        text: event.document.getText(),
-      });
+      const filePath = uriToFilePath(event.document.uri);
+      const syncsCoreDocument = shouldSyncCoreDocument(filePath);
+      if (syncsCoreDocument) {
+        core.openDocument({
+          uri: event.document.uri,
+          languageId: event.document.languageId,
+          version: event.document.version,
+          text: event.document.getText(),
+        });
+      }
       if (typeof updateDocumentRuntimeState === "function") {
         updateDocumentRuntimeState(event.document.uri, event.document, {
           opened: true,
         });
       }
       logServer("info", "document", "open", {
-        file: getRelativePathLabel(uriToFilePath(event.document.uri)),
+        file: getRelativePathLabel(filePath),
         languageId: event.document.languageId,
         version: event.document.version,
+        managed: syncsCoreDocument,
       });
-      const filePath = uriToFilePath(event.document.uri);
       if (shouldRunDiagnosticsForFile(filePath) && typeof scheduleFirstRequestWarmup === "function") {
         scheduleFirstRequestWarmup(event.document.uri, { reason: "open" });
       }
@@ -129,6 +137,7 @@ function createLifecycleFeatureService(context) {
     handleDidChangeContent(event) {
       const filePath = uriToFilePath(event.document.uri);
       const hasContentChanges = Array.isArray(event.contentChanges) && event.contentChanges.length > 0;
+      const syncsCoreDocument = shouldSyncCoreDocument(filePath);
       const preferredChangeOffset = getPreferredChangeOffset(event.document, event.contentChanges);
       let rememberedOffset = false;
       if (hasContentChanges) {
@@ -146,20 +155,27 @@ function createLifecycleFeatureService(context) {
         rememberedOffset = true;
       }
       if (hasContentChanges) {
-        core.updateDocument({
-          uri: event.document.uri,
-          languageId: event.document.languageId,
-          version: event.document.version,
-          text: event.document.getText(),
-        }, {
-          prepareVirtualCode: false,
-        });
+        if (syncsCoreDocument) {
+          core.updateDocument({
+            uri: event.document.uri,
+            languageId: event.document.languageId,
+            version: event.document.version,
+            text: event.document.getText(),
+          }, {
+            prepareVirtualCode: false,
+          });
+        }
       }
       if (typeof updateDocumentRuntimeState === "function") {
         updateDocumentRuntimeState(event.document.uri, event.document, {
           changed: hasContentChanges,
         });
       }
+      const preparedState = hasContentChanges
+        ? syncsCoreDocument
+          ? "deferred"
+          : "skipped"
+        : "unchanged";
       logServer("perf", "document", "change", {
         file: getRelativePathLabel(filePath),
         version: event.document.version,
@@ -167,7 +183,7 @@ function createLifecycleFeatureService(context) {
         changeSource: hasContentChanges ? "lsp-content-change" : "document-sync",
         preferredOffset: rememberedOffset ? preferredChangeOffset : null,
         diagnosticsQuiet: shouldRunDiagnosticsForFile(filePath) && hasContentChanges,
-        prepared: hasContentChanges ? "deferred" : "unchanged",
+        prepared: preparedState,
       });
     },
 

@@ -83,6 +83,16 @@ function createTypeScriptFeatureService(context) {
     );
   }
 
+  function isTypeScriptFeatureBlockedDocument(documentContext) {
+    return !!(
+      documentContext &&
+      (
+        isExcludedPocketPagesScriptPath(documentContext.filePath) ||
+        isSchemaSupportOnlyHookScriptPath(documentContext.filePath)
+      )
+    );
+  }
+
   return {
     provideCompletionItems(params, token) {
       const requestContext = getDocumentRequestContext(params);
@@ -94,10 +104,7 @@ function createTypeScriptFeatureService(context) {
       const requestId =
         params.__pocketpagesRequestId ||
         (typeof createRequestId === "function" ? createRequestId("cmp") : null);
-      if (
-        isExcludedPocketPagesScriptPath(documentContext.filePath) ||
-        isSchemaSupportOnlyHookScriptPath(documentContext.filePath)
-      ) {
+      if (isTypeScriptFeatureBlockedDocument(documentContext)) {
         return null;
       }
 
@@ -288,6 +295,10 @@ function createTypeScriptFeatureService(context) {
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      if (isTypeScriptFeatureBlockedDocument(documentContext)) {
+        return null;
+      }
+
       if (!isMappedFeatureEnabled(documentContext, document, offset, "hover")) {
         return null;
       }
@@ -318,6 +329,10 @@ function createTypeScriptFeatureService(context) {
       const requestId =
         params.__pocketpagesRequestId ||
         (typeof createRequestId === "function" ? createRequestId("def") : null);
+      if (isTypeScriptFeatureBlockedDocument(documentContext)) {
+        return null;
+      }
+
       if (!isMappedFeatureEnabled(documentContext, document, offset, "definition")) {
         return null;
       }
@@ -346,6 +361,10 @@ function createTypeScriptFeatureService(context) {
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      if (isTypeScriptFeatureBlockedDocument(documentContext)) {
+        return null;
+      }
+
       if (!isMappedFeatureEnabled(documentContext, document, offset, "references")) {
         return null;
       }
@@ -391,6 +410,10 @@ function createTypeScriptFeatureService(context) {
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      if (isTypeScriptFeatureBlockedDocument(documentContext)) {
+        return null;
+      }
+
       if (!isMappedFeatureEnabled(documentContext, document, offset, "rename")) {
         return null;
       }
@@ -424,6 +447,10 @@ function createTypeScriptFeatureService(context) {
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      if (isTypeScriptFeatureBlockedDocument(documentContext)) {
+        return null;
+      }
+
       if (!isMappedFeatureEnabled(documentContext, document, offset, "rename")) {
         return null;
       }
@@ -456,9 +483,22 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
-      const { documentContext, documentText, offset } = requestContext;
+      const { document, documentContext, documentText, offset } = requestContext;
+      if (isTypeScriptFeatureBlockedDocument(documentContext)) {
+        return null;
+      }
+
+      if (!isMappedFeatureEnabled(documentContext, document, offset, "completion")) {
+        return null;
+      }
+
       if (typeof ensureDocumentPrepared === "function") {
-        ensureDocumentPrepared(requestContext.document.uri);
+        ensureDocumentPrepared(document.uri, {
+          operation: "signature",
+          preferredOffset: offset,
+          skipUnrelatedRegions: true,
+          skipStaticRefresh: true,
+        });
       }
       return toSignatureHelp(
         documentContext.service.getSignatureHelp(
@@ -485,13 +525,31 @@ function createTypeScriptFeatureService(context) {
         return null;
       }
 
+      if (isTypeScriptFeatureBlockedDocument(documentContext)) {
+        return null;
+      }
+
+      const startOffset = document.offsetAt(params.range.start);
+      const endOffset = document.offsetAt(params.range.end);
+      if (
+        helpers.isEjsFilePath(documentContext.filePath) &&
+        !context.core.hasFeatureCoverageForRange(
+          document.uri.toString(),
+          startOffset,
+          endOffset,
+          "hover"
+        )
+      ) {
+        return null;
+      }
+
       if (typeof ensureDocumentPrepared === "function") {
         ensureDocumentPrepared(document.uri);
       }
       return documentContext.service
         .getInlayHintEntries(documentContext.filePath, document.getText(), {
-          start: document.offsetAt(params.range.start),
-          end: document.offsetAt(params.range.end),
+          start: startOffset,
+          end: endOffset,
         })
         .map((entry) => ({
           position: document.positionAt(entry.position),

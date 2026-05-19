@@ -889,6 +889,11 @@ function assertClientContracts(repoRoot) {
     /function maybeStartLspForDocument\(document\) \{[\s\S]*isManagedLspDocument\(document\)[\s\S]*void ensureLspStarted\(context\);[\s\S]*\}/,
     'Expected the PocketPages client to defer LSP startup until a managed PocketPages document is opened.'
   )
+  assertMatches(
+    clientSource,
+    /function isExcludedManagedPagesScriptPath\(filePath\)[\s\S]*relativeSegments\.includes\("assets"\)[\s\S]*relativeSegments\.includes\("vendor"\)[\s\S]*\.endsWith\("\.min\.js"\)/,
+    'Expected the PocketPages client to keep public asset/vendor/minified page scripts out of managed LSP startup/status checks.'
+  )
   if (clientSource.includes('return await activateLsp(context);')) {
     throw new Error('Expected PocketPages activate() to stop eagerly starting the LSP during extension activation.')
   }
@@ -1254,6 +1259,16 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected custom feature service to skip route-exposed vendor and minified scripts consistently.'
   )
   assertMatches(
+    tsFeatureSource,
+    /function isTypeScriptFeatureBlockedDocument\(documentContext\)[\s\S]*isExcludedPocketPagesScriptPath\(documentContext\.filePath\)[\s\S]*isSchemaSupportOnlyHookScriptPath\(documentContext\.filePath\)/,
+    'Expected all TypeScript feature providers to share the excluded/schema-only document guard.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.onReferences\(\(params\) => \{[\s\S]*case:\s*"blocked-document"/,
+    'Expected references to skip TypeScript/file-reference fallback for excluded and schema-only documents.'
+  )
+  assertMatches(
     diagnosticsFeatureSource,
     /context\.core\.hasFeatureCoverageForRange\(\s*uri,\s*start,\s*end,\s*"diagnostics"/,
     'Expected diagnostics feature service to selectively publish only diagnostics-covered mapped regions.'
@@ -1272,6 +1287,11 @@ function assertLspRuntimeContracts(repoRoot) {
     diagnosticsFeatureSource,
     /helpers\.isExcludedPocketPagesScriptPath\(documentContext\.filePath\)/,
     'Expected diagnostics feature service to skip excluded PocketPages vendor and minified scripts.'
+  )
+  assertMatches(
+    serverSource,
+    /function isExcludedPocketPagesScriptPath\(filePath\)[\s\S]*!isScriptFilePath\(normalizedPath\)[\s\S]*relativeSegments\.includes\("assets"\)[\s\S]*hasPrivatePagesSegment\(normalizedPath\)[\s\S]*lowerPath\.endsWith\("\.min\.js"\)/,
+    'Expected server-side exclusion to match the project index for public asset, route-exposed vendor, and minified scripts without excluding EJS routes.'
   )
   if (/connection\.sendDiagnostics|mode:\s*"push-lanes"/.test(diagnosticsFeatureSource)) {
     throw new Error('Expected diagnostics feature service to stay pull-only without push publish lanes.')
@@ -1465,6 +1485,11 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     lifecycleFeatureSource,
+    /function shouldSyncCoreDocument\(filePath\) \{[\s\S]*!isExcludedPocketPagesScriptPath\(filePath\)[\s\S]*handleDidOpen\(event\) \{[\s\S]*shouldSyncCoreDocument\(filePath\)[\s\S]*core\.openDocument/,
+    'Expected lifecycle-features.js to avoid preparing excluded asset/vendor/minified scripts on open.'
+  )
+  assertMatches(
+    lifecycleFeatureSource,
     /handleDidManualSave\(\{ uri \}\) \{[\s\S]*refreshPullDiagnostics\("manual-save"\)/,
     'Expected manual-save diagnostics to request a pull diagnostics refresh.'
   )
@@ -1480,7 +1505,7 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     lifecycleFeatureSource,
-    /changeSource:\s*hasContentChanges[\s\S]*diagnosticsQuiet:[\s\S]*prepared:\s*hasContentChanges \? "deferred" : "unchanged"/,
+    /const preparedState = hasContentChanges[\s\S]*diagnosticsQuiet:[\s\S]*prepared:\s*preparedState/,
     'Expected lifecycle change logs to expose whether diagnostics quiet handling and prepared-state preservation are in effect.'
   )
   assertMatches(
@@ -1529,6 +1554,16 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected definition requests to prepare only the region around the requested offset.'
   )
   assertMatches(
+    tsFeatureSource,
+    /provideSignatureHelp\(params\) \{[\s\S]*isMappedFeatureEnabled\(documentContext,\s*document,\s*offset,\s*"completion"\)[\s\S]*operation:\s*"signature"[\s\S]*skipUnrelatedRegions:\s*true/,
+    'Expected signature-help requests to skip unmapped EJS text and prepare only the requested code region.'
+  )
+  assertMatches(
+    tsFeatureSource,
+    /provideInlayHints\(params\) \{[\s\S]*hasFeatureCoverageForRange\([\s\S]*"hover"[\s\S]*getInlayHintEntries/,
+    'Expected inlay-hint requests to skip EJS ranges that contain no TypeScript-owned regions.'
+  )
+  assertMatches(
     languageServiceSource,
     /getPreludeSnapshotKey\(filePath, analysisText = "", options = \{\}\)[\s\S]*options\.dirty === false[\s\S]*preludeSnapshotKey/,
     'Expected unchanged virtual regions to skip buildPrelude() through prelude snapshot keys.'
@@ -1539,6 +1574,11 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected prepared virtual-code sync to skip embedded regions unrelated to the requested offset.'
   )
   assertMatches(
+    languageServiceSource,
+    /isExcludedRouteExposedPagesScriptFile\(normalizedFilePath\)[\s\S]*return "noop"/,
+    'Expected project cache invalidation to ignore route-exposed vendor and minified scripts.'
+  )
+  assertMatches(
     serverSource,
     /connection\.onReferences\([\s\S]*core\.isFeatureEnabledAtOffset\(params\.textDocument\.uri,\s*offset,\s*"references"\)[\s\S]*ensureDocumentPrepared\(document\.uri,\s*\{[\s\S]*operation:\s*"references"[\s\S]*requirePreparedVirtualState:\s*true/,
     'Expected references routing to keep TypeScript references on the prepared-only mapped feature path.'
@@ -1547,6 +1587,11 @@ function assertLspRuntimeContracts(repoRoot) {
     tsPluginSource,
     /core\.reloadCachesForAppRoot\(appRoot\)/,
     'Expected PocketPages TS plugin to invalidate app-scoped caches when sibling project files change.'
+  )
+  assertMatches(
+    tsPluginSource,
+    /function isRouteExposedVendorOrMinifiedScript\(fileName, appRoot\)[\s\S]*relativeSegments\.includes\("_private"\)[\s\S]*relativeSegments\.includes\("vendor"\)[\s\S]*\.endsWith\("\.min\.js"\)/,
+    'Expected PocketPages TS plugin to ignore route-exposed vendor and minified scripts while keeping _private vendor modules.'
   )
   assertMatches(
     tsPluginSource,
@@ -1562,6 +1607,11 @@ function assertLspRuntimeContracts(repoRoot) {
     maintenanceFeatureSource,
     /provideRefreshDiagnostics\(\{ uri \}\) \{[\s\S]*requestId\("diagcmd"\)[\s\S]*case:\s*"manual-command"/,
     'Expected refreshDiagnostics maintenance requests to log command-triggered refreshes.'
+  )
+  assertMatches(
+    maintenanceFeatureSource,
+    /provideProbeCurrentFile\(\{ uri \}\) \{[\s\S]*isExcludedPocketPagesScriptPath\(filePath\)[\s\S]*diagnostics:\s*0[\s\S]*case:\s*getProbeLogCase\(result,\s*isExcluded\)/,
+    'Expected probeCurrentFile to avoid running diagnostics for excluded asset/vendor/minified scripts.'
   )
   assertMatches(
     maintenanceFeatureSource,
@@ -1832,8 +1882,18 @@ export = pocketpagesUtils
 }
 `
   )
+  writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'vendor', 'index.ejs'), `<h1>Vendor Route</h1>\n`)
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'legacy.min.js'),
+    `module.exports = {
+  boot() {
+    return true
+  },
+}
+`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'bundle.MIN.JS'),
     `module.exports = {
   boot() {
     return true
@@ -2288,7 +2348,9 @@ module.exports = {
     postRoleFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'roles', 'post.js'),
     publicBoardRoleRouteFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'roles', 'board.js'),
     routeVendorScriptFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'vendor', 'legacy.js'),
+    routeVendorTemplateFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'vendor', 'index.ejs'),
     routeMinifiedScriptFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'legacy.min.js'),
+    routeUppercaseMinifiedScriptFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'bundle.MIN.JS'),
     flashAlertFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
     typedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'typed-panel.ejs'),
     sharedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'shared-panel.ejs'),
@@ -3323,6 +3385,84 @@ const boardService = resolve('board-service')
     )
     if (preparedMappedOffset !== preparedBoardShowText.indexOf('params')) {
       throw new Error(`Expected linked mapping-backed virtual offset mapping for prepared server block. Got: ${JSON.stringify({ preparedMappedOffset, expected: preparedBoardShowText.indexOf('params') })}`)
+    }
+    const preparedJSDocReuseCore = new PocketPagesLanguageCore()
+    const preparedJSDocReuseText = `<script server>
+/** @type {types.FixturePageData} */
+let pageData = { boardName: 'Boards', boardCount: 1, postSlugs: ['welcome'] }
+pageData.
+</script>
+`
+    const shiftedPreparedJSDocReuseText = `<script server>
+const insertedBlock = true
+</script>
+${preparedJSDocReuseText}`
+    preparedJSDocReuseCore.openDocument({
+      uri: boardShowUri,
+      languageId: 'ejs',
+      version: 1,
+      text: preparedJSDocReuseText,
+    })
+    preparedJSDocReuseCore.updateDocument({
+      uri: boardShowUri,
+      languageId: 'ejs',
+      version: 2,
+      text: shiftedPreparedJSDocReuseText,
+    })
+    const preparedJSDocReuseContext = preparedJSDocReuseCore.getDocumentContextByUri(boardShowUri)
+    const preparedJSDocReuseService = preparedJSDocReuseContext && preparedJSDocReuseContext.service
+    const preparedJSDocReuseCompletion = preparedJSDocReuseService && preparedJSDocReuseService.getCompletionData(
+      fixture.boardShowFilePath,
+      shiftedPreparedJSDocReuseText,
+      shiftedPreparedJSDocReuseText.indexOf('pageData.') + 'pageData.'.length
+    )
+    const preparedJSDocReuseNames = preparedJSDocReuseCompletion
+      ? preparedJSDocReuseCompletion.entries.map((entry) => entry.name)
+      : []
+    if (
+      !preparedJSDocReuseCompletion ||
+      !preparedJSDocReuseCompletion.profile ||
+      preparedJSDocReuseCompletion.profile.upsertKind !== 'server-block-prepared' ||
+      !preparedJSDocReuseNames.includes('boardName') ||
+      !preparedJSDocReuseNames.includes('postSlugs')
+    ) {
+      throw new Error(`Expected clean prepared server-block reuse to keep JSDoc-shifted mappings. Got: ${JSON.stringify({
+        profile: preparedJSDocReuseCompletion && preparedJSDocReuseCompletion.profile,
+        names: preparedJSDocReuseNames.slice(0, 20),
+      })}`)
+    }
+    const preparedJSDocReuseQuickInfo = preparedJSDocReuseService.getQuickInfo(
+      fixture.boardShowFilePath,
+      shiftedPreparedJSDocReuseText,
+      shiftedPreparedJSDocReuseText.indexOf('boardName') + 2
+    )
+    if (
+      !preparedJSDocReuseQuickInfo ||
+      !String(preparedJSDocReuseQuickInfo.displayText || '').includes('boardName') ||
+      !String(preparedJSDocReuseQuickInfo.displayText || '').includes('string')
+    ) {
+      throw new Error(`Expected clean prepared server-block reuse to keep JSDoc-shifted hover mappings. Got: ${JSON.stringify(preparedJSDocReuseQuickInfo)}`)
+    }
+    const preparedJSDocReuseRenameEdits = preparedJSDocReuseService.getTypeScriptRenameEdits(
+      fixture.boardShowFilePath,
+      shiftedPreparedJSDocReuseText,
+      shiftedPreparedJSDocReuseText.indexOf('pageData =') + 2,
+      'renamedPageData'
+    )
+    if (
+      !preparedJSDocReuseRenameEdits ||
+      !preparedJSDocReuseRenameEdits.canRename ||
+      !Array.isArray(preparedJSDocReuseRenameEdits.edits) ||
+      preparedJSDocReuseRenameEdits.edits.length < 2
+    ) {
+      throw new Error(`Expected clean prepared server-block reuse to keep JSDoc-shifted rename mappings. Got: ${JSON.stringify(preparedJSDocReuseRenameEdits)}`)
+    }
+    const renamedPreparedJSDocReuseText = applyEditsToText(shiftedPreparedJSDocReuseText, preparedJSDocReuseRenameEdits.edits)
+    if (
+      !renamedPreparedJSDocReuseText.includes('let renamedPageData =') ||
+      !renamedPreparedJSDocReuseText.includes('renamedPageData.')
+    ) {
+      throw new Error(`Expected JSDoc-shifted prepared reuse rename edits to land on source identifiers. Got: ${renamedPreparedJSDocReuseText}`)
     }
     const preparedLinkedConsumerText = `<script server>
 const localValue = { title: 'Boards' }
@@ -4884,6 +5024,197 @@ const flashClasses = 'notice'
     })
     if (excludedCustomLinks !== null) {
       throw new Error(`Expected custom feature document links to skip excluded route-exposed vendor scripts. Got: ${JSON.stringify(excludedCustomLinks)}`)
+    }
+    let excludedTypeScriptServiceCalls = 0
+    let excludedTypeScriptPrepareCalls = 0
+    excludedCustomContext.context.helpers.ensureDocumentPrepared = () => {
+      excludedTypeScriptPrepareCalls += 1
+      throw new Error('Excluded TypeScript feature should not prepare virtual code.')
+    }
+    excludedCustomContext.context.helpers.isSchemaSupportOnlyHookScriptPath = (filePath) =>
+      normalizeFilePath(filePath) === normalizeFilePath(fixture.jobScriptFilePath)
+    const excludedDocumentContext = excludedCustomContext.context.core.getDocumentContextByUri(excludedCustomUri)
+    for (const methodName of [
+      'getCompletionData',
+      'getQuickInfo',
+      'getTypeScriptDefinitionTarget',
+      'getTypeScriptReferenceTargets',
+      'getTypeScriptRenameInfo',
+      'getTypeScriptRenameEdits',
+      'getSignatureHelp',
+      'getInlayHintEntries',
+    ]) {
+      excludedDocumentContext.service[methodName] = () => {
+        excludedTypeScriptServiceCalls += 1
+        throw new Error(`Excluded TypeScript feature should not call ${methodName}.`)
+      }
+    }
+    const excludedTypeScriptFeatures = createTypeScriptFeatureService(excludedCustomContext.context)
+    const excludedTypeScriptParams = {
+      textDocument: { uri: excludedCustomUri },
+      position: excludedCustomPosition,
+      context: {
+        includeDeclaration: true,
+        triggerKind: 1,
+      },
+    }
+    const excludedTypeScriptResults = [
+      excludedTypeScriptFeatures.provideCompletionItems(excludedTypeScriptParams, { isCancellationRequested: false }),
+      excludedTypeScriptFeatures.provideHover(excludedTypeScriptParams),
+      excludedTypeScriptFeatures.provideDefinition(excludedTypeScriptParams),
+      excludedTypeScriptFeatures.provideReferences(excludedTypeScriptParams),
+      excludedTypeScriptFeatures.providePrepareRename(excludedTypeScriptParams),
+      excludedTypeScriptFeatures.provideRename({ ...excludedTypeScriptParams, newName: 'renamedVendorValue' }),
+      excludedTypeScriptFeatures.provideSignatureHelp(excludedTypeScriptParams),
+      excludedTypeScriptFeatures.provideInlayHints({
+        textDocument: { uri: excludedCustomUri },
+        range: {
+          start: excludedCustomDocument.positionAt(0),
+          end: excludedCustomDocument.positionAt(excludedCustomText.length),
+        },
+      }),
+    ]
+    if (excludedTypeScriptResults.some((entry) => entry !== null)) {
+      throw new Error(`Expected TypeScript features to skip excluded route-exposed vendor scripts. Got: ${JSON.stringify(excludedTypeScriptResults)}`)
+    }
+    if (excludedTypeScriptServiceCalls !== 0 || excludedTypeScriptPrepareCalls !== 0) {
+      throw new Error(`Expected excluded TypeScript features to return before prepare/service calls. Got service=${excludedTypeScriptServiceCalls} prepare=${excludedTypeScriptPrepareCalls}`)
+    }
+    const excludedCodeActionFeatures = createDiagnosticsFeatureService(excludedCustomContext.context)
+    const excludedCodeActions = excludedCodeActionFeatures.provideCodeActions({
+      textDocument: { uri: excludedCustomUri },
+      range: {
+        start: excludedCustomDocument.positionAt(0),
+        end: excludedCustomDocument.positionAt(0),
+      },
+      context: { diagnostics: [] },
+    })
+    if (excludedCodeActions !== null) {
+      throw new Error(`Expected code actions to skip excluded route-exposed vendor scripts. Got: ${JSON.stringify(excludedCodeActions)}`)
+    }
+
+    const schemaOnlyText = `const boards = $app.findRecordsByFilter('boards')\nboards.\n`
+    const schemaOnlyDocument = createTestDocument(fixture.jobScriptFilePath, 'javascript', 1, schemaOnlyText)
+    const schemaOnlyUri = schemaOnlyDocument.uri
+    lspSmokeCore.openDocument({
+      uri: schemaOnlyUri,
+      languageId: 'javascript',
+      version: 1,
+      text: schemaOnlyText,
+    })
+    const schemaOnlyContext = createLspServiceSmokeContext(
+      lspSmokeCore,
+      new Map([[schemaOnlyUri, schemaOnlyDocument]])
+    )
+    schemaOnlyContext.context.helpers.isExcludedPocketPagesScriptPath = () => false
+    schemaOnlyContext.context.helpers.isSchemaSupportOnlyHookScriptPath = (filePath) =>
+      normalizeFilePath(filePath) === normalizeFilePath(fixture.jobScriptFilePath)
+    const schemaOnlyFeatureDocumentContext = schemaOnlyContext.context.core.getDocumentContextByUri(schemaOnlyUri)
+    if (!schemaOnlyFeatureDocumentContext || !schemaOnlyFeatureDocumentContext.service) {
+      throw new Error('Expected schema-only hook script to resolve a document context for guarded LSP feature tests.')
+    }
+    let schemaOnlyTypeScriptServiceCalls = 0
+    let schemaOnlyTypeScriptPrepareCalls = 0
+    schemaOnlyContext.context.helpers.ensureDocumentPrepared = () => {
+      schemaOnlyTypeScriptPrepareCalls += 1
+      throw new Error('Schema-only TypeScript feature should not prepare virtual code.')
+    }
+    for (const methodName of [
+      'getCompletionData',
+      'getQuickInfo',
+      'getTypeScriptDefinitionTarget',
+      'getTypeScriptReferenceTargets',
+      'getTypeScriptRenameInfo',
+      'getTypeScriptRenameEdits',
+      'getSignatureHelp',
+      'getInlayHintEntries',
+    ]) {
+      schemaOnlyFeatureDocumentContext.service[methodName] = () => {
+        schemaOnlyTypeScriptServiceCalls += 1
+        throw new Error(`Schema-only TypeScript feature should not call ${methodName}.`)
+      }
+    }
+    const schemaOnlyTypeScriptFeatures = createTypeScriptFeatureService(schemaOnlyContext.context)
+    const schemaOnlyParams = {
+      textDocument: { uri: schemaOnlyUri },
+      position: schemaOnlyDocument.positionAt(schemaOnlyText.indexOf('boards.') + 'boards.'.length),
+      context: {
+        includeDeclaration: true,
+        triggerKind: 1,
+      },
+    }
+    const schemaOnlyTypeScriptResults = [
+      schemaOnlyTypeScriptFeatures.provideCompletionItems(schemaOnlyParams, { isCancellationRequested: false }),
+      schemaOnlyTypeScriptFeatures.provideHover(schemaOnlyParams),
+      schemaOnlyTypeScriptFeatures.provideDefinition(schemaOnlyParams),
+      schemaOnlyTypeScriptFeatures.provideReferences(schemaOnlyParams),
+      schemaOnlyTypeScriptFeatures.providePrepareRename(schemaOnlyParams),
+      schemaOnlyTypeScriptFeatures.provideRename({ ...schemaOnlyParams, newName: 'renamedBoards' }),
+      schemaOnlyTypeScriptFeatures.provideSignatureHelp(schemaOnlyParams),
+      schemaOnlyTypeScriptFeatures.provideInlayHints({
+        textDocument: { uri: schemaOnlyUri },
+        range: {
+          start: schemaOnlyDocument.positionAt(0),
+          end: schemaOnlyDocument.positionAt(schemaOnlyText.length),
+        },
+      }),
+    ]
+    if (schemaOnlyTypeScriptResults.some((entry) => entry !== null)) {
+      throw new Error(`Expected TypeScript features to skip schema-only hook scripts. Got: ${JSON.stringify(schemaOnlyTypeScriptResults)}`)
+    }
+    if (schemaOnlyTypeScriptServiceCalls !== 0 || schemaOnlyTypeScriptPrepareCalls !== 0) {
+      throw new Error(`Expected schema-only TypeScript features to return before prepare/service calls. Got service=${schemaOnlyTypeScriptServiceCalls} prepare=${schemaOnlyTypeScriptPrepareCalls}`)
+    }
+    const schemaOnlyCodeActionFeatures = createDiagnosticsFeatureService(schemaOnlyContext.context)
+    const schemaOnlyCodeActions = schemaOnlyCodeActionFeatures.provideCodeActions({
+      textDocument: { uri: schemaOnlyUri },
+      range: {
+        start: schemaOnlyDocument.positionAt(0),
+        end: schemaOnlyDocument.positionAt(0),
+      },
+      context: { diagnostics: [] },
+    })
+    if (schemaOnlyCodeActions !== null) {
+      throw new Error(`Expected code actions to skip schema-only hook scripts. Got: ${JSON.stringify(schemaOnlyCodeActions)}`)
+    }
+
+    const staticSignatureCore = new PocketPagesLanguageCore()
+    const staticSignatureText = `<button data-label="Save (draft)"></button>\n`
+    const staticSignatureDocument = createTestDocument(fixture.siteIndexFilePath, 'ejs', 2, staticSignatureText)
+    const staticSignatureUri = staticSignatureDocument.uri
+    staticSignatureCore.openDocument({
+      uri: staticSignatureUri,
+      languageId: 'ejs',
+      version: staticSignatureDocument.version,
+      text: staticSignatureText,
+    })
+    const staticSignatureContext = createLspServiceSmokeContext(
+      staticSignatureCore,
+      new Map([[staticSignatureUri, staticSignatureDocument]])
+    )
+    let staticSignaturePrepareCalls = 0
+    staticSignatureContext.context.helpers.ensureDocumentPrepared = () => {
+      staticSignaturePrepareCalls += 1
+      throw new Error('Static EJS signature help should not prepare virtual code.')
+    }
+    const staticSignatureFeatures = createTypeScriptFeatureService(staticSignatureContext.context)
+    const staticSignatureResult = staticSignatureFeatures.provideSignatureHelp({
+      textDocument: { uri: staticSignatureUri },
+      position: staticSignatureDocument.positionAt(staticSignatureText.indexOf('(draft)') + 1),
+      context: { triggerCharacter: '(', isRetrigger: false },
+    })
+    if (staticSignatureResult !== null || staticSignaturePrepareCalls !== 0) {
+      throw new Error(`Expected signature help to skip unmapped static EJS text before prepare. Got: ${JSON.stringify({ staticSignatureResult, staticSignaturePrepareCalls })}`)
+    }
+    const staticInlayResult = staticSignatureFeatures.provideInlayHints({
+      textDocument: { uri: staticSignatureUri },
+      range: {
+        start: staticSignatureDocument.positionAt(0),
+        end: staticSignatureDocument.positionAt(staticSignatureText.length),
+      },
+    })
+    if (staticInlayResult !== null || staticSignaturePrepareCalls !== 0) {
+      throw new Error(`Expected inlay hints to skip unmapped static EJS ranges before prepare. Got: ${JSON.stringify({ staticInlayResult, staticSignaturePrepareCalls })}`)
     }
 
     const diagnosticsSmokeCore = new PocketPagesLanguageCore()
@@ -7042,6 +7373,24 @@ module.exports = {
         })}`
       )
     }
+    const routeVendorWatchResults = assetContentWatchManager.handleWatchedFileChanges([
+      { filePath: fixture.routeVendorScriptFilePath, type: 'change' },
+      { filePath: fixture.routeMinifiedScriptFilePath, type: 'delete' },
+      { filePath: fixture.routeUppercaseMinifiedScriptFilePath, type: 'change' },
+    ])
+    if (routeVendorWatchResults.length !== 0 || assetContentWatchService.projectVersion !== assetContentProjectVersionBefore) {
+      throw new Error(
+        `Expected route-exposed vendor/minified scripts to avoid app cache resync. Got: ${JSON.stringify({
+          results: routeVendorWatchResults.map((entry) => ({
+            appRoot: entry.appRoot,
+            changes: entry.changes,
+            invalidationKinds: entry.invalidationKinds,
+          })),
+          before: assetContentProjectVersionBefore,
+          after: assetContentWatchService.projectVersion,
+        })}`
+      )
+    }
 
     const fineInvalidationManager = new PocketPagesLanguageServiceManager()
     const fineInvalidationService = fineInvalidationManager.getServiceForFile(fixture.boardsFilePath)
@@ -7513,8 +7862,11 @@ module.exports = {
     })
     lifecycleFeatureService.handleDidOpen({ document: lifecycleBoardsDocument })
     lifecycleFeatureService.handleDidOpen({ document: lifecycleVendorDocument })
-    if (lifecycleCoreCalls.open.length !== 2) {
-      throw new Error(`Expected lifecycle open to forward both documents to core. Got: ${JSON.stringify(lifecycleCoreCalls.open)}`)
+    if (
+      lifecycleCoreCalls.open.length !== 1 ||
+      lifecycleCoreCalls.open[0].uri !== lifecycleBoardsUri
+    ) {
+      throw new Error(`Expected lifecycle open to avoid preparing excluded scripts. Got: ${JSON.stringify(lifecycleCoreCalls.open)}`)
     }
     if (
       !lifecycleWarmupUris.includes(lifecycleBoardsUri) ||
@@ -7545,13 +7897,14 @@ module.exports = {
       contentChanges: [],
     })
     if (
-      lifecycleCoreCalls.update.length !== 2 ||
+      lifecycleCoreCalls.update.length !== 1 ||
+      lifecycleCoreCalls.update[0].uri !== lifecycleBoardsUri ||
       !lifecycleClearedCompletionUris.includes(lifecycleBoardsUri) ||
       !lifecycleClearedCompletionUris.includes(lifecycleVendorDocument.uri) ||
       lifecycleClearedCompletionUris.filter((uri) => uri === lifecycleBoardsUri).length !== 1
     ) {
       throw new Error(
-        `Expected lifecycle change handling to update core state for real content changes while preserving prepared state on empty sync changes. Got updates=${JSON.stringify(lifecycleCoreCalls.update)} cleared=${JSON.stringify(lifecycleClearedCompletionUris)}`
+        `Expected lifecycle change handling to update only managed core documents while preserving prepared state on empty sync changes. Got updates=${JSON.stringify(lifecycleCoreCalls.update)} cleared=${JSON.stringify(lifecycleClearedCompletionUris)}`
       )
     }
     if (
@@ -7644,6 +7997,11 @@ module.exports = {
           maintenanceRenameCalls.push([oldFilePath, newFilePath])
           return [{ filePath: oldFilePath, textChanges: [{ start: 0, end: 1, newText: newFilePath }] }]
         },
+        getDocumentContextByFilePath(filePath) {
+          return normalizeFilePath(filePath).includes('/pb_hooks/pages/')
+            ? { filePath }
+            : null
+        },
       },
       helpers: {
         clearCachedCompletionItemsForUri() {},
@@ -7652,6 +8010,9 @@ module.exports = {
         },
         getRelativePathLabel(filePath) {
           return normalizeFilePath(filePath)
+        },
+        isExcludedPocketPagesScriptPath(filePath) {
+          return normalizeFilePath(filePath) === normalizeFilePath(fixture.vendorAssetFilePath)
         },
         logServer() {},
         refreshPullDiagnostics(reason) {
@@ -7668,6 +8029,18 @@ module.exports = {
       normalizeFilePath(maintenanceProbeCalls[0]) !== normalizeFilePath(fixture.boardsFilePath)
     ) {
       throw new Error(`Expected maintenance probe to forward the normalized file path and return core results. Got: ${JSON.stringify({ maintenanceProbeResult, maintenanceProbeCalls })}`)
+    }
+    const maintenanceProbeCallCountBeforeExcluded = maintenanceProbeCalls.length
+    const maintenanceExcludedProbeResult = maintenanceFeatureServiceFull.provideProbeCurrentFile({
+      uri: URI.file(fixture.vendorAssetFilePath).toString(),
+    })
+    if (
+      !maintenanceExcludedProbeResult ||
+      maintenanceExcludedProbeResult.excluded !== true ||
+      maintenanceExcludedProbeResult.diagnostics !== 0 ||
+      maintenanceProbeCalls.length !== maintenanceProbeCallCountBeforeExcluded
+    ) {
+      throw new Error(`Expected maintenance probe to skip diagnostics for excluded scripts. Got: ${JSON.stringify({ maintenanceExcludedProbeResult, maintenanceProbeCalls })}`)
     }
     const maintenanceRefreshResult = maintenanceFeatureServiceFull.provideRefreshDiagnostics({ uri: lifecycleBoardsUri })
     if (!maintenanceRefreshResult.ok || !maintenanceRefreshReasons.includes('command')) {
@@ -7942,6 +8315,12 @@ module.exports = {
     if (indexedCodeFilePaths.includes(normalizeFilePath(fixture.routeMinifiedScriptFilePath))) {
       throw new Error(`Expected pages code index to exclude route-exposed minified scripts. Got: ${indexedCodeFilePaths.join(', ')}`)
     }
+    if (indexedCodeFilePaths.includes(normalizeFilePath(fixture.routeUppercaseMinifiedScriptFilePath))) {
+      throw new Error(`Expected pages code index to exclude route-exposed uppercase minified scripts. Got: ${indexedCodeFilePaths.join(', ')}`)
+    }
+    if (!indexedCodeFilePaths.includes(normalizeFilePath(fixture.routeVendorTemplateFilePath))) {
+      throw new Error(`Expected pages code index to keep EJS routes under route-exposed vendor directories. Got: ${indexedCodeFilePaths.join(', ')}`)
+    }
     if (!indexedCodeFilePaths.includes(normalizeFilePath(fixture.htmlToTextBundleFilePath))) {
       throw new Error(`Expected pages code index to keep _private vendor modules. Got: ${indexedCodeFilePaths.join(', ')}`)
     }
@@ -7952,6 +8331,9 @@ module.exports = {
     }
     if (diagCodeFilePaths.includes(normalizeFilePath(fixture.routeVendorScriptFilePath))) {
       throw new Error(`Expected CLI diag file scan to exclude route-exposed vendor scripts. Got: ${diagCodeFilePaths.join(', ')}`)
+    }
+    if (diagCodeFilePaths.includes(normalizeFilePath(fixture.routeUppercaseMinifiedScriptFilePath))) {
+      throw new Error(`Expected CLI diag file scan to exclude route-exposed uppercase minified scripts. Got: ${diagCodeFilePaths.join(', ')}`)
     }
     if (diagCodeFilePaths.includes(normalizeFilePath(fixture.htmlToTextBundleFilePath))) {
       throw new Error(`Expected CLI diag file scan to exclude _private vendor modules. Got: ${diagCodeFilePaths.join(', ')}`)
@@ -11102,6 +11484,18 @@ const currentUser = { email: 'demo@example.com' }
     if (routeMinifiedReferenceQuery) {
       throw new Error(`Expected route-exposed minified scripts to stay out of route references. Got: ${JSON.stringify(routeMinifiedReferenceQuery)}`)
     }
+    const routeUppercaseMinifiedReferenceQuery = service.getFileReferenceQuery(fixture.routeUppercaseMinifiedScriptFilePath)
+    if (routeUppercaseMinifiedReferenceQuery) {
+      throw new Error(`Expected route-exposed uppercase minified scripts to stay out of route references. Got: ${JSON.stringify(routeUppercaseMinifiedReferenceQuery)}`)
+    }
+    const routeVendorTemplateReferenceQuery = service.getFileReferenceQuery(fixture.routeVendorTemplateFilePath)
+    if (
+      !routeVendorTemplateReferenceQuery ||
+      routeVendorTemplateReferenceQuery.kind !== 'route-file' ||
+      routeVendorTemplateReferenceQuery.routePath !== '/vendor'
+    ) {
+      throw new Error(`Expected EJS routes under route-exposed vendor directories to stay route-referenceable. Got: ${JSON.stringify(routeVendorTemplateReferenceQuery)}`)
+    }
     const assetReferenceCallerText = `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>
 <link rel="stylesheet" href="<%= asset('card.css') %>">
 `
@@ -13731,6 +14125,18 @@ const authState = resolve('auth-service')
       if (pluginReloadAppRoots.length !== pluginReloadCountBeforeAssetScriptChange) {
         throw new Error(
           `Expected TS plugin runtime to ignore public page asset scripts, including route-local assets. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+        )
+      }
+
+      const pluginReloadCountBeforeRouteVendorChange = pluginReloadAppRoots.length
+      writeFile(fixture.routeVendorScriptFilePath, `module.exports = { boot() { return 'ignored' } }\n`)
+      writeFile(fixture.routeMinifiedScriptFilePath, `module.exports={boot(){return'ignored'}}\n`)
+      writeFile(fixture.routeUppercaseMinifiedScriptFilePath, `module.exports={boot(){return'ignored-uppercase'}}\n`)
+      pluginProjectVersion = 'route-vendor-change'
+      pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
+      if (pluginReloadAppRoots.length !== pluginReloadCountBeforeRouteVendorChange) {
+        throw new Error(
+          `Expected TS plugin runtime to ignore route-exposed vendor and minified scripts. Got: ${JSON.stringify(pluginReloadAppRoots)}`
         )
       }
 

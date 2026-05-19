@@ -10,6 +10,7 @@ function createMaintenanceFeatureService(context) {
     getDocumentContextByUri,
     getPerformanceBucket,
     getRelativePathLabel,
+    isExcludedPocketPagesScriptPath,
     logServer,
     refreshPullDiagnostics,
     uriToFilePath,
@@ -41,18 +42,40 @@ function createMaintenanceFeatureService(context) {
     return files.size;
   }
 
+  function getProbeLogCase(result, isExcluded) {
+    if (isExcluded) {
+      return "excluded";
+    }
+
+    return result && result.hasAppRoot ? "app-root" : "no-app-root";
+  }
+
   return {
     provideProbeCurrentFile({ uri }) {
       const startedAt = process.hrtime.bigint();
       const req = requestId("probe");
       const filePath = uriToFilePath(uri);
-      const result = core.probeFile(filePath);
+      const isExcluded =
+        typeof isExcludedPocketPagesScriptPath === "function" &&
+        isExcludedPocketPagesScriptPath(filePath);
+      const result = isExcluded
+        ? {
+            filePath,
+            hasAppRoot:
+              typeof core.getDocumentContextByFilePath === "function"
+                ? !!core.getDocumentContextByFilePath(filePath)
+                : true,
+            diagnostics: 0,
+            excluded: true,
+          }
+        : core.probeFile(filePath);
       const totalMs = elapsedMilliseconds(startedAt);
       logServer("info", "probe", "file", {
         req,
-        case: result.hasAppRoot ? "app-root" : "no-app-root",
+        case: getProbeLogCase(result, isExcluded),
         file: getRelativePathLabel(filePath),
         hasAppRoot: result.hasAppRoot,
+        excluded: isExcluded,
         diagnostics: result.diagnostics,
         totalMs: totalMs.toFixed(1),
         perf: performanceBucket("structure", totalMs),

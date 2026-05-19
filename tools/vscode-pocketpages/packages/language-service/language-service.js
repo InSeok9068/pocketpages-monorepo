@@ -3244,6 +3244,13 @@ class ProjectLanguageService {
 
     if (
       isPagesPath &&
+      this.projectIndex.isExcludedRouteExposedPagesScriptFile(normalizedFilePath)
+    ) {
+      return "noop";
+    }
+
+    if (
+      isPagesPath &&
       changeType === "change" &&
       !this.projectIndex.isPagesCodeFile(normalizedFilePath) &&
       this.projectIndex.isAssetCandidateFile(normalizedFilePath)
@@ -4988,10 +4995,16 @@ class ProjectLanguageService {
       previous &&
       previous.preludeSnapshotKey === preludeSnapshotKey
     ) {
-      previous.block = block;
-      previous.mappings = Array.isArray(options.mappings)
+      const sourceMappings = Array.isArray(options.mappings)
         ? options.mappings
-        : previous.mappings;
+        : createDefaultVirtualMappings(block.contentStart, block.content.length);
+      const transformedBlock = transformJSDocTypedDeclarationsForTypeScript(
+        block.content,
+        block.contentStart,
+        sourceMappings
+      );
+      previous.block = block;
+      previous.mappings = transformedBlock.mappings;
       previous.associatedScriptMappings =
         options.associatedScriptMappings instanceof Map
           ? options.associatedScriptMappings

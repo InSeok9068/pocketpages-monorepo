@@ -344,21 +344,26 @@ function hasPrivatePagesSegment(filePath) {
 
 function isExcludedPocketPagesScriptPath(filePath) {
   const normalizedPath = normalizeDocumentPath(filePath);
-  if (!normalizedPath.includes("/pb_hooks/pages/")) {
+  if (!normalizedPath.includes("/pb_hooks/pages/") || !isScriptFilePath(normalizedPath)) {
     return false;
   }
 
   const pagesRelativePath = normalizedPath.split("/pb_hooks/pages/")[1] || "";
   const relativeSegments = pagesRelativePath.split("/").filter(Boolean);
+  if (relativeSegments.includes("assets")) {
+    return true;
+  }
+
   if (hasPrivatePagesSegment(normalizedPath)) {
     return false;
   }
 
+  const lowerPath = normalizedPath.toLowerCase();
   return (
     relativeSegments.includes("vendor") ||
-    normalizedPath.endsWith(".min.js") ||
-    normalizedPath.endsWith(".min.cjs") ||
-    normalizedPath.endsWith(".min.mjs")
+    lowerPath.endsWith(".min.js") ||
+    lowerPath.endsWith(".min.cjs") ||
+    lowerPath.endsWith(".min.mjs")
   );
 }
 
@@ -1550,6 +1555,23 @@ connection.onReferences((params) => {
 
   const offset = document.offsetAt(params.position);
   const includeDeclaration = !!(params.context && params.context.includeDeclaration);
+  if (
+    isExcludedPocketPagesScriptPath(context.filePath) ||
+    isSchemaSupportOnlyHookScriptPath(context.filePath)
+  ) {
+    logRequestResult("references", "result", startedAt, {
+      req: requestId,
+      case: "blocked-document",
+      file: getRelativePathLabel(context.filePath),
+      version: document.version,
+      offset,
+      includeDeclaration,
+      result: "none",
+      count: 0,
+    });
+    return null;
+  }
+
   const customReferences = customFeatureService.provideReferences(params);
   if (customReferences) {
     const result = customReferences.map((reference) => {

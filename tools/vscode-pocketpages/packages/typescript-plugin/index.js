@@ -150,6 +150,7 @@ function init(modules) {
         return (
           isUnderPagesRoot(normalizedFileName, appRoot) &&
           !isPagesAssetFile(normalizedFileName, appRoot) &&
+          !isRouteExposedVendorOrMinifiedScript(normalizedFileName, appRoot) &&
           isTrackedPagesFile(normalizedFileName)
         );
       }
@@ -174,6 +175,30 @@ function init(modules) {
           .slice(pagesRoot.length + 1)
           .split("/")
           .includes("assets");
+      }
+
+      function isRouteExposedVendorOrMinifiedScript(fileName, appRoot) {
+        const normalizedFileName = normalizeTrackedPath(fileName);
+        const lowerFileName = normalizedFileName.toLowerCase();
+        const pagesRoot = getPagesRoot(appRoot);
+        if (!normalizedFileName.startsWith(`${pagesRoot}/`)) {
+          return false;
+        }
+
+        const relativeSegments = normalizedFileName
+          .slice(pagesRoot.length + 1)
+          .split("/")
+          .filter(Boolean);
+        if (relativeSegments.includes("_private")) {
+          return false;
+        }
+
+        return (
+          relativeSegments.includes("vendor") ||
+          lowerFileName.endsWith(".min.js") ||
+          lowerFileName.endsWith(".min.cjs") ||
+          lowerFileName.endsWith(".min.mjs")
+        );
       }
 
       function isSameOrChildPath(parentPath, fileName) {
@@ -201,6 +226,7 @@ function init(modules) {
         if (
           !isUnderPagesRoot(normalizedFileName, appRoot) ||
           isPagesAssetFile(normalizedFileName, appRoot) ||
+          isRouteExposedVendorOrMinifiedScript(normalizedFileName, appRoot) ||
           !isTrackedPagesFile(normalizedFileName)
         ) {
           return false;
@@ -293,7 +319,11 @@ function init(modules) {
         const normalizedFileName = normalizeTrackedPath(fileName);
         const normalizedAppRoot = normalizeTrackedPath(appRoot);
         if (isUnderPagesRoot(normalizedFileName, normalizedAppRoot)) {
-          return !isPagesAssetFile(normalizedFileName, normalizedAppRoot) && isTrackedPagesFile(normalizedFileName);
+          return (
+            !isPagesAssetFile(normalizedFileName, normalizedAppRoot) &&
+            !isRouteExposedVendorOrMinifiedScript(normalizedFileName, normalizedAppRoot) &&
+            isTrackedPagesFile(normalizedFileName)
+          );
         }
 
         return isAlwaysTrackedAppFile(normalizedFileName, normalizedAppRoot);

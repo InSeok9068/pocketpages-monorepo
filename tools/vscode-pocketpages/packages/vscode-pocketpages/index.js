@@ -314,6 +314,48 @@ function normalizeDocumentPath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
 }
 
+function getPagesRelativeSegments(filePath) {
+  const normalizedPath = normalizeDocumentPath(filePath);
+  const pagesMarker = "/pb_hooks/pages/";
+  const markerIndex = normalizedPath.indexOf(pagesMarker);
+  if (markerIndex === -1) {
+    return null;
+  }
+
+  return normalizedPath
+    .slice(markerIndex + pagesMarker.length)
+    .split("/")
+    .filter(Boolean);
+}
+
+function isExcludedManagedPagesScriptPath(filePath) {
+  if (!/\.(js|cjs|mjs)$/i.test(String(filePath || ""))) {
+    return false;
+  }
+
+  const normalizedPath = normalizeDocumentPath(filePath);
+  const relativeSegments = getPagesRelativeSegments(normalizedPath);
+  if (!relativeSegments) {
+    return false;
+  }
+
+  if (relativeSegments.includes("assets")) {
+    return true;
+  }
+
+  if (hasPrivatePagesSegment(normalizedPath)) {
+    return false;
+  }
+
+  const lowerPath = normalizedPath.toLowerCase();
+  return (
+    relativeSegments.includes("vendor") ||
+    lowerPath.endsWith(".min.js") ||
+    lowerPath.endsWith(".min.cjs") ||
+    lowerPath.endsWith(".min.mjs")
+  );
+}
+
 function isManagedRenameTargetPath(filePath) {
   const normalizedPath = normalizeDocumentPath(filePath);
   if (!normalizedPath.includes("/pb_hooks/pages/")) {
@@ -333,21 +375,21 @@ function isManagedHookScriptDocument(document) {
     return false;
   }
 
+  if (isExcludedManagedPagesScriptPath(filePath)) {
+    return false;
+  }
+
   return normalizeDocumentPath(filePath).includes("/pb_hooks/") && !!findAppRoot(filePath);
 }
 
 function hasPrivatePagesSegment(filePath) {
   const normalizedPath = normalizeDocumentPath(filePath);
-  const pagesMarker = "/pb_hooks/pages/";
-  const markerIndex = normalizedPath.indexOf(pagesMarker);
-  if (markerIndex === -1) {
+  const relativeSegments = getPagesRelativeSegments(normalizedPath);
+  if (!relativeSegments) {
     return false;
   }
 
-  return normalizedPath
-    .slice(markerIndex + pagesMarker.length)
-    .split("/")
-    .includes("_private");
+  return relativeSegments.includes("_private");
 }
 
 function isPrivatePartialDocument(document) {

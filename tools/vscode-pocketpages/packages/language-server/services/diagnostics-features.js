@@ -1071,6 +1071,12 @@ function createDiagnosticsFeatureService(context) {
     if (!documentContext) {
       return null;
     }
+    if (
+      helpers.isExcludedPocketPagesScriptPath(documentContext.filePath) ||
+      helpers.isSchemaSupportOnlyHookScriptPath(documentContext.filePath)
+    ) {
+      return null;
+    }
 
     const cachedDiagnostics = contextDiagnostics.length
       ? getCachedCodeActionDiagnostics(
