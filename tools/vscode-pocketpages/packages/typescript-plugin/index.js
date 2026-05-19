@@ -165,7 +165,15 @@ function init(modules) {
 
       function isPagesAssetFile(fileName, appRoot) {
         const normalizedFileName = normalizeTrackedPath(fileName);
-        return normalizedFileName.startsWith(`${getPagesRoot(appRoot)}/assets/`);
+        const pagesRoot = getPagesRoot(appRoot);
+        if (!normalizedFileName.startsWith(`${pagesRoot}/`)) {
+          return false;
+        }
+
+        return normalizedFileName
+          .slice(pagesRoot.length + 1)
+          .split("/")
+          .includes("assets");
       }
 
       function isSameOrChildPath(parentPath, fileName) {

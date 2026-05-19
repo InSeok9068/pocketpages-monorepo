@@ -1249,6 +1249,11 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected custom document link tooltips to label asset() targets correctly.'
   )
   assertMatches(
+    customFeatureSource,
+    /helpers\.isExcludedPocketPagesScriptPath\(documentContext\.filePath\)/,
+    'Expected custom feature service to skip route-exposed vendor and minified scripts consistently.'
+  )
+  assertMatches(
     diagnosticsFeatureSource,
     /context\.core\.hasFeatureCoverageForRange\(\s*uri,\s*start,\s*end,\s*"diagnostics"/,
     'Expected diagnostics feature service to selectively publish only diagnostics-covered mapped regions.'
@@ -1863,6 +1868,7 @@ export = pocketpagesUtils
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'), `console.log('reader')\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'vendor', 'jszip-3.10.1.min.js'), `window.JSZip = {}\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'card.css'), `.board-card { color: #222; }\n`)
+  writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'assets', 'board-widget.js'), `console.log('board widget')\n`)
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
     `<%- include('flash-alert.ejs', { flashMessage: 'Saved', isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`
@@ -2234,6 +2240,7 @@ module.exports = {
     globalAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'),
     vendorAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'vendor', 'jszip-3.10.1.min.js'),
     localAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'card.css'),
+    nestedAssetScriptFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'assets', 'board-widget.js'),
     propertyLocalsCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
     renameCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
@@ -4809,6 +4816,47 @@ const flashClasses = 'notice'
       !assetFeatureDocumentLinks.some((entry) => String(entry.tooltip || '').includes('Open asset target'))
     ) {
       throw new Error(`Expected custom feature document links to preserve asset() tooltips. Got: ${JSON.stringify(assetFeatureDocumentLinks)}`)
+    }
+
+    const excludedCustomText = `const boardService = resolve('board-service')\n`
+    const excludedCustomDocument = createTestDocument(fixture.routeVendorScriptFilePath, 'javascript', 1, excludedCustomText)
+    const excludedCustomUri = excludedCustomDocument.uri
+    lspSmokeCore.openDocument({
+      uri: excludedCustomUri,
+      languageId: 'javascript',
+      version: 1,
+      text: excludedCustomText,
+    })
+    const excludedCustomContext = createLspServiceSmokeContext(
+      lspSmokeCore,
+      new Map([
+        [lspSmokeUri, lspSmokeDocument],
+        [excludedCustomUri, excludedCustomDocument],
+      ])
+    )
+    excludedCustomContext.context.helpers.isExcludedPocketPagesScriptPath = (filePath) =>
+      normalizeFilePath(filePath) === normalizeFilePath(fixture.routeVendorScriptFilePath)
+    const excludedCustomFeatures = createCustomFeatureService(excludedCustomContext.context)
+    const excludedCustomPosition = excludedCustomDocument.positionAt(excludedCustomText.indexOf("'board-service'") + 1)
+    const excludedCustomHover = excludedCustomFeatures.provideHover({
+      textDocument: { uri: excludedCustomUri },
+      position: excludedCustomPosition,
+    })
+    if (excludedCustomHover !== null) {
+      throw new Error(`Expected custom feature hover to skip excluded route-exposed vendor scripts. Got: ${JSON.stringify(excludedCustomHover)}`)
+    }
+    const excludedCustomDefinition = excludedCustomFeatures.provideDefinition({
+      textDocument: { uri: excludedCustomUri },
+      position: excludedCustomPosition,
+    })
+    if (excludedCustomDefinition !== null) {
+      throw new Error(`Expected custom feature definition to skip excluded route-exposed vendor scripts. Got: ${JSON.stringify(excludedCustomDefinition)}`)
+    }
+    const excludedCustomLinks = excludedCustomFeatures.provideDocumentLinks({
+      textDocument: { uri: excludedCustomUri },
+    })
+    if (excludedCustomLinks !== null) {
+      throw new Error(`Expected custom feature document links to skip excluded route-exposed vendor scripts. Got: ${JSON.stringify(excludedCustomLinks)}`)
     }
 
     const diagnosticsSmokeCore = new PocketPagesLanguageCore()
@@ -7794,6 +7842,9 @@ module.exports = {
     }
     if (indexedCodeFilePaths.includes(normalizeFilePath(fixture.vendorAssetFilePath))) {
       throw new Error(`Expected pages code index to exclude asset vendor scripts. Got: ${indexedCodeFilePaths.join(', ')}`)
+    }
+    if (indexedCodeFilePaths.includes(normalizeFilePath(fixture.nestedAssetScriptFilePath))) {
+      throw new Error(`Expected pages code index to exclude route-local asset scripts. Got: ${indexedCodeFilePaths.join(', ')}`)
     }
     if (indexedCodeFilePaths.includes(normalizeFilePath(fixture.routeVendorScriptFilePath))) {
       throw new Error(`Expected pages code index to exclude route-exposed vendor scripts. Got: ${indexedCodeFilePaths.join(', ')}`)
@@ -13407,11 +13458,12 @@ const authState = resolve('auth-service')
       const pluginReloadCountBeforeAssetScriptChange = pluginReloadAppRoots.length
       writeFile(fixture.globalAssetFilePath, `console.log('reader v2')\n`)
       writeFile(fixture.vendorAssetFilePath, `window.JSZip = { version: 'test' }\n`)
+      writeFile(fixture.nestedAssetScriptFilePath, `console.log('board widget v2')\n`)
       pluginProjectVersion = 'asset-script-change'
       pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
       if (pluginReloadAppRoots.length !== pluginReloadCountBeforeAssetScriptChange) {
         throw new Error(
-          `Expected TS plugin runtime to ignore public page asset scripts. Got: ${JSON.stringify(pluginReloadAppRoots)}`
+          `Expected TS plugin runtime to ignore public page asset scripts, including route-local assets. Got: ${JSON.stringify(pluginReloadAppRoots)}`
         )
       }
 
@@ -13543,13 +13595,15 @@ const authState = resolve('auth-service')
       const pluginReaddirCountBeforeWatchedAsset = pluginPagesReaddirCount
       writeFile(fixture.globalAssetFilePath, `console.log('reader watcher ignored')\n`)
       triggerPluginFileWatch(fixture.globalAssetFilePath)
+      writeFile(fixture.nestedAssetScriptFilePath, `console.log('board widget watcher ignored')\n`)
+      triggerPluginFileWatch(fixture.nestedAssetScriptFilePath)
       pluginProxy.getQuickInfoAtPosition(fixture.signInFilePath, 0)
       if (
         pluginReloadAppRoots.length !== pluginReloadCountBeforeWatchedAsset ||
         pluginPagesReaddirCount !== pluginReaddirCountBeforeWatchedAsset
       ) {
         throw new Error(
-          `Expected TS plugin watcher dirty state to ignore public page assets. Got: ${JSON.stringify({
+          `Expected TS plugin watcher dirty state to ignore public page assets, including route-local assets. Got: ${JSON.stringify({
             reloadBefore: pluginReloadCountBeforeWatchedAsset,
             reloadAfter: pluginReloadAppRoots.length,
             readdirBefore: pluginReaddirCountBeforeWatchedAsset,

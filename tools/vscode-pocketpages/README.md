@@ -73,7 +73,7 @@ PocketPages 모노레포 개발을 위한 VS Code 언어 확장입니다.
 
 ### public asset
 
-`pb_hooks/pages/assets/**`는 route/include/resolve/schema 분석 대상이 아닙니다.
+`pb_hooks/pages/**/assets/**`는 route/include/resolve/schema 분석 대상이 아닙니다.
 
 - asset 파일 생성/삭제는 구조 변화로 보고 cache를 갱신할 수 있습니다.
 - asset 파일의 단순 내용 변경은 app cache resync를 만들지 않습니다.
@@ -319,7 +319,7 @@ watcher는 직접 truth를 결정하지 않습니다.
 
 ### Public asset
 
-`pb_hooks/pages/assets/**` 내용 변경은 route/include/resolve/schema 의미를 바꾸지 않으므로 app cache resync를 만들지 않습니다. 생성/삭제는 asset target 목록을 바꾸므로 구조 변경으로 처리합니다.
+`pb_hooks/pages/**/assets/**` 내용 변경은 route/include/resolve/schema 의미를 바꾸지 않으므로 app cache resync를 만들지 않습니다. 생성/삭제는 asset target 목록을 바꾸므로 구조 변경으로 처리합니다.
 
 ### Completion cache
 

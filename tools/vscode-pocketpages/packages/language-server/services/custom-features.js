@@ -37,6 +37,20 @@ function createCustomFeatureService(context) {
     );
   }
 
+  function isExcludedPocketPagesDocument(documentContext) {
+    return !!(
+      documentContext &&
+      helpers.isExcludedPocketPagesScriptPath(documentContext.filePath)
+    );
+  }
+
+  function isCustomFeatureBlockedDocument(documentContext) {
+    return (
+      isSchemaSupportOnlyDocument(documentContext) ||
+      isExcludedPocketPagesDocument(documentContext)
+    );
+  }
+
   return {
     provideCompletionItems(params) {
       const requestContext = getDocumentRequestContext(params);
@@ -45,6 +59,10 @@ function createCustomFeatureService(context) {
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      if (isExcludedPocketPagesDocument(documentContext)) {
+        return null;
+      }
+
       const customCompletionData = documentContext.service.getCustomCompletionData(
         documentContext.filePath,
         documentText,
@@ -95,7 +113,7 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
-      if (isSchemaSupportOnlyDocument(documentContext)) {
+      if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }
 
@@ -115,7 +133,7 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
-      if (isSchemaSupportOnlyDocument(documentContext)) {
+      if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }
 
@@ -137,7 +155,7 @@ function createCustomFeatureService(context) {
         return null;
       }
 
-      if (isSchemaSupportOnlyDocument(documentContext)) {
+      if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }
 
@@ -164,7 +182,7 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
-      if (isSchemaSupportOnlyDocument(documentContext)) {
+      if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }
 
@@ -184,7 +202,7 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
-      if (isSchemaSupportOnlyDocument(documentContext)) {
+      if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }
 
@@ -203,7 +221,7 @@ function createCustomFeatureService(context) {
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
-      if (isSchemaSupportOnlyDocument(documentContext)) {
+      if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }
 
@@ -232,7 +250,7 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
-      if (isSchemaSupportOnlyDocument(documentContext)) {
+      if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }
 
