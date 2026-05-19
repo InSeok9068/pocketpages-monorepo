@@ -35,6 +35,26 @@ PocketPages 모노레포 개발을 위한 VS Code 언어 확장입니다.
 
 이 구조는 Vue/Svelte language tools와 같은 방향입니다. 원본 파일을 직접 신뢰하고, generated code는 언제든 다시 만들 수 있는 파생물로 취급합니다.
 
+### TypeScript와 PocketPages 보강 경계
+
+이 확장은 TypeScript를 대체하는 별도 타입 엔진을 목표로 하지 않습니다. 일반 JavaScript symbol, 함수 반환, 객체 property, hover, definition, rename, signature help 같은 영역은 가능한 한 TypeScript language service가 판단합니다.
+
+PocketPages 확장이 하는 일은 TypeScript가 원래 모르는 문맥을 TypeScript가 이해할 수 있는 형태로 번역하는 것입니다.
+
+- EJS server/template 영역을 TypeScript가 읽을 수 있는 virtual code로 만듭니다.
+- `pb_schema.json`을 기반으로 `$app`, `Record`, `record.get()`, `record.set()` 타입 prelude를 만듭니다.
+- `resolve('...')` target을 찾아 해당 `_private` module type을 TypeScript에 알려줍니다.
+- source/generated mapping으로 TypeScript 결과를 원본 EJS 위치로 되돌립니다.
+
+TypeScript가 알 수 없는 PocketPages 도메인 문자열은 custom feature가 처리합니다.
+
+- `resolve('...')`, `include('...')`, `asset('...')`
+- route string (`href`, `action`, `hx-*`, `redirect`)
+- collection name literal
+- `record.get('field')`, `record.set('field', value)`의 field literal
+
+일반 변수나 module member 타입을 custom completion만으로 덮어쓰는 방식은 피합니다. 타입을 더 잘 연결해야 할 때는 가능한 한 virtual code/prelude를 보강해서 TypeScript가 같은 타입 정보를 보게 하는 방향을 우선합니다.
+
 ## 패키지 구성
 
 | 위치 | 역할 |
@@ -229,6 +249,18 @@ schema 기능은 `pb_schema.json`을 기준으로 동작합니다.
 
 collection method 이름은 가능한 경우 `pb_data/types.d.ts`에서 추출합니다. 추출에 실패하면 내장 기본 method 목록을 사용합니다.
 
+### Schema 타입 연결
+
+schema 타입은 custom 기능만을 위한 별도 세계가 아니라 TypeScript prelude에도 반영됩니다.
+
+- `$app.findRecordById('books', ...)`, `$app.findFirstRecordByFilter('books', ...)` 같은 단일 record 조회는 `PocketPagesRecord<"books">`로 연결합니다.
+- `$app.findRecordsByFilter('books', ...)` 같은 목록 조회는 `PocketPagesRecordArray<"books">`로 연결합니다.
+- `record.get('field')`, `record.set('field', value)`는 collection별 field type을 TypeScript가 볼 수 있도록 overload를 만듭니다.
+- `resolve('service')` target module의 export 함수가 직접 `$app.find...()` 결과를 반환하면, 명시 JSDoc이 없는 경우 호출부에서도 schema return type을 사용할 수 있게 보강합니다.
+- 함수에 명시적인 JSDoc return type이 있으면 schema inference보다 그 타입을 우선합니다.
+
+이 추론은 false positive를 줄이기 위해 정적으로 확인 가능한 패턴에만 적용합니다. 완전히 동적인 collection name, 런타임 문자열 조합, 복잡한 helper alias는 강하게 추론하지 않습니다.
+
 기본 method 목록은 다음과 같습니다.
 
 - `countRecords`
@@ -285,6 +317,9 @@ PocketPages 전용 diagnostics는 `pp-*` 코드로 표시됩니다.
 - `resolve()`의 `_private` prefix 제거
 - include local key rename suggestion
 - missing include local 보정
+- `let record = null`, `let records = []` 이후 명확한 `$app.find...()` 대입이 있는 경우의 optional JSDoc type 보강
+
+JSDoc type 보강은 Problems 패널에 진단을 만들지 않는 contextual quick fix입니다. JavaScript/JSDoc 한계 때문에 TypeScript 타입 연결이 끊긴 경우에 사용자가 선택할 수 있는 탈출구이며, 코드에 자동으로 삽입하지 않습니다.
 
 ## Cache와 Invalidation 정책
 
@@ -420,6 +455,7 @@ editor context menu에서도 `.ejs`, `.js`, `.cjs`, `.mjs` 파일에 대해 `Fin
 - `_private` partial
 - `_private` module
 - static route file
+- asset file
 
 지원하지 않는 target에서 실행하면 경고 메시지를 표시합니다.
 
@@ -509,8 +545,10 @@ npm run install:vscode-pocketpages
 - formatter
 - 일반 HTML lint 전체 대체
 - UnoCSS / Tailwind class 검사
+- TypeScript를 대체하는 별도 타입 엔진
 - 임의 동적 문자열의 완전 해석
 - 완전한 런타임 데이터 흐름 추적
+- custom completion만으로 일반 JavaScript 타입을 덮어쓰기
 - `pb_hooks/pages` 밖 hook script의 full PocketPages page analysis
 
 중요한 제약은 다음과 같습니다.
@@ -521,6 +559,7 @@ npm run install:vscode-pocketpages
 - route completion은 static `.ejs` route 중심입니다.
 - route navigation은 `.ejs`, `.js`, `.cjs`, `.mjs` target을 더 넓게 해석합니다.
 - public asset JS는 app graph/cache 대상은 아니지만, asset path target과 일반 editor 문서로는 열릴 수 있습니다.
+- JSDoc type quick fix는 선택 사항입니다. 확장이 코드를 자동으로 타입 주석 중심으로 바꾸지는 않습니다.
 
 ## 문제 확인 체크포인트
 
@@ -532,6 +571,7 @@ npm run install:vscode-pocketpages
 - 현재 파일이 EJS, pages script, schema-only hook script 중 어느 범주인지
 - 파일이 route-exposed vendor/minified script로 제외된 것은 아닌지
 - 기대하는 기능이 PocketPages 전용 기능인지, 기본 JS/TS 기능인지
+- 타입 연결이 TypeScript prelude/virtual code로 가능한 패턴인지, 동적 런타임 흐름인지
 - 동적 문자열이 정적 분석 가능한 형태인지
 
 ## 설계 요약
