@@ -1066,21 +1066,20 @@ function createDiagnosticsFeatureService(context) {
       Array.isArray(params.context.diagnostics)
         ? params.context.diagnostics
         : [];
-    if (!contextDiagnostics.length) {
-      return null;
-    }
 
     const documentContext = getDocumentContextByUri(params.textDocument.uri);
     if (!documentContext) {
       return null;
     }
 
-    const cachedDiagnostics = getCachedCodeActionDiagnostics(
-      params.textDocument.uri,
-      document,
-      params
-    );
-    if (cachedDiagnostics === null && typeof ensureDocumentPrepared === "function") {
+    const cachedDiagnostics = contextDiagnostics.length
+      ? getCachedCodeActionDiagnostics(
+          params.textDocument.uri,
+          document,
+          params
+        )
+      : [];
+    if (contextDiagnostics.length && cachedDiagnostics === null && typeof ensureDocumentPrepared === "function") {
       ensureDocumentPrepared(params.textDocument.uri);
     }
     const actions = documentContext.service.getCodeActions(

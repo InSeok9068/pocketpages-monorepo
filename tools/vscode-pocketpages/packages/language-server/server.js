@@ -1691,12 +1691,10 @@ connection.onCodeAction((params) => {
   const diagnosticCount = params.context && Array.isArray(params.context.diagnostics)
     ? params.context.diagnostics.length
     : 0;
-  const result = diagnosticCount
-    ? diagnosticsFeatureService.provideCodeActions(params)
-    : null;
+  const result = diagnosticsFeatureService.provideCodeActions(params);
   logRequestResult("code-action", "result", startedAt, {
     req: requestId,
-    case: diagnosticCount ? "diagnostic-actions" : "no-diagnostics",
+    case: diagnosticCount ? "diagnostic-actions" : resultCount(result) ? "context-actions" : "no-diagnostics",
     file: context ? getRelativePathLabel(context.filePath) : null,
     version: document ? document.version : null,
     diagnostics: diagnosticCount,

@@ -1381,8 +1381,8 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
-    /connection\.onCodeAction\(\(params\) => \{[\s\S]*const diagnosticCount[\s\S]*diagnosticCount[\s\S]*provideCodeActions\(params\)[\s\S]*case:\s*diagnosticCount \? "diagnostic-actions" : "no-diagnostics"/,
-    'Expected empty code-action requests to skip full diagnostics and log the no-diagnostics case.'
+    /connection\.onCodeAction\(\(params\) => \{[\s\S]*const diagnosticCount[\s\S]*provideCodeActions\(params\)[\s\S]*case:\s*diagnosticCount \? "diagnostic-actions" : resultCount\(result\) \? "context-actions" : "no-diagnostics"/,
+    'Expected empty code-action requests to skip full diagnostics while allowing contextual code actions.'
   )
   assertMatches(
     serverSource,
@@ -1441,8 +1441,8 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     diagnosticsFeatureSource,
-    /const contextDiagnostics =[\s\S]*params\.context\.diagnostics[\s\S]*if \(!contextDiagnostics\.length\) \{[\s\S]*return null;/,
-    'Expected code-action provider to avoid full diagnostics when VS Code sends no diagnostics for the range.'
+    /const contextDiagnostics =[\s\S]*params\.context\.diagnostics[\s\S]*const cachedDiagnostics = contextDiagnostics\.length[\s\S]*: \[\];/,
+    'Expected code-action provider to avoid full diagnostics while still allowing no-diagnostic contextual actions.'
   )
   const collectServerBlockDiagnosticsSource = languageServiceSource.slice(
     languageServiceSource.indexOf('collectServerBlockDiagnostics('),
@@ -1999,6 +1999,32 @@ module.exports = {
 `
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'schema-inferred-service.js'),
+    `let deferredExport
+
+function findPostBySlug(slug) {
+  return $app.findFirstRecordByFilter('posts', 'slug = {:slug}', { slug })
+}
+
+function listPosts() {
+  return $app.findRecordsByFilter('posts', '')
+}
+
+/**
+ * @returns {core.Record}
+ */
+function documentedBoard() {
+  return $app.findFirstRecordByFilter('boards', 'id != ""')
+}
+
+module.exports = {
+  findPostBySlug,
+  listPosts,
+  documentedBoard,
+}
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service-consumer.js'),
     `const boardService = require('./board-service')
 
@@ -2247,6 +2273,7 @@ module.exports = {
     mjsConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', 'mjs-consumer.mjs'),
     jobScriptFilePath: path.join(appRoot, 'pb_hooks', 'jobs', 'rebuild-search.js'),
     boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
+    schemaInferredServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'schema-inferred-service.js'),
     boardServiceConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service-consumer.js'),
     importedCollectionConstantsFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'collection-constants.js'),
     importedCollectionConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'imported-collection-consumer.js'),
@@ -5056,6 +5083,69 @@ const smallNormalValue = missingSmallNormalValue
       )
     ) {
       throw new Error(`Expected cached pull diagnostics to drive params code actions. Got: ${JSON.stringify(cachedCodeActions)}`)
+    }
+
+    const noDiagnosticCodeActionCore = new PocketPagesLanguageCore()
+    const noDiagnosticCodeActionText = `<script server>
+let posts = []
+posts = $app.findRecordsByFilter('posts', '')
+const postTitle = posts[0].get('title')
+</script>
+`
+    const noDiagnosticCodeActionDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      noDiagnosticCodeActionText
+    )
+    noDiagnosticCodeActionCore.openDocument({
+      uri: noDiagnosticCodeActionDocument.uri,
+      languageId: 'ejs',
+      version: 1,
+      text: noDiagnosticCodeActionText,
+    })
+    const noDiagnosticCodeActionContext = createLspServiceSmokeContext(
+      noDiagnosticCodeActionCore,
+      new Map([[noDiagnosticCodeActionDocument.uri, noDiagnosticCodeActionDocument]])
+    )
+    const noDiagnosticCodeActionFeatureService = createDiagnosticsFeatureService(noDiagnosticCodeActionContext.context)
+    const noDiagnosticDocumentContext = noDiagnosticCodeActionCore.getDocumentContextByUri(noDiagnosticCodeActionDocument.uri)
+    const noDiagnosticService = noDiagnosticDocumentContext && noDiagnosticDocumentContext.service
+    const originalNoDiagnosticGetDiagnostics =
+      noDiagnosticService && typeof noDiagnosticService.getDiagnostics === 'function'
+        ? noDiagnosticService.getDiagnostics.bind(noDiagnosticService)
+        : null
+    if (!noDiagnosticService || !originalNoDiagnosticGetDiagnostics) {
+      throw new Error('Expected no-diagnostic code-action smoke context to expose a language service.')
+    }
+    const noDiagnosticOffset = noDiagnosticCodeActionText.indexOf('posts = []') + 2
+    let noDiagnosticActions = null
+    try {
+      noDiagnosticService.getDiagnostics = () => {
+        throw new Error('Expected no-diagnostic JSDoc code actions to avoid full diagnostics.')
+      }
+      noDiagnosticActions = noDiagnosticCodeActionFeatureService.provideCodeActions({
+        textDocument: { uri: noDiagnosticCodeActionDocument.uri },
+        range: {
+          start: offsetToPosition(noDiagnosticCodeActionText, noDiagnosticOffset),
+          end: offsetToPosition(noDiagnosticCodeActionText, noDiagnosticOffset),
+        },
+        context: {
+          diagnostics: [],
+        },
+      })
+    } finally {
+      noDiagnosticService.getDiagnostics = originalNoDiagnosticGetDiagnostics
+    }
+    if (
+      !Array.isArray(noDiagnosticActions) ||
+      !noDiagnosticActions.some((entry) =>
+        entry.title === 'Add JSDoc type for posts' &&
+        Array.isArray(entry.edit) &&
+        entry.edit.some((edit) => edit.newText.includes('PocketPagesRecordArray<"posts">'))
+      )
+    ) {
+      throw new Error(`Expected no-diagnostic JSDoc type code action through the LSP service path. Got: ${JSON.stringify(noDiagnosticActions)}`)
     }
 
     const largeDiagnosticsCore = new PocketPagesLanguageCore()
@@ -7959,11 +8049,149 @@ const pageData = { boardName: 'Boards', boardCount: 1, postSlugs: ['welcome'] }
     )
     if (
       !typedTemplateQuickInfo ||
-      !typedTemplateQuickInfo.displayText.includes('const pageData: {') ||
-      !typedTemplateQuickInfo.displayText.includes('boardName: string;') ||
-      !typedTemplateQuickInfo.displayText.includes('postSlugs: string[];')
+      (
+        !typedTemplateQuickInfo.displayText.includes('const pageData: types.FixturePageData') &&
+        (
+          !typedTemplateQuickInfo.displayText.includes('const pageData: {') ||
+          !typedTemplateQuickInfo.displayText.includes('boardName: string;') ||
+          !typedTemplateQuickInfo.displayText.includes('postSlugs: string[];')
+        )
+      )
     ) {
       throw new Error(`Expected JSDoc-backed hover info inside EJS template. Got: ${JSON.stringify(typedTemplateQuickInfo)}`)
+    }
+
+    const jsdocTypedServerText = `<script server>
+/** @type {types.FixturePageData} */
+let pageData = { boardName: 'Boards', boardCount: 1, postSlugs: ['welcome'] }
+const firstSlug = pageData.postSlugs[0]
+</script>
+`
+    const jsdocTypedServerQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      jsdocTypedServerText,
+      jsdocTypedServerText.indexOf('firstSlug =') + 2
+    )
+    if (!jsdocTypedServerQuickInfo || !jsdocTypedServerQuickInfo.displayText.includes('const firstSlug: string')) {
+      throw new Error(`Expected server-block JSDoc @type to survive TS virtual-file mapping. Got: ${JSON.stringify(jsdocTypedServerQuickInfo)}`)
+    }
+    const jsdocTypedServerCompletionText = `<script server>
+/** @type {types.FixturePageData} */
+let pageData = { boardName: 'Boards', boardCount: 1, postSlugs: ['welcome'] }
+pageData.
+</script>
+`
+    const jsdocTypedServerCompletion = service.getCompletionData(
+      fixture.boardsFilePath,
+      jsdocTypedServerCompletionText,
+      jsdocTypedServerCompletionText.indexOf('pageData.') + 'pageData.'.length
+    )
+    const jsdocTypedServerCompletionNames = jsdocTypedServerCompletion
+      ? jsdocTypedServerCompletion.entries.map((entry) => entry.name)
+      : []
+    if (
+      !jsdocTypedServerCompletionNames.includes('boardName') ||
+      !jsdocTypedServerCompletionNames.includes('postSlugs')
+    ) {
+      throw new Error(`Expected server-block JSDoc @type completion to survive virtual offset mapping. Got: ${jsdocTypedServerCompletionNames.slice(0, 20).join(', ')}`)
+    }
+    const jsdocTypedServerRenameText = `<script server>
+/** @type {types.FixturePageData} */
+let pageData = { boardName: 'Boards', boardCount: 1, postSlugs: ['welcome'] }
+const firstSlug = pageData.postSlugs[0]
+firstSlug
+</script>
+`
+    const jsdocTypedServerDefinition = service.getTypeScriptDefinitionTarget(
+      fixture.boardsFilePath,
+      jsdocTypedServerRenameText,
+      jsdocTypedServerRenameText.lastIndexOf('pageData') + 2
+    )
+    const jsdocTypedServerDefinitionOffset = jsdocTypedServerDefinition
+      ? positionToOffset(jsdocTypedServerRenameText, jsdocTypedServerDefinition)
+      : -1
+    if (
+      !jsdocTypedServerDefinition ||
+      normalizeFilePath(jsdocTypedServerDefinition.filePath) !== normalizeFilePath(fixture.boardsFilePath) ||
+      jsdocTypedServerDefinitionOffset !== jsdocTypedServerRenameText.indexOf('pageData =')
+    ) {
+      throw new Error(`Expected TS definition mapping to survive JSDoc virtual insertion. Got: ${JSON.stringify(jsdocTypedServerDefinition)}`)
+    }
+    const jsdocTypedServerRenameEdits = service.getTypeScriptRenameEdits(
+      fixture.boardsFilePath,
+      jsdocTypedServerRenameText,
+      jsdocTypedServerRenameText.lastIndexOf('firstSlug') + 2,
+      'renamedSlug'
+    )
+    if (!jsdocTypedServerRenameEdits || !jsdocTypedServerRenameEdits.canRename || jsdocTypedServerRenameEdits.edits.length !== 2) {
+      throw new Error(`Expected TS rename mapping to survive JSDoc virtual insertion. Got: ${JSON.stringify(jsdocTypedServerRenameEdits)}`)
+    }
+    const renamedJSDocTypedServerText = applyEditsToText(jsdocTypedServerRenameText, jsdocTypedServerRenameEdits.edits)
+    if (
+      !renamedJSDocTypedServerText.includes('const renamedSlug = pageData.postSlugs[0]') ||
+      !renamedJSDocTypedServerText.includes('\nrenamedSlug\n')
+    ) {
+      throw new Error(`Expected JSDoc-shifted rename edits to apply at source offsets. Got: ${renamedJSDocTypedServerText}`)
+    }
+
+    const jsdocTypedRecordAliasText = `<script server>
+/** @type {PocketPagesRecord<'posts'> | null} */
+let postRecord = null
+postRecord = $app.findFirstRecordByFilter('posts', 'slug = "welcome"')
+const postTitle = postRecord.get('title')
+</script>
+`
+    const jsdocTypedRecordAliasQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      jsdocTypedRecordAliasText,
+      jsdocTypedRecordAliasText.indexOf('postTitle =') + 2
+    )
+    if (!jsdocTypedRecordAliasQuickInfo || !jsdocTypedRecordAliasQuickInfo.displayText.includes('const postTitle: string')) {
+      throw new Error(`Expected PocketPagesRecord alias JSDoc to keep schema field typing. Got: ${JSON.stringify(jsdocTypedRecordAliasQuickInfo)}`)
+    }
+
+    const jsdocTypeActionText = `<script server>
+let posts = []
+posts = $app.findRecordsByFilter('posts', '')
+const postTitle = posts[0].get('title')
+</script>
+`
+    const jsdocTypeActionDiagnostics = service.getDiagnostics(fixture.boardsFilePath, jsdocTypeActionText)
+    if (jsdocTypeActionDiagnostics.some((entry) => String(entry.code) === 'pp-ambiguous-initializer')) {
+      throw new Error(`Expected JSDoc type action to stay out of diagnostics. Got: ${JSON.stringify(jsdocTypeActionDiagnostics)}`)
+    }
+    const jsdocTypeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      jsdocTypeActionText,
+      {
+        start: jsdocTypeActionText.indexOf('posts = []') + 2,
+        end: jsdocTypeActionText.indexOf('posts = []') + 2,
+      },
+      { diagnostics: [] }
+    )
+    if (
+      !Array.isArray(jsdocTypeActions) ||
+      !jsdocTypeActions.some((entry) =>
+        entry.title === 'Add JSDoc type for posts' &&
+        Array.isArray(entry.edits) &&
+        entry.edits.some((edit) => edit.newText.includes('PocketPagesRecordArray<"posts">'))
+      )
+    ) {
+      throw new Error(`Expected no-diagnostic JSDoc type code action. Got: ${JSON.stringify(jsdocTypeActions)}`)
+    }
+    const jsdocTypeFixedText = applyEditsToText(jsdocTypeActionText, jsdocTypeActions[0].edits)
+    const jsdocTypeFixedQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      jsdocTypeFixedText,
+      jsdocTypeFixedText.indexOf('postTitle =') + 2
+    )
+    if (!jsdocTypeFixedQuickInfo || !jsdocTypeFixedQuickInfo.displayText.includes('const postTitle: string')) {
+      throw new Error(
+        `Expected no-diagnostic JSDoc type code action to restore connected field typing. Got: ${JSON.stringify({
+          fixedText: jsdocTypeFixedText,
+          quickInfo: jsdocTypeFixedQuickInfo,
+        })}`
+      )
     }
 
     const typedRequireCompletionText = `<script server>
@@ -8080,6 +8308,45 @@ authState.
           .slice(0, 20)
           .join(', ')}`
       )
+    }
+
+    const inferredResolveReturnText = `<script server>
+const schemaService = resolve('schema-inferred-service')
+const post = schemaService.findPostBySlug('welcome')
+const postTitle = post.get('title')
+const posts = schemaService.listPosts()
+const firstPostTitle = posts[0].get('title')
+const documentedBoard = schemaService.documentedBoard()
+const documentedBoardTableName = documentedBoard.tableName()
+</script>
+`
+    const inferredResolvePostQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      inferredResolveReturnText,
+      inferredResolveReturnText.indexOf('postTitle =') + 2
+    )
+    if (!inferredResolvePostQuickInfo || !inferredResolvePostQuickInfo.displayText.includes('const postTitle: string')) {
+      throw new Error(`Expected resolve() to infer undocumented direct $app record returns. Got: ${JSON.stringify(inferredResolvePostQuickInfo)}`)
+    }
+    const inferredResolvePostArrayQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      inferredResolveReturnText,
+      inferredResolveReturnText.indexOf('firstPostTitle =') + 2
+    )
+    if (!inferredResolvePostArrayQuickInfo || !inferredResolvePostArrayQuickInfo.displayText.includes('const firstPostTitle: string')) {
+      throw new Error(`Expected resolve() to infer undocumented direct $app array returns. Got: ${JSON.stringify(inferredResolvePostArrayQuickInfo)}`)
+    }
+    const documentedResolveQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      inferredResolveReturnText,
+      inferredResolveReturnText.indexOf('documentedBoard =') + 2
+    )
+    if (
+      !documentedResolveQuickInfo ||
+      !documentedResolveQuickInfo.displayText.includes('const documentedBoard: core.Record') ||
+      documentedResolveQuickInfo.displayText.includes('PocketPagesRecord<"boards">')
+    ) {
+      throw new Error(`Expected explicit JSDoc return types to keep precedence over schema inference. Got: ${JSON.stringify(documentedResolveQuickInfo)}`)
     }
 
     const typedResolveSignatureText = `<script server>

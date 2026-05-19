@@ -501,6 +501,29 @@ function createDiagnosticsFeatureHandlers(deps) {
         }
       }
 
+      const contextualActions =
+        service && typeof service.getPocketPagesJSDocTypeCodeActions === "function"
+          ? service.getPocketPagesJSDocTypeCodeActions(filePath, documentText, range)
+          : [];
+      for (const action of Array.isArray(contextualActions) ? contextualActions : []) {
+        const actionKey = `context:${range.start}:${range.end}:${action.title}`;
+        if (!action || !action.title || actionKeys.has(actionKey)) {
+          continue;
+        }
+
+        const edits = normalizeCodeActionEdits(service, filePath, documentText, action.edits || []);
+        if (!edits) {
+          continue;
+        }
+
+        actionKeys.add(actionKey);
+        actions.push({
+          title: action.title,
+          kind: action.kind || "quickfix",
+          edits,
+        });
+      }
+
       return actions;
     },
   };

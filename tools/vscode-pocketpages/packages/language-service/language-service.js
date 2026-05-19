@@ -144,6 +144,7 @@ function getMappingSegments(mappings) {
         sourceEnd: sourceStart + length,
         generatedStart,
         generatedEnd: generatedStart + length,
+        data: mapping.data,
       });
     }
   }
@@ -172,6 +173,32 @@ function mapGeneratedOffsetToSourceOffset(mappings, generatedOffset) {
     }
 
     return segment.sourceStart + Math.min(generatedOffset - segment.generatedStart, segment.sourceEnd - segment.sourceStart);
+  }
+
+  return null;
+}
+
+function mapSourceOffsetToGeneratedOffset(mappings, sourceOffset) {
+  if (!Number.isFinite(sourceOffset) || sourceOffset < 0) {
+    return null;
+  }
+
+  const segments = getMappingSegments(mappings).sort((left, right) => {
+    if (left.sourceStart !== right.sourceStart) {
+      return left.sourceStart - right.sourceStart;
+    }
+
+    return left.generatedStart - right.generatedStart;
+  });
+  for (const segment of segments) {
+    if (
+      sourceOffset < segment.sourceStart ||
+      sourceOffset > segment.sourceEnd
+    ) {
+      continue;
+    }
+
+    return segment.generatedStart + Math.min(sourceOffset - segment.sourceStart, segment.generatedEnd - segment.generatedStart);
   }
 
   return null;
@@ -757,6 +784,402 @@ function collectRouteParamReferenceEdits(documentText, pairs, options = {}) {
   visit(sourceFile);
 
   return edits;
+}
+
+function createDefaultVirtualMappings(sourceStart, length) {
+  return length > 0
+    ? [
+        {
+          sourceOffsets: [sourceStart],
+          generatedOffsets: [0],
+          lengths: [length],
+        },
+      ]
+    : [];
+}
+
+function isEmptyArrayLiteral(node) {
+  return !!(node && ts.isArrayLiteralExpression(node) && node.elements.length === 0);
+}
+
+function isNullLiteral(node) {
+  return !!(node && node.kind === ts.SyntaxKind.NullKeyword);
+}
+
+function getStringLiteralValue(node) {
+  if (!node || (!ts.isStringLiteral(node) && !ts.isNoSubstitutionTemplateLiteral(node))) {
+    return null;
+  }
+
+  return node.text;
+}
+
+function getJSDocTypeText(node, sourceFile) {
+  const typeNode = node ? ts.getJSDocType(node) : null;
+  return typeNode ? typeNode.getText(sourceFile).trim() : "";
+}
+
+function getJSDocReturnTypeText(node, sourceFile) {
+  const typeNode = node ? ts.getJSDocReturnType(node) : null;
+  return typeNode ? typeNode.getText(sourceFile).trim() : "";
+}
+
+function hasJSDocReturnType(node, sourceFile) {
+  return !!getJSDocReturnTypeText(node, sourceFile);
+}
+
+const VALID_TYPE_ANNOTATION_TEXT_CACHE = new Map();
+function isValidTypeAnnotationText(typeText) {
+  const text = String(typeText || "").trim();
+  if (!text) {
+    return false;
+  }
+  if (VALID_TYPE_ANNOTATION_TEXT_CACHE.has(text)) {
+    return VALID_TYPE_ANNOTATION_TEXT_CACHE.get(text);
+  }
+
+  const sourceFile = ts.createSourceFile(
+    "pocketpages-type-probe.ts",
+    `let __pocketpagesValue: ${text};`,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const valid = sourceFile.parseDiagnostics.length === 0;
+  VALID_TYPE_ANNOTATION_TEXT_CACHE.set(text, valid);
+  return valid;
+}
+
+function isDollarAppExpression(node) {
+  return !!(node && ts.isIdentifier(node) && node.text === "$app");
+}
+
+function getSchemaCallMethodName(expression) {
+  return expression && ts.isPropertyAccessExpression(expression)
+    ? expression.name.text
+    : null;
+}
+
+function getSchemaCallCollectionName(callExpression, projectIndex) {
+  if (!callExpression || !Array.isArray(callExpression.arguments) || !callExpression.arguments.length) {
+    return null;
+  }
+
+  const collectionName = getStringLiteralValue(callExpression.arguments[0]);
+  if (!collectionName || !projectIndex || !projectIndex.hasCollection(collectionName)) {
+    return null;
+  }
+
+  return collectionName;
+}
+
+function getSchemaMethodResultKind(methodName) {
+  switch (methodName) {
+    case "findRecordsByIds":
+    case "findAllRecords":
+    case "findRecordsByFilter":
+      return "array";
+    case "findRecordById":
+    case "findFirstRecordByData":
+    case "findFirstRecordByFilter":
+    case "findAuthRecordByEmail":
+    case "findRecordByViewFile":
+      return "record";
+    default:
+      return null;
+  }
+}
+
+function inferDirectSchemaCallType(expression, projectIndex) {
+  if (!expression || !ts.isCallExpression(expression)) {
+    return null;
+  }
+
+  const methodName = getSchemaCallMethodName(expression.expression);
+  const resultKind = getSchemaMethodResultKind(methodName);
+  if (!resultKind || !isDollarAppExpression(expression.expression.expression)) {
+    return null;
+  }
+
+  const collectionName = getSchemaCallCollectionName(expression, projectIndex);
+  if (!collectionName) {
+    return null;
+  }
+
+  return resultKind === "array"
+    ? `PocketPagesRecordArray<${JSON.stringify(collectionName)}>`
+    : `PocketPagesRecord<${JSON.stringify(collectionName)}>`;
+}
+
+function mergeInferredReturnTypes(types, includesNull) {
+  const uniqueTypes = [...new Set(types.filter(Boolean))];
+  if (!uniqueTypes.length) {
+    return "";
+  }
+
+  if (includesNull) {
+    uniqueTypes.push("null");
+  }
+
+  return uniqueTypes.join(" | ");
+}
+
+function collectTypeScriptInsertionMappings(sourceText, insertions, sourceBaseOffset, baseMappings) {
+  const text = String(sourceText || "");
+  const sortedInsertions = insertions
+    .filter((entry) => entry && Number.isFinite(entry.position) && entry.position >= 0 && entry.position <= text.length && entry.text)
+    .sort((left, right) => left.position - right.position);
+
+  if (!sortedInsertions.length) {
+    return {
+      text,
+      mappings: Array.isArray(baseMappings) ? baseMappings : createDefaultVirtualMappings(sourceBaseOffset, text.length),
+    };
+  }
+
+  const copiedSegments = [];
+  const chunks = [];
+  let originalCursor = 0;
+  let generatedCursor = 0;
+
+  const appendOriginalSlice = (start, end) => {
+    if (end <= start) {
+      return;
+    }
+
+    const slice = text.slice(start, end);
+    chunks.push(slice);
+    copiedSegments.push({
+      originalStart: start,
+      originalEnd: end,
+      generatedStart: generatedCursor,
+      generatedEnd: generatedCursor + slice.length,
+    });
+    generatedCursor += slice.length;
+  };
+
+  for (const insertion of sortedInsertions) {
+    appendOriginalSlice(originalCursor, insertion.position);
+    chunks.push(insertion.text);
+    generatedCursor += insertion.text.length;
+    originalCursor = insertion.position;
+  }
+  appendOriginalSlice(originalCursor, text.length);
+
+  const sourceMappings = Array.isArray(baseMappings)
+    ? baseMappings
+    : createDefaultVirtualMappings(sourceBaseOffset, text.length);
+  const transformedMappings = [];
+  for (const segment of getMappingSegments(sourceMappings)) {
+    for (const copiedSegment of copiedSegments) {
+      const overlapStart = Math.max(segment.generatedStart, copiedSegment.originalStart);
+      const overlapEnd = Math.min(segment.generatedEnd, copiedSegment.originalEnd);
+      if (overlapEnd <= overlapStart) {
+        continue;
+      }
+
+      transformedMappings.push({
+        sourceOffsets: [segment.sourceStart + (overlapStart - segment.generatedStart)],
+        generatedOffsets: [copiedSegment.generatedStart + (overlapStart - copiedSegment.originalStart)],
+        lengths: [overlapEnd - overlapStart],
+        data: segment.data,
+      });
+    }
+  }
+
+  return {
+    text: chunks.join(""),
+    mappings: transformedMappings,
+  };
+}
+
+function transformJSDocTypedDeclarationsForTypeScript(sourceText, sourceBaseOffset, baseMappings) {
+  const text = String(sourceText || "");
+  const sourceFile = ts.createSourceFile("pocketpages-script.js", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const insertions = [];
+
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      const typeText = getJSDocTypeText(node, sourceFile);
+      if (isValidTypeAnnotationText(typeText)) {
+        insertions.push({
+          position: node.name.end,
+          text: `: ${typeText}`,
+        });
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+
+  return collectTypeScriptInsertionMappings(text, insertions, sourceBaseOffset, baseMappings);
+}
+
+function inferSchemaReturnTypeFromFunctionLike(functionNode, projectIndex) {
+  if (!functionNode || !functionNode.body) {
+    return "";
+  }
+
+  const inferredTypes = [];
+  let includesNull = false;
+  const visit = (node) => {
+    if (ts.isReturnStatement(node)) {
+      if (isNullLiteral(node.expression)) {
+        includesNull = true;
+        return;
+      }
+
+      const inferredType = inferDirectSchemaCallType(node.expression, projectIndex);
+      if (inferredType) {
+        inferredTypes.push(inferredType);
+      }
+      return;
+    }
+
+    if (ts.isFunctionLike(node) && node !== functionNode) {
+      return;
+    }
+
+    ts.forEachChild(node, visit);
+  };
+  visit(functionNode.body);
+
+  return mergeInferredReturnTypes(inferredTypes, includesNull);
+}
+
+function getLineStartOffset(text, offset) {
+  const safeOffset = Math.max(0, Math.min(String(text || "").length, Number(offset) || 0));
+  const previousNewline = String(text || "").lastIndexOf("\n", safeOffset - 1);
+  return previousNewline === -1 ? 0 : previousNewline + 1;
+}
+
+function getStatementEnd(node) {
+  return node && node.parent && node.parent.parent && ts.isVariableStatement(node.parent.parent)
+    ? node.parent.parent.end
+    : node.end;
+}
+
+function collectPocketPagesJSDocTypeActionsForScript(scriptText, sourceFile, projectIndex, range, offsetBase = 0) {
+  if (!range || typeof range.start !== "number" || typeof range.end !== "number") {
+    return [];
+  }
+
+  const text = String(scriptText || "");
+  const currentSourceFile =
+    sourceFile || ts.createSourceFile("pocketpages-script.js", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const declarationByName = new Map();
+  const assignedTypesByName = new Map();
+  const localRangeStart = Math.max(0, range.start - offsetBase);
+  const localRangeEnd = Math.max(localRangeStart, range.end - offsetBase);
+
+  const rememberDeclaration = (node) => {
+    if (
+      !ts.isVariableDeclaration(node) ||
+      !ts.isIdentifier(node.name) ||
+      getJSDocTypeText(node, currentSourceFile)
+    ) {
+      return;
+    }
+
+    const initializer = node.initializer;
+    if (!isEmptyArrayLiteral(initializer) && !isNullLiteral(initializer)) {
+      return;
+    }
+
+    declarationByName.set(node.name.text, {
+      name: node.name.text,
+      nameStart: node.name.getStart(currentSourceFile),
+      nameEnd: node.name.getEnd(),
+      declarationStart: node.parent && node.parent.parent
+        ? node.parent.parent.getStart(currentSourceFile)
+        : node.getStart(currentSourceFile),
+      statementEnd: getStatementEnd(node),
+      initializerKind: isEmptyArrayLiteral(initializer) ? "array" : "null",
+    });
+  };
+
+  const rememberAssignment = (node) => {
+    if (
+      !ts.isBinaryExpression(node) ||
+      node.operatorToken.kind !== ts.SyntaxKind.EqualsToken ||
+      !ts.isIdentifier(node.left)
+    ) {
+      return;
+    }
+
+    const declaration = declarationByName.get(node.left.text);
+    if (!declaration) {
+      return;
+    }
+
+    const inferredType = inferDirectSchemaCallType(node.right, projectIndex);
+    if (!inferredType) {
+      return;
+    }
+
+    if (
+      (declaration.initializerKind === "array" && !inferredType.includes("RecordArray")) ||
+      (declaration.initializerKind === "null" && inferredType.includes("RecordArray"))
+    ) {
+      return;
+    }
+
+    let assignedTypes = assignedTypesByName.get(declaration.name);
+    if (!assignedTypes) {
+      assignedTypes = new Set();
+      assignedTypesByName.set(declaration.name, assignedTypes);
+    }
+    assignedTypes.add(inferredType);
+  };
+
+  const visit = (node) => {
+    rememberDeclaration(node);
+    rememberAssignment(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(currentSourceFile);
+
+  const actions = [];
+  for (const [name, declaration] of declarationByName.entries()) {
+    if (!rangesOverlap(declaration.declarationStart, declaration.statementEnd, localRangeStart, localRangeEnd)) {
+      continue;
+    }
+
+    const assignedTypes = assignedTypesByName.get(name);
+    if (!assignedTypes || !assignedTypes.size) {
+      continue;
+    }
+
+    const inferredTypes = [...assignedTypes];
+    const typeText = declaration.initializerKind === "null"
+      ? mergeInferredReturnTypes(inferredTypes, true)
+      : mergeInferredReturnTypes(inferredTypes, false);
+    if (!typeText || !isValidTypeAnnotationText(typeText)) {
+      continue;
+    }
+
+    const lineStart = getLineStartOffset(text, declaration.declarationStart);
+    const indentMatch = text.slice(lineStart, declaration.declarationStart).match(/^[ \t]*/);
+    const indent = indentMatch ? indentMatch[0] : "";
+    actions.push({
+      title: `Add JSDoc type for ${name}`,
+      kind: "quickfix",
+      edits: [
+        {
+          start: offsetBase + lineStart,
+          end: offsetBase + lineStart,
+          newText: `${indent}/** @type {${typeText}} */\n`,
+        },
+      ],
+    });
+  }
+
+  return actions;
+}
+
+function isValidObjectPropertyName(name) {
+  return typeof name === "string" && /^[$A-Z_a-z][$\w]*$/.test(name);
 }
 
 function findAppRoot(filePath) {
@@ -2719,6 +3142,7 @@ class ProjectLanguageService {
     this.includeCallEntriesCache = new Map();
     this.includePreludeCache = new Map();
     this.schemaTypePreludeCache = null;
+    this.resolveModuleReturnTypeCache = new Map();
     this.scriptSchemaDiagnosticsCache = new Map();
 
     this.languageService = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry());
@@ -2765,6 +3189,7 @@ class ProjectLanguageService {
     this.projectIndex.invalidateContentForFile(normalizedFilePath);
     this.includeCallEntriesCache.delete(normalizedFilePath);
     this.includeContractCache.delete(normalizedFilePath);
+    this.resolveModuleReturnTypeCache.delete(normalizedFilePath);
     this.projectVersion += 1;
   }
 
@@ -2775,6 +3200,7 @@ class ProjectLanguageService {
       this.projectIndex.invalidateContentForFile(normalizedFilePath);
       this.includeCallEntriesCache.delete(normalizedFilePath);
       this.includeContractCache.delete(normalizedFilePath);
+      this.resolveModuleReturnTypeCache.delete(normalizedFilePath);
       this.documentSnapshotManager.clearPreparedDocumentState(normalizedFilePath);
       this.projectVersion += 1;
     }
@@ -2786,6 +3212,7 @@ class ProjectLanguageService {
     this.includePreludeCache.clear();
     this.includePreludeStack.clear();
     this.schemaTypePreludeCache = null;
+    this.resolveModuleReturnTypeCache.clear();
     this.scriptSchemaDiagnosticsCache.clear();
     this.documentSnapshotManager.clearTsFileStates();
     this.documentSnapshotManager.clearSourceDocuments();
@@ -2868,6 +3295,10 @@ class ProjectLanguageService {
     }
 
     if (this.includeCallEntriesCache.delete(normalizedFilePath)) {
+      changed = true;
+    }
+
+    if (this.resolveModuleReturnTypeCache.delete(normalizedFilePath)) {
       changed = true;
     }
 
@@ -3571,6 +4002,8 @@ class ProjectLanguageService {
     schemaLines.push("  tableName(): C;");
     schemaLines.push("  collection(): PocketPagesCollectionModel<C>;");
     schemaLines.push("};");
+    schemaLines.push("type PocketPagesRecord<C extends PocketPagesCollectionName> = PocketPagesTypedRecord<C>;");
+    schemaLines.push("type PocketPagesRecordArray<C extends PocketPagesCollectionName> = Array<PocketPagesTypedRecord<C>>;");
     schemaLines.push("type PocketPagesTypedRecordConstructor = {");
     schemaLines.push("  new<C extends PocketPagesCollectionName>(collection?: PocketPagesCollectionModel<C>, data?: PocketPagesRecordInitData): PocketPagesTypedRecord<C>;");
     schemaLines.push("  new(collection?: pocketbase.Collection, data?: PocketPagesRecordInitData): core.Record;");
@@ -4317,6 +4750,186 @@ class ProjectLanguageService {
     return diagnostics;
   }
 
+  getInferredModuleExportReturnTypes(targetFilePath) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    if (!isScriptFile(normalizedTargetFilePath) || !fileExists(normalizedTargetFilePath)) {
+      return new Map();
+    }
+
+    const stats = fs.statSync(normalizedTargetFilePath);
+    const schemaState = this.projectIndex.getSchemaState();
+    const cacheKey = [
+      normalizedTargetFilePath,
+      stats.mtimeMs,
+      stats.size,
+      schemaState.mtimeMs,
+      schemaState.size,
+      this.projectIndex.pagesStructureVersion,
+    ].join(":");
+    const cached = this.resolveModuleReturnTypeCache.get(normalizedTargetFilePath);
+    if (cached && cached.cacheKey === cacheKey) {
+      return cached.returnTypes;
+    }
+
+    const text = fs.readFileSync(normalizedTargetFilePath, "utf8");
+    const sourceFile = ts.createSourceFile(normalizedTargetFilePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    const functionsByName = new Map();
+    const inferredInlineExports = new Map();
+
+    const addFunction = (name, functionNode, jsDocOwner) => {
+      if (!name || !functionNode || hasJSDocReturnType(functionNode, sourceFile) || hasJSDocReturnType(jsDocOwner, sourceFile)) {
+        return;
+      }
+
+      const returnType = inferSchemaReturnTypeFromFunctionLike(functionNode, this.projectIndex);
+      if (returnType) {
+        functionsByName.set(name, returnType);
+      }
+    };
+
+    const addInlineExport = (name, functionNode, jsDocOwner) => {
+      if (!name || !functionNode || hasJSDocReturnType(functionNode, sourceFile) || hasJSDocReturnType(jsDocOwner, sourceFile)) {
+        return;
+      }
+
+      const returnType = inferSchemaReturnTypeFromFunctionLike(functionNode, this.projectIndex);
+      if (returnType) {
+        inferredInlineExports.set(name, returnType);
+      }
+    };
+
+    const propertyNameText = (nameNode) => {
+      if (!nameNode) {
+        return "";
+      }
+      if (ts.isIdentifier(nameNode) || ts.isStringLiteral(nameNode) || ts.isNumericLiteral(nameNode)) {
+        return nameNode.text;
+      }
+      return "";
+    };
+
+    const isModuleExportsExpression = (expression) =>
+      expression &&
+      ts.isPropertyAccessExpression(expression) &&
+      expression.name.text === "exports" &&
+      ts.isIdentifier(expression.expression) &&
+      expression.expression.text === "module";
+
+    const isExportsPropertyExpression = (expression) =>
+      expression &&
+      ts.isPropertyAccessExpression(expression) &&
+      (
+        isModuleExportsExpression(expression.expression) ||
+        (ts.isIdentifier(expression.expression) && expression.expression.text === "exports")
+      );
+
+    const collectExportObject = (objectLiteral) => {
+      const exportedNames = new Map();
+      for (const property of objectLiteral.properties || []) {
+        if (ts.isShorthandPropertyAssignment(property)) {
+          exportedNames.set(property.name.text, property.name.text);
+          continue;
+        }
+
+        if (ts.isPropertyAssignment(property)) {
+          const exportName = propertyNameText(property.name);
+          if (!exportName) {
+            continue;
+          }
+
+          if (ts.isIdentifier(property.initializer)) {
+            exportedNames.set(exportName, property.initializer.text);
+            continue;
+          }
+
+          if (ts.isFunctionExpression(property.initializer) || ts.isArrowFunction(property.initializer)) {
+            addInlineExport(exportName, property.initializer, property);
+          }
+          continue;
+        }
+
+        if (ts.isMethodDeclaration(property)) {
+          const exportName = propertyNameText(property.name);
+          addInlineExport(exportName, property, property);
+        }
+      }
+
+      return exportedNames;
+    };
+
+    const exportedNameToLocalName = new Map();
+    const visit = (node) => {
+      if (ts.isFunctionDeclaration(node) && node.name) {
+        addFunction(node.name.text, node, node);
+      } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+        if (node.initializer && (ts.isFunctionExpression(node.initializer) || ts.isArrowFunction(node.initializer))) {
+          addFunction(node.name.text, node.initializer, node);
+        }
+      } else if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      ) {
+        if (isModuleExportsExpression(node.left) && ts.isObjectLiteralExpression(node.right)) {
+          for (const [exportName, localName] of collectExportObject(node.right).entries()) {
+            exportedNameToLocalName.set(exportName, localName);
+          }
+        } else if (isExportsPropertyExpression(node.left)) {
+          const exportName = node.left.name.text;
+          if (ts.isIdentifier(node.right)) {
+            exportedNameToLocalName.set(exportName, node.right.text);
+          } else if (ts.isFunctionExpression(node.right) || ts.isArrowFunction(node.right)) {
+            addInlineExport(exportName, node.right, node);
+          }
+        }
+      }
+
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+
+    const returnTypes = new Map(inferredInlineExports);
+    for (const [exportName, localName] of exportedNameToLocalName.entries()) {
+      const returnType = functionsByName.get(localName);
+      if (returnType) {
+        returnTypes.set(exportName, returnType);
+      }
+    }
+
+    this.resolveModuleReturnTypeCache.set(normalizedTargetFilePath, {
+      cacheKey,
+      returnTypes,
+    });
+    return returnTypes;
+  }
+
+  buildResolveTargetType(targetFilePath) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    const importType = `typeof import(${JSON.stringify(normalizedTargetFilePath)})`;
+    const inferredReturnTypes = this.getInferredModuleExportReturnTypes(normalizedTargetFilePath);
+    if (!inferredReturnTypes.size) {
+      return importType;
+    }
+
+    const inferredItems = [...inferredReturnTypes.entries()]
+      .filter(([name]) => isValidObjectPropertyName(name));
+    const inferredEntries = inferredItems
+      .map(([name, returnType]) =>
+        `    ${JSON.stringify(name)}: (...args: Parameters<${importType}[${JSON.stringify(name)}]>) => ${returnType};`
+      );
+    if (!inferredEntries.length) {
+      return importType;
+    }
+
+    const omittedKeys = inferredItems.length === 1
+      ? JSON.stringify(inferredItems[0][0])
+      : inferredItems.map(([name]) => JSON.stringify(name)).join(" | ");
+    return [
+      `Omit<${importType}, ${omittedKeys}> & {`,
+      ...inferredEntries,
+      "  }",
+    ].join("\n");
+  }
+
   buildResolveTypePrelude(filePath, analysisText) {
     if (!analysisText) {
       return "";
@@ -4331,7 +4944,7 @@ class ProjectLanguageService {
       }
 
       overloadLines.push(
-        `  (requestPath: ${JSON.stringify(requestPath)}, ...args: any[]): typeof import(${JSON.stringify(normalizePath(targetFilePath))});`
+        `  (requestPath: ${JSON.stringify(requestPath)}, ...args: any[]): ${this.buildResolveTargetType(targetFilePath)};`
       );
     }
 
@@ -4393,8 +5006,16 @@ class ProjectLanguageService {
       };
     }
 
+    const sourceMappings = Array.isArray(options.mappings)
+      ? options.mappings
+      : createDefaultVirtualMappings(block.contentStart, block.content.length);
+    const transformedBlock = transformJSDocTypedDeclarationsForTypeScript(
+      block.content,
+      block.contentStart,
+      sourceMappings
+    );
     const prelude = this.buildPrelude(resolvedPath, block.content);
-    const text = `${prelude}${block.content}`;
+    const text = `${prelude}${transformedBlock.text}`;
 
     if (!previous || previous.text !== text) {
       this.documentSnapshotManager.setVirtualFileState(virtualFileName, {
@@ -4404,15 +5025,7 @@ class ProjectLanguageService {
         preludeLength: prelude.length,
         preludeSnapshotKey,
         block,
-        mappings: Array.isArray(options.mappings)
-          ? options.mappings
-          : [
-              {
-                sourceOffsets: [block.contentStart],
-                generatedOffsets: [0],
-                lengths: [block.content.length],
-              },
-            ],
+        mappings: transformedBlock.mappings,
         associatedScriptMappings:
           options.associatedScriptMappings instanceof Map ? options.associatedScriptMappings : new Map(),
       });
@@ -4421,9 +5034,7 @@ class ProjectLanguageService {
       previous.block = block;
       previous.preludeLength = prelude.length;
       previous.preludeSnapshotKey = preludeSnapshotKey;
-      previous.mappings = Array.isArray(options.mappings)
-        ? options.mappings
-        : previous.mappings;
+      previous.mappings = transformedBlock.mappings;
       previous.associatedScriptMappings =
         options.associatedScriptMappings instanceof Map
           ? options.associatedScriptMappings
@@ -4542,8 +5153,16 @@ class ProjectLanguageService {
     const resolvedPath = normalizePath(filePath);
     const virtualFileName = getSourceAdjacentVirtualFilePath(resolvedPath, "script");
 
+    const sourceMappings = Array.isArray(options.mappings)
+      ? options.mappings
+      : createDefaultVirtualMappings(0, documentText.length);
+    const transformedDocument = transformJSDocTypedDeclarationsForTypeScript(
+      documentText,
+      0,
+      sourceMappings
+    );
     const prelude = this.buildPrelude(resolvedPath, documentText);
-    const text = `${prelude}${documentText}`;
+    const text = `${prelude}${transformedDocument.text}`;
     const previous = this.virtualFiles.get(virtualFileName);
 
     if (!previous || previous.text !== text) {
@@ -4553,15 +5172,7 @@ class ProjectLanguageService {
         preludeLength: prelude.length,
         kind: "script-document",
         documentLength: documentText.length,
-        mappings: Array.isArray(options.mappings)
-          ? options.mappings
-          : [
-              {
-                sourceOffsets: [0],
-                generatedOffsets: [0],
-                lengths: [documentText.length],
-              },
-            ],
+        mappings: transformedDocument.mappings,
         associatedScriptMappings:
           options.associatedScriptMappings instanceof Map ? options.associatedScriptMappings : new Map(),
       });
@@ -4569,9 +5180,7 @@ class ProjectLanguageService {
     } else {
       previous.preludeLength = prelude.length;
       previous.documentLength = documentText.length;
-      previous.mappings = Array.isArray(options.mappings)
-        ? options.mappings
-        : previous.mappings;
+      previous.mappings = transformedDocument.mappings;
       previous.associatedScriptMappings =
         options.associatedScriptMappings instanceof Map
           ? options.associatedScriptMappings
@@ -4875,13 +5484,18 @@ class ProjectLanguageService {
     const preferTemplateDocument = !!(options && options.preferTemplateDocument);
 
     if (preparedState.kind === "script" && preparedState.script) {
+      const virtualOffset = this.mapDocumentOffsetToVirtualOffset(
+        preparedState.script.fileName,
+        offset,
+        offset
+      );
       return {
         block: null,
         virtual: {
           fileName: preparedState.script.fileName,
           preludeLength: preparedState.script.preludeLength,
         },
-        virtualOffset: preparedState.script.preludeLength + offset,
+        virtualOffset,
       };
     }
 
@@ -4911,13 +5525,18 @@ class ProjectLanguageService {
 
     for (const block of preparedState.serverBlocks || []) {
       if (offset >= block.contentStart && offset <= block.contentEnd) {
+        const virtualOffset = this.mapDocumentOffsetToVirtualOffset(
+          block.fileName,
+          offset,
+          offset - block.contentStart
+        );
         return {
           block,
           virtual: {
             fileName: block.fileName,
             preludeLength: block.preludeLength,
           },
-          virtualOffset: block.preludeLength + (offset - block.contentStart),
+          virtualOffset,
         };
       }
     }
@@ -4981,6 +5600,20 @@ class ProjectLanguageService {
     }
 
     return this.mapVirtualStateOffsetToDocumentOffset(state, offset);
+  }
+
+  mapDocumentOffsetToVirtualOffset(virtualFileName, documentOffset, fallbackRelativeOffset) {
+    const state = this.virtualFiles.get(virtualFileName);
+    if (!state || typeof state.preludeLength !== "number") {
+      return null;
+    }
+
+    const mappedRelativeOffset = mapSourceOffsetToGeneratedOffset(state.mappings, documentOffset);
+    if (mappedRelativeOffset !== null) {
+      return state.preludeLength + mappedRelativeOffset;
+    }
+
+    return state.preludeLength + fallbackRelativeOffset;
   }
 
   getDocumentTextForTarget(filePath, currentFilePath, currentDocumentText) {
@@ -5210,6 +5843,7 @@ class ProjectLanguageService {
     if (isScriptFile(filePath)) {
       const upsertStartedAt = profile ? process.hrtime.bigint() : null;
       const virtual = this.upsertScriptVirtualFile(filePath, documentText);
+      const virtualOffset = this.mapDocumentOffsetToVirtualOffset(virtual.fileName, offset, offset);
       if (profile && upsertStartedAt) {
         profile.upsertKind = "script";
         profile.upsertMs = elapsedMilliseconds(upsertStartedAt);
@@ -5219,7 +5853,7 @@ class ProjectLanguageService {
       return {
         block: null,
         virtual,
-        virtualOffset: virtual.preludeLength + offset,
+        virtualOffset,
       };
     }
 
@@ -5250,13 +5884,19 @@ class ProjectLanguageService {
       profile.getVirtualStateAtOffsetMs = elapsedMilliseconds(startedAt);
     }
 
+    const virtualOffset =
+      shouldUseTemplateVirtual || !block
+        ? virtual.preludeLength + offset
+        : this.mapDocumentOffsetToVirtualOffset(
+            virtual.fileName,
+            offset,
+            offset - block.contentStart
+          );
+
     return {
       block: shouldUseTemplateVirtual ? null : block,
       virtual,
-      virtualOffset:
-        shouldUseTemplateVirtual || !block
-          ? virtual.preludeLength + offset
-          : virtual.preludeLength + (offset - block.contentStart),
+      virtualOffset,
     };
   }
 
@@ -7342,6 +7982,45 @@ class ProjectLanguageService {
       start: span.start,
       end: span.end,
     }));
+  }
+
+  getPocketPagesJSDocTypeCodeActions(filePath, documentText, range) {
+    if (!range || typeof range.start !== "number" || typeof range.end !== "number") {
+      return [];
+    }
+
+    const normalizedFilePath = normalizePath(filePath);
+    const currentText = String(documentText || "");
+    if (isScriptFile(normalizedFilePath)) {
+      return collectPocketPagesJSDocTypeActionsForScript(
+        currentText,
+        null,
+        this.projectIndex,
+        range,
+        0
+      );
+    }
+
+    if (!isEjsFile(normalizedFilePath)) {
+      return [];
+    }
+
+    const actions = [];
+    for (const block of _extractServerBlocks(currentText)) {
+      if (!rangesOverlap(block.contentStart, block.contentEnd, range.start, range.end)) {
+        continue;
+      }
+
+      actions.push(...collectPocketPagesJSDocTypeActionsForScript(
+        block.content,
+        null,
+        this.projectIndex,
+        range,
+        block.contentStart
+      ));
+    }
+
+    return actions;
   }
 
   collectServerBlockDiagnostics(filePath, documentText, blocks, collectionMethodNames, documentAnalysis, options = {}) {
