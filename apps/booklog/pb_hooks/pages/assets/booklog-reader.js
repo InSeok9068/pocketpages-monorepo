@@ -2512,26 +2512,14 @@ window.booklogReaderLogic = (function () {
 
   function buildReaderSettingsCss(settings) {
     var normalizedSettings = normalizeReaderSettings(settings)
-    var cssRules = [
-      'html{background:#ffffff !important;}',
-      'body{background:#ffffff !important;color:#1c1917 !important;}',
-      'a{color:#57534e !important;}',
-    ]
+    var cssRules = ['html{background:#ffffff !important;}', 'body{background:#ffffff !important;color:#1c1917 !important;}', 'a{color:#57534e !important;}']
 
     if (normalizedSettings.theme === 'sepia') {
-      cssRules = [
-        'html{background:#f7f0df !important;}',
-        'body{background:#f7f0df !important;color:#33281f !important;}',
-        'a{color:#79553b !important;}',
-      ]
+      cssRules = ['html{background:#f7f0df !important;}', 'body{background:#f7f0df !important;color:#33281f !important;}', 'a{color:#79553b !important;}']
     }
 
     if (normalizedSettings.theme === 'night') {
-      cssRules = [
-        'html{background:#161616 !important;}',
-        'body{background:#161616 !important;color:#e8e1d6 !important;}',
-        'a{color:#d8b16d !important;}',
-      ]
+      cssRules = ['html{background:#161616 !important;}', 'body{background:#161616 !important;color:#e8e1d6 !important;}', 'a{color:#d8b16d !important;}']
     }
 
     if (normalizedSettings.fontFamily === 'sans') {
@@ -2551,7 +2539,9 @@ window.booklogReaderLogic = (function () {
     }
 
     if (normalizedSettings.pageMargin === 'narrow') {
-      cssRules.push('body{box-sizing:border-box !important;width:auto !important;max-width:none !important;min-width:0 !important;margin-left:0.75rem !important;margin-right:0.75rem !important;padding-left:0 !important;padding-right:0 !important;}')
+      cssRules.push(
+        'body{box-sizing:border-box !important;width:auto !important;max-width:none !important;min-width:0 !important;margin-left:0.75rem !important;margin-right:0.75rem !important;padding-left:0 !important;padding-right:0 !important;}'
+      )
     }
 
     if (normalizedSettings.pageMargin === 'wide') {
