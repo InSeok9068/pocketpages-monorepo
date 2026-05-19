@@ -43,6 +43,8 @@
 // 39) params를 query처럼 읽는 패턴
 // 40) redirect() 뒤 return 누락
 // 41) +config.js plugin이 package.json 직접 의존성에 없는 경우
+// 42) 서버 코드에서 async/await/Promise/.then() 사용
+// 43) redirect option에서 flash 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -116,6 +118,9 @@ const RE = {
   hookRegistration:
     /(^|[^A-Za-z0-9_$])(routerAdd|routerUse|cronAdd|onBootstrap|onServe|onTerminate|onRecord[A-Za-z0-9_]*|onSettings[A-Za-z0-9_]*|onMailer[A-Za-z0-9_]*|onRealtime[A-Za-z0-9_]*|onBackup[A-Za-z0-9_]*)\s*\(/,
   outerAppInsideTransaction: /\$app\./,
+  asyncFlow: /\basync\b|\bawait\b|\bPromise\b|\.then\s*\(/g,
+  redirectCall: /\bredirect\s*\(/g,
+  redirectFlashOption: /[,{]\s*flash\s*:/,
 }
 
 let errors = 0
@@ -525,6 +530,75 @@ function findMatchingBrace(content, openBraceIndex) {
   return -1
 }
 
+function findMatchingParen(content, openParenIndex) {
+  let depth = 0
+  let inString = ''
+  let inBlockComment = false
+  let escaped = false
+
+  for (let index = openParenIndex; index < content.length; index += 1) {
+    const char = content[index]
+    const next = content[index + 1]
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false
+        index += 1
+      }
+      continue
+    }
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+
+      if (char === '\\') {
+        escaped = true
+        continue
+      }
+
+      if (char === inString) {
+        inString = ''
+      }
+      continue
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true
+      index += 1
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      while (index < content.length && content[index] !== '\n') {
+        index += 1
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      inString = char
+      continue
+    }
+
+    if (char === '(') {
+      depth += 1
+      continue
+    }
+
+    if (char === ')') {
+      depth -= 1
+      if (depth === 0) {
+        return index
+      }
+    }
+  }
+
+  return -1
+}
+
 function extractNamedFunctionBody(content, functionName) {
   const pattern = new RegExp(`\\bfunction\\s+${functionName}\\s*\\(`)
   const match = pattern.exec(content)
@@ -870,6 +944,38 @@ function collectModuleExportsShorthandMatches(files) {
   return unique(matches)
 }
 
+function isServerRuntimeFile(file) {
+  if (!file.inPages) {
+    return file.basename.endsWith('.js')
+  }
+
+  if (file.relFromPages.startsWith('assets/')) {
+    return false
+  }
+
+  return file.isEjs || file.basename.startsWith('+') || file.relFromPages.startsWith('_private/')
+}
+
+function collectAsyncFlowMatches(context) {
+  const matches = []
+  const files = context.hooksCodeFiles.filter(isServerRuntimeFile)
+
+  for (const file of files) {
+    const analysisText = getLintAnalysisText(file)
+
+    RE.asyncFlow.lastIndex = 0
+    let match = RE.asyncFlow.exec(analysisText)
+
+    while (match) {
+      const lineNumber = lineNumberAt(analysisText, match.index)
+      matches.push(formatLintLineMatch(file, lineNumber))
+      match = RE.asyncFlow.exec(analysisText)
+    }
+  }
+
+  return unique(matches)
+}
+
 function collectTransactionOuterAppMatches(files) {
   const matches = []
   const transactionPatterns = [
@@ -1119,6 +1225,37 @@ function collectRedirectMissingReturnMatches(context) {
   return unique(matches)
 }
 
+function collectRedirectFlashOptionMatches(context) {
+  const matches = []
+
+  for (const file of context.lintCodeFiles) {
+    const analysisText = getLintAnalysisText(file)
+
+    RE.redirectCall.lastIndex = 0
+    let match = RE.redirectCall.exec(analysisText)
+
+    while (match) {
+      const openParenIndex = analysisText.indexOf('(', match.index)
+      const closeParenIndex = findMatchingParen(analysisText, openParenIndex)
+      if (closeParenIndex === -1) {
+        break
+      }
+
+      const callText = analysisText.slice(match.index, closeParenIndex + 1)
+      RE.redirectFlashOption.lastIndex = 0
+      if (RE.redirectFlashOption.test(callText)) {
+        const lineNumber = lineNumberAt(analysisText, match.index)
+        matches.push(formatLintLineMatch(file, lineNumber))
+      }
+
+      RE.redirectCall.lastIndex = closeParenIndex + 1
+      match = RE.redirectCall.exec(analysisText)
+    }
+  }
+
+  return unique(matches)
+}
+
 function collectConfigPluginDependencyMatches(context) {
   if (!context.configFileInfo) {
     return []
@@ -1243,6 +1380,13 @@ function lintService(context) {
     context.serviceName,
     'Invalid runInTransaction usage. Inside $app.runInTransaction(...) always use the callback txApp argument instead of the outer $app instance.',
     transactionOuterAppMatches,
+  )
+
+  const asyncFlowMatches = collectAsyncFlowMatches(context)
+  printMatches(
+    context.serviceName,
+    'Invalid JSVM async flow. Keep PocketBase/PocketPages server code sync; do not use async, await, Promise, or .then(...).',
+    asyncFlowMatches,
   )
 
   const pagesHookRegistrationMatches = collectLineMatches(context.pagesCodeFiles, RE.hookRegistration)
@@ -1386,6 +1530,12 @@ function lintService(context) {
     context.serviceName,
     'Invalid flash handling. Use redirect(path, { message }) instead of manually building ?__flash=....',
     manualFlashMatches,
+  )
+  const redirectFlashOptionMatches = collectRedirectFlashOptionMatches(context)
+  printMatches(
+    context.serviceName,
+    'Invalid redirect flash option. Use redirect(path, { message }) instead of redirect(path, { flash }).',
+    redirectFlashOptionMatches,
   )
   const redirectMissingReturnMatches = collectRedirectMissingReturnMatches(context)
   printMatches(
