@@ -299,6 +299,15 @@
       },
       {
         "hidden": false,
+        "id": "bool2026052101",
+        "name": "booklog_enabled",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
         "onCreate": true,

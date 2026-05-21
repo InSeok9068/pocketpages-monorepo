@@ -7,6 +7,7 @@
   const { dateutil } = require('@pocketpages/utils')
   const flashMessage = params.__flash ? String(params.__flash) : ''
   const isSignedIn = !!request.auth
+  const canUseBooklog = isSignedIn && request.auth.get('booklog_enabled') === true
   const shelfStatusLabels = {
     queued: '읽을 예정',
     reading: '읽는 중',
@@ -59,7 +60,7 @@
   }
   let randomHighlights = []
 
-  if (isSignedIn) {
+  if (canUseBooklog) {
     const shelfRecords = $app.findRecordsByFilter('book_shelves', 'user_id = {:userId}', '-status,-updated,-last_read_at', 50, 0, { userId: request.auth.get('id') })
     const loadedShelfBooks = []
 
@@ -174,6 +175,24 @@
       로그인 / 회원가입
     </a>
   </div>
+</section>
+<% } else if (!canUseBooklog) { %>
+<section class="mt-8 rounded-[2rem] border border-stone-200/80 bg-white/75 p-6 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+  <div class="space-y-3">
+    <h2 class="text-3xl font-semibold tracking-tight text-stone-950">아직 사용할 수 없는 계정입니다</h2>
+    <p class="max-w-xl text-sm leading-7 text-stone-600">Booklog는 초대한 사람만 사용할 수 있습니다. 사용하려면 관리자에게 알려주세요.</p>
+  </div>
+
+  <form
+    class="mt-6"
+    method="post"
+    action="/xapi/auth/sign-out">
+    <button
+      class="inline-flex items-center rounded-full border-none bg-stone-900 px-5 py-3 text-sm font-medium text-white no-underline transition hover:bg-stone-700"
+      type="submit">
+      로그아웃
+    </button>
+  </form>
 </section>
 <% } else { %>
 <script>
