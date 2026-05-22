@@ -13,7 +13,7 @@
     "cheerio": "^1.2.0",
     "esbuild": "^0.28.0",
     "eslint": "^10.2.0",
-    "eslint-plugin-jsdoc": "^62.9.0",
+    "eslint-plugin-jsdoc": "^63.0.0",
     "globals": "^17.5.0",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "0.7.2",
