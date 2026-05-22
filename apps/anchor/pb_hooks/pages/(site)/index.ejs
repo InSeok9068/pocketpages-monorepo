@@ -208,30 +208,7 @@
           })
         },
         openChatGpt() {
-          const fallbackUrl = 'https://chatgpt.com/'
-          let fallbackTimerId = null
-
-          const cancelFallback = function () {
-            if (fallbackTimerId) {
-              window.clearTimeout(fallbackTimerId)
-              fallbackTimerId = null
-            }
-          }
-
-          document.addEventListener('visibilitychange', function handleVisibilityChange() {
-            if (document.hidden) {
-              cancelFallback()
-              document.removeEventListener('visibilitychange', handleVisibilityChange)
-            }
-          })
-
-          fallbackTimerId = window.setTimeout(function () {
-            if (!document.hidden) {
-              window.location.href = fallbackUrl
-            }
-          }, 1200)
-
-          window.location.href = 'chatgpt://'
+          window.location.href = 'https://chatgpt.com/'
         },
       }
     })
