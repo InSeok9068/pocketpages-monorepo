@@ -277,14 +277,14 @@
           <button
             type="button"
             x-on:click="selectMood(item.id)"
-            class="min-h-[3.85rem] rounded-lg border-none bg-white/78 px-4 py-3 text-left shadow-[inset_0_0_0_1px_rgba(96,122,101,0.10)] transition active:scale-[0.995]"
+            class="bg-white/78 min-h-[3.85rem] rounded-lg border-none px-4 py-3 text-left shadow-[inset_0_0_0_1px_rgba(96,122,101,0.10)] transition active:scale-[0.995]"
             x-bind:class="mood === item.id ? 'bg-[#607a65] text-white shadow-none' : 'text-[#253028]'">
             <span
               class="block text-[15px] font-semibold"
               x-text="item.label"></span>
             <span
               class="mt-0.5 block text-[13px] leading-5"
-            x-bind:class="mood === item.id ? 'text-[#edf4ee]' : 'text-[#68736b]'"
+              x-bind:class="mood === item.id ? 'text-[#edf4ee]' : 'text-[#68736b]'"
               x-text="item.text"></span>
           </button>
         </template>
@@ -307,7 +307,7 @@
           <button
             type="button"
             x-on:click="selectConcern(item.id)"
-            class="min-h-[3.85rem] rounded-lg border-none bg-white/78 px-4 py-3 text-left shadow-[inset_0_0_0_1px_rgba(96,122,101,0.10)] transition active:scale-[0.995]"
+            class="bg-white/78 min-h-[3.85rem] rounded-lg border-none px-4 py-3 text-left shadow-[inset_0_0_0_1px_rgba(96,122,101,0.10)] transition active:scale-[0.995]"
             x-bind:class="concern === item.id ? 'bg-[#607a65] text-white shadow-none' : 'text-[#253028]'">
             <span
               class="block text-[15px] font-semibold"
@@ -337,7 +337,7 @@
           <button
             type="button"
             x-on:click="selectSupport(item.id)"
-            class="min-h-[3.85rem] rounded-lg border-none bg-white/78 px-4 py-3 text-left shadow-[inset_0_0_0_1px_rgba(96,122,101,0.10)] transition active:scale-[0.995]"
+            class="bg-white/78 min-h-[3.85rem] rounded-lg border-none px-4 py-3 text-left shadow-[inset_0_0_0_1px_rgba(96,122,101,0.10)] transition active:scale-[0.995]"
             x-bind:class="support === item.id ? 'bg-[#607a65] text-white shadow-none' : 'text-[#253028]'">
             <span
               class="block text-[15px] font-semibold"
@@ -367,7 +367,7 @@
           <textarea
             x-model="thought"
             rows="2"
-            class="mt-1.5 box-border w-full resize-none rounded-lg border border-[#dfe5dc] bg-white/82 px-3.5 py-2.5 text-[15px] leading-6 text-[#253028] shadow-[0_1px_2px_rgba(37,48,40,0.05)] outline-none transition placeholder:text-[#9aa59d] focus:border-[#607a65]"
+            class="bg-white/82 mt-1.5 box-border w-full resize-none rounded-lg border border-[#dfe5dc] px-3.5 py-2.5 text-[15px] leading-6 text-[#253028] shadow-[0_1px_2px_rgba(37,48,40,0.05)] outline-none transition placeholder:text-[#9aa59d] focus:border-[#607a65]"
             placeholder="예: 지금 방향을 잘못 잡으면 나중에 크게 후회할 것 같다."></textarea>
         </label>
 
@@ -376,7 +376,7 @@
           <textarea
             x-model="control"
             rows="2"
-            class="mt-1.5 box-border w-full resize-none rounded-lg border border-[#dfe5dc] bg-white/82 px-3.5 py-2.5 text-[15px] leading-6 text-[#253028] shadow-[0_1px_2px_rgba(37,48,40,0.05)] outline-none transition placeholder:text-[#9aa59d] focus:border-[#607a65]"
+            class="bg-white/82 mt-1.5 box-border w-full resize-none rounded-lg border border-[#dfe5dc] px-3.5 py-2.5 text-[15px] leading-6 text-[#253028] shadow-[0_1px_2px_rgba(37,48,40,0.05)] outline-none transition placeholder:text-[#9aa59d] focus:border-[#607a65]"
             placeholder="예: 오늘 할 일 하나를 정하고 비교되는 입력을 줄이는 것."></textarea>
         </label>
 
@@ -385,7 +385,7 @@
           <textarea
             x-model="release"
             rows="2"
-            class="mt-1.5 box-border w-full resize-none rounded-lg border border-[#dfe5dc] bg-white/82 px-3.5 py-2.5 text-[15px] leading-6 text-[#253028] shadow-[0_1px_2px_rgba(37,48,40,0.05)] outline-none transition placeholder:text-[#9aa59d] focus:border-[#607a65]"
+            class="bg-white/82 mt-1.5 box-border w-full resize-none rounded-lg border border-[#dfe5dc] px-3.5 py-2.5 text-[15px] leading-6 text-[#253028] shadow-[0_1px_2px_rgba(37,48,40,0.05)] outline-none transition placeholder:text-[#9aa59d] focus:border-[#607a65]"
             placeholder="예: 오늘 모든 방향을 확정해야 한다는 압박."></textarea>
         </label>
       </div>
@@ -408,7 +408,7 @@
       </div>
 
       <pre
-        class="max-h-[42dvh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#dfe5dc] bg-white/82 p-3.5 text-[13px] leading-5 text-[#526157] shadow-[0_1px_2px_rgba(37,48,40,0.05)]"
+        class="bg-white/82 max-h-[42dvh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#dfe5dc] p-3.5 text-[13px] leading-5 text-[#526157] shadow-[0_1px_2px_rgba(37,48,40,0.05)]"
         x-text="promptText"></pre>
 
       <div class="grid gap-2">
@@ -426,7 +426,7 @@
         <button
           type="button"
           x-on:click="openChatGpt()"
-          class="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#dfe5dc] bg-white/82 px-5 py-2.5 text-[15px] font-medium text-[#526157] shadow-[0_1px_2px_rgba(37,48,40,0.05)]">
+          class="bg-white/82 inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#dfe5dc] px-5 py-2.5 text-[15px] font-medium text-[#526157] shadow-[0_1px_2px_rgba(37,48,40,0.05)]">
           <span
             class="i-lucide-message-circle h-5 w-5"
             aria-hidden="true"></span>
@@ -437,18 +437,18 @@
       <div class="grid grid-cols-3 gap-2 pt-2">
         <button
           type="button"
-          class="rounded-lg border border-[#dfe5dc] bg-white/82 px-3 py-2.5 text-[13px] font-medium text-[#526157] shadow-[0_1px_2px_rgba(37,48,40,0.05)]">
+          class="bg-white/82 rounded-lg border border-[#dfe5dc] px-3 py-2.5 text-[13px] font-medium text-[#526157] shadow-[0_1px_2px_rgba(37,48,40,0.05)]">
           일기
         </button>
         <button
           type="button"
-          class="rounded-lg border border-[#dfe5dc] bg-white/82 px-3 py-2.5 text-[13px] font-medium text-[#526157] shadow-[0_1px_2px_rgba(37,48,40,0.05)]">
+          class="bg-white/82 rounded-lg border border-[#dfe5dc] px-3 py-2.5 text-[13px] font-medium text-[#526157] shadow-[0_1px_2px_rgba(37,48,40,0.05)]">
           문장
         </button>
         <button
           type="button"
           x-on:click="restart()"
-          class="rounded-lg border border-[#dfe5dc] bg-white/82 px-3 py-2.5 text-[13px] font-medium text-[#526157] shadow-[0_1px_2px_rgba(37,48,40,0.05)]">
+          class="bg-white/82 rounded-lg border border-[#dfe5dc] px-3 py-2.5 text-[13px] font-medium text-[#526157] shadow-[0_1px_2px_rgba(37,48,40,0.05)]">
           처음으로
         </button>
       </div>
