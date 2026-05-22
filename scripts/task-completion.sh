@@ -19,7 +19,7 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill update install deploy rollback test lint tsc diag verify index css bundle format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill update install deploy rollback merge test lint tsc diag verify index css bundle format help" -- "$cur") )
     return
   fi
 
@@ -45,6 +45,13 @@ _pp_dev_complete() {
 
   if [[ $COMP_CWORD -eq 3 && "$cmd" == "rollback" ]]; then
     COMPREPLY=( $(compgen -W "1 2 3" -- "$cur") )
+    return
+  fi
+
+  if [[ $COMP_CWORD -eq 2 && "$cmd" == "merge" ]]; then
+    local release_services
+    release_services="$("$script" __complete_release_services 2>/dev/null)"
+    COMPREPLY=( $(compgen -W "$release_services" -- "$cur") )
     return
   fi
 

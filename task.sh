@@ -13,6 +13,7 @@ Usage:
   ./task.sh install <npm> [-- <extra args>]
   ./task.sh deploy <service> [--skip-verify]
   ./task.sh rollback <service> <1|2|3>
+  ./task.sh merge [service]
   ./task.sh test [service]
   ./task.sh lint [service]
   ./task.sh tsc [service]
@@ -30,6 +31,7 @@ Commands:
   install   `npm` runs npm install in root and app package.json dirs
   deploy    Verify and upload one service deploy targets using .vscode/sftp.json
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
+  merge     Merge main into local release/* branches, then push them to origin
   test      Run node:test files under __tests__ for one service or all services
   lint      Run PocketPages self-validation checks and ESLint for one service or all services
   tsc       Run checkJs TypeScript verification with jsconfig.json for one service or all services
@@ -45,6 +47,8 @@ Examples:
   ./task.sh css booklog
   ./task.sh deploy booklog
   ./task.sh deploy booklog --skip-verify
+  ./task.sh merge
+  ./task.sh merge booklog
   ./task.sh update npm
   ./task.sh update npm -- --save
   ./task.sh install npm
@@ -744,6 +748,95 @@ run_format() {
   npm run format -- "$@"
 }
 
+list_release_services() {
+  git -C "$ROOT_DIR" for-each-ref --format='%(refname:short)' refs/heads/release 2>/dev/null |
+    sed -n 's#^release/##p' |
+    sort
+}
+
+list_release_branches() {
+  git -C "$ROOT_DIR" for-each-ref --format='%(refname:short)' refs/heads/release 2>/dev/null |
+    sed -n '/^release\//p' |
+    sort
+}
+
+require_clean_git_worktree() {
+  if [[ -n "$(git -C "$ROOT_DIR" status --porcelain)" ]]; then
+    echo "Working tree is not clean. Commit or stash local changes before merge." >&2
+    exit 1
+  fi
+}
+
+run_merge() {
+  local service="${1:-}"
+  local branches=()
+  local branch=""
+  local failed=0
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "git not found. Cannot run merge command." >&2
+    exit 1
+  fi
+
+  require_clean_git_worktree
+
+  if [[ -n "$service" ]]; then
+    branch="release/$service"
+    if ! git -C "$ROOT_DIR" show-ref --verify --quiet "refs/heads/$branch"; then
+      echo "Unknown local release branch: $branch" >&2
+      echo "Available release services:" >&2
+      list_release_services >&2
+      exit 1
+    fi
+    branches=("$branch")
+  else
+    mapfile -t branches < <(list_release_branches)
+    if [[ "${#branches[@]}" -eq 0 ]]; then
+      echo "No local release/* branches found." >&2
+      exit 1
+    fi
+  fi
+
+  if ! git -C "$ROOT_DIR" show-ref --verify --quiet refs/heads/main; then
+    echo "Missing local main branch." >&2
+    exit 1
+  fi
+
+  echo "Updating main..."
+  git -C "$ROOT_DIR" checkout main
+  git -C "$ROOT_DIR" pull --ff-only origin main
+
+  for branch in "${branches[@]}"; do
+    echo "Merging main into $branch..."
+
+    git -C "$ROOT_DIR" checkout "$branch"
+
+    if ! git -C "$ROOT_DIR" pull --ff-only origin "$branch"; then
+      echo "Failed to update $branch from origin. Skipping." >&2
+      failed=1
+      continue
+    fi
+
+    if git -C "$ROOT_DIR" merge --no-edit main; then
+      echo "Merge complete. Pushing $branch..."
+      if ! git -C "$ROOT_DIR" push origin "$branch"; then
+        echo "Push failed: $branch" >&2
+        failed=1
+      fi
+    else
+      echo "Merge conflict: $branch" >&2
+      git -C "$ROOT_DIR" merge --abort || true
+      failed=1
+    fi
+  done
+
+  git -C "$ROOT_DIR" checkout main
+
+  if [[ "$failed" -ne 0 ]]; then
+    exit 1
+  fi
+}
+
 run_bundle() {
   local bundle_script="$ROOT_DIR/scripts/bundle-pocketpages-vendor.mjs"
 
@@ -1397,6 +1490,11 @@ if [[ "${1:-}" == "__complete_services" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "__complete_release_services" ]]; then
+  list_release_services
+  exit 0
+fi
+
 if [[ "${1:-}" == "__complete_index_sections" ]]; then
   printf '%s\n' routes partials resolveGraph routeLinks schemaUsage impactByFile
   exit 0
@@ -1465,6 +1563,13 @@ case "${1:-help}" in
     shift
     [[ -n "${1:-}" && -n "${2:-}" ]] || { echo "Usage: ./task.sh rollback <service> <version>" >&2; exit 1; }
     run_rollback "$1" "$2"
+    ;;
+  merge)
+    shift || true
+    service="${1:-}"
+    shift || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh merge [service]" >&2; exit 1; }
+    run_merge "$service"
     ;;
   test)
     shift || true
