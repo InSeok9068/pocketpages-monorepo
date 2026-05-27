@@ -4,6 +4,9 @@
   "description": "Datastar 1.x adapter plugin for PocketPages",
   "main": "index.js",
   "types": "index.d.ts",
+  "scripts": {
+    "test": "node test/index.test.js"
+  },
   "license": "MIT",
   "files": [
     "index.js",

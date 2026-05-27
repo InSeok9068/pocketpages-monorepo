@@ -13,6 +13,7 @@ Compared to the original PocketPages Datastar plugin, this package adds a few Da
 - Keeps `spa` as the public navigation helper option for PocketPages layouts.
 - Supports `Datastar-Selector`, `Datastar-Mode`, `Datastar-Namespace`, and `Datastar-Use-View-Transition` headers.
 - Supports `namespace`, `eventId`, `retryDuration`, and view-transition options in SSE patch helpers.
+- Adds `removeElements()` and `removeSignals()` conveniences for common removal patches.
 - Reads signals from the query string for `GET` and `DELETE`, and from the request body for other methods.
 - Adds optional realtime bridge helpers for `pocketpages-plugin-realtime`.
 
@@ -69,6 +70,28 @@ The default browser bundle is loaded from the app asset path:
 
 When PocketPages provides `asset()`, `datastar.scripts()` resolves that path through `api.asset()` for normal asset URL handling.
 
+## Editor Types
+
+For editor autocomplete, add the plugin dependency first, then connect the exported API type in the app's `pocketpages-globals.d.ts`:
+
+```ts
+import type DatastarPlugin = require('pocketpages-plugin-datastar-v1')
+
+type PocketPagesDatastarApi = DatastarPlugin.DatastarApi
+
+declare global {
+  const datastar: PocketPagesDatastarApi
+}
+```
+
+If you also want `api.datastar` autocomplete, intersect it with the app's editor API type:
+
+```ts
+type PocketPagesEditorApi<TData = any> = PagesRequestContext<TData> & {
+  datastar: PocketPagesDatastarApi
+}
+```
+
 SPA and realtime helpers are opt-in:
 
 ```ejs
@@ -100,6 +123,12 @@ datastar.patchElements('<li>New item</li>', {
 })
 ```
 
+Remove elements:
+
+```js
+datastar.removeElements('#toast')
+```
+
 Patch signals with an object:
 
 ```js
@@ -109,6 +138,13 @@ datastar.patchSignals({
     title: '',
   },
 })
+```
+
+Remove signals:
+
+```js
+datastar.removeSignals('draft')
+datastar.removeSignals(['draft.title', 'draft.body'])
 ```
 
 Read signals:
@@ -161,6 +197,8 @@ With `pocketpages-plugin-realtime` configured:
 ```js
 datastar.realtime.patchElements('<div id="notice">Updated</div>')
 datastar.realtime.patchSignals({ count: 3 })
+datastar.realtime.removeElements('#notice')
+datastar.realtime.removeSignals(['notice.title', 'notice.body'])
 ```
 
 The browser helper subscribes to the `datastar` realtime topic and dispatches received payloads through Datastar's `datastar-fetch` event.

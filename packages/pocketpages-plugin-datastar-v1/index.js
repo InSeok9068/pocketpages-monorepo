@@ -95,6 +95,53 @@ function normalizeSignals(api, signals) {
   return contents;
 }
 
+function normalizeSignalKeys(signalKeys) {
+  const keys = Array.isArray(signalKeys) ? signalKeys : [signalKeys];
+  if (!keys.length) {
+    throw new Error('Datastar removeSignals requires signal keys');
+  }
+  return keys.map(function (key) {
+    if (!hasValue(key)) {
+      throw new Error('Datastar removeSignals requires non-empty signal keys');
+    }
+    return String(key);
+  });
+}
+
+function setSignalRemoval(patch, key) {
+  const parts = key.split('.');
+  let target = patch;
+
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    if (!part) {
+      throw new Error('Invalid Datastar signal key: ' + key);
+    }
+    if (i === parts.length - 1) {
+      target[part] = null;
+      return;
+    }
+    if (target[part] === null) return;
+    if (
+      !target[part] ||
+      typeof target[part] !== 'object' ||
+      Array.isArray(target[part])
+    ) {
+      target[part] = {};
+    }
+    target = target[part];
+  }
+}
+
+function buildSignalRemovalPatch(signalKeys) {
+  const patch = {};
+  const keys = normalizeSignalKeys(signalKeys);
+  for (let i = 0; i < keys.length; i += 1) {
+    setSignalRemoval(patch, keys[i]);
+  }
+  return patch;
+}
+
 function normalizeAttributes(attributes) {
   if (!attributes) return { html: '', names: {} };
 
@@ -381,6 +428,20 @@ function datastarPluginFactory(config, pluginOptions) {
         send(EventType.PatchSignals, dataLines, patchOptions);
       }
 
+      function removeElements(selector, options) {
+        if (!hasValue(selector)) {
+          throw new Error('Datastar removeElements requires selector');
+        }
+        patchElements('', Object.assign({}, options || {}, {
+          selector: String(selector),
+          mode: ElementPatchMode.Remove,
+        }));
+      }
+
+      function removeSignals(signalKeys, options) {
+        patchSignals(buildSignalRemovalPatch(signalKeys), options);
+      }
+
       function executeScript(scriptContents, options) {
         const scriptOptions = Object.assign(
           {
@@ -451,8 +512,10 @@ function datastarPluginFactory(config, pluginOptions) {
         },
         patchElements,
         html: patchElements,
+        removeElements,
         patchSignals,
         signals: patchSignals,
+        removeSignals,
         executeScript,
         script: executeScript,
         readSignals,
@@ -560,6 +623,29 @@ function datastarPluginFactory(config, pluginOptions) {
               realtimeOptions
             );
           },
+          removeElements: function (selector, patchOptions, realtimeOptions) {
+            if (!api.realtime || typeof api.realtime.send !== 'function') {
+              throw new Error(
+                'pocketpages-plugin-realtime is required for datastar.realtime'
+              );
+            }
+            if (!hasValue(selector)) {
+              throw new Error('Datastar removeElements requires selector');
+            }
+            api.realtime.send(
+              'datastar',
+              stringify(api, {
+                type: EventType.PatchElements,
+                el: null,
+                argsRaw: Object.assign(
+                  {},
+                  patchOptions || {},
+                  { selector: String(selector), mode: ElementPatchMode.Remove }
+                ),
+              }),
+              realtimeOptions
+            );
+          },
           patchSignals: function (signals, patchOptions, realtimeOptions) {
             if (!api.realtime || typeof api.realtime.send !== 'function') {
               throw new Error(
@@ -574,6 +660,26 @@ function datastarPluginFactory(config, pluginOptions) {
                 argsRaw: Object.assign(
                   { signals: normalizeSignals(api, signals) },
                   patchOptions || {}
+                ),
+              }),
+              realtimeOptions
+            );
+          },
+          removeSignals: function (signalKeys, patchOptions, realtimeOptions) {
+            if (!api.realtime || typeof api.realtime.send !== 'function') {
+              throw new Error(
+                'pocketpages-plugin-realtime is required for datastar.realtime'
+              );
+            }
+            api.realtime.send(
+              'datastar',
+              stringify(api, {
+                type: EventType.PatchSignals,
+                el: null,
+                argsRaw: Object.assign(
+                  {},
+                  patchOptions || {},
+                  { signals: stringify(api, buildSignalRemovalPatch(signalKeys)) }
                 ),
               }),
               realtimeOptions
