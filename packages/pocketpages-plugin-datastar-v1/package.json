@@ -1,0 +1,27 @@
+{
+  "name": "pocketpages-plugin-datastar-v1",
+  "version": "0.1.0",
+  "description": "Datastar 1.x adapter plugin for PocketPages",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "assets/vendor/datastar.min.js"
+  ],
+  "keywords": [
+    "pocketpages",
+    "pocketbase",
+    "datastar"
+  ],
+  "peerDependencies": {
+    "pocketpages": ">=0.22.0"
+  },
+  "peerDependenciesMeta": {
+    "pocketpages": {
+      "optional": true
+    }
+  }
+}
