@@ -181,6 +181,7 @@ EJS block 끝 위치는 실제 사용자가 커서를 자주 멈추는 위치입
 | `href="/path"` | route |
 | `action="/path"` | route |
 | `hx-get`, `hx-post`, `hx-put`, `hx-patch`, `hx-delete` | route |
+| `@get('/path')`, `@post('/path')`, `@put('/path')`, `@patch('/path')`, `@delete('/path')` in `data-*` attributes | route |
 | `require('...')` | static require target |
 | ``require(`${__hooks}/...`)`` | hooks-root require target |
 | `require(__hooks + '/...')` | hooks-root require target |

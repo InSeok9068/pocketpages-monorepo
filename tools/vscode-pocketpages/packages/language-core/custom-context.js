@@ -6,6 +6,8 @@ const { extractServerBlocks } = require('./script-server')
 
 const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])([^'"]*)$/s
 const ROUTE_ATTRIBUTE_NAMES = new Set(['href', 'action', 'hx-get', 'hx-post', 'hx-put', 'hx-delete', 'hx-patch'])
+const DATASTAR_ROUTE_ACTION_RE = /@(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]*)\2/g
+const DATASTAR_ROUTE_ACTION_OPEN_RE = /@(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]*)$/s
 
 function getLastPathSegment(value) {
   return String(value || '')
@@ -839,6 +841,75 @@ function getRouteSourceForAttribute(tag, attributeName, attributes) {
   return method === 'post' ? 'action-post' : 'action-get'
 }
 
+function getDatastarRouteSource(actionName) {
+  return `@${String(actionName || '').toLowerCase()}`
+}
+
+function isDatastarExpressionAttribute(attribute) {
+  return !!attribute &&
+    String(attribute.name || '').startsWith('data-') &&
+    String(attribute.value || '').includes('@')
+}
+
+function collectDatastarActionRouteContexts(attribute) {
+  if (!isDatastarExpressionAttribute(attribute)) {
+    return []
+  }
+
+  const contexts = []
+  const value = String(attribute.value || '')
+  let match
+  DATASTAR_ROUTE_ACTION_RE.lastIndex = 0
+
+  while ((match = DATASTAR_ROUTE_ACTION_RE.exec(value))) {
+    const pathValue = match[3]
+    if (!pathValue.startsWith('/')) {
+      continue
+    }
+
+    const localStart = match.index + match[0].lastIndexOf(pathValue)
+    contexts.push({
+      kind: 'route-path',
+      quote: match[2],
+      routeSource: getDatastarRouteSource(match[1]),
+      value: pathValue,
+      start: attribute.valueStart + localStart,
+      end: attribute.valueStart + localStart + pathValue.length,
+      isDynamic: isDynamicRoutePathValue(pathValue),
+      matchText: match[0],
+    })
+  }
+
+  return contexts
+}
+
+function getOpenDatastarActionRouteContext(attribute, offset) {
+  if (!isDatastarExpressionAttribute(attribute)) {
+    return null
+  }
+
+  const localOffset = offset - attribute.valueStart
+  if (localOffset < 0 || localOffset > String(attribute.value || '').length) {
+    return null
+  }
+
+  return getOpenMatchContext(
+    attribute.value,
+    localOffset,
+    DATASTAR_ROUTE_ACTION_OPEN_RE,
+    ({ value, start, end, match }) => ({
+      kind: 'route-path',
+      routeSource: getDatastarRouteSource(match[1]),
+      quote: match[2],
+      value,
+      start: attribute.valueStart + start,
+      end: attribute.valueStart + end,
+      isOpen: true,
+      isDynamic: isDynamicRoutePathValue(value),
+    })
+  )
+}
+
 function collectRouteAttributeContexts(documentText) {
   const sourceText = String(documentText || '')
   const contexts = []
@@ -851,6 +922,7 @@ function collectRouteAttributeContexts(documentText) {
         !ROUTE_ATTRIBUTE_NAMES.has(attribute.name) ||
         !attribute.value.startsWith('/')
       ) {
+        contexts.push(...collectDatastarActionRouteContexts(attribute))
         continue
       }
 
@@ -898,6 +970,16 @@ function getRouteAttributeContextAtOffset(documentText, offset) {
   const tag = getHtmlStartTagAtOffset(sourceText, offset)
   if (!tag || offset < tag.attributesStart || offset > tag.end) {
     return null
+  }
+
+  const attributes = collectHtmlAttributeEntries(sourceText, tag)
+  for (const attribute of attributes) {
+    if (offset >= attribute.valueStart && offset <= attribute.valueEnd) {
+      const datastarContext = getOpenDatastarActionRouteContext(attribute, offset)
+      if (datastarContext) {
+        return datastarContext
+      }
+    }
   }
 
   return getOpenMatchContext(

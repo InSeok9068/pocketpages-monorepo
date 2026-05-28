@@ -9021,6 +9021,17 @@ boardService.readAuthState(
     if (routeNames.includes('/api')) {
       throw new Error(`Expected route path completion to exclude JS route handlers. Got: ${routeNames.slice(0, 20).join(', ')}`)
     }
+    const datastarRouteCompletionText = `<button data-on:click="@get('/si"></button>\n`
+    const datastarRouteCompletionOffset = datastarRouteCompletionText.indexOf('/si') + '/si'.length
+    const datastarRouteCompletion = service.getCustomCompletionData(
+      fixture.siteIndexFilePath,
+      datastarRouteCompletionText,
+      datastarRouteCompletionOffset
+    )
+    const datastarRouteNames = datastarRouteCompletion ? datastarRouteCompletion.items.map((entry) => entry.label) : []
+    if (!datastarRouteNames.includes('/sign-in')) {
+      throw new Error(`Expected Datastar @get route path completion for "/sign-in". Got: ${datastarRouteNames.slice(0, 20).join(', ')}`)
+    }
 
     const commentedResolveCompletionText = `<script server>\n// resolve('bo')\n</script>\n`
     const commentedResolveCompletion = service.getCustomCompletionData(
@@ -9932,6 +9943,28 @@ function loadPostRole() {
       || normalizeFilePath(feedbackHtmxPatchPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.feedbackPatchFilePath)
     ) {
       throw new Error(`Expected hx-patch path target info for feedback PATCH route. Got: ${JSON.stringify(feedbackHtmxPatchPathTargetInfo)}`)
+    }
+    for (const [source, text, expectedFilePath, expectedMethod] of [
+      ['@get', `<button data-on:click="@get('/feedback')"></button>\n`, fixture.feedbackPageFilePath, 'PAGE'],
+      ['@post', `<button data-on:click="@post('/feedback')"></button>\n`, fixture.feedbackPostFilePath, 'POST'],
+      ['@delete', `<button data-on:click="@delete('/feedback')"></button>\n`, fixture.feedbackDeleteFilePath, 'DELETE'],
+      ['@put', `<button data-on:click="@put('/feedback')"></button>\n`, fixture.feedbackPutFilePath, 'PUT'],
+      ['@patch', `<button data-on:click="@patch('/feedback')"></button>\n`, fixture.feedbackPatchFilePath, 'PATCH'],
+    ]) {
+      const datastarPathTargetInfo = indexService.getPathTargetInfo(
+        fixture.siteIndexFilePath,
+        text,
+        text.indexOf('/feedback') + 2
+      )
+      if (
+        !datastarPathTargetInfo
+        || normalizeFilePath(datastarPathTargetInfo.targetFilePath) !== normalizeFilePath(expectedFilePath)
+        || datastarPathTargetInfo.routeMethod !== expectedMethod
+        || datastarPathTargetInfo.routePath !== '/feedback'
+        || datastarPathTargetInfo.routeSource !== source
+      ) {
+        throw new Error(`Expected ${source} Datastar route path target info for ${expectedMethod} /feedback. Got: ${JSON.stringify(datastarPathTargetInfo)}`)
+      }
     }
     for (const [label, info, expectedMethod, expectedSource] of [
       ['action', feedbackActionPathTargetInfo, 'POST', 'action-post'],

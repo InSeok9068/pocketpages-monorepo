@@ -2329,20 +2329,25 @@ function getPreferredRouteMethods(routeSource) {
   switch (String(routeSource || "").toLowerCase()) {
     case "action-post":
     case "hx-post":
+    case "@post":
       return ["POST", "GET"];
     case "action-get":
       return ["PAGE"];
     case "action":
       return ["POST", "GET"];
     case "hx-put":
+    case "@put":
       return ["PUT", "GET"];
     case "hx-delete":
+    case "@delete":
       return ["DELETE", "GET"];
     case "hx-patch":
+    case "@patch":
       return ["PATCH", "GET"];
     case "href":
     case "redirect":
     case "hx-get":
+    case "@get":
     default:
       return ["PAGE"];
   }
