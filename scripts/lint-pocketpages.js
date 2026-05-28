@@ -48,6 +48,7 @@
 // 44) Datastar attribute key에 camelCase 사용
 // 45) pages 밖 pb_hooks 코드에서 PocketPages Datastar request helper 사용
 // 46) pages 안에서 PocketBase backend Datastar realtime utility 사용
+// 47) pages 밖 pb_hooks 코드에서 PocketPages route helper 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -118,6 +119,7 @@ const RE = {
   pocketpagesOnlyGlobalCall: /(^|[^.A-Za-z0-9_$])(env|dbg|info|warn|error)\s*\(/,
   nonPagesDatastarRequestHelper:
     /(^|[^.A-Za-z0-9_$])datastar\s*\.|(^|[^.A-Za-z0-9_$])api\s*\.\s*datastar\s*\./,
+  nonPagesPocketPagesRouteHelper: /(^|[^.A-Za-z0-9_$])(?:redirect|resolve)\s*\(/,
   datastarBackendRealtimeUtility:
     /\b(createRealtimeSender|buildPatchElementsPayload|buildRemoveElementsPayload|buildPatchSignalsPayload|buildRemoveSignalsPayload)\s*\(/,
   privateEjsDbAccess:
@@ -1499,6 +1501,16 @@ function lintService(context) {
     context.serviceName,
     'Invalid PocketPages global usage outside pb_hooks/pages. Do not use env(...), dbg(...), info(...), warn(...), or error(...) in non-pages pb_hooks code.',
     nonPagesPocketPagesGlobalMatches,
+  )
+
+  const nonPagesPocketPagesRouteHelperMatches = collectLineMatches(
+    context.nonPagesHooksCodeFiles,
+    RE.nonPagesPocketPagesRouteHelper,
+  )
+  printMatches(
+    context.serviceName,
+    'Invalid PocketPages route helper usage outside pb_hooks/pages. Do not use redirect(...) or resolve(...) in non-pages pb_hooks code.',
+    nonPagesPocketPagesRouteHelperMatches,
   )
 
   const nonPagesDatastarRequestHelperMatches = collectLineMatches(
