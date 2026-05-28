@@ -43,6 +43,16 @@
   "tailwindCSS.includeLanguages": {
     "ejs": "html"
   },
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [
+      {
+        "scope": "keyword.operator.datastar.prefix",
+        "settings": {
+          "foreground": "#FFD866"
+        }
+      }
+    ]
+  },
   "dbcode.connections": [
     {
       "connectionId": "of_b7icMLkbbZ2JPToSRq",
