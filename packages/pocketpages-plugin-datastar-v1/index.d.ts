@@ -58,7 +58,9 @@ declare namespace DatastarV1 {
     retryDuration?: number
   }
 
-  interface DispatchCustomEventOptions extends ExecuteScriptOptions {
+  interface DispatchCustomEventOptions {
+    eventId?: string
+    retryDuration?: number
     selector?: string
     bubbles?: boolean
     cancelable?: boolean
@@ -70,8 +72,21 @@ declare namespace DatastarV1 {
       PatchElements: 'datastar-patch-elements'
       PatchSignals: 'datastar-patch-signals'
     }
-    ElementPatchMode: Record<string, ElementPatchMode>
-    Namespace: Record<string, Namespace>
+    ElementPatchMode: {
+      Outer: 'outer'
+      Inner: 'inner'
+      Remove: 'remove'
+      Replace: 'replace'
+      Prepend: 'prepend'
+      Append: 'append'
+      Before: 'before'
+      After: 'after'
+    }
+    Namespace: {
+      Html: 'html'
+      Svg: 'svg'
+      Mathml: 'mathml'
+    }
     scriptUrl: string
     isRequest(request?: any): boolean
     headers(options?: HeaderOptions): Record<string, string>
