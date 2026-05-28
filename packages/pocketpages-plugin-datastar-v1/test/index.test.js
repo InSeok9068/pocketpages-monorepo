@@ -397,6 +397,11 @@ test('scripts closes navigation and realtime script tags in raw HTML', function 
 
   assert.ok(html.includes('new EventSource("/api/realtime")'));
   assert.ok(html.includes('data-on:click'));
+  assert.ok(
+    html.includes(
+      'document.addEventListener("datastar-scope-children", bindLinks, true);'
+    )
+  );
   assert.strictEqual((html.match(/<\/script>/g) || []).length, 4);
   assert.strictEqual(html.includes('<\\/script>'), false);
 });

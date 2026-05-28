@@ -479,7 +479,7 @@ function buildNavigationScript(options) {
     '    applyNavigation();',
     '  }',
     '  document.addEventListener("datastar-ready", applyNavigation);',
-    '  document.addEventListener("datastar-scope-children", bindLinks);',
+    '  document.addEventListener("datastar-scope-children", bindLinks, true);',
     '}());',
     '</script>',
   ].join('\n');
