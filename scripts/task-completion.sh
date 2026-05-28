@@ -19,7 +19,7 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill update install deploy rollback merge test lint tsc diag verify index css bundle format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill update install deploy rollback archive restore archives merge test lint tsc diag verify index css bundle format help" -- "$cur") )
     return
   fi
 
@@ -37,9 +37,23 @@ _pp_dev_complete() {
     return
   fi
 
-  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "start" || "$cmd" == "deploy" || "$cmd" == "rollback" || "$cmd" == "test" || "$cmd" == "lint" || "$cmd" == "tsc" || "$cmd" == "diag" || "$cmd" == "verify" || "$cmd" == "index" || "$cmd" == "css" ) ]]; then
+  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "start" || "$cmd" == "deploy" || "$cmd" == "rollback" || "$cmd" == "archive" || "$cmd" == "test" || "$cmd" == "lint" || "$cmd" == "tsc" || "$cmd" == "diag" || "$cmd" == "verify" || "$cmd" == "index" || "$cmd" == "css" ) ]]; then
     services="$("$script" __complete_services 2>/dev/null)"
     COMPREPLY=( $(compgen -W "$services" -- "$cur") )
+    return
+  fi
+
+  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "restore" || "$cmd" == "archives" ) ]]; then
+    local archive_services
+    archive_services="$("$script" __complete_archive_services 2>/dev/null)"
+    COMPREPLY=( $(compgen -W "$archive_services" -- "$cur") )
+    return
+  fi
+
+  if [[ $COMP_CWORD -eq 3 && "$cmd" == "restore" ]]; then
+    local archive_tags
+    archive_tags="$("$script" __complete_archive_tags "${COMP_WORDS[2]}" 2>/dev/null)"
+    COMPREPLY=( $(compgen -W "$archive_tags" -- "$cur") )
     return
   fi
 

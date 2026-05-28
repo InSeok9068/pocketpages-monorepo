@@ -13,6 +13,9 @@ Usage:
   ./task.sh install <npm> [-- <extra args>]
   ./task.sh deploy <service> [--skip-verify]
   ./task.sh rollback <service> <1|2|3>
+  ./task.sh archive <service>
+  ./task.sh restore <service> <archive-tag>
+  ./task.sh archives [service]
   ./task.sh merge [service]
   ./task.sh test [service]
   ./task.sh lint [service]
@@ -31,6 +34,9 @@ Commands:
   install   `npm` runs npm install in root and app package.json dirs
   deploy    Verify and upload one service deploy targets using .vscode/sftp.json
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
+  archive   Tag current HEAD as archive/<service>/<YYYY-MM-DD>, then remove apps/<service>
+  restore   Restore apps/<service> from an archive tag
+  archives  List archive tags, optionally filtered by service
   merge     Merge main into local release/* branches, then push them to origin
   test      Run node:test files under __tests__ for one service or all services
   lint      Run PocketPages self-validation checks and ESLint for one service or all services
@@ -47,6 +53,9 @@ Examples:
   ./task.sh css booklog
   ./task.sh deploy booklog
   ./task.sh deploy booklog --skip-verify
+  ./task.sh archive portfolio
+  ./task.sh restore portfolio archive/portfolio/2026-05-28
+  ./task.sh archives portfolio
   ./task.sh merge
   ./task.sh merge booklog
   ./task.sh update npm
@@ -761,10 +770,135 @@ list_release_branches() {
 }
 
 require_clean_git_worktree() {
+  local action="${1:-operation}"
+
   if [[ -n "$(git -C "$ROOT_DIR" status --porcelain)" ]]; then
-    echo "Working tree is not clean. Commit or stash local changes before merge." >&2
+    echo "Working tree is not clean. Commit or stash local changes before $action." >&2
     exit 1
   fi
+}
+
+list_archive_services() {
+  git -C "$ROOT_DIR" for-each-ref --format='%(refname:short)' refs/tags/archive 2>/dev/null |
+    sed -n 's#^archive/\([^/][^/]*\)/.*#\1#p' |
+    sort -u
+}
+
+list_archive_tags() {
+  local service="${1:-}"
+  local pattern="archive/*"
+
+  if [[ -n "$service" ]]; then
+    pattern="archive/$service/*"
+  fi
+
+  git -C "$ROOT_DIR" tag --list "$pattern" | sort
+}
+
+run_archives() {
+  local service="${1:-}"
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "git not found. Cannot list archive tags." >&2
+    exit 1
+  fi
+
+  list_archive_tags "$service"
+}
+
+run_archive() {
+  local service="$1"
+  local service_dir=""
+  local service_name=""
+  local relative_path=""
+  local tag_name=""
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "git not found. Cannot archive service." >&2
+    exit 1
+  fi
+
+  require_clean_git_worktree archive
+
+  if ! service_dir="$(resolve_service_dir "$service")"; then
+    echo "Unknown service: $service" >&2
+    echo "Available services:" >&2
+    list_services >&2
+    exit 1
+  fi
+
+  if [[ "$service_dir" != "$APPS_DIR/"* ]]; then
+    echo "Archive only supports services under apps/: $service" >&2
+    exit 1
+  fi
+
+  if [[ ! -d "$service_dir/pb_hooks" ]]; then
+    echo "Missing pb_hooks in $service_dir" >&2
+    exit 1
+  fi
+
+  service_name="$(basename "$service_dir")"
+  relative_path="apps/$service_name"
+  tag_name="archive/$service_name/$(date +%F)"
+
+  if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/tags/$tag_name"; then
+    echo "Archive tag already exists: $tag_name" >&2
+    exit 1
+  fi
+
+  git -C "$ROOT_DIR" tag "$tag_name" HEAD
+  git -C "$ROOT_DIR" rm -r "$relative_path"
+
+  cat <<EOF
+Archived service: $service_name
+Tag: $tag_name
+Removed from working tree: $relative_path
+
+Review, then commit:
+  git commit -m "Archive $service_name app"
+EOF
+}
+
+run_restore() {
+  local service="$1"
+  local tag_name="$2"
+  local relative_path="apps/$service"
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "git not found. Cannot restore service." >&2
+    exit 1
+  fi
+
+  require_clean_git_worktree restore
+
+  if ! git -C "$ROOT_DIR" show-ref --verify --quiet "refs/tags/$tag_name"; then
+    echo "Unknown archive tag: $tag_name" >&2
+    echo "Available archive tags:" >&2
+    list_archive_tags "$service" >&2
+    exit 1
+  fi
+
+  if [[ -e "$ROOT_DIR/$relative_path" ]]; then
+    echo "Service already exists: $relative_path" >&2
+    exit 1
+  fi
+
+  if ! git -C "$ROOT_DIR" cat-file -e "$tag_name:$relative_path" 2>/dev/null; then
+    echo "Archive tag does not contain $relative_path: $tag_name" >&2
+    exit 1
+  fi
+
+  git -C "$ROOT_DIR" restore --source "$tag_name" -- "$relative_path"
+
+  cat <<EOF
+Restored service: $service
+Source tag: $tag_name
+Restored path: $relative_path
+
+Review, then commit:
+  git add $relative_path
+  git commit -m "Restore $service app"
+EOF
 }
 
 run_merge() {
@@ -778,7 +912,7 @@ run_merge() {
     exit 1
   fi
 
-  require_clean_git_worktree
+  require_clean_git_worktree merge
 
   if [[ -n "$service" ]]; then
     branch="release/$service"
@@ -1495,6 +1629,16 @@ if [[ "${1:-}" == "__complete_release_services" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "__complete_archive_services" ]]; then
+  list_archive_services
+  exit 0
+fi
+
+if [[ "${1:-}" == "__complete_archive_tags" ]]; then
+  list_archive_tags "${2:-}"
+  exit 0
+fi
+
 if [[ "${1:-}" == "__complete_index_sections" ]]; then
   printf '%s\n' routes partials resolveGraph routeLinks schemaUsage impactByFile
   exit 0
@@ -1563,6 +1707,30 @@ case "${1:-help}" in
     shift
     [[ -n "${1:-}" && -n "${2:-}" ]] || { echo "Usage: ./task.sh rollback <service> <version>" >&2; exit 1; }
     run_rollback "$1" "$2"
+    ;;
+  archive)
+    shift
+    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh archive <service>" >&2; exit 1; }
+    service="$1"
+    shift || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh archive <service>" >&2; exit 1; }
+    run_archive "$service"
+    ;;
+  restore)
+    shift
+    [[ -n "${1:-}" && -n "${2:-}" ]] || { echo "Usage: ./task.sh restore <service> <archive-tag>" >&2; exit 1; }
+    service="$1"
+    tag_name="$2"
+    shift 2 || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh restore <service> <archive-tag>" >&2; exit 1; }
+    run_restore "$service" "$tag_name"
+    ;;
+  archives)
+    shift || true
+    service="${1:-}"
+    shift || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh archives [service]" >&2; exit 1; }
+    run_archives "$service"
     ;;
   merge)
     shift || true
