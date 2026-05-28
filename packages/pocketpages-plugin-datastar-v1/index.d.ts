@@ -37,6 +37,34 @@ declare namespace DatastarV1 {
     filter?: (clientId: string, client: any, topic: string, message: string) => boolean
   }
 
+  interface RealtimeSenderDeps {
+    app: {
+      subscriptionsBroker(): {
+        clients(): Record<string, RealtimeClient>
+      }
+    }
+    SubscriptionMessage: new (input: { name: string; data: string }) => any
+  }
+
+  interface RealtimeClient {
+    hasSubscription(topic: string): boolean
+    send(message: any): void
+  }
+
+  interface RealtimeSender {
+    patchElements(elements: string, patchOptions?: PatchElementsOptions, realtimeOptions?: RealtimeOptions): void
+    removeElements(selector: string, patchOptions?: Omit<PatchElementsOptions, 'selector' | 'mode'>, realtimeOptions?: RealtimeOptions): void
+    patchSignals(signals: string | Record<string, any>, patchOptions?: PatchSignalsOptions, realtimeOptions?: RealtimeOptions): void
+    removeSignals(signalKeys: SignalKeyInput, patchOptions?: RemoveSignalsOptions, realtimeOptions?: RealtimeOptions): void
+  }
+
+  interface RealtimePayloadBuilders {
+    buildPatchElementsPayload(elements: string, patchOptions?: PatchElementsOptions): string
+    buildRemoveElementsPayload(selector: string, patchOptions?: Omit<PatchElementsOptions, 'selector' | 'mode'>): string
+    buildPatchSignalsPayload(signals: string | Record<string, any>, patchOptions?: PatchSignalsOptions): string
+    buildRemoveSignalsPayload(signalKeys: SignalKeyInput, patchOptions?: RemoveSignalsOptions): string
+  }
+
   interface PatchElementsOptions {
     selector?: string
     mode?: ElementPatchMode
@@ -130,6 +158,10 @@ declare namespace datastarV1PluginFactory {
   export interface SpaOptions extends DatastarV1.SpaOptions {}
   export interface RealtimeScriptOptions extends DatastarV1.RealtimeScriptOptions {}
   export interface RealtimeOptions extends DatastarV1.RealtimeOptions {}
+  export interface RealtimeSenderDeps extends DatastarV1.RealtimeSenderDeps {}
+  export interface RealtimeClient extends DatastarV1.RealtimeClient {}
+  export interface RealtimeSender extends DatastarV1.RealtimeSender {}
+  export interface RealtimePayloadBuilders extends DatastarV1.RealtimePayloadBuilders {}
   export interface PatchElementsOptions extends DatastarV1.PatchElementsOptions {}
   export interface PatchSignalsOptions extends DatastarV1.PatchSignalsOptions {}
   export type RemoveSignalsOptions = DatastarV1.RemoveSignalsOptions
@@ -137,6 +169,8 @@ declare namespace datastarV1PluginFactory {
   export interface ExecuteScriptOptions extends DatastarV1.ExecuteScriptOptions {}
   export interface DispatchCustomEventOptions extends DatastarV1.DispatchCustomEventOptions {}
   export interface DatastarApi extends DatastarV1.DatastarApi {}
+  export const realtime: DatastarV1.RealtimePayloadBuilders
+  export function createRealtimeSender(deps: DatastarV1.RealtimeSenderDeps): DatastarV1.RealtimeSender
 }
 
 declare function datastarV1PluginFactory(config: any, options?: datastarV1PluginFactory.PluginOptions): any

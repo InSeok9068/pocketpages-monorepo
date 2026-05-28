@@ -187,6 +187,138 @@ function normalizeRealtimeOptions(options) {
   };
 }
 
+function buildRealtimePatchElementsPayload(api, elements, patchOptions) {
+  return stringify(api, {
+    type: EventType.PatchElements,
+    el: null,
+    argsRaw: normalizeRealtimePatchElementsArgs(
+      Object.assign({ elements: String(elements || '') }, patchOptions || {})
+    ),
+  });
+}
+
+function buildRealtimeRemoveElementsPayload(api, selector, patchOptions) {
+  if (!hasValue(selector)) {
+    throw new Error('Datastar removeElements requires selector');
+  }
+
+  return stringify(api, {
+    type: EventType.PatchElements,
+    el: null,
+    argsRaw: normalizeRealtimePatchElementsArgs(
+      Object.assign(
+        {},
+        patchOptions || {},
+        { selector: String(selector), mode: ElementPatchMode.Remove }
+      )
+    ),
+  });
+}
+
+function buildRealtimePatchSignalsPayload(api, signals, patchOptions) {
+  return stringify(api, {
+    type: EventType.PatchSignals,
+    el: null,
+    argsRaw: normalizeRealtimePatchSignalsArgs(
+      Object.assign(
+        { signals: normalizeSignals(api, signals) },
+        patchOptions || {}
+      )
+    ),
+  });
+}
+
+function buildRealtimeRemoveSignalsPayload(api, signalKeys, patchOptions) {
+  assertNoOnlyIfMissing(patchOptions, 'realtime.removeSignals');
+
+  return stringify(api, {
+    type: EventType.PatchSignals,
+    el: null,
+    argsRaw: normalizeRealtimePatchSignalsArgs(
+      Object.assign(
+        {},
+        patchOptions || {},
+        { signals: stringify(api, buildSignalRemovalPatch(signalKeys)) }
+      )
+    ),
+  });
+}
+
+function sendRealtimePayload(deps, topic, payload, sendOptions) {
+  const app = deps && deps.app;
+  const SubscriptionMessageCtor = deps && deps.SubscriptionMessage;
+  if (!app || typeof app.subscriptionsBroker !== 'function') {
+    throw new Error('Datastar realtime sender requires app.subscriptionsBroker');
+  }
+  if (typeof SubscriptionMessageCtor !== 'function') {
+    throw new Error('Datastar realtime sender requires SubscriptionMessage');
+  }
+
+  const message = new SubscriptionMessageCtor({
+    name: topic,
+    data: payload,
+  });
+  const clients = app.subscriptionsBroker().clients();
+  const filter =
+    sendOptions && typeof sendOptions.filter === 'function'
+      ? sendOptions.filter
+      : function (_clientId, client, sendTopic) {
+          return (
+            client &&
+            typeof client.hasSubscription === 'function' &&
+            client.hasSubscription(sendTopic)
+          );
+        };
+
+  for (const clientId in clients) {
+    const client = clients[clientId];
+    if (filter(clientId, client, topic, payload)) {
+      client.send(message);
+    }
+  }
+}
+
+function createRealtimeSender(deps) {
+  return {
+    patchElements: function (elements, patchOptions, realtimeOptions) {
+      const realtime = normalizeRealtimeOptions(realtimeOptions);
+      sendRealtimePayload(
+        deps,
+        realtime.topic,
+        buildRealtimePatchElementsPayload(null, elements, patchOptions),
+        realtime.sendOptions
+      );
+    },
+    removeElements: function (selector, patchOptions, realtimeOptions) {
+      const realtime = normalizeRealtimeOptions(realtimeOptions);
+      sendRealtimePayload(
+        deps,
+        realtime.topic,
+        buildRealtimeRemoveElementsPayload(null, selector, patchOptions),
+        realtime.sendOptions
+      );
+    },
+    patchSignals: function (signals, patchOptions, realtimeOptions) {
+      const realtime = normalizeRealtimeOptions(realtimeOptions);
+      sendRealtimePayload(
+        deps,
+        realtime.topic,
+        buildRealtimePatchSignalsPayload(null, signals, patchOptions),
+        realtime.sendOptions
+      );
+    },
+    removeSignals: function (signalKeys, patchOptions, realtimeOptions) {
+      const realtime = normalizeRealtimeOptions(realtimeOptions);
+      sendRealtimePayload(
+        deps,
+        realtime.topic,
+        buildRealtimeRemoveSignalsPayload(null, signalKeys, patchOptions),
+        realtime.sendOptions
+      );
+    },
+  };
+}
+
 function assertNoOnlyIfMissing(options, helperName) {
   if (
     options &&
@@ -670,13 +802,7 @@ function datastarPluginFactory(config, pluginOptions) {
             const realtime = normalizeRealtimeOptions(realtimeOptions);
             api.realtime.send(
               realtime.topic,
-              stringify(api, {
-                type: EventType.PatchElements,
-                el: null,
-                argsRaw: normalizeRealtimePatchElementsArgs(
-                  Object.assign({ elements: String(elements || '') }, patchOptions || {})
-                ),
-              }),
+              buildRealtimePatchElementsPayload(api, elements, patchOptions),
               realtime.sendOptions
             );
           },
@@ -686,23 +812,10 @@ function datastarPluginFactory(config, pluginOptions) {
                 'pocketpages-plugin-realtime is required for datastar.realtime'
               );
             }
-            if (!hasValue(selector)) {
-              throw new Error('Datastar removeElements requires selector');
-            }
             const realtime = normalizeRealtimeOptions(realtimeOptions);
             api.realtime.send(
               realtime.topic,
-              stringify(api, {
-                type: EventType.PatchElements,
-                el: null,
-                argsRaw: normalizeRealtimePatchElementsArgs(
-                  Object.assign(
-                    {},
-                    patchOptions || {},
-                    { selector: String(selector), mode: ElementPatchMode.Remove }
-                  )
-                ),
-              }),
+              buildRealtimeRemoveElementsPayload(api, selector, patchOptions),
               realtime.sendOptions
             );
           },
@@ -715,16 +828,7 @@ function datastarPluginFactory(config, pluginOptions) {
             const realtime = normalizeRealtimeOptions(realtimeOptions);
             api.realtime.send(
               realtime.topic,
-              stringify(api, {
-                type: EventType.PatchSignals,
-                el: null,
-                argsRaw: normalizeRealtimePatchSignalsArgs(
-                  Object.assign(
-                    { signals: normalizeSignals(api, signals) },
-                    patchOptions || {}
-                  )
-                ),
-              }),
+              buildRealtimePatchSignalsPayload(api, signals, patchOptions),
               realtime.sendOptions
             );
           },
@@ -734,21 +838,10 @@ function datastarPluginFactory(config, pluginOptions) {
                 'pocketpages-plugin-realtime is required for datastar.realtime'
               );
             }
-            assertNoOnlyIfMissing(patchOptions, 'realtime.removeSignals');
             const realtime = normalizeRealtimeOptions(realtimeOptions);
             api.realtime.send(
               realtime.topic,
-              stringify(api, {
-                type: EventType.PatchSignals,
-                el: null,
-                argsRaw: normalizeRealtimePatchSignalsArgs(
-                  Object.assign(
-                    {},
-                    patchOptions || {},
-                    { signals: stringify(api, buildSignalRemovalPatch(signalKeys)) }
-                  )
-                ),
-              }),
+              buildRealtimeRemoveSignalsPayload(api, signalKeys, patchOptions),
               realtime.sendOptions
             );
           },
@@ -785,5 +878,21 @@ function datastarPluginFactory(config, pluginOptions) {
     },
   };
 }
+
+datastarPluginFactory.realtime = {
+  buildPatchElementsPayload: function (elements, patchOptions) {
+    return buildRealtimePatchElementsPayload(null, elements, patchOptions);
+  },
+  buildRemoveElementsPayload: function (selector, patchOptions) {
+    return buildRealtimeRemoveElementsPayload(null, selector, patchOptions);
+  },
+  buildPatchSignalsPayload: function (signals, patchOptions) {
+    return buildRealtimePatchSignalsPayload(null, signals, patchOptions);
+  },
+  buildRemoveSignalsPayload: function (signalKeys, patchOptions) {
+    return buildRealtimeRemoveSignalsPayload(null, signalKeys, patchOptions);
+  },
+};
+datastarPluginFactory.createRealtimeSender = createRealtimeSender;
 
 module.exports = datastarPluginFactory;

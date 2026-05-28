@@ -202,3 +202,50 @@ datastar.realtime.removeSignals(['notice.title', 'notice.body'])
 ```
 
 The browser helper subscribes to the `datastar` realtime topic and dispatches received payloads through Datastar's `datastar-fetch` event.
+
+Use a custom topic when the page subscribes to a scoped stream:
+
+```ejs
+<%- datastar.scripts({ realtime: { topic: 'dashboard' } }) %>
+```
+
+```js
+datastar.realtime.patchSignals(
+  { status: 'ready' },
+  undefined,
+  { topic: 'dashboard' }
+)
+```
+
+## Background jobs
+
+PocketBase jobs do not run inside a PocketPages request context, so the route
+global `datastar` is not available there. Create a realtime sender with the
+PocketBase globals instead:
+
+```js
+const datastarV1 = require('pocketpages-plugin-datastar-v1')
+
+const datastarRealtime = datastarV1.createRealtimeSender({
+  app: $app,
+  SubscriptionMessage: SubscriptionMessage,
+})
+
+datastarRealtime.patchSignals(
+  {
+    status: 'ready',
+    checkedAt: new Date().toISOString(),
+  },
+  undefined,
+  { topic: 'dashboard' }
+)
+```
+
+Payload builders are also available when you want to send through
+`$app.subscriptionsBroker()` directly:
+
+```js
+const payload = datastarV1.realtime.buildPatchSignalsPayload({
+  status: 'ready',
+})
+```

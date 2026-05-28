@@ -49,6 +49,46 @@ function createHarness(requestHeaders) {
   };
 }
 
+function createRealtimeSenderHarness() {
+  const sentMessages = [];
+  function SubscriptionMessage(input) {
+    this.name = input.name;
+    this.data = input.data;
+  }
+  function createClient(id, subscribed) {
+    return {
+      hasSubscription: function (topic) {
+        return subscribed.indexOf(topic) !== -1;
+      },
+      send: function (message) {
+        sentMessages.push({ id, message });
+      },
+    };
+  }
+  const clients = {
+    allowed: createClient('allowed', ['dashboard']),
+    blocked: createClient('blocked', ['dashboard']),
+    unrelated: createClient('unrelated', []),
+  };
+  const sender = datastarPluginFactory.createRealtimeSender({
+    app: {
+      subscriptionsBroker: function () {
+        return {
+          clients: function () {
+            return clients;
+          },
+        };
+      },
+    },
+    SubscriptionMessage,
+  });
+
+  return {
+    sender,
+    sentMessages,
+  };
+}
+
 function test(name, fn) {
   fn();
   console.log('ok - ' + name);
@@ -264,6 +304,71 @@ test('realtime helpers send custom topics without leaking topic into send option
     ),
     false
   );
+});
+
+test('realtime payload builders create PocketBase realtime Datastar messages', function () {
+  assert.deepStrictEqual(
+    JSON.parse(
+      datastarPluginFactory.realtime.buildPatchElementsPayload(
+        '<div id="notice">Updated</div>',
+        { selector: '#notice', mode: 'outer' }
+      )
+    ),
+    {
+      type: 'datastar-patch-elements',
+      el: null,
+      argsRaw: {
+        elements: '<div id="notice">Updated</div>',
+        selector: '#notice',
+        mode: 'outer',
+      },
+    }
+  );
+
+  assert.deepStrictEqual(
+    JSON.parse(
+      datastarPluginFactory.realtime.buildPatchSignalsPayload({
+        status: 'ready',
+      })
+    ),
+    {
+      type: 'datastar-patch-signals',
+      el: null,
+      argsRaw: {
+        signals: JSON.stringify({ status: 'ready' }),
+      },
+    }
+  );
+});
+
+test('realtime sender works outside PocketPages request context', function () {
+  const harness = createRealtimeSenderHarness();
+
+  harness.sender.patchSignals(
+    { status: 'ready' },
+    undefined,
+    {
+      topic: 'dashboard',
+      filter: function (clientId) {
+        return clientId !== 'blocked';
+      },
+    }
+  );
+
+  assert.deepStrictEqual(
+    harness.sentMessages.map(function (entry) {
+      return entry.id;
+    }),
+    ['allowed']
+  );
+  assert.strictEqual(harness.sentMessages[0].message.name, 'dashboard');
+  assert.deepStrictEqual(JSON.parse(harness.sentMessages[0].message.data), {
+    type: 'datastar-patch-signals',
+    el: null,
+    argsRaw: {
+      signals: JSON.stringify({ status: 'ready' }),
+    },
+  });
 });
 
 test('realtime removeSignals rejects onlyIfMissing because removal must be explicit', function () {

@@ -46,6 +46,8 @@
 // 42) 서버 코드에서 async/await/Promise/.then() 사용
 // 43) redirect option에서 flash 사용
 // 44) Datastar attribute key에 camelCase 사용
+// 45) pages 밖 pb_hooks 코드에서 PocketPages Datastar request helper 사용
+// 46) pages 안에서 PocketBase backend Datastar realtime utility 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -114,6 +116,10 @@ const RE = {
   scriptServerTag: /<script\b(?=[^>]*\bserver\b)/,
   processEnv: /\bprocess\.env\b/,
   pocketpagesOnlyGlobalCall: /(^|[^.A-Za-z0-9_$])(env|dbg|info|warn|error)\s*\(/,
+  nonPagesDatastarRequestHelper:
+    /(^|[^.A-Za-z0-9_$])datastar\s*\.|(^|[^.A-Za-z0-9_$])api\s*\.\s*datastar\s*\./,
+  datastarBackendRealtimeUtility:
+    /\b(createRealtimeSender|buildPatchElementsPayload|buildRemoveElementsPayload|buildPatchSignalsPayload|buildRemoveSignalsPayload)\s*\(/,
   privateEjsDbAccess:
     /\$app\.(findAllRecords|findAuthRecordByToken|findCollectionByNameOrId|findCollectionsByFilter|findFirstRecordByData|findFirstRecordByFilter|findRecordById|findRecordsByExpr|findRecordsByFilter|save|saveNoValidate|delete|deleteRecord|deleteRecords|dao|recordQuery|collectionQuery|runInTransaction|auxRunInTransaction)\b/,
   staticJsServerCode:
@@ -1493,6 +1499,26 @@ function lintService(context) {
     context.serviceName,
     'Invalid PocketPages global usage outside pb_hooks/pages. Do not use env(...), dbg(...), info(...), warn(...), or error(...) in non-pages pb_hooks code.',
     nonPagesPocketPagesGlobalMatches,
+  )
+
+  const nonPagesDatastarRequestHelperMatches = collectLineMatches(
+    context.nonPagesHooksCodeFiles,
+    RE.nonPagesDatastarRequestHelper,
+  )
+  printMatches(
+    context.serviceName,
+    'Invalid Datastar request helper usage outside pb_hooks/pages. datastar.* and api.datastar.* exist only in PocketPages route context; use createRealtimeSender(...) or $app.subscriptionsBroker() in backend hooks/jobs.',
+    nonPagesDatastarRequestHelperMatches,
+  )
+
+  const pagesDatastarBackendRealtimeUtilityMatches = collectLineMatches(
+    context.lintCodeFiles,
+    RE.datastarBackendRealtimeUtility,
+  )
+  printWarnings(
+    context.serviceName,
+    'Discouraged Datastar backend realtime utility in PocketPages pages. Use datastar.realtime.* in route context; reserve createRealtimeSender(...) and payload builders for pb_hooks jobs/hooks.',
+    pagesDatastarBackendRealtimeUtilityMatches,
   )
 
   const includeFullContextMatches = collectIncludeFullContextMatches(context.pagesEjsFiles)
