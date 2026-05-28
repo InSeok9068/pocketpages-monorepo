@@ -1,0 +1,675 @@
+const {
+  extractJsonObjectText,
+  normalizeAssetClassCode,
+  normalizeAssetIdentityText,
+  normalizeCapturePageType,
+  normalizeIsoDate,
+  normalizeText,
+  normalizeUpperCode,
+  parseJsonSafely,
+  parseNumber,
+} = require('./photofolio-asset-utils')
+
+const GEMINI_MODEL_NAME = 'gemini-2.5-flash-lite'
+const PROMPT_PAGE_TYPE_ENUM = '[assets_overview,invest_overview,invest_holdings,unknown]'
+const PROMPT_ASSET_CLASS_ENUM = '[cash,stock_growth,stock_dividend,bond,gold,real_estate,other]'
+const ASSETS_OVERVIEW_SECTION_KEYWORDS = ['입출금', '저축', '증권', '연금', '외화']
+const OVERVIEW_SUMMARY_NAME_KEYWORDS = ['증권', '투자증권', '은행', '뱅크', '카드', '페이', '월렛', '조합', '예금', '적금', '연금', '입출금', '고유계정', '보유계정', '계좌']
+const PROMPT_RESPONSE_SCHEMA =
+  '{"page_type":"","snapshot_title":"","snapshot_date":null,"total_amount_krw":null,"sections":[{"section_label":"","reported_amount_krw":null}],"items":[{"institution_name":"","account_label":"","asset_name":"","asset_class_code":"","source_section_label":"","market_code":"","currency_code":"","quantity":null,"unit_price":null,"amount_original":null,"exchange_rate":null,"amount_krw":null,"memo":""}]}'
+
+/**
+ * 기본 logger shape를 만듭니다.
+ * @returns {{ dbg: Function, info: Function, warn: Function, error: Function }} 비어 있는 logger입니다.
+ */
+function createEmptyLogger() {
+  return {
+    dbg: function () {},
+    info: function () {},
+    warn: function () {},
+    error: function () {},
+  }
+}
+
+/**
+ * 프롬프트에 붙일 응답 스키마 안내를 만듭니다.
+ * @returns {string} 응답 스키마 안내 문자열입니다.
+ */
+function buildResponseSchemaPrompt() {
+  return 'Schema: ' + PROMPT_RESPONSE_SCHEMA
+}
+
+/**
+ * 전체 스크린샷 추출 프롬프트를 만듭니다.
+ * @returns {string} Gemini 전체 추출 프롬프트입니다.
+ */
+function buildFullPrompt() {
+  return [
+    'Return one JSON object only. No markdown. No code fence.',
+    'Read a Toss asset screenshot for photofolio.',
+    'sections = visible summary totals. items = real holdings rows.',
+    'If summary blocks and holdings rows both appear, set page_type=invest_holdings and fill both sections and items.',
+    'If only summary is visible, use page_type=assets_overview or invest_overview and set items=[].',
+    'Institution/account summary rows are not holdings. Examples: Mirae Asset Securities, Samsung Securities, Kakao Bank, NH Investment.',
+    'Real holdings rows look like tickers or product names. Examples: KODEX S&P500, SCHD, JEPI, SPY, Samsung Electronics.',
+    'Do not guess.',
+    'Drop rows with unclear name, unclear amount, empty asset_name, or amount_krw<=0.',
+    'Enums: page_type=' + PROMPT_PAGE_TYPE_ENUM + ', asset_class_code=' + PROMPT_ASSET_CLASS_ENUM + '.',
+    buildResponseSchemaPrompt(),
+  ].join('\n')
+}
+
+/**
+ * 분할 스크린샷 추출 프롬프트를 만듭니다.
+ * @returns {string} Gemini 분할 추출 프롬프트입니다.
+ */
+function buildSlicePrompt() {
+  return [
+    'Return one JSON object only. No markdown. No code fence.',
+    'This image may be one vertical slice of a tall Toss screenshot.',
+    'Return only sections and holdings rows fully visible in this slice.',
+    'If summary blocks and holdings rows both appear, set page_type=invest_holdings and fill both sections and items.',
+    'If only institution/account summary rows appear, use assets_overview and set items=[].',
+    'Never turn institution/account summary rows into items.',
+    'Do not guess.',
+    'Drop cropped rows, unclear rows, empty asset_name rows, and rows with amount_krw<=0.',
+    'Enums: page_type=' + PROMPT_PAGE_TYPE_ENUM + ', asset_class_code=' + PROMPT_ASSET_CLASS_ENUM + '.',
+    buildResponseSchemaPrompt(),
+  ].join('\n')
+}
+
+/**
+ * 추출 모드에 맞는 프롬프트를 고릅니다.
+ * @param {unknown} extractionMode 추출 모드 값입니다.
+ * @returns {string} 사용할 Gemini 프롬프트입니다.
+ */
+function buildPrompt(extractionMode) {
+  return extractionMode === 'slice' ? buildSlicePrompt() : buildFullPrompt()
+}
+
+/**
+ * Gemini API 키를 읽습니다.
+ * @param {(key: string) => string} envGetter 환경 변수 조회 함수입니다.
+ * @returns {string} Gemini API 키입니다.
+ */
+function readGeminiApiKey(envGetter) {
+  return String(envGetter('GEMINI_APIKEY') || envGetter('GEMINI_API_KEY') || envGetter('GEMINI_AI_KEY') || '').trim()
+}
+
+/**
+ * 값 목록에서 첫 번째 유효 값을 찾습니다.
+ * @param {any[]} values 후보 값 목록입니다.
+ * @returns {any} 첫 번째 유효 값입니다.
+ */
+function pickFirstValue(values) {
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index]
+    if (value !== undefined && value !== null) {
+      return value
+    }
+  }
+
+  return ''
+}
+
+/**
+ * Gemini 응답 JSON에서 본문 텍스트를 꺼냅니다.
+ * @param {Record<string, any> | null | undefined} responseJson Gemini 응답 JSON입니다.
+ * @returns {string} 추출한 본문 텍스트입니다.
+ */
+function readGeminiText(responseJson) {
+  const candidates = responseJson && Array.isArray(responseJson.candidates) ? responseJson.candidates : []
+  const firstCandidate = candidates.length > 0 && candidates[0] && typeof candidates[0] === 'object' ? candidates[0] : {}
+  const content = firstCandidate.content && typeof firstCandidate.content === 'object' ? firstCandidate.content : {}
+  const parts = Array.isArray(content.parts) ? content.parts : []
+  const firstPart = parts.length > 0 && parts[0] && typeof parts[0] === 'object' ? parts[0] : {}
+
+  return normalizeText(firstPart.text || '', 0)
+}
+
+/**
+ * AI item 1건을 photofolio item shape로 정리합니다.
+ * @param {Record<string, any> | null | undefined} rawItem AI가 돌려준 원본 item입니다.
+ * @returns {types.PhotofolioAiExtractItem} 정규화한 item입니다.
+ */
+function normalizeItem(rawItem) {
+  const sourceJson = rawItem && typeof rawItem === 'object' ? rawItem : {}
+  const institutionName = normalizeText(pickFirstValue([sourceJson.institution_name, sourceJson.institutionName, sourceJson['기관명'], sourceJson['금융사명']]), 255)
+  const accountLabel = normalizeText(pickFirstValue([sourceJson.account_label, sourceJson.accountLabel, sourceJson['계좌명'], sourceJson['상품명']]), 255)
+  const assetName = normalizeText(pickFirstValue([sourceJson.asset_name, sourceJson.assetName, sourceJson.name, sourceJson['자산명'], sourceJson['종목명'], accountLabel]), 255)
+  const assetClassCode = normalizeAssetClassCode(pickFirstValue([sourceJson.asset_class_code, sourceJson.assetClassCode, sourceJson.category, sourceJson['자산분류']]))
+  const sourceSectionLabel = normalizeText(
+    pickFirstValue([sourceJson.source_section_label, sourceJson.sourceSectionLabel, sourceJson.section_label, sourceJson.sectionLabel, sourceJson['섹션명']]),
+    255
+  )
+  const marketCode = normalizeUpperCode(pickFirstValue([sourceJson.market_code, sourceJson.marketCode, sourceJson['시장코드']]), 20)
+  const currencyCode = normalizeUpperCode(pickFirstValue([sourceJson.currency_code, sourceJson.currencyCode, sourceJson['통화코드']]), 10)
+  const quantity = parseNumber(pickFirstValue([sourceJson.quantity, sourceJson['수량']]))
+  let unitPrice = parseNumber(pickFirstValue([sourceJson.unit_price, sourceJson.unitPrice, sourceJson['단가']]))
+  const amountOriginal = parseNumber(pickFirstValue([sourceJson.amount_original, sourceJson.amountOriginal, sourceJson.amount, sourceJson['평가금액'], sourceJson['금액']]))
+  const exchangeRate = parseNumber(pickFirstValue([sourceJson.exchange_rate, sourceJson.exchangeRate, sourceJson['환율']]))
+  let amountKrw = parseNumber(pickFirstValue([sourceJson.amount_krw, sourceJson.amountKrw, sourceJson['원화금액'], sourceJson['평가액']]))
+  const memo = normalizeText(pickFirstValue([sourceJson.memo, sourceJson.note, sourceJson['메모']]), 5000)
+
+  if (unitPrice === null && quantity && amountOriginal !== null && quantity > 0) {
+    unitPrice = amountOriginal / quantity
+  }
+
+  if (amountKrw === null && amountOriginal !== null) {
+    if (!currencyCode || currencyCode === 'KRW') {
+      amountKrw = amountOriginal
+    } else if (exchangeRate !== null && exchangeRate > 0) {
+      amountKrw = amountOriginal * exchangeRate
+    }
+  }
+
+  return {
+    institution_name: institutionName,
+    account_label: accountLabel,
+    asset_name: assetName,
+    asset_class_code: assetClassCode,
+    source_section_label: sourceSectionLabel,
+    market_code: marketCode,
+    currency_code: currencyCode,
+    quantity: quantity,
+    unit_price: unitPrice,
+    amount_original: amountOriginal,
+    exchange_rate: exchangeRate,
+    amount_krw: amountKrw,
+    memo: memo,
+    source_json: sourceJson,
+  }
+}
+
+/**
+ * AI section 1건을 photofolio section shape로 정리합니다.
+ * @param {Record<string, any> | null | undefined} rawSection AI가 돌려준 원본 section입니다.
+ * @returns {types.PhotofolioAiExtractSection} 정규화한 section입니다.
+ */
+function normalizeSection(rawSection) {
+  const sourceJson = rawSection && typeof rawSection === 'object' ? rawSection : {}
+
+  return {
+    section_label: normalizeText(pickFirstValue([sourceJson.section_label, sourceJson.sectionLabel, sourceJson.label, sourceJson.name, sourceJson.title, sourceJson['섹션명']]), 255),
+    reported_amount_krw: parseNumber(
+      pickFirstValue([
+        sourceJson.reported_amount_krw,
+        sourceJson.reportedAmountKrw,
+        sourceJson.amount_krw,
+        sourceJson.amountKrw,
+        sourceJson.total_amount_krw,
+        sourceJson.totalAmountKrw,
+        sourceJson.amount,
+        sourceJson.total,
+        sourceJson['금액'],
+        sourceJson['합계'],
+      ])
+    ),
+    source_json: sourceJson,
+  }
+}
+
+/**
+ * 섹션 비교용 키를 만듭니다.
+ * @param {unknown} value 원본 섹션명 값입니다.
+ * @returns {string} 공백 없는 소문자 키입니다.
+ */
+function normalizeSectionKey(value) {
+  return normalizeText(value, 255).replace(/\s+/g, '').toLowerCase()
+}
+
+/**
+ * 자산 개요 섹션이 포함됐는지 확인합니다.
+ * @param {types.PhotofolioAiExtractSection[]} sections 섹션 목록입니다.
+ * @returns {boolean} 자산 개요 섹션이 있으면 true입니다.
+ */
+function hasAssetsOverviewSection(sections) {
+  for (let index = 0; index < sections.length; index += 1) {
+    const sectionKey = normalizeSectionKey(sections[index].section_label)
+
+    for (let keywordIndex = 0; keywordIndex < ASSETS_OVERVIEW_SECTION_KEYWORDS.length; keywordIndex += 1) {
+      if (sectionKey.indexOf(normalizeSectionKey(ASSETS_OVERVIEW_SECTION_KEYWORDS[keywordIndex])) !== -1) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
+/**
+ * 요약형 기관명 키워드가 들어 있는지 확인합니다.
+ * @param {unknown} value 검사할 텍스트입니다.
+ * @returns {boolean} 기관/계좌 요약형 키워드가 있으면 true입니다.
+ */
+function containsOverviewSummaryKeyword(value) {
+  const normalizedValue = normalizeSectionKey(value)
+
+  if (!normalizedValue) {
+    return false
+  }
+
+  for (let index = 0; index < OVERVIEW_SUMMARY_NAME_KEYWORDS.length; index += 1) {
+    if (normalizedValue.indexOf(normalizeSectionKey(OVERVIEW_SUMMARY_NAME_KEYWORDS[index])) !== -1) {
+      return true
+    }
+  }
+
+  return false
+}
+
+/**
+ * 짧은 비티커 텍스트인지 확인합니다.
+ * @param {unknown} value 검사할 텍스트입니다.
+ * @returns {boolean} 짧고 티커처럼 보이지 않으면 true입니다.
+ */
+function isShortNonTickerText(value) {
+  const normalizedValue = normalizeText(value, 255).replace(/\s+/g, '')
+
+  if (!normalizedValue || normalizedValue.length > 4) {
+    return false
+  }
+
+  return !/[a-z0-9]/i.test(normalizedValue)
+}
+
+/**
+ * item이 요약형 기관/계좌 행인지 확인합니다.
+ * @param {Partial<types.PhotofolioAiExtractItem> | null | undefined} item 검사할 item입니다.
+ * @returns {boolean} 요약형 행이면 true입니다.
+ */
+function isOverviewSummaryLikeItem(item) {
+  const assetName = normalizeText(item && item.asset_name, 255)
+  const accountLabel = normalizeText(item && item.account_label, 255)
+  const institutionName = normalizeText(item && item.institution_name, 255)
+
+  if (!assetName) {
+    return false
+  }
+
+  if (containsOverviewSummaryKeyword(assetName) || containsOverviewSummaryKeyword(accountLabel) || containsOverviewSummaryKeyword(institutionName)) {
+    return true
+  }
+
+  return isShortNonTickerText(assetName)
+}
+
+/**
+ * 보유종목 화면을 자산 개요 화면으로 낮춰야 하는지 확인합니다.
+ * @param {types.PhotofolioCapturePageType} pageType 현재 판단한 화면 타입입니다.
+ * @param {types.PhotofolioAiExtractSection[]} sections 섹션 목록입니다.
+ * @param {types.PhotofolioAiExtractItem[]} items item 목록입니다.
+ * @returns {boolean} 자산 개요로 낮춰야 하면 true입니다.
+ */
+function shouldDemoteToAssetsOverview(pageType, sections, items) {
+  if (!items.length) {
+    return false
+  }
+
+  if (pageType !== 'invest_holdings' && pageType !== 'assets_overview' && pageType !== 'invest_overview') {
+    return false
+  }
+
+  if (!hasAssetsOverviewSection(sections)) {
+    return false
+  }
+
+  let institutionLikeCount = 0
+
+  for (let index = 0; index < items.length; index += 1) {
+    if (isOverviewSummaryLikeItem(items[index])) {
+      institutionLikeCount += 1
+    }
+  }
+
+  return institutionLikeCount >= Math.max(2, Math.ceil(items.length * 0.5))
+}
+
+/**
+ * 병합용 item 식별 키를 만듭니다.
+ * @param {Partial<types.PhotofolioAiExtractItem> | null | undefined} item 병합할 item입니다.
+ * @returns {string} 병합 식별 키입니다.
+ */
+function buildExtractItemMergeKey(item) {
+  return normalizeAssetIdentityText(item && item.asset_name, 255)
+}
+
+/**
+ * 화면 타입 우선순위를 숫자로 돌립니다.
+ * @param {unknown} pageType 비교할 화면 타입 값입니다.
+ * @returns {number} 병합 비교용 우선순위입니다.
+ */
+function getExtractPageTypePriority(pageType) {
+  const normalizedPageType = normalizeCapturePageType(pageType)
+
+  if (normalizedPageType === 'invest_holdings') {
+    return 4
+  }
+
+  if (normalizedPageType === 'invest_overview') {
+    return 3
+  }
+
+  if (normalizedPageType === 'assets_overview') {
+    return 2
+  }
+
+  return 1
+}
+
+/**
+ * item 정보량 점수를 계산합니다.
+ * @param {Partial<types.PhotofolioAiExtractItem> | null | undefined} item 점수 계산 대상입니다.
+ * @returns {number} 정보량 점수입니다.
+ */
+function scoreExtractItem(item) {
+  let score = 0
+
+  if (normalizeText(item.asset_name, 255)) score += 4
+  if (typeof item.amount_krw === 'number' && isFinite(item.amount_krw) && item.amount_krw > 0) score += 4
+  if (normalizeText(item.account_label, 255)) score += 2
+  if (normalizeText(item.institution_name, 255)) score += 1
+  if (normalizeText(item.source_section_label, 255)) score += 1
+  if (normalizeUpperCode(item.market_code, 20)) score += 1
+  if (normalizeUpperCode(item.currency_code, 10)) score += 1
+  if (typeof item.quantity === 'number' && isFinite(item.quantity)) score += 1
+  if (typeof item.amount_original === 'number' && isFinite(item.amount_original) && item.amount_original > 0) score += 1
+  if (normalizeText(item.memo, 255)) score += 0.5
+
+  return score
+}
+
+/**
+ * 두 item 중 더 나은 값을 고릅니다.
+ * @param {types.PhotofolioAiExtractItem} baseItem 기존 item입니다.
+ * @param {types.PhotofolioAiExtractItem} incomingItem 새 item입니다.
+ * @returns {types.PhotofolioAiExtractItem} 더 나은 item입니다.
+ */
+function pickPreferredExtractItem(baseItem, incomingItem) {
+  const baseScore = scoreExtractItem(baseItem)
+  const incomingScore = scoreExtractItem(incomingItem)
+
+  if (incomingScore > baseScore) {
+    return incomingItem
+  }
+
+  if (incomingScore < baseScore) {
+    return baseItem
+  }
+
+  if (Number(incomingItem.amount_krw || 0) > Number(baseItem.amount_krw || 0)) {
+    return incomingItem
+  }
+
+  return baseItem
+}
+
+/**
+ * AI 원본 JSON을 photofolio 추출 결과 shape로 정리합니다.
+ * @param {Record<string, any> | null | undefined} parsedJson AI 응답 JSON입니다.
+ * @param {string} rawText 원본 응답 텍스트입니다.
+ * @returns {types.PhotofolioAiExtractResult} 정규화한 추출 결과입니다.
+ */
+function normalizeExtractResult(parsedJson, rawText) {
+  const sourceJson = parsedJson && typeof parsedJson === 'object' ? parsedJson : {}
+  const pageType = normalizeCapturePageType(pickFirstValue([sourceJson.page_type, sourceJson.pageType, sourceJson.screen_type, sourceJson.screenType]))
+  const normalizedSections = Array.isArray(sourceJson.sections) ? sourceJson.sections.map(normalizeSection) : []
+  const validSections = normalizedSections.filter(function (section) {
+    return !!section.section_label || section.reported_amount_krw !== null
+  })
+  const normalizedItems = Array.isArray(sourceJson.items) ? sourceJson.items.map(normalizeItem) : []
+  const extractableItems = normalizedItems.filter(function (item) {
+    return item.asset_name && item.amount_krw !== null && item.amount_krw > 0
+  })
+  let resolvedPageType = (pageType === 'assets_overview' || pageType === 'invest_overview') && extractableItems.length >= 3 ? 'invest_holdings' : pageType
+
+  if (shouldDemoteToAssetsOverview(resolvedPageType, validSections, extractableItems)) {
+    resolvedPageType = 'assets_overview'
+  }
+
+  const allowsDetailItems = resolvedPageType === 'invest_holdings' || resolvedPageType === 'unknown'
+  const validItems = allowsDetailItems ? extractableItems : []
+  let totalAmountKrw = parseNumber(pickFirstValue([sourceJson.total_amount_krw, sourceJson.totalAmountKrw]))
+
+  if (totalAmountKrw === null) {
+    if (validItems.length > 0) {
+      totalAmountKrw = validItems.reduce(function (sum, item) {
+        return sum + Number(item.amount_krw || 0)
+      }, 0)
+    } else if (validSections.length > 0) {
+      totalAmountKrw = validSections.reduce(function (sum, section) {
+        return sum + Number(section.reported_amount_krw || 0)
+      }, 0)
+    }
+  }
+
+  return {
+    page_type: resolvedPageType,
+    snapshot_title: normalizeText(pickFirstValue([sourceJson.snapshot_title, sourceJson.snapshotTitle, sourceJson.title]), 200),
+    snapshot_date: normalizeIsoDate(pickFirstValue([sourceJson.snapshot_date, sourceJson.snapshotDate, sourceJson.date])),
+    total_amount_krw: totalAmountKrw > 0 ? totalAmountKrw : null,
+    sections: validSections,
+    items: validItems,
+    raw_text: rawText,
+    raw_json: sourceJson,
+  }
+}
+
+/**
+ * 병합 결과에 쓸 최종 화면 타입을 정합니다.
+ * @param {number} itemCount 병합된 item 개수입니다.
+ * @param {types.PhotofolioCapturePageType} resolvedPageType 현재까지 계산한 화면 타입입니다.
+ * @returns {types.PhotofolioCapturePageType} 최종 화면 타입입니다.
+ */
+function resolveMergedPageType(itemCount, resolvedPageType) {
+  return itemCount > 0 ? 'invest_holdings' : resolvedPageType
+}
+
+/**
+ * 세로 분할된 추출 결과를 하나의 캡처 결과로 병합합니다.
+ * @param {types.PhotofolioAiExtractResult[]} extractResults 추출 결과 목록입니다.
+ * @returns {types.PhotofolioAiExtractResult} 병합된 추출 결과입니다.
+ */
+function mergeExtractResults(extractResults) {
+  const results = Array.isArray(extractResults) ? extractResults.filter(Boolean) : []
+  const sectionsByLabel = {}
+  const itemsByKey = {}
+  let snapshotTitle = ''
+  let snapshotDate = ''
+  let totalAmountKrw = null
+  let resolvedPageType = normalizeCapturePageType('')
+  const rawTexts = []
+  const rawSegments = []
+
+  for (let index = 0; index < results.length; index += 1) {
+    const result = results[index]
+    const pageType = normalizeCapturePageType(result.page_type)
+    const resultSections = Array.isArray(result.sections) ? result.sections : []
+    const resultItems = Array.isArray(result.items) ? result.items : []
+
+    if (!snapshotTitle && normalizeText(result.snapshot_title, 200)) {
+      snapshotTitle = normalizeText(result.snapshot_title, 200)
+    }
+
+    if (!snapshotDate && normalizeIsoDate(result.snapshot_date)) {
+      snapshotDate = normalizeIsoDate(result.snapshot_date)
+    }
+
+    if (typeof result.total_amount_krw === 'number' && isFinite(result.total_amount_krw) && result.total_amount_krw > 0) {
+      totalAmountKrw = totalAmountKrw === null ? result.total_amount_krw : Math.max(totalAmountKrw, result.total_amount_krw)
+    }
+
+    if (resultItems.length > 0) {
+      resolvedPageType = 'invest_holdings'
+    } else if (getExtractPageTypePriority(pageType) > getExtractPageTypePriority(resolvedPageType)) {
+      resolvedPageType = pageType
+    }
+
+    for (let sectionIndex = 0; sectionIndex < resultSections.length; sectionIndex += 1) {
+      const section = resultSections[sectionIndex]
+      const sectionLabel = normalizeText(section.section_label, 255)
+
+      if (!sectionLabel) {
+        continue
+      }
+
+      if (!sectionsByLabel[sectionLabel]) {
+        sectionsByLabel[sectionLabel] = section
+        continue
+      }
+
+      const existingSection = sectionsByLabel[sectionLabel]
+      const existingAmount = typeof existingSection.reported_amount_krw === 'number' && isFinite(existingSection.reported_amount_krw) ? existingSection.reported_amount_krw : null
+      const incomingAmount = typeof section.reported_amount_krw === 'number' && isFinite(section.reported_amount_krw) ? section.reported_amount_krw : null
+
+      if (existingAmount === null || (incomingAmount !== null && incomingAmount > existingAmount)) {
+        sectionsByLabel[sectionLabel] = section
+      }
+    }
+
+    for (let itemIndex = 0; itemIndex < resultItems.length; itemIndex += 1) {
+      const item = resultItems[itemIndex]
+      const itemKey = buildExtractItemMergeKey(item)
+
+      if (!itemKey) {
+        continue
+      }
+
+      if (!itemsByKey[itemKey]) {
+        itemsByKey[itemKey] = item
+        continue
+      }
+
+      itemsByKey[itemKey] = pickPreferredExtractItem(itemsByKey[itemKey], item)
+    }
+
+    if (normalizeText(result.raw_text, 0)) {
+      rawTexts.push(normalizeText(result.raw_text, 0))
+    }
+
+    rawSegments.push({
+      page_type: pageType,
+      total_amount_krw: result.total_amount_krw,
+      section_count: resultSections.length,
+      item_count: resultItems.length,
+      raw_json: result.raw_json || {},
+    })
+  }
+
+  const mergedItems = Object.keys(itemsByKey).map(function (itemKey) {
+    return itemsByKey[itemKey]
+  })
+  const mergedSections = Object.keys(sectionsByLabel).map(function (sectionLabel) {
+    return sectionsByLabel[sectionLabel]
+  })
+
+  if (totalAmountKrw === null && mergedItems.length > 0) {
+    totalAmountKrw = mergedItems.reduce(function (sum, item) {
+      return sum + Number(item.amount_krw || 0)
+    }, 0)
+  }
+
+  if (totalAmountKrw === null && mergedSections.length > 0) {
+    totalAmountKrw = mergedSections.reduce(function (sum, section) {
+      return sum + Number(section.reported_amount_krw || 0)
+    }, 0)
+  }
+
+  return {
+    page_type: resolveMergedPageType(mergedItems.length, resolvedPageType),
+    snapshot_title: snapshotTitle,
+    snapshot_date: snapshotDate,
+    total_amount_krw: totalAmountKrw > 0 ? totalAmountKrw : null,
+    sections: mergedSections,
+    items: mergedItems,
+    raw_text: rawTexts.join('\n\n-----\n\n'),
+    raw_json: {
+      merged_from_segments: true,
+      segments: rawSegments,
+    },
+  }
+}
+
+/**
+ * 업로드 이미지를 Gemini로 분석해 스냅샷 초안을 만듭니다.
+ * @param {{ geminiApiKey: string, mimeType: string, fileBase64: string, extractionMode?: 'full' | 'slice', logger?: { dbg?: Function, info?: Function, warn?: Function, error?: Function } }} input 분석 입력값입니다.
+ * @returns {types.PhotofolioAiExtractResult} 정규화된 추출 결과입니다.
+ */
+function extractAssetSnapshot(input) {
+  const logger = input && input.logger ? input.logger : createEmptyLogger()
+  const geminiApiKey = String((input && input.geminiApiKey) || '').trim()
+  const mimeType = String((input && input.mimeType) || 'image/png').trim() || 'image/png'
+  const fileBase64 = String((input && input.fileBase64) || '').trim()
+  const extractionMode = input && input.extractionMode === 'slice' ? 'slice' : 'full'
+
+  if (!geminiApiKey) {
+    throw new Error('GEMINI_APIKEY 또는 GEMINI_API_KEY가 설정되지 않았습니다.')
+  }
+
+  if (!fileBase64) {
+    throw new Error('분석할 이미지 데이터가 비어 있습니다.')
+  }
+
+  logger.info('xapi/snapshots/upload:gemini:start', {
+    mimeType: mimeType,
+    model: GEMINI_MODEL_NAME,
+    extractionMode: extractionMode,
+  })
+
+  const response = $http.send({
+    url: `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_NAME}:generateContent?key=${geminiApiKey}`,
+    method: 'POST',
+    timeout: 120,
+    body: JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: buildPrompt(extractionMode) },
+            {
+              inline_data: {
+                mime_type: mimeType,
+                data: fileBase64,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: 'application/json',
+      },
+    }),
+    headers: {
+      'content-type': 'application/json',
+    },
+  })
+
+  const statusCode = Number(response.statusCode || 0)
+  const responseBody = toString(response.body)
+
+  logger.info('xapi/snapshots/upload:gemini:done', {
+    statusCode: statusCode,
+  })
+
+  if (statusCode < 200 || statusCode >= 300) {
+    throw new Error('이미지 분석 처리에 실패했습니다.')
+  }
+
+  const responseJson = parseJsonSafely(responseBody, {})
+  const rawText = readGeminiText(responseJson)
+  const parsedJson = parseJsonSafely(extractJsonObjectText(rawText), {})
+  const normalizedResult = normalizeExtractResult(parsedJson, rawText)
+
+  if (!normalizedResult.sections.length && !normalizedResult.items.length && normalizedResult.total_amount_krw === null) {
+    throw new Error('이미지에서 저장할 자산 정보나 합계를 찾지 못했습니다.')
+  }
+
+  return normalizedResult
+}
+
+module.exports = {
+  extractAssetSnapshot,
+  mergeExtractResults,
+  readGeminiApiKey,
+}

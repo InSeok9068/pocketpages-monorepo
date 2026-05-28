@@ -1,0 +1,671 @@
+<script server>
+  const photofolioFredService = resolve('photofolio-fred-service')
+
+  meta('title', '추이 | Photofolio')
+  meta('description', 'FRED 시계열로 원/달러 환율과 미국 국채 금리 변동 추이를 확인하는 페이지.')
+
+  const flashMessage = params.__flash ? String(params.__flash) : ''
+  const isSignedIn = !!request.auth
+  const requestedRange = String(request.url.query.range || '1y').trim()
+  const selectedRangeMeta = photofolioFredService.normalizeTrendRange(requestedRange)
+  const rangeOptions = [
+    { code: '3m', label: '3개월' },
+    { code: '6m', label: '6개월' },
+    { code: '1y', label: '1년' },
+    { code: '3y', label: '3년' },
+  ]
+  let trendDashboard = null
+  let trendErrorMessage = ''
+  let usdKrwSeries = null
+  let fedFundsSeries = null
+  let treasury2ySeries = null
+  let treasury10ySeries = null
+  let unemploymentSeries = null
+  let cpiInflationSeries = null
+  let exchangeChartPayload = null
+  let rateChartPayload = null
+  let unemploymentChartPayload = null
+  let inflationChartPayload = null
+  let latestDateLabel = '데이터 없음'
+  let cacheStatusLabel = '실시간'
+  let fetchedAtLabel = ''
+
+  function formatNumber(value, fractionDigits) {
+    const normalizedValue = Number(value)
+    const normalizedFractionDigits = typeof fractionDigits === 'number' ? Math.max(0, Math.min(6, Math.floor(fractionDigits))) : 0
+
+    if (!isFinite(normalizedValue)) {
+      return '-'
+    }
+
+    const fixedText = normalizedValue.toFixed(normalizedFractionDigits)
+    const parts = fixedText.split('.')
+    const integerText = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+
+    if (parts.length === 1 || !parts[1]) {
+      return integerText
+    }
+
+    return integerText + '.' + parts[1]
+  }
+
+  function formatSeriesValue(series) {
+    if (!series || series.latest_value === null) {
+      return '-'
+    }
+
+    if (series.unit === 'KRW') {
+      return '₩' + formatNumber(series.latest_value, 2)
+    }
+
+    return formatNumber(series.latest_value, 2) + '%'
+  }
+
+  function formatSeriesChange(series) {
+    if (!series || series.latest_value === null || series.start_value === null) {
+      return '-'
+    }
+
+    const deltaValue = Number(series.latest_value || 0) - Number(series.start_value || 0)
+    const sign = deltaValue > 0 ? '+' : ''
+
+    if (series.unit === 'KRW') {
+      return sign + '₩' + formatNumber(deltaValue, 2)
+    }
+
+    return sign + formatNumber(deltaValue, 2) + '%'
+  }
+
+  function formatShortDate(isoDate) {
+    const normalizedDate = String(isoDate || '').trim()
+    const match = normalizedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+
+    if (!match) {
+      return '데이터 없음'
+    }
+
+    return match[2] + '.' + match[3]
+  }
+
+  function formatShortDateTime(isoTimestamp) {
+    const normalizedValue = String(isoTimestamp || '').trim()
+    const date = new Date(normalizedValue)
+
+    if (!normalizedValue || isNaN(date.getTime())) {
+      return ''
+    }
+
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+
+    return month + '.' + day + ' ' + hours + ':' + minutes
+  }
+
+  function serializeJsonForDom(value) {
+    return JSON.stringify(value || {})
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026')
+      .replace(/'/g, '\\u0027')
+  }
+
+  function buildLineChartPayload(seriesList) {
+    const dateMap = {}
+    const labels = []
+
+    for (let index = 0; index < seriesList.length; index += 1) {
+      const series = seriesList[index]
+
+      for (let pointIndex = 0; pointIndex < series.points.length; pointIndex += 1) {
+        const point = series.points[pointIndex]
+
+        if (!dateMap[point.date]) {
+          dateMap[point.date] = {}
+          labels.push(point.date)
+        }
+
+        dateMap[point.date][series.key] = point.value
+      }
+    }
+
+    labels.sort()
+
+    return {
+      labels: labels,
+      datasets: seriesList.map(function (series) {
+        return {
+          key: series.key,
+          label: series.label,
+          values: labels.map(function (label) {
+            return dateMap[label][series.key] === undefined ? null : dateMap[label][series.key]
+          }),
+        }
+      }),
+    }
+  }
+
+  try {
+    trendDashboard = photofolioFredService.buildTrendDashboard({
+      envGetter: env,
+      rangeCode: selectedRangeMeta.code,
+      logger: {
+        dbg: dbg,
+        info: info,
+        warn: warn,
+        error: error,
+      },
+    })
+    usdKrwSeries = trendDashboard.series_by_key.usdkrw || null
+    fedFundsSeries = trendDashboard.series_by_key.fedFunds || null
+    treasury2ySeries = trendDashboard.series_by_key.treasury2y || null
+    treasury10ySeries = trendDashboard.series_by_key.treasury10y || null
+    unemploymentSeries = trendDashboard.series_by_key.unemployment || null
+    cpiInflationSeries = trendDashboard.series_by_key.cpiInflation || null
+    latestDateLabel = formatShortDate(trendDashboard.latest_date)
+    fetchedAtLabel = formatShortDateTime(trendDashboard.cache_state ? trendDashboard.cache_state.fetched_at : '')
+
+    if (trendDashboard.cache_state && trendDashboard.cache_state.source === 'cache') {
+      cacheStatusLabel = '캐시'
+    }
+
+    if (trendDashboard.cache_state && trendDashboard.cache_state.source === 'stale_cache') {
+      cacheStatusLabel = '저장 데이터'
+    }
+
+    if (usdKrwSeries && usdKrwSeries.points.length) {
+      exchangeChartPayload = buildLineChartPayload([usdKrwSeries])
+    }
+
+    if ((fedFundsSeries && fedFundsSeries.points.length) || (treasury2ySeries && treasury2ySeries.points.length) || (treasury10ySeries && treasury10ySeries.points.length)) {
+      rateChartPayload = buildLineChartPayload(
+        [fedFundsSeries, treasury2ySeries, treasury10ySeries].filter(function (series) {
+          return !!(series && series.points.length)
+        })
+      )
+    }
+
+    if (unemploymentSeries && unemploymentSeries.points.length) {
+      unemploymentChartPayload = buildLineChartPayload([unemploymentSeries])
+    }
+
+    if (cpiInflationSeries && cpiInflationSeries.points.length) {
+      inflationChartPayload = buildLineChartPayload([cpiInflationSeries])
+    }
+  } catch (exception) {
+    trendErrorMessage = String(exception.message || exception)
+
+    warn('page/trends:fred-unavailable', {
+      error: trendErrorMessage,
+      rangeCode: selectedRangeMeta.code,
+    })
+  }
+</script>
+
+<section class="space-y-5">
+  <header class="flex items-start justify-between gap-4">
+    <div class="space-y-1">
+      <p class="m-0 pt-2 text-[13px] font-semibold tracking-[-0.01em] text-[var(--pf-primary)]">Photofolio</p>
+      <h1 class="m-0 text-[1.65rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">추이</h1>
+      <% if (isSignedIn) { %>
+      <p class="m-0 text-[13px] leading-5 text-[var(--pf-text-faint)]"><%= String(request.auth.get('email') || '').trim() %></p>
+      <% } else { %>
+      <p class="m-0 text-[13px] leading-5 text-[var(--pf-text-faint)]">FRED 환율 · 금리 · 실업률 · 물가</p>
+      <% } %>
+    </div>
+
+    <% if (isSignedIn) { %>
+    <form
+      method="post"
+      action="/xapi/auth/sign-out">
+      <button
+        type="submit"
+        class="pf-top-action">
+        로그아웃
+      </button>
+    </form>
+    <% } else { %>
+    <a
+      href="/auth"
+      class="pf-top-action">
+      로그인
+    </a>
+    <% } %>
+  </header>
+
+  <% if (flashMessage) { %>
+  <%- include('photofolio-flash-banner.ejs', { message: flashMessage }) %>
+  <% } %>
+
+  <section class="pf-hero-card">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-white/78 m-0 text-[13px] font-medium">기준 범위</p>
+        <h2 class="m-0 mt-2 text-[2.1rem] font-bold tracking-[-0.05em]"><%= selectedRangeMeta.label %></h2>
+      </div>
+      <div class="pf-hero-metric text-right">
+        <p class="text-white/72 m-0 text-[12px]">최근 기준일</p>
+        <p class="m-0 mt-1 text-lg font-semibold"><%= latestDateLabel %></p>
+        <p class="text-white/72 m-0 mt-1 text-[11px] font-medium"><%= cacheStatusLabel %></p>
+        <% if (fetchedAtLabel) { %>
+        <p class="text-white/72 m-0 mt-1 text-[11px] font-medium">조회 <%= fetchedAtLabel %></p>
+        <% } %>
+      </div>
+    </div>
+    <p class="text-white/78 m-0 mt-3 text-sm leading-6">환율 · 금리 · 실업률 · 물가.</p>
+  </section>
+
+  <section class="flex flex-wrap gap-2">
+    <% for (let index = 0; index < rangeOptions.length; index += 1) { const rangeOption = rangeOptions[index] %>
+    <a
+      href="/trends?range=<%= rangeOption.code %>"
+      class="<%= selectedRangeMeta.code === rangeOption.code ? 'bg-[var(--pf-primary)] text-white shadow-[0_16px_26px_rgba(49,130,246,0.22)]' : 'bg-white text-[var(--pf-text-faint)]' %> inline-flex min-h-10 items-center rounded-full px-4 text-[13px] font-semibold no-underline">
+      <%= rangeOption.label %>
+    </a>
+    <% } %>
+  </section>
+
+  <% if (trendErrorMessage) { %>
+  <section class="pf-card px-4 py-5">
+    <p class="m-0 text-sm font-semibold text-[var(--pf-text)]">데이터를 불러오지 못했다.</p>
+    <p class="m-0 mt-2 text-[13px] leading-6 text-[var(--pf-text-soft)]"><%= trendErrorMessage %></p>
+    <p class="m-0 mt-2 text-[12px] leading-5 text-[var(--pf-text-faint)]">`FRED_APIKEY` 필요.</p>
+  </section>
+  <% } %>
+
+  <section class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <article class="pf-card px-4 py-4">
+      <p class="m-0 text-[12px] font-semibold text-[var(--pf-primary)]">원/달러 환율</p>
+      <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(usdKrwSeries) %></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= usdKrwSeries && usdKrwSeries.latest_value !== null && usdKrwSeries.start_value !== null && usdKrwSeries.latest_value - usdKrwSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(usdKrwSeries) %></span
+        >
+      </p>
+    </article>
+
+    <article class="pf-card px-4 py-4">
+      <p class="m-0 text-[12px] font-semibold text-[#d97706]">미국 기준금리</p>
+      <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(fedFundsSeries) %></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= fedFundsSeries && fedFundsSeries.latest_value !== null && fedFundsSeries.start_value !== null && fedFundsSeries.latest_value - fedFundsSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(fedFundsSeries) %></span
+        >
+      </p>
+    </article>
+
+    <article class="pf-card px-4 py-4">
+      <p class="m-0 text-[12px] font-semibold text-[#0f9f6e]">미국 2년물</p>
+      <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(treasury2ySeries) %></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= treasury2ySeries && treasury2ySeries.latest_value !== null && treasury2ySeries.start_value !== null && treasury2ySeries.latest_value - treasury2ySeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(treasury2ySeries) %></span
+        >
+      </p>
+    </article>
+
+    <article class="pf-card px-4 py-4">
+      <p class="m-0 text-[12px] font-semibold text-[#4f46e5]">미국 10년물</p>
+      <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(treasury10ySeries) %></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= treasury10ySeries && treasury10ySeries.latest_value !== null && treasury10ySeries.start_value !== null && treasury10ySeries.latest_value - treasury10ySeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(treasury10ySeries) %></span
+        >
+      </p>
+    </article>
+
+    <article class="pf-card px-4 py-4">
+      <p class="m-0 text-[12px] font-semibold text-[#ef4444]">실업률</p>
+      <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(unemploymentSeries) %></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= unemploymentSeries && unemploymentSeries.latest_value !== null && unemploymentSeries.start_value !== null && unemploymentSeries.latest_value - unemploymentSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(unemploymentSeries) %></span
+        >
+      </p>
+    </article>
+
+    <article class="pf-card px-4 py-4">
+      <p class="m-0 text-[12px] font-semibold text-[#e85d3f]">CPI 상승률</p>
+      <p class="m-0 mt-2 text-[1.45rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatSeriesValue(cpiInflationSeries) %></p>
+      <p class="m-0 mt-2 text-[13px] font-medium text-[var(--pf-text-soft)]">
+        변화
+        <span
+          class="<%= cpiInflationSeries && cpiInflationSeries.latest_value !== null && cpiInflationSeries.start_value !== null && cpiInflationSeries.latest_value - cpiInflationSeries.start_value > 0 ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> font-semibold"
+          ><%= formatSeriesChange(cpiInflationSeries) %></span
+        >
+      </p>
+    </article>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">원/달러 환율</h2>
+      <span class="text-sm font-medium text-[var(--pf-text-faint)]">FRED · DEXKOUS</span>
+    </div>
+
+    <article class="pf-card px-4 py-4">
+      <div class="h-[18rem]">
+        <% if (exchangeChartPayload) { %>
+        <canvas id="exchange-trend-chart"></canvas>
+        <% } else { %>
+        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">데이터 없음</div>
+        <% } %>
+      </div>
+    </article>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">미국 기준금리 · 국채 금리</h2>
+      <span class="text-sm font-medium text-[var(--pf-text-faint)]">FRED · DFEDTARU / DGS2 / DGS10</span>
+    </div>
+
+    <article class="pf-card px-4 py-4">
+      <div class="h-[18rem]">
+        <% if (rateChartPayload) { %>
+        <canvas id="rate-trend-chart"></canvas>
+        <% } else { %>
+        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">데이터 없음</div>
+        <% } %>
+      </div>
+    </article>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">실업률</h2>
+      <span class="text-sm font-medium text-[var(--pf-text-faint)]">FRED · UNRATE</span>
+    </div>
+
+    <article class="pf-card px-4 py-4">
+      <div class="h-[18rem]">
+        <% if (unemploymentChartPayload) { %>
+        <canvas id="unemployment-trend-chart"></canvas>
+        <% } else { %>
+        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">데이터 없음</div>
+        <% } %>
+      </div>
+    </article>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">CPI 상승률</h2>
+      <span class="text-sm font-medium text-[var(--pf-text-faint)]">FRED · CPIAUCSL (전년동월비)</span>
+    </div>
+
+    <article class="pf-card px-4 py-4">
+      <div class="h-[18rem]">
+        <% if (inflationChartPayload) { %>
+        <canvas id="inflation-trend-chart"></canvas>
+        <% } else { %>
+        <div class="flex h-full items-center justify-center rounded-[1.2rem] bg-[var(--pf-surface-soft)] text-[13px] leading-6 text-[var(--pf-text-faint)]">데이터 없음</div>
+        <% } %>
+      </div>
+    </article>
+  </section>
+
+  <section class="rounded-[1.7rem] bg-[var(--pf-primary-soft)] px-4 py-4">
+    <p class="m-0 text-sm font-semibold text-[var(--pf-primary)]">데이터 기준</p>
+    <p class="m-0 mt-2 text-[13px] leading-6 text-[var(--pf-text-soft)]">DEXKOUS · DFEDTARU · DGS2 · DGS10 · UNRATE · CPIAUCSL(pc1)</p>
+  </section>
+
+  <%- include('photofolio-bottom-nav.ejs', { activeTab: 'trends' }) %>
+
+  <% if (exchangeChartPayload || rateChartPayload || unemploymentChartPayload || inflationChartPayload) { %>
+  <script
+    defer
+    src="<%= asset('/assets/vendor/chart-4.5.1.umd.min.js') %>"></script>
+  <% } %>
+
+  <% if (exchangeChartPayload) { %>
+  <div
+    id="exchange-trend-data"
+    data-payload="<%= serializeJsonForDom(exchangeChartPayload) %>"
+    hidden></div>
+  <% } %>
+
+  <% if (rateChartPayload) { %>
+  <div
+    id="rate-trend-data"
+    data-payload="<%= serializeJsonForDom(rateChartPayload) %>"
+    hidden></div>
+  <% } %>
+
+  <% if (unemploymentChartPayload) { %>
+  <div
+    id="unemployment-trend-data"
+    data-payload="<%= serializeJsonForDom(unemploymentChartPayload) %>"
+    hidden></div>
+  <% } %>
+
+  <% if (inflationChartPayload) { %>
+  <div
+    id="inflation-trend-data"
+    data-payload="<%= serializeJsonForDom(inflationChartPayload) %>"
+    hidden></div>
+  <% } %>
+
+  <% if (exchangeChartPayload || rateChartPayload || unemploymentChartPayload || inflationChartPayload) { %>
+  <script>
+    ;(() => {
+      function readJsonScript(scriptId) {
+        const element = document.getElementById(scriptId)
+        if (!element) return null
+
+        try {
+          return JSON.parse(element.dataset.payload || 'null')
+        } catch {
+          return null
+        }
+      }
+
+      function formatShortDateLabel(isoDate) {
+        const source = String(isoDate || '')
+        const parts = source.split('-')
+        if (parts.length !== 3) return source
+        return parts[1] + '.' + parts[2]
+      }
+
+      function createCommonOptions(valueSuffix) {
+        return {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false,
+          },
+          plugins: {
+            legend: {
+              labels: {
+                boxWidth: 10,
+                boxHeight: 10,
+                color: '#4e5968',
+                usePointStyle: true,
+              },
+            },
+            tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.92)',
+              displayColors: true,
+              padding: 12,
+              callbacks: {
+                title: function (items) {
+                  return items.length ? String(items[0].label || '') : ''
+                },
+                label: function (context) {
+                  const rawValue = typeof context.raw === 'number' ? context.raw : Number(context.raw || 0)
+                  const formattedValue = rawValue.toLocaleString('ko-KR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                  return context.dataset.label + ': ' + formattedValue + valueSuffix
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: {
+                display: false,
+              },
+              ticks: {
+                autoSkip: true,
+                maxTicksLimit: 6,
+                color: '#8b95a1',
+                callback: function (_value, index) {
+                  return formatShortDateLabel(this.getLabelForValue(index))
+                },
+              },
+              border: {
+                display: false,
+              },
+            },
+            y: {
+              grid: {
+                color: 'rgba(15, 23, 42, 0.06)',
+              },
+              ticks: {
+                color: '#8b95a1',
+                callback: function (value) {
+                  const normalizedValue = Number(value || 0)
+                  return (
+                    normalizedValue.toLocaleString('ko-KR', {
+                      minimumFractionDigits: valueSuffix === '%' ? 2 : 0,
+                      maximumFractionDigits: valueSuffix === '%' ? 2 : 0,
+                    }) + valueSuffix
+                  )
+                },
+              },
+              border: {
+                display: false,
+              },
+            },
+          },
+        }
+      }
+
+      function buildDatasetStyle(datasetKey) {
+        if (datasetKey === 'usdkrw') {
+          return {
+            borderColor: '#3182f6',
+            backgroundColor: 'rgba(49,130,246,0.12)',
+            fill: true,
+          }
+        }
+
+        if (datasetKey === 'fedFunds') {
+          return {
+            borderColor: '#d97706',
+            backgroundColor: 'rgba(217,119,6,0.08)',
+            fill: false,
+          }
+        }
+
+        if (datasetKey === 'treasury2y') {
+          return {
+            borderColor: '#0f9f6e',
+            backgroundColor: 'rgba(15,159,110,0.08)',
+            fill: false,
+          }
+        }
+
+        if (datasetKey === 'treasury10y') {
+          return {
+            borderColor: '#4f46e5',
+            backgroundColor: 'rgba(79,70,229,0.08)',
+            fill: false,
+          }
+        }
+
+        if (datasetKey === 'unemployment') {
+          return {
+            borderColor: '#ef4444',
+            backgroundColor: 'rgba(239,68,68,0.10)',
+            fill: true,
+          }
+        }
+
+        if (datasetKey === 'cpiInflation') {
+          return {
+            borderColor: '#e85d3f',
+            backgroundColor: 'rgba(232,93,63,0.10)',
+            fill: true,
+          }
+        }
+
+        return {
+          borderColor: '#6b7684',
+          backgroundColor: 'rgba(107,118,132,0.10)',
+          fill: false,
+        }
+      }
+
+      function renderLineChart(input) {
+        const chartPayload = readJsonScript(input.dataId)
+        const canvas = document.getElementById(input.canvasId)
+
+        if (!chartPayload || !canvas || !window.Chart) {
+          return
+        }
+
+        new window.Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: chartPayload.labels || [],
+            datasets: (chartPayload.datasets || []).map((dataset) => {
+              const style = buildDatasetStyle(dataset.key)
+
+              return {
+                label: dataset.label,
+                data: dataset.values || [],
+                borderColor: style.borderColor,
+                backgroundColor: style.backgroundColor,
+                borderWidth: 2.4,
+                pointRadius: 0,
+                pointHoverRadius: 3,
+                fill: style.fill,
+                tension: 0.24,
+              }
+            }),
+          },
+          options: createCommonOptions(input.valueSuffix),
+        })
+      }
+
+      window.addEventListener('load', function () {
+        renderLineChart({
+          canvasId: 'exchange-trend-chart',
+          dataId: 'exchange-trend-data',
+          valueSuffix: '원',
+        })
+        renderLineChart({
+          canvasId: 'rate-trend-chart',
+          dataId: 'rate-trend-data',
+          valueSuffix: '%',
+        })
+        renderLineChart({
+          canvasId: 'unemployment-trend-chart',
+          dataId: 'unemployment-trend-data',
+          valueSuffix: '%',
+        })
+        renderLineChart({
+          canvasId: 'inflation-trend-chart',
+          dataId: 'inflation-trend-data',
+          valueSuffix: '%',
+        })
+      })
+    })()
+  </script>
+  <% } %>
+</section>

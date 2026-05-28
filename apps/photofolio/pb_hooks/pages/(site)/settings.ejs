@@ -1,0 +1,113 @@
+<script server>
+  meta('title', '설정 | Photofolio')
+  meta('description', '내 자산 데이터 정리와 기본 설정을 확인하는 페이지.')
+
+  const flashMessage = params.__flash ? String(params.__flash) : ''
+
+  if (!request.auth) {
+    dbg('settings:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인 후 설정을 확인해 주세요.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인 후 설정을 확인해 주세요.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const email = String(request.auth.get('email') || '').trim()
+  const snapshotRecords =
+    $app.findRecordsByFilter('asset_snapshots', 'user_id = {:userId}', '-updated,-created', 500, 0, {
+      userId: userId,
+    }) || []
+  const captureRecords =
+    $app.findRecordsByFilter('snapshot_capture_images', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
+      userId: userId,
+    }) || []
+  const sectionRecords =
+    $app.findRecordsByFilter('snapshot_sections', 'snapshot_id.user_id = {:userId}', '-created', 1000, 0, {
+      userId: userId,
+    }) || []
+  const assetRecords =
+    $app.findRecordsByFilter('asset_items', 'snapshot_id.user_id = {:userId}', '-updated,-created', 1000, 0, {
+      userId: userId,
+    }) || []
+
+  function formatNumber(value) {
+    const normalizedValue = Math.round(Number(value || 0))
+    return String(normalizedValue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  }
+</script>
+
+<section class="space-y-5">
+  <header class="flex items-start justify-between gap-4">
+    <div class="space-y-1">
+      <p class="m-0 pt-2 text-[13px] font-semibold tracking-[-0.01em] text-[var(--pf-primary)]">Photofolio</p>
+      <h1 class="m-0 text-[1.65rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">설정</h1>
+      <p class="m-0 text-[13px] leading-5 text-[var(--pf-text-faint)]"><%= email %></p>
+    </div>
+
+    <form
+      method="post"
+      action="/xapi/auth/sign-out">
+      <button
+        type="submit"
+        class="pf-top-action">
+        로그아웃
+      </button>
+    </form>
+  </header>
+
+  <% if (flashMessage) { %>
+  <%- include('photofolio-flash-banner.ejs', { message: flashMessage }) %>
+  <% } %>
+
+  <section class="pf-hero-card">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-white/78 m-0 text-[13px] font-medium">현재 자산 데이터</p>
+        <h2 class="m-0 mt-2 text-[2.1rem] font-bold tracking-[-0.05em]"><%= formatNumber(assetRecords.length) %>개</h2>
+      </div>
+      <div class="pf-hero-metric text-right">
+        <p class="text-white/72 m-0 text-[12px]">스냅샷</p>
+        <p class="m-0 mt-1 text-lg font-semibold"><%= formatNumber(snapshotRecords.length) %>건</p>
+      </div>
+    </div>
+    <p class="text-white/78 m-0 mt-3 text-sm leading-6">현재 사용자 자산 데이터 전체 삭제.</p>
+  </section>
+
+  <section class="grid grid-cols-2 gap-3">
+    <article class="pf-card px-4 py-4">
+      <p class="m-0 text-[12px] font-semibold text-[var(--pf-primary)]">캡처 이미지</p>
+      <p class="m-0 mt-2 text-[1.4rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatNumber(captureRecords.length) %>건</p>
+    </article>
+    <article class="pf-card px-4 py-4">
+      <p class="m-0 text-[12px] font-semibold text-[#0f9f6e]">섹션 합계</p>
+      <p class="m-0 mt-2 text-[1.4rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"><%= formatNumber(sectionRecords.length) %>건</p>
+    </article>
+  </section>
+
+  <section class="rounded-[1.7rem] border border-[rgba(232,93,63,0.16)] bg-[var(--pf-surface)] px-4 py-5 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+    <div class="space-y-2">
+      <p class="m-0 text-sm font-semibold text-[#e85d3f]">자산 데이터 초기화</p>
+      <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">스냅샷, 캡처, 섹션, 자산 항목 삭제 · 목표 비율 유지.</p>
+    </div>
+
+    <form
+      method="post"
+      action="/xapi/settings/clear-assets"
+      class="mt-4"
+      onsubmit="return window.confirm('현재 사용자와 연결된 자산 데이터를 모두 지울까요?')">
+      <button
+        type="submit"
+        class="min-h-12 w-full rounded-[1.2rem] border-none bg-[#e85d3f] px-4 text-[14px] font-semibold text-white shadow-[0_18px_28px_rgba(232,93,63,0.24)]">
+        내 자산 데이터 전체 삭제
+      </button>
+    </form>
+  </section>
+
+  <%- include('photofolio-bottom-nav.ejs', { activeTab: 'settings' }) %>
+</section>

@@ -21,7 +21,7 @@
     "apps/sample/**": true,
     "apps/kjca/**": true,
     // "apps/booklog/**": true,
-    "apps/photofolio/**": true,
+    // "apps/photofolio/**": true,
     "apps/homeping/**": true,
     // "apps/anchor/**": true,
   },

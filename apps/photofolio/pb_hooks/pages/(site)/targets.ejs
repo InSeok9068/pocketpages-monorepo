@@ -1,0 +1,141 @@
+<script server>
+  const photofolioAssetMeta = resolve('photofolio-asset-meta')
+
+  meta('title', '목표 비율 | Photofolio')
+  meta('description', '자산 카테고리별 목표 비율을 설정하는 페이지.')
+
+  const flashMessage = params.__flash ? String(params.__flash) : ''
+
+  if (!request.auth) {
+    dbg('targets:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      flash: '로그인 후 목표 비율을 설정해 주세요.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인 후 목표 비율을 설정해 주세요.',
+    })
+    return
+  }
+
+  const assetClasses = photofolioAssetMeta.ASSET_CLASS_SPECS
+  const userId = String(request.auth.get('id') || '')
+  const targetRecords = $app.findRecordsByFilter('user_target_allocations', 'user_id = {:userId}', 'created', 50, 0, { userId: userId }) || []
+  const targetByClass = {}
+  let totalTargetPercent = 0
+  let configuredCount = 0
+
+  function formatInputValue(value) {
+    const normalizedValue = Number(value || 0)
+
+    if (!normalizedValue) {
+      return ''
+    }
+
+    if (Math.abs(normalizedValue - Math.round(normalizedValue)) < 0.001) {
+      return String(Math.round(normalizedValue))
+    }
+
+    return String(Math.round(normalizedValue * 10) / 10)
+  }
+
+  for (let index = 0; index < assetClasses.length; index += 1) {
+    targetByClass[assetClasses[index].code] = ''
+  }
+
+  for (let index = 0; index < targetRecords.length; index += 1) {
+    const record = targetRecords[index]
+    const code = String(record.get('asset_class_code') || '')
+    const targetPercent = Number(record.get('target_percent') || 0)
+
+    if (targetByClass[code] !== undefined && targetPercent > 0) {
+      targetByClass[code] = formatInputValue(targetPercent)
+      totalTargetPercent += targetPercent
+      configuredCount += 1
+    }
+  }
+
+  const remainingTargetPercent = Math.max(0, Math.round((100 - totalTargetPercent) * 10) / 10)
+</script>
+
+<section class="space-y-5">
+  <header class="flex items-start justify-between gap-4">
+    <div class="space-y-1">
+      <p class="m-0 pt-2 text-[13px] font-semibold tracking-[-0.01em] text-[var(--pf-primary)]">Photofolio</p>
+      <h1 class="m-0 text-[1.65rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">목표 비율</h1>
+      <p class="m-0 text-[13px] leading-5 text-[var(--pf-text-faint)]"><%= String(request.auth.get('email') || '').trim() %></p>
+    </div>
+
+    <a
+      href="/"
+      class="pf-top-action">
+      홈으로
+    </a>
+  </header>
+
+  <% if (flashMessage) { %>
+  <%- include('photofolio-flash-banner.ejs', { message: flashMessage }) %>
+  <% } %>
+
+  <section class="pf-hero-card">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-white/78 m-0 text-[13px] font-medium">설정된 목표</p>
+        <h2 class="m-0 mt-2 text-[2.1rem] font-bold tracking-[-0.05em]"><%= configuredCount %>개</h2>
+      </div>
+      <div class="pf-hero-metric text-right">
+        <p class="text-white/72 m-0 text-[12px]">남은 비율</p>
+        <p class="m-0 mt-1 text-lg font-semibold"><%= remainingTargetPercent %>%</p>
+      </div>
+    </div>
+    <p class="text-white/78 m-0 mt-3 text-sm leading-6">빈 값과 0%는 숨김 · 합계 100% 이하.</p>
+  </section>
+
+  <form
+    method="post"
+    action="/xapi/targets/save"
+    class="space-y-3">
+    <% for (let index = 0; index < assetClasses.length; index += 1) { const assetClass = assetClasses[index] %>
+    <article class="pf-card px-4 py-4">
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <div class="<%= assetClass.tone %> inline-flex rounded-full px-2.5 py-1 text-[12px] font-semibold">
+            <%= assetClass.label %>
+          </div>
+          <p class="m-0 mt-3 text-[13px] leading-6 text-[var(--pf-text-soft)]"><%= assetClass.description %></p>
+        </div>
+        <div class="w-28 shrink-0">
+          <label
+            for="target-<%= assetClass.code %>"
+            class="block text-[12px] font-semibold text-[var(--pf-text-faint)]">
+            목표 비율
+          </label>
+          <div class="mt-2 flex items-center rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <input
+              id="target-<%= assetClass.code %>"
+              name="<%= assetClass.code %>"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              inputmode="decimal"
+              value="<%= targetByClass[assetClass.code] %>"
+              placeholder="0"
+              class="w-full border-none bg-transparent p-0 text-right text-[15px] font-semibold text-[var(--pf-text)] outline-none" />
+            <span class="ml-2 text-sm font-semibold text-[var(--pf-text-faint)]">%</span>
+          </div>
+        </div>
+      </div>
+    </article>
+    <% } %>
+
+    <button
+      type="submit"
+      class="min-h-13 w-full rounded-[1.2rem] border-none bg-[var(--pf-primary)] px-4 text-[15px] font-semibold text-white shadow-[0_18px_28px_rgba(49,130,246,0.24)]">
+      목표 비율 저장
+    </button>
+  </form>
+
+  <%- include('photofolio-bottom-nav.ejs', { activeTab: 'targets' }) %>
+</section>
