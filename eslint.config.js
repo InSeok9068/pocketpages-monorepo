@@ -283,6 +283,17 @@ module.exports = [
     },
   },
   {
+    files: ['packages/**/test/**/*.js', 'packages/**/*.test.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'commonjs',
+      globals: globals.node,
+    },
+    rules: {
+      'no-restricted-modules': 'off',
+    },
+  },
+  {
     files: ['**/*.ejs.js'],
     languageOptions: {
       ecmaVersion: 2015,

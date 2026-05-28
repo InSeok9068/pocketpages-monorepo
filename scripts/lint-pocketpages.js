@@ -45,6 +45,7 @@
 // 41) +config.js plugin이 package.json 직접 의존성에 없는 경우
 // 42) 서버 코드에서 async/await/Promise/.then() 사용
 // 43) redirect option에서 flash 사용
+// 44) Datastar attribute key에 camelCase 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -95,6 +96,8 @@ const RE = {
   middlewareUsesResponse: /(^|[^A-Za-z0-9_])response\.[A-Za-z_][A-Za-z0-9_]*\s*\(/,
   rawEjsOutput: /<%-/,
   rawEjsAllowed: /<%-\s*(include\s*\(|slots?\b|content\b|resolve\s*\(|datastar\.scripts\s*\()/,
+  datastarCamelCaseAttribute:
+    /\bdata-(?:bind|class|computed|on|ref|signals|style):[A-Za-z0-9_-]*[A-Z][A-Za-z0-9_-]*(?=[\s=>])/,
   authHelper:
     /\b(signInWithPassword|signOut|requestOAuth2Login|requestOAuth2Link|registerWithPassword|signInWithOtp|signInWithOAuth2|signInAnonymously|signInWithToken)\s*\(/,
   resolveCall: /\bresolve\s*\(/,
@@ -915,6 +918,22 @@ function collectIncludeFullContextMatches(files) {
   return unique(matches)
 }
 
+function collectDatastarCamelCaseAttributeMatches(files) {
+  const matches = []
+
+  for (const file of files) {
+    for (let lineIndex = 0; lineIndex < file.lines.length; lineIndex += 1) {
+      const line = file.lines[lineIndex]
+      RE.datastarCamelCaseAttribute.lastIndex = 0
+      if (RE.datastarCamelCaseAttribute.test(line)) {
+        matches.push(`${file.displayPath}:${lineIndex + 1}:${line}`)
+      }
+    }
+  }
+
+  return unique(matches)
+}
+
 function collectModuleExportsShorthandMatches(files) {
   const matches = []
   const shorthandPattern =
@@ -1656,6 +1675,13 @@ function lintService(context) {
     context.serviceName,
     'Invalid raw EJS output. Limit <%- ... %> to include(), slot/slots, content, or resolve()-provided safe assets.',
     disallowedRawEjsMatches,
+  )
+
+  const datastarCamelCaseAttributeMatches = collectDatastarCamelCaseAttributeMatches(context.pagesEjsFiles)
+  printMatches(
+    context.serviceName,
+    'Invalid Datastar attribute key. Use kebab-case in data-* attributes, for example data-bind:item-text instead of data-bind:itemText.',
+    datastarCamelCaseAttributeMatches,
   )
 
   const compactConfig = context.configFileInfo ? context.configFileInfo.content.replace(/\s+/g, '') : ''
