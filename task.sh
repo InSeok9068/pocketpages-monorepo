@@ -855,10 +855,14 @@ run_archive() {
 
   git -C "$ROOT_DIR" rm -r "$relative_path"
 
+  if [[ -d "$ROOT_DIR/$relative_path" ]]; then
+    rm -rf -- "$ROOT_DIR/$relative_path"
+  fi
+
   cat <<EOF
 Archived service: $service_name
 Tag: $tag_name (pushed to origin)
-Removed from working tree: $relative_path
+Removed directory: $relative_path
 
 Review, then commit:
   git commit -m "Archive $service_name app"
