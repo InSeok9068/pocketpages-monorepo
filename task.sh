@@ -34,7 +34,7 @@ Commands:
   install   `npm` runs npm install in root and app package.json dirs
   deploy    Verify and upload one service deploy targets using .vscode/sftp.json
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
-  archive   Tag current HEAD as archive/<service>/<YYYY-MM-DD>, then remove apps/<service>
+  archive   Tag current HEAD as archive/<service>/<YYYY-MM-DD>, push it, then remove apps/<service>
   restore   Restore apps/<service> from an archive tag
   archives  List archive tags, optionally filtered by service
   merge     Merge main into local release/* branches, then push them to origin
@@ -847,11 +847,17 @@ run_archive() {
   fi
 
   git -C "$ROOT_DIR" tag "$tag_name" HEAD
+  if ! git -C "$ROOT_DIR" push origin "refs/tags/$tag_name"; then
+    git -C "$ROOT_DIR" tag -d "$tag_name" >/dev/null 2>&1 || true
+    echo "Failed to push archive tag. Service was not removed." >&2
+    exit 1
+  fi
+
   git -C "$ROOT_DIR" rm -r "$relative_path"
 
   cat <<EOF
 Archived service: $service_name
-Tag: $tag_name
+Tag: $tag_name (pushed to origin)
 Removed from working tree: $relative_path
 
 Review, then commit:

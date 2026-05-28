@@ -1,0 +1,957 @@
+<script server>
+  const photofolioAssetMeta = resolve('photofolio-asset-meta')
+
+  meta('title', 'Photofolio')
+  meta('description', '자산 캡처를 올리고 목표 비율과 현재 비율을 함께 정리하는 개인 자산 기록 서비스.')
+
+  const flashMessage = params.__flash ? String(params.__flash) : ''
+  const isSignedIn = !!request.auth
+  const assetClassOrder = photofolioAssetMeta.ASSET_CLASS_ORDER
+  const assetClassMeta = photofolioAssetMeta.ASSET_CLASS_META
+  const assetClassOptions = photofolioAssetMeta.ASSET_CLASS_SPECS
+
+  function serializeAttributeValue(value) {
+    return String(value === undefined || value === null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+  }
+
+  function formatNumber(value) {
+    const normalizedValue = Math.round(Number(value || 0))
+    return String(normalizedValue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  }
+
+  function formatMoney(value) {
+    return '₩' + formatNumber(value)
+  }
+
+  function formatSignedMoney(value) {
+    const normalizedValue = Number(value || 0)
+
+    if (normalizedValue > 0) {
+      return '+' + formatMoney(normalizedValue)
+    }
+
+    if (normalizedValue < 0) {
+      return '-' + formatMoney(Math.abs(normalizedValue))
+    }
+
+    return formatMoney(0)
+  }
+
+  function formatPercent(value) {
+    const normalizedValue = Math.round(Number(value || 0) * 10) / 10
+
+    if (Math.abs(normalizedValue - Math.round(normalizedValue)) < 0.05) {
+      return String(Math.round(normalizedValue))
+    }
+
+    return normalizedValue.toFixed(1)
+  }
+
+  function stripDateText(value) {
+    return String(value || '')
+      .replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:[ t]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:z)?)?\b/gi, '')
+      .replace(/\b\d{4}년\s*\d{1,2}월\s*\d{1,2}일\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  function formatSnapshotStatus(status) {
+    const normalizedStatus = String(status || '').trim()
+
+    if (normalizedStatus === 'parsed') {
+      return '완료'
+    }
+
+    if (normalizedStatus === 'confirmed') {
+      return '확인'
+    }
+
+    if (normalizedStatus === 'failed') {
+      return '실패'
+    }
+
+    if (normalizedStatus === 'pending') {
+      return '대기'
+    }
+
+    return '저장'
+  }
+
+  function buildGoalCard(code, target, current, totalAmount) {
+    const normalizedTarget = Number(target || 0)
+    const normalizedCurrent = Number(current || 0)
+    const normalizedTotalAmount = Number(totalAmount || 0)
+    const targetAmount = normalizedTotalAmount > 0 ? (normalizedTotalAmount * normalizedTarget) / 100 : 0
+    const currentAmount = normalizedTotalAmount > 0 ? (normalizedTotalAmount * normalizedCurrent) / 100 : 0
+
+    return {
+      code: code,
+      label: assetClassMeta[code].label,
+      tone: assetClassMeta[code].tone,
+      target: normalizedTarget,
+      current: normalizedCurrent,
+      targetAmount: targetAmount,
+      currentAmount: currentAmount,
+      differenceAmount: currentAmount - targetAmount,
+    }
+  }
+
+  function buildAssetAccount(fields) {
+    const classCode = assetClassMeta[fields.classCode] ? fields.classCode : 'other'
+
+    return {
+      id: String(fields.id || ''),
+      institution: String(fields.institution || '').trim() || '기관 없음',
+      name: String(fields.name || '').trim() || '자산명 없음',
+      classCode: classCode,
+      classLabel: assetClassMeta[classCode].label,
+      amountValue: Number(fields.amountValue || 0),
+      amountLabel: formatMoney(fields.amountValue || 0),
+      metaLabel: String(fields.metaLabel || '').trim() || String(fields.accountLabel || '').trim() || String(fields.currencyCode || '').trim() || 'KRW',
+      accountLabel: String(fields.accountLabel || '').trim() || '',
+    }
+  }
+
+  function buildEmptyGoalAssetGroups() {
+    const groups = {}
+
+    for (let index = 0; index < assetClassOrder.length; index += 1) {
+      groups[assetClassOrder[index]] = []
+    }
+
+    return groups
+  }
+
+  function sortGoalAssetGroups(groups) {
+    for (let index = 0; index < assetClassOrder.length; index += 1) {
+      const code = assetClassOrder[index]
+      groups[code].sort(function (leftItem, rightItem) {
+        return Number(rightItem.amountValue || 0) - Number(leftItem.amountValue || 0)
+      })
+    }
+
+    return groups
+  }
+
+  function attachGoalCardAssets(goalCards, goalAssetGroups) {
+    return goalCards.map(function (goalCard) {
+      const matchingAssets = goalAssetGroups[goalCard.code] || []
+
+      return {
+        code: goalCard.code,
+        label: goalCard.label,
+        tone: goalCard.tone,
+        target: goalCard.target,
+        current: goalCard.current,
+        targetAmount: goalCard.targetAmount,
+        currentAmount: goalCard.currentAmount,
+        differenceAmount: goalCard.differenceAmount,
+        assets: matchingAssets,
+        assetCount: matchingAssets.length,
+      }
+    })
+  }
+
+  const demoTotalAmountKrw = 42930000
+  const demoGoalCards = [
+    buildGoalCard('cash', 10, 14, demoTotalAmountKrw),
+    buildGoalCard('stock_growth', 35, 31, demoTotalAmountKrw),
+    buildGoalCard('stock_dividend', 20, 18, demoTotalAmountKrw),
+    buildGoalCard('bond', 15, 17, demoTotalAmountKrw),
+    buildGoalCard('gold', 10, 11, demoTotalAmountKrw),
+    buildGoalCard('real_estate', 10, 9, demoTotalAmountKrw),
+  ]
+  const demoAccounts = [
+    buildAssetAccount({ id: '', institution: '토스증권', name: '미국 성장주 ETF', classCode: 'stock_growth', amountValue: 12480000, metaLabel: '+3.2%', accountLabel: '미국 성장주 ETF' }),
+    buildAssetAccount({ id: '', institution: '미래에셋', name: '월배당 ETF', classCode: 'stock_dividend', amountValue: 7320000, metaLabel: '+1.4%', accountLabel: '월배당 ETF' }),
+    buildAssetAccount({ id: '', institution: '카카오뱅크', name: '생활비 통장', classCode: 'cash', amountValue: 4180000, metaLabel: '대기자금', accountLabel: '생활비 통장' }),
+    buildAssetAccount({ id: '', institution: '삼성증권', name: '국채 ETF', classCode: 'bond', amountValue: 6210000, metaLabel: '+0.6%', accountLabel: '국채 ETF' }),
+  ]
+  const demoGoalAssetGroups = sortGoalAssetGroups(
+    demoAccounts.reduce(function (groups, account) {
+      groups[account.classCode].push(account)
+      return groups
+    }, buildEmptyGoalAssetGroups())
+  )
+
+  let totalAmountKrw = demoTotalAmountKrw
+  let summaryGoalCards = attachGoalCardAssets(demoGoalCards, demoGoalAssetGroups)
+  let assetAccounts = demoAccounts
+  let recentSnapshots = []
+  let latestSnapshotTitle = '최근 스냅샷'
+  let rebalanceGapPercent = 3.8
+
+  if (isSignedIn) {
+    const userId = request.auth.get('id')
+    const targetRecords = $app.findRecordsByFilter('user_target_allocations', 'user_id = {:userId}', 'created', 50, 0, { userId: userId }) || []
+    const snapshotRecords = $app.findRecordsByFilter('asset_snapshots', 'user_id = {:userId}', '-snapshot_date,-created', 10, 0, { userId: userId }) || []
+    const latestSnapshot = snapshotRecords[0] || null
+    const targetByClass = {}
+    const currentByClass = {}
+    const configuredTargetCodes = []
+    let latestItems = []
+    let goalAssetGroups = buildEmptyGoalAssetGroups()
+
+    for (let index = 0; index < assetClassOrder.length; index += 1) {
+      targetByClass[assetClassOrder[index]] = 0
+      currentByClass[assetClassOrder[index]] = 0
+    }
+
+    for (let index = 0; index < targetRecords.length; index += 1) {
+      const record = targetRecords[index]
+      const code = String(record.get('asset_class_code') || '')
+      if (targetByClass[code] !== undefined) {
+        targetByClass[code] = Number(record.get('target_percent') || 0)
+      }
+    }
+
+    for (let index = 0; index < assetClassOrder.length; index += 1) {
+      const code = assetClassOrder[index]
+      if (Number(targetByClass[code] || 0) > 0) {
+        configuredTargetCodes.push(code)
+      }
+    }
+
+    if (latestSnapshot) {
+      const latestSnapshotId = String(latestSnapshot.get('id') || '')
+
+      latestSnapshotTitle = stripDateText(latestSnapshot.get('title')) || '현재 자산 현황'
+      latestItems = $app.findRecordsByFilter('asset_items', 'snapshot_id = {:snapshotId}', '-amount_krw,-created', 100, 0, { snapshotId: latestSnapshotId }) || []
+      totalAmountKrw = Number(latestSnapshot.get('total_amount_krw') || 0)
+
+      if (totalAmountKrw <= 0) {
+        totalAmountKrw = 0
+        for (let index = 0; index < latestItems.length; index += 1) {
+          totalAmountKrw += Number(latestItems[index].get('amount_krw') || 0)
+        }
+      }
+
+      for (let index = 0; index < latestItems.length; index += 1) {
+        const itemRecord = latestItems[index]
+        const code = String(itemRecord.get('asset_class_code') || '')
+        const amountKrw = Number(itemRecord.get('amount_krw') || 0)
+
+        if (currentByClass[code] !== undefined) {
+          currentByClass[code] += amountKrw
+        }
+      }
+
+      summaryGoalCards = configuredTargetCodes
+        .map(function (code) {
+          const target = Number(targetByClass[code] || 0)
+          const current = totalAmountKrw > 0 ? (Number(currentByClass[code] || 0) / totalAmountKrw) * 100 : 0
+
+          return buildGoalCard(code, target, current, totalAmountKrw)
+        })
+        .filter(function (item) {
+          return !!item
+        })
+
+      const latestAssetAccounts = latestItems.map(function (itemRecord) {
+        const code = String(itemRecord.get('asset_class_code') || 'other')
+        const assetAccount = buildAssetAccount({
+          id: String(itemRecord.get('id') || ''),
+          institution: itemRecord.get('institution_name'),
+          name: itemRecord.get('asset_name'),
+          classCode: code,
+          amountValue: itemRecord.get('amount_krw') || 0,
+          accountLabel: itemRecord.get('account_label'),
+          currencyCode: itemRecord.get('currency_code'),
+        })
+
+        goalAssetGroups[assetAccount.classCode].push(assetAccount)
+        return assetAccount
+      })
+      assetAccounts = latestAssetAccounts
+      goalAssetGroups = sortGoalAssetGroups(goalAssetGroups)
+      summaryGoalCards = attachGoalCardAssets(summaryGoalCards, goalAssetGroups)
+
+      recentSnapshots = snapshotRecords.slice(0, 5).map(function (snapshotRecord) {
+        return {
+          title: stripDateText(snapshotRecord.get('title')) || '자산 스냅샷',
+          totalAmountLabel: formatMoney(snapshotRecord.get('total_amount_krw') || 0),
+          status: formatSnapshotStatus(snapshotRecord.get('ocr_status')),
+        }
+      })
+
+      let totalGap = 0
+
+      for (let index = 0; index < summaryGoalCards.length; index += 1) {
+        const card = summaryGoalCards[index]
+        totalGap += Math.abs(Number(card.current || 0) - Number(card.target || 0))
+      }
+
+      rebalanceGapPercent = Math.round(totalGap * 10) / 10
+    } else {
+      totalAmountKrw = 0
+      summaryGoalCards = attachGoalCardAssets(
+        configuredTargetCodes.map(function (code) {
+          return buildGoalCard(code, Number(targetByClass[code] || 0), 0, totalAmountKrw)
+        }),
+        goalAssetGroups
+      )
+      assetAccounts = []
+      latestSnapshotTitle = '업로드 없음'
+      rebalanceGapPercent = 0
+    }
+  }
+
+  const goalCardCountLabel = summaryGoalCards.length ? summaryGoalCards.length + '개 분류' : '없음'
+  const goalAssetsByCode = summaryGoalCards.reduce(function (grouped, goalCard) {
+    grouped[goalCard.code] = goalCard.assets || []
+    return grouped
+  }, {})
+</script>
+
+<section
+  x-data="{
+    goalAssetsByCode: JSON.parse(document.getElementById('goal-assets-by-code').value || '{}'),
+    uploadModalOpen: false,
+    isUploading: false,
+    goalAssetsOpen: false,
+    assetEditorOpen: false,
+    assetEditorSubmitting: false,
+    goalAssetsModel: {
+      label: '',
+      targetPercentLabel: '0',
+      currentPercentLabel: '0',
+      targetAmountLabel: '₩0',
+      currentAmountLabel: '₩0',
+      differenceAmountLabel: '₩0',
+      differenceToneClass: 'text-[var(--pf-text)]',
+      assetCountLabel: '0개 자산',
+      items: [],
+    },
+    assetEditorModel: {
+      id: '',
+      institution: '',
+      name: '',
+      accountLabel: '',
+      assetClassCode: 'cash',
+      amountKrw: '',
+    },
+    openAssetEditor(dataset) {
+      if (!dataset || !dataset.itemId) return
+
+      this.assetEditorModel = {
+        id: dataset.itemId || '',
+        institution: dataset.itemInstitution || '',
+        name: dataset.itemName || '',
+        accountLabel: dataset.itemAccountLabel || '',
+        assetClassCode: dataset.itemClassCode || 'cash',
+        amountKrw: dataset.itemAmountKrw || '0',
+      }
+      this.uploadModalOpen = false
+      this.goalAssetsOpen = false
+      this.assetEditorOpen = true
+    },
+    openGoalAssets(dataset) {
+      if (!dataset || !dataset.goalCode) return
+      const groupedItems = this.goalAssetsByCode[dataset.goalCode] || []
+
+      this.goalAssetsModel = {
+        label: dataset.goalLabel || '',
+        targetPercentLabel: dataset.goalTargetPercentLabel || '0',
+        currentPercentLabel: dataset.goalCurrentPercentLabel || '0',
+        targetAmountLabel: dataset.goalTargetAmountLabel || '₩0',
+        currentAmountLabel: dataset.goalCurrentAmountLabel || '₩0',
+        differenceAmountLabel: dataset.goalDifferenceAmountLabel || '₩0',
+        differenceToneClass: dataset.goalDifferenceToneClass || 'text-[var(--pf-text)]',
+        assetCountLabel: dataset.goalAssetCountLabel || '0개 자산',
+        items: Array.isArray(groupedItems) ? groupedItems : [],
+      }
+      this.uploadModalOpen = false
+      this.assetEditorOpen = false
+      this.goalAssetsOpen = true
+    },
+    closeGoalAssets() {
+      this.goalAssetsOpen = false
+    },
+    closeAssetEditor() {
+      if (this.assetEditorSubmitting) return
+      this.assetEditorOpen = false
+    },
+    async submitCaptureUpload(formElement) {
+      if (this.isUploading) return
+
+      const fileInput = this.$refs.captureImageInput
+      const selectedFiles = Array.from((fileInput && fileInput.files) || [])
+
+      if (!selectedFiles.length) {
+        return
+      }
+
+      this.isUploading = true
+      this.uploadModalOpen = false
+
+      try {
+        const preprocessor = window.photofolioUploadPreprocessor
+        const preparedFiles =
+          preprocessor && typeof preprocessor.expandTallCaptureFiles === 'function'
+            ? await preprocessor.expandTallCaptureFiles(selectedFiles)
+            : selectedFiles
+
+        if (window.DataTransfer && preparedFiles.length > 0) {
+          const dataTransfer = new DataTransfer()
+
+          for (let index = 0; index < preparedFiles.length; index += 1) {
+            dataTransfer.items.add(preparedFiles[index])
+          }
+
+          fileInput.files = dataTransfer.files
+        }
+
+        this.$nextTick(function () {
+          formElement.submit()
+        })
+      } catch (exception) {
+        this.isUploading = false
+        this.uploadModalOpen = true
+        window.alert(String((exception && exception.message) || exception || '이미지 준비 실패'))
+      }
+    },
+  }"
+  @keydown.escape.window="if (!isUploading) uploadModalOpen = false; goalAssetsOpen = false; if (!assetEditorSubmitting) assetEditorOpen = false"
+  class="space-y-5">
+  <textarea
+    id="goal-assets-by-code"
+    hidden>
+<%= JSON.stringify(goalAssetsByCode) %></textarea
+  >
+  <header class="flex items-start justify-between gap-4">
+    <div class="space-y-1">
+      <p class="m-0 pt-2 text-[13px] font-semibold tracking-[-0.01em] text-[var(--pf-primary)]">Photofolio</p>
+      <% if (isSignedIn) { %>
+      <p class="m-0 text-[13px] leading-5 text-[var(--pf-text-faint)]"><%= String(request.auth.get('email') || '').trim() %></p>
+      <% } %>
+    </div>
+
+    <% if (isSignedIn) { %>
+    <form
+      method="post"
+      action="/xapi/auth/sign-out">
+      <button
+        type="submit"
+        class="pf-top-action">
+        로그아웃
+      </button>
+    </form>
+    <% } else { %>
+    <a
+      href="/auth"
+      class="pf-top-action">
+      로그인
+    </a>
+    <% } %>
+  </header>
+
+  <% if (flashMessage) { %>
+  <%- include('photofolio-flash-banner.ejs', { message: flashMessage }) %>
+  <% } %>
+
+  <section class="pf-hero-card">
+    <p class="text-white/78 m-0 text-[13px] font-medium"><%= latestSnapshotTitle %></p>
+    <h2 class="m-0 mt-2 text-[2.1rem] font-bold tracking-[-0.05em]"><%= formatMoney(totalAmountKrw) %></h2>
+    <div class="mt-5 grid grid-cols-1 gap-2">
+      <div class="pf-hero-metric px-4 py-4">
+        <p class="text-white/72 m-0 text-[12px]">리밸런싱 차이</p>
+        <p class="m-0 mt-1 text-[1.25rem] font-semibold"><%= formatPercent(rebalanceGapPercent) %>%</p>
+      </div>
+    </div>
+  </section>
+
+  <% if (isSignedIn) { %>
+  <section
+    id="captures"
+    class="pf-card rounded-[1.8rem] p-4">
+    <div class="flex items-center justify-between gap-4">
+      <div class="min-w-0 space-y-1">
+        <p class="m-0 text-sm font-semibold text-[var(--pf-text)]">토스 캡처 업로드</p>
+        <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">요약·상세 캡처 함께 업로드.</p>
+      </div>
+      <button
+        type="button"
+        @click="goalAssetsOpen = false; if (!assetEditorSubmitting) assetEditorOpen = false; uploadModalOpen = true"
+        class="shrink-0 rounded-[1.2rem] border-none bg-[var(--pf-primary)] px-4 py-3 text-[14px] font-semibold text-white shadow-[0_18px_28px_rgba(49,130,246,0.24)]">
+        업로드
+      </button>
+    </div>
+  </section>
+  <% } else { %>
+  <section class="rounded-[1.8rem] bg-[var(--pf-primary-soft)] px-5 py-5">
+    <p class="m-0 text-sm font-semibold text-[var(--pf-primary)]">로그인 후 시작</p>
+    <p class="m-0 mt-2 text-[14px] leading-6 text-[var(--pf-text-soft)]">로그인 후 캡처 업로드 가능.</p>
+    <div class="mt-4">
+      <a
+        href="/auth"
+        class="inline-flex min-h-11 items-center rounded-full bg-white px-4 text-sm font-semibold text-[var(--pf-text)] no-underline shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+        로그인하고 업로드하기
+      </a>
+    </div>
+  </section>
+  <% } %>
+
+  <% if (isSignedIn) { %>
+  <template x-teleport="body">
+    <div
+      x-cloak
+      x-show="uploadModalOpen"
+      @click="if (!isUploading) uploadModalOpen = false"
+      class="pf-modal-overlay"
+      style="display: none">
+      <section
+        @click.stop
+        class="pf-modal-sheet max-w-[28rem]">
+        <div class="flex items-start justify-between gap-4">
+          <div class="space-y-1">
+            <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
+            <h2 class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">토스 캡처 업로드</h2>
+            <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">요약·상세 캡처 업로드.</p>
+          </div>
+
+          <button
+            type="button"
+            @click="if (!isUploading) uploadModalOpen = false"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-[var(--pf-surface-soft)] text-lg font-semibold text-[var(--pf-text-faint)]">
+            ×
+          </button>
+        </div>
+
+        <form
+          method="post"
+          action="/xapi/snapshots/upload"
+          enctype="multipart/form-data"
+          class="mt-5 space-y-3"
+          @submit.prevent="submitCaptureUpload($el)">
+          <div class="rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
+            <label
+              for="capture-image-modal"
+              class="block text-sm font-semibold text-[var(--pf-text)]">
+              자산 캡처 이미지
+            </label>
+            <input
+              x-ref="captureImageInput"
+              id="capture-image-modal"
+              name="captureImage"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              required
+              class="mt-3 box-border block w-full text-sm text-[var(--pf-text)] file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--pf-text)]" />
+            <p class="m-0 mt-3 text-[12px] leading-5 text-[var(--pf-text-faint)]">PNG, JPG, WEBP · 여러 장 가능</p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              @click="if (!isUploading) uploadModalOpen = false"
+              class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-surface-soft)] px-4 text-[14px] font-semibold text-[var(--pf-text)]">
+              닫기
+            </button>
+            <button
+              type="submit"
+              class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-primary)] px-4 text-[14px] font-semibold text-white shadow-[0_18px_28px_rgba(49,130,246,0.24)]">
+              분석하고 반영
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </template>
+
+  <template x-teleport="body">
+    <div
+      x-cloak
+      x-show="isUploading"
+      class="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(15,23,42,0.40)] px-6"
+      style="display: none">
+      <section class="w-full max-w-[18rem] rounded-[1.8rem] bg-white px-5 py-5 text-center shadow-[0_28px_60px_rgba(15,23,42,0.20)]">
+        <div class="mx-auto flex w-fit items-center justify-center gap-2">
+          <span class="h-3 w-3 animate-pulse rounded-full bg-[var(--pf-primary)]"></span>
+          <span class="h-3 w-3 animate-pulse rounded-full bg-[var(--pf-primary)] opacity-80 [animation-delay:160ms]"></span>
+          <span class="h-3 w-3 animate-pulse rounded-full bg-[var(--pf-primary)] opacity-60 [animation-delay:320ms]"></span>
+        </div>
+        <div class="mx-auto mt-4 h-11 w-11 animate-spin rounded-full border-[3px] border-[rgba(49,130,246,0.16)] border-t-[var(--pf-primary)]"></div>
+        <p class="m-0 mt-4 text-[15px] font-semibold text-[var(--pf-text)]">이미지 분석 중</p>
+        <p class="m-0 mt-1 text-[13px] font-medium text-[var(--pf-text-soft)]">자산 반영 중</p>
+      </section>
+    </div>
+  </template>
+  <% } %>
+
+  <section
+    id="targets"
+    class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">목표와 현재</h2>
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-medium text-[var(--pf-text-faint)]"><%= goalCardCountLabel %></span>
+        <% if (isSignedIn) { %>
+        <a
+          href="/targets"
+          class="inline-flex min-h-9 items-center rounded-full bg-white px-3 text-[12px] font-semibold text-[var(--pf-text)] no-underline shadow-[0_10px_20px_rgba(15,23,42,0.08)]">
+          목표 조정
+        </a>
+        <% } %>
+      </div>
+    </div>
+
+    <% if (summaryGoalCards.length > 0) { %>
+    <div class="space-y-3">
+      <% for (let index = 0; index < summaryGoalCards.length; index += 1) { const goalCard = summaryGoalCards[index] %>
+      <button
+        type="button"
+        @click="openGoalAssets($event.currentTarget.dataset)"
+        data-goal-code="<%= serializeAttributeValue(goalCard.code) %>"
+        data-goal-label="<%= serializeAttributeValue(goalCard.label) %>"
+        data-goal-target-percent-label="<%= serializeAttributeValue(formatPercent(goalCard.target)) %>"
+        data-goal-current-percent-label="<%= serializeAttributeValue(formatPercent(goalCard.current)) %>"
+        data-goal-target-amount-label="<%= serializeAttributeValue(formatMoney(goalCard.targetAmount)) %>"
+        data-goal-current-amount-label="<%= serializeAttributeValue(formatMoney(goalCard.currentAmount)) %>"
+        data-goal-difference-amount-label="<%= serializeAttributeValue(formatSignedMoney(goalCard.differenceAmount)) %>"
+        data-goal-difference-tone-class="<%= serializeAttributeValue(goalCard.differenceAmount > 0 ? 'text-[#e85d3f]' : goalCard.differenceAmount < 0 ? 'text-[#3182f6]' : 'text-[var(--pf-text)]') %>"
+        data-goal-asset-count-label="<%= serializeAttributeValue(goalCard.assetCount + '개 자산') %>"
+        class="pf-card block w-full px-4 py-4 text-left">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="<%= goalCard.tone %> inline-flex rounded-full px-2.5 py-1 text-[12px] font-semibold">
+              <%= goalCard.label %>
+            </div>
+            <p class="m-0 mt-3 text-sm font-semibold text-[var(--pf-text)]">목표 <%= formatPercent(goalCard.target) %>% / 현재 <%= formatPercent(goalCard.current) %>%</p>
+          </div>
+          <p class="<%= goalCard.current > goalCard.target ? 'text-[#e85d3f]' : 'text-[#3182f6]' %> m-0 text-sm font-semibold">
+            <%= goalCard.current > goalCard.target ? '+' : '' %><%= formatPercent(goalCard.current - goalCard.target) %>%
+          </p>
+        </div>
+        <div class="mt-3 grid grid-cols-2 gap-2">
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">목표 금액</p>
+            <p class="m-0 mt-1 text-[13px] font-semibold text-[var(--pf-text)]"><%= formatMoney(goalCard.targetAmount) %></p>
+          </div>
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">현재 금액</p>
+            <p class="m-0 mt-1 text-[13px] font-semibold text-[var(--pf-text)]"><%= formatMoney(goalCard.currentAmount) %></p>
+          </div>
+        </div>
+        <p class="m-0 mt-3 text-[13px] font-medium text-[var(--pf-text-soft)]">
+          금액 차이
+          <span class="<%= goalCard.differenceAmount > 0 ? 'text-[#e85d3f]' : goalCard.differenceAmount < 0 ? 'text-[#3182f6]' : 'text-[var(--pf-text)]' %> font-semibold">
+            <%= formatSignedMoney(goalCard.differenceAmount) %>
+          </span>
+        </p>
+      </button>
+      <% } %>
+    </div>
+    <% } else { %>
+    <article class="pf-card px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)]">
+      <% if (isSignedIn) { %>
+      목표 비율이 없다.
+      <a
+        href="/targets"
+        class="font-semibold text-[var(--pf-primary)] no-underline"
+        >목표 페이지</a
+      >에서 설정해 주세요.
+      <% } else { %>
+      로그인 후 실제 데이터가 보인다.
+      <% } %>
+    </article>
+    <% } %>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">자산 목록</h2>
+      <span class="text-sm font-medium text-[var(--pf-text-faint)]"><%= assetAccounts.length ? assetAccounts.length + '개 항목' : '목록 없음' %></span>
+    </div>
+
+    <% if (assetAccounts.length > 0) { %>
+    <div class="space-y-3">
+      <% for (let index = 0; index < assetAccounts.length; index += 1) { const account = assetAccounts[index] %>
+      <article class="pf-card px-4 py-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="m-0 text-[13px] font-medium text-[var(--pf-text-faint)]"><%= account.institution %></p>
+            <p class="m-0 mt-1 truncate text-[15px] font-semibold text-[var(--pf-text)]"><%= account.name %></p>
+            <p class="m-0 mt-2 text-[13px] text-[var(--pf-text-soft)]"><%= account.classLabel %></p>
+          </div>
+          <div class="text-right">
+            <p class="m-0 text-[15px] font-semibold tracking-[-0.02em] text-[var(--pf-text)]"><%= account.amountLabel %></p>
+            <p class="m-0 mt-1 text-[13px] font-medium text-[var(--pf-text-faint)]"><%= account.metaLabel %></p>
+            <% if (isSignedIn && account.id) { %>
+            <button
+              type="button"
+              @click="openAssetEditor($event.currentTarget.dataset)"
+              data-item-id="<%= serializeAttributeValue(account.id) %>"
+              data-item-institution="<%= serializeAttributeValue(account.institution) %>"
+              data-item-name="<%= serializeAttributeValue(account.name) %>"
+              data-item-account-label="<%= serializeAttributeValue(account.accountLabel) %>"
+              data-item-class-code="<%= serializeAttributeValue(account.classCode) %>"
+              data-item-amount-krw="<%= serializeAttributeValue(account.amountValue) %>"
+              class="mt-3 inline-flex min-h-9 items-center rounded-full border-none bg-[var(--pf-surface-soft)] px-3 text-[12px] font-semibold text-[var(--pf-text)]">
+              수정
+            </button>
+            <% } %>
+          </div>
+        </div>
+      </article>
+      <% } %>
+    </div>
+    <% } else { %>
+    <article class="pf-card px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)]">업로드 후 자산이 표시된다.</article>
+    <% } %>
+  </section>
+
+  <% if (isSignedIn && recentSnapshots.length > 0) { %>
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="m-0 text-[1.05rem] font-bold tracking-[-0.03em] text-[var(--pf-text)]">최근 스냅샷</h2>
+      <span class="text-sm font-medium text-[var(--pf-text-faint)]"><%= recentSnapshots.length %>건</span>
+    </div>
+
+    <div class="space-y-3">
+      <% for (let index = 0; index < recentSnapshots.length; index += 1) { const snapshot = recentSnapshots[index] %>
+      <article class="rounded-[1.6rem] border border-[var(--pf-line)] bg-[var(--pf-surface)] px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="m-0 text-sm font-semibold text-[var(--pf-text)]"><%= snapshot.title %></p>
+            <p class="m-0 mt-1 text-[13px] text-[var(--pf-text-faint)]">스냅샷</p>
+          </div>
+          <div class="text-right">
+            <p class="m-0 text-sm font-semibold text-[var(--pf-text)]"><%= snapshot.totalAmountLabel %></p>
+            <p class="m-0 mt-1 text-[13px] font-medium text-[var(--pf-text-faint)]"><%= snapshot.status %></p>
+          </div>
+        </div>
+      </article>
+      <% } %>
+    </div>
+  </section>
+  <% } %>
+
+  <% if (isSignedIn) { %>
+  <template x-teleport="body">
+    <div
+      x-cloak
+      x-show="goalAssetsOpen"
+      @click="closeGoalAssets()"
+      class="pf-modal-overlay"
+      style="display: none">
+      <section
+        @click.stop
+        class="pf-modal-sheet flex max-h-[84vh] max-w-[30rem] flex-col">
+        <div class="flex items-start justify-between gap-4">
+          <div class="space-y-1">
+            <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
+            <h2
+              class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]"
+              x-text="goalAssetsModel.label || '자산 분류'"></h2>
+            <p
+              class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]"
+              x-text="goalAssetsModel.assetCountLabel"></p>
+          </div>
+
+          <button
+            type="button"
+            @click="closeGoalAssets()"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-[var(--pf-surface-soft)] text-lg font-semibold text-[var(--pf-text-faint)]">
+            ×
+          </button>
+        </div>
+
+        <div class="mt-5 grid grid-cols-2 gap-2">
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">목표 / 현재</p>
+            <p class="m-0 mt-1 text-[13px] font-semibold text-[var(--pf-text)]">
+              목표 <span x-text="goalAssetsModel.targetPercentLabel"></span>% / 현재 <span x-text="goalAssetsModel.currentPercentLabel"></span>%
+            </p>
+          </div>
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">금액 차이</p>
+            <p
+              class="m-0 mt-1 text-[13px] font-semibold"
+              :class="goalAssetsModel.differenceToneClass"
+              x-text="goalAssetsModel.differenceAmountLabel"></p>
+          </div>
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">목표 금액</p>
+            <p
+              class="m-0 mt-1 text-[13px] font-semibold text-[var(--pf-text)]"
+              x-text="goalAssetsModel.targetAmountLabel"></p>
+          </div>
+          <div class="rounded-[1rem] bg-[var(--pf-surface-soft)] px-3 py-3">
+            <p class="m-0 text-[12px] font-medium text-[var(--pf-text-faint)]">현재 금액</p>
+            <p
+              class="m-0 mt-1 text-[13px] font-semibold text-[var(--pf-text)]"
+              x-text="goalAssetsModel.currentAmountLabel"></p>
+          </div>
+        </div>
+
+        <div class="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
+          <div
+            class="space-y-3"
+            x-show="goalAssetsModel.items.length > 0">
+            <template
+              x-for="asset in goalAssetsModel.items"
+              :key="asset.id || asset.name">
+              <article class="pf-card rounded-[1.4rem] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p
+                      class="m-0 text-[13px] font-medium text-[var(--pf-text-faint)]"
+                      x-text="asset.institution || '기관 정보 없음'"></p>
+                    <p
+                      class="m-0 mt-1 truncate text-[15px] font-semibold text-[var(--pf-text)]"
+                      x-text="asset.name || '자산명 없음'"></p>
+                    <p
+                      class="m-0 mt-2 text-[13px] text-[var(--pf-text-soft)]"
+                      x-text="asset.metaLabel || asset.accountLabel || 'KRW'"></p>
+                  </div>
+                  <div class="text-right">
+                    <p
+                      class="m-0 text-[15px] font-semibold tracking-[-0.02em] text-[var(--pf-text)]"
+                      x-text="asset.amountLabel || '₩0'"></p>
+                    <template x-if="asset.id">
+                      <button
+                        type="button"
+                        @click="openAssetEditor({ itemId: asset.id, itemInstitution: asset.institution, itemName: asset.name, itemAccountLabel: asset.accountLabel, itemClassCode: asset.classCode, itemAmountKrw: asset.amountValue })"
+                        class="mt-3 inline-flex min-h-9 items-center rounded-full border-none bg-[var(--pf-surface-soft)] px-3 text-[12px] font-semibold text-[var(--pf-text)]">
+                        수정
+                      </button>
+                    </template>
+                  </div>
+                </div>
+              </article>
+            </template>
+          </div>
+
+          <article
+            x-show="goalAssetsModel.items.length === 0"
+            class="pf-card rounded-[1.4rem] px-4 py-5 text-sm leading-7 text-[var(--pf-text-soft)] shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
+            연결 자산이 없다.
+          </article>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <template x-teleport="body">
+    <div
+      x-cloak
+      x-show="assetEditorOpen"
+      @click="closeAssetEditor()"
+      class="pf-modal-overlay"
+      style="display: none">
+      <section
+        @click.stop
+        class="pf-modal-sheet max-w-[28rem]">
+        <div class="flex items-start justify-between gap-4">
+          <div class="space-y-1">
+            <p class="m-0 text-[13px] font-semibold text-[var(--pf-primary)]">Photofolio</p>
+            <h2 class="m-0 text-[1.35rem] font-bold tracking-[-0.04em] text-[var(--pf-text)]">자산 수정</h2>
+            <p class="m-0 text-[13px] leading-6 text-[var(--pf-text-soft)]">카테고리 · 금액 수정</p>
+          </div>
+
+          <button
+            type="button"
+            @click="closeAssetEditor()"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-[var(--pf-surface-soft)] text-lg font-semibold text-[var(--pf-text-faint)]">
+            ×
+          </button>
+        </div>
+
+        <div class="mt-5 rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
+          <p
+            class="m-0 text-[12px] font-semibold text-[var(--pf-text-faint)]"
+            x-text="assetEditorModel.institution || '기관 없음'"></p>
+          <p
+            class="m-0 mt-1 text-[15px] font-semibold text-[var(--pf-text)]"
+            x-text="assetEditorModel.name || '자산명 없음'"></p>
+          <p
+            class="m-0 mt-2 text-[13px] text-[var(--pf-text-soft)]"
+            x-text="assetEditorModel.accountLabel || '계좌명 없음'"></p>
+        </div>
+
+        <form
+          method="post"
+          action="/xapi/asset-items/update"
+          class="mt-4 space-y-3"
+          @submit="assetEditorSubmitting = true">
+          <input
+            type="hidden"
+            name="itemId"
+            x-model="assetEditorModel.id" />
+
+          <div class="rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
+            <label class="block text-sm font-semibold text-[var(--pf-text)]">자산 카테고리</label>
+            <select
+              name="assetClassCode"
+              x-model="assetEditorModel.assetClassCode"
+              class="mt-3 box-border block min-h-12 w-full rounded-[1rem] border-none bg-white px-3 text-[14px] font-medium text-[var(--pf-text)]">
+              <% for (let index = 0; index < assetClassOptions.length; index += 1) { const assetClass = assetClassOptions[index] %>
+              <option value="<%= assetClass.code %>"><%= assetClass.label %></option>
+              <% } %>
+            </select>
+          </div>
+
+          <div class="rounded-[1.35rem] bg-[var(--pf-surface-soft)] px-4 py-4">
+            <label
+              for="asset-editor-amount"
+              class="block text-sm font-semibold text-[var(--pf-text)]">
+              현재 금액
+            </label>
+            <div class="mt-3 flex items-center rounded-[1rem] bg-white px-3 py-3">
+              <span class="mr-2 text-sm font-semibold text-[var(--pf-text-faint)]">₩</span>
+              <input
+                id="asset-editor-amount"
+                name="amountKrw"
+                type="number"
+                min="0"
+                step="1"
+                inputmode="numeric"
+                x-model="assetEditorModel.amountKrw"
+                class="w-full border-none bg-transparent p-0 text-right text-[15px] font-semibold text-[var(--pf-text)] outline-none" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              @click="closeAssetEditor()"
+              class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-surface-soft)] px-4 text-[14px] font-semibold text-[var(--pf-text)]">
+              닫기
+            </button>
+            <button
+              type="submit"
+              class="min-h-12 rounded-[1.1rem] border-none bg-[var(--pf-primary)] px-4 text-[14px] font-semibold text-white shadow-[0_18px_28px_rgba(49,130,246,0.24)]">
+              수정 저장
+            </button>
+          </div>
+        </form>
+
+        <form
+          method="post"
+          action="/xapi/asset-items/delete"
+          class="mt-3"
+          @submit="if (!window.confirm('이 자산 항목을 삭제할까요?')) { $event.preventDefault(); return } assetEditorSubmitting = true">
+          <input
+            type="hidden"
+            name="itemId"
+            x-model="assetEditorModel.id" />
+          <button
+            type="submit"
+            class="min-h-12 w-full rounded-[1.1rem] border-none bg-[#fff3f1] px-4 text-[14px] font-semibold text-[#e85d3f]">
+            해당 자산 삭제
+          </button>
+        </form>
+      </section>
+    </div>
+  </template>
+  <% } %>
+
+  <%- include('photofolio-bottom-nav.ejs', { activeTab: 'home' }) %>
+</section>
+
+<script src="<%= asset('/assets/photofolio-upload-preprocessor.js') %>"></script>
