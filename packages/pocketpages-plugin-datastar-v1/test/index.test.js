@@ -197,6 +197,75 @@ test('realtime helpers normalize Datastar boolean args as raw strings', function
   ]);
 });
 
+test('realtime helpers send custom topics without leaking topic into send options', function () {
+  const harness = createHarness();
+  const filter = function (clientId) {
+    return clientId !== 'blocked';
+  };
+
+  harness.api.datastar.realtime.patchSignals(
+    { ready: true },
+    undefined,
+    { topic: 'chat:conversation-1', filter }
+  );
+
+  assert.strictEqual(harness.realtimeMessages.length, 1);
+
+  const message = harness.realtimeMessages[0];
+  assert.strictEqual(message.topic, 'chat:conversation-1');
+  assert.deepStrictEqual(JSON.parse(message.message), {
+    type: 'datastar-patch-signals',
+    el: null,
+    argsRaw: {
+      signals: JSON.stringify({ ready: true }),
+    },
+  });
+  assert.strictEqual(
+    Object.prototype.hasOwnProperty.call(message.options, 'topic'),
+    false
+  );
+  assert.strictEqual(typeof message.options.filter, 'function');
+  assert.strictEqual(
+    message.options.filter(
+      'client-1',
+      {
+        hasSubscription: function () {
+          return true;
+        },
+      },
+      'chat:conversation-1',
+      '{}'
+    ),
+    true
+  );
+  assert.strictEqual(
+    message.options.filter(
+      'blocked',
+      {
+        hasSubscription: function () {
+          return true;
+        },
+      },
+      'chat:conversation-1',
+      '{}'
+    ),
+    false
+  );
+  assert.strictEqual(
+    message.options.filter(
+      'client-1',
+      {
+        hasSubscription: function () {
+          return false;
+        },
+      },
+      'chat:conversation-1',
+      '{}'
+    ),
+    false
+  );
+});
+
 test('realtime removeSignals rejects onlyIfMissing because removal must be explicit', function () {
   const harness = createHarness();
 
@@ -225,6 +294,22 @@ test('scripts closes navigation and realtime script tags in raw HTML', function 
   assert.ok(html.includes('data-on:click'));
   assert.strictEqual((html.match(/<\/script>/g) || []).length, 4);
   assert.strictEqual(html.includes('<\\/script>'), false);
+});
+
+test('scripts subscribes realtime clients to custom topics', function () {
+  const harness = createHarness();
+
+  const html = harness.api.datastar.scripts({
+    realtime: {
+      topic: 'chat:conversation-1',
+      clientIdSignal: 'chatClientId',
+    },
+  });
+
+  assert.ok(html.includes('var topic = "chat:conversation-1";'));
+  assert.ok(html.includes('var clientIdSignal = "chatClientId";'));
+  assert.ok(html.includes('subscriptions: [topic]'));
+  assert.ok(html.includes('source.addEventListener(topic'));
 });
 
 test('Datastar page render skips empty automatic element patches', function () {

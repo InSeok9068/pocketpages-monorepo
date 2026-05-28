@@ -32,6 +32,11 @@ declare namespace DatastarV1 {
     clientIdSignal?: string
   }
 
+  interface RealtimeOptions {
+    topic?: string
+    filter?: (clientId: string, client: any, topic: string, message: string) => boolean
+  }
+
   interface PatchElementsOptions {
     selector?: string
     mode?: ElementPatchMode
@@ -108,10 +113,10 @@ declare namespace DatastarV1 {
     dispatchCustomEvent(eventName: string, detail?: any, options?: DispatchCustomEventOptions): void
     prefetch(urls: string[], options?: ExecuteScriptOptions): void
     realtime: {
-      patchElements(elements: string, patchOptions?: PatchElementsOptions, realtimeOptions?: any): void
-      removeElements(selector: string, patchOptions?: Omit<PatchElementsOptions, 'selector' | 'mode'>, realtimeOptions?: any): void
-      patchSignals(signals: string | Record<string, any>, patchOptions?: PatchSignalsOptions, realtimeOptions?: any): void
-      removeSignals(signalKeys: SignalKeyInput, patchOptions?: RemoveSignalsOptions, realtimeOptions?: any): void
+      patchElements(elements: string, patchOptions?: PatchElementsOptions, realtimeOptions?: RealtimeOptions): void
+      removeElements(selector: string, patchOptions?: Omit<PatchElementsOptions, 'selector' | 'mode'>, realtimeOptions?: RealtimeOptions): void
+      patchSignals(signals: string | Record<string, any>, patchOptions?: PatchSignalsOptions, realtimeOptions?: RealtimeOptions): void
+      removeSignals(signalKeys: SignalKeyInput, patchOptions?: RemoveSignalsOptions, realtimeOptions?: RealtimeOptions): void
     }
   }
 }
@@ -124,6 +129,7 @@ declare namespace datastarV1PluginFactory {
   export interface ScriptOptions extends DatastarV1.ScriptOptions {}
   export interface SpaOptions extends DatastarV1.SpaOptions {}
   export interface RealtimeScriptOptions extends DatastarV1.RealtimeScriptOptions {}
+  export interface RealtimeOptions extends DatastarV1.RealtimeOptions {}
   export interface PatchElementsOptions extends DatastarV1.PatchElementsOptions {}
   export interface PatchSignalsOptions extends DatastarV1.PatchSignalsOptions {}
   export type RemoveSignalsOptions = DatastarV1.RemoveSignalsOptions

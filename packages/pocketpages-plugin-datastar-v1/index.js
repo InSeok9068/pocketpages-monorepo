@@ -4,6 +4,7 @@ const DatastarKey = 'datastar';
 const DefaultScriptPath = '/assets/vendor/datastar.min.js';
 const DefaultSseRetryDuration = 1000;
 const RealtimeEndpoint = '/api/realtime';
+const DefaultRealtimeTopic = 'datastar';
 
 const EventType = {
   PatchElements: 'datastar-patch-elements',
@@ -162,6 +163,28 @@ function normalizeRealtimePatchElementsArgs(args) {
 function normalizeRealtimePatchSignalsArgs(args) {
   normalizeRawBooleanArg(args, 'onlyIfMissing');
   return args;
+}
+
+function normalizeRealtimeOptions(options) {
+  const source = options || {};
+  const topic = hasValue(source.topic) ? String(source.topic) : DefaultRealtimeTopic;
+  const sendOptions = Object.assign({}, source);
+  delete sendOptions.topic;
+  if (typeof source.filter === 'function') {
+    sendOptions.filter = function (clientId, client, sendTopic, message) {
+      return (
+        client &&
+        typeof client.hasSubscription === 'function' &&
+        client.hasSubscription(sendTopic) &&
+        source.filter(clientId, client, sendTopic, message)
+      );
+    };
+  }
+
+  return {
+    topic,
+    sendOptions: Object.keys(sendOptions).length ? sendOptions : undefined,
+  };
 }
 
 function assertNoOnlyIfMissing(options, helperName) {
@@ -333,7 +356,7 @@ function buildNavigationScript(options) {
 function buildRealtimeScript(options) {
   const opts = options === true ? {} : options || {};
   const endpoint = opts.endpoint || RealtimeEndpoint;
-  const topic = opts.topic || 'datastar';
+  const topic = opts.topic || DefaultRealtimeTopic;
   const clientIdSignal = opts.clientIdSignal || 'clientId';
 
   return [
@@ -644,8 +667,9 @@ function datastarPluginFactory(config, pluginOptions) {
                 'pocketpages-plugin-realtime is required for datastar.realtime'
               );
             }
+            const realtime = normalizeRealtimeOptions(realtimeOptions);
             api.realtime.send(
-              'datastar',
+              realtime.topic,
               stringify(api, {
                 type: EventType.PatchElements,
                 el: null,
@@ -653,7 +677,7 @@ function datastarPluginFactory(config, pluginOptions) {
                   Object.assign({ elements: String(elements || '') }, patchOptions || {})
                 ),
               }),
-              realtimeOptions
+              realtime.sendOptions
             );
           },
           removeElements: function (selector, patchOptions, realtimeOptions) {
@@ -665,8 +689,9 @@ function datastarPluginFactory(config, pluginOptions) {
             if (!hasValue(selector)) {
               throw new Error('Datastar removeElements requires selector');
             }
+            const realtime = normalizeRealtimeOptions(realtimeOptions);
             api.realtime.send(
-              'datastar',
+              realtime.topic,
               stringify(api, {
                 type: EventType.PatchElements,
                 el: null,
@@ -678,7 +703,7 @@ function datastarPluginFactory(config, pluginOptions) {
                   )
                 ),
               }),
-              realtimeOptions
+              realtime.sendOptions
             );
           },
           patchSignals: function (signals, patchOptions, realtimeOptions) {
@@ -687,8 +712,9 @@ function datastarPluginFactory(config, pluginOptions) {
                 'pocketpages-plugin-realtime is required for datastar.realtime'
               );
             }
+            const realtime = normalizeRealtimeOptions(realtimeOptions);
             api.realtime.send(
-              'datastar',
+              realtime.topic,
               stringify(api, {
                 type: EventType.PatchSignals,
                 el: null,
@@ -699,7 +725,7 @@ function datastarPluginFactory(config, pluginOptions) {
                   )
                 ),
               }),
-              realtimeOptions
+              realtime.sendOptions
             );
           },
           removeSignals: function (signalKeys, patchOptions, realtimeOptions) {
@@ -709,8 +735,9 @@ function datastarPluginFactory(config, pluginOptions) {
               );
             }
             assertNoOnlyIfMissing(patchOptions, 'realtime.removeSignals');
+            const realtime = normalizeRealtimeOptions(realtimeOptions);
             api.realtime.send(
-              'datastar',
+              realtime.topic,
               stringify(api, {
                 type: EventType.PatchSignals,
                 el: null,
@@ -722,7 +749,7 @@ function datastarPluginFactory(config, pluginOptions) {
                   )
                 ),
               }),
-              realtimeOptions
+              realtime.sendOptions
             );
           },
         },
