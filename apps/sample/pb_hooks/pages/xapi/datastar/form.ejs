@@ -1,0 +1,35 @@
+<script server>
+  const form = datastar.requestSignals({
+    title: '',
+    body: '',
+  })
+  const title = String(form.title || '').trim()
+  const bodyText = String(form.body || '').trim()
+  const isValid = title.length > 0 && bodyText.length > 0
+  const message = isValid ? 'form 저장 완료' : '제목과 본문을 모두 입력하세요'
+  const timestamp = new Date().toISOString()
+
+  dbg('xapi/datastar/form:submit', {
+    isValid: isValid,
+    titleLength: title.length,
+    bodyLength: bodyText.length,
+  })
+
+  datastar.patchSignals({
+    formSaved: isValid,
+    formMessage: message,
+    message: message,
+  })
+</script>
+
+<div
+  id="datastar-form-result"
+  class="<%= isValid ? 'rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900' : 'rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-900' %>">
+  <p class="font-medium"><%= message %></p>
+  <% if (isValid) { %>
+  <p class="mt-1">Title: <%= title %></p>
+  <p class="mt-1 text-xs"><%= timestamp %></p>
+  <% } else { %>
+  <p class="mt-1 text-xs">서버가 data-bind signal을 읽어서 검증했습니다.</p>
+  <% } %>
+</div>

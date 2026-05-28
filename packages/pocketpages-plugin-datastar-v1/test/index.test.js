@@ -210,6 +210,39 @@ test('realtime removeSignals rejects onlyIfMissing because removal must be expli
   );
 });
 
+test('scripts closes navigation and realtime script tags in raw HTML', function () {
+  const harness = createHarness();
+
+  const html = harness.api.datastar.scripts({
+    spa: {
+      scope: 'nav',
+      selector: '#main',
+    },
+    realtime: true,
+  });
+
+  assert.ok(html.includes('new EventSource("/api/realtime")'));
+  assert.ok(html.includes('data-on:click'));
+  assert.strictEqual((html.match(/<\/script>/g) || []).length, 4);
+  assert.strictEqual(html.includes('<\\/script>'), false);
+});
+
+test('Datastar page render skips empty automatic element patches', function () {
+  const harness = createHarness({
+    'Datastar-Request': 'true',
+  });
+
+  harness.api.datastar.patchSignals({ ready: true });
+  harness.plugin.onRender({ api: harness.api, content: '\n\n' });
+
+  assert.strictEqual(
+    harness.output(),
+    'event: datastar-patch-signals\n' +
+      'data: signals {"ready":true}\n' +
+      '\n'
+  );
+});
+
 test('Datastar page render still emits an inner patch for selectors', function () {
   const harness = createHarness({
     'Datastar-Request': 'true',

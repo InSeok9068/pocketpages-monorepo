@@ -1,0 +1,225 @@
+<script server>
+  meta('title', 'Datastar Sample')
+  meta('description', 'PocketPages Datastar sample page')
+</script>
+
+<!-- slot:head -->
+<%- datastar.scripts({
+  realtime: true,
+  spa: {
+    scope: '#datastar-spa-nav',
+    selector: '#datastar-spa-panel',
+  },
+}) %>
+
+<!-- slot:body -->
+<div data-signals="{count: 0, message: '대기 중', realtimeMessage: '아직 없음', title: '', body: '', formMessage: '아직 저장 전', formSaved: false, itemText: '', itemCount: 0, clientNotice: '없음'}">
+  <p>
+    <a
+      href="/"
+      class="text-sm font-medium text-stone-500 no-underline hover:text-stone-900"
+      >Home</a
+    >
+  </p>
+
+  <header class="mt-6 space-y-3">
+    <p class="text-sm font-medium uppercase tracking-[0.18em] text-stone-500">Datastar</p>
+    <h1 class="text-4xl font-semibold tracking-tight text-stone-950">PocketPages Datastar Sample</h1>
+    <p class="max-w-2xl text-base leading-7 text-stone-600">Datastar 요청, signal patch, element patch, realtime bridge를 한 페이지에서 확인합니다.</p>
+  </header>
+
+  <section class="mt-8 grid gap-4 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+    <div class="grid gap-4 sm:grid-cols-3">
+      <div class="rounded-2xl bg-stone-100 px-4 py-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Count</p>
+        <p
+          data-text="$count"
+          class="mt-2 text-3xl font-semibold text-stone-950">
+          0
+        </p>
+      </div>
+
+      <div class="rounded-2xl bg-stone-100 px-4 py-4 sm:col-span-2">
+        <p class="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Signal</p>
+        <p
+          data-text="$message"
+          class="mt-2 text-lg font-medium text-stone-950">
+          대기 중
+        </p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3">
+      <button
+        type="button"
+        data-on:click="@post('/xapi/datastar/click')"
+        class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700">
+        Patch from server
+      </button>
+      <button
+        type="button"
+        data-on:click="@post('/xapi/datastar/broadcast')"
+        class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-900 hover:text-stone-900">
+        Realtime broadcast
+      </button>
+      <button
+        type="button"
+        data-on:click="@post('/xapi/datastar/signal')"
+        class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-900 hover:text-stone-900">
+        Signal only
+      </button>
+      <button
+        type="button"
+        data-on:click="@post('/xapi/datastar/focus-title')"
+        class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-900 hover:text-stone-900">
+        Execute script
+      </button>
+    </div>
+
+    <div
+      id="datastar-log"
+      class="rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-600">
+      아직 서버 patch가 없습니다.
+    </div>
+
+    <div
+      id="datastar-realtime"
+      class="rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-600">
+      realtime 메시지를 기다리는 중입니다.
+    </div>
+
+    <p class="text-sm text-stone-500">
+      Realtime signal:
+      <span
+        data-text="$realtimeMessage"
+        class="font-medium text-stone-800"
+        >아직 없음</span
+      >
+    </p>
+
+    <p class="text-sm text-stone-500">
+      Signal-only notice:
+      <span
+        data-text="$clientNotice"
+        class="font-medium text-stone-800"
+        >없음</span
+      >
+    </p>
+  </section>
+
+  <section class="mt-6 grid gap-4 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+    <header>
+      <p class="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Form</p>
+      <h2 class="mt-2 text-2xl font-semibold text-stone-950">Signals to Server</h2>
+    </header>
+
+    <div class="grid gap-3">
+      <label class="grid gap-2">
+        <span class="text-sm font-medium text-stone-700">Title</span>
+        <input
+          data-bind:title
+          data-datastar-title-input
+          type="text"
+          class="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
+          placeholder="제목" />
+      </label>
+
+      <label class="grid gap-2">
+        <span class="text-sm font-medium text-stone-700">Body</span>
+        <textarea
+          data-bind:body
+          rows="3"
+          class="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
+          placeholder="본문"></textarea>
+      </label>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          data-on:click="@post('/xapi/datastar/form')"
+          class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700">
+          Save form
+        </button>
+        <p
+          data-text="$formMessage"
+          class="text-sm text-stone-600">
+          아직 저장 전
+        </p>
+      </div>
+
+      <div
+        id="datastar-form-result"
+        class="rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-600">
+        form 결과를 기다리는 중입니다.
+      </div>
+    </div>
+  </section>
+
+  <section class="mt-6 grid gap-4 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+    <header>
+      <p class="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">List</p>
+      <h2 class="mt-2 text-2xl font-semibold text-stone-950">Patch Modes</h2>
+    </header>
+
+    <div class="flex flex-wrap gap-3">
+      <input
+        data-bind:item-text
+        type="text"
+        class="min-w-0 flex-1 rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"
+        placeholder="추가할 항목" />
+      <button
+        type="button"
+        data-on:click="@post('/xapi/datastar/items/add')"
+        class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-700">
+        Append item
+      </button>
+      <button
+        type="button"
+        data-on:click="@post('/xapi/datastar/items/clear')"
+        class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-900 hover:text-stone-900">
+        Clear items
+      </button>
+    </div>
+
+    <ul
+      id="datastar-items"
+      class="grid gap-2 rounded-2xl bg-stone-100 p-3"></ul>
+
+    <p class="text-sm text-stone-500">
+      Item count:
+      <span
+        data-text="$itemCount"
+        class="font-medium text-stone-800"
+        >0</span
+      >
+    </p>
+  </section>
+
+  <section class="mt-6 grid gap-4 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+    <header>
+      <p class="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">SPA</p>
+      <h2 class="mt-2 text-2xl font-semibold text-stone-950">Link Navigation</h2>
+    </header>
+
+    <nav
+      id="datastar-spa-nav"
+      class="flex flex-wrap gap-3">
+      <a
+        href="/datastar/spa/overview"
+        class="inline-flex items-center rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white no-underline transition hover:bg-stone-700">
+        SPA overview
+      </a>
+      <a
+        href="/datastar/spa/detail"
+        class="inline-flex items-center rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 no-underline transition hover:border-stone-900 hover:text-stone-900">
+        SPA detail
+      </a>
+    </nav>
+
+    <div
+      id="datastar-spa-panel"
+      class="rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-600">
+      SPA 링크를 누르면 이 영역만 Datastar GET 요청으로 바뀝니다.
+    </div>
+  </section>
+</div>

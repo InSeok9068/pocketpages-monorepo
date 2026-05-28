@@ -38,6 +38,56 @@ test('GET /patterns returns the pattern reference page', async () => {
   assert.equal($('a[href="/"]').first().text().trim(), 'Home');
 });
 
+test('GET /datastar returns the Datastar sample page', async () => {
+  const response = await fetch(`${service.baseUrl}/datastar`);
+  const body = await response.text();
+  const $ = load(body);
+
+  assert.equal(response.status, 200);
+  assert.equal($('h1').first().text().trim(), 'PocketPages Datastar Sample');
+  assert.equal($('button').filter((_, element) => $(element).text().trim() === 'Save form').length, 1);
+  assert.match(body, /datastar\.min/);
+});
+
+test('POST /xapi/datastar/form returns signal and element patches', async () => {
+  const response = await fetch(`${service.baseUrl}/xapi/datastar/form`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Datastar-Request': 'true',
+    },
+    body: JSON.stringify({
+      title: 'Test title',
+      body: 'Test body',
+    }),
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') || '', /^text\/event-stream/);
+  assert.match(body, /event: datastar-patch-signals/);
+  assert.match(body, /event: datastar-patch-elements/);
+  assert.match(body, /form 저장 완료/);
+  assert.match(body, /Test title/);
+});
+
+test('POST /xapi/datastar/signal returns only a signal patch', async () => {
+  const response = await fetch(`${service.baseUrl}/xapi/datastar/signal`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Datastar-Request': 'true',
+    },
+    body: JSON.stringify({}),
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') || '', /^text\/event-stream/);
+  assert.match(body, /event: datastar-patch-signals/);
+  assert.doesNotMatch(body, /event: datastar-patch-elements/);
+});
+
 test('GET /api/boards/list returns board list json', async () => {
   const response = await fetch(`${service.baseUrl}/api/boards/list?limit=5`);
   const payload = await response.json();

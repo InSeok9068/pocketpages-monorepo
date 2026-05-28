@@ -1,0 +1,13 @@
+<script server>
+  const timestamp = new Date().toISOString()
+  const message = 'signal-only ' + timestamp
+
+  dbg('xapi/datastar/signal:patch', {
+    timestamp: timestamp,
+  })
+
+  datastar.patchSignals({
+    message: message,
+    clientNotice: message,
+  })
+</script>

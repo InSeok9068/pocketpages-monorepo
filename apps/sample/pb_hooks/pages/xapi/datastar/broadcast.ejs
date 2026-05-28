@@ -1,0 +1,36 @@
+<script server>
+  const timestamp = new Date().toISOString()
+  const message = 'realtime broadcast ' + timestamp
+
+  dbg('xapi/datastar/broadcast:send', {
+    timestamp: timestamp,
+  })
+
+  datastar.realtime.patchSignals({
+    realtimeMessage: message,
+  })
+
+  datastar.realtime.patchElements(
+    '<div id="datastar-realtime" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-900">' +
+      '<p class="font-medium">Realtime patch 수신</p>' +
+      '<p class="mt-1 text-xs text-sky-700">' +
+      timestamp +
+      '</p>' +
+      '</div>',
+    {
+      selector: '#datastar-realtime',
+      mode: 'outer',
+    }
+  )
+
+  datastar.patchSignals({
+    message: 'realtime broadcast 전송 완료',
+  })
+</script>
+
+<div
+  id="datastar-log"
+  class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-900">
+  <p class="font-medium">Realtime broadcast 전송 완료</p>
+  <p class="mt-1 text-xs text-sky-700"><%= timestamp %></p>
+</div>

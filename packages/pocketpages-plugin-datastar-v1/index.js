@@ -61,6 +61,10 @@ function escapeScriptEndTag(value) {
   return String(value).replace(/<\/script/gi, '<\\/script');
 }
 
+function scriptJson(value) {
+  return escapeScriptEndTag(JSON.stringify(value));
+}
+
 function splitDataLines(value) {
   return String(value).replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
 }
@@ -267,7 +271,6 @@ function buildNavigationScript(options) {
   const scope = opts.scope || 'body';
   const headers = buildHeaders({ selector: opts.selector });
   const headersJson = JSON.stringify(headers);
-  const scopeJson = JSON.stringify(scope);
   const clickExpression = [
     'if(!evt.target.closest)return',
     'var link=evt.target.closest("a")',
@@ -288,12 +291,12 @@ function buildNavigationScript(options) {
     '@get(url,{headers:' + headersJson + '})',
   ].join(';');
 
-  return escapeScriptEndTag([
+  return [
     '<script>',
     '(function () {',
-    '  var scopeSelector = ' + scopeJson + ';',
-    '  var clickExpression = ' + JSON.stringify(clickExpression) + ';',
-    '  var popstateExpression = ' + JSON.stringify(popstateExpression) + ';',
+    '  var scopeSelector = ' + scriptJson(scope) + ';',
+    '  var clickExpression = ' + scriptJson(clickExpression) + ';',
+    '  var popstateExpression = ' + scriptJson(popstateExpression) + ';',
     '  function addPopstateHandler() {',
     '    if (document.getElementById("__pocketpages_datastar_navigation")) return;',
     '    if (!document.body) return;',
@@ -324,7 +327,7 @@ function buildNavigationScript(options) {
     '  document.addEventListener("datastar-scope-children", bindLinks);',
     '}());',
     '</script>',
-  ].join('\n'));
+  ].join('\n');
 }
 
 function buildRealtimeScript(options) {
@@ -333,12 +336,12 @@ function buildRealtimeScript(options) {
   const topic = opts.topic || 'datastar';
   const clientIdSignal = opts.clientIdSignal || 'clientId';
 
-  return escapeScriptEndTag([
+  return [
     '<script>',
     '(function () {',
-    '  var source = new EventSource(' + JSON.stringify(endpoint) + ');',
-    '  var topic = ' + JSON.stringify(topic) + ';',
-    '  var clientIdSignal = ' + JSON.stringify(clientIdSignal) + ';',
+    '  var source = new EventSource(' + scriptJson(endpoint) + ');',
+    '  var topic = ' + scriptJson(topic) + ';',
+    '  var clientIdSignal = ' + scriptJson(clientIdSignal) + ';',
     '  source.addEventListener("PB_CONNECT", function (event) {',
     '    var payload = JSON.parse(event.data);',
     '    var clientId = payload.clientId;',
@@ -360,7 +363,7 @@ function buildRealtimeScript(options) {
     '  });',
     '}());',
     '</script>',
-  ].join('\n'));
+  ].join('\n');
 }
 
 function datastarPluginFactory(config, pluginOptions) {
@@ -744,6 +747,10 @@ function datastarPluginFactory(config, pluginOptions) {
       if (namespace) options.namespace = namespace;
       if (String(useViewTransition || '').toLowerCase() === 'true') {
         options.useViewTransition = true;
+      }
+
+      if (!hasValue(context.content) || !String(context.content).trim()) {
+        return context.content;
       }
 
       api.datastar.patchElements(context.content, options);

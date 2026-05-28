@@ -94,7 +94,7 @@ const RE = {
   middlewareCallsNext: /(^|[^A-Za-z0-9_])next\s*\(/,
   middlewareUsesResponse: /(^|[^A-Za-z0-9_])response\.[A-Za-z_][A-Za-z0-9_]*\s*\(/,
   rawEjsOutput: /<%-/,
-  rawEjsAllowed: /<%-\s*(include\s*\(|slots?\b|content\b|resolve\s*\()/,
+  rawEjsAllowed: /<%-\s*(include\s*\(|slots?\b|content\b|resolve\s*\(|datastar\.scripts\s*\()/,
   authHelper:
     /\b(signInWithPassword|signOut|requestOAuth2Login|requestOAuth2Link|registerWithPassword|signInWithOtp|signInWithOAuth2|signInAnonymously|signInWithToken)\s*\(/,
   resolveCall: /\bresolve\s*\(/,

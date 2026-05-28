@@ -1,10 +1,14 @@
 import type { MiddlewareNextFunc, PagesGlobalContext, PagesRequestContext, PagesResponse } from 'pocketpages'
+import type DatastarPlugin = require('pocketpages-plugin-datastar-v1')
 import type { Client, ClientId, RealtimeOptions } from 'pocketpages-plugin-realtime'
 
 // Editor-only mirror for globals injected by PocketPages core and plugins in
 // `pb_hooks/pages/+config.js`.
 
-type PocketPagesEditorApi<TData = any> = PagesRequestContext<TData>
+type PocketPagesDatastarApi = DatastarPlugin.DatastarApi
+type PocketPagesEditorApi<TData = any> = PagesRequestContext<TData> & {
+  datastar: PocketPagesDatastarApi
+}
 type PocketPagesEditorResponse = PagesResponse & {
   // Repo code uses response.status(...) inside <script server>.
   status: (status: number) => void
@@ -55,6 +59,9 @@ declare global {
 
   // `pocketpages-plugin-ejs` template helper
   const include: (path: string, data?: Record<string, any>) => string
+
+  // `pocketpages-plugin-datastar-v1` runtime helper
+  const datastar: PocketPagesDatastarApi
 
   // `pocketpages-plugin-realtime` runtime helper
   const realtime: PocketPagesRealtimeApi

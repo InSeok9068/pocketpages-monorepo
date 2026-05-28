@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "pocketpages": "^0.22.3",
+    "pocketpages-plugin-datastar-v1": "file:../../packages/pocketpages-plugin-datastar-v1",
     "pocketpages-plugin-ejs": "^0.1.2",
     "pocketpages-plugin-realtime": "^0.2.0"
   },

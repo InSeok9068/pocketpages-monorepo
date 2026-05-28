@@ -1,0 +1,10 @@
+<script server>
+  dbg('xapi/datastar/focus-title:execute')
+
+  datastar.patchSignals({
+    message: 'executeScript 요청 완료',
+  })
+  datastar.executeScript(
+    'var input = document.querySelector("[data-datastar-title-input]"); if (input) input.focus();'
+  )
+</script>

@@ -3,7 +3,7 @@ module.exports = function (api) {
   const isDevelopment = appEnv === 'development'
 
   return {
-    plugins: ['pocketpages-plugin-ejs', 'pocketpages-plugin-realtime'],
+    plugins: ['pocketpages-plugin-ejs', 'pocketpages-plugin-datastar-v1', 'pocketpages-plugin-realtime'],
     debug: isDevelopment,
   }
 }

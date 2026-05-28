@@ -1,0 +1,46 @@
+<script server>
+  /**
+   * HTML 조각에 넣을 텍스트를 이스케이프한다.
+   * @param {string} value
+   * @returns {string}
+   */
+  function escapeHtml(value) {
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+  }
+
+  const signals = datastar.requestSignals({
+    itemText: '',
+    itemCount: 0,
+  })
+  const itemCount = (Number(signals.itemCount) || 0) + 1
+  const itemText = String(signals.itemText || '').trim() || '항목 ' + itemCount
+  const timestamp = new Date().toISOString()
+
+  dbg('xapi/datastar/items/add:append', {
+    itemCount: itemCount,
+    itemText: itemText,
+  })
+
+  datastar.patchSignals({
+    itemText: '',
+    itemCount: itemCount,
+    message: 'list append ' + itemCount + '회 완료',
+  })
+
+  datastar.patchElements(
+    '<li id="datastar-item-' +
+      itemCount +
+      '" class="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 text-sm text-stone-800 shadow-sm">' +
+      '<span>' +
+      escapeHtml(itemText) +
+      '</span>' +
+      '<span class="shrink-0 text-xs text-stone-500">' +
+      escapeHtml(timestamp) +
+      '</span>' +
+      '</li>',
+    {
+      selector: '#datastar-items',
+      mode: 'append',
+    }
+  )
+</script>

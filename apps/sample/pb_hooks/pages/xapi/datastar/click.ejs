@@ -1,0 +1,25 @@
+<script server>
+  const signals = datastar.requestSignals({
+    count: 0,
+  })
+  const count = (Number(signals.count) || 0) + 1
+  const message = '서버 patch ' + count + '회 완료'
+  const timestamp = new Date().toISOString()
+
+  dbg('xapi/datastar/click:patch', {
+    count: count,
+    timestamp: timestamp,
+  })
+
+  datastar.patchSignals({
+    count: count,
+    message: message,
+  })
+</script>
+
+<div
+  id="datastar-log"
+  class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
+  <p class="font-medium"><%= message %></p>
+  <p class="mt-1 text-xs text-emerald-700"><%= timestamp %></p>
+</div>

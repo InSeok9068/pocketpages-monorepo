@@ -1,0 +1,9 @@
+<script server>
+  dbg('xapi/datastar/items/clear:remove')
+
+  datastar.removeElements('#datastar-items > li')
+  datastar.patchSignals({
+    itemCount: 0,
+    message: 'list clear 완료',
+  })
+</script>
