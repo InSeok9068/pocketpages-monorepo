@@ -142,6 +142,33 @@ function buildSignalRemovalPatch(signalKeys) {
   return patch;
 }
 
+function normalizeRawBooleanArg(args, name) {
+  if (args[name] === undefined || args[name] === null || args[name] === false) {
+    delete args[name];
+    return;
+  }
+  args[name] = String(args[name]);
+}
+
+function normalizeRealtimePatchElementsArgs(args) {
+  normalizeRawBooleanArg(args, 'useViewTransition');
+  return args;
+}
+
+function normalizeRealtimePatchSignalsArgs(args) {
+  normalizeRawBooleanArg(args, 'onlyIfMissing');
+  return args;
+}
+
+function assertNoOnlyIfMissing(options, helperName) {
+  if (
+    options &&
+    Object.prototype.hasOwnProperty.call(options, 'onlyIfMissing')
+  ) {
+    throw new Error('Datastar ' + helperName + ' does not support onlyIfMissing');
+  }
+}
+
 function normalizeAttributes(attributes) {
   if (!attributes) return { html: '', names: {} };
 
@@ -439,6 +466,7 @@ function datastarPluginFactory(config, pluginOptions) {
       }
 
       function removeSignals(signalKeys, options) {
+        assertNoOnlyIfMissing(options, 'removeSignals');
         patchSignals(buildSignalRemovalPatch(signalKeys), options);
       }
 
@@ -618,7 +646,9 @@ function datastarPluginFactory(config, pluginOptions) {
               stringify(api, {
                 type: EventType.PatchElements,
                 el: null,
-                argsRaw: Object.assign({ elements: String(elements || '') }, patchOptions || {}),
+                argsRaw: normalizeRealtimePatchElementsArgs(
+                  Object.assign({ elements: String(elements || '') }, patchOptions || {})
+                ),
               }),
               realtimeOptions
             );
@@ -637,10 +667,12 @@ function datastarPluginFactory(config, pluginOptions) {
               stringify(api, {
                 type: EventType.PatchElements,
                 el: null,
-                argsRaw: Object.assign(
-                  {},
-                  patchOptions || {},
-                  { selector: String(selector), mode: ElementPatchMode.Remove }
+                argsRaw: normalizeRealtimePatchElementsArgs(
+                  Object.assign(
+                    {},
+                    patchOptions || {},
+                    { selector: String(selector), mode: ElementPatchMode.Remove }
+                  )
                 ),
               }),
               realtimeOptions
@@ -657,9 +689,11 @@ function datastarPluginFactory(config, pluginOptions) {
               stringify(api, {
                 type: EventType.PatchSignals,
                 el: null,
-                argsRaw: Object.assign(
-                  { signals: normalizeSignals(api, signals) },
-                  patchOptions || {}
+                argsRaw: normalizeRealtimePatchSignalsArgs(
+                  Object.assign(
+                    { signals: normalizeSignals(api, signals) },
+                    patchOptions || {}
+                  )
                 ),
               }),
               realtimeOptions
@@ -671,15 +705,18 @@ function datastarPluginFactory(config, pluginOptions) {
                 'pocketpages-plugin-realtime is required for datastar.realtime'
               );
             }
+            assertNoOnlyIfMissing(patchOptions, 'realtime.removeSignals');
             api.realtime.send(
               'datastar',
               stringify(api, {
                 type: EventType.PatchSignals,
                 el: null,
-                argsRaw: Object.assign(
-                  {},
-                  patchOptions || {},
-                  { signals: stringify(api, buildSignalRemovalPatch(signalKeys)) }
+                argsRaw: normalizeRealtimePatchSignalsArgs(
+                  Object.assign(
+                    {},
+                    patchOptions || {},
+                    { signals: stringify(api, buildSignalRemovalPatch(signalKeys)) }
+                  )
                 ),
               }),
               realtimeOptions

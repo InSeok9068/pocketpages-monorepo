@@ -47,6 +47,8 @@ declare namespace DatastarV1 {
     retryDuration?: number
   }
 
+  type RemoveSignalsOptions = Omit<PatchSignalsOptions, 'onlyIfMissing'>
+
   type SignalKeyInput = string | string[]
 
   interface ExecuteScriptOptions {
@@ -79,7 +81,7 @@ declare namespace DatastarV1 {
     removeElements(selector: string, options?: Omit<PatchElementsOptions, 'selector' | 'mode'>): void
     patchSignals(signals: string | Record<string, any>, options?: PatchSignalsOptions): void
     signals(signals: string | Record<string, any>, options?: PatchSignalsOptions): void
-    removeSignals(signalKeys: SignalKeyInput, options?: PatchSignalsOptions): void
+    removeSignals(signalKeys: SignalKeyInput, options?: RemoveSignalsOptions): void
     executeScript(script: string, options?: ExecuteScriptOptions): void
     script(script: string, options?: ExecuteScriptOptions): void
     readSignals<T extends object>(request: any, target?: T): T
@@ -94,7 +96,7 @@ declare namespace DatastarV1 {
       patchElements(elements: string, patchOptions?: PatchElementsOptions, realtimeOptions?: any): void
       removeElements(selector: string, patchOptions?: Omit<PatchElementsOptions, 'selector' | 'mode'>, realtimeOptions?: any): void
       patchSignals(signals: string | Record<string, any>, patchOptions?: PatchSignalsOptions, realtimeOptions?: any): void
-      removeSignals(signalKeys: SignalKeyInput, patchOptions?: PatchSignalsOptions, realtimeOptions?: any): void
+      removeSignals(signalKeys: SignalKeyInput, patchOptions?: RemoveSignalsOptions, realtimeOptions?: any): void
     }
   }
 }
@@ -109,6 +111,7 @@ declare namespace datastarV1PluginFactory {
   export interface RealtimeScriptOptions extends DatastarV1.RealtimeScriptOptions {}
   export interface PatchElementsOptions extends DatastarV1.PatchElementsOptions {}
   export interface PatchSignalsOptions extends DatastarV1.PatchSignalsOptions {}
+  export type RemoveSignalsOptions = DatastarV1.RemoveSignalsOptions
   export type SignalKeyInput = DatastarV1.SignalKeyInput
   export interface ExecuteScriptOptions extends DatastarV1.ExecuteScriptOptions {}
   export interface DispatchCustomEventOptions extends DatastarV1.DispatchCustomEventOptions {}

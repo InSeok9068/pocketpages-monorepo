@@ -108,6 +108,17 @@ test('removeSignals lets parent removal win over nested keys', function () {
   );
 });
 
+test('removeSignals rejects onlyIfMissing because removal must be explicit', function () {
+  const harness = createHarness();
+
+  assert.throws(
+    function () {
+      harness.api.datastar.removeSignals('draft', { onlyIfMissing: true });
+    },
+    /removeSignals does not support onlyIfMissing/
+  );
+});
+
 test('realtime remove helpers send Datastar watcher payloads', function () {
   const harness = createHarness();
 
@@ -146,6 +157,59 @@ test('realtime remove helpers send Datastar watcher payloads', function () {
   ]);
 });
 
+test('realtime helpers normalize Datastar boolean args as raw strings', function () {
+  const harness = createHarness();
+
+  harness.api.datastar.realtime.patchElements('<div></div>', {
+    selector: '#notice',
+    useViewTransition: true,
+  });
+  harness.api.datastar.realtime.patchSignals({ ready: true }, {
+    onlyIfMissing: true,
+  });
+
+  assert.deepStrictEqual(harness.realtimeMessages, [
+    {
+      topic: 'datastar',
+      message: JSON.stringify({
+        type: 'datastar-patch-elements',
+        el: null,
+        argsRaw: {
+          elements: '<div></div>',
+          selector: '#notice',
+          useViewTransition: 'true',
+        },
+      }),
+      options: undefined,
+    },
+    {
+      topic: 'datastar',
+      message: JSON.stringify({
+        type: 'datastar-patch-signals',
+        el: null,
+        argsRaw: {
+          signals: JSON.stringify({ ready: true }),
+          onlyIfMissing: 'true',
+        },
+      }),
+      options: undefined,
+    },
+  ]);
+});
+
+test('realtime removeSignals rejects onlyIfMissing because removal must be explicit', function () {
+  const harness = createHarness();
+
+  assert.throws(
+    function () {
+      harness.api.datastar.realtime.removeSignals('draft', {
+        onlyIfMissing: true,
+      });
+    },
+    /realtime\.removeSignals does not support onlyIfMissing/
+  );
+});
+
 test('Datastar page render still emits an inner patch for selectors', function () {
   const harness = createHarness({
     'Datastar-Request': 'true',
@@ -163,4 +227,3 @@ test('Datastar page render still emits an inner patch for selectors', function (
       '\n'
   );
 });
-
