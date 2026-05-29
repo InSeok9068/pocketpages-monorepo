@@ -2,7 +2,7 @@
 
 const path = require("path");
 const vscode = require("vscode");
-const { LanguageClient, TransportKind } = require("vscode-languageclient/node");
+const { LanguageClient, TransportKind, State } = require("vscode-languageclient/node");
 const { findAppRoot } = require("../language-service/language-service");
 const { getServerTemplateBoundaryLineNumbers } = require("../language-core/ejs-server-boundary");
 const { REQUESTS, NOTIFICATIONS } = require("../language-server/protocol");
@@ -61,9 +61,13 @@ let lspStatusController = null;
 let outputChannel = null;
 let clientLogger = null;
 let lspStartPromise = null;
+let lspStopRequested = false;
+let lastUnexpectedStopRestartAt = 0;
+let lspRuntimeDisposables = [];
 const logSessionId = createLogSessionId();
 const logBuffer = createLogBuffer(DEBUG_BUNDLE_LOG_LIMIT);
 const saveReasons = new Map();
+const LSP_UNEXPECTED_STOP_RESTART_COOLDOWN_MS = 10000;
 
 function padNumber(value, length) {
   return String(value).padStart(length, "0");
@@ -531,6 +535,50 @@ function createLspStatusController(context, output) {
     },
     item: statusBarItem,
   };
+}
+
+function disposeLspRuntimeDisposables() {
+  const disposables = lspRuntimeDisposables;
+  lspRuntimeDisposables = [];
+  for (const disposable of disposables) {
+    if (disposable && typeof disposable.dispose === "function") {
+      try {
+        disposable.dispose();
+      } catch (_error) {}
+    }
+  }
+}
+
+function getActiveManagedDocument() {
+  const activeDocument = vscode.window.activeTextEditor && vscode.window.activeTextEditor.document;
+  return isManagedLspDocument(activeDocument) ? activeDocument : null;
+}
+
+function scheduleLspRestartForActiveDocument(context, reason) {
+  const activeDocument = getActiveManagedDocument();
+  if (!activeDocument) {
+    return;
+  }
+
+  const now = Date.now();
+  if (now - lastUnexpectedStopRestartAt < LSP_UNEXPECTED_STOP_RESTART_COOLDOWN_MS) {
+    if (clientLogger) {
+      clientLogger.warn("lsp", "restart-skipped", {
+        reason,
+        file: vscode.workspace.asRelativePath(activeDocument.uri.fsPath, false),
+      });
+    }
+    return;
+  }
+
+  lastUnexpectedStopRestartAt = now;
+  if (clientLogger) {
+    clientLogger.warn("lsp", "restart", {
+      reason,
+      file: vscode.workspace.asRelativePath(activeDocument.uri.fsPath, false),
+    });
+  }
+  void ensureLspStarted(context);
 }
 
 function updateServerTemplateBoundaries(editor, decoration) {
@@ -1015,6 +1063,7 @@ async function copyDebugBundle(context) {
 }
 
 async function activateLsp(context) {
+  disposeLspRuntimeDisposables();
   ensureOutputChannel(context);
   if (!clientLogger) {
     clientLogger = createOutputLogger(outputChannel);
@@ -1059,8 +1108,33 @@ async function activateLsp(context) {
     serverOptions,
     clientOptions
   );
+  const activeClient = client;
 
-  context.subscriptions.push(...synchronizedFileWatchers);
+  lspRuntimeDisposables.push(
+    activeClient.onDidChangeState((event) => {
+      if (event.newState !== State.Stopped || client !== activeClient) {
+        return;
+      }
+
+      client = null;
+      disposeLspRuntimeDisposables();
+      if (lspStatusController) {
+        lspStatusController.setStopped();
+      }
+
+      if (lspStopRequested) {
+        return;
+      }
+
+      logger.warn("lsp", "stopped-unexpectedly", {
+        oldState: event.oldState,
+        newState: event.newState,
+      });
+      scheduleLspRestartForActiveDocument(context, "unexpected-stop");
+    })
+  );
+
+  lspRuntimeDisposables.push(...synchronizedFileWatchers);
   logger.info("lsp", "start", {
     extensionVersion: getExtensionVersion(context),
     vscodeVersion: vscode.version,
@@ -1070,6 +1144,7 @@ async function activateLsp(context) {
     serverModule,
     selector: ["ejs", "pb_hooks-scripts"],
   });
+  lspStopRequested = false;
   await client.start();
   lspStatusController.setReady();
   logger.info("lsp", "ready", {
@@ -1091,7 +1166,7 @@ async function activateLsp(context) {
     opacity: "0.999",
   });
 
-  context.subscriptions.push(
+  lspRuntimeDisposables.push(
     serverTemplateBoundaryDecoration,
     vscode.workspace.onDidOpenTextDocument((document) => {
       if (isManagedLspDocument(document)) {
@@ -1175,11 +1250,14 @@ async function activateLsp(context) {
 
 async function handleLspStartupFailure(context, error) {
   if (client) {
+    lspStopRequested = true;
     try {
       await client.stop();
     } catch (_stopError) {}
+    lspStopRequested = false;
     client = null;
   }
+  disposeLspRuntimeDisposables();
   ensureOutputChannel(context);
   if (!clientLogger) {
     clientLogger = createOutputLogger(outputChannel);
@@ -1335,13 +1413,20 @@ async function deactivate() {
     const activeClient = client;
     client = null;
     lspStartPromise = null;
+    lspStopRequested = true;
     if (lspStatusController) {
       lspStatusController.setStopped();
     }
-    return activeClient.stop();
+    try {
+      return await activeClient.stop();
+    } finally {
+      lspStopRequested = false;
+      disposeLspRuntimeDisposables();
+    }
   }
 
   lspStartPromise = null;
+  disposeLspRuntimeDisposables();
   if (lspStatusController) {
     lspStatusController.setStopped();
   }

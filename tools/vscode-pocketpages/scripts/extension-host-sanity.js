@@ -555,6 +555,11 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
   }
 
   const languageClientModule = {
+    State: {
+      Stopped: 1,
+      Running: 2,
+      Starting: 3,
+    },
     TransportKind: {
       ipc: 1,
     },
@@ -564,21 +569,47 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
         this.name = name
         this.serverOptions = serverOptions
         this.clientOptions = clientOptions
+        this.state = languageClientModule.State.Stopped
+        this.stateListeners = []
         clientState.instances.push(this)
+      }
+
+      onDidChangeState(listener) {
+        this.stateListeners.push(listener)
+        return {
+          dispose: () => {
+            this.stateListeners = this.stateListeners.filter((entry) => entry !== listener)
+          },
+        }
+      }
+
+      emitStateChange(newState) {
+        const oldState = this.state
+        this.state = newState
+        for (const listener of this.stateListeners.slice()) {
+          listener({ oldState, newState })
+        }
       }
 
       async start() {
         clientState.startCalls += 1
+        this.emitStateChange(languageClientModule.State.Starting)
         if (typeof languageClientOptions.start === 'function') {
-          return languageClientOptions.start(this, clientState)
+          const result = await languageClientOptions.start(this, clientState)
+          this.emitStateChange(languageClientModule.State.Running)
+          return result
         }
+        this.emitStateChange(languageClientModule.State.Running)
       }
 
       async stop() {
         clientState.stopCalls += 1
         if (typeof languageClientOptions.stop === 'function') {
-          return languageClientOptions.stop(this, clientState)
+          const result = await languageClientOptions.stop(this, clientState)
+          this.emitStateChange(languageClientModule.State.Stopped)
+          return result
         }
+        this.emitStateChange(languageClientModule.State.Stopped)
       }
 
       async sendRequest(method, params) {
@@ -793,6 +824,42 @@ async function runLifecycleRetryTest(repoRoot, fixture) {
       throw new Error(
         `Expected PocketPages to retry lazy LSP startup after a failed attempt. Got: ${harness.controls.clientState.startCalls}`
       )
+    }
+
+    await extensionModule.deactivate()
+  })
+}
+
+async function runLifecycleUnexpectedStopRestartTest(repoRoot, fixture) {
+  const harness = createMockExtensionHost({
+    repoRoot,
+    fixture,
+  })
+
+  await withMockedExtensionModule(repoRoot, harness.mocks, async (extensionModule) => {
+    const managedDocument = createMockDocument(fixture.routeFilePath)
+    const managedEditor = harness.controls.createEditor(managedDocument, new MockPosition(2, 4))
+
+    await extensionModule.activate(harness.context)
+    await harness.controls.fireActiveEditorChange(managedEditor)
+    await harness.controls.fireOpenDocument(managedDocument)
+    await flushAsyncWork()
+
+    if (harness.controls.clientState.startCalls !== 1) {
+      throw new Error(`Expected the managed document to start one LSP client. Got: ${harness.controls.clientState.startCalls}`)
+    }
+
+    const firstClient = harness.controls.clientState.instances[0]
+    firstClient.emitStateChange(harness.mocks.languageClientModule.State.Stopped)
+    await flushAsyncWork()
+
+    if (harness.controls.clientState.startCalls !== 2) {
+      throw new Error(
+        `Expected PocketPages to restart the LSP when the active client's state stops unexpectedly. Got: ${harness.controls.clientState.startCalls}`
+      )
+    }
+    if (harness.controls.clientState.instances.length !== 2) {
+      throw new Error(`Expected unexpected-stop recovery to create a fresh LSP client. Got: ${harness.controls.clientState.instances.length}`)
     }
 
     await extensionModule.deactivate()
@@ -1760,6 +1827,7 @@ async function runExtensionHostSanityCheck(repoRoot) {
   try {
     await runLifecycleExecutionTest(repoRoot, fixture)
     await runLifecycleRetryTest(repoRoot, fixture)
+    await runLifecycleUnexpectedStopRestartTest(repoRoot, fixture)
     await runDecorationAndStatusBoundaryTest(repoRoot, fixture)
     await runReferencesBoundaryTest(repoRoot, fixture)
     await runReferencesEdgeCaseTest(repoRoot, fixture)
