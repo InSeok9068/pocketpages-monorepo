@@ -86,13 +86,13 @@
   </header>
 
   <%- include('post-form.ejs', {
-  formAction: '/xapi/posts/update',
-  boardSlug: params.boardSlug,
-  postSlug: params.postSlug,
-  submitLabel: 'Save changes',
-  textareaRows: 10,
-  values: pageData.formValues,
-}) %>
+    formAction: '/xapi/posts/update',
+    boardSlug: params.boardSlug,
+    postSlug: params.postSlug,
+    submitLabel: 'Save changes',
+    textareaRows: 10,
+    values: pageData.formValues,
+  }) %>
 </article>
 
 <article class="rounded-3xl border border-rose-200 bg-rose-50 p-6 shadow-sm">

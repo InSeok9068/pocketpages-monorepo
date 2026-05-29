@@ -8,6 +8,7 @@ import * as htmlPlugin from 'prettier/plugins/html'
 import * as tailwindPlugin from 'prettier-plugin-tailwindcss'
 
 const basePrinter = htmlPlugin.printers.html
+const { hardline } = prettier.doc.builders
 const tailwindHtmlParser = tailwindPlugin.parsers.html
 // Preserve all standard EJS tag families as raw text:
 // <% %>, <%_ %>, <%= %>, <%- %>, <%# %>, <%% %>, -%>, _%>
@@ -72,10 +73,7 @@ async function tryFormatExpression(body, options) {
   }
 
   try {
-    const formatted = await prettier.format(
-      inner,
-      buildJsFormatOptions(options, '__js_expression', { printWidth: 1000 }),
-    )
+    const formatted = await prettier.format(inner, buildJsFormatOptions(options, '__js_expression', { printWidth: 1000 }))
 
     return formatted.trim()
   } catch {
@@ -152,11 +150,10 @@ function tokenizeEjs(text) {
   const entries = []
   const preparedText = text.replace(EJS_TAG_PATTERN, (match, offset, sourceText) => {
     const index = String(entries.length).padStart(4, '0')
-    const token = isStandaloneTag(sourceText, offset, match)
-      ? `<!--${BLOCK_TOKEN_PREFIX}${index}__-->`
-      : `${INLINE_TOKEN_PREFIX}${index}__`
+    const isBlock = isStandaloneTag(sourceText, offset, match)
+    const token = isBlock ? `<!--${BLOCK_TOKEN_PREFIX}${index}__-->` : `${INLINE_TOKEN_PREFIX}${index}__`
 
-    entries.push([token, match])
+    entries.push([token, match, isBlock])
     return token
   })
 
@@ -166,17 +163,100 @@ function tokenizeEjs(text) {
   }
 }
 
+function rawBlockToDoc(raw) {
+  const lines = raw.split('\n')
+  const doc = []
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (index > 0) {
+      doc.push(hardline)
+    }
+
+    doc.push(lines[index])
+  }
+
+  return doc
+}
+
+function restoreStringToken(value, entries) {
+  let selectedEntry = null
+  let selectedOffset = -1
+
+  for (const entry of entries) {
+    const [token] = entry
+    const offset = value.indexOf(token)
+
+    if (offset !== -1 && (selectedOffset === -1 || offset < selectedOffset)) {
+      selectedEntry = entry
+      selectedOffset = offset
+    }
+  }
+
+  if (!selectedEntry) {
+    return value
+  }
+
+  const [token, raw, isBlock] = selectedEntry
+  const before = value.slice(0, selectedOffset)
+  const after = value.slice(selectedOffset + token.length)
+  const replacement = isBlock && raw.includes('\n') ? rawBlockToDoc(raw) : raw
+  const restoredAfter = restoreStringToken(after, entries)
+  const doc = []
+
+  if (before) {
+    doc.push(before)
+  }
+
+  doc.push(replacement)
+
+  if (Array.isArray(restoredAfter)) {
+    doc.push(...restoredAfter)
+  } else if (restoredAfter) {
+    doc.push(restoredAfter)
+  }
+
+  if (doc.length === 1) {
+    return doc[0]
+  }
+
+  return doc
+}
+
+function restoreRenderedStringToken(value, entries) {
+  let restored = value
+
+  for (const [token, raw] of entries) {
+    if (!restored.includes(token)) {
+      continue
+    }
+
+    restored = restored.split(token).join(raw)
+  }
+
+  return restored
+}
+
+function restoreString(value, entries) {
+  const doc = restoreStringToken(value, entries)
+
+  if (typeof doc !== 'string') {
+    return doc
+  }
+
+  if (!doc.includes(BLOCK_TOKEN_PREFIX) && !doc.includes(INLINE_TOKEN_PREFIX)) {
+    return doc
+  }
+
+  return restoreRenderedStringToken(doc, entries)
+}
+
 function restoreTokens(value, entries) {
   if (!entries || entries.length === 0) {
     return value
   }
 
   if (typeof value === 'string') {
-    let restored = value
-    for (const [token, raw] of entries) {
-      restored = restored.split(token).join(raw)
-    }
-    return restored
+    return restoreString(value, entries)
   }
 
   if (Array.isArray(value)) {
