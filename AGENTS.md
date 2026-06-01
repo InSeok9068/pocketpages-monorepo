@@ -63,6 +63,8 @@
 - template = render only
 - avoid heavy logic or formatting logic in template
 - allowed: simple `if`, simple loop, short expression
+- DEFAULT: simple mutations use POST -> redirect -> message -> GET render
+- DEFAULT: use HTMX only for partial updates with clear UX benefit, such as preserving scroll, focus, open panel, or list position
 - HTMX returns partial HTML or redirect only, never layout HTML
 - DEFAULT: reuse shared markup via `_private` partial
 
@@ -120,6 +122,8 @@
 - Alpine is UI helper only
 - no business logic or complex state
 - use for toggle, modal, tab, and short local UI state
+- Datastar is opt-in only for pages where server-driven patches or realtime state clearly reduce complexity
+- Do not share the same UI state between Alpine and Datastar on one page
 - UnoCSS classes must be complete literals in scanned files
 
 ---

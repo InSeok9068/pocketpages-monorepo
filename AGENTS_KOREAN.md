@@ -63,6 +63,8 @@
 - template는 render에만 집중한다
 - template 안에 무거운 로직이나 formatting 로직을 두지 않는다
 - 허용: 단순 `if`, 단순 loop, 짧은 expression
+- DEFAULT: 단순 mutation은 POST -> redirect -> message -> GET render를 우선한다
+- DEFAULT: HTMX는 스크롤, 포커스, 열린 패널, 목록 위치 유지처럼 부분 갱신 이점이 명확할 때만 사용한다
 - HTMX는 partial HTML 또는 redirect만 반환하고 layout HTML은 반환하지 않는다
 - DEFAULT: 공통 마크업은 `_private` partial로 재사용한다
 
@@ -120,6 +122,8 @@
 - Alpine은 UI helper로만 사용한다
 - business logic이나 complex state를 넣지 않는다
 - toggle, modal, tab, 짧은 local UI state에 사용한다
+- Datastar는 server-driven patch나 realtime state가 복잡도를 명확히 줄이는 page에서만 opt-in으로 사용한다
+- 한 page에서 같은 UI state를 Alpine과 Datastar가 함께 소유하지 않는다
 - UnoCSS class는 스캔되는 파일 안에 완성된 문자열로 둔다
 
 ---
