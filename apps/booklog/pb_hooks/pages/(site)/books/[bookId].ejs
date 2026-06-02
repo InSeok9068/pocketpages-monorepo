@@ -293,8 +293,11 @@
         <% if (bookFileUrl) { %>
         <a
           href="/books/<%= bookId %>/read"
-          class="mt-3 inline-flex w-full items-center justify-center rounded-full border-none bg-stone-900 px-4 py-3 text-sm font-medium text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700 md:w-auto md:min-w-[10.5rem] md:self-start">
-          EPUB 뷰어로 보기
+          class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border-none bg-stone-900 px-4 py-3 text-sm font-medium text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700 md:w-auto md:min-w-[10.5rem] md:self-start">
+          <span
+            class="i-lucide-book-open h-4 w-4"
+            aria-hidden="true"></span>
+          뷰어로 보기
         </a>
         <% } %>
       </div>
