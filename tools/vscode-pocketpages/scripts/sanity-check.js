@@ -32,6 +32,7 @@ const initTypeScriptPlugin = require('../packages/typescript-plugin')
 const {
   buildScriptServerMirrorText,
   collectExternalPocketPagesEjsFiles,
+  isPocketPagesAssetFile,
   isPocketPagesEjsFile,
 } = require('../packages/typescript-plugin/shared')
 const { getTokenTypeIndex } = require('../packages/language-server/ejs-semantic-tokens')
@@ -891,8 +892,13 @@ function assertClientContracts(repoRoot) {
   )
   assertMatches(
     clientSource,
-    /function isExcludedManagedPagesScriptPath\(filePath\)[\s\S]*relativeSegments\.includes\("assets"\)[\s\S]*relativeSegments\.includes\("vendor"\)[\s\S]*\.endsWith\("\.min\.js"\)/,
+    /function isExcludedManagedPagesScriptPath\(filePath\)[\s\S]*isPagesAssetPath\(normalizedPath\)[\s\S]*relativeSegments\.includes\("vendor"\)[\s\S]*\.endsWith\("\.min\.js"\)/,
     'Expected the PocketPages client to keep public asset/vendor/minified page scripts out of managed LSP startup/status checks.'
+  )
+  assertMatches(
+    clientSource,
+    /function isManagedEjsDocument\(document\)[\s\S]*!isPagesAssetPath\(document\.uri\.fsPath\)[\s\S]*findAppRoot\(document\.uri\.fsPath\)/,
+    'Expected the PocketPages client to keep public asset .ejs files out of managed LSP startup/status checks.'
   )
   if (clientSource.includes('return await activateLsp(context);')) {
     throw new Error('Expected PocketPages activate() to stop eagerly starting the LSP during extension activation.')
@@ -1290,8 +1296,8 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
-    /function isExcludedPocketPagesScriptPath\(filePath\)[\s\S]*!isScriptFilePath\(normalizedPath\)[\s\S]*relativeSegments\.includes\("assets"\)[\s\S]*hasPrivatePagesSegment\(normalizedPath\)[\s\S]*lowerPath\.endsWith\("\.min\.js"\)/,
-    'Expected server-side exclusion to match the project index for public asset, route-exposed vendor, and minified scripts without excluding EJS routes.'
+    /function isExcludedPocketPagesScriptPath\(filePath\)[\s\S]*isPagesAssetPath\(normalizedPath\)[\s\S]*!isScriptFilePath\(normalizedPath\)[\s\S]*hasPrivatePagesSegment\(normalizedPath\)[\s\S]*lowerPath\.endsWith\("\.min\.js"\)/,
+    'Expected server-side exclusion to match the project index for public assets, route-exposed vendor, and minified scripts without excluding EJS routes.'
   )
   if (/connection\.sendDiagnostics|mode:\s*"push-lanes"/.test(diagnosticsFeatureSource)) {
     throw new Error('Expected diagnostics feature service to stay pull-only without push publish lanes.')
@@ -1926,9 +1932,11 @@ export = pocketpagesUtils
     `module.exports = function () {\n  return ''\n}\n`
   )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'), `console.log('reader')\n`)
+  writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'snippet.ejs'), `<script server>\nconst ignored = true\n</script>\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'vendor', 'jszip-3.10.1.min.js'), `window.JSZip = {}\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'card.css'), `.board-card { color: #222; }\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'assets', 'board-widget.js'), `console.log('board widget')\n`)
+  writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'assets', 'widget.ejs'), `<script server>\nconst ignoredWidget = true\n</script>\n`)
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
     `<%- include('flash-alert.ejs', { flashMessage: 'Saved', isErrorFlash: false, flashMeta: { count: 1 } }) %>\n`
@@ -2324,9 +2332,11 @@ module.exports = {
     routeReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-reference-check.ejs'),
     routeMethodReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-method-reference-check.ejs'),
     globalAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'),
+    globalAssetTemplateFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'snippet.ejs'),
     vendorAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'vendor', 'jszip-3.10.1.min.js'),
     localAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'card.css'),
     nestedAssetScriptFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'assets', 'board-widget.js'),
+    nestedAssetTemplateFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'assets', 'widget.ejs'),
     propertyLocalsCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
     renameCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'rename-check.ejs'),
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
@@ -13725,6 +13735,12 @@ const authState = resolve('auth-service')
     if (isPocketPagesEjsFile(fixture.boardRoleFilePath)) {
       throw new Error('Expected PocketPages TS plugin helpers to ignore non-.ejs files.')
     }
+    if (!isPocketPagesAssetFile(fixture.globalAssetTemplateFilePath)) {
+      throw new Error('Expected PocketPages TS plugin helpers to recognize page asset files.')
+    }
+    if (isPocketPagesEjsFile(fixture.globalAssetTemplateFilePath) || isPocketPagesEjsFile(fixture.nestedAssetTemplateFilePath)) {
+      throw new Error('Expected PocketPages TS plugin helpers to ignore .ejs files under public page assets.')
+    }
 
     const pluginExternalFiles = collectExternalPocketPagesEjsFiles(
       {
@@ -13734,7 +13750,7 @@ const authState = resolve('auth-service')
               return []
             }
 
-            return [fixture.signInFilePath, fixture.flashAlertFilePath]
+            return [fixture.signInFilePath, fixture.flashAlertFilePath, fixture.globalAssetTemplateFilePath]
           },
         },
       },
@@ -13747,6 +13763,11 @@ const authState = resolve('auth-service')
     if (!pluginExternalFiles.includes(fixture.signInFilePath) || !pluginExternalFiles.includes(fixture.flashAlertFilePath)) {
       throw new Error(
         `Expected PocketPages TS plugin helper to surface page and partial .ejs files. Got: ${pluginExternalFiles.join(', ')}`
+      )
+    }
+    if (pluginExternalFiles.includes(fixture.globalAssetTemplateFilePath)) {
+      throw new Error(
+        `Expected PocketPages TS plugin helper to exclude public asset .ejs files. Got: ${pluginExternalFiles.join(', ')}`
       )
     }
 

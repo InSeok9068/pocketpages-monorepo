@@ -28,9 +28,32 @@ function normalizeFilePath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
 }
 
+function getPagesRelativeSegments(fileName) {
+  const normalizedFileName = normalizeFilePath(fileName).toLowerCase();
+  const pagesMarker = "/pb_hooks/pages/";
+  const markerIndex = normalizedFileName.indexOf(pagesMarker);
+  if (markerIndex === -1) {
+    return null;
+  }
+
+  return normalizedFileName
+    .slice(markerIndex + pagesMarker.length)
+    .split("/")
+    .filter(Boolean);
+}
+
+function isPocketPagesAssetFile(fileName) {
+  const relativeSegments = getPagesRelativeSegments(fileName);
+  return !!relativeSegments && relativeSegments.includes("assets");
+}
+
 function isPocketPagesEjsFile(fileName) {
   const normalizedFileName = normalizeFilePath(fileName).toLowerCase();
-  return normalizedFileName.endsWith(".ejs") && normalizedFileName.includes("/pb_hooks/pages/");
+  return (
+    normalizedFileName.endsWith(".ejs") &&
+    !!getPagesRelativeSegments(normalizedFileName) &&
+    !isPocketPagesAssetFile(normalizedFileName)
+  );
 }
 
 function buildScriptServerMirrorText(documentText) {
@@ -84,7 +107,9 @@ function collectExternalPocketPagesEjsFiles(ts, project) {
   }
 
   const projectRoot = getProjectSearchRoot(project);
-  return ts.sys.readDirectory(projectRoot, [".ejs"], undefined, ["**/pb_hooks/pages/**/*.ejs"]);
+  return ts.sys
+    .readDirectory(projectRoot, [".ejs"], undefined, ["**/pb_hooks/pages/**/*.ejs"])
+    .filter((fileName) => isPocketPagesEjsFile(fileName));
 }
 
 function readSnapshotText(snapshot) {
@@ -138,6 +163,7 @@ module.exports = {
   buildScriptServerMirrorText,
   collectExternalPocketPagesEjsFiles,
   getIdentifierTextSpan,
+  isPocketPagesAssetFile,
   isPocketPagesEjsFile,
   offsetAt,
   readSnapshotText,

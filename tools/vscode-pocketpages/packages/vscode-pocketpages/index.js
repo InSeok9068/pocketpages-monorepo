@@ -332,6 +332,11 @@ function getPagesRelativeSegments(filePath) {
     .filter(Boolean);
 }
 
+function isPagesAssetPath(filePath) {
+  const relativeSegments = getPagesRelativeSegments(filePath);
+  return !!relativeSegments && relativeSegments.includes("assets");
+}
+
 function isExcludedManagedPagesScriptPath(filePath) {
   if (!/\.(js|cjs|mjs)$/i.test(String(filePath || ""))) {
     return false;
@@ -343,7 +348,7 @@ function isExcludedManagedPagesScriptPath(filePath) {
     return false;
   }
 
-  if (relativeSegments.includes("assets")) {
+  if (isPagesAssetPath(normalizedPath)) {
     return true;
   }
 
@@ -404,6 +409,7 @@ function isManagedEjsDocument(document) {
   return !!document
     && document.uri.scheme === "file"
     && document.uri.fsPath.endsWith(".ejs")
+    && !isPagesAssetPath(document.uri.fsPath)
     && !!findAppRoot(document.uri.fsPath);
 }
 

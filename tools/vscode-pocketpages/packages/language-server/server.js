@@ -328,30 +328,51 @@ function normalizeDocumentPath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
 }
 
-function hasPrivatePagesSegment(filePath) {
+function getPagesRelativeSegments(filePath) {
   const normalizedPath = normalizeDocumentPath(filePath);
   const pagesMarker = "/pb_hooks/pages/";
   const markerIndex = normalizedPath.indexOf(pagesMarker);
   if (markerIndex === -1) {
-    return false;
+    return null;
   }
 
   return normalizedPath
     .slice(markerIndex + pagesMarker.length)
     .split("/")
-    .includes("_private");
+    .filter(Boolean);
+}
+
+function hasPrivatePagesSegment(filePath) {
+  const relativeSegments = getPagesRelativeSegments(filePath);
+  if (!relativeSegments) {
+    return false;
+  }
+
+  return relativeSegments.includes("_private");
+}
+
+function isPagesAssetPath(filePath) {
+  const relativeSegments = getPagesRelativeSegments(filePath);
+  return !!relativeSegments && relativeSegments.includes("assets");
 }
 
 function isExcludedPocketPagesScriptPath(filePath) {
   const normalizedPath = normalizeDocumentPath(filePath);
-  if (!normalizedPath.includes("/pb_hooks/pages/") || !isScriptFilePath(normalizedPath)) {
+  if (!normalizedPath.includes("/pb_hooks/pages/")) {
     return false;
   }
 
-  const pagesRelativePath = normalizedPath.split("/pb_hooks/pages/")[1] || "";
-  const relativeSegments = pagesRelativePath.split("/").filter(Boolean);
-  if (relativeSegments.includes("assets")) {
+  const relativeSegments = getPagesRelativeSegments(normalizedPath);
+  if (!relativeSegments) {
+    return false;
+  }
+
+  if (isPagesAssetPath(normalizedPath)) {
     return true;
+  }
+
+  if (!isScriptFilePath(normalizedPath)) {
+    return false;
   }
 
   if (hasPrivatePagesSegment(normalizedPath)) {
