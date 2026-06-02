@@ -395,7 +395,7 @@
     </div>
 
     <section
-      class="rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.92),rgba(245,236,222,0.95))] p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
+      class="rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.92),rgba(245,236,222,0.95))] p-4 shadow-[0_12px_30px_rgba(73,54,31,0.05)] backdrop-blur-sm sm:p-5">
       <div class="overflow-x-auto overflow-y-hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div class="flex min-w-max gap-3">
           <% for (let index = 0; index < shelfBooks.length; index += 1) { const book = shelfBooks[index] %>
@@ -406,9 +406,9 @@
             <% if (book.bookId) { %>
             <a
               href="/books/<%= book.bookId %>?from=/"
-              class="block no-underline transition hover:translate-y-[-1px]">
+              class="group block no-underline transition hover:translate-y-[-1px]">
               <div
-                class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[10.4rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[11rem]">
+                class="<%= book.tone %> <%= book.coverUrl ? 'transition group-hover:shadow-[0_6px_14px_rgba(24,19,16,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b">
                 <% if (book.statusBadgeLabel) { %>
                 <span class="<%= book.statusBadgeClass %> absolute right-2 top-2 z-10 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
                   <%= book.statusBadgeLabel %>
@@ -433,7 +433,7 @@
             </a>
             <% } else { %>
             <div
-              class="<%= book.tone %> <%= book.coverUrl ? 'shadow-[0_16px_24px_rgba(74,50,28,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative h-[10.4rem] overflow-hidden rounded-[1.3rem] bg-gradient-to-b sm:h-[11rem]">
+              class="<%= book.tone %> <%= book.coverUrl ? '' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b">
               <% if (book.statusBadgeLabel) { %>
               <span class="<%= book.statusBadgeClass %> absolute right-2 top-2 z-10 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
                 <%= book.statusBadgeLabel %>

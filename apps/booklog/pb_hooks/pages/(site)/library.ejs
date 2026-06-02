@@ -179,8 +179,6 @@
       coverUrl: String(row.coverUrl || '').trim(),
       status: status,
       statusLabel: shelfStatusLabels[status] || '보관 중',
-      statusBadgeLabel: status === 'reading' || status === 'finished' ? shelfStatusLabels[status] : '',
-      statusBadgeClass: status === 'finished' ? 'bg-[#9e6125]/88 text-white shadow-[0_8px_18px_rgba(165,103,38,0.14)]' : 'bg-stone-900/84 text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)]',
     })
   }
 </script>
@@ -310,21 +308,14 @@
         href="/books/<%= book.bookId %>?from=/library"
         class="group block min-w-0 text-stone-900 no-underline">
         <div
-          class="relative aspect-[5/7] overflow-hidden rounded-[1.3rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] shadow-[0_16px_26px_rgba(74,50,28,0.12)] transition group-hover:translate-y-[-1px]">
-          <% if (book.statusBadgeLabel) { %>
-          <span class="<%= book.statusBadgeClass %> absolute right-2 top-2 z-10 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
-            <%= book.statusBadgeLabel %>
-          </span>
-          <% } %>
+          class="relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] shadow-[0_8px_18px_rgba(24,19,16,0.1)] transition group-hover:translate-y-[-1px] group-hover:shadow-[0_10px_20px_rgba(24,19,16,0.13)]">
           <% if (book.coverUrl) { %>
-          <div class="box-border flex h-full w-full items-center justify-center bg-white px-1.5 py-1.5">
-            <img
-              src="<%= book.coverUrl %>"
-              alt="<%= book.title %> 표지"
-              loading="lazy"
-              decoding="async"
-              class="block h-full w-full object-contain" />
-          </div>
+          <img
+            src="<%= book.coverUrl %>"
+            alt="<%= book.title %> 표지"
+            loading="lazy"
+            decoding="async"
+            class="h-full w-full object-cover" />
           <% } else { %>
           <div class="absolute inset-0 box-border px-3 py-4 text-white">
             <div class="absolute left-1/2 top-[34%] w-[78%] -translate-x-1/2 -translate-y-1/2 text-center">
