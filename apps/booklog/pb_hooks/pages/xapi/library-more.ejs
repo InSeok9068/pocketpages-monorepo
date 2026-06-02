@@ -172,8 +172,9 @@
 <% for (let index = 0; index < libraryBooks.length; index += 1) { const book = libraryBooks[index] %>
 <a
   href="/books/<%= book.bookId %>?from=/library"
-  class="group mx-auto block w-full max-w-[8rem] min-w-0 text-stone-900 no-underline sm:max-w-none">
-  <div class="relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] shadow-[0_8px_18px_rgba(24,19,16,0.1)] transition group-hover:translate-y-[-1px] group-hover:shadow-[0_10px_20px_rgba(24,19,16,0.13)]">
+  class="group mx-auto block w-full min-w-0 max-w-[8rem] text-stone-900 no-underline sm:max-w-none">
+  <div
+    class="relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] shadow-[0_8px_18px_rgba(24,19,16,0.1)] transition group-hover:translate-y-[-1px] group-hover:shadow-[0_10px_20px_rgba(24,19,16,0.13)]">
     <% if (book.coverUrl) { %>
     <img
       src="<%= book.coverUrl %>"

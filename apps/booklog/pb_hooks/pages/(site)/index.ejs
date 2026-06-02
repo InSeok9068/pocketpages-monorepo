@@ -432,8 +432,7 @@
               </div>
             </a>
             <% } else { %>
-            <div
-              class="<%= book.tone %> <%= book.coverUrl ? '' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b">
+            <div class="<%= book.tone %> <%= book.coverUrl ? '' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b">
               <% if (book.statusBadgeLabel) { %>
               <span class="<%= book.statusBadgeClass %> absolute right-2 top-2 z-10 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
                 <%= book.statusBadgeLabel %>
