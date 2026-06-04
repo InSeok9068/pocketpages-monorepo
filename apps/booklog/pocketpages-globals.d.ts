@@ -78,6 +78,7 @@ declare global {
     env: Record<string, string | undefined>
   }
   interface PocketPagesRouteParams {}
+  type PocketPagesNextMiddlewareFunc<TData = any> = (api: PagesRequestContext<TData>, next: MiddlewareNextFunc) => void
 
   // `pocketpages` core request/context globals
   const api: PocketPagesEditorApi<any>
