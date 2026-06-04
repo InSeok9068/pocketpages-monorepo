@@ -25,19 +25,53 @@
     return dateutil.formatDate(raw, 'YYYY-MM-DD')
   }
 
-  function tagsText(value) {
-    if (!value) return ''
-    if (Array.isArray(value)) return value.join(', ')
+  function normalizeTags(value) {
+    if (!value) return []
+
+    if (value && typeof value.string === 'function') {
+      try {
+        const parsed = JSON.parse(value.string())
+
+        return Array.isArray(parsed) ? parsed : []
+      } catch (exception) {
+        return []
+      }
+    }
+
+    if (Array.isArray(value)) {
+      const numericItems = value.filter((item) => /^[0-9]+$/.test(String(item || '').trim()))
+
+      if (numericItems.length === value.length) {
+        try {
+          const decoded = String.fromCharCode.apply(
+            null,
+            numericItems.map((item) => Number(item))
+          )
+          const parsed = JSON.parse(decoded)
+
+          return Array.isArray(parsed) ? parsed : []
+        } catch (exception) {
+          return value
+        }
+      }
+
+      return value
+    }
 
     try {
       const parsed = JSON.parse(String(value || ''))
 
-      if (Array.isArray(parsed)) return parsed.join(', ')
+      return Array.isArray(parsed) ? parsed : []
     } catch (exception) {
-      return String(value || '').trim()
+      return []
     }
+  }
 
-    return String(value || '').trim()
+  function tagsText(value) {
+    return normalizeTags(value)
+      .map((tag) => String(tag || '').trim())
+      .filter((tag) => !!tag)
+      .join(', ')
   }
 
   if (!request.auth) {
@@ -190,16 +224,6 @@
             type="text"
             name="name_en"
             value="<%= projectView.nameEn %>"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-base font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
-        </label>
-
-        <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
-          슬러그
-          <input
-            type="text"
-            name="slug"
-            required
-            value="<%= projectView.slug %>"
             class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-base font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
         </label>
 
@@ -367,4 +391,27 @@
       </div>
     </div>
   </form>
+
+  <section class="rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 class="text-base font-bold text-[#191f28]">삭제</h2>
+        <p class="mt-1 text-sm font-medium text-[#8b95a1]">프로젝트 데이터를 완전히 삭제합니다.</p>
+      </div>
+      <form
+        method="post"
+        action="/xapi/projects/delete"
+        onsubmit="return confirm('이 프로젝트를 완전히 삭제할까요?')">
+        <input
+          type="hidden"
+          name="project_id"
+          value="<%= projectView.id %>" />
+        <button
+          type="submit"
+          class="inline-flex h-11 w-full items-center justify-center rounded-lg border-0 bg-[#fff0f0] px-4 text-sm font-bold text-[#e03131] hover:bg-[#ffe3e3] sm:w-auto">
+          삭제
+        </button>
+      </form>
+    </div>
+  </section>
 </div>

@@ -1,0 +1,83 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/projects/delete:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/projects/delete:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const projectId = String(form.project_id || '').trim()
+  let errorMessage = ''
+
+  dbg('xapi/projects/delete:start', {
+    userId,
+    projectId,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!projectId) throw new Error('프로젝트를 찾지 못했습니다.')
+
+    const project = $app.findFirstRecordByFilter('projects', 'id = {:projectId} && user = {:userId}', {
+      projectId,
+      userId,
+    })
+    const slug = String(project.get('slug') || '')
+
+    $app.delete(project)
+
+    info('xapi/projects/delete:success', {
+      projectId,
+      slug,
+    })
+    dbg('xapi/projects/delete:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '삭제했습니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '삭제했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/projects/delete:failed', {
+      userId,
+      projectId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/projects/delete:redirect', {
+    status: 303,
+    redirectTo: '/',
+    error: errorMessage || '삭제에 실패했습니다.',
+  })
+  redirect('/', {
+    status: 303,
+    message: errorMessage || '삭제에 실패했습니다.',
+  })
+  return
+</script>

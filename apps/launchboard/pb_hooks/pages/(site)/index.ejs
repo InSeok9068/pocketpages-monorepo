@@ -43,9 +43,35 @@
     return dateutil.formatDate(raw, dateutil.FORMATS.DATE)
   }
 
+  function getUrlOrigin(value) {
+    const raw = String(value || '').trim()
+
+    if (!raw) return ''
+
+    const normalized = raw.indexOf('://') === -1 ? 'https://' + raw : raw
+    const match = normalized.match(/^(https?:\/\/[^/?#]+)/i)
+
+    if (!match) return ''
+
+    return match[1].replace(/\/+$/, '')
+  }
+
+  function getFaviconUrls(domainUrl) {
+    const origin = getUrlOrigin(domainUrl)
+
+    if (!origin) return []
+
+    return [
+      origin + '/favicon.svg',
+      origin + '/favicon.png',
+      origin + '/favicon.ico',
+    ]
+  }
+
   function toProjectCard(record) {
     const slug = String(record.get('slug') || '').trim()
     const priority = String(record.get('priority') || 'normal')
+    const domainUrl = String(record.get('domain_url') || '').trim()
 
     return {
       id: String(record.get('id') || ''),
@@ -54,7 +80,8 @@
       slug,
       href: '/projects/' + encodeURIComponent(slug),
       status: String(record.get('status') || 'idea'),
-      domainUrl: String(record.get('domain_url') || '').trim(),
+      domainUrl,
+      faviconUrls: getFaviconUrls(domainUrl),
       repoUrl: String(record.get('repo_url') || '').trim(),
       description: String(record.get('description') || '').trim(),
       priority,
@@ -180,11 +207,27 @@
                       class="i-lucide-pin h-3.5 w-3.5 shrink-0 text-[#f59f00]"
                       aria-hidden="true"></span>
                     <% } %>
-                    <h3 class="truncate text-base font-bold text-[#191f28]"><%= project.nameKo %></h3>
+                    <% if (project.faviconUrls.length > 0) { %>
+                    <span class="relative h-5 w-5 shrink-0 overflow-hidden rounded-md bg-[#f2f4f6] text-[#8b95a1]">
+                      <span
+                        class="i-lucide-globe-2 absolute inset-[3px]"
+                        aria-hidden="true"></span>
+                      <img
+                        src="<%= project.faviconUrls[0] %>"
+                        data-favicon-index="0"
+                        data-favicon-list="<%= project.faviconUrls.join('|') %>"
+                        alt=""
+                        loading="lazy"
+                        referrerpolicy="no-referrer"
+                        class="absolute inset-0 h-full w-full bg-white object-contain"
+                        onerror="window.launchboardNextFavicon && window.launchboardNextFavicon(this)" />
+                    </span>
+                    <% } %>
+                    <h3 class="truncate text-base font-bold text-[#191f28]">
+                      <%= project.nameKo %><% if (project.nameEn) { %>
+                      <span class="font-semibold text-[#8b95a1]"> - <%= project.nameEn %></span><% } %>
+                    </h3>
                   </div>
-                  <% if (project.nameEn) { %>
-                  <p class="mt-1 truncate text-xs font-medium text-[#8b95a1]"><%= project.nameEn %></p>
-                  <% } %>
                 </div>
                 <span class="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-bold <%= project.priorityTone %>"><%= project.priorityLabel %></span>
               </div>
@@ -268,7 +311,7 @@
   <div
     x-cloak
     x-show="projectModalOpen"
-    class="fixed inset-0 z-50 flex items-end justify-center bg-[#191f28]/45 px-4 py-4 sm:items-center"
+    class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4 sm:items-center"
     @click.self="projectModalOpen = false">
     <section
       class="w-full max-w-[420px] rounded-lg bg-white p-5 shadow-[0_24px_80px_rgba(25,31,40,0.28)]"
@@ -334,3 +377,19 @@
     </section>
   </div>
 </div>
+
+<script>
+  window.launchboardNextFavicon = function (image) {
+    const urls = String(image.dataset.faviconList || '').split('|').filter(Boolean)
+    const nextIndex = Number(image.dataset.faviconIndex || '0') + 1
+
+    if (nextIndex >= urls.length) {
+      image.onerror = null
+      image.classList.add('hidden')
+      return
+    }
+
+    image.dataset.faviconIndex = String(nextIndex)
+    image.src = urls[nextIndex]
+  }
+</script>
