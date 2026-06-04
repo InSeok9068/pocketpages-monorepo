@@ -122,14 +122,7 @@ function getTaskBoardState(app, userId, projectId) {
     tasksByStatus[TASK_STATUS_COLUMNS[index].value] = []
   }
 
-  const tasks = app.findRecordsByFilter(
-    'project_tasks',
-    'user = {:userId} && project = {:projectId}',
-    '-is_pinned,+sort_order,-updated',
-    300,
-    0,
-    { userId, projectId }
-  )
+  const tasks = app.findRecordsByFilter('project_tasks', 'user = {:userId} && project = {:projectId}', '-is_pinned,+sort_order,-updated', 300, 0, { userId, projectId })
 
   for (let index = 0; index < tasks.length; index += 1) {
     const task = toTaskCard(tasks[index])

@@ -23,7 +23,9 @@
       <span><%= tabColumn.label %></span>
       <span
         class="text-[11px] text-[#8b95a1]"
-        data-task-status-count><%= tabTasks.length %></span>
+        data-task-status-count
+        ><%= tabTasks.length %></span
+      >
     </button>
     <% } %>
   </nav>
@@ -34,12 +36,12 @@
     <% const columnTasks = tasksByStatus[column.value] || [] %>
     <section
       id="task-status-<%= column.value %>"
-      class="rounded-lg p-3 <%= column.surface %>"
+      class="<%= column.surface %> rounded-lg p-3"
       data-task-column
       data-status="<%= column.value %>">
       <header class="flex items-center justify-between gap-3 px-1 py-1">
         <div class="flex min-w-0 items-center gap-2">
-          <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg <%= column.iconTone %>">
+          <span class="<%= column.iconTone %> inline-flex h-7 w-7 items-center justify-center rounded-lg">
             <span
               class="<%= column.icon %> h-4 w-4"
               aria-hidden="true"></span>
@@ -68,7 +70,9 @@
         <div
           class="rounded-lg bg-white/70 px-3 py-3 text-center text-xs font-medium text-[#8b95a1]"
           <% if (columnTasks.length > 0) { %>hidden<% } %>
-          data-task-empty-state>비어 있음</div>
+          data-task-empty-state>
+          비어 있음
+        </div>
 
         <% for (let taskIndex = 0; taskIndex < columnTasks.length; taskIndex += 1) { %>
         <% const task = columnTasks[taskIndex] %>
@@ -99,7 +103,7 @@
 
             <div class="flex shrink-0 items-center gap-1">
               <% if (task.showPriority) { %>
-              <span class="rounded-md px-1.5 py-1 text-[10px] font-bold <%= task.priorityTone %>"><%= task.priorityLabel %></span>
+              <span class="<%= task.priorityTone %> rounded-md px-1.5 py-1 text-[10px] font-bold"><%= task.priorityLabel %></span>
               <% } %>
               <span
                 role="button"
