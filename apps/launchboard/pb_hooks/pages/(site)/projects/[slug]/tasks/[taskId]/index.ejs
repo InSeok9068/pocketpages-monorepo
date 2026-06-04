@@ -162,9 +162,9 @@
 </script>
 
 <div
-  class="mx-auto max-w-[980px] space-y-4 sm:space-y-6"
+  class="mx-auto max-w-[980px] space-y-3 sm:space-y-6"
   x-data="{ advancedOpen: false }">
-  <header class="rounded-lg bg-white px-4 py-4 shadow-[0_8px_24px_rgba(25,31,40,0.05)] sm:px-6 sm:py-5">
+  <header class="rounded-lg bg-white px-3 py-3 shadow-[0_8px_24px_rgba(25,31,40,0.05)] sm:px-6 sm:py-5">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
         <a
@@ -177,7 +177,7 @@
         </a>
         <div class="mt-3 min-w-0">
           <p class="truncate text-xs font-bold text-[#8b95a1] sm:text-sm"><%= projectView.nameKo %></p>
-          <h1 class="truncate text-2xl font-bold leading-8 text-[#191f28] sm:text-3xl sm:leading-10"><%= taskView.title %></h1>
+          <h1 class="truncate text-xl font-bold leading-7 text-[#191f28] sm:text-3xl sm:leading-10"><%= taskView.title %></h1>
         </div>
       </div>
 
@@ -197,7 +197,7 @@
   <form
     method="post"
     action="/xapi/tasks/update"
-    class="grid gap-4">
+    class="grid gap-3 sm:gap-4">
     <input
       type="hidden"
       name="task_id"
@@ -211,9 +211,9 @@
       name="project_slug"
       value="<%= projectView.slug %>" />
 
-    <section class="rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
+    <section class="rounded-lg bg-white p-3 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
       <h2 class="text-base font-bold text-[#191f28]">기본</h2>
-      <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      <div class="mt-3 grid gap-3 sm:mt-4 sm:grid-cols-2 sm:gap-4">
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968] sm:col-span-2">
           제목
           <input
@@ -221,14 +221,14 @@
             name="title"
             required
             value="<%= taskView.title %>"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-base font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12 sm:text-base" />
         </label>
 
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           상태
           <select
             name="status"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-base font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]">
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12 sm:text-base">
             <% for (let index = 0; index < statusOptions.length; index += 1) { %>
             <% const option = statusOptions[index] %>
             <option
@@ -244,7 +244,7 @@
           우선순위
           <select
             name="priority"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-base font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]">
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12 sm:text-base">
             <% for (let index = 0; index < priorityOptions.length; index += 1) { %>
             <% const option = priorityOptions[index] %>
             <option
@@ -260,7 +260,7 @@
           타입
           <select
             name="type"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-base font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]">
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12 sm:text-base">
             <% for (let index = 0; index < typeOptions.length; index += 1) { %>
             <% const option = typeOptions[index] %>
             <option
@@ -284,9 +284,9 @@
       </div>
     </section>
 
-    <section class="rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
+    <section class="rounded-lg bg-white p-3 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
       <h2 class="text-base font-bold text-[#191f28]">내용</h2>
-      <div class="mt-4 grid gap-4">
+      <div class="mt-3 grid gap-3 sm:mt-4 sm:gap-4">
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           메모
           <textarea
@@ -309,16 +309,16 @@
       </div>
     </section>
 
-    <section class="rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
+    <section class="rounded-lg bg-white p-3 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
       <h2 class="text-base font-bold text-[#191f28]">일정</h2>
-      <div class="mt-4 grid gap-4 sm:grid-cols-4">
+      <div class="mt-3 grid gap-3 sm:mt-4 sm:grid-cols-4 sm:gap-4">
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           마감일
           <input
             type="date"
             name="due_at"
             value="<%= taskView.dueAt %>"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12" />
         </label>
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           시작일
@@ -326,7 +326,7 @@
             type="date"
             name="started_at"
             value="<%= taskView.startedAt %>"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12" />
         </label>
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           완료일
@@ -334,7 +334,7 @@
             type="date"
             name="completed_at"
             value="<%= taskView.completedAt %>"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12" />
         </label>
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           취소일
@@ -342,12 +342,12 @@
             type="date"
             name="canceled_at"
             value="<%= taskView.canceledAt %>"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12" />
         </label>
       </div>
     </section>
 
-    <section class="rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
+    <section class="rounded-lg bg-white p-3 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
       <button
         type="button"
         class="flex w-full items-center justify-between rounded-lg border-0 bg-transparent p-0 text-left"
@@ -370,14 +370,14 @@
         x-cloak
         x-show="advancedOpen"
         x-transition
-        class="mt-4 grid gap-4 sm:grid-cols-2">
+        class="mt-3 grid gap-3 sm:mt-4 sm:grid-cols-2 sm:gap-4">
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           태그
           <input
             type="text"
             name="tags"
             value="<%= taskView.tags %>"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]"
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12"
             placeholder="쉼표로 구분" />
         </label>
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
@@ -387,28 +387,28 @@
             name="sort_order"
             min="0"
             value="<%= taskView.sortOrder %>"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12" />
         </label>
       </div>
     </section>
 
-    <div class="bg-[#f7f8fa]/92 sticky bottom-0 -mx-4 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-0">
+    <div class="bg-[#f7f8fa]/92 sticky bottom-0 -mx-3 px-3 py-2 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-0">
       <div class="flex gap-2">
         <a
           href="<%= projectView.tasksHref %>"
-          class="inline-flex h-12 flex-1 items-center justify-center rounded-lg bg-[#f2f4f6] px-4 text-sm font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:flex-none"
+          class="inline-flex h-11 flex-1 items-center justify-center rounded-lg bg-[#f2f4f6] px-4 text-sm font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-12 sm:flex-none"
           >취소</a
         >
         <button
           type="submit"
-          class="inline-flex h-12 flex-[2] items-center justify-center rounded-lg border-0 bg-[#3182f6] px-4 text-sm font-bold text-white hover:bg-[#1b64da] sm:flex-none">
+          class="inline-flex h-11 flex-[2] items-center justify-center rounded-lg border-0 bg-[#3182f6] px-4 text-sm font-bold text-white hover:bg-[#1b64da] sm:h-12 sm:flex-none">
           저장
         </button>
       </div>
     </div>
   </form>
 
-  <section class="rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
+  <section class="rounded-lg bg-white p-3 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h2 class="text-base font-bold text-[#191f28]">삭제</h2>

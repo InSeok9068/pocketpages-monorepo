@@ -163,6 +163,33 @@
 
   <section>
     <div class="min-w-0">
+      <nav
+        class="mb-3 mt-9 grid grid-cols-5 gap-1 rounded-lg bg-white p-1 shadow-[0_8px_24px_rgba(25,31,40,0.05)] md:hidden"
+        aria-label="프로젝트 상태">
+        <% for (let tabIndex = 0; tabIndex < statusColumns.length; tabIndex += 1) { %>
+        <% const tabColumn = statusColumns[tabIndex] %>
+        <% const tabProjects = projectsByStatus[tabColumn.value] || [] %>
+        <button
+          type="button"
+          class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 px-1 text-[10px] font-bold leading-none hover:bg-[#eaf3ff] sm:h-12"
+          :class="isActiveStatus('<%= tabColumn.value %>') ? 'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]' : 'bg-[#f2f4f6] text-[#4e5968]'"
+          :aria-pressed="isActiveStatus('<%= tabColumn.value %>') ? 'true' : 'false'"
+          @click="setActiveStatus('<%= tabColumn.value %>')">
+          <span
+            class="<%= tabColumn.icon %> h-3.5 w-3.5 shrink-0"
+            aria-hidden="true"></span>
+          <span class="flex max-w-full min-w-0 items-center gap-0.5">
+            <span class="truncate"><%= tabColumn.label %></span>
+            <span
+              class="shrink-0 text-[10px]"
+              :class="isActiveStatus('<%= tabColumn.value %>') ? 'text-[#1b64da]' : 'text-[#6b7684]'"
+              ><%= tabProjects.length %></span
+            >
+          </span>
+        </button>
+        <% } %>
+      </nav>
+
       <div class="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
         <% for (let columnIndex = 0; columnIndex < statusColumns.length; columnIndex += 1) { %>
         <% const column = statusColumns[columnIndex] %>
@@ -170,7 +197,9 @@
         <section
           id="status-<%= column.value %>"
           class="<%= column.surface %> rounded-lg p-3"
-          :class="isColumnCollapsed('<%= column.value %>') ? 'min-h-0 bg-white/70' : 'min-h-[280px]'">
+          x-show="!isMobile || isActiveStatus('<%= column.value %>')"
+          x-transition
+          :class="!isMobile && isColumnCollapsed('<%= column.value %>') ? 'min-h-0 bg-white/70' : 'min-h-[280px]'">
           <header class="flex items-center justify-between gap-3 px-1 py-1">
             <div class="flex items-center gap-2">
               <span class="<%= column.iconTone %> inline-flex h-7 w-7 items-center justify-center rounded-lg">
@@ -184,7 +213,7 @@
             <div class="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                class="inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-white/70 text-[#6b7684] hover:bg-white"
+                class="hidden h-8 w-8 items-center justify-center rounded-lg border-0 bg-white/70 text-[#6b7684] hover:bg-white md:inline-flex"
                 :aria-label="isColumnCollapsed('<%= column.value %>') ? '펼치기' : '접기'"
                 :aria-expanded="!isColumnCollapsed('<%= column.value %>')"
                 @click="toggleColumn('<%= column.value %>')">
@@ -212,7 +241,7 @@
           </header>
 
           <div
-            x-show="!isColumnCollapsed('<%= column.value %>')"
+            x-show="isMobile || !isColumnCollapsed('<%= column.value %>')"
             x-transition
             class="mt-3 grid gap-3"
             data-sortable-list
@@ -417,6 +446,8 @@
 <script>
   window.launchboardBoard = function () {
     const storageKey = 'launchboard:collapsed-statuses'
+    const activeStatusKey = 'launchboard:active-status'
+    const statusValues = ['idea', 'building', 'launched', 'paused', 'discarded']
     const defaultCollapsedStatuses = {
       paused: true,
       discarded: true,
@@ -426,8 +457,11 @@
       projectModalOpen: false,
       userMenuOpen: false,
       collapsedStatuses: {},
+      activeStatus: 'idea',
+      isMobile: false,
       init: function () {
         let savedStatuses = {}
+        let savedActiveStatus = ''
 
         try {
           const savedText = window.localStorage.getItem(storageKey)
@@ -440,7 +474,34 @@
           savedStatuses = {}
         }
 
+        try {
+          savedActiveStatus = window.localStorage.getItem(activeStatusKey) || ''
+        } catch (exception) {
+          savedActiveStatus = ''
+        }
+
         this.collapsedStatuses = Object.assign({}, defaultCollapsedStatuses, savedStatuses)
+        this.activeStatus = statusValues.indexOf(savedActiveStatus) >= 0 ? savedActiveStatus : 'idea'
+        this.updateViewport()
+
+        window.addEventListener('resize', this.updateViewport.bind(this))
+      },
+      updateViewport: function () {
+        this.isMobile = window.matchMedia('(max-width: 767px)').matches
+      },
+      isActiveStatus: function (status) {
+        return this.activeStatus === status
+      },
+      setActiveStatus: function (status) {
+        if (statusValues.indexOf(status) < 0) return
+
+        this.activeStatus = status
+
+        try {
+          window.localStorage.setItem(activeStatusKey, status)
+        } catch (exception) {
+          return
+        }
       },
       isColumnCollapsed: function (status) {
         return this.collapsedStatuses[status] === true
