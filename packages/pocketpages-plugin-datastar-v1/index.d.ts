@@ -12,6 +12,7 @@ declare namespace DatastarV1 {
     mode?: ElementPatchMode
     namespace?: Namespace
     useViewTransition?: boolean
+    viewTransitionSelector?: string
   }
 
   interface ScriptOptions {
@@ -70,6 +71,7 @@ declare namespace DatastarV1 {
     mode?: ElementPatchMode
     namespace?: Namespace
     useViewTransition?: boolean
+    viewTransitionSelector?: string
     eventId?: string
     retryDuration?: number
   }

@@ -49,6 +49,36 @@ test('GET /datastar returns the Datastar sample page', async () => {
   assert.match(body, /datastar\.min/);
 });
 
+test('GET /assets/vendor/datastar.min.js returns the vendored Datastar v1.0.2 bundle', async () => {
+  const response = await fetch(`${service.baseUrl}/assets/vendor/datastar.min.js`);
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, /^\/\/ Datastar v1\.0\.2/);
+  assert.match(body, /viewTransitionSelector/);
+});
+
+test('GET /datastar/spa/overview forwards Datastar view transition selector headers', async () => {
+  const response = await fetch(`${service.baseUrl}/datastar/spa/overview`, {
+    headers: {
+      'Datastar-Request': 'true',
+      'Datastar-Selector': '#datastar-spa-panel',
+      'Datastar-Use-View-Transition': 'true',
+      'Datastar-View-Transition-Selector': '#datastar-shell',
+    },
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') || '', /^text\/event-stream/);
+  assert.match(body, /event: datastar-patch-elements/);
+  assert.match(body, /data: selector #datastar-spa-panel/);
+  assert.match(body, /data: mode inner/);
+  assert.match(body, /data: useViewTransition true/);
+  assert.match(body, /data: viewTransitionSelector #datastar-shell/);
+  assert.match(body, /Datastar GET patch/);
+});
+
 test('POST /xapi/datastar/form returns signal and element patches', async () => {
   const response = await fetch(`${service.baseUrl}/xapi/datastar/form`, {
     method: 'POST',

@@ -392,6 +392,11 @@ function buildHeaders(options) {
   if (opts.mode) headers['Datastar-Mode'] = String(opts.mode);
   if (opts.namespace) headers['Datastar-Namespace'] = String(opts.namespace);
   if (opts.useViewTransition) headers['Datastar-Use-View-Transition'] = 'true';
+  if (opts.viewTransitionSelector) {
+    headers['Datastar-View-Transition-Selector'] = String(
+      opts.viewTransitionSelector
+    );
+  }
   return headers;
 }
 
@@ -566,6 +571,7 @@ function datastarPluginFactory(config, pluginOptions) {
             selector: '',
             mode: ElementPatchMode.Outer,
             useViewTransition: false,
+            viewTransitionSelector: '',
             namespace: Namespace.Html,
           },
           options || {}
@@ -582,6 +588,11 @@ function datastarPluginFactory(config, pluginOptions) {
         }
         if (patchOptions.useViewTransition) {
           dataLines.push('useViewTransition true');
+        }
+        if (patchOptions.viewTransitionSelector) {
+          dataLines.push(
+            'viewTransitionSelector ' + patchOptions.viewTransitionSelector
+          );
         }
         if (patchOptions.namespace !== Namespace.Html) {
           dataLines.push('namespace ' + patchOptions.namespace);
@@ -856,6 +867,9 @@ function datastarPluginFactory(config, pluginOptions) {
       const mode = api.request.header('Datastar-Mode');
       const namespace = api.request.header('Datastar-Namespace');
       const useViewTransition = api.request.header('Datastar-Use-View-Transition');
+      const viewTransitionSelector = api.request.header(
+        'Datastar-View-Transition-Selector'
+      );
       const options = {};
 
       if (selector) {
@@ -867,6 +881,9 @@ function datastarPluginFactory(config, pluginOptions) {
       if (namespace) options.namespace = namespace;
       if (String(useViewTransition || '').toLowerCase() === 'true') {
         options.useViewTransition = true;
+      }
+      if (viewTransitionSelector) {
+        options.viewTransitionSelector = viewTransitionSelector;
       }
 
       if (!hasValue(context.content) || !String(context.content).trim()) {

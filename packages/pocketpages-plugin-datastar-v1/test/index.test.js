@@ -109,6 +109,26 @@ test('removeElements emits a remove element patch', function () {
   assert.strictEqual(harness.responseHeaders['Content-Type'], 'text/event-stream');
 });
 
+test('patchElements emits view transition selector options', function () {
+  const harness = createHarness();
+
+  harness.api.datastar.patchElements('<div id="modal">Updated</div>', {
+    selector: '#modal',
+    useViewTransition: true,
+    viewTransitionSelector: '#shell',
+  });
+
+  assert.strictEqual(
+    harness.output(),
+    'event: datastar-patch-elements\n' +
+      'data: selector #modal\n' +
+      'data: useViewTransition true\n' +
+      'data: viewTransitionSelector #shell\n' +
+      'data: elements <div id="modal">Updated</div>\n' +
+      '\n'
+  );
+});
+
 test('removeSignals emits a null signal patch for one key', function () {
   const harness = createHarness();
 
@@ -203,6 +223,7 @@ test('realtime helpers normalize Datastar boolean args as raw strings', function
   harness.api.datastar.realtime.patchElements('<div></div>', {
     selector: '#notice',
     useViewTransition: true,
+    viewTransitionSelector: '#shell',
   });
   harness.api.datastar.realtime.patchSignals({ ready: true }, {
     onlyIfMissing: true,
@@ -218,6 +239,7 @@ test('realtime helpers normalize Datastar boolean args as raw strings', function
           elements: '<div></div>',
           selector: '#notice',
           useViewTransition: 'true',
+          viewTransitionSelector: '#shell',
         },
       }),
       options: undefined,
@@ -451,6 +473,28 @@ test('Datastar page render still emits an inner patch for selectors', function (
     'event: datastar-patch-elements\n' +
       'data: selector #main\n' +
       'data: mode inner\n' +
+      'data: elements <h1>Hello</h1>\n' +
+      '\n'
+  );
+});
+
+test('Datastar page render forwards view transition selector headers', function () {
+  const harness = createHarness({
+    'Datastar-Request': 'true',
+    'Datastar-Selector': '#main',
+    'Datastar-Use-View-Transition': 'true',
+    'Datastar-View-Transition-Selector': '#shell',
+  });
+
+  harness.plugin.onRender({ api: harness.api, content: '<h1>Hello</h1>' });
+
+  assert.strictEqual(
+    harness.output(),
+    'event: datastar-patch-elements\n' +
+      'data: selector #main\n' +
+      'data: mode inner\n' +
+      'data: useViewTransition true\n' +
+      'data: viewTransitionSelector #shell\n' +
       'data: elements <h1>Hello</h1>\n' +
       '\n'
   );

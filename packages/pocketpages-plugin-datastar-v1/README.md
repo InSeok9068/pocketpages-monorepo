@@ -8,10 +8,10 @@ This package keeps the server side thin: it loads a local Datastar browser bundl
 
 Compared to the original PocketPages Datastar plugin, this package adds a few Datastar 1.x focused helpers while keeping the adapter thin:
 
-- Vendors the Datastar `v1.0.1` browser bundle for local asset usage.
+- Vendors the Datastar `v1.0.2` browser bundle for local asset usage.
 - Uses Datastar 1.x attribute syntax in the SPA helper, such as `data-on:click`.
 - Keeps `spa` as the public navigation helper option for PocketPages layouts.
-- Supports `Datastar-Selector`, `Datastar-Mode`, `Datastar-Namespace`, and `Datastar-Use-View-Transition` headers.
+- Supports `Datastar-Selector`, `Datastar-Mode`, `Datastar-Namespace`, `Datastar-Use-View-Transition`, and `Datastar-View-Transition-Selector` headers.
 - Supports `namespace`, `eventId`, `retryDuration`, and view-transition options in SSE patch helpers.
 - Adds `removeElements()` and `removeSignals()` conveniences for common removal patches.
 - Reads signals from the query string for `GET` and `DELETE`, and from the request body for other methods.
@@ -189,6 +189,7 @@ Supported render headers:
 - `Datastar-Mode`
 - `Datastar-Namespace`
 - `Datastar-Use-View-Transition`
+- `Datastar-View-Transition-Selector`
 
 ## Realtime
 
