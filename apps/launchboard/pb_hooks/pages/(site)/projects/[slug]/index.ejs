@@ -5,7 +5,6 @@
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   const statusOptions = [
     { value: 'idea', label: '아이디어' },
-    { value: 'ready', label: '작업전' },
     { value: 'building', label: '작업중' },
     { value: 'launched', label: '출시' },
     { value: 'paused', label: '보류' },
@@ -23,6 +22,16 @@
     if (!raw) return ''
 
     return dateutil.formatDate(raw, 'YYYY-MM-DD')
+  }
+
+  function normalizeStatus(value) {
+    const raw = String(value || 'idea').trim()
+
+    for (let index = 0; index < statusOptions.length; index += 1) {
+      if (statusOptions[index].value === raw) return raw
+    }
+
+    return 'idea'
   }
 
   function normalizeTags(value) {
@@ -130,7 +139,7 @@
     nameKo: String(project.get('name_ko') || '').trim(),
     nameEn: String(project.get('name_en') || '').trim(),
     slug: String(project.get('slug') || '').trim(),
-    status: String(project.get('status') || 'idea'),
+    status: normalizeStatus(project.get('status')),
     priority: String(project.get('priority') || 'normal'),
     isPinned: project.get('is_pinned') === true,
     domainUrl: String(project.get('domain_url') || '').trim(),
@@ -157,7 +166,9 @@
   })
 </script>
 
-<div class="mx-auto max-w-[980px] space-y-4 sm:space-y-6">
+<div
+  class="mx-auto max-w-[980px] space-y-4 sm:space-y-6"
+  x-data="{ advancedOpen: false }">
   <header class="rounded-lg bg-white px-4 py-4 shadow-[0_8px_24px_rgba(25,31,40,0.05)] sm:px-6 sm:py-5">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
@@ -169,12 +180,7 @@
             aria-hidden="true"></span>
           목록
         </a>
-        <div class="mt-3 flex min-w-0 items-center gap-3">
-          <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#3182f6] text-white shadow-[0_10px_22px_rgba(49,130,246,0.2)]">
-            <span
-              class="i-lucide-folder-pen h-[18px] w-[18px]"
-              aria-hidden="true"></span>
-          </span>
+        <div class="mt-3 flex min-w-0 items-center">
           <div class="min-w-0">
             <h1 class="truncate text-2xl font-bold leading-8 text-[#191f28] sm:text-3xl sm:leading-10"><%= projectView.nameKo %></h1>
             <% if (projectView.nameEn) { %>
@@ -207,7 +213,8 @@
       value="<%= projectView.id %>" />
 
     <section class="rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
-      <div class="grid gap-4 sm:grid-cols-2">
+      <h2 class="text-base font-bold text-[#191f28]">기본</h2>
+      <div class="mt-4 grid gap-4 sm:grid-cols-2">
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           프로젝트명
           <input
@@ -272,7 +279,8 @@
     </section>
 
     <section class="rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
-      <div class="grid gap-4">
+      <h2 class="text-base font-bold text-[#191f28]">내용</h2>
+      <div class="mt-4 grid gap-4">
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           짧은 설명
           <textarea
@@ -308,7 +316,8 @@
     </section>
 
     <section class="rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
-      <div class="grid gap-4 sm:grid-cols-2">
+      <h2 class="text-base font-bold text-[#191f28]">링크</h2>
+      <div class="mt-4 grid gap-4 sm:grid-cols-2">
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           도메인 URL
           <input
@@ -327,26 +336,12 @@
             class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
         </label>
 
-        <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
-          태그
-          <input
-            type="text"
-            name="tags"
-            value="<%= projectView.tags %>"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]"
-            placeholder="쉼표로 구분" />
-        </label>
+      </div>
+    </section>
 
-        <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
-          정렬
-          <input
-            type="number"
-            name="sort_order"
-            min="0"
-            value="<%= projectView.sortOrder %>"
-            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
-        </label>
-
+    <section class="rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
+      <h2 class="text-base font-bold text-[#191f28]">일정</h2>
+      <div class="mt-4 grid gap-4 sm:grid-cols-3">
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           작업 시작일
           <input
@@ -371,6 +366,52 @@
             type="date"
             name="discarded_at"
             value="<%= projectView.discardedAt %>"
+            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
+        </label>
+      </div>
+    </section>
+
+    <section class="rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)] sm:p-5">
+      <button
+        type="button"
+        class="flex w-full items-center justify-between rounded-lg border-0 bg-transparent p-0 text-left"
+        :aria-expanded="advancedOpen"
+        @click="advancedOpen = !advancedOpen">
+        <span class="text-base font-bold text-[#191f28]">고급</span>
+        <span
+          x-cloak
+          x-show="!advancedOpen"
+          class="i-lucide-chevron-down h-4 w-4 text-[#8b95a1]"
+          aria-hidden="true"></span>
+        <span
+          x-cloak
+          x-show="advancedOpen"
+          class="i-lucide-chevron-up h-4 w-4 text-[#8b95a1]"
+          aria-hidden="true"></span>
+      </button>
+
+      <div
+        x-cloak
+        x-show="advancedOpen"
+        x-transition
+        class="mt-4 grid gap-4 sm:grid-cols-2">
+        <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
+          태그
+          <input
+            type="text"
+            name="tags"
+            value="<%= projectView.tags %>"
+            class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]"
+            placeholder="쉼표로 구분" />
+        </label>
+
+        <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
+          정렬
+          <input
+            type="number"
+            name="sort_order"
+            min="0"
+            value="<%= projectView.sortOrder %>"
             class="h-12 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
         </label>
       </div>

@@ -25,7 +25,7 @@
     return
   }
 
-  const statusValues = ['idea', 'ready', 'building', 'launched', 'paused', 'discarded']
+  const statusValues = ['idea', 'building', 'launched', 'paused', 'discarded']
   const priorityValues = ['low', 'normal', 'high']
   const form = body()
   const userId = String(request.auth.get('id') || '')

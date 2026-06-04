@@ -871,7 +871,7 @@
         "required": true,
         "system": false,
         "type": "select",
-        "values": ["idea", "ready", "building", "launched", "paused", "discarded"]
+        "values": ["idea", "building", "launched", "paused", "discarded"]
       },
       {
         "autogeneratePattern": "",
