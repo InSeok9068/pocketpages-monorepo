@@ -1,0 +1,21 @@
+@view-transition {
+  navigation: auto;
+}
+
+[un-cloak] {
+  visibility: visible;
+}
+
+[x-cloak] {
+  display: none !important;
+}
+
+button {
+  border: 0;
+  font: inherit;
+}
+
+button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.18);
+}

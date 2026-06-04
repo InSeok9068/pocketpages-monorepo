@@ -1,0 +1,95 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/projects/status:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/projects/status:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const statusValues = ['idea', 'ready', 'building', 'launched', 'paused', 'discarded']
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const projectId = String(form.project_id || '').trim()
+  const status = String(form.status || '').trim()
+  let errorMessage = ''
+
+  dbg('xapi/projects/status:start', {
+    userId,
+    projectId,
+    status,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!projectId) throw new Error('프로젝트를 찾지 못했습니다.')
+    if (statusValues.indexOf(status) < 0) throw new Error('상태 값이 올바르지 않습니다.')
+
+    const project = $app.findFirstRecordByFilter('projects', 'id = {:projectId} && user = {:userId}', {
+      projectId,
+      userId,
+    })
+    const previousStatus = String(project.get('status') || '')
+
+    project.set('status', status)
+
+    if (status === 'building' && !project.get('started_at')) project.set('started_at', new Date().toISOString())
+    if (status === 'launched' && !project.get('launched_at')) project.set('launched_at', new Date().toISOString())
+    if (status === 'discarded' && !project.get('discarded_at')) project.set('discarded_at', new Date().toISOString())
+
+    $app.save(project)
+
+    info('xapi/projects/status:success', {
+      projectId,
+      previousStatus,
+      status,
+    })
+    dbg('xapi/projects/status:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '변경했습니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '변경했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/projects/status:failed', {
+      userId,
+      projectId,
+      status,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/projects/status:redirect', {
+    status: 303,
+    redirectTo: '/',
+    error: errorMessage || '변경에 실패했습니다.',
+  })
+  redirect('/', {
+    status: 303,
+    message: errorMessage || '변경에 실패했습니다.',
+  })
+  return
+</script>

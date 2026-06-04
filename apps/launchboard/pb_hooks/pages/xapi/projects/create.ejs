@@ -1,0 +1,133 @@
+<script server>
+  if (request.method !== 'POST') {
+    dbg('xapi/projects/create:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/projects/create:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const statusValues = ['idea', 'ready', 'building', 'launched', 'paused', 'discarded']
+  const priorityValues = ['low', 'normal', 'high']
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const nameKo = String(form.name_ko || '').trim()
+  const nameEn = String(form.name_en || '').trim()
+  const requestedSlug = String(form.slug || '').trim().toLowerCase()
+  const status = String(form.status || 'idea').trim()
+  const priority = String(form.priority || 'normal').trim()
+  const domainUrl = String(form.domain_url || '').trim()
+  const repoUrl = String(form.repo_url || '').trim()
+  const description = String(form.description || '').trim()
+  function toSlugPart(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+  }
+
+  const generatedSlugBase = toSlugPart(nameEn) || toSlugPart(nameKo) || 'project'
+  const slug = requestedSlug || generatedSlugBase + '-' + new Date().getTime()
+  let errorMessage = ''
+
+  dbg('xapi/projects/create:start', {
+    userId,
+    nameKo,
+    slug,
+    status,
+    priority,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!nameKo) throw new Error('프로젝트명이 필요합니다.')
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error('슬러그는 영문 소문자, 숫자, 하이픈만 사용할 수 있습니다.')
+    if (statusValues.indexOf(status) < 0) throw new Error('상태 값이 올바르지 않습니다.')
+    if (priorityValues.indexOf(priority) < 0) throw new Error('우선순위 값이 올바르지 않습니다.')
+
+    try {
+      $app.findFirstRecordByFilter('projects', 'user = {:userId} && slug = {:slug}', {
+        userId,
+        slug,
+      })
+      throw new Error('이미 같은 슬러그가 있습니다.')
+    } catch (exception) {
+      if (String(exception.message || exception) === '이미 같은 슬러그가 있습니다.') {
+        throw exception
+      }
+    }
+
+    const collection = $app.findCollectionByNameOrId('projects')
+    const record = new Record(collection)
+
+    record.set('user', userId)
+    record.set('name_ko', nameKo)
+    record.set('name_en', nameEn)
+    record.set('slug', slug)
+    record.set('status', status)
+    record.set('priority', priority)
+    record.set('domain_url', domainUrl)
+    record.set('repo_url', repoUrl)
+    record.set('description', description)
+    record.set('sort_order', 0)
+    record.set('is_pinned', false)
+
+    if (status === 'building') record.set('started_at', new Date().toISOString())
+    if (status === 'launched') record.set('launched_at', new Date().toISOString())
+    if (status === 'discarded') record.set('discarded_at', new Date().toISOString())
+
+    $app.save(record)
+
+    info('xapi/projects/create:success', {
+      projectId: String(record.get('id') || ''),
+      slug,
+    })
+    dbg('xapi/projects/create:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '저장했습니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '저장했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/projects/create:failed', {
+      userId,
+      slug,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/projects/create:redirect', {
+    status: 303,
+    redirectTo: '/',
+    error: errorMessage || '저장에 실패했습니다.',
+  })
+  redirect('/', {
+    status: 303,
+    message: errorMessage || '저장에 실패했습니다.',
+  })
+  return
+</script>

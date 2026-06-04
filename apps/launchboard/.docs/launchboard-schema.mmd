@@ -1,0 +1,44 @@
+erDiagram
+  USERS ||--o{ PROJECTS : owns
+
+  USERS {
+    text id PK "PocketBase users id"
+    email email "로그인 이메일"
+  }
+
+  PROJECTS {
+    text id PK "PocketBase record id"
+    relation user FK "로그인 사용자"
+    text name_ko "프로젝트명 한글"
+    text name_en "프로젝트명 영문"
+    text slug "내부 URL 식별자"
+    select status "idea, ready, building, launched, paused, discarded"
+    url domain_url "실제 서비스 URL"
+    url repo_url "코드 저장소 URL"
+    text description "짧은 설명"
+    text problem "해결하려는 문제"
+    text target_user "대상 사용자"
+    select priority "low, normal, high"
+    json tags "분류 태그"
+    date started_at "작업 시작일"
+    date launched_at "출시일"
+    date discarded_at "폐기일"
+    text status_reason "상태 변경 이유"
+    number sort_order "카드 정렬"
+    bool is_pinned "상단 고정"
+    autodate created "생성일"
+    autodate updated "수정일"
+  }
+
+%% status
+%% - idea: 아이디어
+%% - ready: 작업전
+%% - building: 작업중
+%% - launched: 출시
+%% - paused: 보류
+%% - discarded: 폐기
+
+%% priority
+%% - low: 낮음
+%% - normal: 보통
+%% - high: 높음
