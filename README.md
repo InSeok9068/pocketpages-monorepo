@@ -2,36 +2,36 @@
 
 > AI 에이전트 안내: 이 문서를 작업 기준으로 사용하지 말고 먼저 `AGENTS.md`를 확인하세요.
 
-| 구분                | PocketPages (SSR)       |
-| ------------------- | ----------------------- |
-| 목적                | 빠른 MVP                |
-| 핵심가치            | AI 에이전트 협업        |
-| 백엔드              | PocketPages (PB)        |
-| 프론트엔드          | HTMX, Alpine.js         |
-| 템플릿/UI           | EJS                     |
-| CSS                 | UnoCSS (Tailwind)       |
-| 상태관리            | PB Native Context       |
-| 라우팅              | 파일 시스템 (Auto)      |
-| DB                  | SQLite (PB)             |
-| DB 관리             | PB Admin                |
-| DB <br>마이그레이션 | PB Migration            |
-| DB 복제/복원        | Litestream, LiteFS      |
-| 인증                | PB Auth + (Cookie)      |
-| 인가                | 서버 로직               |
-| 객체 저장           | File, AWS S3            |
-| 스케줄 작업         | PB cron                 |
-| 메시지 큐           | X                       |
-| 캐시                | Memory / Server (Store) |
-| 웹 서버             | Caddy                   |
-| 서버리스 함수       | Cloudflare Workers      |
-| 모니터링            | PB Admin Logs           |
-| 로깅                | PB Logs                 |
-| 린팅                | custom script           |
-| 테스트              | node test (http only)   |
-| 빌드 과정           | 불필요                  |
-| 배포 방식           | 파일 동기화 (PB 전송)   |
-| 모바일              | PWA => Capacitor        |
-| 푸시/알림           | FCM / OneSignal         |
+| 구분                | PocketPages (SSR)         |
+| ------------------- | ------------------------- |
+| 목적                | 빠른 MVP                  |
+| 핵심가치            | AI 에이전트 협업          |
+| 백엔드              | PocketPages (PB)          |
+| 프론트엔드          | HTMX, Alpine.js, Datastar |
+| 템플릿/UI           | EJS                       |
+| CSS                 | UnoCSS (Tailwind)         |
+| 상태관리            | PB Native Context         |
+| 라우팅              | 파일 시스템 (Auto)        |
+| DB                  | SQLite (PB)               |
+| DB 관리             | PB Admin                  |
+| DB <br>마이그레이션 | PB Migration              |
+| DB 복제/복원        | Litestream, LiteFS        |
+| 인증                | PB Auth + (Cookie)        |
+| 인가                | 서버 로직                 |
+| 객체 저장           | File, AWS S3              |
+| 스케줄 작업         | PB cron                   |
+| 메시지 큐           | X                         |
+| 캐시                | Memory / Server (Store)   |
+| 웹 서버             | Caddy                     |
+| 서버리스 함수       | Cloudflare Workers        |
+| 모니터링            | PB Admin Logs             |
+| 로깅                | PB Logs                   |
+| 린팅                | custom script             |
+| 테스트              | node test (http only)     |
+| 빌드 과정           | 불필요                    |
+| 배포 방식           | 파일 동기화 (PB 전송)     |
+| 모바일              | PWA => Capacitor          |
+| 푸시/알림           | FCM / OneSignal           |
 
 ---
 
@@ -101,7 +101,7 @@
 | `validator`  | 이메일, URL, 숫자/문자열 같은 문자열 단위 검증  |
 | `zod`        | form/body/query 입력값 런타임 검증              |
 | `chart.js`   | 막대/선/도넛 등 일반적인 데이터 차트 표시       |
-| `sortablejs` | 드래그 앤 드롭 목록 정렬, 순서 변경 UI         |
+| `sortablejs` | 드래그 앤 드롭 목록 정렬, 순서 변경 UI          |
 | `swiper`     | 모바일 터치 슬라이더, 캐러셀, 스와이프 UI       |
 | `driver.js`  | 첫 진입 안내, 기능 투어, 화면 요소 강조 안내    |
 
