@@ -85,6 +85,7 @@
       nameEn: String(record.get('name_en') || '').trim(),
       slug,
       href: '/projects/' + encodeURIComponent(slug),
+      tasksHref: '/projects/' + encodeURIComponent(slug) + '/tasks',
       status: normalizeStatus(record.get('status')),
       domainUrl,
       faviconUrls: getFaviconUrls(domainUrl),
@@ -288,6 +289,16 @@
 
               <div class="mt-3 flex items-center justify-between gap-3">
                 <div class="flex items-center gap-1.5">
+                  <a
+                    href="<%= project.tasksHref %>"
+                    class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f2f4f6] text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
+                    aria-label="업무"
+                    title="업무"
+                    onclick="event.stopPropagation()">
+                    <span
+                      class="i-lucide-list-todo h-3.5 w-3.5"
+                      aria-hidden="true"></span>
+                  </a>
                   <% if (project.domainUrl) { %>
                   <a
                     href="<%= project.domainUrl %>"

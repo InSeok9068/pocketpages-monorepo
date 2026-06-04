@@ -1,5 +1,7 @@
 erDiagram
   USERS ||--o{ PROJECTS : owns
+  USERS ||--o{ PROJECT_TASKS : owns
+  PROJECTS ||--o{ PROJECT_TASKS : has
 
   USERS {
     text id PK "PocketBase users id"
@@ -30,6 +32,27 @@ erDiagram
     autodate updated "수정일"
   }
 
+  PROJECT_TASKS {
+    text id PK "PocketBase record id"
+    relation user FK "로그인 사용자"
+    relation project FK "대상 프로젝트"
+    text title "업무 제목"
+    text description "상세 내용"
+    select status "todo, doing, done, paused, canceled"
+    select priority "low, normal, high"
+    select type "feature, bug, design, content, infra, research, etc"
+    json tags "분류 태그"
+    date due_at "마감일"
+    date started_at "시작일"
+    date completed_at "완료일"
+    date canceled_at "취소일"
+    text status_reason "상태 변경 이유"
+    number sort_order "카드 정렬"
+    bool is_pinned "상단 고정"
+    autodate created "생성일"
+    autodate updated "수정일"
+  }
+
 %% status
 %% - idea: 아이디어
 %% - building: 작업중
@@ -41,3 +64,19 @@ erDiagram
 %% - low: 낮음
 %% - normal: 보통
 %% - high: 높음
+
+%% task status
+%% - todo: 할 일
+%% - doing: 진행중
+%% - done: 완료
+%% - paused: 보류
+%% - canceled: 취소
+
+%% task type
+%% - feature: 기능
+%% - bug: 버그
+%% - design: 디자인
+%% - content: 콘텐츠
+%% - infra: 인프라
+%% - research: 조사
+%% - etc: 기타

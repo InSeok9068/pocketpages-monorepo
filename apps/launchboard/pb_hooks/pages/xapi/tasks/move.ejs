@@ -1,0 +1,115 @@
+<script server>
+  const taskBoard = resolve('task-board')
+
+  function patchBoard(projectId, userId, message) {
+    const project = $app.findFirstRecordByFilter('projects', 'id = {:projectId} && user = {:userId}', {
+      projectId,
+      userId,
+    })
+    const projectSlug = String(project.get('slug') || '').trim()
+    const state = taskBoard.getTaskBoardState($app, userId, projectId)
+
+    datastar.patchElements(
+      include('task-board.ejs', {
+        projectId,
+        projectSlug,
+        statusColumns: state.statusColumns,
+        tasksByStatus: state.tasksByStatus,
+      }),
+      {
+        selector: '#task-board',
+        mode: 'outer',
+      }
+    )
+    datastar.patchSignals({
+      moveTaskId: '',
+      moveStatus: '',
+      taskMessage: message,
+    })
+    datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable();')
+  }
+
+  if (request.method !== 'POST') {
+    warn('xapi/tasks/move:invalid-method', {
+      method: request.method,
+    })
+    datastar.patchSignals({
+      taskMessage: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    warn('xapi/tasks/move:unauthorized', {})
+    datastar.patchSignals({
+      taskMessage: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const signals = datastar.requestSignals({
+    moveTaskId: '',
+    moveStatus: '',
+  })
+  const userId = String(request.auth.get('id') || '')
+  const taskId = String(signals.moveTaskId || '').trim()
+  const status = String(signals.moveStatus || '').trim()
+  let projectId = ''
+  let errorMessage = ''
+
+  dbg('xapi/tasks/move:start', {
+    userId,
+    taskId,
+    status,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!taskId) throw new Error('업무를 찾지 못했습니다.')
+    if (taskBoard.TASK_STATUS_VALUES.indexOf(status) < 0) throw new Error('상태 값이 올바르지 않습니다.')
+
+    const task = $app.findFirstRecordByFilter('project_tasks', 'id = {:taskId} && user = {:userId}', {
+      taskId,
+      userId,
+    })
+    const previousStatus = String(task.get('status') || '')
+    projectId = String(task.get('project') || '')
+
+    task.set('status', status)
+
+    if (status === 'doing' && !task.get('started_at')) task.set('started_at', new Date().toISOString())
+    if (status === 'done' && !task.get('completed_at')) task.set('completed_at', new Date().toISOString())
+    if (status === 'canceled' && !task.get('canceled_at')) task.set('canceled_at', new Date().toISOString())
+
+    $app.save(task)
+
+    info('xapi/tasks/move:success', {
+      taskId,
+      projectId,
+      previousStatus,
+      status,
+    })
+    patchBoard(projectId, userId, '변경했습니다.')
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/tasks/move:failed', {
+      userId,
+      taskId,
+      status,
+      error: errorMessage,
+    })
+  }
+
+  if (projectId) {
+    patchBoard(projectId, userId, errorMessage || '변경에 실패했습니다.')
+    return
+  }
+
+  datastar.patchSignals({
+    moveTaskId: '',
+    moveStatus: '',
+    taskMessage: errorMessage || '변경에 실패했습니다.',
+  })
+  return
+</script>

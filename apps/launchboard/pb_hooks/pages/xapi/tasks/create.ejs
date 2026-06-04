@@ -1,0 +1,139 @@
+<script server>
+  const taskBoard = resolve('task-board')
+
+  function redirectToProjectTasks(project, message) {
+    const slug = project ? String(project.get('slug') || '').trim() : ''
+    const redirectTo = slug ? '/projects/' + encodeURIComponent(slug) + '/tasks' : '/'
+
+    dbg('xapi/tasks/create:redirect', {
+      status: 303,
+      redirectTo,
+      flash: message,
+    })
+    redirect(redirectTo, {
+      status: 303,
+      message,
+    })
+  }
+
+  function patchBoard(project, userId, message) {
+    const projectId = String(project.get('id') || '')
+    const projectSlug = String(project.get('slug') || '').trim()
+    const state = taskBoard.getTaskBoardState($app, userId, projectId)
+
+    datastar.patchElements(
+      include('task-board.ejs', {
+        projectId,
+        projectSlug,
+        statusColumns: state.statusColumns,
+        tasksByStatus: state.tasksByStatus,
+      }),
+      {
+        selector: '#task-board',
+        mode: 'outer',
+        useViewTransition: true,
+      }
+    )
+    datastar.patchSignals({
+      taskModalOpen: false,
+      taskTitle: '',
+      taskDescription: '',
+      taskMessage: message,
+    })
+    datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable();')
+  }
+
+  if (request.method !== 'POST') {
+    dbg('xapi/tasks/create:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/tasks/create:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const projectId = String(form.project_id || '').trim()
+  const title = String(form.title || '').trim()
+  const description = String(form.description || '').trim()
+  let project = null
+  let errorMessage = ''
+
+  dbg('xapi/tasks/create:start', {
+    userId,
+    projectId,
+    titleLength: title.length,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!projectId) throw new Error('프로젝트를 찾지 못했습니다.')
+    if (!title) throw new Error('업무 제목이 필요합니다.')
+
+    project = $app.findFirstRecordByFilter('projects', 'id = {:projectId} && user = {:userId}', {
+      projectId,
+      userId,
+    })
+
+    const collection = $app.findCollectionByNameOrId('project_tasks')
+    const record = new Record(collection)
+
+    record.set('user', userId)
+    record.set('project', projectId)
+    record.set('title', title)
+    record.set('description', description)
+    record.set('status', 'todo')
+    record.set('priority', 'normal')
+    record.set('type', 'etc')
+    record.set('sort_order', 0)
+    record.set('is_pinned', false)
+
+    $app.save(record)
+
+    info('xapi/tasks/create:success', {
+      taskId: String(record.get('id') || ''),
+      projectId,
+    })
+
+    if (datastar.isRequest(request)) {
+      patchBoard(project, userId, '추가했습니다.')
+      return
+    }
+
+    redirectToProjectTasks(project, '추가했습니다.')
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/tasks/create:failed', {
+      userId,
+      projectId,
+      error: errorMessage,
+    })
+  }
+
+  if (datastar.isRequest(request) && project) {
+    patchBoard(project, userId, errorMessage || '추가에 실패했습니다.')
+    return
+  }
+
+  redirectToProjectTasks(project, errorMessage || '추가에 실패했습니다.')
+  return
+</script>

@@ -139,6 +139,7 @@
     nameKo: String(project.get('name_ko') || '').trim(),
     nameEn: String(project.get('name_en') || '').trim(),
     slug: String(project.get('slug') || '').trim(),
+    tasksHref: '/projects/' + encodeURIComponent(String(project.get('slug') || '').trim()) + '/tasks',
     status: normalizeStatus(project.get('status')),
     priority: String(project.get('priority') || 'normal'),
     isPinned: project.get('is_pinned') === true,
@@ -190,12 +191,22 @@
         </div>
       </div>
 
-      <% if (projectView.updatedAt) { %>
-      <div class="hidden shrink-0 rounded-lg bg-[#f7f8fa] px-3 py-2 text-right sm:block">
-        <p class="text-[11px] font-bold text-[#8b95a1]">수정</p>
-        <p class="text-sm font-bold text-[#191f28]"><%= projectView.updatedAt %></p>
+      <div class="flex shrink-0 items-center gap-2">
+        <a
+          href="<%= projectView.tasksHref %>"
+          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-10 sm:text-sm">
+          <span
+            class="i-lucide-list-todo h-4 w-4"
+            aria-hidden="true"></span>
+          업무
+        </a>
+        <% if (projectView.updatedAt) { %>
+        <div class="hidden rounded-lg bg-[#f7f8fa] px-3 py-2 text-right sm:block">
+          <p class="text-[11px] font-bold text-[#8b95a1]">수정</p>
+          <p class="text-sm font-bold text-[#191f28]"><%= projectView.updatedAt %></p>
+        </div>
+        <% } %>
       </div>
-      <% } %>
     </div>
   </header>
 

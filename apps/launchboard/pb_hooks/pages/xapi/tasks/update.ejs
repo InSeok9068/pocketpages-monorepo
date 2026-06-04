@@ -1,0 +1,152 @@
+<script server>
+  const taskBoard = resolve('task-board')
+
+  if (request.method !== 'POST') {
+    dbg('xapi/tasks/update:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/tasks/update:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const taskId = String(form.task_id || '').trim()
+  const projectId = String(form.project_id || '').trim()
+  const projectSlug = String(form.project_slug || '').trim()
+  const title = String(form.title || '').trim()
+  const status = String(form.status || '').trim()
+  const priority = String(form.priority || '').trim()
+  const type = String(form.type || '').trim()
+  const sortOrder = Number(form.sort_order || 0)
+  let redirectTo = projectSlug && taskId ? '/projects/' + encodeURIComponent(projectSlug) + '/tasks/' + encodeURIComponent(taskId) : '/'
+  let errorMessage = ''
+
+  function optionalText(value) {
+    return String(value || '').trim()
+  }
+
+  function parseTags(value) {
+    const raw = String(value || '').trim()
+
+    if (!raw) return []
+
+    return raw
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter((tag) => !!tag)
+  }
+
+  function dateOrEmpty(value) {
+    const raw = String(value || '').trim()
+
+    if (!raw) return ''
+
+    return new Date(raw + 'T00:00:00.000Z').toISOString()
+  }
+
+  dbg('xapi/tasks/update:start', {
+    userId,
+    taskId,
+    projectId,
+    status,
+    priority,
+    type,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!taskId || !projectId) throw new Error('업무를 찾지 못했습니다.')
+    if (!title) throw new Error('업무 제목이 필요합니다.')
+    if (taskBoard.TASK_STATUS_VALUES.indexOf(status) < 0) throw new Error('상태 값이 올바르지 않습니다.')
+    if (taskBoard.TASK_PRIORITY_VALUES.indexOf(priority) < 0) throw new Error('우선순위 값이 올바르지 않습니다.')
+    if (taskBoard.TASK_TYPE_VALUES.indexOf(type) < 0) throw new Error('타입 값이 올바르지 않습니다.')
+    if (isNaN(sortOrder) || sortOrder < 0) throw new Error('정렬 값이 올바르지 않습니다.')
+
+    const project = $app.findFirstRecordByFilter('projects', 'id = {:projectId} && user = {:userId}', {
+      projectId,
+      userId,
+    })
+    const task = $app.findFirstRecordByFilter('project_tasks', 'id = {:taskId} && user = {:userId} && project = {:projectId}', {
+      taskId,
+      userId,
+      projectId,
+    })
+    const slug = String(project.get('slug') || projectSlug).trim()
+
+    redirectTo = '/projects/' + encodeURIComponent(slug) + '/tasks/' + encodeURIComponent(taskId)
+
+    task.set('title', title)
+    task.set('description', optionalText(form.description))
+    task.set('status', status)
+    task.set('priority', priority)
+    task.set('type', type)
+    task.set('tags', parseTags(form.tags))
+    task.set('due_at', dateOrEmpty(form.due_at))
+    task.set('started_at', dateOrEmpty(form.started_at))
+    task.set('completed_at', dateOrEmpty(form.completed_at))
+    task.set('canceled_at', dateOrEmpty(form.canceled_at))
+    task.set('status_reason', optionalText(form.status_reason))
+    task.set('sort_order', sortOrder)
+    task.set('is_pinned', String(form.is_pinned || '') === 'true')
+
+    if (status === 'doing' && !task.get('started_at')) task.set('started_at', new Date().toISOString())
+    if (status === 'done' && !task.get('completed_at')) task.set('completed_at', new Date().toISOString())
+    if (status === 'canceled' && !task.get('canceled_at')) task.set('canceled_at', new Date().toISOString())
+
+    $app.save(task)
+
+    info('xapi/tasks/update:success', {
+      taskId,
+      projectId,
+      status,
+    })
+    dbg('xapi/tasks/update:redirect', {
+      status: 303,
+      redirectTo,
+      flash: '저장했습니다.',
+    })
+    redirect(redirectTo, {
+      status: 303,
+      message: '저장했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/tasks/update:failed', {
+      userId,
+      taskId,
+      projectId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('xapi/tasks/update:redirect', {
+    status: 303,
+    redirectTo,
+    error: errorMessage || '저장에 실패했습니다.',
+  })
+  redirect(redirectTo, {
+    status: 303,
+    message: errorMessage || '저장에 실패했습니다.',
+  })
+  return
+</script>

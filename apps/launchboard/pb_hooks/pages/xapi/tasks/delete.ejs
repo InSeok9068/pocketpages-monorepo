@@ -1,0 +1,132 @@
+<script server>
+  const taskBoard = resolve('task-board')
+
+  function redirectToProjectTasks(projectId, message) {
+    let redirectTo = '/'
+
+    try {
+      const project = $app.findRecordById('projects', projectId)
+      const slug = String(project.get('slug') || '').trim()
+
+      if (slug) redirectTo = '/projects/' + encodeURIComponent(slug) + '/tasks'
+    } catch (exception) {
+      redirectTo = '/'
+    }
+
+    dbg('xapi/tasks/delete:redirect', {
+      status: 303,
+      redirectTo,
+      flash: message,
+    })
+    redirect(redirectTo, {
+      status: 303,
+      message,
+    })
+  }
+
+  function patchBoard(projectId, userId, message) {
+    const project = $app.findFirstRecordByFilter('projects', 'id = {:projectId} && user = {:userId}', {
+      projectId,
+      userId,
+    })
+    const projectSlug = String(project.get('slug') || '').trim()
+    const state = taskBoard.getTaskBoardState($app, userId, projectId)
+
+    datastar.patchElements(
+      include('task-board.ejs', {
+        projectId,
+        projectSlug,
+        statusColumns: state.statusColumns,
+        tasksByStatus: state.tasksByStatus,
+      }),
+      {
+        selector: '#task-board',
+        mode: 'outer',
+      }
+    )
+    datastar.patchSignals({
+      taskMessage: message,
+    })
+    datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable();')
+  }
+
+  if (request.method !== 'POST') {
+    dbg('xapi/tasks/delete:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('xapi/tasks/delete:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const taskId = String(form.task_id || '').trim()
+  let projectId = String(form.project_id || '').trim()
+  let errorMessage = ''
+
+  dbg('xapi/tasks/delete:start', {
+    userId,
+    taskId,
+    projectId,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!taskId) throw new Error('업무를 찾지 못했습니다.')
+
+    const task = $app.findFirstRecordByFilter('project_tasks', 'id = {:taskId} && user = {:userId}', {
+      taskId,
+      userId,
+    })
+
+    projectId = String(task.get('project') || projectId)
+    $app.delete(task)
+
+    info('xapi/tasks/delete:success', {
+      taskId,
+      projectId,
+    })
+
+    if (datastar.isRequest(request)) {
+      patchBoard(projectId, userId, '삭제했습니다.')
+      return
+    }
+
+    redirectToProjectTasks(projectId, '삭제했습니다.')
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/tasks/delete:failed', {
+      userId,
+      taskId,
+      projectId,
+      error: errorMessage,
+    })
+  }
+
+  if (datastar.isRequest(request) && projectId) {
+    patchBoard(projectId, userId, errorMessage || '삭제에 실패했습니다.')
+    return
+  }
+
+  redirectToProjectTasks(projectId, errorMessage || '삭제에 실패했습니다.')
+  return
+</script>

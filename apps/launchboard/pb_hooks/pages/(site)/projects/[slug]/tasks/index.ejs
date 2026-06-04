@@ -1,0 +1,429 @@
+<script server>
+  const taskBoard = resolve('task-board')
+
+  const slug = String(params.slug || '').trim()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+
+  if (!request.auth) {
+    dbg('page/projects/[slug]/tasks:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  if (!slug) {
+    dbg('page/projects/[slug]/tasks:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '프로젝트를 찾지 못했습니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '프로젝트를 찾지 못했습니다.',
+    })
+    return
+  }
+
+  let project = null
+
+  try {
+    project = $app.findFirstRecordByFilter('projects', 'slug = {:slug} && user = {:userId}', {
+      slug,
+      userId,
+    })
+  } catch (exception) {
+    project = null
+  }
+
+  if (!project) {
+    dbg('page/projects/[slug]/tasks:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '프로젝트를 찾지 못했습니다.',
+      slug,
+    })
+    redirect('/', {
+      status: 303,
+      message: '프로젝트를 찾지 못했습니다.',
+    })
+    return
+  }
+
+  const projectView = {
+    id: String(project.get('id') || ''),
+    nameKo: String(project.get('name_ko') || '').trim(),
+    nameEn: String(project.get('name_en') || '').trim(),
+    slug: String(project.get('slug') || '').trim(),
+    detailHref: '/projects/' + encodeURIComponent(String(project.get('slug') || '').trim()),
+  }
+  const boardState = taskBoard.getTaskBoardState($app, userId, projectView.id)
+
+  meta('title', projectView.nameKo + ' 업무 | LaunchBoard')
+  meta('description', projectView.nameKo + ' 업무')
+
+  dbg('page/projects/[slug]/tasks:response', {
+    projectId: projectView.id,
+    slug: projectView.slug,
+    taskCount: boardState.taskCount,
+  })
+</script>
+
+<div
+  class="space-y-4 sm:space-y-5"
+  data-signals="{taskModalOpen: false, taskTitle: '', taskDescription: '', taskMessage: '', moveTaskId: '', moveStatus: ''}">
+  <header class="rounded-lg bg-white px-4 py-4 shadow-[0_8px_24px_rgba(25,31,40,0.05)] sm:px-6 sm:py-5">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <a
+          href="/"
+          class="inline-flex items-center gap-1.5 rounded-md bg-transparent text-xs font-bold text-[#6b7684] no-underline hover:text-[#191f28] sm:text-sm">
+          <span
+            class="i-lucide-chevron-left h-4 w-4"
+            aria-hidden="true"></span>
+          목록
+        </a>
+        <div class="mt-3 min-w-0">
+          <p class="truncate text-xs font-bold text-[#8b95a1] sm:text-sm"><%= projectView.nameEn || 'LaunchBoard' %></p>
+          <h1 class="truncate text-2xl font-bold leading-8 text-[#191f28] sm:text-3xl sm:leading-10"><%= projectView.nameKo %> 업무</h1>
+        </div>
+      </div>
+
+      <div class="flex shrink-0 items-center gap-2">
+        <a
+          href="<%= projectView.detailHref %>"
+          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-10 sm:text-sm">
+          <span
+            class="i-lucide-settings-2 h-4 w-4"
+            aria-hidden="true"></span>
+          관리
+        </a>
+        <button
+          type="button"
+          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#3182f6] px-3 text-xs font-bold text-white hover:bg-[#1b64da] sm:h-10 sm:text-sm"
+          data-on:click="$taskModalOpen = true">
+          <span
+            class="i-lucide-plus h-4 w-4"
+            aria-hidden="true"></span>
+          업무
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <% if (params.__flash) { %>
+  <div class="rounded-lg bg-[#fff4d6] px-3 py-2 text-xs font-medium text-[#8a5b00] sm:px-4 sm:py-3 sm:text-sm"><%= params.__flash %></div>
+  <% } %>
+
+  <div
+    class="rounded-lg bg-[#fff4d6] px-3 py-2 text-xs font-medium text-[#8a5b00] sm:px-4 sm:py-3 sm:text-sm"
+    data-show="$taskMessage"
+    data-text="$taskMessage"
+    style="display: none"></div>
+
+  <%- include('task-board.ejs', {
+    projectId: projectView.id,
+    projectSlug: projectView.slug,
+    statusColumns: boardState.statusColumns,
+    tasksByStatus: boardState.tasksByStatus,
+  }) %>
+
+  <button
+    type="button"
+    class="hidden"
+    data-task-move-trigger
+    data-on:click="@post('/xapi/tasks/move')">
+    이동
+  </button>
+
+  <div
+    class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4 sm:items-center"
+    data-show="$taskModalOpen"
+    data-on:click="if (evt.target === el) $taskModalOpen = false"
+    style="display: none">
+    <section
+      class="w-full max-w-[420px] rounded-lg bg-white p-5 shadow-[0_24px_80px_rgba(25,31,40,0.28)]"
+      onclick="event.stopPropagation()">
+      <header class="flex items-center justify-between gap-3">
+        <h2 class="text-xl font-bold text-[#191f28]">업무 추가</h2>
+        <button
+          type="button"
+          class="inline-flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-[#f2f4f6] text-[#4e5968] hover:bg-[#e5e8eb]"
+          aria-label="닫기"
+          data-on:click="$taskModalOpen = false">
+          <span
+            class="i-lucide-x h-4 w-4"
+            aria-hidden="true"></span>
+        </button>
+      </header>
+
+      <form
+        method="post"
+        action="/xapi/tasks/create"
+        class="mt-5 grid gap-4"
+        data-on:submit="@post('/xapi/tasks/create', {contentType: 'form'})">
+        <input
+          type="hidden"
+          name="project_id"
+          value="<%= projectView.id %>" />
+        <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
+          제목
+          <input
+            name="title"
+            required
+            maxlength="160"
+            data-bind:task-title
+            class="h-[52px] rounded-lg border-0 bg-[#f7f8fa] px-4 text-base text-[#191f28] outline-none placeholder:text-[#b0b8c1] focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]"
+            placeholder="다음 작업" />
+        </label>
+
+        <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
+          메모
+          <textarea
+            name="description"
+            maxlength="700"
+            rows="5"
+            data-bind:task-description
+            class="resize-none rounded-lg border-0 bg-[#f7f8fa] px-4 py-3 text-base leading-6 text-[#191f28] outline-none placeholder:text-[#b0b8c1] focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]"
+            placeholder="필요한 내용만 짧게"></textarea>
+        </label>
+
+        <div class="grid grid-cols-2 gap-3 pt-1">
+          <button
+            type="button"
+            class="flex h-[50px] items-center justify-center rounded-lg border-0 bg-[#f2f4f6] px-4 text-base font-bold text-[#4e5968] hover:bg-[#e5e8eb]"
+            data-on:click="$taskModalOpen = false">
+            취소
+          </button>
+          <button
+            type="submit"
+            class="flex h-[50px] items-center justify-center gap-2 rounded-lg border-0 bg-[#3182f6] px-4 text-base font-bold text-white hover:bg-[#1b64da]">
+            <span
+              class="i-lucide-plus h-4 w-4"
+              aria-hidden="true"></span>
+            추가
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+
+<script src="<%= asset('/assets/vendor/sortable-1.15.7.min.js') %>"></script>
+<script>
+  window.launchboardTaskBoard = window.launchboardTaskBoard || {}
+
+  window.launchboardTaskBoard.storageKey = 'launchboard:task-collapsed-statuses:<%= projectView.id %>'
+  window.launchboardTaskBoard.activeStatusKey = 'launchboard:task-active-status:<%= projectView.id %>'
+  window.launchboardTaskBoard.defaultCollapsedStatuses = {
+    done: true,
+    paused: true,
+    canceled: true,
+  }
+
+  window.launchboardTaskBoard.getCollapsedStatuses = function () {
+    let savedStatuses = {}
+
+    try {
+      const savedText = window.localStorage.getItem(window.launchboardTaskBoard.storageKey)
+      const saved = savedText ? JSON.parse(savedText) : {}
+
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) savedStatuses = saved
+    } catch (exception) {
+      savedStatuses = {}
+    }
+
+    return Object.assign({}, window.launchboardTaskBoard.defaultCollapsedStatuses, savedStatuses)
+  }
+
+  window.launchboardTaskBoard.setCollapsedStatuses = function (statuses) {
+    try {
+      window.localStorage.setItem(window.launchboardTaskBoard.storageKey, JSON.stringify(statuses))
+    } catch (exception) {
+      return
+    }
+  }
+
+  window.launchboardTaskBoard.getActiveStatus = function () {
+    let status = 'todo'
+
+    try {
+      status = window.localStorage.getItem(window.launchboardTaskBoard.activeStatusKey) || status
+    } catch (exception) {
+      status = 'todo'
+    }
+
+    if (!document.querySelector('[data-task-column][data-status="' + status + '"]')) return 'todo'
+
+    return status
+  }
+
+  window.launchboardTaskBoard.setActiveStatus = function (status) {
+    try {
+      window.localStorage.setItem(window.launchboardTaskBoard.activeStatusKey, status)
+    } catch (exception) {
+      return
+    }
+  }
+
+  window.launchboardTaskBoard.applyMobileStatusTabs = function () {
+    const activeStatus = window.launchboardTaskBoard.getActiveStatus()
+    const isMobile = window.matchMedia('(max-width: 767px)').matches
+
+    document.querySelectorAll('[data-task-status-tab]').forEach(function (tab) {
+      const isActive = tab.dataset.status === activeStatus
+      const count = tab.querySelector('[data-task-status-count]')
+
+      tab.setAttribute('aria-pressed', isActive ? 'true' : 'false')
+      tab.classList.toggle('bg-[#3182f6]', isActive)
+      tab.classList.toggle('text-white', isActive)
+      tab.classList.toggle('shadow-[0_8px_20px_rgba(49,130,246,0.22)]', isActive)
+      tab.classList.toggle('text-[#6b7684]', !isActive)
+      if (count) {
+        count.classList.toggle('text-white/80', isActive)
+        count.classList.toggle('text-[#8b95a1]', !isActive)
+      }
+    })
+
+    document.querySelectorAll('[data-task-column]').forEach(function (column) {
+      const isActive = column.dataset.status === activeStatus
+
+      column.hidden = isMobile && !isActive
+    })
+  }
+
+  window.launchboardTaskBoard.bindStatusTabs = function () {
+    document.querySelectorAll('[data-task-status-tab]').forEach(function (tab) {
+      if (tab.dataset.tabReady === 'true') return
+
+      tab.dataset.tabReady = 'true'
+      tab.addEventListener('click', function () {
+        window.launchboardTaskBoard.setActiveStatus(tab.dataset.status || 'todo')
+        window.launchboardTaskBoard.applyColumnCollapse()
+        window.launchboardTaskBoard.applyMobileStatusTabs()
+      })
+    })
+  }
+
+  window.launchboardTaskBoard.applyColumnCollapse = function () {
+    const statuses = window.launchboardTaskBoard.getCollapsedStatuses()
+    const isMobile = window.matchMedia('(max-width: 767px)').matches
+
+    document.querySelectorAll('[data-task-column]').forEach(function (column) {
+      const status = column.dataset.status || ''
+      const isCollapsed = statuses[status] === true
+      const button = column.querySelector('[data-task-collapse-button]')
+      const list = column.querySelector('[data-task-sortable-list]')
+      const icon = button ? button.querySelector('span') : null
+
+      column.classList.toggle('min-h-0', isCollapsed)
+      column.classList.toggle('min-h-[240px]', !isCollapsed)
+      if (list) list.hidden = !isMobile && isCollapsed
+      if (button) {
+        button.setAttribute('aria-label', isCollapsed ? '펼치기' : '접기')
+        button.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true')
+      }
+      if (icon) {
+        icon.className = (isCollapsed ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up') + ' h-4 w-4'
+      }
+    })
+  }
+
+  window.launchboardTaskBoard.bindCollapseButtons = function () {
+    document.querySelectorAll('[data-task-collapse-button]').forEach(function (button) {
+      if (button.dataset.collapseReady === 'true') return
+
+      button.dataset.collapseReady = 'true'
+      button.addEventListener('click', function () {
+        const statuses = window.launchboardTaskBoard.getCollapsedStatuses()
+        const status = button.dataset.status || ''
+
+        statuses[status] = statuses[status] !== true
+        window.launchboardTaskBoard.setCollapsedStatuses(statuses)
+        window.launchboardTaskBoard.applyColumnCollapse()
+      })
+    })
+  }
+
+  window.launchboardInitTaskSortable = function () {
+    if (!window.Sortable) return
+
+    const updateEmptyState = function (list) {
+      const emptyState = list.querySelector('[data-task-empty-state]')
+      const hasCards = list.querySelector('[data-task-card]') !== null
+
+      if (emptyState) emptyState.hidden = hasCards
+    }
+
+    document.querySelectorAll('[data-task-sortable-list]').forEach(function (list) {
+      if (list.dataset.sortableReady === 'true') return
+
+      list.dataset.sortableReady = 'true'
+      updateEmptyState(list)
+
+      Sortable.create(list, {
+        group: 'launchboard-tasks',
+        sort: false,
+        animation: 160,
+        draggable: '[data-task-card]',
+        handle: '[data-task-drag-handle]',
+        ghostClass: 'launchboard-sortable-ghost',
+        chosenClass: 'launchboard-sortable-chosen',
+        dragClass: 'launchboard-sortable-drag',
+        delay: 120,
+        delayOnTouchOnly: true,
+        filter: 'a, button, input, textarea, select',
+        preventOnFilter: false,
+        onStart: function () {
+          document.body.dataset.launchboardTaskDragging = 'true'
+        },
+        onEnd: function (event) {
+          window.setTimeout(function () {
+            delete document.body.dataset.launchboardTaskDragging
+          }, 120)
+          const card = event.item
+          const toList = event.to
+          const fromList = event.from
+          const status = toList.dataset.status || ''
+          const previousStatus = card.dataset.status || ''
+
+          updateEmptyState(toList)
+          updateEmptyState(fromList)
+
+          if (!status || status === previousStatus) return
+
+          card.dataset.status = status
+          if (window.patchSignals) {
+            window.patchSignals({
+              moveTaskId: card.dataset.taskId || '',
+              moveStatus: status,
+            })
+          }
+
+          const trigger = document.querySelector('[data-task-move-trigger]')
+          if (trigger) trigger.click()
+        },
+      })
+    })
+
+    window.launchboardTaskBoard.bindCollapseButtons()
+    window.launchboardTaskBoard.bindStatusTabs()
+    window.launchboardTaskBoard.applyColumnCollapse()
+    window.launchboardTaskBoard.applyMobileStatusTabs()
+  }
+
+  if (window.launchboardTaskBoard.resizeReady !== true) {
+    window.launchboardTaskBoard.resizeReady = true
+    window.addEventListener('resize', function () {
+      window.launchboardTaskBoard.applyColumnCollapse()
+      window.launchboardTaskBoard.applyMobileStatusTabs()
+    })
+  }
+
+  window.launchboardInitTaskSortable()
+</script>
