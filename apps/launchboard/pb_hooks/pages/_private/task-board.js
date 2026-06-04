@@ -82,7 +82,7 @@ function normalizeTaskType(value) {
 
 /**
  * 업무 레코드를 카드 표시 데이터로 바꾼다.
- * @param {Record} record 업무 레코드
+ * @param {types.PocketBaseRecord} record 업무 레코드
  * @returns {types.ProjectTaskCard}
  */
 function toTaskCard(record) {
@@ -115,6 +115,7 @@ function toTaskCard(record) {
  * @returns {types.ProjectTaskBoardState}
  */
 function getTaskBoardState(app, userId, projectId) {
+  /** @type {Record<string, types.ProjectTaskCard[]>} */
   const tasksByStatus = {}
 
   for (let index = 0; index < TASK_STATUS_COLUMNS.length; index += 1) {

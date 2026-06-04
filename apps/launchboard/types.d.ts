@@ -1,4 +1,8 @@
 declare namespace types {
+  interface PocketBaseRecord {
+    get(field: string): unknown
+  }
+
   interface ProjectTaskCard {
     id: string
     title: string
