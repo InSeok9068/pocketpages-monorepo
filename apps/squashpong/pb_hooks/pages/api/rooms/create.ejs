@@ -1,0 +1,32 @@
+<script server>
+  const roomStore = resolve('room-store')
+
+  dbg('xapi/rooms/create:start', {
+    method: request.method,
+  })
+
+  if (request.method !== 'POST') {
+    warn('xapi/rooms/create:method-not-allowed', {
+      method: request.method,
+    })
+    response.json(405, {
+      ok: false,
+      error: 'Method not allowed.',
+    })
+    return
+  }
+
+  const room = roomStore.createRoom(store)
+
+  info('xapi/rooms/create:success', {
+    roomCode: room.code,
+  })
+
+  response.json(200, {
+    ok: true,
+    room: {
+      code: room.code,
+      createdAt: room.createdAt,
+    },
+  })
+</script>

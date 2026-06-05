@@ -1,0 +1,14 @@
+{
+  "name": "squashpong",
+  "private": true,
+  "scripts": {
+    "postinstall": "node -e \"try{const r=require('child_process').spawnSync(process.execPath,['../../scripts/run-patch-package.js'],{encoding:'utf8'});if(r.status===0){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}else{console.log('patch script not available, skip')}}catch(e){console.log('patch script not available, skip')}\""
+  },
+  "dependencies": {
+    "pocketpages": "^0.22.3",
+    "pocketpages-plugin-ejs": "^0.1.2"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
+  }
+}

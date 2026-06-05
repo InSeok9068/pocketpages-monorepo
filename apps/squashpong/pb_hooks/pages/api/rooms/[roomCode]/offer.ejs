@@ -1,0 +1,69 @@
+<script server>
+  const roomStore = resolve('room-store')
+  const roomCode = roomStore.normalizeCode(params.roomCode)
+
+  dbg('xapi/rooms/offer:start', {
+    method: request.method,
+    roomCode: roomCode,
+  })
+
+  if (request.method === 'GET') {
+    const room = roomStore.findRoom(store, roomCode)
+
+    if (!room) {
+      warn('xapi/rooms/offer:not-found', {
+        roomCode: roomCode,
+      })
+      response.json(404, {
+        ok: false,
+        error: 'Room not found.',
+      })
+      return
+    }
+
+    response.json(200, {
+      ok: true,
+      offer: room.offer,
+    })
+    return
+  }
+
+  if (request.method !== 'POST') {
+    warn('xapi/rooms/offer:method-not-allowed', {
+      method: request.method,
+      roomCode: roomCode,
+    })
+    response.json(405, {
+      ok: false,
+      error: 'Method not allowed.',
+    })
+    return
+  }
+
+  const payload = body()
+  const room = roomStore.updateRoom(store, roomCode, function (nextRoom) {
+    nextRoom.offer = payload.offer || null
+    nextRoom.answer = null
+    nextRoom.hostCandidates = []
+    nextRoom.guestCandidates = []
+  })
+
+  if (!room) {
+    warn('xapi/rooms/offer:not-found', {
+      roomCode: roomCode,
+    })
+    response.json(404, {
+      ok: false,
+      error: 'Room not found.',
+    })
+    return
+  }
+
+  info('xapi/rooms/offer:saved', {
+    roomCode: roomCode,
+  })
+
+  response.json(200, {
+    ok: true,
+  })
+</script>

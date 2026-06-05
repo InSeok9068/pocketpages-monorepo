@@ -1,0 +1,84 @@
+<script server>
+  const roomStore = resolve('room-store')
+  const roomCode = roomStore.normalizeCode(params.roomCode)
+  const role = roomStore.normalizeRole(String(params.role || ''))
+
+  dbg('api/rooms/candidates:start', {
+    method: request.method,
+    roomCode: roomCode,
+    role: role,
+  })
+
+  if (request.method === 'GET') {
+    const room = roomStore.findRoom(store, roomCode)
+
+    if (!room) {
+      warn('api/rooms/candidates:not-found', {
+        roomCode: roomCode,
+      })
+      response.json(404, {
+        ok: false,
+        error: 'Room not found.',
+      })
+      return
+    }
+
+    response.json(200, {
+      ok: true,
+      role: role,
+      candidates: role === 'host' ? room.guestCandidates : room.hostCandidates,
+    })
+    return
+  }
+
+  if (request.method !== 'POST') {
+    warn('api/rooms/candidates:method-not-allowed', {
+      method: request.method,
+      roomCode: roomCode,
+    })
+    response.json(405, {
+      ok: false,
+      error: 'Method not allowed.',
+    })
+    return
+  }
+
+  const payload = body()
+  const candidate = payload.candidate || null
+
+  if (!candidate) {
+    warn('api/rooms/candidates:missing-candidate', {
+      roomCode: roomCode,
+      role: role,
+    })
+    response.json(400, {
+      ok: false,
+      error: 'Candidate is required.',
+    })
+    return
+  }
+
+  const room = roomStore.updateRoom(store, roomCode, function (nextRoom) {
+    if (role === 'host') {
+      nextRoom.hostCandidates = nextRoom.hostCandidates.concat([candidate])
+    } else {
+      nextRoom.guestCandidates = nextRoom.guestCandidates.concat([candidate])
+    }
+  })
+
+  if (!room) {
+    warn('api/rooms/candidates:not-found', {
+      roomCode: roomCode,
+    })
+    response.json(404, {
+      ok: false,
+      error: 'Room not found.',
+    })
+    return
+  }
+
+  response.json(200, {
+    ok: true,
+    role: role,
+  })
+</script>
