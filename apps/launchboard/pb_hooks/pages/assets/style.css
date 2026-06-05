@@ -6,10 +6,6 @@
   visibility: visible;
 }
 
-[x-cloak] {
-  display: none !important;
-}
-
 button {
   border: 0;
   font: inherit;

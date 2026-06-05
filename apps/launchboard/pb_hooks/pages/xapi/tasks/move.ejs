@@ -50,12 +50,51 @@
   const signals = datastar.requestSignals({
     moveTaskId: '',
     moveStatus: '',
+    moveOrder: [],
   })
   const userId = String(request.auth.get('id') || '')
   const taskId = String(signals.moveTaskId || '').trim()
   const status = String(signals.moveStatus || '').trim()
+  const moveOrder = Array.isArray(signals.moveOrder) ? signals.moveOrder : []
   let projectId = ''
   let errorMessage = ''
+
+  function setStatusDates(task, nextStatus) {
+    if (nextStatus === 'doing' && !task.get('started_at')) task.set('started_at', new Date().toISOString())
+    if (nextStatus === 'done' && !task.get('completed_at')) task.set('completed_at', new Date().toISOString())
+    if (nextStatus === 'canceled' && !task.get('canceled_at')) task.set('canceled_at', new Date().toISOString())
+  }
+
+  function getTaskOrderUpdates(orderItems, targetProjectId) {
+    const updates = []
+    const seen = {}
+
+    for (let index = 0; index < orderItems.length; index += 1) {
+      const item = orderItems[index] || {}
+      const orderedTaskId = String(item.id || '').trim()
+      const orderedStatus = String(item.status || '').trim()
+      const sortOrder = Number(item.sortOrder || index + 1)
+
+      if (!orderedTaskId || seen[orderedTaskId]) continue
+      if (taskBoard.TASK_STATUS_VALUES.indexOf(orderedStatus) < 0) throw new Error('상태 값이 올바르지 않습니다.')
+      if (isNaN(sortOrder) || sortOrder < 0) throw new Error('정렬 값이 올바르지 않습니다.')
+
+      const task = $app.findFirstRecordByFilter('project_tasks', 'id = {:taskId} && user = {:userId} && project = {:projectId}', {
+        taskId: orderedTaskId,
+        userId,
+        projectId: targetProjectId,
+      })
+
+      seen[orderedTaskId] = true
+      updates.push({
+        task,
+        status: orderedStatus,
+        sortOrder,
+      })
+    }
+
+    return updates
+  }
 
   dbg('xapi/tasks/move:start', {
     userId,
@@ -74,20 +113,38 @@
     })
     const previousStatus = String(task.get('status') || '')
     projectId = String(task.get('project') || '')
+    const orderUpdates = getTaskOrderUpdates(moveOrder, projectId)
 
-    task.set('status', status)
+    if (orderUpdates.length > 0) {
+      let movedTaskUpdated = false
 
-    if (status === 'doing' && !task.get('started_at')) task.set('started_at', new Date().toISOString())
-    if (status === 'done' && !task.get('completed_at')) task.set('completed_at', new Date().toISOString())
-    if (status === 'canceled' && !task.get('canceled_at')) task.set('canceled_at', new Date().toISOString())
+      for (let index = 0; index < orderUpdates.length; index += 1) {
+        const update = orderUpdates[index]
 
-    $app.save(task)
+        update.task.set('status', update.status)
+        update.task.set('sort_order', update.sortOrder)
+        setStatusDates(update.task, update.status)
+        $app.save(update.task)
+        if (String(update.task.get('id') || '') === taskId) movedTaskUpdated = true
+      }
+
+      if (!movedTaskUpdated) {
+        task.set('status', status)
+        setStatusDates(task, status)
+        $app.save(task)
+      }
+    } else {
+      task.set('status', status)
+      setStatusDates(task, status)
+      $app.save(task)
+    }
 
     info('xapi/tasks/move:success', {
       taskId,
       projectId,
       previousStatus,
       status,
+      orderedCount: orderUpdates.length,
     })
     patchBoard(projectId, userId, '변경했습니다.')
     return

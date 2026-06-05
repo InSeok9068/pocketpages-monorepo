@@ -10,10 +10,12 @@
       <% const tabProjects = projectsByStatus[tabColumn.value] || [] %>
       <button
         type="button"
-        class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 px-1 text-[10px] font-bold leading-none hover:bg-[#eaf3ff] sm:h-12"
-        :class="isActiveStatus('<%= tabColumn.value %>') ? 'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]' : 'bg-[#f2f4f6] text-[#4e5968]'"
-        :aria-pressed="isActiveStatus('<%= tabColumn.value %>') ? 'true' : 'false'"
-        @click="setActiveStatus('<%= tabColumn.value %>')">
+        class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 bg-[#f2f4f6] px-1 text-[10px] font-bold leading-none text-[#4e5968] hover:bg-[#eaf3ff] sm:h-12"
+        data-project-status-tab
+        data-status="<%= tabColumn.value %>"
+        data-attr="{'aria-pressed': $activeProjectStatus === '<%= tabColumn.value %>' ? 'true' : 'false'}"
+        data-class="{'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]': $activeProjectStatus === '<%= tabColumn.value %>', 'bg-[#f2f4f6] text-[#4e5968]': $activeProjectStatus !== '<%= tabColumn.value %>'}"
+        data-on:click="$activeProjectStatus = '<%= tabColumn.value %>'; window.launchboardSaveProjectActiveStatus && window.launchboardSaveProjectActiveStatus($activeProjectStatus)">
         <span
           class="<%= tabColumn.icon %> h-3.5 w-3.5 shrink-0"
           aria-hidden="true"></span>
@@ -23,7 +25,7 @@
             class="shrink-0 text-[10px]"
             data-project-status-count
             data-status="<%= tabColumn.value %>"
-            :class="isActiveStatus('<%= tabColumn.value %>') ? 'text-[#1b64da]' : 'text-[#6b7684]'"
+            data-class="{'text-[#1b64da]': $activeProjectStatus === '<%= tabColumn.value %>', 'text-[#6b7684]': $activeProjectStatus !== '<%= tabColumn.value %>'}"
             ><%= tabProjects.length %></span
           >
         </span>
@@ -38,9 +40,10 @@
       <section
         id="status-<%= column.value %>"
         class="<%= column.surface %> rounded-lg p-3"
-        x-show="!isMobile || isActiveStatus('<%= column.value %>')"
-        x-transition
-        :class="!isMobile && isColumnCollapsed('<%= column.value %>') ? 'min-h-0 bg-white/70' : 'min-h-[280px]'">
+        data-project-column
+        data-status="<%= column.value %>"
+        data-show="!$isProjectMobile || $activeProjectStatus === '<%= column.value %>'"
+        data-class="{'min-h-0 bg-white/70': !$isProjectMobile && $collapsedProjectStatuses.<%= column.value %>, 'min-h-[280px]': $isProjectMobile || !$collapsedProjectStatuses.<%= column.value %>}">
         <header class="flex items-center justify-between gap-3 px-1 py-1">
           <div class="flex items-center gap-2">
             <span class="<%= column.iconTone %> inline-flex h-7 w-7 items-center justify-center rounded-lg">
@@ -58,15 +61,17 @@
             <button
               type="button"
               class="hidden h-8 w-8 items-center justify-center rounded-lg border-0 bg-white/70 text-[#6b7684] hover:bg-white md:inline-flex"
-              :aria-label="isColumnCollapsed('<%= column.value %>') ? '펼치기' : '접기'"
-              :aria-expanded="!isColumnCollapsed('<%= column.value %>')"
-              @click="toggleColumn('<%= column.value %>')">
+              data-project-collapse-button
+              data-status="<%= column.value %>"
+              data-attr="{'aria-label': $collapsedProjectStatuses.<%= column.value %> ? '펼치기' : '접기', 'aria-expanded': $collapsedProjectStatuses.<%= column.value %> ? 'false' : 'true'}"
+              data-on:click="$collapsedProjectStatuses.<%= column.value %> = !$collapsedProjectStatuses.<%= column.value %>; window.launchboardSaveProjectCollapsedStatuses && window.launchboardSaveProjectCollapsedStatuses($collapsedProjectStatuses)">
               <span
-                x-show="isColumnCollapsed('<%= column.value %>')"
+                data-show="$collapsedProjectStatuses.<%= column.value %>"
+                style="display: none"
                 class="i-lucide-chevron-down h-4 w-4"
                 aria-hidden="true"></span>
               <span
-                x-show="!isColumnCollapsed('<%= column.value %>')"
+                data-show="!$collapsedProjectStatuses.<%= column.value %>"
                 class="i-lucide-chevron-up h-4 w-4"
                 aria-hidden="true"></span>
             </button>
@@ -74,7 +79,7 @@
             <button
               type="button"
               class="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#3182f6] px-2.5 text-xs font-bold text-white hover:bg-[#1b64da]"
-              @click="projectModalOpen = true">
+              data-on:click="$projectModalOpen = true">
               <span
                 class="i-lucide-plus h-3.5 w-3.5"
                 aria-hidden="true"></span>
@@ -85,11 +90,11 @@
         </header>
 
         <div
-          x-show="isMobile || !isColumnCollapsed('<%= column.value %>')"
-          x-transition
           class="mt-3 grid gap-3"
+          data-project-column-list
           data-sortable-list
-          data-status="<%= column.value %>">
+          data-status="<%= column.value %>"
+          data-show="$isProjectMobile || !$collapsedProjectStatuses.<%= column.value %>">
           <div
             class="rounded-lg border border-dashed border-[#d9dee7] bg-white/60 px-3 py-3 text-center text-xs font-medium text-[#8b95a1]"
             <% if (columnProjects.length > 0) { %>hidden<% } %>
@@ -106,8 +111,8 @@
             data-status="<%= project.status %>"
             role="link"
             tabindex="0"
-            onclick="if (document.body.dataset.launchboardDragging !== 'true') window.location.href = '<%= project.href %>'"
-            onkeydown="if (event.key === 'Enter') window.location.href = '<%= project.href %>'">
+            data-on:click="if (document.body.dataset.launchboardDragging !== 'true') window.location.href = '<%= project.href %>'"
+            data-on:keydown="if (evt.key === 'Enter') window.location.href = '<%= project.href %>'">
             <div class="flex items-start justify-between gap-3">
               <div class="flex min-w-0 items-center gap-2">
                 <% if (project.isPinned) { %>
@@ -164,7 +169,7 @@
                   class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f2f4f6] text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
                   aria-label="업무"
                   title="업무"
-                  onclick="event.stopPropagation()">
+                  data-on:click__stop="true">
                   <span
                     class="i-lucide-list-todo h-3.5 w-3.5"
                     aria-hidden="true"></span>
@@ -177,7 +182,7 @@
                   class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f2f4f6] text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
                   aria-label="도메인 열기"
                   title="도메인"
-                  onclick="event.stopPropagation()">
+                  data-on:click__stop="true">
                   <span
                     class="i-lucide-external-link h-3.5 w-3.5"
                     aria-hidden="true"></span>
@@ -191,7 +196,7 @@
                   class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f2f4f6] text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
                   aria-label="저장소 열기"
                   title="저장소"
-                  onclick="event.stopPropagation()">
+                  data-on:click__stop="true">
                   <span
                     class="i-lucide-git-branch h-3.5 w-3.5"
                     aria-hidden="true"></span>

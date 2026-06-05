@@ -28,26 +28,33 @@
 
 <div
   class="space-y-3 sm:space-y-4"
-  x-data="launchboardBoard()"
-  data-signals="{projectMessage: '', projectMoveId: '', projectMoveStatus: ''}"
-  @keydown.escape.window="projectModalOpen = false; userMenuOpen = false">
+  data-signals="{
+    projectModalOpen: false,
+    userMenuOpen: false,
+    projectMessage: '',
+    projectMoveId: '',
+    projectMoveStatus: '',
+    projectMoveOrder: [],
+    activeProjectStatus: 'idea',
+    isProjectMobile: window.matchMedia('(max-width: 767px)').matches,
+    collapsedProjectStatuses: {idea: false, building: false, launched: false, paused: true, discarded: true}
+  }">
   <div
     class="fixed right-4 top-4 z-30 sm:right-6 sm:top-5"
-    @click.outside="userMenuOpen = false">
+    data-on:click__outside="$userMenuOpen = false">
     <button
       type="button"
       class="inline-flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-white text-[#4e5968] shadow-[0_8px_24px_rgba(25,31,40,0.08)] hover:bg-[#f7f8fa] sm:h-10 sm:w-10"
       aria-label="메뉴"
-      @click="userMenuOpen = !userMenuOpen">
+      data-on:click="$userMenuOpen = !$userMenuOpen">
       <span
         class="i-lucide-menu h-[18px] w-[18px]"
         aria-hidden="true"></span>
     </button>
 
     <div
-      x-cloak
-      x-show="userMenuOpen"
-      x-transition
+      data-show="$userMenuOpen"
+      style="display: none"
       class="w-34 absolute right-0 top-11 z-20 rounded-lg bg-white p-1.5 shadow-[0_14px_40px_rgba(25,31,40,0.18)]">
       <form
         method="post"
@@ -88,14 +95,14 @@
   </button>
 
   <div
-    x-cloak
-    x-show="projectModalOpen"
+    data-show="$projectModalOpen"
+    style="display: none"
     class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4 sm:items-center"
-    @click.self="projectModalOpen = false">
+    data-on:click="if (evt.target === el) $projectModalOpen = false"
+    data-on:keydown__window="if (evt.key === 'Escape') { $projectModalOpen = false; $userMenuOpen = false }">
     <section
       class="w-full max-w-[420px] rounded-lg bg-white p-5 shadow-[0_24px_80px_rgba(25,31,40,0.28)]"
-      x-show="projectModalOpen"
-      x-transition>
+      data-on:click__stop="true">
       <header class="flex items-center justify-between gap-3">
         <div>
           <h2 class="text-xl font-bold text-[#191f28]">아이디어 추가</h2>
@@ -104,7 +111,7 @@
           type="button"
           class="inline-flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-[#f2f4f6] text-[#4e5968] hover:bg-[#e5e8eb]"
           aria-label="닫기"
-          @click="projectModalOpen = false">
+          data-on:click="$projectModalOpen = false">
           <span
             class="i-lucide-x h-4 w-4"
             aria-hidden="true"></span>
@@ -140,7 +147,7 @@
           <button
             type="button"
             class="flex h-[50px] items-center justify-center rounded-lg border-0 bg-[#f2f4f6] px-4 text-base font-bold text-[#4e5968] hover:bg-[#e5e8eb]"
-            @click="projectModalOpen = false">
+            data-on:click="$projectModalOpen = false">
             취소
           </button>
           <button
@@ -159,80 +166,80 @@
 
 <script src="<%= asset('/assets/vendor/sortable-1.15.7.min.js') %>"></script>
 <script>
-  window.launchboardBoard = function () {
-    const storageKey = 'launchboard:collapsed-statuses'
-    const activeStatusKey = 'launchboard:active-status'
-    const statusValues = ['idea', 'building', 'launched', 'paused', 'discarded']
-    const defaultCollapsedStatuses = {
-      paused: true,
-      discarded: true,
+  window.launchboardProjectBoard = window.launchboardProjectBoard || {}
+  window.launchboardProjectBoard.storageKey = 'launchboard:collapsed-statuses'
+  window.launchboardProjectBoard.activeStatusKey = 'launchboard:active-status'
+  window.launchboardProjectBoard.statusValues = ['idea', 'building', 'launched', 'paused', 'discarded']
+  window.launchboardProjectBoard.defaultCollapsedStatuses = {
+    idea: false,
+    building: false,
+    launched: false,
+    paused: true,
+    discarded: true,
+  }
+
+  window.launchboardGetProjectCollapsedStatuses = function () {
+    let savedStatuses = {}
+
+    try {
+      const savedText = window.localStorage.getItem(window.launchboardProjectBoard.storageKey)
+      const saved = savedText ? JSON.parse(savedText) : {}
+
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) savedStatuses = saved
+    } catch (exception) {
+      savedStatuses = {}
     }
 
-    return {
-      projectModalOpen: false,
-      userMenuOpen: false,
-      collapsedStatuses: {},
-      activeStatus: 'idea',
-      isMobile: false,
-      init: function () {
-        let savedStatuses = {}
-        let savedActiveStatus = ''
+    return Object.assign({}, window.launchboardProjectBoard.defaultCollapsedStatuses, savedStatuses)
+  }
 
-        try {
-          const savedText = window.localStorage.getItem(storageKey)
-          const saved = savedText ? JSON.parse(savedText) : {}
+  window.launchboardGetProjectActiveStatus = function () {
+    let savedActiveStatus = ''
 
-          if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
-            savedStatuses = saved
-          }
-        } catch (exception) {
-          savedStatuses = {}
-        }
+    try {
+      savedActiveStatus = window.localStorage.getItem(window.launchboardProjectBoard.activeStatusKey) || ''
+    } catch (exception) {
+      savedActiveStatus = ''
+    }
 
-        try {
-          savedActiveStatus = window.localStorage.getItem(activeStatusKey) || ''
-        } catch (exception) {
-          savedActiveStatus = ''
-        }
+    return window.launchboardProjectBoard.statusValues.indexOf(savedActiveStatus) >= 0 ? savedActiveStatus : 'idea'
+  }
 
-        this.collapsedStatuses = Object.assign({}, defaultCollapsedStatuses, savedStatuses)
-        this.activeStatus = statusValues.indexOf(savedActiveStatus) >= 0 ? savedActiveStatus : 'idea'
-        this.updateViewport()
+  window.launchboardPatchProjectBoardSignals = function (signals) {
+    if (!window.patchSignals) return
 
-        window.addEventListener('resize', this.updateViewport.bind(this))
-      },
-      updateViewport: function () {
-        this.isMobile = window.matchMedia('(max-width: 767px)').matches
-      },
-      isActiveStatus: function (status) {
-        return this.activeStatus === status
-      },
-      setActiveStatus: function (status) {
-        if (statusValues.indexOf(status) < 0) return
+    window.patchSignals(signals)
+  }
 
-        this.activeStatus = status
+  window.launchboardRestoreProjectBoard = function () {
+    window.launchboardPatchProjectBoardSignals({
+      activeProjectStatus: window.launchboardGetProjectActiveStatus(),
+      collapsedProjectStatuses: window.launchboardGetProjectCollapsedStatuses(),
+      isProjectMobile: window.matchMedia('(max-width: 767px)').matches,
+    })
+  }
 
-        try {
-          window.localStorage.setItem(activeStatusKey, status)
-        } catch (exception) {
-          return
-        }
-      },
-      isColumnCollapsed: function (status) {
-        return this.collapsedStatuses[status] === true
-      },
-      toggleColumn: function (status) {
-        const nextStatuses = Object.assign({}, this.collapsedStatuses)
+  window.launchboardSetProjectMobileSignal = function () {
+    window.launchboardPatchProjectBoardSignals({
+      isProjectMobile: window.matchMedia('(max-width: 767px)').matches,
+    })
+  }
 
-        nextStatuses[status] = !this.isColumnCollapsed(status)
-        this.collapsedStatuses = nextStatuses
+  window.launchboardSaveProjectActiveStatus = function (status) {
+    if (window.launchboardProjectBoard.statusValues.indexOf(status) < 0) return
 
-        try {
-          window.localStorage.setItem(storageKey, JSON.stringify(nextStatuses))
-        } catch (exception) {
-          return
-        }
-      },
+    try {
+      window.localStorage.setItem(window.launchboardProjectBoard.activeStatusKey, status)
+    } catch (exception) {
+      return
+    }
+  }
+
+  window.launchboardSaveProjectCollapsedStatuses = function (statuses) {
+    try {
+      window.localStorage.setItem(window.launchboardProjectBoard.storageKey, JSON.stringify(statuses || {}))
+    } catch (exception) {
+      return
     }
   }
 
@@ -264,6 +271,25 @@
       })
     }
 
+    const collectProjectOrder = function () {
+      const order = []
+
+      document.querySelectorAll('[data-sortable-list]').forEach(function (list) {
+        const status = list.dataset.status || ''
+
+        if (!status) return
+        list.querySelectorAll('[data-project-card]').forEach(function (card, index) {
+          order.push({
+            id: card.dataset.projectId || '',
+            status: status,
+            sortOrder: index + 1,
+          })
+        })
+      })
+
+      return order
+    }
+
     document.querySelectorAll('[data-sortable-list]').forEach(function (list) {
       if (list.dataset.sortableReady === 'true') return
 
@@ -273,7 +299,7 @@
 
       Sortable.create(list, {
         group: 'launchboard-projects',
-        sort: false,
+        sort: true,
         animation: 160,
         draggable: '[data-project-card]',
         handle: '[data-drag-handle]',
@@ -292,7 +318,6 @@
           const toList = event.to
           const fromList = event.from
           const status = toList.dataset.status || ''
-          const previousStatus = card.dataset.status || ''
 
           window.setTimeout(function () {
             delete document.body.dataset.launchboardDragging
@@ -302,13 +327,14 @@
           updateEmptyState(fromList)
           updateStatusCounts()
 
-          if (!status || status === previousStatus) return
+          if (!status) return
 
           card.dataset.status = status
           if (window.patchSignals) {
             window.patchSignals({
               projectMoveId: card.dataset.projectId || '',
               projectMoveStatus: status,
+              projectMoveOrder: collectProjectOrder(),
             })
           }
 
@@ -317,9 +343,19 @@
         },
       })
     })
+
+    window.launchboardSetProjectMobileSignal()
   }
 
+  window.launchboardRestoreProjectBoard()
   window.launchboardInitSortable()
+
+  if (window.launchboardProjectResizeReady !== true) {
+    window.launchboardProjectResizeReady = true
+    window.addEventListener('resize', function () {
+      window.launchboardSetProjectMobileSignal()
+    })
+  }
 
   window.launchboardNextFavicon = function (image) {
     const urls = String(image.dataset.faviconList || '')

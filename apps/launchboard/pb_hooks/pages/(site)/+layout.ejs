@@ -33,9 +33,6 @@
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
     <%- include('unocss-head.ejs', { isProduction }) %>
-    <script
-      defer
-      src="<%= asset('/assets/vendor/alpine-3.15.11-cdn.min.js') %>"></script>
     <%- datastar.scripts() %>
     <%- slots.head %>
   </head>

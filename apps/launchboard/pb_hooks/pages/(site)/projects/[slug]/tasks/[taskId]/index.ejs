@@ -163,7 +163,7 @@
 
 <div
   class="mx-auto max-w-[980px] space-y-3 sm:space-y-6"
-  x-data="{ advancedOpen: false }">
+  data-signals="{advancedOpen: false}">
   <header class="rounded-lg bg-white px-3 py-3 shadow-[0_8px_24px_rgba(25,31,40,0.05)] sm:px-6 sm:py-5">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
@@ -351,25 +351,23 @@
       <button
         type="button"
         class="flex w-full items-center justify-between rounded-lg border-0 bg-transparent p-0 text-left"
-        :aria-expanded="advancedOpen"
-        @click="advancedOpen = !advancedOpen">
+        data-attr="{'aria-expanded': $advancedOpen ? 'true' : 'false'}"
+        data-on:click="$advancedOpen = !$advancedOpen">
         <span class="text-base font-bold text-[#191f28]">고급</span>
         <span
-          x-cloak
-          x-show="!advancedOpen"
+          data-show="!$advancedOpen"
           class="i-lucide-chevron-down h-4 w-4 text-[#8b95a1]"
           aria-hidden="true"></span>
         <span
-          x-cloak
-          x-show="advancedOpen"
+          data-show="$advancedOpen"
+          style="display: none"
           class="i-lucide-chevron-up h-4 w-4 text-[#8b95a1]"
           aria-hidden="true"></span>
       </button>
 
       <div
-        x-cloak
-        x-show="advancedOpen"
-        x-transition
+        data-show="$advancedOpen"
+        style="display: none"
         class="mt-3 grid gap-3 sm:mt-4 sm:grid-cols-2 sm:gap-4">
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           태그

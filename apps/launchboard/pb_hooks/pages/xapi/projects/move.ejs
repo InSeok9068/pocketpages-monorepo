@@ -20,7 +20,7 @@
       projectMoveId: '',
       projectMoveStatus: '',
     })
-    datastar.executeScript('window.launchboardInitSortable && window.launchboardInitSortable();')
+    datastar.executeScript('window.launchboardSetProjectMobileSignal && window.launchboardSetProjectMobileSignal(); window.launchboardInitSortable && window.launchboardInitSortable();')
   }
 
   if (request.method !== 'POST') {
@@ -72,11 +72,49 @@
   const signals = datastar.requestSignals({
     projectMoveId: '',
     projectMoveStatus: '',
+    projectMoveOrder: [],
   })
   const userId = String(request.auth.get('id') || '')
   const projectId = String(signals.projectMoveId || '').trim()
   const status = String(signals.projectMoveStatus || '').trim()
+  const moveOrder = Array.isArray(signals.projectMoveOrder) ? signals.projectMoveOrder : []
   let errorMessage = ''
+
+  function setStatusDates(project, nextStatus) {
+    if (nextStatus === 'building' && !project.get('started_at')) project.set('started_at', new Date().toISOString())
+    if (nextStatus === 'launched' && !project.get('launched_at')) project.set('launched_at', new Date().toISOString())
+    if (nextStatus === 'discarded' && !project.get('discarded_at')) project.set('discarded_at', new Date().toISOString())
+  }
+
+  function getProjectOrderUpdates(orderItems) {
+    const updates = []
+    const seen = {}
+
+    for (let index = 0; index < orderItems.length; index += 1) {
+      const item = orderItems[index] || {}
+      const orderedProjectId = String(item.id || '').trim()
+      const orderedStatus = String(item.status || '').trim()
+      const sortOrder = Number(item.sortOrder || index + 1)
+
+      if (!orderedProjectId || seen[orderedProjectId]) continue
+      if (projectBoard.PROJECT_STATUS_VALUES.indexOf(orderedStatus) < 0) throw new Error('상태 값이 올바르지 않습니다.')
+      if (isNaN(sortOrder) || sortOrder < 0) throw new Error('정렬 값이 올바르지 않습니다.')
+
+      const project = $app.findFirstRecordByFilter('projects', 'id = {:projectId} && user = {:userId}', {
+        projectId: orderedProjectId,
+        userId,
+      })
+
+      seen[orderedProjectId] = true
+      updates.push({
+        project,
+        status: orderedStatus,
+        sortOrder,
+      })
+    }
+
+    return updates
+  }
 
   dbg('xapi/projects/move:start', {
     userId,
@@ -94,19 +132,37 @@
       userId,
     })
     const previousStatus = String(project.get('status') || '')
+    const orderUpdates = getProjectOrderUpdates(moveOrder)
 
-    project.set('status', status)
+    if (orderUpdates.length > 0) {
+      let movedProjectUpdated = false
 
-    if (status === 'building' && !project.get('started_at')) project.set('started_at', new Date().toISOString())
-    if (status === 'launched' && !project.get('launched_at')) project.set('launched_at', new Date().toISOString())
-    if (status === 'discarded' && !project.get('discarded_at')) project.set('discarded_at', new Date().toISOString())
+      for (let index = 0; index < orderUpdates.length; index += 1) {
+        const update = orderUpdates[index]
 
-    $app.save(project)
+        update.project.set('status', update.status)
+        update.project.set('sort_order', update.sortOrder)
+        setStatusDates(update.project, update.status)
+        $app.save(update.project)
+        if (String(update.project.get('id') || '') === projectId) movedProjectUpdated = true
+      }
+
+      if (!movedProjectUpdated) {
+        project.set('status', status)
+        setStatusDates(project, status)
+        $app.save(project)
+      }
+    } else {
+      project.set('status', status)
+      setStatusDates(project, status)
+      $app.save(project)
+    }
 
     info('xapi/projects/move:success', {
       projectId,
       previousStatus,
       status,
+      orderedCount: orderUpdates.length,
     })
     patchBoard(userId, '변경했습니다.')
     return

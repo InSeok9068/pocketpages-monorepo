@@ -76,7 +76,18 @@
 
 <div
   class="space-y-3 sm:space-y-5"
-  data-signals="{taskModalOpen: false, taskTitle: '', taskDescription: '', taskMessage: '', moveTaskId: '', moveStatus: ''}">
+  data-signals="{
+    taskModalOpen: false,
+    taskTitle: '',
+    taskDescription: '',
+    taskMessage: '',
+    moveTaskId: '',
+    moveStatus: '',
+    moveOrder: [],
+    activeTaskStatus: 'todo',
+    isTaskMobile: window.matchMedia('(max-width: 767px)').matches,
+    collapsedTaskStatuses: {todo: false, doing: false, done: true, paused: true, canceled: true}
+  }">
   <header class="rounded-lg bg-white px-3 py-3 shadow-[0_8px_24px_rgba(25,31,40,0.05)] sm:px-6 sm:py-5">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
@@ -148,7 +159,7 @@
     style="display: none">
     <section
       class="w-full max-w-[420px] rounded-lg bg-white p-4 shadow-[0_24px_80px_rgba(25,31,40,0.28)] sm:p-5"
-      onclick="event.stopPropagation()">
+      data-on:click__stop="true">
       <header class="flex items-center justify-between gap-3">
         <h2 class="text-xl font-bold text-[#191f28]">업무 추가</h2>
         <button
@@ -221,12 +232,14 @@
   window.launchboardTaskBoard.storageKey = 'launchboard:task-collapsed-statuses:<%= projectView.id %>'
   window.launchboardTaskBoard.activeStatusKey = 'launchboard:task-active-status:<%= projectView.id %>'
   window.launchboardTaskBoard.defaultCollapsedStatuses = {
+    todo: false,
+    doing: false,
     done: true,
     paused: true,
     canceled: true,
   }
 
-  window.launchboardTaskBoard.getCollapsedStatuses = function () {
+  window.launchboardGetTaskCollapsedStatuses = function () {
     let savedStatuses = {}
 
     try {
@@ -241,15 +254,7 @@
     return Object.assign({}, window.launchboardTaskBoard.defaultCollapsedStatuses, savedStatuses)
   }
 
-  window.launchboardTaskBoard.setCollapsedStatuses = function (statuses) {
-    try {
-      window.localStorage.setItem(window.launchboardTaskBoard.storageKey, JSON.stringify(statuses))
-    } catch (exception) {
-      return
-    }
-  }
-
-  window.launchboardTaskBoard.getActiveStatus = function () {
+  window.launchboardGetTaskActiveStatus = function () {
     let status = 'todo'
 
     try {
@@ -258,12 +263,34 @@
       status = 'todo'
     }
 
-    if (!document.querySelector('[data-task-column][data-status="' + status + '"]')) return 'todo'
+    if (['todo', 'doing', 'done', 'paused', 'canceled'].indexOf(status) < 0) return 'todo'
 
     return status
   }
 
-  window.launchboardTaskBoard.setActiveStatus = function (status) {
+  window.launchboardPatchTaskBoardSignals = function (signals) {
+    if (!window.patchSignals) return
+
+    window.patchSignals(signals)
+  }
+
+  window.launchboardRestoreTaskBoard = function () {
+    window.launchboardPatchTaskBoardSignals({
+      activeTaskStatus: window.launchboardGetTaskActiveStatus(),
+      collapsedTaskStatuses: window.launchboardGetTaskCollapsedStatuses(),
+      isTaskMobile: window.matchMedia('(max-width: 767px)').matches,
+    })
+  }
+
+  window.launchboardSetTaskMobileSignal = function () {
+    window.launchboardPatchTaskBoardSignals({
+      isTaskMobile: window.matchMedia('(max-width: 767px)').matches,
+    })
+  }
+
+  window.launchboardSaveTaskActiveStatus = function (status) {
+    if (['todo', 'doing', 'done', 'paused', 'canceled'].indexOf(status) < 0) return
+
     try {
       window.localStorage.setItem(window.launchboardTaskBoard.activeStatusKey, status)
     } catch (exception) {
@@ -271,84 +298,12 @@
     }
   }
 
-  window.launchboardTaskBoard.applyMobileStatusTabs = function () {
-    const activeStatus = window.launchboardTaskBoard.getActiveStatus()
-    const isMobile = window.matchMedia('(max-width: 767px)').matches
-
-    document.querySelectorAll('[data-task-status-tab]').forEach(function (tab) {
-      const isActive = tab.dataset.status === activeStatus
-      const count = tab.querySelector('[data-task-status-count]')
-
-      tab.setAttribute('aria-pressed', isActive ? 'true' : 'false')
-      tab.classList.toggle('bg-[#eaf3ff]', isActive)
-      tab.classList.toggle('text-[#1b64da]', isActive)
-      tab.classList.toggle('shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]', isActive)
-      tab.classList.toggle('bg-[#f2f4f6]', !isActive)
-      tab.classList.toggle('text-[#4e5968]', !isActive)
-      if (count) {
-        count.classList.toggle('text-[#1b64da]', isActive)
-        count.classList.toggle('text-[#6b7684]', !isActive)
-      }
-    })
-
-    document.querySelectorAll('[data-task-column]').forEach(function (column) {
-      const isActive = column.dataset.status === activeStatus
-
-      column.hidden = isMobile && !isActive
-    })
-  }
-
-  window.launchboardTaskBoard.bindStatusTabs = function () {
-    document.querySelectorAll('[data-task-status-tab]').forEach(function (tab) {
-      if (tab.dataset.tabReady === 'true') return
-
-      tab.dataset.tabReady = 'true'
-      tab.addEventListener('click', function () {
-        window.launchboardTaskBoard.setActiveStatus(tab.dataset.status || 'todo')
-        window.launchboardTaskBoard.applyColumnCollapse()
-        window.launchboardTaskBoard.applyMobileStatusTabs()
-      })
-    })
-  }
-
-  window.launchboardTaskBoard.applyColumnCollapse = function () {
-    const statuses = window.launchboardTaskBoard.getCollapsedStatuses()
-    const isMobile = window.matchMedia('(max-width: 767px)').matches
-
-    document.querySelectorAll('[data-task-column]').forEach(function (column) {
-      const status = column.dataset.status || ''
-      const isCollapsed = statuses[status] === true
-      const button = column.querySelector('[data-task-collapse-button]')
-      const list = column.querySelector('[data-task-sortable-list]')
-      const icon = button ? button.querySelector('span') : null
-
-      column.classList.toggle('min-h-0', isCollapsed)
-      column.classList.toggle('min-h-[240px]', !isCollapsed)
-      if (list) list.hidden = !isMobile && isCollapsed
-      if (button) {
-        button.setAttribute('aria-label', isCollapsed ? '펼치기' : '접기')
-        button.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true')
-      }
-      if (icon) {
-        icon.className = (isCollapsed ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up') + ' h-4 w-4'
-      }
-    })
-  }
-
-  window.launchboardTaskBoard.bindCollapseButtons = function () {
-    document.querySelectorAll('[data-task-collapse-button]').forEach(function (button) {
-      if (button.dataset.collapseReady === 'true') return
-
-      button.dataset.collapseReady = 'true'
-      button.addEventListener('click', function () {
-        const statuses = window.launchboardTaskBoard.getCollapsedStatuses()
-        const status = button.dataset.status || ''
-
-        statuses[status] = statuses[status] !== true
-        window.launchboardTaskBoard.setCollapsedStatuses(statuses)
-        window.launchboardTaskBoard.applyColumnCollapse()
-      })
-    })
+  window.launchboardSaveTaskCollapsedStatuses = function (statuses) {
+    try {
+      window.localStorage.setItem(window.launchboardTaskBoard.storageKey, JSON.stringify(statuses || {}))
+    } catch (exception) {
+      return
+    }
   }
 
   window.launchboardInitTaskSortable = function () {
@@ -361,15 +316,53 @@
       if (emptyState) emptyState.hidden = hasCards
     }
 
+    const updateStatusCounts = function () {
+      const counts = {}
+
+      document.querySelectorAll('[data-task-sortable-list]').forEach(function (list) {
+        const status = list.dataset.status || ''
+
+        if (!status) return
+        counts[status] = list.querySelectorAll('[data-task-card]').length
+      })
+
+      document.querySelectorAll('[data-task-status-count]').forEach(function (count) {
+        const status = count.dataset.status || ''
+
+        if (!Object.prototype.hasOwnProperty.call(counts, status)) return
+        count.textContent = String(counts[status])
+      })
+    }
+
+    const collectTaskOrder = function () {
+      const order = []
+
+      document.querySelectorAll('[data-task-sortable-list]').forEach(function (list) {
+        const status = list.dataset.status || ''
+
+        if (!status) return
+        list.querySelectorAll('[data-task-card]').forEach(function (card, index) {
+          order.push({
+            id: card.dataset.taskId || '',
+            status: status,
+            sortOrder: index + 1,
+          })
+        })
+      })
+
+      return order
+    }
+
     document.querySelectorAll('[data-task-sortable-list]').forEach(function (list) {
       if (list.dataset.sortableReady === 'true') return
 
       list.dataset.sortableReady = 'true'
       updateEmptyState(list)
+      updateStatusCounts()
 
       Sortable.create(list, {
         group: 'launchboard-tasks',
-        sort: false,
+        sort: true,
         animation: 160,
         draggable: '[data-task-card]',
         handle: '[data-task-drag-handle]',
@@ -391,18 +384,19 @@
           const toList = event.to
           const fromList = event.from
           const status = toList.dataset.status || ''
-          const previousStatus = card.dataset.status || ''
 
           updateEmptyState(toList)
           updateEmptyState(fromList)
+          updateStatusCounts()
 
-          if (!status || status === previousStatus) return
+          if (!status) return
 
           card.dataset.status = status
           if (window.patchSignals) {
             window.patchSignals({
               moveTaskId: card.dataset.taskId || '',
               moveStatus: status,
+              moveOrder: collectTaskOrder(),
             })
           }
 
@@ -412,19 +406,16 @@
       })
     })
 
-    window.launchboardTaskBoard.bindCollapseButtons()
-    window.launchboardTaskBoard.bindStatusTabs()
-    window.launchboardTaskBoard.applyColumnCollapse()
-    window.launchboardTaskBoard.applyMobileStatusTabs()
+    window.launchboardSetTaskMobileSignal()
   }
 
   if (window.launchboardTaskBoard.resizeReady !== true) {
     window.launchboardTaskBoard.resizeReady = true
     window.addEventListener('resize', function () {
-      window.launchboardTaskBoard.applyColumnCollapse()
-      window.launchboardTaskBoard.applyMobileStatusTabs()
+      window.launchboardSetTaskMobileSignal()
     })
   }
 
+  window.launchboardRestoreTaskBoard()
   window.launchboardInitTaskSortable()
 </script>
