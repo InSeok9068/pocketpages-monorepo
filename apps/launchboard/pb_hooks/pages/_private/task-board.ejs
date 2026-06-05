@@ -22,7 +22,7 @@
       <span
         class="<%= tabColumn.icon %> h-3.5 w-3.5"
         aria-hidden="true"></span>
-      <span class="flex max-w-full min-w-0 items-center gap-0.5">
+      <span class="flex min-w-0 max-w-full items-center gap-0.5">
         <span class="truncate"><%= tabColumn.label %></span>
         <span
           class="shrink-0 text-[10px] text-[#6b7684]"
@@ -58,7 +58,9 @@
           <span
             class="text-xs font-bold text-[#8b95a1]"
             data-task-status-count
-            data-status="<%= column.value %>"><%= columnTasks.length %></span>
+            data-status="<%= column.value %>"
+            ><%= columnTasks.length %></span
+          >
         </div>
 
         <button

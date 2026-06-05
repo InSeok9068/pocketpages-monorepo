@@ -235,7 +235,8 @@
                 class="launchboard-choice-input"
                 value="<%= option.value %>"
                 <%= option.value === taskView.status ? 'checked' : '' %> />
-              <span class="launchboard-status-choice flex min-h-9 w-full items-center justify-center gap-1 rounded-lg bg-[#f7f8fa] text-[13px] font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6] sm:min-h-11 sm:gap-1.5 sm:text-sm">
+              <span
+                class="launchboard-status-choice flex min-h-9 w-full items-center justify-center gap-1 rounded-lg bg-[#f7f8fa] text-[13px] font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6] sm:min-h-11 sm:gap-1.5 sm:text-sm">
                 <span
                   class="<%= option.icon %> h-3.5 w-3.5 sm:h-4 sm:w-4"
                   aria-hidden="true"></span>
@@ -258,7 +259,10 @@
                 class="launchboard-choice-input"
                 value="<%= option.value %>"
                 <%= option.value === taskView.priority ? 'checked' : '' %> />
-              <span class="launchboard-priority-choice flex h-9 w-full items-center justify-center rounded-lg bg-[#f7f8fa] text-[13px] font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6] sm:h-11 sm:text-sm"><%= option.label %></span>
+              <span
+                class="launchboard-priority-choice flex h-9 w-full items-center justify-center rounded-lg bg-[#f7f8fa] text-[13px] font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6] sm:h-11 sm:text-sm"
+                ><%= option.label %></span
+              >
             </label>
             <% } %>
           </div>
