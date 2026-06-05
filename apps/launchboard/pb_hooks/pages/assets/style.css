@@ -16,10 +16,6 @@ button:focus-visible {
   box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.18);
 }
 
-.launchboard-choice {
-  cursor: pointer;
-}
-
 .launchboard-choice-input {
   position: absolute;
   width: 1px;
@@ -42,30 +38,6 @@ button:focus-visible {
   padding: 0;
 }
 
-.launchboard-status-choice,
-.launchboard-priority-choice {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.375rem;
-  min-height: 2.75rem;
-  border-radius: 0.5rem;
-  background: #f7f8fa;
-  color: #4e5968;
-  font-size: 0.875rem;
-  font-weight: 700;
-  box-shadow: inset 0 0 0 1px rgba(227, 231, 237, 0);
-  transition:
-    background-color 140ms ease,
-    color 140ms ease,
-    box-shadow 140ms ease;
-}
-
-.launchboard-status-choice:hover,
-.launchboard-priority-choice:hover {
-  background: #f2f4f6;
-}
-
 .launchboard-choice-input:focus-visible + .launchboard-status-choice,
 .launchboard-choice-input:focus-visible + .launchboard-priority-choice {
   box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.18);
@@ -81,96 +53,6 @@ button:focus-visible {
   background: #191f28;
   color: #ffffff;
   box-shadow: inset 0 0 0 1px #191f28;
-}
-
-@media (max-width: 639px) {
-  .launchboard-detail-page > * + * {
-    margin-top: 0.625rem !important;
-  }
-
-  .launchboard-detail-page > header {
-    padding: 0.625rem 0.75rem;
-  }
-
-  .launchboard-detail-page > header .mt-3 {
-    margin-top: 0.5rem;
-  }
-
-  .launchboard-detail-page > header h1 {
-    font-size: 1rem;
-    line-height: 1.4;
-  }
-
-  .launchboard-detail-page > header p {
-    font-size: 0.75rem;
-  }
-
-  .launchboard-detail-form {
-    gap: 0.625rem;
-  }
-
-  .launchboard-detail-form > section {
-    padding: 0.75rem;
-    border-radius: 0.5rem;
-  }
-
-  .launchboard-detail-form > section > h2 {
-    font-size: 0.9375rem;
-  }
-
-  .launchboard-detail-form > section > h2 + div {
-    margin-top: 0.625rem;
-  }
-
-  .launchboard-detail-form label,
-  .launchboard-choice-fieldset > legend {
-    gap: 0.375rem;
-    font-size: 0.8125rem;
-  }
-
-  .launchboard-detail-form section > div,
-  .launchboard-choice-fieldset,
-  .launchboard-choice-fieldset > div {
-    gap: 0.5rem;
-  }
-
-  .launchboard-detail-form input:not([type='checkbox']):not([type='radio']),
-  .launchboard-detail-form select {
-    height: 2.375rem;
-    padding-inline: 0.75rem;
-    font-size: 0.875rem;
-  }
-
-  .launchboard-detail-form textarea {
-    padding: 0.625rem 0.75rem;
-    font-size: 0.875rem;
-    line-height: 1.5;
-  }
-
-  .launchboard-status-choice,
-  .launchboard-priority-choice {
-    min-height: 2.25rem;
-    gap: 0.25rem;
-    border-radius: 0.5rem;
-    font-size: 0.8125rem;
-  }
-
-  .launchboard-status-choice > span:first-child {
-    width: 0.875rem;
-    height: 0.875rem;
-  }
-
-  .launchboard-detail-form > .sticky {
-    margin-inline: -0.75rem;
-    padding: 0.5rem 0.75rem;
-  }
-
-  .launchboard-detail-form > .sticky a,
-  .launchboard-detail-form > .sticky button {
-    height: 2.625rem;
-    min-height: 2.625rem;
-    font-size: 0.875rem;
-  }
 }
 
 .launchboard-sortable-ghost {
