@@ -33,9 +33,28 @@
     projectMoveId: '',
     projectMoveStatus: '',
     projectMoveOrder: [],
-    activeProjectStatus: 'idea',
+    activeProjectStatus: (function () {
+      try {
+        const status = window.localStorage.getItem('launchboard:active-status') || 'idea'
+
+        return ['idea', 'building', 'launched', 'paused', 'discarded'].indexOf(status) >= 0 ? status : 'idea'
+      } catch (exception) {
+        return 'idea'
+      }
+    })(),
     isProjectMobile: window.matchMedia('(max-width: 767px)').matches,
-    collapsedProjectStatuses: {idea: false, building: false, launched: false, paused: true, discarded: true}
+    collapsedProjectStatuses: (function () {
+      const defaults = {idea: false, building: false, launched: false, paused: true, discarded: true}
+
+      try {
+        const savedText = window.localStorage.getItem('launchboard:collapsed-statuses')
+        const saved = savedText ? JSON.parse(savedText) : {}
+
+        return saved && typeof saved === 'object' && !Array.isArray(saved) ? Object.assign({}, defaults, saved) : defaults
+      } catch (exception) {
+        return defaults
+      }
+    })()
   }">
   <div
     class="fixed right-4 top-4 z-30 sm:right-6 sm:top-5"
@@ -164,53 +183,11 @@
   window.launchboardProjectBoard.storageKey = 'launchboard:collapsed-statuses'
   window.launchboardProjectBoard.activeStatusKey = 'launchboard:active-status'
   window.launchboardProjectBoard.statusValues = ['idea', 'building', 'launched', 'paused', 'discarded']
-  window.launchboardProjectBoard.defaultCollapsedStatuses = {
-    idea: false,
-    building: false,
-    launched: false,
-    paused: true,
-    discarded: true,
-  }
-
-  window.launchboardGetProjectCollapsedStatuses = function () {
-    let savedStatuses = {}
-
-    try {
-      const savedText = window.localStorage.getItem(window.launchboardProjectBoard.storageKey)
-      const saved = savedText ? JSON.parse(savedText) : {}
-
-      if (saved && typeof saved === 'object' && !Array.isArray(saved)) savedStatuses = saved
-    } catch (exception) {
-      savedStatuses = {}
-    }
-
-    return Object.assign({}, window.launchboardProjectBoard.defaultCollapsedStatuses, savedStatuses)
-  }
-
-  window.launchboardGetProjectActiveStatus = function () {
-    let savedActiveStatus = ''
-
-    try {
-      savedActiveStatus = window.localStorage.getItem(window.launchboardProjectBoard.activeStatusKey) || ''
-    } catch (exception) {
-      savedActiveStatus = ''
-    }
-
-    return window.launchboardProjectBoard.statusValues.indexOf(savedActiveStatus) >= 0 ? savedActiveStatus : 'idea'
-  }
 
   window.launchboardPatchProjectBoardSignals = function (signals) {
     if (!window.patchSignals) return
 
     window.patchSignals(signals)
-  }
-
-  window.launchboardRestoreProjectBoard = function () {
-    window.launchboardPatchProjectBoardSignals({
-      activeProjectStatus: window.launchboardGetProjectActiveStatus(),
-      collapsedProjectStatuses: window.launchboardGetProjectCollapsedStatuses(),
-      isProjectMobile: window.matchMedia('(max-width: 767px)').matches,
-    })
   }
 
   window.launchboardSetProjectMobileSignal = function () {
@@ -341,7 +318,6 @@
     window.launchboardSetProjectMobileSignal()
   }
 
-  window.launchboardRestoreProjectBoard()
   window.launchboardInitSortable()
 
   if (window.launchboardProjectResizeReady !== true) {
