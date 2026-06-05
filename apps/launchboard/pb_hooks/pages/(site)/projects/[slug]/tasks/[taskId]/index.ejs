@@ -6,11 +6,11 @@
   const taskId = String(params.taskId || '').trim()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   const statusOptions = [
-    { value: 'todo', label: '할 일' },
-    { value: 'doing', label: '진행중' },
-    { value: 'done', label: '완료' },
-    { value: 'paused', label: '보류' },
-    { value: 'canceled', label: '취소' },
+    { value: 'todo', label: '할 일', icon: 'i-lucide-list-checks' },
+    { value: 'doing', label: '진행중', icon: 'i-lucide-hammer' },
+    { value: 'done', label: '완료', icon: 'i-lucide-check-circle-2' },
+    { value: 'paused', label: '보류', icon: 'i-lucide-pause' },
+    { value: 'canceled', label: '취소', icon: 'i-lucide-x-circle' },
   ]
   const priorityOptions = [
     { value: 'low', label: '낮음' },
@@ -162,7 +162,7 @@
 </script>
 
 <div
-  class="mx-auto max-w-[980px] space-y-3 sm:space-y-6"
+  class="launchboard-detail-page mx-auto max-w-[980px] space-y-3 sm:space-y-6"
   data-signals="{advancedOpen: false, detailToastMessage: '', detailToastTone: 'success'}">
   <header class="rounded-lg bg-white px-3 py-3 shadow-[0_8px_24px_rgba(25,31,40,0.05)] sm:px-6 sm:py-5">
     <div class="flex items-start justify-between gap-3">
@@ -195,7 +195,7 @@
   <form
     method="post"
     action="/xapi/tasks/update"
-    class="grid gap-3 sm:gap-4"
+    class="launchboard-detail-form grid gap-3 sm:gap-4"
     data-on:submit="@post('/xapi/tasks/update', {contentType: 'form'})">
     <input
       type="hidden"
@@ -223,37 +223,46 @@
             class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12 sm:text-base" />
         </label>
 
-        <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
-          상태
-          <select
-            name="status"
-            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12 sm:text-base">
+        <fieldset class="launchboard-choice-fieldset m-0 grid gap-2 border-0 p-0 sm:col-span-2">
+          <legend class="text-sm font-semibold text-[#4e5968]">상태</legend>
+          <div class="grid grid-cols-3 gap-2 sm:grid-cols-5">
             <% for (let index = 0; index < statusOptions.length; index += 1) { %>
             <% const option = statusOptions[index] %>
-            <option
-              value="<%= option.value %>"
-              <%= option.value === taskView.status ? 'selected' : '' %>>
-              <%= option.label %>
-            </option>
+            <label class="launchboard-choice">
+              <input
+                type="radio"
+                name="status"
+                class="launchboard-choice-input"
+                value="<%= option.value %>"
+                <%= option.value === taskView.status ? 'checked' : '' %> />
+              <span class="launchboard-status-choice">
+                <span
+                  class="<%= option.icon %> h-4 w-4"
+                  aria-hidden="true"></span>
+                <span><%= option.label %></span>
+              </span>
+            </label>
             <% } %>
-          </select>
-        </label>
+          </div>
+        </fieldset>
 
-        <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
-          우선순위
-          <select
-            name="priority"
-            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-12 sm:text-base">
+        <fieldset class="launchboard-choice-fieldset m-0 grid gap-2 border-0 p-0">
+          <legend class="text-sm font-semibold text-[#4e5968]">우선순위</legend>
+          <div class="grid grid-cols-3 gap-2">
             <% for (let index = 0; index < priorityOptions.length; index += 1) { %>
             <% const option = priorityOptions[index] %>
-            <option
-              value="<%= option.value %>"
-              <%= option.value === taskView.priority ? 'selected' : '' %>>
-              <%= option.label %>
-            </option>
+            <label class="launchboard-choice">
+              <input
+                type="radio"
+                name="priority"
+                class="launchboard-choice-input"
+                value="<%= option.value %>"
+                <%= option.value === taskView.priority ? 'checked' : '' %> />
+              <span class="launchboard-priority-choice"><%= option.label %></span>
+            </label>
             <% } %>
-          </select>
-        </label>
+          </div>
+        </fieldset>
 
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           타입
