@@ -1,0 +1,217 @@
+<section
+  id="project-board"
+  data-project-board>
+  <div class="min-w-0">
+    <nav
+      class="mb-3 mt-9 grid grid-cols-5 gap-1 rounded-lg bg-white p-1 shadow-[0_8px_24px_rgba(25,31,40,0.05)] md:hidden"
+      aria-label="프로젝트 상태">
+      <% for (let tabIndex = 0; tabIndex < statusColumns.length; tabIndex += 1) { %>
+      <% const tabColumn = statusColumns[tabIndex] %>
+      <% const tabProjects = projectsByStatus[tabColumn.value] || [] %>
+      <button
+        type="button"
+        class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 px-1 text-[10px] font-bold leading-none hover:bg-[#eaf3ff] sm:h-12"
+        :class="isActiveStatus('<%= tabColumn.value %>') ? 'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]' : 'bg-[#f2f4f6] text-[#4e5968]'"
+        :aria-pressed="isActiveStatus('<%= tabColumn.value %>') ? 'true' : 'false'"
+        @click="setActiveStatus('<%= tabColumn.value %>')">
+        <span
+          class="<%= tabColumn.icon %> h-3.5 w-3.5 shrink-0"
+          aria-hidden="true"></span>
+        <span class="flex max-w-full min-w-0 items-center gap-0.5">
+          <span class="truncate"><%= tabColumn.label %></span>
+          <span
+            class="shrink-0 text-[10px]"
+            data-project-status-count
+            data-status="<%= tabColumn.value %>"
+            :class="isActiveStatus('<%= tabColumn.value %>') ? 'text-[#1b64da]' : 'text-[#6b7684]'"
+            ><%= tabProjects.length %></span
+          >
+        </span>
+      </button>
+      <% } %>
+    </nav>
+
+    <div class="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+      <% for (let columnIndex = 0; columnIndex < statusColumns.length; columnIndex += 1) { %>
+      <% const column = statusColumns[columnIndex] %>
+      <% const columnProjects = projectsByStatus[column.value] || [] %>
+      <section
+        id="status-<%= column.value %>"
+        class="<%= column.surface %> rounded-lg p-3"
+        x-show="!isMobile || isActiveStatus('<%= column.value %>')"
+        x-transition
+        :class="!isMobile && isColumnCollapsed('<%= column.value %>') ? 'min-h-0 bg-white/70' : 'min-h-[280px]'">
+        <header class="flex items-center justify-between gap-3 px-1 py-1">
+          <div class="flex items-center gap-2">
+            <span class="<%= column.iconTone %> inline-flex h-7 w-7 items-center justify-center rounded-lg">
+              <span
+                class="<%= column.icon %> h-4 w-4"
+                aria-hidden="true"></span>
+            </span>
+            <h2 class="text-sm font-bold text-[#191f28]"><%= column.label %></h2>
+            <span
+              class="text-xs font-bold text-[#8b95a1]"
+              data-project-status-count
+              data-status="<%= column.value %>"><%= columnProjects.length %></span>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              class="hidden h-8 w-8 items-center justify-center rounded-lg border-0 bg-white/70 text-[#6b7684] hover:bg-white md:inline-flex"
+              :aria-label="isColumnCollapsed('<%= column.value %>') ? '펼치기' : '접기'"
+              :aria-expanded="!isColumnCollapsed('<%= column.value %>')"
+              @click="toggleColumn('<%= column.value %>')">
+              <span
+                x-show="isColumnCollapsed('<%= column.value %>')"
+                class="i-lucide-chevron-down h-4 w-4"
+                aria-hidden="true"></span>
+              <span
+                x-show="!isColumnCollapsed('<%= column.value %>')"
+                class="i-lucide-chevron-up h-4 w-4"
+                aria-hidden="true"></span>
+            </button>
+            <% if (column.value === 'idea') { %>
+            <button
+              type="button"
+              class="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#3182f6] px-2.5 text-xs font-bold text-white hover:bg-[#1b64da]"
+              @click="projectModalOpen = true">
+              <span
+                class="i-lucide-plus h-3.5 w-3.5"
+                aria-hidden="true"></span>
+              추가
+            </button>
+            <% } %>
+          </div>
+        </header>
+
+        <div
+          x-show="isMobile || !isColumnCollapsed('<%= column.value %>')"
+          x-transition
+          class="mt-3 grid gap-3"
+          data-sortable-list
+          data-status="<%= column.value %>">
+          <div
+            class="rounded-lg border border-dashed border-[#d9dee7] bg-white/60 px-3 py-3 text-center text-xs font-medium text-[#8b95a1]"
+            <% if (columnProjects.length > 0) { %>hidden<% } %>
+            data-empty-state>
+            비어 있음
+          </div>
+
+          <% for (let projectIndex = 0; projectIndex < columnProjects.length; projectIndex += 1) { %>
+          <% const project = columnProjects[projectIndex] %>
+          <article
+            class="cursor-pointer rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.08),0_0_0_1px_rgba(227,231,237,0.78)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(25,31,40,0.11),0_0_0_1px_rgba(49,130,246,0.18)]"
+            data-project-card
+            data-project-id="<%= project.id %>"
+            data-status="<%= project.status %>"
+            role="link"
+            tabindex="0"
+            onclick="if (document.body.dataset.launchboardDragging !== 'true') window.location.href = '<%= project.href %>'"
+            onkeydown="if (event.key === 'Enter') window.location.href = '<%= project.href %>'">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex min-w-0 items-center gap-2">
+                <% if (project.isPinned) { %>
+                <span
+                  class="i-lucide-pin h-3.5 w-3.5 shrink-0 text-[#f59f00]"
+                  aria-hidden="true"></span>
+                <% } %>
+                <% if (project.faviconUrls.length > 0) { %>
+                <span class="relative h-5 w-5 shrink-0 overflow-hidden rounded-md bg-[#f2f4f6] text-[#8b95a1]">
+                  <span
+                    class="i-lucide-globe-2 absolute inset-[3px]"
+                    aria-hidden="true"></span>
+                  <img
+                    src="<%= project.faviconUrls[0] %>"
+                    data-favicon-index="0"
+                    data-favicon-list="<%= project.faviconUrls.join('|') %>"
+                    alt=""
+                    loading="lazy"
+                    referrerpolicy="no-referrer"
+                    class="absolute inset-0 h-full w-full bg-white object-contain"
+                    onerror="window.launchboardNextFavicon && window.launchboardNextFavicon(this)" />
+                </span>
+                <% } %>
+                <h3 class="truncate text-base font-bold text-[#191f28]">
+                  <%= project.nameKo %><% if (project.nameEn) { %>
+                  <span class="font-semibold text-[#8b95a1]"> - <%= project.nameEn %></span><% } %>
+                </h3>
+              </div>
+              <div class="flex shrink-0 items-center gap-1.5">
+                <% if (project.showPriority) { %>
+                <span class="<%= project.priorityTone %> rounded-md px-2 py-1 text-[11px] font-bold"><%= project.priorityLabel %></span>
+                <% } %>
+                <span
+                  role="button"
+                  tabindex="-1"
+                  class="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-md border-0 bg-[#f2f4f6] text-[#8b95a1] active:cursor-grabbing"
+                  data-drag-handle
+                  aria-label="드래그">
+                  <span
+                    class="i-lucide-grip-vertical h-4 w-4"
+                    aria-hidden="true"></span>
+                </span>
+              </div>
+            </div>
+
+            <% if (project.description) { %>
+            <p class="mt-3 line-clamp-2 text-sm leading-6 text-[#4e5968]"><%= project.description %></p>
+            <% } %>
+
+            <div class="mt-3 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-1.5">
+                <a
+                  href="<%= project.tasksHref %>"
+                  class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f2f4f6] text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
+                  aria-label="업무"
+                  title="업무"
+                  onclick="event.stopPropagation()">
+                  <span
+                    class="i-lucide-list-todo h-3.5 w-3.5"
+                    aria-hidden="true"></span>
+                </a>
+                <% if (project.domainUrl) { %>
+                <a
+                  href="<%= project.domainUrl %>"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f2f4f6] text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
+                  aria-label="도메인 열기"
+                  title="도메인"
+                  onclick="event.stopPropagation()">
+                  <span
+                    class="i-lucide-external-link h-3.5 w-3.5"
+                    aria-hidden="true"></span>
+                </a>
+                <% } %>
+                <% if (project.repoUrl) { %>
+                <a
+                  href="<%= project.repoUrl %>"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f2f4f6] text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
+                  aria-label="저장소 열기"
+                  title="저장소"
+                  onclick="event.stopPropagation()">
+                  <span
+                    class="i-lucide-git-branch h-3.5 w-3.5"
+                    aria-hidden="true"></span>
+                </a>
+                <% } %>
+              </div>
+              <% if (project.updatedAt) { %>
+              <span class="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#8b95a1]">
+                <span
+                  class="i-lucide-clock-3 h-3.5 w-3.5"
+                  aria-hidden="true"></span>
+                수정 <%= project.updatedAt %>
+              </span>
+              <% } %>
+            </div>
+          </article>
+          <% } %>
+        </div>
+      </section>
+      <% } %>
+    </div>
+  </div>
+</section>

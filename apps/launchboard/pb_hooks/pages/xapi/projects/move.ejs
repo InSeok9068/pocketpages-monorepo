@@ -1,0 +1,138 @@
+<script server>
+  const projectBoard = resolve('project-board')
+
+  function patchBoard(userId, message) {
+    const state = projectBoard.getProjectBoardState($app, userId)
+
+    datastar.patchElements(
+      include('project-board.ejs', {
+        statusColumns: state.statusColumns,
+        projectsByStatus: state.projectsByStatus,
+      }),
+      {
+        selector: '#project-board',
+        mode: 'outer',
+        useViewTransition: true,
+      }
+    )
+    datastar.patchSignals({
+      projectMessage: message,
+      projectMoveId: '',
+      projectMoveStatus: '',
+    })
+    datastar.executeScript('window.launchboardInitSortable && window.launchboardInitSortable();')
+  }
+
+  if (request.method !== 'POST') {
+    warn('xapi/projects/move:invalid-method', {
+      method: request.method,
+    })
+
+    if (datastar.isRequest(request)) {
+      datastar.patchSignals({
+        projectMessage: '잘못된 요청입니다.',
+      })
+      return
+    }
+
+    dbg('xapi/projects/move:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    warn('xapi/projects/move:unauthorized', {})
+
+    if (datastar.isRequest(request)) {
+      datastar.patchSignals({
+        projectMessage: '로그인이 필요합니다.',
+      })
+      return
+    }
+
+    dbg('xapi/projects/move:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      flash: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const signals = datastar.requestSignals({
+    projectMoveId: '',
+    projectMoveStatus: '',
+  })
+  const userId = String(request.auth.get('id') || '')
+  const projectId = String(signals.projectMoveId || '').trim()
+  const status = String(signals.projectMoveStatus || '').trim()
+  let errorMessage = ''
+
+  dbg('xapi/projects/move:start', {
+    userId,
+    projectId,
+    status,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!projectId) throw new Error('프로젝트를 찾지 못했습니다.')
+    if (projectBoard.PROJECT_STATUS_VALUES.indexOf(status) < 0) throw new Error('상태 값이 올바르지 않습니다.')
+
+    const project = $app.findFirstRecordByFilter('projects', 'id = {:projectId} && user = {:userId}', {
+      projectId,
+      userId,
+    })
+    const previousStatus = String(project.get('status') || '')
+
+    project.set('status', status)
+
+    if (status === 'building' && !project.get('started_at')) project.set('started_at', new Date().toISOString())
+    if (status === 'launched' && !project.get('launched_at')) project.set('launched_at', new Date().toISOString())
+    if (status === 'discarded' && !project.get('discarded_at')) project.set('discarded_at', new Date().toISOString())
+
+    $app.save(project)
+
+    info('xapi/projects/move:success', {
+      projectId,
+      previousStatus,
+      status,
+    })
+    patchBoard(userId, '변경했습니다.')
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('xapi/projects/move:failed', {
+      userId,
+      projectId,
+      status,
+      error: errorMessage,
+    })
+  }
+
+  if (datastar.isRequest(request)) {
+    patchBoard(userId, errorMessage || '변경에 실패했습니다.')
+    return
+  }
+
+  dbg('xapi/projects/move:redirect', {
+    status: 303,
+    redirectTo: '/',
+    error: errorMessage || '변경에 실패했습니다.',
+  })
+  redirect('/', {
+    status: 303,
+    message: errorMessage || '변경에 실패했습니다.',
+  })
+  return
+</script>

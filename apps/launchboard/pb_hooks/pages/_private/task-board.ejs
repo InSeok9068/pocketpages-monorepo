@@ -150,7 +150,7 @@
                 type="submit"
                 class="inline-flex h-7 w-7 items-center justify-center rounded-md border-0 bg-[#f7f8fa] text-[#8b95a1] hover:bg-[#fff0f0] hover:text-[#e03131]"
                 aria-label="삭제"
-                onclick="event.stopPropagation()">
+                onclick="event.stopPropagation(); if (!confirm('이 업무를 완전히 삭제할까요?')) event.preventDefault()">
                 <span
                   class="i-lucide-trash-2 h-3.5 w-3.5"
                   aria-hidden="true"></span>
