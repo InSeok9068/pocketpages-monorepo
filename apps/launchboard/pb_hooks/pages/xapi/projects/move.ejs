@@ -19,6 +19,7 @@
       projectMessage: message,
       projectMoveId: '',
       projectMoveStatus: '',
+      projectMoveOrder: [],
     })
     datastar.executeScript('window.launchboardSetProjectMobileSignal && window.launchboardSetProjectMobileSignal(); window.launchboardInitSortable && window.launchboardInitSortable();')
   }
@@ -164,7 +165,7 @@
       status,
       orderedCount: orderUpdates.length,
     })
-    patchBoard(userId, '변경했습니다.')
+    patchBoard(userId, '')
     return
   } catch (exception) {
     errorMessage = String(exception.message || exception)

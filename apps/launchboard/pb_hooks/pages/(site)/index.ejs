@@ -8,11 +8,9 @@
     dbg('page/launchboard:index:redirect', {
       status: 303,
       redirectTo: '/sign-in',
-      flash: '로그인이 필요합니다.',
     })
     redirect('/sign-in', {
       status: 303,
-      message: '로그인이 필요합니다.',
     })
     return
   }
@@ -70,10 +68,6 @@
       </form>
     </div>
   </div>
-
-  <% if (params.__flash) { %>
-  <div class="rounded-lg bg-[#fff4d6] px-3 py-2 text-xs font-medium text-[#8a5b00]"><%= params.__flash %></div>
-  <% } %>
 
   <div
     class="rounded-lg bg-[#fff4d6] px-3 py-2 text-xs font-medium text-[#8a5b00]"

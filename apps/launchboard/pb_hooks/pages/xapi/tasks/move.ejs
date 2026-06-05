@@ -24,6 +24,7 @@
     datastar.patchSignals({
       moveTaskId: '',
       moveStatus: '',
+      moveOrder: [],
       taskMessage: message,
     })
     datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable();')
@@ -146,7 +147,7 @@
       status,
       orderedCount: orderUpdates.length,
     })
-    patchBoard(projectId, userId, '변경했습니다.')
+    patchBoard(projectId, userId, '')
     return
   } catch (exception) {
     errorMessage = String(exception.message || exception)

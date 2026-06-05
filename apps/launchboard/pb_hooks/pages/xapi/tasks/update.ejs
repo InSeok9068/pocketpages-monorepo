@@ -1,12 +1,26 @@
 <script server>
   const taskBoard = resolve('task-board')
 
+  function patchToast(message, tone) {
+    datastar.patchSignals({
+      detailToastMessage: message,
+      detailToastTone: tone,
+    })
+    datastar.executeScript("window.setTimeout(function () { window.patchSignals && window.patchSignals({detailToastMessage: ''}) }, 2400)")
+  }
+
   if (request.method !== 'POST') {
     dbg('xapi/tasks/update:redirect', {
       status: 303,
       redirectTo: '/',
       flash: '잘못된 요청입니다.',
     })
+
+    if (datastar.isRequest(request)) {
+      patchToast('잘못된 요청입니다.', 'error')
+      return
+    }
+
     redirect('/', {
       status: 303,
       message: '잘못된 요청입니다.',
@@ -20,6 +34,12 @@
       redirectTo: '/sign-in',
       flash: '로그인이 필요합니다.',
     })
+
+    if (datastar.isRequest(request)) {
+      patchToast('로그인이 필요합니다.', 'error')
+      return
+    }
+
     redirect('/sign-in', {
       status: 303,
       message: '로그인이 필요합니다.',
@@ -124,6 +144,12 @@
       redirectTo,
       flash: '저장했습니다.',
     })
+
+    if (datastar.isRequest(request)) {
+      patchToast('저장했습니다.', 'success')
+      return
+    }
+
     redirect(redirectTo, {
       status: 303,
       message: '저장했습니다.',
@@ -144,6 +170,12 @@
     redirectTo,
     error: errorMessage || '저장에 실패했습니다.',
   })
+
+  if (datastar.isRequest(request)) {
+    patchToast(errorMessage || '저장에 실패했습니다.', 'error')
+    return
+  }
+
   redirect(redirectTo, {
     status: 303,
     message: errorMessage || '저장에 실패했습니다.',
