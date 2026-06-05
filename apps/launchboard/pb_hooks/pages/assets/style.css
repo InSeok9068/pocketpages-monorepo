@@ -55,6 +55,14 @@ button:focus-visible {
   box-shadow: inset 0 0 0 1px #191f28;
 }
 
+.launchboard-scrollbar-none {
+  scrollbar-width: none;
+}
+
+.launchboard-scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 .launchboard-sortable-ghost {
   opacity: 0.42;
 }

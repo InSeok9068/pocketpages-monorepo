@@ -33,6 +33,7 @@
     projectMoveId: '',
     projectMoveStatus: '',
     projectMoveOrder: [],
+    compactProjectStatuses: {idea: false, building: false, launched: false, paused: false, discarded: false},
     activeProjectStatus: (function () {
       try {
         const status = window.localStorage.getItem('launchboard:active-status') || 'idea'
