@@ -1015,12 +1015,7 @@
     ceilingGradient.addColorStop(0, '#f6fbf8')
     ceilingGradient.addColorStop(1, '#d6dfd8')
     ctx.fillStyle = ceilingGradient
-    drawPolygon([
-      { x: 0, y: 0 },
-      { x: WORLD.width, y: 0 },
-      ceilingRight,
-      ceilingLeft,
-    ])
+    drawPolygon([{ x: 0, y: 0 }, { x: WORLD.width, y: 0 }, ceilingRight, ceilingLeft])
     ctx.fill()
 
     ctx.shadowColor = 'rgba(255, 255, 255, 0.9)'
@@ -1148,7 +1143,6 @@
     ctx.moveTo(centerService.x, centerService.y)
     ctx.lineTo(centerBack.x, centerBack.y)
     ctx.stroke()
-
     ;[
       [0.15, 0.43, 0.15, 0.92],
       [0.85, 0.43, 0.85, 0.92],
@@ -1381,14 +1375,7 @@
       ctx.stroke()
     }
 
-    const ballGradient = ctx.createRadialGradient(
-      visualX - visualRadius * 0.35,
-      visualY - visualRadius * 0.45,
-      2,
-      visualX,
-      visualY,
-      visualRadius * 1.2
-    )
+    const ballGradient = ctx.createRadialGradient(visualX - visualRadius * 0.35, visualY - visualRadius * 0.45, 2, visualX, visualY, visualRadius * 1.2)
     ballGradient.addColorStop(0, '#ffffff')
     ballGradient.addColorStop(0.45, '#fff8d8')
     ballGradient.addColorStop(1, '#e4b83a')
