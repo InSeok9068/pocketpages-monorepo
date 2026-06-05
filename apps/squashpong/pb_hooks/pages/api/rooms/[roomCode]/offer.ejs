@@ -24,6 +24,10 @@
     response.json(200, {
       ok: true,
       offer: room.offer,
+      room: {
+        code: room.code,
+        speedMode: roomStore.normalizeSpeedMode(room.speedMode),
+      },
     })
     return
   }

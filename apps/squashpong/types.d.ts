@@ -3,6 +3,7 @@ declare namespace types {
 
   type SquashpongRoom = {
     code: string
+    speedMode: 'normal' | 'fast' | 'turbo'
     createdAt: string
     updatedAt: string
     offer: Record<string, any> | null

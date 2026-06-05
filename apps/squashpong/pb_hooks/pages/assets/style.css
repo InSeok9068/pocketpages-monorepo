@@ -203,6 +203,12 @@ label {
   gap: 8px;
 }
 
+.speed-mode-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .character-option {
   display: flex;
   align-items: center;
@@ -217,14 +223,32 @@ label {
   font-weight: 800;
 }
 
-.character-option input {
+.speed-mode-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin: 0;
+  border: 1px solid #b5c5ad;
+  border-radius: 8px;
+  background: #fffdf4;
+  color: #172017;
+  padding: 8px 6px;
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.character-option input,
+.speed-mode-option input {
   position: absolute;
   width: 1px;
   height: 1px;
   opacity: 0;
 }
 
-.character-option.is-selected {
+.character-option.is-selected,
+.speed-mode-option.is-selected {
   border-color: #d54a35;
   background: #fff1df;
 }

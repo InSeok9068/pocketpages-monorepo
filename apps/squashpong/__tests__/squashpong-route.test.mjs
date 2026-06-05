@@ -38,12 +38,13 @@ async function postJson(path, body) {
   return { response, payload };
 }
 
-async function createRoom() {
-  const { response, payload } = await postJson('/api/rooms/create', {});
+async function createRoom(body = {}) {
+  const { response, payload } = await postJson('/api/rooms/create', body);
 
   assert.equal(response.status, 200);
   assert.equal(payload.ok, true);
   assert.match(payload.room.code, /^[A-Z0-9]{6}$/);
+  assert.match(payload.room.speedMode, /^(normal|fast|turbo)$/);
 
   return payload.room.code;
 }
@@ -67,6 +68,9 @@ test('GET / renders the playable draft page', async () => {
   assert.equal($('#solo-play').text().trim(), '솔로 플레이');
   assert.equal($('#copy-link').text().trim(), '초대 링크 복사');
   assert.equal($('#leave-game').text().trim(), '나가기');
+  assert.equal($('input[name="speedMode"]').length, 3);
+  assert.equal($('input[name="speedMode"][value="normal"]').is('[checked]'), true);
+  assert.equal($('#speed-label').text().trim(), '기본');
   assert.equal($('#swing-button').length, 0);
   assert.equal($('[data-control]').length, 0);
   assert.equal($('input[name="character"]').length, 4);
@@ -106,9 +110,15 @@ test('GET /assets/squashpong/game.js returns the client game script', async () =
   assert.match(body, /updateAiInput/);
   assert.match(body, /setScreen/);
   assert.match(body, /leaveGame/);
+  assert.match(body, /getSelectedSpeedMode/);
+  assert.match(body, /syncSpeedModeOptions/);
   assert.match(body, /shotType: 'drive'/);
   assert.match(body, /detectShotFromGesture/);
   assert.match(body, /drawShotHint/);
+  assert.match(body, /loadImage/);
+  assert.match(body, /court\.svg/);
+  assert.match(body, /player-lime\.svg/);
+  assert.match(body, /drawImage/);
   assert.match(body, /pointerControl/);
   assert.match(body, /handleCourtPointerDown/);
   assert.match(body, /handleCourtPointerEnd/);
@@ -128,6 +138,26 @@ test('GET /assets/squashpong/game.js returns the client game script', async () =
   assert.match(body, /runtime\.localInput\.swingId \+= 1/);
 });
 
+test('GET /assets/squashpong/court.svg returns the SVG court asset', async () => {
+  const response = await fetch(`${service.baseUrl}/assets/squashpong/court.svg`);
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, /<svg/);
+  assert.match(body, /frontWall/);
+  assert.match(body, /floor/);
+});
+
+test('GET /assets/squashpong/player-lime.svg returns the SVG player asset', async () => {
+  const response = await fetch(`${service.baseUrl}/assets/squashpong/player-lime.svg`);
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, /<svg/);
+  assert.match(body, /shirt/);
+  assert.match(body, /#b7f25a/);
+});
+
 test('GET /assets/squashpong/game-rules.js returns testable squash rules', async () => {
   const response = await fetch(`${service.baseUrl}/assets/squashpong/game-rules.js`);
   const body = await response.text();
@@ -138,6 +168,8 @@ test('GET /assets/squashpong/game-rules.js returns testable squash rules', async
   assert.match(body, /playerMinY/);
   assert.match(body, /awaitingServe/);
   assert.match(body, /ballSpeed: 300/);
+  assert.match(body, /SPEED_MODES/);
+  assert.match(body, /normalizeSpeedMode/);
   assert.match(body, /outHeight: 260/);
   assert.match(body, /frontWallTargetHeight/);
   assert.match(body, /hitRadius: 78/);
@@ -155,7 +187,7 @@ test('GET /assets/style.css includes mobile game screens and drag controls', asy
   const body = await response.text();
 
   assert.equal(response.status, 200);
-  assert.match(body, /body\[data-screen="game"\]/);
+  assert.match(body, /body\[data-screen=['"]game['"]\]/);
   assert.match(body, /\.lobby-screen/);
   assert.match(body, /\.room-screen/);
   assert.match(body, /\.game-screen/);
@@ -164,6 +196,7 @@ test('GET /assets/style.css includes mobile game screens and drag controls', asy
   assert.match(body, /\.play-surface\.is-dragging/);
   assert.match(body, /safe-area-inset-bottom/);
   assert.match(body, /\.character-list/);
+  assert.match(body, /\.speed-mode-list/);
   assert.match(body, /@media \(min-width: 760px\)/);
   assert.match(body, /touch-action: none/);
   assert.doesNotMatch(body, /\.touch-controls/);
@@ -177,13 +210,26 @@ test('POST /api/rooms/create creates unique in-memory room codes', async () => {
   assert.notEqual(firstCode, secondCode);
 });
 
+test('POST /api/rooms/create stores selected ball speed mode', async () => {
+  const { response, payload } = await postJson('/api/rooms/create', {
+    speedMode: 'fast',
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.room.speedMode, 'fast');
+});
+
 test('GET /api/rooms/[roomCode]/offer returns null before host posts offer', async () => {
-  const roomCode = await createRoom();
+  const roomCode = await createRoom({
+    speedMode: 'turbo',
+  });
   const { response, payload } = await getJson(`/api/rooms/${roomCode}/offer`);
 
   assert.equal(response.status, 200);
   assert.equal(payload.ok, true);
   assert.equal(payload.offer, null);
+  assert.equal(payload.room.speedMode, 'turbo');
 });
 
 test('POST and GET /api/rooms/[roomCode]/offer round-trip host offer and reset answer state', async () => {

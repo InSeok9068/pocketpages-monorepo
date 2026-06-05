@@ -28,6 +28,23 @@
     hitRadius: 78,
     swingSeconds: 0.18,
   }
+  const SPEED_MODES = {
+    normal: {
+      id: 'normal',
+      label: '기본',
+      scale: 1,
+    },
+    fast: {
+      id: 'fast',
+      label: '빠름',
+      scale: 1.28,
+    },
+    turbo: {
+      id: 'turbo',
+      label: '매우 빠름',
+      scale: 1.52,
+    },
+  }
   const CHARACTERS = [
     { id: 'lime', label: '라임', primary: '#b7f25a', secondary: '#315f29' },
     { id: 'sky', label: '스카이', primary: '#62c8ff', secondary: '#164e73' },
@@ -128,6 +145,26 @@
   }
 
   /**
+   * 공속도 모드를 안전한 값으로 정규화한다.
+   * @param {string} speedMode
+   * @returns {'normal' | 'fast' | 'turbo'}
+   */
+  function normalizeSpeedMode(speedMode) {
+    return SPEED_MODES[speedMode] ? speedMode : 'normal'
+  }
+
+  /**
+   * 게임 상태의 공속도 배율을 반환한다.
+   * @param {Record<string, any>} state
+   * @returns {number}
+   */
+  function getSpeedScale(state) {
+    const speedMode = normalizeSpeedMode(state && state.speedMode)
+
+    return SPEED_MODES[speedMode].scale
+  }
+
+  /**
    * 입력 객체를 기본값과 합친다.
    * @param {Record<string, any>} input
    * @returns {{ up: boolean, down: boolean, left: boolean, right: boolean, swingId: number, shotType: 'drive' | 'drop' | 'boast', shotSide: -1 | 1 }}
@@ -146,14 +183,16 @@
 
   /**
    * 새 게임 상태를 만든다.
-   * @param {{ hostCharacter?: string, guestCharacter?: string }} options
+   * @param {{ hostCharacter?: string, guestCharacter?: string, speedMode?: string }} options
    * @returns {Record<string, any>}
    */
   function createInitialState(options) {
     const hostCharacter = normalizeCharacter(options && options.hostCharacter)
     const guestCharacter = normalizeCharacter(options && options.guestCharacter ? options.guestCharacter : 'sky')
+    const speedMode = normalizeSpeedMode(options && options.speedMode)
 
     return {
+      speedMode: speedMode,
       hostScore: 0,
       guestScore: 0,
       rally: 0,
@@ -300,13 +339,15 @@
 
     if (state.awaitingServe) {
       const xDirection = playerKey === 'host' ? 1 : -1
+      const speedScale = getSpeedScale(state)
+      const serveSpeed = WORLD.ballSpeed * speedScale
 
       state.ball.x = player.x
       state.ball.y = player.y - WORLD.playerRadius - WORLD.ballRadius - 8
       state.ball.z = 70
-      state.ball.vx = 70 * xDirection
-      state.ball.vy = -WORLD.ballSpeed
-      state.ball.vz = getFrontWallLift(state.ball.y, state.ball.z, WORLD.ballSpeed, 'drive')
+      state.ball.vx = 70 * xDirection * speedScale
+      state.ball.vy = -serveSpeed
+      state.ball.vz = getFrontWallLift(state.ball.y, state.ball.z, serveSpeed, 'drive')
       state.awaitingServe = false
       state.awaitingFrontWall = true
       state.lastHitter = playerKey
@@ -329,9 +370,13 @@
     }
 
     const shot = SHOT_TYPES[normalizedInput.shotType]
-    const speed = clamp((WORLD.ballSpeed + state.rally * 12) * shot.speedMultiplier, WORLD.ballSpeed * 0.8, WORLD.maxBallSpeed)
+    const speedScale = getSpeedScale(state)
+    const baseSpeed = WORLD.ballSpeed * speedScale
+    const maxSpeed = WORLD.maxBallSpeed * speedScale
+    const speed = clamp((baseSpeed + state.rally * 12 * speedScale) * shot.speedMultiplier, baseSpeed * 0.8, maxSpeed)
     const side = normalizedInput.shotSide || (dx < 0 ? -1 : 1)
-    const horizontalAim = normalizedInput.shotType === 'boast' ? side * shot.defaultHorizontal : clamp(dx * shot.horizontalScale, -330, 330)
+    const horizontalAim =
+      normalizedInput.shotType === 'boast' ? side * shot.defaultHorizontal * speedScale : clamp(dx * shot.horizontalScale * speedScale, -330 * speedScale, 330 * speedScale)
 
     state.ball.x = player.x + clamp(dx * 0.25, -10, 10)
     state.ball.y = player.y - WORLD.playerRadius - WORLD.ballRadius - 6
@@ -489,9 +534,11 @@
   return {
     CHARACTERS: CHARACTERS,
     SHOT_TYPES: SHOT_TYPES,
+    SPEED_MODES: SPEED_MODES,
     WORLD: WORLD,
     createInitialState: createInitialState,
     normalizeCharacter: normalizeCharacter,
+    normalizeSpeedMode: normalizeSpeedMode,
     normalizeShotType: normalizeShotType,
     normalizeInput: normalizeInput,
     opponentOf: opponentOf,

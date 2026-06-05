@@ -16,16 +16,22 @@
     return
   }
 
-  const room = roomStore.createRoom(store)
+  const payload = body()
+  const speedMode = roomStore.normalizeSpeedMode(payload.speedMode)
+  const room = roomStore.createRoom(store, {
+    speedMode: speedMode,
+  })
 
   info('xapi/rooms/create:success', {
     roomCode: room.code,
+    speedMode: room.speedMode,
   })
 
   response.json(200, {
     ok: true,
     room: {
       code: room.code,
+      speedMode: room.speedMode,
       createdAt: room.createdAt,
     },
   })

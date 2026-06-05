@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 132">
+  <defs>
+    <linearGradient id="shirt" x1="31" y1="45" x2="65" y2="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".24" stop-color="#c7a4ff"/>
+      <stop offset="1" stop-color="#49317a"/>
+    </linearGradient>
+    <filter id="soft" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="3" stdDeviation="1.8" flood-color="#211812" flood-opacity=".22"/>
+    </filter>
+  </defs>
+  <ellipse cx="48" cy="118" rx="27" ry="8" fill="#211812" opacity=".2"/>
+  <circle cx="48" cy="24" r="14" fill="#c28c6a" stroke="#211812" stroke-opacity=".45" stroke-width="2" filter="url(#soft)"/>
+  <path d="M35 23Q40 10 53 10Q62 11 66 23Q55 18 35 23Z" fill="#211812"/>
+  <path d="M38 30Q48 36 58 30" fill="none" stroke="#6d4635" stroke-opacity=".55" stroke-width="2" stroke-linecap="round"/>
+  <path d="M48 39V87" stroke="#211f1c" stroke-width="8" stroke-linecap="round"/>
+  <path d="M33 46Q48 36 63 46L66 70Q48 82 30 70Z" fill="url(#shirt)" stroke="#211f1c" stroke-opacity=".45" stroke-width="2"/>
+  <path d="M36 51Q48 57 60 51" fill="none" stroke="#fff" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/>
+  <path d="M37 59L20 78M59 58L72 45" stroke="#211f1c" stroke-width="8" stroke-linecap="round"/>
+  <path d="M43 86L29 110M53 86L68 110" stroke="#211f1c" stroke-width="8" stroke-linecap="round"/>
+  <ellipse cx="28" cy="114" rx="13" ry="5" fill="#fff8e9" transform="rotate(-8 28 114)"/>
+  <ellipse cx="69" cy="114" rx="13" ry="5" fill="#fff8e9" transform="rotate(8 69 114)"/>
+  <path d="M73 45L77 39" stroke="#211f1c" stroke-width="5" stroke-linecap="round"/>
+  <ellipse cx="80" cy="32" rx="10" ry="17" transform="rotate(24 80 32)" fill="#fffdf0" stroke="#d8d2bf" stroke-width="3"/>
+  <ellipse cx="80" cy="32" rx="6" ry="11" transform="rotate(24 80 32)" fill="none" stroke="#948d7e" stroke-opacity=".58" stroke-width="1.5"/>
+</svg>

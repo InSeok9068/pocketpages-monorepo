@@ -2,6 +2,11 @@ const STORE_KEY = 'squashpong:rooms'
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const ROOM_CODE_LENGTH = 6
 const ROOM_TTL_MS = 1000 * 60 * 60 * 2
+const SPEED_MODES = {
+  normal: true,
+  fast: true,
+  turbo: true,
+}
 
 /**
  * 현재 시각 문자열을 반환한다.
@@ -71,11 +76,21 @@ function normalizeCode(value) {
 }
 
 /**
+ * 공속도 모드를 정규화한다.
+ * @param {string} value
+ * @returns {'normal' | 'fast' | 'turbo'}
+ */
+function normalizeSpeedMode(value) {
+  return SPEED_MODES[value] ? value : 'normal'
+}
+
+/**
  * 새 방을 만든다.
  * @param {(name: string, value?: any) => any} storeFn
+ * @param {{ speedMode?: string }} options
  * @returns {types.SquashpongRoom}
  */
-function createRoom(storeFn) {
+function createRoom(storeFn, options) {
   const rooms = getRooms(storeFn)
   const nowMs = Date.now()
   cleanupRooms(rooms, nowMs)
@@ -88,6 +103,7 @@ function createRoom(storeFn) {
   const timestamp = nowIso()
   const room = {
     code: code,
+    speedMode: normalizeSpeedMode(options && options.speedMode),
     createdAt: timestamp,
     updatedAt: timestamp,
     offer: null,
@@ -158,5 +174,6 @@ module.exports = {
   findRoom,
   normalizeCode,
   normalizeRole,
+  normalizeSpeedMode,
   updateRoom,
 }

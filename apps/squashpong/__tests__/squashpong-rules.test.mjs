@@ -38,6 +38,59 @@ test('normalizeInput includes a safe shot selection', () => {
   assert.equal(rules.normalizeInput({ shotType: 'boast', shotSide: -1 }).shotSide, -1);
 });
 
+test('normalizeSpeedMode falls back to normal speed', () => {
+  assert.equal(rules.normalizeSpeedMode('fast'), 'fast');
+  assert.equal(rules.normalizeSpeedMode('missing'), 'normal');
+});
+
+test('speed mode increases serve and rally ball speed', () => {
+  const normal = rules.createInitialState({
+    speedMode: 'normal',
+  });
+  const turbo = rules.createInitialState({
+    speedMode: 'turbo',
+  });
+
+  rules.trySwing(normal, 'host', {
+    swingId: 1,
+  });
+  rules.trySwing(turbo, 'host', {
+    swingId: 1,
+  });
+
+  assert.equal(turbo.speedMode, 'turbo');
+  assert.ok(Math.abs(turbo.ball.vy) > Math.abs(normal.ball.vy));
+
+  normal.active = 'host';
+  normal.awaitingServe = false;
+  normal.awaitingFrontWall = false;
+  normal.players.host.x = 235;
+  normal.players.host.y = 744;
+  normal.ball.x = 237;
+  normal.ball.y = 714;
+  normal.ball.z = 44;
+  normal.ball.vy = 320;
+
+  turbo.active = 'host';
+  turbo.awaitingServe = false;
+  turbo.awaitingFrontWall = false;
+  turbo.players.host.x = 235;
+  turbo.players.host.y = 744;
+  turbo.ball.x = 237;
+  turbo.ball.y = 714;
+  turbo.ball.z = 44;
+  turbo.ball.vy = 320;
+
+  rules.trySwing(normal, 'host', {
+    swingId: 2,
+  });
+  rules.trySwing(turbo, 'host', {
+    swingId: 2,
+  });
+
+  assert.ok(Math.abs(turbo.ball.vy) > Math.abs(normal.ball.vy));
+});
+
 test('stepState bounces the ball off the front wall', () => {
   const state = rules.createInitialState({});
 

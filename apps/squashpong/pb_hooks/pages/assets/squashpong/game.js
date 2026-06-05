@@ -2,6 +2,7 @@
   const rules = window.SquashpongRules
   const WORLD = rules.WORLD
   const CHARACTERS = rules.CHARACTERS
+  const SPEED_MODES = rules.SPEED_MODES
   const CHARACTER_BY_ID = CHARACTERS.reduce((acc, character) => {
     acc[character.id] = character
     return acc
@@ -30,8 +31,19 @@
     rallyLabel: document.getElementById('rally-label'),
     turnLabel: document.getElementById('turn-label'),
     characterList: document.getElementById('character-list'),
+    speedModeList: document.getElementById('speed-mode-list'),
+    speedLabel: document.getElementById('speed-label'),
   }
   const ctx = elements.canvas.getContext('2d')
+  const visualAssets = {
+    court: loadImage('/assets/squashpong/court.svg'),
+    players: {
+      lime: loadImage('/assets/squashpong/player-lime.svg'),
+      sky: loadImage('/assets/squashpong/player-sky.svg'),
+      coral: loadImage('/assets/squashpong/player-coral.svg'),
+      violet: loadImage('/assets/squashpong/player-violet.svg'),
+    },
+  }
 
   const runtime = {
     screen: 'lobby',
@@ -42,6 +54,7 @@
     mode: '',
     connected: false,
     localCharacter: getSelectedCharacter(),
+    speedMode: getSelectedSpeedMode(),
     aiSwingCooldown: 0,
     lastTime: 0,
     lastSentAt: 0,
@@ -84,6 +97,29 @@
   }
 
   /**
+   * 이미지 에셋을 준비한다.
+   * @param {string} src
+   * @returns {HTMLImageElement}
+   */
+  function loadImage(src) {
+    const image = new Image()
+
+    image.decoding = 'async'
+    image.src = src
+
+    return image
+  }
+
+  /**
+   * 이미지가 그릴 준비가 되었는지 확인한다.
+   * @param {HTMLImageElement | undefined} image
+   * @returns {boolean}
+   */
+  function isImageReady(image) {
+    return Boolean(image && image.complete && image.naturalWidth > 0)
+  }
+
+  /**
    * 현재 선택된 캐릭터를 반환한다.
    * @returns {string}
    */
@@ -93,10 +129,30 @@
   }
 
   /**
+   * 선택된 공속도 모드를 반환한다.
+   * @returns {'normal' | 'fast' | 'turbo'}
+   */
+  function getSelectedSpeedMode() {
+    const checked = document.querySelector('input[name="speedMode"]:checked')
+
+    return rules.normalizeSpeedMode(checked ? checked.value : 'normal')
+  }
+
+  /**
    * 캐릭터 선택 UI를 갱신한다.
    */
   function syncCharacterOptions() {
     document.querySelectorAll('.character-option').forEach((option) => {
+      const input = option.querySelector('input')
+      option.classList.toggle('is-selected', Boolean(input && input.checked))
+    })
+  }
+
+  /**
+   * 공속도 선택 UI를 갱신한다.
+   */
+  function syncSpeedModeOptions() {
+    document.querySelectorAll('.speed-mode-option').forEach((option) => {
       const input = option.querySelector('input')
       option.classList.toggle('is-selected', Boolean(input && input.checked))
     })
@@ -251,6 +307,7 @@
     elements.scoreLabel.textContent = `${runtime.state.hostScore} : ${runtime.state.guestScore}`
     elements.rallyLabel.textContent = String(runtime.state.rally)
     elements.turnLabel.textContent = runtime.role ? `${active} ${runtime.state.awaitingServe ? '서브' : '차례'}` : '대기'
+    elements.speedLabel.textContent = SPEED_MODES[runtime.speedMode] ? SPEED_MODES[runtime.speedMode].label : SPEED_MODES.normal.label
   }
 
   /**
@@ -414,6 +471,7 @@
 
     if (message.type === 'state' && runtime.role === 'guest') {
       runtime.state = message.state || runtime.state
+      runtime.speedMode = rules.normalizeSpeedMode(runtime.state.speedMode)
       syncLabels()
     }
   }
@@ -505,17 +563,22 @@
     runtime.role = ''
     runtime.roomCode = ''
     runtime.localCharacter = getSelectedCharacter()
+    runtime.speedMode = getSelectedSpeedMode()
     setBanner('방 생성 중')
     setScreen('room')
 
     const payload = await requestJson('/api/rooms/create', {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        speedMode: runtime.speedMode,
+      }),
     })
     runtime.role = 'host'
     runtime.roomCode = payload.room.code
+    runtime.speedMode = rules.normalizeSpeedMode(payload.room.speedMode)
     runtime.state = rules.createInitialState({
       hostCharacter: runtime.localCharacter,
+      speedMode: runtime.speedMode,
     })
     elements.roomCode.value = runtime.roomCode
     syncLabels()
@@ -587,6 +650,7 @@
     runtime.role = 'guest'
     runtime.state = rules.createInitialState({
       guestCharacter: runtime.localCharacter,
+      speedMode: runtime.speedMode,
     })
     syncLabels()
     setBanner(`방 ${runtime.roomCode} 참가 중`)
@@ -600,6 +664,13 @@
       setBanner('Host 대기 중')
       return
     }
+
+    runtime.speedMode = rules.normalizeSpeedMode(offerPayload.room && offerPayload.room.speedMode)
+    runtime.state = rules.createInitialState({
+      guestCharacter: runtime.localCharacter,
+      speedMode: runtime.speedMode,
+    })
+    syncLabels()
 
     runtime.peer = createPeer()
     runtime.peer.ondatachannel = (event) => {
@@ -647,6 +718,7 @@
     runtime.roomCode = ''
     runtime.connected = true
     runtime.localCharacter = getSelectedCharacter()
+    runtime.speedMode = getSelectedSpeedMode()
     resetPointerControl()
     runtime.localInput = createInput()
     runtime.remoteInput = createInput()
@@ -654,6 +726,7 @@
     runtime.state = rules.createInitialState({
       hostCharacter: runtime.localCharacter,
       guestCharacter: 'sky',
+      speedMode: runtime.speedMode,
     })
     elements.roomCode.value = ''
     history.replaceState(null, '', '/')
@@ -672,8 +745,10 @@
     resetPointerControl()
     runtime.localInput = createInput()
     runtime.remoteInput = createInput()
+    runtime.speedMode = getSelectedSpeedMode()
     runtime.state = rules.createInitialState({
       hostCharacter: runtime.localCharacter,
+      speedMode: runtime.speedMode,
     })
     elements.roomCode.value = ''
     history.replaceState(null, '', '/')
@@ -963,6 +1038,18 @@
    * 배경 코트를 그린다.
    */
   function drawCourt() {
+    if (isImageReady(visualAssets.court)) {
+      ctx.drawImage(visualAssets.court, 0, 0, WORLD.width, WORLD.height)
+      return
+    }
+
+    drawFallbackCourt()
+  }
+
+  /**
+   * SVG 코트가 준비되기 전 배경 코트를 그린다.
+   */
+  function drawFallbackCourt() {
     ctx.clearRect(0, 0, WORLD.width, WORLD.height)
     ctx.fillStyle = '#e7ece7'
     ctx.fillRect(0, 0, WORLD.width, WORLD.height)
@@ -1211,6 +1298,50 @@
    * @param {'host' | 'guest'} playerKey
    */
   function drawPlayer(playerKey) {
+    const player = runtime.state.players[playerKey]
+    const projected = projectCourtPoint(player.x, player.y)
+    const isActive = runtime.state.active === playerKey
+    const playerImage = visualAssets.players[player.character] || visualAssets.players.lime
+    const racketSide = playerKey === 'host' ? 1 : -1
+
+    if (!isImageReady(playerImage)) {
+      drawFallbackPlayer(playerKey)
+      return
+    }
+
+    ctx.save()
+    ctx.translate(projected.x, projected.y)
+    ctx.scale(projected.scale, projected.scale)
+
+    if (isActive) {
+      ctx.strokeStyle = 'rgba(255, 213, 63, 0.72)'
+      ctx.lineWidth = 4
+      ctx.beginPath()
+      ctx.ellipse(0, 12, 29, 38, 0, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+
+    if (player.swingTimer > 0) {
+      ctx.strokeStyle = 'rgba(255, 245, 180, 0.78)'
+      ctx.lineWidth = 7
+      ctx.beginPath()
+      ctx.arc(racketSide * 3, -22, 44, -Math.PI * 0.95, -Math.PI * 0.08)
+      ctx.stroke()
+    }
+
+    ctx.drawImage(playerImage, -48, -88, 96, 132)
+    ctx.fillStyle = 'rgba(30, 26, 20, 0.78)'
+    ctx.font = '800 15px Inter, system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(playerKey === 'host' ? 'H' : 'G', 0, 49)
+    ctx.restore()
+  }
+
+  /**
+   * SVG 선수가 준비되기 전 플레이어를 그린다.
+   * @param {'host' | 'guest'} playerKey
+   */
+  function drawFallbackPlayer(playerKey) {
     const player = runtime.state.players[playerKey]
     const character = getCharacter(player.character)
     const isActive = runtime.state.active === playerKey
@@ -1643,11 +1774,22 @@
     }
   })
 
+  elements.speedModeList.addEventListener('change', () => {
+    runtime.speedMode = getSelectedSpeedMode()
+    syncSpeedModeOptions()
+
+    if (!runtime.role || runtime.state.awaitingServe) {
+      runtime.state.speedMode = runtime.speedMode
+      syncLabels()
+    }
+  })
+
   window.addEventListener('keydown', (event) => handleKey(event, true))
   window.addEventListener('keyup', (event) => handleKey(event, false))
 
   bindCourtControls()
   syncCharacterOptions()
+  syncSpeedModeOptions()
 
   const initialRoomCode = normalizeRoomCode(window.SQUASHPONG_ROOM_CODE || '')
   if (initialRoomCode) {

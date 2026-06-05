@@ -45,6 +45,38 @@
     </div>
 
     <div class="panel-section">
+      <h2>공속도</h2>
+      <div
+        id="speed-mode-list"
+        class="speed-mode-list"
+        role="radiogroup"
+        aria-label="공속도 선택">
+        <label class="speed-mode-option is-selected">
+          <input
+            type="radio"
+            name="speedMode"
+            value="normal"
+            checked />
+          <span>기본</span>
+        </label>
+        <label class="speed-mode-option">
+          <input
+            type="radio"
+            name="speedMode"
+            value="fast" />
+          <span>빠름</span>
+        </label>
+        <label class="speed-mode-option">
+          <input
+            type="radio"
+            name="speedMode"
+            value="turbo" />
+          <span>매우 빠름</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="panel-section">
       <h2>참가</h2>
       <label for="room-code">방 코드</label>
       <div class="join-row">
@@ -150,6 +182,10 @@
         <div>
           <dt>랠리</dt>
           <dd id="rally-label">0</dd>
+        </div>
+        <div>
+          <dt>공속도</dt>
+          <dd id="speed-label">기본</dd>
         </div>
       </dl>
     </div>
