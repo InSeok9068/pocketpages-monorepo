@@ -68,6 +68,9 @@ test('GET / renders the playable draft page', async () => {
   assert.equal($('#solo-play').text().trim(), '솔로 플레이');
   assert.equal($('#copy-link').text().trim(), '초대 링크 복사');
   assert.equal($('#leave-game').text().trim(), '나가기');
+  assert.match($('link[rel="icon"]').attr('href') || '', /^\/assets\/favicon\.[a-f0-9]+\.svg$/u);
+  assert.match($('link[rel="manifest"]').attr('href') || '', /^\/assets\/manifest\.[a-f0-9]+\.json$/u);
+  assert.equal($('meta[name="theme-color"]').attr('content'), '#dfe9df');
   assert.equal($('input[name="speedMode"]').length, 3);
   assert.equal($('input[name="speedMode"][value="normal"]').is('[checked]'), true);
   assert.equal($('#speed-label').text().trim(), '기본');
@@ -77,6 +80,7 @@ test('GET / renders the playable draft page', async () => {
   assert.match(body, /window\.SQUASHPONG_ROOM_CODE = ''/);
   assert.match(body, /\/assets\/squashpong\/game-rules\./);
   assert.match(body, /\/assets\/squashpong\/game\./);
+  assert.match(body, /navigator\.serviceWorker\.register\('\/sw\.js'\)/);
   assert.ok(body.indexOf('/assets/squashpong/game-rules.') < body.indexOf('/assets/squashpong/game.'));
 });
 
@@ -201,6 +205,38 @@ test('GET /assets/style.css includes mobile game screens and drag controls', asy
   assert.match(body, /touch-action: none/);
   assert.doesNotMatch(body, /\.touch-controls/);
   assert.doesNotMatch(body, /\.swing-button/);
+});
+
+test('GET / serves minimal PWA assets', async () => {
+  const pageResponse = await fetch(`${service.baseUrl}/`);
+  const pageBody = await pageResponse.text();
+  const $ = load(pageBody);
+  const faviconHref = $('link[rel="icon"]').attr('href') || '';
+  const manifestHref = $('link[rel="manifest"]').attr('href') || '';
+
+  const faviconResponse = await fetch(`${service.baseUrl}${faviconHref}`);
+  const manifestResponse = await fetch(`${service.baseUrl}${manifestHref}`);
+  const workerResponse = await fetch(`${service.baseUrl}/sw.js`);
+  const faviconBody = await faviconResponse.text();
+  const manifestPayload = await manifestResponse.json();
+  const workerBody = await workerResponse.text();
+
+  assert.equal(pageResponse.status, 200);
+  assert.equal(faviconResponse.status, 200);
+  assert.match(faviconResponse.headers.get('content-type') || '', /^image\/svg\+xml/u);
+  assert.match(faviconBody, /<svg/);
+  assert.equal(manifestResponse.status, 200);
+  assert.match(manifestResponse.headers.get('content-type') || '', /manifest|json/u);
+  assert.equal(manifestPayload.name, 'Squash Pong');
+  assert.equal(manifestPayload.short_name, 'Squash Pong');
+  assert.equal(manifestPayload.start_url, '/');
+  assert.equal(manifestPayload.scope, '/');
+  assert.equal(manifestPayload.display, 'standalone');
+  assert.equal(manifestPayload.icons[0].src, '/assets/favicon.svg');
+  assert.equal(workerResponse.status, 200);
+  assert.match(workerResponse.headers.get('content-type') || '', /javascript/u);
+  assert.match(workerBody, /CACHE_NAME = 'squashpong-v1'/);
+  assert.match(workerBody, /url\.pathname\.startsWith\('\/api\/'\)/);
 });
 
 test('POST /api/rooms/create creates unique in-memory room codes', async () => {
