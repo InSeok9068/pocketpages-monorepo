@@ -1,4 +1,5 @@
 <script server>
+  const launchboardAuthCookie = resolve('launchboard-auth-cookie')
   if (request.method !== 'POST') {
     dbg('xapi/auth/sign-out:redirect', {
       status: 303,
@@ -16,7 +17,7 @@
     isSignedIn: !!request.auth,
   })
 
-  signOut()
+  launchboardAuthCookie.clearAuthCookie(response, env)
 
   dbg('xapi/auth/sign-out:response', {
     status: 303,

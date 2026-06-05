@@ -1,4 +1,5 @@
 <script server>
+  const launchboardAuthCookie = resolve('launchboard-auth-cookie')
   if (request.method !== 'POST') {
     dbg('xapi/auth/sign-in:redirect', {
       status: 303,
@@ -25,12 +26,13 @@
     if (!email) throw new Error('이메일이 필요합니다.')
     if (!password) throw new Error('비밀번호가 필요합니다.')
 
-    const authData = signInWithPassword(email, password)
+    const authData = launchboardAuthCookie.authenticateWithPassword(env, email, password)
+    launchboardAuthCookie.writePersistedAuthCookie(response, authData, env)
 
     dbg('xapi/auth/sign-in:response', {
       status: 303,
       redirectTo: '/',
-      authId: String((authData.record && authData.record.get('id')) || ''),
+      authId: String((authData.record && authData.record.id) || ''),
     })
     redirect('/', {
       status: 303,
