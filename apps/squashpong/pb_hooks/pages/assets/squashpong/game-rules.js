@@ -375,8 +375,7 @@
     const maxSpeed = WORLD.maxBallSpeed * speedScale
     const speed = clamp((baseSpeed + state.rally * 12 * speedScale) * shot.speedMultiplier, baseSpeed * 0.8, maxSpeed)
     const side = normalizedInput.shotSide || (dx < 0 ? -1 : 1)
-    const horizontalAim =
-      normalizedInput.shotType === 'boast' ? side * shot.defaultHorizontal * speedScale : clamp(dx * shot.horizontalScale * speedScale, -330 * speedScale, 330 * speedScale)
+    const horizontalAim = normalizedInput.shotType === 'boast' ? side * shot.defaultHorizontal * speedScale : clamp(dx * shot.horizontalScale * speedScale, -330 * speedScale, 330 * speedScale)
 
     state.ball.x = player.x + clamp(dx * 0.25, -10, 10)
     state.ball.y = player.y - WORLD.playerRadius - WORLD.ballRadius - 6
