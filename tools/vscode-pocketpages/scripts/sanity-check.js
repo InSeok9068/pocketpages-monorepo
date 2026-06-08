@@ -13708,6 +13708,20 @@ const reportDate = String(safeState.reportDate || '').trim()
       throw new Error(`Expected serverless attribute to stay out of PocketPages server block parsing. Got: ${serverlessBlocks.length}`)
     }
 
+    const attributeOrderServerBlocks = extractServerBlocks(
+      `<script type="text/javascript" server class="panel">const authState = resolve('auth-service')</script>`
+    )
+    if (attributeOrderServerBlocks.length !== 1) {
+      throw new Error(
+        `Expected server attribute mixed with other attributes to produce one server block. Got: ${attributeOrderServerBlocks.length}`
+      )
+    }
+
+    const commentedServerBlocks = extractServerBlocks(`<!-- <script server>const authState = resolve('auth-service')</script> -->`)
+    if (commentedServerBlocks.length !== 0) {
+      throw new Error(`Expected HTML-commented server scripts to stay out of PocketPages server block parsing. Got: ${commentedServerBlocks.length}`)
+    }
+
     const mirroredServerSource = `<script server>
 const authState = resolve('auth-service')
 </script>

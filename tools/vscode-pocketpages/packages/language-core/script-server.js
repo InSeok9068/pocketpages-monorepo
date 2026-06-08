@@ -1,6 +1,8 @@
 'use strict'
 
 const SCRIPT_OPEN_TAG = '<script'
+const HTML_COMMENT_OPEN = '<!--'
+const HTML_COMMENT_CLOSE = '-->'
 
 function isHtmlNameChar(char) {
   return /[A-Za-z0-9:_-]/.test(String(char || ''))
@@ -199,9 +201,16 @@ function extractServerBlocks(text) {
   let cursor = 0
 
   while (cursor < sourceText.length) {
+    const commentStart = sourceText.indexOf(HTML_COMMENT_OPEN, cursor)
     const scriptStart = lowerText.indexOf(SCRIPT_OPEN_TAG, cursor)
     if (scriptStart === -1) {
       break
+    }
+
+    if (commentStart !== -1 && commentStart <= scriptStart) {
+      const commentEnd = sourceText.indexOf(HTML_COMMENT_CLOSE, commentStart + HTML_COMMENT_OPEN.length)
+      cursor = commentEnd === -1 ? sourceText.length : commentEnd + HTML_COMMENT_CLOSE.length
+      continue
     }
 
     const nextChar = sourceText.charAt(scriptStart + SCRIPT_OPEN_TAG.length)
