@@ -2,11 +2,6 @@ const STORE_KEY = 'squashpong:rooms'
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const ROOM_CODE_LENGTH = 6
 const ROOM_TTL_MS = 1000 * 60 * 60 * 2
-const SPEED_MODES = {
-  normal: true,
-  fast: true,
-  turbo: true,
-}
 
 /**
  * 현재 시각 문자열을 반환한다.
@@ -81,7 +76,11 @@ function normalizeCode(value) {
  * @returns {'normal' | 'fast' | 'turbo'}
  */
 function normalizeSpeedMode(value) {
-  return SPEED_MODES[value] ? value : 'normal'
+  if (value === 'fast' || value === 'turbo') {
+    return value
+  }
+
+  return 'normal'
 }
 
 /**
