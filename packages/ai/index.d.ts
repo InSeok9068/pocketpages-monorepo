@@ -8,14 +8,10 @@ declare namespace pocketpagesAi {
     geminiApiKey?: string
     openaiApiKey?: string
     deepseekApiKey?: string
-    geminiModel?: string
-    openaiModel?: string
-    deepseekModel?: string
   }
 
   interface AiRequestBase {
     apiKey?: string
-    model?: string
     input?: unknown
     prompt?: string
     payload?: Record<string, any>
@@ -27,6 +23,7 @@ declare namespace pocketpagesAi {
   }
 
   interface GeminiRequest extends AiRequestBase {
+    model: string
     apiVersion?: string
     contents?: any[]
     tools?: any[]
@@ -38,6 +35,7 @@ declare namespace pocketpagesAi {
   }
 
   interface OpenAiRequest extends AiRequestBase {
+    model: string
     background?: boolean
     conversation?: string | Record<string, any>
     include?: string[]
@@ -63,6 +61,7 @@ declare namespace pocketpagesAi {
   }
 
   interface DeepSeekRequest extends AiRequestBase {
+    model: string
     messages?: any[]
     thinking?: Record<string, any> | null
     reasoning_effort?: string

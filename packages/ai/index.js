@@ -6,9 +6,6 @@ const { globalApi } = require('pocketpages')
 const { env, warn } = globalApi
 
 const DEFAULT_GEMINI_API_VERSION = 'v1beta'
-const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash'
-const DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini'
-const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash'
 const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com'
 const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com'
 const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
@@ -392,7 +389,6 @@ function buildDeepSeekPayload(request) {
   copyDefinedFields(payload, request, DEEPSEEK_PAYLOAD_FIELDS)
 
   if (payload.messages === undefined) payload.messages = buildDeepSeekMessages(request)
-  if (!payload.model) payload.model = request.model || DEFAULT_DEEPSEEK_MODEL
   if (request.json === true && !payload.response_format) {
     payload.response_format = {
       type: 'json_object',
@@ -662,21 +658,6 @@ function resolveApiKey(provider, request, runtime) {
 }
 
 /**
- * provider별 기본 모델을 고릅니다.
- * @param {string} provider AI provider입니다.
- * @param {Record<string, any>} request 요청 옵션입니다.
- * @param {Record<string, any>} runtime 런타임 의존성입니다.
- * @returns {string} 모델 이름입니다.
- */
-function resolveModel(provider, request, runtime) {
-  if (request.model) return request.model
-  if (provider === 'gemini') return runtime.models.gemini || DEFAULT_GEMINI_MODEL
-  if (provider === 'openai') return runtime.models.openai || DEFAULT_OPENAI_MODEL
-  if (provider === 'deepseek') return runtime.models.deepseek || DEFAULT_DEEPSEEK_MODEL
-  return ''
-}
-
-/**
  * 양수 숫자 옵션을 정리합니다.
  * @param {unknown} value 옵션 값입니다.
  * @param {number} fallback 기본값입니다.
@@ -719,11 +700,6 @@ function createRuntime(options) {
       openai: cleanText(options.openaiApiKey),
       deepseek: cleanText(options.deepseekApiKey),
     },
-    models: {
-      gemini: cleanText(options.geminiModel),
-      openai: cleanText(options.openaiModel),
-      deepseek: cleanText(options.deepseekModel),
-    },
   }
 
   if (!runtime.http || typeof runtime.http.send !== 'function') {
@@ -743,7 +719,7 @@ function requestGemini(input, runtime) {
   const request = input || {}
   const apiKey = requireText(resolveApiKey('gemini', request, runtime), 'Gemini apiKey')
   const apiVersion = request.apiVersion || DEFAULT_GEMINI_API_VERSION
-  const model = resolveModel('gemini', request, runtime)
+  const model = requireText(request.model, 'Gemini model')
   const baseUrl = request.baseUrl || DEFAULT_GEMINI_BASE_URL
   const timeout = normalizePositiveNumber(request.timeoutSeconds, runtime.defaultTimeoutSeconds)
   const maxAttempts = normalizeAttempts(request.maxAttempts, runtime.defaultMaxAttempts)
@@ -785,7 +761,7 @@ function requestOpenAi(input, runtime) {
   const timeout = normalizePositiveNumber(request.timeoutSeconds, runtime.defaultTimeoutSeconds)
   const maxAttempts = normalizeAttempts(request.maxAttempts, runtime.defaultMaxAttempts)
   const payload = buildOpenAiPayload(request)
-  if (!payload.model) payload.model = resolveModel('openai', request, runtime)
+  if (!payload.model) payload.model = requireText(request.model, 'OpenAI model')
   const headers = {
     authorization: `Bearer ${apiKey}`,
     'content-type': 'application/json',
@@ -823,7 +799,7 @@ function requestDeepSeek(input, runtime) {
   const timeout = normalizePositiveNumber(request.timeoutSeconds, runtime.defaultTimeoutSeconds)
   const maxAttempts = normalizeAttempts(request.maxAttempts, runtime.defaultMaxAttempts)
   const payload = buildDeepSeekPayload(request)
-  if (!payload.model) payload.model = resolveModel('deepseek', request, runtime)
+  if (!payload.model) payload.model = requireText(request.model, 'DeepSeek model')
   const headers = {
     authorization: `Bearer ${apiKey}`,
     'content-type': 'application/json',
