@@ -1,9 +1,6 @@
 'use strict'
 
-/* global $http, sleep */
-
-const { globalApi } = require('pocketpages')
-const { env, warn } = globalApi
+/* global $app, $http, sleep */
 
 const DEFAULT_GEMINI_API_VERSION = 'v1beta'
 const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com'
@@ -93,9 +90,7 @@ function firstText(values) {
  * @returns {string} 환경 변수 값입니다.
  */
 function readEnv(name) {
-  if (typeof env === 'function') return cleanText(env(name))
-  if (typeof process !== 'undefined' && process.env) return cleanText(process.env[name])
-  return ''
+  return cleanText(process.env[name])
 }
 
 /**
@@ -255,6 +250,89 @@ function inferOpenAi429Cause(responseJson) {
     return 'quota-or-billing-limit'
   }
   return 'rate-limit'
+}
+
+/**
+ * AI 요청 요약 로그를 남깁니다.
+ * @param {Record<string, any>} request 요청 정보입니다.
+ * @param {Record<string, any>} runtime 런타임 의존성입니다.
+ * @param {number} attempt 현재 시도 횟수입니다.
+ */
+function logAiRequestDebug(request, runtime, attempt) {
+  if (!runtime.isDeveloper) return
+
+  const meta = {
+    provider: request.provider,
+    model: request.model,
+    attempt,
+    maxAttempts: request.maxAttempts,
+    method: request.httpOptions.method,
+    url: request.httpOptions.url,
+    timeoutSeconds: request.httpOptions.timeout,
+  }
+
+  $app
+    .logger()
+    .debug(
+      'pocketpages/ai:request',
+      'provider',
+      meta.provider,
+      'model',
+      meta.model,
+      'attempt',
+      meta.attempt,
+      'maxAttempts',
+      meta.maxAttempts,
+      'method',
+      meta.method,
+      'url',
+      meta.url,
+      'timeoutSeconds',
+      meta.timeoutSeconds
+    )
+}
+
+/**
+ * AI 응답 요약 로그를 남깁니다.
+ * @param {Record<string, any>} request 요청 정보입니다.
+ * @param {Record<string, any>} runtime 런타임 의존성입니다.
+ * @param {Record<string, any>} meta 응답 로그 정보입니다.
+ */
+function logAiResponseDebug(request, runtime, meta) {
+  if (!runtime.isDeveloper) return
+
+  const responseMeta = {
+    provider: request.provider,
+    model: request.model,
+    attempt: meta.attempt,
+    maxAttempts: request.maxAttempts,
+    statusCode: meta.statusCode,
+    ok: meta.ok,
+    elapsedMs: meta.elapsedMs,
+    transportError: meta.transportError,
+  }
+
+  $app
+    .logger()
+    .debug(
+      'pocketpages/ai:response',
+      'provider',
+      responseMeta.provider,
+      'model',
+      responseMeta.model,
+      'attempt',
+      responseMeta.attempt,
+      'maxAttempts',
+      responseMeta.maxAttempts,
+      'statusCode',
+      responseMeta.statusCode,
+      'ok',
+      responseMeta.ok,
+      'elapsedMs',
+      responseMeta.elapsedMs,
+      'transportError',
+      responseMeta.transportError
+    )
 }
 
 /**
@@ -512,6 +590,7 @@ function sendWithRetry(request, runtime) {
   while (attempts < request.maxAttempts) {
     attempts += 1
     const attemptStartedAt = runtime.now()
+    logAiRequestDebug(request, runtime, attempts)
 
     try {
       const response = runtime.http.send(request.httpOptions)
@@ -526,6 +605,13 @@ function sendWithRetry(request, runtime) {
       lastHeaders = headers
       lastTransportError = ''
       lastElapsedMs = elapsedMs
+      logAiResponseDebug(request, runtime, {
+        attempt: attempts,
+        statusCode,
+        ok: statusCode >= 200 && statusCode < 300,
+        elapsedMs,
+        transportError: '',
+      })
 
       if (statusCode >= 200 && statusCode < 300) {
         return buildResult({
@@ -568,6 +654,13 @@ function sendWithRetry(request, runtime) {
       lastHeaders = {}
       lastTransportError = errorText
       lastElapsedMs = elapsedMs
+      logAiResponseDebug(request, runtime, {
+        attempt: attempts,
+        statusCode: 0,
+        ok: false,
+        elapsedMs,
+        transportError: errorText,
+      })
 
       const canRetry = attempts < request.maxAttempts && isRetryableTransportError(errorText)
       if (!canRetry) {
@@ -620,13 +713,21 @@ function waitBeforeRetry(request, runtime, attempts, retryAfter, failure) {
     delayMs,
   }
 
-  Object.keys(request.logMeta || {}).forEach((key) => {
-    meta[key] = request.logMeta[key]
-  })
-
-  if (typeof warn === 'function') {
-    warn('pocketpages/ai:retry', meta)
-  }
+  $app
+    .logger()
+    .warn(
+      'pocketpages/ai:retry',
+      'provider',
+      meta.provider,
+      'attempt',
+      meta.attempt,
+      'statusCode',
+      meta.statusCode,
+      'error',
+      meta.error,
+      'delayMs',
+      meta.delayMs
+    )
   runtime.sleep(delayMs)
 }
 
@@ -694,7 +795,7 @@ function createRuntime(options) {
     now: Date.now,
     defaultTimeoutSeconds: normalizePositiveNumber(options.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS),
     defaultMaxAttempts: normalizeAttempts(options.maxAttempts, DEFAULT_MAX_ATTEMPTS),
-    defaultProvider: cleanText(options.provider).toLowerCase(),
+    isDeveloper: cleanText(readEnv('APP_ENV')).toLowerCase() === 'developer',
     apiKeys: {
       gemini: cleanText(options.geminiApiKey),
       openai: cleanText(options.openaiApiKey),
@@ -732,8 +833,8 @@ function requestGemini(input, runtime) {
   return sendWithRetry(
     {
       provider: 'gemini',
+      model,
       maxAttempts,
-      logMeta: request.logMeta || {},
       isRetryableResponse: isRetryableGeminiResponse,
       extractText: extractGeminiText,
       httpOptions: {
@@ -762,6 +863,7 @@ function requestOpenAi(input, runtime) {
   const maxAttempts = normalizeAttempts(request.maxAttempts, runtime.defaultMaxAttempts)
   const payload = buildOpenAiPayload(request)
   if (!payload.model) payload.model = requireText(request.model, 'OpenAI model')
+  const model = cleanText(payload.model)
   const headers = {
     authorization: `Bearer ${apiKey}`,
     'content-type': 'application/json',
@@ -770,8 +872,8 @@ function requestOpenAi(input, runtime) {
   return sendWithRetry(
     {
       provider: 'openai',
+      model,
       maxAttempts,
-      logMeta: request.logMeta || {},
       isRetryableResponse: isRetryableOpenAiResponse,
       extractText: extractOpenAiText,
       httpOptions: {
@@ -800,6 +902,7 @@ function requestDeepSeek(input, runtime) {
   const maxAttempts = normalizeAttempts(request.maxAttempts, runtime.defaultMaxAttempts)
   const payload = buildDeepSeekPayload(request)
   if (!payload.model) payload.model = requireText(request.model, 'DeepSeek model')
+  const model = cleanText(payload.model)
   const headers = {
     authorization: `Bearer ${apiKey}`,
     'content-type': 'application/json',
@@ -808,8 +911,8 @@ function requestDeepSeek(input, runtime) {
   return sendWithRetry(
     {
       provider: 'deepseek',
+      model,
       maxAttempts,
-      logMeta: request.logMeta || {},
       isRetryableResponse: isRetryableDeepSeekResponse,
       extractText: extractDeepSeekText,
       httpOptions: {
@@ -841,13 +944,6 @@ function createAiClient(options) {
     },
     deepseek(request) {
       return requestDeepSeek(request, runtime)
-    },
-    generate(request) {
-      const provider = cleanText((request && request.provider) || runtime.defaultProvider).toLowerCase()
-      if (provider === 'gemini') return requestGemini(request, runtime)
-      if (provider === 'openai') return requestOpenAi(request, runtime)
-      if (provider === 'deepseek') return requestDeepSeek(request, runtime)
-      throw new Error('provider must be gemini, openai, or deepseek')
     },
   }
 }
