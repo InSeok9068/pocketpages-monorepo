@@ -1,5 +1,6 @@
 declare namespace pocketpagesAi {
   type AiProvider = 'gemini' | 'openai' | 'deepseek'
+  type AiRateLimitCause = '' | 'rate-limit' | 'quota-or-billing-limit'
   type JsonObject = Record<string, any>
 
   interface AiClientOptions {
@@ -201,7 +202,7 @@ declare namespace pocketpagesAi {
     elapsedMs: number
     transportError: string
     errorMessage: string
-    rateLimitCause: string
+    rateLimitCause: AiRateLimitCause
   }
 
   interface AiClient {

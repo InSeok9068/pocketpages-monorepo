@@ -2013,41 +2013,6 @@ function normalizeJsonArrayField(value) {
 }
 
 /**
- * Gemini 429 응답의 원인을 추정합니다.
- * @param {unknown} message 오류 메시지 값입니다.
- * @param {unknown} detailsText 세부 오류 텍스트입니다.
- * @returns {string} 추정된 원인 키입니다.
- */
-function inferGemini429Cause(message, detailsText) {
-  const source = `${String(message || '')} ${String(detailsText || '')}`.toLowerCase()
-  if (!source.trim()) return 'unknown'
-
-  const hasQuotaSignal = source.includes('quota') || source.includes('billing') || source.includes('free tier') || source.includes('resource_exhausted')
-  if (hasQuotaSignal) return 'quota-or-billing-limit'
-
-  const hasRateSignal = source.includes('rate') || source.includes('too many requests') || source.includes('per minute') || source.includes('retry')
-  if (hasRateSignal) return 'request-rate-limit'
-
-  return 'unknown'
-}
-
-/**
- * Gemini 오류 detail 배열을 로그용 문자열로 합칩니다.
- * @param {unknown} details 오류 detail 배열 값입니다.
- * @returns {string} 직렬화된 detail 문자열입니다.
- */
-function stringifyGeminiErrorDetails(details) {
-  if (!Array.isArray(details)) return ''
-  return details
-    .map((detail) => {
-      if (detail === null || detail === undefined) return ''
-      const text = `${detail}`
-      return text === '[object Object]' ? JSON.stringify(detail) : text
-    })
-    .join(' | ')
-}
-
-/**
  * YYYY-MM-DD 문자열을 Date로 바꿉니다.
  */
 function parseDateText(value) {
@@ -3085,8 +3050,6 @@ module.exports = {
   htmlToText,
   normalizeStringArray,
   normalizeJsonArrayField,
-  inferGemini429Cause,
-  stringifyGeminiErrorDetails,
   parseDateText,
   formatDateText,
   buildWeekStartDate,

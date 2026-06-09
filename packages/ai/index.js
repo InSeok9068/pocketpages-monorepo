@@ -107,26 +107,17 @@ function readFirstEnv(names) {
 }
 
 /**
- * JSON 문자열을 안전하게 파싱합니다.
- * @param {unknown} text JSON 문자열입니다.
- * @param {unknown} fallback 파싱 실패 시 반환할 값입니다.
- * @returns {unknown} 파싱 결과입니다.
- */
-function parseJsonSafely(text, fallback) {
-  try {
-    return JSON.parse(String(text == null ? '' : text))
-  } catch (_error) {
-    return fallback
-  }
-}
-
-/**
  * JSON object를 안전하게 파싱합니다.
  * @param {unknown} text JSON 문자열입니다.
  * @returns {Record<string, any>} 파싱된 object입니다.
  */
 function parseJsonObject(text) {
-  const parsed = parseJsonSafely(text, {})
+  let parsed
+  try {
+    parsed = JSON.parse(String(text == null ? '' : text))
+  } catch (_error) {
+    return {}
+  }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
   return parsed
 }
@@ -141,17 +132,6 @@ function copyDefinedFields(payload, source, fields) {
   fields.forEach((field) => {
     if (source[field] !== undefined) payload[field] = source[field]
   })
-}
-
-/**
- * 응답 body를 문자열로 변환합니다.
- * @param {unknown} value 응답 body입니다.
- * @returns {string} body 문자열입니다.
- */
-function stringifyBody(value) {
-  if (value == null) return ''
-  if (typeof toString === 'function') return String(toString(value) || '')
-  return String(value || '')
 }
 
 /**
@@ -410,7 +390,7 @@ function buildOpenAiPayload(request) {
     return payload
   }
 
-  const input = request.input !== undefined ? request.input : request.prompt !== undefined ? request.prompt : request.message
+  const input = request.input !== undefined ? request.input : request.prompt
   const payload = {}
   copyDefinedFields(payload, request, OPENAI_PAYLOAD_FIELDS)
 
@@ -596,7 +576,7 @@ function sendWithRetry(request, runtime) {
       const response = runtime.http.send(request.httpOptions)
       const elapsedMs = runtime.now() - attemptStartedAt
       const statusCode = Number(response.statusCode || 0)
-      const responseBody = stringifyBody(response.body)
+      const responseBody = response.body == null ? '' : String(toString(response.body) || '')
       const headers = response.headers || {}
       const responseJson = parseJsonObject(responseBody)
 
@@ -787,24 +767,18 @@ function normalizeAttempts(value, fallback) {
  * @returns {Record<string, any>} 런타임 의존성입니다.
  */
 function createRuntime(options) {
-  const globalHttp = typeof $http !== 'undefined' ? $http : null
-  const globalSleep = typeof sleep === 'function' ? sleep : null
   const runtime = {
-    http: globalHttp,
-    sleep: globalSleep || function noopSleep(_ms) {},
+    http: $http,
+    sleep,
     now: Date.now,
     defaultTimeoutSeconds: normalizePositiveNumber(options.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS),
     defaultMaxAttempts: normalizeAttempts(options.maxAttempts, DEFAULT_MAX_ATTEMPTS),
-    isDeveloper: cleanText(readEnv('APP_ENV')).toLowerCase() === 'developer',
+    isDeveloper: cleanText(readEnv('APP_ENV')).toLowerCase() === 'development',
     apiKeys: {
       gemini: cleanText(options.geminiApiKey),
       openai: cleanText(options.openaiApiKey),
       deepseek: cleanText(options.deepseekApiKey),
     },
-  }
-
-  if (!runtime.http || typeof runtime.http.send !== 'function') {
-    throw new Error('$http.send is required. Run inside PocketBase JSVM.')
   }
 
   return runtime

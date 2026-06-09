@@ -1,5 +1,6 @@
 const { globalApi } = require('pocketpages')
-const { env, warn, info } = globalApi
+const { warn, info } = globalApi
+const { createAiClient } = require('@pocketpages/ai')
 const {
   CACHE_COLLECTION_NAME,
   GEMINI_MODEL_NAME,
@@ -7,7 +8,6 @@ const {
   GEMINI_MAX_ATTEMPTS,
   parseJsonSafely,
   extractJsonObjectText,
-  getHeaderValues,
   mergeSetCookieIntoCookieHeader,
   detectAuthRequiredHtml,
   toAbsoluteKjcaUrl,
@@ -24,70 +24,11 @@ const {
   normalizeStringArray,
   normalizeJsonArrayField,
   normalizeTeamLeadRows,
-  inferGemini429Cause,
-  stringifyGeminiErrorDetails,
   normalizeRecruitingExtract,
   normalizeCachedRecruitingField,
 } = require('./kjca-core')
 const kjcaAuth = require('./kjca-auth')
 const { createKjcaSession } = kjcaAuth
-
-/**
- * Retry-After 헤더를 ms 단위로 읽습니다.
- * @param {unknown} value Retry-After 헤더 값입니다.
- * @returns {number} 재시도 대기 ms입니다.
- */
-function parseRetryAfterMs(value) {
-  const text = String(value || '').trim()
-  if (!text) return 0
-  const parsed = Number(text)
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0
-  return Math.trunc(parsed * 1000)
-}
-
-/**
- * 재시도 대기 시간을 계산합니다.
- * @param {unknown} attempt 현재 시도 횟수입니다.
- * @param {unknown} retryAfterHeader Retry-After 헤더 값입니다.
- * @returns {number} 다음 재시도까지 기다릴 ms입니다.
- */
-function computeRetryDelayMs(attempt, retryAfterHeader) {
-  const retryAfterMs = parseRetryAfterMs(retryAfterHeader)
-  if (retryAfterMs > 0) return retryAfterMs
-  const step = Math.max(0, Number(attempt) - 1)
-  const backoffMs = 1500 * Math.pow(2, step)
-  const jitterMs = Math.trunc(Math.random() * 400)
-  return backoffMs + jitterMs
-}
-
-/**
- * HTTP 상태 코드 기준으로 재시도 가능 여부를 판단합니다.
- * @param {unknown} statusCode 응답 상태 코드입니다.
- * @param {unknown} rateLimitCauseGuess 429 원인 추정값입니다.
- * @returns {boolean} 재시도 가능하면 true입니다.
- */
-function isRetryableGeminiHttp(statusCode, rateLimitCauseGuess) {
-  if (statusCode === 429 && rateLimitCauseGuess === 'quota-or-billing-limit') return false
-  return statusCode === 429 || statusCode === 500 || statusCode === 502 || statusCode === 503 || statusCode === 504
-}
-
-/**
- * 전송 계층 오류가 재시도 가능한지 확인합니다.
- * @param {unknown} errorText 오류 메시지 값입니다.
- * @returns {boolean} 재시도 가능하면 true입니다.
- */
-function isRetryableGeminiTransportError(errorText) {
-  const text = String(errorText || '').toLowerCase()
-  if (!text) return false
-  return (
-    text.includes('timeout') ||
-    text.includes('deadline') ||
-    text.includes('temporarily unavailable') ||
-    text.includes('connection reset') ||
-    text.includes('connection refused') ||
-    text.includes('eof')
-  )
-}
 
 /**
  * JSON 응답을 느슨한 object로 정리합니다.
@@ -98,103 +39,6 @@ function parseJsonObject(text) {
   const parsed = parseJsonSafely(text, {})
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
   return parsed
-}
-
-/**
- * Gemini 호출을 재시도 정책과 함께 실행합니다.
- * @param {Record<string, any>} geminiPayload Gemini 요청 payload입니다.
- * @param {{ geminiApiKey: string, index: number, dept: string }} context 재시도 로그에 쓸 호출 문맥입니다.
- * @returns {{ statusCode: number, responseBody: string, headers: object, attempts: number, elapsedMs: number, transportError: string }} 호출 결과입니다.
- */
-function requestGeminiWithRetry(geminiPayload, context) {
-  let lastStatusCode = 0
-  let lastResponseBody = ''
-  let lastHeaders = {}
-  let lastTransportError = ''
-  let attempts = 0
-
-  while (attempts < GEMINI_MAX_ATTEMPTS) {
-    attempts += 1
-    const attemptStartedAt = Date.now()
-
-    try {
-      const response = $http.send({
-        url: `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_NAME}:generateContent?key=${context.geminiApiKey}`,
-        method: 'POST',
-        timeout: 60,
-        body: JSON.stringify(geminiPayload),
-        headers: {
-          'content-type': 'application/json',
-        },
-      })
-
-      const elapsedMs = Date.now() - attemptStartedAt
-      const statusCode = Number(response.statusCode || 0)
-      const responseBody = toString(response.body)
-      const headers = response.headers || {}
-      const retryAfter = getHeaderValues(headers, 'Retry-After')[0] || ''
-      const parsedErrorBody = parseJsonObject(responseBody)
-      const geminiError = parsedErrorBody && parsedErrorBody.error ? parsedErrorBody.error : {}
-      const geminiErrorMessage = String(geminiError.message || '').trim()
-      const geminiErrorDetailsText = stringifyGeminiErrorDetails(geminiError.details)
-      const rateLimitCauseGuess = statusCode === 429 ? inferGemini429Cause(geminiErrorMessage, geminiErrorDetailsText) : ''
-
-      lastStatusCode = statusCode
-      lastResponseBody = responseBody
-      lastHeaders = headers
-      lastTransportError = ''
-
-      if (statusCode >= 200 && statusCode < 300) {
-        return { statusCode, responseBody, headers, attempts, elapsedMs, transportError: '' }
-      }
-
-      const canRetry = attempts < GEMINI_MAX_ATTEMPTS && isRetryableGeminiHttp(statusCode, rateLimitCauseGuess)
-      if (!canRetry) {
-        return { statusCode, responseBody, headers, attempts, elapsedMs, transportError: '' }
-      }
-
-      const delayMs = computeRetryDelayMs(attempts, retryAfter)
-      warn('kjca/analyze:gemini-retry', {
-        index: context.index,
-        dept: context.dept,
-        attempt: attempts,
-        statusCode,
-        delayMs,
-      })
-      sleep(delayMs)
-    } catch (error) {
-      const elapsedMs = Date.now() - attemptStartedAt
-      const errorText = String(error || '').trim()
-      lastStatusCode = 0
-      lastResponseBody = ''
-      lastHeaders = {}
-      lastTransportError = errorText
-
-      const canRetry = attempts < GEMINI_MAX_ATTEMPTS && isRetryableGeminiTransportError(errorText)
-      if (!canRetry) {
-        return { statusCode: 0, responseBody: '', headers: {}, attempts, elapsedMs, transportError: errorText }
-      }
-
-      const delayMs = computeRetryDelayMs(attempts)
-      warn('kjca/analyze:gemini-retry-transport', {
-        index: context.index,
-        dept: context.dept,
-        attempt: attempts,
-        error: errorText,
-        delayMs,
-      })
-      sleep(delayMs)
-    }
-  }
-
-  return {
-    statusCode: lastStatusCode,
-    responseBody: lastResponseBody,
-    headers: lastHeaders,
-    attempts,
-    elapsedMs: 0,
-    transportError: lastTransportError,
-  }
 }
 
 /**
@@ -387,11 +231,13 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
   const safeSession = session || createKjcaSession(request)
   const targets = normalizeTeamLeadRows(payload && payload.targets)
   const reportDate = normalizeReportDate(payload && payload.reportDate)
-  const geminiApiKey = String(env('GEMINI_API_KEY') || env('GEMINI_AI_KEY') || '').trim()
 
   if (!targets.length) throw new Error('targets가 필요합니다.')
   if (targets.length > 50) throw new Error('targets는 최대 50개까지 지원합니다.')
-  if (!geminiApiKey) throw new Error('GEMINI_API_KEY (또는 GEMINI_AI_KEY)가 설정되지 않았습니다.')
+
+  const ai = createAiClient({
+    maxAttempts: GEMINI_MAX_ATTEMPTS,
+  })
 
   info('kjca/analyze:start', {
     reportDate,
@@ -489,53 +335,29 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
       continue
     }
 
-    const geminiAttemptResult = requestGeminiWithRetry(
-      {
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: buildPrompt({ dept, staffName, docText }) }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.2,
+    const geminiResult = ai.gemini({
+      model: GEMINI_MODEL_NAME,
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: buildPrompt({ dept, staffName, docText }) }],
         },
+      ],
+      generationConfig: {
+        temperature: 0.2,
       },
-      { index, dept, geminiApiKey }
-    )
+    })
 
-    const responseBody = String(geminiAttemptResult.responseBody || '')
-    const geminiStatusCode = Number(geminiAttemptResult.statusCode || 0)
-    const parsedErrorBody = parseJsonObject(responseBody)
-    const geminiError = parsedErrorBody && parsedErrorBody.error ? parsedErrorBody.error : {}
-    const geminiErrorMessage = String(geminiError.message || '').trim()
-    const geminiErrorDetailsText = stringifyGeminiErrorDetails(geminiError.details)
-    const rateLimitCauseGuess = geminiStatusCode === 429 ? inferGemini429Cause(geminiErrorMessage, geminiErrorDetailsText) : ''
-
-    if (!(geminiStatusCode >= 200 && geminiStatusCode < 300)) {
-      const errorText = geminiStatusCode > 0 ? `AI 요청 실패 (HTTP ${geminiStatusCode})` : `AI 요청 실패 (네트워크/타임아웃) ${String(geminiAttemptResult.transportError || '').trim()}`
+    if (!geminiResult.ok) {
+      const statusCode = Number(geminiResult.statusCode || 0)
+      const transportError = String(geminiResult.transportError || '').trim()
+      const errorText = statusCode > 0 ? `AI 요청 실패 (HTTP ${statusCode})` : `AI 요청 실패 (네트워크/타임아웃) ${transportError}`
       results.push(buildAnalyzeResult({ dept, position, staffName, ok: false, error: errorText, miscSection: miscSectionFromHtml, recruiting: recruitingFromHtml, printUrl }))
-
-      if (rateLimitCauseGuess === 'quota-or-billing-limit') {
-        stoppedReason = 'quota-exceeded'
-        alertMessage = 'Gemini 무료 쿼터가 소진되어 분석을 중단했습니다. 잠시 후 다시 시도하거나 과금/플랜을 확인해주세요.'
-        break
-      }
 
       continue
     }
 
-    const geminiPayloadJson = parseJsonObject(responseBody)
-    const geminiText =
-      geminiPayloadJson &&
-      geminiPayloadJson.candidates &&
-      geminiPayloadJson.candidates[0] &&
-      geminiPayloadJson.candidates[0].content &&
-      geminiPayloadJson.candidates[0].content.parts &&
-      geminiPayloadJson.candidates[0].content.parts[0]
-        ? geminiPayloadJson.candidates[0].content.parts[0].text || ''
-        : ''
-    const parsed = parseJsonObject(extractJsonObjectText(geminiText))
+    const parsed = parseJsonObject(extractJsonObjectText(geminiResult.text))
     const promotion = normalizeStringArray(parsed && parsed.promotion)
     const vacation = normalizeStringArray(parsed && parsed.vacation)
     const special = normalizeStringArray(parsed && parsed.special)
