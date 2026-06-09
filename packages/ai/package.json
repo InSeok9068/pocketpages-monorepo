@@ -1,0 +1,9 @@
+{
+  "name": "@pocketpages/ai",
+  "version": "0.0.1",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "peerDependencies": {
+    "pocketpages": ">=0.22.0"
+  }
+}
