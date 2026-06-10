@@ -133,12 +133,16 @@ function hasSentToday(userId, notificationKey) {
 
   try {
     const todayRange = getDateRangeIso(getTodayDateText())
-    return !!$app.findFirstRecordByFilter(COLLECTION_NAME, 'user_id = {:userId} && notification_key = {:notificationKey} && send_status = "sent" && sent_at >= {:sentAtStart} && sent_at <= {:sentAtEnd}', {
-      userId: normalizedUserId,
-      notificationKey: normalizedNotificationKey,
-      sentAtStart: todayRange.startIso,
-      sentAtEnd: todayRange.endIso,
-    })
+    return !!$app.findFirstRecordByFilter(
+      COLLECTION_NAME,
+      'user_id = {:userId} && notification_key = {:notificationKey} && send_status = "sent" && sent_at >= {:sentAtStart} && sent_at <= {:sentAtEnd}',
+      {
+        userId: normalizedUserId,
+        notificationKey: normalizedNotificationKey,
+        sentAtStart: todayRange.startIso,
+        sentAtEnd: todayRange.endIso,
+      }
+    )
   } catch (_exception) {
     return false
   }
