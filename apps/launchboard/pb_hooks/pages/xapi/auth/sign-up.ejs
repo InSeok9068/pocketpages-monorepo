@@ -1,5 +1,6 @@
 <script server>
-  const launchboardAuthCookie = resolve('launchboard-auth-cookie')
+  const { createAuthCookie } = require('@pocketpages/auth-cookie')
+  const authCookie = createAuthCookie()
   if (request.method !== 'POST') {
     dbg('xapi/auth/sign-up:redirect', {
       status: 303,
@@ -36,8 +37,8 @@
       sendVerificationEmail: false,
     })
 
-    const authData = launchboardAuthCookie.authenticateWithPassword(env, email, password)
-    launchboardAuthCookie.writePersistedAuthCookie(response, authData, env)
+    const authData = signInWithPassword(email, password)
+    authCookie.writeAuthCookie(response, authData)
 
     dbg('xapi/auth/sign-up:response', {
       status: 303,

@@ -1,5 +1,6 @@
 <script server>
-  const booklogAuthCookie = resolve('booklog-auth-cookie')
+  const { createAuthCookie } = require('@pocketpages/auth-cookie')
+  const authCookie = createAuthCookie()
   if (request.method !== 'POST') {
     dbg('xapi/auth/sign-in:redirect', {
       status: 303,
@@ -28,8 +29,8 @@
     if (!email) throw new Error('이메일이 필요합니다.')
     if (!password) throw new Error('비밀번호가 필요합니다.')
 
-    const authData = booklogAuthCookie.authenticateWithPassword(env, email, password)
-    booklogAuthCookie.writePersistedAuthCookie(response, authData, env)
+    const authData = signInWithPassword(email, password)
+    authCookie.writeAuthCookie(response, authData)
 
     dbg('xapi/auth/sign-in:response', {
       status: 303,
