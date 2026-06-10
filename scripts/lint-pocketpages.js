@@ -222,6 +222,7 @@ function collectServiceDirs(serviceArg) {
 function buildFileInfo(filePath, hooksRoot, pagesRoot) {
   const isCode = /\.(js|ejs)$/.test(filePath)
   const inPages = isWithin(filePath, pagesRoot)
+  const relFromPages = inPages ? relativePosix(pagesRoot, filePath) : ''
   const info = {
     absPath: filePath,
     displayPath: toDisplayPath(filePath),
@@ -230,7 +231,8 @@ function buildFileInfo(filePath, hooksRoot, pagesRoot) {
     isEjs: filePath.endsWith('.ejs'),
     relFromHooks: relativePosix(hooksRoot, filePath),
     inPages,
-    relFromPages: inPages ? relativePosix(pagesRoot, filePath) : '',
+    relFromPages,
+    inVendor: inPages && relFromPages.split('/').includes('vendor'),
     content: '',
     lines: [],
   }
@@ -251,8 +253,8 @@ function buildServiceContext(serviceDir) {
   const projectIndex = new PocketPagesProjectIndex(serviceDir)
   const files = walkFiles(hooksRoot).map((filePath) => buildFileInfo(filePath, hooksRoot, pagesRoot))
 
-  const hooksCodeFiles = files.filter((file) => file.isCode)
-  const pagesFiles = files.filter((file) => file.inPages)
+  const hooksCodeFiles = files.filter((file) => file.isCode && !file.inVendor)
+  const pagesFiles = files.filter((file) => file.inPages && !file.inVendor)
   const pagesCodeFiles = pagesFiles.filter((file) => file.isCode)
   const pagesEjsFiles = pagesFiles.filter((file) => file.isEjs)
 
