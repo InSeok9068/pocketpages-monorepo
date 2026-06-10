@@ -261,6 +261,39 @@ function isSameDay(left, right) {
   return toBusinessDayjs(left).isSame(toBusinessDayjs(right), 'day')
 }
 
+/**
+ * 두 날짜의 KST 기준 일 차이를 반환합니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} left 왼쪽 날짜 값
+ * @param {Date|string|number|import('dayjs').Dayjs} right 오른쪽 날짜 값
+ * @returns {number} left - right 일 차이
+ */
+function diffDays(left, right) {
+  return toBusinessDayjs(left).startOf('day').diff(toBusinessDayjs(right).startOf('day'), 'day')
+}
+
+/**
+ * 왼쪽 날짜가 KST 기준으로 더 이른 날짜인지 확인합니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} left 왼쪽 날짜 값
+ * @param {Date|string|number|import('dayjs').Dayjs} right 오른쪽 날짜 값
+ * @returns {boolean} 더 이른 날짜 여부
+ */
+function isBeforeDay(left, right) {
+  return diffDays(left, right) < 0
+}
+
+/**
+ * 왼쪽 날짜가 KST 기준으로 더 늦은 날짜인지 확인합니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} left 왼쪽 날짜 값
+ * @param {Date|string|number|import('dayjs').Dayjs} right 오른쪽 날짜 값
+ * @returns {boolean} 더 늦은 날짜 여부
+ */
+function isAfterDay(left, right) {
+  return diffDays(left, right) > 0
+}
+
 module.exports = {
   FORMATS,
   toDate,
@@ -270,4 +303,7 @@ module.exports = {
   startOfDay,
   endOfDay,
   isSameDay,
+  diffDays,
+  isBeforeDay,
+  isAfterDay,
 }

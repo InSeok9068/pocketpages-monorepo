@@ -49,6 +49,12 @@ interface DateutilApi {
   endOfDay(value: DateutilInput): Date
   /** 두 날짜가 KST 기준으로 같은 날짜인지 확인합니다. */
   isSameDay(left: DateutilInput, right: DateutilInput): boolean
+  /** 두 날짜의 KST 기준 일 차이를 반환합니다. */
+  diffDays(left: DateutilInput, right: DateutilInput): number
+  /** 왼쪽 날짜가 KST 기준으로 더 이른 날짜인지 확인합니다. */
+  isBeforeDay(left: DateutilInput, right: DateutilInput): boolean
+  /** 왼쪽 날짜가 KST 기준으로 더 늦은 날짜인지 확인합니다. */
+  isAfterDay(left: DateutilInput, right: DateutilInput): boolean
 }
 
 /********** dateutil end **********/
