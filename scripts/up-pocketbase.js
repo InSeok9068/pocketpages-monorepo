@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-'use strict';
+'use strict'
 
-const fs = require('fs');
-const path = require('path');
-const { spawnSync } = require('child_process');
+const fs = require('fs')
+const path = require('path')
+const { spawnSync } = require('child_process')
 
-const ROOT_DIR = path.resolve(__dirname, '..');
-const APPS_DIR = path.join(ROOT_DIR, 'apps');
-const HELP_ARGS = new Set(['-h', '--help']);
+const ROOT_DIR = path.resolve(__dirname, '..')
+const APPS_DIR = path.join(ROOT_DIR, 'apps')
+const HELP_ARGS = new Set(['-h', '--help'])
 
 /**
  * 업데이트 대상 서비스 디렉터리를 찾습니다.
@@ -15,7 +15,7 @@ const HELP_ARGS = new Set(['-h', '--help']);
  */
 function collectAppDirs() {
   if (!fs.existsSync(APPS_DIR)) {
-    return [];
+    return []
   }
 
   return fs
@@ -24,7 +24,7 @@ function collectAppDirs() {
     .map((entry) => path.join(APPS_DIR, entry.name))
     .filter((appDir) => fs.existsSync(path.join(appDir, 'package.json')))
     .filter((appDir) => resolvePocketBaseBinary(appDir))
-    .sort((left, right) => left.localeCompare(right));
+    .sort((left, right) => left.localeCompare(right))
 }
 
 /**
@@ -33,7 +33,7 @@ function collectAppDirs() {
  * @returns {string} 앱 디렉터리 이름입니다.
  */
 function toAppName(appDir) {
-  return path.basename(appDir);
+  return path.basename(appDir)
 }
 
 /**
@@ -42,18 +42,18 @@ function toAppName(appDir) {
  * @returns {string | null} 실행 파일 절대 경로입니다.
  */
 function resolvePocketBaseBinary(appDir) {
-  const windowsBinary = path.join(appDir, 'pocketbase.exe');
-  const unixBinary = path.join(appDir, 'pocketbase');
+  const windowsBinary = path.join(appDir, 'pocketbase.exe')
+  const unixBinary = path.join(appDir, 'pocketbase')
 
   if (fs.existsSync(windowsBinary)) {
-    return windowsBinary;
+    return windowsBinary
   }
 
   if (fs.existsSync(unixBinary)) {
-    return unixBinary;
+    return unixBinary
   }
 
-  return null;
+  return null
 }
 
 /**
@@ -63,15 +63,15 @@ function resolvePocketBaseBinary(appDir) {
  * @returns {string[]} pocketbase 실행 인자 목록입니다.
  */
 function buildUpdateArgs(extraArgs) {
-  const hasHelpArg = extraArgs.some((arg) => HELP_ARGS.has(arg));
-  const hasBackupArg = extraArgs.some((arg) => arg === '--backup' || arg.startsWith('--backup='));
-  const args = ['update'];
+  const hasHelpArg = extraArgs.some((arg) => HELP_ARGS.has(arg))
+  const hasBackupArg = extraArgs.some((arg) => arg === '--backup' || arg.startsWith('--backup='))
+  const args = ['update']
 
   if (!hasHelpArg && !hasBackupArg) {
-    args.push('--backup=false');
+    args.push('--backup=false')
   }
 
-  return [...args, ...extraArgs];
+  return [...args, ...extraArgs]
 }
 
 /**
@@ -80,21 +80,17 @@ function buildUpdateArgs(extraArgs) {
  * @returns {boolean} 삭제해도 되는 임시/백업 파일 여부입니다.
  */
 function isPocketBaseBackupFile(fileName) {
-  const lowerName = fileName.toLowerCase();
+  const lowerName = fileName.toLowerCase()
 
   if (lowerName === 'pocketbase.exe' || lowerName === 'pocketbase') {
-    return false;
+    return false
   }
 
   if (!lowerName.startsWith('pocketbase')) {
-    return false;
+    return false
   }
 
-  return (
-    lowerName.includes('.old') ||
-    lowerName.includes('.bak') ||
-    lowerName.includes('.backup')
-  );
+  return lowerName.includes('.old') || lowerName.includes('.bak') || lowerName.includes('.backup')
 }
 
 /**
@@ -103,40 +99,40 @@ function isPocketBaseBackupFile(fileName) {
  * @returns {string[]} 삭제한 파일 이름 목록입니다.
  */
 function cleanupBackupFiles(appDir) {
-  const removedFileNames = [];
-  const entries = fs.readdirSync(appDir, { withFileTypes: true });
+  const removedFileNames = []
+  const entries = fs.readdirSync(appDir, { withFileTypes: true })
 
   for (const entry of entries) {
     if (!entry.isFile()) {
-      continue;
+      continue
     }
 
     if (!isPocketBaseBackupFile(entry.name)) {
-      continue;
+      continue
     }
 
-    fs.unlinkSync(path.join(appDir, entry.name));
-    removedFileNames.push(entry.name);
+    fs.unlinkSync(path.join(appDir, entry.name))
+    removedFileNames.push(entry.name)
   }
 
-  return removedFileNames.sort((left, right) => left.localeCompare(right));
+  return removedFileNames.sort((left, right) => left.localeCompare(right))
 }
 
 /**
  * 도움말을 출력합니다.
  */
 function printHelp() {
-  console.log('Usage: node scripts/up-pocketbase.js [pocketbase update args...]');
-  console.log('');
-  console.log('Examples:');
-  console.log('  node scripts/up-pocketbase.js');
-  console.log('  node scripts/up-pocketbase.js --backup');
-  console.log('  node scripts/up-pocketbase.js --help');
-  console.log('');
-  console.log('Defaults:');
-  console.log('  - Runs pocketbase update in each app directory');
-  console.log('  - Uses --backup=false unless you pass --backup or --backup=<value>');
-  console.log('  - Removes pocketbase*.old/.bak/.backup files after a successful update');
+  console.log('Usage: node scripts/up-pocketbase.js [pocketbase update args...]')
+  console.log('')
+  console.log('Examples:')
+  console.log('  node scripts/up-pocketbase.js')
+  console.log('  node scripts/up-pocketbase.js --backup')
+  console.log('  node scripts/up-pocketbase.js --help')
+  console.log('')
+  console.log('Defaults:')
+  console.log('  - Runs pocketbase update in each app directory')
+  console.log('  - Uses --backup=false unless you pass --backup or --backup=<value>')
+  console.log('  - Removes pocketbase*.old/.bak/.backup files after a successful update')
 }
 
 /**
@@ -145,62 +141,62 @@ function printHelp() {
  * @param {string[]} extraArgs pocketbase update 뒤에 붙일 추가 인자입니다.
  */
 function runPocketBaseUpdate(appDir, extraArgs) {
-  const appName = toAppName(appDir);
-  const binaryPath = resolvePocketBaseBinary(appDir);
+  const appName = toAppName(appDir)
+  const binaryPath = resolvePocketBaseBinary(appDir)
 
   if (!binaryPath) {
-    throw new Error(`PocketBase binary not found in ${appDir}`);
+    throw new Error(`PocketBase binary not found in ${appDir}`)
   }
 
-  console.log(`\n==> ${appName}`);
+  console.log(`\n==> ${appName}`)
 
   const result = spawnSync(binaryPath, buildUpdateArgs(extraArgs), {
     cwd: appDir,
     stdio: 'inherit',
-  });
+  })
 
   if (result.error) {
-    throw result.error;
+    throw result.error
   }
 
   if (typeof result.status === 'number' && result.status !== 0) {
-    process.exit(result.status);
+    process.exit(result.status)
   }
 
   if (extraArgs.some((arg) => HELP_ARGS.has(arg))) {
-    return;
+    return
   }
 
-  const removedFileNames = cleanupBackupFiles(appDir);
+  const removedFileNames = cleanupBackupFiles(appDir)
 
   if (removedFileNames.length === 0) {
-    console.log('No PocketBase backup file to clean up.');
-    return;
+    console.log('No PocketBase backup file to clean up.')
+    return
   }
 
-  console.log(`Removed backup files: ${removedFileNames.join(', ')}`);
+  console.log(`Removed backup files: ${removedFileNames.join(', ')}`)
 }
 
 function main() {
-  const extraArgs = process.argv.slice(2);
+  const extraArgs = process.argv.slice(2)
 
   if (extraArgs.includes('--help') || extraArgs.includes('-h')) {
-    printHelp();
-    return;
+    printHelp()
+    return
   }
 
-  const appDirs = collectAppDirs();
+  const appDirs = collectAppDirs()
 
   if (appDirs.length === 0) {
-    console.error('apps 아래에 pocketbase 실행 파일이 있는 앱이 없습니다.');
-    process.exit(1);
+    console.error('apps 아래에 pocketbase 실행 파일이 있는 앱이 없습니다.')
+    process.exit(1)
   }
 
-  console.log(`Updating PocketBase in ${appDirs.length} app(s) from ${APPS_DIR}`);
+  console.log(`Updating PocketBase in ${appDirs.length} app(s) from ${APPS_DIR}`)
 
   for (const appDir of appDirs) {
-    runPocketBaseUpdate(appDir, extraArgs);
+    runPocketBaseUpdate(appDir, extraArgs)
   }
 }
 
-main();
+main()

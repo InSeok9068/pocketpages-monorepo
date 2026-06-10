@@ -57,38 +57,23 @@ const { collectPathContexts, collectSchemaContexts } = require('../tools/vscode-
 const { extractServerBlocks } = require('../tools/vscode-pocketpages/packages/language-core/script-server')
 const { collectParamsFlowDiagnostics } = require('../tools/vscode-pocketpages/packages/language-service/flow-analysis')
 const { PocketPagesProjectIndex } = require('../tools/vscode-pocketpages/packages/language-service/project-index')
-const {
-  collectRedirectReturnDiagnostics,
-  ts,
-} = require('../tools/vscode-pocketpages/packages/language-service/language-service')
+const { collectRedirectReturnDiagnostics, ts } = require('../tools/vscode-pocketpages/packages/language-service/language-service')
 
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
 
-const ALLOWED_SPECIAL_FILES = new Set([
-  '+config.js',
-  '+layout.ejs',
-  '+load.js',
-  '+middleware.js',
-  '+get.js',
-  '+post.js',
-  '+put.js',
-  '+patch.js',
-  '+delete.js',
-])
+const ALLOWED_SPECIAL_FILES = new Set(['+config.js', '+layout.ejs', '+load.js', '+middleware.js', '+get.js', '+post.js', '+put.js', '+patch.js', '+delete.js'])
 
 const RE = {
   resolvePrivate: /resolve\(\s*["']\/?_private\//,
   includePrivate: /include\(\s*["']\/?_private\//,
-  recordParamTag:
-    /@param\s+\{([^}]*(?:core\.Record|types\.[A-Za-z_$][A-Za-z0-9_$]*Record)[^}]*)\}\s+([A-Za-z_$][A-Za-z0-9_$]*|\[[A-Za-z_$][A-Za-z0-9_$]*(?:=[^\]]*)?\])/g,
+  recordParamTag: /@param\s+\{([^}]*(?:core\.Record|types\.[A-Za-z_$][A-Za-z0-9_$]*Record)[^}]*)\}\s+([A-Za-z_$][A-Za-z0-9_$]*|\[[A-Za-z_$][A-Za-z0-9_$]*(?:=[^\]]*)?\])/g,
   recordFindDeclaration:
     /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:\$app|[A-Za-z_$][A-Za-z0-9_$]*Service)\.find(?!Records\b|Records[A-Za-z0-9_$])(?:[A-Za-z0-9_$]*Record[A-Za-z0-9_$]*|[A-Za-z0-9_$]*By[A-Za-z0-9_$]*)\s*\(/g,
   recordFindAssignment:
     /(^|[^A-Za-z0-9_$])([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:\$app|[A-Za-z_$][A-Za-z0-9_$]*Service)\.find(?!Records\b|Records[A-Za-z0-9_$])(?:[A-Za-z0-9_$]*Record[A-Za-z0-9_$]*|[A-Za-z0-9_$]*By[A-Za-z0-9_$]*)\s*\(/g,
   middlewareUsesResolve: /\bresolve\s*\(/,
-  middlewareHasResolveArg:
-    /module\.exports\s*=\s*function\s*\(\s*\{[\s\S]*?\bresolve\b[\s\S]*?\}\s*(?:,|\))/,
+  middlewareHasResolveArg: /module\.exports\s*=\s*function\s*\(\s*\{[\s\S]*?\bresolve\b[\s\S]*?\}\s*(?:,|\))/,
   fullHtml: /<!DOCTYPE|<html\b|<head\b|<body\b/,
   responseJson: /\bresponse\.json\s*\(/,
   responseHtml: /\bresponse\.html\s*\(/,
@@ -99,13 +84,10 @@ const RE = {
   middlewareUsesResponse: /(^|[^A-Za-z0-9_])response\.[A-Za-z_][A-Za-z0-9_]*\s*\(/,
   rawEjsOutput: /<%-/,
   rawEjsAllowed: /<%-\s*(include\s*\(|slots?\b|content\b|resolve\s*\(|datastar\.scripts\s*\()/,
-  datastarCamelCaseAttribute:
-    /\bdata-(?:bind|class|computed|on|ref|signals|style):[A-Za-z0-9_-]*[A-Z][A-Za-z0-9_-]*(?=[\s=>])/,
-  authHelper:
-    /\b(signInWithPassword|signOut|requestOAuth2Login|requestOAuth2Link|registerWithPassword|signInWithOtp|signInWithOAuth2|signInAnonymously|signInWithToken)\s*\(/,
+  datastarCamelCaseAttribute: /\bdata-(?:bind|class|computed|on|ref|signals|style):[A-Za-z0-9_-]*[A-Z][A-Za-z0-9_-]*(?=[\s=>])/,
+  authHelper: /\b(signInWithPassword|signOut|requestOAuth2Login|requestOAuth2Link|registerWithPassword|signInWithOtp|signInWithOAuth2|signInAnonymously|signInWithToken)\s*\(/,
   resolveCall: /\bresolve\s*\(/,
-  roleSideEffect:
-    /\bredirect\s*\(|\bresponse\.[A-Za-z_][A-Za-z0-9_]*\s*\(|\bbody\s*\(|\$app\.(save|saveNoValidate|delete|deleteRecord|deleteRecords|dao)\b/,
+  roleSideEffect: /\bredirect\s*\(|\bresponse\.[A-Za-z_][A-Za-z0-9_]*\s*\(|\bbody\s*\(|\$app\.(save|saveNoValidate|delete|deleteRecord|deleteRecords|dao)\b/,
   roleDbQuery:
     /\$app\.(findAllRecords|findAuthRecordByToken|findCollectionByNameOrId|findCollectionsByFilter|findFirstRecordByData|findFirstRecordByFilter|findRecordById|findRecordsByExpr|findRecordsByFilter)\b/,
   roleRequestContext: /(^|[^A-Za-z0-9_])(request|params|query)\b|\bresolve\s*\(/,
@@ -117,15 +99,12 @@ const RE = {
   scriptServerTag: /<script\b(?=[^>]*\bserver\b)/,
   processEnv: /\bprocess\.env\b/,
   pocketpagesOnlyGlobalCall: /(^|[^.A-Za-z0-9_$])(env|dbg|info|warn|error)\s*\(/,
-  nonPagesDatastarRequestHelper:
-    /(^|[^.A-Za-z0-9_$])datastar\s*\.|(^|[^.A-Za-z0-9_$])api\s*\.\s*datastar\s*\./,
+  nonPagesDatastarRequestHelper: /(^|[^.A-Za-z0-9_$])datastar\s*\.|(^|[^.A-Za-z0-9_$])api\s*\.\s*datastar\s*\./,
   nonPagesPocketPagesRouteHelper: /(^|[^.A-Za-z0-9_$])(?:redirect|resolve)\s*\(/,
-  datastarBackendRealtimeUtility:
-    /\b(createRealtimeSender|buildPatchElementsPayload|buildRemoveElementsPayload|buildPatchSignalsPayload|buildRemoveSignalsPayload)\s*\(/,
+  datastarBackendRealtimeUtility: /\b(createRealtimeSender|buildPatchElementsPayload|buildRemoveElementsPayload|buildPatchSignalsPayload|buildRemoveSignalsPayload)\s*\(/,
   privateEjsDbAccess:
     /\$app\.(findAllRecords|findAuthRecordByToken|findCollectionByNameOrId|findCollectionsByFilter|findFirstRecordByData|findFirstRecordByFilter|findRecordById|findRecordsByExpr|findRecordsByFilter|save|saveNoValidate|delete|deleteRecord|deleteRecords|dao|recordQuery|collectionQuery|runInTransaction|auxRunInTransaction)\b/,
-  staticJsServerCode:
-    /\bmodule\.exports\b|\brequire\s*\(|\$app\.|(^|[^A-Za-z0-9_$])(response\.[A-Za-z_][A-Za-z0-9_]*\s*\(|redirect\s*\(|resolve\s*\(|env\s*\()/,
+  staticJsServerCode: /\bmodule\.exports\b|\brequire\s*\(|\$app\.|(^|[^A-Za-z0-9_$])(response\.[A-Za-z_][A-Za-z0-9_]*\s*\(|redirect\s*\(|resolve\s*\(|env\s*\()/,
   hookRegistration:
     /(^|[^A-Za-z0-9_$])(routerAdd|routerUse|cronAdd|onBootstrap|onServe|onTerminate|onRecord[A-Za-z0-9_]*|onSettings[A-Za-z0-9_]*|onMailer[A-Za-z0-9_]*|onRealtime[A-Za-z0-9_]*|onBackup[A-Za-z0-9_]*)\s*\(/,
   outerAppInsideTransaction: /\$app\./,
@@ -174,9 +153,7 @@ function walkFiles(rootDir) {
 
   while (queue.length > 0) {
     const currentDir = queue.pop()
-    const entries = fs
-      .readdirSync(currentDir, { withFileTypes: true })
-      .sort((left, right) => left.name.localeCompare(right.name))
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))
 
     for (let index = entries.length - 1; index >= 0; index -= 1) {
       const entry = entries[index]
@@ -268,9 +245,7 @@ function buildServiceContext(serviceDir) {
     pagesEjsFiles: pagesEjsFiles.filter((file) => !file.relFromPages.startsWith('assets/')),
     privateCodeFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('_private/')),
     roleFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('_private/roles/') && file.basename.endsWith('.js')),
-    entryCodeFiles: pagesCodeFiles.filter(
-      (file) => !file.relFromPages.startsWith('_private/') && !file.relFromPages.startsWith('assets/'),
-    ),
+    entryCodeFiles: pagesCodeFiles.filter((file) => !file.relFromPages.startsWith('_private/') && !file.relFromPages.startsWith('assets/')),
     apiFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('api/')),
     xapiFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('xapi/')),
     middlewareFiles: pagesCodeFiles.filter((file) => file.basename === '+middleware.js'),
@@ -334,16 +309,7 @@ function collectLineMatches(files, regex) {
   return matches
 }
 
-const RECORD_ACCESS_ALLOWED_METHODS = new Set([
-  'get',
-  'set',
-  'collection',
-  'publicExport',
-  'original',
-  'fresh',
-  'isSuperuser',
-  'baseFilesPath',
-])
+const RECORD_ACCESS_ALLOWED_METHODS = new Set(['get', 'set', 'collection', 'publicExport', 'original', 'fresh', 'isSuperuser', 'baseFilesPath'])
 
 const RECORD_FIELD_ACCESS_RE = /(^|[^.$A-Za-z0-9_])([A-Za-z_$][A-Za-z0-9_$]*)(\?\.|\.)([A-Za-z_$][A-Za-z0-9_$]*)/g
 
@@ -408,11 +374,7 @@ function collectDirectRecordFieldMatches(files) {
         const propertyName = match[4]
         const prefix = match[1]
 
-        if (
-          !/['"`]$/.test(prefix) &&
-          (recordVariableNames.has(receiverName) || isRecordLikeName(receiverName)) &&
-          !RECORD_ACCESS_ALLOWED_METHODS.has(propertyName)
-        ) {
+        if (!/['"`]$/.test(prefix) && (recordVariableNames.has(receiverName) || isRecordLikeName(receiverName)) && !RECORD_ACCESS_ALLOWED_METHODS.has(propertyName)) {
           matches.push(`${file.displayPath}:${lineIndex + 1}:${line}`)
           break
         }
@@ -817,12 +779,7 @@ function _extractTopLevelReturnObject(functionBody, bodyStartLine) {
       continue
     }
 
-    if (
-      depth === 0 &&
-      functionBody.startsWith('return', index) &&
-      !/[A-Za-z0-9_$]/.test(functionBody[index - 1] || '') &&
-      !/[A-Za-z0-9_$]/.test(functionBody[index + 6] || '')
-    ) {
+    if (depth === 0 && functionBody.startsWith('return', index) && !/[A-Za-z0-9_$]/.test(functionBody[index - 1] || '') && !/[A-Za-z0-9_$]/.test(functionBody[index + 6] || '')) {
       let cursor = index + 6
       while (/\s/.test(functionBody[cursor] || '')) {
         cursor += 1
@@ -881,12 +838,7 @@ function collectPathMatches(files, predicate) {
 
 function collectReservedParamsBindingMatches(files) {
   const matches = []
-  const patterns = [
-    /\bfunction(?:\s+[A-Za-z_$][A-Za-z0-9_$]*)?\s*\(\s*params\s*(?:[,)=])/g,
-    /\(\s*params\s*\)\s*=>/g,
-    /\bparams\s*=>/g,
-    /\b(?:const|let|var)\s+params\s*=/g,
-  ]
+  const patterns = [/\bfunction(?:\s+[A-Za-z_$][A-Za-z0-9_$]*)?\s*\(\s*params\s*(?:[,)=])/g, /\(\s*params\s*\)\s*=>/g, /\bparams\s*=>/g, /\b(?:const|let|var)\s+params\s*=/g]
 
   for (const file of files) {
     for (const pattern of patterns) {
@@ -944,8 +896,7 @@ function collectDatastarCamelCaseAttributeMatches(files) {
 
 function collectModuleExportsShorthandMatches(files) {
   const matches = []
-  const shorthandPattern =
-    /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*\1\s*,?\s*(?:\/\/.*)?$/
+  const shorthandPattern = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*\1\s*,?\s*(?:\/\/.*)?$/
 
   for (const file of files) {
     const exportObjects = extractModuleExportsObjects(file.content)
@@ -1167,12 +1118,7 @@ function collectSchemaMatches(context) {
         continue
       }
 
-      const reference = context.projectIndex.inferCollectionReference(
-        schemaContext.receiverExpression,
-        analysisText,
-        schemaContext.start,
-        { filePath: file.absPath },
-      )
+      const reference = context.projectIndex.inferCollectionReference(schemaContext.receiverExpression, analysisText, schemaContext.start, { filePath: file.absPath })
       if (!reference || reference.confidence !== 'high' || context.projectIndex.hasField(reference.collectionName, schemaContext.value)) {
         continue
       }
@@ -1294,9 +1240,7 @@ function collectConfigPluginDependencyMatches(context) {
   }
 
   const dependencies = Object.assign({}, packageJson.dependencies || {}, packageJson.devDependencies || {})
-  const pluginNames = unique(
-    Array.from(context.configFileInfo.content.matchAll(/["'](pocketpages-plugin-[^"']+)["']/g)).map((match) => match[1]),
-  )
+  const pluginNames = unique(Array.from(context.configFileInfo.content.matchAll(/["'](pocketpages-plugin-[^"']+)["']/g)).map((match) => match[1]))
 
   return pluginNames
     .filter((pluginName) => !dependencies[pluginName])
@@ -1307,25 +1251,13 @@ function lintService(context) {
   console.log(`Checking service: ${context.serviceName}`)
 
   const resolvePrivateMatches = collectLineMatches(context.lintCodeFiles, RE.resolvePrivate)
-  printMatches(
-    context.serviceName,
-    "Invalid resolve() path. Use names relative to _private, for example resolve('board-service').",
-    resolvePrivateMatches,
-  )
+  printMatches(context.serviceName, "Invalid resolve() path. Use names relative to _private, for example resolve('board-service').", resolvePrivateMatches)
 
   const includePrivateMatches = collectLineMatches(context.pagesCodeFiles, RE.includePrivate)
-  printMatches(
-    context.serviceName,
-    'Invalid include() path. Keep include paths relative to the current PocketPages include rules.',
-    includePrivateMatches,
-  )
+  printMatches(context.serviceName, 'Invalid include() path. Keep include paths relative to the current PocketPages include rules.', includePrivateMatches)
 
   const recordFieldMatches = collectDirectRecordFieldMatches(context.lintCodeFiles)
-  printMatches(
-    context.serviceName,
-    "Invalid direct Record field access. Read PocketBase fields with record.get('fieldName').",
-    recordFieldMatches,
-  )
+  printMatches(context.serviceName, "Invalid direct Record field access. Read PocketBase fields with record.get('fieldName').", recordFieldMatches)
 
   const middlewareResolveMatches = context.middlewareFiles
     .filter((file) => {
@@ -1334,330 +1266,202 @@ function lintService(context) {
       return RE.middlewareUsesResolve.test(file.content) && !RE.middlewareHasResolveArg.test(file.content)
     })
     .map((file) => file.displayPath)
-  printMatches(
-    context.serviceName,
-    'Invalid middleware resolve() usage. Read resolve from middleware function arguments.',
-    middlewareResolveMatches,
-  )
+  printMatches(context.serviceName, 'Invalid middleware resolve() usage. Read resolve from middleware function arguments.', middlewareResolveMatches)
 
-  const apiLayoutMatches = collectPathMatches(
-    context.pagesFiles,
-    (file) => /^(api|xapi)(\/.*)?\/\+layout\.ejs$/.test(file.relFromPages),
-  )
-  printMatches(
-    context.serviceName,
-    'Invalid layout placement. Keep +layout.ejs in routable page sections, not under api/ or xapi/.',
-    apiLayoutMatches,
-  )
+  const apiLayoutMatches = collectPathMatches(context.pagesFiles, (file) => /^(api|xapi)(\/.*)?\/\+layout\.ejs$/.test(file.relFromPages))
+  printMatches(context.serviceName, 'Invalid layout placement. Keep +layout.ejs in routable page sections, not under api/ or xapi/.', apiLayoutMatches)
 
   const xapiFullHtmlMatches = collectLineMatches(context.xapiFiles, RE.fullHtml)
-  printMatches(
-    context.serviceName,
-    'Invalid xapi response shape. Return fragments or raw responses from xapi/, not full HTML documents.',
-    xapiFullHtmlMatches,
-  )
+  printMatches(context.serviceName, 'Invalid xapi response shape. Return fragments or raw responses from xapi/, not full HTML documents.', xapiFullHtmlMatches)
 
-  const apiHtmlResponseMatches = unique([
-    ...collectLineMatches(context.apiFiles, RE.fullHtml),
-    ...collectLineMatches(context.apiFiles, RE.responseHtml),
-  ])
-  printMatches(
-    context.serviceName,
-    'Invalid api response shape. Keep api/ for programmatic responses such as JSON and do not return HTML documents or response.html(...).',
-    apiHtmlResponseMatches,
-  )
+  const apiHtmlResponseMatches = unique([...collectLineMatches(context.apiFiles, RE.fullHtml), ...collectLineMatches(context.apiFiles, RE.responseHtml)])
+  printMatches(context.serviceName, 'Invalid api response shape. Keep api/ for programmatic responses such as JSON and do not return HTML documents or response.html(...).', apiHtmlResponseMatches)
 
-  const privateSpecialFileMatches = collectPathMatches(
-    context.pagesFiles,
-    (file) =>
-      /_private\/.*\/\+(layout|config|load|middleware|get|post|put|patch|delete)\.(ejs|js)$/.test(
-        file.relFromPages,
-      ),
-  )
-  printMatches(
-    context.serviceName,
-    'Invalid _private file placement. Keep PocketPages special route/config files outside _private.',
-    privateSpecialFileMatches,
-  )
+  const privateSpecialFileMatches = collectPathMatches(context.pagesFiles, (file) => /_private\/.*\/\+(layout|config|load|middleware|get|post|put|patch|delete)\.(ejs|js)$/.test(file.relFromPages))
+  printMatches(context.serviceName, 'Invalid _private file placement. Keep PocketPages special route/config files outside _private.', privateSpecialFileMatches)
 
   const pagesPbJsMatches = collectPathMatches(context.pagesFiles, (file) => file.basename.endsWith('.pb.js'))
   printMatches(
     context.serviceName,
     'Invalid pages file name. Files under pb_hooks/pages are routed by PocketPages. Move *.pb.js hooks to pb_hooks/ root or another PocketBase hook location.',
-    pagesPbJsMatches,
+    pagesPbJsMatches
   )
 
   const staticPagesJsFiles = context.pagesCodeFiles.filter(
     (file) =>
-      file.basename.endsWith('.js') &&
-      !file.basename.startsWith('+') &&
-      !file.basename.endsWith('.pb.js') &&
-      !file.relFromPages.startsWith('_private/') &&
-      !file.relFromPages.startsWith('assets/'),
+      file.basename.endsWith('.js') && !file.basename.startsWith('+') && !file.basename.endsWith('.pb.js') && !file.relFromPages.startsWith('_private/') && !file.relFromPages.startsWith('assets/')
   )
   const staticJsServerCodeMatches = collectLineMatches(staticPagesJsFiles, RE.staticJsServerCode)
   printMatches(
     context.serviceName,
     'Invalid pages static .js usage. Regular .js files under pb_hooks/pages are served as static assets, so move server code to +*.js, *.ejs, or _private/*.js.',
-    staticJsServerCodeMatches,
+    staticJsServerCodeMatches
   )
 
   const transactionOuterAppMatches = collectTransactionOuterAppMatches(context.hooksCodeFiles)
   printMatches(
     context.serviceName,
     'Invalid runInTransaction usage. Inside $app.runInTransaction(...) always use the callback txApp argument instead of the outer $app instance.',
-    transactionOuterAppMatches,
+    transactionOuterAppMatches
   )
 
   const asyncFlowMatches = collectAsyncFlowMatches(context)
-  printMatches(
-    context.serviceName,
-    'Invalid JSVM async flow. Keep PocketBase/PocketPages server code sync; do not use async, await, Promise, or .then(...).',
-    asyncFlowMatches,
-  )
+  printMatches(context.serviceName, 'Invalid JSVM async flow. Keep PocketBase/PocketPages server code sync; do not use async, await, Promise, or .then(...).', asyncFlowMatches)
 
   const pagesHookRegistrationMatches = collectLineMatches(context.pagesCodeFiles, RE.hookRegistration)
   printMatches(
     context.serviceName,
     'Invalid PocketBase hook registration in pages code. Move routerAdd/routerUse/cronAdd/onRecord*/onSettings* registrations to pb_hooks/*.pb.js or another non-pages hook file.',
-    pagesHookRegistrationMatches,
+    pagesHookRegistrationMatches
   )
 
   const privateResolveMatches = collectLineMatches(context.privateCodeFiles, RE.resolveCall)
   printMatches(
     context.serviceName,
     'Invalid _private resolve() usage. Resolve dependencies only from request entry files such as EJS, <script server>, loaders, and middleware.',
-    privateResolveMatches,
+    privateResolveMatches
   )
 
   const reservedParamsBindingMatches = collectReservedParamsBindingMatches(context.lintCodeFiles)
   printWarnings(
     context.serviceName,
     'Discouraged JS params binding. Reserve "params" for route context only and rename helper inputs or locals to payload, input, summaryInput, or another contextual name.',
-    reservedParamsBindingMatches,
+    reservedParamsBindingMatches
   )
 
   const privateModulePatternMatches = unique([
-    ...collectLineMatches(context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')), RE.privateModuleFunctionExport),
-    ...collectLineMatches(context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')), RE.privateModuleFactoryExport),
+    ...collectLineMatches(
+      context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')),
+      RE.privateModuleFunctionExport
+    ),
+    ...collectLineMatches(
+      context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')),
+      RE.privateModuleFactoryExport
+    ),
   ])
-  printWarnings(
-    context.serviceName,
-    'Discouraged _private module export style. Prefer module.exports = { ... } and avoid function/factory exports in _private/*.js.',
-    privateModulePatternMatches,
-  )
+  printWarnings(context.serviceName, 'Discouraged _private module export style. Prefer module.exports = { ... } and avoid function/factory exports in _private/*.js.', privateModulePatternMatches)
 
   const distributedModuleExportMatches = collectLineMatches(
     context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')),
-    RE.distributedModuleExport,
+    RE.distributedModuleExport
   )
   printWarnings(
     context.serviceName,
     'Discouraged _private module export style. Prefer grouping public members in one module.exports = { ... } object instead of scattered module.exports.foo assignments.',
-    distributedModuleExportMatches,
+    distributedModuleExportMatches
   )
 
-  const moduleExportsShorthandMatches = collectModuleExportsShorthandMatches(
-    context.hooksCodeFiles.filter((file) => file.basename.endsWith('.js')),
-  )
+  const moduleExportsShorthandMatches = collectModuleExportsShorthandMatches(context.hooksCodeFiles.filter((file) => file.basename.endsWith('.js')))
   printWarnings(
     context.serviceName,
     'Discouraged module.exports object style. Prefer shorthand members such as { sentCount } instead of repeating sentCount: sentCount in exported objects.',
-    moduleExportsShorthandMatches,
+    moduleExportsShorthandMatches
   )
 
   const privateScriptServerMatches = collectLineMatches(
     context.pagesEjsFiles.filter((file) => file.relFromPages.startsWith('_private/')),
-    RE.scriptServerTag,
+    RE.scriptServerTag
   )
   printMatches(
     context.serviceName,
     'Invalid _private <script server> usage. Keep _private partial setup in top-level <% ... %> blocks and reserve <script server> for entry EJS files.',
-    privateScriptServerMatches,
+    privateScriptServerMatches
   )
 
   const privateEjsDbAccessMatches = collectLineMatches(
     context.pagesEjsFiles.filter((file) => file.relFromPages.startsWith('_private/')),
-    RE.privateEjsDbAccess,
+    RE.privateEjsDbAccess
   )
   printMatches(
     context.serviceName,
     'Invalid _private EJS DB access. Keep _private partials render-only and move PocketBase queries or writes to the entry EJS <script server> block or a nearby _private/*.js module.',
-    privateEjsDbAccessMatches,
+    privateEjsDbAccessMatches
   )
 
   const pagesProcessEnvMatches = collectLineMatches(context.lintCodeFiles, RE.processEnv)
-  printMatches(
-    context.serviceName,
-    'Invalid process.env usage in PocketPages pages code. Use env(...) inside pb_hooks/pages files.',
-    pagesProcessEnvMatches,
-  )
+  printMatches(context.serviceName, 'Invalid process.env usage in PocketPages pages code. Use env(...) inside pb_hooks/pages files.', pagesProcessEnvMatches)
 
-  const nonPagesPocketPagesGlobalMatches = collectLineMatches(
-    context.nonPagesHooksCodeFiles,
-    RE.pocketpagesOnlyGlobalCall,
-  )
+  const nonPagesPocketPagesGlobalMatches = collectLineMatches(context.nonPagesHooksCodeFiles, RE.pocketpagesOnlyGlobalCall)
   printMatches(
     context.serviceName,
     'Invalid PocketPages global usage outside pb_hooks/pages. Do not use env(...), dbg(...), info(...), warn(...), or error(...) in non-pages pb_hooks code.',
-    nonPagesPocketPagesGlobalMatches,
+    nonPagesPocketPagesGlobalMatches
   )
 
-  const nonPagesPocketPagesRouteHelperMatches = collectLineMatches(
-    context.nonPagesHooksCodeFiles,
-    RE.nonPagesPocketPagesRouteHelper,
-  )
+  const nonPagesPocketPagesRouteHelperMatches = collectLineMatches(context.nonPagesHooksCodeFiles, RE.nonPagesPocketPagesRouteHelper)
   printMatches(
     context.serviceName,
     'Invalid PocketPages route helper usage outside pb_hooks/pages. Do not use redirect(...) or resolve(...) in non-pages pb_hooks code.',
-    nonPagesPocketPagesRouteHelperMatches,
+    nonPagesPocketPagesRouteHelperMatches
   )
 
-  const nonPagesDatastarRequestHelperMatches = collectLineMatches(
-    context.nonPagesHooksCodeFiles,
-    RE.nonPagesDatastarRequestHelper,
-  )
+  const nonPagesDatastarRequestHelperMatches = collectLineMatches(context.nonPagesHooksCodeFiles, RE.nonPagesDatastarRequestHelper)
   printMatches(
     context.serviceName,
     'Invalid Datastar request helper usage outside pb_hooks/pages. datastar.* and api.datastar.* exist only in PocketPages route context; use createRealtimeSender(...) or $app.subscriptionsBroker() in backend hooks/jobs.',
-    nonPagesDatastarRequestHelperMatches,
+    nonPagesDatastarRequestHelperMatches
   )
 
-  const pagesDatastarBackendRealtimeUtilityMatches = collectLineMatches(
-    context.lintCodeFiles,
-    RE.datastarBackendRealtimeUtility,
-  )
+  const pagesDatastarBackendRealtimeUtilityMatches = collectLineMatches(context.lintCodeFiles, RE.datastarBackendRealtimeUtility)
   printWarnings(
     context.serviceName,
     'Discouraged Datastar backend realtime utility in PocketPages pages. Use datastar.realtime.* in route context; reserve createRealtimeSender(...) and payload builders for pb_hooks jobs/hooks.',
-    pagesDatastarBackendRealtimeUtilityMatches,
+    pagesDatastarBackendRealtimeUtilityMatches
   )
 
   const includeFullContextMatches = collectIncludeFullContextMatches(context.pagesEjsFiles)
-  printMatches(
-    context.serviceName,
-    'Invalid include() locals. Pass only the values the partial needs instead of api/request/response/resolve/params/data.',
-    includeFullContextMatches,
-  )
+  printMatches(context.serviceName, 'Invalid include() locals. Pass only the values the partial needs instead of api/request/response/resolve/params/data.', includeFullContextMatches)
 
   const localTypedefMatches = collectLineMatches(context.lintCodeFiles, RE.localTypedef)
-  printWarnings(
-    context.serviceName,
-    'Discouraged local @typedef usage. Prefer moving named shapes to apps/<service>/types.d.ts and reference them as types.*.',
-    localTypedefMatches,
-  )
+  printWarnings(context.serviceName, 'Discouraged local @typedef usage. Prefer moving named shapes to apps/<service>/types.d.ts and reference them as types.*.', localTypedefMatches)
 
   const roleSideEffectMatches = collectLineMatches(context.roleFiles, RE.roleSideEffect)
-  printMatches(
-    context.serviceName,
-    'Invalid role side effect. Keep roles/*.js pure and move redirect/response/body/save/delete work to entry or service code.',
-    roleSideEffectMatches,
-  )
+  printMatches(context.serviceName, 'Invalid role side effect. Keep roles/*.js pure and move redirect/response/body/save/delete work to entry or service code.', roleSideEffectMatches)
 
   const roleDbQueryMatches = collectLineMatches(context.roleFiles, RE.roleDbQuery)
-  printMatches(
-    context.serviceName,
-    'Invalid role DB lookup. Fetch records in entry or service code and pass them into the role.',
-    roleDbQueryMatches,
-  )
+  printMatches(context.serviceName, 'Invalid role DB lookup. Fetch records in entry or service code and pass them into the role.', roleDbQueryMatches)
 
   const roleRequestContextMatches = collectLineMatches(context.roleFiles, RE.roleRequestContext)
-  printMatches(
-    context.serviceName,
-    'Invalid role request-context access. Do not use request, params, query, or resolve() inside roles/*.js.',
-    roleRequestContextMatches,
-  )
+  printMatches(context.serviceName, 'Invalid role request-context access. Do not use request, params, query, or resolve() inside roles/*.js.', roleRequestContextMatches)
 
   const xapiJsonMatches = collectLineMatches(context.xapiFiles, RE.responseJson)
-  printMatches(
-    context.serviceName,
-    'Invalid xapi JSON response. Move JSON endpoints under api/ and keep xapi/ for fragments or raw responses.',
-    xapiJsonMatches,
-  )
+  printMatches(context.serviceName, 'Invalid xapi JSON response. Move JSON endpoints under api/ and keep xapi/ for fragments or raw responses.', xapiJsonMatches)
 
   const apiRedirectMatches = collectLineMatches(context.apiFiles, RE.redirect)
-  printMatches(
-    context.serviceName,
-    'Invalid api redirect. Keep api/ for programmatic responses and move redirect flows to page or xapi code.',
-    apiRedirectMatches,
-  )
+  printMatches(context.serviceName, 'Invalid api redirect. Keep api/ for programmatic responses and move redirect flows to page or xapi code.', apiRedirectMatches)
 
   const manualFlashMatches = collectLineMatches(context.pagesCodeFiles, RE.manualFlash)
-  printMatches(
-    context.serviceName,
-    'Invalid flash handling. Use redirect(path, { message }) instead of manually building ?__flash=....',
-    manualFlashMatches,
-  )
+  printMatches(context.serviceName, 'Invalid flash handling. Use redirect(path, { message }) instead of manually building ?__flash=....', manualFlashMatches)
   const redirectFlashOptionMatches = collectRedirectFlashOptionMatches(context)
-  printMatches(
-    context.serviceName,
-    'Invalid redirect flash option. Use redirect(path, { message }) instead of redirect(path, { flash }).',
-    redirectFlashOptionMatches,
-  )
+  printMatches(context.serviceName, 'Invalid redirect flash option. Use redirect(path, { message }) instead of redirect(path, { flash }).', redirectFlashOptionMatches)
   const redirectMissingReturnMatches = collectRedirectMissingReturnMatches(context)
-  printMatches(
-    context.serviceName,
-    'Invalid redirect() control flow. Return after redirect() so PocketPages execution stops explicitly.',
-    redirectMissingReturnMatches,
-  )
+  printMatches(context.serviceName, 'Invalid redirect() control flow. Return after redirect() so PocketPages execution stops explicitly.', redirectMissingReturnMatches)
 
   const unresolvedPathMatches = collectUnresolvedPathMatches(context)
-  printMatches(
-    context.serviceName,
-    'Invalid resolve() target. resolve(...) must point to an existing _private module or partial.',
-    unresolvedPathMatches.resolve,
-  )
-  printMatches(
-    context.serviceName,
-    'Invalid include() target. include(...) must point to an existing partial file.',
-    unresolvedPathMatches.include,
-  )
-  printMatches(
-    context.serviceName,
-    'Invalid asset() target. asset(...) must point to an existing asset file.',
-    unresolvedPathMatches.asset,
-  )
-  printMatches(
-    context.serviceName,
-    'Invalid route path. Static href/action/hx-*/redirect paths must point to an existing route.',
-    unresolvedPathMatches.route,
-  )
+  printMatches(context.serviceName, 'Invalid resolve() target. resolve(...) must point to an existing _private module or partial.', unresolvedPathMatches.resolve)
+  printMatches(context.serviceName, 'Invalid include() target. include(...) must point to an existing partial file.', unresolvedPathMatches.include)
+  printMatches(context.serviceName, 'Invalid asset() target. asset(...) must point to an existing asset file.', unresolvedPathMatches.asset)
+  printMatches(context.serviceName, 'Invalid route path. Static href/action/hx-*/redirect paths must point to an existing route.', unresolvedPathMatches.route)
 
   const schemaMatches = collectSchemaMatches(context)
-  printMatches(
-    context.serviceName,
-    'Invalid PocketBase collection name. Use a collection that exists in pb_schema.json.',
-    schemaMatches.collections,
-  )
+  printMatches(context.serviceName, 'Invalid PocketBase collection name. Use a collection that exists in pb_schema.json.', schemaMatches.collections)
   printMatches(
     context.serviceName,
     "Invalid PocketBase record field name. Use a field that exists in pb_schema.json when calling record.get('field') or record.set('field', value).",
-    schemaMatches.fields,
+    schemaMatches.fields
   )
 
   const queryViaParamsMatches = collectQueryViaParamsMatches(context)
-  printWarnings(
-    context.serviceName,
-    'Discouraged params query access. Use request.url.query for query strings and reserve params for route params or __flash.',
-    queryViaParamsMatches,
-  )
+  printWarnings(context.serviceName, 'Discouraged params query access. Use request.url.query for query strings and reserve params for route params or __flash.', queryViaParamsMatches)
 
-  const nestedConfigMatches = context.configFiles
-    .filter((file) => file.absPath !== context.configFile)
-    .map((file) => file.displayPath)
-  printMatches(
-    context.serviceName,
-    'Invalid +config.js placement. Keep a single +config.js at pb_hooks/pages/+config.js.',
-    nestedConfigMatches,
-  )
+  const nestedConfigMatches = context.configFiles.filter((file) => file.absPath !== context.configFile).map((file) => file.displayPath)
+  printMatches(context.serviceName, 'Invalid +config.js placement. Keep a single +config.js at pb_hooks/pages/+config.js.', nestedConfigMatches)
 
-  const invalidSpecialPlusFiles = context.specialPlusFiles
-    .filter((file) => !ALLOWED_SPECIAL_FILES.has(file.basename))
-    .map((file) => file.displayPath)
+  const invalidSpecialPlusFiles = context.specialPlusFiles.filter((file) => !ALLOWED_SPECIAL_FILES.has(file.basename)).map((file) => file.displayPath)
   printMatches(
     context.serviceName,
     'Invalid +special file name. Only +config.js, +layout.ejs, +load.js, +middleware.js, +get.js, +post.js, +put.js, +patch.js, and +delete.js are allowed.',
-    invalidSpecialPlusFiles,
+    invalidSpecialPlusFiles
   )
 
   const middlewareFlowMatches = context.middlewareFiles
@@ -1665,18 +1469,10 @@ function lintService(context) {
       RE.middlewareDeclaresNext.lastIndex = 0
       RE.middlewareCallsNext.lastIndex = 0
       RE.middlewareUsesResponse.lastIndex = 0
-      return (
-        RE.middlewareDeclaresNext.test(file.content) &&
-        !RE.middlewareCallsNext.test(file.content) &&
-        !RE.middlewareUsesResponse.test(file.content)
-      )
+      return RE.middlewareDeclaresNext.test(file.content) && !RE.middlewareCallsNext.test(file.content) && !RE.middlewareUsesResponse.test(file.content)
     })
     .map((file) => file.displayPath)
-  printMatches(
-    context.serviceName,
-    'Invalid middleware control flow. Middleware that declares next must call next() or send a response before returning.',
-    middlewareFlowMatches,
-  )
+  printMatches(context.serviceName, 'Invalid middleware control flow. Middleware that declares next must call next() or send a response before returning.', middlewareFlowMatches)
 
   const loadPathSet = new Set(context.loadFiles.map((file) => file.absPath))
   const nestedLoadMatches = []
@@ -1701,42 +1497,26 @@ function lintService(context) {
       searchDir = nextDir
     }
   }
-  printMatches(
-    context.serviceName,
-    'Invalid nested +load.js layout. PocketPages executes only the leaf +load.js, so shared loading belongs in middleware.',
-    nestedLoadMatches,
-  )
+  printMatches(context.serviceName, 'Invalid nested +load.js layout. PocketPages executes only the leaf +load.js, so shared loading belongs in middleware.', nestedLoadMatches)
 
   const rawEjsOutputMatches = collectLineMatches(context.pagesEjsFiles, RE.rawEjsOutput)
   const disallowedRawEjsMatches = filterLinesExcluding(rawEjsOutputMatches, RE.rawEjsAllowed)
-  printMatches(
-    context.serviceName,
-    'Invalid raw EJS output. Limit <%- ... %> to include(), slot/slots, content, or resolve()-provided safe assets.',
-    disallowedRawEjsMatches,
-  )
+  printMatches(context.serviceName, 'Invalid raw EJS output. Limit <%- ... %> to include(), slot/slots, content, or resolve()-provided safe assets.', disallowedRawEjsMatches)
 
   const datastarCamelCaseAttributeMatches = collectDatastarCamelCaseAttributeMatches(context.pagesEjsFiles)
   printMatches(
     context.serviceName,
     'Invalid Datastar attribute key. Use kebab-case in data-* attributes, for example data-bind:item-text instead of data-bind:itemText.',
-    datastarCamelCaseAttributeMatches,
+    datastarCamelCaseAttributeMatches
   )
 
   const compactConfig = context.configFileInfo ? context.configFileInfo.content.replace(/\s+/g, '') : ''
   const missingConfigPluginDependencyMatches = collectConfigPluginDependencyMatches(context)
-  printMatches(
-    context.serviceName,
-    'Invalid plugin dependency setup. Every pocketpages-plugin-* listed in +config.js must be listed directly in package.json.',
-    missingConfigPluginDependencyMatches,
-  )
+  printMatches(context.serviceName, 'Invalid plugin dependency setup. Every pocketpages-plugin-* listed in +config.js must be listed directly in package.json.', missingConfigPluginDependencyMatches)
 
   const authHelperMatches = collectLineMatches(context.pagesCodeFiles, RE.authHelper)
   if (authHelperMatches.length > 0 && !compactConfig.includes('pocketpages-plugin-auth')) {
-    printMatches(
-      context.serviceName,
-      'Invalid auth helper setup. Add pocketpages-plugin-auth to pb_hooks/pages/+config.js before using auth helpers.',
-      authHelperMatches,
-    )
+    printMatches(context.serviceName, 'Invalid auth helper setup. Add pocketpages-plugin-auth to pb_hooks/pages/+config.js before using auth helpers.', authHelperMatches)
   }
 
   const authPluginConfigMatches = []
@@ -1751,11 +1531,7 @@ function lintService(context) {
       }
     }
   }
-  printMatches(
-    context.serviceName,
-    'Invalid auth plugin order. List pocketpages-plugin-js-sdk before pocketpages-plugin-auth in +config.js.',
-    authPluginConfigMatches,
-  )
+  printMatches(context.serviceName, 'Invalid auth plugin order. List pocketpages-plugin-js-sdk before pocketpages-plugin-auth in +config.js.', authPluginConfigMatches)
 
   const excessiveRoleResolveMatches = context.entryCodeFiles
     .map((file) => {
@@ -1770,8 +1546,8 @@ function lintService(context) {
     .filter(Boolean)
   printWarnings(
     context.serviceName,
-    "Heavy role composition in one entry. Keep direct resolve by default, and move only repeated shared wiring into a nearby plain _private module when it is reused.",
-    excessiveRoleResolveMatches,
+    'Heavy role composition in one entry. Keep direct resolve by default, and move only repeated shared wiring into a nearby plain _private module when it is reused.',
+    excessiveRoleResolveMatches
   )
 }
 

@@ -1,77 +1,68 @@
 #!/usr/bin/env node
-'use strict';
+'use strict'
 
-const fs = require('fs');
-const net = require('net');
-const path = require('path');
-const {
-  collectManagedWatchedFiles,
-  getDiagIpcPath,
-  resolveTarget,
-  ROOT_DIR,
-  runDiagnosticsAsync,
-  readFileToken,
-} = require('./diag-pocketpages-core');
-const {
-  PocketPagesLanguageServiceManager,
-} = require('../tools/vscode-pocketpages/packages/language-service/language-service');
+const fs = require('fs')
+const net = require('net')
+const path = require('path')
+const { collectManagedWatchedFiles, getDiagIpcPath, resolveTarget, ROOT_DIR, runDiagnosticsAsync, readFileToken } = require('./diag-pocketpages-core')
+const { PocketPagesLanguageServiceManager } = require('../tools/vscode-pocketpages/packages/language-service/language-service')
 
-const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000
 
 function parseArgs(argv) {
-  const args = Array.isArray(argv) ? [...argv] : [];
-  let pipePath = '';
+  const args = Array.isArray(argv) ? [...argv] : []
+  let pipePath = ''
 
   while (args.length > 0) {
-    const current = args.shift();
+    const current = args.shift()
     if (current === '--pipe') {
-      pipePath = args.shift() || '';
+      pipePath = args.shift() || ''
     }
   }
 
   return {
     pipePath: pipePath || getDiagIpcPath(),
-  };
+  }
 }
 
 function ensureParentDirectory(pipePath) {
   if (process.platform === 'win32') {
-    return;
+    return
   }
 
-  const dirPath = path.dirname(pipePath);
-  fs.mkdirSync(dirPath, { recursive: true });
+  const dirPath = path.dirname(pipePath)
+  fs.mkdirSync(dirPath, { recursive: true })
 }
 
 function removePipeFileIfNeeded(pipePath) {
   if (process.platform === 'win32') {
-    return;
+    return
   }
 
   if (fs.existsSync(pipePath)) {
-    fs.unlinkSync(pipePath);
+    fs.unlinkSync(pipePath)
   }
 }
 
 function buildServiceSnapshot(serviceDir) {
-  const snapshot = new Map();
+  const snapshot = new Map()
 
   for (const filePath of collectManagedWatchedFiles(serviceDir)) {
-    snapshot.set(path.resolve(filePath), readFileToken(filePath));
+    snapshot.set(path.resolve(filePath), readFileToken(filePath))
   }
 
-  return snapshot;
+  return snapshot
 }
 
 function collectChangedFiles(previousSnapshot, nextSnapshot) {
-  const changes = [];
+  const changes = []
 
   for (const [filePath, token] of nextSnapshot.entries()) {
     if (previousSnapshot.get(filePath) !== token) {
       changes.push({
         type: previousSnapshot.has(filePath) ? 'change' : 'create',
         filePath,
-      });
+      })
     }
   }
 
@@ -80,70 +71,70 @@ function collectChangedFiles(previousSnapshot, nextSnapshot) {
       changes.push({
         type: 'delete',
         filePath,
-      });
+      })
     }
   }
 
-  return changes;
+  return changes
 }
 
-const manager = new PocketPagesLanguageServiceManager();
-const serviceSnapshots = new Map();
-let idleTimer = null;
-let requestQueue = Promise.resolve();
+const manager = new PocketPagesLanguageServiceManager()
+const serviceSnapshots = new Map()
+let idleTimer = null
+let requestQueue = Promise.resolve()
 
 function resetIdleTimer(server, pipePath) {
   if (idleTimer) {
-    clearTimeout(idleTimer);
+    clearTimeout(idleTimer)
   }
 
   idleTimer = setTimeout(() => {
     try {
       server.close(() => {
         if (process.platform !== 'win32' && fs.existsSync(pipePath)) {
-          fs.unlinkSync(pipePath);
+          fs.unlinkSync(pipePath)
         }
-        process.exit(0);
-      });
+        process.exit(0)
+      })
     } catch (_error) {
-      process.exit(0);
+      process.exit(0)
     }
-  }, IDLE_TIMEOUT_MS);
+  }, IDLE_TIMEOUT_MS)
 }
 
 function syncManagerForTarget(rawTarget) {
-  const target = resolveTarget(rawTarget);
-  let serviceDirs = [];
+  const target = resolveTarget(rawTarget)
+  let serviceDirs = []
 
   if (target.mode === 'service') {
-    serviceDirs = target.serviceDirs;
+    serviceDirs = target.serviceDirs
   } else {
-    const normalizedFilePath = path.resolve(target.filePath);
-    const marker = `${path.sep}pb_hooks${path.sep}pages${path.sep}`;
-    const markerIndex = normalizedFilePath.indexOf(marker);
+    const normalizedFilePath = path.resolve(target.filePath)
+    const marker = `${path.sep}pb_hooks${path.sep}pages${path.sep}`
+    const markerIndex = normalizedFilePath.indexOf(marker)
     if (markerIndex !== -1) {
-      serviceDirs = [normalizedFilePath.slice(0, markerIndex)];
+      serviceDirs = [normalizedFilePath.slice(0, markerIndex)]
     }
   }
 
   if (serviceDirs.length === 0) {
-    return;
+    return
   }
 
-  const allChanges = [];
+  const allChanges = []
 
   for (const serviceDir of serviceDirs) {
-    const normalizedServiceDir = path.resolve(serviceDir);
-    const previousSnapshot = serviceSnapshots.get(normalizedServiceDir) || new Map();
-    const nextSnapshot = buildServiceSnapshot(normalizedServiceDir);
-    const changes = collectChangedFiles(previousSnapshot, nextSnapshot);
+    const normalizedServiceDir = path.resolve(serviceDir)
+    const previousSnapshot = serviceSnapshots.get(normalizedServiceDir) || new Map()
+    const nextSnapshot = buildServiceSnapshot(normalizedServiceDir)
+    const changes = collectChangedFiles(previousSnapshot, nextSnapshot)
 
-    serviceSnapshots.set(normalizedServiceDir, nextSnapshot);
-    allChanges.push(...changes);
+    serviceSnapshots.set(normalizedServiceDir, nextSnapshot)
+    allChanges.push(...changes)
   }
 
   if (allChanges.length > 0) {
-    manager.handleWatchedFileChanges(allChanges);
+    manager.handleWatchedFileChanges(allChanges)
   }
 }
 
@@ -151,26 +142,26 @@ function sendResponseAndWait(socket, payload) {
   return new Promise((resolve, reject) => {
     socket.write(`${JSON.stringify(payload)}\n`, (error) => {
       if (error) {
-        reject(error);
-        return;
+        reject(error)
+        return
       }
 
-      resolve();
-    });
-  });
+      resolve()
+    })
+  })
 }
 
 function sendFinalResponse(socket, payload) {
-  socket.end(`${JSON.stringify(payload)}\n`);
+  socket.end(`${JSON.stringify(payload)}\n`)
 }
 
 async function handleRequest(socket, rawText) {
   try {
-    const request = JSON.parse(String(rawText || '{}'));
-    const rawTarget = request && typeof request.rawTarget === 'string' ? request.rawTarget : '';
-    const profile = !!(request && request.profile);
+    const request = JSON.parse(String(rawText || '{}'))
+    const rawTarget = request && typeof request.rawTarget === 'string' ? request.rawTarget : ''
+    const profile = !!(request && request.profile)
 
-    syncManagerForTarget(rawTarget);
+    syncManagerForTarget(rawTarget)
     const result = await runDiagnosticsAsync(rawTarget, {
       manager,
       profile,
@@ -178,46 +169,46 @@ async function handleRequest(socket, rawText) {
         return sendResponseAndWait(socket, {
           type: 'line',
           line,
-        });
+        })
       },
-    });
+    })
 
     sendFinalResponse(socket, {
       ok: true,
       type: 'result',
       result,
-    });
+    })
   } catch (error) {
     sendFinalResponse(socket, {
       ok: false,
       type: 'result',
       error: String(error && error.message ? error.message : error),
-    });
+    })
   }
 }
 
-const options = parseArgs(process.argv.slice(2));
-ensureParentDirectory(options.pipePath);
-removePipeFileIfNeeded(options.pipePath);
-process.chdir(ROOT_DIR);
+const options = parseArgs(process.argv.slice(2))
+ensureParentDirectory(options.pipePath)
+removePipeFileIfNeeded(options.pipePath)
+process.chdir(ROOT_DIR)
 
 const server = net.createServer((socket) => {
-  resetIdleTimer(server, options.pipePath);
+  resetIdleTimer(server, options.pipePath)
 
-  let buffer = '';
-  socket.setEncoding('utf8');
+  let buffer = ''
+  socket.setEncoding('utf8')
   socket.on('data', (chunk) => {
-    buffer += chunk;
-    const newlineIndex = buffer.indexOf('\n');
+    buffer += chunk
+    const newlineIndex = buffer.indexOf('\n')
     if (newlineIndex === -1) {
-      return;
+      return
     }
 
-    const rawRequest = buffer.slice(0, newlineIndex);
-    requestQueue = requestQueue.then(() => handleRequest(socket, rawRequest));
-  });
-});
+    const rawRequest = buffer.slice(0, newlineIndex)
+    requestQueue = requestQueue.then(() => handleRequest(socket, rawRequest))
+  })
+})
 
 server.listen(options.pipePath, () => {
-  resetIdleTimer(server, options.pipePath);
-});
+  resetIdleTimer(server, options.pipePath)
+})

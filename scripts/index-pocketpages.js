@@ -22,16 +22,12 @@ function toPortablePath(value) {
 }
 
 function uniqueSorted(values) {
-  return [...new Set((Array.isArray(values) ? values : []).filter(Boolean))].sort((left, right) =>
-    String(left).localeCompare(String(right)),
-  )
+  return [...new Set((Array.isArray(values) ? values : []).filter(Boolean))].sort((left, right) => String(left).localeCompare(String(right)))
 }
 
 function resolveServiceDir(rawArg) {
   if (!rawArg) {
-    throw new Error(
-      'Usage: node scripts/index-pocketpages.js <service> [--section <name>] [--file <relative-path>] [--json|--pretty]',
-    )
+    throw new Error('Usage: node scripts/index-pocketpages.js <service> [--section <name>] [--file <relative-path>] [--json|--pretty]')
   }
 
   const asPath = path.resolve(fromMsysPath(rawArg))
@@ -40,11 +36,7 @@ function resolveServiceDir(rawArg) {
   }
 
   const serviceDir = path.join(APPS_DIR, rawArg)
-  if (
-    fs.existsSync(serviceDir) &&
-    fs.statSync(serviceDir).isDirectory() &&
-    fs.existsSync(path.join(serviceDir, 'pb_hooks', 'pages'))
-  ) {
+  if (fs.existsSync(serviceDir) && fs.statSync(serviceDir).isDirectory() && fs.existsSync(path.join(serviceDir, 'pb_hooks', 'pages'))) {
     return serviceDir
   }
 
@@ -201,7 +193,9 @@ function resolveRelativePath(report, fileSpecifier) {
   }
 
   const knownPaths = collectKnownRelativePaths(report)
-  const normalizedInput = toPortablePath(fileSpecifier).replace(/^\.\/+/, '').replace(/^\/+/, '')
+  const normalizedInput = toPortablePath(fileSpecifier)
+    .replace(/^\.\/+/, '')
+    .replace(/^\/+/, '')
   const pagesRootPrefix = toPortablePath(report.pagesRoot) + '/'
   const appRootPrefix = toPortablePath(report.appRoot) + '/'
   const portableInput = normalizedInput.startsWith(pagesRootPrefix)
@@ -220,9 +214,7 @@ function resolveRelativePath(report, fileSpecifier) {
   }
 
   if (suffixMatches.length > 1) {
-    throw new Error(
-      `Ambiguous --file "${fileSpecifier}". Matches: ${suffixMatches.slice(0, 10).join(', ')}${suffixMatches.length > 10 ? ', ...' : ''}`,
-    )
+    throw new Error(`Ambiguous --file "${fileSpecifier}". Matches: ${suffixMatches.slice(0, 10).join(', ')}${suffixMatches.length > 10 ? ', ...' : ''}`)
   }
 
   const basenameMatches = knownPaths.filter((candidate) => path.posix.basename(candidate) === portableInput)
@@ -231,9 +223,7 @@ function resolveRelativePath(report, fileSpecifier) {
   }
 
   if (basenameMatches.length > 1) {
-    throw new Error(
-      `Ambiguous --file "${fileSpecifier}". Matches: ${basenameMatches.slice(0, 10).join(', ')}${basenameMatches.length > 10 ? ', ...' : ''}`,
-    )
+    throw new Error(`Ambiguous --file "${fileSpecifier}". Matches: ${basenameMatches.slice(0, 10).join(', ')}${basenameMatches.length > 10 ? ', ...' : ''}`)
   }
 
   throw new Error(`Unknown file for index query: ${fileSpecifier}`)
@@ -244,12 +234,8 @@ function buildSummary(report) {
   const unresolvedRouteLinks = (report.routeLinks || []).filter((link) => link.unresolved).length
   const dynamicRouteLinks = (report.routeLinks || []).filter((link) => link.isDynamic).length
   const unresolvedResolveTargets = ((report.resolveGraph && report.resolveGraph.edges) || []).filter((edge) => edge.unresolved).length
-  const highConfidenceFieldCount = ((report.schemaUsage && report.schemaUsage.fields) || []).filter(
-    (field) => field.inferenceConfidence === 'high',
-  ).length
-  const lowConfidenceFieldCount = ((report.schemaUsage && report.schemaUsage.fields) || []).filter(
-    (field) => field.inferenceConfidence === 'low',
-  ).length
+  const highConfidenceFieldCount = ((report.schemaUsage && report.schemaUsage.fields) || []).filter((field) => field.inferenceConfidence === 'high').length
+  const lowConfidenceFieldCount = ((report.schemaUsage && report.schemaUsage.fields) || []).filter((field) => field.inferenceConfidence === 'low').length
   const impactKinds = {}
 
   for (const item of report.impactByFile || []) {
@@ -292,11 +278,9 @@ function buildSummary(report) {
 }
 
 function buildRoutesView(report, relativePath) {
-  const routes = (report.routes || [])
-    .filter((route) => !relativePath || route.relativePath === relativePath)
-    .map((route) => compactRoute(route))
+  const routes = (report.routes || []).filter((route) => !relativePath || route.relativePath === relativePath).map((route) => compactRoute(route))
 
-  return relativePath ? (routes[0] || null) : routes
+  return relativePath ? routes[0] || null : routes
 }
 
 function buildPartialsView(report, relativePath) {
@@ -438,12 +422,8 @@ function buildRouteLinksView(report, relativePath) {
       .sort((left, right) => left.file.localeCompare(right.file))
   }
 
-  const outbound = links
-    .filter((link) => link.sourceRelativePath === relativePath)
-    .map((link) => compactRouteLink(link))
-  const inbound = links
-    .filter((link) => link.targetRelativePath === relativePath)
-    .map((link) => compactRouteLink(link))
+  const outbound = links.filter((link) => link.sourceRelativePath === relativePath).map((link) => compactRouteLink(link))
+  const inbound = links.filter((link) => link.targetRelativePath === relativePath).map((link) => compactRouteLink(link))
 
   if (outbound.length === 0 && inbound.length === 0) {
     return null
@@ -492,9 +472,7 @@ function buildSchemaUsageView(report, relativePath) {
       collectionCount: entry.collections.length,
       fieldCount: entry.fields.length,
       lowConfidenceFieldCount: entry.fields.filter((field) => field.inferenceConfidence === 'low').length,
-      possibleMissingFieldCount: entry.fields.filter(
-        (field) => field.existsInSchema === false && field.inferenceConfidence && field.inferenceConfidence !== 'low',
-      ).length,
+      possibleMissingFieldCount: entry.fields.filter((field) => field.existsInSchema === false && field.inferenceConfidence && field.inferenceConfidence !== 'low').length,
       collections: uniqueSorted(entry.collections.map((collection) => collection.collectionName)),
     }))
   }

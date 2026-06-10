@@ -178,9 +178,7 @@ async function bundleServiceLibrary(service, libraryName) {
   })
 
   const output = result.metafile && result.metafile.outputs ? result.metafile.outputs[outfile] : null
-  const builtinImports = output
-    ? output.imports.filter((item) => item.external && builtinNameSet.has(item.path)).map((item) => item.path)
-    : []
+  const builtinImports = output ? output.imports.filter((item) => item.external && builtinNameSet.has(item.path)).map((item) => item.path) : []
 
   return {
     entryPoint,
