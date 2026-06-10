@@ -1,8 +1,7 @@
 const { globalApi } = require('pocketpages')
-const { dateutil } = require('@pocketpages/utils')
+const { dateutil, storeCache } = require('@pocketpages/utils')
 const dbg = globalApi.dbg
 const info = globalApi.info
-const store = globalApi.store
 
 const APPLYHOME_BASE_URL = 'https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1'
 const LH_NOTICE_URL = 'https://apis.data.go.kr/B552555/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1'
@@ -10,8 +9,9 @@ const LH_NOTICE_DETAIL_URL = 'https://apis.data.go.kr/B552555/lhLeaseNoticeDtlIn
 const DEFAULT_TIMEOUT_SECONDS = 15
 const DEFAULT_PER_PAGE = 50
 const NOTICE_LOOKBACK_MONTHS = 6
-const API_CACHE_KEY_PREFIX = 'homeping:notices:api-cache:v1:'
-const API_CACHE_INDEX_KEY = 'homeping:notices:api-cache-index:v1'
+const API_CACHE_NAMESPACE = 'homeping:notices:api-cache:v1'
+const API_CACHE_TTL_MS = 1000 * 60 * 60 * 26
+const API_CACHE_MAX_ENTRIES = 500
 
 const ALL_REGION = { slug: 'all', label: '전체', searchText: '' }
 
@@ -159,15 +159,6 @@ function toCacheQueryString(query) {
 }
 
 /**
- * JSON 직렬화 가능한 값을 깊은 복사합니다.
- * @param {any} value 원본 값
- * @returns {any} 복사 값
- */
-function cloneJsonValue(value) {
-  return JSON.parse(JSON.stringify(value === undefined ? null : value))
-}
-
-/**
  * DATAGOKR API 키를 숨긴 로그용 URL을 만듭니다.
  * @param {string} urlValue 요청 URL
  * @param {string} apiKey 원본 API 키
@@ -254,66 +245,10 @@ function buildLhNoticeDetailUrl(config, query, options) {
  * @param {string} dateKey 캐시 날짜
  * @param {string} sourceCode API 구분
  * @param {string} requestKey 요청 구분
- * @returns {string} store 키
+ * @returns {string} 캐시 키
  */
 function buildDailyApiCacheKey(dateKey, sourceCode, requestKey) {
-  return API_CACHE_KEY_PREFIX + dateKey + ':' + sourceCode + ':' + requestKey
-}
-
-/**
- * 오늘이 아닌 API 응답 캐시를 정리합니다.
- * @param {string} dateKey 오늘 캐시 날짜
- */
-function purgeOtherDailyApiCaches(dateKey) {
-  const indexValue = store(API_CACHE_INDEX_KEY)
-  const indexObject = indexValue && typeof indexValue === 'object' && !Array.isArray(indexValue) ? indexValue : null
-  const indexDate = indexObject ? String(indexObject.date || '') : ''
-  const keys = indexObject && Array.isArray(indexObject.keys) ? indexObject.keys : []
-
-  if (indexDate === dateKey) {
-    return
-  }
-
-  for (let index = 0; index < keys.length; index += 1) {
-    const cacheKey = String(keys[index] || '')
-
-    if (cacheKey) {
-      store(cacheKey, null)
-    }
-  }
-
-  store(API_CACHE_INDEX_KEY, {
-    date: dateKey,
-    keys: [],
-  })
-
-  if (indexDate && keys.length > 0) {
-    info('homeping/cache:purge-daily', {
-      fromDate: indexDate,
-      toDate: dateKey,
-      count: keys.length,
-    })
-  }
-}
-
-/**
- * 오늘 캐시 인덱스에 캐시 키를 등록합니다.
- * @param {string} dateKey 오늘 캐시 날짜
- * @param {string} cacheKey 캐시 키
- */
-function addDailyApiCacheKey(dateKey, cacheKey) {
-  const indexValue = store(API_CACHE_INDEX_KEY)
-  const indexObject = indexValue && typeof indexValue === 'object' && !Array.isArray(indexValue) ? indexValue : null
-  const keys = indexObject && indexObject.date === dateKey && Array.isArray(indexObject.keys) ? indexObject.keys.slice() : []
-
-  if (keys.indexOf(cacheKey) === -1) {
-    keys.push(cacheKey)
-  }
-
-  store(API_CACHE_INDEX_KEY, {
-    date: dateKey,
-    keys: keys,
-  })
+  return dateKey + ':' + sourceCode + ':' + requestKey
 }
 
 /**
@@ -323,14 +258,16 @@ function addDailyApiCacheKey(dateKey, cacheKey) {
  * @returns {any | null} 캐시된 응답
  */
 function readDailyApiCache(dateKey, cacheKey) {
-  const cacheValue = store(cacheKey)
+  const cacheValue = storeCache.get(API_CACHE_NAMESPACE, cacheKey, {
+    maxEntries: API_CACHE_MAX_ENTRIES,
+  })
   const cacheObject = cacheValue && typeof cacheValue === 'object' && !Array.isArray(cacheValue) ? cacheValue : null
 
   if (!cacheObject || cacheObject.date !== dateKey || cacheObject.data === undefined) {
     return null
   }
 
-  return cloneJsonValue(cacheObject.data)
+  return cacheObject.data
 }
 
 /**
@@ -340,12 +277,14 @@ function readDailyApiCache(dateKey, cacheKey) {
  * @param {any} data API 응답
  */
 function writeDailyApiCache(dateKey, cacheKey, data) {
-  store(cacheKey, {
+  storeCache.set(API_CACHE_NAMESPACE, cacheKey, {
     date: dateKey,
     fetched_at: new Date().toISOString(),
-    data: cloneJsonValue(data),
+    data: data,
+  }, {
+    ttlMs: API_CACHE_TTL_MS,
+    maxEntries: API_CACHE_MAX_ENTRIES,
   })
-  addDailyApiCacheKey(dateKey, cacheKey)
 }
 
 /**
@@ -1244,8 +1183,6 @@ function getLhNoticeDetail(config, input) {
     throw new Error('LH 상세 조회에 필요한 공고 키가 부족합니다.')
   }
 
-  purgeOtherDailyApiCaches(cacheDateKey)
-
   const payload = requestLhNoticeDetailJson(requestConfig, {
     SPL_INF_TP_CD: splInfTpCd,
     CCR_CNNT_SYS_DS_CD: ccrCnntSysDsCd,
@@ -1379,8 +1316,6 @@ function searchRegionNotices(config, input) {
   const notices = []
   const summaries = []
   const errors = []
-
-  purgeOtherDailyApiCaches(cacheDateKey)
 
   for (let regionIndex = 0; regionIndex < searchRegions.length; regionIndex += 1) {
     const regionResult = searchSingleRegionNotices(requestConfig, searchRegions[regionIndex], includeClosed, perPage, sinceDate)

@@ -98,6 +98,7 @@ function createHarness(options = {}) {
   const originalPocketpagesCache = require.cache[pocketpagesModulePath]
   const originalServiceCache = require.cache[servicePath]
   const originalHttp = globalThis.$http
+  const originalApp = globalThis.$app
   const restoreDate = installFixedDate(options.today || '2026-04-26')
   const storeMock = createStore()
   const logs = []
@@ -162,6 +163,19 @@ function createHarness(options = {}) {
     },
   }
 
+  globalThis.$app = {
+    store() {
+      return {
+        get(key) {
+          return storeMock.map.get(key)
+        },
+        set(key, value) {
+          storeMock.map.set(key, value)
+        },
+      }
+    },
+  }
+
   const service = require(servicePath)
 
   return {
@@ -172,6 +186,11 @@ function createHarness(options = {}) {
     cleanup() {
       restoreDate()
       globalThis.$http = originalHttp
+      if (originalApp === undefined) {
+        delete globalThis.$app
+      } else {
+        globalThis.$app = originalApp
+      }
 
       if (originalPocketpagesCache) {
         require.cache[pocketpagesModulePath] = originalPocketpagesCache
@@ -535,7 +554,7 @@ test('getLhNoticeDetail normalizes schedule, complex, office, and file metadata'
   }
 })
 
-test('searchRegionNotices purges prior daily cache entries when the date changes', () => {
+test('searchRegionNotices cleans expired API cache entries', () => {
   const harness = createHarness({
     today: '2026-04-21',
     applyhome: {
@@ -552,16 +571,21 @@ test('searchRegionNotices purges prior daily cache entries when the date changes
   })
 
   try {
-    const oldCacheKey = 'homeping:notices:api-cache:v1:2026-04-20:applyhome:old'
-    harness.storeMap.set(oldCacheKey, {
-      date: '2026-04-20',
-      data: {
-        data: [],
+    harness.storeMap.set('homeping:notices:api-cache:v1', {
+      version: 1,
+      entries: {
+        old: {
+          createdAt: 1,
+          updatedAt: 1,
+          expiresAt: 1,
+          value: {
+            date: '2026-04-20',
+            data: {
+              data: [],
+            },
+          },
+        },
       },
-    })
-    harness.storeMap.set('homeping:notices:api-cache-index:v1', {
-      date: '2026-04-20',
-      keys: [oldCacheKey],
     })
 
     harness.service.searchRegionNotices(
@@ -574,9 +598,7 @@ test('searchRegionNotices purges prior daily cache entries when the date changes
       }
     )
 
-    assert.equal(harness.storeMap.get(oldCacheKey), null)
-    assert.equal(harness.storeMap.get('homeping:notices:api-cache-index:v1').date, '2026-04-21')
-    assert.equal(harness.logs.some((entry) => entry.name === 'homeping/cache:purge-daily'), true)
+    assert.equal(harness.storeMap.get('homeping:notices:api-cache:v1').entries.old, undefined)
   } finally {
     harness.cleanup()
   }
