@@ -1,157 +1,154 @@
-import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import process from 'node:process';
-import { setTimeout as delay } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
+import { spawn, spawnSync } from 'node:child_process'
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import process from 'node:process'
+import { setTimeout as delay } from 'node:timers/promises'
+import { fileURLToPath } from 'node:url'
 
-const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const APPS_DIR = path.join(ROOT_DIR, 'apps');
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const APPS_DIR = path.join(ROOT_DIR, 'apps')
 
 function parseEnvFile(envFilePath) {
   if (!existsSync(envFilePath)) {
-    return {};
+    return {}
   }
 
-  const source = readFileSync(envFilePath, 'utf8');
-  const entries = {};
+  const source = readFileSync(envFilePath, 'utf8')
+  const entries = {}
 
   for (const rawLine of source.split(/\r?\n/u)) {
-    const line = rawLine.trim();
+    const line = rawLine.trim()
 
     if (!line || line.startsWith('#')) {
-      continue;
+      continue
     }
 
-    const separatorIndex = line.indexOf('=');
+    const separatorIndex = line.indexOf('=')
 
     if (separatorIndex === -1) {
-      continue;
+      continue
     }
 
-    const key = line.slice(0, separatorIndex).trim();
-    let value = line.slice(separatorIndex + 1).trim();
+    const key = line.slice(0, separatorIndex).trim()
+    let value = line.slice(separatorIndex + 1).trim()
 
     if (!key) {
-      continue;
+      continue
     }
 
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1)
     }
 
-    entries[key] = value;
+    entries[key] = value
   }
 
-  return entries;
+  return entries
 }
 
 function resolveServiceDir(serviceName) {
   if (!serviceName) {
-    throw new Error('serviceName is required');
+    throw new Error('serviceName is required')
   }
 
-  return path.join(APPS_DIR, serviceName);
+  return path.join(APPS_DIR, serviceName)
 }
 
 function resolveRunner(serviceDir) {
-  const windowsRunner = path.join(serviceDir, 'pbw.exe');
-  const windowsPocketBase = path.join(serviceDir, 'pocketbase.exe');
-  const unixRunner = path.join(serviceDir, 'pbw');
-  const unixPocketBase = path.join(serviceDir, 'pocketbase');
+  const windowsRunner = path.join(serviceDir, 'pbw.exe')
+  const windowsPocketBase = path.join(serviceDir, 'pocketbase.exe')
+  const unixRunner = path.join(serviceDir, 'pbw')
+  const unixPocketBase = path.join(serviceDir, 'pocketbase')
 
   if (existsSync(windowsRunner) && existsSync(windowsPocketBase)) {
-    return [windowsRunner, windowsPocketBase];
+    return [windowsRunner, windowsPocketBase]
   }
 
   if (existsSync(unixRunner) && existsSync(unixPocketBase)) {
-    return [unixRunner, unixPocketBase];
+    return [unixRunner, unixPocketBase]
   }
 
-  throw new Error(`pbw/pocketbase binary not found in ${serviceDir}`);
+  throw new Error(`pbw/pocketbase binary not found in ${serviceDir}`)
 }
 
 function createTempDataDir(serviceDir, serviceName) {
-  const sourceDir = path.join(serviceDir, 'pb_data');
-  const tempRootDir = mkdtempSync(path.join(os.tmpdir(), `pocketpages-${serviceName}-`));
-  const tempDataDir = path.join(tempRootDir, 'pb_data');
+  const sourceDir = path.join(serviceDir, 'pb_data')
+  const tempRootDir = mkdtempSync(path.join(os.tmpdir(), `pocketpages-${serviceName}-`))
+  const tempDataDir = path.join(tempRootDir, 'pb_data')
 
   cpSync(sourceDir, tempDataDir, {
     recursive: true,
-  });
+  })
 
   return {
     tempRootDir,
     tempDataDir,
-  };
+  }
 }
 
 async function waitForServer(getBaseUrl, child, timeoutMs) {
-  const startedAt = Date.now();
+  const startedAt = Date.now()
 
   while (Date.now() - startedAt < timeoutMs) {
     if (child.exitCode !== null) {
-      throw new Error(`service exited before readiness check completed (exitCode=${child.exitCode})`);
+      throw new Error(`service exited before readiness check completed (exitCode=${child.exitCode})`)
     }
 
-    const baseUrl = getBaseUrl();
+    const baseUrl = getBaseUrl()
 
     if (!baseUrl) {
-      await delay(250);
-      continue;
+      await delay(250)
+      continue
     }
 
     try {
-      const response = await fetch(baseUrl, { redirect: 'manual' });
+      const response = await fetch(baseUrl, { redirect: 'manual' })
 
       if (response.status >= 200 && response.status < 500) {
-        return;
+        return
       }
     } catch (error) {
       if (error.name !== 'TypeError') {
-        throw error;
+        throw error
       }
     }
 
-    await delay(250);
+    await delay(250)
   }
 
-  throw new Error(`timed out waiting for ${getBaseUrl()}`);
+  throw new Error(`timed out waiting for ${getBaseUrl()}`)
 }
 
 function stopProcessTree(child) {
   if (!child || child.exitCode !== null) {
-    return Promise.resolve();
+    return Promise.resolve()
   }
 
   if (process.platform === 'win32') {
     spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
       stdio: 'ignore',
-    });
-    return delay(300);
+    })
+    return delay(300)
   }
 
-  child.kill('SIGTERM');
+  child.kill('SIGTERM')
   return new Promise((resolve) => {
     child.once('exit', () => {
-      resolve();
-    });
-  });
+      resolve()
+    })
+  })
 }
 
 function removeTempDir(tempRootDir) {
   if (!tempRootDir || !existsSync(tempRootDir)) {
-    return;
+    return
   }
 
   rmSync(tempRootDir, {
     force: true,
     recursive: true,
-  });
+  })
 }
 
 /**
@@ -160,73 +157,66 @@ function removeTempDir(tempRootDir) {
  * @returns {Promise<{ baseUrl: string, stop: () => Promise<void> }>}
  */
 export async function startService(options) {
-  const serviceName = options.serviceName;
-  const timeoutMs = options.timeoutMs || 20000;
-  const serviceDir = resolveServiceDir(serviceName);
-  const [runnerPath, pocketBasePath] = resolveRunner(serviceDir);
-  const tempData = createTempDataDir(serviceDir, serviceName);
-  const envFilePath = path.join(serviceDir, '.env');
+  const serviceName = options.serviceName
+  const timeoutMs = options.timeoutMs || 20000
+  const serviceDir = resolveServiceDir(serviceName)
+  const [runnerPath, pocketBasePath] = resolveRunner(serviceDir)
+  const tempData = createTempDataDir(serviceDir, serviceName)
+  const envFilePath = path.join(serviceDir, '.env')
   const childEnv = {
     ...process.env,
     ...parseEnvFile(envFilePath),
-  };
-  const args = [
-    pocketBasePath,
-    'serve',
-    '--dev',
-    `--dir=${tempData.tempDataDir}`,
-    `--hooksDir=${path.join(serviceDir, 'pb_hooks')}`,
-    '--http=127.0.0.1:8090',
-  ];
+  }
+  const args = [pocketBasePath, 'serve', '--dev', `--dir=${tempData.tempDataDir}`, `--hooksDir=${path.join(serviceDir, 'pb_hooks')}`, '--http=127.0.0.1:8090']
 
   if (existsSync(path.join(serviceDir, 'pb_public'))) {
-    args.push(`--publicDir=${path.join(serviceDir, 'pb_public')}`);
+    args.push(`--publicDir=${path.join(serviceDir, 'pb_public')}`)
   }
 
   if (existsSync(path.join(serviceDir, 'pb_migrations'))) {
-    args.push(`--migrationsDir=${path.join(serviceDir, 'pb_migrations')}`);
+    args.push(`--migrationsDir=${path.join(serviceDir, 'pb_migrations')}`)
   }
 
   const child = spawn(runnerPath, args, {
     cwd: serviceDir,
     env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  })
 
-  let stdout = '';
-  let stderr = '';
-  let baseUrl = 'http://127.0.0.1:8090';
+  let stdout = ''
+  let stderr = ''
+  let baseUrl = 'http://127.0.0.1:8090'
 
   child.stdout.on('data', (chunk) => {
-    const text = chunk.toString();
+    const text = chunk.toString()
 
-    stdout += text;
+    stdout += text
 
-    const match = text.match(/Server started at (https?:\/\/[^\s]+)/u);
+    const match = text.match(/Server started at (https?:\/\/[^\s]+)/u)
 
     if (match) {
-      baseUrl = match[1];
+      baseUrl = match[1]
     }
-  });
+  })
 
   child.stderr.on('data', (chunk) => {
-    stderr += chunk.toString();
-  });
+    stderr += chunk.toString()
+  })
 
   try {
-    await waitForServer(() => baseUrl, child, timeoutMs);
+    await waitForServer(() => baseUrl, child, timeoutMs)
   } catch (error) {
-    await stopProcessTree(child);
-    removeTempDir(tempData.tempRootDir);
-    error.message = `[${serviceName}] ${error.message}\nstdout:\n${stdout}\nstderr:\n${stderr}`;
-    throw error;
+    await stopProcessTree(child)
+    removeTempDir(tempData.tempRootDir)
+    error.message = `[${serviceName}] ${error.message}\nstdout:\n${stdout}\nstderr:\n${stderr}`
+    throw error
   }
 
   return {
     baseUrl,
     async stop() {
-      await stopProcessTree(child);
-      removeTempDir(tempData.tempRootDir);
+      await stopProcessTree(child)
+      removeTempDir(tempData.tempRootDir)
     },
-  };
+  }
 }

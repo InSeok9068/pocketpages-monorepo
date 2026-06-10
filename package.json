@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "format": "prettier --write \"apps/*/pb_hooks/**/*\""
+    "format": "prettier --write \"apps/*/pb_hooks/**/*\" \"packages/**/*.js\" \"packages/**/*.mjs\" \"packages/**/*.d.ts\""
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

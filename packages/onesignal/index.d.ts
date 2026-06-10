@@ -52,13 +52,7 @@ declare namespace pocketpagesOneSignal {
     long: string | number
   }
 
-  type OneSignalFilter =
-    | OneSignalFilterOperator
-    | OneSignalTagFilter
-    | OneSignalSessionFilter
-    | OneSignalValueFilter
-    | OneSignalLocationFilter
-    | JsonObject
+  type OneSignalFilter = OneSignalFilterOperator | OneSignalTagFilter | OneSignalSessionFilter | OneSignalValueFilter | OneSignalLocationFilter | JsonObject
 
   interface OneSignalButton {
     id: string

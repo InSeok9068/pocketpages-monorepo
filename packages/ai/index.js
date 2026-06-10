@@ -11,15 +11,7 @@ const DEFAULT_MAX_ATTEMPTS = 1
 const GEMINI_API_KEY_ENV_NAMES = ['GEMINI_API_KEY', 'GEMINI_AI_KEY']
 const OPENAI_API_KEY_ENV_NAMES = ['OPENAI_API_KEY']
 const DEEPSEEK_API_KEY_ENV_NAMES = ['DEEPSEEK_API_KEY']
-const GEMINI_PAYLOAD_FIELDS = [
-  'contents',
-  'tools',
-  'toolConfig',
-  'safetySettings',
-  'systemInstruction',
-  'generationConfig',
-  'cachedContent',
-]
+const GEMINI_PAYLOAD_FIELDS = ['contents', 'tools', 'toolConfig', 'safetySettings', 'systemInstruction', 'generationConfig', 'cachedContent']
 const OPENAI_PAYLOAD_FIELDS = [
   'background',
   'conversation',
@@ -653,21 +645,7 @@ function waitBeforeRetry(request, runtime, attempts, retryAfter, failure) {
     delayMs,
   }
 
-  $app
-    .logger()
-    .warn(
-      'pocketpages/ai:retry',
-      'provider',
-      meta.provider,
-      'attempt',
-      meta.attempt,
-      'statusCode',
-      meta.statusCode,
-      'error',
-      meta.error,
-      'delayMs',
-      meta.delayMs
-    )
+  $app.logger().warn('pocketpages/ai:retry', 'provider', meta.provider, 'attempt', meta.attempt, 'statusCode', meta.statusCode, 'error', meta.error, 'delayMs', meta.delayMs)
   runtime.sleep(delayMs)
 }
 

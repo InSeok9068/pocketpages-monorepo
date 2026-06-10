@@ -1,13 +1,13 @@
-'use strict';
+'use strict'
 
-const dayjs = require('dayjs');
-const utc = require('dayjs/plugin/utc');
-const timezone = require('dayjs/plugin/timezone');
+const dayjs = require('dayjs')
+const utc = require('dayjs/plugin/utc')
+const timezone = require('dayjs/plugin/timezone')
 
-dayjs.extend(utc);
-dayjs.extend(timezone);
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
-const DEFAULT_TIMEZONE = 'Asia/Seoul';
+const DEFAULT_TIMEZONE = 'Asia/Seoul'
 
 const FORMATS = Object.freeze({
   DATE: 'YYYY-MM-DD',
@@ -20,7 +20,7 @@ const FORMATS = Object.freeze({
   MONTH_KR: 'YYYY년 MM월',
   COMPACT_DATE: 'YYYYMMDD',
   COMPACT_DATE_TIME: 'YYYYMMDDHHmmss',
-});
+})
 
 /**
  * 자주 쓰는 날짜 포맷 문자열입니다.
@@ -35,7 +35,7 @@ const FORMATS = Object.freeze({
  * @returns {boolean}
  */
 function hasTimeZoneOffset(value) {
-  return /(?:z|[+-]\d{2}:\d{2}|[+-]\d{4})$/i.test(value);
+  return /(?:z|[+-]\d{2}:\d{2}|[+-]\d{4})$/i.test(value)
 }
 
 /**
@@ -46,14 +46,14 @@ function hasTimeZoneOffset(value) {
  */
 function toBusinessDayjs(value) {
   if (dayjs.isDayjs(value)) {
-    return value.tz(DEFAULT_TIMEZONE);
+    return value.tz(DEFAULT_TIMEZONE)
   }
 
   if (typeof value === 'string' && !hasTimeZoneOffset(value)) {
-    return dayjs.tz(value, DEFAULT_TIMEZONE);
+    return dayjs.tz(value, DEFAULT_TIMEZONE)
   }
 
-  return dayjs(value).tz(DEFAULT_TIMEZONE);
+  return dayjs(value).tz(DEFAULT_TIMEZONE)
 }
 
 /**
@@ -65,7 +65,7 @@ function toBusinessDayjs(value) {
  * @returns {Date} KST 기준으로 보정된 Date 객체
  */
 function toDate(value) {
-  return toBusinessDayjs(value).toDate();
+  return toBusinessDayjs(value).toDate()
 }
 
 /**
@@ -76,7 +76,7 @@ function toDate(value) {
  * @returns {string} 포맷된 날짜 문자열
  */
 function formatDate(value, pattern) {
-  return toBusinessDayjs(value).format(pattern || FORMATS.DATE_TIME);
+  return toBusinessDayjs(value).format(pattern || FORMATS.DATE_TIME)
 }
 
 /**
@@ -90,34 +90,34 @@ function formatDate(value, pattern) {
  */
 function toDateOnlyIso(value) {
   if (typeof value === 'string' && !value.trim()) {
-    return '';
+    return ''
   }
 
-  let normalized = null;
+  let normalized = null
 
   try {
-    normalized = toBusinessDayjs(value);
+    normalized = toBusinessDayjs(value)
   } catch (_exception) {
-    return '';
+    return ''
   }
 
   if (!normalized || !normalized.isValid()) {
-    return '';
+    return ''
   }
 
-  const dateText = normalized.format(FORMATS.DATE);
+  const dateText = normalized.format(FORMATS.DATE)
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
-    return '';
+    return ''
   }
 
-  const date = new Date(dateText + 'T00:00:00.000Z');
+  const date = new Date(dateText + 'T00:00:00.000Z')
 
   if (isNaN(date.getTime())) {
-    return '';
+    return ''
   }
 
-  return date.toISOString();
+  return date.toISOString()
 }
 
 /**
@@ -128,7 +128,7 @@ function toDateOnlyIso(value) {
  * @returns {Date} 계산된 Date 객체
  */
 function addDays(value, amount) {
-  return toBusinessDayjs(value).add(amount, 'day').toDate();
+  return toBusinessDayjs(value).add(amount, 'day').toDate()
 }
 
 /**
@@ -140,7 +140,7 @@ function addDays(value, amount) {
  * @returns {Date} KST 기준 00:00:00.000 Date 객체
  */
 function startOfDay(value) {
-  return toBusinessDayjs(value).startOf('day').toDate();
+  return toBusinessDayjs(value).startOf('day').toDate()
 }
 
 /**
@@ -152,7 +152,7 @@ function startOfDay(value) {
  * @returns {Date} KST 기준 23:59:59.999 Date 객체
  */
 function endOfDay(value) {
-  return toBusinessDayjs(value).endOf('day').toDate();
+  return toBusinessDayjs(value).endOf('day').toDate()
 }
 
 /**
@@ -163,7 +163,7 @@ function endOfDay(value) {
  * @returns {boolean} 같은 날짜 여부
  */
 function isSameDay(left, right) {
-  return toBusinessDayjs(left).isSame(toBusinessDayjs(right), 'day');
+  return toBusinessDayjs(left).isSame(toBusinessDayjs(right), 'day')
 }
 
 module.exports = {
@@ -175,4 +175,4 @@ module.exports = {
   startOfDay,
   endOfDay,
   isSameDay,
-};
+}

@@ -1,8 +1,8 @@
 /* global $app */
 
-'use strict';
+'use strict'
 
-const STORE_VERSION = 1;
+const STORE_VERSION = 1
 
 /**
  * store에 저장할 수 있도록 JSON 값을 복제합니다.
@@ -12,10 +12,10 @@ const STORE_VERSION = 1;
  */
 function cloneJsonValue(value) {
   if (value === undefined || value === null) {
-    return value;
+    return value
   }
 
-  return JSON.parse(JSON.stringify(value));
+  return JSON.parse(JSON.stringify(value))
 }
 
 /**
@@ -25,13 +25,13 @@ function cloneJsonValue(value) {
  * @returns {number} TTL millisecond
  */
 function resolveRequiredTtlMs(options) {
-  const ttlMs = options && typeof options.ttlMs === 'number' ? options.ttlMs : 0;
+  const ttlMs = options && typeof options.ttlMs === 'number' ? options.ttlMs : 0
 
   if (!isFinite(ttlMs) || ttlMs <= 0) {
-    throw new Error('storeCache ttlMs must be a positive number.');
+    throw new Error('storeCache ttlMs must be a positive number.')
   }
 
-  return ttlMs;
+  return ttlMs
 }
 
 /**
@@ -41,7 +41,7 @@ function resolveRequiredTtlMs(options) {
  * @returns {string} 정규화된 key
  */
 function normalizeKey(value) {
-  return String(value || '').trim();
+  return String(value || '').trim()
 }
 
 /**
@@ -51,13 +51,13 @@ function normalizeKey(value) {
  * @returns {string} 정규화된 namespace
  */
 function normalizeNamespace(value) {
-  const namespace = normalizeKey(value);
+  const namespace = normalizeKey(value)
 
   if (!namespace) {
-    throw new Error('storeCache namespace is required.');
+    throw new Error('storeCache namespace is required.')
   }
 
-  return namespace;
+  return namespace
 }
 
 /**
@@ -66,13 +66,13 @@ function normalizeNamespace(value) {
  * @returns {{ get: Function, set: Function }} PocketBase runtime store
  */
 function getRuntimeStore() {
-  const runtimeStore = $app.store();
+  const runtimeStore = $app.store()
 
   if (!runtimeStore || typeof runtimeStore.get !== 'function' || typeof runtimeStore.set !== 'function') {
-    throw new Error('storeCache requires PocketBase $app.store().');
+    throw new Error('storeCache requires PocketBase $app.store().')
   }
 
-  return runtimeStore;
+  return runtimeStore
 }
 
 /**
@@ -82,7 +82,7 @@ function getRuntimeStore() {
  * @returns {any} 저장된 namespace 값
  */
 function readStoreValue(namespace) {
-  return getRuntimeStore().get(namespace);
+  return getRuntimeStore().get(namespace)
 }
 
 /**
@@ -92,7 +92,7 @@ function readStoreValue(namespace) {
  * @param {any} value 저장할 값
  */
 function writeStoreValue(namespace, value) {
-  getRuntimeStore().set(namespace, value);
+  getRuntimeStore().set(namespace, value)
 }
 
 /**
@@ -102,15 +102,13 @@ function writeStoreValue(namespace, value) {
  * @returns {{ version: number, entries: Record<string, any> }} cache 객체
  */
 function normalizeBucket(value) {
-  const bucket = value && typeof value === 'object' && !Array.isArray(value) ? value : null;
-  const entries = bucket && bucket.entries && typeof bucket.entries === 'object' && !Array.isArray(bucket.entries)
-    ? bucket.entries
-    : {};
+  const bucket = value && typeof value === 'object' && !Array.isArray(value) ? value : null
+  const entries = bucket && bucket.entries && typeof bucket.entries === 'object' && !Array.isArray(bucket.entries) ? bucket.entries : {}
 
   return {
     version: STORE_VERSION,
     entries: entries,
-  };
+  }
 }
 
 /**
@@ -122,14 +120,14 @@ function normalizeBucket(value) {
  */
 function isExpiredEntry(entry, nowMs) {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-    return true;
+    return true
   }
 
   if (!entry.expiresAt) {
-    return false;
+    return false
   }
 
-  return Number(entry.expiresAt) <= nowMs;
+  return Number(entry.expiresAt) <= nowMs
 }
 
 /**
@@ -140,28 +138,28 @@ function isExpiredEntry(entry, nowMs) {
  */
 function trimEntries(bucket, maxEntries) {
   if (!isFinite(maxEntries) || maxEntries <= 0) {
-    return;
+    return
   }
 
-  const keys = Object.keys(bucket.entries);
+  const keys = Object.keys(bucket.entries)
 
   if (keys.length <= maxEntries) {
-    return;
+    return
   }
 
   keys
     .sort((left, right) => {
-      const leftEntry = bucket.entries[left] || {};
-      const rightEntry = bucket.entries[right] || {};
-      const leftMs = Number(leftEntry.updatedAt || leftEntry.createdAt || 0);
-      const rightMs = Number(rightEntry.updatedAt || rightEntry.createdAt || 0);
+      const leftEntry = bucket.entries[left] || {}
+      const rightEntry = bucket.entries[right] || {}
+      const leftMs = Number(leftEntry.updatedAt || leftEntry.createdAt || 0)
+      const rightMs = Number(rightEntry.updatedAt || rightEntry.createdAt || 0)
 
-      return leftMs - rightMs;
+      return leftMs - rightMs
     })
     .slice(0, keys.length - maxEntries)
     .forEach((key) => {
-      delete bucket.entries[key];
-    });
+      delete bucket.entries[key]
+    })
 }
 
 /**
@@ -172,31 +170,31 @@ function trimEntries(bucket, maxEntries) {
  * @returns {{ bucket: { version: number, entries: Record<string, any> }, nowMs: number }}
  */
 function readBucket(namespace, options) {
-  const nowMs = Date.now();
-  const bucket = normalizeBucket(readStoreValue(namespace));
-  let changed = false;
+  const nowMs = Date.now()
+  const bucket = normalizeBucket(readStoreValue(namespace))
+  let changed = false
 
   Object.keys(bucket.entries).forEach((key) => {
     if (isExpiredEntry(bucket.entries[key], nowMs)) {
-      delete bucket.entries[key];
-      changed = true;
+      delete bucket.entries[key]
+      changed = true
     }
-  });
+  })
 
   if (options && typeof options.maxEntries === 'number') {
-    const beforeCount = Object.keys(bucket.entries).length;
-    trimEntries(bucket, options.maxEntries);
-    changed = changed || Object.keys(bucket.entries).length !== beforeCount;
+    const beforeCount = Object.keys(bucket.entries).length
+    trimEntries(bucket, options.maxEntries)
+    changed = changed || Object.keys(bucket.entries).length !== beforeCount
   }
 
   if (changed) {
-    writeStoreValue(namespace, bucket);
+    writeStoreValue(namespace, bucket)
   }
 
   return {
     bucket: bucket,
     nowMs: nowMs,
-  };
+  }
 }
 
 /**
@@ -208,27 +206,27 @@ function readBucket(namespace, options) {
  * @returns {any | undefined} cache 값 또는 undefined
  */
 function get(namespace, key, options) {
-  const cacheKey = normalizeKey(key);
+  const cacheKey = normalizeKey(key)
 
   if (!cacheKey) {
-    return undefined;
+    return undefined
   }
 
-  const cacheNamespace = normalizeNamespace(namespace);
-  const state = readBucket(cacheNamespace, options || {});
-  const entry = state.bucket.entries[cacheKey];
+  const cacheNamespace = normalizeNamespace(namespace)
+  const state = readBucket(cacheNamespace, options || {})
+  const entry = state.bucket.entries[cacheKey]
 
   if (!entry) {
-    return undefined;
+    return undefined
   }
 
   if (isExpiredEntry(entry, state.nowMs)) {
-    delete state.bucket.entries[cacheKey];
-    writeStoreValue(cacheNamespace, state.bucket);
-    return undefined;
+    delete state.bucket.entries[cacheKey]
+    writeStoreValue(cacheNamespace, state.bucket)
+    return undefined
   }
 
-  return cloneJsonValue(entry.value);
+  return cloneJsonValue(entry.value)
 }
 
 /**
@@ -241,31 +239,31 @@ function get(namespace, key, options) {
  * @returns {any} 저장한 값
  */
 function set(namespace, key, value, options) {
-  const cacheKey = normalizeKey(key);
-  const cacheNamespace = normalizeNamespace(namespace);
+  const cacheKey = normalizeKey(key)
+  const cacheNamespace = normalizeNamespace(namespace)
 
   if (!cacheKey) {
-    throw new Error('storeCache key is required.');
+    throw new Error('storeCache key is required.')
   }
 
-  const state = readBucket(cacheNamespace, options || {});
-  const ttlMs = resolveRequiredTtlMs(options || {});
-  const previousEntry = state.bucket.entries[cacheKey];
+  const state = readBucket(cacheNamespace, options || {})
+  const ttlMs = resolveRequiredTtlMs(options || {})
+  const previousEntry = state.bucket.entries[cacheKey]
 
   state.bucket.entries[cacheKey] = {
     createdAt: previousEntry && previousEntry.createdAt ? previousEntry.createdAt : state.nowMs,
     updatedAt: state.nowMs,
     expiresAt: state.nowMs + ttlMs,
     value: cloneJsonValue(value),
-  };
-
-  if (options && typeof options.maxEntries === 'number') {
-    trimEntries(state.bucket, options.maxEntries);
   }
 
-  writeStoreValue(cacheNamespace, state.bucket);
+  if (options && typeof options.maxEntries === 'number') {
+    trimEntries(state.bucket, options.maxEntries)
+  }
 
-  return cloneJsonValue(value);
+  writeStoreValue(cacheNamespace, state.bucket)
+
+  return cloneJsonValue(value)
 }
 
 /**
@@ -278,16 +276,16 @@ function set(namespace, key, value, options) {
  */
 function remember(namespace, key, options) {
   if (!options || typeof options.load !== 'function') {
-    throw new Error('storeCache remember requires load function.');
+    throw new Error('storeCache remember requires load function.')
   }
 
-  const cachedValue = get(namespace, key, options);
+  const cachedValue = get(namespace, key, options)
 
   if (cachedValue !== undefined) {
-    return cachedValue;
+    return cachedValue
   }
 
-  return set(namespace, key, options.load(), options);
+  return set(namespace, key, options.load(), options)
 }
 
 /**
@@ -298,18 +296,18 @@ function remember(namespace, key, options) {
  * @returns {boolean} 삭제 여부
  */
 function remove(namespace, key) {
-  const cacheKey = normalizeKey(key);
-  const cacheNamespace = normalizeNamespace(namespace);
-  const bucket = normalizeBucket(readStoreValue(cacheNamespace));
+  const cacheKey = normalizeKey(key)
+  const cacheNamespace = normalizeNamespace(namespace)
+  const bucket = normalizeBucket(readStoreValue(cacheNamespace))
 
   if (!cacheKey || !bucket.entries[cacheKey]) {
-    return false;
+    return false
   }
 
-  delete bucket.entries[cacheKey];
-  writeStoreValue(cacheNamespace, bucket);
+  delete bucket.entries[cacheKey]
+  writeStoreValue(cacheNamespace, bucket)
 
-  return true;
+  return true
 }
 
 /**
@@ -320,9 +318,9 @@ function remove(namespace, key) {
  * @returns {number} 정리 후 남은 entry 수
  */
 function cleanup(namespace, options) {
-  const state = readBucket(normalizeNamespace(namespace), options || {});
+  const state = readBucket(normalizeNamespace(namespace), options || {})
 
-  return Object.keys(state.bucket.entries).length;
+  return Object.keys(state.bucket.entries).length
 }
 
 module.exports = {
@@ -331,4 +329,4 @@ module.exports = {
   remember,
   remove,
   cleanup,
-};
+}

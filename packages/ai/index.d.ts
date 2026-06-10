@@ -144,11 +144,7 @@ declare namespace pocketpagesAi {
     filename?: string
   }
 
-  type OpenAiInputContent =
-    | OpenAiInputTextContent
-    | OpenAiInputImageContent
-    | OpenAiInputFileContent
-    | JsonObject
+  type OpenAiInputContent = OpenAiInputTextContent | OpenAiInputImageContent | OpenAiInputFileContent | JsonObject
 
   interface OpenAiInputMessage {
     role: 'user' | 'assistant' | 'system' | 'developer'
