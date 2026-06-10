@@ -50,6 +50,7 @@
 // 46) pages 안에서 PocketBase backend Datastar realtime utility 사용
 // 47) pages 밖 pb_hooks 코드에서 PocketPages route helper 사용
 // 48) 서버 코드에서 JSVM locale API(Intl/toLocale*) 사용
+// 49) 서버 코드에서 브라우저/Web API 전역 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -64,6 +65,32 @@ const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
 
 const ALLOWED_SPECIAL_FILES = new Set(['+config.js', '+layout.ejs', '+load.js', '+middleware.js', '+get.js', '+post.js', '+put.js', '+patch.js', '+delete.js'])
+
+const JSVM_BROWSER_GLOBALS = new Set([
+  'AbortController',
+  'Blob',
+  'EventSource',
+  'File',
+  'FormData',
+  'TextDecoder',
+  'TextEncoder',
+  'WebSocket',
+  'XMLHttpRequest',
+  'atob',
+  'btoa',
+  'clearInterval',
+  'clearTimeout',
+  'document',
+  'fetch',
+  'localStorage',
+  'navigator',
+  'queueMicrotask',
+  'requestAnimationFrame',
+  'sessionStorage',
+  'setInterval',
+  'setTimeout',
+  'window',
+])
 
 const RE = {
   resolvePrivate: /resolve\(\s*["']\/?_private\//,
@@ -956,6 +983,129 @@ function collectAsyncFlowMatches(context) {
   return unique(matches)
 }
 
+function isDeclarationNameIdentifier(node) {
+  const parent = node.parent
+
+  return (
+    (ts.isVariableDeclaration(parent) && parent.name === node) ||
+    (ts.isFunctionDeclaration(parent) && parent.name === node) ||
+    (ts.isFunctionExpression(parent) && parent.name === node) ||
+    (ts.isParameter(parent) && parent.name === node) ||
+    (ts.isClassDeclaration(parent) && parent.name === node) ||
+    (ts.isClassExpression(parent) && parent.name === node) ||
+    (ts.isImportSpecifier(parent) && parent.name === node) ||
+    (ts.isImportClause(parent) && parent.name === node) ||
+    (ts.isNamespaceImport(parent) && parent.name === node)
+  )
+}
+
+function isPropertyNameIdentifier(node) {
+  const parent = node.parent
+
+  return (
+    (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+    (ts.isPropertyAssignment(parent) && parent.name === node) ||
+    (ts.isPropertyDeclaration(parent) && parent.name === node) ||
+    (ts.isMethodDeclaration(parent) && parent.name === node) ||
+    (ts.isGetAccessorDeclaration(parent) && parent.name === node) ||
+    (ts.isSetAccessorDeclaration(parent) && parent.name === node) ||
+    (ts.isBindingElement(parent) && parent.propertyName === node)
+  )
+}
+
+function collectBindingNames(nameNode, names) {
+  if (!nameNode) {
+    return
+  }
+
+  if (ts.isIdentifier(nameNode)) {
+    names.add(nameNode.text)
+    return
+  }
+
+  if (ts.isObjectBindingPattern(nameNode) || ts.isArrayBindingPattern(nameNode)) {
+    for (const element of nameNode.elements) {
+      if (ts.isBindingElement(element)) {
+        collectBindingNames(element.name, names)
+      }
+    }
+  }
+}
+
+function collectDeclaredNames(sourceFile) {
+  const names = new Set()
+
+  function visit(node) {
+    if (ts.isVariableDeclaration(node)) {
+      collectBindingNames(node.name, names)
+    } else if (ts.isParameter(node)) {
+      collectBindingNames(node.name, names)
+    } else if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isClassDeclaration(node) || ts.isClassExpression(node)) && node.name) {
+      names.add(node.name.text)
+    } else if (ts.isImportClause(node) && node.name) {
+      names.add(node.name.text)
+    } else if (ts.isImportSpecifier(node)) {
+      names.add(node.name.text)
+    } else if (ts.isNamespaceImport(node)) {
+      names.add(node.name.text)
+    } else if (ts.isCatchClause(node) && node.variableDeclaration) {
+      collectBindingNames(node.variableDeclaration.name, names)
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+
+  return names
+}
+
+function collectBrowserApiMatchesInText(file, sourceText, contentStart) {
+  const matches = []
+  const sourceFile = ts.createSourceFile(`${file.absPath}.__jsvm-browser-globals__.js`, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
+  const declaredNames = collectDeclaredNames(sourceFile)
+
+  function visit(node) {
+    if (
+      ts.isIdentifier(node) &&
+      JSVM_BROWSER_GLOBALS.has(node.text) &&
+      !declaredNames.has(node.text) &&
+      !isDeclarationNameIdentifier(node) &&
+      !isPropertyNameIdentifier(node)
+    ) {
+      const lineNumber = lineNumberAt(file.content, contentStart + node.getStart(sourceFile))
+      matches.push(formatLintLineMatch(file, lineNumber))
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+
+  return matches
+}
+
+function collectBrowserApiMatches(context) {
+  const matches = []
+  const files = context.hooksCodeFiles.filter(isServerRuntimeFile)
+
+  for (const file of files) {
+    if (file.isEjs) {
+      const blocks = extractServerBlocks(file.content)
+
+      for (const block of blocks) {
+        matches.push(...collectBrowserApiMatchesInText(file, block.content, block.contentStart))
+      }
+
+      continue
+    }
+
+    matches.push(...collectBrowserApiMatchesInText(file, file.content, 0))
+  }
+
+  return unique(matches)
+}
+
 function collectLocaleApiMatches(context) {
   const matches = []
   const files = context.hooksCodeFiles.filter(isServerRuntimeFile)
@@ -1350,6 +1500,13 @@ function lintService(context) {
     context.serviceName,
     'Invalid JSVM locale API usage. Avoid Intl and toLocale* in PocketBase/PocketPages server code; use explicit project utilities or small deterministic formatters.',
     localeApiMatches
+  )
+
+  const browserApiMatches = collectBrowserApiMatches(context)
+  printMatches(
+    context.serviceName,
+    'Invalid JSVM browser API usage. Do not use browser/Web APIs in PocketBase/PocketPages server code; use PocketBase globals such as $http, sleep, $app.store(), or explicit project utilities.',
+    browserApiMatches
   )
 
   const pagesHookRegistrationMatches = collectLineMatches(context.pagesCodeFiles, RE.hookRegistration)
