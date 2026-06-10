@@ -1,3 +1,5 @@
+/********** dateutil start **********/
+
 type DateutilInput = Date | string | number | import('dayjs').Dayjs
 
 type DateutilFormat =
@@ -59,8 +61,55 @@ interface DateutilApi {
   isSameDay(left: DateutilInput, right: DateutilInput): boolean
 }
 
+/********** dateutil end **********/
+
+/********** store-cache start **********/
+
+interface StoreCacheOptions {
+  /** namespace 안에 남길 최대 entry 수입니다. 오래된 entry부터 정리합니다. */
+  maxEntries?: number
+}
+
+interface StoreCacheWriteOptions extends StoreCacheOptions {
+  /** cache entry가 유지될 millisecond입니다. 양수여야 합니다. */
+  ttlMs: number
+}
+
+interface StoreCacheRememberOptions extends StoreCacheWriteOptions {
+  /** cache miss 때 호출할 동기 loader입니다. */
+  load(): any
+}
+
+interface StoreCacheApi {
+  /**
+   * namespace/key로 저장된 TTL cache 값을 읽습니다.
+   *
+   * 내부에서 PocketBase `$app.store()` runtime store를 사용합니다.
+   */
+  get(namespace: string, key: string, options?: StoreCacheOptions): any | undefined
+  /**
+   * namespace/key에 TTL cache 값을 저장합니다.
+   *
+   * 외부 API 응답이나 계산 결과처럼 재생성 가능한 JSON 값을 저장할 때 사용합니다.
+   */
+  set(namespace: string, key: string, value: any, options: StoreCacheWriteOptions): any
+  /**
+   * cache 값이 있으면 반환하고, 없거나 만료되었으면 load 결과를 저장 후 반환합니다.
+   *
+   * JSVM 제약에 맞춰 loader는 동기 함수여야 합니다.
+   */
+  remember(namespace: string, key: string, options: StoreCacheRememberOptions): any
+  /** namespace/key에 저장된 cache 값을 삭제합니다. */
+  remove(namespace: string, key: string): boolean
+  /** namespace 안의 만료 entry를 정리하고 남은 entry 수를 반환합니다. */
+  cleanup(namespace: string, options?: StoreCacheOptions): number
+}
+
+/********** store-cache end **********/
+
 declare const pocketpagesUtils: {
   dateutil: DateutilApi
+  storeCache: StoreCacheApi
 }
 
 export = pocketpagesUtils
