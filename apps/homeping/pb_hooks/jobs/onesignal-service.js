@@ -39,30 +39,6 @@ function getConfiguredTargetSegment() {
 }
 
 /**
- * Homeping 기본 발송 대상을 만듭니다.
- * @returns {object} OneSignal 대상 payload
- */
-function createTargetingPayload() {
-  const segment = getConfiguredTargetSegment()
-
-  if (segment) {
-    return {
-      included_segments: [segment],
-    }
-  }
-
-  return {
-    filters: [
-      {
-        field: 'tag',
-        key: 'homeping_region',
-        relation: 'exists',
-      },
-    ],
-  }
-}
-
-/**
  * 수신 가능한 구독자가 없다는 예외인지 확인합니다.
  * @param {unknown} exception 예외
  * @returns {boolean} 구독자 없음 여부
@@ -76,11 +52,11 @@ function isNoSubscribedRecipientsError(exception) {
 }
 
 /**
- * 전체 Homeping 구독자에게 보낼 푸시 payload를 만듭니다.
- * @param {types.HomepingNoticePushInput} input 푸시 생성 입력값
- * @returns {object} OneSignal 메시지 payload
+ * OneSignal로 전체 구독자 푸시 메시지를 보냅니다.
+ * @param {types.HomepingNoticePushInput} input 푸시 발송 입력값
+ * @returns {object} OneSignal 응답 json
  */
-function createPushPayload(input) {
+function sendPushNotification(input) {
   /** @type {types.HomepingNoticePushInput} */
   const source = input || {
     title: '',
@@ -89,7 +65,19 @@ function createPushPayload(input) {
   const title = String(source.title || '').trim()
   const contents = String(source.contents || '').trim()
   const url = String(source.url || '').trim()
-  const payload = Object.assign({}, createTargetingPayload(), {
+  const timeout = source.timeout
+  const segment = getConfiguredTargetSegment()
+
+  if (!title) {
+    throw new Error('OneSignal 알림 제목이 필요합니다.')
+  }
+
+  if (!contents) {
+    throw new Error('OneSignal 알림 본문이 필요합니다.')
+  }
+
+  /** @type {import('@pocketpages/onesignal').OneSignalNotification} */
+  const notification = {
     target_channel: 'push',
     isAnyWeb: true,
     headings: {
@@ -100,43 +88,33 @@ function createPushPayload(input) {
       ko: contents,
       en: contents,
     },
-  })
+    timeoutSeconds: timeout,
+  }
+
+  if (segment) {
+    notification.included_segments = [segment]
+  } else {
+    notification.filters = [
+      {
+        field: 'tag',
+        key: 'homeping_region',
+        relation: 'exists',
+      },
+    ]
+  }
 
   if (url) {
-    payload.url = url
+    notification.url = url
   }
 
-  return payload
-}
-
-/**
- * OneSignal로 전체 구독자 푸시 메시지를 보냅니다.
- * @param {types.HomepingNoticePushInput} input 푸시 발송 입력값
- * @returns {object} OneSignal 응답 json
- */
-function sendPushNotification(input) {
-  const payload = createPushPayload(input)
-  const timeout = input && input.timeout ? input.timeout : undefined
-
-  if (!payload.headings.ko) {
-    throw new Error('OneSignal 알림 제목이 필요합니다.')
-  }
-
-  if (!payload.contents.ko) {
-    throw new Error('OneSignal 알림 본문이 필요합니다.')
-  }
-
-  $app.logger().debug('homeping/onesignal:send:start', 'title', payload.headings.ko)
+  $app.logger().debug('homeping/onesignal:send:start', 'title', title)
 
   const oneSignal = createOneSignalClient({
     appId: getRequiredAppId(),
     apiKey: getRequiredApiKey(),
     baseUrl: String(process.env.HOMEPING_ONESIGNAL_APIURL || '').trim(),
   })
-  const result = oneSignal.createNotification({
-    payload,
-    timeoutSeconds: timeout,
-  })
+  const result = oneSignal.createNotification(notification)
 
   $app.logger().debug('homeping/onesignal:send:response', 'statusCode', result.statusCode, 'notificationId', result.notificationId)
 
@@ -155,7 +133,6 @@ function sendPushNotification(input) {
 }
 
 module.exports = {
-  createPushPayload,
   isNoSubscribedRecipientsError,
   sendPushNotification,
 }

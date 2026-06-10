@@ -1,12 +1,12 @@
 const { createOneSignalClient } = require('@pocketpages/onesignal')
 
 /**
- * 특정 external id 목록으로 보낼 푸시 payload를 만듭니다.
+ * OneSignal로 푸시 메시지를 보냅니다.
  *
- * @param {types.BooklogOneSignalPushInput} input 푸시 생성 입력값
- * @returns {object} OneSignal 메시지 payload
+ * @param {types.BooklogOneSignalPushInput} input 푸시 발송 입력값
+ * @returns {object} OneSignal 응답 json
  */
-function createPushPayload(input) {
+function sendPushNotification(input) {
   /** @type {types.BooklogOneSignalPushInput} */
   const source = input || {
     externalIds: [],
@@ -14,51 +14,41 @@ function createPushPayload(input) {
     contents: '',
   }
   const externalIds = Array.isArray(source.externalIds) ? source.externalIds : []
-
-  return {
-    include_aliases: {
-      external_id: externalIds,
-    },
-    target_channel: 'push',
-    headings: {
-      en: String(source.title || '').trim(),
-    },
-    contents: {
-      en: String(source.contents || '').trim(),
-    },
-  }
-}
-
-/**
- * OneSignal로 푸시 메시지를 보냅니다.
- *
- * @param {types.BooklogOneSignalPushInput} input 푸시 발송 입력값
- * @returns {object} OneSignal 응답 json
- */
-function sendPushNotification(input) {
-  const payload = createPushPayload(input)
-  const externalIds = payload.include_aliases && Array.isArray(payload.include_aliases.external_id) ? payload.include_aliases.external_id : []
-  const timeout = input && input.timeout ? input.timeout : undefined
+  const title = String(source.title || '').trim()
+  const contents = String(source.contents || '').trim()
+  const timeout = source.timeout
 
   if (externalIds.length === 0) {
     throw new Error('OneSignal 발송 대상 external id가 필요합니다.')
   }
 
-  if (!payload.headings.en) {
+  if (!title) {
     throw new Error('OneSignal 알림 제목이 필요합니다.')
   }
 
-  if (!payload.contents.en) {
+  if (!contents) {
     throw new Error('OneSignal 알림 본문이 필요합니다.')
   }
 
-  $app.logger().debug('onesignal:send:start', 'externalIdCount', externalIds.length, 'title', payload.headings.en)
+  /** @type {import('@pocketpages/onesignal').OneSignalNotification} */
+  const notification = {
+    include_aliases: {
+      external_id: externalIds,
+    },
+    target_channel: 'push',
+    headings: {
+      en: title,
+    },
+    contents: {
+      en: contents,
+    },
+    timeoutSeconds: timeout,
+  }
+
+  $app.logger().debug('onesignal:send:start', 'externalIdCount', externalIds.length, 'title', title)
 
   const oneSignal = createOneSignalClient()
-  const result = oneSignal.createNotification({
-    payload,
-    timeoutSeconds: timeout,
-  })
+  const result = oneSignal.createNotification(notification)
 
   $app.logger().debug('onesignal:send:response', 'statusCode', result.statusCode, 'externalIdCount', externalIds.length, 'notificationId', result.notificationId)
 

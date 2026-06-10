@@ -277,14 +277,19 @@ function readDailyApiCache(dateKey, cacheKey) {
  * @param {any} data API 응답
  */
 function writeDailyApiCache(dateKey, cacheKey, data) {
-  storeCache.set(API_CACHE_NAMESPACE, cacheKey, {
-    date: dateKey,
-    fetched_at: new Date().toISOString(),
-    data: data,
-  }, {
-    ttlMs: API_CACHE_TTL_MS,
-    maxEntries: API_CACHE_MAX_ENTRIES,
-  })
+  storeCache.set(
+    API_CACHE_NAMESPACE,
+    cacheKey,
+    {
+      date: dateKey,
+      fetched_at: new Date().toISOString(),
+      data: data,
+    },
+    {
+      ttlMs: API_CACHE_TTL_MS,
+      maxEntries: API_CACHE_MAX_ENTRIES,
+    }
+  )
 }
 
 /**

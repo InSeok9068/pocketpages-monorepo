@@ -59,9 +59,11 @@ function createApplyhomeApiRow(input) {
 
 function createLogger() {
   const logs = []
+  const storeMap = new Map()
 
   return {
     logs,
+    storeMap,
     logger() {
       return {
         debug(...args) {
@@ -75,6 +77,16 @@ function createLogger() {
         },
         error(...args) {
           logs.push(['error'].concat(args))
+        },
+      }
+    },
+    store() {
+      return {
+        get(key) {
+          return storeMap.get(key)
+        },
+        set(key, value) {
+          storeMap.set(key, value)
         },
       }
     },
