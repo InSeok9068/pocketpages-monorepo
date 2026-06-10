@@ -48,22 +48,6 @@ function normalizePositiveNumber(value, fallback) {
 }
 
 /**
- * JSON object를 안전하게 파싱합니다.
- * @param {unknown} text JSON 문자열입니다.
- * @returns {Record<string, any>} 파싱된 object입니다.
- */
-function parseJsonObject(text) {
-  let parsed
-  try {
-    parsed = JSON.parse(String(text == null ? '' : text))
-  } catch (_error) {
-    return {}
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-  return parsed
-}
-
-/**
  * OneSignal 응답 오류 목록을 배열로 정리합니다.
  * @param {Record<string, any>} responseJson 응답 JSON입니다.
  * @returns {unknown[]} 오류 목록입니다.
@@ -91,8 +75,7 @@ function isNoSubscribedRecipientsMessage(value) {
  */
 function buildResult(args) {
   const statusCode = Number(args.statusCode || 0)
-  const parsedResponseJson = args.responseJson && typeof args.responseJson === 'object' && !Array.isArray(args.responseJson) ? args.responseJson : null
-  const responseJson = parsedResponseJson || parseJsonObject(args.responseBody)
+  const responseJson = args.responseJson && typeof args.responseJson === 'object' && !Array.isArray(args.responseJson) ? args.responseJson : {}
   const errors = getResponseErrors(responseJson)
   const notificationId = cleanText(responseJson.id)
   const httpOk = statusCode >= 200 && statusCode < 300
@@ -166,20 +149,9 @@ function createNotification(input, runtime) {
       body: JSON.stringify(payload),
       timeout,
     })
-    const responseJson = response.json && typeof response.json === 'object' && !Array.isArray(response.json) ? response.json : null
-    let responseBody = ''
-
-    if (response.body == null) {
-      responseBody = responseJson ? JSON.stringify(responseJson) : ''
-    } else if (typeof response.body === 'string') {
-      responseBody = response.body
-    } else {
-      responseBody = String(toString(response.body) || '')
-    }
-
+    const responseJson = response.json && typeof response.json === 'object' && !Array.isArray(response.json) ? response.json : {}
     const result = buildResult({
       statusCode: response.statusCode,
-      responseBody,
       responseJson,
       errorMessage: '',
     })
@@ -189,7 +161,7 @@ function createNotification(input, runtime) {
   } catch (error) {
     const result = buildResult({
       statusCode: 0,
-      responseBody: '',
+      responseJson: {},
       errorMessage: cleanText(error),
     })
 

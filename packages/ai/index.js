@@ -107,22 +107,6 @@ function readFirstEnv(names) {
 }
 
 /**
- * JSON object를 안전하게 파싱합니다.
- * @param {unknown} text JSON 문자열입니다.
- * @returns {Record<string, any>} 파싱된 object입니다.
- */
-function parseJsonObject(text) {
-  let parsed
-  try {
-    parsed = JSON.parse(String(text == null ? '' : text))
-  } catch (_error) {
-    return {}
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-  return parsed
-}
-
-/**
  * 정의된 필드를 payload에 복사합니다.
  * @param {Record<string, any>} payload 대상 payload입니다.
  * @param {Record<string, any>} source 원본 옵션입니다.
@@ -522,7 +506,7 @@ function extractDeepSeekText(responseJson) {
 function buildResult(args) {
   const statusCode = Number(args.statusCode || 0)
   const ok = statusCode >= 200 && statusCode < 300 && !args.transportError
-  const responseJson = parseJsonObject(args.responseBody)
+  const responseJson = args.responseJson && typeof args.responseJson === 'object' && !Array.isArray(args.responseJson) ? args.responseJson : {}
   const error = responseJson && responseJson.error ? responseJson.error : {}
   const errorMessage = cleanText(args.transportError || error.message || '')
   let rateLimitCause = ''
@@ -556,7 +540,7 @@ function buildResult(args) {
  */
 function sendWithRetry(request, runtime) {
   let lastStatusCode = 0
-  let lastResponseBody = ''
+  let lastResponseJson = {}
   let lastTransportError = ''
   let attempts = 0
 
@@ -569,12 +553,11 @@ function sendWithRetry(request, runtime) {
       const response = runtime.http.send(request.httpOptions)
       const elapsedMs = runtime.now() - attemptStartedAt
       const statusCode = Number(response.statusCode || 0)
-      const responseBody = response.body == null ? '' : String(toString(response.body) || '')
       const headers = response.headers || {}
-      const responseJson = parseJsonObject(responseBody)
+      const responseJson = response.json && typeof response.json === 'object' && !Array.isArray(response.json) ? response.json : {}
 
       lastStatusCode = statusCode
-      lastResponseBody = responseBody
+      lastResponseJson = responseJson
       lastTransportError = ''
       logAiResponseDebug(request, runtime, {
         attempt: attempts,
@@ -588,7 +571,7 @@ function sendWithRetry(request, runtime) {
         return buildResult({
           provider: request.provider,
           statusCode,
-          responseBody,
+          responseJson,
           transportError: '',
           extractText: request.extractText,
         })
@@ -600,7 +583,7 @@ function sendWithRetry(request, runtime) {
         return buildResult({
           provider: request.provider,
           statusCode,
-          responseBody,
+          responseJson,
           transportError: '',
           extractText: request.extractText,
         })
@@ -615,7 +598,7 @@ function sendWithRetry(request, runtime) {
       const errorText = cleanText(error)
 
       lastStatusCode = 0
-      lastResponseBody = ''
+      lastResponseJson = {}
       lastTransportError = errorText
       logAiResponseDebug(request, runtime, {
         attempt: attempts,
@@ -630,7 +613,7 @@ function sendWithRetry(request, runtime) {
         return buildResult({
           provider: request.provider,
           statusCode: 0,
-          responseBody: '',
+          responseJson: {},
           transportError: errorText,
           extractText: request.extractText,
         })
@@ -646,7 +629,7 @@ function sendWithRetry(request, runtime) {
   return buildResult({
     provider: request.provider,
     statusCode: lastStatusCode,
-    responseBody: lastResponseBody,
+    responseJson: lastResponseJson,
     transportError: lastTransportError,
     extractText: request.extractText,
   })
