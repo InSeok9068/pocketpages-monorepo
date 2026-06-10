@@ -2,12 +2,11 @@
 
 const dayjs = require('dayjs')
 const utc = require('dayjs/plugin/utc')
-const timezone = require('dayjs/plugin/timezone')
 
 dayjs.extend(utc)
-dayjs.extend(timezone)
 
-const DEFAULT_TIMEZONE = 'Asia/Seoul'
+const KST_OFFSET_MINUTES = 9 * 60
+const KST_OFFSET_MS = KST_OFFSET_MINUTES * 60 * 1000
 
 const FORMATS = Object.freeze({
   DATE: 'YYYY-MM-DD',
@@ -39,21 +38,117 @@ function hasTimeZoneOffset(value) {
 }
 
 /**
+ * KST 로컬 시각 값을 실제 UTC millisecond로 바꿉니다.
+ *
+ * @param {number} year
+ * @param {number} month
+ * @param {number} day
+ * @param {number} hour
+ * @param {number} minute
+ * @param {number} second
+ * @param {number} millisecond
+ * @returns {number}
+ */
+function toKstUtcMs(year, month, day, hour, minute, second, millisecond) {
+  return Date.UTC(year, month - 1, day, hour, minute, second, millisecond) - KST_OFFSET_MS
+}
+
+/**
+ * millisecond 문자열을 3자리 값으로 맞춥니다.
+ *
+ * @param {string|undefined} value
+ * @returns {number}
+ */
+function parseMillisecond(value) {
+  const text = String(value || '')
+
+  if (!text) {
+    return 0
+  }
+
+  return Number((text + '000').slice(0, 3))
+}
+
+/**
+ * 타임존 없는 날짜 문자열을 KST 로컬 날짜/시간으로 해석합니다.
+ *
+ * @param {string} value
+ * @returns {number}
+ */
+function parseOffsetlessStringToUtcMs(value) {
+  const text = String(value || '').trim()
+  let match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2})(?::?(\d{2}))?(?::?(\d{2}))?(?:\.(\d{1,3}))?)?$/)
+
+  if (!match) {
+    match = text.match(/^(\d{4})(\d{2})(\d{2})(?:(\d{2})(\d{2})(\d{2}))?$/)
+  }
+
+  if (!match) {
+    const parsed = Date.parse(text)
+
+    return isNaN(parsed) ? NaN : parsed
+  }
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4] || 0)
+  const minute = Number(match[5] || 0)
+  const second = Number(match[6] || 0)
+  const millisecond = parseMillisecond(match[7])
+  const utcMs = toKstUtcMs(year, month, day, hour, minute, second, millisecond)
+  const kstDate = new Date(utcMs + KST_OFFSET_MS)
+
+  if (
+    kstDate.getUTCFullYear() !== year ||
+    kstDate.getUTCMonth() !== month - 1 ||
+    kstDate.getUTCDate() !== day ||
+    kstDate.getUTCHours() !== hour ||
+    kstDate.getUTCMinutes() !== minute ||
+    kstDate.getUTCSeconds() !== second
+  ) {
+    return NaN
+  }
+
+  return utcMs
+}
+
+/**
+ * 입력값을 실제 UTC millisecond로 바꿉니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} value
+ * @returns {number}
+ */
+function toUtcMs(value) {
+  if (dayjs.isDayjs(value)) {
+    return value.valueOf()
+  }
+
+  if (typeof value === 'string') {
+    const text = value.trim()
+
+    if (!text) {
+      return NaN
+    }
+
+    if (!hasTimeZoneOffset(text)) {
+      return parseOffsetlessStringToUtcMs(text)
+    }
+  }
+
+  const date = value instanceof Date ? value : new Date(value)
+
+  return date.getTime()
+}
+
+/**
  * 입력값을 KST 기준 dayjs 객체로 맞춥니다.
  *
  * @param {Date|string|number|import('dayjs').Dayjs} value
  * @returns {import('dayjs').Dayjs}
  */
 function toBusinessDayjs(value) {
-  if (dayjs.isDayjs(value)) {
-    return value.tz(DEFAULT_TIMEZONE)
-  }
-
-  if (typeof value === 'string' && !hasTimeZoneOffset(value)) {
-    return dayjs.tz(value, DEFAULT_TIMEZONE)
-  }
-
-  return dayjs(value).tz(DEFAULT_TIMEZONE)
+  return dayjs.utc(toUtcMs(value) + KST_OFFSET_MS)
 }
 
 /**
@@ -65,7 +160,7 @@ function toBusinessDayjs(value) {
  * @returns {Date} KST 기준으로 보정된 Date 객체
  */
 function toDate(value) {
-  return toBusinessDayjs(value).toDate()
+  return new Date(toUtcMs(value))
 }
 
 /**
@@ -128,7 +223,7 @@ function toDateOnlyIso(value) {
  * @returns {Date} 계산된 Date 객체
  */
 function addDays(value, amount) {
-  return toBusinessDayjs(value).add(amount, 'day').toDate()
+  return new Date(toBusinessDayjs(value).add(amount, 'day').valueOf() - KST_OFFSET_MS)
 }
 
 /**
@@ -140,7 +235,7 @@ function addDays(value, amount) {
  * @returns {Date} KST 기준 00:00:00.000 Date 객체
  */
 function startOfDay(value) {
-  return toBusinessDayjs(value).startOf('day').toDate()
+  return new Date(toBusinessDayjs(value).startOf('day').valueOf() - KST_OFFSET_MS)
 }
 
 /**
@@ -152,7 +247,7 @@ function startOfDay(value) {
  * @returns {Date} KST 기준 23:59:59.999 Date 객체
  */
 function endOfDay(value) {
-  return toBusinessDayjs(value).endOf('day').toDate()
+  return new Date(toBusinessDayjs(value).endOf('day').valueOf() - KST_OFFSET_MS)
 }
 
 /**
