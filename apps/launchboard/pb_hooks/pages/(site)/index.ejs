@@ -179,6 +179,7 @@
 </div>
 
 <script src="<%= asset('/assets/vendor/sortable-1.15.7.min.js') %>"></script>
+<script src="<%= asset('/assets/vendor/swiper-12.2.0.min.js') %>"></script>
 <script>
   window.launchboardProjectBoard = window.launchboardProjectBoard || {}
   window.launchboardProjectBoard.storageKey = 'launchboard:collapsed-statuses'
@@ -207,6 +208,84 @@
     }
   }
 
+  window.launchboardGetProjectActiveStatus = function () {
+    try {
+      const status = window.localStorage.getItem(window.launchboardProjectBoard.activeStatusKey) || 'idea'
+
+      return window.launchboardProjectBoard.statusValues.indexOf(status) >= 0 ? status : 'idea'
+    } catch (exception) {
+      return 'idea'
+    }
+  }
+
+  window.launchboardActivateProjectStatus = function (status, options) {
+    const activateOptions = options || {}
+    const statusValues = window.launchboardProjectBoard.statusValues
+    const statusIndex = statusValues.indexOf(status)
+
+    if (statusIndex < 0) return
+
+    window.launchboardPatchProjectBoardSignals({
+      activeProjectStatus: status,
+    })
+    window.launchboardSaveProjectActiveStatus(status)
+
+    if (activateOptions.fromSwiper === true) return
+
+    const swiper = window.launchboardProjectBoard.swiper
+    if (!swiper || swiper.destroyed || swiper.activeIndex === statusIndex) return
+
+    swiper.slideTo(statusIndex)
+  }
+
+  window.launchboardInitProjectSwiper = function () {
+    if (!window.Swiper) return
+
+    const board = window.launchboardProjectBoard
+    const swiperElement = document.querySelector('[data-project-status-swiper]')
+
+    if (!swiperElement) return
+
+    if (board.swiper && board.swiper.el !== swiperElement) {
+      board.swiper.destroy(true, false)
+      board.swiper = null
+    }
+
+    const activeStatus = window.launchboardGetProjectActiveStatus()
+    const initialSlide = Math.max(0, board.statusValues.indexOf(activeStatus))
+
+    if (board.swiper && !board.swiper.destroyed) {
+      board.swiper.update()
+      board.swiper.slideTo(initialSlide, 0)
+      return
+    }
+
+    board.swiper = new window.Swiper(swiperElement, {
+      initialSlide,
+      slidesPerView: 1,
+      spaceBetween: 16,
+      speed: 220,
+      threshold: 12,
+      resistanceRatio: 0.65,
+      noSwipingSelector: '[data-drag-handle], a, button, input, textarea, select',
+      breakpoints: {
+        768: {
+          allowTouchMove: false,
+          enabled: false,
+          spaceBetween: 0,
+        },
+      },
+      on: {
+        slideChange: function (swiper) {
+          const nextStatus = board.statusValues[swiper.activeIndex]
+
+          if (!nextStatus) return
+          window.launchboardActivateProjectStatus(nextStatus, { fromSwiper: true })
+        },
+      },
+    })
+  }
+
   window.launchboardSaveProjectCollapsedStatuses = function (statuses) {
     try {
       window.localStorage.setItem(window.launchboardProjectBoard.storageKey, JSON.stringify(statuses || {}))
@@ -216,7 +295,10 @@
   }
 
   window.launchboardInitSortable = function () {
-    if (!window.Sortable) return
+    if (!window.Sortable) {
+      window.launchboardInitProjectSwiper()
+      return
+    }
 
     const updateEmptyState = function (list) {
       const emptyState = list.querySelector('[data-empty-state]')
@@ -317,14 +399,17 @@
     })
 
     window.launchboardSetProjectMobileSignal()
+    window.launchboardInitProjectSwiper()
   }
 
   window.launchboardInitSortable()
+  window.launchboardInitProjectSwiper()
 
   if (window.launchboardProjectResizeReady !== true) {
     window.launchboardProjectResizeReady = true
     window.addEventListener('resize', function () {
       window.launchboardSetProjectMobileSignal()
+      window.launchboardInitProjectSwiper()
     })
   }
 

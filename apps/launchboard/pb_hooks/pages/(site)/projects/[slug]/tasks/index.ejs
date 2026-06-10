@@ -245,11 +245,13 @@
 </div>
 
 <script src="<%= asset('/assets/vendor/sortable-1.15.7.min.js') %>"></script>
+<script src="<%= asset('/assets/vendor/swiper-12.2.0.min.js') %>"></script>
 <script>
   window.launchboardTaskBoard = window.launchboardTaskBoard || {}
 
   window.launchboardTaskBoard.storageKey = 'launchboard:task-collapsed-statuses:<%= projectView.id %>'
   window.launchboardTaskBoard.activeStatusKey = 'launchboard:task-active-status:<%= projectView.id %>'
+  window.launchboardTaskBoard.statusValues = ['todo', 'doing', 'done', 'paused', 'canceled']
 
   window.launchboardPatchTaskBoardSignals = function (signals) {
     if (!window.patchSignals) return
@@ -264,13 +266,91 @@
   }
 
   window.launchboardSaveTaskActiveStatus = function (status) {
-    if (['todo', 'doing', 'done', 'paused', 'canceled'].indexOf(status) < 0) return
+    if (window.launchboardTaskBoard.statusValues.indexOf(status) < 0) return
 
     try {
       window.localStorage.setItem(window.launchboardTaskBoard.activeStatusKey, status)
     } catch (exception) {
       return
     }
+  }
+
+  window.launchboardGetTaskActiveStatus = function () {
+    try {
+      const status = window.localStorage.getItem(window.launchboardTaskBoard.activeStatusKey) || 'todo'
+
+      return window.launchboardTaskBoard.statusValues.indexOf(status) >= 0 ? status : 'todo'
+    } catch (exception) {
+      return 'todo'
+    }
+  }
+
+  window.launchboardActivateTaskStatus = function (status, options) {
+    const activateOptions = options || {}
+    const statusValues = window.launchboardTaskBoard.statusValues
+    const statusIndex = statusValues.indexOf(status)
+
+    if (statusIndex < 0) return
+
+    window.launchboardPatchTaskBoardSignals({
+      activeTaskStatus: status,
+    })
+    window.launchboardSaveTaskActiveStatus(status)
+
+    if (activateOptions.fromSwiper === true) return
+
+    const swiper = window.launchboardTaskBoard.swiper
+    if (!swiper || swiper.destroyed || swiper.activeIndex === statusIndex) return
+
+    swiper.slideTo(statusIndex)
+  }
+
+  window.launchboardInitTaskSwiper = function () {
+    if (!window.Swiper) return
+
+    const board = window.launchboardTaskBoard
+    const swiperElement = document.querySelector('[data-task-status-swiper]')
+
+    if (!swiperElement) return
+
+    if (board.swiper && board.swiper.el !== swiperElement) {
+      board.swiper.destroy(true, false)
+      board.swiper = null
+    }
+
+    const activeStatus = window.launchboardGetTaskActiveStatus()
+    const initialSlide = Math.max(0, board.statusValues.indexOf(activeStatus))
+
+    if (board.swiper && !board.swiper.destroyed) {
+      board.swiper.update()
+      board.swiper.slideTo(initialSlide, 0)
+      return
+    }
+
+    board.swiper = new window.Swiper(swiperElement, {
+      initialSlide,
+      slidesPerView: 1,
+      spaceBetween: 16,
+      speed: 220,
+      threshold: 12,
+      resistanceRatio: 0.65,
+      noSwipingSelector: '[data-task-drag-handle], a, button, input, textarea, select',
+      breakpoints: {
+        768: {
+          allowTouchMove: false,
+          enabled: false,
+          spaceBetween: 0,
+        },
+      },
+      on: {
+        slideChange: function (swiper) {
+          const nextStatus = board.statusValues[swiper.activeIndex]
+
+          if (!nextStatus) return
+          window.launchboardActivateTaskStatus(nextStatus, { fromSwiper: true })
+        },
+      },
+    })
   }
 
   window.launchboardSaveTaskCollapsedStatuses = function (statuses) {
@@ -282,7 +362,10 @@
   }
 
   window.launchboardInitTaskSortable = function () {
-    if (!window.Sortable) return
+    if (!window.Sortable) {
+      window.launchboardInitTaskSwiper()
+      return
+    }
 
     const updateEmptyState = function (list) {
       const emptyState = list.querySelector('[data-task-empty-state]')
@@ -382,14 +465,17 @@
     })
 
     window.launchboardSetTaskMobileSignal()
+    window.launchboardInitTaskSwiper()
   }
 
   if (window.launchboardTaskBoard.resizeReady !== true) {
     window.launchboardTaskBoard.resizeReady = true
     window.addEventListener('resize', function () {
       window.launchboardSetTaskMobileSignal()
+      window.launchboardInitTaskSwiper()
     })
   }
 
   window.launchboardInitTaskSortable()
+  window.launchboardInitTaskSwiper()
 </script>

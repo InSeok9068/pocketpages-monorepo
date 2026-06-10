@@ -18,7 +18,7 @@
       data-status="<%= tabColumn.value %>"
       data-attr="{'aria-pressed': $activeTaskStatus === '<%= tabColumn.value %>' ? 'true' : 'false'}"
       data-class="{'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]': $activeTaskStatus === '<%= tabColumn.value %>', 'bg-[#f2f4f6] text-[#4e5968]': $activeTaskStatus !== '<%= tabColumn.value %>'}"
-      data-on:click="$activeTaskStatus = '<%= tabColumn.value %>'; window.launchboardSaveTaskActiveStatus && window.launchboardSaveTaskActiveStatus($activeTaskStatus)">
+      data-on:click="window.launchboardActivateTaskStatus && window.launchboardActivateTaskStatus('<%= tabColumn.value %>')">
       <span
         class="<%= tabColumn.icon %> h-3.5 w-3.5"
         aria-hidden="true"></span>
@@ -36,16 +36,18 @@
     <% } %>
   </nav>
 
-  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+  <div
+    class="launchboard-task-swiper swiper"
+    data-task-status-swiper>
+    <div class="swiper-wrapper">
     <% for (let columnIndex = 0; columnIndex < statusColumns.length; columnIndex += 1) { %>
     <% const column = statusColumns[columnIndex] %>
     <% const columnTasks = tasksByStatus[column.value] || [] %>
     <section
       id="task-status-<%= column.value %>"
-      class="<%= column.surface %> rounded-lg p-2.5 sm:p-3"
+      class="<%= column.surface %> swiper-slide rounded-lg p-3"
       data-task-column
       data-status="<%= column.value %>"
-      data-show="!$isTaskMobile || $activeTaskStatus === '<%= column.value %>'"
       data-class="{'min-h-0': !$isTaskMobile && $collapsedTaskStatuses.<%= column.value %>, 'min-h-[240px]': $isTaskMobile || !$collapsedTaskStatuses.<%= column.value %>}">
       <header class="flex items-center justify-between gap-3 px-1 py-1">
         <div class="flex min-w-0 items-center gap-2">
@@ -98,7 +100,7 @@
         <% const task = columnTasks[taskIndex] %>
         <% const taskHref = '/projects/' + encodeURIComponent(projectSlug) + '/tasks/' + encodeURIComponent(task.id) %>
         <article
-          class="cursor-pointer rounded-lg bg-white p-2.5 shadow-[0_8px_22px_rgba(25,31,40,0.07),0_0_0_1px_rgba(227,231,237,0.72)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(25,31,40,0.1),0_0_0_1px_rgba(49,130,246,0.16)] sm:p-3"
+          class="min-w-0 max-w-full cursor-pointer overflow-hidden rounded-lg bg-white p-4 shadow-[0_8px_22px_rgba(25,31,40,0.07),0_0_0_1px_rgba(227,231,237,0.72)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(25,31,40,0.1),0_0_0_1px_rgba(49,130,246,0.16)]"
           data-task-card
           data-task-id="<%= task.id %>"
           data-status="<%= task.status %>"
@@ -106,15 +108,15 @@
           tabindex="0"
           data-on:click="if (document.body.dataset.launchboardTaskDragging !== 'true') window.location.href = '<%= taskHref %>'"
           data-on:keydown="if (evt.key === 'Enter') window.location.href = '<%= taskHref %>'">
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
+          <div class="flex min-w-0 items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
               <div class="flex min-w-0 items-center gap-1.5">
                 <% if (task.isPinned) { %>
                 <span
                   class="i-lucide-pin h-3.5 w-3.5 shrink-0 text-[#f59f00]"
                   aria-hidden="true"></span>
                 <% } %>
-                <h3 class="truncate text-sm font-bold leading-6 text-[#191f28]"><%= task.title %></h3>
+                <h3 class="min-w-0 flex-1 truncate text-sm font-bold leading-6 text-[#191f28]"><%= task.title %></h3>
               </div>
               <% if (task.description) { %>
               <p class="mt-1 line-clamp-2 text-xs leading-5 text-[#6b7684]"><%= task.description %></p>
@@ -128,7 +130,7 @@
               <span
                 role="button"
                 tabindex="-1"
-                class="inline-flex h-9 w-9 cursor-grab items-center justify-center rounded-md border-0 bg-[#f2f4f6] text-[#8b95a1] active:cursor-grabbing md:h-7 md:w-7"
+                class="inline-flex h-8 w-8 cursor-grab items-center justify-center rounded-md border-0 bg-[#f2f4f6] text-[#8b95a1] active:cursor-grabbing md:h-7 md:w-7"
                 data-task-drag-handle
                 aria-label="드래그">
                 <span
@@ -180,5 +182,6 @@
       </div>
     </section>
     <% } %>
+    </div>
   </div>
 </div>

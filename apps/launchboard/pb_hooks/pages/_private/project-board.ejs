@@ -15,7 +15,7 @@
         data-status="<%= tabColumn.value %>"
         data-attr="{'aria-pressed': $activeProjectStatus === '<%= tabColumn.value %>' ? 'true' : 'false'}"
         data-class="{'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]': $activeProjectStatus === '<%= tabColumn.value %>', 'bg-[#f2f4f6] text-[#4e5968]': $activeProjectStatus !== '<%= tabColumn.value %>'}"
-        data-on:click="$activeProjectStatus = '<%= tabColumn.value %>'; window.launchboardSaveProjectActiveStatus && window.launchboardSaveProjectActiveStatus($activeProjectStatus)">
+        data-on:click="window.launchboardActivateProjectStatus && window.launchboardActivateProjectStatus('<%= tabColumn.value %>')">
         <span
           class="<%= tabColumn.icon %> h-3.5 w-3.5 shrink-0"
           aria-hidden="true"></span>
@@ -33,16 +33,18 @@
       <% } %>
     </nav>
 
-    <div class="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+    <div
+      class="launchboard-project-swiper swiper"
+      data-project-status-swiper>
+      <div class="swiper-wrapper">
       <% for (let columnIndex = 0; columnIndex < statusColumns.length; columnIndex += 1) { %>
       <% const column = statusColumns[columnIndex] %>
       <% const columnProjects = projectsByStatus[column.value] || [] %>
       <section
         id="status-<%= column.value %>"
-        class="<%= column.surface %> flex flex-col rounded-lg p-3"
+        class="<%= column.surface %> swiper-slide flex flex-col rounded-lg p-3"
         data-project-column
         data-status="<%= column.value %>"
-        data-show="!$isProjectMobile || $activeProjectStatus === '<%= column.value %>'"
         data-class="{'min-h-0 bg-white/70': !$isProjectMobile && $collapsedProjectStatuses.<%= column.value %>, 'min-h-[280px]': $isProjectMobile || !$collapsedProjectStatuses.<%= column.value %>}">
         <header class="flex items-center justify-between gap-3 px-1 py-1">
           <div class="flex items-center gap-2">
@@ -124,7 +126,7 @@
           <% for (let projectIndex = 0; projectIndex < columnProjects.length; projectIndex += 1) { %>
           <% const project = columnProjects[projectIndex] %>
           <article
-            class="cursor-pointer rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.08),0_0_0_1px_rgba(227,231,237,0.78)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(25,31,40,0.11),0_0_0_1px_rgba(49,130,246,0.18)]"
+            class="min-w-0 max-w-full cursor-pointer overflow-hidden rounded-lg bg-white p-4 shadow-[0_10px_28px_rgba(25,31,40,0.08),0_0_0_1px_rgba(227,231,237,0.78)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(25,31,40,0.11),0_0_0_1px_rgba(49,130,246,0.18)]"
             data-project-card
             data-project-id="<%= project.id %>"
             data-status="<%= project.status %>"
@@ -132,8 +134,8 @@
             tabindex="0"
             data-on:click="if (document.body.dataset.launchboardDragging !== 'true') window.location.href = '<%= project.href %>'"
             data-on:keydown="if (evt.key === 'Enter') window.location.href = '<%= project.href %>'">
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex min-w-0 items-center gap-2">
+            <div class="flex min-w-0 items-start justify-between gap-3">
+              <div class="flex min-w-0 flex-1 items-center gap-2">
                 <% if (project.isPinned) { %>
                 <span
                   class="i-lucide-pin h-3.5 w-3.5 shrink-0 text-[#f59f00]"
@@ -155,7 +157,7 @@
                     onerror="window.launchboardNextFavicon && window.launchboardNextFavicon(this)" />
                 </span>
                 <% } %>
-                <h3 class="truncate text-base font-bold text-[#191f28]">
+                <h3 class="min-w-0 flex-1 truncate text-base font-bold text-[#191f28]">
                   <%= project.nameKo %><% if (project.nameEn) { %>
                   <span class="font-semibold text-[#8b95a1]"> - <%= project.nameEn %></span><% } %>
                 </h3>
@@ -246,6 +248,7 @@
         </div>
       </section>
       <% } %>
+      </div>
     </div>
   </div>
 </section>
