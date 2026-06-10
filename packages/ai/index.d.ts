@@ -29,9 +29,25 @@ declare namespace pocketpagesAi {
     text: string
   }
 
+  interface GeminiInlineDataPart {
+    inlineData: {
+      mimeType: string
+      data: string
+    }
+  }
+
+  interface GeminiFileDataPart {
+    fileData: {
+      mimeType?: string
+      fileUri: string
+    }
+  }
+
+  type GeminiPart = GeminiTextPart | GeminiInlineDataPart | GeminiFileDataPart | JsonObject
+
   interface GeminiContent {
     role?: GeminiContentRole
-    parts: Array<GeminiTextPart | JsonObject>
+    parts: GeminiPart[]
   }
 
   interface GeminiGenerationConfig {
