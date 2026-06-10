@@ -1,4 +1,5 @@
 const COLLECTION_NAME = 'push_send_logs'
+const { dateutil } = require('@pocketpages/utils')
 
 /**
  * 오늘 날짜를 YYYY-MM-DD 문자열로 만듭니다.
@@ -6,7 +7,7 @@ const COLLECTION_NAME = 'push_send_logs'
  * @returns {string} 오늘 날짜 문자열
  */
 function getTodayDateText() {
-  return new Date().toISOString().slice(0, 10)
+  return dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
 }
 
 /**
@@ -17,21 +18,20 @@ function getTodayDateText() {
  */
 function parseDateOnly(dateText) {
   const normalizedDateText = String(dateText || '').trim()
-  const matchedDateParts = normalizedDateText.match(/^(\d{4}-\d{2}-\d{2})(?:\s|T|$)/)
 
-  if (!matchedDateParts) {
+  if (!normalizedDateText) {
     return null
   }
 
-  const dateOnlyText = matchedDateParts[1]
+  let parsedDate = null
 
-  if (!dateOnlyText) {
+  try {
+    parsedDate = dateutil.startOfDay(normalizedDateText)
+  } catch (_exception) {
     return null
   }
 
-  const parsedDate = new Date(dateOnlyText + 'T00:00:00Z')
-
-  if (isNaN(parsedDate.getTime())) {
+  if (!parsedDate || isNaN(parsedDate.getTime())) {
     return null
   }
 
@@ -63,12 +63,43 @@ function getDaysBetween(fromDateText, toDateText) {
  * @returns {string} YYYY-MM-DD 날짜 문자열
  */
 function getDateTextDaysAgo(daysBeforeToday) {
-  const targetDate = new Date()
+  const days = Number(daysBeforeToday || 0)
+  const targetDate = dateutil.addDays(new Date(), -days)
 
-  targetDate.setUTCHours(0, 0, 0, 0)
-  targetDate.setUTCDate(targetDate.getUTCDate() - Number(daysBeforeToday || 0))
+  return dateutil.formatDate(targetDate, dateutil.FORMATS.DATE)
+}
 
-  return targetDate.toISOString().slice(0, 10)
+/**
+ * 날짜 문자열의 KST 하루 시작/끝 ISO를 만듭니다.
+ *
+ * @param {string} dateText 날짜 문자열
+ * @returns {{ startIso: string, endIso: string }} 날짜 범위
+ */
+function getDateRangeIso(dateText) {
+  return {
+    startIso: dateutil.startOfDay(dateText).toISOString(),
+    endIso: dateutil.endOfDay(dateText).toISOString(),
+  }
+}
+
+/**
+ * 발송 시각 값을 PB date 저장용 ISO로 정규화합니다.
+ *
+ * @param {unknown} value 발송 시각 값
+ * @returns {string} 저장용 ISO 문자열
+ */
+function normalizeSentAtIso(value) {
+  const raw = String(value || '').trim()
+
+  if (!raw) {
+    return new Date().toISOString()
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return dateutil.toDateOnlyIso(raw)
+  }
+
+  return raw
 }
 
 /**
@@ -101,10 +132,12 @@ function hasSentToday(userId, notificationKey) {
   }
 
   try {
-    return !!$app.findFirstRecordByFilter(COLLECTION_NAME, 'user_id = {:userId} && notification_key = {:notificationKey} && send_status = "sent" && sent_at = {:sentAt}', {
+    const todayRange = getDateRangeIso(getTodayDateText())
+    return !!$app.findFirstRecordByFilter(COLLECTION_NAME, 'user_id = {:userId} && notification_key = {:notificationKey} && send_status = "sent" && sent_at >= {:sentAtStart} && sent_at <= {:sentAtEnd}', {
       userId: normalizedUserId,
       notificationKey: normalizedNotificationKey,
-      sentAt: getTodayDateText(),
+      sentAtStart: todayRange.startIso,
+      sentAtEnd: todayRange.endIso,
     })
   } catch (_exception) {
     return false
@@ -161,6 +194,7 @@ function getSentHighlightIdsWithinDays(userId, notificationKey, days) {
 
   try {
     const cutoffDateText = getDateTextDaysAgo(normalizedDays - 1)
+    const cutoffRange = getDateRangeIso(cutoffDateText)
     const logRecords = $app.findRecordsByFilter(
       COLLECTION_NAME,
       'user_id = {:userId} && notification_key = {:notificationKey} && send_status = "sent" && highlight_id != "" && sent_at >= {:cutoffDate}',
@@ -170,7 +204,7 @@ function getSentHighlightIdsWithinDays(userId, notificationKey, days) {
       {
         userId: normalizedUserId,
         notificationKey: normalizedNotificationKey,
-        cutoffDate: cutoffDateText,
+        cutoffDate: cutoffRange.startIso,
       }
     )
     const highlightIdMap = {}
@@ -206,13 +240,13 @@ function cleanupExpiredLogs(retentionDays) {
     return 0
   }
 
-  const cutoffDateText = getDateTextDaysAgo(normalizedRetentionDays)
+  const cutoffRange = getDateRangeIso(getDateTextDaysAgo(normalizedRetentionDays))
   const deleteResult = $app
     .db()
     .delete(
       COLLECTION_NAME,
       $dbx.exp("sent_at != '' AND sent_at < {:cutoffDate}", {
-        cutoffDate: cutoffDateText,
+        cutoffDate: cutoffRange.startIso,
       })
     )
     .execute()
@@ -248,7 +282,7 @@ function createLog(input) {
   logRecord.set('body_text', String(source.bodyText || '').trim())
   logRecord.set('provider_message_id', String(source.providerMessageId || '').trim())
   logRecord.set('error_message', String(source.errorMessage || '').trim())
-  logRecord.set('sent_at', String(source.sentAt || getTodayDateText()).trim())
+  logRecord.set('sent_at', normalizeSentAtIso(source.sentAt))
   logRecord.set('payload_json', sanitizePayload(source.payloadJson))
 
   $app.save(logRecord)

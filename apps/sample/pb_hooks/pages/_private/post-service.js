@@ -1,4 +1,5 @@
 const { slugify } = require('./slugify')
+const { dateutil } = require('@pocketpages/utils')
 
 /** @type {Record<types.PostStatus, true>} */
 var POST_STATUS_VALUES = {
@@ -14,6 +15,23 @@ var POST_STATUS_VALUES = {
  */
 function isPostStatus(value) {
   return Object.prototype.hasOwnProperty.call(POST_STATUS_VALUES, value)
+}
+
+/**
+ * 게시글 날짜를 화면 표시용 날짜로 바꿉니다.
+ * @param {unknown} value 날짜 값입니다.
+ * @returns {string} 표시 날짜입니다.
+ */
+function formatPostDate(value) {
+  const raw = String(value || '').trim()
+
+  if (!raw) return ''
+
+  try {
+    return dateutil.formatDate(raw, dateutil.FORMATS.DATE)
+  } catch (_exception) {
+    return ''
+  }
 }
 
 /**
@@ -221,7 +239,7 @@ function toPostCard(post, boardSlug) {
     authorName: String(post.get('author_name') || '').trim() || 'unknown',
     status: normalizePostStatus(post.get('status'), 'draft'),
     isNotice: !!post.get('is_notice'),
-    publishedAt: String(post.get('published_at') || post.get('created') || ''),
+    publishedAt: formatPostDate(post.get('published_at') || post.get('created')),
     viewCount: Number(post.get('view_count') || 0),
     preview: content.replace(/<[^>]*>/g, '').slice(0, 180),
     path: buildPostPath(boardSlug, slug),
@@ -266,7 +284,7 @@ function toPostPanelItem(post, boardSlug) {
     title: String(post.get('title') || '').trim() || '(untitled post)',
     authorName: String(post.get('author_name') || '').trim() || 'unknown',
     isNotice: !!post.get('is_notice'),
-    publishedAt: String(post.get('published_at') || post.get('created') || ''),
+    publishedAt: formatPostDate(post.get('published_at') || post.get('created')),
     path: buildPostPath(boardSlug, slug),
   }
 }
@@ -312,7 +330,7 @@ function toPostDetail(post, boardSlug) {
     authorName: String(post.get('author_name') || '').trim() || 'unknown',
     status: normalizePostStatus(post.get('status'), 'draft'),
     isNotice: !!post.get('is_notice'),
-    publishedAt: String(post.get('published_at') || post.get('created') || ''),
+    publishedAt: formatPostDate(post.get('published_at') || post.get('created')),
     viewCount: Number(post.get('view_count') || 0),
     content: String(post.get('content') || ''),
     path: path,

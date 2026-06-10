@@ -1,4 +1,6 @@
 <script server>
+  const { dateutil } = require('@pocketpages/utils')
+
   meta('title', 'Booklog 독서 기록')
   meta('description', '주차별 독서 시간을 확인하는 페이지')
 
@@ -17,7 +19,6 @@
 
   const userId = String(request.auth.get('id') || '')
   const now = new Date()
-  const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000
   const weekItems = []
   const requestedWeekValue = String(request.url.query.week || '').trim()
   const sessionRecords = $app.findRecordsByFilter('reading_sessions', 'user_id = {:userId}', '-ended_at', 500, 0, { userId: userId })
@@ -29,54 +30,14 @@
    * @returns {Date} 주 시작 날짜
    */
   function getWeekStart(date) {
-    const koreanDate = new Date(date.getTime() + KOREA_TIME_OFFSET_MS)
-    const target = new Date(Date.UTC(koreanDate.getUTCFullYear(), koreanDate.getUTCMonth(), koreanDate.getUTCDate(), 0, 0, 0, 0))
+    const dateText = dateutil.formatDate(date, dateutil.FORMATS.DATE)
+    const target = new Date(dateText + 'T00:00:00.000Z')
     const day = target.getUTCDay()
     const diff = day === 0 ? -6 : 1 - day
 
     target.setUTCDate(target.getUTCDate() + diff)
 
     return target
-  }
-
-  /**
-   * 숫자를 두 자리 문자열로 맞춥니다.
-   *
-   * @param {number} value 숫자
-   * @returns {string} 두 자리 문자열
-   */
-  function padTwo(value) {
-    const text = String(value)
-
-    return text.length < 2 ? '0' + text : text
-  }
-
-  /**
-   * 날짜를 YYYY-MM-DD로 표시합니다.
-   *
-   * @param {Date} date 표시할 날짜
-   * @returns {string} 날짜 문자열
-   */
-  function formatDateLabel(date) {
-    const year = String(date.getUTCFullYear())
-    const month = padTwo(date.getUTCMonth() + 1)
-    const day = padTwo(date.getUTCDate())
-
-    return year + '-' + month + '-' + day
-  }
-
-  /**
-   * 날짜를 YYYY.MM.DD로 표시합니다.
-   *
-   * @param {Date} date 표시할 날짜
-   * @returns {string} 날짜 문자열
-   */
-  function formatDateDotLabel(date) {
-    const year = String(date.getUTCFullYear())
-    const month = padTwo(date.getUTCMonth() + 1)
-    const day = padTwo(date.getUTCDate())
-
-    return year + '.' + month + '.' + day
   }
 
   /**
@@ -111,7 +72,7 @@
    * @returns {string} 이동 링크
    */
   function buildWeekHref(weekStart) {
-    return '/reading-records?week=' + encodeURIComponent(formatDateLabel(weekStart))
+    return '/reading-records?week=' + encodeURIComponent(dateutil.formatDate(weekStart, dateutil.FORMATS.DATE))
   }
 
   /**
@@ -154,7 +115,7 @@
   }
 
   const currentWeekStart = getWeekStart(now)
-  const currentWeekKey = formatDateLabel(currentWeekStart)
+  const currentWeekKey = dateutil.formatDate(currentWeekStart, dateutil.FORMATS.DATE)
   const requestedDate = parseDateValue(requestedWeekValue)
   let selectedWeekStart = requestedDate ? getWeekStart(requestedDate) : new Date(currentWeekStart.getTime())
 
@@ -179,7 +140,7 @@
   const isCurrentPeriod = selectedWeekStart.getTime() === currentWeekStart.getTime()
   const previousWeekHref = buildWeekHref(previousWeekStart)
   const nextWeekHref = buildWeekHref(nextWeekStart)
-  const periodLabel = formatDateDotLabel(periodStart) + ' ~ ' + formatDateDotLabel(periodEnd)
+  const periodLabel = dateutil.formatDate(periodStart, 'YYYY.MM.DD') + ' ~ ' + dateutil.formatDate(periodEnd, 'YYYY.MM.DD')
   const weeklySecondsByKey = {}
   let totalSeconds = 0
   let currentWeekSeconds = 0
@@ -205,11 +166,13 @@
 
     weekEnd.setUTCDate(weekStart.getUTCDate() + 6)
 
-    const weekKey = formatDateLabel(weekStart)
+    const weekKey = dateutil.formatDate(weekStart, dateutil.FORMATS.DATE)
+    const weekStartLabel = dateutil.formatDate(weekStart, dateutil.FORMATS.DATE).slice(5)
+    const weekEndLabel = dateutil.formatDate(weekEnd, dateutil.FORMATS.DATE).slice(5)
     weeklySecondsByKey[weekKey] = 0
     weekItems.push({
       key: weekKey,
-      label: formatDateLabel(weekStart).slice(5) + ' ~ ' + formatDateLabel(weekEnd).slice(5),
+      label: weekStartLabel + ' ~ ' + weekEndLabel,
       minutes: 0,
       minutesLabel: '0분',
     })
@@ -225,7 +188,7 @@
       continue
     }
 
-    const weekKey = formatDateLabel(getWeekStart(endedAt))
+    const weekKey = dateutil.formatDate(getWeekStart(endedAt), dateutil.FORMATS.DATE)
 
     if (typeof weeklySecondsByKey[weekKey] === 'number') {
       weeklySecondsByKey[weekKey] += durationSeconds

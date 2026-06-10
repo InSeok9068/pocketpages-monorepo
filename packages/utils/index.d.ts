@@ -13,7 +13,6 @@ type DateutilFormat =
   | 'YYYYMMDDHHmmss'
 
 interface DateutilApi {
-  DEFAULT_TIMEZONE: 'Asia/Seoul'
   FORMATS: {
     DATE: 'YYYY-MM-DD'
     DATE_KR: 'YYYY년 MM월 DD일'
@@ -28,6 +27,7 @@ interface DateutilApi {
   }
   toDate(value: DateutilInput): Date
   formatDate(value: DateutilInput, pattern?: DateutilFormat | string): string
+  toDateOnlyIso(value: DateutilInput): string
   addDays(value: DateutilInput, amount: number): Date
   startOfDay(value: DateutilInput): Date
   endOfDay(value: DateutilInput): Date

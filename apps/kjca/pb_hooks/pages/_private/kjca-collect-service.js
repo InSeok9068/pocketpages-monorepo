@@ -7,6 +7,7 @@ const {
   toWeekdayKey,
   normalizeWeekday,
   buildDateMatchParams,
+  toDateFieldIso,
   normalizeNullableInt,
   normalizeRequiredInt,
   normalizeBool,
@@ -40,6 +41,29 @@ function shouldRetryAnalyzeError(errorText) {
 }
 
 /**
+ * 날짜 필드의 과거 문자열 저장값과 ISO 저장값을 함께 조회합니다.
+ * @param {string} fieldName 날짜 필드명입니다.
+ * @returns {string} PocketBase filter 조각입니다.
+ */
+function buildDateMatchFilter(fieldName) {
+  return `(${fieldName} = {:exact} || ${fieldName} ~ {:like} || (${fieldName} >= {:startIso} && ${fieldName} <= {:endIso}))`
+}
+
+/**
+ * 날짜 필드 조회 filter 조각을 문자열 값으로 만듭니다.
+ * @param {string} fieldName 날짜 필드명입니다.
+ * @param {{ exact: string, like: string, startIso: string, endIso: string }} dateParams 날짜 파라미터입니다.
+ * @returns {string} PocketBase filter 조각입니다.
+ */
+function buildDateMatchLiteralFilter(fieldName, dateParams) {
+  return (
+    `(${fieldName} = '${escapeFilterValue(dateParams.exact)}'` +
+    ` || ${fieldName} ~ '${escapeFilterValue(dateParams.like)}'` +
+    ` || (${fieldName} >= '${escapeFilterValue(dateParams.startIso)}' && ${fieldName} <= '${escapeFilterValue(dateParams.endIso)}'))`
+  )
+}
+
+/**
  * 부서의 주간 텍스트 계획 record를 찾습니다.
  * @param {unknown} weekStartDate 주 시작일입니다.
  * @param {unknown} dept 부서명입니다.
@@ -48,9 +72,11 @@ function shouldRetryAnalyzeError(errorText) {
 function findWeekTextPlan(weekStartDate, dept) {
   const weekDate = buildDateMatchParams(weekStartDate)
   try {
-    return $app.findFirstRecordByFilter('recruiting_week_text_plans', '(weekStartDate = {:exact} || weekStartDate ~ {:like}) && dept = {:dept}', {
+    return $app.findFirstRecordByFilter('recruiting_week_text_plans', buildDateMatchFilter('weekStartDate') + ' && dept = {:dept}', {
       exact: weekDate.exact,
       like: weekDate.like,
+      startIso: weekDate.startIso,
+      endIso: weekDate.endIso,
       dept,
     })
   } catch (_error) {
@@ -99,7 +125,7 @@ function upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRol
   const wasNew = !plan
   if (!plan) plan = new Record(planCollection)
 
-  plan.set('weekStartDate', safeWeekStartDate)
+  plan.set('weekStartDate', toDateFieldIso(safeWeekStartDate))
   plan.set('dept', dept)
   plan.set('status', 'confirmed')
 
@@ -115,7 +141,7 @@ function upsertWeekTextPlan(recruitingWeekTextPlanRole, recruitingWeekTextRowRol
     if (!wasNew || !isUniqueValueError(error)) throw error
     const existing = findWeekTextPlan(safeWeekStartDate, dept)
     if (!existing) throw error
-    existing.set('weekStartDate', safeWeekStartDate)
+    existing.set('weekStartDate', toDateFieldIso(safeWeekStartDate))
     existing.set('dept', dept)
     existing.set('status', 'confirmed')
     $app.save(existing)
@@ -220,7 +246,13 @@ function upsertWeekTextRowsForWeekday(recruitingWeekTextPlanRole, recruitingWeek
 function findWeekPlan(weekStartDate, dept) {
   const weekDate = buildDateMatchParams(weekStartDate)
   try {
-    return $app.findFirstRecordByFilter('recruiting_week_plans', '(weekStartDate = {:exact} || weekStartDate ~ {:like}) && dept = {:dept}', { exact: weekDate.exact, like: weekDate.like, dept })
+    return $app.findFirstRecordByFilter('recruiting_week_plans', buildDateMatchFilter('weekStartDate') + ' && dept = {:dept}', {
+      exact: weekDate.exact,
+      like: weekDate.like,
+      startIso: weekDate.startIso,
+      endIso: weekDate.endIso,
+      dept,
+    })
   } catch (_error) {
     return null
   }
@@ -248,9 +280,11 @@ function findWeekPlanItems(planId) {
 function findWeekResults(weekStartDate, dept) {
   const weekDate = buildDateMatchParams(weekStartDate)
   try {
-    return $app.findRecordsByFilter('recruiting_daily_results', '(weekStartDate = {:exact} || weekStartDate ~ {:like}) && dept = {:dept}', 'reportDate', 500, 0, {
+    return $app.findRecordsByFilter('recruiting_daily_results', buildDateMatchFilter('weekStartDate') + ' && dept = {:dept}', 'reportDate', 500, 0, {
       exact: weekDate.exact,
       like: weekDate.like,
+      startIso: weekDate.startIso,
+      endIso: weekDate.endIso,
       dept,
     })
   } catch (_error) {
@@ -322,7 +356,7 @@ function upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItem
   const wasNew = !plan
   if (!plan) plan = new Record(planCollection)
 
-  plan.set('weekStartDate', safeWeekStartDate)
+  plan.set('weekStartDate', toDateFieldIso(safeWeekStartDate))
   plan.set('dept', dept)
   plan.set('monthTarget', weekPlanInput.monthTarget)
   plan.set('weekTarget', weekPlanInput.weekTarget)
@@ -342,7 +376,7 @@ function upsertRecruitingWeekPlan(recruitingWeekPlanRole, recruitingWeekPlanItem
     const existing = findWeekPlan(safeWeekStartDate, dept)
     if (!existing) throw error
 
-    existing.set('weekStartDate', safeWeekStartDate)
+    existing.set('weekStartDate', toDateFieldIso(safeWeekStartDate))
     existing.set('dept', dept)
     existing.set('monthTarget', weekPlanInput.monthTarget)
     existing.set('weekTarget', weekPlanInput.weekTarget)
@@ -430,14 +464,20 @@ function upsertRecruitingDailyResult(recruitingDailyResultRole, dailyResultInput
 
   let record = null
   try {
-    record = $app.findFirstRecordByFilter('recruiting_daily_results', '(reportDate = {:exact} || reportDate ~ {:like}) && dept = {:dept}', { exact: reportDate.exact, like: reportDate.like, dept })
+    record = $app.findFirstRecordByFilter('recruiting_daily_results', buildDateMatchFilter('reportDate') + ' && dept = {:dept}', {
+      exact: reportDate.exact,
+      like: reportDate.like,
+      startIso: reportDate.startIso,
+      endIso: reportDate.endIso,
+      dept,
+    })
   } catch (_error) {
     record = null
   }
 
   const target = record || new Record(collection)
-  target.set('reportDate', safeReportDate)
-  target.set('weekStartDate', safeWeekStartDate)
+  target.set('reportDate', toDateFieldIso(safeReportDate))
+  target.set('weekStartDate', toDateFieldIso(safeWeekStartDate))
   target.set('dept', dept)
   target.set('weekday', safeWeekday)
   target.set('actualCount', safeActualCount)
@@ -455,14 +495,16 @@ function upsertRecruitingDailyResult(recruitingDailyResultRole, dailyResultInput
   } catch (error) {
     if (!!record || !isUniqueValueError(error)) throw error
 
-    const existing = $app.findFirstRecordByFilter('recruiting_daily_results', '(reportDate = {:exact} || reportDate ~ {:like}) && dept = {:dept}', {
+    const existing = $app.findFirstRecordByFilter('recruiting_daily_results', buildDateMatchFilter('reportDate') + ' && dept = {:dept}', {
       exact: reportDate.exact,
       like: reportDate.like,
+      startIso: reportDate.startIso,
+      endIso: reportDate.endIso,
       dept,
     })
 
-    existing.set('reportDate', safeReportDate)
-    existing.set('weekStartDate', safeWeekStartDate)
+    existing.set('reportDate', toDateFieldIso(safeReportDate))
+    existing.set('weekStartDate', toDateFieldIso(safeWeekStartDate))
     existing.set('dept', dept)
     existing.set('weekday', safeWeekday)
     existing.set('actualCount', safeActualCount)
@@ -487,7 +529,7 @@ function clearAnalysisCache(request, payload) {
   const dept = String((payload && payload.dept) || '').trim()
   if (!dept) throw new Error('부서(dept)가 필요합니다.')
 
-  const filter = `(reportDate = '${escapeFilterValue(reportDate)}' || reportDate ~ '${escapeFilterValue(`${reportDate}%`)}')` + ` && dept = '${escapeFilterValue(dept)}'`
+  const filter = buildDateMatchLiteralFilter('reportDate', buildDateMatchParams(reportDate)) + ` && dept = '${escapeFilterValue(dept)}'`
 
   let rows = []
   try {

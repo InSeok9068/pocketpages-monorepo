@@ -16,14 +16,6 @@
     { value: 'high', label: '높음' },
   ]
 
-  function inputDate(value) {
-    const raw = String(value || '').trim()
-
-    if (!raw) return ''
-
-    return dateutil.formatDate(raw, 'YYYY-MM-DD')
-  }
-
   function normalizeStatus(value) {
     const raw = String(value || 'idea').trim()
 
@@ -134,6 +126,11 @@
     return
   }
 
+  const projectStartedAt = String(project.get('started_at') || '').trim()
+  const projectLaunchedAt = String(project.get('launched_at') || '').trim()
+  const projectDiscardedAt = String(project.get('discarded_at') || '').trim()
+  const projectUpdatedAt = String(project.get('updated') || '').trim()
+
   const projectView = {
     id: String(project.get('id') || ''),
     nameKo: String(project.get('name_ko') || '').trim(),
@@ -151,10 +148,10 @@
     statusReason: String(project.get('status_reason') || '').trim(),
     tags: tagsText(project.get('tags')),
     sortOrder: String(project.get('sort_order') || 0),
-    startedAt: inputDate(project.get('started_at')),
-    launchedAt: inputDate(project.get('launched_at')),
-    discardedAt: inputDate(project.get('discarded_at')),
-    updatedAt: inputDate(project.get('updated')),
+    startedAt: projectStartedAt ? dateutil.formatDate(projectStartedAt, dateutil.FORMATS.DATE) : '',
+    launchedAt: projectLaunchedAt ? dateutil.formatDate(projectLaunchedAt, dateutil.FORMATS.DATE) : '',
+    discardedAt: projectDiscardedAt ? dateutil.formatDate(projectDiscardedAt, dateutil.FORMATS.DATE) : '',
+    updatedAt: projectUpdatedAt ? dateutil.formatDate(projectUpdatedAt, dateutil.FORMATS.DATE) : '',
   }
 
   meta('title', projectView.nameKo + ' | LaunchBoard')

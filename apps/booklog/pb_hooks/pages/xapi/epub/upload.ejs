@@ -2,6 +2,7 @@
   const fflate = require('fflate')
   const { XMLParser } = require('fast-xml-parser')
   const he = require('he')
+  const { dateutil } = require('@pocketpages/utils')
   const { compile: compileHtmlToText } = require(`${__hooks}/pages/_private/vendor/html-to-text.bundle.js`)
   const data4libraryService = resolve('data4library-service')
   const MAX_EPUB_BYTES = 1024 * 1024 * 100
@@ -2091,7 +2092,7 @@
     record.set('title', bookInput.title)
     record.set('author', bookInput.author)
     record.set('publisher', bookInput.publisher)
-    record.set('publication_date', bookInput.publicationDate)
+    record.set('publication_date', dateutil.toDateOnlyIso(bookInput.publicationDate))
     record.set('publication_year', bookInput.publicationYear)
     record.set('class_no', bookInput.classNo)
     record.set('isbn', bookInput.isbn)

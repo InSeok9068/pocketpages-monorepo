@@ -24,19 +24,6 @@ const priorityTones = {
 }
 
 /**
- * 프로젝트 날짜를 화면 표시용으로 바꾼다.
- * @param {unknown} value 날짜 값
- * @returns {string}
- */
-function formatProjectDate(value) {
-  const raw = String(value || '').trim()
-
-  if (!raw) return ''
-
-  return dateutil.formatDate(raw, dateutil.FORMATS.DATE)
-}
-
-/**
  * URL에서 origin을 추출한다.
  * @param {unknown} value URL 값
  * @returns {string}
@@ -98,6 +85,10 @@ function toProjectCard(record) {
   const slug = String(record.get('slug') || '').trim()
   const priority = normalizeProjectPriority(record.get('priority'))
   const domainUrl = String(record.get('domain_url') || '').trim()
+  const startedAt = String(record.get('started_at') || '').trim()
+  const launchedAt = String(record.get('launched_at') || '').trim()
+  const discardedAt = String(record.get('discarded_at') || '').trim()
+  const updatedAt = String(record.get('updated') || '').trim()
 
   return {
     id: String(record.get('id') || ''),
@@ -116,10 +107,10 @@ function toProjectCard(record) {
     priorityTone: priorityTones[priority] || priorityTones.normal,
     showPriority: priority !== 'normal',
     isPinned: record.get('is_pinned') === true,
-    startedAt: formatProjectDate(record.get('started_at')),
-    launchedAt: formatProjectDate(record.get('launched_at')),
-    discardedAt: formatProjectDate(record.get('discarded_at')),
-    updatedAt: formatProjectDate(record.get('updated')),
+    startedAt: startedAt ? dateutil.formatDate(startedAt, dateutil.FORMATS.DATE) : '',
+    launchedAt: launchedAt ? dateutil.formatDate(launchedAt, dateutil.FORMATS.DATE) : '',
+    discardedAt: discardedAt ? dateutil.formatDate(discardedAt, dateutil.FORMATS.DATE) : '',
+    updatedAt: updatedAt ? dateutil.formatDate(updatedAt, dateutil.FORMATS.DATE) : '',
   }
 }
 

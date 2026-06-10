@@ -14,6 +14,8 @@ const {
   isAllowedKjcaUrl,
   buildBrowserLikeHeaders,
   normalizeReportDate,
+  buildDateMatchParams,
+  toDateFieldIso,
   escapeFilterValue,
   hashText,
   extractDivInnerHtmlByClasses,
@@ -150,10 +152,11 @@ function buildPrompt(promptInput) {
  * @returns {string} PocketBase filter 문자열입니다.
  */
 function buildCacheIdentityFilter(cacheIdentityInput) {
-  const reportDateExact = String(cacheIdentityInput.reportDate || '').trim()
-  const reportDateLike = `${reportDateExact}%`
+  const reportDate = buildDateMatchParams(cacheIdentityInput.reportDate)
   return (
-    `(reportDate = '${escapeFilterValue(reportDateExact)}' || reportDate ~ '${escapeFilterValue(reportDateLike)}')` +
+    `(reportDate = '${escapeFilterValue(reportDate.exact)}'` +
+    ` || reportDate ~ '${escapeFilterValue(reportDate.like)}'` +
+    ` || (reportDate >= '${escapeFilterValue(reportDate.startIso)}' && reportDate <= '${escapeFilterValue(reportDate.endIso)}'))` +
     ` && dept = '${escapeFilterValue(cacheIdentityInput.dept)}'` +
     ` && printUrl = '${escapeFilterValue(cacheIdentityInput.printUrl)}'` +
     ` && sourceHash = '${escapeFilterValue(cacheIdentityInput.sourceHash)}'` +
@@ -192,7 +195,7 @@ function upsertSuccessCache(staffDiaryAnalysisCacheRole, cacheRecordInput) {
   }
 
   const targetRecord = record || new Record(collection)
-  targetRecord.set('reportDate', cacheRecordInput.reportDate)
+  targetRecord.set('reportDate', toDateFieldIso(cacheRecordInput.reportDate))
   targetRecord.set('dept', cacheRecordInput.dept)
   targetRecord.set('staffName', cacheRecordInput.staffName)
   targetRecord.set('printUrl', cacheRecordInput.printUrl)

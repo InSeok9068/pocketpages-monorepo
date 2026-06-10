@@ -1,4 +1,5 @@
 <script server>
+  const { dateutil } = require('@pocketpages/utils')
   const taskBoard = resolve('task-board')
 
   function patchToast(message, tone) {
@@ -75,14 +76,6 @@
       .filter((tag) => !!tag)
   }
 
-  function dateOrEmpty(value) {
-    const raw = String(value || '').trim()
-
-    if (!raw) return ''
-
-    return new Date(raw + 'T00:00:00.000Z').toISOString()
-  }
-
   dbg('xapi/tasks/update:start', {
     userId,
     taskId,
@@ -120,10 +113,10 @@
     task.set('priority', priority)
     task.set('type', type)
     task.set('tags', parseTags(form.tags))
-    task.set('due_at', dateOrEmpty(form.due_at))
-    task.set('started_at', dateOrEmpty(form.started_at))
-    task.set('completed_at', dateOrEmpty(form.completed_at))
-    task.set('canceled_at', dateOrEmpty(form.canceled_at))
+    task.set('due_at', dateutil.toDateOnlyIso(form.due_at))
+    task.set('started_at', dateutil.toDateOnlyIso(form.started_at))
+    task.set('completed_at', dateutil.toDateOnlyIso(form.completed_at))
+    task.set('canceled_at', dateutil.toDateOnlyIso(form.canceled_at))
     task.set('status_reason', optionalText(form.status_reason))
     task.set('sort_order', sortOrder)
     task.set('is_pinned', String(form.is_pinned || '') === 'true')

@@ -1,5 +1,6 @@
 const COLLECTION_NAME = 'homeping_notified_notices'
 const BROADCAST_REGION = 'all'
+const { dateutil } = require('@pocketpages/utils')
 
 /**
  * 문자열을 PocketBase 필드 길이에 맞게 자릅니다.
@@ -72,8 +73,8 @@ function createNotifiedNotice(input) {
   record.set('region', truncateText(source.region || BROADCAST_REGION, 40))
   record.set('title', truncateText(notice && notice.name ? notice.name : noticeKey, 300))
   record.set('notice_url', truncateText(notice && notice.detailUrl ? notice.detailUrl : '', 2000))
-  record.set('recruit_date', String(notice && notice.recruitDate ? notice.recruitDate : '').trim())
-  record.set('apply_end_date', String(notice && notice.applyEndDate ? notice.applyEndDate : '').trim())
+  record.set('recruit_date', dateutil.toDateOnlyIso(notice && notice.recruitDate))
+  record.set('apply_end_date', dateutil.toDateOnlyIso(notice && notice.applyEndDate))
   record.set('notified_at', String(source.notifiedAt || new Date().toISOString()).trim())
   record.set('onesignal_notification_id', truncateText(source.providerMessageId, 100))
 

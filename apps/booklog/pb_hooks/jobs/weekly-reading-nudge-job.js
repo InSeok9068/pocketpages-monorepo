@@ -1,9 +1,9 @@
 const oneSignalService = require('./onesignal-service')
 const pushSendLogService = require('./push-send-log-service')
+const { dateutil } = require('@pocketpages/utils')
 
 const NOTIFICATION_KEY = 'weekly_reading_nudge'
 const PUSH_CHANNEL = 'push'
-const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000
 
 /**
  * 한국시간 기준 이번 주 조회 범위를 만듭니다.
@@ -13,16 +13,17 @@ const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000
  */
 function getCurrentKoreanWeekWindow(nowDate) {
   const sourceDate = nowDate instanceof Date ? nowDate : new Date()
-  const koreanDate = new Date(sourceDate.getTime() + KOREA_TIME_OFFSET_MS)
-  const koreanDay = koreanDate.getUTCDay()
-  const daysSinceMonday = (koreanDay + 6) % 7
-  const koreanWeekStartDate = new Date(Date.UTC(koreanDate.getUTCFullYear(), koreanDate.getUTCMonth(), koreanDate.getUTCDate(), 0, 0, 0, 0))
+  const currentDateText = dateutil.formatDate(sourceDate, dateutil.FORMATS.DATE)
+  const currentUtcDate = new Date(currentDateText + 'T00:00:00.000Z')
+  const daysSinceMonday = (currentUtcDate.getUTCDay() + 6) % 7
+  const weekStartDate = new Date(currentUtcDate)
 
-  koreanWeekStartDate.setUTCDate(koreanWeekStartDate.getUTCDate() - daysSinceMonday)
+  weekStartDate.setUTCDate(currentUtcDate.getUTCDate() - daysSinceMonday)
+  const weekKey = dateutil.formatDate(weekStartDate, dateutil.FORMATS.DATE)
 
   return {
-    weekKey: koreanWeekStartDate.toISOString().slice(0, 10),
-    weekStartIso: new Date(koreanWeekStartDate.getTime() - KOREA_TIME_OFFSET_MS).toISOString(),
+    weekKey: weekKey,
+    weekStartIso: dateutil.startOfDay(weekKey).toISOString(),
     weekEndIso: sourceDate.toISOString(),
   }
 }

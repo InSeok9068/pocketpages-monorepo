@@ -1,5 +1,6 @@
 ﻿const { compile: compileHtmlToText } = require(`${__hooks}/pages/_private/vendor/html-to-text.bundle.js`)
 const LinkifyIt = require('linkify-it')
+const { dateutil } = require('@pocketpages/utils')
 
 const KJCA_EMAIL_DOMAIN = 'kjca.local'
 const KJCA_HOST = 'http://www.kjca.co.kr'
@@ -1724,17 +1725,6 @@ function buildBrowserLikeHeaders(host, cookieHeader, referer) {
 }
 
 /**
- * 오늘 날짜를 YYYY-MM-DD 문자열로 만듭니다.
- */
-function buildTodayDateText() {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = padLeftText(now.getMonth() + 1, 2, '0')
-  const day = padLeftText(now.getDate(), 2, '0')
-  return `${year}-${month}-${day}`
-}
-
-/**
  * UTC Date를 YYYY-MM-DD 문자열로 바꿉니다.
  */
 function formatUtcDateText(date) {
@@ -1861,9 +1851,8 @@ function buildWeeklyReportSearchRangeFromReferenceWeek(referenceWeek, fallbackDa
  * @returns {string} 정규화된 날짜 문자열입니다.
  */
 function normalizeReportDate(value) {
-  const text = String(value || '').trim()
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
-  return buildTodayDateText()
+  const normalized = formatDateText(value)
+  return normalized || dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
 }
 
 /**
@@ -2016,8 +2005,8 @@ function normalizeJsonArrayField(value) {
  * YYYY-MM-DD 문자열을 Date로 바꿉니다.
  */
 function parseDateText(value) {
-  const text = String(value || '').trim()
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return new Date()
+  const text = formatDateText(value)
+  if (!text) return new Date()
   const [year, month, day] = text.split('-').map((unit) => Number(unit))
   return new Date(year, month - 1, day)
 }
@@ -2025,11 +2014,31 @@ function parseDateText(value) {
 /**
  * Date를 YYYY-MM-DD 문자열로 바꿉니다.
  */
-function formatDateText(date) {
-  const year = date.getFullYear()
-  const month = padLeftText(date.getMonth() + 1, 2, '0')
-  const day = padLeftText(date.getDate(), 2, '0')
-  return `${year}-${month}-${day}`
+function formatDateText(value) {
+  const raw = String(value || '').trim()
+
+  if (!raw) return ''
+
+  let date = null
+
+  try {
+    date = dateutil.toDate(value)
+  } catch (_exception) {
+    return ''
+  }
+
+  if (!date || Number.isNaN(date.getTime())) return ''
+
+  return dateutil.formatDate(date, dateutil.FORMATS.DATE)
+}
+
+/**
+ * 날짜-only 값을 PB date 저장용 ISO로 바꿉니다.
+ * @param {unknown} value 날짜 값입니다.
+ * @returns {string} 저장용 ISO 문자열입니다.
+ */
+function toDateFieldIso(value) {
+  return dateutil.toDateOnlyIso(normalizeReportDate(value))
 }
 
 /**
@@ -2080,13 +2089,15 @@ function normalizeWeekday(value) {
 /**
  * 날짜 exact/like filter 파라미터를 만듭니다.
  * @param {unknown} dateText 기준 날짜 값입니다.
- * @returns {{ exact: string, like: string }} exact와 like용 날짜 문자열입니다.
+ * @returns {{ exact: string, like: string, startIso: string, endIso: string }} 날짜 조회 파라미터입니다.
  */
 function buildDateMatchParams(dateText) {
   const normalized = formatDateText(parseDateText(dateText))
   return {
     exact: normalized,
     like: `${normalized}%`,
+    startIso: dateutil.startOfDay(normalized).toISOString(),
+    endIso: dateutil.endOfDay(normalized).toISOString(),
   }
 }
 
@@ -3052,6 +3063,7 @@ module.exports = {
   normalizeJsonArrayField,
   parseDateText,
   formatDateText,
+  toDateFieldIso,
   buildWeekStartDate,
   toWeekdayKey,
   normalizeWeekday,

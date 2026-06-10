@@ -78,6 +78,44 @@ function formatDate(value, pattern) {
 }
 
 /**
+ * 날짜-only 값을 UTC 자정 ISO 문자열로 바꿉니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} value
+ * @returns {string}
+ */
+function toDateOnlyIso(value) {
+  if (typeof value === 'string' && !value.trim()) {
+    return '';
+  }
+
+  let normalized = null;
+
+  try {
+    normalized = toBusinessDayjs(value);
+  } catch (_exception) {
+    return '';
+  }
+
+  if (!normalized || !normalized.isValid()) {
+    return '';
+  }
+
+  const dateText = normalized.format(FORMATS.DATE);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+    return '';
+  }
+
+  const date = new Date(dateText + 'T00:00:00.000Z');
+
+  if (isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toISOString();
+}
+
+/**
  * 날짜에 일 수를 더한 뒤 KST 기준 Date를 반환합니다.
  *
  * @param {Date|string|number|import('dayjs').Dayjs} value
@@ -120,10 +158,10 @@ function isSameDay(left, right) {
 }
 
 module.exports = {
-  DEFAULT_TIMEZONE,
   FORMATS,
   toDate,
   formatDate,
+  toDateOnlyIso,
   addDays,
   startOfDay,
   endOfDay,

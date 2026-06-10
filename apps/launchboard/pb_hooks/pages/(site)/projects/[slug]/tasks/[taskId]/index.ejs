@@ -27,14 +27,6 @@
     { value: 'etc', label: '기타' },
   ]
 
-  function inputDate(value) {
-    const raw = String(value || '').trim()
-
-    if (!raw) return ''
-
-    return dateutil.formatDate(raw, 'YYYY-MM-DD')
-  }
-
   function normalizeTags(value) {
     if (!value) return []
 
@@ -133,6 +125,12 @@
     slug: String(project.get('slug') || '').trim(),
     tasksHref: '/projects/' + encodeURIComponent(String(project.get('slug') || '').trim()) + '/tasks',
   }
+  const taskDueAt = String(task.get('due_at') || '').trim()
+  const taskStartedAt = String(task.get('started_at') || '').trim()
+  const taskCompletedAt = String(task.get('completed_at') || '').trim()
+  const taskCanceledAt = String(task.get('canceled_at') || '').trim()
+  const taskUpdatedAt = String(task.get('updated') || '').trim()
+
   const taskView = {
     id: String(task.get('id') || ''),
     title: String(task.get('title') || '').trim(),
@@ -141,14 +139,14 @@
     priority: taskBoard.normalizeTaskPriority(task.get('priority')),
     type: taskBoard.normalizeTaskType(task.get('type')),
     tags: tagsText(task.get('tags')),
-    dueAt: inputDate(task.get('due_at')),
-    startedAt: inputDate(task.get('started_at')),
-    completedAt: inputDate(task.get('completed_at')),
-    canceledAt: inputDate(task.get('canceled_at')),
+    dueAt: taskDueAt ? dateutil.formatDate(taskDueAt, dateutil.FORMATS.DATE) : '',
+    startedAt: taskStartedAt ? dateutil.formatDate(taskStartedAt, dateutil.FORMATS.DATE) : '',
+    completedAt: taskCompletedAt ? dateutil.formatDate(taskCompletedAt, dateutil.FORMATS.DATE) : '',
+    canceledAt: taskCanceledAt ? dateutil.formatDate(taskCanceledAt, dateutil.FORMATS.DATE) : '',
     statusReason: String(task.get('status_reason') || '').trim(),
     sortOrder: String(task.get('sort_order') || 0),
     isPinned: task.get('is_pinned') === true,
-    updatedAt: inputDate(task.get('updated')),
+    updatedAt: taskUpdatedAt ? dateutil.formatDate(taskUpdatedAt, dateutil.FORMATS.DATE) : '',
   }
 
   meta('title', taskView.title + ' | ' + projectView.nameKo + ' 업무')

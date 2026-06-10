@@ -1,4 +1,5 @@
 const { globalApi } = require('pocketpages')
+const { dateutil } = require('@pocketpages/utils')
 const dbg = globalApi.dbg
 const info = globalApi.info
 const store = globalApi.store
@@ -249,25 +250,6 @@ function buildLhNoticeDetailUrl(config, query, options) {
 }
 
 /**
- * Date 값을 YYYY-MM-DD 비교 문자열로 포맷합니다.
- * @param {Date} date 날짜
- * @returns {string} YYYY-MM-DD 문자열
- */
-function formatDateIso(date) {
-  const rawValue = formatDateParam(date)
-
-  return rawValue.slice(0, 4) + '-' + rawValue.slice(4, 6) + '-' + rawValue.slice(6, 8)
-}
-
-/**
- * 오늘 날짜 기준 캐시 날짜 키를 반환합니다.
- * @returns {string} YYYY-MM-DD 캐시 날짜
- */
-function getTodayCacheDateKey() {
-  return formatDateIso(new Date())
-}
-
-/**
  * API 응답 캐시 키를 만듭니다.
  * @param {string} dateKey 캐시 날짜
  * @param {string} sourceCode API 구분
@@ -381,7 +363,8 @@ function requestApplyhomeJson(config, path, query) {
     throw new Error('DATAGOKR_APIKEY 환경변수가 필요합니다.')
   }
 
-  const cacheDateKey = String(config && config.cacheDateKey ? config.cacheDateKey : getTodayCacheDateKey())
+  const fallbackCacheDateKey = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
+  const cacheDateKey = String(config && config.cacheDateKey ? config.cacheDateKey : fallbackCacheDateKey)
   const cacheBaseUrl = String(config && config.baseUrl ? config.baseUrl : APPLYHOME_BASE_URL).replace(/\/+$/, '')
   const cacheKey = buildDailyApiCacheKey(cacheDateKey, 'applyhome', cacheBaseUrl + path + '?' + toCacheQueryString(buildApplyhomeRequestQuery(query)))
   const cachedPayload = readDailyApiCache(cacheDateKey, cacheKey)
@@ -452,7 +435,8 @@ function requestLhNoticeJson(config, query) {
     throw new Error('DATAGOKR_APIKEY 환경변수가 필요합니다.')
   }
 
-  const cacheDateKey = String(config && config.cacheDateKey ? config.cacheDateKey : getTodayCacheDateKey())
+  const fallbackCacheDateKey = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
+  const cacheDateKey = String(config && config.cacheDateKey ? config.cacheDateKey : fallbackCacheDateKey)
   const cacheRequestUrl = String(config && config.lhNoticeUrl ? config.lhNoticeUrl : LH_NOTICE_URL).trim()
   const cacheKey = buildDailyApiCacheKey(cacheDateKey, 'lh-notice', cacheRequestUrl + '?' + toCacheQueryString(query || {}))
   const cachedPayload = readDailyApiCache(cacheDateKey, cacheKey)
@@ -524,7 +508,8 @@ function requestLhNoticeDetailJson(config, query) {
     throw new Error('DATAGOKR_APIKEY 환경변수가 필요합니다.')
   }
 
-  const cacheDateKey = String(config && config.cacheDateKey ? config.cacheDateKey : getTodayCacheDateKey())
+  const fallbackCacheDateKey = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
+  const cacheDateKey = String(config && config.cacheDateKey ? config.cacheDateKey : fallbackCacheDateKey)
   const cacheRequestUrl = String(config && config.lhNoticeDetailUrl ? config.lhNoticeDetailUrl : LH_NOTICE_DETAIL_URL).trim()
   const cacheKey = buildDailyApiCacheKey(cacheDateKey, 'lh-notice-detail', cacheRequestUrl + '?' + toCacheQueryString(query || {}))
   const cachedPayload = readDailyApiCache(cacheDateKey, cacheKey)
@@ -600,21 +585,6 @@ function normalizeDate(value) {
   }
 
   return ''
-}
-
-/**
- * Date 값을 YYYYMMDD API 파라미터로 포맷합니다.
- * @param {Date} date 날짜
- * @returns {string} YYYYMMDD 문자열
- */
-function formatDateParam(date) {
-  const year = date.getFullYear()
-  const rawMonth = String(date.getMonth() + 1)
-  const rawDay = String(date.getDate())
-  const month = rawMonth.length === 1 ? '0' + rawMonth : rawMonth
-  const day = rawDay.length === 1 ? '0' + rawDay : rawDay
-
-  return String(year) + month + day
 }
 
 /**
@@ -854,10 +824,9 @@ function normalizeLhNoticeDetail(payload) {
  * @returns {{ code: string, label: string }} 상태 값
  */
 function resolveStatus(startDate, endDate) {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const startTime = startDate ? new Date(startDate + 'T00:00:00').getTime() : 0
-  const endTime = endDate ? new Date(endDate + 'T23:59:59').getTime() : 0
+  const today = dateutil.startOfDay(new Date()).getTime()
+  const startTime = startDate ? dateutil.startOfDay(startDate).getTime() : 0
+  const endTime = endDate ? dateutil.endOfDay(endDate).getTime() : 0
 
   if (startTime && today < startTime) {
     return { code: 'upcoming', label: '접수 전' }
@@ -882,9 +851,8 @@ function resolveStatus(startDate, endDate) {
  */
 function resolveLhStatus(row, closeDate) {
   const statusLabel = String(row && row.PAN_SS ? row.PAN_SS : '').trim()
-  const today = new Date()
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
-  const closeTime = closeDate ? new Date(closeDate + 'T23:59:59').getTime() : 0
+  const todayStart = dateutil.startOfDay(new Date()).getTime()
+  const closeTime = closeDate ? dateutil.endOfDay(closeDate).getTime() : 0
 
   if (statusLabel.indexOf('마감') !== -1 || (closeTime && todayStart > closeTime)) {
     return { code: 'closed', label: statusLabel || '마감' }
@@ -1200,12 +1168,12 @@ function searchLhNotices(config, endpoint, region, includeClosed) {
     UPP_AIS_TP_CD: endpoint.upperTypeCode,
     CNP_CD: endpoint.provinceCode,
     PAN_NM: region.searchText,
-    PAN_ST_DT: formatDateParam(sinceDate),
-    PAN_ED_DT: formatDateParam(today),
+    PAN_ST_DT: dateutil.formatDate(sinceDate, dateutil.FORMATS.COMPACT_DATE),
+    PAN_ED_DT: dateutil.formatDate(today, dateutil.FORMATS.COMPACT_DATE),
   }
 
   if (!includeClosed) {
-    query.CLSG_ST_DT = formatDateParam(today)
+    query.CLSG_ST_DT = dateutil.formatDate(today, dateutil.FORMATS.COMPACT_DATE)
   }
 
   const payload = requestLhNoticeJson(config, query)
@@ -1234,7 +1202,7 @@ function searchLhNotices(config, endpoint, region, includeClosed) {
       continue
     }
 
-    if (!isRecentNotice(notice, formatDateIso(sinceDate))) {
+    if (!isRecentNotice(notice, dateutil.formatDate(sinceDate, dateutil.FORMATS.DATE))) {
       continue
     }
 
@@ -1259,7 +1227,7 @@ function searchLhNotices(config, endpoint, region, includeClosed) {
  * @returns {types.HomepingLhNoticeDetail} 상세 정보
  */
 function getLhNoticeDetail(config, input) {
-  const cacheDateKey = getTodayCacheDateKey()
+  const cacheDateKey = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
   const requestConfig = {
     apiKey: String(config && config.apiKey ? config.apiKey : ''),
     lhNoticeDetailUrl: config && config.lhNoticeDetailUrl,
@@ -1395,7 +1363,7 @@ function searchSingleRegionNotices(requestConfig, region, includeClosed, perPage
 function searchRegionNotices(config, input) {
   const region = getRegion(input && input.regionSlug)
   const includeClosed = !!(input && input.includeClosed)
-  const cacheDateKey = getTodayCacheDateKey()
+  const cacheDateKey = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
   const requestConfig = {
     apiKey: String(config && config.apiKey ? config.apiKey : ''),
     baseUrl: config && config.baseUrl,
@@ -1405,7 +1373,7 @@ function searchRegionNotices(config, input) {
     cacheDateKey: cacheDateKey,
   }
   const perPage = Number(config && config.perPage ? config.perPage : DEFAULT_PER_PAGE)
-  const sinceDate = formatDateIso(monthsAgo(NOTICE_LOOKBACK_MONTHS))
+  const sinceDate = dateutil.formatDate(monthsAgo(NOTICE_LOOKBACK_MONTHS), dateutil.FORMATS.DATE)
   const searchRegions = getSearchRegions(region)
   const summaryMap = region.slug === ALL_REGION.slug ? createSummaryMap() : null
   const notices = []

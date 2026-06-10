@@ -35,19 +35,6 @@ const typeLabels = {
 }
 
 /**
- * 업무 날짜를 화면 표시용으로 바꾼다.
- * @param {unknown} value 날짜 값
- * @returns {string}
- */
-function formatTaskDate(value) {
-  const raw = String(value || '').trim()
-
-  if (!raw) return ''
-
-  return dateutil.formatDate(raw, dateutil.FORMATS.DATE)
-}
-
-/**
  * 업무 상태를 허용된 값으로 보정한다.
  * @param {unknown} value 상태 값
  * @returns {string}
@@ -89,6 +76,8 @@ function toTaskCard(record) {
   const status = normalizeTaskStatus(record.get('status'))
   const priority = normalizeTaskPriority(record.get('priority'))
   const type = normalizeTaskType(record.get('type'))
+  const dueAt = String(record.get('due_at') || '').trim()
+  const updatedAt = String(record.get('updated') || '').trim()
 
   return {
     id: String(record.get('id') || ''),
@@ -102,8 +91,8 @@ function toTaskCard(record) {
     type,
     typeLabel: typeLabels[type] || type,
     isPinned: record.get('is_pinned') === true,
-    dueAt: formatTaskDate(record.get('due_at')),
-    updatedAt: formatTaskDate(record.get('updated')),
+    dueAt: dueAt ? dateutil.formatDate(dueAt, dateutil.FORMATS.DATE) : '',
+    updatedAt: updatedAt ? dateutil.formatDate(updatedAt, dateutil.FORMATS.DATE) : '',
   }
 }
 

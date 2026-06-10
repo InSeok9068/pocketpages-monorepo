@@ -1,6 +1,6 @@
 const RETENTION_DAYS = 30
 const BATCH_LIMIT = 1000
-const KST_OFFSET_MINUTES = 9 * 60
+const { dateutil } = require('@pocketpages/utils')
 
 /**
  * UTC 시각 문자열을 한국 날짜 기준 YYYY-MM-DD로 바꿉니다.
@@ -9,13 +9,19 @@ const KST_OFFSET_MINUTES = 9 * 60
  * @returns {string} 한국 날짜 문자열
  */
 function getKoreanDateKey(value) {
-  const date = new Date(String(value || '').trim())
+  const raw = String(value || '').trim()
+
+  if (!raw) {
+    return ''
+  }
+
+  const date = dateutil.toDate(raw)
 
   if (isNaN(date.getTime())) {
     return ''
   }
 
-  return new Date(date.getTime() + KST_OFFSET_MINUTES * 60 * 1000).toISOString().slice(0, 10)
+  return dateutil.formatDate(date, dateutil.FORMATS.DATE)
 }
 
 /**
@@ -25,13 +31,9 @@ function getKoreanDateKey(value) {
  * @returns {string} cutoff ISO 문자열
  */
 function getCutoffIso(retentionDays) {
-  const now = new Date()
-  const kstNow = new Date(now.getTime() + KST_OFFSET_MINUTES * 60 * 1000)
+  const cutoffDate = dateutil.addDays(new Date(), -Number(retentionDays || 0))
 
-  kstNow.setUTCHours(0, 0, 0, 0)
-  kstNow.setUTCDate(kstNow.getUTCDate() - retentionDays)
-
-  return new Date(kstNow.getTime() - KST_OFFSET_MINUTES * 60 * 1000).toISOString()
+  return dateutil.startOfDay(cutoffDate).toISOString()
 }
 
 /**

@@ -1,4 +1,6 @@
 <script server>
+  const { dateutil } = require('@pocketpages/utils')
+
   function patchToast(message, tone) {
     datastar.patchSignals({
       detailToastMessage: message,
@@ -75,14 +77,6 @@
       .filter((tag) => !!tag)
   }
 
-  function dateOrEmpty(value) {
-    const raw = String(value || '').trim()
-
-    if (!raw) return ''
-
-    return new Date(raw + 'T00:00:00.000Z').toISOString()
-  }
-
   dbg('xapi/projects/update:start', {
     userId,
     projectId,
@@ -119,9 +113,9 @@
     project.set('tags', parseTags(form.tags))
     project.set('sort_order', sortOrder)
     project.set('is_pinned', String(form.is_pinned || '') === 'true')
-    project.set('started_at', dateOrEmpty(form.started_at))
-    project.set('launched_at', dateOrEmpty(form.launched_at))
-    project.set('discarded_at', dateOrEmpty(form.discarded_at))
+    project.set('started_at', dateutil.toDateOnlyIso(form.started_at))
+    project.set('launched_at', dateutil.toDateOnlyIso(form.launched_at))
+    project.set('discarded_at', dateutil.toDateOnlyIso(form.discarded_at))
 
     if (status === 'building' && !project.get('started_at')) project.set('started_at', new Date().toISOString())
     if (status === 'launched' && !project.get('launched_at')) project.set('launched_at', new Date().toISOString())

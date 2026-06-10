@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "@pocketpages/ai": "file:../../packages/ai",
+    "@pocketpages/utils": "file:../../packages/utils",
     "linkify-it": "^5.0.0",
     "pocketpages": "^0.22.3",
     "pocketpages-plugin-auth": "^0.2.2",

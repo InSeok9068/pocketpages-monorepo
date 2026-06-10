@@ -1,24 +1,10 @@
 const oneSignalService = require('./onesignal-service')
 const pushSendLogService = require('./push-send-log-service')
+const { dateutil } = require('@pocketpages/utils')
 
 const NOTIFICATION_KEY = 'reading_reminder'
 const PUSH_CHANNEL = 'push'
 const MAX_REMINDER_CYCLE_DAYS = 90
-
-/**
- * 오늘 기준으로 지난 날짜 문자열을 만듭니다.
- *
- * @param {number} daysBeforeToday 오늘에서 뺄 일수
- * @returns {string} YYYY-MM-DD 날짜 문자열
- */
-function getDateTextDaysAgo(daysBeforeToday) {
-  const targetDate = new Date()
-
-  targetDate.setUTCHours(0, 0, 0, 0)
-  targetDate.setUTCDate(targetDate.getUTCDate() - daysBeforeToday)
-
-  return targetDate.toISOString().slice(0, 10)
-}
 
 /**
  * 읽기 리마인더 대상 사용자 설정 목록을 조회합니다.
@@ -54,12 +40,13 @@ function getInactivityDays(settingsRecord) {
  * @returns {any | null} 대상 책장 record
  */
 function findReminderShelfRecord(userId, inactivityDays) {
-  const cutoffDateText = getDateTextDaysAgo(inactivityDays)
+  const cutoffDateText = pushSendLogService.getDateTextDaysAgo(inactivityDays)
+  const cutoffIso = dateutil.endOfDay(cutoffDateText).toISOString()
 
   try {
     const shelfRecords = $app.findRecordsByFilter('book_shelves', 'user_id = {:userId} && status = "reading" && last_read_at != "" && last_read_at <= {:cutoffDate}', '-last_read_at,-updated', 10, 0, {
       userId: userId,
-      cutoffDate: cutoffDateText,
+      cutoffDate: cutoffIso,
     })
 
     if (!shelfRecords || shelfRecords.length === 0) {
@@ -128,7 +115,7 @@ function findShelfBookTitle(shelfRecord) {
  * @returns {number | null} 지난 일수
  */
 function getDaysSinceLastRead(lastReadAt) {
-  return pushSendLogService.getDaysBetween(lastReadAt, getDateTextDaysAgo(0))
+  return pushSendLogService.getDaysBetween(lastReadAt, pushSendLogService.getDateTextDaysAgo(0))
 }
 
 /**
