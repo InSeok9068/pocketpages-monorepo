@@ -81,10 +81,6 @@ declare namespace types {
     timeout?: number
   }
 
-  type HomepingOneSignalError = Error & {
-    code?: string
-  }
-
   type HomepingNotifiedNoticeInput = {
     notice: HomepingNotice | null
     region?: string

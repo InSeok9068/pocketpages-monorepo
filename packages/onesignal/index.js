@@ -91,25 +91,22 @@ function isNoSubscribedRecipientsMessage(value) {
  */
 function buildResult(args) {
   const statusCode = Number(args.statusCode || 0)
-  const responseJson = parseJsonObject(args.responseBody)
+  const parsedResponseJson = args.responseJson && typeof args.responseJson === 'object' && !Array.isArray(args.responseJson) ? args.responseJson : null
+  const responseJson = parsedResponseJson || parseJsonObject(args.responseBody)
   const errors = getResponseErrors(responseJson)
   const notificationId = cleanText(responseJson.id)
-  const httpOk = statusCode >= 200 && statusCode < 300 && !args.transportError
+  const httpOk = statusCode >= 200 && statusCode < 300
   const noSubscribedRecipients = httpOk && !notificationId
   const ok = httpOk && !!notificationId && errors.length === 0
   const firstError = errors.length > 0 ? cleanText(errors[0]) : ''
-  const errorMessage = cleanText(args.transportError || firstError || responseJson.error || responseJson.message || '')
+  const errorMessage = cleanText(args.errorMessage || firstError || responseJson.error || responseJson.message || '')
 
   return {
     ok,
     statusCode,
     notificationId,
-    responseBody: args.responseBody || '',
     responseJson,
     errors,
-    headers: args.headers || {},
-    elapsedMs: Number(args.elapsedMs || 0),
-    transportError: args.transportError || '',
     errorMessage,
     noSubscribedRecipients: noSubscribedRecipients || errors.some(isNoSubscribedRecipientsMessage),
   }
@@ -155,7 +152,6 @@ function createNotification(input, runtime) {
   const payload = buildNotificationPayload(request, runtime)
   const timeout = normalizePositiveNumber(request.timeoutSeconds, runtime.timeoutSeconds)
   const apiKey = requireText(runtime.apiKey, 'OneSignal apiKey')
-  const startedAt = Date.now()
 
   $app.logger().debug('pocketpages/onesignal:request', 'targetChannel', cleanText(payload.target_channel), 'timeoutSeconds', timeout)
 
@@ -170,14 +166,22 @@ function createNotification(input, runtime) {
       body: JSON.stringify(payload),
       timeout,
     })
-    const elapsedMs = Date.now() - startedAt
-    const responseBody = response.body == null ? '' : String(toString(response.body) || '')
+    const responseJson = response.json && typeof response.json === 'object' && !Array.isArray(response.json) ? response.json : null
+    let responseBody = ''
+
+    if (response.body == null) {
+      responseBody = responseJson ? JSON.stringify(responseJson) : ''
+    } else if (typeof response.body === 'string') {
+      responseBody = response.body
+    } else {
+      responseBody = String(toString(response.body) || '')
+    }
+
     const result = buildResult({
       statusCode: response.statusCode,
       responseBody,
-      headers: response.headers || {},
-      elapsedMs,
-      transportError: '',
+      responseJson,
+      errorMessage: '',
     })
 
     $app.logger().debug('pocketpages/onesignal:response', 'statusCode', result.statusCode, 'ok', result.ok, 'notificationId', result.notificationId)
@@ -186,12 +190,10 @@ function createNotification(input, runtime) {
     const result = buildResult({
       statusCode: 0,
       responseBody: '',
-      headers: {},
-      elapsedMs: Date.now() - startedAt,
-      transportError: cleanText(error),
+      errorMessage: cleanText(error),
     })
 
-    $app.logger().debug('pocketpages/onesignal:response', 'statusCode', result.statusCode, 'ok', result.ok, 'transportError', result.transportError)
+    $app.logger().debug('pocketpages/onesignal:response', 'statusCode', result.statusCode, 'ok', result.ok, 'error', result.errorMessage)
     return result
   }
 }

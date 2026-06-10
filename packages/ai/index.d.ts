@@ -210,13 +210,8 @@ declare namespace pocketpagesAi {
     ok: boolean
     provider: AiProvider
     statusCode: number
-    responseBody: string
     responseJson: Record<string, any>
     text: string
-    headers: Record<string, any>
-    attempts: number
-    elapsedMs: number
-    transportError: string
     errorMessage: string
     rateLimitCause: AiRateLimitCause
   }

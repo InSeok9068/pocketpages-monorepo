@@ -541,13 +541,8 @@ function buildResult(args) {
     ok,
     provider: args.provider,
     statusCode,
-    responseBody: args.responseBody || '',
     responseJson,
     text: args.extractText(responseJson),
-    headers: args.headers || {},
-    attempts: Number(args.attempts || 0),
-    elapsedMs: Number(args.elapsedMs || 0),
-    transportError: args.transportError || '',
     errorMessage,
     rateLimitCause,
   }
@@ -562,9 +557,7 @@ function buildResult(args) {
 function sendWithRetry(request, runtime) {
   let lastStatusCode = 0
   let lastResponseBody = ''
-  let lastHeaders = {}
   let lastTransportError = ''
-  let lastElapsedMs = 0
   let attempts = 0
 
   while (attempts < request.maxAttempts) {
@@ -582,9 +575,7 @@ function sendWithRetry(request, runtime) {
 
       lastStatusCode = statusCode
       lastResponseBody = responseBody
-      lastHeaders = headers
       lastTransportError = ''
-      lastElapsedMs = elapsedMs
       logAiResponseDebug(request, runtime, {
         attempt: attempts,
         statusCode,
@@ -598,9 +589,6 @@ function sendWithRetry(request, runtime) {
           provider: request.provider,
           statusCode,
           responseBody,
-          headers,
-          attempts,
-          elapsedMs,
           transportError: '',
           extractText: request.extractText,
         })
@@ -613,9 +601,6 @@ function sendWithRetry(request, runtime) {
           provider: request.provider,
           statusCode,
           responseBody,
-          headers,
-          attempts,
-          elapsedMs,
           transportError: '',
           extractText: request.extractText,
         })
@@ -631,9 +616,7 @@ function sendWithRetry(request, runtime) {
 
       lastStatusCode = 0
       lastResponseBody = ''
-      lastHeaders = {}
       lastTransportError = errorText
-      lastElapsedMs = elapsedMs
       logAiResponseDebug(request, runtime, {
         attempt: attempts,
         statusCode: 0,
@@ -648,9 +631,6 @@ function sendWithRetry(request, runtime) {
           provider: request.provider,
           statusCode: 0,
           responseBody: '',
-          headers: {},
-          attempts,
-          elapsedMs,
           transportError: errorText,
           extractText: request.extractText,
         })
@@ -667,9 +647,6 @@ function sendWithRetry(request, runtime) {
     provider: request.provider,
     statusCode: lastStatusCode,
     responseBody: lastResponseBody,
-    headers: lastHeaders,
-    attempts,
-    elapsedMs: lastElapsedMs,
     transportError: lastTransportError,
     extractText: request.extractText,
   })

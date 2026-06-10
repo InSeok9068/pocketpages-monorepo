@@ -1,29 +1,4 @@
-const DEFAULT_BASE_URL = 'https://api.onesignal.com'
-const DEFAULT_TIMEOUT_SECONDS = 15
-
-function getRequiredAppId() {
-  const appId = String(process.env.ONESIGNAL_APPID || '').trim()
-
-  if (!appId) {
-    throw new Error('ONESIGNAL_APPID 환경변수가 필요합니다.')
-  }
-
-  return appId
-}
-
-function getRequiredApiKey() {
-  const apiKey = String(process.env.ONESIGNAL_APIKEY || '').trim()
-
-  if (!apiKey) {
-    throw new Error('ONESIGNAL_APIKEY 환경변수가 필요합니다.')
-  }
-
-  return apiKey
-}
-
-function getBaseUrl() {
-  return String(process.env.ONESIGNAL_APIURL || DEFAULT_BASE_URL).replace(/\/+$/, '')
-}
+const { createOneSignalClient } = require('@pocketpages/onesignal')
 
 /**
  * 특정 external id 목록으로 보낼 푸시 payload를 만듭니다.
@@ -41,7 +16,6 @@ function createPushPayload(input) {
   const externalIds = Array.isArray(source.externalIds) ? source.externalIds : []
 
   return {
-    app_id: getRequiredAppId(),
     include_aliases: {
       external_id: externalIds,
     },
@@ -56,18 +30,6 @@ function createPushPayload(input) {
 }
 
 /**
- * OneSignal API 인증 헤더를 만듭니다.
- *
- * @returns {{Authorization: string, 'Content-Type': string}} 요청 헤더
- */
-function createAuthHeaders() {
-  return {
-    Authorization: 'Key ' + getRequiredApiKey(),
-    'Content-Type': 'application/json',
-  }
-}
-
-/**
  * OneSignal로 푸시 메시지를 보냅니다.
  *
  * @param {types.BooklogOneSignalPushInput} input 푸시 발송 입력값
@@ -76,7 +38,7 @@ function createAuthHeaders() {
 function sendPushNotification(input) {
   const payload = createPushPayload(input)
   const externalIds = payload.include_aliases && Array.isArray(payload.include_aliases.external_id) ? payload.include_aliases.external_id : []
-  const timeout = input && input.timeout ? input.timeout : DEFAULT_TIMEOUT_SECONDS
+  const timeout = input && input.timeout ? input.timeout : undefined
 
   if (externalIds.length === 0) {
     throw new Error('OneSignal 발송 대상 external id가 필요합니다.')
@@ -92,21 +54,19 @@ function sendPushNotification(input) {
 
   $app.logger().debug('onesignal:send:start', 'externalIdCount', externalIds.length, 'title', payload.headings.en)
 
-  const response = $http.send({
-    url: getBaseUrl() + '/notifications',
-    method: 'POST',
-    headers: createAuthHeaders(),
-    body: JSON.stringify(payload),
-    timeout: timeout,
+  const oneSignal = createOneSignalClient()
+  const result = oneSignal.createNotification({
+    payload,
+    timeoutSeconds: timeout,
   })
 
-  $app.logger().debug('onesignal:send:response', 'statusCode', response.statusCode, 'externalIdCount', externalIds.length)
+  $app.logger().debug('onesignal:send:response', 'statusCode', result.statusCode, 'externalIdCount', externalIds.length, 'notificationId', result.notificationId)
 
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new Error('OneSignal 푸시 발송에 실패했습니다. status=' + response.statusCode)
+  if (!result.ok) {
+    throw new Error('OneSignal 푸시 발송에 실패했습니다. status=' + result.statusCode + ' error=' + result.errorMessage)
   }
 
-  return response.json || {}
+  return result.responseJson || {}
 }
 
 module.exports = {

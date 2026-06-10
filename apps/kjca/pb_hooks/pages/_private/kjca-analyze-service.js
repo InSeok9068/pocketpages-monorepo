@@ -350,8 +350,8 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
 
     if (!geminiResult.ok) {
       const statusCode = Number(geminiResult.statusCode || 0)
-      const transportError = String(geminiResult.transportError || '').trim()
-      const errorText = statusCode > 0 ? `AI 요청 실패 (HTTP ${statusCode})` : `AI 요청 실패 (네트워크/타임아웃) ${transportError}`
+      const errorMessage = String(geminiResult.errorMessage || '').trim()
+      const errorText = statusCode > 0 ? `AI 요청 실패 (HTTP ${statusCode})` : `AI 요청 실패 (네트워크/타임아웃) ${errorMessage}`
       results.push(buildAnalyzeResult({ dept, position, staffName, ok: false, error: errorText, miscSection: miscSectionFromHtml, recruiting: recruitingFromHtml, printUrl }))
 
       continue

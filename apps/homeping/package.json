@@ -5,6 +5,7 @@
     "postinstall": "node -e \"try{const r=require('child_process').spawnSync(process.execPath,['../../scripts/run-patch-package.js'],{encoding:'utf8'});if(r.status===0){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}else{console.log('patch script not available, skip')}}catch(e){console.log('patch script not available, skip')}\""
   },
   "dependencies": {
+    "@pocketpages/onesignal": "file:../../packages/onesignal",
     "@pocketpages/utils": "file:../../packages/utils",
     "pocketpages": "^0.22.3",
     "pocketpages-plugin-auth": "^0.2.2",

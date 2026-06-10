@@ -116,12 +116,8 @@ declare namespace pocketpagesOneSignal {
     ok: boolean
     statusCode: number
     notificationId: string
-    responseBody: string
     responseJson: Record<string, any>
     errors: unknown[]
-    headers: Record<string, any>
-    elapsedMs: number
-    transportError: string
     errorMessage: string
     noSubscribedRecipients: boolean
   }
