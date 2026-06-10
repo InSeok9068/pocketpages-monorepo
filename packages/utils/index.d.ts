@@ -13,6 +13,7 @@ type DateutilFormat =
   | 'YYYYMMDDHHmmss'
 
 interface DateutilApi {
+  /** 자주 쓰는 날짜 포맷 문자열입니다. */
   FORMATS: {
     DATE: 'YYYY-MM-DD'
     DATE_KR: 'YYYY년 MM월 DD일'
@@ -25,12 +26,36 @@ interface DateutilApi {
     COMPACT_DATE: 'YYYYMMDD'
     COMPACT_DATE_TIME: 'YYYYMMDDHHmmss'
   }
+  /**
+   * KST 기준으로 해석한 Date 객체를 반환합니다.
+   *
+   * Date 객체가 필요한 계산에서만 사용하고, 표시 문자열은 formatDate()를 사용합니다.
+   */
   toDate(value: DateutilInput): Date
+  /** 날짜 값을 KST 기준 문자열로 포맷합니다. */
   formatDate(value: DateutilInput, pattern?: DateutilFormat | string): string
+  /**
+   * KST 기준 날짜-only 값을 PB date 저장용 ISO 문자열로 바꿉니다.
+   *
+   * 날짜 라벨을 보존하기 위해 YYYY-MM-DDT00:00:00.000Z 형태로 저장합니다.
+   * 실제 발생 시각 저장에는 사용하지 않습니다.
+   */
   toDateOnlyIso(value: DateutilInput): string
+  /** 날짜에 일 수를 더한 뒤 KST 기준 Date 객체를 반환합니다. */
   addDays(value: DateutilInput, amount: number): Date
+  /**
+   * KST 기준 해당 일자의 시작 시각을 반환합니다.
+   *
+   * 날짜 단위 검색의 시작 ISO를 만들 때 사용합니다.
+   */
   startOfDay(value: DateutilInput): Date
+  /**
+   * KST 기준 해당 일자의 끝 시각을 반환합니다.
+   *
+   * 날짜 단위 검색의 종료 ISO를 만들 때 사용합니다.
+   */
   endOfDay(value: DateutilInput): Date
+  /** 두 날짜가 KST 기준으로 같은 날짜인지 확인합니다. */
   isSameDay(left: DateutilInput, right: DateutilInput): boolean
 }
 

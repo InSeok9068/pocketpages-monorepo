@@ -57,31 +57,36 @@ function toBusinessDayjs(value) {
 }
 
 /**
- * 입력값을 KST 기준 Date 객체로 변환합니다.
+ * KST 기준으로 해석한 Date 객체를 반환합니다.
  *
- * @param {Date|string|number|import('dayjs').Dayjs} value
- * @returns {Date}
+ * Date 객체가 필요한 계산에서만 사용하고, 표시 문자열은 formatDate()를 사용합니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} value 날짜 값
+ * @returns {Date} KST 기준으로 보정된 Date 객체
  */
 function toDate(value) {
   return toBusinessDayjs(value).toDate();
 }
 
 /**
- * 날짜를 KST 기준으로 포맷합니다.
+ * 날짜 값을 KST 기준 문자열로 포맷합니다.
  *
- * @param {Date|string|number|import('dayjs').Dayjs} value
- * @param {DateFormat|string} [pattern=FORMATS.DATE_TIME]
- * @returns {string}
+ * @param {Date|string|number|import('dayjs').Dayjs} value 날짜 값
+ * @param {DateFormat|string} [pattern=FORMATS.DATE_TIME] 포맷 문자열
+ * @returns {string} 포맷된 날짜 문자열
  */
 function formatDate(value, pattern) {
   return toBusinessDayjs(value).format(pattern || FORMATS.DATE_TIME);
 }
 
 /**
- * 날짜-only 값을 UTC 자정 ISO 문자열로 바꿉니다.
+ * KST 기준 날짜-only 값을 PB date 저장용 ISO 문자열로 바꿉니다.
  *
- * @param {Date|string|number|import('dayjs').Dayjs} value
- * @returns {string}
+ * 날짜 라벨을 보존하기 위해 YYYY-MM-DDT00:00:00.000Z 형태로 저장합니다.
+ * 실제 발생 시각 저장에는 사용하지 않습니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} value 날짜-only 값
+ * @returns {string} PB date 저장용 ISO 문자열
  */
 function toDateOnlyIso(value) {
   if (typeof value === 'string' && !value.trim()) {
@@ -116,31 +121,35 @@ function toDateOnlyIso(value) {
 }
 
 /**
- * 날짜에 일 수를 더한 뒤 KST 기준 Date를 반환합니다.
+ * 날짜에 일 수를 더한 뒤 KST 기준 Date 객체를 반환합니다.
  *
- * @param {Date|string|number|import('dayjs').Dayjs} value
- * @param {number} amount
- * @returns {Date}
+ * @param {Date|string|number|import('dayjs').Dayjs} value 기준 날짜
+ * @param {number} amount 더할 일 수
+ * @returns {Date} 계산된 Date 객체
  */
 function addDays(value, amount) {
   return toBusinessDayjs(value).add(amount, 'day').toDate();
 }
 
 /**
- * 주어진 날짜를 KST 기준 해당 일자의 00:00:00.000으로 맞춥니다.
+ * KST 기준 해당 일자의 시작 시각을 반환합니다.
  *
- * @param {Date|string|number|import('dayjs').Dayjs} value
- * @returns {Date}
+ * 날짜 단위 검색의 시작 ISO를 만들 때 사용합니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} value 날짜 값
+ * @returns {Date} KST 기준 00:00:00.000 Date 객체
  */
 function startOfDay(value) {
   return toBusinessDayjs(value).startOf('day').toDate();
 }
 
 /**
- * 주어진 날짜를 KST 기준 해당 일자의 23:59:59.999로 맞춥니다.
+ * KST 기준 해당 일자의 끝 시각을 반환합니다.
  *
- * @param {Date|string|number|import('dayjs').Dayjs} value
- * @returns {Date}
+ * 날짜 단위 검색의 종료 ISO를 만들 때 사용합니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} value 날짜 값
+ * @returns {Date} KST 기준 23:59:59.999 Date 객체
  */
 function endOfDay(value) {
   return toBusinessDayjs(value).endOf('day').toDate();
@@ -149,9 +158,9 @@ function endOfDay(value) {
 /**
  * 두 날짜가 KST 기준으로 같은 날짜인지 확인합니다.
  *
- * @param {Date|string|number|import('dayjs').Dayjs} left
- * @param {Date|string|number|import('dayjs').Dayjs} right
- * @returns {boolean}
+ * @param {Date|string|number|import('dayjs').Dayjs} left 왼쪽 날짜 값
+ * @param {Date|string|number|import('dayjs').Dayjs} right 오른쪽 날짜 값
+ * @returns {boolean} 같은 날짜 여부
  */
 function isSameDay(left, right) {
   return toBusinessDayjs(left).isSame(toBusinessDayjs(right), 'day');
