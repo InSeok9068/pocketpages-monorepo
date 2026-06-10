@@ -33,6 +33,7 @@
 ## 2. Shared Packages
 
 - DEFAULT: Before adding AI or OneSignal logic, check and reuse existing packages under `packages/ai` and `packages/onesignal`.
+- DEFAULT: For TTL cache on PocketBase `$app.store()` or PocketPages `store()`, use `packages/utils/store-cache.js` before adding ad hoc cache indexes or expiration logic.
 - MUST: Use `packages/utils/dateutil.js` for date parsing, formatting, comparison, day ranges, and timezone handling.
 - MUST: For PocketBase `date` fields with date-only values, use `dateutil.toDateOnlyIso(...)`; for date search, prefer `dateutil.startOfDay(...)` / `dateutil.endOfDay(...)` ranges.
 

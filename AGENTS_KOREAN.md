@@ -33,6 +33,7 @@
 ## 2. Shared Packages
 
 - DEFAULT: AI 또는 OneSignal 로직을 추가하기 전에 `packages/ai`, `packages/onesignal`의 기존 구현을 먼저 확인하고 재사용한다.
+- DEFAULT: PocketBase `$app.store()` 또는 PocketPages `store()` 기반 TTL 캐시는 직접 index/만료 로직을 만들기 전에 `packages/utils/store-cache.js`를 우선 사용한다.
 - MUST: 날짜 파싱, 포맷, 비교, 일자 범위, 타임존 처리는 `packages/utils/dateutil.js`를 사용한다.
 - MUST: PocketBase `date` 필드에 날짜-only 값을 저장할 때는 `dateutil.toDateOnlyIso(...)`를 사용하고, 날짜 검색은 `dateutil.startOfDay(...)` / `dateutil.endOfDay(...)` 범위를 우선한다.
 
