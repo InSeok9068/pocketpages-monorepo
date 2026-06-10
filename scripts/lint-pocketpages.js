@@ -49,6 +49,7 @@
 // 45) pages 밖 pb_hooks 코드에서 PocketPages Datastar request helper 사용
 // 46) pages 안에서 PocketBase backend Datastar realtime utility 사용
 // 47) pages 밖 pb_hooks 코드에서 PocketPages route helper 사용
+// 48) 서버 코드에서 JSVM locale API(Intl/toLocale*) 사용
 
 const fs = require('fs')
 const path = require('path')
@@ -109,6 +110,7 @@ const RE = {
     /(^|[^A-Za-z0-9_$])(routerAdd|routerUse|cronAdd|onBootstrap|onServe|onTerminate|onRecord[A-Za-z0-9_]*|onSettings[A-Za-z0-9_]*|onMailer[A-Za-z0-9_]*|onRealtime[A-Za-z0-9_]*|onBackup[A-Za-z0-9_]*)\s*\(/,
   outerAppInsideTransaction: /\$app\./,
   asyncFlow: /\basync\b|\bawait\b|\bPromise\b|\.then\s*\(/g,
+  localeApi: /\bIntl\b|\.\s*toLocale(?:String|DateString|TimeString)\s*\(/g,
   redirectCall: /\bredirect\s*\(/g,
   redirectFlashOption: /[,{]\s*flash\s*:/,
 }
@@ -954,6 +956,41 @@ function collectAsyncFlowMatches(context) {
   return unique(matches)
 }
 
+function collectLocaleApiMatches(context) {
+  const matches = []
+  const files = context.hooksCodeFiles.filter(isServerRuntimeFile)
+
+  for (const file of files) {
+    if (file.isEjs) {
+      const blocks = extractServerBlocks(file.content)
+
+      for (const block of blocks) {
+        RE.localeApi.lastIndex = 0
+        let match = RE.localeApi.exec(block.content)
+
+        while (match) {
+          const lineNumber = lineNumberAt(file.content, block.contentStart + match.index)
+          matches.push(formatLintLineMatch(file, lineNumber))
+          match = RE.localeApi.exec(block.content)
+        }
+      }
+
+      continue
+    }
+
+    RE.localeApi.lastIndex = 0
+    let match = RE.localeApi.exec(file.content)
+
+    while (match) {
+      const lineNumber = lineNumberAt(file.content, match.index)
+      matches.push(formatLintLineMatch(file, lineNumber))
+      match = RE.localeApi.exec(file.content)
+    }
+  }
+
+  return unique(matches)
+}
+
 function collectTransactionOuterAppMatches(files) {
   const matches = []
   const transactionPatterns = [
@@ -1307,6 +1344,13 @@ function lintService(context) {
 
   const asyncFlowMatches = collectAsyncFlowMatches(context)
   printMatches(context.serviceName, 'Invalid JSVM async flow. Keep PocketBase/PocketPages server code sync; do not use async, await, Promise, or .then(...).', asyncFlowMatches)
+
+  const localeApiMatches = collectLocaleApiMatches(context)
+  printMatches(
+    context.serviceName,
+    'Invalid JSVM locale API usage. Avoid Intl and toLocale* in PocketBase/PocketPages server code; use explicit project utilities or small deterministic formatters.',
+    localeApiMatches
+  )
 
   const pagesHookRegistrationMatches = collectLineMatches(context.pagesCodeFiles, RE.hookRegistration)
   printMatches(

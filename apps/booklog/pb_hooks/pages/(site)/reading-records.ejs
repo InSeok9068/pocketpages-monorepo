@@ -98,6 +98,16 @@
   }
 
   /**
+   * 정수를 천 단위 쉼표 문자열로 만듭니다.
+   *
+   * @param {number} value 숫자 값
+   * @returns {string} 표시 문자열
+   */
+  function formatIntegerLabel(value) {
+    return String(Math.max(0, Math.floor(Number(value) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  }
+
+  /**
    * 누적 시간을 짧게 표시합니다.
    *
    * @param {number} minutes 분
@@ -108,7 +118,7 @@
     const hours = Math.floor(safeMinutes / 60)
 
     if (hours >= 100) {
-      return hours.toLocaleString('ko-KR') + '시간'
+      return formatIntegerLabel(hours) + '시간'
     }
 
     return formatMinutesLabel(safeMinutes)
