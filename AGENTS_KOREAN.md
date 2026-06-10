@@ -30,7 +30,15 @@
 
 ---
 
-## 2. 라우팅과 Params
+## 2. Shared Packages
+
+- DEFAULT: AI 또는 OneSignal 로직을 추가하기 전에 `packages/ai`, `packages/onesignal`의 기존 구현을 먼저 확인하고 재사용한다.
+- MUST: 날짜 파싱, 포맷, 비교, 일자 범위, 타임존 처리는 `packages/utils/dateutil.js`를 사용한다.
+- MUST: PocketBase `date` 필드에 날짜-only 값을 저장할 때는 `dateutil.toDateOnlyIso(...)`를 사용하고, 날짜 검색은 `dateutil.startOfDay(...)` / `dateutil.endOfDay(...)` 범위를 우선한다.
+
+---
+
+## 3. 라우팅과 Params
 
 - filename이 URL 의미를 드러내야 한다
 - `index.ejs` = 디렉터리 기본 route
@@ -42,7 +50,7 @@
 
 ---
 
-## 3. Page / Middleware / Load
+## 4. Page / Middleware / Load
 
 - `+load.js`는 page level에서 한 번 실행된다
 - `+middleware.js`는 계층적으로 실행된다
@@ -55,7 +63,7 @@
 
 ---
 
-## 4. 렌더링
+## 5. 렌더링
 
 - 공통 UI는 `+layout.ejs`
 - page 전용 UI는 page 파일
@@ -70,7 +78,7 @@
 
 ---
 
-## 5. \_private 와 Resolve
+## 6. \_private 와 Resolve
 
 - `_private`는 internal 전용이며 partial, service, util, internal module 용도로만 사용하고 route로 노출하지 않는다
 - partial에는 필요한 최소 props만 넘긴다
@@ -83,7 +91,7 @@
 
 ---
 
-## 6. Redirect, Roles, Logging
+## 7. Redirect, Roles, Logging
 
 - `redirect('/path', { status, message })` 패턴을 사용한다
 - redirect option은 `flash`가 아니라 `message`를 사용한다
@@ -100,7 +108,7 @@
 
 ---
 
-## 7. PocketBase / JSVM
+## 8. PocketBase / JSVM
 
 - ES6만 사용한다
 - sync code만 사용한다
@@ -117,7 +125,7 @@
 
 ---
 
-## 8. Frontend
+## 9. Frontend
 
 - Alpine은 UI helper로만 사용한다
 - business logic이나 complex state를 넣지 않는다
@@ -128,7 +136,7 @@
 
 ---
 
-## 9. AI Workflow 와 Structure Analysis
+## 10. AI Workflow 와 Structure Analysis
 
 - 먼저 이 작업이 PocketPages인지 PocketBase인지 구분한다
 - single-file, low-impact change면 바로 파일을 연다
@@ -146,7 +154,7 @@
 
 ---
 
-## 10. Priority
+## 11. Priority
 
 1. `.docs/pocketpages/*`
 2. `.docs/pocketbase/*`

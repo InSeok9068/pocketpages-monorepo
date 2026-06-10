@@ -30,7 +30,15 @@
 
 ---
 
-## 2. Routing & Params
+## 2. Shared Packages
+
+- DEFAULT: Before adding AI or OneSignal logic, check and reuse existing packages under `packages/ai` and `packages/onesignal`.
+- MUST: Use `packages/utils/dateutil.js` for date parsing, formatting, comparison, day ranges, and timezone handling.
+- MUST: For PocketBase `date` fields with date-only values, use `dateutil.toDateOnlyIso(...)`; for date search, prefer `dateutil.startOfDay(...)` / `dateutil.endOfDay(...)` ranges.
+
+---
+
+## 3. Routing & Params
 
 - filename = URL meaning
 - `index.ejs` = directory default route
@@ -42,7 +50,7 @@
 
 ---
 
-## 3. Page / Middleware / Load
+## 4. Page / Middleware / Load
 
 - `+load.js` runs once at page level
 - `+middleware.js` runs hierarchically
@@ -55,7 +63,7 @@
 
 ---
 
-## 4. Rendering
+## 5. Rendering
 
 - shared UI -> `+layout.ejs`
 - page-specific UI -> page file
@@ -70,7 +78,7 @@
 
 ---
 
-## 5. \_private & Resolve
+## 6. \_private & Resolve
 
 - `_private` is internal only; use it for partials, services, utils, and internal modules, never route-exposed
 - partials take minimal props only
@@ -83,7 +91,7 @@
 
 ---
 
-## 6. Redirect, Roles & Logging
+## 7. Redirect, Roles & Logging
 
 - use `redirect('/path', { status, message })`
 - use redirect option `message`, not `flash`
@@ -100,7 +108,7 @@
 
 ---
 
-## 7. PocketBase / JSVM
+## 8. PocketBase / JSVM
 
 - ES6 only
 - sync code only
@@ -117,7 +125,7 @@
 
 ---
 
-## 8. Frontend
+## 9. Frontend
 
 - Alpine is UI helper only
 - no business logic or complex state
@@ -128,7 +136,7 @@
 
 ---
 
-## 9. AI Workflow & Structure Analysis
+## 10. AI Workflow & Structure Analysis
 
 - identify layer first: PocketPages or PocketBase
 - single-file, low-impact change -> open file directly
@@ -146,7 +154,7 @@ Use index sections when relevant:
 
 ---
 
-## 10. Priority
+## 11. Priority
 
 1. `.docs/pocketpages/*`
 2. `.docs/pocketbase/*`
