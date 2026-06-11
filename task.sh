@@ -396,9 +396,11 @@ run_tsc_for_service() {
   local service_dir="$2"
   local service_name
   local config_file
+  local tsc_cache_file
 
   service_name="$(basename "$service_dir")"
   config_file="$service_dir/jsconfig.json"
+  tsc_cache_file="$ROOT_DIR/.cache/tsc/${service_name}.tsbuildinfo"
 
   if [[ ! -f "$config_file" ]]; then
     echo "Skipping $service_name: missing jsconfig.json."
@@ -406,7 +408,8 @@ run_tsc_for_service() {
   fi
 
   echo "Running TypeScript check for service: $service_name"
-  node "$tsc_bin" -p "$config_file" --pretty false
+  mkdir -p "$(dirname "$tsc_cache_file")"
+  node "$tsc_bin" -p "$config_file" --pretty false --incremental --tsBuildInfoFile "$tsc_cache_file"
 }
 
 run_test() {
