@@ -18,18 +18,11 @@
     return
   }
 
-  const projects = $app.findRecordsByFilter(
-    'projects',
-    'user = {:userId} && status != {:pausedStatus} && status != {:discardedStatus}',
-    '-is_pinned,+sort_order,-updated',
-    300,
-    0,
-    {
-      userId,
-      pausedStatus: 'paused',
-      discardedStatus: 'discarded'
-    }
-  )
+  const projects = $app.findRecordsByFilter('projects', 'user = {:userId} && status != {:pausedStatus} && status != {:discardedStatus}', '-is_pinned,+sort_order,-updated', 300, 0, {
+    userId,
+    pausedStatus: 'paused',
+    discardedStatus: 'discarded',
+  })
   const projectOptions = []
 
   for (let index = 0; index < projects.length; index += 1) {
@@ -62,7 +55,7 @@
 </script>
 
 <div
-  class="space-y-3 pb-20 md:pl-[88px] md:pb-0"
+  class="space-y-3 pb-20 md:pb-0 md:pl-[88px]"
   data-signals="{
     taskModalOpen: false,
     taskTitle: '',
@@ -188,9 +181,7 @@
             class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-[52px] sm:px-4 sm:text-base">
             <% for (let index = 0; index < projectOptions.length; index += 1) { %>
             <% const option = projectOptions[index] %>
-            <option value="<%= option.id %>">
-              <%= option.nameKo %><% if (option.nameEn) { %> - <%= option.nameEn %><% } %>
-            </option>
+            <option value="<%= option.id %>"><%= option.nameKo %><% if (option.nameEn) { %> - <%= option.nameEn %><% } %></option>
             <% } %>
           </select>
         </label>
@@ -226,7 +217,8 @@
                 name="priority"
                 value="low"
                 class="launchboard-choice-input" />
-              <span class="launchboard-priority-choice flex h-10 w-full items-center justify-center rounded-lg bg-[#f7f8fa] text-sm font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6]">
+              <span
+                class="launchboard-priority-choice flex h-10 w-full items-center justify-center rounded-lg bg-[#f7f8fa] text-sm font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6]">
                 낮음
               </span>
             </label>
@@ -237,7 +229,8 @@
                 value="normal"
                 class="launchboard-choice-input"
                 checked />
-              <span class="launchboard-priority-choice flex h-10 w-full items-center justify-center rounded-lg bg-[#f7f8fa] text-sm font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6]">
+              <span
+                class="launchboard-priority-choice flex h-10 w-full items-center justify-center rounded-lg bg-[#f7f8fa] text-sm font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6]">
                 보통
               </span>
             </label>
@@ -247,7 +240,8 @@
                 name="priority"
                 value="high"
                 class="launchboard-choice-input" />
-              <span class="launchboard-priority-choice flex h-10 w-full items-center justify-center rounded-lg bg-[#f7f8fa] text-sm font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6]">
+              <span
+                class="launchboard-priority-choice flex h-10 w-full items-center justify-center rounded-lg bg-[#f7f8fa] text-sm font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6]">
                 높음
               </span>
             </label>
@@ -409,7 +403,11 @@
     const queryInput = filterRoot.querySelector('[data-task-filter-query]')
     const highInput = filterRoot.querySelector('[data-task-filter-high]')
     const dueInput = filterRoot.querySelector('[data-task-filter-due]')
-    const query = queryInput ? String(queryInput.value || '').trim().toLowerCase() : ''
+    const query = queryInput
+      ? String(queryInput.value || '')
+          .trim()
+          .toLowerCase()
+      : ''
     const highOnly = highInput ? highInput.checked === true : false
     const dueOnly = dueInput ? dueInput.checked === true : false
     const counts = {}

@@ -351,13 +351,7 @@ function toTaskMarkdownLines(task) {
  * @returns {string}
  */
 function toTaskAiMarkdown(context) {
-  const lines = [
-    '# ' + context.title,
-    '',
-    '- 범위: ' + context.scopeLabel,
-    '- 생성: ' + context.generatedAt,
-    '- 업무 수: ' + context.taskCount,
-  ]
+  const lines = ['# ' + context.title, '', '- 범위: ' + context.scopeLabel, '- 생성: ' + context.generatedAt, '- 업무 수: ' + context.taskCount]
 
   if (context.project) {
     lines.push('- 프로젝트: ' + context.project.nameKo)
