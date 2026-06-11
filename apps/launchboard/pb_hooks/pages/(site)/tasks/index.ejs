@@ -398,8 +398,9 @@
     }
   }
 
-  window.launchboardApplyTaskFilter = function () {
-    const filterRoot = document.querySelector('[data-task-filter-panel]') || document
+  window.launchboardApplyTaskFilter = function (triggerElement) {
+    const panel = triggerElement && triggerElement.closest ? triggerElement.closest('[data-task-filter-panel]') : null
+    const filterRoot = panel || document.querySelector('[data-task-filter-panel]') || document
     const queryInput = filterRoot.querySelector('[data-task-filter-query]')
     const highInput = filterRoot.querySelector('[data-task-filter-high]')
     const dueInput = filterRoot.querySelector('[data-task-filter-due]')
