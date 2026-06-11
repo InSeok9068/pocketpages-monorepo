@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "format": "prettier --write \"apps/*/pb_hooks/**/*\" \"packages/**/*.js\" \"packages/**/*.mjs\" \"packages/**/*.d.ts\""
+    "format": "prettier --write --cache --cache-location .cache/prettier/.prettier-cache \"apps/*/pb_hooks/**/*\" \"packages/**/*.js\" \"packages/**/*.mjs\" \"packages/**/*.d.ts\""
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
