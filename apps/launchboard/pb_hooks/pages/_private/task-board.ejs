@@ -7,6 +7,7 @@
   <%
     const taskBoardCanSort = typeof canSortTasks === 'undefined' ? true : canSortTasks === true
     const taskBoardCanDelete = typeof canDeleteTasks === 'undefined' ? true : canDeleteTasks === true
+    const taskBoardCanFilter = canFilterTasks === true
   %>
   <nav
     class="grid grid-cols-5 gap-1 rounded-lg bg-white p-1 shadow-[0_8px_24px_rgba(25,31,40,0.05)] md:hidden"
@@ -69,23 +70,76 @@
             >
           </div>
 
-          <button
-            type="button"
-            class="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border-0 bg-white/70 text-[#6b7684] hover:bg-white md:inline-flex"
-            data-task-collapse-button
-            data-status="<%= column.value %>"
-            data-attr="{'aria-label': $collapsedTaskStatuses.<%= column.value %> ? '펼치기' : '접기', 'aria-expanded': $collapsedTaskStatuses.<%= column.value %> ? 'false' : 'true'}"
-            data-on:click="$collapsedTaskStatuses.<%= column.value %> = !$collapsedTaskStatuses.<%= column.value %>; window.launchboardSaveTaskCollapsedStatuses && window.launchboardSaveTaskCollapsedStatuses($collapsedTaskStatuses)">
-            <span
-              data-show="$collapsedTaskStatuses.<%= column.value %>"
-              style="display: none"
-              class="i-lucide-chevron-down h-4 w-4"
-              aria-hidden="true"></span>
-            <span
-              data-show="!$collapsedTaskStatuses.<%= column.value %>"
-              class="i-lucide-chevron-up h-4 w-4"
-              aria-hidden="true"></span>
-          </button>
+          <div class="flex shrink-0 items-center gap-1">
+            <% if (taskBoardCanFilter) { %>
+            <div class="relative md:hidden">
+              <button
+                type="button"
+                class="inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-white/70 text-[#6b7684] hover:bg-white"
+                aria-label="업무 검색 필터"
+                data-attr="{'aria-expanded': $taskFilterOpen ? 'true' : 'false'}"
+                data-on:click="$taskFilterOpen = !$taskFilterOpen">
+                <span
+                  class="i-lucide-search h-4 w-4"
+                  aria-hidden="true"></span>
+              </button>
+
+              <div
+                class="absolute right-0 top-10 z-30 grid w-[280px] gap-2 rounded-lg bg-white p-3 shadow-[0_18px_48px_rgba(25,31,40,0.18),0_0_0_1px_rgba(227,231,237,0.8)]"
+                data-task-filter-panel
+                data-show="$taskFilterOpen"
+                style="display: none">
+                <label class="relative block">
+                  <span
+                    class="i-lucide-search pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8b95a1]"
+                    aria-hidden="true"></span>
+                  <input
+                    type="search"
+                    class="h-10 w-full rounded-lg border-0 bg-[#f7f8fa] pl-9 pr-3 text-sm font-semibold text-[#191f28] outline-none placeholder:text-[#b0b8c1] focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]"
+                    placeholder="제목, 메모, 프로젝트"
+                    data-task-filter-query
+                    data-on:input="window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter()" />
+                </label>
+
+                <div class="grid grid-cols-2 gap-2">
+                  <label class="flex h-10 cursor-pointer items-center justify-center gap-1 rounded-lg bg-[#f7f8fa] px-3 text-xs font-bold text-[#4e5968] hover:bg-[#f2f4f6]">
+                    <input
+                      type="checkbox"
+                      class="h-4 w-4 accent-[#3182f6]"
+                      data-task-filter-high
+                      data-on:input="window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter()" />
+                    높음
+                  </label>
+                  <label class="flex h-10 cursor-pointer items-center justify-center gap-1 rounded-lg bg-[#f7f8fa] px-3 text-xs font-bold text-[#4e5968] hover:bg-[#f2f4f6]">
+                    <input
+                      type="checkbox"
+                      class="h-4 w-4 accent-[#3182f6]"
+                      data-task-filter-due
+                      data-on:input="window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter()" />
+                    마감
+                  </label>
+                </div>
+              </div>
+            </div>
+            <% } %>
+            <button
+              type="button"
+              class="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border-0 bg-white/70 text-[#6b7684] hover:bg-white md:inline-flex"
+              data-task-collapse-button
+              data-status="<%= column.value %>"
+              data-attr="{'aria-label': $collapsedTaskStatuses.<%= column.value %> ? '펼치기' : '접기', 'aria-expanded': $collapsedTaskStatuses.<%= column.value %> ? 'false' : 'true'}"
+              data-on:click="$collapsedTaskStatuses.<%= column.value %> = !$collapsedTaskStatuses.<%= column.value %>; window.launchboardSaveTaskCollapsedStatuses && window.launchboardSaveTaskCollapsedStatuses($collapsedTaskStatuses)">
+              <span
+                data-show="$collapsedTaskStatuses.<%= column.value %>"
+                style="display: none"
+                class="i-lucide-chevron-down h-4 w-4"
+                aria-hidden="true"></span>
+              <span
+                data-show="!$collapsedTaskStatuses.<%= column.value %>"
+                class="i-lucide-chevron-up h-4 w-4"
+                aria-hidden="true"></span>
+            </button>
+          </div>
         </header>
 
         <div
@@ -108,6 +162,9 @@
             data-task-card
             data-task-id="<%= task.id %>"
             data-status="<%= task.status %>"
+            data-task-search="<%= task.title %> <%= task.description %> <%= task.projectName %> <%= task.typeLabel %>"
+            data-priority="<%= task.priority %>"
+            data-has-due="<%= task.dueAt ? 'true' : 'false' %>"
             role="link"
             tabindex="0"
             data-on:click="if (document.body.dataset.launchboardTaskDragging !== 'true') window.location.href = '<%= taskHref %>'"

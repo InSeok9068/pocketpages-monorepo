@@ -70,6 +70,7 @@
     taskDueAt: '',
     aiCopyModalOpen: false,
     aiCopyFormat: 'markdown',
+    taskFilterOpen: false,
     activeTaskStatus: (function () {
       try {
         const status = window.localStorage.getItem('launchboard:inbox-active-status') || 'todo'
@@ -139,6 +140,7 @@
     tasksByStatus: boardState.tasksByStatus,
     canSortTasks: false,
     canDeleteTasks: false,
+    canFilterTasks: true,
   }) %>
 
   <%- include('ai-copy-modal.ejs', {
@@ -402,6 +404,51 @@
     }
   }
 
+  window.launchboardApplyTaskFilter = function () {
+    const filterRoot = document.querySelector('[data-task-filter-panel]') || document
+    const queryInput = filterRoot.querySelector('[data-task-filter-query]')
+    const highInput = filterRoot.querySelector('[data-task-filter-high]')
+    const dueInput = filterRoot.querySelector('[data-task-filter-due]')
+    const query = queryInput ? String(queryInput.value || '').trim().toLowerCase() : ''
+    const highOnly = highInput ? highInput.checked === true : false
+    const dueOnly = dueInput ? dueInput.checked === true : false
+    const counts = {}
+
+    window.launchboardTaskBoard.statusValues.forEach(function (status) {
+      counts[status] = 0
+    })
+
+    document.querySelectorAll('[data-task-card]').forEach(function (card) {
+      const searchText = String(card.dataset.taskSearch || '').toLowerCase()
+      const status = card.dataset.status || ''
+      const matchesQuery = !query || searchText.indexOf(query) >= 0
+      const matchesPriority = !highOnly || card.dataset.priority === 'high'
+      const matchesDue = !dueOnly || card.dataset.hasDue === 'true'
+      const isVisible = matchesQuery && matchesPriority && matchesDue
+
+      card.hidden = !isVisible
+
+      if (isVisible && Object.prototype.hasOwnProperty.call(counts, status)) {
+        counts[status] += 1
+      }
+    })
+
+    document.querySelectorAll('[data-task-status-count]').forEach(function (count) {
+      const status = count.dataset.status || ''
+
+      if (!Object.prototype.hasOwnProperty.call(counts, status)) return
+
+      count.textContent = String(counts[status])
+    })
+
+    document.querySelectorAll('[data-task-sortable-list]').forEach(function (list) {
+      const visibleCount = list.querySelectorAll('[data-task-card]:not([hidden])').length
+      const emptyState = list.querySelector('[data-task-empty-state]')
+
+      if (emptyState) emptyState.hidden = visibleCount > 0
+    })
+  }
+
   if (window.launchboardTaskBoard.inboxResizeReady !== true) {
     window.launchboardTaskBoard.inboxResizeReady = true
     window.addEventListener('resize', function () {
@@ -412,4 +459,5 @@
 
   window.launchboardSetTaskMobileSignal()
   window.launchboardInitTaskSwiper()
+  window.launchboardApplyTaskFilter()
 </script>
