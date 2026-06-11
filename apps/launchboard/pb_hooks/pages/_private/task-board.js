@@ -251,6 +251,169 @@ function isTodayInboxTask(task) {
 }
 
 /**
+ * 업무 상태 라벨을 반환한다.
+ * @param {string} status 업무 상태
+ * @returns {string}
+ */
+function getTaskStatusLabel(status) {
+  for (let index = 0; index < TASK_STATUS_COLUMNS.length; index += 1) {
+    if (TASK_STATUS_COLUMNS[index].value === status) return TASK_STATUS_COLUMNS[index].label
+  }
+
+  return status
+}
+
+/**
+ * AI 컨텍스트용 업무 데이터를 만든다.
+ * @param {types.ProjectTaskCard} task 업무 카드
+ * @returns {object}
+ */
+function toTaskAiItem(task) {
+  const signals = []
+
+  if (task.dueBadge) signals.push(task.dueBadge.label)
+
+  for (let index = 0; index < task.signalBadges.length; index += 1) {
+    signals.push(task.signalBadges[index].label)
+  }
+
+  return {
+    title: task.title,
+    status: task.status,
+    statusLabel: getTaskStatusLabel(task.status),
+    priority: task.priority,
+    priorityLabel: task.priorityLabel,
+    type: task.type,
+    typeLabel: task.typeLabel,
+    projectName: task.projectName,
+    dueAt: task.dueAt,
+    signals,
+    description: task.description,
+    updatedAt: task.updatedAt,
+    isPinned: task.isPinned,
+  }
+}
+
+/**
+ * AI 컨텍스트용 상태 목록을 만든다.
+ * @param {types.ProjectTaskBoardState} boardState 업무 보드 데이터
+ * @returns {object[]}
+ */
+function toTaskAiStatuses(boardState) {
+  const statuses = []
+
+  for (let statusIndex = 0; statusIndex < boardState.statusColumns.length; statusIndex += 1) {
+    const column = boardState.statusColumns[statusIndex]
+    const tasks = boardState.tasksByStatus[column.value] || []
+    const items = []
+
+    for (let taskIndex = 0; taskIndex < tasks.length; taskIndex += 1) {
+      items.push(toTaskAiItem(tasks[taskIndex]))
+    }
+
+    statuses.push({
+      status: column.value,
+      label: column.label,
+      count: items.length,
+      tasks: items,
+    })
+  }
+
+  return statuses
+}
+
+/**
+ * Markdown 업무 한 줄을 만든다.
+ * @param {object} task AI 컨텍스트 업무
+ * @returns {string[]}
+ */
+function toTaskMarkdownLines(task) {
+  const meta = []
+  const lines = []
+
+  if (task.projectName) meta.push('프로젝트: ' + task.projectName)
+  if (task.priorityLabel) meta.push('우선순위: ' + task.priorityLabel)
+  if (task.typeLabel) meta.push('타입: ' + task.typeLabel)
+  if (task.dueAt) meta.push('마감: ' + task.dueAt)
+  if (task.signals.length) meta.push('신호: ' + task.signals.join(', '))
+  if (task.isPinned) meta.push('상단 고정')
+
+  lines.push('- ' + task.title)
+  if (meta.length) lines.push('  - ' + meta.join(' / '))
+  if (task.description) lines.push('  - 메모: ' + task.description.replace(/\s+/g, ' ').trim())
+
+  return lines
+}
+
+/**
+ * AI 컨텍스트를 Markdown 문자열로 만든다.
+ * @param {object} context AI 컨텍스트
+ * @returns {string}
+ */
+function toTaskAiMarkdown(context) {
+  const lines = [
+    '# ' + context.title,
+    '',
+    '- 범위: ' + context.scopeLabel,
+    '- 생성: ' + context.generatedAt,
+    '- 업무 수: ' + context.taskCount,
+  ]
+
+  if (context.project) {
+    lines.push('- 프로젝트: ' + context.project.nameKo)
+    if (context.project.nameEn) lines.push('- 프로젝트 영문명: ' + context.project.nameEn)
+  }
+
+  lines.push('', '## 상태별 업무')
+
+  if (!context.taskCount) {
+    lines.push('', '- 업무 없음')
+
+    return lines.join('\n')
+  }
+
+  for (let statusIndex = 0; statusIndex < context.statuses.length; statusIndex += 1) {
+    const status = context.statuses[statusIndex]
+
+    if (!status.count) continue
+
+    lines.push('', '### ' + status.label + ' ' + status.count)
+
+    for (let taskIndex = 0; taskIndex < status.tasks.length; taskIndex += 1) {
+      const taskLines = toTaskMarkdownLines(status.tasks[taskIndex])
+
+      for (let lineIndex = 0; lineIndex < taskLines.length; lineIndex += 1) {
+        lines.push(taskLines[lineIndex])
+      }
+    }
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * 업무 보드 AI 복사용 컨텍스트를 만든다.
+ * @param {object} input 컨텍스트 입력
+ * @returns {{ markdown: string, jsonText: string }}
+ */
+function getTaskAiCopyContext(input) {
+  const context = {
+    title: String(input.title || 'LaunchBoard 업무 컨텍스트'),
+    scope: String(input.scope || 'tasks'),
+    scopeLabel: String(input.scopeLabel || '업무'),
+    generatedAt: dateutil.formatDate(new Date(), dateutil.FORMATS.DATE_TIME_MINUTES),
+    project: input.project || null,
+    taskCount: Number(input.boardState.taskCount || 0),
+    statuses: toTaskAiStatuses(input.boardState),
+  }
+
+  return {
+    markdown: toTaskAiMarkdown(context),
+    jsonText: JSON.stringify(context, null, 2),
+  }
+}
+
+/**
  * 프로젝트 업무 보드 데이터를 만든다.
  * @param {object} app PocketBase 앱
  * @param {string} userId 사용자 ID
@@ -316,6 +479,7 @@ module.exports = {
   TASK_TYPE_VALUES,
   getTaskBoardState,
   getTaskInboxState,
+  getTaskAiCopyContext,
   normalizeTaskPriority,
   normalizeTaskStatus,
   normalizeTaskType,

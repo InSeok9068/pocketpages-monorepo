@@ -63,6 +63,18 @@
     detailHref: '/projects/' + encodeURIComponent(String(project.get('slug') || '').trim()),
   }
   const boardState = taskBoard.getTaskBoardState($app, userId, projectView.id)
+  const aiCopyContext = taskBoard.getTaskAiCopyContext({
+    title: projectView.nameKo + ' 업무 AI 컨텍스트',
+    scope: 'project_tasks',
+    scopeLabel: projectView.nameKo + ' 프로젝트 업무',
+    project: {
+      id: projectView.id,
+      nameKo: projectView.nameKo,
+      nameEn: projectView.nameEn,
+      slug: projectView.slug,
+    },
+    boardState,
+  })
 
   meta('title', projectView.nameKo + ' 업무 | LaunchBoard')
   meta('description', projectView.nameKo + ' 업무')
@@ -81,6 +93,8 @@
     taskTitle: '',
     taskDescription: '',
     taskDueAt: '',
+    aiCopyModalOpen: false,
+    aiCopyFormat: 'markdown',
     taskMessage: '',
     moveTaskId: '',
     moveStatus: '',
@@ -131,6 +145,15 @@
       </div>
 
       <div class="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] hover:bg-[#e5e8eb] sm:h-10 sm:text-sm"
+          data-on:click="$aiCopyModalOpen = true">
+          <span
+            class="i-lucide-clipboard-copy h-4 w-4"
+            aria-hidden="true"></span>
+          <span class="hidden sm:inline">AI 복사</span>
+        </button>
         <a
           href="<%= projectView.detailHref %>"
           class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-10 sm:text-sm">
@@ -167,6 +190,13 @@
     projectSlug: projectView.slug,
     statusColumns: boardState.statusColumns,
     tasksByStatus: boardState.tasksByStatus,
+  }) %>
+
+  <%- include('ai-copy-modal.ejs', {
+    copyId: 'project-task-ai-copy',
+    scopeLabel: projectView.nameKo + ' 프로젝트 업무',
+    markdownText: aiCopyContext.markdown,
+    jsonText: aiCopyContext.jsonText,
   }) %>
 
   <button

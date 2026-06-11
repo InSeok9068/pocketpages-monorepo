@@ -44,6 +44,12 @@
 
   const boardState = taskBoard.getTaskInboxState($app, userId, activeView)
   const viewTitle = activeView === 'today' ? '오늘 업무' : '전체 업무'
+  const aiCopyContext = taskBoard.getTaskAiCopyContext({
+    title: viewTitle + ' AI 컨텍스트',
+    scope: activeView === 'today' ? 'today_tasks' : 'all_tasks',
+    scopeLabel: viewTitle,
+    boardState,
+  })
 
   meta('title', viewTitle + ' | LaunchBoard')
   meta('description', viewTitle)
@@ -62,6 +68,8 @@
     taskTitle: '',
     taskDescription: '',
     taskDueAt: '',
+    aiCopyModalOpen: false,
+    aiCopyFormat: 'markdown',
     activeTaskStatus: (function () {
       try {
         const status = window.localStorage.getItem('launchboard:inbox-active-status') || 'todo'
@@ -97,15 +105,26 @@
         <h1 class="mt-1 truncate text-xl font-bold leading-7 text-[#191f28] sm:text-3xl sm:leading-10"><%= viewTitle %></h1>
       </div>
 
-      <a
-        href="/"
-        class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-10 sm:text-sm"
-        aria-label="프로젝트 보드">
-        <span
-          class="i-lucide-panels-top-left h-4 w-4"
-          aria-hidden="true"></span>
-        프로젝트
-      </a>
+      <div class="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] hover:bg-[#e5e8eb] sm:h-10 sm:text-sm"
+          data-on:click="$aiCopyModalOpen = true">
+          <span
+            class="i-lucide-clipboard-copy h-4 w-4"
+            aria-hidden="true"></span>
+          <span class="hidden sm:inline">AI 복사</span>
+        </button>
+        <a
+          href="/"
+          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-10 sm:text-sm"
+          aria-label="프로젝트 보드">
+          <span
+            class="i-lucide-panels-top-left h-4 w-4"
+            aria-hidden="true"></span>
+          프로젝트
+        </a>
+      </div>
     </div>
   </header>
 
@@ -120,6 +139,13 @@
     tasksByStatus: boardState.tasksByStatus,
     canSortTasks: false,
     canDeleteTasks: false,
+  }) %>
+
+  <%- include('ai-copy-modal.ejs', {
+    copyId: 'task-inbox-ai-copy',
+    scopeLabel: viewTitle,
+    markdownText: aiCopyContext.markdown,
+    jsonText: aiCopyContext.jsonText,
   }) %>
 
   <div
