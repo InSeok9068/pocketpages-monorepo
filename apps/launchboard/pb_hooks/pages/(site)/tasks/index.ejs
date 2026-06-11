@@ -1,11 +1,12 @@
 <script server>
   const taskBoard = resolve('task-board')
 
-  const slug = String(params.slug || '').trim()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const requestedView = String(request.url.query.view || 'all').trim()
+  const activeView = requestedView === 'today' ? 'today' : 'all'
 
   if (!request.auth) {
-    dbg('page/projects/[slug]/tasks:redirect', {
+    dbg('page/tasks:index:redirect', {
       status: 303,
       redirectTo: '/sign-in',
       flash: '로그인이 필요합니다.',
@@ -17,78 +18,43 @@
     return
   }
 
-  if (!slug) {
-    dbg('page/projects/[slug]/tasks:redirect', {
-      status: 303,
-      redirectTo: '/',
-      flash: '프로젝트를 찾지 못했습니다.',
+  const projects = $app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 300, 0, { userId })
+  const projectOptions = []
+
+  for (let index = 0; index < projects.length; index += 1) {
+    const project = projects[index]
+
+    projectOptions.push({
+      id: String(project.get('id') || ''),
+      nameKo: String(project.get('name_ko') || '').trim(),
+      nameEn: String(project.get('name_en') || '').trim(),
     })
-    redirect('/', {
-      status: 303,
-      message: '프로젝트를 찾지 못했습니다.',
-    })
-    return
   }
 
-  let project = null
+  const boardState = taskBoard.getTaskInboxState($app, userId, activeView)
+  const viewTitle = activeView === 'today' ? '오늘 업무' : '전체 업무'
 
-  try {
-    project = $app.findFirstRecordByFilter('projects', 'slug = {:slug} && user = {:userId}', {
-      slug,
-      userId,
-    })
-  } catch (exception) {
-    project = null
-  }
+  meta('title', viewTitle + ' | LaunchBoard')
+  meta('description', viewTitle)
 
-  if (!project) {
-    dbg('page/projects/[slug]/tasks:redirect', {
-      status: 303,
-      redirectTo: '/',
-      flash: '프로젝트를 찾지 못했습니다.',
-      slug,
-    })
-    redirect('/', {
-      status: 303,
-      message: '프로젝트를 찾지 못했습니다.',
-    })
-    return
-  }
-
-  const projectView = {
-    id: String(project.get('id') || ''),
-    nameKo: String(project.get('name_ko') || '').trim(),
-    nameEn: String(project.get('name_en') || '').trim(),
-    slug: String(project.get('slug') || '').trim(),
-    detailHref: '/projects/' + encodeURIComponent(String(project.get('slug') || '').trim()),
-  }
-  const boardState = taskBoard.getTaskBoardState($app, userId, projectView.id)
-
-  meta('title', projectView.nameKo + ' 업무 | LaunchBoard')
-  meta('description', projectView.nameKo + ' 업무')
-
-  dbg('page/projects/[slug]/tasks:response', {
-    projectId: projectView.id,
-    slug: projectView.slug,
+  dbg('page/tasks:index:response', {
+    authId: userId,
+    view: activeView,
     taskCount: boardState.taskCount,
   })
 </script>
 
 <div
-  class="space-y-3 pb-20 md:pl-[88px] md:pb-0 sm:space-y-5"
+  class="space-y-3 pb-20 md:pl-[88px] md:pb-0"
   data-signals="{
     taskModalOpen: false,
     taskTitle: '',
     taskDescription: '',
     taskDueAt: '',
     taskPriority: 'normal',
-    taskMessage: '',
-    moveTaskId: '',
-    moveStatus: '',
-    moveOrder: [],
     activeTaskStatus: (function () {
       try {
-        const status = window.localStorage.getItem('launchboard:task-active-status:<%= projectView.id %>') || 'todo'
+        const status = window.localStorage.getItem('launchboard:inbox-active-status') || 'todo'
 
         return ['todo', 'doing', 'done', 'paused', 'canceled'].indexOf(status) >= 0 ? status : 'todo'
       } catch (exception) {
@@ -100,7 +66,7 @@
       const defaults = {todo: false, doing: false, done: true, paused: true, canceled: true}
 
       try {
-        const savedText = window.localStorage.getItem('launchboard:task-collapsed-statuses:<%= projectView.id %>')
+        const savedText = window.localStorage.getItem('launchboard:inbox-collapsed-statuses')
         const saved = savedText ? JSON.parse(savedText) : {}
 
         return saved && typeof saved === 'object' && !Array.isArray(saved) ? Object.assign({}, defaults, saved) : defaults
@@ -110,46 +76,26 @@
     })()
   }">
   <%- include('app-nav.ejs', {
-    activeNav: 'tasks',
-    canCreateTask: true,
+    activeNav: activeView === 'today' ? 'today' : 'tasks',
+    canCreateTask: projectOptions.length > 0,
   }) %>
 
   <header class="rounded-lg bg-white px-3 py-3 shadow-[0_8px_24px_rgba(25,31,40,0.05)] sm:px-6 sm:py-5">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
-        <a
-          href="/"
-          class="inline-flex items-center gap-1.5 rounded-md bg-transparent text-xs font-bold text-[#6b7684] no-underline hover:text-[#191f28] sm:text-sm">
-          <span
-            class="i-lucide-chevron-left h-4 w-4"
-            aria-hidden="true"></span>
-          목록
-        </a>
-        <div class="mt-3 min-w-0">
-          <p class="truncate text-xs font-bold text-[#8b95a1] sm:text-sm"><%= projectView.nameEn || 'LaunchBoard' %></p>
-          <h1 class="truncate text-xl font-bold leading-7 text-[#191f28] sm:text-3xl sm:leading-10"><%= projectView.nameKo %> 업무</h1>
-        </div>
+        <p class="text-xs font-bold text-[#8b95a1] sm:text-sm">LaunchBoard</p>
+        <h1 class="mt-1 truncate text-xl font-bold leading-7 text-[#191f28] sm:text-3xl sm:leading-10"><%= viewTitle %></h1>
       </div>
 
-      <div class="flex shrink-0 items-center gap-2">
-        <a
-          href="<%= projectView.detailHref %>"
-          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-10 sm:text-sm">
-          <span
-            class="i-lucide-settings-2 h-4 w-4"
-            aria-hidden="true"></span>
-          관리
-        </a>
-        <button
-          type="button"
-          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#3182f6] px-3 text-xs font-bold text-white hover:bg-[#1b64da] sm:h-10 sm:text-sm"
-          data-on:click="$taskModalOpen = true">
-          <span
-            class="i-lucide-plus h-4 w-4"
-            aria-hidden="true"></span>
-          업무
-        </button>
-      </div>
+      <a
+        href="/"
+        class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-10 sm:text-sm"
+        aria-label="프로젝트 보드">
+        <span
+          class="i-lucide-panels-top-left h-4 w-4"
+          aria-hidden="true"></span>
+        프로젝트
+      </a>
     </div>
   </header>
 
@@ -157,26 +103,14 @@
   <div class="rounded-lg bg-[#fff4d6] px-3 py-2 text-xs font-medium text-[#8a5b00] sm:px-4 sm:py-3 sm:text-sm"><%= params.__flash %></div>
   <% } %>
 
-  <div
-    class="rounded-lg bg-[#fff4d6] px-3 py-2 text-xs font-medium text-[#8a5b00] sm:px-4 sm:py-3 sm:text-sm"
-    data-show="$taskMessage"
-    data-text="$taskMessage"
-    style="display: none"></div>
-
   <%- include('task-board.ejs', {
-    projectId: projectView.id,
-    projectSlug: projectView.slug,
+    projectId: '',
+    projectSlug: '',
     statusColumns: boardState.statusColumns,
     tasksByStatus: boardState.tasksByStatus,
+    canSortTasks: false,
+    canDeleteTasks: false,
   }) %>
-
-  <button
-    type="button"
-    class="hidden"
-    data-task-move-trigger
-    data-on:click="@post('/xapi/tasks/move')">
-    이동
-  </button>
 
   <div
     class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4 sm:items-center"
@@ -202,12 +136,27 @@
       <form
         method="post"
         action="/xapi/tasks/create"
-        class="mt-4 grid gap-3 sm:mt-5 sm:gap-4"
-        data-on:submit="@post('/xapi/tasks/create', {contentType: 'form'})">
+        class="mt-4 grid gap-3 sm:mt-5 sm:gap-4">
         <input
           type="hidden"
-          name="project_id"
-          value="<%= projectView.id %>" />
+          name="return_to"
+          value="<%= activeView === 'today' ? '/tasks?view=today' : '/tasks' %>" />
+
+        <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
+          프로젝트
+          <select
+            name="project_id"
+            required
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-[52px] sm:px-4 sm:text-base">
+            <% for (let index = 0; index < projectOptions.length; index += 1) { %>
+            <% const option = projectOptions[index] %>
+            <option value="<%= option.id %>">
+              <%= option.nameKo %><% if (option.nameEn) { %> - <%= option.nameEn %><% } %>
+            </option>
+            <% } %>
+          </select>
+        </label>
+
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           제목
           <input
@@ -277,13 +226,11 @@
   </div>
 </div>
 
-<script src="<%= asset('/assets/vendor/sortable-1.15.7.min.js') %>"></script>
 <script src="<%= asset('/assets/vendor/swiper-12.2.0.min.js') %>"></script>
 <script>
   window.launchboardTaskBoard = window.launchboardTaskBoard || {}
-
-  window.launchboardTaskBoard.storageKey = 'launchboard:task-collapsed-statuses:<%= projectView.id %>'
-  window.launchboardTaskBoard.activeStatusKey = 'launchboard:task-active-status:<%= projectView.id %>'
+  window.launchboardTaskBoard.storageKey = 'launchboard:inbox-collapsed-statuses'
+  window.launchboardTaskBoard.activeStatusKey = 'launchboard:inbox-active-status'
   window.launchboardTaskBoard.statusValues = ['todo', 'doing', 'done', 'paused', 'canceled']
 
   window.launchboardPatchTaskBoardSignals = function (signals) {
@@ -367,7 +314,7 @@
       speed: 220,
       threshold: 12,
       resistanceRatio: 0.65,
-      noSwipingSelector: '[data-task-drag-handle], a, button, input, textarea, select',
+      noSwipingSelector: 'a, button, input, textarea, select',
       breakpoints: {
         768: {
           allowTouchMove: false,
@@ -394,121 +341,14 @@
     }
   }
 
-  window.launchboardInitTaskSortable = function () {
-    if (!window.Sortable) {
-      window.launchboardInitTaskSwiper()
-      return
-    }
-
-    const updateEmptyState = function (list) {
-      const emptyState = list.querySelector('[data-task-empty-state]')
-      const hasCards = list.querySelector('[data-task-card]') !== null
-
-      if (emptyState) emptyState.hidden = hasCards
-    }
-
-    const updateStatusCounts = function () {
-      const counts = {}
-
-      document.querySelectorAll('[data-task-sortable-list]').forEach(function (list) {
-        const status = list.dataset.status || ''
-
-        if (!status) return
-        counts[status] = list.querySelectorAll('[data-task-card]').length
-      })
-
-      document.querySelectorAll('[data-task-status-count]').forEach(function (count) {
-        const status = count.dataset.status || ''
-
-        if (!Object.prototype.hasOwnProperty.call(counts, status)) return
-        count.textContent = String(counts[status])
-      })
-    }
-
-    const collectTaskOrder = function () {
-      const order = []
-
-      document.querySelectorAll('[data-task-sortable-list]').forEach(function (list) {
-        const status = list.dataset.status || ''
-
-        if (!status) return
-        list.querySelectorAll('[data-task-card]').forEach(function (card, index) {
-          order.push({
-            id: card.dataset.taskId || '',
-            status: status,
-            sortOrder: index + 1,
-          })
-        })
-      })
-
-      return order
-    }
-
-    document.querySelectorAll('[data-task-sortable-list]').forEach(function (list) {
-      if (list.dataset.sortableReady === 'true') return
-
-      list.dataset.sortableReady = 'true'
-      updateEmptyState(list)
-      updateStatusCounts()
-
-      Sortable.create(list, {
-        group: 'launchboard-tasks',
-        sort: true,
-        animation: 160,
-        draggable: '[data-task-card]',
-        handle: '[data-task-drag-handle]',
-        ghostClass: 'launchboard-sortable-ghost',
-        chosenClass: 'launchboard-sortable-chosen',
-        dragClass: 'launchboard-sortable-drag',
-        delay: 120,
-        delayOnTouchOnly: true,
-        filter: 'a, button, input, textarea, select',
-        preventOnFilter: false,
-        onStart: function () {
-          document.body.dataset.launchboardTaskDragging = 'true'
-        },
-        onEnd: function (event) {
-          window.setTimeout(function () {
-            delete document.body.dataset.launchboardTaskDragging
-          }, 120)
-          const card = event.item
-          const toList = event.to
-          const fromList = event.from
-          const status = toList.dataset.status || ''
-
-          updateEmptyState(toList)
-          updateEmptyState(fromList)
-          updateStatusCounts()
-
-          if (!status) return
-
-          card.dataset.status = status
-          if (window.patchSignals) {
-            window.patchSignals({
-              moveTaskId: card.dataset.taskId || '',
-              moveStatus: status,
-              moveOrder: collectTaskOrder(),
-            })
-          }
-
-          const trigger = document.querySelector('[data-task-move-trigger]')
-          if (trigger) trigger.click()
-        },
-      })
-    })
-
-    window.launchboardSetTaskMobileSignal()
-    window.launchboardInitTaskSwiper()
-  }
-
-  if (window.launchboardTaskBoard.resizeReady !== true) {
-    window.launchboardTaskBoard.resizeReady = true
+  if (window.launchboardTaskBoard.inboxResizeReady !== true) {
+    window.launchboardTaskBoard.inboxResizeReady = true
     window.addEventListener('resize', function () {
       window.launchboardSetTaskMobileSignal()
       window.launchboardInitTaskSwiper()
     })
   }
 
-  window.launchboardInitTaskSortable()
+  window.launchboardSetTaskMobileSignal()
   window.launchboardInitTaskSwiper()
 </script>

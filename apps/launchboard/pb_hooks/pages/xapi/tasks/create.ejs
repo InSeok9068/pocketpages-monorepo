@@ -1,9 +1,18 @@
 <script server>
+  const { dateutil } = require('@pocketpages/utils')
   const taskBoard = resolve('task-board')
 
-  function redirectToProjectTasks(project, message) {
+  function normalizeReturnTo(value) {
+    const raw = String(value || '').trim()
+
+    if (raw === '/tasks' || raw === '/tasks?view=today') return raw
+
+    return ''
+  }
+
+  function redirectToProjectTasks(project, message, returnTo) {
     const slug = project ? String(project.get('slug') || '').trim() : ''
-    const redirectTo = slug ? '/projects/' + encodeURIComponent(slug) + '/tasks' : '/'
+    const redirectTo = returnTo || (slug ? '/projects/' + encodeURIComponent(slug) + '/tasks' : '/')
 
     dbg('xapi/tasks/create:redirect', {
       status: 303,
@@ -38,6 +47,8 @@
       taskModalOpen: false,
       taskTitle: '',
       taskDescription: '',
+      taskDueAt: '',
+      taskPriority: 'normal',
       taskMessage: message,
     })
     datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable();')
@@ -74,6 +85,8 @@
   const projectId = String(form.project_id || '').trim()
   const title = String(form.title || '').trim()
   const description = String(form.description || '').trim()
+  const priority = String(form.priority || 'normal').trim()
+  const returnTo = normalizeReturnTo(form.return_to)
   let project = null
   let errorMessage = ''
 
@@ -87,6 +100,7 @@
     if (!userId) throw new Error('로그인이 필요합니다.')
     if (!projectId) throw new Error('프로젝트를 찾지 못했습니다.')
     if (!title) throw new Error('업무 제목이 필요합니다.')
+    if (taskBoard.TASK_PRIORITY_VALUES.indexOf(priority) < 0) throw new Error('우선순위 값이 올바르지 않습니다.')
 
     project = $app.findFirstRecordByFilter('projects', 'id = {:projectId} && user = {:userId}', {
       projectId,
@@ -101,8 +115,9 @@
     record.set('title', title)
     record.set('description', description)
     record.set('status', 'todo')
-    record.set('priority', 'normal')
+    record.set('priority', priority)
     record.set('type', 'etc')
+    record.set('due_at', dateutil.toDateOnlyIso(form.due_at))
     record.set('sort_order', 0)
     record.set('is_pinned', false)
 
@@ -118,7 +133,7 @@
       return
     }
 
-    redirectToProjectTasks(project, '추가했습니다.')
+    redirectToProjectTasks(project, '추가했습니다.', returnTo)
     return
   } catch (exception) {
     errorMessage = String(exception.message || exception)
@@ -134,6 +149,6 @@
     return
   }
 
-  redirectToProjectTasks(project, errorMessage || '추가에 실패했습니다.')
+  redirectToProjectTasks(project, errorMessage || '추가에 실패했습니다.', returnTo)
   return
 </script>

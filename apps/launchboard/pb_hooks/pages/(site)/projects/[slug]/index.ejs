@@ -189,6 +189,23 @@
       </div>
 
       <div class="flex shrink-0 items-center gap-2">
+        <label
+          class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg bg-[#f2f4f6] text-[#8b95a1] hover:bg-[#fff4d6] hover:text-[#f59f00] sm:h-10 sm:w-10"
+          title="상단 고정">
+          <input
+            type="checkbox"
+            name="is_pinned"
+            value="true"
+            form="project-detail-form"
+            class="launchboard-choice-input"
+            <%= projectView.isPinned ? 'checked' : '' %> />
+          <span
+            class="launchboard-pin-off-icon i-lucide-pin-off h-4 w-4"
+            aria-hidden="true"></span>
+          <span
+            class="launchboard-pin-on-icon i-lucide-pin h-4 w-4"
+            aria-hidden="true"></span>
+        </label>
         <a
           href="<%= projectView.tasksHref %>"
           class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-10 sm:text-sm">
@@ -210,6 +227,7 @@
   <%- include('detail-toast.ejs') %>
 
   <form
+    id="project-detail-form"
     method="post"
     action="/xapi/projects/update"
     class="grid gap-2 sm:gap-4"
@@ -285,16 +303,6 @@
             <% } %>
           </div>
         </fieldset>
-
-        <label class="flex items-center justify-between gap-3 rounded-lg bg-[#f7f8fa] px-3 py-2 text-[13px] font-semibold text-[#4e5968] sm:py-3 sm:text-sm">
-          상단 고정
-          <input
-            type="checkbox"
-            name="is_pinned"
-            value="true"
-            class="h-5 w-5 accent-[#3182f6]"
-            <%= projectView.isPinned ? 'checked' : '' %> />
-        </label>
       </div>
     </section>
 

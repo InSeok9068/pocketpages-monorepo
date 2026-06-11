@@ -179,18 +179,38 @@
         </div>
       </div>
 
-      <% if (taskView.updatedAt) { %>
-      <div class="hidden shrink-0 rounded-lg bg-[#f7f8fa] px-3 py-2 text-right sm:block">
-        <p class="text-[11px] font-bold text-[#8b95a1]">수정</p>
-        <p class="text-sm font-bold text-[#191f28]"><%= taskView.updatedAt %></p>
+      <div class="flex shrink-0 items-center gap-2">
+        <label
+          class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg bg-[#f2f4f6] text-[#8b95a1] hover:bg-[#fff4d6] hover:text-[#f59f00] sm:h-10 sm:w-10"
+          title="상단 고정">
+          <input
+            type="checkbox"
+            name="is_pinned"
+            value="true"
+            form="task-detail-form"
+            class="launchboard-choice-input"
+            <%= taskView.isPinned ? 'checked' : '' %> />
+          <span
+            class="launchboard-pin-off-icon i-lucide-pin-off h-4 w-4"
+            aria-hidden="true"></span>
+          <span
+            class="launchboard-pin-on-icon i-lucide-pin h-4 w-4"
+            aria-hidden="true"></span>
+        </label>
+        <% if (taskView.updatedAt) { %>
+        <div class="hidden rounded-lg bg-[#f7f8fa] px-3 py-2 text-right sm:block">
+          <p class="text-[11px] font-bold text-[#8b95a1]">수정</p>
+          <p class="text-sm font-bold text-[#191f28]"><%= taskView.updatedAt %></p>
+        </div>
+        <% } %>
       </div>
-      <% } %>
     </div>
   </header>
 
   <%- include('detail-toast.ejs') %>
 
   <form
+    id="task-detail-form"
     method="post"
     action="/xapi/tasks/update"
     class="grid gap-2 sm:gap-4"
@@ -280,16 +300,6 @@
             </option>
             <% } %>
           </select>
-        </label>
-
-        <label class="flex items-center justify-between gap-3 rounded-lg bg-[#f7f8fa] px-3 py-2 text-[13px] font-semibold text-[#4e5968] sm:py-3 sm:text-sm">
-          상단 고정
-          <input
-            type="checkbox"
-            name="is_pinned"
-            value="true"
-            class="h-5 w-5 accent-[#3182f6]"
-            <%= taskView.isPinned ? 'checked' : '' %> />
         </label>
       </div>
     </section>

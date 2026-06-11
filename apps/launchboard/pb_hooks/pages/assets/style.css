@@ -55,6 +55,25 @@ button:focus-visible {
   box-shadow: inset 0 0 0 1px #191f28;
 }
 
+.launchboard-pin-on-icon {
+  display: none;
+}
+
+.launchboard-choice-input:focus-visible ~ .launchboard-pin-off-icon,
+.launchboard-choice-input:focus-visible ~ .launchboard-pin-on-icon {
+  border-radius: 0.25rem;
+  box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.18);
+}
+
+.launchboard-choice-input:checked ~ .launchboard-pin-off-icon {
+  display: none;
+}
+
+.launchboard-choice-input:checked ~ .launchboard-pin-on-icon {
+  display: inline-block;
+  color: #f59f00;
+}
+
 .launchboard-scrollbar-none {
   scrollbar-width: none;
 }

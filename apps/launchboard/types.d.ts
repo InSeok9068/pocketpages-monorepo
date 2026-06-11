@@ -53,8 +53,27 @@ declare namespace types {
     type: string
     typeLabel: string
     isPinned: boolean
+    projectId: string
+    projectName: string
+    projectSlug: string
+    href: string
     dueAt: string
+    dueBadge: ProjectTaskBadge | null
+    signalBadges: ProjectTaskBadge[]
     updatedAt: string
+  }
+
+  interface ProjectTaskBadge {
+    label: string
+    tone: string
+    icon: string
+  }
+
+  interface ProjectTaskProject {
+    id: string
+    nameKo: string
+    slug: string
+    tasksHref: string
   }
 
   interface ProjectTaskStatusColumn {
