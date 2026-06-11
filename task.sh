@@ -326,6 +326,7 @@ run_lint() {
   local service="${1:-}"
   local service_dir=""
   local eslint_target="."
+  local eslint_cache_dir="$ROOT_DIR/.cache/eslint/"
   local failed=0
 
   if [[ ! -f "$lint_script" ]]; then
@@ -373,7 +374,8 @@ run_lint() {
   echo "Running ESLint..."
   if ! (
     cd "$ROOT_DIR"
-    node "$eslint_bin" "$eslint_target"
+    mkdir -p "$eslint_cache_dir"
+    node "$eslint_bin" "$eslint_target" --cache --cache-location "$eslint_cache_dir"
   ); then
     failed=1
   fi

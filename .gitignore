@@ -2,6 +2,7 @@
 node_modules
 apps/*/pb_hooks/pages/assets/uno.min.css
 .history/
+.cache/
 
 # 데이터
 pb_data
