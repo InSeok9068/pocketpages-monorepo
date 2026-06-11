@@ -54,6 +54,7 @@
 
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const { buildTemplateVirtualText } = require('../tools/vscode-pocketpages/packages/language-core/ejs-template')
 const { collectPathContexts, collectSchemaContexts } = require('../tools/vscode-pocketpages/packages/language-core/custom-context')
 const { extractServerBlocks } = require('../tools/vscode-pocketpages/packages/language-core/script-server')
@@ -63,6 +64,17 @@ const { collectRedirectReturnDiagnostics, ts } = require('../tools/vscode-pocket
 
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
+const LINT_CACHE_VERSION = 1
+const LINT_CACHE_DIR = path.join(ROOT_DIR, '.cache', 'pocketpages-lint')
+const LINT_DEPENDENCY_FILES = [
+  __filename,
+  require.resolve('../tools/vscode-pocketpages/packages/language-core/ejs-template'),
+  require.resolve('../tools/vscode-pocketpages/packages/language-core/custom-context'),
+  require.resolve('../tools/vscode-pocketpages/packages/language-core/script-server'),
+  require.resolve('../tools/vscode-pocketpages/packages/language-service/flow-analysis'),
+  require.resolve('../tools/vscode-pocketpages/packages/language-service/project-index'),
+  require.resolve('../tools/vscode-pocketpages/packages/language-service/language-service'),
+]
 
 const ALLOWED_SPECIAL_FILES = new Set(['+config.js', '+layout.ejs', '+load.js', '+middleware.js', '+get.js', '+post.js', '+put.js', '+patch.js', '+delete.js'])
 
@@ -296,6 +308,85 @@ function readJsonFile(filePath) {
   } catch (_error) {
     return null
   }
+}
+
+function getLintCacheFile(serviceDir) {
+  const serviceName = path.basename(serviceDir).replace(/[^A-Za-z0-9_.-]/g, '_')
+  return path.join(LINT_CACHE_DIR, `${serviceName}.json`)
+}
+
+function collectLintCacheFiles(serviceDir) {
+  const hooksRoot = path.join(serviceDir, 'pb_hooks')
+  const candidates = [
+    ...walkFiles(hooksRoot),
+    path.join(serviceDir, 'pb_schema.json'),
+    path.join(serviceDir, 'package.json'),
+    ...LINT_DEPENDENCY_FILES,
+  ]
+
+  return unique(candidates.map((filePath) => path.resolve(filePath))).filter((filePath) => {
+    try {
+      return fs.statSync(filePath).isFile()
+    } catch (_error) {
+      return false
+    }
+  })
+}
+
+function createLintFingerprint(serviceDir) {
+  const hash = crypto.createHash('sha256')
+  hash.update(`pocketpages-lint:${LINT_CACHE_VERSION}\n`)
+
+  const files = collectLintCacheFiles(serviceDir).sort((left, right) => left.localeCompare(right))
+
+  for (const filePath of files) {
+    const stat = fs.statSync(filePath)
+    const relativePath = relativePosix(ROOT_DIR, filePath)
+    hash.update(`${relativePath}\0${stat.size}\0${stat.mtimeMs}\n`)
+  }
+
+  return hash.digest('hex')
+}
+
+function readLintCache(serviceDir) {
+  const cacheFile = getLintCacheFile(serviceDir)
+
+  if (!fs.existsSync(cacheFile)) {
+    return null
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(cacheFile, 'utf8'))
+  } catch (_error) {
+    return null
+  }
+}
+
+function writeLintCache(serviceDir, fingerprint, warningCount) {
+  fs.mkdirSync(LINT_CACHE_DIR, { recursive: true })
+  fs.writeFileSync(
+    getLintCacheFile(serviceDir),
+    JSON.stringify(
+      {
+        version: LINT_CACHE_VERSION,
+        fingerprint,
+        status: 'passed',
+        warnings: warningCount,
+      },
+      null,
+      2
+    )
+  )
+}
+
+function getValidLintCache(serviceDir, fingerprint) {
+  const cache = readLintCache(serviceDir)
+
+  if (!cache || cache.version !== LINT_CACHE_VERSION || cache.status !== 'passed' || cache.fingerprint !== fingerprint) {
+    return null
+  }
+
+  return cache
 }
 
 function printMatches(serviceName, title, matches) {
@@ -1767,8 +1858,30 @@ function main() {
 
   for (const serviceDir of serviceDirs) {
     const serviceStart = process.hrtime.bigint()
+    const serviceName = path.basename(serviceDir)
+    const fingerprint = createLintFingerprint(serviceDir)
+    const cached = getValidLintCache(serviceDir, fingerprint)
+
+    if (cached) {
+      const warningCount = Number.isFinite(cached.warnings) ? cached.warnings : 0
+      warnings += warningCount
+
+      console.log(`Checking service: ${serviceName}`)
+      console.log(`PocketPages lint cache hit [${serviceName}]${warningCount > 0 ? ` (${warningCount} warning(s))` : ''}.`)
+      const serviceElapsedMs = Number(process.hrtime.bigint() - serviceStart) / 1e6
+      console.log(`Service lint time [${serviceName}]: ${formatElapsedSeconds(serviceElapsedMs)}`)
+      continue
+    }
+
+    const previousErrors = errors
+    const previousWarnings = warnings
     const context = buildServiceContext(serviceDir)
     lintService(context)
+
+    if (errors === previousErrors) {
+      writeLintCache(serviceDir, fingerprint, warnings - previousWarnings)
+    }
+
     const serviceElapsedMs = Number(process.hrtime.bigint() - serviceStart) / 1e6
     console.log(`Service lint time [${context.serviceName}]: ${formatElapsedSeconds(serviceElapsedMs)}`)
   }
