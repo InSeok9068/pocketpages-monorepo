@@ -1,6 +1,15 @@
 <script server>
   const projectBoard = resolve('project-board')
 
+  function patchMoveSignals(message) {
+    datastar.patchSignals({
+      projectMessage: message,
+      projectMoveId: '',
+      projectMoveStatus: '',
+      projectMoveOrder: [],
+    })
+  }
+
   function patchBoard(userId, message) {
     const state = projectBoard.getProjectBoardState($app, userId)
 
@@ -15,12 +24,7 @@
         useViewTransition: true,
       }
     )
-    datastar.patchSignals({
-      projectMessage: message,
-      projectMoveId: '',
-      projectMoveStatus: '',
-      projectMoveOrder: [],
-    })
+    patchMoveSignals(message)
     datastar.executeScript('window.launchboardSetProjectMobileSignal && window.launchboardSetProjectMobileSignal(); window.launchboardInitSortable && window.launchboardInitSortable();')
   }
 
@@ -165,7 +169,18 @@
       status,
       orderedCount: orderUpdates.length,
     })
-    patchBoard(userId, '')
+    if (datastar.isRequest(request)) {
+      patchMoveSignals('')
+      return
+    }
+
+    dbg('xapi/projects/move:redirect', {
+      status: 303,
+      redirectTo: '/',
+    })
+    redirect('/', {
+      status: 303,
+    })
     return
   } catch (exception) {
     errorMessage = String(exception.message || exception)

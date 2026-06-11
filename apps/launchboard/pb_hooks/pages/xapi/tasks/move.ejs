@@ -1,6 +1,15 @@
 <script server>
   const taskBoard = resolve('task-board')
 
+  function patchMoveSignals(message) {
+    datastar.patchSignals({
+      moveTaskId: '',
+      moveStatus: '',
+      moveOrder: [],
+      taskMessage: message,
+    })
+  }
+
   function patchBoard(projectId, userId, message) {
     const project = $app.findFirstRecordByFilter('projects', 'id = {:projectId} && user = {:userId}', {
       projectId,
@@ -22,12 +31,7 @@
         mode: 'outer',
       }
     )
-    datastar.patchSignals({
-      moveTaskId: '',
-      moveStatus: '',
-      moveOrder: [],
-      taskMessage: message,
-    })
+    patchMoveSignals(message)
     datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable();')
   }
 
@@ -148,7 +152,7 @@
       status,
       orderedCount: orderUpdates.length,
     })
-    patchBoard(projectId, userId, '')
+    patchMoveSignals('')
     return
   } catch (exception) {
     errorMessage = String(exception.message || exception)

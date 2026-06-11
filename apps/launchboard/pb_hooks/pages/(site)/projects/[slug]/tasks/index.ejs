@@ -128,8 +128,8 @@
   }) %>
 
   <header class="rounded-lg bg-white px-3 py-3 shadow-[0_8px_24px_rgba(25,31,40,0.05)] sm:px-6 sm:py-5">
-    <div class="flex items-start justify-between gap-3">
-      <div class="min-w-0">
+    <div class="grid gap-3">
+      <div class="flex items-start justify-between gap-3">
         <a
           href="/"
           class="inline-flex items-center gap-1.5 rounded-md bg-transparent text-xs font-bold text-[#6b7684] no-underline hover:text-[#191f28] sm:text-sm">
@@ -138,39 +138,40 @@
             aria-hidden="true"></span>
           목록
         </a>
-        <div class="mt-3 min-w-0">
-          <p class="truncate text-xs font-bold text-[#8b95a1] sm:text-sm"><%= projectView.nameEn || 'LaunchBoard' %></p>
-          <h1 class="truncate text-xl font-bold leading-7 text-[#191f28] sm:text-3xl sm:leading-10"><%= projectView.nameKo %> 업무</h1>
+
+        <div class="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] hover:bg-[#e5e8eb] sm:h-10 sm:text-sm"
+            data-on:click="$aiCopyModalOpen = true">
+            <span
+              class="i-lucide-clipboard-copy h-4 w-4"
+              aria-hidden="true"></span>
+            <span class="hidden sm:inline">AI 복사</span>
+          </button>
+          <a
+            href="<%= projectView.detailHref %>"
+            class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-10 sm:text-sm">
+            <span
+              class="i-lucide-settings-2 h-4 w-4"
+              aria-hidden="true"></span>
+            관리
+          </a>
+          <button
+            type="button"
+            class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#3182f6] px-3 text-xs font-bold text-white hover:bg-[#1b64da] sm:h-10 sm:text-sm"
+            data-on:click="$taskModalOpen = true">
+            <span
+              class="i-lucide-plus h-4 w-4"
+              aria-hidden="true"></span>
+            업무
+          </button>
         </div>
       </div>
 
-      <div class="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] hover:bg-[#e5e8eb] sm:h-10 sm:text-sm"
-          data-on:click="$aiCopyModalOpen = true">
-          <span
-            class="i-lucide-clipboard-copy h-4 w-4"
-            aria-hidden="true"></span>
-          <span class="hidden sm:inline">AI 복사</span>
-        </button>
-        <a
-          href="<%= projectView.detailHref %>"
-          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-10 sm:text-sm">
-          <span
-            class="i-lucide-settings-2 h-4 w-4"
-            aria-hidden="true"></span>
-          관리
-        </a>
-        <button
-          type="button"
-          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#3182f6] px-3 text-xs font-bold text-white hover:bg-[#1b64da] sm:h-10 sm:text-sm"
-          data-on:click="$taskModalOpen = true">
-          <span
-            class="i-lucide-plus h-4 w-4"
-            aria-hidden="true"></span>
-          업무
-        </button>
+      <div class="min-w-0">
+        <p class="truncate text-xs font-bold text-[#8b95a1] sm:text-sm"><%= projectView.nameEn || 'LaunchBoard' %></p>
+        <h1 class="line-clamp-2 text-xl font-bold leading-7 text-[#191f28] sm:text-3xl sm:leading-10"><%= projectView.nameKo %> 업무</h1>
       </div>
     </div>
   </header>
