@@ -13,16 +13,16 @@
   function redirectToProjectTasks(project, message, returnTo) {
     const slug = project ? String(project.get('slug') || '').trim() : ''
     const redirectTo = returnTo || (slug ? '/projects/' + encodeURIComponent(slug) + '/tasks' : '/')
+    const redirectOptions = { status: 303 }
+
+    if (message) redirectOptions.message = message
 
     dbg('xapi/tasks/create:redirect', {
       status: 303,
       redirectTo,
       flash: message,
     })
-    redirect(redirectTo, {
-      status: 303,
-      message,
-    })
+    redirect(redirectTo, redirectOptions)
   }
 
   function patchBoard(project, userId, message) {
@@ -130,11 +130,11 @@
     })
 
     if (datastar.isRequest(request)) {
-      patchBoard(project, userId, '추가했습니다.')
+      patchBoard(project, userId, '')
       return
     }
 
-    redirectToProjectTasks(project, '추가했습니다.', returnTo)
+    redirectToProjectTasks(project, '', returnTo)
     return
   } catch (exception) {
     errorMessage = String(exception.message || exception)

@@ -151,6 +151,16 @@
                     ><%= project.priorityLabel %></span
                   >
                   <% } %>
+                  <a
+                    href="<%= project.tasksHref %>"
+                    class="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#f2f4f6] text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
+                    aria-label="업무"
+                    title="업무"
+                    data-on:click__stop="true">
+                    <span
+                      class="i-lucide-list-todo h-3.5 w-3.5"
+                      aria-hidden="true"></span>
+                  </a>
                   <span
                     role="button"
                     tabindex="-1"
@@ -176,16 +186,6 @@
                 class="mt-2.5 flex items-center justify-between gap-3"
                 data-show="!$compactProjectStatuses.<%= column.value %>">
                 <div class="flex items-center gap-1.5">
-                  <a
-                    href="<%= project.tasksHref %>"
-                    class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f2f4f6] text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
-                    aria-label="업무"
-                    title="업무"
-                    data-on:click__stop="true">
-                    <span
-                      class="i-lucide-list-todo h-3.5 w-3.5"
-                      aria-hidden="true"></span>
-                  </a>
                   <% if (project.domainUrl) { %>
                   <a
                     href="<%= project.domainUrl %>"
