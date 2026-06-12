@@ -365,7 +365,7 @@
           event.preventDefault()
 
           const now = Date.now()
-          if (now - Number(board.lastHorizontalWheelAt || 0) < 260) return
+          if (now - Number(board.lastHorizontalWheelAt || 0) < 520) return
 
           board.lastHorizontalWheelAt = now
           if (deltaX > 0) swiper.slideNext()
