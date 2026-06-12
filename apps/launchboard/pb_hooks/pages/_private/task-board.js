@@ -11,6 +11,7 @@ const TASK_STATUS_COLUMNS = [
 const TASK_STATUS_VALUES = TASK_STATUS_COLUMNS.map((column) => column.value)
 const TASK_PRIORITY_VALUES = ['low', 'normal', 'high']
 const TASK_TYPE_VALUES = ['feature', 'bug', 'design', 'content', 'infra', 'research', 'etc']
+const TASK_AI_STATUS_VALUES = ['todo', 'doing']
 
 const priorityLabels = {
   low: '낮음',
@@ -254,6 +255,15 @@ function getTaskStatusLabel(status) {
 }
 
 /**
+ * AI 컨텍스트에 포함할 업무 상태인지 확인한다.
+ * @param {string} status 업무 상태
+ * @returns {boolean}
+ */
+function isTaskAiStatus(status) {
+  return TASK_AI_STATUS_VALUES.indexOf(status) >= 0
+}
+
+/**
  * AI 컨텍스트용 업무 데이터를 만든다.
  * @param {types.ProjectTaskCard} task 업무 카드
  * @returns {object}
@@ -294,6 +304,9 @@ function toTaskAiStatuses(boardState) {
 
   for (let statusIndex = 0; statusIndex < boardState.statusColumns.length; statusIndex += 1) {
     const column = boardState.statusColumns[statusIndex]
+
+    if (!isTaskAiStatus(column.value)) continue
+
     const tasks = boardState.tasksByStatus[column.value] || []
     const items = []
 
@@ -310,6 +323,21 @@ function toTaskAiStatuses(boardState) {
   }
 
   return statuses
+}
+
+/**
+ * AI 컨텍스트용 업무 수를 계산한다.
+ * @param {object[]} statuses AI 상태 목록
+ * @returns {number}
+ */
+function countTaskAiItems(statuses) {
+  let count = 0
+
+  for (let index = 0; index < statuses.length; index += 1) {
+    count += Number(statuses[index].count || 0)
+  }
+
+  return count
 }
 
 /**
@@ -381,14 +409,15 @@ function toTaskAiMarkdown(context) {
  * @returns {{ markdown: string, jsonText: string }}
  */
 function getTaskAiCopyContext(input) {
+  const statuses = toTaskAiStatuses(input.boardState)
   const context = {
     title: String(input.title || 'LaunchBoard 업무 컨텍스트'),
     scope: String(input.scope || 'tasks'),
     scopeLabel: String(input.scopeLabel || '업무'),
     generatedAt: dateutil.formatDate(new Date(), dateutil.FORMATS.DATE_TIME_MINUTES),
     project: input.project || null,
-    taskCount: Number(input.boardState.taskCount || 0),
-    statuses: toTaskAiStatuses(input.boardState),
+    taskCount: countTaskAiItems(statuses),
+    statuses,
   }
 
   return {
