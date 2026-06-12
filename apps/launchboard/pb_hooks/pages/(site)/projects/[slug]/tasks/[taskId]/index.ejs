@@ -323,38 +323,38 @@
 
     <section class="rounded-lg bg-white p-3 shadow-[0_10px_28px_rgba(25,31,40,0.06),0_0_0_1px_rgba(227,231,237,0.78)]">
       <h2 class="text-[15px] font-bold text-[#191f28]">일정</h2>
-      <div class="mt-2 grid gap-2">
-        <label class="grid gap-1.5 text-[13px] font-semibold text-[#4e5968]">
+      <div class="launchboard-date-grid mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+        <label class="grid min-w-0 gap-1.5 text-[13px] font-semibold text-[#4e5968]">
           마감일
           <input
             type="date"
             name="due_at"
             value="<%= taskView.dueAt %>"
-            class="h-9 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
+            class="launchboard-date-input h-9 w-full min-w-0 rounded-lg border-0 bg-[#f7f8fa] px-2 text-[12px] font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
         </label>
-        <label class="grid gap-1.5 text-[13px] font-semibold text-[#4e5968]">
+        <label class="grid min-w-0 gap-1.5 text-[13px] font-semibold text-[#4e5968]">
           시작일
           <input
             type="date"
             name="started_at"
             value="<%= taskView.startedAt %>"
-            class="h-9 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
+            class="launchboard-date-input h-9 w-full min-w-0 rounded-lg border-0 bg-[#f7f8fa] px-2 text-[12px] font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
         </label>
-        <label class="grid gap-1.5 text-[13px] font-semibold text-[#4e5968]">
+        <label class="grid min-w-0 gap-1.5 text-[13px] font-semibold text-[#4e5968]">
           완료일
           <input
             type="date"
             name="completed_at"
             value="<%= taskView.completedAt %>"
-            class="h-9 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
+            class="launchboard-date-input h-9 w-full min-w-0 rounded-lg border-0 bg-[#f7f8fa] px-2 text-[12px] font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
         </label>
-        <label class="grid gap-1.5 text-[13px] font-semibold text-[#4e5968]">
+        <label class="grid min-w-0 gap-1.5 text-[13px] font-semibold text-[#4e5968]">
           취소일
           <input
             type="date"
             name="canceled_at"
             value="<%= taskView.canceledAt %>"
-            class="h-9 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
+            class="launchboard-date-input h-9 w-full min-w-0 rounded-lg border-0 bg-[#f7f8fa] px-2 text-[12px] font-semibold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]" />
         </label>
       </div>
     </section>

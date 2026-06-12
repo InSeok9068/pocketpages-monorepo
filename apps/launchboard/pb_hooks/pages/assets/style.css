@@ -82,6 +82,31 @@ button:focus-visible {
   display: none;
 }
 
+.launchboard-date-grid {
+  min-inline-size: 0;
+}
+
+.launchboard-date-input {
+  box-sizing: border-box;
+  min-inline-size: 0;
+}
+
+.launchboard-date-input::-webkit-datetime-edit {
+  padding: 0;
+}
+
+.launchboard-date-input::-webkit-date-and-time-value {
+  min-height: 1.5em;
+  text-align: left;
+}
+
+.launchboard-date-input::-webkit-calendar-picker-indicator {
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: 0;
+  padding: 0;
+}
+
 .launchboard-project-swiper,
 .launchboard-task-swiper {
   box-sizing: border-box;
