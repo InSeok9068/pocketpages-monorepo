@@ -13,16 +13,22 @@
   function redirectToProjectTasks(project, message, returnTo) {
     const slug = project ? String(project.get('slug') || '').trim() : ''
     const redirectTo = returnTo || (slug ? '/projects/' + encodeURIComponent(slug) + '/tasks' : '/')
-    const redirectOptions = { status: 303 }
-
-    if (message) redirectOptions.message = message
 
     dbg('xapi/tasks/create:redirect', {
       status: 303,
       redirectTo,
       flash: message,
     })
-    redirect(redirectTo, redirectOptions)
+
+    if (message) {
+      redirect(redirectTo, {
+        status: 303,
+        message,
+      })
+      return
+    }
+
+    redirect(redirectTo, { status: 303 })
   }
 
   function patchBoard(project, userId, message) {
