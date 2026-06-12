@@ -58,8 +58,25 @@
   const priority = String(form.priority || '').trim()
   const type = String(form.type || '').trim()
   const sortOrder = Number(form.sort_order || 0)
-  let redirectTo = projectSlug && taskId ? '/projects/' + encodeURIComponent(projectSlug) + '/tasks/' + encodeURIComponent(taskId) : '/'
+  const returnTo = normalizeReturnTo(form.return_to)
+  let redirectTo = getTaskDetailHref(projectSlug, taskId, returnTo)
   let errorMessage = ''
+
+  function normalizeReturnTo(value) {
+    const raw = String(value || '').trim()
+
+    if (raw === '/tasks' || raw === '/tasks?view=today') return raw
+
+    return ''
+  }
+
+  function getTaskDetailHref(slug, id, returnHref) {
+    if (!slug || !id) return '/'
+
+    const href = '/projects/' + encodeURIComponent(slug) + '/tasks/' + encodeURIComponent(id)
+
+    return returnHref ? href + '?return_to=' + encodeURIComponent(returnHref) : href
+  }
 
   function optionalText(value) {
     return String(value || '').trim()
@@ -105,7 +122,7 @@
     })
     const slug = String(project.get('slug') || projectSlug).trim()
 
-    redirectTo = '/projects/' + encodeURIComponent(slug) + '/tasks/' + encodeURIComponent(taskId)
+    redirectTo = getTaskDetailHref(slug, taskId, returnTo)
 
     task.set('title', title)
     task.set('description', optionalText(form.description))

@@ -141,7 +141,11 @@
 
           <% for (let taskIndex = 0; taskIndex < columnTasks.length; taskIndex += 1) { %>
           <% const task = columnTasks[taskIndex] %>
-          <% const taskHref = task.href || (projectSlug ? '/projects/' + encodeURIComponent(projectSlug) + '/tasks/' + encodeURIComponent(task.id) : '#') %>
+          <%
+            const baseTaskHref = task.href || (projectSlug ? '/projects/' + encodeURIComponent(projectSlug) + '/tasks/' + encodeURIComponent(task.id) : '#')
+            const returnTo = taskBoardView === 'today' ? '/tasks?view=today' : '/tasks'
+            const taskHref = taskBoardScope === 'inbox' && baseTaskHref !== '#' ? baseTaskHref + '?return_to=' + encodeURIComponent(returnTo) : baseTaskHref
+          %>
           <article
             class="min-w-0 max-w-full cursor-pointer overflow-hidden rounded-lg bg-white p-3.5 shadow-[0_8px_22px_rgba(25,31,40,0.07),0_0_0_1px_rgba(227,231,237,0.72)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(25,31,40,0.1),0_0_0_1px_rgba(49,130,246,0.16)]"
             data-task-card
