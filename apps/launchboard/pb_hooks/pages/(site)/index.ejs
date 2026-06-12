@@ -232,6 +232,33 @@
 
     if (!swiperElement) return
 
+    if (swiperElement.dataset.horizontalWheelReady !== 'true') {
+      swiperElement.dataset.horizontalWheelReady = 'true'
+      swiperElement.addEventListener(
+        'wheel',
+        function (event) {
+          const deltaX = Number(event.deltaX || 0)
+          const deltaY = Number(event.deltaY || 0)
+
+          if (Math.abs(deltaX) < 8 || Math.abs(deltaX) <= Math.abs(deltaY)) return
+
+          const swiper = window.launchboardProjectBoard.swiper
+
+          if (!swiper || swiper.destroyed) return
+
+          event.preventDefault()
+
+          const now = Date.now()
+          if (now - Number(board.lastHorizontalWheelAt || 0) < 260) return
+
+          board.lastHorizontalWheelAt = now
+          if (deltaX > 0) swiper.slideNext()
+          else swiper.slidePrev()
+        },
+        { passive: false }
+      )
+    }
+
     if (board.swiper && board.swiper.el !== swiperElement) {
       board.swiper.destroy(true, false)
       board.swiper = null
