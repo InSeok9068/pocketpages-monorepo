@@ -1,5 +1,45 @@
 <script server>
+  const projectBoard = resolve('project-board')
+
+  function patchCreateSignals(message) {
+    datastar.patchSignals({
+      projectModalOpen: false,
+      projectName: '',
+      projectDescription: '',
+      projectMessage: message,
+    })
+  }
+
+  function patchCreateError(message) {
+    datastar.patchSignals({
+      projectMessage: message,
+    })
+  }
+
+  function patchBoard(userId, message) {
+    const state = projectBoard.getProjectBoardState($app, userId)
+
+    datastar.patchElements(
+      include('project-board.ejs', {
+        statusColumns: state.statusColumns,
+        projectsByStatus: state.projectsByStatus,
+      }),
+      {
+        selector: '#project-board',
+        mode: 'outer',
+        useViewTransition: true,
+      }
+    )
+    patchCreateSignals(message)
+    datastar.executeScript('window.launchboardInitSortable && window.launchboardInitSortable();')
+  }
+
   if (request.method !== 'POST') {
+    if (datastar.isRequest(request)) {
+      patchCreateError('잘못된 요청입니다.')
+      return
+    }
+
     dbg('xapi/projects/create:redirect', {
       status: 303,
       redirectTo: '/',
@@ -13,6 +53,11 @@
   }
 
   if (!request.auth) {
+    if (datastar.isRequest(request)) {
+      patchCreateError('로그인이 필요합니다.')
+      return
+    }
+
     dbg('xapi/projects/create:redirect', {
       status: 303,
       redirectTo: '/sign-in',
@@ -103,11 +148,22 @@
       projectId: String(record.get('id') || ''),
       slug,
     })
+
+    if (datastar.isRequest(request)) {
+      dbg('xapi/projects/create:patch', {
+        projectId: String(record.get('id') || ''),
+        message: '저장했습니다.',
+      })
+      patchBoard(userId, '저장했습니다.')
+      return
+    }
+
     dbg('xapi/projects/create:redirect', {
       status: 303,
       redirectTo: '/',
       flash: '저장했습니다.',
     })
+
     redirect('/', {
       status: 303,
       message: '저장했습니다.',
@@ -120,6 +176,11 @@
       slug,
       error: errorMessage,
     })
+  }
+
+  if (datastar.isRequest(request)) {
+    patchCreateError(errorMessage || '저장에 실패했습니다.')
+    return
   }
 
   dbg('xapi/projects/create:redirect', {

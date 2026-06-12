@@ -28,6 +28,8 @@
   class="space-y-3"
   data-signals="{
     projectModalOpen: false,
+    projectName: '',
+    projectDescription: '',
     userMenuOpen: false,
     projectMessage: '',
     projectMoveId: '',
@@ -133,6 +135,7 @@
       <form
         method="post"
         action="/xapi/projects/create"
+        data-on:submit="@post('/xapi/projects/create', {contentType: 'form'})"
         class="mt-5 grid gap-4">
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           프로젝트명
@@ -140,6 +143,7 @@
             name="name_ko"
             required
             maxlength="120"
+            data-bind:project-name
             autofocus
             class="h-[52px] rounded-lg border-0 bg-[#f7f8fa] px-4 text-base text-[#191f28] outline-none placeholder:text-[#b0b8c1] focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]"
             placeholder="런치보드" />
@@ -151,6 +155,7 @@
             name="description"
             maxlength="500"
             rows="5"
+            data-bind:project-description
             class="resize-none rounded-lg border-0 bg-[#f7f8fa] px-4 py-3 text-base leading-6 text-[#191f28] outline-none placeholder:text-[#b0b8c1] focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]"
             placeholder="무엇을 만들지 짧게 적기"></textarea>
         </label>
