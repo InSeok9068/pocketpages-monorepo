@@ -1,10 +1,10 @@
 <div
-  class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4 sm:items-center"
+  class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4"
   data-show="$aiCopyModalOpen"
   data-on:click="if (evt.target === el) $aiCopyModalOpen = false"
   style="display: none">
   <section
-    class="w-full max-w-[560px] rounded-lg bg-white p-4 shadow-[0_24px_80px_rgba(25,31,40,0.28)] sm:p-5"
+    class="w-full max-w-[560px] rounded-lg bg-white p-4 shadow-[0_24px_80px_rgba(25,31,40,0.28)]"
     data-on:click__stop="true">
     <header class="flex items-start justify-between gap-3">
       <div class="min-w-0">
@@ -82,13 +82,13 @@
       <div class="grid grid-cols-2 gap-3 pt-1">
         <button
           type="button"
-          class="flex h-11 items-center justify-center rounded-lg border-0 bg-[#f2f4f6] px-4 text-sm font-bold text-[#4e5968] hover:bg-[#e5e8eb] sm:h-[50px] sm:text-base"
+          class="flex h-11 items-center justify-center rounded-lg border-0 bg-[#f2f4f6] px-4 text-sm font-bold text-[#4e5968] hover:bg-[#e5e8eb]"
           data-on:click="$aiCopyModalOpen = false">
           닫기
         </button>
         <button
           type="button"
-          class="flex h-11 items-center justify-center gap-2 rounded-lg border-0 bg-[#3182f6] px-4 text-sm font-bold text-white hover:bg-[#1b64da] sm:h-[50px] sm:text-base"
+          class="flex h-11 items-center justify-center gap-2 rounded-lg border-0 bg-[#3182f6] px-4 text-sm font-bold text-white hover:bg-[#1b64da]"
           data-on:click="window.launchboardCopyAiContext('<%= copyId %>', $aiCopyFormat)">
           <span
             class="i-lucide-clipboard-copy h-4 w-4"

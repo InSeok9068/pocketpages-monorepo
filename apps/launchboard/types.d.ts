@@ -29,7 +29,6 @@ declare namespace types {
   interface ProjectStatusColumn {
     value: string
     label: string
-    tone: string
     icon: string
     iconTone: string
     surface: string
@@ -48,14 +47,11 @@ declare namespace types {
     status: string
     priority: string
     priorityLabel: string
-    priorityTone: string
-    showPriority: boolean
     type: string
     typeLabel: string
     isPinned: boolean
     projectId: string
     projectName: string
-    projectSlug: string
     href: string
     dueAt: string
     dueBadge: ProjectTaskBadge | null
@@ -73,7 +69,6 @@ declare namespace types {
     id: string
     nameKo: string
     slug: string
-    tasksHref: string
   }
 
   interface ProjectTaskStatusColumn {

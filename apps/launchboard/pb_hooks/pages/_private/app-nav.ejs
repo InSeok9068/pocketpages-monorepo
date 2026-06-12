@@ -8,17 +8,9 @@
     { key: 'projects', href: '/', label: '프로젝트', icon: 'i-lucide-panels-top-left' },
   ]
   const mobileGridClass = navCanCreateTask ? 'grid-cols-4' : 'grid-cols-3'
-
-  function navItemClass(key) {
-    return navActive === key ? 'bg-[#191f28] text-white shadow-[0_10px_22px_rgba(25,31,40,0.18)]' : 'bg-transparent text-[#6b7684] hover:bg-[#f2f4f6] hover:text-[#191f28]'
-  }
-
-  function navMobileItemClass(key) {
-    return navActive === key ? 'text-[#1b64da]' : 'text-[#6b7684]'
-  }
 %>
 
-<aside class="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e5e8eb] bg-white/95 px-3 pb-3 pt-2 shadow-[0_-10px_30px_rgba(25,31,40,0.08)] backdrop-blur md:hidden">
+<aside class="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e5e8eb] bg-white/95 px-3 pb-3 pt-2 shadow-[0_-10px_30px_rgba(25,31,40,0.08)] backdrop-blur">
   <nav
     class="<%= mobileGridClass %> mx-auto grid max-w-[520px] gap-1"
     aria-label="업무 네비게이션">
@@ -26,7 +18,7 @@
     <% const item = navItems[index] %>
     <a
       href="<%= item.href %>"
-      class="<%= navMobileItemClass(item.key) %> flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 py-1.5 text-[11px] font-bold no-underline hover:bg-[#f7f8fa]"
+      class="<%= navActive === item.key ? 'text-[#1b64da]' : 'text-[#6b7684]' %> flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 py-1.5 text-[11px] font-bold no-underline hover:bg-[#f7f8fa]"
       aria-current="<%= navActive === item.key ? 'page' : 'false' %>">
       <span
         class="<%= item.icon %> h-5 w-5"
@@ -47,39 +39,4 @@
     </button>
     <% } %>
   </nav>
-</aside>
-
-<aside class="fixed bottom-6 left-6 top-6 z-40 hidden w-[72px] flex-col rounded-lg bg-white p-2 shadow-[0_14px_42px_rgba(25,31,40,0.12)] md:flex">
-  <nav
-    class="grid gap-2"
-    aria-label="업무 네비게이션">
-    <% for (let index = 0; index < navItems.length; index += 1) { %>
-    <% const item = navItems[index] %>
-    <a
-      href="<%= item.href %>"
-      class="<%= navItemClass(item.key) %> flex h-[56px] flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-bold no-underline"
-      aria-current="<%= navActive === item.key ? 'page' : 'false' %>"
-      title="<%= item.label %>">
-      <span
-        class="<%= item.icon %> h-5 w-5"
-        aria-hidden="true"></span>
-      <span><%= item.label %></span>
-    </a>
-    <% } %>
-  </nav>
-
-  <div class="mt-auto">
-    <% if (navCanCreateTask) { %>
-    <button
-      type="button"
-      class="flex h-[56px] w-full flex-col items-center justify-center gap-1 rounded-lg border-0 bg-[#3182f6] text-[11px] font-bold text-white hover:bg-[#1b64da]"
-      data-on:click="$taskModalOpen = true"
-      title="추가">
-      <span
-        class="i-lucide-plus h-5 w-5"
-        aria-hidden="true"></span>
-      <span>추가</span>
-    </button>
-    <% } %>
-  </div>
 </aside>

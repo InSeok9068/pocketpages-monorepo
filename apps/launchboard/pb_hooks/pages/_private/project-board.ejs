@@ -3,14 +3,14 @@
   data-project-board>
   <div class="min-w-0">
     <nav
-      class="mb-3 mt-9 grid grid-cols-5 gap-1 rounded-lg bg-white p-1 shadow-[0_8px_24px_rgba(25,31,40,0.05)] md:hidden"
+      class="mb-3 grid grid-cols-5 gap-1 rounded-lg bg-white p-1 shadow-[0_8px_24px_rgba(25,31,40,0.05)]"
       aria-label="프로젝트 상태">
       <% for (let tabIndex = 0; tabIndex < statusColumns.length; tabIndex += 1) { %>
       <% const tabColumn = statusColumns[tabIndex] %>
       <% const tabProjects = projectsByStatus[tabColumn.value] || [] %>
       <button
         type="button"
-        class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 bg-[#f2f4f6] px-1 text-[10px] font-bold leading-none text-[#4e5968] hover:bg-[#eaf3ff] sm:h-12"
+        class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 bg-[#f2f4f6] px-1 text-[10px] font-bold leading-none text-[#4e5968] hover:bg-[#eaf3ff]"
         data-project-status-tab
         data-status="<%= tabColumn.value %>"
         data-attr="{'aria-pressed': $activeProjectStatus === '<%= tabColumn.value %>' ? 'true' : 'false'}"
@@ -42,10 +42,9 @@
         <% const columnProjects = projectsByStatus[column.value] || [] %>
         <section
           id="status-<%= column.value %>"
-          class="<%= column.surface %> swiper-slide flex flex-col rounded-lg p-3"
+          class="<%= column.surface %> swiper-slide flex min-h-[280px] flex-col rounded-lg p-3"
           data-project-column
-          data-status="<%= column.value %>"
-          data-class="{'min-h-0 bg-white/70': !$isProjectMobile && $collapsedProjectStatuses.<%= column.value %>, 'min-h-[280px]': $isProjectMobile || !$collapsedProjectStatuses.<%= column.value %>}">
+          data-status="<%= column.value %>">
           <header class="flex items-center justify-between gap-3 px-1 py-1">
             <div class="flex items-center gap-2">
               <span class="<%= column.iconTone %> inline-flex h-7 w-7 items-center justify-center rounded-lg">
@@ -79,23 +78,6 @@
                   class="i-lucide-maximize-2 h-4 w-4"
                   aria-hidden="true"></span>
               </button>
-              <button
-                type="button"
-                class="hidden h-8 w-8 items-center justify-center rounded-lg border-0 bg-white/70 text-[#6b7684] hover:bg-white md:inline-flex"
-                data-project-collapse-button
-                data-status="<%= column.value %>"
-                data-attr="{'aria-label': $collapsedProjectStatuses.<%= column.value %> ? '펼치기' : '접기', 'aria-expanded': $collapsedProjectStatuses.<%= column.value %> ? 'false' : 'true'}"
-                data-on:click="$collapsedProjectStatuses.<%= column.value %> = !$collapsedProjectStatuses.<%= column.value %>; window.launchboardSaveProjectCollapsedStatuses && window.launchboardSaveProjectCollapsedStatuses($collapsedProjectStatuses)">
-                <span
-                  data-show="$collapsedProjectStatuses.<%= column.value %>"
-                  style="display: none"
-                  class="i-lucide-chevron-down h-4 w-4"
-                  aria-hidden="true"></span>
-                <span
-                  data-show="!$collapsedProjectStatuses.<%= column.value %>"
-                  class="i-lucide-chevron-up h-4 w-4"
-                  aria-hidden="true"></span>
-              </button>
               <% if (column.value === 'idea') { %>
               <button
                 type="button"
@@ -111,11 +93,10 @@
           </header>
 
           <div
-            class="launchboard-scrollbar-none mt-3 grid gap-3 md:-mx-2 md:max-h-[calc(100vh-180px)] md:min-h-0 md:overflow-y-auto md:px-2 md:pb-6 md:pt-1"
+            class="mt-3 grid gap-3"
             data-project-column-list
             data-sortable-list
-            data-status="<%= column.value %>"
-            data-show="$isProjectMobile || !$collapsedProjectStatuses.<%= column.value %>">
+            data-status="<%= column.value %>">
             <div
               class="rounded-lg border border-dashed border-[#d9dee7] bg-white/60 px-3 py-3 text-center text-xs font-medium text-[#8b95a1]"
               <% if (columnProjects.length > 0) { %>hidden<% } %>

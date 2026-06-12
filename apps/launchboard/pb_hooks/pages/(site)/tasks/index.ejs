@@ -55,7 +55,7 @@
 </script>
 
 <div
-  class="space-y-3 pb-20 md:pb-0 md:pl-[88px]"
+  class="space-y-3 pb-20"
   data-signals="{
     taskModalOpen: false,
     taskTitle: '',
@@ -64,6 +64,12 @@
     aiCopyModalOpen: false,
     aiCopyFormat: 'markdown',
     taskFilterOpen: false,
+    taskMessage: '',
+    moveTaskId: '',
+    moveStatus: '',
+    moveOrder: [],
+    taskBoardScope: 'inbox',
+    taskView: '<%= activeView %>',
     activeTaskStatus: (function () {
       try {
         const status = window.localStorage.getItem('launchboard:inbox-active-status') || 'todo'
@@ -72,19 +78,6 @@
       } catch (exception) {
         return 'todo'
       }
-    })(),
-    isTaskMobile: window.matchMedia('(max-width: 767px)').matches,
-    collapsedTaskStatuses: (function () {
-      const defaults = {todo: false, doing: false, done: true, paused: true, canceled: true}
-
-      try {
-        const savedText = window.localStorage.getItem('launchboard:inbox-collapsed-statuses')
-        const saved = savedText ? JSON.parse(savedText) : {}
-
-        return saved && typeof saved === 'object' && !Array.isArray(saved) ? Object.assign({}, defaults, saved) : defaults
-      } catch (exception) {
-        return defaults
-      }
     })()
   }">
   <%- include('app-nav.ejs', {
@@ -92,26 +85,26 @@
     canCreateTask: projectOptions.length > 0,
   }) %>
 
-  <header class="rounded-lg bg-white px-3 py-3 shadow-[0_8px_24px_rgba(25,31,40,0.05)] sm:px-6 sm:py-5">
+  <header class="rounded-lg bg-white px-3 py-3 shadow-[0_8px_24px_rgba(25,31,40,0.05)]">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
-        <p class="text-xs font-bold text-[#8b95a1] sm:text-sm">LaunchBoard</p>
-        <h1 class="mt-1 truncate text-xl font-bold leading-7 text-[#191f28] sm:text-3xl sm:leading-10"><%= viewTitle %></h1>
+        <p class="text-xs font-bold text-[#8b95a1]">LaunchBoard</p>
+        <h1 class="mt-1 truncate text-xl font-bold leading-7 text-[#191f28]"><%= viewTitle %></h1>
       </div>
 
       <div class="flex shrink-0 items-center gap-2">
         <button
           type="button"
-          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] hover:bg-[#e5e8eb] sm:h-10 sm:text-sm"
+          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] hover:bg-[#e5e8eb]"
+          aria-label="AI 복사"
           data-on:click="$aiCopyModalOpen = true">
           <span
             class="i-lucide-clipboard-copy h-4 w-4"
             aria-hidden="true"></span>
-          <span class="hidden sm:inline">AI 복사</span>
         </button>
         <a
           href="/"
-          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb] sm:h-10 sm:text-sm"
+          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
           aria-label="프로젝트 보드">
           <span
             class="i-lucide-panels-top-left h-4 w-4"
@@ -123,17 +116,25 @@
   </header>
 
   <% if (params.__flash) { %>
-  <div class="rounded-lg bg-[#fff4d6] px-3 py-2 text-xs font-medium text-[#8a5b00] sm:px-4 sm:py-3 sm:text-sm"><%= params.__flash %></div>
+  <div class="rounded-lg bg-[#fff4d6] px-3 py-2 text-xs font-medium text-[#8a5b00]"><%= params.__flash %></div>
   <% } %>
+
+  <div
+    class="rounded-lg bg-[#fff4d6] px-3 py-2 text-xs font-medium text-[#8a5b00]"
+    data-show="$taskMessage"
+    data-text="$taskMessage"
+    style="display: none"></div>
 
   <%- include('task-board.ejs', {
     projectId: '',
     projectSlug: '',
     statusColumns: boardState.statusColumns,
     tasksByStatus: boardState.tasksByStatus,
-    canSortTasks: false,
-    canDeleteTasks: false,
+    canSortTasks: true,
+    canDeleteTasks: true,
     canFilterTasks: true,
+    boardScope: 'inbox',
+    taskView: activeView,
   }) %>
 
   <%- include('ai-copy-modal.ejs', {
@@ -143,13 +144,21 @@
     jsonText: aiCopyContext.jsonText,
   }) %>
 
+  <button
+    type="button"
+    class="hidden"
+    data-task-move-trigger
+    data-on:click="@post('/xapi/tasks/move')">
+    이동
+  </button>
+
   <div
-    class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4 sm:items-center"
+    class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4"
     data-show="$taskModalOpen"
     data-on:click="if (evt.target === el) $taskModalOpen = false"
     style="display: none">
     <section
-      class="w-full max-w-[420px] rounded-lg bg-white p-4 shadow-[0_24px_80px_rgba(25,31,40,0.28)] sm:p-5"
+      class="w-full max-w-[420px] rounded-lg bg-white p-4 shadow-[0_24px_80px_rgba(25,31,40,0.28)]"
       data-on:click__stop="true">
       <header class="flex items-center justify-between gap-3">
         <h2 class="text-xl font-bold text-[#191f28]">업무 추가</h2>
@@ -167,7 +176,7 @@
       <form
         method="post"
         action="/xapi/tasks/create"
-        class="mt-4 grid gap-3 sm:mt-5 sm:gap-4">
+        class="mt-4 grid gap-3">
         <input
           type="hidden"
           name="return_to"
@@ -178,7 +187,7 @@
           <select
             name="project_id"
             required
-            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-[52px] sm:px-4 sm:text-base">
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]">
             <% for (let index = 0; index < projectOptions.length; index += 1) { %>
             <% const option = projectOptions[index] %>
             <option value="<%= option.id %>"><%= option.nameKo %><% if (option.nameEn) { %> - <%= option.nameEn %><% } %></option>
@@ -193,7 +202,7 @@
             required
             maxlength="160"
             data-bind:task-title
-            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm text-[#191f28] outline-none placeholder:text-[#b0b8c1] focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:h-[52px] sm:px-4 sm:text-base"
+            class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm text-[#191f28] outline-none placeholder:text-[#b0b8c1] focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]"
             placeholder="다음 작업" />
         </label>
 
@@ -204,7 +213,7 @@
             maxlength="700"
             rows="5"
             data-bind:task-description
-            class="resize-none rounded-lg border-0 bg-[#f7f8fa] px-3 py-2.5 text-sm leading-6 text-[#191f28] outline-none placeholder:text-[#b0b8c1] focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6] sm:px-4 sm:py-3 sm:text-base"
+            class="resize-none rounded-lg border-0 bg-[#f7f8fa] px-3 py-2.5 text-sm leading-6 text-[#191f28] outline-none placeholder:text-[#b0b8c1] focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]"
             placeholder="필요한 내용만 짧게"></textarea>
         </label>
 
@@ -265,13 +274,13 @@
         <div class="grid grid-cols-2 gap-3 pt-1">
           <button
             type="button"
-            class="flex h-11 items-center justify-center rounded-lg border-0 bg-[#f2f4f6] px-4 text-sm font-bold text-[#4e5968] hover:bg-[#e5e8eb] sm:h-[50px] sm:text-base"
+            class="flex h-11 items-center justify-center rounded-lg border-0 bg-[#f2f4f6] px-4 text-sm font-bold text-[#4e5968] hover:bg-[#e5e8eb]"
             data-on:click="$taskModalOpen = false">
             취소
           </button>
           <button
             type="submit"
-            class="flex h-11 items-center justify-center gap-2 rounded-lg border-0 bg-[#3182f6] px-4 text-sm font-bold text-white hover:bg-[#1b64da] sm:h-[50px] sm:text-base">
+            class="flex h-11 items-center justify-center gap-2 rounded-lg border-0 bg-[#3182f6] px-4 text-sm font-bold text-white hover:bg-[#1b64da]">
             <span
               class="i-lucide-plus h-4 w-4"
               aria-hidden="true"></span>
@@ -283,24 +292,12 @@
   </div>
 </div>
 
+<script src="<%= asset('/assets/vendor/sortable-1.15.7.min.js') %>"></script>
 <script src="<%= asset('/assets/vendor/swiper-12.2.0.min.js') %>"></script>
 <script>
   window.launchboardTaskBoard = window.launchboardTaskBoard || {}
-  window.launchboardTaskBoard.storageKey = 'launchboard:inbox-collapsed-statuses'
   window.launchboardTaskBoard.activeStatusKey = 'launchboard:inbox-active-status'
   window.launchboardTaskBoard.statusValues = ['todo', 'doing', 'done', 'paused', 'canceled']
-
-  window.launchboardPatchTaskBoardSignals = function (signals) {
-    if (!window.patchSignals) return
-
-    window.patchSignals(signals)
-  }
-
-  window.launchboardSetTaskMobileSignal = function () {
-    window.launchboardPatchTaskBoardSignals({
-      isTaskMobile: window.matchMedia('(max-width: 767px)').matches,
-    })
-  }
 
   window.launchboardSaveTaskActiveStatus = function (status) {
     if (window.launchboardTaskBoard.statusValues.indexOf(status) < 0) return
@@ -329,9 +326,10 @@
 
     if (statusIndex < 0) return
 
-    window.launchboardPatchTaskBoardSignals({
-      activeTaskStatus: status,
-    })
+    if (window.patchSignals)
+      window.patchSignals({
+        activeTaskStatus: status,
+      })
     window.launchboardSaveTaskActiveStatus(status)
 
     if (activateOptions.fromSwiper === true) return
@@ -371,14 +369,7 @@
       speed: 220,
       threshold: 12,
       resistanceRatio: 0.65,
-      noSwipingSelector: 'a, button, input, textarea, select',
-      breakpoints: {
-        768: {
-          allowTouchMove: false,
-          enabled: false,
-          spaceBetween: 0,
-        },
-      },
+      noSwipingSelector: '[data-task-drag-handle], a, button, input, textarea, select',
       on: {
         slideChange: function (swiper) {
           const nextStatus = board.statusValues[swiper.activeIndex]
@@ -390,12 +381,97 @@
     })
   }
 
-  window.launchboardSaveTaskCollapsedStatuses = function (statuses) {
-    try {
-      window.localStorage.setItem(window.launchboardTaskBoard.storageKey, JSON.stringify(statuses || {}))
-    } catch (exception) {
+  window.launchboardInitTaskSortable = function () {
+    if (!window.Sortable) {
+      window.launchboardInitTaskSwiper()
       return
     }
+
+    const updateEmptyState = function (list) {
+      const emptyState = list.querySelector('[data-task-empty-state]')
+      const hasCards = list.querySelector('[data-task-card]:not([hidden])') !== null
+
+      if (emptyState) emptyState.hidden = hasCards
+    }
+
+    const updateStatusCounts = function () {
+      const counts = {}
+
+      window.launchboardTaskBoard.statusValues.forEach(function (status) {
+        counts[status] = 0
+      })
+
+      document.querySelectorAll('[data-task-card]').forEach(function (card) {
+        const status = card.dataset.status || ''
+
+        if (card.hidden || !Object.prototype.hasOwnProperty.call(counts, status)) return
+        counts[status] += 1
+      })
+
+      document.querySelectorAll('[data-task-status-count]').forEach(function (count) {
+        const status = count.dataset.status || ''
+
+        if (!Object.prototype.hasOwnProperty.call(counts, status)) return
+        count.textContent = String(counts[status])
+      })
+    }
+
+    document.querySelectorAll('[data-task-sortable-list]').forEach(function (list) {
+      if (list.dataset.sortableReady === 'true') return
+
+      list.dataset.sortableReady = 'true'
+      updateEmptyState(list)
+      updateStatusCounts()
+
+      Sortable.create(list, {
+        group: 'launchboard-tasks',
+        sort: false,
+        animation: 160,
+        draggable: '[data-task-card]',
+        handle: '[data-task-drag-handle]',
+        ghostClass: 'launchboard-sortable-ghost',
+        chosenClass: 'launchboard-sortable-chosen',
+        dragClass: 'launchboard-sortable-drag',
+        delay: 120,
+        delayOnTouchOnly: true,
+        filter: 'a, button, input, textarea, select',
+        preventOnFilter: false,
+        onStart: function () {
+          document.body.dataset.launchboardTaskDragging = 'true'
+        },
+        onEnd: function (event) {
+          window.setTimeout(function () {
+            delete document.body.dataset.launchboardTaskDragging
+          }, 120)
+          const card = event.item
+          const toList = event.to
+          const fromList = event.from
+          const status = toList.dataset.status || ''
+
+          updateEmptyState(toList)
+          updateEmptyState(fromList)
+          updateStatusCounts()
+
+          if (!status) return
+
+          card.dataset.status = status
+          if (window.patchSignals) {
+            window.patchSignals({
+              moveTaskId: card.dataset.taskId || '',
+              moveStatus: status,
+              moveOrder: [],
+              taskBoardScope: 'inbox',
+              taskView: '<%= activeView %>',
+            })
+          }
+
+          const trigger = document.querySelector('[data-task-move-trigger]')
+          if (trigger) trigger.click()
+        },
+      })
+    })
+
+    window.launchboardInitTaskSwiper()
   }
 
   window.launchboardApplyTaskFilter = function (triggerElement) {
@@ -448,15 +524,7 @@
     })
   }
 
-  if (window.launchboardTaskBoard.inboxResizeReady !== true) {
-    window.launchboardTaskBoard.inboxResizeReady = true
-    window.addEventListener('resize', function () {
-      window.launchboardSetTaskMobileSignal()
-      window.launchboardInitTaskSwiper()
-    })
-  }
-
-  window.launchboardSetTaskMobileSignal()
+  window.launchboardInitTaskSortable()
   window.launchboardInitTaskSwiper()
   window.launchboardApplyTaskFilter()
 </script>

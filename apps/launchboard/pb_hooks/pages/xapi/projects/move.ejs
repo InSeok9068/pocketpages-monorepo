@@ -25,7 +25,7 @@
       }
     )
     patchMoveSignals(message)
-    datastar.executeScript('window.launchboardSetProjectMobileSignal && window.launchboardSetProjectMobileSignal(); window.launchboardInitSortable && window.launchboardInitSortable();')
+    datastar.executeScript('window.launchboardInitSortable && window.launchboardInitSortable();')
   }
 
   if (request.method !== 'POST') {

@@ -51,6 +51,33 @@
     datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable();')
   }
 
+  function patchInbox(view, userId, message) {
+    const inboxView = view === 'today' ? 'today' : 'all'
+    const state = taskBoard.getTaskInboxState($app, userId, inboxView)
+
+    datastar.patchElements(
+      include('task-board.ejs', {
+        projectId: '',
+        projectSlug: '',
+        statusColumns: state.statusColumns,
+        tasksByStatus: state.tasksByStatus,
+        canSortTasks: true,
+        canDeleteTasks: true,
+        canFilterTasks: true,
+        boardScope: 'inbox',
+        taskView: inboxView,
+      }),
+      {
+        selector: '#task-board',
+        mode: 'outer',
+      }
+    )
+    datastar.patchSignals({
+      taskMessage: message,
+    })
+    datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable(); window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter();')
+  }
+
   if (request.method !== 'POST') {
     dbg('xapi/tasks/delete:redirect', {
       status: 303,
@@ -81,6 +108,8 @@
   const userId = String(request.auth.get('id') || '')
   const taskId = String(form.task_id || '').trim()
   let projectId = String(form.project_id || '').trim()
+  const boardScope = String(form.task_board_scope || 'project').trim()
+  const taskView = String(form.task_view || 'all').trim()
   let errorMessage = ''
 
   dbg('xapi/tasks/delete:start', {
@@ -106,6 +135,11 @@
       projectId,
     })
 
+    if (datastar.isRequest(request) && boardScope === 'inbox') {
+      patchInbox(taskView, userId, '삭제했습니다.')
+      return
+    }
+
     if (datastar.isRequest(request)) {
       patchBoard(projectId, userId, '삭제했습니다.')
       return
@@ -121,6 +155,11 @@
       projectId,
       error: errorMessage,
     })
+  }
+
+  if (datastar.isRequest(request) && boardScope === 'inbox') {
+    patchInbox(taskView, userId, errorMessage || '삭제에 실패했습니다.')
+    return
   }
 
   if (datastar.isRequest(request) && projectId) {

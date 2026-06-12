@@ -18,12 +18,6 @@ const priorityLabels = {
   high: '높음',
 }
 
-const priorityTones = {
-  low: 'bg-[#eef2f6] text-[#6b7684]',
-  normal: 'bg-[#eaf3ff] text-[#1b64da]',
-  high: 'bg-[#fff0f0] text-[#e03131]',
-}
-
 const typeLabels = {
   feature: '기능',
   bug: '버그',
@@ -57,7 +51,6 @@ function toTaskProject(record) {
     id: String(record.get('id') || ''),
     nameKo: String(record.get('name_ko') || '').trim(),
     slug,
-    tasksHref: slug ? '/projects/' + encodeURIComponent(slug) + '/tasks' : '',
   }
 }
 
@@ -206,14 +199,11 @@ function toTaskCard(record, project) {
     status,
     priority,
     priorityLabel: priorityLabels[priority] || priority,
-    priorityTone: priorityTones[priority] || priorityTones.normal,
-    showPriority: priority !== 'normal',
     type,
     typeLabel: typeLabels[type] || type,
     isPinned: record.get('is_pinned') === true,
     projectId: project ? String(project.id || '') : String(record.get('project') || ''),
     projectName: project ? String(project.nameKo || '').trim() : '',
-    projectSlug,
     href: projectSlug ? '/projects/' + encodeURIComponent(projectSlug) + '/tasks/' + encodeURIComponent(taskId) : '',
     dueAt: dueAt ? dateutil.formatDate(dueAt, dateutil.FORMATS.DATE) : '',
     dueBadge,

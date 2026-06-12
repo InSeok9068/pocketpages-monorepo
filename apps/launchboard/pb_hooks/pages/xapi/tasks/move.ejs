@@ -2,12 +2,37 @@
   const taskBoard = resolve('task-board')
 
   function patchMoveSignals(message) {
+    patchMoveSignals(message)
+  }
+
+  function patchInbox(view, userId, message) {
+    const inboxView = view === 'today' ? 'today' : 'all'
+    const state = taskBoard.getTaskInboxState($app, userId, inboxView)
+
+    datastar.patchElements(
+      include('task-board.ejs', {
+        projectId: '',
+        projectSlug: '',
+        statusColumns: state.statusColumns,
+        tasksByStatus: state.tasksByStatus,
+        canSortTasks: true,
+        canDeleteTasks: true,
+        canFilterTasks: true,
+        boardScope: 'inbox',
+        taskView: inboxView,
+      }),
+      {
+        selector: '#task-board',
+        mode: 'outer',
+      }
+    )
     datastar.patchSignals({
       moveTaskId: '',
       moveStatus: '',
       moveOrder: [],
       taskMessage: message,
     })
+    datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable(); window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter();')
   }
 
   function patchBoard(projectId, userId, message) {
@@ -57,11 +82,15 @@
     moveTaskId: '',
     moveStatus: '',
     moveOrder: [],
+    taskBoardScope: 'project',
+    taskView: 'all',
   })
   const userId = String(request.auth.get('id') || '')
   const taskId = String(signals.moveTaskId || '').trim()
   const status = String(signals.moveStatus || '').trim()
   const moveOrder = Array.isArray(signals.moveOrder) ? signals.moveOrder : []
+  const boardScope = String(signals.taskBoardScope || 'project').trim()
+  const taskView = String(signals.taskView || 'all').trim()
   let projectId = ''
   let errorMessage = ''
 
@@ -119,7 +148,7 @@
     })
     const previousStatus = String(task.get('status') || '')
     projectId = String(task.get('project') || '')
-    const orderUpdates = getTaskOrderUpdates(moveOrder, projectId)
+    const orderUpdates = boardScope === 'inbox' ? [] : getTaskOrderUpdates(moveOrder, projectId)
 
     if (orderUpdates.length > 0) {
       let movedTaskUpdated = false
@@ -152,6 +181,11 @@
       status,
       orderedCount: orderUpdates.length,
     })
+    if (boardScope === 'inbox') {
+      patchInbox(taskView, userId, '')
+      return
+    }
+
     patchMoveSignals('')
     return
   } catch (exception) {
@@ -162,6 +196,11 @@
       status,
       error: errorMessage,
     })
+  }
+
+  if (boardScope === 'inbox') {
+    patchInbox(taskView, userId, errorMessage || '변경에 실패했습니다.')
+    return
   }
 
   if (projectId) {

@@ -25,7 +25,7 @@
 </script>
 
 <div
-  class="space-y-3 sm:space-y-4"
+  class="space-y-3"
   data-signals="{
     projectModalOpen: false,
     userMenuOpen: false,
@@ -42,28 +42,15 @@
       } catch (exception) {
         return 'idea'
       }
-    })(),
-    isProjectMobile: window.matchMedia('(max-width: 767px)').matches,
-    collapsedProjectStatuses: (function () {
-      const defaults = {idea: false, building: false, launched: false, paused: true, discarded: true}
-
-      try {
-        const savedText = window.localStorage.getItem('launchboard:collapsed-statuses')
-        const saved = savedText ? JSON.parse(savedText) : {}
-
-        return saved && typeof saved === 'object' && !Array.isArray(saved) ? Object.assign({}, defaults, saved) : defaults
-      } catch (exception) {
-        return defaults
-      }
     })()
   }">
   <div
-    class="fixed right-4 top-4 z-30 sm:right-6 sm:top-5"
+    class="relative z-30 flex justify-end"
     data-on:click__outside="$userMenuOpen = false">
     <div class="flex items-center gap-2">
       <a
         href="/tasks"
-        class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-xs font-bold text-[#4e5968] no-underline shadow-[0_8px_24px_rgba(25,31,40,0.08)] hover:bg-[#f7f8fa] sm:h-10 sm:px-3.5 sm:text-sm"
+        class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-xs font-bold text-[#4e5968] no-underline shadow-[0_8px_24px_rgba(25,31,40,0.08)] hover:bg-[#f7f8fa]"
         aria-label="전체 업무">
         <span
           class="i-lucide-list-todo h-4 w-4"
@@ -72,7 +59,7 @@
       </a>
       <button
         type="button"
-        class="inline-flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-white text-[#4e5968] shadow-[0_8px_24px_rgba(25,31,40,0.08)] hover:bg-[#f7f8fa] sm:h-10 sm:w-10"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-white text-[#4e5968] shadow-[0_8px_24px_rgba(25,31,40,0.08)] hover:bg-[#f7f8fa]"
         aria-label="메뉴"
         data-on:click="$userMenuOpen = !$userMenuOpen">
         <span
@@ -122,7 +109,7 @@
   <div
     data-show="$projectModalOpen"
     style="display: none"
-    class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4 sm:items-center"
+    class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4"
     data-on:click="if (evt.target === el) $projectModalOpen = false"
     data-on:keydown__window="if (evt.key === 'Escape') { $projectModalOpen = false; $userMenuOpen = false }">
     <section
@@ -193,21 +180,8 @@
 <script src="<%= asset('/assets/vendor/swiper-12.2.0.min.js') %>"></script>
 <script>
   window.launchboardProjectBoard = window.launchboardProjectBoard || {}
-  window.launchboardProjectBoard.storageKey = 'launchboard:collapsed-statuses'
   window.launchboardProjectBoard.activeStatusKey = 'launchboard:active-status'
   window.launchboardProjectBoard.statusValues = ['idea', 'building', 'launched', 'paused', 'discarded']
-
-  window.launchboardPatchProjectBoardSignals = function (signals) {
-    if (!window.patchSignals) return
-
-    window.patchSignals(signals)
-  }
-
-  window.launchboardSetProjectMobileSignal = function () {
-    window.launchboardPatchProjectBoardSignals({
-      isProjectMobile: window.matchMedia('(max-width: 767px)').matches,
-    })
-  }
 
   window.launchboardSaveProjectActiveStatus = function (status) {
     if (window.launchboardProjectBoard.statusValues.indexOf(status) < 0) return
@@ -236,9 +210,10 @@
 
     if (statusIndex < 0) return
 
-    window.launchboardPatchProjectBoardSignals({
-      activeProjectStatus: status,
-    })
+    if (window.patchSignals)
+      window.patchSignals({
+        activeProjectStatus: status,
+      })
     window.launchboardSaveProjectActiveStatus(status)
 
     if (activateOptions.fromSwiper === true) return
@@ -279,13 +254,6 @@
       threshold: 12,
       resistanceRatio: 0.65,
       noSwipingSelector: '[data-drag-handle], a, button, input, textarea, select',
-      breakpoints: {
-        768: {
-          allowTouchMove: false,
-          enabled: false,
-          spaceBetween: 0,
-        },
-      },
       on: {
         slideChange: function (swiper) {
           const nextStatus = board.statusValues[swiper.activeIndex]
@@ -295,14 +263,6 @@
         },
       },
     })
-  }
-
-  window.launchboardSaveProjectCollapsedStatuses = function (statuses) {
-    try {
-      window.localStorage.setItem(window.launchboardProjectBoard.storageKey, JSON.stringify(statuses || {}))
-    } catch (exception) {
-      return
-    }
   }
 
   window.launchboardInitSortable = function () {
@@ -409,20 +369,11 @@
       })
     })
 
-    window.launchboardSetProjectMobileSignal()
     window.launchboardInitProjectSwiper()
   }
 
   window.launchboardInitSortable()
   window.launchboardInitProjectSwiper()
-
-  if (window.launchboardProjectResizeReady !== true) {
-    window.launchboardProjectResizeReady = true
-    window.addEventListener('resize', function () {
-      window.launchboardSetProjectMobileSignal()
-      window.launchboardInitProjectSwiper()
-    })
-  }
 
   window.launchboardNextFavicon = function (image) {
     const urls = String(image.dataset.faviconList || '')

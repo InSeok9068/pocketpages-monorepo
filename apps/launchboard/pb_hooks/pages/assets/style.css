@@ -108,43 +108,6 @@ button:focus-visible {
   padding-bottom: 0.25rem;
 }
 
-@media (min-width: 768px) {
-  .launchboard-project-swiper,
-  .launchboard-task-swiper {
-    overflow: visible;
-  }
-
-  .launchboard-project-swiper > .swiper-wrapper,
-  .launchboard-task-swiper > .swiper-wrapper {
-    display: grid;
-    gap: 1rem;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    transform: none !important;
-  }
-
-  .launchboard-project-swiper > .swiper-wrapper > .swiper-slide,
-  .launchboard-task-swiper > .swiper-wrapper > .swiper-slide {
-    width: auto !important;
-  }
-
-  .launchboard-task-swiper [data-task-sortable-list] {
-    padding-inline: 0;
-    padding-bottom: 0;
-  }
-}
-
-@media (min-width: 1280px) {
-  .launchboard-task-swiper > .swiper-wrapper {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1536px) {
-  .launchboard-project-swiper > .swiper-wrapper {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
 .launchboard-sortable-ghost {
   opacity: 0.42;
 }
