@@ -2023,10 +2023,12 @@ const pageData = {
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'api', '+post.js'), `module.exports = function () {\n  return ''\n}\n`)
   writeFile(
     path.join(appRoot, 'pb_hooks', 'jobs', 'rebuild-search.js'),
-    `const boards = $app.findRecordsByFilter('boards')
+    `const boardService = require('../pages/_private/board-service')
+const boards = $app.findRecordsByFilter('boards')
 const board = $app.findFirstRecordByFilter('boards', 'id != ""')
 
 module.exports = {
+  boardService,
   boards,
   board,
 }
@@ -5103,7 +5105,7 @@ const flashClasses = 'notice'
       throw new Error(`Expected code actions to skip excluded route-exposed vendor scripts. Got: ${JSON.stringify(excludedCodeActions)}`)
     }
 
-    const schemaOnlyText = `const boards = $app.findRecordsByFilter('boards')\nboards.\n`
+    const schemaOnlyText = `const boardService = require('../pages/_private/board-service')\nconst boards = $app.findRecordsByFilter('boards')\nboards.\n`
     const schemaOnlyDocument = createTestDocument(fixture.jobScriptFilePath, 'javascript', 1, schemaOnlyText)
     const schemaOnlyUri = schemaOnlyDocument.uri
     lspSmokeCore.openDocument({
@@ -5122,6 +5124,37 @@ const flashClasses = 'notice'
     const schemaOnlyFeatureDocumentContext = schemaOnlyContext.context.core.getDocumentContextByUri(schemaOnlyUri)
     if (!schemaOnlyFeatureDocumentContext || !schemaOnlyFeatureDocumentContext.service) {
       throw new Error('Expected schema-only hook script to resolve a document context for guarded LSP feature tests.')
+    }
+    const schemaOnlyCustomFeatures = createCustomFeatureService(schemaOnlyContext.context)
+    const schemaOnlyRequirePosition = schemaOnlyDocument.positionAt(schemaOnlyText.indexOf('../pages/_private/board-service') + 5)
+    const schemaOnlyRequireDefinition = schemaOnlyCustomFeatures.provideDefinition({
+      textDocument: { uri: schemaOnlyUri },
+      position: schemaOnlyRequirePosition,
+    })
+    if (!schemaOnlyRequireDefinition || normalizeFilePath(schemaOnlyRequireDefinition) !== normalizeFilePath(fixture.boardServiceFilePath)) {
+      throw new Error(`Expected schema-only custom definition to resolve static require(). Got: ${JSON.stringify(schemaOnlyRequireDefinition)}`)
+    }
+    const schemaOnlyRequireLinks = schemaOnlyCustomFeatures.provideDocumentLinks({
+      textDocument: { uri: schemaOnlyUri },
+    })
+    if (
+      !Array.isArray(schemaOnlyRequireLinks) ||
+      schemaOnlyRequireLinks.length !== 1 ||
+      schemaOnlyRequireLinks[0].target !== URI.file(fixture.boardServiceFilePath).toString() ||
+      !String(schemaOnlyRequireLinks[0].tooltip || '').includes('Open require target')
+    ) {
+      throw new Error(`Expected schema-only document links to expose only static require(). Got: ${JSON.stringify(schemaOnlyRequireLinks)}`)
+    }
+    const schemaOnlyRequireReferences = schemaOnlyCustomFeatures.provideReferences({
+      textDocument: { uri: schemaOnlyUri },
+      position: schemaOnlyRequirePosition,
+      context: { includeDeclaration: true },
+    })
+    if (
+      !Array.isArray(schemaOnlyRequireReferences) ||
+      !schemaOnlyRequireReferences.some((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.jobScriptFilePath))
+    ) {
+      throw new Error(`Expected schema-only custom references to include the hook require() caller. Got: ${JSON.stringify(schemaOnlyRequireReferences)}`)
     }
     let schemaOnlyTypeScriptServiceCalls = 0
     let schemaOnlyTypeScriptPrepareCalls = 0
@@ -9863,6 +9896,28 @@ function loadPostRole() {
       throw new Error(`Expected __hooks string-concatenation require() path target info. Got: ${JSON.stringify(hooksConcatRequirePathTargetInfo)}`)
     }
 
+    const jobRequireText = fs.readFileSync(fixture.jobScriptFilePath, 'utf8')
+    const jobRequireOffset = jobRequireText.indexOf('../pages/_private/board-service') + 5
+    const jobRequireDefinition = service.getDefinitionTarget(
+      fixture.jobScriptFilePath,
+      jobRequireText,
+      jobRequireOffset
+    )
+    if (!jobRequireDefinition || normalizeFilePath(jobRequireDefinition) !== normalizeFilePath(fixture.boardServiceFilePath)) {
+      throw new Error(`Expected schema-only hook require() definition target. Got: ${JSON.stringify(jobRequireDefinition)}`)
+    }
+    const jobRequirePathTargetInfo = service.getRequirePathTargetInfo(
+      fixture.jobScriptFilePath,
+      jobRequireText,
+      jobRequireOffset
+    )
+    if (
+      !jobRequirePathTargetInfo
+      || normalizeFilePath(jobRequirePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.boardServiceFilePath)
+    ) {
+      throw new Error(`Expected schema-only hook require() path target info. Got: ${JSON.stringify(jobRequirePathTargetInfo)}`)
+    }
+
     const resolvedGlobalAssetTarget = service.projectIndex.resolveAssetTarget(
       fixture.boardsFilePath,
       '/assets/booklog-reader.js'
@@ -10673,11 +10728,14 @@ boardService.readSessionState({ request })
     }
 
     const moduleFileReferences = service.getFileReferenceTargets(fixture.boardServiceFilePath, fs.readFileSync(fixture.boardServiceFilePath, 'utf8'))
-    if (!moduleFileReferences || moduleFileReferences.length !== 4) {
-      throw new Error(`Expected file-based resolve()/require() references in four files. Got: ${JSON.stringify(moduleFileReferences)}`)
+    if (!moduleFileReferences || moduleFileReferences.length !== 5) {
+      throw new Error(`Expected file-based resolve()/require() references in five files. Got: ${JSON.stringify(moduleFileReferences)}`)
     }
     if (!moduleFileReferences.some((entry) => normalizeFilePath(entry.filePath).endsWith('/pb_hooks/pages/_private/board-service-consumer.js'))) {
       throw new Error(`Expected file-based module references to include static require() usage. Got: ${JSON.stringify(moduleFileReferences)}`)
+    }
+    if (!moduleFileReferences.some((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.jobScriptFilePath))) {
+      throw new Error(`Expected file-based module references to include schema-only hook require() usage. Got: ${JSON.stringify(moduleFileReferences)}`)
     }
 
     const hooksRequireReferenceQuery = service.getFileReferenceQuery(fixture.htmlToTextBundleFilePath)
@@ -10781,7 +10839,7 @@ module.exports = {
       fixture.boardServiceFilePath,
       path.resolve(path.dirname(fixture.boardServiceFilePath), 'session-service.js')
     )
-    if (!moduleFileRenameEdits || moduleFileRenameEdits.length !== 4) {
+    if (!moduleFileRenameEdits || moduleFileRenameEdits.length !== 5) {
       throw new Error(`Expected file rename edits for _private module. Got: ${JSON.stringify(moduleFileRenameEdits)}`)
     }
 
@@ -10835,6 +10893,16 @@ module.exports = {
     )
     if (!renamedRequireConsumerText.includes(`require('./session-service')`)) {
       throw new Error(`Expected static require() path to update after module file rename. Got: ${renamedRequireConsumerText}`)
+    }
+
+    const renamedJobRequireText = applyEditsToText(
+      fs.readFileSync(fixture.jobScriptFilePath, 'utf8'),
+      moduleFileRenameEdits.filter(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.jobScriptFilePath)
+      )
+    )
+    if (!renamedJobRequireText.includes(`require('../pages/_private/session-service')`)) {
+      throw new Error(`Expected schema-only hook require() path to update after module file rename. Got: ${renamedJobRequireText}`)
     }
 
     const hooksRequireRenameEdits = service.getFileRenameEdits(

@@ -431,6 +431,22 @@ function createNavigationFeatureHandlers(deps) {
         );
       }
 
+      const requireContext = getRequirePathContextAtOffset(documentText, offset, { filePath });
+      if (requireContext) {
+        const targetFilePath = service.projectIndex.resolveRequireTarget(
+          filePath,
+          requireContext.value,
+          requireContext
+        );
+        if (!targetFilePath) {
+          return null;
+        }
+
+        return service.collectRequireReferenceLocations(targetFilePath, {
+          [normalizePath(filePath)]: documentText,
+        });
+      }
+
       let renameInfo = service.getCustomRenameInfo(filePath, documentText, offset);
       if (!renameInfo) {
         const requiredModuleMemberContext = service.getRequiredModuleMemberContextForNavigation(

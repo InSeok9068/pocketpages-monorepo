@@ -226,6 +226,19 @@ function isPrivatePagesFile(filePath) {
     .includes("_private");
 }
 
+function isSchemaSupportOnlyHookScriptFile(appRoot, filePath) {
+  const normalizedAppRoot = normalizePath(appRoot);
+  const normalizedFilePath = normalizePath(filePath);
+  const hooksRoot = normalizePath(path.join(normalizedAppRoot, "pb_hooks"));
+  const pagesRoot = normalizePath(path.join(hooksRoot, "pages"));
+
+  return (
+    isScriptFile(normalizedFilePath) &&
+    isSameOrChildPath(hooksRoot, normalizedFilePath) &&
+    !isSameOrChildPath(pagesRoot, normalizedFilePath)
+  );
+}
+
 function stripKnownExtension(filePath, extensions) {
   for (const extension of extensions) {
     if (filePath.endsWith(extension)) {
@@ -3342,6 +3355,73 @@ class ProjectLanguageService {
     return this.getPagesCodeOverridesExcluding([], extraOverrides);
   }
 
+  getSchemaSupportOnlyHookScriptFiles() {
+    const hooksRoot = normalizePath(path.join(this.appRoot, "pb_hooks"));
+    const pagesRoot = normalizePath(path.join(hooksRoot, "pages"));
+    if (!directoryExists(hooksRoot)) {
+      return [];
+    }
+
+    const files = [];
+    const pendingDirectories = [hooksRoot];
+    while (pendingDirectories.length) {
+      const dirPath = pendingDirectories.pop();
+      if (!dirPath) {
+        continue;
+      }
+
+      let entries = [];
+      try {
+        entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      } catch (_error) {
+        continue;
+      }
+
+      for (const entry of entries) {
+        const absolutePath = normalizePath(path.join(dirPath, entry.name));
+        if (entry.isDirectory()) {
+          if (isSameOrChildPath(pagesRoot, absolutePath)) {
+            continue;
+          }
+          pendingDirectories.push(absolutePath);
+          continue;
+        }
+
+        if (
+          entry.isFile() &&
+          isSchemaSupportOnlyHookScriptFile(this.appRoot, absolutePath)
+        ) {
+          files.push({
+            filePath: absolutePath,
+          });
+        }
+      }
+    }
+
+    return files.sort((left, right) => left.filePath.localeCompare(right.filePath));
+  }
+
+  getRequireCallerCodeFiles() {
+    const filesByPath = new Map();
+    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      if (entry && entry.filePath) {
+        filesByPath.set(normalizePath(entry.filePath), {
+          filePath: normalizePath(entry.filePath),
+        });
+      }
+    }
+
+    for (const entry of this.getSchemaSupportOnlyHookScriptFiles()) {
+      if (entry && entry.filePath) {
+        filesByPath.set(normalizePath(entry.filePath), {
+          filePath: normalizePath(entry.filePath),
+        });
+      }
+    }
+
+    return [...filesByPath.values()].sort((left, right) => left.filePath.localeCompare(right.filePath));
+  }
+
   getPagesCodeOverridesExcluding(excludedFilePaths = [], extraOverrides = {}) {
     const overrides = {};
     const excludedFilePathSet = new Set(
@@ -6170,6 +6250,10 @@ class ProjectLanguageService {
       return pathReferenceContext;
     }
 
+    return this.getRequirePathTargetInfo(filePath, documentText, offset);
+  }
+
+  getRequirePathTargetInfo(filePath, documentText, offset) {
     const requireContext = getRequirePathContextAtOffset(documentText, offset, { filePath });
     if (!requireContext) {
       return null;
@@ -6300,7 +6384,7 @@ class ProjectLanguageService {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
     const uniqueLocations = new Map();
 
-    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+    for (const entry of this.getRequireCallerCodeFiles()) {
       const codeFilePath = normalizePath(entry.filePath);
       const documentText =
         Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
@@ -6943,7 +7027,7 @@ class ProjectLanguageService {
 
   getRequireFileRenameEdits(oldTargetFilePath, newTargetFilePath, overrides = {}) {
     const edits = [];
-    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+    for (const entry of this.getRequireCallerCodeFiles()) {
       const filePath = normalizePath(entry.filePath);
       const documentText = this.getCallerDocumentText(filePath, overrides);
       const requireContexts = collectStaticRequireCallContexts(documentText, { filePath });

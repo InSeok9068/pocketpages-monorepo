@@ -1576,10 +1576,8 @@ connection.onReferences((params) => {
 
   const offset = document.offsetAt(params.position);
   const includeDeclaration = !!(params.context && params.context.includeDeclaration);
-  if (
-    isExcludedPocketPagesScriptPath(context.filePath) ||
-    isSchemaSupportOnlyHookScriptPath(context.filePath)
-  ) {
+  const isSchemaSupportOnlyDocument = isSchemaSupportOnlyHookScriptPath(context.filePath);
+  if (isExcludedPocketPagesScriptPath(context.filePath)) {
     logRequestResult("references", "result", startedAt, {
       req: requestId,
       case: "blocked-document",
@@ -1614,6 +1612,20 @@ connection.onReferences((params) => {
       count: result.length,
     });
     return result;
+  }
+
+  if (isSchemaSupportOnlyDocument) {
+    logRequestResult("references", "result", startedAt, {
+      req: requestId,
+      case: "schema-only-custom-references",
+      file: getRelativePathLabel(context.filePath),
+      version: document.version,
+      offset,
+      includeDeclaration,
+      result: "none",
+      count: 0,
+    });
+    return null;
   }
 
   const shouldTryTypeScriptReferences =

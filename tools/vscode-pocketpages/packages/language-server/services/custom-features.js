@@ -51,6 +51,21 @@ function createCustomFeatureService(context) {
     );
   }
 
+  function getRequirePathTargetInfoForSchemaOnly(documentContext, documentText, offset) {
+    if (!isSchemaSupportOnlyDocument(documentContext)) {
+      return null;
+    }
+
+    const pathTargetInfo = documentContext.service.getRequirePathTargetInfo(
+      documentContext.filePath,
+      documentText,
+      offset
+    );
+    return pathTargetInfo && pathTargetInfo.kind === "require-path"
+      ? pathTargetInfo
+      : null;
+  }
+
   return {
     provideCompletionItems(params) {
       const requestContext = getDocumentRequestContext(params);
@@ -113,6 +128,15 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
+      const schemaOnlyRequireTarget = getRequirePathTargetInfoForSchemaOnly(
+        documentContext,
+        documentText,
+        offset
+      );
+      if (schemaOnlyRequireTarget) {
+        return schemaOnlyRequireTarget;
+      }
+
       if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }
@@ -133,6 +157,15 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
+      const schemaOnlyRequireTarget = getRequirePathTargetInfoForSchemaOnly(
+        documentContext,
+        documentText,
+        offset
+      );
+      if (schemaOnlyRequireTarget) {
+        return schemaOnlyRequireTarget.targetFilePath;
+      }
+
       if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }
@@ -155,24 +188,32 @@ function createCustomFeatureService(context) {
         return null;
       }
 
-      if (isCustomFeatureBlockedDocument(documentContext)) {
+      const requireOnly = isSchemaSupportOnlyDocument(documentContext);
+      if (isExcludedPocketPagesDocument(documentContext)) {
         return null;
       }
 
-      return documentContext.service
+      const links = documentContext.service
         .getDocumentLinks(documentContext.filePath, document.getText())
-        .map((entry) => ({
-          range: toRange(document, entry.start, entry.end),
-          target: URI.file(entry.targetFilePath).toString(),
-          tooltip:
-            entry.kind === "resolve-path"
-              ? `Open module target: ${entry.value}`
-              : entry.kind === "include-path"
-                ? `Open partial target: ${entry.value}`
-                : entry.kind === "asset-path"
-                  ? `Open asset target: ${entry.value}`
-                  : `Open route target: ${entry.value}`,
-        }));
+        .filter((entry) => !requireOnly || entry.kind === "require-path");
+      if (requireOnly && !links.length) {
+        return null;
+      }
+
+      return links.map((entry) => ({
+        range: toRange(document, entry.start, entry.end),
+        target: URI.file(entry.targetFilePath).toString(),
+        tooltip:
+          entry.kind === "resolve-path"
+            ? `Open module target: ${entry.value}`
+            : entry.kind === "include-path"
+              ? `Open partial target: ${entry.value}`
+              : entry.kind === "asset-path"
+                ? `Open asset target: ${entry.value}`
+                : entry.kind === "require-path"
+                  ? `Open require target: ${entry.value}`
+                : `Open route target: ${entry.value}`,
+      }));
     },
 
     provideSignatureHelp(params) {
@@ -202,6 +243,20 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
+      const schemaOnlyRequireTarget = getRequirePathTargetInfoForSchemaOnly(
+        documentContext,
+        documentText,
+        offset
+      );
+      if (schemaOnlyRequireTarget) {
+        return documentContext.service.collectRequireReferenceLocations(
+          schemaOnlyRequireTarget.targetFilePath,
+          {
+            [documentContext.filePath]: documentText,
+          }
+        );
+      }
+
       if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }

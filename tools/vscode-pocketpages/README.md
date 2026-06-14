@@ -158,13 +158,14 @@ EJS block 끝 위치는 실제 사용자가 커서를 자주 멈추는 위치입
 - `record.get('field')`, `record.set('field', value)` field completion
 - unknown collection diagnostics
 - unknown field diagnostics
+- static `require()` path definition/document link/references and file-rename edits for literal, `__hooks` template, and `__hooks +` requests
 
 의도적으로 제공하지 않는 기능은 다음과 같습니다.
 
 - `resolve()` / `include()` / `asset()` path 기능
 - route target navigation
-- document links
-- `_private` references / rename
+- non-`require()` document links
+- `resolve()` / `include()` 기반 `_private` references / rename
 - `include()` custom signature help
 - page/middleware 전용 project-rule diagnostics
 
