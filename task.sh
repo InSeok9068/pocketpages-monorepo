@@ -25,6 +25,7 @@ Usage:
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
   ./task.sh css [service]
   ./task.sh bundle
+  ./task.sh generate [-- <extra args>]
   ./task.sh format [-- <extra args>]
 
 Commands:
@@ -47,6 +48,7 @@ Commands:
   index     Query AI-friendly PocketPages project index JSON for one service
   css       Build UnoCSS for one service or all services that reference it
   bundle    Interactively bundle one service dependency into pb_hooks/pages/_private/vendor
+  generate  Interactively generate a PocketPages api/xapi route file
   format    Run npm run format
 
 Examples:
@@ -64,6 +66,8 @@ Examples:
   ./task.sh install npm -- --package-lock-only
   ./task.sh update pocketbase
   ./task.sh update pocketbase -- --backup
+  ./task.sh generate
+  ./task.sh generate -- --service booklog --kind xapi-redirect --path books/delete-note
 EOF
 }
 
@@ -1002,6 +1006,22 @@ run_bundle() {
   node "$bundle_script" "$@"
 }
 
+run_generate() {
+  local generate_script="$ROOT_DIR/scripts/generate-pocketpages.mjs"
+
+  if [[ ! -f "$generate_script" ]]; then
+    echo "Missing generate script: $generate_script" >&2
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run generate command." >&2
+    exit 1
+  fi
+
+  node "$generate_script" "$@"
+}
+
 normalize_bash_path() {
   local raw_path="$1"
 
@@ -1669,6 +1689,11 @@ if [[ "${1:-}" == "__complete_install_targets" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "__complete_generate_kinds" ]]; then
+  printf '%s\n' xapi-redirect api-json xapi-partial xapi-datastar
+  exit 0
+fi
+
 case "${1:-help}" in
   start)
     shift
@@ -1790,6 +1815,11 @@ case "${1:-help}" in
   bundle)
     shift || true
     run_bundle "$@"
+    ;;
+  generate)
+    shift || true
+    [[ "${1:-}" == "--" ]] && shift
+    run_generate "$@"
     ;;
   format)
     shift || true

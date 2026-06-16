@@ -19,7 +19,7 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill update install deploy rollback archive restore archives merge test lint tsc diag verify index css bundle format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill update install deploy rollback archive restore archives merge test lint tsc diag verify index css bundle generate format help" -- "$cur") )
     return
   fi
 
@@ -84,6 +84,31 @@ _pp_dev_complete() {
       local sections
       sections="$("$script" __complete_index_sections 2>/dev/null)"
       COMPREPLY=( $(compgen -W "$sections" -- "$cur") )
+      return
+    fi
+  fi
+
+  if [[ "$cmd" == "generate" ]]; then
+    if [[ $COMP_CWORD -ge 3 && "${COMP_WORDS[COMP_CWORD-1]}" == "--service" ]]; then
+      services="$("$script" __complete_services 2>/dev/null)"
+      COMPREPLY=( $(compgen -W "$services" -- "$cur") )
+      return
+    fi
+
+    if [[ $COMP_CWORD -ge 3 && "${COMP_WORDS[COMP_CWORD-1]}" == "--kind" ]]; then
+      local generate_kinds
+      generate_kinds="$("$script" __complete_generate_kinds 2>/dev/null)"
+      COMPREPLY=( $(compgen -W "$generate_kinds" -- "$cur") )
+      return
+    fi
+
+    if [[ $COMP_CWORD -ge 3 && "${COMP_WORDS[COMP_CWORD-1]}" == "--method" ]]; then
+      COMPREPLY=( $(compgen -W "GET POST ANY" -- "$cur") )
+      return
+    fi
+
+    if [[ "$cur" == --* || -z "$cur" ]]; then
+      COMPREPLY=( $(compgen -W "--service --kind --path --method --auth --no-auth --partial --success-redirect --failure-redirect --force --dry-run --help" -- "$cur") )
       return
     fi
   fi
