@@ -54,11 +54,10 @@
     dbg('xapi/projects/delete:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '삭제했습니다.',
+      flash: '',
     })
     redirect('/', {
       status: 303,
-      message: '삭제했습니다.',
     })
     return
   } catch (exception) {

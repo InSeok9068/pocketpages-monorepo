@@ -30,9 +30,17 @@
       redirectTo,
       flash: message,
     })
+
+    if (message) {
+      redirect(redirectTo, {
+        status: 303,
+        message,
+      })
+      return
+    }
+
     redirect(redirectTo, {
       status: 303,
-      message,
     })
   }
 
@@ -149,16 +157,16 @@
     })
 
     if (datastar.isRequest(request) && boardScope === 'inbox') {
-      patchInbox(taskView, userId, '삭제했습니다.')
+      patchInbox(taskView, userId, '')
       return
     }
 
     if (datastar.isRequest(request)) {
-      patchBoard(projectId, userId, '삭제했습니다.')
+      patchBoard(projectId, userId, '')
       return
     }
 
-    redirectToProjectTasks(projectId, '삭제했습니다.', returnTo)
+    redirectToProjectTasks(projectId, '', returnTo)
     return
   } catch (exception) {
     errorMessage = String(exception.message || exception)
