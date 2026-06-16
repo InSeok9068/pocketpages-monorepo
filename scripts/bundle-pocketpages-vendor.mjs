@@ -1,8 +1,9 @@
-import { builtinModules, createRequire } from 'node:module'
+/* global console */
+import { search } from '@inquirer/prompts'
 import { mkdir, readFile, stat } from 'node:fs/promises'
+import { builtinModules, createRequire } from 'node:module'
 import path from 'node:path'
 import process from 'node:process'
-import readline from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 
 import { build } from 'esbuild'
@@ -17,10 +18,6 @@ const builtinNameSet = new Set(
     return [name, `node:${name}`]
   })
 )
-
-function normalizeMenuAnswer(input) {
-  return String(input || '').trim()
-}
 
 function buildBundleFileName(libraryName) {
   return `${String(libraryName || '')
@@ -90,70 +87,25 @@ function listLibraries(packageJson) {
   return Array.from(names).sort((a, b) => a.localeCompare(b))
 }
 
-async function promptSelection(rl, title, items, formatItem) {
+async function promptSelection(title, items, formatItem) {
   if (!items.length) {
     throw new Error(`${title} 항목이 없습니다.`)
   }
 
-  console.log(`${title}`)
-  items.forEach((item, index) => {
-    console.log(`  ${index + 1}. ${formatItem(item)}`)
-  })
+  const choices = items.map((item) => ({
+    name: formatItem(item),
+    value: item,
+  }))
 
-  while (true) {
-    const answer = normalizeMenuAnswer(await rl.question('번호 또는 이름을 입력하세요: '))
-    if (!answer) continue
+  return search({
+    message: title,
+    source(term) {
+      const normalizedTerm = String(term || '').trim().toLowerCase()
+      if (!normalizedTerm) return choices
 
-    const index = Number(answer)
-    if (Number.isInteger(index) && index >= 1 && index <= items.length) {
-      return items[index - 1]
-    }
-
-    const matched = items.find((item) => {
-      const itemName = typeof item === 'string' ? item : item.name
-      return itemName === answer
-    })
-    if (matched) return matched
-
-    console.log('다시 입력해주세요.')
-  }
-}
-
-async function createPrompter() {
-  if (process.stdin.isTTY) {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    })
-
-    return {
-      async question(prompt) {
-        return rl.question(prompt)
-      },
-      close() {
-        rl.close()
-      },
-    }
-  }
-
-  let text = ''
-  for await (const chunk of process.stdin) {
-    text += chunk
-  }
-
-  const answers = text.split(/\r?\n/)
-  let index = 0
-
-  return {
-    async question(prompt) {
-      process.stdout.write(prompt)
-      const answer = answers[index] === undefined ? '' : answers[index]
-      index += 1
-      if (answer) process.stdout.write(`${answer}\n`)
-      return answer
+      return choices.filter((choice) => choice.name.toLowerCase().includes(normalizedTerm))
     },
-    close() {},
-  }
+  })
 }
 
 async function bundleServiceLibrary(service, libraryName) {
@@ -202,31 +154,29 @@ function printBundleSummary(summary) {
 }
 
 async function main() {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error('bundle command must be run in an interactive terminal.')
+  }
+
   const services = await listServices()
   if (!services.length) {
     throw new Error('pb_hooks와 package.json이 있는 서비스가 없습니다.')
   }
 
-  const rl = await createPrompter()
+  const service = await promptSelection('어떤 서비스를 번들링할까요?', services, (item) => item.name)
+  const packageJson = await readServicePackageJson(service.packageJsonPath)
+  const libraries = listLibraries(packageJson)
 
-  try {
-    const service = await promptSelection(rl, '1. 어떤 프로젝트를 진행?', services, (item) => item.name)
-    const packageJson = await readServicePackageJson(service.packageJsonPath)
-    const libraries = listLibraries(packageJson)
+  const libraryName = await promptSelection('어떤 라이브러리를 번들링할까요?', libraries, (item) => item)
+  const summary = await bundleServiceLibrary(service, libraryName)
 
-    const libraryName = await promptSelection(rl, '2. 어떤 라이브러리를 진행?', libraries, (item) => item)
-    const summary = await bundleServiceLibrary(service, libraryName)
-
-    printBundleSummary({
-      serviceName: service.name,
-      libraryName,
-      entryPoint: summary.entryPoint,
-      outfile: summary.outfile,
-      builtinImports: summary.builtinImports,
-    })
-  } finally {
-    rl.close()
-  }
+  printBundleSummary({
+    serviceName: service.name,
+    libraryName,
+    entryPoint: summary.entryPoint,
+    outfile: summary.outfile,
+    builtinImports: summary.builtinImports,
+  })
 }
 
 main().catch((error) => {

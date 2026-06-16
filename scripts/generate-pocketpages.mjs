@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /* global console */
+import { confirm, input, search, select } from '@inquirer/prompts'
 import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
-import readline from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
@@ -54,7 +54,7 @@ Options:
   --path <route-path>           Route path under api/ or xapi/, e.g. books/delete-note
   --method <GET|POST|ANY>       Request method guard. Defaults by kind
   --auth / --no-auth            Add or skip request.auth guard
-  --partial <name.ejs>          Partial name for xapi-partial
+  --partial <name.ejs>          Optional partial name for xapi-partial
   --success-redirect <path>     Success redirect path for xapi-redirect
   --failure-redirect <path>     Failure redirect path for xapi-redirect
   --force                       Overwrite an existing file
@@ -78,14 +78,6 @@ function fromMsysPath(value) {
 
 function normalizeMenuAnswer(input) {
   return String(input || '').trim()
-}
-
-function normalizeBooleanAnswer(value, fallback) {
-  const answer = normalizeMenuAnswer(value).toLowerCase()
-  if (!answer) return fallback
-  if (['y', 'yes', 'true', '1'].includes(answer)) return true
-  if (['n', 'no', 'false', '0'].includes(answer)) return false
-  return fallback
 }
 
 function toRouteId(routePath) {
@@ -243,70 +235,40 @@ async function listServices() {
   return services.sort((left, right) => left.name.localeCompare(right.name))
 }
 
-async function createPrompter() {
-  if (process.stdin.isTTY) {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    })
+function isInteractivePromptAvailable() {
+  return !!process.stdin.isTTY && !!process.stdout.isTTY
+}
 
-    return {
-      async question(prompt) {
-        return rl.question(prompt)
-      },
-      close() {
-        rl.close()
-      },
-    }
-  }
-
-  let text = ''
-  for await (const chunk of process.stdin) {
-    text += chunk
-  }
-
-  const answers = text.split(/\r?\n/)
-  let index = 0
-
-  return {
-    async question(prompt) {
-      process.stdout.write(prompt)
-      const answer = answers[index] === undefined ? '' : answers[index]
-      index += 1
-      if (answer) process.stdout.write(`${answer}\n`)
-      return answer
-    },
-    close() {},
+function requireInteractivePrompt(message) {
+  if (!isInteractivePromptAvailable()) {
+    throw new Error(message)
   }
 }
 
-async function promptSelection(rl, title, items, formatItem) {
+async function promptSelection(title, items, formatItem, getValue) {
   if (!items.length) {
     throw new Error(`${title} 항목이 없습니다.`)
   }
 
-  console.log(title)
-  items.forEach((item, index) => {
-    console.log(`  ${index + 1}. ${formatItem(item)}`)
+  const choices = items.map((item) => {
+    const name = formatItem(item)
+    const value = getValue ? getValue(item) : item
+
+    return {
+      name,
+      value,
+    }
   })
 
-  while (true) {
-    const answer = normalizeMenuAnswer(await rl.question('번호 또는 이름을 입력하세요: '))
-    if (!answer) continue
+  return search({
+    message: title,
+    source(term) {
+      const normalizedTerm = normalizeMenuAnswer(term).toLowerCase()
+      if (!normalizedTerm) return choices
 
-    const selectedIndex = Number(answer)
-    if (Number.isInteger(selectedIndex) && selectedIndex >= 1 && selectedIndex <= items.length) {
-      return items[selectedIndex - 1]
-    }
-
-    const matched = items.find((item) => {
-      const itemName = typeof item === 'string' ? item : item.id || item.name
-      return itemName === answer
-    })
-    if (matched) return matched
-
-    console.log('다시 입력해주세요.')
-  }
+      return choices.filter((choice) => choice.name.toLowerCase().includes(normalizedTerm))
+    },
+  })
 }
 
 async function completeOptions(options) {
@@ -315,74 +277,81 @@ async function completeOptions(options) {
     throw new Error('pb_hooks/pages가 있는 서비스가 없습니다.')
   }
 
-  const rl = await createPrompter()
+  let service
+  if (options.service) {
+    const serviceName = path.basename(fromMsysPath(options.service))
+    service = services.find((item) => item.name === serviceName)
+    if (!service) {
+      throw new Error(`Unknown service: ${options.service}`)
+    }
+  } else {
+    requireInteractivePrompt('--service is required when running non-interactively.')
+    service = await promptSelection('어떤 서비스를 대상으로 생성할까요?', services, (item) => item.name)
+  }
 
-  try {
-    let service = null
-    if (options.service) {
-      const serviceName = path.basename(fromMsysPath(options.service))
-      service = services.find((item) => item.name === serviceName)
-      if (!service) {
-        throw new Error(`Unknown service: ${options.service}`)
-      }
+  let kind
+  if (options.kind) {
+    kind = kindById.get(options.kind)
+    if (!kind) {
+      throw new Error(`Unknown generate kind: ${options.kind}`)
+    }
+  } else {
+    requireInteractivePrompt('--kind is required when running non-interactively.')
+    kind = await promptSelection('어떤 라우트 골격을 만들까요?', kinds, (item) => `${item.id} - ${item.label}`)
+  }
+
+  let routePath = options.routePath
+  if (!routePath) {
+    requireInteractivePrompt('--path is required when running non-interactively.')
+    routePath = await input({
+      message: `생성할 ${kind.area} 경로를 입력하세요.`,
+      validate(value) {
+        return normalizeMenuAnswer(value) ? true : '경로를 입력해주세요.'
+      },
+    })
+  }
+
+  const shouldPromptDefaults = isInteractivePromptAvailable() && (!options.service || !options.kind || !options.routePath)
+  let method = options.method || kind.defaultMethod
+  if (!options.method && shouldPromptDefaults) {
+    method = await select({
+      message: '메서드 guard를 선택하세요.',
+      default: method,
+      choices: [
+        { name: 'POST', value: 'POST' },
+        { name: 'GET', value: 'GET' },
+        { name: 'ANY', value: 'ANY' },
+      ],
+    })
+  }
+
+  let auth = options.auth
+  if (auth === null) {
+    if (shouldPromptDefaults) {
+      auth = await confirm({
+        message: 'request.auth guard를 추가할까요?',
+        default: kind.defaultAuth,
+      })
     } else {
-      service = await promptSelection(rl, '1. 어떤 서비스를 대상으로 생성할까요?', services, (item) => item.name)
+      auth = kind.defaultAuth
     }
+  }
 
-    let kind = null
-    if (options.kind) {
-      kind = kindById.get(options.kind)
-      if (!kind) {
-        throw new Error(`Unknown generate kind: ${options.kind}`)
-      }
-    } else {
-      kind = await promptSelection(rl, '2. 어떤 라우트 골격을 만들까요?', kinds, (item) => `${item.id} - ${item.label}`)
-    }
+  let partial = options.partial
+  if (kind.id === 'xapi-partial' && !partial && isInteractivePromptAvailable()) {
+    partial = await input({
+      message: 'include할 partial 파일명을 입력하세요. 비워두면 TODO 자리만 생성합니다.',
+    })
+  }
 
-    let routePath = options.routePath
-    while (!routePath) {
-      routePath = normalizeMenuAnswer(await rl.question(`3. 생성할 ${kind.area} 경로를 입력하세요: `))
-    }
-
-    const shouldPromptDefaults = process.stdin.isTTY && (!options.service || !options.kind || !options.routePath)
-    let method = options.method || kind.defaultMethod
-    if (!options.method && shouldPromptDefaults) {
-      const answer = normalizeMenuAnswer(await rl.question(`4. 메서드 guard [${method}]: `)).toUpperCase()
-      if (answer) method = answer
-    }
-
-    let auth = options.auth
-    if (auth === null) {
-      if (shouldPromptDefaults) {
-        const answer = await rl.question(`5. request.auth guard 추가? [${kind.defaultAuth ? 'Y/n' : 'y/N'}]: `)
-        auth = normalizeBooleanAnswer(answer, kind.defaultAuth)
-      } else {
-        auth = kind.defaultAuth
-      }
-    }
-
-    let partial = options.partial
-    if (kind.id === 'xapi-partial') {
-      if (!partial && !process.stdin.isTTY) {
-        throw new Error('--partial is required for xapi-partial when running non-interactively.')
-      }
-
-      while (!partial) {
-        partial = normalizeMenuAnswer(await rl.question('6. include할 partial 파일명: '))
-      }
-    }
-
-    return {
-      ...options,
-      service,
-      kind,
-      routePath,
-      method,
-      auth,
-      partial: toSafePartialName(partial),
-    }
-  } finally {
-    rl.close()
+  return {
+    ...options,
+    service,
+    kind,
+    routePath,
+    method,
+    auth,
+    partial: toSafePartialName(partial),
   }
 }
 
@@ -597,6 +566,9 @@ function xapiPartialTemplate(options) {
   const relativeRoutePath = normalizeRoutePath(options.kind, options.routePath)
   const logName = toLogName(relativeRoutePath)
   const partial = options.partial
+  const responseMarkup = partial
+    ? `<%- include('${partial}', { error: errorMessage }) %>`
+    : `<%# TODO: partial HTML을 반환하거나 include('partial.ejs', { error: errorMessage })를 사용하세요. %>`
 
   return `<script server>
 ${methodGuardCode(logName, options.method, 'redirect', '/', '잘못된 요청입니다.')}${authGuardCode(logName, options.auth, 'redirect', '/sign-in', '로그인이 필요합니다.')}  const form = ${options.method === 'POST' ? 'body()' : 'request.url.query'}
@@ -623,7 +595,7 @@ ${methodGuardCode(logName, options.method, 'redirect', '/', '잘못된 요청입
     error: errorMessage || '',
   })
 </script>
-<%- include('${partial}', { error: errorMessage }) %>
+${responseMarkup}
 `
 }
 
@@ -744,7 +716,7 @@ async function main() {
   const result = await writeRouteFile(options)
 
   if (result.wrote) {
-    console.log('스캐폴딩 생성 완료')
+    console.log('생성 완료')
     console.log(`- 서비스: ${options.service.name}`)
     console.log(`- 종류: ${options.kind.id}`)
     console.log(`- 출력: ${result.outputPath}`)

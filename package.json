@@ -5,6 +5,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@iconify-json/lucide": "1.2.107",
+    "@inquirer/prompts": "^8.5.2",
     "@pocketpages/test-support": "file:packages/test-support",
     "@types/node": "^22.19.15",
     "@unocss/cli": "66.5.12",
