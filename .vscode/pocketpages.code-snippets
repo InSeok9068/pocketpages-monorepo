@@ -1,4 +1,13 @@
 {
+  // Server block snippets: 새 PocketPages 파일이나 EJS 안에서 서버 코드를 빠르게 시작합니다.
+  "PocketPages server script block": {
+    "scope": "ejs",
+    "prefix": "ppserver",
+    "description": "PocketPages <script server> 기본 블록을 만듭니다.",
+    "body": ["<script server>", "  ${1:// TODO: 서버 로직을 작성하세요.}", "</script>"],
+  },
+
+  // Redirect snippets: POST mutation과 redirect 응답에서 dbg 로그 누락을 줄입니다.
   "PocketPages POST redirect guard": {
     "scope": "ejs,javascript",
     "prefix": "pppost",
@@ -53,5 +62,129 @@
       "  return",
       "}",
     ],
+  },
+  "PocketPages start debug log": {
+    "scope": "ejs,javascript",
+    "prefix": "ppstart",
+    "description": "요청 처리 시작 지점에 dbg 로그를 남깁니다.",
+    "body": ["dbg('${1:route}:start', {", "  ${2:key}: ${2},", "})"],
+  },
+  "PocketPages failed error log": {
+    "scope": "ejs,javascript",
+    "prefix": "ppfailed",
+    "description": "실패 분기에서 error 로그를 남깁니다.",
+    "body": ["error('${1:route}:failed', {", "  ${2:error}: ${2},", "})"],
+  },
+
+  // JSON API snippets: api/* 라우트의 JSON 응답과 method/auth guard를 보조합니다.
+  "PocketPages JSON POST auth guard": {
+    "scope": "ejs,javascript",
+    "prefix": "ppjsonpost",
+    "description": "JSON API용 POST method guard와 auth guard를 만듭니다.",
+    "body": [
+      "if (request.method !== 'POST') {",
+      "  response.json(405, {",
+      "    ok: false,",
+      "    message: '${1:잘못된 요청입니다.}',",
+      "  })",
+      "  return",
+      "}",
+      "",
+      "if (!request.auth) {",
+      "  response.json(401, {",
+      "    ok: false,",
+      "    message: '${2:로그인이 필요합니다.}',",
+      "  })",
+      "  return",
+      "}",
+      "",
+      "const form = body()",
+      "const userId = String(request.auth.get('id') || '')",
+    ],
+  },
+  "PocketPages JSON success response": {
+    "scope": "ejs,javascript",
+    "prefix": "ppjsonok",
+    "description": "JSON API 성공 응답을 반환합니다.",
+    "body": [
+      "dbg('${1:route}:response', {",
+      "  status: 200,",
+      "  ok: true,",
+      "})",
+      "response.header('Cache-Control', 'no-store')",
+      "response.json(200, {",
+      "  ok: true,",
+      "  message: '${2:처리했습니다.}',",
+      "  ${3}",
+      "})",
+      "return",
+    ],
+  },
+  "PocketPages JSON failure response": {
+    "scope": "ejs,javascript",
+    "prefix": "ppjsonfail",
+    "description": "catch 블록 안에서 JSON API 실패 응답을 반환합니다.",
+    "body": [
+      "const errorMessage = String(exception.message || exception)",
+      "",
+      "error('${1:route}:failed', {",
+      "  ${2:error}: errorMessage,",
+      "})",
+      "response.json(${3:400}, {",
+      "  ok: false,",
+      "  message: errorMessage || '${4:처리에 실패했습니다.}',",
+      "})",
+      "return",
+    ],
+  },
+
+  // Error handling snippets: xapi/api 라우트에서 반복되는 try/catch 로그 구조를 만듭니다.
+  "PocketPages try catch with errorMessage": {
+    "scope": "ejs,javascript",
+    "prefix": "pptry",
+    "description": "errorMessage 기반 try/catch와 실패 로그 골격을 만듭니다.",
+    "body": [
+      "let errorMessage = ''",
+      "",
+      "try {",
+      "  ${1:// TODO: 검증과 저장 로직을 작성하세요.}",
+      "} catch (exception) {",
+      "  errorMessage = String(exception.message || exception)",
+      "  error('${2:route}:failed', {",
+      "    error: errorMessage,",
+      "  })",
+      "}",
+    ],
+  },
+
+  // Partial snippets: _private partial include를 짧고 일관되게 작성합니다.
+  "PocketPages include private partial": {
+    "scope": "ejs",
+    "prefix": "ppinclude",
+    "description": "_private partial을 최소 props로 include합니다.",
+    "body": ["<%- include('${1:partial.ejs}', { ${2:error: errorMessage} }) %>"],
+  },
+
+  // Utility snippets: resolve(), dateutil, Datastar signal처럼 자주 쓰는 작은 표현을 보조합니다.
+  "PocketPages date-only field set": {
+    "scope": "ejs,javascript",
+    "prefix": "ppdateonly",
+    "description": "PocketBase date 필드에 dateutil.toDateOnlyIso(...) 값을 설정합니다.",
+    "body": [
+      "const { dateutil } = require('@pocketpages/utils')",
+      "${1:record}.set('${2:date_field}', dateutil.toDateOnlyIso(${3:form}.${2}))",
+    ],
+  },
+  "PocketPages resolve private module": {
+    "scope": "ejs,javascript",
+    "prefix": "ppresolve",
+    "description": "_private 모듈을 resolve(...)로 불러옵니다.",
+    "body": ["const ${1:serviceName} = resolve('${2:service-name}')"],
+  },
+  "PocketPages Datastar message signal": {
+    "scope": "ejs,javascript",
+    "prefix": "ppdatastarmsg",
+    "description": "Datastar message signal을 patch합니다.",
+    "body": ["datastar.patchSignals({", "  ${1:message}: ${2:message},", "})"],
   },
 }
