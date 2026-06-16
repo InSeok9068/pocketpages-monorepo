@@ -75,6 +75,34 @@
       .join(', ')
   }
 
+  /**
+   * 개발지원 도메인의 관리자 URL을 만든다.
+   * @param {unknown} value 도메인 URL
+   * @returns {string}
+   */
+  function getDevelopmentSupportAdminUrl(value) {
+    const raw = String(value || '').trim()
+
+    if (!raw) return ''
+
+    const normalized = raw.indexOf('://') === -1 ? 'https://' + raw : raw
+    const match = normalized.match(/^(https?:\/\/([^/?#]+))(?:[/?#]|$)/i)
+
+    if (!match) return ''
+
+    const origin = match[1].replace(/\/+$/, '')
+    const host = String(match[2] || '')
+      .trim()
+      .toLowerCase()
+      .split(':')[0]
+    const suffix = '.development-support.o-r.kr'
+    const subdomain = host.slice(0, -suffix.length)
+
+    if (!host.endsWith(suffix) || !subdomain) return ''
+
+    return origin + '/_/'
+  }
+
   if (!request.auth) {
     dbg('page/projects/[slug]:redirect', {
       status: 303,
@@ -129,6 +157,7 @@
   const projectStartedAt = String(project.get('started_at') || '').trim()
   const projectLaunchedAt = String(project.get('launched_at') || '').trim()
   const projectDiscardedAt = String(project.get('discarded_at') || '').trim()
+  const projectDomainUrl = String(project.get('domain_url') || '').trim()
 
   const projectView = {
     id: String(project.get('id') || ''),
@@ -139,7 +168,8 @@
     status: normalizeStatus(project.get('status')),
     priority: String(project.get('priority') || 'normal'),
     isPinned: project.get('is_pinned') === true,
-    domainUrl: String(project.get('domain_url') || '').trim(),
+    domainUrl: projectDomainUrl,
+    adminUrl: getDevelopmentSupportAdminUrl(projectDomainUrl),
     repoUrl: String(project.get('repo_url') || '').trim(),
     description: String(project.get('description') || '').trim(),
     problem: String(project.get('problem') || '').trim(),
@@ -212,6 +242,18 @@
             aria-hidden="true"></span>
           업무
         </a>
+        <% if (projectView.adminUrl) { %>
+        <a
+          href="<%= projectView.adminUrl %>"
+          target="_blank"
+          rel="noreferrer noopener"
+          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb]">
+          <span
+            class="i-lucide-shield h-4 w-4"
+            aria-hidden="true"></span>
+          관리
+        </a>
+        <% } %>
       </div>
     </div>
   </header>
