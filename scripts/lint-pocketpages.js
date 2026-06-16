@@ -317,12 +317,7 @@ function getLintCacheFile(serviceDir) {
 
 function collectLintCacheFiles(serviceDir) {
   const hooksRoot = path.join(serviceDir, 'pb_hooks')
-  const candidates = [
-    ...walkFiles(hooksRoot),
-    path.join(serviceDir, 'pb_schema.json'),
-    path.join(serviceDir, 'package.json'),
-    ...LINT_DEPENDENCY_FILES,
-  ]
+  const candidates = [...walkFiles(hooksRoot), path.join(serviceDir, 'pb_schema.json'), path.join(serviceDir, 'package.json'), ...LINT_DEPENDENCY_FILES]
 
   return unique(candidates.map((filePath) => path.resolve(filePath))).filter((filePath) => {
     try {
@@ -1159,13 +1154,7 @@ function collectBrowserApiMatchesInText(file, sourceText, contentStart) {
   const declaredNames = collectDeclaredNames(sourceFile)
 
   function visit(node) {
-    if (
-      ts.isIdentifier(node) &&
-      JSVM_BROWSER_GLOBALS.has(node.text) &&
-      !declaredNames.has(node.text) &&
-      !isDeclarationNameIdentifier(node) &&
-      !isPropertyNameIdentifier(node)
-    ) {
+    if (ts.isIdentifier(node) && JSVM_BROWSER_GLOBALS.has(node.text) && !declaredNames.has(node.text) && !isDeclarationNameIdentifier(node) && !isPropertyNameIdentifier(node)) {
       const lineNumber = lineNumberAt(file.content, contentStart + node.getStart(sourceFile))
       matches.push(formatLintLineMatch(file, lineNumber))
     }
