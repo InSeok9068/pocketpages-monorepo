@@ -205,6 +205,27 @@ async function readDirSafe(targetDir) {
   }
 }
 
+async function collectEjsFiles(targetDir, baseDir = targetDir) {
+  const entries = await readDirSafe(targetDir)
+  const files = []
+
+  for (const entry of entries) {
+    if (entry.name === 'vendor') continue
+
+    const entryPath = path.join(targetDir, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...(await collectEjsFiles(entryPath, baseDir)))
+      continue
+    }
+
+    if (!entry.isFile() || !entry.name.endsWith('.ejs')) continue
+
+    files.push(path.relative(baseDir, entryPath).replace(/\\/g, '/'))
+  }
+
+  return files.sort((left, right) => left.localeCompare(right))
+}
+
 async function exists(targetPath) {
   try {
     await stat(targetPath)
@@ -269,6 +290,38 @@ async function promptSelection(title, items, formatItem, getValue) {
       return choices.filter((choice) => choice.name.toLowerCase().includes(normalizedTerm))
     },
   })
+}
+
+async function promptOptionalPartial(service) {
+  const privateDir = path.join(service.pagesDir, '_private')
+  const partialNames = await collectEjsFiles(privateDir)
+  const noneValue = { type: 'none' }
+  const choices = [
+    {
+      name: 'include 안 함 - TODO 자리만 생성',
+      value: noneValue,
+    },
+    ...partialNames.map((partialName) => ({
+      name: partialName,
+      value: {
+        type: 'partial',
+        partialName,
+      },
+    })),
+  ]
+
+  const selected = await search({
+    message: 'include할 partial을 선택하세요.',
+    source(term) {
+      const normalizedTerm = normalizeMenuAnswer(term).toLowerCase()
+      if (!normalizedTerm) return choices
+
+      return choices.filter((choice) => choice.name.toLowerCase().includes(normalizedTerm))
+    },
+  })
+
+  if (selected.type === 'none') return ''
+  return selected.partialName
 }
 
 async function completeOptions(options) {
@@ -339,9 +392,7 @@ async function completeOptions(options) {
 
   let partial = options.partial
   if (kind.id === 'xapi-partial' && !partial && isInteractivePromptAvailable()) {
-    partial = await input({
-      message: 'include할 partial 파일명을 입력하세요. 비워두면 TODO 자리만 생성합니다.',
-    })
+    partial = await promptOptionalPartial(service)
   }
 
   return {
@@ -387,8 +438,11 @@ function validateOptions(options) {
     throw new Error('--method must be GET, POST, or ANY.')
   }
 
-  if (options.partial && (options.partial.includes('/') || options.partial.includes('\\'))) {
-    throw new Error('--partial must be a _private partial file name, not a path.')
+  if (options.partial) {
+    const partialPath = options.partial.replace(/\\/g, '/')
+    if (path.posix.isAbsolute(partialPath) || partialPath.split('/').some((part) => part === '..' || part === '.')) {
+      throw new Error('--partial must be a safe _private-relative partial path.')
+    }
   }
 }
 
