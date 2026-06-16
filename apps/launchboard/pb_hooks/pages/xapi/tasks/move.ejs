@@ -2,7 +2,20 @@
   const taskBoard = resolve('task-board')
 
   function patchMoveSignals(message) {
-    patchMoveSignals(message)
+    datastar.patchSignals({
+      moveTaskId: '',
+      moveStatus: '',
+      moveOrder: [],
+      taskMessage: message,
+      taskActionOpen: false,
+      taskActionId: '',
+      taskActionTitle: '',
+      taskActionStatus: '',
+      taskActionHref: '',
+      taskActionProjectId: '',
+      taskActionBoardScope: 'project',
+      taskActionView: 'all',
+    })
   }
 
   function patchInbox(view, userId, message) {
@@ -31,6 +44,14 @@
       moveStatus: '',
       moveOrder: [],
       taskMessage: message,
+      taskActionOpen: false,
+      taskActionId: '',
+      taskActionTitle: '',
+      taskActionStatus: '',
+      taskActionHref: '',
+      taskActionProjectId: '',
+      taskActionBoardScope: 'inbox',
+      taskActionView: inboxView,
     })
     datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable(); window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter();')
   }
@@ -183,6 +204,11 @@
     })
     if (boardScope === 'inbox') {
       patchInbox(taskView, userId, '')
+      return
+    }
+
+    if (orderUpdates.length === 0) {
+      patchBoard(projectId, userId, '')
       return
     }
 

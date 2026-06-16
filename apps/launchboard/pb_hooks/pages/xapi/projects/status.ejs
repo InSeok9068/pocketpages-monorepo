@@ -1,5 +1,46 @@
 <script server>
+  const projectBoard = resolve('project-board')
+
+  function patchStatusSignals(message) {
+    datastar.patchSignals({
+      projectMessage: message,
+      projectActionOpen: false,
+      projectActionId: '',
+      projectActionName: '',
+      projectActionStatus: '',
+      projectActionHref: '',
+      projectActionTasksHref: '',
+      projectStatusId: '',
+      projectStatus: '',
+    })
+  }
+
+  function patchBoard(userId, message) {
+    const state = projectBoard.getProjectBoardState($app, userId)
+
+    datastar.patchElements(
+      include('project-board.ejs', {
+        statusColumns: state.statusColumns,
+        projectsByStatus: state.projectsByStatus,
+      }),
+      {
+        selector: '#project-board',
+        mode: 'outer',
+        useViewTransition: true,
+      }
+    )
+    patchStatusSignals(message)
+    datastar.executeScript('window.launchboardInitSortable && window.launchboardInitSortable();')
+  }
+
   if (request.method !== 'POST') {
+    if (datastar.isRequest(request)) {
+      datastar.patchSignals({
+        projectMessage: '잘못된 요청입니다.',
+      })
+      return
+    }
+
     dbg('xapi/projects/status:redirect', {
       status: 303,
       redirectTo: '/',
@@ -13,6 +54,13 @@
   }
 
   if (!request.auth) {
+    if (datastar.isRequest(request)) {
+      datastar.patchSignals({
+        projectMessage: '로그인이 필요합니다.',
+      })
+      return
+    }
+
     dbg('xapi/projects/status:redirect', {
       status: 303,
       redirectTo: '/sign-in',
@@ -26,10 +74,15 @@
   }
 
   const statusValues = ['idea', 'building', 'launched', 'paused', 'discarded']
-  const form = body()
+  const form = datastar.isRequest(request)
+    ? datastar.requestSignals({
+        projectStatusId: '',
+        projectStatus: '',
+      })
+    : body()
   const userId = String(request.auth.get('id') || '')
-  const projectId = String(form.project_id || '').trim()
-  const status = String(form.status || '').trim()
+  const projectId = String(form.project_id || form.projectStatusId || '').trim()
+  const status = String(form.status || form.projectStatus || '').trim()
   let errorMessage = ''
 
   dbg('xapi/projects/status:start', {
@@ -62,14 +115,19 @@
       previousStatus,
       status,
     })
+
+    if (datastar.isRequest(request)) {
+      patchBoard(userId, '')
+      return
+    }
+
     dbg('xapi/projects/status:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '변경했습니다.',
+      flash: '',
     })
     redirect('/', {
       status: 303,
-      message: '변경했습니다.',
     })
     return
   } catch (exception) {
@@ -80,6 +138,11 @@
       status,
       error: errorMessage,
     })
+  }
+
+  if (datastar.isRequest(request)) {
+    patchBoard(userId, errorMessage || '변경에 실패했습니다.')
+    return
   }
 
   dbg('xapi/projects/status:redirect', {

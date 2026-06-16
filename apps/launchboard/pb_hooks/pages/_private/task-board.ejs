@@ -178,6 +178,24 @@
               </div>
 
               <div class="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  class="inline-flex h-8 w-8 items-center justify-center rounded-md border-0 bg-[#f2f4f6] text-[#4e5968] hover:bg-[#e5e8eb]"
+                  aria-label="업무 작업"
+                  title="업무 작업"
+                  data-task-action-button
+                  data-task-id="<%= task.id %>"
+                  data-task-title="<%= task.title %>"
+                  data-task-status="<%= task.status %>"
+                  data-task-href="<%= taskHref %>"
+                  data-task-project-id="<%= task.projectId %>"
+                  data-task-board-scope="<%= taskBoardScope %>"
+                  data-task-view="<%= taskBoardView %>"
+                  data-on:click__stop="$taskActionId = el.dataset.taskId; $taskActionTitle = el.dataset.taskTitle; $taskActionStatus = el.dataset.taskStatus; $taskActionHref = el.dataset.taskHref; $taskActionProjectId = el.dataset.taskProjectId; $taskActionBoardScope = el.dataset.taskBoardScope; $taskActionView = el.dataset.taskView; $taskActionOpen = true">
+                  <span
+                    class="i-lucide-more-horizontal h-4 w-4"
+                    aria-hidden="true"></span>
+                </button>
                 <% if (taskBoardCanSort) { %>
                 <span
                   role="button"

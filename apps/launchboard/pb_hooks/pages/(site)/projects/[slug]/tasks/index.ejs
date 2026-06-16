@@ -99,6 +99,16 @@
     moveTaskId: '',
     moveStatus: '',
     moveOrder: [],
+    taskBoardScope: 'project',
+    taskView: 'all',
+    taskActionOpen: false,
+    taskActionId: '',
+    taskActionTitle: '',
+    taskActionStatus: '',
+    taskActionHref: '',
+    taskActionProjectId: '',
+    taskActionBoardScope: 'project',
+    taskActionView: 'all',
     activeTaskStatus: (function () {
       try {
         const status = window.localStorage.getItem('launchboard:task-active-status:<%= projectView.id %>') || 'todo'
@@ -195,6 +205,10 @@
     data-on:click="@post('/xapi/tasks/move')">
     이동
   </button>
+
+  <%- include('task-action-sheet.ejs', {
+    statusColumns: boardState.statusColumns,
+  }) %>
 
   <div
     class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4"

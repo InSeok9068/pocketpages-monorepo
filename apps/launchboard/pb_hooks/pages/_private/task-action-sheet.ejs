@@ -1,0 +1,102 @@
+<div
+  class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-3 py-3"
+  data-show="$taskActionOpen"
+  data-on:click="if (evt.target === el) $taskActionOpen = false"
+  data-on:keydown__window="if (evt.key === 'Escape') $taskActionOpen = false"
+  style="display: none">
+  <section
+    class="w-full max-w-[420px] rounded-lg bg-white p-4 shadow-[0_24px_80px_rgba(25,31,40,0.28)]"
+    data-on:click__stop="true">
+    <header class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <p class="text-xs font-bold text-[#8b95a1]">업무</p>
+        <h2
+          class="mt-1 truncate text-lg font-bold text-[#191f28]"
+          data-text="$taskActionTitle"></h2>
+      </div>
+      <button
+        type="button"
+        class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border-0 bg-[#f2f4f6] text-[#4e5968] hover:bg-[#e5e8eb]"
+        aria-label="닫기"
+        data-on:click="$taskActionOpen = false">
+        <span
+          class="i-lucide-x h-4 w-4"
+          aria-hidden="true"></span>
+      </button>
+    </header>
+
+    <div class="mt-4 grid grid-cols-2 gap-2">
+      <a
+        href="/"
+        class="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#f2f4f6] px-3 text-sm font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
+        data-attr="{'href': $taskActionHref}">
+        <span
+          class="i-lucide-panel-top h-4 w-4"
+          aria-hidden="true"></span>
+        상세
+      </a>
+      <button
+        type="button"
+        class="inline-flex h-11 items-center justify-center gap-2 rounded-lg border-0 bg-[#f2f4f6] px-3 text-sm font-bold text-[#4e5968] hover:bg-[#e5e8eb]"
+        data-on:click="$taskActionOpen = false; $taskModalOpen = true">
+        <span
+          class="i-lucide-plus h-4 w-4"
+          aria-hidden="true"></span>
+        새 업무
+      </button>
+    </div>
+
+    <div class="mt-4 grid gap-2">
+      <p class="text-xs font-bold text-[#8b95a1]">상태 변경</p>
+      <div class="grid grid-cols-2 gap-2">
+        <% for (let statusIndex = 0; statusIndex < statusColumns.length; statusIndex += 1) { %>
+        <% const statusColumn = statusColumns[statusIndex] %>
+        <button
+          type="button"
+          class="inline-flex h-11 items-center justify-center gap-2 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#4e5968] hover:bg-[#eaf3ff] hover:text-[#1b64da]"
+          data-class="{'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]': $taskActionStatus === '<%= statusColumn.value %>', 'bg-[#f7f8fa] text-[#4e5968]': $taskActionStatus !== '<%= statusColumn.value %>'}"
+          data-attr="{'aria-pressed': $taskActionStatus === '<%= statusColumn.value %>' ? 'true' : 'false'}"
+          data-on:click="$moveTaskId = $taskActionId; $moveStatus = '<%= statusColumn.value %>'; $moveOrder = []; $taskBoardScope = $taskActionBoardScope; $taskView = $taskActionView; document.querySelector('[data-task-move-trigger]').click()">
+          <span
+            class="<%= statusColumn.icon %> h-4 w-4"
+            aria-hidden="true"></span>
+          <%= statusColumn.label %>
+        </button>
+        <% } %>
+      </div>
+    </div>
+
+    <form
+      method="post"
+      action="/xapi/tasks/delete"
+      class="mt-4 border-t border-[#edf0f3] pt-3"
+      data-on:submit="@post('/xapi/tasks/delete', {contentType: 'form'})"
+      data-on:click__stop="true">
+      <input
+        type="hidden"
+        name="task_id"
+        data-bind:task-action-id />
+      <input
+        type="hidden"
+        name="project_id"
+        data-bind:task-action-project-id />
+      <input
+        type="hidden"
+        name="task_board_scope"
+        data-bind:task-action-board-scope />
+      <input
+        type="hidden"
+        name="task_view"
+        data-bind:task-action-view />
+      <button
+        type="submit"
+        class="flex h-11 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#fff0f0] px-3 text-sm font-bold text-[#e03131] hover:bg-[#ffe3e3]"
+        data-on:click__stop="if (!confirm('이 업무를 완전히 삭제할까요?')) evt.preventDefault()">
+        <span
+          class="i-lucide-trash-2 h-4 w-4"
+          aria-hidden="true"></span>
+        삭제
+      </button>
+    </form>
+  </section>
+</div>

@@ -67,6 +67,14 @@
     )
     datastar.patchSignals({
       taskMessage: message,
+      taskActionOpen: false,
+      taskActionId: '',
+      taskActionTitle: '',
+      taskActionStatus: '',
+      taskActionHref: '',
+      taskActionProjectId: '',
+      taskActionBoardScope: 'project',
+      taskActionView: 'all',
     })
     datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable();')
   }
@@ -94,6 +102,14 @@
     )
     datastar.patchSignals({
       taskMessage: message,
+      taskActionOpen: false,
+      taskActionId: '',
+      taskActionTitle: '',
+      taskActionStatus: '',
+      taskActionHref: '',
+      taskActionProjectId: '',
+      taskActionBoardScope: 'inbox',
+      taskActionView: inboxView,
     })
     datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable(); window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter();')
   }
