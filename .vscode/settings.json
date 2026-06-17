@@ -30,8 +30,9 @@
   "search.exclude": {
     ".docs/**": true,
     ".cache/**": true,
+    "**/*.bundle.js": true,
     "**/pb_schema.json": true,
-    "package-lock.json": true,
+    "**/package-lock.json": true,
     // "tools/**": true,
     // "scripts/**": true,
     // 개발중인 서비스만 주석
