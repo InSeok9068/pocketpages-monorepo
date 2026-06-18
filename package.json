@@ -7,7 +7,7 @@
     "@iconify-json/lucide": "1.2.107",
     "@inquirer/prompts": "^8.5.2",
     "@pocketpages/test-support": "file:packages/test-support",
-    "@types/node": "^22.19.15",
+    "@types/node": "^24.13.2",
     "@unocss/cli": "66.5.12",
     "@unocss/preset-icons": "66.5.12",
     "@unocss/preset-wind3": "66.5.12",
