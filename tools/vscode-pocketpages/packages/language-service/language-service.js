@@ -1919,7 +1919,7 @@ function isRedirectCallExpression(node) {
   }
 
   const root = skipExpressionWrappers(callee.expression);
-  return !!root && ts.isIdentifier(root) && root.text === "api";
+  return !!root && ts.isIdentifier(root) && (root.text === "api" || root.text === "response");
 }
 
 function isIdentifierCallExpression(node, identifierName) {

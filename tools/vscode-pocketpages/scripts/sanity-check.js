@@ -11351,6 +11351,26 @@ module.exports = {
     if (!apiRedirectRenamedText.includes("api.redirect('/login')")) {
       throw new Error(`Expected api.redirect() caller to rewrite to /login. Got: ${apiRedirectRenamedText}`)
     }
+
+    const responseRedirectCallerText = `<script server>\nresponse.redirect('/sign-in')\n</script>\n`
+    service.setDocumentOverride(fixture.routeReferenceCheckFilePath, responseRedirectCallerText)
+    const responseRedirectRouteReferences = service.getFileReferenceTargets(
+      fixture.siteSignInFilePath,
+      fs.readFileSync(fixture.siteSignInFilePath, 'utf8')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath))
+    if (responseRedirectRouteReferences.length !== 1) {
+      throw new Error(`Expected response.redirect() route reference for /sign-in. Got: ${JSON.stringify(responseRedirectRouteReferences)}`)
+    }
+    const responseRedirectRenameEdits = service.getFileRenameEdits(fixture.siteSignInFilePath, renamedSignInRouteFilePath).filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath)
+    )
+    if (responseRedirectRenameEdits.length !== 1) {
+      throw new Error(`Expected response.redirect() route rename edit for /sign-in. Got: ${JSON.stringify(responseRedirectRenameEdits)}`)
+    }
+    const responseRedirectRenamedText = applyEditsToText(responseRedirectCallerText, responseRedirectRenameEdits)
+    if (!responseRedirectRenamedText.includes("response.redirect('/login')")) {
+      throw new Error(`Expected response.redirect() caller to rewrite to /login. Got: ${responseRedirectRenamedText}`)
+    }
     service.clearDocumentOverride(fixture.routeReferenceCheckFilePath)
 
     const renamedFeedbackPageFilePath = path.join(path.dirname(fixture.feedbackPageFilePath), 'login.ejs')
@@ -13678,6 +13698,17 @@ const state = {
     if (!redirectMissingReturnDiagnostics.some((entry) => entry.code === 'pp-redirect-missing-return')) {
       throw new Error(
         `Expected redirect() missing return diagnostic in +load.js. Got: ${redirectMissingReturnDiagnostics
+          .map((entry) => String(entry.code))
+          .join(', ')}`
+      )
+    }
+    const responseRedirectMissingReturnDiagnostics = service.getDiagnostics(
+      fixture.feedbackLoadFilePath,
+      `module.exports = function ({ response }) {\n  response.redirect('/sign-in')\n}\n`
+    )
+    if (!responseRedirectMissingReturnDiagnostics.some((entry) => entry.code === 'pp-redirect-missing-return')) {
+      throw new Error(
+        `Expected response.redirect() missing return diagnostic in +load.js. Got: ${responseRedirectMissingReturnDiagnostics
           .map((entry) => String(entry.code))
           .join(', ')}`
       )

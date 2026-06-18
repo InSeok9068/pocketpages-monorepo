@@ -1094,7 +1094,7 @@ function getPathCallDescriptor(expression) {
   if (
     ts.isPropertyAccessExpression(target) &&
     ts.isIdentifier(target.expression) &&
-    target.expression.text === 'api'
+    (target.expression.text === 'api' || target.expression.text === 'response')
   ) {
     if (target.name.text === 'resolve' || target.name.text === 'include') {
       return {
