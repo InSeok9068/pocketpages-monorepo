@@ -216,10 +216,6 @@ function createMapper(mappings) {
           continue;
         }
 
-        if (!atSegmentEnd && sourceOffset >= segment.sourceEnd) {
-          continue;
-        }
-
         if (filter && !filter(segment.data)) {
           continue;
         }
