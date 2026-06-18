@@ -1,9 +1,9 @@
+import { load } from 'cheerio'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { load } from 'cheerio'
 
 import { startService } from '@pocketpages/test-support/service-harness'
 

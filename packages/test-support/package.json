@@ -3,8 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./auth-cookie": "./auth-cookie.mjs",
-    "./service-harness": "./service-harness.mjs",
+    "./auth-cookie": {
+      "types": "./auth-cookie.d.ts",
+      "import": "./auth-cookie.mjs"
+    },
+    "./service-harness": {
+      "types": "./service-harness.d.ts",
+      "import": "./service-harness.mjs"
+    },
     "./helpers/*": "./helpers/*",
     "./fixtures/*": "./fixtures/*"
   }
