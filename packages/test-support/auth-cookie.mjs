@@ -80,10 +80,7 @@ function readCookiePair(setCookieHeader) {
  * @returns {string} 요청에 넣을 Cookie 헤더 값입니다.
  */
 export function readCookieHeader(headers) {
-  return getSetCookieHeaders(headers)
-    .map(readCookiePair)
-    .filter(Boolean)
-    .join('; ')
+  return getSetCookieHeaders(headers).map(readCookiePair).filter(Boolean).join('; ')
 }
 
 /**

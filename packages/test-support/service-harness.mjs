@@ -102,47 +102,52 @@ function resolveImporterPath() {
   throw new Error(`pocketbase-importer not found in ${IMPORTER_DIR}`)
 }
 
-function resolveRepoPath(filePath) {
-  if (!filePath) {
+function resolveFixtureFile(baseDir, fixturePath, label) {
+  const inputPath = String(fixturePath || '').trim()
+
+  if (!inputPath) {
     return ''
   }
 
-  if (path.isAbsolute(filePath)) {
-    return filePath
+  if (path.isAbsolute(inputPath)) {
+    throw new Error(`${label} must be relative`)
   }
 
-  return path.join(ROOT_DIR, filePath)
+  const resolvedPath = path.resolve(baseDir, inputPath)
+  const relativePath = path.relative(baseDir, resolvedPath)
+
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    throw new Error(`${label} must stay inside ${baseDir}`)
+  }
+
+  return resolvedPath
 }
 
 function resolveFixturePath(fixturePath) {
-  if (!fixturePath) {
-    return ''
-  }
-
-  if (path.isAbsolute(fixturePath)) {
-    return fixturePath
-  }
-
-  return path.join(FIXTURES_DIR, fixturePath)
+  return resolveFixtureFile(FIXTURES_DIR, fixturePath, 'fixture')
 }
 
-function resolveImportInputPath(importOptions) {
-  const filePath = String(importOptions.file || '').trim()
-  const fixturePath = String(importOptions.fixture || '').trim()
+function resolveServiceFixturePath(serviceDir, serviceFixturePath) {
+  return resolveFixtureFile(path.join(serviceDir, '__tests__', 'fixtures'), serviceFixturePath, 'serviceFixture')
+}
 
-  if (filePath && fixturePath) {
-    throw new Error('import entry must use either file or fixture, not both')
+function resolveImportInputPath(serviceDir, importOptions) {
+  const fixturePath = String(importOptions.fixture || '').trim()
+  const serviceFixturePath = String(importOptions.serviceFixture || '').trim()
+
+  if (fixturePath && serviceFixturePath) {
+    throw new Error('import entry must use either fixture or serviceFixture, not both')
   }
 
   if (fixturePath) {
     return resolveFixturePath(fixturePath)
   }
 
-  if (filePath) {
-    return resolveRepoPath(filePath)
+  if (serviceFixturePath) {
+    return resolveServiceFixturePath(serviceDir, serviceFixturePath)
   }
 
-  throw new Error('import entry requires file or fixture')
+  throw new Error('import entry requires fixture or serviceFixture')
 }
 
 function createImportArgs(tempDataDir, importOptions, inputPath) {
@@ -167,7 +172,7 @@ function createImportArgs(tempDataDir, importOptions, inputPath) {
   return args
 }
 
-function runDataImports(tempDataDir, imports, serviceName) {
+function runDataImports(serviceDir, tempDataDir, imports, serviceName) {
   if (!imports) {
     return
   }
@@ -189,7 +194,7 @@ function runDataImports(tempDataDir, imports, serviceName) {
       throw new Error('import entry requires collection')
     }
 
-    const inputPath = resolveImportInputPath(importOptions || {})
+    const inputPath = resolveImportInputPath(serviceDir, importOptions || {})
 
     if (!existsSync(inputPath)) {
       throw new Error(`import file not found: ${inputPath}`)
@@ -282,8 +287,8 @@ function removeTempDir(tempRootDir) {
  * @param {number} [options.timeoutMs] readiness 대기 시간입니다.
  * @param {Array<object>} [options.imports] 서비스 시작 전 temp pb_data에 넣을 CSV 목록입니다.
  * @param {string} options.imports[].collection 대상 컬렉션 이름입니다.
- * @param {string} [options.imports[].file] repo root 기준 또는 절대 CSV 경로입니다.
  * @param {string} [options.imports[].fixture] test-support fixtures 기준 CSV 경로입니다.
+ * @param {string} [options.imports[].serviceFixture] service __tests__/fixtures 기준 CSV 경로입니다.
  * @param {string} [options.imports[].delimiter] CSV 구분자입니다.
  * @param {number} [options.imports[].goroutines] importer 동시 실행 수입니다.
  * @param {string} [options.imports[].printDelay] importer 진행 출력 주기입니다.
@@ -303,7 +308,7 @@ export async function startService(options) {
   }
 
   try {
-    runDataImports(tempData.tempDataDir, options.imports, serviceName)
+    runDataImports(serviceDir, tempData.tempDataDir, options.imports, serviceName)
   } catch (error) {
     removeTempDir(tempData.tempRootDir)
     throw error
