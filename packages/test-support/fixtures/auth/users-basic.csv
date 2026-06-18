@@ -1,2 +1,2 @@
-email,password,name
-test-user@example.test,password123,Test User
+id,email,password,name
+testuser0000001,test-user@example.test,password123,Test User
