@@ -681,13 +681,16 @@ class PocketPagesLanguageCore {
     }
 
     const sourceScript = this.sourceScripts.get(uri) || null;
+    const documentText = sourceScript
+      ? readSnapshotText(sourceScript.snapshot)
+      : this.getDocumentTextForFile(filePath);
     return {
       uri,
       filePath,
       service,
       sourceScript,
       virtualCode: sourceScript && sourceScript.generated ? sourceScript.generated.root : null,
-      documentText: this.getDocumentTextForFile(filePath),
+      documentText,
     };
   }
 

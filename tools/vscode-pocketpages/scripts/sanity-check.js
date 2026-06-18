@@ -2678,6 +2678,18 @@ redirect('/boards')
     if (!syncSkipService) {
       throw new Error('Expected sync-skip smoke context to expose a language service.')
     }
+    const originalSyncSkipGetDocumentTextForFile = syncSkipCore.getDocumentTextForFile.bind(syncSkipCore)
+    syncSkipCore.getDocumentTextForFile = function unexpectedContextFallback() {
+      throw new Error('Expected getDocumentContextByUri() to read opened document snapshots without file-path fallback.')
+    }
+    try {
+      const directSnapshotContext = syncSkipCore.getDocumentContextByUri(syncSkipDocument.uri)
+      if (!directSnapshotContext || directSnapshotContext.documentText !== laneDiagnosticsText) {
+        throw new Error('Expected getDocumentContextByUri() to return the opened sourceScript snapshot text.')
+      }
+    } finally {
+      syncSkipCore.getDocumentTextForFile = originalSyncSkipGetDocumentTextForFile
+    }
     let preparedSyncCount = 0
     const originalSyncPreparedDocumentVirtualCode = syncSkipService.syncPreparedDocumentVirtualCode.bind(syncSkipService)
     syncSkipService.syncPreparedDocumentVirtualCode = function patchedSyncPreparedDocumentVirtualCode(...args) {
@@ -7492,6 +7504,34 @@ module.exports = {
       throw new Error('Expected include call invalidation to preserve unrelated caller cache entries.')
     }
 
+    const includeLocalReadCounts = new Map()
+    const readIncludeLocalText = (filePath) => {
+      const normalizedFilePath = normalizeFilePath(filePath)
+      includeLocalReadCounts.set(normalizedFilePath, (includeLocalReadCounts.get(normalizedFilePath) || 0) + 1)
+      return fineInvalidationService.getDocumentText(filePath)
+    }
+    fineInvalidationService.projectIndex.getIncludeLocalsState({
+      readFileText: readIncludeLocalText,
+    })
+    const firstIncludeLocalReadFileCount = includeLocalReadCounts.size
+    if (firstIncludeLocalReadFileCount < 2) {
+      throw new Error(`Expected include locals warmup to read multiple caller files. Got: ${firstIncludeLocalReadFileCount}`)
+    }
+    includeLocalReadCounts.clear()
+    fineInvalidationService.invalidateManagedFile(fixture.boardsFilePath, { type: 'change' })
+    fineInvalidationService.projectIndex.getIncludeLocalsState({
+      readFileText: readIncludeLocalText,
+    })
+    const secondIncludeLocalReadPaths = [...includeLocalReadCounts.keys()].sort()
+    if (
+      secondIncludeLocalReadPaths.length !== 1 ||
+      secondIncludeLocalReadPaths[0] !== normalizeFilePath(fixture.boardsFilePath)
+    ) {
+      throw new Error(
+        `Expected include locals invalidation to reread only the changed caller file. Got: ${JSON.stringify(secondIncludeLocalReadPaths)}`
+      )
+    }
+
     fineInvalidationService.getIncludeContractLocals(fixture.flashAlertFilePath)
     fineInvalidationService.getIncludeContractLocals(fixture.typedPanelFilePath)
     if (
@@ -7559,6 +7599,79 @@ module.exports = {
       throw new Error('Expected page structure invalidation to clear route/search graph caches only.')
     }
     fs.rmSync(structureProbeRouteFilePath, { force: true })
+
+    fineInvalidationService.projectIndex.getRouteState()
+    fineInvalidationService.projectIndex.getIncludeLocalsState({
+      readFileText: (filePath) => fineInvalidationService.getDocumentText(filePath),
+    })
+    fineInvalidationService.projectIndex.getIncludeCandidates(fixture.boardsFilePath)
+    const assetProbeRouteStateBefore = fineInvalidationService.projectIndex.routeStateCache
+    const assetProbeIncludeLocalsBefore = fineInvalidationService.projectIndex.includeLocalsCache
+    const assetProbeSearchRootCacheSizeBefore = fineInvalidationService.projectIndex.searchRootFileCache.size
+    const assetProbeStructureVersionBefore = fineInvalidationService.projectIndex.pagesStructureVersion
+    const assetProbeContentVersionBefore = fineInvalidationService.projectIndex.pagesContentVersion
+    const assetProbeVersionBefore = fineInvalidationService.projectIndex.pagesAssetVersion
+    const assetProbeFilePath = path.join(
+      fixture.appRoot,
+      'pb_hooks',
+      'pages',
+      'assets',
+      'cache-invalidation-probe.css'
+    )
+    writeFile(assetProbeFilePath, `body { color: #123456; }\n`)
+    const assetCreateInvalidationKind = fineInvalidationService.invalidateManagedFile(
+      assetProbeFilePath,
+      { type: 'create' }
+    )
+    if (assetCreateInvalidationKind !== 'asset') {
+      throw new Error(`Expected asset create invalidation to report asset. Got: ${assetCreateInvalidationKind}`)
+    }
+    if (
+      fineInvalidationService.projectIndex.pagesStructureVersion !== assetProbeStructureVersionBefore ||
+      fineInvalidationService.projectIndex.pagesContentVersion !== assetProbeContentVersionBefore
+    ) {
+      throw new Error('Expected asset create invalidation to avoid route/include content version bumps.')
+    }
+    if (fineInvalidationService.projectIndex.pagesAssetVersion !== assetProbeVersionBefore + 1) {
+      throw new Error('Expected asset create invalidation to bump only the asset version.')
+    }
+    if (
+      fineInvalidationService.projectIndex.routeStateCache !== assetProbeRouteStateBefore ||
+      fineInvalidationService.projectIndex.includeLocalsCache !== assetProbeIncludeLocalsBefore ||
+      fineInvalidationService.projectIndex.searchRootFileCache.size !== assetProbeSearchRootCacheSizeBefore
+    ) {
+      throw new Error('Expected asset create invalidation to preserve route, include locals, and search root caches.')
+    }
+    const resolvedAssetProbeTarget = fineInvalidationService.projectIndex.resolveAssetTarget(
+      fixture.boardsFilePath,
+      '/assets/cache-invalidation-probe.css'
+    )
+    if (!resolvedAssetProbeTarget || normalizeFilePath(resolvedAssetProbeTarget) !== normalizeFilePath(assetProbeFilePath)) {
+      throw new Error(`Expected asset create invalidation to refresh asset resolution. Got: ${resolvedAssetProbeTarget}`)
+    }
+    const assetProbeRouteStateAfterCreate = fineInvalidationService.projectIndex.routeStateCache
+    const assetProbeIncludeLocalsAfterCreate = fineInvalidationService.projectIndex.includeLocalsCache
+    fs.rmSync(assetProbeFilePath, { force: true })
+    const assetDeleteInvalidationKind = fineInvalidationService.invalidateManagedFile(
+      assetProbeFilePath,
+      { type: 'delete' }
+    )
+    if (assetDeleteInvalidationKind !== 'asset') {
+      throw new Error(`Expected asset delete invalidation to report asset. Got: ${assetDeleteInvalidationKind}`)
+    }
+    if (
+      fineInvalidationService.projectIndex.routeStateCache !== assetProbeRouteStateAfterCreate ||
+      fineInvalidationService.projectIndex.includeLocalsCache !== assetProbeIncludeLocalsAfterCreate
+    ) {
+      throw new Error('Expected asset delete invalidation to preserve route and include locals caches.')
+    }
+    const deletedAssetProbeTarget = fineInvalidationService.projectIndex.resolveAssetTarget(
+      fixture.boardsFilePath,
+      '/assets/cache-invalidation-probe.css'
+    )
+    if (deletedAssetProbeTarget) {
+      throw new Error(`Expected asset delete invalidation to refresh missing asset resolution. Got: ${deletedAssetProbeTarget}`)
+    }
 
     const watchedRouteCore = new PocketPagesLanguageCore()
     const watchedRouteBoardsText = fs.readFileSync(fixture.boardsFilePath, 'utf8')

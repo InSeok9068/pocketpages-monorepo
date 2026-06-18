@@ -2416,11 +2416,13 @@ class PocketPagesProjectIndex {
     this.collectionMethodCache = null
     this.moduleExportedStringConstantsCache = new Map()
     this.includeLocalsCache = null
+    this.includeLocalCallSitesByFileCache = new Map()
     this.pagesGraphCache = null
     this.searchRootFileCache = new Map()
     this.routeStateCache = null
     this.pagesStructureVersion = 0
     this.pagesContentVersion = 0
+    this.pagesAssetVersion = 0
   }
 
   resetCaches() {
@@ -2428,11 +2430,13 @@ class PocketPagesProjectIndex {
     this.collectionMethodCache = null
     this.moduleExportedStringConstantsCache.clear()
     this.includeLocalsCache = null
+    this.includeLocalCallSitesByFileCache.clear()
     this.pagesGraphCache = null
     this.searchRootFileCache.clear()
     this.routeStateCache = null
     this.pagesStructureVersion += 1
     this.pagesContentVersion += 1
+    this.pagesAssetVersion += 1
   }
 
   invalidateStructureCaches() {
@@ -2441,8 +2445,10 @@ class PocketPagesProjectIndex {
     this.searchRootFileCache.clear()
     this.routeStateCache = null
     this.includeLocalsCache = null
+    this.includeLocalCallSitesByFileCache.clear()
     this.pagesStructureVersion += 1
     this.pagesContentVersion += 1
+    this.pagesAssetVersion += 1
   }
 
   invalidateContentForFile(filePath) {
@@ -2465,8 +2471,20 @@ class PocketPagesProjectIndex {
         this.moduleExportedStringConstantsCache.delete(normalizedFilePath)
       }
       this.includeLocalsCache = null
+      this.includeLocalCallSitesByFileCache.delete(normalizedFilePath)
       this.pagesContentVersion += 1
     }
+  }
+
+  invalidateAssetForFile(filePath) {
+    const normalizedFilePath = normalizePath(filePath)
+    if (!isAssetCandidateFile(this.pagesRoot, normalizedFilePath)) {
+      return false
+    }
+
+    this.pagesGraphCache = null
+    this.pagesAssetVersion += 1
+    return true
   }
 
   invalidateStructureForFile(filePath) {
@@ -3081,30 +3099,67 @@ class PocketPagesProjectIndex {
       return this.includeLocalsCache
     }
 
+    const overrides = new Map()
+    for (const [filePath, text] of Object.entries(options.overrides || {})) {
+      if (typeof text === 'string') {
+        overrides.set(normalizePath(filePath), text)
+      }
+    }
     const byTargetFile = new Map()
+
+    const addCallSite = (targetFilePath, callSite) => {
+      const normalizedTargetFilePath = normalizePath(targetFilePath)
+      let targetState = byTargetFile.get(normalizedTargetFilePath)
+      if (!targetState) {
+        targetState = {
+          callSites: [],
+        }
+        byTargetFile.set(normalizedTargetFilePath, targetState)
+      }
+
+      targetState.callSites.push(callSite)
+    }
 
     for (const entry of codeFiles) {
       if (!fileExists(entry.filePath)) {
         continue
       }
 
-      const sourceText = readText(entry.filePath)
+      const normalizedEntryFilePath = normalizePath(entry.filePath)
+      const overrideText = overrides.get(normalizedEntryFilePath)
+      const sourceState = typeof overrideText === 'string'
+        ? {
+            sourceText: overrideText,
+            identity: `override:${overrideText.length}:${hashText(overrideText)}`,
+          }
+        : (() => {
+            const stats = fs.statSync(normalizedEntryFilePath)
+            return {
+              sourceText: null,
+              identity: `disk:${stats.mtimeMs}:${stats.size}`,
+            }
+          })()
+      const fileCacheKey = `${sourceState.identity}|structure:${this.pagesStructureVersion}`
+      const cachedCallSites = this.includeLocalCallSitesByFileCache.get(normalizedEntryFilePath)
+      if (cachedCallSites && cachedCallSites.cacheKey === fileCacheKey) {
+        for (const callSite of cachedCallSites.callSites) {
+          addCallSite(callSite.targetFilePath, {
+            callerFilePath: callSite.callerFilePath,
+            locals: callSite.locals,
+          })
+        }
+        continue
+      }
+
+      const sourceText = sourceState.sourceText === null ? readText(normalizedEntryFilePath) : sourceState.sourceText
       const analysisText = isEjsFile(entry.filePath) ? buildTemplateVirtualText(sourceText) : sourceText
       const includeCalls = collectIncludeCallEntries(entry.filePath, analysisText)
+      const fileCallSites = []
 
       for (const includeCall of includeCalls) {
         const targetFilePath = this.resolveIncludeTarget(entry.filePath, includeCall.requestPath)
         if (!targetFilePath) {
           continue
-        }
-
-        const normalizedTargetFilePath = normalizePath(targetFilePath)
-        let targetState = byTargetFile.get(normalizedTargetFilePath)
-        if (!targetState) {
-          targetState = {
-            callSites: [],
-          }
-          byTargetFile.set(normalizedTargetFilePath, targetState)
         }
 
         const seenNames = new Set()
@@ -3124,11 +3179,22 @@ class PocketPagesProjectIndex {
           })
         }
 
-        targetState.callSites.push({
-          callerFilePath: normalizePath(entry.filePath),
+        const callSite = {
+          targetFilePath: normalizePath(targetFilePath),
+          callerFilePath: normalizedEntryFilePath,
           locals,
+        }
+        fileCallSites.push(callSite)
+        addCallSite(callSite.targetFilePath, {
+          callerFilePath: callSite.callerFilePath,
+          locals: callSite.locals,
         })
       }
+
+      this.includeLocalCallSitesByFileCache.set(normalizedEntryFilePath, {
+        cacheKey: fileCacheKey,
+        callSites: fileCallSites,
+      })
     }
 
     this.includeLocalsCache = {

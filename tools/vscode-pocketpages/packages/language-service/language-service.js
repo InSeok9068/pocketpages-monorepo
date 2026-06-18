@@ -3296,6 +3296,10 @@ class ProjectLanguageService {
     const isPagesPath =
       normalizedFilePath === pagesRootPath ||
       normalizedFilePath.startsWith(`${pagesRootPath}/`);
+    const isPageAssetCandidate =
+      isPagesPath &&
+      !this.projectIndex.isPagesCodeFile(normalizedFilePath) &&
+      this.projectIndex.isAssetCandidateFile(normalizedFilePath);
 
     if (
       isPagesPath &&
@@ -3311,6 +3315,11 @@ class ProjectLanguageService {
       this.projectIndex.isAssetCandidateFile(normalizedFilePath)
     ) {
       return "noop";
+    }
+
+    if (isPageAssetCandidate) {
+      const changed = this.projectIndex.invalidateAssetForFile(normalizedFilePath);
+      return changed ? "asset" : "noop";
     }
 
     if (isAppTypeFile) {
@@ -3752,6 +3761,7 @@ class ProjectLanguageService {
     const schemaLane = `${sourceLane}|${schemaIdentity}`;
     const ambientLane = `ambient:${this.getAmbientSnapshotKey()}`;
     const structureLane = `structure:${this.projectIndex.pagesStructureVersion}`;
+    const assetLane = `assets:${this.projectIndex.pagesAssetVersion}`;
     const pagesContentLane = `pages:${this.projectIndex.pagesContentVersion}`;
     const typeScriptDependencyLane = this.getTypeScriptDependencyIdentity(normalizedFilePath, documentText);
     const preparedServerLane = `prepared-server:${this.getPreparedVirtualLaneIdentity(normalizedFilePath, documentText, "server")}`;
@@ -3776,6 +3786,7 @@ class ProjectLanguageService {
               typeScriptDependencyLane,
               schemaTypeIdentity,
               structureLane,
+              assetLane,
               ambientLane,
             ].join("|"),
       template:
@@ -3790,6 +3801,7 @@ class ProjectLanguageService {
               typeScriptDependencyLane,
               schemaTypeIdentity,
               structureLane,
+              assetLane,
               ambientLane,
             ].join("|"),
       "script-schema":
@@ -3799,7 +3811,7 @@ class ProjectLanguageService {
       "project-rule:agents":
         options.includeProjectRuleDiagnostics === false
           ? "disabled"
-          : `${projectRuleAgentsLane}|${structureLane}|${schemaIdentity}`,
+          : `${projectRuleAgentsLane}|${structureLane}|${assetLane}|${schemaIdentity}`,
       "project-rule:include-callers":
         options.includeProjectRuleDiagnostics === false
           ? "disabled"
@@ -3812,6 +3824,7 @@ class ProjectLanguageService {
               projectRuleAgentsLane,
               projectRuleIncludeCallersLane,
               structureLane,
+              assetLane,
               pagesContentLane,
               schemaIdentity,
             ].join("|"),
