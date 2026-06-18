@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
+const FIXTURES_DIR = path.join(ROOT_DIR, 'packages', 'test-support', 'fixtures')
+const IMPORTER_DIR = path.join(ROOT_DIR, 'tools', 'pocketbase-importer')
 
 function parseEnvFile(envFilePath) {
   if (!existsSync(envFilePath)) {
@@ -55,21 +57,19 @@ function resolveServiceDir(serviceName) {
   return path.join(APPS_DIR, serviceName)
 }
 
-function resolveRunner(serviceDir) {
-  const windowsRunner = path.join(serviceDir, 'pbw.exe')
+function resolvePocketBase(serviceDir) {
   const windowsPocketBase = path.join(serviceDir, 'pocketbase.exe')
-  const unixRunner = path.join(serviceDir, 'pbw')
   const unixPocketBase = path.join(serviceDir, 'pocketbase')
 
-  if (existsSync(windowsRunner) && existsSync(windowsPocketBase)) {
-    return [windowsRunner, windowsPocketBase]
+  if (existsSync(windowsPocketBase)) {
+    return windowsPocketBase
   }
 
-  if (existsSync(unixRunner) && existsSync(unixPocketBase)) {
-    return [unixRunner, unixPocketBase]
+  if (existsSync(unixPocketBase)) {
+    return unixPocketBase
   }
 
-  throw new Error(`pbw/pocketbase binary not found in ${serviceDir}`)
+  throw new Error(`pocketbase binary not found in ${serviceDir}`)
 }
 
 function createTempDataDir(serviceDir, serviceName) {
@@ -84,6 +84,130 @@ function createTempDataDir(serviceDir, serviceName) {
   return {
     tempRootDir,
     tempDataDir,
+  }
+}
+
+function resolveImporterPath() {
+  const windowsImporter = path.join(IMPORTER_DIR, 'pocketbase-importer.exe')
+  const unixImporter = path.join(IMPORTER_DIR, 'pocketbase-importer')
+
+  if (existsSync(windowsImporter)) {
+    return windowsImporter
+  }
+
+  if (existsSync(unixImporter)) {
+    return unixImporter
+  }
+
+  throw new Error(`pocketbase-importer not found in ${IMPORTER_DIR}`)
+}
+
+function resolveRepoPath(filePath) {
+  if (!filePath) {
+    return ''
+  }
+
+  if (path.isAbsolute(filePath)) {
+    return filePath
+  }
+
+  return path.join(ROOT_DIR, filePath)
+}
+
+function resolveFixturePath(fixturePath) {
+  if (!fixturePath) {
+    return ''
+  }
+
+  if (path.isAbsolute(fixturePath)) {
+    return fixturePath
+  }
+
+  return path.join(FIXTURES_DIR, fixturePath)
+}
+
+function resolveImportInputPath(importOptions) {
+  const filePath = String(importOptions.file || '').trim()
+  const fixturePath = String(importOptions.fixture || '').trim()
+
+  if (filePath && fixturePath) {
+    throw new Error('import entry must use either file or fixture, not both')
+  }
+
+  if (fixturePath) {
+    return resolveFixturePath(fixturePath)
+  }
+
+  if (filePath) {
+    return resolveRepoPath(filePath)
+  }
+
+  throw new Error('import entry requires file or fixture')
+}
+
+function createImportArgs(tempDataDir, importOptions, inputPath) {
+  const args = ['-dataDir', tempDataDir, '-collection', importOptions.collection, '-i', inputPath]
+
+  if (importOptions.delimiter) {
+    args.push('-delimiter', String(importOptions.delimiter))
+  }
+
+  if (importOptions.goroutines) {
+    args.push('-goroutines', String(importOptions.goroutines))
+  }
+
+  if (importOptions.printDelay) {
+    args.push('-printDelay', String(importOptions.printDelay))
+  }
+
+  if (importOptions.validate === false) {
+    args.push('-validate=false')
+  }
+
+  return args
+}
+
+function runDataImports(tempDataDir, imports, serviceName) {
+  if (!imports) {
+    return
+  }
+
+  if (!Array.isArray(imports)) {
+    throw new Error('imports must be an array')
+  }
+
+  if (imports.length === 0) {
+    return
+  }
+
+  const importerPath = resolveImporterPath()
+
+  for (const importOptions of imports) {
+    const collection = String(importOptions && importOptions.collection ? importOptions.collection : '').trim()
+
+    if (!collection) {
+      throw new Error('import entry requires collection')
+    }
+
+    const inputPath = resolveImportInputPath(importOptions || {})
+
+    if (!existsSync(inputPath)) {
+      throw new Error(`import file not found: ${inputPath}`)
+    }
+
+    const result = spawnSync(importerPath, createImportArgs(tempDataDir, { ...importOptions, collection }, inputPath), {
+      cwd: ROOT_DIR,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    if (result.error) {
+      throw result.error
+    }
+
+    if (result.status !== 0) {
+      throw new Error(`[${serviceName}] import failed for ${collection} from ${inputPath} (exitCode=${result.status})\nstdout:\n${result.stdout || ''}\nstderr:\n${result.stderr || ''}`)
+    }
   }
 }
 
@@ -153,31 +277,45 @@ function removeTempDir(tempRootDir) {
 
 /**
  * 테스트용 PocketPages 서비스를 띄우고 종료 함수를 돌려준다.
- * @param {{ serviceName: string, timeoutMs?: number }} options
+ * @param {object} options 서비스 시작 옵션입니다.
+ * @param {string} options.serviceName 서비스 이름입니다.
+ * @param {number} [options.timeoutMs] readiness 대기 시간입니다.
+ * @param {Array<object>} [options.imports] 서비스 시작 전 temp pb_data에 넣을 CSV 목록입니다.
+ * @param {string} options.imports[].collection 대상 컬렉션 이름입니다.
+ * @param {string} [options.imports[].file] repo root 기준 또는 절대 CSV 경로입니다.
+ * @param {string} [options.imports[].fixture] test-support fixtures 기준 CSV 경로입니다.
+ * @param {string} [options.imports[].delimiter] CSV 구분자입니다.
+ * @param {number} [options.imports[].goroutines] importer 동시 실행 수입니다.
+ * @param {string} [options.imports[].printDelay] importer 진행 출력 주기입니다.
+ * @param {boolean} [options.imports[].validate] PocketBase validation 실행 여부입니다.
  * @returns {Promise<{ baseUrl: string, stop: () => Promise<void> }>}
  */
 export async function startService(options) {
   const serviceName = options.serviceName
   const timeoutMs = options.timeoutMs || 20000
   const serviceDir = resolveServiceDir(serviceName)
-  const [runnerPath, pocketBasePath] = resolveRunner(serviceDir)
+  const pocketBasePath = resolvePocketBase(serviceDir)
   const tempData = createTempDataDir(serviceDir, serviceName)
   const envFilePath = path.join(serviceDir, '.env')
   const childEnv = {
     ...process.env,
     ...parseEnvFile(envFilePath),
   }
-  const args = [pocketBasePath, 'serve', '--dev', `--dir=${tempData.tempDataDir}`, `--hooksDir=${path.join(serviceDir, 'pb_hooks')}`, '--http=127.0.0.1:8090']
+
+  try {
+    runDataImports(tempData.tempDataDir, options.imports, serviceName)
+  } catch (error) {
+    removeTempDir(tempData.tempRootDir)
+    throw error
+  }
+
+  const args = ['serve', '--dev', '--dir', tempData.tempDataDir, '--hooksDir', path.join(serviceDir, 'pb_hooks'), '--http', '127.0.0.1:8090']
 
   if (existsSync(path.join(serviceDir, 'pb_public'))) {
-    args.push(`--publicDir=${path.join(serviceDir, 'pb_public')}`)
+    args.push('--publicDir', path.join(serviceDir, 'pb_public'))
   }
 
-  if (existsSync(path.join(serviceDir, 'pb_migrations'))) {
-    args.push(`--migrationsDir=${path.join(serviceDir, 'pb_migrations')}`)
-  }
-
-  const child = spawn(runnerPath, args, {
+  const child = spawn(pocketBasePath, args, {
     cwd: serviceDir,
     env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],

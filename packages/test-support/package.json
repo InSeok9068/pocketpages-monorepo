@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./auth-cookie": "./auth-cookie.mjs",
     "./service-harness": "./service-harness.mjs",
     "./helpers/*": "./helpers/*",
     "./fixtures/*": "./fixtures/*"
