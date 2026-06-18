@@ -1091,24 +1091,41 @@ function getPathCallDescriptor(expression) {
     }
   }
 
-  if (
-    ts.isPropertyAccessExpression(target) &&
-    ts.isIdentifier(target.expression) &&
-    (target.expression.text === 'api' || target.expression.text === 'response')
-  ) {
-    if (target.name.text === 'resolve' || target.name.text === 'include') {
+  if (ts.isPropertyAccessExpression(target) && ts.isIdentifier(target.expression)) {
+    const receiverName = target.expression.text
+    const memberName = target.name.text
+
+    if (receiverName === 'response' && memberName === 'redirect') {
       return {
-        kind: `${target.name.text}-path`,
+        kind: 'route-path',
+        routeSource: 'redirect',
       }
     }
 
-    if (target.name.text === 'asset') {
+    if (receiverName === 'datastar' && (memberName === 'redirect' || memberName === 'replaceURL')) {
+      return {
+        kind: 'route-path',
+        routeSource: memberName === 'redirect' ? 'redirect' : 'replace-url',
+      }
+    }
+
+    if (receiverName !== 'api') {
+      return null
+    }
+
+    if (memberName === 'resolve' || memberName === 'include') {
+      return {
+        kind: `${memberName}-path`,
+      }
+    }
+
+    if (memberName === 'asset') {
       return {
         kind: 'asset-path',
       }
     }
 
-    if (target.name.text === 'redirect') {
+    if (memberName === 'redirect') {
       return {
         kind: 'route-path',
         routeSource: 'redirect',

@@ -11371,6 +11371,29 @@ module.exports = {
     if (!responseRedirectRenamedText.includes("response.redirect('/login')")) {
       throw new Error(`Expected response.redirect() caller to rewrite to /login. Got: ${responseRedirectRenamedText}`)
     }
+
+    const datastarUrlCallerText = `<script server>\ndatastar.redirect('/sign-in')\ndatastar.replaceURL('/sign-in')\n</script>\n`
+    service.setDocumentOverride(fixture.routeReferenceCheckFilePath, datastarUrlCallerText)
+    const datastarUrlRouteReferences = service.getFileReferenceTargets(
+      fixture.siteSignInFilePath,
+      fs.readFileSync(fixture.siteSignInFilePath, 'utf8')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath))
+    if (datastarUrlRouteReferences.length !== 2) {
+      throw new Error(`Expected Datastar URL helpers to reference /sign-in. Got: ${JSON.stringify(datastarUrlRouteReferences)}`)
+    }
+    const datastarUrlRenameEdits = service.getFileRenameEdits(fixture.siteSignInFilePath, renamedSignInRouteFilePath).filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath)
+    )
+    if (datastarUrlRenameEdits.length !== 2) {
+      throw new Error(`Expected Datastar URL helper rename edits for /sign-in. Got: ${JSON.stringify(datastarUrlRenameEdits)}`)
+    }
+    const datastarUrlRenamedText = applyEditsToText(datastarUrlCallerText, datastarUrlRenameEdits)
+    if (
+      !datastarUrlRenamedText.includes("datastar.redirect('/login')") ||
+      !datastarUrlRenamedText.includes("datastar.replaceURL('/login')")
+    ) {
+      throw new Error(`Expected Datastar URL helper callers to rewrite to /login. Got: ${datastarUrlRenamedText}`)
+    }
     service.clearDocumentOverride(fixture.routeReferenceCheckFilePath)
 
     const renamedFeedbackPageFilePath = path.join(path.dirname(fixture.feedbackPageFilePath), 'login.ejs')

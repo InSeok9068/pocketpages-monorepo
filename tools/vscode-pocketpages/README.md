@@ -179,6 +179,7 @@ EJS block 끝 위치는 실제 사용자가 커서를 자주 멈추는 위치입
 | `include('...')`, `api.include('...')` | `_private` partial |
 | `asset('...')` | local/global asset |
 | `redirect('/path')`, `api.redirect('/path')` | route |
+| `datastar.redirect('/path')`, `datastar.replaceURL('/path')` | route |
 | `href="/path"` | route, static asset fallback |
 | `action="/path"` | route, `method` 기준 GET/POST 우선순위 적용 |
 | `hx-get`, `hx-post`, `hx-put`, `hx-patch`, `hx-delete`, `data-hx-*` | route |
