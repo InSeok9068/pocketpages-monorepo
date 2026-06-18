@@ -2404,6 +2404,10 @@ function getComparablePathValue(context) {
     return normalizeRouteRequestPath(context.value) || String(context.value || "").trim();
   }
 
+  if (context.kind === "asset-path") {
+    return splitRoutePathSuffix(context.value).basePath;
+  }
+
   if (context.kind === "resolve-path") {
     return String(context.value || "").trim().replace(/^\/+/, "");
   }
@@ -2606,7 +2610,7 @@ function buildSuggestedReplacementValue(context, candidateValue) {
     return candidateValue;
   }
 
-  if (context.kind === "route-path") {
+  if (context.kind === "route-path" || context.kind === "asset-path") {
     const { suffix } = splitRoutePathSuffix(context.value);
     return `${candidateValue}${suffix}`;
   }
@@ -2739,12 +2743,42 @@ function resolvePathContextTargetWithIndex(projectIndex, filePath, context) {
   }
 
   if (context.kind === "route-path") {
-    return projectIndex.resolveRouteTarget(filePath, context.value, {
+    const routeTarget = projectIndex.resolveRouteTarget(filePath, context.value, {
       routeSource: context.routeSource,
     });
+    if (routeTarget) {
+      return routeTarget;
+    }
+
+    if (shouldRoutePathResolveAsset(context)) {
+      return projectIndex.resolveAssetTarget(filePath, splitRoutePathSuffix(context.value).basePath);
+    }
   }
 
   return null;
+}
+
+function shouldRoutePathResolveAsset(context) {
+  return !!context &&
+    context.kind === "route-path" &&
+    String(context.routeSource || "").toLowerCase() === "href";
+}
+
+function shouldRoutePathUseAssetDiagnostics(context) {
+  if (!shouldRoutePathResolveAsset(context)) {
+    return false;
+  }
+
+  const { basePath } = splitRoutePathSuffix(context.value);
+  return String(basePath || "").startsWith("/assets/") || !!path.extname(String(basePath || ""));
+}
+
+function getUnresolvedPathDiagnosticKind(context) {
+  if (shouldRoutePathUseAssetDiagnostics(context)) {
+    return "asset-path";
+  }
+
+  return context && context.kind ? context.kind : "";
 }
 
 function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText, options = {}) {
@@ -2765,7 +2799,10 @@ function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText, 
       continue;
     }
 
-    const candidates = getPathContextCandidates(projectIndex, filePath, context);
+    const diagnosticKind = getUnresolvedPathDiagnosticKind(context);
+    const candidates = diagnosticKind === "asset-path"
+      ? projectIndex.getAssetCandidates(filePath)
+      : getPathContextCandidates(projectIndex, filePath, context);
     const suggestedCandidates = getSuggestedPathCandidates(context, candidates);
     const fixes = suggestedCandidates.map((candidate) => ({
       title: `Replace with "${candidate.value}"`,
@@ -2778,18 +2815,18 @@ function collectUnresolvedPathDiagnostics(projectIndex, filePath, documentText, 
       ],
     }));
 
-    const label = getPathContextLabel(context);
+    const label = getPathContextLabel({ ...context, kind: diagnosticKind });
     const message = suggestedCandidates.length
       ? `${label} "${context.value}" was not found. Did you mean "${suggestedCandidates[0].value}"?`
       : `${label} "${context.value}" was not found.`;
 
     diagnostics.push({
       code:
-        context.kind === "resolve-path"
+        diagnosticKind === "resolve-path"
           ? "pp-unresolved-resolve-path"
-          : context.kind === "include-path"
+          : diagnosticKind === "include-path"
             ? "pp-unresolved-include-path"
-            : context.kind === "asset-path"
+            : diagnosticKind === "asset-path"
               ? "pp-unresolved-asset-path"
             : "pp-unresolved-route-path",
       category: ts.DiagnosticCategory.Warning,
@@ -6199,12 +6236,42 @@ class ProjectLanguageService {
     }
 
     if (pathContext.kind === "route-path") {
-      return this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
+      const routeTarget = this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
         routeSource: pathContext.routeSource,
       });
+      if (routeTarget) {
+        return routeTarget;
+      }
+
+      if (shouldRoutePathResolveAsset(pathContext)) {
+        return this.projectIndex.resolveAssetTarget(filePath, splitRoutePathSuffix(pathContext.value).basePath);
+      }
     }
 
     return null;
+  }
+
+  isRoutePathAssetFallback(filePath, pathContext, targetFilePath = null) {
+    if (!shouldRoutePathResolveAsset(pathContext)) {
+      return false;
+    }
+
+    const routeTarget = this.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
+      routeSource: pathContext.routeSource,
+    });
+    if (routeTarget) {
+      return false;
+    }
+
+    const assetTarget = this.projectIndex.resolveAssetTarget(
+      filePath,
+      splitRoutePathSuffix(pathContext.value).basePath
+    );
+    if (!assetTarget) {
+      return false;
+    }
+
+    return !targetFilePath || normalizePath(assetTarget) === normalizePath(targetFilePath);
   }
 
   getPathReferenceContext(filePath, documentText, offset) {
@@ -6222,6 +6289,11 @@ class ProjectLanguageService {
       ...pathContext,
       targetFilePath: normalizePath(targetFilePath),
     };
+
+    if (this.isRoutePathAssetFallback(filePath, pathContext, targetFilePath)) {
+      result.kind = "asset-path";
+      result.routeSource = "";
+    }
 
     if (pathContext.kind === "route-path") {
       const routeDescriptor = this.getBestRouteDescriptorForRequestPath(
@@ -6450,7 +6522,10 @@ class ProjectLanguageService {
     }
 
     if (referenceQuery.kind === "asset-file") {
-      return this.collectPathReferenceLocations("asset-path", referenceQuery.targetFilePath, overrides);
+      return this.mergeReferenceLocations(
+        this.collectPathReferenceLocations("asset-path", referenceQuery.targetFilePath, overrides),
+        this.collectPathReferenceLocations("route-path", referenceQuery.targetFilePath, overrides)
+      );
     }
 
     if (referenceQuery.kind === "route-file") {
@@ -7091,21 +7166,25 @@ class ProjectLanguageService {
       const pathContexts = collectPathContexts(documentText, { filePath });
 
       for (const pathContext of pathContexts) {
-        if (pathContext.kind !== "asset-path") {
+        if (pathContext.kind !== "asset-path" && !shouldRoutePathResolveAsset(pathContext)) {
           continue;
         }
 
-        if (!this.isAssetRequestForTarget(filePath, pathContext.value, oldTargetFilePath)) {
+        const pathParts = splitRoutePathSuffix(pathContext.value);
+        const requestPath = pathParts.basePath;
+
+        if (!this.isAssetRequestForTarget(filePath, requestPath, oldTargetFilePath)) {
           continue;
         }
 
         const newValue = this.buildUpdatedAssetRequestPath(
           filePath,
-          pathContext.value,
+          requestPath,
           oldTargetFilePath,
           newTargetFilePath
         );
-        if (!newValue || newValue === pathContext.value) {
+        const newRequestValue = newValue ? `${newValue}${pathParts.suffix}` : null;
+        if (!newRequestValue || newRequestValue === pathContext.value) {
           continue;
         }
 
@@ -7113,7 +7192,7 @@ class ProjectLanguageService {
           filePath,
           start: pathContext.start,
           end: pathContext.end,
-          newText: newValue,
+          newText: newRequestValue,
         });
       }
     }

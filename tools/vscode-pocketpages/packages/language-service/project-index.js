@@ -1617,6 +1617,12 @@ function splitNormalizedRoutePath(routePath) {
   return normalizedRoutePath.slice(1).split('/').filter(Boolean)
 }
 
+function stripPathSuffix(requestPath) {
+  const value = String(requestPath || '')
+  const markerIndex = value.search(/[?#]/)
+  return markerIndex === -1 ? value : value.slice(0, markerIndex)
+}
+
 function getRoutePathMatchDetails(routeSegments, requestSegments) {
   const normalizedRouteSegments = Array.isArray(routeSegments) ? routeSegments.filter(Boolean) : []
   const normalizedRequestSegments = Array.isArray(requestSegments) ? requestSegments.filter(Boolean) : []
@@ -1709,6 +1715,9 @@ function createRouteDescriptor(pagesRoot, filePath, routeExtensions = ROUTE_EXTE
   if (fileBasename === 'index') {
     method = 'PAGE'
   } else if (ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]) {
+    if (!ASSET_SCRIPT_EXTENSIONS.includes(extension)) {
+      return null
+    }
     method = ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]
   } else if (NON_ROUTE_SPECIAL_FILE_BASENAMES.has(fileBasename) || fileBasename.startsWith('+')) {
     return null
@@ -3392,7 +3401,7 @@ class PocketPagesProjectIndex {
   }
 
   resolveAssetTarget(filePath, requestPath) {
-    const normalizedRequestPath = String(requestPath || '').trim()
+    const normalizedRequestPath = stripPathSuffix(String(requestPath || '').trim())
     if (!normalizedRequestPath) {
       return null
     }

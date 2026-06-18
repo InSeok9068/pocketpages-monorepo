@@ -1995,11 +1995,13 @@ redirect('/sign-in')
     `<a href="/feedback">Feedback</a>
 <form action="/feedback" method="post"></form>
 <button hx-post="/feedback"></button>
+<button data-hx-post="/feedback"></button>
 <button hx-delete="/feedback"></button>
 <button hx-put="/feedback"></button>
 <button hx-patch="/feedback"></button>
 `
   )
+  writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'method-shadow', '+post.ejs'), `<h1>Not a method route</h1>\n`)
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
     `<script server>
@@ -2333,6 +2335,7 @@ module.exports = {
     optionalNoticeBFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-b.ejs'),
     routeReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-reference-check.ejs'),
     routeMethodReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-method-reference-check.ejs'),
+    methodShadowPostEjsFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'method-shadow', '+post.ejs'),
     globalAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'),
     globalAssetTemplateFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'snippet.ejs'),
     vendorAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'vendor', 'jszip-3.10.1.min.js'),
@@ -9545,6 +9548,14 @@ boardService.readAuthState(
     if (!resolveDefinition || !resolveDefinition.endsWith('/pb_hooks/pages/_private/board-service.js')) {
       throw new Error(`Expected resolve() definition target. Got: ${resolveDefinition}`)
     }
+    const apiResolveDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<script server>\napi.resolve('board-service')\n</script>\n`,
+      `<script server>\napi.resolve('board-service')\n</script>\n`.indexOf('board-service') + 2
+    )
+    if (!apiResolveDefinition || normalizeFilePath(apiResolveDefinition) !== normalizeFilePath(fixture.boardServiceFilePath)) {
+      throw new Error(`Expected api.resolve() definition target. Got: ${apiResolveDefinition}`)
+    }
 
     const cjsResolveDefinition = service.getDefinitionTarget(
       fixture.mjsConsumerFilePath,
@@ -9574,6 +9585,14 @@ boardService.readAuthState(
     )
     if (!resolvePathTargetInfo || normalizeFilePath(resolvePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.boardServiceFilePath)) {
       throw new Error(`Expected resolve() path target info. Got: ${JSON.stringify(resolvePathTargetInfo)}`)
+    }
+    const apiResolvePathTargetInfo = service.getPathTargetInfo(
+      fixture.boardsFilePath,
+      `<script server>\napi.resolve('board-service')\n</script>\n`,
+      `<script server>\napi.resolve('board-service')\n</script>\n`.indexOf('board-service') + 2
+    )
+    if (!apiResolvePathTargetInfo || normalizeFilePath(apiResolvePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.boardServiceFilePath)) {
+      throw new Error(`Expected api.resolve() path target info. Got: ${JSON.stringify(apiResolvePathTargetInfo)}`)
     }
     const customResolveDefinition = service.getCustomDefinitionTarget(
       fixture.boardsFilePath,
@@ -9763,6 +9782,14 @@ function loadPostRole() {
     if (!includeDefinition || !includeDefinition.endsWith('/pb_hooks/pages/_private/flash-alert.ejs')) {
       throw new Error(`Expected include() definition target. Got: ${includeDefinition}`)
     }
+    const apiIncludeDefinition = service.getDefinitionTarget(
+      fixture.boardsFilePath,
+      `<%- api.include('flash-alert.ejs') %>\n`,
+      `<%- api.include('flash-alert.ejs') %>\n`.indexOf('flash-alert.ejs') + 2
+    )
+    if (!apiIncludeDefinition || normalizeFilePath(apiIncludeDefinition) !== normalizeFilePath(fixture.flashAlertFilePath)) {
+      throw new Error(`Expected api.include() definition target. Got: ${apiIncludeDefinition}`)
+    }
 
     const includePathTargetInfo = service.getPathTargetInfo(
       fixture.boardsFilePath,
@@ -9779,6 +9806,20 @@ function loadPostRole() {
       !String(includePathTargetInfo.includeLocalsSummary || '').includes('isErrorFlash')
     ) {
       throw new Error(`Expected include() path hover info to expose locals contract. Got: ${JSON.stringify(includePathTargetInfo)}`)
+    }
+    const apiIncludePathTargetInfo = service.getPathTargetInfo(
+      fixture.boardsFilePath,
+      `<%- api.include('flash-alert.ejs') %>\n`,
+      `<%- api.include('flash-alert.ejs') %>\n`.indexOf('flash-alert.ejs') + 2
+    )
+    if (!apiIncludePathTargetInfo || normalizeFilePath(apiIncludePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.flashAlertFilePath)) {
+      throw new Error(`Expected api.include() path target info. Got: ${JSON.stringify(apiIncludePathTargetInfo)}`)
+    }
+    if (
+      !Array.isArray(apiIncludePathTargetInfo.includeLocals) ||
+      !apiIncludePathTargetInfo.includeLocals.some((entry) => entry.name === 'flashMessage')
+    ) {
+      throw new Error(`Expected api.include() path hover info to expose locals contract. Got: ${JSON.stringify(apiIncludePathTargetInfo)}`)
     }
 
     const extlessIncludeDefinition = service.getDefinitionTarget(
@@ -9850,6 +9891,18 @@ function loadPostRole() {
     )
     if (!assetPathTargetInfo || normalizeFilePath(assetPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.globalAssetFilePath)) {
       throw new Error(`Expected asset() path target info. Got: ${JSON.stringify(assetPathTargetInfo)}`)
+    }
+    const hrefAssetPathTargetInfo = service.getPathTargetInfo(
+      fixture.boardsFilePath,
+      `<a href="/assets/booklog-reader.js?v=1"></a>\n`,
+      `<a href="/assets/booklog-reader.js?v=1"></a>\n`.indexOf('/assets/booklog-reader.js') + 4
+    )
+    if (
+      !hrefAssetPathTargetInfo ||
+      hrefAssetPathTargetInfo.kind !== 'asset-path' ||
+      normalizeFilePath(hrefAssetPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.globalAssetFilePath)
+    ) {
+      throw new Error(`Expected href static asset path target info. Got: ${JSON.stringify(hrefAssetPathTargetInfo)}`)
     }
 
     const hooksRequireText = fs.readFileSync(fixture.htmlToTextConsumerFilePath, 'utf8')
@@ -9976,6 +10029,17 @@ function loadPostRole() {
     ) {
       throw new Error(`Expected hx-post path target info for feedback POST route. Got: ${JSON.stringify(feedbackHtmxPostPathTargetInfo)}`)
     }
+    const feedbackDataHtmxPostPathTargetInfo = indexService.getPathTargetInfo(
+      fixture.siteIndexFilePath,
+      `<button data-hx-post="/feedback"></button>\n`,
+      `<button data-hx-post="/feedback"></button>\n`.indexOf('/feedback') + 2
+    )
+    if (
+      !feedbackDataHtmxPostPathTargetInfo
+      || normalizeFilePath(feedbackDataHtmxPostPathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.feedbackPostFilePath)
+    ) {
+      throw new Error(`Expected data-hx-post path target info for feedback POST route. Got: ${JSON.stringify(feedbackDataHtmxPostPathTargetInfo)}`)
+    }
     const feedbackHtmxDeletePathTargetInfo = indexService.getPathTargetInfo(
       fixture.siteIndexFilePath,
       `<button hx-delete="/feedback"></button>\n`,
@@ -10034,6 +10098,7 @@ function loadPostRole() {
     for (const [label, info, expectedMethod, expectedSource] of [
       ['action', feedbackActionPathTargetInfo, 'POST', 'action-post'],
       ['hx-post', feedbackHtmxPostPathTargetInfo, 'POST', 'hx-post'],
+      ['data-hx-post', feedbackDataHtmxPostPathTargetInfo, 'POST', 'hx-post'],
       ['hx-delete', feedbackHtmxDeletePathTargetInfo, 'DELETE', 'hx-delete'],
       ['hx-put', feedbackHtmxPutPathTargetInfo, 'PUT', 'hx-put'],
       ['hx-patch', feedbackHtmxPatchPathTargetInfo, 'PATCH', 'hx-patch'],
@@ -10085,6 +10150,15 @@ function loadPostRole() {
     if (!partialFileReferences || partialFileReferences.length !== 1) {
       throw new Error(`Expected file-based partial references. Got: ${JSON.stringify(partialFileReferences)}`)
     }
+    service.setDocumentOverride(fixture.boardsFilePath, `<%- api.include('flash-alert.ejs') %>\n`)
+    const apiPartialFileReferences = service.getFileReferenceTargets(fixture.flashAlertFilePath, fs.readFileSync(fixture.flashAlertFilePath, 'utf8'))
+    const apiPartialCallerReferences = apiPartialFileReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
+    )
+    if (apiPartialCallerReferences.length !== 1) {
+      throw new Error(`Expected api.include() file-based partial reference. Got: ${JSON.stringify(apiPartialFileReferences)}`)
+    }
+    service.clearDocumentOverride(fixture.boardsFilePath)
 
     const privateTemplateCompletionText = `<div><%= flashMeta. %></div>\n`
     const privateTemplateCompletionOffset =
@@ -10737,6 +10811,18 @@ boardService.readSessionState({ request })
     if (!moduleFileReferences.some((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.jobScriptFilePath))) {
       throw new Error(`Expected file-based module references to include schema-only hook require() usage. Got: ${JSON.stringify(moduleFileReferences)}`)
     }
+    service.setDocumentOverride(fixture.renameCheckFilePath, `<script server>\nconst boardService = api.resolve('board-service')\n</script>\n`)
+    const apiModuleFileReferences = service.getFileReferenceTargets(
+      fixture.boardServiceFilePath,
+      fs.readFileSync(fixture.boardServiceFilePath, 'utf8')
+    )
+    const apiModuleCallerReferences = apiModuleFileReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath)
+    )
+    if (apiModuleCallerReferences.length !== 1) {
+      throw new Error(`Expected api.resolve() file-based module reference. Got: ${JSON.stringify(apiModuleFileReferences)}`)
+    }
+    service.clearDocumentOverride(fixture.renameCheckFilePath)
 
     const hooksRequireReferenceQuery = service.getFileReferenceQuery(fixture.htmlToTextBundleFilePath)
     if (!hooksRequireReferenceQuery || hooksRequireReferenceQuery.kind !== 'private-module') {
@@ -10835,6 +10921,21 @@ module.exports = {
     }
     service.clearDocumentOverride(fixture.boardsFilePath)
 
+    const apiPartialCallerText = `<%- api.include('flash-alert.ejs') %>\n`
+    service.setDocumentOverride(fixture.boardsFilePath, apiPartialCallerText)
+    const apiPartialRenameEdits = service.getFileRenameEdits(
+      fixture.flashAlertFilePath,
+      path.resolve(path.dirname(fixture.flashAlertFilePath), 'notice-alert.ejs')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath))
+    if (apiPartialRenameEdits.length !== 1) {
+      throw new Error(`Expected api.include() rename edit. Got: ${JSON.stringify(apiPartialRenameEdits)}`)
+    }
+    const renamedApiPartialText = applyEditsToText(apiPartialCallerText, apiPartialRenameEdits)
+    if (!renamedApiPartialText.includes(`api.include('notice-alert.ejs')`)) {
+      throw new Error(`Expected api.include() request path to update after partial file rename. Got: ${renamedApiPartialText}`)
+    }
+    service.clearDocumentOverride(fixture.boardsFilePath)
+
     const moduleFileRenameEdits = service.getFileRenameEdits(
       fixture.boardServiceFilePath,
       path.resolve(path.dirname(fixture.boardServiceFilePath), 'session-service.js')
@@ -10904,6 +11005,21 @@ module.exports = {
     if (!renamedJobRequireText.includes(`require('../pages/_private/session-service')`)) {
       throw new Error(`Expected schema-only hook require() path to update after module file rename. Got: ${renamedJobRequireText}`)
     }
+
+    const apiModuleCallerText = `<script server>\nconst boardService = api.resolve('board-service')\n</script>\n`
+    service.setDocumentOverride(fixture.renameCheckFilePath, apiModuleCallerText)
+    const apiModuleRenameEdits = service.getFileRenameEdits(
+      fixture.boardServiceFilePath,
+      path.resolve(path.dirname(fixture.boardServiceFilePath), 'session-service.js')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath))
+    if (apiModuleRenameEdits.length !== 1) {
+      throw new Error(`Expected api.resolve() rename edit. Got: ${JSON.stringify(apiModuleRenameEdits)}`)
+    }
+    const renamedApiModuleText = applyEditsToText(apiModuleCallerText, apiModuleRenameEdits)
+    if (!renamedApiModuleText.includes(`api.resolve('session-service')`)) {
+      throw new Error(`Expected api.resolve() path to update after module file rename. Got: ${renamedApiModuleText}`)
+    }
+    service.clearDocumentOverride(fixture.renameCheckFilePath)
 
     const hooksRequireRenameEdits = service.getFileRenameEdits(
       fixture.htmlToTextBundleFilePath,
@@ -11103,6 +11219,27 @@ module.exports = {
       throw new Error(`Expected sign-out redirect caller to rewrite to /login. Got: ${signOutRenamedText}`)
     }
 
+    const apiRedirectCallerText = `<script server>\napi.redirect('/sign-in')\n</script>\n`
+    service.setDocumentOverride(fixture.routeReferenceCheckFilePath, apiRedirectCallerText)
+    const apiRedirectRouteReferences = service.getFileReferenceTargets(
+      fixture.siteSignInFilePath,
+      fs.readFileSync(fixture.siteSignInFilePath, 'utf8')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath))
+    if (apiRedirectRouteReferences.length !== 1) {
+      throw new Error(`Expected api.redirect() route reference for /sign-in. Got: ${JSON.stringify(apiRedirectRouteReferences)}`)
+    }
+    const apiRedirectRenameEdits = service.getFileRenameEdits(fixture.siteSignInFilePath, renamedSignInRouteFilePath).filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath)
+    )
+    if (apiRedirectRenameEdits.length !== 1) {
+      throw new Error(`Expected api.redirect() route rename edit for /sign-in. Got: ${JSON.stringify(apiRedirectRenameEdits)}`)
+    }
+    const apiRedirectRenamedText = applyEditsToText(apiRedirectCallerText, apiRedirectRenameEdits)
+    if (!apiRedirectRenamedText.includes("api.redirect('/login')")) {
+      throw new Error(`Expected api.redirect() caller to rewrite to /login. Got: ${apiRedirectRenamedText}`)
+    }
+    service.clearDocumentOverride(fixture.routeReferenceCheckFilePath)
+
     const renamedFeedbackPageFilePath = path.join(path.dirname(fixture.feedbackPageFilePath), 'login.ejs')
     const feedbackRouteRenameEdits = service.getFileRenameEdits(fixture.feedbackPageFilePath, renamedFeedbackPageFilePath)
     const feedbackRouteReferenceEdits = feedbackRouteRenameEdits.filter(
@@ -11123,6 +11260,9 @@ module.exports = {
     }
     if (!feedbackRouteReferenceRenamedText.includes('hx-post="/feedback"')) {
       throw new Error(`Expected hx-post caller to stay on /feedback while +post.js still exists. Got: ${feedbackRouteReferenceRenamedText}`)
+    }
+    if (!feedbackRouteReferenceRenamedText.includes('data-hx-post="/feedback"')) {
+      throw new Error(`Expected data-hx-post caller to stay on /feedback while +post.js still exists. Got: ${feedbackRouteReferenceRenamedText}`)
     }
 
     const formMethodRouteCallerText = `<form action="/feedback"></form>
@@ -11174,7 +11314,7 @@ module.exports = {
     const feedbackDirectoryRouteReferenceEdits = feedbackDirectoryRenameEdits.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
     )
-    if (feedbackDirectoryRouteReferenceEdits.length !== 6) {
+    if (feedbackDirectoryRouteReferenceEdits.length !== 7) {
       throw new Error(`Expected all method-aware feedback route callers to rewrite on folder rename. Got: ${JSON.stringify(feedbackDirectoryRenameEdits)}`)
     }
     const feedbackDirectoryRenamedText = applyEditsToText(
@@ -11185,6 +11325,7 @@ module.exports = {
       'href="/responses"',
       'action="/responses"',
       'hx-post="/responses"',
+      'data-hx-post="/responses"',
       'hx-delete="/responses"',
       'hx-put="/responses"',
       'hx-patch="/responses"',
@@ -11608,7 +11749,9 @@ const currentUser = { email: 'demo@example.com' }
       throw new Error(`Expected EJS routes under route-exposed vendor directories to stay route-referenceable. Got: ${JSON.stringify(routeVendorTemplateReferenceQuery)}`)
     }
     const assetReferenceCallerText = `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>
+<script src="<%= asset('/assets/booklog-reader.js?v=1#main') %>"></script>
 <link rel="stylesheet" href="<%= asset('card.css') %>">
+<a href="/assets/booklog-reader.js?v=1">Download</a>
 `
     service.setDocumentOverride(fixture.boardsFilePath, assetReferenceCallerText)
     const globalAssetReferenceQuery = service.getFileReferenceQuery(fixture.globalAssetFilePath)
@@ -11637,8 +11780,8 @@ const currentUser = { email: 'demo@example.com' }
     const localAssetCallerMatches = localAssetReferences.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
     )
-    if (globalAssetCallerMatches.length !== 1) {
-      throw new Error(`Expected one asset() caller for the global asset file. Got: ${JSON.stringify(globalAssetReferences)}`)
+    if (globalAssetCallerMatches.length !== 3) {
+      throw new Error(`Expected asset() and href callers for the global asset file. Got: ${JSON.stringify(globalAssetReferences)}`)
     }
     if (localAssetCallerMatches.length !== 1) {
       throw new Error(`Expected one asset() caller for the local asset file. Got: ${JSON.stringify(localAssetReferences)}`)
@@ -11651,12 +11794,16 @@ const currentUser = { email: 'demo@example.com' }
     const globalAssetCallerEdits = globalAssetRenameEdits.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
     )
-    if (globalAssetCallerEdits.length !== 1) {
-      throw new Error(`Expected one caller rewrite for the renamed global asset file. Got: ${JSON.stringify(globalAssetRenameEdits)}`)
+    if (globalAssetCallerEdits.length !== 3) {
+      throw new Error(`Expected asset() and href caller rewrites for the renamed global asset file. Got: ${JSON.stringify(globalAssetRenameEdits)}`)
     }
     const globalAssetRenamedText = applyEditsToText(assetReferenceCallerText, globalAssetCallerEdits)
-    if (!globalAssetRenamedText.includes("asset('/assets/reader-client.js')")) {
-      throw new Error(`Expected global asset() caller to rewrite to /assets/reader-client.js. Got: ${globalAssetRenamedText}`)
+    if (
+      !globalAssetRenamedText.includes("asset('/assets/reader-client.js')") ||
+      !globalAssetRenamedText.includes("asset('/assets/reader-client.js?v=1#main')") ||
+      !globalAssetRenamedText.includes('href="/assets/reader-client.js?v=1"')
+    ) {
+      throw new Error(`Expected global asset() and href callers to rewrite to /assets/reader-client.js while preserving query suffixes. Got: ${globalAssetRenamedText}`)
     }
     const renamedLocalAssetFilePath = path.join(path.dirname(fixture.localAssetFilePath), 'board-card.css')
     const localAssetRenameEdits = service.getFileRenameEdits(
@@ -11713,8 +11860,8 @@ const currentUser = { email: 'demo@example.com' }
     if (feedbackPageCallerMatches.length !== 1) {
       throw new Error(`Expected href-only references for feedback page route. Got: ${JSON.stringify(feedbackPageReferences)}`)
     }
-    if (feedbackPostCallerMatches.length !== 2) {
-      throw new Error(`Expected action + hx-post references for feedback POST route. Got: ${JSON.stringify(feedbackPostReferences)}`)
+    if (feedbackPostCallerMatches.length !== 3) {
+      throw new Error(`Expected action + hx-post + data-hx-post references for feedback POST route. Got: ${JSON.stringify(feedbackPostReferences)}`)
     }
     if (feedbackDeleteCallerMatches.length !== 1) {
       throw new Error(`Expected hx-delete references for feedback DELETE route. Got: ${JSON.stringify(feedbackDeleteReferences)}`)
@@ -11735,6 +11882,15 @@ const currentUser = { email: 'demo@example.com' }
       throw new Error(`Expected href route definition target. Got: ${hrefDefinition}`)
     }
 
+    const methodShadowPostDefinition = indexService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<button hx-post="/method-shadow"></button>\n`,
+      `<button hx-post="/method-shadow"></button>\n`.indexOf('/method-shadow') + 2
+    )
+    if (methodShadowPostDefinition) {
+      throw new Error(`Expected hx-post /method-shadow not to resolve to non-script +post files. Got: ${methodShadowPostDefinition}`)
+    }
+
     const actionDefinition = authService.getDefinitionTarget(
       fixture.siteIndexFilePath,
       `<form action="/xapi/auth/sign-out" method="post"></form>\n`,
@@ -11752,6 +11908,14 @@ const currentUser = { email: 'demo@example.com' }
     if (!htmxDefinition || !htmxDefinition.endsWith('/pb_hooks/pages/xapi/jobs/collect-weekly.ejs')) {
       throw new Error(`Expected hx-post route definition target. Got: ${htmxDefinition}`)
     }
+    const dataHtmxDefinition = indexService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<button data-hx-post="/feedback"></button>\n`,
+      `<button data-hx-post="/feedback"></button>\n`.indexOf('/feedback') + 2
+    )
+    if (!dataHtmxDefinition || normalizeFilePath(dataHtmxDefinition) !== normalizeFilePath(fixture.feedbackPostFilePath)) {
+      throw new Error(`Expected data-hx-post route definition target. Got: ${dataHtmxDefinition}`)
+    }
 
     const redirectDefinition = authService.getDefinitionTarget(
       fixture.siteIndexFilePath,
@@ -11760,6 +11924,14 @@ const currentUser = { email: 'demo@example.com' }
     )
     if (!redirectDefinition || !redirectDefinition.endsWith('/pb_hooks/pages/(site)/sign-in.ejs')) {
       throw new Error(`Expected redirect() route definition target. Got: ${redirectDefinition}`)
+    }
+    const apiRedirectDefinition = authService.getDefinitionTarget(
+      fixture.siteIndexFilePath,
+      `<script server>\napi.redirect('/sign-in', { status: 303 })\n</script>\n`,
+      `<script server>\napi.redirect('/sign-in', { status: 303 })\n</script>\n`.indexOf('/sign-in') + 2
+    )
+    if (!apiRedirectDefinition || !apiRedirectDefinition.endsWith('/pb_hooks/pages/(site)/sign-in.ejs')) {
+      throw new Error(`Expected api.redirect() route definition target. Got: ${apiRedirectDefinition}`)
     }
 
     const feedbackHrefDefinition = indexService.getDefinitionTarget(
@@ -13046,6 +13218,43 @@ const boardTableNames = $app.findRecordsByFilter('boards', '').map((entry) => en
     ) {
       throw new Error(`Expected unresolved asset() path quick fix. Got: ${JSON.stringify(unresolvedAssetCodeActions)}`)
     }
+    const unresolvedAssetWithQueryCodeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      `<script src="<%= asset('/assets/booklog-reder.js?v=1#main') %>"></script>\n`,
+      {
+        start: `<script src="<%= asset('/assets/booklog-reder.js?v=1#main') %>"></script>\n`.indexOf('/assets/booklog-reder.js?v=1#main'),
+        end:
+          `<script src="<%= asset('/assets/booklog-reder.js?v=1#main') %>"></script>\n`.indexOf('/assets/booklog-reder.js?v=1#main') +
+          '/assets/booklog-reder.js?v=1#main'.length,
+      }
+    )
+    if (
+      !unresolvedAssetWithQueryCodeActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === '/assets/booklog-reader.js?v=1#main')
+      )
+    ) {
+      throw new Error(`Expected unresolved asset() quick fix to preserve query/hash suffixes. Got: ${JSON.stringify(unresolvedAssetWithQueryCodeActions)}`)
+    }
+
+    const hrefAssetDiagnostics = service.getDiagnostics(
+      fixture.siteIndexFilePath,
+      `<a href="/assets/booklog-reader.js?v=1"></a>\n`
+    )
+    if (hrefAssetDiagnostics.some((entry) => entry.code === 'pp-unresolved-route-path')) {
+      throw new Error(`Expected href static asset URL to avoid unresolved route diagnostics. Got: ${JSON.stringify(hrefAssetDiagnostics)}`)
+    }
+
+    const unresolvedHrefAssetDiagnostics = service.getDiagnostics(
+      fixture.siteIndexFilePath,
+      `<a href="/assets/booklog-reder.js?v=1"></a>\n`
+    )
+    const unresolvedHrefAssetDiagnostic = unresolvedHrefAssetDiagnostics.find((entry) => entry.code === 'pp-unresolved-asset-path')
+    if (
+      !unresolvedHrefAssetDiagnostic ||
+      !String(unresolvedHrefAssetDiagnostic.message).includes('/assets/booklog-reader.js')
+    ) {
+      throw new Error(`Expected unresolved href static asset URL diagnostic with asset suggestion. Got: ${JSON.stringify(unresolvedHrefAssetDiagnostics)}`)
+    }
 
     const unresolvedRouteDiagnostics = service.getDiagnostics(
       fixture.siteIndexFilePath,
@@ -13639,7 +13848,7 @@ const state = {
 
     const assetDocumentLinks = service.getDocumentLinks(
       fixture.boardsFilePath,
-      `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>\n<link rel="stylesheet" href="<%= asset('card.css') %>">\n`
+      `<script src="<%= asset('/assets/booklog-reader.js') %>"></script>\n<script src="<%= asset('/assets/booklog-reader.js?v=1#main') %>"></script>\n<link rel="stylesheet" href="<%= asset('card.css') %>">\n<a href="/assets/booklog-reader.js?v=1">Download</a>\n`
     )
     const assetDocumentLinkTargets = assetDocumentLinks.map((entry) => entry.targetFilePath)
     if (!assetDocumentLinkTargets.some((target) => normalizeFilePath(target) === normalizeFilePath(fixture.globalAssetFilePath))) {
@@ -13647,6 +13856,15 @@ const state = {
     }
     if (!assetDocumentLinkTargets.some((target) => normalizeFilePath(target) === normalizeFilePath(fixture.localAssetFilePath))) {
       throw new Error(`Expected asset() document link target for local asset. Got: ${assetDocumentLinkTargets.join(', ')}`)
+    }
+    if (assetDocumentLinkTargets.filter((target) => normalizeFilePath(target) === normalizeFilePath(fixture.globalAssetFilePath)).length !== 3) {
+      throw new Error(`Expected asset() and href static asset document links for global asset. Got: ${assetDocumentLinkTargets.join(', ')}`)
+    }
+    const hrefAssetDocumentLink = assetDocumentLinks.find(
+      (entry) => entry.value === '/assets/booklog-reader.js?v=1'
+    )
+    if (!hrefAssetDocumentLink || hrefAssetDocumentLink.kind !== 'asset-path') {
+      throw new Error(`Expected href static asset document link to be labeled as asset-path. Got: ${JSON.stringify(assetDocumentLinks)}`)
     }
 
     const routeDocumentLinks = authService.getDocumentLinks(
@@ -13669,8 +13887,8 @@ const state = {
     if (!routeMethodDocumentLinkTargets.includes(normalizeFilePath(fixture.feedbackPageFilePath))) {
       throw new Error(`Expected href method route document link target. Got: ${routeMethodDocumentLinkTargets.join(', ')}`)
     }
-    if (routeMethodDocumentLinkTargets.filter((target) => target === normalizeFilePath(fixture.feedbackPostFilePath)).length !== 2) {
-      throw new Error(`Expected action and hx-post to target feedback POST route. Got: ${routeMethodDocumentLinkTargets.join(', ')}`)
+    if (routeMethodDocumentLinkTargets.filter((target) => target === normalizeFilePath(fixture.feedbackPostFilePath)).length !== 3) {
+      throw new Error(`Expected action, hx-post, and data-hx-post to target feedback POST route. Got: ${routeMethodDocumentLinkTargets.join(', ')}`)
     }
     if (!routeMethodDocumentLinkTargets.includes(normalizeFilePath(fixture.feedbackDeleteFilePath))) {
       throw new Error(`Expected hx-delete method route document link target. Got: ${routeMethodDocumentLinkTargets.join(', ')}`)

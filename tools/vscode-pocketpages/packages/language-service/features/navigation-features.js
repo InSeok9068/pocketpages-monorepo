@@ -23,23 +23,7 @@ function createNavigationFeatureHandlers(deps) {
     getCustomDefinitionTarget(service, filePath, documentText, offset) {
       const pathContext = getPathContextAtOffset(documentText, offset, { filePath });
       if (pathContext) {
-        if (pathContext.kind === "resolve-path") {
-          return service.projectIndex.resolveResolveTarget(filePath, pathContext.value);
-        }
-
-        if (pathContext.kind === "include-path") {
-          return service.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
-        }
-
-        if (pathContext.kind === "asset-path") {
-          return service.projectIndex.resolveAssetTarget(filePath, pathContext.value);
-        }
-
-        if (pathContext.kind === "route-path") {
-          return service.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
-            routeSource: pathContext.routeSource,
-          });
-        }
+        return service.resolvePathContextTarget(filePath, pathContext);
       }
 
       const requireContext = getRequirePathContextAtOffset(documentText, offset, { filePath });
@@ -537,19 +521,7 @@ function createNavigationFeatureHandlers(deps) {
       const links = [];
 
       for (const pathContext of collectPathContexts(documentText, { filePath })) {
-        let targetFilePath = null;
-
-        if (pathContext.kind === "resolve-path") {
-          targetFilePath = service.projectIndex.resolveResolveTarget(filePath, pathContext.value);
-        } else if (pathContext.kind === "include-path") {
-          targetFilePath = service.projectIndex.resolveIncludeTarget(filePath, pathContext.value);
-        } else if (pathContext.kind === "asset-path") {
-          targetFilePath = service.projectIndex.resolveAssetTarget(filePath, pathContext.value);
-        } else if (pathContext.kind === "route-path") {
-          targetFilePath = service.projectIndex.resolveRouteTarget(filePath, pathContext.value, {
-            routeSource: pathContext.routeSource,
-          });
-        }
+        const targetFilePath = service.resolvePathContextTarget(filePath, pathContext);
 
         if (!targetFilePath) {
           continue;
@@ -559,7 +531,9 @@ function createNavigationFeatureHandlers(deps) {
           start: pathContext.start,
           end: pathContext.end,
           targetFilePath,
-          kind: pathContext.kind,
+          kind: service.isRoutePathAssetFallback(filePath, pathContext, targetFilePath)
+            ? "asset-path"
+            : pathContext.kind,
           value: pathContext.value,
         });
       }

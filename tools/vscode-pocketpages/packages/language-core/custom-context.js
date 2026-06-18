@@ -4,8 +4,21 @@ const ts = require('typescript')
 const { extractTemplateCodeBlocks } = require('./ejs-template')
 const { extractServerBlocks } = require('./script-server')
 
-const ROUTE_ATTR_OPEN_RE = /\b(href|action|hx-(?:get|post|put|delete|patch))\s*=\s*(['"])([^'"]*)$/s
-const ROUTE_ATTRIBUTE_NAMES = new Set(['href', 'action', 'hx-get', 'hx-post', 'hx-put', 'hx-delete', 'hx-patch'])
+const ROUTE_ATTR_OPEN_RE = /\b(href|action|(?:data-)?hx-(?:get|post|put|delete|patch))\s*=\s*(['"])([^'"]*)$/is
+const ROUTE_ATTRIBUTE_NAMES = new Set([
+  'href',
+  'action',
+  'hx-get',
+  'hx-post',
+  'hx-put',
+  'hx-delete',
+  'hx-patch',
+  'data-hx-get',
+  'data-hx-post',
+  'data-hx-put',
+  'data-hx-delete',
+  'data-hx-patch',
+])
 const DATASTAR_ROUTE_ACTION_RE = /@(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]*)\2/g
 const DATASTAR_ROUTE_ACTION_OPEN_RE = /@(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]*)$/s
 
@@ -823,8 +836,13 @@ function collectHtmlAttributeEntries(sourceText, tag) {
 }
 
 function getRouteSourceForAttribute(tag, attributeName, attributes) {
-  if (attributeName !== 'action' || String(tag.tagName || '').toLowerCase() !== 'form') {
-    return attributeName
+  const routeAttributeName = normalizeRouteAttributeName(attributeName)
+  if (routeAttributeName !== 'action') {
+    return routeAttributeName
+  }
+
+  if (String(tag.tagName || '').toLowerCase() !== 'form') {
+    return null
   }
 
   const methodAttribute = attributes.find((attribute) => attribute.name === 'method')
@@ -833,12 +851,27 @@ function getRouteSourceForAttribute(tag, attributeName, attributes) {
   }
 
   const methodValue = String(methodAttribute.value || '').trim()
-  if (!methodValue || isDynamicRoutePathValue(methodValue)) {
+  if (!methodValue) {
+    return 'action-get'
+  }
+
+  if (isDynamicRoutePathValue(methodValue)) {
     return 'action'
   }
 
   const method = methodValue.toLowerCase()
+  if (method === 'dialog') {
+    return null
+  }
+
   return method === 'post' ? 'action-post' : 'action-get'
+}
+
+function normalizeRouteAttributeName(attributeName) {
+  const normalizedName = String(attributeName || '').toLowerCase()
+  return normalizedName.startsWith('data-hx-')
+    ? normalizedName.slice('data-'.length)
+    : normalizedName
 }
 
 function getDatastarRouteSource(actionName) {
@@ -926,10 +959,15 @@ function collectRouteAttributeContexts(documentText) {
         continue
       }
 
+      const routeSource = getRouteSourceForAttribute(tag, attribute.name, attributes)
+      if (!routeSource) {
+        continue
+      }
+
       contexts.push({
         kind: 'route-path',
         quote: attribute.quote,
-        routeSource: getRouteSourceForAttribute(tag, attribute.name, attributes),
+        routeSource,
         value: attribute.value,
         start: attribute.valueStart,
         end: attribute.valueEnd,
@@ -986,16 +1024,23 @@ function getRouteAttributeContextAtOffset(documentText, offset) {
     sourceText.slice(tag.attributesStart, offset),
     offset - tag.attributesStart,
     ROUTE_ATTR_OPEN_RE,
-    ({ value, start, end, match }) => ({
-      kind: 'route-path',
-      routeSource: match[1],
-      quote: match[2],
-      value,
-      start: tag.attributesStart + start,
-      end: tag.attributesStart + end,
-      isOpen: true,
-      isDynamic: isDynamicRoutePathValue(value),
-    })
+    ({ value, start, end, match }) => {
+      const routeSource = getRouteSourceForAttribute(tag, match[1], attributes)
+      if (!routeSource) {
+        return null
+      }
+
+      return {
+        kind: 'route-path',
+        routeSource,
+        quote: match[2],
+        value,
+        start: tag.attributesStart + start,
+        end: tag.attributesStart + end,
+        isOpen: true,
+        isDynamic: isDynamicRoutePathValue(value),
+      }
+    }
   )
 }
 
@@ -1049,11 +1094,25 @@ function getPathCallDescriptor(expression) {
   if (
     ts.isPropertyAccessExpression(target) &&
     ts.isIdentifier(target.expression) &&
-    target.expression.text === 'api' &&
-    target.name.text === 'asset'
+    target.expression.text === 'api'
   ) {
-    return {
-      kind: 'asset-path',
+    if (target.name.text === 'resolve' || target.name.text === 'include') {
+      return {
+        kind: `${target.name.text}-path`,
+      }
+    }
+
+    if (target.name.text === 'asset') {
+      return {
+        kind: 'asset-path',
+      }
+    }
+
+    if (target.name.text === 'redirect') {
+      return {
+        kind: 'route-path',
+        routeSource: 'redirect',
+      }
     }
   }
 
