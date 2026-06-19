@@ -25,6 +25,14 @@ function normalizePositiveNumber(value, fallback) {
 }
 
 /**
+ * secure 쿠키 기본값을 결정합니다. APP_ENV=production일 때만 true입니다.
+ * @returns {boolean} secure 기본값입니다.
+ */
+function defaultSecure() {
+  return cleanText(process.env.APP_ENV).toLowerCase() === 'production'
+}
+
+/**
  * PocketBase record를 쿠키 저장용 plain object로 바꿉니다.
  * @param {unknown} record PocketBase auth record입니다.
  * @returns {unknown} JSON 직렬화 가능한 값입니다.
@@ -46,7 +54,7 @@ function createRuntime(options) {
     path: cleanText(options.path || '/'),
     httpOnly: options.httpOnly !== false,
     sameSite: cleanText(options.sameSite || 'lax'),
-    secure: options.secure === true,
+    secure: options.secure === undefined ? defaultSecure() : options.secure === true,
   }
 }
 

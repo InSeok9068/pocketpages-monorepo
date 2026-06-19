@@ -209,6 +209,12 @@ const server = net.createServer((socket) => {
   })
 })
 
+server.on('error', (error) => {
+  // 이미 다른 데몬이 같은 파이프를 점유 중이면 그 데몬에 맡기고 조용히 종료합니다.
+  // 그 외 listen 실패는 클라이언트가 로컬 폴백하도록 종료합니다(unhandled 크래시 방지).
+  process.exit(error && error.code === 'EADDRINUSE' ? 0 : 1)
+})
+
 server.listen(options.pipePath, () => {
   resetIdleTimer(server, options.pipePath)
 })

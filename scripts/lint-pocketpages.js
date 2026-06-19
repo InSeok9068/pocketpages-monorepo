@@ -517,40 +517,6 @@ function unique(items) {
   return [...new Set(items)]
 }
 
-function pluralizeWord(word) {
-  if (/[^aeiou]y$/i.test(word)) {
-    return `${word.slice(0, -1)}ies`
-  }
-
-  if (/(s|x|z|ch|sh)$/i.test(word)) {
-    return `${word}es`
-  }
-
-  if (/fe$/i.test(word)) {
-    return `${word.slice(0, -2)}ves`
-  }
-
-  if (/f$/i.test(word)) {
-    return `${word.slice(0, -1)}ves`
-  }
-
-  return `${word}s`
-}
-
-function _inferDtCollectionName(file, schemaCollections) {
-  const stem = file.basename.replace(/-dt\.js$/, '')
-  const snake = stem.replace(/-/g, '_')
-  const candidates = unique([snake, pluralizeWord(snake)])
-
-  for (const candidate of candidates) {
-    if (schemaCollections.has(candidate)) {
-      return candidate
-    }
-  }
-
-  return ''
-}
-
 function findMatchingBrace(content, openBraceIndex) {
   let depth = 0
   let inString = ''
@@ -689,62 +655,6 @@ function findMatchingParen(content, openParenIndex) {
   return -1
 }
 
-function extractNamedFunctionBody(content, functionName) {
-  const pattern = new RegExp(`\\bfunction\\s+${functionName}\\s*\\(`)
-  const match = pattern.exec(content)
-  if (!match) {
-    return null
-  }
-
-  const functionIndex = match.index
-  const openBraceIndex = content.indexOf('{', functionIndex)
-  if (openBraceIndex === -1) {
-    return null
-  }
-
-  const closeBraceIndex = findMatchingBrace(content, openBraceIndex)
-  if (closeBraceIndex === -1) {
-    return null
-  }
-
-  return {
-    body: content.slice(openBraceIndex + 1, closeBraceIndex),
-    bodyStartIndex: openBraceIndex + 1,
-  }
-}
-
-function _extractExportedFunctionBody(content) {
-  const namedToDT = extractNamedFunctionBody(content, 'toDT')
-  if (namedToDT) {
-    return namedToDT
-  }
-
-  const exportIndex = content.indexOf('module.exports')
-  if (exportIndex === -1) {
-    return null
-  }
-
-  const functionIndex = content.indexOf('function', exportIndex)
-  if (functionIndex === -1) {
-    return null
-  }
-
-  const openBraceIndex = content.indexOf('{', functionIndex)
-  if (openBraceIndex === -1) {
-    return null
-  }
-
-  const closeBraceIndex = findMatchingBrace(content, openBraceIndex)
-  if (closeBraceIndex === -1) {
-    return null
-  }
-
-  return {
-    body: content.slice(openBraceIndex + 1, closeBraceIndex),
-    bodyStartIndex: openBraceIndex + 1,
-  }
-}
-
 function buildLineDepthInfo(content) {
   const lines = content.split(/\r?\n/)
   const depthBefore = []
@@ -811,114 +721,8 @@ function buildLineDepthInfo(content) {
   return { lines, depthBefore }
 }
 
-function _collectTopLevelConstNames(functionBody) {
-  const { lines, depthBefore } = buildLineDepthInfo(functionBody)
-  const names = []
-
-  for (let index = 0; index < lines.length; index += 1) {
-    if (depthBefore[index] !== 0) {
-      continue
-    }
-
-    const match = lines[index].match(/^\s*const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=/)
-    if (match) {
-      names.push(match[1])
-    }
-  }
-
-  return names
-}
-
 function lineNumberAt(content, index) {
   return content.slice(0, index).split(/\r?\n/).length
-}
-
-function _extractTopLevelReturnObject(functionBody, bodyStartLine) {
-  let depth = 0
-  let inString = ''
-  let inBlockComment = false
-  let escaped = false
-
-  for (let index = 0; index < functionBody.length; index += 1) {
-    const char = functionBody[index]
-    const next = functionBody[index + 1]
-
-    if (inBlockComment) {
-      if (char === '*' && next === '/') {
-        inBlockComment = false
-        index += 1
-      }
-      continue
-    }
-
-    if (inString) {
-      if (escaped) {
-        escaped = false
-        continue
-      }
-
-      if (char === '\\') {
-        escaped = true
-        continue
-      }
-
-      if (char === inString) {
-        inString = ''
-      }
-      continue
-    }
-
-    if (char === '/' && next === '*') {
-      inBlockComment = true
-      index += 1
-      continue
-    }
-
-    if (char === '/' && next === '/') {
-      while (index < functionBody.length && functionBody[index] !== '\n') {
-        index += 1
-      }
-      continue
-    }
-
-    if (char === '"' || char === "'" || char === '`') {
-      inString = char
-      continue
-    }
-
-    if (char === '{') {
-      depth += 1
-      continue
-    }
-
-    if (char === '}') {
-      depth -= 1
-      continue
-    }
-
-    if (depth === 0 && functionBody.startsWith('return', index) && !/[A-Za-z0-9_$]/.test(functionBody[index - 1] || '') && !/[A-Za-z0-9_$]/.test(functionBody[index + 6] || '')) {
-      let cursor = index + 6
-      while (/\s/.test(functionBody[cursor] || '')) {
-        cursor += 1
-      }
-
-      if (functionBody[cursor] !== '{') {
-        continue
-      }
-
-      const closeBraceIndex = findMatchingBrace(functionBody, cursor)
-      if (closeBraceIndex === -1) {
-        return null
-      }
-
-      return {
-        body: functionBody.slice(cursor + 1, closeBraceIndex),
-        startLine: bodyStartLine + lineNumberAt(functionBody, cursor + 1) - 1,
-      }
-    }
-  }
-
-  return null
 }
 
 function extractModuleExportsObjects(content) {

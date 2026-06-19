@@ -17,7 +17,7 @@ declare namespace pocketpagesAuthCookie {
     httpOnly?: boolean
     /** SameSite 옵션입니다. 기본값은 `lax`입니다. */
     sameSite?: SameSite
-    /** secure 옵션입니다. 기본값은 false입니다. */
+    /** secure 옵션입니다. 생략하면 APP_ENV=production일 때만 true입니다. */
     secure?: boolean
   }
 
