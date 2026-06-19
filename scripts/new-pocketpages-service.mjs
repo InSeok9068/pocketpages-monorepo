@@ -469,15 +469,16 @@ module.exports = function (api, next) {
 
 function buildLayoutEjs(options) {
   const isUno = hasFeature(options, 'unocss')
+  const isDatastar = hasFeature(options, 'datastar')
   const scripts = []
   if (hasFeature(options, 'htmx')) scripts.push('<script src="<%= asset(\'/assets/vendor/htmx-2.0.10.min.js\') %>"></script>')
   if (hasFeature(options, 'htmx') && hasFeature(options, 'realtime')) {
     scripts.push('<script src="<%= asset(\'/assets/vendor/pocketbase-htmx-ext-sse-0.0.3.js\') %>"></script>')
   }
   if (hasFeature(options, 'alpine')) scripts.push('<script defer src="<%= asset(\'/assets/vendor/alpine-3.15.11-cdn.min.js\') %>"></script>')
-  if (hasFeature(options, 'datastar')) scripts.push('<script type="module" src="<%= asset(\'/assets/vendor/datastar.min.js\') %>"></script>')
 
   const unoHead = isUno ? "    <%- include('unocss-head.ejs', { isProduction }) %>\n" : ''
+  const datastarHead = isDatastar ? `    <%- datastar.scripts(${hasFeature(options, 'realtime') ? '{ realtime: true }' : ''}) %>\n` : ''
   const bodyAttrs = isUno ? '\n    un-cloak' : ''
 
   return `<% const isProduction = String(env('APP_ENV') || 'development').trim() === 'production' %>
@@ -495,7 +496,7 @@ function buildLayoutEjs(options) {
     <link
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
-${unoHead}${scripts.map((script) => `    ${script}`).join('\n')}${scripts.length ? '\n' : ''}    <%- slots.head %>
+${unoHead}${datastarHead}${scripts.map((script) => `    ${script}`).join('\n')}${scripts.length ? '\n' : ''}    <%- slots.head %>
   </head>
 
   <body${bodyAttrs}>
