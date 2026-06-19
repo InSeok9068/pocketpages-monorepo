@@ -31,6 +31,12 @@ const { createCompletionFeatureHandlers } = require("./features/completion-featu
 const { createDiagnosticsFeatureHandlers } = require("./features/diagnostics-features");
 const { createNavigationFeatureHandlers } = require("./features/navigation-features");
 const { DocumentSnapshotManager } = require("./document-snapshot-manager");
+const {
+  statFileExists,
+  statDirectoryExists,
+  statSyncCached,
+  runStatEpoch,
+} = require("./stat-cache");
 const { createPocketPagesLanguageServiceManager } = require("./service-manager");
 
 const COMPILER_OPTIONS = {
@@ -81,19 +87,11 @@ function toPortablePath(filePath) {
 }
 
 function fileExists(filePath) {
-  try {
-    return fs.statSync(filePath).isFile();
-  } catch (_error) {
-    return false;
-  }
+  return statFileExists(filePath);
 }
 
 function directoryExists(dirPath) {
-  try {
-    return fs.statSync(dirPath).isDirectory();
-  } catch (_error) {
-    return false;
-  }
+  return statDirectoryExists(dirPath);
 }
 
 function readFileText(filePath) {
@@ -3508,7 +3506,7 @@ class ProjectLanguageService {
       return "missing";
     }
 
-    const stats = fs.statSync(normalizedFilePath);
+    const stats = statSyncCached(normalizedFilePath);
     return `disk:${stats.mtimeMs}:${stats.size}`;
   }
 
@@ -3571,6 +3569,10 @@ class ProjectLanguageService {
   }
 
   getDiagnosticsLaneMetadata(filePath, documentText, options = {}) {
+    return runStatEpoch(() => this.computeDiagnosticsLaneMetadata(filePath, documentText, options));
+  }
+
+  computeDiagnosticsLaneMetadata(filePath, documentText, options = {}) {
     const normalizedFilePath = normalizePath(filePath);
     const graph = this.getPreparedRegionGraph(normalizedFilePath, documentText);
     const regions = graph && Array.isArray(graph.regions) ? graph.regions : [];
@@ -3747,6 +3749,10 @@ class ProjectLanguageService {
   }
 
   getDiagnosticsLaneResultIds(filePath, documentText, options = {}) {
+    return runStatEpoch(() => this.computeDiagnosticsLaneResultIds(filePath, documentText, options));
+  }
+
+  computeDiagnosticsLaneResultIds(filePath, documentText, options = {}) {
     const normalizedFilePath = normalizePath(filePath);
     const sourceIdentity = this.getDocumentTextIdentity(normalizedFilePath, documentText);
     const semanticMode = options.includeSemanticDiagnostics === false ? "syntactic" : "semantic";
@@ -3852,7 +3858,7 @@ class ProjectLanguageService {
           return `${normalizedFilePath}:missing`;
         }
 
-        const stats = fs.statSync(normalizedFilePath);
+        const stats = statSyncCached(normalizedFilePath);
         return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}`;
       })
       .join("|");
@@ -3961,7 +3967,7 @@ class ProjectLanguageService {
       getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
       fileExists: (fileName) => this.hasFile(fileName),
       readFile: (fileName) => this.readFile(fileName),
-      directoryExists: (dirPath) => ts.sys.directoryExists(dirPath),
+      directoryExists: (dirPath) => statDirectoryExists(dirPath),
       getDirectories: (dirPath) => ts.sys.getDirectories(dirPath),
       readDirectory: (dirPath, extensions, exclude, include, depth) => ts.sys.readDirectory(dirPath, extensions, exclude, include, depth),
       realpath: (fileName) => (ts.sys.realpath ? ts.sys.realpath(fileName) : fileName),
@@ -3993,7 +3999,7 @@ class ProjectLanguageService {
       return;
     }
 
-    const stats = fs.statSync(resolvedPath);
+    const stats = statSyncCached(resolvedPath);
     const text = fs.readFileSync(resolvedPath, "utf8");
     const previous = this.staticFiles.get(resolvedPath);
 
@@ -4898,7 +4904,7 @@ class ProjectLanguageService {
       return new Map();
     }
 
-    const stats = fs.statSync(normalizedTargetFilePath);
+    const stats = statSyncCached(normalizedTargetFilePath);
     const schemaState = this.projectIndex.getSchemaState();
     const cacheKey = [
       normalizedTargetFilePath,
@@ -7827,7 +7833,9 @@ class ProjectLanguageService {
   }
 
   getCompletionData(filePath, documentText, offset, options = {}) {
-    return completionFeatureHandlers.getCompletionData(this, filePath, documentText, offset, options);
+    return runStatEpoch(() =>
+      completionFeatureHandlers.getCompletionData(this, filePath, documentText, offset, options)
+    );
   }
 
   getCustomCompletionData(filePath, documentText, offset) {
@@ -7845,7 +7853,9 @@ class ProjectLanguageService {
   }
 
   getQuickInfo(filePath, documentText, offset, options = {}) {
-    return completionFeatureHandlers.getQuickInfo(this, filePath, documentText, offset, options);
+    return runStatEpoch(() =>
+      completionFeatureHandlers.getQuickInfo(this, filePath, documentText, offset, options)
+    );
   }
 
   getSignatureHelp(filePath, documentText, offset, options = {}) {
@@ -8824,7 +8834,9 @@ class ProjectLanguageService {
   }
 
   getDiagnostics(filePath, documentText, options = {}) {
-    return diagnosticsFeatureHandlers.getDiagnostics(this, filePath, documentText, options);
+    return runStatEpoch(() =>
+      diagnosticsFeatureHandlers.getDiagnostics(this, filePath, documentText, options)
+    );
   }
 
   getCodeActions(filePath, documentText, range, options = {}) {

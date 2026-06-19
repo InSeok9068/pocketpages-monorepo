@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const { createScriptSnapshot } = require("../language-core/snapshot");
+const { statFileExists, statSyncCached } = require("./stat-cache");
 
 function defaultNormalizePath(filePath) {
   return String(filePath || "").replace(/\\/g, "/").replace(/^[A-Z]:/, (value) => value.toLowerCase());
@@ -12,11 +13,7 @@ function readFileText(filePath) {
 }
 
 function fileExists(filePath) {
-  try {
-    return fs.statSync(filePath).isFile();
-  } catch (_error) {
-    return false;
-  }
+  return statFileExists(filePath);
 }
 
 function createVersionedTextState(previousState, state) {
@@ -223,7 +220,7 @@ class DocumentSnapshotManager {
       return null;
     }
 
-    const stats = fs.statSync(normalizedFileName);
+    const stats = statSyncCached(normalizedFileName);
     const previous = this.diskFiles.get(normalizedFileName);
     if (previous && previous.mtimeMs === stats.mtimeMs && previous.size === stats.size) {
       return previous;

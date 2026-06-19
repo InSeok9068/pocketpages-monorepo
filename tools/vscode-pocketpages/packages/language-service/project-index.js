@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const ts = require('typescript')
 const { buildTemplateVirtualText } = require('../language-core/ejs-template')
+const { statFileExists, statDirectoryExists, statSyncCached } = require('./stat-cache')
 
 const RESOLVE_EXTENSIONS = ['.js', '.json', '.cjs', '.mjs']
 const REQUIRE_EXTENSIONS = ['.js', '.json', '.cjs', '.mjs']
@@ -107,19 +108,11 @@ function toRelativePath(filePath) {
 }
 
 function fileExists(filePath) {
-  try {
-    return fs.statSync(filePath).isFile()
-  } catch (_error) {
-    return false
-  }
+  return statFileExists(filePath)
 }
 
 function directoryExists(dirPath) {
-  try {
-    return fs.statSync(dirPath).isDirectory()
-  } catch (_error) {
-    return false
-  }
+  return statDirectoryExists(dirPath)
 }
 
 function hashText(value) {
@@ -2540,7 +2533,7 @@ class PocketPagesProjectIndex {
       return this.schemaCache
     }
 
-    const stats = fs.statSync(schemaPath)
+    const stats = statSyncCached(schemaPath)
     if (this.schemaCache && this.schemaCache.mtimeMs === stats.mtimeMs && this.schemaCache.size === stats.size) {
       return this.schemaCache
     }
@@ -2658,7 +2651,7 @@ class PocketPagesProjectIndex {
       return this.collectionMethodCache
     }
 
-    const stats = fs.statSync(typesPath)
+    const stats = statSyncCached(typesPath)
     if (
       this.collectionMethodCache &&
       this.collectionMethodCache.mtimeMs === stats.mtimeMs &&
@@ -3133,7 +3126,7 @@ class PocketPagesProjectIndex {
             identity: `override:${overrideText.length}:${hashText(overrideText)}`,
           }
         : (() => {
-            const stats = fs.statSync(normalizedEntryFilePath)
+            const stats = statSyncCached(normalizedEntryFilePath)
             return {
               sourceText: null,
               identity: `disk:${stats.mtimeMs}:${stats.size}`,
