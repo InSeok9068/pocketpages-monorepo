@@ -2514,13 +2514,84 @@ async function run() {
     text: 'const virtualValue = 1\n',
     filePath: snapshotProbeFilePath,
     kind: 'probe-virtual',
+    mappings: [
+      {
+        sourceOffsets: [0],
+        generatedOffsets: [0],
+        lengths: [21],
+        data: { marker: 'initial' },
+      },
+    ],
   })
+  const snapshotVirtualVersionV1 = snapshotProbe.getScriptVersion(snapshotProbeVirtualFilePath)
+  const snapshotVirtualSnapshotV1 = snapshotProbe.getScriptSnapshot(snapshotProbeVirtualFilePath)
+  snapshotProbe.setVirtualFileState(snapshotProbeVirtualFilePath, {
+    text: 'const virtualValue = 1\n',
+    filePath: snapshotProbeFilePath,
+    kind: 'probe-virtual-metadata-only',
+    mappings: [
+      {
+        sourceOffsets: [0],
+        generatedOffsets: [0],
+        lengths: [21],
+        data: { marker: 'updated' },
+      },
+    ],
+  })
+  const snapshotVirtualStateV2 = snapshotProbe.getTsFileState(snapshotProbeVirtualFilePath)
   if (
     !snapshotProbe.getTsFileNames().includes(normalizeProbePath(snapshotProbeVirtualFilePath)) ||
     snapshotProbe.readFile(snapshotProbeVirtualFilePath) !== 'const virtualValue = 1\n' ||
-    !snapshotProbe.getScriptSnapshot(snapshotProbeVirtualFilePath)
+    !snapshotProbe.getScriptSnapshot(snapshotProbeVirtualFilePath) ||
+    snapshotProbe.getScriptVersion(snapshotProbeVirtualFilePath) !== snapshotVirtualVersionV1 ||
+    snapshotProbe.getScriptSnapshot(snapshotProbeVirtualFilePath) !== snapshotVirtualSnapshotV1 ||
+    snapshotVirtualStateV2.kind !== 'probe-virtual-metadata-only' ||
+    snapshotVirtualStateV2.mappings[0].data.marker !== 'updated'
   ) {
-    throw new Error('Expected DocumentSnapshotManager to serve virtual files as TypeScript host source-of-truth.')
+    throw new Error('Expected DocumentSnapshotManager to preserve virtual script versions while updating metadata-only state.')
+  }
+  snapshotProbe.setVirtualFileState(snapshotProbeVirtualFilePath, {
+    text: 'const virtualValue = 12\n',
+    filePath: snapshotProbeFilePath,
+    kind: 'probe-virtual',
+  })
+  if (
+    snapshotProbe.getScriptVersion(snapshotProbeVirtualFilePath) === snapshotVirtualVersionV1 ||
+    snapshotProbe.getScriptSnapshot(snapshotProbeVirtualFilePath) === snapshotVirtualSnapshotV1
+  ) {
+    throw new Error('Expected DocumentSnapshotManager to advance virtual script versions when text changes.')
+  }
+  const snapshotProbeStaticFilePath = path.join(snapshotProbeRoot, 'ambient-static.d.ts')
+  snapshotProbe.setStaticFileState(snapshotProbeStaticFilePath, {
+    text: 'declare const staticValue: 1\n',
+    mtimeMs: 1,
+    marker: 'initial',
+  })
+  const snapshotStaticVersionV1 = snapshotProbe.getScriptVersion(snapshotProbeStaticFilePath)
+  const snapshotStaticSnapshotV1 = snapshotProbe.getScriptSnapshot(snapshotProbeStaticFilePath)
+  snapshotProbe.setStaticFileState(snapshotProbeStaticFilePath, {
+    text: 'declare const staticValue: 1\n',
+    mtimeMs: 2,
+    marker: 'updated',
+  })
+  const snapshotStaticStateV2 = snapshotProbe.getTsFileState(snapshotProbeStaticFilePath)
+  if (
+    snapshotProbe.getScriptVersion(snapshotProbeStaticFilePath) !== snapshotStaticVersionV1 ||
+    snapshotProbe.getScriptSnapshot(snapshotProbeStaticFilePath) !== snapshotStaticSnapshotV1 ||
+    snapshotStaticStateV2.mtimeMs !== 2 ||
+    snapshotStaticStateV2.marker !== 'updated'
+  ) {
+    throw new Error('Expected DocumentSnapshotManager to preserve static script versions while updating metadata-only state.')
+  }
+  snapshotProbe.setStaticFileState(snapshotProbeStaticFilePath, {
+    text: 'declare const staticValue: 12\n',
+    mtimeMs: 3,
+  })
+  if (
+    snapshotProbe.getScriptVersion(snapshotProbeStaticFilePath) === snapshotStaticVersionV1 ||
+    snapshotProbe.getScriptSnapshot(snapshotProbeStaticFilePath) === snapshotStaticSnapshotV1
+  ) {
+    throw new Error('Expected DocumentSnapshotManager to advance static script versions when text changes.')
   }
   const snapshotProbeDiskFilePath = path.join(snapshotProbeRoot, 'ambient.d.ts')
   writeFile(snapshotProbeDiskFilePath, 'declare const ambientValue: 1\n')

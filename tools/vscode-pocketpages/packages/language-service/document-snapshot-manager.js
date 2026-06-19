@@ -17,7 +17,20 @@ function fileExists(filePath) {
 }
 
 function createVersionedTextState(previousState, state) {
-  const currentText = String(state && state.text ? state.text : "");
+  const currentText =
+    state && state.text !== undefined && state.text !== null
+      ? String(state.text)
+      : "";
+  if (previousState && previousState.text === currentText) {
+    return {
+      ...previousState,
+      ...state,
+      text: currentText,
+      version: previousState.version,
+      snapshot: previousState.snapshot,
+    };
+  }
+
   return {
     ...state,
     text: currentText,
