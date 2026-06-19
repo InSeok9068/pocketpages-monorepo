@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* global console */
 import { confirm, input, search, select } from '@inquirer/prompts'
-import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -235,6 +235,14 @@ async function exists(targetPath) {
   }
 }
 
+async function readTextSafe(targetPath) {
+  try {
+    return await readFile(targetPath, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
 async function listServices() {
   const entries = await readDirSafe(appsDir)
   const services = []
@@ -254,6 +262,13 @@ async function listServices() {
   }
 
   return services.sort((left, right) => left.name.localeCompare(right.name))
+}
+
+async function serviceUsesDatastar(service) {
+  const configPath = path.join(service.pagesDir, '+config.js')
+  const config = await readTextSafe(configPath)
+
+  return config.includes('pocketpages-plugin-datastar-v1') || config.includes('pocketpages-plugin-datastar')
 }
 
 function isInteractivePromptAvailable() {
@@ -395,6 +410,8 @@ async function completeOptions(options) {
     partial = await promptOptionalPartial(service)
   }
 
+  const usesDatastar = await serviceUsesDatastar(service)
+
   return {
     ...options,
     service,
@@ -403,6 +420,7 @@ async function completeOptions(options) {
     method,
     auth,
     partial: toSafePartialName(partial),
+    usesDatastar,
   }
 }
 
@@ -443,6 +461,10 @@ function validateOptions(options) {
     if (path.posix.isAbsolute(partialPath) || partialPath.split('/').some((part) => part === '..' || part === '.')) {
       throw new Error('--partial must be a safe _private-relative partial path.')
     }
+  }
+
+  if (options.kind.id === 'xapi-datastar' && !options.usesDatastar) {
+    throw new Error(`${options.service.name} does not use pocketpages-plugin-datastar-v1. Add Datastar to pb_hooks/pages/+config.js before generating xapi-datastar routes.`)
   }
 }
 
@@ -516,14 +538,67 @@ function authGuardCode(logName, enabled, responseKind, signInPath, authMessage) 
 `
 }
 
+function datastarMethodGuardCode(logName, method, invalidMethodMessage) {
+  if (method === 'ANY') return ''
+
+  return `  if (request.method !== '${method}') {
+    if (datastar.isRequest(request)) {
+      patchMessage('${invalidMethodMessage}')
+      return
+    }
+
+    dbg('${logName}:redirect', {
+      status: 303,
+      redirectTo: '/',
+      flash: '${invalidMethodMessage}',
+    })
+    redirect('/', {
+      status: 303,
+      message: '${invalidMethodMessage}',
+    })
+    return
+  }
+
+`
+}
+
+function datastarAuthGuardCode(logName, enabled, signInPath, authMessage) {
+  if (!enabled) return ''
+
+  return `  if (!request.auth) {
+    if (datastar.isRequest(request)) {
+      dbg('${logName}:datastar-redirect', {
+        redirectTo: '${signInPath}',
+        flash: '${authMessage}',
+      })
+      datastar.redirect('${signInPath}')
+      return
+    }
+
+    dbg('${logName}:redirect', {
+      status: 303,
+      redirectTo: '${signInPath}',
+      flash: '${authMessage}',
+    })
+    redirect('${signInPath}', {
+      status: 303,
+      message: '${authMessage}',
+    })
+    return
+  }
+
+`
+}
+
 function xapiRedirectTemplate(options) {
   const relativeRoutePath = normalizeRoutePath(options.kind, options.routePath)
   const logName = toLogName(relativeRoutePath)
   const fallbackRedirect = options.failureRedirect || options.successRedirect || '/'
   const successRedirect = options.successRedirect || '/'
+  const formSource = options.method === 'GET' ? 'request.url.query' : 'body()'
 
   return `<script server>
-${methodGuardCode(logName, options.method, 'redirect', fallbackRedirect, '잘못된 요청입니다.')}${authGuardCode(logName, options.auth, 'redirect', '/sign-in', '로그인이 필요합니다.')}  const form = body()
+${methodGuardCode(logName, options.method, 'redirect', fallbackRedirect, '잘못된 요청입니다.')}${authGuardCode(logName, options.auth, 'redirect', '/sign-in', '로그인이 필요합니다.')}  const form = ${formSource}
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   let errorMessage = ''
 
@@ -621,8 +696,11 @@ function xapiPartialTemplate(options) {
   const logName = toLogName(relativeRoutePath)
   const partial = options.partial
   const responseMarkup = partial
-    ? `<%- include('${partial}', { error: errorMessage }) %>`
-    : `<%# TODO: partial HTML을 반환하거나 include('partial.ejs', { error: errorMessage })를 사용하세요. %>`
+    ? `<%- include('${partial}', {
+  error: errorMessage,
+  // TODO: items, viewState처럼 partial이 실제로 필요한 props만 넘기세요.
+}) %>`
+    : `<%# TODO: partial HTML을 반환하거나 include('partial.ejs', { error: errorMessage, items })처럼 필요한 props만 넘기세요. %>`
 
   return `<script server>
 ${methodGuardCode(logName, options.method, 'redirect', '/', '잘못된 요청입니다.')}${authGuardCode(logName, options.auth, 'redirect', '/sign-in', '로그인이 필요합니다.')}  const form = ${options.method === 'POST' ? 'body()' : 'request.url.query'}
@@ -635,7 +713,9 @@ ${methodGuardCode(logName, options.method, 'redirect', '/', '잘못된 요청입
   })
 
   try {
-    // TODO: partial에 필요한 props를 조회하세요.
+    // TODO: partial에 넘길 값을 명시적으로 준비하세요.
+    // 예: const items = []
+    // 예: const viewState = { message: errorMessage }
   } catch (exception) {
     errorMessage = String(exception.message || exception)
     warn('${logName}:load-failed', {
@@ -656,6 +736,7 @@ ${responseMarkup}
 function xapiDatastarTemplate(options) {
   const relativeRoutePath = normalizeRoutePath(options.kind, options.routePath)
   const logName = toLogName(relativeRoutePath)
+  const formSource = options.method === 'GET' ? 'request.url.query' : 'body()'
 
   return `<script server>
   function patchMessage(message) {
@@ -664,7 +745,7 @@ function xapiDatastarTemplate(options) {
     })
   }
 
-${methodGuardCode(logName, options.method, 'redirect', '/', '잘못된 요청입니다.')}${authGuardCode(logName, options.auth, 'redirect', '/sign-in', '로그인이 필요합니다.')}  const form = datastar.isRequest(request) ? datastar.requestSignals({}) : body()
+${datastarMethodGuardCode(logName, options.method, '잘못된 요청입니다.')}${datastarAuthGuardCode(logName, options.auth, '/sign-in', '로그인이 필요합니다.')}  const form = datastar.isRequest(request) ? datastar.requestSignals({}) : ${formSource}
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   let errorMessage = ''
 
@@ -685,6 +766,10 @@ ${authValidationCode(options.auth)}\
       return
     }
 
+    dbg('${logName}:redirect', {
+      status: 303,
+      redirectTo: '/',
+    })
     redirect('/', {
       status: 303,
     })
@@ -702,6 +787,11 @@ ${authValidationCode(options.auth)}\
     return
   }
 
+  dbg('${logName}:redirect', {
+    status: 303,
+    redirectTo: '/',
+    flash: errorMessage || '처리에 실패했습니다.',
+  })
   redirect('/', {
     status: 303,
     message: errorMessage || '처리에 실패했습니다.',
