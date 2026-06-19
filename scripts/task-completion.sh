@@ -115,7 +115,7 @@ _pp_dev_complete() {
 
   if [[ "$cmd" == "new" ]]; then
     if [[ $COMP_CWORD -ge 3 && "${COMP_WORDS[COMP_CWORD-1]}" == "--features" ]]; then
-      COMPREPLY=( $(compgen -W "htmx,alpine,unocss htmx alpine unocss datastar none" -- "$cur") )
+      COMPREPLY=( $(compgen -W "htmx,alpine,unocss htmx alpine unocss datastar realtime none" -- "$cur") )
       return
     fi
 

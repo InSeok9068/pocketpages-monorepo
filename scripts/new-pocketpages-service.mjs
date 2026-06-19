@@ -14,13 +14,16 @@ const appsDir = path.join(rootDir, 'apps')
 const downloadDir = path.join(rootDir, '.download')
 const vendorDir = path.join(scriptDir, 'vendor')
 
-const featureIds = ['htmx', 'alpine', 'unocss', 'datastar']
+const featureIds = ['htmx', 'alpine', 'unocss', 'datastar', 'realtime']
 const defaultFeatures = ['htmx', 'alpine', 'unocss']
 const vendorByFeature = {
   htmx: ['htmx-2.0.10.min.js'],
   alpine: ['alpine-3.15.11-cdn.min.js'],
   datastar: ['datastar.min.js'],
   unocss: ['preset-wind3-66.5.12.global.js', 'preset-icons-66.5.12.global.js', 'iconify-lucide-1.2.107.icons.json', 'unocss-core-66.5.12.global.js'],
+}
+const vendorByFeaturePair = {
+  'htmx+realtime': ['pocketbase-htmx-ext-sse-0.0.3.js'],
 }
 
 function printHelp() {
@@ -30,7 +33,7 @@ function printHelp() {
 Options:
   --service <name>              Service name under apps/
   --auth / --no-auth            Include or skip password auth scaffold
-  --features <list>             Comma list: htmx,alpine,unocss,datastar,none
+  --features <list>             Comma list: htmx,alpine,unocss,datastar,realtime,none
   --install / --skip-install    Run or skip npm install in the new service
   --copy-binaries               Copy pbw/pocketbase binaries from an existing service when found
   --skip-binaries               Skip binary copy
@@ -234,6 +237,7 @@ async function completeOptions(options) {
           { name: 'Alpine.js', value: 'alpine', checked: true },
           { name: 'UnoCSS', value: 'unocss', checked: true },
           { name: 'Datastar', value: 'datastar', checked: false },
+          { name: 'Realtime', value: 'realtime', checked: false },
         ],
       })
     } else {
@@ -288,6 +292,9 @@ function buildPackageJson(options) {
   if (hasFeature(options, 'datastar')) {
     dependencies['pocketpages-plugin-datastar-v1'] = 'file:../../packages/pocketpages-plugin-datastar-v1'
   }
+  if (hasFeature(options, 'realtime')) {
+    dependencies['pocketpages-plugin-realtime'] = '^0.2.0'
+  }
 
   return `${JSON.stringify(
     {
@@ -310,6 +317,7 @@ function buildPackageJson(options) {
 function buildConfigJs(options) {
   const plugins = ['pocketpages-plugin-ejs']
   if (hasFeature(options, 'datastar')) plugins.push('pocketpages-plugin-datastar-v1')
+  if (hasFeature(options, 'realtime')) plugins.push('pocketpages-plugin-realtime')
   if (options.auth) {
     plugins.push('pocketpages-plugin-js-sdk')
     plugins.push('pocketpages-plugin-auth')
@@ -463,6 +471,9 @@ function buildLayoutEjs(options) {
   const isUno = hasFeature(options, 'unocss')
   const scripts = []
   if (hasFeature(options, 'htmx')) scripts.push('<script src="<%= asset(\'/assets/vendor/htmx-2.0.10.min.js\') %>"></script>')
+  if (hasFeature(options, 'htmx') && hasFeature(options, 'realtime')) {
+    scripts.push('<script src="<%= asset(\'/assets/vendor/pocketbase-htmx-ext-sse-0.0.3.js\') %>"></script>')
+  }
   if (hasFeature(options, 'alpine')) scripts.push('<script defer src="<%= asset(\'/assets/vendor/alpine-3.15.11-cdn.min.js\') %>"></script>')
   if (hasFeature(options, 'datastar')) scripts.push('<script type="module" src="<%= asset(\'/assets/vendor/datastar.min.js\') %>"></script>')
 
@@ -624,6 +635,7 @@ function buildJsConfig() {
 
 function buildPocketPagesGlobals(options) {
   const datastarImport = hasFeature(options, 'datastar') ? "import type DatastarPlugin = require('pocketpages-plugin-datastar-v1')\n" : ''
+  const realtimeImport = hasFeature(options, 'realtime') ? "import type { Client, ClientId, RealtimeFilter, RealtimeOptions } from 'pocketpages-plugin-realtime'\n" : ''
   const datastarTypes = hasFeature(options, 'datastar')
     ? `
 type PocketPagesDatastarApi = DatastarPlugin.DatastarApi
@@ -643,24 +655,78 @@ type PocketPagesAuthVerificationOptions = {
   collection?: string
   sendVerificationEmail?: boolean
 }
+type PocketPagesOAuth2RequestOptions = {
+  collection?: string
+  cookieName?: string
+  redirectPath?: string
+  autoRedirect?: boolean
+}
+type PocketPagesOAuth2ConfirmOptions = {
+  collection?: string
+  cookieName?: string
+}
 type PocketPagesAuthData = {
   token: string
-  record: any
+  record: core.Record
 }
 type PocketPagesRegisterAuthData = {
   token: string
-  user: any
-  record?: any
+  user: core.Record
+  record?: core.Record
 }
+type PocketPagesAnonymousUserData = {
+  email: string
+  password: string
+  user: core.Record
+}
+type PocketPagesPasswordlessUserData = {
+  password: string
+  user: core.Record
+}
+type PocketPagesOtpRequestData = {
+  otpId: string
+}
+type PocketPagesPocketBasePasswordAuthResult = {
+  token: string
+  record: any
+}
+type PocketPagesPocketBaseClient = {
+  collection: (name: string) => {
+    authWithPassword: (email: string, password: string) => PocketPagesPocketBasePasswordAuthResult
+  }
+}
+type PocketPagesPocketBaseCtor = new (baseUrl?: string, authStore?: any, lang?: string) => PocketPagesPocketBaseClient
+`
+    : ''
+  const realtimeTypes = hasFeature(options, 'realtime')
+    ? `
+type PocketPagesRealtimeApi = {
+  getClientById: (clientId: ClientId) => Client | undefined
+  send: (topic: string, message: string, options?: RealtimeOptions) => void
+}
+type PocketPagesRealtimeClient = Client
+type PocketPagesRealtimeClientId = ClientId
+type PocketPagesRealtimeFilter = RealtimeFilter
+type PocketPagesRealtimeOptions = RealtimeOptions
 `
     : ''
   const authGlobals = options.auth
     ? `
   // \`pocketpages-plugin-auth\` auth helpers
-  const createUser: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => any
+  const createUser: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => core.Record
+  const createAnonymousUser: (options?: PocketPagesAuthOptions) => PocketPagesAnonymousUserData
+  const createPasswordlessUser: (email: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesPasswordlessUserData
   const signInWithPassword: (email: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
   const registerWithPassword: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesRegisterAuthData
+  const signInAnonymously: (options?: PocketPagesAuthOptions) => PocketPagesAuthData
+  const requestOTP: (email: string, options?: PocketPagesAuthOptions) => PocketPagesOtpRequestData
+  const signInWithOTP: (otpId: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
+  const signInWithToken: (token: string) => void
+  const requestOAuth2Login: (providerName: string, options?: PocketPagesOAuth2RequestOptions) => string
+  const signInWithOAuth2: (state: string, code: string, options?: PocketPagesOAuth2ConfirmOptions) => PocketPagesAuthData
   const signOut: () => void
+  const requestVerification: (email: string, options?: PocketPagesAuthOptions) => void
+  const confirmVerification: (token: string, options?: PocketPagesAuthOptions) => void
 `
     : ''
   const datastarGlobal = hasFeature(options, 'datastar')
@@ -669,12 +735,18 @@ type PocketPagesRegisterAuthData = {
   const datastar: PocketPagesDatastarApi
 `
     : ''
+  const realtimeGlobal = hasFeature(options, 'realtime')
+    ? `
+  // \`pocketpages-plugin-realtime\` runtime helper
+  const realtime: PocketPagesRealtimeApi
+`
+    : ''
 
   return `import type { MiddlewareNextFunc, PagesGlobalContext, PagesRequestContext, PagesResponse } from 'pocketpages'
-${datastarImport}
+${datastarImport}${realtimeImport}
 // Editor-only mirror for globals injected by PocketPages core and plugins in
 // \`pb_hooks/pages/+config.js\`.
-${datastarTypes}${authTypes}
+${datastarTypes}${authTypes}${realtimeTypes}
 type PocketPagesEditorResponse = PagesResponse & {
   // Repo code uses response.status(...) inside <script server>.
   status: (status: number) => void
@@ -683,6 +755,7 @@ type PocketPagesEditorResponse = PagesResponse & {
 declare module 'pocketpages' {
   export const globalApi: PagesGlobalContext
 }
+${options.auth ? "\ndeclare module 'pocketbase-js-sdk-jsvm' {\n  const PocketBase: PocketPagesPocketBaseCtor\n  export = PocketBase\n}\n" : ''}
 
 declare global {
   const process: {
@@ -720,7 +793,7 @@ ${authGlobals}
 
   // \`pocketpages-plugin-ejs\` template helper
   const include: (path: string, data?: Record<string, any>) => string
-${datastarGlobal}}
+${datastarGlobal}${realtimeGlobal}}
 
 export {}
 `
@@ -1161,7 +1234,6 @@ function buildPlan(options) {
     ['types.d.ts', 'declare namespace types {}\n'],
     ['pocketpages-globals.d.ts', buildPocketPagesGlobals(options)],
     ['pb_schema.json', '[]\n'],
-    ['pb_data/types.d.ts', 'declare namespace core {}\n'],
     ['pb_hooks/pocketpages.pb.js', "require('pocketpages')\n"],
     ['pb_hooks/pages/+config.js', buildConfigJs(options)],
     ['pb_hooks/pages/+middleware.js', buildMiddlewareJs(options)],
@@ -1186,6 +1258,9 @@ function buildPlan(options) {
 
   const copies = []
   const vendorNames = Array.from(new Set(options.features.flatMap((feature) => vendorByFeature[feature] || [])))
+  if (hasFeature(options, 'htmx') && hasFeature(options, 'realtime')) {
+    vendorNames.push(...vendorByFeaturePair['htmx+realtime'])
+  }
   for (const vendorName of vendorNames) {
     copies.push({
       from: path.join(vendorDir, vendorName),
