@@ -5,7 +5,8 @@ const os = require('os')
 const path = require('path')
 const { URI } = require('vscode-uri')
 const { PocketPagesLanguageServiceManager, ts } = require('../packages/language-service/language-service')
-const { DocumentSnapshotManager } = require('../packages/language-service/document-snapshot-manager')
+const { DocumentSnapshotManager, createVersionedTextState } = require('../packages/language-service/document-snapshot-manager')
+const statCache = require('../packages/language-service/stat-cache')
 const { PocketPagesLanguageCore } = require('../packages/language-core/language-core')
 const { createPocketPagesLanguagePlugin } = require('../packages/language-core/language-plugin')
 const { createScriptSnapshot } = require('../packages/language-core/snapshot')
@@ -27,7 +28,7 @@ const {
   shouldReuseLastCompletion,
 } = require('../packages/language-server/services/completion-helpers')
 const { buildTemplateVirtualText } = require('../packages/language-core/ejs-template')
-const { collectSchemaContexts } = require('../packages/language-core/custom-context')
+const { collectSchemaContexts, getPathContextAtOffset, collectPathContexts } = require('../packages/language-core/custom-context')
 const initTypeScriptPlugin = require('../packages/typescript-plugin')
 const {
   buildScriptServerMirrorText,
@@ -2605,6 +2606,256 @@ async function run() {
   ) {
     throw new Error(`Expected disk fallback snapshots to refresh through DocumentSnapshotManager. Got: ${JSON.stringify({ snapshotDiskVersionV1, snapshotDiskVersionV2, snapshotDiskTextV2 })}`)
   }
+  const statCacheProbeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-stat-cache-'))
+  const statCacheFilePath = path.join(statCacheProbeRoot, 'cache-target.js')
+  writeFile(statCacheFilePath, 'const value = 1\n')
+  const statCacheDirPath = path.join(statCacheProbeRoot, 'nested')
+  ensureDir(statCacheDirPath)
+  const statCacheMissingPath = path.join(statCacheProbeRoot, 'missing-target.js')
+
+  if (
+    !statCache.statFileExists(statCacheFilePath) ||
+    statCache.statDirectoryExists(statCacheFilePath) ||
+    !statCache.statDirectoryExists(statCacheDirPath) ||
+    statCache.statFileExists(statCacheMissingPath)
+  ) {
+    throw new Error('Expected stat-cache helpers to report real filesystem state outside an epoch.')
+  }
+
+  let statCacheRealStatCount = 0
+  const originalStatSync = fs.statSync
+  fs.statSync = function countingStatSync(targetPath, ...rest) {
+    statCacheRealStatCount += 1
+    return originalStatSync.call(fs, targetPath, ...rest)
+  }
+  try {
+    const epochResult = statCache.runStatEpoch(() => {
+      const first = statCache.statFileExists(statCacheFilePath)
+      const second = statCache.statFileExists(statCacheFilePath)
+      const entry = statCache.getStatEntry(statCacheFilePath)
+      return { first, second, entry, statsAfterReads: statCacheRealStatCount }
+    })
+    if (
+      !epochResult.first ||
+      !epochResult.second ||
+      !epochResult.entry.exists ||
+      !epochResult.entry.isFile ||
+      epochResult.entry.isDirectory ||
+      epochResult.statsAfterReads !== 1
+    ) {
+      throw new Error(`Expected stat-cache to memoize repeated statSync calls within an epoch. Got: ${JSON.stringify(epochResult)}`)
+    }
+
+    const statCacheStatsCountBeforeCached = statCacheRealStatCount
+    const cachedStatsResult = statCache.runStatEpoch(() => {
+      const stats = statCache.statSyncCached(statCacheFilePath)
+      return {
+        isFile: stats.isFile(),
+        isDirectory: stats.isDirectory(),
+        hasMtime: typeof stats.mtimeMs === 'number',
+        hasSize: typeof stats.size === 'number',
+      }
+    })
+    if (
+      !cachedStatsResult.isFile ||
+      cachedStatsResult.isDirectory ||
+      !cachedStatsResult.hasMtime ||
+      !cachedStatsResult.hasSize
+    ) {
+      throw new Error(`Expected statSyncCached to expose a ts.Stats-like shape for existing files. Got: ${JSON.stringify(cachedStatsResult)}`)
+    }
+    if (statCacheRealStatCount <= statCacheStatsCountBeforeCached) {
+      throw new Error('Expected statSyncCached to stat the file when its entry is not yet cached.')
+    }
+
+    let missingThrew = false
+    statCache.runStatEpoch(() => {
+      try {
+        statCache.statSyncCached(statCacheMissingPath)
+      } catch (_error) {
+        missingThrew = true
+      }
+    })
+    if (!missingThrew) {
+      throw new Error('Expected statSyncCached to throw for missing files, matching fs.statSync semantics.')
+    }
+
+    const nestedStatsCountBefore = statCacheRealStatCount
+    statCache.runStatEpoch(() => {
+      statCache.statFileExists(statCacheFilePath)
+      statCache.runStatEpoch(() => {
+        statCache.statFileExists(statCacheFilePath)
+      })
+      statCache.statFileExists(statCacheFilePath)
+    })
+    if (statCacheRealStatCount - nestedStatsCountBefore !== 1) {
+      throw new Error('Expected nested stat-cache epochs to share a single memoization map.')
+    }
+  } finally {
+    fs.statSync = originalStatSync
+  }
+
+  const statCacheReReadFilePath = path.join(statCacheProbeRoot, 'epoch-reread.js')
+  writeFile(statCacheReReadFilePath, 'const a = 1\n')
+  statCache.runStatEpoch(() => statCache.statFileExists(statCacheReReadFilePath))
+  fs.rmSync(statCacheReReadFilePath, { force: true })
+  if (statCache.statFileExists(statCacheReReadFilePath)) {
+    throw new Error('Expected stat-cache to clear its memoization map when an epoch ends.')
+  }
+  fs.rmSync(statCacheProbeRoot, { recursive: true, force: true })
+
+  const versionedInitial = createVersionedTextState(null, {
+    text: 'const versioned = 1\n',
+    kind: 'probe',
+    marker: 'initial',
+  })
+  if (versionedInitial.version !== '1' || !versionedInitial.snapshot) {
+    throw new Error(`Expected createVersionedTextState to seed version "1" with a snapshot. Got: ${JSON.stringify({ version: versionedInitial.version })}`)
+  }
+  const versionedSameText = createVersionedTextState(versionedInitial, {
+    text: 'const versioned = 1\n',
+    kind: 'probe',
+    marker: 'updated',
+  })
+  if (
+    versionedSameText.version !== versionedInitial.version ||
+    versionedSameText.snapshot !== versionedInitial.snapshot ||
+    versionedSameText.marker !== 'updated'
+  ) {
+    throw new Error(`Expected identical-text versioned state to keep version/snapshot while merging metadata. Got: ${JSON.stringify({ version: versionedSameText.version, sameSnapshot: versionedSameText.snapshot === versionedInitial.snapshot, marker: versionedSameText.marker })}`)
+  }
+  const versionedChangedText = createVersionedTextState(versionedSameText, {
+    text: 'const versioned = 12\n',
+    kind: 'probe',
+  })
+  if (
+    versionedChangedText.version !== '2' ||
+    versionedChangedText.snapshot === versionedInitial.snapshot ||
+    versionedChangedText.text !== 'const versioned = 12\n'
+  ) {
+    throw new Error(`Expected changed-text versioned state to advance version and rebuild snapshot. Got: ${JSON.stringify({ version: versionedChangedText.version })}`)
+  }
+  const versionedNullText = createVersionedTextState(versionedChangedText, {
+    kind: 'probe',
+  })
+  if (versionedNullText.text !== '' || versionedNullText.version !== '3') {
+    throw new Error(`Expected createVersionedTextState to coerce missing text to "" and advance version. Got: ${JSON.stringify({ text: versionedNullText.text, version: versionedNullText.version })}`)
+  }
+  const versionedEmptyPreserved = createVersionedTextState(versionedNullText, {
+    text: '',
+    marker: 'empty-kept',
+  })
+  if (
+    versionedEmptyPreserved.version !== versionedNullText.version ||
+    versionedEmptyPreserved.snapshot !== versionedNullText.snapshot ||
+    versionedEmptyPreserved.marker !== 'empty-kept'
+  ) {
+    throw new Error('Expected empty-text updates to preserve version/snapshot when the previous text was also empty.')
+  }
+
+  const assertScriptRouteContext = (label, scriptText, marker, expected) => {
+    const offset = scriptText.indexOf(marker)
+    if (offset === -1) {
+      throw new Error(`Test setup error: marker "${marker}" not found for ${label}.`)
+    }
+
+    const context = getPathContextAtOffset(scriptText, offset, { mode: 'script' })
+    if (!context || context.kind !== expected.kind) {
+      throw new Error(`Expected ${label} to resolve a "${expected.kind}" path context. Got: ${JSON.stringify(context)}`)
+    }
+    if (expected.routeSource !== undefined && context.routeSource !== expected.routeSource) {
+      throw new Error(`Expected ${label} routeSource "${expected.routeSource}". Got: ${JSON.stringify(context)}`)
+    }
+  }
+
+  assertScriptRouteContext(
+    'response.redirect',
+    "response.redirect('/boards')\n",
+    '/boards',
+    { kind: 'route-path', routeSource: 'redirect' }
+  )
+  assertScriptRouteContext(
+    'api.redirect',
+    "api.redirect('/boards')\n",
+    '/boards',
+    { kind: 'route-path', routeSource: 'redirect' }
+  )
+  assertScriptRouteContext(
+    'datastar.redirect',
+    "datastar.redirect('/boards')\n",
+    '/boards',
+    { kind: 'route-path', routeSource: 'redirect' }
+  )
+  assertScriptRouteContext(
+    'datastar.replaceURL',
+    "datastar.replaceURL('/boards')\n",
+    '/boards',
+    { kind: 'route-path', routeSource: 'replace-url' }
+  )
+  assertScriptRouteContext(
+    'api.resolve',
+    "api.resolve('./board-service')\n",
+    './board-service',
+    { kind: 'resolve-path' }
+  )
+  assertScriptRouteContext(
+    'api.include',
+    "api.include('./shared-panel.ejs')\n",
+    './shared-panel.ejs',
+    { kind: 'include-path' }
+  )
+  assertScriptRouteContext(
+    'api.asset',
+    "api.asset('/style.css')\n",
+    '/style.css',
+    { kind: 'asset-path' }
+  )
+
+  const responseResolveContext = getPathContextAtOffset(
+    "response.resolve('./board-service')\n",
+    "response.resolve('./".length + 1,
+    { mode: 'script' }
+  )
+  if (responseResolveContext) {
+    throw new Error(`Expected response.resolve to be ignored as a path call. Got: ${JSON.stringify(responseResolveContext)}`)
+  }
+
+  const dataHxDocument = '<div data-hx-get="/boards"></div>\n'
+  const dataHxContext = getPathContextAtOffset(dataHxDocument, dataHxDocument.indexOf('/boards'), { mode: 'ejs' })
+  if (!dataHxContext || dataHxContext.kind !== 'route-path' || dataHxContext.routeSource !== 'hx-get') {
+    throw new Error(`Expected data-hx-get to normalize to the hx-get route source. Got: ${JSON.stringify(dataHxContext)}`)
+  }
+
+  const formPostDocument = '<form method="post" action="/boards"></form>\n'
+  const formPostContext = getPathContextAtOffset(formPostDocument, formPostDocument.indexOf('/boards'), { mode: 'ejs' })
+  if (!formPostContext || formPostContext.routeSource !== 'action-post') {
+    throw new Error(`Expected form method="post" action to resolve action-post. Got: ${JSON.stringify(formPostContext)}`)
+  }
+  const formDefaultDocument = '<form action="/boards"></form>\n'
+  const formDefaultContext = getPathContextAtOffset(formDefaultDocument, formDefaultDocument.indexOf('/boards'), { mode: 'ejs' })
+  if (!formDefaultContext || formDefaultContext.routeSource !== 'action-get') {
+    throw new Error(`Expected form action without method to default to action-get. Got: ${JSON.stringify(formDefaultContext)}`)
+  }
+  const formDialogDocument = '<form method="dialog" action="/boards"></form>\n'
+  const formDialogContext = getPathContextAtOffset(formDialogDocument, formDialogDocument.indexOf('/boards'), { mode: 'ejs' })
+  if (formDialogContext) {
+    throw new Error(`Expected form method="dialog" action to be ignored as a route. Got: ${JSON.stringify(formDialogContext)}`)
+  }
+
+  const collectDocument = `<script server>
+response.redirect('/home')
+api.resolve('./svc')
+datastar.replaceURL('/replace')
+</script>
+`
+  const collectedRouteSources = collectPathContexts(collectDocument, { mode: 'ejs' })
+    .filter((context) => context.kind === 'route-path')
+    .map((context) => context.routeSource)
+    .sort()
+  if (collectedRouteSources.join(',') !== ['redirect', 'replace-url'].sort().join(',')) {
+    throw new Error(`Expected collectPathContexts to surface redirect and replace-url route sources. Got: ${JSON.stringify(collectedRouteSources)}`)
+  }
+
   await runExtensionHostSanityCheck(repoRoot)
   const fixture = createFixtureApp(repoRoot)
   const realHighlightsFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', '(site)', 'highlights.ejs')
