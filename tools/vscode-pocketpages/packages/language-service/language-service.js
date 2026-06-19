@@ -6259,6 +6259,14 @@ class ProjectLanguageService {
   }
 
   getModuleRenameLocations(moduleDefinitionInfo, overrides = {}) {
+    if (!moduleDefinitionInfo || !moduleDefinitionInfo.filePath) {
+      return {
+        canRename: false,
+        localizedErrorMessage: null,
+        locations: [],
+      };
+    }
+
     const overrideText = overrides[normalizePath(moduleDefinitionInfo.filePath)];
     if (typeof overrideText === "string") {
       this.upsertStaticFileText(moduleDefinitionInfo.filePath, overrideText);

@@ -456,6 +456,10 @@ function createNavigationFeatureHandlers(deps) {
         };
       }
 
+      if (!renameInfo.canRename || !renameInfo.moduleDefinitionInfo) {
+        return [];
+      }
+
       const moduleRename = service.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, service.getPagesCodeOverrides({
         [normalizePath(filePath)]: isScriptFile(filePath) ? documentText : undefined,
       }));

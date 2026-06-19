@@ -7963,7 +7963,6 @@ module.exports = {
     fineInvalidationService.projectIndex.getIncludeCandidates(fixture.boardsFilePath)
     const assetProbeRouteStateBefore = fineInvalidationService.projectIndex.routeStateCache
     const assetProbeIncludeLocalsBefore = fineInvalidationService.projectIndex.includeLocalsCache
-    const assetProbeSearchRootCacheSizeBefore = fineInvalidationService.projectIndex.searchRootFileCache.size
     const assetProbeStructureVersionBefore = fineInvalidationService.projectIndex.pagesStructureVersion
     const assetProbeContentVersionBefore = fineInvalidationService.projectIndex.pagesContentVersion
     const assetProbeVersionBefore = fineInvalidationService.projectIndex.pagesAssetVersion
@@ -7993,10 +7992,9 @@ module.exports = {
     }
     if (
       fineInvalidationService.projectIndex.routeStateCache !== assetProbeRouteStateBefore ||
-      fineInvalidationService.projectIndex.includeLocalsCache !== assetProbeIncludeLocalsBefore ||
-      fineInvalidationService.projectIndex.searchRootFileCache.size !== assetProbeSearchRootCacheSizeBefore
+      fineInvalidationService.projectIndex.includeLocalsCache !== assetProbeIncludeLocalsBefore
     ) {
-      throw new Error('Expected asset create invalidation to preserve route, include locals, and search root caches.')
+      throw new Error('Expected asset create invalidation to preserve route and include locals caches.')
     }
     const resolvedAssetProbeTarget = fineInvalidationService.projectIndex.resolveAssetTarget(
       fixture.boardsFilePath,
@@ -8027,6 +8025,38 @@ module.exports = {
     )
     if (deletedAssetProbeTarget) {
       throw new Error(`Expected asset delete invalidation to refresh missing asset resolution. Got: ${deletedAssetProbeTarget}`)
+    }
+
+    const assetScriptProbeFilePath = path.join(
+      fixture.appRoot,
+      'pb_hooks',
+      'pages',
+      'assets',
+      'cache-invalidation-probe.js'
+    )
+    const normalizedAssetScriptProbeFilePath = normalizeFilePath(assetScriptProbeFilePath)
+    const pagesRootSearchRoot = normalizeFilePath(path.join(fixture.appRoot, 'pb_hooks', 'pages'))
+    writeFile(assetScriptProbeFilePath, `module.exports = { probe: true }\n`)
+    if (fineInvalidationService.invalidateManagedFile(assetScriptProbeFilePath, { type: 'create' }) !== 'asset') {
+      throw new Error('Expected asset script create invalidation to report asset.')
+    }
+    const assetScriptSearchStateAfterCreate = fineInvalidationService.projectIndex.getSearchRootFileState(
+      pagesRootSearchRoot,
+      ['.js', '.json', '.cjs', '.mjs']
+    )
+    if (!assetScriptSearchStateAfterCreate.filePathSet.has(normalizedAssetScriptProbeFilePath)) {
+      throw new Error('Expected asset script create invalidation to refresh the search-root file cache with the new script.')
+    }
+    fs.rmSync(assetScriptProbeFilePath, { force: true })
+    if (fineInvalidationService.invalidateManagedFile(assetScriptProbeFilePath, { type: 'delete' }) !== 'asset') {
+      throw new Error('Expected asset script delete invalidation to report asset.')
+    }
+    const assetScriptSearchStateAfterDelete = fineInvalidationService.projectIndex.getSearchRootFileState(
+      pagesRootSearchRoot,
+      ['.js', '.json', '.cjs', '.mjs']
+    )
+    if (assetScriptSearchStateAfterDelete.filePathSet.has(normalizedAssetScriptProbeFilePath)) {
+      throw new Error('Expected asset script delete invalidation to evict the stale script from the search-root file cache.')
     }
 
     const watchedRouteCore = new PocketPagesLanguageCore()
@@ -11119,6 +11149,11 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
     )
     if (!requiredModuleReferences || requiredConsumerReferences.length !== 3) {
       throw new Error(`Expected CommonJS require() member references to include binding and usages. Got: ${JSON.stringify(requiredModuleReferences)}`)
+    }
+
+    const missingModuleDefinitionRename = service.getModuleRenameLocations(undefined)
+    if (!missingModuleDefinitionRename || missingModuleDefinitionRename.canRename !== false) {
+      throw new Error(`Expected getModuleRenameLocations to safely report a non-renamable result for a missing definition instead of throwing. Got: ${JSON.stringify(missingModuleDefinitionRename)}`)
     }
 
     const requiredConsumerText = fs.readFileSync(fixture.importedCollectionConsumerFilePath, 'utf8')
@@ -14529,6 +14564,11 @@ const reportDate = String(safeState.reportDate || '').trim()
     const commentedServerBlocks = extractServerBlocks(`<!-- <script server>const authState = resolve('auth-service')</script> -->`)
     if (commentedServerBlocks.length !== 0) {
       throw new Error(`Expected HTML-commented server scripts to stay out of PocketPages server block parsing. Got: ${commentedServerBlocks.length}`)
+    }
+
+    const strayCommentMarkerServerBlocks = extractServerBlocks(`<div title="<!--"> <script server>const authState = resolve('auth-service')</script>`)
+    if (strayCommentMarkerServerBlocks.length !== 1) {
+      throw new Error(`Expected a stray "<!--" outside a closed comment to not drop a real server block. Got: ${strayCommentMarkerServerBlocks.length}`)
     }
 
     const mirroredServerSource = `<script server>

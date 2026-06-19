@@ -209,7 +209,12 @@ function extractServerBlocks(text) {
 
     if (commentStart !== -1 && commentStart <= scriptStart) {
       const commentEnd = sourceText.indexOf(HTML_COMMENT_CLOSE, commentStart + HTML_COMMENT_OPEN.length)
-      cursor = commentEnd === -1 ? sourceText.length : commentEnd + HTML_COMMENT_CLOSE.length
+      if (commentEnd === -1) {
+        cursor = commentStart + HTML_COMMENT_OPEN.length
+        continue
+      }
+
+      cursor = commentEnd + HTML_COMMENT_CLOSE.length
       continue
     }
 

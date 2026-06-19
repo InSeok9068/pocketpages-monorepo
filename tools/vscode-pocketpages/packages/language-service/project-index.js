@@ -2476,6 +2476,7 @@ class PocketPagesProjectIndex {
     }
 
     this.pagesGraphCache = null
+    this.searchRootFileCache.clear()
     this.pagesAssetVersion += 1
     return true
   }
