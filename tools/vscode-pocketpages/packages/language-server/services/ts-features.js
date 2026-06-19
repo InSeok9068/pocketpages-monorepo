@@ -167,6 +167,7 @@ function createTypeScriptFeatureService(context) {
           profile: completionProfile,
           requirePreparedVirtualState: true,
           triggerCharacter: getCompletionTriggerCharacter(params.context),
+          shouldCancel: () => shouldAbortDocumentRequest(document.uri, requestedVersion, token),
         }
       );
       const completionElapsedMs = elapsedMilliseconds(completionStartedAt);

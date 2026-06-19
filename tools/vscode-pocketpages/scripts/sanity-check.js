@@ -2660,6 +2660,40 @@ redirect('/boards')
       service.collectProjectRuleDiagnostics = originalLaneCollectProjectRuleDiagnostics
     }
 
+    const tsCancellationRequested = service.runWithCancellationProbe(
+      () => true,
+      () => service.isTypeScriptCancellationRequested()
+    )
+    if (!tsCancellationRequested) {
+      throw new Error('Expected TypeScript cancellation token to observe active cancellation.')
+    }
+    if (service.isTypeScriptCancellationRequested()) {
+      throw new Error('Expected TypeScript cancellation state to reset after the active operation.')
+    }
+    let cancellationPollCount = 0
+    const throttledCancellationChecks = service.runWithCancellationProbe(
+      () => {
+        cancellationPollCount += 1
+        return false
+      },
+      () => [
+        service.isTypeScriptCancellationRequested(),
+        service.isTypeScriptCancellationRequested(),
+      ]
+    )
+    if (
+      throttledCancellationChecks[0] !== false ||
+      throttledCancellationChecks[1] !== false ||
+      cancellationPollCount !== 1
+    ) {
+      throw new Error(
+        `Expected TypeScript cancellation polling to throttle false checks without leaking state. Got: ${JSON.stringify({
+          throttledCancellationChecks,
+          cancellationPollCount,
+        })}`
+      )
+    }
+
     const warmupResult = service.warmupDocument(fixture.boardsFilePath, laneDiagnosticsText)
     if (!warmupResult || !warmupResult.warmed || !service.virtualFiles.has(warmupResult.fileName)) {
       throw new Error(`Expected warmupDocument to prepare a TypeScript virtual file. Got: ${JSON.stringify(warmupResult)}`)

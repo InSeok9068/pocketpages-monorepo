@@ -51,6 +51,7 @@ const COMPILER_OPTIONS = {
   useUnknownInCatchVariables: false,
   maxNodeModuleJsDepth: 2,
 };
+const CANCELLATION_POLL_INTERVAL_MS = 20;
 const INCLUDE_RENAME_EXTENSIONS = [".ejs"];
 const ROUTE_PARAM_CODE_EXTENSIONS = new Set([".ejs", ".js", ".cjs", ".mjs"]);
 const EXTRACT_PARTIAL_GLOBAL_NAMES = new Set([
@@ -96,6 +97,17 @@ function directoryExists(dirPath) {
 
 function readFileText(filePath) {
   return fs.readFileSync(filePath, "utf8");
+}
+
+function nowMilliseconds() {
+  return Number(process.hrtime.bigint() / 1000000n);
+}
+
+function isOperationCanceledException(error) {
+  return (
+    error instanceof ts.OperationCanceledException ||
+    (error && error.constructor && error.constructor.name === "OperationCanceledException")
+  );
 }
 
 function hashText(value) {
@@ -3198,7 +3210,47 @@ class ProjectLanguageService {
     this.resolveModuleReturnTypeCache = new Map();
     this.scriptSchemaDiagnosticsCache = new Map();
 
+    this.activeCancellationState = null;
+
     this.languageService = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry());
+  }
+
+  runWithCancellationProbe(shouldCancel, fn) {
+    if (typeof shouldCancel !== "function") {
+      return fn();
+    }
+
+    const previousState = this.activeCancellationState;
+    this.activeCancellationState = {
+      shouldCancel,
+      lastPollMs: -Infinity,
+      lastResult: false,
+    };
+    try {
+      return fn();
+    } finally {
+      this.activeCancellationState = previousState;
+    }
+  }
+
+  isTypeScriptCancellationRequested() {
+    const state = this.activeCancellationState;
+    if (!state || typeof state.shouldCancel !== "function") {
+      return false;
+    }
+
+    if (state.lastResult) {
+      return true;
+    }
+
+    const currentMs = nowMilliseconds();
+    if (currentMs - state.lastPollMs < CANCELLATION_POLL_INTERVAL_MS) {
+      return false;
+    }
+
+    state.lastPollMs = currentMs;
+    state.lastResult = !!state.shouldCancel();
+    return state.lastResult;
   }
 
   upsertDocumentSnapshot(filePath, text, options = {}) {
@@ -3960,6 +4012,9 @@ class ProjectLanguageService {
   createHost() {
     return {
       getCompilationSettings: () => COMPILER_OPTIONS,
+      getCancellationToken: () => ({
+        isCancellationRequested: () => this.isTypeScriptCancellationRequested(),
+      }),
       getScriptFileNames: () => this.documentSnapshotManager.getTsFileNames(),
       getScriptVersion: (fileName) => this.documentSnapshotManager.getScriptVersion(fileName),
       getScriptSnapshot: (fileName) => this.documentSnapshotManager.getScriptSnapshot(fileName),
@@ -7833,8 +7888,18 @@ class ProjectLanguageService {
   }
 
   getCompletionData(filePath, documentText, offset, options = {}) {
+    const shouldCancel = typeof options.shouldCancel === "function" ? options.shouldCancel : null;
     return runStatEpoch(() =>
-      completionFeatureHandlers.getCompletionData(this, filePath, documentText, offset, options)
+      this.runWithCancellationProbe(shouldCancel, () => {
+        try {
+          return completionFeatureHandlers.getCompletionData(this, filePath, documentText, offset, options);
+        } catch (error) {
+          if (isOperationCanceledException(error)) {
+            return null;
+          }
+          throw error;
+        }
+      })
     );
   }
 
@@ -7859,12 +7924,14 @@ class ProjectLanguageService {
   }
 
   getSignatureHelp(filePath, documentText, offset, options = {}) {
-    return completionFeatureHandlers.getSignatureHelp(
-      this,
-      filePath,
-      documentText,
-      offset,
-      options
+    return runStatEpoch(() =>
+      completionFeatureHandlers.getSignatureHelp(
+        this,
+        filePath,
+        documentText,
+        offset,
+        options
+      )
     );
   }
 
@@ -8834,17 +8901,35 @@ class ProjectLanguageService {
   }
 
   getDiagnostics(filePath, documentText, options = {}) {
+    const shouldCancel = typeof options.shouldCancel === "function" ? options.shouldCancel : null;
     return runStatEpoch(() =>
-      diagnosticsFeatureHandlers.getDiagnostics(this, filePath, documentText, options)
+      this.runWithCancellationProbe(shouldCancel, () => {
+        try {
+          return diagnosticsFeatureHandlers.getDiagnostics(this, filePath, documentText, options);
+        } catch (error) {
+          if (isOperationCanceledException(error)) {
+            if (options.profile && typeof options.profile === "object") {
+              options.profile.cancelled = true;
+              options.profile.cancelledAt = options.profile.cancelledAt || "ts-operation-canceled";
+            }
+            return [];
+          }
+          throw error;
+        }
+      })
     );
   }
 
   getCodeActions(filePath, documentText, range, options = {}) {
-    return diagnosticsFeatureHandlers.getCodeActions(this, filePath, documentText, range, options);
+    return runStatEpoch(() =>
+      diagnosticsFeatureHandlers.getCodeActions(this, filePath, documentText, range, options)
+    );
   }
 
   getDefinitionTarget(filePath, documentText, offset) {
-    return navigationFeatureHandlers.getDefinitionTarget(this, filePath, documentText, offset);
+    return runStatEpoch(() =>
+      navigationFeatureHandlers.getDefinitionTarget(this, filePath, documentText, offset)
+    );
   }
 
   getCustomDefinitionTarget(filePath, documentText, offset) {
@@ -8852,7 +8937,9 @@ class ProjectLanguageService {
   }
 
   getRenameInfo(filePath, documentText, offset) {
-    return navigationFeatureHandlers.getRenameInfo(this, filePath, documentText, offset);
+    return runStatEpoch(() =>
+      navigationFeatureHandlers.getRenameInfo(this, filePath, documentText, offset)
+    );
   }
 
   getCustomRenameInfo(filePath, documentText, offset) {
@@ -8864,12 +8951,14 @@ class ProjectLanguageService {
   }
 
   getRenameEdits(filePath, documentText, offset, newName) {
-    return navigationFeatureHandlers.getRenameEdits(
-      this,
-      filePath,
-      documentText,
-      offset,
-      newName
+    return runStatEpoch(() =>
+      navigationFeatureHandlers.getRenameEdits(
+        this,
+        filePath,
+        documentText,
+        offset,
+        newName
+      )
     );
   }
 
@@ -8895,12 +8984,14 @@ class ProjectLanguageService {
   }
 
   getReferenceTargets(filePath, documentText, offset, options = {}) {
-    return navigationFeatureHandlers.getReferenceTargets(
-      this,
-      filePath,
-      documentText,
-      offset,
-      options
+    return runStatEpoch(() =>
+      navigationFeatureHandlers.getReferenceTargets(
+        this,
+        filePath,
+        documentText,
+        offset,
+        options
+      )
     );
   }
 
@@ -8915,7 +9006,9 @@ class ProjectLanguageService {
   }
 
   getDocumentLinks(filePath, documentText) {
-    return navigationFeatureHandlers.getDocumentLinks(this, filePath, documentText);
+    return runStatEpoch(() =>
+      navigationFeatureHandlers.getDocumentLinks(this, filePath, documentText)
+    );
   }
 }
 
