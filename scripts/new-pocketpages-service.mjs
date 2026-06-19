@@ -416,7 +416,7 @@ function renderErrorPage(title, message, detail) {
  * @returns {string}
  */
 function renderHtmxErrorAlert(message) {
-  return '<div class="alert alert-error"><strong>오류</strong><span>' + escapeHtml(message) + '</span></div>'
+  return '<div><strong>오류</strong><span>' + escapeHtml(message) + '</span></div>'
 }
 
 /** @type {PocketPagesNextMiddlewareFunc} */
@@ -478,8 +478,7 @@ function buildLayoutEjs(options) {
   if (hasFeature(options, 'datastar')) scripts.push('<script type="module" src="<%= asset(\'/assets/vendor/datastar.min.js\') %>"></script>')
 
   const unoHead = isUno ? "    <%- include('unocss-head.ejs', { isProduction }) %>\n" : ''
-  const bodyAttrs = isUno ? '\n    un-cloak\n    class="min-h-screen bg-slate-50 text-slate-950 antialiased"' : '\n    class="app-body"'
-  const mainClass = isUno ? 'mx-auto w-full max-w-5xl px-6 py-10 md:px-8 md:py-14' : 'app-shell'
+  const bodyAttrs = isUno ? '\n    un-cloak' : ''
 
   return `<% const isProduction = String(env('APP_ENV') || 'development').trim() === 'production' %>
 <!DOCTYPE html>
@@ -500,57 +499,33 @@ ${unoHead}${scripts.map((script) => `    ${script}`).join('\n')}${scripts.length
   </head>
 
   <body${bodyAttrs}>
-    <main class="${mainClass}"><%- slots.body || slot %></main>
+    <main><%- slots.body || slot %></main>
   </body>
 </html>
 `
 }
 
 function buildIndexEjs(options) {
-  if (hasFeature(options, 'unocss')) {
-    return `<script server>
-  meta('title', '${options.service}')
-  meta('description', '${options.service} 서비스 홈')
-</script>
-
-<header class="mb-10 space-y-4">
-  <p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">${options.service}</p>
-  <h1 class="text-4xl font-semibold tracking-0 text-slate-950 md:text-5xl">${options.service}</h1>
-  <p class="max-w-2xl text-base leading-7 text-slate-600">새 PocketPages 서비스를 시작하는 기본 화면입니다.</p>
-</header>
-
-<section class="grid gap-4 md:grid-cols-2">
-  <article class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-    <h2 class="text-xl font-semibold text-slate-950">SSR route</h2>
-    <p class="mt-3 text-sm leading-6 text-slate-600">페이지 전용 로직은 page 파일에 두고, 공유 처리는 middleware와 _private 모듈로 옮깁니다.</p>
-  </article>
-
-  <article class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-    <h2 class="text-xl font-semibold text-slate-950">Next step</h2>
-    <p class="mt-3 text-sm leading-6 text-slate-600">도메인 컬렉션과 route를 추가하면서 서비스를 확장하세요.</p>
-  </article>
-</section>
-`
-  }
-
   return `<script server>
   meta('title', '${options.service}')
   meta('description', '${options.service} 서비스 홈')
 </script>
 
-<header class="page-header">
-  <p class="eyebrow">${options.service}</p>
+<header>
+  <p>${options.service}</p>
   <h1>${options.service}</h1>
   <p>새 PocketPages 서비스를 시작하는 기본 화면입니다.</p>
 </header>
 
-<section class="panel-grid">
-  <article class="panel">
+<%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+
+<section>
+  <article>
     <h2>SSR route</h2>
     <p>페이지 전용 로직은 page 파일에 두고, 공유 처리는 middleware와 _private 모듈로 옮깁니다.</p>
   </article>
 
-  <article class="panel">
+  <article>
     <h2>Next step</h2>
     <p>도메인 컬렉션과 route를 추가하면서 서비스를 확장하세요.</p>
   </article>
@@ -606,10 +581,11 @@ function buildUnoHeadEjs() {
 }
 
 function buildFlashAlertEjs() {
-  return `<% if (message) { %>
-<div class="alert">
-  <span><%= message %></span>
-</div>
+  return `<%
+  const displayMessage = typeof flashMessage === 'undefined' || flashMessage === null ? '' : String(flashMessage).trim()
+%>
+<% if (displayMessage) { %>
+<div><%= displayMessage %></div>
 <% } %>
 `
 }
@@ -944,17 +920,14 @@ function buildSignInPage(options) {
   }
 </script>
 
-<section class="auth-panel">
+<section>
   <h1>로그인</h1>
 
-  <% if (params.__flash) { %>
-  <div class="alert"><%= params.__flash %></div>
-  <% } %>
+  <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
 
   <form
     method="post"
-    action="/xapi/auth/sign-in"
-    class="auth-form">
+    action="/xapi/auth/sign-in">
     <label>
       이메일
       <input
@@ -998,17 +971,14 @@ function buildSignUpPage(options) {
   }
 </script>
 
-<section class="auth-panel">
+<section>
   <h1>회원가입</h1>
 
-  <% if (params.__flash) { %>
-  <div class="alert"><%= params.__flash %></div>
-  <% } %>
+  <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
 
   <form
     method="post"
-    action="/xapi/auth/sign-up"
-    class="auth-form">
+    action="/xapi/auth/sign-up">
     <label>
       이메일
       <input
@@ -1310,8 +1280,8 @@ function buildPostSteps(options, serviceDir) {
   if (options.install) {
     steps.push({
       label: 'npm install',
-      command: 'npm',
-      args: ['install'],
+      command: process.platform === 'win32' ? 'cmd.exe' : 'npm',
+      args: process.platform === 'win32' ? ['/d', '/c', 'npm', 'install'] : ['install'],
       cwd: serviceDir,
     })
   }
@@ -1380,6 +1350,10 @@ function runPostSteps(plan) {
       stdio: 'inherit',
       shell: false,
     })
+
+    if (result.error) {
+      throw new Error(`${step.label} failed: ${result.error.message}`)
+    }
 
     if (result.status !== 0) {
       throw new Error(`${step.label} failed.`)
