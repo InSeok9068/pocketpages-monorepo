@@ -23,6 +23,7 @@ Usage:
   ./task.sh diag [file-or-service] [--profile] [--no-daemon]
   ./task.sh verify [service]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
+  ./task.sh new [service] [-- <extra args>]
   ./task.sh css [service]
   ./task.sh bundle
   ./task.sh generate [-- <extra args>]
@@ -46,6 +47,7 @@ Commands:
             `--profile` prints slow-file timings, `--no-daemon` disables the warm background cache
   verify    Run lint, tsc, and diag together for one service or all services
   index     Query AI-friendly PocketPages project index JSON for one service
+  new       Interactively scaffold a new PocketPages service
   css       Build UnoCSS for one service or all services that reference it
   bundle    Interactively bundle one service dependency into pb_hooks/pages/_private/vendor
   generate  Interactively generate a PocketPages api/xapi route file
@@ -60,6 +62,7 @@ Examples:
   ./task.sh archives portfolio
   ./task.sh merge
   ./task.sh merge booklog
+  ./task.sh new my-service
   ./task.sh update npm
   ./task.sh update npm -- --save
   ./task.sh install npm
@@ -1022,6 +1025,22 @@ run_generate() {
   node "$generate_script" "$@"
 }
 
+run_new() {
+  local new_script="$ROOT_DIR/scripts/new-pocketpages-service.mjs"
+
+  if [[ ! -f "$new_script" ]]; then
+    echo "Missing new script: $new_script" >&2
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run new command." >&2
+    exit 1
+  fi
+
+  node "$new_script" "$@"
+}
+
 normalize_bash_path() {
   local raw_path="$1"
 
@@ -1805,6 +1824,11 @@ case "${1:-help}" in
     service="$1"
     shift || true
     run_index "$service" "$@"
+    ;;
+  new)
+    shift || true
+    [[ "${1:-}" == "--" ]] && shift
+    run_new "$@"
     ;;
   css)
     shift || true

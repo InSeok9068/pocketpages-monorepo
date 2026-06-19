@@ -19,7 +19,7 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill update install deploy rollback archive restore archives merge test lint tsc diag verify index css bundle generate format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill update install deploy rollback archive restore archives merge test lint tsc diag verify index new css bundle generate format help" -- "$cur") )
     return
   fi
 
@@ -109,6 +109,18 @@ _pp_dev_complete() {
 
     if [[ "$cur" == --* || -z "$cur" ]]; then
       COMPREPLY=( $(compgen -W "--service --kind --path --method --auth --no-auth --partial --success-redirect --failure-redirect --force --dry-run --help" -- "$cur") )
+      return
+    fi
+  fi
+
+  if [[ "$cmd" == "new" ]]; then
+    if [[ $COMP_CWORD -ge 3 && "${COMP_WORDS[COMP_CWORD-1]}" == "--features" ]]; then
+      COMPREPLY=( $(compgen -W "htmx,alpine,unocss htmx alpine unocss datastar none" -- "$cur") )
+      return
+    fi
+
+    if [[ "$cur" == --* || -z "$cur" ]]; then
+      COMPREPLY=( $(compgen -W "--service --auth --no-auth --features --install --skip-install --copy-binaries --skip-binaries --dry-run --help" -- "$cur") )
       return
     fi
   fi
