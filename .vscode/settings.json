@@ -14,7 +14,7 @@
   },
   // prettier-ignore
   "files.exclude": {
-    ".docs/**": true,
+    // ".docs/**": true,
     ".cache/**": true,
     // "tools/**": true,
     // "scripts/**": true,
