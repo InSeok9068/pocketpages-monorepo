@@ -98,7 +98,7 @@
 - redirect option은 `flash`가 아니라 `message`를 사용한다
 - flash query를 수동으로 만들지 않는다
 - flash는 `params.__flash`로 읽는다
-- MUST: redirect 전에 `dbg(status, redirectTo, flash or error)`로 로그를 남긴다
+- MUST: redirect 전에 `dbg(status, redirectTo, message or error)`로 로그를 남긴다
 - role은 `_private/roles/*`에 둔다
 - role은 domain logic만 담당한다
 - MUST: role 안에서 DB write, redirect, response 생성, 숨은 DB query를 하지 않는다
@@ -116,8 +116,8 @@
 - CommonJS만 사용한다
 - `async/await`는 사용하지 않는다
 - Promise 기반 흐름은 사용하지 않는다
-- `pb_data/types.d.ts` = JSVM runtime API 기준
-- `pb_schema.json` = schema 기준
+- `apps/<service>/pb_data/types.d.ts` = JSVM runtime API 기준
+- `apps/<service>/pb_schema.json` = schema 기준
 - `apps/<service>/types.d.ts` = shared JSDoc shape 기준
 - `record.field` 대신 `record.get('field')`를 사용한다
 - relation은 실제 `collection.id`를 사용한다
@@ -159,8 +159,8 @@
 
 1. `.docs/pocketpages/*`
 2. `.docs/pocketbase/*`
-3. `pb_schema.json`
-4. `pb_data/types.d.ts`
+3. `apps/<service>/pb_schema.json`
+4. `apps/<service>/pb_data/types.d.ts`
 5. `apps/<service>/types.d.ts`
 
 규칙이 충돌하면 이 파일의 기준을 이 저장소 기본값보다 우선한다.

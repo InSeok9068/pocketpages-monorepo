@@ -116,8 +116,8 @@
 - CommonJS only
 - no `async/await`
 - no Promise-based flow
-- `pb_data/types.d.ts` = JSVM runtime API
-- `pb_schema.json` = schema truth
+- `apps/<service>/pb_data/types.d.ts` = JSVM runtime API
+- `apps/<service>/pb_schema.json` = schema truth
 - `apps/<service>/types.d.ts` = shared JSDoc shapes
 - use `record.get('field')`, not `record.field`
 - use actual `collection.id`
@@ -159,8 +159,8 @@ Use index sections when relevant:
 
 1. `.docs/pocketpages/*`
 2. `.docs/pocketbase/*`
-3. `pb_schema.json`
-4. `pb_data/types.d.ts`
+3. `apps/<service>/pb_schema.json`
+4. `apps/<service>/pb_data/types.d.ts`
 5. `apps/<service>/types.d.ts`
 
 If rules conflict, this file overrides defaults for this repo.
