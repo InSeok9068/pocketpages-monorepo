@@ -18,6 +18,42 @@
   let shelfRecord = null
   let bookFileRecord = null
 
+  /**
+   * ETag에 안전한 값을 만듭니다.
+   *
+   * @param {string} value 파일 식별 값
+   * @returns {string} HTTP ETag 값
+   */
+  function buildEtag(value) {
+    return '"' + String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'
+  }
+
+  /**
+   * 조건부 요청 헤더가 현재 ETag와 맞는지 확인합니다.
+   *
+   * @param {string} headerValue If-None-Match 헤더
+   * @param {string} etag 현재 ETag
+   * @returns {boolean} 캐시 재사용 가능 여부
+   */
+  function matchesEtag(headerValue, etag) {
+    const normalizedHeaderValue = String(headerValue || '').trim()
+    const normalizedEtag = String(etag || '').trim()
+
+    if (!normalizedHeaderValue || !normalizedEtag) {
+      return false
+    }
+
+    if (normalizedHeaderValue === '*') {
+      return true
+    }
+
+    return normalizedHeaderValue.split(',').some(function (candidate) {
+      const normalizedCandidate = String(candidate || '').trim()
+
+      return normalizedCandidate === normalizedEtag || normalizedCandidate === 'W/' + normalizedEtag
+    })
+  }
+
   try {
     shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
       userId: userId,
@@ -53,6 +89,12 @@
 
   const storageFileKey = String(bookFileRecord.baseFilesPath() || '') + '/' + storedFileName
   const localFilePath = String($app.dataDir() || '') + '/storage/' + storageFileKey
+  const fileHash = String(bookFileRecord.get('file_hash') || '').trim()
+  const fileSizeValue = bookFileRecord.get('file_size')
+  const fileSize = fileSizeValue === null || typeof fileSizeValue === 'undefined' ? '' : String(fileSizeValue)
+  const etagSource = fileHash || [String(bookFileRecord.get('id') || ''), storedFileName, fileSize].join(':')
+  const etag = buildEtag('booklog-epub:' + etagSource)
+  const ifNoneMatch = request.header('If-None-Match')
 
   dbg('xapi/books/[bookId]/read-file:serve', {
     userId: userId,
@@ -60,9 +102,25 @@
     bookFileId: String(bookFileRecord.get('id') || ''),
     fileKey: storageFileKey,
     filePath: localFilePath,
+    etag: etag,
   })
 
+  response.header('Cache-Control', 'private, max-age=0, must-revalidate')
   response.header('Content-Type', 'application/epub+zip')
+  response.header('ETag', etag)
+  response.header('Vary', 'Cookie')
+
+  if (matchesEtag(ifNoneMatch, etag)) {
+    dbg('xapi/books/[bookId]/read-file:not-modified', {
+      userId: userId,
+      bookId: bookId,
+      bookFileId: String(bookFileRecord.get('id') || ''),
+      etag: etag,
+    })
+    response.status(304)
+    return
+  }
+
   response.file(localFilePath)
   return
 </script>
