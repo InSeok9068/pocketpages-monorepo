@@ -25,7 +25,13 @@
    * @returns {string} HTTP ETag 값
    */
   function buildEtag(value) {
-    return '"' + String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'
+    return (
+      '"' +
+      String(value || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"') +
+      '"'
+    )
   }
 
   /**
