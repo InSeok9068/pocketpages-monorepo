@@ -2,17 +2,13 @@
 
 ## 0. 원칙과 코드 스타일
 
-- 추상화보다 명시적이고 사용처에 가까운 코드를 우선한다
-- 파일 경로와 trace path만 봐도 요청 흐름이 읽혀야 한다
-- 로직은 사용하는 곳 가까이에 두고, 가독성이나 재사용이 명확할 때만 helper를 만든다
-- SPA 복잡성보다 SSR 중심의 예측 가능한 구조를 우선한다
+- 명시적이고 사용처에 가까운 코드와 SSR-first 요청 흐름을 우선한다
+- 파일 경로와 trace path만 봐도 요청 흐름이 읽혀야 하며, helper는 가독성이나 재사용이 명확할 때만 만든다
 - shared named shape는 `apps/<service>/types.d.ts`에 정의한다
 - JSDoc에서는 `types.*`를 직접 사용하고 local typedef bridge는 사용하지 않는다
 - shared function에는 JSDoc이 필요하다
 - 한글 설명은 짧게 쓰고, 구현보다 함수와 params의 역할을 설명한다
-- MUST = 항상 따라야 함
-- DEFAULT = 특별한 이유가 없으면 먼저 선택
-- EXCEPTION = 명확한 근거가 있을 때만 허용
+- `MUST` = 필수; `DEFAULT` = 특별한 이유가 없으면 선택; `EXCEPTION` = 근거가 있을 때만 허용
 
 ---
 
@@ -139,10 +135,11 @@
 
 ## 10. AI Workflow 와 Structure Analysis
 
-- 먼저 이 작업이 PocketPages인지 PocketBase인지 구분한다
-- single-file, low-impact change면 바로 파일을 연다
-- multi-file change이거나 영향이 불명확하면 `./task.sh index <service>`를 실행한다
-- 서비스 수정은 반드시 **Windows Git Bash**에서 `./task.sh lint <service>`를 실행해 마무리한다
+- 먼저 작업 layer가 PocketPages인지 PocketBase인지 구분한다
+- single-file, low-impact change는 대상 파일을 바로 연다
+- multi-file change 또는 영향이 불명확한 change는 `./task.sh index <service> --section <name>`로 필요한 section만 먼저 본다
+- 전체 `./task.sh index <service>`는 여러 section이 필요할 때만 실행한다
+- 서비스 수정 후에는 반드시 **Windows Git Bash**에서 `./task.sh lint <service>`를 실행한다
 
 필요한 경우 index section을 확인한다:
 

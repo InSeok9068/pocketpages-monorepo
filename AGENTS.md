@@ -2,17 +2,13 @@
 
 ## 0. Principles & Code Style
 
-- Prefer explicit, local code over abstraction
-- File paths and trace paths should make request flow easy to follow
-- Keep logic close to usage; add helpers only when readability or reuse is clear
-- SSR-first, predictable structure over SPA complexity
+- Prefer explicit, local code and SSR-first request flow
+- File paths and trace paths should make request flow easy to follow; add helpers only when readability or reuse is clear
 - Shared named shapes live in `apps/<service>/types.d.ts`
 - Use `types.*` directly in JSDoc; do not use local typedef bridges
 - Shared functions require JSDoc
 - Keep Korean descriptions short and describe function/param roles, not implementation details
-- MUST = always follow
-- DEFAULT = choose first unless there is a clear reason
-- EXCEPTION = allow only when explicitly justified
+- `MUST` = required; `DEFAULT` = choose unless there is a clear reason; `EXCEPTION` = justified only
 
 ---
 
@@ -139,10 +135,11 @@
 
 ## 10. AI Workflow & Structure Analysis
 
-- identify layer first: PocketPages or PocketBase
-- single-file, low-impact change -> open file directly
-- multi-file or unclear impact -> run `./task.sh index <service>`
-- service change must end with running `./task.sh lint <service>` from **Windows Git Bash**
+- Layer first: PocketPages or PocketBase
+- Single-file, low-impact -> open the file directly
+- Multi-file or unclear impact -> targeted `./task.sh index <service> --section <name>` first
+- Full index only when multiple sections are needed
+- Service change -> run `./task.sh lint <service>` from **Windows Git Bash**
 
 Use index sections when relevant:
 
