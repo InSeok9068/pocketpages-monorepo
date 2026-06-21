@@ -3,7 +3,7 @@
     dbg('xapi/books/delete-review:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/', {
       status: 303,
@@ -16,7 +16,7 @@
     dbg('xapi/books/delete-review:redirect', {
       status: 303,
       redirectTo: '/auth',
-      flash: '로그인이 필요합니다.',
+      message: '로그인이 필요합니다.',
     })
     redirect('/auth', {
       status: 303,
@@ -54,7 +54,7 @@
     dbg('xapi/books/delete-review:redirect', {
       status: 303,
       redirectTo: bookDetailPath,
-      flash: '감상평을 삭제했습니다.',
+      message: '감상평을 삭제했습니다.',
     })
     redirect(bookDetailPath, {
       status: 303,

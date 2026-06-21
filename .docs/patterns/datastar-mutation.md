@@ -36,7 +36,7 @@ Datastar 요청에서 server-driven signal 또는 element patch를 반환할 때
     dbg('xapi/items/save:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/', {
       status: 303,
@@ -80,7 +80,7 @@ Datastar 요청에서 server-driven signal 또는 element patch를 반환할 때
   dbg('xapi/items/save:redirect', {
     status: 303,
     redirectTo: '/',
-    flash: errorMessage || '저장에 실패했습니다.',
+    message: errorMessage || '저장에 실패했습니다.',
   })
   redirect('/', {
     status: 303,

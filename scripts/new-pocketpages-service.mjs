@@ -453,7 +453,7 @@ module.exports = function (api, next) {
       dbg('${options.service}/global-error-boundary:redirect', {
         status: 303,
         redirectTo: '/',
-        flash: fallbackMessage,
+        message: fallbackMessage,
       })
       return redirect('/', {
         status: 303,
@@ -1029,7 +1029,7 @@ function buildSignInAction(options) {
     dbg('${options.service}/xapi/auth/sign-in:redirect', {
       status: 303,
       redirectTo: '/sign-in',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/sign-in', {
       status: 303,
@@ -1074,7 +1074,7 @@ function buildSignInAction(options) {
   dbg('${options.service}/xapi/auth/sign-in:response', {
     status: 303,
     redirectTo: '/sign-in',
-    flash: errorMessage || '로그인에 실패했습니다.',
+    message: errorMessage || '로그인에 실패했습니다.',
   })
   redirect('/sign-in', {
     status: 303,
@@ -1094,7 +1094,7 @@ function buildSignUpAction(options) {
     dbg('${options.service}/xapi/auth/sign-up:redirect', {
       status: 303,
       redirectTo: '/sign-up',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/sign-up', {
       status: 303,
@@ -1149,7 +1149,7 @@ function buildSignUpAction(options) {
   dbg('${options.service}/xapi/auth/sign-up:response', {
     status: 303,
     redirectTo: '/sign-up',
-    flash: errorMessage || '회원가입에 실패했습니다.',
+    message: errorMessage || '회원가입에 실패했습니다.',
   })
   redirect('/sign-up', {
     status: 303,
@@ -1169,7 +1169,7 @@ function buildSignOutAction(options) {
     dbg('${options.service}/xapi/auth/sign-out:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/', {
       status: 303,
@@ -1187,7 +1187,7 @@ function buildSignOutAction(options) {
   dbg('${options.service}/xapi/auth/sign-out:response', {
     status: 303,
     redirectTo: '/sign-in',
-    flash: '로그아웃 완료',
+    message: '로그아웃 완료',
   })
   redirect('/sign-in', {
     status: 303,

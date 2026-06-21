@@ -5,7 +5,7 @@
     dbg('xapi/auth/sign-in:redirect', {
       status: 303,
       redirectTo: '/auth',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/auth', {
       status: 303,
@@ -35,7 +35,7 @@
     dbg('xapi/auth/sign-in:response', {
       status: 303,
       redirectTo: '/',
-      flash: '로그인 완료',
+      message: '로그인 완료',
       authId: String((authData.record && authData.record.id) || ''),
     })
     redirect('/', {

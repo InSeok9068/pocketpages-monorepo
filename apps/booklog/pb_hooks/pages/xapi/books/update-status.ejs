@@ -3,7 +3,7 @@
     dbg('xapi/books/update-status:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/', {
       status: 303,
@@ -16,7 +16,7 @@
     dbg('xapi/books/update-status:redirect', {
       status: 303,
       redirectTo: '/auth',
-      flash: '로그인이 필요합니다.',
+      message: '로그인이 필요합니다.',
     })
     redirect('/auth', {
       status: 303,
@@ -84,7 +84,7 @@
       dbg('xapi/books/update-status:redirect', {
         status: 303,
         redirectTo: bookDetailPath,
-        flash: '읽을 예정으로 되돌렸습니다.',
+        message: '읽을 예정으로 되돌렸습니다.',
       })
       redirect(bookDetailPath, {
         status: 303,
@@ -147,7 +147,7 @@
     dbg('xapi/books/update-status:redirect', {
       status: 303,
       redirectTo: bookDetailPath,
-      flash: flashMessage,
+      message: flashMessage,
     })
     redirect(bookDetailPath, {
       status: 303,

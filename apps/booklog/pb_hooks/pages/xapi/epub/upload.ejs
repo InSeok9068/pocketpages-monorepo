@@ -2212,7 +2212,7 @@
     dbg('xapi/epub/upload:redirect', {
       status: 303,
       redirectTo: '/auth',
-      flash: '로그인 후 EPUB 파일을 업로드할 수 있습니다.',
+      message: '로그인 후 EPUB 파일을 업로드할 수 있습니다.',
     })
     redirect('/auth', {
       status: 303,
@@ -2225,7 +2225,7 @@
     dbg('xapi/epub/upload:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/', {
       status: 303,
@@ -2262,7 +2262,7 @@
       dbg('xapi/epub/upload:redirect', {
         status: 303,
         redirectTo: '/',
-        flash: shelfLimitMessage,
+        message: shelfLimitMessage,
       })
       redirect('/', {
         status: 303,
@@ -2394,7 +2394,7 @@
       dbg('xapi/epub/upload:redirect', {
         status: 303,
         redirectTo: '/',
-        flash: '기존 책과 파일을 찾아 서재에 연결했습니다.',
+        message: '기존 책과 파일을 찾아 서재에 연결했습니다.',
       })
       redirect('/', {
         status: 303,
@@ -2559,7 +2559,7 @@
     dbg('xapi/epub/upload:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: 'EPUB 파일과 도서 메타데이터를 저장했습니다.',
+      message: 'EPUB 파일과 도서 메타데이터를 저장했습니다.',
     })
     redirect('/', {
       status: 303,

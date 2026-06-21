@@ -18,7 +18,7 @@
     dbg('page/items:redirect', {
       status: 303,
       redirectTo: '/sign-in',
-      flash: '로그인이 필요합니다.',
+      message: '로그인이 필요합니다.',
     })
     redirect('/sign-in', {
       status: 303,
@@ -51,7 +51,7 @@
     if (datastar.isRequest(request)) {
       dbg('xapi/items/save:datastar-redirect', {
         redirectTo: '/sign-in',
-        flash: '로그인이 필요합니다.',
+        message: '로그인이 필요합니다.',
       })
       datastar.redirect('/sign-in')
       return
@@ -60,7 +60,7 @@
     dbg('xapi/items/save:redirect', {
       status: 303,
       redirectTo: '/sign-in',
-      flash: '로그인이 필요합니다.',
+      message: '로그인이 필요합니다.',
     })
     redirect('/sign-in', {
       status: 303,

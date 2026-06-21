@@ -107,7 +107,7 @@
     dbg('page/projects/[slug]:redirect', {
       status: 303,
       redirectTo: '/sign-in',
-      flash: '로그인이 필요합니다.',
+      message: '로그인이 필요합니다.',
     })
     redirect('/sign-in', {
       status: 303,
@@ -120,7 +120,7 @@
     dbg('page/projects/[slug]:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '프로젝트를 찾지 못했습니다.',
+      message: '프로젝트를 찾지 못했습니다.',
     })
     redirect('/', {
       status: 303,
@@ -144,7 +144,7 @@
     dbg('page/projects/[slug]:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '프로젝트를 찾지 못했습니다.',
+      message: '프로젝트를 찾지 못했습니다.',
       slug,
     })
     redirect('/', {

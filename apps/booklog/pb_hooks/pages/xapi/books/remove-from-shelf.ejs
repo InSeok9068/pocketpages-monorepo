@@ -3,7 +3,7 @@
     dbg('xapi/books/remove-from-shelf:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/', {
       status: 303,
@@ -16,7 +16,7 @@
     dbg('xapi/books/remove-from-shelf:redirect', {
       status: 303,
       redirectTo: '/auth',
-      flash: '로그인이 필요합니다.',
+      message: '로그인이 필요합니다.',
     })
     redirect('/auth', {
       status: 303,
@@ -76,7 +76,7 @@
     dbg('xapi/books/remove-from-shelf:redirect', {
       status: 303,
       redirectTo: '/library',
-      flash: '내 도서함에서 책을 제거했습니다.',
+      message: '내 도서함에서 책을 제거했습니다.',
       removedReviewCount: removedReviewCount,
       removedHighlightCount: removedHighlightCount,
       removedBookmarkCount: removedBookmarkCount,

@@ -14,7 +14,7 @@
     dbg('page/books/[bookId]/read:redirect', {
       status: 303,
       redirectTo: '/auth',
-      flash: '로그인이 필요합니다.',
+      message: '로그인이 필요합니다.',
     })
     redirect('/auth', {
       status: 303,
@@ -27,7 +27,7 @@
     dbg('page/books/[bookId]/read:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '책 정보를 찾을 수 없습니다.',
+      message: '책 정보를 찾을 수 없습니다.',
     })
     redirect('/', {
       status: 303,
@@ -46,7 +46,7 @@
     dbg('page/books/[bookId]/read:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '책 정보를 찾을 수 없습니다.',
+      message: '책 정보를 찾을 수 없습니다.',
       bookId: bookId,
     })
     redirect('/', {
@@ -105,7 +105,7 @@
     dbg('page/books/[bookId]/read:redirect', {
       status: 303,
       redirectTo: bookDetailPath,
-      flash: 'EPUB 파일을 찾을 수 없습니다.',
+      message: 'EPUB 파일을 찾을 수 없습니다.',
       bookId: bookId,
     })
     redirect(bookDetailPath, {

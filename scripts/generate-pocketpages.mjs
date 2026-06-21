@@ -495,7 +495,7 @@ function methodGuardCode(logName, method, responseKind, fallbackRedirect, invali
     dbg('${logName}:redirect', {
       status: 303,
       redirectTo: '${fallbackRedirect}',
-      flash: '${invalidMethodMessage}',
+      message: '${invalidMethodMessage}',
     })
     redirect('${fallbackRedirect}', {
       status: 303,
@@ -526,7 +526,7 @@ function authGuardCode(logName, enabled, responseKind, signInPath, authMessage) 
     dbg('${logName}:redirect', {
       status: 303,
       redirectTo: '${signInPath}',
-      flash: '${authMessage}',
+      message: '${authMessage}',
     })
     redirect('${signInPath}', {
       status: 303,
@@ -550,7 +550,7 @@ function datastarMethodGuardCode(logName, method, invalidMethodMessage) {
     dbg('${logName}:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '${invalidMethodMessage}',
+      message: '${invalidMethodMessage}',
     })
     redirect('/', {
       status: 303,
@@ -569,7 +569,7 @@ function datastarAuthGuardCode(logName, enabled, signInPath, authMessage) {
     if (datastar.isRequest(request)) {
       dbg('${logName}:datastar-redirect', {
         redirectTo: '${signInPath}',
-        flash: '${authMessage}',
+        message: '${authMessage}',
       })
       datastar.redirect('${signInPath}')
       return
@@ -578,7 +578,7 @@ function datastarAuthGuardCode(logName, enabled, signInPath, authMessage) {
     dbg('${logName}:redirect', {
       status: 303,
       redirectTo: '${signInPath}',
-      flash: '${authMessage}',
+      message: '${authMessage}',
     })
     redirect('${signInPath}', {
       status: 303,
@@ -617,7 +617,7 @@ ${authValidationCode(options.auth)}\
     dbg('${logName}:redirect', {
       status: 303,
       redirectTo: '${successRedirect}',
-      flash: '처리했습니다.',
+      message: '처리했습니다.',
     })
     redirect('${successRedirect}', {
       status: 303,
@@ -790,7 +790,7 @@ ${authValidationCode(options.auth)}\
   dbg('${logName}:redirect', {
     status: 303,
     redirectTo: '/',
-    flash: errorMessage || '처리에 실패했습니다.',
+    message: errorMessage || '처리에 실패했습니다.',
   })
   redirect('/', {
     status: 303,

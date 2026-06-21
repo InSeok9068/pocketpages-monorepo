@@ -4,7 +4,7 @@
     dbg('xapi/auth/sign-in:redirect', {
       status: 303,
       redirectTo: '/sign-in',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/sign-in', {
       status: 303,
@@ -34,7 +34,7 @@
     dbg('xapi/auth/sign-in:response', {
       status: 303,
       redirectTo: '/',
-      flash: '로그인 완료',
+      message: '로그인 완료',
     })
     redirect('/', {
       status: 303,

@@ -98,7 +98,7 @@
 - use redirect option `message`, not `flash`
 - do not build flash query manually
 - read flash via `params.__flash`
-- MUST: log before redirect with `dbg(status, redirectTo, flash or error)`
+- MUST: log before redirect with `dbg(status, redirectTo, message or error)`
 - roles live in `_private/roles/*`
 - roles handle domain logic only
 - MUST: no DB write, redirect, response building, or hidden DB query in roles

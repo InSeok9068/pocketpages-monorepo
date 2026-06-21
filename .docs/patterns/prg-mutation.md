@@ -25,7 +25,7 @@ POST 후 상태를 변경하고 전체 페이지로 돌아갈 때 사용한다. 
     dbg('xapi/items/create:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/', {
       status: 303,
@@ -48,7 +48,7 @@ POST 후 상태를 변경하고 전체 페이지로 돌아갈 때 사용한다. 
     dbg('xapi/items/create:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '저장했습니다.',
+      message: '저장했습니다.',
     })
     redirect('/', {
       status: 303,
@@ -65,7 +65,7 @@ POST 후 상태를 변경하고 전체 페이지로 돌아갈 때 사용한다. 
   dbg('xapi/items/create:redirect', {
     status: 303,
     redirectTo: '/',
-    flash: errorMessage || '저장에 실패했습니다.',
+    message: errorMessage || '저장에 실패했습니다.',
   })
   redirect('/', {
     status: 303,

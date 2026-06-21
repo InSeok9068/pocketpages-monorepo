@@ -43,7 +43,7 @@
     dbg('xapi/projects/status:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/', {
       status: 303,
@@ -63,7 +63,7 @@
     dbg('xapi/projects/status:redirect', {
       status: 303,
       redirectTo: '/sign-in',
-      flash: '로그인이 필요합니다.',
+      message: '로그인이 필요합니다.',
     })
     redirect('/sign-in', {
       status: 303,
@@ -123,7 +123,7 @@
     dbg('xapi/projects/status:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '',
+      message: '',
     })
     redirect('/', {
       status: 303,

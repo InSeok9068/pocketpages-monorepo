@@ -3,7 +3,7 @@
     dbg('xapi/books/reset-reading-sessions:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '잘못된 요청입니다.',
+      message: '잘못된 요청입니다.',
     })
     redirect('/', {
       status: 303,
@@ -16,7 +16,7 @@
     dbg('xapi/books/reset-reading-sessions:redirect', {
       status: 303,
       redirectTo: '/auth',
-      flash: '로그인이 필요합니다.',
+      message: '로그인이 필요합니다.',
     })
     redirect('/auth', {
       status: 303,
@@ -66,7 +66,7 @@
     dbg('xapi/books/reset-reading-sessions:redirect', {
       status: 303,
       redirectTo: bookDetailPath,
-      flash: '독서 시간을 초기화했습니다.',
+      message: '독서 시간을 초기화했습니다.',
       deletedCount: deletedCount,
     })
     redirect(bookDetailPath, {

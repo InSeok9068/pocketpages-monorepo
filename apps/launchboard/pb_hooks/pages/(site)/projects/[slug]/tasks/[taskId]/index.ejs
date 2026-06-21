@@ -70,7 +70,7 @@
     dbg('page/projects/[slug]/tasks/[taskId]:redirect', {
       status: 303,
       redirectTo: '/sign-in',
-      flash: '로그인이 필요합니다.',
+      message: '로그인이 필요합니다.',
     })
     redirect('/sign-in', {
       status: 303,
@@ -83,7 +83,7 @@
     dbg('page/projects/[slug]/tasks/[taskId]:redirect', {
       status: 303,
       redirectTo: '/',
-      flash: '업무를 찾지 못했습니다.',
+      message: '업무를 찾지 못했습니다.',
     })
     redirect('/', {
       status: 303,
@@ -116,7 +116,7 @@
     dbg('page/projects/[slug]/tasks/[taskId]:redirect', {
       status: 303,
       redirectTo,
-      flash: '업무를 찾지 못했습니다.',
+      message: '업무를 찾지 못했습니다.',
       slug,
       taskId,
     })
