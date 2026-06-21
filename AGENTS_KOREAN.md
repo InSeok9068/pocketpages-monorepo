@@ -82,6 +82,9 @@
 - `request`, `response`, `api`, `resolve`, full `params`, full `data` 같은 전체 context는 넘기지 않는다
 - `_private` module은 CommonJS만 사용한다
 - `_private` 내부 일반 `require()`는 고정 구현 연결이면 괜찮다
+- page-only 큰 로직은 `_private`로 빼기 전에 같은 파일 local helper로 먼저 정리한다
+- route/page 흐름을 더 잘 읽게 하는 named domain step일 때만 `_private`로 분리한다
+- DB write, redirect, response 생성, request-context 선택을 애매한 helper 뒤에 숨기지 않는다
 - request-context 의존성은 entry에서 먼저 고르고 주입한다
 - `resolve('moduleName')`처럼 `_private` 기준 이름을 사용하고 `resolve('/_private/...')`는 사용하지 않는다
 - `_private` 내부에서 `resolve()`를 연쇄하거나 기본 패턴처럼 쓰지 않는다

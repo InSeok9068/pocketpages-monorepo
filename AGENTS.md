@@ -82,6 +82,9 @@
 - DO NOT pass full context such as `request`, `response`, `api`, `resolve`, full `params`, full `data`
 - `_private` modules use CommonJS only
 - plain `_private` `require()` is fine for fixed wiring
+- page-only bulky logic should become local helpers before `_private` extraction
+- extract to `_private` only when a named domain step makes route/page flow easier to read
+- do not hide DB writes, redirects, response building, or request-context choices behind vague helpers
 - choose request-context dependencies at entry level, then inject them
 - use `_private`-relative names like `resolve('moduleName')`; do not use `resolve('/_private/...')`
 - do not chain or default to `resolve()` inside `_private`
