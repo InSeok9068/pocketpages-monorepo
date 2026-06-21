@@ -781,22 +781,105 @@ function collectReservedParamsBindingMatches(files) {
 function collectIncludeFullContextMatches(files) {
   const matches = []
   const forbiddenNames = ['api', 'request', 'response', 'resolve', 'params', 'data']
+  const forbiddenNamePattern = forbiddenNames.join('|')
+  const directArgumentPattern = new RegExp(`,\\s*(?:${forbiddenNamePattern})\\s*(?:,|\\))`)
+  const shorthandPropertyPattern = new RegExp(`[{,]\\s*(?:${forbiddenNamePattern})\\s*(?:,|})`)
+  const fullContextValuePattern = new RegExp(`[{,]\\s*[A-Za-z_$][A-Za-z0-9_$]*\\s*:\\s*(?:${forbiddenNamePattern})\\s*(?:,|})`)
 
   for (const file of files) {
-    const lines = file.lines
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index]
-      if (!line.includes('include(')) {
-        continue
+    const includeCallPattern = /\binclude\s*\(/g
+    let match = includeCallPattern.exec(file.content)
+
+    while (match) {
+      const openParenIndex = file.content.indexOf('(', match.index)
+      const closeParenIndex = findMatchingParen(file.content, openParenIndex)
+      if (closeParenIndex === -1) {
+        break
       }
 
-      if (forbiddenNames.some((name) => new RegExp(`\\b${name}\\b`).test(line))) {
-        matches.push(`${file.displayPath}:${index + 1}:${line}`)
+      const callText = maskStringsAndComments(file.content.slice(match.index, closeParenIndex + 1))
+      if (directArgumentPattern.test(callText) || shorthandPropertyPattern.test(callText) || fullContextValuePattern.test(callText)) {
+        matches.push(formatLintLineMatch(file, lineNumberAt(file.content, match.index)))
       }
+
+      includeCallPattern.lastIndex = closeParenIndex + 1
+      match = includeCallPattern.exec(file.content)
     }
   }
 
   return unique(matches)
+}
+
+function maskStringsAndComments(content) {
+  let result = ''
+  let inString = ''
+  let inBlockComment = false
+  let escaped = false
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index]
+    const next = content[index + 1]
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        result += '  '
+        inBlockComment = false
+        index += 1
+      } else {
+        result += char === '\n' ? '\n' : ' '
+      }
+      continue
+    }
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        result += char === '\n' ? '\n' : ' '
+        continue
+      }
+
+      if (char === '\\') {
+        escaped = true
+        result += ' '
+        continue
+      }
+
+      if (char === inString) {
+        inString = ''
+      }
+
+      result += char === '\n' ? '\n' : ' '
+      continue
+    }
+
+    if (char === '/' && next === '*') {
+      result += '  '
+      inBlockComment = true
+      index += 1
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      while (index < content.length && content[index] !== '\n') {
+        result += ' '
+        index += 1
+      }
+      if (index < content.length) {
+        result += '\n'
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      inString = char
+      result += ' '
+      continue
+    }
+
+    result += char
+  }
+
+  return result
 }
 
 function collectDatastarCamelCaseAttributeMatches(files) {
