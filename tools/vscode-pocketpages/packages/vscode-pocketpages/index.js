@@ -522,6 +522,7 @@ function createLspStatusController(context, output) {
     },
     setReady() {
       phase = "ready";
+      lastUnexpectedStopRestartAt = 0;
       applyPhase();
       refreshVisibility();
     },
