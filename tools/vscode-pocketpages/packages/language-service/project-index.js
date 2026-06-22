@@ -1854,11 +1854,18 @@ function mergeRecordFieldEntries(fieldEntries = []) {
     }
 
     seen.add(fieldEntry.name)
-    merged.push({
+    const entry = {
       name: fieldEntry.name,
       type: fieldEntry.type || '',
       isSystem: !!fieldEntry.isSystem,
-    })
+    }
+    if (Array.isArray(fieldEntry.values)) {
+      entry.values = fieldEntry.values.filter((value) => typeof value === 'string')
+    }
+    if (typeof fieldEntry.maxSelect === 'number') {
+      entry.maxSelect = fieldEntry.maxSelect
+    }
+    merged.push(entry)
   }
 
   return merged
@@ -1882,6 +1889,23 @@ function mapSchemaFieldTypeToTypeText(fieldType) {
     default:
       return null
   }
+}
+
+function mapSelectFieldToUnionTypeText(field) {
+  if (!field || String(field.type || '').toLowerCase() !== 'select') {
+    return null
+  }
+
+  const values = Array.isArray(field.values)
+    ? field.values.filter((value) => typeof value === 'string')
+    : []
+  if (!values.length) {
+    return null
+  }
+
+  const union = [...new Set(values)].map((value) => JSON.stringify(value)).join(' | ')
+  const isMulti = typeof field.maxSelect === 'number' && field.maxSelect > 1
+  return isMulti ? `Array<${union}>` : union
 }
 
 function inferIncludeLocalTypeText(node, depth = 0) {
@@ -2556,10 +2580,19 @@ class PocketPagesProjectIndex {
 
       const fields = ensureArray(collection.fields)
         .filter((field) => field && typeof field.name === 'string')
-        .map((field) => ({
-          name: field.name,
-          type: field.type || '',
-        }))
+        .map((field) => {
+          const entry = {
+            name: field.name,
+            type: field.type || '',
+          }
+          if (Array.isArray(field.values)) {
+            entry.values = field.values.filter((value) => typeof value === 'string')
+          }
+          if (typeof field.maxSelect === 'number') {
+            entry.maxSelect = field.maxSelect
+          }
+          return entry
+        })
 
       collectionsByName.set(collection.name, {
         name: collection.name,
@@ -2618,6 +2651,11 @@ class PocketPagesProjectIndex {
     const field = this.getFields(collectionName).find((entry) => entry.name === fieldName)
     if (!field) {
       return null
+    }
+
+    const selectUnion = mapSelectFieldToUnionTypeText(field)
+    if (selectUnion) {
+      return selectUnion
     }
 
     return mapSchemaFieldTypeToTypeText(field.type)

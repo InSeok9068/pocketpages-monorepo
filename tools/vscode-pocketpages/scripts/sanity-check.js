@@ -1811,6 +1811,8 @@ export {}
             { name: 'is_active', type: 'bool' },
             { name: 'sort_order', type: 'number' },
             { name: 'meta_json', type: 'json' },
+            { name: 'status', type: 'select', maxSelect: 1, values: ['draft', 'published'] },
+            { name: 'tags', type: 'select', maxSelect: 5, values: ['news', 'tips'] },
           ],
         },
         {
@@ -12797,6 +12799,8 @@ const boardName = board.get('name')
 const isActive = board.get('is_active')
 const sortOrder = board.get('sort_order')
 const metaPayload = board.get('meta_json')
+const boardStatus = board.get('status')
+const boardTags = board.get('tags')
 
 boardName.trim()
 isActive.trim()
@@ -12839,6 +12843,24 @@ metaPayload.trim()
       throw new Error(`Expected record.get('meta_json') quick info to resolve to any. Got: ${JSON.stringify(metaPayloadQuickInfo)}`)
     }
 
+    const boardStatusQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      typedRecordGetText.indexOf('boardStatus =') + 2
+    )
+    if (!boardStatusQuickInfo || !boardStatusQuickInfo.displayText.includes('const boardStatus: "draft" | "published"')) {
+      throw new Error(`Expected record.get('status') quick info to resolve to a select union. Got: ${JSON.stringify(boardStatusQuickInfo)}`)
+    }
+
+    const boardTagsQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      typedRecordGetText.indexOf('boardTags =') + 2
+    )
+    if (!boardTagsQuickInfo || !boardTagsQuickInfo.displayText.includes('const boardTags: ("news" | "tips")[]')) {
+      throw new Error(`Expected record.get('tags') quick info to resolve to a multi-select array. Got: ${JSON.stringify(boardTagsQuickInfo)}`)
+    }
+
     const typedRecordGetDiagnostics = service.getDiagnostics(fixture.boardsFilePath, typedRecordGetText)
     const typedRecordGetMessages = typedRecordGetDiagnostics.map((entry) => String(entry.message))
     if (!typedRecordGetMessages.some((message) => message.includes("Property 'trim' does not exist on type 'boolean'"))) {
@@ -12876,6 +12898,12 @@ metaPayload.trim()
       !typedRecordGetPrelude.includes('get(name: "sort_order"): number;')
     ) {
       throw new Error(`Expected buildPrelude() to expose typed record.get() overloads for TS. Got: ${typedRecordGetPrelude}`)
+    }
+    if (
+      !typedRecordGetPrelude.includes('"status": "draft" | "published";') ||
+      !typedRecordGetPrelude.includes('"tags": Array<"news" | "tips">;')
+    ) {
+      throw new Error(`Expected buildPrelude() to expose select union field types. Got: ${typedRecordGetPrelude}`)
     }
 
     const typedRecordGetInlayHints = service.getInlayHintEntries(fixture.boardsFilePath, typedRecordGetText)
