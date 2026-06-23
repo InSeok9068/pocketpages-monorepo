@@ -1813,6 +1813,11 @@ export {}
             { name: 'meta_json', type: 'json' },
             { name: 'status', type: 'select', maxSelect: 1, values: ['draft', 'published'] },
             { name: 'tags', type: 'select', maxSelect: 5, values: ['news', 'tips'] },
+            { name: 'cover', type: 'file', maxSelect: 1 },
+            { name: 'gallery', type: 'file', maxSelect: 5 },
+            { name: 'owner', type: 'relation', maxSelect: 1, collectionId: 'users' },
+            { name: 'members', type: 'relation', maxSelect: 10, collectionId: 'users' },
+            { name: 'archived_at', type: 'autodate', onCreate: false, onUpdate: false },
           ],
         },
         {
@@ -12801,6 +12806,11 @@ const sortOrder = board.get('sort_order')
 const metaPayload = board.get('meta_json')
 const boardStatus = board.get('status')
 const boardTags = board.get('tags')
+const boardCover = board.get('cover')
+const boardGallery = board.get('gallery')
+const boardOwner = board.get('owner')
+const boardMembers = board.get('members')
+const boardArchivedAt = board.get('archived_at')
 
 boardName.trim()
 isActive.trim()
@@ -12861,6 +12871,51 @@ metaPayload.trim()
       throw new Error(`Expected record.get('tags') quick info to resolve to a multi-select array. Got: ${JSON.stringify(boardTagsQuickInfo)}`)
     }
 
+    const boardCoverQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      typedRecordGetText.indexOf('boardCover =') + 2
+    )
+    if (!boardCoverQuickInfo || !boardCoverQuickInfo.displayText.includes('const boardCover: string')) {
+      throw new Error(`Expected record.get('cover') quick info to resolve to string. Got: ${JSON.stringify(boardCoverQuickInfo)}`)
+    }
+
+    const boardGalleryQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      typedRecordGetText.indexOf('boardGallery =') + 2
+    )
+    if (!boardGalleryQuickInfo || !boardGalleryQuickInfo.displayText.includes('const boardGallery: string[]')) {
+      throw new Error(`Expected record.get('gallery') quick info to resolve to string[] for multi-file. Got: ${JSON.stringify(boardGalleryQuickInfo)}`)
+    }
+
+    const boardOwnerQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      typedRecordGetText.indexOf('boardOwner =') + 2
+    )
+    if (!boardOwnerQuickInfo || !boardOwnerQuickInfo.displayText.includes('const boardOwner: string')) {
+      throw new Error(`Expected record.get('owner') quick info to resolve to string for single relation. Got: ${JSON.stringify(boardOwnerQuickInfo)}`)
+    }
+
+    const boardMembersQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      typedRecordGetText.indexOf('boardMembers =') + 2
+    )
+    if (!boardMembersQuickInfo || !boardMembersQuickInfo.displayText.includes('const boardMembers: string[]')) {
+      throw new Error(`Expected record.get('members') quick info to resolve to string[] for multi relation. Got: ${JSON.stringify(boardMembersQuickInfo)}`)
+    }
+
+    const boardArchivedAtQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      typedRecordGetText,
+      typedRecordGetText.indexOf('boardArchivedAt =') + 2
+    )
+    if (!boardArchivedAtQuickInfo || !boardArchivedAtQuickInfo.displayText.includes('const boardArchivedAt: string')) {
+      throw new Error(`Expected record.get('archived_at') quick info to resolve to string for autodate. Got: ${JSON.stringify(boardArchivedAtQuickInfo)}`)
+    }
+
     const typedRecordGetDiagnostics = service.getDiagnostics(fixture.boardsFilePath, typedRecordGetText)
     const typedRecordGetMessages = typedRecordGetDiagnostics.map((entry) => String(entry.message))
     if (!typedRecordGetMessages.some((message) => message.includes("Property 'trim' does not exist on type 'boolean'"))) {
@@ -12904,6 +12959,15 @@ metaPayload.trim()
       !typedRecordGetPrelude.includes('"tags": Array<"news" | "tips">;')
     ) {
       throw new Error(`Expected buildPrelude() to expose select union field types. Got: ${typedRecordGetPrelude}`)
+    }
+    if (
+      !typedRecordGetPrelude.includes('"cover": string;') ||
+      !typedRecordGetPrelude.includes('"gallery": Array<string>;') ||
+      !typedRecordGetPrelude.includes('"owner": string;') ||
+      !typedRecordGetPrelude.includes('"members": Array<string>;') ||
+      !typedRecordGetPrelude.includes('"archived_at": string;')
+    ) {
+      throw new Error(`Expected buildPrelude() to expose file/relation/autodate field types. Got: ${typedRecordGetPrelude}`)
     }
 
     const typedRecordGetInlayHints = service.getInlayHintEntries(fixture.boardsFilePath, typedRecordGetText)

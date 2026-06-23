@@ -1883,6 +1883,7 @@ function mapSchemaFieldTypeToTypeText(fieldType) {
     case 'number':
       return 'number'
     case 'date':
+    case 'autodate':
       return 'string'
     case 'json':
       return 'any'
@@ -1891,21 +1892,38 @@ function mapSchemaFieldTypeToTypeText(fieldType) {
   }
 }
 
-function mapSelectFieldToUnionTypeText(field) {
-  if (!field || String(field.type || '').toLowerCase() !== 'select') {
-    return null
-  }
-
-  const values = Array.isArray(field.values)
-    ? field.values.filter((value) => typeof value === 'string')
-    : []
-  if (!values.length) {
-    return null
-  }
-
-  const union = [...new Set(values)].map((value) => JSON.stringify(value)).join(' | ')
+function applyMaxSelectArity(field, baseTypeText) {
   const isMulti = typeof field.maxSelect === 'number' && field.maxSelect > 1
-  return isMulti ? `Array<${union}>` : union
+  return isMulti ? `Array<${baseTypeText}>` : baseTypeText
+}
+
+// Field types whose TS type depends on the field object (values/maxSelect),
+// not just the type string. Returns null when the metadata is insufficient so
+// the caller can fall back to mapSchemaFieldTypeToTypeText.
+function mapFieldObjectToTypeText(field) {
+  if (!field) {
+    return null
+  }
+
+  switch (String(field.type || '').toLowerCase()) {
+    case 'select': {
+      const values = Array.isArray(field.values)
+        ? field.values.filter((value) => typeof value === 'string')
+        : []
+      if (!values.length) {
+        return null
+      }
+      const union = [...new Set(values)].map((value) => JSON.stringify(value)).join(' | ')
+      return applyMaxSelectArity(field, union)
+    }
+    // file resolves to stored file name(s); relation resolves to record id(s).
+    // Both are strings at the record level (relation is NOT expanded here).
+    case 'file':
+    case 'relation':
+      return applyMaxSelectArity(field, 'string')
+    default:
+      return null
+  }
 }
 
 function inferIncludeLocalTypeText(node, depth = 0) {
@@ -2653,9 +2671,9 @@ class PocketPagesProjectIndex {
       return null
     }
 
-    const selectUnion = mapSelectFieldToUnionTypeText(field)
-    if (selectUnion) {
-      return selectUnion
+    const fieldObjectType = mapFieldObjectToTypeText(field)
+    if (fieldObjectType) {
+      return fieldObjectType
     }
 
     return mapSchemaFieldTypeToTypeText(field.type)
