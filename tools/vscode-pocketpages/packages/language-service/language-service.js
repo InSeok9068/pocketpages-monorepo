@@ -3985,7 +3985,11 @@ class ProjectLanguageService {
         }
 
         const stats = statSyncCached(normalizedFilePath);
-        return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}`;
+        try {
+          return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}:${hashText(readFileText(normalizedFilePath))}`;
+        } catch (_error) {
+          return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}`;
+        }
       })
       .join("|");
   }
