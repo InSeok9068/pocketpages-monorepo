@@ -66,6 +66,24 @@ function withWriteFileSyncCount(callback) {
   }
 }
 
+function withPatchedStatSync(filePath, stats, callback) {
+  const originalStatSync = fs.statSync
+  const normalizedFilePath = normalizeFilePath(filePath)
+
+  fs.statSync = function patchedStatSync(candidatePath, ...args) {
+    if (normalizeFilePath(candidatePath) === normalizedFilePath) {
+      return stats
+    }
+    return originalStatSync.call(this, candidatePath, ...args)
+  }
+
+  try {
+    return callback()
+  } finally {
+    fs.statSync = originalStatSync
+  }
+}
+
 function applyEditsToText(text, edits) {
   return edits
     .slice()
@@ -2910,6 +2928,87 @@ datastar.replaceURL('/replace')
     if (secondaryService === service) {
       throw new Error('Expected PocketPages manager to isolate services per app root in a monorepo.')
     }
+
+    const graphRaceDirPath = path.join(fixture.appRoot, 'pb_hooks', 'pages', 'vanishing-race')
+    ensureDir(graphRaceDirPath)
+    const graphRaceService = new PocketPagesLanguageServiceManager().getServiceForFile(fixture.boardsFilePath)
+    const originalReaddirSync = fs.readdirSync
+    fs.readdirSync = function patchedGraphRaceReaddirSync(dirPath, ...args) {
+      if (normalizeFilePath(dirPath) === normalizeFilePath(graphRaceDirPath)) {
+        const error = new Error('simulated ENOENT during pages scan')
+        error.code = 'ENOENT'
+        throw error
+      }
+      return originalReaddirSync.call(this, dirPath, ...args)
+    }
+    try {
+      graphRaceService.projectIndex.invalidateStructureCaches()
+      const graphRaceState = graphRaceService.projectIndex.getPagesGraphState()
+      if (!graphRaceState || !Array.isArray(graphRaceState.allFiles)) {
+        throw new Error(`Expected pages graph scan to recover from a disappearing child directory. Got: ${JSON.stringify(graphRaceState)}`)
+      }
+    } finally {
+      fs.readdirSync = originalReaddirSync
+      fs.rmSync(graphRaceDirPath, { recursive: true, force: true })
+    }
+
+    const metadataSchemaService = new PocketPagesLanguageServiceManager().getServiceForFile(fixture.boardsFilePath)
+    const originalMetadataSchemaText = fs.readFileSync(fixture.schemaFilePath, 'utf8')
+    const originalMetadataSchemaStats = fs.statSync(fixture.schemaFilePath)
+    const metadataSchemaCollectionsBefore = metadataSchemaService.projectIndex.getCollectionNames()
+    if (!metadataSchemaCollectionsBefore.includes('posts') || metadataSchemaCollectionsBefore.includes('notes')) {
+      throw new Error(`Expected fixture schema cache probe to start with posts only. Got: ${metadataSchemaCollectionsBefore.join(', ')}`)
+    }
+    const modifiedMetadataSchema = JSON.parse(originalMetadataSchemaText)
+    modifiedMetadataSchema[1] = {
+      ...modifiedMetadataSchema[1],
+      name: 'notes',
+    }
+    try {
+      writeFile(fixture.schemaFilePath, JSON.stringify(modifiedMetadataSchema, null, 2))
+      withPatchedStatSync(fixture.schemaFilePath, originalMetadataSchemaStats, () => {
+        const metadataSchemaCollectionsAfter = metadataSchemaService.projectIndex.getCollectionNames()
+        if (!metadataSchemaCollectionsAfter.includes('notes') || metadataSchemaCollectionsAfter.includes('posts')) {
+          throw new Error(
+            `Expected schema content hash to refresh collection names when metadata is unchanged. Got: ${metadataSchemaCollectionsAfter.join(', ')}`
+          )
+        }
+      })
+    } finally {
+      writeFile(fixture.schemaFilePath, originalMetadataSchemaText)
+    }
+
+    const metadataTypesPath = path.join(fixture.appRoot, 'pb_data', 'types.d.ts')
+    const metadataTypesMethodName = 'findRecordByMetadataHash'
+    const metadataTypesService = new PocketPagesLanguageServiceManager().getServiceForFile(fixture.boardsFilePath)
+    const originalMetadataTypesText = fs.readFileSync(metadataTypesPath, 'utf8')
+    const originalMetadataTypesStats = fs.statSync(metadataTypesPath)
+    const metadataTypesMethodNamesBefore = metadataTypesService.projectIndex.getCollectionMethodNames()
+    if (metadataTypesMethodNamesBefore.includes(metadataTypesMethodName)) {
+      throw new Error(`Expected fixture pb_data types to start without ${metadataTypesMethodName}.`)
+    }
+    const modifiedMetadataTypesText = originalMetadataTypesText.replace(
+      '    isCollectionNameUnique(name: string): boolean',
+      `    isCollectionNameUnique(name: string): boolean
+    ${metadataTypesMethodName}(collectionModelOrIdentifier: any, value: string): core.Record`
+    )
+    if (modifiedMetadataTypesText === originalMetadataTypesText) {
+      throw new Error('Expected fixture pb_data types to contain the metadata-hash insertion anchor.')
+    }
+    try {
+      writeFile(metadataTypesPath, modifiedMetadataTypesText)
+      withPatchedStatSync(metadataTypesPath, originalMetadataTypesStats, () => {
+        const metadataTypesMethodNamesAfter = metadataTypesService.projectIndex.getCollectionMethodNames()
+        if (!metadataTypesMethodNamesAfter.includes(metadataTypesMethodName)) {
+          throw new Error(
+            `Expected pb_data types content hash to refresh collection methods when metadata is unchanged. Got: ${metadataTypesMethodNamesAfter.join(', ')}`
+          )
+        }
+      })
+    } finally {
+      writeFile(metadataTypesPath, originalMetadataTypesText)
+    }
+
     let idleServiceNow = 1000
     const idleServiceManager = new PocketPagesLanguageServiceManager({
       idleServiceTtlMs: 50,
@@ -3878,6 +3977,13 @@ const boardService = resolve('board-service')
     )
     if (preparedMappedOffset !== preparedBoardShowText.indexOf('params')) {
       throw new Error(`Expected linked mapping-backed virtual offset mapping for prepared server block. Got: ${JSON.stringify({ preparedMappedOffset, expected: preparedBoardShowText.indexOf('params') })}`)
+    }
+    const preparedOutOfBoundsOffset = preparedService.mapVirtualOffsetToDocumentOffset(
+      preparedState.serverBlocks[0].fileName,
+      preparedState.serverBlocks[0].preludeLength + preparedServerState.block.content.length + 1
+    )
+    if (preparedOutOfBoundsOffset !== null) {
+      throw new Error(`Expected out-of-bounds server-block virtual offset to stay unmapped. Got: ${preparedOutOfBoundsOffset}`)
     }
     const preparedJSDocReuseCore = new PocketPagesLanguageCore()
     const preparedJSDocReuseText = `<script server>

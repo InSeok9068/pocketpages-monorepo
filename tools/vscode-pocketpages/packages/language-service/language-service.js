@@ -5871,6 +5871,20 @@ class ProjectLanguageService {
       return relativeOffset;
     }
 
+    const block = state.block;
+    const blockContentLength = block && typeof block.content === "string"
+      ? block.content.length
+      : null;
+    if (
+      !block ||
+      !Number.isFinite(block.contentStart) ||
+      !Number.isFinite(blockContentLength) ||
+      relativeOffset < 0 ||
+      relativeOffset > blockContentLength
+    ) {
+      return null;
+    }
+
     return state.block.contentStart + relativeOffset;
   }
 

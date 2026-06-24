@@ -125,6 +125,61 @@ function hashText(value) {
   return (hash >>> 0).toString(36)
 }
 
+function isRecoverableFileSystemReadError(error) {
+  const code = error && error.code
+  return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES' || code === 'EPERM'
+}
+
+function readDirectoryEntries(dirPath) {
+  try {
+    return fs.readdirSync(dirPath, { withFileTypes: true })
+  } catch (error) {
+    if (isRecoverableFileSystemReadError(error)) {
+      return []
+    }
+    throw error
+  }
+}
+
+function readSmallFileIdentity(filePath) {
+  const normalizedFilePath = normalizePath(filePath)
+  if (!fileExists(normalizedFilePath)) {
+    return {
+      filePath: normalizedFilePath,
+      exists: false,
+      mtimeMs: 0,
+      size: 0,
+      hash: 'missing',
+      text: '',
+    }
+  }
+
+  try {
+    const stats = statSyncCached(normalizedFilePath)
+    const text = fs.readFileSync(normalizedFilePath, 'utf8')
+    return {
+      filePath: normalizedFilePath,
+      exists: true,
+      mtimeMs: stats.mtimeMs,
+      size: stats.size,
+      hash: hashText(text),
+      text,
+    }
+  } catch (error) {
+    if (isRecoverableFileSystemReadError(error)) {
+      return {
+        filePath: normalizedFilePath,
+        exists: false,
+        mtimeMs: 0,
+        size: 0,
+        hash: 'missing',
+        text: '',
+      }
+    }
+    throw error
+  }
+}
+
 function ensureArray(value) {
   if (Array.isArray(value)) {
     return value
@@ -283,7 +338,7 @@ function walkFiles(dirPath, predicate, rootDir = dirPath, results = []) {
     return results
   }
 
-  for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+  for (const entry of readDirectoryEntries(dirPath)) {
     const absolutePath = normalizePath(path.join(dirPath, entry.name))
 
     if (entry.isDirectory()) {
@@ -318,7 +373,7 @@ function walkPagesGraph(pagesRoot) {
       continue
     }
 
-    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+    for (const entry of readDirectoryEntries(currentDir)) {
       const absolutePath = normalizePath(path.join(currentDir, entry.name))
       if (entry.isDirectory()) {
         if (entry.name === '_private') {
@@ -2565,25 +2620,31 @@ class PocketPagesProjectIndex {
 
   getSchemaState() {
     const schemaPath = normalizePath(path.join(this.appRoot, 'pb_schema.json'))
-    if (!fileExists(schemaPath)) {
+    const identity = readSmallFileIdentity(schemaPath)
+    if (!identity.exists) {
       this.schemaCache = {
         schemaPath,
         mtimeMs: 0,
         size: 0,
+        hash: identity.hash,
         collections: [],
         collectionsByName: new Map(),
       }
       return this.schemaCache
     }
 
-    const stats = statSyncCached(schemaPath)
-    if (this.schemaCache && this.schemaCache.mtimeMs === stats.mtimeMs && this.schemaCache.size === stats.size) {
+    if (
+      this.schemaCache &&
+      this.schemaCache.mtimeMs === identity.mtimeMs &&
+      this.schemaCache.size === identity.size &&
+      this.schemaCache.hash === identity.hash
+    ) {
       return this.schemaCache
     }
 
     let collections = []
     try {
-      const raw = JSON.parse(fs.readFileSync(schemaPath, 'utf8'))
+      const raw = JSON.parse(identity.text)
       collections = ensureArray(raw)
     } catch (_error) {
       collections = this.schemaCache && this.schemaCache.schemaPath === schemaPath ? ensureArray(this.schemaCache.collections) : []
@@ -2620,8 +2681,9 @@ class PocketPagesProjectIndex {
 
     this.schemaCache = {
       schemaPath,
-      mtimeMs: stats.mtimeMs,
-      size: stats.size,
+      mtimeMs: identity.mtimeMs,
+      size: identity.size,
+      hash: identity.hash,
       collections,
       collectionsByName,
     }
@@ -2698,21 +2760,23 @@ class PocketPagesProjectIndex {
 
   getCollectionMethodState() {
     const typesPath = normalizePath(path.join(this.appRoot, 'pb_data', 'types.d.ts'))
-    if (!fileExists(typesPath)) {
+    const identity = readSmallFileIdentity(typesPath)
+    if (!identity.exists) {
       this.collectionMethodCache = {
         typesPath,
         mtimeMs: 0,
         size: 0,
+        hash: identity.hash,
         methodNames: [...DEFAULT_COLLECTION_METHOD_NAMES],
       }
       return this.collectionMethodCache
     }
 
-    const stats = statSyncCached(typesPath)
     if (
       this.collectionMethodCache &&
-      this.collectionMethodCache.mtimeMs === stats.mtimeMs &&
-      this.collectionMethodCache.size === stats.size
+      this.collectionMethodCache.mtimeMs === identity.mtimeMs &&
+      this.collectionMethodCache.size === identity.size &&
+      this.collectionMethodCache.hash === identity.hash
     ) {
       return this.collectionMethodCache
     }
@@ -2730,8 +2794,9 @@ class PocketPagesProjectIndex {
 
     this.collectionMethodCache = {
       typesPath,
-      mtimeMs: stats.mtimeMs,
-      size: stats.size,
+      mtimeMs: identity.mtimeMs,
+      size: identity.size,
+      hash: identity.hash,
       methodNames,
     }
 
