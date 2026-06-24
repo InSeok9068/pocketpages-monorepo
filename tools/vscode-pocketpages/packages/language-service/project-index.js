@@ -2067,6 +2067,21 @@ function inferIncludeLocalTypeText(node, depth = 0) {
   return 'any'
 }
 
+function isPocketPagesCalleeNamed(expression, name) {
+  const target = skipExpressionWrappers(expression)
+  if (target && ts.isIdentifier(target) && target.text === name) {
+    return true
+  }
+
+  return !!(
+    target &&
+    ts.isPropertyAccessExpression(target) &&
+    ts.isIdentifier(target.expression) &&
+    target.expression.text === 'api' &&
+    target.name.text === name
+  )
+}
+
 function collectIncludeCallEntries(filePath, scriptText) {
   const sourceFile = ts.createSourceFile(filePath, scriptText, ts.ScriptTarget.Latest, true)
   const entries = []
@@ -2074,8 +2089,7 @@ function collectIncludeCallEntries(filePath, scriptText) {
   const visit = (node) => {
     if (
       ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === 'include' &&
+      isPocketPagesCalleeNamed(node.expression, 'include') &&
       node.arguments.length
     ) {
       const requestPath = readStringLiteralText(node.arguments[0])

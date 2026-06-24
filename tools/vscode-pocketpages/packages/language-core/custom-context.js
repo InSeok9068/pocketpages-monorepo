@@ -37,13 +37,28 @@ function skipParenthesizedExpression(node) {
   return current
 }
 
+function isCalleeNamed(expression, name) {
+  const target = skipParenthesizedExpression(expression)
+  if (target && ts.isIdentifier(target) && target.text === name) {
+    return true
+  }
+
+  return !!(
+    target &&
+    ts.isPropertyAccessExpression(target) &&
+    ts.isIdentifier(target.expression) &&
+    target.expression.text === 'api' &&
+    target.name.text === name
+  )
+}
+
 function readResolveRequestPath(node) {
   const target = skipParenthesizedExpression(node)
   if (!target || !ts.isCallExpression(target)) {
     return null
   }
 
-  if (!ts.isIdentifier(target.expression) || target.expression.text !== 'resolve') {
+  if (!isCalleeNamed(target.expression, 'resolve')) {
     return null
   }
 

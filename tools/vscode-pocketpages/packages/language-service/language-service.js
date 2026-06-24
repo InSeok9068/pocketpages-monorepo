@@ -1671,8 +1671,7 @@ function collectResolveCallSpansFromScript(scriptText, options = {}) {
   const visit = (node) => {
     if (
       ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "resolve"
+      isPocketPagesCalleeNamed(node.expression, "resolve")
     ) {
       spans.push({
         start: offsetBase + node.expression.getStart(sourceFile),
@@ -1730,6 +1729,21 @@ function skipExpressionWrappers(node) {
   }
 
   return current;
+}
+
+function isPocketPagesCalleeNamed(expression, name) {
+  const target = skipExpressionWrappers(expression);
+  if (target && ts.isIdentifier(target) && target.text === name) {
+    return true;
+  }
+
+  return !!(
+    target &&
+    ts.isPropertyAccessExpression(target) &&
+    ts.isIdentifier(target.expression) &&
+    target.expression.text === "api" &&
+    target.name.text === name
+  );
 }
 
 function rangesOverlap(leftStart, leftEnd, rightStart, rightEnd) {
@@ -2138,8 +2152,7 @@ function collectIncludeContextDiagnostics(scriptText, options = {}) {
   const visit = (node) => {
     if (
       ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "include" &&
+      isPocketPagesCalleeNamed(node.expression, "include") &&
       node.arguments.length > 1
     ) {
       const localsArgument = skipExpressionWrappers(node.arguments[1]);
