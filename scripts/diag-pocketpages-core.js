@@ -150,7 +150,12 @@ function readFileToken(filePath) {
   }
 
   const stats = fs.statSync(resolved)
-  return `${stats.mtimeMs}:${stats.size}`
+  try {
+    const hash = crypto.createHash('sha1').update(fs.readFileSync(resolved)).digest('hex')
+    return `${stats.mtimeMs}:${stats.size}:${hash}`
+  } catch (_error) {
+    return `${stats.mtimeMs}:${stats.size}`
+  }
 }
 
 function buildLineStarts(text) {

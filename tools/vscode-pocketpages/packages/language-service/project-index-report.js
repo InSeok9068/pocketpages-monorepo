@@ -456,7 +456,8 @@ function buildSchemaUsage(projectIndex, codeFiles) {
       const inferredCollection = projectIndex.inferCollectionReference(
         context.receiverExpression,
         entry.analysisText,
-        typeof context.start === 'number' ? context.start : 0
+        typeof context.start === 'number' ? context.start : 0,
+        { filePath: entry.filePath }
       )
 
       fields.push({
