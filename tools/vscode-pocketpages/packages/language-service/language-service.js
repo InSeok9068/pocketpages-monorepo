@@ -851,6 +851,7 @@ function hasJSDocReturnType(node, sourceFile) {
   return !!getJSDocReturnTypeText(node, sourceFile);
 }
 
+const VALID_TYPE_ANNOTATION_TEXT_CACHE_LIMIT = 512;
 const VALID_TYPE_ANNOTATION_TEXT_CACHE = new Map();
 function isValidTypeAnnotationText(typeText) {
   const text = String(typeText || "").trim();
@@ -858,7 +859,10 @@ function isValidTypeAnnotationText(typeText) {
     return false;
   }
   if (VALID_TYPE_ANNOTATION_TEXT_CACHE.has(text)) {
-    return VALID_TYPE_ANNOTATION_TEXT_CACHE.get(text);
+    const cached = VALID_TYPE_ANNOTATION_TEXT_CACHE.get(text);
+    VALID_TYPE_ANNOTATION_TEXT_CACHE.delete(text);
+    VALID_TYPE_ANNOTATION_TEXT_CACHE.set(text, cached);
+    return cached;
   }
 
   const sourceFile = ts.createSourceFile(
@@ -870,6 +874,10 @@ function isValidTypeAnnotationText(typeText) {
   );
   const valid = sourceFile.parseDiagnostics.length === 0;
   VALID_TYPE_ANNOTATION_TEXT_CACHE.set(text, valid);
+  if (VALID_TYPE_ANNOTATION_TEXT_CACHE.size > VALID_TYPE_ANNOTATION_TEXT_CACHE_LIMIT) {
+    const oldestKey = VALID_TYPE_ANNOTATION_TEXT_CACHE.keys().next().value;
+    VALID_TYPE_ANNOTATION_TEXT_CACHE.delete(oldestKey);
+  }
   return valid;
 }
 
@@ -3192,7 +3200,7 @@ const navigationFeatureHandlers = createNavigationFeatureHandlers({
 });
 
 class ProjectLanguageService {
-  constructor(appRoot) {
+  constructor(appRoot, options = {}) {
     this.appRoot = appRoot;
     this.projectIndex = new PocketPagesProjectIndex(appRoot);
     this.projectVersion = 0;
@@ -3212,7 +3220,8 @@ class ProjectLanguageService {
 
     this.activeCancellationState = null;
 
-    this.languageService = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry());
+    this.documentRegistry = options.documentRegistry || ts.createDocumentRegistry();
+    this.languageService = ts.createLanguageService(this.createHost(), this.documentRegistry);
   }
 
   runWithCancellationProbe(shouldCancel, fn) {
@@ -9022,6 +9031,7 @@ class ProjectLanguageService {
 
 const PocketPagesLanguageServiceManager = createPocketPagesLanguageServiceManager({
   ProjectLanguageService,
+  createDocumentRegistry: () => ts.createDocumentRegistry(),
   findAppRoot,
   isSameOrChildPath,
   normalizePath,

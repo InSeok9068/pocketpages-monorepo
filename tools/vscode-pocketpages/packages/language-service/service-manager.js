@@ -3,6 +3,7 @@
 function createPocketPagesLanguageServiceManager(deps) {
   const {
     ProjectLanguageService,
+    createDocumentRegistry,
     findAppRoot,
     isSameOrChildPath,
     normalizePath,
@@ -21,6 +22,7 @@ function createPocketPagesLanguageServiceManager(deps) {
   return class PocketPagesLanguageServiceManager {
     constructor() {
       this.services = new Map();
+      this.documentRegistry = createDocumentRegistry ? createDocumentRegistry() : null;
     }
 
     findManagedAppRootForFile(filePath) {
@@ -60,7 +62,9 @@ function createPocketPagesLanguageServiceManager(deps) {
 
       let service = this.getServiceForAppRoot(appRoot);
       if (!service) {
-        service = new ProjectLanguageService(appRoot);
+        service = new ProjectLanguageService(appRoot, {
+          documentRegistry: this.documentRegistry,
+        });
         this.services.set(appRoot, service);
       }
 
