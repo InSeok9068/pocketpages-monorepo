@@ -5050,18 +5050,22 @@ class ProjectLanguageService {
 
   getInferredModuleExportReturnTypes(targetFilePath) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
-    if (!isScriptFile(normalizedTargetFilePath) || !fileExists(normalizedTargetFilePath)) {
+    if (!isScriptFile(normalizedTargetFilePath)) {
       return new Map();
     }
 
-    const stats = statSyncCached(normalizedTargetFilePath);
+    const hasOverride = this.documentOverrides.has(normalizedTargetFilePath);
+    if (!hasOverride && !fileExists(normalizedTargetFilePath)) {
+      return new Map();
+    }
+
     const schemaState = this.projectIndex.getSchemaState();
     const cacheKey = [
       normalizedTargetFilePath,
-      stats.mtimeMs,
-      stats.size,
+      this.getDocumentSnapshotToken(normalizedTargetFilePath),
       schemaState.mtimeMs,
       schemaState.size,
+      schemaState.hash,
       this.projectIndex.pagesStructureVersion,
     ].join(":");
     const cached = this.resolveModuleReturnTypeCache.get(normalizedTargetFilePath);
@@ -5069,7 +5073,7 @@ class ProjectLanguageService {
       return cached.returnTypes;
     }
 
-    const text = fs.readFileSync(normalizedTargetFilePath, "utf8");
+    const text = this.getDocumentText(normalizedTargetFilePath);
     const sourceFile = ts.createSourceFile(normalizedTargetFilePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
     const functionsByName = new Map();
     const inferredInlineExports = new Map();
