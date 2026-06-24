@@ -3368,7 +3368,9 @@ class ProjectLanguageService {
     this.projectIndex.invalidateContentForFile(normalizedFilePath);
     this.includeCallEntriesCache.delete(normalizedFilePath);
     this.includeContractCache.delete(normalizedFilePath);
+    this.includePreludeCache.delete(normalizedFilePath);
     this.resolveModuleReturnTypeCache.delete(normalizedFilePath);
+    this.scriptSchemaDiagnosticsCache.delete(normalizedFilePath);
     this.projectVersion += 1;
     return true;
   }
