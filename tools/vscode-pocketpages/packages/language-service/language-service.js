@@ -3824,6 +3824,7 @@ class ProjectLanguageService {
       schemaState && schemaState.schemaPath ? normalizePath(schemaState.schemaPath) : "missing",
       schemaState && schemaState.mtimeMs !== undefined ? schemaState.mtimeMs : "0",
       schemaState && schemaState.size !== undefined ? schemaState.size : "0",
+      schemaState && schemaState.hash !== undefined ? `hash:${schemaState.hash}` : "hash:0",
       `content:${this.projectIndex.pagesContentVersion}`,
     ].join(":");
   }
@@ -3835,6 +3836,7 @@ class ProjectLanguageService {
       schemaState && schemaState.schemaPath ? normalizePath(schemaState.schemaPath) : "missing",
       schemaState && schemaState.mtimeMs !== undefined ? schemaState.mtimeMs : "0",
       schemaState && schemaState.size !== undefined ? schemaState.size : "0",
+      schemaState && schemaState.hash !== undefined ? `hash:${schemaState.hash}` : "hash:0",
     ].join(":");
   }
 
