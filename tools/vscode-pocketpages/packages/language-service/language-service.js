@@ -3644,7 +3644,11 @@ class ProjectLanguageService {
     }
 
     const stats = statSyncCached(normalizedFilePath);
-    return `disk:${stats.mtimeMs}:${stats.size}`;
+    try {
+      return `disk:${stats.mtimeMs}:${stats.size}:${hashText(readFileText(normalizedFilePath))}`;
+    } catch (_error) {
+      return `disk:${stats.mtimeMs}:${stats.size}`;
+    }
   }
 
   getDocumentTextIdentity(filePath, documentText) {
@@ -4249,7 +4253,7 @@ class ProjectLanguageService {
 
   buildSchemaTypePrelude() {
     const schemaState = this.projectIndex.getSchemaState();
-    const snapshotKey = `${normalizePath(schemaState.schemaPath)}:${schemaState.mtimeMs}:${schemaState.size}`;
+    const snapshotKey = `${normalizePath(schemaState.schemaPath)}:${schemaState.mtimeMs}:${schemaState.size}:${schemaState.hash}`;
     if (this.schemaTypePreludeCache && this.schemaTypePreludeCache.snapshotKey === snapshotKey) {
       return this.schemaTypePreludeCache.preludeText;
     }
