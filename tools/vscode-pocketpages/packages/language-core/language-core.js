@@ -258,7 +258,7 @@ function createLinkedCodeMap(associatedScriptMappings) {
 
 class PocketPagesLanguageCore {
   constructor(options = {}) {
-    this.manager = options.manager || new PocketPagesLanguageServiceManager();
+    this.manager = options.manager || new PocketPagesLanguageServiceManager(options.managerOptions);
     this.logger = options.logger || null;
     this.plugins = options.plugins || [createPocketPagesLanguagePlugin()];
     this.sourceScripts = new Map();
@@ -502,12 +502,16 @@ class PocketPagesLanguageCore {
       return;
     }
 
-    const service = this.manager.getServiceForFile(sourceScript.generated.root.filePath);
+    const filePath = sourceScript.generated.root.filePath;
+    const service = this.manager.getServiceForFile(filePath);
     if (service) {
-      service.clearDocumentOverride(sourceScript.generated.root.filePath);
-      if (typeof service.clearPreparedDocumentState === "function") {
-        service.clearPreparedDocumentState(sourceScript.generated.root.filePath);
-      }
+      service.clearDocumentOverride(filePath);
+    }
+    if (typeof this.manager.unregisterOpenDocument === "function") {
+      this.manager.unregisterOpenDocument(filePath);
+    }
+    if (typeof this.manager.pruneIdleServices === "function") {
+      this.manager.pruneIdleServices();
     }
   }
 
@@ -628,6 +632,9 @@ class PocketPagesLanguageCore {
     };
     const documentText = readSnapshotText(sourceScript.snapshot);
     service.setDocumentOverride(virtualCode.filePath, documentText, syncOptions);
+    if (options.opened === true && typeof this.manager.registerOpenDocument === "function") {
+      this.manager.registerOpenDocument(virtualCode.filePath);
+    }
     if (options.prepareVirtualCode === false) {
       if (typeof service.clearPreparedDocumentState === "function") {
         service.clearPreparedDocumentState(virtualCode.filePath);

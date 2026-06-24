@@ -120,7 +120,23 @@ function hashText(value) {
   return (hash >>> 0).toString(36);
 }
 
-function getMappingSegments(mappings) {
+function compareMappingSegmentsByGeneratedOffset(left, right) {
+  if (left.generatedStart !== right.generatedStart) {
+    return left.generatedStart - right.generatedStart;
+  }
+
+  return left.sourceStart - right.sourceStart;
+}
+
+function compareMappingSegmentsBySourceOffset(left, right) {
+  if (left.sourceStart !== right.sourceStart) {
+    return left.sourceStart - right.sourceStart;
+  }
+
+  return left.generatedStart - right.generatedStart;
+}
+
+function getMappingSegments(mappings, options = {}) {
   if (!Array.isArray(mappings)) {
     return [];
   }
@@ -159,13 +175,11 @@ function getMappingSegments(mappings) {
     }
   }
 
-  return segments.sort((left, right) => {
-    if (left.generatedStart !== right.generatedStart) {
-      return left.generatedStart - right.generatedStart;
-    }
-
-    return left.sourceStart - right.sourceStart;
-  });
+  return segments.sort(
+    options && options.sortBy === "source"
+      ? compareMappingSegmentsBySourceOffset
+      : compareMappingSegmentsByGeneratedOffset
+  );
 }
 
 function mapGeneratedOffsetToSourceOffset(mappings, generatedOffset) {
@@ -193,13 +207,7 @@ function mapSourceOffsetToGeneratedOffset(mappings, sourceOffset) {
     return null;
   }
 
-  const segments = getMappingSegments(mappings).sort((left, right) => {
-    if (left.sourceStart !== right.sourceStart) {
-      return left.sourceStart - right.sourceStart;
-    }
-
-    return left.generatedStart - right.generatedStart;
-  });
+  const segments = getMappingSegments(mappings, { sortBy: "source" });
   for (const segment of segments) {
     if (
       sourceOffset < segment.sourceStart ||
@@ -3340,15 +3348,29 @@ class ProjectLanguageService {
 
   clearDocumentOverride(filePath) {
     const normalizedFilePath = normalizePath(filePath);
+    let changed = false;
     if (this.documentOverrides.delete(normalizedFilePath)) {
-      this.documentSnapshotManager.deleteSourceDocument(normalizedFilePath);
-      this.projectIndex.invalidateContentForFile(normalizedFilePath);
-      this.includeCallEntriesCache.delete(normalizedFilePath);
-      this.includeContractCache.delete(normalizedFilePath);
-      this.resolveModuleReturnTypeCache.delete(normalizedFilePath);
-      this.documentSnapshotManager.clearPreparedDocumentState(normalizedFilePath);
-      this.projectVersion += 1;
+      changed = true;
     }
+    if (this.documentSnapshotManager.deleteSourceDocument(normalizedFilePath)) {
+      changed = true;
+    }
+    if (this.documentSnapshotManager.clearPreparedDocumentState(normalizedFilePath)) {
+      changed = true;
+    }
+    if (this.clearVirtualFilesForSource(normalizedFilePath)) {
+      changed = true;
+    }
+    if (!changed) {
+      return false;
+    }
+
+    this.projectIndex.invalidateContentForFile(normalizedFilePath);
+    this.includeCallEntriesCache.delete(normalizedFilePath);
+    this.includeContractCache.delete(normalizedFilePath);
+    this.resolveModuleReturnTypeCache.delete(normalizedFilePath);
+    this.projectVersion += 1;
+    return true;
   }
 
   resetCaches() {
@@ -3364,6 +3386,14 @@ class ProjectLanguageService {
     this.documentSnapshotManager.clearPreparedDocumentStates();
     this.projectIndex.resetCaches();
     this.projectVersion += 1;
+  }
+
+  dispose() {
+    this.documentOverrides.clear();
+    this.resetCaches();
+    if (this.languageService && typeof this.languageService.dispose === "function") {
+      this.languageService.dispose();
+    }
   }
 
   clearVirtualFilesForSource(filePath) {

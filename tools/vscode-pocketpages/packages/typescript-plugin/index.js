@@ -106,7 +106,11 @@ function init(modules) {
         typeof host.getProjectVersion === "function" ? host.getProjectVersion.bind(host) : null;
       const baseGetScriptFileNames =
         typeof host.getScriptFileNames === "function" ? host.getScriptFileNames.bind(host) : null;
-      const core = new PocketPagesLanguageCore();
+      const core = new PocketPagesLanguageCore({
+        managerOptions: {
+          idleServiceTtlMs: Infinity,
+        },
+      });
       const trackedAppState = new Map();
       const watchedAppRoots = new Map();
       const managedDocumentLru = new Map();

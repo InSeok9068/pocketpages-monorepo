@@ -1043,6 +1043,10 @@ function assertLspRuntimeContracts(repoRoot) {
     path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-service', 'language-service.js'),
     'utf8'
   )
+  const serviceManagerSource = fs.readFileSync(
+    path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-service', 'service-manager.js'),
+    'utf8'
+  )
   const documentSnapshotManagerSource = fs.readFileSync(
     path.join(repoRoot, 'tools', 'vscode-pocketpages', 'packages', 'language-service', 'document-snapshot-manager.js'),
     'utf8'
@@ -1357,6 +1361,16 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected DocumentSnapshotManager to own source documents, prepared documents, and virtual files together.'
   )
   assertMatches(
+    languageServiceSource,
+    /function getMappingSegments\(mappings, options = \{\}\)[\s\S]*sortBy === "source"[\s\S]*function mapSourceOffsetToGeneratedOffset\(mappings, sourceOffset\)[\s\S]*getMappingSegments\(mappings, \{ sortBy: "source" \}\)/,
+    'Expected source-to-generated mapping to avoid sorting once by generated offset and again by source offset.'
+  )
+  assertMatches(
+    serviceManagerSource,
+    /openDocumentsByAppRoot = new Map\(\)[\s\S]*disposeServiceForAppRoot\(appRoot\)[\s\S]*pruneIdleServices\(options = \{\}\)/,
+    'Expected language-service manager to evict idle app-root services only after tracking open documents.'
+  )
+  assertMatches(
     serverSource,
     /diagnosticProvider:\s*\{[\s\S]*interFileDependencies:\s*true,[\s\S]*workspaceDiagnostics:\s*false/,
     'Expected language server to always advertise LSP pull diagnostics for the VS Code client.'
@@ -1534,6 +1548,11 @@ function assertLspRuntimeContracts(repoRoot) {
     tsPluginSource,
     /core\.isFeatureEnabledAtOffset\(\s*documentContext\.uri,\s*position,\s*capabilityName\s*\)/,
     'Expected PocketPages TS plugin to respect mapper ownership before serving TS features for .ejs.'
+  )
+  assertMatches(
+    tsPluginSource,
+    /new PocketPagesLanguageCore\(\{\s*managerOptions:\s*\{\s*idleServiceTtlMs:\s*Infinity,\s*\},\s*\}\)/,
+    'Expected PocketPages TS plugin to rely on its own document LRU without app-service idle eviction invalidating cached contexts.'
   )
   assertMatches(
     tsFeatureSource,
@@ -2891,6 +2910,33 @@ datastar.replaceURL('/replace')
     if (secondaryService === service) {
       throw new Error('Expected PocketPages manager to isolate services per app root in a monorepo.')
     }
+    let idleServiceNow = 1000
+    const idleServiceManager = new PocketPagesLanguageServiceManager({
+      idleServiceTtlMs: 50,
+      now: () => idleServiceNow,
+    })
+    const idleService = idleServiceManager.getServiceForFile(fixture.boardsFilePath)
+    if (!idleService) {
+      throw new Error('Expected idle service manager fixture service to be created.')
+    }
+    idleServiceManager.registerOpenDocument(fixture.boardsFilePath)
+    idleServiceNow += 1000
+    if (idleServiceManager.pruneIdleServices().length || !idleServiceManager.services.has(idleService.appRoot)) {
+      throw new Error('Expected idle service pruning to keep app services with open documents.')
+    }
+    idleServiceManager.unregisterOpenDocument(fixture.boardsFilePath)
+    idleServiceNow += 49
+    if (idleServiceManager.pruneIdleServices().length || !idleServiceManager.services.has(idleService.appRoot)) {
+      throw new Error('Expected idle service pruning to respect the configured idle TTL.')
+    }
+    idleServiceNow += 1
+    const evictedIdleServices = idleServiceManager.pruneIdleServices()
+    if (evictedIdleServices.length !== 1 || idleServiceManager.services.has(idleService.appRoot)) {
+      throw new Error(`Expected idle service pruning to evict closed app services after the TTL. Got: ${JSON.stringify({
+        evicted: evictedIdleServices.map((entry) => entry.appRoot),
+        services: [...idleServiceManager.services.keys()],
+      })}`)
+    }
 
     const laneDiagnosticsText = `<script server>
 const laneValue = missingLaneValue
@@ -4061,6 +4107,21 @@ countValue.trim()
       preparedService.upsertVirtualFile = originalPreparedDiagnosticsUpsertVirtualFile
       preparedService.upsertTemplateVirtualFile = originalPreparedDiagnosticsUpsertTemplateVirtualFile
       preparedService.upsertTemplateVirtualFileState = originalPreparedDiagnosticsUpsertTemplateVirtualFileState
+    }
+    preparedCore.closeDocument(boardShowUri)
+    const remainingPreparedVirtualFiles = [...preparedService.virtualFiles.values()].filter(
+      (state) => state && normalizeFilePath(state.filePath) === preparedStateKey
+    )
+    if (
+      preparedService.getDocumentSnapshot(fixture.boardShowFilePath) ||
+      preparedService.preparedDocumentStates.has(preparedStateKey) ||
+      remainingPreparedVirtualFiles.length
+    ) {
+      throw new Error(`Expected closeDocument() to release source, prepared, and virtual document state. Got: ${JSON.stringify({
+        hasSource: !!preparedService.getDocumentSnapshot(fixture.boardShowFilePath),
+        hasPrepared: preparedService.preparedDocumentStates.has(preparedStateKey),
+        virtualCount: remainingPreparedVirtualFiles.length,
+      })}`)
     }
 
     const coldPreparedDiagnosticsManager = new PocketPagesLanguageServiceManager()
