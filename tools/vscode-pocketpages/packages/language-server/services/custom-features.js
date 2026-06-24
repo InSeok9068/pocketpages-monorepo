@@ -236,7 +236,7 @@ function createCustomFeatureService(context) {
       return toSignatureHelp(signatureHelp);
     },
 
-    provideReferences(params) {
+    provideReferences(params, options = {}) {
       const requestContext = getDocumentRequestContext(params);
       if (!requestContext) {
         return null;
@@ -253,7 +253,8 @@ function createCustomFeatureService(context) {
           schemaOnlyRequireTarget.targetFilePath,
           {
             [documentContext.filePath]: documentText,
-          }
+          },
+          options
         );
       }
 
@@ -265,11 +266,14 @@ function createCustomFeatureService(context) {
         documentContext.filePath,
         documentText,
         offset,
-        { includeDeclaration: !!(params.context && params.context.includeDeclaration) }
+        {
+          includeDeclaration: !!(params.context && params.context.includeDeclaration),
+          shouldCancel: options.shouldCancel,
+        }
       );
     },
 
-    providePrepareRename(params) {
+    providePrepareRename(params, options = {}) {
       const requestContext = getDocumentRequestContext(params);
       if (!requestContext) {
         return null;
@@ -283,8 +287,12 @@ function createCustomFeatureService(context) {
       const renameInfo = documentContext.service.getCustomRenameInfo(
         documentContext.filePath,
         documentText,
-        offset
+        offset,
+        options
       );
+      if (options && typeof options.shouldCancel === "function" && options.shouldCancel()) {
+        return null;
+      }
       if (!renameInfo) {
         return null;
       }
@@ -298,7 +306,7 @@ function createCustomFeatureService(context) {
       };
     },
 
-    provideRename(params) {
+    provideRename(params, options = {}) {
       const requestContext = getDocumentRequestContext(params);
       if (!requestContext) {
         return null;
@@ -313,8 +321,12 @@ function createCustomFeatureService(context) {
         documentContext.filePath,
         documentText,
         offset,
-        params.newName
+        params.newName,
+        options
       );
+      if (options && typeof options.shouldCancel === "function" && options.shouldCancel()) {
+        return null;
+      }
       if (!renameResult) {
         return null;
       }

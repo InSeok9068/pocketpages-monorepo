@@ -213,7 +213,7 @@ function createStructureFeatureService(context) {
     );
   }
 
-  function provideWorkspaceSymbols(params) {
+  function provideWorkspaceSymbols(params, options = {}) {
     const query = params && typeof params.query === "string" ? params.query : "";
     const services =
       context.core &&
@@ -225,11 +225,19 @@ function createStructureFeatureService(context) {
     const seenEntries = new Set();
 
     for (const service of services) {
+      if (options && typeof options.shouldCancel === "function" && options.shouldCancel()) {
+        return [];
+      }
+
       const entries =
         service && typeof service.getWorkspaceSymbolEntries === "function"
-          ? service.getWorkspaceSymbolEntries(query)
+          ? service.getWorkspaceSymbolEntries(query, options)
           : [];
       for (const entry of entries || []) {
+        if (options && typeof options.shouldCancel === "function" && options.shouldCancel()) {
+          return [];
+        }
+
         const entryKey = [
           entry.filePath,
           entry.name,

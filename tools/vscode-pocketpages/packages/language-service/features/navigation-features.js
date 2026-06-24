@@ -67,16 +67,20 @@ function createNavigationFeatureHandlers(deps) {
       );
     },
 
-    getRenameInfo(service, filePath, documentText, offset) {
-      const customRenameInfo = service.getCustomRenameInfo(filePath, documentText, offset);
+    getRenameInfo(service, filePath, documentText, offset, options = {}) {
+      const customRenameInfo = service.getCustomRenameInfo(filePath, documentText, offset, options);
       if (customRenameInfo) {
         return customRenameInfo;
       }
 
-      return service.getTypeScriptRenameInfo(filePath, documentText, offset);
+      return service.getTypeScriptRenameInfo(filePath, documentText, offset, options);
     },
 
-    getCustomRenameInfo(service, filePath, documentText, offset) {
+    getCustomRenameInfo(service, filePath, documentText, offset, options = {}) {
+      if (service.shouldCancelOperation(options)) {
+        return null;
+      }
+
       const resolvedModuleMemberContext = service.getResolvedModuleMemberContextForRename(
         filePath,
         documentText,
@@ -98,7 +102,11 @@ function createNavigationFeatureHandlers(deps) {
               [normalizePath(requiredModuleDefinitionInfo.filePath)]: service.getDocumentOverride(
                 requiredModuleDefinitionInfo.filePath
               ),
-            });
+            }, options);
+            if (service.shouldCancelOperation(options)) {
+              return null;
+            }
+
             if (!requiredModuleRename.canRename) {
               return {
                 canRename: false,
@@ -150,7 +158,11 @@ function createNavigationFeatureHandlers(deps) {
         [normalizePath(moduleDefinitionInfo.filePath)]: service.getDocumentOverride(
           moduleDefinitionInfo.filePath
         ),
-      });
+      }, options);
+      if (service.shouldCancelOperation(options)) {
+        return null;
+      }
+
       if (!moduleRename.canRename) {
         return {
           canRename: false,
@@ -173,11 +185,15 @@ function createNavigationFeatureHandlers(deps) {
     },
 
     getTypeScriptRenameInfo(service, filePath, documentText, offset, options = {}) {
+      if (service.shouldCancelOperation(options)) {
+        return null;
+      }
+
       const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset, {
         preferTemplateDocument: true,
         requirePreparedVirtualState: options.requirePreparedVirtualState === true,
       });
-      if (!virtualState) {
+      if (!virtualState || service.shouldCancelOperation(options)) {
         return null;
       }
 
@@ -188,7 +204,7 @@ function createNavigationFeatureHandlers(deps) {
           allowRenameOfImportPath: false,
         }
       );
-      if (!renameInfo) {
+      if (!renameInfo || service.shouldCancelOperation(options)) {
         return null;
       }
 
@@ -214,17 +230,17 @@ function createNavigationFeatureHandlers(deps) {
       };
     },
 
-    getRenameEdits(service, filePath, documentText, offset, newName) {
-      const customRenameInfo = service.getCustomRenameInfo(filePath, documentText, offset);
+    getRenameEdits(service, filePath, documentText, offset, newName, options = {}) {
+      const customRenameInfo = service.getCustomRenameInfo(filePath, documentText, offset, options);
       if (customRenameInfo) {
-        return service.getCustomRenameEdits(filePath, documentText, offset, newName);
+        return service.getCustomRenameEdits(filePath, documentText, offset, newName, options);
       }
 
-      return service.getTypeScriptRenameEdits(filePath, documentText, offset, newName);
+      return service.getTypeScriptRenameEdits(filePath, documentText, offset, newName, options);
     },
 
-    getCustomRenameEdits(service, filePath, documentText, offset, newName) {
-      const renameInfo = service.getCustomRenameInfo(filePath, documentText, offset);
+    getCustomRenameEdits(service, filePath, documentText, offset, newName, options = {}) {
+      const renameInfo = service.getCustomRenameInfo(filePath, documentText, offset, options);
       if (!renameInfo) {
         return null;
       }
@@ -246,9 +262,17 @@ function createNavigationFeatureHandlers(deps) {
         };
       }
 
-      const moduleRename = service.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, service.getPagesCodeOverrides({
-        [normalizePath(filePath)]: isScriptFile(filePath) ? documentText : undefined,
-      }));
+      const moduleRename = service.getModuleRenameLocations(
+        renameInfo.moduleDefinitionInfo,
+        service.getPagesCodeOverrides({
+          [normalizePath(filePath)]: isScriptFile(filePath) ? documentText : undefined,
+        }),
+        options
+      );
+      if (service.shouldCancelOperation(options)) {
+        return null;
+      }
+
       if (!moduleRename.canRename) {
         return {
           canRename: false,
@@ -261,6 +285,10 @@ function createNavigationFeatureHandlers(deps) {
       const uniqueEdits = new Map();
 
       for (const location of moduleRename.locations) {
+        if (service.shouldCancelOperation(options)) {
+          return null;
+        }
+
         const editKey = `${normalizePath(location.fileName)}:${location.textSpan.start}:${location.textSpan.start + location.textSpan.length}:${newName}`;
         if (!uniqueEdits.has(editKey)) {
           uniqueEdits.set(editKey, {
@@ -276,7 +304,8 @@ function createNavigationFeatureHandlers(deps) {
         renameInfo.moduleDefinitionInfo.filePath,
         renameInfo.placeholder,
         newName,
-        service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
+        service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText }),
+        options
       )) {
         const editKey = `${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`;
         if (!uniqueEdits.has(editKey)) {
@@ -288,7 +317,8 @@ function createNavigationFeatureHandlers(deps) {
         renameInfo.moduleDefinitionInfo.filePath,
         renameInfo.placeholder,
         newName,
-        service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
+        service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText }),
+        options
       )) {
         const editKey = `${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`;
         if (!uniqueEdits.has(editKey)) {
@@ -305,6 +335,10 @@ function createNavigationFeatureHandlers(deps) {
     getTypeScriptRenameEdits(service, filePath, documentText, offset, newName, options = {}) {
       const renameInfo = service.getTypeScriptRenameInfo(filePath, documentText, offset, options);
       if (!renameInfo) {
+        return null;
+      }
+
+      if (service.shouldCancelOperation(options)) {
         return null;
       }
 
@@ -328,7 +362,7 @@ function createNavigationFeatureHandlers(deps) {
         preferTemplateDocument: true,
         requirePreparedVirtualState: options.requirePreparedVirtualState === true,
       });
-      if (!virtualState) {
+      if (!virtualState || service.shouldCancelOperation(options)) {
         return null;
       }
 
@@ -339,9 +373,16 @@ function createNavigationFeatureHandlers(deps) {
         false,
         {}
       ) || [];
+      if (service.shouldCancelOperation(options)) {
+        return null;
+      }
 
       const uniqueEdits = new Map();
       for (const location of renameLocations) {
+        if (service.shouldCancelOperation(options)) {
+          return null;
+        }
+
         const mappedLocation = service.mapTypeScriptReferenceToLocation(location, false);
         if (!mappedLocation) {
           continue;
@@ -411,7 +452,8 @@ function createNavigationFeatureHandlers(deps) {
         return service.collectPathReferenceLocations(
           pathReferenceContext.kind,
           pathReferenceContext.targetFilePath,
-          service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
+          service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText }),
+          options
         );
       }
 
@@ -426,9 +468,13 @@ function createNavigationFeatureHandlers(deps) {
           return null;
         }
 
-        return service.collectRequireReferenceLocations(targetFilePath, {
-          [normalizePath(filePath)]: documentText,
-        });
+        return service.collectRequireReferenceLocations(
+          targetFilePath,
+          {
+            [normalizePath(filePath)]: documentText,
+          },
+          options
+        );
       }
 
       let renameInfo = service.getCustomRenameInfo(filePath, documentText, offset);
@@ -460,9 +506,13 @@ function createNavigationFeatureHandlers(deps) {
         return [];
       }
 
-      const moduleRename = service.getModuleRenameLocations(renameInfo.moduleDefinitionInfo, service.getPagesCodeOverrides({
-        [normalizePath(filePath)]: isScriptFile(filePath) ? documentText : undefined,
-      }));
+      const moduleRename = service.getModuleRenameLocations(
+        renameInfo.moduleDefinitionInfo,
+        service.getPagesCodeOverrides({
+          [normalizePath(filePath)]: isScriptFile(filePath) ? documentText : undefined,
+        }),
+        options
+      );
       if (!moduleRename.canRename) {
         return [];
       }
@@ -484,6 +534,10 @@ function createNavigationFeatureHandlers(deps) {
       };
 
       for (const location of moduleRename.locations) {
+        if (service.shouldCancelOperation(options)) {
+          return [];
+        }
+
         const start = location.textSpan.start;
         const end = location.textSpan.start + location.textSpan.length;
         if (
@@ -505,7 +559,8 @@ function createNavigationFeatureHandlers(deps) {
       for (const location of service.collectResolvedModuleMemberUsageLocations(
         renameInfo.moduleDefinitionInfo.filePath,
         renameInfo.placeholder,
-        service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
+        service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText }),
+        options
       )) {
         addLocation(location);
       }
@@ -513,7 +568,8 @@ function createNavigationFeatureHandlers(deps) {
       for (const location of service.collectRequiredModuleMemberUsageLocations(
         renameInfo.moduleDefinitionInfo.filePath,
         renameInfo.placeholder,
-        service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText })
+        service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText }),
+        options
       )) {
         addLocation(location);
       }

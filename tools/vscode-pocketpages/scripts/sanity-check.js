@@ -1162,7 +1162,7 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
-    /connection\.onWorkspaceSymbol\(\(params\) => \{[\s\S]*const result = structureFeatureService\.provideWorkspaceSymbols\(params\);[\s\S]*logRequestResult\("symbols",\s*"workspace"[\s\S]*return result;/,
+    /connection\.onWorkspaceSymbol\(\(params,\s*token\) => \{[\s\S]*const result = structureFeatureService\.provideWorkspaceSymbols\(params,\s*\{\s*shouldCancel\s*\}\);[\s\S]*logRequestResult\("symbols",\s*"workspace"[\s\S]*return result;/,
     'Expected server.js to route workspace symbols through structure-features and log the request result.'
   )
   assertMatches(
@@ -1177,12 +1177,12 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
-    /const quickInfo = typeScriptFeatureService\.provideHover\(params\)/,
+    /const quickInfo = typeScriptFeatureService\.provideHover\(params,\s*token\)/,
     'Expected server.js to keep EJS TS quick info ownership in the LSP until TS plugin parity is achieved.'
   )
   assertMatches(
     serverSource,
-    /const customTarget = customFeatureService\.provideDefinition\(params\);[\s\S]*if \(customTarget\) \{[\s\S]*return result;[\s\S]*\}[\s\S]*const typeScriptTarget = typeScriptFeatureService\.provideDefinition\(params\);[\s\S]*return result;/,
+    /const customTarget = customFeatureService\.provideDefinition\(params\);[\s\S]*if \(customTarget\) \{[\s\S]*return result;[\s\S]*\}[\s\S]*const typeScriptTarget = typeScriptFeatureService\.provideDefinition\(params,\s*token\);[\s\S]*return result;/,
     'Expected server.js definition ownership to check PocketPages custom targets before TS definition fallback.'
   )
   assertMatches(
@@ -1272,7 +1272,7 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
-    /connection\.onReferences\(\(params\) => \{[\s\S]*case:\s*"blocked-document"/,
+    /connection\.onReferences\(\(params,\s*token\) => \{[\s\S]*case:\s*"blocked-document"/,
     'Expected references to skip TypeScript/file-reference fallback for excluded and schema-only documents.'
   )
   assertMatches(
@@ -1393,7 +1393,7 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
-    /connection\.onHover\(\(params\) => \{[\s\S]*nextRequestId\("hover"\)[\s\S]*case:\s*"path-target"[\s\S]*case:\s*"ts-hover"/,
+    /connection\.onHover\(\(params,\s*token\) => \{[\s\S]*nextRequestId\("hover"\)[\s\S]*case:\s*"path-target"[\s\S]*case:\s*"ts-hover"/,
     'Expected hover logs to distinguish path-target hovers from TS quick-info hovers.'
   )
   assertMatches(
@@ -1403,7 +1403,7 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
-    /connection\.onRenameRequest\(\(params\) => \{[\s\S]*workspaceEditStats\(customResult\)[\s\S]*case:\s*"custom-rename"[\s\S]*workspaceEditStats\(typeScriptResult\)[\s\S]*case:\s*"ts-rename"/,
+    /connection\.onRenameRequest\(\(params,\s*token\) => \{[\s\S]*workspaceEditStats\(customResult\)[\s\S]*case:\s*"custom-rename"[\s\S]*workspaceEditStats\(typeScriptResult\)[\s\S]*case:\s*"ts-rename"/,
     'Expected rename logs to report custom and TS edit counts separately.'
   )
   assertMatches(
@@ -1557,7 +1557,7 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     tsFeatureSource,
-    /provideDefinition\(params\) \{[\s\S]*requestId[\s\S]*operation:\s*"definition"[\s\S]*preferredOffset:\s*offset[\s\S]*skipUnrelatedRegions:\s*true[\s\S]*skipStaticRefresh:\s*true/,
+    /provideDefinition\(params,\s*token\) \{[\s\S]*requestId[\s\S]*operation:\s*"definition"[\s\S]*preferredOffset:\s*offset[\s\S]*skipUnrelatedRegions:\s*true[\s\S]*skipStaticRefresh:\s*true/,
     'Expected definition requests to prepare only the region around the requested offset.'
   )
   assertMatches(
@@ -3021,6 +3021,63 @@ redirect('/boards')
           cancellationPollCount,
         })}`
       )
+    }
+
+    let workspaceSymbolCancellationChecks = 0
+    const cancelledWorkspaceSymbols = service.getWorkspaceSymbolEntries('', {
+      shouldCancel() {
+        workspaceSymbolCancellationChecks += 1
+        return true
+      },
+    })
+    if (cancelledWorkspaceSymbols.length !== 0 || workspaceSymbolCancellationChecks < 1) {
+      throw new Error(
+        `Expected workspace symbols to honor cancellation before scanning. Got: ${JSON.stringify({
+          cancelledWorkspaceSymbols,
+          workspaceSymbolCancellationChecks,
+        })}`
+      )
+    }
+
+    const originalReferenceVirtualStateAtOffset = service.getVirtualStateAtOffset.bind(service)
+    const originalFindReferences = service.languageService.findReferences.bind(service.languageService)
+    let referenceCancellationChecks = 0
+    let sawReferenceCancellationProbe = false
+    service.getVirtualStateAtOffset = function getReferenceCancellationVirtualState() {
+      return {
+        filePath: fixture.boardsFilePath,
+        virtual: { fileName: fixture.boardsFilePath },
+        virtualOffset: 0,
+      }
+    }
+    service.languageService.findReferences = function findReferencesCancellationProbe() {
+      sawReferenceCancellationProbe = service.isTypeScriptCancellationRequested()
+      return []
+    }
+    try {
+      const cancelledReferences = service.getTypeScriptReferenceTargets(
+        fixture.boardsFilePath,
+        laneDiagnosticsText,
+        0,
+        {
+          shouldCancel() {
+            referenceCancellationChecks += 1
+            return referenceCancellationChecks > 2
+          },
+        }
+      )
+      if (cancelledReferences !== null || !sawReferenceCancellationProbe) {
+        throw new Error(
+          `Expected TypeScript references to run under the cancellation probe. Got: ${JSON.stringify({
+            cancelledReferences,
+            referenceCancellationChecks,
+            sawReferenceCancellationProbe,
+          })}`
+        )
+      }
+    } finally {
+      service.getVirtualStateAtOffset = originalReferenceVirtualStateAtOffset
+      service.languageService.findReferences = originalFindReferences
     }
 
     const warmupResult = service.warmupDocument(fixture.boardsFilePath, laneDiagnosticsText)

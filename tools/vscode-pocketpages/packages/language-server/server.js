@@ -1408,7 +1408,7 @@ connection.onCompletionResolve((item) => {
   return result;
 });
 
-connection.onHover((params) => {
+connection.onHover((params, token) => {
   const startedAt = process.hrtime.bigint();
   const requestId = nextRequestId("hover");
   const document = documents.get(params.textDocument.uri);
@@ -1420,6 +1420,7 @@ connection.onHover((params) => {
     });
     return null;
   }
+  const requestedVersion = document.version;
 
   const documentContext = core.getDocumentContextByUri(params.textDocument.uri);
   if (!documentContext) {
@@ -1467,7 +1468,18 @@ connection.onHover((params) => {
     return null;
   }
 
-  const quickInfo = typeScriptFeatureService.provideHover(params);
+  const quickInfo = typeScriptFeatureService.provideHover(params, token);
+  if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
+    logRequestResult("hover", "abort", startedAt, {
+      req: requestId,
+      case: "stale-or-cancelled",
+      file: getRelativePathLabel(documentContext.filePath),
+      version: requestedVersion,
+      offset,
+      result: "none",
+    });
+    return null;
+  }
   if (!quickInfo || quickInfo.start === null || quickInfo.end === null) {
     logRequestResult("hover", "result", startedAt, {
       req: requestId,
@@ -1509,12 +1521,13 @@ connection.onHover((params) => {
   };
 });
 
-connection.onDefinition((params) => {
+connection.onDefinition((params, token) => {
   const startedAt = process.hrtime.bigint();
   const requestId = nextRequestId("def");
   const document = documents.get(params.textDocument.uri);
   const context = core.getDocumentContextByUri(params.textDocument.uri);
   const offset = document ? document.offsetAt(params.position) : null;
+  const requestedVersion = document ? document.version : null;
   params.__pocketpagesRequestId = requestId;
   const customTarget = customFeatureService.provideDefinition(params);
   if (customTarget) {
@@ -1531,7 +1544,18 @@ connection.onDefinition((params) => {
     return result;
   }
 
-  const typeScriptTarget = typeScriptFeatureService.provideDefinition(params);
+  const typeScriptTarget = typeScriptFeatureService.provideDefinition(params, token);
+  if (document && shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
+    logRequestResult("definition", "abort", startedAt, {
+      req: requestId,
+      case: "stale-or-cancelled",
+      file: context ? getRelativePathLabel(context.filePath) : null,
+      version: requestedVersion,
+      offset,
+      result: "none",
+    });
+    return null;
+  }
   const result = toLocation(typeScriptTarget);
   logRequestResult("definition", "result", startedAt, {
     req: requestId,
@@ -1547,7 +1571,7 @@ connection.onDefinition((params) => {
   return result;
 });
 
-connection.onReferences((params) => {
+connection.onReferences((params, token) => {
   const startedAt = process.hrtime.bigint();
   const requestId = nextRequestId("ref");
   const document = documents.get(params.textDocument.uri);
@@ -1575,6 +1599,8 @@ connection.onReferences((params) => {
   }
 
   const offset = document.offsetAt(params.position);
+  const requestedVersion = document.version;
+  const shouldCancel = () => shouldAbortDocumentRequest(document.uri, requestedVersion, token);
   const includeDeclaration = !!(params.context && params.context.includeDeclaration);
   const isSchemaSupportOnlyDocument = isSchemaSupportOnlyHookScriptPath(context.filePath);
   if (isExcludedPocketPagesScriptPath(context.filePath)) {
@@ -1591,7 +1617,21 @@ connection.onReferences((params) => {
     return null;
   }
 
-  const customReferences = customFeatureService.provideReferences(params);
+  const customReferences = customFeatureService.provideReferences(params, { shouldCancel });
+  if (shouldCancel()) {
+    logRequestResult("references", "abort", startedAt, {
+      req: requestId,
+      case: "stale-or-cancelled",
+      file: getRelativePathLabel(context.filePath),
+      version: requestedVersion,
+      offset,
+      includeDeclaration,
+      result: "none",
+      count: 0,
+      stage: "custom",
+    });
+    return null;
+  }
   if (customReferences) {
     const result = customReferences.map((reference) => {
       const targetUri = URI.file(reference.filePath).toString();
@@ -1637,6 +1677,20 @@ connection.onReferences((params) => {
       requestId,
       operation: "references",
     });
+    if (shouldCancel()) {
+      logRequestResult("references", "abort", startedAt, {
+        req: requestId,
+        case: "stale-or-cancelled",
+        file: getRelativePathLabel(context.filePath),
+        version: requestedVersion,
+        offset,
+        includeDeclaration,
+        result: "none",
+        count: 0,
+        stage: "prepare",
+      });
+      return null;
+    }
     typeScriptReferenceResult = context.service.getTypeScriptReferenceTargets(
       context.filePath,
       document.getText(),
@@ -1644,8 +1698,23 @@ connection.onReferences((params) => {
       {
         includeDeclaration,
         requirePreparedVirtualState: true,
+        shouldCancel,
       }
     );
+    if (shouldCancel()) {
+      logRequestResult("references", "abort", startedAt, {
+        req: requestId,
+        case: "stale-or-cancelled",
+        file: getRelativePathLabel(context.filePath),
+        version: requestedVersion,
+        offset,
+        includeDeclaration,
+        result: "none",
+        count: 0,
+        stage: "ts",
+      });
+      return null;
+    }
   }
   const fileReferenceContext = context.service.getPrivateIncludeReferenceContext(context.filePath);
 
@@ -1698,7 +1767,22 @@ connection.onReferences((params) => {
   const fileReferences =
     context.service.getFileReferenceTargets(context.filePath, document.getText(), {
       includeDeclaration,
-  }) || [];
+      shouldCancel,
+    }) || [];
+  if (shouldCancel()) {
+    logRequestResult("references", "abort", startedAt, {
+      req: requestId,
+      case: "stale-or-cancelled",
+      file: getRelativePathLabel(context.filePath),
+      version: requestedVersion,
+      offset,
+      includeDeclaration,
+      result: "none",
+      count: 0,
+      stage: "file",
+    });
+    return null;
+  }
   if (!fileReferences.length) {
     logRequestResult("references", "result", startedAt, {
       req: requestId,
@@ -1759,14 +1843,27 @@ connection.onCodeAction((params) => {
   return result;
 });
 
-connection.onPrepareRename((params) => {
+connection.onPrepareRename((params, token) => {
   const startedAt = process.hrtime.bigint();
   const requestId = nextRequestId("ren");
   const document = documents.get(params.textDocument.uri);
   const context = core.getDocumentContextByUri(params.textDocument.uri);
   const offset = document ? document.offsetAt(params.position) : null;
+  const requestedVersion = document ? document.version : null;
+  const shouldCancel = () => !!(document && shouldAbortDocumentRequest(document.uri, requestedVersion, token));
   try {
-    const customResult = customFeatureService.providePrepareRename(params);
+    const customResult = customFeatureService.providePrepareRename(params, { shouldCancel });
+    if (shouldCancel()) {
+      logRequestResult("rename", "prepare-abort", startedAt, {
+        req: requestId,
+        case: "stale-or-cancelled",
+        file: context ? getRelativePathLabel(context.filePath) : null,
+        version: requestedVersion,
+        offset,
+        result: "none",
+      });
+      return null;
+    }
     if (customResult) {
       logRequestResult("rename", "prepare", startedAt, {
         req: requestId,
@@ -1780,7 +1877,18 @@ connection.onPrepareRename((params) => {
       return customResult;
     }
 
-    const typeScriptResult = typeScriptFeatureService.providePrepareRename(params);
+    const typeScriptResult = typeScriptFeatureService.providePrepareRename(params, token);
+    if (shouldCancel()) {
+      logRequestResult("rename", "prepare-abort", startedAt, {
+        req: requestId,
+        case: "stale-or-cancelled",
+        file: context ? getRelativePathLabel(context.filePath) : null,
+        version: requestedVersion,
+        offset,
+        result: "none",
+      });
+      return null;
+    }
     logRequestResult("rename", "prepare", startedAt, {
       req: requestId,
       case: "ts-prepare",
@@ -1804,14 +1912,28 @@ connection.onPrepareRename((params) => {
   }
 });
 
-connection.onRenameRequest((params) => {
+connection.onRenameRequest((params, token) => {
   const startedAt = process.hrtime.bigint();
   const requestId = nextRequestId("ren");
   const document = documents.get(params.textDocument.uri);
   const context = core.getDocumentContextByUri(params.textDocument.uri);
   const offset = document ? document.offsetAt(params.position) : null;
+  const requestedVersion = document ? document.version : null;
+  const shouldCancel = () => !!(document && shouldAbortDocumentRequest(document.uri, requestedVersion, token));
   try {
-    const customResult = customFeatureService.provideRename(params);
+    const customResult = customFeatureService.provideRename(params, { shouldCancel });
+    if (shouldCancel()) {
+      logRequestResult("rename", "abort", startedAt, {
+        req: requestId,
+        case: "stale-or-cancelled",
+        file: context ? getRelativePathLabel(context.filePath) : null,
+        version: requestedVersion,
+        offset,
+        newName: params.newName,
+        result: "none",
+      });
+      return null;
+    }
     if (customResult) {
       const stats = workspaceEditStats(customResult);
       logRequestResult("rename", "edits", startedAt, {
@@ -1828,7 +1950,19 @@ connection.onRenameRequest((params) => {
       return customResult;
     }
 
-    const typeScriptResult = typeScriptFeatureService.provideRename(params);
+    const typeScriptResult = typeScriptFeatureService.provideRename(params, token);
+    if (shouldCancel()) {
+      logRequestResult("rename", "abort", startedAt, {
+        req: requestId,
+        case: "stale-or-cancelled",
+        file: context ? getRelativePathLabel(context.filePath) : null,
+        version: requestedVersion,
+        offset,
+        newName: params.newName,
+        result: "none",
+      });
+      return null;
+    }
     const stats = workspaceEditStats(typeScriptResult);
     logRequestResult("rename", "edits", startedAt, {
       req: requestId,
@@ -1982,10 +2116,21 @@ connection.onDocumentSymbol((params) => {
   return result;
 });
 
-connection.onWorkspaceSymbol((params) => {
+connection.onWorkspaceSymbol((params, token) => {
   const startedAt = process.hrtime.bigint();
   const requestId = nextRequestId("wsym");
-  const result = structureFeatureService.provideWorkspaceSymbols(params);
+  const shouldCancel = () => isCancellationRequested(token);
+  const result = structureFeatureService.provideWorkspaceSymbols(params, { shouldCancel });
+  if (shouldCancel()) {
+    logRequestResult("symbols", "workspace-abort", startedAt, {
+      req: requestId,
+      case: "stale-or-cancelled",
+      query: params && params.query,
+      count: 0,
+      result: "none",
+    }, "structure");
+    return [];
+  }
   logRequestResult("symbols", "workspace", startedAt, {
     req: requestId,
     case: "workspace-symbols",

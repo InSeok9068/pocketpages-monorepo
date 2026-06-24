@@ -289,13 +289,14 @@ function createTypeScriptFeatureService(context) {
       return item;
     },
 
-    provideHover(params) {
+    provideHover(params, token) {
       const requestContext = getDocumentRequestContext(params);
       if (!requestContext) {
         return null;
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      const requestedVersion = document.version;
       if (isTypeScriptFeatureBlockedDocument(documentContext)) {
         return null;
       }
@@ -312,21 +313,29 @@ function createTypeScriptFeatureService(context) {
           skipStaticRefresh: true,
         });
       }
-      return documentContext.service.getQuickInfo(
+      if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
+        return null;
+      }
+      const quickInfo = documentContext.service.getQuickInfo(
         documentContext.filePath,
         documentText,
         offset,
-        { requirePreparedVirtualState: true }
+        {
+          requirePreparedVirtualState: true,
+          shouldCancel: () => shouldAbortDocumentRequest(document.uri, requestedVersion, token),
+        }
       );
+      return shouldAbortDocumentRequest(document.uri, requestedVersion, token) ? null : quickInfo;
     },
 
-    provideDefinition(params) {
+    provideDefinition(params, token) {
       const requestContext = getDocumentRequestContext(params);
       if (!requestContext) {
         return null;
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      const requestedVersion = document.version;
       const requestId =
         params.__pocketpagesRequestId ||
         (typeof createRequestId === "function" ? createRequestId("def") : null);
@@ -347,21 +356,29 @@ function createTypeScriptFeatureService(context) {
           skipStaticRefresh: true,
         });
       }
-      return documentContext.service.getTypeScriptDefinitionTarget(
+      if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
+        return null;
+      }
+      const target = documentContext.service.getTypeScriptDefinitionTarget(
         documentContext.filePath,
         documentText,
         offset,
-        { requirePreparedVirtualState: true }
+        {
+          requirePreparedVirtualState: true,
+          shouldCancel: () => shouldAbortDocumentRequest(document.uri, requestedVersion, token),
+        }
       );
+      return shouldAbortDocumentRequest(document.uri, requestedVersion, token) ? null : target;
     },
 
-    provideReferences(params) {
+    provideReferences(params, token) {
       const requestContext = getDocumentRequestContext(params);
       if (!requestContext) {
         return null;
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      const requestedVersion = document.version;
       if (isTypeScriptFeatureBlockedDocument(documentContext)) {
         return null;
       }
@@ -373,6 +390,9 @@ function createTypeScriptFeatureService(context) {
       if (typeof ensureDocumentPrepared === "function") {
         ensureDocumentPrepared(document.uri);
       }
+      if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
+        return null;
+      }
       const referenceResult = documentContext.service.getTypeScriptReferenceTargets(
         documentContext.filePath,
         documentText,
@@ -380,8 +400,12 @@ function createTypeScriptFeatureService(context) {
         {
           includeDeclaration: !!(params.context && params.context.includeDeclaration),
           requirePreparedVirtualState: true,
+          shouldCancel: () => shouldAbortDocumentRequest(document.uri, requestedVersion, token),
         }
       );
+      if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
+        return null;
+      }
       const references = referenceResult ? referenceResult.locations : null;
       if (!references || !references.length) {
         return null;
@@ -404,13 +428,14 @@ function createTypeScriptFeatureService(context) {
       });
     },
 
-    providePrepareRename(params) {
+    providePrepareRename(params, token) {
       const requestContext = getDocumentRequestContext(params);
       if (!requestContext) {
         return null;
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      const requestedVersion = document.version;
       if (isTypeScriptFeatureBlockedDocument(documentContext)) {
         return null;
       }
@@ -422,12 +447,21 @@ function createTypeScriptFeatureService(context) {
       if (typeof ensureDocumentPrepared === "function") {
         ensureDocumentPrepared(document.uri);
       }
+      if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
+        return null;
+      }
       const renameInfo = documentContext.service.getTypeScriptRenameInfo(
         documentContext.filePath,
         documentText,
         offset,
-        { requirePreparedVirtualState: true }
+        {
+          requirePreparedVirtualState: true,
+          shouldCancel: () => shouldAbortDocumentRequest(document.uri, requestedVersion, token),
+        }
       );
+      if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
+        return null;
+      }
       if (!renameInfo) {
         return null;
       }
@@ -441,13 +475,14 @@ function createTypeScriptFeatureService(context) {
       };
     },
 
-    provideRename(params) {
+    provideRename(params, token) {
       const requestContext = getDocumentRequestContext(params);
       if (!requestContext) {
         return null;
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
+      const requestedVersion = document.version;
       if (isTypeScriptFeatureBlockedDocument(documentContext)) {
         return null;
       }
@@ -459,13 +494,22 @@ function createTypeScriptFeatureService(context) {
       if (typeof ensureDocumentPrepared === "function") {
         ensureDocumentPrepared(document.uri);
       }
+      if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
+        return null;
+      }
       const renameResult = documentContext.service.getTypeScriptRenameEdits(
         documentContext.filePath,
         documentText,
         offset,
         params.newName,
-        { requirePreparedVirtualState: true }
+        {
+          requirePreparedVirtualState: true,
+          shouldCancel: () => shouldAbortDocumentRequest(document.uri, requestedVersion, token),
+        }
       );
+      if (shouldAbortDocumentRequest(document.uri, requestedVersion, token)) {
+        return null;
+      }
       if (!renameResult) {
         return null;
       }

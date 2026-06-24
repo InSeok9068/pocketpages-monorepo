@@ -3262,6 +3262,37 @@ class ProjectLanguageService {
     return state.lastResult;
   }
 
+  /**
+   * 요청 취소 옵션을 확인합니다.
+   * @param {{ shouldCancel?: () => boolean }} options 요청 옵션
+   * @returns {boolean} 취소 여부
+   */
+  shouldCancelOperation(options = {}) {
+    return !!(options && typeof options.shouldCancel === "function" && options.shouldCancel());
+  }
+
+  /**
+   * TypeScript 호출에 취소 probe를 연결합니다.
+   * @param {{ shouldCancel?: () => boolean }} options 요청 옵션
+   * @param {() => any} fn 실행할 작업
+   * @param {any} fallback 취소 시 반환값
+   * @returns {any} 작업 결과
+   */
+  runCancellableTypeScriptOperation(options = {}, fn, fallback = null) {
+    const shouldCancel =
+      options && typeof options.shouldCancel === "function"
+        ? options.shouldCancel
+        : null;
+    try {
+      return this.runWithCancellationProbe(shouldCancel, () => fn());
+    } catch (error) {
+      if (isOperationCanceledException(error)) {
+        return fallback;
+      }
+      throw error;
+    }
+  }
+
   upsertDocumentSnapshot(filePath, text, options = {}) {
     return this.documentSnapshotManager.upsertSourceDocument(filePath, text, options);
   }
@@ -5891,41 +5922,51 @@ class ProjectLanguageService {
   }
 
   getTypeScriptDefinitionTarget(filePath, documentText, offset, options = {}) {
-    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset, {
-      preferTemplateDocument: true,
-      requirePreparedVirtualState: options.requirePreparedVirtualState === true,
-    });
-    if (!virtualState) {
-      return null;
-    }
-
-    const definitions =
-      this.languageService.getDefinitionAtPosition(virtualState.virtual.fileName, virtualState.virtualOffset) || [];
-
-    if (!definitions.length) {
-      return null;
-    }
-
-    const currentFilePath = normalizePath(filePath);
-    const rankedDefinitions = definitions.slice().sort((left, right) => {
-      const leftIsCurrent = normalizePath(left.fileName) === currentFilePath ? 0 : 1;
-      const rightIsCurrent = normalizePath(right.fileName) === currentFilePath ? 0 : 1;
-
-      if (leftIsCurrent !== rightIsCurrent) {
-        return leftIsCurrent - rightIsCurrent;
+    return this.runCancellableTypeScriptOperation(options, () => {
+      if (this.shouldCancelOperation(options)) {
+        return null;
       }
 
-      return left.textSpan.start - right.textSpan.start;
-    });
-
-    for (const definition of rankedDefinitions) {
-      const target = this.mapTypeScriptDefinitionToTarget(filePath, documentText, definition);
-      if (target) {
-        return target;
+      const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset, {
+        preferTemplateDocument: true,
+        requirePreparedVirtualState: options.requirePreparedVirtualState === true,
+      });
+      if (!virtualState || this.shouldCancelOperation(options)) {
+        return null;
       }
-    }
 
-    return null;
+      const definitions =
+        this.languageService.getDefinitionAtPosition(virtualState.virtual.fileName, virtualState.virtualOffset) || [];
+
+      if (!definitions.length || this.shouldCancelOperation(options)) {
+        return null;
+      }
+
+      const currentFilePath = normalizePath(filePath);
+      const rankedDefinitions = definitions.slice().sort((left, right) => {
+        const leftIsCurrent = normalizePath(left.fileName) === currentFilePath ? 0 : 1;
+        const rightIsCurrent = normalizePath(right.fileName) === currentFilePath ? 0 : 1;
+
+        if (leftIsCurrent !== rightIsCurrent) {
+          return leftIsCurrent - rightIsCurrent;
+        }
+
+        return left.textSpan.start - right.textSpan.start;
+      });
+
+      for (const definition of rankedDefinitions) {
+        if (this.shouldCancelOperation(options)) {
+          return null;
+        }
+
+        const target = this.mapTypeScriptDefinitionToTarget(filePath, documentText, definition);
+        if (target) {
+          return target;
+        }
+      }
+
+      return null;
+    });
   }
 
   mapTypeScriptReferenceToLocation(referenceEntry, isDefinition = false) {
@@ -5962,70 +6003,84 @@ class ProjectLanguageService {
   }
 
   getTypeScriptReferenceTargets(filePath, documentText, offset, options = {}) {
-    const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset, {
-      preferTemplateDocument: true,
-      requirePreparedVirtualState: options.requirePreparedVirtualState === true,
+    return this.runCancellableTypeScriptOperation(options, () => {
+      if (this.shouldCancelOperation(options)) {
+        return null;
+      }
+
+      const virtualState = this.getVirtualStateAtOffset(filePath, documentText, offset, {
+        preferTemplateDocument: true,
+        requirePreparedVirtualState: options.requirePreparedVirtualState === true,
+      });
+      if (!virtualState || this.shouldCancelOperation(options)) {
+        return null;
+      }
+
+      const referencedSymbols = this.languageService.findReferences(virtualState.virtual.fileName, virtualState.virtualOffset) || [];
+      if (!referencedSymbols.length || this.shouldCancelOperation(options)) {
+        return null;
+      }
+
+      const uniqueLocations = new Map();
+      let hasMappedDefinition = false;
+      let hasExternalReference = false;
+      for (const referencedSymbol of referencedSymbols) {
+        if (this.shouldCancelOperation(options)) {
+          return null;
+        }
+
+        const definition = this.mapTypeScriptReferenceToLocation(referencedSymbol.definition, true);
+        const definitionKey = definition ? `${definition.filePath}:${definition.start}:${definition.end}` : null;
+        if (definition) {
+          hasMappedDefinition = true;
+          if (normalizePath(definition.filePath) !== normalizePath(filePath)) {
+            hasExternalReference = true;
+          }
+
+          if (options.includeDeclaration && !uniqueLocations.has(definitionKey)) {
+            uniqueLocations.set(definitionKey, {
+              filePath: definition.filePath,
+              start: definition.start,
+              end: definition.end,
+            });
+          }
+        }
+
+        for (const reference of referencedSymbol.references || []) {
+          if (this.shouldCancelOperation(options)) {
+            return null;
+          }
+
+          const location = this.mapTypeScriptReferenceToLocation(reference, false);
+          if (!location) {
+            continue;
+          }
+
+          if (normalizePath(location.filePath) !== normalizePath(filePath)) {
+            hasExternalReference = true;
+          }
+
+          const locationKey = `${location.filePath}:${location.start}:${location.end}`;
+          if (locationKey === definitionKey && !options.includeDeclaration) {
+            continue;
+          }
+
+          if (!uniqueLocations.has(locationKey)) {
+            uniqueLocations.set(locationKey, {
+              filePath: location.filePath,
+              start: location.start,
+              end: location.end,
+            });
+          }
+        }
+      }
+
+      return {
+        locations: [...uniqueLocations.values()],
+        hasMappedDefinition,
+        hasExternalReference,
+      };
     });
-    if (!virtualState) {
-      return null;
-    }
-
-    const referencedSymbols = this.languageService.findReferences(virtualState.virtual.fileName, virtualState.virtualOffset) || [];
-    if (!referencedSymbols.length) {
-      return null;
-    }
-
-    const uniqueLocations = new Map();
-    let hasMappedDefinition = false;
-    let hasExternalReference = false;
-    for (const referencedSymbol of referencedSymbols) {
-      const definition = this.mapTypeScriptReferenceToLocation(referencedSymbol.definition, true);
-      const definitionKey = definition ? `${definition.filePath}:${definition.start}:${definition.end}` : null;
-      if (definition) {
-        hasMappedDefinition = true;
-        if (normalizePath(definition.filePath) !== normalizePath(filePath)) {
-          hasExternalReference = true;
-        }
-
-        if (options.includeDeclaration && !uniqueLocations.has(definitionKey)) {
-          uniqueLocations.set(definitionKey, {
-            filePath: definition.filePath,
-            start: definition.start,
-            end: definition.end,
-          });
-        }
-      }
-
-      for (const reference of referencedSymbol.references || []) {
-        const location = this.mapTypeScriptReferenceToLocation(reference, false);
-        if (!location) {
-          continue;
-        }
-
-        if (normalizePath(location.filePath) !== normalizePath(filePath)) {
-          hasExternalReference = true;
-        }
-
-        const locationKey = `${location.filePath}:${location.start}:${location.end}`;
-        if (locationKey === definitionKey && !options.includeDeclaration) {
-          continue;
-        }
-
-        if (!uniqueLocations.has(locationKey)) {
-          uniqueLocations.set(locationKey, {
-            filePath: location.filePath,
-            start: location.start,
-            end: location.end,
-          });
-        }
-      }
-    }
-
-    return {
-      locations: [...uniqueLocations.values()],
-      hasMappedDefinition,
-      hasExternalReference,
-    };
   }
 
   getVirtualStateAtOffset(filePath, documentText, offset, options = {}) {
@@ -6267,46 +6322,60 @@ class ProjectLanguageService {
     return null;
   }
 
-  getModuleRenameLocations(moduleDefinitionInfo, overrides = {}) {
-    if (!moduleDefinitionInfo || !moduleDefinitionInfo.filePath) {
+  getModuleRenameLocations(moduleDefinitionInfo, overrides = {}, options = {}) {
+    return this.runCancellableTypeScriptOperation(options, () => {
+      if (!moduleDefinitionInfo || !moduleDefinitionInfo.filePath || this.shouldCancelOperation(options)) {
+        return {
+          canRename: false,
+          localizedErrorMessage: null,
+          locations: [],
+        };
+      }
+
+      const overrideText = overrides[normalizePath(moduleDefinitionInfo.filePath)];
+      if (typeof overrideText === "string") {
+        this.upsertStaticFileText(moduleDefinitionInfo.filePath, overrideText);
+      } else {
+        this.ensureStaticFile(moduleDefinitionInfo.filePath);
+      }
+
+      if (this.shouldCancelOperation(options)) {
+        return {
+          canRename: false,
+          localizedErrorMessage: null,
+          locations: [],
+        };
+      }
+
+      const renameInfo = this.languageService.getRenameInfo(moduleDefinitionInfo.filePath, moduleDefinitionInfo.start, {
+        allowRenameOfImportPath: false,
+      });
+      if (!renameInfo || !renameInfo.canRename || this.shouldCancelOperation(options)) {
+        return {
+          canRename: false,
+          localizedErrorMessage: renameInfo && renameInfo.localizedErrorMessage,
+          locations: [],
+        };
+      }
+
+      const locations =
+        this.languageService.findRenameLocations(
+          moduleDefinitionInfo.filePath,
+          moduleDefinitionInfo.start,
+          false,
+          false,
+          {}
+        ) || [];
+
       return {
-        canRename: false,
-        localizedErrorMessage: null,
-        locations: [],
+        canRename: true,
+        locations,
       };
-    }
-
-    const overrideText = overrides[normalizePath(moduleDefinitionInfo.filePath)];
-    if (typeof overrideText === "string") {
-      this.upsertStaticFileText(moduleDefinitionInfo.filePath, overrideText);
-    } else {
-      this.ensureStaticFile(moduleDefinitionInfo.filePath);
-    }
-
-    const renameInfo = this.languageService.getRenameInfo(moduleDefinitionInfo.filePath, moduleDefinitionInfo.start, {
-      allowRenameOfImportPath: false,
+    }, {
+      canRename: false,
+      localizedErrorMessage: null,
+      locations: [],
     });
-    if (!renameInfo || !renameInfo.canRename) {
-      return {
-        canRename: false,
-        localizedErrorMessage: renameInfo && renameInfo.localizedErrorMessage,
-        locations: [],
-      };
-    }
-
-    const locations =
-      this.languageService.findRenameLocations(
-        moduleDefinitionInfo.filePath,
-        moduleDefinitionInfo.start,
-        false,
-        false,
-        {}
-      ) || [];
-
-    return {
-      canRename: true,
-      locations,
-    };
   }
 
   resolvePathContextTarget(filePath, pathContext) {
@@ -6510,16 +6579,24 @@ class ProjectLanguageService {
     };
   }
 
-  collectPathReferenceLocations(pathKind, targetFilePath, overrides = {}) {
+  collectPathReferenceLocations(pathKind, targetFilePath, overrides = {}, options = {}) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
     const uniqueLocations = new Map();
 
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      if (this.shouldCancelOperation(options)) {
+        return [];
+      }
+
       const codeFilePath = normalizePath(entry.filePath);
       const documentText =
         Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
 
       for (const pathContext of collectPathContexts(documentText, { filePath: codeFilePath })) {
+        if (this.shouldCancelOperation(options)) {
+          return [];
+        }
+
         if (pathContext.kind !== pathKind) {
           continue;
         }
@@ -6543,16 +6620,24 @@ class ProjectLanguageService {
     return [...uniqueLocations.values()];
   }
 
-  collectRequireReferenceLocations(targetFilePath, overrides = {}) {
+  collectRequireReferenceLocations(targetFilePath, overrides = {}, options = {}) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
     const uniqueLocations = new Map();
 
     for (const entry of this.getRequireCallerCodeFiles()) {
+      if (this.shouldCancelOperation(options)) {
+        return [];
+      }
+
       const codeFilePath = normalizePath(entry.filePath);
       const documentText =
         Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
 
       for (const requireContext of collectStaticRequireCallContexts(documentText, { filePath: codeFilePath })) {
+        if (this.shouldCancelOperation(options)) {
+          return [];
+        }
+
         const resolvedTargetFilePath = this.projectIndex.resolveRequireTarget(codeFilePath, requireContext.value, requireContext);
         if (!resolvedTargetFilePath || normalizePath(resolvedTargetFilePath) !== normalizedTargetFilePath) {
           continue;
@@ -6591,7 +6676,7 @@ class ProjectLanguageService {
     return [...uniqueLocations.values()];
   }
 
-  getFileReferenceTargets(filePath, documentText, _options = {}) {
+  getFileReferenceTargets(filePath, documentText, options = {}) {
     const referenceQuery = this.getFileReferenceQuery(filePath);
     if (!referenceQuery) {
       return null;
@@ -6602,25 +6687,25 @@ class ProjectLanguageService {
     });
 
     if (referenceQuery.kind === "private-partial") {
-      return this.collectPathReferenceLocations("include-path", referenceQuery.targetFilePath, overrides);
+      return this.collectPathReferenceLocations("include-path", referenceQuery.targetFilePath, overrides, options);
     }
 
     if (referenceQuery.kind === "private-module") {
       return this.mergeReferenceLocations(
-        this.collectPathReferenceLocations("resolve-path", referenceQuery.targetFilePath, overrides),
-        this.collectRequireReferenceLocations(referenceQuery.targetFilePath, overrides)
+        this.collectPathReferenceLocations("resolve-path", referenceQuery.targetFilePath, overrides, options),
+        this.collectRequireReferenceLocations(referenceQuery.targetFilePath, overrides, options)
       );
     }
 
     if (referenceQuery.kind === "asset-file") {
       return this.mergeReferenceLocations(
-        this.collectPathReferenceLocations("asset-path", referenceQuery.targetFilePath, overrides),
-        this.collectPathReferenceLocations("route-path", referenceQuery.targetFilePath, overrides)
+        this.collectPathReferenceLocations("asset-path", referenceQuery.targetFilePath, overrides, options),
+        this.collectPathReferenceLocations("route-path", referenceQuery.targetFilePath, overrides, options)
       );
     }
 
     if (referenceQuery.kind === "route-file") {
-      return this.collectPathReferenceLocations("route-path", referenceQuery.targetFilePath, overrides);
+      return this.collectPathReferenceLocations("route-path", referenceQuery.targetFilePath, overrides, options);
     }
 
     return null;
@@ -6885,11 +6970,25 @@ class ProjectLanguageService {
     ];
   }
 
-  getWorkspaceSymbolEntries(query = "") {
+  getWorkspaceSymbolEntries(query = "", options = {}) {
+    if (this.shouldCancelOperation(options)) {
+      return [];
+    }
+
     const normalizedQuery = String(query || "").trim().toLowerCase();
     const uniqueEntries = new Map();
+    const graphState = this.projectIndex.getPagesGraphState();
+    if (this.shouldCancelOperation(options)) {
+      return [];
+    }
 
-    for (const entry of this.projectIndex.getPagesGraphState().allFiles) {
+    let visitedCount = 0;
+    for (const entry of graphState.allFiles) {
+      visitedCount += 1;
+      if (visitedCount % 32 === 0 && this.shouldCancelOperation(options)) {
+        return [];
+      }
+
       const symbolMetadata = this.getFileSymbolMetadata(entry.filePath);
       if (!symbolMetadata) {
         continue;
@@ -6924,6 +7023,10 @@ class ProjectLanguageService {
         selectionStart: 0,
         start: 0,
       });
+    }
+
+    if (this.shouldCancelOperation(options)) {
+      return [];
     }
 
     return [...uniqueEntries.values()].sort((left, right) => {
@@ -7806,11 +7909,15 @@ class ProjectLanguageService {
     return requestPath;
   }
 
-  collectResolvedModuleMemberUsageLocations(targetModuleFilePath, memberName, overrides = {}) {
+  collectResolvedModuleMemberUsageLocations(targetModuleFilePath, memberName, overrides = {}, options = {}) {
     const normalizedTargetFilePath = normalizePath(targetModuleFilePath);
     const uniqueLocations = new Map();
 
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      if (this.shouldCancelOperation(options)) {
+        return [];
+      }
+
       const codeFilePath = normalizePath(entry.filePath);
       const documentText =
         Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
@@ -7818,6 +7925,10 @@ class ProjectLanguageService {
       const contexts = collectResolvedModuleMemberContexts(analysisText);
 
       for (const context of contexts) {
+        if (this.shouldCancelOperation(options)) {
+          return [];
+        }
+
         if (context.memberName !== memberName) {
           continue;
         }
@@ -7846,6 +7957,10 @@ class ProjectLanguageService {
     const uniqueLocations = new Map();
 
     for (const entry of this.projectIndex.getPagesCodeFiles()) {
+      if (this.shouldCancelOperation(options)) {
+        return [];
+      }
+
       const codeFilePath = normalizePath(entry.filePath);
       const documentText =
         Object.prototype.hasOwnProperty.call(overrides, codeFilePath) ? overrides[codeFilePath] : this.getDocumentText(codeFilePath);
@@ -7853,6 +7968,10 @@ class ProjectLanguageService {
       const contexts = collectRequiredModuleMemberContexts(analysisText);
 
       for (const context of contexts) {
+        if (this.shouldCancelOperation(options)) {
+          return [];
+        }
+
         if (context.memberName !== memberName) {
           continue;
         }
@@ -7884,9 +8003,10 @@ class ProjectLanguageService {
     return [...uniqueLocations.values()];
   }
 
-  collectRequiredModuleMemberUsageEdits(targetModuleFilePath, memberName, newName, overrides = {}) {
+  collectRequiredModuleMemberUsageEdits(targetModuleFilePath, memberName, newName, overrides = {}, options = {}) {
     return this.collectRequiredModuleMemberUsageLocations(targetModuleFilePath, memberName, overrides, {
       includeRenameMetadata: true,
+      shouldCancel: options.shouldCancel,
     })
       .filter((location) => location.canRenameModuleMember !== false)
       .map((location) => ({
@@ -7897,8 +8017,8 @@ class ProjectLanguageService {
       }));
   }
 
-  collectResolvedModuleMemberUsageEdits(targetModuleFilePath, memberName, newName, overrides = {}) {
-    return this.collectResolvedModuleMemberUsageLocations(targetModuleFilePath, memberName, overrides).map((location) => ({
+  collectResolvedModuleMemberUsageEdits(targetModuleFilePath, memberName, newName, overrides = {}, options = {}) {
+    return this.collectResolvedModuleMemberUsageLocations(targetModuleFilePath, memberName, overrides, options).map((location) => ({
       ...location,
       newText: newName,
     }));
@@ -7936,7 +8056,9 @@ class ProjectLanguageService {
 
   getQuickInfo(filePath, documentText, offset, options = {}) {
     return runStatEpoch(() =>
-      completionFeatureHandlers.getQuickInfo(this, filePath, documentText, offset, options)
+      this.runCancellableTypeScriptOperation(options, () =>
+        completionFeatureHandlers.getQuickInfo(this, filePath, documentText, offset, options)
+      )
     );
   }
 
@@ -8953,50 +9075,60 @@ class ProjectLanguageService {
     return navigationFeatureHandlers.getCustomDefinitionTarget(this, filePath, documentText, offset);
   }
 
-  getRenameInfo(filePath, documentText, offset) {
+  getRenameInfo(filePath, documentText, offset, options = {}) {
     return runStatEpoch(() =>
-      navigationFeatureHandlers.getRenameInfo(this, filePath, documentText, offset)
+      navigationFeatureHandlers.getRenameInfo(this, filePath, documentText, offset, options)
     );
   }
 
-  getCustomRenameInfo(filePath, documentText, offset) {
-    return navigationFeatureHandlers.getCustomRenameInfo(this, filePath, documentText, offset);
+  getCustomRenameInfo(filePath, documentText, offset, options = {}) {
+    return navigationFeatureHandlers.getCustomRenameInfo(this, filePath, documentText, offset, options);
   }
 
   getTypeScriptRenameInfo(filePath, documentText, offset, options = {}) {
-    return navigationFeatureHandlers.getTypeScriptRenameInfo(this, filePath, documentText, offset, options);
+    return runStatEpoch(() =>
+      this.runCancellableTypeScriptOperation(options, () =>
+        navigationFeatureHandlers.getTypeScriptRenameInfo(this, filePath, documentText, offset, options)
+      )
+    );
   }
 
-  getRenameEdits(filePath, documentText, offset, newName) {
+  getRenameEdits(filePath, documentText, offset, newName, options = {}) {
     return runStatEpoch(() =>
       navigationFeatureHandlers.getRenameEdits(
         this,
         filePath,
         documentText,
         offset,
-        newName
+        newName,
+        options
       )
     );
   }
 
-  getCustomRenameEdits(filePath, documentText, offset, newName) {
+  getCustomRenameEdits(filePath, documentText, offset, newName, options = {}) {
     return navigationFeatureHandlers.getCustomRenameEdits(
-      this,
-      filePath,
-      documentText,
-      offset,
-      newName
-    );
-  }
-
-  getTypeScriptRenameEdits(filePath, documentText, offset, newName, options = {}) {
-    return navigationFeatureHandlers.getTypeScriptRenameEdits(
       this,
       filePath,
       documentText,
       offset,
       newName,
       options
+    );
+  }
+
+  getTypeScriptRenameEdits(filePath, documentText, offset, newName, options = {}) {
+    return runStatEpoch(() =>
+      this.runCancellableTypeScriptOperation(options, () =>
+        navigationFeatureHandlers.getTypeScriptRenameEdits(
+          this,
+          filePath,
+          documentText,
+          offset,
+          newName,
+          options
+        )
+      )
     );
   }
 
