@@ -12,37 +12,6 @@
 - 관측되지 않은 위험은 추측이라고 표시한다.
 - 이전 에이전트의 결론이나 README 문구도 반드시 코드와 테스트로 재검증한다.
 
-## 프레임워크 문서 참조 기준
-
-LSP 동작이 PocketPages / PocketBase 의미론과 맞는지 판단할 때는 다음 로컬 문서를 상위 근거로 참조한다.
-
-1. `.docs/pocketpages/*`
-2. `.docs/pocketbase/*`
-3. `apps/<service>/pb_schema.json`
-4. `apps/<service>/pb_data/types.d.ts`
-5. `apps/<service>/types.d.ts`
-
-단, 위 문서는 현재 LSP 지원 범위 안에 있는 기능의 의미론을 확인하기 위한 근거로만 사용한다. 문서에 존재하는 모든 프레임워크 기능을 LSP가 반드시 지원해야 한다고 판단하지 않는다.
-
-문서를 전부 선행 정독하지 말고, routing, middleware/load, params/query, redirect/flash, `_private`, include/resolve/asset, schema field, PocketBase date 처리처럼 검토 중인 기능의 의미론이 필요한 지점에서 관련 문서를 선별적으로 확인한다.
-
-README, 테스트, 구현, 프레임워크 문서가 서로 다르면 어느 한쪽을 바로 정답으로 가정하지 말고, docs-code contract mismatch로 분리해서 보고한다.
-
-## 의도적 지원 제외 범위
-
-`.docs/pocketpages/*`, `.docs/pocketbase/*` 문서에는 현재 VS Code LSP가 의도적으로 지원하지 않는 기능도 포함될 수 있다.
-
-Markdown 지원은 현재 LSP 범위에서 의도적으로 제외되어 있다. 따라서 Markdown / MD / MDX 관련 completion, diagnostics, hover, definition, references, rename, semantic tokens, route discovery, file watching 누락을 버그나 미구현 이슈로 보고하지 않는다.
-
-현재 LSP 지원 범위는 다음으로 제한한다.
-
-- PocketPages app root 아래의 `.ejs` 파일
-- `pb_hooks/pages/**/*.js`, `**/*.cjs`, `**/*.mjs`
-- `pb_hooks/**/*.js`, `**/*.cjs`, `**/*.mjs` 중 schema-only hook script
-- 위 지원 파일들이 참조하는 PocketBase schema/type 파일
-
-Markdown 관련 동작은 구현 코드, README, package manifest, 테스트가 명시적으로 Markdown 지원을 주장하는 경우에만 이슈로 판단한다.
-
 ## 1. 조사 범위 확정
 
 먼저 파일 목록을 만든다.
