@@ -921,7 +921,7 @@ function assertClientContracts(repoRoot) {
   )
   assertMatches(
     clientSource,
-    /function isManagedEjsDocument\(document\)[\s\S]*!isPagesAssetPath\(document\.uri\.fsPath\)[\s\S]*findAppRoot\(document\.uri\.fsPath\)/,
+    /function isManagedEjsDocument\(document\)[\s\S]*!isPagesAssetPath\(document\.uri\.fsPath\)[\s\S]*(?:findAppRoot|getCachedAppRoot)\(document\.uri\.fsPath\)/,
     'Expected the PocketPages client to keep public asset .ejs files out of managed LSP startup/status checks.'
   )
   if (clientSource.includes('return await activateLsp(context);')) {

@@ -55,6 +55,7 @@ const SERVER_LOG_SCOPES = [
   "probe",
 ];
 const LOG_LEVELS = ["info", "warn", "error", "perf"];
+const SERVER_TEMPLATE_BOUNDARY_DEBOUNCE_MS = 100;
 
 let client = null;
 let lspStatusController = null;
@@ -67,6 +68,8 @@ let lspRuntimeDisposables = [];
 const logSessionId = createLogSessionId();
 const logBuffer = createLogBuffer(DEBUG_BUNDLE_LOG_LIMIT);
 const saveReasons = new Map();
+const appRootCache = new Map();
+const pendingServerTemplateBoundaryUpdates = new Map();
 const LSP_UNEXPECTED_STOP_RESTART_COOLDOWN_MS = 10000;
 
 function padNumber(value, length) {
@@ -323,6 +326,21 @@ function normalizeFsPath(filePath) {
   return normalizedPath.replace(/^[A-Z]:/, (value) => value.toLowerCase());
 }
 
+function getCachedAppRoot(filePath) {
+  const cacheKey = normalizeFsPath(filePath);
+  if (appRootCache.has(cacheKey)) {
+    return appRootCache.get(cacheKey);
+  }
+
+  const appRoot = findAppRoot(filePath) || null;
+  appRootCache.set(cacheKey, appRoot);
+  return appRoot;
+}
+
+function clearAppRootCache() {
+  appRootCache.clear();
+}
+
 function isSameOrChildFsPath(parentPath, candidatePath) {
   const relativePath = path.relative(normalizeFsPath(parentPath), normalizeFsPath(candidatePath));
   return !relativePath || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
@@ -388,7 +406,7 @@ function isManagedRenameTargetPath(filePath) {
     return false;
   }
 
-  return !!findAppRoot(filePath);
+  return !!getCachedAppRoot(filePath);
 }
 
 function isManagedHookScriptDocument(document) {
@@ -405,7 +423,7 @@ function isManagedHookScriptDocument(document) {
     return false;
   }
 
-  return normalizeDocumentPath(filePath).includes("/pb_hooks/") && !!findAppRoot(filePath);
+  return normalizeDocumentPath(filePath).includes("/pb_hooks/") && !!getCachedAppRoot(filePath);
 }
 
 function hasPrivatePagesSegment(filePath) {
@@ -427,7 +445,7 @@ function isManagedEjsDocument(document) {
     && document.uri.scheme === "file"
     && document.uri.fsPath.endsWith(".ejs")
     && !isPagesAssetPath(document.uri.fsPath)
-    && !!findAppRoot(document.uri.fsPath);
+    && !!getCachedAppRoot(document.uri.fsPath);
 }
 
 function isManagedLspDocument(document) {
@@ -632,7 +650,7 @@ function updateServerTemplateBoundaries(editor, decoration) {
   if (
     document.uri.scheme !== "file" ||
     !document.uri.fsPath.endsWith(".ejs") ||
-    !findAppRoot(document.uri.fsPath)
+    !getCachedAppRoot(document.uri.fsPath)
   ) {
     editor.setDecorations(decoration, []);
     return;
@@ -647,6 +665,28 @@ function updateServerTemplateBoundaries(editor, decoration) {
   editor.setDecorations(decoration, boundaryRanges);
 }
 
+function clearPendingServerTemplateBoundaryUpdate(documentUri) {
+  const documentKey = typeof documentUri === "string" ? documentUri : documentUri && documentUri.toString();
+  if (!documentKey) {
+    return;
+  }
+
+  const timer = pendingServerTemplateBoundaryUpdates.get(documentKey);
+  if (!timer) {
+    return;
+  }
+
+  clearTimeout(timer);
+  pendingServerTemplateBoundaryUpdates.delete(documentKey);
+}
+
+function clearPendingServerTemplateBoundaryUpdates() {
+  for (const timer of pendingServerTemplateBoundaryUpdates.values()) {
+    clearTimeout(timer);
+  }
+  pendingServerTemplateBoundaryUpdates.clear();
+}
+
 function updateServerTemplateBoundariesForDocument(document, decoration) {
   for (const editor of vscode.window.visibleTextEditors) {
     if (editor.document.uri.toString() !== document.uri.toString()) {
@@ -655,6 +695,49 @@ function updateServerTemplateBoundariesForDocument(document, decoration) {
 
     updateServerTemplateBoundaries(editor, decoration);
   }
+}
+
+function scheduleServerTemplateBoundaryUpdateForDocument(document, decoration) {
+  if (
+    !document ||
+    !document.uri ||
+    document.uri.scheme !== "file" ||
+    !document.uri.fsPath.endsWith(".ejs")
+  ) {
+    return;
+  }
+
+  const documentKey = document.uri.toString();
+  clearPendingServerTemplateBoundaryUpdate(documentKey);
+
+  const timer = setTimeout(() => {
+    pendingServerTemplateBoundaryUpdates.delete(documentKey);
+    for (const editor of vscode.window.visibleTextEditors) {
+      if (editor.document.uri.toString() !== documentKey) {
+        continue;
+      }
+      updateServerTemplateBoundaries(editor, decoration);
+    }
+  }, SERVER_TEMPLATE_BOUNDARY_DEBOUNCE_MS);
+
+  pendingServerTemplateBoundaryUpdates.set(documentKey, timer);
+}
+
+function createAppRootCacheInvalidationDisposables(watchers) {
+  const disposables = [];
+  for (const watcher of watchers) {
+    if (!watcher) {
+      continue;
+    }
+
+    if (typeof watcher.onDidCreate === "function") {
+      disposables.push(watcher.onDidCreate(clearAppRootCache));
+    }
+    if (typeof watcher.onDidDelete === "function") {
+      disposables.push(watcher.onDidDelete(clearAppRootCache));
+    }
+  }
+  return disposables;
 }
 
 async function showFileReferences({ logger, fileUri }) {
@@ -1215,6 +1298,7 @@ async function activateLsp(context) {
   );
 
   lspRuntimeDisposables.push(...synchronizedFileWatchers);
+  lspRuntimeDisposables.push(...createAppRootCacheInvalidationDisposables(synchronizedFileWatchers));
   logger.info("lsp", "start", {
     extensionVersion: getExtensionVersion(context),
     vscodeVersion: vscode.version,
@@ -1247,6 +1331,8 @@ async function activateLsp(context) {
   });
 
   lspRuntimeDisposables.push(
+    { dispose: clearPendingServerTemplateBoundaryUpdates },
+    { dispose: clearAppRootCache },
     serverTemplateBoundaryDecoration,
     vscode.workspace.onDidOpenTextDocument((document) => {
       if (isManagedLspDocument(document)) {
@@ -1266,10 +1352,11 @@ async function activateLsp(context) {
           changes: event.contentChanges.length,
         });
       }
-      updateServerTemplateBoundariesForDocument(event.document, serverTemplateBoundaryDecoration);
+      scheduleServerTemplateBoundaryUpdateForDocument(event.document, serverTemplateBoundaryDecoration);
     }),
     vscode.workspace.onDidCloseTextDocument((document) => {
       saveReasons.delete(document.uri.toString());
+      clearPendingServerTemplateBoundaryUpdate(document.uri);
       if (isManagedLspDocument(document)) {
         logger.info("document", "close", {
           file: vscode.workspace.asRelativePath(document.uri.fsPath, false),
