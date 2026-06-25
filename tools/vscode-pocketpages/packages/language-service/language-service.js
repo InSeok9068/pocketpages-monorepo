@@ -3431,6 +3431,8 @@ class ProjectLanguageService {
     const isPagesPath =
       normalizedFilePath === pagesRootPath ||
       normalizedFilePath.startsWith(`${pagesRootPath}/`);
+    const isSchemaOnlyHookScript =
+      isSchemaSupportOnlyHookScriptFile(this.appRoot, normalizedFilePath);
     const isPageAssetCandidate =
       isPagesPath &&
       !this.projectIndex.isPagesCodeFile(normalizedFilePath) &&
@@ -3462,13 +3464,17 @@ class ProjectLanguageService {
       return "reset";
     }
 
-    let changed = isPagesPath;
-    const isStructureChange = isPagesPath && (changeType === "create" || changeType === "delete");
+    let changed = isPagesPath || isSchemaOnlyHookScript;
+    const isStructureChange =
+      (isPagesPath || isSchemaOnlyHookScript) &&
+      (changeType === "create" || changeType === "delete");
 
-    if (isStructureChange) {
-      this.projectIndex.invalidateStructureForFile(normalizedFilePath);
-    } else {
-      this.projectIndex.invalidateContentForFile(normalizedFilePath);
+    if (isPagesPath) {
+      if (isStructureChange) {
+        this.projectIndex.invalidateStructureForFile(normalizedFilePath);
+      } else {
+        this.projectIndex.invalidateContentForFile(normalizedFilePath);
+      }
     }
 
     if (this.documentSnapshotManager.deleteSourceDocument(normalizedFilePath)) {
@@ -6611,6 +6617,16 @@ class ProjectLanguageService {
       }
     }
 
+    if (isSchemaSupportOnlyHookScriptFile(this.appRoot, normalizedFilePath)) {
+      return {
+        kind: "hook-script-module",
+        targetFilePath: normalizedFilePath,
+        command: "pocketpagesServerScript.allFileReferences",
+        title: "PocketPages: All File References",
+        emptyMessage: "No require() callers found for this hook script.",
+      };
+    }
+
     const assetDescriptor = this.projectIndex.getAssetDescriptorByFilePath(normalizedFilePath);
     if (assetDescriptor) {
       return {
@@ -6770,6 +6786,10 @@ class ProjectLanguageService {
       );
     }
 
+    if (referenceQuery.kind === "hook-script-module") {
+      return this.collectRequireReferenceLocations(referenceQuery.targetFilePath, overrides, options);
+    }
+
     if (referenceQuery.kind === "asset-file") {
       return this.mergeReferenceLocations(
         this.collectPathReferenceLocations("asset-path", referenceQuery.targetFilePath, overrides, options),
@@ -6819,6 +6839,12 @@ class ProjectLanguageService {
         uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
       }
 
+      for (const edit of this.getRequireFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
+        uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+      }
+    }
+
+    if (referenceQuery.kind === "hook-script-module") {
       for (const edit of this.getRequireFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
         uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
       }

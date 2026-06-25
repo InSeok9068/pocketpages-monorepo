@@ -367,7 +367,14 @@ function isExcludedManagedPagesScriptPath(filePath) {
 
 function isManagedRenameTargetPath(filePath) {
   const normalizedPath = normalizeDocumentPath(filePath);
-  if (!normalizedPath.includes("/pb_hooks/pages/")) {
+  if (!normalizedPath.includes("/pb_hooks/")) {
+    return false;
+  }
+
+  if (
+    !normalizedPath.includes("/pb_hooks/pages/") &&
+    !/\.(js|cjs|mjs)$/i.test(normalizedPath)
+  ) {
     return false;
   }
 
@@ -1087,7 +1094,7 @@ async function activateLsp(context) {
     debug: { module: serverModule, transport: TransportKind.ipc },
   };
   const synchronizedFileWatchers = [
-    vscode.workspace.createFileSystemWatcher("**/pb_hooks/pages/**"),
+    vscode.workspace.createFileSystemWatcher("**/pb_hooks/**"),
     vscode.workspace.createFileSystemWatcher("**/pb_schema.json"),
     vscode.workspace.createFileSystemWatcher("**/pb_data/types.d.ts"),
     vscode.workspace.createFileSystemWatcher("**/pocketpages-globals.d.ts"),

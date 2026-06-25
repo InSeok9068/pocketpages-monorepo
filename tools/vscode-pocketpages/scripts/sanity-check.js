@@ -896,6 +896,11 @@ function assertClientContracts(repoRoot) {
   }
   assertMatches(
     clientSource,
+    /vscode\.workspace\.createFileSystemWatcher\("\*\*\/pb_hooks\/\*\*"\)/,
+    'Expected the PocketPages client to watch all pb_hooks files and let the server classify managed changes.'
+  )
+  assertMatches(
+    clientSource,
     /await client\.sendNotification\(NOTIFICATIONS\.didManualSave, \{ uri: document\.uri\.toString\(\) \}\)/,
     'Expected the PocketPages client to keep manual-save diagnostics refresh notifications for EJS documents.'
   )
@@ -2070,14 +2075,23 @@ const pageData = {
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'api', '+post.js'), `module.exports = function () {\n  return ''\n}\n`)
   writeFile(
     path.join(appRoot, 'pb_hooks', 'jobs', 'rebuild-search.js'),
-    `const boardService = require('../pages/_private/board-service')
+    `const sharedJob = require('./shared-job')
+const boardService = require('../pages/_private/board-service')
 const boards = $app.findRecordsByFilter('boards')
 const board = $app.findFirstRecordByFilter('boards', 'id != ""')
 
 module.exports = {
+  sharedJob,
   boardService,
   boards,
   board,
+}
+`
+  )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'jobs', 'shared-job.js'),
+    `module.exports = {
+  source: 'shared-job',
 }
 `
   )
@@ -2392,6 +2406,7 @@ module.exports = {
     middlewareFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', '+middleware.js'),
     mjsConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'api', 'mjs-consumer.mjs'),
     jobScriptFilePath: path.join(appRoot, 'pb_hooks', 'jobs', 'rebuild-search.js'),
+    sharedJobFilePath: path.join(appRoot, 'pb_hooks', 'jobs', 'shared-job.js'),
     boardServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service.js'),
     schemaInferredServiceFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'schema-inferred-service.js'),
     boardServiceConsumerFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'board-service-consumer.js'),
@@ -7852,6 +7867,39 @@ ${largeRealisticSections}
       throw new Error('Expected watched-file manager to reset the secondary app service after a managed file change.')
     }
 
+    const schemaOnlyHookProjectVersionBeforeWatch = watchedPrimaryService.projectVersion
+    const schemaOnlyHookWatchResults = watchedManager.handleWatchedFileChanges([
+      { filePath: fixture.sharedJobFilePath, type: 'change' },
+    ])
+    if (
+      schemaOnlyHookWatchResults.length !== 1 ||
+      normalizeFilePath(schemaOnlyHookWatchResults[0].appRoot) !== normalizeFilePath(fixture.appRoot) ||
+      !schemaOnlyHookWatchResults[0].invalidationKinds.includes('partial') ||
+      watchedPrimaryService.projectVersion <= schemaOnlyHookProjectVersionBeforeWatch
+    ) {
+      throw new Error(
+        `Expected schema-only hook script changes to trigger app-scoped partial invalidation. Got: ${JSON.stringify({
+          results: schemaOnlyHookWatchResults,
+          before: schemaOnlyHookProjectVersionBeforeWatch,
+          after: watchedPrimaryService.projectVersion,
+        })}`
+      )
+    }
+
+    const createdSchemaOnlyHookFilePath = path.join(fixture.appRoot, 'pb_hooks', 'jobs', 'created-watch-job.js')
+    writeFile(createdSchemaOnlyHookFilePath, `module.exports = { created: true }\n`)
+    const schemaOnlyHookCreateResults = watchedManager.handleWatchedFileChanges([
+      { filePath: createdSchemaOnlyHookFilePath, type: 'create' },
+    ])
+    if (
+      schemaOnlyHookCreateResults.length !== 1 ||
+      !schemaOnlyHookCreateResults[0].invalidationKinds.includes('structure')
+    ) {
+      throw new Error(
+        `Expected schema-only hook script creates to trigger structure invalidation. Got: ${JSON.stringify(schemaOnlyHookCreateResults)}`
+      )
+    }
+
     const schemaCacheFilePath = path.join(fixture.appRoot, 'pb_hooks', 'pages', '_private', 'schema-cache-check.js')
     writeFile(
       schemaCacheFilePath,
@@ -11546,6 +11594,22 @@ boardService.readSessionState({ request })
     if (!moduleFileReferences.some((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.jobScriptFilePath))) {
       throw new Error(`Expected file-based module references to include schema-only hook require() usage. Got: ${JSON.stringify(moduleFileReferences)}`)
     }
+
+    const hookScriptReferenceQuery = service.getFileReferenceQuery(fixture.sharedJobFilePath)
+    if (!hookScriptReferenceQuery || hookScriptReferenceQuery.kind !== 'hook-script-module') {
+      throw new Error(`Expected schema-only hook script reference query. Got: ${JSON.stringify(hookScriptReferenceQuery)}`)
+    }
+    const hookScriptReferences = service.getFileReferenceTargets(
+      fixture.sharedJobFilePath,
+      fs.readFileSync(fixture.sharedJobFilePath, 'utf8')
+    )
+    if (
+      !hookScriptReferences ||
+      hookScriptReferences.length !== 1 ||
+      normalizeFilePath(hookScriptReferences[0].filePath) !== normalizeFilePath(fixture.jobScriptFilePath)
+    ) {
+      throw new Error(`Expected schema-only hook require() references. Got: ${JSON.stringify(hookScriptReferences)}`)
+    }
     service.setDocumentOverride(fixture.renameCheckFilePath, `<script server>\nconst boardService = api.resolve('board-service')\n</script>\n`)
     const apiModuleFileReferences = service.getFileReferenceTargets(
       fixture.boardServiceFilePath,
@@ -11739,6 +11803,24 @@ module.exports = {
     )
     if (!renamedJobRequireText.includes(`require('../pages/_private/session-service')`)) {
       throw new Error(`Expected schema-only hook require() path to update after module file rename. Got: ${renamedJobRequireText}`)
+    }
+
+    const hookScriptRenameEdits = service.getFileRenameEdits(
+      fixture.sharedJobFilePath,
+      path.resolve(path.dirname(fixture.sharedJobFilePath), 'shared-job-renamed.js')
+    )
+    const jobHookRenameEdits = hookScriptRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.jobScriptFilePath)
+    )
+    if (jobHookRenameEdits.length !== 1) {
+      throw new Error(`Expected schema-only hook target rename to update require() caller. Got: ${JSON.stringify(hookScriptRenameEdits)}`)
+    }
+    const renamedHookRequireText = applyEditsToText(
+      fs.readFileSync(fixture.jobScriptFilePath, 'utf8'),
+      jobHookRenameEdits
+    )
+    if (!renamedHookRequireText.includes(`require('./shared-job-renamed')`)) {
+      throw new Error(`Expected schema-only hook target rename to preserve relative require() style. Got: ${renamedHookRequireText}`)
     }
 
     const apiModuleCallerText = `<script server>\nconst boardService = api.resolve('board-service')\n</script>\n`

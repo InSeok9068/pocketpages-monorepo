@@ -23,6 +23,7 @@ function createPocketPagesLanguageServiceManager(deps) {
   function isManagedWatchedFilePath(filePath) {
     return (
       filePath.includes("/pb_hooks/pages/") ||
+      (filePath.includes("/pb_hooks/") && /\.(js|cjs|mjs)$/i.test(filePath)) ||
       filePath.endsWith("/pb_schema.json") ||
       filePath.endsWith("/pb_data/types.d.ts") ||
       filePath.endsWith("/pocketpages-globals.d.ts") ||

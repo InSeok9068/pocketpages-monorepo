@@ -1592,6 +1592,7 @@ async function runReferencesEdgeCaseTest(repoRoot, fixture) {
 
 async function runRenameNoopAndMixedBoundaryTest(repoRoot, fixture) {
   const partialRenameTargetPath = path.join(path.dirname(fixture.partialFilePath), 'flash-banner.ejs')
+  const hookScriptRenameTargetPath = path.join(path.dirname(fixture.hookScriptFilePath), 'reindex-renamed.js')
   const harness = createMockExtensionHost({
     repoRoot,
     fixture,
@@ -1615,6 +1616,9 @@ async function runRenameNoopAndMixedBoundaryTest(repoRoot, fixture) {
           ]
         }
         if (params.oldUri === URI.file(fixture.routeReferenceFilePath).toString()) {
+          return []
+        }
+        if (params.oldUri === URI.file(fixture.hookScriptFilePath).toString()) {
           return []
         }
 
@@ -1644,13 +1648,17 @@ async function runRenameNoopAndMixedBoundaryTest(repoRoot, fixture) {
           oldUri: URI.file(fixture.partialFilePath),
           newUri: URI.file(partialRenameTargetPath),
         },
+        {
+          oldUri: URI.file(fixture.hookScriptFilePath),
+          newUri: URI.file(hookScriptRenameTargetPath),
+        },
       ],
     })
 
     const renameRequests = harness.controls.clientState.requestCalls.filter(
       (entry) => entry.method === REQUESTS.fileRenameEdits
     )
-    if (renameRequests.length !== 2) {
+    if (renameRequests.length !== 3) {
       throw new Error(`Expected mixed rename event to request edits only for managed targets. Got: ${JSON.stringify(renameRequests)}`)
     }
     if (harness.controls.applyEditCalls.length !== 1) {
