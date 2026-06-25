@@ -12403,18 +12403,42 @@ module.exports = {
       throw new Error(`Expected /boards route reference to point at site index href. Got: ${JSON.stringify(routeFileReferences)}`)
     }
 
-    const partialCodeLensEntries = service.getCodeLensEntries(
-      fixture.flashAlertFilePath,
-      fs.readFileSync(fixture.flashAlertFilePath, 'utf8')
-    )
-    if (!partialCodeLensEntries.some((entry) => entry.title.startsWith('Partial callers: '))) {
-      throw new Error(`Expected partial caller CodeLens entry. Got: ${JSON.stringify(partialCodeLensEntries)}`)
+    const originalGetFileReferenceTargets = service.getFileReferenceTargets.bind(service)
+    let partialCodeLensEntries = []
+    let codeLensReferenceScanCount = 0
+    service.getFileReferenceTargets = function getFileReferenceTargetsDuringCodeLens() {
+      codeLensReferenceScanCount += 1
+      throw new Error('Expected CodeLens generation to skip all-file reference scans.')
     }
-    if (!partialCodeLensEntries.some((entry) => entry.title === 'Caller: pb_hooks/pages/(site)/boards/index.ejs:1')) {
-      throw new Error(`Expected partial caller CodeLens to preview the caller file and line. Got: ${JSON.stringify(partialCodeLensEntries)}`)
+    try {
+      partialCodeLensEntries = service.getCodeLensEntries(
+        fixture.flashAlertFilePath,
+        fs.readFileSync(fixture.flashAlertFilePath, 'utf8')
+      )
+    } finally {
+      service.getFileReferenceTargets = originalGetFileReferenceTargets
     }
-    if (!partialCodeLensEntries.some((entry) => entry.title.startsWith('All File References ('))) {
-      throw new Error(`Expected partial all-file-references CodeLens entry. Got: ${JSON.stringify(partialCodeLensEntries)}`)
+    if (codeLensReferenceScanCount !== 0) {
+      throw new Error(`Expected CodeLens generation to avoid all-file reference scans. Got: ${codeLensReferenceScanCount}`)
+    }
+    if (
+      !partialCodeLensEntries.some(
+        (entry) =>
+          entry.title === 'Show partial callers' &&
+          entry.command === 'pocketpagesServerScript.allFileReferences'
+      )
+    ) {
+      throw new Error(`Expected lazy partial caller CodeLens entry. Got: ${JSON.stringify(partialCodeLensEntries)}`)
+    }
+    if (
+      partialCodeLensEntries.some(
+        (entry) =>
+          String(entry.title || '').startsWith('Partial callers: ') ||
+          String(entry.title || '').startsWith('Caller: ') ||
+          String(entry.title || '').startsWith('All File References (')
+      )
+    ) {
+      throw new Error(`Expected partial CodeLens to skip caller counts and previews. Got: ${JSON.stringify(partialCodeLensEntries)}`)
     }
 
     const boardsCodeLensEntries = service.getCodeLensEntries(

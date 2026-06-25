@@ -8433,62 +8433,17 @@ class ProjectLanguageService {
       return entries;
     }
 
-    const references = this.getFileReferenceTargets(filePath, documentText, {
-      includeDeclaration: false,
-    });
-    const referenceCount = references ? references.length : 0;
-    const summaryTitle =
-      referenceQuery.kind === "private-partial"
-        ? `Partial callers: ${referenceCount}`
-        : referenceQuery.kind === "private-module"
-          ? `Module callers: ${referenceCount}`
-          : referenceQuery.kind === "asset-file"
-            ? `Asset callers: ${referenceCount}`
-            : `Route callers: ${referenceCount}`;
-
-    if (referenceQuery.kind === "private-partial" && referenceCount > 0) {
-      const seenCallerLabels = new Set();
-      const callerPreviewEntries = [];
-      for (const reference of references) {
-        if (!reference || !reference.filePath) {
-          continue;
-        }
-
-        const callerText = this.getCallerDocumentText(reference.filePath);
-        const callerLabel = getReferenceLocationLabel(this.appRoot, reference, callerText);
-        if (seenCallerLabels.has(callerLabel)) {
-          continue;
-        }
-
-        seenCallerLabels.add(callerLabel);
-        callerPreviewEntries.push({
-          title: `Caller: ${callerLabel}`,
-          targetFilePath: normalizePath(reference.filePath),
-          start: 0,
-        });
-
-        if (callerPreviewEntries.length >= 3) {
-          break;
-        }
-      }
-
-      entries.push(...callerPreviewEntries);
-      if (referenceCount > callerPreviewEntries.length) {
-        entries.push({
-          title: `More callers: ${referenceCount - callerPreviewEntries.length}`,
-          command: "pocketpagesServerScript.allFileReferences",
-          start: 0,
-        });
-      }
+    let summaryTitle = "Show route callers";
+    if (referenceQuery.kind === "private-partial") {
+      summaryTitle = "Show partial callers";
+    } else if (referenceQuery.kind === "private-module" || referenceQuery.kind === "hook-script-module") {
+      summaryTitle = "Show module callers";
+    } else if (referenceQuery.kind === "asset-file") {
+      summaryTitle = "Show asset callers";
     }
 
     entries.push({
       title: summaryTitle,
-      command: "pocketpagesServerScript.allFileReferences",
-      start: 0,
-    });
-    entries.push({
-      title: `All File References (${referenceCount})`,
       command: "pocketpagesServerScript.allFileReferences",
       start: 0,
     });
