@@ -20,6 +20,7 @@ function readStatEntry(filePath) {
       isFile: stats.isFile(),
       isDirectory: stats.isDirectory(),
       mtimeMs: stats.mtimeMs,
+      ctimeMs: stats.ctimeMs,
       size: stats.size,
     };
   } catch (_error) {
@@ -28,6 +29,7 @@ function readStatEntry(filePath) {
       isFile: false,
       isDirectory: false,
       mtimeMs: 0,
+      ctimeMs: 0,
       size: 0,
     };
   }
@@ -68,6 +70,7 @@ function statSyncCached(filePath) {
 
   return {
     mtimeMs: entry.mtimeMs,
+    ctimeMs: entry.ctimeMs,
     size: entry.size,
     isFile: () => entry.isFile,
     isDirectory: () => entry.isDirectory,

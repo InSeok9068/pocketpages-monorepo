@@ -2665,6 +2665,21 @@ async function run() {
   ) {
     throw new Error(`Expected disk fallback snapshots to refresh through DocumentSnapshotManager. Got: ${JSON.stringify({ snapshotDiskVersionV1, snapshotDiskVersionV2, snapshotDiskTextV2 })}`)
   }
+  const snapshotProbeSameIdentityFilePath = path.join(snapshotProbeRoot, 'same-identity.js')
+  const snapshotProbeSameIdentityTime = new Date('2026-01-01T00:00:00Z')
+  writeFile(snapshotProbeSameIdentityFilePath, 'const a = 1\n')
+  fs.utimesSync(snapshotProbeSameIdentityFilePath, snapshotProbeSameIdentityTime, snapshotProbeSameIdentityTime)
+  const snapshotSameIdentityVersionV1 = snapshotProbe.getScriptVersion(snapshotProbeSameIdentityFilePath)
+  writeFile(snapshotProbeSameIdentityFilePath, 'const b = 2\n')
+  fs.utimesSync(snapshotProbeSameIdentityFilePath, snapshotProbeSameIdentityTime, snapshotProbeSameIdentityTime)
+  const snapshotSameIdentityTextV2 = snapshotProbe.readFile(snapshotProbeSameIdentityFilePath)
+  const snapshotSameIdentityVersionV2 = snapshotProbe.getScriptVersion(snapshotProbeSameIdentityFilePath)
+  if (
+    snapshotSameIdentityTextV2 !== 'const b = 2\n' ||
+    snapshotSameIdentityVersionV2 === snapshotSameIdentityVersionV1
+  ) {
+    throw new Error(`Expected same mtime/size disk snapshots to refresh by content identity. Got: ${JSON.stringify({ snapshotSameIdentityVersionV1, snapshotSameIdentityVersionV2, snapshotSameIdentityTextV2 })}`)
+  }
   const statCacheProbeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-stat-cache-'))
   const statCacheFilePath = path.join(statCacheProbeRoot, 'cache-target.js')
   writeFile(statCacheFilePath, 'const value = 1\n')
@@ -6739,8 +6754,12 @@ missingServerRegionOne.toString()
       yieldCancelService.getDiagnostics = originalYieldCancelGetDiagnostics
       yieldCancelContext.context.helpers.ensureDocumentPrepared = originalYieldCancelEnsureDocumentPrepared
     }
-    if (yieldCancelReport !== null) {
-      throw new Error(`Expected pull diagnostics to return null when cancelled after initial yield. Got: ${JSON.stringify(yieldCancelReport)}`)
+    if (
+      !yieldCancelReport ||
+      yieldCancelReport.kind !== 'full' ||
+      !Array.isArray(yieldCancelReport.items)
+    ) {
+      throw new Error(`Expected cancelled pull diagnostics to return a valid full report. Got: ${JSON.stringify(yieldCancelReport)}`)
     }
 
     const quietLargeDiagnosticsCore = new PocketPagesLanguageCore()
@@ -7217,12 +7236,15 @@ ${'<div>stale quiet filler</div>\n'.repeat(4)}
       { isCancellationRequested: false }
     )
     if (
-      stalePartialQuietReport !== null ||
+      !stalePartialQuietReport ||
+      stalePartialQuietReport.kind !== 'full' ||
+      !Array.isArray(stalePartialQuietReport.items) ||
+      stalePartialQuietReport.items.length !== 0 ||
       stalePartialQuietSchedules.length !== 1 ||
       stalePartialQuietRuntimeState.getDiagnostics(stalePartialQuietUri, 'pull')
     ) {
       throw new Error(
-        `Expected stale recent large-file partial diagnostics to cancel without caching a partial result. Got: ${JSON.stringify({ stalePartialQuietReport, stalePartialQuietSchedules, cached: stalePartialQuietRuntimeState.getDiagnostics(stalePartialQuietUri, 'pull') })}`
+        `Expected stale recent large-file partial diagnostics to cancel with a valid empty report and without caching a partial result. Got: ${JSON.stringify({ stalePartialQuietReport, stalePartialQuietSchedules, cached: stalePartialQuietRuntimeState.getDiagnostics(stalePartialQuietUri, 'pull') })}`
       )
     }
 
@@ -11783,6 +11805,61 @@ module.exports = {
     )
     if (!renamedResolveParentCheckText.includes(`resolve('../summary-service')`)) {
       throw new Error(`Expected ../ resolve() path to update after parent module rename. Got: ${renamedResolveParentCheckText}`)
+    }
+
+    const shadowedResolveCallerText = `<script server>
+const sharedService = resolve('shared-service')
+</script>
+`
+    service.setDocumentOverride(fixture.renameCheckFilePath, shadowedResolveCallerText)
+    const shadowedParentResolveRenameEdits = service.getFileRenameEdits(
+      fixture.sharedServiceFilePath,
+      path.resolve(path.dirname(fixture.sharedServiceFilePath), 'summary-service.js')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath))
+    if (shadowedParentResolveRenameEdits.length !== 0) {
+      throw new Error(`Expected shadowed resolve() caller to ignore parent module rename. Got: ${JSON.stringify(shadowedParentResolveRenameEdits)}`)
+    }
+
+    const shadowedLocalResolveRenameEdits = service.getFileRenameEdits(
+      fixture.localSharedServiceFilePath,
+      path.resolve(path.dirname(fixture.localSharedServiceFilePath), 'local-summary-service.js')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.renameCheckFilePath))
+    if (shadowedLocalResolveRenameEdits.length !== 1) {
+      throw new Error(`Expected shadowed resolve() caller to follow nearest local module rename. Got: ${JSON.stringify(shadowedLocalResolveRenameEdits)}`)
+    }
+    const renamedShadowedResolveText = applyEditsToText(shadowedResolveCallerText, shadowedLocalResolveRenameEdits)
+    if (!renamedShadowedResolveText.includes(`resolve('local-summary-service')`)) {
+      throw new Error(`Expected shadowed resolve() path to update to the nearest local target. Got: ${renamedShadowedResolveText}`)
+    }
+    service.clearDocumentOverride(fixture.renameCheckFilePath)
+
+    const postRenameFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-post-rename-'))
+    const postRenameAppRoot = path.join(postRenameFixtureRoot, 'apps', 'fixture-app')
+    const postRenamePagesRoot = path.join(postRenameAppRoot, 'pb_hooks', 'pages')
+    const postRenameOldModulePath = path.join(postRenamePagesRoot, '_private', 'post-rename-service.js')
+    const postRenameNewModulePath = path.join(postRenamePagesRoot, '_private', 'post-rename-session.js')
+    const postRenameCallerPath = path.join(postRenamePagesRoot, 'index.ejs')
+    writeFile(path.join(postRenameAppRoot, 'pb_schema.json'), '[]')
+    writeFile(path.join(postRenamePagesRoot, '+config.js'), 'module.exports = {}\n')
+    writeFile(postRenameOldModulePath, 'module.exports = {}\n')
+    writeFile(postRenameCallerPath, `<script server>
+const service = resolve('post-rename-service')
+</script>
+`)
+    fs.renameSync(postRenameOldModulePath, postRenameNewModulePath)
+    const postRenameManager = new PocketPagesLanguageServiceManager({ idleServiceTtlMs: Infinity })
+    const postRenameService = postRenameManager.getServiceForFile(postRenameCallerPath)
+    const postRenameEdits = postRenameService.getFileRenameEdits(
+      postRenameOldModulePath,
+      postRenameNewModulePath
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(postRenameCallerPath))
+    if (postRenameEdits.length !== 1) {
+      throw new Error(`Expected resolve() file rename edits after the old target has moved on disk. Got: ${JSON.stringify(postRenameEdits)}`)
+    }
+    const postRenameCallerText = fs.readFileSync(postRenameCallerPath, 'utf8')
+    const postRenameUpdatedText = applyEditsToText(postRenameCallerText, postRenameEdits)
+    if (!postRenameUpdatedText.includes(`resolve('post-rename-session')`)) {
+      throw new Error(`Expected post-rename resolve() path to update after old target moved on disk. Got: ${postRenameUpdatedText}`)
     }
 
     const renamedRequireConsumerText = applyEditsToText(

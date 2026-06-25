@@ -252,6 +252,37 @@ function createDiagnosticsFeatureService(context) {
     );
   }
 
+  function createCancelledPullDiagnosticsReport(params, cachedResult) {
+    const previousResultId = params && params.previousResultId;
+    if (
+      previousResultId &&
+      cachedResult &&
+      cachedResult.resultId === previousResultId
+    ) {
+      return {
+        kind: "unchanged",
+        resultId: previousResultId,
+      };
+    }
+
+    if (
+      cachedResult &&
+      cachedResult.resultId &&
+      Array.isArray(cachedResult.items)
+    ) {
+      return {
+        kind: "full",
+        resultId: cachedResult.resultId,
+        items: cachedResult.items,
+      };
+    }
+
+    return {
+      kind: "full",
+      items: [],
+    };
+  }
+
   function wait(delayMs) {
     return new Promise((resolve) => setTimeout(resolve, delayMs));
   }
@@ -595,7 +626,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: "before-large-quiet-partial-prepare",
       });
-      return null;
+      return createCancelledPullDiagnosticsReport(params, cachedResult);
     }
 
     if (typeof ensureDocumentPrepared === "function") {
@@ -616,7 +647,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: "after-large-quiet-partial-prepare",
       });
-      return null;
+      return createCancelledPullDiagnosticsReport(params, cachedResult);
     }
 
     const diagnosticOptions = {
@@ -691,7 +722,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: diagnosticsProfile.cancelledAt || "after-large-quiet-partial-diagnostics",
       });
-      return null;
+      return createCancelledPullDiagnosticsReport(params, cachedResult);
     }
 
     const reportedDiagnostics = filterReportedDiagnostics(
@@ -743,8 +774,12 @@ function createDiagnosticsFeatureService(context) {
 
   async function providePullDiagnostics(params, token) {
     const uri = params && params.textDocument ? params.textDocument.uri : null;
+    const cachedResult =
+      uri && typeof getCachedDiagnosticsResult === "function"
+        ? getCachedDiagnosticsResult(uri, "pull")
+        : null;
     if (!uri || (token && token.isCancellationRequested)) {
-      return null;
+      return createCancelledPullDiagnosticsReport(params, cachedResult);
     }
 
     const runId = helpers.beginDiagnosticRun(uri);
@@ -760,10 +795,6 @@ function createDiagnosticsFeatureService(context) {
 
     const requestId =
       typeof createRequestId === "function" ? createRequestId("diag") : null;
-    const cachedResult =
-      typeof getCachedDiagnosticsResult === "function"
-        ? getCachedDiagnosticsResult(uri, "pull")
-        : null;
     const requestedVersion = document.version;
     const shouldCancel = (stage) =>
       !isActiveDiagnosticRun(uri, runId) ||
@@ -910,7 +941,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: "before-diagnostics-prepare",
       });
-      return null;
+      return createCancelledPullDiagnosticsReport(params, cachedResult);
     }
 
     if (typeof ensureDocumentPrepared === "function") {
@@ -928,7 +959,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: "after-diagnostics-prepare",
       });
-      return null;
+      return createCancelledPullDiagnosticsReport(params, cachedResult);
     }
 
     const diagnosticsResultState = getDiagnosticsResultState(document, documentContext);
@@ -994,7 +1025,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: diagnosticsProfile.cancelledAt || "after-pull-diagnostics",
       });
-      return null;
+      return createCancelledPullDiagnosticsReport(params, cachedResult);
     }
 
     const reportedDiagnostics = filterReportedDiagnostics(

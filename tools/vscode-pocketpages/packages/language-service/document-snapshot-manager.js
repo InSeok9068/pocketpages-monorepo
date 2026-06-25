@@ -12,6 +12,16 @@ function readFileText(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
+function hashText(value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 function fileExists(filePath) {
   return statFileExists(filePath);
 }
@@ -235,7 +245,12 @@ class DocumentSnapshotManager {
 
     const stats = statSyncCached(normalizedFileName);
     const previous = this.diskFiles.get(normalizedFileName);
-    if (previous && previous.mtimeMs === stats.mtimeMs && previous.size === stats.size) {
+    if (
+      previous &&
+      previous.mtimeMs === stats.mtimeMs &&
+      previous.ctimeMs === stats.ctimeMs &&
+      previous.size === stats.size
+    ) {
       return previous;
     }
 
@@ -243,7 +258,9 @@ class DocumentSnapshotManager {
     const next = createVersionedTextState(previous, {
       text,
       mtimeMs: stats.mtimeMs,
+      ctimeMs: stats.ctimeMs,
       size: stats.size,
+      hash: hashText(text),
       filePath: normalizedFileName,
       kind: "disk",
     });
@@ -265,6 +282,7 @@ class DocumentSnapshotManager {
     this.diskFiles.set(normalizedFileName, {
       ...previous,
       mtimeMs: -1,
+      ctimeMs: -1,
       size: -1,
     });
     return true;

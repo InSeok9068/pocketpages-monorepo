@@ -7785,7 +7785,18 @@ class ProjectLanguageService {
 
   isResolveRequestForTarget(filePath, requestPath, targetFilePath) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
-    return this.projectIndex.getResolveCandidatePaths(filePath, requestPath).includes(normalizedTargetFilePath);
+    for (const candidatePath of this.projectIndex.getResolveCandidatePaths(filePath, requestPath)) {
+      const normalizedCandidatePath = normalizePath(candidatePath);
+      if (normalizedCandidatePath === normalizedTargetFilePath) {
+        return true;
+      }
+
+      if (fileExists(normalizedCandidatePath)) {
+        return false;
+      }
+    }
+
+    return false;
   }
 
   isRequireRequestForTarget(filePath, requestPath, targetFilePath, options = {}) {
