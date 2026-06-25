@@ -252,11 +252,26 @@ function createDiagnosticsFeatureService(context) {
     );
   }
 
-  function createCancelledPullDiagnosticsReport(params, cachedResult) {
+  function canUseCancelledPullDiagnosticsCache(cachedResult, requestedVersion) {
+    return (
+      requestedVersion !== null &&
+      requestedVersion !== undefined &&
+      cachedResult &&
+      cachedResult.documentVersion === requestedVersion
+    );
+  }
+
+  function createCancelledPullDiagnosticsReport(params, cachedResult, requestedVersion = null) {
+    if (!canUseCancelledPullDiagnosticsCache(cachedResult, requestedVersion)) {
+      return {
+        kind: "full",
+        items: [],
+      };
+    }
+
     const previousResultId = params && params.previousResultId;
     if (
       previousResultId &&
-      cachedResult &&
       cachedResult.resultId === previousResultId
     ) {
       return {
@@ -266,7 +281,6 @@ function createDiagnosticsFeatureService(context) {
     }
 
     if (
-      cachedResult &&
       cachedResult.resultId &&
       Array.isArray(cachedResult.items)
     ) {
@@ -626,7 +640,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: "before-large-quiet-partial-prepare",
       });
-      return createCancelledPullDiagnosticsReport(params, cachedResult);
+      return createCancelledPullDiagnosticsReport(params, cachedResult, requestedVersion);
     }
 
     if (typeof ensureDocumentPrepared === "function") {
@@ -647,7 +661,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: "after-large-quiet-partial-prepare",
       });
-      return createCancelledPullDiagnosticsReport(params, cachedResult);
+      return createCancelledPullDiagnosticsReport(params, cachedResult, requestedVersion);
     }
 
     const diagnosticOptions = {
@@ -722,7 +736,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: diagnosticsProfile.cancelledAt || "after-large-quiet-partial-diagnostics",
       });
-      return createCancelledPullDiagnosticsReport(params, cachedResult);
+      return createCancelledPullDiagnosticsReport(params, cachedResult, requestedVersion);
     }
 
     const reportedDiagnostics = filterReportedDiagnostics(
@@ -779,7 +793,7 @@ function createDiagnosticsFeatureService(context) {
         ? getCachedDiagnosticsResult(uri, "pull")
         : null;
     if (!uri || (token && token.isCancellationRequested)) {
-      return createCancelledPullDiagnosticsReport(params, cachedResult);
+      return createCancelledPullDiagnosticsReport(params, cachedResult, null);
     }
 
     const runId = helpers.beginDiagnosticRun(uri);
@@ -832,6 +846,7 @@ function createDiagnosticsFeatureService(context) {
       if (
         params.previousResultId &&
         cachedResult &&
+        cachedResult.documentVersion === requestedVersion &&
         cachedResult.resultId === params.previousResultId
       ) {
         logServer("perf", "diagnostics", "pull-deferred", {
@@ -941,7 +956,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: "before-diagnostics-prepare",
       });
-      return createCancelledPullDiagnosticsReport(params, cachedResult);
+      return createCancelledPullDiagnosticsReport(params, cachedResult, requestedVersion);
     }
 
     if (typeof ensureDocumentPrepared === "function") {
@@ -959,7 +974,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: "after-diagnostics-prepare",
       });
-      return createCancelledPullDiagnosticsReport(params, cachedResult);
+      return createCancelledPullDiagnosticsReport(params, cachedResult, requestedVersion);
     }
 
     const diagnosticsResultState = getDiagnosticsResultState(document, documentContext);
@@ -1025,7 +1040,7 @@ function createDiagnosticsFeatureService(context) {
         lane: "pull",
         stage: diagnosticsProfile.cancelledAt || "after-pull-diagnostics",
       });
-      return createCancelledPullDiagnosticsReport(params, cachedResult);
+      return createCancelledPullDiagnosticsReport(params, cachedResult, requestedVersion);
     }
 
     const reportedDiagnostics = filterReportedDiagnostics(

@@ -283,6 +283,7 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
   const closeDocumentEvents = createEventSource()
   const willSaveDocumentEvents = createEventSource()
   const didSaveDocumentEvents = createEventSource()
+  const willRenameFilesEvents = createEventSource()
   const renameFilesEvents = createEventSource()
   const activeEditorEvents = createEventSource()
   const visibleEditorsEvents = createEventSource()
@@ -448,6 +449,9 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
       },
       onDidRenameFiles(listener) {
         return renameFilesEvents.register(listener)
+      },
+      onWillRenameFiles(listener) {
+        return willRenameFilesEvents.register(listener)
       },
     },
     window: {
@@ -653,6 +657,7 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
       executedCommands,
       openTextDocumentCalls,
       applyEditCalls,
+      willRenameWorkspaceEdits: [],
       warningMessages,
       informationMessages,
       errorMessages,
@@ -689,6 +694,20 @@ function createMockExtensionHost({ repoRoot, fixture, languageClientOptions = {}
         await didSaveDocumentEvents.fire(document)
       },
       async fireRenameFiles(event) {
+        const waitUntilPromises = []
+        const willEvent = {
+          ...(event || {}),
+          waitUntil(value) {
+            waitUntilPromises.push(Promise.resolve(value))
+          },
+        }
+        await willRenameFilesEvents.fire(willEvent)
+        const workspaceEdits = await Promise.all(waitUntilPromises)
+        for (const workspaceEdit of workspaceEdits) {
+          if (workspaceEdit) {
+            this.willRenameWorkspaceEdits.push(workspaceEdit)
+          }
+        }
         await renameFilesEvents.fire(event)
       },
       async fireActiveEditorChange(editor) {
@@ -990,14 +1009,18 @@ async function runRenameBoundaryTest(repoRoot, fixture) {
       throw new Error(`Expected rename newUri to match the new PocketPages file. Got: ${renameRequests[0].params.newUri}`)
     }
 
-    if (harness.controls.applyEditCalls.length !== 1) {
-      throw new Error(`Expected applyManagedFileRenameEdits() to apply one workspace edit. Got: ${harness.controls.applyEditCalls.length}`)
+    if (harness.controls.applyEditCalls.length !== 0) {
+      throw new Error(`Expected will-rename file edits to be returned through waitUntil(), not applied directly. Got: ${harness.controls.applyEditCalls.length}`)
     }
 
-    const appliedWorkspaceEdit = harness.controls.applyEditCalls[0]
+    if (harness.controls.willRenameWorkspaceEdits.length !== 1) {
+      throw new Error(`Expected file rename to provide one will-rename workspace edit. Got: ${harness.controls.willRenameWorkspaceEdits.length}`)
+    }
+
+    const appliedWorkspaceEdit = harness.controls.willRenameWorkspaceEdits[0]
     if (!appliedWorkspaceEdit || appliedWorkspaceEdit.replacements.length !== 2) {
       throw new Error(
-        `Expected applyManagedFileRenameEdits() to translate rename specs into two document replacements. Got: ${JSON.stringify(appliedWorkspaceEdit)}`
+        `Expected will-rename edits to translate rename specs into two document replacements. Got: ${JSON.stringify(appliedWorkspaceEdit)}`
       )
     }
 
@@ -1007,7 +1030,7 @@ async function runRenameBoundaryTest(repoRoot, fixture) {
     ).length
     if (openedRouteDocumentCount !== 1) {
       throw new Error(
-        `Expected applyManagedFileRenameEdits() to cache opened edit documents per target file. Got: ${JSON.stringify(openedRenameTargets)}`
+        `Expected will-rename edits to cache opened edit documents per target file. Got: ${JSON.stringify(openedRenameTargets)}`
       )
     }
 
@@ -1187,8 +1210,8 @@ async function runRenameLazyStartupBoundaryTest(repoRoot, fixture) {
     if (renameRequests.length !== 1) {
       throw new Error(`Expected one pre-start managed fileRenameEdits request. Got: ${JSON.stringify(renameRequests)}`)
     }
-    if (harness.controls.applyEditCalls.length !== 1) {
-      throw new Error(`Expected pre-start rename to apply one workspace edit. Got: ${harness.controls.applyEditCalls.length}`)
+    if (harness.controls.willRenameWorkspaceEdits.length !== 1) {
+      throw new Error(`Expected pre-start rename to provide one will-rename workspace edit. Got: ${harness.controls.willRenameWorkspaceEdits.length}`)
     }
   })
 }
@@ -1661,11 +1684,11 @@ async function runRenameNoopAndMixedBoundaryTest(repoRoot, fixture) {
     if (renameRequests.length !== 3) {
       throw new Error(`Expected mixed rename event to request edits only for managed targets. Got: ${JSON.stringify(renameRequests)}`)
     }
-    if (harness.controls.applyEditCalls.length !== 1) {
-      throw new Error(`Expected mixed rename event to apply edits once when at least one managed target returns edits. Got: ${harness.controls.applyEditCalls.length}`)
+    if (harness.controls.willRenameWorkspaceEdits.length !== 1) {
+      throw new Error(`Expected mixed rename event to provide one will-rename workspace edit when at least one managed target returns edits. Got: ${harness.controls.willRenameWorkspaceEdits.length}`)
     }
-    if (harness.controls.applyEditCalls[0].replacements.length !== 1) {
-      throw new Error(`Expected mixed rename event to apply only returned rename replacements. Got: ${JSON.stringify(harness.controls.applyEditCalls[0])}`)
+    if (harness.controls.willRenameWorkspaceEdits[0].replacements.length !== 1) {
+      throw new Error(`Expected mixed rename event to include only returned rename replacements. Got: ${JSON.stringify(harness.controls.willRenameWorkspaceEdits[0])}`)
     }
 
     await harness.controls.fireRenameFiles({
@@ -1676,8 +1699,8 @@ async function runRenameNoopAndMixedBoundaryTest(repoRoot, fixture) {
         },
       ],
     })
-    if (harness.controls.applyEditCalls.length !== 1) {
-      throw new Error('Expected managed file rename events with no returned edits to skip workspace.applyEdit().')
+    if (harness.controls.willRenameWorkspaceEdits.length !== 1) {
+      throw new Error('Expected managed file rename events with no returned edits to skip will-rename workspace edits.')
     }
 
     await extensionModule.deactivate()

@@ -318,6 +318,16 @@ function normalizeDocumentPath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
 }
 
+function normalizeFsPath(filePath) {
+  const normalizedPath = path.resolve(String(filePath || "")).replace(/\\/g, "/");
+  return normalizedPath.replace(/^[A-Z]:/, (value) => value.toLowerCase());
+}
+
+function isSameOrChildFsPath(parentPath, candidatePath) {
+  const relativePath = path.relative(normalizeFsPath(parentPath), normalizeFsPath(candidatePath));
+  return !relativePath || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+}
+
 function getPagesRelativeSegments(filePath) {
   const normalizedPath = normalizeDocumentPath(filePath);
   const pagesMarker = "/pb_hooks/pages/";
@@ -442,6 +452,24 @@ function formatSaveReason(reason) {
 
 function toRange(document, start, end) {
   return new vscode.Range(document.positionAt(start), document.positionAt(end));
+}
+
+function getPreRenameEditUri(filePath, renameSpecs) {
+  const normalizedFilePath = normalizeFsPath(filePath);
+  for (const renameSpec of renameSpecs) {
+    const oldPath = normalizeFsPath(renameSpec.oldUri.fsPath);
+    const newPath = normalizeFsPath(renameSpec.newUri.fsPath);
+    if (normalizedFilePath === newPath) {
+      return renameSpec.oldUri;
+    }
+
+    if (isSameOrChildFsPath(newPath, normalizedFilePath)) {
+      const relativePath = path.relative(newPath, normalizedFilePath);
+      return vscode.Uri.file(path.join(renameSpec.oldUri.fsPath, relativePath));
+    }
+  }
+
+  return vscode.Uri.file(filePath);
 }
 
 function toReferenceLocation(document, reference) {
@@ -708,7 +736,7 @@ async function showFileReferences({ logger, fileUri }) {
   await vscode.commands.executeCommand("editor.action.showReferences", normalizedFileUri, anchorPosition, locations);
 }
 
-async function applyManagedFileRenameEdits({ logger, event }) {
+async function createManagedFileRenameWorkspaceEdit({ logger, event, mapRenamedTargetsToOldUris = false }) {
   const renameSpecs = event.files.filter(
     (entry) =>
       entry.oldUri &&
@@ -731,17 +759,31 @@ async function applyManagedFileRenameEdits({ logger, event }) {
       newUri: renameSpec.newUri.toString(),
     });
 
-    logger.info("rename", "apply-edits", {
+    logger.info("rename", "provide-edits", {
       old: vscode.workspace.asRelativePath(renameSpec.oldUri.fsPath, false),
       next: vscode.workspace.asRelativePath(renameSpec.newUri.fsPath, false),
       edits: Array.isArray(edits) ? edits.length : 0,
     });
 
     for (const edit of edits || []) {
-      let targetDocument = documentCache.get(edit.filePath);
+      const targetUri = mapRenamedTargetsToOldUris
+        ? getPreRenameEditUri(edit.filePath, renameSpecs)
+        : vscode.Uri.file(edit.filePath);
+      const targetKey = targetUri.toString();
+      let targetDocument = documentCache.get(targetKey);
       if (!targetDocument) {
-        targetDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(edit.filePath));
-        documentCache.set(edit.filePath, targetDocument);
+        try {
+          targetDocument = await vscode.workspace.openTextDocument(targetUri);
+        } catch (error) {
+          logger.warn("rename", "open-target-failed", {
+            file: targetUri.scheme === "file"
+              ? vscode.workspace.asRelativePath(targetUri.fsPath, false)
+              : targetUri.toString(),
+            message: error && error.message ? error.message : String(error),
+          });
+          continue;
+        }
+        documentCache.set(targetKey, targetDocument);
       }
 
       workspaceEdit.replace(targetDocument.uri, toRange(targetDocument, edit.start, edit.end), edit.newText);
@@ -749,7 +791,12 @@ async function applyManagedFileRenameEdits({ logger, event }) {
     }
   }
 
-  if (editCount > 0) {
+  return editCount > 0 ? workspaceEdit : null;
+}
+
+async function applyManagedFileRenameEdits({ logger, event }) {
+  const workspaceEdit = await createManagedFileRenameWorkspaceEdit({ logger, event });
+  if (workspaceEdit) {
     await vscode.workspace.applyEdit(workspaceEdit);
   }
 }
@@ -872,6 +919,25 @@ async function handleManagedFileRenameEvent(context, event) {
   }
 
   await applyManagedFileRenameEdits({ logger: clientLogger, event });
+}
+
+function handleManagedFileWillRenameEvent(context, event) {
+  if (!hasManagedFileRenameTargets(event) || typeof event.waitUntil !== "function") {
+    return;
+  }
+
+  event.waitUntil((async () => {
+    const activeClient = await ensureLspStarted(context);
+    if (!activeClient) {
+      return null;
+    }
+
+    return createManagedFileRenameWorkspaceEdit({
+      logger: clientLogger,
+      event,
+      mapRenamedTargetsToOldUris: true,
+    });
+  })());
 }
 
 function getRelativePathLabel(filePath) {
@@ -1410,7 +1476,9 @@ async function activate(context) {
       await vscode.commands.executeCommand("vscode.open", fileUri);
     }),
     vscode.commands.registerCommand("pocketpagesServerScript.noopCodeLens", () => {}),
-    vscode.workspace.onDidRenameFiles((event) => handleManagedFileRenameEvent(context, event)),
+    typeof vscode.workspace.onWillRenameFiles === "function"
+      ? vscode.workspace.onWillRenameFiles((event) => handleManagedFileWillRenameEvent(context, event))
+      : vscode.workspace.onDidRenameFiles((event) => handleManagedFileRenameEvent(context, event)),
     vscode.workspace.onDidOpenTextDocument((document) => maybeStartLspForDocument(document)),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       maybeStartLspForDocument(editor && editor.document);

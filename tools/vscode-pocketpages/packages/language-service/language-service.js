@@ -304,6 +304,10 @@ function rewriteDirectoryChildPath(candidatePath, oldDirectoryPath, newDirectory
   return normalizePath(path.join(newDirectoryPath, relativePath));
 }
 
+function setUniqueTextEdit(uniqueEdits, edit) {
+  uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+}
+
 function toRelativeSpecifier(relativePath, options = {}) {
   const normalizedPath = toPortablePath(relativePath);
   if (!normalizedPath || normalizedPath === ".") {
@@ -6811,11 +6815,15 @@ class ProjectLanguageService {
     const uniqueEdits = new Map();
 
     for (const edit of this.getRouteParamFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
-      uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+      setUniqueTextEdit(uniqueEdits, edit);
     }
 
     for (const edit of this.getRouteDirectoryRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
-      uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+      setUniqueTextEdit(uniqueEdits, edit);
+    }
+
+    for (const edit of this.getDirectoryReferenceRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
+      setUniqueTextEdit(uniqueEdits, edit);
     }
 
     const referenceQuery = this.getFileReferenceQuery(normalizedOldFilePath);
@@ -6830,29 +6838,29 @@ class ProjectLanguageService {
 
     if (referenceQuery.kind === "private-partial") {
       for (const edit of this.getIncludeFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
-        uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+        setUniqueTextEdit(uniqueEdits, edit);
       }
     }
 
     if (referenceQuery.kind === "private-module") {
       for (const edit of this.getResolveFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
-        uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+        setUniqueTextEdit(uniqueEdits, edit);
       }
 
       for (const edit of this.getRequireFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
-        uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+        setUniqueTextEdit(uniqueEdits, edit);
       }
     }
 
     if (referenceQuery.kind === "hook-script-module") {
       for (const edit of this.getRequireFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
-        uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+        setUniqueTextEdit(uniqueEdits, edit);
       }
     }
 
     if (referenceQuery.kind === "asset-file") {
       for (const edit of this.getAssetFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
-        uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+        setUniqueTextEdit(uniqueEdits, edit);
       }
     }
 
@@ -6874,7 +6882,7 @@ class ProjectLanguageService {
           newRouteDescriptor,
           newRoutePath: newRouteDescriptor.routePath,
         }, overrides)) {
-          uniqueEdits.set(`${edit.filePath}:${edit.start}:${edit.end}:${edit.newText}`, edit);
+          setUniqueTextEdit(uniqueEdits, edit);
         }
       }
     }
@@ -7769,6 +7777,71 @@ class ProjectLanguageService {
     }
 
     return edits;
+  }
+
+  getDirectoryReferenceRenameEdits(oldDirectoryPath, newDirectoryPath, overrides = {}) {
+    const normalizedOldDirectoryPath = normalizePath(oldDirectoryPath);
+    const normalizedNewDirectoryPath = normalizePath(newDirectoryPath);
+    if (
+      normalizedOldDirectoryPath === normalizedNewDirectoryPath ||
+      !isChildPath(this.projectIndex.pagesRoot, normalizedOldDirectoryPath)
+    ) {
+      return [];
+    }
+
+    const graphState = this.projectIndex.getPagesGraphState();
+    const oldChildFilePaths = graphState.allFiles
+      .map((entry) => normalizePath(entry.filePath))
+      .filter((filePath) => isChildPath(normalizedOldDirectoryPath, filePath))
+      .sort((left, right) => left.localeCompare(right));
+    if (!oldChildFilePaths.length) {
+      return [];
+    }
+
+    const uniqueEdits = new Map();
+    for (const oldChildFilePath of oldChildFilePaths) {
+      const newChildFilePath = rewriteDirectoryChildPath(
+        oldChildFilePath,
+        normalizedOldDirectoryPath,
+        normalizedNewDirectoryPath
+      );
+      const referenceQuery = this.getFileReferenceQuery(oldChildFilePath);
+      if (!referenceQuery || referenceQuery.kind === "route-file") {
+        continue;
+      }
+
+      if (referenceQuery.kind === "private-partial") {
+        for (const edit of this.getIncludeFileRenameEdits(oldChildFilePath, newChildFilePath, overrides)) {
+          setUniqueTextEdit(uniqueEdits, edit);
+        }
+        continue;
+      }
+
+      if (referenceQuery.kind === "private-module") {
+        for (const edit of this.getResolveFileRenameEdits(oldChildFilePath, newChildFilePath, overrides)) {
+          setUniqueTextEdit(uniqueEdits, edit);
+        }
+        for (const edit of this.getRequireFileRenameEdits(oldChildFilePath, newChildFilePath, overrides)) {
+          setUniqueTextEdit(uniqueEdits, edit);
+        }
+        continue;
+      }
+
+      if (referenceQuery.kind === "hook-script-module") {
+        for (const edit of this.getRequireFileRenameEdits(oldChildFilePath, newChildFilePath, overrides)) {
+          setUniqueTextEdit(uniqueEdits, edit);
+        }
+        continue;
+      }
+
+      if (referenceQuery.kind === "asset-file") {
+        for (const edit of this.getAssetFileRenameEdits(oldChildFilePath, newChildFilePath, overrides)) {
+          setUniqueTextEdit(uniqueEdits, edit);
+        }
+      }
+    }
+
+    return [...uniqueEdits.values()];
   }
 
   isIncludeRequestForTarget(filePath, requestPath, targetFilePath) {

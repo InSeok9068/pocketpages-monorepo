@@ -12877,6 +12877,69 @@ const currentUser = { email: 'demo@example.com' }
     }
     service.clearDocumentOverride(fixture.boardsFilePath)
 
+    const directoryRenamePrivateRoot = path.join(fixture.appRoot, 'pb_hooks', 'pages', '_private', 'rename-dir')
+    const renamedDirectoryPrivateRoot = path.join(fixture.appRoot, 'pb_hooks', 'pages', '_private', 'renamed-dir')
+    const directoryRenamePartialPath = path.join(directoryRenamePrivateRoot, 'panel.ejs')
+    const directoryRenameModulePath = path.join(directoryRenamePrivateRoot, 'session.js')
+    const directoryRenameCallerPath = path.join(fixture.appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'directory-rename-caller.ejs')
+    writeFile(directoryRenamePartialPath, `<div>Panel</div>\n`)
+    writeFile(directoryRenameModulePath, `module.exports = { ok: true }\n`)
+    writeFile(directoryRenameCallerPath, `<%- include('rename-dir/panel') %>
+<script server>
+const session = resolve('rename-dir/session')
+const direct = require('/pb_hooks/pages/_private/rename-dir/session')
+</script>
+`)
+
+    const directoryRenameAssetRoot = path.join(fixture.appRoot, 'pb_hooks', 'pages', 'assets', 'rename-dir')
+    const renamedDirectoryAssetRoot = path.join(fixture.appRoot, 'pb_hooks', 'pages', 'assets', 'renamed-dir')
+    const directoryRenameAssetPath = path.join(directoryRenameAssetRoot, 'app.css')
+    const directoryRenameAssetCallerPath = path.join(fixture.appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'directory-asset-caller.ejs')
+    writeFile(directoryRenameAssetPath, `body { color: red; }\n`)
+    writeFile(directoryRenameAssetCallerPath, `<script server>
+const href = asset('/assets/rename-dir/app.css')
+</script>
+<link href="/assets/rename-dir/app.css?v=1">
+`)
+
+    const directoryRenameService = new PocketPagesLanguageServiceManager().getServiceForFile(directoryRenameCallerPath)
+    const privateDirectoryRenameEdits = directoryRenameService.getFileRenameEdits(
+      directoryRenamePrivateRoot,
+      renamedDirectoryPrivateRoot
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(directoryRenameCallerPath))
+    if (privateDirectoryRenameEdits.length !== 3) {
+      throw new Error(`Expected directory rename under _private to rewrite include(), resolve(), and require() callers. Got: ${JSON.stringify(privateDirectoryRenameEdits)}`)
+    }
+    const privateDirectoryRenamedText = applyEditsToText(
+      fs.readFileSync(directoryRenameCallerPath, 'utf8'),
+      privateDirectoryRenameEdits
+    )
+    if (
+      !privateDirectoryRenamedText.includes("include('renamed-dir/panel'") ||
+      !privateDirectoryRenamedText.includes("resolve('renamed-dir/session')") ||
+      !privateDirectoryRenamedText.includes("require('/pb_hooks/pages/_private/renamed-dir/session')")
+    ) {
+      throw new Error(`Expected _private directory rename to preserve caller styles. Got: ${privateDirectoryRenamedText}`)
+    }
+
+    const assetDirectoryRenameEdits = directoryRenameService.getFileRenameEdits(
+      directoryRenameAssetRoot,
+      renamedDirectoryAssetRoot
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(directoryRenameAssetCallerPath))
+    if (assetDirectoryRenameEdits.length !== 2) {
+      throw new Error(`Expected directory rename under assets to rewrite asset() and href callers. Got: ${JSON.stringify(assetDirectoryRenameEdits)}`)
+    }
+    const assetDirectoryRenamedText = applyEditsToText(
+      fs.readFileSync(directoryRenameAssetCallerPath, 'utf8'),
+      assetDirectoryRenameEdits
+    )
+    if (
+      !assetDirectoryRenamedText.includes("asset('/assets/renamed-dir/app.css')") ||
+      !assetDirectoryRenamedText.includes('href="/assets/renamed-dir/app.css?v=1"')
+    ) {
+      throw new Error(`Expected asset directory rename to preserve asset caller suffixes. Got: ${assetDirectoryRenamedText}`)
+    }
+
     const feedbackPageReferences = service.getFileReferenceTargets(
       fixture.feedbackPageFilePath,
       fs.readFileSync(fixture.feedbackPageFilePath, 'utf8')
