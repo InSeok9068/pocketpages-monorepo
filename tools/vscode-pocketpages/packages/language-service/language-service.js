@@ -7773,7 +7773,18 @@ class ProjectLanguageService {
 
   isIncludeRequestForTarget(filePath, requestPath, targetFilePath) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
-    return this.projectIndex.getIncludeCandidatePaths(filePath, requestPath).includes(normalizedTargetFilePath);
+    for (const candidatePath of this.projectIndex.getIncludeCandidatePaths(filePath, requestPath)) {
+      const normalizedCandidatePath = normalizePath(candidatePath);
+      if (normalizedCandidatePath === normalizedTargetFilePath) {
+        return true;
+      }
+
+      if (fileExists(normalizedCandidatePath)) {
+        return false;
+      }
+    }
+
+    return false;
   }
 
   includeRequestMatchesTargetAtBase(basePath, requestPath, targetFilePath) {
@@ -7801,25 +7812,18 @@ class ProjectLanguageService {
 
   isRequireRequestForTarget(filePath, requestPath, targetFilePath, options = {}) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
-    const normalizedRequestPath = String(requestPath || "").trim();
-    if (!normalizedRequestPath) {
-      return false;
+    for (const candidatePath of this.projectIndex.getRequireCandidatePaths(filePath, requestPath, options)) {
+      const normalizedCandidatePath = normalizePath(candidatePath);
+      if (normalizedCandidatePath === normalizedTargetFilePath) {
+        return true;
+      }
+
+      if (fileExists(normalizedCandidatePath)) {
+        return false;
+      }
     }
 
-    const rootKind = String(options.rootKind || "");
-    const currentDir = normalizePath(path.dirname(filePath));
-    const basePath = rootKind === "__hooks"
-      ? normalizePath(path.join(this.projectIndex.appRoot, "pb_hooks", normalizedRequestPath.replace(/^\/+/, "")))
-      : normalizedRequestPath.startsWith("/")
-        ? normalizePath(path.join(this.projectIndex.appRoot, normalizedRequestPath))
-        : normalizePath(path.join(currentDir, normalizedRequestPath));
-    const candidatePaths = [
-      basePath,
-      ...[".js", ".cjs", ".mjs", ".json"].map((extension) => normalizePath(`${basePath}${extension}`)),
-      ...[".js", ".cjs", ".mjs", ".json"].map((extension) => normalizePath(path.join(basePath, `index${extension}`))),
-    ];
-
-    return candidatePaths.includes(normalizedTargetFilePath);
+    return false;
   }
 
   getMatchingIncludeRoot(filePath, requestPath, targetFilePath) {

@@ -3392,10 +3392,10 @@ class PocketPagesProjectIndex {
     return null
   }
 
-  resolveRequireTarget(filePath, requestPath, options = {}) {
+  getRequireCandidatePaths(filePath, requestPath, options = {}) {
     const normalizedRequestPath = String(requestPath || '').trim()
     if (!normalizedRequestPath) {
-      return null
+      return []
     }
 
     const rootKind = String(options.rootKind || '')
@@ -3403,7 +3403,7 @@ class PocketPagesProjectIndex {
       rootKind !== '__hooks' &&
       !(normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../') || normalizedRequestPath.startsWith('/'))
     ) {
-      return null
+      return []
     }
 
     const currentDir = normalizePath(path.dirname(filePath))
@@ -3413,13 +3413,15 @@ class PocketPagesProjectIndex {
         ? normalizePath(path.join(this.appRoot, normalizedRequestPath))
         : normalizePath(path.join(currentDir, normalizedRequestPath))
 
-    const candidatePaths = [
+    return [
       basePath,
       ...REQUIRE_EXTENSIONS.map((extension) => normalizePath(`${basePath}${extension}`)),
       ...REQUIRE_EXTENSIONS.map((extension) => normalizePath(path.join(basePath, `index${extension}`))),
     ]
+  }
 
-    for (const candidatePath of candidatePaths) {
+  resolveRequireTarget(filePath, requestPath, options = {}) {
+    for (const candidatePath of this.getRequireCandidatePaths(filePath, requestPath, options)) {
       if (fileExists(candidatePath)) {
         return candidatePath
       }

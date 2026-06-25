@@ -11757,6 +11757,29 @@ module.exports = {
     }
     service.clearDocumentOverride(fixture.boardsFilePath)
 
+    const shadowedIncludeCallerText = `<%- include('shared-panel.ejs', { banner: 'Saved' }) %>\n`
+    service.setDocumentOverride(fixture.boardsFilePath, shadowedIncludeCallerText)
+    const shadowedParentIncludeRenameEdits = service.getFileRenameEdits(
+      fixture.sharedPanelFilePath,
+      path.resolve(path.dirname(fixture.sharedPanelFilePath), 'root-shared-panel.ejs')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath))
+    if (shadowedParentIncludeRenameEdits.length !== 0) {
+      throw new Error(`Expected shadowed include() caller to ignore parent partial rename. Got: ${JSON.stringify(shadowedParentIncludeRenameEdits)}`)
+    }
+
+    const shadowedLocalIncludeRenameEdits = service.getFileRenameEdits(
+      fixture.localSharedPanelFilePath,
+      path.resolve(path.dirname(fixture.localSharedPanelFilePath), 'local-shared-panel.ejs')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath))
+    if (shadowedLocalIncludeRenameEdits.length !== 1) {
+      throw new Error(`Expected shadowed include() caller to follow nearest local partial rename. Got: ${JSON.stringify(shadowedLocalIncludeRenameEdits)}`)
+    }
+    const renamedShadowedIncludeText = applyEditsToText(shadowedIncludeCallerText, shadowedLocalIncludeRenameEdits)
+    if (!renamedShadowedIncludeText.includes(`include('local-shared-panel.ejs'`)) {
+      throw new Error(`Expected shadowed include() path to update to the nearest local target. Got: ${renamedShadowedIncludeText}`)
+    }
+    service.clearDocumentOverride(fixture.boardsFilePath)
+
     const moduleFileRenameEdits = service.getFileRenameEdits(
       fixture.boardServiceFilePath,
       path.resolve(path.dirname(fixture.boardServiceFilePath), 'session-service.js')
@@ -11860,6 +11883,101 @@ const service = resolve('post-rename-service')
     const postRenameUpdatedText = applyEditsToText(postRenameCallerText, postRenameEdits)
     if (!postRenameUpdatedText.includes(`resolve('post-rename-session')`)) {
       throw new Error(`Expected post-rename resolve() path to update after old target moved on disk. Got: ${postRenameUpdatedText}`)
+    }
+
+    const postRenameIncludeFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-include-post-rename-'))
+    const postRenameIncludeAppRoot = path.join(postRenameIncludeFixtureRoot, 'apps', 'fixture-app')
+    const postRenameIncludePagesRoot = path.join(postRenameIncludeAppRoot, 'pb_hooks', 'pages')
+    const postRenameOldPartialPath = path.join(postRenameIncludePagesRoot, '_private', 'post-rename-card.ejs')
+    const postRenameNewPartialPath = path.join(postRenameIncludePagesRoot, '_private', 'post-rename-panel.ejs')
+    const postRenameIncludeCallerPath = path.join(postRenameIncludePagesRoot, 'index.ejs')
+    writeFile(path.join(postRenameIncludeAppRoot, 'pb_schema.json'), '[]')
+    writeFile(path.join(postRenameIncludePagesRoot, '+config.js'), 'module.exports = {}\n')
+    writeFile(postRenameOldPartialPath, '<div>old</div>\n')
+    writeFile(postRenameIncludeCallerPath, `<%- include('post-rename-card') %>\n`)
+    fs.renameSync(postRenameOldPartialPath, postRenameNewPartialPath)
+    const postRenameIncludeManager = new PocketPagesLanguageServiceManager({ idleServiceTtlMs: Infinity })
+    const postRenameIncludeService = postRenameIncludeManager.getServiceForFile(postRenameIncludeCallerPath)
+    const postRenameIncludeEdits = postRenameIncludeService.getFileRenameEdits(
+      postRenameOldPartialPath,
+      postRenameNewPartialPath
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(postRenameIncludeCallerPath))
+    if (postRenameIncludeEdits.length !== 1) {
+      throw new Error(`Expected include() file rename edits after the old target has moved on disk. Got: ${JSON.stringify(postRenameIncludeEdits)}`)
+    }
+    const postRenameIncludeCallerText = fs.readFileSync(postRenameIncludeCallerPath, 'utf8')
+    const postRenameIncludeUpdatedText = applyEditsToText(postRenameIncludeCallerText, postRenameIncludeEdits)
+    if (
+      !postRenameIncludeUpdatedText.includes(`include('post-rename-panel'`) ||
+      postRenameIncludeUpdatedText.includes('post-rename-panel.ejs')
+    ) {
+      throw new Error(`Expected post-rename include() path to update while preserving extensionless style. Got: ${postRenameIncludeUpdatedText}`)
+    }
+
+    const shadowedRequireFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-require-shadow-'))
+    const shadowedRequireAppRoot = path.join(shadowedRequireFixtureRoot, 'apps', 'fixture-app')
+    const shadowedRequirePagesRoot = path.join(shadowedRequireAppRoot, 'pb_hooks', 'pages')
+    const shadowedRequireFilePath = path.join(shadowedRequirePagesRoot, '_private', 'foo.js')
+    const shadowedRequireIndexPath = path.join(shadowedRequirePagesRoot, '_private', 'foo', 'index.js')
+    const shadowedRequireCallerPath = path.join(shadowedRequirePagesRoot, '_private', 'require-consumer.js')
+    const shadowedRequireCallerText = `const foo = require('./foo')\nmodule.exports = foo\n`
+    writeFile(path.join(shadowedRequireAppRoot, 'pb_schema.json'), '[]')
+    writeFile(path.join(shadowedRequirePagesRoot, '+config.js'), 'module.exports = {}\n')
+    writeFile(shadowedRequireFilePath, 'module.exports = { kind: "file" }\n')
+    writeFile(shadowedRequireIndexPath, 'module.exports = { kind: "index" }\n')
+    writeFile(shadowedRequireCallerPath, shadowedRequireCallerText)
+    const shadowedRequireManager = new PocketPagesLanguageServiceManager({ idleServiceTtlMs: Infinity })
+    const shadowedRequireService = shadowedRequireManager.getServiceForFile(shadowedRequireCallerPath)
+    const shadowedRequireResolvedTarget = shadowedRequireService.projectIndex.resolveRequireTarget(
+      shadowedRequireCallerPath,
+      './foo'
+    )
+    if (normalizeFilePath(shadowedRequireResolvedTarget) !== normalizeFilePath(shadowedRequireFilePath)) {
+      throw new Error(`Expected require('./foo') to prefer foo.js over foo/index.js. Got: ${shadowedRequireResolvedTarget}`)
+    }
+    const shadowedRequireIndexRenameEdits = shadowedRequireService.getFileRenameEdits(
+      shadowedRequireIndexPath,
+      path.join(shadowedRequirePagesRoot, '_private', 'foo', 'index2.js')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(shadowedRequireCallerPath))
+    if (shadowedRequireIndexRenameEdits.length !== 0) {
+      throw new Error(`Expected require('./foo') caller to ignore shadowed foo/index.js rename. Got: ${JSON.stringify(shadowedRequireIndexRenameEdits)}`)
+    }
+    const shadowedRequireFileRenameEdits = shadowedRequireService.getFileRenameEdits(
+      shadowedRequireFilePath,
+      path.join(shadowedRequirePagesRoot, '_private', 'foo2.js')
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(shadowedRequireCallerPath))
+    if (shadowedRequireFileRenameEdits.length !== 1) {
+      throw new Error(`Expected require('./foo') caller to follow foo.js rename. Got: ${JSON.stringify(shadowedRequireFileRenameEdits)}`)
+    }
+    const shadowedRequireUpdatedText = applyEditsToText(shadowedRequireCallerText, shadowedRequireFileRenameEdits)
+    if (!shadowedRequireUpdatedText.includes(`require('./foo2')`)) {
+      throw new Error(`Expected shadowed require() path to update to foo2.js. Got: ${shadowedRequireUpdatedText}`)
+    }
+
+    const postRenameRequireFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-pocketpages-require-post-rename-'))
+    const postRenameRequireAppRoot = path.join(postRenameRequireFixtureRoot, 'apps', 'fixture-app')
+    const postRenameRequirePagesRoot = path.join(postRenameRequireAppRoot, 'pb_hooks', 'pages')
+    const postRenameOldRequirePath = path.join(postRenameRequirePagesRoot, '_private', 'post-rename-service.js')
+    const postRenameNewRequirePath = path.join(postRenameRequirePagesRoot, '_private', 'post-rename-session.js')
+    const postRenameRequireCallerPath = path.join(postRenameRequirePagesRoot, '_private', 'post-rename-consumer.js')
+    writeFile(path.join(postRenameRequireAppRoot, 'pb_schema.json'), '[]')
+    writeFile(path.join(postRenameRequirePagesRoot, '+config.js'), 'module.exports = {}\n')
+    writeFile(postRenameOldRequirePath, 'module.exports = {}\n')
+    writeFile(postRenameRequireCallerPath, `const service = require('./post-rename-service')\nmodule.exports = service\n`)
+    fs.renameSync(postRenameOldRequirePath, postRenameNewRequirePath)
+    const postRenameRequireManager = new PocketPagesLanguageServiceManager({ idleServiceTtlMs: Infinity })
+    const postRenameRequireService = postRenameRequireManager.getServiceForFile(postRenameRequireCallerPath)
+    const postRenameRequireEdits = postRenameRequireService.getFileRenameEdits(
+      postRenameOldRequirePath,
+      postRenameNewRequirePath
+    ).filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(postRenameRequireCallerPath))
+    if (postRenameRequireEdits.length !== 1) {
+      throw new Error(`Expected require() file rename edits after the old target has moved on disk. Got: ${JSON.stringify(postRenameRequireEdits)}`)
+    }
+    const postRenameRequireCallerText = fs.readFileSync(postRenameRequireCallerPath, 'utf8')
+    const postRenameRequireUpdatedText = applyEditsToText(postRenameRequireCallerText, postRenameRequireEdits)
+    if (!postRenameRequireUpdatedText.includes(`require('./post-rename-session')`)) {
+      throw new Error(`Expected post-rename require() path to update after old target moved on disk. Got: ${postRenameRequireUpdatedText}`)
     }
 
     const renamedRequireConsumerText = applyEditsToText(
