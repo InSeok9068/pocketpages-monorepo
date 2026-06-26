@@ -97,6 +97,7 @@ function createCustomFeatureService(context) {
               entry.category === "collection-name" ||
               entry.category === "record-field" ||
               entry.category === "filter-field" ||
+              entry.category === "filter-param" ||
               entry.category === "sort-field"
           )
         : customCompletionData.items;

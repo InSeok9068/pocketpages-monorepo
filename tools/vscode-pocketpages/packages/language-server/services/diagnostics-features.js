@@ -49,7 +49,11 @@ function createDiagnosticsFeatureService(context) {
   } = helpers;
 
   function isSchemaDiagnosticCode(code) {
-    return code === "pp-schema-collection" || code === "pp-schema-field";
+    return (
+      code === "pp-schema-collection" ||
+      code === "pp-schema-field" ||
+      code === "pp-schema-filter-param"
+    );
   }
 
   function hashText(value) {

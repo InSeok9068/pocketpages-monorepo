@@ -23,6 +23,7 @@ const DATASTAR_ROUTE_ACTION_RE = /@(get|post|put|patch|delete)\s*\(\s*(['"`])([^
 const DATASTAR_ROUTE_ACTION_OPEN_RE = /@(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]*)$/s
 const FILTER_COLLECTION_METHOD_NAMES = new Set(['findRecordsByFilter', 'findFirstRecordByFilter'])
 const FILTER_FIELD_CANDIDATE_RE = /(^|[(&|]\s*|&&\s*|\|\|\s*)([A-Za-z_][A-Za-z0-9_]*)(?::(?:length|each|lower))?\s*(\?!~|\?!=|\?>=|\?<=|\?~|\?=|\?>|\?<|!~|!=|>=|<=|~|=|>|<)/g
+const FILTER_PARAM_PLACEHOLDER_RE = /\{:\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}/g
 const FILTER_MASKED_CHAR = ' '
 const SORT_COLLECTION_METHOD_NAMES = new Set(['findRecordsByFilter'])
 const SORT_FIELD_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
@@ -1807,6 +1808,298 @@ function getFilterFieldCompletionToken(filterText, localOffset) {
   return token
 }
 
+function collectFilterParamPlaceholders(filterText) {
+  const placeholders = []
+  const sourceText = maskFilterIgnoredRanges(filterText)
+  const seenBySpan = new Set()
+
+  FILTER_PARAM_PLACEHOLDER_RE.lastIndex = 0
+  let match = FILTER_PARAM_PLACEHOLDER_RE.exec(sourceText)
+  while (match) {
+    const name = match[1]
+    const nameStart = match.index + match[0].indexOf(name)
+    const nameEnd = nameStart + name.length
+    const key = `${nameStart}:${nameEnd}`
+    if (!seenBySpan.has(key)) {
+      seenBySpan.add(key)
+      placeholders.push({
+        name,
+        start: nameStart,
+        end: nameEnd,
+        placeholderStart: match.index,
+        placeholderEnd: match.index + match[0].length,
+      })
+    }
+
+    match = FILTER_PARAM_PLACEHOLDER_RE.exec(sourceText)
+  }
+
+  return placeholders
+}
+
+function getFilterParamsArgumentIndex(methodName) {
+  if (methodName === 'findFirstRecordByFilter') {
+    return 2
+  }
+
+  if (methodName === 'findRecordsByFilter') {
+    return 5
+  }
+
+  return -1
+}
+
+function getObjectPropertyNameInfo(name, sourceFile, scriptText, offsetBase = 0) {
+  if (!name || ts.isComputedPropertyName(name)) {
+    return null
+  }
+
+  if (ts.isIdentifier(name)) {
+    return {
+      name: name.text,
+      start: offsetBase + name.getStart(sourceFile),
+      end: offsetBase + name.getEnd(),
+    }
+  }
+
+  if (ts.isStringLiteralLike(name)) {
+    const range = getStringLiteralPathRange(name, sourceFile, scriptText, offsetBase)
+    if (!range) {
+      return null
+    }
+
+    return {
+      name: name.text,
+      start: range.start,
+      end: range.end,
+    }
+  }
+
+  return null
+}
+
+function collectObjectLiteralPropertyNames(objectLiteral, sourceFile, scriptText, offsetBase = 0) {
+  const properties = []
+  let hasUnsafeProperty = false
+
+  for (const property of objectLiteral.properties) {
+    if (ts.isSpreadAssignment(property)) {
+      hasUnsafeProperty = true
+      continue
+    }
+
+    const name = property.name
+    if (!name) {
+      hasUnsafeProperty = true
+      continue
+    }
+
+    if (ts.isComputedPropertyName(name)) {
+      hasUnsafeProperty = true
+      continue
+    }
+
+    const nameInfo = getObjectPropertyNameInfo(name, sourceFile, scriptText, offsetBase)
+    if (nameInfo && isFieldNameLiteral(nameInfo.name)) {
+      properties.push(nameInfo)
+    }
+  }
+
+  return {
+    properties,
+    hasUnsafeProperty,
+  }
+}
+
+function readFilterParamsObjectInfo(node, descriptor, sourceFile, scriptText, offsetBase = 0) {
+  const paramsIndex = getFilterParamsArgumentIndex(descriptor.methodName)
+  if (paramsIndex < 0 || node.arguments.length <= paramsIndex) {
+    return {
+      hasArgument: false,
+      inspectable: true,
+      properties: [],
+    }
+  }
+
+  const paramsArgument = node.arguments[paramsIndex]
+  const target = skipParenthesizedExpression(paramsArgument)
+  if (!target || !ts.isObjectLiteralExpression(target)) {
+    return {
+      hasArgument: true,
+      inspectable: false,
+      properties: [],
+      argumentStart: offsetBase + paramsArgument.getStart(sourceFile),
+      argumentEnd: offsetBase + paramsArgument.getEnd(),
+    }
+  }
+
+  const collected = collectObjectLiteralPropertyNames(target, sourceFile, scriptText, offsetBase)
+  return {
+    hasArgument: true,
+    inspectable: !collected.hasUnsafeProperty,
+    properties: collected.properties,
+    argumentStart: offsetBase + target.getStart(sourceFile),
+    argumentEnd: offsetBase + target.getEnd(),
+  }
+}
+
+function createFilterParamSchemaContexts(node, descriptor, sourceFile, scriptText, offsetBase = 0) {
+  if (!FILTER_COLLECTION_METHOD_NAMES.has(descriptor.methodName) || node.arguments.length < 2) {
+    return []
+  }
+
+  const filterArgument = node.arguments[1]
+  const filterRange = getStringLiteralPathRange(filterArgument, sourceFile, scriptText, offsetBase)
+  if (!filterRange) {
+    return []
+  }
+
+  const placeholders = collectFilterParamPlaceholders(filterRange.value)
+  const paramsInfo = readFilterParamsObjectInfo(node, descriptor, sourceFile, scriptText, offsetBase)
+  if (!placeholders.length && (!paramsInfo.hasArgument || !paramsInfo.properties.length)) {
+    return []
+  }
+
+  if (paramsInfo.hasArgument && !paramsInfo.inspectable) {
+    return []
+  }
+
+  const matchText = String(scriptText || '').slice(node.getStart(sourceFile), node.getEnd())
+  return [{
+    kind: 'filter-param',
+    methodName: descriptor.methodName,
+    value: '',
+    start: filterRange.start,
+    end: filterRange.end,
+    filterStart: filterRange.start,
+    filterEnd: filterRange.end,
+    placeholders: placeholders.map((placeholder) => ({
+      name: placeholder.name,
+      start: filterRange.start + placeholder.start,
+      end: filterRange.start + placeholder.end,
+      placeholderStart: filterRange.start + placeholder.placeholderStart,
+      placeholderEnd: filterRange.start + placeholder.placeholderEnd,
+    })),
+    params: paramsInfo.properties.slice(),
+    hasParamsArgument: paramsInfo.hasArgument,
+    paramsStart: paramsInfo.argumentStart,
+    paramsEnd: paramsInfo.argumentEnd,
+    callStart: offsetBase + node.getStart(sourceFile),
+    callEnd: offsetBase + node.getEnd(),
+    matchText,
+    receiverExpression: descriptor.receiverExpression,
+    receiverName: descriptor.receiverName,
+    receiverStart: offsetBase + descriptor.receiverStart,
+    receiverEnd: offsetBase + descriptor.receiverEnd,
+    receiverIsDollarApp: descriptor.receiverIsDollarApp,
+  }]
+}
+
+function getFilterParamCompletionToken(filterText, localOffset) {
+  if (isFilterOffsetIgnored(filterText, localOffset)) {
+    return null
+  }
+
+  const sourceText = maskFilterIgnoredRanges(filterText)
+  const offset = Math.max(0, Math.min(Number(localOffset) || 0, sourceText.length))
+  const placeholderStart = sourceText.lastIndexOf('{:', offset)
+  if (placeholderStart === -1) {
+    return null
+  }
+
+  const closeIndex = sourceText.indexOf('}', placeholderStart + 2)
+  if (closeIndex !== -1 && offset > closeIndex) {
+    return null
+  }
+
+  const placeholderEnd = closeIndex === -1 ? sourceText.length : closeIndex
+  let nameStart = placeholderStart + 2
+  while (nameStart < placeholderEnd && /\s/.test(sourceText[nameStart])) {
+    nameStart += 1
+  }
+
+  if (offset < nameStart || offset > placeholderEnd) {
+    return null
+  }
+
+  let start = offset
+  let end = offset
+  while (start > nameStart && isFieldNamePartChar(sourceText[start - 1])) {
+    start -= 1
+  }
+  while (end < placeholderEnd && isFieldNamePartChar(sourceText[end])) {
+    end += 1
+  }
+
+  if (sourceText.slice(nameStart, start).trim()) {
+    return null
+  }
+
+  if (sourceText.slice(end, placeholderEnd).trim()) {
+    return null
+  }
+
+  const value = sourceText.slice(start, end)
+  if (value && !isFieldNameStartChar(value[0])) {
+    return null
+  }
+
+  return {
+    value,
+    start,
+    end,
+  }
+}
+
+function createFilterParamSchemaContextAtOffset(node, descriptor, sourceFile, scriptText, offset, offsetBase = 0) {
+  if (!FILTER_COLLECTION_METHOD_NAMES.has(descriptor.methodName) || node.arguments.length < 2) {
+    return null
+  }
+
+  const filterArgument = node.arguments[1]
+  const filterRange = getStringLiteralPathRange(filterArgument, sourceFile, scriptText, offsetBase, {
+    requireClosed: false,
+  })
+  if (!filterRange || offset < filterRange.start || offset > filterRange.end) {
+    return null
+  }
+
+  const localOffset = offset - filterRange.start
+  const token = getFilterParamCompletionToken(filterRange.value, localOffset)
+  if (!token) {
+    return null
+  }
+
+  const paramsInfo = readFilterParamsObjectInfo(node, descriptor, sourceFile, scriptText, offsetBase)
+  if (!paramsInfo.hasArgument || !paramsInfo.inspectable || !paramsInfo.properties.length) {
+    return null
+  }
+
+  const matchText = String(scriptText || '').slice(node.getStart(sourceFile), node.getEnd())
+  return {
+    kind: 'filter-param',
+    methodName: descriptor.methodName,
+    value: token.value,
+    start: filterRange.start + token.start,
+    end: filterRange.start + token.end,
+    filterStart: filterRange.start,
+    filterEnd: filterRange.end,
+    params: paramsInfo.properties.slice(),
+    paramNames: [...new Set(paramsInfo.properties.map((property) => property.name))],
+    hasParamsArgument: true,
+    paramsStart: paramsInfo.argumentStart,
+    paramsEnd: paramsInfo.argumentEnd,
+    callStart: offsetBase + node.getStart(sourceFile),
+    callEnd: offsetBase + node.getEnd(),
+    matchText,
+    receiverExpression: descriptor.receiverExpression,
+    receiverName: descriptor.receiverName,
+    receiverStart: offsetBase + descriptor.receiverStart,
+    receiverEnd: offsetBase + descriptor.receiverEnd,
+    receiverIsDollarApp: descriptor.receiverIsDollarApp,
+  }
+}
+
 function createFilterFieldSchemaContexts(node, descriptor, sourceFile, scriptText, offsetBase = 0) {
   if (!FILTER_COLLECTION_METHOD_NAMES.has(descriptor.methodName) || node.arguments.length < 2) {
     return []
@@ -2100,6 +2393,7 @@ function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind 
   const includeCollectionContext = !contextKind || contextKind === 'collection-name'
   const includeFieldContext = !contextKind || contextKind === 'record-field'
   const includeFilterContext = !contextKind || contextKind === 'filter-field'
+  const includeFilterParamContext = !contextKind || contextKind === 'filter-param'
   const includeSortContext = !contextKind || contextKind === 'sort-field'
 
   const visit = (node) => {
@@ -2108,7 +2402,7 @@ function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind 
     }
 
     if (ts.isCallExpression(node) && node.arguments.length) {
-      if (includeCollectionContext || includeFilterContext || includeSortContext) {
+      if (includeCollectionContext || includeFilterContext || includeFilterParamContext || includeSortContext) {
         const methodDescriptor = getCollectionMethodDescriptor(
           node.expression,
           sourceFile,
@@ -2133,6 +2427,20 @@ function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind 
                 sourceText,
                 offsetBase
               )
+              return
+            }
+          }
+
+          if (includeFilterParamContext) {
+            foundContext = createFilterParamSchemaContextAtOffset(
+              node,
+              methodDescriptor,
+              sourceFile,
+              sourceText,
+              offset,
+              offsetBase
+            )
+            if (foundContext) {
               return
             }
           }
@@ -2430,6 +2738,14 @@ function collectSchemaContexts(scriptText, options = {}) {
         }
 
         contexts.push(...createFilterFieldSchemaContexts(
+          node,
+          collectionMethodDescriptor,
+          sourceFile,
+          sourceText,
+          offsetBase
+        ))
+
+        contexts.push(...createFilterParamSchemaContexts(
           node,
           collectionMethodDescriptor,
           sourceFile,

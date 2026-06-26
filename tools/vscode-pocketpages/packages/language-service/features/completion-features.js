@@ -71,6 +71,16 @@ function createSchemaFieldCompletionItem(service, collectionName, field, categor
   };
 }
 
+function createFilterParamCompletionItem(paramName) {
+  return {
+    label: paramName,
+    insertText: paramName,
+    detail: "PocketBase filter param",
+    documentation: `Filter placeholder: ${formatInlineCode(`{:${paramName}}`)}`,
+    category: "filter-param",
+  };
+}
+
 function formatSchemaCollectionDocumentation(service, collectionName) {
   const fields = service.projectIndex.getFields(collectionName);
   const schemaPath = service.projectIndex.getSchemaState().schemaPath;
@@ -246,6 +256,23 @@ function createCompletionFeatureHandlers(deps) {
             documentation: formatSchemaCollectionDocumentation(service, collectionName),
             category: "collection-name",
           })),
+        };
+      }
+
+      if (schemaContext && schemaContext.kind === "filter-param") {
+        if (
+          typeof service.isSchemaAppReceiverContext === "function" &&
+          !service.isSchemaAppReceiverContext(filePath, documentText, schemaContext, {
+            analysisStart,
+          })
+        ) {
+          return null;
+        }
+
+        return {
+          start: analysisStart + schemaContext.start,
+          end: analysisStart + schemaContext.end,
+          items: (Array.isArray(schemaContext.paramNames) ? schemaContext.paramNames : []).map(createFilterParamCompletionItem),
         };
       }
 

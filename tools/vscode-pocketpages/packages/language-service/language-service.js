@@ -4843,6 +4843,64 @@ class ProjectLanguageService {
     };
   }
 
+  buildDocumentSchemaFilterParamDiagnostics(filePath, documentText, context, options = {}) {
+    const analysisStart = typeof options.analysisStart === "number" ? options.analysisStart : 0;
+    if (
+      !context ||
+      context.kind !== "filter-param" ||
+      !this.isSchemaAppReceiverContext(filePath, documentText, context, {
+        analysisStart,
+      })
+    ) {
+      return [];
+    }
+
+    const placeholders = Array.isArray(context.placeholders) ? context.placeholders : [];
+    const params = Array.isArray(context.params) ? context.params : [];
+    if (!placeholders.length && !params.length) {
+      return [];
+    }
+
+    const diagnostics = [];
+    const paramNames = new Set(params.map((entry) => entry && entry.name).filter(Boolean));
+    const placeholderNames = new Set(placeholders.map((entry) => entry && entry.name).filter(Boolean));
+    const reportedMissingNames = new Set();
+    const methodName = context.methodName || "findRecordsByFilter";
+
+    for (const placeholder of placeholders) {
+      if (!placeholder || !placeholder.name || paramNames.has(placeholder.name) || reportedMissingNames.has(placeholder.name)) {
+        continue;
+      }
+
+      reportedMissingNames.add(placeholder.name);
+      diagnostics.push({
+        code: "pp-schema-filter-param",
+        category: ts.DiagnosticCategory.Warning,
+        message: `Missing filter param "${placeholder.name}" for ${methodName}() placeholder.`,
+        start: analysisStart + placeholder.start,
+        end: analysisStart + placeholder.end,
+      });
+    }
+
+    const reportedUnusedNames = new Set();
+    for (const param of params) {
+      if (!param || !param.name || placeholderNames.has(param.name) || reportedUnusedNames.has(param.name)) {
+        continue;
+      }
+
+      reportedUnusedNames.add(param.name);
+      diagnostics.push({
+        code: "pp-schema-filter-param",
+        category: ts.DiagnosticCategory.Suggestion,
+        message: `Unused filter param "${param.name}" for ${methodName}() filter.`,
+        start: analysisStart + param.start,
+        end: analysisStart + param.end,
+      });
+    }
+
+    return diagnostics;
+  }
+
   buildDocumentSchemaSortFieldDiagnostic(filePath, documentText, context, options = {}) {
     const analysisText = typeof options.analysisText === "string" ? options.analysisText : documentText;
     const analysisStart = typeof options.analysisStart === "number" ? options.analysisStart : 0;
@@ -9161,6 +9219,17 @@ class ProjectLanguageService {
           }
         }
 
+        if (context.kind === "filter-param") {
+          diagnostics.push(...this.buildDocumentSchemaFilterParamDiagnostics(
+            filePath,
+            documentText,
+            context,
+            {
+              analysisStart: block.contentStart,
+            }
+          ));
+        }
+
         if (context.kind === "sort-field") {
           const sortFieldDiagnostic = this.buildDocumentSchemaSortFieldDiagnostic(
             filePath,
@@ -9425,6 +9494,14 @@ class ProjectLanguageService {
         }
       }
 
+      if (context.kind === "filter-param") {
+        diagnostics.push(...this.buildDocumentSchemaFilterParamDiagnostics(
+          filePath,
+          documentText,
+          context
+        ));
+      }
+
       if (context.kind === "sort-field") {
         const sortFieldDiagnostic = this.buildDocumentSchemaSortFieldDiagnostic(
           filePath,
@@ -9585,6 +9662,14 @@ class ProjectLanguageService {
         if (filterFieldDiagnostic) {
           diagnostics.push(filterFieldDiagnostic);
         }
+      }
+
+      if (context.kind === "filter-param") {
+        diagnostics.push(...this.buildDocumentSchemaFilterParamDiagnostics(
+          filePath,
+          documentText,
+          context
+        ));
       }
 
       if (context.kind === "sort-field") {

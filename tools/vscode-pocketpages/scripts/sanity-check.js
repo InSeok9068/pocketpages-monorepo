@@ -1315,7 +1315,7 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     diagnosticsFeatureSource,
-    /code === "pp-schema-collection" \|\| code === "pp-schema-field"/,
+    /code === "pp-schema-collection"[\s\S]*code === "pp-schema-field"[\s\S]*code === "pp-schema-filter-param"/,
     'Expected diagnostics feature service to preserve only schema diagnostics for non-pages pb_hooks scripts.'
   )
   assertMatches(
@@ -7827,6 +7827,13 @@ ${largeRealisticSections}
         ],
       },
       {
+        code: 'pp-schema-filter-param',
+        category: ts.DiagnosticCategory.Warning,
+        message: 'Missing filter param "name" for findRecordsByFilter() placeholder.',
+        start: schemaOnlyDiagnosticsText.indexOf('nmae'),
+        end: schemaOnlyDiagnosticsText.indexOf('nmae') + 'nmae'.length,
+      },
+      {
         code: 2304,
         category: ts.DiagnosticCategory.Error,
         message: "Cannot find name 'missingGlobal'.",
@@ -7855,7 +7862,8 @@ ${largeRealisticSections}
       schemaOnlyDiagnosticsReport.items.some(
         (entry) =>
           String(entry.code) !== 'pp-schema-collection' &&
-          String(entry.code) !== 'pp-schema-field'
+          String(entry.code) !== 'pp-schema-field' &&
+          String(entry.code) !== 'pp-schema-filter-param'
       )
     ) {
       throw new Error(
@@ -7865,6 +7873,11 @@ ${largeRealisticSections}
     if (!schemaOnlyDiagnosticsReport.items.some((entry) => String(entry.code) === 'pp-schema-collection')) {
       throw new Error(
         `Expected schema-support-only hook diagnostics to keep collection diagnostics. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
+      )
+    }
+    if (!schemaOnlyDiagnosticsReport.items.some((entry) => String(entry.code) === 'pp-schema-filter-param')) {
+      throw new Error(
+        `Expected schema-support-only hook diagnostics to keep filter param diagnostics. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
       )
     }
     const schemaOnlyFieldDiagnostic = schemaOnlyDiagnosticsReport.items.find((entry) => String(entry.code) === 'pp-schema-field')
@@ -10380,7 +10393,25 @@ boardService.readAuthState(
       filterParamCompletionText.indexOf('sta') + 'sta'.length
     )
     if (filterParamCompletion) {
-      throw new Error(`Expected filter field completion to skip {:param} values. Got: ${JSON.stringify(filterParamCompletion)}`)
+      throw new Error(`Expected filter completion to skip {:param} values without inline params object. Got: ${JSON.stringify(filterParamCompletion)}`)
+    }
+
+    const filterParamKeyCompletionText =
+      `$app.findRecordsByFilter('boards', 'name = {:sta}', '', 10, 0, { statusValue: 'draft', cutoffDate: '2024-01-01' })\n`
+    const filterParamKeyCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      filterParamKeyCompletionText,
+      filterParamKeyCompletionText.indexOf('sta') + 'sta'.length
+    )
+    const filterParamKeyNames = filterParamKeyCompletion ? filterParamKeyCompletion.items.map((entry) => entry.label) : []
+    if (
+      !filterParamKeyCompletion ||
+      filterParamKeyCompletion.start !== filterParamKeyCompletionText.indexOf('sta') ||
+      filterParamKeyCompletion.end !== filterParamKeyCompletionText.indexOf('sta') + 'sta'.length ||
+      !filterParamKeyNames.includes('statusValue') ||
+      !filterParamKeyNames.includes('cutoffDate')
+    ) {
+      throw new Error(`Expected filter params placeholder completion from inline object keys. Got: ${JSON.stringify(filterParamKeyCompletion)}`)
     }
 
     const filterLiteralCompletionText = `$app.findRecordsByFilter('boards', 'name = "sta"')\n`
@@ -10449,6 +10480,32 @@ boardService.readAuthState(
     if (!jobFilterFieldNames.includes('status')) {
       throw new Error(`Expected schema-only hook filter field completions. Got: ${JSON.stringify(jobFilterFieldCompletion)}`)
     }
+
+    const jobFilterParamText =
+      `$app.findRecordsByFilter('boards', 'name = {:query}', '', 10, 0, { queryText: 'demo' })\n`
+    const jobFilterParamCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      jobFilterParamText,
+      jobFilterParamText.indexOf('query') + 'query'.length
+    )
+    const jobFilterParamNames = jobFilterParamCompletion ? jobFilterParamCompletion.items.map((entry) => entry.label) : []
+    if (!jobFilterParamNames.includes('queryText')) {
+      throw new Error(`Expected schema-only hook filter param completions. Got: ${JSON.stringify(jobFilterParamCompletion)}`)
+    }
+
+    const jobFilterParamDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      `$app.findRecordsByFilter('boards', 'name = {:name}', '', 10, 0, {})\n`
+    )
+    if (
+      !jobFilterParamDiagnostics.some((entry) =>
+        String(entry.code) === 'pp-schema-filter-param' &&
+        String(entry.message).includes('Missing filter param "name"')
+      )
+    ) {
+      throw new Error(`Expected schema-only hook filter param diagnostics. Got: ${JSON.stringify(jobFilterParamDiagnostics)}`)
+    }
+
     const jobStatusFieldCompletion = jobFilterFieldCompletion
       ? jobFilterFieldCompletion.items.find((entry) => entry.label === 'status')
       : null
@@ -13699,6 +13756,34 @@ $app.findRecordsByFilter('boards', 'name = {:name} // ghost = bar')
       )
     }
 
+    const filterParamDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+$app.findRecordsByFilter('boards', 'name = {:name} && created <= {:cutoffDate}', '-updated', 10, 0, { name: 'demo', unusedParam: true })
+$app.findFirstRecordByFilter('boards', 'slug = {:slug} && status = {:status}', { slug: 'demo', extra: true })
+$app.findRecordsByFilter('boards', 'name = "{:ignored}" // {:alsoIgnored}', '', 10, 0, {})
+$app.findRecordsByFilter('boards', 'name = {:spreadName}', '', 10, 0, { ...baseParams })
+</script>\n`
+    )
+    const filterParamMessages = filterParamDiagnostics
+      .filter((entry) => String(entry.code) === 'pp-schema-filter-param')
+      .map((entry) => `${ts.DiagnosticCategory[entry.category]}:${String(entry.message)}`)
+    if (
+      !filterParamMessages.some((message) => message.includes('Warning:Missing filter param "cutoffDate"')) ||
+      !filterParamMessages.some((message) => message.includes('Warning:Missing filter param "status"')) ||
+      !filterParamMessages.some((message) => message.includes('Suggestion:Unused filter param "unusedParam"')) ||
+      !filterParamMessages.some((message) => message.includes('Suggestion:Unused filter param "extra"'))
+    ) {
+      throw new Error(`Expected filter params missing/unused diagnostics. Got: ${filterParamMessages.join(' | ')}`)
+    }
+    if (
+      filterParamMessages.some((message) => message.includes('ignored')) ||
+      filterParamMessages.some((message) => message.includes('alsoIgnored')) ||
+      filterParamMessages.some((message) => message.includes('spreadName'))
+    ) {
+      throw new Error(`Expected filter params diagnostics to ignore string/comment/spread cases. Got: ${filterParamMessages.join(' | ')}`)
+    }
+
     const filterCollectionVariableDiagnostics = service.getDiagnostics(
       fixture.boardsFilePath,
       `<script server>
@@ -13807,12 +13892,13 @@ $app.findRecordsByFilter(boardCollection, 'is_active = true', '-srot_order,+owne
     const nonPocketBaseReceiverDiagnostics = service.getDiagnostics(
       fixture.jobScriptFilePath,
       `const helper = { findRecordsByFilter() {} }
-helper.findRecordsByFilter('missing_collection', 'ghost = 1', '-ghost')
+helper.findRecordsByFilter('missing_collection', 'ghost = {:ghost}', '-ghost', 10, 0, {})
 `
     )
     if (
       nonPocketBaseReceiverDiagnostics.some((entry) => String(entry.code) === 'pp-schema-collection') ||
-      nonPocketBaseReceiverDiagnostics.some((entry) => String(entry.code) === 'pp-schema-field')
+      nonPocketBaseReceiverDiagnostics.some((entry) => String(entry.code) === 'pp-schema-field') ||
+      nonPocketBaseReceiverDiagnostics.some((entry) => String(entry.code) === 'pp-schema-filter-param')
     ) {
       throw new Error(
         `Expected non-PocketBase receivers to skip schema diagnostics. Got: ${nonPocketBaseReceiverDiagnostics

@@ -424,6 +424,8 @@ function customCompletionKind(category) {
       return CompletionItemKind.Property;
     case "collection-name":
       return CompletionItemKind.Struct;
+    case "filter-param":
+      return CompletionItemKind.Variable;
     case "record-field":
     case "filter-field":
     case "sort-field":
