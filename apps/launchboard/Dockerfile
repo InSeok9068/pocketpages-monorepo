@@ -20,20 +20,20 @@ RUN bash ./task.sh css launchboard
 FROM alpine:3.22 AS pocketbase
 
 ARG TARGETARCH
+ARG PB_VERSION
 
 RUN apk add --no-cache ca-certificates curl unzip
 RUN set -eu; \
+  if [ -z "${PB_VERSION}" ]; then echo "PB_VERSION build argument is required"; exit 1; fi; \
   case "${TARGETARCH}" in \
     amd64|arm64) PB_ARCH="${TARGETARCH}" ;; \
     *) echo "Unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
-  esac \
-  && CURL_RETRY="--retry 5 --retry-delay 5 --retry-max-time 120 --retry-all-errors --retry-connrefused" \
-  && PB_VERSION="$(curl -fsSL ${CURL_RETRY} https://api.github.com/repos/pocketbase/pocketbase/releases/latest | tr -d '\n' | sed -n 's/.*\"tag_name\"[[:space:]]*:[[:space:]]*\"v\([^\"]*\)\".*/\1/p')" \
-  && if [ -z "${PB_VERSION}" ]; then echo "Failed to resolve PocketBase version"; exit 1; fi \
-  && curl -fsSL ${CURL_RETRY} -o /tmp/pocketbase.zip \
-    "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_${PB_ARCH}.zip" \
-  && unzip /tmp/pocketbase.zip -d /out \
-  && chmod +x /out/pocketbase
+  esac; \
+  CURL_RETRY="--retry 5 --retry-delay 5 --retry-max-time 120 --retry-all-errors --retry-connrefused"; \
+  curl -fsSL ${CURL_RETRY} -o /tmp/pocketbase.zip \
+    "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_${PB_ARCH}.zip"; \
+  unzip /tmp/pocketbase.zip -d /out; \
+  chmod +x /out/pocketbase
 
 FROM alpine:3.22
 
