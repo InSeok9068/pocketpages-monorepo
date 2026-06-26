@@ -1297,7 +1297,7 @@ function resolveSchemaLintCollectionReference(context, file, analysisText, schem
     return null
   }
 
-  return context.projectIndex.inferCollectionReference(
+  return context.projectIndex.inferCollectionArgumentReference(
     schemaContext.collectionExpression,
     analysisText,
     schemaContext.collectionStart,
