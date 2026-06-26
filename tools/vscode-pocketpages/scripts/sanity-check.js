@@ -13259,6 +13259,64 @@ $app.findRecordsByFilter(boardCollection, 'srot_order >= {:min} && owner = @requ
       )
     }
 
+    const sortFieldDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+$app.findRecordsByFilter('boards', 'is_active = true', '-srot_order,+name,created,@random,owner.name')
+$app.findFirstRecordByFilter('boards', 'name = "demo"', '-nmae')
+</script>\n`
+    )
+    if (
+      !sortFieldDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "srot_order" for collection "boards" in findRecordsByFilter() sort')
+      )
+    ) {
+      throw new Error(
+        `Expected sort field schema diagnostic. Got: ${sortFieldDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+    if (
+      sortFieldDiagnostics.some((entry) => String(entry.message).includes('name')) ||
+      sortFieldDiagnostics.some((entry) => String(entry.message).includes('created')) ||
+      sortFieldDiagnostics.some((entry) => String(entry.message).includes('@random')) ||
+      sortFieldDiagnostics.some((entry) => String(entry.message).includes('owner')) ||
+      sortFieldDiagnostics.some((entry) => String(entry.message).includes('nmae'))
+    ) {
+      throw new Error(
+        `Expected valid/special/nested sort entries and non-sort method args to stay clean. Got: ${sortFieldDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const sortCollectionVariableDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+const boardCollection = $app.findCollectionByNameOrId('boards')
+$app.findRecordsByFilter(boardCollection, 'is_active = true', '-srot_order,+owner')
+</script>\n`
+    )
+    if (
+      !sortCollectionVariableDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "srot_order" for collection "boards" in findRecordsByFilter() sort')
+      )
+    ) {
+      throw new Error(
+        `Expected sort field schema diagnostic for collection variable. Got: ${sortCollectionVariableDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+    if (sortCollectionVariableDiagnostics.some((entry) => String(entry.message).includes('owner'))) {
+      throw new Error(
+        `Expected valid relation sort field to stay clean. Got: ${sortCollectionVariableDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
     const explicitAssignmentSchemaDiagnostics = service.getDiagnostics(
       fixture.boardsFilePath,
       `<script server>

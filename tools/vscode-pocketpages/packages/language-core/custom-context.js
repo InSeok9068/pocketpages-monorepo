@@ -24,6 +24,8 @@ const DATASTAR_ROUTE_ACTION_OPEN_RE = /@(get|post|put|patch|delete)\s*\(\s*(['"`
 const FILTER_COLLECTION_METHOD_NAMES = new Set(['findRecordsByFilter', 'findFirstRecordByFilter'])
 const FILTER_FIELD_CANDIDATE_RE = /(^|[(&|]\s*|&&\s*|\|\|\s*)([A-Za-z_][A-Za-z0-9_]*)(?::(?:length|each|lower))?\s*(\?!~|\?!=|\?>=|\?<=|\?~|\?=|\?>|\?<|!~|!=|>=|<=|~|=|>|<)/g
 const FILTER_MASKED_CHAR = ' '
+const SORT_COLLECTION_METHOD_NAMES = new Set(['findRecordsByFilter'])
+const SORT_FIELD_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 function getLastPathSegment(value) {
   return String(value || '')
@@ -1631,6 +1633,81 @@ function createFilterFieldSchemaContexts(node, methodName, sourceFile, scriptTex
   }))
 }
 
+function collectSortFieldCandidates(sortText) {
+  const candidates = []
+  const sourceText = String(sortText || '')
+  let offset = 0
+
+  for (const rawPart of sourceText.split(',')) {
+    const partStart = offset
+    const partEnd = partStart + rawPart.length
+    offset = partEnd + 1
+
+    const leadingWhitespaceLength = rawPart.length - rawPart.trimStart().length
+    const trailingWhitespaceLength = rawPart.length - rawPart.trimEnd().length
+    const trimmedStart = partStart + leadingWhitespaceLength
+    const trimmedEnd = partEnd - trailingWhitespaceLength
+    let fieldStart = trimmedStart
+    let sortField = sourceText.slice(trimmedStart, trimmedEnd)
+    if (!sortField) {
+      continue
+    }
+
+    if (sortField[0] === '+' || sortField[0] === '-') {
+      fieldStart += 1
+      sortField = sortField.slice(1)
+    }
+
+    if (!sortField || sortField[0] === '@' || sortField.includes('.') || !SORT_FIELD_NAME_RE.test(sortField)) {
+      continue
+    }
+
+    candidates.push({
+      fieldName: sortField,
+      start: fieldStart,
+      end: fieldStart + sortField.length,
+    })
+  }
+
+  return candidates
+}
+
+function createSortFieldSchemaContexts(node, methodName, sourceFile, scriptText, offsetBase = 0) {
+  if (!SORT_COLLECTION_METHOD_NAMES.has(methodName) || node.arguments.length < 3) {
+    return []
+  }
+
+  const collectionArgument = node.arguments[0]
+  const sortArgument = node.arguments[2]
+  const sortRange = getStringLiteralPathRange(sortArgument, sourceFile, scriptText, offsetBase)
+  if (!sortRange) {
+    return []
+  }
+
+  const collectionRange = getStringLiteralPathRange(collectionArgument, sourceFile, scriptText, offsetBase)
+  const collectionStart = offsetBase + collectionArgument.getStart(sourceFile)
+  const collectionEnd = offsetBase + collectionArgument.getEnd()
+  const collectionExpression = getExpressionText(collectionArgument, sourceFile, scriptText)
+  const matchText = String(scriptText || '').slice(node.getStart(sourceFile), node.getEnd())
+
+  return collectSortFieldCandidates(sortRange.value).map((candidate) => ({
+    kind: 'sort-field',
+    methodName,
+    value: candidate.fieldName,
+    start: sortRange.start + candidate.start,
+    end: sortRange.start + candidate.end,
+    sortStart: sortRange.start,
+    sortEnd: sortRange.end,
+    collectionName: collectionRange ? collectionRange.value : null,
+    collectionExpression,
+    collectionStart,
+    collectionEnd,
+    callStart: offsetBase + node.getStart(sourceFile),
+    callEnd: offsetBase + node.getEnd(),
+    matchText,
+  }))
+}
+
 function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind = null) {
   const sourceText = String(scriptText || '')
   const offsetBase = Number(options.offsetBase) || 0
@@ -1932,6 +2009,14 @@ function collectSchemaContexts(scriptText, options = {}) {
         }
 
         contexts.push(...createFilterFieldSchemaContexts(
+          node,
+          collectionMethodName,
+          sourceFile,
+          sourceText,
+          offsetBase
+        ))
+
+        contexts.push(...createSortFieldSchemaContexts(
           node,
           collectionMethodName,
           sourceFile,

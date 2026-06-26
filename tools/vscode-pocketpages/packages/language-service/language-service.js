@@ -4627,7 +4627,7 @@ class ProjectLanguageService {
     };
   }
 
-  resolveSchemaFilterCollectionReference(filePath, documentText, context, options = {}) {
+  resolveSchemaCollectionArgumentReference(filePath, documentText, context, options = {}) {
     if (!context) {
       return null;
     }
@@ -4682,7 +4682,7 @@ class ProjectLanguageService {
   buildDocumentSchemaFilterFieldDiagnostic(filePath, documentText, context, options = {}) {
     const analysisText = typeof options.analysisText === "string" ? options.analysisText : documentText;
     const analysisStart = typeof options.analysisStart === "number" ? options.analysisStart : 0;
-    const reference = this.resolveSchemaFilterCollectionReference(filePath, documentText, context, {
+    const reference = this.resolveSchemaCollectionArgumentReference(filePath, documentText, context, {
       analysisText,
       analysisStart,
       analysisSourceFile: options.analysisSourceFile || options.sourceFile || null,
@@ -4700,6 +4700,32 @@ class ProjectLanguageService {
       code: "pp-schema-field",
       category: ts.DiagnosticCategory.Warning,
       message: `Unknown field "${context.value}" for collection "${reference.collectionName}" in ${context.methodName}() filter.`,
+      start: analysisStart + context.start,
+      end: analysisStart + context.end,
+    };
+  }
+
+  buildDocumentSchemaSortFieldDiagnostic(filePath, documentText, context, options = {}) {
+    const analysisText = typeof options.analysisText === "string" ? options.analysisText : documentText;
+    const analysisStart = typeof options.analysisStart === "number" ? options.analysisStart : 0;
+    const reference = this.resolveSchemaCollectionArgumentReference(filePath, documentText, context, {
+      analysisText,
+      analysisStart,
+      analysisSourceFile: options.analysisSourceFile || options.sourceFile || null,
+    });
+
+    if (!reference || this.projectIndex.hasField(reference.collectionName, context.value)) {
+      return null;
+    }
+
+    if (reference.confidence !== "high") {
+      return null;
+    }
+
+    return {
+      code: "pp-schema-field",
+      category: ts.DiagnosticCategory.Warning,
+      message: `Unknown field "${context.value}" for collection "${reference.collectionName}" in ${context.methodName}() sort.`,
       start: analysisStart + context.start,
       end: analysisStart + context.end,
     };
@@ -8888,6 +8914,26 @@ class ProjectLanguageService {
             diagnostics.push(filterFieldDiagnostic);
           }
         }
+
+        if (context.kind === "sort-field") {
+          const sortFieldDiagnostic = this.buildDocumentSchemaSortFieldDiagnostic(
+            filePath,
+            documentText,
+            context,
+            {
+              analysisText: block.content,
+              analysisStart: block.contentStart,
+              analysisSourceFile:
+                documentAnalysis && typeof documentAnalysis.getBlockSourceFile === "function"
+                  ? documentAnalysis.getBlockSourceFile(block)
+                  : null,
+            }
+          );
+
+          if (sortFieldDiagnostic) {
+            diagnostics.push(sortFieldDiagnostic);
+          }
+        }
       }
 
       diagnostics.push(...collectRedirectReturnDiagnostics(filePath, block.content, {
@@ -9125,6 +9171,25 @@ class ProjectLanguageService {
           diagnostics.push(filterFieldDiagnostic);
         }
       }
+
+      if (context.kind === "sort-field") {
+        const sortFieldDiagnostic = this.buildDocumentSchemaSortFieldDiagnostic(
+          filePath,
+          documentText,
+          context,
+          {
+            analysisText: templateVirtualText,
+            analysisSourceFile:
+              documentAnalysis && typeof documentAnalysis.getAnalysisSourceFile === "function"
+                ? documentAnalysis.getAnalysisSourceFile()
+                : null,
+          }
+        );
+
+        if (sortFieldDiagnostic) {
+          diagnostics.push(sortFieldDiagnostic);
+        }
+      }
     }
 
     return diagnostics;
@@ -9259,6 +9324,25 @@ class ProjectLanguageService {
 
         if (filterFieldDiagnostic) {
           diagnostics.push(filterFieldDiagnostic);
+        }
+      }
+
+      if (context.kind === "sort-field") {
+        const sortFieldDiagnostic = this.buildDocumentSchemaSortFieldDiagnostic(
+          filePath,
+          documentText,
+          context,
+          {
+            analysisText: documentText,
+            analysisSourceFile:
+              documentAnalysis && typeof documentAnalysis.getDocumentSourceFile === "function"
+                ? documentAnalysis.getDocumentSourceFile()
+                : null,
+          }
+        );
+
+        if (sortFieldDiagnostic) {
+          diagnostics.push(sortFieldDiagnostic);
         }
       }
     }
