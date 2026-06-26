@@ -35,6 +35,58 @@ function isFieldNamePartChar(char) {
   return /[A-Za-z0-9_]/.test(String(char || ''))
 }
 
+function isFieldNameLiteral(value) {
+  const text = String(value || '')
+  if (!text || !isFieldNameStartChar(text[0])) {
+    return false
+  }
+
+  for (let index = 1; index < text.length; index += 1) {
+    if (!isFieldNamePartChar(text[index])) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function parseRecordSetFieldModifier(accessMethod, value) {
+  const text = String(value || '')
+  if (accessMethod !== 'set' || !text) {
+    return null
+  }
+
+  const lastChar = text[text.length - 1]
+  if (lastChar === '+' || lastChar === '-') {
+    const fieldName = text.slice(0, -1)
+    if (isFieldNameLiteral(fieldName)) {
+      return {
+        fieldName,
+        modifier: lastChar,
+        modifierKind: lastChar === '+' ? 'append' : 'remove',
+        modifierStart: fieldName.length,
+        modifierEnd: text.length,
+      }
+    }
+  }
+
+  const autogenerateSuffix = ':autogenerate'
+  if (text.endsWith(autogenerateSuffix)) {
+    const fieldName = text.slice(0, -autogenerateSuffix.length)
+    if (isFieldNameLiteral(fieldName)) {
+      return {
+        fieldName,
+        modifier: autogenerateSuffix,
+        modifierKind: 'autogenerate',
+        modifierStart: fieldName.length,
+        modifierEnd: text.length,
+      }
+    }
+  }
+
+  return null
+}
+
 function getLastPathSegment(value) {
   return String(value || '')
     .split('.')
@@ -1517,12 +1569,13 @@ function createCollectionSchemaContext(node, descriptor, pathRange, sourceFile, 
 }
 
 function createRecordFieldSchemaContext(node, descriptor, pathRange, sourceFile, scriptText, offsetBase = 0) {
-  return {
+  const modifier = parseRecordSetFieldModifier(descriptor.accessMethod, pathRange.value)
+  const context = {
     kind: 'record-field',
     quote: pathRange.quote,
-    value: pathRange.value,
+    value: modifier ? modifier.fieldName : pathRange.value,
     start: pathRange.start,
-    end: pathRange.end,
+    end: modifier ? pathRange.start + modifier.fieldName.length : pathRange.end,
     callStart: offsetBase + node.getStart(sourceFile),
     callEnd: offsetBase + node.getEnd(),
     matchText: String(scriptText || '').slice(node.getStart(sourceFile), node.getEnd()),
@@ -1532,6 +1585,18 @@ function createRecordFieldSchemaContext(node, descriptor, pathRange, sourceFile,
     receiverEnd: offsetBase + descriptor.receiverEnd,
     accessMethod: descriptor.accessMethod,
   }
+
+  if (modifier) {
+    context.rawValue = pathRange.value
+    context.rawStart = pathRange.start
+    context.rawEnd = pathRange.end
+    context.fieldModifier = modifier.modifier
+    context.fieldModifierKind = modifier.modifierKind
+    context.fieldModifierStart = pathRange.start + modifier.modifierStart
+    context.fieldModifierEnd = pathRange.start + modifier.modifierEnd
+  }
+
+  return context
 }
 
 function getExpressionText(node, sourceFile, scriptText) {

@@ -10517,6 +10517,22 @@ boardService.readAuthState(
       throw new Error(`Expected record field schema hover info. Got: ${JSON.stringify(schemaRecordFieldHover)}`)
     }
 
+    const schemaRecordSetModifierHoverText =
+      `const board = $app.findFirstRecordByFilter('boards', 'id != ""')\nboard.set('members+', '6jyr1y02438et52')\n`
+    const schemaRecordSetModifierHover = service.getSchemaHoverInfo(
+      fixture.boardServiceFilePath,
+      schemaRecordSetModifierHoverText,
+      schemaRecordSetModifierHoverText.indexOf('members+') + 'members+'.length
+    )
+    if (
+      !schemaRecordSetModifierHover ||
+      schemaRecordSetModifierHover.kind !== 'schema-field' ||
+      schemaRecordSetModifierHover.collectionName !== 'boards' ||
+      schemaRecordSetModifierHover.fieldName !== 'members'
+    ) {
+      throw new Error(`Expected record.set() modifier hover to resolve the base schema field. Got: ${JSON.stringify(schemaRecordSetModifierHover)}`)
+    }
+
     const schemaFilterFieldHoverText = `$app.findRecordsByFilter('boards', 'status = "draft"')\n`
     const schemaFilterFieldHover = service.getSchemaHoverInfo(
       fixture.boardServiceFilePath,
@@ -10609,6 +10625,19 @@ boardService.readAuthState(
     const jsFieldNames = jsFieldCompletion ? jsFieldCompletion.items.map((entry) => entry.label) : []
     if (!jsFieldNames.includes('name') || !jsFieldNames.includes('slug')) {
       throw new Error(`Expected JS board field completions. Got: ${jsFieldNames.slice(0, 20).join(', ')}`)
+    }
+
+    const jsModifierFieldText = `const board = $app.findFirstRecordByFilter('boards', 'id != \"\"')\nboard.set('members+', '6jyr1y02438et52')\n`
+    const jsModifierFieldOffset = jsModifierFieldText.indexOf('members+') + 'members+'.length
+    const jsModifierFieldCompletion = service.getCustomCompletionData(fixture.boardServiceFilePath, jsModifierFieldText, jsModifierFieldOffset)
+    const jsModifierFieldNames = jsModifierFieldCompletion ? jsModifierFieldCompletion.items.map((entry) => entry.label) : []
+    if (
+      !jsModifierFieldNames.includes('members') ||
+      !jsModifierFieldNames.includes('gallery') ||
+      jsModifierFieldCompletion.start !== jsModifierFieldText.indexOf('members+') ||
+      jsModifierFieldCompletion.end !== jsModifierFieldText.indexOf('members+') + 'members'.length
+    ) {
+      throw new Error(`Expected record.set() modifier field completion to replace the base field span. Got: ${JSON.stringify(jsModifierFieldCompletion)}`)
     }
 
     const indexedFieldText =
@@ -13595,6 +13624,44 @@ const href = asset('/assets/rename-dir/app.css')
         `Expected record.set() schema diagnostic. Got: ${recordSetDiagnostics
           .map((entry) => String(entry.message))
           .join(' | ')}`
+      )
+    }
+
+    const recordSetModifierDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+const board = $app.findRecordById('boards', 'board-1')
+board.set('slug:autogenerate', 'board-')
+board.set('members+', '6jyr1y02438et52')
+board.set('members-', '6jyr1y02438et52')
+board.set('gallery+', [])
+board.set('gallery-', ['old_file_abc123.png'])
+</script>\n`
+    )
+    const recordSetModifierFieldDiagnostics = recordSetModifierDiagnostics.filter((entry) => String(entry.code) === 'pp-schema-field')
+    if (recordSetModifierFieldDiagnostics.length) {
+      throw new Error(
+        `Expected record.set() field modifiers to resolve through their base schema field. Got: ${recordSetModifierFieldDiagnostics
+          .map((entry) => String(entry.message))
+          .join(' | ')}`
+      )
+    }
+
+    const recordSetModifierTypoDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+const board = $app.findRecordById('boards', 'board-1')
+board.set('membrs+', '6jyr1y02438et52')
+board.set('slgu:autogenerate', 'board-')
+</script>\n`
+    )
+    const recordSetModifierTypoMessages = recordSetModifierTypoDiagnostics.map((entry) => String(entry.message))
+    if (
+      !recordSetModifierTypoMessages.some((message) => message.includes('Unknown field "membrs" for collection "boards"')) ||
+      !recordSetModifierTypoMessages.some((message) => message.includes('Unknown field "slgu" for collection "boards"'))
+    ) {
+      throw new Error(
+        `Expected record.set() modifier typo diagnostics to use the base field name. Got: ${recordSetModifierTypoMessages.join(' | ')}`
       )
     }
 
