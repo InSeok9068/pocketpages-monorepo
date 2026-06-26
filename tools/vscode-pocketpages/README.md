@@ -14,7 +14,7 @@ PocketPages 모노레포 개발을 위한 VS Code 언어 확장입니다.
 - `_private` partial/module caller 추적, references, rename, file rename rewrite
 - app root 단위 cache와 VS Code watcher 기반 invalidation
 - TypeScript language service 기반 JavaScript symbol 분석
-- pull diagnostics, Code Actions, Document Links, Inlay Hints, Semantic Tokens, CodeLens
+- pull diagnostics, Code Actions, Document Links, `resolve()` target Inlay Hints, Semantic Tokens, CodeLens
 
 ## 빠른 시작
 
@@ -41,8 +41,7 @@ npm test
 
 확장은 다음 조건에서 활성화됩니다.
 
-- `onLanguage:ejs`
-- workspace 안에 `pocketpages-globals.d.ts`가 있음
+- workspace 안에 `apps/*/pocketpages-globals.d.ts`가 있음
 
 PocketPages 전용 분석은 app root를 찾을 수 있는 파일에만 적용됩니다. app root는 상위 디렉터리에서 `pb_hooks/pages`를 찾는 방식으로 결정합니다.
 
@@ -145,7 +144,7 @@ EJS block 끝 위치는 사용자가 커서를 자주 멈추는 위치이므로 
 | Signature Help | TypeScript signature help, `include()` signature help |
 | Diagnostics | TypeScript diagnostics, schema diagnostics, PocketPages project-rule diagnostics |
 | Document Links | route/include/resolve/asset/require target link |
-| Inlay Hints | TypeScript 기반 inlay hints |
+| Inlay Hints | `resolve()` target path hint |
 | CodeLens | route label, include target, lazy caller references |
 
 일반 JavaScript hover는 VS Code의 기본 JS/TS 경험에 맡기고, 이 확장은 PocketPages path hover를 추가합니다.
@@ -417,7 +416,7 @@ EJS code block 내부에 semantic token을 제공합니다.
 | 위치 | 역할 |
 | --- | --- |
 | `packages/vscode-pocketpages` | VS Code client, status bar, output channel, command wiring, file watcher, file rename edit 적용 |
-| `packages/language-server` | LSP 서버, completion/hover/definition/references/rename/diagnostics/code action/document link/inlay hint/semantic token/CodeLens 제공 |
+| `packages/language-server` | LSP 서버, completion/hover/definition/references/rename/diagnostics/code action/document link/resolve target inlay hint/semantic token/CodeLens 제공 |
 | `packages/language-service` | PocketPages project index, schema 분석, path 해석, TypeScript bridge, diagnostics, cache/invalidation 정책 |
 | `packages/language-core` | EJS parser, virtual code, source/generated mapper, snapshot 관리 |
 | `packages/typescript-plugin` | `.ejs` 문서를 TypeScript server project에 연결하는 TS plugin |
@@ -458,7 +457,7 @@ npm run sanity-check
 - large EJS diagnostics deferral
 - CodeLens
 - document links
-- inlay hints
+- `resolve()` target inlay hints
 - semantic tokens
 - package/manifest 계약
 

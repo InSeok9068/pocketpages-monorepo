@@ -8854,8 +8854,6 @@ class ProjectLanguageService {
     const endOffset = typeof range.end === "number" ? range.end : documentText.length;
     const entries = [];
     const seen = new Set();
-    const analysisText = toAnalysisText(filePath, documentText);
-    const sourceFile = createSourceFileForText(`${filePath}.__inlay__.js`, analysisText);
     const addEntry = (position, label, tooltip, kind = "type") => {
       if (typeof position !== "number" || position < startOffset || position > endOffset) {
         return;
@@ -8891,30 +8889,6 @@ class ProjectLanguageService {
         `Target: ${toPortablePath(path.relative(this.appRoot, targetFilePath))}`,
         "parameter"
       );
-    }
-
-    const schemaContexts = collectSchemaContexts(analysisText, {
-      collectionMethodNames: this.projectIndex.getCollectionMethodNames(),
-      sourceFile,
-    });
-    for (const context of schemaContexts) {
-      if (context.kind !== "record-field" || context.accessMethod !== "get") {
-        continue;
-      }
-
-      const collectionReference = this.resolveSchemaFieldCollectionReference(filePath, documentText, context, {
-        analysisText,
-        analysisStart: 0,
-        analysisSourceFile: sourceFile,
-      });
-      if (!collectionReference || collectionReference.confidence !== "high") {
-        continue;
-      }
-
-      const typeText = this.projectIndex.getFieldTypeText(collectionReference.collectionName, context.value);
-      if (typeText && typeof context.callEnd === "number") {
-        addEntry(context.callEnd, `: ${typeText}`, `Field type: ${typeText}`);
-      }
     }
 
     return entries;

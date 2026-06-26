@@ -834,14 +834,12 @@ function assertClientContracts(repoRoot) {
   const activationEvents = Array.isArray(packageJson.activationEvents) ? packageJson.activationEvents : []
   assertIncludes(
     activationEvents,
-    'onLanguage:ejs',
-    'Expected PocketPages to activate when an EJS document is opened.'
+    'workspaceContains:apps/*/pocketpages-globals.d.ts',
+    'Expected PocketPages to activate for monorepo apps that declare PocketPages globals.'
   )
-  assertIncludes(
-    activationEvents,
-    'workspaceContains:**/pocketpages-globals.d.ts',
-    'Expected PocketPages to activate for workspaces that declare PocketPages globals.'
-  )
+  if (activationEvents.includes('onLanguage:ejs')) {
+    throw new Error('Expected PocketPages to avoid activating for arbitrary EJS documents.')
+  }
   if (activationEvents.includes('onStartupFinished')) {
     throw new Error('Expected PocketPages to stop activating eagerly onStartupFinished.')
   }
@@ -14369,11 +14367,8 @@ metaPayload.trim()
     }
 
     const typedRecordGetInlayHints = service.getInlayHintEntries(fixture.boardsFilePath, typedRecordGetText)
-    if (!typedRecordGetInlayHints.some((entry) => entry.label === ': string')) {
-      throw new Error(`Expected record.get() string inlay hint. Got: ${JSON.stringify(typedRecordGetInlayHints)}`)
-    }
-    if (!typedRecordGetInlayHints.some((entry) => entry.label === ': boolean')) {
-      throw new Error(`Expected record.get() boolean inlay hint. Got: ${JSON.stringify(typedRecordGetInlayHints)}`)
+    if (typedRecordGetInlayHints.some((entry) => String(entry.tooltip || '').includes('Field type:'))) {
+      throw new Error(`Expected record.get() schema type inlay hints to stay disabled. Got: ${JSON.stringify(typedRecordGetInlayHints)}`)
     }
 
     const nonRecordGetInlayText = `<script server>
