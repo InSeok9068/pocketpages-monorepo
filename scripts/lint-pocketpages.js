@@ -1285,10 +1285,32 @@ function isSchemaLintAppReceiver(schemaContext, transactionRanges) {
   )
 }
 
+function resolveSchemaLintCollectionReference(context, file, analysisText, schemaContext) {
+  if (schemaContext.collectionName && context.projectIndex.hasCollection(schemaContext.collectionName)) {
+    return {
+      collectionName: schemaContext.collectionName,
+      confidence: 'high',
+    }
+  }
+
+  if (!schemaContext.collectionExpression) {
+    return null
+  }
+
+  return context.projectIndex.inferCollectionReference(
+    schemaContext.collectionExpression,
+    analysisText,
+    schemaContext.collectionStart,
+    { filePath: file.absPath }
+  )
+}
+
 function collectSchemaMatches(context) {
   const matches = {
     collections: [],
     fields: [],
+    filterFields: [],
+    sortFields: [],
   }
 
   for (const file of context.lintCodeFiles) {
@@ -1314,6 +1336,22 @@ function collectSchemaMatches(context) {
       }
 
       if (schemaContext.kind !== 'record-field') {
+        if (schemaContext.kind !== 'filter-field' && schemaContext.kind !== 'sort-field') {
+          continue
+        }
+
+        if (!isSchemaLintAppReceiver(schemaContext, transactionRanges)) {
+          continue
+        }
+
+        const reference = resolveSchemaLintCollectionReference(context, file, analysisText, schemaContext)
+        if (!reference || reference.confidence !== 'high' || context.projectIndex.hasField(reference.collectionName, schemaContext.value)) {
+          continue
+        }
+
+        const lineNumber = lineNumberAt(analysisText, schemaContext.start)
+        const targetMatches = schemaContext.kind === 'filter-field' ? matches.filterFields : matches.sortFields
+        targetMatches.push(formatLintLineMatch(file, lineNumber))
         continue
       }
 
@@ -1330,6 +1368,8 @@ function collectSchemaMatches(context) {
   return {
     collections: unique(matches.collections),
     fields: unique(matches.fields),
+    filterFields: unique(matches.filterFields),
+    sortFields: unique(matches.sortFields),
   }
 }
 
@@ -1662,6 +1702,16 @@ function lintService(context) {
     context.serviceName,
     "Invalid PocketBase record field name. Use a field that exists in pb_schema.json when calling record.get('field') or record.set('field', value).",
     schemaMatches.fields
+  )
+  printMatches(
+    context.serviceName,
+    'Invalid PocketBase filter field name. Use fields that exist in pb_schema.json inside findRecordsByFilter()/findFirstRecordByFilter() filters.',
+    schemaMatches.filterFields
+  )
+  printMatches(
+    context.serviceName,
+    'Invalid PocketBase sort field name. Use fields that exist in pb_schema.json inside findRecordsByFilter() sort strings.',
+    schemaMatches.sortFields
   )
 
   const queryViaParamsMatches = collectQueryViaParamsMatches(context)
