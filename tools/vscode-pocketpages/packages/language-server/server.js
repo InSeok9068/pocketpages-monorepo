@@ -677,6 +677,82 @@ function buildPathTargetHoverMarkdown(pathTargetInfo) {
   return parts.join("\n\n");
 }
 
+const SCHEMA_HOVER_FIELD_TABLE_LIMIT = 40;
+const SCHEMA_HOVER_VALUE_PREVIEW_LIMIT = 5;
+
+function escapeMarkdownTableCell(value) {
+  return String(value || "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+}
+
+function formatMarkdownInlineCode(value) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return text ? `\`${text.replace(/`/g, "\\`")}\`` : "";
+}
+
+function formatSchemaHoverValueList(values, limit = SCHEMA_HOVER_VALUE_PREVIEW_LIMIT) {
+  const stringValues = (Array.isArray(values) ? values : [])
+    .filter((value) => typeof value === "string");
+  if (!stringValues.length) {
+    return "";
+  }
+
+  const visibleValues = stringValues.slice(0, limit).map(formatMarkdownInlineCode);
+  const suffix = stringValues.length > limit ? `, +${stringValues.length - limit} more` : "";
+  return `${visibleValues.join(", ")}${suffix}`;
+}
+
+function buildSchemaFieldNotes(field) {
+  const notes = [];
+  if (field && field.required === true) {
+    notes.push("required");
+  }
+  if (field && field.isSystem === true) {
+    notes.push("system");
+  }
+  if (field && field.relationCollectionName) {
+    notes.push(`relation -> ${field.relationCollectionName}`);
+  }
+  const values = formatSchemaHoverValueList(field && field.values);
+  if (values) {
+    notes.push(`values: ${values}`);
+  }
+  if (field && typeof field.maxSelect === "number" && field.maxSelect > 1) {
+    notes.push(`max ${field.maxSelect}`);
+  }
+  return notes.join(", ");
+}
+
+function buildSchemaFieldTable(fields) {
+  const fieldEntries = Array.isArray(fields) ? fields : [];
+  if (!fieldEntries.length) {
+    return "";
+  }
+
+  const rows = [
+    "| Field | Schema | TypeScript | Notes |",
+    "| :--- | :--- | :--- | :--- |",
+  ];
+  for (const field of fieldEntries.slice(0, SCHEMA_HOVER_FIELD_TABLE_LIMIT)) {
+    rows.push([
+      "|",
+      escapeMarkdownTableCell(formatMarkdownInlineCode(field.name)),
+      "|",
+      escapeMarkdownTableCell(formatMarkdownInlineCode(field.fieldType || "system")),
+      "|",
+      escapeMarkdownTableCell(formatMarkdownInlineCode(field.typeText || "any")),
+      "|",
+      escapeMarkdownTableCell(buildSchemaFieldNotes(field)),
+      "|",
+    ].join(" "));
+  }
+
+  if (fieldEntries.length > SCHEMA_HOVER_FIELD_TABLE_LIMIT) {
+    rows.push(`\nShowing ${SCHEMA_HOVER_FIELD_TABLE_LIMIT} of ${fieldEntries.length} fields.`);
+  }
+
+  return rows.join("\n");
+}
+
 function buildSchemaHoverMarkdown(schemaInfo) {
   if (schemaInfo.kind === "schema-collection") {
     const parts = [`Collection: \`${schemaInfo.collectionName}\``];
@@ -685,6 +761,10 @@ function buildSchemaHoverMarkdown(schemaInfo) {
     }
     if (typeof schemaInfo.fieldCount === "number") {
       parts.push(`Fields: \`${schemaInfo.fieldCount}\``);
+    }
+    const fieldTable = buildSchemaFieldTable(schemaInfo.fields);
+    if (fieldTable) {
+      parts.push(fieldTable);
     }
     if (schemaInfo.schemaPath) {
       parts.push(`Schema: \`${String(schemaInfo.schemaPath).replace(/\\/g, "/")}\``);
@@ -699,6 +779,22 @@ function buildSchemaHoverMarkdown(schemaInfo) {
     }
     if (schemaInfo.typeText) {
       parts.push(`TypeScript type: \`${schemaInfo.typeText}\``);
+    }
+    if (schemaInfo.required !== null && schemaInfo.required !== undefined) {
+      parts.push(`Required: \`${schemaInfo.required ? "yes" : "no"}\``);
+    }
+    if (schemaInfo.relationCollectionName) {
+      parts.push(`Relation: \`${schemaInfo.relationCollectionName}\``);
+    }
+    const values = formatSchemaHoverValueList(schemaInfo.values);
+    if (values) {
+      parts.push(`Values: ${values}`);
+    }
+    if (typeof schemaInfo.maxSelect === "number" && schemaInfo.maxSelect > 1) {
+      parts.push(`Max select: \`${schemaInfo.maxSelect}\``);
+    }
+    if (schemaInfo.isSystem) {
+      parts.push("System field");
     }
     if (schemaInfo.source) {
       parts.push(`Source: \`${schemaInfo.source}\``);

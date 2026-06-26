@@ -257,10 +257,12 @@ schema 타입은 custom 기능만을 위한 별도 세계가 아니라 TypeScrip
 - `$app.findRecordsByFilter('books', ...)` 같은 목록 조회는 `PocketPagesRecordArray<"books">`로 연결합니다.
 - `record.get('field')`, `record.set('field', value)`는 collection별 field type을 TypeScript가 볼 수 있도록 overload를 만듭니다.
 - `$app.findRecordsByFilter('books', 'sta')`, `$app.findRecordsByFilter('books', '', '-cre')`처럼 정적 filter/sort 문자열의 field 위치에서는 해당 collection field completion을 제공합니다.
-- collection/field 문자열 hover는 collection, schema field type, TypeScript type, schema file 정보를 보여줍니다.
+- collection/field 문자열 completion과 hover는 schema field type, TypeScript type, select values, relation target 같은 핵심 schema 정보를 보여줍니다.
+- collection 문자열 hover는 collection field 목록을 간단한 markdown table로 보여줍니다.
 - `$app.findRecordsByFilter('books', 'title ~ {:q}')`처럼 collection과 filter 문자열이 정적으로 확인되는 경우 filter의 왼쪽 field operand를 schema field로 검사합니다.
 - filter 문자열 안의 string literal과 `//` comment는 field 후보에서 제외합니다. 동적 filter 문자열, 복잡한 helper 조합, confidence가 낮은 collection 추론은 false positive를 줄이기 위해 진단하지 않습니다.
 - `$app.findRecordsByFilter('books', 'status = "published"', '-created,+title')`처럼 collection과 sort 문자열이 정적으로 확인되는 경우 sort field를 schema field로 검사합니다. `@random`, nested path, 동적 sort 문자열은 오탐을 줄이기 위해 진단하지 않습니다.
+- index report의 `schemaUsage.fields`와 `impactByFile.schemaFields`도 record/filter/sort field usage를 구분해 보여줍니다.
 - unknown collection/field diagnostics는 schema의 비슷한 이름이 있으면 `Replace with ...` quick fix를 제공합니다.
 - schema method receiver가 `$app`이 아니어도 TypeScript가 `pocketbase.PocketBase` 또는 `core.App`로 확인할 수 있으면 같은 collection/filter/sort diagnostics와 collection completion을 적용합니다.
 - `resolve('service')` target module의 export 함수가 직접 `$app.find...()` 결과를 반환하면, 명시 JSDoc이 없는 경우 호출부에서도 schema return type을 사용할 수 있게 보강합니다.

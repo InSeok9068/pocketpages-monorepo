@@ -6841,11 +6841,23 @@ class ProjectLanguageService {
         return null;
       }
 
+      const fields = this.projectIndex.getFields(schemaContext.value).map((field) => ({
+        name: field.name,
+        fieldType: field.type || "",
+        typeText: this.projectIndex.getFieldTypeText(schemaContext.value, field.name) || "",
+        required: typeof field.required === "boolean" ? field.required : null,
+        isSystem: field.isSystem === true,
+        relationCollectionName: field.relationCollectionName || "",
+        values: Array.isArray(field.values) ? field.values : [],
+        maxSelect: typeof field.maxSelect === "number" ? field.maxSelect : null,
+      }));
+
       return {
         kind: "schema-collection",
         collectionName: schemaContext.value,
         methodName: schemaContext.methodName || "",
-        fieldCount: this.projectIndex.getFields(schemaContext.value).length,
+        fieldCount: fields.length,
+        fields,
         schemaPath: this.projectIndex.getSchemaState().schemaPath,
         start: analysisStart + schemaContext.start,
         end: analysisStart + schemaContext.end,
@@ -6879,6 +6891,11 @@ class ProjectLanguageService {
       fieldName: schemaContext.value,
       fieldType: field && field.type ? field.type : "",
       typeText: this.projectIndex.getFieldTypeText(collectionReference.collectionName, schemaContext.value) || "",
+      required: field && typeof field.required === "boolean" ? field.required : null,
+      isSystem: !!(field && field.isSystem),
+      relationCollectionName: field && field.relationCollectionName ? field.relationCollectionName : "",
+      values: field && Array.isArray(field.values) ? field.values : [],
+      maxSelect: field && typeof field.maxSelect === "number" ? field.maxSelect : null,
       source:
         schemaContext.kind === "filter-field"
           ? "filter"

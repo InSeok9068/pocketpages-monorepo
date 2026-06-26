@@ -39,6 +39,7 @@ const {
 const { getTokenTypeIndex } = require('../packages/language-server/ejs-semantic-tokens')
 const { runExtensionHostSanityCheck } = require('./extension-host-sanity')
 const { collectPagesCodeFiles } = require('../../../scripts/diag-pocketpages-core')
+const { buildProjectIndexReport } = require('../packages/language-service/project-index-report')
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true })
@@ -1440,6 +1441,11 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
+    /function buildSchemaFieldTable\([\s\S]*\| Field \| Schema \| TypeScript \| Notes \|[\s\S]*\| :--- \| :--- \| :--- \| :--- \|[\s\S]*SCHEMA_HOVER_FIELD_TABLE_LIMIT/,
+    'Expected schema collection hover markdown to render a compact field table.'
+  )
+  assertMatches(
+    serverSource,
     /connection\.onRenameRequest\(\(params,\s*token\) => \{[\s\S]*workspaceEditStats\(customResult\)[\s\S]*case:\s*"custom-rename"[\s\S]*workspaceEditStats\(typeScriptResult\)[\s\S]*case:\s*"ts-rename"/,
     'Expected rename logs to report custom and TS edit counts separately.'
   )
@@ -2102,7 +2108,7 @@ module.exports = {
     path.join(appRoot, 'pb_hooks', 'pages', 'api', 'mjs-consumer.mjs'),
     `const cjsStateService = resolve('cjs-state-service')
 const cjsState = cjsStateService.readCjsState()
-const records = $app.findRecordsByFilter('boards')
+const records = $app.findRecordsByFilter('boards', 'status = "draft" && is_active = true', '-sort_order')
 
 module.exports = {
   cjsState,
@@ -2960,6 +2966,52 @@ datastar.replaceURL('/replace')
     }
     if (secondaryService === service) {
       throw new Error('Expected PocketPages manager to isolate services per app root in a monorepo.')
+    }
+
+    const indexReport = buildProjectIndexReport({ appRoot: fixture.appRoot })
+    const mjsSchemaFields = indexReport.schemaUsage.fields.filter((entry) =>
+      entry.sourceRelativePath === 'api/mjs-consumer.mjs'
+    )
+    if (
+      !mjsSchemaFields.some((entry) =>
+        entry.fieldName === 'status' &&
+        entry.accessKind === 'filter-field' &&
+        entry.methodName === 'findRecordsByFilter' &&
+        entry.inferredCollectionName === 'boards' &&
+        entry.existsInSchema === true
+      ) ||
+      !mjsSchemaFields.some((entry) =>
+        entry.fieldName === 'is_active' &&
+        entry.accessKind === 'filter-field' &&
+        entry.inferredCollectionName === 'boards' &&
+        entry.existsInSchema === true
+      ) ||
+      !mjsSchemaFields.some((entry) =>
+        entry.fieldName === 'sort_order' &&
+        entry.accessKind === 'sort-field' &&
+        entry.inferredCollectionName === 'boards' &&
+        entry.existsInSchema === true
+      )
+    ) {
+      throw new Error(`Expected schema usage report to include filter/sort fields. Got: ${JSON.stringify(mjsSchemaFields)}`)
+    }
+    const mjsImpact = indexReport.impactByFile.find((entry) =>
+      entry.relativePath === 'api/mjs-consumer.mjs'
+    )
+    const mjsImpactSchemaFields = mjsImpact && Array.isArray(mjsImpact.schemaFields)
+      ? mjsImpact.schemaFields
+      : []
+    if (
+      !mjsImpactSchemaFields.some((entry) =>
+        entry.fieldName === 'status' &&
+        entry.accessKind === 'filter-field'
+      ) ||
+      !mjsImpactSchemaFields.some((entry) =>
+        entry.fieldName === 'sort_order' &&
+        entry.accessKind === 'sort-field'
+      )
+    ) {
+      throw new Error(`Expected impact report to preserve filter/sort schema fields. Got: ${JSON.stringify(mjsImpact)}`)
     }
 
     const graphRaceDirPath = path.join(fixture.appRoot, 'pb_hooks', 'pages', 'vanishing-race')
@@ -10397,6 +10449,17 @@ boardService.readAuthState(
     if (!jobFilterFieldNames.includes('status')) {
       throw new Error(`Expected schema-only hook filter field completions. Got: ${JSON.stringify(jobFilterFieldCompletion)}`)
     }
+    const jobStatusFieldCompletion = jobFilterFieldCompletion
+      ? jobFilterFieldCompletion.items.find((entry) => entry.label === 'status')
+      : null
+    if (
+      !jobStatusFieldCompletion ||
+      !String(jobStatusFieldCompletion.detail || '').includes('"draft" | "published"') ||
+      !String(jobStatusFieldCompletion.documentation || '').includes('TypeScript type') ||
+      !String(jobStatusFieldCompletion.documentation || '').includes('Values:')
+    ) {
+      throw new Error(`Expected schema field completion documentation to include type and value metadata. Got: ${JSON.stringify(jobStatusFieldCompletion)}`)
+    }
 
     const jobSortFieldText = `$app.findRecordsByFilter('boards', '', '-sor')\n`
     const jobSortFieldCompletion = service.getCustomCompletionData(
@@ -10419,6 +10482,20 @@ boardService.readAuthState(
       !schemaCollectionHover ||
       schemaCollectionHover.kind !== 'schema-collection' ||
       schemaCollectionHover.collectionName !== 'boards' ||
+      !Array.isArray(schemaCollectionHover.fields) ||
+      !schemaCollectionHover.fields.some((field) =>
+        field.name === 'status' &&
+        field.fieldType === 'select' &&
+        String(field.typeText || '').includes('"draft" | "published"') &&
+        Array.isArray(field.values) &&
+        field.values.includes('draft')
+      ) ||
+      !schemaCollectionHover.fields.some((field) =>
+        field.name === 'members' &&
+        field.fieldType === 'relation' &&
+        field.relationCollectionName === 'users' &&
+        String(field.typeText || '').includes('Array<string>')
+      ) ||
       !schemaCollectionHover.schemaPath
     ) {
       throw new Error(`Expected schema collection hover info. Got: ${JSON.stringify(schemaCollectionHover)}`)
@@ -10451,7 +10528,10 @@ boardService.readAuthState(
       schemaFilterFieldHover.kind !== 'schema-field' ||
       schemaFilterFieldHover.collectionName !== 'boards' ||
       schemaFilterFieldHover.fieldName !== 'status' ||
-      schemaFilterFieldHover.source !== 'filter'
+      schemaFilterFieldHover.source !== 'filter' ||
+      !String(schemaFilterFieldHover.typeText || '').includes('"draft" | "published"') ||
+      !Array.isArray(schemaFilterFieldHover.values) ||
+      !schemaFilterFieldHover.values.includes('published')
     ) {
       throw new Error(`Expected filter field schema hover info. Got: ${JSON.stringify(schemaFilterFieldHover)}`)
     }

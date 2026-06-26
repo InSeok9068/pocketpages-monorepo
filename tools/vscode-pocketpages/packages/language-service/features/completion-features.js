@@ -2,6 +2,7 @@
 
 const SCHEMA_COMPLETION_SIGNAL_WINDOW = 400;
 const SCHEMA_COMPLETION_SOURCE_FILE_CACHE_LIMIT = 12;
+const SCHEMA_COMPLETION_VALUE_PREVIEW_LIMIT = 5;
 
 function hasSchemaCompletionSignal(analysisText, analysisOffset) {
   const text = String(analysisText || "");
@@ -12,6 +13,72 @@ function hasSchemaCompletionSignal(analysisText, analysisOffset) {
     /\.(?:get|set)\s*\(/.test(prefix) ||
     /\.(?:find[A-Z][\w$]*|countRecords|recordQuery|isCollectionNameUnique)\s*\(/.test(prefix)
   );
+}
+
+function formatInlineCode(value) {
+  const text = String(value || "");
+  return text ? `\`${text.replace(/`/g, "\\`")}\`` : "";
+}
+
+function formatSchemaValueList(values, limit = SCHEMA_COMPLETION_VALUE_PREVIEW_LIMIT) {
+  const stringValues = (Array.isArray(values) ? values : [])
+    .filter((value) => typeof value === "string");
+  if (!stringValues.length) {
+    return "";
+  }
+
+  const visibleValues = stringValues.slice(0, limit).map(formatInlineCode);
+  const suffix = stringValues.length > limit ? `, +${stringValues.length - limit} more` : "";
+  return `${visibleValues.join(", ")}${suffix}`;
+}
+
+function formatSchemaFieldDocumentation(service, collectionName, field) {
+  const typeText = service.projectIndex.getFieldTypeText(collectionName, field.name) || "any";
+  const parts = [
+    `Field: ${formatInlineCode(`${collectionName}.${field.name}`)}`,
+    `Schema type: ${formatInlineCode(field.type || "system")}`,
+    `TypeScript type: ${formatInlineCode(typeText)}`,
+  ];
+
+  if (typeof field.required === "boolean") {
+    parts.push(`Required: ${formatInlineCode(field.required ? "yes" : "no")}`);
+  }
+  if (field.relationCollectionName) {
+    parts.push(`Relation: ${formatInlineCode(field.relationCollectionName)}`);
+  }
+  const valueList = formatSchemaValueList(field.values);
+  if (valueList) {
+    parts.push(`Values: ${valueList}`);
+  }
+  if (typeof field.maxSelect === "number" && field.maxSelect > 1) {
+    parts.push(`Max select: ${formatInlineCode(field.maxSelect)}`);
+  }
+  if (field.isSystem) {
+    parts.push("System field");
+  }
+
+  return parts.join("\n\n");
+}
+
+function createSchemaFieldCompletionItem(service, collectionName, field, category) {
+  const typeText = service.projectIndex.getFieldTypeText(collectionName, field.name) || "any";
+  return {
+    label: field.name,
+    insertText: field.name,
+    detail: `${collectionName}.${field.name}: ${typeText}`,
+    documentation: formatSchemaFieldDocumentation(service, collectionName, field),
+    category,
+  };
+}
+
+function formatSchemaCollectionDocumentation(service, collectionName) {
+  const fields = service.projectIndex.getFields(collectionName);
+  const schemaPath = service.projectIndex.getSchemaState().schemaPath;
+  return [
+    `Collection: ${formatInlineCode(collectionName)}`,
+    `Fields: ${formatInlineCode(fields.length)}`,
+    schemaPath ? `Schema: ${formatInlineCode(schemaPath)}` : "",
+  ].filter(Boolean).join("\n\n");
 }
 
 function createCompletionFeatureHandlers(deps) {
@@ -176,7 +243,7 @@ function createCompletionFeatureHandlers(deps) {
             label: collectionName,
             insertText: collectionName,
             detail: "PocketBase collection",
-            documentation: `Collection from ${service.projectIndex.getSchemaState().schemaPath}`,
+            documentation: formatSchemaCollectionDocumentation(service, collectionName),
             category: "collection-name",
           })),
         };
@@ -205,13 +272,9 @@ function createCompletionFeatureHandlers(deps) {
         return {
           start: analysisStart + schemaContext.start,
           end: analysisStart + schemaContext.end,
-          items: service.projectIndex.getFields(collectionName).map((field) => ({
-            label: field.name,
-            insertText: field.name,
-            detail: `${collectionName}.${field.name}`,
-            documentation: field.type ? `Field type: ${field.type}` : collectionName,
-            category: schemaContext.kind,
-          })),
+          items: service.projectIndex.getFields(collectionName).map((field) =>
+            createSchemaFieldCompletionItem(service, collectionName, field, schemaContext.kind)
+          ),
         };
       }
 
@@ -237,13 +300,9 @@ function createCompletionFeatureHandlers(deps) {
       return {
         start: analysisStart + schemaContext.start,
         end: analysisStart + schemaContext.end,
-        items: service.projectIndex.getFields(collectionName).map((field) => ({
-          label: field.name,
-          insertText: field.name,
-          detail: `${collectionName}.${field.name}`,
-          documentation: field.type ? `Field type: ${field.type}` : collectionName,
-          category: "record-field",
-        })),
+        items: service.projectIndex.getFields(collectionName).map((field) =>
+          createSchemaFieldCompletionItem(service, collectionName, field, "record-field")
+        ),
       };
     },
 

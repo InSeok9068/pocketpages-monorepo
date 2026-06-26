@@ -1894,9 +1894,9 @@ function mergeTypeTexts(typeTexts) {
 }
 
 const SYSTEM_RECORD_FIELDS = Object.freeze([
-  { name: 'id', type: 'text', isSystem: true },
-  { name: 'created', type: 'date', isSystem: true },
-  { name: 'updated', type: 'date', isSystem: true },
+  { name: 'id', type: 'text', isSystem: true, required: true },
+  { name: 'created', type: 'date', isSystem: true, required: true },
+  { name: 'updated', type: 'date', isSystem: true, required: true },
 ])
 
 function mergeRecordFieldEntries(fieldEntries = []) {
@@ -1914,11 +1914,20 @@ function mergeRecordFieldEntries(fieldEntries = []) {
       type: fieldEntry.type || '',
       isSystem: !!fieldEntry.isSystem,
     }
+    if (typeof fieldEntry.required === 'boolean') {
+      entry.required = fieldEntry.required
+    }
     if (Array.isArray(fieldEntry.values)) {
       entry.values = fieldEntry.values.filter((value) => typeof value === 'string')
     }
     if (typeof fieldEntry.maxSelect === 'number') {
       entry.maxSelect = fieldEntry.maxSelect
+    }
+    if (typeof fieldEntry.collectionId === 'string') {
+      entry.collectionId = fieldEntry.collectionId
+    }
+    if (typeof fieldEntry.relationCollectionName === 'string') {
+      entry.relationCollectionName = fieldEntry.relationCollectionName
     }
     merged.push(entry)
   }
@@ -2664,6 +2673,17 @@ class PocketPagesProjectIndex {
       collections = this.schemaCache && this.schemaCache.schemaPath === schemaPath ? ensureArray(this.schemaCache.collections) : []
     }
 
+    const collectionNameById = new Map()
+
+    for (const collection of collections) {
+      if (!collection || typeof collection.name !== 'string') {
+        continue
+      }
+      if (typeof collection.id === 'string' && collection.id) {
+        collectionNameById.set(collection.id, collection.name)
+      }
+    }
+
     const collectionsByName = new Map()
 
     for (const collection of collections) {
@@ -2678,11 +2698,18 @@ class PocketPagesProjectIndex {
             name: field.name,
             type: field.type || '',
           }
+          if (typeof field.required === 'boolean') {
+            entry.required = field.required
+          }
           if (Array.isArray(field.values)) {
             entry.values = field.values.filter((value) => typeof value === 'string')
           }
           if (typeof field.maxSelect === 'number') {
             entry.maxSelect = field.maxSelect
+          }
+          if (typeof field.collectionId === 'string' && field.collectionId) {
+            entry.collectionId = field.collectionId
+            entry.relationCollectionName = collectionNameById.get(field.collectionId) || field.collectionId
           }
           return entry
         })

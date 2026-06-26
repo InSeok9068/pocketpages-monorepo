@@ -429,6 +429,47 @@ function buildSchemaUsage(projectIndex, codeFiles) {
   const fields = []
   const collectionMethodNames = projectIndex.getCollectionMethodNames()
 
+  const addFieldUsage = (entry, context, collectionReference, accessKind) => {
+    fields.push({
+      sourceFilePath: entry.filePath,
+      sourceRelativePath: entry.relativePath,
+      fieldName: context.value,
+      accessKind,
+      methodName: context.methodName || null,
+      receiverExpression: context.receiverExpression || null,
+      inferredCollectionName: collectionReference ? collectionReference.collectionName : null,
+      inferenceConfidence: collectionReference ? collectionReference.confidence : null,
+      inferenceStrategy: collectionReference ? collectionReference.strategy : null,
+      existsInSchema:
+        collectionReference
+          ? projectIndex.hasField(collectionReference.collectionName, context.value)
+          : null,
+      location: toLocation(entry.filePath, entry.sourceText, context.start, context.end),
+    })
+  }
+
+  const inferCollectionArgumentReference = (entry, context) => {
+    const inferredCollection = projectIndex.inferCollectionArgumentReference(
+      context.collectionExpression,
+      entry.analysisText,
+      typeof context.start === 'number' ? context.start : 0,
+      { filePath: entry.filePath }
+    )
+    if (inferredCollection) {
+      return inferredCollection
+    }
+
+    if (context.collectionName) {
+      return {
+        collectionName: context.collectionName,
+        confidence: 'high',
+        strategy: 'literal-collection-argument',
+      }
+    }
+
+    return null
+  }
+
   for (const entry of codeFiles) {
     const contexts = collectSchemaContexts(entry.analysisText, {
       collectionMethodNames,
@@ -449,6 +490,16 @@ function buildSchemaUsage(projectIndex, codeFiles) {
         continue
       }
 
+      if (context.kind === 'filter-field' || context.kind === 'sort-field') {
+        addFieldUsage(
+          entry,
+          context,
+          inferCollectionArgumentReference(entry, context),
+          context.kind
+        )
+        continue
+      }
+
       if (context.kind !== 'record-field') {
         continue
       }
@@ -460,20 +511,7 @@ function buildSchemaUsage(projectIndex, codeFiles) {
         { filePath: entry.filePath }
       )
 
-      fields.push({
-        sourceFilePath: entry.filePath,
-        sourceRelativePath: entry.relativePath,
-        fieldName: context.value,
-        receiverExpression: context.receiverExpression,
-        inferredCollectionName: inferredCollection ? inferredCollection.collectionName : null,
-        inferenceConfidence: inferredCollection ? inferredCollection.confidence : null,
-        inferenceStrategy: inferredCollection ? inferredCollection.strategy : null,
-        existsInSchema:
-          inferredCollection
-            ? projectIndex.hasField(inferredCollection.collectionName, context.value)
-            : null,
-        location,
-      })
+      addFieldUsage(entry, context, inferredCollection, 'record-field')
     }
   }
 
@@ -701,6 +739,8 @@ function buildImpactByFile(sections) {
 
       state.schemaFields.set(`${fieldUsage.fieldName}::${fieldUsage.location.start || 0}`, {
         fieldName: fieldUsage.fieldName,
+        accessKind: fieldUsage.accessKind,
+        methodName: fieldUsage.methodName,
         receiverExpression: fieldUsage.receiverExpression,
         inferredCollectionName: fieldUsage.inferredCollectionName,
         inferenceConfidence: fieldUsage.inferenceConfidence,
