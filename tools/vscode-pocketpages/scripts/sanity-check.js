@@ -5793,6 +5793,17 @@ const flashClasses = 'notice'
     ) {
       throw new Error(`Expected schema-only custom references to include the hook require() caller. Got: ${JSON.stringify(schemaOnlyRequireReferences)}`)
     }
+    const schemaOnlyCollectionHover = schemaOnlyCustomFeatures.provideHover({
+      textDocument: { uri: schemaOnlyUri },
+      position: schemaOnlyDocument.positionAt(schemaOnlyText.indexOf("'boards'") + 2),
+    })
+    if (
+      !schemaOnlyCollectionHover ||
+      schemaOnlyCollectionHover.kind !== 'schema-collection' ||
+      schemaOnlyCollectionHover.collectionName !== 'boards'
+    ) {
+      throw new Error(`Expected schema-only hook custom hover to expose schema collection info. Got: ${JSON.stringify(schemaOnlyCollectionHover)}`)
+    }
     let schemaOnlyTypeScriptServiceCalls = 0
     let schemaOnlyTypeScriptPrepareCalls = 0
     schemaOnlyContext.context.helpers.ensureDocumentPrepared = () => {
@@ -7707,7 +7718,7 @@ ${largeRealisticSections}
     }
 
     const schemaOnlyDiagnosticsCore = new PocketPagesLanguageCore()
-    const schemaOnlyDiagnosticsText = `missingGlobal()\n$app.findRecordsByFilter('missing_collection')\n`
+    const schemaOnlyDiagnosticsText = `missingGlobal()\n$app.findRecordsByFilter('missing_collection')\n$app.findRecordsByFilter('boards', 'nmae = true')\n`
     const schemaOnlyDiagnosticsDocument = createTestDocument(
       fixture.jobScriptFilePath,
       'javascript',
@@ -7743,6 +7754,25 @@ ${largeRealisticSections}
         message: 'Unknown PocketBase collection "missing_collection" in findRecordsByFilter().',
         start: schemaOnlyDiagnosticsText.indexOf('missing_collection'),
         end: schemaOnlyDiagnosticsText.indexOf('missing_collection') + 'missing_collection'.length,
+      },
+      {
+        code: 'pp-schema-field',
+        category: ts.DiagnosticCategory.Error,
+        message: 'Unknown field "nmae" for collection "boards" in findRecordsByFilter() filter.',
+        start: schemaOnlyDiagnosticsText.indexOf('nmae'),
+        end: schemaOnlyDiagnosticsText.indexOf('nmae') + 'nmae'.length,
+        fixes: [
+          {
+            title: 'Replace with "name"',
+            edits: [
+              {
+                start: schemaOnlyDiagnosticsText.indexOf('nmae'),
+                end: schemaOnlyDiagnosticsText.indexOf('nmae') + 'nmae'.length,
+                newText: 'name',
+              },
+            ],
+          },
+        ],
       },
       {
         code: 2304,
@@ -7783,6 +7813,86 @@ ${largeRealisticSections}
     if (!schemaOnlyDiagnosticsReport.items.some((entry) => String(entry.code) === 'pp-schema-collection')) {
       throw new Error(
         `Expected schema-support-only hook diagnostics to keep collection diagnostics. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
+      )
+    }
+    const schemaOnlyFieldDiagnostic = schemaOnlyDiagnosticsReport.items.find((entry) => String(entry.code) === 'pp-schema-field')
+    if (!schemaOnlyFieldDiagnostic) {
+      throw new Error(
+        `Expected schema-support-only hook diagnostics to keep field diagnostics. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
+      )
+    }
+
+    const schemaOnlyCodeActionCore = new PocketPagesLanguageCore()
+    const schemaOnlyCodeActionText = `$app.findRecordsByFilter('boards', 'nmae = true')\n`
+    const schemaOnlyCodeActionDocument = createTestDocument(
+      fixture.jobScriptFilePath,
+      'javascript',
+      1,
+      schemaOnlyCodeActionText
+    )
+    schemaOnlyCodeActionCore.openDocument({
+      uri: schemaOnlyCodeActionDocument.uri,
+      languageId: 'javascript',
+      version: 1,
+      text: schemaOnlyCodeActionText,
+    })
+    const schemaOnlyCodeActionContext = createLspServiceSmokeContext(
+      schemaOnlyCodeActionCore,
+      new Map([[schemaOnlyCodeActionDocument.uri, schemaOnlyCodeActionDocument]])
+    )
+    const schemaOnlyCodeActionFeatureService = createDiagnosticsFeatureService(
+      schemaOnlyCodeActionContext.context
+    )
+    const schemaOnlyCodeActionReport = await schemaOnlyCodeActionFeatureService.providePullDiagnostics(
+      { textDocument: { uri: schemaOnlyCodeActionDocument.uri } },
+      { isCancellationRequested: false }
+    )
+    const schemaOnlyCodeActionDiagnostic =
+      schemaOnlyCodeActionReport &&
+      Array.isArray(schemaOnlyCodeActionReport.items)
+        ? schemaOnlyCodeActionReport.items.find((entry) => String(entry.code) === 'pp-schema-field')
+        : null
+    if (!schemaOnlyCodeActionDiagnostic) {
+      throw new Error(
+        `Expected real schema-only hook field diagnostics for code actions. Got: ${JSON.stringify(schemaOnlyCodeActionReport)}`
+      )
+    }
+    const schemaOnlyCodeActionDocumentContext = schemaOnlyCodeActionCore.getDocumentContextByUri(
+      schemaOnlyCodeActionDocument.uri
+    )
+    const schemaOnlyCodeActionService =
+      schemaOnlyCodeActionDocumentContext && schemaOnlyCodeActionDocumentContext.service
+    const originalSchemaOnlyCodeActionGetDiagnostics =
+      schemaOnlyCodeActionService && typeof schemaOnlyCodeActionService.getDiagnostics === 'function'
+        ? schemaOnlyCodeActionService.getDiagnostics.bind(schemaOnlyCodeActionService)
+        : null
+    if (!schemaOnlyCodeActionService || !originalSchemaOnlyCodeActionGetDiagnostics) {
+      throw new Error('Expected schema-only hook code-action smoke context to expose a language service.')
+    }
+    let schemaOnlyFieldCodeActions = null
+    try {
+      schemaOnlyCodeActionService.getDiagnostics = () => {
+        throw new Error('Expected schema-only hook code actions to reuse cached pull diagnostics.')
+      }
+      schemaOnlyFieldCodeActions = schemaOnlyCodeActionFeatureService.provideCodeActions({
+        textDocument: { uri: schemaOnlyCodeActionDocument.uri },
+        range: schemaOnlyCodeActionDiagnostic.range,
+        context: {
+          diagnostics: [schemaOnlyCodeActionDiagnostic],
+        },
+      })
+    } finally {
+      schemaOnlyCodeActionService.getDiagnostics = originalSchemaOnlyCodeActionGetDiagnostics
+    }
+    if (
+      !Array.isArray(schemaOnlyFieldCodeActions) ||
+      !schemaOnlyFieldCodeActions.some((entry) =>
+        Array.isArray(entry.edit) &&
+        entry.edit.some((edit) => edit.newText === 'name')
+      )
+    ) {
+      throw new Error(
+        `Expected schema-only hook field diagnostics to expose schema quick fixes. Got: ${JSON.stringify(schemaOnlyFieldCodeActions)}`
       )
     }
 
@@ -10297,6 +10407,84 @@ boardService.readAuthState(
     const jobSortFieldNames = jobSortFieldCompletion ? jobSortFieldCompletion.items.map((entry) => entry.label) : []
     if (!jobSortFieldNames.includes('sort_order')) {
       throw new Error(`Expected schema-only hook sort field completions. Got: ${JSON.stringify(jobSortFieldCompletion)}`)
+    }
+
+    const schemaCollectionHoverText = `$app.findRecordsByFilter('boards')\n`
+    const schemaCollectionHover = service.getSchemaHoverInfo(
+      fixture.boardServiceFilePath,
+      schemaCollectionHoverText,
+      schemaCollectionHoverText.indexOf('boards') + 2
+    )
+    if (
+      !schemaCollectionHover ||
+      schemaCollectionHover.kind !== 'schema-collection' ||
+      schemaCollectionHover.collectionName !== 'boards' ||
+      !schemaCollectionHover.schemaPath
+    ) {
+      throw new Error(`Expected schema collection hover info. Got: ${JSON.stringify(schemaCollectionHover)}`)
+    }
+
+    const schemaRecordFieldHoverText =
+      `const board = $app.findFirstRecordByFilter('boards', 'id != ""')\nboard.get('name')\n`
+    const schemaRecordFieldHover = service.getSchemaHoverInfo(
+      fixture.boardServiceFilePath,
+      schemaRecordFieldHoverText,
+      schemaRecordFieldHoverText.lastIndexOf('name') + 2
+    )
+    if (
+      !schemaRecordFieldHover ||
+      schemaRecordFieldHover.kind !== 'schema-field' ||
+      schemaRecordFieldHover.collectionName !== 'boards' ||
+      schemaRecordFieldHover.fieldName !== 'name'
+    ) {
+      throw new Error(`Expected record field schema hover info. Got: ${JSON.stringify(schemaRecordFieldHover)}`)
+    }
+
+    const schemaFilterFieldHoverText = `$app.findRecordsByFilter('boards', 'status = "draft"')\n`
+    const schemaFilterFieldHover = service.getSchemaHoverInfo(
+      fixture.boardServiceFilePath,
+      schemaFilterFieldHoverText,
+      schemaFilterFieldHoverText.indexOf('status') + 2
+    )
+    if (
+      !schemaFilterFieldHover ||
+      schemaFilterFieldHover.kind !== 'schema-field' ||
+      schemaFilterFieldHover.collectionName !== 'boards' ||
+      schemaFilterFieldHover.fieldName !== 'status' ||
+      schemaFilterFieldHover.source !== 'filter'
+    ) {
+      throw new Error(`Expected filter field schema hover info. Got: ${JSON.stringify(schemaFilterFieldHover)}`)
+    }
+
+    const schemaSortFieldHoverText = `$app.findRecordsByFilter('boards', '', '-sort_order')\n`
+    const schemaSortFieldHover = service.getSchemaHoverInfo(
+      fixture.boardServiceFilePath,
+      schemaSortFieldHoverText,
+      schemaSortFieldHoverText.indexOf('sort_order') + 2
+    )
+    if (
+      !schemaSortFieldHover ||
+      schemaSortFieldHover.kind !== 'schema-field' ||
+      schemaSortFieldHover.collectionName !== 'boards' ||
+      schemaSortFieldHover.fieldName !== 'sort_order' ||
+      schemaSortFieldHover.source !== 'sort'
+    ) {
+      throw new Error(`Expected sort field schema hover info. Got: ${JSON.stringify(schemaSortFieldHover)}`)
+    }
+
+    const schemaOnlyHookHoverText = `$app.findRecordsByFilter('boards', 'status = true')\n`
+    const schemaOnlyHookHover = service.getSchemaHoverInfo(
+      fixture.jobScriptFilePath,
+      schemaOnlyHookHoverText,
+      schemaOnlyHookHoverText.indexOf('status') + 2
+    )
+    if (
+      !schemaOnlyHookHover ||
+      schemaOnlyHookHover.kind !== 'schema-field' ||
+      schemaOnlyHookHover.collectionName !== 'boards' ||
+      schemaOnlyHookHover.fieldName !== 'status'
+    ) {
+      throw new Error(`Expected schema-only hook schema hover info. Got: ${JSON.stringify(schemaOnlyHookHover)}`)
     }
 
     const jobDiagnostics = service.getDiagnostics(
@@ -14606,6 +14794,77 @@ const boardTableNames = $app.findRecordsByFilter('boards', '').map((entry) => en
       )
     ) {
       throw new Error(`Expected resolve('_private/...') quick fix. Got: ${JSON.stringify(resolvePrivateRelativeCodeActions)}`)
+    }
+
+    const schemaCollectionQuickFixText = `<script server>\n$app.findRecordsByFilter('boadrs')\n</script>\n`
+    const schemaCollectionQuickFixActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      schemaCollectionQuickFixText,
+      {
+        start: schemaCollectionQuickFixText.indexOf('boadrs'),
+        end: schemaCollectionQuickFixText.indexOf('boadrs') + 'boadrs'.length,
+      }
+    )
+    if (
+      !schemaCollectionQuickFixActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === 'boards')
+      )
+    ) {
+      throw new Error(`Expected schema collection quick fix. Got: ${JSON.stringify(schemaCollectionQuickFixActions)}`)
+    }
+
+    const schemaRecordFieldQuickFixText =
+      `<script server>\nconst board = $app.findFirstRecordByFilter('boards', '')\nboard.get('nmae')\n</script>\n`
+    const schemaRecordFieldQuickFixActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      schemaRecordFieldQuickFixText,
+      {
+        start: schemaRecordFieldQuickFixText.indexOf('nmae'),
+        end: schemaRecordFieldQuickFixText.indexOf('nmae') + 'nmae'.length,
+      }
+    )
+    if (
+      !schemaRecordFieldQuickFixActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === 'name')
+      )
+    ) {
+      throw new Error(`Expected schema record field quick fix. Got: ${JSON.stringify(schemaRecordFieldQuickFixActions)}`)
+    }
+
+    const schemaFilterFieldQuickFixText =
+      `<script server>\n$app.findRecordsByFilter('boards', 'srot_order >= 1')\n</script>\n`
+    const schemaFilterFieldQuickFixActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      schemaFilterFieldQuickFixText,
+      {
+        start: schemaFilterFieldQuickFixText.indexOf('srot_order'),
+        end: schemaFilterFieldQuickFixText.indexOf('srot_order') + 'srot_order'.length,
+      }
+    )
+    if (
+      !schemaFilterFieldQuickFixActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === 'sort_order')
+      )
+    ) {
+      throw new Error(`Expected schema filter field quick fix. Got: ${JSON.stringify(schemaFilterFieldQuickFixActions)}`)
+    }
+
+    const schemaSortFieldQuickFixText =
+      `<script server>\n$app.findRecordsByFilter('boards', '', '-nmae')\n</script>\n`
+    const schemaSortFieldQuickFixActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      schemaSortFieldQuickFixText,
+      {
+        start: schemaSortFieldQuickFixText.indexOf('nmae'),
+        end: schemaSortFieldQuickFixText.indexOf('nmae') + 'nmae'.length,
+      }
+    )
+    if (
+      !schemaSortFieldQuickFixActions.some((entry) =>
+        entry.edits.some((edit) => edit.newText === 'name')
+      )
+    ) {
+      throw new Error(`Expected schema sort field quick fix. Got: ${JSON.stringify(schemaSortFieldQuickFixActions)}`)
     }
 
     const unresolvedResolveDiagnostics = service.getDiagnostics(

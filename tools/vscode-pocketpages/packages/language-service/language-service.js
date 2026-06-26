@@ -2648,6 +2648,28 @@ function getSuggestedIdentifierCandidates(requestedName, candidateNames, limit =
     .map((candidate) => candidate.candidateName);
 }
 
+function createSchemaReplacementFixes(requestedName, candidateNames, start, end) {
+  if (typeof start !== "number" || typeof end !== "number" || end < start) {
+    return undefined;
+  }
+
+  const suggestions = getSuggestedIdentifierCandidates(requestedName, candidateNames);
+  if (!suggestions.length) {
+    return undefined;
+  }
+
+  return suggestions.map((candidateName) => ({
+    title: `Replace with "${candidateName}"`,
+    edits: [
+      {
+        start,
+        end,
+        newText: candidateName,
+      },
+    ],
+  }));
+}
+
 function buildSuggestedReplacementValue(context, candidateValue) {
   if (!context) {
     return candidateValue;
@@ -3005,6 +3027,12 @@ function buildSchemaFieldDiagnostic(projectIndex, filePathOrContext, contextOrAn
     message: `Unknown field "${context.value}" for collection "${reference.collectionName}".`,
     start: effectiveOffsetBase + context.start,
     end: effectiveOffsetBase + context.end,
+    fixes: createSchemaReplacementFixes(
+      context.value,
+      projectIndex.getFieldNames(reference.collectionName),
+      effectiveOffsetBase + context.start,
+      effectiveOffsetBase + context.end
+    ),
   };
 }
 
@@ -3023,13 +3051,19 @@ function isPocketPagesAppTypeText(typeText) {
   return /\bpocketbase\.PocketBase\b/.test(text) || /\bPocketBase\b/.test(text) || /\bcore\.App\b/.test(text);
 }
 
-function buildSchemaCollectionDiagnostic(context, offsetBase = 0) {
+function buildSchemaCollectionDiagnostic(context, offsetBase = 0, options = {}) {
   return {
     code: "pp-schema-collection",
     category: ts.DiagnosticCategory.Warning,
     message: `Unknown PocketBase collection "${context.value}" in ${context.methodName}().`,
     start: offsetBase + context.start,
     end: offsetBase + context.end,
+    fixes: createSchemaReplacementFixes(
+      context.value,
+      options.collectionNames,
+      offsetBase + context.start,
+      offsetBase + context.end
+    ),
   };
 }
 
@@ -4684,7 +4718,9 @@ class ProjectLanguageService {
       return null;
     }
 
-    return buildSchemaCollectionDiagnostic(context, analysisStart);
+    return buildSchemaCollectionDiagnostic(context, analysisStart, {
+      collectionNames: this.projectIndex.getCollectionNames(),
+    });
   }
 
   buildDocumentSchemaFieldDiagnostic(filePath, documentText, context, options = {}) {
@@ -4710,6 +4746,12 @@ class ProjectLanguageService {
       message: `Unknown field "${context.value}" for collection "${reference.collectionName}".`,
       start: analysisStart + context.start,
       end: analysisStart + context.end,
+      fixes: createSchemaReplacementFixes(
+        context.value,
+        this.projectIndex.getFieldNames(reference.collectionName),
+        analysisStart + context.start,
+        analysisStart + context.end
+      ),
     };
   }
 
@@ -4792,6 +4834,12 @@ class ProjectLanguageService {
       message: `Unknown field "${context.value}" for collection "${reference.collectionName}" in ${context.methodName}() filter.`,
       start: analysisStart + context.start,
       end: analysisStart + context.end,
+      fixes: createSchemaReplacementFixes(
+        context.value,
+        this.projectIndex.getFieldNames(reference.collectionName),
+        analysisStart + context.start,
+        analysisStart + context.end
+      ),
     };
   }
 
@@ -4818,6 +4866,12 @@ class ProjectLanguageService {
       message: `Unknown field "${context.value}" for collection "${reference.collectionName}" in ${context.methodName}() sort.`,
       start: analysisStart + context.start,
       end: analysisStart + context.end,
+      fixes: createSchemaReplacementFixes(
+        context.value,
+        this.projectIndex.getFieldNames(reference.collectionName),
+        analysisStart + context.start,
+        analysisStart + context.end
+      ),
     };
   }
 
@@ -6760,6 +6814,81 @@ class ProjectLanguageService {
     }
 
     return this.getRequirePathTargetInfo(filePath, documentText, offset);
+  }
+
+  getSchemaHoverInfo(filePath, documentText, offset) {
+    const analysisContext = getAnalysisContextAtOffset(filePath, documentText, offset);
+    if (!analysisContext) {
+      return null;
+    }
+
+    const { analysisText, analysisOffset, analysisStart } = analysisContext;
+    const schemaContext = getScriptSchemaContextAtOffset(analysisText, analysisOffset, {
+      collectionMethodNames: this.projectIndex.getCollectionMethodNames(),
+      sourceFile: createSourceFileForText(`${filePath}.__schema_hover__.js`, analysisText),
+    });
+    if (!schemaContext) {
+      return null;
+    }
+
+    if (schemaContext.kind === "collection-name") {
+      if (
+        !this.isSchemaAppReceiverContext(filePath, documentText, schemaContext, {
+          analysisStart,
+        }) ||
+        !this.projectIndex.hasCollection(schemaContext.value)
+      ) {
+        return null;
+      }
+
+      return {
+        kind: "schema-collection",
+        collectionName: schemaContext.value,
+        methodName: schemaContext.methodName || "",
+        fieldCount: this.projectIndex.getFields(schemaContext.value).length,
+        schemaPath: this.projectIndex.getSchemaState().schemaPath,
+        start: analysisStart + schemaContext.start,
+        end: analysisStart + schemaContext.end,
+      };
+    }
+
+    let collectionReference = null;
+    if (schemaContext.kind === "record-field") {
+      collectionReference = this.resolveSchemaFieldCollectionReference(filePath, documentText, schemaContext, {
+        analysisText,
+        analysisStart,
+        analysisSourceFile: createSourceFileForText(`${filePath}.__schema_hover_field__.js`, analysisText),
+      });
+    } else if (schemaContext.kind === "filter-field" || schemaContext.kind === "sort-field") {
+      collectionReference = this.resolveSchemaCollectionArgumentReference(filePath, documentText, schemaContext, {
+        analysisText,
+        analysisStart,
+        analysisSourceFile: createSourceFileForText(`${filePath}.__schema_hover_field__.js`, analysisText),
+      });
+    }
+
+    if (!collectionReference || !this.projectIndex.hasField(collectionReference.collectionName, schemaContext.value)) {
+      return null;
+    }
+
+    const field = this.projectIndex.getFields(collectionReference.collectionName)
+      .find((entry) => entry.name === schemaContext.value);
+    return {
+      kind: "schema-field",
+      collectionName: collectionReference.collectionName,
+      fieldName: schemaContext.value,
+      fieldType: field && field.type ? field.type : "",
+      typeText: this.projectIndex.getFieldTypeText(collectionReference.collectionName, schemaContext.value) || "",
+      source:
+        schemaContext.kind === "filter-field"
+          ? "filter"
+          : schemaContext.kind === "sort-field"
+            ? "sort"
+            : schemaContext.accessMethod || "record",
+      schemaPath: this.projectIndex.getSchemaState().schemaPath,
+      start: analysisStart + schemaContext.start,
+      end: analysisStart + schemaContext.end,
+    };
   }
 
   getRequirePathTargetInfo(filePath, documentText, offset) {

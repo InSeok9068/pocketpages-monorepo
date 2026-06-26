@@ -677,6 +677,49 @@ function buildPathTargetHoverMarkdown(pathTargetInfo) {
   return parts.join("\n\n");
 }
 
+function buildSchemaHoverMarkdown(schemaInfo) {
+  if (schemaInfo.kind === "schema-collection") {
+    const parts = [`Collection: \`${schemaInfo.collectionName}\``];
+    if (schemaInfo.methodName) {
+      parts.push(`Method: \`${schemaInfo.methodName}()\``);
+    }
+    if (typeof schemaInfo.fieldCount === "number") {
+      parts.push(`Fields: \`${schemaInfo.fieldCount}\``);
+    }
+    if (schemaInfo.schemaPath) {
+      parts.push(`Schema: \`${String(schemaInfo.schemaPath).replace(/\\/g, "/")}\``);
+    }
+    return parts.join("\n\n");
+  }
+
+  if (schemaInfo.kind === "schema-field") {
+    const parts = [`Field: \`${schemaInfo.collectionName}.${schemaInfo.fieldName}\``];
+    if (schemaInfo.fieldType) {
+      parts.push(`Schema type: \`${schemaInfo.fieldType}\``);
+    }
+    if (schemaInfo.typeText) {
+      parts.push(`TypeScript type: \`${schemaInfo.typeText}\``);
+    }
+    if (schemaInfo.source) {
+      parts.push(`Source: \`${schemaInfo.source}\``);
+    }
+    if (schemaInfo.schemaPath) {
+      parts.push(`Schema: \`${String(schemaInfo.schemaPath).replace(/\\/g, "/")}\``);
+    }
+    return parts.join("\n\n");
+  }
+
+  return "";
+}
+
+function buildCustomHoverMarkdown(hoverInfo) {
+  if (hoverInfo && String(hoverInfo.kind || "").startsWith("schema-")) {
+    return buildSchemaHoverMarkdown(hoverInfo);
+  }
+
+  return buildPathTargetHoverMarkdown(hoverInfo);
+}
+
 function toWorkspaceEdit(edits) {
   const changes = {};
 
@@ -1440,6 +1483,25 @@ connection.onHover((params, token) => {
 
   const pathTargetInfo = customFeatureService.provideHover(params);
   if (pathTargetInfo) {
+    if (String(pathTargetInfo.kind || "").startsWith("schema-")) {
+      logRequestResult("hover", "result", startedAt, {
+        req: requestId,
+        case: "schema-hover",
+        file: getRelativePathLabel(documentContext.filePath),
+        version: document.version,
+        offset,
+        kind: pathTargetInfo.kind,
+        result: "hit",
+      });
+      return {
+        contents: {
+          kind: MarkupKind.Markdown,
+          value: buildCustomHoverMarkdown(pathTargetInfo),
+        },
+        range: toRange(document, pathTargetInfo.start, pathTargetInfo.end),
+      };
+    }
+
     logRequestResult("hover", "result", startedAt, {
       req: requestId,
       case: "path-target",
@@ -1452,7 +1514,7 @@ connection.onHover((params, token) => {
     return {
       contents: {
         kind: MarkupKind.Markdown,
-        value: buildPathTargetHoverMarkdown(pathTargetInfo),
+        value: buildCustomHoverMarkdown(pathTargetInfo),
       },
       range: toRange(document, pathTargetInfo.start, pathTargetInfo.end),
     };

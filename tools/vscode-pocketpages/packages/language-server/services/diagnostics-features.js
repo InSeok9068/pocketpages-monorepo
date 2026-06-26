@@ -1117,10 +1117,12 @@ function createDiagnosticsFeatureService(context) {
     if (!documentContext) {
       return null;
     }
-    if (
-      helpers.isExcludedPocketPagesScriptPath(documentContext.filePath) ||
-      helpers.isSchemaSupportOnlyHookScriptPath(documentContext.filePath)
-    ) {
+    if (helpers.isExcludedPocketPagesScriptPath(documentContext.filePath)) {
+      return null;
+    }
+
+    const isSchemaOnlyDocument = helpers.isSchemaSupportOnlyHookScriptPath(documentContext.filePath);
+    if (isSchemaOnlyDocument && !contextDiagnostics.length) {
       return null;
     }
 
@@ -1133,6 +1135,9 @@ function createDiagnosticsFeatureService(context) {
       : [];
     if (contextDiagnostics.length && cachedDiagnostics === null && typeof ensureDocumentPrepared === "function") {
       ensureDocumentPrepared(params.textDocument.uri);
+    }
+    if (isSchemaOnlyDocument && cachedDiagnostics === null) {
+      return null;
     }
     const actions = documentContext.service.getCodeActions(
       documentContext.filePath,

@@ -131,6 +131,10 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
+      if (isExcludedPocketPagesDocument(documentContext)) {
+        return null;
+      }
+
       const schemaOnlyRequireTarget = getRequirePathTargetInfoForSchemaOnly(
         documentContext,
         documentText,
@@ -140,7 +144,19 @@ function createCustomFeatureService(context) {
         return schemaOnlyRequireTarget;
       }
 
-      if (isCustomFeatureBlockedDocument(documentContext)) {
+      const schemaHoverInfo =
+        documentContext.service && typeof documentContext.service.getSchemaHoverInfo === "function"
+          ? documentContext.service.getSchemaHoverInfo(
+              documentContext.filePath,
+              documentText,
+              offset
+            )
+          : null;
+      if (schemaHoverInfo) {
+        return schemaHoverInfo;
+      }
+
+      if (isSchemaSupportOnlyDocument(documentContext)) {
         return null;
       }
 
