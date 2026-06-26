@@ -1717,17 +1717,10 @@ function createFixtureApp(_repoRoot) {
     id: string
     get(name: string): any
   }
-}
 
-declare namespace pocketbase {
-  interface Collection {
-    id: string
-    name: string
-  }
-
-  interface PocketBase {
-    findCollectionByNameOrId(nameOrId: string): Collection
-    findCachedCollectionByNameOrId(nameOrId: string): Collection
+  interface App {
+    findCollectionByNameOrId(nameOrId: string): pocketbase.Collection
+    findCachedCollectionByNameOrId(nameOrId: string): pocketbase.Collection
     recordQuery(collectionModelOrIdentifier: any): any
     findRecordById(collectionModelOrIdentifier: any, recordId: string): core.Record
     findRecordsByIds(collectionModelOrIdentifier: any, recordIds: string[]): Array<core.Record>
@@ -1739,7 +1732,17 @@ declare namespace pocketbase {
     findAuthRecordByEmail(collectionModelOrIdentifier: any, email: string): core.Record
     findRecordByViewFile(viewCollectionModelOrIdentifier: any, fileKey: string): core.Record
     isCollectionNameUnique(name: string): boolean
+    runInTransaction(fn: (txApp: App) => void): void
   }
+}
+
+declare namespace pocketbase {
+  interface Collection {
+    id: string
+    name: string
+  }
+
+  interface PocketBase extends core.App {}
 }
 
 declare var $app: pocketbase.PocketBase
@@ -13314,6 +13317,96 @@ $app.findRecordsByFilter(boardCollection, 'is_active = true', '-srot_order,+owne
         `Expected valid relation sort field to stay clean. Got: ${sortCollectionVariableDiagnostics
           .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
           .join(' | ')}`
+      )
+    }
+
+    const typedAppReceiverDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      `$app.runInTransaction(function (txApp) {
+  txApp.findRecordsByFilter('missing_collection')
+  txApp.findRecordsByFilter('boards', 'nmae = {:name}', '-srot_order,+name')
+})
+`
+    )
+    const typedAppReceiverMessages = typedAppReceiverDiagnostics.map((entry) => String(entry.message))
+    if (
+      !typedAppReceiverMessages.some((message) => message.includes('Unknown PocketBase collection "missing_collection" in findRecordsByFilter().')) ||
+      !typedAppReceiverMessages.some((message) => message.includes('Unknown field "nmae" for collection "boards" in findRecordsByFilter() filter')) ||
+      !typedAppReceiverMessages.some((message) => message.includes('Unknown field "srot_order" for collection "boards" in findRecordsByFilter() sort'))
+    ) {
+      throw new Error(
+        `Expected typed txApp schema diagnostics for collection/filter/sort. Got: ${typedAppReceiverDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const nonPocketBaseReceiverDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      `const helper = { findRecordsByFilter() {} }
+helper.findRecordsByFilter('missing_collection', 'ghost = 1', '-ghost')
+`
+    )
+    if (
+      nonPocketBaseReceiverDiagnostics.some((entry) => String(entry.code) === 'pp-schema-collection') ||
+      nonPocketBaseReceiverDiagnostics.some((entry) => String(entry.code) === 'pp-schema-field')
+    ) {
+      throw new Error(
+        `Expected non-PocketBase receivers to skip schema diagnostics. Got: ${nonPocketBaseReceiverDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const typedAppReceiverCompletionText = `$app.runInTransaction(function (txApp) {
+  txApp.findRecordsByFilter('bo')
+})
+`
+    const typedAppReceiverCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      typedAppReceiverCompletionText,
+      typedAppReceiverCompletionText.indexOf('bo') + 'bo'.length
+    )
+    if (
+      !typedAppReceiverCompletion ||
+      !typedAppReceiverCompletion.items.some((entry) => entry.label === 'boards')
+    ) {
+      throw new Error(
+        `Expected typed txApp collection completion to include boards. Got: ${JSON.stringify(typedAppReceiverCompletion)}`
+      )
+    }
+
+    const typedAppReceiverRecordText = `$app.runInTransaction(function (txApp) {
+  const boardRecords = txApp.findRecordsByFilter('boards')
+  const sortOrder = boardRecords[0].get('sort_order')
+  sortOrder
+})
+`
+    const typedAppReceiverRecordQuickInfo = service.getQuickInfo(
+      fixture.jobScriptFilePath,
+      typedAppReceiverRecordText,
+      typedAppReceiverRecordText.lastIndexOf('sortOrder')
+    )
+    if (
+      !typedAppReceiverRecordQuickInfo ||
+      !typedAppReceiverRecordQuickInfo.displayText.includes('const sortOrder: number')
+    ) {
+      throw new Error(
+        `Expected txApp.findRecordsByFilter() records to keep schema field typing. Got: ${JSON.stringify(typedAppReceiverRecordQuickInfo)}`
+      )
+    }
+
+    const nonPocketBaseReceiverCompletionText = `const helper = { findRecordsByFilter() {} }
+helper.findRecordsByFilter('bo')
+`
+    const nonPocketBaseReceiverCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      nonPocketBaseReceiverCompletionText,
+      nonPocketBaseReceiverCompletionText.indexOf('bo') + 'bo'.length
+    )
+    if (nonPocketBaseReceiverCompletion) {
+      throw new Error(
+        `Expected non-PocketBase receiver collection completion to stay disabled. Got: ${JSON.stringify(nonPocketBaseReceiverCompletion)}`
       )
     }
 

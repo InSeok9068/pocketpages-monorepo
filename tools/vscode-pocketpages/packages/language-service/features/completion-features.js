@@ -7,7 +7,11 @@ function hasSchemaCompletionSignal(analysisText, analysisOffset) {
   const text = String(analysisText || "");
   const offset = Math.max(0, Math.min(Number(analysisOffset) || 0, text.length));
   const prefix = text.slice(Math.max(0, offset - SCHEMA_COMPLETION_SIGNAL_WINDOW), offset);
-  return /\$app\./.test(prefix) || /\.(?:get|set)\s*\(/.test(prefix);
+  return (
+    /\$app\./.test(prefix) ||
+    /\.(?:get|set)\s*\(/.test(prefix) ||
+    /\.(?:find[A-Z][\w$]*|countRecords|recordQuery|isCollectionNameUnique)\s*\(/.test(prefix)
+  );
 }
 
 function createCompletionFeatureHandlers(deps) {
@@ -156,6 +160,15 @@ function createCompletionFeatureHandlers(deps) {
             getScriptFieldContext(analysisText, analysisOffset);
 
       if (schemaContext && schemaContext.kind === "collection-name") {
+        if (
+          typeof service.isSchemaAppReceiverContext === "function" &&
+          !service.isSchemaAppReceiverContext(filePath, documentText, schemaContext, {
+            analysisStart,
+          })
+        ) {
+          return null;
+        }
+
         return {
           start: analysisStart + schemaContext.start,
           end: analysisStart + schemaContext.end,

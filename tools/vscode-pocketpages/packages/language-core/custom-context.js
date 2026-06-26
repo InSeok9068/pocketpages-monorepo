@@ -1424,23 +1424,34 @@ function createSchemaSourceFile(scriptText, options = {}) {
   )
 }
 
-function getCollectionMethodName(expression, collectionMethodNames = []) {
+function getCollectionMethodDescriptor(expression, sourceFile, scriptText, collectionMethodNames = []) {
   const methodNames = new Set((Array.isArray(collectionMethodNames) ? collectionMethodNames : []).filter(Boolean))
   if (!methodNames.size) {
     return null
   }
 
   const target = skipParenthesizedExpression(expression)
-  if (
-    !target ||
-    !ts.isPropertyAccessExpression(target) ||
-    !ts.isIdentifier(target.expression) ||
-    target.expression.text !== '$app'
-  ) {
+  if (!target || !ts.isPropertyAccessExpression(target) || !methodNames.has(target.name.text)) {
     return null
   }
 
-  return methodNames.has(target.name.text) ? target.name.text : null
+  const receiver = skipParenthesizedExpression(target.expression)
+  if (!receiver) {
+    return null
+  }
+
+  const receiverStart = receiver.getStart(sourceFile)
+  const receiverEnd = receiver.getEnd()
+  const receiverExpression = String(scriptText || '').slice(receiverStart, receiverEnd)
+
+  return {
+    methodName: target.name.text,
+    receiverExpression,
+    receiverName: getLastPathSegment(receiverExpression),
+    receiverStart,
+    receiverEnd,
+    receiverIsDollarApp: ts.isIdentifier(receiver) && receiver.text === '$app',
+  }
 }
 
 function getRecordFieldCallDescriptor(expression, sourceFile, scriptText) {
@@ -1478,10 +1489,10 @@ function getBoundedStringLiteralRange(pathRange, offset, offsetBase, scriptText)
   }
 }
 
-function createCollectionSchemaContext(node, methodName, pathRange, sourceFile, scriptText, offsetBase = 0) {
+function createCollectionSchemaContext(node, descriptor, pathRange, sourceFile, scriptText, offsetBase = 0) {
   return {
     kind: 'collection-name',
-    methodName,
+    methodName: descriptor.methodName,
     quote: pathRange.quote,
     value: pathRange.value,
     start: pathRange.start,
@@ -1489,6 +1500,11 @@ function createCollectionSchemaContext(node, methodName, pathRange, sourceFile, 
     callStart: offsetBase + node.getStart(sourceFile),
     callEnd: offsetBase + node.getEnd(),
     matchText: String(scriptText || '').slice(node.getStart(sourceFile), node.getEnd()),
+    receiverExpression: descriptor.receiverExpression,
+    receiverName: descriptor.receiverName,
+    receiverStart: offsetBase + descriptor.receiverStart,
+    receiverEnd: offsetBase + descriptor.receiverEnd,
+    receiverIsDollarApp: descriptor.receiverIsDollarApp,
   }
 }
 
@@ -1597,8 +1613,8 @@ function maskFilterIgnoredRanges(filterText) {
   return chars.join('')
 }
 
-function createFilterFieldSchemaContexts(node, methodName, sourceFile, scriptText, offsetBase = 0) {
-  if (!FILTER_COLLECTION_METHOD_NAMES.has(methodName) || node.arguments.length < 2) {
+function createFilterFieldSchemaContexts(node, descriptor, sourceFile, scriptText, offsetBase = 0) {
+  if (!FILTER_COLLECTION_METHOD_NAMES.has(descriptor.methodName) || node.arguments.length < 2) {
     return []
   }
 
@@ -1617,7 +1633,7 @@ function createFilterFieldSchemaContexts(node, methodName, sourceFile, scriptTex
 
   return collectFilterFieldCandidates(filterRange.value).map((candidate) => ({
     kind: 'filter-field',
-    methodName,
+    methodName: descriptor.methodName,
     value: candidate.fieldName,
     start: filterRange.start + candidate.start,
     end: filterRange.start + candidate.end,
@@ -1630,6 +1646,11 @@ function createFilterFieldSchemaContexts(node, methodName, sourceFile, scriptTex
     callStart: offsetBase + node.getStart(sourceFile),
     callEnd: offsetBase + node.getEnd(),
     matchText,
+    receiverExpression: descriptor.receiverExpression,
+    receiverName: descriptor.receiverName,
+    receiverStart: offsetBase + descriptor.receiverStart,
+    receiverEnd: offsetBase + descriptor.receiverEnd,
+    receiverIsDollarApp: descriptor.receiverIsDollarApp,
   }))
 }
 
@@ -1672,8 +1693,8 @@ function collectSortFieldCandidates(sortText) {
   return candidates
 }
 
-function createSortFieldSchemaContexts(node, methodName, sourceFile, scriptText, offsetBase = 0) {
-  if (!SORT_COLLECTION_METHOD_NAMES.has(methodName) || node.arguments.length < 3) {
+function createSortFieldSchemaContexts(node, descriptor, sourceFile, scriptText, offsetBase = 0) {
+  if (!SORT_COLLECTION_METHOD_NAMES.has(descriptor.methodName) || node.arguments.length < 3) {
     return []
   }
 
@@ -1692,7 +1713,7 @@ function createSortFieldSchemaContexts(node, methodName, sourceFile, scriptText,
 
   return collectSortFieldCandidates(sortRange.value).map((candidate) => ({
     kind: 'sort-field',
-    methodName,
+    methodName: descriptor.methodName,
     value: candidate.fieldName,
     start: sortRange.start + candidate.start,
     end: sortRange.start + candidate.end,
@@ -1705,6 +1726,11 @@ function createSortFieldSchemaContexts(node, methodName, sourceFile, scriptText,
     callStart: offsetBase + node.getStart(sourceFile),
     callEnd: offsetBase + node.getEnd(),
     matchText,
+    receiverExpression: descriptor.receiverExpression,
+    receiverName: descriptor.receiverName,
+    receiverStart: offsetBase + descriptor.receiverStart,
+    receiverEnd: offsetBase + descriptor.receiverEnd,
+    receiverIsDollarApp: descriptor.receiverIsDollarApp,
   }))
 }
 
@@ -1728,8 +1754,13 @@ function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind 
 
     if (ts.isCallExpression(node) && node.arguments.length) {
       if (includeCollectionContext) {
-        const methodName = getCollectionMethodName(node.expression, options.collectionMethodNames)
-        if (methodName) {
+        const methodDescriptor = getCollectionMethodDescriptor(
+          node.expression,
+          sourceFile,
+          sourceText,
+          options.collectionMethodNames
+        )
+        if (methodDescriptor) {
           const pathRange = getStringLiteralPathRange(
             node.arguments[0],
             sourceFile,
@@ -1740,7 +1771,7 @@ function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind 
           if (pathRange && offset >= pathRange.start && offset <= pathRange.end) {
             foundContext = createCollectionSchemaContext(
               node,
-              methodName,
+              methodDescriptor,
               getBoundedStringLiteralRange(pathRange, offset, offsetBase, sourceText),
               sourceFile,
               sourceText,
@@ -1994,13 +2025,18 @@ function collectSchemaContexts(scriptText, options = {}) {
 
   const visit = (node) => {
     if (ts.isCallExpression(node) && node.arguments.length) {
-      const collectionMethodName = getCollectionMethodName(node.expression, options.collectionMethodNames)
-      if (collectionMethodName) {
+      const collectionMethodDescriptor = getCollectionMethodDescriptor(
+        node.expression,
+        sourceFile,
+        sourceText,
+        options.collectionMethodNames
+      )
+      if (collectionMethodDescriptor) {
         const pathRange = getStringLiteralPathRange(node.arguments[0], sourceFile, sourceText)
         if (pathRange) {
           contexts.push(createCollectionSchemaContext(
             node,
-            collectionMethodName,
+            collectionMethodDescriptor,
             pathRange,
             sourceFile,
             sourceText,
@@ -2010,7 +2046,7 @@ function collectSchemaContexts(scriptText, options = {}) {
 
         contexts.push(...createFilterFieldSchemaContexts(
           node,
-          collectionMethodName,
+          collectionMethodDescriptor,
           sourceFile,
           sourceText,
           offsetBase
@@ -2018,7 +2054,7 @@ function collectSchemaContexts(scriptText, options = {}) {
 
         contexts.push(...createSortFieldSchemaContexts(
           node,
-          collectionMethodName,
+          collectionMethodDescriptor,
           sourceFile,
           sourceText,
           offsetBase
