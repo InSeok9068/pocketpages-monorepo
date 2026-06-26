@@ -94,7 +94,10 @@ function createCustomFeatureService(context) {
       const customItems = isSchemaSupportOnlyDocument
         ? customCompletionData.items.filter(
             (entry) =>
-              entry.category === "collection-name" || entry.category === "record-field"
+              entry.category === "collection-name" ||
+              entry.category === "record-field" ||
+              entry.category === "filter-field" ||
+              entry.category === "sort-field"
           )
         : customCompletionData.items;
 

@@ -5405,6 +5405,8 @@ const localValue = foo.ba
           { label: '/sign-in', category: 'route-path' },
           { label: 'boards', category: 'collection-name' },
           { label: 'name', category: 'record-field' },
+          { label: 'filterName', category: 'filter-field' },
+          { label: 'sortOrder', category: 'sort-field' },
         ],
       })
       const schemaOnlyFilteredCompletion = schemaOnlyCustomFeatureService.provideCompletionItems({
@@ -5416,7 +5418,7 @@ const localValue = foo.ba
         ? schemaOnlyFilteredCompletion.items.map((entry) => entry.label).sort()
         : []
       if (
-        schemaOnlyFilteredLabels.join(',') !== 'boards,name' ||
+        schemaOnlyFilteredLabels.join(',') !== 'boards,filterName,name,sortOrder' ||
         schemaOnlyFilteredLabels.includes('/sign-in')
       ) {
         throw new Error(
@@ -10155,6 +10157,110 @@ boardService.readAuthState(
       )
     }
 
+    const filterFieldCompletionText = `$app.findRecordsByFilter('boards', 'sta')\n`
+    const filterFieldCompletionOffset = filterFieldCompletionText.indexOf('sta') + 'sta'.length
+    const filterFieldCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      filterFieldCompletionText,
+      filterFieldCompletionOffset
+    )
+    const filterFieldCompletionNames = filterFieldCompletion ? filterFieldCompletion.items.map((entry) => entry.label) : []
+    if (
+      !filterFieldCompletion ||
+      filterFieldCompletion.start !== filterFieldCompletionText.indexOf('sta') ||
+      filterFieldCompletion.end !== filterFieldCompletionOffset ||
+      !filterFieldCompletionNames.includes('status')
+    ) {
+      throw new Error(
+        `Expected filter string field completion for boards.status. Got: ${JSON.stringify(filterFieldCompletion)}`
+      )
+    }
+
+    const filterFieldAfterLogicalCompletionText =
+      `$app.findRecordsByFilter('boards', 'status = "draft" && sor')\n`
+    const filterFieldAfterLogicalCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      filterFieldAfterLogicalCompletionText,
+      filterFieldAfterLogicalCompletionText.indexOf('sor') + 'sor'.length
+    )
+    const filterFieldAfterLogicalNames = filterFieldAfterLogicalCompletion
+      ? filterFieldAfterLogicalCompletion.items.map((entry) => entry.label)
+      : []
+    if (!filterFieldAfterLogicalNames.includes('sort_order')) {
+      throw new Error(
+        `Expected filter field completion after && to include sort_order. Got: ${JSON.stringify(filterFieldAfterLogicalCompletion)}`
+      )
+    }
+
+    const sortFieldCompletionText = `$app.findRecordsByFilter('boards', 'is_active = true', '-sor')\n`
+    const sortFieldCompletionOffset = sortFieldCompletionText.indexOf('sor') + 'sor'.length
+    const sortFieldCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      sortFieldCompletionText,
+      sortFieldCompletionOffset
+    )
+    const sortFieldCompletionNames = sortFieldCompletion ? sortFieldCompletion.items.map((entry) => entry.label) : []
+    if (
+      !sortFieldCompletion ||
+      sortFieldCompletion.start !== sortFieldCompletionText.indexOf('sor') ||
+      sortFieldCompletion.end !== sortFieldCompletionOffset ||
+      !sortFieldCompletionNames.includes('sort_order')
+    ) {
+      throw new Error(
+        `Expected sort string field completion to replace only the field token after "-". Got: ${JSON.stringify(sortFieldCompletion)}`
+      )
+    }
+
+    const filterParamCompletionText = `$app.findRecordsByFilter('boards', 'name = {:sta}')\n`
+    const filterParamCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      filterParamCompletionText,
+      filterParamCompletionText.indexOf('sta') + 'sta'.length
+    )
+    if (filterParamCompletion) {
+      throw new Error(`Expected filter field completion to skip {:param} values. Got: ${JSON.stringify(filterParamCompletion)}`)
+    }
+
+    const filterLiteralCompletionText = `$app.findRecordsByFilter('boards', 'name = "sta"')\n`
+    const filterLiteralCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      filterLiteralCompletionText,
+      filterLiteralCompletionText.indexOf('sta') + 'sta'.length
+    )
+    if (filterLiteralCompletion) {
+      throw new Error(`Expected filter field completion to skip quoted values. Got: ${JSON.stringify(filterLiteralCompletion)}`)
+    }
+
+    const filterCommentCompletionText = `$app.findRecordsByFilter('boards', 'name = {:name} // sta')\n`
+    const filterCommentCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      filterCommentCompletionText,
+      filterCommentCompletionText.indexOf('sta') + 'sta'.length
+    )
+    if (filterCommentCompletion) {
+      throw new Error(`Expected filter field completion to skip comments. Got: ${JSON.stringify(filterCommentCompletion)}`)
+    }
+
+    const specialSortCompletionText = `$app.findRecordsByFilter('boards', '', '@ran')\n`
+    const specialSortCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      specialSortCompletionText,
+      specialSortCompletionText.indexOf('ran') + 'ran'.length
+    )
+    if (specialSortCompletion) {
+      throw new Error(`Expected sort field completion to skip @special sort tokens. Got: ${JSON.stringify(specialSortCompletion)}`)
+    }
+
+    const nestedSortCompletionText = `$app.findRecordsByFilter('boards', '', 'owner.na')\n`
+    const nestedSortCompletion = service.getCustomCompletionData(
+      fixture.boardServiceFilePath,
+      nestedSortCompletionText,
+      nestedSortCompletionText.indexOf('na') + 'na'.length
+    )
+    if (nestedSortCompletion) {
+      throw new Error(`Expected sort field completion to skip nested sort paths. Got: ${JSON.stringify(nestedSortCompletion)}`)
+    }
+
     const jobCollectionText = `$app.findRecordsByFilter('bo')\n`
     const jobCollectionOffset = jobCollectionText.indexOf('bo') + 'bo'.length
     const jobCollectionCompletion = service.getCustomCompletionData(fixture.jobScriptFilePath, jobCollectionText, jobCollectionOffset)
@@ -10169,6 +10275,28 @@ boardService.readAuthState(
     const jobFieldNames = jobFieldCompletion ? jobFieldCompletion.items.map((entry) => entry.label) : []
     if (!jobFieldNames.includes('name') || !jobFieldNames.includes('slug')) {
       throw new Error(`Expected pb_hooks/jobs field completions. Got: ${jobFieldNames.slice(0, 20).join(', ')}`)
+    }
+
+    const jobFilterFieldText = `$app.findRecordsByFilter('boards', 'sta')\n`
+    const jobFilterFieldCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      jobFilterFieldText,
+      jobFilterFieldText.indexOf('sta') + 'sta'.length
+    )
+    const jobFilterFieldNames = jobFilterFieldCompletion ? jobFilterFieldCompletion.items.map((entry) => entry.label) : []
+    if (!jobFilterFieldNames.includes('status')) {
+      throw new Error(`Expected schema-only hook filter field completions. Got: ${JSON.stringify(jobFilterFieldCompletion)}`)
+    }
+
+    const jobSortFieldText = `$app.findRecordsByFilter('boards', '', '-sor')\n`
+    const jobSortFieldCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      jobSortFieldText,
+      jobSortFieldText.indexOf('sor') + 'sor'.length
+    )
+    const jobSortFieldNames = jobSortFieldCompletion ? jobSortFieldCompletion.items.map((entry) => entry.label) : []
+    if (!jobSortFieldNames.includes('sort_order')) {
+      throw new Error(`Expected schema-only hook sort field completions. Got: ${JSON.stringify(jobSortFieldCompletion)}`)
     }
 
     const jobDiagnostics = service.getDiagnostics(
@@ -13376,6 +13504,42 @@ helper.findRecordsByFilter('missing_collection', 'ghost = 1', '-ghost')
       )
     }
 
+    const typedAppReceiverFilterCompletionText = `$app.runInTransaction(function (txApp) {
+  txApp.findRecordsByFilter('boards', 'sta')
+})
+`
+    const typedAppReceiverFilterCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      typedAppReceiverFilterCompletionText,
+      typedAppReceiverFilterCompletionText.indexOf('sta') + 'sta'.length
+    )
+    if (
+      !typedAppReceiverFilterCompletion ||
+      !typedAppReceiverFilterCompletion.items.some((entry) => entry.label === 'status')
+    ) {
+      throw new Error(
+        `Expected typed txApp filter field completion to include status. Got: ${JSON.stringify(typedAppReceiverFilterCompletion)}`
+      )
+    }
+
+    const typedAppReceiverSortCompletionText = `$app.runInTransaction(function (txApp) {
+  txApp.findRecordsByFilter('boards', '', '-sor')
+})
+`
+    const typedAppReceiverSortCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      typedAppReceiverSortCompletionText,
+      typedAppReceiverSortCompletionText.indexOf('sor') + 'sor'.length
+    )
+    if (
+      !typedAppReceiverSortCompletion ||
+      !typedAppReceiverSortCompletion.items.some((entry) => entry.label === 'sort_order')
+    ) {
+      throw new Error(
+        `Expected typed txApp sort field completion to include sort_order. Got: ${JSON.stringify(typedAppReceiverSortCompletion)}`
+      )
+    }
+
     const typedAppReceiverRecordText = `$app.runInTransaction(function (txApp) {
   const boardRecords = txApp.findRecordsByFilter('boards')
   const sortOrder = boardRecords[0].get('sort_order')
@@ -13407,6 +13571,20 @@ helper.findRecordsByFilter('bo')
     if (nonPocketBaseReceiverCompletion) {
       throw new Error(
         `Expected non-PocketBase receiver collection completion to stay disabled. Got: ${JSON.stringify(nonPocketBaseReceiverCompletion)}`
+      )
+    }
+
+    const nonPocketBaseReceiverFilterCompletionText = `const helper = { findRecordsByFilter() {} }
+helper.findRecordsByFilter('boards', 'sta')
+`
+    const nonPocketBaseReceiverFilterCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      nonPocketBaseReceiverFilterCompletionText,
+      nonPocketBaseReceiverFilterCompletionText.indexOf('sta') + 'sta'.length
+    )
+    if (nonPocketBaseReceiverFilterCompletion) {
+      throw new Error(
+        `Expected non-PocketBase receiver filter completion to stay disabled. Got: ${JSON.stringify(nonPocketBaseReceiverFilterCompletion)}`
       )
     }
 

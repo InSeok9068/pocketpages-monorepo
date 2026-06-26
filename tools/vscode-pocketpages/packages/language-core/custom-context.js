@@ -27,6 +27,14 @@ const FILTER_MASKED_CHAR = ' '
 const SORT_COLLECTION_METHOD_NAMES = new Set(['findRecordsByFilter'])
 const SORT_FIELD_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
+function isFieldNameStartChar(char) {
+  return /[A-Za-z_]/.test(String(char || ''))
+}
+
+function isFieldNamePartChar(char) {
+  return /[A-Za-z0-9_]/.test(String(char || ''))
+}
+
 function getLastPathSegment(value) {
   return String(value || '')
     .split('.')
@@ -1613,6 +1621,127 @@ function maskFilterIgnoredRanges(filterText) {
   return chars.join('')
 }
 
+function isFilterOffsetIgnored(filterText, localOffset) {
+  const sourceText = String(filterText || '')
+  const offset = Math.max(0, Math.min(Number(localOffset) || 0, sourceText.length))
+  let index = 0
+
+  while (index < sourceText.length) {
+    const current = sourceText[index]
+    const next = sourceText[index + 1]
+
+    if (current === '"' || current === "'") {
+      const quote = current
+      const quoteStart = index
+      index += 1
+
+      while (index < sourceText.length) {
+        const char = sourceText[index]
+        index += 1
+
+        if (char === '\\') {
+          index += 1
+          continue
+        }
+
+        if (char === quote) {
+          break
+        }
+      }
+
+      if (offset > quoteStart && offset < index) {
+        return true
+      }
+      continue
+    }
+
+    if (current === '/' && next === '/') {
+      const commentStart = index
+      index += 2
+      while (index < sourceText.length && sourceText[index] !== '\n' && sourceText[index] !== '\r') {
+        index += 1
+      }
+      if (offset >= commentStart && offset <= index) {
+        return true
+      }
+      continue
+    }
+
+    index += 1
+  }
+
+  return false
+}
+
+function getFieldNameTokenAtOffset(sourceText, localOffset) {
+  const text = String(sourceText || '')
+  const offset = Math.max(0, Math.min(Number(localOffset) || 0, text.length))
+  let start = offset
+  let end = offset
+
+  while (start > 0 && isFieldNamePartChar(text[start - 1])) {
+    start -= 1
+  }
+
+  while (end < text.length && isFieldNamePartChar(text[end])) {
+    end += 1
+  }
+
+  const value = text.slice(start, end)
+  if (value && !isFieldNameStartChar(value[0])) {
+    return null
+  }
+
+  return {
+    value,
+    start,
+    end,
+  }
+}
+
+function isFilterFieldCompletionPrefix(sourceText, tokenStart) {
+  const prefix = String(sourceText || '').slice(0, tokenStart).trimEnd()
+  if (!prefix) {
+    return true
+  }
+
+  if (prefix.endsWith('&&') || prefix.endsWith('||')) {
+    return true
+  }
+
+  return prefix[prefix.length - 1] === '('
+}
+
+function getFilterFieldCompletionToken(filterText, localOffset) {
+  if (isFilterOffsetIgnored(filterText, localOffset)) {
+    return null
+  }
+
+  const sourceText = maskFilterIgnoredRanges(filterText)
+  const token = getFieldNameTokenAtOffset(sourceText, localOffset)
+  if (!token) {
+    return null
+  }
+
+  const previousChar = sourceText[token.start - 1] || ''
+  const nextChar = sourceText[token.end] || ''
+  if (
+    previousChar === ':' ||
+    previousChar === '.' ||
+    previousChar === '@' ||
+    nextChar === '.' ||
+    sourceText.slice(Math.max(0, token.start - 2), token.start) === '{:'
+  ) {
+    return null
+  }
+
+  if (!isFilterFieldCompletionPrefix(sourceText, token.start)) {
+    return null
+  }
+
+  return token
+}
+
 function createFilterFieldSchemaContexts(node, descriptor, sourceFile, scriptText, offsetBase = 0) {
   if (!FILTER_COLLECTION_METHOD_NAMES.has(descriptor.methodName) || node.arguments.length < 2) {
     return []
@@ -1652,6 +1781,55 @@ function createFilterFieldSchemaContexts(node, descriptor, sourceFile, scriptTex
     receiverEnd: offsetBase + descriptor.receiverEnd,
     receiverIsDollarApp: descriptor.receiverIsDollarApp,
   }))
+}
+
+function createFilterFieldSchemaContextAtOffset(node, descriptor, sourceFile, scriptText, offset, offsetBase = 0) {
+  if (!FILTER_COLLECTION_METHOD_NAMES.has(descriptor.methodName) || node.arguments.length < 2) {
+    return null
+  }
+
+  const collectionArgument = node.arguments[0]
+  const filterArgument = node.arguments[1]
+  const filterRange = getStringLiteralPathRange(filterArgument, sourceFile, scriptText, offsetBase, {
+    requireClosed: false,
+  })
+  if (!filterRange || offset < filterRange.start || offset > filterRange.end) {
+    return null
+  }
+
+  const localOffset = offset - filterRange.start
+  const token = getFilterFieldCompletionToken(filterRange.value, localOffset)
+  if (!token) {
+    return null
+  }
+
+  const collectionRange = getStringLiteralPathRange(collectionArgument, sourceFile, scriptText, offsetBase)
+  const collectionStart = offsetBase + collectionArgument.getStart(sourceFile)
+  const collectionEnd = offsetBase + collectionArgument.getEnd()
+  const collectionExpression = getExpressionText(collectionArgument, sourceFile, scriptText)
+  const matchText = String(scriptText || '').slice(node.getStart(sourceFile), node.getEnd())
+
+  return {
+    kind: 'filter-field',
+    methodName: descriptor.methodName,
+    value: token.value,
+    start: filterRange.start + token.start,
+    end: filterRange.start + token.end,
+    filterStart: filterRange.start,
+    filterEnd: filterRange.end,
+    collectionName: collectionRange ? collectionRange.value : null,
+    collectionExpression,
+    collectionStart,
+    collectionEnd,
+    callStart: offsetBase + node.getStart(sourceFile),
+    callEnd: offsetBase + node.getEnd(),
+    matchText,
+    receiverExpression: descriptor.receiverExpression,
+    receiverName: descriptor.receiverName,
+    receiverStart: offsetBase + descriptor.receiverStart,
+    receiverEnd: offsetBase + descriptor.receiverEnd,
+    receiverIsDollarApp: descriptor.receiverIsDollarApp,
+  }
 }
 
 function collectSortFieldCandidates(sortText) {
@@ -1734,6 +1912,116 @@ function createSortFieldSchemaContexts(node, descriptor, sourceFile, scriptText,
   }))
 }
 
+function getSortFieldCompletionToken(sortText, localOffset) {
+  const sourceText = String(sortText || '')
+  const offset = Math.max(0, Math.min(Number(localOffset) || 0, sourceText.length))
+  let segmentStart = 0
+
+  while (segmentStart <= sourceText.length) {
+    const commaIndex = sourceText.indexOf(',', segmentStart)
+    const segmentEnd = commaIndex === -1 ? sourceText.length : commaIndex
+
+    if (offset >= segmentStart && offset <= segmentEnd) {
+      let fieldStart = segmentStart
+      while (fieldStart < segmentEnd && /\s/.test(sourceText[fieldStart])) {
+        fieldStart += 1
+      }
+
+      if (sourceText[fieldStart] === '+' || sourceText[fieldStart] === '-') {
+        fieldStart += 1
+      }
+
+      if (offset < fieldStart) {
+        return null
+      }
+
+      const segmentValue = sourceText.slice(fieldStart, segmentEnd).trim()
+      if (segmentValue.startsWith('@') || segmentValue.includes('.')) {
+        return null
+      }
+
+      const token = getFieldNameTokenAtOffset(sourceText, offset)
+      if (!token) {
+        return null
+      }
+
+      if (token.start < fieldStart) {
+        return null
+      }
+
+      if (sourceText.slice(fieldStart, token.start).trim()) {
+        return null
+      }
+
+      if (sourceText.slice(token.end, segmentEnd).trim()) {
+        return null
+      }
+
+      if (token.value && !SORT_FIELD_NAME_RE.test(token.value)) {
+        return null
+      }
+
+      return token
+    }
+
+    if (commaIndex === -1) {
+      break
+    }
+    segmentStart = commaIndex + 1
+  }
+
+  return null
+}
+
+function createSortFieldSchemaContextAtOffset(node, descriptor, sourceFile, scriptText, offset, offsetBase = 0) {
+  if (!SORT_COLLECTION_METHOD_NAMES.has(descriptor.methodName) || node.arguments.length < 3) {
+    return null
+  }
+
+  const collectionArgument = node.arguments[0]
+  const sortArgument = node.arguments[2]
+  const sortRange = getStringLiteralPathRange(sortArgument, sourceFile, scriptText, offsetBase, {
+    requireClosed: false,
+  })
+  if (!sortRange || offset < sortRange.start || offset > sortRange.end) {
+    return null
+  }
+
+  const localOffset = offset - sortRange.start
+  const token = getSortFieldCompletionToken(sortRange.value, localOffset)
+  if (!token) {
+    return null
+  }
+
+  const collectionRange = getStringLiteralPathRange(collectionArgument, sourceFile, scriptText, offsetBase)
+  const collectionStart = offsetBase + collectionArgument.getStart(sourceFile)
+  const collectionEnd = offsetBase + collectionArgument.getEnd()
+  const collectionExpression = getExpressionText(collectionArgument, sourceFile, scriptText)
+  const matchText = String(scriptText || '').slice(node.getStart(sourceFile), node.getEnd())
+
+  return {
+    kind: 'sort-field',
+    methodName: descriptor.methodName,
+    value: token.value,
+    start: sortRange.start + token.start,
+    end: sortRange.start + token.end,
+    sortStart: sortRange.start,
+    sortEnd: sortRange.end,
+    collectionName: collectionRange ? collectionRange.value : null,
+    collectionExpression,
+    collectionStart,
+    collectionEnd,
+    callStart: offsetBase + node.getStart(sourceFile),
+    callEnd: offsetBase + node.getEnd(),
+    matchText,
+    receiverExpression: descriptor.receiverExpression,
+    receiverName: descriptor.receiverName,
+    receiverStart: offsetBase + descriptor.receiverStart,
+    receiverEnd: offsetBase + descriptor.receiverEnd,
+    receiverIsDollarApp: descriptor.receiverIsDollarApp,
+  }
+}
+
 function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind = null) {
   const sourceText = String(scriptText || '')
   const offsetBase = Number(options.offsetBase) || 0
@@ -1746,6 +2034,8 @@ function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind 
   let foundContext = null
   const includeCollectionContext = !contextKind || contextKind === 'collection-name'
   const includeFieldContext = !contextKind || contextKind === 'record-field'
+  const includeFilterContext = !contextKind || contextKind === 'filter-field'
+  const includeSortContext = !contextKind || contextKind === 'sort-field'
 
   const visit = (node) => {
     if (foundContext) {
@@ -1753,7 +2043,7 @@ function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind 
     }
 
     if (ts.isCallExpression(node) && node.arguments.length) {
-      if (includeCollectionContext) {
+      if (includeCollectionContext || includeFilterContext || includeSortContext) {
         const methodDescriptor = getCollectionMethodDescriptor(
           node.expression,
           sourceFile,
@@ -1761,23 +2051,53 @@ function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind 
           options.collectionMethodNames
         )
         if (methodDescriptor) {
-          const pathRange = getStringLiteralPathRange(
-            node.arguments[0],
-            sourceFile,
-            sourceText,
-            offsetBase,
-            { requireClosed: false }
-          )
-          if (pathRange && offset >= pathRange.start && offset <= pathRange.end) {
-            foundContext = createCollectionSchemaContext(
-              node,
-              methodDescriptor,
-              getBoundedStringLiteralRange(pathRange, offset, offsetBase, sourceText),
+          if (includeCollectionContext) {
+            const pathRange = getStringLiteralPathRange(
+              node.arguments[0],
               sourceFile,
               sourceText,
+              offsetBase,
+              { requireClosed: false }
+            )
+            if (pathRange && offset >= pathRange.start && offset <= pathRange.end) {
+              foundContext = createCollectionSchemaContext(
+                node,
+                methodDescriptor,
+                getBoundedStringLiteralRange(pathRange, offset, offsetBase, sourceText),
+                sourceFile,
+                sourceText,
+                offsetBase
+              )
+              return
+            }
+          }
+
+          if (includeFilterContext) {
+            foundContext = createFilterFieldSchemaContextAtOffset(
+              node,
+              methodDescriptor,
+              sourceFile,
+              sourceText,
+              offset,
               offsetBase
             )
-            return
+            if (foundContext) {
+              return
+            }
+          }
+
+          if (includeSortContext) {
+            foundContext = createSortFieldSchemaContextAtOffset(
+              node,
+              methodDescriptor,
+              sourceFile,
+              sourceText,
+              offset,
+              offsetBase
+            )
+            if (foundContext) {
+              return
+            }
           }
         }
       }

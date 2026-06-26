@@ -425,6 +425,8 @@ function customCompletionKind(category) {
     case "collection-name":
       return CompletionItemKind.Struct;
     case "record-field":
+    case "filter-field":
+    case "sort-field":
       return CompletionItemKind.Field;
     default:
       return CompletionItemKind.Text;

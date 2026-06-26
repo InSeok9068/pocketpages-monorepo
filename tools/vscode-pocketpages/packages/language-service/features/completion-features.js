@@ -182,6 +182,39 @@ function createCompletionFeatureHandlers(deps) {
         };
       }
 
+      if (schemaContext && (schemaContext.kind === "filter-field" || schemaContext.kind === "sort-field")) {
+        if (typeof service.resolveSchemaCollectionArgumentReference !== "function") {
+          return null;
+        }
+
+        const collectionReference = service.resolveSchemaCollectionArgumentReference(
+          filePath,
+          documentText,
+          schemaContext,
+          {
+            analysisText,
+            analysisStart,
+            analysisSourceFile: schemaSourceFile,
+          }
+        );
+        if (!collectionReference || collectionReference.confidence !== "high") {
+          return null;
+        }
+
+        const collectionName = collectionReference.collectionName;
+        return {
+          start: analysisStart + schemaContext.start,
+          end: analysisStart + schemaContext.end,
+          items: service.projectIndex.getFields(collectionName).map((field) => ({
+            label: field.name,
+            insertText: field.name,
+            detail: `${collectionName}.${field.name}`,
+            documentation: field.type ? `Field type: ${field.type}` : collectionName,
+            category: schemaContext.kind,
+          })),
+        };
+      }
+
       if (!schemaContext || schemaContext.kind !== "record-field") {
         return null;
       }
