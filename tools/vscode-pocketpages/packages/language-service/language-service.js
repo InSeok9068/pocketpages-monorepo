@@ -4627,6 +4627,84 @@ class ProjectLanguageService {
     };
   }
 
+  resolveSchemaFilterCollectionReference(filePath, documentText, context, options = {}) {
+    if (!context) {
+      return null;
+    }
+
+    if (context.collectionName && this.projectIndex.hasCollection(context.collectionName)) {
+      return {
+        collectionName: context.collectionName,
+        confidence: "high",
+        strategy: "filter-literal-collection",
+      };
+    }
+
+    const normalizedFilePath = normalizePath(filePath);
+    const analysisText = typeof options.analysisText === "string" ? options.analysisText : documentText;
+    const analysisStart = typeof options.analysisStart === "number" ? options.analysisStart : 0;
+    const analysisSourceFile = options.analysisSourceFile || options.sourceFile || null;
+
+    if (typeof context.collectionStart === "number") {
+      const collectionStart = analysisStart + context.collectionStart;
+      const collectionEnd =
+        analysisStart +
+        (typeof context.collectionEnd === "number"
+          ? context.collectionEnd
+          : context.collectionStart + String(context.collectionExpression || "").length);
+      const collectionTypeText = this.getTypeTextAtDocumentSpan(
+        normalizedFilePath,
+        documentText,
+        collectionStart,
+        collectionEnd
+      );
+      const typedCollectionName = extractTypedCollectionName(collectionTypeText, "PocketPagesCollectionModel");
+      if (typedCollectionName && this.projectIndex.hasCollection(typedCollectionName)) {
+        return {
+          collectionName: typedCollectionName,
+          confidence: "high",
+          strategy: "filter-typed-collection",
+        };
+      }
+    }
+
+    return this.projectIndex.inferCollectionArgumentReference(
+      context.collectionExpression,
+      analysisText,
+      context.start,
+      {
+        filePath: normalizedFilePath,
+        sourceFile: analysisSourceFile,
+      }
+    );
+  }
+
+  buildDocumentSchemaFilterFieldDiagnostic(filePath, documentText, context, options = {}) {
+    const analysisText = typeof options.analysisText === "string" ? options.analysisText : documentText;
+    const analysisStart = typeof options.analysisStart === "number" ? options.analysisStart : 0;
+    const reference = this.resolveSchemaFilterCollectionReference(filePath, documentText, context, {
+      analysisText,
+      analysisStart,
+      analysisSourceFile: options.analysisSourceFile || options.sourceFile || null,
+    });
+
+    if (!reference || this.projectIndex.hasField(reference.collectionName, context.value)) {
+      return null;
+    }
+
+    if (reference.confidence !== "high") {
+      return null;
+    }
+
+    return {
+      code: "pp-schema-field",
+      category: ts.DiagnosticCategory.Warning,
+      message: `Unknown field "${context.value}" for collection "${reference.collectionName}" in ${context.methodName}() filter.`,
+      start: analysisStart + context.start,
+      end: analysisStart + context.end,
+    };
+  }
+
   getIncludeContractLocals(targetFilePath, options = {}) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
     if (!isEjsFile(normalizedTargetFilePath) || !fileExists(normalizedTargetFilePath)) {
@@ -8790,6 +8868,26 @@ class ProjectLanguageService {
             diagnostics.push(fieldDiagnostic);
           }
         }
+
+        if (context.kind === "filter-field") {
+          const filterFieldDiagnostic = this.buildDocumentSchemaFilterFieldDiagnostic(
+            filePath,
+            documentText,
+            context,
+            {
+              analysisText: block.content,
+              analysisStart: block.contentStart,
+              analysisSourceFile:
+                documentAnalysis && typeof documentAnalysis.getBlockSourceFile === "function"
+                  ? documentAnalysis.getBlockSourceFile(block)
+                  : null,
+            }
+          );
+
+          if (filterFieldDiagnostic) {
+            diagnostics.push(filterFieldDiagnostic);
+          }
+        }
       }
 
       diagnostics.push(...collectRedirectReturnDiagnostics(filePath, block.content, {
@@ -9008,6 +9106,25 @@ class ProjectLanguageService {
           diagnostics.push(fieldDiagnostic);
         }
       }
+
+      if (context.kind === "filter-field") {
+        const filterFieldDiagnostic = this.buildDocumentSchemaFilterFieldDiagnostic(
+          filePath,
+          documentText,
+          context,
+          {
+            analysisText: templateVirtualText,
+            analysisSourceFile:
+              documentAnalysis && typeof documentAnalysis.getAnalysisSourceFile === "function"
+                ? documentAnalysis.getAnalysisSourceFile()
+                : null,
+          }
+        );
+
+        if (filterFieldDiagnostic) {
+          diagnostics.push(filterFieldDiagnostic);
+        }
+      }
     }
 
     return diagnostics;
@@ -9123,6 +9240,25 @@ class ProjectLanguageService {
 
         if (fieldDiagnostic) {
           diagnostics.push(fieldDiagnostic);
+        }
+      }
+
+      if (context.kind === "filter-field") {
+        const filterFieldDiagnostic = this.buildDocumentSchemaFilterFieldDiagnostic(
+          filePath,
+          documentText,
+          context,
+          {
+            analysisText: documentText,
+            analysisSourceFile:
+              documentAnalysis && typeof documentAnalysis.getDocumentSourceFile === "function"
+                ? documentAnalysis.getDocumentSourceFile()
+                : null,
+          }
+        );
+
+        if (filterFieldDiagnostic) {
+          diagnostics.push(filterFieldDiagnostic);
         }
       }
     }

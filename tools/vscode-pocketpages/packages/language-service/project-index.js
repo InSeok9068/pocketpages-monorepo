@@ -3754,6 +3754,66 @@ class PocketPagesProjectIndex {
     return 10
   }
 
+  inferCollectionArgumentReference(collectionExpression, scriptText, beforeOffset, options = {}) {
+    const expressionText = String(collectionExpression || '').trim()
+    if (!expressionText) {
+      return null
+    }
+
+    const sourceText = String(scriptText || '')
+    const providedSourceFile =
+      options.sourceFile &&
+      typeof options.sourceFile.text === 'string' &&
+      options.sourceFile.text === sourceText
+        ? options.sourceFile
+        : null
+    const inferenceSourceFile = providedSourceFile || ts.createSourceFile(
+      'pocketpages-explicit-collection-reference.ts',
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true
+    )
+    const state = buildExplicitInferenceState(inferenceSourceFile, beforeOffset, {
+      filePath: options.filePath,
+      resolveRequireTarget: this.resolveRequireTarget.bind(this),
+      getModuleExportedStringConstants: this.getModuleExportedStringConstants.bind(this),
+    })
+
+    const expressionSourceFile = ts.createSourceFile(
+      'pocketpages-collection-argument.ts',
+      `(${expressionText})`,
+      ts.ScriptTarget.Latest,
+      true
+    )
+    const statement = expressionSourceFile.statements[0]
+    const expressionNode =
+      statement &&
+      ts.isExpressionStatement(statement) &&
+      ts.isParenthesizedExpression(statement.expression)
+        ? statement.expression.expression
+        : null
+
+    if (!expressionNode) {
+      return null
+    }
+
+    const collectionModelReference = readCollectionModelReference(expressionNode, state)
+    if (collectionModelReference && this.hasCollection(collectionModelReference.collectionName)) {
+      return collectionModelReference
+    }
+
+    const collectionName = readCollectionNameExpression(expressionNode, state)
+    if (collectionName && this.hasCollection(collectionName)) {
+      return {
+        collectionName,
+        confidence: 'high',
+        strategy: 'explicit-collection-argument',
+      }
+    }
+
+    return null
+  }
+
   inferCollectionReference(receiverExpression, scriptText, beforeOffset, options = {}) {
     const receiverName = getLastPathSegment(receiverExpression)
     const collectionNames = this.getCollectionNames()

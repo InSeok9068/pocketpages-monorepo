@@ -21,6 +21,9 @@ const ROUTE_ATTRIBUTE_NAMES = new Set([
 ])
 const DATASTAR_ROUTE_ACTION_RE = /@(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]*)\2/g
 const DATASTAR_ROUTE_ACTION_OPEN_RE = /@(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]*)$/s
+const FILTER_COLLECTION_METHOD_NAMES = new Set(['findRecordsByFilter', 'findFirstRecordByFilter'])
+const FILTER_FIELD_CANDIDATE_RE = /(^|[(&|]\s*|&&\s*|\|\|\s*)([A-Za-z_][A-Za-z0-9_]*)(?::(?:length|each|lower))?\s*(\?!~|\?!=|\?>=|\?<=|\?~|\?=|\?>|\?<|!~|!=|>=|<=|~|=|>|<)/g
+const FILTER_MASKED_CHAR = ' '
 
 function getLastPathSegment(value) {
   return String(value || '')
@@ -1505,6 +1508,129 @@ function createRecordFieldSchemaContext(node, descriptor, pathRange, sourceFile,
   }
 }
 
+function getExpressionText(node, sourceFile, scriptText) {
+  if (!node) {
+    return ''
+  }
+
+  return String(scriptText || '').slice(node.getStart(sourceFile), node.getEnd())
+}
+
+function collectFilterFieldCandidates(filterText) {
+  const candidates = []
+  const sourceText = maskFilterIgnoredRanges(filterText)
+  const seenBySpan = new Set()
+
+  FILTER_FIELD_CANDIDATE_RE.lastIndex = 0
+  let match = FILTER_FIELD_CANDIDATE_RE.exec(sourceText)
+  while (match) {
+    const fieldName = match[2]
+    const fieldStart = match.index + match[1].length
+    const fieldEnd = fieldStart + fieldName.length
+    const key = `${fieldStart}:${fieldEnd}`
+    if (!seenBySpan.has(key)) {
+      seenBySpan.add(key)
+      candidates.push({
+        fieldName,
+        start: fieldStart,
+        end: fieldEnd,
+      })
+    }
+
+    match = FILTER_FIELD_CANDIDATE_RE.exec(sourceText)
+  }
+
+  return candidates
+}
+
+function maskFilterIgnoredRanges(filterText) {
+  const sourceText = String(filterText || '')
+  const chars = sourceText.split('')
+  let index = 0
+
+  while (index < chars.length) {
+    const current = chars[index]
+    const next = chars[index + 1]
+
+    if (current === '"' || current === "'") {
+      const quote = current
+      chars[index] = FILTER_MASKED_CHAR
+      index += 1
+
+      while (index < chars.length) {
+        const char = chars[index]
+        chars[index] = FILTER_MASKED_CHAR
+        index += 1
+
+        if (char === '\\') {
+          if (index < chars.length) {
+            chars[index] = FILTER_MASKED_CHAR
+            index += 1
+          }
+          continue
+        }
+
+        if (char === quote) {
+          break
+        }
+      }
+      continue
+    }
+
+    if (current === '/' && next === '/') {
+      chars[index] = FILTER_MASKED_CHAR
+      chars[index + 1] = FILTER_MASKED_CHAR
+      index += 2
+
+      while (index < chars.length && chars[index] !== '\n' && chars[index] !== '\r') {
+        chars[index] = FILTER_MASKED_CHAR
+        index += 1
+      }
+      continue
+    }
+
+    index += 1
+  }
+
+  return chars.join('')
+}
+
+function createFilterFieldSchemaContexts(node, methodName, sourceFile, scriptText, offsetBase = 0) {
+  if (!FILTER_COLLECTION_METHOD_NAMES.has(methodName) || node.arguments.length < 2) {
+    return []
+  }
+
+  const collectionArgument = node.arguments[0]
+  const filterArgument = node.arguments[1]
+  const filterRange = getStringLiteralPathRange(filterArgument, sourceFile, scriptText, offsetBase)
+  if (!filterRange) {
+    return []
+  }
+
+  const collectionRange = getStringLiteralPathRange(collectionArgument, sourceFile, scriptText, offsetBase)
+  const collectionStart = offsetBase + collectionArgument.getStart(sourceFile)
+  const collectionEnd = offsetBase + collectionArgument.getEnd()
+  const collectionExpression = getExpressionText(collectionArgument, sourceFile, scriptText)
+  const matchText = String(scriptText || '').slice(node.getStart(sourceFile), node.getEnd())
+
+  return collectFilterFieldCandidates(filterRange.value).map((candidate) => ({
+    kind: 'filter-field',
+    methodName,
+    value: candidate.fieldName,
+    start: filterRange.start + candidate.start,
+    end: filterRange.start + candidate.end,
+    filterStart: filterRange.start,
+    filterEnd: filterRange.end,
+    collectionName: collectionRange ? collectionRange.value : null,
+    collectionExpression,
+    collectionStart,
+    collectionEnd,
+    callStart: offsetBase + node.getStart(sourceFile),
+    callEnd: offsetBase + node.getEnd(),
+    matchText,
+  }))
+}
+
 function getSchemaContextAtOffset(scriptText, offset, options = {}, contextKind = null) {
   const sourceText = String(scriptText || '')
   const offsetBase = Number(options.offsetBase) || 0
@@ -1804,6 +1930,14 @@ function collectSchemaContexts(scriptText, options = {}) {
             offsetBase
           ))
         }
+
+        contexts.push(...createFilterFieldSchemaContexts(
+          node,
+          collectionMethodName,
+          sourceFile,
+          sourceText,
+          offsetBase
+        ))
       }
 
       const fieldDescriptor = getRecordFieldCallDescriptor(node.expression, sourceFile, sourceText)

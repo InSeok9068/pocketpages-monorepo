@@ -13199,6 +13199,66 @@ const href = asset('/assets/rename-dir/app.css')
       )
     }
 
+    const filterFieldDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+$app.findRecordsByFilter('boards', 'nmae = {:name} && status ?= "draft" && is_active = true')
+$app.findFirstRecordByFilter('posts', 'title ~ {:query}')
+$app.findRecordsByFilter('boards', 'tags:each ?~ "news" && archived_at:length ?> 0')
+$app.findRecordsByFilter('boards', 'name = "foo && ghost = bar"')
+$app.findRecordsByFilter('boards', 'name = {:name} // ghost = bar')
+</script>\n`
+    )
+    if (
+      !filterFieldDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "nmae" for collection "boards" in findRecordsByFilter() filter')
+      )
+    ) {
+      throw new Error(
+        `Expected filter field schema diagnostic. Got: ${filterFieldDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+    if (
+      filterFieldDiagnostics.some((entry) => String(entry.message).includes('status')) ||
+      filterFieldDiagnostics.some((entry) => String(entry.message).includes('is_active')) ||
+      filterFieldDiagnostics.some((entry) => String(entry.message).includes('title')) ||
+      filterFieldDiagnostics.some((entry) => String(entry.message).includes('ghost'))
+    ) {
+      throw new Error(
+        `Expected valid filter fields and ignored literals/comments to stay clean. Got: ${filterFieldDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
+    const filterCollectionVariableDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      `<script server>
+const boardCollection = $app.findCollectionByNameOrId('boards')
+$app.findRecordsByFilter(boardCollection, 'srot_order >= {:min} && owner = @request.auth.id')
+</script>\n`
+    )
+    if (
+      !filterCollectionVariableDiagnostics.some((entry) =>
+        String(entry.message).includes('Unknown field "srot_order" for collection "boards" in findRecordsByFilter() filter')
+      )
+    ) {
+      throw new Error(
+        `Expected filter field schema diagnostic for collection variable. Got: ${filterCollectionVariableDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+    if (filterCollectionVariableDiagnostics.some((entry) => String(entry.message).includes('owner'))) {
+      throw new Error(
+        `Expected @request-auth filter comparison to keep valid owner field clean. Got: ${filterCollectionVariableDiagnostics
+          .map((entry) => `${String(entry.code)}:${String(entry.message)}`)
+          .join(' | ')}`
+      )
+    }
+
     const explicitAssignmentSchemaDiagnostics = service.getDiagnostics(
       fixture.boardsFilePath,
       `<script server>
