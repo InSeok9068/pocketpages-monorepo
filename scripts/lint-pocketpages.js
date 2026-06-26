@@ -154,6 +154,12 @@ const RE = {
   redirectFlashOption: /[,{]\s*flash\s*:/,
 }
 
+const TRANSACTION_CALLBACK_PATTERNS = [
+  /\$app\.(?:runInTransaction|auxRunInTransaction)\s*\(\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\)\s*=>\s*\{/g,
+  /\$app\.(?:runInTransaction|auxRunInTransaction)\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*=>\s*\{/g,
+  /\$app\.(?:runInTransaction|auxRunInTransaction)\s*\(\s*function\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\)\s*\{/g,
+]
+
 let errors = 0
 let warnings = 0
 
@@ -1110,44 +1116,53 @@ function collectLocaleApiMatches(context) {
   return unique(matches)
 }
 
+function collectTransactionCallbackRanges(sourceText) {
+  const ranges = []
+
+  for (const pattern of TRANSACTION_CALLBACK_PATTERNS) {
+    pattern.lastIndex = 0
+
+    let match = pattern.exec(sourceText)
+    while (match) {
+      const openBraceIndex = match.index + match[0].length - 1
+      const closeBraceIndex = findMatchingBrace(sourceText, openBraceIndex)
+
+      if (closeBraceIndex === -1) {
+        break
+      }
+
+      ranges.push({
+        paramName: match[1],
+        bodyStart: openBraceIndex + 1,
+        bodyEnd: closeBraceIndex,
+      })
+
+      pattern.lastIndex = closeBraceIndex + 1
+      match = pattern.exec(sourceText)
+    }
+  }
+
+  return ranges
+}
+
 function collectTransactionOuterAppMatches(files) {
   const matches = []
-  const transactionPatterns = [
-    /\$app\.runInTransaction\s*\(\s*\(\s*[A-Za-z_$][A-Za-z0-9_$]*\s*\)\s*=>\s*\{/g,
-    /\$app\.runInTransaction\s*\(\s*[A-Za-z_$][A-Za-z0-9_$]*\s*=>\s*\{/g,
-    /\$app\.runInTransaction\s*\(\s*function\s*\(\s*[A-Za-z_$][A-Za-z0-9_$]*\s*\)\s*\{/g,
-  ]
 
   for (const file of files) {
-    for (const pattern of transactionPatterns) {
-      pattern.lastIndex = 0
+    for (const transaction of collectTransactionCallbackRanges(file.content)) {
+      const body = file.content.slice(transaction.bodyStart, transaction.bodyEnd)
+      const bodyStartLine = lineNumberAt(file.content, transaction.bodyStart)
+      const bodyLines = body.split(/\r?\n/)
 
-      let match = pattern.exec(file.content)
-      while (match) {
-        const openBraceIndex = match.index + match[0].length - 1
-        const closeBraceIndex = findMatchingBrace(file.content, openBraceIndex)
+      for (let index = 0; index < bodyLines.length; index += 1) {
+        const line = bodyLines[index]
+        RE.outerAppInsideTransaction.lastIndex = 0
 
-        if (closeBraceIndex === -1) {
-          break
+        if (!RE.outerAppInsideTransaction.test(line)) {
+          continue
         }
 
-        const body = file.content.slice(openBraceIndex + 1, closeBraceIndex)
-        const bodyStartLine = lineNumberAt(file.content, openBraceIndex + 1)
-        const bodyLines = body.split(/\r?\n/)
-
-        for (let index = 0; index < bodyLines.length; index += 1) {
-          const line = bodyLines[index]
-          RE.outerAppInsideTransaction.lastIndex = 0
-
-          if (!RE.outerAppInsideTransaction.test(line)) {
-            continue
-          }
-
-          matches.push(`${file.displayPath}:${bodyStartLine + index}:${line}`)
-        }
-
-        pattern.lastIndex = closeBraceIndex + 1
-        match = pattern.exec(file.content)
+        matches.push(`${file.displayPath}:${bodyStartLine + index}:${line}`)
       }
     }
   }
@@ -1247,6 +1262,29 @@ function collectUnresolvedPathMatches(context) {
   }
 }
 
+function isSchemaLintAppReceiver(schemaContext, transactionRanges) {
+  const receiverExpression = String(schemaContext && schemaContext.receiverExpression ? schemaContext.receiverExpression : '').trim()
+  if ((schemaContext && schemaContext.receiverIsDollarApp === true) || receiverExpression === '$app') {
+    return true
+  }
+
+  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(receiverExpression)) {
+    return false
+  }
+
+  const receiverStart = Number(schemaContext.receiverStart)
+  const receiverEnd = Number(schemaContext.receiverEnd)
+  if (!Number.isFinite(receiverStart) || !Number.isFinite(receiverEnd) || receiverEnd <= receiverStart) {
+    return false
+  }
+
+  return transactionRanges.some((transaction) =>
+    transaction.paramName === receiverExpression &&
+    receiverStart >= transaction.bodyStart &&
+    receiverEnd <= transaction.bodyEnd
+  )
+}
+
 function collectSchemaMatches(context) {
   const matches = {
     collections: [],
@@ -1255,12 +1293,17 @@ function collectSchemaMatches(context) {
 
   for (const file of context.lintCodeFiles) {
     const analysisText = getLintAnalysisText(file)
+    const transactionRanges = collectTransactionCallbackRanges(analysisText)
     const schemaContexts = collectSchemaContexts(analysisText, {
       collectionMethodNames: context.collectionMethodNames,
     })
 
     for (const schemaContext of schemaContexts) {
       if (schemaContext.kind === 'collection-name') {
+        if (!isSchemaLintAppReceiver(schemaContext, transactionRanges)) {
+          continue
+        }
+
         if (context.projectIndex.hasCollection(schemaContext.value)) {
           continue
         }
