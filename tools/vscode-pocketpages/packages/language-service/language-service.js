@@ -9232,51 +9232,6 @@ class ProjectLanguageService {
     return entries;
   }
 
-  getInlayHintEntries(filePath, documentText, range = {}) {
-    const startOffset = typeof range.start === "number" ? range.start : 0;
-    const endOffset = typeof range.end === "number" ? range.end : documentText.length;
-    const entries = [];
-    const seen = new Set();
-    const addEntry = (position, label, tooltip, kind = "type") => {
-      if (typeof position !== "number" || position < startOffset || position > endOffset) {
-        return;
-      }
-
-      const key = `${position}:${label}`;
-      if (seen.has(key)) {
-        return;
-      }
-
-      seen.add(key);
-      entries.push({
-        position,
-        label,
-        tooltip,
-        kind,
-      });
-    };
-
-    for (const pathContext of collectPathContexts(documentText, { filePath })) {
-      if (pathContext.kind !== "resolve-path") {
-        continue;
-      }
-
-      const targetFilePath = this.resolvePathContextTarget(filePath, pathContext);
-      if (!targetFilePath) {
-        continue;
-      }
-
-      addEntry(
-        pathContext.end,
-        ` -> ${toPortablePath(path.relative(this.appRoot, targetFilePath))}`,
-        `Target: ${toPortablePath(path.relative(this.appRoot, targetFilePath))}`,
-        "parameter"
-      );
-    }
-
-    return entries;
-  }
-
   collectPrivateResolveDiagnostics(filePath, documentAnalysis) {
     if (!isPrivatePagesFile(filePath)) {
       return [];

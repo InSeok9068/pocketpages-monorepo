@@ -504,8 +504,6 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
     documentsByUri instanceof Map ? documentsByUri : new Map(Object.entries(documentsByUri || {}))
 
   const completionKindText = 1
-  const inlayKindType = 1
-  const inlayKindParameter = 2
   const markupKindMarkdown = 'markdown'
   const insertTextFormatPlainText = 1
   const codeActionKindQuickFix = 'quickfix'
@@ -681,10 +679,6 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
       },
       CompletionItemKind: {
         Text: completionKindText,
-      },
-      InlayHintKind: {
-        Type: inlayKindType,
-        Parameter: inlayKindParameter,
       },
       MarkupKind: {
         Markdown: markupKindMarkdown,
@@ -1452,11 +1446,14 @@ function assertLspRuntimeContracts(repoRoot) {
     /connection\.onCodeAction\(\(params\) => \{[\s\S]*const diagnosticCount[\s\S]*provideCodeActions\(params\)[\s\S]*case:\s*diagnosticCount \? "diagnostic-actions" : resultCount\(result\) \? "context-actions" : "no-diagnostics"/,
     'Expected empty code-action requests to skip full diagnostics while allowing contextual code actions.'
   )
-  assertMatches(
-    serverSource,
-    /connection\.languages\.inlayHint\.on\(\(params\) => \{[\s\S]*const isLargeEjs[\s\S]*case:\s*"large-ejs-skipped"[\s\S]*return null;[\s\S]*provideInlayHints\(params\)/,
-    'Expected large EJS inlay-hint requests to be skipped before expensive TS inlay work.'
-  )
+  if (
+    /inlayHintProvider\s*:/.test(serverSource) ||
+    /connection\.languages\.inlayHint\.on/.test(serverSource) ||
+    /provideInlayHints/.test(tsFeatureSource) ||
+    /getInlayHintEntries/.test(languageServiceSource)
+  ) {
+    throw new Error('Expected the extension LSP to avoid resolve() target inlay hints and their prepare path.')
+  }
   assertMatches(
     serverSource,
     /connection\.onDocumentLinks\(\(params\) => \{[\s\S]*case:\s*"document-links"[\s\S]*connection\.languages\.semanticTokens\.on\(\(params\) => \{[\s\S]*case:\s*"ejs-semantic-tokens"/,
@@ -1610,11 +1607,6 @@ function assertLspRuntimeContracts(repoRoot) {
     tsFeatureSource,
     /provideSignatureHelp\(params\) \{[\s\S]*isMappedFeatureEnabled\(documentContext,\s*document,\s*offset,\s*"completion"\)[\s\S]*operation:\s*"signature"[\s\S]*skipUnrelatedRegions:\s*true/,
     'Expected signature-help requests to skip unmapped EJS text and prepare only the requested code region.'
-  )
-  assertMatches(
-    tsFeatureSource,
-    /provideInlayHints\(params\) \{[\s\S]*hasFeatureCoverageForRange\([\s\S]*"hover"[\s\S]*getInlayHintEntries/,
-    'Expected inlay-hint requests to skip EJS ranges that contain no TypeScript-owned regions.'
   )
   assertMatches(
     languageServiceSource,
@@ -5741,7 +5733,6 @@ const flashClasses = 'notice'
       'getTypeScriptRenameInfo',
       'getTypeScriptRenameEdits',
       'getSignatureHelp',
-      'getInlayHintEntries',
     ]) {
       excludedDocumentContext.service[methodName] = () => {
         excludedTypeScriptServiceCalls += 1
@@ -5765,13 +5756,6 @@ const flashClasses = 'notice'
       excludedTypeScriptFeatures.providePrepareRename(excludedTypeScriptParams),
       excludedTypeScriptFeatures.provideRename({ ...excludedTypeScriptParams, newName: 'renamedVendorValue' }),
       excludedTypeScriptFeatures.provideSignatureHelp(excludedTypeScriptParams),
-      excludedTypeScriptFeatures.provideInlayHints({
-        textDocument: { uri: excludedCustomUri },
-        range: {
-          start: excludedCustomDocument.positionAt(0),
-          end: excludedCustomDocument.positionAt(excludedCustomText.length),
-        },
-      }),
     ]
     if (excludedTypeScriptResults.some((entry) => entry !== null)) {
       throw new Error(`Expected TypeScript features to skip excluded route-exposed vendor scripts. Got: ${JSON.stringify(excludedTypeScriptResults)}`)
@@ -5868,7 +5852,6 @@ const flashClasses = 'notice'
       'getTypeScriptRenameInfo',
       'getTypeScriptRenameEdits',
       'getSignatureHelp',
-      'getInlayHintEntries',
     ]) {
       schemaOnlyFeatureDocumentContext.service[methodName] = () => {
         schemaOnlyTypeScriptServiceCalls += 1
@@ -5892,13 +5875,6 @@ const flashClasses = 'notice'
       schemaOnlyTypeScriptFeatures.providePrepareRename(schemaOnlyParams),
       schemaOnlyTypeScriptFeatures.provideRename({ ...schemaOnlyParams, newName: 'renamedBoards' }),
       schemaOnlyTypeScriptFeatures.provideSignatureHelp(schemaOnlyParams),
-      schemaOnlyTypeScriptFeatures.provideInlayHints({
-        textDocument: { uri: schemaOnlyUri },
-        range: {
-          start: schemaOnlyDocument.positionAt(0),
-          end: schemaOnlyDocument.positionAt(schemaOnlyText.length),
-        },
-      }),
     ]
     if (schemaOnlyTypeScriptResults.some((entry) => entry !== null)) {
       throw new Error(`Expected TypeScript features to skip schema-only hook scripts. Got: ${JSON.stringify(schemaOnlyTypeScriptResults)}`)
@@ -5947,17 +5923,6 @@ const flashClasses = 'notice'
     if (staticSignatureResult !== null || staticSignaturePrepareCalls !== 0) {
       throw new Error(`Expected signature help to skip unmapped static EJS text before prepare. Got: ${JSON.stringify({ staticSignatureResult, staticSignaturePrepareCalls })}`)
     }
-    const staticInlayResult = staticSignatureFeatures.provideInlayHints({
-      textDocument: { uri: staticSignatureUri },
-      range: {
-        start: staticSignatureDocument.positionAt(0),
-        end: staticSignatureDocument.positionAt(staticSignatureText.length),
-      },
-    })
-    if (staticInlayResult !== null || staticSignaturePrepareCalls !== 0) {
-      throw new Error(`Expected inlay hints to skip unmapped static EJS ranges before prepare. Got: ${JSON.stringify({ staticInlayResult, staticSignaturePrepareCalls })}`)
-    }
-
     const diagnosticsSmokeCore = new PocketPagesLanguageCore()
     const diagnosticsSmokeText = `<a href="/missing"></a>\n<script server>\nresolve('/_private/board-service')\n</script>\n<div>ok</div>\n`
     const diagnosticsSmokeDocument = createTestDocument(fixture.boardsFilePath, 'ejs', 1, diagnosticsSmokeText)
@@ -14755,22 +14720,6 @@ metaPayload.trim()
       throw new Error(`Expected buildPrelude() to expose file/relation/autodate field types. Got: ${typedRecordGetPrelude}`)
     }
 
-    const typedRecordGetInlayHints = service.getInlayHintEntries(fixture.boardsFilePath, typedRecordGetText)
-    if (typedRecordGetInlayHints.some((entry) => String(entry.tooltip || '').includes('Field type:'))) {
-      throw new Error(`Expected record.get() schema type inlay hints to stay disabled. Got: ${JSON.stringify(typedRecordGetInlayHints)}`)
-    }
-
-    const nonRecordGetInlayText = `<script server>
-const params = new URLSearchParams('name=PocketPages')
-params.get('name')
-const headers = new Headers()
-headers.get('slug')
-</script>\n`
-    const nonRecordGetInlayHints = service.getInlayHintEntries(fixture.boardsFilePath, nonRecordGetInlayText)
-    if (nonRecordGetInlayHints.some((entry) => String(entry.tooltip || '').includes('Field type:'))) {
-      throw new Error(`Expected non-record .get() calls to avoid schema field inlay hints. Got: ${JSON.stringify(nonRecordGetInlayHints)}`)
-    }
-
     const typedConstructorText = `<script server>
 const postCollection = $app.findCollectionByNameOrId('posts')
 const postRecord = new Record(postCollection)
@@ -14851,19 +14800,6 @@ const boardTableNames = $app.findRecordsByFilter('boards', '').map((entry) => en
     )
     if (!boardTableNamesQuickInfo || !boardTableNamesQuickInfo.displayText.includes('const boardTableNames: "boards"[]')) {
       throw new Error(`Expected array callback tableName() quick info to resolve to boards[]. Got: ${JSON.stringify(boardTableNamesQuickInfo)}`)
-    }
-
-    const resolveInlayHintText = `<script server>\nconst boardService = resolve('board-service')\n</script>\n`
-    const resolveInlayHints = service.getInlayHintEntries(fixture.boardsFilePath, resolveInlayHintText)
-    if (!resolveInlayHints.some((entry) => String(entry.label).includes('pb_hooks/pages/_private/board-service.js'))) {
-      throw new Error(`Expected resolve() target inlay hint. Got: ${JSON.stringify(resolveInlayHints)}`)
-    }
-    const includePathInlayHints = service.getInlayHintEntries(
-      fixture.boardsFilePath,
-      fs.readFileSync(fixture.boardsFilePath, 'utf8')
-    )
-    if (includePathInlayHints.some((entry) => String(entry.label).includes('flash-alert.ejs'))) {
-      throw new Error(`Expected include() path hints to move from inline inlay hints to CodeLens. Got: ${JSON.stringify(includePathInlayHints)}`)
     }
 
     const templateDiagnostics = service.getDiagnostics(

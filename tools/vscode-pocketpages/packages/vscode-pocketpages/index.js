@@ -47,7 +47,6 @@ const SERVER_LOG_SCOPES = [
   "refactor",
   "links",
   "signature",
-  "inlay",
   "semantic-tokens",
   "symbols",
   "codelens",

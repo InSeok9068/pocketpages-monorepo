@@ -11,7 +11,6 @@ const {
   DiagnosticSeverity,
   CodeActionKind,
   MarkupKind,
-  InlayHintKind,
   SymbolKind,
   SemanticTokensBuilder,
   FileChangeType,
@@ -1235,7 +1234,6 @@ const featureServiceContext = {
   CompletionItemKind,
   InsertTextFormat,
   MarkupKind,
-  InlayHintKind,
   SymbolKind,
   CodeActionKind,
   SemanticTokensBuilder,
@@ -1377,7 +1375,6 @@ connection.onInitialize((params) => {
       triggerCharacters: SIGNATURE_TRIGGER_CHARACTERS,
       retriggerCharacters: SIGNATURE_TRIGGER_CHARACTERS,
     },
-    inlayHintProvider: true,
     documentSymbolProvider: true,
     workspaceSymbolProvider: true,
     semanticTokensProvider: {
@@ -2202,41 +2199,6 @@ connection.onSignatureHelp((params) => {
       : 0,
   });
   return typeScriptResult;
-});
-
-connection.languages.inlayHint.on((params) => {
-  const startedAt = process.hrtime.bigint();
-  const requestId = nextRequestId("inlay");
-  const document = documents.get(params.textDocument.uri);
-  const context = core.getDocumentContextByUri(params.textDocument.uri);
-  const isLargeEjs =
-    document &&
-    context &&
-    isEjsFilePath(context.filePath) &&
-    document.getText().length >= LARGE_DOCUMENT_DIAGNOSTICS_CHAR_LIMIT;
-  if (isLargeEjs) {
-    logRequestResult("inlay", "result", startedAt, {
-      req: requestId,
-      case: "large-ejs-skipped",
-      file: getRelativePathLabel(context.filePath),
-      version: document.version,
-      result: "none",
-      count: 0,
-      reason: "large-ejs",
-    }, "structure");
-    return null;
-  }
-
-  const result = typeScriptFeatureService.provideInlayHints(params);
-  logRequestResult("inlay", "result", startedAt, {
-    req: requestId,
-    case: "ts-inlay",
-    file: context ? getRelativePathLabel(context.filePath) : null,
-    version: document ? document.version : null,
-    result: resultCount(result) ? "hit" : "none",
-    count: resultCount(result),
-  }, "structure");
-  return result;
 });
 
 connection.languages.semanticTokens.on((params) => {

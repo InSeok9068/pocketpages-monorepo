@@ -559,54 +559,6 @@ function createTypeScriptFeatureService(context) {
       );
     },
 
-    provideInlayHints(params) {
-      const document = getDocumentByUri(params.textDocument.uri);
-      if (!document) {
-        return null;
-      }
-
-      const documentContext = getDocumentContextByUri(params.textDocument.uri);
-      if (!documentContext) {
-        return null;
-      }
-
-      if (isTypeScriptFeatureBlockedDocument(documentContext)) {
-        return null;
-      }
-
-      const startOffset = document.offsetAt(params.range.start);
-      const endOffset = document.offsetAt(params.range.end);
-      if (
-        helpers.isEjsFilePath(documentContext.filePath) &&
-        !context.core.hasFeatureCoverageForRange(
-          document.uri.toString(),
-          startOffset,
-          endOffset,
-          "hover"
-        )
-      ) {
-        return null;
-      }
-
-      if (typeof ensureDocumentPrepared === "function") {
-        ensureDocumentPrepared(document.uri);
-      }
-      return documentContext.service
-        .getInlayHintEntries(documentContext.filePath, document.getText(), {
-          start: startOffset,
-          end: endOffset,
-        })
-        .map((entry) => ({
-          position: document.positionAt(entry.position),
-          label: entry.label,
-          paddingLeft: true,
-          kind:
-            entry.kind === "parameter"
-              ? context.InlayHintKind.Parameter
-              : context.InlayHintKind.Type,
-          tooltip: entry.tooltip || undefined,
-        }));
-    },
   };
 }
 
