@@ -174,14 +174,14 @@
     "scope": "ejs,javascript",
     "prefix": ["ppgetid", "ppfindid"],
     "description": "id로 PocketBase record 1개를 조회합니다.",
-    "body": ["const ${1:record} = ${2:$app}.findRecordById('${3:posts}', ${4:id})"],
+    "body": ["const ${1:record} = ${2:\\$app}.findRecordById('${3:posts}', ${4:id})"],
   },
   "PocketPages find records by filter": {
     "scope": "ejs,javascript",
     "prefix": ["pplist", "ppfindlist"],
     "description": "filter/sort/limit으로 PocketBase record 목록을 조회합니다.",
     "body": [
-      "const ${1:records} = ${2:$app}.findRecordsByFilter('${3:posts}', '${4:field = {:value}}', '${5:-created}', ${6:50}, ${7:0}, {",
+      "const ${1:records} = ${2:\\$app}.findRecordsByFilter('${3:posts}', '${4:field = {:value}}', '${5:-created}', ${6:50}, ${7:0}, {",
       "  ${8:value}: ${8:value},",
       "})",
     ],
@@ -191,7 +191,7 @@
     "prefix": ["ppget", "ppfirst"],
     "description": "filter로 PocketBase record 1개를 조회합니다.",
     "body": [
-      "const ${1:record} = ${2:$app}.findFirstRecordByFilter('${3:posts}', '${4:field = {:value}}', {",
+      "const ${1:record} = ${2:\\$app}.findFirstRecordByFilter('${3:posts}', '${4:field = {:value}}', {",
       "  ${5:value}: ${5:value},",
       "})",
     ],
@@ -201,10 +201,10 @@
     "prefix": ["ppcreate", "ppcrate"],
     "description": "$app으로 collection 조회, Record 생성, 저장 흐름을 만듭니다.",
     "body": [
-      "const collection = $app.findCollectionByNameOrId('${1:posts}')",
+      "const collection = \\$app.findCollectionByNameOrId('${1:posts}')",
       "const record = new Record(collection)",
       "record.set('${2:field}', ${3:value})",
-      "$app.save(record)",
+      "\\$app.save(record)",
     ],
   },
   "PocketPages update record by id": {
@@ -212,9 +212,9 @@
     "prefix": "ppupdate",
     "description": "id로 record를 조회하고 field를 수정한 뒤 저장합니다.",
     "body": [
-      "const ${1:record} = ${2:$app}.findRecordById('${3:posts}', ${4:id})",
+      "const ${1:record} = ${2:\\$app}.findRecordById('${3:posts}', ${4:id})",
       "${1:record}.set('${5:field}', ${6:value})",
-      "${2:$app}.save(${1:record})",
+      "${2}.save(${1:record})",
     ],
   },
   "PocketPages delete record by id": {
@@ -222,22 +222,22 @@
     "prefix": "ppdelete",
     "description": "id로 record를 조회한 뒤 삭제합니다.",
     "body": [
-      "const ${1:record} = ${2:$app}.findRecordById('${3:posts}', ${4:id})",
-      "${2:$app}.delete(${1:record})",
+      "const ${1:record} = ${2:\\$app}.findRecordById('${3:posts}', ${4:id})",
+      "${2}.delete(${1:record})",
     ],
   },
   "PocketPages transaction block": {
     "scope": "ejs,javascript",
     "prefix": "pptx",
     "description": "txApp을 사용하는 PocketBase transaction 블록을 만듭니다.",
-    "body": ["$app.runInTransaction(function (txApp) {", "  ${1:// TODO: transaction 작업을 작성하세요.}", "})"],
+    "body": ["\\$app.runInTransaction(function (txApp) {", "  ${1:// TODO: transaction 작업을 작성하세요.}", "})"],
   },
   "PocketPages transaction create record": {
     "scope": "ejs,javascript",
     "prefix": "pptxcreate",
     "description": "txApp으로 collection 조회, Record 생성, 저장 흐름을 만듭니다.",
     "body": [
-      "$app.runInTransaction(function (txApp) {",
+      "\\$app.runInTransaction(function (txApp) {",
       "  const collection = txApp.findCollectionByNameOrId('${1:posts}')",
       "  const record = new Record(collection)",
       "  record.set('${2:field}', ${3:value})",
