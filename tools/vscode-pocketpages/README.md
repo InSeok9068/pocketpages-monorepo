@@ -137,7 +137,7 @@ EJS block 끝 위치는 사용자가 커서를 자주 멈추는 위치이므로 
 
 | 기능 | 설명 |
 | --- | --- |
-| Completion | TypeScript completion, schema completion, path completion |
+| Completion | TypeScript completion, schema completion, PocketPages path completion |
 | Definition | TypeScript symbol, route/include/resolve/asset/require target |
 | References | TypeScript references, `_private`/route/static require caller 추적 |
 | Rename | TypeScript rename, `_private` module member rename, path rename |
@@ -190,7 +190,9 @@ EJS block 끝 위치는 사용자가 커서를 자주 멈추는 위치이므로 
 | ``require(`${__hooks}/...`)`` | hooks-root require target |
 | `require(__hooks + '/...')` | hooks-root require target |
 
-제공하는 동작:
+`require(...)` completion/navigation은 VS Code JS/TS 언어 기능에 맡기고, 이 확장은 정적 `require(...)` target의 document link/references/rename만 보강합니다.
+
+`resolve()` / `include()` / `asset()` / route 계열 PocketPages path literal에 제공하는 동작:
 
 - path completion
 - target definition
