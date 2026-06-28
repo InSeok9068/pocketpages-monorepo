@@ -1187,6 +1187,16 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     serverSource,
+    /codeLensProvider:\s*\{[\s\S]*resolveProvider:\s*true[\s\S]*\}/,
+    'Expected CodeLens provider to enable resolve so include locals summaries are computed lazily.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.onCodeLensResolve\(\(codeLens\) => \{[\s\S]*structureFeatureService\.resolveCodeLens\(codeLens\)[\s\S]*return result;/,
+    'Expected server.js to route CodeLens resolve requests through structure-features.'
+  )
+  assertMatches(
+    serverSource,
     /const pathTargetInfo = customFeatureService\.provideHover\(params\)/,
     'Expected server.js hover path to query PocketPages custom hover first.'
   )
@@ -9100,6 +9110,10 @@ module.exports = {
                   title: 'Open flash alert',
                   start: 0,
                   targetFilePath: fixture.flashAlertFilePath,
+                  data: {
+                    kind: 'include-locals',
+                    targetFilePath: fixture.flashAlertFilePath,
+                  },
                 },
                 {
                   title: 'Show refs',
@@ -9108,6 +9122,12 @@ module.exports = {
                   arguments: [structureBoardUri],
                 },
               ]
+            },
+            getIncludeCodeLensTitle(targetFilePath) {
+              if (normalizeFilePath(targetFilePath) !== normalizeFilePath(fixture.flashAlertFilePath)) {
+                throw new Error(`Expected include CodeLens resolve target to stay normalized. Got: ${targetFilePath}`)
+              }
+              return 'Resolved flash alert locals'
             },
           },
         },
@@ -9178,13 +9198,39 @@ module.exports = {
       !structureCodeLensEntries.some((entry) => entry.command && entry.command.title === 'Template') ||
       !structureCodeLensEntries.some(
         (entry) =>
-          entry.command &&
-          entry.command.command === 'pocketpagesServerScript.openCodeLensTarget' &&
-          entry.command.arguments &&
-          entry.command.arguments[0] === URI.file(fixture.flashAlertFilePath).toString()
+          !entry.command &&
+          entry.data &&
+          entry.data.kind === 'include-locals' &&
+          normalizeFilePath(entry.data.targetFilePath) === normalizeFilePath(fixture.flashAlertFilePath)
       )
     ) {
-      throw new Error(`Expected structure service to expose boundary and target-opening CodeLens entries. Got: ${JSON.stringify(structureCodeLensEntries)}`)
+      throw new Error(`Expected structure service to expose boundary CodeLens and unresolved include CodeLens entries. Got: ${JSON.stringify(structureCodeLensEntries)}`)
+    }
+    const structureIncludeCodeLens = structureCodeLensEntries.find(
+      (entry) =>
+        !entry.command &&
+        entry.data &&
+        entry.data.kind === 'include-locals' &&
+        normalizeFilePath(entry.data.targetFilePath) === normalizeFilePath(fixture.flashAlertFilePath)
+    )
+    if (
+      !structureIncludeCodeLens ||
+      !structureIncludeCodeLens.data ||
+      structureIncludeCodeLens.data.kind !== 'include-locals' ||
+      structureIncludeCodeLens.data.sourceUri !== structureBoardUri
+    ) {
+      throw new Error(`Expected include CodeLens to carry lazy resolve metadata. Got: ${JSON.stringify(structureIncludeCodeLens)}`)
+    }
+    const resolvedStructureIncludeCodeLens = structureFeatureService.resolveCodeLens(structureIncludeCodeLens)
+    if (
+      !resolvedStructureIncludeCodeLens ||
+      !resolvedStructureIncludeCodeLens.command ||
+      resolvedStructureIncludeCodeLens.command.title !== 'Resolved flash alert locals' ||
+      resolvedStructureIncludeCodeLens.command.command !== 'pocketpagesServerScript.openCodeLensTarget' ||
+      !resolvedStructureIncludeCodeLens.command.arguments ||
+      resolvedStructureIncludeCodeLens.command.arguments[0] !== URI.file(fixture.flashAlertFilePath).toString()
+    ) {
+      throw new Error(`Expected structure service to resolve include locals CodeLens title lazily. Got: ${JSON.stringify(resolvedStructureIncludeCodeLens)}`)
     }
     const structureFallbackDocument = structureFeatureService.getDocumentForFile(fixture.flashAlertFilePath)
     if (!structureFallbackDocument || !String(structureFallbackDocument.getText()).includes('flashTone')) {
@@ -13033,26 +13079,51 @@ module.exports = {
       throw new Error(`Expected partial CodeLens to skip caller counts and previews. Got: ${JSON.stringify(partialCodeLensEntries)}`)
     }
 
-    const boardsCodeLensEntries = service.getCodeLensEntries(
-      fixture.boardsFilePath,
-      fs.readFileSync(fixture.boardsFilePath, 'utf8')
-    )
+    const originalGetIncludeContractLocals = service.getIncludeContractLocals.bind(service)
+    let includeContractCodeLensCount = 0
+    let boardsCodeLensEntries = []
+    service.getIncludeContractLocals = function getIncludeContractLocalsDuringCodeLens() {
+      includeContractCodeLensCount += 1
+      throw new Error('Expected include CodeLens generation to skip include locals inference.')
+    }
+    try {
+      boardsCodeLensEntries = service.getCodeLensEntries(
+        fixture.boardsFilePath,
+        fs.readFileSync(fixture.boardsFilePath, 'utf8')
+      )
+    } finally {
+      service.getIncludeContractLocals = originalGetIncludeContractLocals
+    }
+    if (includeContractCodeLensCount !== 0) {
+      throw new Error(`Expected CodeLens generation to avoid include locals inference. Got: ${includeContractCodeLensCount}`)
+    }
     const includePathCodeLens = boardsCodeLensEntries.find((entry) => entry.title.startsWith('-> pb_hooks/pages/_private/flash-alert.ejs'))
     if (
       !includePathCodeLens ||
       typeof includePathCodeLens.start !== 'number' ||
       includePathCodeLens.start <= 0 ||
-      normalizeFilePath(includePathCodeLens.targetFilePath) !== normalizeFilePath(fixture.flashAlertFilePath)
+      normalizeFilePath(includePathCodeLens.targetFilePath) !== normalizeFilePath(fixture.flashAlertFilePath) ||
+      !includePathCodeLens.data ||
+      includePathCodeLens.data.kind !== 'include-locals'
     ) {
       throw new Error(`Expected include() path CodeLens entry above the include call. Got: ${JSON.stringify(boardsCodeLensEntries)}`)
     }
     if (
-      !includePathCodeLens.title.includes('locals:') ||
-      !includePathCodeLens.title.includes('flashMessage') ||
-      !includePathCodeLens.title.includes('flashMeta') ||
-      !includePathCodeLens.title.includes('isErrorFlash')
+      !includePathCodeLens.title.includes('locals: ...') ||
+      includePathCodeLens.title.includes('flashMessage') ||
+      includePathCodeLens.title.includes('flashMeta') ||
+      includePathCodeLens.title.includes('isErrorFlash')
     ) {
-      throw new Error(`Expected include() path CodeLens title to expose the partial locals contract. Got: ${JSON.stringify(includePathCodeLens)}`)
+      throw new Error(`Expected include() path CodeLens generation to defer the partial locals contract. Got: ${JSON.stringify(includePathCodeLens)}`)
+    }
+    const resolvedIncludePathCodeLensTitle = service.getIncludeCodeLensTitle(includePathCodeLens.targetFilePath)
+    if (
+      !resolvedIncludePathCodeLensTitle.includes('locals:') ||
+      !resolvedIncludePathCodeLensTitle.includes('flashMessage') ||
+      !resolvedIncludePathCodeLensTitle.includes('flashMeta') ||
+      !resolvedIncludePathCodeLensTitle.includes('isErrorFlash')
+    ) {
+      throw new Error(`Expected include() CodeLens resolve to expose the partial locals contract. Got: ${resolvedIncludePathCodeLensTitle}`)
     }
 
     const routeCodeLensEntries = service.getCodeLensEntries(

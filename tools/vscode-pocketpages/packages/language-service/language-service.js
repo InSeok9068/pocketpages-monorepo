@@ -9200,12 +9200,17 @@ class ProjectLanguageService {
         continue;
       }
 
-      const includeLocals = this.getIncludeContractLocals(targetFilePath);
-      const includeLocalsSummary = formatIncludeLocalsSummary(includeLocals, { limit: 4 });
+      const title = this.getIncludeCodeLensTitle(targetFilePath, {
+        includeLocals: false,
+      });
       entries.push({
-        title: `-> ${toPortablePath(path.relative(this.appRoot, targetFilePath))} | ${includeLocalsSummary}`,
+        title,
         start: pathContext.start,
         targetFilePath: normalizePath(targetFilePath),
+        data: {
+          kind: "include-locals",
+          targetFilePath: normalizePath(targetFilePath),
+        },
       });
     }
 
@@ -9230,6 +9235,18 @@ class ProjectLanguageService {
     });
 
     return entries;
+  }
+
+  getIncludeCodeLensTitle(targetFilePath, options = {}) {
+    const normalizedTargetFilePath = normalizePath(targetFilePath);
+    const targetLabel = toPortablePath(path.relative(this.appRoot, normalizedTargetFilePath));
+    if (options.includeLocals === false) {
+      return `-> ${targetLabel} | locals: ...`;
+    }
+
+    const includeLocals = this.getIncludeContractLocals(normalizedTargetFilePath);
+    const includeLocalsSummary = formatIncludeLocalsSummary(includeLocals, { limit: 4 });
+    return `-> ${targetLabel} | ${includeLocalsSummary}`;
   }
 
   collectPrivateResolveDiagnostics(filePath, documentAnalysis) {

@@ -1385,7 +1385,7 @@ connection.onInitialize((params) => {
       full: true,
     },
     codeLensProvider: {
-      resolveProvider: false,
+      resolveProvider: true,
     },
     diagnosticProvider: {
       interFileDependencies: true,
@@ -2278,6 +2278,21 @@ connection.onCodeLens((params) => {
     version: document ? document.version : null,
     count: resultCount(result),
     result: resultCount(result) ? "hit" : "none",
+  }, "structure");
+  return result;
+});
+
+connection.onCodeLensResolve((codeLens) => {
+  const startedAt = process.hrtime.bigint();
+  const requestId = nextRequestId("lres");
+  const result = structureFeatureService.resolveCodeLens(codeLens);
+  logRequestResult("codelens", "resolve", startedAt, {
+    req: requestId,
+    case:
+      codeLens && codeLens.data && codeLens.data.kind
+        ? codeLens.data.kind
+        : "passthrough",
+    result: result && result.command ? "hit" : "none",
   }, "structure");
   return result;
 });

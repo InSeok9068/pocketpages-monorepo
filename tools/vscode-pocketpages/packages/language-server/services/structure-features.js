@@ -67,6 +67,61 @@ function createStructureFeatureService(context) {
     return getSemanticTokens(document.getText(), document);
   }
 
+  function createCodeLensCommand(entry, defaultUri) {
+    if (entry.command) {
+      return {
+        title: entry.title,
+        command: entry.command,
+        arguments: Array.isArray(entry.arguments)
+          ? entry.arguments
+          : [defaultUri],
+      };
+    }
+
+    if (entry.targetFilePath) {
+      return {
+        title: entry.title,
+        command: "pocketpagesServerScript.openCodeLensTarget",
+        arguments: [URI.file(entry.targetFilePath).toString()],
+      };
+    }
+
+    return {
+      title: entry.title,
+      command: "pocketpagesServerScript.noopCodeLens",
+    };
+  }
+
+  function toCodeLens(params, document, entry) {
+    const range =
+      typeof entry.start === "number"
+        ? {
+            start: document.positionAt(entry.start),
+            end: document.positionAt(entry.start),
+          }
+        : {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 0 },
+          };
+    const isLazyIncludeCodeLens =
+      entry.data &&
+      typeof entry.data === "object" &&
+      entry.data.kind === "include-locals";
+    const result = { range };
+    if (!isLazyIncludeCodeLens) {
+      result.command = createCodeLensCommand(entry, params.textDocument.uri);
+    }
+
+    if (entry.data && typeof entry.data === "object") {
+      result.data = {
+        ...entry.data,
+        sourceUri: params.textDocument.uri,
+      };
+    }
+
+    return result;
+  }
+
   function provideCodeLens(params) {
     const document = getDocumentByUri(params.textDocument.uri);
     if (!document) {
@@ -99,45 +154,38 @@ function createStructureFeatureService(context) {
       return null;
     }
 
-    return entries.map((entry) => {
-      const range =
-        typeof entry.start === "number"
-          ? {
-              start: document.positionAt(entry.start),
-              end: document.positionAt(entry.start),
-            }
-          : {
-              start: { line: 0, character: 0 },
-              end: { line: 0, character: 0 },
-            };
+    return entries.map((entry) => toCodeLens(params, document, entry));
+  }
 
-      let command = null;
-      if (entry.command) {
-        command = {
-          title: entry.title,
-          command: entry.command,
-          arguments: Array.isArray(entry.arguments)
-            ? entry.arguments
-            : [params.textDocument.uri],
-        };
-      } else if (entry.targetFilePath) {
-        command = {
-          title: entry.title,
-          command: "pocketpagesServerScript.openCodeLensTarget",
-          arguments: [URI.file(entry.targetFilePath).toString()],
-        };
-      } else {
-        command = {
-          title: entry.title,
-          command: "pocketpagesServerScript.noopCodeLens",
-        };
-      }
+  function resolveCodeLens(codeLens) {
+    if (
+      !codeLens ||
+      !codeLens.data ||
+      codeLens.data.kind !== "include-locals" ||
+      !codeLens.data.sourceUri ||
+      !codeLens.data.targetFilePath
+    ) {
+      return codeLens;
+    }
 
-      return {
-        range,
-        command,
-      };
-    });
+    const documentContext = getDocumentContextByUri(codeLens.data.sourceUri);
+    if (
+      !documentContext ||
+      !documentContext.service ||
+      typeof documentContext.service.getIncludeCodeLensTitle !== "function"
+    ) {
+      return codeLens;
+    }
+
+    const targetFilePath = codeLens.data.targetFilePath;
+    return {
+      ...codeLens,
+      command: {
+        title: documentContext.service.getIncludeCodeLensTitle(targetFilePath),
+        command: "pocketpagesServerScript.openCodeLensTarget",
+        arguments: [URI.file(targetFilePath).toString()],
+      },
+    };
   }
 
   function toDocumentRange(document, start, end) {
@@ -269,6 +317,7 @@ function createStructureFeatureService(context) {
   return {
     provideSemanticTokens,
     provideCodeLens,
+    resolveCodeLens,
     provideDocumentSymbols,
     provideWorkspaceSymbols,
     getDocumentForFile,
