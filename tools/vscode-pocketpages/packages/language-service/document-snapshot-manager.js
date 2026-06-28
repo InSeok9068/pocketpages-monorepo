@@ -178,8 +178,8 @@ class DocumentSnapshotManager {
     return this.virtualFiles.get(normalizedFileName) || this.staticFiles.get(normalizedFileName) || null;
   }
 
-  getTsFileState(fileName) {
-    return this.getManagedTsFileState(fileName) || this.getDiskFileState(fileName);
+  getTsFileState(fileName, options = {}) {
+    return this.getManagedTsFileState(fileName) || this.getDiskFileState(fileName, options);
   }
 
   getTsFileNames() {
@@ -236,7 +236,7 @@ class DocumentSnapshotManager {
     return changed;
   }
 
-  getDiskFileState(fileName) {
+  getDiskFileState(fileName, options = {}) {
     const normalizedFileName = this.normalize(fileName);
     if (!fileExists(normalizedFileName)) {
       this.diskFiles.delete(normalizedFileName);
@@ -251,7 +251,27 @@ class DocumentSnapshotManager {
       previous.ctimeMs === stats.ctimeMs &&
       previous.size === stats.size
     ) {
-      return previous;
+      if (!options.verifyContentIdentity) {
+        return previous;
+      }
+
+      const text = readFileText(normalizedFileName);
+      const hash = hashText(text);
+      if (previous.hash === hash && previous.text === text) {
+        return previous;
+      }
+
+      const next = createVersionedTextState(previous, {
+        text,
+        mtimeMs: stats.mtimeMs,
+        ctimeMs: stats.ctimeMs,
+        size: stats.size,
+        hash,
+        filePath: normalizedFileName,
+        kind: "disk",
+      });
+      this.diskFiles.set(normalizedFileName, next);
+      return next;
     }
 
     const text = readFileText(normalizedFileName);
@@ -313,7 +333,7 @@ class DocumentSnapshotManager {
   }
 
   readFile(fileName) {
-    const state = this.getTsFileState(fileName);
+    const state = this.getTsFileState(fileName, { verifyContentIdentity: true });
     return state ? state.text : undefined;
   }
 }

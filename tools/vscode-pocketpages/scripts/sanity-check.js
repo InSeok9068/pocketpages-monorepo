@@ -9600,6 +9600,150 @@ const postTitle = posts[0].get('title')
       )
     }
 
+    const txAppJSDocTypeActionText = `<script server>
+$app.runInTransaction(function (txApp) {
+  let boardRecord = null
+  boardRecord = txApp.findFirstRecordByFilter('boards', 'id != ""')
+  const boardName = boardRecord.get('name')
+})
+</script>
+`
+    const txAppJSDocTypeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      txAppJSDocTypeActionText,
+      {
+        start: txAppJSDocTypeActionText.indexOf('boardRecord = null') + 2,
+        end: txAppJSDocTypeActionText.indexOf('boardRecord = null') + 2,
+      },
+      { diagnostics: [] }
+    )
+    if (
+      !Array.isArray(txAppJSDocTypeActions) ||
+      !txAppJSDocTypeActions.some((entry) =>
+        entry.title === 'Add JSDoc type for boardRecord' &&
+        Array.isArray(entry.edits) &&
+        entry.edits.some((edit) => edit.newText.includes('PocketPagesRecord<"boards"> | null'))
+      )
+    ) {
+      throw new Error(`Expected txApp JSDoc type code action. Got: ${JSON.stringify(txAppJSDocTypeActions)}`)
+    }
+    const txAppJSDocTypeFixedText = applyEditsToText(txAppJSDocTypeActionText, txAppJSDocTypeActions[0].edits)
+    const txAppJSDocTypeFixedQuickInfo = service.getQuickInfo(
+      fixture.boardsFilePath,
+      txAppJSDocTypeFixedText,
+      txAppJSDocTypeFixedText.indexOf('boardName =') + 2
+    )
+    if (!txAppJSDocTypeFixedQuickInfo || !txAppJSDocTypeFixedQuickInfo.displayText.includes('const boardName: string')) {
+      throw new Error(
+        `Expected txApp JSDoc type code action to restore connected field typing. Got: ${JSON.stringify({
+          fixedText: txAppJSDocTypeFixedText,
+          quickInfo: txAppJSDocTypeFixedQuickInfo,
+        })}`
+      )
+    }
+
+    const txAppArrowJSDocTypeActionText = `<script server>
+$app.runInTransaction((txApp) => {
+  let boardRecords = []
+  boardRecords = txApp.findRecordsByFilter('boards')
+})
+</script>
+`
+    const txAppArrowJSDocTypeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      txAppArrowJSDocTypeActionText,
+      {
+        start: txAppArrowJSDocTypeActionText.indexOf('boardRecords = []') + 2,
+        end: txAppArrowJSDocTypeActionText.indexOf('boardRecords = []') + 2,
+      },
+      { diagnostics: [] }
+    )
+    if (
+      !Array.isArray(txAppArrowJSDocTypeActions) ||
+      !txAppArrowJSDocTypeActions.some((entry) =>
+        entry.title === 'Add JSDoc type for boardRecords' &&
+        Array.isArray(entry.edits) &&
+        entry.edits.some((edit) => edit.newText.includes('PocketPagesRecordArray<"boards">'))
+      )
+    ) {
+      throw new Error(`Expected arrow txApp JSDoc type code action. Got: ${JSON.stringify(txAppArrowJSDocTypeActions)}`)
+    }
+
+    const fakeTxAppJSDocTypeActionText = `<script server>
+const txApp = { findFirstRecordByFilter() { return null } }
+let boardRecord = null
+boardRecord = txApp.findFirstRecordByFilter('boards', 'id != ""')
+</script>
+`
+    const fakeTxAppJSDocTypeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      fakeTxAppJSDocTypeActionText,
+      {
+        start: fakeTxAppJSDocTypeActionText.indexOf('boardRecord = null') + 2,
+        end: fakeTxAppJSDocTypeActionText.indexOf('boardRecord = null') + 2,
+      },
+      { diagnostics: [] }
+    )
+    if (
+      Array.isArray(fakeTxAppJSDocTypeActions) &&
+      fakeTxAppJSDocTypeActions.some((entry) => entry.title === 'Add JSDoc type for boardRecord')
+    ) {
+      throw new Error(`Expected fake txApp receiver to avoid JSDoc type code actions. Got: ${JSON.stringify(fakeTxAppJSDocTypeActions)}`)
+    }
+
+    const shadowedTxAppJSDocTypeActionText = `<script server>
+$app.runInTransaction(function (txApp) {
+  function readBoard(txApp) {
+    let boardRecord = null
+    boardRecord = txApp.findFirstRecordByFilter('boards', 'id != ""')
+  }
+})
+</script>
+`
+    const shadowedTxAppJSDocTypeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      shadowedTxAppJSDocTypeActionText,
+      {
+        start: shadowedTxAppJSDocTypeActionText.indexOf('boardRecord = null') + 2,
+        end: shadowedTxAppJSDocTypeActionText.indexOf('boardRecord = null') + 2,
+      },
+      { diagnostics: [] }
+    )
+    if (
+      Array.isArray(shadowedTxAppJSDocTypeActions) &&
+      shadowedTxAppJSDocTypeActions.some((entry) => entry.title === 'Add JSDoc type for boardRecord')
+    ) {
+      throw new Error(`Expected shadowed txApp receiver to avoid JSDoc type code actions. Got: ${JSON.stringify(shadowedTxAppJSDocTypeActions)}`)
+    }
+
+    const blockShadowedTxAppJSDocTypeActionText = `<script server>
+$app.runInTransaction(function (txApp) {
+  {
+    const txApp = { findFirstRecordByFilter() { return null } }
+    let boardRecord = null
+    boardRecord = txApp.findFirstRecordByFilter('boards', 'id != ""')
+  }
+})
+</script>
+`
+    const blockShadowedTxAppJSDocTypeActions = service.getCodeActions(
+      fixture.boardsFilePath,
+      blockShadowedTxAppJSDocTypeActionText,
+      {
+        start: blockShadowedTxAppJSDocTypeActionText.indexOf('boardRecord = null') + 2,
+        end: blockShadowedTxAppJSDocTypeActionText.indexOf('boardRecord = null') + 2,
+      },
+      { diagnostics: [] }
+    )
+    if (
+      Array.isArray(blockShadowedTxAppJSDocTypeActions) &&
+      blockShadowedTxAppJSDocTypeActions.some((entry) => entry.title === 'Add JSDoc type for boardRecord')
+    ) {
+      throw new Error(
+        `Expected block-shadowed txApp receiver to avoid JSDoc type code actions. Got: ${JSON.stringify(blockShadowedTxAppJSDocTypeActions)}`
+      )
+    }
+
     const typedRequireCompletionText = `<script server>
 const { dateutil } = require('@pocketpages/utils')
 dateutil.
@@ -13976,6 +14120,103 @@ helper.findRecordsByFilter('missing_collection', 'ghost = {:ghost}', '-ghost', 1
     ) {
       throw new Error(
         `Expected txApp.findRecordsByFilter() records to keep schema field typing. Got: ${JSON.stringify(typedAppReceiverRecordQuickInfo)}`
+      )
+    }
+
+    const txAppAssignedRecordCompletionText = `$app.runInTransaction(function (txApp) {
+  let picked = null
+  picked = txApp.findFirstRecordByFilter('boards', 'id != ""')
+  picked.get('')
+})
+`
+    const txAppAssignedRecordCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      txAppAssignedRecordCompletionText,
+      txAppAssignedRecordCompletionText.indexOf("''") + 1
+    )
+    if (
+      !txAppAssignedRecordCompletion ||
+      !txAppAssignedRecordCompletion.items.some((entry) => entry.label === 'name')
+    ) {
+      throw new Error(
+        `Expected txApp null-initialized record assignment to provide record field completion. Got: ${JSON.stringify(txAppAssignedRecordCompletion)}`
+      )
+    }
+
+    const txAppAssignedArrayCompletionText = `$app.runInTransaction((txApp) => {
+  let pickedRows = []
+  pickedRows = txApp.findRecordsByFilter('boards')
+  pickedRows[0].get('na')
+})
+`
+    const txAppAssignedArrayCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      txAppAssignedArrayCompletionText,
+      txAppAssignedArrayCompletionText.indexOf('na') + 'na'.length
+    )
+    if (
+      !txAppAssignedArrayCompletion ||
+      !txAppAssignedArrayCompletion.items.some((entry) => entry.label === 'name')
+    ) {
+      throw new Error(
+        `Expected arrow txApp array assignment to provide indexed record field completion. Got: ${JSON.stringify(txAppAssignedArrayCompletion)}`
+      )
+    }
+
+    const nestedTxAppAssignedRecordCompletionText = `$app.runInTransaction(function (txApp) {
+  txApp.runInTransaction(function (innerTxApp) {
+    let picked = null
+    picked = innerTxApp.findFirstRecordByFilter('boards', 'id != ""')
+    picked.get('na')
+  })
+})
+`
+    const nestedTxAppAssignedRecordCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      nestedTxAppAssignedRecordCompletionText,
+      nestedTxAppAssignedRecordCompletionText.indexOf('na') + 'na'.length
+    )
+    if (
+      !nestedTxAppAssignedRecordCompletion ||
+      !nestedTxAppAssignedRecordCompletion.items.some((entry) => entry.label === 'name')
+    ) {
+      throw new Error(
+        `Expected nested txApp.runInTransaction() assignment to provide record field completion. Got: ${JSON.stringify(nestedTxAppAssignedRecordCompletion)}`
+      )
+    }
+
+    const fakeTxAppAssignedRecordCompletionText = `const txApp = { findFirstRecordByFilter() { return null } }
+let picked = null
+picked = txApp.findFirstRecordByFilter('boards', 'id != ""')
+picked.get('na')
+`
+    const fakeTxAppAssignedRecordCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      fakeTxAppAssignedRecordCompletionText,
+      fakeTxAppAssignedRecordCompletionText.indexOf('na') + 'na'.length
+    )
+    if (fakeTxAppAssignedRecordCompletion) {
+      throw new Error(
+        `Expected fake txApp assignment to avoid record field completion. Got: ${JSON.stringify(fakeTxAppAssignedRecordCompletion)}`
+      )
+    }
+
+    const shadowedTxAppAssignedRecordCompletionText = `$app.runInTransaction(function (txApp) {
+  function readBoard(txApp) {
+    let picked = null
+    picked = txApp.findFirstRecordByFilter('boards', 'id != ""')
+    picked.get('na')
+  }
+})
+`
+    const shadowedTxAppAssignedRecordCompletion = service.getCustomCompletionData(
+      fixture.jobScriptFilePath,
+      shadowedTxAppAssignedRecordCompletionText,
+      shadowedTxAppAssignedRecordCompletionText.indexOf('na') + 'na'.length
+    )
+    if (shadowedTxAppAssignedRecordCompletion) {
+      throw new Error(
+        `Expected shadowed txApp assignment to avoid record field completion. Got: ${JSON.stringify(shadowedTxAppAssignedRecordCompletion)}`
       )
     }
 

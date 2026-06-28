@@ -699,6 +699,7 @@ function createExplicitInferenceFrame(initialDeclaredNames = []) {
     collectionModels: new Map(),
     recordVariables: new Map(),
     arrayVariables: new Map(),
+    appReceiverNames: new Set(),
   }
 }
 
@@ -736,6 +737,46 @@ function declareExplicitInferenceName(state, variableName) {
   }
 
   getCurrentExplicitInferenceFrame(state).declaredNames.add(variableName)
+}
+
+function addExplicitInferenceAppReceiverName(state, variableName) {
+  if (!isValidIdentifierName(variableName)) {
+    return
+  }
+
+  getCurrentExplicitInferenceFrame(state).appReceiverNames.add(variableName)
+}
+
+function isExplicitInferenceAppReceiverName(state, variableName) {
+  if (variableName === '$app') {
+    return true
+  }
+
+  if (!isValidIdentifierName(variableName)) {
+    return false
+  }
+
+  for (let index = state.frames.length - 1; index >= 0; index -= 1) {
+    const frame = state.frames[index]
+    if (frame.appReceiverNames.has(variableName)) {
+      return true
+    }
+
+    if (frame.declaredNames.has(variableName)) {
+      return false
+    }
+  }
+
+  return false
+}
+
+function isExplicitInferenceAppReceiverExpression(node, state) {
+  const target = skipExpressionWrappers(node)
+  return !!(
+    target &&
+    ts.isIdentifier(target) &&
+    isExplicitInferenceAppReceiverName(state, target.text)
+  )
 }
 
 function findExplicitInferenceFrameForWrite(state, variableName) {
@@ -846,14 +887,14 @@ function readCollectionNameExpression(node, state) {
   return null
 }
 
-function getAppPropertyCallDetails(node) {
+function getAppPropertyCallDetails(node, state) {
   const target = skipExpressionWrappers(node)
   if (!target || !ts.isCallExpression(target) || !ts.isPropertyAccessExpression(target.expression)) {
     return null
   }
 
   const owner = skipExpressionWrappers(target.expression.expression)
-  if (!owner || !ts.isIdentifier(owner) || owner.text !== '$app') {
+  if (!isExplicitInferenceAppReceiverExpression(owner, state)) {
     return null
   }
 
@@ -873,7 +914,7 @@ function readCollectionModelReference(node, state) {
     return readExplicitInferenceValue(state, 'collectionModels', target.text)
   }
 
-  const callDetails = getAppPropertyCallDetails(target)
+  const callDetails = getAppPropertyCallDetails(target, state)
   if (!callDetails || !HIGH_CONFIDENCE_COLLECTION_MODEL_METHOD_NAMES.has(callDetails.methodName)) {
     return null
   }
@@ -891,7 +932,7 @@ function readCollectionModelReference(node, state) {
 }
 
 function readDirectHighConfidenceRecordReference(node, state) {
-  const callDetails = getAppPropertyCallDetails(node)
+  const callDetails = getAppPropertyCallDetails(node, state)
   if (!callDetails || !HIGH_CONFIDENCE_SINGLE_RECORD_METHOD_NAMES.has(callDetails.methodName)) {
     return null
   }
@@ -1018,7 +1059,7 @@ function readRecordReference(node, state) {
 }
 
 function readDirectRecordArrayReference(node, state) {
-  const callDetails = getAppPropertyCallDetails(node)
+  const callDetails = getAppPropertyCallDetails(node, state)
   if (!callDetails || !HIGH_CONFIDENCE_RECORD_ARRAY_METHOD_NAMES.has(callDetails.methodName)) {
     return null
   }
@@ -1160,6 +1201,44 @@ function isFunctionLikeWithBody(node) {
   )
 }
 
+function getRunInTransactionCallbackAppReceiverName(node, state) {
+  if (!isFunctionLikeWithBody(node) || !node.parent || !ts.isCallExpression(node.parent) || node.parent.arguments[0] !== node) {
+    return null
+  }
+
+  const callTarget = skipExpressionWrappers(node.parent.expression)
+  if (
+    !callTarget ||
+    !ts.isPropertyAccessExpression(callTarget) ||
+    callTarget.name.text !== 'runInTransaction' ||
+    !isExplicitInferenceAppReceiverExpression(callTarget.expression, state)
+  ) {
+    return null
+  }
+
+  const firstParameter = node.parameters && node.parameters[0]
+  return firstParameter && ts.isIdentifier(firstParameter.name) ? firstParameter.name.text : null
+}
+
+function processExplicitInferenceRunInTransactionCall(expression, sourceFile, beforeOffset, state) {
+  const target = skipExpressionWrappers(expression)
+  if (!target || !ts.isCallExpression(target)) {
+    return false
+  }
+
+  const callback = target.arguments && target.arguments[0]
+  if (!isFunctionLikeWithBody(callback) || !nodeContainsOffset(sourceFile, callback.body, beforeOffset)) {
+    return false
+  }
+
+  if (!getRunInTransactionCallbackAppReceiverName(callback, state)) {
+    return false
+  }
+
+  processExplicitInferenceFunctionLike(callback, sourceFile, beforeOffset, state)
+  return true
+}
+
 function walkExplicitInferenceStatements(statements, sourceFile, beforeOffset, state) {
   for (const statement of statements || []) {
     if (!statement) {
@@ -1215,10 +1294,18 @@ function processExplicitInferenceFunctionLike(node, sourceFile, beforeOffset, st
     collectBindingIdentifierNames(parameter.name, parameterNames)
   }
 
+  const appReceiverName = getRunInTransactionCallbackAppReceiverName(node, state)
+  const setupCallback = () => {
+    if (appReceiverName) {
+      addExplicitInferenceAppReceiverName(state, appReceiverName)
+    }
+  }
+
   if (ts.isBlock(node.body)) {
-    processExplicitInferenceScopedBlock(node.body, sourceFile, beforeOffset, state, parameterNames)
+    processExplicitInferenceScopedBlock(node.body, sourceFile, beforeOffset, state, parameterNames, setupCallback)
   } else {
     state.frames.push(createExplicitInferenceFrame(parameterNames))
+    setupCallback()
   }
 }
 
@@ -1264,6 +1351,10 @@ function processExplicitInferenceVariableStatement(statement, sourceFile, before
 
 function processExplicitInferenceExpressionStatement(statement, sourceFile, beforeOffset, state) {
   const expression = skipExpressionWrappers(statement.expression)
+  if (processExplicitInferenceRunInTransactionCall(expression, sourceFile, beforeOffset, state)) {
+    return
+  }
+
   if (
     !expression ||
     !ts.isBinaryExpression(expression) ||

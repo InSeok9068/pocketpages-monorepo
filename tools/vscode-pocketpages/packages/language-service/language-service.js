@@ -897,6 +897,106 @@ function isDollarAppExpression(node) {
   return !!(node && ts.isIdentifier(node) && node.text === "$app");
 }
 
+function isSchemaAppReceiverExpression(node, appReceiverNames) {
+  if (isDollarAppExpression(node)) {
+    return true;
+  }
+
+  return !!(
+    node &&
+    ts.isIdentifier(node) &&
+    appReceiverNames &&
+    appReceiverNames.has(node.text)
+  );
+}
+
+function getIdentifierParameterName(parameter) {
+  return parameter && ts.isIdentifier(parameter.name) ? parameter.name.text : null;
+}
+
+function getFunctionParameterNames(functionNode) {
+  if (!functionNode || !Array.isArray(functionNode.parameters)) {
+    return [];
+  }
+
+  return functionNode.parameters
+    .map(getIdentifierParameterName)
+    .filter(Boolean);
+}
+
+function collectBindingIdentifierNamesForJSDoc(node, names = []) {
+  if (!node) {
+    return names;
+  }
+
+  if (ts.isIdentifier(node)) {
+    names.push(node.text);
+    return names;
+  }
+
+  if (ts.isObjectBindingPattern(node) || ts.isArrayBindingPattern(node)) {
+    for (const element of node.elements || []) {
+      if (ts.isBindingElement(element)) {
+        collectBindingIdentifierNamesForJSDoc(element.name, names);
+      }
+    }
+  }
+
+  return names;
+}
+
+function collectLexicalDeclarationNamesForJSDoc(node) {
+  const names = [];
+
+  if (ts.isVariableStatement(node)) {
+    for (const declaration of node.declarationList.declarations || []) {
+      collectBindingIdentifierNamesForJSDoc(declaration.name, names);
+    }
+    return names;
+  }
+
+  if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) {
+    names.push(node.name.text);
+  }
+
+  return names;
+}
+
+function removeAppReceiverShadowNames(appReceiverNames, declaredNames) {
+  if (!appReceiverNames || !declaredNames || !declaredNames.length) {
+    return appReceiverNames;
+  }
+
+  let scopedAppReceiverNames = appReceiverNames;
+  for (const declaredName of declaredNames) {
+    if (!scopedAppReceiverNames.has(declaredName)) {
+      continue;
+    }
+
+    if (scopedAppReceiverNames === appReceiverNames) {
+      scopedAppReceiverNames = new Set(appReceiverNames);
+    }
+    scopedAppReceiverNames.delete(declaredName);
+  }
+
+  return scopedAppReceiverNames;
+}
+
+function isRunInTransactionCallback(functionNode, appReceiverNames) {
+  const parent = functionNode && functionNode.parent;
+  if (!parent || !ts.isCallExpression(parent) || parent.arguments[0] !== functionNode) {
+    return false;
+  }
+
+  const target = parent.expression;
+  return !!(
+    target &&
+    ts.isPropertyAccessExpression(target) &&
+    target.name.text === "runInTransaction" &&
+    isSchemaAppReceiverExpression(target.expression, appReceiverNames)
+  );
+}
+
 function getSchemaCallMethodName(expression) {
   return expression && ts.isPropertyAccessExpression(expression)
     ? expression.name.text
@@ -933,14 +1033,20 @@ function getSchemaMethodResultKind(methodName) {
   }
 }
 
-function inferDirectSchemaCallType(expression, projectIndex) {
+function inferDirectSchemaCallType(expression, projectIndex, options = {}) {
   if (!expression || !ts.isCallExpression(expression)) {
     return null;
   }
 
-  const methodName = getSchemaCallMethodName(expression.expression);
+  const target = expression.expression;
+  const methodName = getSchemaCallMethodName(target);
   const resultKind = getSchemaMethodResultKind(methodName);
-  if (!resultKind || !isDollarAppExpression(expression.expression.expression)) {
+  if (
+    !resultKind ||
+    !target ||
+    !ts.isPropertyAccessExpression(target) ||
+    !isSchemaAppReceiverExpression(target.expression, options.appReceiverNames)
+  ) {
     return null;
   }
 
@@ -1142,7 +1248,7 @@ function collectPocketPagesJSDocTypeActionsForScript(scriptText, sourceFile, pro
     });
   };
 
-  const rememberAssignment = (node) => {
+  const rememberAssignment = (node, appReceiverNames) => {
     if (
       !ts.isBinaryExpression(node) ||
       node.operatorToken.kind !== ts.SyntaxKind.EqualsToken ||
@@ -1156,7 +1262,9 @@ function collectPocketPagesJSDocTypeActionsForScript(scriptText, sourceFile, pro
       return;
     }
 
-    const inferredType = inferDirectSchemaCallType(node.right, projectIndex);
+    const inferredType = inferDirectSchemaCallType(node.right, projectIndex, {
+      appReceiverNames,
+    });
     if (!inferredType) {
       return;
     }
@@ -1176,10 +1284,43 @@ function collectPocketPagesJSDocTypeActionsForScript(scriptText, sourceFile, pro
     assignedTypes.add(inferredType);
   };
 
-  const visit = (node) => {
+  const visitStatementList = (statements, appReceiverNames) => {
+    let scopedAppReceiverNames = new Set(appReceiverNames);
+    for (const statement of statements || []) {
+      scopedAppReceiverNames = removeAppReceiverShadowNames(
+        scopedAppReceiverNames,
+        collectLexicalDeclarationNamesForJSDoc(statement)
+      );
+      visit(statement, scopedAppReceiverNames);
+    }
+  };
+
+  const visit = (node, appReceiverNames = new Set()) => {
+    if (ts.isSourceFile(node) || ts.isBlock(node)) {
+      visitStatementList(node.statements, appReceiverNames);
+      return;
+    }
+
+    if (ts.isFunctionLike(node)) {
+      const scopedAppReceiverNames = new Set(appReceiverNames);
+      for (const parameterName of getFunctionParameterNames(node)) {
+        scopedAppReceiverNames.delete(parameterName);
+      }
+
+      if (isRunInTransactionCallback(node, appReceiverNames)) {
+        const transactionAppName = getIdentifierParameterName(node.parameters[0]);
+        if (transactionAppName) {
+          scopedAppReceiverNames.add(transactionAppName);
+        }
+      }
+
+      ts.forEachChild(node, (child) => visit(child, scopedAppReceiverNames));
+      return;
+    }
+
     rememberDeclaration(node);
-    rememberAssignment(node);
-    ts.forEachChild(node, visit);
+    rememberAssignment(node, appReceiverNames);
+    ts.forEachChild(node, (child) => visit(child, appReceiverNames));
   };
   visit(currentSourceFile);
 
