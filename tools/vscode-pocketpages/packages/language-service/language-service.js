@@ -2242,6 +2242,179 @@ function collectMiddlewareNextDiagnostics(filePath, scriptText, options = {}) {
   return diagnostics;
 }
 
+const TRANSACTION_APP_METHOD_NAMES = new Set([
+  "dao",
+  "db",
+  "delete",
+  "findAllCollections",
+  "save",
+  "saveNoValidate",
+  "validate",
+]);
+
+function getTransactionAppMethodNames(projectIndex) {
+  const methodNames = new Set(TRANSACTION_APP_METHOD_NAMES);
+  const collectionMethodNames =
+    projectIndex && typeof projectIndex.getCollectionMethodNames === "function"
+      ? projectIndex.getCollectionMethodNames()
+      : [];
+
+  for (const methodName of collectionMethodNames) {
+    if (methodName) {
+      methodNames.add(methodName);
+    }
+  }
+
+  return methodNames;
+}
+
+function isTransactionAppReceiverExpression(node, state) {
+  const target = skipExpressionWrappers(node);
+  if (!target || !ts.isIdentifier(target)) {
+    return false;
+  }
+
+  if (target.text === "$app") {
+    return !state.dollarAppShadowed;
+  }
+
+  return !!(state.appReceiverNames && state.appReceiverNames.has(target.text));
+}
+
+function getRunInTransactionCallbackAppName(functionNode, state) {
+  const parent = functionNode && functionNode.parent;
+  if (!parent || !ts.isCallExpression(parent) || parent.arguments[0] !== functionNode) {
+    return null;
+  }
+
+  const target = skipExpressionWrappers(parent.expression);
+  if (
+    !target ||
+    !ts.isPropertyAccessExpression(target) ||
+    target.name.text !== "runInTransaction" ||
+    !isTransactionAppReceiverExpression(target.expression, state)
+  ) {
+    return null;
+  }
+
+  const firstParameter = functionNode.parameters && functionNode.parameters[0];
+  return firstParameter && ts.isIdentifier(firstParameter.name) ? firstParameter.name.text : "";
+}
+
+function isTransactionAppMethodName(methodName, methodNames) {
+  return methodNames.has(methodName) || /^find[A-Z]/.test(methodName);
+}
+
+function isDollarAppMethodCall(callExpression, methodNames, state) {
+  if (!callExpression || !ts.isCallExpression(callExpression)) {
+    return null;
+  }
+
+  const target = skipExpressionWrappers(callExpression.expression);
+  if (!target || !ts.isPropertyAccessExpression(target) || !isTransactionAppMethodName(target.name.text, methodNames)) {
+    return null;
+  }
+
+  const receiver = skipExpressionWrappers(target.expression);
+  if (!receiver || !ts.isIdentifier(receiver) || receiver.text !== "$app" || state.dollarAppShadowed) {
+    return null;
+  }
+
+  return {
+    methodName: target.name.text,
+    start: receiver.getStart(state.sourceFile),
+    end: receiver.getEnd(),
+  };
+}
+
+function collectTransactionAppDiagnostics(projectIndex, scriptText, options = {}) {
+  const sourceText = String(scriptText || "");
+  if (!sourceText || sourceText.indexOf("runInTransaction") === -1 || sourceText.indexOf("$app") === -1) {
+    return [];
+  }
+
+  const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-transaction-app.ts", sourceText);
+  const methodNames = getTransactionAppMethodNames(projectIndex);
+  const diagnostics = [];
+
+  const visit = (node, state) => {
+    if (ts.isFunctionLike(node)) {
+      const parameterNames = getFunctionParameterNames(node);
+      const callbackAppName = getRunInTransactionCallbackAppName(node, state);
+      const appReceiverNames = new Set(state.appReceiverNames);
+      for (const parameterName of parameterNames) {
+        appReceiverNames.delete(parameterName);
+      }
+
+      let inTransaction = state.inTransaction;
+      let transactionAppName = state.transactionAppName;
+      if (callbackAppName !== null) {
+        inTransaction = true;
+        if (callbackAppName) {
+          transactionAppName = callbackAppName;
+          appReceiverNames.add(callbackAppName);
+        }
+      } else if (transactionAppName && parameterNames.includes(transactionAppName)) {
+        transactionAppName = "";
+      }
+
+      const nextState = {
+        ...state,
+        appReceiverNames,
+        dollarAppShadowed: state.dollarAppShadowed || parameterNames.includes("$app"),
+        inTransaction,
+        transactionAppName,
+      };
+      ts.forEachChild(node, (child) => visit(child, nextState));
+      return;
+    }
+
+    if (state.inTransaction) {
+      const methodCall = isDollarAppMethodCall(node, methodNames, state);
+      if (methodCall) {
+        const transactionAppName = state.transactionAppName || "";
+        const fixes = transactionAppName
+          ? [
+              {
+                title: `Replace $app with ${transactionAppName}`,
+                edits: [
+                  {
+                    start: methodCall.start,
+                    end: methodCall.end,
+                    newText: transactionAppName,
+                  },
+                ],
+              },
+            ]
+          : undefined;
+
+        diagnostics.push({
+          code: "pp-transaction-app",
+          category: ts.DiagnosticCategory.Warning,
+          message: transactionAppName
+            ? `Use ${transactionAppName}.${methodCall.methodName}() inside runInTransaction() instead of $app.${methodCall.methodName}().`
+            : `Use the transaction app parameter inside runInTransaction() instead of $app.${methodCall.methodName}().`,
+          start: methodCall.start,
+          end: methodCall.end,
+          fixes,
+        });
+      }
+    }
+
+    ts.forEachChild(node, (child) => visit(child, state));
+  };
+
+  visit(sourceFile, {
+    appReceiverNames: new Set(),
+    dollarAppShadowed: false,
+    inTransaction: false,
+    sourceFile,
+    transactionAppName: "",
+  });
+
+  return diagnostics;
+}
+
 function collectIncludeContextDiagnostics(scriptText, options = {}) {
   const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-agents-include.ts", scriptText);
   const diagnostics = [];
@@ -3074,6 +3247,10 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText, opti
   }
 
   for (const diagnostic of collectMiddlewareNextDiagnostics(filePath, analysisText, { sourceFile: analysisSourceFile })) {
+    diagnostics.push(diagnostic);
+  }
+
+  for (const diagnostic of collectTransactionAppDiagnostics(projectIndex, analysisText, { sourceFile: analysisSourceFile })) {
     diagnostics.push(diagnostic);
   }
 

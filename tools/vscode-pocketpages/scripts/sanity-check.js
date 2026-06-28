@@ -14031,6 +14031,120 @@ $app.findRecordsByFilter(boardCollection, 'is_active = true', '-srot_order,+owne
       )
     }
 
+    const transactionAppMisuseText = `$app.runInTransaction(function (txApp) {
+  const board = $app.findRecordById('boards', 'board-1')
+  $app.findAuthRecordByToken('token', 'users')
+  $app.save(board)
+  $app.db().select('id').from('boards')
+})
+`
+    const transactionAppMisuseDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      transactionAppMisuseText
+    ).filter((entry) => String(entry.code) === 'pp-transaction-app')
+    if (
+      transactionAppMisuseDiagnostics.length !== 4 ||
+      !transactionAppMisuseDiagnostics.some((entry) => String(entry.message).includes('txApp.findRecordById()')) ||
+      !transactionAppMisuseDiagnostics.some((entry) => String(entry.message).includes('txApp.findAuthRecordByToken()')) ||
+      !transactionAppMisuseDiagnostics.some((entry) => String(entry.message).includes('txApp.save()')) ||
+      !transactionAppMisuseDiagnostics.some((entry) => String(entry.message).includes('txApp.db()'))
+    ) {
+      throw new Error(
+        `Expected transaction app diagnostics for $app DB calls inside runInTransaction(). Got: ${JSON.stringify(transactionAppMisuseDiagnostics)}`
+      )
+    }
+    const transactionAppMisuseCodeActions = service.getCodeActions(
+      fixture.jobScriptFilePath,
+      transactionAppMisuseText,
+      {
+        start: transactionAppMisuseText.indexOf('$app.findRecordById'),
+        end: transactionAppMisuseText.indexOf('$app.findRecordById') + '$app'.length,
+      },
+      { diagnostics: transactionAppMisuseDiagnostics }
+    )
+    const replaceTransactionAppAction = transactionAppMisuseCodeActions.find((entry) =>
+      entry.title === 'Replace $app with txApp'
+    )
+    if (!replaceTransactionAppAction) {
+      throw new Error(`Expected transaction app quick fix. Got: ${JSON.stringify(transactionAppMisuseCodeActions)}`)
+    }
+    const transactionAppFixedText = applyEditsToText(transactionAppMisuseText, replaceTransactionAppAction.edits)
+    if (!transactionAppFixedText.includes("const board = txApp.findRecordById('boards', 'board-1')")) {
+      throw new Error(`Expected transaction app quick fix to replace $app receiver. Got: ${transactionAppFixedText}`)
+    }
+
+    const transactionAppValidText = `$app.runInTransaction(function (txApp) {
+  const board = txApp.findRecordById('boards', 'board-1')
+  txApp.save(board)
+  txApp.db().select('id').from('boards')
+})
+`
+    const transactionAppValidDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      transactionAppValidText
+    ).filter((entry) => String(entry.code) === 'pp-transaction-app')
+    if (transactionAppValidDiagnostics.length) {
+      throw new Error(`Expected valid txApp calls to skip transaction app diagnostics. Got: ${JSON.stringify(transactionAppValidDiagnostics)}`)
+    }
+
+    const transactionAppNestedMisuseText = `$app.runInTransaction(function (txApp) {
+  txApp.runInTransaction(function (innerTxApp) {
+    $app.save(record)
+  })
+})
+`
+    const transactionAppNestedMisuseDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      transactionAppNestedMisuseText
+    ).filter((entry) => String(entry.code) === 'pp-transaction-app')
+    if (
+      transactionAppNestedMisuseDiagnostics.length !== 1 ||
+      !String(transactionAppNestedMisuseDiagnostics[0].message).includes('innerTxApp.save()')
+    ) {
+      throw new Error(
+        `Expected nested transaction app diagnostic to prefer inner txApp. Got: ${JSON.stringify(transactionAppNestedMisuseDiagnostics)}`
+      )
+    }
+
+    const transactionAppShadowedFixText = `$app.runInTransaction(function (txApp) {
+  function saveLater(txApp) {
+    $app.save(record)
+  }
+})
+`
+    const transactionAppShadowedFixDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      transactionAppShadowedFixText
+    ).filter((entry) => String(entry.code) === 'pp-transaction-app')
+    if (
+      transactionAppShadowedFixDiagnostics.length !== 1 ||
+      /txApp\.save\(\)/.test(String(transactionAppShadowedFixDiagnostics[0].message)) ||
+      Array.isArray(transactionAppShadowedFixDiagnostics[0].fixes)
+    ) {
+      throw new Error(
+        `Expected shadowed txApp diagnostic to avoid unsafe quick fix. Got: ${JSON.stringify(transactionAppShadowedFixDiagnostics)}`
+      )
+    }
+
+    const ejsTransactionAppMisuseText = `<script server>
+$app.runInTransaction(function (txApp) {
+  $app.findRecordById('boards', 'board-1')
+})
+</script>
+`
+    const ejsTransactionAppMisuseDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      ejsTransactionAppMisuseText
+    ).filter((entry) => String(entry.code) === 'pp-transaction-app')
+    if (
+      ejsTransactionAppMisuseDiagnostics.length !== 1 ||
+      ejsTransactionAppMisuseDiagnostics[0].start !== ejsTransactionAppMisuseText.indexOf('$app.findRecordById')
+    ) {
+      throw new Error(
+        `Expected EJS transaction app diagnostic at the source $app receiver. Got: ${JSON.stringify(ejsTransactionAppMisuseDiagnostics)}`
+      )
+    }
+
     const nonPocketBaseReceiverDiagnostics = service.getDiagnostics(
       fixture.jobScriptFilePath,
       `const helper = { findRecordsByFilter() {} }

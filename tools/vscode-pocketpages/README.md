@@ -292,6 +292,7 @@ PocketPages 전용 diagnostics는 `pp-*` 코드로 표시됩니다.
 | `pp-schema-field` | unknown PocketBase field, 지원되는 정적 filter/sort field operand 포함 |
 | `pp-schema-filter-param` | 정적 filter placeholder와 inline params object 불일치 |
 | `pp-redirect-missing-return` | `redirect()` 이후 `return` 누락 |
+| `pp-transaction-app` | `runInTransaction()` 내부에서 transaction app 대신 `$app` DB 호출 사용 |
 | `pp-middleware-next-bare-return` | `+middleware.js`에서 bare `return` 사용 |
 | `pp-middleware-next-empty-return` | `+middleware.js`에서 `return {}` 사용 |
 | `pp-middleware-next-missing-call` | `+middleware.js`에서 `next()` 호출 누락 |
