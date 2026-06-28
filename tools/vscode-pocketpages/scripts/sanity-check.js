@@ -14126,6 +14126,40 @@ $app.findRecordsByFilter(boardCollection, 'is_active = true', '-srot_order,+owne
       )
     }
 
+    const transactionAppDollarAppShadowText = `$app.runInTransaction(function (txApp) {
+  const $app = createFakeApp()
+  $app.save(record)
+})
+`
+    const transactionAppDollarAppShadowDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      transactionAppDollarAppShadowText
+    ).filter((entry) => String(entry.code) === 'pp-transaction-app')
+    if (transactionAppDollarAppShadowDiagnostics.length) {
+      throw new Error(`Expected locally shadowed $app to skip transaction app diagnostics. Got: ${JSON.stringify(transactionAppDollarAppShadowDiagnostics)}`)
+    }
+
+    const transactionAppBlockShadowedFixText = `$app.runInTransaction(function (txApp) {
+  if (true) {
+    const txApp = createFakeApp()
+    $app.save(record)
+  }
+})
+`
+    const transactionAppBlockShadowedFixDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      transactionAppBlockShadowedFixText
+    ).filter((entry) => String(entry.code) === 'pp-transaction-app')
+    if (
+      transactionAppBlockShadowedFixDiagnostics.length !== 1 ||
+      /txApp\.save\(\)/.test(String(transactionAppBlockShadowedFixDiagnostics[0].message)) ||
+      Array.isArray(transactionAppBlockShadowedFixDiagnostics[0].fixes)
+    ) {
+      throw new Error(
+        `Expected block-shadowed txApp diagnostic to avoid unsafe quick fix. Got: ${JSON.stringify(transactionAppBlockShadowedFixDiagnostics)}`
+      )
+    }
+
     const ejsTransactionAppMisuseText = `<script server>
 $app.runInTransaction(function (txApp) {
   $app.findRecordById('boards', 'board-1')

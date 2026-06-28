@@ -924,7 +924,7 @@ function getFunctionParameterNames(functionNode) {
     .filter(Boolean);
 }
 
-function collectBindingIdentifierNamesForJSDoc(node, names = []) {
+function collectBindingIdentifierNames(node, names = []) {
   if (!node) {
     return names;
   }
@@ -937,7 +937,7 @@ function collectBindingIdentifierNamesForJSDoc(node, names = []) {
   if (ts.isObjectBindingPattern(node) || ts.isArrayBindingPattern(node)) {
     for (const element of node.elements || []) {
       if (ts.isBindingElement(element)) {
-        collectBindingIdentifierNamesForJSDoc(element.name, names);
+        collectBindingIdentifierNames(element.name, names);
       }
     }
   }
@@ -945,12 +945,12 @@ function collectBindingIdentifierNamesForJSDoc(node, names = []) {
   return names;
 }
 
-function collectLexicalDeclarationNamesForJSDoc(node) {
+function collectLexicalDeclarationNames(node) {
   const names = [];
 
   if (ts.isVariableStatement(node)) {
     for (const declaration of node.declarationList.declarations || []) {
-      collectBindingIdentifierNamesForJSDoc(declaration.name, names);
+      collectBindingIdentifierNames(declaration.name, names);
     }
     return names;
   }
@@ -960,6 +960,10 @@ function collectLexicalDeclarationNamesForJSDoc(node) {
   }
 
   return names;
+}
+
+function collectLexicalDeclarationNamesForJSDoc(node) {
+  return collectLexicalDeclarationNames(node);
 }
 
 function removeAppReceiverShadowNames(appReceiverNames, declaredNames) {
@@ -2327,6 +2331,56 @@ function isDollarAppMethodCall(callExpression, methodNames, state) {
   };
 }
 
+function collectStatementListLexicalDeclarationNames(statements) {
+  const names = [];
+  for (const statement of statements || []) {
+    names.push(...collectLexicalDeclarationNames(statement));
+  }
+  return names;
+}
+
+function applyTransactionLexicalShadowing(state, declaredNames) {
+  if (!declaredNames || !declaredNames.length) {
+    return state;
+  }
+
+  let appReceiverNames = state.appReceiverNames;
+  let dollarAppShadowed = state.dollarAppShadowed;
+  let transactionAppName = state.transactionAppName;
+
+  for (const declaredName of declaredNames) {
+    if (declaredName === "$app") {
+      dollarAppShadowed = true;
+    }
+
+    if (appReceiverNames && appReceiverNames.has(declaredName)) {
+      if (appReceiverNames === state.appReceiverNames) {
+        appReceiverNames = new Set(state.appReceiverNames);
+      }
+      appReceiverNames.delete(declaredName);
+    }
+
+    if (transactionAppName && declaredName === transactionAppName) {
+      transactionAppName = "";
+    }
+  }
+
+  if (
+    appReceiverNames === state.appReceiverNames &&
+    dollarAppShadowed === state.dollarAppShadowed &&
+    transactionAppName === state.transactionAppName
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    appReceiverNames,
+    dollarAppShadowed,
+    transactionAppName,
+  };
+}
+
 function collectTransactionAppDiagnostics(projectIndex, scriptText, options = {}) {
   const sourceText = String(scriptText || "");
   if (!sourceText || sourceText.indexOf("runInTransaction") === -1 || sourceText.indexOf("$app") === -1) {
@@ -2338,6 +2392,17 @@ function collectTransactionAppDiagnostics(projectIndex, scriptText, options = {}
   const diagnostics = [];
 
   const visit = (node, state) => {
+    if (ts.isSourceFile(node) || ts.isBlock(node)) {
+      const scopedState = applyTransactionLexicalShadowing(
+        state,
+        collectStatementListLexicalDeclarationNames(node.statements)
+      );
+      for (const statement of node.statements || []) {
+        visit(statement, scopedState);
+      }
+      return;
+    }
+
     if (ts.isFunctionLike(node)) {
       const parameterNames = getFunctionParameterNames(node);
       const callbackAppName = getRunInTransactionCallbackAppName(node, state);
