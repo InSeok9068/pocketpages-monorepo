@@ -3,15 +3,15 @@
 }
 
 :root {
-  --bg: #f4f1eb;
-  --surface: #fffdfa;
-  --surface-muted: #efebe3;
-  --line: #ded6c9;
-  --text: #24211d;
-  --muted: #70695f;
-  --accent: #276a5e;
-  --accent-strong: #17483f;
-  --accent-soft: #dcebe6;
+  --bg: #f3efe7;
+  --surface: #fffdf8;
+  --surface-muted: #ebe5dc;
+  --line: #d2c7b8;
+  --text: #211f1b;
+  --muted: #655e55;
+  --accent: #247064;
+  --accent-strong: #12483f;
+  --accent-soft: #d7ebe5;
   --danger: #a63f35;
   --nav-height: 72px;
   --shadow: 0 18px 45px rgba(46, 37, 25, 0.14);
