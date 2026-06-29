@@ -34,15 +34,15 @@ jobs:
 
       - name: Restore PHIO deploy key
         env:
-          PHIO_DEPLOY_KEY: ${{ secrets.PHIO_DEPLOY_KEY }}
+          PHIO_DEPLOY_KEY_B64: ${{ secrets.PHIO_DEPLOY_KEY_B64 }}
         run: |
-          if [ -z "$PHIO_DEPLOY_KEY" ]; then
-            echo "Missing GitHub secret: PHIO_DEPLOY_KEY"
+          if [ -z "$PHIO_DEPLOY_KEY_B64" ]; then
+            echo "Missing GitHub secret: PHIO_DEPLOY_KEY_B64"
             exit 1
           fi
 
           mkdir -p "$PHIO_HOME"
-          printf '%s\n' "$PHIO_DEPLOY_KEY" | sed 's/\r$//' > "$PHIO_HOME/phio_deploy_ed25519"
+          printf '%s' "$PHIO_DEPLOY_KEY_B64" | base64 -d > "$PHIO_HOME/phio_deploy_ed25519"
           chmod 600 "$PHIO_HOME/phio_deploy_ed25519"
           ssh-keygen -y -f "$PHIO_HOME/phio_deploy_ed25519" > "$PHIO_HOME/phio_deploy_ed25519.pub"
 
