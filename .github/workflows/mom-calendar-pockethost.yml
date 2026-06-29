@@ -32,6 +32,10 @@ jobs:
       - name: Install PHIO
         run: npm i -g tsx phio@0.4.0
 
+      - name: Install Mom Calendar runtime dependencies
+        working-directory: apps/mom-calendar
+        run: npm ci --omit=dev
+
       - name: Restore PHIO deploy key
         env:
           PHIO_DEPLOY_KEY_B64: ${{ secrets.PHIO_DEPLOY_KEY_B64 }}
@@ -53,3 +57,21 @@ jobs:
       - name: Deploy to PocketHost
         working-directory: apps/mom-calendar
         run: phio deploy
+
+      - name: Upload runtime node_modules
+        working-directory: apps/mom-calendar
+        run: |
+          cat > "$RUNNER_TEMP/phio-node-modules.sftp" <<EOF
+          cd $PHIO_INSTANCE_NAME
+          -mkdir node_modules
+          put -r node_modules
+          put pb_hooks/pocketpages.pb.js pb_hooks/pocketpages.pb.js
+          bye
+          EOF
+
+          sftp \
+            -o StrictHostKeyChecking=no \
+            -i "$PHIO_HOME/phio_deploy_ed25519" \
+            -P 2222 \
+            -b "$RUNNER_TEMP/phio-node-modules.sftp" \
+            "$PHIO_USERNAME@ftp.pockethost.io"

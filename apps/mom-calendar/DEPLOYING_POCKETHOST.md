@@ -56,6 +56,8 @@ git push origin release/mom-calendar
 
 위 명령을 실행하면 클립보드에 들어간 값을 그대로 GitHub secret `PHIO_DEPLOY_KEY_B64`에 붙여넣으면 됩니다. Actions가 실행될 때 `/tmp/phio/phio_deploy_ed25519`로 복원하고, public key는 `ssh-keygen`으로 다시 생성합니다.
 
+PHIO는 기본값으로 `node_modules`를 제외합니다. PocketPages는 서버에서 `require('pocketpages')`를 실행하므로 GitHub Actions workflow는 `npm ci --omit=dev`로 런타임 의존성을 설치한 뒤 SFTP로 `node_modules`를 별도 업로드합니다.
+
 ## 주의
 
 - 루트 디렉터리에서 `phio deploy`를 실행하지 않습니다. 모노레포 전체가 기준이 될 수 있습니다.
