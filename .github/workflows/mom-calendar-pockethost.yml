@@ -24,6 +24,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare commit message
+        id: prep_commit
+        shell: bash
+        run: |
+          {
+            echo "commit_message<<EOF"
+            git log -1 --pretty=%B | head -n 1 | cut -c -200
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -75,3 +85,33 @@ jobs:
             -P 2222 \
             -b "$RUNNER_TEMP/phio-node-modules.sftp" \
             "$PHIO_USERNAME@ftp.pockethost.io"
+
+      - name: Send Deploy Success
+        uses: appleboy/telegram-action@master
+        if: success()
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            ✅ **Deploy Success**
+            *Branch:* `${{ github.ref_name }}`
+            *Service:* `mom-calendar`
+            *PocketHost:* `${{ secrets.PHIO_INSTANCE_NAME }}`
+            *Commit:* `${{ steps.prep_commit.outputs.commit_message }}`
+            [View Commit](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+
+      - name: Send Deploy Failure
+        uses: appleboy/telegram-action@master
+        if: failure()
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            ❌ **Deploy Failed**
+            *Branch:* `${{ github.ref_name }}`
+            *Service:* `mom-calendar`
+            *PocketHost:* `${{ secrets.PHIO_INSTANCE_NAME }}`
+            *Commit:* `${{ steps.prep_commit.outputs.commit_message }}`
+            [View Logs](https://github.com/${{ github.repository }}/actions)
