@@ -4,7 +4,9 @@
 </script>
 
 <div class="app-shell">
-  <section class="summary-strip" aria-label="이번 달 요약">
+  <section
+    class="summary-strip"
+    aria-label="이번 달 요약">
     <article class="summary-item">
       <span class="summary-label">근무일</span>
       <strong id="summary-days">0일</strong>
@@ -19,7 +21,9 @@
     </article>
   </section>
 
-  <section class="calendar-panel" aria-label="근무 달력">
+  <section
+    class="calendar-panel"
+    aria-label="근무 달력">
     <div id="calendar"></div>
   </section>
 </div>
@@ -34,7 +38,9 @@
   class="bottom-sheet"
   aria-label="월급 계산"
   hidden>
-  <div class="sheet-handle" aria-hidden="true"></div>
+  <div
+    class="sheet-handle"
+    aria-hidden="true"></div>
   <div class="panel-heading">
     <h2>월급 계산</h2>
     <button
@@ -102,7 +108,9 @@
   class="bottom-sheet"
   aria-label="월 선택"
   hidden>
-  <div class="sheet-handle" aria-hidden="true"></div>
+  <div
+    class="sheet-handle"
+    aria-hidden="true"></div>
   <div class="panel-heading">
     <h2>월 선택</h2>
     <button
@@ -133,18 +141,66 @@
   <div
     id="month-option-list"
     class="month-option-list">
-    <button type="button" data-month="1">1월</button>
-    <button type="button" data-month="2">2월</button>
-    <button type="button" data-month="3">3월</button>
-    <button type="button" data-month="4">4월</button>
-    <button type="button" data-month="5">5월</button>
-    <button type="button" data-month="6">6월</button>
-    <button type="button" data-month="7">7월</button>
-    <button type="button" data-month="8">8월</button>
-    <button type="button" data-month="9">9월</button>
-    <button type="button" data-month="10">10월</button>
-    <button type="button" data-month="11">11월</button>
-    <button type="button" data-month="12">12월</button>
+    <button
+      type="button"
+      data-month="1">
+      1월
+    </button>
+    <button
+      type="button"
+      data-month="2">
+      2월
+    </button>
+    <button
+      type="button"
+      data-month="3">
+      3월
+    </button>
+    <button
+      type="button"
+      data-month="4">
+      4월
+    </button>
+    <button
+      type="button"
+      data-month="5">
+      5월
+    </button>
+    <button
+      type="button"
+      data-month="6">
+      6월
+    </button>
+    <button
+      type="button"
+      data-month="7">
+      7월
+    </button>
+    <button
+      type="button"
+      data-month="8">
+      8월
+    </button>
+    <button
+      type="button"
+      data-month="9">
+      9월
+    </button>
+    <button
+      type="button"
+      data-month="10">
+      10월
+    </button>
+    <button
+      type="button"
+      data-month="11">
+      11월
+    </button>
+    <button
+      type="button"
+      data-month="12">
+      12월
+    </button>
   </div>
 </aside>
 
@@ -153,7 +209,9 @@
   class="bottom-sheet"
   aria-label="근무지 관리"
   hidden>
-  <div class="sheet-handle" aria-hidden="true"></div>
+  <div
+    class="sheet-handle"
+    aria-hidden="true"></div>
   <div class="panel-heading">
     <h2>근무지</h2>
     <div class="panel-actions">
@@ -173,8 +231,12 @@
     </div>
   </div>
 
-  <form id="workplace-form" class="stacked-form">
-    <input type="hidden" id="workplace-id" />
+  <form
+    id="workplace-form"
+    class="stacked-form">
+    <input
+      type="hidden"
+      id="workplace-id" />
 
     <label>
       <span>근무한 곳</span>
@@ -218,13 +280,21 @@
       </label>
     </div>
 
-    <button class="primary-button" type="submit">근무지 저장</button>
+    <button
+      class="primary-button"
+      type="submit">
+      근무지 저장
+    </button>
   </form>
 
-  <div id="workplace-list" class="workplace-list"></div>
+  <div
+    id="workplace-list"
+    class="workplace-list"></div>
 </aside>
 
-<nav class="bottom-nav" aria-label="하단 메뉴">
+<nav
+  class="bottom-nav"
+  aria-label="하단 메뉴">
   <button
     class="bottom-nav-button is-active"
     type="button"
@@ -236,7 +306,12 @@
       focusable="false">
       <path d="M8 2v4" />
       <path d="M16 2v4" />
-      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <rect
+        x="3"
+        y="5"
+        width="18"
+        height="16"
+        rx="2" />
       <path d="M3 10h18" />
       <path d="M8 14h.01" />
       <path d="M12 14h.01" />
@@ -255,7 +330,12 @@
       viewBox="0 0 24 24"
       aria-hidden="true"
       focusable="false">
-      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <rect
+        x="4"
+        y="2"
+        width="16"
+        height="20"
+        rx="2" />
       <path d="M8 6h8" />
       <path d="M8 10h8" />
       <path d="M8 14h.01" />
@@ -277,27 +357,45 @@
       aria-hidden="true"
       focusable="false">
       <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 0 1 16 0Z" />
-      <circle cx="12" cy="10" r="3" />
+      <circle
+        cx="12"
+        cy="10"
+        r="3" />
     </svg>
     근무지
   </button>
 </nav>
 
-<dialog id="worklog-dialog" class="worklog-dialog">
-  <form id="worklog-form" method="dialog" class="dialog-card">
+<dialog
+  id="worklog-dialog"
+  class="worklog-dialog">
+  <form
+    id="worklog-form"
+    method="dialog"
+    class="dialog-card">
     <div class="dialog-heading">
       <div>
         <span class="summary-label">근무 기록</span>
         <h2 id="worklog-date-label">날짜</h2>
       </div>
-      <button class="icon-button" type="button" id="close-worklog-button" aria-label="닫기">×</button>
+      <button
+        class="icon-button"
+        type="button"
+        id="close-worklog-button"
+        aria-label="닫기">
+        ×
+      </button>
     </div>
 
-    <input type="hidden" id="worklog-date" />
+    <input
+      type="hidden"
+      id="worklog-date" />
 
     <label>
       <span>근무지</span>
-      <select id="worklog-workplace" required></select>
+      <select
+        id="worklog-workplace"
+        required></select>
     </label>
 
     <div class="worklog-detail-grid">
@@ -313,14 +411,25 @@
       </label>
 
       <label class="check-card worklog-meal-card">
-        <input id="worklog-meal-allowance-paid" type="checkbox" />
+        <input
+          id="worklog-meal-allowance-paid"
+          type="checkbox" />
         <span>식대 받음</span>
       </label>
     </div>
 
     <div class="dialog-actions">
-      <button class="danger-button" type="button" id="delete-worklog-button">삭제</button>
-      <button class="primary-button" type="submit">저장</button>
+      <button
+        class="danger-button"
+        type="button"
+        id="delete-worklog-button">
+        삭제
+      </button>
+      <button
+        class="primary-button"
+        type="submit">
+        저장
+      </button>
     </div>
   </form>
 </dialog>

@@ -24,7 +24,7 @@
     system-ui,
     -apple-system,
     BlinkMacSystemFont,
-    "Segoe UI",
+    'Segoe UI',
     sans-serif;
 }
 
@@ -38,9 +38,7 @@ body {
 }
 
 html {
-  background:
-    linear-gradient(180deg, rgba(255, 244, 223, 0.68), rgba(238, 245, 239, 0) 280px),
-    var(--bg);
+  background: linear-gradient(180deg, rgba(255, 244, 223, 0.68), rgba(238, 245, 239, 0) 280px), var(--bg);
 }
 
 body {

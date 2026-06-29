@@ -1,4 +1,4 @@
-(function () {
+;(function () {
   const DB_NAME = 'mom-calendar'
   const DB_VERSION = 1
   const WORKPLACES = 'workplaces'

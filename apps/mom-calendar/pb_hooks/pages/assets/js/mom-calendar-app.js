@@ -1,4 +1,4 @@
-(function () {
+;(function () {
   const db = window.MomCalendarDb
   const FullCalendar = window.FullCalendar
 
@@ -174,7 +174,6 @@
     if (sheetName === 'month') {
       syncMonthPickerWithCalendar(elements)
     }
-
   }
 
   /**
@@ -298,8 +297,7 @@
     elements.salaryGrossPay.textContent = formatCurrency(grossPay)
     elements.salaryTaxAmount.textContent = formatCurrency(taxAmount)
     elements.salaryNetPay.textContent = formatCurrency(netPay)
-    elements.salaryFormula.textContent =
-      '세전 ' + formatCurrency(grossPay) + ' - 원천세 ' + formatCurrency(taxAmount) + ' = ' + formatCurrency(netPay)
+    elements.salaryFormula.textContent = '세전 ' + formatCurrency(grossPay) + ' - 원천세 ' + formatCurrency(taxAmount) + ' = ' + formatCurrency(netPay)
   }
 
   /**
@@ -345,13 +343,7 @@
 
       const meta = document.createElement('div')
       meta.className = 'workplace-meta'
-      meta.textContent =
-        '일당 ' +
-        formatCurrency(workplace.dailyPay) +
-        ' · 야근 ' +
-        formatCurrency(workplace.overtimeHourlyPay) +
-        '/h · 식대 ' +
-        formatCurrency(workplace.mealAllowance)
+      meta.textContent = '일당 ' + formatCurrency(workplace.dailyPay) + ' · 야근 ' + formatCurrency(workplace.overtimeHourlyPay) + '/h · 식대 ' + formatCurrency(workplace.mealAllowance)
 
       const actions = document.createElement('div')
       actions.className = 'workplace-actions'
@@ -515,7 +507,7 @@
       state.logsByDate = new Map(
         results[1].map(function (log) {
           return [log.date, log]
-        }),
+        })
       )
 
       renderWorkplaceSelect(elements)
@@ -756,7 +748,7 @@
         state.touchMoved = false
         state.touchStartY = event.touches[0].clientY
       },
-      { passive: true },
+      { passive: true }
     )
 
     elements.calendar.addEventListener(
@@ -768,7 +760,7 @@
           state.touchMoved = true
         }
       },
-      { passive: true },
+      { passive: true }
     )
   }
 
