@@ -87,7 +87,7 @@ main {
   display: block;
   margin: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0;
 }
@@ -95,16 +95,16 @@ main {
 .summary-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
   flex: 0 0 auto;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .summary-item {
   position: relative;
   min-width: 0;
-  min-height: 70px;
-  padding: 12px 10px;
+  min-height: 58px;
+  padding: 8px 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.94);
@@ -113,10 +113,10 @@ main {
 
 .summary-item strong {
   display: block;
-  margin-top: 6px;
+  margin-top: 3px;
   overflow: hidden;
   color: var(--text);
-  font-size: 21px;
+  font-size: 18px;
   font-weight: 900;
   line-height: 1.15;
   text-overflow: ellipsis;
@@ -809,16 +809,16 @@ button:focus-visible,
 
   .summary-strip {
     gap: 6px;
-    margin-bottom: 8px;
+    margin-bottom: 7px;
   }
 
   .summary-item {
-    min-height: 66px;
-    padding: 10px 8px;
+    min-height: 54px;
+    padding: 7px 8px;
   }
 
   .summary-item strong {
-    font-size: 18px;
+    font-size: 17px;
   }
 
   .field-grid {
