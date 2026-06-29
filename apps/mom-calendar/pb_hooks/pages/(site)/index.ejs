@@ -185,7 +185,7 @@
         required />
     </label>
 
-    <div class="field-grid">
+    <div class="field-grid workplace-pay-grid">
       <label>
         <span>일당</span>
         <input
@@ -197,7 +197,7 @@
           value="0" />
       </label>
       <label>
-        <span>야근 시급</span>
+        <span>야간시급</span>
         <input
           id="overtime-hourly-pay"
           type="number"
@@ -206,27 +206,21 @@
           inputmode="numeric"
           value="0" />
       </label>
+      <label>
+        <span>식대</span>
+        <input
+          id="meal-allowance"
+          type="number"
+          min="0"
+          step="500"
+          inputmode="numeric"
+          value="0" />
+      </label>
     </div>
-
-    <label>
-      <span>식대</span>
-      <input
-        id="meal-allowance"
-        type="number"
-        min="0"
-        step="500"
-        inputmode="numeric"
-        value="0" />
-    </label>
 
     <label class="check-card">
       <input id="default-meal-allowance-paid" type="checkbox" />
       <span>기본 식대 받음</span>
-    </label>
-
-    <label>
-      <span>메모</span>
-      <textarea id="workplace-memo" rows="2" placeholder="계산 기준이나 특이사항"></textarea>
     </label>
 
     <button class="primary-button" type="submit">근무지 저장</button>
@@ -292,11 +286,6 @@
       <span>식대 받음</span>
     </label>
 
-    <label>
-      <span>메모</span>
-      <textarea id="worklog-memo" rows="3" placeholder="그날 기록"></textarea>
-    </label>
-
     <div class="dialog-actions">
       <button class="danger-button" type="button" id="delete-worklog-button">삭제</button>
       <button class="primary-button" type="submit">저장</button>
@@ -306,4 +295,4 @@
 
 <script src="<%= asset('/assets/vendor/fullcalendar-6.1.21.global.min.js') %>"></script>
 <script src="<%= asset('/assets/js/mom-calendar-db.js') %>"></script>
-<script src="<%= asset('/assets/js/mom-calendar-app.js') %>?v=mobile-8"></script>
+<script src="<%= asset('/assets/js/mom-calendar-app.js') %>?v=mobile-9"></script>

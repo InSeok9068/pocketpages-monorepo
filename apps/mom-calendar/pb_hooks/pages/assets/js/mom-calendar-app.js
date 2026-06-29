@@ -7,7 +7,6 @@
     workplaces: [],
     logsByDate: new Map(),
     monthPickerYear: new Date().getFullYear(),
-    missingWorkplaceAlertedAt: 0,
   }
   const FREELANCER_TAX_RATE = 0.033
 
@@ -112,7 +111,6 @@
       overtimeHourlyPay: document.getElementById('overtime-hourly-pay'),
       mealAllowance: document.getElementById('meal-allowance'),
       defaultMealAllowancePaid: document.getElementById('default-meal-allowance-paid'),
-      workplaceMemo: document.getElementById('workplace-memo'),
       resetWorkplaceButton: document.getElementById('reset-workplace-button'),
       workplaceList: document.getElementById('workplace-list'),
       worklogDialog: document.getElementById('worklog-dialog'),
@@ -122,7 +120,6 @@
       worklogWorkplace: document.getElementById('worklog-workplace'),
       worklogOvertimeHours: document.getElementById('worklog-overtime-hours'),
       worklogMealAllowancePaid: document.getElementById('worklog-meal-allowance-paid'),
-      worklogMemo: document.getElementById('worklog-memo'),
       closeWorklogButton: document.getElementById('close-worklog-button'),
       deleteWorklogButton: document.getElementById('delete-worklog-button'),
     }
@@ -389,7 +386,6 @@
     elements.overtimeHourlyPay.value = '0'
     elements.mealAllowance.value = '0'
     elements.defaultMealAllowancePaid.checked = false
-    elements.workplaceMemo.value = ''
     elements.workplaceName.focus()
   }
 
@@ -405,7 +401,6 @@
     elements.overtimeHourlyPay.value = String(workplace.overtimeHourlyPay)
     elements.mealAllowance.value = String(workplace.mealAllowance)
     elements.defaultMealAllowancePaid.checked = workplace.defaultMealAllowancePaid
-    elements.workplaceMemo.value = workplace.memo || ''
     elements.workplaceName.focus()
   }
 
@@ -467,11 +462,7 @@
    */
   function openWorkLogDialog(elements, date) {
     if (state.workplaces.length === 0) {
-      const now = Date.now()
-      if (now - state.missingWorkplaceAlertedAt > 600) {
-        state.missingWorkplaceAlertedAt = now
-        window.alert('근무지를 먼저 입력해주세요.')
-      }
+      window.alert('근무지를 먼저 입력해주세요.')
       return
     }
 
@@ -488,7 +479,6 @@
     elements.worklogWorkplace.value = workplace.id
     elements.worklogOvertimeHours.value = existingLog ? String(existingLog.overtimeHours) : '0'
     elements.worklogMealAllowancePaid.checked = existingLog ? existingLog.mealAllowancePaid : workplace.defaultMealAllowancePaid
-    elements.worklogMemo.value = existingLog ? existingLog.memo || '' : ''
     elements.deleteWorklogButton.hidden = !existingLog
     elements.worklogDialog.showModal()
   }
@@ -533,7 +523,7 @@
         overtimeHourlyPay: toNumber(elements.overtimeHourlyPay.value),
         mealAllowance: toNumber(elements.mealAllowance.value),
         defaultMealAllowancePaid: elements.defaultMealAllowancePaid.checked,
-        memo: elements.workplaceMemo.value.trim(),
+        memo: existing ? existing.memo || '' : '',
         createdAt: existing ? existing.createdAt : now,
         updatedAt: now,
       }
@@ -717,7 +707,7 @@
         mealAllowanceSnapshot: workplace.mealAllowance,
         overtimeHours: toNumber(elements.worklogOvertimeHours.value),
         mealAllowancePaid: elements.worklogMealAllowancePaid.checked,
-        memo: elements.worklogMemo.value.trim(),
+        memo: existingLog ? existingLog.memo || '' : '',
         createdAt: existingLog ? existingLog.createdAt : now,
         updatedAt: now,
       }
@@ -726,24 +716,6 @@
         elements.worklogDialog.close()
         reloadState(elements)
       })
-    })
-  }
-
-  /**
-   * 모바일 터치에서 날짜 셀 클릭을 보강한다.
-   * @param {Record<string, HTMLElement>} elements
-   */
-  function bindCalendarFallback(elements) {
-    elements.calendar.addEventListener('click', function (event) {
-      if (event.target.closest('.fc-event')) return
-
-      const dateCell = event.target.closest('[data-date]')
-      if (!dateCell || !elements.calendar.contains(dateCell)) return
-
-      const date = dateCell.getAttribute('data-date')
-      if (date) {
-        openWorkLogDialog(elements, date)
-      }
     })
   }
 
@@ -790,7 +762,6 @@
     bindMonthPicker(elements)
     bindWorkplaceForm(elements)
     bindWorkLogForm(elements)
-    bindCalendarFallback(elements)
     initCalendar(elements)
     reloadState(elements)
   })

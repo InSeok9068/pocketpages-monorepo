@@ -194,6 +194,27 @@ textarea:focus {
   gap: 10px;
 }
 
+.workplace-pay-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.workplace-pay-grid label {
+  min-width: 0;
+}
+
+.workplace-pay-grid input {
+  min-height: 40px;
+  padding: 8px 7px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.workplace-pay-grid label span {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .check-card {
   display: flex;
   align-items: center;
@@ -666,6 +687,10 @@ textarea:focus {
 
   .field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .workplace-pay-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   #calendar {
