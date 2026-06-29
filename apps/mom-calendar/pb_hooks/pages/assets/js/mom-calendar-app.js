@@ -400,14 +400,42 @@
    */
   function buildCalendarEvents() {
     return Array.from(state.logsByDate.values()).map(function (log) {
-      const overtimeText = log.overtimeHours > 0 ? ' · +' + log.overtimeHours + 'h' : ''
       return {
         id: log.date,
-        title: log.workplaceNameSnapshot + overtimeText,
+        title: log.workplaceNameSnapshot,
         start: log.date,
         allDay: true,
+        extendedProps: {
+          overtimeHours: log.overtimeHours,
+          workplaceName: log.workplaceNameSnapshot,
+        },
       }
     })
+  }
+
+  /**
+   * 근무 기록 이벤트 내용을 그린다.
+   * @param {any} info FullCalendar 이벤트 정보
+   * @returns {{domNodes: HTMLElement[]}}
+   */
+  function renderWorkLogEvent(info) {
+    const content = document.createElement('div')
+    const title = document.createElement('span')
+    const overtimeHours = Number(info.event.extendedProps.overtimeHours || 0)
+
+    content.className = 'worklog-event-content'
+    title.className = 'worklog-event-title'
+    title.textContent = info.event.extendedProps.workplaceName || info.event.title
+    content.appendChild(title)
+
+    if (overtimeHours > 0) {
+      const overtime = document.createElement('span')
+      overtime.className = 'worklog-event-overtime'
+      overtime.textContent = '+' + overtimeHours + 'h'
+      content.appendChild(overtime)
+    }
+
+    return { domNodes: [content] }
   }
 
   /**
@@ -548,6 +576,8 @@
       }
 
       if (button.dataset.action === 'delete') {
+        if (!window.confirm('근무지를 삭제하시겠습니까?')) return
+
         db.deleteWorkplace(workplace.id).then(function () {
           reloadState(elements)
         })
@@ -737,6 +767,7 @@
       eventClick: function (info) {
         openWorkLogDialog(elements, info.event.startStr)
       },
+      eventContent: renderWorkLogEvent,
       datesSet: function () {
         renderMonthSummary()
         enhanceCalendarTitle()
