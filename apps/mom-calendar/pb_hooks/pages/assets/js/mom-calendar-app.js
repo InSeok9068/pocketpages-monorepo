@@ -379,6 +379,11 @@
     const select = elements.worklogWorkplace
     select.innerHTML = ''
 
+    const emptyOption = document.createElement('option')
+    emptyOption.value = ''
+    emptyOption.textContent = '선택'
+    select.appendChild(emptyOption)
+
     state.workplaces.forEach(function (workplace) {
       const option = document.createElement('option')
       option.value = workplace.id
@@ -763,18 +768,17 @@
     }
 
     const existingLog = state.logsByDate.get(date)
-    const firstWorkplace = state.workplaces[0]
     const workplace = existingLog
       ? state.workplaces.find(function (item) {
           return item.id === existingLog.workplaceId
-        }) || firstWorkplace
-      : firstWorkplace
+        }) || null
+      : null
 
     elements.worklogDate.value = date
     elements.worklogDateLabel.textContent = formatDateLabel(date)
-    elements.worklogWorkplace.value = workplace.id
+    elements.worklogWorkplace.value = workplace ? workplace.id : ''
     elements.worklogOvertimeHours.value = existingLog ? String(existingLog.overtimeHours) : '0'
-    elements.worklogMealAllowancePaid.checked = existingLog ? existingLog.mealAllowancePaid : workplace.mealAllowance > 0
+    elements.worklogMealAllowancePaid.checked = existingLog ? existingLog.mealAllowancePaid : false
     elements.deleteWorklogButton.hidden = !existingLog
     elements.worklogDialog.showModal()
   }
@@ -993,7 +997,12 @@
       const workplace = state.workplaces.find(function (item) {
         return item.id === elements.worklogWorkplace.value
       })
-      if (!date || !workplace) return
+      if (!date) return
+
+      if (!workplace) {
+        window.alert('근무지를 선택해주세요.')
+        return
+      }
 
       const existingLog = state.logsByDate.get(date)
       const now = nowIso()
