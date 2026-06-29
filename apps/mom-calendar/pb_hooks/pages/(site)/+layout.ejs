@@ -28,5 +28,12 @@
 
   <body>
     <main><%- slots.body || slot %></main>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        })
+      }
+    </script>
   </body>
 </html>
