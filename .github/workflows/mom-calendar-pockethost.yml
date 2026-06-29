@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      PHIO_HOME: ${{ runner.temp }}/phio
+      PHIO_HOME: /tmp/phio
       PHIO_INSTANCE_NAME: ${{ secrets.PHIO_INSTANCE_NAME }}
       PHIO_PASSWORD: ${{ secrets.PHIO_PASSWORD }}
       PHIO_USERNAME: ${{ secrets.PHIO_USERNAME }}
