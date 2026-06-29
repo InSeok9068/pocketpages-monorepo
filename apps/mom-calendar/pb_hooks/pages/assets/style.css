@@ -530,11 +530,11 @@ textarea:focus {
 
 .fc {
   --fc-border-color: var(--line);
-  --fc-button-bg-color: var(--accent);
-  --fc-button-border-color: var(--accent);
-  --fc-button-hover-bg-color: var(--accent-strong);
-  --fc-button-hover-border-color: var(--accent-strong);
-  --fc-button-active-bg-color: var(--accent-strong);
+  --fc-button-bg-color: var(--accent-soft);
+  --fc-button-border-color: rgba(36, 112, 100, 0.2);
+  --fc-button-hover-bg-color: #c5dfd8;
+  --fc-button-hover-border-color: rgba(36, 112, 100, 0.34);
+  --fc-button-active-bg-color: #b8d8d0;
   --fc-today-bg-color: rgba(39, 106, 94, 0.13);
   color: var(--text);
 }
@@ -563,9 +563,48 @@ textarea:focus {
 
 .fc .fc-button {
   min-height: 36px;
-  border-radius: 7px;
-  padding: 0 10px;
+  border-radius: 8px;
+  padding: 0 11px;
+  color: var(--accent-strong);
   font-weight: 850;
+  box-shadow: none;
+}
+
+.fc .fc-button-primary:not(:disabled) {
+  color: var(--accent-strong);
+}
+
+.fc .fc-button-primary:not(:disabled):focus,
+.fc .fc-button-primary:not(:disabled):active,
+.fc .fc-button-primary:not(:disabled).fc-button-active {
+  color: var(--accent-strong);
+  box-shadow: 0 0 0 3px rgba(36, 112, 100, 0.14);
+}
+
+.fc .fc-button-group {
+  gap: 4px;
+}
+
+.fc .fc-button-group > .fc-button {
+  border-radius: 8px !important;
+}
+
+.fc .fc-prev-button,
+.fc .fc-next-button {
+  width: 38px;
+  padding: 0;
+}
+
+.fc .fc-today-button {
+  min-width: 48px;
+  color: var(--muted) !important;
+  background: var(--surface-muted) !important;
+  border-color: var(--line) !important;
+}
+
+.fc .fc-today-button:not(:disabled):hover {
+  color: var(--accent-strong) !important;
+  background: var(--accent-soft) !important;
 }
 
 .fc .fc-daygrid-day {
@@ -647,13 +686,16 @@ textarea:focus {
   }
 
   .fc .fc-toolbar {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 6px;
   }
 
   .fc .fc-toolbar-chunk {
     display: flex;
     justify-content: center;
+    min-width: 0;
   }
 
   .fc .fc-toolbar-chunk:first-child {
@@ -662,6 +704,18 @@ textarea:focus {
 
   .fc .fc-toolbar-chunk:nth-child(2) {
     order: 1;
+  }
+
+  .fc .fc-toolbar-title {
+    min-height: 34px;
+    padding: 0 4px;
+    font-size: 18px;
+    white-space: nowrap;
+  }
+
+  .fc .fc-button {
+    min-height: 34px;
+    padding: 0 8px;
   }
 }
 

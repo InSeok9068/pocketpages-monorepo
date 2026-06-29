@@ -7,6 +7,7 @@
     workplaces: [],
     logsByDate: new Map(),
     monthPickerYear: new Date().getFullYear(),
+    missingWorkplaceAlertedAt: 0,
   }
   const FREELANCER_TAX_RATE = 0.033
 
@@ -466,7 +467,11 @@
    */
   function openWorkLogDialog(elements, date) {
     if (state.workplaces.length === 0) {
-      openSheet(elements, 'workplace')
+      const now = Date.now()
+      if (now - state.missingWorkplaceAlertedAt > 600) {
+        state.missingWorkplaceAlertedAt = now
+        window.alert('근무지를 먼저 입력해주세요.')
+      }
       return
     }
 
