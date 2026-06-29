@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.ref_name != 'release/mom-calendar'
     runs-on: ubuntu-latest
     permissions:
       contents: read

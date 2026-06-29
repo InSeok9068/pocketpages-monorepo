@@ -1,0 +1,48 @@
+name: Deploy Mom Calendar to PocketHost
+
+on:
+  push:
+    branches:
+      - "release/mom-calendar"
+  workflow_dispatch:
+
+concurrency:
+  group: mom-calendar-pockethost
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      PHIO_HOME: ${{ runner.temp }}/phio
+      PHIO_INSTANCE_NAME: ${{ secrets.PHIO_INSTANCE_NAME }}
+      PHIO_PASSWORD: ${{ secrets.PHIO_PASSWORD }}
+      PHIO_USERNAME: ${{ secrets.PHIO_USERNAME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install PHIO
+        run: npm i -g phio@0.4.0
+
+      - name: Verify Mom Calendar
+        shell: bash
+        run: |
+          ./task.sh lint mom-calendar
+          ./task.sh tsc mom-calendar
+          node --test apps/mom-calendar/__tests__/root-route.test.mjs
+
+      - name: Check PHIO account
+        working-directory: apps/mom-calendar
+        run: phio info
+
+      - name: Deploy to PocketHost
+        working-directory: apps/mom-calendar
+        run: phio deploy
