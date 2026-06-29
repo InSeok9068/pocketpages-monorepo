@@ -1,5 +1,7 @@
 <script server>
   const BACKUP_COLLECTION = 'mom_calendar_backups'
+  const STALE_BACKUP_DAYS = 30
+
   function isValidBackupId(value) {
     return /^[A-Za-z0-9_-]{20,80}$/.test(value)
   }
@@ -10,6 +12,25 @@
     if (!payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) return false
 
     return Array.isArray(payload.data.workplaces) && Array.isArray(payload.data.workLogs)
+  }
+
+  function cleanupStaleBackups(currentBackupId) {
+    const expiresBefore = new Date(Date.now() - STALE_BACKUP_DAYS * 24 * 60 * 60 * 1000).toISOString()
+    const staleRecords = $app.findRecordsByFilter(
+      BACKUP_COLLECTION,
+      'backup_id != {:backupId} && updated < {:expiresBefore}',
+      'updated',
+      20,
+      0,
+      {
+        backupId: currentBackupId,
+        expiresBefore: expiresBefore,
+      }
+    )
+
+    staleRecords.forEach(function (record) {
+      $app.delete(record)
+    })
   }
 
   if (request.method !== 'POST') {
@@ -46,6 +67,12 @@
 
     backupRecord.set('payload', payload)
     $app.save(backupRecord)
+
+    try {
+      cleanupStaleBackups(backupId)
+    } catch (exception) {
+      console.warn('mom-calendar backup cleanup failed', String(exception.message || exception))
+    }
 
     response.json(200, {
       ok: true,
