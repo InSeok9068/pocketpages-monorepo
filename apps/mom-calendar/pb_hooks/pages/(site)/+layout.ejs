@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1" />
+    <title><%= meta('title') %></title>
+    <meta
+      name="description"
+      content="<%= meta('description') %>" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="<%= asset('/assets/favicon.svg') %>" />
+    <link
+      rel="manifest"
+      href="<%= asset('/assets/manifest.webmanifest') %>" />
+    <meta
+      name="theme-color"
+      content="#f4f1eb" />
+    <link
+      rel="stylesheet"
+      href="<%= asset('/assets/style.css') %>" />
+    <script defer src="<%= asset('/assets/vendor/alpine-3.15.11-cdn.min.js') %>"></script>
+    <%- slots.head %>
+  </head>
+
+  <body>
+    <main><%- slots.body || slot %></main>
+  </body>
+</html>

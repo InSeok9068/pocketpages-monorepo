@@ -1,0 +1,13 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M156 118H356C389.137 118 416 144.863 416 178V358C416 391.137 389.137 418 356 418H156C122.863 418 96 391.137 96 358V178C96 144.863 122.863 118 156 118Z" fill="#FFFDF8" />
+  <path d="M156 118H356C389.137 118 416 144.863 416 178V358C416 391.137 389.137 418 356 418H156C122.863 418 96 391.137 96 358V178C96 144.863 122.863 118 156 118Z" stroke="#17483F" stroke-width="28" />
+  <path d="M110 208H402" stroke="#17483F" stroke-width="28" stroke-linecap="round" />
+  <path d="M178 86V144" stroke="#276A5E" stroke-width="32" stroke-linecap="round" />
+  <path d="M334 86V144" stroke="#276A5E" stroke-width="32" stroke-linecap="round" />
+  <rect x="158" y="252" width="54" height="54" rx="12" fill="#DCEBE6" />
+  <rect x="229" y="252" width="54" height="54" rx="12" fill="#DCEBE6" />
+  <rect x="300" y="252" width="54" height="54" rx="12" fill="#DCEBE6" />
+  <rect x="158" y="326" width="54" height="54" rx="12" fill="#DCEBE6" />
+  <rect x="229" y="326" width="54" height="54" rx="12" fill="#276A5E" />
+  <rect x="300" y="326" width="54" height="54" rx="12" fill="#DCEBE6" />
+</svg>
