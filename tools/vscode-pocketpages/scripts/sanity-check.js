@@ -8342,6 +8342,52 @@ module.exports = {
       )
     }
 
+    const originalBoardsIncludeText = fs.readFileSync(fixture.boardsFilePath, 'utf8')
+    const originalBoardsIncludeStats = fs.statSync(fixture.boardsFilePath)
+    const ctimeProbeBoardsText = originalBoardsIncludeText.replace('flashMeta', 'flashNote')
+    if (ctimeProbeBoardsText === originalBoardsIncludeText || ctimeProbeBoardsText.length !== originalBoardsIncludeText.length) {
+      throw new Error('Expected include locals ctime probe to keep the caller file size stable.')
+    }
+    const ctimeProbeStats = {
+      mtimeMs: originalBoardsIncludeStats.mtimeMs,
+      ctimeMs: (typeof originalBoardsIncludeStats.ctimeMs === 'number'
+        ? originalBoardsIncludeStats.ctimeMs
+        : originalBoardsIncludeStats.mtimeMs) + 1,
+      size: originalBoardsIncludeStats.size,
+      isFile() {
+        return true
+      },
+      isDirectory() {
+        return false
+      },
+    }
+    try {
+      writeFile(fixture.boardsFilePath, ctimeProbeBoardsText)
+      includeLocalReadCounts.clear()
+      fineInvalidationService.invalidateManagedFile(fixture.localsTypeCheckFilePath, { type: 'change' })
+      const ctimeProbeBindings = withPatchedStatSync(fixture.boardsFilePath, ctimeProbeStats, () =>
+        fineInvalidationService.projectIndex.getIncludeLocalBindings(fixture.flashAlertFilePath, {
+          readFileText: readIncludeLocalText,
+        })
+      )
+      const ctimeProbeBindingNames = ctimeProbeBindings.map((entry) => entry.name)
+      if (
+        !includeLocalReadCounts.has(normalizeFilePath(fixture.boardsFilePath)) ||
+        !ctimeProbeBindingNames.includes('flashNote') ||
+        ctimeProbeBindingNames.includes('flashMeta')
+      ) {
+        throw new Error(
+          `Expected include locals file cache to use ctimeMs when mtimeMs and size stay stable. Got: ${JSON.stringify({
+            readPaths: [...includeLocalReadCounts.keys()].sort(),
+            bindings: ctimeProbeBindingNames,
+          })}`
+        )
+      }
+    } finally {
+      writeFile(fixture.boardsFilePath, originalBoardsIncludeText)
+      fineInvalidationService.invalidateManagedFile(fixture.boardsFilePath, { type: 'change' })
+    }
+
     fineInvalidationService.getIncludeContractLocals(fixture.flashAlertFilePath)
     fineInvalidationService.getIncludeContractLocals(fixture.typedPanelFilePath)
     if (

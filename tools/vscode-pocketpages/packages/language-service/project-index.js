@@ -3383,7 +3383,7 @@ class PocketPagesProjectIndex {
             const stats = statSyncCached(normalizedEntryFilePath)
             return {
               sourceText: null,
-              identity: `disk:${stats.mtimeMs}:${stats.size}`,
+              identity: `disk:${stats.mtimeMs}:${stats.ctimeMs}:${stats.size}`,
             }
           })()
       const fileCacheKey = `${sourceState.identity}|structure:${this.pagesStructureVersion}`
