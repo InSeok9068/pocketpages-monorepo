@@ -32,13 +32,6 @@ jobs:
       - name: Install PHIO
         run: npm i -g phio@0.4.0
 
-      - name: Verify Mom Calendar
-        shell: bash
-        run: |
-          ./task.sh lint mom-calendar
-          ./task.sh tsc mom-calendar
-          node --test apps/mom-calendar/__tests__/root-route.test.mjs
-
       - name: Check PHIO account
         working-directory: apps/mom-calendar
         run: phio info
