@@ -16,17 +16,10 @@
 
   function cleanupStaleBackups(currentBackupId) {
     const expiresBefore = new Date(Date.now() - STALE_BACKUP_DAYS * 24 * 60 * 60 * 1000).toISOString()
-    const staleRecords = $app.findRecordsByFilter(
-      BACKUP_COLLECTION,
-      'backup_id != {:backupId} && updated < {:expiresBefore}',
-      'updated',
-      20,
-      0,
-      {
-        backupId: currentBackupId,
-        expiresBefore: expiresBefore,
-      }
-    )
+    const staleRecords = $app.findRecordsByFilter(BACKUP_COLLECTION, 'backup_id != {:backupId} && updated < {:expiresBefore}', 'updated', 20, 0, {
+      backupId: currentBackupId,
+      expiresBefore: expiresBefore,
+    })
 
     staleRecords.forEach(function (record) {
       $app.delete(record)
