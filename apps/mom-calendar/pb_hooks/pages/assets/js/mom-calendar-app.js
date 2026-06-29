@@ -15,6 +15,16 @@
   const FREELANCER_TAX_RATE = 0.033
   const TOUCH_SCROLL_THRESHOLD = 8
   const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000
+  const WORKPLACE_COLOR_PALETTE = [
+    { background: '#2f6f66', border: '#285d55', text: '#ffffff' },
+    { background: '#446b8f', border: '#395b7a', text: '#ffffff' },
+    { background: '#7a5d8f', border: '#674e79', text: '#ffffff' },
+    { background: '#8a5d52', border: '#744e45', text: '#ffffff' },
+    { background: '#5f7653', border: '#506445', text: '#ffffff' },
+    { background: '#8a6d35', border: '#725a2d', text: '#ffffff' },
+    { background: '#496c7a', border: '#3e5b67', text: '#ffffff' },
+    { background: '#7d5c6b', border: '#6a4e5b', text: '#ffffff' },
+  ]
 
   /**
    * 숫자 입력값을 정리한다.
@@ -45,6 +55,31 @@
    */
   function createBackupId() {
     return createId('mom')
+  }
+
+  /**
+   * 문자열을 팔레트 인덱스로 바꾼다.
+   * @param {string} value
+   * @returns {number}
+   */
+  function getStableColorIndex(value) {
+    let hash = 0
+    const text = String(value || '')
+
+    for (let index = 0; index < text.length; index += 1) {
+      hash = (hash * 31 + text.charCodeAt(index)) % WORKPLACE_COLOR_PALETTE.length
+    }
+
+    return Math.abs(hash) % WORKPLACE_COLOR_PALETTE.length
+  }
+
+  /**
+   * 근무지별 고정 색상을 가져온다.
+   * @param {string} workplaceKey
+   * @returns {{background: string, border: string, text: string}}
+   */
+  function getWorkplaceColor(workplaceKey) {
+    return WORKPLACE_COLOR_PALETTE[getStableColorIndex(workplaceKey)]
   }
 
   /**
@@ -370,9 +405,11 @@
     }
 
     state.workplaces.forEach(function (workplace) {
+      const color = getWorkplaceColor(workplace.id || workplace.name)
       const card = document.createElement('article')
       card.className = 'workplace-card'
       card.dataset.id = workplace.id
+      card.style.setProperty('--workplace-color', color.background)
 
       const title = document.createElement('strong')
       title.textContent = workplace.name
@@ -431,11 +468,16 @@
    */
   function buildCalendarEvents() {
     return Array.from(state.logsByDate.values()).map(function (log) {
+      const color = getWorkplaceColor(log.workplaceId || log.workplaceNameSnapshot)
+
       return {
         id: log.date,
         title: log.workplaceNameSnapshot,
         start: log.date,
         allDay: true,
+        backgroundColor: color.background,
+        borderColor: color.border,
+        textColor: color.text,
         extendedProps: {
           overtimeHours: log.overtimeHours,
           workplaceName: log.workplaceNameSnapshot,
