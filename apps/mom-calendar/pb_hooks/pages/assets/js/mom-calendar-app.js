@@ -7,8 +7,11 @@
     workplaces: [],
     logsByDate: new Map(),
     monthPickerYear: new Date().getFullYear(),
+    touchMoved: false,
+    touchStartY: 0,
   }
   const FREELANCER_TAX_RATE = 0.033
+  const TOUCH_SCROLL_THRESHOLD = 8
 
   /**
    * 숫자 입력값을 정리한다.
@@ -741,6 +744,46 @@
   }
 
   /**
+   * 터치 스크롤 중 발생한 날짜 클릭을 무시한다.
+   * @param {Record<string, HTMLElement>} elements
+   */
+  function bindCalendarTouchGuard(elements) {
+    elements.calendar.addEventListener(
+      'touchstart',
+      function (event) {
+        if (!event.touches || event.touches.length === 0) return
+
+        state.touchMoved = false
+        state.touchStartY = event.touches[0].clientY
+      },
+      { passive: true },
+    )
+
+    elements.calendar.addEventListener(
+      'touchmove',
+      function (event) {
+        if (!event.touches || event.touches.length === 0) return
+
+        if (Math.abs(event.touches[0].clientY - state.touchStartY) > TOUCH_SCROLL_THRESHOLD) {
+          state.touchMoved = true
+        }
+      },
+      { passive: true },
+    )
+  }
+
+  /**
+   * 터치 스크롤 직후 클릭 여부를 확인한다.
+   * @returns {boolean}
+   */
+  function shouldIgnoreCalendarClick() {
+    if (!state.touchMoved) return false
+
+    state.touchMoved = false
+    return true
+  }
+
+  /**
    * FullCalendar를 시작한다.
    * @param {Record<string, HTMLElement>} elements
    */
@@ -762,9 +805,13 @@
         today: '오늘',
       },
       dateClick: function (info) {
+        if (shouldIgnoreCalendarClick()) return
+
         openWorkLogDialog(elements, info.dateStr)
       },
       eventClick: function (info) {
+        if (shouldIgnoreCalendarClick()) return
+
         openWorkLogDialog(elements, info.event.startStr)
       },
       eventContent: renderWorkLogEvent,
@@ -784,6 +831,7 @@
     bindMonthPicker(elements)
     bindWorkplaceForm(elements)
     bindWorkLogForm(elements)
+    bindCalendarTouchGuard(elements)
     initCalendar(elements)
     reloadState(elements)
   })
