@@ -1,8 +1,10 @@
 ;(function () {
   const DB_NAME = 'mom-calendar'
-  const DB_VERSION = 1
+  const DB_VERSION = 2
   const WORKPLACES = 'workplaces'
   const WORK_LOGS = 'work_logs'
+  const BACKUP_META = 'backup_meta'
+  const BACKUP_META_KEY = 'backup'
 
   let dbPromise
 
@@ -29,6 +31,10 @@
           const workLogs = db.createObjectStore(WORK_LOGS, { keyPath: 'date' })
           workLogs.createIndex('workplaceId', 'workplaceId', { unique: false })
           workLogs.createIndex('updatedAt', 'updatedAt', { unique: false })
+        }
+
+        if (!db.objectStoreNames.contains(BACKUP_META)) {
+          db.createObjectStore(BACKUP_META, { keyPath: 'key' })
         }
       }
 
@@ -136,6 +142,120 @@
   }
 
   /**
+   * 백업 메타 정보를 가져온다.
+   * @returns {Promise<types.BackupMeta | null>}
+   */
+  function getBackupMeta() {
+    return getOne(BACKUP_META, BACKUP_META_KEY).then(function (meta) {
+      if (!meta) return null
+
+      return {
+        backupId: String(meta.backupId || ''),
+        lastBackupAt: String(meta.lastBackupAt || ''),
+        lastRestoreAt: String(meta.lastRestoreAt || ''),
+      }
+    })
+  }
+
+  /**
+   * 백업 메타 정보를 저장한다.
+   * @param {types.BackupMeta} meta
+   * @returns {Promise<void>}
+   */
+  function saveBackupMeta(meta) {
+    return putOne(
+      BACKUP_META,
+      Object.assign(
+        {
+          key: BACKUP_META_KEY,
+        },
+        meta
+      )
+    )
+  }
+
+  /**
+   * 백업 파일 형태로 로컬 데이터를 묶는다.
+   * @returns {Promise<types.MomCalendarBackup>}
+   */
+  function exportBackupData() {
+    return Promise.all([listWorkplaces(), listWorkLogs(), getBackupMeta()]).then(function (results) {
+      const meta = results[2] || {}
+
+      return {
+        app: 'mom-calendar',
+        version: 1,
+        backupId: String(meta.backupId || ''),
+        createdAt: new Date().toISOString(),
+        data: {
+          workplaces: results[0],
+          workLogs: results[1],
+        },
+      }
+    })
+  }
+
+  /**
+   * 복구 가능한 백업 데이터인지 확인한다.
+   * @param {any} backup
+   * @returns {{workplaces: Array<types.Workplace>, workLogs: Array<types.WorkLog>}}
+   */
+  function getValidBackupData(backup) {
+    if (!backup || typeof backup !== 'object' || backup.app !== 'mom-calendar') {
+      throw new Error('백업 데이터가 올바르지 않습니다.')
+    }
+
+    if (!backup.data || typeof backup.data !== 'object') {
+      throw new Error('백업 데이터가 올바르지 않습니다.')
+    }
+
+    if (!Array.isArray(backup.data.workplaces) || !Array.isArray(backup.data.workLogs)) {
+      throw new Error('백업 데이터가 올바르지 않습니다.')
+    }
+
+    return {
+      workplaces: backup.data.workplaces,
+      workLogs: backup.data.workLogs,
+    }
+  }
+
+  /**
+   * 백업 데이터로 로컬 데이터를 교체한다.
+   * @param {types.MomCalendarBackup} backup
+   * @returns {Promise<void>}
+   */
+  function importBackupData(backup) {
+    const data = getValidBackupData(backup)
+
+    return openDatabase().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        const transaction = db.transaction([WORKPLACES, WORK_LOGS], 'readwrite')
+        const workplaceStore = transaction.objectStore(WORKPLACES)
+        const workLogStore = transaction.objectStore(WORK_LOGS)
+
+        workplaceStore.clear()
+        workLogStore.clear()
+
+        data.workplaces.forEach(function (workplace) {
+          workplaceStore.put(workplace)
+        })
+
+        data.workLogs.forEach(function (workLog) {
+          workLogStore.put(workLog)
+        })
+
+        transaction.oncomplete = function () {
+          resolve()
+        }
+
+        transaction.onerror = function () {
+          reject(transaction.error)
+        }
+      })
+    })
+  }
+
+  /**
    * 근무지를 이름순으로 가져온다.
    * @returns {Promise<Array<types.Workplace>>}
    */
@@ -177,5 +297,9 @@
     deleteWorkLog: function (date) {
       return deleteOne(WORK_LOGS, date)
     },
+    getBackupMeta: getBackupMeta,
+    saveBackupMeta: saveBackupMeta,
+    exportBackupData: exportBackupData,
+    importBackupData: importBackupData,
   }
 })()

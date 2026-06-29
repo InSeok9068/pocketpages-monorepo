@@ -9,9 +9,12 @@
     monthPickerYear: new Date().getFullYear(),
     touchMoved: false,
     touchStartY: 0,
+    backupMeta: null,
+    backupRunning: false,
   }
   const FREELANCER_TAX_RATE = 0.033
   const TOUCH_SCROLL_THRESHOLD = 8
+  const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000
 
   /**
    * 숫자 입력값을 정리한다.
@@ -34,6 +37,14 @@
     }
 
     return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2)
+  }
+
+  /**
+   * 백업 복구 코드를 만든다.
+   * @returns {string}
+   */
+  function createBackupId() {
+    return createId('mom')
   }
 
   /**
@@ -73,6 +84,25 @@
    */
   function nowIso() {
     return new Date().toISOString()
+  }
+
+  /**
+   * 일시를 화면 표시용으로 바꾼다.
+   * @param {string} value
+   * @returns {string}
+   */
+  function formatDateTimeLabel(value) {
+    if (!value) return '없음'
+
+    const date = new Date(value)
+    if (isNaN(date.getTime())) return '없음'
+
+    return date.toLocaleString('ko-KR', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
   }
 
   /**
@@ -124,6 +154,12 @@
       worklogMealAllowancePaid: document.getElementById('worklog-meal-allowance-paid'),
       closeWorklogButton: document.getElementById('close-worklog-button'),
       deleteWorklogButton: document.getElementById('delete-worklog-button'),
+      backupStatus: document.getElementById('backup-status'),
+      backupCode: document.getElementById('backup-code'),
+      copyBackupCodeButton: document.getElementById('copy-backup-code-button'),
+      runBackupButton: document.getElementById('run-backup-button'),
+      restoreBackupId: document.getElementById('restore-backup-id'),
+      restoreBackupButton: document.getElementById('restore-backup-button'),
     }
   }
 
@@ -469,6 +505,211 @@
   }
 
   /**
+   * JSON API 요청을 보낸다.
+   * @param {string} url 요청 URL
+   * @param {Record<string, any>} payload 요청 데이터
+   * @returns {Promise<Record<string, any>>}
+   */
+  function requestJson(url, payload) {
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }).then(function (response) {
+      return response.json().then(function (result) {
+        if (!response.ok || !result.ok) {
+          throw new Error(result.message || '요청에 실패했습니다.')
+        }
+
+        return result
+      })
+    })
+  }
+
+  /**
+   * 백업 상태 문구를 표시한다.
+   * @param {Record<string, HTMLElement>} elements
+   * @param {string} message 상태 문구
+   * @param {'default' | 'success' | 'error'} status 상태 종류
+   */
+  function setBackupStatus(elements, message, status) {
+    elements.backupStatus.textContent = message
+    elements.backupStatus.classList.toggle('is-success', status === 'success')
+    elements.backupStatus.classList.toggle('is-error', status === 'error')
+  }
+
+  /**
+   * 백업 메타 정보를 저장하고 화면에 반영한다.
+   * @param {Record<string, HTMLElement>} elements
+   * @param {types.BackupMeta} meta 백업 메타
+   * @returns {Promise<void>}
+   */
+  function saveBackupMeta(elements, meta) {
+    state.backupMeta = meta
+
+    return db.saveBackupMeta(meta).then(function () {
+      renderBackupPanel(elements)
+    })
+  }
+
+  /**
+   * 백업 메타를 준비한다.
+   * @param {Record<string, HTMLElement>} elements
+   * @returns {Promise<types.BackupMeta>}
+   */
+  function ensureBackupMeta(elements) {
+    return db.getBackupMeta().then(function (meta) {
+      if (meta && meta.backupId) {
+        state.backupMeta = meta
+        renderBackupPanel(elements)
+        return meta
+      }
+
+      const nextMeta = {
+        backupId: createBackupId(),
+        lastBackupAt: '',
+        lastRestoreAt: '',
+      }
+
+      return saveBackupMeta(elements, nextMeta).then(function () {
+        return nextMeta
+      })
+    })
+  }
+
+  /**
+   * 백업 영역을 다시 그린다.
+   * @param {Record<string, HTMLElement>} elements
+   */
+  function renderBackupPanel(elements) {
+    const meta = state.backupMeta || {}
+    const lastBackupAt = String(meta.lastBackupAt || '')
+
+    elements.backupCode.value = String(meta.backupId || '')
+
+    if (!navigator.onLine) {
+      setBackupStatus(elements, '오프라인입니다. 온라인에서 앱을 열면 백업을 시도합니다.', 'default')
+      return
+    }
+
+    setBackupStatus(elements, '마지막 백업: ' + formatDateTimeLabel(lastBackupAt), lastBackupAt ? 'success' : 'default')
+  }
+
+  /**
+   * 하루 백업이 필요한지 확인한다.
+   * @param {types.BackupMeta} meta 백업 메타
+   * @returns {boolean}
+   */
+  function shouldRunDailyBackup(meta) {
+    if (!meta || !meta.lastBackupAt) return true
+
+    const lastBackupTime = new Date(meta.lastBackupAt).getTime()
+    return !lastBackupTime || Date.now() - lastBackupTime >= BACKUP_INTERVAL_MS
+  }
+
+  /**
+   * 전체 데이터를 서버에 백업한다.
+   * @param {Record<string, HTMLElement>} elements
+   * @param {boolean} force 강제 실행 여부
+   * @returns {Promise<void>}
+   */
+  function runBackup(elements, force) {
+    if (state.backupRunning) return Promise.resolve()
+
+    return ensureBackupMeta(elements).then(function (meta) {
+      if (!navigator.onLine) {
+        setBackupStatus(elements, '오프라인이라 백업하지 못했습니다.', 'error')
+        return
+      }
+
+      if (!force && !shouldRunDailyBackup(meta)) {
+        renderBackupPanel(elements)
+        return
+      }
+
+      state.backupRunning = true
+      elements.runBackupButton.disabled = true
+      setBackupStatus(elements, '백업 중입니다.', 'default')
+
+      return db
+        .exportBackupData()
+        .then(function (backup) {
+          backup.backupId = meta.backupId
+          return requestJson('/api/backup/save', {
+            backupId: meta.backupId,
+            payload: backup,
+          })
+        })
+        .then(function (result) {
+          return saveBackupMeta(elements, {
+            backupId: meta.backupId,
+            lastBackupAt: String(result.savedAt || nowIso()),
+            lastRestoreAt: String(meta.lastRestoreAt || ''),
+          })
+        })
+        .then(function () {
+          setBackupStatus(elements, '백업 완료: ' + formatDateTimeLabel(state.backupMeta.lastBackupAt), 'success')
+        })
+        .catch(function (exception) {
+          setBackupStatus(elements, String(exception.message || exception) || '백업에 실패했습니다.', 'error')
+        })
+        .then(function () {
+          state.backupRunning = false
+          elements.runBackupButton.disabled = false
+        })
+    })
+  }
+
+  /**
+   * 서버 백업을 로컬 DB로 복구한다.
+   * @param {Record<string, HTMLElement>} elements
+   * @returns {Promise<void>}
+   */
+  function restoreBackup(elements) {
+    const backupId = elements.restoreBackupId.value.trim()
+
+    if (!backupId) {
+      setBackupStatus(elements, '복구 코드를 입력해주세요.', 'error')
+      return Promise.resolve()
+    }
+
+    if (!window.confirm('현재 로컬 데이터를 백업 데이터로 교체하시겠습니까?')) {
+      return Promise.resolve()
+    }
+
+    elements.restoreBackupButton.disabled = true
+    setBackupStatus(elements, '복구 중입니다.', 'default')
+
+    return requestJson('/api/backup/restore', {
+      backupId: backupId,
+    })
+      .then(function (result) {
+        return db.importBackupData(result.payload).then(function () {
+          return saveBackupMeta(elements, {
+            backupId: backupId,
+            lastBackupAt: String(result.updated || ''),
+            lastRestoreAt: nowIso(),
+          })
+        })
+      })
+      .then(function () {
+        elements.restoreBackupId.value = ''
+        return reloadState(elements)
+      })
+      .then(function () {
+        setBackupStatus(elements, '복구 완료: ' + formatDateTimeLabel(state.backupMeta.lastRestoreAt), 'success')
+      })
+      .catch(function (exception) {
+        setBackupStatus(elements, String(exception.message || exception) || '복구에 실패했습니다.', 'error')
+      })
+      .then(function () {
+        elements.restoreBackupButton.disabled = false
+      })
+  }
+
+  /**
    * 근무 기록 팝업을 연다.
    * @param {Record<string, HTMLElement>} elements
    * @param {string} date
@@ -736,6 +977,56 @@
   }
 
   /**
+   * 백업/복구 이벤트를 연결한다.
+   * @param {Record<string, HTMLElement>} elements
+   */
+  function bindBackupPanel(elements) {
+    elements.runBackupButton.addEventListener('click', function () {
+      runBackup(elements, true)
+    })
+
+    elements.restoreBackupButton.addEventListener('click', function () {
+      restoreBackup(elements)
+    })
+
+    elements.copyBackupCodeButton.addEventListener('click', function () {
+      const backupId = elements.backupCode.value
+      if (!backupId) return
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(backupId).then(function () {
+          setBackupStatus(elements, '복구 코드를 복사했습니다.', 'success')
+        })
+        return
+      }
+
+      elements.backupCode.select()
+      document.execCommand('copy')
+      setBackupStatus(elements, '복구 코드를 복사했습니다.', 'success')
+    })
+
+    window.addEventListener('online', function () {
+      renderBackupPanel(elements)
+      runBackup(elements, false)
+    })
+
+    window.addEventListener('offline', function () {
+      renderBackupPanel(elements)
+    })
+  }
+
+  /**
+   * 백업 상태를 준비하고 필요한 경우 하루 1회 백업을 실행한다.
+   * @param {Record<string, HTMLElement>} elements
+   * @returns {Promise<void>}
+   */
+  function initBackup(elements) {
+    return ensureBackupMeta(elements).then(function () {
+      return runBackup(elements, false)
+    })
+  }
+
+  /**
    * 터치 스크롤 중 발생한 날짜 클릭을 무시한다.
    * @param {Record<string, HTMLElement>} elements
    */
@@ -823,8 +1114,11 @@
     bindMonthPicker(elements)
     bindWorkplaceForm(elements)
     bindWorkLogForm(elements)
+    bindBackupPanel(elements)
     bindCalendarTouchGuard(elements)
     initCalendar(elements)
-    reloadState(elements)
+    reloadState(elements).then(function () {
+      initBackup(elements)
+    })
   })
 })()

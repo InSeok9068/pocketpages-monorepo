@@ -362,6 +362,61 @@ button:focus-visible,
   line-height: 1.55;
 }
 
+.backup-panel {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.backup-panel summary {
+  min-height: 48px;
+  padding: 13px 14px;
+  color: var(--accent-strong);
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.backup-content {
+  display: grid;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.backup-status {
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--surface-muted);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.backup-status.is-success {
+  color: var(--accent-strong);
+  border-color: rgba(31, 118, 101, 0.34);
+  background: var(--accent-soft);
+}
+
+.backup-status.is-error {
+  color: var(--danger);
+  border-color: rgba(179, 63, 56, 0.26);
+  background: var(--danger-soft);
+}
+
+.backup-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 78px;
+  gap: 8px;
+}
+
+.backup-code-row .ghost-button {
+  padding: 0 10px;
+}
+
 .bottom-nav {
   position: fixed;
   right: 0;

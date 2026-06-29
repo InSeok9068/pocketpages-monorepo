@@ -290,6 +290,55 @@
   <div
     id="workplace-list"
     class="workplace-list"></div>
+
+  <details class="backup-panel">
+    <summary>백업/복구</summary>
+
+    <div class="backup-content">
+      <div
+        id="backup-status"
+        class="backup-status">
+        백업 상태를 확인하는 중입니다.
+      </div>
+
+      <label>
+        <span>내 복구 코드</span>
+        <div class="backup-code-row">
+          <input
+            id="backup-code"
+            readonly />
+          <button
+            class="ghost-button"
+            type="button"
+            id="copy-backup-code-button">
+            복사
+          </button>
+        </div>
+      </label>
+
+      <button
+        class="primary-button"
+        type="button"
+        id="run-backup-button">
+        지금 백업
+      </button>
+
+      <label>
+        <span>복구할 코드</span>
+        <input
+          id="restore-backup-id"
+          autocomplete="off"
+          placeholder="복구 코드를 입력" />
+      </label>
+
+      <button
+        class="danger-button"
+        type="button"
+        id="restore-backup-button">
+        이 코드로 복구
+      </button>
+    </div>
+  </details>
 </aside>
 
 <nav
@@ -436,4 +485,4 @@
 
 <script src="<%= asset('/assets/vendor/fullcalendar-6.1.21.global.min.js') %>"></script>
 <script src="<%= asset('/assets/js/mom-calendar-db.js') %>"></script>
-<script src="<%= asset('/assets/js/mom-calendar-app.js') %>?v=mobile-12"></script>
+<script src="<%= asset('/assets/js/mom-calendar-app.js') %>?v=backup-1"></script>

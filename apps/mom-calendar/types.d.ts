@@ -24,4 +24,21 @@ declare namespace types {
     createdAt: string
     updatedAt: string
   }
+
+  type BackupMeta = {
+    backupId: string
+    lastBackupAt: string
+    lastRestoreAt: string
+  }
+
+  type MomCalendarBackup = {
+    app: 'mom-calendar'
+    version: number
+    backupId: string
+    createdAt: string
+    data: {
+      workplaces: Workplace[]
+      workLogs: WorkLog[]
+    }
+  }
 }
