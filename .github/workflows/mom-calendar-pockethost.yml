@@ -30,7 +30,7 @@ jobs:
           node-version: 24
 
       - name: Install PHIO
-        run: npm i -g phio@0.4.0
+        run: npm i -g tsx phio@0.4.0
 
       - name: Check PHIO account
         working-directory: apps/mom-calendar
