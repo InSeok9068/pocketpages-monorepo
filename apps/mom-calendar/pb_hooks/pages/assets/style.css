@@ -545,6 +545,38 @@ textarea:focus {
   box-shadow: var(--shadow);
 }
 
+.worklog-dialog .dialog-card {
+  gap: 10px;
+  padding: 16px;
+}
+
+.worklog-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(104px, 0.72fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.worklog-detail-grid label {
+  min-width: 0;
+}
+
+.worklog-detail-grid input {
+  min-height: 40px;
+  padding: 8px 9px;
+}
+
+.worklog-meal-card {
+  align-self: end;
+  min-height: 40px;
+  padding: 8px 9px;
+}
+
+.worklog-meal-card input {
+  width: 17px;
+  min-height: 17px;
+}
+
 .dialog-actions {
   margin-top: 2px;
 }

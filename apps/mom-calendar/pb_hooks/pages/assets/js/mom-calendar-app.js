@@ -110,7 +110,6 @@
       dailyPay: document.getElementById('daily-pay'),
       overtimeHourlyPay: document.getElementById('overtime-hourly-pay'),
       mealAllowance: document.getElementById('meal-allowance'),
-      defaultMealAllowancePaid: document.getElementById('default-meal-allowance-paid'),
       resetWorkplaceButton: document.getElementById('reset-workplace-button'),
       workplaceList: document.getElementById('workplace-list'),
       worklogDialog: document.getElementById('worklog-dialog'),
@@ -173,11 +172,6 @@
       syncMonthPickerWithCalendar(elements)
     }
 
-    if (sheetName === 'workplace') {
-      window.setTimeout(function () {
-        elements.workplaceName.focus()
-      }, 0)
-    }
   }
 
   /**
@@ -385,8 +379,6 @@
     elements.dailyPay.value = '0'
     elements.overtimeHourlyPay.value = '0'
     elements.mealAllowance.value = '0'
-    elements.defaultMealAllowancePaid.checked = false
-    elements.workplaceName.focus()
   }
 
   /**
@@ -400,8 +392,6 @@
     elements.dailyPay.value = String(workplace.dailyPay)
     elements.overtimeHourlyPay.value = String(workplace.overtimeHourlyPay)
     elements.mealAllowance.value = String(workplace.mealAllowance)
-    elements.defaultMealAllowancePaid.checked = workplace.defaultMealAllowancePaid
-    elements.workplaceName.focus()
   }
 
   /**
@@ -478,7 +468,7 @@
     elements.worklogDateLabel.textContent = formatDateLabel(date)
     elements.worklogWorkplace.value = workplace.id
     elements.worklogOvertimeHours.value = existingLog ? String(existingLog.overtimeHours) : '0'
-    elements.worklogMealAllowancePaid.checked = existingLog ? existingLog.mealAllowancePaid : workplace.defaultMealAllowancePaid
+    elements.worklogMealAllowancePaid.checked = existingLog ? existingLog.mealAllowancePaid : workplace.mealAllowance > 0
     elements.deleteWorklogButton.hidden = !existingLog
     elements.worklogDialog.showModal()
   }
@@ -516,13 +506,14 @@
       const existing = state.workplaces.find(function (workplace) {
         return workplace.id === elements.workplaceId.value
       })
+      const mealAllowance = toNumber(elements.mealAllowance.value)
       const workplace = {
         id: existing ? existing.id : createId('wp'),
         name: elements.workplaceName.value.trim(),
         dailyPay: toNumber(elements.dailyPay.value),
         overtimeHourlyPay: toNumber(elements.overtimeHourlyPay.value),
-        mealAllowance: toNumber(elements.mealAllowance.value),
-        defaultMealAllowancePaid: elements.defaultMealAllowancePaid.checked,
+        mealAllowance: mealAllowance,
+        defaultMealAllowancePaid: mealAllowance > 0,
         memo: existing ? existing.memo || '' : '',
         createdAt: existing ? existing.createdAt : now,
         updatedAt: now,
@@ -670,7 +661,7 @@
       })
       if (!workplace) return
 
-      elements.worklogMealAllowancePaid.checked = workplace.defaultMealAllowancePaid
+      elements.worklogMealAllowancePaid.checked = workplace.mealAllowance > 0
     })
 
     elements.closeWorklogButton.addEventListener('click', function () {

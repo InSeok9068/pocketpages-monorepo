@@ -218,11 +218,6 @@
       </label>
     </div>
 
-    <label class="check-card">
-      <input id="default-meal-allowance-paid" type="checkbox" />
-      <span>기본 식대 받음</span>
-    </label>
-
     <button class="primary-button" type="submit">근무지 저장</button>
   </form>
 
@@ -270,21 +265,23 @@
       <select id="worklog-workplace" required></select>
     </label>
 
-    <label>
-      <span>야근 시간</span>
-      <input
-        id="worklog-overtime-hours"
-        type="number"
-        min="0"
-        step="0.5"
-        inputmode="decimal"
-        value="0" />
-    </label>
+    <div class="worklog-detail-grid">
+      <label>
+        <span>야근 시간</span>
+        <input
+          id="worklog-overtime-hours"
+          type="number"
+          min="0"
+          step="0.5"
+          inputmode="decimal"
+          value="0" />
+      </label>
 
-    <label class="check-card">
-      <input id="worklog-meal-allowance-paid" type="checkbox" />
-      <span>식대 받음</span>
-    </label>
+      <label class="check-card worklog-meal-card">
+        <input id="worklog-meal-allowance-paid" type="checkbox" />
+        <span>식대 받음</span>
+      </label>
+    </div>
 
     <div class="dialog-actions">
       <button class="danger-button" type="button" id="delete-worklog-button">삭제</button>
@@ -295,4 +292,4 @@
 
 <script src="<%= asset('/assets/vendor/fullcalendar-6.1.21.global.min.js') %>"></script>
 <script src="<%= asset('/assets/js/mom-calendar-db.js') %>"></script>
-<script src="<%= asset('/assets/js/mom-calendar-app.js') %>?v=mobile-9"></script>
+<script src="<%= asset('/assets/js/mom-calendar-app.js') %>?v=mobile-11"></script>
