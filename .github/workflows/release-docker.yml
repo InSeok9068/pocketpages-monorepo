@@ -1,4 +1,4 @@
-name: Release Service Build
+name: Release Docker
 
 on:
   push:

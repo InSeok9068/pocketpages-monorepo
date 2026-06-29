@@ -1,4 +1,4 @@
-name: Deploy to PocketHost
+name: Release PocketHost
 
 on:
   push:
