@@ -1,4 +1,4 @@
-name: Deploy Mom Calendar to PocketHost
+name: Deploy to PocketHost
 
 on:
   push:
