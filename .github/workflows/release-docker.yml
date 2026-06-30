@@ -32,7 +32,7 @@ jobs:
         shell: bash
         env:
           BEFORE_SHA: ${{ github.event.before }}
-        run: ./task.sh gitleaks --ci
+        run: bash ./task.sh gitleaks --ci
 
       - name: Prepare commit message
         id: prep_commit
