@@ -454,7 +454,10 @@ run_test() {
     fi
 
     echo "Running tests for service: $service_name"
-    node --test --test-concurrency=1 "${test_files[@]}"
+    (
+      cd "$service_dir"
+      node --test --test-concurrency=1 "${test_files[@]}"
+    )
   }
 
   if [[ -n "$service" ]]; then
@@ -1895,6 +1898,8 @@ case "${1:-help}" in
     start_service "$service" "$@"
     ;;
   kill)
+    shift || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh kill" >&2; exit 1; }
     kill_pocketbase
     ;;
   update)
@@ -1937,7 +1942,11 @@ case "${1:-help}" in
   rollback)
     shift
     [[ -n "${1:-}" && -n "${2:-}" ]] || { echo "Usage: ./task.sh rollback <service> <version>" >&2; exit 1; }
-    run_rollback "$1" "$2"
+    service="$1"
+    version_index="$2"
+    shift 2 || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh rollback <service> <version>" >&2; exit 1; }
+    run_rollback "$service" "$version_index"
     ;;
   archive)
     shift
@@ -1972,15 +1981,24 @@ case "${1:-help}" in
     ;;
   test)
     shift || true
-    run_test "${1:-}"
+    service="${1:-}"
+    [[ -n "$service" ]] && shift || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh test [service]" >&2; exit 1; }
+    run_test "$service"
     ;;
   lint)
     shift || true
-    run_lint "${1:-}"
+    service="${1:-}"
+    [[ -n "$service" ]] && shift || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh lint [service]" >&2; exit 1; }
+    run_lint "$service"
     ;;
   tsc)
     shift || true
-    run_tsc "${1:-}"
+    service="${1:-}"
+    [[ -n "$service" ]] && shift || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh tsc [service]" >&2; exit 1; }
+    run_tsc "$service"
     ;;
   diag)
     shift || true
@@ -1988,7 +2006,10 @@ case "${1:-help}" in
     ;;
   verify)
     shift || true
-    run_verify "${1:-}"
+    service="${1:-}"
+    [[ -n "$service" ]] && shift || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh verify [service]" >&2; exit 1; }
+    run_verify "$service"
     ;;
   knip)
     shift || true
