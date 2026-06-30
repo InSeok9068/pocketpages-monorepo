@@ -24,7 +24,7 @@ Usage:
   ./task.sh diag [file-or-service] [--profile] [--no-daemon]
   ./task.sh verify [service]
   ./task.sh knip [-- <extra args>]
-  ./task.sh gitleaks [--staged|--history] [-- <extra args>]
+  ./task.sh gitleaks [--staged|--history|--range <git-log-range>|--latest|--ci] [-- <extra args>]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
   ./task.sh new [service] [-- <extra args>]
   ./task.sh css [service]
