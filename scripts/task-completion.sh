@@ -75,7 +75,7 @@ _pp_dev_complete() {
   fi
 
   if [[ "$cmd" == "gitleaks" && "$cur" == --* ]]; then
-    COMPREPLY=( $(compgen -W "--staged --history --help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "--staged --history --range --latest --ci --help" -- "$cur") )
     return
   fi
 

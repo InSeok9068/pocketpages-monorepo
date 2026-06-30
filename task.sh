@@ -608,24 +608,16 @@ run_knip() {
   )
 }
 
-download_gitleaks_windows() {
+download_gitleaks_release_asset() {
   local install_dir="$1"
   local bin_path="$2"
-  local asset_name="gitleaks_${GITLEAKS_VERSION}_windows_x64.zip"
+  local asset_name="$3"
   local release_url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
   local tmp_dir="$ROOT_DIR/.download/gitleaks/.tmp-${GITLEAKS_VERSION}-$$"
   local archive_path="$tmp_dir/$asset_name"
   local checksums_path="$tmp_dir/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
   local expected_sha=""
   local extracted_bin=""
-
-  case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) ;;
-    *)
-      echo "Gitleaks auto-download is supported only from Windows Git Bash." >&2
-      exit 1
-      ;;
-  esac
 
   if ! command -v curl >/dev/null 2>&1; then
     echo "curl not found. Cannot download Gitleaks." >&2
@@ -654,21 +646,39 @@ download_gitleaks_windows() {
 
   printf '%s  %s\n' "$expected_sha" "$archive_path" | sha256sum -c - >/dev/null
 
-  if ! command -v powershell.exe >/dev/null 2>&1 || ! command -v cygpath >/dev/null 2>&1; then
-    echo "PowerShell and cygpath are required to extract Gitleaks on Windows Git Bash." >&2
-    rm -rf "$tmp_dir"
-    exit 1
-  fi
+  case "$asset_name" in
+    *.zip)
+      if ! command -v powershell.exe >/dev/null 2>&1 || ! command -v cygpath >/dev/null 2>&1; then
+        echo "PowerShell and cygpath are required to extract Gitleaks zip archives." >&2
+        rm -rf "$tmp_dir"
+        exit 1
+      fi
 
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
-    '& { param($archivePath, $outputDir) Expand-Archive -LiteralPath $archivePath -DestinationPath $outputDir -Force }' \
-    "$(cygpath -w "$archive_path")" \
-    "$(cygpath -w "$tmp_dir")"
+      powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
+        '& { param($archivePath, $outputDir) Expand-Archive -LiteralPath $archivePath -DestinationPath $outputDir -Force }' \
+        "$(cygpath -w "$archive_path")" \
+        "$(cygpath -w "$tmp_dir")"
+      ;;
+    *.tar.gz)
+      if ! command -v tar >/dev/null 2>&1; then
+        echo "tar not found. Cannot extract Gitleaks." >&2
+        rm -rf "$tmp_dir"
+        exit 1
+      fi
 
-  extracted_bin="$(find "$tmp_dir" -type f -name gitleaks.exe | head -n 1)"
+      tar -xzf "$archive_path" -C "$tmp_dir"
+      ;;
+    *)
+      echo "Unsupported Gitleaks archive type: $asset_name" >&2
+      rm -rf "$tmp_dir"
+      exit 1
+      ;;
+  esac
+
+  extracted_bin="$(find "$tmp_dir" -type f \( -name gitleaks.exe -o -name gitleaks \) | head -n 1)"
 
   if [[ -z "$extracted_bin" ]]; then
-    echo "Gitleaks executable not found in $asset_name" >&2
+    echo "Gitleaks executable not found in $asset_name." >&2
     rm -rf "$tmp_dir"
     exit 1
   fi
@@ -679,11 +689,31 @@ download_gitleaks_windows() {
 }
 
 resolve_gitleaks_bin() {
-  local install_dir="$ROOT_DIR/.download/gitleaks/$GITLEAKS_VERSION/windows-x64"
-  local bin_path="$install_dir/gitleaks.exe"
+  local os_name="$(uname -s)"
+  local install_dir=""
+  local bin_name="gitleaks"
+  local asset_name=""
+
+  case "$os_name" in
+    MINGW*|MSYS*|CYGWIN*)
+      install_dir="$ROOT_DIR/.download/gitleaks/$GITLEAKS_VERSION/windows-x64"
+      bin_name="gitleaks.exe"
+      asset_name="gitleaks_${GITLEAKS_VERSION}_windows_x64.zip"
+      ;;
+    Linux)
+      install_dir="$ROOT_DIR/.download/gitleaks/$GITLEAKS_VERSION/linux-x64"
+      asset_name="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+      ;;
+    *)
+      echo "Gitleaks auto-download supports Windows Git Bash and Linux x64 only. os=$os_name" >&2
+      exit 1
+      ;;
+  esac
+
+  local bin_path="$install_dir/$bin_name"
 
   if [[ ! -f "$bin_path" ]]; then
-    download_gitleaks_windows "$install_dir" "$bin_path"
+    download_gitleaks_release_asset "$install_dir" "$bin_path" "$asset_name"
   fi
 
   printf '%s\n' "$bin_path"
@@ -692,18 +722,51 @@ resolve_gitleaks_bin() {
 print_gitleaks_help() {
   cat <<'EOF'
 Usage:
-  ./task.sh gitleaks [--staged|--history] [-- <extra gitleaks args>]
+  ./task.sh gitleaks [--staged|--history|--range <git-log-range>|--latest|--ci] [-- <extra gitleaks args>]
 
 Options:
   --staged   Scan staged changes for pre-commit use. Default.
   --history  Scan the git repository history.
+  --range    Scan a git log range, for example OLD..NEW.
+  --latest   Scan only the latest commit.
+  --ci       Scan the current GitHub Actions push range, falling back to latest.
   --help     Show this help.
 
 Examples:
   ./task.sh gitleaks
   ./task.sh gitleaks --history
+  ./task.sh gitleaks --range HEAD~1..HEAD
+  ./task.sh gitleaks --latest
+  ./task.sh gitleaks --ci
   ./task.sh gitleaks --staged -- --log-level debug
 EOF
+}
+
+resolve_gitleaks_ci_log_opts() {
+  local before_sha="${BEFORE_SHA:-${GITHUB_EVENT_BEFORE:-}}"
+  local current_sha="${GITHUB_SHA:-HEAD}"
+  local zero_sha="0000000000000000000000000000000000000000"
+
+  if [[ -z "$before_sha" || "$before_sha" == "$zero_sha" ]]; then
+    printf '%s\n' "-1 $current_sha"
+    return 0
+  fi
+
+  (
+    cd "$ROOT_DIR"
+    if ! git cat-file -e "${before_sha}^{commit}" 2>/dev/null; then
+      if [[ -n "${GITHUB_REF_NAME:-}" ]]; then
+        git fetch --no-tags --deepen=200 origin "$GITHUB_REF_NAME" >/dev/null 2>&1 || true
+      fi
+    fi
+
+    if ! git cat-file -e "${before_sha}^{commit}" 2>/dev/null; then
+      echo "Pushed range base commit is not available: $before_sha" >&2
+      exit 1
+    fi
+  )
+
+  printf '%s\n' "${before_sha}..${current_sha}"
 }
 
 run_gitleaks() {
@@ -711,6 +774,7 @@ run_gitleaks() {
   local extra_args=()
   local gitleaks_bin=""
   local gitleaks_args=()
+  local log_opts=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -720,6 +784,35 @@ run_gitleaks() {
         ;;
       --history)
         mode="history"
+        shift
+        ;;
+      --range)
+        shift
+        if [[ $# -eq 0 || -z "$1" ]]; then
+          echo "Missing git log range for --range." >&2
+          print_gitleaks_help >&2
+          exit 1
+        fi
+        mode="range"
+        log_opts="$1"
+        shift
+        ;;
+      --range=*)
+        mode="range"
+        log_opts="${1#--range=}"
+        if [[ -z "$log_opts" ]]; then
+          echo "Missing git log range for --range." >&2
+          print_gitleaks_help >&2
+          exit 1
+        fi
+        shift
+        ;;
+      --latest)
+        mode="latest"
+        shift
+        ;;
+      --ci)
+        mode="ci"
         shift
         ;;
       -h|--help)
@@ -743,6 +836,13 @@ run_gitleaks() {
 
   if [[ "$mode" == "history" ]]; then
     gitleaks_args=(git --redact --verbose --no-banner)
+  elif [[ "$mode" == "range" ]]; then
+    gitleaks_args=(git --redact --verbose --no-banner --log-opts "$log_opts")
+  elif [[ "$mode" == "latest" ]]; then
+    gitleaks_args=(git --redact --verbose --no-banner --log-opts "-1 HEAD")
+  elif [[ "$mode" == "ci" ]]; then
+    log_opts="$(resolve_gitleaks_ci_log_opts)"
+    gitleaks_args=(git --redact --verbose --no-banner --log-opts "$log_opts")
   else
     gitleaks_args=(git --pre-commit --staged --redact --verbose --no-banner)
   fi
