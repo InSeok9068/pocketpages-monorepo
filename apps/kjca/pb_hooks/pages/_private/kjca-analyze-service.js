@@ -6,8 +6,6 @@ const {
   GEMINI_MODEL_NAME,
   PROMPT_VERSION,
   GEMINI_MAX_ATTEMPTS,
-  parseJsonSafely,
-  extractJsonObjectText,
   mergeSetCookieIntoCookieHeader,
   detectAuthRequiredHtml,
   toAbsoluteKjcaUrl,
@@ -31,17 +29,6 @@ const {
 } = require('./kjca-core')
 const kjcaAuth = require('./kjca-auth')
 const { createKjcaSession } = kjcaAuth
-
-/**
- * JSON 응답을 느슨한 object로 정리합니다.
- * @param {unknown} text JSON 문자열 또는 원본 응답입니다.
- * @returns {Record<string, any>} 프로퍼티 접근이 가능한 object입니다.
- */
-function parseJsonObject(text) {
-  const parsed = parseJsonSafely(text, {})
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-  return parsed
-}
 
 /**
  * 분석 결과 1건을 화면/캐시 공용 shape로 정리합니다.
@@ -340,6 +327,7 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
 
     const geminiResult = ai.gemini({
       model: GEMINI_MODEL_NAME,
+      json: true,
       contents: [
         {
           role: 'user',
@@ -354,13 +342,14 @@ function analyzeStaffDiary(request, staffDiaryAnalysisCacheRole, payload, sessio
     if (!geminiResult.ok) {
       const statusCode = Number(geminiResult.statusCode || 0)
       const errorMessage = String(geminiResult.errorMessage || '').trim()
-      const errorText = statusCode > 0 ? `AI 요청 실패 (HTTP ${statusCode})` : `AI 요청 실패 (네트워크/타임아웃) ${errorMessage}`
+      const errorDetail = errorMessage ? ` ${errorMessage}` : ''
+      const errorText = statusCode > 0 ? `AI 요청 실패 (HTTP ${statusCode})${errorDetail}` : `AI 요청 실패 (네트워크/타임아웃)${errorDetail}`
       results.push(buildAnalyzeResult({ dept, position, staffName, ok: false, error: errorText, miscSection: miscSectionFromHtml, recruiting: recruitingFromHtml, printUrl }))
 
       continue
     }
 
-    const parsed = parseJsonObject(extractJsonObjectText(geminiResult.text))
+    const parsed = geminiResult.json && typeof geminiResult.json === 'object' && !Array.isArray(geminiResult.json) ? geminiResult.json : {}
     const promotion = normalizeStringArray(parsed && parsed.promotion)
     const vacation = normalizeStringArray(parsed && parsed.vacation)
     const special = normalizeStringArray(parsed && parsed.special)

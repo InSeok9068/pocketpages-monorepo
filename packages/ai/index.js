@@ -77,6 +77,15 @@ function firstText(values) {
 }
 
 /**
+ * 프로퍼티 접근이 가능한 object인지 확인합니다.
+ * @param {unknown} value 확인할 값입니다.
+ * @returns {boolean} object이면 true입니다.
+ */
+function isObjectRecord(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
  * 환경 변수 값을 읽습니다.
  * @param {string} name 환경 변수 이름입니다.
  * @returns {string} 환경 변수 값입니다.
@@ -209,6 +218,106 @@ function inferOpenAi429Cause(responseJson) {
 }
 
 /**
+ * JSON mode 응답 텍스트에서 JSON 구간을 추출합니다.
+ * @param {unknown} text 모델 응답 텍스트입니다.
+ * @returns {string} JSON 문자열입니다.
+ */
+function extractJsonValueText(text) {
+  const normalized = String(text == null ? '' : text)
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+  if (!normalized) return ''
+
+  try {
+    JSON.parse(normalized)
+    return normalized
+  } catch (_error) {
+    // 모델이 앞뒤 설명을 붙인 경우 object/array 본문만 다시 시도합니다.
+  }
+
+  const objectStart = normalized.indexOf('{')
+  const arrayStart = normalized.indexOf('[')
+  let start = -1
+  let end = -1
+
+  if (objectStart >= 0 && (arrayStart === -1 || objectStart < arrayStart)) {
+    start = objectStart
+    end = normalized.lastIndexOf('}')
+  } else if (arrayStart >= 0) {
+    start = arrayStart
+    end = normalized.lastIndexOf(']')
+  }
+
+  if (start === -1 || end === -1 || end <= start) return ''
+  return normalized.slice(start, end + 1).trim()
+}
+
+/**
+ * JSON mode 응답 텍스트를 JS 값으로 파싱합니다.
+ * @param {unknown} text 모델 응답 텍스트입니다.
+ * @returns {{ ok: boolean, value: any, errorMessage: string }} 파싱 결과입니다.
+ */
+function parseJsonValue(text) {
+  const jsonText = extractJsonValueText(text)
+  if (!jsonText) {
+    return {
+      ok: false,
+      value: null,
+      errorMessage: 'JSON text is empty',
+    }
+  }
+
+  try {
+    return {
+      ok: true,
+      value: JSON.parse(jsonText),
+      errorMessage: '',
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      value: null,
+      errorMessage: cleanText(error && error.message ? error.message : error),
+    }
+  }
+}
+
+/**
+ * Gemini JSON 응답 옵션을 payload에 병합합니다.
+ * @param {Record<string, any>} payload Gemini payload입니다.
+ */
+function applyGeminiJsonMode(payload) {
+  const generationConfig = isObjectRecord(payload.generationConfig) ? Object.assign({}, payload.generationConfig) : {}
+  if (!generationConfig.responseMimeType) generationConfig.responseMimeType = 'application/json'
+  payload.generationConfig = generationConfig
+}
+
+/**
+ * OpenAI JSON 응답 옵션을 payload에 병합합니다.
+ * @param {Record<string, any>} payload OpenAI payload입니다.
+ */
+function applyOpenAiJsonMode(payload) {
+  const textConfig = isObjectRecord(payload.text) ? Object.assign({}, payload.text) : {}
+  if (!textConfig.format) {
+    textConfig.format = { type: 'json_object' }
+  }
+  payload.text = textConfig
+}
+
+/**
+ * DeepSeek JSON 응답 옵션을 payload에 병합합니다.
+ * @param {Record<string, any>} payload DeepSeek payload입니다.
+ */
+function applyDeepSeekJsonMode(payload) {
+  if (!payload.response_format) {
+    payload.response_format = {
+      type: 'json_object',
+    }
+  }
+}
+
+/**
  * AI 요청 요약 로그를 남깁니다.
  * @param {Record<string, any>} request 요청 정보입니다.
  * @param {Record<string, any>} runtime 런타임 의존성입니다.
@@ -330,7 +439,11 @@ function isRetryableDeepSeekResponse(statusCode, responseJson) {
  * @returns {Record<string, any>} Gemini payload입니다.
  */
 function buildGeminiPayload(request) {
-  if (request.payload && typeof request.payload === 'object') return Object.assign({}, request.payload)
+  if (request.payload && typeof request.payload === 'object') {
+    const payload = Object.assign({}, request.payload)
+    if (request.json === true) applyGeminiJsonMode(payload)
+    return payload
+  }
 
   const input = request.input !== undefined ? request.input : request.prompt
   const payload = {}
@@ -344,11 +457,7 @@ function buildGeminiPayload(request) {
     ]
   }
 
-  if (request.json === true && !payload.generationConfig) {
-    payload.generationConfig = {
-      responseMimeType: 'application/json',
-    }
-  }
+  if (request.json === true) applyGeminiJsonMode(payload)
 
   return payload
 }
@@ -363,6 +472,7 @@ function buildOpenAiPayload(request) {
     const payload = Object.assign({}, request.payload)
     delete payload.stream
     delete payload.stream_options
+    if (request.json === true) applyOpenAiJsonMode(payload)
     return payload
   }
 
@@ -371,11 +481,7 @@ function buildOpenAiPayload(request) {
   copyDefinedFields(payload, request, OPENAI_PAYLOAD_FIELDS)
 
   if (payload.input === undefined) payload.input = input == null ? '' : input
-  if (request.json === true && !payload.text) {
-    payload.text = {
-      format: { type: 'json_object' },
-    }
-  }
+  if (request.json === true) applyOpenAiJsonMode(payload)
 
   return payload
 }
@@ -416,6 +522,7 @@ function buildDeepSeekPayload(request) {
     const payload = Object.assign({}, request.payload)
     delete payload.stream
     delete payload.stream_options
+    if (request.json === true) applyDeepSeekJsonMode(payload)
     return payload
   }
 
@@ -423,11 +530,7 @@ function buildDeepSeekPayload(request) {
   copyDefinedFields(payload, request, DEEPSEEK_PAYLOAD_FIELDS)
 
   if (payload.messages === undefined) payload.messages = buildDeepSeekMessages(request)
-  if (request.json === true && !payload.response_format) {
-    payload.response_format = {
-      type: 'json_object',
-    }
-  }
+  if (request.json === true) applyDeepSeekJsonMode(payload)
 
   delete payload.stream
   delete payload.stream_options
@@ -497,10 +600,15 @@ function extractDeepSeekText(responseJson) {
  */
 function buildResult(args) {
   const statusCode = Number(args.statusCode || 0)
-  const ok = statusCode >= 200 && statusCode < 300 && !args.transportError
-  const responseJson = args.responseJson && typeof args.responseJson === 'object' && !Array.isArray(args.responseJson) ? args.responseJson : {}
+  const httpOk = statusCode >= 200 && statusCode < 300 && !args.transportError
+  const responseJson = isObjectRecord(args.responseJson) ? args.responseJson : {}
   const error = responseJson && responseJson.error ? responseJson.error : {}
-  const errorMessage = cleanText(args.transportError || error.message || '')
+  const text = args.extractText(responseJson)
+  const shouldParseJson = args.parseJson === true && httpOk
+  const jsonResult = shouldParseJson ? parseJsonValue(text) : { ok: true, value: null, errorMessage: '' }
+  const jsonParseErrorMessage = shouldParseJson && !jsonResult.ok ? `JSON parse failed: ${jsonResult.errorMessage}` : ''
+  const ok = httpOk && !jsonParseErrorMessage
+  const errorMessage = cleanText(args.transportError || error.message || jsonParseErrorMessage || '')
   let rateLimitCause = ''
 
   if (statusCode === 429 && args.provider === 'gemini') {
@@ -518,7 +626,8 @@ function buildResult(args) {
     provider: args.provider,
     statusCode,
     responseJson,
-    text: args.extractText(responseJson),
+    text,
+    json: jsonResult.value,
     errorMessage,
     rateLimitCause,
   }
@@ -566,6 +675,7 @@ function sendWithRetry(request, runtime) {
           responseJson,
           transportError: '',
           extractText: request.extractText,
+          parseJson: request.parseJson,
         })
       }
 
@@ -578,6 +688,7 @@ function sendWithRetry(request, runtime) {
           responseJson,
           transportError: '',
           extractText: request.extractText,
+          parseJson: request.parseJson,
         })
       }
 
@@ -608,6 +719,7 @@ function sendWithRetry(request, runtime) {
           responseJson: {},
           transportError: errorText,
           extractText: request.extractText,
+          parseJson: request.parseJson,
         })
       }
 
@@ -624,6 +736,7 @@ function sendWithRetry(request, runtime) {
     responseJson: lastResponseJson,
     transportError: lastTransportError,
     extractText: request.extractText,
+    parseJson: request.parseJson,
   })
 }
 
@@ -747,6 +860,7 @@ function requestGemini(input, runtime) {
       provider: 'gemini',
       model,
       maxAttempts,
+      parseJson: request.json === true,
       isRetryableResponse: isRetryableGeminiResponse,
       extractText: extractGeminiText,
       httpOptions: {
@@ -786,6 +900,7 @@ function requestOpenAi(input, runtime) {
       provider: 'openai',
       model,
       maxAttempts,
+      parseJson: request.json === true,
       isRetryableResponse: isRetryableOpenAiResponse,
       extractText: extractOpenAiText,
       httpOptions: {
@@ -825,6 +940,7 @@ function requestDeepSeek(input, runtime) {
       provider: 'deepseek',
       model,
       maxAttempts,
+      parseJson: request.json === true,
       isRetryableResponse: isRetryableDeepSeekResponse,
       extractText: extractDeepSeekText,
       httpOptions: {

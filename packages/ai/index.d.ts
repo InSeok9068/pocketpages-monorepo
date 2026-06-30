@@ -222,7 +222,7 @@ declare namespace pocketpagesAi {
 
   /** AI provider 호출 결과입니다. 실패해도 throw 대신 이 객체로 반환합니다. */
   interface AiResult {
-    /** HTTP 성공, provider 응답 파싱, 텍스트 추출까지 성공했는지 여부입니다. */
+    /** HTTP 성공, provider 응답 파싱, 텍스트 추출, JSON mode 파싱까지 성공했는지 여부입니다. */
     ok: boolean
     /** 호출한 provider입니다. */
     provider: AiProvider
@@ -232,6 +232,8 @@ declare namespace pocketpagesAi {
     responseJson: Record<string, any>
     /** provider 응답에서 추출한 텍스트입니다. */
     text: string
+    /** `json: true` 요청에서 모델 응답 텍스트를 파싱한 값입니다. 파싱 실패나 일반 요청이면 null입니다. */
+    json: any
     /** 실패 사유 문자열입니다. 성공하면 빈 문자열입니다. */
     errorMessage: string
     /** 429 응답이 rate limit인지 quota/billing 문제인지 추정한 값입니다. */
