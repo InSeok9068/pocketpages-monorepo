@@ -22,6 +22,7 @@ Usage:
   ./task.sh tsc [service]
   ./task.sh diag [file-or-service] [--profile] [--no-daemon]
   ./task.sh verify [service]
+  ./task.sh knip [-- <extra args>]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
   ./task.sh new [service] [-- <extra args>]
   ./task.sh css [service]
@@ -46,6 +47,7 @@ Commands:
   diag      Run PocketPages editor diagnostics for one file, one service, or all services when omitted
             `--profile` prints slow-file timings, `--no-daemon` disables the warm background cache
   verify    Run lint, tsc, and diag together for one service or all services
+  knip      Run Knip unused files/dependencies check for the whole repository
   index     Query AI-friendly PocketPages project index JSON for one service
   new       Interactively scaffold a new PocketPages service
   css       Build UnoCSS for one service or all services that reference it
@@ -69,6 +71,7 @@ Examples:
   ./task.sh install npm -- --package-lock-only
   ./task.sh update pocketbase
   ./task.sh update pocketbase -- --backup
+  ./task.sh knip
   ./task.sh generate
   ./task.sh generate -- --service booklog --kind xapi-redirect --path books/delete-note
 EOF
@@ -576,6 +579,26 @@ run_verify() {
   run_lint "$service"
   run_tsc "$service"
   run_diag "$service"
+}
+
+run_knip() {
+  local knip_bin="$ROOT_DIR/node_modules/knip/bin/knip.js"
+
+  if [[ ! -f "$knip_bin" ]]; then
+    echo "Missing local Knip install." >&2
+    echo "Run npm install in the repository root first." >&2
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot run Knip command." >&2
+    exit 1
+  fi
+
+  (
+    cd "$ROOT_DIR"
+    node "$knip_bin" --no-progress --no-config-hints "$@"
+  )
 }
 
 run_index() {
@@ -1817,6 +1840,11 @@ case "${1:-help}" in
   verify)
     shift || true
     run_verify "${1:-}"
+    ;;
+  knip)
+    shift || true
+    [[ "${1:-}" == "--" ]] && shift
+    run_knip "$@"
     ;;
   index)
     shift
