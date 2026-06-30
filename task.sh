@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APPS_DIR="$ROOT_DIR/apps"
+GITLEAKS_VERSION="8.30.1"
 
 print_help() {
   cat <<'EOF'
@@ -23,6 +24,7 @@ Usage:
   ./task.sh diag [file-or-service] [--profile] [--no-daemon]
   ./task.sh verify [service]
   ./task.sh knip [-- <extra args>]
+  ./task.sh gitleaks [--staged|--history] [-- <extra args>]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
   ./task.sh new [service] [-- <extra args>]
   ./task.sh css [service]
@@ -48,6 +50,7 @@ Commands:
             `--profile` prints slow-file timings, `--no-daemon` disables the warm background cache
   verify    Run lint, tsc, and diag together for one service or all services
   knip      Run Knip unused files/dependencies check for the whole repository
+  gitleaks  Run Gitleaks secret scan; defaults to staged changes
   index     Query AI-friendly PocketPages project index JSON for one service
   new       Interactively scaffold a new PocketPages service
   css       Build UnoCSS for one service or all services that reference it
@@ -72,6 +75,7 @@ Examples:
   ./task.sh update pocketbase
   ./task.sh update pocketbase -- --backup
   ./task.sh knip
+  ./task.sh gitleaks --history
   ./task.sh generate
   ./task.sh generate -- --service booklog --kind xapi-redirect --path books/delete-note
 EOF
@@ -598,6 +602,151 @@ run_knip() {
   (
     cd "$ROOT_DIR"
     node "$knip_bin" --no-progress --no-config-hints "$@"
+  )
+}
+
+download_gitleaks_windows() {
+  local install_dir="$1"
+  local bin_path="$2"
+  local asset_name="gitleaks_${GITLEAKS_VERSION}_windows_x64.zip"
+  local release_url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+  local tmp_dir="$ROOT_DIR/.download/gitleaks/.tmp-${GITLEAKS_VERSION}-$$"
+  local archive_path="$tmp_dir/$asset_name"
+  local checksums_path="$tmp_dir/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+  local expected_sha=""
+  local extracted_bin=""
+
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) ;;
+    *)
+      echo "Gitleaks auto-download is supported only from Windows Git Bash." >&2
+      exit 1
+      ;;
+  esac
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "curl not found. Cannot download Gitleaks." >&2
+    exit 1
+  fi
+
+  if ! command -v sha256sum >/dev/null 2>&1; then
+    echo "sha256sum not found. Cannot verify Gitleaks download." >&2
+    exit 1
+  fi
+
+  echo "Downloading Gitleaks v${GITLEAKS_VERSION}: $asset_name" >&2
+  rm -rf "$tmp_dir"
+  mkdir -p "$tmp_dir" "$install_dir"
+
+  curl -fsSL "$release_url/$asset_name" -o "$archive_path"
+  curl -fsSL "$release_url/gitleaks_${GITLEAKS_VERSION}_checksums.txt" -o "$checksums_path"
+
+  expected_sha="$(awk -v file="$asset_name" '$2 == file { print $1 }' "$checksums_path")"
+
+  if [[ -z "$expected_sha" ]]; then
+    echo "Checksum not found for $asset_name" >&2
+    rm -rf "$tmp_dir"
+    exit 1
+  fi
+
+  printf '%s  %s\n' "$expected_sha" "$archive_path" | sha256sum -c - >/dev/null
+
+  if ! command -v powershell.exe >/dev/null 2>&1 || ! command -v cygpath >/dev/null 2>&1; then
+    echo "PowerShell and cygpath are required to extract Gitleaks on Windows Git Bash." >&2
+    rm -rf "$tmp_dir"
+    exit 1
+  fi
+
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
+    '& { param($archivePath, $outputDir) Expand-Archive -LiteralPath $archivePath -DestinationPath $outputDir -Force }' \
+    "$(cygpath -w "$archive_path")" \
+    "$(cygpath -w "$tmp_dir")"
+
+  extracted_bin="$(find "$tmp_dir" -type f -name gitleaks.exe | head -n 1)"
+
+  if [[ -z "$extracted_bin" ]]; then
+    echo "Gitleaks executable not found in $asset_name" >&2
+    rm -rf "$tmp_dir"
+    exit 1
+  fi
+
+  cp "$extracted_bin" "$bin_path"
+  chmod +x "$bin_path"
+  rm -rf "$tmp_dir"
+}
+
+resolve_gitleaks_bin() {
+  local install_dir="$ROOT_DIR/.download/gitleaks/$GITLEAKS_VERSION/windows-x64"
+  local bin_path="$install_dir/gitleaks.exe"
+
+  if [[ ! -f "$bin_path" ]]; then
+    download_gitleaks_windows "$install_dir" "$bin_path"
+  fi
+
+  printf '%s\n' "$bin_path"
+}
+
+print_gitleaks_help() {
+  cat <<'EOF'
+Usage:
+  ./task.sh gitleaks [--staged|--history] [-- <extra gitleaks args>]
+
+Options:
+  --staged   Scan staged changes for pre-commit use. Default.
+  --history  Scan the git repository history.
+  --help     Show this help.
+
+Examples:
+  ./task.sh gitleaks
+  ./task.sh gitleaks --history
+  ./task.sh gitleaks --staged -- --log-level debug
+EOF
+}
+
+run_gitleaks() {
+  local mode="staged"
+  local extra_args=()
+  local gitleaks_bin=""
+  local gitleaks_args=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --staged|--pre-commit)
+        mode="staged"
+        shift
+        ;;
+      --history)
+        mode="history"
+        shift
+        ;;
+      -h|--help)
+        print_gitleaks_help
+        return 0
+        ;;
+      --)
+        shift
+        extra_args=("$@")
+        break
+        ;;
+      *)
+        echo "Unknown gitleaks option: $1" >&2
+        print_gitleaks_help >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  gitleaks_bin="$(resolve_gitleaks_bin)"
+
+  if [[ "$mode" == "history" ]]; then
+    gitleaks_args=(git --redact --verbose --no-banner)
+  else
+    gitleaks_args=(git --pre-commit --staged --redact --verbose --no-banner)
+  fi
+
+  (
+    cd "$ROOT_DIR"
+    "$gitleaks_bin" "${gitleaks_args[@]}" "${extra_args[@]}"
   )
 }
 
@@ -1845,6 +1994,10 @@ case "${1:-help}" in
     shift || true
     [[ "${1:-}" == "--" ]] && shift
     run_knip "$@"
+    ;;
+  gitleaks)
+    shift || true
+    run_gitleaks "$@"
     ;;
   index)
     shift

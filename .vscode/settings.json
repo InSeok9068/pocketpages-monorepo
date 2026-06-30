@@ -10,12 +10,13 @@
     "pocketbase.exe": "pbw.exe",
     "README.md": "MEMO.md, DBSCHEMA.md",
     "AGENTS.md": "AGENTS*.md",
-    "package.json": "package-lock.json, .prettier*, eslint.config.js, unocss.config.js, tailwind.config.js, .dockerignore, .gitignore"
+    "package.json": "package-lock.json, .prettier*, eslint.config.js, unocss.config.js, tailwind.config.js, .dockerignore, .gitignore, knip.json"
   },
   // prettier-ignore
   "files.exclude": {
     ".docs/**": true,
     ".cache/**": true,
+    ".githooks/**": true,
     // "tools/**": true,
     // "scripts/**": true,
     // 개발중인 서비스만 주석
@@ -30,6 +31,7 @@
   "search.exclude": {
     ".docs/**": true,
     ".cache/**": true,
+    ".githooks/**": true,
     "**/*.bundle.js": true,
     "**/pb_schema.json": true,
     "**/package-lock.json": true,

@@ -19,7 +19,7 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill update install deploy rollback archive restore archives merge test lint tsc diag verify knip index new css bundle generate format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill update install deploy rollback archive restore archives merge test lint tsc diag verify knip gitleaks index new css bundle generate format help" -- "$cur") )
     return
   fi
 
@@ -71,6 +71,11 @@ _pp_dev_complete() {
 
   if [[ "$cmd" == "deploy" && $COMP_CWORD -ge 3 && "$cur" == --* ]]; then
     COMPREPLY=( $(compgen -W "--skip-verify" -- "$cur") )
+    return
+  fi
+
+  if [[ "$cmd" == "gitleaks" && "$cur" == --* ]]; then
+    COMPREPLY=( $(compgen -W "--staged --history --help" -- "$cur") )
     return
   fi
 
