@@ -23,6 +23,7 @@ Usage:
   ./task.sh tsc [service]
   ./task.sh diag [file-or-service] [--profile] [--no-daemon]
   ./task.sh verify [service]
+  ./task.sh preflight
   ./task.sh knip [-- <extra args>]
   ./task.sh gitleaks [--staged|--history|--range <git-log-range>|--latest|--ci] [-- <extra args>]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
@@ -49,6 +50,7 @@ Commands:
   diag      Run PocketPages editor diagnostics for one file, one service, or all services when omitted
             `--profile` prints slow-file timings, `--no-daemon` disables the warm background cache
   verify    Run lint, tsc, and diag together for one service or all services
+  preflight Run format, css, verify, staged Gitleaks, and Knip as a final local check
   knip      Run Knip unused files/dependencies check for the whole repository
   gitleaks  Run Gitleaks secret scan; defaults to staged changes
   index     Query AI-friendly PocketPages project index JSON for one service
@@ -74,6 +76,7 @@ Examples:
   ./task.sh install npm -- --package-lock-only
   ./task.sh update pocketbase
   ./task.sh update pocketbase -- --backup
+  ./task.sh preflight
   ./task.sh knip
   ./task.sh gitleaks --history
   ./task.sh generate
@@ -1042,6 +1045,27 @@ run_format() {
   fi
 
   npm run format -- "$@"
+}
+
+run_preflight() {
+  echo "Running preflight step: format"
+  run_format
+
+  echo
+  echo "Running preflight step: css"
+  run_css
+
+  echo
+  echo "Running preflight step: verify"
+  run_verify
+
+  echo
+  echo "Running preflight step: gitleaks"
+  run_gitleaks
+
+  echo
+  echo "Running preflight step: knip"
+  run_knip
 }
 
 list_release_services() {
@@ -2110,6 +2134,11 @@ case "${1:-help}" in
     [[ -n "$service" ]] && shift || true
     [[ $# -eq 0 ]] || { echo "Usage: ./task.sh verify [service]" >&2; exit 1; }
     run_verify "$service"
+    ;;
+  preflight)
+    shift || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh preflight" >&2; exit 1; }
+    run_preflight
     ;;
   knip)
     shift || true
