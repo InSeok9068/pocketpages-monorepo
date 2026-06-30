@@ -1,0 +1,18 @@
+title = "PocketPages Monorepo Gitleaks"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "PocketBase upstream docs contain example JWT responses."
+targetRules = ["jwt"]
+paths = [
+  '''^\.docs/pocketbase/pocketbase_docs_js\.md$''',
+]
+
+[[allowlists]]
+description = "PocketBase JSVM SDK patch files contain generated code that matches generic-api-key."
+targetRules = ["generic-api-key"]
+paths = [
+  '''^apps/[^/]+/patches/pocketbase-js-sdk-jsvm\+0\.25\.10004\.patch$''',
+]
