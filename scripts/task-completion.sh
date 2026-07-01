@@ -43,16 +43,23 @@ _pp_dev_complete() {
     return
   fi
 
-  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "restore" || "$cmd" == "archives" ) ]]; then
-    local archive_services
-    archive_services="$("$script" __complete_archive_services 2>/dev/null)"
-    COMPREPLY=( $(compgen -W "$archive_services" -- "$cur") )
+  if [[ $COMP_CWORD -eq 2 && "$cmd" == "restore" ]]; then
+    local archive_tags
+    archive_tags="$("$script" __complete_archive_tags 2>/dev/null)"
+    COMPREPLY=( $(compgen -W "$archive_tags" -- "$cur") )
     return
   fi
 
-  if [[ $COMP_CWORD -eq 3 && "$cmd" == "restore" ]]; then
+  if [[ $COMP_CWORD -eq 2 && "$cmd" == "archives" ]]; then
+    local archive_services
+    archive_services="$("$script" __complete_archive_services 2>/dev/null)"
+    COMPREPLY=( $(compgen -W "--delete $archive_services" -- "$cur") )
+    return
+  fi
+
+  if [[ $COMP_CWORD -eq 3 && "$cmd" == "archives" && "${COMP_WORDS[2]}" == "--delete" ]]; then
     local archive_tags
-    archive_tags="$("$script" __complete_archive_tags "${COMP_WORDS[2]}" 2>/dev/null)"
+    archive_tags="$("$script" __complete_archive_tags 2>/dev/null)"
     COMPREPLY=( $(compgen -W "$archive_tags" -- "$cur") )
     return
   fi

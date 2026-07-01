@@ -15,8 +15,9 @@ Usage:
   ./task.sh deploy <service> [--skip-verify]
   ./task.sh rollback <service> <1|2|3>
   ./task.sh archive <service>
-  ./task.sh restore <service> <archive-tag>
+  ./task.sh restore <archive-tag>
   ./task.sh archives [service]
+  ./task.sh archives --delete <archive-tag>
   ./task.sh merge [service]
   ./task.sh test [service]
   ./task.sh lint [service]
@@ -42,7 +43,7 @@ Commands:
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
   archive   Tag current HEAD as archive/<service>/<YYYY-MM-DD>, push it, then remove apps/<service>
   restore   Restore apps/<service> from an archive tag
-  archives  List archive tags, optionally filtered by service
+  archives  List archive tags, optionally filtered by service; use --delete to remove one archive tag locally and from origin
   merge     Merge main into local release/* branches, then push them to origin
   test      Run node:test files under __tests__ for one service or all services
   lint      Run PocketPages self-validation checks and ESLint for one service or all services
@@ -65,8 +66,9 @@ Examples:
   ./task.sh deploy booklog
   ./task.sh deploy booklog --skip-verify
   ./task.sh archive portfolio
-  ./task.sh restore portfolio archive/portfolio/2026-05-28
+  ./task.sh restore archive/portfolio/2026-05-28
   ./task.sh archives portfolio
+  ./task.sh archives --delete archive/portfolio/2026-05-28
   ./task.sh merge
   ./task.sh merge booklog
   ./task.sh new my-service
@@ -1117,6 +1119,56 @@ run_archives() {
   list_archive_tags "$service"
 }
 
+run_delete_archive() {
+  local tag_name="$1"
+  local local_exists=0
+  local remote_exists=0
+  local remote_status=0
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "git not found. Cannot delete archive tag." >&2
+    exit 1
+  fi
+
+  if [[ ! "$tag_name" =~ ^archive/[^/]+/[^/]+$ ]]; then
+    echo "Archive delete only accepts tags like archive/<service>/<tag>: $tag_name" >&2
+    exit 1
+  fi
+
+  if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/tags/$tag_name"; then
+    local_exists=1
+  fi
+
+  if git -C "$ROOT_DIR" remote get-url origin >/dev/null 2>&1; then
+    if git -C "$ROOT_DIR" ls-remote --exit-code --tags origin "refs/tags/$tag_name" >/dev/null 2>&1; then
+      remote_exists=1
+    else
+      remote_status=$?
+      if [[ "$remote_status" -ne 2 ]]; then
+        echo "Failed to check origin archive tag: $tag_name" >&2
+        exit 1
+      fi
+    fi
+  fi
+
+  if [[ "$local_exists" -eq 0 && "$remote_exists" -eq 0 ]]; then
+    echo "Unknown archive tag: $tag_name" >&2
+    echo "Available archive tags:" >&2
+    list_archive_tags >&2
+    exit 1
+  fi
+
+  if [[ "$local_exists" -eq 1 ]]; then
+    git -C "$ROOT_DIR" tag -d "$tag_name"
+  fi
+
+  if [[ "$remote_exists" -eq 1 ]]; then
+    git -C "$ROOT_DIR" push origin ":refs/tags/$tag_name"
+  fi
+
+  echo "Deleted archive tag: $tag_name"
+}
+
 run_archive() {
   local service="$1"
   local service_dir=""
@@ -2082,19 +2134,29 @@ case "${1:-help}" in
     ;;
   restore)
     shift
-    [[ -n "${1:-}" && -n "${2:-}" ]] || { echo "Usage: ./task.sh restore <service> <archive-tag>" >&2; exit 1; }
-    service="$1"
-    tag_name="$2"
-    shift 2 || true
-    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh restore <service> <archive-tag>" >&2; exit 1; }
+    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh restore <archive-tag>" >&2; exit 1; }
+    tag_name="$1"
+    shift || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh restore <archive-tag>" >&2; exit 1; }
+    service="${tag_name#archive/}"
+    service="${service%%/*}"
     run_restore "$service" "$tag_name"
     ;;
   archives)
     shift || true
-    service="${1:-}"
-    shift || true
-    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh archives [service]" >&2; exit 1; }
-    run_archives "$service"
+    if [[ "${1:-}" == "--delete" ]]; then
+      shift
+      [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh archives --delete <archive-tag>" >&2; exit 1; }
+      tag_name="$1"
+      shift || true
+      [[ $# -eq 0 ]] || { echo "Usage: ./task.sh archives --delete <archive-tag>" >&2; exit 1; }
+      run_delete_archive "$tag_name"
+    else
+      service="${1:-}"
+      shift || true
+      [[ $# -eq 0 ]] || { echo "Usage: ./task.sh archives [service]" >&2; exit 1; }
+      run_archives "$service"
+    fi
     ;;
   merge)
     shift || true
