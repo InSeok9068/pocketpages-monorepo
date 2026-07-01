@@ -377,11 +377,11 @@
   },
   {
     "id": "pbc_1201001002",
-    "listRule": "@request.auth.id != \"\" && user = @request.auth.id && project.user = @request.auth.id",
-    "viewRule": "@request.auth.id != \"\" && user = @request.auth.id && project.user = @request.auth.id",
-    "createRule": "@request.auth.id != \"\" && user = @request.auth.id && project.user = @request.auth.id",
-    "updateRule": "@request.auth.id != \"\" && user = @request.auth.id && project.user = @request.auth.id",
-    "deleteRule": "@request.auth.id != \"\" && user = @request.auth.id && project.user = @request.auth.id",
+    "listRule": null,
+    "viewRule": null,
+    "createRule": null,
+    "updateRule": null,
+    "deleteRule": null,
     "name": "project_tasks",
     "type": "base",
     "fields": [
@@ -621,11 +621,11 @@
   },
   {
     "id": "pbc_1201001001",
-    "listRule": "@request.auth.id != \"\" && user = @request.auth.id",
-    "viewRule": "@request.auth.id != \"\" && user = @request.auth.id",
-    "createRule": "@request.auth.id != \"\" && user = @request.auth.id",
-    "updateRule": "@request.auth.id != \"\" && user = @request.auth.id",
-    "deleteRule": "@request.auth.id != \"\" && user = @request.auth.id",
+    "listRule": null,
+    "viewRule": null,
+    "createRule": null,
+    "updateRule": null,
+    "deleteRule": null,
     "name": "projects",
     "type": "base",
     "fields": [
