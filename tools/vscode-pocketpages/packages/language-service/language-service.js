@@ -9696,7 +9696,32 @@ class ProjectLanguageService {
       }
     }
 
-    if (includeTypeScriptDiagnostics && (!semanticBudgetEnabled || preferredTemplateRegion)) {
+    const shouldRunTemplateTypeScriptDiagnostics =
+      includeTypeScriptDiagnostics &&
+      (
+        !semanticBudgetEnabled ||
+        (
+          preferredTemplateRegion &&
+          !cachedTemplateRegionIds.has(preferredTemplateRegion.id)
+        )
+      );
+    const shouldSkipTemplateSemanticForBudget =
+      shouldRunTemplateTypeScriptDiagnostics &&
+      semanticBudgetEnabled &&
+      includeSemanticDiagnostics;
+    if (shouldSkipTemplateSemanticForBudget) {
+      if (profile) {
+        profile.deferredTemplateSemanticRegions =
+          (profile.deferredTemplateSemanticRegions || 0) + 1;
+        profile.skippedBudgetTemplateSemanticDiagnostics =
+          (profile.skippedBudgetTemplateSemanticDiagnostics || 0) + 1;
+      }
+      if (semanticBudget) {
+        semanticBudget.deferred = true;
+      }
+    }
+
+    if (shouldRunTemplateTypeScriptDiagnostics) {
       const templateVirtual = this.getPreparedTemplateVirtual(
         filePath,
         documentText,
@@ -9709,7 +9734,7 @@ class ProjectLanguageService {
         }
       } else {
         const rawDiagnostics = this.languageService.getSyntacticDiagnostics(templateVirtual.fileName);
-        if (includeSemanticDiagnostics) {
+        if (includeSemanticDiagnostics && !shouldSkipTemplateSemanticForBudget) {
           rawDiagnostics.push(...this.languageService.getSemanticDiagnostics(templateVirtual.fileName));
         }
 

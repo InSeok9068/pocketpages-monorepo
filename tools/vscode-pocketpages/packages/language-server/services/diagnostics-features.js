@@ -1160,6 +1160,7 @@ function createDiagnosticsFeatureService(context) {
       document,
       cachedResult
     );
+    const canReusePreviousLanes = !(cachedResult && cachedResult.budgetDeferred === true);
     const fullDiagnosticsMode = getFullDiagnosticsMode(semanticBudget);
     const rawDiagnostics = documentContext.service.getDiagnostics(
       documentContext.filePath,
@@ -1175,9 +1176,9 @@ function createDiagnosticsFeatureService(context) {
         requirePreparedVirtualState: true,
         currentLaneResultIds: laneResultIds,
         currentLaneMetadata: laneMetadata,
-        previousLaneResultIds: cachedResult && cachedResult.laneResultIds,
-        previousLaneMetadata: cachedResult && cachedResult.laneMetadata,
-        previousLaneDiagnostics: cachedResult && cachedResult.laneDiagnostics,
+        previousLaneResultIds: canReusePreviousLanes && cachedResult && cachedResult.laneResultIds,
+        previousLaneMetadata: canReusePreviousLanes && cachedResult && cachedResult.laneMetadata,
+        previousLaneDiagnostics: canReusePreviousLanes && cachedResult && cachedResult.laneDiagnostics,
         laneDiagnosticsOut,
         semanticBudget,
         shouldCancel,

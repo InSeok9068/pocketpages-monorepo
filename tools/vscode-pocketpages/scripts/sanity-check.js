@@ -1538,6 +1538,12 @@ function assertLspRuntimeContracts(repoRoot) {
   if (!/getPreparedTemplateVirtual\(/.test(collectTemplateDiagnosticsSource) || /upsertTemplateVirtualFile/.test(collectTemplateDiagnosticsSource)) {
     throw new Error('Expected template diagnostics to reuse prepared virtual files without ad-hoc upserts.')
   }
+  if (
+    !/shouldSkipTemplateSemanticForBudget[\s\S]*semanticBudgetEnabled[\s\S]*includeSemanticDiagnostics/.test(collectTemplateDiagnosticsSource) ||
+    !/includeSemanticDiagnostics && !shouldSkipTemplateSemanticForBudget/.test(collectTemplateDiagnosticsSource)
+  ) {
+    throw new Error('Expected large EJS template diagnostics to skip TypeScript semantic diagnostics during budgeted passes.')
+  }
   assertMatches(
     lifecycleFeatureSource,
     /function shouldRunDiagnosticsForFile\(filePath\) \{[\s\S]*!isExcludedPocketPagesScriptPath\(filePath\)/,
@@ -7513,15 +7519,25 @@ missingBudgetTwo.toString()
       text: templateBudgetTextV2,
     })
     const templateBudgetService = templateBudgetCore.getDocumentContextByUri(templateBudgetUri).service
-    const originalTemplateBudgetDiagnostics = templateBudgetService.languageService.getSemanticDiagnostics.bind(
+    const originalTemplateBudgetSemanticDiagnostics = templateBudgetService.languageService.getSemanticDiagnostics.bind(
       templateBudgetService.languageService
     )
-    let templateBudgetCalls = 0
+    const originalTemplateBudgetSyntacticDiagnostics = templateBudgetService.languageService.getSyntacticDiagnostics.bind(
+      templateBudgetService.languageService
+    )
+    let templateBudgetSemanticCalls = 0
+    let templateBudgetSyntacticCalls = 0
+    let templateBudgetSemanticCallsAfterBudget = 0
     let templateBudgetSecondReport = null
+    let templateBudgetFollowUpReport = null
     try {
       templateBudgetService.languageService.getSemanticDiagnostics = function countTemplateBudgetDiagnostics(fileName, ...args) {
-        templateBudgetCalls += 1
-        return originalTemplateBudgetDiagnostics(fileName, ...args)
+        templateBudgetSemanticCalls += 1
+        return originalTemplateBudgetSemanticDiagnostics(fileName, ...args)
+      }
+      templateBudgetService.languageService.getSyntacticDiagnostics = function countTemplateBudgetSyntacticDiagnostics(fileName, ...args) {
+        templateBudgetSyntacticCalls += 1
+        return originalTemplateBudgetSyntacticDiagnostics(fileName, ...args)
       }
       templateBudgetSecondReport = await templateBudgetFeatureService.providePullDiagnostics(
         {
@@ -7530,24 +7546,41 @@ missingBudgetTwo.toString()
         },
         { isCancellationRequested: false }
       )
+      templateBudgetSemanticCallsAfterBudget = templateBudgetSemanticCalls
+      templateBudgetFollowUpReport = await templateBudgetFeatureService.providePullDiagnostics(
+        {
+          textDocument: { uri: templateBudgetUri },
+          previousResultId: templateBudgetSecondReport && templateBudgetSecondReport.resultId,
+        },
+        { isCancellationRequested: false }
+      )
     } finally {
-      templateBudgetService.languageService.getSemanticDiagnostics = originalTemplateBudgetDiagnostics
+      templateBudgetService.languageService.getSemanticDiagnostics = originalTemplateBudgetSemanticDiagnostics
+      templateBudgetService.languageService.getSyntacticDiagnostics = originalTemplateBudgetSyntacticDiagnostics
     }
     const templateBudgetMessages = Array.isArray(templateBudgetSecondReport && templateBudgetSecondReport.items)
       ? templateBudgetSecondReport.items.map((entry) => String(entry.message || ''))
       : []
+    const templateBudgetFollowUpMessages = Array.isArray(templateBudgetFollowUpReport && templateBudgetFollowUpReport.items)
+      ? templateBudgetFollowUpReport.items.map((entry) => String(entry.message || ''))
+      : []
     if (
       !templateBudgetSecondReport ||
       templateBudgetSecondReport.budgetDeferred !== true ||
-      templateBudgetCalls !== 1 ||
-      !templateBudgetMessages.some((message) => message.includes('missingTemplateFour')) ||
+      templateBudgetSemanticCallsAfterBudget !== 0 ||
+      templateBudgetSyntacticCalls < 1 ||
+      templateBudgetMessages.some((message) => message.includes('missingTemplateFour')) ||
       templateBudgetMessages.some((message) => message.includes('missingTemplateThree')) ||
+      !templateBudgetFollowUpReport ||
+      templateBudgetFollowUpReport.budgetDeferred === true ||
+      templateBudgetSemanticCalls <= templateBudgetSemanticCallsAfterBudget ||
+      !templateBudgetFollowUpMessages.some((message) => message.includes('missingTemplateFour')) ||
       templateBudgetSchedules.length !== 1 ||
       templateBudgetSchedules[0].uri !== 'workspace' ||
       templateBudgetSchedules[0].key !== 'diagnostics:refresh'
     ) {
       throw new Error(
-        `Expected large EJS template diagnostics to publish only the preferred dirty template region under the semantic budget. Got: ${JSON.stringify({ templateBudgetSecondReport, templateBudgetCalls, templateBudgetMessages, templateBudgetSchedules })}`
+        `Expected large EJS template budget diagnostics to skip template semantic work until the follow-up full pass. Got: ${JSON.stringify({ templateBudgetSecondReport, templateBudgetFollowUpReport, templateBudgetSemanticCalls, templateBudgetSemanticCallsAfterBudget, templateBudgetSyntacticCalls, templateBudgetMessages, templateBudgetFollowUpMessages, templateBudgetSchedules })}`
       )
     }
 
