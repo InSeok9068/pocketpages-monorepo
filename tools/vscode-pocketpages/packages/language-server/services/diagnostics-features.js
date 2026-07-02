@@ -16,6 +16,9 @@ const PULL_DIAGNOSTICS_MODE = Object.freeze({
   LARGE_OPEN_WARMUP: "largeOpenWarmup",
 });
 
+const POCKETPAGES_DIAGNOSTIC_DATA_KIND = "pocketpages-server-script";
+const POCKETPAGES_DIAGNOSTIC_DATA_VERSION = 1;
+
 function createDiagnosticsFeatureService(context) {
   const {
     connection,
@@ -134,22 +137,150 @@ function createDiagnosticsFeatureService(context) {
     return filteredDiagnostics;
   }
 
-  function toLspDiagnostics(document, diagnostics) {
-    return diagnostics.map((diagnostic) => ({
-      range: toRange(document, diagnostic.start, diagnostic.end),
-      severity: diagnosticSeverity(diagnostic.category),
-      code: diagnostic.code,
-      source: "pocketpages-server-script",
-      message: diagnostic.message,
-    }));
-  }
-
   function toDiagnosticCodeValue(code) {
     if (code && typeof code === "object" && Object.prototype.hasOwnProperty.call(code, "value")) {
       return String(code.value);
     }
 
     return code === undefined || code === null ? "" : String(code);
+  }
+
+  function isValidDiagnosticOffset(value) {
+    return Number.isInteger(value) && value >= 0;
+  }
+
+  function normalizeDiagnosticFixes(fixes) {
+    if (!Array.isArray(fixes) || !fixes.length) {
+      return [];
+    }
+
+    const normalizedFixes = [];
+    for (const fix of fixes) {
+      if (!fix || typeof fix !== "object" || typeof fix.title !== "string" || !fix.title) {
+        return [];
+      }
+
+      if (!Array.isArray(fix.edits) || !fix.edits.length) {
+        return [];
+      }
+
+      const edits = [];
+      for (const edit of fix.edits) {
+        if (
+          !edit ||
+          typeof edit !== "object" ||
+          !isValidDiagnosticOffset(edit.start) ||
+          !isValidDiagnosticOffset(edit.end) ||
+          edit.end < edit.start ||
+          typeof edit.newText !== "string"
+        ) {
+          return [];
+        }
+
+        edits.push({
+          filePath: typeof edit.filePath === "string" ? edit.filePath : undefined,
+          start: edit.start,
+          end: edit.end,
+          newText: edit.newText,
+        });
+      }
+
+      normalizedFixes.push({
+        title: fix.title,
+        edits,
+      });
+    }
+
+    return normalizedFixes;
+  }
+
+  function toPocketPagesDiagnosticData(document, diagnostic) {
+    if (
+      !document ||
+      !diagnostic ||
+      !isValidDiagnosticOffset(diagnostic.start) ||
+      !isValidDiagnosticOffset(diagnostic.end) ||
+      diagnostic.end < diagnostic.start
+    ) {
+      return undefined;
+    }
+
+    const fixes = normalizeDiagnosticFixes(diagnostic.fixes);
+    if (!fixes.length) {
+      return undefined;
+    }
+
+    return {
+      kind: POCKETPAGES_DIAGNOSTIC_DATA_KIND,
+      version: POCKETPAGES_DIAGNOSTIC_DATA_VERSION,
+      documentVersion: document.version,
+      start: diagnostic.start,
+      end: diagnostic.end,
+      message: diagnostic.message,
+      fixes,
+    };
+  }
+
+  function toLspDiagnostics(document, diagnostics) {
+    return diagnostics.map((diagnostic) => {
+      const result = {
+        range: toRange(document, diagnostic.start, diagnostic.end),
+        severity: diagnosticSeverity(diagnostic.category),
+        code: diagnostic.code,
+        source: POCKETPAGES_DIAGNOSTIC_DATA_KIND,
+        message: diagnostic.message,
+      };
+      const data = toPocketPagesDiagnosticData(document, diagnostic);
+      if (data) {
+        result.data = data;
+      }
+      return result;
+    });
+  }
+
+  function toRawDiagnosticFromLspData(document, diagnostic) {
+    if (
+      !document ||
+      !diagnostic ||
+      !diagnostic.range ||
+      !diagnostic.range.start ||
+      !diagnostic.range.end ||
+      String(diagnostic.source || "") !== POCKETPAGES_DIAGNOSTIC_DATA_KIND
+    ) {
+      return null;
+    }
+
+    const data = diagnostic.data;
+    if (
+      !data ||
+      data.kind !== POCKETPAGES_DIAGNOSTIC_DATA_KIND ||
+      data.version !== POCKETPAGES_DIAGNOSTIC_DATA_VERSION ||
+      data.documentVersion !== document.version ||
+      !isValidDiagnosticOffset(data.start) ||
+      !isValidDiagnosticOffset(data.end) ||
+      data.end < data.start
+    ) {
+      return null;
+    }
+
+    const rangeStart = document.offsetAt(diagnostic.range.start);
+    const rangeEnd = document.offsetAt(diagnostic.range.end);
+    if (data.start !== rangeStart || data.end !== rangeEnd) {
+      return null;
+    }
+
+    const fixes = normalizeDiagnosticFixes(data.fixes);
+    if (!fixes.length) {
+      return null;
+    }
+
+    return {
+      code: toDiagnosticCodeValue(diagnostic.code),
+      message: diagnostic.message || data.message || "",
+      start: data.start,
+      end: data.end,
+      fixes,
+    };
   }
 
   function countDiagnosticCodes(diagnostics) {
@@ -254,6 +385,23 @@ function createDiagnosticsFeatureService(context) {
     return cachedDiagnostics.filter((diagnostic) =>
       contextDiagnosticKeys.has(toRawDiagnosticKey(diagnostic))
     );
+  }
+
+  function getCodeActionDiagnosticsFromContextData(document, contextDiagnostics) {
+    const diagnostics = [];
+    const diagnosticKeys = new Set();
+    for (const diagnostic of Array.isArray(contextDiagnostics) ? contextDiagnostics : []) {
+      const rawDiagnostic = toRawDiagnosticFromLspData(document, diagnostic);
+      const diagnosticKey = toRawDiagnosticKey(rawDiagnostic);
+      if (!rawDiagnostic || !diagnosticKey || diagnosticKeys.has(diagnosticKey)) {
+        continue;
+      }
+
+      diagnosticKeys.add(diagnosticKey);
+      diagnostics.push(rawDiagnostic);
+    }
+
+    return diagnostics;
   }
 
   function canUseCancelledPullDiagnosticsCache(cachedResult, requestedVersion) {
@@ -1137,10 +1285,10 @@ function createDiagnosticsFeatureService(context) {
           params
         )
       : [];
-    if (contextDiagnostics.length && cachedDiagnostics === null && typeof ensureDocumentPrepared === "function") {
-      ensureDocumentPrepared(params.textDocument.uri);
-    }
-    if (isSchemaOnlyDocument && cachedDiagnostics === null) {
+    const actionDiagnostics = cachedDiagnostics === null
+      ? getCodeActionDiagnosticsFromContextData(document, contextDiagnostics)
+      : cachedDiagnostics;
+    if (isSchemaOnlyDocument && cachedDiagnostics === null && !actionDiagnostics.length) {
       return null;
     }
     const actions = documentContext.service.getCodeActions(
@@ -1151,7 +1299,7 @@ function createDiagnosticsFeatureService(context) {
         end: document.offsetAt(params.range.end),
       },
       {
-        diagnostics: cachedDiagnostics === null ? undefined : cachedDiagnostics,
+        diagnostics: actionDiagnostics,
       }
     );
     if (!actions || !actions.length) {

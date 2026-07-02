@@ -1516,6 +1516,11 @@ function assertLspRuntimeContracts(repoRoot) {
   )
   assertMatches(
     diagnosticsFeatureSource,
+    /toPocketPagesDiagnosticData\([\s\S]*documentVersion[\s\S]*fixes[\s\S]*getCodeActionDiagnosticsFromContextData\([\s\S]*toRawDiagnosticFromLspData/,
+    'Expected fixable diagnostics to preserve code-action data for cache-miss code actions.'
+  )
+  assertMatches(
+    diagnosticsFeatureSource,
     /const contextDiagnostics =[\s\S]*params\.context\.diagnostics[\s\S]*const cachedDiagnostics = contextDiagnostics\.length[\s\S]*: \[\];/,
     'Expected code-action provider to avoid full diagnostics while still allowing no-diagnostic contextual actions.'
   )
@@ -6130,6 +6135,40 @@ const smallNormalValue = missingSmallNormalValue
       )
     ) {
       throw new Error(`Expected cached pull diagnostics to drive params code actions. Got: ${JSON.stringify(cachedCodeActions)}`)
+    }
+
+    if (
+      !cachedCodeActionDiagnostic.data ||
+      !Array.isArray(cachedCodeActionDiagnostic.data.fixes) ||
+      !cachedCodeActionDiagnostic.data.fixes.length
+    ) {
+      throw new Error(`Expected fixable diagnostics to carry code-action data. Got: ${JSON.stringify(cachedCodeActionDiagnostic)}`)
+    }
+
+    cachedCodeActionContext.helpers.setCachedDiagnosticsResult(cachedCodeActionDocument.uri, 'pull', null)
+    let contextDataCodeActions = null
+    try {
+      cachedCodeActionService.getDiagnostics = () => {
+        throw new Error('Expected code actions to use context diagnostic data instead of recomputing diagnostics on cache miss.')
+      }
+      contextDataCodeActions = cachedCodeActionFeatureService.provideCodeActions({
+        textDocument: { uri: cachedCodeActionDocument.uri },
+        range: cachedCodeActionDiagnostic.range,
+        context: {
+          diagnostics: [cachedCodeActionDiagnostic],
+        },
+      })
+    } finally {
+      cachedCodeActionService.getDiagnostics = originalCachedCodeActionGetDiagnostics
+    }
+    if (
+      !Array.isArray(contextDataCodeActions) ||
+      !contextDataCodeActions.some((entry) =>
+        Array.isArray(entry.edit) &&
+        entry.edit.some((edit) => edit.newText === 'request.url.query')
+      )
+    ) {
+      throw new Error(`Expected context diagnostic data to drive cache-miss code actions. Got: ${JSON.stringify(contextDataCodeActions)}`)
     }
 
     const noDiagnosticCodeActionCore = new PocketPagesLanguageCore()
