@@ -10,7 +10,7 @@
     "pocketbase.exe": "pbw.exe",
     "README.md": "MEMO.md, DBSCHEMA.md",
     "AGENTS.md": "AGENTS*.md",
-    "package.json": "package-lock.json, .prettier*, eslint.config.js, unocss.config.js, tailwind.config.js, .dockerignore, .gitignore, .gitleaks.toml, knip.json"
+    "package.json": "package-lock.json, .prettier*, eslint.config.js, unocss.config.js, tailwind.config.js, .dockerignore, .gitignore, .gitleaks.toml, knip.json, .node-version"
   },
   // prettier-ignore
   "files.exclude": {

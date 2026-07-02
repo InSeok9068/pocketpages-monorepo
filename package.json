@@ -1,4 +1,10 @@
 {
+  "name": "pocketpages-monorepo",
+  "packageManager": "npm@11.18.0",
+  "volta": {
+    "node": "24.16.0",
+    "npm": "11.18.0"
+  },
   "scripts": {
     "format": "prettier --write --cache --cache-location .cache/prettier/.prettier-cache \"apps/*/pb_hooks/**/*\" \"packages/**/*.js\" \"packages/**/*.mjs\" \"packages/**/*.d.ts\""
   },
