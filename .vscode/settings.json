@@ -21,11 +21,6 @@
     // "scripts/**": true,
     // 개발중인 서비스만 주석
     // "apps/sample/**": true,
-    // "apps/kjca/**": true,
-    // "apps/booklog/**": true,
-    // "apps/photofolio/**": true,
-    // "apps/homeping/**": true,
-    // "apps/anchor/**": true,
   },
   // prettier-ignore
   "search.exclude": {
@@ -39,11 +34,6 @@
     // "scripts/**": true,
     // 개발중인 서비스만 주석
     // "apps/sample/**": true,
-    // "apps/kjca/**": true,
-    // "apps/booklog/**": true,
-    // "apps/photofolio/**": true,
-    // "apps/homeping/**": true,
-    // "apps/anchor/**": true,
   },
   "tailwindCSS.lint.cssConflict": "ignore",
   "tailwindCSS.includeLanguages": {
