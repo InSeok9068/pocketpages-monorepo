@@ -16,3 +16,10 @@ targetRules = ["generic-api-key"]
 paths = [
   '''^apps/[^/]+/patches/pocketbase-js-sdk-jsvm\+0\.25\.10004\.patch$''',
 ]
+
+[[allowlists]]
+description = "Seedlab Toss API docs contain example access_token fields."
+targetRules = ["generic-api-key"]
+paths = [
+  '''^apps/seedlab/\.docs/tossapi\.json$''',
+]
