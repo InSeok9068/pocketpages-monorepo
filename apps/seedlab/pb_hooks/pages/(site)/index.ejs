@@ -137,13 +137,11 @@
 
     <div class="mt-10">
       <p class="text-sm font-bold text-[#3182f6]">모의 투자와 실계좌 점검</p>
-      <h1 class="mt-3 text-[34px] font-bold leading-[1.14] tracking-0 text-[#191f28]">
+      <h1 class="tracking-0 mt-3 text-[34px] font-bold leading-[1.14] text-[#191f28]">
         투자 판단을<br />
         실험해보세요
       </h1>
-      <p class="mt-4 max-w-[340px] text-[15px] leading-6 text-[#6b7684]">
-        계좌, 전략, 가상 인물의 결과를 같은 화면에서 봅니다.
-      </p>
+      <p class="mt-4 max-w-[340px] text-[15px] leading-6 text-[#6b7684]">계좌, 전략, 가상 인물의 결과를 같은 화면에서 봅니다.</p>
     </div>
 
     <div class="mt-8 rounded-lg bg-white p-4 shadow-[0_10px_30px_rgba(25,31,40,0.08)]">
@@ -220,7 +218,7 @@
           aria-hidden="true"></span>
       </div>
       <div>
-        <p class="text-xs font-bold uppercase tracking-0 text-[#8b95a1]">SeedLab</p>
+        <p class="tracking-0 text-xs font-bold uppercase text-[#8b95a1]">SeedLab</p>
         <p class="text-base font-bold text-[#191f28]">투자 운영</p>
       </div>
     </div>
@@ -243,60 +241,60 @@
 
   <section class="-mx-4 bg-white px-4 py-6 shadow-[0_1px_0_rgba(25,31,40,0.04)] sm:-mx-5 sm:px-5">
     <p class="text-sm font-bold text-[#3182f6]"><%= displayName %></p>
-    <h1 class="mt-2 text-[30px] font-bold leading-[1.18] tracking-0 text-[#191f28]">
+    <h1 class="tracking-0 mt-2 text-[30px] font-bold leading-[1.18] text-[#191f28]">
       오늘 점검할<br />
       투자 흐름입니다
     </h1>
 
     <% if (dashboard.accountCount === 0) { %>
-      <div class="mt-5 rounded-lg border border-[#dbeafe] bg-[#f7fbff] p-4 shadow-[0_8px_24px_rgba(49,130,246,0.08)]">
-        <div class="flex items-start gap-3">
-          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#e8f3ff] text-[#3182f6]">
-            <span
-              class="i-lucide-wallet-cards h-5 w-5"
-              aria-hidden="true"></span>
-          </div>
-          <div class="min-w-0 flex-1">
-            <p class="text-sm font-bold text-[#191f28]">계좌 등록</p>
-            <p class="mt-1 text-sm leading-5 text-[#6b7684]">토스증권은 API로 연결하고, 연금저축이나 IRP는 직접 추가합니다.</p>
-            <div class="mt-4 grid grid-cols-2 gap-2">
-              <a
-                href="/connections/toss/new"
-                class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
-                토스증권 연결
-                <span
-                  class="i-lucide-link h-4 w-4"
-                  aria-hidden="true"></span>
-              </a>
-              <a
-                href="/accounts/manual/new"
-                class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-bold text-[#4e5968] no-underline ring-1 ring-[#dbe3ea] active:bg-[#f2f4f6]">
-                직접 추가
-                <span
-                  class="i-lucide-pencil-line h-4 w-4"
-                  aria-hidden="true"></span>
-              </a>
-            </div>
+    <div class="mt-5 rounded-lg border border-[#dbeafe] bg-[#f7fbff] p-4 shadow-[0_8px_24px_rgba(49,130,246,0.08)]">
+      <div class="flex items-start gap-3">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#e8f3ff] text-[#3182f6]">
+          <span
+            class="i-lucide-wallet-cards h-5 w-5"
+            aria-hidden="true"></span>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-bold text-[#191f28]">계좌 등록</p>
+          <p class="mt-1 text-sm leading-5 text-[#6b7684]">토스증권은 API로 연결하고, 연금저축이나 IRP는 직접 추가합니다.</p>
+          <div class="mt-4 grid grid-cols-2 gap-2">
+            <a
+              href="/connections/toss/new"
+              class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
+              토스증권 연결
+              <span
+                class="i-lucide-link h-4 w-4"
+                aria-hidden="true"></span>
+            </a>
+            <a
+              href="/accounts/manual/new"
+              class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-bold text-[#4e5968] no-underline ring-1 ring-[#dbe3ea] active:bg-[#f2f4f6]">
+              직접 추가
+              <span
+                class="i-lucide-pencil-line h-4 w-4"
+                aria-hidden="true"></span>
+            </a>
           </div>
         </div>
       </div>
+    </div>
     <% } %>
 
     <div class="mt-6 grid grid-cols-2 gap-3">
       <% for (let index = 0; index < statCards.length; index += 1) { %>
-        <% const card = statCards[index] %>
-        <article class="min-h-[128px] rounded-lg border border-[#f2f4f6] bg-[#fbfcfd] p-4">
-          <div class="flex items-start justify-between gap-2">
-            <span class="text-sm font-bold text-[#4e5968]"><%= card.label %></span>
-            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg <%= card.tone %>">
-              <span
-                class="<%= card.icon %> h-5 w-5"
-                aria-hidden="true"></span>
-            </span>
-          </div>
-          <p class="mt-4 text-[28px] font-bold leading-none text-[#191f28]"><%= card.value %></p>
-          <p class="mt-2 text-xs font-medium text-[#8b95a1]"><%= card.caption %></p>
-        </article>
+      <% const card = statCards[index] %>
+      <article class="min-h-[128px] rounded-lg border border-[#f2f4f6] bg-[#fbfcfd] p-4">
+        <div class="flex items-start justify-between gap-2">
+          <span class="text-sm font-bold text-[#4e5968]"><%= card.label %></span>
+          <span class="<%= card.tone %> flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+            <span
+              class="<%= card.icon %> h-5 w-5"
+              aria-hidden="true"></span>
+          </span>
+        </div>
+        <p class="mt-4 text-[28px] font-bold leading-none text-[#191f28]"><%= card.value %></p>
+        <p class="mt-2 text-xs font-medium text-[#8b95a1]"><%= card.caption %></p>
+      </article>
       <% } %>
     </div>
   </section>
@@ -317,47 +315,47 @@
         <div class="min-w-0 flex-1">
           <p class="text-sm font-bold text-[#191f28]">
             <% if (dashboard.draftActionCount > 0) { %>
-              승인 전 주문 후보가 있습니다
+            승인 전 주문 후보가 있습니다
             <% } else { %>
-              승인 대기 중인 주문 후보가 없습니다
+            승인 대기 중인 주문 후보가 없습니다
             <% } %>
           </p>
           <p class="mt-1 text-sm leading-5 text-[#6b7684]">
             <% if (dashboard.pendingOrderCount > 0) { %>
-              제출된 주문 <%= dashboard.pendingOrderCount %>건을 추적 중입니다.
+            제출된 주문 <%= dashboard.pendingOrderCount %>건을 추적 중입니다.
             <% } else if (latestDraftAction) { %>
-              <%= latestDraftAction.get('reason') || '전략 기준으로 만든 주문 후보입니다.' %>
+            <%= latestDraftAction.get('reason') || '전략 기준으로 만든 주문 후보입니다.' %>
             <% } else { %>
-              전략 검토 후 액션이 생기면 여기에 표시됩니다.
+            전략 검토 후 액션이 생기면 여기에 표시됩니다.
             <% } %>
           </p>
           <% if (latestDraftAction) { %>
-            <form
-              method="post"
-              action="/xapi/orders/mock-submit"
-              class="mt-4">
-              <input
-                type="hidden"
-                name="actionItemId"
-                value="<%= latestDraftAction.get('id') %>" />
-              <button
-                type="submit"
-                class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#191f28] px-4 text-sm font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.14)] active:bg-[#333d4b]">
-                모의 제출
-                <span
-                  class="i-lucide-send h-4 w-4"
-                  aria-hidden="true"></span>
-              </button>
-            </form>
-          <% } else { %>
-            <a
-              href="/simulations/new"
-              class="mt-4 box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#f2f4f6] px-4 text-sm font-bold text-[#4e5968] no-underline active:bg-[#e5e8eb]">
-              전략 실험 만들기
+          <form
+            method="post"
+            action="/xapi/orders/mock-submit"
+            class="mt-4">
+            <input
+              type="hidden"
+              name="actionItemId"
+              value="<%= latestDraftAction.get('id') %>" />
+            <button
+              type="submit"
+              class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#191f28] px-4 text-sm font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.14)] active:bg-[#333d4b]">
+              모의 제출
               <span
-                class="i-lucide-arrow-right h-4 w-4"
+                class="i-lucide-send h-4 w-4"
                 aria-hidden="true"></span>
-            </a>
+            </button>
+          </form>
+          <% } else { %>
+          <a
+            href="/simulations/new"
+            class="mt-4 box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#f2f4f6] px-4 text-sm font-bold text-[#4e5968] no-underline active:bg-[#e5e8eb]">
+            전략 실험 만들기
+            <span
+              class="i-lucide-arrow-right h-4 w-4"
+              aria-hidden="true"></span>
+          </a>
           <% } %>
         </div>
       </div>
@@ -412,23 +410,23 @@
           <p class="mt-1 text-xs text-[#8b95a1]"><%= dashboard.accountCount > 0 ? '자동 동기화 준비됨' : '수동 입력 또는 API 연결 필요' %></p>
         </div>
         <% if (dashboard.accountCount > 0) { %>
-          <span class="shrink-0 text-sm font-bold text-[#3182f6]"><%= dashboard.accountCount %>개</span>
+        <span class="shrink-0 text-sm font-bold text-[#3182f6]"><%= dashboard.accountCount %>개</span>
         <% } else { %>
-          <div class="flex shrink-0 items-center gap-2">
-            <a
-              href="/connections/toss/new"
-              class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
-              연결
-              <span
-                class="i-lucide-arrow-right h-4 w-4"
-                aria-hidden="true"></span>
-            </a>
-            <a
-              href="/accounts/manual/new"
-              class="inline-flex h-9 items-center justify-center rounded-lg bg-[#f2f4f6] px-3 text-sm font-bold text-[#4e5968] no-underline active:bg-[#e5e8eb]">
-              직접
-            </a>
-          </div>
+        <div class="flex shrink-0 items-center gap-2">
+          <a
+            href="/connections/toss/new"
+            class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
+            연결
+            <span
+              class="i-lucide-arrow-right h-4 w-4"
+              aria-hidden="true"></span>
+          </a>
+          <a
+            href="/accounts/manual/new"
+            class="inline-flex h-9 items-center justify-center rounded-lg bg-[#f2f4f6] px-3 text-sm font-bold text-[#4e5968] no-underline active:bg-[#e5e8eb]">
+            직접
+          </a>
+        </div>
         <% } %>
       </div>
 

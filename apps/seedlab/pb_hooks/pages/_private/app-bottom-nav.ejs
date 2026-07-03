@@ -46,22 +46,23 @@
 
 <nav
   class="fixed inset-x-0 bottom-0 z-40 border-t border-[#e5e8eb] bg-white/95 shadow-[0_-8px_24px_rgba(25,31,40,0.08)] backdrop-blur"
-  style="padding-bottom: env(safe-area-inset-bottom);"
+  style="padding-bottom: env(safe-area-inset-bottom)"
   aria-label="주요 메뉴">
   <div class="mx-auto grid min-h-[72px] w-full max-w-[560px] grid-cols-4 px-2">
     <% for (let index = 0; index < navItems.length; index += 1) { %>
-      <% const item = navItems[index] %>
-      <% const isActive = isActiveNavItem(item) %>
-      <a
-        href="<%= item.href %>"
-        data-nav-key="<%= item.key %>"
-        <% if (isActive) { %>aria-current="page"<% } %>
-        class="flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[11px] font-bold no-underline active:bg-[#f2f4f6] <%= isActive ? 'text-[#3182f6]' : 'text-[#8b95a1]' %>">
-        <span
-          class="<%= item.icon %> h-5 w-5"
-          aria-hidden="true"></span>
-        <span class="max-w-full truncate"><%= item.label %></span>
-      </a>
+    <% const item = navItems[index] %>
+    <% const isActive = isActiveNavItem(item) %>
+    <a
+      href="<%= item.href %>"
+      data-nav-key="<%= item.key %>"
+      <% if (isActive) { %>aria-current="page"
+      <% } %>
+      class="<%= isActive ? 'text-[#3182f6]' : 'text-[#8b95a1]' %> flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[11px] font-bold no-underline active:bg-[#f2f4f6]">
+      <span
+        class="<%= item.icon %> h-5 w-5"
+        aria-hidden="true"></span>
+      <span class="max-w-full truncate"><%= item.label %></span>
+    </a>
     <% } %>
   </div>
 </nav>
