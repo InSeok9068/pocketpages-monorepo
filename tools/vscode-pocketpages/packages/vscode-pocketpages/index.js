@@ -364,6 +364,26 @@ function isPagesAssetPath(filePath) {
   return !!relativeSegments && relativeSegments.includes("assets");
 }
 
+function isRoutePathAssetScriptPath(filePath) {
+  if (!/\.(js|cjs|mjs)$/i.test(String(filePath || ""))) {
+    return false;
+  }
+
+  const normalizedPath = normalizeDocumentPath(filePath);
+  const relativeSegments = getPagesRelativeSegments(normalizedPath);
+  if (!relativeSegments || !relativeSegments.includes("assets")) {
+    return false;
+  }
+
+  const lowerPath = normalizedPath.toLowerCase();
+  return (
+    !relativeSegments.includes("vendor") &&
+    !lowerPath.endsWith(".min.js") &&
+    !lowerPath.endsWith(".min.cjs") &&
+    !lowerPath.endsWith(".min.mjs")
+  );
+}
+
 function isExcludedManagedPagesScriptPath(filePath) {
   if (!/\.(js|cjs|mjs)$/i.test(String(filePath || ""))) {
     return false;
@@ -416,6 +436,10 @@ function isManagedHookScriptDocument(document) {
   const filePath = document.uri.fsPath;
   if (!/\.(js|cjs|mjs)$/i.test(filePath)) {
     return false;
+  }
+
+  if (isRoutePathAssetScriptPath(filePath)) {
+    return normalizeDocumentPath(filePath).includes("/pb_hooks/") && !!getCachedAppRoot(filePath);
   }
 
   if (isExcludedManagedPagesScriptPath(filePath)) {

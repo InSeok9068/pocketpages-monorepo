@@ -44,6 +44,22 @@ function createCustomFeatureService(context) {
     );
   }
 
+  function isRoutePathAssetDocument(documentContext) {
+    return !!(
+      documentContext &&
+      typeof helpers.isRoutePathAssetScriptPath === "function" &&
+      helpers.isRoutePathAssetScriptPath(documentContext.filePath)
+    );
+  }
+
+  function isFetchRoutePathEntry(entry) {
+    return !!(
+      entry &&
+      entry.kind === "route-path" &&
+      String(entry.routeSource || "").startsWith("fetch-")
+    );
+  }
+
   function isCustomFeatureBlockedDocument(documentContext) {
     return (
       isSchemaSupportOnlyDocument(documentContext) ||
@@ -74,7 +90,8 @@ function createCustomFeatureService(context) {
       }
 
       const { document, documentContext, documentText, offset } = requestContext;
-      if (isExcludedPocketPagesDocument(documentContext)) {
+      const routePathAssetDocument = isRoutePathAssetDocument(documentContext);
+      if (isExcludedPocketPagesDocument(documentContext) && !routePathAssetDocument) {
         return null;
       }
 
@@ -85,6 +102,10 @@ function createCustomFeatureService(context) {
       );
 
       if (!customCompletionData) {
+        return null;
+      }
+
+      if (routePathAssetDocument && !isFetchRoutePathEntry(customCompletionData)) {
         return null;
       }
 
@@ -132,8 +153,18 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
-      if (isExcludedPocketPagesDocument(documentContext)) {
+      const routePathAssetDocument = isRoutePathAssetDocument(documentContext);
+      if (isExcludedPocketPagesDocument(documentContext) && !routePathAssetDocument) {
         return null;
+      }
+
+      if (routePathAssetDocument) {
+        const pathTargetInfo = documentContext.service.getPathTargetInfo(
+          documentContext.filePath,
+          documentText,
+          offset
+        );
+        return isFetchRoutePathEntry(pathTargetInfo) ? pathTargetInfo : null;
       }
 
       const schemaOnlyRequireTarget = getRequirePathTargetInfoForSchemaOnly(
@@ -186,6 +217,15 @@ function createCustomFeatureService(context) {
         return schemaOnlyRequireTarget.targetFilePath;
       }
 
+      if (isRoutePathAssetDocument(documentContext)) {
+        const pathTargetInfo = documentContext.service.getPathTargetInfo(
+          documentContext.filePath,
+          documentText,
+          offset
+        );
+        return isFetchRoutePathEntry(pathTargetInfo) ? pathTargetInfo.targetFilePath : null;
+      }
+
       if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }
@@ -209,13 +249,20 @@ function createCustomFeatureService(context) {
       }
 
       const requireOnly = isSchemaSupportOnlyDocument(documentContext);
-      if (isExcludedPocketPagesDocument(documentContext)) {
+      const routePathAssetDocument = isRoutePathAssetDocument(documentContext);
+      if (isExcludedPocketPagesDocument(documentContext) && !routePathAssetDocument) {
         return null;
       }
 
       const links = documentContext.service
         .getDocumentLinks(documentContext.filePath, document.getText())
-        .filter((entry) => !requireOnly || entry.kind === "require-path");
+        .filter((entry) => {
+          if (routePathAssetDocument) {
+            return isFetchRoutePathEntry(entry);
+          }
+
+          return !requireOnly || entry.kind === "require-path";
+        });
       if (requireOnly && !links.length) {
         return null;
       }

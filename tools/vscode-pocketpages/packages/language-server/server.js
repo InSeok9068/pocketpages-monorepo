@@ -355,6 +355,26 @@ function isPagesAssetPath(filePath) {
   return !!relativeSegments && relativeSegments.includes("assets");
 }
 
+function isRoutePathAssetScriptPath(filePath) {
+  const normalizedPath = normalizeDocumentPath(filePath);
+  if (!isScriptFilePath(normalizedPath)) {
+    return false;
+  }
+
+  const relativeSegments = getPagesRelativeSegments(normalizedPath);
+  if (!relativeSegments || !relativeSegments.includes("assets")) {
+    return false;
+  }
+
+  const lowerPath = normalizedPath.toLowerCase();
+  return (
+    !relativeSegments.includes("vendor") &&
+    !lowerPath.endsWith(".min.js") &&
+    !lowerPath.endsWith(".min.cjs") &&
+    !lowerPath.endsWith(".min.mjs")
+  );
+}
+
 function isExcludedPocketPagesScriptPath(filePath) {
   const normalizedPath = normalizeDocumentPath(filePath);
   if (!normalizedPath.includes("/pb_hooks/pages/")) {
@@ -1278,6 +1298,7 @@ const featureServiceContext = {
     isActiveDiagnosticRun,
     isEjsFilePath,
     isExcludedPocketPagesScriptPath,
+    isRoutePathAssetScriptPath,
     isPullDiagnosticRefreshSupported,
     isScriptFilePath,
     isSchemaSupportOnlyHookScriptPath,
@@ -1418,7 +1439,8 @@ connection.onCompletion((params, token) => {
   }
 
   const context = core.getDocumentContextByUri(params.textDocument.uri);
-  if (!context || isExcludedPocketPagesScriptPath(context.filePath)) {
+  const routePathAssetScript = context && isRoutePathAssetScriptPath(context.filePath);
+  if (!context || (isExcludedPocketPagesScriptPath(context.filePath) && !routePathAssetScript)) {
     return null;
   }
 
@@ -1523,6 +1545,11 @@ connection.onCompletion((params, token) => {
   }
 
   if (isSchemaSupportOnlyDocument) {
+    setCachedCompletionItems(cacheKey, null);
+    return null;
+  }
+
+  if (routePathAssetScript) {
     setCachedCompletionItems(cacheKey, null);
     return null;
   }

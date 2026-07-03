@@ -627,8 +627,15 @@ function createLspServiceSmokeContext(core, documentsByUri, extra = {}) {
     shouldAbortDocumentRequest() {
       return false
     },
-    isExcludedPocketPagesScriptPath() {
-      return false
+    isExcludedPocketPagesScriptPath(filePath) {
+      return typeof extra.isExcludedPocketPagesScriptPath === 'function'
+        ? extra.isExcludedPocketPagesScriptPath(filePath)
+        : false
+    },
+    isRoutePathAssetScriptPath(filePath) {
+      return typeof extra.isRoutePathAssetScriptPath === 'function'
+        ? extra.isRoutePathAssetScriptPath(filePath)
+        : false
     },
     isSchemaSupportOnlyHookScriptPath(filePath) {
       return isSchemaSupportOnlyHookScriptPath(filePath)
@@ -4396,6 +4403,11 @@ const isSignedIn = !!authState && authState.isSignedIn
 `
     const lspSmokeDocument = createTestDocument(fixture.boardsFilePath, 'ejs', 1, lspSmokeText)
     const lspSmokeUri = lspSmokeDocument.uri
+    const lspAssetSmokeText = `const result = fetch('/feedback', { method: 'POST' })
+const service = resolve('board-service')
+`
+    const lspAssetSmokeDocument = createTestDocument(fixture.globalAssetFilePath, 'javascript', 1, lspAssetSmokeText)
+    const lspAssetSmokeUri = lspAssetSmokeDocument.uri
     lspSmokeCore.openDocument({
       uri: lspSmokeUri,
       languageId: 'ejs',
@@ -4404,7 +4416,18 @@ const isSignedIn = !!authState && authState.isSignedIn
     })
     const lspSmokeContext = createLspServiceSmokeContext(
       lspSmokeCore,
-      new Map([[lspSmokeUri, lspSmokeDocument]])
+      new Map([
+        [lspSmokeUri, lspSmokeDocument],
+        [lspAssetSmokeUri, lspAssetSmokeDocument],
+      ]),
+      {
+        isExcludedPocketPagesScriptPath(filePath) {
+          return normalizeFilePath(filePath) === normalizeFilePath(fixture.globalAssetFilePath)
+        },
+        isRoutePathAssetScriptPath(filePath) {
+          return normalizeFilePath(filePath) === normalizeFilePath(fixture.globalAssetFilePath)
+        },
+      }
     )
     const tsFeatureService = createTypeScriptFeatureService(lspSmokeContext.context)
     const customFeatureService = createCustomFeatureService(lspSmokeContext.context)
@@ -4457,6 +4480,69 @@ const isSignedIn = !!authState && authState.isSignedIn
     })
     if (!Array.isArray(lspSmokeTemplateLinkedReferences) || lspSmokeTemplateLinkedReferences.length !== 2) {
       throw new Error(`Expected TS feature references from server declaration to include template usages. Got: ${JSON.stringify(lspSmokeTemplateLinkedReferences)}`)
+    }
+    const lspAssetFetchOffset = lspAssetSmokeText.indexOf("'/feedback'") + 2
+    const lspAssetResolveOffset = lspAssetSmokeText.indexOf("'board-service'") + 2
+    const assetTsHover = tsFeatureService.provideHover({
+      textDocument: { uri: lspAssetSmokeUri },
+      position: lspAssetSmokeDocument.positionAt(lspAssetFetchOffset),
+    })
+    if (assetTsHover !== null) {
+      throw new Error(`Expected TS feature hover to stay disabled for route-path asset scripts. Got: ${JSON.stringify(assetTsHover)}`)
+    }
+    const assetFetchCompletion = customFeatureService.provideCompletionItems({
+      textDocument: { uri: lspAssetSmokeUri },
+      position: lspAssetSmokeDocument.positionAt(lspAssetFetchOffset),
+    })
+    if (
+      !assetFetchCompletion ||
+      !Array.isArray(assetFetchCompletion.items) ||
+      !assetFetchCompletion.items.some((entry) => entry.label === '/feedback')
+    ) {
+      throw new Error(`Expected asset fetch() route path completion to include /feedback. Got: ${JSON.stringify(assetFetchCompletion)}`)
+    }
+    const assetFetchHover = customFeatureService.provideHover({
+      textDocument: { uri: lspAssetSmokeUri },
+      position: lspAssetSmokeDocument.positionAt(lspAssetFetchOffset),
+    })
+    if (
+      !assetFetchHover ||
+      assetFetchHover.kind !== 'route-path' ||
+      assetFetchHover.routeSource !== 'fetch-post' ||
+      normalizeFilePath(assetFetchHover.targetFilePath) !== normalizeFilePath(fixture.feedbackPostFilePath)
+    ) {
+      throw new Error(`Expected asset fetch() route hover to resolve the POST route only. Got: ${JSON.stringify(assetFetchHover)}`)
+    }
+    const assetFetchDefinition = customFeatureService.provideDefinition({
+      textDocument: { uri: lspAssetSmokeUri },
+      position: lspAssetSmokeDocument.positionAt(lspAssetFetchOffset),
+    })
+    if (normalizeFilePath(assetFetchDefinition) !== normalizeFilePath(fixture.feedbackPostFilePath)) {
+      throw new Error(`Expected asset fetch() definition to target the POST route file. Got: ${JSON.stringify(assetFetchDefinition)}`)
+    }
+    const lspAssetDocumentLinks = customFeatureService.provideDocumentLinks({
+      textDocument: { uri: lspAssetSmokeUri },
+    })
+    if (
+      !Array.isArray(lspAssetDocumentLinks) ||
+      lspAssetDocumentLinks.length !== 1 ||
+      normalizeFilePath(URI.parse(lspAssetDocumentLinks[0].target).fsPath) !== normalizeFilePath(fixture.feedbackPostFilePath)
+    ) {
+      throw new Error(`Expected asset document links to include only fetch() route targets. Got: ${JSON.stringify(lspAssetDocumentLinks)}`)
+    }
+    const assetResolveCompletion = customFeatureService.provideCompletionItems({
+      textDocument: { uri: lspAssetSmokeUri },
+      position: lspAssetSmokeDocument.positionAt(lspAssetResolveOffset),
+    })
+    if (assetResolveCompletion !== null) {
+      throw new Error(`Expected asset resolve() completion to stay blocked. Got: ${JSON.stringify(assetResolveCompletion)}`)
+    }
+    const assetResolveDefinition = customFeatureService.provideDefinition({
+      textDocument: { uri: lspAssetSmokeUri },
+      position: lspAssetSmokeDocument.positionAt(lspAssetResolveOffset),
+    })
+    if (assetResolveDefinition !== null) {
+      throw new Error(`Expected asset resolve() definition to stay blocked. Got: ${JSON.stringify(assetResolveDefinition)}`)
     }
     const lspSmokeTemplateLinkedRenameEdits = tsFeatureService.provideRename({
       textDocument: { uri: lspSmokeUri },

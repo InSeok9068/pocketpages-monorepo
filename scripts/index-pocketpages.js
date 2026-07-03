@@ -236,6 +236,8 @@ function buildSummary(report) {
   const unresolvedResolveTargets = ((report.resolveGraph && report.resolveGraph.edges) || []).filter((edge) => edge.unresolved).length
   const highConfidenceFieldCount = ((report.schemaUsage && report.schemaUsage.fields) || []).filter((field) => field.inferenceConfidence === 'high').length
   const lowConfidenceFieldCount = ((report.schemaUsage && report.schemaUsage.fields) || []).filter((field) => field.inferenceConfidence === 'low').length
+  const uninferredFieldCount = ((report.schemaUsage && report.schemaUsage.fields) || []).filter((field) => !field.inferredCollectionName).length
+  const possibleMissingFieldCount = ((report.schemaUsage && report.schemaUsage.fields) || []).filter((field) => field.existsInSchema === false && field.inferenceConfidence && field.inferenceConfidence !== 'low').length
   const impactKinds = {}
 
   for (const item of report.impactByFile || []) {
@@ -268,6 +270,8 @@ function buildSummary(report) {
         fieldCount: ((report.schemaUsage && report.schemaUsage.fields) || []).length,
         highConfidenceFieldCount,
         lowConfidenceFieldCount,
+        uninferredFieldCount,
+        possibleMissingFieldCount,
       },
       impactByFile: {
         count: (report.impactByFile || []).length,
@@ -472,6 +476,7 @@ function buildSchemaUsageView(report, relativePath) {
       collectionCount: entry.collections.length,
       fieldCount: entry.fields.length,
       lowConfidenceFieldCount: entry.fields.filter((field) => field.inferenceConfidence === 'low').length,
+      uninferredFieldCount: entry.fields.filter((field) => !field.inferredCollectionName).length,
       possibleMissingFieldCount: entry.fields.filter((field) => field.existsInSchema === false && field.inferenceConfidence && field.inferenceConfidence !== 'low').length,
       collections: uniqueSorted(entry.collections.map((collection) => collection.collectionName)),
     }))
@@ -484,6 +489,11 @@ function buildSchemaUsageView(report, relativePath) {
 
   return {
     file: entry.file,
+    collectionCount: entry.collections.length,
+    fieldCount: entry.fields.length,
+    lowConfidenceFieldCount: entry.fields.filter((field) => field.inferenceConfidence === 'low').length,
+    uninferredFieldCount: entry.fields.filter((field) => !field.inferredCollectionName).length,
+    possibleMissingFieldCount: entry.fields.filter((field) => field.existsInSchema === false && field.inferenceConfidence && field.inferenceConfidence !== 'low').length,
     collections: entry.collections.map((collection) => ({
       collectionName: collection.collectionName,
       methodName: collection.methodName,

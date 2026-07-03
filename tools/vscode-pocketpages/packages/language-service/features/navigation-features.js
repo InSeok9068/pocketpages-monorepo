@@ -594,6 +594,7 @@ function createNavigationFeatureHandlers(deps) {
           kind: service.isRoutePathAssetFallback(filePath, pathContext, targetFilePath)
             ? "asset-path"
             : pathContext.kind,
+          routeSource: pathContext.routeSource || "",
           value: pathContext.value,
         });
       }

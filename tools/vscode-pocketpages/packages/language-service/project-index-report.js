@@ -162,6 +162,19 @@ function getResolveTargetKind(targetFilePath) {
 }
 
 /**
+ * route path 영역이 정적으로 해석 가능한지 확인합니다.
+ * @param {string} requestPath 링크 경로입니다.
+ * @returns {boolean} route target 해석 가능 여부입니다.
+ */
+function canResolveRouteLinkTarget(requestPath) {
+  const value = String(requestPath || '').trim()
+  const markerIndex = value.search(/[?#]/)
+  const routePath = markerIndex === -1 ? value : value.slice(0, markerIndex)
+
+  return !!routePath && !/<%[\s\S]*?%>|\$\{[\s\S]*?\}/.test(routePath)
+}
+
+/**
  * 보고서에 포함할 코드 파일 목록을 정리합니다.
  * @param {PocketPagesProjectIndex} projectIndex PocketPages 인덱스입니다.
  * @returns {Array<{ filePath: string, relativePath: string, sourceText: string, analysisText: string }>} 코드 파일 목록입니다.
@@ -185,6 +198,53 @@ function collectRelevantCodeFiles(projectIndex) {
       sourceText: entry.sourceText,
       analysisText: toAnalysisText(entry.filePath, entry.sourceText),
     }))
+}
+
+/**
+ * routeLinks 전용 asset script 파일 목록을 정리합니다.
+ * @param {PocketPagesProjectIndex} projectIndex PocketPages 인덱스입니다.
+ * @param {Array<{ filePath: string }>} codeFiles 일반 코드 파일 목록입니다.
+ * @returns {Array<{ filePath: string, relativePath: string, sourceText: string, analysisText: string }>} asset script 파일 목록입니다.
+ */
+function collectRouteLinkAssetScriptFiles(projectIndex, codeFiles) {
+  const existingFilePaths = new Set(codeFiles.map((entry) => normalizePath(entry.filePath)))
+
+  return projectIndex
+    .getAssetEntries()
+    .map((entry) => {
+      const filePath = normalizePath(entry.filePath)
+      const relativePath = toRelativePath(projectIndex.pagesRoot, filePath)
+      return {
+        filePath,
+        relativePath,
+      }
+    })
+    .filter((entry) => {
+      if (existingFilePaths.has(entry.filePath) || !entry.relativePath.startsWith('assets/')) {
+        return false
+      }
+
+      const extension = path.extname(entry.filePath).toLowerCase()
+      const lowerRelativePath = entry.relativePath.toLowerCase()
+      const relativeSegments = lowerRelativePath.split('/').filter(Boolean)
+
+      return (
+        ['.js', '.cjs', '.mjs'].includes(extension) &&
+        !relativeSegments.includes('vendor') &&
+        !lowerRelativePath.endsWith('.min.js') &&
+        !lowerRelativePath.endsWith('.min.cjs') &&
+        !lowerRelativePath.endsWith('.min.mjs')
+      )
+    })
+    .map((entry) => {
+      const sourceText = fs.readFileSync(entry.filePath, 'utf8')
+      return {
+        filePath: entry.filePath,
+        relativePath: entry.relativePath,
+        sourceText,
+        analysisText: sourceText,
+      }
+    })
 }
 
 /**
@@ -232,11 +292,13 @@ function buildRoutes(projectIndex, codeFiles) {
  * @returns {Array<object>} partial 목록입니다.
  */
 function buildPartials(projectIndex, codeFiles) {
+  const includeLocalOptions = { includeGlobalNamedLocals: true }
+
   return codeFiles
     .filter((entry) => entry.relativePath.startsWith('_private/') && path.extname(entry.filePath).toLowerCase() === '.ejs')
     .map((entry) => {
       const callers = projectIndex
-        .getIncludeTargetCallSites(entry.filePath)
+        .getIncludeTargetCallSites(entry.filePath, includeLocalOptions)
         .map((callSite) => {
           const routeDescriptor = projectIndex.getRouteDescriptorByFilePath(callSite.callerFilePath)
           return {
@@ -258,7 +320,7 @@ function buildPartials(projectIndex, codeFiles) {
       return {
         filePath: entry.filePath,
         relativePath: entry.relativePath,
-        localsShape: projectIndex.getIncludeLocalBindings(entry.filePath),
+        localsShape: projectIndex.getIncludeLocalBindings(entry.filePath, includeLocalOptions),
         callers,
       }
     })
@@ -379,11 +441,11 @@ function buildRouteLinks(projectIndex, codeFiles) {
 
     for (const context of contexts) {
       const isDynamic = !!context.isDynamic
-      const targetFilePath = isDynamic
-        ? null
-        : projectIndex.resolveRouteTarget(entry.filePath, context.value, {
+      const targetFilePath = canResolveRouteLinkTarget(context.value)
+        ? projectIndex.resolveRouteTarget(entry.filePath, context.value, {
             routeSource: context.routeSource,
           })
+        : null
       const normalizedTargetFilePath = targetFilePath ? normalizePath(targetFilePath) : null
       const targetDescriptor = normalizedTargetFilePath
         ? projectIndex.getRouteDescriptorByFilePath(normalizedTargetFilePath)
@@ -570,6 +632,9 @@ function buildRoutesByPath(routes) {
 function buildImpactByFile(sections) {
   const impacts = new Map()
   const routesByPath = buildRoutesByPath(sections.routes)
+  const routesByFilePath = new Map(sections.routes.map((route) => [normalizePath(route.filePath), route]))
+  const partialsByFilePath = new Map(sections.partials.map((partial) => [normalizePath(partial.filePath), partial]))
+  const partialAffectedRouteCache = new Map()
 
   function ensureImpact(filePath, fileKind) {
     let state = impacts.get(filePath)
@@ -606,7 +671,7 @@ function buildImpactByFile(sections) {
     })
   }
 
-  function getDescendantRoutesForLoaderLike(sourceFilePath) {
+  function getDescendantRoutesForScopedFile(sourceFilePath) {
     const normalizedSourceFilePath = normalizePath(sourceFilePath)
     const sourceDir = path.dirname(normalizedSourceFilePath)
 
@@ -614,6 +679,83 @@ function buildImpactByFile(sections) {
       const normalizedRouteFilePath = normalizePath(route.filePath)
       return normalizedRouteFilePath === normalizedSourceFilePath || normalizedRouteFilePath.startsWith(`${sourceDir}/`)
     })
+  }
+
+  function isRouteScopeFile(filePath) {
+    return /\/\+(?:layout|middleware|load)\.(?:ejs|js|cjs|mjs)$/.test(normalizePath(filePath))
+  }
+
+  function addRouteToMap(routeMap, route) {
+    if (!route || !route.routePath) {
+      return
+    }
+
+    routeMap.set(`${route.routePath}::${route.method || 'PAGE'}`, route)
+  }
+
+  function getCallerAffectedRoutes(caller) {
+    const callerFilePath = caller && caller.callerFilePath ? normalizePath(caller.callerFilePath) : ''
+    if (!callerFilePath) {
+      return []
+    }
+
+    const callerRoute = routesByFilePath.get(callerFilePath)
+    if (callerRoute) {
+      return [callerRoute]
+    }
+
+    if (isRouteScopeFile(callerFilePath)) {
+      return getDescendantRoutesForScopedFile(callerFilePath)
+    }
+
+    if (caller.callerRoutePath) {
+      return [{
+        routePath: caller.callerRoutePath,
+        method: caller.callerRouteMethod || 'PAGE',
+        filePath: caller.callerFilePath,
+        relativePath: caller.callerRelativePath,
+        area: null,
+      }]
+    }
+
+    return []
+  }
+
+  function getPartialAffectedRoutes(partialFilePath, visiting = new Set()) {
+    const normalizedPartialFilePath = normalizePath(partialFilePath)
+    if (partialAffectedRouteCache.has(normalizedPartialFilePath)) {
+      return partialAffectedRouteCache.get(normalizedPartialFilePath)
+    }
+
+    if (visiting.has(normalizedPartialFilePath)) {
+      return []
+    }
+
+    const partial = partialsByFilePath.get(normalizedPartialFilePath)
+    if (!partial) {
+      return []
+    }
+
+    visiting.add(normalizedPartialFilePath)
+    const routeMap = new Map()
+
+    for (const caller of partial.callers) {
+      for (const route of getCallerAffectedRoutes(caller)) {
+        addRouteToMap(routeMap, route)
+      }
+
+      const callerPartialFilePath = normalizePath(caller.callerFilePath)
+      if (partialsByFilePath.has(callerPartialFilePath)) {
+        for (const route of getPartialAffectedRoutes(callerPartialFilePath, visiting)) {
+          addRouteToMap(routeMap, route)
+        }
+      }
+    }
+
+    visiting.delete(normalizedPartialFilePath)
+    const routes = [...routeMap.values()]
+    partialAffectedRouteCache.set(normalizedPartialFilePath, routes)
+    return routes
   }
 
   for (const route of sections.routes) {
@@ -652,6 +794,10 @@ function buildImpactByFile(sections) {
         })
       }
     }
+
+    for (const route of getPartialAffectedRoutes(partial.filePath)) {
+      addAffectedRoute(state, route)
+    }
   }
 
   for (const edge of sections.resolveGraph.edges) {
@@ -686,9 +832,9 @@ function buildImpactByFile(sections) {
       referencedMemberNames: [...new Set(edge.referencedMembers.map((entry) => entry.memberName))].sort(),
     })
 
-    const isLoaderLikeCaller = /\/\+(?:middleware|load)\.(?:js|cjs|mjs)$/.test(edge.sourceFilePath)
-    const callerRoutes = isLoaderLikeCaller
-      ? getDescendantRoutesForLoaderLike(edge.sourceFilePath)
+    const isRouteScopeCaller = isRouteScopeFile(edge.sourceFilePath)
+    const callerRoutes = isRouteScopeCaller
+      ? getDescendantRoutesForScopedFile(edge.sourceFilePath)
       : sections.routes.filter((route) => route.filePath === edge.sourceFilePath)
     for (const callerRoute of callerRoutes) {
       addAffectedRoute(targetState, callerRoute)
@@ -813,10 +959,11 @@ function buildProjectIndexReport(options) {
   const appRoot = normalizePath(options.appRoot)
   const projectIndex = new PocketPagesProjectIndex(appRoot)
   const codeFiles = collectRelevantCodeFiles(projectIndex)
+  const routeLinkCodeFiles = codeFiles.concat(collectRouteLinkAssetScriptFiles(projectIndex, codeFiles))
   const routes = buildRoutes(projectIndex, codeFiles)
   const partials = buildPartials(projectIndex, codeFiles)
   const resolveGraph = buildResolveGraph(projectIndex, codeFiles)
-  const routeLinks = buildRouteLinks(projectIndex, codeFiles)
+  const routeLinks = buildRouteLinks(projectIndex, routeLinkCodeFiles)
   const schemaUsage = buildSchemaUsage(projectIndex, codeFiles)
 
   return {

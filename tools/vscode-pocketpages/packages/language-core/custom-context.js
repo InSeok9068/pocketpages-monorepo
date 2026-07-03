@@ -4,7 +4,7 @@ const ts = require('typescript')
 const { extractTemplateCodeBlocks } = require('./ejs-template')
 const { extractServerBlocks } = require('./script-server')
 
-const ROUTE_ATTR_OPEN_RE = /\b(href|action|(?:data-)?hx-(?:get|post|put|delete|patch))\s*=\s*(['"])([^'"]*)$/is
+const ROUTE_ATTR_OPEN_RE = /\b(href|action|(?:data-)?hx-(?:get|post|put|delete|patch|push-url|replace-url))\s*=\s*(['"])([^'"]*)$/is
 const ROUTE_ATTRIBUTE_NAMES = new Set([
   'href',
   'action',
@@ -13,11 +13,15 @@ const ROUTE_ATTRIBUTE_NAMES = new Set([
   'hx-put',
   'hx-delete',
   'hx-patch',
+  'hx-push-url',
+  'hx-replace-url',
   'data-hx-get',
   'data-hx-post',
   'data-hx-put',
   'data-hx-delete',
   'data-hx-patch',
+  'data-hx-push-url',
+  'data-hx-replace-url',
 ])
 const DATASTAR_ROUTE_ACTION_RE = /@(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]*)\2/g
 const DATASTAR_ROUTE_ACTION_OPEN_RE = /@(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]*)$/s
@@ -1152,6 +1156,13 @@ function getPathCallDescriptor(expression) {
   }
 
   if (ts.isIdentifier(target)) {
+    if (target.text === 'fetch') {
+      return {
+        kind: 'route-path',
+        routeSource: 'fetch-get',
+      }
+    }
+
     if (target.text === 'resolve' || target.text === 'include') {
       return {
         kind: `${target.text}-path`,
@@ -1175,6 +1186,13 @@ function getPathCallDescriptor(expression) {
   if (ts.isPropertyAccessExpression(target) && ts.isIdentifier(target.expression)) {
     const receiverName = target.expression.text
     const memberName = target.name.text
+
+    if ((receiverName === 'window' || receiverName === 'globalThis') && memberName === 'fetch') {
+      return {
+        kind: 'route-path',
+        routeSource: 'fetch-get',
+      }
+    }
 
     if (receiverName === 'response' && memberName === 'redirect') {
       return {
@@ -1215,6 +1233,72 @@ function getPathCallDescriptor(expression) {
   }
 
   return null
+}
+
+function getFetchMethodFromInitArgument(initArgument) {
+  const target = skipParenthesizedExpression(initArgument)
+  if (!target || !ts.isObjectLiteralExpression(target)) {
+    return null
+  }
+
+  for (const property of target.properties) {
+    if (!ts.isPropertyAssignment(property)) {
+      continue
+    }
+
+    if (getPropertyNameText(property.name) !== 'method') {
+      continue
+    }
+
+    const initializer = skipParenthesizedExpression(property.initializer)
+    if (!initializer || !ts.isStringLiteralLike(initializer)) {
+      return null
+    }
+
+    const method = String(initializer.text || '').trim().toLowerCase()
+    return method || null
+  }
+
+  return null
+}
+
+function getFetchRouteSource(node, fallbackRouteSource) {
+  if (!node || !ts.isCallExpression(node)) {
+    return fallbackRouteSource
+  }
+
+  const target = skipParenthesizedExpression(node.expression)
+  const isFetchCallee =
+    (target && ts.isIdentifier(target) && target.text === 'fetch') ||
+    (
+      target &&
+      ts.isPropertyAccessExpression(target) &&
+      ts.isIdentifier(target.expression) &&
+      (target.expression.text === 'window' || target.expression.text === 'globalThis') &&
+      target.name.text === 'fetch'
+    )
+
+  if (!isFetchCallee) {
+    return fallbackRouteSource
+  }
+
+  const method = getFetchMethodFromInitArgument(node.arguments[1]) || 'get'
+  return `fetch-${method}`
+}
+
+function isFetchRouteContext(context) {
+  return String(context && context.routeSource || '').startsWith('fetch-')
+}
+
+function shouldIncludeFetchRouteContext(context, options = {}) {
+  if (!isFetchRouteContext(context)) {
+    return true
+  }
+
+  const value = String(context.value || '')
+  return options.allowEmpty === true
+    ? value === '' || value.startsWith('/')
+    : value.startsWith('/')
 }
 
 function getStringLiteralPathRange(argument, sourceFile, scriptText, offsetBase = 0, options = {}) {
@@ -1266,7 +1350,7 @@ function createScriptPathContextFromCall(node, descriptor, pathRange, sourceFile
   }
 
   if (descriptor.kind === 'route-path') {
-    context.routeSource = descriptor.routeSource
+    context.routeSource = getFetchRouteSource(node, descriptor.routeSource)
     context.isDynamic = isDynamicRoutePathValue(context.value)
   }
 
@@ -1291,7 +1375,10 @@ function collectScriptPathContexts(scriptText, options = {}) {
       if (descriptor) {
         const pathRange = getStringLiteralPathRange(node.arguments[0], sourceFile, sourceText, offsetBase)
         if (pathRange) {
-          contexts.push(createScriptPathContextFromCall(node, descriptor, pathRange, sourceFile, sourceText))
+          const context = createScriptPathContextFromCall(node, descriptor, pathRange, sourceFile, sourceText)
+          if (shouldIncludeFetchRouteContext(context)) {
+            contexts.push(context)
+          }
         }
       }
     }
@@ -1331,14 +1418,17 @@ function getOpenScriptPathContextAtOffset(scriptText, offset, options = {}) {
           { requireClosed: false }
         )
         if (pathRange && offset >= pathRange.start && offset <= pathRange.end) {
-          const boundedPathRange = pathRange.isClosed
-            ? pathRange
-            : {
-                ...pathRange,
-                value: sourceText.slice(pathRange.start - offsetBase, offset - offsetBase),
-                end: offset,
-              }
-          openContext = createScriptPathContextFromCall(node, descriptor, boundedPathRange, sourceFile, sourceText)
+        const boundedPathRange = pathRange.isClosed
+          ? pathRange
+          : {
+              ...pathRange,
+              value: sourceText.slice(pathRange.start - offsetBase, offset - offsetBase),
+              end: offset,
+            }
+          const context = createScriptPathContextFromCall(node, descriptor, boundedPathRange, sourceFile, sourceText)
+          if (shouldIncludeFetchRouteContext(context, { allowEmpty: true })) {
+            openContext = context
+          }
           return
         }
       }

@@ -197,6 +197,8 @@ function createCompletionFeatureHandlers(deps) {
                 : service.projectIndex.getRouteCandidates({ routeSource: pathContext.routeSource });
 
         return {
+          kind: pathContext.kind,
+          routeSource: pathContext.routeSource || "",
           start: pathContext.start,
           end: pathContext.end,
           items: candidates.map((candidate) => ({

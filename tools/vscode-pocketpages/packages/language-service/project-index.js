@@ -1886,19 +1886,25 @@ function getPreferredRouteMethods(routeSource) {
     case 'action-post':
     case 'hx-post':
     case '@post':
+    case 'fetch-post':
       return ['POST', 'GET']
     case 'action-get':
       return ['PAGE']
+    case 'fetch-get':
+      return ['GET', 'PAGE']
     case 'action':
       return ['POST', 'GET']
     case 'hx-put':
     case '@put':
+    case 'fetch-put':
       return ['PUT', 'GET']
     case 'hx-delete':
     case '@delete':
+    case 'fetch-delete':
       return ['DELETE', 'GET']
     case 'hx-patch':
     case '@patch':
+    case 'fetch-patch':
       return ['PATCH', 'GET']
     case 'href':
     case 'redirect':
@@ -3323,6 +3329,7 @@ class PocketPagesProjectIndex {
   }
 
   getIncludeLocalsState(options = {}) {
+    const includeGlobalNamedLocals = options.includeGlobalNamedLocals === true
     const readText =
       typeof options.readFileText === 'function'
         ? options.readFileText
@@ -3339,6 +3346,7 @@ class PocketPagesProjectIndex {
     const snapshotKey = [
       `structure:${this.pagesStructureVersion}`,
       `content:${this.pagesContentVersion}`,
+      `globalLocals:${includeGlobalNamedLocals ? 'include' : 'exclude'}`,
       overrideSnapshotKey,
     ].filter(Boolean).join('|')
 
@@ -3386,7 +3394,7 @@ class PocketPagesProjectIndex {
               identity: `disk:${stats.mtimeMs}:${stats.ctimeMs}:${stats.size}`,
             }
           })()
-      const fileCacheKey = `${sourceState.identity}|structure:${this.pagesStructureVersion}`
+      const fileCacheKey = `${sourceState.identity}|structure:${this.pagesStructureVersion}|globalLocals:${includeGlobalNamedLocals ? 'include' : 'exclude'}`
       const cachedCallSites = this.includeLocalCallSitesByFileCache.get(normalizedEntryFilePath)
       if (cachedCallSites && cachedCallSites.cacheKey === fileCacheKey) {
         for (const callSite of cachedCallSites.callSites) {
@@ -3412,7 +3420,12 @@ class PocketPagesProjectIndex {
         const seenNames = new Set()
         const locals = []
         for (const local of includeCall.locals) {
-          if (!local || !isValidIdentifierName(local.name) || POCKETPAGES_GLOBAL_NAMES.has(local.name) || seenNames.has(local.name)) {
+          if (
+            !local ||
+            !isValidIdentifierName(local.name) ||
+            (!includeGlobalNamedLocals && POCKETPAGES_GLOBAL_NAMES.has(local.name)) ||
+            seenNames.has(local.name)
+          ) {
             continue
           }
 
