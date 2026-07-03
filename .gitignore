@@ -22,3 +22,6 @@ pbw.exe
 .download/*
 !.download/pocketbase.exe
 !.download/pbw.exe
+
+# SeedLab 관련 보안문서
+apps/seedlab/.docs/private

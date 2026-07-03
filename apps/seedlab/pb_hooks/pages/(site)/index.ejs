@@ -1,24 +1,445 @@
 <script server>
-  meta('title', 'seedlab')
-  meta('description', 'seedlab 서비스 홈')
+  meta('title', 'SeedLab')
+  meta('description', '계좌와 투자 전략을 함께 점검하는 SeedLab 홈')
+
+  const isSignedIn = !!request.auth
+  const userId = isSignedIn ? String(request.auth.get('id') || '') : ''
+  const userEmail = isSignedIn ? String(request.auth.get('email') || '').trim() : ''
+  const userName = isSignedIn ? String(request.auth.get('name') || '').trim() : ''
+  const displayName = userName || (userEmail ? userEmail.split('@')[0] : '투자자')
+  /** @type {PocketPagesRecord<"action_items"> | null} */
+  let latestDraftAction = null
+
+  const dashboard = {
+    accountCount: 0,
+    holdingCount: 0,
+    strategyCount: 0,
+    draftActionCount: 0,
+    simulationCount: 0,
+    runningSimulationCount: 0,
+    pendingOrderCount: 0,
+  }
+
+  if (isSignedIn) {
+    try {
+      dbg('seedlab/index:db-access', { collection: 'portfolio_accounts' })
+      dashboard.accountCount = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner} && isActive = true', '-updated', 200, 0, { owner: userId }).length
+    } catch (exception) {
+      warn('seedlab/index:db-access-failed', { collection: 'portfolio_accounts', error: String(exception.message || exception) })
+    }
+
+    try {
+      dbg('seedlab/index:db-access', { collection: 'account_holdings' })
+      dashboard.holdingCount = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-updated', 200, 0, { owner: userId }).length
+    } catch (exception) {
+      warn('seedlab/index:db-access-failed', { collection: 'account_holdings', error: String(exception.message || exception) })
+    }
+
+    try {
+      dbg('seedlab/index:db-access', { collection: 'investment_strategies' })
+      dashboard.strategyCount = $app.findRecordsByFilter('investment_strategies', 'owner = {:owner} && isActive = true', '-updated', 200, 0, { owner: userId }).length
+    } catch (exception) {
+      warn('seedlab/index:db-access-failed', { collection: 'investment_strategies', error: String(exception.message || exception) })
+    }
+
+    try {
+      dbg('seedlab/index:db-access', { collection: 'action_items' })
+      const draftActions = $app.findRecordsByFilter('action_items', 'owner = {:owner} && status = {:status}', '-updated', 200, 0, { owner: userId, status: 'draft' })
+      dashboard.draftActionCount = draftActions.length
+      latestDraftAction = draftActions.length > 0 ? draftActions[0] : null
+    } catch (exception) {
+      warn('seedlab/index:db-access-failed', { collection: 'action_items', error: String(exception.message || exception) })
+    }
+
+    try {
+      dbg('seedlab/index:db-access', { collection: 'simulations' })
+      dashboard.simulationCount = $app.findRecordsByFilter('simulations', 'owner = {:owner}', '-updated', 200, 0, { owner: userId }).length
+    } catch (exception) {
+      warn('seedlab/index:db-access-failed', { collection: 'simulations', error: String(exception.message || exception) })
+    }
+
+    try {
+      dbg('seedlab/index:db-access', { collection: 'simulations' })
+      dashboard.runningSimulationCount = $app.findRecordsByFilter('simulations', 'owner = {:owner} && status = {:status}', '-updated', 200, 0, { owner: userId, status: 'running' }).length
+    } catch (exception) {
+      warn('seedlab/index:db-access-failed', { collection: 'simulations', status: 'running', error: String(exception.message || exception) })
+    }
+
+    try {
+      dbg('seedlab/index:db-access', { collection: 'order_records' })
+      dashboard.pendingOrderCount = $app.findRecordsByFilter('order_records', 'owner = {:owner} && status = {:status}', '-updated', 200, 0, { owner: userId, status: 'pending' }).length
+    } catch (exception) {
+      warn('seedlab/index:db-access-failed', { collection: 'order_records', error: String(exception.message || exception) })
+    }
+  }
+
+  const activeActionCount = dashboard.draftActionCount + dashboard.pendingOrderCount
+
+  const statCards = [
+    {
+      label: '계좌',
+      value: String(dashboard.accountCount),
+      caption: dashboard.accountCount > 0 ? '연결됨' : '준비 필요',
+      icon: 'i-lucide-wallet-cards',
+      tone: 'bg-[#e8f3ff] text-[#1b64da]',
+    },
+    {
+      label: '보유 종목',
+      value: String(dashboard.holdingCount),
+      caption: dashboard.holdingCount > 0 ? '추적 중' : '대기 중',
+      icon: 'i-lucide-chart-no-axes-combined',
+      tone: 'bg-[#f2f4f6] text-[#4e5968]',
+    },
+    {
+      label: '전략',
+      value: String(dashboard.strategyCount),
+      caption: dashboard.strategyCount > 0 ? '활성' : '초안 없음',
+      icon: 'i-lucide-route',
+      tone: 'bg-[#ecfdf3] text-[#008a45]',
+    },
+    {
+      label: '액션',
+      value: String(activeActionCount),
+      caption: dashboard.draftActionCount > 0 ? '검토 필요' : dashboard.pendingOrderCount > 0 ? '제출 추적' : '없음',
+      icon: 'i-lucide-list-checks',
+      tone: 'bg-[#fff6e5] text-[#b76e00]',
+    },
+  ]
+
+  dbg('seedlab/index:response', {
+    isSignedIn: isSignedIn,
+    authId: userId,
+    accountCount: dashboard.accountCount,
+    strategyCount: dashboard.strategyCount,
+  })
 </script>
 
-<header>
-  <p>seedlab</p>
-  <h1>seedlab</h1>
-  <p>새 PocketPages 서비스를 시작하는 기본 화면입니다.</p>
-</header>
+<% if (!isSignedIn) { %>
+<section class="flex min-h-[calc(100vh-2rem)] flex-col justify-between gap-8 pb-4 pt-5">
+  <div>
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[#3182f6] text-white shadow-[0_10px_24px_rgba(49,130,246,0.22)]">
+          <span
+            class="i-lucide-sprout h-6 w-6"
+            aria-hidden="true"></span>
+        </div>
+        <span class="text-lg font-bold text-[#191f28]">SeedLab</span>
+      </div>
+      <a
+        href="/sign-in"
+        class="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-[#3182f6] no-underline active:bg-[#e8f3ff]">
+        로그인
+      </a>
+    </div>
 
-<%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+    <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
 
-<section>
-  <article>
-    <h2>SSR route</h2>
-    <p>페이지 전용 로직은 page 파일에 두고, 공유 처리는 middleware와 _private 모듈로 옮깁니다.</p>
-  </article>
+    <div class="mt-10">
+      <p class="text-sm font-bold text-[#3182f6]">모의 투자와 실계좌 점검</p>
+      <h1 class="mt-3 text-[34px] font-bold leading-[1.14] tracking-0 text-[#191f28]">
+        투자 판단을<br />
+        실험해보세요
+      </h1>
+      <p class="mt-4 max-w-[340px] text-[15px] leading-6 text-[#6b7684]">
+        계좌, 전략, 가상 인물의 결과를 같은 화면에서 봅니다.
+      </p>
+    </div>
 
-  <article>
-    <h2>Next step</h2>
-    <p>도메인 컬렉션과 route를 추가하면서 서비스를 확장하세요.</p>
-  </article>
+    <div class="mt-8 rounded-lg bg-white p-4 shadow-[0_10px_30px_rgba(25,31,40,0.08)]">
+      <div class="flex items-center justify-between border-b border-[#f2f4f6] pb-4">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[#e8f3ff] text-[#3182f6]">
+            <span
+              class="i-lucide-wallet-cards h-5 w-5"
+              aria-hidden="true"></span>
+          </div>
+          <div>
+            <p class="text-sm font-bold text-[#191f28]">계좌 현황</p>
+            <p class="mt-0.5 text-xs text-[#8b95a1]">연결 대기</p>
+          </div>
+        </div>
+        <span class="text-sm font-bold text-[#3182f6]">0개</span>
+      </div>
+
+      <div class="flex items-center justify-between border-b border-[#f2f4f6] py-4">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[#ecfdf3] text-[#008a45]">
+            <span
+              class="i-lucide-user-round-cog h-5 w-5"
+              aria-hidden="true"></span>
+          </div>
+          <div>
+            <p class="text-sm font-bold text-[#191f28]">가상 인물</p>
+            <p class="mt-0.5 text-xs text-[#8b95a1]">전략 실험</p>
+          </div>
+        </div>
+        <span class="text-sm font-bold text-[#4e5968]">준비</span>
+      </div>
+
+      <div class="flex items-center justify-between pt-4">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[#fff6e5] text-[#b76e00]">
+            <span
+              class="i-lucide-list-checks h-5 w-5"
+              aria-hidden="true"></span>
+          </div>
+          <div>
+            <p class="text-sm font-bold text-[#191f28]">주문 후보</p>
+            <p class="mt-0.5 text-xs text-[#8b95a1]">승인 전 검토</p>
+          </div>
+        </div>
+        <span class="text-sm font-bold text-[#4e5968]">없음</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="space-y-3">
+    <a
+      href="/sign-up"
+      class="box-border flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-[#3182f6] px-4 text-base font-bold text-white no-underline shadow-[0_10px_24px_rgba(49,130,246,0.22)] active:bg-[#1b64da]">
+      시작하기
+      <span
+        class="i-lucide-arrow-right h-5 w-5"
+        aria-hidden="true"></span>
+    </a>
+    <a
+      href="/sign-in"
+      class="box-border flex h-14 w-full items-center justify-center rounded-lg bg-white px-4 text-base font-bold text-[#4e5968] no-underline shadow-[0_1px_2px_rgba(25,31,40,0.06)] active:bg-[#f2f4f6]">
+      이미 계정이 있어요
+    </a>
+  </div>
 </section>
+<% } else { %>
+<div class="space-y-5 pb-8 pt-2">
+  <header class="flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[#3182f6] text-white shadow-[0_10px_24px_rgba(49,130,246,0.22)]">
+        <span
+          class="i-lucide-sprout h-6 w-6"
+          aria-hidden="true"></span>
+      </div>
+      <div>
+        <p class="text-xs font-bold uppercase tracking-0 text-[#8b95a1]">SeedLab</p>
+        <p class="text-base font-bold text-[#191f28]">투자 운영</p>
+      </div>
+    </div>
+
+    <form
+      method="post"
+      action="/xapi/auth/sign-out">
+      <button
+        type="submit"
+        class="inline-flex h-10 w-10 items-center justify-center rounded-lg border-0 bg-white text-[#6b7684] shadow-[0_8px_24px_rgba(25,31,40,0.08)] active:bg-[#f2f4f6]"
+        aria-label="로그아웃">
+        <span
+          class="i-lucide-log-out h-5 w-5"
+          aria-hidden="true"></span>
+      </button>
+    </form>
+  </header>
+
+  <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+
+  <section class="-mx-4 bg-white px-4 py-6 shadow-[0_1px_0_rgba(25,31,40,0.04)] sm:-mx-5 sm:px-5">
+    <p class="text-sm font-bold text-[#3182f6]"><%= displayName %></p>
+    <h1 class="mt-2 text-[30px] font-bold leading-[1.18] tracking-0 text-[#191f28]">
+      오늘 점검할<br />
+      투자 흐름입니다
+    </h1>
+
+    <% if (dashboard.accountCount === 0) { %>
+      <div class="mt-5 rounded-lg border border-[#dbeafe] bg-[#f7fbff] p-4 shadow-[0_8px_24px_rgba(49,130,246,0.08)]">
+        <div class="flex items-start gap-3">
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#e8f3ff] text-[#3182f6]">
+            <span
+              class="i-lucide-wallet-cards h-5 w-5"
+              aria-hidden="true"></span>
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-bold text-[#191f28]">계좌 등록</p>
+            <p class="mt-1 text-sm leading-5 text-[#6b7684]">토스증권은 API로 연결하고, 연금저축이나 IRP는 직접 추가합니다.</p>
+            <div class="mt-4 grid grid-cols-2 gap-2">
+              <a
+                href="/connections/toss/new"
+                class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
+                토스증권 연결
+                <span
+                  class="i-lucide-link h-4 w-4"
+                  aria-hidden="true"></span>
+              </a>
+              <a
+                href="/accounts/manual/new"
+                class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-bold text-[#4e5968] no-underline ring-1 ring-[#dbe3ea] active:bg-[#f2f4f6]">
+                직접 추가
+                <span
+                  class="i-lucide-pencil-line h-4 w-4"
+                  aria-hidden="true"></span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% } %>
+
+    <div class="mt-6 grid grid-cols-2 gap-3">
+      <% for (let index = 0; index < statCards.length; index += 1) { %>
+        <% const card = statCards[index] %>
+        <article class="min-h-[128px] rounded-lg border border-[#f2f4f6] bg-[#fbfcfd] p-4">
+          <div class="flex items-start justify-between gap-2">
+            <span class="text-sm font-bold text-[#4e5968]"><%= card.label %></span>
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg <%= card.tone %>">
+              <span
+                class="<%= card.icon %> h-5 w-5"
+                aria-hidden="true"></span>
+            </span>
+          </div>
+          <p class="mt-4 text-[28px] font-bold leading-none text-[#191f28]"><%= card.value %></p>
+          <p class="mt-2 text-xs font-medium text-[#8b95a1]"><%= card.caption %></p>
+        </article>
+      <% } %>
+    </div>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-bold text-[#191f28]">이번 액션</h2>
+      <span class="text-sm font-bold text-[#3182f6]"><%= activeActionCount %>개</span>
+    </div>
+
+    <div class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <div class="flex items-start gap-3">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#fff6e5] text-[#b76e00]">
+          <span
+            class="i-lucide-list-checks h-5 w-5"
+            aria-hidden="true"></span>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-bold text-[#191f28]">
+            <% if (dashboard.draftActionCount > 0) { %>
+              승인 전 주문 후보가 있습니다
+            <% } else { %>
+              승인 대기 중인 주문 후보가 없습니다
+            <% } %>
+          </p>
+          <p class="mt-1 text-sm leading-5 text-[#6b7684]">
+            <% if (dashboard.pendingOrderCount > 0) { %>
+              제출된 주문 <%= dashboard.pendingOrderCount %>건을 추적 중입니다.
+            <% } else if (latestDraftAction) { %>
+              <%= latestDraftAction.get('reason') || '전략 기준으로 만든 주문 후보입니다.' %>
+            <% } else { %>
+              전략 검토 후 액션이 생기면 여기에 표시됩니다.
+            <% } %>
+          </p>
+          <% if (latestDraftAction) { %>
+            <form
+              method="post"
+              action="/xapi/orders/mock-submit"
+              class="mt-4">
+              <input
+                type="hidden"
+                name="actionItemId"
+                value="<%= latestDraftAction.get('id') %>" />
+              <button
+                type="submit"
+                class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#191f28] px-4 text-sm font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.14)] active:bg-[#333d4b]">
+                모의 제출
+                <span
+                  class="i-lucide-send h-4 w-4"
+                  aria-hidden="true"></span>
+              </button>
+            </form>
+          <% } else { %>
+            <a
+              href="/simulations/new"
+              class="mt-4 box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#f2f4f6] px-4 text-sm font-bold text-[#4e5968] no-underline active:bg-[#e5e8eb]">
+              전략 실험 만들기
+              <span
+                class="i-lucide-arrow-right h-4 w-4"
+                aria-hidden="true"></span>
+            </a>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-bold text-[#191f28]">전략 실험</h2>
+      <span class="text-sm font-bold text-[#4e5968]"><%= dashboard.simulationCount %>개</span>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
+      <article class="min-h-[116px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+        <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-[#ecfdf3] text-[#008a45]">
+          <span
+            class="i-lucide-user-round-cog h-5 w-5"
+            aria-hidden="true"></span>
+        </div>
+        <p class="mt-4 text-sm font-bold text-[#191f28]">가상 인물</p>
+        <p class="mt-1 text-xs text-[#8b95a1]">전략별 비교</p>
+      </article>
+
+      <article class="min-h-[116px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+        <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-[#e8f3ff] text-[#3182f6]">
+          <span
+            class="i-lucide-activity h-5 w-5"
+            aria-hidden="true"></span>
+        </div>
+        <p class="mt-4 text-sm font-bold text-[#191f28]"><%= dashboard.runningSimulationCount %>개 진행</p>
+        <p class="mt-1 text-xs text-[#8b95a1]">백데이터 테스트</p>
+      </article>
+    </div>
+
+    <a
+      href="/simulations/new"
+      class="box-border flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-bold text-[#3182f6] no-underline shadow-[0_1px_2px_rgba(25,31,40,0.06)] active:bg-[#e8f3ff]">
+      새 실험 만들기
+      <span
+        class="i-lucide-arrow-right h-4 w-4"
+        aria-hidden="true"></span>
+    </a>
+  </section>
+
+  <section class="space-y-3">
+    <h2 class="text-lg font-bold text-[#191f28]">계좌 상태</h2>
+
+    <div class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <div class="flex items-center justify-between gap-3 border-b border-[#f2f4f6] pb-4">
+        <div>
+          <p class="text-sm font-bold text-[#191f28]">연결 계좌</p>
+          <p class="mt-1 text-xs text-[#8b95a1]"><%= dashboard.accountCount > 0 ? '자동 동기화 준비됨' : '수동 입력 또는 API 연결 필요' %></p>
+        </div>
+        <% if (dashboard.accountCount > 0) { %>
+          <span class="shrink-0 text-sm font-bold text-[#3182f6]"><%= dashboard.accountCount %>개</span>
+        <% } else { %>
+          <div class="flex shrink-0 items-center gap-2">
+            <a
+              href="/connections/toss/new"
+              class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
+              연결
+              <span
+                class="i-lucide-arrow-right h-4 w-4"
+                aria-hidden="true"></span>
+            </a>
+            <a
+              href="/accounts/manual/new"
+              class="inline-flex h-9 items-center justify-center rounded-lg bg-[#f2f4f6] px-3 text-sm font-bold text-[#4e5968] no-underline active:bg-[#e5e8eb]">
+              직접
+            </a>
+          </div>
+        <% } %>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 pt-4">
+        <div>
+          <p class="text-sm font-bold text-[#191f28]">보유 종목</p>
+          <p class="mt-1 text-xs text-[#8b95a1]"><%= dashboard.holdingCount > 0 ? '평가 기준 업데이트 가능' : '아직 불러온 종목 없음' %></p>
+        </div>
+        <span class="shrink-0 text-sm font-bold text-[#4e5968]"><%= dashboard.holdingCount %>개</span>
+      </div>
+    </div>
+  </section>
+</div>
+<% } %>

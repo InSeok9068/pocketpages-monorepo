@@ -1,0 +1,436 @@
+erDiagram
+  %% SeedLab 초기 스키마 설계입니다.
+  %% 목적: 실제 계좌 운영, 수동 계좌 보완, 가상 인물 백테스트, 주문 후보 생성을 한 흐름으로 연결합니다.
+  %% 원칙: 사용자별 API secret은 암호화해서 저장하고, 화면에는 마스킹 값만 노출합니다.
+
+  users ||--o{ broker_connections : owns
+  users ||--o{ portfolio_accounts : owns
+  broker_connections ||--o{ portfolio_accounts : syncs
+  broker_connections ||--o{ sync_runs : records
+
+  users ||--o{ investment_strategies : owns
+  investment_strategies ||--o{ strategy_targets : allocates
+  investment_strategies ||--o{ strategy_rules : triggers
+  assets ||--o{ strategy_targets : targets
+
+  users ||--o{ virtual_personas : owns
+  investment_strategies ||--o{ virtual_personas : defaults
+  virtual_personas ||--o{ persona_accounts : models
+  virtual_personas ||--o{ simulations : runs
+  investment_strategies ||--o{ simulations : tests
+
+  users ||--o{ portfolio_accounts : manages
+  portfolio_accounts ||--o{ account_holdings : contains
+  portfolio_accounts ||--o{ account_snapshots : snapshots
+  portfolio_accounts ||--o{ cash_flows : receives
+  account_snapshots ||--o{ holding_snapshots : details
+
+  assets ||--o{ account_holdings : held_as
+  assets ||--o{ holding_snapshots : valued_as
+  assets ||--o{ asset_bars : priced_as
+
+  simulations ||--o{ simulation_snapshots : records
+  simulations ||--o{ simulation_events : emits
+  assets ||--o{ simulation_events : trades
+
+  users ||--o{ action_batches : owns
+  investment_strategies ||--o{ action_batches : suggests
+  action_batches ||--o{ action_items : includes
+  portfolio_accounts ||--o{ action_items : executes_on
+  assets ||--o{ action_items : orders
+
+  action_items ||--o{ order_records : creates
+  portfolio_accounts ||--o{ order_records : submits
+  assets ||--o{ order_records : fills
+
+  users ||--o{ investment_logs : writes
+  action_batches ||--o{ investment_logs : explains
+  order_records ||--o{ investment_logs : references
+
+  users {
+    text id PK "system primaryKey"
+    email email "로그인 이메일"
+    text name "표시 이름"
+    file avatar "프로필 이미지"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  broker_connections {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    select provider "toss"
+    select authMode "env user_key"
+    text displayName "연결 이름"
+    text clientId "사용자 API client_id"
+    text encryptedSecret "암호화된 client_secret"
+    text secretPreview "마스킹된 secret"
+    text accountSeq "조회된 계좌 식별자"
+    text accountNoMasked "마스킹된 계좌번호"
+    select accountType "BROKERAGE 등"
+    text apiKeyEnvName "예: TOSS_APIKEY"
+    text secretEnvName "예: TOSS_SECRET"
+    select status "pending active paused error"
+    date lastCheckedAt "마지막 확인 시각"
+    json lastError "최근 연결 오류"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  sync_runs {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation brokerConnection FK "broker_connections"
+    select syncType "accounts holdings orders prices"
+    select status "running success failed"
+    date startedAt "시작 시각"
+    date finishedAt "종료 시각"
+    number fetchedCount "조회 건수"
+    number changedCount "변경 건수"
+    json error "오류 정보"
+    json stats "동기화 통계"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  portfolio_accounts {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation brokerConnection FK "broker_connections"
+    text name "계좌 이름"
+    select accountType "toss brokerage pension_saving irp isa cash"
+    select syncMode "auto manual import"
+    text providerName "증권사 또는 기관명"
+    text accountSeq "토스 계좌 번호"
+    select baseCurrency "KRW USD"
+    bool isTaxAdvantaged "세제 계좌 여부"
+    bool isActive "운영 여부"
+    date lastSyncedAt "마지막 동기화"
+    json metadata "기관별 보조 정보"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  assets {
+    text id PK "primaryKey"
+    text symbol UK "종목 코드"
+    text name "종목명"
+    select marketCountry "KR US"
+    select assetType "stock etf index cash"
+    select currency "KRW USD"
+    text exchange "거래소"
+    bool isActive "사용 여부"
+    json metadata "종목 보조 정보"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  asset_bars {
+    text id PK "primaryKey"
+    relation asset FK "assets"
+    select interval "1m 1d"
+    date barAt "캔들 기준 시각"
+    number open "시가"
+    number high "고가"
+    number low "저가"
+    number close "종가"
+    number volume "거래량"
+    bool adjusted "수정주가 여부"
+    select source "toss import"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  fx_rates {
+    text id PK "primaryKey"
+    select baseCurrency "KRW USD"
+    select quoteCurrency "KRW USD"
+    date rateAt "환율 기준 시각"
+    number rate "환율"
+    select source "toss manual import"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  account_holdings {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation account FK "portfolio_accounts"
+    relation asset FK "assets"
+    number quantity "보유 수량"
+    number averagePrice "평균 단가"
+    number currentPrice "현재가"
+    number costAmount "매입 금액"
+    number marketValue "평가 금액"
+    number profitLoss "평가 손익"
+    select currency "KRW USD"
+    select source "toss manual import"
+    date asOfAt "평가 기준 시각"
+    json raw "원본 응답"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  account_snapshots {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation account FK "portfolio_accounts"
+    date snapshotDate "스냅샷 일자"
+    number totalValue "총 평가 금액"
+    number cashValue "현금 금액"
+    number investedValue "투자 금액"
+    number profitLoss "평가 손익"
+    select currency "KRW USD"
+    select source "auto manual import"
+    json summary "계좌 요약"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  holding_snapshots {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation snapshot FK "account_snapshots"
+    relation account FK "portfolio_accounts"
+    relation asset FK "assets"
+    number quantity "보유 수량"
+    number price "평가 가격"
+    number costAmount "매입 금액"
+    number marketValue "평가 금액"
+    number profitLoss "평가 손익"
+    select currency "KRW USD"
+    json raw "원본 값"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  cash_flows {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation account FK "portfolio_accounts"
+    date flowDate "입출금 일자"
+    select flowType "deposit withdrawal contribution dividend fee tax"
+    number amount "금액"
+    select currency "KRW USD"
+    text memo "메모"
+    select source "manual import toss"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  investment_strategies {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    text name "전략 이름"
+    select strategyType "real simulation template"
+    select baseCurrency "KRW USD"
+    number monthlyContribution "월 투자금"
+    number cashTargetPct "목표 현금 비중"
+    select rebalanceCycle "none monthly quarterly yearly"
+    bool isActive "사용 여부"
+    text memo "설명"
+    json settings "전략 설정"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  strategy_targets {
+    text id PK "primaryKey"
+    relation strategy FK "investment_strategies"
+    relation asset FK "assets"
+    number targetPct "목표 비중"
+    number minPct "하한 비중"
+    number maxPct "상한 비중"
+    number priority "매수 우선순위"
+    json settings "종목별 설정"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  strategy_rules {
+    text id PK "primaryKey"
+    relation strategy FK "investment_strategies"
+    select ruleType "schedule rebalance drawdown fx panic"
+    select triggerKind "date weight_drop drawdown fx_rate loss_pct"
+    select actionKind "buy sell hold alert pause"
+    number thresholdValue "발동 기준값"
+    number actionValue "실행 기준값"
+    select actionUnit "amount pct"
+    bool isEnabled "사용 여부"
+    json orderPolicy "주문 정책"
+    text memo "규칙 설명"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  virtual_personas {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation defaultStrategy FK "investment_strategies"
+    text name "가상 인물 이름"
+    number age "나이"
+    number monthlyIncome "월 소득"
+    number monthlyInvestment "월 투자금"
+    number initialCash "초기 현금"
+    select riskProfile "conservative balanced aggressive"
+    select behaviorProfile "disciplined panic_seller dip_buyer"
+    text memo "인물 설명"
+    json settings "행동 설정"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  persona_accounts {
+    text id PK "primaryKey"
+    relation persona FK "virtual_personas"
+    text name "가상 계좌 이름"
+    select accountType "brokerage pension_saving irp isa cash"
+    select baseCurrency "KRW USD"
+    number startingValue "초기 평가금"
+    number monthlyContribution "월 납입액"
+    bool isTaxAdvantaged "세제 계좌 여부"
+    json settings "계좌 설정"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  simulations {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation persona FK "virtual_personas"
+    relation strategy FK "investment_strategies"
+    text name "시뮬레이션 이름"
+    date startDate "시작일"
+    date endDate "종료일"
+    number initialCapital "초기 자산"
+    number monthlyContribution "월 투자금"
+    select baseCurrency "KRW USD"
+    select status "draft running complete failed"
+    json summary "최종 결과"
+    json settings "실험 설정"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  simulation_snapshots {
+    text id PK "primaryKey"
+    relation simulation FK "simulations"
+    date snapshotDate "스냅샷 일자"
+    number investedAmount "누적 납입금"
+    number totalValue "총 평가금"
+    number cashValue "현금"
+    number profitLoss "손익"
+    number drawdownPct "최대 낙폭"
+    json assetWeights "자산별 비중"
+    json accountValues "계좌별 평가금"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  simulation_events {
+    text id PK "primaryKey"
+    relation simulation FK "simulations"
+    relation asset FK "assets"
+    date eventDate "이벤트 일자"
+    select eventType "deposit buy sell rebalance rule_trigger fee dividend"
+    text accountLabel "가상 계좌명"
+    number amount "금액"
+    number quantity "수량"
+    number price "가격"
+    number fxRate "적용 환율"
+    text memo "이벤트 설명"
+    json metadata "추가 정보"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  action_batches {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation strategy FK "investment_strategies"
+    date actionDate "추천 기준일"
+    select source "monthly rebalance drawdown manual"
+    select status "draft approved executed skipped canceled"
+    number totalOrderAmount "총 주문 후보 금액"
+    select currency "KRW USD"
+    text summaryText "요약 문구"
+    json summary "계산 요약"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  action_items {
+    text id PK "primaryKey"
+    relation batch FK "action_batches"
+    relation account FK "portfolio_accounts"
+    relation asset FK "assets"
+    select side "BUY SELL HOLD"
+    select orderType "MARKET LIMIT"
+    number targetAmount "주문 후보 금액"
+    number targetQuantity "주문 후보 수량"
+    number limitPrice "지정가"
+    text reason "추천 사유"
+    select status "draft approved submitted filled skipped rejected"
+    json checks "주문 전 점검"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  order_records {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation actionItem FK "action_items"
+    relation account FK "portfolio_accounts"
+    relation asset FK "assets"
+    text tossOrderId "토스 주문 ID"
+    text clientOrderId "멱등성 주문 키"
+    select side "BUY SELL"
+    select orderType "MARKET LIMIT"
+    select timeInForce "DAY CLS"
+    number quantity "주문 수량"
+    number orderAmount "주문 금액"
+    number price "주문 가격"
+    select status "pending partial_filled filled canceled rejected"
+    number filledQuantity "체결 수량"
+    number filledAmount "체결 금액"
+    date orderedAt "주문 시각"
+    date updatedAt "주문 갱신 시각"
+    json raw "토스 원본 응답"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  investment_logs {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation actionBatch FK "action_batches"
+    relation orderRecord FK "order_records"
+    date logDate "기록 일자"
+    select logType "monthly_action order_result simulation_note manual_note"
+    text title "제목"
+    editor body "내용"
+    select tags "태그"
+    bool followedRule "원칙 준수 여부"
+    json context "기록 당시 맥락"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  %% 권장 접근 규칙
+  %% - owner가 있는 컬렉션: list/view/update/delete는 owner = @request.auth.id 기준입니다.
+  %% - assets, asset_bars, fx_rates: 일반 사용자는 읽기, 서버/관리자만 쓰기를 권장합니다.
+  %% - broker_connections: 사용자 secret은 암호화 저장, API 응답에는 마스킹 값만 노출합니다.
+  %% - order_records: 실제 주문 추적용이므로 deleteRule은 제한하는 편이 안전합니다.
+
+  %% 권장 인덱스
+  %% - broker_connections(owner, provider, accountSeq)
+  %% - portfolio_accounts(owner, accountType, isActive)
+  %% - assets(symbol) UNIQUE
+  %% - asset_bars(asset, interval, barAt, adjusted) UNIQUE
+  %% - fx_rates(baseCurrency, quoteCurrency, rateAt) UNIQUE
+  %% - account_holdings(owner, account, asset) UNIQUE
+  %% - account_snapshots(owner, account, snapshotDate)
+  %% - strategy_targets(strategy, asset) UNIQUE
+  %% - simulations(owner, persona, strategy, startDate, endDate)
+  %% - action_batches(owner, strategy, actionDate, status)
+  %% - order_records(owner, clientOrderId) UNIQUE WHERE clientOrderId != ''

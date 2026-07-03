@@ -1,0 +1,67 @@
+<%
+  const navCurrentPath = String(currentPath || '/')
+  const navItems = [
+    {
+      key: 'home',
+      href: '/',
+      label: '홈',
+      icon: 'i-lucide-house',
+      exact: true,
+    },
+    {
+      key: 'accounts',
+      href: '/accounts',
+      label: '계좌',
+      icon: 'i-lucide-wallet-cards',
+      prefixes: ['/accounts', '/connections'],
+    },
+    {
+      key: 'simulations',
+      href: '/simulations',
+      label: '실험',
+      icon: 'i-lucide-flask-conical',
+      prefixes: ['/simulations'],
+    },
+    {
+      key: 'actions',
+      href: '/actions',
+      label: '액션',
+      icon: 'i-lucide-list-checks',
+      prefixes: ['/actions'],
+    },
+  ]
+
+  function isActiveNavItem(item) {
+    if (item.exact) return navCurrentPath === item.href
+
+    for (let index = 0; index < item.prefixes.length; index += 1) {
+      if (navCurrentPath === item.prefixes[index] || navCurrentPath.indexOf(item.prefixes[index] + '/') === 0) {
+        return true
+      }
+    }
+
+    return false
+  }
+%>
+
+<nav
+  class="fixed inset-x-0 bottom-0 z-40 border-t border-[#e5e8eb] bg-white/95 shadow-[0_-8px_24px_rgba(25,31,40,0.08)] backdrop-blur"
+  style="padding-bottom: env(safe-area-inset-bottom);"
+  aria-label="주요 메뉴">
+  <div class="mx-auto grid min-h-[72px] w-full max-w-[560px] grid-cols-4 px-2">
+    <% for (let index = 0; index < navItems.length; index += 1) { %>
+      <% const item = navItems[index] %>
+      <% const isActive = isActiveNavItem(item) %>
+      <a
+        href="<%= item.href %>"
+        data-nav-key="<%= item.key %>"
+        <% if (isActive) { %>aria-current="page"<% } %>
+        class="flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[11px] font-bold no-underline active:bg-[#f2f4f6] <%= isActive ? 'text-[#3182f6]' : 'text-[#8b95a1]' %>">
+        <span
+          class="<%= item.icon %> h-5 w-5"
+          aria-hidden="true"></span>
+        <span class="max-w-full truncate"><%= item.label %></span>
+      </a>
+    <% } %>
+  </div>
+</nav>

@@ -1,0 +1,189 @@
+<script server>
+  meta('title', 'SeedLab 계좌')
+  meta('description', 'SeedLab 계좌')
+
+  if (!request.auth) {
+    dbg('seedlab/accounts:index:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  let accounts = []
+  let holdingCount = 0
+  let connectionCount = 0
+
+  function accountTypeLabel(value) {
+    const labels = {
+      toss: '토스증권',
+      brokerage: '일반 증권',
+      pension_saving: '연금저축',
+      irp: 'IRP',
+      isa: 'ISA',
+      cash: '현금성 자산',
+    }
+
+    return labels[String(value || '')] || '계좌'
+  }
+
+  function syncModeLabel(value) {
+    const labels = {
+      auto: '자동 동기화',
+      manual: '직접 관리',
+      mixed: '혼합 관리',
+    }
+
+    return labels[String(value || '')] || '관리 대기'
+  }
+
+  if (userId) {
+    try {
+      dbg('seedlab/accounts:index:db-access', { collection: 'portfolio_accounts' })
+      accounts = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner}', '-updated', 50, 0, { owner: userId })
+    } catch (exception) {
+      warn('seedlab/accounts:index:db-access-failed', { collection: 'portfolio_accounts', error: String(exception.message || exception) })
+      accounts = []
+    }
+
+    try {
+      dbg('seedlab/accounts:index:db-access', { collection: 'account_holdings' })
+      holdingCount = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-updated', 200, 0, { owner: userId }).length
+    } catch (exception) {
+      warn('seedlab/accounts:index:db-access-failed', { collection: 'account_holdings', error: String(exception.message || exception) })
+      holdingCount = 0
+    }
+
+    try {
+      dbg('seedlab/accounts:index:db-access', { collection: 'broker_connections' })
+      connectionCount = $app.findRecordsByFilter('broker_connections', 'owner = {:owner} && status = {:status}', '-updated', 50, 0, { owner: userId, status: 'active' }).length
+    } catch (exception) {
+      warn('seedlab/accounts:index:db-access-failed', { collection: 'broker_connections', error: String(exception.message || exception) })
+      connectionCount = 0
+    }
+  }
+</script>
+
+<div class="space-y-5 pb-2 pt-2">
+  <header class="flex items-center justify-between">
+    <div>
+      <p class="text-sm font-bold text-[#3182f6]">계좌</p>
+      <h1 class="mt-2 text-[30px] font-bold leading-[1.18] tracking-0 text-[#191f28]">
+        연결 상태와<br />
+        보유 종목입니다
+      </h1>
+    </div>
+    <a
+      href="/connections/toss/new"
+      class="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-[#3182f6] text-white no-underline shadow-[0_10px_24px_rgba(49,130,246,0.22)] active:bg-[#1b64da]"
+      aria-label="토스증권 연결">
+      <span
+        class="i-lucide-link h-5 w-5"
+        aria-hidden="true"></span>
+    </a>
+  </header>
+
+  <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+
+  <section class="grid grid-cols-3 gap-3">
+    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e8f3ff] text-[#3182f6]">
+        <span
+          class="i-lucide-wallet-cards h-4 w-4"
+          aria-hidden="true"></span>
+      </span>
+      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= accounts.length %></p>
+      <p class="mt-2 text-xs font-medium text-[#8b95a1]">계좌</p>
+    </article>
+
+    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#ecfdf3] text-[#008a45]">
+        <span
+          class="i-lucide-shield-check h-4 w-4"
+          aria-hidden="true"></span>
+      </span>
+      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= connectionCount %></p>
+      <p class="mt-2 text-xs font-medium text-[#8b95a1]">연결</p>
+    </article>
+
+    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#fff6e5] text-[#b76e00]">
+        <span
+          class="i-lucide-chart-no-axes-combined h-4 w-4"
+          aria-hidden="true"></span>
+      </span>
+      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= holdingCount %></p>
+      <p class="mt-2 text-xs font-medium text-[#8b95a1]">종목</p>
+    </article>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-bold text-[#191f28]">계좌 목록</h2>
+      <a
+        href="/accounts/manual/new"
+        class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-sm font-bold text-[#3182f6] no-underline shadow-[0_1px_2px_rgba(25,31,40,0.06)] active:bg-[#e8f3ff]">
+        직접 추가
+        <span
+          class="i-lucide-pencil-line h-4 w-4"
+          aria-hidden="true"></span>
+      </a>
+    </div>
+
+    <% if (accounts.length === 0) { %>
+      <div class="rounded-lg border border-[#dbeafe] bg-[#f7fbff] p-4 shadow-[0_8px_24px_rgba(49,130,246,0.08)]">
+        <p class="text-sm font-bold text-[#191f28]">아직 등록된 계좌가 없습니다</p>
+        <p class="mt-1 text-sm leading-5 text-[#6b7684]">토스증권을 API로 연결하거나, 연금저축과 IRP는 직접 추가합니다.</p>
+        <div class="mt-4 grid grid-cols-2 gap-2">
+          <a
+            href="/connections/toss/new"
+            class="box-border flex h-11 items-center justify-center gap-2 rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
+            토스 연결
+            <span
+              class="i-lucide-link h-4 w-4"
+              aria-hidden="true"></span>
+          </a>
+          <a
+            href="/accounts/manual/new"
+            class="box-border flex h-11 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-bold text-[#4e5968] no-underline ring-1 ring-[#dbe3ea] active:bg-[#f2f4f6]">
+            직접 추가
+            <span
+              class="i-lucide-pencil-line h-4 w-4"
+              aria-hidden="true"></span>
+          </a>
+        </div>
+      </div>
+    <% } else { %>
+      <div class="space-y-3">
+        <% for (let index = 0; index < accounts.length; index += 1) { %>
+          <% const account = accounts[index] %>
+          <article class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+            <div class="flex items-start gap-3">
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg <%= account.get('providerName') === 'toss' ? 'bg-[#e8f3ff] text-[#3182f6]' : 'bg-[#f2f4f6] text-[#4e5968]' %>">
+                <span
+                  class="i-lucide-wallet-cards h-5 w-5"
+                  aria-hidden="true"></span>
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="flex min-w-0 items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-bold text-[#191f28]"><%= account.get('name') %></p>
+                    <p class="mt-1 text-xs text-[#8b95a1]"><%= accountTypeLabel(account.get('accountType')) %> · <%= syncModeLabel(account.get('syncMode')) %></p>
+                  </div>
+                  <span class="shrink-0 rounded-md bg-[#f2f4f6] px-2 py-1 text-xs font-bold text-[#4e5968]"><%= account.get('baseCurrency') || 'KRW' %></span>
+                </div>
+                <p class="mt-3 text-xs font-medium text-[#8b95a1]"><%= account.get('isActive') ? '활성 계좌' : '비활성 계좌' %></p>
+              </div>
+            </div>
+          </article>
+        <% } %>
+      </div>
+    <% } %>
+  </section>
+</div>

@@ -1,0 +1,155 @@
+<script server>
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function requireText(value, name) {
+    const text = cleanText(value)
+    if (!text) throw new Error(name + '이 필요합니다.')
+    return text
+  }
+
+  function readNumberField(record, fieldName) {
+    const value = Number(record.get(fieldName) || 0)
+    return isFinite(value) && value > 0 ? value : 0
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/orders/mock-submit:redirect', {
+      status: 303,
+      redirectTo: '/',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/orders/mock-submit:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const actionItemId = cleanText(form.actionItemId)
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/orders/mock-submit:start', {
+    userId,
+    hasActionItemId: !!actionItemId,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    requireText(actionItemId, '주문 후보')
+
+    let clientOrderId = ''
+    let orderRecordId = ''
+
+    $app.runInTransaction(function (txApp) {
+      const actionItem = txApp.findFirstRecordByFilter('action_items', 'id = {:id} && owner = {:owner}', {
+        id: actionItemId,
+        owner: userId,
+      })
+
+      const actionStatus = cleanText(actionItem.get('status'))
+      if (actionStatus !== 'draft' && actionStatus !== 'approved') {
+        throw new Error('제출 가능한 주문 후보가 아닙니다.')
+      }
+
+      const side = cleanText(actionItem.get('side'))
+      if (side !== 'BUY' && side !== 'SELL') {
+        throw new Error('매수 또는 매도 후보만 제출할 수 있습니다.')
+      }
+
+      const accountId = requireText(actionItem.get('account'), '계좌')
+      const assetId = requireText(actionItem.get('asset'), '종목')
+      clientOrderId = ('mock-' + actionItemId + '-' + Date.now().toString(36)).slice(0, 36)
+      const now = new Date().toISOString()
+      const orderAmount = readNumberField(actionItem, 'targetAmount')
+      const quantity = readNumberField(actionItem, 'targetQuantity')
+      const price = readNumberField(actionItem, 'limitPrice')
+
+      const orderRecord = new Record(txApp.findCollectionByNameOrId('order_records'))
+      orderRecord.set('owner', userId)
+      orderRecord.set('actionItem', actionItemId)
+      orderRecord.set('account', accountId)
+      orderRecord.set('asset', assetId)
+      orderRecord.set('tossOrderId', '')
+      orderRecord.set('clientOrderId', clientOrderId)
+      orderRecord.set('side', side)
+      orderRecord.set('orderType', cleanText(actionItem.get('orderType')) || 'MARKET')
+      orderRecord.set('timeInForce', 'DAY')
+      orderRecord.set('quantity', quantity)
+      orderRecord.set('orderAmount', orderAmount)
+      orderRecord.set('price', price)
+      orderRecord.set('status', 'pending')
+      orderRecord.set('filledQuantity', 0)
+      orderRecord.set('filledAmount', 0)
+      orderRecord.set('orderedAt', now)
+      orderRecord.set('orderUpdatedAt', now)
+      orderRecord.set('raw', {
+        mock: true,
+        didNotCallTossApi: true,
+        actionItemId,
+        note: 'SeedLab mock order record. No external order API was called.',
+      })
+      txApp.save(orderRecord)
+      orderRecordId = String(orderRecord.get('id') || '')
+
+      actionItem.set('status', 'submitted')
+      actionItem.set('checks', {
+        mock: true,
+        didNotCallTossApi: true,
+        orderRecordId,
+      })
+      txApp.save(actionItem)
+    })
+
+    info('seedlab/xapi/orders/mock-submit:success', {
+      userId,
+      actionItemId,
+      orderRecordId,
+      clientOrderId,
+    })
+
+    dbg('seedlab/xapi/orders/mock-submit:redirect', {
+      status: 303,
+      redirectTo: '/actions',
+      message: 'Mock 주문 기록을 만들었습니다.',
+    })
+    redirect('/actions', {
+      status: 303,
+      message: 'Mock 주문 기록을 만들었습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/orders/mock-submit:failed', {
+      userId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/orders/mock-submit:redirect', {
+    status: 303,
+    redirectTo: '/actions',
+    message: errorMessage || 'Mock 주문 제출에 실패했습니다.',
+  })
+  redirect('/actions', {
+    status: 303,
+    message: errorMessage || 'Mock 주문 제출에 실패했습니다.',
+  })
+  return
+</script>

@@ -1,0 +1,199 @@
+<script server>
+  const credentialCrypto = resolve('credential-crypto')
+  const tossApi = resolve('toss-api')
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function requireText(value, name) {
+    const text = cleanText(value)
+    if (!text) throw new Error(name + '이 필요합니다.')
+    return text
+  }
+
+  function maskAccountNo(accountNo) {
+    const text = cleanText(accountNo)
+    if (!text) return ''
+    if (text.length <= 4) return '****'
+    return text.slice(0, 4) + '****' + text.slice(-3)
+  }
+
+  function normalizeTossAccountType(value) {
+    const accountType = cleanText(value || 'BROKERAGE')
+    const allowedTypes = ['BROKERAGE', 'OVERSEAS_DERIVATIVES', 'PENSION_SAVINGS', 'RESHORING_INVESTMENT']
+    return allowedTypes.indexOf(accountType) >= 0 ? accountType : ''
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/connections/toss/create:redirect', {
+      status: 303,
+      redirectTo: '/connections/toss/new',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/connections/toss/new', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/connections/toss/create:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const displayNameInput = cleanText(form.displayName)
+  const clientId = cleanText(form.clientId)
+  const clientSecret = cleanText(form.clientSecret)
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/connections/toss/create:start', {
+    userId,
+    hasApiKey: !!clientId,
+    hasSecret: !!clientSecret,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    requireText(clientId, 'API Key')
+    requireText(clientSecret, 'Secret')
+
+    const toss = tossApi.createTossApiClient({
+      apiKey: clientId,
+      secret: clientSecret,
+    })
+    const accountsResult = toss.getAccounts()
+
+    if (!accountsResult.ok) {
+      throw new Error(accountsResult.errorMessage || '토스증권 계좌 조회에 실패했습니다.')
+    }
+
+    const accounts = Array.isArray(accountsResult.result) ? accountsResult.result : []
+    if (accounts.length === 0) throw new Error('연결 가능한 토스증권 계좌가 없습니다.')
+
+    const selectedAccount = accounts[0] || {}
+    const accountSeq = requireText(selectedAccount.accountSeq, 'accountSeq')
+    const rawAccountType = cleanText(selectedAccount.accountType || '')
+    const accountType = normalizeTossAccountType(rawAccountType)
+    const accountNoMasked = maskAccountNo(selectedAccount.accountNo)
+    const displayName = displayNameInput || '토스증권'
+    const secretFields = credentialCrypto.buildEncryptedSecret(clientSecret)
+    const now = new Date().toISOString()
+    let connectionId = ''
+
+    $app.runInTransaction(function (txApp) {
+      /** @type {PocketPagesRecord<"broker_connections"> | null} */
+      let connectionRecord = null
+      try {
+        connectionRecord = txApp.findFirstRecordByFilter('broker_connections', 'owner = {:owner} && provider = {:provider} && accountSeq = {:accountSeq}', {
+          owner: userId,
+          provider: 'toss',
+          accountSeq,
+        })
+      } catch (exception) {
+        connectionRecord = null
+      }
+
+      if (!connectionRecord) {
+        connectionRecord = new Record(txApp.findCollectionByNameOrId('broker_connections'))
+        connectionRecord.set('owner', userId)
+        connectionRecord.set('provider', 'toss')
+        connectionRecord.set('accountSeq', accountSeq)
+      }
+
+      connectionRecord.set('authMode', 'user_key')
+      connectionRecord.set('displayName', displayName)
+      connectionRecord.set('clientId', clientId)
+      connectionRecord.set('encryptedSecret', secretFields.encryptedSecret)
+      connectionRecord.set('secretPreview', secretFields.secretPreview)
+      connectionRecord.set('accountNoMasked', accountNoMasked)
+      connectionRecord.set('accountType', accountType)
+      connectionRecord.set('apiKeyEnvName', '')
+      connectionRecord.set('secretEnvName', '')
+      connectionRecord.set('status', 'active')
+      connectionRecord.set('lastCheckedAt', now)
+      connectionRecord.set('lastError', null)
+      txApp.save(connectionRecord)
+      connectionId = String(connectionRecord.get('id') || '')
+
+      /** @type {PocketPagesRecord<"portfolio_accounts"> | null} */
+      let accountRecord = null
+      try {
+        accountRecord = txApp.findFirstRecordByFilter('portfolio_accounts', 'owner = {:owner} && providerName = {:providerName} && accountSeq = {:accountSeq}', {
+          owner: userId,
+          providerName: 'toss',
+          accountSeq,
+        })
+      } catch (exception) {
+        accountRecord = null
+      }
+
+      if (!accountRecord) {
+        accountRecord = new Record(txApp.findCollectionByNameOrId('portfolio_accounts'))
+        accountRecord.set('owner', userId)
+        accountRecord.set('providerName', 'toss')
+        accountRecord.set('accountSeq', accountSeq)
+      }
+
+      accountRecord.set('brokerConnection', String(connectionRecord.get('id') || ''))
+      accountRecord.set('name', displayName)
+      accountRecord.set('accountType', 'toss')
+      accountRecord.set('syncMode', 'auto')
+      accountRecord.set('baseCurrency', 'KRW')
+      accountRecord.set('isTaxAdvantaged', false)
+      accountRecord.set('isActive', true)
+      accountRecord.set('lastSyncedAt', now)
+      accountRecord.set('metadata', {
+        accountNoMasked,
+        tossAccountType: rawAccountType || accountType,
+      })
+      txApp.save(accountRecord)
+    })
+
+    info('seedlab/xapi/connections/toss/create:success', {
+      userId,
+      connectionId,
+      accountSeq,
+      accountType: rawAccountType || accountType,
+    })
+
+    dbg('seedlab/xapi/connections/toss/create:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '토스증권 계좌를 연결했습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '토스증권 계좌를 연결했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/connections/toss/create:failed', {
+      userId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/connections/toss/create:redirect', {
+    status: 303,
+    redirectTo: '/connections/toss/new',
+    message: errorMessage || '토스증권 연결에 실패했습니다.',
+  })
+  redirect('/connections/toss/new', {
+    status: 303,
+    message: errorMessage || '토스증권 연결에 실패했습니다.',
+  })
+  return
+</script>

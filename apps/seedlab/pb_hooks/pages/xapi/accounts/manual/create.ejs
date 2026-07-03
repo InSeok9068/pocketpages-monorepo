@@ -1,0 +1,133 @@
+<script server>
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function requireText(value, name) {
+    const text = cleanText(value)
+    if (!text) throw new Error(name + '이 필요합니다.')
+    return text
+  }
+
+  function normalizeAccountType(value) {
+    const accountType = cleanText(value || 'pension_saving')
+    const allowedTypes = ['brokerage', 'pension_saving', 'irp', 'isa', 'cash']
+    if (allowedTypes.indexOf(accountType) < 0) throw new Error('지원하지 않는 계좌 종류입니다.')
+    return accountType
+  }
+
+  function normalizeCurrency(value) {
+    const currency = cleanText(value || 'KRW')
+    const allowedCurrencies = ['KRW', 'USD']
+    if (allowedCurrencies.indexOf(currency) < 0) throw new Error('지원하지 않는 기준 통화입니다.')
+    return currency
+  }
+
+  function isTaxAdvantagedType(accountType) {
+    return ['pension_saving', 'irp', 'isa'].indexOf(accountType) >= 0
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/accounts/manual/create:redirect', {
+      status: 303,
+      redirectTo: '/accounts/manual/new',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/accounts/manual/new', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/accounts/manual/create:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/accounts/manual/create:start', {
+    userId,
+    hasName: !!cleanText(form.name),
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+
+    const name = requireText(form.name, '계좌 이름')
+    const accountType = normalizeAccountType(form.accountType)
+    const baseCurrency = normalizeCurrency(form.baseCurrency)
+    const providerName = cleanText(form.providerName) || '직접 입력'
+    const memo = cleanText(form.memo)
+    const checkedTaxAdvantaged = cleanText(form.isTaxAdvantaged) === 'on'
+    const isTaxAdvantaged = checkedTaxAdvantaged || isTaxAdvantagedType(accountType)
+    const now = new Date().toISOString()
+
+    const accountRecord = new Record($app.findCollectionByNameOrId('portfolio_accounts'))
+    accountRecord.set('owner', userId)
+    accountRecord.set('brokerConnection', '')
+    accountRecord.set('name', name)
+    accountRecord.set('accountType', accountType)
+    accountRecord.set('syncMode', 'manual')
+    accountRecord.set('providerName', providerName)
+    accountRecord.set('accountSeq', '')
+    accountRecord.set('baseCurrency', baseCurrency)
+    accountRecord.set('isTaxAdvantaged', isTaxAdvantaged)
+    accountRecord.set('isActive', true)
+    accountRecord.set('lastSyncedAt', now)
+    accountRecord.set('metadata', {
+      source: 'manual',
+      memo,
+      createdByFlow: 'manual_account_new',
+      taxAdvantagedByType: isTaxAdvantagedType(accountType),
+    })
+    $app.save(accountRecord)
+
+    info('seedlab/xapi/accounts/manual/create:success', {
+      userId,
+      accountId: String(accountRecord.get('id') || ''),
+      accountType,
+      baseCurrency,
+      isTaxAdvantaged,
+    })
+
+    dbg('seedlab/xapi/accounts/manual/create:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '수동 계좌를 추가했습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '수동 계좌를 추가했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/accounts/manual/create:failed', {
+      userId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/accounts/manual/create:redirect', {
+    status: 303,
+    redirectTo: '/accounts/manual/new',
+    message: errorMessage || '수동 계좌 추가에 실패했습니다.',
+  })
+  redirect('/accounts/manual/new', {
+    status: 303,
+    message: errorMessage || '수동 계좌 추가에 실패했습니다.',
+  })
+  return
+</script>

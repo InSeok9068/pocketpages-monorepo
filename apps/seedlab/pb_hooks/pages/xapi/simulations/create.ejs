@@ -1,0 +1,391 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function requireText(value, name) {
+    const text = cleanText(value)
+    if (!text) throw new Error(name + '이 필요합니다.')
+    return text
+  }
+
+  function readNumber(value, fallback) {
+    const text = cleanText(value)
+    if (!text) return fallback
+    const number = Number(text)
+    if (!isFinite(number) || number < 0) throw new Error('금액은 0 이상 숫자여야 합니다.')
+    return number
+  }
+
+  function normalizeRiskProfile(value) {
+    const riskProfile = cleanText(value || 'balanced')
+    const allowedProfiles = ['conservative', 'balanced', 'aggressive']
+    if (allowedProfiles.indexOf(riskProfile) < 0) throw new Error('지원하지 않는 투자 성향입니다.')
+    return riskProfile
+  }
+
+  function normalizeBehaviorProfile(value) {
+    const behaviorProfile = cleanText(value || 'disciplined')
+    const allowedProfiles = ['disciplined', 'panic_seller', 'dip_buyer']
+    if (allowedProfiles.indexOf(behaviorProfile) < 0) throw new Error('지원하지 않는 행동 유형입니다.')
+    return behaviorProfile
+  }
+
+  function annualReturnFor(riskProfile, behaviorProfile) {
+    let baseReturn = 0.09
+    if (riskProfile === 'conservative') baseReturn = 0.055
+    if (riskProfile === 'aggressive') baseReturn = 0.13
+    if (behaviorProfile === 'dip_buyer') return baseReturn + 0.015
+    if (behaviorProfile === 'panic_seller') return Math.max(0.01, baseReturn - 0.035)
+    return baseReturn
+  }
+
+  function ensureDateOnly(value, name) {
+    const dateOnlyIso = dateutil.toDateOnlyIso(value)
+    if (!dateOnlyIso) throw new Error(name + '이 올바르지 않습니다.')
+    return dateOnlyIso
+  }
+
+  function buildSimulationSummary(input) {
+    const totalDays = Math.max(1, dateutil.diffDays(input.endDate, input.startDate))
+    const months = Math.max(1, Math.floor(totalDays / 30))
+    const years = totalDays / 365
+    const contributionAmount = input.monthlyContribution * months
+    const investedAmount = input.initialCapital + contributionAmount
+    const annualReturn = annualReturnFor(input.riskProfile, input.behaviorProfile)
+    const initialGrowth = input.initialCapital * Math.pow(1 + annualReturn, years)
+    const contributionGrowth = contributionAmount * Math.pow(1 + annualReturn, years / 2)
+    const totalValue = Math.round(initialGrowth + contributionGrowth)
+    const profitLoss = totalValue - investedAmount
+    const returnPct = investedAmount > 0 ? Math.round((profitLoss / investedAmount) * 1000) / 10 : 0
+    const drawdownPct = input.riskProfile === 'aggressive' ? 24 : input.riskProfile === 'conservative' ? 9 : 15
+
+    return {
+      totalDays,
+      months,
+      years: Math.round(years * 10) / 10,
+      investedAmount,
+      totalValue,
+      profitLoss,
+      returnPct,
+      annualReturnPct: Math.round(annualReturn * 1000) / 10,
+      drawdownPct,
+      allocation: {
+        SPY: 60,
+        QQQ: 40,
+      },
+    }
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/simulations/create:redirect', {
+      status: 303,
+      redirectTo: '/simulations/new',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/simulations/new', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/simulations/create:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/simulations/create:start', {
+    userId,
+    hasPersonaName: !!cleanText(form.personaName),
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+
+    const personaName = requireText(form.personaName, '가상 인물 이름')
+    const riskProfile = normalizeRiskProfile(form.riskProfile)
+    const behaviorProfile = normalizeBehaviorProfile(form.behaviorProfile)
+    const initialCapital = readNumber(form.initialCapital, 10000000)
+    const monthlyContribution = readNumber(form.monthlyContribution, 500000)
+    const startDate = ensureDateOnly(form.startDate, '시작일')
+    const endDate = ensureDateOnly(form.endDate, '종료일')
+
+    if (!dateutil.isAfterDay(endDate, startDate)) {
+      throw new Error('종료일은 시작일보다 늦어야 합니다.')
+    }
+
+    let strategyId = ''
+    let personaId = ''
+    let simulationId = ''
+    let hasActionCandidate = false
+
+    $app.runInTransaction(function (txApp) {
+      /** @type {PocketPagesRecord<"assets"> | null} */
+      let spyAsset = null
+      try {
+        spyAsset = txApp.findFirstRecordByFilter('assets', 'symbol = {:symbol}', { symbol: 'SPY' })
+      } catch (exception) {
+        spyAsset = null
+      }
+
+      if (!spyAsset) {
+        spyAsset = new Record(txApp.findCollectionByNameOrId('assets'))
+        spyAsset.set('symbol', 'SPY')
+        spyAsset.set('name', 'SPDR S&P 500 ETF Trust')
+        spyAsset.set('marketCountry', 'US')
+        spyAsset.set('assetType', 'etf')
+        spyAsset.set('currency', 'USD')
+        spyAsset.set('exchange', 'NYSEARCA')
+        spyAsset.set('isActive', true)
+        spyAsset.set('metadata', { source: 'seedlab_default' })
+        txApp.save(spyAsset)
+      }
+
+      /** @type {PocketPagesRecord<"assets"> | null} */
+      let qqqAsset = null
+      try {
+        qqqAsset = txApp.findFirstRecordByFilter('assets', 'symbol = {:symbol}', { symbol: 'QQQ' })
+      } catch (exception) {
+        qqqAsset = null
+      }
+
+      if (!qqqAsset) {
+        qqqAsset = new Record(txApp.findCollectionByNameOrId('assets'))
+        qqqAsset.set('symbol', 'QQQ')
+        qqqAsset.set('name', 'Invesco QQQ Trust')
+        qqqAsset.set('marketCountry', 'US')
+        qqqAsset.set('assetType', 'etf')
+        qqqAsset.set('currency', 'USD')
+        qqqAsset.set('exchange', 'NASDAQ')
+        qqqAsset.set('isActive', true)
+        qqqAsset.set('metadata', { source: 'seedlab_default' })
+        txApp.save(qqqAsset)
+      }
+
+      const strategyRecord = new Record(txApp.findCollectionByNameOrId('investment_strategies'))
+      strategyRecord.set('owner', userId)
+      strategyRecord.set('name', 'S&P 500 / Nasdaq 적립식')
+      strategyRecord.set('strategyType', 'simulation')
+      strategyRecord.set('baseCurrency', 'KRW')
+      strategyRecord.set('monthlyContribution', monthlyContribution)
+      strategyRecord.set('cashTargetPct', 5)
+      strategyRecord.set('rebalanceCycle', 'monthly')
+      strategyRecord.set('isActive', true)
+      strategyRecord.set('memo', '가상 인물 실험에서 생성한 기본 전략입니다.')
+      strategyRecord.set('settings', {
+        source: 'seedlab_virtual_flow',
+        allocation: { SPY: 60, QQQ: 40 },
+        orderSafety: 'mock_only_until_user_approval',
+      })
+      txApp.save(strategyRecord)
+
+      strategyId = String(strategyRecord.get('id') || '')
+
+      const spyTarget = new Record(txApp.findCollectionByNameOrId('strategy_targets'))
+      spyTarget.set('owner', userId)
+      spyTarget.set('strategy', strategyId)
+      spyTarget.set('asset', String(spyAsset.get('id') || ''))
+      spyTarget.set('targetPct', 60)
+      spyTarget.set('minPct', 50)
+      spyTarget.set('maxPct', 70)
+      spyTarget.set('priority', 1)
+      spyTarget.set('settings', { source: 'seedlab_virtual_flow' })
+      txApp.save(spyTarget)
+
+      const qqqTarget = new Record(txApp.findCollectionByNameOrId('strategy_targets'))
+      qqqTarget.set('owner', userId)
+      qqqTarget.set('strategy', strategyId)
+      qqqTarget.set('asset', String(qqqAsset.get('id') || ''))
+      qqqTarget.set('targetPct', 40)
+      qqqTarget.set('minPct', 30)
+      qqqTarget.set('maxPct', 50)
+      qqqTarget.set('priority', 2)
+      qqqTarget.set('settings', { source: 'seedlab_virtual_flow' })
+      txApp.save(qqqTarget)
+
+      const personaRecord = new Record(txApp.findCollectionByNameOrId('virtual_personas'))
+      personaRecord.set('owner', userId)
+      personaRecord.set('defaultStrategy', strategyId)
+      personaRecord.set('name', personaName)
+      personaRecord.set('age', 35)
+      personaRecord.set('monthlyIncome', 4500000)
+      personaRecord.set('monthlyInvestment', monthlyContribution)
+      personaRecord.set('initialCash', initialCapital)
+      personaRecord.set('riskProfile', riskProfile)
+      personaRecord.set('behaviorProfile', behaviorProfile)
+      personaRecord.set('memo', '')
+      personaRecord.set('settings', { source: 'seedlab_virtual_flow' })
+      txApp.save(personaRecord)
+
+      personaId = String(personaRecord.get('id') || '')
+
+      const personaAccount = new Record(txApp.findCollectionByNameOrId('persona_accounts'))
+      personaAccount.set('owner', userId)
+      personaAccount.set('persona', personaId)
+      personaAccount.set('name', personaName + ' 연금저축')
+      personaAccount.set('accountType', 'pension_saving')
+      personaAccount.set('baseCurrency', 'KRW')
+      personaAccount.set('startingValue', initialCapital)
+      personaAccount.set('monthlyContribution', monthlyContribution)
+      personaAccount.set('isTaxAdvantaged', true)
+      personaAccount.set('settings', { source: 'seedlab_virtual_flow' })
+      txApp.save(personaAccount)
+
+      const summary = buildSimulationSummary({
+        startDate,
+        endDate,
+        initialCapital,
+        monthlyContribution,
+        riskProfile,
+        behaviorProfile,
+      })
+
+      const simulationRecord = new Record(txApp.findCollectionByNameOrId('simulations'))
+      simulationRecord.set('owner', userId)
+      simulationRecord.set('persona', personaId)
+      simulationRecord.set('strategy', strategyId)
+      simulationRecord.set('name', personaName + ' 적립식 실험')
+      simulationRecord.set('startDate', startDate)
+      simulationRecord.set('endDate', endDate)
+      simulationRecord.set('initialCapital', initialCapital)
+      simulationRecord.set('monthlyContribution', monthlyContribution)
+      simulationRecord.set('baseCurrency', 'KRW')
+      simulationRecord.set('status', 'complete')
+      simulationRecord.set('summary', summary)
+      simulationRecord.set('settings', { source: 'seedlab_virtual_flow' })
+      txApp.save(simulationRecord)
+
+      simulationId = String(simulationRecord.get('id') || '')
+
+      const startSnapshot = new Record(txApp.findCollectionByNameOrId('simulation_snapshots'))
+      startSnapshot.set('owner', userId)
+      startSnapshot.set('simulation', simulationId)
+      startSnapshot.set('snapshotDate', startDate)
+      startSnapshot.set('investedAmount', initialCapital)
+      startSnapshot.set('totalValue', initialCapital)
+      startSnapshot.set('cashValue', initialCapital)
+      startSnapshot.set('profitLoss', 0)
+      startSnapshot.set('drawdownPct', 0)
+      startSnapshot.set('assetWeights', { cash: 100 })
+      startSnapshot.set('accountValues', { pension_saving: initialCapital })
+      txApp.save(startSnapshot)
+
+      const endSnapshot = new Record(txApp.findCollectionByNameOrId('simulation_snapshots'))
+      endSnapshot.set('owner', userId)
+      endSnapshot.set('simulation', simulationId)
+      endSnapshot.set('snapshotDate', endDate)
+      endSnapshot.set('investedAmount', summary.investedAmount)
+      endSnapshot.set('totalValue', summary.totalValue)
+      endSnapshot.set('cashValue', Math.round(summary.totalValue * 0.05))
+      endSnapshot.set('profitLoss', summary.profitLoss)
+      endSnapshot.set('drawdownPct', summary.drawdownPct)
+      endSnapshot.set('assetWeights', summary.allocation)
+      endSnapshot.set('accountValues', { pension_saving: summary.totalValue })
+      txApp.save(endSnapshot)
+
+      /** @type {PocketPagesRecord<"portfolio_accounts"> | null} */
+      let activeAccount = null
+      try {
+        activeAccount = txApp.findFirstRecordByFilter('portfolio_accounts', 'owner = {:owner} && isActive = true', { owner: userId })
+      } catch (exception) {
+        activeAccount = null
+      }
+
+      if (activeAccount) {
+        const actionDate = dateutil.toDateOnlyIso(new Date())
+        const targetAmount = monthlyContribution > 0 ? monthlyContribution : 100000
+
+        const actionBatch = new Record(txApp.findCollectionByNameOrId('action_batches'))
+        actionBatch.set('owner', userId)
+        actionBatch.set('strategy', strategyId)
+        actionBatch.set('actionDate', actionDate)
+        actionBatch.set('source', 'monthly')
+        actionBatch.set('status', 'draft')
+        actionBatch.set('totalOrderAmount', targetAmount)
+        actionBatch.set('currency', 'KRW')
+        actionBatch.set('summaryText', '월 투자금 기준 SPY 매수 후보입니다.')
+        actionBatch.set('summary', {
+          source: 'seedlab_virtual_flow',
+          simulationId,
+          mockOnly: true,
+        })
+        txApp.save(actionBatch)
+
+        const actionItem = new Record(txApp.findCollectionByNameOrId('action_items'))
+        actionItem.set('owner', userId)
+        actionItem.set('batch', String(actionBatch.get('id') || ''))
+        actionItem.set('account', String(activeAccount.get('id') || ''))
+        actionItem.set('asset', String(spyAsset.get('id') || ''))
+        actionItem.set('side', 'BUY')
+        actionItem.set('orderType', 'MARKET')
+        actionItem.set('targetAmount', targetAmount)
+        actionItem.set('targetQuantity', 0)
+        actionItem.set('limitPrice', 0)
+        actionItem.set('reason', '가상 인물 실험 결과에 맞춘 월 적립 매수 후보입니다.')
+        actionItem.set('status', 'draft')
+        actionItem.set('checks', {
+          mockOnly: true,
+          requiresUserApproval: true,
+          simulationId,
+        })
+        txApp.save(actionItem)
+      }
+
+      hasActionCandidate = !!activeAccount
+    })
+
+    info('seedlab/xapi/simulations/create:success', {
+      userId,
+      strategyId,
+      personaId,
+      simulationId,
+      hasActionCandidate,
+    })
+
+    const successRedirectPath = hasActionCandidate ? '/actions' : '/simulations'
+    const successMessage = hasActionCandidate ? '가상 인물 실험과 주문 후보를 만들었습니다.' : '가상 인물 실험을 만들었습니다.'
+
+    dbg('seedlab/xapi/simulations/create:redirect', {
+      status: 303,
+      redirectTo: successRedirectPath,
+      message: successMessage,
+    })
+    redirect(successRedirectPath, {
+      status: 303,
+      message: successMessage,
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/simulations/create:failed', {
+      userId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/simulations/create:redirect', {
+    status: 303,
+    redirectTo: '/simulations/new',
+    message: errorMessage || '가상 인물 실험 생성에 실패했습니다.',
+  })
+  redirect('/simulations/new', {
+    status: 303,
+    message: errorMessage || '가상 인물 실험 생성에 실패했습니다.',
+  })
+  return
+</script>

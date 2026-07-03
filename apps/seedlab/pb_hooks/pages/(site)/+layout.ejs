@@ -1,4 +1,8 @@
-<% const isProduction = String(env('APP_ENV') || 'development').trim() === 'production' %>
+<%
+  const isProduction = String(env('APP_ENV') || 'development').trim() === 'production'
+  const isSignedIn = !!request.auth
+  const currentPath = String(request.url.pathname || '/')
+%>
 <!DOCTYPE html>
 <html lang="ko">
   <head>
@@ -11,6 +15,16 @@
       name="description"
       content="<%= meta('description') %>" />
     <link
+      rel="icon"
+      type="image/svg+xml"
+      href="<%= asset('/assets/favicon.svg') %>" />
+    <link
+      rel="manifest"
+      href="<%= asset('/assets/manifest.webmanifest') %>" />
+    <meta
+      name="theme-color"
+      content="#f7f8fa" />
+    <link
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
     <%- include('unocss-head.ejs', { isProduction }) %>
@@ -19,7 +33,13 @@
   </head>
 
   <body
-    un-cloak>
-    <main><%- slots.body || slot %></main>
+    un-cloak
+    class="min-h-screen overflow-x-hidden bg-[#f7f8fa] text-[#191f28] antialiased">
+    <% if (isSignedIn) { %>
+      <main class="box-border mx-auto min-h-screen w-full max-w-[560px] px-4 pb-24 pt-4 sm:px-5 sm:pb-28 sm:pt-6"><%- slots.body || slot %></main>
+      <%- include('app-bottom-nav.ejs', { currentPath }) %>
+    <% } else { %>
+      <main class="box-border mx-auto min-h-screen w-full max-w-[560px] px-4 py-4 sm:px-5 sm:py-6"><%- slots.body || slot %></main>
+    <% } %>
   </body>
 </html>

@@ -1,6 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -11,6 +10,7 @@ const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
 const FIXTURES_DIR = path.join(ROOT_DIR, 'packages', 'test-support', 'fixtures')
 const IMPORTER_DIR = path.join(ROOT_DIR, 'tools', 'pocketbase-importer')
+const DEFAULT_HTTP_PORT = 8090
 
 function parseEnvFile(envFilePath) {
   if (!existsSync(envFilePath)) {
@@ -217,30 +217,6 @@ function runDataImports(serviceDir, tempDataDir, imports, serviceName) {
   }
 }
 
-/**
- * 테스트 서비스가 사용할 로컬 빈 포트를 찾습니다.
- * @returns {Promise<number>} 127.0.0.1에서 사용 가능한 포트입니다.
- */
-function findAvailablePort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer()
-
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address()
-
-      server.close(() => {
-        if (!address || typeof address === 'string') {
-          reject(new Error('failed to resolve test server port'))
-          return
-        }
-
-        resolve(address.port)
-      })
-    })
-  })
-}
-
 async function waitForServer(getBaseUrl, child, timeoutMs) {
   const startedAt = Date.now()
 
@@ -327,7 +303,7 @@ export async function startService(options) {
   const pocketBasePath = resolvePocketBase(serviceDir)
   const tempData = createTempDataDir(serviceDir, serviceName)
   const envFilePath = path.join(serviceDir, '.env')
-  const httpPort = await findAvailablePort()
+  const httpPort = DEFAULT_HTTP_PORT
   const baseUrl = `http://127.0.0.1:${httpPort}`
   const childEnv = {
     ...process.env,

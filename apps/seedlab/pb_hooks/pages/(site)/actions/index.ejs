@@ -1,0 +1,191 @@
+<script server>
+  meta('title', 'SeedLab 액션')
+  meta('description', 'SeedLab 주문 후보와 모의 제출')
+
+  if (!request.auth) {
+    dbg('seedlab/actions:index:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  let actionItems = []
+  let orderCount = 0
+  let draftCount = 0
+  let submittedCount = 0
+
+  function formatAmount(value) {
+    const number = Number(value || 0)
+    if (!isFinite(number)) return '0'
+    return String(Math.round(number)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  }
+
+  function statusLabel(value) {
+    const labels = {
+      draft: '검토',
+      approved: '승인',
+      submitted: '제출',
+      skipped: '보류',
+    }
+
+    return labels[String(value || '')] || '대기'
+  }
+
+  function canMockSubmit(record) {
+    const status = String(record.get('status') || '')
+    return status === 'draft' || status === 'approved'
+  }
+
+  if (userId) {
+    try {
+      dbg('seedlab/actions:index:db-access', { collection: 'action_items' })
+      actionItems = $app.findRecordsByFilter('action_items', 'owner = {:owner}', '-created', 50, 0, { owner: userId })
+    } catch (exception) {
+      warn('seedlab/actions:index:db-access-failed', { collection: 'action_items', error: String(exception.message || exception) })
+      actionItems = []
+    }
+
+    try {
+      dbg('seedlab/actions:index:db-access', { collection: 'order_records' })
+      orderCount = $app.findRecordsByFilter('order_records', 'owner = {:owner}', '-created', 200, 0, { owner: userId }).length
+    } catch (exception) {
+      warn('seedlab/actions:index:db-access-failed', { collection: 'order_records', error: String(exception.message || exception) })
+      orderCount = 0
+    }
+
+    for (let index = 0; index < actionItems.length; index += 1) {
+      const status = String(actionItems[index].get('status') || '')
+      if (status === 'draft' || status === 'approved') draftCount += 1
+      if (status === 'submitted') submittedCount += 1
+    }
+  }
+</script>
+
+<div class="space-y-5 pb-2 pt-2">
+  <header class="flex items-center justify-between">
+    <div>
+      <p class="text-sm font-bold text-[#3182f6]">액션</p>
+      <h1 class="mt-2 text-[30px] font-bold leading-[1.18] tracking-0 text-[#191f28]">
+        주문 후보를<br />
+        제출 전 확인합니다
+      </h1>
+    </div>
+    <a
+      href="/simulations/new"
+      class="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-[#3182f6] text-white no-underline shadow-[0_10px_24px_rgba(49,130,246,0.22)] active:bg-[#1b64da]"
+      aria-label="전략 실험 만들기">
+      <span
+        class="i-lucide-plus h-5 w-5"
+        aria-hidden="true"></span>
+    </a>
+  </header>
+
+  <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+
+  <section class="grid grid-cols-3 gap-3">
+    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#fff6e5] text-[#b76e00]">
+        <span
+          class="i-lucide-list-checks h-4 w-4"
+          aria-hidden="true"></span>
+      </span>
+      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= actionItems.length %></p>
+      <p class="mt-2 text-xs font-medium text-[#8b95a1]">후보</p>
+    </article>
+
+    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e8f3ff] text-[#3182f6]">
+        <span
+          class="i-lucide-send h-4 w-4"
+          aria-hidden="true"></span>
+      </span>
+      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= submittedCount %></p>
+      <p class="mt-2 text-xs font-medium text-[#8b95a1]">제출</p>
+    </article>
+
+    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#ecfdf3] text-[#008a45]">
+        <span
+          class="i-lucide-receipt-text h-4 w-4"
+          aria-hidden="true"></span>
+      </span>
+      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= orderCount %></p>
+      <p class="mt-2 text-xs font-medium text-[#8b95a1]">주문</p>
+    </article>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-bold text-[#191f28]">검토할 액션</h2>
+      <span class="text-sm font-bold text-[#3182f6]"><%= draftCount %>개</span>
+    </div>
+
+    <% if (actionItems.length === 0) { %>
+      <div class="rounded-lg border border-[#dbeafe] bg-[#f7fbff] p-4 shadow-[0_8px_24px_rgba(49,130,246,0.08)]">
+        <p class="text-sm font-bold text-[#191f28]">아직 주문 후보가 없습니다</p>
+        <p class="mt-1 text-sm leading-5 text-[#6b7684]">가상 인물 실험을 만들면 승인 전 검토할 매수 후보가 여기에 표시됩니다.</p>
+        <a
+          href="/simulations/new"
+          class="mt-4 box-border flex h-11 items-center justify-center gap-2 rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
+          실험 만들기
+          <span
+            class="i-lucide-arrow-right h-4 w-4"
+            aria-hidden="true"></span>
+        </a>
+      </div>
+    <% } else { %>
+      <div class="space-y-3">
+        <% for (let index = 0; index < actionItems.length; index += 1) { %>
+          <% const item = actionItems[index] %>
+          <% const side = String(item.get('side') || '') %>
+          <% const status = String(item.get('status') || '') %>
+          <article class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+            <div class="flex items-start gap-3">
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg <%= side === 'BUY' ? 'bg-[#e8f3ff] text-[#3182f6]' : 'bg-[#fff6e5] text-[#b76e00]' %>">
+                <span
+                  class="<%= side === 'BUY' ? 'i-lucide-arrow-down-left' : 'i-lucide-arrow-up-right' %> h-5 w-5"
+                  aria-hidden="true"></span>
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-sm font-bold text-[#191f28]"><%= side || 'ORDER' %> · <%= item.get('orderType') || 'MARKET' %></p>
+                    <p class="mt-1 text-xs text-[#8b95a1]"><%= item.get('reason') || '전략 기준 주문 후보입니다.' %></p>
+                  </div>
+                  <span class="shrink-0 rounded-md bg-[#f2f4f6] px-2 py-1 text-xs font-bold text-[#4e5968]"><%= statusLabel(status) %></span>
+                </div>
+                <p class="mt-3 text-lg font-bold text-[#191f28]"><%= formatAmount(item.get('targetAmount')) %>원</p>
+                <% if (canMockSubmit(item)) { %>
+                  <form
+                    method="post"
+                    action="/xapi/orders/mock-submit"
+                    class="mt-4">
+                    <input
+                      type="hidden"
+                      name="actionItemId"
+                      value="<%= item.get('id') %>" />
+                    <button
+                      type="submit"
+                      class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#191f28] px-4 text-sm font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.14)] active:bg-[#333d4b]">
+                      모의 제출
+                      <span
+                        class="i-lucide-send h-4 w-4"
+                        aria-hidden="true"></span>
+                    </button>
+                  </form>
+                <% } %>
+              </div>
+            </div>
+          </article>
+        <% } %>
+      </div>
+    <% } %>
+  </section>
+</div>
