@@ -2078,6 +2078,14 @@ redirect('/sign-in')
 <button hx-patch="/feedback"></button>
 `
   )
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'client-fetch-reference-check.ejs'),
+    `<script>
+fetch('/feedback', { method: 'POST' })
+resolve('board-service')
+</script>
+`
+  )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'method-shadow', '+post.ejs'), `<h1>Not a method route</h1>\n`)
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'property-locals-check.ejs'),
@@ -2421,6 +2429,7 @@ module.exports = {
     optionalNoticeBFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-b.ejs'),
     routeReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-reference-check.ejs'),
     routeMethodReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'route-method-reference-check.ejs'),
+    clientFetchReferenceCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'client-fetch-reference-check.ejs'),
     methodShadowPostEjsFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'method-shadow', '+post.ejs'),
     globalAssetFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'),
     globalAssetTemplateFilePath: path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'snippet.ejs'),
@@ -2957,6 +2966,62 @@ datastar.replaceURL('/replace')
     throw new Error(`Expected collectPathContexts to surface redirect and replace-url route sources. Got: ${JSON.stringify(collectedRouteSources)}`)
   }
 
+  const clientScriptFetchDocument = `<script>
+const result = fetch('/feedback', { method: 'POST' })
+const service = resolve('board-service')
+</script>
+`
+  const clientScriptFetchContext = getPathContextAtOffset(
+    clientScriptFetchDocument,
+    clientScriptFetchDocument.indexOf('/feedback') + 4,
+    { mode: 'ejs' }
+  )
+  if (
+    !clientScriptFetchContext ||
+    clientScriptFetchContext.kind !== 'route-path' ||
+    clientScriptFetchContext.routeSource !== 'fetch-post'
+  ) {
+    throw new Error(`Expected EJS client <script> fetch() to surface fetch-post route context. Got: ${JSON.stringify(clientScriptFetchContext)}`)
+  }
+  const clientScriptResolveContext = getPathContextAtOffset(
+    clientScriptFetchDocument,
+    clientScriptFetchDocument.indexOf('board-service') + 4,
+    { mode: 'ejs' }
+  )
+  if (clientScriptResolveContext) {
+    throw new Error(`Expected EJS client <script> resolve() to stay ignored. Got: ${JSON.stringify(clientScriptResolveContext)}`)
+  }
+  const clientScriptCollectedContexts = collectPathContexts(clientScriptFetchDocument, { mode: 'ejs' })
+  const clientScriptCollectedRouteSources = clientScriptCollectedContexts
+    .filter((context) => context.kind === 'route-path')
+    .map((context) => context.routeSource)
+  if (clientScriptCollectedRouteSources.join(',') !== 'fetch-post') {
+    throw new Error(`Expected collectPathContexts to include only client <script> fetch route context. Got: ${JSON.stringify(clientScriptCollectedContexts)}`)
+  }
+  const moduleScriptFetchDocument = `<script type="module">
+window.fetch('/feedback')
+</script>
+`
+  const moduleScriptFetchContext = getPathContextAtOffset(
+    moduleScriptFetchDocument,
+    moduleScriptFetchDocument.indexOf('/feedback') + 4,
+    { mode: 'ejs' }
+  )
+  if (!moduleScriptFetchContext || moduleScriptFetchContext.routeSource !== 'fetch-get') {
+    throw new Error(`Expected EJS client module <script> fetch() to surface fetch-get route context. Got: ${JSON.stringify(moduleScriptFetchContext)}`)
+  }
+  for (const ignoredScriptDocument of [
+    `<script src="/assets/app.js">fetch('/feedback')</script>\n`,
+    `<script type="application/json">{"url": "/feedback", "call": "fetch('/feedback')"}</script>\n`,
+    `<script type="importmap">{"imports": {}}</script>\n`,
+  ]) {
+    const ignoredContexts = collectPathContexts(ignoredScriptDocument, { mode: 'ejs' })
+      .filter((context) => context.kind === 'route-path' && String(context.routeSource || '').startsWith('fetch-'))
+    if (ignoredContexts.length) {
+      throw new Error(`Expected non-JS/src EJS <script> blocks to stay ignored. Got: ${JSON.stringify(ignoredContexts)}`)
+    }
+  }
+
   await runExtensionHostSanityCheck(repoRoot)
   const fixture = createFixtureApp(repoRoot)
   const realHighlightsFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', '(site)', 'highlights.ejs')
@@ -3030,6 +3095,25 @@ datastar.replaceURL('/replace')
       )
     ) {
       throw new Error(`Expected impact report to preserve filter/sort schema fields. Got: ${JSON.stringify(mjsImpact)}`)
+    }
+    const clientScriptFetchRouteLink = indexReport.routeLinks.find((entry) =>
+      entry.sourceRelativePath === '(site)/boards/client-fetch-reference-check.ejs' &&
+      entry.requestPath === '/feedback'
+    )
+    if (
+      !clientScriptFetchRouteLink ||
+      clientScriptFetchRouteLink.sourceKind !== 'fetch-post' ||
+      clientScriptFetchRouteLink.unresolved ||
+      clientScriptFetchRouteLink.targetRelativePath !== '(site)/feedback/+post.js'
+    ) {
+      throw new Error(`Expected project index routeLinks to include EJS client <script> fetch route target. Got: ${JSON.stringify(clientScriptFetchRouteLink)}`)
+    }
+    const clientScriptResolveRouteLink = indexReport.routeLinks.find((entry) =>
+      entry.sourceRelativePath === '(site)/boards/client-fetch-reference-check.ejs' &&
+      entry.requestPath === 'board-service'
+    )
+    if (clientScriptResolveRouteLink) {
+      throw new Error(`Expected project index routeLinks to ignore EJS client <script> resolve(). Got: ${JSON.stringify(clientScriptResolveRouteLink)}`)
     }
 
     const graphRaceDirPath = path.join(fixture.appRoot, 'pb_hooks', 'pages', 'vanishing-race')
@@ -4408,17 +4492,31 @@ const service = resolve('board-service')
 `
     const lspAssetSmokeDocument = createTestDocument(fixture.globalAssetFilePath, 'javascript', 1, lspAssetSmokeText)
     const lspAssetSmokeUri = lspAssetSmokeDocument.uri
+    const lspClientScriptText = `<script>
+const result = fetch('/feedback', { method: 'POST' })
+const service = resolve('board-service')
+</script>
+`
+    const lspClientScriptDocument = createTestDocument(fixture.routeMethodReferenceCheckFilePath, 'ejs', 1, lspClientScriptText)
+    const lspClientScriptUri = lspClientScriptDocument.uri
     lspSmokeCore.openDocument({
       uri: lspSmokeUri,
       languageId: 'ejs',
       version: 1,
       text: lspSmokeText,
     })
+    lspSmokeCore.openDocument({
+      uri: lspClientScriptUri,
+      languageId: 'ejs',
+      version: 1,
+      text: lspClientScriptText,
+    })
     const lspSmokeContext = createLspServiceSmokeContext(
       lspSmokeCore,
       new Map([
         [lspSmokeUri, lspSmokeDocument],
         [lspAssetSmokeUri, lspAssetSmokeDocument],
+        [lspClientScriptUri, lspClientScriptDocument],
       ]),
       {
         isExcludedPocketPagesScriptPath(filePath) {
@@ -4543,6 +4641,62 @@ const service = resolve('board-service')
     })
     if (assetResolveDefinition !== null) {
       throw new Error(`Expected asset resolve() definition to stay blocked. Got: ${JSON.stringify(assetResolveDefinition)}`)
+    }
+    const lspClientScriptFetchOffset = lspClientScriptText.indexOf("'/feedback'") + 2
+    const lspClientScriptResolveOffset = lspClientScriptText.indexOf("'board-service'") + 2
+    const clientScriptFetchCompletion = customFeatureService.provideCompletionItems({
+      textDocument: { uri: lspClientScriptUri },
+      position: lspClientScriptDocument.positionAt(lspClientScriptFetchOffset),
+    })
+    if (
+      !clientScriptFetchCompletion ||
+      !Array.isArray(clientScriptFetchCompletion.items) ||
+      !clientScriptFetchCompletion.items.some((entry) => entry.label === '/feedback')
+    ) {
+      throw new Error(`Expected EJS client <script> fetch() route completion to include /feedback. Got: ${JSON.stringify(clientScriptFetchCompletion)}`)
+    }
+    const clientScriptFetchHover = customFeatureService.provideHover({
+      textDocument: { uri: lspClientScriptUri },
+      position: lspClientScriptDocument.positionAt(lspClientScriptFetchOffset),
+    })
+    if (
+      !clientScriptFetchHover ||
+      clientScriptFetchHover.kind !== 'route-path' ||
+      clientScriptFetchHover.routeSource !== 'fetch-post' ||
+      normalizeFilePath(clientScriptFetchHover.targetFilePath) !== normalizeFilePath(fixture.feedbackPostFilePath)
+    ) {
+      throw new Error(`Expected EJS client <script> fetch() hover to resolve the POST route. Got: ${JSON.stringify(clientScriptFetchHover)}`)
+    }
+    const clientScriptFetchDefinition = customFeatureService.provideDefinition({
+      textDocument: { uri: lspClientScriptUri },
+      position: lspClientScriptDocument.positionAt(lspClientScriptFetchOffset),
+    })
+    if (normalizeFilePath(clientScriptFetchDefinition) !== normalizeFilePath(fixture.feedbackPostFilePath)) {
+      throw new Error(`Expected EJS client <script> fetch() definition to target the POST route file. Got: ${JSON.stringify(clientScriptFetchDefinition)}`)
+    }
+    const lspClientScriptDocumentLinks = customFeatureService.provideDocumentLinks({
+      textDocument: { uri: lspClientScriptUri },
+    })
+    if (
+      !Array.isArray(lspClientScriptDocumentLinks) ||
+      lspClientScriptDocumentLinks.length !== 1 ||
+      normalizeFilePath(URI.parse(lspClientScriptDocumentLinks[0].target).fsPath) !== normalizeFilePath(fixture.feedbackPostFilePath)
+    ) {
+      throw new Error(`Expected EJS client <script> document links to include only fetch() route targets. Got: ${JSON.stringify(lspClientScriptDocumentLinks)}`)
+    }
+    const clientScriptResolveCompletion = customFeatureService.provideCompletionItems({
+      textDocument: { uri: lspClientScriptUri },
+      position: lspClientScriptDocument.positionAt(lspClientScriptResolveOffset),
+    })
+    if (clientScriptResolveCompletion !== null) {
+      throw new Error(`Expected EJS client <script> resolve() completion to stay blocked. Got: ${JSON.stringify(clientScriptResolveCompletion)}`)
+    }
+    const clientScriptResolveDefinition = customFeatureService.provideDefinition({
+      textDocument: { uri: lspClientScriptUri },
+      position: lspClientScriptDocument.positionAt(lspClientScriptResolveOffset),
+    })
+    if (clientScriptResolveDefinition !== null) {
+      throw new Error(`Expected EJS client <script> resolve() definition to stay blocked. Got: ${JSON.stringify(clientScriptResolveDefinition)}`)
     }
     const lspSmokeTemplateLinkedRenameEdits = tsFeatureService.provideRename({
       textDocument: { uri: lspSmokeUri },
@@ -16591,6 +16745,25 @@ const state = {
     }
     if (!routeDocumentLinkTargets.some((target) => target.endsWith('/pb_hooks/pages/xapi/auth/sign-out.ejs'))) {
       throw new Error(`Expected action route document link target. Got: ${routeDocumentLinkTargets.join(', ')}`)
+    }
+
+    const clientScriptRouteDocumentLinks = indexService.getDocumentLinks(
+      fixture.siteIndexFilePath,
+      `<script>
+fetch('/feedback', { method: 'POST' })
+resolve('board-service')
+</script>
+<script src="/assets/app.js">fetch('/feedback')</script>
+<script type="application/json">{"url": "/feedback"}</script>
+`
+    )
+    if (
+      clientScriptRouteDocumentLinks.length !== 1 ||
+      clientScriptRouteDocumentLinks[0].kind !== 'route-path' ||
+      clientScriptRouteDocumentLinks[0].routeSource !== 'fetch-post' ||
+      normalizeFilePath(clientScriptRouteDocumentLinks[0].targetFilePath) !== normalizeFilePath(fixture.feedbackPostFilePath)
+    ) {
+      throw new Error(`Expected EJS client <script> document links to include only static fetch route targets. Got: ${JSON.stringify(clientScriptRouteDocumentLinks)}`)
     }
 
     const routeMethodDocumentLinks = indexService.getDocumentLinks(

@@ -2,7 +2,7 @@
 
 const ts = require('typescript')
 const { extractTemplateCodeBlocks } = require('./ejs-template')
-const { extractServerBlocks } = require('./script-server')
+const { extractScriptBlocks, extractServerBlocks } = require('./script-server')
 
 const ROUTE_ATTR_OPEN_RE = /\b(href|action|(?:data-)?hx-(?:get|post|put|delete|patch|push-url|replace-url))\s*=\s*(['"])([^'"]*)$/is
 const ROUTE_ATTRIBUTE_NAMES = new Set([
@@ -31,6 +31,185 @@ const FILTER_PARAM_PLACEHOLDER_RE = /\{:\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}/g
 const FILTER_MASKED_CHAR = ' '
 const SORT_COLLECTION_METHOD_NAMES = new Set(['findRecordsByFilter'])
 const SORT_FIELD_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
+const CLIENT_SCRIPT_FETCH_SIGNAL_RE = /\b(?:fetch|window\.fetch|globalThis\.fetch)\s*\(/
+const JAVASCRIPT_SCRIPT_TYPES = new Set([
+  '',
+  'module',
+  'text/javascript',
+  'application/javascript',
+  'text/ecmascript',
+  'application/ecmascript',
+  'text/jscript',
+  'text/x-javascript',
+  'application/x-javascript',
+])
+
+function isHtmlAttributeNameChar(char) {
+  return /[A-Za-z0-9:_-]/.test(String(char || ''))
+}
+
+function skipEjsTag(text, startIndex) {
+  const closeIndex = String(text || '').indexOf('%>', startIndex + 2)
+  return closeIndex === -1 ? text.length : closeIndex + 2
+}
+
+function readHtmlAttributeValue(text, startIndex) {
+  const sourceText = String(text || '')
+  let cursor = startIndex
+
+  while (cursor < sourceText.length && /\s/.test(sourceText.charAt(cursor))) {
+    cursor += 1
+  }
+
+  if (sourceText.slice(cursor, cursor + 2) === '<%') {
+    const end = skipEjsTag(sourceText, cursor)
+    return {
+      value: sourceText.slice(cursor, end),
+      end,
+      dynamic: true,
+    }
+  }
+
+  const quote = sourceText.charAt(cursor)
+  if (quote === '"' || quote === "'") {
+    const valueStart = cursor + 1
+    cursor = valueStart
+    while (cursor < sourceText.length) {
+      if (sourceText.slice(cursor, cursor + 2) === '<%') {
+        cursor = skipEjsTag(sourceText, cursor)
+        continue
+      }
+
+      if (sourceText.charAt(cursor) === quote) {
+        return {
+          value: sourceText.slice(valueStart, cursor),
+          end: cursor + 1,
+          dynamic: sourceText.slice(valueStart, cursor).includes('<%'),
+        }
+      }
+
+      cursor += 1
+    }
+
+    return {
+      value: sourceText.slice(valueStart),
+      end: cursor,
+      dynamic: sourceText.slice(valueStart).includes('<%'),
+    }
+  }
+
+  const valueStart = cursor
+  while (cursor < sourceText.length) {
+    if (sourceText.slice(cursor, cursor + 2) === '<%') {
+      cursor = skipEjsTag(sourceText, cursor)
+      continue
+    }
+
+    const currentChar = sourceText.charAt(cursor)
+    if (/\s/.test(currentChar) || currentChar === '>') {
+      break
+    }
+
+    cursor += 1
+  }
+
+  return {
+    value: sourceText.slice(valueStart, cursor),
+    end: cursor,
+    dynamic: sourceText.slice(valueStart, cursor).includes('<%'),
+  }
+}
+
+function collectHtmlAttributes(attributesText) {
+  const text = String(attributesText || '')
+  const attributes = new Map()
+  let cursor = 0
+
+  while (cursor < text.length) {
+    while (cursor < text.length && /\s/.test(text.charAt(cursor))) {
+      cursor += 1
+    }
+
+    if (cursor >= text.length) {
+      break
+    }
+
+    if (text.slice(cursor, cursor + 2) === '<%') {
+      cursor = skipEjsTag(text, cursor)
+      continue
+    }
+
+    if (text.charAt(cursor) === '/') {
+      cursor += 1
+      continue
+    }
+
+    const nameStart = cursor
+    while (cursor < text.length && isHtmlAttributeNameChar(text.charAt(cursor))) {
+      cursor += 1
+    }
+
+    const name = text.slice(nameStart, cursor).trim().toLowerCase()
+    if (!name) {
+      cursor += 1
+      continue
+    }
+
+    while (cursor < text.length && /\s/.test(text.charAt(cursor))) {
+      cursor += 1
+    }
+
+    let value = ''
+    let dynamic = false
+    let hasValue = false
+    if (text.charAt(cursor) === '=') {
+      hasValue = true
+      const parsedValue = readHtmlAttributeValue(text, cursor + 1)
+      value = parsedValue.value
+      dynamic = parsedValue.dynamic
+      cursor = parsedValue.end
+    }
+
+    attributes.set(name, {
+      name,
+      value,
+      hasValue,
+      dynamic,
+    })
+  }
+
+  return attributes
+}
+
+function normalizeScriptType(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .split(';')[0]
+    .trim()
+}
+
+function isJavaScriptScriptType(value) {
+  return JAVASCRIPT_SCRIPT_TYPES.has(normalizeScriptType(value))
+}
+
+function isClientJavaScriptScriptBlock(block) {
+  if (!block || block.isServer) {
+    return false
+  }
+
+  const attributes = collectHtmlAttributes(block.attributesText)
+  if (attributes.has('server') || attributes.has('src')) {
+    return false
+  }
+
+  const typeAttribute = attributes.get('type')
+  if (typeAttribute && typeAttribute.dynamic) {
+    return false
+  }
+
+  return isJavaScriptScriptType(typeAttribute ? typeAttribute.value : '')
+}
 
 function isFieldNameStartChar(char) {
   return /[A-Za-z_]/.test(String(char || ''))
@@ -1465,6 +1644,48 @@ function isTemplateBlockInsideServerBlock(block, serverBlocks) {
   )
 }
 
+function getClientScriptFetchPathContextAtOffset(documentText, offset) {
+  const sourceText = String(documentText || '')
+  for (const block of extractScriptBlocks(sourceText)) {
+    if (
+      offset < block.contentStart ||
+      offset > block.contentEnd ||
+      !isClientJavaScriptScriptBlock(block) ||
+      !CLIENT_SCRIPT_FETCH_SIGNAL_RE.test(block.content)
+    ) {
+      continue
+    }
+
+    const context = getScriptPathContextAtOffset(block.content, offset, {
+      offsetBase: block.contentStart,
+    })
+    return context && context.kind === 'route-path' && isFetchRouteContext(context)
+      ? context
+      : null
+  }
+
+  return null
+}
+
+function collectClientScriptFetchPathContexts(documentText) {
+  const sourceText = String(documentText || '')
+  const contexts = []
+
+  for (const block of extractScriptBlocks(sourceText)) {
+    if (!isClientJavaScriptScriptBlock(block) || !CLIENT_SCRIPT_FETCH_SIGNAL_RE.test(block.content)) {
+      continue
+    }
+
+    for (const context of collectScriptPathContexts(block.content, { offsetBase: block.contentStart })) {
+      if (context.kind === 'route-path' && isFetchRouteContext(context)) {
+        contexts.push(context)
+      }
+    }
+  }
+
+  return contexts
+}
+
 function getEjsExecutablePathSegments(documentText) {
   const sourceText = String(documentText || '')
   const serverBlocks = extractServerBlocks(sourceText)
@@ -1518,6 +1739,10 @@ function collectEjsPathContexts(documentText) {
     }
   }
 
+  for (const context of collectClientScriptFetchPathContexts(documentText)) {
+    addContext(context)
+  }
+
   for (const context of collectRouteAttributeContexts(documentText)) {
     addContext(context)
   }
@@ -1534,6 +1759,11 @@ function getEjsPathContextAtOffset(documentText, offset) {
     if (scriptContext) {
       return scriptContext
     }
+  }
+
+  const clientScriptContext = getClientScriptFetchPathContextAtOffset(documentText, offset)
+  if (clientScriptContext) {
+    return clientScriptContext
   }
 
   return getRouteAttributeContextAtOffset(documentText, offset)

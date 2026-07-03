@@ -179,7 +179,7 @@ EJS block 끝 위치는 사용자가 커서를 자주 멈추는 위치이므로 
 | `resolve('...')`, `api.resolve('...')` | `_private` module |
 | `include('...')`, `api.include('...')` | `_private` partial |
 | `asset('...')` | local/global asset |
-| `fetch('/path')`, `window.fetch('/path')`, `globalThis.fetch('/path')` | route, 정적 내부 path와 `method` init 기준 |
+| `fetch('/path')`, `window.fetch('/path')`, `globalThis.fetch('/path')` | route, JS와 `.ejs` client `<script>`의 정적 내부 path와 `method` init 기준 |
 | `redirect('/path')`, `api.redirect('/path')` | route |
 | `datastar.redirect('/path')`, `datastar.replaceURL('/path')` | route |
 | `href="/path"` | route, static asset fallback |
@@ -501,7 +501,7 @@ npm run install:vscode-pocketpages
 - JS/CJS/MJS 문서의 일반 hover는 기본 JS/TS 경험에 맡기고, 확장은 PocketPages path hover를 추가합니다.
 - route completion은 static `.ejs` route 중심입니다.
 - route navigation은 `.ejs`, `.js`, `.cjs`, `.mjs` target을 더 넓게 해석합니다.
-- public asset JS는 app graph/cache 대상이 아니며, 정적 `fetch('/...')` route path만 보강합니다.
+- public asset JS와 `.ejs` client `<script>`는 정적 `fetch('/...')` route path만 보강합니다.
 - JSDoc type quick fix는 선택 사항입니다. 확장이 코드를 자동으로 타입 주석 중심으로 바꾸지는 않습니다.
 
 ## 문제 확인 체크포인트

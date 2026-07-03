@@ -194,7 +194,7 @@ function hasServerAttribute(attributesText) {
   return false
 }
 
-function extractServerBlocks(text) {
+function extractScriptBlocks(text) {
   const sourceText = String(text || '')
   const blocks = []
   const lowerText = sourceText.toLowerCase()
@@ -236,16 +236,13 @@ function extractServerBlocks(text) {
       break
     }
 
-    if (!hasServerAttribute(attributesText)) {
-      cursor = closeTag.end
-      continue
-    }
-
     const contentEnd = closeTag.start
     const content = sourceText.slice(contentStart, contentEnd)
 
     blocks.push({
       index: blocks.length,
+      attributesText,
+      isServer: hasServerAttribute(attributesText),
       fullStart: scriptStart,
       fullEnd: closeTag.end,
       contentStart,
@@ -259,11 +256,21 @@ function extractServerBlocks(text) {
   return blocks
 }
 
+function extractServerBlocks(text) {
+  return extractScriptBlocks(text)
+    .filter((block) => block.isServer)
+    .map((block, index) => ({
+      ...block,
+      index,
+    }))
+}
+
 function getServerBlockAtOffset(text, offset) {
   return extractServerBlocks(text).find((block) => offset >= block.contentStart && offset <= block.contentEnd) || null
 }
 
 module.exports = {
+  extractScriptBlocks,
   extractServerBlocks,
   getServerBlockAtOffset,
 }
