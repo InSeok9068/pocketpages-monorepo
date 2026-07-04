@@ -103,7 +103,11 @@ test('manual account, virtual simulation, and mock order flow works through serv
       name: '테스트 연금저축',
       accountType: 'pension_saving',
       providerName: '테스트증권',
+      accountSeq: '1234567890',
       baseCurrency: 'KRW',
+      totalValue: '700,000원',
+      cashValue: '0원',
+      profitLoss: '+50,000원',
       isTaxAdvantaged: 'on',
       memo: 'service-harness workflow',
     },
@@ -115,15 +119,120 @@ test('manual account, virtual simulation, and mock order flow works through serv
 
   const accountHome = await getAuthedHome(cookieHeader)
   assert.equal(accountHome.body.includes('계좌 등록'), false)
-  assert.equal(accountHome.body.includes('연결 계좌'), true)
-  assert.equal(accountHome.body.includes('1개'), true)
+  assert.equal(accountHome.body.includes('투자 상태'), true)
+  assert.equal(accountHome.body.includes('총 평가금'), true)
   assert.equal(accountHome.$('[data-nav-key]').length, 4)
   assert.equal(accountHome.$('[data-nav-key="home"][aria-current="page"]').length, 1)
 
   const accountsPage = await getAuthedPage('/accounts', cookieHeader)
-  assert.equal(accountsPage.body.includes('계좌 목록'), true)
+  assert.equal(accountsPage.body.includes('현재 비중'), true)
+  assert.equal(accountsPage.body.includes('자산 목록'), true)
+  assert.equal(accountsPage.body.includes('아직 불러온 보유 종목이 없습니다'), true)
   assert.equal(accountsPage.body.includes('테스트 연금저축'), true)
   assert.equal(accountsPage.$('[data-nav-key="accounts"][aria-current="page"]').length, 1)
+
+  const manualHoldingPage = await getAuthedPage('/accounts/holdings/new', cookieHeader)
+  assert.equal(manualHoldingPage.body.includes('평가금액'), true)
+  const manualAccountId = manualHoldingPage.$('select[name="accountId"] option').first().attr('value') || ''
+  assert.match(manualAccountId, /^[a-z0-9]{15}$/u)
+
+  const manualHoldingResponse = await postForm(
+    '/xapi/holdings/manual/create',
+    {
+      accountId: manualAccountId,
+      symbol: '005930',
+      name: '삼성전자',
+      currency: 'KRW',
+      assetType: 'stock',
+      assetClass: 'equity',
+      quantity: '10주',
+      marketValue: '700,000원',
+      profitLoss: '+50,000원 (7.7%)',
+    },
+    cookieHeader,
+  )
+
+  assert.equal(manualHoldingResponse.status, 303)
+  assert.match(manualHoldingResponse.headers.get('location') || '', /^\/accounts/u)
+
+  const holdingAccountsPage = await getAuthedPage('/accounts', cookieHeader)
+  assert.equal(holdingAccountsPage.body.includes('삼성전자'), true)
+  assert.equal(holdingAccountsPage.body.includes('목표와 현재'), true)
+  assert.equal(holdingAccountsPage.body.includes('목표 비율'), true)
+  assert.equal(holdingAccountsPage.$('#asset-class-chart').length, 1)
+
+  const targetResponse = await postForm(
+    '/xapi/allocation-targets/update',
+    {
+      cashTargetPct: '5',
+      growthStockTargetPct: '60',
+      dividendStockTargetPct: '15',
+      bondTargetPct: '20',
+      goldTargetPct: '0',
+      realEstateTargetPct: '0',
+      otherTargetPct: '0',
+    },
+    cookieHeader,
+  )
+
+  assert.equal(targetResponse.status, 303)
+  assert.match(targetResponse.headers.get('location') || '', /^\/accounts/u)
+
+  const targetedAccountsPage = await getAuthedPage('/accounts', cookieHeader)
+  assert.equal(targetedAccountsPage.body.includes('주식(성장형)'), true)
+  assert.equal(targetedAccountsPage.body.includes('차이'), true)
+  assert.equal(targetedAccountsPage.$('input[name="cashTargetPct"]').attr('value'), '5')
+  assert.equal(targetedAccountsPage.$('input[name="growthStockTargetPct"]').attr('value'), '60')
+  assert.equal(targetedAccountsPage.$('input[name="dividendStockTargetPct"]').attr('value'), '15')
+  assert.equal(targetedAccountsPage.body.includes('목표 60%'), true)
+
+  const holdingId = targetedAccountsPage.$('input[name="holdingId"]').first().attr('value') || ''
+  assert.match(holdingId, /^[a-z0-9]{15}$/u)
+
+  const editHref = targetedAccountsPage.$(`a[href="/accounts/holdings/${holdingId}/edit"]`).attr('href') || ''
+  assert.equal(editHref, `/accounts/holdings/${holdingId}/edit`)
+
+  const editHoldingPage = await getAuthedPage(editHref, cookieHeader)
+  assert.equal(editHoldingPage.body.includes('수정 저장'), true)
+  assert.equal(editHoldingPage.$('input[name="marketValue"]').attr('value'), '700,000원')
+
+  const updateHoldingResponse = await postForm(
+    '/xapi/holdings/manual/update',
+    {
+      holdingId,
+      accountId: manualAccountId,
+      symbol: '005930',
+      name: '삼성전자',
+      currency: 'KRW',
+      assetType: 'stock',
+      assetClass: 'equity',
+      quantity: '10주',
+      marketValue: '800,000원',
+      profitLoss: '+100,000원',
+    },
+    cookieHeader,
+  )
+
+  assert.equal(updateHoldingResponse.status, 303)
+  assert.match(updateHoldingResponse.headers.get('location') || '', /^\/accounts/u)
+
+  const updatedHoldingAccountsPage = await getAuthedPage('/accounts', cookieHeader)
+  assert.equal(updatedHoldingAccountsPage.body.includes('800,000원'), true)
+
+  const allocationResponse = await postForm(
+    '/xapi/holdings/allocation/update',
+    {
+      holdingId,
+      allocationBucket: 'dividend_stock',
+    },
+    cookieHeader,
+  )
+
+  assert.equal(allocationResponse.status, 303)
+  assert.match(allocationResponse.headers.get('location') || '', /^\/accounts/u)
+
+  const allocatedAccountsPage = await getAuthedPage('/accounts', cookieHeader)
+  assert.equal(allocatedAccountsPage.body.includes('주식(배당형)'), true)
 
   const simulationResponse = await postForm(
     '/xapi/simulations/create',
@@ -145,7 +254,7 @@ test('manual account, virtual simulation, and mock order flow works through serv
   const simulationHome = await getAuthedHome(cookieHeader)
   const actionItemId = simulationHome.$('input[name="actionItemId"]').attr('value') || ''
 
-  assert.equal(simulationHome.body.includes('승인 전 주문 후보가 있습니다'), true)
+  assert.equal(simulationHome.body.includes('주문 후보를 검토하세요'), true)
   assert.match(actionItemId, /^[a-z0-9]{15}$/u)
 
   const simulationsPage = await getAuthedPage('/simulations', cookieHeader)
@@ -170,18 +279,13 @@ test('manual account, virtual simulation, and mock order flow works through serv
   assert.match(mockOrderResponse.headers.get('location') || '', /^\/actions/u)
 
   const orderHome = await getAuthedHome(cookieHeader)
-  const homeArticleTexts = orderHome
-    .$('article')
-    .map((index, element) => orderHome.$(element).text().replace(/\s+/g, ' ').trim())
-    .get()
   const homeSectionTexts = orderHome
     .$('section')
     .map((index, element) => orderHome.$(element).text().replace(/\s+/g, ' ').trim())
     .get()
 
-  assert.equal(homeArticleTexts.some((text) => text.includes('액션') && text.includes('1') && text.includes('제출 추적')), true)
-  assert.equal(homeSectionTexts.some((text) => text.includes('이번 액션') && text.includes('1개')), true)
-  assert.equal(orderHome.body.includes('제출된 주문 1건을 추적 중입니다.'), true)
+  assert.equal(homeSectionTexts.some((text) => text.includes('검토') && text.includes('1')), true)
+  assert.equal(orderHome.body.includes('제출 대기 주문 또는 초안이 있습니다.'), true)
 })
 
 test('mock order route cannot call Toss order APIs', () => {
@@ -189,4 +293,42 @@ test('mock order route cannot call Toss order APIs', () => {
 
   assert.equal(/createTossApiClient|createOrder|modifyOrder|cancelOrder|toss-api/u.test(mockRoute), false)
   assert.equal(mockRoute.includes('didNotCallTossApi'), true)
+})
+
+test('toss account sync route reads holdings, cash, and records sync state', () => {
+  const syncRoute = readFileSync(path.join(serviceDir, 'pb_hooks/pages/xapi/accounts/toss/sync.ejs'), 'utf8')
+  const accountsPage = readFileSync(path.join(serviceDir, 'pb_hooks/pages/(site)/accounts/index.ejs'), 'utf8')
+
+  assert.equal(syncRoute.includes('toss.getHoldings'), true)
+  assert.equal(syncRoute.includes('toss.getExchangeRate'), true)
+  assert.equal(syncRoute.includes('toss.getBuyingPower'), true)
+  assert.equal(syncRoute.includes('buildTossClientOptions'), true)
+  assert.equal(syncRoute.includes('sync_runs'), true)
+  assert.equal(syncRoute.includes('account_holdings'), true)
+  assert.equal(syncRoute.includes('account_snapshots'), true)
+  assert.equal(syncRoute.includes('holding_snapshots'), true)
+  assert.equal(syncRoute.includes('assetClassWeights'), true)
+  assert.equal(syncRoute.includes('asset-classifier'), true)
+  assert.equal(/createOrder|modifyOrder|cancelOrder/u.test(syncRoute), false)
+  assert.equal(accountsPage.includes('/xapi/accounts/toss/sync'), true)
+  assert.equal(accountsPage.includes('/xapi/allocation-targets/update'), true)
+  assert.equal(accountsPage.includes('/xapi/holdings/allocation/update'), true)
+  assert.equal(accountsPage.includes('chart.umd.4.5.1.min.js'), true)
+  assert.equal(accountsPage.includes('readAssetRecord'), true)
+  assert.equal(accountsPage.includes('account_holdings'), true)
+})
+
+test('rebalance schema supports asset class targets and draft items', () => {
+  const schema = readFileSync(path.join(serviceDir, 'pb_schema.json'), 'utf8')
+  const manualHoldingRoute = readFileSync(path.join(serviceDir, 'pb_hooks/pages/xapi/holdings/manual/create.ejs'), 'utf8')
+  const rebalanceRoute = readFileSync(path.join(serviceDir, 'pb_hooks/pages/xapi/rebalance/runs/create.ejs'), 'utf8')
+
+  assert.equal(schema.includes('"assetClass"'), true)
+  assert.equal(schema.includes('"strategy_asset_targets"'), true)
+  assert.equal(schema.includes('"rebalance_runs"'), true)
+  assert.equal(schema.includes('"rebalance_items"'), true)
+  assert.equal(manualHoldingRoute.includes('assetClassOverride'), true)
+  assert.equal(rebalanceRoute.includes('strategy_asset_targets'), true)
+  assert.equal(rebalanceRoute.includes('rebalance_items'), true)
+  assert.equal(/createOrder|modifyOrder|cancelOrder|toss-api/u.test(rebalanceRoute), false)
 })

@@ -1,4 +1,42 @@
 declare namespace types {
+  /** 리밸런싱 기준 자산군입니다. */
+  type SeedLabAssetClass = 'equity' | 'fixed_income' | 'cash' | 'alternative'
+
+  /** 상품 형태입니다. */
+  type SeedLabAssetType = 'stock' | 'etf' | 'bond' | 'index' | 'cash' | 'fund'
+
+  /** 자산 자동 분류 결과입니다. */
+  type SeedLabAssetClassification = {
+    /** 상품 형태입니다. */
+    assetType: SeedLabAssetType
+    /** 리밸런싱 자산군입니다. */
+    assetClass: SeedLabAssetClass
+    /** 분류 출처입니다. */
+    classificationSource: 'auto' | 'manual' | 'toss' | 'import'
+    /** 0~1 사이 신뢰도입니다. */
+    classificationConfidence: number
+  }
+
+  /** 원본 통화 금액 입력입니다. */
+  type SeedLabValuationSourceInput = {
+    /** 원본 보유 종목입니다. */
+    raw?: Record<string, any>
+    /** seedlab 원본 금액 필드입니다. */
+    sourceKey: string
+  }
+
+  /** 원화 평가금 입력입니다. */
+  type SeedLabValuationAmountInput = SeedLabValuationSourceInput & {
+    /** 보유 종목 통화입니다. */
+    currency?: TossCurrency
+    /** DB 저장 금액입니다. */
+    storedAmount?: number
+    /** seedlab 원화 금액 필드입니다. */
+    krwKey: string
+    /** 최신 USD/KRW 환율입니다. */
+    latestUsdKrwRate?: number
+  }
+
   /** 토스증권 API 통화 코드입니다. */
   type TossCurrency = 'KRW' | 'USD' | (string & {})
 

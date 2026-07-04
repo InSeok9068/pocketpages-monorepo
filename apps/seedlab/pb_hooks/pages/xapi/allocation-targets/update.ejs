@@ -1,0 +1,158 @@
+<script server>
+  const allocationBuckets = resolve('allocation-buckets')
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function readNumber(value) {
+    const number = Number(cleanText(value))
+    return isFinite(number) ? number : 0
+  }
+
+  function roundPct(value) {
+    return Math.round(Number(value || 0) * 10) / 10
+  }
+
+  function buildTargets(form) {
+    const buckets = allocationBuckets.listBuckets()
+    const targets = {}
+
+    for (let index = 0; index < buckets.length; index += 1) {
+      const bucket = buckets[index]
+      const value = readNumber(form[bucket.targetField])
+      if (value < 0 || value > 100) throw new Error('목표 비중은 0%에서 100% 사이여야 합니다.')
+      targets[bucket.key] = roundPct(value)
+    }
+
+    return targets
+  }
+
+  function targetTotal(targets) {
+    const keys = Object.keys(targets)
+    let total = 0
+
+    for (let index = 0; index < keys.length; index += 1) {
+      total += Number(targets[keys[index]] || 0)
+    }
+
+    return roundPct(total)
+  }
+
+  function findDefaultStrategy(txApp, userId) {
+    const records = txApp.findRecordsByFilter('investment_strategies', 'owner = {:owner} && strategyType = {:strategyType}', '-updated', 50, 0, {
+      owner: userId,
+      strategyType: 'real',
+    })
+
+    for (let index = 0; index < records.length; index += 1) {
+      if (String(records[index].get('name') || '') === '기본 리밸런싱') return records[index]
+    }
+
+    return records.length > 0 ? records[0] : null
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/allocation-targets/update:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/allocation-targets/update:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/allocation-targets/update:start', {
+    userId,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+
+    const targets = buildTargets(form)
+    const total = targetTotal(targets)
+    if (total !== 100) throw new Error('목표 비중 합계는 100%여야 합니다.')
+
+    $app.runInTransaction(function (txApp) {
+      /** @type {PocketPagesRecord<"investment_strategies"> | null} */
+      let strategyRecord = null
+
+      try {
+        strategyRecord = findDefaultStrategy(txApp, userId)
+      } catch (exception) {
+        strategyRecord = null
+      }
+
+      if (!strategyRecord) {
+        strategyRecord = new Record(txApp.findCollectionByNameOrId('investment_strategies'))
+        strategyRecord.set('owner', userId)
+        strategyRecord.set('name', '기본 리밸런싱')
+        strategyRecord.set('strategyType', 'real')
+        strategyRecord.set('baseCurrency', 'KRW')
+        strategyRecord.set('monthlyContribution', 0)
+        strategyRecord.set('rebalanceCycle', 'monthly')
+        strategyRecord.set('isActive', true)
+        strategyRecord.set('memo', '자산 배정 목표 비중입니다.')
+      }
+
+      const buckets = allocationBuckets.listBuckets()
+      for (let index = 0; index < buckets.length; index += 1) {
+        strategyRecord.set(buckets[index].targetField, targets[buckets[index].key] || 0)
+      }
+      txApp.save(strategyRecord)
+    })
+
+    info('seedlab/xapi/allocation-targets/update:success', {
+      userId,
+      total,
+    })
+
+    dbg('seedlab/xapi/allocation-targets/update:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '목표 비율을 저장했습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '목표 비율을 저장했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/allocation-targets/update:failed', {
+      userId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/allocation-targets/update:redirect', {
+    status: 303,
+    redirectTo: '/accounts',
+    message: errorMessage || '목표 비율 저장에 실패했습니다.',
+  })
+  redirect('/accounts', {
+    status: 303,
+    message: errorMessage || '목표 비율 저장에 실패했습니다.',
+  })
+  return
+</script>

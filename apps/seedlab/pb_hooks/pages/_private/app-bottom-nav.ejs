@@ -55,8 +55,7 @@
     <a
       href="<%= item.href %>"
       data-nav-key="<%= item.key %>"
-      <% if (isActive) { %>aria-current="page"
-      <% } %>
+      aria-current="<%= isActive ? 'page' : 'false' %>"
       class="<%= isActive ? 'text-[#3182f6]' : 'text-[#8b95a1]' %> flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[11px] font-bold no-underline active:bg-[#f2f4f6]">
       <span
         class="<%= item.icon %> h-5 w-5"

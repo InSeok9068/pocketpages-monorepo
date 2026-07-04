@@ -1,0 +1,270 @@
+<script server>
+  meta('title', 'SeedLab 보유 종목 수정')
+  meta('description', 'SeedLab 수동 보유 종목 수정')
+
+  if (!request.auth) {
+    dbg('seedlab/accounts/holdings/edit:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const holdingId = String(params.holdingId || '')
+  let holdingCard = null
+  let accountOptions = []
+  const assetTypeOptions = [
+    { key: 'etf', label: 'ETF' },
+    { key: 'fund', label: '펀드/리츠' },
+    { key: 'stock', label: '주식' },
+    { key: 'bond', label: '채권' },
+    { key: 'cash', label: '현금' },
+  ]
+  const assetClassOptions = [
+    { key: 'equity', label: '주식' },
+    { key: 'fixed_income', label: '채권' },
+    { key: 'cash', label: '현금' },
+    { key: 'alternative', label: '대체' },
+  ]
+
+  function formatNumber(value, maximumFractionDigits) {
+    const number = Number(value || 0)
+    if (!isFinite(number)) return '0'
+    const sign = number < 0 ? '-' : ''
+    const fixed = Math.abs(number).toFixed(maximumFractionDigits)
+    const parts = fixed.split('.')
+    let integer = parts[0]
+    let formattedInteger = ''
+
+    while (integer.length > 3) {
+      formattedInteger = ',' + integer.slice(-3) + formattedInteger
+      integer = integer.slice(0, -3)
+    }
+
+    formattedInteger = integer + formattedInteger
+    const decimal = String(parts[1] || '').replace(/0+$/, '')
+    return sign + formattedInteger + (decimal ? '.' + decimal : '')
+  }
+
+  function accountTypeLabel(value) {
+    const labels = {
+      toss: '토스증권',
+      brokerage: '일반 증권',
+      pension_saving: '연금저축',
+      irp: 'IRP',
+      isa: 'ISA',
+      cash: '현금성 자산',
+    }
+    return labels[String(value || '')] || '계좌'
+  }
+
+  function buildAccountOption(record) {
+    return {
+      id: String(record.get('id') || ''),
+      name: String(record.get('name') || '계좌'),
+      caption: accountTypeLabel(record.get('accountType')) + ' · ' + String(record.get('baseCurrency') || 'KRW'),
+    }
+  }
+
+  try {
+    dbg('seedlab/accounts/holdings/edit:db-access', { collection: 'portfolio_accounts' })
+    const accountRecords = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner} && isActive = true', '-updated', 50, 0, { owner: userId })
+    accountOptions = accountRecords.map(buildAccountOption)
+
+    dbg('seedlab/accounts/holdings/edit:db-access', { collection: 'account_holdings', holdingId })
+    const holdingRecord = $app.findFirstRecordByFilter('account_holdings', 'id = {:id} && owner = {:owner} && source = {:source}', {
+      id: holdingId,
+      owner: userId,
+      source: 'manual',
+    })
+    const assetRecord = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id: String(holdingRecord.get('asset') || '') })
+    const assetClass = String(holdingRecord.get('assetClassOverride') || assetRecord.get('assetClass') || 'equity')
+
+    holdingCard = {
+      id: String(holdingRecord.get('id') || ''),
+      accountId: String(holdingRecord.get('account') || ''),
+      symbol: String(assetRecord.get('symbol') || ''),
+      name: String(assetRecord.get('name') || ''),
+      currency: String(holdingRecord.get('currency') || assetRecord.get('currency') || 'KRW'),
+      assetType: String(assetRecord.get('assetType') || 'etf'),
+      assetClass,
+      quantityText: formatNumber(holdingRecord.get('quantity'), 6),
+      marketValueText: formatNumber(holdingRecord.get('marketValue'), 0) + '원',
+      profitLossText: (Number(holdingRecord.get('profitLoss') || 0) > 0 ? '+' : '') + formatNumber(holdingRecord.get('profitLoss'), 0) + '원',
+    }
+  } catch (exception) {
+    warn('seedlab/accounts/holdings/edit:db-access-failed', { holdingId, error: String(exception.message || exception) })
+    dbg('seedlab/accounts/holdings/edit:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '수정할 수동 보유 종목을 찾지 못했습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '수정할 수동 보유 종목을 찾지 못했습니다.',
+    })
+    return
+  }
+</script>
+
+<section class="flex min-h-[calc(100vh-2rem)] flex-col pb-24 pt-5">
+  <header class="flex items-center justify-between">
+    <div>
+      <p class="text-xs font-bold text-[#3182f6]">종목</p>
+      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">종목 수정</h1>
+    </div>
+    <a
+      href="/accounts"
+      class="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-[#6b7684] no-underline active:bg-[#f2f4f6]">
+      닫기
+    </a>
+  </header>
+
+  <div class="mt-5">
+    <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+
+    <form
+      method="post"
+      action="/xapi/holdings/manual/update"
+      class="space-y-4">
+      <input
+        type="hidden"
+        name="holdingId"
+        value="<%= holdingCard.id %>" />
+
+      <label class="grid grid-cols-[72px_1fr] items-center gap-3 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <span class="text-xs font-bold text-[#6b7684]">계좌</span>
+        <select
+          name="accountId"
+          required
+          class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
+          <% for (let index = 0; index < accountOptions.length; index += 1) { %>
+          <option
+            value="<%= accountOptions[index].id %>"
+            <%= accountOptions[index].id === holdingCard.accountId ? 'selected' : '' %>>
+            <%= accountOptions[index].name %> · <%= accountOptions[index].caption %>
+          </option>
+          <% } %>
+        </select>
+      </label>
+
+      <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">종목명</span>
+          <input
+            type="text"
+            name="name"
+            required
+            value="<%= holdingCard.name %>"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
+        </label>
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">코드</span>
+          <input
+            type="text"
+            name="symbol"
+            value="<%= holdingCard.symbol %>"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
+        </label>
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">통화</span>
+          <select
+            name="currency"
+            required
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
+            <option
+              value="KRW"
+              <%= holdingCard.currency === 'KRW' ? 'selected' : '' %>>
+              KRW
+            </option>
+            <option
+              value="USD"
+              <%= holdingCard.currency === 'USD' ? 'selected' : '' %>>
+              USD
+            </option>
+          </select>
+        </label>
+      </div>
+
+      <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">수량</span>
+          <input
+            type="text"
+            name="quantity"
+            inputmode="decimal"
+            required
+            value="<%= holdingCard.quantityText %>"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
+        </label>
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">평가금액</span>
+          <input
+            type="text"
+            name="marketValue"
+            inputmode="decimal"
+            required
+            value="<%= holdingCard.marketValueText %>"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
+        </label>
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">평가손익</span>
+          <input
+            type="text"
+            name="profitLoss"
+            inputmode="decimal"
+            value="<%= holdingCard.profitLossText %>"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
+        </label>
+      </div>
+
+      <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">상품</span>
+          <select
+            name="assetType"
+            required
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
+            <% for (let index = 0; index < assetTypeOptions.length; index += 1) { %>
+            <option
+              value="<%= assetTypeOptions[index].key %>"
+              <%= assetTypeOptions[index].key === holdingCard.assetType ? 'selected' : '' %>>
+              <%= assetTypeOptions[index].label %>
+            </option>
+            <% } %>
+          </select>
+        </label>
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">자산군</span>
+          <select
+            name="assetClass"
+            required
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
+            <% for (let index = 0; index < assetClassOptions.length; index += 1) { %>
+            <option
+              value="<%= assetClassOptions[index].key %>"
+              <%= assetClassOptions[index].key === holdingCard.assetClass ? 'selected' : '' %>>
+              <%= assetClassOptions[index].label %>
+            </option>
+            <% } %>
+          </select>
+        </label>
+      </div>
+
+      <button
+        type="submit"
+        class="box-border flex h-12 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#191f28] px-4 text-base font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.16)] active:bg-[#333d4b]">
+        수정 저장
+        <span
+          class="i-lucide-save h-5 w-5"
+          aria-hidden="true"></span>
+      </button>
+    </form>
+  </div>
+</section>

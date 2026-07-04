@@ -1,0 +1,244 @@
+<script server>
+  const assetClassifier = resolve('asset-classifier')
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function requireText(value, name) {
+    const text = cleanText(value)
+    if (!text) throw new Error(name + '이 필요합니다.')
+    return text
+  }
+
+  function readNumber(value, fallback) {
+    const number = Number(cleanText(value))
+    return isFinite(number) ? number : fallback
+  }
+
+  function readMoney(value, fallback) {
+    const beforeRate = cleanText(value).split('(')[0]
+    const normalized = beforeRate.replace(/,/g, '').replace(/[^0-9.-]/g, '')
+    if (!normalized) return fallback
+    const number = Number(normalized)
+    return isFinite(number) ? number : fallback
+  }
+
+  function normalizeCurrency(value) {
+    const currency = cleanText(value || 'KRW').toUpperCase()
+    if (currency !== 'KRW' && currency !== 'USD') throw new Error('지원하지 않는 통화입니다.')
+    return currency
+  }
+
+  function normalizeMarketCountry(currency) {
+    return currency === 'USD' ? 'US' : 'KR'
+  }
+
+  function buildManualSymbol(name) {
+    return ('MANUAL-' + cleanText(name).replace(/\s+/g, '-')).slice(0, 40)
+  }
+
+  function findOrCreateAsset(txApp, args) {
+    const symbol = (cleanText(args.symbol) || buildManualSymbol(args.name)).toUpperCase()
+    const classification = assetClassifier.classifyAsset({
+      symbol,
+      name: args.name,
+      assetType: args.assetType,
+      assetClass: args.assetClass,
+      classificationSource: 'manual',
+    })
+    let assetRecord = null
+
+    try {
+      assetRecord = txApp.findFirstRecordByFilter('assets', 'symbol = {:symbol}', { symbol })
+    } catch (exception) {
+      assetRecord = null
+    }
+
+    if (!assetRecord) {
+      assetRecord = new Record(txApp.findCollectionByNameOrId('assets'))
+      assetRecord.set('symbol', symbol)
+    }
+
+    assetRecord.set('name', requireText(args.name, '종목명'))
+    assetRecord.set('marketCountry', normalizeMarketCountry(args.currency))
+    assetRecord.set('assetType', classification.assetType)
+    assetRecord.set('assetClass', classification.assetClass)
+    assetRecord.set('currency', args.currency)
+    assetRecord.set('exchange', '')
+    assetRecord.set('isActive', true)
+    assetRecord.set('classificationSource', 'manual')
+    assetRecord.set('classificationConfidence', classification.classificationConfidence)
+    assetRecord.set('metadata', {
+      source: 'manual',
+      createdByFlow: 'manual_holding_new',
+    })
+    txApp.save(assetRecord)
+
+    return assetRecord
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/holdings/manual/create:redirect', {
+      status: 303,
+      redirectTo: '/accounts/holdings/new',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/accounts/holdings/new', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/holdings/manual/create:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/holdings/manual/create:start', {
+    userId,
+    hasAccountId: !!cleanText(form.accountId),
+    hasSymbol: !!cleanText(form.symbol),
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+
+    const accountId = requireText(form.accountId, '계좌')
+    const name = requireText(form.name, '종목명')
+    const symbol = cleanText(form.symbol) || buildManualSymbol(name)
+    const currency = normalizeCurrency(form.currency)
+    const assetType = assetClassifier.normalizeAssetType(form.assetType)
+    const assetClass = assetClassifier.normalizeAssetClass(form.assetClass)
+    const quantity = readMoney(form.quantity, -1)
+    const marketValueInput = readMoney(form.marketValue, -1)
+    const hasProfitLossInput = cleanText(form.profitLoss) !== ''
+    const profitLossInput = readMoney(form.profitLoss, 0)
+    const currentPriceInput = readMoney(form.currentPrice, -1)
+    const averagePriceInput = readMoney(form.averagePrice, -1)
+    const now = new Date().toISOString()
+
+    if (!assetType) throw new Error('상품 형태를 선택해 주세요.')
+    if (!assetClass) throw new Error('자산군을 선택해 주세요.')
+    if (quantity < 0) throw new Error('수량을 확인해 주세요.')
+    if (marketValueInput < 0 && currentPriceInput < 0) throw new Error('평가금액을 확인해 주세요.')
+
+    dbg('seedlab/xapi/holdings/manual/create:db-access', { collection: 'portfolio_accounts' })
+    $app.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner}', {
+      id: accountId,
+      owner: userId,
+    })
+
+    $app.runInTransaction(function (txApp) {
+      const assetRecord = findOrCreateAsset(txApp, {
+        symbol,
+        name,
+        currency,
+        assetType,
+        assetClass,
+      })
+      const assetId = String(assetRecord.get('id') || '')
+      const marketValue = marketValueInput >= 0 ? marketValueInput : quantity * currentPriceInput
+      const profitLoss = hasProfitLossInput ? profitLossInput : averagePriceInput >= 0 ? marketValue - quantity * averagePriceInput : 0
+      const costAmount = marketValue - profitLoss
+      const currentPrice = quantity > 0 ? marketValue / quantity : marketValue
+      const averagePrice = averagePriceInput >= 0 ? averagePriceInput : quantity > 0 ? costAmount / quantity : currentPrice
+      /** @type {PocketPagesRecord<"account_holdings"> | null} */
+      let holdingRecord = null
+
+      try {
+        holdingRecord = txApp.findFirstRecordByFilter('account_holdings', 'owner = {:owner} && account = {:account} && asset = {:asset}', {
+          owner: userId,
+          account: accountId,
+          asset: assetId,
+        })
+      } catch (exception) {
+        holdingRecord = null
+      }
+
+      if (!holdingRecord) {
+        holdingRecord = new Record(txApp.findCollectionByNameOrId('account_holdings'))
+        holdingRecord.set('owner', userId)
+        holdingRecord.set('account', accountId)
+        holdingRecord.set('asset', assetId)
+      }
+
+      holdingRecord.set('quantity', quantity)
+      holdingRecord.set('averagePrice', averagePrice)
+      holdingRecord.set('currentPrice', currentPrice)
+      holdingRecord.set('costAmount', costAmount)
+      holdingRecord.set('marketValue', marketValue)
+      holdingRecord.set('profitLoss', profitLoss)
+      holdingRecord.set('currency', currency)
+      holdingRecord.set('source', 'manual')
+      holdingRecord.set('assetClassOverride', assetClass)
+      holdingRecord.set('asOfAt', now)
+      holdingRecord.set('raw', {
+        source: 'manual',
+        symbol,
+        name,
+        assetType,
+        assetClass,
+        marketValue,
+        profitLoss,
+      })
+      txApp.save(holdingRecord)
+
+      const txAccountRecord = txApp.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner}', {
+        id: accountId,
+        owner: userId,
+      })
+      txAccountRecord.set('lastSyncedAt', now)
+      txApp.save(txAccountRecord)
+    })
+
+    info('seedlab/xapi/holdings/manual/create:success', {
+      userId,
+      accountId,
+      symbol,
+      assetType,
+      assetClass,
+    })
+
+    dbg('seedlab/xapi/holdings/manual/create:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '보유 종목을 추가했습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '보유 종목을 추가했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/holdings/manual/create:failed', {
+      userId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/holdings/manual/create:redirect', {
+    status: 303,
+    redirectTo: '/accounts/holdings/new',
+    message: errorMessage || '보유 종목 추가에 실패했습니다.',
+  })
+  redirect('/accounts/holdings/new', {
+    status: 303,
+    message: errorMessage || '보유 종목 추가에 실패했습니다.',
+  })
+  return
+</script>

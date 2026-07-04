@@ -1,0 +1,204 @@
+<script server>
+  meta('title', 'SeedLab 보유 종목 추가')
+  meta('description', 'SeedLab 수동 보유 종목 추가')
+
+  if (!request.auth) {
+    dbg('seedlab/accounts/holdings/new:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  let accountOptions = []
+
+  function accountTypeLabel(value) {
+    const labels = {
+      toss: '토스증권',
+      brokerage: '일반 증권',
+      pension_saving: '연금저축',
+      irp: 'IRP',
+      isa: 'ISA',
+      cash: '현금성 자산',
+    }
+
+    return labels[String(value || '')] || '계좌'
+  }
+
+  function buildAccountOption(record) {
+    return {
+      id: String(record.get('id') || ''),
+      name: String(record.get('name') || '계좌'),
+      caption: accountTypeLabel(record.get('accountType')) + ' · ' + String(record.get('baseCurrency') || 'KRW'),
+    }
+  }
+
+  try {
+    dbg('seedlab/accounts/holdings/new:db-access', { collection: 'portfolio_accounts' })
+    const accountRecords = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner} && isActive = true', '-updated', 50, 0, { owner: userId })
+    accountOptions = accountRecords.map(buildAccountOption)
+  } catch (exception) {
+    warn('seedlab/accounts/holdings/new:db-access-failed', { collection: 'portfolio_accounts', error: String(exception.message || exception) })
+    accountOptions = []
+  }
+</script>
+
+<section class="flex min-h-[calc(100vh-2rem)] flex-col pb-24 pt-5">
+  <header class="flex items-center justify-between">
+    <div>
+      <p class="text-xs font-bold text-[#3182f6]">종목</p>
+      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">종목 추가</h1>
+    </div>
+    <a
+      href="/accounts"
+      class="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-[#6b7684] no-underline active:bg-[#f2f4f6]">
+      닫기
+    </a>
+  </header>
+
+  <div class="mt-5">
+    <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+
+    <% if (accountOptions.length === 0) { %>
+    <div class="rounded-lg border border-[#dbeafe] bg-[#f7fbff] p-4 shadow-[0_8px_24px_rgba(49,130,246,0.08)]">
+      <p class="text-sm font-bold text-[#191f28]">먼저 계좌가 필요합니다</p>
+      <p class="mt-1 text-sm leading-5 text-[#6b7684]">수동 보유 종목은 계좌에 연결해서 저장합니다.</p>
+      <a
+        href="/accounts/manual/new"
+        class="mt-4 box-border flex h-11 items-center justify-center gap-2 rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
+        계좌 추가
+        <span
+          class="i-lucide-arrow-right h-4 w-4"
+          aria-hidden="true"></span>
+      </a>
+    </div>
+    <% } else { %>
+    <form
+      method="post"
+      action="/xapi/holdings/manual/create"
+      class="space-y-4">
+      <label class="grid grid-cols-[72px_1fr] items-center gap-3 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <span class="text-xs font-bold text-[#6b7684]">계좌</span>
+        <span class="flex h-9 min-w-0 items-center gap-2">
+          <span
+            class="i-lucide-wallet-cards h-4 w-4 shrink-0 text-[#8b95a1]"
+            aria-hidden="true"></span>
+          <select
+            name="accountId"
+            required
+            class="h-9 min-w-0 flex-1 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
+            <% for (let index = 0; index < accountOptions.length; index += 1) { %>
+            <option value="<%= accountOptions[index].id %>"><%= accountOptions[index].name %> · <%= accountOptions[index].caption %></option>
+            <% } %>
+          </select>
+        </span>
+      </label>
+
+      <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">종목명</span>
+          <input
+            type="text"
+            name="name"
+            required
+            placeholder="KODEX 미국S&P500"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+        </label>
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">코드</span>
+          <input
+            type="text"
+            name="symbol"
+            placeholder="선택"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+        </label>
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">통화</span>
+          <select
+            name="currency"
+            required
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
+            <option value="KRW">KRW</option>
+            <option value="USD">USD</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">수량</span>
+          <input
+            type="text"
+            name="quantity"
+            inputmode="decimal"
+            required
+            placeholder="1,024주"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+        </label>
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">평가금액</span>
+          <input
+            type="text"
+            name="marketValue"
+            inputmode="decimal"
+            required
+            placeholder="26,593,280원"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+        </label>
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">평가손익</span>
+          <input
+            type="text"
+            name="profitLoss"
+            inputmode="decimal"
+            placeholder="+6,286,880원"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+        </label>
+      </div>
+
+      <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">상품</span>
+          <select
+            name="assetType"
+            required
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
+            <option value="etf">ETF</option>
+            <option value="fund">펀드/리츠</option>
+            <option value="stock">주식</option>
+            <option value="bond">채권</option>
+            <option value="cash">현금</option>
+          </select>
+        </label>
+        <label class="grid grid-cols-[72px_1fr] items-center gap-3 px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">자산군</span>
+          <select
+            name="assetClass"
+            required
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
+            <option value="equity">주식</option>
+            <option value="fixed_income">채권</option>
+            <option value="cash">현금</option>
+            <option value="alternative">대체</option>
+          </select>
+        </label>
+      </div>
+
+      <button
+        type="submit"
+        class="box-border flex h-12 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#191f28] px-4 text-base font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.16)] active:bg-[#333d4b]">
+        저장
+        <span
+          class="i-lucide-save h-5 w-5"
+          aria-hidden="true"></span>
+      </button>
+    </form>
+    <% } %>
+  </div>
+</section>

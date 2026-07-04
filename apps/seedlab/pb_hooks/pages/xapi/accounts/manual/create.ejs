@@ -1,4 +1,6 @@
 <script server>
+  const { dateutil } = require('@pocketpages/utils')
+
   function cleanText(value) {
     return String(value === undefined || value === null ? '' : value).trim()
   }
@@ -23,8 +25,42 @@
     return currency
   }
 
+  function readMoney(value) {
+    const beforeRate = cleanText(value).split('(')[0]
+    const normalized = beforeRate.replace(/,/g, '').replace(/[^0-9.-]/g, '')
+    const number = Number(normalized)
+    return isFinite(number) ? number : 0
+  }
+
   function isTaxAdvantagedType(accountType) {
     return ['pension_saving', 'irp', 'isa'].indexOf(accountType) >= 0
+  }
+
+  function saveManualSnapshot(accountRecord, args) {
+    const totalValue = readMoney(args.totalValue)
+    const cashValue = readMoney(args.cashValue)
+    const profitLoss = readMoney(args.profitLoss)
+    if (totalValue <= 0 && cashValue <= 0 && profitLoss === 0) return
+
+    const investedValue = totalValue > 0 ? totalValue - cashValue - profitLoss : 0
+    const snapshotDate = dateutil.toDateOnlyIso(args.now)
+    const snapshotRecord = new Record($app.findCollectionByNameOrId('account_snapshots'))
+    snapshotRecord.set('owner', args.userId)
+    snapshotRecord.set('account', String(accountRecord.get('id') || ''))
+    snapshotRecord.set('snapshotDate', snapshotDate)
+    snapshotRecord.set('totalValue', totalValue)
+    snapshotRecord.set('cashValue', cashValue)
+    snapshotRecord.set('investedValue', investedValue)
+    snapshotRecord.set('profitLoss', profitLoss)
+    snapshotRecord.set('currency', args.baseCurrency)
+    snapshotRecord.set('source', 'manual')
+    snapshotRecord.set('summary', {
+      source: 'manual',
+      accountNumber: cleanText(args.accountSeq),
+      createdByFlow: 'manual_account_new',
+    })
+    snapshotRecord.set('assetClassWeights', {})
+    $app.save(snapshotRecord)
   }
 
   if (request.method !== 'POST') {
@@ -69,6 +105,7 @@
     const accountType = normalizeAccountType(form.accountType)
     const baseCurrency = normalizeCurrency(form.baseCurrency)
     const providerName = cleanText(form.providerName) || '직접 입력'
+    const accountSeq = cleanText(form.accountSeq)
     const memo = cleanText(form.memo)
     const checkedTaxAdvantaged = cleanText(form.isTaxAdvantaged) === 'on'
     const isTaxAdvantaged = checkedTaxAdvantaged || isTaxAdvantagedType(accountType)
@@ -81,7 +118,7 @@
     accountRecord.set('accountType', accountType)
     accountRecord.set('syncMode', 'manual')
     accountRecord.set('providerName', providerName)
-    accountRecord.set('accountSeq', '')
+    accountRecord.set('accountSeq', accountSeq)
     accountRecord.set('baseCurrency', baseCurrency)
     accountRecord.set('isTaxAdvantaged', isTaxAdvantaged)
     accountRecord.set('isActive', true)
@@ -89,10 +126,22 @@
     accountRecord.set('metadata', {
       source: 'manual',
       memo,
+      initialTotalValue: readMoney(form.totalValue),
+      initialCashValue: readMoney(form.cashValue),
+      initialProfitLoss: readMoney(form.profitLoss),
       createdByFlow: 'manual_account_new',
       taxAdvantagedByType: isTaxAdvantagedType(accountType),
     })
     $app.save(accountRecord)
+    saveManualSnapshot(accountRecord, {
+      userId,
+      now,
+      baseCurrency,
+      accountSeq,
+      totalValue: form.totalValue,
+      cashValue: form.cashValue,
+      profitLoss: form.profitLoss,
+    })
 
     info('seedlab/xapi/accounts/manual/create:success', {
       userId,

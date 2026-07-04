@@ -1,0 +1,706 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const assetClassifier = resolve('asset-classifier')
+  const credentialCrypto = resolve('credential-crypto')
+  const tossApi = resolve('toss-api')
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function requireText(value, name) {
+    const text = cleanText(value)
+    if (!text) throw new Error(name + '이 필요합니다.')
+    return text
+  }
+
+  function readNumber(value) {
+    const number = Number(cleanText(value))
+    return isFinite(number) ? number : 0
+  }
+
+  function readObject(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      try {
+        const parsed = JSON.parse(value)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+      } catch (_exception) {
+        return {}
+      }
+    }
+    return {}
+  }
+
+  function readNestedNumber(source, firstKey, secondKey) {
+    const first = readObject(source)[firstKey]
+    if (!secondKey) return readNumber(first)
+    return readNumber(readObject(first)[secondKey])
+  }
+
+  function readCurrencyComponents(source, fieldName) {
+    const field = readObject(source)[fieldName]
+    const amount = readObject(field).amount || field
+    return {
+      krw: readNestedNumber({ amount }, 'amount', 'krw'),
+      usd: readNestedNumber({ amount }, 'amount', 'usd'),
+    }
+  }
+
+  function normalizeMarketCountry(value) {
+    const marketCountry = cleanText(value || 'KR').toUpperCase()
+    return marketCountry === 'US' ? 'US' : 'KR'
+  }
+
+  function normalizeCurrency(value) {
+    const currency = cleanText(value || 'KRW').toUpperCase()
+    return currency === 'USD' ? 'USD' : 'KRW'
+  }
+
+  function createEmptyClassSummary() {
+    return {
+      equity: { value: 0, pct: 0, label: '주식' },
+      fixed_income: { value: 0, pct: 0, label: '채권' },
+      cash: { value: 0, pct: 0, label: '현금' },
+      alternative: { value: 0, pct: 0, label: '대체' },
+    }
+  }
+
+  function addClassValue(summary, assetClass, value) {
+    const key = assetClassifier.normalizeAssetClass(assetClass) || 'equity'
+    if (!summary[key]) summary[key] = { value: 0, pct: 0, label: key }
+    summary[key].value += value
+  }
+
+  function finalizeClassSummary(summary, totalValue) {
+    const total = Number(totalValue || 0)
+    const keys = Object.keys(summary)
+    for (let index = 0; index < keys.length; index += 1) {
+      const item = summary[keys[index]]
+      item.pct = total > 0 ? Math.round((Number(item.value || 0) / total) * 1000) / 10 : 0
+    }
+    return summary
+  }
+
+  function readUsdKrwRate(result) {
+    const exchangeRate = readObject(result)
+    return readNumber(exchangeRate.rate || exchangeRate.midRate || exchangeRate.exchangeRate || exchangeRate.usdKrwRate)
+  }
+
+  function toKrwAmount(value, currency, exchangeRates) {
+    const amount = readNumber(value)
+    if (normalizeCurrency(currency) === 'USD') return amount * Number(exchangeRates.USD_KRW || 0)
+    return amount
+  }
+
+  function readUsdMarketValueFromPrice(item) {
+    return readNumber(item.quantity) * readNumber(item.lastPrice)
+  }
+
+  function readUsdCostAmountFromPrice(item) {
+    return readNumber(item.quantity) * readNumber(item.averagePurchasePrice)
+  }
+
+  function looksLikeKrwSourceAmount(amount, expectedUsdAmount, exchangeRate) {
+    const value = Math.abs(Number(amount || 0))
+    const expectedUsd = Math.abs(Number(expectedUsdAmount || 0))
+    const rate = Number(exchangeRate || 0)
+    if (value <= 0 || expectedUsd <= 0 || rate <= 0) return false
+    return value > expectedUsd * 20
+  }
+
+  function readTossHoldingAmounts(item, exchangeRates) {
+    const currency = normalizeCurrency(item.currency)
+    const marketValue = readObject(item.marketValue)
+    const profitLoss = readObject(item.profitLoss)
+    const exchangeRate = currency === 'USD' ? Number(exchangeRates.USD_KRW || 0) : 1
+    const rawMarketValue = readNumber(marketValue.amount)
+    const rawCostAmount = readNumber(marketValue.purchaseAmount)
+    const rawProfitLoss = readNumber(profitLoss.amount)
+
+    if (currency !== 'USD') {
+      return {
+        exchangeRate,
+        sourceMarketValue: rawMarketValue,
+        sourceCostAmount: rawCostAmount,
+        sourceProfitLoss: rawProfitLoss,
+        convertedMarketValue: rawMarketValue,
+        convertedCostAmount: rawCostAmount,
+        convertedProfitLoss: rawProfitLoss,
+      }
+    }
+
+    const priceMarketValue = readUsdMarketValueFromPrice(item)
+    const priceCostAmount = readUsdCostAmountFromPrice(item)
+    const sourceMarketValue = priceMarketValue > 0 ? priceMarketValue : rawMarketValue
+    const sourceCostAmount = priceCostAmount > 0 ? priceCostAmount : rawCostAmount
+    const marketValueAlreadyKrw = looksLikeKrwSourceAmount(rawMarketValue, sourceMarketValue, exchangeRate)
+    const costAmountAlreadyKrw = looksLikeKrwSourceAmount(rawCostAmount, sourceCostAmount, exchangeRate)
+    const convertedMarketValue = marketValueAlreadyKrw ? rawMarketValue : sourceMarketValue * exchangeRate
+    const convertedCostAmount = costAmountAlreadyKrw ? rawCostAmount : sourceCostAmount * exchangeRate
+    const convertedProfitLoss = marketValueAlreadyKrw || costAmountAlreadyKrw ? convertedMarketValue - convertedCostAmount : rawProfitLoss * exchangeRate
+
+    return {
+      exchangeRate,
+      sourceMarketValue,
+      sourceCostAmount,
+      sourceProfitLoss: rawProfitLoss,
+      convertedMarketValue,
+      convertedCostAmount,
+      convertedProfitLoss,
+    }
+  }
+
+  function fetchUsdKrwRate(toss) {
+    const exchangeResult = toss.getExchangeRate({
+      baseCurrency: 'USD',
+      quoteCurrency: 'KRW',
+    })
+
+    if (!exchangeResult.ok) {
+      warn('seedlab/xapi/accounts/toss/sync:exchange-rate-failed', {
+        operationId: exchangeResult.operationId,
+        statusCode: exchangeResult.statusCode,
+        requestId: exchangeResult.requestId,
+        errorMessage: exchangeResult.errorMessage,
+      })
+      return {
+        USD_KRW: 0,
+        raw: null,
+      }
+    }
+
+    const result = readObject(exchangeResult.result)
+    const usdKrwRate = readUsdKrwRate(result)
+    dbg('seedlab/xapi/accounts/toss/sync:exchange-rate', {
+      baseCurrency: result.baseCurrency,
+      quoteCurrency: result.quoteCurrency,
+      rate: usdKrwRate,
+    })
+
+    return {
+      USD_KRW: usdKrwRate,
+      raw: result,
+    }
+  }
+
+  function fetchCashBuyingPower(toss, accountSeq, currency) {
+    const result = toss.getBuyingPower({
+      accountSeq,
+      currency,
+    })
+
+    if (!result.ok) {
+      warn('seedlab/xapi/accounts/toss/sync:buying-power-failed', {
+        currency,
+        operationId: result.operationId,
+        statusCode: result.statusCode,
+        requestId: result.requestId,
+        errorMessage: result.errorMessage,
+      })
+      throw new Error('토스증권 예수금 조회에 실패했습니다.')
+    }
+
+    const body = readObject(result.result)
+    return {
+      currency,
+      amount: readNumber(body.cashBuyingPower),
+      raw: body,
+      requestId: result.requestId,
+    }
+  }
+
+  function readCashBalances(toss, accountSeq) {
+    const krw = fetchCashBuyingPower(toss, accountSeq, 'KRW')
+    const usd = fetchCashBuyingPower(toss, accountSeq, 'USD')
+
+    return {
+      krw: krw.amount,
+      usd: usd.amount,
+      raw: {
+        KRW: krw.raw,
+        USD: usd.raw,
+      },
+      requestIds: {
+        KRW: krw.requestId,
+        USD: usd.requestId,
+      },
+    }
+  }
+
+  function hasUsdHolding(items) {
+    for (let index = 0; index < items.length; index += 1) {
+      if (normalizeCurrency(readObject(items[index]).currency) === 'USD') return true
+    }
+    return false
+  }
+
+  function saveFxRate(txApp, exchangeRate, now) {
+    const rate = Number(exchangeRate.USD_KRW || 0)
+    if (rate <= 0) return
+
+    const rateRecord = new Record(txApp.findCollectionByNameOrId('fx_rates'))
+    rateRecord.set('baseCurrency', 'USD')
+    rateRecord.set('quoteCurrency', 'KRW')
+    rateRecord.set('rateAt', now)
+    rateRecord.set('rate', rate)
+    rateRecord.set('source', 'toss')
+    txApp.save(rateRecord)
+  }
+
+  function findOrCreateAccountSnapshot(txApp, userId, accountId, snapshotDate) {
+    const startDate = dateutil.startOfDay(snapshotDate).toISOString()
+    const endDate = dateutil.endOfDay(snapshotDate).toISOString()
+    try {
+      return txApp.findFirstRecordByFilter('account_snapshots', 'owner = {:owner} && account = {:account} && snapshotDate >= {:startDate} && snapshotDate <= {:endDate}', {
+        owner: userId,
+        account: accountId,
+        startDate,
+        endDate,
+      })
+    } catch (exception) {
+      const record = new Record(txApp.findCollectionByNameOrId('account_snapshots'))
+      record.set('owner', userId)
+      record.set('account', accountId)
+      record.set('snapshotDate', snapshotDate)
+      return record
+    }
+  }
+
+  function findOrCreateHoldingSnapshot(txApp, userId, snapshotId, accountId, assetId) {
+    try {
+      return txApp.findFirstRecordByFilter('holding_snapshots', 'snapshot = {:snapshot} && asset = {:asset}', {
+        snapshot: snapshotId,
+        asset: assetId,
+      })
+    } catch (exception) {
+      const record = new Record(txApp.findCollectionByNameOrId('holding_snapshots'))
+      record.set('owner', userId)
+      record.set('snapshot', snapshotId)
+      record.set('account', accountId)
+      record.set('asset', assetId)
+      return record
+    }
+  }
+
+  function findOrCreateAsset(txApp, item) {
+    const symbol = requireText(item.symbol, '종목 코드')
+    const marketCountry = normalizeMarketCountry(item.marketCountry)
+    const currency = normalizeCurrency(item.currency)
+    const classification = assetClassifier.classifyAsset({
+      symbol,
+      name: item.name,
+      productType: item.productType,
+      securityType: item.securityType,
+      category: item.category,
+      classificationSource: 'toss',
+    })
+    let assetRecord = null
+
+    try {
+      assetRecord = txApp.findFirstRecordByFilter('assets', 'symbol = {:symbol}', { symbol })
+    } catch (exception) {
+      assetRecord = null
+    }
+
+    if (!assetRecord) {
+      assetRecord = new Record(txApp.findCollectionByNameOrId('assets'))
+      assetRecord.set('symbol', symbol)
+    }
+
+    assetRecord.set('name', cleanText(item.name) || symbol)
+    assetRecord.set('marketCountry', marketCountry)
+    assetRecord.set('assetType', classification.assetType)
+    assetRecord.set('assetClass', classification.assetClass)
+    assetRecord.set('currency', currency)
+    assetRecord.set('exchange', '')
+    assetRecord.set('isActive', true)
+    assetRecord.set('classificationSource', classification.classificationSource)
+    assetRecord.set('classificationConfidence', classification.classificationConfidence)
+    assetRecord.set('metadata', {
+      source: 'toss',
+      rawMarketCountry: cleanText(item.marketCountry),
+    })
+    txApp.save(assetRecord)
+
+    return assetRecord
+  }
+
+  function saveHolding(txApp, args) {
+    const item = args.item
+    const assetId = String(args.assetRecord.get('id') || '')
+    const currency = normalizeCurrency(item.currency)
+    const holdingAmounts = readTossHoldingAmounts(item, args.exchangeRates)
+    const sourceCurrentPrice = readNumber(item.lastPrice)
+    const sourceAveragePrice = readNumber(item.averagePurchasePrice)
+    let holdingRecord = null
+
+    try {
+      holdingRecord = txApp.findFirstRecordByFilter('account_holdings', 'owner = {:owner} && account = {:account} && asset = {:asset} && source = {:source}', {
+        owner: args.userId,
+        account: args.accountId,
+        asset: assetId,
+        source: 'toss',
+      })
+    } catch (exception) {
+      holdingRecord = null
+    }
+
+    if (!holdingRecord) {
+      holdingRecord = new Record(txApp.findCollectionByNameOrId('account_holdings'))
+      holdingRecord.set('owner', args.userId)
+      holdingRecord.set('account', args.accountId)
+      holdingRecord.set('asset', assetId)
+      holdingRecord.set('source', 'toss')
+    }
+
+    holdingRecord.set('quantity', readNumber(item.quantity))
+    holdingRecord.set('averagePrice', sourceAveragePrice)
+    holdingRecord.set('currentPrice', sourceCurrentPrice)
+    holdingRecord.set('costAmount', holdingAmounts.convertedCostAmount)
+    holdingRecord.set('marketValue', holdingAmounts.convertedMarketValue)
+    holdingRecord.set('profitLoss', holdingAmounts.convertedProfitLoss)
+    holdingRecord.set('currency', currency)
+    holdingRecord.set('asOfAt', args.now)
+    holdingRecord.set(
+      'raw',
+      Object.assign({}, item, {
+        seedlab: Object.assign({}, readObject(item.seedlab), {
+          baseCurrency: 'KRW',
+          sourceCurrency: currency,
+          exchangeRate: holdingAmounts.exchangeRate,
+          marketValueSource: holdingAmounts.sourceMarketValue,
+          marketValueKrw: holdingAmounts.convertedMarketValue,
+          costAmountSource: holdingAmounts.sourceCostAmount,
+          costAmountKrw: holdingAmounts.convertedCostAmount,
+          profitLossSource: holdingAmounts.sourceProfitLoss,
+          profitLossKrw: holdingAmounts.convertedProfitLoss,
+        }),
+      })
+    )
+    txApp.save(holdingRecord)
+
+    return holdingRecord
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/accounts/toss/sync:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/accounts/toss/sync:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const accountId = cleanText(form.accountId)
+  const now = new Date().toISOString()
+  const snapshotDate = dateutil.toDateOnlyIso(now)
+  /** @type {PocketPagesRecord<"sync_runs"> | null} */
+  let syncRunRecord = null
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/accounts/toss/sync:start', {
+    userId,
+    hasAccountId: !!accountId,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    requireText(accountId, '계좌')
+
+    dbg('seedlab/xapi/accounts/toss/sync:db-access', { collection: 'portfolio_accounts' })
+    const accountRecord = $app.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner} && providerName = {:providerName}', {
+      id: accountId,
+      owner: userId,
+      providerName: 'toss',
+    })
+    const connectionId = requireText(accountRecord.get('brokerConnection'), '토스증권 연결')
+
+    dbg('seedlab/xapi/accounts/toss/sync:db-access', { collection: 'broker_connections' })
+    const connectionRecord = $app.findFirstRecordByFilter('broker_connections', 'id = {:id} && owner = {:owner} && provider = {:provider} && status = {:status}', {
+      id: connectionId,
+      owner: userId,
+      provider: 'toss',
+      status: 'active',
+    })
+
+    syncRunRecord = new Record($app.findCollectionByNameOrId('sync_runs'))
+    syncRunRecord.set('owner', userId)
+    syncRunRecord.set('brokerConnection', connectionId)
+    syncRunRecord.set('syncType', 'holdings')
+    syncRunRecord.set('status', 'running')
+    syncRunRecord.set('startedAt', now)
+    syncRunRecord.set('fetchedCount', 0)
+    syncRunRecord.set('changedCount', 0)
+    syncRunRecord.set('error', null)
+    syncRunRecord.set('stats', {
+      accountId,
+      provider: 'toss',
+    })
+    $app.save(syncRunRecord)
+
+    const clientOptions = credentialCrypto.buildTossClientOptions(connectionRecord, {
+      credentialKey: env('SEEDLAB_CREDENTIAL_KEY'),
+    })
+    const toss = tossApi.createTossApiClient(clientOptions)
+    const holdingsResult = toss.getHoldings({
+      accountSeq: clientOptions.accountSeq,
+    })
+
+    if (!holdingsResult.ok) {
+      warn('seedlab/xapi/accounts/toss/sync:toss-api-failed', {
+        userId,
+        accountId,
+        operationId: holdingsResult.operationId,
+        statusCode: holdingsResult.statusCode,
+        requestId: holdingsResult.requestId,
+        errorMessage: holdingsResult.errorMessage,
+      })
+      throw new Error(holdingsResult.errorMessage || '토스증권 보유 종목 조회에 실패했습니다.')
+    }
+
+    const overview = readObject(holdingsResult.result)
+    const items = Array.isArray(overview.items) ? overview.items : []
+    const overviewMarketValue = readCurrencyComponents(overview, 'marketValue')
+    const overviewPurchaseAmount = readCurrencyComponents(overview, 'totalPurchaseAmount')
+    const overviewProfitLoss = readCurrencyComponents(overview, 'profitLoss')
+    const cashBalances = readCashBalances(toss, clientOptions.accountSeq)
+    const needsUsdKrwRate = hasUsdHolding(items) || overviewMarketValue.usd > 0 || overviewPurchaseAmount.usd > 0 || overviewProfitLoss.usd !== 0 || cashBalances.usd > 0
+    const exchangeRates = needsUsdKrwRate ? fetchUsdKrwRate(toss) : { USD_KRW: 0, raw: null }
+    if (needsUsdKrwRate && Number(exchangeRates.USD_KRW || 0) <= 0) throw new Error('USD 보유 종목 환율 조회에 실패했습니다.')
+    dbg('seedlab/xapi/accounts/toss/sync:valuation-input', {
+      userId,
+      accountId,
+      itemCount: items.length,
+      overviewMarketValueKrw: overviewMarketValue.krw,
+      overviewMarketValueUsd: overviewMarketValue.usd,
+      overviewPurchaseAmountKrw: overviewPurchaseAmount.krw,
+      overviewPurchaseAmountUsd: overviewPurchaseAmount.usd,
+      overviewProfitLossKrw: overviewProfitLoss.krw,
+      overviewProfitLossUsd: overviewProfitLoss.usd,
+      cashKrw: cashBalances.krw,
+      cashUsd: cashBalances.usd,
+      usdKrwRate: exchangeRates.USD_KRW,
+    })
+    const seenAssetIds = {}
+    const accountCurrency = normalizeCurrency(accountRecord.get('baseCurrency'))
+    let changedCount = 0
+    let snapshotId = ''
+
+    $app.runInTransaction(function (txApp) {
+      saveFxRate(txApp, exchangeRates, now)
+
+      const cashValue = cashBalances.krw + toKrwAmount(cashBalances.usd, 'USD', exchangeRates)
+      const assetClassWeights = createEmptyClassSummary()
+      const holdingRows = []
+      let holdingTotalValue = 0
+      let holdingTotalCost = 0
+      let holdingTotalProfitLoss = 0
+
+      const snapshotRecord = findOrCreateAccountSnapshot(txApp, userId, accountId, snapshotDate)
+      snapshotRecord.set('currency', accountCurrency)
+      snapshotRecord.set('source', 'auto')
+      snapshotRecord.set('summary', {
+        source: 'toss',
+        raw: overview,
+        cashBalances,
+        exchangeRates,
+      })
+
+      for (let index = 0; index < items.length; index += 1) {
+        const item = readObject(items[index])
+        const assetRecord = findOrCreateAsset(txApp, item)
+        const holdingRecord = saveHolding(txApp, {
+          userId,
+          accountId,
+          assetRecord,
+          item,
+          now,
+          exchangeRates,
+        })
+        const assetId = String(assetRecord.get('id') || '')
+        const assetClass = assetClassifier.normalizeAssetClass(assetRecord.get('assetClass')) || 'equity'
+        const holdingAmounts = readTossHoldingAmounts(item, exchangeRates)
+        const itemMarketValue = holdingAmounts.convertedMarketValue
+        seenAssetIds[assetId] = true
+        addClassValue(assetClassWeights, assetClass, itemMarketValue)
+        holdingTotalValue += itemMarketValue
+        holdingTotalCost += holdingAmounts.convertedCostAmount
+        holdingTotalProfitLoss += holdingAmounts.convertedProfitLoss
+        holdingRows.push({
+          item,
+          assetId,
+          holdingAmounts,
+        })
+        changedCount += holdingRecord ? 2 : 1
+      }
+
+      const summaryTotalValue = holdingTotalValue + cashValue
+      const summaryInvestedValue = holdingTotalCost
+      const summaryProfitLoss = holdingTotalProfitLoss
+
+      if (cashValue > 0) addClassValue(assetClassWeights, 'cash', cashValue)
+      snapshotRecord.set('totalValue', summaryTotalValue)
+      snapshotRecord.set('investedValue', summaryInvestedValue)
+      snapshotRecord.set('profitLoss', summaryProfitLoss)
+      snapshotRecord.set('cashValue', cashValue)
+      snapshotRecord.set('assetClassWeights', finalizeClassSummary(assetClassWeights, summaryTotalValue))
+      txApp.save(snapshotRecord)
+      snapshotId = String(snapshotRecord.get('id') || '')
+      changedCount += 1
+
+      for (let index = 0; index < holdingRows.length; index += 1) {
+        const item = holdingRows[index].item
+        const assetId = holdingRows[index].assetId
+        const holdingAmounts = holdingRows[index].holdingAmounts
+        const holdingSnapshotRecord = findOrCreateHoldingSnapshot(txApp, userId, snapshotId, accountId, assetId)
+        holdingSnapshotRecord.set('quantity', readNumber(item.quantity))
+        holdingSnapshotRecord.set('price', readNumber(item.lastPrice))
+        holdingSnapshotRecord.set('costAmount', holdingAmounts.convertedCostAmount)
+        holdingSnapshotRecord.set('marketValue', holdingAmounts.convertedMarketValue)
+        holdingSnapshotRecord.set('profitLoss', holdingAmounts.convertedProfitLoss)
+        holdingSnapshotRecord.set('currency', normalizeCurrency(item.currency))
+        holdingSnapshotRecord.set(
+          'raw',
+          Object.assign({}, item, {
+            seedlab: {
+              baseCurrency: 'KRW',
+              sourceCurrency: normalizeCurrency(item.currency),
+              exchangeRate: holdingAmounts.exchangeRate,
+              marketValueSource: holdingAmounts.sourceMarketValue,
+              marketValueKrw: holdingAmounts.convertedMarketValue,
+              costAmountSource: holdingAmounts.sourceCostAmount,
+              costAmountKrw: holdingAmounts.convertedCostAmount,
+              profitLossSource: holdingAmounts.sourceProfitLoss,
+              profitLossKrw: holdingAmounts.convertedProfitLoss,
+            },
+          })
+        )
+        txApp.save(holdingSnapshotRecord)
+
+        changedCount += 1
+      }
+
+      const existingHoldings = txApp.findRecordsByFilter('account_holdings', 'owner = {:owner} && account = {:account} && source = {:source}', '-updated', 200, 0, {
+        owner: userId,
+        account: accountId,
+        source: 'toss',
+      })
+
+      for (let index = 0; index < existingHoldings.length; index += 1) {
+        const existingHolding = existingHoldings[index]
+        const existingAssetId = String(existingHolding.get('asset') || '')
+        if (seenAssetIds[existingAssetId]) continue
+        txApp.delete(existingHolding)
+        changedCount += 1
+      }
+
+      const txAccountRecord = txApp.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner}', {
+        id: accountId,
+        owner: userId,
+      })
+      txAccountRecord.set('lastSyncedAt', now)
+      txApp.save(txAccountRecord)
+      changedCount += 1
+
+      const txConnectionRecord = txApp.findFirstRecordByFilter('broker_connections', 'id = {:id} && owner = {:owner}', {
+        id: connectionId,
+        owner: userId,
+      })
+      txConnectionRecord.set('lastCheckedAt', now)
+      txConnectionRecord.set('lastError', null)
+      txApp.save(txConnectionRecord)
+
+      const txSyncRunRecord = txApp.findFirstRecordByFilter('sync_runs', 'id = {:id} && owner = {:owner}', {
+        id: String(syncRunRecord.get('id') || ''),
+        owner: userId,
+      })
+      txSyncRunRecord.set('status', 'success')
+      txSyncRunRecord.set('finishedAt', now)
+      txSyncRunRecord.set('fetchedCount', items.length)
+      txSyncRunRecord.set('changedCount', changedCount)
+      txSyncRunRecord.set('error', null)
+      txSyncRunRecord.set('stats', {
+        accountId,
+        snapshotId,
+        itemCount: items.length,
+        requestId: holdingsResult.requestId,
+        rateLimit: holdingsResult.rateLimit,
+        exchangeRates,
+      })
+      txApp.save(txSyncRunRecord)
+    })
+
+    info('seedlab/xapi/accounts/toss/sync:success', {
+      userId,
+      accountId,
+      fetchedCount: items.length,
+      changedCount,
+    })
+
+    dbg('seedlab/xapi/accounts/toss/sync:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '토스증권 보유 종목을 동기화했습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '토스증권 보유 종목을 동기화했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/accounts/toss/sync:failed', {
+      userId,
+      accountId,
+      error: errorMessage,
+    })
+
+    if (syncRunRecord) {
+      try {
+        syncRunRecord.set('status', 'failed')
+        syncRunRecord.set('finishedAt', new Date().toISOString())
+        syncRunRecord.set('error', {
+          message: errorMessage,
+        })
+        $app.save(syncRunRecord)
+      } catch (syncRunException) {
+        warn('seedlab/xapi/accounts/toss/sync:sync-run-update-failed', {
+          userId,
+          accountId,
+          error: String(syncRunException.message || syncRunException),
+        })
+      }
+    }
+  }
+
+  dbg('seedlab/xapi/accounts/toss/sync:redirect', {
+    status: 303,
+    redirectTo: '/accounts',
+    message: errorMessage || '토스증권 동기화에 실패했습니다.',
+  })
+  redirect('/accounts', {
+    status: 303,
+    message: errorMessage || '토스증권 동기화에 실패했습니다.',
+  })
+  return
+</script>

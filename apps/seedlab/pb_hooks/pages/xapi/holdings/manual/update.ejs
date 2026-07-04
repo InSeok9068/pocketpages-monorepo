@@ -1,0 +1,305 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const assetClassifier = resolve('asset-classifier')
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function requireText(value, name) {
+    const text = cleanText(value)
+    if (!text) throw new Error(name + '이 필요합니다.')
+    return text
+  }
+
+  function readMoney(value, fallback) {
+    const beforeRate = cleanText(value).split('(')[0]
+    const normalized = beforeRate.replace(/,/g, '').replace(/[^0-9.-]/g, '')
+    if (!normalized) return fallback
+    const number = Number(normalized)
+    return isFinite(number) ? number : fallback
+  }
+
+  function readObject(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      try {
+        const parsed = JSON.parse(value)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+      } catch (_exception) {
+        return {}
+      }
+    }
+    return {}
+  }
+
+  function normalizeCurrency(value) {
+    const currency = cleanText(value || 'KRW').toUpperCase()
+    if (currency !== 'KRW' && currency !== 'USD') throw new Error('지원하지 않는 통화입니다.')
+    return currency
+  }
+
+  function normalizeMarketCountry(currency) {
+    return currency === 'USD' ? 'US' : 'KR'
+  }
+
+  function buildManualSymbol(name) {
+    return ('MANUAL-' + cleanText(name).replace(/\s+/g, '-')).slice(0, 40)
+  }
+
+  function findOrCreateAsset(txApp, args) {
+    const symbol = (cleanText(args.symbol) || buildManualSymbol(args.name)).toUpperCase()
+    const classification = assetClassifier.classifyAsset({
+      symbol,
+      name: args.name,
+      assetType: args.assetType,
+      assetClass: args.assetClass,
+      classificationSource: 'manual',
+    })
+    let assetRecord = null
+
+    try {
+      assetRecord = txApp.findFirstRecordByFilter('assets', 'symbol = {:symbol}', { symbol })
+    } catch (exception) {
+      assetRecord = null
+    }
+
+    if (!assetRecord) {
+      assetRecord = new Record(txApp.findCollectionByNameOrId('assets'))
+      assetRecord.set('symbol', symbol)
+    }
+
+    assetRecord.set('name', requireText(args.name, '종목명'))
+    assetRecord.set('marketCountry', normalizeMarketCountry(args.currency))
+    assetRecord.set('assetType', classification.assetType)
+    assetRecord.set('assetClass', classification.assetClass)
+    assetRecord.set('currency', args.currency)
+    assetRecord.set('exchange', '')
+    assetRecord.set('isActive', true)
+    assetRecord.set('classificationSource', 'manual')
+    assetRecord.set('classificationConfidence', classification.classificationConfidence)
+    assetRecord.set('metadata', {
+      source: 'manual',
+      updatedByFlow: 'manual_holding_edit',
+    })
+    txApp.save(assetRecord)
+
+    return assetRecord
+  }
+
+  function refreshManualSnapshot(txApp, args) {
+    const holdings = txApp.findRecordsByFilter('account_holdings', 'owner = {:owner} && account = {:account}', '-updated', 200, 0, {
+      owner: args.userId,
+      account: args.accountId,
+    })
+    let holdingTotalValue = 0
+    let holdingTotalCost = 0
+    let holdingTotalProfitLoss = 0
+
+    for (let index = 0; index < holdings.length; index += 1) {
+      holdingTotalValue += Number(holdings[index].get('marketValue') || 0)
+      holdingTotalCost += Number(holdings[index].get('costAmount') || 0)
+      holdingTotalProfitLoss += Number(holdings[index].get('profitLoss') || 0)
+    }
+
+    const snapshotDate = dateutil.toDateOnlyIso(args.now)
+    let snapshotRecord = null
+
+    try {
+      snapshotRecord = txApp.findFirstRecordByFilter('account_snapshots', 'owner = {:owner} && account = {:account} && snapshotDate >= {:startDate} && snapshotDate <= {:endDate}', {
+        owner: args.userId,
+        account: args.accountId,
+        startDate: dateutil.startOfDay(snapshotDate).toISOString(),
+        endDate: dateutil.endOfDay(snapshotDate).toISOString(),
+      })
+    } catch (exception) {
+      snapshotRecord = new Record(txApp.findCollectionByNameOrId('account_snapshots'))
+      snapshotRecord.set('owner', args.userId)
+      snapshotRecord.set('account', args.accountId)
+      snapshotRecord.set('snapshotDate', snapshotDate)
+      snapshotRecord.set('cashValue', 0)
+    }
+
+    const cashValue = Number(snapshotRecord.get('cashValue') || 0)
+    snapshotRecord.set('totalValue', holdingTotalValue + cashValue)
+    snapshotRecord.set('investedValue', holdingTotalCost)
+    snapshotRecord.set('profitLoss', holdingTotalProfitLoss)
+    snapshotRecord.set('currency', 'KRW')
+    snapshotRecord.set('source', 'manual')
+    snapshotRecord.set(
+      'summary',
+      Object.assign({}, readObject(snapshotRecord.get('summary')), {
+        source: 'manual',
+        updatedByFlow: 'manual_holding_edit',
+        updatedAt: args.now,
+      })
+    )
+    txApp.save(snapshotRecord)
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/holdings/manual/update:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/holdings/manual/update:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const holdingId = cleanText(form.holdingId)
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/holdings/manual/update:start', {
+    userId,
+    holdingId,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!holdingId) throw new Error('보유 종목이 필요합니다.')
+
+    const accountId = requireText(form.accountId, '계좌')
+    const name = requireText(form.name, '종목명')
+    const symbol = cleanText(form.symbol) || buildManualSymbol(name)
+    const currency = normalizeCurrency(form.currency)
+    const assetType = assetClassifier.normalizeAssetType(form.assetType)
+    const assetClass = assetClassifier.normalizeAssetClass(form.assetClass)
+    const quantity = readMoney(form.quantity, -1)
+    const marketValue = readMoney(form.marketValue, -1)
+    const profitLoss = readMoney(form.profitLoss, 0)
+    const now = new Date().toISOString()
+
+    if (!assetType) throw new Error('상품 형태를 선택해 주세요.')
+    if (!assetClass) throw new Error('자산군을 선택해 주세요.')
+    if (quantity < 0) throw new Error('수량을 확인해 주세요.')
+    if (marketValue < 0) throw new Error('평가금액을 확인해 주세요.')
+
+    $app.runInTransaction(function (txApp) {
+      dbg('seedlab/xapi/holdings/manual/update:db-access', { collection: 'account_holdings', holdingId })
+      const holdingRecord = txApp.findFirstRecordByFilter('account_holdings', 'id = {:id} && owner = {:owner} && source = {:source}', {
+        id: holdingId,
+        owner: userId,
+        source: 'manual',
+      })
+      const previousAccountId = String(holdingRecord.get('account') || '')
+      txApp.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner}', {
+        id: accountId,
+        owner: userId,
+      })
+
+      const assetRecord = findOrCreateAsset(txApp, {
+        symbol,
+        name,
+        currency,
+        assetType,
+        assetClass,
+      })
+      const costAmount = marketValue - profitLoss
+      const currentPrice = quantity > 0 ? marketValue / quantity : marketValue
+      const averagePrice = quantity > 0 ? costAmount / quantity : currentPrice
+
+      holdingRecord.set('account', accountId)
+      holdingRecord.set('asset', String(assetRecord.get('id') || ''))
+      holdingRecord.set('quantity', quantity)
+      holdingRecord.set('averagePrice', averagePrice)
+      holdingRecord.set('currentPrice', currentPrice)
+      holdingRecord.set('costAmount', costAmount)
+      holdingRecord.set('marketValue', marketValue)
+      holdingRecord.set('profitLoss', profitLoss)
+      holdingRecord.set('currency', currency)
+      holdingRecord.set('source', 'manual')
+      holdingRecord.set('assetClassOverride', assetClass)
+      holdingRecord.set('asOfAt', now)
+      holdingRecord.set(
+        'raw',
+        Object.assign({}, readObject(holdingRecord.get('raw')), {
+          source: 'manual',
+          symbol,
+          name,
+          assetType,
+          assetClass,
+          marketValue,
+          profitLoss,
+          updatedByFlow: 'manual_holding_edit',
+        })
+      )
+      txApp.save(holdingRecord)
+
+      const txAccountRecord = txApp.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner}', {
+        id: accountId,
+        owner: userId,
+      })
+      txAccountRecord.set('lastSyncedAt', now)
+      txApp.save(txAccountRecord)
+
+      refreshManualSnapshot(txApp, {
+        userId,
+        accountId,
+        now,
+      })
+
+      if (previousAccountId && previousAccountId !== accountId) {
+        refreshManualSnapshot(txApp, {
+          userId,
+          accountId: previousAccountId,
+          now,
+        })
+      }
+    })
+
+    info('seedlab/xapi/holdings/manual/update:success', {
+      userId,
+      holdingId,
+      accountId,
+      symbol,
+    })
+
+    dbg('seedlab/xapi/holdings/manual/update:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '보유 종목을 수정했습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '보유 종목을 수정했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/holdings/manual/update:failed', {
+      userId,
+      holdingId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/holdings/manual/update:redirect', {
+    status: 303,
+    redirectTo: holdingId ? '/accounts/holdings/' + holdingId + '/edit' : '/accounts',
+    message: errorMessage || '보유 종목 수정에 실패했습니다.',
+  })
+  redirect(holdingId ? '/accounts/holdings/' + holdingId + '/edit' : '/accounts', {
+    status: 303,
+    message: errorMessage || '보유 종목 수정에 실패했습니다.',
+  })
+  return
+</script>

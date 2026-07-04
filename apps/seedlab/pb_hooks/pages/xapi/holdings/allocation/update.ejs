@@ -1,0 +1,116 @@
+<script server>
+  const allocationBuckets = resolve('allocation-buckets')
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function readObject(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      try {
+        const parsed = JSON.parse(value)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+      } catch (_exception) {
+        return {}
+      }
+    }
+    return {}
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/holdings/allocation/update:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/holdings/allocation/update:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const holdingId = cleanText(form.holdingId)
+  const allocationBucket = allocationBuckets.normalizeBucket(form.allocationBucket)
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/holdings/allocation/update:start', {
+    userId,
+    holdingId,
+    allocationBucket,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!holdingId) throw new Error('보유 종목이 필요합니다.')
+    if (!allocationBucket) throw new Error('자산 분류를 선택해 주세요.')
+
+    dbg('seedlab/xapi/holdings/allocation/update:db-access', { collection: 'account_holdings' })
+    const holdingRecord = $app.findFirstRecordByFilter('account_holdings', 'id = {:id} && owner = {:owner}', {
+      id: holdingId,
+      owner: userId,
+    })
+    const raw = readObject(holdingRecord.get('raw'))
+    const seedlab = readObject(raw.seedlab)
+    const bucket = allocationBuckets.bucketMeta(allocationBucket)
+
+    seedlab.allocationBucket = allocationBucket
+    seedlab.allocationBucketUpdatedAt = new Date().toISOString()
+    raw.seedlab = seedlab
+
+    holdingRecord.set('raw', raw)
+    holdingRecord.set('assetClassOverride', bucket.assetClass)
+    $app.save(holdingRecord)
+
+    info('seedlab/xapi/holdings/allocation/update:success', {
+      userId,
+      holdingId,
+      allocationBucket,
+    })
+
+    dbg('seedlab/xapi/holdings/allocation/update:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '자산 분류를 저장했습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '자산 분류를 저장했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/holdings/allocation/update:failed', {
+      userId,
+      holdingId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/holdings/allocation/update:redirect', {
+    status: 303,
+    redirectTo: '/accounts',
+    message: errorMessage || '자산 분류 저장에 실패했습니다.',
+  })
+  redirect('/accounts', {
+    status: 303,
+    message: errorMessage || '자산 분류 저장에 실패했습니다.',
+  })
+  return
+</script>

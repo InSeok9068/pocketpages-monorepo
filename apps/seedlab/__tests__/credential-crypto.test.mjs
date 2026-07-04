@@ -1,8 +1,28 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { createRequire } from 'node:module'
+import Module, { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
+let envProvider = () => ''
+const pocketpagesGlobalApi = {
+  dbg() {},
+  env(name) {
+    return envProvider(name)
+  },
+  warn() {},
+}
+const originalLoad = Module._load
+
+Module._load = function loadTestModule(request, parent, isMain) {
+  if (request === 'pocketpages') {
+    return {
+      globalApi: pocketpagesGlobalApi,
+    }
+  }
+
+  return originalLoad.call(this, request, parent, isMain)
+}
+
 const credentialCrypto = require('../pb_hooks/pages/_private/credential-crypto.js')
 
 const validKey = '12345678901234567890123456789012'
@@ -19,7 +39,7 @@ function createFakeSecurity() {
 }
 
 afterEach(() => {
-  delete global.env
+  envProvider = () => ''
   delete global.$security
 })
 
@@ -51,8 +71,8 @@ test('buildEncryptedSecret stores encrypted value and masked preview', () => {
   assert.equal(result.secretPreview, '****alue')
 })
 
-test('buildTossClientOptions reads key and security helpers from PocketBase globals', () => {
-  global.env = (name) => (name === 'SEEDLAB_CREDENTIAL_KEY' ? validKey : '')
+test('buildTossClientOptions reads key from PocketPages globalApi env', () => {
+  envProvider = (name) => (name === 'SEEDLAB_CREDENTIAL_KEY' ? validKey : '')
   global.$security = createFakeSecurity()
   const connection = {
     clientId: 'client-id',

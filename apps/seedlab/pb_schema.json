@@ -1564,7 +1564,8 @@
           "etf",
           "index",
           "cash",
-          "fund"
+          "fund",
+          "bond"
         ]
       },
       {
@@ -1619,6 +1620,53 @@
         "maxSize": 200000
       },
       {
+        "help": "",
+        "hidden": false,
+        "id": "select130100100409",
+        "name": "assetClass",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "maxSelect": 1,
+        "values": [
+          "equity",
+          "fixed_income",
+          "cash",
+          "alternative"
+        ]
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "select130100100410",
+        "name": "classificationSource",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "maxSelect": 1,
+        "values": [
+          "auto",
+          "manual",
+          "toss",
+          "import"
+        ]
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100100411",
+        "name": "classificationConfidence",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 1,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
         "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
@@ -1641,7 +1689,8 @@
     ],
     "indexes": [
       "CREATE UNIQUE INDEX `idx_assets_symbol` ON `assets` (`symbol`)",
-      "CREATE INDEX `idx_assets_market_type` ON `assets` (`marketCountry`, `assetType`)"
+      "CREATE INDEX `idx_assets_market_type` ON `assets` (`marketCountry`, `assetType`)",
+      "CREATE INDEX `idx_assets_class_type` ON `assets` (`assetClass`, `assetType`)"
     ],
     "system": false
   },
@@ -2150,6 +2199,24 @@
         "maxSize": 500000
       },
       {
+        "help": "",
+        "hidden": false,
+        "id": "select130100100714",
+        "name": "assetClassOverride",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "select",
+        "maxSelect": 1,
+        "values": [
+          "none",
+          "equity",
+          "fixed_income",
+          "cash",
+          "alternative"
+        ]
+      },
+      {
         "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
@@ -2334,6 +2401,17 @@
         "system": false,
         "type": "json",
         "maxSize": 500000
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json130100100812",
+        "name": "assetClassWeights",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json",
+        "maxSize": 200000
       },
       {
         "hidden": false,
@@ -2845,6 +2923,84 @@
       {
         "help": "",
         "hidden": false,
+        "id": "number130100101111",
+        "name": "growthStockTargetPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100101112",
+        "name": "dividendStockTargetPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100101113",
+        "name": "bondTargetPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100101114",
+        "name": "goldTargetPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100101115",
+        "name": "realEstateTargetPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100101116",
+        "name": "otherTargetPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
         "id": "select130100101107",
         "name": "rebalanceCycle",
         "presentable": false,
@@ -3052,6 +3208,24 @@
         "maxSize": 200000
       },
       {
+        "help": "",
+        "hidden": false,
+        "id": "select130100101209",
+        "name": "assetClass",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "select",
+        "maxSelect": 1,
+        "values": [
+          "none",
+          "equity",
+          "fixed_income",
+          "cash",
+          "alternative"
+        ]
+      },
+      {
         "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
@@ -3075,6 +3249,176 @@
     "indexes": [
       "CREATE UNIQUE INDEX `idx_strategy_targets_strategy_asset` ON `strategy_targets` (`strategy`, `asset`)",
       "CREATE INDEX `idx_strategy_targets_owner_strategy` ON `strategy_targets` (`owner`, `strategy`)"
+    ],
+    "system": false
+  },
+  {
+    "id": "pbc_1301001023",
+    "listRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "viewRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "createRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "updateRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "deleteRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "name": "strategy_asset_targets",
+    "type": "base",
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "help": "",
+        "hidden": false,
+        "id": "text3208210256",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "relation130100102301",
+        "name": "owner",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation",
+        "cascadeDelete": true,
+        "collectionId": "_pb_users_auth_",
+        "maxSelect": 1,
+        "minSelect": 0
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "relation130100102302",
+        "name": "strategy",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation",
+        "cascadeDelete": true,
+        "collectionId": "pbc_1301001011",
+        "maxSelect": 1,
+        "minSelect": 0
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "select130100102303",
+        "name": "assetClass",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "maxSelect": 1,
+        "values": [
+          "equity",
+          "fixed_income",
+          "cash",
+          "alternative"
+        ]
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102304",
+        "name": "targetPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102305",
+        "name": "minPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102306",
+        "name": "maxPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102307",
+        "name": "priority",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": null,
+        "min": 0,
+        "onlyInt": true
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "bool130100102308",
+        "name": "isActive",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json130100102309",
+        "name": "settings",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json",
+        "maxSize": 200000
+      },
+      {
+        "hidden": false,
+        "id": "autodate2990389176",
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      },
+      {
+        "hidden": false,
+        "id": "autodate3332085495",
+        "name": "updated",
+        "onCreate": true,
+        "onUpdate": true,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX `idx_strategy_asset_targets_strategy_class` ON `strategy_asset_targets` (`strategy`, `assetClass`)",
+      "CREATE INDEX `idx_strategy_asset_targets_owner_strategy` ON `strategy_asset_targets` (`owner`, `strategy`)"
     ],
     "system": false
   },
@@ -4274,6 +4618,468 @@
     "indexes": [
       "CREATE INDEX `idx_simulation_events_simulation_date_type` ON `simulation_events` (`simulation`, `eventDate`, `eventType`)",
       "CREATE INDEX `idx_simulation_events_owner_date` ON `simulation_events` (`owner`, `eventDate`)"
+    ],
+    "system": false
+  },
+  {
+    "id": "pbc_1301001024",
+    "listRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "viewRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "createRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "updateRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "deleteRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "name": "rebalance_runs",
+    "type": "base",
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "help": "",
+        "hidden": false,
+        "id": "text3208210256",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "relation130100102401",
+        "name": "owner",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation",
+        "cascadeDelete": true,
+        "collectionId": "_pb_users_auth_",
+        "maxSelect": 1,
+        "minSelect": 0
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "relation130100102402",
+        "name": "strategy",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation",
+        "cascadeDelete": false,
+        "collectionId": "pbc_1301001011",
+        "maxSelect": 1,
+        "minSelect": 0
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "relation130100102403",
+        "name": "account",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation",
+        "cascadeDelete": false,
+        "collectionId": "pbc_1301001003",
+        "maxSelect": 1,
+        "minSelect": 0
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "date130100102404",
+        "name": "runAt",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "date",
+        "max": "",
+        "min": ""
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "select130100102405",
+        "name": "status",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "maxSelect": 1,
+        "values": [
+          "draft",
+          "reviewed",
+          "applied",
+          "skipped"
+        ]
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "select130100102406",
+        "name": "baseCurrency",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "maxSelect": 1,
+        "values": [
+          "KRW",
+          "USD"
+        ]
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102407",
+        "name": "totalValue",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": null,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102408",
+        "name": "driftPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "text130100102409",
+        "name": "summaryText",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "text",
+        "autogeneratePattern": "",
+        "max": 1000,
+        "min": 0,
+        "pattern": "",
+        "primaryKey": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json130100102410",
+        "name": "classSummary",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json",
+        "maxSize": 500000
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json130100102411",
+        "name": "settings",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json",
+        "maxSize": 500000
+      },
+      {
+        "hidden": false,
+        "id": "autodate2990389176",
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      },
+      {
+        "hidden": false,
+        "id": "autodate3332085495",
+        "name": "updated",
+        "onCreate": true,
+        "onUpdate": true,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      }
+    ],
+    "indexes": [
+      "CREATE INDEX `idx_rebalance_runs_owner_status_at` ON `rebalance_runs` (`owner`, `status`, `runAt`)",
+      "CREATE INDEX `idx_rebalance_runs_owner_strategy` ON `rebalance_runs` (`owner`, `strategy`)"
+    ],
+    "system": false
+  },
+  {
+    "id": "pbc_1301001025",
+    "listRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "viewRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "createRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "updateRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "deleteRule": "@request.auth.id != '' && owner = @request.auth.id",
+    "name": "rebalance_items",
+    "type": "base",
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "help": "",
+        "hidden": false,
+        "id": "text3208210256",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "relation130100102501",
+        "name": "owner",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation",
+        "cascadeDelete": true,
+        "collectionId": "_pb_users_auth_",
+        "maxSelect": 1,
+        "minSelect": 0
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "relation130100102502",
+        "name": "run",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation",
+        "cascadeDelete": true,
+        "collectionId": "pbc_1301001024",
+        "maxSelect": 1,
+        "minSelect": 0
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "relation130100102503",
+        "name": "account",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation",
+        "cascadeDelete": false,
+        "collectionId": "pbc_1301001003",
+        "maxSelect": 1,
+        "minSelect": 0
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "relation130100102504",
+        "name": "asset",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation",
+        "cascadeDelete": false,
+        "collectionId": "pbc_1301001004",
+        "maxSelect": 1,
+        "minSelect": 0
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "select130100102505",
+        "name": "assetClass",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "maxSelect": 1,
+        "values": [
+          "equity",
+          "fixed_income",
+          "cash",
+          "alternative"
+        ]
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "select130100102506",
+        "name": "side",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "maxSelect": 1,
+        "values": [
+          "BUY",
+          "SELL",
+          "HOLD"
+        ]
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102507",
+        "name": "currentValue",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": null,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102508",
+        "name": "currentPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102509",
+        "name": "targetPct",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": 100,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102510",
+        "name": "targetValue",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": null,
+        "min": 0,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102511",
+        "name": "deltaAmount",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": null,
+        "min": null,
+        "onlyInt": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number130100102512",
+        "name": "priority",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number",
+        "max": null,
+        "min": 0,
+        "onlyInt": true
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "text130100102513",
+        "name": "reason",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "text",
+        "autogeneratePattern": "",
+        "max": 1000,
+        "min": 0,
+        "pattern": "",
+        "primaryKey": false
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "select130100102514",
+        "name": "status",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "maxSelect": 1,
+        "values": [
+          "draft",
+          "accepted",
+          "skipped"
+        ]
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json130100102515",
+        "name": "checks",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json",
+        "maxSize": 500000
+      },
+      {
+        "hidden": false,
+        "id": "autodate2990389176",
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      },
+      {
+        "hidden": false,
+        "id": "autodate3332085495",
+        "name": "updated",
+        "onCreate": true,
+        "onUpdate": true,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      }
+    ],
+    "indexes": [
+      "CREATE INDEX `idx_rebalance_items_owner_run` ON `rebalance_items` (`owner`, `run`)",
+      "CREATE INDEX `idx_rebalance_items_run_class` ON `rebalance_items` (`run`, `assetClass`)"
     ],
     "system": false
   },

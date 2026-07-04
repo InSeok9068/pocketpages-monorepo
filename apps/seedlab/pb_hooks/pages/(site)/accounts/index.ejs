@@ -1,4 +1,7 @@
 <script server>
+  const allocationBuckets = resolve('allocation-buckets')
+  const holdingValuation = resolve('holding-valuation')
+
   meta('title', 'SeedLab 계좌')
   meta('description', 'SeedLab 계좌')
 
@@ -16,9 +19,36 @@
   }
 
   const userId = String(request.auth.get('id') || '')
-  let accounts = []
-  let holdingCount = 0
-  let connectionCount = 0
+  let accountCards = []
+  let holdingCards = []
+  let allocationComparisonCards = []
+  let targetBucketCards = []
+  const assetsById = {}
+  let portfolioSummary = {
+    totalValueText: '0',
+    profitLossText: '0',
+    profitLossClass: 'text-[#4e5968]',
+    dominantClassText: '없음',
+    dominantPctText: '0%',
+    chartLabelsText: '',
+    chartDataText: '',
+    chartColorsText: '',
+    maxDriftText: '0%',
+    maxDriftClass: 'text-[#4e5968]',
+    untrackedCashText: '0',
+    hasValue: false,
+  }
+  let snapshotSummary = {
+    cashValue: 0,
+    profitLoss: 0,
+    hasSnapshot: false,
+  }
+  let latestUsdKrwRate = 0
+  let targetSummary = {
+    targetCount: 0,
+    remainingPct: 100,
+    isValid: true,
+  }
 
   function accountTypeLabel(value) {
     const labels = {
@@ -43,45 +73,456 @@
     return labels[String(value || '')] || '관리 대기'
   }
 
+  function formatSyncTime(value) {
+    const text = String(value || '').trim()
+    if (!text) return '아직 동기화 전'
+    return text.replace('T', ' ').slice(0, 16)
+  }
+
+  function formatNumber(value, maximumFractionDigits) {
+    const number = Number(value || 0)
+    if (!isFinite(number)) return '0'
+
+    const sign = number < 0 ? '-' : ''
+    const fixed = Math.abs(number).toFixed(maximumFractionDigits)
+    const parts = fixed.split('.')
+    let integer = parts[0]
+    let formattedInteger = ''
+
+    while (integer.length > 3) {
+      formattedInteger = ',' + integer.slice(-3) + formattedInteger
+      integer = integer.slice(0, -3)
+    }
+
+    formattedInteger = integer + formattedInteger
+    const decimal = String(parts[1] || '').replace(/0+$/, '')
+
+    return sign + formattedInteger + (decimal ? '.' + decimal : '')
+  }
+
+  function formatAmount(value, currency) {
+    const maximumFractionDigits = String(currency || 'KRW') === 'USD' ? 2 : 0
+    return formatNumber(value, maximumFractionDigits)
+  }
+
+  function formatQuantity(value) {
+    return formatNumber(value, 6)
+  }
+
+  function readObject(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      try {
+        const parsed = JSON.parse(value)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+      } catch (_exception) {
+        return {}
+      }
+    }
+    return {}
+  }
+
+  function readLatestUsdKrwRate() {
+    try {
+      dbg('seedlab/accounts:index:db-access', { collection: 'fx_rates' })
+      const records = $app.findRecordsByFilter('fx_rates', 'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}', '-rateAt', 1, 0, {
+        baseCurrency: 'USD',
+        quoteCurrency: 'KRW',
+      })
+      return records.length > 0 ? Number(records[0].get('rate') || 0) : 0
+    } catch (exception) {
+      dbg('seedlab/accounts:index:fx-rate-missing', { pair: 'USD_KRW' })
+      return 0
+    }
+  }
+
+  function readSourceValueText(currency, raw) {
+    const sourceCurrency = String(currency || 'KRW')
+    if (sourceCurrency !== 'USD') return ''
+    const sourceAmount = holdingValuation.readUsdSourceAmount({
+      raw,
+      sourceKey: 'marketValueSource',
+    })
+    return sourceAmount > 0 ? '$' + formatAmount(sourceAmount, 'USD') : ''
+  }
+
+  function readAssetRecord(assetId) {
+    const id = String(assetId || '')
+    if (!id) return null
+    if (Object.prototype.hasOwnProperty.call(assetsById, id)) return assetsById[id]
+
+    try {
+      dbg('seedlab/accounts:index:db-access', { collection: 'assets', assetId: id })
+      assetsById[id] = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id })
+    } catch (exception) {
+      warn('seedlab/accounts:index:db-access-failed', { collection: 'assets', assetId: id, error: String(exception.message || exception) })
+      assetsById[id] = null
+    }
+
+    return assetsById[id]
+  }
+
+  function holdingProfitClass(value) {
+    const number = Number(value || 0)
+    if (number > 0) return 'text-[#e5484d]'
+    if (number < 0) return 'text-[#1b64da]'
+    return 'text-[#4e5968]'
+  }
+
+  function normalizeAssetClass(value) {
+    const key = String(value || '')
+    if (key === 'equity' || key === 'fixed_income' || key === 'cash' || key === 'alternative') return key
+    return 'equity'
+  }
+
+  function formatPct(value) {
+    return formatNumber(value, 1) + '%'
+  }
+
+  function readSavedAllocationBucket(holding) {
+    const raw = readObject(holding.get('raw'))
+    const seedlab = readObject(raw.seedlab)
+    return allocationBuckets.normalizeBucket(seedlab.allocationBucket)
+  }
+
+  function inferAllocationBucket(holding, asset) {
+    const savedBucket = readSavedAllocationBucket(holding)
+    if (savedBucket) return savedBucket
+
+    const assetClass = normalizeAssetClass(holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none' ? holding.get('assetClassOverride') : asset ? asset.get('assetClass') : '')
+    const assetType = String(asset ? asset.get('assetType') : '').toLowerCase()
+    const symbol = String(asset ? asset.get('symbol') : '').toUpperCase()
+    const name = String(asset ? asset.get('name') : '').toUpperCase()
+    const searchText = symbol + ' ' + name
+
+    if (assetClass === 'cash' || assetType === 'cash') return 'cash'
+    if (assetClass === 'fixed_income' || assetType === 'bond' || searchText.indexOf('BOND') >= 0 || searchText.indexOf('채권') >= 0) return 'bond'
+    if (searchText.indexOf('GOLD') >= 0 || searchText.indexOf('금') >= 0) return 'gold'
+    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0) return 'real_estate'
+    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0) return 'dividend_stock'
+    if (assetClass === 'equity') return 'growth_stock'
+    return 'other'
+  }
+
+  function readTargetSettings() {
+    const targets = allocationBuckets.defaultTargets()
+
+    try {
+      dbg('seedlab/accounts:index:db-access', { collection: 'investment_strategies' })
+      const strategyRecords = $app.findRecordsByFilter('investment_strategies', 'owner = {:owner} && strategyType = {:strategyType}', '-updated', 50, 0, {
+        owner: userId,
+        strategyType: 'real',
+      })
+      let strategyRecord = null
+      for (let recordIndex = 0; recordIndex < strategyRecords.length; recordIndex += 1) {
+        if (String(strategyRecords[recordIndex].get('name') || '') === '기본 리밸런싱') {
+          strategyRecord = strategyRecords[recordIndex]
+          break
+        }
+      }
+      if (!strategyRecord && strategyRecords.length > 0) strategyRecord = strategyRecords[0]
+      if (!strategyRecord) throw new Error('no_saved_targets')
+      const buckets = allocationBuckets.listBuckets()
+      let savedTotal = 0
+
+      for (let index = 0; index < buckets.length; index += 1) {
+        const number = Number(strategyRecord.get(buckets[index].targetField) || 0)
+        if (isFinite(number)) {
+          targets[buckets[index].key] = number
+          savedTotal += number
+        }
+      }
+
+      if (savedTotal <= 0) throw new Error('no_saved_targets')
+    } catch (exception) {
+      dbg('seedlab/accounts:index:target-defaults', { reason: 'no_saved_targets' })
+    }
+
+    return targets
+  }
+
+  function buildTargetBucketCards(targets) {
+    const buckets = allocationBuckets.listBuckets()
+    const cards = []
+    let totalPct = 0
+    let targetCount = 0
+
+    for (let index = 0; index < buckets.length; index += 1) {
+      const bucket = buckets[index]
+      const targetPct = Number(targets[bucket.key] || 0)
+      totalPct += targetPct
+      if (targetPct > 0) targetCount += 1
+      cards.push({
+        key: bucket.key,
+        label: bucket.label,
+        description: bucket.description,
+        targetField: bucket.targetField,
+        targetPctText: formatNumber(targetPct, 1),
+        tone: bucket.tone,
+      })
+    }
+
+    targetSummary = {
+      targetCount,
+      remainingPct: Math.round((100 - totalPct) * 10) / 10,
+      isValid: Math.round(totalPct * 10) / 10 === 100,
+    }
+
+    return cards
+  }
+
+  function findLatestSnapshotSummary() {
+    const seen = {}
+    let cashValue = 0
+    let profitLoss = 0
+    let hasSnapshot = false
+
+    try {
+      dbg('seedlab/accounts:index:db-access', { collection: 'account_snapshots' })
+      const snapshots = $app.findRecordsByFilter('account_snapshots', 'owner = {:owner}', '-snapshotDate', 200, 0, { owner: userId })
+      for (let index = 0; index < snapshots.length; index += 1) {
+        const snapshot = snapshots[index]
+        const accountId = String(snapshot.get('account') || '')
+        if (!accountId || seen[accountId]) continue
+        seen[accountId] = true
+        cashValue += Number(snapshot.get('cashValue') || 0)
+        profitLoss += Number(snapshot.get('profitLoss') || 0)
+        hasSnapshot = true
+      }
+    } catch (exception) {
+      warn('seedlab/accounts:index:db-access-failed', { collection: 'account_snapshots', error: String(exception.message || exception) })
+    }
+
+    return {
+      cashValue,
+      profitLoss,
+      hasSnapshot,
+    }
+  }
+
+  function buildPortfolioSummary(cards, targets, snapshots) {
+    const buckets = allocationBuckets.listBuckets()
+    /** @type {Record<string, number>} */
+    const totals = {}
+    let totalValue = 0
+    let profitLoss = 0
+
+    for (let index = 0; index < buckets.length; index += 1) {
+      totals[buckets[index].key] = 0
+    }
+
+    for (let index = 0; index < cards.length; index += 1) {
+      const card = cards[index]
+      const bucket = allocationBuckets.normalizeBucket(card.allocationBucket) || 'other'
+      totals[bucket] += card.marketValue
+      totalValue += card.marketValue
+      profitLoss += card.profitLoss
+    }
+
+    const snapshotCashValue = snapshots && snapshots.hasSnapshot ? Number(snapshots.cashValue || 0) : 0
+    const displayTotalValue = totalValue + (snapshotCashValue > 0 ? snapshotCashValue : 0)
+    const displayProfitLoss = snapshots && snapshots.hasSnapshot ? Number(snapshots.profitLoss || 0) : profitLoss
+    const untrackedCashValue = snapshotCashValue > 0 ? snapshotCashValue : 0
+
+    if (untrackedCashValue > 0) totals.cash += untrackedCashValue
+
+    const bucketSegments = []
+    const chartLabels = []
+    const chartData = []
+    const chartColors = []
+    const comparisonCards = []
+    let maxDriftPct = 0
+    let maxDriftClass = 'text-[#4e5968]'
+
+    for (let index = 0; index < buckets.length; index += 1) {
+      const meta = buckets[index]
+      const key = meta.key
+      const value = totals[key]
+      const currentPct = displayTotalValue > 0 ? Math.round((value / displayTotalValue) * 1000) / 10 : 0
+      const targetPct = Number(targets[key] || 0)
+      const targetValue = displayTotalValue * (targetPct / 100)
+      const deltaAmount = targetValue - value
+      const driftPct = Math.round((currentPct - targetPct) * 10) / 10
+      const absDriftPct = Math.abs(driftPct)
+      const showComparison = value > 0 || targetPct > 0
+
+      if (value > 0) {
+        bucketSegments.push({
+          allocationBucket: key,
+          label: meta.label,
+          valueText: formatAmount(value, 'KRW'),
+          pctText: formatPct(currentPct),
+          widthStyle: 'width: ' + currentPct + '%',
+          color: meta.color,
+          tone: meta.tone,
+        })
+        chartLabels.push(meta.label)
+        chartData.push(value)
+        chartColors.push(meta.color)
+      }
+
+      if (showComparison) {
+        if (absDriftPct > maxDriftPct) {
+          maxDriftPct = absDriftPct
+          maxDriftClass = driftPct > 0 ? 'text-[#e5484d]' : 'text-[#1b64da]'
+        }
+
+        comparisonCards.push({
+          key,
+          label: meta.label,
+          tone: meta.tone,
+          currentPctText: formatPct(currentPct),
+          targetPctText: formatPct(targetPct),
+          driftPctText: (driftPct > 0 ? '+' : '') + formatPct(driftPct),
+          driftClass: driftPct > 0 ? 'text-[#e5484d]' : driftPct < 0 ? 'text-[#1b64da]' : 'text-[#4e5968]',
+          targetValueText: formatAmount(targetValue, 'KRW'),
+          currentValueText: formatAmount(value, 'KRW'),
+          deltaAmountText: (deltaAmount > 0 ? '+' : '') + formatAmount(deltaAmount, 'KRW'),
+          deltaClass: deltaAmount > 0 ? 'text-[#1b64da]' : deltaAmount < 0 ? 'text-[#e5484d]' : 'text-[#4e5968]',
+          widthStyle: 'width: ' + (currentPct > 100 ? 100 : currentPct) + '%',
+          color: meta.color,
+        })
+      }
+    }
+
+    for (let index = 0; index < cards.length; index += 1) {
+      cards[index].weightText = displayTotalValue > 0 ? formatPct(Math.round((cards[index].marketValue / displayTotalValue) * 1000) / 10) : '0%'
+    }
+
+    let dominantClassText = '없음'
+    let dominantPctText = '0%'
+    for (let index = 0; index < bucketSegments.length; index += 1) {
+      if (index === 0 || Number(bucketSegments[index].pctText.replace('%', '')) > Number(dominantPctText.replace('%', ''))) {
+        dominantClassText = bucketSegments[index].label
+        dominantPctText = bucketSegments[index].pctText
+      }
+    }
+
+    allocationComparisonCards = comparisonCards
+
+    return {
+      totalValueText: formatAmount(displayTotalValue, 'KRW'),
+      profitLossText: (displayProfitLoss > 0 ? '+' : '') + formatAmount(displayProfitLoss, 'KRW'),
+      profitLossClass: holdingProfitClass(displayProfitLoss),
+      dominantClassText,
+      dominantPctText,
+      chartLabelsText: chartLabels.join('|'),
+      chartDataText: chartData.join('|'),
+      chartColorsText: chartColors.join('|'),
+      maxDriftText: formatPct(maxDriftPct),
+      maxDriftClass,
+      untrackedCashText: formatAmount(untrackedCashValue, 'KRW'),
+      hasValue: displayTotalValue > 0,
+    }
+  }
+
+  function buildAccountCard(account) {
+    const providerName = String(account.get('providerName') || '')
+    const isActive = !!account.get('isActive')
+
+    return {
+      id: String(account.get('id') || ''),
+      name: String(account.get('name') || '계좌'),
+      baseCurrency: String(account.get('baseCurrency') || 'KRW'),
+      typeLabel: accountTypeLabel(account.get('accountType')),
+      syncModeLabel: syncModeLabel(account.get('syncMode')),
+      statusText: isActive ? '활성 계좌' : '비활성 계좌',
+      lastSyncedText: formatSyncTime(account.get('lastSyncedAt')),
+      canSyncToss: providerName === 'toss' && isActive,
+      iconClass: providerName === 'toss' ? 'bg-[#e8f3ff] text-[#3182f6]' : 'bg-[#f2f4f6] text-[#4e5968]',
+    }
+  }
+
+  function buildHoldingCard(holding) {
+    const asset = readAssetRecord(holding.get('asset'))
+    const currency = String(holding.get('currency') || (asset ? asset.get('currency') : 'KRW') || 'KRW')
+    const raw = readObject(holding.get('raw'))
+    const symbol = String(asset ? asset.get('symbol') : '') || 'UNKNOWN'
+    const assetName = String(asset ? asset.get('name') : '') || '종목 정보 없음'
+    const allocationBucket = inferAllocationBucket(holding, asset)
+    const bucketMeta = allocationBuckets.bucketMeta(allocationBucket)
+    const storedMarketValue = Number(holding.get('marketValue') || 0)
+    const storedProfitLoss = Number(holding.get('profitLoss') || 0)
+    const marketValue = holdingValuation.readKrwAmount({
+      currency,
+      raw,
+      storedAmount: storedMarketValue,
+      sourceKey: 'marketValueSource',
+      krwKey: 'marketValueKrw',
+      latestUsdKrwRate,
+    })
+    const profitLoss = holdingValuation.readKrwAmount({
+      currency,
+      raw,
+      storedAmount: storedProfitLoss,
+      sourceKey: 'profitLossSource',
+      krwKey: 'profitLossKrw',
+      latestUsdKrwRate,
+    })
+    const sourceValueText = readSourceValueText(currency, raw)
+
+    return {
+      id: String(holding.get('id') || ''),
+      symbol,
+      assetName,
+      currency,
+      allocationBucket,
+      allocationLabel: bucketMeta.label,
+      allocationTone: bucketMeta.tone,
+      marketValue,
+      profitLoss,
+      weightText: '0%',
+      quantityText: formatQuantity(holding.get('quantity')),
+      marketValueText: formatAmount(marketValue, 'KRW') + '원',
+      profitLossText: (profitLoss > 0 ? '+' : '') + formatAmount(profitLoss, 'KRW'),
+      profitLossClass: holdingProfitClass(profitLoss),
+      sourceValueText,
+      currentPriceText: formatAmount(holding.get('currentPrice'), currency),
+      canEditManual: String(holding.get('source') || '') === 'manual',
+      editHref: '/accounts/holdings/' + String(holding.get('id') || '') + '/edit',
+    }
+  }
+
+  function holdingListLimit(cards) {
+    return cards.length > 12 ? 12 : cards.length
+  }
+
   if (userId) {
     try {
       dbg('seedlab/accounts:index:db-access', { collection: 'portfolio_accounts' })
-      accounts = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner}', '-updated', 50, 0, { owner: userId })
+      const accountRecords = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner}', '-updated', 50, 0, { owner: userId })
+      accountCards = accountRecords.map(buildAccountCard)
     } catch (exception) {
       warn('seedlab/accounts:index:db-access-failed', { collection: 'portfolio_accounts', error: String(exception.message || exception) })
-      accounts = []
+      accountCards = []
     }
+
+    const targetSettings = readTargetSettings()
+    targetBucketCards = buildTargetBucketCards(targetSettings)
+    snapshotSummary = findLatestSnapshotSummary()
+    latestUsdKrwRate = readLatestUsdKrwRate()
 
     try {
       dbg('seedlab/accounts:index:db-access', { collection: 'account_holdings' })
-      holdingCount = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-updated', 200, 0, { owner: userId }).length
+      const holdingRecords = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-marketValue', 200, 0, { owner: userId })
+      holdingCards = holdingRecords.map(buildHoldingCard)
+      portfolioSummary = buildPortfolioSummary(holdingCards, targetSettings, snapshotSummary)
     } catch (exception) {
       warn('seedlab/accounts:index:db-access-failed', { collection: 'account_holdings', error: String(exception.message || exception) })
-      holdingCount = 0
-    }
-
-    try {
-      dbg('seedlab/accounts:index:db-access', { collection: 'broker_connections' })
-      connectionCount = $app.findRecordsByFilter('broker_connections', 'owner = {:owner} && status = {:status}', '-updated', 50, 0, { owner: userId, status: 'active' }).length
-    } catch (exception) {
-      warn('seedlab/accounts:index:db-access-failed', { collection: 'broker_connections', error: String(exception.message || exception) })
-      connectionCount = 0
+      holdingCards = []
     }
   }
 </script>
 
-<div class="space-y-5 pb-2 pt-2">
-  <header class="flex items-center justify-between">
+<div class="space-y-4 pb-24 pt-1">
+  <header class="flex items-start justify-between gap-4">
     <div>
       <p class="text-sm font-bold text-[#3182f6]">계좌</p>
-      <h1 class="tracking-0 mt-2 text-[30px] font-bold leading-[1.18] text-[#191f28]">
-        연결 상태와<br />
-        보유 종목입니다
-      </h1>
+      <h1 class="tracking-0 mt-1 text-[26px] font-bold leading-[1.16] text-[#191f28]">현재 비중</h1>
     </div>
     <a
       href="/connections/toss/new"
-      class="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-[#3182f6] text-white no-underline shadow-[0_10px_24px_rgba(49,130,246,0.22)] active:bg-[#1b64da]"
+      class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#3182f6] text-white no-underline shadow-[0_10px_24px_rgba(49,130,246,0.22)] active:bg-[#1b64da]"
       aria-label="토스증권 연결">
       <span
         class="i-lucide-link h-5 w-5"
@@ -91,52 +532,259 @@
 
   <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
 
-  <section class="grid grid-cols-3 gap-3">
-    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
-      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e8f3ff] text-[#3182f6]">
-        <span
-          class="i-lucide-wallet-cards h-4 w-4"
-          aria-hidden="true"></span>
-      </span>
-      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= accounts.length %></p>
-      <p class="mt-2 text-xs font-medium text-[#8b95a1]">계좌</p>
-    </article>
+  <section class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <p class="text-[11px] font-bold text-[#8b95a1]">총 평가금</p>
+        <p class="mt-0.5 truncate text-[30px] font-bold leading-none text-[#191f28]"><%= portfolioSummary.totalValueText %>원</p>
+      </div>
+      <p class="<%= portfolioSummary.profitLossClass %> shrink-0 pt-5 text-sm font-bold"><%= portfolioSummary.profitLossText %>원</p>
+    </div>
 
-    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
-      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#ecfdf3] text-[#008a45]">
-        <span
-          class="i-lucide-shield-check h-4 w-4"
-          aria-hidden="true"></span>
-      </span>
-      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= connectionCount %></p>
-      <p class="mt-2 text-xs font-medium text-[#8b95a1]">연결</p>
-    </article>
-
-    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
-      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#fff6e5] text-[#b76e00]">
-        <span
-          class="i-lucide-chart-no-axes-combined h-4 w-4"
-          aria-hidden="true"></span>
-      </span>
-      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= holdingCount %></p>
-      <p class="mt-2 text-xs font-medium text-[#8b95a1]">종목</p>
-    </article>
+    <div class="mt-2 grid grid-cols-3 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
+      <div class="min-w-0">
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">계좌</p>
+        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= accountCards.length %></p>
+      </div>
+      <div class="min-w-0">
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">최대 비중</p>
+        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= portfolioSummary.dominantClassText %> <%= portfolioSummary.dominantPctText %></p>
+      </div>
+      <div class="min-w-0">
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">조정</p>
+        <p class="<%= portfolioSummary.maxDriftClass %> mt-0.5 truncate text-sm font-bold leading-none"><%= portfolioSummary.maxDriftText %></p>
+      </div>
+    </div>
   </section>
 
   <section class="space-y-3">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-bold text-[#191f28]">계좌 목록</h2>
+      <div>
+        <h2 class="text-base font-bold text-[#191f28]">목표와 현재</h2>
+        <p class="mt-1 text-xs font-medium text-[#8b95a1]">
+          <%= targetSummary.targetCount %>개 분류 · 최대 괴리 <span class="<%= portfolioSummary.maxDriftClass %>"><%= portfolioSummary.maxDriftText %></span>
+        </p>
+      </div>
       <a
-        href="/accounts/manual/new"
-        class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-sm font-bold text-[#3182f6] no-underline shadow-[0_1px_2px_rgba(25,31,40,0.06)] active:bg-[#e8f3ff]">
-        직접 추가
-        <span
-          class="i-lucide-pencil-line h-4 w-4"
-          aria-hidden="true"></span>
+        href="#allocation-targets"
+        class="inline-flex h-9 items-center justify-center rounded-lg bg-white px-3 text-sm font-bold text-[#191f28] no-underline shadow-[0_1px_2px_rgba(25,31,40,0.06)] active:bg-[#f2f4f6]">
+        목표 조정
       </a>
     </div>
 
-    <% if (accounts.length === 0) { %>
+    <% if (!portfolioSummary.hasValue) { %>
+    <div class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <p class="text-sm font-bold text-[#191f28]">비교할 보유 금액이 없습니다</p>
+      <p class="mt-1 text-sm leading-5 text-[#6b7684]">토스 동기화나 수동 보유 종목 추가 후 목표 대비 차이를 계산합니다.</p>
+    </div>
+    <% } else { %>
+    <% if (Number(portfolioSummary.untrackedCashText.replace(/,/g, '') || 0) > 0) { %>
+    <div class="rounded-lg bg-[#fff6e5] px-4 py-3">
+      <p class="text-sm font-bold text-[#191f28]">보유 종목 외 금액 <%= portfolioSummary.untrackedCashText %>원은 현금으로 반영했습니다.</p>
+    </div>
+    <% } %>
+
+    <div class="hidden">
+      <canvas
+        id="asset-class-chart"
+        data-labels="<%= portfolioSummary.chartLabelsText %>"
+        data-values="<%= portfolioSummary.chartDataText %>"
+        data-colors="<%= portfolioSummary.chartColorsText %>"
+        width="96"
+        height="96"
+        aria-label="자산 배정 차트"></canvas>
+    </div>
+
+    <div class="overflow-hidden rounded-lg bg-white shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <% for (let index = 0; index < allocationComparisonCards.length; index += 1) { %>
+      <article class="<%= index > 0 ? 'border-t border-[#f2f4f6]' : '' %> px-4 py-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="flex min-w-0 items-center gap-2">
+              <span class="<%= allocationComparisonCards[index].tone %> shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold"><%= allocationComparisonCards[index].label %></span>
+              <span class="truncate text-xs font-bold text-[#4e5968]">목표 <%= allocationComparisonCards[index].targetPctText %> · 현재 <%= allocationComparisonCards[index].currentPctText %></span>
+            </div>
+            <p class="mt-2 truncate text-sm font-bold text-[#191f28]"><%= allocationComparisonCards[index].currentValueText %>원</p>
+          </div>
+          <div class="shrink-0 text-right">
+            <p class="<%= allocationComparisonCards[index].driftClass %> text-sm font-bold"><%= allocationComparisonCards[index].driftPctText %></p>
+            <p class="<%= allocationComparisonCards[index].deltaClass %> mt-2 text-xs font-bold"><%= allocationComparisonCards[index].deltaAmountText %>원</p>
+          </div>
+        </div>
+        <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-[#f2f4f6]">
+          <div
+            class="h-full rounded-full"
+            style="background-color: <%= allocationComparisonCards[index].color %>; <%= allocationComparisonCards[index].widthStyle %>"></div>
+        </div>
+        <div class="mt-2 flex items-center justify-between gap-2 text-[11px] font-medium text-[#8b95a1]">
+          <span>목표금 <%= allocationComparisonCards[index].targetValueText %>원</span>
+          <span class="truncate">차이 <%= allocationComparisonCards[index].deltaAmountText %>원</span>
+        </div>
+      </article>
+      <% } %>
+    </div>
+    <% } %>
+  </section>
+
+  <section
+    id="allocation-targets"
+    class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h2 class="text-base font-bold text-[#191f28]">목표 비율</h2>
+        <p class="mt-1 text-xs font-medium text-[#8b95a1]">합계 100% 기준</p>
+      </div>
+      <span class="<%= targetSummary.isValid ? 'bg-[#ecfdf3] text-[#008a45]' : 'bg-[#fff0f0] text-[#c92a2a]' %> shrink-0 rounded-md px-2 py-1 text-xs font-bold"
+        >남은 비율 <%= formatPct(targetSummary.remainingPct) %></span
+      >
+    </div>
+
+    <form
+      method="post"
+      action="/xapi/allocation-targets/update"
+      class="mt-4 space-y-3">
+      <% for (let index = 0; index < targetBucketCards.length; index += 1) { %>
+      <label class="grid grid-cols-[1fr_104px] items-center gap-3 rounded-lg bg-[#f7f8fa] p-3">
+        <span class="min-w-0">
+          <span class="<%= targetBucketCards[index].tone %> inline-flex rounded-md px-2 py-0.5 text-[11px] font-bold"><%= targetBucketCards[index].label %></span>
+          <span class="mt-2 block truncate text-xs font-medium text-[#6b7684]"><%= targetBucketCards[index].description %></span>
+        </span>
+        <span class="flex h-11 items-center rounded-lg bg-white px-2">
+          <input
+            type="number"
+            name="<%= targetBucketCards[index].targetField %>"
+            min="0"
+            max="100"
+            step="0.1"
+            value="<%= targetBucketCards[index].targetPctText %>"
+            class="min-w-0 flex-1 border-0 bg-transparent text-right text-sm font-bold text-[#191f28] outline-none" />
+          <span class="ml-1 text-sm font-bold text-[#8b95a1]">%</span>
+        </span>
+      </label>
+      <% } %>
+
+      <button
+        type="submit"
+        class="box-border flex h-12 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#3182f6] px-4 text-sm font-bold text-white shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
+        목표 비율 저장
+        <span
+          class="i-lucide-save h-4 w-4"
+          aria-hidden="true"></span>
+      </button>
+    </form>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="text-base font-bold text-[#191f28]">자산 목록</h2>
+      <span class="text-sm font-bold text-[#3182f6]"><%= holdingCards.length %>개</span>
+    </div>
+
+    <% if (holdingCards.length === 0) { %>
+    <div class="rounded-lg border border-[#dbeafe] bg-[#f7fbff] p-4 shadow-[0_8px_24px_rgba(49,130,246,0.08)]">
+      <p class="text-sm font-bold text-[#191f28]">아직 불러온 보유 종목이 없습니다</p>
+      <p class="mt-1 text-sm leading-5 text-[#6b7684]">토스 동기화나 수동 입력 후 비중을 계산합니다.</p>
+      <div class="flex items-center gap-2">
+        <a
+          href="/accounts/holdings/new"
+          class="mt-4 inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
+          종목 추가
+          <span
+            class="i-lucide-plus h-4 w-4"
+            aria-hidden="true"></span>
+        </a>
+      </div>
+    </div>
+    <% } else { %>
+    <div class="overflow-hidden rounded-lg bg-white shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <% for (let index = 0; index < holdingListLimit(holdingCards); index += 1) { %>
+      <article class="<%= index > 0 ? 'border-t border-[#f2f4f6]' : '' %> px-4 py-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0 flex-1">
+            <div class="flex min-w-0 items-center gap-2">
+              <p class="truncate text-sm font-bold text-[#191f28]"><%= holdingCards[index].symbol %></p>
+              <span class="<%= holdingCards[index].allocationTone %> shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold"><%= holdingCards[index].allocationLabel %></span>
+              <span class="shrink-0 rounded-md bg-[#f2f4f6] px-1.5 py-0.5 text-[11px] font-bold text-[#6b7684]"><%= holdingCards[index].currency %></span>
+            </div>
+            <p class="mt-1 truncate text-xs text-[#8b95a1]"><%= holdingCards[index].assetName %></p>
+          </div>
+          <div class="shrink-0 text-right">
+            <p class="text-sm font-bold text-[#191f28]"><%= holdingCards[index].marketValueText %></p>
+            <p class="<%= holdingCards[index].profitLossClass %> mt-1 text-xs font-bold"><%= holdingCards[index].profitLossText %></p>
+            <% if (holdingCards[index].sourceValueText) { %>
+            <p class="mt-1 text-[11px] font-medium text-[#8b95a1]"><%= holdingCards[index].sourceValueText %></p>
+            <% } %>
+          </div>
+        </div>
+        <div class="mt-2 flex items-center justify-between gap-2 text-xs font-medium text-[#8b95a1]">
+          <span>비중 <%= holdingCards[index].weightText %></span>
+          <span class="min-w-0 truncate">수량 <%= holdingCards[index].quantityText %> · 현재 <%= holdingCards[index].currentPriceText %></span>
+        </div>
+        <form
+          method="post"
+          action="/xapi/holdings/allocation/update"
+          class="mt-3 flex gap-2">
+          <input
+            type="hidden"
+            name="holdingId"
+            value="<%= holdingCards[index].id %>" />
+          <select
+            name="allocationBucket"
+            class="box-border h-9 min-w-0 flex-1 rounded-lg border border-[#e5e8eb] bg-[#fbfcfd] px-2 text-xs font-bold text-[#191f28] outline-none focus:border-[#3182f6]">
+            <% for (let bucketIndex = 0; bucketIndex < targetBucketCards.length; bucketIndex += 1) { %>
+            <option
+              value="<%= targetBucketCards[bucketIndex].key %>"
+              <%= targetBucketCards[bucketIndex].key === holdingCards[index].allocationBucket ? 'selected' : '' %>>
+              <%= targetBucketCards[bucketIndex].label %>
+            </option>
+            <% } %>
+          </select>
+          <% if (holdingCards[index].canEditManual) { %>
+          <a
+            href="<%= holdingCards[index].editHref %>"
+            class="box-border flex h-9 w-14 shrink-0 items-center justify-center rounded-lg bg-[#f2f4f6] px-2 text-xs font-bold text-[#4e5968] no-underline active:bg-[#e5e8eb]">
+            수정
+          </a>
+          <% } %>
+          <button
+            type="submit"
+            class="h-9 w-14 shrink-0 rounded-lg border-0 bg-[#191f28] px-2 text-xs font-bold text-white active:bg-[#333d4b]">
+            저장
+          </button>
+        </form>
+      </article>
+      <% } %>
+    </div>
+    <% if (holdingCards.length > 12) { %>
+    <p class="text-center text-xs font-medium text-[#8b95a1]">상위 12개 종목만 표시합니다.</p>
+    <% } %>
+    <% } %>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="text-base font-bold text-[#191f28]">계좌</h2>
+      <div class="flex items-center gap-2">
+        <a
+          href="/accounts/holdings/new"
+          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-sm font-bold text-[#4e5968] no-underline shadow-[0_1px_2px_rgba(25,31,40,0.06)] active:bg-[#f2f4f6]">
+          종목
+          <span
+            class="i-lucide-plus h-4 w-4"
+            aria-hidden="true"></span>
+        </a>
+        <a
+          href="/accounts/manual/new"
+          class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-sm font-bold text-[#3182f6] no-underline shadow-[0_1px_2px_rgba(25,31,40,0.06)] active:bg-[#e8f3ff]">
+          계좌
+          <span
+            class="i-lucide-pencil-line h-4 w-4"
+            aria-hidden="true"></span>
+        </a>
+      </div>
+    </div>
+
+    <% if (accountCards.length === 0) { %>
     <div class="rounded-lg border border-[#dbeafe] bg-[#f7fbff] p-4 shadow-[0_8px_24px_rgba(49,130,246,0.08)]">
       <p class="text-sm font-bold text-[#191f28]">아직 등록된 계좌가 없습니다</p>
       <p class="mt-1 text-sm leading-5 text-[#6b7684]">토스증권을 API로 연결하거나, 연금저축과 IRP는 직접 추가합니다.</p>
@@ -161,11 +809,10 @@
     </div>
     <% } else { %>
     <div class="space-y-3">
-      <% for (let index = 0; index < accounts.length; index += 1) { %>
-      <% const account = accounts[index] %>
+      <% for (let index = 0; index < accountCards.length; index += 1) { %>
       <article class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
         <div class="flex items-start gap-3">
-          <span class="<%= account.get('providerName') === 'toss' ? 'bg-[#e8f3ff] text-[#3182f6]' : 'bg-[#f2f4f6] text-[#4e5968]' %> flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+          <span class="<%= accountCards[index].iconClass %> flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
             <span
               class="i-lucide-wallet-cards h-5 w-5"
               aria-hidden="true"></span>
@@ -173,12 +820,32 @@
           <div class="min-w-0 flex-1">
             <div class="flex min-w-0 items-start justify-between gap-3">
               <div class="min-w-0">
-                <p class="truncate text-sm font-bold text-[#191f28]"><%= account.get('name') %></p>
-                <p class="mt-1 text-xs text-[#8b95a1]"><%= accountTypeLabel(account.get('accountType')) %> · <%= syncModeLabel(account.get('syncMode')) %></p>
+                <p class="truncate text-sm font-bold text-[#191f28]"><%= accountCards[index].name %></p>
+                <p class="mt-1 text-xs text-[#8b95a1]"><%= accountCards[index].typeLabel %> · <%= accountCards[index].syncModeLabel %></p>
               </div>
-              <span class="shrink-0 rounded-md bg-[#f2f4f6] px-2 py-1 text-xs font-bold text-[#4e5968]"><%= account.get('baseCurrency') || 'KRW' %></span>
+              <span class="shrink-0 rounded-md bg-[#f2f4f6] px-2 py-1 text-xs font-bold text-[#4e5968]"><%= accountCards[index].baseCurrency %></span>
             </div>
-            <p class="mt-3 text-xs font-medium text-[#8b95a1]"><%= account.get('isActive') ? '활성 계좌' : '비활성 계좌' %></p>
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <p class="text-xs font-medium text-[#8b95a1]"><%= accountCards[index].statusText %> · <%= accountCards[index].lastSyncedText %></p>
+              <% if (accountCards[index].canSyncToss) { %>
+              <form
+                method="post"
+                action="/xapi/accounts/toss/sync">
+                <input
+                  type="hidden"
+                  name="accountId"
+                  value="<%= accountCards[index].id %>" />
+                <button
+                  type="submit"
+                  class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#191f28] px-3 text-xs font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.14)] active:bg-[#333d4b]">
+                  동기화
+                  <span
+                    class="i-lucide-refresh-cw h-3.5 w-3.5"
+                    aria-hidden="true"></span>
+                </button>
+              </form>
+              <% } %>
+            </div>
           </div>
         </div>
       </article>
@@ -187,3 +854,48 @@
     <% } %>
   </section>
 </div>
+
+<% if (portfolioSummary.hasValue) { %>
+<script src="<%= asset('/assets/vendor/chart.umd.4.5.1.min.js') %>"></script>
+<script>
+  ;(function () {
+    var element = document.getElementById('asset-class-chart')
+    if (!element || !window.Chart) return
+    var labels = String(element.getAttribute('data-labels') || '')
+      .split('|')
+      .filter(Boolean)
+    var data = String(element.getAttribute('data-values') || '')
+      .split('|')
+      .filter(Boolean)
+      .map(function (value) {
+        return Number(value) || 0
+      })
+    var colors = String(element.getAttribute('data-colors') || '')
+      .split('|')
+      .filter(Boolean)
+    new window.Chart(element, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+            data: data,
+            backgroundColor: colors,
+            borderWidth: 0,
+          }],
+      },
+      options: {
+        animation: false,
+        cutout: '68%',
+        plugins: {
+          legend: {
+            display: false,
+          },
+          tooltip: {
+            enabled: true,
+          },
+        },
+      },
+    })
+  })()
+</script>
+<% } %>

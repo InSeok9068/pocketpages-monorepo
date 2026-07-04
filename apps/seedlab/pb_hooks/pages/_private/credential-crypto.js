@@ -2,6 +2,8 @@
 
 // 사용자별 외부 API secret을 저장 전 암호화하고, 호출 직전에 복호화하는 모듈입니다.
 
+const { globalApi } = require('pocketpages')
+const { dbg, env, warn } = globalApi
 const CREDENTIAL_KEY_ENV = 'SEEDLAB_CREDENTIAL_KEY'
 
 /**
@@ -11,16 +13,6 @@ const CREDENTIAL_KEY_ENV = 'SEEDLAB_CREDENTIAL_KEY'
  */
 function cleanText(value) {
   return String(value == null ? '' : value).trim()
-}
-
-/**
- * 환경 변수 값을 읽습니다.
- * @param {string} name 환경 변수 이름입니다.
- * @returns {string} 환경 변수 값입니다.
- */
-function readEnvValue(name) {
-  if (typeof env !== 'function') return ''
-  return cleanText(env(name))
 }
 
 /**
@@ -42,9 +34,26 @@ function requireText(value, name) {
  */
 function readCredentialKey(options) {
   const safeOptions = options || {}
-  const key = cleanText(safeOptions.credentialKey || safeOptions.key || readEnvValue(CREDENTIAL_KEY_ENV))
+  const optionKey = cleanText(safeOptions.credentialKey || safeOptions.key)
+  const envKey = optionKey ? '' : cleanText(env(CREDENTIAL_KEY_ENV))
+  const key = optionKey || envKey
+  const source = optionKey ? 'options' : 'env'
+
+  dbg('seedlab/credential-crypto:read-key', {
+    source,
+    keyLength: key.length,
+    hasEnvFunction: typeof env === 'function',
+    hasOptionKey: !!optionKey,
+  })
 
   if (key.length !== 32) {
+    warn('seedlab/credential-crypto:read-key', {
+      source,
+      keyLength: key.length,
+      expectedLength: 32,
+      hasEnvFunction: typeof env === 'function',
+      hasOptionKey: !!optionKey,
+    })
     throw new Error(`${CREDENTIAL_KEY_ENV} must be exactly 32 characters`)
   }
 

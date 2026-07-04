@@ -3,6 +3,9 @@
 // 토스증권 Open API 호출을 PocketBase JSVM의 동기 HTTP 환경에 맞춰 감싼 모듈입니다.
 // 각 공개 메서드는 apps/seedlab/.docs/tossapi.json의 operationId와 같은 이름을 사용합니다.
 
+const { globalApi } = require('pocketpages')
+const { env } = globalApi
+
 // 토스증권 공식 API 기본 접속 정보입니다.
 const DEFAULT_BASE_URL = 'https://openapi.tossinvest.com'
 const DEFAULT_TIMEOUT_SECONDS = 20
@@ -29,8 +32,6 @@ function cleanText(value) {
  * @returns {string} 환경 변수 값입니다.
  */
 function readEnv(name) {
-  // PocketPages pages 문맥에서는 런타임 env(...) 헬퍼를 사용합니다.
-  if (typeof env !== 'function') return ''
   return cleanText(env(name))
 }
 
@@ -241,10 +242,12 @@ function buildHttpResult(args) {
   const headers = response.headers || {}
   const json = isObjectRecord(response.json) ? response.json : {}
   const error = isObjectRecord(json.error) ? json.error : null
+  const oauthErrorCode = typeof json.error === 'string' ? cleanText(json.error) : ''
+  const oauthErrorDescription = cleanText(json.error_description)
   const httpOk = statusCode >= 200 && statusCode < 300
   const result = Object.prototype.hasOwnProperty.call(json, 'result') ? json.result : json
   const requestId = cleanText((error && error.requestId) || getHeaderValues(headers, 'X-Request-Id')[0] || '')
-  const errorMessage = cleanText(args.transportError || (error && error.message) || json.message || '')
+  const errorMessage = cleanText(args.transportError || (error && error.message) || json.message || oauthErrorDescription || oauthErrorCode || '')
 
   // OAuth 토큰 응답은 result envelope이 없으므로 json 전체를 result처럼 다룹니다.
   return {

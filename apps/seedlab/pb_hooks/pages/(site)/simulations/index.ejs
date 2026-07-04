@@ -16,7 +16,7 @@
   }
 
   const userId = String(request.auth.get('id') || '')
-  let simulations = []
+  let simulationCards = []
   let completeCount = 0
   let runningCount = 0
 
@@ -26,41 +26,52 @@
     return String(Math.round(number)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   }
 
-  function readSummaryValue(record, fieldName) {
-    const summary = record.get('summary') || {}
+  function readSummaryValue(summary, fieldName) {
     if (!summary || typeof summary !== 'object') return ''
     return summary[fieldName]
+  }
+
+  function buildSimulationCard(record) {
+    const summary = record.get('summary') || {}
+    const status = String(record.get('status') || 'ready')
+    const returnPct = readSummaryValue(summary, 'returnPct')
+    const totalValue = readSummaryValue(summary, 'totalValue')
+
+    return {
+      name: String(record.get('name') || '실험'),
+      periodText: String(record.get('startDate') || '') + ' - ' + String(record.get('endDate') || ''),
+      status,
+      returnPctText: returnPct === '' ? '-' : String(returnPct) + '%',
+      totalValueText: totalValue ? formatAmount(totalValue) : '-',
+    }
   }
 
   if (userId) {
     try {
       dbg('seedlab/simulations:index:db-access', { collection: 'simulations' })
-      simulations = $app.findRecordsByFilter('simulations', 'owner = {:owner}', '-created', 50, 0, { owner: userId })
+      const simulationRecords = $app.findRecordsByFilter('simulations', 'owner = {:owner}', '-created', 50, 0, { owner: userId })
+      simulationCards = simulationRecords.map(buildSimulationCard)
     } catch (exception) {
       warn('seedlab/simulations:index:db-access-failed', { collection: 'simulations', error: String(exception.message || exception) })
-      simulations = []
+      simulationCards = []
     }
 
-    for (let index = 0; index < simulations.length; index += 1) {
-      const status = String(simulations[index].get('status') || '')
-      if (status === 'complete') completeCount += 1
-      if (status === 'running') runningCount += 1
+    for (let index = 0; index < simulationCards.length; index += 1) {
+      if (simulationCards[index].status === 'complete') completeCount += 1
+      if (simulationCards[index].status === 'running') runningCount += 1
     }
   }
 </script>
 
-<div class="space-y-5 pb-2 pt-2">
+<div class="space-y-4 pb-2 pt-1">
   <header class="flex items-center justify-between">
     <div>
-      <p class="text-sm font-bold text-[#3182f6]">실험</p>
-      <h1 class="tracking-0 mt-2 text-[30px] font-bold leading-[1.18] text-[#191f28]">
-        전략을 만들고<br />
-        결과를 봅니다
-      </h1>
+      <p class="text-xs font-bold text-[#3182f6]">실험</p>
+      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">실험 목록</h1>
     </div>
     <a
       href="/simulations/new"
-      class="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-[#3182f6] text-white no-underline shadow-[0_10px_24px_rgba(49,130,246,0.22)] active:bg-[#1b64da]"
+      class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#3182f6] text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]"
       aria-label="새 실험 만들기">
       <span
         class="i-lucide-plus h-5 w-5"
@@ -70,41 +81,26 @@
 
   <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
 
-  <section class="grid grid-cols-3 gap-3">
-    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
-      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e8f3ff] text-[#3182f6]">
-        <span
-          class="i-lucide-flask-conical h-4 w-4"
-          aria-hidden="true"></span>
-      </span>
-      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= simulations.length %></p>
-      <p class="mt-2 text-xs font-medium text-[#8b95a1]">전체</p>
-    </article>
-
-    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
-      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#ecfdf3] text-[#008a45]">
-        <span
-          class="i-lucide-check h-4 w-4"
-          aria-hidden="true"></span>
-      </span>
-      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= completeCount %></p>
-      <p class="mt-2 text-xs font-medium text-[#8b95a1]">완료</p>
-    </article>
-
-    <article class="min-h-[108px] rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
-      <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#fff6e5] text-[#b76e00]">
-        <span
-          class="i-lucide-loader-circle h-4 w-4"
-          aria-hidden="true"></span>
-      </span>
-      <p class="mt-3 text-[24px] font-bold leading-none text-[#191f28]"><%= runningCount %></p>
-      <p class="mt-2 text-xs font-medium text-[#8b95a1]">진행</p>
-    </article>
+  <section class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+    <div class="grid grid-cols-3 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
+      <div class="min-w-0">
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">전체</p>
+        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= simulationCards.length %></p>
+      </div>
+      <div class="min-w-0">
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">완료</p>
+        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= completeCount %></p>
+      </div>
+      <div class="min-w-0">
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">진행</p>
+        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= runningCount %></p>
+      </div>
+    </div>
   </section>
 
   <section class="space-y-3">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-bold text-[#191f28]">실험 목록</h2>
+      <h2 class="text-base font-bold text-[#191f28]">실험</h2>
       <a
         href="/simulations/new"
         class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-sm font-bold text-[#3182f6] no-underline shadow-[0_1px_2px_rgba(25,31,40,0.06)] active:bg-[#e8f3ff]">
@@ -115,13 +111,13 @@
       </a>
     </div>
 
-    <% if (simulations.length === 0) { %>
-    <div class="rounded-lg border border-[#dbeafe] bg-[#f7fbff] p-4 shadow-[0_8px_24px_rgba(49,130,246,0.08)]">
+    <% if (simulationCards.length === 0) { %>
+    <div class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
       <p class="text-sm font-bold text-[#191f28]">아직 만든 실험이 없습니다</p>
       <p class="mt-1 text-sm leading-5 text-[#6b7684]">가상 인물과 적립식 조건을 넣어 주문 후보를 먼저 만들어봅니다.</p>
       <a
         href="/simulations/new"
-        class="mt-4 box-border flex h-11 items-center justify-center gap-2 rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
+        class="mt-4 box-border flex h-11 items-center justify-center gap-2 rounded-lg bg-[#191f28] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(25,31,40,0.16)] active:bg-[#333d4b]">
         실험 만들기
         <span
           class="i-lucide-arrow-right h-4 w-4"
@@ -130,26 +126,23 @@
     </div>
     <% } else { %>
     <div class="space-y-3">
-      <% for (let index = 0; index < simulations.length; index += 1) { %>
-      <% const simulation = simulations[index] %>
-      <% const returnPct = readSummaryValue(simulation, 'returnPct') %>
-      <% const totalValue = readSummaryValue(simulation, 'totalValue') %>
+      <% for (let index = 0; index < simulationCards.length; index += 1) { %>
       <article class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <p class="truncate text-sm font-bold text-[#191f28]"><%= simulation.get('name') %></p>
-            <p class="mt-1 text-xs text-[#8b95a1]"><%= simulation.get('startDate') %> - <%= simulation.get('endDate') %></p>
+            <p class="truncate text-sm font-bold text-[#191f28]"><%= simulationCards[index].name %></p>
+            <p class="mt-1 text-xs text-[#8b95a1]"><%= simulationCards[index].periodText %></p>
           </div>
-          <span class="shrink-0 rounded-md bg-[#ecfdf3] px-2 py-1 text-xs font-bold text-[#008a45]"><%= simulation.get('status') || 'ready' %></span>
+          <span class="shrink-0 rounded-md bg-[#ecfdf3] px-2 py-1 text-xs font-bold text-[#008a45]"><%= simulationCards[index].status %></span>
         </div>
         <div class="mt-4 grid grid-cols-2 gap-3">
           <div class="rounded-lg bg-[#f7f8fa] p-3">
             <p class="text-xs font-medium text-[#8b95a1]">수익률</p>
-            <p class="mt-1 text-lg font-bold text-[#191f28]"><%= returnPct === '' ? '-' : returnPct + '%' %></p>
+            <p class="mt-1 text-lg font-bold text-[#191f28]"><%= simulationCards[index].returnPctText %></p>
           </div>
           <div class="rounded-lg bg-[#f7f8fa] p-3">
             <p class="text-xs font-medium text-[#8b95a1]">평가액</p>
-            <p class="mt-1 text-lg font-bold text-[#191f28]"><%= totalValue ? formatAmount(totalValue) : '-' %></p>
+            <p class="mt-1 text-lg font-bold text-[#191f28]"><%= simulationCards[index].totalValueText %></p>
           </div>
         </div>
       </article>

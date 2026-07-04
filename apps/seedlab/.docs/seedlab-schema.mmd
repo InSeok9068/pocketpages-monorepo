@@ -10,6 +10,7 @@ erDiagram
 
   users ||--o{ investment_strategies : owns
   investment_strategies ||--o{ strategy_targets : allocates
+  investment_strategies ||--o{ strategy_asset_targets : allocates_classes
   investment_strategies ||--o{ strategy_rules : triggers
   assets ||--o{ strategy_targets : targets
 
@@ -34,6 +35,11 @@ erDiagram
   assets ||--o{ simulation_events : trades
 
   users ||--o{ action_batches : owns
+  users ||--o{ rebalance_runs : owns
+  rebalance_runs ||--o{ rebalance_items : suggests
+  investment_strategies ||--o{ rebalance_runs : evaluates
+  portfolio_accounts ||--o{ rebalance_runs : scopes
+  assets ||--o{ rebalance_items : adjusts
   investment_strategies ||--o{ action_batches : suggests
   action_batches ||--o{ action_items : includes
   portfolio_accounts ||--o{ action_items : executes_on
@@ -116,10 +122,13 @@ erDiagram
     text symbol UK "종목 코드"
     text name "종목명"
     select marketCountry "KR US"
-    select assetType "stock etf index cash"
+    select assetType "stock etf bond index cash fund"
+    select assetClass "equity fixed_income cash alternative"
     select currency "KRW USD"
     text exchange "거래소"
     bool isActive "사용 여부"
+    select classificationSource "auto manual toss import"
+    number classificationConfidence "분류 신뢰도"
     json metadata "종목 보조 정보"
     autodate created "생성 시각"
     autodate updated "수정 시각"
@@ -165,6 +174,7 @@ erDiagram
     number profitLoss "평가 손익"
     select currency "KRW USD"
     select source "toss manual import"
+    select assetClassOverride "none equity fixed_income cash alternative"
     date asOfAt "평가 기준 시각"
     json raw "원본 응답"
     autodate created "생성 시각"
@@ -183,6 +193,7 @@ erDiagram
     select currency "KRW USD"
     select source "auto manual import"
     json summary "계좌 요약"
+    json assetClassWeights "자산군 비중"
     autodate created "생성 시각"
     autodate updated "수정 시각"
   }
@@ -226,6 +237,12 @@ erDiagram
     select baseCurrency "KRW USD"
     number monthlyContribution "월 투자금"
     number cashTargetPct "목표 현금 비중"
+    number growthStockTargetPct "목표 성장주 비중"
+    number dividendStockTargetPct "목표 배당주 비중"
+    number bondTargetPct "목표 채권 비중"
+    number goldTargetPct "목표 금 비중"
+    number realEstateTargetPct "목표 부동산 비중"
+    number otherTargetPct "목표 기타 비중"
     select rebalanceCycle "none monthly quarterly yearly"
     bool isActive "사용 여부"
     text memo "설명"
@@ -238,11 +255,27 @@ erDiagram
     text id PK "primaryKey"
     relation strategy FK "investment_strategies"
     relation asset FK "assets"
+    select assetClass "none equity fixed_income cash alternative"
     number targetPct "목표 비중"
     number minPct "하한 비중"
     number maxPct "상한 비중"
     number priority "매수 우선순위"
     json settings "종목별 설정"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  strategy_asset_targets {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation strategy FK "investment_strategies"
+    select assetClass "equity fixed_income cash alternative"
+    number targetPct "목표 비중"
+    number minPct "하한 비중"
+    number maxPct "상한 비중"
+    number priority "우선순위"
+    bool isActive "사용 여부"
+    json settings "자산군 설정"
     autodate created "생성 시각"
     autodate updated "수정 시각"
   }
@@ -359,6 +392,44 @@ erDiagram
     autodate updated "수정 시각"
   }
 
+  rebalance_runs {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation strategy FK "investment_strategies"
+    relation account FK "portfolio_accounts"
+    date runAt "계산 시각"
+    select status "draft reviewed applied skipped"
+    select baseCurrency "KRW USD"
+    number totalValue "총 평가금"
+    number driftPct "최대 이탈 비중"
+    text summaryText "요약 문구"
+    json classSummary "자산군 요약"
+    json settings "계산 설정"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  rebalance_items {
+    text id PK "primaryKey"
+    relation owner FK "users"
+    relation run FK "rebalance_runs"
+    relation account FK "portfolio_accounts"
+    relation asset FK "assets"
+    select assetClass "equity fixed_income cash alternative"
+    select side "BUY SELL HOLD"
+    number currentValue "현재 평가금"
+    number currentPct "현재 비중"
+    number targetPct "목표 비중"
+    number targetValue "목표 평가금"
+    number deltaAmount "조정 필요 금액"
+    number priority "우선순위"
+    text reason "제안 사유"
+    select status "draft accepted skipped"
+    json checks "주문 전 점검"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
   action_items {
     text id PK "primaryKey"
     relation batch FK "action_batches"
@@ -431,6 +502,9 @@ erDiagram
   %% - account_holdings(owner, account, asset) UNIQUE
   %% - account_snapshots(owner, account, snapshotDate)
   %% - strategy_targets(strategy, asset) UNIQUE
+  %% - strategy_asset_targets(strategy, assetClass) UNIQUE
+  %% - rebalance_runs(owner, status, runAt)
+  %% - rebalance_items(run, assetClass)
   %% - simulations(owner, persona, strategy, startDate, endDate)
   %% - action_batches(owner, strategy, actionDate, status)
   %% - order_records(owner, clientOrderId) UNIQUE WHERE clientOrderId != ''

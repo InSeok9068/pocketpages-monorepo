@@ -1,0 +1,314 @@
+<script server>
+  const assetClassifier = resolve('asset-classifier')
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function readNumber(value) {
+    const number = Number(cleanText(value))
+    return isFinite(number) ? number : 0
+  }
+
+  function roundPct(value) {
+    return Math.round(Number(value || 0) * 10) / 10
+  }
+
+  function classLabel(value) {
+    const labels = {
+      equity: '주식',
+      fixed_income: '채권',
+      cash: '현금',
+      alternative: '대체',
+    }
+    return labels[String(value || '')] || '자산군'
+  }
+
+  function readAssetRecord(assetId) {
+    const id = cleanText(assetId)
+    if (!id) return null
+
+    try {
+      return $app.findFirstRecordByFilter('assets', 'id = {:id}', { id })
+    } catch (exception) {
+      return null
+    }
+  }
+
+  function holdingAssetClass(holding) {
+    const override = cleanText(holding.get('assetClassOverride'))
+    if (override && override !== 'none') return assetClassifier.normalizeAssetClass(override) || 'equity'
+
+    const asset = readAssetRecord(holding.get('asset'))
+    return assetClassifier.normalizeAssetClass(asset ? asset.get('assetClass') : '') || 'equity'
+  }
+
+  function buildTargets(form) {
+    return {
+      equity: readNumber(form.equityTargetPct),
+      fixed_income: readNumber(form.fixedIncomeTargetPct),
+      cash: readNumber(form.cashTargetPct),
+      alternative: readNumber(form.alternativeTargetPct),
+    }
+  }
+
+  function targetTotal(targets) {
+    return targets.equity + targets.fixed_income + targets.cash + targets.alternative
+  }
+
+  function findOrCreateStrategy(txApp, userId, targets) {
+    let strategyRecord = null
+
+    try {
+      const strategyRecords = txApp.findRecordsByFilter('investment_strategies', 'owner = {:owner} && strategyType = {:strategyType}', '-updated', 50, 0, {
+        owner: userId,
+        strategyType: 'real',
+      })
+      for (let recordIndex = 0; recordIndex < strategyRecords.length; recordIndex += 1) {
+        if (String(strategyRecords[recordIndex].get('name') || '') === '기본 리밸런싱') {
+          strategyRecord = strategyRecords[recordIndex]
+          break
+        }
+      }
+      if (!strategyRecord && strategyRecords.length > 0) strategyRecord = strategyRecords[0]
+    } catch (exception) {
+      strategyRecord = null
+    }
+
+    if (!strategyRecord) {
+      strategyRecord = new Record(txApp.findCollectionByNameOrId('investment_strategies'))
+      strategyRecord.set('owner', userId)
+      strategyRecord.set('name', '기본 리밸런싱')
+      strategyRecord.set('strategyType', 'real')
+      strategyRecord.set('baseCurrency', 'KRW')
+      strategyRecord.set('monthlyContribution', 0)
+      strategyRecord.set('rebalanceCycle', 'monthly')
+      strategyRecord.set('isActive', true)
+      strategyRecord.set('memo', '계좌 자산군 분포 기준 리밸런싱 전략입니다.')
+    }
+
+    strategyRecord.set('settings', {
+      source: 'accounts_rebalance_form',
+      assetClassTargets: targets,
+      orderSafety: 'draft_only_no_broker_order',
+    })
+    txApp.save(strategyRecord)
+
+    return strategyRecord
+  }
+
+  function upsertClassTarget(txApp, args) {
+    let targetRecord = null
+
+    try {
+      targetRecord = txApp.findFirstRecordByFilter('strategy_asset_targets', 'strategy = {:strategy} && assetClass = {:assetClass}', {
+        strategy: args.strategyId,
+        assetClass: args.assetClass,
+      })
+    } catch (exception) {
+      targetRecord = null
+    }
+
+    if (!targetRecord) {
+      targetRecord = new Record(txApp.findCollectionByNameOrId('strategy_asset_targets'))
+      targetRecord.set('owner', args.userId)
+      targetRecord.set('strategy', args.strategyId)
+      targetRecord.set('assetClass', args.assetClass)
+    }
+
+    targetRecord.set('targetPct', args.targetPct)
+    targetRecord.set('minPct', Math.max(0, args.targetPct - 5))
+    targetRecord.set('maxPct', Math.min(100, args.targetPct + 5))
+    targetRecord.set('priority', args.priority)
+    targetRecord.set('isActive', args.targetPct > 0)
+    targetRecord.set('settings', {
+      source: 'accounts_rebalance_form',
+    })
+    txApp.save(targetRecord)
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/rebalance/runs/create:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/rebalance/runs/create:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/rebalance/runs/create:start', {
+    userId,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+
+    const targets = buildTargets(form)
+    const totalTargetPct = targetTotal(targets)
+    if (Math.round(totalTargetPct * 10) / 10 !== 100) throw new Error('목표 비중 합계는 100%여야 합니다.')
+
+    dbg('seedlab/xapi/rebalance/runs/create:db-access', { collection: 'account_holdings' })
+    const holdings = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-marketValue', 200, 0, { owner: userId })
+    if (holdings.length === 0) throw new Error('리밸런싱할 보유 종목이 없습니다.')
+
+    const currentValues = {
+      equity: 0,
+      fixed_income: 0,
+      cash: 0,
+      alternative: 0,
+    }
+    let totalValue = 0
+
+    for (let index = 0; index < holdings.length; index += 1) {
+      const holding = holdings[index]
+      const assetClass = holdingAssetClass(holding)
+      const marketValue = readNumber(holding.get('marketValue'))
+      currentValues[assetClass] += marketValue
+      totalValue += marketValue
+    }
+
+    if (totalValue <= 0) throw new Error('평가금액이 있어야 리밸런싱할 수 있습니다.')
+
+    const classKeys = ['equity', 'fixed_income', 'cash', 'alternative']
+    const now = new Date().toISOString()
+    let runId = ''
+    let maxDriftPct = 0
+    const classSummary = {}
+
+    $app.runInTransaction(function (txApp) {
+      const strategyRecord = findOrCreateStrategy(txApp, userId, targets)
+      const strategyId = String(strategyRecord.get('id') || '')
+
+      for (let index = 0; index < classKeys.length; index += 1) {
+        const assetClass = classKeys[index]
+        upsertClassTarget(txApp, {
+          userId,
+          strategyId,
+          assetClass,
+          targetPct: targets[assetClass],
+          priority: index + 1,
+        })
+      }
+
+      const runRecord = new Record(txApp.findCollectionByNameOrId('rebalance_runs'))
+      runRecord.set('owner', userId)
+      runRecord.set('strategy', strategyId)
+      runRecord.set('account', '')
+      runRecord.set('runAt', now)
+      runRecord.set('status', 'draft')
+      runRecord.set('baseCurrency', 'KRW')
+      runRecord.set('totalValue', totalValue)
+      runRecord.set('settings', {
+        source: 'accounts_rebalance_form',
+        targetSum: totalTargetPct,
+        orderSafety: 'draft_only_no_broker_order',
+      })
+      txApp.save(runRecord)
+      runId = String(runRecord.get('id') || '')
+
+      for (let index = 0; index < classKeys.length; index += 1) {
+        const assetClass = classKeys[index]
+        const currentValue = currentValues[assetClass]
+        const currentPct = totalValue > 0 ? roundPct((currentValue / totalValue) * 100) : 0
+        const targetPct = targets[assetClass]
+        const targetValue = totalValue * (targetPct / 100)
+        const deltaAmount = targetValue - currentValue
+        const driftPct = Math.abs(targetPct - currentPct)
+        const side = Math.abs(deltaAmount) < 1000 ? 'HOLD' : deltaAmount > 0 ? 'BUY' : 'SELL'
+        const itemRecord = new Record(txApp.findCollectionByNameOrId('rebalance_items'))
+
+        if (driftPct > maxDriftPct) maxDriftPct = driftPct
+        classSummary[assetClass] = {
+          label: classLabel(assetClass),
+          currentValue,
+          currentPct,
+          targetPct,
+          targetValue,
+          deltaAmount,
+          side,
+        }
+
+        itemRecord.set('owner', userId)
+        itemRecord.set('run', runId)
+        itemRecord.set('account', '')
+        itemRecord.set('asset', '')
+        itemRecord.set('assetClass', assetClass)
+        itemRecord.set('side', side)
+        itemRecord.set('currentValue', currentValue)
+        itemRecord.set('currentPct', currentPct)
+        itemRecord.set('targetPct', targetPct)
+        itemRecord.set('targetValue', targetValue)
+        itemRecord.set('deltaAmount', deltaAmount)
+        itemRecord.set('priority', index + 1)
+        itemRecord.set('reason', classLabel(assetClass) + ' 비중을 ' + currentPct + '%에서 ' + targetPct + '%로 맞추는 초안입니다.')
+        itemRecord.set('status', 'draft')
+        itemRecord.set('checks', {
+          brokerOrderBlocked: true,
+          orderSafety: 'draft_only_no_broker_order',
+        })
+        txApp.save(itemRecord)
+      }
+
+      runRecord.set('driftPct', maxDriftPct)
+      runRecord.set('summaryText', '자산군 목표와 현재 비중의 최대 차이는 ' + roundPct(maxDriftPct) + '%입니다.')
+      runRecord.set('classSummary', classSummary)
+      txApp.save(runRecord)
+    })
+
+    info('seedlab/xapi/rebalance/runs/create:success', {
+      userId,
+      runId,
+      totalValue,
+      maxDriftPct,
+    })
+
+    dbg('seedlab/xapi/rebalance/runs/create:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '리밸런싱 초안을 만들었습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '리밸런싱 초안을 만들었습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/rebalance/runs/create:failed', {
+      userId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/rebalance/runs/create:redirect', {
+    status: 303,
+    redirectTo: '/accounts',
+    message: errorMessage || '리밸런싱 초안 생성에 실패했습니다.',
+  })
+  redirect('/accounts', {
+    status: 303,
+    message: errorMessage || '리밸런싱 초안 생성에 실패했습니다.',
+  })
+  return
+</script>

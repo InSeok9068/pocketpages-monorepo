@@ -1,13 +1,31 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { createRequire } from 'node:module'
+import Module, { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
+let envProvider = () => ''
+const pocketpagesGlobalApi = {
+  env(name) {
+    return envProvider(name)
+  },
+}
+const originalLoad = Module._load
+
+Module._load = function loadTestModule(request, parent, isMain) {
+  if (request === 'pocketpages') {
+    return {
+      globalApi: pocketpagesGlobalApi,
+    }
+  }
+
+  return originalLoad.call(this, request, parent, isMain)
+}
+
 const { createTossApiClient } = require('../pb_hooks/pages/_private/toss-api.js')
 
 afterEach(() => {
   delete global.$http
-  delete global.env
+  envProvider = () => ''
 })
 
 test('request skips empty query values and encodes arrays as comma-separated symbols', () => {
@@ -129,6 +147,38 @@ test('account APIs issue token and attach X-Tossinvest-Account', () => {
   assert.equal(calls[1].headers['X-Tossinvest-Account'], '12')
 })
 
+test('account APIs surface OAuth error descriptions from token response', () => {
+  const calls = []
+  global.$http = {
+    send(options) {
+      calls.push(options)
+      return {
+        statusCode: 401,
+        headers: {},
+        json: {
+          error: 'invalid_client',
+          error_description: 'Client authentication failed.',
+        },
+        body: [],
+      }
+    },
+  }
+
+  const client = createTossApiClient({
+    baseUrl: 'https://example.test',
+    clientId: 'client-id',
+    clientSecret: 'client-secret',
+  })
+  const result = client.getAccounts()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.operationId, 'issueOAuth2Token')
+  assert.equal(result.statusCode, 401)
+  assert.equal(result.errorMessage, 'Client authentication failed.')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, 'https://example.test/oauth2/token')
+})
+
 test('client reads Toss credential env names', () => {
   const calls = []
   const envValues = {
@@ -137,7 +187,7 @@ test('client reads Toss credential env names', () => {
     TOSSINVEST_ACCOUNT_SEQ: '34',
   }
 
-  global.env = (name) => envValues[name] || ''
+  envProvider = (name) => envValues[name] || ''
   global.$http = {
     send(options) {
       calls.push(options)

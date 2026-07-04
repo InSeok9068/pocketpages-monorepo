@@ -76,6 +76,18 @@
     const accountsResult = toss.getAccounts()
 
     if (!accountsResult.ok) {
+      warn('seedlab/xapi/connections/toss/create:toss-api-failed', {
+        userId,
+        operationId: accountsResult.operationId,
+        statusCode: accountsResult.statusCode,
+        requestId: accountsResult.requestId,
+        errorMessage: accountsResult.errorMessage,
+      })
+
+      if (accountsResult.operationId === 'issueOAuth2Token') {
+        throw new Error('토스증권 인증에 실패했습니다. API Key와 Secret을 확인해 주세요.')
+      }
+
       throw new Error(accountsResult.errorMessage || '토스증권 계좌 조회에 실패했습니다.')
     }
 
@@ -88,7 +100,9 @@
     const accountType = normalizeTossAccountType(rawAccountType)
     const accountNoMasked = maskAccountNo(selectedAccount.accountNo)
     const displayName = displayNameInput || '토스증권'
-    const secretFields = credentialCrypto.buildEncryptedSecret(clientSecret)
+    const secretFields = credentialCrypto.buildEncryptedSecret(clientSecret, {
+      credentialKey: env('SEEDLAB_CREDENTIAL_KEY'),
+    })
     const now = new Date().toISOString()
     let connectionId = ''
 
