@@ -600,8 +600,12 @@
     const preferredHoldingIds = isEditMode ? readPreferredHoldingIds(form) : readObject(settings.preferredHoldingIds)
     const annualReturnPcts = isEditMode ? readAnnualReturnPcts(form, fallbackAnnualReturnPcts) : fallbackAnnualReturnPcts
     const contributionAmount = isEditMode ? readPositiveNumber(form.contributionAmount, '첫 달 추가금') : readNumber(previousSummary.contributionAmount)
-    const monthlyContributionAmount = isEditMode ? readNumber(form.monthlyContributionAmount) : readNumber(settings.monthlyContributionAmount || previousSummary.monthlyContributionAmount || simulationRecord.get('monthlyContribution'))
-    const projectionMonths = isEditMode ? readBoundedInteger(form.projectionMonths, 12, 1, 360) : Math.max(1, Math.floor(readNumber(settings.projectionMonths || previousSummary.projectionMonths || 12)))
+    const monthlyContributionAmount = isEditMode
+      ? readNumber(form.monthlyContributionAmount)
+      : readNumber(settings.monthlyContributionAmount || previousSummary.monthlyContributionAmount || simulationRecord.get('monthlyContribution'))
+    const projectionMonths = isEditMode
+      ? readBoundedInteger(form.projectionMonths, 12, 1, 360)
+      : Math.max(1, Math.floor(readNumber(settings.projectionMonths || previousSummary.projectionMonths || 12)))
     const reserveCashAmount = isEditMode ? readNumber(form.reserveCashAmount) : readNumber(settings.reserveCashAmount)
     const minimumOrderAmount = isEditMode ? readNumber(form.minimumOrderAmount) : readNumber(settings.minimumOrderAmount)
     const priceMode = normalizePriceMode(isEditMode ? form.priceMode : settings.priceMode || previousSummary.priceMode)
@@ -710,7 +714,20 @@
 
       if (isEditMode) {
         deleteSimulationActionBatches(txApp, userId, simulationId)
-        if (createActions) actionCount = saveActionCandidates(txApp, userId, strategyId, simulationId, today, summary, contributionAmount, reserveCashAmount, minimumOrderAmount, monthlyContributionAmount, projectionMonths)
+        if (createActions)
+          actionCount = saveActionCandidates(
+            txApp,
+            userId,
+            strategyId,
+            simulationId,
+            today,
+            summary,
+            contributionAmount,
+            reserveCashAmount,
+            minimumOrderAmount,
+            monthlyContributionAmount,
+            projectionMonths
+          )
       }
     })
 

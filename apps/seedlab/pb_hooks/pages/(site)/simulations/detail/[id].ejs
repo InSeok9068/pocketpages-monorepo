@@ -137,29 +137,29 @@
     <div class="flex items-center justify-between gap-3">
       <p class="text-xs font-bold text-[#3182f6]">실험 상세</p>
       <div class="flex shrink-0 items-center gap-2">
-      <a
-        href="/simulations/edit/<%= simulationCard.id %>"
-        class="inline-flex h-10 items-center justify-center rounded-lg bg-white px-3 text-sm font-bold text-[#4e5968] no-underline shadow-[inset_0_0_0_1px_#e5e8eb] active:bg-[#f2f4f6]">
-        수정
-      </a>
-      <form
-        method="post"
-        action="/xapi/simulations/recalculate">
-        <input
-          type="hidden"
-          name="simulationId"
-          value="<%= simulationCard.id %>" />
-        <button
-          type="submit"
-          class="inline-flex h-10 items-center justify-center rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
-          최신 기준
-        </button>
-      </form>
-      <a
-        href="/simulations"
-        class="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-[#6b7684] no-underline active:bg-[#f2f4f6]">
-        닫기
-      </a>
+        <a
+          href="/simulations/edit/<%= simulationCard.id %>"
+          class="inline-flex h-10 items-center justify-center rounded-lg bg-white px-3 text-sm font-bold text-[#4e5968] no-underline shadow-[inset_0_0_0_1px_#e5e8eb] active:bg-[#f2f4f6]">
+          수정
+        </a>
+        <form
+          method="post"
+          action="/xapi/simulations/recalculate">
+          <input
+            type="hidden"
+            name="simulationId"
+            value="<%= simulationCard.id %>" />
+          <button
+            type="submit"
+            class="inline-flex h-10 items-center justify-center rounded-lg bg-[#3182f6] px-3 text-sm font-bold text-white shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]">
+            최신 기준
+          </button>
+        </form>
+        <a
+          href="/simulations"
+          class="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-[#6b7684] no-underline active:bg-[#f2f4f6]">
+          닫기
+        </a>
       </div>
     </div>
     <h1 class="text-[24px] font-bold leading-tight text-[#191f28]"><%= simulationCard.name %></h1>

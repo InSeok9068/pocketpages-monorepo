@@ -335,9 +335,17 @@
           <select
             name="accountId"
             class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
-            <option value="" <%= formModel.accountId ? '' : 'selected' %>>전체 계좌</option>
+            <option
+              value=""
+              <%= formModel.accountId ? '' : 'selected' %>>
+              전체 계좌
+            </option>
             <% for (let index = 0; index < accountOptions.length; index += 1) { %>
-            <option value="<%= accountOptions[index].id %>" <%= accountOptions[index].selected ? 'selected' : '' %>><%= accountOptions[index].label %></option>
+            <option
+              value="<%= accountOptions[index].id %>"
+              <%= accountOptions[index].selected ? 'selected' : '' %>>
+              <%= accountOptions[index].label %>
+            </option>
             <% } %>
           </select>
         </label>
@@ -384,9 +392,21 @@
           <select
             name="priceMode"
             class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
-            <option value="stored" <%= formModel.priceMode === 'stored' ? 'selected' : '' %>>저장된 현재가</option>
-            <option value="refresh" <%= formModel.priceMode === 'refresh' ? 'selected' : '' %>>토스 현재가 재조회</option>
-            <option value="scenario" <%= formModel.priceMode === 'scenario' ? 'selected' : '' %>>가격 시나리오</option>
+            <option
+              value="stored"
+              <%= formModel.priceMode === 'stored' ? 'selected' : '' %>>
+              저장된 현재가
+            </option>
+            <option
+              value="refresh"
+              <%= formModel.priceMode === 'refresh' ? 'selected' : '' %>>
+              토스 현재가 재조회
+            </option>
+            <option
+              value="scenario"
+              <%= formModel.priceMode === 'scenario' ? 'selected' : '' %>>
+              가격 시나리오
+            </option>
           </select>
         </label>
         <details>
@@ -498,7 +518,11 @@
             class="mt-2 h-9 w-full min-w-0 border-0 bg-transparent p-0 text-sm font-bold text-[#191f28] outline-none">
             <option value="">자동 선택</option>
             <% for (let optionIndex = 0; optionIndex < buyTargetCards[index].options.length; optionIndex += 1) { %>
-            <option value="<%= buyTargetCards[index].options[optionIndex].id %>" <%= buyTargetCards[index].options[optionIndex].selected ? 'selected' : '' %>><%= buyTargetCards[index].options[optionIndex].label %></option>
+            <option
+              value="<%= buyTargetCards[index].options[optionIndex].id %>"
+              <%= buyTargetCards[index].options[optionIndex].selected ? 'selected' : '' %>>
+              <%= buyTargetCards[index].options[optionIndex].label %>
+            </option>
             <% } %>
           </select>
           <% if (buyTargetCards[index].options.length === 0) { %>
