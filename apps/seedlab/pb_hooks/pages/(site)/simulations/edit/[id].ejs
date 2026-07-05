@@ -2,12 +2,13 @@
   const allocationBuckets = resolve('allocation-buckets')
   const contributionExperiment = resolve('contribution-experiment')
   const holdingValuation = resolve('holding-valuation')
+  const simulationView = resolve('simulation-view')
 
-  meta('title', 'SeedLab 추가 투자 실험')
-  meta('description', 'SeedLab 추가 투자 실험')
+  meta('title', 'SeedLab 실험 수정')
+  meta('description', 'SeedLab 투자 실험 수정')
 
   if (!request.auth) {
-    dbg('seedlab/simulations/new:redirect', {
+    dbg('seedlab/simulations/edit/[id]:redirect', {
       status: 303,
       redirectTo: '/sign-in',
       message: '로그인이 필요합니다.',
@@ -20,11 +21,13 @@
   }
 
   const userId = String(request.auth.get('id') || '')
+  const simulationId = String(params.id || '')
+  const assetsById = {}
   let accountOptions = []
   let targetBucketCards = []
   let returnBucketCards = []
   let buyTargetCards = []
-  const assetsById = {}
+  let formModel = null
 
   function accountTypeLabel(value) {
     const labels = {
@@ -37,6 +40,20 @@
     }
 
     return labels[String(value || '')] || '계좌'
+  }
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function readObject(value) {
+    return simulationView.readObject(value)
+  }
+
+  function readNumber(value) {
+    const text = cleanText(value).replace(/,/g, '').replace(/원/g, '').replace(/%/g, '')
+    const number = Number(text)
+    return isFinite(number) ? number : 0
   }
 
   function formatNumber(value, maximumFractionDigits) {
@@ -54,17 +71,10 @@
     return formatNumber(value, String(currency || 'KRW') === 'USD' ? 2 : 0)
   }
 
-  function readObject(value) {
-    if (value && typeof value === 'object' && !Array.isArray(value)) return value
-    if (typeof value === 'string' && value.trim()) {
-      try {
-        const parsed = JSON.parse(value)
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
-      } catch (_exception) {
-        return {}
-      }
-    }
-    return {}
+  function normalizeAssetClass(value) {
+    const key = String(value || '')
+    if (key === 'equity' || key === 'fixed_income' || key === 'cash' || key === 'alternative') return key
+    return 'equity'
   }
 
   function readAssetRecord(assetId) {
@@ -73,26 +83,20 @@
     if (Object.prototype.hasOwnProperty.call(assetsById, id)) return assetsById[id]
 
     try {
-      dbg('seedlab/simulations/new:db-access', { collection: 'assets', assetId: id })
+      dbg('seedlab/simulations/edit/[id]:db-access', { collection: 'assets', assetId: id })
       assetsById[id] = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id })
     } catch (exception) {
-      warn('seedlab/simulations/new:db-access-failed', { collection: 'assets', assetId: id, error: String(exception.message || exception) })
+      warn('seedlab/simulations/edit/[id]:db-access-failed', { collection: 'assets', assetId: id, error: String(exception.message || exception) })
       assetsById[id] = null
     }
 
     return assetsById[id]
   }
 
-  function normalizeAssetClass(value) {
-    const key = String(value || '')
-    if (key === 'equity' || key === 'fixed_income' || key === 'cash' || key === 'alternative') return key
-    return 'equity'
-  }
-
   function readSavedAllocationBucket(holding) {
     const raw = readObject(holding.get('raw'))
     const seedlab = readObject(raw.seedlab)
-    return allocationBuckets.normalizeBucket(seedlab.allocationBucket)
+    return allocationBuckets.normalizeBucket(raw.allocationBucket || seedlab.allocationBucket)
   }
 
   function inferAllocationBucket(holding, asset) {
@@ -116,58 +120,31 @@
 
   function readLatestUsdKrwRate() {
     try {
-      dbg('seedlab/simulations/new:db-access', { collection: 'fx_rates' })
+      dbg('seedlab/simulations/edit/[id]:db-access', { collection: 'fx_rates' })
       const records = $app.findRecordsByFilter('fx_rates', 'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}', '-rateAt', 1, 0, {
         baseCurrency: 'USD',
         quoteCurrency: 'KRW',
       })
       return records.length > 0 ? Number(records[0].get('rate') || 0) : 0
     } catch (exception) {
-      dbg('seedlab/simulations/new:fx-rate-missing', { pair: 'USD_KRW' })
+      dbg('seedlab/simulations/edit/[id]:fx-rate-missing', { pair: 'USD_KRW' })
       return 0
     }
   }
 
-  function readTargetSettings() {
-    const targets = allocationBuckets.defaultTargets()
+  function mergeBucketNumbers(base, source) {
+    const buckets = allocationBuckets.listBuckets()
+    const next = Object.assign({}, base)
 
-    try {
-      dbg('seedlab/simulations/new:db-access', { collection: 'investment_strategies' })
-      const strategyRecords = $app.findRecordsByFilter('investment_strategies', 'owner = {:owner} && strategyType = {:strategyType}', '-updated', 50, 0, {
-        owner: userId,
-        strategyType: 'real',
-      })
-      let strategyRecord = null
-
-      for (let index = 0; index < strategyRecords.length; index += 1) {
-        if (String(strategyRecords[index].get('name') || '') === '기본 리밸런싱') {
-          strategyRecord = strategyRecords[index]
-          break
-        }
-      }
-
-      if (!strategyRecord && strategyRecords.length > 0) strategyRecord = strategyRecords[0]
-      if (!strategyRecord) throw new Error('no_saved_targets')
-
-      const buckets = allocationBuckets.listBuckets()
-      let savedTotal = 0
-      for (let index = 0; index < buckets.length; index += 1) {
-        const value = Number(strategyRecord.get(buckets[index].targetField) || 0)
-        if (isFinite(value)) {
-          targets[buckets[index].key] = value
-          savedTotal += value
-        }
-      }
-      if (savedTotal <= 0) throw new Error('no_saved_targets')
-    } catch (exception) {
-      dbg('seedlab/simulations/new:target-defaults', { reason: 'no_saved_targets' })
+    for (let index = 0; index < buckets.length; index += 1) {
+      const key = buckets[index].key
+      if (source && Object.prototype.hasOwnProperty.call(source, key)) next[key] = readNumber(source[key])
     }
 
-    return targets
+    return next
   }
 
-  function buildTargetBucketCards() {
-    const targets = readTargetSettings()
+  function buildTargetBucketCards(targets) {
     const buckets = allocationBuckets.listBuckets()
     return buckets.map(function (bucket) {
       return {
@@ -180,8 +157,7 @@
     })
   }
 
-  function buildReturnBucketCards() {
-    const annualReturnPcts = contributionExperiment.defaultAnnualReturnPcts()
+  function buildReturnBucketCards(annualReturnPcts) {
     const buckets = allocationBuckets.listBuckets()
     return buckets.map(function (bucket) {
       return {
@@ -194,18 +170,19 @@
     })
   }
 
-  function buildHoldingOptionsByBucket() {
+  function buildHoldingOptionsByBucket(selectedAccountId, preferredHoldingIds, latestUsdKrwRate) {
     const buckets = allocationBuckets.listBuckets()
     const optionsByBucket = {}
-    const latestUsdKrwRate = readLatestUsdKrwRate()
+    const filter = selectedAccountId ? 'owner = {:owner} && account = {:account}' : 'owner = {:owner}'
+    const filterParams = selectedAccountId ? { owner: userId, account: selectedAccountId } : { owner: userId }
 
     for (let index = 0; index < buckets.length; index += 1) {
       optionsByBucket[buckets[index].key] = []
     }
 
     try {
-      dbg('seedlab/simulations/new:db-access', { collection: 'account_holdings' })
-      const holdingRecords = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-marketValue', 200, 0, { owner: userId })
+      dbg('seedlab/simulations/edit/[id]:db-access', { collection: 'account_holdings' })
+      const holdingRecords = $app.findRecordsByFilter('account_holdings', filter, '-marketValue', 200, 0, filterParams)
       for (let index = 0; index < holdingRecords.length; index += 1) {
         const holding = holdingRecords[index]
         const asset = readAssetRecord(holding.get('asset'))
@@ -213,7 +190,7 @@
         const currency = String(holding.get('currency') || (asset ? asset.get('currency') : 'KRW') || 'KRW')
         const bucketKey = inferAllocationBucket(holding, asset)
         const symbol = String(asset ? asset.get('symbol') : '') || 'UNKNOWN'
-        const name = String(asset ? asset.get('name') : '') || '종목 정보 없음'
+        const name = String(asset ? asset.get('name') : '') || symbol
         const marketValue = holdingValuation.readKrwAmount({
           currency,
           raw,
@@ -226,21 +203,21 @@
         if (!optionsByBucket[bucketKey]) optionsByBucket[bucketKey] = []
         optionsByBucket[bucketKey].push({
           id: String(holding.get('id') || ''),
-          symbol,
-          label: name || symbol,
+          label: name,
+          selected: cleanText(preferredHoldingIds[bucketKey]) === String(holding.get('id') || ''),
           subText: formatAmount(marketValue, 'KRW') + '원 · 현재가 ' + formatAmount(holding.get('currentPrice'), currency) + (currency === 'USD' ? '달러' : '원'),
         })
       }
     } catch (exception) {
-      warn('seedlab/simulations/new:db-access-failed', { collection: 'account_holdings', error: String(exception.message || exception) })
+      warn('seedlab/simulations/edit/[id]:db-access-failed', { collection: 'account_holdings', error: String(exception.message || exception) })
     }
 
     return optionsByBucket
   }
 
-  function buildBuyTargetCards() {
+  function buildBuyTargetCards(selectedAccountId, preferredHoldingIds, latestUsdKrwRate) {
     const buckets = allocationBuckets.listBuckets()
-    const optionsByBucket = buildHoldingOptionsByBucket()
+    const optionsByBucket = buildHoldingOptionsByBucket(selectedAccountId, preferredHoldingIds, latestUsdKrwRate)
     const cards = []
 
     for (let index = 0; index < buckets.length; index += 1) {
@@ -258,24 +235,59 @@
     return cards
   }
 
-  if (userId) {
-    try {
-      dbg('seedlab/simulations/new:db-access', { collection: 'portfolio_accounts' })
-      const accountRecords = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner} && isActive = true', '-updated', 50, 0, { owner: userId })
-      accountOptions = accountRecords.map(function (record) {
-        return {
-          id: String(record.get('id') || ''),
-          label: String(record.get('name') || '계좌') + ' · ' + accountTypeLabel(record.get('accountType')),
-        }
-      })
-    } catch (exception) {
-      warn('seedlab/simulations/new:db-access-failed', { collection: 'portfolio_accounts', error: String(exception.message || exception) })
-      accountOptions = []
+  try {
+    if (!simulationId) throw new Error('실험이 필요합니다.')
+
+    dbg('seedlab/simulations/edit/[id]:db-access', { collection: 'simulations', simulationId })
+    const simulationRecord = $app.findFirstRecordByFilter('simulations', 'id = {:id} && owner = {:owner}', {
+      id: simulationId,
+      owner: userId,
+    })
+    const settings = readObject(simulationRecord.get('settings'))
+    const summary = readObject(simulationRecord.get('summary'))
+    const targets = mergeBucketNumbers(allocationBuckets.defaultTargets(), readObject(settings.targets || summary.targets))
+    const annualReturnPcts = mergeBucketNumbers(contributionExperiment.defaultAnnualReturnPcts(), readObject(settings.annualReturnPcts || summary.annualReturnPcts))
+    const preferredHoldingIds = readObject(settings.preferredHoldingIds)
+    const selectedAccountId = cleanText(settings.accountId)
+    const latestUsdKrwRate = readNumber(settings.latestUsdKrwRate || summary.latestUsdKrwRate) || readLatestUsdKrwRate()
+
+    formModel = {
+      id: simulationId,
+      name: cleanText(simulationRecord.get('name')) || '추가 투자 실험',
+      accountId: selectedAccountId,
+      contributionAmount: formatNumber(readNumber(summary.contributionAmount) || 500000, 0),
+      monthlyContributionAmount: formatNumber(readNumber(settings.monthlyContributionAmount || summary.monthlyContributionAmount || simulationRecord.get('monthlyContribution')), 0),
+      projectionMonths: formatNumber(readNumber(settings.projectionMonths || summary.projectionMonths || 12), 0),
+      priceMode: cleanText(settings.priceMode || summary.priceMode || 'stored'),
+      reserveCashAmount: formatNumber(readNumber(settings.reserveCashAmount || summary.reserveCashAmount), 0),
+      minimumOrderAmount: formatNumber(readNumber(settings.minimumOrderAmount || summary.minimumOrderAmount), 0),
+      priceChangePct: formatNumber(readNumber(settings.priceChangePct || summary.priceChangePct), 1),
+      usdKrwRate: latestUsdKrwRate > 0 ? formatNumber(latestUsdKrwRate, 2) : '',
     }
 
-    targetBucketCards = buildTargetBucketCards()
-    returnBucketCards = buildReturnBucketCards()
-    buyTargetCards = buildBuyTargetCards()
+    dbg('seedlab/simulations/edit/[id]:db-access', { collection: 'portfolio_accounts' })
+    const accountRecords = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner} && isActive = true', '-updated', 50, 0, { owner: userId })
+    accountOptions = accountRecords.map(function (record) {
+      return {
+        id: String(record.get('id') || ''),
+        selected: String(record.get('id') || '') === selectedAccountId,
+        label: String(record.get('name') || '계좌') + ' · ' + accountTypeLabel(record.get('accountType')),
+      }
+    })
+    targetBucketCards = buildTargetBucketCards(targets)
+    returnBucketCards = buildReturnBucketCards(annualReturnPcts)
+    buyTargetCards = buildBuyTargetCards(selectedAccountId, preferredHoldingIds, latestUsdKrwRate)
+  } catch (exception) {
+    warn('seedlab/simulations/edit/[id]:redirect', {
+      status: 303,
+      redirectTo: '/simulations',
+      message: String(exception.message || exception),
+    })
+    redirect('/simulations', {
+      status: 303,
+      message: String(exception.message || exception),
+    })
+    return
   }
 </script>
 
@@ -283,10 +295,10 @@
   <header class="flex items-center justify-between">
     <div>
       <p class="text-xs font-bold text-[#3182f6]">실험</p>
-      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">투자 실험 만들기</h1>
+      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">투자 실험 수정</h1>
     </div>
     <a
-      href="/simulations"
+      href="/simulations/detail/<%= formModel.id %>"
       class="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-[#6b7684] no-underline active:bg-[#f2f4f6]">
       닫기
     </a>
@@ -297,33 +309,16 @@
 
     <form
       method="post"
-      action="/xapi/simulations/create"
+      action="/xapi/simulations/recalculate"
       class="space-y-4">
-      <section class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
-        <div class="flex items-start gap-3">
-          <span
-            class="i-lucide-route mt-0.5 h-5 w-5 shrink-0 text-[#3182f6]"
-            aria-hidden="true"></span>
-          <div class="min-w-0">
-            <p class="text-sm font-bold leading-5 text-[#191f28]">매달 넣을 돈이 목표 비중을 얼마나 바꾸는지 계산합니다</p>
-            <p class="mt-1 text-xs font-medium leading-5 text-[#6b7684]">결과는 월별 예상 경로와 첫 달 매수 후보로 나뉩니다.</p>
-          </div>
-        </div>
-        <div class="mt-4 grid grid-cols-3 gap-2 text-center">
-          <div class="rounded-lg bg-[#f7f8fa] px-2 py-2">
-            <p class="text-[10px] font-bold text-[#8b95a1]">가정</p>
-            <p class="mt-1 text-xs font-bold text-[#191f28]">납입</p>
-          </div>
-          <div class="rounded-lg bg-[#f7f8fa] px-2 py-2">
-            <p class="text-[10px] font-bold text-[#8b95a1]">규칙</p>
-            <p class="mt-1 text-xs font-bold text-[#191f28]">목표 비중</p>
-          </div>
-          <div class="rounded-lg bg-[#f7f8fa] px-2 py-2">
-            <p class="text-[10px] font-bold text-[#8b95a1]">결과</p>
-            <p class="mt-1 text-xs font-bold text-[#191f28]">월별 추이</p>
-          </div>
-        </div>
-      </section>
+      <input
+        type="hidden"
+        name="simulationId"
+        value="<%= formModel.id %>" />
+      <input
+        type="hidden"
+        name="editMode"
+        value="on" />
 
       <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
         <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
@@ -332,7 +327,7 @@
             type="text"
             name="name"
             required
-            value="이번 달 추가 투자"
+            value="<%= formModel.name %>"
             class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
         </label>
         <label class="grid grid-cols-[92px_1fr] items-center gap-3 px-4 py-3">
@@ -340,9 +335,9 @@
           <select
             name="accountId"
             class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
-            <option value="">전체 계좌</option>
+            <option value="" <%= formModel.accountId ? '' : 'selected' %>>전체 계좌</option>
             <% for (let index = 0; index < accountOptions.length; index += 1) { %>
-            <option value="<%= accountOptions[index].id %>"><%= accountOptions[index].label %></option>
+            <option value="<%= accountOptions[index].id %>" <%= accountOptions[index].selected ? 'selected' : '' %>><%= accountOptions[index].label %></option>
             <% } %>
           </select>
         </label>
@@ -357,7 +352,7 @@
             required
             min="0"
             step="10000"
-            value="500000"
+            value="<%= formModel.contributionAmount %>"
             class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
         </label>
         <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
@@ -367,7 +362,7 @@
             name="monthlyContributionAmount"
             min="0"
             step="10000"
-            value="500000"
+            value="<%= formModel.monthlyContributionAmount %>"
             class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
         </label>
         <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
@@ -379,7 +374,7 @@
               min="1"
               max="360"
               step="1"
-              value="12"
+              value="<%= formModel.projectionMonths %>"
               class="h-9 w-24 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
             <span class="text-sm font-bold text-[#8b95a1]">개월</span>
           </div>
@@ -389,9 +384,9 @@
           <select
             name="priceMode"
             class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
-            <option value="stored">저장된 현재가</option>
-            <option value="refresh">토스 현재가 재조회</option>
-            <option value="scenario">가격 시나리오</option>
+            <option value="stored" <%= formModel.priceMode === 'stored' ? 'selected' : '' %>>저장된 현재가</option>
+            <option value="refresh" <%= formModel.priceMode === 'refresh' ? 'selected' : '' %>>토스 현재가 재조회</option>
+            <option value="scenario" <%= formModel.priceMode === 'scenario' ? 'selected' : '' %>>가격 시나리오</option>
           </select>
         </label>
         <details>
@@ -408,7 +403,7 @@
               name="reserveCashAmount"
               min="0"
               step="10000"
-              value="0"
+              value="<%= formModel.reserveCashAmount %>"
               class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
           </label>
           <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-t border-[#f2f4f6] px-4 py-3">
@@ -418,7 +413,7 @@
               name="minimumOrderAmount"
               min="0"
               step="10000"
-              value="0"
+              value="<%= formModel.minimumOrderAmount %>"
               class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
           </label>
           <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-t border-[#f2f4f6] px-4 py-3">
@@ -428,7 +423,7 @@
                 type="number"
                 name="priceChangePct"
                 step="0.1"
-                value="0"
+                value="<%= formModel.priceChangePct %>"
                 class="h-9 w-24 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
               <span class="text-sm font-bold text-[#8b95a1]">%</span>
             </div>
@@ -441,6 +436,7 @@
               min="0"
               step="0.01"
               placeholder="자동"
+              value="<%= formModel.usdKrwRate %>"
               class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
           </label>
         </details>
@@ -502,7 +498,7 @@
             class="mt-2 h-9 w-full min-w-0 border-0 bg-transparent p-0 text-sm font-bold text-[#191f28] outline-none">
             <option value="">자동 선택</option>
             <% for (let optionIndex = 0; optionIndex < buyTargetCards[index].options.length; optionIndex += 1) { %>
-            <option value="<%= buyTargetCards[index].options[optionIndex].id %>"><%= buyTargetCards[index].options[optionIndex].label %></option>
+            <option value="<%= buyTargetCards[index].options[optionIndex].id %>" <%= buyTargetCards[index].options[optionIndex].selected ? 'selected' : '' %>><%= buyTargetCards[index].options[optionIndex].label %></option>
             <% } %>
           </select>
           <% if (buyTargetCards[index].options.length === 0) { %>
@@ -513,7 +509,7 @@
       </div>
 
       <label class="flex min-h-12 items-center justify-between gap-4 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
-        <span class="text-sm font-bold text-[#191f28]">주문 후보 만들기</span>
+        <span class="text-sm font-bold text-[#191f28]">주문 후보 다시 만들기</span>
         <input
           type="checkbox"
           name="createActions"
@@ -525,9 +521,9 @@
       <button
         type="submit"
         class="box-border flex h-12 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#191f28] px-4 text-base font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.16)] active:bg-[#333d4b]">
-        계산하기
+        수정 저장
         <span
-          class="i-lucide-calculator h-5 w-5"
+          class="i-lucide-save h-5 w-5"
           aria-hidden="true"></span>
       </button>
     </form>

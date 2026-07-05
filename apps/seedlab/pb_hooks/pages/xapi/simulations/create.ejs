@@ -618,7 +618,7 @@
           actionItem.set('targetAmount', Number(candidate.spendKrw || 0))
           actionItem.set('targetQuantity', Number(candidate.quantity || 0))
           actionItem.set('limitPrice', Number(candidate.price || 0))
-          actionItem.set('reason', candidate.bucketLabel + ' 목표 비중에 맞춘 ' + candidate.symbol + ' 매수 후보입니다.')
+          actionItem.set('reason', candidate.bucketLabel + ' 목표 비중에 맞춘 ' + (candidate.name || candidate.symbol) + ' 매수 후보입니다.')
           actionItem.set('status', 'draft')
           actionItem.set('checks', {
             mockOnly: true,

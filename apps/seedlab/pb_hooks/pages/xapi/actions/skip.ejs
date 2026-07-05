@@ -1,0 +1,102 @@
+<script server>
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function requireText(value, name) {
+    const text = cleanText(value)
+    if (!text) throw new Error(name + '이 필요합니다.')
+    return text
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/actions/skip:redirect', {
+      status: 303,
+      redirectTo: '/',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/actions/skip:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const actionItemId = cleanText(form.actionItemId)
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/actions/skip:start', {
+    userId,
+    hasActionItemId: !!actionItemId,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    requireText(actionItemId, '주문 후보')
+
+    const actionItem = $app.findFirstRecordByFilter('action_items', 'id = {:id} && owner = {:owner}', {
+      id: actionItemId,
+      owner: userId,
+    })
+
+    const actionStatus = cleanText(actionItem.get('status'))
+    if (actionStatus !== 'draft' && actionStatus !== 'approved') {
+      throw new Error('건너뛸 수 있는 주문 후보가 아닙니다.')
+    }
+
+    actionItem.set('status', 'skipped')
+    actionItem.set('checks', {
+      skipped: true,
+      skippedAt: new Date().toISOString(),
+    })
+    $app.save(actionItem)
+
+    info('seedlab/xapi/actions/skip:success', {
+      userId,
+      actionItemId,
+    })
+
+    dbg('seedlab/xapi/actions/skip:redirect', {
+      status: 303,
+      redirectTo: '/actions',
+      message: '매수 후보를 건너뛰었습니다.',
+    })
+    redirect('/actions', {
+      status: 303,
+      message: '매수 후보를 건너뛰었습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/actions/skip:failed', {
+      userId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/actions/skip:redirect', {
+    status: 303,
+    redirectTo: '/actions',
+    message: errorMessage || '매수 후보 건너뛰기에 실패했습니다.',
+  })
+  redirect('/actions', {
+    status: 303,
+    message: errorMessage || '매수 후보 건너뛰기에 실패했습니다.',
+  })
+  return
+</script>

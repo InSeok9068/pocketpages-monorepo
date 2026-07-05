@@ -1,6 +1,6 @@
 <script server>
-  meta('title', 'SeedLab 액션')
-  meta('description', 'SeedLab 주문 후보와 모의 제출')
+  meta('title', 'SeedLab 주문')
+  meta('description', 'SeedLab 매수 후보와 주문 기록')
 
   if (!request.auth) {
     dbg('seedlab/actions:index:redirect', {
@@ -22,10 +22,23 @@
   let draftCount = 0
   let submittedCount = 0
 
+  function formatIntegerText(value) {
+    const text = String(Math.round(value))
+    let result = ''
+
+    for (let index = text.length; index > 0; index -= 3) {
+      const start = index - 3 > 0 ? index - 3 : 0
+      const part = text.slice(start, index)
+      result = result ? part + ',' + result : part
+    }
+
+    return result || '0'
+  }
+
   function formatAmount(value) {
     const number = Number(value || 0)
     if (!isFinite(number)) return '0'
-    return String(Math.round(number)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    return formatIntegerText(number)
   }
 
   function formatQuantity(value) {
@@ -33,21 +46,30 @@
     if (!isFinite(number)) return '0'
     const fixed = number.toFixed(6).replace(/0+$/, '').replace(/\.$/, '')
     const parts = fixed.split('.')
-    return parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (parts[1] ? '.' + parts[1] : '')
+    return formatIntegerText(Number(parts[0] || 0)) + (parts[1] ? '.' + parts[1] : '')
   }
 
   function statusLabel(value) {
     const labels = {
-      draft: '검토',
-      approved: '승인',
-      submitted: '제출',
+      draft: '검토 대기',
+      approved: '기록 가능',
+      submitted: '기록됨',
       skipped: '보류',
     }
 
     return labels[String(value || '')] || '대기'
   }
 
-  function canMockSubmitStatus(status) {
+  function sideLabel(value) {
+    const labels = {
+      BUY: '매수',
+      SELL: '매도',
+    }
+
+    return labels[String(value || '')] || '주문'
+  }
+
+  function canRecordOrderStatus(status) {
     return status === 'draft' || status === 'approved'
   }
 
@@ -77,16 +99,17 @@
 
     return {
       id: String(record.get('id') || ''),
-      sideText: side || 'ORDER',
+      sideLabel: sideLabel(side),
       symbol,
       assetName,
+      displayName: assetName || symbol,
       orderType: String(record.get('orderType') || 'MARKET'),
-      reason: String(record.get('reason') || '전략 기준 주문 후보입니다.'),
+      reason: String(record.get('reason') || '목표 비중에 맞춘 주문 후보입니다.'),
       status,
       statusLabel: statusLabel(status),
       targetAmountText: formatAmount(record.get('targetAmount')),
       quantityText: quantity > 0 ? formatQuantity(quantity) + '주' : '',
-      canMockSubmit: canMockSubmitStatus(status),
+      canRecordOrder: canRecordOrderStatus(status),
       iconClass: side === 'BUY' ? 'bg-[#e8f3ff] text-[#3182f6]' : 'bg-[#fff6e5] text-[#b76e00]',
       iconName: side === 'BUY' ? 'i-lucide-arrow-down-left' : 'i-lucide-arrow-up-right',
     }
@@ -96,7 +119,12 @@
     try {
       dbg('seedlab/actions:index:db-access', { collection: 'action_items' })
       const actionRecords = $app.findRecordsByFilter('action_items', 'owner = {:owner}', '-created', 50, 0, { owner: userId })
-      actionCards = actionRecords.map(buildActionCard)
+      const allActionCards = actionRecords.map(buildActionCard)
+
+      for (let index = 0; index < allActionCards.length; index += 1) {
+        if (allActionCards[index].canRecordOrder) actionCards.push(allActionCards[index])
+        if (allActionCards[index].status === 'submitted') submittedCount += 1
+      }
     } catch (exception) {
       warn('seedlab/actions:index:db-access-failed', { collection: 'action_items', error: String(exception.message || exception) })
       actionCards = []
@@ -110,25 +138,23 @@
       orderCount = 0
     }
 
-    for (let index = 0; index < actionCards.length; index += 1) {
-      if (actionCards[index].canMockSubmit) draftCount += 1
-      if (actionCards[index].status === 'submitted') submittedCount += 1
-    }
+    draftCount = actionCards.length
   }
 </script>
 
 <div class="space-y-4 pb-2 pt-1">
   <header class="flex items-center justify-between">
     <div>
-      <p class="text-xs font-bold text-[#3182f6]">액션</p>
-      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">주문 후보</h1>
+      <p class="text-xs font-bold text-[#3182f6]">주문</p>
+      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">매수 후보</h1>
     </div>
     <a
       href="/simulations/new"
-      class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#3182f6] text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]"
+      class="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#3182f6] px-3 text-xs font-bold text-white no-underline shadow-[0_8px_18px_rgba(49,130,246,0.18)] active:bg-[#1b64da]"
       aria-label="전략 실험 만들기">
+      실험
       <span
-        class="i-lucide-plus h-5 w-5"
+        class="i-lucide-plus h-4 w-4"
         aria-hidden="true"></span>
     </a>
   </header>
@@ -138,15 +164,15 @@
   <section class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
     <div class="grid grid-cols-3 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
       <div class="min-w-0">
-        <p class="truncate text-[10px] font-bold text-[#8b95a1]">후보</p>
-        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= actionCards.length %></p>
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">검토 대기</p>
+        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= draftCount %></p>
       </div>
       <div class="min-w-0">
-        <p class="truncate text-[10px] font-bold text-[#8b95a1]">제출</p>
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">기록됨</p>
         <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= submittedCount %></p>
       </div>
       <div class="min-w-0">
-        <p class="truncate text-[10px] font-bold text-[#8b95a1]">주문</p>
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">주문 기록</p>
         <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= orderCount %></p>
       </div>
     </div>
@@ -154,14 +180,15 @@
 
   <section class="space-y-3">
     <div class="flex items-center justify-between">
-      <h2 class="text-base font-bold text-[#191f28]">검토할 액션</h2>
+      <h2 class="text-base font-bold text-[#191f28]">검토할 매수 후보</h2>
       <span class="text-sm font-bold text-[#3182f6]"><%= draftCount %>개</span>
     </div>
+    <p class="-mt-1 text-xs font-medium leading-5 text-[#8b95a1]">실제 주문은 나가지 않고, 검토한 후보를 기록으로만 남깁니다.</p>
 
     <% if (actionCards.length === 0) { %>
     <div class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
       <p class="text-sm font-bold text-[#191f28]">아직 주문 후보가 없습니다</p>
-      <p class="mt-1 text-sm leading-5 text-[#6b7684]">추가 투자 실험을 만들면 검토할 매수 후보가 여기에 표시됩니다.</p>
+      <p class="mt-1 text-sm leading-5 text-[#6b7684]">추가 투자 실험을 만들면 목표 비중에 맞춘 매수 후보가 여기에 표시됩니다.</p>
       <a
         href="/simulations/new"
         class="mt-4 box-border flex h-11 items-center justify-center gap-2 rounded-lg bg-[#191f28] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(25,31,40,0.16)] active:bg-[#333d4b]">
@@ -184,8 +211,8 @@
           <div class="min-w-0 flex-1">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
-                <p class="text-sm font-bold text-[#191f28]"><%= actionCards[index].symbol %> · <%= actionCards[index].sideText %></p>
-                <p class="mt-1 truncate text-xs text-[#8b95a1]"><%= actionCards[index].assetName %></p>
+                <p class="truncate text-sm font-bold text-[#191f28]"><%= actionCards[index].displayName %> <%= actionCards[index].sideLabel %></p>
+                <p class="mt-1 truncate text-xs text-[#8b95a1]">목표 비중에 맞춘 후보</p>
               </div>
               <span class="shrink-0 rounded-md bg-[#f2f4f6] px-2 py-1 text-xs font-bold text-[#4e5968]"><%= actionCards[index].statusLabel %></span>
             </div>
@@ -195,26 +222,40 @@
               <p class="shrink-0 text-xs font-bold text-[#6b7684]"><%= actionCards[index].quantityText %></p>
               <% } %>
             </div>
-            <p class="mt-1 text-xs text-[#8b95a1]"><%= actionCards[index].reason %></p>
-            <% if (actionCards[index].canMockSubmit) { %>
-            <form
-              method="post"
-              action="/xapi/orders/mock-submit"
-              class="mt-4">
-              <input
-                type="hidden"
-                name="actionItemId"
-                value="<%= actionCards[index].id %>" />
-              <button
-                type="submit"
-                class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#191f28] px-4 text-sm font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.14)] active:bg-[#333d4b]">
-                모의 제출
-                <span
-                  class="i-lucide-send h-4 w-4"
-                  aria-hidden="true"></span>
-              </button>
-            </form>
-            <% } %>
+            <div class="mt-4 grid grid-cols-[104px_1fr] gap-2">
+              <form
+                method="post"
+                action="/xapi/actions/skip">
+                <input
+                  type="hidden"
+                  name="actionItemId"
+                  value="<%= actionCards[index].id %>" />
+                <button
+                  type="submit"
+                  class="box-border flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border-0 bg-[#f2f4f6] px-3 text-sm font-bold text-[#4e5968] active:bg-[#e5e8eb]">
+                  안 함
+                  <span
+                    class="i-lucide-x h-4 w-4"
+                    aria-hidden="true"></span>
+                </button>
+              </form>
+              <form
+                method="post"
+                action="/xapi/orders/mock-submit">
+                <input
+                  type="hidden"
+                  name="actionItemId"
+                  value="<%= actionCards[index].id %>" />
+                <button
+                  type="submit"
+                  class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#191f28] px-4 text-sm font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.14)] active:bg-[#333d4b]">
+                  기록만 남기기
+                  <span
+                    class="i-lucide-clipboard-check h-4 w-4"
+                    aria-hidden="true"></span>
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       </article>

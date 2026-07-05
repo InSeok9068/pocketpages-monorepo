@@ -1,0 +1,338 @@
+<script server>
+  const allocationBuckets = resolve('allocation-buckets')
+  const holdingValuation = resolve('holding-valuation')
+
+  meta('title', 'SeedLab 보유 종목 상세')
+  meta('description', 'SeedLab 보유 종목 상세')
+
+  if (!request.auth) {
+    dbg('seedlab/accounts/holdings/[holdingId]:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const holdingId = String(params.holdingId || '')
+  let holdingCard = null
+  let targetBucketCards = []
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function readObject(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      try {
+        const parsed = JSON.parse(value)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+      } catch (_exception) {
+        return {}
+      }
+    }
+    return {}
+  }
+
+  function formatNumber(value, maximumFractionDigits) {
+    const number = Number(value || 0)
+    if (!isFinite(number)) return '0'
+    const sign = number < 0 ? '-' : ''
+    const fixed = Math.abs(number).toFixed(maximumFractionDigits)
+    const parts = fixed.split('.')
+    let integer = parts[0]
+    let formattedInteger = ''
+
+    while (integer.length > 3) {
+      formattedInteger = ',' + integer.slice(-3) + formattedInteger
+      integer = integer.slice(0, -3)
+    }
+
+    formattedInteger = integer + formattedInteger
+    const decimal = String(parts[1] || '').replace(/0+$/, '')
+    return sign + formattedInteger + (decimal ? '.' + decimal : '')
+  }
+
+  function formatAmount(value, currency) {
+    return formatNumber(value, String(currency || 'KRW') === 'USD' ? 2 : 0)
+  }
+
+  function formatQuantity(value) {
+    return formatNumber(value, 6)
+  }
+
+  function accountTypeLabel(value) {
+    const labels = {
+      toss: '토스증권',
+      brokerage: '일반 증권',
+      pension_saving: '연금저축',
+      irp: 'IRP',
+      isa: 'ISA',
+      cash: '현금성 자산',
+    }
+    return labels[String(value || '')] || '계좌'
+  }
+
+  function sourceLabel(value) {
+    return String(value || '') === 'manual' ? '직접 입력' : '토스 동기화'
+  }
+
+  function holdingProfitClass(value) {
+    const number = Number(value || 0)
+    if (number > 0) return 'text-[#f04452]'
+    if (number < 0) return 'text-[#1b64da]'
+    return 'text-[#4e5968]'
+  }
+
+  function readLatestUsdKrwRate() {
+    try {
+      dbg('seedlab/accounts/holdings/[holdingId]:db-access', { collection: 'fx_rates' })
+      const records = $app.findRecordsByFilter('fx_rates', 'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}', '-rateAt', 1, 0, {
+        baseCurrency: 'USD',
+        quoteCurrency: 'KRW',
+      })
+      return records.length > 0 ? Number(records[0].get('rate') || 0) : 0
+    } catch (exception) {
+      dbg('seedlab/accounts/holdings/[holdingId]:fx-rate-missing', { pair: 'USD_KRW' })
+      return 0
+    }
+  }
+
+  function readSourceValueText(currency, raw) {
+    if (currency !== 'USD') return ''
+    const source = holdingValuation.readUsdSourceAmount({
+      raw,
+      sourceKey: 'marketValueSource',
+    })
+    if (source <= 0) return ''
+    return '$' + formatAmount(source, 'USD')
+  }
+
+  function normalizeAssetClass(value) {
+    const key = cleanText(value)
+    if (key === 'equity' || key === 'fixed_income' || key === 'cash' || key === 'alternative') return key
+    return 'equity'
+  }
+
+  function readSavedAllocationBucket(holding) {
+    const raw = readObject(holding.get('raw'))
+    const seedlab = readObject(raw.seedlab)
+    return allocationBuckets.normalizeBucket(raw.allocationBucket || seedlab.allocationBucket)
+  }
+
+  function inferAllocationBucket(holding, asset) {
+    const savedBucket = readSavedAllocationBucket(holding)
+    if (savedBucket) return savedBucket
+
+    const assetClass = normalizeAssetClass(holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none' ? holding.get('assetClassOverride') : asset ? asset.get('assetClass') : '')
+    const assetType = String(asset ? asset.get('assetType') : '').toLowerCase()
+    const symbol = String(asset ? asset.get('symbol') : '').toUpperCase()
+    const name = String(asset ? asset.get('name') : '').toUpperCase()
+    const searchText = symbol + ' ' + name
+
+    if (assetClass === 'cash' || assetType === 'cash') return 'cash'
+    if (assetClass === 'fixed_income' || assetType === 'bond' || searchText.indexOf('BOND') >= 0 || searchText.indexOf('채권') >= 0) return 'bond'
+    if (searchText.indexOf('GOLD') >= 0 || searchText.indexOf('금') >= 0) return 'gold'
+    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0) return 'real_estate'
+    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0) return 'dividend_stock'
+    if (assetClass === 'equity') return 'growth_stock'
+    return 'other'
+  }
+
+  function buildTargetBucketCards() {
+    const buckets = allocationBuckets.listBuckets()
+    return buckets.map(function (bucket) {
+      return {
+        key: bucket.key,
+        label: bucket.label,
+      }
+    })
+  }
+
+  try {
+    if (!holdingId) throw new Error('보유 종목이 필요합니다.')
+
+    dbg('seedlab/accounts/holdings/[holdingId]:db-access', { collection: 'account_holdings', holdingId })
+    const holdingRecord = $app.findFirstRecordByFilter('account_holdings', 'id = {:id} && owner = {:owner}', {
+      id: holdingId,
+      owner: userId,
+    })
+    const assetRecord = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id: String(holdingRecord.get('asset') || '') })
+    const accountRecord = $app.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner}', {
+      id: String(holdingRecord.get('account') || ''),
+      owner: userId,
+    })
+    const raw = readObject(holdingRecord.get('raw'))
+    const source = String(holdingRecord.get('source') || '')
+    const currency = String(holdingRecord.get('currency') || assetRecord.get('currency') || 'KRW')
+    const allocationBucket = inferAllocationBucket(holdingRecord, assetRecord)
+    const bucketMeta = allocationBuckets.bucketMeta(allocationBucket)
+    const latestUsdKrwRate = readLatestUsdKrwRate()
+    const marketValue = holdingValuation.readKrwAmount({
+      currency,
+      raw,
+      storedAmount: Number(holdingRecord.get('marketValue') || 0),
+      sourceKey: 'marketValueSource',
+      krwKey: 'marketValueKrw',
+      latestUsdKrwRate,
+    })
+    const profitLoss = holdingValuation.readKrwAmount({
+      currency,
+      raw,
+      storedAmount: Number(holdingRecord.get('profitLoss') || 0),
+      sourceKey: 'profitLossSource',
+      krwKey: 'profitLossKrw',
+      latestUsdKrwRate,
+    })
+
+    holdingCard = {
+      id: String(holdingRecord.get('id') || ''),
+      source,
+      sourceLabel: sourceLabel(source),
+      canEditManual: source === 'manual',
+      editHref: '/accounts/holdings/' + String(holdingRecord.get('id') || '') + '/edit',
+      accountName: String(accountRecord.get('name') || '계좌'),
+      accountCaption: accountTypeLabel(accountRecord.get('accountType')) + ' · ' + String(accountRecord.get('baseCurrency') || 'KRW'),
+      symbol: String(assetRecord.get('symbol') || ''),
+      assetName: String(assetRecord.get('name') || '종목 정보 없음'),
+      currency,
+      allocationBucket,
+      allocationLabel: bucketMeta.label,
+      allocationTone: bucketMeta.tone,
+      marketValueText: formatAmount(marketValue, 'KRW') + '원',
+      profitLossText: (profitLoss > 0 ? '+' : '') + formatAmount(profitLoss, 'KRW') + '원',
+      profitLossClass: holdingProfitClass(profitLoss),
+      quantityText: formatQuantity(holdingRecord.get('quantity')),
+      currentPriceText: formatAmount(holdingRecord.get('currentPrice'), currency) + (currency === 'USD' ? '달러' : '원'),
+      sourceValueText: readSourceValueText(currency, raw),
+    }
+    targetBucketCards = buildTargetBucketCards()
+  } catch (exception) {
+    warn('seedlab/accounts/holdings/[holdingId]:db-access-failed', { holdingId, error: String(exception.message || exception) })
+    dbg('seedlab/accounts/holdings/[holdingId]:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '보유 종목을 찾지 못했습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '보유 종목을 찾지 못했습니다.',
+    })
+    return
+  }
+</script>
+
+<section class="flex min-h-[calc(100vh-2rem)] flex-col pb-24 pt-5">
+  <header class="flex items-center justify-between gap-3">
+    <div class="min-w-0">
+      <p class="text-xs font-bold text-[#3182f6]">보유 종목 상세</p>
+      <h1 class="mt-1 truncate text-[24px] font-bold leading-tight text-[#191f28]"><%= holdingCard.assetName %></h1>
+    </div>
+    <a
+      href="/accounts"
+      class="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-[#6b7684] no-underline active:bg-[#f2f4f6]">
+      닫기
+    </a>
+  </header>
+
+  <div class="mt-5 space-y-4">
+    <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+
+    <section class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="flex min-w-0 items-center gap-2">
+            <p class="truncate text-base font-bold text-[#191f28]"><%= holdingCard.assetName %></p>
+            <span class="<%= holdingCard.allocationTone %> shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold"><%= holdingCard.allocationLabel %></span>
+            <span class="shrink-0 rounded-md bg-[#f2f4f6] px-1.5 py-0.5 text-[11px] font-bold text-[#6b7684]"><%= holdingCard.currency %></span>
+          </div>
+          <p class="mt-1 text-xs font-medium text-[#8b95a1]"><%= holdingCard.symbol %> · <%= holdingCard.sourceLabel %></p>
+        </div>
+        <div class="shrink-0 text-right">
+          <p class="text-base font-bold text-[#191f28]"><%= holdingCard.marketValueText %></p>
+          <p class="<%= holdingCard.profitLossClass %> mt-1 text-xs font-bold"><%= holdingCard.profitLossText %></p>
+          <% if (holdingCard.sourceValueText) { %>
+          <p class="mt-1 text-[11px] font-medium text-[#8b95a1]"><%= holdingCard.sourceValueText %></p>
+          <% } %>
+        </div>
+      </div>
+      <div class="mt-4 grid grid-cols-2 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
+        <div class="min-w-0">
+          <p class="truncate text-[10px] font-bold text-[#8b95a1]">수량</p>
+          <p class="mt-0.5 truncate text-xs font-bold text-[#191f28]"><%= holdingCard.quantityText %></p>
+        </div>
+        <div class="min-w-0">
+          <p class="truncate text-[10px] font-bold text-[#8b95a1]">현재가</p>
+          <p class="mt-0.5 truncate text-xs font-bold text-[#191f28]"><%= holdingCard.currentPriceText %></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+      <div class="grid grid-cols-[92px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+        <span class="text-xs font-bold text-[#6b7684]">계좌</span>
+        <div class="min-w-0 text-right">
+          <p class="truncate text-sm font-bold text-[#191f28]"><%= holdingCard.accountName %></p>
+          <p class="mt-0.5 truncate text-xs font-medium text-[#8b95a1]"><%= holdingCard.accountCaption %></p>
+        </div>
+      </div>
+      <form
+        method="post"
+        action="/xapi/holdings/allocation/update"
+        class="grid grid-cols-[92px_1fr_auto] items-center gap-2 px-4 py-3">
+        <input
+          type="hidden"
+          name="holdingId"
+          value="<%= holdingCard.id %>" />
+        <span class="text-xs font-bold text-[#6b7684]">자산군</span>
+        <select
+          name="allocationBucket"
+          class="box-border h-9 min-w-0 rounded-lg border border-[#e5e8eb] bg-[#fbfcfd] px-2 text-xs font-bold text-[#191f28] outline-none focus:border-[#3182f6]">
+          <% for (let bucketIndex = 0; bucketIndex < targetBucketCards.length; bucketIndex += 1) { %>
+          <option
+            value="<%= targetBucketCards[bucketIndex].key %>"
+            <%= targetBucketCards[bucketIndex].key === holdingCard.allocationBucket ? 'selected' : '' %>>
+            <%= targetBucketCards[bucketIndex].label %>
+          </option>
+          <% } %>
+        </select>
+        <button
+          type="submit"
+          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border-0 bg-[#191f28] text-white active:bg-[#333d4b]"
+          aria-label="자산군 저장"
+          title="저장">
+          <span
+            class="i-lucide-save h-4 w-4"
+            aria-hidden="true"></span>
+        </button>
+      </form>
+    </section>
+
+    <% if (holdingCard.canEditManual) { %>
+    <a
+      href="<%= holdingCard.editHref %>"
+      class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#191f28] px-4 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(25,31,40,0.16)] active:bg-[#333d4b]">
+      수정
+      <span
+        class="i-lucide-pencil h-4 w-4"
+        aria-hidden="true"></span>
+    </a>
+    <% } else { %>
+    <button
+      type="button"
+      disabled
+      class="box-border flex h-11 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#e5e8eb] px-4 text-sm font-bold text-[#8b95a1]">
+      토스 동기화 항목은 수정할 수 없습니다
+      <span
+        class="i-lucide-lock h-4 w-4"
+        aria-hidden="true"></span>
+    </button>
+    <% } %>
+  </div>
+</section>

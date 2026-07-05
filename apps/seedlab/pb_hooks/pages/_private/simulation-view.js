@@ -297,10 +297,13 @@ function buildCandidateRows(candidates) {
     const missingReason = String(candidate.missingReason || '')
     const isActionable = spendKrw > 0 && quantity > 0 && !missingReason
     const bucket = allocationBuckets.bucketMeta(candidate.bucketKey)
+    const symbol = String(candidate.symbol || 'UNKNOWN')
+    const name = String(candidate.name || '')
 
     rows.push({
-      symbol: String(candidate.symbol || 'UNKNOWN'),
-      name: String(candidate.name || ''),
+      symbol,
+      name,
+      displayName: name || symbol,
       bucketLabel: bucket.label,
       statusText: isActionable ? '매수 후보' : candidateReasonText(missingReason),
       amountText: candidateAmountText(candidate, isActionable, spendKrw),

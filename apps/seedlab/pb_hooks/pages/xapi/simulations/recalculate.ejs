@@ -27,6 +27,19 @@
     return isFinite(number) ? number : 0
   }
 
+  function readPositiveNumber(value, name) {
+    const number = readNumber(value)
+    if (number <= 0) throw new Error(name + '은 0보다 커야 합니다.')
+    return number
+  }
+
+  function readBoundedInteger(value, fallback, min, max) {
+    const number = Math.floor(readNumber(value) || fallback)
+    if (number < min) return min
+    if (number > max) return max
+    return number
+  }
+
   function normalizePriceMode(value) {
     const priceMode = cleanText(value || 'stored')
     if (priceMode === 'stored' || priceMode === 'refresh' || priceMode === 'scenario') return priceMode
@@ -37,6 +50,60 @@
     const key = cleanText(value)
     if (key === 'equity' || key === 'fixed_income' || key === 'cash' || key === 'alternative') return key
     return 'equity'
+  }
+
+  function readTargetSettings(form, fallbackTargets) {
+    const targets = Object.assign({}, fallbackTargets)
+    const buckets = allocationBuckets.listBuckets()
+
+    for (let index = 0; index < buckets.length; index += 1) {
+      const bucket = buckets[index]
+      const rawValue = cleanText(form ? form[bucket.targetField] : '')
+      if (!rawValue) continue
+      const value = Math.round(readNumber(rawValue) * 10) / 10
+      if (value < 0 || value > 100) throw new Error('목표 비중은 0%에서 100% 사이여야 합니다.')
+      targets[bucket.key] = value
+    }
+
+    return targets
+  }
+
+  function targetTotal(targets) {
+    const keys = Object.keys(targets)
+    let total = 0
+    for (let index = 0; index < keys.length; index += 1) {
+      total += Number(targets[keys[index]] || 0)
+    }
+    return Math.round(total * 10) / 10
+  }
+
+  function readPreferredHoldingIds(form) {
+    const buckets = allocationBuckets.listBuckets()
+    const preferredHoldingIds = {}
+
+    for (let index = 0; index < buckets.length; index += 1) {
+      const bucket = buckets[index]
+      const holdingId = cleanText(form ? form['buyHolding_' + bucket.key] : '')
+      if (holdingId) preferredHoldingIds[bucket.key] = holdingId
+    }
+
+    return preferredHoldingIds
+  }
+
+  function readAnnualReturnPcts(form, fallbackAnnualReturnPcts) {
+    const annualReturnPcts = Object.assign({}, fallbackAnnualReturnPcts)
+    const buckets = allocationBuckets.listBuckets()
+
+    for (let index = 0; index < buckets.length; index += 1) {
+      const key = buckets[index].key
+      const rawValue = cleanText(form ? form['return_' + key] : '')
+      if (!rawValue) continue
+      const value = Math.round(readNumber(rawValue) * 10) / 10
+      if (value < -100 || value > 100) throw new Error('연수익률은 -100%에서 100% 사이여야 합니다.')
+      annualReturnPcts[key] = value
+    }
+
+    return annualReturnPcts
   }
 
   function readSavedAllocationBucket(holding) {
@@ -356,6 +423,128 @@
     }
   }
 
+  function collectRecords(txApp, collection, filter, params) {
+    const records = []
+    const limit = 200
+    let offset = 0
+
+    while (true) {
+      dbg('seedlab/xapi/simulations/recalculate:db-access', {
+        collection,
+        offset,
+        limit,
+      })
+      const pageRecords = txApp.findRecordsByFilter(collection, filter, '-created', limit, offset, params)
+      for (let index = 0; index < pageRecords.length; index += 1) {
+        records.push(pageRecords[index])
+      }
+      if (pageRecords.length < limit) break
+      offset += pageRecords.length
+    }
+
+    return records
+  }
+
+  function isReplaceableActionStatus(value) {
+    const status = cleanText(value)
+    return status === 'draft' || status === 'approved' || status === 'skipped' || status === 'rejected'
+  }
+
+  function deleteSimulationActionBatches(txApp, userId, simulationId) {
+    const actionBatches = collectRecords(txApp, 'action_batches', 'owner = {:owner}', { owner: userId })
+
+    for (let batchIndex = 0; batchIndex < actionBatches.length; batchIndex += 1) {
+      const actionBatch = actionBatches[batchIndex]
+      const summary = readObject(actionBatch.get('summary'))
+      if (String(summary.simulationId || '') !== simulationId) continue
+
+      const batchId = String(actionBatch.get('id') || '')
+      const actionItems = collectRecords(txApp, 'action_items', 'owner = {:owner} && batch = {:batch}', {
+        owner: userId,
+        batch: batchId,
+      })
+      let remainingActionItemCount = 0
+
+      for (let itemIndex = 0; itemIndex < actionItems.length; itemIndex += 1) {
+        const actionItem = actionItems[itemIndex]
+        if (isReplaceableActionStatus(actionItem.get('status'))) {
+          txApp.delete(actionItem)
+        } else {
+          remainingActionItemCount += 1
+        }
+      }
+
+      if (remainingActionItemCount === 0) {
+        txApp.delete(actionBatch)
+      } else {
+        summary.simulationEdited = true
+        actionBatch.set('summary', summary)
+        actionBatch.set('status', 'canceled')
+        txApp.save(actionBatch)
+      }
+    }
+  }
+
+  function saveActionCandidates(txApp, userId, strategyId, simulationId, today, summary, contributionAmount, reserveCashAmount, minimumOrderAmount, monthlyContributionAmount, projectionMonths) {
+    if (summary.actionableCount <= 0) return 0
+
+    const actionBatch = new Record(txApp.findCollectionByNameOrId('action_batches'))
+    actionBatch.set('owner', userId)
+    actionBatch.set('strategy', strategyId)
+    actionBatch.set('actionDate', today)
+    actionBatch.set('source', 'manual')
+    actionBatch.set('status', 'draft')
+    actionBatch.set('totalOrderAmount', summary.usedAmount)
+    actionBatch.set('currency', 'KRW')
+    actionBatch.set('summaryText', '투자 실험에서 만든 매수 후보입니다.')
+    actionBatch.set('summary', {
+      source: 'seedlab_contribution_experiment',
+      simulationId,
+      contributionAmount,
+      reserveCashAmount,
+      minimumOrderAmount,
+      monthlyContributionAmount,
+      projectionMonths,
+      usedAmount: summary.usedAmount,
+      leftoverCash: summary.leftoverCash,
+      maxAfterDriftPct: summary.maxAfterDriftPct,
+    })
+    txApp.save(actionBatch)
+
+    const batchId = String(actionBatch.get('id') || '')
+    let actionCount = 0
+    for (let index = 0; index < summary.candidates.length; index += 1) {
+      const candidate = summary.candidates[index]
+      if (Number(candidate.spendKrw || 0) <= 0 || Number(candidate.quantity || 0) <= 0 || candidate.missingReason) continue
+
+      const actionItem = new Record(txApp.findCollectionByNameOrId('action_items'))
+      actionItem.set('owner', userId)
+      actionItem.set('batch', batchId)
+      actionItem.set('account', String(candidate.accountId || ''))
+      actionItem.set('asset', String(candidate.assetId || ''))
+      actionItem.set('side', 'BUY')
+      actionItem.set('orderType', 'MARKET')
+      actionItem.set('targetAmount', Number(candidate.spendKrw || 0))
+      actionItem.set('targetQuantity', Number(candidate.quantity || 0))
+      actionItem.set('limitPrice', Number(candidate.price || 0))
+      actionItem.set('reason', candidate.bucketLabel + ' 목표 비중에 맞춘 ' + (candidate.name || candidate.symbol) + ' 매수 후보입니다.')
+      actionItem.set('status', 'draft')
+      actionItem.set('checks', {
+        mockOnly: true,
+        requiresUserApproval: true,
+        simulationId,
+        bucketKey: candidate.bucketKey,
+        currency: candidate.currency,
+        priceKrw: candidate.priceKrw,
+        exchangeRate: candidate.exchangeRate,
+      })
+      txApp.save(actionItem)
+      actionCount += 1
+    }
+
+    return actionCount
+  }
+
   if (request.method !== 'POST') {
     dbg('seedlab/xapi/simulations/recalculate:redirect', {
       status: 303,
@@ -385,11 +574,13 @@
   const form = body()
   const userId = String(request.auth.get('id') || '')
   const simulationId = cleanText(form.simulationId)
+  const isEditMode = cleanText(form.editMode) === 'on'
   let errorMessage = ''
 
   dbg('seedlab/xapi/simulations/recalculate:start', {
     userId,
     hasSimulationId: !!simulationId,
+    isEditMode,
   })
 
   try {
@@ -402,22 +593,31 @@
     })
     const settings = readObject(simulationRecord.get('settings'))
     const previousSummary = readObject(simulationRecord.get('summary'))
-    const accountId = cleanText(settings.accountId)
-    const targets = readObject(settings.targets)
-    const preferredHoldingIds = readObject(settings.preferredHoldingIds)
-    const annualReturnPcts = readObject(settings.annualReturnPcts)
-    const contributionAmount = readNumber(previousSummary.contributionAmount)
-    const monthlyContributionAmount = readNumber(settings.monthlyContributionAmount || previousSummary.monthlyContributionAmount || simulationRecord.get('monthlyContribution'))
-    const projectionMonths = Math.max(1, Math.floor(readNumber(settings.projectionMonths || previousSummary.projectionMonths || 12)))
-    const reserveCashAmount = readNumber(settings.reserveCashAmount)
-    const minimumOrderAmount = readNumber(settings.minimumOrderAmount)
-    const priceMode = normalizePriceMode(settings.priceMode || previousSummary.priceMode)
-    const priceChangePct = priceMode === 'scenario' ? readNumber(settings.priceChangePct) : 0
+    const fallbackTargets = Object.keys(readObject(settings.targets)).length > 0 ? readObject(settings.targets) : allocationBuckets.defaultTargets()
+    const fallbackAnnualReturnPcts = Object.keys(readObject(settings.annualReturnPcts)).length > 0 ? readObject(settings.annualReturnPcts) : contributionExperiment.defaultAnnualReturnPcts()
+    const accountId = isEditMode ? cleanText(form.accountId) : cleanText(settings.accountId)
+    const targets = isEditMode ? readTargetSettings(form, fallbackTargets) : fallbackTargets
+    const preferredHoldingIds = isEditMode ? readPreferredHoldingIds(form) : readObject(settings.preferredHoldingIds)
+    const annualReturnPcts = isEditMode ? readAnnualReturnPcts(form, fallbackAnnualReturnPcts) : fallbackAnnualReturnPcts
+    const contributionAmount = isEditMode ? readPositiveNumber(form.contributionAmount, '첫 달 추가금') : readNumber(previousSummary.contributionAmount)
+    const monthlyContributionAmount = isEditMode ? readNumber(form.monthlyContributionAmount) : readNumber(settings.monthlyContributionAmount || previousSummary.monthlyContributionAmount || simulationRecord.get('monthlyContribution'))
+    const projectionMonths = isEditMode ? readBoundedInteger(form.projectionMonths, 12, 1, 360) : Math.max(1, Math.floor(readNumber(settings.projectionMonths || previousSummary.projectionMonths || 12)))
+    const reserveCashAmount = isEditMode ? readNumber(form.reserveCashAmount) : readNumber(settings.reserveCashAmount)
+    const minimumOrderAmount = isEditMode ? readNumber(form.minimumOrderAmount) : readNumber(settings.minimumOrderAmount)
+    const priceMode = normalizePriceMode(isEditMode ? form.priceMode : settings.priceMode || previousSummary.priceMode)
+    const priceChangePct = priceMode === 'scenario' ? readNumber(isEditMode ? form.priceChangePct : settings.priceChangePct) : 0
+    const createActions = isEditMode && cleanText(form.createActions) === 'on'
+    const nextName = isEditMode ? requireText(form.name, '실험 이름') : cleanText(simulationRecord.get('name'))
 
     if (contributionAmount <= 0) throw new Error('재계산할 추가금 정보가 없습니다.')
     if (Object.keys(targets).length === 0) throw new Error('재계산할 목표 비중 정보가 없습니다.')
+    if (monthlyContributionAmount < 0) throw new Error('월 납입금은 0 이상이어야 합니다.')
+    if (reserveCashAmount < 0) throw new Error('남길 현금은 0 이상이어야 합니다.')
+    if (reserveCashAmount > contributionAmount) throw new Error('남길 현금은 추가금보다 클 수 없습니다.')
+    if (minimumOrderAmount < 0) throw new Error('최소 주문금액은 0 이상이어야 합니다.')
+    if (targetTotal(targets) !== 100) throw new Error('목표 비중 합계는 100%여야 합니다.')
 
-    let latestUsdKrwRate = readNumber(settings.latestUsdKrwRate) || readLatestUsdKrwRate()
+    let latestUsdKrwRate = readNumber(isEditMode ? form.usdKrwRate : settings.latestUsdKrwRate) || readLatestUsdKrwRate()
     const holdings = readHoldings(userId, accountId, latestUsdKrwRate)
     if (holdings.length === 0) throw new Error('계산할 보유 종목이 없습니다.')
 
@@ -460,26 +660,44 @@
       timeline: timelineSummary,
       priceMode,
     })
+    summary.priceChangePct = priceChangePct
+    summary.reserveCashAmount = reserveCashAmount
+    summary.minimumOrderAmount = minimumOrderAmount
     const today = dateutil.toDateOnlyIso(new Date())
     const endDate = addMonthsDateOnly(today, projectionMonths)
     const nextSettings = Object.assign({}, settings, {
+      accountId,
+      priceMode,
+      priceChangePct,
+      reserveCashAmount,
+      minimumOrderAmount,
+      monthlyContributionAmount,
+      projectionMonths,
       latestUsdKrwRate,
+      targets,
+      preferredHoldingIds,
+      annualReturnPcts,
       previousSummary,
       recalculatedAt: today,
       recalculationCount: readNumber(settings.recalculationCount) + 1,
     })
+    if (isEditMode) nextSettings.editedAt = today
     if (Object.keys(readObject(nextSettings.initialSummary)).length === 0) nextSettings.initialSummary = previousSummary
     if (!cleanText(nextSettings.initialStartDate)) nextSettings.initialStartDate = String(simulationRecord.get('startDate') || today)
+    let actionCount = 0
 
     $app.runInTransaction(function (txApp) {
       const record = txApp.findFirstRecordByFilter('simulations', 'id = {:id} && owner = {:owner}', {
         id: simulationId,
         owner: userId,
       })
+      let strategyId = String(record.get('strategy') || '')
       if (!String(record.get('strategy') || '')) {
         const strategyRecord = ensureStrategy(txApp, userId, targets)
-        record.set('strategy', String(strategyRecord.get('id') || ''))
+        strategyId = String(strategyRecord.get('id') || '')
+        record.set('strategy', strategyId)
       }
+      record.set('name', nextName)
       record.set('startDate', today)
       record.set('endDate', endDate)
       record.set('initialCapital', summary.currentTotalValue)
@@ -489,6 +707,11 @@
       record.set('settings', nextSettings)
       txApp.save(record)
       saveTimelineSnapshots(txApp, userId, simulationId, today, timelineSummary)
+
+      if (isEditMode) {
+        deleteSimulationActionBatches(txApp, userId, simulationId)
+        if (createActions) actionCount = saveActionCandidates(txApp, userId, strategyId, simulationId, today, summary, contributionAmount, reserveCashAmount, minimumOrderAmount, monthlyContributionAmount, projectionMonths)
+      }
     })
 
     info('seedlab/xapi/simulations/recalculate:success', {
@@ -496,16 +719,19 @@
       simulationId,
       priceMode,
       recalculationCount: nextSettings.recalculationCount,
+      isEditMode,
+      actionCount,
     })
 
+    const successMessage = isEditMode ? '투자 실험을 수정했습니다.' : '최신 계좌 기준으로 다시 계산했습니다.'
     dbg('seedlab/xapi/simulations/recalculate:redirect', {
       status: 303,
       redirectTo: '/simulations/detail/' + simulationId,
-      message: '최신 계좌 기준으로 다시 계산했습니다.',
+      message: successMessage,
     })
     redirect('/simulations/detail/' + simulationId, {
       status: 303,
-      message: '최신 계좌 기준으로 다시 계산했습니다.',
+      message: successMessage,
     })
     return
   } catch (exception) {

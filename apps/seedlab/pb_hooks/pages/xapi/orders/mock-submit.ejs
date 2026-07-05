@@ -127,11 +127,11 @@
     dbg('seedlab/xapi/orders/mock-submit:redirect', {
       status: 303,
       redirectTo: '/actions',
-      message: 'Mock 주문 기록을 만들었습니다.',
+      message: '주문 후보를 기록했습니다.',
     })
     redirect('/actions', {
       status: 303,
-      message: 'Mock 주문 기록을 만들었습니다.',
+      message: '주문 후보를 기록했습니다.',
     })
     return
   } catch (exception) {
@@ -145,11 +145,11 @@
   dbg('seedlab/xapi/orders/mock-submit:redirect', {
     status: 303,
     redirectTo: '/actions',
-    message: errorMessage || 'Mock 주문 제출에 실패했습니다.',
+    message: errorMessage || '주문 후보 기록에 실패했습니다.',
   })
   redirect('/actions', {
     status: 303,
-    message: errorMessage || 'Mock 주문 제출에 실패했습니다.',
+    message: errorMessage || '주문 후보 기록에 실패했습니다.',
   })
   return
 </script>

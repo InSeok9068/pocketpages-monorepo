@@ -87,9 +87,12 @@
         const holding = records[index]
         const asset = readAssetRecord(holding.get('asset'))
         const bucket = allocationBuckets.bucketMeta(inferAllocationBucket(holding, asset))
+        const symbol = String(asset ? asset.get('symbol') : '') || 'UNKNOWN'
+        const name = String(asset ? asset.get('name') : '') || '종목 정보 없음'
         rows.push({
-          symbol: String(asset ? asset.get('symbol') : '') || 'UNKNOWN',
-          name: String(asset ? asset.get('name') : '') || '종목 정보 없음',
+          symbol,
+          name,
+          displayName: name || symbol,
           bucketLabel: bucket.label,
           tone: bucket.tone,
           valueText: simulationView.formatAmount(holding.get('marketValue')) + '원',
@@ -130,12 +133,15 @@
 </script>
 
 <div class="space-y-4 pb-2 pt-1">
-  <header class="flex items-center justify-between">
-    <div class="min-w-0">
+  <header class="space-y-3">
+    <div class="flex items-center justify-between gap-3">
       <p class="text-xs font-bold text-[#3182f6]">실험 상세</p>
-      <h1 class="mt-1 truncate text-[24px] font-bold leading-tight text-[#191f28]"><%= simulationCard.name %></h1>
-    </div>
-    <div class="flex shrink-0 items-center gap-2">
+      <div class="flex shrink-0 items-center gap-2">
+      <a
+        href="/simulations/edit/<%= simulationCard.id %>"
+        class="inline-flex h-10 items-center justify-center rounded-lg bg-white px-3 text-sm font-bold text-[#4e5968] no-underline shadow-[inset_0_0_0_1px_#e5e8eb] active:bg-[#f2f4f6]">
+        수정
+      </a>
       <form
         method="post"
         action="/xapi/simulations/recalculate">
@@ -154,7 +160,9 @@
         class="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-[#6b7684] no-underline active:bg-[#f2f4f6]">
         닫기
       </a>
+      </div>
     </div>
+    <h1 class="text-[24px] font-bold leading-tight text-[#191f28]"><%= simulationCard.name %></h1>
   </header>
 
   <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
@@ -230,7 +238,7 @@
       <article class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
         <div class="min-w-0">
           <p class="<%= simulationCard.candidateRows[index].tone %> truncate text-sm font-bold">
-            <%= simulationCard.candidateRows[index].symbol %> · <%= simulationCard.candidateRows[index].bucketLabel %>
+            <%= simulationCard.candidateRows[index].displayName %> · <%= simulationCard.candidateRows[index].bucketLabel %>
           </p>
           <p class="mt-1 truncate text-xs font-medium text-[#8b95a1]"><%= simulationCard.candidateRows[index].statusText %> <%= simulationCard.candidateRows[index].quantityText %></p>
         </div>
@@ -248,10 +256,10 @@
       <article class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
         <div class="min-w-0">
           <div class="flex min-w-0 items-center gap-2">
-            <p class="truncate text-sm font-bold text-[#191f28]"><%= holdingRows[index].symbol %></p>
+            <p class="truncate text-sm font-bold text-[#191f28]"><%= holdingRows[index].displayName %></p>
             <span class="<%= holdingRows[index].tone %> shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold"><%= holdingRows[index].bucketLabel %></span>
           </div>
-          <p class="mt-1 truncate text-xs font-medium text-[#8b95a1]"><%= holdingRows[index].name %> · <%= holdingRows[index].quantityText %></p>
+          <p class="mt-1 truncate text-xs font-medium text-[#8b95a1]"><%= holdingRows[index].quantityText %></p>
         </div>
         <div class="shrink-0 text-right">
           <p class="text-sm font-bold text-[#191f28]"><%= holdingRows[index].valueText %></p>
@@ -274,4 +282,19 @@
       <% } %>
     </div>
   </section>
+
+  <form
+    method="post"
+    action="/xapi/simulations/delete"
+    onsubmit="return confirm('이 실험을 삭제할까요?')">
+    <input
+      type="hidden"
+      name="simulationId"
+      value="<%= simulationCard.id %>" />
+    <button
+      type="submit"
+      class="box-border flex h-11 w-full items-center justify-center rounded-lg border-0 bg-white px-4 text-sm font-bold text-[#f04452] shadow-[inset_0_0_0_1px_#fee4e7] active:bg-[#fff1f2]">
+      실험 삭제
+    </button>
+  </form>
 </div>

@@ -20,10 +20,8 @@
     totalValue: 0,
     profitLoss: 0,
     strategyCount: 0,
-    draftActionCount: 0,
     simulationCount: 0,
     runningSimulationCount: 0,
-    pendingOrderCount: 0,
   }
   let allocationChart = {
     segments: [],
@@ -250,13 +248,6 @@
     }
 
     try {
-      dbg('seedlab/index:db-access', { collection: 'action_items' })
-      dashboard.draftActionCount = $app.findRecordsByFilter('action_items', 'owner = {:owner} && status = {:status}', '-updated', 200, 0, { owner: userId, status: 'draft' }).length
-    } catch (exception) {
-      warn('seedlab/index:db-access-failed', { collection: 'action_items', error: String(exception.message || exception) })
-    }
-
-    try {
       dbg('seedlab/index:db-access', { collection: 'simulations' })
       dashboard.simulationCount = $app.findRecordsByFilter('simulations', 'owner = {:owner}', '-updated', 200, 0, { owner: userId }).length
     } catch (exception) {
@@ -270,18 +261,10 @@
       warn('seedlab/index:db-access-failed', { collection: 'simulations', status: 'running', error: String(exception.message || exception) })
     }
 
-    try {
-      dbg('seedlab/index:db-access', { collection: 'order_records' })
-      dashboard.pendingOrderCount = $app.findRecordsByFilter('order_records', 'owner = {:owner} && status = {:status}', '-updated', 200, 0, { owner: userId, status: 'pending' }).length
-    } catch (exception) {
-      warn('seedlab/index:db-access-failed', { collection: 'order_records', error: String(exception.message || exception) })
-    }
-
     applyLatestSnapshotTotals()
     allocationChart = buildAllocationChart(dashboard.totalValue)
   }
 
-  const activeActionCount = dashboard.draftActionCount + dashboard.pendingOrderCount
   const totalValueText = formatAmount(dashboard.totalValue)
   const profitLossText = (dashboard.profitLoss > 0 ? '+' : '') + formatAmount(dashboard.profitLoss)
   const readinessText = dashboard.accountCount === 0 ? '계좌 연결 필요' : dashboard.holdingCount === 0 ? '보유 종목 동기화 필요' : '점검 완료'
@@ -290,11 +273,6 @@
   const hasMainTask = dashboard.accountCount === 0 || dashboard.holdingCount === 0
   const mainTaskTitle = dashboard.accountCount === 0 ? '계좌를 먼저 연결하세요' : '보유 종목을 동기화하세요'
   const mainTaskDescription = dashboard.accountCount === 0 ? '토스증권 API 연결 후 보유 종목과 비중을 계산합니다.' : '연결된 계좌에서 보유 종목을 가져와야 리밸런싱이 가능합니다.'
-  const statusRows = [
-    { label: '계좌', value: String(dashboard.accountCount) },
-    { label: '종목', value: String(dashboard.holdingCount) },
-    { label: '검토', value: String(activeActionCount) },
-  ]
   const quickLinks = [
     { href: '/accounts', label: '계좌/비중', icon: 'i-lucide-wallet-cards' },
     { href: '/accounts/holdings/new', label: '종목 추가', icon: 'i-lucide-plus' },
@@ -439,15 +417,6 @@
         >
         <p class="<%= profitClass(dashboard.profitLoss) %> mt-2 text-sm font-bold"><%= profitLossText %>원</p>
       </div>
-    </div>
-
-    <div class="mt-2 grid grid-cols-3 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
-      <% for (let index = 0; index < statusRows.length; index += 1) { %>
-      <div class="min-w-0">
-        <p class="truncate text-[10px] font-bold text-[#8b95a1]"><%= statusRows[index].label %></p>
-        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= statusRows[index].value %></p>
-      </div>
-      <% } %>
     </div>
   </section>
 
