@@ -1,6 +1,10 @@
 <script server>
-  meta('title', 'SeedLab 전략 실험')
-  meta('description', 'SeedLab 전략 실험')
+  const allocationBuckets = resolve('allocation-buckets')
+  const contributionExperiment = resolve('contribution-experiment')
+  const holdingValuation = resolve('holding-valuation')
+
+  meta('title', 'SeedLab 추가 투자 실험')
+  meta('description', 'SeedLab 추가 투자 실험')
 
   if (!request.auth) {
     dbg('seedlab/simulations/new:redirect', {
@@ -14,13 +18,272 @@
     })
     return
   }
+
+  const userId = String(request.auth.get('id') || '')
+  let accountOptions = []
+  let targetBucketCards = []
+  let returnBucketCards = []
+  let buyTargetCards = []
+  const assetsById = {}
+
+  function accountTypeLabel(value) {
+    const labels = {
+      toss: '토스증권',
+      brokerage: '일반 증권',
+      pension_saving: '연금저축',
+      irp: 'IRP',
+      isa: 'ISA',
+      cash: '현금성 자산',
+    }
+
+    return labels[String(value || '')] || '계좌'
+  }
+
+  function formatNumber(value, maximumFractionDigits) {
+    const number = Number(value || 0)
+    if (!isFinite(number)) return '0'
+
+    const fixed = Math.abs(number).toFixed(maximumFractionDigits)
+    const parts = fixed.split('.')
+    const decimal = String(parts[1] || '').replace(/0+$/, '')
+
+    return String(parts[0]) + (decimal ? '.' + decimal : '')
+  }
+
+  function formatAmount(value, currency) {
+    return formatNumber(value, String(currency || 'KRW') === 'USD' ? 2 : 0)
+  }
+
+  function readObject(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      try {
+        const parsed = JSON.parse(value)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+      } catch (_exception) {
+        return {}
+      }
+    }
+    return {}
+  }
+
+  function readAssetRecord(assetId) {
+    const id = String(assetId || '')
+    if (!id) return null
+    if (Object.prototype.hasOwnProperty.call(assetsById, id)) return assetsById[id]
+
+    try {
+      dbg('seedlab/simulations/new:db-access', { collection: 'assets', assetId: id })
+      assetsById[id] = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id })
+    } catch (exception) {
+      warn('seedlab/simulations/new:db-access-failed', { collection: 'assets', assetId: id, error: String(exception.message || exception) })
+      assetsById[id] = null
+    }
+
+    return assetsById[id]
+  }
+
+  function normalizeAssetClass(value) {
+    const key = String(value || '')
+    if (key === 'equity' || key === 'fixed_income' || key === 'cash' || key === 'alternative') return key
+    return 'equity'
+  }
+
+  function readSavedAllocationBucket(holding) {
+    const raw = readObject(holding.get('raw'))
+    const seedlab = readObject(raw.seedlab)
+    return allocationBuckets.normalizeBucket(seedlab.allocationBucket)
+  }
+
+  function inferAllocationBucket(holding, asset) {
+    const savedBucket = readSavedAllocationBucket(holding)
+    if (savedBucket) return savedBucket
+
+    const assetClass = normalizeAssetClass(holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none' ? holding.get('assetClassOverride') : asset ? asset.get('assetClass') : '')
+    const assetType = String(asset ? asset.get('assetType') : '').toLowerCase()
+    const symbol = String(asset ? asset.get('symbol') : '').toUpperCase()
+    const name = String(asset ? asset.get('name') : '').toUpperCase()
+    const searchText = symbol + ' ' + name
+
+    if (assetClass === 'cash' || assetType === 'cash') return 'cash'
+    if (assetClass === 'fixed_income' || assetType === 'bond' || searchText.indexOf('BOND') >= 0 || searchText.indexOf('채권') >= 0) return 'bond'
+    if (searchText.indexOf('GOLD') >= 0 || searchText.indexOf('금') >= 0) return 'gold'
+    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0) return 'real_estate'
+    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0) return 'dividend_stock'
+    if (assetClass === 'equity') return 'growth_stock'
+    return 'other'
+  }
+
+  function readLatestUsdKrwRate() {
+    try {
+      dbg('seedlab/simulations/new:db-access', { collection: 'fx_rates' })
+      const records = $app.findRecordsByFilter('fx_rates', 'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}', '-rateAt', 1, 0, {
+        baseCurrency: 'USD',
+        quoteCurrency: 'KRW',
+      })
+      return records.length > 0 ? Number(records[0].get('rate') || 0) : 0
+    } catch (exception) {
+      dbg('seedlab/simulations/new:fx-rate-missing', { pair: 'USD_KRW' })
+      return 0
+    }
+  }
+
+  function readTargetSettings() {
+    const targets = allocationBuckets.defaultTargets()
+
+    try {
+      dbg('seedlab/simulations/new:db-access', { collection: 'investment_strategies' })
+      const strategyRecords = $app.findRecordsByFilter('investment_strategies', 'owner = {:owner} && strategyType = {:strategyType}', '-updated', 50, 0, {
+        owner: userId,
+        strategyType: 'real',
+      })
+      let strategyRecord = null
+
+      for (let index = 0; index < strategyRecords.length; index += 1) {
+        if (String(strategyRecords[index].get('name') || '') === '기본 리밸런싱') {
+          strategyRecord = strategyRecords[index]
+          break
+        }
+      }
+
+      if (!strategyRecord && strategyRecords.length > 0) strategyRecord = strategyRecords[0]
+      if (!strategyRecord) throw new Error('no_saved_targets')
+
+      const buckets = allocationBuckets.listBuckets()
+      let savedTotal = 0
+      for (let index = 0; index < buckets.length; index += 1) {
+        const value = Number(strategyRecord.get(buckets[index].targetField) || 0)
+        if (isFinite(value)) {
+          targets[buckets[index].key] = value
+          savedTotal += value
+        }
+      }
+      if (savedTotal <= 0) throw new Error('no_saved_targets')
+    } catch (exception) {
+      dbg('seedlab/simulations/new:target-defaults', { reason: 'no_saved_targets' })
+    }
+
+    return targets
+  }
+
+  function buildTargetBucketCards() {
+    const targets = readTargetSettings()
+    const buckets = allocationBuckets.listBuckets()
+    return buckets.map(function (bucket) {
+      return {
+        key: bucket.key,
+        label: bucket.label,
+        targetField: bucket.targetField,
+        tone: bucket.tone,
+        targetPctText: formatNumber(targets[bucket.key], 1),
+      }
+    })
+  }
+
+  function buildReturnBucketCards() {
+    const annualReturnPcts = contributionExperiment.defaultAnnualReturnPcts()
+    const buckets = allocationBuckets.listBuckets()
+    return buckets.map(function (bucket) {
+      return {
+        key: bucket.key,
+        label: bucket.label,
+        returnField: 'return_' + bucket.key,
+        tone: bucket.tone,
+        returnPctText: formatNumber(annualReturnPcts[bucket.key], 1),
+      }
+    })
+  }
+
+  function buildHoldingOptionsByBucket() {
+    const buckets = allocationBuckets.listBuckets()
+    const optionsByBucket = {}
+    const latestUsdKrwRate = readLatestUsdKrwRate()
+
+    for (let index = 0; index < buckets.length; index += 1) {
+      optionsByBucket[buckets[index].key] = []
+    }
+
+    try {
+      dbg('seedlab/simulations/new:db-access', { collection: 'account_holdings' })
+      const holdingRecords = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-marketValue', 200, 0, { owner: userId })
+      for (let index = 0; index < holdingRecords.length; index += 1) {
+        const holding = holdingRecords[index]
+        const asset = readAssetRecord(holding.get('asset'))
+        const raw = readObject(holding.get('raw'))
+        const currency = String(holding.get('currency') || (asset ? asset.get('currency') : 'KRW') || 'KRW')
+        const bucketKey = inferAllocationBucket(holding, asset)
+        const symbol = String(asset ? asset.get('symbol') : '') || 'UNKNOWN'
+        const name = String(asset ? asset.get('name') : '') || '종목 정보 없음'
+        const marketValue = holdingValuation.readKrwAmount({
+          currency,
+          raw,
+          storedAmount: Number(holding.get('marketValue') || 0),
+          sourceKey: 'marketValueSource',
+          krwKey: 'marketValueKrw',
+          latestUsdKrwRate,
+        })
+
+        if (!optionsByBucket[bucketKey]) optionsByBucket[bucketKey] = []
+        optionsByBucket[bucketKey].push({
+          id: String(holding.get('id') || ''),
+          symbol,
+          label: symbol + ' · ' + name,
+          subText: formatAmount(marketValue, 'KRW') + '원 · 현재가 ' + formatAmount(holding.get('currentPrice'), currency) + (currency === 'USD' ? '달러' : '원'),
+        })
+      }
+    } catch (exception) {
+      warn('seedlab/simulations/new:db-access-failed', { collection: 'account_holdings', error: String(exception.message || exception) })
+    }
+
+    return optionsByBucket
+  }
+
+  function buildBuyTargetCards() {
+    const buckets = allocationBuckets.listBuckets()
+    const optionsByBucket = buildHoldingOptionsByBucket()
+    const cards = []
+
+    for (let index = 0; index < buckets.length; index += 1) {
+      const bucket = buckets[index]
+      if (bucket.key === 'cash') continue
+      cards.push({
+        key: bucket.key,
+        label: bucket.label,
+        tone: bucket.tone,
+        fieldName: 'buyHolding_' + bucket.key,
+        options: optionsByBucket[bucket.key] || [],
+      })
+    }
+
+    return cards
+  }
+
+  if (userId) {
+    try {
+      dbg('seedlab/simulations/new:db-access', { collection: 'portfolio_accounts' })
+      const accountRecords = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner} && isActive = true', '-updated', 50, 0, { owner: userId })
+      accountOptions = accountRecords.map(function (record) {
+        return {
+          id: String(record.get('id') || ''),
+          label: String(record.get('name') || '계좌') + ' · ' + accountTypeLabel(record.get('accountType')),
+        }
+      })
+    } catch (exception) {
+      warn('seedlab/simulations/new:db-access-failed', { collection: 'portfolio_accounts', error: String(exception.message || exception) })
+      accountOptions = []
+    }
+
+    targetBucketCards = buildTargetBucketCards()
+    returnBucketCards = buildReturnBucketCards()
+    buyTargetCards = buildBuyTargetCards()
+  }
 </script>
 
 <section class="flex min-h-[calc(100vh-2rem)] flex-col pb-24 pt-5">
   <header class="flex items-center justify-between">
     <div>
       <p class="text-xs font-bold text-[#3182f6]">실험</p>
-      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">새 실험</h1>
+      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">투자 실험 만들기</h1>
     </div>
     <a
       href="/simulations"
@@ -36,92 +299,235 @@
       method="post"
       action="/xapi/simulations/create"
       class="space-y-4">
+      <section class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <div class="flex items-start gap-3">
+          <span
+            class="i-lucide-route mt-0.5 h-5 w-5 shrink-0 text-[#3182f6]"
+            aria-hidden="true"></span>
+          <div class="min-w-0">
+            <p class="text-sm font-bold leading-5 text-[#191f28]">매달 넣을 돈이 목표 비중을 얼마나 바꾸는지 계산합니다</p>
+            <p class="mt-1 text-xs font-medium leading-5 text-[#6b7684]">결과는 월별 예상 경로와 첫 달 매수 후보로 나뉩니다.</p>
+          </div>
+        </div>
+        <div class="mt-4 grid grid-cols-3 gap-2 text-center">
+          <div class="rounded-lg bg-[#f7f8fa] px-2 py-2">
+            <p class="text-[10px] font-bold text-[#8b95a1]">가정</p>
+            <p class="mt-1 text-xs font-bold text-[#191f28]">납입</p>
+          </div>
+          <div class="rounded-lg bg-[#f7f8fa] px-2 py-2">
+            <p class="text-[10px] font-bold text-[#8b95a1]">규칙</p>
+            <p class="mt-1 text-xs font-bold text-[#191f28]">목표 비중</p>
+          </div>
+          <div class="rounded-lg bg-[#f7f8fa] px-2 py-2">
+            <p class="text-[10px] font-bold text-[#8b95a1]">결과</p>
+            <p class="mt-1 text-xs font-bold text-[#191f28]">월별 추이</p>
+          </div>
+        </div>
+      </section>
+
       <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
-        <label class="grid grid-cols-[88px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+        <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
           <span class="text-xs font-bold text-[#6b7684]">이름</span>
           <input
             type="text"
-            name="personaName"
+            name="name"
             required
-            value="장기 적립 투자자"
+            value="이번 달 추가 투자"
             class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
         </label>
-        <label class="grid grid-cols-[88px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
-          <span class="text-xs font-bold text-[#6b7684]">성향</span>
+        <label class="grid grid-cols-[92px_1fr] items-center gap-3 px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">계좌</span>
           <select
-            name="riskProfile"
-            required
+            name="accountId"
             class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
-            <option value="balanced">균형형</option>
-            <option value="conservative">안정형</option>
-            <option value="aggressive">공격형</option>
-          </select>
-        </label>
-        <label class="grid grid-cols-[88px_1fr] items-center gap-3 px-4 py-3">
-          <span class="text-xs font-bold text-[#6b7684]">행동</span>
-          <select
-            name="behaviorProfile"
-            required
-            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
-            <option value="disciplined">원칙형</option>
-            <option value="dip_buyer">하락매수형</option>
-            <option value="panic_seller">손절민감형</option>
+            <option value="">전체 계좌</option>
+            <% for (let index = 0; index < accountOptions.length; index += 1) { %>
+            <option value="<%= accountOptions[index].id %>"><%= accountOptions[index].label %></option>
+            <% } %>
           </select>
         </label>
       </div>
 
       <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
-        <label class="grid grid-cols-[88px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
-          <span class="text-xs font-bold text-[#6b7684]">초기 자금</span>
+        <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">첫 달</span>
           <input
             type="number"
-            name="initialCapital"
-            required
-            min="0"
-            step="10000"
-            value="10000000"
-            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
-        </label>
-        <label class="grid grid-cols-[88px_1fr] items-center gap-3 px-4 py-3">
-          <span class="text-xs font-bold text-[#6b7684]">월 투자금</span>
-          <input
-            type="number"
-            name="monthlyContribution"
+            name="contributionAmount"
             required
             min="0"
             step="10000"
             value="500000"
             class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
         </label>
+        <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">월 납입</span>
+          <input
+            type="number"
+            name="monthlyContributionAmount"
+            min="0"
+            step="10000"
+            value="500000"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
+        </label>
+        <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">기간</span>
+          <div class="flex min-w-0 items-center justify-end gap-2">
+            <input
+              type="number"
+              name="projectionMonths"
+              min="1"
+              max="360"
+              step="1"
+              value="12"
+              class="h-9 w-24 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
+            <span class="text-sm font-bold text-[#8b95a1]">개월</span>
+          </div>
+        </label>
+        <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">가격 기준</span>
+          <select
+            name="priceMode"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
+            <option value="stored">저장된 현재가</option>
+            <option value="refresh">토스 현재가 재조회</option>
+            <option value="scenario">가격 시나리오</option>
+          </select>
+        </label>
+        <details>
+          <summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-bold text-[#4e5968]">
+            세부 조건
+            <span
+              class="i-lucide-chevron-down h-4 w-4 text-[#8b95a1]"
+              aria-hidden="true"></span>
+          </summary>
+          <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-t border-[#f2f4f6] px-4 py-3">
+            <span class="text-xs font-bold text-[#6b7684]">남길 현금</span>
+            <input
+              type="number"
+              name="reserveCashAmount"
+              min="0"
+              step="10000"
+              value="0"
+              class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
+          </label>
+          <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-t border-[#f2f4f6] px-4 py-3">
+            <span class="text-xs font-bold text-[#6b7684]">최소 주문</span>
+            <input
+              type="number"
+              name="minimumOrderAmount"
+              min="0"
+              step="10000"
+              value="0"
+              class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
+          </label>
+          <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-t border-[#f2f4f6] px-4 py-3">
+            <span class="text-xs font-bold text-[#6b7684]">가격 변화</span>
+            <div class="flex min-w-0 items-center justify-end gap-2">
+              <input
+                type="number"
+                name="priceChangePct"
+                step="0.1"
+                value="0"
+                class="h-9 w-24 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
+              <span class="text-sm font-bold text-[#8b95a1]">%</span>
+            </div>
+          </label>
+          <label class="grid grid-cols-[92px_1fr] items-center gap-3 border-t border-[#f2f4f6] px-4 py-3">
+            <span class="text-xs font-bold text-[#6b7684]">USD/KRW</span>
+            <input
+              type="number"
+              name="usdKrwRate"
+              min="0"
+              step="0.01"
+              placeholder="자동"
+              class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+          </label>
+        </details>
       </div>
 
       <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
-        <label class="grid grid-cols-[88px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
-          <span class="text-xs font-bold text-[#6b7684]">시작일</span>
-          <input
-            type="date"
-            name="startDate"
-            required
-            value="2021-01-01"
-            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
+        <div class="border-b border-[#f2f4f6] px-4 py-3">
+          <p class="text-sm font-bold text-[#191f28]">실험 목표</p>
+        </div>
+        <% for (let index = 0; index < targetBucketCards.length; index += 1) { %>
+        <label class="<%= index + 1 === targetBucketCards.length ? '' : 'border-b border-[#f2f4f6]' %> grid grid-cols-[1fr_92px] items-center gap-3 px-4 py-3">
+          <span class="<%= targetBucketCards[index].tone %> min-w-0 truncate rounded-md px-2 py-0.5 text-xs font-bold"><%= targetBucketCards[index].label %></span>
+          <div class="flex min-w-0 items-center justify-end gap-1.5">
+            <input
+              type="number"
+              name="<%= targetBucketCards[index].targetField %>"
+              min="0"
+              max="100"
+              step="0.1"
+              value="<%= targetBucketCards[index].targetPctText %>"
+              class="h-8 w-16 min-w-0 border-0 bg-transparent p-0 text-right text-sm font-bold text-[#191f28] outline-none" />
+            <span class="text-xs font-bold text-[#8b95a1]">%</span>
+          </div>
         </label>
-        <label class="grid grid-cols-[88px_1fr] items-center gap-3 px-4 py-3">
-          <span class="text-xs font-bold text-[#6b7684]">종료일</span>
-          <input
-            type="date"
-            name="endDate"
-            required
-            value="2026-06-30"
-            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none" />
-        </label>
+        <% } %>
       </div>
+
+      <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <div class="border-b border-[#f2f4f6] px-4 py-3">
+          <p class="text-sm font-bold text-[#191f28]">연수익률 가정</p>
+        </div>
+        <% for (let index = 0; index < returnBucketCards.length; index += 1) { %>
+        <label class="<%= index + 1 === returnBucketCards.length ? '' : 'border-b border-[#f2f4f6]' %> grid grid-cols-[1fr_92px] items-center gap-3 px-4 py-3">
+          <span class="<%= returnBucketCards[index].tone %> min-w-0 truncate rounded-md px-2 py-0.5 text-xs font-bold"><%= returnBucketCards[index].label %></span>
+          <div class="flex min-w-0 items-center justify-end gap-1.5">
+            <input
+              type="number"
+              name="<%= returnBucketCards[index].returnField %>"
+              min="-100"
+              max="100"
+              step="0.1"
+              value="<%= returnBucketCards[index].returnPctText %>"
+              class="h-8 w-16 min-w-0 border-0 bg-transparent p-0 text-right text-sm font-bold text-[#191f28] outline-none" />
+            <span class="text-xs font-bold text-[#8b95a1]">%</span>
+          </div>
+        </label>
+        <% } %>
+      </div>
+
+      <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <div class="border-b border-[#f2f4f6] px-4 py-3">
+          <p class="text-sm font-bold text-[#191f28]">매수 종목</p>
+        </div>
+        <% for (let index = 0; index < buyTargetCards.length; index += 1) { %>
+        <label class="<%= index + 1 === buyTargetCards.length ? '' : 'border-b border-[#f2f4f6]' %> block px-4 py-3">
+          <span class="<%= buyTargetCards[index].tone %> inline-flex max-w-full truncate rounded-md px-2 py-0.5 text-xs font-bold"><%= buyTargetCards[index].label %></span>
+          <select
+            name="<%= buyTargetCards[index].fieldName %>"
+            class="mt-2 h-9 w-full min-w-0 border-0 bg-transparent p-0 text-sm font-bold text-[#191f28] outline-none">
+            <option value="">자동 선택</option>
+            <% for (let optionIndex = 0; optionIndex < buyTargetCards[index].options.length; optionIndex += 1) { %>
+            <option value="<%= buyTargetCards[index].options[optionIndex].id %>"><%= buyTargetCards[index].options[optionIndex].label %></option>
+            <% } %>
+          </select>
+          <% if (buyTargetCards[index].options.length === 0) { %>
+          <span class="mt-1 block text-xs font-medium text-[#8b95a1]">선택 가능한 종목 없음</span>
+          <% } %>
+        </label>
+        <% } %>
+      </div>
+
+      <label class="flex min-h-12 items-center justify-between gap-4 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <span class="text-sm font-bold text-[#191f28]">액션 후보 만들기</span>
+        <input
+          type="checkbox"
+          name="createActions"
+          value="on"
+          checked
+          class="h-5 w-5 accent-[#3182f6]" />
+      </label>
 
       <button
         type="submit"
         class="box-border flex h-12 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#191f28] px-4 text-base font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.16)] active:bg-[#333d4b]">
-        만들기
+        계산하기
         <span
-          class="i-lucide-flask-conical h-5 w-5"
+          class="i-lucide-calculator h-5 w-5"
           aria-hidden="true"></span>
       </button>
     </form>

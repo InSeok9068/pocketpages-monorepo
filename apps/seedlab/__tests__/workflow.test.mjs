@@ -94,7 +94,7 @@ function getAuthedHome(cookieHeader) {
   return getAuthedPage('/', cookieHeader)
 }
 
-test('manual account, virtual simulation, and mock order flow works through service harness', async () => {
+test('manual account, contribution simulation, and mock order flow works through service harness', async () => {
   const cookieHeader = await signUpAndGetCookieHeader()
 
   const manualAccountResponse = await postForm(
@@ -111,7 +111,7 @@ test('manual account, virtual simulation, and mock order flow works through serv
       isTaxAdvantaged: 'on',
       memo: 'service-harness workflow',
     },
-    cookieHeader,
+    cookieHeader
   )
 
   assert.equal(manualAccountResponse.status, 303)
@@ -149,7 +149,7 @@ test('manual account, virtual simulation, and mock order flow works through serv
       marketValue: '700,000원',
       profitLoss: '+50,000원 (7.7%)',
     },
-    cookieHeader,
+    cookieHeader
   )
 
   assert.equal(manualHoldingResponse.status, 303)
@@ -172,7 +172,7 @@ test('manual account, virtual simulation, and mock order flow works through serv
       realEstateTargetPct: '0',
       otherTargetPct: '0',
     },
-    cookieHeader,
+    cookieHeader
   )
 
   assert.equal(targetResponse.status, 303)
@@ -210,7 +210,7 @@ test('manual account, virtual simulation, and mock order flow works through serv
       marketValue: '800,000원',
       profitLoss: '+100,000원',
     },
-    cookieHeader,
+    cookieHeader
   )
 
   assert.equal(updateHoldingResponse.status, 303)
@@ -225,7 +225,7 @@ test('manual account, virtual simulation, and mock order flow works through serv
       holdingId,
       allocationBucket: 'dividend_stock',
     },
-    cookieHeader,
+    cookieHeader
   )
 
   assert.equal(allocationResponse.status, 303)
@@ -237,34 +237,98 @@ test('manual account, virtual simulation, and mock order flow works through serv
   const simulationResponse = await postForm(
     '/xapi/simulations/create',
     {
-      personaName: '테스트 장기 투자자',
-      riskProfile: 'balanced',
-      behaviorProfile: 'disciplined',
-      initialCapital: '10000000',
-      monthlyContribution: '500000',
-      startDate: '2021-01-01',
-      endDate: '2026-06-30',
+      name: '테스트 추가 투자',
+      accountId: manualAccountId,
+      contributionAmount: '5000000',
+      monthlyContributionAmount: '500000',
+      projectionMonths: '12',
+      reserveCashAmount: '500000',
+      minimumOrderAmount: '100000',
+      priceMode: 'scenario',
+      priceChangePct: '5',
+      cashTargetPct: '5',
+      growthStockTargetPct: '60',
+      dividendStockTargetPct: '15',
+      bondTargetPct: '20',
+      goldTargetPct: '0',
+      realEstateTargetPct: '0',
+      otherTargetPct: '0',
+      return_cash: '2',
+      return_growth_stock: '7',
+      return_dividend_stock: '5',
+      return_bond: '3',
+      return_gold: '2',
+      return_real_estate: '3',
+      return_other: '0',
+      buyHolding_dividend_stock: holdingId,
+      createActions: 'on',
     },
-    cookieHeader,
+    cookieHeader
   )
 
   assert.equal(simulationResponse.status, 303)
   assert.match(simulationResponse.headers.get('location') || '', /^\/actions/u)
 
-  const simulationHome = await getAuthedHome(cookieHeader)
-  const actionItemId = simulationHome.$('input[name="actionItemId"]').attr('value') || ''
+  const actionsPage = await getAuthedPage('/actions', cookieHeader)
+  const actionItemId = actionsPage.$('input[name="actionItemId"]').attr('value') || ''
 
-  assert.equal(simulationHome.body.includes('주문 후보를 검토하세요'), true)
   assert.match(actionItemId, /^[a-z0-9]{15}$/u)
 
   const simulationsPage = await getAuthedPage('/simulations', cookieHeader)
-  assert.equal(simulationsPage.body.includes('실험 목록'), true)
-  assert.equal(simulationsPage.body.includes('테스트 장기 투자자 적립식 실험'), true)
+  assert.equal(simulationsPage.body.includes('투자 실험'), true)
+  assert.equal(simulationsPage.body.includes('테스트 추가 투자'), true)
+  assert.equal(simulationsPage.body.includes('예상 평가액'), true)
+  assert.equal(simulationsPage.body.includes('자산 배분을 바꾸면'), true)
   assert.equal(simulationsPage.$('[data-nav-key="simulations"][aria-current="page"]').length, 1)
+  assert.equal(simulationsPage.$('form[action="/xapi/simulations/delete"]').length, 1)
+  const simulationId = simulationsPage.$('form[action="/xapi/simulations/delete"] input[name="simulationId"]').attr('value') || ''
+  assert.match(simulationId, /^[a-z0-9]{15}$/u)
+  assert.equal(simulationsPage.$(`a[href="/simulations/detail/${simulationId}"]`).length > 0, true)
 
-  const actionsPage = await getAuthedPage('/actions', cookieHeader)
+  const simulationDetailPage = await getAuthedPage(`/simulations/detail/${simulationId}`, cookieHeader)
+  assert.equal(simulationDetailPage.body.includes('자산군 변화'), true)
+  assert.equal(simulationDetailPage.body.includes('첫 달 매수 후보'), true)
+  assert.equal(simulationDetailPage.body.includes('보유 종목 근거'), true)
+  assert.equal(simulationDetailPage.body.includes('월별 흐름'), true)
+  assert.equal(simulationDetailPage.$('form[action="/xapi/simulations/recalculate"]').length, 1)
+
+  const recalcHoldingResponse = await postForm(
+    '/xapi/holdings/manual/update',
+    {
+      holdingId,
+      accountId: manualAccountId,
+      symbol: '005930',
+      name: '삼성전자',
+      currency: 'KRW',
+      assetType: 'stock',
+      assetClass: 'equity',
+      quantity: '10주',
+      marketValue: '900,000원',
+      profitLoss: '+120,000원',
+    },
+    cookieHeader
+  )
+
+  assert.equal(recalcHoldingResponse.status, 303)
+
+  const recalculateResponse = await postForm(
+    '/xapi/simulations/recalculate',
+    {
+      simulationId,
+    },
+    cookieHeader
+  )
+
+  assert.equal(recalculateResponse.status, 303)
+  assert.match(recalculateResponse.headers.get('location') || '', new RegExp('^/simulations/detail/' + simulationId))
+
+  const recalculatedDetailPage = await getAuthedPage(`/simulations/detail/${simulationId}`, cookieHeader)
+  assert.equal(recalculatedDetailPage.body.includes('900,000원'), true)
+  assert.equal(recalculatedDetailPage.body.includes('최신 기준'), true)
+
   assert.equal(actionsPage.body.includes('검토할 액션'), true)
   assert.equal(actionsPage.body.includes('모의 제출'), true)
+  assert.equal(actionsPage.body.includes('삼성전자'), true)
   assert.equal(actionsPage.$('[data-nav-key="actions"][aria-current="page"]').length, 1)
 
   const mockOrderResponse = await postForm(
@@ -272,7 +336,7 @@ test('manual account, virtual simulation, and mock order flow works through serv
     {
       actionItemId,
     },
-    cookieHeader,
+    cookieHeader
   )
 
   assert.equal(mockOrderResponse.status, 303)
@@ -284,8 +348,26 @@ test('manual account, virtual simulation, and mock order flow works through serv
     .map((index, element) => orderHome.$(element).text().replace(/\s+/g, ' ').trim())
     .get()
 
-  assert.equal(homeSectionTexts.some((text) => text.includes('검토') && text.includes('1')), true)
-  assert.equal(orderHome.body.includes('제출 대기 주문 또는 초안이 있습니다.'), true)
+  assert.equal(
+    homeSectionTexts.some((text) => text.includes('검토') && text.includes('1')),
+    true
+  )
+  assert.equal(orderHome.body.includes('주문 후보를 검토하세요'), false)
+  assert.equal(orderHome.body.includes('제출 대기 주문 또는 초안이 있습니다.'), false)
+
+  const deleteSimulationResponse = await postForm(
+    '/xapi/simulations/delete',
+    {
+      simulationId,
+    },
+    cookieHeader
+  )
+
+  assert.equal(deleteSimulationResponse.status, 303)
+  assert.match(deleteSimulationResponse.headers.get('location') || '', /^\/simulations/u)
+
+  const deletedSimulationsPage = await getAuthedPage('/simulations', cookieHeader)
+  assert.equal(deletedSimulationsPage.body.includes('테스트 추가 투자'), false)
 })
 
 test('mock order route cannot call Toss order APIs', () => {
@@ -316,6 +398,56 @@ test('toss account sync route reads holdings, cash, and records sync state', () 
   assert.equal(accountsPage.includes('chart.umd.4.5.1.min.js'), true)
   assert.equal(accountsPage.includes('readAssetRecord'), true)
   assert.equal(accountsPage.includes('account_holdings'), true)
+})
+
+test('contribution simulation route supports stored, refresh, and scenario price bases', () => {
+  const createRoute = readFileSync(path.join(serviceDir, 'pb_hooks/pages/xapi/simulations/create.ejs'), 'utf8')
+  const recalculateRoute = readFileSync(path.join(serviceDir, 'pb_hooks/pages/xapi/simulations/recalculate.ejs'), 'utf8')
+  const deleteRoute = readFileSync(path.join(serviceDir, 'pb_hooks/pages/xapi/simulations/delete.ejs'), 'utf8')
+  const newPage = readFileSync(path.join(serviceDir, 'pb_hooks/pages/(site)/simulations/new.ejs'), 'utf8')
+  const indexPage = readFileSync(path.join(serviceDir, 'pb_hooks/pages/(site)/simulations/index.ejs'), 'utf8')
+  const detailPage = readFileSync(path.join(serviceDir, 'pb_hooks/pages/(site)/simulations/detail/[id].ejs'), 'utf8')
+  const calculator = readFileSync(path.join(serviceDir, 'pb_hooks/pages/_private/contribution-experiment.js'), 'utf8')
+  const simulationView = readFileSync(path.join(serviceDir, 'pb_hooks/pages/_private/simulation-view.js'), 'utf8')
+
+  assert.equal(newPage.includes('value="stored"'), true)
+  assert.equal(newPage.includes('value="refresh"'), true)
+  assert.equal(newPage.includes('value="scenario"'), true)
+  assert.equal(newPage.includes('name="reserveCashAmount"'), true)
+  assert.equal(newPage.includes('name="minimumOrderAmount"'), true)
+  assert.equal(newPage.includes('name="monthlyContributionAmount"'), true)
+  assert.equal(newPage.includes('name="projectionMonths"'), true)
+  assert.equal(newPage.includes('연수익률 가정'), true)
+  assert.equal(newPage.includes('매수 종목'), true)
+  assert.equal(newPage.includes('buyHolding_'), true)
+  assert.equal(newPage.includes('targetField'), true)
+  assert.equal(createRoute.includes('toss.getPrices'), true)
+  assert.equal(createRoute.includes('toss.getExchangeRate'), true)
+  assert.equal(createRoute.includes('summary.priceMode = priceMode'), true)
+  assert.equal(createRoute.includes('reserveCashAmount'), true)
+  assert.equal(createRoute.includes('minimumOrderAmount'), true)
+  assert.equal(createRoute.includes('buildTimelineExperiment'), true)
+  assert.equal(createRoute.includes('simulation_snapshots'), true)
+  assert.equal(createRoute.includes('readAnnualReturnPcts'), true)
+  assert.equal(createRoute.includes('readPreferredHoldingIds'), true)
+  assert.equal(createRoute.includes('preferredHoldingIds'), true)
+  assert.equal(createRoute.includes("new Record(txApp.findCollectionByNameOrId('action_items'))"), true)
+  assert.equal(indexPage.includes('/xapi/simulations/delete'), true)
+  assert.equal(indexPage.includes('/xapi/simulations/recalculate'), true)
+  assert.equal(indexPage.includes('/simulations/detail/<%= simulationCards[index].id %>'), true)
+  assert.equal(detailPage.includes('/xapi/simulations/recalculate'), true)
+  assert.equal(detailPage.includes('자산군 변화'), true)
+  assert.equal(detailPage.includes('보유 종목 근거'), true)
+  assert.equal(simulationView.includes('buildSimulationModel'), true)
+  assert.equal(recalculateRoute.includes('initialSummary'), true)
+  assert.equal(recalculateRoute.includes('saveTimelineSnapshots'), true)
+  assert.equal(recalculateRoute.includes('previousSummary'), true)
+  assert.equal(deleteRoute.includes('simulation_snapshots'), true)
+  assert.equal(deleteRoute.includes('action_batches'), true)
+  assert.equal(deleteRoute.includes('txApp.delete(simulationRecord)'), true)
+  assert.equal(calculator.includes('applyPriceChange'), true)
+  assert.equal(calculator.includes('roundFractionalQuantity'), true)
+  assert.equal(calculator.includes('below_minimum_order'), true)
 })
 
 test('rebalance schema supports asset class targets and draft items', () => {

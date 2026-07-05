@@ -1,0 +1,198 @@
+<script server>
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function requireText(value, name) {
+    const text = cleanText(value)
+    if (!text) throw new Error(name + '이 필요합니다.')
+    return text
+  }
+
+  function readObject(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      try {
+        const parsed = JSON.parse(value)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+      } catch (_exception) {
+        return {}
+      }
+    }
+    return {}
+  }
+
+  function collectRecords(app, collection, filter, params) {
+    const records = []
+    const limit = 200
+    let offset = 0
+
+    while (true) {
+      dbg('seedlab/xapi/simulations/delete:db-access', {
+        collection,
+        offset,
+        limit,
+      })
+      const pageRecords = app.findRecordsByFilter(collection, filter, '-created', limit, offset, params)
+      for (let index = 0; index < pageRecords.length; index += 1) {
+        records.push(pageRecords[index])
+      }
+      if (pageRecords.length < limit) break
+      offset += pageRecords.length
+    }
+
+    return records
+  }
+
+  function isDeletableActionStatus(value) {
+    const status = cleanText(value)
+    return status === 'draft' || status === 'approved' || status === 'skipped' || status === 'rejected'
+  }
+
+  function deleteSimulationActionBatches(txApp, userId, simulationId) {
+    const actionBatches = collectRecords(txApp, 'action_batches', 'owner = {:owner}', { owner: userId })
+    let deletedBatchCount = 0
+    let deletedActionItemCount = 0
+
+    for (let batchIndex = 0; batchIndex < actionBatches.length; batchIndex += 1) {
+      const actionBatch = actionBatches[batchIndex]
+      const summary = readObject(actionBatch.get('summary'))
+      if (String(summary.simulationId || '') !== simulationId) continue
+
+      const batchId = String(actionBatch.get('id') || '')
+      const actionItems = collectRecords(txApp, 'action_items', 'owner = {:owner} && batch = {:batch}', {
+        owner: userId,
+        batch: batchId,
+      })
+      let remainingActionItemCount = 0
+
+      for (let itemIndex = 0; itemIndex < actionItems.length; itemIndex += 1) {
+        const actionItem = actionItems[itemIndex]
+        if (isDeletableActionStatus(actionItem.get('status'))) {
+          txApp.delete(actionItem)
+          deletedActionItemCount += 1
+        } else {
+          remainingActionItemCount += 1
+        }
+      }
+
+      if (remainingActionItemCount === 0) {
+        txApp.delete(actionBatch)
+        deletedBatchCount += 1
+      } else {
+        summary.simulationDeleted = true
+        actionBatch.set('summary', summary)
+        actionBatch.set('status', 'canceled')
+        txApp.save(actionBatch)
+      }
+    }
+
+    return {
+      deletedBatchCount,
+      deletedActionItemCount,
+    }
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/simulations/delete:redirect', {
+      status: 303,
+      redirectTo: '/simulations',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/simulations', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/simulations/delete:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const simulationId = cleanText(form.simulationId)
+  let errorMessage = ''
+  let deletedSnapshotCount = 0
+  let deletedBatchCount = 0
+  let deletedActionItemCount = 0
+
+  dbg('seedlab/xapi/simulations/delete:start', {
+    userId,
+    hasSimulationId: !!simulationId,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    requireText(simulationId, '실험')
+
+    $app.runInTransaction(function (txApp) {
+      const simulationRecord = txApp.findFirstRecordByFilter('simulations', 'id = {:id} && owner = {:owner}', {
+        id: simulationId,
+        owner: userId,
+      })
+
+      const snapshots = collectRecords(txApp, 'simulation_snapshots', 'owner = {:owner} && simulation = {:simulation}', {
+        owner: userId,
+        simulation: simulationId,
+      })
+      for (let index = 0; index < snapshots.length; index += 1) {
+        txApp.delete(snapshots[index])
+        deletedSnapshotCount += 1
+      }
+
+      const actionDeleteResult = deleteSimulationActionBatches(txApp, userId, simulationId)
+      deletedBatchCount = actionDeleteResult.deletedBatchCount
+      deletedActionItemCount = actionDeleteResult.deletedActionItemCount
+
+      txApp.delete(simulationRecord)
+    })
+
+    info('seedlab/xapi/simulations/delete:success', {
+      userId,
+      simulationId,
+      deletedSnapshotCount,
+      deletedBatchCount,
+      deletedActionItemCount,
+    })
+
+    dbg('seedlab/xapi/simulations/delete:redirect', {
+      status: 303,
+      redirectTo: '/simulations',
+      message: '실험을 삭제했습니다.',
+    })
+    redirect('/simulations', {
+      status: 303,
+      message: '실험을 삭제했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/simulations/delete:failed', {
+      userId,
+      simulationId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/simulations/delete:redirect', {
+    status: 303,
+    redirectTo: '/simulations',
+    message: errorMessage || '실험 삭제에 실패했습니다.',
+  })
+  redirect('/simulations', {
+    status: 303,
+    message: errorMessage || '실험 삭제에 실패했습니다.',
+  })
+  return
+</script>

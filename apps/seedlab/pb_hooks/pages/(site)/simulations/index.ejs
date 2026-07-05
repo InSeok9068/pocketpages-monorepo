@@ -1,6 +1,8 @@
 <script server>
+  const simulationView = resolve('simulation-view')
+
   meta('title', 'SeedLab 실험')
-  meta('description', 'SeedLab 전략 실험')
+  meta('description', 'SeedLab 투자 실험')
 
   if (!request.auth) {
     dbg('seedlab/simulations:index:redirect', {
@@ -17,48 +19,24 @@
 
   const userId = String(request.auth.get('id') || '')
   let simulationCards = []
-  let completeCount = 0
-  let runningCount = 0
-
-  function formatAmount(value) {
-    const number = Number(value || 0)
-    if (!isFinite(number)) return '0'
-    return String(Math.round(number)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  }
-
-  function readSummaryValue(summary, fieldName) {
-    if (!summary || typeof summary !== 'object') return ''
-    return summary[fieldName]
-  }
-
-  function buildSimulationCard(record) {
-    const summary = record.get('summary') || {}
-    const status = String(record.get('status') || 'ready')
-    const returnPct = readSummaryValue(summary, 'returnPct')
-    const totalValue = readSummaryValue(summary, 'totalValue')
-
-    return {
-      name: String(record.get('name') || '실험'),
-      periodText: String(record.get('startDate') || '') + ' - ' + String(record.get('endDate') || ''),
-      status,
-      returnPctText: returnPct === '' ? '-' : String(returnPct) + '%',
-      totalValueText: totalValue ? formatAmount(totalValue) : '-',
-    }
-  }
+  let actionCandidateCount = 0
+  let projectedProfitTotal = 0
 
   if (userId) {
     try {
       dbg('seedlab/simulations:index:db-access', { collection: 'simulations' })
       const simulationRecords = $app.findRecordsByFilter('simulations', 'owner = {:owner}', '-created', 50, 0, { owner: userId })
-      simulationCards = simulationRecords.map(buildSimulationCard)
+      simulationCards = simulationRecords.map(simulationView.buildSimulationModel)
     } catch (exception) {
       warn('seedlab/simulations:index:db-access-failed', { collection: 'simulations', error: String(exception.message || exception) })
       simulationCards = []
     }
 
     for (let index = 0; index < simulationCards.length; index += 1) {
-      if (simulationCards[index].status === 'complete') completeCount += 1
-      if (simulationCards[index].status === 'running') runningCount += 1
+      const actionCount = Number(simulationCards[index].actionCandidateCount || 0)
+      const profit = Number(simulationCards[index].profitValue || 0)
+      if (isFinite(actionCount)) actionCandidateCount += actionCount
+      if (isFinite(profit)) projectedProfitTotal += profit
     }
   }
 </script>
@@ -67,7 +45,7 @@
   <header class="flex items-center justify-between">
     <div>
       <p class="text-xs font-bold text-[#3182f6]">실험</p>
-      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">실험 목록</h1>
+      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">투자 실험</h1>
     </div>
     <a
       href="/simulations/new"
@@ -82,25 +60,34 @@
   <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
 
   <section class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
-    <div class="grid grid-cols-3 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
+    <div class="flex items-start gap-3">
+      <span
+        class="i-lucide-chart-no-axes-combined mt-0.5 h-5 w-5 shrink-0 text-[#3182f6]"
+        aria-hidden="true"></span>
       <div class="min-w-0">
-        <p class="truncate text-[10px] font-bold text-[#8b95a1]">전체</p>
+        <p class="text-sm font-bold leading-5 text-[#191f28]">자산 배분을 바꾸면 결과가 어떻게 달라지는지 봅니다</p>
+        <p class="mt-1 text-xs font-medium leading-5 text-[#6b7684]">각 카드는 하나의 가정입니다. 상세에서 자산군과 종목 근거를 확인합니다.</p>
+      </div>
+    </div>
+    <div class="mt-4 grid grid-cols-3 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
+      <div class="min-w-0">
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">실험</p>
         <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= simulationCards.length %></p>
       </div>
       <div class="min-w-0">
-        <p class="truncate text-[10px] font-bold text-[#8b95a1]">완료</p>
-        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= completeCount %></p>
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">후보</p>
+        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= actionCandidateCount %></p>
       </div>
       <div class="min-w-0">
-        <p class="truncate text-[10px] font-bold text-[#8b95a1]">진행</p>
-        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= runningCount %></p>
+        <p class="truncate text-[10px] font-bold text-[#8b95a1]">예상 손익</p>
+        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= simulationView.formatAmount(projectedProfitTotal) %></p>
       </div>
     </div>
   </section>
 
   <section class="space-y-3">
     <div class="flex items-center justify-between">
-      <h2 class="text-base font-bold text-[#191f28]">실험</h2>
+      <h2 class="text-base font-bold text-[#191f28]">실험 카드</h2>
       <a
         href="/simulations/new"
         class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-sm font-bold text-[#3182f6] no-underline shadow-[0_1px_2px_rgba(25,31,40,0.06)] active:bg-[#e8f3ff]">
@@ -113,8 +100,8 @@
 
     <% if (simulationCards.length === 0) { %>
     <div class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
-      <p class="text-sm font-bold text-[#191f28]">아직 만든 실험이 없습니다</p>
-      <p class="mt-1 text-sm leading-5 text-[#6b7684]">가상 인물과 적립식 조건을 넣어 주문 후보를 먼저 만들어봅니다.</p>
+      <p class="text-sm font-bold text-[#191f28]">아직 실험이 없습니다</p>
+      <p class="mt-1 text-sm leading-5 text-[#6b7684]">목표 비중과 월 납입을 넣으면 결과 카드가 만들어집니다.</p>
       <a
         href="/simulations/new"
         class="mt-4 box-border flex h-11 items-center justify-center gap-2 rounded-lg bg-[#191f28] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(25,31,40,0.16)] active:bg-[#333d4b]">
@@ -128,21 +115,97 @@
     <div class="space-y-3">
       <% for (let index = 0; index < simulationCards.length; index += 1) { %>
       <article class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <p class="truncate text-sm font-bold text-[#191f28]"><%= simulationCards[index].name %></p>
-            <p class="mt-1 text-xs text-[#8b95a1]"><%= simulationCards[index].periodText %></p>
+        <a
+          href="/simulations/detail/<%= simulationCards[index].id %>"
+          class="block text-inherit no-underline">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="truncate text-base font-bold text-[#191f28]"><%= simulationCards[index].name %></p>
+              <p class="mt-1 text-xs font-bold leading-5 text-[#6b7684]"><%= simulationCards[index].targetText %></p>
+            </div>
+            <span class="shrink-0 rounded-md bg-[#e8f3ff] px-2 py-1 text-xs font-bold text-[#1b64da]"><%= simulationCards[index].badgeText %></span>
           </div>
-          <span class="shrink-0 rounded-md bg-[#ecfdf3] px-2 py-1 text-xs font-bold text-[#008a45]"><%= simulationCards[index].status %></span>
-        </div>
-        <div class="mt-4 grid grid-cols-2 gap-3">
-          <div class="rounded-lg bg-[#f7f8fa] p-3">
-            <p class="text-xs font-medium text-[#8b95a1]">수익률</p>
-            <p class="mt-1 text-lg font-bold text-[#191f28]"><%= simulationCards[index].returnPctText %></p>
+
+          <div class="mt-4">
+            <p class="text-xs font-bold text-[#8b95a1]">예상 평가액</p>
+            <div class="mt-1 flex items-end justify-between gap-3">
+              <p class="min-w-0 truncate text-[24px] font-bold leading-tight text-[#191f28]"><%= simulationCards[index].finalTotalText %></p>
+              <p class="<%= String(simulationCards[index].profitText).indexOf('-') === 0 ? 'text-[#1b64da]' : 'text-[#f04452]' %> shrink-0 text-sm font-bold">
+                <%= simulationCards[index].profitText %>
+              </p>
+            </div>
+            <div class="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
+              <div class="min-w-0">
+                <p class="truncate text-[10px] font-bold text-[#8b95a1]">현재</p>
+                <p class="mt-0.5 truncate text-xs font-bold text-[#191f28]"><%= simulationCards[index].currentTotalText %></p>
+              </div>
+              <div class="min-w-0">
+                <p class="truncate text-[10px] font-bold text-[#8b95a1]">수익률</p>
+                <p class="mt-0.5 truncate text-xs font-bold text-[#191f28]"><%= simulationCards[index].returnText %></p>
+              </div>
+              <div class="min-w-0">
+                <p class="truncate text-[10px] font-bold text-[#8b95a1]">주문 후보</p>
+                <p class="mt-0.5 truncate text-xs font-bold text-[#191f28]"><%= simulationCards[index].actionText %></p>
+              </div>
+            </div>
           </div>
-          <div class="rounded-lg bg-[#f7f8fa] p-3">
-            <p class="text-xs font-medium text-[#8b95a1]">평가액</p>
-            <p class="mt-1 text-lg font-bold text-[#191f28]"><%= simulationCards[index].totalValueText %></p>
+
+          <% if (simulationCards[index].bucketRows.length > 0) { %>
+          <div class="mt-4 space-y-2">
+            <% for (let bucketIndex = 0; bucketIndex < simulationCards[index].bucketRows.length && bucketIndex < 4; bucketIndex += 1) { %>
+            <div>
+              <div class="mb-1 flex items-center justify-between gap-2">
+                <p class="truncate text-xs font-bold text-[#191f28]"><%= simulationCards[index].bucketRows[bucketIndex].label %></p>
+                <p class="shrink-0 text-xs font-bold text-[#4e5968]">
+                  현재 <%= simulationCards[index].bucketRows[bucketIndex].currentPctText %> → 예상 <%= simulationCards[index].bucketRows[bucketIndex].finalPctText %>
+                </p>
+              </div>
+              <div class="h-2 overflow-hidden rounded-full bg-[#f2f4f6]">
+                <div
+                  class="h-full rounded-full"
+                  style="width: <%= simulationCards[index].bucketRows[bucketIndex].barWidth %>%; background: <%= simulationCards[index].bucketRows[bucketIndex].color %>"></div>
+              </div>
+            </div>
+            <% } %>
+          </div>
+          <% } %>
+        </a>
+
+        <div class="mt-4 flex items-center justify-between gap-3 border-t border-[#f2f4f6] pt-3">
+          <p class="min-w-0 truncate text-xs font-bold text-[#6b7684]"><%= simulationCards[index].thesisText %></p>
+          <div class="flex shrink-0 items-center gap-2">
+            <form
+              method="post"
+              action="/xapi/simulations/recalculate">
+              <input
+                type="hidden"
+                name="simulationId"
+                value="<%= simulationCards[index].id %>" />
+              <button
+                type="submit"
+                class="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-white px-3 text-xs font-bold text-[#3182f6] shadow-[inset_0_0_0_1px_#d9e9ff] active:bg-[#e8f3ff]">
+                최신 기준
+              </button>
+            </form>
+            <a
+              href="/simulations/detail/<%= simulationCards[index].id %>"
+              class="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-[#191f28] px-3 text-xs font-bold text-white no-underline active:bg-[#333d4b]">
+              자세히
+            </a>
+            <form
+              method="post"
+              action="/xapi/simulations/delete"
+              onsubmit="return confirm('이 실험을 삭제할까요?')">
+              <input
+                type="hidden"
+                name="simulationId"
+                value="<%= simulationCards[index].id %>" />
+              <button
+                type="submit"
+                class="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-white px-3 text-xs font-bold text-[#f04452] shadow-[inset_0_0_0_1px_#fee4e7] active:bg-[#fff1f2]">
+                삭제
+              </button>
+            </form>
           </div>
         </div>
       </article>

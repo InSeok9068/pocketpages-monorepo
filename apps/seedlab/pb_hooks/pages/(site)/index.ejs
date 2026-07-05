@@ -10,7 +10,6 @@
   const userEmail = isSignedIn ? String(request.auth.get('email') || '').trim() : ''
   const userName = isSignedIn ? String(request.auth.get('name') || '').trim() : ''
   const displayName = userName || (userEmail ? userEmail.split('@')[0] : '투자자')
-  let latestDraftActionCard = null
   let latestUsdKrwRate = 0
   const assetsById = {}
   const bucketTotals = {}
@@ -252,15 +251,7 @@
 
     try {
       dbg('seedlab/index:db-access', { collection: 'action_items' })
-      const draftActions = $app.findRecordsByFilter('action_items', 'owner = {:owner} && status = {:status}', '-updated', 200, 0, { owner: userId, status: 'draft' })
-      dashboard.draftActionCount = draftActions.length
-      latestDraftActionCard =
-        draftActions.length > 0
-          ? {
-              id: String(draftActions[0].get('id') || ''),
-              reason: String(draftActions[0].get('reason') || '전략 기준으로 만든 주문 후보입니다.'),
-            }
-          : null
+      dashboard.draftActionCount = $app.findRecordsByFilter('action_items', 'owner = {:owner} && status = {:status}', '-updated', 200, 0, { owner: userId, status: 'draft' }).length
     } catch (exception) {
       warn('seedlab/index:db-access-failed', { collection: 'action_items', error: String(exception.message || exception) })
     }
@@ -293,22 +284,12 @@
   const activeActionCount = dashboard.draftActionCount + dashboard.pendingOrderCount
   const totalValueText = formatAmount(dashboard.totalValue)
   const profitLossText = (dashboard.profitLoss > 0 ? '+' : '') + formatAmount(dashboard.profitLoss)
-  const readinessText = dashboard.accountCount === 0 ? '계좌 연결 필요' : dashboard.holdingCount === 0 ? '보유 종목 동기화 필요' : activeActionCount > 0 ? '검토할 액션 있음' : '점검 완료'
-  const primaryHref = dashboard.accountCount === 0 ? '/connections/toss/new' : dashboard.holdingCount === 0 ? '/accounts' : activeActionCount > 0 ? '/actions' : '/accounts'
-  const primaryLabel = dashboard.accountCount === 0 ? '계좌 연결' : dashboard.holdingCount === 0 ? '종목 동기화' : activeActionCount > 0 ? '액션 확인' : '비중 보기'
-  const hasMainTask = dashboard.accountCount === 0 || dashboard.holdingCount === 0 || activeActionCount > 0
-  const mainTaskTitle =
-    dashboard.accountCount === 0 ? '계좌를 먼저 연결하세요' : dashboard.holdingCount === 0 ? '보유 종목을 동기화하세요' : activeActionCount > 0 ? '주문 후보를 검토하세요' : '현재 비중을 점검하세요'
-  const mainTaskDescription =
-    dashboard.accountCount === 0
-      ? '토스증권 API 연결 후 보유 종목과 비중을 계산합니다.'
-      : dashboard.holdingCount === 0
-        ? '연결된 계좌에서 보유 종목을 가져와야 리밸런싱이 가능합니다.'
-        : latestDraftActionCard
-          ? latestDraftActionCard.reason
-          : activeActionCount > 0
-            ? '제출 대기 주문 또는 초안이 있습니다.'
-            : '목표 비중과 현재 비중을 비교할 준비가 끝났습니다.'
+  const readinessText = dashboard.accountCount === 0 ? '계좌 연결 필요' : dashboard.holdingCount === 0 ? '보유 종목 동기화 필요' : '점검 완료'
+  const primaryHref = dashboard.accountCount === 0 ? '/connections/toss/new' : '/accounts'
+  const primaryLabel = dashboard.accountCount === 0 ? '계좌 연결' : '종목 동기화'
+  const hasMainTask = dashboard.accountCount === 0 || dashboard.holdingCount === 0
+  const mainTaskTitle = dashboard.accountCount === 0 ? '계좌를 먼저 연결하세요' : '보유 종목을 동기화하세요'
+  const mainTaskDescription = dashboard.accountCount === 0 ? '토스증권 API 연결 후 보유 종목과 비중을 계산합니다.' : '연결된 계좌에서 보유 종목을 가져와야 리밸런싱이 가능합니다.'
   const statusRows = [
     { label: '계좌', value: String(dashboard.accountCount) },
     { label: '종목', value: String(dashboard.holdingCount) },
@@ -453,8 +434,7 @@
         <p class="mt-0.5 truncate text-[28px] font-bold leading-none text-[#191f28]"><%= totalValueText %>원</p>
       </div>
       <div class="shrink-0 text-right">
-        <span
-          class="<%= readinessText === '점검 완료' ? 'bg-[#ecfdf3] text-[#008a45]' : activeActionCount > 0 ? 'bg-[#fff6e5] text-[#b76e00]' : 'bg-[#e8f3ff] text-[#1b64da]' %> inline-flex rounded-md px-2 py-1 text-xs font-bold"
+        <span class="<%= readinessText === '점검 완료' ? 'bg-[#ecfdf3] text-[#008a45]' : 'bg-[#e8f3ff] text-[#1b64da]' %> inline-flex rounded-md px-2 py-1 text-xs font-bold"
           ><%= readinessText %></span
         >
         <p class="<%= profitClass(dashboard.profitLoss) %> mt-2 text-sm font-bold"><%= profitLossText %>원</p>
@@ -523,27 +503,11 @@
         <h2 class="truncate text-base font-bold text-[#191f28]"><%= mainTaskTitle %></h2>
         <p class="mt-1 text-sm leading-5 text-[#6b7684]"><%= mainTaskDescription %></p>
       </div>
-      <% if (latestDraftActionCard) { %>
-      <form
-        method="post"
-        action="/xapi/orders/mock-submit">
-        <input
-          type="hidden"
-          name="actionItemId"
-          value="<%= latestDraftActionCard.id %>" />
-        <button
-          type="submit"
-          class="box-border inline-flex h-10 shrink-0 items-center justify-center rounded-lg border-0 bg-[#191f28] px-3 text-sm font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.14)] active:bg-[#333d4b]">
-          제출
-        </button>
-      </form>
-      <% } else { %>
       <a
         href="<%= primaryHref %>"
         class="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-[#191f28] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(25,31,40,0.14)] active:bg-[#333d4b]">
         <%= primaryLabel %>
       </a>
-      <% } %>
     </div>
   </section>
   <% } %>

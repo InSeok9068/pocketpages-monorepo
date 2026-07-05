@@ -1,0 +1,530 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const allocationBuckets = resolve('allocation-buckets')
+  const contributionExperiment = resolve('contribution-experiment')
+  const credentialCrypto = resolve('credential-crypto')
+  const holdingValuation = resolve('holding-valuation')
+  const simulationView = resolve('simulation-view')
+  const tossApi = resolve('toss-api')
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function requireText(value, name) {
+    const text = cleanText(value)
+    if (!text) throw new Error(name + '이 필요합니다.')
+    return text
+  }
+
+  function readObject(value) {
+    return simulationView.readObject(value)
+  }
+
+  function readNumber(value) {
+    const text = cleanText(value).replace(/,/g, '').replace(/원/g, '').replace(/%/g, '')
+    const number = Number(text)
+    return isFinite(number) ? number : 0
+  }
+
+  function normalizePriceMode(value) {
+    const priceMode = cleanText(value || 'stored')
+    if (priceMode === 'stored' || priceMode === 'refresh' || priceMode === 'scenario') return priceMode
+    return 'stored'
+  }
+
+  function normalizeAssetClass(value) {
+    const key = cleanText(value)
+    if (key === 'equity' || key === 'fixed_income' || key === 'cash' || key === 'alternative') return key
+    return 'equity'
+  }
+
+  function readSavedAllocationBucket(holding) {
+    const raw = readObject(holding.get('raw'))
+    const seedlab = readObject(raw.seedlab)
+    return allocationBuckets.normalizeBucket(raw.allocationBucket || seedlab.allocationBucket)
+  }
+
+  function inferAllocationBucket(holding, asset) {
+    const savedBucket = readSavedAllocationBucket(holding)
+    if (savedBucket) return savedBucket
+
+    const assetClass = normalizeAssetClass(holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none' ? holding.get('assetClassOverride') : asset ? asset.get('assetClass') : '')
+    const assetType = String(asset ? asset.get('assetType') : '').toLowerCase()
+    const symbol = String(asset ? asset.get('symbol') : '').toUpperCase()
+    const name = String(asset ? asset.get('name') : '').toUpperCase()
+    const searchText = symbol + ' ' + name
+
+    if (assetClass === 'cash' || assetType === 'cash') return 'cash'
+    if (assetClass === 'fixed_income' || assetType === 'bond' || searchText.indexOf('BOND') >= 0 || searchText.indexOf('채권') >= 0) return 'bond'
+    if (searchText.indexOf('GOLD') >= 0 || searchText.indexOf('금') >= 0) return 'gold'
+    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0) return 'real_estate'
+    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0) return 'dividend_stock'
+    if (assetClass === 'equity') return 'growth_stock'
+    return 'other'
+  }
+
+  function readLatestUsdKrwRate() {
+    try {
+      dbg('seedlab/xapi/simulations/recalculate:db-access', { collection: 'fx_rates' })
+      const records = $app.findRecordsByFilter('fx_rates', 'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}', '-rateAt', 1, 0, {
+        baseCurrency: 'USD',
+        quoteCurrency: 'KRW',
+      })
+      return records.length > 0 ? Number(records[0].get('rate') || 0) : 0
+    } catch (exception) {
+      dbg('seedlab/xapi/simulations/recalculate:fx-rate-missing', { pair: 'USD_KRW' })
+      return 0
+    }
+  }
+
+  function readAssetRecord(assetId, assetsById) {
+    const id = String(assetId || '')
+    if (!id) return null
+    if (Object.prototype.hasOwnProperty.call(assetsById, id)) return assetsById[id]
+
+    try {
+      dbg('seedlab/xapi/simulations/recalculate:db-access', { collection: 'assets', assetId: id })
+      assetsById[id] = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id })
+    } catch (exception) {
+      warn('seedlab/xapi/simulations/recalculate:db-access-failed', { collection: 'assets', assetId: id, error: String(exception.message || exception) })
+      assetsById[id] = null
+    }
+
+    return assetsById[id]
+  }
+
+  function readHoldings(userId, accountId, latestUsdKrwRate) {
+    const assetsById = {}
+    const holdings = []
+    const filter = accountId ? 'owner = {:owner} && account = {:account}' : 'owner = {:owner}'
+    const filterParams = accountId ? { owner: userId, account: accountId } : { owner: userId }
+
+    dbg('seedlab/xapi/simulations/recalculate:db-access', { collection: 'account_holdings' })
+    const holdingRecords = $app.findRecordsByFilter('account_holdings', filter, '-marketValue', 200, 0, filterParams)
+    for (let index = 0; index < holdingRecords.length; index += 1) {
+      const holding = holdingRecords[index]
+      const asset = readAssetRecord(holding.get('asset'), assetsById)
+      const raw = readObject(holding.get('raw'))
+      const currency = String(holding.get('currency') || (asset ? asset.get('currency') : 'KRW') || 'KRW')
+
+      holdings.push({
+        holdingId: String(holding.get('id') || ''),
+        accountId: String(holding.get('account') || ''),
+        assetId: String(holding.get('asset') || ''),
+        symbol: String(asset ? asset.get('symbol') : '') || 'UNKNOWN',
+        name: String(asset ? asset.get('name') : '') || '종목 정보 없음',
+        currency,
+        quantity: Number(holding.get('quantity') || 0),
+        currentPrice: Number(holding.get('currentPrice') || 0),
+        marketValueKrw: holdingValuation.readKrwAmount({
+          currency,
+          raw,
+          storedAmount: Number(holding.get('marketValue') || 0),
+          sourceKey: 'marketValueSource',
+          krwKey: 'marketValueKrw',
+          latestUsdKrwRate,
+        }),
+        allocationBucket: inferAllocationBucket(holding, asset),
+      })
+    }
+
+    return holdings
+  }
+
+  function findLatestSnapshotSummary(userId, accountId) {
+    const seen = {}
+    let cashValue = 0
+
+    try {
+      dbg('seedlab/xapi/simulations/recalculate:db-access', { collection: 'account_snapshots' })
+      const filter = accountId ? 'owner = {:owner} && account = {:account}' : 'owner = {:owner}'
+      const filterParams = accountId ? { owner: userId, account: accountId } : { owner: userId }
+      const snapshots = $app.findRecordsByFilter('account_snapshots', filter, '-snapshotDate', 200, 0, filterParams)
+      for (let index = 0; index < snapshots.length; index += 1) {
+        const snapshot = snapshots[index]
+        const snapshotAccountId = String(snapshot.get('account') || '')
+        if (!snapshotAccountId || seen[snapshotAccountId]) continue
+        seen[snapshotAccountId] = true
+        cashValue += Number(snapshot.get('cashValue') || 0)
+      }
+    } catch (exception) {
+      warn('seedlab/xapi/simulations/recalculate:db-access-failed', { collection: 'account_snapshots', error: String(exception.message || exception) })
+    }
+
+    return { cashValue }
+  }
+
+  function readPriceValue(source) {
+    const value = readObject(source)
+    const amount = readObject(value.amount)
+    const candidates = [value.price, value.lastPrice, value.currentPrice, value.tradePrice, value.close, value.closePrice, value.regularMarketPrice, amount.value, amount.amount]
+    for (let index = 0; index < candidates.length; index += 1) {
+      const price = readNumber(candidates[index])
+      if (price > 0) return price
+    }
+    return 0
+  }
+
+  function addPriceOverride(overrides, row) {
+    const item = readObject(row)
+    const symbol = cleanText(item.symbol || item.ticker || item.code).toUpperCase()
+    if (!symbol) return
+    const price = readPriceValue(item)
+    if (price <= 0) return
+    overrides[symbol] = { price }
+  }
+
+  function readPriceOverrides(result) {
+    const body = readObject(result)
+    const overrides = {}
+    const rows = Array.isArray(result) ? result : Array.isArray(body.items) ? body.items : Array.isArray(body.prices) ? body.prices : Array.isArray(body.data) ? body.data : []
+
+    for (let index = 0; index < rows.length; index += 1) {
+      addPriceOverride(overrides, rows[index])
+    }
+
+    const keys = Object.keys(body)
+    for (let index = 0; index < keys.length; index += 1) {
+      const key = keys[index]
+      const value = body[key]
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        addPriceOverride(overrides, Object.assign({ symbol: key }, value))
+      }
+    }
+
+    return overrides
+  }
+
+  function readUsdKrwRate(result) {
+    const exchangeRate = readObject(result)
+    return readNumber(exchangeRate.rate || exchangeRate.midRate || exchangeRate.exchangeRate || exchangeRate.usdKrwRate)
+  }
+
+  function findActiveTossConnection(userId) {
+    const connectionRecords = $app.findRecordsByFilter('broker_connections', 'owner = {:owner} && provider = {:provider} && status = {:status}', '-updated', 1, 0, {
+      owner: userId,
+      provider: 'toss',
+      status: 'active',
+    })
+
+    return connectionRecords.length > 0 ? connectionRecords[0] : null
+  }
+
+  function fetchPriceOverrides(userId, holdings, latestUsdKrwRate) {
+    const connectionRecord = findActiveTossConnection(userId)
+    if (!connectionRecord) throw new Error('토스증권 연결이 있어야 현재가를 재조회할 수 있습니다.')
+
+    const clientOptions = credentialCrypto.buildTossClientOptions(connectionRecord, {
+      credentialKey: env('SEEDLAB_CREDENTIAL_KEY'),
+    })
+    const toss = tossApi.createTossApiClient(clientOptions)
+    const symbols = []
+    const seen = {}
+    let hasUsd = false
+
+    for (let index = 0; index < holdings.length; index += 1) {
+      const symbol = String(holdings[index].symbol || '').toUpperCase()
+      if (!symbol || seen[symbol]) continue
+      seen[symbol] = true
+      symbols.push(symbol)
+      if (String(holdings[index].currency || '').toUpperCase() === 'USD') hasUsd = true
+    }
+
+    if (symbols.length === 0) return { priceOverrides: {}, latestUsdKrwRate }
+
+    const priceResult = toss.getPrices({ symbols })
+    if (!priceResult.ok) throw new Error(priceResult.errorMessage || '토스증권 현재가 조회에 실패했습니다.')
+
+    let usdKrwRate = latestUsdKrwRate
+    if (hasUsd) {
+      const exchangeResult = toss.getExchangeRate({
+        baseCurrency: 'USD',
+        quoteCurrency: 'KRW',
+      })
+      if (exchangeResult.ok) usdKrwRate = readUsdKrwRate(exchangeResult.result) || usdKrwRate
+    }
+
+    return {
+      priceOverrides: readPriceOverrides(priceResult.result),
+      latestUsdKrwRate: usdKrwRate,
+    }
+  }
+
+  function addMonthsDateOnly(value, months) {
+    const date = new Date(value)
+    if (isNaN(date.getTime())) return dateutil.toDateOnlyIso(new Date())
+    const nextDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + Number(months || 0), date.getUTCDate()))
+    return dateutil.toDateOnlyIso(nextDate)
+  }
+
+  function findDefaultStrategy(txApp, userId) {
+    const records = txApp.findRecordsByFilter('investment_strategies', 'owner = {:owner} && strategyType = {:strategyType}', '-updated', 50, 0, {
+      owner: userId,
+      strategyType: 'real',
+    })
+
+    for (let index = 0; index < records.length; index += 1) {
+      if (String(records[index].get('name') || '') === '기본 리밸런싱') return records[index]
+    }
+
+    return records.length > 0 ? records[0] : null
+  }
+
+  function ensureStrategy(txApp, userId, targets) {
+    let strategyRecord = null
+
+    try {
+      strategyRecord = findDefaultStrategy(txApp, userId)
+    } catch (exception) {
+      strategyRecord = null
+    }
+
+    if (!strategyRecord) {
+      strategyRecord = new Record(txApp.findCollectionByNameOrId('investment_strategies'))
+      strategyRecord.set('owner', userId)
+      strategyRecord.set('name', '기본 리밸런싱')
+      strategyRecord.set('strategyType', 'real')
+      strategyRecord.set('baseCurrency', 'KRW')
+      strategyRecord.set('monthlyContribution', 0)
+      strategyRecord.set('rebalanceCycle', 'monthly')
+      strategyRecord.set('isActive', true)
+      strategyRecord.set('memo', '자산 배정 목표 비중입니다.')
+
+      const buckets = allocationBuckets.listBuckets()
+      for (let index = 0; index < buckets.length; index += 1) {
+        strategyRecord.set(buckets[index].targetField, targets[buckets[index].key] || 0)
+      }
+      txApp.save(strategyRecord)
+    }
+
+    return strategyRecord
+  }
+
+  function collectSnapshots(txApp, userId, simulationId) {
+    const records = []
+    const limit = 200
+    let offset = 0
+
+    while (true) {
+      dbg('seedlab/xapi/simulations/recalculate:db-access', {
+        collection: 'simulation_snapshots',
+        offset,
+        limit,
+      })
+      const pageRecords = txApp.findRecordsByFilter('simulation_snapshots', 'owner = {:owner} && simulation = {:simulation}', '-created', limit, offset, {
+        owner: userId,
+        simulation: simulationId,
+      })
+      for (let index = 0; index < pageRecords.length; index += 1) {
+        records.push(pageRecords[index])
+      }
+      if (pageRecords.length < limit) break
+      offset += pageRecords.length
+    }
+
+    return records
+  }
+
+  function saveTimelineSnapshots(txApp, userId, simulationId, today, timelineSummary) {
+    const snapshots = collectSnapshots(txApp, userId, simulationId)
+    for (let index = 0; index < snapshots.length; index += 1) {
+      txApp.delete(snapshots[index])
+    }
+
+    const timelineSnapshots = Array.isArray(timelineSummary.snapshots) ? timelineSummary.snapshots : []
+    for (let index = 0; index < timelineSnapshots.length; index += 1) {
+      const snapshot = timelineSnapshots[index]
+      const snapshotRecord = new Record(txApp.findCollectionByNameOrId('simulation_snapshots'))
+      snapshotRecord.set('owner', userId)
+      snapshotRecord.set('simulation', simulationId)
+      snapshotRecord.set('snapshotDate', addMonthsDateOnly(today, snapshot.month))
+      snapshotRecord.set('investedAmount', Number(snapshot.investedAmount || 0))
+      snapshotRecord.set('totalValue', Number(snapshot.totalValue || 0))
+      snapshotRecord.set('cashValue', Number(snapshot.cashValue || 0))
+      snapshotRecord.set('profitLoss', Number(snapshot.profitLoss || 0))
+      snapshotRecord.set('drawdownPct', Number(snapshot.drawdownPct || 0))
+      snapshotRecord.set('assetWeights', snapshot.assetWeights || {})
+      snapshotRecord.set('accountValues', {
+        month: snapshot.month,
+        depositAmount: snapshot.depositAmount,
+        buyAmount: snapshot.buyAmount,
+        bucketValues: snapshot.bucketValues,
+        buys: snapshot.buys,
+      })
+      txApp.save(snapshotRecord)
+    }
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/simulations/recalculate:redirect', {
+      status: 303,
+      redirectTo: '/simulations',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/simulations', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/simulations/recalculate:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const simulationId = cleanText(form.simulationId)
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/simulations/recalculate:start', {
+    userId,
+    hasSimulationId: !!simulationId,
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    requireText(simulationId, '실험')
+
+    const simulationRecord = $app.findFirstRecordByFilter('simulations', 'id = {:id} && owner = {:owner}', {
+      id: simulationId,
+      owner: userId,
+    })
+    const settings = readObject(simulationRecord.get('settings'))
+    const previousSummary = readObject(simulationRecord.get('summary'))
+    const accountId = cleanText(settings.accountId)
+    const targets = readObject(settings.targets)
+    const preferredHoldingIds = readObject(settings.preferredHoldingIds)
+    const annualReturnPcts = readObject(settings.annualReturnPcts)
+    const contributionAmount = readNumber(previousSummary.contributionAmount)
+    const monthlyContributionAmount = readNumber(settings.monthlyContributionAmount || previousSummary.monthlyContributionAmount || simulationRecord.get('monthlyContribution'))
+    const projectionMonths = Math.max(1, Math.floor(readNumber(settings.projectionMonths || previousSummary.projectionMonths || 12)))
+    const reserveCashAmount = readNumber(settings.reserveCashAmount)
+    const minimumOrderAmount = readNumber(settings.minimumOrderAmount)
+    const priceMode = normalizePriceMode(settings.priceMode || previousSummary.priceMode)
+    const priceChangePct = priceMode === 'scenario' ? readNumber(settings.priceChangePct) : 0
+
+    if (contributionAmount <= 0) throw new Error('재계산할 추가금 정보가 없습니다.')
+    if (Object.keys(targets).length === 0) throw new Error('재계산할 목표 비중 정보가 없습니다.')
+
+    let latestUsdKrwRate = readNumber(settings.latestUsdKrwRate) || readLatestUsdKrwRate()
+    const holdings = readHoldings(userId, accountId, latestUsdKrwRate)
+    if (holdings.length === 0) throw new Error('계산할 보유 종목이 없습니다.')
+
+    let priceOverrides = {}
+    if (priceMode === 'refresh') {
+      const refreshResult = fetchPriceOverrides(userId, holdings, latestUsdKrwRate)
+      priceOverrides = refreshResult.priceOverrides
+      latestUsdKrwRate = refreshResult.latestUsdKrwRate
+    }
+
+    const snapshotSummary = findLatestSnapshotSummary(userId, accountId)
+    const contributionSummary = contributionExperiment.buildContributionExperiment({
+      holdings,
+      targets,
+      preferredHoldingIds,
+      contributionAmount,
+      reserveCashAmount,
+      minimumOrderAmount,
+      cashValue: snapshotSummary.cashValue,
+      latestUsdKrwRate,
+      priceOverrides,
+      priceChangePct,
+    })
+    const timelineSummary = contributionExperiment.buildTimelineExperiment({
+      holdings,
+      targets,
+      contributionAmount,
+      monthlyContributionAmount,
+      projectionMonths,
+      reserveCashAmount,
+      minimumOrderAmount,
+      cashValue: snapshotSummary.cashValue,
+      annualReturnPcts,
+    })
+    const summary = Object.assign({}, contributionSummary, {
+      experimentType: 'timeline_rebalance',
+      monthlyContributionAmount,
+      projectionMonths,
+      annualReturnPcts,
+      timeline: timelineSummary,
+      priceMode,
+    })
+    const today = dateutil.toDateOnlyIso(new Date())
+    const endDate = addMonthsDateOnly(today, projectionMonths)
+    const nextSettings = Object.assign({}, settings, {
+      latestUsdKrwRate,
+      previousSummary,
+      recalculatedAt: today,
+      recalculationCount: readNumber(settings.recalculationCount) + 1,
+    })
+    if (Object.keys(readObject(nextSettings.initialSummary)).length === 0) nextSettings.initialSummary = previousSummary
+    if (!cleanText(nextSettings.initialStartDate)) nextSettings.initialStartDate = String(simulationRecord.get('startDate') || today)
+
+    $app.runInTransaction(function (txApp) {
+      const record = txApp.findFirstRecordByFilter('simulations', 'id = {:id} && owner = {:owner}', {
+        id: simulationId,
+        owner: userId,
+      })
+      if (!String(record.get('strategy') || '')) {
+        const strategyRecord = ensureStrategy(txApp, userId, targets)
+        record.set('strategy', String(strategyRecord.get('id') || ''))
+      }
+      record.set('startDate', today)
+      record.set('endDate', endDate)
+      record.set('initialCapital', summary.currentTotalValue)
+      record.set('monthlyContribution', monthlyContributionAmount)
+      record.set('status', 'complete')
+      record.set('summary', summary)
+      record.set('settings', nextSettings)
+      txApp.save(record)
+      saveTimelineSnapshots(txApp, userId, simulationId, today, timelineSummary)
+    })
+
+    info('seedlab/xapi/simulations/recalculate:success', {
+      userId,
+      simulationId,
+      priceMode,
+      recalculationCount: nextSettings.recalculationCount,
+    })
+
+    dbg('seedlab/xapi/simulations/recalculate:redirect', {
+      status: 303,
+      redirectTo: '/simulations/detail/' + simulationId,
+      message: '최신 계좌 기준으로 다시 계산했습니다.',
+    })
+    redirect('/simulations/detail/' + simulationId, {
+      status: 303,
+      message: '최신 계좌 기준으로 다시 계산했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/simulations/recalculate:failed', {
+      userId,
+      simulationId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/simulations/recalculate:redirect', {
+    status: 303,
+    redirectTo: simulationId ? '/simulations/detail/' + simulationId : '/simulations',
+    message: errorMessage || '실험 재계산에 실패했습니다.',
+  })
+  redirect(simulationId ? '/simulations/detail/' + simulationId : '/simulations', {
+    status: 303,
+    message: errorMessage || '실험 재계산에 실패했습니다.',
+  })
+  return
+</script>
