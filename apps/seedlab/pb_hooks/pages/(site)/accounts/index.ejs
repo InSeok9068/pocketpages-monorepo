@@ -423,12 +423,15 @@
     return {
       id: String(account.get('id') || ''),
       name: String(account.get('name') || '계좌'),
+      providerName: providerName || '직접 입력',
       baseCurrency: String(account.get('baseCurrency') || 'KRW'),
       typeLabel: accountTypeLabel(account.get('accountType')),
       syncModeLabel: syncModeLabel(account.get('syncMode')),
       statusText: isActive ? '활성 계좌' : '비활성 계좌',
       lastSyncedText: formatSyncTime(account.get('lastSyncedAt')),
       canSyncToss: providerName === 'toss' && isActive,
+      canEdit: String(account.get('syncMode') || '') === 'manual',
+      editHref: '/accounts/manual/' + String(account.get('id') || '') + '/edit',
       iconClass: providerName === 'toss' ? 'bg-[#e8f3ff] text-[#3182f6]' : 'bg-[#f2f4f6] text-[#4e5968]',
     }
   }
@@ -565,11 +568,6 @@
           <%= targetSummary.targetCount %>개 분류 · 최대 괴리 <span class="<%= portfolioSummary.maxDriftClass %>"><%= portfolioSummary.maxDriftText %></span>
         </p>
       </div>
-      <a
-        href="#allocation-targets"
-        class="inline-flex h-9 items-center justify-center rounded-lg bg-white px-3 text-sm font-bold text-[#191f28] no-underline shadow-[0_1px_2px_rgba(25,31,40,0.06)] active:bg-[#f2f4f6]">
-        목표 조정
-      </a>
     </div>
 
     <% if (!portfolioSummary.hasValue) { %>
@@ -578,12 +576,6 @@
       <p class="mt-1 text-sm leading-5 text-[#6b7684]">토스 동기화나 수동 보유 종목 추가 후 목표 대비 차이를 계산합니다.</p>
     </div>
     <% } else { %>
-    <% if (Number(portfolioSummary.untrackedCashText.replace(/,/g, '') || 0) > 0) { %>
-    <div class="rounded-lg bg-[#fff6e5] px-4 py-3">
-      <p class="text-sm font-bold text-[#191f28]">보유 종목 외 금액 <%= portfolioSummary.untrackedCashText %>원은 현금으로 반영했습니다.</p>
-    </div>
-    <% } %>
-
     <div class="hidden">
       <canvas
         id="asset-class-chart"
@@ -626,18 +618,23 @@
     <% } %>
   </section>
 
-  <section
+  <details
     id="allocation-targets"
-    class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
-    <div class="flex items-start justify-between gap-3">
-      <div>
-        <h2 class="text-base font-bold text-[#191f28]">목표 비율</h2>
-        <p class="mt-1 text-xs font-medium text-[#8b95a1]">합계 100% 기준</p>
-      </div>
-      <span class="<%= targetSummary.isValid ? 'bg-[#ecfdf3] text-[#008a45]' : 'bg-[#fff0f0] text-[#c92a2a]' %> shrink-0 rounded-md px-2 py-1 text-xs font-bold"
-        >남은 비율 <%= formatPct(targetSummary.remainingPct) %></span
-      >
-    </div>
+    class="group rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
+    <summary class="flex cursor-pointer list-none items-start justify-between gap-3">
+      <span class="min-w-0">
+        <span class="block text-base font-bold text-[#191f28]">목표 비율 조정</span>
+        <span class="mt-1 block text-xs font-medium text-[#8b95a1]">필요할 때만 열어서 수정합니다</span>
+      </span>
+      <span class="flex shrink-0 items-center gap-2">
+        <span class="<%= targetSummary.isValid ? 'bg-[#ecfdf3] text-[#008a45]' : 'bg-[#fff0f0] text-[#c92a2a]' %> rounded-md px-2 py-1 text-xs font-bold"
+          >남은 비율 <%= formatPct(targetSummary.remainingPct) %></span
+        >
+        <span
+          class="i-lucide-chevron-down h-4 w-4 text-[#8b95a1] transition-transform group-open:rotate-180"
+          aria-hidden="true"></span>
+      </span>
+    </summary>
 
     <form
       method="post"
@@ -672,7 +669,7 @@
           aria-hidden="true"></span>
       </button>
     </form>
-  </section>
+  </details>
 
   <section class="space-y-3">
     <div class="flex items-center justify-between">
@@ -702,11 +699,11 @@
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0 flex-1">
             <div class="flex min-w-0 items-center gap-2">
-              <p class="truncate text-sm font-bold text-[#191f28]"><%= holdingCards[index].symbol %></p>
+              <p class="truncate text-sm font-bold text-[#191f28]"><%= holdingCards[index].assetName %></p>
               <span class="<%= holdingCards[index].allocationTone %> shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold"><%= holdingCards[index].allocationLabel %></span>
               <span class="shrink-0 rounded-md bg-[#f2f4f6] px-1.5 py-0.5 text-[11px] font-bold text-[#6b7684]"><%= holdingCards[index].currency %></span>
             </div>
-            <p class="mt-1 truncate text-xs text-[#8b95a1]"><%= holdingCards[index].assetName %></p>
+            <p class="mt-1 truncate text-xs text-[#8b95a1]"><%= holdingCards[index].symbol %></p>
           </div>
           <div class="shrink-0 text-right">
             <p class="text-sm font-bold text-[#191f28]"><%= holdingCards[index].marketValueText %></p>
@@ -821,30 +818,39 @@
             <div class="flex min-w-0 items-start justify-between gap-3">
               <div class="min-w-0">
                 <p class="truncate text-sm font-bold text-[#191f28]"><%= accountCards[index].name %></p>
-                <p class="mt-1 text-xs text-[#8b95a1]"><%= accountCards[index].typeLabel %> · <%= accountCards[index].syncModeLabel %></p>
+                <p class="mt-1 text-xs text-[#8b95a1]"><%= accountCards[index].providerName %> · <%= accountCards[index].typeLabel %> · <%= accountCards[index].syncModeLabel %></p>
               </div>
               <span class="shrink-0 rounded-md bg-[#f2f4f6] px-2 py-1 text-xs font-bold text-[#4e5968]"><%= accountCards[index].baseCurrency %></span>
             </div>
             <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
               <p class="text-xs font-medium text-[#8b95a1]"><%= accountCards[index].statusText %> · <%= accountCards[index].lastSyncedText %></p>
-              <% if (accountCards[index].canSyncToss) { %>
-              <form
-                method="post"
-                action="/xapi/accounts/toss/sync">
-                <input
-                  type="hidden"
-                  name="accountId"
-                  value="<%= accountCards[index].id %>" />
-                <button
-                  type="submit"
-                  class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#191f28] px-3 text-xs font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.14)] active:bg-[#333d4b]">
-                  동기화
-                  <span
-                    class="i-lucide-refresh-cw h-3.5 w-3.5"
-                    aria-hidden="true"></span>
-                </button>
-              </form>
-              <% } %>
+              <div class="flex items-center gap-2">
+                <% if (accountCards[index].canEdit) { %>
+                <a
+                  href="<%= accountCards[index].editHref %>"
+                  class="inline-flex h-9 items-center justify-center rounded-lg bg-[#f2f4f6] px-3 text-xs font-bold text-[#4e5968] no-underline active:bg-[#e5e8eb]">
+                  수정
+                </a>
+                <% } %>
+                <% if (accountCards[index].canSyncToss) { %>
+                <form
+                  method="post"
+                  action="/xapi/accounts/toss/sync">
+                  <input
+                    type="hidden"
+                    name="accountId"
+                    value="<%= accountCards[index].id %>" />
+                  <button
+                    type="submit"
+                    class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-[#191f28] px-3 text-xs font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.14)] active:bg-[#333d4b]">
+                    동기화
+                    <span
+                      class="i-lucide-refresh-cw h-3.5 w-3.5"
+                      aria-hidden="true"></span>
+                  </button>
+                </form>
+                <% } %>
+              </div>
             </div>
           </div>
         </div>

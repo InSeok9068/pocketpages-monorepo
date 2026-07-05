@@ -130,6 +130,39 @@ test('manual account, contribution simulation, and mock order flow works through
   assert.equal(accountsPage.body.includes('아직 불러온 보유 종목이 없습니다'), true)
   assert.equal(accountsPage.body.includes('테스트 연금저축'), true)
   assert.equal(accountsPage.$('[data-nav-key="accounts"][aria-current="page"]').length, 1)
+  const accountEditHref = accountsPage.$('a[href*="/accounts/manual/"][href$="/edit"]').attr('href') || ''
+  assert.match(accountEditHref, /^\/accounts\/manual\/[a-z0-9]{15}\/edit$/u)
+
+  const editAccountPage = await getAuthedPage(accountEditHref, cookieHeader)
+  assert.equal(editAccountPage.body.includes('계좌 수정'), true)
+  const editAccountId = editAccountPage.$('input[name="accountId"]').attr('value') || ''
+  assert.match(editAccountId, /^[a-z0-9]{15}$/u)
+  assert.equal(editAccountPage.$('input[name="name"]').attr('value'), '테스트 연금저축')
+
+  const updateAccountResponse = await postForm(
+    '/xapi/accounts/manual/update',
+    {
+      accountId: editAccountId,
+      name: '테스트 ISA 수정',
+      accountType: 'isa',
+      providerName: '수정증권',
+      accountSeq: '9999999999',
+      baseCurrency: 'KRW',
+      totalValue: '710,000원',
+      cashValue: '10,000원',
+      profitLoss: '+60,000원',
+      isTaxAdvantaged: 'on',
+      memo: 'updated account memo',
+    },
+    cookieHeader
+  )
+
+  assert.equal(updateAccountResponse.status, 303)
+  assert.match(updateAccountResponse.headers.get('location') || '', /^\/accounts/u)
+
+  const updatedAccountPage = await getAuthedPage('/accounts', cookieHeader)
+  assert.equal(updatedAccountPage.body.includes('테스트 ISA 수정'), true)
+  assert.equal(updatedAccountPage.body.includes('수정증권'), true)
 
   const manualHoldingPage = await getAuthedPage('/accounts/holdings/new', cookieHeader)
   assert.equal(manualHoldingPage.body.includes('평가금액'), true)
@@ -379,6 +412,7 @@ test('mock order route cannot call Toss order APIs', () => {
 
 test('toss account sync route reads holdings, cash, and records sync state', () => {
   const syncRoute = readFileSync(path.join(serviceDir, 'pb_hooks/pages/xapi/accounts/toss/sync.ejs'), 'utf8')
+  const accountUpdateRoute = readFileSync(path.join(serviceDir, 'pb_hooks/pages/xapi/accounts/manual/update.ejs'), 'utf8')
   const accountsPage = readFileSync(path.join(serviceDir, 'pb_hooks/pages/(site)/accounts/index.ejs'), 'utf8')
 
   assert.equal(syncRoute.includes('toss.getHoldings'), true)
@@ -393,11 +427,14 @@ test('toss account sync route reads holdings, cash, and records sync state', () 
   assert.equal(syncRoute.includes('asset-classifier'), true)
   assert.equal(/createOrder|modifyOrder|cancelOrder/u.test(syncRoute), false)
   assert.equal(accountsPage.includes('/xapi/accounts/toss/sync'), true)
+  assert.equal(accountsPage.includes("editHref: '/accounts/manual/'"), true)
   assert.equal(accountsPage.includes('/xapi/allocation-targets/update'), true)
   assert.equal(accountsPage.includes('/xapi/holdings/allocation/update'), true)
   assert.equal(accountsPage.includes('chart.umd.4.5.1.min.js'), true)
   assert.equal(accountsPage.includes('readAssetRecord'), true)
   assert.equal(accountsPage.includes('account_holdings'), true)
+  assert.equal(accountUpdateRoute.includes('manual_account_edit'), true)
+  assert.equal(accountUpdateRoute.includes('dateutil.startOfDay'), true)
 })
 
 test('contribution simulation route supports stored, refresh, and scenario price bases', () => {

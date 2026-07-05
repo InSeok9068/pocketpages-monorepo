@@ -1,0 +1,289 @@
+<script server>
+  meta('title', 'SeedLab 계좌 수정')
+  meta('description', 'SeedLab 수동 계좌 수정')
+
+  if (!request.auth) {
+    dbg('seedlab/accounts/manual/edit:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const accountId = String(params.accountId || '')
+  let accountCard = null
+
+  function formatNumber(value, maximumFractionDigits) {
+    const number = Number(value || 0)
+    if (!isFinite(number)) return ''
+
+    const sign = number < 0 ? '-' : ''
+    const fixed = Math.abs(number).toFixed(maximumFractionDigits)
+    const parts = fixed.split('.')
+    let integer = parts[0]
+    let formattedInteger = ''
+
+    while (integer.length > 3) {
+      formattedInteger = ',' + integer.slice(-3) + formattedInteger
+      integer = integer.slice(0, -3)
+    }
+
+    formattedInteger = integer + formattedInteger
+    const decimal = String(parts[1] || '').replace(/0+$/, '')
+
+    return sign + formattedInteger + (decimal ? '.' + decimal : '')
+  }
+
+  function moneyInputText(value, currency) {
+    const number = Number(value || 0)
+    if (!isFinite(number) || number === 0) return ''
+    return formatNumber(number, String(currency || 'KRW') === 'USD' ? 2 : 0) + (String(currency || 'KRW') === 'USD' ? '' : '원')
+  }
+
+  function readObject(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      try {
+        const parsed = JSON.parse(value)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+      } catch (_exception) {
+        return {}
+      }
+    }
+    return {}
+  }
+
+  function latestSnapshot(accountId) {
+    try {
+      dbg('seedlab/accounts/manual/edit:db-access', { collection: 'account_snapshots', accountId })
+      const records = $app.findRecordsByFilter('account_snapshots', 'owner = {:owner} && account = {:account}', '-snapshotDate', 1, 0, {
+        owner: userId,
+        account: accountId,
+      })
+      return records.length > 0 ? records[0] : null
+    } catch (exception) {
+      warn('seedlab/accounts/manual/edit:db-access-failed', { collection: 'account_snapshots', accountId, error: String(exception.message || exception) })
+      return null
+    }
+  }
+
+  try {
+    dbg('seedlab/accounts/manual/edit:db-access', { collection: 'portfolio_accounts', accountId })
+    const accountRecord = $app.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner} && syncMode = {:syncMode}', {
+      id: accountId,
+      owner: userId,
+      syncMode: 'manual',
+    })
+    const metadata = readObject(accountRecord.get('metadata'))
+    const snapshotRecord = latestSnapshot(accountId)
+    const baseCurrency = String(accountRecord.get('baseCurrency') || 'KRW')
+
+    accountCard = {
+      id: String(accountRecord.get('id') || ''),
+      name: String(accountRecord.get('name') || ''),
+      accountType: String(accountRecord.get('accountType') || 'isa'),
+      providerName: String(accountRecord.get('providerName') || ''),
+      accountSeq: String(accountRecord.get('accountSeq') || ''),
+      baseCurrency,
+      memo: String(metadata.memo || ''),
+      isTaxAdvantaged: !!accountRecord.get('isTaxAdvantaged'),
+      totalValueText: moneyInputText(snapshotRecord ? snapshotRecord.get('totalValue') : metadata.initialTotalValue, baseCurrency),
+      cashValueText: moneyInputText(snapshotRecord ? snapshotRecord.get('cashValue') : metadata.initialCashValue, baseCurrency),
+      profitLossText: moneyInputText(snapshotRecord ? snapshotRecord.get('profitLoss') : metadata.initialProfitLoss, baseCurrency),
+    }
+  } catch (exception) {
+    warn('seedlab/accounts/manual/edit:not-found', { accountId, error: String(exception.message || exception) })
+    dbg('seedlab/accounts/manual/edit:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '수정할 계좌를 찾을 수 없습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '수정할 계좌를 찾을 수 없습니다.',
+    })
+    return
+  }
+</script>
+
+<section class="flex min-h-[calc(100vh-2rem)] flex-col pb-24 pt-5">
+  <header class="flex items-center justify-between">
+    <div>
+      <p class="text-xs font-bold text-[#3182f6]">계좌</p>
+      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">계좌 수정</h1>
+    </div>
+    <a
+      href="/accounts"
+      class="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-[#6b7684] no-underline active:bg-[#f2f4f6]">
+      닫기
+    </a>
+  </header>
+
+  <div class="mt-5">
+    <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+
+    <form
+      method="post"
+      action="/xapi/accounts/manual/update"
+      class="space-y-4">
+      <input
+        type="hidden"
+        name="accountId"
+        value="<%= accountCard.id %>" />
+
+      <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <label class="grid grid-cols-[86px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">계좌 이름</span>
+          <input
+            type="text"
+            name="name"
+            required
+            value="<%= accountCard.name %>"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+        </label>
+        <label class="grid grid-cols-[86px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">종류</span>
+          <select
+            name="accountType"
+            required
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
+            <option
+              value="isa"
+              <%= accountCard.accountType === 'isa' ? 'selected' : '' %>>
+              ISA
+            </option>
+            <option
+              value="irp"
+              <%= accountCard.accountType === 'irp' ? 'selected' : '' %>>
+              IRP
+            </option>
+            <option
+              value="pension_saving"
+              <%= accountCard.accountType === 'pension_saving' ? 'selected' : '' %>>
+              연금저축
+            </option>
+            <option
+              value="brokerage"
+              <%= accountCard.accountType === 'brokerage' ? 'selected' : '' %>>
+              일반 증권
+            </option>
+            <option
+              value="cash"
+              <%= accountCard.accountType === 'cash' ? 'selected' : '' %>>
+              현금성 자산
+            </option>
+          </select>
+        </label>
+        <label class="grid grid-cols-[86px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">금융사</span>
+          <input
+            type="text"
+            name="providerName"
+            value="<%= accountCard.providerName %>"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+        </label>
+        <label class="grid grid-cols-[86px_1fr] items-center gap-3 px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">계좌번호</span>
+          <input
+            type="text"
+            name="accountSeq"
+            inputmode="numeric"
+            value="<%= accountCard.accountSeq %>"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+        </label>
+      </div>
+
+      <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <div class="flex items-center justify-between gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <p class="text-sm font-bold text-[#191f28]">평가</p>
+          <select
+            name="baseCurrency"
+            required
+            class="h-8 border-0 bg-transparent text-sm font-bold text-[#191f28] outline-none">
+            <option
+              value="KRW"
+              <%= accountCard.baseCurrency === 'KRW' ? 'selected' : '' %>>
+              KRW
+            </option>
+            <option
+              value="USD"
+              <%= accountCard.baseCurrency === 'USD' ? 'selected' : '' %>>
+              USD
+            </option>
+          </select>
+        </div>
+
+        <label class="grid grid-cols-[86px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">총 평가금</span>
+          <input
+            type="text"
+            name="totalValue"
+            inputmode="decimal"
+            value="<%= accountCard.totalValueText %>"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+        </label>
+        <label class="grid grid-cols-[86px_1fr] items-center gap-3 border-b border-[#f2f4f6] px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">현금</span>
+          <input
+            type="text"
+            name="cashValue"
+            inputmode="decimal"
+            value="<%= accountCard.cashValueText %>"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+        </label>
+        <label class="grid grid-cols-[86px_1fr] items-center gap-3 px-4 py-3">
+          <span class="text-xs font-bold text-[#6b7684]">평가손익</span>
+          <input
+            type="text"
+            name="profitLoss"
+            inputmode="decimal"
+            value="<%= accountCard.profitLossText %>"
+            class="h-9 min-w-0 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none placeholder:text-[#b0b8c1]" />
+        </label>
+      </div>
+
+      <label class="block overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <span class="sr-only">메모</span>
+        <textarea
+          name="memo"
+          rows="2"
+          placeholder="메모"
+          class="box-border w-full resize-none border-0 bg-white px-4 py-3 text-sm font-medium leading-6 text-[#191f28] outline-none placeholder:text-[#b0b8c1]">
+<%= accountCard.memo %></textarea>
+      </label>
+
+      <label class="flex items-center justify-between gap-3 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+        <span class="text-sm font-bold text-[#191f28]">세제 혜택</span>
+        <% if (accountCard.isTaxAdvantaged) { %>
+        <input
+          type="checkbox"
+          name="isTaxAdvantaged"
+          value="on"
+          checked
+          class="h-5 w-5 shrink-0 accent-[#3182f6]" />
+        <% } else { %>
+        <input
+          type="checkbox"
+          name="isTaxAdvantaged"
+          value="on"
+          class="h-5 w-5 shrink-0 accent-[#3182f6]" />
+        <% } %>
+      </label>
+
+      <button
+        type="submit"
+        class="box-border flex h-12 w-full items-center justify-center gap-2 rounded-lg border-0 bg-[#191f28] px-4 text-base font-bold text-white shadow-[0_8px_18px_rgba(25,31,40,0.16)] active:bg-[#333d4b]">
+        수정 저장
+        <span
+          class="i-lucide-save h-5 w-5"
+          aria-hidden="true"></span>
+      </button>
+    </form>
+  </div>
+</section>

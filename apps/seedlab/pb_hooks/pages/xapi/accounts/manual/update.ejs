@@ -1,0 +1,227 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+
+  function cleanText(value) {
+    return String(value === undefined || value === null ? '' : value).trim()
+  }
+
+  function requireText(value, name) {
+    const text = cleanText(value)
+    if (!text) throw new Error(name + '이 필요합니다.')
+    return text
+  }
+
+  function normalizeAccountType(value) {
+    const accountType = cleanText(value || 'pension_saving')
+    const allowedTypes = ['brokerage', 'pension_saving', 'irp', 'isa', 'cash']
+    if (allowedTypes.indexOf(accountType) < 0) throw new Error('지원하지 않는 계좌 종류입니다.')
+    return accountType
+  }
+
+  function normalizeCurrency(value) {
+    const currency = cleanText(value || 'KRW')
+    const allowedCurrencies = ['KRW', 'USD']
+    if (allowedCurrencies.indexOf(currency) < 0) throw new Error('지원하지 않는 기준 통화입니다.')
+    return currency
+  }
+
+  function readObject(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      try {
+        const parsed = JSON.parse(value)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+      } catch (_exception) {
+        return {}
+      }
+    }
+    return {}
+  }
+
+  function readMoney(value) {
+    const beforeRate = cleanText(value).split('(')[0]
+    const normalized = beforeRate.replace(/,/g, '').replace(/[^0-9.-]/g, '')
+    const number = Number(normalized)
+    return isFinite(number) ? number : 0
+  }
+
+  function isTaxAdvantagedType(accountType) {
+    return ['pension_saving', 'irp', 'isa'].indexOf(accountType) >= 0
+  }
+
+  function hasSnapshotInput(args) {
+    return cleanText(args.totalValue) || cleanText(args.cashValue) || cleanText(args.profitLoss)
+  }
+
+  function saveManualSnapshot(accountRecord, args) {
+    if (!hasSnapshotInput(args)) return
+
+    const totalValue = readMoney(args.totalValue)
+    const cashValue = readMoney(args.cashValue)
+    const profitLoss = readMoney(args.profitLoss)
+    const investedValue = totalValue > 0 ? totalValue - cashValue - profitLoss : 0
+    const snapshotDate = dateutil.toDateOnlyIso(args.now)
+    const accountId = String(accountRecord.get('id') || '')
+    let snapshotRecord = null
+
+    try {
+      snapshotRecord = $app.findFirstRecordByFilter('account_snapshots', 'owner = {:owner} && account = {:account} && snapshotDate >= {:startDate} && snapshotDate <= {:endDate}', {
+        owner: args.userId,
+        account: accountId,
+        startDate: dateutil.startOfDay(snapshotDate).toISOString(),
+        endDate: dateutil.endOfDay(snapshotDate).toISOString(),
+      })
+    } catch (exception) {
+      snapshotRecord = new Record($app.findCollectionByNameOrId('account_snapshots'))
+      snapshotRecord.set('owner', args.userId)
+      snapshotRecord.set('account', accountId)
+      snapshotRecord.set('snapshotDate', snapshotDate)
+    }
+
+    snapshotRecord.set('totalValue', totalValue)
+    snapshotRecord.set('cashValue', cashValue)
+    snapshotRecord.set('investedValue', investedValue)
+    snapshotRecord.set('profitLoss', profitLoss)
+    snapshotRecord.set('currency', args.baseCurrency)
+    snapshotRecord.set('source', 'manual')
+    snapshotRecord.set(
+      'summary',
+      Object.assign({}, readObject(snapshotRecord.get('summary')), {
+        source: 'manual',
+        accountNumber: cleanText(args.accountSeq),
+        updatedByFlow: 'manual_account_edit',
+        updatedAt: args.now,
+      })
+    )
+    snapshotRecord.set('assetClassWeights', {})
+    $app.save(snapshotRecord)
+  }
+
+  if (request.method !== 'POST') {
+    dbg('seedlab/xapi/accounts/manual/update:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    dbg('seedlab/xapi/accounts/manual/update:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/sign-in', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const accountId = cleanText(form.accountId)
+  let errorMessage = ''
+
+  dbg('seedlab/xapi/accounts/manual/update:start', {
+    userId,
+    accountId,
+    hasName: !!cleanText(form.name),
+  })
+
+  try {
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    requireText(accountId, '계좌')
+
+    const name = requireText(form.name, '계좌 이름')
+    const accountType = normalizeAccountType(form.accountType)
+    const baseCurrency = normalizeCurrency(form.baseCurrency)
+    const providerName = cleanText(form.providerName) || '직접 입력'
+    const accountSeq = cleanText(form.accountSeq)
+    const memo = cleanText(form.memo)
+    const checkedTaxAdvantaged = cleanText(form.isTaxAdvantaged) === 'on'
+    const isTaxAdvantaged = checkedTaxAdvantaged || isTaxAdvantagedType(accountType)
+    const now = new Date().toISOString()
+
+    dbg('seedlab/xapi/accounts/manual/update:db-access', { collection: 'portfolio_accounts', accountId })
+    const accountRecord = $app.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner} && syncMode = {:syncMode}', {
+      id: accountId,
+      owner: userId,
+      syncMode: 'manual',
+    })
+    const metadata = readObject(accountRecord.get('metadata'))
+
+    accountRecord.set('name', name)
+    accountRecord.set('accountType', accountType)
+    accountRecord.set('providerName', providerName)
+    accountRecord.set('accountSeq', accountSeq)
+    accountRecord.set('baseCurrency', baseCurrency)
+    accountRecord.set('isTaxAdvantaged', isTaxAdvantaged)
+    accountRecord.set('isActive', true)
+    accountRecord.set('lastSyncedAt', now)
+    accountRecord.set(
+      'metadata',
+      Object.assign({}, metadata, {
+        source: 'manual',
+        memo,
+        latestTotalValue: readMoney(form.totalValue),
+        latestCashValue: readMoney(form.cashValue),
+        latestProfitLoss: readMoney(form.profitLoss),
+        updatedByFlow: 'manual_account_edit',
+        taxAdvantagedByType: isTaxAdvantagedType(accountType),
+      })
+    )
+    $app.save(accountRecord)
+    saveManualSnapshot(accountRecord, {
+      userId,
+      now,
+      baseCurrency,
+      accountSeq,
+      totalValue: form.totalValue,
+      cashValue: form.cashValue,
+      profitLoss: form.profitLoss,
+    })
+
+    info('seedlab/xapi/accounts/manual/update:success', {
+      userId,
+      accountId,
+      accountType,
+      baseCurrency,
+      isTaxAdvantaged,
+    })
+
+    dbg('seedlab/xapi/accounts/manual/update:redirect', {
+      status: 303,
+      redirectTo: '/accounts',
+      message: '계좌를 수정했습니다.',
+    })
+    redirect('/accounts', {
+      status: 303,
+      message: '계좌를 수정했습니다.',
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('seedlab/xapi/accounts/manual/update:failed', {
+      userId,
+      accountId,
+      error: errorMessage,
+    })
+  }
+
+  dbg('seedlab/xapi/accounts/manual/update:redirect', {
+    status: 303,
+    redirectTo: accountId ? '/accounts/manual/' + accountId + '/edit' : '/accounts',
+    message: errorMessage || '계좌 수정에 실패했습니다.',
+  })
+  redirect(accountId ? '/accounts/manual/' + accountId + '/edit' : '/accounts', {
+    status: 303,
+    message: errorMessage || '계좌 수정에 실패했습니다.',
+  })
+  return
+</script>
