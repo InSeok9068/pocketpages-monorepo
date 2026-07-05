@@ -290,6 +290,10 @@
           type="hidden"
           name="holdingId"
           value="<%= holdingCard.id %>" />
+        <input
+          type="hidden"
+          name="returnTo"
+          value="/accounts/holdings/<%= holdingCard.id %>" />
         <span class="text-xs font-bold text-[#6b7684]">자산군</span>
         <select
           name="allocationBucket"

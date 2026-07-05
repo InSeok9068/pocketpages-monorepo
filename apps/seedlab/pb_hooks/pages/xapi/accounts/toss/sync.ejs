@@ -1,5 +1,6 @@
 <script server>
   const { dateutil } = require('@pocketpages/utils')
+  const allocationBuckets = resolve('allocation-buckets')
   const assetClassifier = resolve('asset-classifier')
   const credentialCrypto = resolve('credential-crypto')
   const tossApi = resolve('toss-api')
@@ -354,6 +355,33 @@
       holdingRecord.set('source', 'toss')
     }
 
+    const existingRaw = readObject(holdingRecord.get('raw'))
+    const existingSeedlab = readObject(existingRaw.seedlab)
+    const nextSeedlab = Object.assign({}, readObject(item.seedlab), {
+      baseCurrency: 'KRW',
+      sourceCurrency: currency,
+      exchangeRate: holdingAmounts.exchangeRate,
+      marketValueSource: holdingAmounts.sourceMarketValue,
+      marketValueKrw: holdingAmounts.convertedMarketValue,
+      costAmountSource: holdingAmounts.sourceCostAmount,
+      costAmountKrw: holdingAmounts.convertedCostAmount,
+      profitLossSource: holdingAmounts.sourceProfitLoss,
+      profitLossKrw: holdingAmounts.convertedProfitLoss,
+    })
+    const savedAllocationBucket = allocationBuckets.normalizeBucket(existingRaw.allocationBucket || existingSeedlab.allocationBucket)
+    const savedAllocationBucketUpdatedAt = existingRaw.allocationBucketUpdatedAt || existingSeedlab.allocationBucketUpdatedAt
+    if (savedAllocationBucket) {
+      nextSeedlab.allocationBucket = savedAllocationBucket
+      nextSeedlab.allocationBucketUpdatedAt = savedAllocationBucketUpdatedAt
+    }
+    const nextRaw = Object.assign({}, item, {
+      seedlab: nextSeedlab,
+    })
+    if (savedAllocationBucket) {
+      nextRaw.allocationBucket = savedAllocationBucket
+      nextRaw.allocationBucketUpdatedAt = savedAllocationBucketUpdatedAt
+    }
+
     holdingRecord.set('quantity', readNumber(item.quantity))
     holdingRecord.set('averagePrice', sourceAveragePrice)
     holdingRecord.set('currentPrice', sourceCurrentPrice)
@@ -362,22 +390,7 @@
     holdingRecord.set('profitLoss', holdingAmounts.convertedProfitLoss)
     holdingRecord.set('currency', currency)
     holdingRecord.set('asOfAt', args.now)
-    holdingRecord.set(
-      'raw',
-      Object.assign({}, item, {
-        seedlab: Object.assign({}, readObject(item.seedlab), {
-          baseCurrency: 'KRW',
-          sourceCurrency: currency,
-          exchangeRate: holdingAmounts.exchangeRate,
-          marketValueSource: holdingAmounts.sourceMarketValue,
-          marketValueKrw: holdingAmounts.convertedMarketValue,
-          costAmountSource: holdingAmounts.sourceCostAmount,
-          costAmountKrw: holdingAmounts.convertedCostAmount,
-          profitLossSource: holdingAmounts.sourceProfitLoss,
-          profitLossKrw: holdingAmounts.convertedProfitLoss,
-        }),
-      })
-    )
+    holdingRecord.set('raw', nextRaw)
     txApp.save(holdingRecord)
 
     return holdingRecord

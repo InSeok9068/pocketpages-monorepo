@@ -128,7 +128,7 @@
   function inferAllocationBucket(holding) {
     const raw = readObject(holding.get('raw'))
     const seedlab = readObject(raw.seedlab)
-    const savedBucket = allocationBuckets.normalizeBucket(seedlab.allocationBucket)
+    const savedBucket = allocationBuckets.normalizeBucket(raw.allocationBucket || seedlab.allocationBucket)
     if (savedBucket) return savedBucket
 
     const asset = readAssetRecord(holding.get('asset'))
@@ -190,7 +190,6 @@
   function applyLatestSnapshotTotals() {
     const seen = {}
     let cashValue = 0
-    let profitLoss = 0
     let hasSnapshot = false
 
     try {
@@ -202,7 +201,6 @@
         if (!accountId || seen[accountId]) continue
         seen[accountId] = true
         cashValue += Number(snapshot.get('cashValue') || 0)
-        profitLoss += Number(snapshot.get('profitLoss') || 0)
         hasSnapshot = true
       }
     } catch (exception) {
@@ -212,7 +210,6 @@
     if (hasSnapshot && cashValue > 0) {
       addBucketValue('cash', cashValue)
       dashboard.totalValue += cashValue
-      dashboard.profitLoss = profitLoss
     }
   }
 

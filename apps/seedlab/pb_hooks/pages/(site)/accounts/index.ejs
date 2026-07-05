@@ -182,7 +182,7 @@
   function readSavedAllocationBucket(holding) {
     const raw = readObject(holding.get('raw'))
     const seedlab = readObject(raw.seedlab)
-    return allocationBuckets.normalizeBucket(seedlab.allocationBucket)
+    return allocationBuckets.normalizeBucket(raw.allocationBucket || seedlab.allocationBucket)
   }
 
   function inferAllocationBucket(holding, asset) {
@@ -321,7 +321,7 @@
 
     const snapshotCashValue = snapshots && snapshots.hasSnapshot ? Number(snapshots.cashValue || 0) : 0
     const displayTotalValue = totalValue + (snapshotCashValue > 0 ? snapshotCashValue : 0)
-    const displayProfitLoss = snapshots && snapshots.hasSnapshot ? Number(snapshots.profitLoss || 0) : profitLoss
+    const displayProfitLoss = profitLoss
     const untrackedCashValue = snapshotCashValue > 0 ? snapshotCashValue : 0
 
     if (untrackedCashValue > 0) totals.cash += untrackedCashValue
@@ -666,36 +666,41 @@
       <article class="<%= index > 0 ? 'shadow-[inset_0_1px_0_#e5e8eb]' : '' %> <%= index % 2 === 1 ? 'bg-[#fbfcfd]' : 'bg-white' %> relative px-4 py-4">
         <a
           href="<%= holdingCards[index].detailHref %>"
-          class="absolute inset-0 z-10"
-          aria-label="<%= holdingCards[index].assetName %> 상세"></a>
-        <div class="pointer-events-none relative z-0 flex items-start justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <div class="flex min-w-0 items-center gap-2">
-              <p class="truncate text-sm font-bold text-[#191f28]"><%= holdingCards[index].assetName %></p>
-              <span class="<%= holdingCards[index].allocationTone %> shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold"><%= holdingCards[index].allocationLabel %></span>
-              <span class="shrink-0 rounded-md bg-[#f2f4f6] px-1.5 py-0.5 text-[11px] font-bold text-[#6b7684]"><%= holdingCards[index].currency %></span>
+          class="block no-underline"
+          aria-label="<%= holdingCards[index].assetName %> 상세">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="flex min-w-0 items-center gap-2">
+                <p class="truncate text-sm font-bold text-[#191f28]"><%= holdingCards[index].assetName %></p>
+                <span class="<%= holdingCards[index].allocationTone %> shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold"><%= holdingCards[index].allocationLabel %></span>
+                <span class="shrink-0 rounded-md bg-[#f2f4f6] px-1.5 py-0.5 text-[11px] font-bold text-[#6b7684]"><%= holdingCards[index].currency %></span>
+              </div>
+            </div>
+            <div class="shrink-0 text-right">
+              <p class="text-sm font-bold text-[#191f28]"><%= holdingCards[index].marketValueText %></p>
+              <p class="<%= holdingCards[index].profitLossClass %> mt-1 text-xs font-bold"><%= holdingCards[index].profitLossText %></p>
+              <% if (holdingCards[index].sourceValueText) { %>
+              <p class="mt-1 text-[11px] font-medium text-[#8b95a1]"><%= holdingCards[index].sourceValueText %></p>
+              <% } %>
             </div>
           </div>
-          <div class="shrink-0 text-right">
-            <p class="text-sm font-bold text-[#191f28]"><%= holdingCards[index].marketValueText %></p>
-            <p class="<%= holdingCards[index].profitLossClass %> mt-1 text-xs font-bold"><%= holdingCards[index].profitLossText %></p>
-            <% if (holdingCards[index].sourceValueText) { %>
-            <p class="mt-1 text-[11px] font-medium text-[#8b95a1]"><%= holdingCards[index].sourceValueText %></p>
-            <% } %>
+          <div class="mt-2 flex items-center justify-between gap-2 text-xs font-medium text-[#8b95a1]">
+            <span>비중 <%= holdingCards[index].weightText %></span>
+            <span class="min-w-0 truncate">수량 <%= holdingCards[index].quantityText %> · 현재 <%= holdingCards[index].currentPriceText %></span>
           </div>
-        </div>
-        <div class="mt-2 flex items-center justify-between gap-2 text-xs font-medium text-[#8b95a1]">
-          <span>비중 <%= holdingCards[index].weightText %></span>
-          <span class="min-w-0 truncate">수량 <%= holdingCards[index].quantityText %> · 현재 <%= holdingCards[index].currentPriceText %></span>
-        </div>
+        </a>
         <form
           method="post"
           action="/xapi/holdings/allocation/update"
-          class="relative z-20 mt-3 flex gap-2">
+          class="mt-3 flex gap-2">
           <input
             type="hidden"
             name="holdingId"
             value="<%= holdingCards[index].id %>" />
+          <input
+            type="hidden"
+            name="returnTo"
+            value="/accounts" />
           <select
             name="allocationBucket"
             class="box-border h-9 min-w-0 flex-1 rounded-lg border border-[#e5e8eb] bg-[#fbfcfd] px-2 text-xs font-bold text-[#191f28] outline-none focus:border-[#3182f6]">

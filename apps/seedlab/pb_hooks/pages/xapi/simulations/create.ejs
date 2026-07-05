@@ -54,7 +54,7 @@
   function readSavedAllocationBucket(holding) {
     const raw = readObject(holding.get('raw'))
     const seedlab = readObject(raw.seedlab)
-    return allocationBuckets.normalizeBucket(seedlab.allocationBucket)
+    return allocationBuckets.normalizeBucket(raw.allocationBucket || seedlab.allocationBucket)
   }
 
   function inferAllocationBucket(holding, asset) {

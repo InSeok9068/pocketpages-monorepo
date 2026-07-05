@@ -259,18 +259,24 @@ test('manual account, contribution simulation, and mock order flow works through
 
   const updatedHoldingAccountsPage = await getAuthedPage('/accounts', cookieHeader)
   assert.equal(updatedHoldingAccountsPage.body.includes('800,000원'), true)
+  assert.equal(updatedHoldingAccountsPage.body.includes('+100,000원'), true)
+  assert.equal(updatedHoldingAccountsPage.body.includes('+60,000원'), false)
 
   const allocationResponse = await postForm(
     '/xapi/holdings/allocation/update',
     {
       holdingId,
       allocationBucket: 'dividend_stock',
+      returnTo: `/accounts/holdings/${holdingId}`,
     },
     cookieHeader
   )
 
   assert.equal(allocationResponse.status, 303)
-  assert.match(allocationResponse.headers.get('location') || '', /^\/accounts/u)
+  assert.match(allocationResponse.headers.get('location') || '', new RegExp('^/accounts/holdings/' + holdingId))
+
+  const allocatedHoldingDetailPage = await getAuthedPage(`/accounts/holdings/${holdingId}`, cookieHeader)
+  assert.equal(allocatedHoldingDetailPage.body.includes('주식(배당형)'), true)
 
   const allocatedAccountsPage = await getAuthedPage('/accounts', cookieHeader)
   assert.equal(allocatedAccountsPage.body.includes('주식(배당형)'), true)
@@ -493,6 +499,10 @@ test('toss account sync route reads holdings, cash, and records sync state', () 
   assert.equal(syncRoute.includes('holding_snapshots'), true)
   assert.equal(syncRoute.includes('assetClassWeights'), true)
   assert.equal(syncRoute.includes('asset-classifier'), true)
+  assert.equal(syncRoute.includes('savedAllocationBucket'), true)
+  assert.equal(syncRoute.includes('existingRaw.allocationBucket || existingSeedlab.allocationBucket'), true)
+  assert.equal(syncRoute.includes('nextSeedlab.allocationBucket = savedAllocationBucket'), true)
+  assert.equal(syncRoute.includes('nextRaw.allocationBucket = savedAllocationBucket'), true)
   assert.equal(/createOrder|modifyOrder|cancelOrder/u.test(syncRoute), false)
   assert.equal(accountsPage.includes('/xapi/accounts/toss/sync'), true)
   assert.equal(accountsPage.includes("editHref: '/accounts/manual/'"), true)

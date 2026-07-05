@@ -48,6 +48,8 @@
   const userId = String(request.auth.get('id') || '')
   const holdingId = cleanText(form.holdingId)
   const allocationBucket = allocationBuckets.normalizeBucket(form.allocationBucket)
+  const returnTo = cleanText(form.returnTo)
+  const redirectTo = returnTo.indexOf('/accounts') === 0 ? returnTo : '/accounts'
   let errorMessage = ''
 
   dbg('seedlab/xapi/holdings/allocation/update:start', {
@@ -72,6 +74,8 @@
 
     seedlab.allocationBucket = allocationBucket
     seedlab.allocationBucketUpdatedAt = new Date().toISOString()
+    raw.allocationBucket = allocationBucket
+    raw.allocationBucketUpdatedAt = seedlab.allocationBucketUpdatedAt
     raw.seedlab = seedlab
 
     holdingRecord.set('raw', raw)
@@ -86,10 +90,10 @@
 
     dbg('seedlab/xapi/holdings/allocation/update:redirect', {
       status: 303,
-      redirectTo: '/accounts',
+      redirectTo,
       message: '자산 분류를 저장했습니다.',
     })
-    redirect('/accounts', {
+    redirect(redirectTo, {
       status: 303,
       message: '자산 분류를 저장했습니다.',
     })
@@ -105,10 +109,10 @@
 
   dbg('seedlab/xapi/holdings/allocation/update:redirect', {
     status: 303,
-    redirectTo: '/accounts',
+    redirectTo,
     message: errorMessage || '자산 분류 저장에 실패했습니다.',
   })
-  redirect('/accounts', {
+  redirect(redirectTo, {
     status: 303,
     message: errorMessage || '자산 분류 저장에 실패했습니다.',
   })
