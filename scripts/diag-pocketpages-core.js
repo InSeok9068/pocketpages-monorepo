@@ -222,6 +222,7 @@ function isBlockingCategory(category) {
 function formatProfileBreakdown(profile) {
   const orderedKeys = [
     'createDocumentAnalysisMs',
+    'prepareDiagnosticsVirtualStateMs',
     'collectClientScriptSyntacticDiagnosticsMs',
     'collectPrivateResolveDiagnosticsMs',
     'collectServerBlockDiagnosticsMs',

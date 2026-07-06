@@ -4,7 +4,12 @@ const fs = require('fs')
 const path = require('path')
 const ts = require('typescript')
 const { buildTemplateVirtualText } = require('../language-core/ejs-template')
-const { statFileExists, statDirectoryExists, statSyncCached } = require('./stat-cache')
+const {
+  getStatEpochCachedValue,
+  statFileExists,
+  statDirectoryExists,
+  statSyncCached,
+} = require('./stat-cache')
 
 const RESOLVE_EXTENSIONS = ['.js', '.json', '.cjs', '.mjs']
 const REQUIRE_EXTENSIONS = ['.js', '.json', '.cjs', '.mjs']
@@ -143,34 +148,41 @@ function readDirectoryEntries(dirPath) {
 
 function readSmallFileIdentity(filePath) {
   const normalizedFilePath = normalizePath(filePath)
-  if (!fileExists(normalizedFilePath)) {
-    return {
-      filePath: normalizedFilePath,
-      exists: false,
-      mtimeMs: 0,
-      size: 0,
-      hash: 'missing',
-      text: '',
-    }
-  }
 
   try {
     const stats = statSyncCached(normalizedFilePath)
-    const text = fs.readFileSync(normalizedFilePath, 'utf8')
-    return {
-      filePath: normalizedFilePath,
-      exists: true,
-      mtimeMs: stats.mtimeMs,
-      size: stats.size,
-      hash: hashText(text),
-      text,
+    if (typeof stats.isFile === 'function' && !stats.isFile()) {
+      return {
+        filePath: normalizedFilePath,
+        exists: false,
+        mtimeMs: 0,
+        ctimeMs: 0,
+        size: 0,
+        hash: 'missing',
+        text: '',
+      }
     }
+
+    const cacheKey = `${normalizedFilePath}:${stats.mtimeMs}:${stats.ctimeMs}:${stats.size}`
+    return getStatEpochCachedValue('small-file-identity', cacheKey, () => {
+      const text = fs.readFileSync(normalizedFilePath, 'utf8')
+      return {
+        filePath: normalizedFilePath,
+        exists: true,
+        mtimeMs: stats.mtimeMs,
+        ctimeMs: stats.ctimeMs,
+        size: stats.size,
+        hash: hashText(text),
+        text,
+      }
+    })
   } catch (error) {
     if (isRecoverableFileSystemReadError(error)) {
       return {
         filePath: normalizedFilePath,
         exists: false,
         mtimeMs: 0,
+        ctimeMs: 0,
         size: 0,
         hash: 'missing',
         text: '',
@@ -178,6 +190,74 @@ function readSmallFileIdentity(filePath) {
     }
     throw error
   }
+}
+
+function createMissingSchemaCache(schemaPath, identity) {
+  return {
+    schemaPath,
+    mtimeMs: 0,
+    ctimeMs: 0,
+    size: 0,
+    hash: identity.hash,
+    collections: [],
+    collectionsByName: new Map(),
+    recordFieldTypeTextByName: new Map(),
+  }
+}
+
+function createMissingCollectionMethodCache(typesPath, identity) {
+  return {
+    typesPath,
+    mtimeMs: 0,
+    ctimeMs: 0,
+    size: 0,
+    hash: identity.hash,
+    methodNames: [...DEFAULT_COLLECTION_METHOD_NAMES],
+  }
+}
+
+function isSmallFileCacheCurrent(cacheEntry, identity) {
+  return !!(
+    cacheEntry &&
+    cacheEntry.mtimeMs === identity.mtimeMs &&
+    cacheEntry.ctimeMs === identity.ctimeMs &&
+    cacheEntry.size === identity.size &&
+    cacheEntry.hash === identity.hash
+  )
+}
+
+function getSchemaFieldTypeText(field) {
+  const fieldObjectType = mapFieldObjectToTypeText(field)
+  if (fieldObjectType) {
+    return fieldObjectType
+  }
+
+  return mapSchemaFieldTypeToTypeText(field && field.type)
+}
+
+function buildRecordFieldTypeTextByName(collectionsByName) {
+  const typeTextsByFieldName = new Map()
+
+  for (const collection of collectionsByName.values()) {
+    for (const field of mergeRecordFieldEntries(collection.fields)) {
+      const typeText = getSchemaFieldTypeText(field)
+      if (!typeText) {
+        continue
+      }
+
+      if (!typeTextsByFieldName.has(field.name)) {
+        typeTextsByFieldName.set(field.name, [])
+      }
+      typeTextsByFieldName.get(field.name).push(typeText)
+    }
+  }
+
+  const recordFieldTypeTextByName = new Map()
+  for (const [fieldName, typeTexts] of typeTextsByFieldName.entries()) {
+    recordFieldTypeTextByName.set(fieldName, mergeTypeTexts(typeTexts))
+  }
+
+  return recordFieldTypeTextByName
 }
 
 function ensureArray(value) {
@@ -2742,23 +2822,11 @@ class PocketPagesProjectIndex {
     const schemaPath = normalizePath(path.join(this.appRoot, 'pb_schema.json'))
     const identity = readSmallFileIdentity(schemaPath)
     if (!identity.exists) {
-      this.schemaCache = {
-        schemaPath,
-        mtimeMs: 0,
-        size: 0,
-        hash: identity.hash,
-        collections: [],
-        collectionsByName: new Map(),
-      }
+      this.schemaCache = createMissingSchemaCache(schemaPath, identity)
       return this.schemaCache
     }
 
-    if (
-      this.schemaCache &&
-      this.schemaCache.mtimeMs === identity.mtimeMs &&
-      this.schemaCache.size === identity.size &&
-      this.schemaCache.hash === identity.hash
-    ) {
+    if (isSmallFileCacheCurrent(this.schemaCache, identity)) {
       return this.schemaCache
     }
 
@@ -2820,10 +2888,12 @@ class PocketPagesProjectIndex {
     this.schemaCache = {
       schemaPath,
       mtimeMs: identity.mtimeMs,
+      ctimeMs: identity.ctimeMs,
       size: identity.size,
       hash: identity.hash,
       collections,
       collectionsByName,
+      recordFieldTypeTextByName: buildRecordFieldTypeTextByName(collectionsByName),
     }
 
     return this.schemaCache
@@ -2871,51 +2941,22 @@ class PocketPagesProjectIndex {
       return null
     }
 
-    const fieldObjectType = mapFieldObjectToTypeText(field)
-    if (fieldObjectType) {
-      return fieldObjectType
-    }
-
-    return mapSchemaFieldTypeToTypeText(field.type)
+    return getSchemaFieldTypeText(field)
   }
 
   getRecordFieldTypeText(fieldName) {
-    const typeTexts = []
-
-    for (const collectionName of this.getCollectionNames()) {
-      const typeText = this.getFieldTypeText(collectionName, fieldName)
-      if (typeText) {
-        typeTexts.push(typeText)
-      }
-    }
-
-    if (!typeTexts.length) {
-      return null
-    }
-
-    return mergeTypeTexts(typeTexts)
+    return this.getSchemaState().recordFieldTypeTextByName.get(fieldName) || null
   }
 
   getCollectionMethodState() {
     const typesPath = normalizePath(path.join(this.appRoot, 'pb_data', 'types.d.ts'))
     const identity = readSmallFileIdentity(typesPath)
     if (!identity.exists) {
-      this.collectionMethodCache = {
-        typesPath,
-        mtimeMs: 0,
-        size: 0,
-        hash: identity.hash,
-        methodNames: [...DEFAULT_COLLECTION_METHOD_NAMES],
-      }
+      this.collectionMethodCache = createMissingCollectionMethodCache(typesPath, identity)
       return this.collectionMethodCache
     }
 
-    if (
-      this.collectionMethodCache &&
-      this.collectionMethodCache.mtimeMs === identity.mtimeMs &&
-      this.collectionMethodCache.size === identity.size &&
-      this.collectionMethodCache.hash === identity.hash
-    ) {
+    if (isSmallFileCacheCurrent(this.collectionMethodCache, identity)) {
       return this.collectionMethodCache
     }
 
@@ -2933,6 +2974,7 @@ class PocketPagesProjectIndex {
     this.collectionMethodCache = {
       typesPath,
       mtimeMs: identity.mtimeMs,
+      ctimeMs: identity.ctimeMs,
       size: identity.size,
       hash: identity.hash,
       methodNames,

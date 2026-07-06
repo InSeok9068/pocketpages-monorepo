@@ -10,6 +10,7 @@ const fs = require("fs");
 // synchronous request.
 
 let statCache = null;
+let epochCaches = null;
 
 function readStatEntry(filePath) {
   const key = String(filePath || "");
@@ -77,6 +78,28 @@ function statSyncCached(filePath) {
   };
 }
 
+function getStatEpochCachedValue(namespace, key, createValue) {
+  if (!epochCaches || typeof createValue !== "function") {
+    return createValue();
+  }
+
+  const namespaceKey = String(namespace || "default");
+  let cache = epochCaches.get(namespaceKey);
+  if (!cache) {
+    cache = new Map();
+    epochCaches.set(namespaceKey, cache);
+  }
+
+  const cacheKey = String(key || "");
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
+  }
+
+  const value = createValue();
+  cache.set(cacheKey, value);
+  return value;
+}
+
 function runStatEpoch(fn) {
   // Reuse an already-open epoch so nested calls within one request share the cache.
   if (statCache) {
@@ -84,14 +107,17 @@ function runStatEpoch(fn) {
   }
 
   statCache = new Map();
+  epochCaches = new Map();
   try {
     return fn();
   } finally {
     statCache = null;
+    epochCaches = null;
   }
 }
 
 module.exports = {
+  getStatEpochCachedValue,
   getStatEntry,
   statFileExists,
   statDirectoryExists,
