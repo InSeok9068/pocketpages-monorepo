@@ -509,6 +509,199 @@ function toAnalysisText(filePath, documentText) {
   return isEjsFile(filePath) ? buildTemplateVirtualText(documentText) : documentText;
 }
 
+function isStaticBooleanOperatorToken(kind) {
+  return (
+    kind === ts.SyntaxKind.EqualsEqualsToken ||
+    kind === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    kind === ts.SyntaxKind.ExclamationEqualsToken ||
+    kind === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+    kind === ts.SyntaxKind.LessThanToken ||
+    kind === ts.SyntaxKind.LessThanEqualsToken ||
+    kind === ts.SyntaxKind.GreaterThanToken ||
+    kind === ts.SyntaxKind.GreaterThanEqualsToken ||
+    kind === ts.SyntaxKind.InKeyword ||
+    kind === ts.SyntaxKind.InstanceOfKeyword
+  );
+}
+
+function getStaticDeclarationScopeNode(node, sourceFile) {
+  let current = node ? node.parent : null;
+  while (current) {
+    if (
+      current === sourceFile ||
+      ts.isBlock(current) ||
+      ts.isCaseBlock(current) ||
+      ts.isModuleBlock(current) ||
+      ts.isFunctionLike(current)
+    ) {
+      return current;
+    }
+
+    current = current.parent;
+  }
+
+  return sourceFile;
+}
+
+function isOffsetInNodeScope(node, sourceFile, offset) {
+  return !!node && offset >= node.getStart(sourceFile) && offset <= node.getEnd();
+}
+
+function getNearestStaticVariableDeclaration(sourceFile, identifierName, beforeOffset) {
+  let nearestDeclaration = null;
+  let nearestStart = -1;
+
+  const visit = (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === identifierName
+    ) {
+      const declarationStart = node.getStart(sourceFile);
+      const scopeNode = getStaticDeclarationScopeNode(node, sourceFile);
+      if (
+        declarationStart < beforeOffset &&
+        declarationStart > nearestStart &&
+        isOffsetInNodeScope(scopeNode, sourceFile, beforeOffset)
+      ) {
+        nearestDeclaration = node;
+        nearestStart = declarationStart;
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return nearestDeclaration;
+}
+
+function getSimpleStaticTypeAnnotationText(sourceFile, typeNode) {
+  if (!typeNode) {
+    return null;
+  }
+
+  const typeText = typeNode.getText(sourceFile).trim();
+  return ["any", "boolean", "number", "string", "undefined", "null"].includes(typeText)
+    ? typeText
+    : null;
+}
+
+function inferSimpleStaticIncludeExpressionTypeText(sourceFile, node, options = {}) {
+  const depth = Number.isInteger(options.depth) ? options.depth : 0;
+  if (!node || depth > 3) {
+    return null;
+  }
+
+  const target = skipExpressionWrappers(node);
+  if (!target) {
+    return null;
+  }
+
+  if (ts.isStringLiteralLike(target) || ts.isNoSubstitutionTemplateLiteral(target) || ts.isTemplateExpression(target)) {
+    return "string";
+  }
+
+  if (ts.isNumericLiteral(target)) {
+    return "number";
+  }
+
+  if (target.kind === ts.SyntaxKind.TrueKeyword || target.kind === ts.SyntaxKind.FalseKeyword) {
+    return "boolean";
+  }
+
+  if (target.kind === ts.SyntaxKind.NullKeyword) {
+    return "null";
+  }
+
+  if (target.kind === ts.SyntaxKind.UndefinedKeyword) {
+    return "undefined";
+  }
+
+  if (ts.isPrefixUnaryExpression(target)) {
+    if (target.operator === ts.SyntaxKind.ExclamationToken) {
+      return "boolean";
+    }
+
+    if (target.operator === ts.SyntaxKind.PlusToken || target.operator === ts.SyntaxKind.MinusToken) {
+      return "number";
+    }
+  }
+
+  if (ts.isBinaryExpression(target) && isStaticBooleanOperatorToken(target.operatorToken.kind)) {
+    return "boolean";
+  }
+
+  if (ts.isCallExpression(target)) {
+    const callee = skipExpressionWrappers(target.expression);
+    if (callee && ts.isIdentifier(callee)) {
+      if (callee.text === "String") {
+        return "string";
+      }
+
+      if (callee.text === "Number") {
+        return "number";
+      }
+
+      if (callee.text === "Boolean") {
+        return "boolean";
+      }
+    }
+  }
+
+  if (ts.isIdentifier(target)) {
+    const identifierName = target.text;
+    const seen = options.seen instanceof Set ? options.seen : new Set();
+    if (seen.has(identifierName)) {
+      return null;
+    }
+
+    const declaration = getNearestStaticVariableDeclaration(sourceFile, identifierName, target.getStart(sourceFile));
+    if (!declaration) {
+      return null;
+    }
+
+    const annotationTypeText = getSimpleStaticTypeAnnotationText(sourceFile, declaration.type);
+    if (annotationTypeText) {
+      return annotationTypeText;
+    }
+
+    if (!declaration.initializer) {
+      return null;
+    }
+
+    seen.add(identifierName);
+    const typeText = inferSimpleStaticIncludeExpressionTypeText(sourceFile, declaration.initializer, {
+      ...options,
+      depth: depth + 1,
+      seen,
+    });
+    seen.delete(identifierName);
+    return typeText;
+  }
+
+  return null;
+}
+
+function findStaticExpressionNodeAtSpan(sourceFile, startOffset, endOffset) {
+  let foundNode = null;
+
+  const visit = (node) => {
+    const nodeStart = node.getStart(sourceFile);
+    const nodeEnd = node.getEnd();
+    if (nodeStart === startOffset && nodeEnd === endOffset) {
+      foundNode = node;
+    }
+
+    if (startOffset >= nodeStart && endOffset <= nodeEnd) {
+      ts.forEachChild(node, visit);
+    }
+  };
+
+  visit(sourceFile);
+  return foundNode;
+}
+
 function getAnalysisContextAtOffset(filePath, documentText, offset) {
   let analysisText = documentText;
   let analysisOffset = offset;
@@ -4935,6 +5128,24 @@ class ProjectLanguageService {
     });
   }
 
+  getStaticIncludeLocalExpressionTypeText(filePath, documentText, local) {
+    if (!local || typeof local.expressionStart !== "number" || typeof local.expressionEnd !== "number") {
+      return null;
+    }
+
+    const expressionText = String(documentText || "")
+      .slice(local.expressionStart, local.expressionEnd)
+      .trim();
+    if (/^params\s*\.\s*__flash$/.test(expressionText)) {
+      return "string | undefined";
+    }
+
+    const analysisText = toAnalysisText(filePath, documentText);
+    const sourceFile = ts.createSourceFile(filePath, analysisText, ts.ScriptTarget.Latest, true);
+    const expressionNode = findStaticExpressionNodeAtSpan(sourceFile, local.expressionStart, local.expressionEnd);
+    return inferSimpleStaticIncludeExpressionTypeText(sourceFile, expressionNode);
+  }
+
   getIncludeLocalTypeText(filePath, documentText, local) {
     if (!local || local.typeStrategy !== "ts-expression") {
       return local && local.typeText ? local.typeText : "any";
@@ -4942,6 +5153,11 @@ class ProjectLanguageService {
 
     if (typeof local.expressionStart !== "number" || local.expressionStart < 0) {
       return local.typeText || "any";
+    }
+
+    const staticTypeText = this.getStaticIncludeLocalExpressionTypeText(filePath, documentText, local);
+    if (staticTypeText) {
+      return staticTypeText;
     }
 
     const inferredTypeText = this.getTypeTextAtDocumentSpan(

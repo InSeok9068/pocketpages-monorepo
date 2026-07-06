@@ -7,6 +7,7 @@ const os = require('os')
 const path = require('path')
 const { performance } = require('perf_hooks')
 const { PocketPagesLanguageServiceManager, ts } = require('../tools/vscode-pocketpages/packages/language-service/language-service')
+const { runStatEpoch } = require('../tools/vscode-pocketpages/packages/language-service/stat-cache')
 
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
@@ -294,6 +295,10 @@ function runFileDiagnostics(filePath, manager, options = {}) {
 }
 
 function runServiceDiagnostics(serviceDir, manager, options = {}) {
+  return runStatEpoch(() => runServiceDiagnosticsInStatEpoch(serviceDir, manager, options))
+}
+
+function runServiceDiagnosticsInStatEpoch(serviceDir, manager, options = {}) {
   const serviceName = path.basename(serviceDir)
   const filePaths = Array.isArray(options.filePaths) ? options.filePaths : collectPagesCodeFiles(serviceDir)
   const startedAt = performance.now()

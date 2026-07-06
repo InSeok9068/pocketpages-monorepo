@@ -2041,6 +2041,15 @@ const boardService = resolve('board-service')
 `
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'static-locals-type-check.ejs'),
+    `<script server>
+const isProduction = String(env('APP_ENV') || 'development').trim() === 'production'
+const currentPath = String(request.url.pathname || '/')
+</script>
+<%- include('static-panel.ejs', { currentPath, isProduction }) %>
+`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'override-card-check.ejs'),
     `<%- include('override-card.ejs', { banner: { message: 'Saved' } }) %>\n`
   )
@@ -2314,6 +2323,10 @@ module.exports = {
     `<div><%= authState.email %> / <%= boardService.readAuthState({ request }).method %></div>\n`
   )
   writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '_private', 'static-panel.ejs'),
+    `<div><%= currentPath %> / <%= isProduction %></div>\n`
+  )
+  writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '_private', 'shared-panel.ejs'),
     `<div>root:<%= banner %></div>\n`
   )
@@ -2423,6 +2436,7 @@ module.exports = {
     boardShowFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', '[boardSlug]', 'index.ejs'),
     boardFileParamFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'by-file', '[boardSlug].ejs'),
     localsTypeCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'locals-type-check.ejs'),
+    staticLocalsTypeCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'static-locals-type-check.ejs'),
     overrideCardCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'override-card-check.ejs'),
     resolveParentCheckFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'resolve-parent-check.ejs'),
     optionalNoticeAFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'optional-notice-a.ejs'),
@@ -2464,6 +2478,7 @@ module.exports = {
     routeUppercaseMinifiedScriptFilePath: path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'bundle.MIN.JS'),
     flashAlertFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'flash-alert.ejs'),
     typedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'typed-panel.ejs'),
+    staticPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'static-panel.ejs'),
     sharedPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'shared-panel.ejs'),
     propertyPanelFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'property-panel.ejs'),
     overrideCardFilePath: path.join(appRoot, 'pb_hooks', 'pages', '_private', 'override-card.ejs'),
@@ -11988,6 +12003,16 @@ function loadPostRole() {
     const flashAlertPrelude = service.buildPrelude(fixture.flashAlertFilePath, privateTemplateHoverText)
     if (!flashAlertPrelude.includes('declare const flashMessage: string;')) {
       throw new Error(`Expected buildPrelude() to declare include locals for partial TS analysis. Got: ${flashAlertPrelude}`)
+    }
+    const staticPanelPrelude = service.buildPrelude(
+      fixture.staticPanelFilePath,
+      fs.readFileSync(fixture.staticPanelFilePath, 'utf8')
+    )
+    if (
+      !staticPanelPrelude.includes('declare const currentPath: string;') ||
+      !staticPanelPrelude.includes('declare const isProduction: boolean;')
+    ) {
+      throw new Error(`Expected static include local inference for simple const initializers. Got: ${staticPanelPrelude}`)
     }
 
     const typedPanelCompletionText = `<div><%= authState. %></div>\n`
