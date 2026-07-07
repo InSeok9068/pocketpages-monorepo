@@ -7,7 +7,7 @@ const path = require('path')
 const { collectManagedWatchedFiles, getDiagIpcPath, resolveTarget, ROOT_DIR, runDiagnosticsAsync, readFileToken } = require('./diag-pocketpages-core')
 const { PocketPagesLanguageServiceManager } = require('../tools/vscode-pocketpages/packages/language-service/language-service')
 
-const IDLE_TIMEOUT_MS = 10 * 60 * 1000
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000
 
 function parseArgs(argv) {
   const args = Array.isArray(argv) ? [...argv] : []
@@ -78,8 +78,30 @@ function collectChangedFiles(previousSnapshot, nextSnapshot) {
   return changes
 }
 
+function createSnapshotKey(serviceDir, snapshot) {
+  const normalizedServiceDir = path.resolve(serviceDir)
+  const entries = Array.from(snapshot.entries())
+    .sort((left, right) => left[0].localeCompare(right[0]))
+    .map(([filePath, token]) => `${filePath}\0${token}`)
+
+  return `${normalizedServiceDir}\0${entries.join('\0')}`
+}
+
+function createTargetCacheKey(target, serviceDirs) {
+  if (target.mode === 'file') {
+    return `file:${path.resolve(target.filePath)}`
+  }
+
+  const normalizedServiceDirs = serviceDirs
+    .map((serviceDir) => path.resolve(serviceDir))
+    .sort((left, right) => left.localeCompare(right))
+
+  return `service:${normalizedServiceDirs.join('|')}`
+}
+
 const manager = new PocketPagesLanguageServiceManager()
 const serviceSnapshots = new Map()
+const resultCache = new Map()
 let idleTimer = null
 let requestQueue = Promise.resolve()
 
@@ -118,10 +140,14 @@ function syncManagerForTarget(rawTarget) {
   }
 
   if (serviceDirs.length === 0) {
-    return
+    return {
+      cacheKey: '',
+      snapshotKey: '',
+    }
   }
 
   const allChanges = []
+  const snapshotKeys = []
 
   for (const serviceDir of serviceDirs) {
     const normalizedServiceDir = path.resolve(serviceDir)
@@ -130,11 +156,19 @@ function syncManagerForTarget(rawTarget) {
     const changes = collectChangedFiles(previousSnapshot, nextSnapshot)
 
     serviceSnapshots.set(normalizedServiceDir, nextSnapshot)
+    snapshotKeys.push(createSnapshotKey(normalizedServiceDir, nextSnapshot))
     allChanges.push(...changes)
   }
 
   if (allChanges.length > 0) {
     manager.handleWatchedFileChanges(allChanges)
+  }
+
+  snapshotKeys.sort((left, right) => left.localeCompare(right))
+
+  return {
+    cacheKey: createTargetCacheKey(target, serviceDirs),
+    snapshotKey: snapshotKeys.join('\n'),
   }
 }
 
@@ -161,7 +195,20 @@ async function handleRequest(socket, rawText) {
     const rawTarget = request && typeof request.rawTarget === 'string' ? request.rawTarget : ''
     const profile = !!(request && request.profile)
 
-    syncManagerForTarget(rawTarget)
+    const syncState = syncManagerForTarget(rawTarget)
+    const cacheKey = syncState && syncState.cacheKey ? syncState.cacheKey : ''
+    const snapshotKey = syncState && syncState.snapshotKey ? syncState.snapshotKey : ''
+    const cached = !profile && cacheKey ? resultCache.get(cacheKey) : null
+
+    if (cached && cached.snapshotKey === snapshotKey) {
+      sendFinalResponse(socket, {
+        ok: true,
+        type: 'result',
+        result: cached.result,
+      })
+      return
+    }
+
     const result = await runDiagnosticsAsync(rawTarget, {
       manager,
       profile,
@@ -172,6 +219,13 @@ async function handleRequest(socket, rawText) {
         })
       },
     })
+
+    if (!profile && cacheKey) {
+      resultCache.set(cacheKey, {
+        snapshotKey,
+        result,
+      })
+    }
 
     sendFinalResponse(socket, {
       ok: true,
