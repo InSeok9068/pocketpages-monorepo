@@ -263,6 +263,25 @@ module.exports = [
     },
   },
   {
+    files: ['packages/**/*.js'],
+    rules: {
+      'jsdoc/require-jsdoc': [
+        'warn',
+        {
+          publicOnly: {
+            cjs: true,
+            esm: true,
+          },
+          require: {
+            ArrowFunctionExpression: true,
+            FunctionDeclaration: true,
+            FunctionExpression: true,
+          },
+        },
+      ],
+    },
+  },
+  {
     files: ['apps/**/pb_hooks/**/*.js'],
     languageOptions: {
       globals: pocketBaseHookGlobals,

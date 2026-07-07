@@ -242,6 +242,11 @@ function sendRealtimePayload(deps, topic, payload, sendOptions) {
   }
 }
 
+/**
+ * PocketBase realtime broker로 Datastar 패치를 보내는 헬퍼를 만듭니다.
+ * @param {Record<string, any>} deps realtime 전송 의존성입니다.
+ * @returns {Record<string, Function>} realtime 전송 헬퍼입니다.
+ */
 function createRealtimeSender(deps) {
   return {
     patchElements: function (elements, patchOptions, realtimeOptions) {
@@ -460,6 +465,12 @@ function buildRealtimeScript(options) {
   ].join('\n')
 }
 
+/**
+ * PocketPages Datastar v1 플러그인을 만듭니다.
+ * @param {Record<string, any>} config PocketPages 플러그인 설정입니다.
+ * @param {Record<string, any>} [pluginOptions] Datastar 플러그인 옵션입니다.
+ * @returns {Record<string, any>} PocketPages 플러그인 객체입니다.
+ */
 function datastarPluginFactory(config, pluginOptions) {
   const opts = pluginOptions || {}
   const dbg = config && typeof config.dbg === 'function' ? config.dbg : function () {}
@@ -776,15 +787,39 @@ function datastarPluginFactory(config, pluginOptions) {
 }
 
 datastarPluginFactory.realtime = {
+  /**
+   * element patch realtime payload를 만듭니다.
+   * @param {unknown} elements patch할 element HTML입니다.
+   * @param {Record<string, any>} patchOptions patch 옵션입니다.
+   * @returns {Record<string, any>} realtime payload입니다.
+   */
   buildPatchElementsPayload: function (elements, patchOptions) {
     return buildRealtimePatchElementsPayload(null, elements, patchOptions)
   },
+  /**
+   * element 제거 realtime payload를 만듭니다.
+   * @param {unknown} selector 제거할 element selector입니다.
+   * @param {Record<string, any>} patchOptions patch 옵션입니다.
+   * @returns {Record<string, any>} realtime payload입니다.
+   */
   buildRemoveElementsPayload: function (selector, patchOptions) {
     return buildRealtimeRemoveElementsPayload(null, selector, patchOptions)
   },
+  /**
+   * signal patch realtime payload를 만듭니다.
+   * @param {unknown} signals patch할 signal 값입니다.
+   * @param {Record<string, any>} patchOptions patch 옵션입니다.
+   * @returns {Record<string, any>} realtime payload입니다.
+   */
   buildPatchSignalsPayload: function (signals, patchOptions) {
     return buildRealtimePatchSignalsPayload(null, signals, patchOptions)
   },
+  /**
+   * signal 제거 realtime payload를 만듭니다.
+   * @param {unknown} signalKeys 제거할 signal key입니다.
+   * @param {Record<string, any>} patchOptions patch 옵션입니다.
+   * @returns {Record<string, any>} realtime payload입니다.
+   */
   buildRemoveSignalsPayload: function (signalKeys, patchOptions) {
     return buildRealtimeRemoveSignalsPayload(null, signalKeys, patchOptions)
   },
