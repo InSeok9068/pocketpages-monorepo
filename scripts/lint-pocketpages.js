@@ -387,6 +387,10 @@ function getValidLintCache(serviceDir, fingerprint) {
     return null
   }
 
+  if (Number(cache.warnings) > 0) {
+    return null
+  }
+
   return cache
 }
 
@@ -1847,8 +1851,9 @@ function main() {
     const context = buildServiceContext(serviceDir)
     lintService(context)
 
-    if (errors === previousErrors) {
-      writeLintCache(serviceDir, fingerprint, warnings - previousWarnings)
+    const serviceWarningCount = warnings - previousWarnings
+    if (errors === previousErrors && serviceWarningCount === 0) {
+      writeLintCache(serviceDir, fingerprint, serviceWarningCount)
     }
 
     const serviceElapsedMs = Number(process.hrtime.bigint() - serviceStart) / 1e6
