@@ -32,6 +32,7 @@ const { createDiagnosticsFeatureHandlers } = require("./features/diagnostics-fea
 const { createNavigationFeatureHandlers } = require("./features/navigation-features");
 const { DocumentSnapshotManager } = require("./document-snapshot-manager");
 const {
+  getStatEpochCachedValue,
   statFileExists,
   statDirectoryExists,
   statSyncCached,
@@ -4622,26 +4623,28 @@ class ProjectLanguageService {
   }
 
   getAmbientSnapshotKey() {
-    const filePaths = [
-      ...getAppAmbientTypeFiles(this.appRoot),
-      this.projectIndex.getSchemaState().schemaPath,
-    ].filter((filePath, index, items) => filePath && items.indexOf(filePath) === index);
+    return getStatEpochCachedValue("ambient-snapshot-key", normalizePath(this.appRoot), () => {
+      const filePaths = [
+        ...getAppAmbientTypeFiles(this.appRoot),
+        this.projectIndex.getSchemaState().schemaPath,
+      ].filter((filePath, index, items) => filePath && items.indexOf(filePath) === index);
 
-    return filePaths
-      .map((filePath) => {
-        const normalizedFilePath = normalizePath(filePath);
-        if (!fileExists(normalizedFilePath)) {
-          return `${normalizedFilePath}:missing`;
-        }
+      return filePaths
+        .map((filePath) => {
+          const normalizedFilePath = normalizePath(filePath);
+          if (!fileExists(normalizedFilePath)) {
+            return `${normalizedFilePath}:missing`;
+          }
 
-        const stats = statSyncCached(normalizedFilePath);
-        try {
-          return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}:${hashText(readFileText(normalizedFilePath))}`;
-        } catch (_error) {
-          return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}`;
-        }
-      })
-      .join("|");
+          const stats = statSyncCached(normalizedFilePath);
+          try {
+            return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}:${hashText(readFileText(normalizedFilePath))}`;
+          } catch (_error) {
+            return `${normalizedFilePath}:${stats.mtimeMs}:${stats.size}`;
+          }
+        })
+        .join("|");
+    });
   }
 
   getPreludeSnapshotKey(filePath, analysisText = "", options = {}) {
