@@ -1,7 +1,6 @@
 const { globalApi } = require('pocketpages')
 const { dateutil, storeCache } = require('@pocketpages/utils')
-const dbg = globalApi.dbg
-const info = globalApi.info
+const { dbg, info } = globalApi
 
 const APPLYHOME_BASE_URL = 'https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1'
 const LH_NOTICE_URL = 'https://apis.data.go.kr/B552555/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1'

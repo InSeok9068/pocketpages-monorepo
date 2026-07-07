@@ -1,5 +1,5 @@
 const { globalApi } = require('pocketpages')
-const { info, dbg } = globalApi
+const { dbg, info } = globalApi
 const {
   KJCA_EMAIL_DOMAIN,
   KJCA_HOST,

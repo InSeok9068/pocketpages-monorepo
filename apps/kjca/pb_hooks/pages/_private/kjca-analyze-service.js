@@ -1,5 +1,5 @@
 const { globalApi } = require('pocketpages')
-const { warn, info } = globalApi
+const { info, warn } = globalApi
 const { createAiClient } = require('@pocketpages/ai')
 const {
   CACHE_COLLECTION_NAME,

@@ -2,55 +2,74 @@
 'use strict'
 
 // PocketPages lint rules:
-// 1) resolve('/_private/...') 같이 _private 기준 규칙에 어긋나는 resolve 사용
-// 2) include('/_private/...') 같이 _private 절대 경로 include 사용
-// 3) EJS/JS에서 PocketBase Record field 직접 접근
-// 4) +middleware.js 에서 인자로 받은 resolve 대신 전역 resolve() 직접 사용
-// 5) api/xapi 아래에 +layout.ejs 를 두는 잘못된 레이아웃 구성
-// 6) xapi 엔드포인트에서 <!DOCTYPE>, <html>, <body> 같은 전체 문서 응답 반환
-// 7) _private 내부에 +layout, +load, +middleware 같은 특수 PocketPages 파일 배치
-// 8) xapi 엔드포인트에서 response.json(...) 사용
-// 9) api 엔드포인트에서 redirect(...) 사용
-// 10) redirect flash를 쓰면서 __flash 쿼리스트링을 수동 조립하는 패턴
-// 11) 중첩 +config.js 사용
-// 12) PocketPages가 알지 못하는 +special 파일명 사용
-// 13) next 인자를 받는 middleware가 next()나 response.* 호출 없이 끝나는 패턴
-// 14) 상위/하위 경로에 중첩 +load.js 배치
-// 15) 허용 범위를 벗어난 raw EJS 출력(<%- ... %>)
-// 16) auth helper 사용 시 pocketpages-plugin-auth 누락
-// 17) pocketpages-plugin-auth 사용 시 pocketpages-plugin-js-sdk 누락 또는 순서 역전
-// 18) _private 내부 .js/.ejs 파일에서 resolve() 사용
-// 19) roles/*.js 내부에서 부작용/DB 조회/요청 문맥 접근 사용
-// 20) 엔트리에서 resolve('roles/...') 조립이 과도하게 많음
-// 21) JS helper/로컬 바인딩에서 params 이름 사용
-// 22) _private/*.js 에서 plain module 대신 factory/function export 사용
-// 23) include()에 full context(api/request/response/resolve/params/data) 전달
-// 24) 로컬 @typedef 사용
-// 25) module.exports.foo = ... 형태의 분산 export 사용
-// 26) _private/*.ejs 에서 <script server> 사용
-// 27) pages 내부 코드에서 process.env 사용
-// 28) pages 밖 pb_hooks 코드에서 PocketPages 전역(env/dbg/info/warn/error) 사용
-// 29) _private/*.ejs 에서 $app 기반 DB 접근 사용
-// 30) module.exports = { ... } 에서 축약 가능한 foo: foo 사용
-// 31) pb_hooks/pages 아래에 *.pb.js 파일 배치
-// 32) pages 일반 .js(static js) 안에 서버 코드 사용
-// 33) runInTransaction 콜백 안에서 바깥 $app 사용
-// 34) pb_hooks/pages 안에서 PocketBase hook 등록 API 사용
-// 35) api 엔드포인트에서 HTML 응답 반환
-// 36) resolve/include/asset/route 경로가 실제로 없는 정적 경로
-// 37) 존재하지 않는 PocketBase collection 문자열 사용
-// 38) 존재하지 않는 PocketBase Record field 문자열 사용
-// 39) params를 query처럼 읽는 패턴
-// 40) redirect() 뒤 return 누락
-// 41) +config.js plugin이 package.json 직접 의존성에 없는 경우
-// 42) 서버 코드에서 async/await/Promise/.then() 사용
-// 43) redirect option에서 flash 사용
-// 44) Datastar attribute key에 camelCase 사용
-// 45) pages 밖 pb_hooks 코드에서 PocketPages Datastar request helper 사용
-// 46) pages 안에서 PocketBase backend Datastar realtime utility 사용
-// 47) pages 밖 pb_hooks 코드에서 PocketPages route helper 사용
-// 48) 서버 코드에서 JSVM locale API(Intl/toLocale*) 사용
-// 49) 서버 코드에서 브라우저/Web API 전역 사용
+//
+// [apps/<service>/pb_hooks/**/* - 서버 런타임 공통]
+// 1) module.exports = { ... } 에서 축약 가능한 foo: foo 사용
+// 2) runInTransaction 콜백 안에서 바깥 $app 사용
+// 3) 서버 코드에서 async/await/Promise/.then() 사용
+// 4) 서버 코드에서 JSVM locale API(Intl/toLocale*) 사용
+// 5) 서버 코드에서 브라우저/Web API 전역 사용
+//
+// [apps/<service>/pb_hooks/* - pages 밖 hooks/jobs]
+// 6) pages 밖 pb_hooks 코드에서 PocketPages 전역(env/dbg/info/warn/error) 사용
+// 7) pages 밖 pb_hooks 코드에서 PocketPages Datastar request helper 사용
+// 8) pages 밖 pb_hooks 코드에서 PocketPages route helper 사용
+//
+// [apps/<service>/pb_hooks/pages/**/* - pages 서버 코드]
+// 9) resolve('/_private/...') 같이 _private 기준 규칙에 어긋나는 resolve 사용
+// 10) include('/_private/...') 같이 _private 절대 경로 include 사용
+// 11) EJS/JS에서 PocketBase Record field 직접 접근
+// 12) redirect flash를 쓰면서 __flash 쿼리스트링을 수동 조립하는 패턴
+// 13) 허용 범위를 벗어난 raw EJS 출력(<%- ... %>)
+// 14) auth helper 사용 시 pocketpages-plugin-auth 누락
+// 15) JS helper/로컬 바인딩에서 params 이름 사용
+// 16) include()에 full context(api/request/response/resolve/params/data) 전달
+// 17) 로컬 @typedef 사용
+// 18) pages 내부 코드에서 process.env 사용
+// 19) pb_hooks/pages 아래에 *.pb.js 파일 배치
+// 20) pb_hooks/pages 안에서 PocketBase hook 등록 API 사용
+// 21) resolve/include/asset/route 경로가 실제로 없는 정적 경로
+// 22) 존재하지 않는 PocketBase collection 문자열 사용
+// 23) 존재하지 않는 PocketBase Record field 문자열 사용
+// 24) params를 query처럼 읽는 패턴
+// 25) redirect() 뒤 return 누락
+// 26) redirect option에서 flash 사용
+// 27) Datastar attribute key에 camelCase 사용
+// 28) pages 안에서 PocketBase backend Datastar realtime utility 사용
+//
+// [apps/<service>/pb_hooks/pages/+* - route/config/middleware/load 구조]
+// 29) +middleware.js 에서 인자로 받은 resolve 대신 전역 resolve() 직접 사용
+// 30) api/xapi 아래에 +layout.ejs 를 두는 잘못된 레이아웃 구성
+// 31) 중첩 +config.js 사용
+// 32) PocketPages가 알지 못하는 +special 파일명 사용
+// 33) next 인자를 받는 middleware가 next()나 response.* 호출 없이 끝나는 패턴
+// 34) 상위/하위 경로에 중첩 +load.js 배치
+// 35) pocketpages-plugin-auth 사용 시 pocketpages-plugin-js-sdk 누락 또는 순서 역전
+// 36) +config.js plugin이 package.json 직접 의존성에 없는 경우
+//
+// [apps/<service>/pb_hooks/pages/api|xapi/**/*]
+// 37) xapi 엔드포인트에서 <!DOCTYPE>, <html>, <body> 같은 전체 문서 응답 반환
+// 38) xapi 엔드포인트에서 response.json(...) 사용
+// 39) api 엔드포인트에서 redirect(...) 사용
+// 40) api 엔드포인트에서 HTML 응답 반환
+//
+// [apps/<service>/pb_hooks/pages/*.js - static JS 오용]
+// 41) pages 일반 .js(static js) 안에 서버 코드 사용
+//
+// [apps/<service>/pb_hooks/pages/_private/**/*]
+// 42) _private 내부에 +layout, +load, +middleware 같은 특수 PocketPages 파일 배치
+// 43) _private 내부 .js/.ejs 파일에서 resolve() 사용
+// 44) _private/*.js 에서 plain module 대신 factory/function export 사용
+// 45) module.exports.foo = ... 형태의 분산 export 사용
+// 46) _private/*.ejs 에서 <script server> 사용
+// 47) _private/*.ejs 에서 $app 기반 DB 접근 사용
+// 48) _private/*.js 에서 PocketPages globalApi를 require/destructure 없이 사용
+//
+// [apps/<service>/pb_hooks/pages/_private/roles/*.js]
+// 49) roles/*.js 내부에서 부작용/DB 조회/요청 문맥 접근 사용
+//
+// [apps/<service>/pb_hooks/pages/**/* - entry files]
+// 50) 엔트리에서 resolve('roles/...') 조립이 과도하게 많음
 
 const fs = require('fs')
 const path = require('path')
@@ -103,6 +122,8 @@ const JSVM_BROWSER_GLOBALS = new Set([
   'setTimeout',
   'window',
 ])
+
+const POCKETPAGES_GLOBAL_API_NAMES = new Set(['dbg', 'env', 'error', 'info', 'store', 'stringify', 'url', 'warn'])
 
 const RE = {
   resolvePrivate: /resolve\(\s*["']\/?_private\//,
@@ -1085,6 +1106,162 @@ function collectBrowserApiMatches(context) {
   return unique(matches)
 }
 
+function isPocketPagesRequireCall(node) {
+  return (
+    node &&
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === 'require' &&
+    node.arguments.length === 1 &&
+    ts.isStringLiteral(node.arguments[0]) &&
+    node.arguments[0].text === 'pocketpages'
+  )
+}
+
+function isPocketPagesGlobalApiAccess(node) {
+  return node && ts.isPropertyAccessExpression(node) && node.name.text === 'globalApi' && isPocketPagesRequireCall(node.expression)
+}
+
+function getLiteralPropertyName(node) {
+  if (!node) {
+    return ''
+  }
+
+  if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node)) {
+    return String(node.text || '')
+  }
+
+  return ''
+}
+
+function isGlobalApiIdentifier(node) {
+  return node && ts.isIdentifier(node) && node.text === 'globalApi'
+}
+
+function collectGlobalApiObjectBindingNames(nameNode) {
+  const names = []
+
+  if (!ts.isObjectBindingPattern(nameNode)) {
+    return names
+  }
+
+  for (const element of nameNode.elements) {
+    if (!ts.isBindingElement(element)) {
+      continue
+    }
+
+    const localName = ts.isIdentifier(element.name) ? element.name.text : ''
+    const propertyName = element.propertyName ? getLiteralPropertyName(element.propertyName) : localName
+    names.push({
+      element,
+      localName,
+      propertyName,
+      usesAlias: !!element.propertyName && propertyName !== localName,
+    })
+  }
+
+  return names
+}
+
+function collectPrivateGlobalApiMatches(files) {
+  const matches = []
+
+  for (const file of files) {
+    const sourceFile = ts.createSourceFile(`${file.absPath}.__private_global_api__.js`, file.content, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
+    const declaredNames = collectDeclaredNames(sourceFile)
+    let hasGlobalApiRequireBinding = false
+    const globalApiDestructureLines = []
+
+    function addMatch(node) {
+      matches.push(formatLintLineMatch(file, lineNumberAt(file.content, node.getStart(sourceFile))))
+    }
+
+    function visitDeclarations(node) {
+      if (ts.isVariableDeclaration(node) && node.initializer && ts.isObjectBindingPattern(node.name)) {
+        const bindingNames = collectGlobalApiObjectBindingNames(node.name)
+
+        if (isPocketPagesRequireCall(node.initializer)) {
+          for (const bindingName of bindingNames) {
+            if (bindingName.localName === 'globalApi' && bindingName.propertyName === 'globalApi' && !bindingName.usesAlias) {
+              hasGlobalApiRequireBinding = true
+              continue
+            }
+
+            if (bindingName.propertyName === 'globalApi' || bindingName.localName === 'globalApi') {
+              addMatch(bindingName.element)
+            }
+          }
+        } else if (isGlobalApiIdentifier(node.initializer)) {
+          globalApiDestructureLines.push(lineNumberAt(file.content, node.getStart(sourceFile)))
+
+          for (const bindingName of bindingNames) {
+            if (!POCKETPAGES_GLOBAL_API_NAMES.has(bindingName.propertyName) && !POCKETPAGES_GLOBAL_API_NAMES.has(bindingName.localName)) {
+              continue
+            }
+
+            if (bindingName.usesAlias || bindingName.propertyName !== bindingName.localName) {
+              addMatch(bindingName.element)
+            }
+          }
+        } else if (isPocketPagesGlobalApiAccess(node.initializer)) {
+          for (const bindingName of bindingNames) {
+            if (POCKETPAGES_GLOBAL_API_NAMES.has(bindingName.propertyName) || POCKETPAGES_GLOBAL_API_NAMES.has(bindingName.localName)) {
+              addMatch(node)
+              break
+            }
+          }
+        }
+      }
+
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        isGlobalApiIdentifier(node.expression) &&
+        POCKETPAGES_GLOBAL_API_NAMES.has(node.name.text)
+      ) {
+        addMatch(node)
+      }
+
+      if (
+        ts.isElementAccessExpression(node) &&
+        isGlobalApiIdentifier(node.expression) &&
+        node.argumentExpression &&
+        ts.isStringLiteral(node.argumentExpression) &&
+        POCKETPAGES_GLOBAL_API_NAMES.has(node.argumentExpression.text)
+      ) {
+        addMatch(node)
+      }
+
+      ts.forEachChild(node, visitDeclarations)
+    }
+
+    function visitGlobalUses(node) {
+      if (
+        ts.isIdentifier(node) &&
+        POCKETPAGES_GLOBAL_API_NAMES.has(node.text) &&
+        !declaredNames.has(node.text) &&
+        !isDeclarationNameIdentifier(node) &&
+        !isPropertyNameIdentifier(node)
+      ) {
+        addMatch(node)
+      }
+
+      ts.forEachChild(node, visitGlobalUses)
+    }
+
+    visitDeclarations(sourceFile)
+
+    if (!hasGlobalApiRequireBinding && globalApiDestructureLines.length > 0) {
+      for (const lineNumber of globalApiDestructureLines) {
+        matches.push(formatLintLineMatch(file, lineNumber))
+      }
+    }
+
+    visitGlobalUses(sourceFile)
+  }
+
+  return unique(matches)
+}
+
 function collectLocaleApiMatches(context) {
   const matches = []
   const files = context.hooksCodeFiles.filter(isServerRuntimeFile)
@@ -1577,6 +1754,13 @@ function lintService(context) {
     context.serviceName,
     'Invalid _private resolve() usage. Resolve dependencies only from request entry files such as EJS, <script server>, loaders, and middleware.',
     privateResolveMatches
+  )
+
+  const privateGlobalApiMatches = collectPrivateGlobalApiMatches(context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')))
+  printMatches(
+    context.serviceName,
+    "Invalid _private globalApi usage. In _private/*.js, use const { globalApi } = require('pocketpages') and const { dbg, env, warn } = globalApi for PocketPages global helpers.",
+    privateGlobalApiMatches
   )
 
   const reservedParamsBindingMatches = collectReservedParamsBindingMatches(context.lintCodeFiles)

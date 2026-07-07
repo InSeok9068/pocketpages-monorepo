@@ -1,5 +1,5 @@
 const { globalApi } = require('pocketpages')
-const { info, dbg, warn } = globalApi
+const { dbg, info, warn } = globalApi
 const { createKjcaSession } = require('./kjca-auth')
 const {
   buildBrowserLikeHeaders,
