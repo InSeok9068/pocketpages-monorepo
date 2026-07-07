@@ -7473,6 +7473,13 @@ class ProjectLanguageService {
     return this.getRequirePathTargetInfo(filePath, documentText, offset);
   }
 
+  isPocketPagesPathLiteralAtOffset(filePath, documentText, offset) {
+    return !!(
+      getPathContextAtOffset(documentText, offset, { filePath }) ||
+      getRequirePathContextAtOffset(documentText, offset, { filePath })
+    );
+  }
+
   getSchemaHoverInfo(filePath, documentText, offset) {
     const analysisContext = getAnalysisContextAtOffset(filePath, documentText, offset);
     if (!analysisContext) {

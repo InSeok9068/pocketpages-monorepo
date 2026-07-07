@@ -12438,6 +12438,49 @@ const pageData = { boardName: 'Boards', boardCount: 1 }
       throw new Error(`Expected resolve() path references for rename-check, locals-type-check, and middleware. Got: ${JSON.stringify(resolvePathReferences)}`)
     }
 
+    if (!service.isPocketPagesPathLiteralAtOffset(fixture.renameCheckFilePath, renameText, resolvePathReferenceOffset)) {
+      throw new Error('Expected EJS resolve() path literal to be recognized as a PocketPages path position.')
+    }
+    const resolvePathRenameInfo = service.getRenameInfo(
+      fixture.renameCheckFilePath,
+      renameText,
+      resolvePathReferenceOffset
+    )
+    if (resolvePathRenameInfo) {
+      throw new Error(`Expected EJS resolve() path literal rename to be disabled. Got: ${JSON.stringify(resolvePathRenameInfo)}`)
+    }
+    const resolvePathRenameEdits = service.getRenameEdits(
+      fixture.renameCheckFilePath,
+      renameText,
+      resolvePathReferenceOffset,
+      'renamedService'
+    )
+    if (resolvePathRenameEdits) {
+      throw new Error(`Expected EJS resolve() path literal rename edits to be disabled. Got: ${JSON.stringify(resolvePathRenameEdits)}`)
+    }
+
+    const jsResolvePathReferenceOffset = jsResolveRenameText.indexOf('board-service') + 2
+    if (!service.isPocketPagesPathLiteralAtOffset(fixture.middlewareFilePath, jsResolveRenameText, jsResolvePathReferenceOffset)) {
+      throw new Error('Expected JS resolve() path literal to be recognized as a PocketPages path position.')
+    }
+    const jsResolvePathRenameInfo = service.getRenameInfo(
+      fixture.middlewareFilePath,
+      jsResolveRenameText,
+      jsResolvePathReferenceOffset
+    )
+    if (jsResolvePathRenameInfo) {
+      throw new Error(`Expected JS resolve() path literal rename to be disabled. Got: ${JSON.stringify(jsResolvePathRenameInfo)}`)
+    }
+    const jsResolvePathRenameEdits = service.getRenameEdits(
+      fixture.middlewareFilePath,
+      jsResolveRenameText,
+      jsResolvePathReferenceOffset,
+      'renamedService'
+    )
+    if (jsResolvePathRenameEdits) {
+      throw new Error(`Expected JS resolve() path literal rename edits to be disabled. Got: ${JSON.stringify(jsResolvePathRenameEdits)}`)
+    }
+
     const resolvedMemberReferences = service.getReferenceTargets(
       fixture.renameCheckFilePath,
       renameText,
@@ -17320,6 +17363,65 @@ const authState = resolve('auth-service')
       ) {
         throw new Error(`Expected TS plugin EJS resolve() usage rename info. Got: ${JSON.stringify(pluginEjsRenameInfo)}`)
       }
+
+      const pluginEjsPathOffset = pluginRenameCheckText.indexOf('board-service') + 2
+      const pluginJsPathOffset = pluginMiddlewareText.indexOf('board-service') + 2
+      pluginBaseRenameInfoAtPosition = () => ({
+        canRename: true,
+        displayName: 'board-service',
+        fullDisplayName: 'board-service',
+        kind: ts.ScriptElementKind.unknown,
+        kindModifiers: '',
+        triggerSpan: {
+          start: pluginRenameCheckText.indexOf('board-service'),
+          length: 'board-service'.length,
+        },
+      })
+      pluginBaseRenameLocationsAtPosition = () => [
+        {
+          fileName: fixture.renameCheckFilePath,
+          textSpan: {
+            start: pluginRenameCheckText.indexOf('board-service'),
+            length: 'board-service'.length,
+          },
+        },
+      ]
+      const pluginEjsPathRenameInfo = pluginProxy.getRenameInfo(
+        fixture.renameCheckFilePath,
+        pluginEjsPathOffset
+      )
+      if (!pluginEjsPathRenameInfo || pluginEjsPathRenameInfo.canRename) {
+        throw new Error(`Expected TS plugin to suppress EJS path literal rename. Got: ${JSON.stringify(pluginEjsPathRenameInfo)}`)
+      }
+      const pluginJsPathRenameInfo = pluginProxy.getRenameInfo(
+        fixture.middlewareFilePath,
+        pluginJsPathOffset
+      )
+      if (!pluginJsPathRenameInfo || pluginJsPathRenameInfo.canRename) {
+        throw new Error(`Expected TS plugin to suppress JS path literal rename. Got: ${JSON.stringify(pluginJsPathRenameInfo)}`)
+      }
+      const pluginEjsPathRenameLocations = pluginProxy.findRenameLocations(
+        fixture.renameCheckFilePath,
+        pluginEjsPathOffset,
+        false,
+        false,
+        {}
+      )
+      if (pluginEjsPathRenameLocations && pluginEjsPathRenameLocations.length) {
+        throw new Error(`Expected TS plugin to suppress EJS path literal rename locations. Got: ${JSON.stringify(pluginEjsPathRenameLocations)}`)
+      }
+      const pluginJsPathRenameLocations = pluginProxy.findRenameLocations(
+        fixture.middlewareFilePath,
+        pluginJsPathOffset,
+        false,
+        false,
+        {}
+      )
+      if (pluginJsPathRenameLocations && pluginJsPathRenameLocations.length) {
+        throw new Error(`Expected TS plugin to suppress JS path literal rename locations. Got: ${JSON.stringify(pluginJsPathRenameLocations)}`)
+      }
+      pluginBaseRenameInfoAtPosition = null
+      pluginBaseRenameLocationsAtPosition = null
 
       pluginBaseRenameLocationsAtPosition = () => [
         {

@@ -879,6 +879,27 @@ function init(modules) {
           isTsOwnedPosition(documentContext, position, "rename");
       }
 
+      function isPocketPagesPathLiteralPosition(documentContext, position) {
+        return !!(
+          documentContext &&
+          documentContext.service &&
+          typeof documentContext.service.isPocketPagesPathLiteralAtOffset === "function" &&
+          documentContext.service.isPocketPagesPathLiteralAtOffset(
+            documentContext.filePath,
+            documentContext.documentText,
+            position
+          )
+        );
+      }
+
+      function createPathLiteralRenameInfo() {
+        return {
+          canRename: false,
+          localizedErrorMessage:
+            "PocketPages path literals are updated by renaming the target file.",
+        };
+      }
+
       function getLocationKey(fileName, start, length) {
         const safeStart = Math.max(0, Number(start) || 0);
         const safeLength = Math.max(0, Number(length) || 0);
@@ -1266,7 +1287,13 @@ function init(modules) {
           undefined
         );
         const documentContext = ensureDocumentContext(fileName);
-        if (!documentContext || !isRenameAllowedAtPosition(documentContext, position)) {
+        if (!documentContext) {
+          return baseRenameInfo;
+        }
+        if (isPocketPagesPathLiteralPosition(documentContext, position)) {
+          return createPathLiteralRenameInfo();
+        }
+        if (!isRenameAllowedAtPosition(documentContext, position)) {
           return baseRenameInfo;
         }
 
@@ -1307,7 +1334,13 @@ function init(modules) {
           undefined
         );
         const documentContext = ensureDocumentContext(fileName);
-        if (!documentContext || !isRenameAllowedAtPosition(documentContext, position)) {
+        if (!documentContext) {
+          return baseLocations;
+        }
+        if (isPocketPagesPathLiteralPosition(documentContext, position)) {
+          return undefined;
+        }
+        if (!isRenameAllowedAtPosition(documentContext, position)) {
           return baseLocations;
         }
 

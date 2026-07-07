@@ -189,6 +189,13 @@ function createNavigationFeatureHandlers(deps) {
         return null;
       }
 
+      if (
+        service.isPocketPagesPathLiteralAtOffset &&
+        service.isPocketPagesPathLiteralAtOffset(filePath, documentText, offset)
+      ) {
+        return null;
+      }
+
       const virtualState = service.getVirtualStateAtOffset(filePath, documentText, offset, {
         preferTemplateDocument: true,
         requirePreparedVirtualState: options.requirePreparedVirtualState === true,
