@@ -1084,6 +1084,8 @@ EOF
 
 run_jj_main() {
   local answer=""
+  local current_description=""
+  local current_is_empty=""
 
   if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     print_jj_main_help
@@ -1111,6 +1113,28 @@ run_jj_main() {
     echo
     echo "== recent log =="
     jj log -n 5
+
+    current_is_empty="$(jj log -r @ --no-graph -T 'empty')"
+    current_description="$(jj log -r @ --no-graph -T 'description')"
+
+    if [[ "$current_is_empty" == "true" ]]; then
+      cat >&2 <<'EOF'
+
+Current @ is empty, so there is no work to move to main.
+If main was moved here by mistake, move it back before trying again:
+  jj bookmark set main -r @-
+EOF
+      exit 1
+    fi
+
+    if [[ -z "$current_description" ]]; then
+      cat >&2 <<'EOF'
+
+Current @ has no description. Describe it before pushing to main:
+  jj describe -m "작업 설명"
+EOF
+      exit 1
+    fi
 
     echo
     read -r -p "Move main bookmark to current @ and push? [y/N] " answer
