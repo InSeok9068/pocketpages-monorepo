@@ -68,6 +68,7 @@ declare namespace types {
   interface ProjectTaskProject {
     id: string
     nameKo: string
+    nameEn?: string
     slug: string
   }
 
@@ -83,5 +84,51 @@ declare namespace types {
     statusColumns: ProjectTaskStatusColumn[]
     tasksByStatus: Record<string, ProjectTaskCard[]>
     taskCount: number
+  }
+
+  interface ProjectTaskAiItem {
+    title: string
+    status: string
+    statusLabel: string
+    priority: string
+    priorityLabel: string
+    type: string
+    typeLabel: string
+    projectName: string
+    dueAt: string
+    signals: string[]
+    description: string
+    updatedAt: string
+    isPinned: boolean
+  }
+
+  interface ProjectTaskAiStatus {
+    status: string
+    label: string
+    count: number
+    tasks: ProjectTaskAiItem[]
+  }
+
+  interface ProjectTaskAiContext {
+    title: string
+    scope: string
+    scopeLabel: string
+    generatedAt: string
+    project: ProjectTaskProject | null
+    taskCount: number
+    statuses: ProjectTaskAiStatus[]
+  }
+
+  interface ProjectTaskAiCopyInput {
+    boardState: ProjectTaskBoardState
+    title?: string
+    scope?: string
+    scopeLabel?: string
+    project?: ProjectTaskProject | null
+  }
+
+  interface ProjectTaskAiCopyResult {
+    markdown: string
+    jsonText: string
   }
 }

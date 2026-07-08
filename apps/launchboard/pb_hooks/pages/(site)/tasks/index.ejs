@@ -18,15 +18,15 @@
     return
   }
 
-  const projects = $app.findRecordsByFilter('projects', 'user = {:userId} && status != {:pausedStatus} && status != {:discardedStatus}', '-is_pinned,+sort_order,-updated', 300, 0, {
-    userId,
-    pausedStatus: 'paused',
-    discardedStatus: 'discarded',
-  })
+  const projects = $app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 300, 0, { userId })
+  const projectMap = taskBoard.getTaskProjectMap(projects)
   const projectOptions = []
 
   for (let index = 0; index < projects.length; index += 1) {
     const project = projects[index]
+    const projectStatus = String(project.get('status') || '').trim()
+
+    if (projectStatus === 'paused' || projectStatus === 'discarded') continue
 
     projectOptions.push({
       id: String(project.get('id') || ''),
@@ -35,7 +35,8 @@
     })
   }
 
-  const boardState = taskBoard.getTaskInboxState($app, userId, activeView)
+  const tasks = $app.findRecordsByFilter('project_tasks', 'user = {:userId}', '-is_pinned,+sort_order,due_at,-updated', 300, 0, { userId })
+  const boardState = taskBoard.getTaskInboxState(tasks, projectMap, activeView)
   const viewTitle = activeView === 'today' ? '오늘 업무' : '전체 업무'
   const aiCopyContext = taskBoard.getTaskAiCopyContext({
     title: viewTitle + ' AI 컨텍스트',

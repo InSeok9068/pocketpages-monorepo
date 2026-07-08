@@ -6,6 +6,11 @@ declare namespace types {
     timeout?: number
   }
 
+  interface BooklogOneSignalResponse {
+    id?: string
+    [key: string]: any
+  }
+
   interface BooklogPushSendLogInput {
     userId: string
     notificationKey: string

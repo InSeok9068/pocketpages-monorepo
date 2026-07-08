@@ -4,7 +4,7 @@ const { createOneSignalClient } = require('@pocketpages/onesignal')
  * OneSignal로 푸시 메시지를 보냅니다.
  *
  * @param {types.BooklogOneSignalPushInput} input 푸시 발송 입력값
- * @returns {object} OneSignal 응답 json
+ * @returns {types.BooklogOneSignalResponse} OneSignal 응답 json
  */
 function sendPushNotification(input) {
   /** @type {types.BooklogOneSignalPushInput} */

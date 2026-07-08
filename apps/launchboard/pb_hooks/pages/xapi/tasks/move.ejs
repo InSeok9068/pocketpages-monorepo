@@ -20,7 +20,10 @@
 
   function patchInbox(view, userId, message) {
     const inboxView = view === 'today' ? 'today' : 'all'
-    const state = taskBoard.getTaskInboxState($app, userId, inboxView)
+    const projects = $app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 300, 0, { userId })
+    const projectMap = taskBoard.getTaskProjectMap(projects)
+    const tasks = $app.findRecordsByFilter('project_tasks', 'user = {:userId}', '-is_pinned,+sort_order,due_at,-updated', 300, 0, { userId })
+    const state = taskBoard.getTaskInboxState(tasks, projectMap, inboxView)
 
     datastar.patchElements(
       include('task-board.ejs', {
@@ -62,7 +65,11 @@
       userId,
     })
     const projectSlug = String(project.get('slug') || '').trim()
-    const state = taskBoard.getTaskBoardState($app, userId, projectId)
+    const tasks = $app.findRecordsByFilter('project_tasks', 'user = {:userId} && project = {:projectId}', '-is_pinned,+sort_order,-updated', 300, 0, {
+      userId,
+      projectId,
+    })
+    const state = taskBoard.getTaskBoardState(tasks)
 
     datastar.patchElements(
       include('task-board.ejs', {

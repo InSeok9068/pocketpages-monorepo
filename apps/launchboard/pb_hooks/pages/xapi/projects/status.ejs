@@ -16,7 +16,8 @@
   }
 
   function patchBoard(userId, message) {
-    const state = projectBoard.getProjectBoardState($app, userId)
+    const projects = $app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 200, 0, { userId })
+    const state = projectBoard.getProjectBoardState(projects)
 
     datastar.patchElements(
       include('project-board.ejs', {

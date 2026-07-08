@@ -116,19 +116,16 @@ function toProjectCard(record) {
 
 /**
  * 프로젝트 보드 데이터를 만든다.
- * @param {object} app PocketBase 앱
- * @param {string} userId 사용자 ID
+ * @param {types.PocketBaseRecord[]} projects 프로젝트 레코드 목록
  * @returns {types.ProjectBoardState}
  */
-function getProjectBoardState(app, userId) {
+function getProjectBoardState(projects) {
   /** @type {Record<string, types.ProjectCard[]>} */
   const projectsByStatus = {}
 
   for (let index = 0; index < PROJECT_STATUS_COLUMNS.length; index += 1) {
     projectsByStatus[PROJECT_STATUS_COLUMNS[index].value] = []
   }
-
-  const projects = app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 200, 0, { userId })
 
   for (let index = 0; index < projects.length; index += 1) {
     const project = toProjectCard(projects[index])

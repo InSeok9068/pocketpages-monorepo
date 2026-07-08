@@ -62,7 +62,11 @@
     slug: String(project.get('slug') || '').trim(),
     detailHref: '/projects/' + encodeURIComponent(String(project.get('slug') || '').trim()),
   }
-  const boardState = taskBoard.getTaskBoardState($app, userId, projectView.id)
+  const tasks = $app.findRecordsByFilter('project_tasks', 'user = {:userId} && project = {:projectId}', '-is_pinned,+sort_order,-updated', 300, 0, {
+    userId,
+    projectId: projectView.id,
+  })
+  const boardState = taskBoard.getTaskBoardState(tasks)
   const aiCopyContext = taskBoard.getTaskAiCopyContext({
     title: projectView.nameKo + ' 업무 AI 컨텍스트',
     scope: 'project_tasks',

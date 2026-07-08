@@ -51,20 +51,19 @@ function toTaskProject(record) {
   return {
     id: String(record.get('id') || ''),
     nameKo: String(record.get('name_ko') || '').trim(),
+    nameEn: String(record.get('name_en') || '').trim(),
     slug,
   }
 }
 
 /**
  * 사용자 프로젝트 맵을 만든다.
- * @param {object} app PocketBase 앱
- * @param {string} userId 사용자 ID
+ * @param {types.PocketBaseRecord[]} projects 프로젝트 레코드 목록
  * @returns {Record<string, types.ProjectTaskProject>}
  */
-function getTaskProjectMap(app, userId) {
+function getTaskProjectMap(projects) {
   /** @type {Record<string, types.ProjectTaskProject>} */
   const projectMap = {}
-  const projects = app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 300, 0, { userId })
 
   for (let index = 0; index < projects.length; index += 1) {
     const project = toTaskProject(projects[index])
@@ -266,7 +265,7 @@ function isTaskAiStatus(status) {
 /**
  * AI 컨텍스트용 업무 데이터를 만든다.
  * @param {types.ProjectTaskCard} task 업무 카드
- * @returns {object}
+ * @returns {types.ProjectTaskAiItem}
  */
 function toTaskAiItem(task) {
   const signals = []
@@ -297,7 +296,7 @@ function toTaskAiItem(task) {
 /**
  * AI 컨텍스트용 상태 목록을 만든다.
  * @param {types.ProjectTaskBoardState} boardState 업무 보드 데이터
- * @returns {object[]}
+ * @returns {types.ProjectTaskAiStatus[]}
  */
 function toTaskAiStatuses(boardState) {
   const statuses = []
@@ -327,7 +326,7 @@ function toTaskAiStatuses(boardState) {
 
 /**
  * AI 컨텍스트용 업무 수를 계산한다.
- * @param {object[]} statuses AI 상태 목록
+ * @param {types.ProjectTaskAiStatus[]} statuses AI 상태 목록
  * @returns {number}
  */
 function countTaskAiItems(statuses) {
@@ -342,7 +341,7 @@ function countTaskAiItems(statuses) {
 
 /**
  * Markdown 업무 한 줄을 만든다.
- * @param {object} task AI 컨텍스트 업무
+ * @param {types.ProjectTaskAiItem} task AI 컨텍스트 업무
  * @returns {string[]}
  */
 function toTaskMarkdownLines(task) {
@@ -365,7 +364,7 @@ function toTaskMarkdownLines(task) {
 
 /**
  * AI 컨텍스트를 Markdown 문자열로 만든다.
- * @param {object} context AI 컨텍스트
+ * @param {types.ProjectTaskAiContext} context AI 컨텍스트
  * @returns {string}
  */
 function toTaskAiMarkdown(context) {
@@ -405,8 +404,8 @@ function toTaskAiMarkdown(context) {
 
 /**
  * 업무 보드 AI 복사용 컨텍스트를 만든다.
- * @param {object} input 컨텍스트 입력
- * @returns {{ markdown: string, jsonText: string }}
+ * @param {types.ProjectTaskAiCopyInput} input 컨텍스트 입력
+ * @returns {types.ProjectTaskAiCopyResult}
  */
 function getTaskAiCopyContext(input) {
   const statuses = toTaskAiStatuses(input.boardState)
@@ -428,15 +427,11 @@ function getTaskAiCopyContext(input) {
 
 /**
  * 프로젝트 업무 보드 데이터를 만든다.
- * @param {object} app PocketBase 앱
- * @param {string} userId 사용자 ID
- * @param {string} projectId 프로젝트 ID
+ * @param {types.PocketBaseRecord[]} tasks 업무 레코드 목록
  * @returns {types.ProjectTaskBoardState}
  */
-function getTaskBoardState(app, userId, projectId) {
+function getTaskBoardState(tasks) {
   const tasksByStatus = createTaskBuckets()
-
-  const tasks = app.findRecordsByFilter('project_tasks', 'user = {:userId} && project = {:projectId}', '-is_pinned,+sort_order,-updated', 300, 0, { userId, projectId })
 
   for (let index = 0; index < tasks.length; index += 1) {
     const task = toTaskCard(tasks[index], null)
@@ -454,15 +449,13 @@ function getTaskBoardState(app, userId, projectId) {
 
 /**
  * 전체 업무 인박스 데이터를 만든다.
- * @param {object} app PocketBase 앱
- * @param {string} userId 사용자 ID
+ * @param {types.PocketBaseRecord[]} tasks 업무 레코드 목록
+ * @param {Record<string, types.ProjectTaskProject>} projectMap 프로젝트 맵
  * @param {string} view 화면 구분
  * @returns {types.ProjectTaskBoardState}
  */
-function getTaskInboxState(app, userId, view) {
+function getTaskInboxState(tasks, projectMap, view) {
   const tasksByStatus = createTaskBuckets()
-  const projectMap = getTaskProjectMap(app, userId)
-  const tasks = app.findRecordsByFilter('project_tasks', 'user = {:userId}', '-is_pinned,+sort_order,due_at,-updated', 300, 0, { userId })
   let taskCount = 0
 
   for (let index = 0; index < tasks.length; index += 1) {
@@ -490,6 +483,7 @@ module.exports = {
   TASK_STATUS_VALUES,
   TASK_PRIORITY_VALUES,
   TASK_TYPE_VALUES,
+  getTaskProjectMap,
   getTaskBoardState,
   getTaskInboxState,
   getTaskAiCopyContext,

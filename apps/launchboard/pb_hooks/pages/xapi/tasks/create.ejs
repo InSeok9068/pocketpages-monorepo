@@ -34,7 +34,11 @@
   function patchBoard(project, userId, message) {
     const projectId = String(project.get('id') || '')
     const projectSlug = String(project.get('slug') || '').trim()
-    const state = taskBoard.getTaskBoardState($app, userId, projectId)
+    const tasks = $app.findRecordsByFilter('project_tasks', 'user = {:userId} && project = {:projectId}', '-is_pinned,+sort_order,-updated', 300, 0, {
+      userId,
+      projectId,
+    })
+    const state = taskBoard.getTaskBoardState(tasks)
 
     datastar.patchElements(
       include('task-board.ejs', {
