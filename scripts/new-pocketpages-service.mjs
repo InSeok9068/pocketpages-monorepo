@@ -18,7 +18,7 @@ const featureIds = ['htmx', 'alpine', 'unocss', 'datastar', 'realtime']
 const defaultFeatures = ['htmx', 'alpine', 'unocss']
 const vendorByFeature = {
   htmx: ['htmx-2.0.10.min.js'],
-  alpine: ['alpine-3.15.11-cdn.min.js'],
+  alpine: ['alpine-3.15.12-cdn.min.js'],
   datastar: ['datastar.min.js'],
   unocss: ['preset-wind4-66.7.5.global.js', 'preset-icons-66.7.5.global.js', 'iconify-lucide-1.2.116.icons.json', 'unocss-core-66.7.5.global.js'],
 }
@@ -478,7 +478,7 @@ function buildLayoutEjs(options) {
   if (hasFeature(options, 'htmx') && hasFeature(options, 'realtime')) {
     scripts.push('<script src="<%= asset(\'/assets/vendor/pocketbase-htmx-ext-sse-0.0.3.js\') %>"></script>')
   }
-  if (hasFeature(options, 'alpine')) scripts.push('<script defer src="<%= asset(\'/assets/vendor/alpine-3.15.11-cdn.min.js\') %>"></script>')
+  if (hasFeature(options, 'alpine')) scripts.push('<script defer src="<%= asset(\'/assets/vendor/alpine-3.15.12-cdn.min.js\') %>"></script>')
 
   const unoHead = isUno ? "    <%- include('unocss-head.ejs', { isProduction }) %>\n" : ''
   const datastarHead = isDatastar ? `    <%- datastar.scripts(${hasFeature(options, 'realtime') ? '{ realtime: true }' : ''}) %>\n` : ''
