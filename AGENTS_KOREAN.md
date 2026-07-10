@@ -6,7 +6,7 @@
 - 파일 경로와 trace path만 봐도 요청 흐름이 읽혀야 하며, helper는 가독성이나 재사용이 명확할 때만 만든다
 - shared named shape는 `apps/<service>/types.d.ts`에 정의한다
 - JSDoc에서는 `types.*`를 직접 사용하고 local typedef bridge는 사용하지 않는다
-- shared function에는 JSDoc이 필요하다
+- exported/shared module function에는 JSDoc이 필요하다; 짧은 page-local helper는 역할이 명확하면 생략한다
 - 한글 설명은 짧게 쓰고, 구현보다 함수와 params의 역할을 설명한다
 - `MUST` = 필수; `DEFAULT` = 특별한 이유가 없으면 선택; `EXCEPTION` = 근거가 있을 때만 허용
 
@@ -19,7 +19,7 @@
 - `pb_hooks/pages` = 라우팅 루트
 - `apps/<service>/pb_hooks/pages/+config.js` = 서비스 plugin/config entry
 - `apps/<service>/pocketpages-globals.d.ts` = 에디터 globals/plugin helper typing
-- `(site)` = layout이 적용되는 전체 페이지
+- `(site)`, `(reader)` 같은 route group은 URL segment를 추가하지 않고 layout을 묶는다
 - `xapi/*` = layout 없는 interaction
 - `api/*` = data/API
 - `_private/*` = internal partial, service, util, module
@@ -30,7 +30,7 @@
 
 - DEFAULT: AI 또는 OneSignal 로직을 추가하기 전에 `packages/ai`, `packages/onesignal`의 기존 구현을 먼저 확인하고 재사용한다.
 - DEFAULT: PocketBase `$app.store()` 또는 PocketPages `store()` 기반 TTL 캐시는 직접 index/만료 로직을 만들기 전에 `packages/utils/store-cache.js`를 우선 사용한다.
-- MUST: 날짜 파싱, 포맷, 비교, 일자 범위, 타임존 처리는 `packages/utils/dateutil.js`를 사용한다.
+- MUST: 비즈니스 날짜/date-only 값의 파싱, 포맷, 비교, 일자 범위, 타임존 처리는 `packages/utils/dateutil.js`를 사용한다.
 - MUST: PocketBase `date` 필드에 날짜-only 값을 저장할 때는 `dateutil.toDateOnlyIso(...)`를 사용하고, 날짜 검색은 `dateutil.startOfDay(...)` / `dateutil.endOfDay(...)` 범위를 우선한다.
 
 ---
@@ -52,10 +52,10 @@
 - `+load.js`는 page level에서 한 번 실행된다
 - `+middleware.js`는 계층적으로 실행된다
 - DEFAULT: page 전용 data나 meta는 page `<script server>`에 둔다
-- DEFAULT: 여러 하위 route에서 공유하는 로직은 `+middleware.js`에 둔다
+- DEFAULT: 여러 하위 route가 공유하는 request 전처리 또는 data loading은 `+middleware.js`에 둔다
 - DEFAULT: 구조적으로 필요하지 않으면 `+load.js`는 피한다
 - MUST: page 전용 로직은 page에 둔다
-- MUST: 여러 route가 공유하는 로직은 middleware로 올린다
+- MUST: 서로 무관한 route가 공유하는 domain 또는 pure logic은 `_private` module에 둔다
 - MUST: middleware가 early return 하면 응답을 명시적으로 보낸다
 
 ---
@@ -97,7 +97,7 @@
 - redirect option은 `flash`가 아니라 `message`를 사용한다
 - flash query를 수동으로 만들지 않는다
 - flash는 `params.__flash`로 읽는다
-- MUST: redirect 전에 `dbg(status, redirectTo, message or error)`로 로그를 남긴다
+- MUST: redirect 전에 `dbg(event, { status, redirectTo, message })` 또는 `dbg(event, { status, redirectTo, error })`로 로그를 남긴다
 - role은 `_private/roles/*`에 둔다
 - role은 domain logic만 담당한다
 - MUST: role 안에서 DB write, redirect, response 생성, 숨은 DB query를 하지 않는다
@@ -110,6 +110,7 @@
 
 ## 8. PocketBase / JSVM
 
+- 적용 범위: PocketBase JSVM server code와 여기서 import하는 shared module; browser asset, test, Node tooling은 제외한다
 - ES6만 사용한다
 - sync code만 사용한다
 - CommonJS만 사용한다
@@ -119,8 +120,7 @@
 - `apps/<service>/pb_schema.json` = schema 기준
 - `apps/<service>/types.d.ts` = shared JSDoc shape 기준
 - `record.field` 대신 `record.get('field')`를 사용한다
-- relation은 실제 `collection.id`를 사용한다
-- relation id를 하드코딩하지 않는다
+- schema relation 연결 시 target collection을 resolve하여 실제 `collection.id`를 사용하고 relation ID를 하드코딩하지 않는다
 - self relation은 생성 후 업데이트로 처리한다
 
 ---

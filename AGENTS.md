@@ -6,7 +6,7 @@
 - File paths and trace paths should make request flow easy to follow; add helpers only when readability or reuse is clear
 - Shared named shapes live in `apps/<service>/types.d.ts`
 - Use `types.*` directly in JSDoc; do not use local typedef bridges
-- Shared functions require JSDoc
+- Exported/shared module functions require JSDoc; short page-local helpers do not unless non-obvious
 - Keep Korean descriptions short and describe function/param roles, not implementation details
 - `MUST` = required; `DEFAULT` = choose unless there is a clear reason; `EXCEPTION` = justified only
 
@@ -19,7 +19,7 @@
 - `pb_hooks/pages` = routing root
 - `apps/<service>/pb_hooks/pages/+config.js` = service plugin/config entry
 - `apps/<service>/pocketpages-globals.d.ts` = editor globals/plugin helper typing
-- `(site)` = full pages with layout
+- route groups such as `(site)` and `(reader)` group layouts without adding URL segments
 - `xapi/*` = no-layout interaction
 - `api/*` = data/API
 - `_private/*` = internal partials, services, utils, modules
@@ -30,7 +30,7 @@
 
 - DEFAULT: Before adding AI or OneSignal logic, check and reuse existing packages under `packages/ai` and `packages/onesignal`.
 - DEFAULT: For TTL cache on PocketBase `$app.store()` or PocketPages `store()`, use `packages/utils/store-cache.js` before adding ad hoc cache indexes or expiration logic.
-- MUST: Use `packages/utils/dateutil.js` for date parsing, formatting, comparison, day ranges, and timezone handling.
+- MUST: Use `packages/utils/dateutil.js` for business-date/date-only parsing, formatting, comparison, day ranges, and timezone handling.
 - MUST: For PocketBase `date` fields with date-only values, use `dateutil.toDateOnlyIso(...)`; for date search, prefer `dateutil.startOfDay(...)` / `dateutil.endOfDay(...)` ranges.
 
 ---
@@ -52,10 +52,10 @@
 - `+load.js` runs once at page level
 - `+middleware.js` runs hierarchically
 - DEFAULT: page-specific data or meta -> page `<script server>`
-- DEFAULT: shared logic across child routes -> `+middleware.js`
+- DEFAULT: shared request preprocessing or data loading across child routes -> `+middleware.js`
 - DEFAULT: avoid `+load.js` unless structure clearly requires it
 - MUST: page-only logic stays in page
-- MUST: multi-route shared logic goes to middleware
+- MUST: shared domain or pure logic across unrelated routes -> `_private` module
 - MUST: middleware early return sends response explicitly
 
 ---
@@ -97,7 +97,7 @@
 - use redirect option `message`, not `flash`
 - do not build flash query manually
 - read flash via `params.__flash`
-- MUST: log before redirect with `dbg(status, redirectTo, message or error)`
+- MUST: before redirect, log with `dbg(event, { status, redirectTo, message })` or `dbg(event, { status, redirectTo, error })`
 - roles live in `_private/roles/*`
 - roles handle domain logic only
 - MUST: no DB write, redirect, response building, or hidden DB query in roles
@@ -110,6 +110,7 @@
 
 ## 8. PocketBase / JSVM
 
+- Scope: PocketBase JSVM server code and imported shared modules; browser assets, tests, and Node tooling are excluded
 - ES6 only
 - sync code only
 - CommonJS only
@@ -119,8 +120,7 @@
 - `apps/<service>/pb_schema.json` = schema truth
 - `apps/<service>/types.d.ts` = shared JSDoc shapes
 - use `record.get('field')`, not `record.field`
-- use actual `collection.id`
-- no hardcoded relation id
+- when wiring schema relations, resolve the target collection and use its actual `collection.id`; never hardcode relation IDs
 - self relation = post-create update
 
 ---
