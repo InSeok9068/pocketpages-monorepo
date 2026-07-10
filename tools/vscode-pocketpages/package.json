@@ -75,10 +75,6 @@
   "scripts": {
     "test": "npm run sanity-check",
     "sanity-check": "node ./scripts/sanity-check.js",
-    "test:contracts": "node ./scripts/sanity-check.js --through contracts",
-    "test:core": "node ./scripts/sanity-check.js --through core",
-    "test:fast": "node ./scripts/sanity-check.js --through fast",
-    "test:list": "node ./scripts/sanity-check.js --list",
     "sync:ts-plugin": "node ./scripts/sync-ts-plugin-package.js",
     "package:vsix": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --follow-symlinks --allow-missing-repository --out ./dist/vscode-pocketpages.vsix",
     "install:vscode-pocketpages": "npm run package:vsix && node ./scripts/install-vscode-pocketpages.js"
