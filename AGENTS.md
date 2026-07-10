@@ -14,7 +14,7 @@
 
 ## 1. Stack & Structure
 
-- Stack: PocketBase (JSVM), PocketPages (SSR, file routing), EJS, HTMX, Alpine.js, UnoCSS (Tailwind v4 compatible)
+- Stack: PocketBase (JSVM), PocketPages (SSR, file routing), EJS, HTMX, Alpine.js, UnoCSS presetWind4 (Tailwind CSS v4-compatible utilities)
 - Service root: `apps/<service>/*`
 - `pb_hooks/pages` = routing root
 - `apps/<service>/pb_hooks/pages/+config.js` = service plugin/config entry
@@ -132,6 +132,7 @@
 - use for toggle, modal, tab, and short local UI state
 - Datastar is opt-in only for pages where server-driven patches or realtime state clearly reduce complexity
 - Do not share the same UI state between Alpine and Datastar on one page
+- Keep the UnoCSS Wind4 preflight reset disabled; `tailwindcss` is editor/formatting tooling only, not the app CSS runtime
 - UnoCSS classes must be complete literals in scanned files
 
 ---
