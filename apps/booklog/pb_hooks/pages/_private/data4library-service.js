@@ -1,7 +1,7 @@
 const { globalApi } = require('pocketpages')
 const { dbg } = globalApi
 
-const DEFAULT_BASE_URL = 'http://data4library.kr/api'
+const DEFAULT_BASE_URL = 'https://data4library.kr/api'
 const DEFAULT_TIMEOUT_SECONDS = 15
 
 /**
