@@ -120,6 +120,8 @@
 - `apps/<service>/pb_schema.json` = schema truth
 - `apps/<service>/types.d.ts` = shared JSDoc shapes
 - use `record.get('field')`, not `record.field`
+- DEFAULT: Keep app/domain collection API rules locked (`null`) and access records through PocketPages routes; open rules only for features that explicitly require direct Record API or realtime access
+- MUST: Direct `$app`/`txApp` DB access in PocketPages request routes does not apply collection API rules; set the owner/user ID from `request.auth` on create, and verify the current user's ownership on read/update/delete in the query or through an already-authorized parent relation
 - MUST: When multiple DB writes form one atomic business operation, wrap them in `$app.runInTransaction(function (txApp) { ... })`
 - MUST: Inside a transaction, use `txApp` for all DB reads/writes and keep external I/O or long-running work outside
 - when wiring schema relations, resolve the target collection and use its actual `collection.id`; never hardcode relation IDs

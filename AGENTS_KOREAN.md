@@ -120,6 +120,8 @@
 - `apps/<service>/pb_schema.json` = schema 기준
 - `apps/<service>/types.d.ts` = shared JSDoc shape 기준
 - `record.field` 대신 `record.get('field')`를 사용한다
+- DEFAULT: app/domain collection API rule은 `null`로 잠그고 record는 PocketPages route를 통해 접근한다; direct Record API나 realtime이 명확히 필요한 기능만 예외로 연다
+- MUST: PocketPages request route의 `$app`/`txApp` DB 접근에는 collection API rule이 적용되지 않는다; user-owned record는 create 시 `request.auth`의 user ID를 설정하고, read/update/delete 시 query 자체 또는 이미 ownership을 검증한 parent relation을 통해 현재 user의 소유임을 확인한다
 - MUST: 여러 DB write가 하나의 business operation으로 함께 성공하거나 rollback되어야 하면 `$app.runInTransaction(function (txApp) { ... })`로 묶는다
 - MUST: transaction 안의 모든 DB read/write는 `$app`이 아니라 `txApp`을 사용하고, external I/O나 오래 걸리는 작업은 밖에서 수행한다
 - schema relation 연결 시 target collection을 resolve하여 실제 `collection.id`를 사용하고 relation ID를 하드코딩하지 않는다
