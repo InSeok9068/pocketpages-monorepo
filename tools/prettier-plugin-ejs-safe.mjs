@@ -9,7 +9,7 @@ import * as tailwindPlugin from 'prettier-plugin-tailwindcss'
 
 const basePrinter = htmlPlugin.printers.html
 const { hardline } = prettier.doc.builders
-const tailwindHtmlParser = tailwindPlugin.parsers.html
+const tailwindHtmlParser = await tailwindPlugin.parsers.html()
 // Preserve all standard EJS tag families as raw text:
 // <% %>, <%_ %>, <%= %>, <%- %>, <%# %>, <%% %>, -%>, _%>
 const EJS_TAG_PATTERN = /<%(?:[%=_#-])?[\s\S]*?(?:[-_])?%>/g
