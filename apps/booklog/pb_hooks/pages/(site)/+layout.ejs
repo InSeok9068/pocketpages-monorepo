@@ -230,14 +230,14 @@
     <% if (request.auth) { %>
     <div
       x-data="{ open: false }"
-      class="pointer-events-none fixed right-4 top-4 z-40 sm:right-6 sm:top-6 md:right-8 md:top-8">
+      class="pointer-events-none fixed top-4 right-4 z-40 sm:top-6 sm:right-6 md:top-8 md:right-8">
       <div class="pointer-events-auto relative">
         <button
           type="button"
           x-on:click="open = !open"
           x-on:click.outside="open = false"
           x-bind:aria-expanded="open ? 'true' : 'false'"
-          class="bg-white/82 hover:bg-white/92 inline-flex h-12 w-12 items-center justify-center rounded-full border-none text-stone-700 shadow-[0_12px_26px_rgba(70,52,31,0.08)] outline-none ring-0 backdrop-blur-sm transition"
+          class="inline-flex h-12 w-12 items-center justify-center rounded-full border-none bg-white/82 text-stone-700 shadow-[0_12px_26px_rgba(70,52,31,0.08)] ring-0 backdrop-blur-sm transition outline-none hover:bg-white/92"
           aria-label="메뉴 열기">
           <span
             class="i-lucide-menu h-5 w-5"
@@ -248,31 +248,31 @@
           x-show="open"
           x-cloak
           x-transition.opacity.scale.origin.top.right
-          class="bg-white/92 absolute right-0 top-14 z-20 min-w-40 rounded-2xl border-none p-2 shadow-[0_18px_40px_rgba(70,52,31,0.10)] backdrop-blur-sm">
+          class="absolute top-14 right-0 z-20 min-w-40 rounded-2xl border-none bg-white/92 p-2 shadow-[0_18px_40px_rgba(70,52,31,0.10)] backdrop-blur-sm">
           <% if (canUseBooklog) { %>
           <a
             href="https://ko.1lib.sk/"
             target="_blank"
             rel="noreferrer noopener"
-            class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline outline-none ring-0 transition">
+            class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline ring-0 transition outline-none">
             EPUB 도서관
           </a>
           <% } %>
           <a
             href="/reading-records"
-            class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline outline-none ring-0 transition">
+            class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline ring-0 transition outline-none">
             독서 기록
           </a>
           <a
             href="/settings"
-            class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline outline-none ring-0 transition">
+            class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline ring-0 transition outline-none">
             설정 관리
           </a>
           <form
             method="post"
             action="/xapi/auth/sign-out">
             <button
-              class="block w-full rounded-xl border-none bg-transparent px-3 py-3 text-left text-sm font-medium text-stone-700 outline-none ring-0 transition"
+              class="block w-full rounded-xl border-none bg-transparent px-3 py-3 text-left text-sm font-medium text-stone-700 ring-0 transition outline-none"
               type="submit">
               로그아웃
             </button>
@@ -282,7 +282,7 @@
     </div>
     <% } %>
 
-    <main class="mx-auto min-h-screen max-w-5xl px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-6 md:px-8 md:pb-12 md:pt-9">
+    <main class="mx-auto min-h-screen max-w-5xl px-4 pt-4 pb-6 sm:px-6 sm:pt-6 sm:pb-8 md:px-8 md:pt-9 md:pb-12">
       <%- slots.body || slot %>
     </main>
   </body>

@@ -142,11 +142,11 @@
   }
 </script>
 
-<div class="space-y-4 pb-2 pt-1">
+<div class="space-y-4 pt-1 pb-2">
   <header class="flex items-center justify-between">
     <div>
       <p class="text-xs font-bold text-[#3182f6]">주문</p>
-      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">매수 후보</h1>
+      <h1 class="mt-1 text-[24px] leading-tight font-bold text-[#191f28]">매수 후보</h1>
     </div>
     <a
       href="/simulations/new"
@@ -165,15 +165,15 @@
     <div class="grid grid-cols-3 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
       <div class="min-w-0">
         <p class="truncate text-[10px] font-bold text-[#8b95a1]">검토 대기</p>
-        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= draftCount %></p>
+        <p class="mt-0.5 truncate text-sm leading-none font-bold text-[#191f28]"><%= draftCount %></p>
       </div>
       <div class="min-w-0">
         <p class="truncate text-[10px] font-bold text-[#8b95a1]">기록됨</p>
-        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= submittedCount %></p>
+        <p class="mt-0.5 truncate text-sm leading-none font-bold text-[#191f28]"><%= submittedCount %></p>
       </div>
       <div class="min-w-0">
         <p class="truncate text-[10px] font-bold text-[#8b95a1]">주문 기록</p>
-        <p class="mt-0.5 truncate text-sm font-bold leading-none text-[#191f28]"><%= orderCount %></p>
+        <p class="mt-0.5 truncate text-sm leading-none font-bold text-[#191f28]"><%= orderCount %></p>
       </div>
     </div>
   </section>
@@ -183,7 +183,7 @@
       <h2 class="text-base font-bold text-[#191f28]">검토할 매수 후보</h2>
       <span class="text-sm font-bold text-[#3182f6]"><%= draftCount %>개</span>
     </div>
-    <p class="-mt-1 text-xs font-medium leading-5 text-[#8b95a1]">실제 주문은 나가지 않고, 검토한 후보를 기록으로만 남깁니다.</p>
+    <p class="-mt-1 text-xs leading-5 font-medium text-[#8b95a1]">실제 주문은 나가지 않고, 검토한 후보를 기록으로만 남깁니다.</p>
 
     <% if (actionCards.length === 0) { %>
     <div class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">

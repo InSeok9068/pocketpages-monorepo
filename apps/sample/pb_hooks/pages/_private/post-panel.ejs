@@ -20,7 +20,7 @@
   <% } else { %>
   <header class="mb-5 flex flex-wrap items-start justify-between gap-4">
     <div class="min-w-0 space-y-2">
-      <p class="text-xs uppercase tracking-[0.16em] text-stone-500">HTMX Fragment</p>
+      <p class="text-xs tracking-[0.16em] text-stone-500 uppercase">HTMX Fragment</p>
       <h2 class="text-2xl font-semibold text-stone-950"><%= panelBoardName %></h2>
       <p class="truncate text-sm text-stone-500"><%= panelBoardPath %></p>
     </div>
@@ -51,7 +51,7 @@
           ><%= postItem.title %></a
         >
       </h3>
-      <p class="mt-2 text-xs uppercase tracking-[0.14em] text-stone-500"><%= postItem.isNotice ? 'Notice' : 'Post' %> · <%= postItem.authorName %> · <%= postItem.publishedAt %></p>
+      <p class="mt-2 text-xs tracking-[0.14em] text-stone-500 uppercase"><%= postItem.isNotice ? 'Notice' : 'Post' %> · <%= postItem.authorName %> · <%= postItem.publishedAt %></p>
     </section>
     <% }) %>
   </div>

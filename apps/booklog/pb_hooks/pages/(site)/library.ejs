@@ -187,7 +187,7 @@
   <div class="space-y-4">
     <a
       href="/"
-      class="bg-white/78 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0">
+      class="inline-flex items-center gap-2 rounded-full border-none bg-white/78 px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] ring-0 outline-none">
       <span
         class="i-lucide-arrow-left h-4 w-4"
         aria-hidden="true"></span>
@@ -197,7 +197,7 @@
     <div>
       <div class="flex items-center gap-3">
         <h1 class="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">도서함</h1>
-        <p class="bg-white/78 inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium text-stone-600 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]"><%= totalMatchedBookCount %>권</p>
+        <p class="inline-flex items-center rounded-full bg-white/78 px-3 py-1.5 text-sm font-medium text-stone-600 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]"><%= totalMatchedBookCount %>권</p>
       </div>
     </div>
   </div>
@@ -223,46 +223,46 @@
           <label class="relative block min-w-0 flex-1">
             <span class="sr-only">도서함 검색</span>
             <span
-              class="i-lucide-search pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+              class="i-lucide-search pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-stone-400"
               aria-hidden="true"></span>
             <input
               name="q"
               value="<%= queryText %>"
               type="search"
               placeholder="제목이나 저자 검색"
-              class="bg-white/88 box-border h-11 w-full rounded-full border-0 pl-9 pr-4 text-sm font-medium text-stone-900 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none placeholder:text-stone-400" />
+              class="box-border h-11 w-full rounded-full border-0 bg-white/88 pr-4 pl-9 text-sm font-medium text-stone-900 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none placeholder:text-stone-400" />
           </label>
           <button
             type="submit"
-            class="inline-flex h-11 shrink-0 items-center justify-center rounded-full border-0 bg-stone-900 px-4 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] outline-none ring-0">
+            class="inline-flex h-11 shrink-0 items-center justify-center rounded-full border-0 bg-stone-900 px-4 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] ring-0 outline-none">
             검색
           </button>
         </div>
 
-        <div class="-mx-1 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div class="-mx-1 [scrollbar-width:none] overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <div class="flex w-max min-w-full items-center gap-2">
             <a
               href="<%= buildLibraryHref({ status: 'all', limit: 50 }) %>"
               aria-pressed="<%= statusFilter === 'all' ? 'true' : 'false' %>"
-              class="<%= statusFilter === 'all' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline outline-none ring-0">
+              class="<%= statusFilter === 'all' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
               전체
             </a>
             <a
               href="<%= buildLibraryHref({ status: 'queued', limit: 50 }) %>"
               aria-pressed="<%= statusFilter === 'queued' ? 'true' : 'false' %>"
-              class="<%= statusFilter === 'queued' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline outline-none ring-0">
+              class="<%= statusFilter === 'queued' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
               읽을 예정
             </a>
             <a
               href="<%= buildLibraryHref({ status: 'reading', limit: 50 }) %>"
               aria-pressed="<%= statusFilter === 'reading' ? 'true' : 'false' %>"
-              class="<%= statusFilter === 'reading' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline outline-none ring-0">
+              class="<%= statusFilter === 'reading' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
               읽는 중
             </a>
             <a
               href="<%= buildLibraryHref({ status: 'finished', limit: 50 }) %>"
               aria-pressed="<%= statusFilter === 'finished' ? 'true' : 'false' %>"
-              class="<%= statusFilter === 'finished' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline outline-none ring-0">
+              class="<%= statusFilter === 'finished' ? 'bg-stone-900 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]' : 'bg-white/86 text-stone-600 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]' %> inline-flex h-10 shrink-0 items-center justify-center rounded-full border-0 px-4 text-sm font-semibold no-underline ring-0 outline-none">
               완독
             </a>
             <label class="relative ml-auto shrink-0">
@@ -270,7 +270,7 @@
               <select
                 name="sort"
                 x-on:change="$el.form.requestSubmit()"
-                class="bg-white/88 h-10 appearance-none rounded-full border-0 pl-4 pr-9 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none">
+                class="h-10 appearance-none rounded-full border-0 bg-white/88 pr-9 pl-4 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none">
                 <option
                   value="recent"
                   <% if (sortMode === 'recent') { %>selected<% } %>>
@@ -283,14 +283,14 @@
                 </option>
               </select>
               <span
-                class="i-lucide-chevron-down pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+                class="i-lucide-chevron-down pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-stone-400"
                 aria-hidden="true"></span>
             </label>
             <% if (queryText) { %>
             <a
               href="<%= buildLibraryHref({ q: '', limit: 50 }) %>"
               aria-label="검색어 지우기"
-              class="bg-white/88 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
+              class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/88 text-stone-600 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)]">
               <span
                 class="i-lucide-x h-4 w-4"
                 aria-hidden="true"></span>
@@ -306,7 +306,7 @@
       <% for (let index = 0; index < libraryBooks.length; index += 1) { const book = libraryBooks[index] %>
       <a
         href="/books/<%= book.bookId %>?from=/library"
-        class="group mx-auto block w-full min-w-0 max-w-[8rem] text-stone-900 no-underline sm:max-w-none">
+        class="group mx-auto block w-full max-w-[8rem] min-w-0 text-stone-900 no-underline sm:max-w-none">
         <div
           class="relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] shadow-[0_8px_18px_rgba(24,19,16,0.1)] transition group-hover:translate-y-[-1px] group-hover:shadow-[0_10px_20px_rgba(24,19,16,0.13)]">
           <% if (book.coverUrl) { %>
@@ -318,15 +318,15 @@
             class="h-full w-full object-cover" />
           <% } else { %>
           <div class="absolute inset-0 box-border px-3 py-4 text-white">
-            <div class="absolute left-1/2 top-[34%] w-[78%] -translate-x-1/2 -translate-y-1/2 text-center">
-              <h2 class="m-0 break-keep text-base font-semibold leading-5"><%= book.title %></h2>
+            <div class="absolute top-[34%] left-1/2 w-[78%] -translate-x-1/2 -translate-y-1/2 text-center">
+              <h2 class="m-0 text-base leading-5 font-semibold break-keep"><%= book.title %></h2>
             </div>
           </div>
           <% } %>
         </div>
         <div class="mt-3 min-w-0 space-y-1">
-          <h2 class="m-0 min-w-0 break-words text-sm font-semibold leading-5 text-stone-950"><%= book.title %></h2>
-          <p class="m-0 text-[12px] font-medium leading-5 text-stone-500"><%= book.author ? book.author + ' · ' : '' %><%= book.statusLabel %></p>
+          <h2 class="m-0 min-w-0 text-sm leading-5 font-semibold break-words text-stone-950"><%= book.title %></h2>
+          <p class="m-0 text-[12px] leading-5 font-medium text-stone-500"><%= book.author ? book.author + ' · ' : '' %><%= book.statusLabel %></p>
         </div>
       </a>
       <% } %>
@@ -352,7 +352,7 @@
       <span>조건에 맞는 책이 없습니다.</span>
       <a
         href="/library"
-        class="bg-white/88 inline-flex w-max items-center rounded-full border-0 px-3 py-2 text-sm font-semibold text-stone-700 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)] outline-none ring-0">
+        class="inline-flex w-max items-center rounded-full border-0 bg-white/88 px-3 py-2 text-sm font-semibold text-stone-700 no-underline shadow-[0_8px_18px_rgba(70,52,31,0.08)] ring-0 outline-none">
         필터 초기화
       </a>
     </div>

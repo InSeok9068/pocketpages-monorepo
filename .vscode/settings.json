@@ -1,5 +1,8 @@
 {
   "files.autoSave": "off",
+  "files.associations": {
+    "tailwind.css": "tailwindcss"
+  },
   "html.validate.styles": false,
   "html.validate.scripts": false,
   "color-highlight.enable": false,
@@ -10,7 +13,7 @@
     "pocketbase.exe": "pbw.exe",
     "README.md": "MEMO.md, DBSCHEMA.md",
     "AGENTS.md": "AGENTS*.md",
-    "package.json": "package-lock.json, .prettier*, eslint.config.js, unocss.config.js, tailwind.config.js, .dockerignore, .gitignore, .gitleaks.toml, knip.json, .node-version"
+    "package.json": "package-lock.json, .prettier*, eslint.config.js, unocss.config.js, tailwind.css, .dockerignore, .gitignore, .gitleaks.toml, knip.json, .node-version"
   },
   // prettier-ignore
   "files.exclude": {
@@ -38,6 +41,9 @@
   "tailwindCSS.lint.cssConflict": "ignore",
   "tailwindCSS.includeLanguages": {
     "ejs": "html"
+  },
+  "tailwindCSS.experimental.configFile": {
+    "tailwind.css": ["apps/*/pb_hooks/pages/**/*.ejs", "apps/*/pb_hooks/pages/**/*.js"]
   },
   "editor.tokenColorCustomizations": {
     "textMateRules": [

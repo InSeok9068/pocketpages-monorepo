@@ -132,7 +132,7 @@
   }
 </script>
 
-<div class="space-y-4 pb-2 pt-1">
+<div class="space-y-4 pt-1 pb-2">
   <header class="space-y-3">
     <div class="flex items-center justify-between gap-3">
       <p class="text-xs font-bold text-[#3182f6]">실험 상세</p>
@@ -162,7 +162,7 @@
         </a>
       </div>
     </div>
-    <h1 class="text-[24px] font-bold leading-tight text-[#191f28]"><%= simulationCard.name %></h1>
+    <h1 class="text-[24px] leading-tight font-bold text-[#191f28]"><%= simulationCard.name %></h1>
   </header>
 
   <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
@@ -171,7 +171,7 @@
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
         <p class="text-xs font-bold text-[#8b95a1]">예상 평가액</p>
-        <p class="mt-1 text-[28px] font-bold leading-tight text-[#191f28]"><%= simulationCard.finalTotalText %></p>
+        <p class="mt-1 text-[28px] leading-tight font-bold text-[#191f28]"><%= simulationCard.finalTotalText %></p>
       </div>
       <span class="shrink-0 rounded-md bg-[#e8f3ff] px-2 py-1 text-xs font-bold text-[#1b64da]"><%= simulationCard.badgeText %></span>
     </div>

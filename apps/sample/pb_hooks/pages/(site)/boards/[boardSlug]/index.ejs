@@ -110,7 +110,7 @@
           <%= postCard.title %>
         </a>
       </h3>
-      <p class="mt-2 text-xs uppercase tracking-[0.14em] text-stone-500">
+      <p class="mt-2 text-xs tracking-[0.14em] text-stone-500 uppercase">
         <%= postCard.isNotice ? 'Notice' : 'Post' %> · <%= postCard.status %> · <%= postCard.authorName %> · <%= postCard.publishedAt %> · views <%= postCard.viewCount %>
       </p>
       <% if (postCard.preview) { %>

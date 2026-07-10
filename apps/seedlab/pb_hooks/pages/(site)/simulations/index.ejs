@@ -32,11 +32,11 @@
   }
 </script>
 
-<div class="space-y-4 pb-2 pt-1">
+<div class="space-y-4 pt-1 pb-2">
   <header class="flex items-center justify-between">
     <div>
       <p class="text-xs font-bold text-[#3182f6]">실험</p>
-      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">투자 실험</h1>
+      <h1 class="mt-1 text-[24px] leading-tight font-bold text-[#191f28]">투자 실험</h1>
     </div>
     <a
       href="/simulations/new"
@@ -86,7 +86,7 @@
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <p class="truncate text-base font-bold text-[#191f28]"><%= simulationCards[index].name %></p>
-              <p class="mt-1 text-xs font-bold leading-5 text-[#6b7684]"><%= simulationCards[index].targetText %></p>
+              <p class="mt-1 text-xs leading-5 font-bold text-[#6b7684]"><%= simulationCards[index].targetText %></p>
             </div>
             <span class="shrink-0 rounded-md bg-[#e8f3ff] px-2 py-1 text-xs font-bold text-[#1b64da]"><%= simulationCards[index].badgeText %></span>
           </div>
@@ -94,7 +94,7 @@
           <div class="mt-4">
             <p class="text-xs font-bold text-[#8b95a1]">예상 평가액</p>
             <div class="mt-1 flex items-end justify-between gap-3">
-              <p class="min-w-0 truncate text-[24px] font-bold leading-tight text-[#191f28]"><%= simulationCards[index].finalTotalText %></p>
+              <p class="min-w-0 truncate text-[24px] leading-tight font-bold text-[#191f28]"><%= simulationCards[index].finalTotalText %></p>
               <p class="<%= String(simulationCards[index].profitText).indexOf('-') === 0 ? 'text-[#1b64da]' : 'text-[#f04452]' %> shrink-0 text-sm font-bold">
                 <%= simulationCards[index].profitText %>
               </p>

@@ -508,11 +508,11 @@
   }
 </script>
 
-<div class="space-y-4 pb-24 pt-1">
+<div class="space-y-4 pt-1 pb-24">
   <header class="flex items-start justify-between gap-4">
     <div>
       <p class="text-sm font-bold text-[#3182f6]">계좌</p>
-      <h1 class="tracking-0 mt-1 text-[26px] font-bold leading-[1.16] text-[#191f28]">현재 비중</h1>
+      <h1 class="tracking-0 mt-1 text-[26px] leading-[1.16] font-bold text-[#191f28]">현재 비중</h1>
     </div>
     <a
       href="/connections/toss/new"
@@ -530,7 +530,7 @@
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
         <p class="text-[11px] font-bold text-[#8b95a1]">총 평가금</p>
-        <p class="mt-1 truncate text-[26px] font-bold leading-none text-[#191f28]"><%= portfolioSummary.totalValueText %>원</p>
+        <p class="mt-1 truncate text-[26px] leading-none font-bold text-[#191f28]"><%= portfolioSummary.totalValueText %>원</p>
       </div>
       <p class="<%= portfolioSummary.profitLossClass %> shrink-0 pt-6 text-xs font-bold"><%= portfolioSummary.profitLossText %>원</p>
     </div>

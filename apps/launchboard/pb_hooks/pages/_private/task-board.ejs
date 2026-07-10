@@ -20,7 +20,7 @@
     <% const tabTasks = tasksByStatus[tabColumn.value] || [] %>
     <button
       type="button"
-      class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 bg-[#f2f4f6] px-1 text-[10px] font-bold leading-none text-[#4e5968] hover:bg-[#eaf3ff]"
+      class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 bg-[#f2f4f6] px-1 text-[10px] leading-none font-bold text-[#4e5968] hover:bg-[#eaf3ff]"
       data-task-status-tab
       data-status="<%= tabColumn.value %>"
       data-attr="{'aria-pressed': $activeTaskStatus === '<%= tabColumn.value %>' ? 'true' : 'false'}"
@@ -29,7 +29,7 @@
       <span
         class="<%= tabColumn.icon %> h-3.5 w-3.5"
         aria-hidden="true"></span>
-      <span class="flex min-w-0 max-w-full items-center gap-0.5">
+      <span class="flex max-w-full min-w-0 items-center gap-0.5">
         <span class="truncate"><%= tabColumn.label %></span>
         <span
           class="shrink-0 text-[10px] text-[#6b7684]"
@@ -97,11 +97,11 @@
           style="display: none">
           <label class="relative block">
             <span
-              class="i-lucide-search pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8b95a1]"
+              class="i-lucide-search pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[#8b95a1]"
               aria-hidden="true"></span>
             <input
               type="search"
-              class="h-9 w-full rounded-lg border-0 bg-white/80 pl-9 pr-3 text-sm font-semibold text-[#191f28] outline-none placeholder:text-[#b0b8c1] focus:bg-white focus:shadow-[inset_0_0_0_1px_#3182f6]"
+              class="h-9 w-full rounded-lg border-0 bg-white/80 pr-3 pl-9 text-sm font-semibold text-[#191f28] outline-none placeholder:text-[#b0b8c1] focus:bg-white focus:shadow-[inset_0_0_0_1px_#3182f6]"
               placeholder="검색"
               data-task-filter-query
               data-on:input="window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter(el)" />
@@ -147,7 +147,7 @@
             const taskHref = taskBoardScope === 'inbox' && baseTaskHref !== '#' ? baseTaskHref + '?return_to=' + encodeURIComponent(returnTo) : baseTaskHref
           %>
           <article
-            class="min-w-0 max-w-full cursor-pointer overflow-hidden rounded-lg bg-white p-3.5 shadow-[0_8px_22px_rgba(25,31,40,0.07),0_0_0_1px_rgba(227,231,237,0.72)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(25,31,40,0.1),0_0_0_1px_rgba(49,130,246,0.16)]"
+            class="max-w-full min-w-0 cursor-pointer overflow-hidden rounded-lg bg-white p-3.5 shadow-[0_8px_22px_rgba(25,31,40,0.07),0_0_0_1px_rgba(227,231,237,0.72)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(25,31,40,0.1),0_0_0_1px_rgba(49,130,246,0.16)]"
             data-task-card
             data-task-id="<%= task.id %>"
             data-project-id="<%= task.projectId %>"
@@ -167,7 +167,7 @@
                     class="i-lucide-pin h-3.5 w-3.5 shrink-0 text-[#f59f00]"
                     aria-hidden="true"></span>
                   <% } %>
-                  <h3 class="min-w-0 flex-1 truncate text-sm font-bold leading-5 text-[#191f28]"><%= task.title %></h3>
+                  <h3 class="min-w-0 flex-1 truncate text-sm leading-5 font-bold text-[#191f28]"><%= task.title %></h3>
                 </div>
                 <% if (task.projectName) { %>
                 <p class="mt-0.5 truncate text-[11px] font-bold text-[#8b95a1]"><%= task.projectName %></p>

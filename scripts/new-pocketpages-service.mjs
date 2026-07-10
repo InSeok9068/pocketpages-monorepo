@@ -20,7 +20,7 @@ const vendorByFeature = {
   htmx: ['htmx-2.0.10.min.js'],
   alpine: ['alpine-3.15.11-cdn.min.js'],
   datastar: ['datastar.min.js'],
-  unocss: ['preset-wind3-66.7.5.global.js', 'preset-icons-66.7.5.global.js', 'iconify-lucide-1.2.116.icons.json', 'unocss-core-66.7.5.global.js'],
+  unocss: ['preset-wind4-66.7.5.global.js', 'preset-icons-66.7.5.global.js', 'iconify-lucide-1.2.116.icons.json', 'unocss-core-66.7.5.global.js'],
 }
 const vendorByFeaturePair = {
   'htmx+realtime': ['pocketbase-htmx-ext-sse-0.0.3.js'],
@@ -555,14 +555,19 @@ function buildUnoHeadEjs() {
     display: none !important;
   }
 </style>
-<script src="<%= asset('/assets/vendor/preset-wind3-66.7.5.global.js') %>"></script>
+<script src="<%= asset('/assets/vendor/preset-wind4-66.7.5.global.js') %>"></script>
 <script src="<%= asset('/assets/vendor/preset-icons-66.7.5.global.js') %>"></script>
 <script>
   let lucideIcons
 
   window.__unocss = {
     presets: [
-      () => window.__unocss_runtime.presets.presetWind3(),
+      () =>
+        window.__unocss_runtime.presets.presetWind4({
+          preflights: {
+            reset: false,
+          },
+        }),
       () =>
         window.__unocss_runtime.presets.presetIcons({
           collections: {

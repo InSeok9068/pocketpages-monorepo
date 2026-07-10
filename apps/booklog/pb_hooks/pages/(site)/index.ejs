@@ -379,7 +379,7 @@
         <button
           type="button"
           x-on:click="filterOpen = true"
-          class="inline-flex h-11 w-11 items-center justify-center border-none bg-transparent p-0 text-stone-700 outline-none ring-0 transition hover:text-stone-950"
+          class="inline-flex h-11 w-11 items-center justify-center border-none bg-transparent p-0 text-stone-700 ring-0 transition outline-none hover:text-stone-950"
           aria-label="도서함 필터 열기">
           <span
             class="i-lucide-filter h-5 w-5"
@@ -388,7 +388,7 @@
         <button
           type="button"
           x-on:click="uploadOpen = true"
-          class="inline-flex items-center rounded-full border-none bg-stone-900 px-4 py-2.5 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700">
+          class="inline-flex items-center rounded-full border-none bg-stone-900 px-4 py-2.5 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] ring-0 transition outline-none hover:bg-stone-700">
           책 추가
         </button>
       </div>
@@ -396,7 +396,7 @@
 
     <section
       class="rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.92),rgba(245,236,222,0.95))] p-4 shadow-[0_12px_30px_rgba(73,54,31,0.05)] backdrop-blur-sm sm:p-5">
-      <div class="overflow-x-auto overflow-y-hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div class="[scrollbar-width:none] overflow-x-auto overflow-y-hidden [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         <div class="flex min-w-max gap-3">
           <% for (let index = 0; index < shelfBooks.length; index += 1) { const book = shelfBooks[index] %>
           <article
@@ -410,7 +410,7 @@
               <div
                 class="<%= book.tone %> <%= book.coverUrl ? 'transition group-hover:shadow-[0_6px_14px_rgba(24,19,16,0.1)]' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b">
                 <% if (book.statusBadgeLabel) { %>
-                <span class="<%= book.statusBadgeClass %> absolute right-2 top-2 z-10 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
+                <span class="<%= book.statusBadgeClass %> absolute top-2 right-2 z-10 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
                   <%= book.statusBadgeLabel %>
                 </span>
                 <% } %>
@@ -423,10 +423,10 @@
                   class="h-full w-full object-cover" />
                 <% } else { %>
                 <div class="absolute inset-0 box-border px-3 py-4 text-white">
-                  <div class="absolute left-1/2 top-[34%] w-[5.55rem] -translate-x-1/2 -translate-y-1/2 text-center">
-                    <h3 class="m-0 break-keep text-base font-semibold leading-5 tracking-[-0.03em]"><%= book.title %></h3>
+                  <div class="absolute top-[34%] left-1/2 w-[5.55rem] -translate-x-1/2 -translate-y-1/2 text-center">
+                    <h3 class="m-0 text-base leading-5 font-semibold tracking-[-0.03em] break-keep"><%= book.title %></h3>
                   </div>
-                  <p class="text-white/78 absolute bottom-4 left-3 right-3 m-0 break-keep text-right text-[11px] leading-4"><%= book.author %></p>
+                  <p class="absolute right-3 bottom-4 left-3 m-0 text-right text-[11px] leading-4 break-keep text-white/78"><%= book.author %></p>
                 </div>
                 <% } %>
               </div>
@@ -434,7 +434,7 @@
             <% } else { %>
             <div class="<%= book.tone %> <%= book.coverUrl ? '' : 'shadow-[0_18px_28px_rgba(74,50,28,0.18)]' %> relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b">
               <% if (book.statusBadgeLabel) { %>
-              <span class="<%= book.statusBadgeClass %> absolute right-2 top-2 z-10 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
+              <span class="<%= book.statusBadgeClass %> absolute top-2 right-2 z-10 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] backdrop-blur-sm">
                 <%= book.statusBadgeLabel %>
               </span>
               <% } %>
@@ -447,10 +447,10 @@
                 class="h-full w-full object-cover" />
               <% } else { %>
               <div class="absolute inset-0 box-border px-3 py-4 text-white">
-                <div class="absolute left-1/2 top-[34%] w-[5.55rem] -translate-x-1/2 -translate-y-1/2 text-center">
-                  <h3 class="m-0 break-keep text-base font-semibold leading-5 tracking-[-0.03em]"><%= book.title %></h3>
+                <div class="absolute top-[34%] left-1/2 w-[5.55rem] -translate-x-1/2 -translate-y-1/2 text-center">
+                  <h3 class="m-0 text-base leading-5 font-semibold tracking-[-0.03em] break-keep"><%= book.title %></h3>
                 </div>
-                <p class="text-white/78 absolute bottom-4 left-3 right-3 m-0 break-keep text-right text-[11px] leading-4"><%= book.author %></p>
+                <p class="absolute right-3 bottom-4 left-3 m-0 text-right text-[11px] leading-4 break-keep text-white/78"><%= book.author %></p>
               </div>
               <% } %>
             </div>
@@ -460,14 +460,14 @@
           <div
             x-show="!hasVisibleShelfBooks()"
             x-cloak
-            class="bg-white/72 w-[15rem] flex-none rounded-[1.4rem] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+            class="w-[15rem] flex-none rounded-[1.4rem] bg-white/72 px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
             선택한 상태의 책이 없습니다.
           </div>
         </div>
       </div>
     </section>
 
-    <section class="bg-white/78 rounded-[2rem] border border-stone-200/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-[1.2rem]">
+    <section class="rounded-[2rem] border border-stone-200/80 bg-white/78 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-[1.2rem]">
       <div>
         <h3 class="text-xl font-semibold tracking-tight text-stone-950">인상 깊은 문구</h3>
       </div>
@@ -478,7 +478,7 @@
         <a
           href="/books/<%= highlight.bookId %>?from=/"
           class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-3.5 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
-          <p class="text-[15px] font-semibold leading-[1.65] tracking-[-0.02em] text-stone-900 sm:text-base"><%= highlight.quoteText %></p>
+          <p class="text-[15px] leading-[1.65] font-semibold tracking-[-0.02em] text-stone-900 sm:text-base"><%= highlight.quoteText %></p>
           <p class="mt-2.5 text-[12px] leading-5 text-stone-500"><%= highlight.bookTitle %></p>
           <% if (highlight.highlightedAt) { %>
           <p class="mt-1.5 text-[12px] font-medium text-stone-400"><%= highlight.highlightedAt %></p>
@@ -493,12 +493,12 @@
       <div class="mt-4 grid grid-cols-2 gap-2">
         <a
           href="/reviews"
-          class="bg-white/88 inline-flex items-center justify-center rounded-full border-none px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
+          class="inline-flex items-center justify-center rounded-full border-none bg-white/88 px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] ring-0 transition outline-none hover:bg-stone-100/80">
           감상평 리스트
         </a>
         <a
           href="/highlights"
-          class="bg-white/88 inline-flex items-center justify-center rounded-full border-none px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
+          class="inline-flex items-center justify-center rounded-full border-none bg-white/88 px-4 py-3 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] ring-0 transition outline-none hover:bg-stone-100/80">
           문구 리스트
         </a>
       </div>
@@ -509,10 +509,10 @@
     x-show="filterOpen"
     x-cloak
     x-transition.opacity
-    class="bg-stone-950/42 fixed inset-0 z-[80] flex items-end justify-center px-0 pt-0 sm:items-center sm:px-6 sm:py-6">
+    class="fixed inset-0 z-[80] flex items-end justify-center bg-stone-950/42 px-0 pt-0 sm:items-center sm:px-6 sm:py-6">
     <div
       x-on:click.outside="filterOpen = false"
-      class="ios-safe-sheet w-full max-w-md overflow-y-auto rounded-t-[2rem] border-none bg-[linear-gradient(180deg,#fffdf8,#f8f0e4)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-18px_50px_rgba(41,28,17,0.18)] sm:rounded-[2.1rem] sm:px-6 sm:pb-6 sm:pt-5 sm:shadow-[0_30px_90px_rgba(41,28,17,0.2)]">
+      class="ios-safe-sheet w-full max-w-md overflow-y-auto rounded-t-[2rem] border-none bg-[linear-gradient(180deg,#fffdf8,#f8f0e4)] px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[0_-18px_50px_rgba(41,28,17,0.18)] sm:rounded-[2.1rem] sm:px-6 sm:pt-5 sm:pb-6 sm:shadow-[0_30px_90px_rgba(41,28,17,0.2)]">
       <div class="flex items-start justify-between gap-4">
         <div>
           <h3 class="text-2xl font-semibold tracking-tight text-stone-950">도서함 필터</h3>
@@ -520,7 +520,7 @@
         <button
           type="button"
           x-on:click="filterOpen = false"
-          class="bg-white/78 inline-flex h-10 w-10 items-center justify-center rounded-full border-none text-stone-600 shadow-[0_8px_20px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-white/90"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-white/78 text-stone-600 shadow-[0_8px_20px_rgba(70,52,31,0.08)] ring-0 transition outline-none hover:bg-white/90"
           aria-label="필터 팝업 닫기">
           <span
             class="i-lucide-x h-5 w-5"
@@ -529,7 +529,7 @@
       </div>
 
       <div class="mt-6 space-y-2.5">
-        <label class="bg-white/78 flex items-center justify-between gap-4 rounded-[1.35rem] px-4 py-3.5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
+        <label class="flex items-center justify-between gap-4 rounded-[1.35rem] bg-white/78 px-4 py-3.5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
           <span class="text-sm font-medium text-stone-800">읽는 중</span>
           <input
             type="checkbox"
@@ -545,7 +545,7 @@
           </span>
         </label>
 
-        <label class="bg-white/78 flex items-center justify-between gap-4 rounded-[1.35rem] px-4 py-3.5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
+        <label class="flex items-center justify-between gap-4 rounded-[1.35rem] bg-white/78 px-4 py-3.5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
           <span class="text-sm font-medium text-stone-800">읽을 예정</span>
           <input
             type="checkbox"
@@ -561,7 +561,7 @@
           </span>
         </label>
 
-        <label class="bg-white/78 flex items-center justify-between gap-4 rounded-[1.35rem] px-4 py-3.5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
+        <label class="flex items-center justify-between gap-4 rounded-[1.35rem] bg-white/78 px-4 py-3.5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
           <span class="text-sm font-medium text-stone-800">완독</span>
           <input
             type="checkbox"
@@ -584,10 +584,10 @@
     x-show="uploadOpen"
     x-cloak
     x-transition.opacity
-    class="bg-stone-950/42 fixed inset-0 z-[80] flex items-end justify-center px-0 pt-0 sm:items-center sm:px-6 sm:py-6">
+    class="fixed inset-0 z-[80] flex items-end justify-center bg-stone-950/42 px-0 pt-0 sm:items-center sm:px-6 sm:py-6">
     <div
       x-on:click.outside="if (!uploading) { uploadOpen = false }"
-      class="ios-safe-sheet w-full max-w-lg overflow-y-auto rounded-t-[2rem] border-none bg-[linear-gradient(180deg,#fffdf8,#f8f0e4)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-18px_50px_rgba(41,28,17,0.18)] sm:rounded-[2.1rem] sm:px-6 sm:pb-6 sm:pt-5 sm:shadow-[0_30px_90px_rgba(41,28,17,0.2)]">
+      class="ios-safe-sheet w-full max-w-lg overflow-y-auto rounded-t-[2rem] border-none bg-[linear-gradient(180deg,#fffdf8,#f8f0e4)] px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[0_-18px_50px_rgba(41,28,17,0.18)] sm:rounded-[2.1rem] sm:px-6 sm:pt-5 sm:pb-6 sm:shadow-[0_30px_90px_rgba(41,28,17,0.2)]">
       <div class="flex items-start justify-between gap-4">
         <div>
           <h3 class="text-2xl font-semibold tracking-tight text-stone-950">도서함에 책 넣기</h3>
@@ -596,7 +596,7 @@
           type="button"
           x-bind:disabled="uploading"
           x-on:click="if (!uploading) { uploadOpen = false }"
-          class="bg-white/78 inline-flex h-10 w-10 items-center justify-center rounded-full border-none text-stone-600 shadow-[0_8px_20px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-white/90"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-white/78 text-stone-600 shadow-[0_8px_20px_rgba(70,52,31,0.08)] ring-0 transition outline-none hover:bg-white/90"
           aria-label="업로드 팝업 닫기">
           <span
             class="i-lucide-x h-4 w-4"
@@ -624,7 +624,7 @@
               x-show="uploadFileName"
               x-cloak
               x-text="uploadFileName"
-              class="mt-3 break-all text-[13px] leading-5 text-stone-500"></p>
+              class="mt-3 text-[13px] leading-5 break-all text-stone-500"></p>
           </div>
         </label>
 
@@ -636,7 +636,7 @@
         <div class="flex gap-3 pt-1">
           <button
             x-bind:disabled="uploading"
-            class="min-h-13 inline-flex flex-1 items-center justify-center rounded-full border-none bg-stone-900 px-4 py-3.5 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700 disabled:opacity-100"
+            class="inline-flex min-h-13 flex-1 items-center justify-center rounded-full border-none bg-stone-900 px-4 py-3.5 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] ring-0 transition outline-none hover:bg-stone-700 disabled:opacity-100"
             type="submit">
             <span
               x-show="!uploading"
@@ -653,7 +653,7 @@
             type="button"
             x-bind:disabled="uploading"
             x-on:click="if (!uploading) { uploadOpen = false }"
-            class="min-h-13 bg-white/88 inline-flex items-center justify-center rounded-full border-none px-5 py-3.5 text-sm font-medium text-stone-700 shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0 transition hover:bg-stone-100/80">
+            class="inline-flex min-h-13 items-center justify-center rounded-full border-none bg-white/88 px-5 py-3.5 text-sm font-medium text-stone-700 shadow-[0_10px_22px_rgba(70,52,31,0.08)] ring-0 transition outline-none hover:bg-stone-100/80">
             닫기
           </button>
         </div>
@@ -667,9 +667,9 @@
     x-transition.opacity
     class="fixed inset-0 z-[90] overflow-y-auto bg-[linear-gradient(180deg,#fffdf8,#f5ead7)] text-stone-950">
     <section
-      class="ios-safe-sheet mx-auto box-border flex min-h-[100dvh] w-full max-w-xl flex-col px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6 sm:py-8">
+      class="ios-safe-sheet mx-auto box-border flex min-h-[100dvh] w-full max-w-xl flex-col px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-8">
       <div class="flex justify-end">
-        <div class="bg-white/72 rounded-full px-3 py-1.5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
+        <div class="rounded-full bg-white/72 px-3 py-1.5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08)]">
           <p
             x-text="uploadElapsedLabel"
             class="text-[13px] font-semibold text-stone-700"></p>
@@ -688,9 +688,9 @@
           <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-stone-600">EPUB를 읽고 도서 정보를 찾고 있어요. 완료되면 자동으로 이동합니다.</p>
         </div>
 
-        <div class="bg-white/76 mt-7 rounded-[1.6rem] px-5 py-5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08),0_10px_26px_rgba(73,54,31,0.05)]">
+        <div class="mt-7 rounded-[1.6rem] bg-white/76 px-5 py-5 shadow-[inset_0_0_0_1px_rgba(117,84,49,0.08),0_10px_26px_rgba(73,54,31,0.05)]">
           <div class="flex items-center justify-between gap-3">
-            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">현재 단계</p>
+            <p class="text-[11px] font-semibold tracking-[0.22em] text-stone-500 uppercase">현재 단계</p>
             <p
               x-text="'단계 ' + String(uploadStageIndex + 1) + '/' + String(uploadStages.length)"
               class="text-[12px] font-semibold text-stone-500"></p>
@@ -722,7 +722,7 @@
 
           <p
             x-text="uploadFileName || 'EPUB 파일'"
-            class="mt-5 break-all text-[13px] font-medium leading-5 text-stone-500"></p>
+            class="mt-5 text-[13px] leading-5 font-medium break-all text-stone-500"></p>
         </div>
 
         <p class="mx-auto mt-5 max-w-sm text-center text-[13px] leading-6 text-stone-500">브라우저를 새로고침하거나 닫지 마세요.</p>

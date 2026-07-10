@@ -172,7 +172,7 @@
 <% for (let index = 0; index < libraryBooks.length; index += 1) { const book = libraryBooks[index] %>
 <a
   href="/books/<%= book.bookId %>?from=/library"
-  class="group mx-auto block w-full min-w-0 max-w-[8rem] text-stone-900 no-underline sm:max-w-none">
+  class="group mx-auto block w-full max-w-[8rem] min-w-0 text-stone-900 no-underline sm:max-w-none">
   <div
     class="relative aspect-[2/3] overflow-hidden rounded-[0.35rem] bg-gradient-to-b from-[#d8c3a5] to-[#b08968] shadow-[0_8px_18px_rgba(24,19,16,0.1)] transition group-hover:translate-y-[-1px] group-hover:shadow-[0_10px_20px_rgba(24,19,16,0.13)]">
     <% if (book.coverUrl) { %>
@@ -184,15 +184,15 @@
       class="h-full w-full object-cover" />
     <% } else { %>
     <div class="absolute inset-0 box-border px-3 py-4 text-white">
-      <div class="absolute left-1/2 top-[34%] w-[78%] -translate-x-1/2 -translate-y-1/2 text-center">
-        <h2 class="m-0 break-keep text-base font-semibold leading-5"><%= book.title %></h2>
+      <div class="absolute top-[34%] left-1/2 w-[78%] -translate-x-1/2 -translate-y-1/2 text-center">
+        <h2 class="m-0 text-base leading-5 font-semibold break-keep"><%= book.title %></h2>
       </div>
     </div>
     <% } %>
   </div>
   <div class="mt-3 min-w-0 space-y-1">
-    <h2 class="m-0 min-w-0 break-words text-sm font-semibold leading-5 text-stone-950"><%= book.title %></h2>
-    <p class="m-0 text-[12px] font-medium leading-5 text-stone-500"><%= book.author ? book.author + ' · ' : '' %><%= book.statusLabel %></p>
+    <h2 class="m-0 min-w-0 text-sm leading-5 font-semibold break-words text-stone-950"><%= book.title %></h2>
+    <p class="m-0 text-[12px] leading-5 font-medium text-stone-500"><%= book.author ? book.author + ' · ' : '' %><%= book.statusLabel %></p>
   </div>
 </a>
 <% } %>

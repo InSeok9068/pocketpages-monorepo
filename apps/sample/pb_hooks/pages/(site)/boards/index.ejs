@@ -52,7 +52,7 @@
           name="name"
           placeholder="General Discussion"
           required
-          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white" />
+          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 transition outline-none focus:border-stone-500 focus:bg-white" />
       </label>
 
       <label class="block">
@@ -61,7 +61,7 @@
           type="text"
           name="slug"
           placeholder="general-discussion"
-          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white" />
+          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 transition outline-none focus:border-stone-500 focus:bg-white" />
       </label>
 
       <label class="block">
@@ -70,7 +70,7 @@
           name="description"
           rows="4"
           placeholder="Board description"
-          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white"></textarea>
+          class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 transition outline-none focus:border-stone-500 focus:bg-white"></textarea>
       </label>
 
       <button
@@ -121,7 +121,7 @@
           <% pageData.boardItems.forEach((boardItem) => { %>
           <tr align-top>
             <td class="border-b border-stone-100 px-4 py-4 font-semibold text-stone-900"><%= boardItem.name || '(untitled board)' %></td>
-            <td class="whitespace-nowrap border-b border-stone-100 px-4 py-4 text-stone-500">/boards/<%= boardItem.slug %></td>
+            <td class="border-b border-stone-100 px-4 py-4 whitespace-nowrap text-stone-500">/boards/<%= boardItem.slug %></td>
             <td class="border-b border-stone-100 px-4 py-4 leading-6 text-stone-600"><%= boardItem.description || 'No description' %></td>
             <td class="border-b border-stone-100 px-4 py-4">
               <a

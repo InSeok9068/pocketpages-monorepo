@@ -10,7 +10,7 @@
       <% const tabProjects = projectsByStatus[tabColumn.value] || [] %>
       <button
         type="button"
-        class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 bg-[#f2f4f6] px-1 text-[10px] font-bold leading-none text-[#4e5968] hover:bg-[#eaf3ff]"
+        class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 bg-[#f2f4f6] px-1 text-[10px] leading-none font-bold text-[#4e5968] hover:bg-[#eaf3ff]"
         data-project-status-tab
         data-status="<%= tabColumn.value %>"
         data-attr="{'aria-pressed': $activeProjectStatus === '<%= tabColumn.value %>' ? 'true' : 'false'}"
@@ -19,7 +19,7 @@
         <span
           class="<%= tabColumn.icon %> h-3.5 w-3.5 shrink-0"
           aria-hidden="true"></span>
-        <span class="flex min-w-0 max-w-full items-center gap-0.5">
+        <span class="flex max-w-full min-w-0 items-center gap-0.5">
           <span class="truncate"><%= tabColumn.label %></span>
           <span
             class="shrink-0 text-[10px]"
@@ -107,7 +107,7 @@
             <% for (let projectIndex = 0; projectIndex < columnProjects.length; projectIndex += 1) { %>
             <% const project = columnProjects[projectIndex] %>
             <article
-              class="min-w-0 max-w-full cursor-pointer overflow-hidden rounded-lg bg-white p-3.5 shadow-[0_10px_28px_rgba(25,31,40,0.08),0_0_0_1px_rgba(227,231,237,0.78)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(25,31,40,0.11),0_0_0_1px_rgba(49,130,246,0.18)]"
+              class="max-w-full min-w-0 cursor-pointer overflow-hidden rounded-lg bg-white p-3.5 shadow-[0_10px_28px_rgba(25,31,40,0.08),0_0_0_1px_rgba(227,231,237,0.78)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(25,31,40,0.11),0_0_0_1px_rgba(49,130,246,0.18)]"
               data-project-card
               data-project-id="<%= project.id %>"
               data-status="<%= project.status %>"

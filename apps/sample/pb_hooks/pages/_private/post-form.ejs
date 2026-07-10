@@ -43,7 +43,7 @@
       maxlength="200"
       value="<%= safeValues.title || '' %>"
       required
-      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white" />
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 transition outline-none focus:border-stone-500 focus:bg-white" />
   </label>
 
   <label class="block">
@@ -53,7 +53,7 @@
       name="slug"
       value="<%= safeValues.slug || '' %>"
       placeholder="welcome-post"
-      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white" />
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 transition outline-none focus:border-stone-500 focus:bg-white" />
   </label>
 
   <label class="block">
@@ -64,7 +64,7 @@
       value="<%= safeValues.authorName || '' %>"
       placeholder="Admin"
       required
-      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white" />
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 transition outline-none focus:border-stone-500 focus:bg-white" />
   </label>
 
   <label class="block">
@@ -73,7 +73,7 @@
       name="content"
       rows="<%= safeTextareaRows %>"
       required
-      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white">
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 transition outline-none focus:border-stone-500 focus:bg-white">
 <%= safeValues.content || '' %></textarea>
   </label>
 
@@ -81,7 +81,7 @@
     Status
     <select
       name="status"
-      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-500 focus:bg-white">
+      class="mt-2 block w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 transition outline-none focus:border-stone-500 focus:bg-white">
       <% if (currentStatus === 'published') { %>
       <option
         value="published"

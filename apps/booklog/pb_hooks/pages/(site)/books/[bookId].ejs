@@ -235,7 +235,7 @@
   <div class="space-y-3">
     <a
       href="<%= bookBackHref %>"
-      class="bg-white/78 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0">
+      class="inline-flex items-center gap-2 rounded-full border-none bg-white/78 px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] ring-0 outline-none">
       <span
         class="i-lucide-arrow-left h-4 w-4"
         aria-hidden="true"></span>
@@ -256,7 +256,7 @@
     <form
       method="post"
       action="/xapi/books/remove-from-shelf"
-      class="absolute right-5 top-5 z-10 m-0"
+      class="absolute top-5 right-5 z-10 m-0"
       onsubmit="return window.confirm('이 책을 내 도서함에서 제거할까요? 감상평과 저장한 문구도 함께 정리됩니다.')">
       <input
         type="hidden"
@@ -264,7 +264,7 @@
         value="<%= bookId %>" />
       <button
         type="submit"
-        class="inline-flex items-center rounded-full border-none bg-[#efe2d2] px-3.5 py-2 text-[12px] font-medium text-[#8e5521] shadow-[0_10px_22px_rgba(132,90,47,0.10)] outline-none ring-0 transition hover:bg-[#ead9c4]">
+        class="inline-flex items-center rounded-full border-none bg-[#efe2d2] px-3.5 py-2 text-[12px] font-medium text-[#8e5521] shadow-[0_10px_22px_rgba(132,90,47,0.10)] ring-0 transition outline-none hover:bg-[#ead9c4]">
         도서함에서 제거
       </button>
     </form>
@@ -279,17 +279,17 @@
             class="h-full w-full object-cover" />
           <% } else { %>
           <div class="absolute inset-0 box-border px-4 py-5 text-white">
-            <div class="absolute left-1/2 top-[34%] w-[78%] -translate-x-1/2 -translate-y-1/2 text-center">
-              <h3 class="m-0 break-keep text-lg font-semibold leading-6 tracking-[-0.03em]"><%= title %></h3>
+            <div class="absolute top-[34%] left-1/2 w-[78%] -translate-x-1/2 -translate-y-1/2 text-center">
+              <h3 class="m-0 text-lg leading-6 font-semibold tracking-[-0.03em] break-keep"><%= title %></h3>
             </div>
-            <p class="leading-4.5 text-white/78 absolute bottom-5 left-4 right-4 m-0 break-keep text-right text-[12px]"><%= author || '저자 정보 없음' %></p>
+            <p class="absolute right-4 bottom-5 left-4 m-0 text-right text-[12px] leading-4.5 break-keep text-white/78"><%= author || '저자 정보 없음' %></p>
           </div>
           <% } %>
         </div>
         <% if (bookFileUrl) { %>
         <a
           href="/books/<%= bookId %>/read"
-          class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border-none bg-stone-900 px-4 py-3 text-sm font-medium text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700 md:w-auto md:min-w-[10.5rem] md:self-start">
+          class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border-none bg-stone-900 px-4 py-3 text-sm font-medium text-white no-underline shadow-[0_10px_22px_rgba(24,19,16,0.12)] ring-0 transition outline-none hover:bg-stone-700 md:w-auto md:min-w-[10.5rem] md:self-start">
           <span
             class="i-lucide-book-open h-4 w-4"
             aria-hidden="true"></span>
@@ -300,24 +300,24 @@
 
       <div class="min-w-0 flex-1 space-y-4">
         <div>
-          <h2 class="text-2xl font-semibold leading-tight tracking-[-0.03em] text-stone-950 sm:text-3xl lg:pr-40"><%= title %></h2>
+          <h2 class="text-2xl leading-tight font-semibold tracking-[-0.03em] text-stone-950 sm:text-3xl lg:pr-40"><%= title %></h2>
         </div>
 
         <dl class="grid gap-3 text-sm text-stone-700 sm:grid-cols-2 lg:gap-4">
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
-            <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">저자</dt>
+            <dt class="text-[11px] font-semibold tracking-[0.2em] text-stone-500 uppercase">저자</dt>
             <dd class="mt-1 text-base font-medium text-stone-900"><%= author || '저자 정보 없음' %></dd>
           </div>
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
-            <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">출판 정보</dt>
+            <dt class="text-[11px] font-semibold tracking-[0.2em] text-stone-500 uppercase">출판 정보</dt>
             <dd class="mt-1 text-base font-medium text-stone-900"><%= publicationMetaText %></dd>
           </div>
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
-            <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">페이지 수</dt>
+            <dt class="text-[11px] font-semibold tracking-[0.2em] text-stone-500 uppercase">페이지 수</dt>
             <dd class="mt-1 text-base font-medium text-stone-900"><%= estimatedPageCount > 0 ? '약 ' + estimatedPageCount + 'p' : '페이지 정보 없음' %></dd>
           </div>
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
-            <dt class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">독서 기록</dt>
+            <dt class="text-[11px] font-semibold tracking-[0.2em] text-stone-500 uppercase">독서 기록</dt>
             <dd class="mt-2 flex items-center justify-between gap-3 text-stone-900">
               <div class="min-w-0 flex-1 space-y-2">
                 <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -353,7 +353,7 @@
                   aria-label="독서 시간 초기화"
                   aria-disabled="<%= readingDurationMinutes > 0 ? 'false' : 'true' %>"
                   tabindex="<%= readingDurationMinutes > 0 ? '0' : '-1' %>"
-                  class="<%= readingDurationMinutes > 0 ? 'text-[#8e5521] hover:bg-[#ead9c4]' : 'text-stone-300' %> inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold shadow-[0_8px_18px_rgba(132,90,47,0.08)] outline-none ring-0 transition disabled:cursor-not-allowed disabled:bg-stone-100 disabled:shadow-none">
+                  class="<%= readingDurationMinutes > 0 ? 'text-[#8e5521] hover:bg-[#ead9c4]' : 'text-stone-300' %> inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold shadow-[0_8px_18px_rgba(132,90,47,0.08)] ring-0 transition outline-none disabled:cursor-not-allowed disabled:bg-stone-100 disabled:shadow-none">
                   <span
                     class="i-lucide-eraser h-4 w-4"
                     aria-hidden="true"></span>
@@ -364,7 +364,7 @@
         </dl>
 
         <div class="flex flex-wrap items-center gap-2 pt-1">
-          <div class="bg-white/72 flex min-w-0 flex-1 rounded-full p-1 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.1)] sm:flex-none">
+          <div class="flex min-w-0 flex-1 rounded-full bg-white/72 p-1 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.1)] sm:flex-none">
             <form
               method="post"
               action="/xapi/books/update-status"
@@ -384,7 +384,7 @@
               <button
                 type="<%= shelfStatus === 'queued' ? 'button' : 'submit' %>"
                 aria-pressed="<%= shelfStatus === 'queued' ? 'true' : 'false' %>"
-                class="<%= shelfStatus === 'queued' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600 hover:bg-stone-100/80' %> inline-flex h-10 w-full items-center justify-center rounded-full border-none px-3 text-sm font-semibold outline-none ring-0 transition sm:w-auto sm:min-w-[5.25rem]">
+                class="<%= shelfStatus === 'queued' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600 hover:bg-stone-100/80' %> inline-flex h-10 w-full items-center justify-center rounded-full border-none px-3 text-sm font-semibold ring-0 transition outline-none sm:w-auto sm:min-w-[5.25rem]">
                 읽을 예정
               </button>
             </form>
@@ -407,7 +407,7 @@
               <button
                 type="<%= shelfStatus === 'reading' ? 'button' : 'submit' %>"
                 aria-pressed="<%= shelfStatus === 'reading' ? 'true' : 'false' %>"
-                class="<%= shelfStatus === 'reading' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600 hover:bg-stone-100/80' %> inline-flex h-10 w-full items-center justify-center rounded-full border-none px-3 text-sm font-semibold outline-none ring-0 transition sm:w-auto sm:min-w-[5.25rem]">
+                class="<%= shelfStatus === 'reading' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600 hover:bg-stone-100/80' %> inline-flex h-10 w-full items-center justify-center rounded-full border-none px-3 text-sm font-semibold ring-0 transition outline-none sm:w-auto sm:min-w-[5.25rem]">
                 읽는 중
               </button>
             </form>
@@ -430,7 +430,7 @@
               <button
                 type="<%= shelfStatus === 'finished' ? 'button' : 'submit' %>"
                 aria-pressed="<%= shelfStatus === 'finished' ? 'true' : 'false' %>"
-                class="<%= shelfStatus === 'finished' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600 hover:bg-stone-100/80' %> inline-flex h-10 w-full items-center justify-center rounded-full border-none px-3 text-sm font-semibold outline-none ring-0 transition sm:w-auto sm:min-w-[5.25rem]">
+                class="<%= shelfStatus === 'finished' ? 'bg-stone-900 text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)]' : 'bg-transparent text-stone-600 hover:bg-stone-100/80' %> inline-flex h-10 w-full items-center justify-center rounded-full border-none px-3 text-sm font-semibold ring-0 transition outline-none sm:w-auto sm:min-w-[5.25rem]">
                 완독
               </button>
             </form>
@@ -439,7 +439,7 @@
           <a
             href="<%= downloadFileUrl %>"
             aria-label="EPUB 다운로드"
-            class="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-[#dcc6ad] text-[#6b4423] no-underline shadow-[0_12px_24px_rgba(112,84,54,0.14)] outline-none ring-0 transition hover:bg-[#d2b596]">
+            class="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-[#dcc6ad] text-[#6b4423] no-underline shadow-[0_12px_24px_rgba(112,84,54,0.14)] ring-0 transition outline-none hover:bg-[#d2b596]">
             <span
               class="i-lucide-download h-5 w-5"
               aria-hidden="true"></span>
@@ -466,7 +466,7 @@
           x-show="!editing"
           class="flex items-start justify-between gap-3">
           <div class="min-w-0 flex-1">
-            <div class="flex min-w-0 flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+            <div class="flex min-w-0 flex-wrap items-center gap-2 text-[11px] font-semibold tracking-[0.18em] text-stone-500 uppercase">
               <% if (highlight.label) { %>
               <span><%= highlight.label %></span>
               <% } %>
@@ -480,7 +480,7 @@
               type="button"
               x-on:click="editing = true"
               aria-label="인상 깊은 문구 수정"
-              class="inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold text-[#8e5521] shadow-[0_6px_14px_rgba(132,90,47,0.06)] outline-none ring-0 transition hover:bg-[#ead9c4]">
+              class="inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#efe2d2] text-sm font-semibold text-[#8e5521] shadow-[0_6px_14px_rgba(132,90,47,0.06)] ring-0 transition outline-none hover:bg-[#ead9c4]">
               <span
                 class="i-lucide-pencil h-4 w-4"
                 aria-hidden="true"></span>
@@ -505,7 +505,7 @@
               <button
                 type="submit"
                 aria-label="인상 깊은 문구 삭제"
-                class="inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#f1dfd7] text-sm font-semibold text-[#9a4f3f] shadow-[0_6px_14px_rgba(128,63,48,0.06)] outline-none ring-0 transition hover:bg-[#ead2c8]">
+                class="inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#f1dfd7] text-sm font-semibold text-[#9a4f3f] shadow-[0_6px_14px_rgba(128,63,48,0.06)] ring-0 transition outline-none hover:bg-[#ead2c8]">
                 <span
                   class="i-lucide-trash-2 h-4 w-4"
                   aria-hidden="true"></span>
@@ -514,7 +514,7 @@
           </div>
         </div>
         <div x-show="!editing">
-          <p class="mt-3 text-base font-medium leading-7 text-stone-900"><%= highlight.quoteText %></p>
+          <p class="mt-3 text-base leading-7 font-medium text-stone-900"><%= highlight.quoteText %></p>
           <% if (highlight.noteText) { %>
           <p class="mt-3 text-sm leading-6 text-stone-600"><%= highlight.noteText %></p>
           <% } %>
@@ -543,7 +543,7 @@
             <textarea
               name="quoteText"
               rows="5"
-              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-white/80 px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none transition placeholder:text-[#b59f87]"
+              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-white/80 px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] transition outline-none placeholder:text-[#b59f87]"
               required>
 <%= highlight.quoteText %></textarea>
           </label>
@@ -552,19 +552,19 @@
             <textarea
               name="noteText"
               rows="3"
-              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-white/80 px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none transition placeholder:text-[#b59f87]">
+              class="box-border block w-full min-w-0 rounded-[1.25rem] border-0 bg-white/80 px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] transition outline-none placeholder:text-[#b59f87]">
 <%= highlight.noteText %></textarea>
           </label>
           <div class="flex flex-wrap gap-2">
             <button
               type="submit"
-              class="inline-flex items-center justify-center rounded-full border-none bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white outline-none ring-0 transition hover:bg-stone-700">
+              class="inline-flex items-center justify-center rounded-full border-none bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white ring-0 transition outline-none hover:bg-stone-700">
               저장
             </button>
             <button
               type="button"
               x-on:click="$refs.editForm.reset(); editing = false"
-              class="inline-flex items-center justify-center rounded-full border-none bg-white/80 px-4 py-2.5 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+              class="inline-flex items-center justify-center rounded-full border-none bg-white/80 px-4 py-2.5 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
               취소
             </button>
           </div>
@@ -589,7 +589,7 @@
     <form
       method="post"
       action="/xapi/books/delete-review"
-      class="absolute right-5 top-5 m-0"
+      class="absolute top-5 right-5 m-0"
       onsubmit="return window.confirm('감상평을 삭제할까요?')">
       <input
         type="hidden"
@@ -602,7 +602,7 @@
       <button
         type="submit"
         aria-label="감상평 삭제"
-        class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f1dfd7] text-sm font-semibold text-[#9a4f3f] shadow-[0_8px_18px_rgba(128,63,48,0.08)] outline-none ring-0 transition hover:bg-[#ead2c8]">
+        class="inline-flex h-9 w-9 items-center justify-center rounded-full border-none bg-[#f1dfd7] text-sm font-semibold text-[#9a4f3f] shadow-[0_8px_18px_rgba(128,63,48,0.08)] ring-0 transition outline-none hover:bg-[#ead2c8]">
         <span
           class="i-lucide-trash-2 h-4 w-4"
           aria-hidden="true"></span>
@@ -628,13 +628,13 @@
           <textarea
             name="reviewText"
             rows="8"
-            class="booklog-review-textarea box-border block w-full min-w-0 resize-none rounded-[1.4rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] outline-none transition placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.42),0_14px_28px_rgba(157,121,72,0.12)]"
+            class="booklog-review-textarea box-border block w-full min-w-0 resize-none rounded-[1.4rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] transition outline-none placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.42),0_14px_28px_rgba(157,121,72,0.12)]"
             placeholder="읽으며 들었던 생각을 적어보세요.">
 <%= reviewText %></textarea>
         </label>
         <button
           type="submit"
-          class="inline-flex items-center justify-center rounded-full border-none bg-stone-900 px-5 py-3 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] outline-none ring-0 transition hover:bg-stone-700">
+          class="inline-flex items-center justify-center rounded-full border-none bg-stone-900 px-5 py-3 text-sm font-medium text-white shadow-[0_10px_22px_rgba(24,19,16,0.12)] ring-0 transition outline-none hover:bg-stone-700">
           감상평 저장
         </button>
       </form>

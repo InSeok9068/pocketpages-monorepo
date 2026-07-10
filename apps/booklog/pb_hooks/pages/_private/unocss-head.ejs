@@ -8,14 +8,19 @@
     display: none !important;
   }
 </style>
-<script src="<%= asset('/assets/vendor/preset-wind3-66.7.5.global.js') %>"></script>
+<script src="<%= asset('/assets/vendor/preset-wind4-66.7.5.global.js') %>"></script>
 <script src="<%= asset('/assets/vendor/preset-icons-66.7.5.global.js') %>"></script>
 <script>
   let lucideIcons
 
   window.__unocss = {
     presets: [
-      () => window.__unocss_runtime.presets.presetWind3(),
+      () =>
+        window.__unocss_runtime.presets.presetWind4({
+          preflights: {
+            reset: false,
+          },
+        }),
       () =>
         window.__unocss_runtime.presets.presetIcons({
           collections: {

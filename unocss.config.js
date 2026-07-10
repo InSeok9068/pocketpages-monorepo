@@ -1,6 +1,13 @@
 const { presetIcons } = require('@unocss/preset-icons')
-const { presetWind3 } = require('@unocss/preset-wind3')
+const { presetWind4 } = require('@unocss/preset-wind4')
 
 module.exports = {
-  presets: [presetWind3(), presetIcons()],
+  presets: [
+    presetWind4({
+      preflights: {
+        reset: false,
+      },
+    }),
+    presetIcons(),
+  ],
 }

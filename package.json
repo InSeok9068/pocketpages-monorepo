@@ -16,7 +16,7 @@
     "@types/node": "^24.13.2",
     "@unocss/cli": "66.7.5",
     "@unocss/preset-icons": "66.7.5",
-    "@unocss/preset-wind3": "66.7.5",
+    "@unocss/preset-wind4": "66.7.5",
     "cheerio": "^1.2.0",
     "esbuild": "^0.28.0",
     "eslint": "^10.2.0",
@@ -25,7 +25,7 @@
     "knip": "^6.23.0",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "0.7.2",
-    "tailwindcss": "^3.4.19",
+    "tailwindcss": "^4.3.2",
     "typescript": "^7.0.2"
   }
 }

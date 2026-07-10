@@ -215,7 +215,6 @@ module.exports = [
       'tools/**',
       'eslint.config.js',
       'unocss.config.js',
-      'tailwind.config.js',
     ],
   },
   js.configs.recommended,

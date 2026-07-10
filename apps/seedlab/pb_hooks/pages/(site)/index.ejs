@@ -285,7 +285,7 @@
 </script>
 
 <% if (!isSignedIn) { %>
-<section class="flex min-h-[calc(100vh-2rem)] flex-col justify-between gap-8 pb-4 pt-5">
+<section class="flex min-h-[calc(100vh-2rem)] flex-col justify-between gap-8 pt-5 pb-4">
   <div>
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-2">
@@ -307,7 +307,7 @@
 
     <div class="mt-10">
       <p class="text-sm font-bold text-[#3182f6]">모의 투자와 실계좌 점검</p>
-      <h1 class="tracking-0 mt-3 text-[34px] font-bold leading-[1.14] text-[#191f28]">
+      <h1 class="tracking-0 mt-3 text-[34px] leading-[1.14] font-bold text-[#191f28]">
         투자 판단을<br />
         실험해보세요
       </h1>
@@ -379,11 +379,11 @@
   </div>
 </section>
 <% } else { %>
-<div class="space-y-4 pb-24 pt-1">
+<div class="space-y-4 pt-1 pb-24">
   <header class="flex items-center justify-between">
     <div>
       <p class="text-xs font-bold text-[#8b95a1]"><%= displayName %></p>
-      <h1 class="mt-1 text-[24px] font-bold leading-tight text-[#191f28]">투자 상태</h1>
+      <h1 class="mt-1 text-[24px] leading-tight font-bold text-[#191f28]">투자 상태</h1>
     </div>
 
     <form
@@ -406,7 +406,7 @@
     <div class="flex items-center justify-between gap-3">
       <div class="min-w-0">
         <p class="text-[11px] font-bold text-[#8b95a1]">총 평가금</p>
-        <p class="mt-0.5 truncate text-[28px] font-bold leading-none text-[#191f28]"><%= totalValueText %>원</p>
+        <p class="mt-0.5 truncate text-[28px] leading-none font-bold text-[#191f28]"><%= totalValueText %>원</p>
       </div>
       <div class="shrink-0 text-right">
         <span class="<%= readinessText === '점검 완료' ? 'bg-[#ecfdf3] text-[#008a45]' : 'bg-[#e8f3ff] text-[#1b64da]' %> inline-flex rounded-md px-2 py-1 text-xs font-bold"

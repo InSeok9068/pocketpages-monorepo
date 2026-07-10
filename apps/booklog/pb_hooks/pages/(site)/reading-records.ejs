@@ -228,7 +228,7 @@
   <div class="space-y-3">
     <a
       href="/"
-      class="bg-white/78 inline-flex items-center gap-2 rounded-full border-none px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] outline-none ring-0">
+      class="inline-flex items-center gap-2 rounded-full border-none bg-white/78 px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] ring-0 outline-none">
       <span
         class="i-lucide-arrow-left h-4 w-4"
         aria-hidden="true"></span>
@@ -239,18 +239,18 @@
     </div>
   </div>
 
-  <section class="bg-white/82 grid grid-cols-3 overflow-hidden rounded-[1.35rem] shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)] sm:gap-3 sm:overflow-visible sm:bg-transparent sm:shadow-none">
+  <section class="grid grid-cols-3 overflow-hidden rounded-[1.35rem] bg-white/82 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)] sm:gap-3 sm:overflow-visible sm:bg-transparent sm:shadow-none">
     <div class="min-w-0 px-3 py-3 sm:rounded-[1.5rem] sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
-      <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500 sm:text-[11px] sm:tracking-[0.2em]">이번 주</p>
-      <p class="mt-1 break-keep text-lg font-semibold tracking-tight text-stone-950 sm:mt-2 sm:text-2xl"><%= formatMinutesLabel(currentWeekMinutes) %></p>
+      <p class="text-[10px] font-semibold tracking-[0.16em] text-stone-500 uppercase sm:text-[11px] sm:tracking-[0.2em]">이번 주</p>
+      <p class="mt-1 text-lg font-semibold tracking-tight break-keep text-stone-950 sm:mt-2 sm:text-2xl"><%= formatMinutesLabel(currentWeekMinutes) %></p>
     </div>
     <div class="min-w-0 border-x border-stone-200/70 px-3 py-3 sm:rounded-[1.5rem] sm:border-x-0 sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
-      <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500 sm:text-[11px] sm:tracking-[0.2em]">누적</p>
-      <p class="mt-1 break-keep text-lg font-semibold tracking-tight text-stone-950 sm:mt-2 sm:text-2xl"><%= totalMinutesLabel %></p>
+      <p class="text-[10px] font-semibold tracking-[0.16em] text-stone-500 uppercase sm:text-[11px] sm:tracking-[0.2em]">누적</p>
+      <p class="mt-1 text-lg font-semibold tracking-tight break-keep text-stone-950 sm:mt-2 sm:text-2xl"><%= totalMinutesLabel %></p>
     </div>
     <div class="min-w-0 px-3 py-3 sm:rounded-[1.5rem] sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
-      <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500 sm:text-[11px] sm:tracking-[0.2em]">완독</p>
-      <p class="mt-1 break-keep text-lg font-semibold tracking-tight text-stone-950 sm:mt-2 sm:text-2xl"><%= finishedBookCount %>권</p>
+      <p class="text-[10px] font-semibold tracking-[0.16em] text-stone-500 uppercase sm:text-[11px] sm:tracking-[0.2em]">완독</p>
+      <p class="mt-1 text-lg font-semibold tracking-tight break-keep text-stone-950 sm:mt-2 sm:text-2xl"><%= finishedBookCount %>권</p>
     </div>
   </section>
 
@@ -264,7 +264,7 @@
           <a
             href="<%= previousWeekHref %>"
             aria-label="이전 4주"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f5efe4] text-stone-700 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f5efe4] text-stone-700 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
             <span
               class="i-lucide-chevron-left h-4 w-4"
               aria-hidden="true"></span>
@@ -285,7 +285,7 @@
           <a
             href="<%= nextWeekHref %>"
             aria-label="다음 4주"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f5efe4] text-stone-700 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none ring-0">
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f5efe4] text-stone-700 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] ring-0 outline-none">
             <span
               class="i-lucide-chevron-right h-4 w-4"
               aria-hidden="true"></span>
