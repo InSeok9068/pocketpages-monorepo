@@ -198,6 +198,7 @@ const ejsProcessor = {
 module.exports = [
   {
     ignores: [
+      '**/.cache/**',
       '**/.download/**',
       '**/.git/**',
       '**/.history/**',
