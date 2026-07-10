@@ -120,6 +120,8 @@
 - `apps/<service>/pb_schema.json` = schema truth
 - `apps/<service>/types.d.ts` = shared JSDoc shapes
 - use `record.get('field')`, not `record.field`
+- MUST: When multiple DB writes form one atomic business operation, wrap them in `$app.runInTransaction(function (txApp) { ... })`
+- MUST: Inside a transaction, use `txApp` for all DB reads/writes and keep external I/O or long-running work outside
 - when wiring schema relations, resolve the target collection and use its actual `collection.id`; never hardcode relation IDs
 - self relation = post-create update
 

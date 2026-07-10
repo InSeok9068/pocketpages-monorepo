@@ -120,6 +120,8 @@
 - `apps/<service>/pb_schema.json` = schema 기준
 - `apps/<service>/types.d.ts` = shared JSDoc shape 기준
 - `record.field` 대신 `record.get('field')`를 사용한다
+- MUST: 여러 DB write가 하나의 business operation으로 함께 성공하거나 rollback되어야 하면 `$app.runInTransaction(function (txApp) { ... })`로 묶는다
+- MUST: transaction 안의 모든 DB read/write는 `$app`이 아니라 `txApp`을 사용하고, external I/O나 오래 걸리는 작업은 밖에서 수행한다
 - schema relation 연결 시 target collection을 resolve하여 실제 `collection.id`를 사용하고 relation ID를 하드코딩하지 않는다
 - self relation은 생성 후 업데이트로 처리한다
 
