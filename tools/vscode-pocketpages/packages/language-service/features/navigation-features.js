@@ -459,7 +459,10 @@ function createNavigationFeatureHandlers(deps) {
         return service.collectPathReferenceLocations(
           pathReferenceContext.kind,
           pathReferenceContext.targetFilePath,
-          service.getPagesCodeOverrides({ [normalizePath(filePath)]: documentText }),
+          service.getPagesCodeOverrides({
+            ...(options.documentOverrides || {}),
+            [normalizePath(filePath)]: documentText,
+          }),
           options
         );
       }

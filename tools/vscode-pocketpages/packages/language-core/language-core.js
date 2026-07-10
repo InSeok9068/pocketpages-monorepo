@@ -838,7 +838,7 @@ class PocketPagesLanguageCore {
     };
   }
 
-  getFileReferenceResult(filePath) {
+  getFileReferenceResult(filePath, documentOverrides = {}) {
     const context = this.getDocumentContextByFilePath(filePath);
     if (!context) {
       return null;
@@ -852,6 +852,7 @@ class PocketPagesLanguageCore {
     const references =
       context.service.getFileReferenceTargets(filePath, context.documentText, {
         includeDeclaration: false,
+        documentOverrides,
       }) || [];
 
     return {
@@ -869,13 +870,13 @@ class PocketPagesLanguageCore {
     return context.service.getCurrentRouteExplanation(filePath, context.documentText);
   }
 
-  getFileRenameEdits(oldFilePath, newFilePath) {
+  getFileRenameEdits(oldFilePath, newFilePath, documentOverrides = {}) {
     const service = this.manager.getServiceForFile(oldFilePath) || this.manager.getServiceForFile(newFilePath);
     if (!service) {
       return [];
     }
 
-    return service.getFileRenameEdits(oldFilePath, newFilePath) || [];
+    return service.getFileRenameEdits(oldFilePath, newFilePath, documentOverrides) || [];
   }
 }
 

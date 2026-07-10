@@ -7690,8 +7690,11 @@ class ProjectLanguageService {
   collectPathReferenceLocations(pathKind, targetFilePath, overrides = {}, options = {}) {
     const normalizedTargetFilePath = normalizePath(targetFilePath);
     const uniqueLocations = new Map();
+    const callerFiles = pathKind === "route-path"
+      ? this.projectIndex.getRoutePathCallerFiles()
+      : this.projectIndex.getPagesCodeFiles();
 
-    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+    for (const entry of callerFiles) {
       if (this.shouldCancelOperation(options)) {
         return [];
       }
@@ -7706,6 +7709,14 @@ class ProjectLanguageService {
         }
 
         if (pathContext.kind !== pathKind) {
+          continue;
+        }
+
+        if (
+          pathKind === "route-path" &&
+          this.projectIndex.isRoutePathAssetScriptFile(codeFilePath) &&
+          !String(pathContext.routeSource || "").startsWith("fetch-")
+        ) {
           continue;
         }
 
@@ -7791,6 +7802,7 @@ class ProjectLanguageService {
     }
 
     const overrides = this.getPagesCodeOverrides({
+      ...(options.documentOverrides || {}),
       [normalizePath(filePath)]: documentText,
     });
 
@@ -7823,10 +7835,10 @@ class ProjectLanguageService {
     return null;
   }
 
-  getFileRenameEdits(oldFilePath, newFilePath) {
+  getFileRenameEdits(oldFilePath, newFilePath, documentOverrides = {}) {
     const normalizedOldFilePath = normalizePath(oldFilePath);
     const normalizedNewFilePath = normalizePath(newFilePath);
-    const overrides = this.getPagesCodeOverrides();
+    const overrides = this.getPagesCodeOverrides(documentOverrides);
     const uniqueEdits = new Map();
 
     for (const edit of this.getRouteParamFileRenameEdits(normalizedOldFilePath, normalizedNewFilePath, overrides)) {
@@ -8703,12 +8715,19 @@ class ProjectLanguageService {
 
   getRouteFileRenameEdits(routeRenameContext, overrides = {}) {
     const edits = [];
-    for (const entry of this.projectIndex.getPagesCodeFiles()) {
+    for (const entry of this.projectIndex.getRoutePathCallerFiles()) {
       const filePath = normalizePath(entry.filePath);
       const documentText = this.getCallerDocumentText(filePath, overrides);
       const pathContexts = collectPathContexts(documentText, { filePath });
 
       for (const pathContext of pathContexts) {
+        if (
+          this.projectIndex.isRoutePathAssetScriptFile(filePath) &&
+          !String(pathContext.routeSource || "").startsWith("fetch-")
+        ) {
+          continue;
+        }
+
         if (!this.shouldRenameRoutePathContext(pathContext, routeRenameContext)) {
           continue;
         }

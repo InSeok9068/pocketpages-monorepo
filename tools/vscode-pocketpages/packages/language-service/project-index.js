@@ -2818,6 +2818,21 @@ class PocketPagesProjectIndex {
     return isAssetCandidateFile(this.pagesRoot, normalizePath(filePath))
   }
 
+  isRoutePathAssetScriptFile(filePath) {
+    const normalizedFilePath = normalizePath(filePath)
+    if (!isAssetCandidateFile(this.pagesRoot, normalizedFilePath)) {
+      return false
+    }
+
+    const extension = path.extname(normalizedFilePath).toLowerCase()
+    const relativePath = toRelativePath(path.relative(this.pagesRoot, normalizedFilePath))
+    const relativeSegments = relativePath.split('/').filter(Boolean)
+    return (
+      ASSET_SCRIPT_EXTENSIONS.includes(extension) &&
+      !isExcludedRouteExposedPagesScript(relativeSegments, normalizedFilePath)
+    )
+  }
+
   getSchemaState() {
     const schemaPath = normalizePath(path.join(this.appRoot, 'pb_schema.json'))
     const identity = readSmallFileIdentity(schemaPath)
@@ -3092,6 +3107,10 @@ class PocketPagesProjectIndex {
     return this.getPagesGraphState().assetFiles
   }
 
+  getRoutePathAssetScriptFiles() {
+    return this.getAssetEntries().filter((entry) => this.isRoutePathAssetScriptFile(entry.filePath))
+  }
+
   getAssetDescriptorByFilePath(filePath) {
     const normalizedFilePath = normalizePath(filePath)
     const existingEntry = this.getPagesGraphState().assetFiles.find((entry) => entry.filePath === normalizedFilePath)
@@ -3317,6 +3336,16 @@ class PocketPagesProjectIndex {
 
   getPagesCodeFiles() {
     return this.getPagesGraphState().pagesCodeFiles
+  }
+
+  getRoutePathCallerFiles() {
+    const filesByPath = new Map()
+    for (const entry of this.getPagesCodeFiles().concat(this.getRoutePathAssetScriptFiles())) {
+      const filePath = normalizePath(entry.filePath)
+      filesByPath.set(filePath, entry)
+    }
+
+    return [...filesByPath.values()].sort((left, right) => left.filePath.localeCompare(right.filePath))
   }
 
   getModuleExportedMembers(moduleFilePath, sourceText = null) {

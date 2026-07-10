@@ -1313,6 +1313,16 @@ function assertLspRuntimeContracts(repoRoot) {
     'Expected references to skip TypeScript/file-reference fallback for excluded and schema-only documents.'
   )
   assertMatches(
+    serverSource,
+    /function getOpenRoutePathAssetDocumentOverrides\(\)[\s\S]*documents\.all\(\)[\s\S]*isRoutePathAssetScriptPath\(filePath\)[\s\S]*document\.getText\(\)/,
+    'Expected references and rename requests to read open public asset script contents.'
+  )
+  assertMatches(
+    serverSource,
+    /connection\.onReferences\([\s\S]*isExcludedPocketPagesScriptPath\(context\.filePath\) && !routePathAssetScript[\s\S]*documentOverrides:\s*getOpenRoutePathAssetDocumentOverrides\(\)/,
+    'Expected references to allow safe public asset scripts and forward open document overrides.'
+  )
+  assertMatches(
     diagnosticsFeatureSource,
     /context\.core\.hasFeatureCoverageForRange\(\s*uri,\s*start,\s*end,\s*"diagnostics"/,
     'Expected diagnostics feature service to selectively publish only diagnostics-covered mapped regions.'
@@ -2010,9 +2020,23 @@ export = pocketpagesUtils
   )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'booklog-reader.js'), `console.log('reader')\n`)
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'snippet.ejs'), `<script server>\nconst ignored = true\n</script>\n`)
-  writeFile(path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'vendor', 'jszip-3.10.1.min.js'), `window.JSZip = {}\n`)
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', 'assets', 'vendor', 'jszip-3.10.1.min.js'),
+    `window.JSZip = {}\nfetch('/sign-in')\n`
+  )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'card.css'), `.board-card { color: #222; }\n`)
-  writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'assets', 'board-widget.js'), `console.log('board widget')\n`)
+  writeFile(
+    path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'assets', 'board-widget.js'),
+    `fetch('/feedback', { method: 'POST' })
+window.fetch('/feedback?source=widget', { method: 'POST' })
+fetch('/sign-in')
+fetch('/boards')
+const dynamicRoute = '/feedback'
+fetch(dynamicRoute, { method: 'POST' })
+redirect('/sign-in')
+resolve('board-service')
+`
+  )
   writeFile(path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'assets', 'widget.ejs'), `<script server>\nconst ignoredWidget = true\n</script>\n`)
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'index.ejs'),
@@ -3149,6 +3173,26 @@ window.fetch('/feedback')
     )
     if (clientScriptResolveRouteLink) {
       throw new Error(`Expected project index routeLinks to ignore EJS client <script> resolve(). Got: ${JSON.stringify(clientScriptResolveRouteLink)}`)
+    }
+    const nestedAssetRouteLinks = indexReport.routeLinks.filter((entry) =>
+      entry.sourceRelativePath === '(site)/boards/assets/board-widget.js'
+    )
+    const nestedAssetFeedbackLinks = nestedAssetRouteLinks.filter((entry) =>
+      entry.requestPath.startsWith('/feedback') &&
+      entry.sourceKind === 'fetch-post' &&
+      entry.targetRelativePath === '(site)/feedback/+post.js'
+    )
+    if (
+      nestedAssetRouteLinks.length !== 4 ||
+      nestedAssetFeedbackLinks.length !== 2 ||
+      !nestedAssetRouteLinks.some((entry) => entry.requestPath === '/sign-in' && entry.sourceKind === 'fetch-get') ||
+      !nestedAssetRouteLinks.some((entry) => entry.requestPath === '/boards' && entry.sourceKind === 'fetch-get') ||
+      nestedAssetRouteLinks.some((entry) => entry.sourceKind === 'redirect')
+    ) {
+      throw new Error(`Expected project index routeLinks to include only static fetch() callers from nested public asset scripts. Got: ${JSON.stringify(nestedAssetRouteLinks)}`)
+    }
+    if (indexReport.routeLinks.some((entry) => entry.sourceRelativePath === 'assets/vendor/jszip-3.10.1.min.js')) {
+      throw new Error('Expected project index routeLinks to exclude vendor/minified asset scripts.')
     }
 
     const graphRaceDirPath = path.join(fixture.appRoot, 'pb_hooks', 'pages', 'vanishing-race')
@@ -4663,6 +4707,36 @@ const service = resolve('board-service')
     ) {
       throw new Error(`Expected asset document links to include only fetch() route targets. Got: ${JSON.stringify(lspAssetDocumentLinks)}`)
     }
+    const openNestedAssetText = `fetch('/feedback', { method: 'POST' })
+fetch('/sign-in')
+`
+    const assetFetchReferences = customFeatureService.provideReferences(
+      {
+        textDocument: { uri: lspAssetSmokeUri },
+        position: lspAssetSmokeDocument.positionAt(lspAssetFetchOffset),
+        context: { includeDeclaration: false },
+      },
+      {
+        documentOverrides: {
+          [fixture.nestedAssetScriptFilePath]: openNestedAssetText,
+        },
+      }
+    )
+    const globalAssetFetchReferences = (assetFetchReferences || []).filter((entry) =>
+      normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.globalAssetFilePath)
+    )
+    const nestedAssetFetchReferences = (assetFetchReferences || []).filter((entry) =>
+      normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.nestedAssetScriptFilePath)
+    )
+    if (
+      globalAssetFetchReferences.length !== 1 ||
+      nestedAssetFetchReferences.length !== 1 ||
+      (assetFetchReferences || []).some((entry) =>
+        normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.vendorAssetFilePath)
+      )
+    ) {
+      throw new Error(`Expected asset fetch() references to use current open root/nested documents and exclude vendor assets. Got: ${JSON.stringify(assetFetchReferences)}`)
+    }
     const assetResolveCompletion = customFeatureService.provideCompletionItems({
       textDocument: { uri: lspAssetSmokeUri },
       position: lspAssetSmokeDocument.positionAt(lspAssetResolveOffset),
@@ -4676,6 +4750,14 @@ const service = resolve('board-service')
     })
     if (assetResolveDefinition !== null) {
       throw new Error(`Expected asset resolve() definition to stay blocked. Got: ${JSON.stringify(assetResolveDefinition)}`)
+    }
+    const assetResolveReferences = customFeatureService.provideReferences({
+      textDocument: { uri: lspAssetSmokeUri },
+      position: lspAssetSmokeDocument.positionAt(lspAssetResolveOffset),
+      context: { includeDeclaration: false },
+    })
+    if (assetResolveReferences !== null) {
+      throw new Error(`Expected asset resolve() references to stay blocked. Got: ${JSON.stringify(assetResolveReferences)}`)
     }
     const lspClientScriptFetchOffset = lspClientScriptText.indexOf("'/feedback'") + 2
     const lspClientScriptResolveOffset = lspClientScriptText.indexOf("'board-service'") + 2
@@ -9608,6 +9690,9 @@ watchedSchemaSortOrder
     const maintenanceRefreshReasons = []
     const maintenanceReferenceCalls = []
     const maintenanceRenameCalls = []
+    const maintenanceOpenAssetOverrides = {
+      [fixture.nestedAssetScriptFilePath]: `fetch('/feedback', { method: 'POST' })\n`,
+    }
     const maintenanceFeatureServiceFull = createMaintenanceFeatureService({
       core: {
         probeFile(filePath) {
@@ -9622,12 +9707,12 @@ watchedSchemaSortOrder
             message: 'PocketPages caches reloaded for the current app.',
           }
         },
-        getFileReferenceResult(filePath) {
-          maintenanceReferenceCalls.push(filePath)
+        getFileReferenceResult(filePath, documentOverrides) {
+          maintenanceReferenceCalls.push({ filePath, documentOverrides })
           return { referenceQuery: { kind: 'route-file', routePath: '/boards' }, references: [{ filePath }] }
         },
-        getFileRenameEdits(oldFilePath, newFilePath) {
-          maintenanceRenameCalls.push([oldFilePath, newFilePath])
+        getFileRenameEdits(oldFilePath, newFilePath, documentOverrides) {
+          maintenanceRenameCalls.push([oldFilePath, newFilePath, documentOverrides])
           return [{ filePath: oldFilePath, textChanges: [{ start: 0, end: 1, newText: newFilePath }] }]
         },
         getDocumentContextByFilePath(filePath) {
@@ -9643,6 +9728,9 @@ watchedSchemaSortOrder
         },
         getRelativePathLabel(filePath) {
           return normalizeFilePath(filePath)
+        },
+        getOpenRoutePathAssetDocumentOverrides() {
+          return maintenanceOpenAssetOverrides
         },
         isExcludedPocketPagesScriptPath(filePath) {
           return normalizeFilePath(filePath) === normalizeFilePath(fixture.vendorAssetFilePath)
@@ -9681,7 +9769,8 @@ watchedSchemaSortOrder
     }
     const maintenanceReferencesResult = maintenanceFeatureServiceFull.provideAllFileReferences({ uri: lifecycleBoardsUri })
     if (
-      normalizeFilePath(maintenanceReferenceCalls[0]) !== normalizeFilePath(fixture.boardsFilePath) ||
+      normalizeFilePath(maintenanceReferenceCalls[0].filePath) !== normalizeFilePath(fixture.boardsFilePath) ||
+      maintenanceReferenceCalls[0].documentOverrides !== maintenanceOpenAssetOverrides ||
       !maintenanceReferencesResult ||
       !Array.isArray(maintenanceReferencesResult.references) ||
       maintenanceReferencesResult.references.length !== 1
@@ -9695,6 +9784,7 @@ watchedSchemaSortOrder
     if (
       maintenanceRenameCalls.length !== 1 ||
       normalizeFilePath(maintenanceRenameCalls[0][0]) !== normalizeFilePath(fixture.flashAlertFilePath) ||
+      maintenanceRenameCalls[0][2] !== maintenanceOpenAssetOverrides ||
       !Array.isArray(maintenanceRenameResult) ||
       maintenanceRenameResult.length !== 1
     ) {
@@ -9992,6 +10082,28 @@ watchedSchemaSortOrder
     }
     if (!indexedCodeFilePaths.includes(normalizeFilePath(fixture.htmlToTextBundleFilePath))) {
       throw new Error(`Expected pages code index to keep _private vendor modules. Got: ${indexedCodeFilePaths.join(', ')}`)
+    }
+    const routePathAssetScriptFilePaths = service.projectIndex
+      .getRoutePathAssetScriptFiles()
+      .map((entry) => normalizeFilePath(entry.filePath))
+    if (
+      !routePathAssetScriptFilePaths.includes(normalizeFilePath(fixture.globalAssetFilePath)) ||
+      !routePathAssetScriptFilePaths.includes(normalizeFilePath(fixture.nestedAssetScriptFilePath)) ||
+      routePathAssetScriptFilePaths.includes(normalizeFilePath(fixture.vendorAssetFilePath))
+    ) {
+      throw new Error(`Expected route-path asset script index to include safe root/nested scripts and exclude vendor/minified scripts. Got: ${routePathAssetScriptFilePaths.join(', ')}`)
+    }
+    const routePathCallerFilePaths = service.projectIndex
+      .getRoutePathCallerFiles()
+      .map((entry) => normalizeFilePath(entry.filePath))
+    if (
+      !routePathCallerFilePaths.includes(normalizeFilePath(fixture.boardsFilePath)) ||
+      !routePathCallerFilePaths.includes(normalizeFilePath(fixture.globalAssetFilePath)) ||
+      !routePathCallerFilePaths.includes(normalizeFilePath(fixture.nestedAssetScriptFilePath)) ||
+      routePathCallerFilePaths.includes(normalizeFilePath(fixture.vendorAssetFilePath)) ||
+      new Set(routePathCallerFilePaths).size !== routePathCallerFilePaths.length
+    ) {
+      throw new Error(`Expected route-path callers to merge pages code and safe asset scripts without duplicates. Got: ${routePathCallerFilePaths.join(', ')}`)
     }
 
     const diagCodeFilePaths = collectPagesCodeFiles(fixture.appRoot).map((filePath) => normalizeFilePath(filePath))
@@ -13568,11 +13680,22 @@ module.exports = {
     const signOutRouteEdits = routeFileRenameEdits.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.signOutFilePath)
     )
+    const assetRouteEdits = routeFileRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.nestedAssetScriptFilePath)
+    )
     if (routeReferenceCheckEdits.length !== 4) {
       throw new Error(`Expected four route-path edits for renamed /sign-in route callers. Got: ${JSON.stringify(routeReferenceCheckEdits)}`)
     }
     if (signOutRouteEdits.length !== 1) {
       throw new Error(`Expected one redirect edit in sign-out.ejs for renamed /sign-in route. Got: ${JSON.stringify(signOutRouteEdits)}`)
+    }
+    if (
+      assetRouteEdits.length !== 1 ||
+      routeFileRenameEdits.some((entry) =>
+        normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.vendorAssetFilePath)
+      )
+    ) {
+      throw new Error(`Expected one public asset fetch() edit and no vendor asset edits for renamed /sign-in route. Got: ${JSON.stringify(routeFileRenameEdits)}`)
     }
     const routeReferenceCheckRenamedText = applyEditsToText(
       fs.readFileSync(fixture.routeReferenceCheckFilePath, 'utf8'),
@@ -13587,6 +13710,37 @@ module.exports = {
     )
     if (!signOutRenamedText.includes("redirect('/login')")) {
       throw new Error(`Expected sign-out redirect caller to rewrite to /login. Got: ${signOutRenamedText}`)
+    }
+    const assetRouteRenamedText = applyEditsToText(
+      fs.readFileSync(fixture.nestedAssetScriptFilePath, 'utf8'),
+      assetRouteEdits
+    )
+    if (
+      !assetRouteRenamedText.includes("fetch('/login')") ||
+      !assetRouteRenamedText.includes("redirect('/sign-in')")
+    ) {
+      throw new Error(`Expected public asset route rename to update only fetch() and leave redirect() untouched. Got: ${assetRouteRenamedText}`)
+    }
+    const openAssetRenameText = `fetch('/sign-in')
+window.fetch('/sign-in?from=open')
+redirect('/sign-in')
+`
+    const openAssetRouteRenameEdits = service.getFileRenameEdits(
+      fixture.siteSignInFilePath,
+      renamedSignInRouteFilePath,
+      {
+        [fixture.nestedAssetScriptFilePath]: openAssetRenameText,
+      }
+    ).filter((entry) =>
+      normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.nestedAssetScriptFilePath)
+    )
+    const openAssetRouteRenamedText = applyEditsToText(openAssetRenameText, openAssetRouteRenameEdits)
+    if (
+      openAssetRouteRenameEdits.length !== 2 ||
+      (openAssetRouteRenamedText.match(/fetch\('\/login/g) || []).length !== 2 ||
+      !openAssetRouteRenamedText.includes("redirect('/sign-in')")
+    ) {
+      throw new Error(`Expected route rename to use the open asset override, preserve duplicates, and ignore redirect(). Got: ${JSON.stringify({ edits: openAssetRouteRenameEdits, text: openAssetRouteRenamedText })}`)
     }
 
     const apiRedirectCallerText = `<script server>\napi.redirect('/sign-in')\n</script>\n`
@@ -13727,8 +13881,14 @@ module.exports = {
     const feedbackDirectoryRouteReferenceEdits = feedbackDirectoryRenameEdits.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
     )
+    const feedbackDirectoryAssetEdits = feedbackDirectoryRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.nestedAssetScriptFilePath)
+    )
     if (feedbackDirectoryRouteReferenceEdits.length !== 7) {
       throw new Error(`Expected all method-aware feedback route callers to rewrite on folder rename. Got: ${JSON.stringify(feedbackDirectoryRenameEdits)}`)
+    }
+    if (feedbackDirectoryAssetEdits.length !== 2) {
+      throw new Error(`Expected duplicate POST fetch() callers in a public asset to rewrite on route folder rename. Got: ${JSON.stringify(feedbackDirectoryRenameEdits)}`)
     }
     const feedbackDirectoryRenamedText = applyEditsToText(
       fs.readFileSync(fixture.routeMethodReferenceCheckFilePath, 'utf8'),
@@ -13747,6 +13907,17 @@ module.exports = {
         throw new Error(`Expected feedback folder rename to rewrite ${expectedRouteCaller}. Got: ${feedbackDirectoryRenamedText}`)
       }
     }
+    const feedbackDirectoryAssetRenamedText = applyEditsToText(
+      fs.readFileSync(fixture.nestedAssetScriptFilePath, 'utf8'),
+      feedbackDirectoryAssetEdits
+    )
+    if (
+      !feedbackDirectoryAssetRenamedText.includes("fetch('/responses', { method: 'POST' })") ||
+      !feedbackDirectoryAssetRenamedText.includes("window.fetch('/responses?source=widget', { method: 'POST' })") ||
+      !feedbackDirectoryAssetRenamedText.includes("const dynamicRoute = '/feedback'")
+    ) {
+      throw new Error(`Expected asset route folder rename to preserve suffixes and leave dynamic fetch variables untouched. Got: ${feedbackDirectoryAssetRenamedText}`)
+    }
 
     const routeReferenceQuery = service.getFileReferenceQuery(fixture.boardsFilePath)
     if (!routeReferenceQuery || routeReferenceQuery.kind !== 'route-file' || routeReferenceQuery.routePath !== '/boards') {
@@ -13754,11 +13925,14 @@ module.exports = {
     }
 
     const routeFileReferences = service.getFileReferenceTargets(fixture.boardsFilePath, fs.readFileSync(fixture.boardsFilePath, 'utf8'))
-    if (!routeFileReferences || routeFileReferences.length !== 1) {
-      throw new Error(`Expected file-based route references for /boards. Got: ${JSON.stringify(routeFileReferences)}`)
+    if (!routeFileReferences || routeFileReferences.length !== 2) {
+      throw new Error(`Expected EJS and public asset file-based route references for /boards. Got: ${JSON.stringify(routeFileReferences)}`)
     }
     if (!routeFileReferences.some((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.siteIndexFilePath))) {
       throw new Error(`Expected /boards route reference to point at site index href. Got: ${JSON.stringify(routeFileReferences)}`)
+    }
+    if (!routeFileReferences.some((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.nestedAssetScriptFilePath))) {
+      throw new Error(`Expected /boards route reference to include the route-local public asset fetch(). Got: ${JSON.stringify(routeFileReferences)}`)
     }
 
     const originalGetFileReferenceTargets = service.getFileReferenceTargets.bind(service)
@@ -13877,14 +14051,24 @@ module.exports = {
       fixture.siteSignInFilePath,
       fs.readFileSync(fixture.siteSignInFilePath, 'utf8')
     )
-    if (!siteSignInFileReferences || siteSignInFileReferences.length !== 5) {
-      throw new Error(`Expected file-based route references for /sign-in across multiple source kinds. Got: ${JSON.stringify(siteSignInFileReferences)}`)
+    if (!siteSignInFileReferences || siteSignInFileReferences.length !== 6) {
+      throw new Error(`Expected file-based route references for /sign-in across EJS and public asset source kinds. Got: ${JSON.stringify(siteSignInFileReferences)}`)
     }
     const routeReferenceCheckMatches = siteSignInFileReferences.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeReferenceCheckFilePath)
     )
     if (routeReferenceCheckMatches.length !== 4) {
       throw new Error(`Expected href/action/hx/redirect route references in route-reference-check.ejs. Got: ${JSON.stringify(routeReferenceCheckMatches)}`)
+    }
+    if (
+      siteSignInFileReferences.filter((entry) =>
+        normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.nestedAssetScriptFilePath)
+      ).length !== 1 ||
+      siteSignInFileReferences.some((entry) =>
+        normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.vendorAssetFilePath)
+      )
+    ) {
+      throw new Error(`Expected /sign-in references to include one safe asset fetch() and exclude vendor asset fetch(). Got: ${JSON.stringify(siteSignInFileReferences)}`)
     }
 
     const dynamicRouteCallerText = `<a href="/boards/demo-board"></a>
@@ -14032,6 +14216,10 @@ redirect('/boards/demo-board')
       newBoardsRouteDirectoryPath,
       path.relative(oldBoardsRouteDirectoryPath, fixture.routeReferenceCheckFilePath)
     )
+    const renamedNestedAssetScriptFilePath = path.join(
+      newBoardsRouteDirectoryPath,
+      path.relative(oldBoardsRouteDirectoryPath, fixture.nestedAssetScriptFilePath)
+    )
     const routeDirectoryRenameEdits = service.getFileRenameEdits(oldBoardsRouteDirectoryPath, newBoardsRouteDirectoryPath)
     const routeDirectorySiteIndexEdits = routeDirectoryRenameEdits.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.siteIndexFilePath)
@@ -14039,11 +14227,17 @@ redirect('/boards/demo-board')
     const routeDirectoryMovedCallerEdits = routeDirectoryRenameEdits.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(renamedRouteReferenceCheckFilePath)
     )
+    const routeDirectoryMovedAssetEdits = routeDirectoryRenameEdits.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(renamedNestedAssetScriptFilePath)
+    )
     if (routeDirectorySiteIndexEdits.length !== 1) {
       throw new Error(`Expected /boards href outside the renamed folder to rewrite on route directory rename. Got: ${JSON.stringify(routeDirectoryRenameEdits)}`)
     }
     if (routeDirectoryMovedCallerEdits.length !== 4) {
       throw new Error(`Expected moved route caller edits to target the renamed folder path. Got: ${JSON.stringify(routeDirectoryRenameEdits)}`)
+    }
+    if (routeDirectoryMovedAssetEdits.length !== 1) {
+      throw new Error(`Expected a route-local public asset caller edit to follow the renamed folder path. Got: ${JSON.stringify(routeDirectoryRenameEdits)}`)
     }
     if (
       routeDirectoryRenameEdits.some(
@@ -14051,6 +14245,13 @@ redirect('/boards/demo-board')
       )
     ) {
       throw new Error(`Expected route directory rename edits to avoid stale old folder paths. Got: ${JSON.stringify(routeDirectoryRenameEdits)}`)
+    }
+    if (
+      routeDirectoryRenameEdits.some(
+        (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.nestedAssetScriptFilePath)
+      )
+    ) {
+      throw new Error(`Expected moved public asset edits to avoid stale old folder paths. Got: ${JSON.stringify(routeDirectoryRenameEdits)}`)
     }
     const routeDirectorySiteIndexRenamedText = applyEditsToText(
       fs.readFileSync(fixture.siteIndexFilePath, 'utf8'),
@@ -14068,6 +14269,16 @@ redirect('/boards/demo-board')
     }
     if (routeDirectoryMovedCallerRenamedText.includes('/boards')) {
       throw new Error(`Expected moved route callers to remove old /boards paths. Got: ${routeDirectoryMovedCallerRenamedText}`)
+    }
+    const routeDirectoryMovedAssetRenamedText = applyEditsToText(
+      fs.readFileSync(fixture.nestedAssetScriptFilePath, 'utf8'),
+      routeDirectoryMovedAssetEdits
+    )
+    if (
+      !routeDirectoryMovedAssetRenamedText.includes("fetch('/topics')") ||
+      routeDirectoryMovedAssetRenamedText.includes("fetch('/boards')")
+    ) {
+      throw new Error(`Expected moved public asset fetch() callers to rewrite to /topics. Got: ${routeDirectoryMovedAssetRenamedText}`)
     }
     service.clearDocumentOverride(fixture.routeReferenceCheckFilePath)
 
@@ -14373,6 +14584,9 @@ const href = asset('/assets/rename-dir/app.css')
     const feedbackPostCallerMatches = feedbackPostReferences.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
     )
+    const feedbackPostAssetMatches = feedbackPostReferences.filter(
+      (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.nestedAssetScriptFilePath)
+    )
     const feedbackDeleteCallerMatches = feedbackDeleteReferences.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.routeMethodReferenceCheckFilePath)
     )
@@ -14388,6 +14602,14 @@ const href = asset('/assets/rename-dir/app.css')
     if (feedbackPostCallerMatches.length !== 3) {
       throw new Error(`Expected action + hx-post + data-hx-post references for feedback POST route. Got: ${JSON.stringify(feedbackPostReferences)}`)
     }
+    if (
+      feedbackPostAssetMatches.length !== 2 ||
+      feedbackPostReferences.some((entry) =>
+        normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.vendorAssetFilePath)
+      )
+    ) {
+      throw new Error(`Expected duplicate public asset POST fetch() references and no vendor references. Got: ${JSON.stringify(feedbackPostReferences)}`)
+    }
     if (feedbackDeleteCallerMatches.length !== 1) {
       throw new Error(`Expected hx-delete references for feedback DELETE route. Got: ${JSON.stringify(feedbackDeleteReferences)}`)
     }
@@ -14396,6 +14618,21 @@ const href = asset('/assets/rename-dir/app.css')
     }
     if (feedbackPatchCallerMatches.length !== 1) {
       throw new Error(`Expected hx-patch references for feedback PATCH route. Got: ${JSON.stringify(feedbackPatchReferences)}`)
+    }
+    const openReferenceAssetText = `fetch('/feedback', { method: 'POST' })
+fetch('/sign-in')
+`
+    const openAssetReferenceResult = core.getFileReferenceResult(
+      fixture.feedbackPostFilePath,
+      {
+        [fixture.nestedAssetScriptFilePath]: openReferenceAssetText,
+      }
+    )
+    const openAssetReferenceMatches = openAssetReferenceResult.references.filter((entry) =>
+      normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.nestedAssetScriptFilePath)
+    )
+    if (openAssetReferenceMatches.length !== 1) {
+      throw new Error(`Expected all-file references to use the open public asset override instead of two disk callers. Got: ${JSON.stringify(openAssetReferenceResult)}`)
     }
 
     const hrefDefinition = indexService.getDefinitionTarget(

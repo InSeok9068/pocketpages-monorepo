@@ -210,7 +210,7 @@ function collectRouteLinkAssetScriptFiles(projectIndex, codeFiles) {
   const existingFilePaths = new Set(codeFiles.map((entry) => normalizePath(entry.filePath)))
 
   return projectIndex
-    .getAssetEntries()
+    .getRoutePathAssetScriptFiles()
     .map((entry) => {
       const filePath = normalizePath(entry.filePath)
       const relativePath = toRelativePath(projectIndex.pagesRoot, filePath)
@@ -219,23 +219,7 @@ function collectRouteLinkAssetScriptFiles(projectIndex, codeFiles) {
         relativePath,
       }
     })
-    .filter((entry) => {
-      if (existingFilePaths.has(entry.filePath) || !entry.relativePath.startsWith('assets/')) {
-        return false
-      }
-
-      const extension = path.extname(entry.filePath).toLowerCase()
-      const lowerRelativePath = entry.relativePath.toLowerCase()
-      const relativeSegments = lowerRelativePath.split('/').filter(Boolean)
-
-      return (
-        ['.js', '.cjs', '.mjs'].includes(extension) &&
-        !relativeSegments.includes('vendor') &&
-        !lowerRelativePath.endsWith('.min.js') &&
-        !lowerRelativePath.endsWith('.min.cjs') &&
-        !lowerRelativePath.endsWith('.min.mjs')
-      )
-    })
+    .filter((entry) => !existingFilePaths.has(entry.filePath))
     .map((entry) => {
       const sourceText = fs.readFileSync(entry.filePath, 'utf8')
       return {
@@ -437,7 +421,11 @@ function buildRouteLinks(projectIndex, codeFiles) {
   const links = []
 
   for (const entry of codeFiles) {
-    const contexts = collectPathContexts(entry.sourceText, { filePath: entry.filePath }).filter((context) => context.kind === 'route-path')
+    const routePathAssetScript = projectIndex.isRoutePathAssetScriptFile(entry.filePath)
+    const contexts = collectPathContexts(entry.sourceText, { filePath: entry.filePath }).filter((context) => (
+      context.kind === 'route-path' &&
+      (!routePathAssetScript || String(context.routeSource || '').startsWith('fetch-'))
+    ))
 
     for (const context of contexts) {
       const isDynamic = !!context.isDynamic

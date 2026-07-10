@@ -310,6 +310,7 @@ function createCustomFeatureService(context) {
       }
 
       const { documentContext, documentText, offset } = requestContext;
+      const routePathAssetDocument = isRoutePathAssetDocument(documentContext);
       const schemaOnlyRequireTarget = getRequirePathTargetInfoForSchemaOnly(
         documentContext,
         documentText,
@@ -325,6 +326,28 @@ function createCustomFeatureService(context) {
         );
       }
 
+      if (routePathAssetDocument) {
+        const pathReferenceContext = documentContext.service.getPathReferenceContext(
+          documentContext.filePath,
+          documentText,
+          offset
+        );
+        if (!isFetchRoutePathEntry(pathReferenceContext)) {
+          return null;
+        }
+
+        return documentContext.service.getCustomReferenceTargets(
+          documentContext.filePath,
+          documentText,
+          offset,
+          {
+            includeDeclaration: !!(params.context && params.context.includeDeclaration),
+            shouldCancel: options.shouldCancel,
+            documentOverrides: options.documentOverrides,
+          }
+        );
+      }
+
       if (isCustomFeatureBlockedDocument(documentContext)) {
         return null;
       }
@@ -336,6 +359,7 @@ function createCustomFeatureService(context) {
         {
           includeDeclaration: !!(params.context && params.context.includeDeclaration),
           shouldCancel: options.shouldCancel,
+          documentOverrides: options.documentOverrides,
         }
       );
     },

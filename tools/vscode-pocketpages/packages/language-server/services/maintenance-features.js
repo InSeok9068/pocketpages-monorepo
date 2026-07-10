@@ -8,6 +8,7 @@ function createMaintenanceFeatureService(context) {
     elapsedMilliseconds: helperElapsedMilliseconds,
     getDocumentByUri,
     getDocumentContextByUri,
+    getOpenRoutePathAssetDocumentOverrides,
     getPerformanceBucket,
     getRelativePathLabel,
     isExcludedPocketPagesScriptPath,
@@ -124,7 +125,10 @@ function createMaintenanceFeatureService(context) {
       const req = requestId("allref");
       const filePath = uriToFilePath(uri);
       const startedAt = process.hrtime.bigint();
-      const result = core.getFileReferenceResult(filePath);
+      const documentOverrides = typeof getOpenRoutePathAssetDocumentOverrides === "function"
+        ? getOpenRoutePathAssetDocumentOverrides()
+        : {};
+      const result = core.getFileReferenceResult(filePath, documentOverrides);
       const totalMs = elapsedMilliseconds(startedAt);
       logServer("perf", "references", "all-file", {
         req,
@@ -167,7 +171,10 @@ function createMaintenanceFeatureService(context) {
       const oldFilePath = uriToFilePath(oldUri);
       const newFilePath = uriToFilePath(newUri);
       const startedAt = process.hrtime.bigint();
-      const result = core.getFileRenameEdits(oldFilePath, newFilePath);
+      const documentOverrides = typeof getOpenRoutePathAssetDocumentOverrides === "function"
+        ? getOpenRoutePathAssetDocumentOverrides()
+        : {};
+      const result = core.getFileRenameEdits(oldFilePath, newFilePath, documentOverrides);
       const totalMs = elapsedMilliseconds(startedAt);
       logServer("perf", "rename", "edits", {
         req,

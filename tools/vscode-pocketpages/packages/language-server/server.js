@@ -375,6 +375,22 @@ function isRoutePathAssetScriptPath(filePath) {
   );
 }
 
+/**
+ * 열린 public asset script의 현재 내용을 파일별 override로 반환합니다.
+ * @returns {Record<string, string>} 열린 asset script 내용입니다.
+ */
+function getOpenRoutePathAssetDocumentOverrides() {
+  const overrides = {};
+  for (const document of documents.all()) {
+    const filePath = uriToFilePath(document.uri);
+    if (isRoutePathAssetScriptPath(filePath)) {
+      overrides[filePath] = document.getText();
+    }
+  }
+
+  return overrides;
+}
+
 function isExcludedPocketPagesScriptPath(filePath) {
   const normalizedPath = normalizeDocumentPath(filePath);
   if (!normalizedPath.includes("/pb_hooks/pages/")) {
@@ -1289,6 +1305,7 @@ const featureServiceContext = {
     getDocumentContextByFilePath: (filePath) => core.getDocumentContextByFilePath(filePath),
     getDocumentContextByUri: (uri) => core.getDocumentContextByUri(uri),
     getDocumentRuntimeState,
+    getOpenRoutePathAssetDocumentOverrides,
     getCachedDiagnosticsResult,
     getCompletionProfileFields,
     getDiagnosticsProfileFields,
@@ -1789,7 +1806,8 @@ connection.onReferences((params, token) => {
   const shouldCancel = () => shouldAbortDocumentRequest(document.uri, requestedVersion, token);
   const includeDeclaration = !!(params.context && params.context.includeDeclaration);
   const isSchemaSupportOnlyDocument = isSchemaSupportOnlyHookScriptPath(context.filePath);
-  if (isExcludedPocketPagesScriptPath(context.filePath)) {
+  const routePathAssetScript = isRoutePathAssetScriptPath(context.filePath);
+  if (isExcludedPocketPagesScriptPath(context.filePath) && !routePathAssetScript) {
     logRequestResult("references", "result", startedAt, {
       req: requestId,
       case: "blocked-document",
@@ -1803,7 +1821,10 @@ connection.onReferences((params, token) => {
     return null;
   }
 
-  const customReferences = customFeatureService.provideReferences(params, { shouldCancel });
+  const customReferences = customFeatureService.provideReferences(params, {
+    shouldCancel,
+    documentOverrides: getOpenRoutePathAssetDocumentOverrides(),
+  });
   if (shouldCancel()) {
     logRequestResult("references", "abort", startedAt, {
       req: requestId,
@@ -1838,6 +1859,20 @@ connection.onReferences((params, token) => {
       count: result.length,
     });
     return result;
+  }
+
+  if (routePathAssetScript) {
+    logRequestResult("references", "result", startedAt, {
+      req: requestId,
+      case: "asset-fetch-only-references",
+      file: getRelativePathLabel(context.filePath),
+      version: document.version,
+      offset,
+      includeDeclaration,
+      result: "none",
+      count: 0,
+    });
+    return null;
   }
 
   if (isSchemaSupportOnlyDocument) {
