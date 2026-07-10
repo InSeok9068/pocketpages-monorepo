@@ -14,7 +14,7 @@
 
 ## 1. 스택과 구조
 
-- 스택: PocketBase (JSVM), PocketPages (SSR, file routing), EJS, HTMX, Alpine.js, UnoCSS (Tailwind v3 compatible)
+- 스택: PocketBase (JSVM), PocketPages (SSR, file routing), EJS, HTMX, Alpine.js, UnoCSS (Tailwind v4 compatible)
 - 서비스 루트: `apps/<service>/*`
 - `pb_hooks/pages` = 라우팅 루트
 - `apps/<service>/pb_hooks/pages/+config.js` = 서비스 plugin/config entry
