@@ -4353,6 +4353,10 @@ class ProjectLanguageService {
     const regions = graph && Array.isArray(graph.regions) ? graph.regions : [];
     const serverRegions = regions.filter((region) => region && region.kind === "server-script");
     const templateRegions = regions.filter((region) => region && region.kind === "template-block");
+    const templateDependencyRegions = serverRegions.map(toDiagnosticRegion).filter(Boolean);
+    const templateDependencyRegionIdentity = createRegionSetIdentity(templateDependencyRegions, {
+      includeOffsets: false,
+    });
     const pathRegions = [];
     const semanticMode = options.includeSemanticDiagnostics === false ? "syntactic" : "semantic";
     const typeScriptMode = options.includeTypeScriptDiagnostics === false ? "no-ts" : "ts";
@@ -4385,8 +4389,8 @@ class ProjectLanguageService {
       },
       template: {
         regions: templateRegions.map(toDiagnosticRegion).filter(Boolean),
-        dependencyRegions: serverRegions.map(toDiagnosticRegion).filter(Boolean),
-        dependencyIdentity: tsDependencyIdentity,
+        dependencyRegions: templateDependencyRegions,
+        dependencyIdentity: `${tsDependencyIdentity}|server-regions:${templateDependencyRegionIdentity}`,
       },
       "project-rule:agents": {
         regions: [
@@ -7484,6 +7488,10 @@ class ProjectLanguageService {
   }
 
   getSchemaHoverInfo(filePath, documentText, offset) {
+    return runStatEpoch(() => this.computeSchemaHoverInfo(filePath, documentText, offset));
+  }
+
+  computeSchemaHoverInfo(filePath, documentText, offset) {
     const analysisContext = getAnalysisContextAtOffset(filePath, documentText, offset);
     if (!analysisContext) {
       return null;
@@ -9235,7 +9243,9 @@ class ProjectLanguageService {
   }
 
   getCustomCompletionData(filePath, documentText, offset) {
-    return completionFeatureHandlers.getCustomCompletionData(this, filePath, documentText, offset);
+    return runStatEpoch(() =>
+      completionFeatureHandlers.getCustomCompletionData(this, filePath, documentText, offset)
+    );
   }
 
   getCompletionDetails(virtualFileName, virtualOffset, name, source) {

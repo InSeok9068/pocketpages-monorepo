@@ -62,6 +62,7 @@ class DocumentSnapshotManager {
     this.virtualFiles = new Map();
     this.diskFiles = new Map();
     this.nextSourceSnapshotSequence = 1;
+    this.tsFileStateGeneration = 0;
   }
 
   normalize(filePath) {
@@ -316,6 +317,7 @@ class DocumentSnapshotManager {
     this.staticFiles.clear();
     this.virtualFiles.clear();
     this.diskFiles.clear();
+    this.tsFileStateGeneration += 1;
   }
 
   getScriptSnapshot(fileName) {
@@ -325,7 +327,7 @@ class DocumentSnapshotManager {
 
   getScriptVersion(fileName) {
     const state = this.getTsFileState(fileName);
-    return state ? state.version : "0";
+    return `${this.tsFileStateGeneration}:${state ? state.version : "0"}`;
   }
 
   hasFile(fileName) {

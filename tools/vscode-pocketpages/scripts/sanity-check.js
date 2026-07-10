@@ -2878,6 +2878,26 @@ async function run() {
     throw new Error('Expected empty-text updates to preserve version/snapshot when the previous text was also empty.')
   }
 
+  const resetGenerationProbe = new DocumentSnapshotManager({ normalizePath: normalizeProbePath })
+  const resetGenerationFilePath = path.join(snapshotProbeRoot, 'reset-generation.d.ts')
+  resetGenerationProbe.setStaticFileState(resetGenerationFilePath, {
+    text: 'declare const beforeResetGeneration: true\n',
+  })
+  const scriptVersionBeforeReset = resetGenerationProbe.getScriptVersion(resetGenerationFilePath)
+  resetGenerationProbe.clearTsFileStates()
+  resetGenerationProbe.setStaticFileState(resetGenerationFilePath, {
+    text: 'declare const afterResetGeneration: true\n',
+  })
+  const scriptVersionAfterReset = resetGenerationProbe.getScriptVersion(resetGenerationFilePath)
+  if (
+    scriptVersionAfterReset === scriptVersionBeforeReset ||
+    resetGenerationProbe.getTsFileState(resetGenerationFilePath).version !== '1'
+  ) {
+    throw new Error(
+      `Expected full TypeScript state resets to advance the exposed script generation even when the local version restarts at "1". Got: ${JSON.stringify({ scriptVersionBeforeReset, scriptVersionAfterReset })}`
+    )
+  }
+
   const assertScriptRouteContext = (label, scriptText, marker, expected) => {
     const offset = scriptText.indexOf(marker)
     if (offset === -1) {
@@ -7044,6 +7064,118 @@ missingServerRegionOne.toString()
       serverRegionCacheService.languageService.getSemanticDiagnostics = originalServerRegionSemanticDiagnostics
     }
 
+    const templateDependencyCore = new PocketPagesLanguageCore()
+    const templateDependencyText = `<script server>
+const templateDependencyValue = 123
+</script>
+<p><%= templateDependencyValue.toFixed() %></p>
+`
+    const templateDependencyDocument = createTestDocument(
+      fixture.boardsFilePath,
+      'ejs',
+      1,
+      templateDependencyText
+    )
+    templateDependencyCore.openDocument({
+      uri: templateDependencyDocument.uri,
+      languageId: 'ejs',
+      version: 1,
+      text: templateDependencyText,
+    })
+    const templateDependencyContext = templateDependencyCore.getDocumentContextByUri(
+      templateDependencyDocument.uri
+    )
+    const templateDependencyService = templateDependencyContext && templateDependencyContext.service
+    if (!templateDependencyService) {
+      throw new Error('Expected template dependency cache smoke context to expose a language service.')
+    }
+    const templateDependencyFirstMetadata = templateDependencyService.getDiagnosticsLaneMetadata(
+      fixture.boardsFilePath,
+      templateDependencyText
+    )
+    const templateDependencyFirstResultIds = templateDependencyService.getDiagnosticsLaneResultIds(
+      fixture.boardsFilePath,
+      templateDependencyText,
+      { laneMetadata: templateDependencyFirstMetadata }
+    )
+    const templateDependencyFirstDiagnosticsByLane = {}
+    const templateDependencyFirstDiagnostics = templateDependencyService.getDiagnostics(
+      fixture.boardsFilePath,
+      templateDependencyText,
+      {
+        currentLaneResultIds: templateDependencyFirstResultIds,
+        currentLaneMetadata: templateDependencyFirstMetadata,
+        laneDiagnosticsOut: templateDependencyFirstDiagnosticsByLane,
+      }
+    )
+    if (
+      templateDependencyFirstDiagnostics.some((entry) =>
+        String(entry.message).includes("Property 'toFixed' does not exist")
+      )
+    ) {
+      throw new Error(
+        `Expected the initial numeric template dependency to be valid. Got: ${JSON.stringify(serializeDiagnostics(templateDependencyFirstDiagnostics))}`
+      )
+    }
+
+    const templateDependencyChangedText = templateDependencyText.replace('123', "'abc'")
+    templateDependencyCore.updateDocument({
+      uri: templateDependencyDocument.uri,
+      languageId: 'ejs',
+      version: 2,
+      text: templateDependencyChangedText,
+    })
+    const templateDependencySecondMetadata = templateDependencyService.getDiagnosticsLaneMetadata(
+      fixture.boardsFilePath,
+      templateDependencyChangedText
+    )
+    const templateDependencySecondResultIds = templateDependencyService.getDiagnosticsLaneResultIds(
+      fixture.boardsFilePath,
+      templateDependencyChangedText,
+      { laneMetadata: templateDependencySecondMetadata }
+    )
+    const templateDependencySemanticBudget = {
+      enabled: true,
+      maxSemanticRegions: 1,
+      preferredOffset: templateDependencyChangedText.indexOf('toFixed'),
+      deferred: false,
+    }
+    const templateDependencyProfile = {}
+    templateDependencyService.getDiagnostics(
+      fixture.boardsFilePath,
+      templateDependencyChangedText,
+      {
+        currentLaneResultIds: templateDependencySecondResultIds,
+        currentLaneMetadata: templateDependencySecondMetadata,
+        previousLaneResultIds: templateDependencyFirstResultIds,
+        previousLaneMetadata: templateDependencyFirstMetadata,
+        previousLaneDiagnostics: templateDependencyFirstDiagnosticsByLane,
+        laneDiagnosticsOut: {},
+        semanticBudget: templateDependencySemanticBudget,
+        profile: templateDependencyProfile,
+      }
+    )
+    const templateDependencyFreshDiagnostics = templateDependencyService.getDiagnostics(
+      fixture.boardsFilePath,
+      templateDependencyChangedText
+    )
+    const reusedTemplateDependencyRegions = Array.isArray(templateDependencyProfile.reusedDiagnosticRegions)
+      ? templateDependencyProfile.reusedDiagnosticRegions.filter((regionId) => String(regionId).startsWith('template:'))
+      : []
+    if (
+      templateDependencyFirstMetadata.template.dependencyIdentity ===
+        templateDependencySecondMetadata.template.dependencyIdentity ||
+      templateDependencySemanticBudget.deferred !== true ||
+      reusedTemplateDependencyRegions.length > 0 ||
+      !templateDependencyFreshDiagnostics.some((entry) =>
+        String(entry.message).includes("Property 'toFixed' does not exist")
+      )
+    ) {
+      throw new Error(
+        `Expected changed server regions to invalidate cached template diagnostics and defer a fresh semantic pass. Got: ${JSON.stringify({ firstDependencyIdentity: templateDependencyFirstMetadata.template.dependencyIdentity, secondDependencyIdentity: templateDependencySecondMetadata.template.dependencyIdentity, semanticBudget: templateDependencySemanticBudget, reusedTemplateDependencyRegions, freshDiagnostics: serializeDiagnostics(templateDependencyFreshDiagnostics) })}`
+      )
+    }
+
     const yieldCancelCore = new PocketPagesLanguageCore()
     const yieldCancelText = `<script server>\nconst yieldCancelValue = 1\n</script>\n`
     const yieldCancelDocument = createTestDocument(
@@ -7989,6 +8121,7 @@ ${largeRealisticSections}
 
     const pullRefreshDiagnosticsEvents = []
     const pullRefreshSchedules = []
+    const pullRefreshLogs = []
     const pullRefreshCore = new PocketPagesLanguageCore()
     const pullRefreshText = `<script server>\nconst refreshValue = 1\n</script>\n`
     const pullRefreshDocument = createTestDocument(
@@ -8029,6 +8162,9 @@ ${largeRealisticSections}
     )
     let pullRefreshSupported = true
     pullRefreshContext.context.helpers.isPullDiagnosticRefreshSupported = () => pullRefreshSupported
+    pullRefreshContext.context.helpers.logServer = (level, feature, event, fields) => {
+      pullRefreshLogs.push({ level, feature, event, fields })
+    }
     const pullRefreshDocumentContext = pullRefreshCore.getDocumentContextByUri(pullRefreshUri)
     const pullRefreshService = pullRefreshDocumentContext && pullRefreshDocumentContext.service
     const originalPullRefreshGetDiagnostics =
@@ -8044,6 +8180,11 @@ ${largeRealisticSections}
     const pullRefreshDiagnosticsFeatureService = createDiagnosticsFeatureService(
       pullRefreshContext.context
     )
+    const pullRefreshUnhandledRejections = []
+    const capturePullRefreshUnhandledRejection = (error) => {
+      pullRefreshUnhandledRejections.push(error)
+    }
+    const originalPullRefreshRequest = pullRefreshContext.context.connection.languages.diagnostics.refresh
     try {
       pullRefreshDiagnosticsFeatureService.refreshPullDiagnostics('manual-save')
       pullRefreshDiagnosticsFeatureService.scheduleDiagnosticsRefreshForDocument(pullRefreshUri, {
@@ -8051,20 +8192,56 @@ ${largeRealisticSections}
       })
       pullRefreshSupported = false
       pullRefreshDiagnosticsFeatureService.refreshPullDiagnostics('manual-save')
+      pullRefreshSupported = true
+      process.on('unhandledRejection', capturePullRefreshUnhandledRejection)
+      pullRefreshContext.context.connection.languages.diagnostics.refresh = () => {
+        pullRefreshDiagnosticsEvents.push('rejected-refresh')
+        return Promise.reject(new Error('diagnostic refresh rejected'))
+      }
+      const rejectedRefreshResult = pullRefreshDiagnosticsFeatureService.refreshPullDiagnostics(
+        'async-rejection'
+      )
+      if (rejectedRefreshResult && typeof rejectedRefreshResult.then === 'function') {
+        await rejectedRefreshResult
+      }
+      await new Promise((resolve) => setImmediate(resolve))
     } finally {
+      process.off('unhandledRejection', capturePullRefreshUnhandledRejection)
+      pullRefreshContext.context.connection.languages.diagnostics.refresh = originalPullRefreshRequest
       pullRefreshService.getDiagnostics = originalPullRefreshGetDiagnostics
     }
+    const pullRefreshFailureLog = pullRefreshLogs.find((entry) =>
+      entry.level === 'warn' &&
+      entry.feature === 'diagnostics' &&
+      entry.event === 'pull-refresh-failed' &&
+      entry.fields &&
+      entry.fields.reason === 'async-rejection' &&
+      entry.fields.message === 'diagnostic refresh rejected'
+    )
+    const rejectedRefreshSuccessLog = pullRefreshLogs.find((entry) =>
+      entry.level === 'info' &&
+      entry.event === 'pull-refresh' &&
+      entry.fields &&
+      entry.fields.reason === 'async-rejection'
+    )
     if (
-      pullRefreshDiagnosticsEvents.length !== 2 ||
+      pullRefreshDiagnosticsEvents.length !== 3 ||
       pullRefreshSchedules.length !== 1 ||
       pullRefreshSchedules.some((request) =>
         request.uri !== 'workspace' || request.key !== 'diagnostics:refresh'
-      )
+      ) ||
+      pullRefreshUnhandledRejections.length !== 0 ||
+      !pullRefreshFailureLog ||
+      rejectedRefreshSuccessLog
     ) {
       throw new Error(
         `Expected pull diagnostics mode to request workspace diagnostic refreshes without computing diagnostics. Got: ${JSON.stringify({
           refreshes: pullRefreshDiagnosticsEvents,
           schedules: pullRefreshSchedules,
+          logs: pullRefreshLogs,
+          unhandledRejections: pullRefreshUnhandledRejections.map((error) =>
+            error && error.message ? error.message : String(error)
+          ),
         })}`
       )
     }
@@ -8952,9 +9129,26 @@ module.exports = {
       version: 1,
       text: watchedRouteBoardsText,
     })
-    const schemaCollectionsBeforeWatch = watchedSchemaCore
-      .getDocumentContextByUri(watchedSchemaBoardsUri)
-      .service.projectIndex.getCollectionNames()
+    const watchedSchemaService = watchedSchemaCore.getDocumentContextByUri(watchedSchemaBoardsUri).service
+    const watchedSchemaTypeText = `const watchedSchemaBoard = $app.findFirstRecordByFilter('boards', 'id != ""')
+const watchedSchemaSortOrder = watchedSchemaBoard.get('sort_order')
+watchedSchemaSortOrder
+`
+    const getWatchedSchemaSortOrderQuickInfo = () => watchedSchemaService.getQuickInfo(
+      fixture.boardServiceFilePath,
+      watchedSchemaTypeText,
+      watchedSchemaTypeText.lastIndexOf('watchedSchemaSortOrder')
+    )
+    const watchedSchemaQuickInfoBefore = getWatchedSchemaSortOrderQuickInfo()
+    if (
+      !watchedSchemaQuickInfoBefore ||
+      !watchedSchemaQuickInfoBefore.displayText.includes('const watchedSchemaSortOrder: number')
+    ) {
+      throw new Error(
+        `Expected schema watch probe to start with number field typing. Got: ${JSON.stringify(watchedSchemaQuickInfoBefore)}`
+      )
+    }
+    const schemaCollectionsBeforeWatch = watchedSchemaService.projectIndex.getCollectionNames()
     if (schemaCollectionsBeforeWatch.includes('comments')) {
       throw new Error(`Expected fixture schema to start without comments collection. Got: ${schemaCollectionsBeforeWatch.join(', ')}`)
     }
@@ -8970,7 +9164,7 @@ module.exports = {
               { name: 'slug', type: 'text' },
               { name: 'description', type: 'text' },
               { name: 'is_active', type: 'bool' },
-              { name: 'sort_order', type: 'number' },
+              { name: 'sort_order', type: 'text' },
               { name: 'meta_json', type: 'json' },
             ],
           },
@@ -9008,7 +9202,28 @@ module.exports = {
         `Expected schema watched-file change to refresh collection cache for open documents. Got: ${schemaCollectionsAfterWatch.join(', ')}`
       )
     }
+    const watchedSchemaQuickInfoAfter = getWatchedSchemaSortOrderQuickInfo()
+    if (
+      !watchedSchemaQuickInfoAfter ||
+      !watchedSchemaQuickInfoAfter.displayText.includes('const watchedSchemaSortOrder: string')
+    ) {
+      throw new Error(
+        `Expected schema watched-file change to refresh TypeScript schema field typing. Got: ${JSON.stringify(watchedSchemaQuickInfoAfter)}`
+      )
+    }
     writeFile(fixture.schemaFilePath, originalFixtureSchemaText)
+    watchedSchemaCore.handleWatchedFileChanges([
+      { filePath: fixture.schemaFilePath, type: 'change' },
+    ])
+    const watchedSchemaQuickInfoRestored = getWatchedSchemaSortOrderQuickInfo()
+    if (
+      !watchedSchemaQuickInfoRestored ||
+      !watchedSchemaQuickInfoRestored.displayText.includes('const watchedSchemaSortOrder: number')
+    ) {
+      throw new Error(
+        `Expected restored schema watch to recover the original TypeScript field typing. Got: ${JSON.stringify(watchedSchemaQuickInfoRestored)}`
+      )
+    }
 
     const watchedTypesCore = new PocketPagesLanguageCore()
     const watchedTypesBoardsUri = URI.file(fixture.boardsFilePath).toString()
@@ -9022,6 +9237,25 @@ module.exports = {
     const watchedTypesPath = path.join(fixture.appRoot, 'pb_data', 'types.d.ts')
     const watchedTypesMethodName = 'findRecordBySlug'
     const watchedTypesSecondMethodName = 'findRecordsBySlug'
+    const watchedTypesCompletionText = `$app.\n`
+    const watchedTypesCompletionOffset = '$app.'.length
+    const getWatchedTypesCompletionNames = () => {
+      const completion = watchedTypesService.getCompletionData(
+        fixture.boardServiceFilePath,
+        watchedTypesCompletionText,
+        watchedTypesCompletionOffset
+      )
+      return completion ? completion.entries.map((entry) => entry.name) : []
+    }
+    const watchedTypesCompletionNamesBefore = getWatchedTypesCompletionNames()
+    if (
+      watchedTypesCompletionNamesBefore.includes(watchedTypesMethodName) ||
+      watchedTypesCompletionNamesBefore.includes(watchedTypesSecondMethodName)
+    ) {
+      throw new Error(
+        `Expected TypeScript completion to start without temporary pb_data helpers. Got: ${watchedTypesCompletionNamesBefore.join(', ')}`
+      )
+    }
     const watchedTypesMethodNamesBefore = watchedTypesService.projectIndex.getCollectionMethodNames()
     if (
       watchedTypesMethodNamesBefore.includes(watchedTypesMethodName) ||
@@ -9071,6 +9305,15 @@ module.exports = {
           `Expected pb_data watched-file change to refresh collection method cache. Got: ${watchedTypesMethodNamesAfter.join(', ')}`
         )
       }
+      const watchedTypesCompletionNamesAfter = getWatchedTypesCompletionNames()
+      if (
+        !watchedTypesCompletionNamesAfter.includes(watchedTypesMethodName) ||
+        watchedTypesCompletionNamesAfter.includes(watchedTypesSecondMethodName)
+      ) {
+        throw new Error(
+          `Expected pb_data watched-file change to refresh TypeScript completion. Got: ${watchedTypesCompletionNamesAfter.join(', ')}`
+        )
+      }
       writeFile(watchedTypesPath, secondModifiedFixtureTypesText)
       const secondModifiedFixtureTypesStats = fs.statSync(watchedTypesPath)
       if (watchedTypesService.projectIndex.collectionMethodCache) {
@@ -9099,6 +9342,15 @@ module.exports = {
           `Expected consecutive pb_data watched-file change to drop stale methods and load the newest helper. Got: ${watchedTypesMethodNamesSecond.join(', ')}`
         )
       }
+      const watchedTypesCompletionNamesSecond = getWatchedTypesCompletionNames()
+      if (
+        !watchedTypesCompletionNamesSecond.includes(watchedTypesSecondMethodName) ||
+        watchedTypesCompletionNamesSecond.includes(watchedTypesMethodName)
+      ) {
+        throw new Error(
+          `Expected consecutive pb_data watched-file change to replace stale TypeScript completion helpers. Got: ${watchedTypesCompletionNamesSecond.join(', ')}`
+        )
+      }
     } finally {
       writeFile(watchedTypesPath, originalFixtureTypesText)
     }
@@ -9114,6 +9366,15 @@ module.exports = {
     ) {
       throw new Error(
         `Expected restored pb_data types to drop the temporary collection method. Got: ${watchedTypesMethodNamesRestored.join(', ')}`
+      )
+    }
+    const watchedTypesCompletionNamesRestored = getWatchedTypesCompletionNames()
+    if (
+      watchedTypesCompletionNamesRestored.includes(watchedTypesMethodName) ||
+      watchedTypesCompletionNamesRestored.includes(watchedTypesSecondMethodName)
+    ) {
+      throw new Error(
+        `Expected restored pb_data types to drop temporary TypeScript completion helpers. Got: ${watchedTypesCompletionNamesRestored.join(', ')}`
       )
     }
 
@@ -11082,6 +11343,39 @@ boardService.readAuthState(
       !schemaCollectionHover.schemaPath
     ) {
       throw new Error(`Expected schema collection hover info. Got: ${JSON.stringify(schemaCollectionHover)}`)
+    }
+
+    const originalSchemaReadFileSync = fs.readFileSync
+    const normalizedSchemaReadCountPath = normalizeFilePath(fixture.schemaFilePath)
+    let schemaReadCount = 0
+    let collectionCompletionSchemaReadCount = 0
+    let collectionHoverSchemaReadCount = 0
+    try {
+      fs.readFileSync = function countSchemaReads(filePath, ...args) {
+        if (normalizeFilePath(String(filePath || '')) === normalizedSchemaReadCountPath) {
+          schemaReadCount += 1
+        }
+        return originalSchemaReadFileSync.call(this, filePath, ...args)
+      }
+
+      schemaReadCount = 0
+      service.getCustomCompletionData(fixture.boardsFilePath, collectionText, collectionOffset)
+      collectionCompletionSchemaReadCount = schemaReadCount
+
+      schemaReadCount = 0
+      service.getSchemaHoverInfo(
+        fixture.boardServiceFilePath,
+        schemaCollectionHoverText,
+        schemaCollectionHoverText.indexOf('boards') + 2
+      )
+      collectionHoverSchemaReadCount = schemaReadCount
+    } finally {
+      fs.readFileSync = originalSchemaReadFileSync
+    }
+    if (collectionCompletionSchemaReadCount > 1 || collectionHoverSchemaReadCount > 1) {
+      throw new Error(
+        `Expected custom schema completion and hover to share one pb_schema.json read per request. Got: ${JSON.stringify({ collectionCompletionSchemaReadCount, collectionHoverSchemaReadCount })}`
+      )
     }
 
     const schemaRecordFieldHoverText =

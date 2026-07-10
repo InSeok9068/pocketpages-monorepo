@@ -670,16 +670,30 @@ function createDiagnosticsFeatureService(context) {
       return;
     }
 
-    try {
-      connection.languages.diagnostics.refresh();
+    const refreshReason = reason || "refresh";
+    const logRefreshSuccess = () => {
       logServer("info", "diagnostics", "pull-refresh", {
-        reason: reason || "refresh",
+        reason: refreshReason,
       });
-    } catch (error) {
+    };
+    const logRefreshFailure = (error) => {
       logServer("warn", "diagnostics", "pull-refresh-failed", {
-        reason: reason || "refresh",
+        reason: refreshReason,
         message: error && error.message ? error.message : String(error),
       });
+    };
+
+    try {
+      const refreshResult = connection.languages.diagnostics.refresh();
+      if (refreshResult && typeof refreshResult.then === "function") {
+        return Promise.resolve(refreshResult).then(logRefreshSuccess, logRefreshFailure);
+      }
+
+      logRefreshSuccess();
+      return refreshResult;
+    } catch (error) {
+      logRefreshFailure(error);
+      return undefined;
     }
   }
 
