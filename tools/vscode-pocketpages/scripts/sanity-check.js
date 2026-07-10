@@ -38,6 +38,7 @@ const {
 } = require('../packages/typescript-plugin/shared')
 const { getTokenTypeIndex } = require('../packages/language-server/ejs-semantic-tokens')
 const { runExtensionHostSanityCheck } = require('./extension-host-sanity')
+const { createSanityRunner } = require('./sanity/runner')
 const { collectPagesCodeFiles } = require('../../../scripts/diag-pocketpages-core')
 const { buildProjectIndexReport } = require('../packages/language-service/project-index-report')
 
@@ -2504,9 +2505,23 @@ module.exports = {
 
 async function run() {
   const repoRoot = path.resolve(__dirname, '..', '..', '..')
+  const sanityRunner = createSanityRunner()
+  if (sanityRunner.listOnly) {
+    sanityRunner.printSections()
+    return
+  }
+
+  sanityRunner.beginSection('contracts')
   assertClientContracts(repoRoot)
   assertLspRuntimeContracts(repoRoot)
   assertCompletionHelperContracts()
+  sanityRunner.completeSection('contracts')
+  if (sanityRunner.shouldStopAfter('contracts')) {
+    sanityRunner.finish()
+    return
+  }
+
+  sanityRunner.beginSection('runtime-snapshot-cache')
   const runtimeProbe = createDocumentRuntimeStateRegistry()
   runtimeProbe.updateDocument('file:///runtime.ejs', {
     version: 1,
@@ -2898,6 +2913,13 @@ async function run() {
     )
   }
 
+  sanityRunner.completeSection('runtime-snapshot-cache')
+  if (sanityRunner.shouldStopAfter('runtime-snapshot-cache')) {
+    sanityRunner.finish()
+    return
+  }
+
+  sanityRunner.beginSection('path-and-extension-client')
   const assertScriptRouteContext = (label, scriptText, marker, expected) => {
     const offset = scriptText.indexOf(marker)
     if (offset === -1) {
@@ -3058,6 +3080,13 @@ window.fetch('/feedback')
   }
 
   await runExtensionHostSanityCheck(repoRoot)
+  sanityRunner.completeSection('path-and-extension-client')
+  if (sanityRunner.shouldStopAfter('path-and-extension-client')) {
+    sanityRunner.finish()
+    return
+  }
+
+  sanityRunner.beginSection('fixture-integration')
   const fixture = createFixtureApp(repoRoot)
   const realHighlightsFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', '(site)', 'highlights.ejs')
   const realUploadFilePath = path.join(repoRoot, 'apps', 'booklog', 'pb_hooks', 'pages', 'xapi', 'epub', 'upload.ejs')
@@ -18059,6 +18088,8 @@ const authState = resolve('auth-service')
       throw new Error(`Expected redirect route document link target. Got: ${routeDocumentLinkTargets.join(', ')}`)
     }
 
+    sanityRunner.completeSection('fixture-integration')
+    sanityRunner.finish()
     console.log('Sanity check passed.')
     console.log(`Fixture app: ${fixture.appRoot}`)
     console.log(`Completion sample: ${completionNames.slice(0, 10).join(', ')}`)
