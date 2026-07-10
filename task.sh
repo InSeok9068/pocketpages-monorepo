@@ -1174,6 +1174,23 @@ list_release_branches() {
     sort
 }
 
+require_merge_service_dirs() {
+  local branch=""
+  local service=""
+  local missing=0
+
+  for branch in "$@"; do
+    service="${branch#release/}"
+
+    if [[ ! -d "$APPS_DIR/$service" ]]; then
+      echo "Merge cancelled: missing service directory on main: apps/$service" >&2
+      missing=1
+    fi
+  done
+
+  [[ "$missing" -eq 0 ]]
+}
+
 require_clean_git_worktree() {
   local action="${1:-operation}"
 
@@ -1404,6 +1421,10 @@ run_merge() {
   echo "Updating main..."
   git -C "$ROOT_DIR" checkout main
   git -C "$ROOT_DIR" pull --ff-only origin main
+
+  if ! require_merge_service_dirs "${branches[@]}"; then
+    exit 1
+  fi
 
   for branch in "${branches[@]}"; do
     echo "Merging main into $branch..."
