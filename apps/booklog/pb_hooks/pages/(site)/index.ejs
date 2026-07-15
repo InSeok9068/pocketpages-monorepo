@@ -58,10 +58,75 @@
     reading: 0,
     finished: 0,
   }
+  let weeklyReadingDays = []
+  let weeklyReadingDayCount = 0
   let randomHighlights = []
 
   if (canUseBooklog) {
-    const shelfRecords = $app.findRecordsByFilter('book_shelves', 'user_id = {:userId}', '-status,-updated,-last_read_at', 50, 0, { userId: request.auth.get('id') })
+    const userId = String(request.auth.get('id') || '')
+    const todayText = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
+    const weekStartDate = new Date(todayText + 'T00:00:00.000Z')
+    const currentWeekday = weekStartDate.getUTCDay()
+    const daysFromMonday = currentWeekday === 0 ? 6 : currentWeekday - 1
+    const weekdayLabels = ['월', '화', '수', '목', '금', '토', '일']
+    const readingDateKeys = {}
+
+    weekStartDate.setUTCDate(weekStartDate.getUTCDate() - daysFromMonday)
+
+    const weekStartText = dateutil.formatDate(weekStartDate, dateutil.FORMATS.DATE)
+    const weekEndDate = new Date(weekStartDate.getTime())
+
+    weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6)
+
+    try {
+      const sessionRecords = $app.findRecordsByFilter(
+        'reading_sessions',
+        'user_id = {:userId} && ended_at >= {:weekStart} && ended_at <= {:weekEnd} && duration_seconds > 0',
+        '-ended_at',
+        500,
+        0,
+        {
+          userId: userId,
+          weekStart: dateutil.startOfDay(weekStartText).toISOString(),
+          weekEnd: dateutil.endOfDay(dateutil.formatDate(weekEndDate, dateutil.FORMATS.DATE)).toISOString(),
+        }
+      )
+
+      for (let index = 0; index < sessionRecords.length; index += 1) {
+        const endedAt = String(sessionRecords[index].get('ended_at') || '').trim()
+
+        if (endedAt) {
+          readingDateKeys[dateutil.formatDate(endedAt, dateutil.FORMATS.DATE)] = true
+        }
+      }
+    } catch (exception) {
+      warn('page/home:reading-week-failed', {
+        userId: userId,
+        error: String(exception && exception.message ? exception.message : exception),
+      })
+    }
+
+    for (let weekdayIndex = 0; weekdayIndex < weekdayLabels.length; weekdayIndex += 1) {
+      const dayDate = new Date(weekStartDate.getTime())
+
+      dayDate.setUTCDate(dayDate.getUTCDate() + weekdayIndex)
+      const dateText = dateutil.formatDate(dayDate, dateutil.FORMATS.DATE)
+      const didRead = readingDateKeys[dateText] === true
+
+      if (didRead) {
+        weeklyReadingDayCount += 1
+      }
+
+      weeklyReadingDays.push({
+        label: weekdayLabels[weekdayIndex],
+        dateText: dateText,
+        didRead: didRead,
+        isToday: dateText === todayText,
+        isFuture: dateText > todayText,
+      })
+    }
+
+    const shelfRecords = $app.findRecordsByFilter('book_shelves', 'user_id = {:userId}', '-status,-updated,-last_read_at', 50, 0, { userId: userId })
     const loadedShelfBooks = []
 
     for (let index = 0; index < shelfRecords.length; index += 1) {
@@ -152,7 +217,27 @@
       class="h-10 w-10 rounded-[1rem] shadow-[0_8px_18px_rgba(73,54,31,0.08)]" />
     <h1 class="text-4xl font-semibold tracking-tight text-stone-950">Booklog</h1>
   </div>
+  <% if (canUseBooklog) { %>
+  <div class="max-w-md">
+    <p class="text-sm font-semibold text-stone-700">이번 주 <%= weeklyReadingDayCount %>일 읽었어요</p>
+    <div class="mt-3 grid grid-cols-7 gap-2" aria-label="이번 주 독서 기록">
+      <% for (let index = 0; index < weeklyReadingDays.length; index += 1) { const day = weeklyReadingDays[index] %>
+      <div class="flex flex-col items-center gap-2">
+        <span class="text-[12px] font-medium <%= day.isToday ? 'text-stone-900' : 'text-stone-500' %>"><%= day.label %></span>
+        <% if (day.isFuture) { %>
+        <span class="h-2 w-2 rounded-full bg-stone-400/65" aria-label="<%= day.dateText %> 아직 오지 않은 날"></span>
+        <% } else if (day.didRead) { %>
+        <span class="h-3.5 w-3.5 rounded-full bg-[#9e6125] shadow-[0_3px_8px_rgba(158,97,37,0.22)]" aria-label="<%= day.dateText %> 독서함"></span>
+        <% } else { %>
+        <span class="box-border h-3.5 w-3.5 rounded-full border <%= day.isToday ? 'border-stone-700' : 'border-stone-400' %> bg-white/45" aria-label="<%= day.dateText %> 독서 기록 없음"></span>
+        <% } %>
+      </div>
+      <% } %>
+    </div>
+  </div>
+  <% } else { %>
   <p class="max-w-[18.5rem] text-sm leading-6 text-stone-600 sm:max-w-none sm:text-[15px] sm:leading-7">책을 읽고 남긴 문장과 감상이 한 권씩 쌓여,<br />나만의 작은 도서관이 되어가는 곳.</p>
+  <% } %>
 </section>
 
 <% if (flashMessage) { %>
@@ -479,7 +564,7 @@
           href="/books/<%= highlight.bookId %>?from=/"
           class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-3.5 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
           <p class="text-[15px] leading-[1.65] font-semibold tracking-[-0.02em] text-stone-900 sm:text-base"><%= highlight.quoteText %></p>
-          <p class="mt-2.5 text-[12px] leading-5 text-stone-500"><%= highlight.bookTitle %></p>
+          <p class="mt-2.5 text-[12px] leading-5 text-stone-600"><%= highlight.bookTitle %></p>
           <% if (highlight.highlightedAt) { %>
           <p class="mt-1.5 text-[12px] font-medium text-stone-400"><%= highlight.highlightedAt %></p>
           <% } %>
