@@ -1,6 +1,5 @@
 const oneSignalService = require('./onesignal-service')
 const pushSendLogService = require('./push-send-log-service')
-const { dateutil } = require('@pocketpages/utils')
 
 const NOTIFICATION_KEY = 'reading_reminder'
 const PUSH_CHANNEL = 'push'
@@ -33,20 +32,15 @@ function getInactivityDays(settingsRecord) {
 }
 
 /**
- * 사용자에게 보낼 읽기 리마인더 책장을 찾습니다.
+ * 사용자가 가장 최근에 읽은 읽는 중 책장을 찾습니다.
  *
  * @param {string} userId 사용자 ID
- * @param {number} inactivityDays 리마인더 기준 일수
  * @returns {any | null} 대상 책장 record
  */
-function findReminderShelfRecord(userId, inactivityDays) {
-  const cutoffDateText = pushSendLogService.getDateTextDaysAgo(inactivityDays)
-  const cutoffIso = dateutil.endOfDay(cutoffDateText).toISOString()
-
+function findLatestReadingShelfRecord(userId) {
   try {
-    const shelfRecords = $app.findRecordsByFilter('book_shelves', 'user_id = {:userId} && status = "reading" && last_read_at != "" && last_read_at <= {:cutoffDate}', '-last_read_at,-updated', 10, 0, {
+    const shelfRecords = $app.findRecordsByFilter('book_shelves', 'user_id = {:userId} && status = "reading" && last_read_at != ""', '-last_read_at,-updated', 1, 0, {
       userId: userId,
-      cutoffDate: cutoffIso,
     })
 
     if (!shelfRecords || shelfRecords.length === 0) {
@@ -61,8 +55,6 @@ function findReminderShelfRecord(userId, inactivityDays) {
         'jobs/reading-reminder:find-shelf-failed',
         'userId',
         String(userId || '').trim(),
-        'cutoffDate',
-        cutoffDateText,
         'error',
         String(exception && exception.message ? exception.message : exception)
       )
@@ -202,7 +194,7 @@ function sendReminderForUser(settingsRecord) {
     }
   }
 
-  const shelfRecord = findReminderShelfRecord(userId, inactivityDays)
+  const shelfRecord = findLatestReadingShelfRecord(userId)
 
   if (!shelfRecord) {
     pushSendLogService.createLog({
@@ -211,7 +203,7 @@ function sendReminderForUser(settingsRecord) {
       channel: PUSH_CHANNEL,
       sendStatus: 'skipped',
       dedupeKey: '',
-      errorMessage: 'missing_stale_reading_shelf',
+      errorMessage: 'missing_reading_history',
       sentAt: pushSendLogService.getTodayDateText(),
     })
 
@@ -219,7 +211,7 @@ function sendReminderForUser(settingsRecord) {
       sent: false,
       skipped: true,
       userId: userId,
-      reason: 'missing_stale_reading_shelf',
+      reason: 'missing_reading_history',
     }
   }
 
@@ -235,7 +227,7 @@ function sendReminderForUser(settingsRecord) {
       dedupeKey: '',
       bookId: String(shelfRecord.get('book_id') || '').trim(),
       shelfId: String(shelfRecord.get('id') || '').trim(),
-      errorMessage: 'invalid_last_read_at',
+      errorMessage: inactiveDaysSinceLastRead === null ? 'invalid_last_read_at' : 'reading_activity_recent',
       sentAt: pushSendLogService.getTodayDateText(),
     })
 
@@ -243,7 +235,7 @@ function sendReminderForUser(settingsRecord) {
       sent: false,
       skipped: true,
       userId: userId,
-      reason: 'invalid_last_read_at',
+      reason: inactiveDaysSinceLastRead === null ? 'invalid_last_read_at' : 'reading_activity_recent',
     }
   }
 
