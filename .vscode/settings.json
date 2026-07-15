@@ -39,6 +39,7 @@
     // "apps/sample/**": true,
   },
   "tailwindCSS.lint.cssConflict": "ignore",
+  "tailwindCSS.lint.suggestCanonicalClasses": "ignore",
   "tailwindCSS.includeLanguages": {
     "ejs": "html"
   },
