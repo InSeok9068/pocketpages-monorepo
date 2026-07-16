@@ -597,22 +597,14 @@ run_verify() {
 }
 
 run_knip() {
-  local knip_bin="$ROOT_DIR/node_modules/knip/bin/knip.js"
-
-  if [[ ! -f "$knip_bin" ]]; then
-    echo "Missing local Knip install." >&2
-    echo "Run npm install in the repository root first." >&2
-    exit 1
-  fi
-
-  if ! command -v node >/dev/null 2>&1; then
-    echo "Node.js not found. Cannot run Knip command." >&2
+  if ! command -v npx >/dev/null 2>&1; then
+    echo "npx not found. Cannot run Knip command." >&2
     exit 1
   fi
 
   (
     cd "$ROOT_DIR"
-    node "$knip_bin" --no-progress --no-config-hints "$@"
+    npx --yes knip@6.27.0 --no-progress --no-config-hints "$@"
   )
 }
 
