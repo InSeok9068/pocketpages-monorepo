@@ -2000,10 +2000,8 @@ backup_target() {
   local private_key_path=""
   local backup_dir=""
   local local_archive_path=""
-  local remote_archive_path=""
   local ssh_target=""
   local timestamp=""
-  local sftp_cmd=()
   local ssh_cmd=()
 
   if ! hooks_target_name="$(resolve_backup_source_target "$service")"; then
@@ -2024,13 +2022,8 @@ backup_target() {
 
   remote_data_path="${DEPLOY_REMOTE_PATH%/hooks}/data"
 
-  if ! command -v ssh >/dev/null 2>&1 || ! command -v sftp >/dev/null 2>&1; then
-    echo "ssh/sftp not found. Run this command in Windows Git Bash." >&2
-    exit 1
-  fi
-
-  if ! command -v mktemp >/dev/null 2>&1; then
-    echo "mktemp not found. Run this command in Windows Git Bash." >&2
+  if ! command -v ssh >/dev/null 2>&1; then
+    echo "ssh not found. Run this command in Windows Git Bash." >&2
     exit 1
   fi
 
@@ -2044,8 +2037,7 @@ backup_target() {
   fi
 
   timestamp="$(date +%Y%m%d-%H%M%S)"
-  local_archive_path="$backup_dir/${service}-pbdata-${timestamp}.tar.gz"
-  remote_archive_path="/tmp/${service}-pbdata-${timestamp}-$$.tar.gz"
+  local_archive_path="$backup_dir/${service}-pbdata-${timestamp}.tar"
   ssh_target="${DEPLOY_USERNAME}@${DEPLOY_HOST}"
 
   ssh_cmd=(
@@ -2056,18 +2048,8 @@ backup_target() {
     -o ConnectTimeout="$DEPLOY_CONNECT_TIMEOUT_SECONDS"
   )
 
-  local sftp_get_cmd=(
-    sftp
-    -q
-    -P "$DEPLOY_PORT"
-    -o BatchMode=yes
-    -o StrictHostKeyChecking=accept-new
-    -o ConnectTimeout="$DEPLOY_CONNECT_TIMEOUT_SECONDS"
-  )
-
   if [[ -n "$private_key_path" ]]; then
     ssh_cmd+=(-i "$private_key_path")
-    sftp_get_cmd+=(-i "$private_key_path")
   fi
 
   echo "Testing SSH connection: $ssh_target"
@@ -2076,45 +2058,29 @@ backup_target() {
     exit 1
   fi
 
-  echo "Archiving remote pb_data: $ssh_target:$remote_data_path"
-  if ! "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$remote_data_path" "$remote_archive_path" <<'EOF'
+  echo "Streaming remote pb_data: $ssh_target:$remote_data_path -> $local_archive_path"
+  local progress_cmd=(cat)
+  if command -v pv >/dev/null 2>&1; then
+    progress_cmd=(pv --bytes --rate --timer)
+  fi
+
+  if ! "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$remote_data_path" <<'EOF' | "${progress_cmd[@]}" > "$local_archive_path"
 set -euo pipefail
 
 remote_data_path="$1"
-remote_archive_path="$2"
 
 if [[ ! -d "$remote_data_path" ]]; then
   echo "Remote pb_data directory not found: $remote_data_path" >&2
   exit 1
 fi
 
-tar -czf "$remote_archive_path" -C "$(dirname "$remote_data_path")" "$(basename "$remote_data_path")"
+exec tar -cf - -C "$(dirname "$remote_data_path")" "$(basename "$remote_data_path")"
 EOF
   then
-    echo "Failed to archive remote pb_data: $remote_data_path" >&2
+    rm -f "$local_archive_path"
+    echo "Failed to stream remote pb_data: $remote_data_path" >&2
     exit 1
   fi
-
-  cleanup_remote_archive() {
-    "${ssh_cmd[@]}" "$ssh_target" rm -f "$remote_archive_path" >/dev/null 2>&1 || true
-  }
-  trap cleanup_remote_archive EXIT
-
-  echo "Downloading pb_data archive: $ssh_target:$remote_archive_path -> $local_archive_path"
-  local batch_file
-  batch_file="$(mktemp)"
-  printf 'get %s %s\n' "$remote_archive_path" "$local_archive_path" >"$batch_file"
-  sftp_get_cmd+=(-b "$batch_file")
-
-  if ! "${sftp_get_cmd[@]}" "$ssh_target"; then
-    rm -f "$batch_file"
-    echo "Failed to download pb_data archive." >&2
-    exit 1
-  fi
-  rm -f "$batch_file"
-
-  trap - EXIT
-  cleanup_remote_archive
 
   echo "Backup complete: $service"
   echo "Saved to: $local_archive_path"
