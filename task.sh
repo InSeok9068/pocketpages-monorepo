@@ -15,6 +15,7 @@ Usage:
   ./task.sh install <npm> [-- <extra args>]
   ./task.sh deploy <service> [--skip-verify]
   ./task.sh rollback <service> <1|2|3>
+  ./task.sh backup <service>
   ./task.sh archive <service>
   ./task.sh restore <archive-tag>
   ./task.sh archives [service]
@@ -44,6 +45,7 @@ Commands:
   install   `npm` runs npm install in root and app package.json dirs
   deploy    Verify and upload one service deploy targets using .vscode/sftp.json
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
+  backup    Archive the remote pb_data directory over SSH and download it to ~/pocketpages-backups/<service>/
   archive   Tag current HEAD as archive/<service>/<YYYY-MM-DD>, push it, then remove apps/<service>
   restore   Restore apps/<service> from an archive tag
   archives  List archive tags, optionally filtered by service; use --delete to remove one archive tag locally and from origin
@@ -69,6 +71,7 @@ Examples:
   ./task.sh css booklog
   ./task.sh deploy booklog
   ./task.sh deploy booklog --skip-verify
+  ./task.sh backup booklog
   ./task.sh archive portfolio
   ./task.sh restore archive/portfolio/2026-05-28
   ./task.sh archives portfolio
@@ -1950,6 +1953,179 @@ run_deploy() {
   done
 }
 
+resolve_backup_source_target() {
+  local service="$1"
+  local config_file="$ROOT_DIR/.vscode/sftp.json"
+
+  [[ -f "$config_file" ]] || {
+    echo "Missing deploy config: $config_file" >&2
+    exit 1
+  }
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot read deploy config." >&2
+    exit 1
+  fi
+
+  node - "$config_file" "$service" <<'NODE'
+const fs = require('fs');
+
+const configFile = process.argv[2];
+const serviceName = process.argv[3];
+
+const entries = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+const hooksName = `${serviceName}-hooks`;
+const entry = entries.find((item) => item && item.name === hooksName);
+
+if (!entry) {
+  console.error(`Missing deploy target for pb_data lookup: ${hooksName}`);
+  console.error('backup derives the pb_data remote path from the "<service>-hooks" entry remotePath (.../hooks -> .../data).');
+  process.exit(1);
+}
+
+if (typeof entry.remotePath !== 'string' || !entry.remotePath.endsWith('/hooks')) {
+  console.error(`Cannot derive pb_data path from ${hooksName}.remotePath: ${entry.remotePath}`);
+  console.error('Expected remotePath to end with "/hooks".');
+  process.exit(1);
+}
+
+process.stdout.write(hooksName);
+NODE
+}
+
+backup_target() {
+  local service="$1"
+  local hooks_target_name=""
+  local remote_data_path=""
+  local private_key_path=""
+  local backup_dir=""
+  local local_archive_path=""
+  local remote_archive_path=""
+  local ssh_target=""
+  local timestamp=""
+  local sftp_cmd=()
+  local ssh_cmd=()
+
+  if ! hooks_target_name="$(resolve_backup_source_target "$service")"; then
+    exit 1
+  fi
+
+  load_deploy_config "$hooks_target_name"
+
+  if [[ "$DEPLOY_PROTOCOL" != "sftp" ]]; then
+    echo "Unsupported deploy protocol for $hooks_target_name: $DEPLOY_PROTOCOL" >&2
+    exit 1
+  fi
+
+  if [[ -z "$DEPLOY_HOST" || -z "$DEPLOY_USERNAME" || -z "$DEPLOY_REMOTE_PATH" ]]; then
+    echo "Incomplete deploy config for service: $hooks_target_name" >&2
+    exit 1
+  fi
+
+  remote_data_path="${DEPLOY_REMOTE_PATH%/hooks}/data"
+
+  if ! command -v ssh >/dev/null 2>&1 || ! command -v sftp >/dev/null 2>&1; then
+    echo "ssh/sftp not found. Run this command in Windows Git Bash." >&2
+    exit 1
+  fi
+
+  if ! command -v mktemp >/dev/null 2>&1; then
+    echo "mktemp not found. Run this command in Windows Git Bash." >&2
+    exit 1
+  fi
+
+  backup_dir="$HOME/pocketpages-backups/$service"
+  mkdir -p "$backup_dir"
+
+  private_key_path="$(normalize_bash_path "$DEPLOY_PRIVATE_KEY_PATH")"
+  if [[ -n "$private_key_path" && ! -f "$private_key_path" ]]; then
+    echo "Private key not found: $private_key_path" >&2
+    exit 1
+  fi
+
+  timestamp="$(date +%Y%m%d-%H%M%S)"
+  local_archive_path="$backup_dir/${service}-pbdata-${timestamp}.tar.gz"
+  remote_archive_path="/tmp/${service}-pbdata-${timestamp}-$$.tar.gz"
+  ssh_target="${DEPLOY_USERNAME}@${DEPLOY_HOST}"
+
+  ssh_cmd=(
+    ssh
+    -p "$DEPLOY_PORT"
+    -o BatchMode=yes
+    -o StrictHostKeyChecking=accept-new
+    -o ConnectTimeout="$DEPLOY_CONNECT_TIMEOUT_SECONDS"
+  )
+
+  local sftp_get_cmd=(
+    sftp
+    -q
+    -P "$DEPLOY_PORT"
+    -o BatchMode=yes
+    -o StrictHostKeyChecking=accept-new
+    -o ConnectTimeout="$DEPLOY_CONNECT_TIMEOUT_SECONDS"
+  )
+
+  if [[ -n "$private_key_path" ]]; then
+    ssh_cmd+=(-i "$private_key_path")
+    sftp_get_cmd+=(-i "$private_key_path")
+  fi
+
+  echo "Testing SSH connection: $ssh_target"
+  if ! "${ssh_cmd[@]}" "$ssh_target" true; then
+    echo "SSH connection test failed. Check network/VPN and try again." >&2
+    exit 1
+  fi
+
+  echo "Archiving remote pb_data: $ssh_target:$remote_data_path"
+  if ! "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$remote_data_path" "$remote_archive_path" <<'EOF'
+set -euo pipefail
+
+remote_data_path="$1"
+remote_archive_path="$2"
+
+if [[ ! -d "$remote_data_path" ]]; then
+  echo "Remote pb_data directory not found: $remote_data_path" >&2
+  exit 1
+fi
+
+tar -czf "$remote_archive_path" -C "$(dirname "$remote_data_path")" "$(basename "$remote_data_path")"
+EOF
+  then
+    echo "Failed to archive remote pb_data: $remote_data_path" >&2
+    exit 1
+  fi
+
+  cleanup_remote_archive() {
+    "${ssh_cmd[@]}" "$ssh_target" rm -f "$remote_archive_path" >/dev/null 2>&1 || true
+  }
+  trap cleanup_remote_archive EXIT
+
+  echo "Downloading pb_data archive: $ssh_target:$remote_archive_path -> $local_archive_path"
+  local batch_file
+  batch_file="$(mktemp)"
+  printf 'get %s %s\n' "$remote_archive_path" "$local_archive_path" >"$batch_file"
+  sftp_get_cmd+=(-b "$batch_file")
+
+  if ! "${sftp_get_cmd[@]}" "$ssh_target"; then
+    rm -f "$batch_file"
+    echo "Failed to download pb_data archive." >&2
+    exit 1
+  fi
+  rm -f "$batch_file"
+
+  trap - EXIT
+  cleanup_remote_archive
+
+  echo "Backup complete: $service"
+  echo "Saved to: $local_archive_path"
+}
+
+run_backup() {
+  local service="$1"
+
+  backup_target "$service"
+}
+
 rollback_target() {
   local target_name="$1"
   local version_index="$2"
@@ -2245,6 +2421,14 @@ case "${1:-help}" in
     shift 2 || true
     [[ $# -eq 0 ]] || { echo "Usage: ./task.sh rollback <service> <version>" >&2; exit 1; }
     run_rollback "$service" "$version_index"
+    ;;
+  backup)
+    shift
+    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh backup <service>" >&2; exit 1; }
+    service="$1"
+    shift || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh backup <service>" >&2; exit 1; }
+    run_backup "$service"
     ;;
   archive)
     shift

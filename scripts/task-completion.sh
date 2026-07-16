@@ -19,7 +19,7 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill update audit install deploy rollback archive restore archives merge test lint tsc diag verify preflight jj-main knip gitleaks index new css bundle generate format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill update audit install deploy rollback backup archive restore archives merge test lint tsc diag verify preflight jj-main knip gitleaks index new css bundle generate format help" -- "$cur") )
     return
   fi
 
@@ -37,7 +37,7 @@ _pp_dev_complete() {
     return
   fi
 
-  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "start" || "$cmd" == "deploy" || "$cmd" == "rollback" || "$cmd" == "archive" || "$cmd" == "test" || "$cmd" == "lint" || "$cmd" == "tsc" || "$cmd" == "diag" || "$cmd" == "verify" || "$cmd" == "index" || "$cmd" == "css" ) ]]; then
+  if [[ $COMP_CWORD -eq 2 && ( "$cmd" == "start" || "$cmd" == "deploy" || "$cmd" == "rollback" || "$cmd" == "backup" || "$cmd" == "archive" || "$cmd" == "test" || "$cmd" == "lint" || "$cmd" == "tsc" || "$cmd" == "diag" || "$cmd" == "verify" || "$cmd" == "index" || "$cmd" == "css" ) ]]; then
     services="$("$script" __complete_services 2>/dev/null)"
     COMPREPLY=( $(compgen -W "$services" -- "$cur") )
     return
