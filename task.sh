@@ -11,6 +11,7 @@ Usage:
   ./task.sh start <service> [-- <extra args>]
   ./task.sh kill
   ./task.sh update <npm|pocketbase> [-- <extra args>]
+  ./task.sh audit [-- <extra args>]
   ./task.sh install <npm> [-- <extra args>]
   ./task.sh deploy <service> [--skip-verify]
   ./task.sh rollback <service> <1|2|3>
@@ -39,6 +40,7 @@ Commands:
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
   update    `npm` runs npm up in root and app package.json dirs; `pocketbase` runs pocketbase update in app dirs
+  audit     Run npm audit in root and app package.json dirs; continues across dirs and fails at the end if any dir reports vulnerabilities
   install   `npm` runs npm install in root and app package.json dirs
   deploy    Verify and upload one service deploy targets using .vscode/sftp.json
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
@@ -80,6 +82,8 @@ Examples:
   ./task.sh install npm -- --package-lock-only
   ./task.sh update pocketbase
   ./task.sh update pocketbase -- --backup
+  ./task.sh audit
+  ./task.sh audit -- --omit=dev
   ./task.sh preflight
   ./task.sh jj-main
   ./task.sh knip
@@ -289,6 +293,10 @@ run_update_npm() {
 
 run_install_npm() {
   run_npm_app_command install "$@"
+}
+
+run_audit() {
+  run_npm_app_command audit "$@"
 }
 
 run_update_pocketbase() {
@@ -1063,6 +1071,10 @@ run_preflight() {
   echo
   echo "Running preflight step: knip"
   run_knip
+
+  echo
+  echo "Running preflight step: audit"
+  run_audit
 }
 
 print_jj_main_help() {
@@ -2190,6 +2202,11 @@ case "${1:-help}" in
     shift || true
     [[ "${1:-}" == "--" ]] && shift
     run_update "$target" "$@"
+    ;;
+  audit)
+    shift || true
+    [[ "${1:-}" == "--" ]] && shift
+    run_audit "$@"
     ;;
   install)
     shift || true

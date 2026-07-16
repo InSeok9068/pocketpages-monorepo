@@ -8,7 +8,7 @@ const { spawnSync } = require('child_process')
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
 const ROOT_PACKAGE_JSON = path.join(ROOT_DIR, 'package.json')
-const SUPPORTED_NPM_COMMANDS = new Set(['up', 'install'])
+const SUPPORTED_NPM_COMMANDS = new Set(['up', 'install', 'audit'])
 
 /**
  * 현재 런타임에서 npm 실행 정보를 구합니다.
@@ -109,7 +109,7 @@ function parseArgs(args) {
  * 도움말을 출력합니다.
  */
 function printHelp() {
-  console.log('Usage: node scripts/up-apps.js [--npm-command <up|install>] [npm args...]')
+  console.log('Usage: node scripts/up-apps.js [--npm-command <up|install|audit>] [npm args...]')
   console.log('')
   console.log('Examples:')
   console.log('  node scripts/up-apps.js')
@@ -117,6 +117,8 @@ function printHelp() {
   console.log('  node scripts/up-apps.js --dry-run')
   console.log('  node scripts/up-apps.js --npm-command install')
   console.log('  node scripts/up-apps.js --npm-command install --package-lock-only')
+  console.log('  node scripts/up-apps.js --npm-command audit')
+  console.log('  node scripts/up-apps.js --npm-command audit -- --omit=dev')
 }
 
 /**
@@ -124,8 +126,10 @@ function printHelp() {
  * @param {string} targetDir npm 작업 대상 절대 경로입니다.
  * @param {string} npmCommand 실행할 npm 명령입니다.
  * @param {string[]} extraArgs npm 명령 뒤에 전달할 추가 인자입니다.
+ * @param {boolean} continueOnFailure true면 실패해도 종료하지 않고 종료 코드를 반환합니다.
+ * @returns {number} npm 명령 종료 코드입니다.
  */
-function runNpmCommand(targetDir, npmCommand, extraArgs) {
+function runNpmCommand(targetDir, npmCommand, extraArgs, continueOnFailure) {
   const targetName = toTargetName(targetDir)
   const npmRunner = resolveNpmRunner()
 
@@ -136,13 +140,17 @@ function runNpmCommand(targetDir, npmCommand, extraArgs) {
     stdio: 'inherit',
   })
 
-  if (typeof result.status === 'number' && result.status !== 0) {
-    process.exit(result.status)
-  }
-
   if (result.error) {
     throw result.error
   }
+
+  const status = typeof result.status === 'number' ? result.status : 1
+
+  if (status !== 0 && !continueOnFailure) {
+    process.exit(status)
+  }
+
+  return status
 }
 
 function main() {
@@ -156,7 +164,8 @@ function main() {
   const packageDirs = collectPackageDirs()
   const hasRoot = packageDirs.includes(ROOT_DIR)
   const appCount = packageDirs.filter((targetDir) => targetDir !== ROOT_DIR).length
-  const actionLabel = npmCommand === 'install' ? 'Installing' : 'Updating'
+  const actionLabel = npmCommand === 'install' ? 'Installing' : npmCommand === 'audit' ? 'Auditing' : 'Updating'
+  const continueOnFailure = npmCommand === 'audit'
 
   if (packageDirs.length === 0) {
     console.error('루트와 apps 아래에 package.json이 있는 npm 작업 대상이 없습니다.')
@@ -169,8 +178,18 @@ function main() {
     console.log(`${actionLabel} ${appCount} app(s) from ${APPS_DIR}`)
   }
 
+  let hasFailure = false
+
   for (const targetDir of packageDirs) {
-    runNpmCommand(targetDir, npmCommand, extraArgs)
+    const status = runNpmCommand(targetDir, npmCommand, extraArgs, continueOnFailure)
+
+    if (status !== 0) {
+      hasFailure = true
+    }
+  }
+
+  if (hasFailure && continueOnFailure) {
+    process.exit(1)
   }
 }
 
