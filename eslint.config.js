@@ -214,6 +214,7 @@ module.exports = [
       '**/pb_public/**',
       'scripts/**',
       'tools/**',
+      'knip.js',
       'eslint.config.js',
       'unocss.config.js',
     ],
