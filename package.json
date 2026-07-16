@@ -9,10 +9,10 @@
     "format": "prettier --write --cache --cache-location .cache/prettier/.prettier-cache \"apps/*/pb_hooks/**/*\" \"packages/**/*.js\" \"packages/**/*.mjs\" \"packages/**/*.d.ts\""
   },
   "devDependencies": {
+    "@pocketpages/test-support": "file:packages/test-support",
     "@eslint/js": "^10.0.1",
     "@iconify-json/lucide": "1.2.116",
     "@inquirer/prompts": "^8.5.2",
-    "@pocketpages/test-support": "file:packages/test-support",
     "@types/node": "^24.13.2",
     "@unocss/cli": "66.7.5",
     "@unocss/preset-icons": "66.7.5",
