@@ -49,15 +49,7 @@ function findLatestReadingShelfRecord(userId) {
 
     return shelfRecords[0]
   } catch (exception) {
-    $app
-      .logger()
-      .error(
-        'jobs/reading-reminder:find-shelf-failed',
-        'userId',
-        String(userId || '').trim(),
-        'error',
-        String(exception && exception.message ? exception.message : exception)
-      )
+    $app.logger().error('jobs/reading-reminder:find-shelf-failed', 'userId', String(userId || '').trim(), 'error', String(exception && exception.message ? exception.message : exception))
   }
 
   return null

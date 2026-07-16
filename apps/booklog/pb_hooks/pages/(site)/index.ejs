@@ -79,18 +79,11 @@
     weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6)
 
     try {
-      const sessionRecords = $app.findRecordsByFilter(
-        'reading_sessions',
-        'user_id = {:userId} && ended_at >= {:weekStart} && ended_at <= {:weekEnd} && duration_seconds > 0',
-        '-ended_at',
-        500,
-        0,
-        {
-          userId: userId,
-          weekStart: dateutil.startOfDay(weekStartText).toISOString(),
-          weekEnd: dateutil.endOfDay(dateutil.formatDate(weekEndDate, dateutil.FORMATS.DATE)).toISOString(),
-        }
-      )
+      const sessionRecords = $app.findRecordsByFilter('reading_sessions', 'user_id = {:userId} && ended_at >= {:weekStart} && ended_at <= {:weekEnd} && duration_seconds > 0', '-ended_at', 500, 0, {
+        userId: userId,
+        weekStart: dateutil.startOfDay(weekStartText).toISOString(),
+        weekEnd: dateutil.endOfDay(dateutil.formatDate(weekEndDate, dateutil.FORMATS.DATE)).toISOString(),
+      })
 
       for (let index = 0; index < sessionRecords.length; index += 1) {
         const endedAt = String(sessionRecords[index].get('ended_at') || '').trim()
@@ -220,16 +213,24 @@
   <% if (canUseBooklog) { %>
   <div class="max-w-md">
     <p class="text-sm font-semibold text-stone-700">이번 주 <%= weeklyReadingDayCount %>일 읽었어요</p>
-    <div class="mt-3 grid grid-cols-7 gap-2" aria-label="이번 주 독서 기록">
+    <div
+      class="mt-3 grid grid-cols-7 gap-2"
+      aria-label="이번 주 독서 기록">
       <% for (let index = 0; index < weeklyReadingDays.length; index += 1) { const day = weeklyReadingDays[index] %>
       <div class="flex flex-col items-center gap-2">
-        <span class="text-[12px] font-medium <%= day.isToday ? 'text-stone-900' : 'text-stone-500' %>"><%= day.label %></span>
+        <span class="<%= day.isToday ? 'text-stone-900' : 'text-stone-500' %> text-[12px] font-medium"><%= day.label %></span>
         <% if (day.isFuture) { %>
-        <span class="h-2 w-2 rounded-full bg-stone-400/65" aria-label="<%= day.dateText %> 아직 오지 않은 날"></span>
+        <span
+          class="h-2 w-2 rounded-full bg-stone-400/65"
+          aria-label="<%= day.dateText %> 아직 오지 않은 날"></span>
         <% } else if (day.didRead) { %>
-        <span class="h-3.5 w-3.5 rounded-full bg-[#9e6125] shadow-[0_3px_8px_rgba(158,97,37,0.22)]" aria-label="<%= day.dateText %> 독서함"></span>
+        <span
+          class="h-3.5 w-3.5 rounded-full bg-[#9e6125] shadow-[0_3px_8px_rgba(158,97,37,0.22)]"
+          aria-label="<%= day.dateText %> 독서함"></span>
         <% } else { %>
-        <span class="box-border h-3.5 w-3.5 rounded-full border <%= day.isToday ? 'border-stone-700' : 'border-stone-400' %> bg-white/45" aria-label="<%= day.dateText %> 독서 기록 없음"></span>
+        <span
+          class="<%= day.isToday ? 'border-stone-700' : 'border-stone-400' %> box-border h-3.5 w-3.5 rounded-full border bg-white/45"
+          aria-label="<%= day.dateText %> 독서 기록 없음"></span>
         <% } %>
       </div>
       <% } %>
