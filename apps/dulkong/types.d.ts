@@ -43,6 +43,7 @@ declare namespace types {
     id: string
     senderId: string
     body: string
+    lines: string[]
     mine: boolean
     timeLabel: string
     dateLabel: string

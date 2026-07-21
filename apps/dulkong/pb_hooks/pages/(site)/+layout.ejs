@@ -1,6 +1,7 @@
 <%
   const isProduction = String(env('APP_ENV') || 'development').trim() === 'production'
   const initialToastMessage = params.__flash ? String(params.__flash).trim() : ''
+  const filePondAssetRoot = '/assets/vendor/'
 %>
 <!DOCTYPE html>
 <html lang="ko">
@@ -46,8 +47,16 @@
       content="둘콩" />
     <link
       rel="stylesheet"
+      href="<%= asset(filePondAssetRoot + 'filepond-4.32.12.min.css') %>" />
+    <link
+      rel="stylesheet"
+      href="<%= asset(filePondAssetRoot + 'filepond-plugin-image-preview-4.6.12.min.css') %>" />
+    <link
+      rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
     <%- include('unocss-head.ejs', { isProduction }) %>
+    <script src="<%= asset(filePondAssetRoot + 'filepond-plugin-image-preview-4.6.12.min.js') %>"></script>
+    <script src="<%= asset(filePondAssetRoot + 'filepond-4.32.12.min.js') %>"></script>
     <%- datastar.scripts({
       spa: {
         scope: '#app-shell',
@@ -66,7 +75,7 @@
     <main id="app-view"><%- slots.body || slot %></main>
 
     <div
-      class="pointer-events-none fixed right-0 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-0 z-[70] mx-auto flex w-full max-w-[480px] justify-center px-4"
+      class="pointer-events-none fixed right-0 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-0 z-[70] mx-auto box-border flex w-full max-w-[480px] justify-center px-4"
       aria-live="polite"
       aria-atomic="true">
       <div
@@ -78,7 +87,7 @@
           'bg-[#354922]': $appToastTone === 'success',
           'bg-[#8f3934]': $appToastTone === 'error'
         }"
-        class="pointer-events-auto flex min-h-12 w-full items-center gap-3 rounded-[18px] px-4 py-3 text-white shadow-[0_16px_40px_rgba(34,35,30,0.24)]">
+        class="pointer-events-auto box-border flex min-h-12 w-full max-w-full items-center gap-3 rounded-[18px] px-4 py-3 text-white shadow-[0_16px_40px_rgba(34,35,30,0.24)]">
         <span
           data-class="{
             'bg-white/24': $appToastTone === 'info',
@@ -91,7 +100,7 @@
             aria-hidden="true"></span>
         </span>
         <p
-          class="m-0 min-w-0 flex-1 text-sm leading-5 font-bold"
+          class="m-0 min-w-0 flex-1 break-words text-sm leading-5 font-bold"
           data-text="$appToastMessage">
           <%= initialToastMessage %>
         </p>

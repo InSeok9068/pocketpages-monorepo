@@ -109,6 +109,38 @@ textarea {
   backdrop-filter: blur(8px);
 }
 
+.photo-card {
+  isolation: isolate;
+}
+
+.photo-viewer-trigger {
+  z-index: 1;
+}
+
+.photo-favorite-button {
+  z-index: 2;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.photo-favorite-button:active {
+  transform: scale(0.92);
+}
+
+.photo-favorite-button--active {
+  background: #fffefa;
+  color: #df6470;
+  box-shadow: 0 5px 16px rgb(52 37 34 / 22%);
+}
+
+.photo-favorite-heart {
+  font-size: 18px;
+  line-height: 1;
+}
+
 .bottom-nav-item {
   display: flex;
   min-width: 0;
@@ -124,6 +156,57 @@ textarea {
 
 .bottom-nav-item--active {
   color: #5f7b37;
+}
+
+.filepond--root {
+  min-height: 9rem;
+  margin-bottom: 1rem;
+  font-family: inherit;
+}
+
+.filepond--panel-root {
+  border-radius: 20px;
+  border: 1px dashed #b8c99a;
+  background: #f4f7ed;
+}
+
+.filepond--root .filepond--drop-label {
+  min-height: 9rem;
+  color: #627848;
+}
+
+.filepond-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filepond-label strong {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.filepond-label small {
+  color: #929b82;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.filepond-label-icon {
+  width: 24px;
+  height: 24px;
+  margin-bottom: 3px;
+  color: #7e9857;
+}
+
+.filepond--item-panel {
+  background: #354922;
+}
+
+.filepond--file-action-button {
+  background: rgb(31 42 20 / 72%);
 }
 
 .bottom-nav-item:focus-visible,

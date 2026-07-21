@@ -57,3 +57,16 @@ test('Datastar login validation patches the global toast', async () => {
   assert.match(body, /appToastMessage/)
   assert.match(body, /인석과 솔미 중에서 선택해 주세요\./)
 })
+
+test('FilePond preview assets are served locally', async () => {
+  for (const path of [
+    '/assets/vendor/filepond-4.32.12.min.css',
+    '/assets/vendor/filepond-4.32.12.min.js',
+    '/assets/vendor/filepond-plugin-image-preview-4.6.12.min.css',
+    '/assets/vendor/filepond-plugin-image-preview-4.6.12.min.js',
+  ]) {
+    const response = await fetch(`${service.baseUrl}${path}`)
+
+    assert.equal(response.status, 200)
+  }
+})

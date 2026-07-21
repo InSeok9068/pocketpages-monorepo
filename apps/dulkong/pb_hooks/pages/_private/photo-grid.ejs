@@ -29,7 +29,7 @@
     <% } else { %>
     <div class="grid grid-cols-2 gap-3">
       <% photos.forEach(function (photo) { %>
-      <article class="group relative aspect-square overflow-hidden rounded-[24px] bg-[#e8e6dc]">
+      <article class="photo-card group relative aspect-square overflow-hidden rounded-[24px] bg-[#e8e6dc]">
         <img
           src="<%= photo.imageUrl %>"
           alt="<%= photo.caption %>"
@@ -41,12 +41,26 @@
         </div>
         <button
           type="button"
-          data-on:click="@post('/xapi/photos/favorite', {payload: {photoId: '<%= photo.id %>', photoFilter: $photoFilter}})"
-          class="absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full border-0 bg-black/28 text-white backdrop-blur-sm"
+          data-on:click="$photoViewerUrl = <%= stringify(photo.imageUrl) %>; $photoViewerCaption = <%= stringify(photo.caption) %>; $photoViewerMeta = <%= stringify(photo.dateLabel + (photo.locationName ? ' · ' + photo.locationName : '')) %>; $photoViewerOpen = true"
+          class="photo-viewer-trigger absolute inset-0 cursor-zoom-in rounded-[24px] border-0 bg-transparent"
+          aria-label="<%= photo.caption %> 크게 보기"></button>
+        <button
+          type="button"
+          data-on:click__stop="@post('/xapi/photos/favorite', {payload: {photoId: '<%= photo.id %>', photoFilter: $photoFilter}})"
+          class="photo-favorite-button <%= photo.isFavorite ? 'photo-favorite-button--active' : '' %> absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full border-0 bg-black/28 text-white backdrop-blur-sm"
+          aria-pressed="<%= photo.isFavorite ? 'true' : 'false' %>"
           aria-label="즐겨찾기 <%= photo.isFavorite ? '해제' : '추가' %>">
+          <% if (photo.isFavorite) { %>
           <span
-            class="i-lucide-heart <%= photo.isFavorite ? 'fill-white' : '' %> h-4 w-4"
+            class="photo-favorite-heart"
+            aria-hidden="true"
+            >♥</span
+          >
+          <% } else { %>
+          <span
+            class="i-lucide-heart h-4 w-4"
             aria-hidden="true"></span>
+          <% } %>
         </button>
       </article>
       <% }) %>

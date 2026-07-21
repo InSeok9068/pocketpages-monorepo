@@ -187,11 +187,13 @@ function listPhotos(app, filter) {
  */
 function mapMessage(record, currentUserId) {
   const createdValue = record.get('clientCreatedAt') || record.get('created')
+  const body = String(record.get('body') || '')
 
   return {
     id: String(record.get('id') || ''),
     senderId: String(record.get('sender') || ''),
-    body: String(record.get('body') || ''),
+    body: body,
+    lines: body.split(/\r\n?|\n/),
     mine: String(record.get('sender') || '') === currentUserId,
     timeLabel: dateutil.formatDate(createdValue, dateutil.FORMATS.TIME_MINUTES),
     dateLabel: dateutil.formatDate(createdValue, 'M월 D일'),
