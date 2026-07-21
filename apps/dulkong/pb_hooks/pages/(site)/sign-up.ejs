@@ -1,0 +1,60 @@
+<script server>
+  meta('title', 'dulkong 회원가입')
+  meta('description', 'dulkong 회원가입')
+
+  if (request.auth) {
+    dbg('dulkong/sign-up:redirect', {
+      status: 303,
+      redirectTo: '/',
+    })
+    redirect('/', {
+      status: 303,
+    })
+    return
+  }
+</script>
+
+<section data-signals="{email: '', password: '', passwordConfirm: ''}">
+  <h1>회원가입</h1>
+
+  <form
+    method="post"
+    action="/xapi/auth/sign-up"
+    data-on:submit__prevent="@post('/xapi/auth/sign-up')">
+    <label>
+      이메일
+      <input
+        type="email"
+        name="email"
+        data-bind:email
+        required
+        placeholder="me@example.com" />
+    </label>
+
+    <label>
+      비밀번호
+      <input
+        type="password"
+        name="password"
+        data-bind:password
+        required
+        minlength="8"
+        placeholder="8자 이상" />
+    </label>
+
+    <label>
+      비밀번호 확인
+      <input
+        type="password"
+        name="passwordConfirm"
+        data-bind:password-confirm
+        required
+        minlength="8"
+        placeholder="비밀번호 확인" />
+    </label>
+
+    <button type="submit">가입</button>
+  </form>
+
+  <a href="/sign-in">로그인</a>
+</section>

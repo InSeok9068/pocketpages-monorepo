@@ -1,0 +1,131 @@
+<script server>
+  meta('title', '우리 | 둘콩')
+  meta('description', '우리 둘의 정보와 기념일')
+</script>
+
+<div class="mx-auto min-h-[100dvh] w-full max-w-[480px] bg-[#fbfaf6] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]">
+  <div class="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-30">
+    <header class="flex items-center justify-between py-2">
+      <div>
+        <p class="m-0 text-xs font-bold tracking-[0.1em] text-[#98a081]">둘콩 커플</p>
+        <h1 class="mt-1 mb-0 text-[28px] font-extrabold tracking-[-0.045em]">우리</h1>
+      </div>
+      <button
+        type="button"
+        class="flex h-10 w-10 items-center justify-center rounded-full border-0 bg-white text-[#77766d] shadow-[0_5px_16px_rgba(58,59,51,0.07)]"
+        aria-label="설정">
+        <span
+          class="i-lucide-settings h-5 w-5"
+          aria-hidden="true"></span>
+      </button>
+    </header>
+
+    <main class="mt-6 space-y-6">
+      <section
+        class="rounded-[28px] bg-[#dcebbf] p-6 text-center shadow-[0_16px_36px_rgba(92,112,57,0.13)]"
+        aria-labelledby="couple-title">
+        <div class="mx-auto flex w-fit items-center">
+          <span class="flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] bg-[#ffe5db] text-2xl">🫘</span>
+          <span class="-ml-3 flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] bg-[#e1eaff] text-2xl">🌱</span>
+        </div>
+        <h2
+          id="couple-title"
+          class="mt-4 mb-0 text-xl font-extrabold tracking-[-0.035em]">
+          사랑콩 ❤️ 행복콩
+        </h2>
+        <p class="mt-1.5 mb-0 text-sm font-semibold text-[#66784c]">2025년 5월 21일부터 함께</p>
+      </section>
+
+      <section aria-labelledby="days-title">
+        <div class="mb-3 flex items-center justify-between">
+          <h2
+            id="days-title"
+            class="m-0 text-lg font-extrabold tracking-[-0.03em]">
+            우리의 날
+          </h2>
+          <button
+            type="button"
+            class="border-0 bg-transparent text-sm font-bold text-[#71834f]">
+            +추가
+          </button>
+        </div>
+        <div class="space-y-3">
+          <article class="flex items-center justify-between rounded-[22px] border border-[#ebe9df] bg-white p-4 shadow-[0_7px_20px_rgba(48,49,43,0.05)]">
+            <div class="flex items-center gap-3">
+              <span class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[#fff0e7] text-[#d27355]">
+                <span
+                  class="i-lucide-heart h-5 w-5"
+                  aria-hidden="true"></span>
+              </span>
+              <div>
+                <h3 class="m-0 text-[15px] font-extrabold">우리가 만난 날</h3>
+                <p class="mt-1 mb-0 text-xs font-semibold text-[#99988e]">2025.05.21</p>
+              </div>
+            </div>
+            <strong class="text-lg text-[#5f7b37]">+427</strong>
+          </article>
+          <article class="flex items-center justify-between rounded-[22px] border border-[#ebe9df] bg-white p-4 shadow-[0_7px_20px_rgba(48,49,43,0.05)]">
+            <div class="flex items-center gap-3">
+              <span class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[#e9f0ff] text-[#627fb5]">
+                <span
+                  class="i-lucide-cake-slice h-5 w-5"
+                  aria-hidden="true"></span>
+              </span>
+              <div>
+                <h3 class="m-0 text-[15px] font-extrabold">사랑콩 생일</h3>
+                <p class="mt-1 mb-0 text-xs font-semibold text-[#99988e]">2026.08.02</p>
+              </div>
+            </div>
+            <strong class="text-lg text-[#627fb5]">D-12</strong>
+          </article>
+        </div>
+      </section>
+
+      <section
+        class="overflow-hidden rounded-[22px] border border-[#ebe9df] bg-white"
+        aria-label="커플 설정">
+        <button
+          type="button"
+          class="flex w-full items-center justify-between border-0 border-b border-[#efede5] bg-white px-4 py-4 text-left">
+          <span class="flex items-center gap-3 text-sm font-bold"
+            ><span
+              class="i-lucide-user-round h-5 w-5 text-[#7c8e5d]"
+              aria-hidden="true"></span
+            >프로필 관리</span
+          >
+          <span
+            class="i-lucide-chevron-right h-4 w-4 text-[#b3b2a8]"
+            aria-hidden="true"></span>
+        </button>
+        <button
+          type="button"
+          class="flex w-full items-center justify-between border-0 border-b border-[#efede5] bg-white px-4 py-4 text-left">
+          <span class="flex items-center gap-3 text-sm font-bold"
+            ><span
+              class="i-lucide-bell h-5 w-5 text-[#7c8e5d]"
+              aria-hidden="true"></span
+            >알림 설정</span
+          >
+          <span
+            class="i-lucide-chevron-right h-4 w-4 text-[#b3b2a8]"
+            aria-hidden="true"></span>
+        </button>
+        <button
+          type="button"
+          class="flex w-full items-center justify-between border-0 bg-white px-4 py-4 text-left">
+          <span class="flex items-center gap-3 text-sm font-bold"
+            ><span
+              class="i-lucide-link h-5 w-5 text-[#7c8e5d]"
+              aria-hidden="true"></span
+            >연결 코드</span
+          >
+          <span
+            class="i-lucide-chevron-right h-4 w-4 text-[#b3b2a8]"
+            aria-hidden="true"></span>
+        </button>
+      </section>
+    </main>
+  </div>
+
+  <%- include('app-bottom-nav.ejs', { currentPath: '/us' }) %>
+</div>

@@ -1,0 +1,123 @@
+<script server>
+  meta('title', '추억 | 둘콩')
+  meta('description', '우리 둘의 사진과 추억')
+</script>
+
+<div class="mx-auto min-h-[100dvh] w-full max-w-[480px] bg-[#fbfaf6] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]">
+  <div class="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-30">
+    <header class="flex items-center justify-between py-2">
+      <div>
+        <p class="m-0 text-xs font-bold tracking-[0.1em] text-[#98a081]">우리의 기록</p>
+        <h1 class="mt-1 mb-0 text-[28px] font-extrabold tracking-[-0.045em]">추억</h1>
+      </div>
+      <button
+        type="button"
+        class="flex h-11 w-11 items-center justify-center rounded-[16px] border-0 bg-[#dcebbf] text-[#4e672f] shadow-[0_6px_18px_rgba(92,112,57,0.15)]"
+        aria-label="사진 추가">
+        <span
+          class="i-lucide-plus h-5 w-5"
+          aria-hidden="true"></span>
+      </button>
+    </header>
+
+    <main class="mt-6">
+      <section
+        class="rounded-[26px] bg-[#302f2a] p-5 text-white"
+        aria-labelledby="memory-summary-title">
+        <div class="flex items-end justify-between gap-4">
+          <div>
+            <p class="m-0 text-xs font-semibold text-white/55">함께 모은 순간</p>
+            <h2
+              id="memory-summary-title"
+              class="mt-1 mb-0 text-2xl font-extrabold">
+              128장
+            </h2>
+          </div>
+          <span class="text-sm font-semibold text-[#cbe39f]">2025.05.21부터</span>
+        </div>
+      </section>
+
+      <div
+        class="mt-6 flex gap-2 overflow-x-auto pb-2"
+        aria-label="추억 기간 필터">
+        <button
+          type="button"
+          class="shrink-0 rounded-full border-0 bg-[#354922] px-4 py-2 text-sm font-bold text-white">
+          전체
+        </button>
+        <button
+          type="button"
+          class="shrink-0 rounded-full border border-[#e5e3d9] bg-white px-4 py-2 text-sm font-bold text-[#77766d]">
+          2026년
+        </button>
+        <button
+          type="button"
+          class="shrink-0 rounded-full border border-[#e5e3d9] bg-white px-4 py-2 text-sm font-bold text-[#77766d]">
+          2025년
+        </button>
+        <button
+          type="button"
+          class="shrink-0 rounded-full border border-[#e5e3d9] bg-white px-4 py-2 text-sm font-bold text-[#77766d]">
+          즐겨찾기
+        </button>
+      </div>
+
+      <section
+        class="mt-5"
+        aria-labelledby="july-title">
+        <div class="mb-3 flex items-center justify-between">
+          <h2
+            id="july-title"
+            class="m-0 text-lg font-extrabold tracking-[-0.03em]">
+            2026년 7월
+          </h2>
+          <span class="text-xs font-semibold text-[#aaa99f]">12개의 순간</span>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            class="memory-tile memory-tile--peach aspect-square overflow-hidden rounded-[24px] border-0 p-0">
+            <span
+              class="memory-emoji text-4xl"
+              aria-hidden="true"
+              >🌅</span
+            >
+            <span class="memory-caption">한강의 저녁 · 7.19</span>
+          </button>
+          <button
+            type="button"
+            class="memory-tile memory-tile--green aspect-square overflow-hidden rounded-[24px] border-0 p-0">
+            <span
+              class="memory-emoji text-4xl"
+              aria-hidden="true"
+              >🥐</span
+            >
+            <span class="memory-caption">주말 브런치 · 7.13</span>
+          </button>
+          <button
+            type="button"
+            class="memory-tile memory-tile--blue aspect-[1.35] overflow-hidden rounded-[24px] border-0 p-0">
+            <span
+              class="memory-emoji text-4xl"
+              aria-hidden="true"
+              >🌊</span
+            >
+            <span class="memory-caption">바다를 보러 · 7.05</span>
+          </button>
+          <button
+            type="button"
+            class="memory-tile memory-tile--cream aspect-[1.35] overflow-hidden rounded-[24px] border-0 p-0">
+            <span
+              class="memory-emoji text-4xl"
+              aria-hidden="true"
+              >🍰</span
+            >
+            <span class="memory-caption">토요일 데이트 · 7.02</span>
+          </button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <%- include('app-bottom-nav.ejs', { currentPath: '/memories' }) %>
+</div>

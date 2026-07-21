@@ -1,0 +1,47 @@
+<nav
+  class="fixed right-0 bottom-0 left-0 z-40 mx-auto w-full max-w-[480px] border-t border-[#e8e6dc] bg-[#fffefa]/94 shadow-[0_-10px_30px_rgba(47,48,42,0.07)] backdrop-blur-md"
+  style="padding-bottom: env(safe-area-inset-bottom)"
+  aria-label="하단 메뉴">
+  <div class="grid min-h-[68px] grid-cols-4 px-2">
+    <a
+      href="/"
+      class="bottom-nav-item<%= currentPath === '/' ? ' bottom-nav-item--active' : '' %>"
+      <% if (currentPath === '/') { %>aria-current="page"
+      <% } %>>
+      <span
+        class="i-lucide-house h-5 w-5"
+        aria-hidden="true"></span>
+      <span>홈</span>
+    </a>
+    <a
+      href="/memories"
+      class="bottom-nav-item<%= currentPath === '/memories' ? ' bottom-nav-item--active' : '' %>"
+      <% if (currentPath === '/memories') { %>aria-current="page"
+      <% } %>>
+      <span
+        class="i-lucide-images h-5 w-5"
+        aria-hidden="true"></span>
+      <span>추억</span>
+    </a>
+    <a
+      href="/chat"
+      class="bottom-nav-item<%= currentPath === '/chat' ? ' bottom-nav-item--active' : '' %>"
+      <% if (currentPath === '/chat') { %>aria-current="page"
+      <% } %>>
+      <span
+        class="i-lucide-message-circle h-5 w-5"
+        aria-hidden="true"></span>
+      <span>대화</span>
+    </a>
+    <a
+      href="/us"
+      class="bottom-nav-item<%= currentPath === '/us' ? ' bottom-nav-item--active' : '' %>"
+      <% if (currentPath === '/us') { %>aria-current="page"
+      <% } %>>
+      <span
+        class="i-lucide-users-round h-5 w-5"
+        aria-hidden="true"></span>
+      <span>우리</span>
+    </a>
+  </div>
+</nav>

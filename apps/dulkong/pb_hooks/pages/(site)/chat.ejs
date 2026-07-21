@@ -1,0 +1,92 @@
+<script server>
+  meta('title', '대화 | 둘콩')
+  meta('description', '우리 둘만의 실시간 대화')
+</script>
+
+<div
+  class="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col bg-[#f7f5ee] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
+  data-signals="{draft: ''}">
+  <header class="shrink-0 border-b border-[#e8e5da] bg-[#fbfaf6]/92 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 backdrop-blur-md">
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <span
+          class="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#ffe5db] text-lg"
+          aria-hidden="true"
+          >🫘</span
+        >
+        <div>
+          <h1 class="m-0 text-[17px] font-extrabold">내 사랑콩</h1>
+          <p class="mt-0.5 mb-0 flex items-center gap-1.5 text-xs font-semibold text-[#779550]">
+            <span class="h-1.5 w-1.5 rounded-full bg-[#82ae4d]"></span>
+            지금 함께 있어요
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        class="flex h-10 w-10 items-center justify-center rounded-full border-0 bg-white text-[#77766d] shadow-[0_5px_16px_rgba(58,59,51,0.07)]"
+        aria-label="대화 메뉴">
+        <span
+          class="i-lucide-ellipsis h-5 w-5"
+          aria-hidden="true"></span>
+      </button>
+    </div>
+  </header>
+
+  <main
+    id="message-list"
+    class="min-h-0 flex-1 overflow-y-auto px-5 py-5"
+    aria-live="polite">
+    <p class="mx-auto mb-6 w-fit rounded-full bg-[#e9e6dc] px-3 py-1.5 text-[11px] font-bold text-[#8a887e]">7월 21일 화요일</p>
+
+    <div class="space-y-4">
+      <div class="flex items-end gap-2">
+        <div class="max-w-[76%] rounded-[20px_20px_20px_6px] bg-white px-4 py-3 text-sm leading-5 shadow-[0_5px_16px_rgba(58,59,51,0.06)]">오늘 하루는 어땠어? 😊</div>
+        <time class="mb-1 text-[10px] font-semibold text-[#aaa99f]">18:42</time>
+      </div>
+
+      <div class="flex items-end justify-end gap-2">
+        <time class="mb-1 text-[10px] font-semibold text-[#aaa99f]">18:44</time>
+        <div class="max-w-[76%] rounded-[20px_20px_6px_20px] bg-[#cfe5a6] px-4 py-3 text-sm leading-5 text-[#30421d] shadow-[0_5px_16px_rgba(92,112,57,0.1)]">
+          바쁘긴 했는데 너 생각하면서 잘 버텨어!
+        </div>
+      </div>
+
+      <div class="flex items-end gap-2">
+        <div class="max-w-[76%] rounded-[20px_20px_20px_6px] bg-white px-4 py-3 text-sm leading-5 shadow-[0_5px_16px_rgba(58,59,51,0.06)]">이따 저녁에 같이 산책할까? 💚</div>
+        <time class="mb-1 text-[10px] font-semibold text-[#aaa99f]">18:45</time>
+      </div>
+    </div>
+  </main>
+
+  <div class="shrink-0 border-t border-[#e8e5da] bg-[#fffefa] px-4 pt-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
+    <div class="flex items-end gap-2">
+      <button
+        type="button"
+        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-0 bg-[#efede5] text-[#77766d]"
+        aria-label="사진 추가">
+        <span
+          class="i-lucide-plus h-5 w-5"
+          aria-hidden="true"></span>
+      </button>
+      <label class="min-w-0 flex-1">
+        <span class="sr-only">메시지</span>
+        <textarea
+          data-bind:draft
+          rows="1"
+          class="box-border max-h-28 min-h-11 w-full resize-none rounded-[22px] border border-[#e4e1d6] bg-[#f7f5ef] px-4 py-3 text-sm outline-none focus:border-[#9fbd6f]"
+          placeholder="메시지를 입력하세요"></textarea>
+      </label>
+      <button
+        type="button"
+        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-0 bg-[#354922] text-white"
+        aria-label="메시지 보내기">
+        <span
+          class="i-lucide-arrow-up h-5 w-5"
+          aria-hidden="true"></span>
+      </button>
+    </div>
+  </div>
+
+  <%- include('app-bottom-nav.ejs', { currentPath: '/chat' }) %>
+</div>

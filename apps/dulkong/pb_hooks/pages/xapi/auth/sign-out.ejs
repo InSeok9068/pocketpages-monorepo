@@ -1,0 +1,44 @@
+<script server>
+  const { createAuthCookie } = require('@pocketpages/auth-cookie')
+  const authCookie = createAuthCookie()
+  const { patchAppToast } = resolve('patch-app-toast')
+  const isDatastarRequest = datastar.isRequest(request)
+
+  if (request.method !== 'POST') {
+    dbg('dulkong/xapi/auth/sign-out:redirect', {
+      status: isDatastarRequest ? 200 : 303,
+      redirectTo: '/',
+      message: '잘못된 요청입니다.',
+    })
+    if (isDatastarRequest) {
+      patchAppToast(datastar, '잘못된 요청입니다.', 'error')
+      return
+    }
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  dbg('dulkong/xapi/auth/sign-out:start', {
+    isSignedIn: !!request.auth,
+  })
+
+  authCookie.signOut(response)
+
+  dbg('dulkong/xapi/auth/sign-out:response', {
+    status: isDatastarRequest ? 200 : 303,
+    redirectTo: '/sign-in',
+    message: '로그아웃 완료',
+  })
+  if (isDatastarRequest) {
+    datastar.redirect('/sign-in')
+    return
+  }
+  redirect('/sign-in', {
+    status: 303,
+    message: '로그아웃 완료',
+  })
+  return
+</script>

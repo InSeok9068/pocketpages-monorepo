@@ -1,0 +1,130 @@
+@view-transition {
+  navigation: auto;
+}
+
+:root {
+  color-scheme: light;
+  font-family:
+    Pretendard,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  background: #efeee8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.memory-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 36%);
+}
+
+.memory-tile--peach {
+  background: linear-gradient(145deg, #f8d2bd, #eb9c86);
+}
+
+.memory-tile--green {
+  background: linear-gradient(145deg, #dbe7bd, #a9c57e);
+}
+
+.memory-tile--blue {
+  background: linear-gradient(145deg, #cbdff1, #8bb2d0);
+}
+
+.memory-tile--cream {
+  background: linear-gradient(145deg, #f3e7c7, #d8bd7e);
+}
+
+.memory-emoji {
+  transform: translateY(-7px);
+  font-size: 1.9rem;
+  filter: drop-shadow(0 5px 8px rgb(67 58 49 / 16%));
+}
+
+.memory-caption {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  overflow: hidden;
+  border-radius: 10px;
+  padding: 6px 7px;
+  background: rgb(31 34 27 / 62%);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+}
+
+.bottom-nav-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+  color: #aaa99f;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.bottom-nav-item--active {
+  color: #5f7b37;
+}
+
+.bottom-nav-item:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgb(126 163 74 / 35%);
+  outline-offset: 2px;
+}
+
+@media (min-width: 481px) {
+  body {
+    padding-block: 24px;
+  }
+
+  #home {
+    border-radius: 32px;
+    overflow: hidden;
+  }
+
+  nav[aria-label='하단 메뉴'] {
+    bottom: 24px;
+    border-radius: 0 0 32px 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

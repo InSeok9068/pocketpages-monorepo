@@ -1,0 +1,90 @@
+<%
+  const isProduction = String(env('APP_ENV') || 'development').trim() === 'production'
+  const initialToastMessage = params.__flash ? String(params.__flash).trim() : ''
+%>
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1" />
+    <title><%= meta('title') %></title>
+    <meta
+      name="description"
+      content="<%= meta('description') %>" />
+    <meta
+      name="theme-color"
+      content="#fbfaf6" />
+    <link
+      rel="stylesheet"
+      href="<%= asset('/assets/style.css') %>" />
+    <%- include('unocss-head.ejs', { isProduction }) %>
+    <%- datastar.scripts({
+      spa: {
+        scope: '#app-shell',
+        selector: '#app-view',
+      },
+      realtime: true,
+    }) %>
+    <%- slots.head %>
+  </head>
+
+  <body
+    id="app-shell"
+    class="bg-[#efeee8]"
+    data-signals="<%= stringify({ appToastMessage: initialToastMessage, appToastTone: 'info' }) %>"
+    un-cloak>
+    <main id="app-view"><%- slots.body || slot %></main>
+
+    <div
+      class="pointer-events-none fixed right-0 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-0 z-[70] mx-auto flex w-full max-w-[480px] justify-center px-4"
+      aria-live="polite"
+      aria-atomic="true">
+      <div
+        id="app-toast"
+        role="status"
+        data-show="$appToastMessage"
+        data-class="{
+          'bg-[#302f2a]': $appToastTone === 'info',
+          'bg-[#354922]': $appToastTone === 'success',
+          'bg-[#8f3934]': $appToastTone === 'error'
+        }"
+        class="pointer-events-auto flex min-h-12 w-full items-center gap-3 rounded-[18px] px-4 py-3 text-white shadow-[0_16px_40px_rgba(34,35,30,0.24)]">
+        <span
+          data-class="{
+            'bg-white/24': $appToastTone === 'info',
+            'bg-[#dcebbf]/24': $appToastTone === 'success',
+            'bg-[#ffd5d0]/24': $appToastTone === 'error'
+          }"
+          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
+          <span
+            class="h-2.5 w-2.5 rounded-full bg-white"
+            aria-hidden="true"></span>
+        </span>
+        <p
+          class="m-0 min-w-0 flex-1 text-sm leading-5 font-bold"
+          data-text="$appToastMessage">
+          <%= initialToastMessage %>
+        </p>
+        <button
+          type="button"
+          data-on:click="$appToastMessage = ''"
+          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-0 bg-white/10 text-white"
+          aria-label="알림 닫기">
+          <span
+            class="i-lucide-x h-4 w-4"
+            aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+
+    <% if (initialToastMessage) { %>
+    <script>
+      window.dulkongToastTimer = window.setTimeout(function () {
+        if (window.patchSignals) window.patchSignals({ appToastMessage: '' })
+      }, 2800)
+    </script>
+    <% } %>
+  </body>
+</html>
