@@ -32,16 +32,14 @@
     const profiles = coupleData.getCoupleProfiles($app, request.auth)
     datastar.patchElements(include('message-list.ejs', { messages: coupleData.listMessages($app, userId), partnerName: profiles.partner.name }), { selector: '#message-list', mode: 'outer' })
     datastar.patchSignals({ draft: '', clientMessageId: '', chatSending: false })
-    datastar.executeScript("requestAnimationFrame(function(){requestAnimationFrame(function(){var draft=document.getElementById('chat-draft'); var list=document.getElementById('message-list'); if(draft) draft.value=''; if(list) list.scrollTop=list.scrollHeight;});});")
-    datastar.realtime.patchSignals(
-      { chatRevision: new Date().getTime() },
-      undefined,
-      {
-        filter: function (clientId) {
-          return !senderClientId || clientId !== senderClientId
-        },
-      }
+    datastar.executeScript(
+      "requestAnimationFrame(function(){requestAnimationFrame(function(){var draft=document.getElementById('chat-draft'); var list=document.getElementById('message-list'); if(draft) draft.value=''; if(list) list.scrollTop=list.scrollHeight;});});"
     )
+    datastar.realtime.patchSignals({ chatRevision: new Date().getTime() }, undefined, {
+      filter: function (clientId) {
+        return !senderClientId || clientId !== senderClientId
+      },
+    })
   } catch (exception) {
     error('dulkong/xapi/messages/send:failed', { userId, clientMessageId, error: String(exception.message || exception) })
     datastar.patchSignals({ chatSending: false })
