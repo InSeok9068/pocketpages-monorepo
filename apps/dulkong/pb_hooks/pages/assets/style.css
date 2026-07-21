@@ -141,6 +141,17 @@ textarea {
   line-height: 1;
 }
 
+.message-list--positioning {
+  visibility: hidden;
+}
+
+.chat-new-message-button {
+  position: absolute;
+  right: 1rem;
+  bottom: calc(9rem + env(safe-area-inset-bottom));
+  z-index: 30;
+}
+
 .bottom-nav-item {
   display: flex;
   min-width: 0;

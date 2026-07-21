@@ -30,10 +30,22 @@
 
     info('dulkong/xapi/messages/send:success', { messageId: String(record.get('id') || ''), userId })
     const profiles = coupleData.getCoupleProfiles($app, request.auth)
-    datastar.patchElements(include('message-list.ejs', { messages: coupleData.listMessages($app, userId), partnerName: profiles.partner.name }), { selector: '#message-list', mode: 'outer' })
-    datastar.patchSignals({ draft: '', clientMessageId: '', chatSending: false })
+    const page = coupleData.getMessagePage($app, userId, { limit: 50 })
+    const oldestMessage = page.messages.length ? page.messages[0] : null
+    datastar.patchElements(include('message-list.ejs', { messages: page.messages, partnerName: profiles.partner.name }), { selector: '#message-list', mode: 'outer' })
+    datastar.patchSignals({
+      draft: '',
+      clientMessageId: '',
+      chatSending: false,
+      chatAtBottom: true,
+      chatHasNewMessage: false,
+      messageHasMore: page.hasMore,
+      messageHistoryLoading: false,
+      oldestMessageCreated: oldestMessage ? oldestMessage.createdAt : '',
+      oldestMessageId: oldestMessage ? oldestMessage.id : '',
+    })
     datastar.executeScript(
-      "requestAnimationFrame(function(){requestAnimationFrame(function(){var draft=document.getElementById('chat-draft'); var list=document.getElementById('message-list'); if(draft) draft.value=''; if(list) list.scrollTop=list.scrollHeight;});});"
+      "requestAnimationFrame(function(){requestAnimationFrame(function(){var draft=document.getElementById('chat-draft'); var list=document.getElementById('message-list'); if(draft) draft.value=''; if(list){list.scrollTop=list.scrollHeight;list.classList.remove('message-list--positioning');list.dataset.ready='true';}});});"
     )
     datastar.realtime.patchSignals({ chatRevision: new Date().getTime() }, undefined, {
       filter: function (clientId) {

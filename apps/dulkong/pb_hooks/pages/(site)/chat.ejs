@@ -1,16 +1,18 @@
 <script server>
   const coupleData = resolve('couple-data')
   const profiles = coupleData.getCoupleProfiles($app, request.auth)
-  const messages = coupleData.listMessages($app, profiles.current.id)
+  const messagePage = coupleData.getMessagePage($app, profiles.current.id, { limit: 50 })
+  const messages = messagePage.messages
+  const oldestMessage = messages.length ? messages[0] : null
 
   meta('title', '대화 | 둘콩')
   meta('description', '우리 둘만의 실시간 대화')
 </script>
 
 <div
-  class="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col bg-[#f7f5ee] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
-  data-signals="<%= stringify({ draft: '', clientMessageId: '', chatRevision: 0, chatSending: false }) %>"
-  data-effect="if ($chatRevision) @get('/xapi/messages/list')">
+  class="relative mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col bg-[#f7f5ee] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
+  data-signals="<%= stringify({ draft: '', clientMessageId: '', chatRevision: 0, chatHandledRevision: 0, chatSending: false, chatAtBottom: true, chatHasNewMessage: false, messageHasMore: messagePage.hasMore, messageHistoryLoading: false, oldestMessageCreated: oldestMessage ? oldestMessage.createdAt : '', oldestMessageId: oldestMessage ? oldestMessage.id : '' }) %>"
+  data-effect="if ($chatRevision && $chatRevision !== $chatHandledRevision) { $chatHandledRevision = $chatRevision; if ($chatAtBottom) @get('/xapi/messages/list'); else $chatHasNewMessage = true }">
   <header class="shrink-0 border-b border-[#e8e5da] bg-[#fbfaf6]/92 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 backdrop-blur-md">
     <div class="flex items-center gap-3">
       <span
@@ -26,6 +28,15 @@
   </header>
 
   <%- include('message-list.ejs', { messages, partnerName: profiles.partner.name }) %>
+
+  <button
+    type="button"
+    data-show="$chatHasNewMessage"
+    data-on:click="$chatHasNewMessage = false; @get('/xapi/messages/list')"
+    class="chat-new-message-button flex items-center gap-1.5 rounded-full border-0 bg-[#354922] px-4 py-2.5 text-xs font-extrabold text-white shadow-[0_10px_28px_rgba(53,73,34,0.24)]">
+    새 메시지
+    <span aria-hidden="true">↓</span>
+  </button>
 
   <form
     method="post"
@@ -54,16 +65,19 @@
   </form>
 
   <script>
-    function scrollChatToBottom() {
+    window.dulkongScrollChatToBottom = function () {
       requestAnimationFrame(function () {
         var list = document.getElementById('message-list')
-        if (list) list.scrollTop = list.scrollHeight
+        if (!list) return
+        list.scrollTop = list.scrollHeight
+        list.classList.remove('message-list--positioning')
+        list.dataset.ready = 'true'
       })
     }
 
-    scrollChatToBottom()
-    if (document.readyState !== 'complete') window.addEventListener('load', scrollChatToBottom, { once: true })
-    setTimeout(scrollChatToBottom, 100)
+    window.dulkongScrollChatToBottom()
+    if (document.readyState !== 'complete') window.addEventListener('load', window.dulkongScrollChatToBottom, { once: true })
+    setTimeout(window.dulkongScrollChatToBottom, 100)
   </script>
   <%- include('app-bottom-nav.ejs', { currentPath: '/chat' }) %>
 </div>

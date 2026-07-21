@@ -1,0 +1,48 @@
+<script server>
+  const coupleData = resolve('couple-data')
+  const { patchAppToast } = resolve('patch-app-toast')
+
+  if (!request.auth) {
+    patchAppToast(datastar, '로그인이 필요합니다.', 'error')
+    return
+  }
+
+  const signals = datastar.requestSignals({ oldestMessageCreated: '', oldestMessageId: '' })
+  const userId = String(request.auth.get('id') || '')
+  const beforeCreated = String(signals.oldestMessageCreated || '')
+  const beforeId = String(signals.oldestMessageId || '')
+
+  dbg('dulkong/xapi/messages/history:query', { userId, beforeCreated, beforeId })
+
+  try {
+    if (!beforeCreated || !beforeId) {
+      datastar.patchSignals({ messageHasMore: false, messageHistoryLoading: false })
+      return
+    }
+
+    const page = coupleData.getMessagePage($app, userId, {
+      limit: 50,
+      beforeCreated: beforeCreated,
+      beforeId: beforeId,
+    })
+    const oldestMessage = page.messages.length ? page.messages[0] : null
+
+    datastar.executeScript("var list=document.getElementById('message-list'); if(list) window.dulkongHistoryAnchor={height:list.scrollHeight,top:list.scrollTop};")
+    if (page.messages.length) {
+      datastar.patchElements(include('message-rows.ejs', { messages: page.messages }), { selector: '#message-rows', mode: 'prepend' })
+    }
+    datastar.patchSignals({
+      messageHasMore: page.hasMore,
+      messageHistoryLoading: false,
+      oldestMessageCreated: oldestMessage ? oldestMessage.createdAt : beforeCreated,
+      oldestMessageId: oldestMessage ? oldestMessage.id : beforeId,
+    })
+    datastar.executeScript(
+      "requestAnimationFrame(function(){var list=document.getElementById('message-list'); var anchor=window.dulkongHistoryAnchor; if(list&&anchor) list.scrollTop=list.scrollHeight-anchor.height+anchor.top; window.dulkongHistoryAnchor=null;});"
+    )
+  } catch (exception) {
+    error('dulkong/xapi/messages/history:failed', { userId, error: String(exception.message || exception) })
+    datastar.patchSignals({ messageHistoryLoading: false })
+    patchAppToast(datastar, '이전 대화를 불러오지 못했어요.', 'error')
+  }
+</script>

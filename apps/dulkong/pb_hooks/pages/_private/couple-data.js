@@ -194,10 +194,42 @@ function mapMessage(record, currentUserId) {
     senderId: String(record.get('sender') || ''),
     body: body,
     lines: body.split(/\r\n?|\n/),
+    createdAt: String(record.get('created') || ''),
     mine: String(record.get('sender') || '') === currentUserId,
     timeLabel: dateutil.formatDate(createdValue, dateutil.FORMATS.TIME_MINUTES),
     dateLabel: dateutil.formatDate(createdValue, 'M월 D일'),
   }
+}
+
+/**
+ * 메시지 페이지를 오래된 순으로 조회합니다.
+ * @param {types.CoupleDataApp} app PocketBase 앱
+ * @param {string} currentUserId 현재 사용자 ID
+ * @param {types.MessagePageOptions} [options] 페이지 조건
+ * @returns {types.MessagePage} 메시지 페이지
+ */
+function getMessagePage(app, currentUserId, options) {
+  const pageOptions = options || {}
+  const limit = Math.max(1, Math.min(100, Number(pageOptions.limit) || 50))
+  const beforeCreated = String(pageOptions.beforeCreated || '')
+  const beforeId = String(pageOptions.beforeId || '')
+  let filter = "deletedAt = ''"
+  let filterValues = {}
+
+  if (beforeCreated && beforeId) {
+    filter += ' && (created < {:beforeCreated} || (created = {:beforeCreated} && id < {:beforeId}))'
+    filterValues = { beforeCreated: beforeCreated, beforeId: beforeId }
+  }
+
+  const records = app.findRecordsByFilter('messages', filter, '-created,-id', limit + 1, 0, filterValues)
+  const recordCount = Math.min(records.length, limit)
+  const messages = []
+
+  for (let index = recordCount - 1; index >= 0; index -= 1) {
+    messages.push(mapMessage(records[index], currentUserId))
+  }
+
+  return { messages: messages, hasMore: records.length > limit }
 }
 
 /**
@@ -207,19 +239,13 @@ function mapMessage(record, currentUserId) {
  * @returns {types.MessageItem[]} 메시지 목록
  */
 function listMessages(app, currentUserId) {
-  const records = app.findRecordsByFilter('messages', "deletedAt = ''", '-created,-id', 100, 0)
-  const messages = []
-
-  for (let index = records.length - 1; index >= 0; index -= 1) {
-    messages.push(mapMessage(records[index], currentUserId))
-  }
-
-  return messages
+  return getMessagePage(app, currentUserId).messages
 }
 
 module.exports = {
   getCoupleProfiles,
   getProfileName,
+  getMessagePage,
   listAnniversaries,
   listMessages,
   listPhotos,

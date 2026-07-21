@@ -44,8 +44,20 @@ declare namespace types {
     senderId: string
     body: string
     lines: string[]
+    createdAt: string
     mine: boolean
     timeLabel: string
     dateLabel: string
+  }
+
+  type MessagePageOptions = {
+    limit?: number
+    beforeCreated?: string
+    beforeId?: string
+  }
+
+  type MessagePage = {
+    messages: MessageItem[]
+    hasMore: boolean
   }
 }

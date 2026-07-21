@@ -9,7 +9,19 @@
 
   const userId = String(request.auth.get('id') || '')
   const profiles = coupleData.getCoupleProfiles($app, request.auth)
+  const page = coupleData.getMessagePage($app, userId, { limit: 50 })
+  const oldestMessage = page.messages.length ? page.messages[0] : null
   dbg('dulkong/xapi/messages/list:query', { userId })
-  datastar.patchElements(include('message-list.ejs', { messages: coupleData.listMessages($app, userId), partnerName: profiles.partner.name }), { selector: '#message-list', mode: 'outer' })
-  datastar.executeScript("requestAnimationFrame(function(){requestAnimationFrame(function(){var list=document.getElementById('message-list'); if(list) list.scrollTop=list.scrollHeight;});});")
+  datastar.patchElements(include('message-list.ejs', { messages: page.messages, partnerName: profiles.partner.name }), { selector: '#message-list', mode: 'outer' })
+  datastar.patchSignals({
+    chatAtBottom: true,
+    chatHasNewMessage: false,
+    messageHasMore: page.hasMore,
+    messageHistoryLoading: false,
+    oldestMessageCreated: oldestMessage ? oldestMessage.createdAt : '',
+    oldestMessageId: oldestMessage ? oldestMessage.id : '',
+  })
+  datastar.executeScript(
+    "requestAnimationFrame(function(){requestAnimationFrame(function(){var list=document.getElementById('message-list'); if(list){list.scrollTop=list.scrollHeight;list.classList.remove('message-list--positioning');list.dataset.ready='true';}});});"
+  )
 </script>

@@ -1,0 +1,14 @@
+<% messages.forEach(function (message) { %>
+<div
+  id="message-<%= message.id %>"
+  class="<%= message.mine ? 'justify-end' : '' %> flex items-end gap-2">
+  <% if (message.mine) { %><time class="mb-1 text-[10px] font-semibold text-[#aaa99f]"><%= message.timeLabel %></time><% } %>
+  <div
+    class="<%= message.mine ? 'rounded-[18px_18px_6px_18px] bg-[#cfe5a6] text-[#30421d]' : 'rounded-[18px_18px_18px_6px] bg-white' %> max-w-[76%] px-3.5 py-2.5 text-sm leading-5 break-words shadow-[0_5px_16px_rgba(58,59,51,0.06)]">
+    <% message.lines.forEach(function (line) { %>
+    <span class="block min-h-5"><%= line %></span>
+    <% }) %>
+  </div>
+  <% if (!message.mine) { %><time class="mb-1 text-[10px] font-semibold text-[#aaa99f]"><%= message.timeLabel %></time><% } %>
+</div>
+<% }) %>
