@@ -1,0 +1,44 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const coupleData = resolve('couple-data')
+  const { patchAppToast } = resolve('patch-app-toast')
+
+  if (request.method !== 'POST' || !request.auth) {
+    patchAppToast(datastar, '로그인이 필요합니다.', 'error')
+    return
+  }
+
+  const form = formData()
+  const uploadedFiles = request.event.findUploadedFiles('image')
+  const uploadedFile = uploadedFiles.length ? uploadedFiles[0] : null
+  const userId = String(request.auth.get('id') || '')
+  const caption = String(form.caption || '').trim()
+  const takenAt = String(form.takenAt || '').trim()
+  const locationName = String(form.locationName || '').trim()
+
+  dbg('dulkong/xapi/photos/upload:start', { userId, caption, takenAt, hasFile: Boolean(uploadedFile) })
+
+  try {
+    if (!uploadedFile) throw new Error('올릴 사진을 선택해 주세요.')
+
+    const collection = $app.findCollectionByNameOrId('photos')
+    const record = new Record(collection)
+    record.set('uploader', userId)
+    record.set('image', uploadedFile)
+    record.set('caption', caption)
+    record.set('takenAt', dateutil.toDateOnlyIso(takenAt || new Date()))
+    record.set('locationName', locationName)
+    record.set('source', 'upload')
+    record.set('isFavorite', false)
+    $app.save(record)
+
+    info('dulkong/xapi/photos/upload:success', { photoId: String(record.get('id') || ''), userId })
+    datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, 'all') }), { selector: '#photo-results', mode: 'outer' })
+    datastar.patchSignals({ photoModalOpen: false, photoFilter: 'all' })
+    datastar.executeScript("var form=document.getElementById('photo-upload-form'); if(form) form.reset();")
+    patchAppToast(datastar, '사진을 올렸어요.', 'success')
+  } catch (exception) {
+    error('dulkong/xapi/photos/upload:failed', { userId, error: String(exception.message || exception) })
+    patchAppToast(datastar, String(exception.message || '사진을 올리지 못했어요.'), 'error')
+  }
+</script>

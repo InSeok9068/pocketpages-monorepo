@@ -1,0 +1,50 @@
+<script server>
+  const coupleData = resolve('couple-data')
+  const { patchAppToast } = resolve('patch-app-toast')
+
+  if (request.method !== 'POST' || !request.auth) {
+    patchAppToast(datastar, '로그인이 필요합니다.', 'error')
+    return
+  }
+
+  const signals = datastar.requestSignals({ draft: '', clientMessageId: '', clientId: '' })
+  const userId = String(request.auth.get('id') || '')
+  const bodyText = String(signals.draft || '').trim()
+  const clientMessageId = String(signals.clientMessageId || '').trim() || 'web_' + String(new Date().getTime())
+  const senderClientId = String(signals.clientId || '')
+
+  dbg('dulkong/xapi/messages/send:start', { userId, clientMessageId, bodyLength: bodyText.length })
+
+  try {
+    if (!bodyText) throw new Error('메시지를 입력해 주세요.')
+    if (bodyText.length > 5000) throw new Error('메시지는 5,000자까지 보낼 수 있어요.')
+
+    const collection = $app.findCollectionByNameOrId('messages')
+    const record = new Record(collection)
+    record.set('sender', userId)
+    record.set('clientMessageId', clientMessageId)
+    record.set('type', 'text')
+    record.set('body', bodyText)
+    record.set('clientCreatedAt', new Date().toISOString())
+    $app.save(record)
+
+    info('dulkong/xapi/messages/send:success', { messageId: String(record.get('id') || ''), userId })
+    const profiles = coupleData.getCoupleProfiles($app, request.auth)
+    datastar.patchElements(include('message-list.ejs', { messages: coupleData.listMessages($app, userId), partnerName: profiles.partner.name }), { selector: '#message-list', mode: 'outer' })
+    datastar.patchSignals({ draft: '', clientMessageId: '', chatSending: false })
+    datastar.executeScript("requestAnimationFrame(function(){requestAnimationFrame(function(){var draft=document.getElementById('chat-draft'); var list=document.getElementById('message-list'); if(draft) draft.value=''; if(list) list.scrollTop=list.scrollHeight;});});")
+    datastar.realtime.patchSignals(
+      { chatRevision: new Date().getTime() },
+      undefined,
+      {
+        filter: function (clientId) {
+          return !senderClientId || clientId !== senderClientId
+        },
+      }
+    )
+  } catch (exception) {
+    error('dulkong/xapi/messages/send:failed', { userId, clientMessageId, error: String(exception.message || exception) })
+    datastar.patchSignals({ chatSending: false })
+    patchAppToast(datastar, String(exception.message || '메시지를 보내지 못했어요.'), 'error')
+  }
+</script>

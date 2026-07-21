@@ -1,4 +1,21 @@
 <script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const coupleData = resolve('couple-data')
+  const profiles = coupleData.getCoupleProfiles($app, request.auth)
+  const anniversaries = coupleData.listAnniversaries($app)
+  const relationship =
+    anniversaries.filter(function (item) {
+      return item.kind === 'relationship_start'
+    })[0] || null
+  const nextAnniversary =
+    anniversaries.filter(function (item) {
+      return item.kind !== 'relationship_start' && item.difference >= 0
+    })[0] || null
+  const recentPhotos = coupleData.listPhotos($app, 'all').slice(0, 3)
+  const recentMessages = coupleData.listMessages($app, profiles.current.id)
+  const lastMessage = recentMessages.length ? recentMessages[recentMessages.length - 1] : null
+  const todayLabel = dateutil.formatDate(new Date(), 'M월 D일')
+
   meta('title', '둘콩 | 우리 둘의 공간')
   meta('description', '커플의 기념일과 사진, 대화를 함께 모아보는 둘콩')
 </script>
@@ -11,32 +28,20 @@
       <a
         href="#home"
         class="inline-flex items-center gap-2 text-[#292923] no-underline"
-        aria-label="둘콩 홈">
-        <span class="flex h-9 w-9 items-center justify-center rounded-[14px] bg-[#b9d986] text-[#33451e] shadow-[0_6px_16px_rgba(92,120,51,0.18)]">
-          <span
-            class="i-lucide-heart h-4.5 w-4.5"
-            aria-hidden="true"></span>
-        </span>
-        <span class="text-xl font-extrabold tracking-[-0.04em]">둘콩</span>
-      </a>
-
-      <button
-        type="button"
-        class="relative flex h-10 w-10 items-center justify-center rounded-full border-0 bg-white text-[#595a51] shadow-[0_5px_18px_rgba(58,59,51,0.08)]"
-        aria-label="알림 확인">
-        <span
-          class="i-lucide-bell h-5 w-5"
-          aria-hidden="true"></span>
-        <span class="absolute top-2.5 right-2.5 h-2 w-2 rounded-full border-2 border-white bg-[#f27b67]"></span>
-      </button>
+        aria-label="둘콩 홈"
+        ><span class="flex h-9 w-9 items-center justify-center rounded-[14px] bg-[#b9d986] text-[#33451e] shadow-[0_6px_16px_rgba(92,120,51,0.18)]"
+          ><span class="i-lucide-heart h-4.5 w-4.5"></span></span
+        ><span class="text-xl font-extrabold tracking-[-0.04em]">둘콩</span></a
+      >
+      <span class="rounded-full bg-white px-3 py-2 text-xs font-bold text-[#71834f] shadow-[0_5px_18px_rgba(58,59,51,0.08)]"><%= profiles.current.name %></span>
     </header>
 
     <main class="mt-5 space-y-7">
       <section aria-labelledby="welcome-title">
-        <p class="m-0 text-sm font-semibold text-[#85857a]">7월 21일 화요일</p>
+        <p class="m-0 text-sm font-semibold text-[#85857a]"><%= todayLabel %></p>
         <h1
           id="welcome-title"
-          class="mt-2 mb-0 text-[28px] leading-[1.28] font-extrabold tracking-[-0.045em] text-[#292923]">
+          class="mt-2 mb-0 text-[28px] leading-[1.28] font-extrabold tracking-[-0.045em]">
           오늘도 우리답게 <span aria-hidden="true">🌱</span>
         </h1>
       </section>
@@ -46,195 +51,106 @@
         aria-labelledby="anniversary-title">
         <div class="absolute -top-8 -right-4 h-34 w-34 rounded-full bg-white/24"></div>
         <div class="absolute right-16 -bottom-12 h-26 w-26 rounded-full bg-[#bdd78d]/55"></div>
-
         <div class="relative flex items-start justify-between gap-4">
           <div>
             <p class="m-0 text-sm font-bold text-[#5b7040]">우리가 함께한 지</p>
             <h2
               id="anniversary-title"
               class="mt-2 mb-0 text-[38px] leading-none font-black tracking-[-0.055em] text-[#2f401e]">
-              427일
+              <%= relationship ? relationship.dayLabel.slice(1) + '일' : '첫날 대기 중' %>
             </h2>
           </div>
-          <span class="flex h-12 w-12 items-center justify-center rounded-[18px] bg-white/65 text-[#567336]">
-            <span
-              class="i-lucide-calendar-heart h-6 w-6"
-              aria-hidden="true"></span>
-          </span>
+          <span class="flex h-12 w-12 items-center justify-center rounded-[18px] bg-white/65 text-[#567336]"><span class="i-lucide-calendar-heart h-6 w-6"></span></span>
         </div>
-
         <div class="relative mt-8 flex items-center justify-between border-t border-[#9fbd6f]/45 pt-4">
           <div>
             <p class="m-0 text-xs font-semibold text-[#6d8053]">다음 기념일</p>
-            <p class="mt-1 mb-0 text-sm font-extrabold text-[#3a4d25]">500일까지 73일</p>
+            <p class="mt-1 mb-0 text-sm font-extrabold text-[#3a4d25]"><%= nextAnniversary ? nextAnniversary.title + ' · ' + nextAnniversary.dayLabel : '우리의 날을 추가해 보세요' %></p>
           </div>
           <a
             href="/us"
-            class="inline-flex h-9 items-center gap-1 rounded-full border-0 bg-[#354922] px-3.5 text-xs font-bold text-white no-underline">
-            기념일 관리
-            <span
-              class="i-lucide-chevron-right h-3.5 w-3.5"
-              aria-hidden="true"></span>
-          </a>
+            class="inline-flex h-9 items-center gap-1 rounded-full bg-[#354922] px-3.5 text-xs font-bold text-white no-underline"
+            >관리 <span class="i-lucide-chevron-right h-3.5 w-3.5"></span
+          ></a>
         </div>
       </section>
 
-      <section aria-labelledby="quick-title">
-        <h2
-          id="quick-title"
-          class="sr-only">
-          빠른 기록
-        </h2>
+      <section aria-label="바로가기">
         <div class="grid grid-cols-2 gap-3">
           <a
             href="/memories"
-            class="flex items-center gap-3 rounded-[22px] border border-[#ebe9df] bg-white p-4 text-left text-inherit no-underline shadow-[0_8px_24px_rgba(48,49,43,0.055)]">
-            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-[#fff0e7] text-[#d27355]">
-              <span
-                class="i-lucide-camera h-5 w-5"
-                aria-hidden="true"></span>
-            </span>
-            <span>
-              <span class="block text-[13px] font-bold text-[#88877d]">오늘의</span>
-              <span class="mt-0.5 block text-[15px] font-extrabold text-[#33332d]">사진 올리기</span>
-            </span>
-          </a>
-
-          <a
+            class="flex items-center gap-3 rounded-[22px] border border-[#ebe9df] bg-white p-4 text-inherit no-underline shadow-[0_8px_24px_rgba(48,49,43,0.055)]"
+            ><span class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[#fff0e7] text-[#d27355]"><span class="i-lucide-camera h-5 w-5"></span></span
+            ><span><span class="block text-[13px] font-bold text-[#88877d]">오늘의</span><span class="block text-[15px] font-extrabold">사진 올리기</span></span></a
+          ><a
             href="/chat"
-            class="flex items-center gap-3 rounded-[22px] border border-[#ebe9df] bg-white p-4 text-left text-inherit no-underline shadow-[0_8px_24px_rgba(48,49,43,0.055)]">
-            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-[#e9f0ff] text-[#627fb5]">
-              <span
-                class="i-lucide-message-circle h-5 w-5"
-                aria-hidden="true"></span>
-            </span>
-            <span>
-              <span class="block text-[13px] font-bold text-[#88877d]">상대에게</span>
-              <span class="mt-0.5 block text-[15px] font-extrabold text-[#33332d]">대화 보내기</span>
-            </span>
-          </a>
+            class="flex items-center gap-3 rounded-[22px] border border-[#ebe9df] bg-white p-4 text-inherit no-underline shadow-[0_8px_24px_rgba(48,49,43,0.055)]"
+            ><span class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[#e9f0ff] text-[#627fb5]"><span class="i-lucide-message-circle h-5 w-5"></span></span
+            ><span><span class="block text-[13px] font-bold text-[#88877d]"><%= profiles.partner.name %>에게</span><span class="block text-[15px] font-extrabold">대화 보내기</span></span></a
+          >
         </div>
       </section>
 
-      <section
-        id="memories"
-        aria-labelledby="memory-title">
+      <section aria-labelledby="memory-title">
         <div class="mb-3 flex items-center justify-between">
           <div>
             <p class="m-0 text-xs font-bold tracking-[0.08em] text-[#98a081]">우리의 기록</p>
             <h2
               id="memory-title"
-              class="mt-1 mb-0 text-xl font-extrabold tracking-[-0.035em]">
+              class="mt-1 mb-0 text-xl font-extrabold">
               최근 사진
             </h2>
           </div>
           <a
             href="/memories"
-            class="border-0 bg-transparent p-2 text-sm font-bold text-[#71834f] no-underline"
+            class="p-2 text-sm font-bold text-[#71834f] no-underline"
             >전체보기</a
           >
         </div>
-
+        <% if (recentPhotos.length) { %>
         <div class="grid grid-cols-3 gap-2.5">
-          <button
-            type="button"
-            class="memory-tile memory-tile--peach aspect-[0.84] overflow-hidden rounded-[20px] border-0 p-0"
-            aria-label="한강에서 함께 찍은 사진">
-            <span
-              class="memory-emoji"
-              aria-hidden="true"
-              >🌅</span
-            >
-            <span class="memory-caption">한강의 저녁</span>
-          </button>
-          <button
-            type="button"
-            class="memory-tile memory-tile--green aspect-[0.84] overflow-hidden rounded-[20px] border-0 p-0"
-            aria-label="같이 먹은 브런치 사진">
-            <span
-              class="memory-emoji"
-              aria-hidden="true"
-              >🥐</span
-            >
-            <span class="memory-caption">주말 브런치</span>
-          </button>
-          <button
-            type="button"
-            class="memory-tile memory-tile--blue aspect-[0.84] overflow-hidden rounded-[20px] border-0 p-0"
-            aria-label="여행지에서 찍은 사진">
-            <span
-              class="memory-emoji"
-              aria-hidden="true"
-              >✈️</span
-            >
-            <span class="memory-caption">첫 여름 여행</span>
-          </button>
+          <% recentPhotos.forEach(function (photo) { %><a
+            href="/memories"
+            class="relative aspect-[0.84] overflow-hidden rounded-[20px]"
+            ><img
+              src="<%= photo.imageUrl %>"
+              alt="<%= photo.caption %>"
+              class="h-full w-full object-cover" /><span class="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/65 to-transparent px-2 pt-8 pb-2 text-[11px] font-bold text-white"
+              ><%= photo.caption %></span
+            ></a
+          ><% }) %>
         </div>
+        <% } else { %><a
+          href="/memories"
+          class="flex min-h-28 flex-col items-center justify-center rounded-[22px] border border-dashed border-[#d9d7cc] bg-white/60 text-center no-underline"
+          ><span class="i-lucide-image-plus h-6 w-6 text-[#9bb471]"></span><span class="mt-2 text-sm font-bold text-[#77766d]">첫 사진을 올려 보세요</span></a
+        ><% } %>
       </section>
 
-      <section
-        id="chat"
-        aria-labelledby="chat-title">
-        <div class="mb-3 flex items-center justify-between">
-          <div>
-            <p class="m-0 text-xs font-bold tracking-[0.08em] text-[#98a081]">둘만의 이야기</p>
-            <h2
-              id="chat-title"
-              class="mt-1 mb-0 text-xl font-extrabold tracking-[-0.035em]">
-              최근 대화
-            </h2>
-          </div>
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-[#eef4e4] px-2.5 py-1.5 text-xs font-bold text-[#668044]">
-            <span class="h-2 w-2 rounded-full bg-[#82ae4d]"></span>
-            연결됨
-          </span>
+      <section aria-labelledby="chat-title">
+        <div class="mb-3">
+          <p class="m-0 text-xs font-bold tracking-[0.08em] text-[#98a081]">둘만의 이야기</p>
+          <h2
+            id="chat-title"
+            class="mt-1 mb-0 text-xl font-extrabold">
+            최근 대화
+          </h2>
         </div>
-
         <a
           href="/chat"
-          class="block rounded-[24px] border border-[#ebe9df] bg-white p-4 text-inherit no-underline shadow-[0_9px_26px_rgba(48,49,43,0.06)]">
-          <div class="flex items-center gap-3">
-            <span
-              class="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#ffe5db] text-xl"
-              aria-hidden="true"
-              >🫘</span
-            >
+          class="block rounded-[24px] border border-[#ebe9df] bg-white p-4 text-inherit no-underline shadow-[0_9px_26px_rgba(48,49,43,0.06)]"
+          ><div class="flex items-center gap-3">
+            <span class="<%= profiles.partner.colorClass %> flex h-12 w-12 items-center justify-center rounded-full text-xl"><%= profiles.partner.emoji %></span>
             <div class="min-w-0 flex-1">
-              <div class="flex items-center justify-between gap-3">
-                <strong class="text-[15px] text-[#33332d]">내 사랑콩</strong>
-                <time class="shrink-0 text-[11px] font-semibold text-[#aaa99f]">5분 전</time>
+              <div class="flex justify-between gap-3">
+                <strong class="text-[15px]"><%= profiles.partner.name %></strong><time class="text-[11px] text-[#aaa99f]"><%= lastMessage ? lastMessage.timeLabel : '' %></time>
               </div>
-              <p class="mt-1 mb-0 truncate text-sm text-[#77766d]">이따 저녁에 같이 산책할까? 💚</p>
+              <p class="mt-1 mb-0 truncate text-sm text-[#77766d]"><%= lastMessage ? lastMessage.body : '아직 대화가 없어요. 첫 인사를 보내 보세요.' %></p>
             </div>
-            <span
-              class="i-lucide-chevron-right h-4.5 w-4.5 shrink-0 text-[#b3b2a8]"
-              aria-hidden="true"></span>
-          </div>
-        </a>
-      </section>
-
-      <section
-        id="us"
-        class="rounded-[24px] bg-[#302f2a] px-5 py-5 text-white"
-        aria-labelledby="us-title">
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <p class="m-0 text-xs font-semibold text-white/60">둘콩의 한마디</p>
-            <h2
-              id="us-title"
-              class="mt-1.5 mb-0 text-[17px] leading-6 font-bold tracking-[-0.025em]">
-              평범한 하루도 둘이면 추억이 돼요.
-            </h2>
-          </div>
-          <span
-            class="text-2xl"
-            aria-hidden="true"
-            >🪴</span
-          >
-        </div>
+            <span class="i-lucide-chevron-right h-4.5 w-4.5 text-[#b3b2a8]"></span></div
+        ></a>
       </section>
     </main>
   </div>
-
   <%- include('app-bottom-nav.ejs', { currentPath: '/' }) %>
 </div>

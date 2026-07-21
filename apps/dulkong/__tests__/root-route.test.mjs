@@ -7,55 +7,47 @@ import { startService } from '@pocketpages/test-support/service-harness'
 let service
 
 before(async () => {
-  service = await startService({
-    serviceName: 'dulkong',
-  })
+  service = await startService({ serviceName: 'dulkong' })
 })
 
 after(async () => {
-  if (service) {
-    await service.stop()
+  if (service) await service.stop()
+})
+
+test('unauthenticated app routes redirect to sign in', async () => {
+  for (const path of ['/', '/memories', '/chat', '/us']) {
+    const response = await fetch(`${service.baseUrl}${path}`, { redirect: 'manual' })
+
+    assert.equal(response.status, 303)
+    assert.match(response.headers.get('location') || '', /^\/sign-in/)
   }
 })
 
-test('GET / returns the dulkong home page', async () => {
-  const response = await fetch(`${service.baseUrl}/`)
+test('GET /sign-in renders the two-person login and PWA metadata', async () => {
+  const response = await fetch(`${service.baseUrl}/sign-in`)
   const body = await response.text()
   const $ = load(body)
 
   assert.equal(response.status, 200)
-  assert.match($('title').text(), /둘콩/)
-  assert.equal($('h1').first().text().replace(/\s+/g, ' ').trim(), '오늘도 우리답게 🌱')
-  assert.equal($('nav[aria-label="하단 메뉴"] a').length, 4)
+  assert.equal($('h1').first().text().trim(), '둘콩')
+  assert.equal($('input[name="profileKey"]').length, 2)
+  assert.deepEqual(
+    $('input[name="profileKey"]')
+      .map((_index, element) => $(element).attr('value'))
+      .get(),
+    ['inseok', 'solmi']
+  )
   assert.equal($('#app-shell').length, 1)
-  assert.equal($('#app-view').length, 1)
   assert.equal($('#app-toast[data-show="$appToastMessage"]').length, 1)
+  assert.match($('link[rel="manifest"]').attr('href') || '', /^\/assets\/manifest\..+\.webmanifest$/)
+  assert.match($('link[rel="apple-touch-icon"]').attr('href') || '', /^\/assets\/apple-touch-icon\..+\.png$/)
 })
 
-for (const page of [
-  { path: '/memories', title: '추억' },
-  { path: '/chat', title: '내 사랑콩' },
-  { path: '/us', title: '우리' },
-]) {
-  test(`GET ${page.path} returns an app tab`, async () => {
-    const response = await fetch(`${service.baseUrl}${page.path}`)
-    const body = await response.text()
-    const $ = load(body)
-
-    assert.equal(response.status, 200)
-    assert.equal($('h1').first().text().trim(), page.title)
-    assert.equal($(`nav[aria-label="하단 메뉴"] a[href="${page.path}"]`).attr('aria-current'), 'page')
-  })
-}
-
-test('Datastar validation error patches the global toast', async () => {
+test('Datastar login validation patches the global toast', async () => {
   const response = await fetch(`${service.baseUrl}/xapi/auth/sign-in`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Datastar-Request': 'true',
-    },
-    body: JSON.stringify({ email: '', password: '' }),
+    headers: { 'Content-Type': 'application/json', 'Datastar-Request': 'true' },
+    body: JSON.stringify({ profileKey: '', password: '' }),
   })
   const body = await response.text()
 
@@ -63,5 +55,5 @@ test('Datastar validation error patches the global toast', async () => {
   assert.match(response.headers.get('content-type') || '', /text\/event-stream/)
   assert.match(body, /event: datastar-patch-signals/)
   assert.match(body, /appToastMessage/)
-  assert.match(body, /이메일이 필요합니다\./)
+  assert.match(body, /인석과 솔미 중에서 선택해 주세요\./)
 })

@@ -1,9 +1,16 @@
 <script server>
+  const coupleData = resolve('couple-data')
+  const currentYear = String(new Date().getFullYear())
+  const previousYear = String(Number(currentYear) - 1)
+  const photos = coupleData.listPhotos($app, 'all')
+
   meta('title', '추억 | 둘콩')
   meta('description', '우리 둘의 사진과 추억')
 </script>
 
-<div class="mx-auto min-h-[100dvh] w-full max-w-[480px] bg-[#fbfaf6] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]">
+<div
+  class="mx-auto min-h-[100dvh] w-full max-w-[480px] bg-[#fbfaf6] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
+  data-signals="<%= stringify({ photoModalOpen: false, photoFilter: 'all' }) %>">
   <div class="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-30">
     <header class="flex items-center justify-between py-2">
       <div>
@@ -12,6 +19,7 @@
       </div>
       <button
         type="button"
+        data-on:click="$photoModalOpen = true"
         class="flex h-11 w-11 items-center justify-center rounded-[16px] border-0 bg-[#dcebbf] text-[#4e672f] shadow-[0_6px_18px_rgba(92,112,57,0.15)]"
         aria-label="사진 추가">
         <span
@@ -21,102 +29,84 @@
     </header>
 
     <main class="mt-6">
-      <section
-        class="rounded-[26px] bg-[#302f2a] p-5 text-white"
-        aria-labelledby="memory-summary-title">
-        <div class="flex items-end justify-between gap-4">
-          <div>
-            <p class="m-0 text-xs font-semibold text-white/55">함께 모은 순간</p>
-            <h2
-              id="memory-summary-title"
-              class="mt-1 mb-0 text-2xl font-extrabold">
-              128장
-            </h2>
-          </div>
-          <span class="text-sm font-semibold text-[#cbe39f]">2025.05.21부터</span>
-        </div>
-      </section>
-
       <div
-        class="mt-6 flex gap-2 overflow-x-auto pb-2"
+        class="mb-5 flex gap-2 overflow-x-auto pb-1"
         aria-label="추억 기간 필터">
+        <% [{ value: 'all', label: '전체' }, { value: currentYear, label: currentYear + '년' }, { value: previousYear, label: previousYear + '년' }, { value: 'favorite', label: '즐겨찾기' }].forEach(function (filter) { %>
         <button
           type="button"
-          class="shrink-0 rounded-full border-0 bg-[#354922] px-4 py-2 text-sm font-bold text-white">
-          전체
+          data-on:click="$photoFilter = '<%= filter.value %>'; @get('/xapi/photos/list')"
+          data-class="{'bg-[#354922] text-white border-transparent': $photoFilter === '<%= filter.value %>', 'border-[#e5e3d9] bg-white text-[#77766d]': $photoFilter !== '<%= filter.value %>'}"
+          class="shrink-0 rounded-full border px-4 py-2 text-sm font-bold">
+          <%= filter.label %>
         </button>
+        <% }) %>
+      </div>
+      <%- include('photo-grid.ejs', { photos }) %>
+    </main>
+  </div>
+
+  <div
+    data-show="$photoModalOpen"
+    class="fixed inset-0 z-60 flex items-end justify-center bg-black/35 px-3"
+    data-on:click="$photoModalOpen = false">
+    <section
+      class="mb-[max(0.75rem,env(safe-area-inset-bottom))] w-full max-w-[456px] rounded-[28px] bg-[#fffefa] p-5 shadow-[0_24px_70px_rgba(30,31,27,0.28)]"
+      data-on:click__stop="true">
+      <div class="mb-4 flex items-center justify-between">
+        <div>
+          <p class="m-0 text-xs font-bold text-[#98a081]">새 추억</p>
+          <h2 class="mt-1 mb-0 text-xl font-extrabold">사진 올리기</h2>
+        </div>
         <button
           type="button"
-          class="shrink-0 rounded-full border border-[#e5e3d9] bg-white px-4 py-2 text-sm font-bold text-[#77766d]">
-          2026년
-        </button>
-        <button
-          type="button"
-          class="shrink-0 rounded-full border border-[#e5e3d9] bg-white px-4 py-2 text-sm font-bold text-[#77766d]">
-          2025년
-        </button>
-        <button
-          type="button"
-          class="shrink-0 rounded-full border border-[#e5e3d9] bg-white px-4 py-2 text-sm font-bold text-[#77766d]">
-          즐겨찾기
+          data-on:click="$photoModalOpen = false"
+          class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-[#f0eee7]"
+          aria-label="닫기">
+          <span class="i-lucide-x h-4 w-4"></span>
         </button>
       </div>
-
-      <section
-        class="mt-5"
-        aria-labelledby="july-title">
-        <div class="mb-3 flex items-center justify-between">
-          <h2
-            id="july-title"
-            class="m-0 text-lg font-extrabold tracking-[-0.03em]">
-            2026년 7월
-          </h2>
-          <span class="text-xs font-semibold text-[#aaa99f]">12개의 순간</span>
+      <form
+        id="photo-upload-form"
+        method="post"
+        action="/xapi/photos/upload"
+        enctype="multipart/form-data"
+        data-on:submit="@post('/xapi/photos/upload', {contentType: 'form'})"
+        class="space-y-3">
+        <label class="block rounded-[20px] border border-dashed border-[#b8c99a] bg-[#f2f6ea] px-4 py-6 text-center text-sm font-bold text-[#627848]">
+          <span class="i-lucide-image-plus mx-auto mb-2 block h-6 w-6"></span>사진 선택
+          <input
+            type="file"
+            name="image"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+            class="sr-only"
+            required />
+        </label>
+        <input
+          type="text"
+          name="caption"
+          maxlength="1000"
+          placeholder="이 순간의 한마디"
+          class="box-border w-full rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-4 py-3 text-sm outline-none focus:border-[#9fbd6f]" />
+        <div class="grid grid-cols-2 gap-2">
+          <input
+            type="date"
+            name="takenAt"
+            class="box-border min-w-0 rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm outline-none" />
+          <input
+            type="text"
+            name="locationName"
+            maxlength="120"
+            placeholder="장소(선택)"
+            class="box-border min-w-0 rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm outline-none" />
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            class="memory-tile memory-tile--peach aspect-square overflow-hidden rounded-[24px] border-0 p-0">
-            <span
-              class="memory-emoji text-4xl"
-              aria-hidden="true"
-              >🌅</span
-            >
-            <span class="memory-caption">한강의 저녁 · 7.19</span>
-          </button>
-          <button
-            type="button"
-            class="memory-tile memory-tile--green aspect-square overflow-hidden rounded-[24px] border-0 p-0">
-            <span
-              class="memory-emoji text-4xl"
-              aria-hidden="true"
-              >🥐</span
-            >
-            <span class="memory-caption">주말 브런치 · 7.13</span>
-          </button>
-          <button
-            type="button"
-            class="memory-tile memory-tile--blue aspect-[1.35] overflow-hidden rounded-[24px] border-0 p-0">
-            <span
-              class="memory-emoji text-4xl"
-              aria-hidden="true"
-              >🌊</span
-            >
-            <span class="memory-caption">바다를 보러 · 7.05</span>
-          </button>
-          <button
-            type="button"
-            class="memory-tile memory-tile--cream aspect-[1.35] overflow-hidden rounded-[24px] border-0 p-0">
-            <span
-              class="memory-emoji text-4xl"
-              aria-hidden="true"
-              >🍰</span
-            >
-            <span class="memory-caption">토요일 데이트 · 7.02</span>
-          </button>
-        </div>
-      </section>
-    </main>
+        <button
+          type="submit"
+          class="h-12 w-full rounded-[18px] border-0 bg-[#354922] text-sm font-extrabold text-white">
+          추억으로 저장
+        </button>
+      </form>
+    </section>
   </div>
 
   <%- include('app-bottom-nav.ejs', { currentPath: '/memories' }) %>

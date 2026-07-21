@@ -1,39 +1,40 @@
 <script server>
+  const coupleData = resolve('couple-data')
+  const profiles = coupleData.getCoupleProfiles($app, request.auth)
+  const anniversaries = coupleData.listAnniversaries($app)
+  const relationship =
+    anniversaries.filter(function (item) {
+      return item.kind === 'relationship_start'
+    })[0] || null
+
   meta('title', '우리 | 둘콩')
   meta('description', '우리 둘의 정보와 기념일')
 </script>
 
-<div class="mx-auto min-h-[100dvh] w-full max-w-[480px] bg-[#fbfaf6] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]">
+<div
+  class="mx-auto min-h-[100dvh] w-full max-w-[480px] bg-[#fbfaf6] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
+  data-signals="<%= stringify({ anniversaryModalOpen: false, anniversaryTitle: '', anniversaryDate: '', anniversaryKind: 'custom', anniversaryRecurrence: 'none', anniversaryEmoji: '' }) %>">
   <div class="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-30">
     <header class="flex items-center justify-between py-2">
       <div>
         <p class="m-0 text-xs font-bold tracking-[0.1em] text-[#98a081]">둘콩 커플</p>
         <h1 class="mt-1 mb-0 text-[28px] font-extrabold tracking-[-0.045em]">우리</h1>
       </div>
-      <button
-        type="button"
-        class="flex h-10 w-10 items-center justify-center rounded-full border-0 bg-white text-[#77766d] shadow-[0_5px_16px_rgba(58,59,51,0.07)]"
-        aria-label="설정">
-        <span
-          class="i-lucide-settings h-5 w-5"
-          aria-hidden="true"></span>
-      </button>
     </header>
-
     <main class="mt-6 space-y-6">
       <section
         class="rounded-[28px] bg-[#dcebbf] p-6 text-center shadow-[0_16px_36px_rgba(92,112,57,0.13)]"
         aria-labelledby="couple-title">
         <div class="mx-auto flex w-fit items-center">
-          <span class="flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] bg-[#ffe5db] text-2xl">🫘</span>
-          <span class="-ml-3 flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] bg-[#e1eaff] text-2xl">🌱</span>
+          <span class="<%= profiles.current.colorClass %> flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] text-2xl"><%= profiles.current.emoji %></span
+          ><span class="<%= profiles.partner.colorClass %> -ml-3 flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] text-2xl"><%= profiles.partner.emoji %></span>
         </div>
         <h2
           id="couple-title"
           class="mt-4 mb-0 text-xl font-extrabold tracking-[-0.035em]">
-          사랑콩 ❤️ 행복콩
+          <%= profiles.current.name %> <span class="text-[#75964c]">♥</span> <%= profiles.partner.name %>
         </h2>
-        <p class="mt-1.5 mb-0 text-sm font-semibold text-[#66784c]">2025년 5월 21일부터 함께</p>
+        <p class="mt-1.5 mb-0 text-sm font-semibold text-[#66784c]"><%= relationship ? relationship.dateLabel + '부터 함께' : '우리의 첫날을 등록해 보세요' %></p>
       </section>
 
       <section aria-labelledby="days-title">
@@ -45,87 +46,92 @@
           </h2>
           <button
             type="button"
+            data-on:click="$anniversaryModalOpen = true"
             class="border-0 bg-transparent text-sm font-bold text-[#71834f]">
             +추가
           </button>
         </div>
-        <div class="space-y-3">
-          <article class="flex items-center justify-between rounded-[22px] border border-[#ebe9df] bg-white p-4 shadow-[0_7px_20px_rgba(48,49,43,0.05)]">
-            <div class="flex items-center gap-3">
-              <span class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[#fff0e7] text-[#d27355]">
-                <span
-                  class="i-lucide-heart h-5 w-5"
-                  aria-hidden="true"></span>
-              </span>
-              <div>
-                <h3 class="m-0 text-[15px] font-extrabold">우리가 만난 날</h3>
-                <p class="mt-1 mb-0 text-xs font-semibold text-[#99988e]">2025.05.21</p>
-              </div>
-            </div>
-            <strong class="text-lg text-[#5f7b37]">+427</strong>
-          </article>
-          <article class="flex items-center justify-between rounded-[22px] border border-[#ebe9df] bg-white p-4 shadow-[0_7px_20px_rgba(48,49,43,0.05)]">
-            <div class="flex items-center gap-3">
-              <span class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[#e9f0ff] text-[#627fb5]">
-                <span
-                  class="i-lucide-cake-slice h-5 w-5"
-                  aria-hidden="true"></span>
-              </span>
-              <div>
-                <h3 class="m-0 text-[15px] font-extrabold">사랑콩 생일</h3>
-                <p class="mt-1 mb-0 text-xs font-semibold text-[#99988e]">2026.08.02</p>
-              </div>
-            </div>
-            <strong class="text-lg text-[#627fb5]">D-12</strong>
-          </article>
-        </div>
+        <%- include('anniversary-list.ejs', { anniversaries }) %>
       </section>
 
-      <section
-        class="overflow-hidden rounded-[22px] border border-[#ebe9df] bg-white"
-        aria-label="커플 설정">
+      <form
+        method="post"
+        action="/xapi/auth/sign-out"
+        data-on:submit__prevent="@post('/xapi/auth/sign-out')">
         <button
-          type="button"
-          class="flex w-full items-center justify-between border-0 border-b border-[#efede5] bg-white px-4 py-4 text-left">
-          <span class="flex items-center gap-3 text-sm font-bold"
-            ><span
-              class="i-lucide-user-round h-5 w-5 text-[#7c8e5d]"
-              aria-hidden="true"></span
-            >프로필 관리</span
-          >
-          <span
-            class="i-lucide-chevron-right h-4 w-4 text-[#b3b2a8]"
-            aria-hidden="true"></span>
+          type="submit"
+          class="flex w-full items-center justify-between rounded-[22px] border border-[#ebe9df] bg-white px-4 py-4 text-left text-sm font-bold">
+          <span class="flex items-center gap-3"><span class="i-lucide-log-out h-5 w-5 text-[#7c8e5d]"></span><%= profiles.current.name %>님 로그아웃</span
+          ><span class="i-lucide-chevron-right h-4 w-4 text-[#b3b2a8]"></span>
         </button>
-        <button
-          type="button"
-          class="flex w-full items-center justify-between border-0 border-b border-[#efede5] bg-white px-4 py-4 text-left">
-          <span class="flex items-center gap-3 text-sm font-bold"
-            ><span
-              class="i-lucide-bell h-5 w-5 text-[#7c8e5d]"
-              aria-hidden="true"></span
-            >알림 설정</span
-          >
-          <span
-            class="i-lucide-chevron-right h-4 w-4 text-[#b3b2a8]"
-            aria-hidden="true"></span>
-        </button>
-        <button
-          type="button"
-          class="flex w-full items-center justify-between border-0 bg-white px-4 py-4 text-left">
-          <span class="flex items-center gap-3 text-sm font-bold"
-            ><span
-              class="i-lucide-link h-5 w-5 text-[#7c8e5d]"
-              aria-hidden="true"></span
-            >연결 코드</span
-          >
-          <span
-            class="i-lucide-chevron-right h-4 w-4 text-[#b3b2a8]"
-            aria-hidden="true"></span>
-        </button>
-      </section>
+      </form>
     </main>
   </div>
 
+  <div
+    data-show="$anniversaryModalOpen"
+    class="fixed inset-0 z-60 flex items-end justify-center bg-black/35 px-3"
+    data-on:click="$anniversaryModalOpen = false">
+    <section
+      class="mb-[max(0.75rem,env(safe-area-inset-bottom))] w-full max-w-[456px] rounded-[28px] bg-[#fffefa] p-5 shadow-[0_24px_70px_rgba(30,31,27,0.28)]"
+      data-on:click__stop="true">
+      <div class="mb-4 flex items-center justify-between">
+        <div>
+          <p class="m-0 text-xs font-bold text-[#98a081]">우리의 날</p>
+          <h2 class="mt-1 mb-0 text-xl font-extrabold">기념일 추가</h2>
+        </div>
+        <button
+          type="button"
+          data-on:click="$anniversaryModalOpen = false"
+          class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-[#f0eee7]"
+          aria-label="닫기">
+          <span class="i-lucide-x h-4 w-4"></span>
+        </button>
+      </div>
+      <form
+        method="post"
+        action="/xapi/anniversaries/create"
+        data-on:submit__prevent="@post('/xapi/anniversaries/create')"
+        class="space-y-3">
+        <input
+          data-bind:anniversary-title
+          type="text"
+          maxlength="120"
+          required
+          placeholder="기념일 이름"
+          class="box-border w-full rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-4 py-3 text-sm outline-none" />
+        <input
+          data-bind:anniversary-date
+          type="date"
+          required
+          class="box-border w-full rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-4 py-3 text-sm outline-none" />
+        <div class="grid grid-cols-2 gap-2">
+          <select
+            data-bind:anniversary-kind
+            class="rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm">
+            <option value="custom">기념일</option>
+            <option value="relationship_start">우리가 만난 날</option>
+            <option value="birthday">생일</option></select
+          ><select
+            data-bind:anniversary-recurrence
+            class="rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm">
+            <option value="none">한 번만</option>
+            <option value="yearly">매년</option>
+          </select>
+        </div>
+        <input
+          data-bind:anniversary-emoji
+          type="text"
+          maxlength="16"
+          placeholder="이모지(선택)"
+          class="box-border w-full rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-4 py-3 text-sm outline-none" />
+        <button
+          type="submit"
+          class="h-12 w-full rounded-[18px] border-0 bg-[#354922] text-sm font-extrabold text-white">
+          기념일 저장
+        </button>
+      </form>
+    </section>
+  </div>
   <%- include('app-bottom-nav.ejs', { currentPath: '/us' }) %>
 </div>

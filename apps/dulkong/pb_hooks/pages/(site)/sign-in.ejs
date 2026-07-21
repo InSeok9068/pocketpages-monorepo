@@ -1,48 +1,73 @@
 <script server>
-  meta('title', 'dulkong 로그인')
-  meta('description', 'dulkong 로그인')
+  meta('title', '로그인 | 둘콩')
+  meta('description', '둘콩 로그인')
 
   if (request.auth) {
-    dbg('dulkong/sign-in:redirect', {
-      status: 303,
-      redirectTo: '/',
-    })
-    redirect('/', {
-      status: 303,
-    })
+    dbg('dulkong/sign-in:redirect', { status: 303, redirectTo: '/' })
+    redirect('/', { status: 303 })
     return
   }
 </script>
 
-<section data-signals="{email: '', password: ''}">
-  <h1>로그인</h1>
-
+<section
+  class="mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col justify-center bg-[#fbfaf6] px-6 text-[#292923]"
+  data-signals="{profileKey: 'inseok', password: ''}">
+  <div class="mb-8 text-center">
+    <img
+      src="<%= asset('/assets/icon-192.png') %>"
+      alt=""
+      class="mx-auto h-22 w-22 rounded-[26px]" />
+    <h1 class="mt-5 mb-0 text-[30px] font-black tracking-[-0.05em]">둘콩</h1>
+    <p class="mt-2 mb-0 text-sm font-semibold text-[#88877d]">우리 둘만의 공간으로 들어가요.</p>
+  </div>
   <form
     method="post"
     action="/xapi/auth/sign-in"
-    data-on:submit__prevent="@post('/xapi/auth/sign-in')">
-    <label>
-      이메일
-      <input
-        type="email"
-        name="email"
-        data-bind:email
-        required
-        placeholder="me@example.com" />
-    </label>
-
-    <label>
-      비밀번호
-      <input
+    data-on:submit__prevent="@post('/xapi/auth/sign-in')"
+    class="space-y-4">
+    <fieldset class="m-0 border-0 p-0">
+      <legend class="mb-2 text-sm font-extrabold">나를 선택해 주세요</legend>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="cursor-pointer"
+          ><input
+            data-bind:profile-key
+            type="radio"
+            name="profileKey"
+            value="inseok"
+            class="peer sr-only" /><span
+            class="flex flex-col items-center rounded-[22px] border-2 border-transparent bg-white p-4 shadow-[0_8px_24px_rgba(48,49,43,0.06)] peer-checked:border-[#9fbd6f] peer-checked:bg-[#f2f7e9]"
+            ><span class="flex h-13 w-13 items-center justify-center rounded-full bg-[#ffe5db] text-xl">🫘</span><strong class="mt-2 text-sm">인석</strong></span
+          ></label
+        >
+        <label class="cursor-pointer"
+          ><input
+            data-bind:profile-key
+            type="radio"
+            name="profileKey"
+            value="solmi"
+            class="peer sr-only" /><span
+            class="flex flex-col items-center rounded-[22px] border-2 border-transparent bg-white p-4 shadow-[0_8px_24px_rgba(48,49,43,0.06)] peer-checked:border-[#9fbd6f] peer-checked:bg-[#f2f7e9]"
+            ><span class="flex h-13 w-13 items-center justify-center rounded-full bg-[#e1eaff] text-xl">🌱</span><strong class="mt-2 text-sm">솔미</strong></span
+          ></label
+        >
+      </div>
+    </fieldset>
+    <label class="block"
+      ><span class="mb-2 block text-sm font-extrabold">비밀번호</span
+      ><input
+        data-bind:password
         type="password"
         name="password"
-        data-bind:password
         required
-        placeholder="비밀번호" />
-    </label>
-
-    <button type="submit">로그인</button>
+        autocomplete="current-password"
+        placeholder="비밀번호를 입력하세요"
+        class="box-border h-13 w-full rounded-[19px] border border-[#e1ded2] bg-white px-4 text-sm outline-none focus:border-[#9fbd6f]"
+    /></label>
+    <button
+      type="submit"
+      class="h-13 w-full rounded-[19px] border-0 bg-[#354922] text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(53,73,34,0.18)]">
+      우리 공간으로
+    </button>
   </form>
-
-  <a href="/sign-up">회원가입</a>
+  <p class="mt-5 mb-0 text-center text-xs leading-5 text-[#aaa99f]">계정과 비밀번호는 관리자가 미리 설정해요.</p>
 </section>

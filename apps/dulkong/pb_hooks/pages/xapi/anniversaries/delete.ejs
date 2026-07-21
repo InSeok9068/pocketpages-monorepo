@@ -1,0 +1,26 @@
+<script server>
+  const coupleData = resolve('couple-data')
+  const { patchAppToast } = resolve('patch-app-toast')
+
+  if (request.method !== 'POST' || !request.auth) {
+    patchAppToast(datastar, '로그인이 필요합니다.', 'error')
+    return
+  }
+
+  const signals = datastar.requestSignals({ anniversaryId: '' })
+  const anniversaryId = String(signals.anniversaryId || '')
+  const userId = String(request.auth.get('id') || '')
+
+  dbg('dulkong/xapi/anniversaries/delete:start', { anniversaryId, userId })
+
+  try {
+    const record = $app.findFirstRecordByFilter('anniversaries', 'id = {:anniversaryId}', { anniversaryId })
+    $app.delete(record)
+    info('dulkong/xapi/anniversaries/delete:success', { anniversaryId, userId })
+    datastar.patchElements(include('anniversary-list.ejs', { anniversaries: coupleData.listAnniversaries($app) }), { selector: '#anniversary-list', mode: 'outer' })
+    patchAppToast(datastar, '기념일을 삭제했어요.', 'success')
+  } catch (exception) {
+    error('dulkong/xapi/anniversaries/delete:failed', { anniversaryId, userId, error: String(exception.message || exception) })
+    patchAppToast(datastar, '기념일을 삭제하지 못했어요.', 'error')
+  }
+</script>

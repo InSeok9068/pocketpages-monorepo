@@ -1,0 +1,15 @@
+<script server>
+  const coupleData = resolve('couple-data')
+  const { patchAppToast } = resolve('patch-app-toast')
+
+  if (!request.auth) {
+    patchAppToast(datastar, '로그인이 필요합니다.', 'error')
+    return
+  }
+
+  const signals = datastar.requestSignals({ photoFilter: 'all' })
+  const photoFilter = String(signals.photoFilter || 'all')
+
+  dbg('dulkong/xapi/photos/list:query', { userId: String(request.auth.get('id') || ''), photoFilter })
+  datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, photoFilter) }), { selector: '#photo-results', mode: 'outer' })
+</script>

@@ -1,0 +1,100 @@
+erDiagram
+  %% 둘콩은 인석과 솔미 두 명만 사용하는 개인용 앱입니다.
+  %% users 계정은 PocketBase 관리자가 직접 생성하고, 앱에서는 회원가입을 제공하지 않습니다.
+  %% 로그인 화면의 인석/솔미 선택은 로그인할 계정 identity를 고르는 UI일 뿐입니다.
+  %% 서비스 시간대는 Asia/Seoul로 고정하고 DB 설정으로 분리하지 않습니다.
+
+  users ||--o{ anniversaries : creates
+  users o|--o{ anniversaries : belongs_to
+  users ||--o{ photos : uploads
+  users ||--o{ messages : sends
+  photos o|--o{ messages : shared_in
+  messages o|--o{ messages : replies_to
+
+  users {
+    text id PK "PocketBase auth record id"
+    email email UK "관리자가 직접 설정하는 로그인 identity"
+    text profileKey UK "inseok solmi"
+    text name "인석 솔미"
+    file avatar "프로필 이미지"
+    date lastReadAt "대화 마지막 읽음 시각"
+    bool pushEnabled "푸시 알림 허용"
+    bool chatMuted "대화 알림 음소거"
+    autodate created "가입 시각"
+    autodate updated "수정 시각"
+  }
+
+  anniversaries {
+    text id PK "PocketBase record id"
+    relation createdBy FK "users"
+    relation relatedUser FK "users optional birthday owner"
+    select kind "relationship_start birthday custom"
+    text title "기념일 이름"
+    date eventDate "기념일 date-only"
+    select recurrence "none yearly"
+    number remindBeforeDays "며칠 전 알림"
+    text emoji "표시 이모지"
+    bool isPinned "홈 상단 표시"
+    text note "메모"
+    autodate created "생성 시각"
+    autodate updated "수정 시각"
+  }
+
+  photos {
+    text id PK "PocketBase record id"
+    relation uploader FK "users"
+    file image "원본 사진"
+    text caption "짧은 설명"
+    date takenAt "촬영 시각"
+    text locationName "촬영 장소명"
+    select source "upload chat"
+    bool isFavorite "즐겨찾기"
+    date deletedAt "soft delete 시각"
+    autodate created "업로드 시각"
+    autodate updated "수정 시각"
+  }
+
+  messages {
+    text id PK "PocketBase record id"
+    relation sender FK "users"
+    relation photo FK "photos optional"
+    relation replyTo FK "messages optional self relation"
+    text clientMessageId "재전송 중복 방지 키"
+    select type "text photo system"
+    text body "메시지 본문"
+    json systemData "시스템 메시지 보조 정보"
+    date clientCreatedAt "클라이언트 작성 시각"
+    date editedAt "수정 시각"
+    date deletedAt "모두에게 삭제된 시각"
+    autodate created "서버 저장 시각"
+    autodate updated "수정 시각"
+  }
+
+  %% 로그인 운영 방식
+  %% - PocketBase 관리자에서 users 레코드를 인석, 솔미 두 개만 생성합니다.
+  %% - profileKey는 각각 inseok, solmi로 고정하고 앱에서 수정하지 않습니다.
+  %% - 로그인 화면에서 프로필을 선택하면 해당 identity와 입력한 비밀번호로 인증합니다.
+  %% - 사용자 직접 회원가입과 profileKey 변경 기능은 제공하지 않습니다.
+  %% - 비밀번호는 두 계정에 서로 다르게 설정하는 것을 권장합니다.
+
+  %% 권장 인덱스와 제약
+  %% - users: UNIQUE(profileKey)
+  %% - users: profileKey는 inseok 또는 solmi만 허용합니다.
+  %% - anniversaries: UNIQUE(kind) WHERE kind = 'relationship_start'
+  %% - anniversaries: INDEX(eventDate, isPinned)
+  %% - photos: INDEX(deletedAt, takenAt)
+  %% - messages: UNIQUE(sender, clientMessageId) WHERE clientMessageId != ''
+  %% - messages: INDEX(deletedAt, created)
+
+  %% 권장 도메인 규칙
+  %% - 우리가 만난 날은 anniversaries.kind = relationship_start 레코드 하나로 저장합니다.
+  %% - 인석과 솔미의 생일은 kind = birthday, relatedUser = 해당 users로 저장합니다.
+  %% - 사진 메시지는 photos 생성 + messages 생성을 하나의 transaction으로 저장합니다.
+  %% - eventDate는 dateutil.toDateOnlyIso(...) 값으로 저장합니다.
+  %% - 기념일 계산과 검색은 packages/utils/dateutil.js를 사용합니다.
+
+  %% 권장 접근 정책
+  %% - anniversaries, photos, messages의 collection API rules는 null로 두고 PocketPages 라우트로만 접근합니다.
+  %% - 모든 도메인 요청은 request.auth가 있고 profileKey가 inseok 또는 solmi인지 확인합니다.
+  %% - createdBy, uploader, sender는 요청 본문을 신뢰하지 않고 request.auth.id로 서버에서 설정합니다.
+  %% - realtime 대화는 하나의 고정 topic을 사용하고, 전송 filter에서 구독 여부와 인증 여부를 모두 확인합니다.

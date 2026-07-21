@@ -1,0 +1,43 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const coupleData = resolve('couple-data')
+  const { patchAppToast } = resolve('patch-app-toast')
+
+  if (request.method !== 'POST' || !request.auth) {
+    patchAppToast(datastar, request.auth ? '잘못된 요청입니다.' : '로그인이 필요합니다.', 'error')
+    return
+  }
+
+  const form = datastar.requestSignals({ anniversaryTitle: '', anniversaryDate: '', anniversaryKind: 'custom', anniversaryRecurrence: 'none', anniversaryEmoji: '' })
+  const userId = String(request.auth.get('id') || '')
+  const title = String(form.anniversaryTitle || '').trim()
+  const eventDate = String(form.anniversaryDate || '').trim()
+  const kind = ['relationship_start', 'birthday', 'custom'].indexOf(String(form.anniversaryKind || '')) >= 0 ? String(form.anniversaryKind) : 'custom'
+  const recurrence = String(form.anniversaryRecurrence || '') === 'yearly' ? 'yearly' : 'none'
+
+  dbg('dulkong/xapi/anniversaries/create:start', { userId, title, eventDate, kind })
+
+  try {
+    if (!title) throw new Error('기념일 이름을 입력해 주세요.')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) throw new Error('날짜를 선택해 주세요.')
+
+    const collection = $app.findCollectionByNameOrId('anniversaries')
+    const record = new Record(collection)
+    record.set('createdBy', userId)
+    record.set('kind', kind)
+    record.set('title', title)
+    record.set('eventDate', dateutil.toDateOnlyIso(eventDate))
+    record.set('recurrence', recurrence)
+    record.set('emoji', String(form.anniversaryEmoji || '').trim())
+    record.set('isPinned', kind === 'relationship_start')
+    $app.save(record)
+
+    info('dulkong/xapi/anniversaries/create:success', { anniversaryId: String(record.get('id') || ''), userId })
+    datastar.patchElements(include('anniversary-list.ejs', { anniversaries: coupleData.listAnniversaries($app) }), { selector: '#anniversary-list', mode: 'outer' })
+    datastar.patchSignals({ anniversaryModalOpen: false, anniversaryTitle: '', anniversaryDate: '', anniversaryKind: 'custom', anniversaryRecurrence: 'none', anniversaryEmoji: '' })
+    patchAppToast(datastar, '기념일을 추가했어요.', 'success')
+  } catch (exception) {
+    error('dulkong/xapi/anniversaries/create:failed', { userId, error: String(exception.message || exception) })
+    patchAppToast(datastar, String(exception.message || '기념일을 저장하지 못했어요.'), 'error')
+  }
+</script>

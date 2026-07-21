@@ -1,0 +1,41 @@
+<div
+  id="anniversary-list"
+  class="space-y-3">
+  <% if (!anniversaries.length) { %>
+  <div class="rounded-[22px] border border-dashed border-[#d9d7cc] bg-white/65 px-5 py-8 text-center">
+    <span
+      class="text-3xl"
+      aria-hidden="true"
+      >🌱</span
+    >
+    <p class="mt-3 mb-0 text-sm font-bold text-[#77766d]">아직 등록한 기념일이 없어요.</p>
+    <p class="mt-1 mb-0 text-xs text-[#aaa99f]">우리의 첫 날을 추가해 보세요.</p>
+  </div>
+  <% } %>
+
+  <% anniversaries.forEach(function (anniversary) { %>
+  <article class="flex items-center justify-between gap-3 rounded-[22px] border border-[#ebe9df] bg-white p-4 shadow-[0_7px_20px_rgba(48,49,43,0.05)]">
+    <div class="flex min-w-0 items-center gap-3">
+      <span class="<%= anniversary.kind === 'birthday' ? 'bg-[#e9f0ff]' : 'bg-[#fff0e7]' %> flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] text-xl">
+        <%= anniversary.emoji %>
+      </span>
+      <div class="min-w-0">
+        <h3 class="m-0 truncate text-[15px] font-extrabold"><%= anniversary.title %></h3>
+        <p class="mt-1 mb-0 text-xs font-semibold text-[#99988e]"><%= anniversary.dateLabel %><%= anniversary.recurrence === 'yearly' ? ' · 매년' : '' %></p>
+      </div>
+    </div>
+    <div class="flex shrink-0 items-center gap-1">
+      <strong class="<%= anniversary.difference > 0 ? 'text-[#627fb5]' : 'text-[#5f7b37]' %> mr-1 text-lg"><%= anniversary.dayLabel %></strong>
+      <button
+        type="button"
+        data-on:click="@post('/xapi/anniversaries/delete', {payload: {anniversaryId: '<%= anniversary.id %>'}})"
+        class="flex h-8 w-8 items-center justify-center rounded-full border-0 bg-[#f4f2eb] text-[#aaa99f]"
+        aria-label="<%= anniversary.title %> 삭제">
+        <span
+          class="i-lucide-trash-2 h-3.5 w-3.5"
+          aria-hidden="true"></span>
+      </button>
+    </div>
+  </article>
+  <% }) %>
+</div>

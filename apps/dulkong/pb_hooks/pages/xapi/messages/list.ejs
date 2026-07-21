@@ -1,0 +1,15 @@
+<script server>
+  const coupleData = resolve('couple-data')
+  const { patchAppToast } = resolve('patch-app-toast')
+
+  if (!request.auth) {
+    patchAppToast(datastar, '로그인이 필요합니다.', 'error')
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const profiles = coupleData.getCoupleProfiles($app, request.auth)
+  dbg('dulkong/xapi/messages/list:query', { userId })
+  datastar.patchElements(include('message-list.ejs', { messages: coupleData.listMessages($app, userId), partnerName: profiles.partner.name }), { selector: '#message-list', mode: 'outer' })
+  datastar.executeScript("requestAnimationFrame(function(){requestAnimationFrame(function(){var list=document.getElementById('message-list'); if(list) list.scrollTop=list.scrollHeight;});});")
+</script>

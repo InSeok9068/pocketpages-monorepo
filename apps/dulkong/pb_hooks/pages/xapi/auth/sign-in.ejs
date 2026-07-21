@@ -21,18 +21,23 @@
     return
   }
 
-  const form = isDatastarRequest ? datastar.requestSignals({ email: '', password: '' }) : body()
-  const email = String(form.email || '').trim()
+  const form = isDatastarRequest ? datastar.requestSignals({ profileKey: '', password: '' }) : body()
+  const profileKey = String(form.profileKey || '').trim()
   const password = form.password === undefined || form.password === null ? '' : String(form.password)
+  let email = ''
   let errorMessage = ''
 
   dbg('dulkong/xapi/auth/sign-in:start', {
-    email,
+    profileKey,
   })
 
   try {
-    if (!email) throw new Error('이메일이 필요합니다.')
+    if (['inseok', 'solmi'].indexOf(profileKey) < 0) throw new Error('인석과 솔미 중에서 선택해 주세요.')
     if (!password) throw new Error('비밀번호가 필요합니다.')
+
+    const user = $app.findFirstRecordByFilter('users', 'profileKey = {:profileKey}', { profileKey })
+    email = String(user.get('email') || '')
+    if (!email) throw new Error('선택한 계정이 준비되지 않았어요.')
 
     const authData = signInWithPassword(email, password)
     authCookie.writeAuthCookie(response, authData)

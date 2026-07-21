@@ -86,6 +86,21 @@ module.exports = function ({ datastar, dbg, env, error, request, redirect, resol
   const appEnv = String(env('APP_ENV') || 'development').trim()
   const isDevelopment = appEnv === 'development'
   const fallbackMessage = '처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+  const isPublicPath = pathname === '/sign-in' || pathname === '/xapi/auth/sign-in' || pathname.startsWith('/assets/') || pathname.startsWith('/api/realtime')
+
+  if (!request.auth && !isPublicPath) {
+    if (isXapiPath(pathname) && datastar && datastar.isRequest(request)) {
+      const { patchAppToast } = resolve('patch-app-toast')
+      return patchAppToast(datastar, '로그인이 필요합니다.', 'error')
+    }
+
+    dbg('dulkong/auth-guard:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+      message: '로그인이 필요합니다.',
+    })
+    return redirect('/sign-in', { status: 303, message: '로그인이 필요합니다.' })
+  }
 
   try {
     next()
