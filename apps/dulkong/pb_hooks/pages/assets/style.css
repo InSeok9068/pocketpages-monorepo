@@ -31,8 +31,34 @@ a {
 }
 
 button {
+  appearance: none;
+  border: 0;
+  background-image: none;
   font: inherit;
   cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  border-style: solid;
+  color: inherit;
+  font: inherit;
+}
+
+#app-shell input:not([type='radio']):not([type='checkbox']):not([type='file']),
+#app-shell select,
+#app-shell textarea {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+#app-shell input:not([type='radio']):not([type='checkbox']):not([type='file']):focus-visible,
+#app-shell select:focus-visible,
+#app-shell textarea:focus-visible {
+  border-color: transparent;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgb(126 163 74 / 16%);
 }
 
 .memory-tile {
@@ -103,8 +129,8 @@ button {
 .bottom-nav-item:focus-visible,
 button:focus-visible,
 a:focus-visible {
-  outline: 3px solid rgb(126 163 74 / 35%);
-  outline-offset: 2px;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgb(126 163 74 / 18%);
 }
 
 @media (min-width: 481px) {

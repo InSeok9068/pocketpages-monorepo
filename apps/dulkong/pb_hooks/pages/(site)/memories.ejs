@@ -36,8 +36,8 @@
         <button
           type="button"
           data-on:click="$photoFilter = '<%= filter.value %>'; @get('/xapi/photos/list')"
-          data-class="{'bg-[#354922] text-white border-transparent': $photoFilter === '<%= filter.value %>', 'border-[#e5e3d9] bg-white text-[#77766d]': $photoFilter !== '<%= filter.value %>'}"
-          class="shrink-0 rounded-full border px-4 py-2 text-sm font-bold">
+          data-class="{'bg-[#354922] text-white': $photoFilter === '<%= filter.value %>', 'bg-[#efede5] text-[#77766d]': $photoFilter !== '<%= filter.value %>'}"
+          class="shrink-0 rounded-full border-0 px-4 py-2 text-sm font-bold">
           <%= filter.label %>
         </button>
         <% }) %>

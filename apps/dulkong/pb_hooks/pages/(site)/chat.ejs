@@ -54,12 +54,16 @@
   </form>
 
   <script>
-    requestAnimationFrame(function () {
+    function scrollChatToBottom() {
       requestAnimationFrame(function () {
         var list = document.getElementById('message-list')
         if (list) list.scrollTop = list.scrollHeight
       })
-    })
+    }
+
+    scrollChatToBottom()
+    if (document.readyState !== 'complete') window.addEventListener('load', scrollChatToBottom, { once: true })
+    setTimeout(scrollChatToBottom, 100)
   </script>
   <%- include('app-bottom-nav.ejs', { currentPath: '/chat' }) %>
 </div>
