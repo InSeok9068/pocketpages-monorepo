@@ -125,18 +125,178 @@
       </label>
     </article>
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <label class="block text-sm font-bold text-slate-700"
-        ><span class="mb-2 flex items-center justify-between gap-3"
-          ><span class="inline-flex items-center gap-2"><span class="i-lucide-align-left h-4 w-4 text-slate-400"></span>업무 내용</span
-          ><span class="text-[11px] font-normal text-slate-400">HTML 또는 일반 텍스트</span></span
-        >
+      <div class="mb-2 flex items-center justify-between gap-3 text-sm font-bold text-slate-700">
+        <span class="inline-flex items-center gap-2"><span class="i-lucide-align-left h-4 w-4 text-slate-400"></span>업무 내용</span>
+        <span class="text-[11px] font-normal text-slate-400">리치 텍스트 · HTML 저장</span>
+      </div>
+      <div
+        class="work-rich-text-shell"
+        data-work-rich-text>
+        <div
+          class="work-rich-text-toolbar"
+          role="toolbar"
+          aria-label="업무 내용 서식">
+          <label
+            class="sr-only"
+            for="work-editor-block-type"
+            >문단 서식</label
+          >
+          <select
+            id="work-editor-block-type"
+            class="work-rich-text-block-select"
+            data-editor-block-type>
+            <option value="paragraph">본문</option>
+            <option value="heading-1">제목 1</option>
+            <option value="heading-2">제목 2</option>
+          </select>
+          <span
+            class="work-rich-text-separator"
+            aria-hidden="true"></span>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="bold"
+            aria-label="굵게"
+            title="굵게">
+            <span class="i-lucide-bold h-4 w-4"></span>
+          </button>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="italic"
+            aria-label="기울임"
+            title="기울임">
+            <span class="i-lucide-italic h-4 w-4"></span>
+          </button>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="underline"
+            aria-label="밑줄"
+            title="밑줄">
+            <span class="i-lucide-underline h-4 w-4"></span>
+          </button>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="strike"
+            aria-label="취소선"
+            title="취소선">
+            <span class="i-lucide-strikethrough h-4 w-4"></span>
+          </button>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="highlight"
+            aria-label="강조"
+            title="강조">
+            <span class="i-lucide-highlighter h-4 w-4"></span>
+          </button>
+          <span
+            class="work-rich-text-separator"
+            aria-hidden="true"></span>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="bullet-list"
+            aria-label="글머리 기호"
+            title="글머리 기호">
+            <span class="i-lucide-list h-4 w-4"></span>
+          </button>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="ordered-list"
+            aria-label="번호 목록"
+            title="번호 목록">
+            <span class="i-lucide-list-ordered h-4 w-4"></span>
+          </button>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="blockquote"
+            aria-label="인용문"
+            title="인용문">
+            <span class="i-lucide-quote h-4 w-4"></span>
+          </button>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="code-block"
+            aria-label="코드 블록"
+            title="코드 블록">
+            <span class="i-lucide-square-code h-4 w-4"></span>
+          </button>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="horizontal-rule"
+            aria-label="구분선"
+            title="구분선">
+            <span class="i-lucide-minus h-4 w-4"></span>
+          </button>
+          <span
+            class="work-rich-text-separator"
+            aria-hidden="true"></span>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="link"
+            aria-label="링크 추가"
+            title="링크 추가">
+            <span class="i-lucide-link h-4 w-4"></span>
+          </button>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="unlink"
+            aria-label="링크 제거"
+            title="링크 제거">
+            <span class="i-lucide-unlink h-4 w-4"></span>
+          </button>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="clear-format"
+            aria-label="서식 지우기"
+            title="서식 지우기">
+            <span class="i-lucide-remove-formatting h-4 w-4"></span>
+          </button>
+          <span
+            class="work-rich-text-separator"
+            aria-hidden="true"></span>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="undo"
+            aria-label="실행 취소"
+            title="실행 취소">
+            <span class="i-lucide-undo-2 h-4 w-4"></span>
+          </button>
+          <button
+            type="button"
+            class="work-rich-text-button"
+            data-editor-command="redo"
+            aria-label="다시 실행"
+            title="다시 실행">
+            <span class="i-lucide-redo-2 h-4 w-4"></span>
+          </button>
+          <span
+            class="work-rich-text-character-count"
+            data-editor-character-count
+            aria-live="polite"
+            >0자</span
+          >
+        </div>
+        <div data-editor-surface></div>
         <textarea
           name="content"
-          rows="22"
-          class="min-h-140 w-full resize-y rounded-xl p-4 font-mono text-sm leading-6"
-          placeholder="업무 내용을 HTML 또는 텍스트로 작성하세요">
+          data-editor-input
+          hidden
+          aria-label="업무 내용 HTML">
 <%= view.content %></textarea>
-      </label>
+      </div>
+      <p class="mt-2 text-xs text-slate-400">내용은 자동으로 폼에 반영됩니다. Alt+S로 언제든 저장할 수 있습니다.</p>
     </article>
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div class="flex items-start gap-3">
@@ -418,6 +578,8 @@
     value="<%= view.id %>" />
 </form>
 
+<script src="<%= asset('/assets/tiptap.vendor.min.js') %>"></script>
+<script src="<%= asset('/assets/work-detail-editor.js') %>"></script>
 <script>
   document.addEventListener('keydown', function (event) {
     if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.repeat || event.code !== 'KeyS') {
