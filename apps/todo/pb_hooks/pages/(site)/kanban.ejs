@@ -24,11 +24,6 @@
   </div>
 </header>
 <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
-<div class="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-blue-50 px-4 py-3 text-xs text-blue-900">
-  <span class="inline-flex items-center gap-1.5 font-bold"><span class="i-lucide-grip-vertical h-4 w-4"></span>손잡이로 카드 이동</span>
-  <span class="inline-flex items-center gap-1.5"><span class="i-lucide-mouse-pointer-click h-4 w-4"></span>제목을 누르면 상세 편집</span>
-  <span class="inline-flex items-center gap-1.5"><span class="i-lucide-list-restart h-4 w-4"></span>선택 메뉴로 상태 즉시 변경</span>
-</div>
 <div class="overflow-x-auto pb-2"><div class="min-w-220"><%- include('kanban-board.ejs', { stateOptions, workCards }) %></div></div>
 <form
   id="kanban-move-form"
