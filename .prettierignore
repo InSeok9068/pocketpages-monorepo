@@ -4,6 +4,13 @@ apps/*/pb_hooks/pages/assets/**/*.svg
 apps/*/pb_hooks/pages/assets/**/*.png
 apps/*/pb_hooks/pages/assets/**/*.jpg
 apps/*/pb_hooks/pages/assets/**/*.webp
+apps/*/pb_hooks/pages/assets/**/*.ico
+apps/*/pb_hooks/pages/assets/**/*.gif
+apps/*/pb_hooks/pages/assets/**/*.avif
+apps/*/pb_hooks/pages/assets/**/*.woff
+apps/*/pb_hooks/pages/assets/**/*.woff2
+apps/*/pb_hooks/pages/assets/**/*.ttf
+apps/*/pb_hooks/pages/assets/**/*.eot
 *.bundle.js
 *.min.js
 *.min.css
