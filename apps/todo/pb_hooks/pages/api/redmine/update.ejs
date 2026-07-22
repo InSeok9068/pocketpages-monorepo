@@ -1,0 +1,145 @@
+<script server>
+  const host = String(env('REDMINE_HOST') || 'https://pms.kpcard.co.kr').replace(/\/$/, '')
+  const apiKey = String(env('REDMINE_API_KEY') || '').trim()
+
+  dbg('todo/api/redmine:update:start', {
+    isSignedIn: !!request.auth,
+  })
+
+  if (request.method !== 'POST') {
+    warn('todo/api/redmine:update:invalid-method', { method: request.method })
+    response.json(405, {
+      ok: false,
+      message: 'POST 요청만 허용됩니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    warn('todo/api/redmine:update:unauthorized', {})
+    response.json(401, {
+      ok: false,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  if (!apiKey) {
+    error('todo/api/redmine:update:missing-api-key', {})
+    response.json(503, {
+      ok: false,
+      message: 'Redmine 연동 설정이 필요합니다.',
+    })
+    return
+  }
+
+  /** @type {types.RedmineUpdateInput} */
+  const input = body()
+  const issueId = String(input.id || '').trim()
+  const watcherGroups = Array.isArray(input.watchers) ? input.watchers : []
+  const watcherMap = {
+    cx: [38, 95, 107, 118, 122],
+    server: [82, 98, 110, 123],
+    client: [31, 93],
+    biz: [48, 60, 85, 109],
+    manager: [8, 6],
+  }
+
+  if (!/^\d+$/.test(issueId)) {
+    warn('todo/api/redmine:update:invalid-issue-id', { issueId })
+    response.json(400, {
+      ok: false,
+      message: '이슈 번호가 올바르지 않습니다.',
+    })
+    return
+  }
+
+  try {
+    const updateResult = $http.send({
+      url: host + '/issues/' + encodeURIComponent(issueId) + '.json',
+      method: 'PUT',
+      timeout: 20000,
+      body: JSON.stringify({
+        issue: {
+          start_date: String(input.startDate || ''),
+          due_date: String(input.dueDate || ''),
+          done_ratio: Number(input.doneRatio || 0),
+          notes: String(input.notes || ''),
+        },
+      }),
+      headers: {
+        'x-redmine-api-key': apiKey,
+        'content-type': 'application/json',
+      },
+    })
+
+    if (updateResult.statusCode < 200 || updateResult.statusCode >= 300) {
+      warn('todo/api/redmine:update:upstream-failed', {
+        issueId,
+        status: updateResult.statusCode,
+      })
+      response.json(updateResult.statusCode, {
+        ok: false,
+        message: 'Redmine 이슈를 수정하지 못했습니다.',
+      })
+      return
+    }
+
+    const watcherIds = []
+    const seenWatcherIds = {}
+
+    for (let groupIndex = 0; groupIndex < watcherGroups.length; groupIndex += 1) {
+      const group = String(watcherGroups[groupIndex] || '')
+      const groupWatcherIds = watcherMap[group] || []
+
+      for (let watcherIndex = 0; watcherIndex < groupWatcherIds.length; watcherIndex += 1) {
+        const watcherId = Number(groupWatcherIds[watcherIndex])
+
+        if (seenWatcherIds[watcherId]) continue
+        seenWatcherIds[watcherId] = true
+        watcherIds.push(watcherId)
+      }
+    }
+
+    for (let index = 0; index < watcherIds.length; index += 1) {
+      const watcherResult = $http.send({
+        url: host + '/issues/' + encodeURIComponent(issueId) + '/watchers.json',
+        method: 'POST',
+        timeout: 20000,
+        body: JSON.stringify({ user_id: watcherIds[index] }),
+        headers: {
+          'x-redmine-api-key': apiKey,
+          'content-type': 'application/json',
+        },
+      })
+
+      if (watcherResult.statusCode < 200 || watcherResult.statusCode >= 300) {
+        warn('todo/api/redmine:update:watcher-failed', {
+          issueId,
+          watcherId: watcherIds[index],
+          status: watcherResult.statusCode,
+        })
+      }
+    }
+
+    info('todo/api/redmine:update:success', {
+      issueId,
+      watcherCount: watcherIds.length,
+    })
+    response.json(200, {
+      ok: true,
+      watcherCount: watcherIds.length,
+    })
+    return
+  } catch (exception) {
+    error('todo/api/redmine:update:failed', {
+      issueId,
+      error: String(exception.message || exception),
+    })
+    response.json(502, {
+      ok: false,
+      message: 'Redmine 요청 중 문제가 발생했습니다.',
+    })
+    return
+  }
+</script>

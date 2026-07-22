@@ -1,0 +1,20 @@
+<script server>
+  const form = body()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const developerId = String(form.developer_id || '').trim()
+  let errorMessage = ''
+  dbg('todo/xapi/developers/delete:start', { userId, developerId })
+  try {
+    if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
+    const developer = $app.findFirstRecordByFilter('developers', 'id = {:developerId} && user = {:userId}', { developerId, userId })
+    developer.set('del', true)
+    $app.save(developer)
+    info('todo/xapi/developers/delete:success', { userId, developerId })
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('todo/xapi/developers/delete:failed', { userId, developerId, error: errorMessage })
+  }
+  dbg('todo/xapi/developers/delete:redirect', { status: 303, redirectTo: '/setting', message: errorMessage || '담당자를 숨겼습니다.' })
+  redirect('/setting', { status: 303, message: errorMessage || '담당자를 숨겼습니다.' })
+  return
+</script>

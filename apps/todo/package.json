@@ -1,0 +1,21 @@
+{
+  "name": "todo",
+  "private": true,
+  "volta": {
+    "extends": "../../package.json"
+  },
+  "scripts": {
+    "postinstall": "node -e \"try{const r=require('child_process').spawnSync(process.execPath,['../../scripts/run-patch-package.js'],{encoding:'utf8'});if(r.status===0){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}else{console.log('patch script not available, skip')}}catch(e){console.log('patch script not available, skip')}\""
+  },
+  "dependencies": {
+    "@pocketpages/utils": "file:../../packages/utils",
+    "pocketpages": "^0.22.3",
+    "pocketpages-plugin-ejs": "^0.1.2",
+    "@pocketpages/auth-cookie": "file:../../packages/auth-cookie",
+    "pocketpages-plugin-auth": "^0.2.2",
+    "pocketpages-plugin-js-sdk": "^0.2.0"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
+  }
+}

@@ -1,0 +1,30 @@
+<% const isProduction = String(env('APP_ENV') || 'development').trim() === 'production' %>
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1" />
+    <title><%= meta('title') %></title>
+    <meta
+      name="description"
+      content="<%= meta('description') %>" />
+    <link
+      rel="stylesheet"
+      href="<%= asset('/assets/style.css') %>" />
+    <%- include('unocss-head.ejs', { isProduction }) %>
+    <script src="<%= asset('/assets/vendor/htmx-2.0.10.min.js') %>"></script>
+    <script
+      defer
+      src="<%= asset('/assets/vendor/alpine-3.15.12-cdn.min.js') %>"></script>
+    <%- slots.head %>
+  </head>
+
+  <body
+    un-cloak
+    class="min-h-screen bg-slate-50 text-slate-950 antialiased">
+    <% if (request.auth) { %><%- include('app-nav.ejs') %><% } %>
+    <main class="mx-auto w-full max-w-6xl px-4 py-6 pb-24 md:pb-8"><%- slots.body || slot %></main>
+  </body>
+</html>

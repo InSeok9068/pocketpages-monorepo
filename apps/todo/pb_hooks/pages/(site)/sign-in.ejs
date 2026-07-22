@@ -1,0 +1,46 @@
+<script server>
+  meta('title', '로그인 · TODO')
+  meta('description', 'TODO 로그인')
+  if (request.auth) {
+    dbg('todo/sign-in:redirect', { status: 303, redirectTo: '/' })
+    redirect('/', { status: 303 })
+    return
+  }
+</script>
+<section class="mx-auto mt-12 max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg sm:p-8">
+  <div class="text-center">
+    <span class="i-lucide-square-check-big mx-auto h-9 w-9 text-blue-600"></span>
+    <h1 class="mt-4 text-2xl font-black">TODO 로그인</h1>
+    <p class="mt-2 text-sm text-slate-500">업무를 한곳에서 관리하세요.</p>
+  </div>
+  <div class="mt-6"><%- include('flash-alert.ejs', { flashMessage: params.__flash }) %></div>
+  <form
+    method="post"
+    action="/xapi/auth/sign-in"
+    class="mt-6 space-y-4">
+    <label class="block text-sm font-bold text-slate-700"
+      >이메일<input
+        type="email"
+        name="email"
+        required
+        autocomplete="email"
+        class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-100"
+        placeholder="me@example.com" /></label
+    ><label class="block text-sm font-bold text-slate-700"
+      >비밀번호<input
+        type="password"
+        name="password"
+        required
+        autocomplete="current-password"
+        class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-100" /></label
+    ><button class="h-11 w-full rounded-lg border-0 bg-blue-600 font-black text-white hover:bg-blue-700">로그인</button>
+  </form>
+  <p class="mt-5 text-center text-sm text-slate-500">
+    계정이 없나요?
+    <a
+      href="/sign-up"
+      class="font-bold text-blue-600 no-underline"
+      >회원가입</a
+    >
+  </p>
+</section>

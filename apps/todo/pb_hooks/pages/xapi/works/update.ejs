@@ -1,0 +1,52 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const form = formData()
+  const uploadedFiles = request.event.findUploadedFiles('file')
+  const uploadedFile = uploadedFiles.length ? uploadedFiles[0] : null
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const workId = String(form.work_id || '').trim()
+  const title = String(form.title || '').trim()
+  let errorMessage = ''
+
+  dbg('todo/xapi/works/update:start', { userId, workId, titleLength: title.length })
+
+  try {
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!title) throw new Error('업무 제목이 필요합니다.')
+
+    const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
+    const wasDone = !!work.get('done')
+    const isDone = String(form.done || '') === 'true'
+
+    work.set('title', title)
+    work.set('content', String(form.content || ''))
+    work.set('state', isDone ? 'done' : String(form.state || 'wait'))
+    work.set('developer', String(form.developer || ''))
+    work.set('dueDate', dateutil.toDateOnlyIso(form.due_date))
+    work.set('redmine', String(form.redmine || '').trim())
+    work.set('joplin', String(form.joplin || '').trim())
+    work.set('done', isDone)
+    if (String(form.remove_file || '') === 'true') {
+      work.set('file', null)
+      work.set('originalFileName', '')
+    }
+    if (uploadedFile) {
+      work.set('file', uploadedFile)
+      work.set('originalFileName', String(uploadedFile.name || '첨부파일'))
+    }
+    if (isDone && !wasDone) work.set('doneDate', new Date().toISOString())
+    if (!isDone) work.set('doneDate', '')
+    $app.save(work)
+
+    info('todo/xapi/works/update:success', { userId, workId })
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('todo/xapi/works/update:failed', { userId, workId, error: errorMessage })
+  }
+
+  const redirectTo = workId ? '/works/' + encodeURIComponent(workId) : '/'
+  dbg('todo/xapi/works/update:redirect', { status: 303, redirectTo, message: errorMessage || '업무를 저장했습니다.' })
+  redirect(redirectTo, { status: 303, message: errorMessage || '업무를 저장했습니다.' })
+  return
+</script>

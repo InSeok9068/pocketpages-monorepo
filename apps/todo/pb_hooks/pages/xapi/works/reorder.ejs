@@ -1,0 +1,33 @@
+<script server>
+  const todoData = resolve('todo-data')
+  const form = body()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const selectedDeveloper = String(form.developer || '').trim()
+  let order = []
+  let listMessage = ''
+  let workCards = []
+  try {
+    order = JSON.parse(String(form.order || '[]'))
+  } catch (_exception) {
+    order = []
+  }
+  dbg('todo/xapi/works/reorder:start', { userId, orderCount: order.length })
+  try {
+    if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
+    if (!Array.isArray(order)) throw new Error('정렬 값이 올바르지 않습니다.')
+    $app.runInTransaction(function (txApp) {
+      for (let index = 0; index < order.length; index += 1) {
+        const workId = String(order[index] || '')
+        const work = txApp.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
+        work.set('sort', index)
+        txApp.save(work)
+      }
+    })
+    info('todo/xapi/works/reorder:success', { userId, orderCount: order.length })
+  } catch (exception) {
+    listMessage = String(exception.message || exception)
+    error('todo/xapi/works/reorder:failed', { userId, error: listMessage })
+  }
+  if (userId) workCards = todoData.listWorkCards(userId, { done: false, developerId: selectedDeveloper })
+</script>
+<%- include('work-list.ejs', { workCards, selectedDeveloper, listMessage }) %>

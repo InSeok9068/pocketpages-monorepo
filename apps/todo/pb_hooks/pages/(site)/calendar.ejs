@@ -1,0 +1,63 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const todoData = resolve('todo-data')
+  meta('title', '캘린더 · TODO')
+  meta('description', '마감일별 업무')
+  if (!request.auth) {
+    dbg('todo/calendar:redirect', { status: 303, redirectTo: '/sign-in' })
+    redirect('/sign-in', { status: 303 })
+    return
+  }
+  const userId = String(request.auth.get('id') || '')
+  const requestedMonth = String(request.url.query.month || '').trim()
+  const month = /^\d{4}-\d{2}$/.test(requestedMonth) ? requestedMonth : dateutil.formatDate(new Date(), dateutil.FORMATS.MONTH)
+  const monthStart = month + '-01'
+  const monthParts = month.split('-')
+  const nextMonthNumber = Number(monthParts[1]) === 12 ? 1 : Number(monthParts[1]) + 1
+  const nextMonthYear = Number(monthParts[1]) === 12 ? Number(monthParts[0]) + 1 : Number(monthParts[0])
+  const nextMonthText = nextMonthNumber < 10 ? '0' + String(nextMonthNumber) : String(nextMonthNumber)
+  const nextMonthStart = String(nextMonthYear) + '-' + nextMonthText + '-01'
+  const monthEnd = dateutil.addDays(dateutil.startOfDay(nextMonthStart), -1)
+  const workCards = todoData.listWorkCards(userId, { dueFrom: dateutil.startOfDay(monthStart).toISOString(), dueTo: dateutil.endOfDay(monthEnd).toISOString(), sort: '+dueDate,+sort', limit: 500 })
+  const groups = {}
+  for (let index = 0; index < workCards.length; index += 1) {
+    const key = workCards[index].dueDateLabel || '날짜 없음'
+    if (!groups[key]) groups[key] = []
+    groups[key].push(workCards[index])
+  }
+  const dates = Object.keys(groups).sort()
+  dbg('todo/calendar:response', { userId, month, workCount: workCards.length })
+</script>
+<header class="mb-6 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <p class="text-sm font-bold text-blue-600">CALENDAR</p>
+    <h1 class="mt-1 text-3xl font-black tracking-tight">캘린더</h1>
+  </div>
+  <form
+    method="get"
+    action="/calendar"
+    class="flex gap-2">
+    <input
+      type="month"
+      name="month"
+      value="<%= month %>"
+      class="h-10 rounded-lg border border-slate-200 bg-white px-3" /><button class="h-10 rounded-lg border-0 bg-slate-900 px-4 text-sm font-bold text-white">이동</button>
+  </form>
+</header>
+<div class="space-y-4">
+  <% if (!dates.length) { %>
+  <p class="rounded-xl border border-dashed border-slate-300 bg-white py-12 text-center text-sm font-bold text-slate-500">이 달에 마감 예정인 업무가 없습니다.</p>
+  <% } %><% for (let dateIndex = 0; dateIndex < dates.length; dateIndex += 1) { const date = dates[dateIndex] %>
+  <section class="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <header class="border-b border-slate-100 px-4 py-3 font-black"><%= date %> <span class="ml-1 text-sm text-slate-400"><%= groups[date].length %></span></header>
+    <div class="divide-y divide-slate-100">
+      <% for (let workIndex = 0; workIndex < groups[date].length; workIndex += 1) { const work = groups[date][workIndex] %><a
+        href="/works/<%= encodeURIComponent(work.id) %>"
+        class="flex items-center gap-3 px-4 py-3 text-slate-900 no-underline hover:bg-slate-50"
+        ><span class="<%= work.stateIconClass %> h-4 w-4 text-slate-400"></span><span class="min-w-0 flex-1 truncate font-bold"><%= work.title %></span
+        ><span class="text-xs text-slate-500"><%= work.developerName %></span></a
+      ><% } %>
+    </div>
+  </section>
+  <% } %>
+</div>

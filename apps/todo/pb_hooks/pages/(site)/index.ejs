@@ -1,0 +1,135 @@
+<script server>
+  const todoData = resolve('todo-data')
+
+  meta('title', '오늘의 업무 · TODO')
+  meta('description', '오늘 처리할 업무를 관리합니다.')
+
+  if (!request.auth) {
+    dbg('todo/index:redirect', { status: 303, redirectTo: '/sign-in' })
+    redirect('/sign-in', { status: 303 })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const selectedDeveloper = String(request.url.query.developer || '')
+  const developers = todoData.listDevelopers(userId)
+  const workCards = todoData.listWorkCards(userId, {
+    done: false,
+    developerId: selectedDeveloper,
+  })
+
+  dbg('todo/index:response', { userId, workCount: workCards.length, selectedDeveloper })
+</script>
+
+<header class="mb-6 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <p class="text-sm font-bold text-blue-600">TODAY</p>
+    <h1 class="mt-1 text-3xl font-black tracking-tight">오늘의 업무</h1>
+    <p class="mt-2 text-sm text-slate-500">현재 <strong class="text-slate-900"><%= workCards.length %>개</strong>의 미완료 업무가 있습니다.</p>
+  </div>
+  <form
+    method="post"
+    action="/xapi/works/sort-due">
+    <button
+      type="submit"
+      class="ui-button-secondary inline-flex h-10 items-center gap-2 rounded-lg px-3.5 text-sm font-bold text-slate-700">
+      <span class="i-lucide-arrow-up-narrow-wide h-4 w-4"></span>마감일순 정렬
+    </button>
+  </form>
+</header>
+
+<%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+
+<section class="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+  <form
+    action="/xapi/works/create"
+    method="post"
+    hx-post="/xapi/works/create"
+    hx-target="#work-list"
+    hx-swap="outerHTML"
+    hx-on::after-request="if(event.detail.successful) this.reset()"
+    class="flex flex-col gap-3 sm:flex-row">
+    <label
+      class="sr-only"
+      for="new-work-title"
+      >새 업무</label
+    >
+    <input
+      id="new-work-title"
+      name="title"
+      required
+      maxlength="100"
+      autocomplete="off"
+      placeholder="할 일을 입력하세요"
+      class="h-11 min-w-0 flex-1 rounded-lg px-4 text-sm placeholder:text-slate-400" />
+    <button
+      type="submit"
+      class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border-0 bg-blue-600 px-5 text-sm font-bold text-white hover:bg-blue-700">
+      <span class="i-lucide-plus h-4 w-4"></span>등록
+    </button>
+  </form>
+</section>
+
+<section class="mb-5 overflow-x-auto">
+  <div class="flex min-w-max gap-2">
+    <a
+      href="/"
+      class="<%= !selectedDeveloper ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3.5 py-2 text-sm font-bold no-underline"
+      >전체</a
+    >
+    <a
+      href="/?developer=__unassigned__"
+      class="<%= selectedDeveloper === '__unassigned__' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3.5 py-2 text-sm font-bold no-underline"
+      >미배정</a
+    >
+    <% for (let index = 0; index < developers.length; index += 1) { %>
+    <% const developer = developers[index] %>
+    <a
+      href="/?developer=<%= encodeURIComponent(developer.id) %>"
+      class="<%= selectedDeveloper === developer.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3.5 py-2 text-sm font-bold no-underline"
+      ><%= developer.name %></a
+    >
+    <% } %>
+  </div>
+</section>
+
+<%- include('work-list.ejs', { workCards, selectedDeveloper }) %>
+<form
+  id="work-order-form"
+  hx-post="/xapi/works/reorder"
+  hx-target="#work-list"
+  hx-swap="outerHTML"
+  class="hidden">
+  <input
+    type="hidden"
+    name="order" />
+  <input
+    type="hidden"
+    name="developer"
+    value="<%= selectedDeveloper %>" />
+</form>
+<script src="<%= asset('/assets/vendor/sortable-1.15.7.min.js') %>"></script>
+<script>
+  function initTodoListSortable() {
+    const list = document.getElementById('work-list')
+    const form = document.getElementById('work-order-form')
+    if (!list || !form || !window.Sortable || list.dataset.sortableReady === 'true') return
+    list.dataset.sortableReady = 'true'
+    window.Sortable.create(list, {
+      animation: 160,
+      draggable: '[data-work-card]',
+      handle: '[data-drag-handle]',
+      onEnd: function () {
+        const ids = Array.from(list.querySelectorAll('[data-work-card]'))
+          .map(function (card) {
+            return card.dataset.workId || ''
+          })
+          .filter(Boolean)
+        form.elements.order.value = JSON.stringify(ids)
+        form.requestSubmit()
+      },
+    })
+  }
+  initTodoListSortable()
+  document.addEventListener('htmx:afterSwap', initTodoListSortable)
+</script>

@@ -1,0 +1,60 @@
+<script server>
+  const todoData = resolve('todo-data')
+  meta('title', '칸반 · TODO')
+  meta('description', '상태별 업무 보드')
+  if (!request.auth) {
+    dbg('todo/kanban:redirect', { status: 303, redirectTo: '/sign-in' })
+    redirect('/sign-in', { status: 303 })
+    return
+  }
+  const userId = String(request.auth.get('id') || '')
+  const stateOptions = todoData.listWorkStates()
+  const workCards = todoData.listWorkCards(userId, { limit: 500 })
+  dbg('todo/kanban:response', { userId, workCount: workCards.length })
+</script>
+<header class="mb-6">
+  <p class="text-sm font-bold text-blue-600">BOARD</p>
+  <h1 class="mt-1 text-3xl font-black tracking-tight">칸반</h1>
+  <p class="mt-2 text-sm text-slate-500">카드 아래 상태 선택으로 업무를 이동할 수 있습니다.</p>
+</header>
+<%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+<div class="overflow-x-auto pb-2"><div class="min-w-240"><%- include('kanban-board.ejs', { stateOptions, workCards }) %></div></div>
+<form
+  id="kanban-move-form"
+  hx-post="/xapi/works/move"
+  hx-target="#kanban-board"
+  hx-swap="outerHTML"
+  class="hidden">
+  <input
+    type="hidden"
+    name="order" />
+</form>
+<script src="<%= asset('/assets/vendor/sortable-1.15.7.min.js') %>"></script>
+<script>
+  function initTodoKanbanSortable() {
+    if (!window.Sortable) return
+    document.querySelectorAll('[data-kanban-list]').forEach(function (list) {
+      if (list.dataset.sortableReady === 'true') return
+      list.dataset.sortableReady = 'true'
+      window.Sortable.create(list, {
+        group: 'todo-kanban',
+        animation: 160,
+        draggable: '[data-kanban-card]',
+        handle: '[data-kanban-handle]',
+        onEnd: function () {
+          const order = []
+          document.querySelectorAll('[data-kanban-list]').forEach(function (column) {
+            column.querySelectorAll('[data-kanban-card]').forEach(function (card, index) {
+              order.push({ id: card.dataset.workId || '', state: column.dataset.state || '', sort: index })
+            })
+          })
+          const form = document.getElementById('kanban-move-form')
+          form.elements.order.value = JSON.stringify(order)
+          form.requestSubmit()
+        },
+      })
+    })
+  }
+  initTodoKanbanSortable()
+  document.addEventListener('htmx:afterSwap', initTodoKanbanSortable)
+</script>

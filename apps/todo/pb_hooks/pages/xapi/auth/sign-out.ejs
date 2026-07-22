@@ -1,0 +1,34 @@
+<script server>
+  const { createAuthCookie } = require('@pocketpages/auth-cookie')
+  const authCookie = createAuthCookie()
+
+  if (request.method !== 'POST') {
+    dbg('todo/xapi/auth/sign-out:redirect', {
+      status: 303,
+      redirectTo: '/',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  dbg('todo/xapi/auth/sign-out:start', {
+    isSignedIn: !!request.auth,
+  })
+
+  authCookie.signOut(response)
+
+  dbg('todo/xapi/auth/sign-out:response', {
+    status: 303,
+    redirectTo: '/sign-in',
+    message: '로그아웃 완료',
+  })
+  redirect('/sign-in', {
+    status: 303,
+    message: '로그아웃 완료',
+  })
+  return
+</script>

@@ -1,0 +1,39 @@
+<script server>
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  let errorMessage = ''
+
+  dbg('todo/xapi/works/sort-due:start', { userId })
+
+  try {
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
+
+    $app.runInTransaction(function (txApp) {
+      const works = txApp.findRecordsByFilter('works', 'user = {:userId} && done = false', '+dueDate,+sort,-created', 500, 0, { userId })
+
+      works.sort(function (left, right) {
+        const leftDate = String(left.get('dueDate') || '')
+        const rightDate = String(right.get('dueDate') || '')
+
+        if (!leftDate && !rightDate) return 0
+        if (!leftDate) return 1
+        if (!rightDate) return -1
+        return new Date(leftDate).getTime() - new Date(rightDate).getTime()
+      })
+
+      for (let index = 0; index < works.length; index += 1) {
+        works[index].set('sort', index)
+        txApp.save(works[index])
+      }
+    })
+
+    info('todo/xapi/works/sort-due:success', { userId })
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('todo/xapi/works/sort-due:failed', { userId, error: errorMessage })
+  }
+
+  dbg('todo/xapi/works/sort-due:redirect', { status: 303, redirectTo: '/', message: errorMessage || '마감일순으로 정렬했습니다.' })
+  redirect('/', { status: 303, message: errorMessage || '마감일순으로 정렬했습니다.' })
+  return
+</script>

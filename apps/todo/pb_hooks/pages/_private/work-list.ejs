@@ -1,0 +1,98 @@
+<section
+  id="work-list"
+  class="space-y-3"
+  aria-live="polite">
+  <% if (typeof listMessage !== 'undefined' && listMessage) { %>
+  <p class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700"><%= listMessage %></p>
+  <% } %>
+  <% if (!workCards.length) { %>
+  <div class="rounded-xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center">
+    <span
+      class="i-lucide-party-popper mx-auto h-8 w-8 text-blue-500"
+      aria-hidden="true"></span>
+    <p class="mt-3 font-bold text-slate-800">표시할 업무가 없습니다.</p>
+    <p class="mt-1 text-sm text-slate-500">새 업무를 등록하거나 필터를 변경해보세요.</p>
+  </div>
+  <% } %>
+  <% for (let index = 0; index < workCards.length; index += 1) { %>
+  <% const work = workCards[index] %>
+  <article
+    class="<%= work.isUrgent ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200 bg-white' %> group rounded-xl border p-4 shadow-sm transition hover:shadow-md"
+    data-work-card
+    data-work-id="<%= work.id %>">
+    <div class="flex items-start gap-3">
+      <% if (!work.done) { %>
+      <form
+        hx-post="/xapi/works/complete"
+        hx-target="#work-list"
+        hx-swap="outerHTML"
+        class="shrink-0">
+        <input
+          type="hidden"
+          name="work_id"
+          value="<%= work.id %>" />
+        <input
+          type="hidden"
+          name="developer"
+          value="<%= selectedDeveloper || '' %>" />
+        <button
+          type="submit"
+          class="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-slate-300 bg-white text-transparent hover:border-blue-500 hover:text-blue-500"
+          aria-label="<%= work.title %> 완료">
+          <span class="i-lucide-check h-4 w-4"></span>
+        </button>
+      </form>
+      <% } else { %>
+      <span class="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"><span class="i-lucide-check h-4 w-4"></span></span>
+      <% } %>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-start gap-2">
+          <a
+            href="/works/<%= encodeURIComponent(work.id) %>"
+            class="<%= work.done ? 'line-through opacity-60' : '' %> min-w-0 flex-1 text-base font-bold text-slate-900 no-underline hover:text-blue-700"
+            ><%= work.title %></a
+          >
+          <span class="<%= work.stateBadgeClass %> inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold"
+            ><span class="<%= work.stateIconClass %> h-3.5 w-3.5"></span><%= work.stateLabel %></span
+          >
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+          <span class="inline-flex items-center gap-1.5"><span class="i-lucide-user-round h-3.5 w-3.5"></span><%= work.developerName %></span>
+          <span class="<%= work.isUrgent ? 'font-bold text-rose-600' : '' %> inline-flex items-center gap-1.5"
+            ><span class="i-lucide-calendar-clock h-3.5 w-3.5"></span><%= work.dueDateLabel || '마감일 없음' %></span
+          >
+          <span class="inline-flex items-center gap-1.5"><span class="i-lucide-calendar-plus h-3.5 w-3.5"></span><%= work.createdLabel %></span>
+        </div>
+      </div>
+      <div class="flex shrink-0 items-center">
+        <span
+          class="i-lucide-grip-vertical hidden h-5 w-5 cursor-grab text-slate-300 md:block"
+          data-drag-handle
+          aria-hidden="true"></span>
+        <form
+          method="post"
+          action="/xapi/works/delete"
+          hx-post="/xapi/works/delete"
+          hx-target="#work-list"
+          hx-swap="outerHTML"
+          hx-confirm="이 업무를 삭제할까요?">
+          <input
+            type="hidden"
+            name="work_id"
+            value="<%= work.id %>" />
+          <input
+            type="hidden"
+            name="developer"
+            value="<%= selectedDeveloper || '' %>" />
+          <button
+            type="submit"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-transparent text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+            aria-label="삭제">
+            <span class="i-lucide-trash-2 h-4 w-4"></span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </article>
+  <% } %>
+</section>

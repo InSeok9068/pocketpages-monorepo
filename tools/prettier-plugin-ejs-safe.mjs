@@ -136,7 +136,66 @@ async function formatEjsBodies(text, options) {
   return result
 }
 
+function isInsideHtmlTag(text, offset) {
+  let insideTag = false
+  let quote = ''
+
+  for (let index = 0; index < offset; index += 1) {
+    if (text.startsWith('<%', index)) {
+      const tagEnd = text.indexOf('%>', index + 2)
+      if (tagEnd === -1) {
+        return insideTag
+      }
+
+      index = tagEnd + 1
+      continue
+    }
+
+    if (!insideTag && text.startsWith('<!--', index)) {
+      const commentEnd = text.indexOf('-->', index + 4)
+      if (commentEnd === -1) {
+        return false
+      }
+
+      index = commentEnd + 2
+      continue
+    }
+
+    const character = text[index]
+
+    if (!insideTag) {
+      if (character === '<' && /[A-Za-z!/?]/.test(text[index + 1] || '')) {
+        insideTag = true
+      }
+      continue
+    }
+
+    if (quote) {
+      if (character === quote) {
+        quote = ''
+      }
+      continue
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character
+    } else if (character === '>') {
+      insideTag = false
+    }
+  }
+
+  return insideTag
+}
+
 function isStandaloneTag(text, offset, match) {
+  // An EJS expression can occupy its own line while still being an HTML
+  // attribute (for example, a conditional `checked` or `selected`). Treating
+  // it as a block would insert an HTML comment inside the opening tag and make
+  // the document invalid for Prettier's HTML parser.
+  if (isInsideHtmlTag(text, offset)) {
+    return false
+  }
+
   const lineStart = text.lastIndexOf('\n', offset - 1) + 1
   const nextNewline = text.indexOf('\n', offset + match.length)
   const lineEnd = nextNewline === -1 ? text.length : nextNewline

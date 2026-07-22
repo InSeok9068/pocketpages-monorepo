@@ -1,0 +1,74 @@
+@view-transition {
+  navigation: auto;
+}
+
+:root {
+  color-scheme: light;
+  font-family:
+    Inter,
+    Pretendard,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+label,
+select {
+  cursor: pointer;
+}
+
+[class*='i-lucide-'] {
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='file']),
+select,
+textarea {
+  border: 0 !important;
+  background: #f8fafc;
+  outline: none;
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='file']):focus,
+select:focus,
+textarea:focus {
+  background: #fff;
+  box-shadow: 0 0 0 3px #dbeafe;
+}
+
+.ui-button-secondary {
+  border: 0;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.12);
+}
+
+.ui-button-secondary:hover {
+  background: #f8fafc;
+}
+
+.htmx-request [data-loading] {
+  display: inline-flex;
+}
+
+[data-loading] {
+  display: none;
+}

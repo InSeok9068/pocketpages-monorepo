@@ -1,0 +1,25 @@
+<script server>
+  const form = body()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const name = String(form.name || '').trim()
+  let errorMessage = ''
+  dbg('todo/xapi/developers/create:start', { userId, name })
+  try {
+    if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
+    if (!name) throw new Error('담당자 이름이 필요합니다.')
+    const record = new Record($app.findCollectionByNameOrId('developers'))
+    record.set('user', userId)
+    record.set('name', name)
+    record.set('sort', 0)
+    record.set('leader', false)
+    record.set('del', false)
+    $app.save(record)
+    info('todo/xapi/developers/create:success', { userId, developerId: String(record.get('id') || '') })
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('todo/xapi/developers/create:failed', { userId, error: errorMessage })
+  }
+  dbg('todo/xapi/developers/create:redirect', { status: 303, redirectTo: '/setting', message: errorMessage || '담당자를 추가했습니다.' })
+  redirect('/setting', { status: 303, message: errorMessage || '담당자를 추가했습니다.' })
+  return
+</script>

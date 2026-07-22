@@ -1,0 +1,71 @@
+<script server>
+  const { createAuthCookie } = require('@pocketpages/auth-cookie')
+  const authCookie = createAuthCookie()
+
+  if (request.method !== 'POST') {
+    dbg('todo/xapi/auth/sign-up:redirect', {
+      status: 303,
+      redirectTo: '/sign-up',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/sign-up', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const email = String(form.email || '')
+    .trim()
+    .toLowerCase()
+  const password = form.password === undefined || form.password === null ? '' : String(form.password)
+  const passwordConfirm = form.passwordConfirm === undefined || form.passwordConfirm === null ? '' : String(form.passwordConfirm)
+  let errorMessage = ''
+
+  dbg('todo/xapi/auth/sign-up:start', {
+    email,
+  })
+
+  try {
+    if (!email) throw new Error('이메일이 필요합니다.')
+    if (!password) throw new Error('비밀번호가 필요합니다.')
+    if (password.length < 8) throw new Error('비밀번호는 8자 이상이어야 합니다.')
+    if (password !== passwordConfirm) throw new Error('비밀번호 확인이 일치하지 않습니다.')
+
+    createUser(email, password, {
+      collection: 'users',
+      sendVerificationEmail: false,
+    })
+
+    const authData = signInWithPassword(email, password)
+    authCookie.writeAuthCookie(response, authData)
+
+    dbg('todo/xapi/auth/sign-up:response', {
+      status: 303,
+      redirectTo: '/',
+      authId: String((authData.record && authData.record.id) || ''),
+    })
+    redirect('/', {
+      status: 303,
+    })
+    return
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('todo/xapi/auth/sign-up:failed', {
+      email,
+      error: errorMessage,
+    })
+  }
+
+  dbg('todo/xapi/auth/sign-up:response', {
+    status: 303,
+    redirectTo: '/sign-up',
+    message: errorMessage || '회원가입에 실패했습니다.',
+  })
+  redirect('/sign-up', {
+    status: 303,
+    message: errorMessage || '회원가입에 실패했습니다.',
+  })
+  return
+</script>

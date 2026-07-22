@@ -1,0 +1,56 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  meta('title', '알림 · TODO')
+  meta('description', '업무 알림 목록')
+  if (!request.auth) {
+    dbg('todo/notification:redirect', { status: 303, redirectTo: '/sign-in' })
+    redirect('/sign-in', { status: 303 })
+    return
+  }
+  const userId = String(request.auth.get('id') || '')
+  const records = $app.findRecordsByFilter('notifications', 'user = {:userId}', '-created', 200, 0, { userId })
+  const notifications = []
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index]
+    notifications.push({
+      id: String(record.get('id') || ''),
+      title: String(record.get('title') || ''),
+      message: String(record.get('message') || ''),
+      read: !!record.get('read'),
+      createdLabel: dateutil.formatDate(String(record.get('created') || ''), dateutil.FORMATS.DATE_TIME_MINUTES),
+    })
+  }
+  dbg('todo/notification:response', { userId, notificationCount: notifications.length })
+</script>
+<header class="mb-6">
+  <p class="text-sm font-bold text-blue-600">NOTIFICATIONS</p>
+  <h1 class="mt-1 text-3xl font-black tracking-tight">알림</h1>
+</header>
+<%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+<section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+  <% if (!notifications.length) { %>
+  <p class="py-12 text-center text-sm font-bold text-slate-500">도착한 알림이 없습니다.</p>
+  <% } %>
+  <div class="divide-y divide-slate-100">
+    <% for (let index = 0; index < notifications.length; index += 1) { const item = notifications[index] %>
+    <article class="<%= item.read ? 'bg-white' : 'bg-blue-50/50' %> flex items-start gap-3 p-4">
+      <span class="<%= item.read ? 'i-lucide-bell text-slate-400' : 'i-lucide-bell-ring text-blue-600' %> mt-0.5 h-4 w-4 shrink-0"></span>
+      <div class="min-w-0 flex-1">
+        <h2 class="font-black"><%= item.title %></h2>
+        <p class="mt-1 text-sm leading-6 text-slate-600"><%= item.message %></p>
+        <p class="mt-2 text-xs text-slate-400"><%= item.createdLabel %></p>
+      </div>
+      <% if (!item.read) { %>
+      <form
+        method="post"
+        action="/xapi/notifications/read">
+        <input
+          type="hidden"
+          name="notification_id"
+          value="<%= item.id %>" /><button class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50">읽음</button>
+      </form>
+      <% } %>
+    </article>
+    <% } %>
+  </div>
+</section>

@@ -1,0 +1,77 @@
+<script server>
+  const todoData = resolve('todo-data')
+  meta('title', '업무 현황 · TODO')
+  meta('description', '업무 상태와 담당자별 현황')
+  if (!request.auth) {
+    dbg('todo/dashboard:redirect', { status: 303, redirectTo: '/sign-in' })
+    redirect('/sign-in', { status: 303 })
+    return
+  }
+  const userId = String(request.auth.get('id') || '')
+  const workCards = todoData.listWorkCards(userId, { limit: 500 })
+  const stateOptions = todoData.listWorkStates()
+  const developers = todoData.listDevelopers(userId)
+  /** @type {Record<string, number>} */
+  const stateCounts = {}
+  /** @type {Record<string, number>} */
+  const developerCounts = {}
+  let doneCount = 0
+  let urgentCount = 0
+  for (let index = 0; index < workCards.length; index += 1) {
+    const work = workCards[index]
+    stateCounts[work.state] = Number(stateCounts[work.state] || 0) + 1
+    developerCounts[work.developerId || '__unassigned__'] = Number(developerCounts[work.developerId || '__unassigned__'] || 0) + 1
+    if (work.done) doneCount += 1
+    if (work.isUrgent) urgentCount += 1
+  }
+  dbg('todo/dashboard:response', { userId, workCount: workCards.length })
+</script>
+<header class="mb-6">
+  <p class="text-sm font-bold text-blue-600">DASHBOARD</p>
+  <h1 class="mt-1 text-3xl font-black tracking-tight">업무 현황</h1>
+</header>
+<section class="grid gap-4 sm:grid-cols-3">
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <span class="i-lucide-list-todo h-5 w-5 text-blue-600"></span>
+    <p class="mt-4 text-3xl font-black"><%= workCards.length %></p>
+    <p class="mt-1 text-sm font-bold text-slate-500">전체 업무</p>
+  </article>
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <span class="i-lucide-circle-check-big h-5 w-5 text-emerald-600"></span>
+    <p class="mt-4 text-3xl font-black"><%= doneCount %></p>
+    <p class="mt-1 text-sm font-bold text-slate-500">완료 업무</p>
+  </article>
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <span class="i-lucide-triangle-alert h-5 w-5 text-rose-600"></span>
+    <p class="mt-4 text-3xl font-black"><%= urgentCount %></p>
+    <p class="mt-1 text-sm font-bold text-slate-500">마감 임박</p>
+  </article>
+</section>
+<div class="mt-5 grid gap-5 lg:grid-cols-2">
+  <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <h2 class="text-lg font-black">상태별</h2>
+    <div class="mt-4 space-y-3">
+      <% for (let index = 0; index < stateOptions.length; index += 1) { const state = stateOptions[index]; const count = Number(stateCounts[state.value] || 0); const width = workCards.length ? Math.round(count / workCards.length * 100) : 0 %>
+      <div>
+        <div class="mb-1 flex text-sm"><span class="font-bold"><%= state.label %></span><span class="ml-auto text-slate-500"><%= count %></span></div>
+        <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+          <div
+            class="h-full rounded-full bg-blue-500"
+            style="width: <%= width %>%"></div>
+        </div>
+      </div>
+      <% } %>
+    </div>
+  </section>
+  <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <h2 class="text-lg font-black">담당자별</h2>
+    <div class="mt-4 space-y-2">
+      <div class="flex rounded-lg bg-slate-50 px-3 py-2 text-sm"><span class="font-bold">미배정</span><span class="ml-auto"><%= developerCounts['__unassigned__'] || 0 %></span></div>
+      <% for (let index = 0; index < developers.length; index += 1) { %>
+      <div class="flex rounded-lg bg-slate-50 px-3 py-2 text-sm">
+        <span class="font-bold"><%= developers[index].name %></span><span class="ml-auto"><%= developerCounts[developers[index].id] || 0 %></span>
+      </div>
+      <% } %>
+    </div>
+  </section>
+</div>

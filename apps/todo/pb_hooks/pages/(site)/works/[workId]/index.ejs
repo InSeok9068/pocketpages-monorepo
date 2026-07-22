@@ -1,0 +1,275 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const todoData = resolve('todo-data')
+
+  meta('title', '업무 상세 · TODO')
+  meta('description', '업무 내용을 확인하고 수정합니다.')
+
+  if (!request.auth) {
+    dbg('todo/works/detail:redirect', { status: 303, redirectTo: '/sign-in' })
+    redirect('/sign-in', { status: 303 })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const workId = String(params.workId || '')
+  let work = null
+
+  try {
+    work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
+  } catch (exception) {
+    warn('todo/works/detail:not-found', { userId, workId, error: String(exception.message || exception) })
+    dbg('todo/works/detail:redirect', { status: 303, redirectTo: '/', message: '업무를 찾지 못했습니다.' })
+    redirect('/', { status: 303, message: '업무를 찾지 못했습니다.' })
+    return
+  }
+
+  const developers = todoData.listDevelopers(userId)
+  const stateOptions = todoData.listWorkStates()
+  const dueDate = String(work.get('dueDate') || '')
+  const view = {
+    id: String(work.get('id') || ''),
+    title: String(work.get('title') || ''),
+    content: String(work.get('content') || ''),
+    done: !!work.get('done'),
+    dueDate: dueDate ? dateutil.formatDate(dueDate, dateutil.FORMATS.DATE) : '',
+    state: String(work.get('state') || 'wait'),
+    developerId: String(work.get('developer') || ''),
+    redmine: String(work.get('redmine') || ''),
+    joplin: String(work.get('joplin') || ''),
+    file: String(work.get('file') || ''),
+    originalFileName: String(work.get('originalFileName') || ''),
+  }
+  const scheduledIds = Array.isArray(work.get('scheduledNotifications')) ? work.get('scheduledNotifications') : []
+  const scheduledNotifications = []
+  for (let index = 0; index < scheduledIds.length; index += 1) {
+    try {
+      const scheduled = $app.findFirstRecordByFilter('scheduledNotifications', 'id = {:scheduledId} && user = {:userId}', { scheduledId: String(scheduledIds[index]), userId })
+      const scheduledTime = String(scheduled.get('time') || '')
+      scheduledNotifications.push({
+        id: String(scheduled.get('id') || ''),
+        title: String(scheduled.get('title') || ''),
+        message: String(scheduled.get('message') || ''),
+        timeLabel: scheduledTime ? dateutil.formatDate(scheduledTime, dateutil.FORMATS.DATE_TIME_MINUTES) : '',
+      })
+    } catch (_exception) {
+      continue
+    }
+  }
+
+  dbg('todo/works/detail:response', { userId, workId })
+</script>
+
+<header class="mb-6 flex flex-wrap items-center gap-3">
+  <a
+    href="/"
+    class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 no-underline hover:bg-slate-50"
+    aria-label="돌아가기"
+    ><span class="i-lucide-arrow-left h-4 w-4"></span
+  ></a>
+  <div>
+    <p class="text-xs font-bold text-blue-600">WORK DETAIL</p>
+    <h1 class="mt-1 text-2xl font-black">업무 상세</h1>
+  </div>
+</header>
+
+<%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+
+<form
+  method="post"
+  action="/xapi/works/update"
+  enctype="multipart/form-data"
+  class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+  <input
+    type="hidden"
+    name="work_id"
+    value="<%= view.id %>" />
+  <section class="space-y-5">
+    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <label class="block text-sm font-bold text-slate-700"
+        >제목
+        <input
+          name="title"
+          value="<%= view.title %>"
+          required
+          maxlength="100"
+          class="mt-2 h-12 w-full rounded-lg border border-slate-200 px-4 text-lg font-bold outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-100" />
+      </label>
+    </article>
+    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <label class="block text-sm font-bold text-slate-700"
+        >내용
+        <textarea
+          name="content"
+          rows="18"
+          class="mt-2 w-full resize-y rounded-lg border border-slate-200 p-4 font-mono text-sm leading-6 outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-100"
+          placeholder="업무 내용을 HTML 또는 텍스트로 작성하세요">
+<%= view.content %></textarea>
+      </label>
+      <p class="mt-2 text-xs text-slate-400">기존 editor HTML을 그대로 보존합니다. 전용 에디터는 이후 이 영역에만 연결할 수 있습니다.</p>
+    </article>
+    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 class="text-base font-black">외부 연결</h2>
+      <div class="mt-4 grid gap-4">
+        <label class="block text-sm font-bold text-slate-700"
+          >Redmine URL<input
+            type="url"
+            name="redmine"
+            value="<%= view.redmine %>"
+            class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 outline-none focus:border-blue-500"
+            placeholder="https://pms.kpcard.co.kr/issues/123"
+        /></label>
+        <label class="block text-sm font-bold text-slate-700"
+          >Joplin 링크<input
+            type="text"
+            name="joplin"
+            value="<%= view.joplin %>"
+            class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 outline-none focus:border-blue-500"
+        /></label>
+      </div>
+    </article>
+    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 class="text-base font-black">예약 알림</h2>
+      <form
+        method="post"
+        action="/xapi/scheduled-notifications/create"
+        class="mt-4 grid gap-3 sm:grid-cols-2">
+        <input
+          type="hidden"
+          name="work_id"
+          value="<%= view.id %>" />
+        <input
+          name="title"
+          value="<%= view.title %>"
+          required
+          maxlength="100"
+          class="h-10 rounded-lg border border-slate-200 px-3"
+          placeholder="알림 제목" />
+        <input
+          type="datetime-local"
+          name="time"
+          required
+          class="h-10 rounded-lg border border-slate-200 px-3" />
+        <input
+          name="message"
+          maxlength="500"
+          class="h-10 rounded-lg border border-slate-200 px-3 sm:col-span-2"
+          placeholder="알림 메시지" />
+        <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border-0 bg-slate-900 px-4 text-sm font-bold text-white sm:w-fit">
+          <span class="i-lucide-alarm-clock-plus h-4 w-4"></span>알림 추가
+        </button>
+      </form>
+      <div class="mt-4 divide-y divide-slate-100">
+        <% for (let index = 0; index < scheduledNotifications.length; index += 1) { const item = scheduledNotifications[index] %>
+        <div class="flex items-start gap-3 py-3">
+          <span class="i-lucide-alarm-clock mt-0.5 h-4 w-4 text-blue-600"></span>
+          <div class="min-w-0 flex-1">
+            <p class="font-bold"><%= item.title %></p>
+            <p class="mt-1 text-xs text-slate-500"><%= item.timeLabel %><%= item.message ? ' · ' + item.message : '' %></p>
+          </div>
+          <form
+            method="post"
+            action="/xapi/scheduled-notifications/delete">
+            <input
+              type="hidden"
+              name="work_id"
+              value="<%= view.id %>" /><input
+              type="hidden"
+              name="scheduled_id"
+              value="<%= item.id %>" /><button class="inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-transparent text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+              <span class="i-lucide-trash-2 h-4 w-4"></span>
+            </button>
+          </form>
+        </div>
+        <% } %>
+      </div>
+    </article>
+  </section>
+  <aside class="space-y-4">
+    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 class="text-base font-black">업무 속성</h2>
+      <div class="mt-4 grid gap-4">
+        <label class="block text-sm font-bold text-slate-700"
+          >상태<select
+            name="state"
+            class="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3">
+            <% for (let index = 0; index < stateOptions.length; index += 1) { %>
+            <option
+              value="<%= stateOptions[index].value %>"
+              <%= view.state === stateOptions[index].value ? 'selected' : '' %>>
+              <%= stateOptions[index].label %>
+            </option>
+            <% } %>
+          </select></label
+        >
+        <label class="block text-sm font-bold text-slate-700"
+          >담당자<select
+            name="developer"
+            class="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3">
+            <option value="">미배정</option>
+            <% for (let index = 0; index < developers.length; index += 1) { %>
+            <option
+              value="<%= developers[index].id %>"
+              <%= view.developerId === developers[index].id ? 'selected' : '' %>>
+              <%= developers[index].name %>
+            </option>
+            <% } %>
+          </select></label
+        >
+        <label class="block text-sm font-bold text-slate-700">
+          마감일
+          <input
+            type="date"
+            name="due_date"
+            value="<%= view.dueDate %>"
+            class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3" />
+        </label>
+        <label class="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700"
+          ><input
+            type="checkbox"
+            name="done"
+            value="true"
+            <%= view.done ? 'checked' : '' %>
+            class="h-4 w-4" />완료 처리</label
+        >
+      </div>
+    </article>
+    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 class="text-base font-black">첨부파일</h2>
+      <% if (view.file) { %>
+      <p class="mt-2 text-sm break-all text-slate-600"><%= view.originalFileName || view.file %></p>
+      <label class="mt-3 flex items-center gap-2 text-sm font-bold text-rose-600"
+        ><input
+          type="checkbox"
+          name="remove_file"
+          value="true" />기존 파일 삭제</label
+      ><% } %><label class="mt-3 block text-sm font-bold text-slate-700"
+        >새 파일<input
+          type="file"
+          name="file"
+          class="mt-2 block w-full text-sm text-slate-500"
+      /></label>
+    </article>
+    <button
+      type="submit"
+      class="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border-0 bg-blue-600 text-sm font-black text-white hover:bg-blue-700">
+      <span class="i-lucide-save h-4 w-4"></span>저장
+    </button>
+  </aside>
+</form>
+
+<form
+  method="post"
+  action="/xapi/works/delete"
+  class="mt-5"
+  onsubmit="return confirm('이 업무를 삭제할까요?')">
+  <input
+    type="hidden"
+    name="work_id"
+    value="<%= view.id %>" />
+  <button
+    type="submit"
+    class="inline-flex h-10 items-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-600 hover:bg-rose-50">
+    <span class="i-lucide-trash-2 h-4 w-4"></span>업무 삭제
+  </button>
+</form>

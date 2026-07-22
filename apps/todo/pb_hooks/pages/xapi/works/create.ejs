@@ -1,0 +1,44 @@
+<script server>
+  const todoData = resolve('todo-data')
+  const isHtmx = String(request.header('HX-Request') || '').toLowerCase() === 'true'
+  const form = body()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const title = String(form.title || '').trim()
+  let listMessage = ''
+  let selectedDeveloper = ''
+  let workCards = []
+
+  dbg('todo/xapi/works/create:start', { userId, titleLength: title.length })
+
+  try {
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!title) throw new Error('업무 제목이 필요합니다.')
+
+    const collection = $app.findCollectionByNameOrId('works')
+    const record = new Record(collection)
+
+    record.set('user', userId)
+    record.set('title', title)
+    record.set('content', '<p></p>')
+    record.set('time', 0)
+    record.set('done', false)
+    record.set('state', 'wait')
+    record.set('sort', 0)
+    $app.save(record)
+
+    info('todo/xapi/works/create:success', { userId, workId: String(record.get('id') || '') })
+  } catch (exception) {
+    listMessage = String(exception.message || exception)
+    error('todo/xapi/works/create:failed', { userId, error: listMessage })
+  }
+
+  if (!isHtmx) {
+    dbg('todo/xapi/works/create:redirect', { status: 303, redirectTo: '/', message: listMessage })
+    redirect('/', { status: 303, message: listMessage })
+    return
+  }
+
+  if (userId) workCards = todoData.listWorkCards(userId, { done: false })
+</script>
+<%- include('work-list.ejs', { workCards, selectedDeveloper, listMessage }) %>
