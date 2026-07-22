@@ -75,6 +75,13 @@ test('a signed-up user can create and complete a work', async () => {
   assert.equal(detailPage('#scheduled-notification-time').length, 1)
   assert.equal(detailPage('input[form="scheduled-notification-create-form"][name="title"]').length, 0)
   assert.equal(detailPage('input[form="scheduled-notification-create-form"][name="message"]').length, 0)
+  assert.equal(detailPage('#work-file[name="file"]').length, 1)
+  assert.equal(detailPage('link[href*="filepond-4.32.12.min."]').length, 1)
+  assert.equal(detailPage('script[src*="filepond-4.32.12.min."]').length, 1)
+
+  const filePondAssetResponse = await fetch(`${service.baseUrl}/assets/vendor/filepond-4.32.12.min.js`)
+
+  assert.equal(filePondAssetResponse.status, 200)
 
   const updateForm = new FormData()
   updateForm.set('work_id', workId)

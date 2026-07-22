@@ -320,3 +320,52 @@ textarea:focus {
 [data-loading] {
   display: none;
 }
+
+.work-filepond .filepond--root {
+  margin: 0;
+  font-family: inherit;
+}
+
+.work-filepond .filepond--panel-root {
+  border: 1px dashed #93c5fd;
+  border-radius: 0.75rem;
+  background: #eff6ff;
+}
+
+.work-filepond .filepond--drop-label {
+  min-height: 6rem;
+  color: #2563eb;
+}
+
+.work-filepond-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.work-filepond-label strong {
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.work-filepond-label small {
+  color: #64748b;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.work-filepond-label-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-bottom: 0.15rem;
+}
+
+.work-filepond .filepond--item-panel {
+  background: #1e40af;
+}
+
+.work-filepond .filepond--file-action-button {
+  background: rgb(15 23 42 / 60%);
+}
