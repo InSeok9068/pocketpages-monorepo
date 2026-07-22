@@ -580,20 +580,21 @@ run_diag() {
   fi
 
   if [[ -n "$target" ]]; then
+    local service_dir
+    if service_dir="$(resolve_service_dir "$target")"; then
+      node "$diag_script" "${extra_args[@]}" "$service_dir"
+      return 0
+    fi
+
     if [[ -f "$target" ]]; then
       node "$diag_script" "${extra_args[@]}" "$target"
       return 0
     fi
 
-    local service_dir
-    if ! service_dir="$(resolve_service_dir "$target")"; then
-      echo "Unknown service or file: $target" >&2
-      echo "Available services:" >&2
-      list_services >&2
-      exit 1
-    fi
-    node "$diag_script" "${extra_args[@]}" "$service_dir"
-    return 0
+    echo "Unknown service or file: $target" >&2
+    echo "Available services:" >&2
+    list_services >&2
+    exit 1
   fi
 
   node "$diag_script" "${extra_args[@]}"
