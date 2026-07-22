@@ -37,7 +37,7 @@ function findSetting(userId) {
 /**
  * 조건에 맞는 업무 카드 목록을 조회한다.
  * @param {string} userId 사용자 ID
- * @param {{done?: boolean, developerId?: string, keyword?: string, state?: string, from?: string, to?: string, dueFrom?: string, dueTo?: string, sort?: string, limit?: number}} [filters] 조회 조건
+ * @param {{done?: boolean, developerId?: string, keyword?: string, state?: string, createdFrom?: string, createdTo?: string, from?: string, to?: string, dueFrom?: string, dueTo?: string, sort?: string, limit?: number}} [filters] 조회 조건
  * @returns {types.WorkCard[]}
  */
 function listWorkCards(userId, filters) {
@@ -61,6 +61,14 @@ function listWorkCards(userId, filters) {
   if (input.state) {
     expressions.push('state = {:state}')
     values.state = input.state
+  }
+  if (input.createdFrom) {
+    expressions.push('created >= {:createdFrom}')
+    values.createdFrom = input.createdFrom
+  }
+  if (input.createdTo) {
+    expressions.push('created <= {:createdTo}')
+    values.createdTo = input.createdTo
   }
   if (input.from) {
     expressions.push('updated >= {:from}')

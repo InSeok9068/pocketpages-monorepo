@@ -1,6 +1,6 @@
 <section
   id="kanban-board"
-  class="grid gap-4 lg:grid-cols-3">
+  class="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
   <% for (let stateIndex = 0; stateIndex < stateOptions.length; stateIndex += 1) { %>
   <%
     const state = stateOptions[stateIndex]
@@ -8,39 +8,69 @@
       return work.state === state.value
     })
   %>
-  <article class="rounded-xl bg-slate-100 p-3">
-    <header class="mb-3 flex items-center gap-2 px-1">
-      <span class="<%= state.iconClass %> h-4 w-4 text-slate-600"></span>
-      <h2 class="font-black"><%= state.label %></h2>
-      <span class="ml-auto rounded-full bg-white px-2 py-0.5 text-xs font-bold text-slate-500"><%= stateWorks.length %></span>
+  <article class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100/80 shadow-sm">
+    <header class="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3.5">
+      <span class="<%= state.badgeClass %> inline-flex h-8 w-8 items-center justify-center rounded-lg"><span class="<%= state.iconClass %> h-4 w-4"></span></span>
+      <div>
+        <h2 class="text-sm font-black text-slate-900"><%= state.label %></h2>
+        <p class="mt-0.5 text-[11px] text-slate-400">업무 <%= stateWorks.length %>개</p>
+      </div>
+      <span class="ml-auto inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-slate-100 px-2 text-xs font-black text-slate-600"><%= stateWorks.length %></span>
     </header>
     <div
-      class="min-h-20 space-y-2"
+      class="min-h-32 space-y-2.5 p-3"
       data-kanban-list
       data-state="<%= state.value %>">
+      <% if (!stateWorks.length) { %>
+      <div class="flex min-h-24 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/60 px-3 text-center">
+        <span class="i-lucide-inbox h-5 w-5 text-slate-300"></span>
+        <p class="mt-2 text-xs font-bold text-slate-400">이 상태의 업무가 없습니다</p>
+      </div>
+      <% } %>
       <% for (let workIndex = 0; workIndex < stateWorks.length; workIndex += 1) { %>
       <% const work = stateWorks[workIndex] %>
       <article
-        class="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+        class="<%= work.isUrgent ? 'border-l-rose-500' : 'border-l-transparent' %> <%= work.done ? 'opacity-75' : '' %> group rounded-xl border border-l-3 border-slate-200 bg-white p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
         data-kanban-card
         data-work-id="<%= work.id %>">
         <div class="flex items-start gap-2">
           <a
             href="/works/<%= encodeURIComponent(work.id) %>"
-            class="block min-w-0 flex-1 leading-5 font-bold text-slate-900 no-underline hover:text-blue-700"
+            class="<%= work.done ? 'line-through' : '' %> block min-w-0 flex-1 leading-5 font-bold text-slate-900 no-underline hover:text-blue-700"
             ><%= work.title %></a
-          ><span
-            class="i-lucide-grip-vertical h-4 w-4 shrink-0 cursor-grab text-slate-300"
-            data-kanban-handle></span>
+          ><button
+            type="button"
+            class="inline-flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-md border-0 bg-transparent text-slate-300 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+            data-kanban-handle
+            aria-label="<%= work.title %> 이동">
+            <span class="i-lucide-grip-vertical h-4 w-4"></span>
+          </button>
         </div>
-        <div class="mt-2 flex items-center gap-2 text-xs text-slate-500">
-          <span class="i-lucide-user-round h-3.5 w-3.5"></span><span class="truncate"><%= work.developerName %></span><span class="ml-auto"><%= work.dueDateLabel || '-' %></span>
+        <div class="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-xs text-slate-500">
+          <span class="inline-flex min-w-0 items-center gap-1.5"><span class="i-lucide-user-round h-3.5 w-3.5"></span><span class="truncate"><%= work.developerName %></span></span>
+          <span class="<%= work.isUrgent ? 'font-bold text-rose-600' : '' %> inline-flex items-center gap-1.5"
+            ><span class="i-lucide-calendar-clock h-3.5 w-3.5"></span><%= work.dueDateLabel || '없음' %></span
+          >
         </div>
+        <% if (work.redmine || work.joplin || work.file) { %>
+        <div class="mt-2 flex items-center gap-1.5 text-slate-400">
+          <% if (work.redmine) { %><span
+            class="i-lucide-square-kanban h-3.5 w-3.5"
+            title="Redmine 연결"></span
+          ><% } %> <% if (work.joplin) { %><span
+            class="i-lucide-notebook-tabs h-3.5 w-3.5"
+            title="Joplin 연결"></span
+          ><% } %> <% if (work.file) { %><span
+            class="i-lucide-paperclip h-3.5 w-3.5"
+            title="첨부파일 있음"></span
+          ><% } %>
+        </div>
+        <% } %>
         <form
           hx-post="/xapi/works/state"
           hx-target="#kanban-board"
           hx-swap="outerHTML"
-          class="mt-3">
+          class="mt-3 border-t border-slate-100 pt-3">
           <input
             type="hidden"
             name="work_id"
@@ -48,7 +78,8 @@
           <select
             name="state"
             onchange="this.form.requestSubmit()"
-            class="h-8 w-full rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold">
+            aria-label="<%= work.title %> 상태 변경"
+            class="h-8 w-full rounded-lg px-2.5 text-xs font-bold text-slate-600">
             <% for (let optionIndex = 0; optionIndex < stateOptions.length; optionIndex += 1) { %>
             <option
               value="<%= stateOptions[optionIndex].value %>"

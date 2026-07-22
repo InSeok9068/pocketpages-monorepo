@@ -25,6 +25,9 @@
       <% const item = navItems[index] %>
       <a
         href="<%= item.href %>"
+        data-nav-shortcut="<%= index + 1 %>"
+        aria-keyshortcuts="Alt+<%= index + 1 %>"
+        title="<%= item.label %> (Alt+<%= index + 1 %>)"
         class="<%= currentPath === item.href ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950' %> inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold no-underline">
         <span
           class="<%= item.icon %> h-4 w-4"
@@ -67,6 +70,8 @@
     <% const item = navItems[index] %>
     <a
       href="<%= item.href %>"
+      data-nav-shortcut="<%= index + 1 %>"
+      aria-keyshortcuts="Alt+<%= index + 1 %>"
       class="<%= currentPath === item.href ? 'text-blue-600' : 'text-slate-500' %> flex flex-col items-center gap-1 py-2 text-[11px] font-bold no-underline">
       <span
         class="<%= item.icon %> h-5 w-5"
@@ -76,3 +81,23 @@
     <% } %>
   </div>
 </nav>
+<script>
+  document.addEventListener('keydown', function (event) {
+    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.repeat) {
+      return
+    }
+
+    const shortcut = event.code.match(/^Digit([1-5])$/)
+    if (!shortcut) {
+      return
+    }
+
+    const link = document.querySelector(`[data-nav-shortcut="${shortcut[1]}"]`)
+    if (!link) {
+      return
+    }
+
+    event.preventDefault()
+    link.click()
+  })
+</script>

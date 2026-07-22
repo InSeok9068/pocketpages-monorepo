@@ -11,6 +11,31 @@
       name="description"
       content="<%= meta('description') %>" />
     <link
+      rel="icon"
+      type="image/svg+xml"
+      href="<%= asset('/assets/favicon.svg') %>" />
+    <link
+      rel="apple-touch-icon"
+      href="<%= asset('/assets/icon-192.png') %>" />
+    <link
+      rel="manifest"
+      href="<%= asset('/assets/manifest.webmanifest') %>" />
+    <meta
+      name="theme-color"
+      content="#f8fafc" />
+    <meta
+      name="mobile-web-app-capable"
+      content="yes" />
+    <meta
+      name="apple-mobile-web-app-capable"
+      content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="default" />
+    <meta
+      name="apple-mobile-web-app-title"
+      content="TODO" />
+    <link
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
     <%- include('unocss-head.ejs', { isProduction }) %>

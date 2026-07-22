@@ -35,6 +35,8 @@ interface DateutilApi {
   toDateOnlyIso(value: DateutilInput): string
   /** 날짜에 일 수를 더한 뒤 KST 기준 Date 객체를 반환합니다. */
   addDays(value: DateutilInput, amount: number): Date
+  /** 날짜에 월 수를 더한 뒤 KST 기준 Date 객체를 반환합니다. */
+  addMonths(value: DateutilInput, amount: number): Date
   /**
    * KST 기준 해당 일자의 시작 시각을 반환합니다.
    *

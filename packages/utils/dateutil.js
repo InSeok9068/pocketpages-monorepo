@@ -227,6 +227,17 @@ function addDays(value, amount) {
 }
 
 /**
+ * 날짜에 월 수를 더한 뒤 KST 기준 Date 객체를 반환합니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} value 기준 날짜
+ * @param {number} amount 더할 월 수
+ * @returns {Date} 계산된 Date 객체
+ */
+function addMonths(value, amount) {
+  return new Date(toBusinessDayjs(value).add(amount, 'month').valueOf() - KST_OFFSET_MS)
+}
+
+/**
  * KST 기준 해당 일자의 시작 시각을 반환합니다.
  *
  * 날짜 단위 검색의 시작 ISO를 만들 때 사용합니다.
@@ -300,6 +311,7 @@ module.exports = {
   formatDate,
   toDateOnlyIso,
   addDays,
+  addMonths,
   startOfDay,
   endOfDay,
   isSameDay,

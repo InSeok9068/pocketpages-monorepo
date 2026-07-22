@@ -23,6 +23,6 @@
   } catch (exception) {
     error('todo/xapi/works/state:failed', { userId, workId, state, error: String(exception.message || exception) })
   }
-  if (userId) workCards = todoData.listWorkCards(userId, { limit: 500 })
+  if (userId) workCards = todoData.listWorkCards(userId, { done: false, limit: 500 })
 </script>
 <%- include('kanban-board.ejs', { stateOptions, workCards }) %>

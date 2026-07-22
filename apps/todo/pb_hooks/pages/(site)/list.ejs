@@ -8,133 +8,273 @@
     redirect('/sign-in', { status: 303 })
     return
   }
+  function readDateQuery(value) {
+    const text = String(value || '').trim()
+
+    return dateutil.toDateOnlyIso(text) ? text : ''
+  }
   const userId = String(request.auth.get('id') || '')
+  const today = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
+  const defaultCreatedFrom = dateutil.formatDate(dateutil.addMonths(today, -3), dateutil.FORMATS.DATE)
+  const weekday = new Date(today + 'T00:00:00.000Z').getUTCDay()
+  const weeklyFrom = dateutil.formatDate(dateutil.addDays(today, weekday === 0 ? -6 : 1 - weekday), dateutil.FORMATS.DATE)
+  const weeklyTo = dateutil.formatDate(dateutil.addDays(weeklyFrom, 4), dateutil.FORMATS.DATE)
   const query = {
     keyword: String(request.url.query.keyword || '').trim(),
     developer: String(request.url.query.developer || '').trim(),
     state: String(request.url.query.state || '').trim(),
     done: String(request.url.query.done || '').trim(),
-    from: String(request.url.query.from || '').trim(),
-    to: String(request.url.query.to || '').trim(),
+    createdFrom: typeof request.url.query.createdFrom === 'undefined' ? defaultCreatedFrom : readDateQuery(request.url.query.createdFrom),
+    createdTo: typeof request.url.query.createdTo === 'undefined' ? today : readDateQuery(request.url.query.createdTo),
+    from: readDateQuery(request.url.query.from),
+    to: readDateQuery(request.url.query.to),
+    weekly: String(request.url.query.weekly || '') === 'true',
   }
+  if (query.weekly) {
+    query.from = weeklyFrom
+    query.to = weeklyTo
+  }
+  const hasFilters = !!(query.keyword || query.developer || query.state || query.done || query.createdFrom || query.createdTo || query.from || query.to)
   const developers = todoData.listDevelopers(userId)
   const stateOptions = todoData.listWorkStates()
-  /** @type {{keyword: string, developerId: string, state: string, sort: string, limit: number, done?: boolean, from?: string, to?: string}} */
+  /** @type {{keyword: string, developerId: string, state: string, sort: string, limit: number, done?: boolean, createdFrom?: string, createdTo?: string, from?: string, to?: string}} */
   const filters = { keyword: query.keyword, developerId: query.developer, state: query.state, sort: '-updated', limit: 500 }
   if (query.done === 'true') filters.done = true
   if (query.done === 'false') filters.done = false
+  if (query.createdFrom) filters.createdFrom = dateutil.startOfDay(query.createdFrom).toISOString()
+  if (query.createdTo) filters.createdTo = dateutil.endOfDay(query.createdTo).toISOString()
   if (query.from) filters.from = dateutil.startOfDay(query.from).toISOString()
   if (query.to) filters.to = dateutil.endOfDay(query.to).toISOString()
   const workCards = todoData.listWorkCards(userId, filters)
   dbg('todo/list:response', { userId, workCount: workCards.length })
 </script>
-<header class="mb-6">
-  <p class="text-sm font-bold text-blue-600">SEARCH</p>
-  <h1 class="mt-1 text-3xl font-black tracking-tight">업무 검색</h1>
+<header class="mb-5 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <p class="text-xs font-black tracking-[0.16em] text-blue-600">FIND WORK</p>
+    <h1 class="mt-1 text-3xl font-black tracking-tight">업무 검색</h1>
+    <p class="mt-2 text-sm text-slate-500">필요한 조건만 선택해 업무를 빠르게 좁혀보세요.</p>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-right shadow-sm">
+    <p class="text-[11px] font-bold text-slate-400">검색 결과</p>
+    <p class="mt-0.5 text-lg font-black text-slate-900"><%= workCards.length %><span class="ml-1 text-sm text-slate-400">개</span></p>
+  </div>
 </header>
 <form
   method="get"
   action="/list"
-  class="mb-6 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3">
-  <input
-    name="keyword"
-    value="<%= query.keyword %>"
-    placeholder="제목 또는 내용 검색"
-    class="h-10 rounded-lg px-3 md:col-span-2" />
-  <select
-    name="developer"
-    class="h-10 rounded-lg px-3">
-    <option value="">담당자 전체</option>
-    <option
-      value="__unassigned__"
-      <%= query.developer === '__unassigned__' ? 'selected' : '' %>>
-      미배정
-    </option>
-    <% for (let index = 0; index < developers.length; index += 1) { %>
-    <option
-      value="<%= developers[index].id %>"
-      <%= query.developer === developers[index].id ? 'selected' : '' %>>
-      <%= developers[index].name %>
-    </option>
-    <% } %>
-  </select>
-  <select
-    name="state"
-    class="h-10 rounded-lg px-3">
-    <option value="">상태 전체</option>
-    <% for (let index = 0; index < stateOptions.length; index += 1) { %>
-    <option
-      value="<%= stateOptions[index].value %>"
-      <%= query.state === stateOptions[index].value ? 'selected' : '' %>>
-      <%= stateOptions[index].label %>
-    </option>
-    <% } %>
-  </select>
-  <select
-    name="done"
-    class="h-10 rounded-lg px-3">
-    <option value="">완료 여부 전체</option>
-    <option
-      value="false"
-      <%= query.done === 'false' ? 'selected' : '' %>>
-      미완료
-    </option>
-    <option
-      value="true"
-      <%= query.done === 'true' ? 'selected' : '' %>>
-      완료
-    </option>
-  </select>
-  <div class="grid grid-cols-2 gap-2">
-    <input
-      type="date"
-      name="from"
-      value="<%= query.from %>"
-      class="h-10 min-w-0 rounded-lg px-2" /><input
-      type="date"
-      name="to"
-      value="<%= query.to %>"
-      class="h-10 min-w-0 rounded-lg px-2" />
+  x-data="{ weekly: <%= query.weekly ? 'true' : 'false' %>, from: '<%= query.from %>', to: '<%= query.to %>' }"
+  class="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
+    <label class="block xl:col-span-6">
+      <span class="mb-1.5 block text-xs font-bold text-slate-500">검색어</span>
+      <span class="relative block"
+        ><span class="i-lucide-search pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400"></span
+        ><input
+          name="keyword"
+          value="<%= query.keyword %>"
+          placeholder="제목 또는 내용으로 검색"
+          class="h-11 w-full rounded-xl pr-3 pl-10"
+      /></span>
+    </label>
+    <label class="block xl:col-span-3">
+      <span class="mb-1.5 block text-xs font-bold text-slate-500">담당자</span>
+      <select
+        name="developer"
+        class="h-11 w-full rounded-xl px-3">
+        <option value="">전체 담당자</option>
+        <option
+          value="__unassigned__"
+          <%= query.developer === '__unassigned__' ? 'selected' : '' %>>
+          미배정
+        </option>
+        <% for (let index = 0; index < developers.length; index += 1) { %>
+        <option
+          value="<%= developers[index].id %>"
+          <%= query.developer === developers[index].id ? 'selected' : '' %>>
+          <%= developers[index].name %>
+        </option>
+        <% } %>
+      </select>
+    </label>
+    <label class="block xl:col-span-3">
+      <span class="mb-1.5 block text-xs font-bold text-slate-500">업무 상태</span>
+      <select
+        name="state"
+        class="h-11 w-full rounded-xl px-3">
+        <option value="">전체 상태</option>
+        <% for (let index = 0; index < stateOptions.length; index += 1) { %>
+        <option
+          value="<%= stateOptions[index].value %>"
+          <%= query.state === stateOptions[index].value ? 'selected' : '' %>>
+          <%= stateOptions[index].label %>
+        </option>
+        <% } %>
+      </select>
+    </label>
+    <label class="block xl:col-span-2">
+      <span class="mb-1.5 block text-xs font-bold text-slate-500">완료 여부</span>
+      <select
+        name="done"
+        class="h-11 w-full rounded-xl px-3">
+        <option value="">전체 업무</option>
+        <option
+          value="false"
+          <%= query.done === 'false' ? 'selected' : '' %>>
+          미완료
+        </option>
+        <option
+          value="true"
+          <%= query.done === 'true' ? 'selected' : '' %>>
+          완료
+        </option>
+      </select>
+    </label>
+    <div class="md:col-span-2 xl:col-span-4">
+      <div class="mb-1.5 flex min-h-5 items-center justify-between gap-3">
+        <span class="text-xs font-bold text-slate-500">등록일 범위</span>
+        <span class="text-[11px] font-bold text-blue-600">기본 최근 3개월</span>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block">
+          <span class="sr-only">등록일 시작</span>
+          <input
+            type="date"
+            name="createdFrom"
+            value="<%= query.createdFrom %>"
+            aria-label="등록일 시작"
+            class="h-11 w-full min-w-0 rounded-xl px-3" />
+        </label>
+        <label class="block">
+          <span class="sr-only">등록일 종료</span>
+          <input
+            type="date"
+            name="createdTo"
+            value="<%= query.createdTo %>"
+            aria-label="등록일 종료"
+            class="h-11 w-full min-w-0 rounded-xl px-3" />
+        </label>
+      </div>
+    </div>
+    <div class="md:col-span-2 xl:col-span-4">
+      <div class="mb-1.5 flex min-h-5 items-center justify-between gap-3">
+        <span class="text-xs font-bold text-slate-500">수정일 범위</span>
+        <label class="inline-flex cursor-pointer items-center gap-2 text-xs font-bold text-slate-600">
+          <input
+            type="checkbox"
+            name="weekly"
+            value="true"
+            x-model="weekly"
+            @change="if (weekly) { from = '<%= weeklyFrom %>'; to = '<%= weeklyTo %>' } else { from = ''; to = '' }"
+            class="peer sr-only" />
+          <span
+            class="relative h-5 w-9 rounded-full bg-slate-200 transition peer-checked:bg-blue-600 after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4"></span>
+          <span>주간보고서</span>
+        </label>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block">
+          <span class="sr-only">수정일 시작</span>
+          <input
+            type="date"
+            name="from"
+            x-model="from"
+            @input="weekly = false"
+            aria-label="수정일 시작"
+            class="h-11 w-full min-w-0 rounded-xl px-3" />
+        </label>
+        <label class="block">
+          <span class="sr-only">수정일 종료</span>
+          <input
+            type="date"
+            name="to"
+            x-model="to"
+            @input="weekly = false"
+            aria-label="수정일 종료"
+            class="h-11 w-full min-w-0 rounded-xl px-3" />
+        </label>
+      </div>
+    </div>
+    <div class="flex items-end gap-2 xl:col-span-2">
+      <button class="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border-0 bg-slate-900 px-4 text-sm font-bold text-white hover:bg-slate-800">
+        <span class="i-lucide-search h-4 w-4"></span>검색</button
+      ><a
+        href="/list"
+        class="ui-button-secondary inline-flex h-11 items-center justify-center rounded-xl px-4 text-sm font-bold text-slate-600 no-underline"
+        aria-label="검색 조건 초기화"
+        ><span class="i-lucide-rotate-ccw h-4 w-4"></span><span class="sr-only">초기화</span></a
+      >
+    </div>
   </div>
-  <div class="flex gap-2 md:col-span-3">
-    <button class="inline-flex h-10 items-center gap-2 rounded-lg border-0 bg-slate-900 px-4 text-sm font-bold text-white"><span class="i-lucide-search h-4 w-4"></span>검색</button
-    ><a
-      href="/list"
-      class="ui-button-secondary inline-flex h-10 items-center rounded-lg px-4 text-sm font-bold text-slate-600 no-underline"
-      >초기화</a
-    >
+  <% if (hasFilters) { %>
+  <div class="mt-4 flex items-center gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
+    <span class="i-lucide-filter h-3.5 w-3.5 text-blue-600"></span>
+    <span>선택한 조건이 결과에 적용되었습니다.</span>
   </div>
+  <% } %>
 </form>
-<p class="mb-3 text-sm font-bold text-slate-600">검색 결과 <%= workCards.length %>개</p>
-<div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+<div class="mb-3 flex items-center justify-between gap-3">
+  <div>
+    <h2 class="font-black text-slate-900">검색 결과</h2>
+    <p class="mt-1 text-xs text-slate-500">최근 수정한 업무가 먼저 표시됩니다.</p>
+  </div>
+  <span class="rounded-full bg-slate-200 px-3 py-1 text-xs font-black text-slate-600"><%= workCards.length %>개</span>
+</div>
+<% if (!workCards.length) { %>
+<div class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
+  <span class="i-lucide-search-x mx-auto h-8 w-8 text-slate-300"></span>
+  <p class="mt-3 font-black text-slate-700">조건에 맞는 업무가 없습니다.</p>
+  <p class="mt-1 text-sm text-slate-500">검색어를 줄이거나 필터를 초기화해보세요.</p>
+</div>
+<% } else { %>
+<div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
   <div class="overflow-x-auto">
-    <table class="min-w-full text-left text-sm">
+    <table class="w-full min-w-210 table-fixed text-left text-sm">
       <thead class="bg-slate-50 text-xs text-slate-500">
         <tr>
-          <th class="px-4 py-3">제목</th>
-          <th class="px-4 py-3">상태</th>
-          <th class="px-4 py-3">담당자</th>
-          <th class="px-4 py-3">마감일</th>
-          <th class="px-4 py-3">수정</th>
+          <th class="w-[44%] px-5 py-3.5 font-bold">업무</th>
+          <th class="w-[14%] px-4 py-3.5 font-bold">상태</th>
+          <th class="w-[16%] px-4 py-3.5 font-bold">담당자</th>
+          <th class="w-[13%] px-4 py-3.5 font-bold">마감일</th>
+          <th class="w-[13%] px-4 py-3.5 font-bold">등록일</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody class="divide-y divide-slate-100">
         <% for (let index = 0; index < workCards.length; index += 1) { const work = workCards[index] %>
-        <tr class="border-t border-slate-100">
-          <td class="px-4 py-3">
-            <a
-              href="/works/<%= encodeURIComponent(work.id) %>"
-              class="font-bold text-slate-900 no-underline hover:text-blue-700"
-              ><%= work.title %></a
+        <tr class="group transition hover:bg-blue-50/50">
+          <td class="px-5 py-4">
+            <div class="flex items-center gap-3">
+              <span class="<%= work.done ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400' %> inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                ><span class="<%= work.done ? 'i-lucide-check' : 'i-lucide-clipboard-list' %> h-4 w-4"></span
+              ></span>
+              <div class="min-w-0">
+                <a
+                  href="/works/<%= encodeURIComponent(work.id) %>"
+                  class="<%= work.done ? 'line-through opacity-60' : '' %> block truncate font-bold text-slate-900 no-underline group-hover:text-blue-700"
+                  ><%= work.title %></a
+                >
+                <% if (work.redmine || work.joplin || work.file) { %>
+                <div class="mt-1.5 flex items-center gap-2 text-slate-400">
+                  <% if (work.redmine) { %><span class="i-lucide-square-kanban h-3.5 w-3.5"></span><% } %> <% if (work.joplin) { %><span class="i-lucide-notebook-tabs h-3.5 w-3.5"></span><% } %>
+                  <% if (work.file) { %><span class="i-lucide-paperclip h-3.5 w-3.5"></span><% } %>
+                </div>
+                <% } %>
+              </div>
+            </div>
+          </td>
+          <td class="px-4 py-4">
+            <span class="<%= work.stateBadgeClass %> inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold"
+              ><span class="<%= work.stateIconClass %> h-3.5 w-3.5"></span><%= work.stateLabel %></span
             >
           </td>
-          <td class="px-4 py-3"><span class="<%= work.stateBadgeClass %> rounded-full px-2 py-1 text-xs font-bold"><%= work.stateLabel %></span></td>
-          <td class="px-4 py-3 text-slate-600"><%= work.developerName %></td>
-          <td class="px-4 py-3 text-slate-600"><%= work.dueDateLabel || '-' %></td>
-          <td class="px-4 py-3 text-slate-500"><%= work.createdLabel %></td>
+          <td class="px-4 py-4 text-slate-600">
+            <span class="inline-flex max-w-full items-center gap-1.5"><span class="i-lucide-user-round h-3.5 w-3.5 text-slate-400"></span><span class="truncate"><%= work.developerName %></span></span>
+          </td>
+          <td class="<%= work.isUrgent ? 'font-bold text-rose-600' : 'text-slate-600' %> px-4 py-4 whitespace-nowrap"><%= work.dueDateLabel || '-' %></td>
+          <td class="px-4 py-4 whitespace-nowrap text-slate-500"><%= work.createdLabel %></td>
         </tr>
         <% } %>
       </tbody>
     </table>
   </div>
 </div>
+<% } %>

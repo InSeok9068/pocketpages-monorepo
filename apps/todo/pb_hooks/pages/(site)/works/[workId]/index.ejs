@@ -40,6 +40,11 @@
     file: String(work.get('file') || ''),
     originalFileName: String(work.get('originalFileName') || ''),
   }
+  /** @type {types.WorkStateOption} */
+  let currentState = { value: view.state, label: view.state, iconClass: 'i-lucide-circle', badgeClass: 'bg-slate-100 text-slate-700' }
+  for (let index = 0; index < stateOptions.length; index += 1) {
+    if (stateOptions[index].value === view.state) currentState = stateOptions[index]
+  }
   const scheduledIds = Array.isArray(work.get('scheduledNotifications')) ? work.get('scheduledNotifications') : []
   const scheduledNotifications = []
   for (let index = 0; index < scheduledIds.length; index += 1) {
@@ -60,63 +65,87 @@
   dbg('todo/works/detail:response', { userId, workId })
 </script>
 
-<header class="mb-6 flex flex-wrap items-center gap-3">
-  <a
-    href="/"
-    class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 no-underline hover:bg-slate-50"
-    aria-label="돌아가기"
-    ><span class="i-lucide-arrow-left h-4 w-4"></span
-  ></a>
-  <div>
-    <p class="text-xs font-bold text-blue-600">WORK DETAIL</p>
-    <h1 class="mt-1 text-2xl font-black">업무 상세</h1>
+<header class="mb-5 flex flex-wrap items-center justify-between gap-4">
+  <div class="flex min-w-0 items-center gap-3">
+    <a
+      href="/"
+      class="ui-button-secondary inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 no-underline"
+      aria-label="오늘 화면으로 돌아가기"
+      ><span class="i-lucide-arrow-left h-4 w-4"></span
+    ></a>
+    <div class="min-w-0">
+      <div class="flex flex-wrap items-center gap-2">
+        <p class="text-xs font-black tracking-[0.16em] text-blue-600">WORK DETAIL</p>
+        <span class="<%= currentState.badgeClass %> inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold"
+          ><span class="<%= currentState.iconClass %> h-3.5 w-3.5"></span><%= currentState.label %></span
+        >
+      </div>
+      <h1 class="mt-1 truncate text-2xl font-black text-slate-950"><%= view.title %></h1>
+    </div>
   </div>
+  <button
+    type="submit"
+    form="work-detail-form"
+    aria-keyshortcuts="Alt+S"
+    title="저장 (Alt+S)"
+    class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-0 bg-blue-600 px-5 text-sm font-black text-white shadow-sm hover:bg-blue-700">
+    <span class="i-lucide-save h-4 w-4"></span>변경사항 저장<span class="ml-1 rounded-md bg-white/15 px-1.5 py-0.5 text-[10px] font-bold">Alt+S</span>
+  </button>
 </header>
 
 <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
 
 <form
+  id="work-detail-form"
   method="post"
   action="/xapi/works/update"
   enctype="multipart/form-data"
-  class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+  class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
   <input
     type="hidden"
     name="work_id"
     value="<%= view.id %>" />
-  <section class="space-y-5">
-    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+  <section class="min-w-0 space-y-5">
+    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <label class="block text-sm font-bold text-slate-700"
-        >제목
+        ><span class="mb-2 flex items-center gap-2"><span class="i-lucide-heading h-4 w-4 text-slate-400"></span>업무 제목</span>
         <input
           name="title"
           value="<%= view.title %>"
           required
           maxlength="100"
-          class="mt-2 h-12 w-full rounded-lg border border-slate-200 px-4 text-lg font-bold outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-100" />
+          class="h-12 w-full rounded-xl px-4 text-lg font-bold" />
       </label>
     </article>
-    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <label class="block text-sm font-bold text-slate-700"
-        >내용
+        ><span class="mb-2 flex items-center justify-between gap-3"
+          ><span class="inline-flex items-center gap-2"><span class="i-lucide-align-left h-4 w-4 text-slate-400"></span>업무 내용</span
+          ><span class="text-[11px] font-normal text-slate-400">HTML 또는 일반 텍스트</span></span
+        >
         <textarea
           name="content"
-          rows="18"
-          class="mt-2 w-full resize-y rounded-lg border border-slate-200 p-4 font-mono text-sm leading-6 outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-100"
+          rows="22"
+          class="min-h-140 w-full resize-y rounded-xl p-4 font-mono text-sm leading-6"
           placeholder="업무 내용을 HTML 또는 텍스트로 작성하세요">
 <%= view.content %></textarea>
       </label>
-      <p class="mt-2 text-xs text-slate-400">기존 editor HTML을 그대로 보존합니다. 전용 에디터는 이후 이 영역에만 연결할 수 있습니다.</p>
     </article>
-    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 class="text-base font-black">외부 연결</h2>
-      <div class="mt-4 grid gap-4">
+    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="flex items-start gap-3">
+        <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><span class="i-lucide-link-2 h-4 w-4"></span></span>
+        <div>
+          <h2 class="font-black">외부 연결</h2>
+          <p class="mt-1 text-xs text-slate-500">관련 이슈나 문서 주소를 함께 보관합니다.</p>
+        </div>
+      </div>
+      <div class="mt-4 grid gap-4 xl:grid-cols-2">
         <label class="block text-sm font-bold text-slate-700"
           >Redmine URL<input
             type="url"
             name="redmine"
             value="<%= view.redmine %>"
-            class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 outline-none focus:border-blue-500"
+            class="mt-2 h-11 w-full rounded-xl px-3"
             placeholder="https://pms.kpcard.co.kr/issues/123"
         /></label>
         <label class="block text-sm font-bold text-slate-700"
@@ -124,42 +153,59 @@
             type="text"
             name="joplin"
             value="<%= view.joplin %>"
-            class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 outline-none focus:border-blue-500"
+            class="mt-2 h-11 w-full rounded-xl px-3"
         /></label>
       </div>
     </article>
-    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 class="text-base font-black">예약 알림</h2>
-      <form
-        method="post"
-        action="/xapi/scheduled-notifications/create"
-        class="mt-4 grid gap-3 sm:grid-cols-2">
-        <input
-          type="hidden"
-          name="work_id"
-          value="<%= view.id %>" />
-        <input
-          name="title"
-          value="<%= view.title %>"
-          required
-          maxlength="100"
-          class="h-10 rounded-lg border border-slate-200 px-3"
-          placeholder="알림 제목" />
-        <input
-          type="datetime-local"
-          name="time"
-          required
-          class="h-10 rounded-lg border border-slate-200 px-3" />
-        <input
-          name="message"
-          maxlength="500"
-          class="h-10 rounded-lg border border-slate-200 px-3 sm:col-span-2"
-          placeholder="알림 메시지" />
-        <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border-0 bg-slate-900 px-4 text-sm font-bold text-white sm:w-fit">
+    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="flex items-start gap-3">
+        <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><span class="i-lucide-alarm-clock h-4 w-4"></span></span>
+        <div>
+          <h2 class="font-black">예약 알림</h2>
+          <p class="mt-1 text-xs text-slate-500">업무를 다시 확인할 시간을 예약합니다.</p>
+        </div>
+      </div>
+      <div class="mt-4 grid gap-3 sm:grid-cols-2">
+        <label class="block">
+          <span class="mb-1.5 block text-xs font-bold text-slate-500">알림 제목</span>
+          <input
+            form="scheduled-notification-create-form"
+            name="title"
+            value="<%= view.title %>"
+            required
+            maxlength="100"
+            class="h-11 w-full rounded-xl px-3"
+            placeholder="알림 제목" />
+        </label>
+        <label class="block">
+          <span class="mb-1.5 block text-xs font-bold text-slate-500">알림 시각</span>
+          <input
+            form="scheduled-notification-create-form"
+            type="datetime-local"
+            name="time"
+            required
+            class="h-11 w-full rounded-xl px-3" />
+        </label>
+        <label class="block sm:col-span-2">
+          <span class="mb-1.5 block text-xs font-bold text-slate-500">메시지</span>
+          <input
+            form="scheduled-notification-create-form"
+            name="message"
+            maxlength="500"
+            class="h-11 w-full rounded-xl px-3"
+            placeholder="알림에서 확인할 간단한 메모" />
+        </label>
+        <button
+          type="submit"
+          form="scheduled-notification-create-form"
+          class="inline-flex h-10 items-center justify-center gap-2 rounded-xl border-0 bg-slate-900 px-4 text-sm font-bold text-white sm:w-fit">
           <span class="i-lucide-alarm-clock-plus h-4 w-4"></span>알림 추가
         </button>
-      </form>
+      </div>
       <div class="mt-4 divide-y divide-slate-100">
+        <% if (!scheduledNotifications.length) { %>
+        <p class="rounded-xl bg-slate-50 px-4 py-5 text-center text-xs text-slate-400">등록된 예약 알림이 없습니다.</p>
+        <% } %>
         <% for (let index = 0; index < scheduledNotifications.length; index += 1) { const item = scheduledNotifications[index] %>
         <div class="flex items-start gap-3 py-3">
           <span class="i-lucide-alarm-clock mt-0.5 h-4 w-4 text-blue-600"></span>
@@ -167,32 +213,29 @@
             <p class="font-bold"><%= item.title %></p>
             <p class="mt-1 text-xs text-slate-500"><%= item.timeLabel %><%= item.message ? ' · ' + item.message : '' %></p>
           </div>
-          <form
-            method="post"
-            action="/xapi/scheduled-notifications/delete">
-            <input
-              type="hidden"
-              name="work_id"
-              value="<%= view.id %>" /><input
-              type="hidden"
-              name="scheduled_id"
-              value="<%= item.id %>" /><button class="inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-transparent text-slate-400 hover:bg-rose-50 hover:text-rose-600">
-              <span class="i-lucide-trash-2 h-4 w-4"></span>
-            </button>
-          </form>
+          <button
+            type="submit"
+            form="scheduled-notification-delete-form"
+            name="scheduled_id"
+            value="<%= item.id %>"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-transparent text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+            aria-label="예약 알림 삭제">
+            <span class="i-lucide-trash-2 h-4 w-4"></span>
+          </button>
         </div>
         <% } %>
       </div>
     </article>
   </section>
-  <aside class="space-y-4">
-    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 class="text-base font-black">업무 속성</h2>
+  <aside class="space-y-4 lg:sticky lg:top-24">
+    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 class="font-black">업무 속성</h2>
+      <p class="mt-1 text-xs text-slate-500">진행 상태와 담당 일정을 관리합니다.</p>
       <div class="mt-4 grid gap-4">
         <label class="block text-sm font-bold text-slate-700"
           >상태<select
             name="state"
-            class="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3">
+            class="mt-2 h-11 w-full rounded-xl px-3">
             <% for (let index = 0; index < stateOptions.length; index += 1) { %>
             <option
               value="<%= stateOptions[index].value %>"
@@ -205,7 +248,7 @@
         <label class="block text-sm font-bold text-slate-700"
           >담당자<select
             name="developer"
-            class="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3">
+            class="mt-2 h-11 w-full rounded-xl px-3">
             <option value="">미배정</option>
             <% for (let index = 0; index < developers.length; index += 1) { %>
             <option
@@ -222,9 +265,9 @@
             type="date"
             name="due_date"
             value="<%= view.dueDate %>"
-            class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3" />
+            class="mt-2 h-11 w-full rounded-xl px-3" />
         </label>
-        <label class="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700"
+        <label class="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700"
           ><input
             type="checkbox"
             name="done"
@@ -234,8 +277,8 @@
         >
       </div>
     </article>
-    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 class="text-base font-black">첨부파일</h2>
+    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 class="font-black">첨부파일</h2>
       <% if (view.file) { %>
       <p class="mt-2 text-sm break-all text-slate-600"><%= view.originalFileName || view.file %></p>
       <label class="mt-3 flex items-center gap-2 text-sm font-bold text-rose-600"
@@ -252,24 +295,63 @@
     </article>
     <button
       type="submit"
-      class="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border-0 bg-blue-600 text-sm font-black text-white hover:bg-blue-700">
-      <span class="i-lucide-save h-4 w-4"></span>저장
+      aria-keyshortcuts="Alt+S"
+      title="저장 (Alt+S)"
+      class="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border-0 bg-blue-600 text-sm font-black text-white shadow-sm hover:bg-blue-700">
+      <span class="i-lucide-save h-4 w-4"></span>변경사항 저장<span class="ml-1 rounded-md bg-white/15 px-1.5 py-0.5 text-[10px]">Alt+S</span>
+    </button>
+    <button
+      type="submit"
+      form="work-delete-form"
+      class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white text-sm font-bold text-rose-600 hover:bg-rose-50">
+      <span class="i-lucide-trash-2 h-4 w-4"></span>업무 삭제
     </button>
   </aside>
 </form>
 
 <form
+  id="scheduled-notification-create-form"
+  method="post"
+  action="/xapi/scheduled-notifications/create">
+  <input
+    type="hidden"
+    name="work_id"
+    value="<%= view.id %>" />
+</form>
+
+<form
+  id="scheduled-notification-delete-form"
+  method="post"
+  action="/xapi/scheduled-notifications/delete">
+  <input
+    type="hidden"
+    name="work_id"
+    value="<%= view.id %>" />
+</form>
+
+<form
+  id="work-delete-form"
   method="post"
   action="/xapi/works/delete"
-  class="mt-5"
   onsubmit="return confirm('이 업무를 삭제할까요?')">
   <input
     type="hidden"
     name="work_id"
     value="<%= view.id %>" />
-  <button
-    type="submit"
-    class="inline-flex h-10 items-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-600 hover:bg-rose-50">
-    <span class="i-lucide-trash-2 h-4 w-4"></span>업무 삭제
-  </button>
 </form>
+
+<script>
+  document.addEventListener('keydown', function (event) {
+    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.repeat || event.code !== 'KeyS') {
+      return
+    }
+
+    const form = document.querySelector('#work-detail-form')
+    if (!form) {
+      return
+    }
+
+    event.preventDefault()
+    form.requestSubmit()
+  })
+</script>
