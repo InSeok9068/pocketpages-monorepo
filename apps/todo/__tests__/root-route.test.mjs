@@ -72,6 +72,9 @@ test('a signed-up user can create and complete a work', async () => {
   assert.equal(detailResponse.status, 200, detailBody)
   assert.equal(detailPage('#redmine-create-form input[name="work_id"]').attr('value'), workId)
   assert.equal(detailPage('#redmine-dialog').length, 1)
+  assert.equal(detailPage('#scheduled-notification-time').length, 1)
+  assert.equal(detailPage('input[form="scheduled-notification-create-form"][name="title"]').length, 0)
+  assert.equal(detailPage('input[form="scheduled-notification-create-form"][name="message"]').length, 0)
 
   const updateForm = new FormData()
   updateForm.set('work_id', workId)
@@ -79,8 +82,8 @@ test('a signed-up user can create and complete a work', async () => {
   updateForm.set('state', 'wait')
   updateForm.set('developer', '')
   updateForm.set('due_date', '')
-  updateForm.set('redmine', '')
-  updateForm.set('joplin', '')
+  updateForm.set('redmine', 'https://pms.kpcard.co.kr/issues/123')
+  updateForm.set('joplin', 'joplin://x-callback-url/openNote?id=test-note')
   const updateResponse = await fetch(`${service.baseUrl}/xapi/works/update`, {
     method: 'POST',
     headers: { Cookie: cookie },
@@ -96,6 +99,22 @@ test('a signed-up user can create and complete a work', async () => {
 
   assert.equal(savedDetailResponse.status, 200)
   assert.equal(savedDetailPage('input[name="title"]').attr('value'), '첨부파일 없이 수정한 업무')
+  assert.equal(savedDetailPage('a[aria-label="Redmine 이슈 열기"]').attr('href'), 'https://pms.kpcard.co.kr/issues/123')
+  assert.equal(savedDetailPage('a[aria-label="Joplin 링크 열기"]').attr('href'), 'joplin://x-callback-url/openNote?id=test-note')
+
+  const scheduleResponse = await fetch(`${service.baseUrl}/xapi/scheduled-notifications/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
+    body: new URLSearchParams({ work_id: workId, time: '2030-01-02T09:30' }),
+    redirect: 'manual',
+  })
+
+  assert.equal(scheduleResponse.status, 303)
+
+  const scheduledDetailResponse = await fetch(new URL(scheduleResponse.headers.get('location'), service.baseUrl), { headers: { Cookie: cookie } })
+  const scheduledDetailPage = load(await scheduledDetailResponse.text())
+
+  assert.equal(scheduledDetailPage('button[name="scheduled_id"]').length, 1)
 
   const completeResponse = await fetch(`${service.baseUrl}/xapi/works/complete`, {
     method: 'POST',

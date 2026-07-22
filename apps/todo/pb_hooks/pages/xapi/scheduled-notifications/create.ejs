@@ -3,21 +3,20 @@
   const form = body()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   const workId = String(form.work_id || '').trim()
-  const title = String(form.title || '').trim()
   const time = String(form.time || '').trim()
   let errorMessage = ''
-  dbg('todo/xapi/scheduled-notifications/create:start', { userId, workId, titleLength: title.length })
+  dbg('todo/xapi/scheduled-notifications/create:start', { userId, workId, time })
   try {
     if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
-    if (!title || !time) throw new Error('알림 제목과 시각이 필요합니다.')
+    if (!time) throw new Error('알림 시작 시각이 필요합니다.')
     const timeIso = dateutil.toDate(time).toISOString()
     if (isNaN(new Date(timeIso).getTime())) throw new Error('알림 시각이 올바르지 않습니다.')
     $app.runInTransaction(function (txApp) {
       const work = txApp.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
       const scheduled = new Record(txApp.findCollectionByNameOrId('scheduledNotifications'))
       scheduled.set('user', userId)
-      scheduled.set('title', title)
-      scheduled.set('message', String(form.message || '').trim())
+      scheduled.set('title', String(work.get('title') || '업무 알림'))
+      scheduled.set('message', '')
       scheduled.set('time', timeIso)
       txApp.save(scheduled)
       const ids = Array.isArray(work.get('scheduledNotifications')) ? work.get('scheduledNotifications').slice() : []
