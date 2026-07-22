@@ -2,8 +2,6 @@
   const { dateutil } = require('@pocketpages/utils')
   const todoData = resolve('todo-data')
   const form = formData()
-  const uploadedFiles = request.event.findUploadedFiles('file')
-  const uploadedFile = uploadedFiles.length ? uploadedFiles[0] : null
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   const workId = String(form.work_id || '').trim()
   const title = String(form.title || '').trim()
@@ -12,6 +10,7 @@
   const isDone = String(form.done || '') === 'true'
   let state = requestedState
   let errorMessage = ''
+  let uploadedFile = null
 
   if (isDone) state = 'done'
   else if (state === 'done') state = 'wait'
@@ -22,6 +21,13 @@
     if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
     if (!userId) throw new Error('로그인이 필요합니다.')
     if (!title) throw new Error('업무 제목이 필요합니다.')
+
+    try {
+      const uploadedFiles = request.event.findUploadedFiles('file') || []
+      uploadedFile = uploadedFiles.length ? uploadedFiles[0] : null
+    } catch (exception) {
+      if (String(exception.message || exception) !== 'http: no such file') throw exception
+    }
 
     const stateOptions = todoData.listWorkStates()
     let isValidState = false
@@ -50,7 +56,7 @@
     }
     if (uploadedFile) {
       work.set('file', uploadedFile)
-      work.set('originalFileName', String(uploadedFile.name || '첨부파일'))
+      work.set('originalFileName', String(uploadedFile.originalName || uploadedFile.name || '첨부파일'))
     }
     if (isDone && !wasDone) work.set('doneDate', new Date().toISOString())
     if (!isDone) work.set('doneDate', '')

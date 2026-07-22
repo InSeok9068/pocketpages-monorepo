@@ -73,6 +73,30 @@ test('a signed-up user can create and complete a work', async () => {
   assert.equal(detailPage('#redmine-create-form input[name="work_id"]').attr('value'), workId)
   assert.equal(detailPage('#redmine-dialog').length, 1)
 
+  const updateForm = new FormData()
+  updateForm.set('work_id', workId)
+  updateForm.set('title', '첨부파일 없이 수정한 업무')
+  updateForm.set('state', 'wait')
+  updateForm.set('developer', '')
+  updateForm.set('due_date', '')
+  updateForm.set('redmine', '')
+  updateForm.set('joplin', '')
+  const updateResponse = await fetch(`${service.baseUrl}/xapi/works/update`, {
+    method: 'POST',
+    headers: { Cookie: cookie },
+    body: updateForm,
+    redirect: 'manual',
+  })
+
+  assert.equal(updateResponse.status, 303)
+  assert.equal(updateResponse.headers.get('location')?.startsWith(`/works/${workId}`), true)
+
+  const savedDetailResponse = await fetch(new URL(updateResponse.headers.get('location'), service.baseUrl), { headers: { Cookie: cookie } })
+  const savedDetailPage = load(await savedDetailResponse.text())
+
+  assert.equal(savedDetailResponse.status, 200)
+  assert.equal(savedDetailPage('input[name="title"]').attr('value'), '첨부파일 없이 수정한 업무')
+
   const completeResponse = await fetch(`${service.baseUrl}/xapi/works/complete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie, 'HX-Request': 'true' },

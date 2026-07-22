@@ -1,0 +1,19 @@
+<script server>
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  let updatedCount = 0
+  let errorMessage = ''
+  dbg('todo/xapi/notifications/read-all:start', { userId })
+  try {
+    if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
+    const updateResult = $app.db().newQuery('UPDATE notifications SET read = TRUE WHERE user = {:userId} AND read = FALSE').bind({ userId }).execute()
+    updatedCount = updateResult.rowsAffected()
+    info('todo/xapi/notifications/read-all:success', { userId, updatedCount })
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('todo/xapi/notifications/read-all:failed', { userId, updatedCount, error: errorMessage })
+  }
+  const message = errorMessage || (updatedCount ? updatedCount + '개의 알림을 모두 읽음 처리했습니다.' : '읽지 않은 알림이 없습니다.')
+  dbg('todo/xapi/notifications/read-all:redirect', { status: 303, redirectTo: '/notification', message })
+  redirect('/notification', { status: 303, message })
+  return
+</script>

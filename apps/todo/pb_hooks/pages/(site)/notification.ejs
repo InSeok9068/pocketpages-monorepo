@@ -10,47 +10,66 @@
   const userId = String(request.auth.get('id') || '')
   const records = $app.findRecordsByFilter('notifications', 'user = {:userId}', '-created', 200, 0, { userId })
   const notifications = []
+  let unreadCount = 0
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index]
+    const isRead = !!record.get('read')
+    if (!isRead) unreadCount += 1
     notifications.push({
       id: String(record.get('id') || ''),
       title: String(record.get('title') || ''),
       message: String(record.get('message') || ''),
-      read: !!record.get('read'),
+      read: isRead,
       createdLabel: dateutil.formatDate(String(record.get('created') || ''), dateutil.FORMATS.DATE_TIME_MINUTES),
     })
   }
-  dbg('todo/notification:response', { userId, notificationCount: notifications.length })
+  dbg('todo/notification:response', { userId, notificationCount: notifications.length, unreadCount })
 </script>
-<header class="mb-6">
-  <p class="text-sm font-bold text-blue-600">NOTIFICATIONS</p>
-  <h1 class="mt-1 text-3xl font-black tracking-tight">알림</h1>
-</header>
-<%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
-<section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-  <% if (!notifications.length) { %>
-  <p class="py-12 text-center text-sm font-bold text-slate-500">도착한 알림이 없습니다.</p>
-  <% } %>
-  <div class="divide-y divide-slate-100">
-    <% for (let index = 0; index < notifications.length; index += 1) { const item = notifications[index] %>
-    <article class="<%= item.read ? 'bg-white' : 'bg-blue-50/50' %> flex items-start gap-3 p-4">
-      <span class="<%= item.read ? 'i-lucide-bell text-slate-400' : 'i-lucide-bell-ring text-blue-600' %> mt-0.5 h-4 w-4 shrink-0"></span>
-      <div class="min-w-0 flex-1">
-        <h2 class="font-black"><%= item.title %></h2>
-        <p class="mt-1 text-sm leading-6 text-slate-600"><%= item.message %></p>
-        <p class="mt-2 text-xs text-slate-400"><%= item.createdLabel %></p>
-      </div>
-      <% if (!item.read) { %>
-      <form
-        method="post"
-        action="/xapi/notifications/read">
-        <input
-          type="hidden"
-          name="notification_id"
-          value="<%= item.id %>" /><button class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50">읽음</button>
-      </form>
-      <% } %>
-    </article>
+<div class="max-w-4xl">
+  <header class="mb-4 flex items-end justify-between gap-4">
+    <div>
+      <p class="text-xs font-bold text-blue-600">NOTIFICATIONS</p>
+      <h1 class="mt-0.5 text-2xl font-black tracking-tight">알림</h1>
+      <p class="mt-1 text-xs text-slate-500">읽지 않은 알림 <span class="font-bold text-slate-700"><%= unreadCount %>개</span></p>
+    </div>
+    <% if (unreadCount > 0) { %>
+    <form
+      method="post"
+      action="/xapi/notifications/read-all">
+      <button class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">
+        <span class="i-lucide-check-check h-3.5 w-3.5"></span>모두 읽음
+      </button>
+    </form>
     <% } %>
-  </div>
-</section>
+  </header>
+  <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+  <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <% if (!notifications.length) { %>
+    <p class="py-10 text-center text-xs font-bold text-slate-500">도착한 알림이 없습니다.</p>
+    <% } %>
+    <div class="divide-y divide-slate-100">
+      <% for (let index = 0; index < notifications.length; index += 1) { const item = notifications[index] %>
+      <article class="<%= item.read ? 'bg-white' : 'bg-blue-50/50' %> flex items-start gap-2.5 px-3 py-3">
+        <span class="<%= item.read ? 'i-lucide-bell text-slate-400' : 'i-lucide-bell-ring text-blue-600' %> mt-0.5 h-3.5 w-3.5 shrink-0"></span>
+        <div class="min-w-0 flex-1">
+          <h2 class="text-sm leading-5 font-bold"><%= item.title %></h2>
+          <% if (item.message) { %>
+          <p class="mt-0.5 text-xs leading-5 text-slate-600"><%= item.message %></p>
+          <% } %>
+          <p class="mt-1 text-[11px] text-slate-400"><%= item.createdLabel %></p>
+        </div>
+        <% if (!item.read) { %>
+        <form
+          method="post"
+          action="/xapi/notifications/read">
+          <input
+            type="hidden"
+            name="notification_id"
+            value="<%= item.id %>" /><button class="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50">읽음</button>
+        </form>
+        <% } %>
+      </article>
+      <% } %>
+    </div>
+  </section>
+</div>

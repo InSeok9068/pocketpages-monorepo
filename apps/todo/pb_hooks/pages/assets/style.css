@@ -65,6 +65,17 @@ textarea:focus {
   background: #f8fafc;
 }
 
+.ui-button-danger {
+  border: 1px solid #fecdd3;
+  background: #fff;
+  color: #e11d48;
+}
+
+.ui-button-danger:hover {
+  border-color: #fda4af;
+  background: #fff1f2;
+}
+
 .ui-work-card {
   border: 1px solid #e2e8f0;
   border-left-width: 4px;

@@ -18,18 +18,46 @@
     if (!Array.isArray(order)) throw new Error('이동 값이 올바르지 않습니다.')
     const validStates = {}
     for (let index = 0; index < stateOptions.length; index += 1) validStates[stateOptions[index].value] = true
-    $app.runInTransaction(function (txApp) {
-      for (let index = 0; index < order.length; index += 1) {
-        const item = order[index] || {}
-        const workId = String(item.id || '')
-        const state = String(item.state || '')
-        if (!workId || !validStates[state]) throw new Error('이동 값이 올바르지 않습니다.')
-        const work = txApp.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId} && done = false', { workId, userId })
-        work.set('state', state)
-        work.set('sort', Number(item.sort || 0))
-        txApp.save(work)
-      }
-    })
+    const bindings = { userId, updated: new Date().toISOString() }
+    const stateCases = []
+    const sortCases = []
+    const idPlaceholders = []
+    const seenIds = {}
+    for (let index = 0; index < order.length; index += 1) {
+      const item = order[index] || {}
+      const workId = String(item.id || '').trim()
+      const state = String(item.state || '').trim()
+      const sort = Number(item.sort)
+      if (!workId || seenIds[workId] || !validStates[state] || !isFinite(sort)) throw new Error('이동 값이 올바르지 않습니다.')
+      const idKey = 'id' + index
+      const stateKey = 'state' + index
+      const sortKey = 'sort' + index
+      seenIds[workId] = true
+      bindings[idKey] = workId
+      bindings[stateKey] = state
+      bindings[sortKey] = sort
+      stateCases.push('WHEN {:' + idKey + '} THEN {:' + stateKey + '}')
+      sortCases.push('WHEN {:' + idKey + '} THEN {:' + sortKey + '}')
+      idPlaceholders.push('{:' + idKey + '}')
+    }
+    if (order.length) {
+      $app.runInTransaction(function (txApp) {
+        const updateResult = txApp
+          .db()
+          .newQuery(
+            'UPDATE works SET state = CASE id ' +
+              stateCases.join(' ') +
+              ' ELSE state END, sort = CASE id ' +
+              sortCases.join(' ') +
+              ' ELSE sort END, updated = {:updated} WHERE user = {:userId} AND done = FALSE AND id IN (' +
+              idPlaceholders.join(', ') +
+              ')'
+          )
+          .bind(bindings)
+          .execute()
+        if (updateResult.rowsAffected() !== order.length) throw new Error('이동할 업무를 찾을 수 없습니다.')
+      })
+    }
     info('todo/xapi/works/move:success', { userId, orderCount })
   } catch (exception) {
     error('todo/xapi/works/move:failed', { userId, error: String(exception.message || exception) })

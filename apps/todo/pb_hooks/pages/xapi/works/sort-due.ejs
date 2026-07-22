@@ -8,26 +8,22 @@
     if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
     if (!userId) throw new Error('로그인이 필요합니다.')
 
-    $app.runInTransaction(function (txApp) {
-      const works = txApp.findRecordsByFilter('works', 'user = {:userId} && done = false', '+dueDate,+sort,-created', 500, 0, { userId })
+    const updateResult = $app
+      .db()
+      .newQuery(
+        'WITH ordered AS (' +
+          ' SELECT id, ROW_NUMBER() OVER (' +
+          " ORDER BY CASE WHEN dueDate IS NULL OR dueDate = '' THEN 1 ELSE 0 END, dueDate ASC, sort ASC, created DESC" +
+          ' ) - 1 AS nextSort' +
+          ' FROM works WHERE user = {:userId} AND done = FALSE' +
+          ')' +
+          ' UPDATE works SET sort = (SELECT nextSort FROM ordered WHERE ordered.id = works.id)' +
+          ' WHERE id IN (SELECT id FROM ordered)'
+      )
+      .bind({ userId })
+      .execute()
 
-      works.sort(function (left, right) {
-        const leftDate = String(left.get('dueDate') || '')
-        const rightDate = String(right.get('dueDate') || '')
-
-        if (!leftDate && !rightDate) return 0
-        if (!leftDate) return 1
-        if (!rightDate) return -1
-        return new Date(leftDate).getTime() - new Date(rightDate).getTime()
-      })
-
-      for (let index = 0; index < works.length; index += 1) {
-        works[index].set('sort', index)
-        txApp.save(works[index])
-      }
-    })
-
-    info('todo/xapi/works/sort-due:success', { userId })
+    info('todo/xapi/works/sort-due:success', { userId, updatedCount: updateResult.rowsAffected() })
   } catch (exception) {
     errorMessage = String(exception.message || exception)
     error('todo/xapi/works/sort-due:failed', { userId, error: errorMessage })

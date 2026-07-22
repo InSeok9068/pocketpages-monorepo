@@ -68,22 +68,26 @@
   dbg('todo/works/detail:response', { userId, workId })
 </script>
 
-<header class="mb-5 flex flex-wrap items-center justify-between gap-4">
-  <div class="flex min-w-0 items-center gap-3">
+<header class="mb-5 flex items-center justify-between gap-4">
+  <div class="flex min-w-0 flex-1 items-center gap-3">
     <a
       href="/"
       class="ui-button-secondary inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 no-underline"
       aria-label="오늘 화면으로 돌아가기"
       ><span class="i-lucide-arrow-left h-4 w-4"></span
     ></a>
-    <div class="min-w-0">
+    <div class="min-w-0 flex-1">
       <div class="flex flex-wrap items-center gap-2">
         <p class="text-xs font-black tracking-[0.16em] text-blue-600">WORK DETAIL</p>
         <span class="<%= currentState.badgeClass %> inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold"
           ><span class="<%= currentState.iconClass %> h-3.5 w-3.5"></span><%= currentState.label %></span
         >
       </div>
-      <h1 class="mt-1 truncate text-2xl font-black text-slate-950"><%= view.title %></h1>
+      <h1
+        class="mt-1 truncate text-2xl font-black text-slate-950"
+        title="<%= view.title %>">
+        <%= view.title %>
+      </h1>
     </div>
   </div>
   <button
@@ -91,7 +95,7 @@
     form="work-detail-form"
     aria-keyshortcuts="Alt+S"
     title="저장 (Alt+S)"
-    class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-0 bg-blue-600 px-5 text-sm font-black text-white shadow-sm hover:bg-blue-700">
+    class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border-0 bg-blue-600 px-5 text-sm font-black whitespace-nowrap text-white shadow-sm hover:bg-blue-700">
     <span class="i-lucide-save h-4 w-4"></span>변경사항 저장<span class="ml-1 rounded-md bg-white/15 px-1.5 py-0.5 text-[10px] font-bold">Alt+S</span>
   </button>
 </header>
@@ -342,7 +346,7 @@
     <button
       type="submit"
       form="work-delete-form"
-      class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white text-sm font-bold text-rose-600 hover:bg-rose-50">
+      class="ui-button-danger inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold">
       <span class="i-lucide-trash-2 h-4 w-4"></span>업무 삭제
     </button>
   </aside>
