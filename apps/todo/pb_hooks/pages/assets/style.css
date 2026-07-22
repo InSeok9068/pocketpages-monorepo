@@ -332,9 +332,13 @@ textarea:focus {
   background: #eff6ff;
 }
 
-.work-filepond .filepond--drop-label {
-  min-height: 6rem;
+.work-filepond .filepond--root .filepond--drop-label {
+  min-height: 6.5rem;
   color: #2563eb;
+}
+
+.work-filepond .filepond--drop-label.filepond--drop-label label {
+  padding: 0.75rem;
 }
 
 .work-filepond-label {
@@ -352,8 +356,9 @@ textarea:focus {
 
 .work-filepond-label small {
   color: #64748b;
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 600;
+  line-height: 1.25;
 }
 
 .work-filepond-label-icon {

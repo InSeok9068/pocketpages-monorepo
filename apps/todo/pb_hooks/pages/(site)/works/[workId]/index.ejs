@@ -306,10 +306,7 @@
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div class="flex items-start gap-3">
         <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><span class="i-lucide-link-2 h-4 w-4"></span></span>
-        <div>
-          <h2 class="font-black">외부 연결</h2>
-          <p class="mt-1 text-xs text-slate-500">관련 이슈나 문서 주소를 함께 보관합니다.</p>
-        </div>
+        <h2 class="font-black">외부 연결</h2>
       </div>
       <div class="mt-4 grid gap-4 xl:grid-cols-2">
         <div>
@@ -324,8 +321,7 @@
               type="url"
               name="redmine"
               value="<%= view.redmine %>"
-              class="h-11 min-w-0 flex-1 rounded-xl px-3"
-              placeholder="https://pms.kpcard.co.kr/issues/123" />
+              class="h-11 min-w-0 flex-1 rounded-xl px-3" />
             <% if (view.redmine) { %>
             <a
               href="<%= view.redmine %>"
@@ -381,7 +377,6 @@
           class="inline-flex h-10 items-center gap-2 rounded-xl border-0 bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700">
           <span class="i-lucide-square-plus h-4 w-4"></span>저장된 업무로 이슈 생성
         </button>
-        <span class="text-xs text-slate-500">제목·내용·마감일을 가져와 생성하고 URL을 자동 연결합니다.</span>
         <% } %>
         <a
           href="<%= redmineNewIssueUrl %>"
@@ -396,7 +391,6 @@
   <aside class="space-y-4 lg:sticky lg:top-24">
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 class="font-black">업무 속성</h2>
-      <p class="mt-1 text-xs text-slate-500">진행 상태와 담당 일정을 관리합니다.</p>
       <div class="mt-4 grid gap-4">
         <label class="block text-sm font-bold text-slate-700"
           >상태<select

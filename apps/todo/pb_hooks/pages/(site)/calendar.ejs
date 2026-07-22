@@ -18,14 +18,14 @@
   const nextMonthText = nextMonthNumber < 10 ? '0' + String(nextMonthNumber) : String(nextMonthNumber)
   const nextMonthStart = String(nextMonthYear) + '-' + nextMonthText + '-01'
   const monthEnd = dateutil.addDays(dateutil.startOfDay(nextMonthStart), -1)
-  const workCards = todoData.listWorkCards(userId, { dueFrom: dateutil.startOfDay(monthStart).toISOString(), dueTo: dateutil.endOfDay(monthEnd).toISOString(), sort: '+dueDate,+sort', limit: 500 })
+  const workCards = todoData.listWorkCards(userId, { dueFrom: dateutil.startOfDay(monthStart).toISOString(), dueTo: dateutil.endOfDay(monthEnd).toISOString(), sort: '-dueDate,+sort', limit: 500 })
   const groups = {}
   for (let index = 0; index < workCards.length; index += 1) {
     const key = workCards[index].dueDateLabel || '날짜 없음'
     if (!groups[key]) groups[key] = []
     groups[key].push(workCards[index])
   }
-  const dates = Object.keys(groups).sort()
+  const dates = Object.keys(groups).sort().reverse()
   dbg('todo/calendar:response', { userId, month, workCount: workCards.length })
 </script>
 <header class="mb-6 flex flex-wrap items-end justify-between gap-3">
