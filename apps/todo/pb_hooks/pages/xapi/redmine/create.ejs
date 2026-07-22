@@ -1,0 +1,44 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const redmineService = resolve('redmine-service')
+  const form = body()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const workId = String(form.work_id || '').trim()
+  const redirectTo = workId ? '/works/' + encodeURIComponent(workId) : '/'
+  const config = {
+    host: String(env('REDMINE_HOST') || 'https://pms.kpcard.co.kr').replace(/\/$/, ''),
+    apiKey: String(env('REDMINE_API_KEY') || '').trim(),
+    projectId: String(env('REDMINE_PROJECT_ID') || 'palrago').trim(),
+    trackerId: Number(env('REDMINE_TRACKER_ID') || 0),
+  }
+  let errorMessage = ''
+
+  dbg('todo/xapi/redmine/create:start', { userId, workId, projectId: config.projectId })
+  try {
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
+    if (redmineService.parseIssueId(String(work.get('redmine') || ''))) throw new Error('이미 Redmine 이슈가 연결되어 있습니다.')
+
+    const dueDate = String(work.get('dueDate') || '')
+    const issue = redmineService.createIssue(config, {
+      subject: String(work.get('title') || ''),
+      description: String(work.get('content') || ''),
+      startDate: dateutil.formatDate(new Date(), dateutil.FORMATS.DATE),
+      dueDate: dueDate ? dateutil.formatDate(dueDate, dateutil.FORMATS.DATE) : '',
+    })
+    const issueId = String(issue.id || '')
+    if (!issueId) throw new Error('생성된 Redmine 이슈 번호를 확인하지 못했습니다.')
+
+    work.set('redmine', config.host + '/issues/' + encodeURIComponent(issueId))
+    $app.save(work)
+    info('todo/xapi/redmine/create:success', { userId, workId, issueId })
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('todo/xapi/redmine/create:failed', { userId, workId, error: errorMessage })
+  }
+
+  dbg('todo/xapi/redmine/create:redirect', { status: 303, redirectTo, message: errorMessage || 'Redmine 이슈를 생성하고 업무에 연결했습니다.' })
+  redirect(redirectTo, { status: 303, message: errorMessage || 'Redmine 이슈를 생성하고 업무에 연결했습니다.' })
+  return
+</script>

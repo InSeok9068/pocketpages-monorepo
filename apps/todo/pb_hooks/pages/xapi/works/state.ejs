@@ -4,20 +4,18 @@
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   const workId = String(form.work_id || '').trim()
   const state = String(form.state || '').trim()
-  const stateOptions = todoData.listWorkStates()
+  const stateOptions = todoData.listOpenWorkStates()
   let workCards = []
 
   dbg('todo/xapi/works/state:start', { userId, workId, state })
   try {
-    if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
     let isValidState = false
     for (let index = 0; index < stateOptions.length; index += 1) if (stateOptions[index].value === state) isValidState = true
     if (!isValidState) throw new Error('상태 값이 올바르지 않습니다.')
-    const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
-    const isDone = state === 'done'
+    const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId} && done = false', { workId, userId })
     work.set('state', state)
-    work.set('done', isDone)
-    work.set('doneDate', isDone ? new Date().toISOString() : '')
     $app.save(work)
     info('todo/xapi/works/state:success', { userId, workId, state })
   } catch (exception) {

@@ -26,25 +26,25 @@
     done: String(request.url.query.done || '').trim(),
     createdFrom: typeof request.url.query.createdFrom === 'undefined' ? defaultCreatedFrom : readDateQuery(request.url.query.createdFrom),
     createdTo: typeof request.url.query.createdTo === 'undefined' ? today : readDateQuery(request.url.query.createdTo),
-    from: readDateQuery(request.url.query.from),
-    to: readDateQuery(request.url.query.to),
+    updatedFrom: readDateQuery(request.url.query.updatedFrom),
+    updatedTo: readDateQuery(request.url.query.updatedTo),
     weekly: String(request.url.query.weekly || '') === 'true',
   }
   if (query.weekly) {
-    query.from = weeklyFrom
-    query.to = weeklyTo
+    query.updatedFrom = weeklyFrom
+    query.updatedTo = weeklyTo
   }
-  const hasFilters = !!(query.keyword || query.developer || query.state || query.done || query.createdFrom || query.createdTo || query.from || query.to)
+  const hasActiveFilters = !!(query.keyword || query.developer || query.state || query.done || query.createdFrom || query.createdTo || query.updatedFrom || query.updatedTo)
   const developers = todoData.listDevelopers(userId)
   const stateOptions = todoData.listWorkStates()
-  /** @type {{keyword: string, developerId: string, state: string, sort: string, limit: number, done?: boolean, createdFrom?: string, createdTo?: string, from?: string, to?: string}} */
+  /** @type {types.WorkCardFilters} */
   const filters = { keyword: query.keyword, developerId: query.developer, state: query.state, sort: '-updated', limit: 500 }
   if (query.done === 'true') filters.done = true
   if (query.done === 'false') filters.done = false
   if (query.createdFrom) filters.createdFrom = dateutil.startOfDay(query.createdFrom).toISOString()
   if (query.createdTo) filters.createdTo = dateutil.endOfDay(query.createdTo).toISOString()
-  if (query.from) filters.from = dateutil.startOfDay(query.from).toISOString()
-  if (query.to) filters.to = dateutil.endOfDay(query.to).toISOString()
+  if (query.updatedFrom) filters.updatedFrom = dateutil.startOfDay(query.updatedFrom).toISOString()
+  if (query.updatedTo) filters.updatedTo = dateutil.endOfDay(query.updatedTo).toISOString()
   const workCards = todoData.listWorkCards(userId, filters)
   dbg('todo/list:response', { userId, workCount: workCards.length })
 </script>
@@ -62,7 +62,7 @@
 <form
   method="get"
   action="/list"
-  x-data="{ weekly: <%= query.weekly ? 'true' : 'false' %>, from: '<%= query.from %>', to: '<%= query.to %>' }"
+  x-data="{ weekly: <%= query.weekly ? 'true' : 'false' %>, updatedFrom: '<%= query.updatedFrom %>', updatedTo: '<%= query.updatedTo %>' }"
   class="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
   <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
     <label class="block xl:col-span-6">
@@ -164,7 +164,7 @@
             name="weekly"
             value="true"
             x-model="weekly"
-            @change="if (weekly) { from = '<%= weeklyFrom %>'; to = '<%= weeklyTo %>' } else { from = ''; to = '' }"
+            @change="if (weekly) { updatedFrom = '<%= weeklyFrom %>'; updatedTo = '<%= weeklyTo %>' } else { updatedFrom = ''; updatedTo = '' }"
             class="peer sr-only" />
           <span
             class="relative h-5 w-9 rounded-full bg-slate-200 transition peer-checked:bg-blue-600 after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4"></span>
@@ -176,8 +176,8 @@
           <span class="sr-only">수정일 시작</span>
           <input
             type="date"
-            name="from"
-            x-model="from"
+            name="updatedFrom"
+            x-model="updatedFrom"
             @input="weekly = false"
             aria-label="수정일 시작"
             class="h-11 w-full min-w-0 rounded-xl px-3" />
@@ -186,8 +186,8 @@
           <span class="sr-only">수정일 종료</span>
           <input
             type="date"
-            name="to"
-            x-model="to"
+            name="updatedTo"
+            x-model="updatedTo"
             @input="weekly = false"
             aria-label="수정일 종료"
             class="h-11 w-full min-w-0 rounded-xl px-3" />
@@ -205,10 +205,10 @@
       >
     </div>
   </div>
-  <% if (hasFilters) { %>
+  <% if (hasActiveFilters) { %>
   <div class="mt-4 flex items-center gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
     <span class="i-lucide-filter h-3.5 w-3.5 text-blue-600"></span>
-    <span>선택한 조건이 결과에 적용되었습니다.</span>
+    <span>등록일 최근 3개월을 포함한 검색 조건이 적용되었습니다.</span>
   </div>
   <% } %>
 </form>

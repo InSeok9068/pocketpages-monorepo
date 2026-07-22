@@ -1,0 +1,27 @@
+<script server>
+  const redmineService = resolve('redmine-service')
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const workId = String(params.workId || '').trim()
+  const config = {
+    host: String(env('REDMINE_HOST') || 'https://pms.kpcard.co.kr').replace(/\/$/, ''),
+    apiKey: String(env('REDMINE_API_KEY') || '').trim(),
+  }
+  const issue = redmineService.createEmptyIssueView()
+  let errorMessage = ''
+
+  dbg('todo/xapi/redmine/panel:start', { userId, workId })
+  try {
+    if (request.method !== 'GET') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
+    const issueId = redmineService.parseIssueId(String(work.get('redmine') || ''))
+    if (!issueId) throw new Error('연결된 Redmine 이슈가 없습니다.')
+
+    Object.assign(issue, redmineService.toIssueView(config, redmineService.getIssue(config, issueId)))
+    dbg('todo/xapi/redmine/panel:response', { userId, workId, issueId })
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('todo/xapi/redmine/panel:failed', { userId, workId, error: errorMessage })
+  }
+</script>
+<%- include('redmine-panel.ejs', { workId, issue, message: '', errorMessage }) %>

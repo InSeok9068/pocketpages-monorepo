@@ -2,17 +2,19 @@
   const todoData = resolve('todo-data')
   const form = body()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
-  const stateOptions = todoData.listWorkStates()
-  let order = []
+  const stateOptions = todoData.listOpenWorkStates()
+  let order = null
   let workCards = []
   try {
-    order = JSON.parse(String(form.order || '[]'))
+    order = JSON.parse(String(form.order || ''))
   } catch (_exception) {
-    order = []
+    order = null
   }
-  dbg('todo/xapi/works/move:start', { userId, orderCount: order.length })
+  const orderCount = Array.isArray(order) ? order.length : 0
+  dbg('todo/xapi/works/move:start', { userId, orderCount })
   try {
-    if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
     if (!Array.isArray(order)) throw new Error('이동 값이 올바르지 않습니다.')
     const validStates = {}
     for (let index = 0; index < stateOptions.length; index += 1) validStates[stateOptions[index].value] = true
@@ -22,18 +24,13 @@
         const workId = String(item.id || '')
         const state = String(item.state || '')
         if (!workId || !validStates[state]) throw new Error('이동 값이 올바르지 않습니다.')
-        const work = txApp.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
-        const wasDone = !!work.get('done')
-        const isDone = state === 'done'
+        const work = txApp.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId} && done = false', { workId, userId })
         work.set('state', state)
         work.set('sort', Number(item.sort || 0))
-        work.set('done', isDone)
-        if (isDone && !wasDone) work.set('doneDate', new Date().toISOString())
-        if (!isDone) work.set('doneDate', '')
         txApp.save(work)
       }
     })
-    info('todo/xapi/works/move:success', { userId, orderCount: order.length })
+    info('todo/xapi/works/move:success', { userId, orderCount })
   } catch (exception) {
     error('todo/xapi/works/move:failed', { userId, error: String(exception.message || exception) })
   }

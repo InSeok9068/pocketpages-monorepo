@@ -1,86 +1,43 @@
 <script server>
+  const redmineService = resolve('redmine-service')
   const issueId = String(params.issueId || '').trim()
-  const host = String(env('REDMINE_HOST') || 'https://pms.kpcard.co.kr').replace(/\/$/, '')
-  const apiKey = String(env('REDMINE_API_KEY') || '').trim()
+  const config = {
+    host: String(env('REDMINE_HOST') || 'https://pms.kpcard.co.kr').replace(/\/$/, ''),
+    apiKey: String(env('REDMINE_API_KEY') || '').trim(),
+  }
 
-  dbg('todo/api/redmine:show:start', {
-    issueId,
-    isSignedIn: !!request.auth,
-  })
+  dbg('todo/api/redmine:show:start', { issueId, isSignedIn: !!request.auth })
 
   if (request.method !== 'GET') {
     warn('todo/api/redmine:show:invalid-method', { method: request.method })
-    response.json(405, {
-      ok: false,
-      message: 'GET 요청만 허용됩니다.',
-    })
+    response.json(405, { ok: false, message: 'GET 요청만 허용됩니다.' })
     return
   }
-
   if (!request.auth) {
     warn('todo/api/redmine:show:unauthorized', { issueId })
-    response.json(401, {
-      ok: false,
-      message: '로그인이 필요합니다.',
-    })
+    response.json(401, { ok: false, message: '로그인이 필요합니다.' })
     return
   }
-
   if (!/^\d+$/.test(issueId)) {
     warn('todo/api/redmine:show:invalid-issue-id', { issueId })
-    response.json(400, {
-      ok: false,
-      message: '이슈 번호가 올바르지 않습니다.',
-    })
+    response.json(400, { ok: false, message: '이슈 번호가 올바르지 않습니다.' })
     return
   }
-
-  if (!apiKey) {
+  if (!config.apiKey) {
     error('todo/api/redmine:show:missing-api-key', { issueId })
-    response.json(503, {
-      ok: false,
-      message: 'Redmine 연동 설정이 필요합니다.',
-    })
+    response.json(503, { ok: false, message: 'Redmine 연동 설정이 필요합니다.' })
     return
   }
 
   try {
-    const result = $http.send({
-      url: host + '/issues/' + encodeURIComponent(issueId) + '.json',
-      timeout: 20000,
-      headers: {
-        'x-redmine-api-key': apiKey,
-      },
-    })
-
-    if (result.statusCode < 200 || result.statusCode >= 300) {
-      warn('todo/api/redmine:show:upstream-failed', {
-        issueId,
-        status: result.statusCode,
-      })
-      response.json(result.statusCode, {
-        ok: false,
-        message: 'Redmine 이슈를 불러오지 못했습니다.',
-      })
-      return
-    }
-
-    dbg('todo/api/redmine:show:response', {
-      issueId,
-      status: 200,
-    })
+    const issue = redmineService.getIssue(config, issueId)
+    dbg('todo/api/redmine:show:response', { issueId, status: 200 })
     response.header('Cache-Control', 'no-store')
-    response.json(200, result.json)
+    response.json(200, { issue })
     return
   } catch (exception) {
-    error('todo/api/redmine:show:failed', {
-      issueId,
-      error: String(exception.message || exception),
-    })
-    response.json(502, {
-      ok: false,
-      message: 'Redmine 요청 중 문제가 발생했습니다.',
-    })
+    error('todo/api/redmine:show:failed', { issueId, error: String(exception.message || exception) })
+    response.json(502, { ok: false, message: String(exception.message || 'Redmine 요청 중 문제가 발생했습니다.') })
     return
   }
 </script>

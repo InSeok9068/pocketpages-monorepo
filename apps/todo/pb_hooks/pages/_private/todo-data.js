@@ -22,6 +22,21 @@ function listWorkStates() {
 }
 
 /**
+ * 칸반에서 사용하는 미완료 상태 목록을 조회한다.
+ * @returns {types.WorkStateOption[]}
+ */
+function listOpenWorkStates() {
+  const stateOptions = listWorkStates()
+  const openStateOptions = []
+
+  for (let index = 0; index < stateOptions.length; index += 1) {
+    if (stateOptions[index].value !== 'done') openStateOptions.push(stateOptions[index])
+  }
+
+  return openStateOptions
+}
+
+/**
  * 사용자 설정을 조회한다.
  * @param {string} userId 사용자 ID
  * @returns {types.PocketBaseRecord|null}
@@ -37,7 +52,7 @@ function findSetting(userId) {
 /**
  * 조건에 맞는 업무 카드 목록을 조회한다.
  * @param {string} userId 사용자 ID
- * @param {{done?: boolean, developerId?: string, keyword?: string, state?: string, createdFrom?: string, createdTo?: string, from?: string, to?: string, dueFrom?: string, dueTo?: string, sort?: string, limit?: number}} [filters] 조회 조건
+ * @param {types.WorkCardFilters} [filters] 조회 조건
  * @returns {types.WorkCard[]}
  */
 function listWorkCards(userId, filters) {
@@ -70,13 +85,13 @@ function listWorkCards(userId, filters) {
     expressions.push('created <= {:createdTo}')
     values.createdTo = input.createdTo
   }
-  if (input.from) {
-    expressions.push('updated >= {:from}')
-    values.from = input.from
+  if (input.updatedFrom) {
+    expressions.push('updated >= {:updatedFrom}')
+    values.updatedFrom = input.updatedFrom
   }
-  if (input.to) {
-    expressions.push('updated <= {:to}')
-    values.to = input.to
+  if (input.updatedTo) {
+    expressions.push('updated <= {:updatedTo}')
+    values.updatedTo = input.updatedTo
   }
   if (input.dueFrom) {
     expressions.push('dueDate >= {:dueFrom}')
@@ -105,6 +120,7 @@ function listWorkCards(userId, filters) {
 module.exports = {
   findSetting,
   listDevelopers,
+  listOpenWorkStates,
   listWorkCards,
   listWorkStates,
 }

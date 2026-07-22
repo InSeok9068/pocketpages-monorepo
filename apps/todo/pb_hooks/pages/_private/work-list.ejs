@@ -17,7 +17,7 @@
   <% for (let index = 0; index < workCards.length; index += 1) { %>
   <% const work = workCards[index] %>
   <article
-    class="<%= work.isUrgent ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200 bg-white' %> group rounded-xl border p-4 shadow-sm transition hover:shadow-md"
+    class="<%= work.isUrgent ? 'ui-work-card-urgent' : '' %> ui-work-card group rounded-xl p-4 shadow-sm transition hover:shadow-md"
     data-work-card
     data-work-id="<%= work.id %>">
     <div class="flex items-start gap-3">

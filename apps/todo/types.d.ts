@@ -38,12 +38,81 @@ declare namespace types {
     isUrgent: boolean
   }
 
+  type WorkCardFilters = {
+    done?: boolean
+    developerId?: string
+    keyword?: string
+    state?: string
+    createdFrom?: string
+    createdTo?: string
+    updatedFrom?: string
+    updatedTo?: string
+    dueFrom?: string
+    dueTo?: string
+    sort?: string
+    limit?: number
+  }
+
   type RedmineUpdateInput = {
     id: string
     startDate?: string
     dueDate?: string
     doneRatio?: number
+    statusId?: number
     notes?: string
     watchers?: string[]
+  }
+
+  type RedmineConfig = {
+    host: string
+    apiKey: string
+    projectId?: string
+    trackerId?: number
+  }
+
+  type RedmineCreateInput = {
+    subject: string
+    description?: string
+    startDate?: string
+    dueDate?: string
+    watcherGroups?: string[]
+  }
+
+  type RedmineStatusOption = {
+    id: number
+    name: string
+    isClosed: boolean
+  }
+
+  type RedmineApiNamedValue = {
+    id?: number | string
+    name?: string
+    is_closed?: boolean
+  }
+
+  type RedmineApiIssue = {
+    id?: number | string
+    subject?: string
+    project?: RedmineApiNamedValue
+    tracker?: RedmineApiNamedValue
+    status?: RedmineApiNamedValue
+    start_date?: string
+    due_date?: string
+    done_ratio?: number | string
+    allowed_statuses?: RedmineApiNamedValue[]
+  }
+
+  type RedmineIssueView = {
+    id: string
+    subject: string
+    projectName: string
+    trackerName: string
+    statusId: number
+    statusName: string
+    startDate: string
+    dueDate: string
+    doneRatio: number
+    url: string
+    allowedStatuses: RedmineStatusOption[]
   }
 }

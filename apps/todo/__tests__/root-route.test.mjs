@@ -56,12 +56,22 @@ test('a signed-up user can create and complete a work', async () => {
   const homeResponse = await fetch(`${service.baseUrl}/`, { headers: { Cookie: cookie } })
   const homeBody = await homeResponse.text()
   const homePage = load(homeBody)
-  const workCard = homePage('[data-work-card]').filter((_, element) => homePage(element).text().includes('통합 테스트 업무')).first()
+  const workCard = homePage('[data-work-card]')
+    .filter((_, element) => homePage(element).text().includes('통합 테스트 업무'))
+    .first()
   const workId = workCard.attr('data-work-id')
 
   assert.equal(homeResponse.status, 200, homeBody)
   assert.equal(homePage('h1').first().text().trim(), '오늘의 업무')
   assert.ok(workId)
+
+  const detailResponse = await fetch(`${service.baseUrl}/works/${workId}`, { headers: { Cookie: cookie } })
+  const detailBody = await detailResponse.text()
+  const detailPage = load(detailBody)
+
+  assert.equal(detailResponse.status, 200, detailBody)
+  assert.equal(detailPage('#redmine-create-form input[name="work_id"]').attr('value'), workId)
+  assert.equal(detailPage('#redmine-dialog').length, 1)
 
   const completeResponse = await fetch(`${service.baseUrl}/xapi/works/complete`, {
     method: 'POST',

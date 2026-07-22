@@ -26,6 +26,9 @@
 
   const developers = todoData.listDevelopers(userId)
   const stateOptions = todoData.listWorkStates()
+  const redmineHost = String(env('REDMINE_HOST') || 'https://pms.kpcard.co.kr').replace(/\/$/, '')
+  const redmineProjectId = String(env('REDMINE_PROJECT_ID') || 'palrago').trim()
+  const redmineNewIssueUrl = redmineHost + '/projects/' + encodeURIComponent(redmineProjectId) + '/issues/new'
   const dueDate = String(work.get('dueDate') || '')
   const view = {
     id: String(work.get('id') || ''),
@@ -155,6 +158,42 @@
             value="<%= view.joplin %>"
             class="mt-2 h-11 w-full rounded-xl px-3"
         /></label>
+      </div>
+      <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+        <% if (view.redmine) { %>
+        <button
+          type="button"
+          hx-get="/xapi/redmine/<%= encodeURIComponent(view.id) %>"
+          hx-target="#redmine-panel"
+          hx-swap="outerHTML"
+          onclick="document.getElementById('redmine-dialog').showModal()"
+          class="inline-flex h-10 items-center gap-2 rounded-xl border-0 bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700">
+          <span class="i-lucide-git-pull-request-arrow h-4 w-4"></span>Redmine 상태 관리
+        </button>
+        <a
+          href="<%= view.redmine %>"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="ui-button-secondary inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold text-slate-600 no-underline"
+          ><span class="i-lucide-external-link h-4 w-4"></span>이슈 열기</a
+        >
+        <% } else { %>
+        <button
+          type="submit"
+          form="redmine-create-form"
+          onclick="return confirm('현재 저장된 업무 내용으로 Redmine 이슈를 생성할까요?')"
+          class="inline-flex h-10 items-center gap-2 rounded-xl border-0 bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700">
+          <span class="i-lucide-square-plus h-4 w-4"></span>저장된 업무로 이슈 생성
+        </button>
+        <span class="text-xs text-slate-500">제목·내용·마감일을 가져와 생성하고 URL을 자동 연결합니다.</span>
+        <% } %>
+        <a
+          href="<%= redmineNewIssueUrl %>"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="ml-auto inline-flex h-9 items-center gap-1.5 px-2 text-xs font-bold text-slate-500 no-underline hover:text-blue-700"
+          ><span class="i-lucide-square-arrow-out-up-right h-3.5 w-3.5"></span>Redmine에서 직접 생성</a
+        >
       </div>
     </article>
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -307,6 +346,41 @@
       <span class="i-lucide-trash-2 h-4 w-4"></span>업무 삭제
     </button>
   </aside>
+</form>
+
+<dialog
+  id="redmine-dialog"
+  class="m-auto max-h-[90vh] w-[min(44rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl border-0 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/40">
+  <header class="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
+    <div>
+      <p class="text-xs font-black tracking-[0.12em] text-blue-600">REDMINE</p>
+      <h2 class="mt-0.5 font-black">연결된 이슈 관리</h2>
+    </div>
+    <button
+      type="button"
+      onclick="document.getElementById('redmine-dialog').close()"
+      class="inline-flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-slate-100 text-slate-500 hover:bg-slate-200"
+      aria-label="Redmine 관리 닫기">
+      <span class="i-lucide-x h-4 w-4"></span>
+    </button>
+  </header>
+  <div class="p-5">
+    <div
+      id="redmine-panel"
+      class="py-12 text-center text-sm text-slate-500">
+      <span class="i-lucide-loader-circle mx-auto mb-3 h-6 w-6 animate-spin text-blue-600"></span>Redmine 이슈를 불러오는 중입니다.
+    </div>
+  </div>
+</dialog>
+
+<form
+  id="redmine-create-form"
+  method="post"
+  action="/xapi/redmine/create">
+  <input
+    type="hidden"
+    name="work_id"
+    value="<%= view.id %>" />
 </form>
 
 <form

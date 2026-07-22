@@ -1,12 +1,20 @@
 <script server>
   const { dateutil } = require('@pocketpages/utils')
+  const todoData = resolve('todo-data')
   const form = formData()
   const uploadedFiles = request.event.findUploadedFiles('file')
   const uploadedFile = uploadedFiles.length ? uploadedFiles[0] : null
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   const workId = String(form.work_id || '').trim()
   const title = String(form.title || '').trim()
+  const requestedState = String(form.state || 'wait').trim()
+  const developerId = String(form.developer || '').trim()
+  const isDone = String(form.done || '') === 'true'
+  let state = requestedState
   let errorMessage = ''
+
+  if (isDone) state = 'done'
+  else if (state === 'done') state = 'wait'
 
   dbg('todo/xapi/works/update:start', { userId, workId, titleLength: title.length })
 
@@ -15,14 +23,23 @@
     if (!userId) throw new Error('로그인이 필요합니다.')
     if (!title) throw new Error('업무 제목이 필요합니다.')
 
+    const stateOptions = todoData.listWorkStates()
+    let isValidState = false
+    for (let index = 0; index < stateOptions.length; index += 1) {
+      if (stateOptions[index].value === state) isValidState = true
+    }
+    if (!isValidState) throw new Error('상태 값이 올바르지 않습니다.')
+    if (developerId) {
+      $app.findFirstRecordByFilter('developers', 'id = {:developerId} && user = {:userId} && del = false', { developerId, userId })
+    }
+
     const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
     const wasDone = !!work.get('done')
-    const isDone = String(form.done || '') === 'true'
 
     work.set('title', title)
     work.set('content', String(form.content || ''))
-    work.set('state', isDone ? 'done' : String(form.state || 'wait'))
-    work.set('developer', String(form.developer || ''))
+    work.set('state', state)
+    work.set('developer', developerId)
     work.set('dueDate', dateutil.toDateOnlyIso(form.due_date))
     work.set('redmine', String(form.redmine || '').trim())
     work.set('joplin', String(form.joplin || '').trim())

@@ -3,27 +3,29 @@
   const form = body()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   const selectedDeveloper = String(form.developer || '').trim()
-  let order = []
+  let order = null
   let listMessage = ''
   let workCards = []
   try {
-    order = JSON.parse(String(form.order || '[]'))
+    order = JSON.parse(String(form.order || ''))
   } catch (_exception) {
-    order = []
+    order = null
   }
-  dbg('todo/xapi/works/reorder:start', { userId, orderCount: order.length })
+  const orderCount = Array.isArray(order) ? order.length : 0
+  dbg('todo/xapi/works/reorder:start', { userId, orderCount })
   try {
-    if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
     if (!Array.isArray(order)) throw new Error('정렬 값이 올바르지 않습니다.')
     $app.runInTransaction(function (txApp) {
       for (let index = 0; index < order.length; index += 1) {
         const workId = String(order[index] || '')
-        const work = txApp.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
+        const work = txApp.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId} && done = false', { workId, userId })
         work.set('sort', index)
         txApp.save(work)
       }
     })
-    info('todo/xapi/works/reorder:success', { userId, orderCount: order.length })
+    info('todo/xapi/works/reorder:success', { userId, orderCount })
   } catch (exception) {
     listMessage = String(exception.message || exception)
     error('todo/xapi/works/reorder:failed', { userId, error: listMessage })

@@ -1,0 +1,46 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const redmineService = resolve('redmine-service')
+  const form = body()
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const workId = String(form.work_id || '').trim()
+  const config = {
+    host: String(env('REDMINE_HOST') || 'https://pms.kpcard.co.kr').replace(/\/$/, ''),
+    apiKey: String(env('REDMINE_API_KEY') || '').trim(),
+  }
+  const issue = redmineService.createEmptyIssueView()
+  let message = ''
+  let errorMessage = ''
+
+  dbg('todo/xapi/redmine/update:start', { userId, workId })
+  try {
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
+    const issueId = redmineService.parseIssueId(String(work.get('redmine') || ''))
+    if (!issueId) throw new Error('연결된 Redmine 이슈가 없습니다.')
+
+    const watcherGroups = Array.isArray(form.watchers) ? form.watchers : form.watchers ? [String(form.watchers)] : []
+    redmineService.updateIssue(config, {
+      id: issueId,
+      statusId: Number(form.status_id || 0),
+      startDate: dateutil.toDateOnlyIso(form.start_date) ? String(form.start_date) : '',
+      dueDate: dateutil.toDateOnlyIso(form.due_date) ? String(form.due_date) : '',
+      doneRatio: Number(form.done_ratio || 0),
+      notes: String(form.notes || '').trim(),
+      watchers: watcherGroups,
+    })
+    const watcherResult = redmineService.addWatcherGroups(config, issueId, watcherGroups)
+    if (watcherResult.failedIds.length) {
+      warn('todo/xapi/redmine/update:watcher-failed', { userId, workId, issueId, failedIds: watcherResult.failedIds })
+    }
+
+    Object.assign(issue, redmineService.toIssueView(config, redmineService.getIssue(config, issueId)))
+    message = watcherResult.failedIds.length ? '이슈는 수정했지만 일부 관찰자를 추가하지 못했습니다.' : 'Redmine 이슈를 업데이트했습니다.'
+    info('todo/xapi/redmine/update:success', { userId, workId, issueId, watcherCount: watcherResult.addedCount })
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    error('todo/xapi/redmine/update:failed', { userId, workId, error: errorMessage })
+  }
+</script>
+<%- include('redmine-panel.ejs', { workId, issue, message, errorMessage }) %>

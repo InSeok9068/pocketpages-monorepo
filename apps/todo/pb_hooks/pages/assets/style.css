@@ -65,6 +65,17 @@ textarea:focus {
   background: #f8fafc;
 }
 
+.ui-work-card {
+  border: 1px solid #e2e8f0;
+  border-left-width: 4px;
+  background: #fff;
+}
+
+.ui-work-card-urgent {
+  border-color: #fecdd3;
+  border-left-color: #e11d48;
+}
+
 .htmx-request [data-loading] {
   display: inline-flex;
 }

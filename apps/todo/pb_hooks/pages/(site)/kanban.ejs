@@ -8,7 +8,7 @@
     return
   }
   const userId = String(request.auth.get('id') || '')
-  const stateOptions = todoData.listWorkStates()
+  const stateOptions = todoData.listOpenWorkStates()
   const workCards = todoData.listWorkCards(userId, { done: false, limit: 500 })
   dbg('todo/kanban:response', { userId, workCount: workCards.length })
 </script>

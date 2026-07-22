@@ -1,0 +1,19 @@
+<svg
+  width="512"
+  height="512"
+  viewBox="0 0 512 512"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg">
+  <path
+    d="M391 230V358C391 376.225 376.225 391 358 391H154C135.775 391 121 376.225 121 358V154C121 135.775 135.775 121 154 121H282"
+    stroke="#2563EB"
+    stroke-width="30"
+    stroke-linecap="round"
+    stroke-linejoin="round" />
+  <path
+    d="M211 241L256 286L406 136"
+    stroke="#2563EB"
+    stroke-width="30"
+    stroke-linecap="round"
+    stroke-linejoin="round" />
+</svg>
