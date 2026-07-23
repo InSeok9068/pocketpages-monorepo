@@ -45,7 +45,10 @@
     method="get"
     action="/calendar"
     class="flex gap-2">
-    <% if (selectedDeveloper) { %><input type="hidden" name="developer" value="<%= selectedDeveloper %>" /><% } %>
+    <% if (selectedDeveloper) { %><input
+      type="hidden"
+      name="developer"
+      value="<%= selectedDeveloper %>" /><% } %>
     <input
       type="month"
       name="month"

@@ -21,8 +21,8 @@
   $app
     .db()
     .newQuery(
-      "SELECT COUNT(*) AS total," +
-        " COALESCE(SUM(CASE WHEN done = TRUE THEN 1 ELSE 0 END), 0) AS done," +
+      'SELECT COUNT(*) AS total,' +
+        ' COALESCE(SUM(CASE WHEN done = TRUE THEN 1 ELSE 0 END), 0) AS done,' +
         " COALESCE(SUM(CASE WHEN done = FALSE AND dueDate IS NOT NULL AND dueDate != '' AND dueDate <= {:urgentThrough} THEN 1 ELSE 0 END), 0) AS urgent" +
         ' FROM works WHERE user = {:userId}'
     )
