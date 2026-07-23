@@ -2,11 +2,12 @@ const { dateutil } = require('@pocketpages/utils')
 
 const FALLBACK_STATES = Object.freeze([
   { value: 'wait', label: '대기', iconClass: 'i-lucide-clock-3', badgeClass: 'bg-slate-100 text-slate-700' },
-  { value: 'progress', label: '진행', iconClass: 'i-lucide-loader-circle', badgeClass: 'bg-blue-50 text-blue-700' },
-  { value: 'review', label: '검토', iconClass: 'i-lucide-search-check', badgeClass: 'bg-violet-50 text-violet-700' },
-  { value: 'hold', label: '보류', iconClass: 'i-lucide-pause-circle', badgeClass: 'bg-amber-50 text-amber-700' },
+  { value: 'assess', label: '검토', iconClass: 'i-lucide-clipboard-check', badgeClass: 'bg-violet-50 text-violet-700' },
+  { value: 'develop', label: '개발', iconClass: 'i-lucide-code-2', badgeClass: 'bg-blue-50 text-blue-700' },
+  { value: 'review', label: '리뷰', iconClass: 'i-lucide-messages-square', badgeClass: 'bg-indigo-50 text-indigo-700' },
+  { value: 'test', label: '테스트', iconClass: 'i-lucide-flask-conical', badgeClass: 'bg-amber-50 text-amber-700' },
+  { value: 'deploy', label: '배포', iconClass: 'i-lucide-rocket', badgeClass: 'bg-cyan-50 text-cyan-700' },
   { value: 'done', label: '완료', iconClass: 'i-lucide-circle-check', badgeClass: 'bg-emerald-50 text-emerald-700' },
-  { value: 'cancel', label: '취소', iconClass: 'i-lucide-circle-x', badgeClass: 'bg-rose-50 text-rose-700' },
 ])
 
 /**
@@ -43,12 +44,12 @@ function toStateOptions(records) {
 
     if (!value || record.get('del')) continue
 
-    const fallback = findStateOption(FALLBACK_STATES, value)
+    const display = findStateOption(FALLBACK_STATES, value)
     options.push({
       value,
       label: String(record.get('desc') || value),
-      iconClass: normalizeIconClass(String(record.get('class') || ''), fallback.iconClass),
-      badgeClass: fallback.badgeClass,
+      iconClass: display.iconClass,
+      badgeClass: display.badgeClass,
     })
   }
 
@@ -144,13 +145,6 @@ function findStateOption(options, value) {
     iconClass: 'i-lucide-circle',
     badgeClass: 'bg-slate-100 text-slate-700',
   }
-}
-
-function normalizeIconClass(value, fallback) {
-  if (!value) return fallback
-  if (value.indexOf('i-lucide-') === 0) return value
-
-  return fallback
 }
 
 module.exports = {

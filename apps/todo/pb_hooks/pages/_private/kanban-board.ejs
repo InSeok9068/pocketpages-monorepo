@@ -1,6 +1,25 @@
 <section
-  id="kanban-board"
-  class="flex items-start gap-3">
+  id="kanban-board">
+  <div
+    class="mb-3 flex flex-wrap items-center gap-1.5"
+    aria-label="상태별 업무 수">
+    <% for (let summaryIndex = 0; summaryIndex < stateOptions.length; summaryIndex += 1) { %>
+    <%
+      const summaryState = stateOptions[summaryIndex]
+      const summaryCount = workCards.filter(function (work) {
+        return work.state === summaryState.value
+      }).length
+    %>
+    <span class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 shadow-sm">
+      <span class="<%= summaryState.iconClass %> h-3.5 w-3.5 text-slate-400"></span>
+      <span class="font-bold"><%= summaryState.label %></span>
+      <strong class="text-slate-900"><%= summaryCount %></strong>
+    </span>
+    <% } %>
+  </div>
+  <div class="overflow-x-auto pb-2">
+    <div class="min-w-220">
+      <div class="flex items-start gap-3">
   <% for (let stateIndex = 0; stateIndex < stateOptions.length; stateIndex += 1) { %>
   <%
     const state = stateOptions[stateIndex]
@@ -95,4 +114,7 @@
     </div>
   </article>
   <% } %>
+      </div>
+    </div>
+  </div>
 </section>

@@ -9,6 +9,8 @@
     return
   }
   const userId = String(request.auth.get('id') || '')
+  const selectedDeveloper = String(request.url.query.developer || '').trim()
+  const developers = todoData.listDevelopers(userId)
   const requestedMonth = String(request.url.query.month || '').trim()
   const month = /^\d{4}-\d{2}$/.test(requestedMonth) ? requestedMonth : dateutil.formatDate(new Date(), dateutil.FORMATS.MONTH)
   const monthStart = month + '-01'
@@ -18,7 +20,13 @@
   const nextMonthText = nextMonthNumber < 10 ? '0' + String(nextMonthNumber) : String(nextMonthNumber)
   const nextMonthStart = String(nextMonthYear) + '-' + nextMonthText + '-01'
   const monthEnd = dateutil.addDays(dateutil.startOfDay(nextMonthStart), -1)
-  const workCards = todoData.listWorkCards(userId, { dueFrom: dateutil.startOfDay(monthStart).toISOString(), dueTo: dateutil.endOfDay(monthEnd).toISOString(), sort: '-dueDate,+sort', limit: 500 })
+  const workCards = todoData.listWorkCards(userId, {
+    dueFrom: dateutil.startOfDay(monthStart).toISOString(),
+    dueTo: dateutil.endOfDay(monthEnd).toISOString(),
+    developerId: selectedDeveloper,
+    sort: '-dueDate,+sort',
+    limit: 500,
+  })
   const groups = {}
   for (let index = 0; index < workCards.length; index += 1) {
     const key = workCards[index].dueDateLabel || '날짜 없음'
@@ -26,7 +34,7 @@
     groups[key].push(workCards[index])
   }
   const dates = Object.keys(groups).sort().reverse()
-  dbg('todo/calendar:response', { userId, month, workCount: workCards.length })
+  dbg('todo/calendar:response', { userId, month, selectedDeveloper, workCount: workCards.length })
 </script>
 <header class="mb-6 flex flex-wrap items-end justify-between gap-3">
   <div>
@@ -37,6 +45,7 @@
     method="get"
     action="/calendar"
     class="flex gap-2">
+    <% if (selectedDeveloper) { %><input type="hidden" name="developer" value="<%= selectedDeveloper %>" /><% } %>
     <input
       type="month"
       name="month"
@@ -44,6 +53,33 @@
       class="h-10 rounded-lg border border-slate-200 bg-white px-3" /><button class="h-10 rounded-lg border-0 bg-slate-900 px-4 text-sm font-bold text-white">이동</button>
   </form>
 </header>
+<nav
+  class="mb-4 overflow-x-auto"
+  aria-label="담당자 필터">
+  <div class="flex min-w-max gap-1.5">
+    <a
+      href="/calendar?month=<%= encodeURIComponent(month) %>"
+      aria-current="<%= !selectedDeveloper ? 'page' : 'false' %>"
+      class="<%= !selectedDeveloper ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline"
+      >전체</a
+    >
+    <a
+      href="/calendar?month=<%= encodeURIComponent(month) %>&developer=__unassigned__"
+      aria-current="<%= selectedDeveloper === '__unassigned__' ? 'page' : 'false' %>"
+      class="<%= selectedDeveloper === '__unassigned__' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline"
+      >미배정</a
+    >
+    <% for (let developerIndex = 0; developerIndex < developers.length; developerIndex += 1) { %>
+    <% const developer = developers[developerIndex] %>
+    <a
+      href="/calendar?month=<%= encodeURIComponent(month) %>&developer=<%= encodeURIComponent(developer.id) %>"
+      aria-current="<%= selectedDeveloper === developer.id ? 'page' : 'false' %>"
+      class="<%= selectedDeveloper === developer.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline"
+      ><%= developer.name %></a
+    >
+    <% } %>
+  </div>
+</nav>
 <div class="space-y-4">
   <% if (!dates.length) { %>
   <p class="rounded-xl border border-dashed border-slate-300 bg-white py-12 text-center text-sm font-bold text-slate-500">이 달에 마감 예정인 업무가 없습니다.</p>
