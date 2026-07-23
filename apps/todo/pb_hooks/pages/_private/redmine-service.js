@@ -18,11 +18,14 @@ function createEmptyIssueView() {
     trackerName: '',
     statusId: 0,
     statusName: '',
+    assignedToId: 0,
+    assignedToName: '',
     startDate: '',
     dueDate: '',
     doneRatio: 0,
     url: '',
     allowedStatuses: [],
+    allowedAssignees: [],
   }
 }
 
@@ -66,6 +69,9 @@ function getIssue(config, issueId) {
       issue.allowed_statuses = statusesResult.json && Array.isArray(statusesResult.json.issue_statuses) ? statusesResult.json.issue_statuses : []
     }
   }
+
+  const projectId = issue.project ? String(issue.project.id || '') : ''
+  issue.assignable_users = projectId ? getProjectAssignees(config, projectId) : []
 
   return issue
 }
@@ -119,6 +125,7 @@ function updateIssue(config, input) {
   }
 
   if (Number(input.statusId || 0) > 0) issue.status_id = Number(input.statusId)
+  issue.assigned_to_id = Number(input.assignedToId || 0) || null
 
   const result = $http.send({
     url: config.host + '/issues/' + encodeURIComponent(input.id) + '.json',
@@ -168,10 +175,13 @@ function addWatcherGroups(config, issueId, watcherGroups) {
  */
 function toIssueView(config, issue) {
   const status = issue.status || {}
+  const assignedTo = issue.assigned_to || {}
   const project = issue.project || {}
   const tracker = issue.tracker || {}
   const rawStatuses = Array.isArray(issue.allowed_statuses) ? issue.allowed_statuses : []
+  const rawAssignees = Array.isArray(issue.assignable_users) ? issue.assignable_users : []
   const allowedStatuses = []
+  const allowedAssignees = []
 
   for (let index = 0; index < rawStatuses.length; index += 1) {
     allowedStatuses.push({
@@ -190,6 +200,22 @@ function toIssueView(config, issue) {
     allowedStatuses.unshift({ id: statusId, name: String(status.name || statusId), isClosed: !!status.is_closed })
   }
 
+
+  for (let index = 0; index < rawAssignees.length; index += 1) {
+    const assigneeId = Number(rawAssignees[index].id || 0)
+    if (!assigneeId) continue
+    allowedAssignees.push({ id: assigneeId, name: String(rawAssignees[index].name || assigneeId) })
+  }
+
+  const assignedToId = Number(assignedTo.id || 0)
+  let hasCurrentAssignee = false
+  for (let index = 0; index < allowedAssignees.length; index += 1) {
+    if (allowedAssignees[index].id === assignedToId) hasCurrentAssignee = true
+  }
+  if (!hasCurrentAssignee && assignedToId) {
+    allowedAssignees.unshift({ id: assignedToId, name: String(assignedTo.name || assignedToId) })
+  }
+
   const id = String(issue.id || '')
 
   return {
@@ -199,12 +225,55 @@ function toIssueView(config, issue) {
     trackerName: String(tracker.name || ''),
     statusId,
     statusName: String(status.name || ''),
+    assignedToId,
+    assignedToName: String(assignedTo.name || ''),
     startDate: String(issue.start_date || ''),
     dueDate: String(issue.due_date || ''),
     doneRatio: Number(issue.done_ratio || 0),
     url: config.host + '/issues/' + encodeURIComponent(id),
     allowedStatuses,
+    allowedAssignees,
   }
+}
+
+/**
+ * 프로젝트 멤버십에서 담당자 후보를 조회한다.
+ * @param {types.RedmineConfig} config Redmine 접속 설정
+ * @param {string} projectId 프로젝트 ID
+ * @returns {types.RedmineApiNamedValue[]}
+ */
+function getProjectAssignees(config, projectId) {
+  const assignees = []
+  const seenIds = {}
+  let offset = 0
+  let totalCount = 0
+
+  do {
+    const result = $http.send({
+      url: config.host + '/projects/' + encodeURIComponent(projectId) + '/memberships.json?limit=100&offset=' + offset,
+      timeout: 20000,
+      headers: getHeaders(config),
+    })
+
+    assertSuccess(result, 'Redmine 담당자 목록을 불러오지 못했습니다.')
+
+    const memberships = result.json && Array.isArray(result.json.memberships) ? result.json.memberships : []
+    totalCount = Number(result.json && result.json.total_count ? result.json.total_count : memberships.length)
+
+    for (let index = 0; index < memberships.length; index += 1) {
+      const owner = memberships[index].user || memberships[index].group || {}
+      const ownerId = Number(owner.id || 0)
+      if (!ownerId || seenIds[ownerId]) continue
+
+      seenIds[ownerId] = true
+      assignees.push({ id: ownerId, name: String(owner.name || ownerId) })
+    }
+
+    if (!memberships.length) break
+    offset += memberships.length
+  } while (offset < totalCount && offset < 500)
+
+  return assignees
 }
 
 function resolveWatcherIds(groups) {

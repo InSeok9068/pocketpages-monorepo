@@ -24,6 +24,7 @@
     redmineService.updateIssue(config, {
       id: issueId,
       statusId: Number(form.status_id || 0),
+      assignedToId: Number(form.assigned_to_id || 0),
       startDate: dateutil.toDateOnlyIso(form.start_date) ? String(form.start_date) : '',
       dueDate: dateutil.toDateOnlyIso(form.due_date) ? String(form.due_date) : '',
       doneRatio: Number(form.done_ratio || 0),

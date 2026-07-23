@@ -23,6 +23,7 @@ declare namespace types {
     doneDate: string
     dueDate: string
     dueDateLabel: string
+    dueDayLabel: string
     createdLabel: string
     state: string
     stateLabel: string
@@ -59,6 +60,7 @@ declare namespace types {
     dueDate?: string
     doneRatio?: number
     statusId?: number
+    assignedToId?: number
     notes?: string
     watchers?: string[]
   }
@@ -84,6 +86,11 @@ declare namespace types {
     isClosed: boolean
   }
 
+  type RedmineAssigneeOption = {
+    id: number
+    name: string
+  }
+
   type RedmineApiNamedValue = {
     id?: number | string
     name?: string
@@ -96,10 +103,12 @@ declare namespace types {
     project?: RedmineApiNamedValue
     tracker?: RedmineApiNamedValue
     status?: RedmineApiNamedValue
+    assigned_to?: RedmineApiNamedValue
     start_date?: string
     due_date?: string
     done_ratio?: number | string
     allowed_statuses?: RedmineApiNamedValue[]
+    assignable_users?: RedmineApiNamedValue[]
   }
 
   type RedmineIssueView = {
@@ -109,10 +118,13 @@ declare namespace types {
     trackerName: string
     statusId: number
     statusName: string
+    assignedToId: number
+    assignedToName: string
     startDate: string
     dueDate: string
     doneRatio: number
     url: string
     allowedStatuses: RedmineStatusOption[]
+    allowedAssignees: RedmineAssigneeOption[]
   }
 }

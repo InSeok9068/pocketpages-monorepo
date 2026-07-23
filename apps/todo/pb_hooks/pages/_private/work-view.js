@@ -81,6 +81,7 @@ function toWorkCard(record, developerMap, stateOptions, urgentDays) {
     doneDate: String(record.get('doneDate') || ''),
     dueDate,
     dueDateLabel: dueDate ? dateutil.formatDate(dueDate, dateutil.FORMATS.DATE) : '',
+    dueDayLabel: getDueDayLabel(dueDate),
     createdLabel: created ? dateutil.formatDate(created, dateutil.FORMATS.DATE) : '',
     state,
     stateLabel: stateOption.label,
@@ -95,6 +96,17 @@ function toWorkCard(record, developerMap, stateOptions, urgentDays) {
     originalFileName: String(record.get('originalFileName') || ''),
     isUrgent: !!dueDate && !record.get('done') && dateutil.endOfDay(dueDate).getTime() <= dueLimit.getTime(),
   }
+}
+
+function getDueDayLabel(dueDate) {
+  if (!dueDate) return ''
+
+  const days = dateutil.diffDays(dueDate, new Date())
+
+  if (days > 0) return 'D-' + days
+  if (days < 0) return 'D+' + Math.abs(days)
+
+  return 'D-Day'
 }
 
 /**
