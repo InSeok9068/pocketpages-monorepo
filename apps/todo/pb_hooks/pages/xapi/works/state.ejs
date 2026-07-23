@@ -1,4 +1,5 @@
 <script server>
+  const htmxResponse = resolve('htmx-response')
   const todoData = resolve('todo-data')
   const form = body()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
@@ -7,6 +8,7 @@
   const state = String(form.state || '').trim()
   const stateOptions = todoData.listOpenWorkStates()
   let workCards = []
+  let errorMessage = ''
 
   dbg('todo/xapi/works/state:start', { userId, workId, state })
   try {
@@ -20,8 +22,13 @@
     $app.save(work)
     info('todo/xapi/works/state:success', { userId, workId, state })
   } catch (exception) {
-    error('todo/xapi/works/state:failed', { userId, workId, state, error: String(exception.message || exception) })
+    errorMessage = String(exception.message || exception)
+    error('todo/xapi/works/state:failed', { userId, workId, state, error: errorMessage })
   }
+  htmxResponse.setToastTrigger(response, {
+    message: errorMessage || '업무 상태를 변경했습니다.',
+    tone: errorMessage ? 'error' : 'success',
+  })
   if (userId) workCards = todoData.listWorkCards(userId, { done: false, developerId: selectedDeveloper, limit: 500 })
 </script>
 <%- include('kanban-board.ejs', { stateOptions, workCards, selectedDeveloper }) %>

@@ -1,9 +1,0 @@
-<% const displayMessage = typeof flashMessage === 'undefined' || flashMessage === null ? '' : String(flashMessage).trim() %>
-<% if (displayMessage) { %>
-<div class="mb-5 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-800">
-  <span
-    class="i-lucide-info mt-0.5 h-4 w-4 shrink-0"
-    aria-hidden="true"></span
-  ><%= displayMessage %>
-</div>
-<% } %>

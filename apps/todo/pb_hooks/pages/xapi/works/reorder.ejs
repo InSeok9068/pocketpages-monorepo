@@ -1,4 +1,5 @@
 <script server>
+  const htmxResponse = resolve('htmx-response')
   const todoData = resolve('todo-data')
   const form = body()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
@@ -46,6 +47,12 @@
   } catch (exception) {
     listMessage = String(exception.message || exception)
     error('todo/xapi/works/reorder:failed', { userId, error: listMessage })
+  }
+  if (listMessage) {
+    htmxResponse.setToastTrigger(response, {
+      message: listMessage,
+      tone: 'error',
+    })
   }
   if (userId) workCards = todoData.listWorkCards(userId, { done: false, developerId: selectedDeveloper })
 </script>

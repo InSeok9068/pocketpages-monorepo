@@ -1,4 +1,5 @@
 <script server>
+  const htmxResponse = resolve('htmx-response')
   const todoData = resolve('todo-data')
   const form = body()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
@@ -6,6 +7,7 @@
   const stateOptions = todoData.listOpenWorkStates()
   let order = null
   let workCards = []
+  let errorMessage = ''
   try {
     order = JSON.parse(String(form.order || ''))
   } catch (_exception) {
@@ -61,7 +63,14 @@
     }
     info('todo/xapi/works/move:success', { userId, orderCount })
   } catch (exception) {
-    error('todo/xapi/works/move:failed', { userId, error: String(exception.message || exception) })
+    errorMessage = String(exception.message || exception)
+    error('todo/xapi/works/move:failed', { userId, error: errorMessage })
+  }
+  if (errorMessage) {
+    htmxResponse.setToastTrigger(response, {
+      message: errorMessage,
+      tone: 'error',
+    })
   }
   if (userId) workCards = todoData.listWorkCards(userId, { done: false, developerId: selectedDeveloper, limit: 500 })
 </script>

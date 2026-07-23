@@ -1,4 +1,5 @@
 <script server>
+  const htmxResponse = resolve('htmx-response')
   const form = body()
   const isHtmx = String(request.header('HX-Request') || '').toLowerCase() === 'true'
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
@@ -31,6 +32,13 @@
     dbg('todo/xapi/works/delete-file:redirect', { status: 303, redirectTo, message })
     redirect(redirectTo, { status: 303, message })
     return
+  }
+
+  if (!errorMessage) {
+    htmxResponse.setToastTrigger(response, {
+      message,
+      tone: 'success',
+    })
   }
 </script>
 <% if (errorMessage) { %>

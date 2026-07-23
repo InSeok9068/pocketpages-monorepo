@@ -1,8 +1,6 @@
 ;(function () {
   const realtimeElement = document.getElementById('notification-realtime')
-  const toastElement = document.getElementById('notification-realtime-toast')
   const unreadIndicator = document.getElementById('notification-unread-indicator')
-  let toastTimer = 0
   let unreadSyncInFlight = false
   let lastUnreadSyncAt = 0
 
@@ -72,13 +70,15 @@
   }
 
   function showToast(title, message) {
-    if (!toastElement) return
-    toastElement.textContent = message ? title + ' · ' + message : title
-    toastElement.classList.remove('hidden')
-    window.clearTimeout(toastTimer)
-    toastTimer = window.setTimeout(function () {
-      toastElement.classList.add('hidden')
-    }, 6000)
+    window.dispatchEvent(
+      new CustomEvent('app-toast', {
+        detail: {
+          title,
+          message,
+          duration: 6000,
+        },
+      })
+    )
   }
 
   function showBrowserNotification(notificationData) {

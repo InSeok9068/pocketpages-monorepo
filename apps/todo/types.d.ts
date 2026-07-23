@@ -54,6 +54,12 @@ declare namespace types {
     limit?: number
   }
 
+  type AppToastDetail = {
+    message: string
+    tone?: 'info' | 'success' | 'error'
+    duration?: number
+  }
+
   type RedmineUpdateInput = {
     id: string
     startDate?: string

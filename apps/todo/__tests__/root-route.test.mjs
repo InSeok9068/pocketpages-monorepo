@@ -27,6 +27,7 @@ test('GET / redirects a guest to the sign-in page', async () => {
   assert.equal(response.status, 200)
   assert.equal(new URL(response.url).pathname, '/sign-in')
   assert.equal($('h1').first().text().trim(), 'TODO 로그인')
+  assert.equal($('[x-data="appToast"]').length, 1)
 })
 
 test('a signed-up user can create and complete a work', async () => {
@@ -53,7 +54,9 @@ test('a signed-up user can create and complete a work', async () => {
 
   assert.equal(createResponse.status, 303)
 
-  const homeResponse = await fetch(`${service.baseUrl}/`, { headers: { Cookie: cookie } })
+  const createLocation = createResponse.headers.get('location')
+  assert.ok(createLocation)
+  const homeResponse = await fetch(new URL(createLocation, service.baseUrl), { headers: { Cookie: cookie } })
   const homeBody = await homeResponse.text()
   const homePage = load(homeBody)
   const workCard = homePage('[data-work-card]')
@@ -63,6 +66,7 @@ test('a signed-up user can create and complete a work', async () => {
 
   assert.equal(homeResponse.status, 200, homeBody)
   assert.equal(homePage('h1').first().text().trim(), '오늘의 업무')
+  assert.equal(homePage('[x-data="appToast"]').attr('data-initial-message'), '업무를 등록했습니다.')
   assert.ok(workId)
 
   const dashboardResponse = await fetch(`${service.baseUrl}/dashboard`, { headers: { Cookie: cookie } })
@@ -185,6 +189,12 @@ test('a signed-up user can create and complete a work', async () => {
   const completeBody = await completeResponse.text()
 
   assert.equal(completeResponse.status, 200)
+  assert.deepEqual(JSON.parse(completeResponse.headers.get('hx-trigger')), {
+    'app-toast': {
+      message: '업무를 완료했습니다.',
+      tone: 'success',
+    },
+  })
   assert.equal(completeBody.includes('통합 테스트 업무'), false)
 })
 

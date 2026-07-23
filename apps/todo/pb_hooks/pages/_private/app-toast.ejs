@@ -1,0 +1,52 @@
+<% const initialToastMessage = typeof flashMessage === 'undefined' || flashMessage === null ? '' : String(flashMessage).trim() %>
+<div
+  x-data="appToast"
+  data-initial-message="<%= initialToastMessage %>"
+  @app-toast.window="showToast($event.detail)"
+  class="pointer-events-none fixed right-4 bottom-20 left-4 z-50 max-w-sm md:bottom-6 md:left-auto md:w-full">
+  <div
+    x-show="isOpen"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="translate-y-2 opacity-0"
+    x-transition:enter-end="translate-y-0 opacity-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="translate-y-0 opacity-100"
+    x-transition:leave-end="translate-y-2 opacity-0"
+    :class="{
+      'border-emerald-200 bg-emerald-50 text-emerald-800': tone === 'success',
+      'border-rose-200 bg-rose-50 text-rose-800': tone === 'error',
+      'border-blue-200 bg-blue-50 text-blue-800': tone === 'info'
+    }"
+    :role="tone === 'error' ? 'alert' : 'status'"
+    aria-live="polite"
+    class="pointer-events-auto flex items-start gap-3 rounded-xl border px-4 py-3 text-sm font-bold shadow-xl"
+    style="display: none">
+    <span
+      x-show="tone === 'success'"
+      class="i-lucide-circle-check mt-0.5 h-4 w-4 shrink-0"
+      style="display: none"
+      aria-hidden="true"></span>
+    <span
+      x-show="tone === 'error'"
+      class="i-lucide-circle-alert mt-0.5 h-4 w-4 shrink-0"
+      style="display: none"
+      aria-hidden="true"></span>
+    <span
+      x-show="tone === 'info'"
+      class="i-lucide-info mt-0.5 h-4 w-4 shrink-0"
+      style="display: none"
+      aria-hidden="true"></span>
+    <span
+      x-text="message"
+      class="min-w-0 flex-1"></span>
+    <button
+      type="button"
+      @click="closeToast()"
+      class="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-0 bg-transparent text-current opacity-60 hover:bg-black/5 hover:opacity-100"
+      aria-label="메시지 닫기">
+      <span
+        class="i-lucide-x h-3.5 w-3.5"
+        aria-hidden="true"></span>
+    </button>
+  </div>
+</div>

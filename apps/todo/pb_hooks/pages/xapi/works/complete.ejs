@@ -1,4 +1,5 @@
 <script server>
+  const htmxResponse = resolve('htmx-response')
   const todoData = resolve('todo-data')
   const isHtmx = String(request.header('HX-Request') || '').toLowerCase() === 'true'
   const form = body()
@@ -27,9 +28,17 @@
 
   if (!isHtmx) {
     const redirectTo = selectedDeveloper ? '/?developer=' + encodeURIComponent(selectedDeveloper) : '/'
-    dbg('todo/xapi/works/complete:redirect', { status: 303, redirectTo, message: listMessage })
-    redirect(redirectTo, { status: 303, message: listMessage })
+    const redirectMessage = listMessage || '업무를 완료했습니다.'
+    dbg('todo/xapi/works/complete:redirect', { status: 303, redirectTo, message: redirectMessage })
+    redirect(redirectTo, { status: 303, message: redirectMessage })
     return
+  }
+
+  if (!listMessage) {
+    htmxResponse.setToastTrigger(response, {
+      message: '업무를 완료했습니다.',
+      tone: 'success',
+    })
   }
 
   if (userId) workCards = todoData.listWorkCards(userId, { done: false, developerId: selectedDeveloper })
