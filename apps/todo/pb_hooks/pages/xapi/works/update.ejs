@@ -50,10 +50,6 @@
     work.set('redmine', String(form.redmine || '').trim())
     work.set('joplin', String(form.joplin || '').trim())
     work.set('done', isDone)
-    if (String(form.remove_file || '') === 'true') {
-      work.set('file', null)
-      work.set('originalFileName', '')
-    }
     if (uploadedFile) {
       work.set('file', uploadedFile)
       work.set('originalFileName', String(uploadedFile.originalName || uploadedFile.name || '첨부파일'))

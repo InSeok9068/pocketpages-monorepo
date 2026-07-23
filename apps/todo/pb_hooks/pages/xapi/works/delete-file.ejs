@@ -1,0 +1,42 @@
+<script server>
+  const form = body()
+  const isHtmx = String(request.header('HX-Request') || '').toLowerCase() === 'true'
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const workId = String(form.work_id || '').trim()
+  let message = '첨부파일을 삭제했습니다.'
+  let errorMessage = ''
+
+  dbg('todo/xapi/works/delete-file:start', { userId, workId })
+
+  try {
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
+
+    const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
+    if (!String(work.get('file') || '')) throw new Error('삭제할 첨부파일이 없습니다.')
+
+    work.set('file', null)
+    work.set('originalFileName', '')
+    $app.save(work)
+
+    info('todo/xapi/works/delete-file:success', { userId, workId })
+  } catch (exception) {
+    errorMessage = String(exception.message || exception)
+    message = errorMessage
+    error('todo/xapi/works/delete-file:failed', { userId, workId, error: errorMessage })
+  }
+
+  if (!isHtmx) {
+    const redirectTo = workId ? '/works/' + encodeURIComponent(workId) : '/'
+    dbg('todo/xapi/works/delete-file:redirect', { status: 303, redirectTo, message })
+    redirect(redirectTo, { status: 303, message })
+    return
+  }
+</script>
+<% if (errorMessage) { %>
+<div
+  id="work-current-file"
+  class="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">
+  <%= errorMessage %>
+</div>
+<% } %>
