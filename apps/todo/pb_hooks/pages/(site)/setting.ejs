@@ -21,6 +21,18 @@
 <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
 <div class="grid gap-5 lg:grid-cols-2">
   <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <h2 class="text-lg font-black">브라우저 알림</h2>
+    <p
+      class="mt-2 text-sm text-slate-500"
+      data-browser-notification-description>알림 권한은 이 버튼을 누를 때만 요청합니다.</p>
+    <button
+      type="button"
+      data-enable-browser-notifications
+      class="mt-4 inline-flex h-10 items-center gap-2 rounded-lg border-0 bg-blue-600 px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">
+      브라우저 알림 켜기
+    </button>
+  </section>
+  <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <h2 class="text-lg font-black">업무 표시</h2>
     <form
       method="post"

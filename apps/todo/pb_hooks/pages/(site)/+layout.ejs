@@ -40,6 +40,7 @@
       href="<%= asset('/assets/style.css') %>" />
     <%- include('unocss-head.ejs', { isProduction }) %>
     <script src="<%= asset('/assets/vendor/htmx-2.0.10.min.js') %>"></script>
+    <script src="<%= asset('/assets/vendor/pocketbase-htmx-ext-sse-0.0.3.js') %>"></script>
     <script
       defer
       src="<%= asset('/assets/vendor/alpine-3.15.12-cdn.min.js') %>"></script>
@@ -51,5 +52,20 @@
     class="min-h-screen bg-slate-50 text-slate-950 antialiased">
     <% if (request.auth) { %><%- include('app-nav.ejs') %><% } %>
     <main class="mx-auto w-full max-w-6xl px-4 py-6 pb-24 md:pb-8"><%- slots.body || slot %></main>
+    <% if (request.auth) { %>
+    <div
+      id="notification-realtime"
+      class="hidden"
+      hx-ext="pocketbase-sse"
+      sse-swap="notifications/*"
+      hx-swap="none"
+      aria-hidden="true"></div>
+    <div
+      id="notification-realtime-toast"
+      class="pointer-events-none fixed right-4 bottom-20 z-50 hidden max-w-sm rounded-xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-xl md:bottom-6"
+      role="status"
+      aria-live="polite"></div>
+    <script src="<%= asset('/assets/notification-realtime.js') %>"></script>
+    <% } %>
   </body>
 </html>
