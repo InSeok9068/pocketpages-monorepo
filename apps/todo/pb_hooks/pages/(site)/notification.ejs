@@ -8,7 +8,7 @@
     return
   }
   const userId = String(request.auth.get('id') || '')
-  const records = $app.findRecordsByFilter('notifications', 'user = {:userId}', '-created', 200, 0, { userId })
+  const records = $app.findRecordsByFilter('notifications', 'user = {:userId}', '-created', 50, 0, { userId })
   const notifications = []
   let unreadCount = 0
   for (let index = 0; index < records.length; index += 1) {
