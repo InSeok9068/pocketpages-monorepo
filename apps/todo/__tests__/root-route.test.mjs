@@ -65,6 +65,30 @@ test('a signed-up user can create and complete a work', async () => {
   assert.equal(homePage('h1').first().text().trim(), '오늘의 업무')
   assert.ok(workId)
 
+  const dashboardResponse = await fetch(`${service.baseUrl}/dashboard`, { headers: { Cookie: cookie } })
+  const dashboardBody = await dashboardResponse.text()
+  const dashboardPage = load(dashboardBody)
+
+  assert.equal(dashboardResponse.status, 200, dashboardBody)
+  assert.equal(dashboardPage('h1').first().text().trim(), '업무 현황')
+  assert.equal(dashboardPage('section.grid article').first().find('p').first().text().trim(), '1')
+
+  const saveSettingResponse = await fetch(`${service.baseUrl}/xapi/settings/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
+    body: new URLSearchParams({ days_before: '7' }),
+    redirect: 'manual',
+  })
+
+  assert.equal(saveSettingResponse.status, 303)
+
+  const settingResponse = await fetch(`${service.baseUrl}/setting`, { headers: { Cookie: cookie } })
+  const settingBody = await settingResponse.text()
+  const settingPage = load(settingBody)
+
+  assert.equal(settingResponse.status, 200, settingBody)
+  assert.equal(settingPage('input[name="days_before"]').attr('value'), '7')
+
   const detailResponse = await fetch(`${service.baseUrl}/works/${workId}`, { headers: { Cookie: cookie } })
   const detailBody = await detailResponse.text()
   const detailPage = load(detailBody)
@@ -108,6 +132,36 @@ test('a signed-up user can create and complete a work', async () => {
   assert.equal(savedDetailPage('input[name="title"]').attr('value'), '첨부파일 없이 수정한 업무')
   assert.equal(savedDetailPage('a[aria-label="Redmine 이슈 열기"]').attr('href'), 'https://pms.kpcard.co.kr/issues/123')
   assert.equal(savedDetailPage('a[aria-label="Joplin 링크 열기"]').attr('href'), 'joplin://x-callback-url/openNote?id=test-note')
+
+  const attachmentForm = new FormData()
+  attachmentForm.set('work_id', workId)
+  attachmentForm.set('title', '첨부파일을 추가한 업무')
+  attachmentForm.set('state', 'wait')
+  attachmentForm.set('developer', '')
+  attachmentForm.set('due_date', '')
+  attachmentForm.set('file', new Blob(['attachment contents'], { type: 'text/plain' }), 'attachment.txt')
+  const attachmentUpdateResponse = await fetch(`${service.baseUrl}/xapi/works/update`, {
+    method: 'POST',
+    headers: { Cookie: cookie },
+    body: attachmentForm,
+    redirect: 'manual',
+  })
+
+  assert.equal(attachmentUpdateResponse.status, 303)
+
+  const attachmentDetailResponse = await fetch(new URL(attachmentUpdateResponse.headers.get('location'), service.baseUrl), { headers: { Cookie: cookie } })
+  const attachmentDetailBody = await attachmentDetailResponse.text()
+  const attachmentDetailPage = load(attachmentDetailBody)
+  const attachmentHref = attachmentDetailPage('a[aria-label="첨부파일 열기"]').attr('href')
+
+  assert.equal(attachmentDetailResponse.status, 200, attachmentDetailBody)
+  assert.equal(attachmentDetailPage('a[aria-label="첨부파일 열기"]').text().trim().includes('attachment.txt'), true)
+  assert.equal(attachmentHref?.startsWith(`/api/files/works/${workId}/`), true)
+
+  const attachmentResponse = await fetch(new URL(attachmentHref, service.baseUrl))
+
+  assert.equal(attachmentResponse.status, 200)
+  assert.equal(await attachmentResponse.text(), 'attachment contents')
 
   const scheduleResponse = await fetch(`${service.baseUrl}/xapi/scheduled-notifications/create`, {
     method: 'POST',

@@ -119,8 +119,15 @@ function getDeveloperMap(developers) {
 function getUrgentDays(setting) {
   if (!setting) return 3
 
-  /** @type {{daysBefore?: number|string}} */
-  const data = /** @type {{daysBefore?: number|string}} */ (setting.get('data') || {})
+  let data = {}
+  try {
+    const value = setting.get('data')
+    data = JSON.parse(String(value || '{}'))
+  } catch (_exception) {
+    return 3
+  }
+  if (data.daysBefore === null || data.daysBefore === undefined || data.daysBefore === '') return 3
+
   const days = Number(data.daysBefore)
 
   return isNaN(days) ? 3 : Math.max(0, days)

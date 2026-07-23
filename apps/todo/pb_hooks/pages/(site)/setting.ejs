@@ -1,5 +1,6 @@
 <script server>
   const todoData = resolve('todo-data')
+  const workView = resolve('work-view')
   meta('title', '설정 · TODO')
   meta('description', '담당자와 업무 설정')
   if (!request.auth) {
@@ -10,9 +11,7 @@
   const userId = String(request.auth.get('id') || '')
   const developers = todoData.listDevelopers(userId)
   const setting = todoData.findSetting(userId)
-  /** @type {{daysBefore?: number|string}} */
-  const settingData = /** @type {{daysBefore?: number|string}} */ (setting ? setting.get('data') || {} : {})
-  const daysBefore = isNaN(Number(settingData.daysBefore)) ? 3 : Number(settingData.daysBefore)
+  const daysBefore = workView.getUrgentDays(setting)
   dbg('todo/setting:response', { userId, developerCount: developers.length })
 </script>
 <header class="mb-6">
