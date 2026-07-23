@@ -200,7 +200,6 @@ function toIssueView(config, issue) {
     allowedStatuses.unshift({ id: statusId, name: String(status.name || statusId), isClosed: !!status.is_closed })
   }
 
-
   for (let index = 0; index < rawAssignees.length; index += 1) {
     const assigneeId = Number(rawAssignees[index].id || 0)
     if (!assigneeId) continue
