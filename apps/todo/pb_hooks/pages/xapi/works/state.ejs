@@ -2,6 +2,7 @@
   const todoData = resolve('todo-data')
   const form = body()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const selectedDeveloper = String(form.developer || '')
   const workId = String(form.work_id || '').trim()
   const state = String(form.state || '').trim()
   const stateOptions = todoData.listOpenWorkStates()
@@ -21,6 +22,6 @@
   } catch (exception) {
     error('todo/xapi/works/state:failed', { userId, workId, state, error: String(exception.message || exception) })
   }
-  if (userId) workCards = todoData.listWorkCards(userId, { done: false, limit: 500 })
+  if (userId) workCards = todoData.listWorkCards(userId, { done: false, developerId: selectedDeveloper, limit: 500 })
 </script>
-<%- include('kanban-board.ejs', { stateOptions, workCards }) %>
+<%- include('kanban-board.ejs', { stateOptions, workCards, selectedDeveloper }) %>

@@ -8,23 +8,52 @@
     return
   }
   const userId = String(request.auth.get('id') || '')
+  const selectedDeveloper = String(request.url.query.developer || '')
+  const developers = todoData.listDevelopers(userId)
   const stateOptions = todoData.listOpenWorkStates()
-  const workCards = todoData.listWorkCards(userId, { done: false, limit: 500 })
-  dbg('todo/kanban:response', { userId, workCount: workCards.length })
+  const workCards = todoData.listWorkCards(userId, { done: false, developerId: selectedDeveloper, limit: 500 })
+  dbg('todo/kanban:response', { userId, workCount: workCards.length, selectedDeveloper })
 </script>
-<header class="mb-5 flex flex-wrap items-end justify-between gap-4">
+<header class="mb-3 flex flex-wrap items-end justify-between gap-3">
   <div>
-    <p class="text-xs font-black tracking-[0.16em] text-blue-600">WORKFLOW</p>
-    <h1 class="mt-1 text-3xl font-black tracking-tight">칸반 보드</h1>
-    <p class="mt-2 text-sm text-slate-500">카드를 끌어 상태와 우선순위를 한 번에 정리하세요.</p>
+    <p class="text-[11px] font-black tracking-[0.16em] text-blue-600">WORKFLOW</p>
+    <h1 class="mt-0.5 text-2xl font-black tracking-tight">칸반 보드</h1>
+    <p class="mt-1 text-xs text-slate-500">카드를 끌어 상태와 우선순위를 정리하세요.</p>
   </div>
-  <div class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-right shadow-sm">
-    <p class="text-[11px] font-bold text-slate-400">미완료 업무</p>
-    <p class="mt-0.5 text-lg font-black text-blue-600"><%= workCards.length %><span class="ml-1 text-sm text-slate-400">개</span></p>
+  <div class="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+    <span class="text-[11px] font-bold text-slate-400">미완료</span>
+    <strong class="text-sm font-black text-blue-600"><%= workCards.length %>개</strong>
   </div>
 </header>
 <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
-<div class="overflow-x-auto pb-2"><div class="min-w-220"><%- include('kanban-board.ejs', { stateOptions, workCards }) %></div></div>
+<nav
+  class="mb-3 overflow-x-auto"
+  aria-label="담당자 필터">
+  <div class="flex min-w-max gap-1.5">
+    <a
+      href="/kanban"
+      aria-current="<%= !selectedDeveloper ? 'page' : 'false' %>"
+      class="<%= !selectedDeveloper ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline"
+      >전체</a
+    >
+    <a
+      href="/kanban?developer=__unassigned__"
+      aria-current="<%= selectedDeveloper === '__unassigned__' ? 'page' : 'false' %>"
+      class="<%= selectedDeveloper === '__unassigned__' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline"
+      >미배정</a
+    >
+    <% for (let index = 0; index < developers.length; index += 1) { %>
+    <% const developer = developers[index] %>
+    <a
+      href="/kanban?developer=<%= encodeURIComponent(developer.id) %>"
+      aria-current="<%= selectedDeveloper === developer.id ? 'page' : 'false' %>"
+      class="<%= selectedDeveloper === developer.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline"
+      ><%= developer.name %></a
+    >
+    <% } %>
+  </div>
+</nav>
+<div class="overflow-x-auto pb-2"><div class="min-w-220"><%- include('kanban-board.ejs', { stateOptions, workCards, selectedDeveloper }) %></div></div>
 <form
   id="kanban-move-form"
   hx-post="/xapi/works/move"
@@ -34,6 +63,10 @@
   <input
     type="hidden"
     name="order" />
+  <input
+    type="hidden"
+    name="developer"
+    value="<%= selectedDeveloper %>" />
 </form>
 <script src="<%= asset('/assets/vendor/sortable-1.15.7.min.js') %>"></script>
 <script>
