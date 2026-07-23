@@ -1,0 +1,31 @@
+<script server>
+  dbg('todo/api/notifications/unread:start', {
+    method: request.method,
+    isSignedIn: !!request.auth,
+  })
+
+  if (request.method !== 'GET') {
+    warn('todo/api/notifications/unread:invalid-method', { method: request.method })
+    response.json(405, { ok: false, message: 'GET 요청만 허용됩니다.' })
+    return
+  }
+  if (!request.auth) {
+    warn('todo/api/notifications/unread:unauthorized')
+    response.json(401, { ok: false, message: '로그인이 필요합니다.' })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const unreadNotifications = $app.findRecordsByFilter('notifications', 'user = {:userId} && read = false', '-created', 1, 0, { userId })
+  const hasUnread = unreadNotifications.length > 0
+
+  dbg('todo/api/notifications/unread:response', {
+    userId,
+    hasUnread,
+    status: 200,
+  })
+  response.header('Cache-Control', 'private, no-store')
+  response.header('Vary', 'Cookie')
+  response.json(200, { hasUnread })
+  return
+</script>

@@ -3,6 +3,41 @@
   const toastElement = document.getElementById('notification-realtime-toast')
   const unreadIndicator = document.getElementById('notification-unread-indicator')
   let toastTimer = 0
+  let unreadSyncInFlight = false
+  let lastUnreadSyncAt = 0
+
+  function updateUnreadIndicator(hasUnread) {
+    if (!unreadIndicator) return
+    unreadIndicator.classList.toggle('hidden', !hasUnread)
+  }
+
+  function syncUnreadIndicator() {
+    const now = Date.now()
+    if (document.hidden || unreadSyncInFlight || now - lastUnreadSyncAt < 15000) return
+
+    unreadSyncInFlight = true
+    lastUnreadSyncAt = now
+
+    fetch('/api/notifications/unread', {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      credentials: 'same-origin',
+      cache: 'no-store',
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error('알림 상태를 확인하지 못했습니다.')
+        return response.json()
+      })
+      .then(function (payload) {
+        updateUnreadIndicator(!!(payload && payload.hasUnread))
+      })
+      .catch(function () {
+        // SSE 재연결 또는 다음 화면 복귀 시 다시 확인합니다.
+      })
+      .finally(function () {
+        unreadSyncInFlight = false
+      })
+  }
 
   function notificationPermission() {
     if (!window.isSecureContext) return 'insecure'
@@ -75,7 +110,7 @@
   })
 
   if (realtimeElement) {
-    realtimeElement.addEventListener('htmx:sseMessage', function (event) {
+    realtimeElement.addEventListener('htmx:sseBeforeMessage', function (event) {
       let payload
       try {
         payload = JSON.parse(event.detail.data)
@@ -83,13 +118,21 @@
         return
       }
 
-      if (!payload || payload.action !== 'create' || !payload.record) return
+      if (!payload || !payload.action || !payload.record) return
 
-      if (unreadIndicator) unreadIndicator.classList.remove('hidden')
+      event.preventDefault()
+      if (payload.action !== 'create') return
+
+      updateUnreadIndicator(true)
       showToast(payload.record.title || '업무 알림', payload.record.message || '')
       showBrowserNotification(payload.record)
     })
   }
+
+  window.addEventListener('focus', syncUnreadIndicator)
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) syncUnreadIndicator()
+  })
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', updatePermissionButtons)
   else updatePermissionButtons()
