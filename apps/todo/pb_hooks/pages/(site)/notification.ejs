@@ -30,14 +30,18 @@
     <div>
       <p class="text-xs font-bold text-blue-600">NOTIFICATIONS</p>
       <h1 class="mt-0.5 text-2xl font-black tracking-tight">알림</h1>
-      <p class="mt-1 text-xs text-slate-500">읽지 않은 알림 <span class="font-bold text-slate-700"><%= unreadCount %>개</span></p>
+      <p class="mt-1 text-xs text-slate-500">
+        읽지 않은 알림
+        <span class="font-bold text-slate-700"><%= unreadCount %>개</span>
+      </p>
     </div>
     <% if (unreadCount > 0) { %>
     <form
       method="post"
       action="/xapi/notifications/read-all">
       <button class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">
-        <span class="i-lucide-check-check h-3.5 w-3.5"></span>모두 읽음
+        <span class="i-lucide-check-check h-3.5 w-3.5"></span>
+        모두 읽음
       </button>
     </form>
     <% } %>
@@ -64,7 +68,8 @@
           <input
             type="hidden"
             name="notification_id"
-            value="<%= item.id %>" /><button class="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50">읽음</button>
+            value="<%= item.id %>" />
+          <button class="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50">읽음</button>
         </form>
         <% } %>
       </article>

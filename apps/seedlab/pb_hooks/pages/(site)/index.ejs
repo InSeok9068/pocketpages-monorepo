@@ -308,7 +308,8 @@
     <div class="mt-10">
       <p class="text-sm font-bold text-[#3182f6]">모의 투자와 실계좌 점검</p>
       <h1 class="tracking-0 mt-3 text-[34px] leading-[1.14] font-bold text-[#191f28]">
-        투자 판단을<br />
+        투자 판단을
+        <br />
         실험해보세요
       </h1>
       <p class="mt-4 max-w-[340px] text-[15px] leading-6 text-[#6b7684]">계좌, 전략, 가상 인물의 결과를 같은 화면에서 봅니다.</p>
@@ -409,9 +410,9 @@
         <p class="mt-0.5 truncate text-[28px] leading-none font-bold text-[#191f28]"><%= totalValueText %>원</p>
       </div>
       <div class="shrink-0 text-right">
-        <span class="<%= readinessText === '점검 완료' ? 'bg-[#ecfdf3] text-[#008a45]' : 'bg-[#e8f3ff] text-[#1b64da]' %> inline-flex rounded-md px-2 py-1 text-xs font-bold"
-          ><%= readinessText %></span
-        >
+        <span class="<%= readinessText === '점검 완료' ? 'bg-[#ecfdf3] text-[#008a45]' : 'bg-[#e8f3ff] text-[#1b64da]' %> inline-flex rounded-md px-2 py-1 text-xs font-bold">
+          <%= readinessText %>
+        </span>
         <p class="<%= profitClass(dashboard.profitLoss) %> mt-2 text-sm font-bold"><%= profitLossText %>원</p>
       </div>
     </div>

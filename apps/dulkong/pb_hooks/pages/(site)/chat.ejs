@@ -17,12 +17,15 @@
     <div class="flex items-center gap-3">
       <span
         class="<%= profiles.partner.colorClass %> relative flex h-11 w-11 items-center justify-center rounded-full text-lg"
-        aria-hidden="true"
-        ><%= profiles.partner.emoji %></span
-      >
+        aria-hidden="true">
+        <%= profiles.partner.emoji %>
+      </span>
       <div>
         <h1 class="m-0 text-[17px] font-extrabold"><%= profiles.partner.name %></h1>
-        <p class="mt-0.5 mb-0 flex items-center gap-1.5 text-xs font-semibold text-[#779550]"><span class="h-1.5 w-1.5 rounded-full bg-[#82ae4d]"></span>둘콩으로 연결됨</p>
+        <p class="mt-0.5 mb-0 flex items-center gap-1.5 text-xs font-semibold text-[#779550]">
+          <span class="h-1.5 w-1.5 rounded-full bg-[#82ae4d]"></span>
+          둘콩으로 연결됨
+        </p>
       </div>
     </div>
   </header>
@@ -44,9 +47,9 @@
     data-on:submit__prevent="if (!$chatSending) { $chatSending = true; $clientMessageId = 'web_' + Date.now(); @post('/xapi/messages/send') }"
     class="shrink-0 border-t border-[#e8e5da] bg-[#fffefa] px-4 pt-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
     <div class="flex items-end gap-2">
-      <label class="min-w-0 flex-1"
-        ><span class="sr-only">메시지</span
-        ><textarea
+      <label class="min-w-0 flex-1">
+        <span class="sr-only">메시지</span>
+        <textarea
           id="chat-draft"
           data-bind:draft
           rows="1"

@@ -16,38 +16,44 @@
     method="post"
     action="/xapi/auth/sign-up"
     class="mt-6 space-y-4">
-    <label class="block text-sm font-bold text-slate-700"
-      >이메일<input
+    <label class="block text-sm font-bold text-slate-700">
+      이메일
+      <input
         type="email"
         name="email"
         required
         autocomplete="email"
-        class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3" /></label
-    ><label class="block text-sm font-bold text-slate-700"
-      >비밀번호<input
+        class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3" />
+    </label>
+    <label class="block text-sm font-bold text-slate-700">
+      비밀번호
+      <input
         type="password"
         name="password"
         required
         minlength="8"
         autocomplete="new-password"
         class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3"
-        placeholder="8자 이상" /></label
-    ><label class="block text-sm font-bold text-slate-700"
-      >비밀번호 확인<input
+        placeholder="8자 이상" />
+    </label>
+    <label class="block text-sm font-bold text-slate-700">
+      비밀번호 확인
+      <input
         type="password"
         name="passwordConfirm"
         required
         minlength="8"
         autocomplete="new-password"
-        class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3" /></label
-    ><button class="h-11 w-full rounded-lg border-0 bg-blue-600 font-black text-white hover:bg-blue-700">가입</button>
+        class="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3" />
+    </label>
+    <button class="h-11 w-full rounded-lg border-0 bg-blue-600 font-black text-white hover:bg-blue-700">가입</button>
   </form>
   <p class="mt-5 text-center text-sm text-slate-500">
     이미 계정이 있나요?
     <a
       href="/sign-in"
-      class="font-bold text-blue-600 no-underline"
-      >로그인</a
-    >
+      class="font-bold text-blue-600 no-underline">
+      로그인
+    </a>
   </p>
 </section>

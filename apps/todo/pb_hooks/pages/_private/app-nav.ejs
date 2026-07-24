@@ -31,8 +31,8 @@
         class="<%= currentPath === item.href ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950' %> inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold no-underline">
         <span
           class="<%= item.icon %> h-4 w-4"
-          aria-hidden="true"></span
-        ><%= item.label %>
+          aria-hidden="true"></span>
+        <%= item.label %>
       </a>
       <% } %>
     </nav>
@@ -40,19 +40,19 @@
       <a
         href="/notification"
         class="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 no-underline hover:bg-slate-100"
-        aria-label="알림"
-        ><span class="i-lucide-bell h-4.5 w-4.5"></span
-        ><span
+        aria-label="알림">
+        <span class="i-lucide-bell h-4.5 w-4.5"></span>
+        <span
           id="notification-unread-indicator"
           class="<%= data.hasUnreadNotifications ? '' : 'hidden' %> absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-blue-600 ring-2 ring-white"
-          aria-hidden="true"></span
-      ></a>
+          aria-hidden="true"></span>
+      </a>
       <a
         href="/setting"
         class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 no-underline hover:bg-slate-100"
-        aria-label="설정"
-        ><span class="i-lucide-settings h-4.5 w-4.5"></span
-      ></a>
+        aria-label="설정">
+        <span class="i-lucide-settings h-4.5 w-4.5"></span>
+      </a>
       <form
         method="post"
         action="/xapi/auth/sign-out">
@@ -79,8 +79,8 @@
       class="<%= currentPath === item.href ? 'text-blue-600' : 'text-slate-500' %> flex flex-col items-center gap-1 py-2 text-[11px] font-bold no-underline">
       <span
         class="<%= item.icon %> h-5 w-5"
-        aria-hidden="true"></span
-      ><%= item.label %>
+        aria-hidden="true"></span>
+      <%= item.label %>
     </a>
     <% } %>
   </div>

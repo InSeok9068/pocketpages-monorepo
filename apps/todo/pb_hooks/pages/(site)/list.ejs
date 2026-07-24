@@ -56,7 +56,10 @@
   </div>
   <div class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-right shadow-sm">
     <p class="text-[11px] font-bold text-slate-400">검색 결과</p>
-    <p class="mt-0.5 text-lg font-black text-slate-900"><%= workCards.length %><span class="ml-1 text-sm text-slate-400">개</span></p>
+    <p class="mt-0.5 text-lg font-black text-slate-900">
+      <%= workCards.length %>
+      <span class="ml-1 text-sm text-slate-400">개</span>
+    </p>
   </div>
 </header>
 <form
@@ -67,14 +70,14 @@
   <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-12">
     <label class="block md:col-span-2 lg:col-span-4">
       <span class="mb-1.5 block text-xs font-bold text-slate-500">검색어</span>
-      <span class="relative block"
-        ><span class="i-lucide-search pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400"></span
-        ><input
+      <span class="relative block">
+        <span class="i-lucide-search pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400"></span>
+        <input
           name="keyword"
           value="<%= query.keyword %>"
           placeholder="제목 또는 내용으로 검색"
-          class="h-11 w-full rounded-xl pr-3 pl-10"
-      /></span>
+          class="h-11 w-full rounded-xl pr-3 pl-10" />
+      </span>
     </label>
     <label class="block lg:col-span-2">
       <span class="mb-1.5 block text-xs font-bold text-slate-500">담당자</span>
@@ -131,13 +134,16 @@
     </label>
     <div class="flex items-end gap-2 lg:col-span-2">
       <button class="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border-0 bg-slate-900 px-4 text-sm font-bold text-white hover:bg-slate-800">
-        <span class="i-lucide-search h-4 w-4"></span>검색</button
-      ><a
+        <span class="i-lucide-search h-4 w-4"></span>
+        검색
+      </button>
+      <a
         href="/list"
         class="ui-button-secondary inline-flex h-11 items-center justify-center rounded-xl px-4 text-sm font-bold text-slate-600 no-underline"
-        aria-label="검색 조건 초기화"
-        ><span class="i-lucide-rotate-ccw h-4 w-4"></span><span class="sr-only">초기화</span></a
-      >
+        aria-label="검색 조건 초기화">
+        <span class="i-lucide-rotate-ccw h-4 w-4"></span>
+        <span class="sr-only">초기화</span>
+      </a>
     </div>
     <details
       <%= hasAdvancedFilters ? 'open' : '' %>
@@ -249,31 +255,40 @@
         <tr class="group transition hover:bg-blue-50/50">
           <td class="px-5 py-4">
             <div class="flex items-center gap-3">
-              <span class="<%= work.done ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400' %> inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                ><span class="<%= work.done ? 'i-lucide-check' : 'i-lucide-clipboard-list' %> h-4 w-4"></span
-              ></span>
+              <span class="<%= work.done ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400' %> inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+                <span class="<%= work.done ? 'i-lucide-check' : 'i-lucide-clipboard-list' %> h-4 w-4"></span>
+              </span>
               <div class="min-w-0">
                 <a
                   href="/works/<%= encodeURIComponent(work.id) %>"
-                  class="<%= work.done ? 'line-through opacity-60' : '' %> block truncate font-bold text-slate-900 no-underline group-hover:text-blue-700"
-                  ><%= work.title %></a
-                >
+                  class="<%= work.done ? 'line-through opacity-60' : '' %> block truncate font-bold text-slate-900 no-underline group-hover:text-blue-700">
+                  <%= work.title %>
+                </a>
                 <% if (work.redmine || work.joplin || work.file) { %>
                 <div class="mt-1.5 flex items-center gap-2 text-slate-400">
-                  <% if (work.redmine) { %><span class="i-lucide-square-kanban h-3.5 w-3.5"></span><% } %> <% if (work.joplin) { %><span class="i-lucide-notebook-tabs h-3.5 w-3.5"></span><% } %>
-                  <% if (work.file) { %><span class="i-lucide-paperclip h-3.5 w-3.5"></span><% } %>
+                  <% if (work.redmine) { %>
+                  <span class="i-lucide-square-kanban h-3.5 w-3.5"></span>
+                  <% } %> <% if (work.joplin) { %>
+                  <span class="i-lucide-notebook-tabs h-3.5 w-3.5"></span>
+                  <% } %> <% if (work.file) { %>
+                  <span class="i-lucide-paperclip h-3.5 w-3.5"></span>
+                  <% } %>
                 </div>
                 <% } %>
               </div>
             </div>
           </td>
           <td class="px-4 py-4">
-            <span class="<%= work.stateBadgeClass %> inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold"
-              ><span class="<%= work.stateIconClass %> h-3.5 w-3.5"></span><%= work.stateLabel %></span
-            >
+            <span class="<%= work.stateBadgeClass %> inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold">
+              <span class="<%= work.stateIconClass %> h-3.5 w-3.5"></span>
+              <%= work.stateLabel %>
+            </span>
           </td>
           <td class="px-4 py-4 text-slate-600">
-            <span class="inline-flex max-w-full items-center gap-1.5"><span class="i-lucide-user-round h-3.5 w-3.5 text-slate-400"></span><span class="truncate"><%= work.developerName %></span></span>
+            <span class="inline-flex max-w-full items-center gap-1.5">
+              <span class="i-lucide-user-round h-3.5 w-3.5 text-slate-400"></span>
+              <span class="truncate"><%= work.developerName %></span>
+            </span>
           </td>
           <td class="<%= work.isUrgent ? 'font-bold text-rose-600' : 'text-slate-600' %> px-4 py-4 whitespace-nowrap"><%= work.dueDateLabel || '-' %></td>
           <td class="px-4 py-4 whitespace-nowrap text-slate-500"><%= work.createdLabel %></td>

@@ -35,9 +35,9 @@
           class="shrink-0 text-[10px] text-[#6b7684]"
           data-task-status-count
           data-status="<%= tabColumn.value %>"
-          data-class="{'text-[#1b64da]': $activeTaskStatus === '<%= tabColumn.value %>', 'text-[#6b7684]': $activeTaskStatus !== '<%= tabColumn.value %>'}"
-          ><%= tabTasks.length %></span
-        >
+          data-class="{'text-[#1b64da]': $activeTaskStatus === '<%= tabColumn.value %>', 'text-[#6b7684]': $activeTaskStatus !== '<%= tabColumn.value %>'}">
+          <%= tabTasks.length %>
+        </span>
       </span>
     </button>
     <% } %>
@@ -66,9 +66,9 @@
             <span
               class="text-xs font-bold text-[#8b95a1]"
               data-task-status-count
-              data-status="<%= column.value %>"
-              ><%= columnTasks.length %></span
-            >
+              data-status="<%= column.value %>">
+              <%= columnTasks.length %>
+            </span>
           </div>
 
           <div class="flex shrink-0 items-center gap-1">

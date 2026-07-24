@@ -79,15 +79,16 @@
     <a
       href="/"
       class="ui-button-secondary inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 no-underline"
-      aria-label="오늘 화면으로 돌아가기"
-      ><span class="i-lucide-arrow-left h-4 w-4"></span
-    ></a>
+      aria-label="오늘 화면으로 돌아가기">
+      <span class="i-lucide-arrow-left h-4 w-4"></span>
+    </a>
     <div class="min-w-0 flex-1">
       <div class="flex flex-wrap items-center gap-2">
         <p class="text-xs font-black tracking-[0.16em] text-blue-600">WORK DETAIL</p>
-        <span class="<%= currentState.badgeClass %> inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold"
-          ><span class="<%= currentState.iconClass %> h-3.5 w-3.5"></span><%= currentState.label %></span
-        >
+        <span class="<%= currentState.badgeClass %> inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold">
+          <span class="<%= currentState.iconClass %> h-3.5 w-3.5"></span>
+          <%= currentState.label %>
+        </span>
       </div>
       <h1
         class="mt-1 truncate text-2xl font-black text-slate-950"
@@ -102,7 +103,9 @@
     aria-keyshortcuts="Alt+S"
     title="저장 (Alt+S)"
     class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border-0 bg-blue-600 px-5 text-sm font-black whitespace-nowrap text-white shadow-sm hover:bg-blue-700">
-    <span class="i-lucide-save h-4 w-4"></span>변경사항 저장<span class="ml-1 rounded-md bg-white/15 px-1.5 py-0.5 text-[10px] font-bold">Alt+S</span>
+    <span class="i-lucide-save h-4 w-4"></span>
+    변경사항 저장
+    <span class="ml-1 rounded-md bg-white/15 px-1.5 py-0.5 text-[10px] font-bold">Alt+S</span>
   </button>
 </header>
 
@@ -118,8 +121,11 @@
     value="<%= view.id %>" />
   <section class="min-w-0 space-y-5">
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <label class="block text-sm font-bold text-slate-700"
-        ><span class="mb-2 flex items-center gap-2"><span class="i-lucide-heading h-4 w-4 text-slate-400"></span>업무 제목</span>
+      <label class="block text-sm font-bold text-slate-700">
+        <span class="mb-2 flex items-center gap-2">
+          <span class="i-lucide-heading h-4 w-4 text-slate-400"></span>
+          업무 제목
+        </span>
         <input
           name="title"
           value="<%= view.title %>"
@@ -130,7 +136,10 @@
     </article>
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div class="mb-2 flex items-center justify-between gap-3 text-sm font-bold text-slate-700">
-        <span class="inline-flex items-center gap-2"><span class="i-lucide-align-left h-4 w-4 text-slate-400"></span>업무 내용</span>
+        <span class="inline-flex items-center gap-2">
+          <span class="i-lucide-align-left h-4 w-4 text-slate-400"></span>
+          업무 내용
+        </span>
         <span class="text-[11px] font-normal text-slate-400">리치 텍스트 · HTML 저장</span>
       </div>
       <div
@@ -142,9 +151,9 @@
           aria-label="업무 내용 서식">
           <label
             class="sr-only"
-            for="work-editor-block-type"
-            >문단 서식</label
-          >
+            for="work-editor-block-type">
+            문단 서식
+          </label>
           <select
             id="work-editor-block-type"
             class="work-rich-text-block-select"
@@ -288,9 +297,9 @@
           <span
             class="work-rich-text-character-count"
             data-editor-character-count
-            aria-live="polite"
-            >0자</span
-          >
+            aria-live="polite">
+            0자
+          </span>
         </div>
         <div data-editor-surface></div>
         <textarea
@@ -310,9 +319,9 @@
         <div>
           <label
             for="work-redmine-url"
-            class="block text-sm font-bold text-slate-700"
-            >Redmine URL</label
-          >
+            class="block text-sm font-bold text-slate-700">
+            Redmine URL
+          </label>
           <div class="mt-2 flex gap-2">
             <input
               id="work-redmine-url"
@@ -327,7 +336,8 @@
               rel="noopener noreferrer"
               class="ui-button-secondary inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-bold text-slate-600 no-underline"
               aria-label="Redmine 이슈 열기">
-              <span class="i-lucide-external-link h-4 w-4"></span>열기
+              <span class="i-lucide-external-link h-4 w-4"></span>
+              열기
             </a>
             <% } %>
           </div>
@@ -335,9 +345,9 @@
         <div>
           <label
             for="work-joplin-url"
-            class="block text-sm font-bold text-slate-700"
-            >Joplin 링크</label
-          >
+            class="block text-sm font-bold text-slate-700">
+            Joplin 링크
+          </label>
           <div class="mt-2 flex gap-2">
             <input
               id="work-joplin-url"
@@ -350,7 +360,8 @@
               href="<%= view.joplin %>"
               class="ui-button-secondary inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-bold text-slate-600 no-underline"
               aria-label="Joplin 링크 열기">
-              <span class="i-lucide-external-link h-4 w-4"></span>열기
+              <span class="i-lucide-external-link h-4 w-4"></span>
+              열기
             </a>
             <% } %>
           </div>
@@ -365,7 +376,8 @@
           hx-swap="outerHTML"
           onclick="document.getElementById('redmine-dialog').showModal()"
           class="inline-flex h-10 items-center gap-2 rounded-xl border-0 bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700">
-          <span class="i-lucide-git-pull-request-arrow h-4 w-4"></span>Redmine 상태 관리
+          <span class="i-lucide-git-pull-request-arrow h-4 w-4"></span>
+          Redmine 상태 관리
         </button>
         <% } else { %>
         <button
@@ -373,16 +385,18 @@
           form="redmine-create-form"
           onclick="return confirm('현재 저장된 업무 내용으로 Redmine 이슈를 생성할까요?')"
           class="inline-flex h-10 items-center gap-2 rounded-xl border-0 bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700">
-          <span class="i-lucide-square-plus h-4 w-4"></span>저장된 업무로 이슈 생성
+          <span class="i-lucide-square-plus h-4 w-4"></span>
+          저장된 업무로 이슈 생성
         </button>
         <% } %>
         <a
           href="<%= redmineNewIssueUrl %>"
           target="_blank"
           rel="noopener noreferrer"
-          class="ml-auto inline-flex h-9 items-center gap-1.5 px-2 text-xs font-bold text-slate-500 no-underline hover:text-blue-700"
-          ><span class="i-lucide-square-arrow-out-up-right h-3.5 w-3.5"></span>Redmine에서 직접 생성</a
-        >
+          class="ml-auto inline-flex h-9 items-center gap-1.5 px-2 text-xs font-bold text-slate-500 no-underline hover:text-blue-700">
+          <span class="i-lucide-square-arrow-out-up-right h-3.5 w-3.5"></span>
+          Redmine에서 직접 생성
+        </a>
       </div>
     </article>
   </section>
@@ -390,8 +404,9 @@
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 class="font-black">업무 속성</h2>
       <div class="mt-4 grid gap-4">
-        <label class="block text-sm font-bold text-slate-700"
-          >상태<select
+        <label class="block text-sm font-bold text-slate-700">
+          상태
+          <select
             name="state"
             class="mt-2 h-11 w-full rounded-xl px-3">
             <% for (let index = 0; index < stateOptions.length; index += 1) { %>
@@ -401,10 +416,11 @@
               <%= stateOptions[index].label %>
             </option>
             <% } %>
-          </select></label
-        >
-        <label class="block text-sm font-bold text-slate-700"
-          >담당자<select
+          </select>
+        </label>
+        <label class="block text-sm font-bold text-slate-700">
+          담당자
+          <select
             name="developer"
             class="mt-2 h-11 w-full rounded-xl px-3">
             <option value="">미배정</option>
@@ -415,8 +431,8 @@
               <%= developers[index].name %>
             </option>
             <% } %>
-          </select></label
-        >
+          </select>
+        </label>
         <label class="block text-sm font-bold text-slate-700">
           마감일
           <input
@@ -425,14 +441,15 @@
             value="<%= view.dueDate %>"
             class="mt-2 h-11 w-full rounded-xl px-3" />
         </label>
-        <label class="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700"
-          ><input
+        <label class="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700">
+          <input
             type="checkbox"
             name="done"
             value="true"
             <%= view.done ? 'checked' : '' %>
-            class="h-4 w-4" />완료 처리</label
-        >
+            class="h-4 w-4" />
+          완료 처리
+        </label>
       </div>
     </article>
     <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -444,16 +461,17 @@
         <% } %>
         <a
           href="/notification"
-          class="ml-auto inline-flex items-center gap-1 text-xs font-bold text-slate-500 no-underline hover:text-blue-700"
-          ><span class="i-lucide-list h-3.5 w-3.5"></span>알림함</a
-        >
+          class="ml-auto inline-flex items-center gap-1 text-xs font-bold text-slate-500 no-underline hover:text-blue-700">
+          <span class="i-lucide-list h-3.5 w-3.5"></span>
+          알림함
+        </a>
       </div>
       <div class="mt-3">
         <label
           for="scheduled-notification-time"
-          class="mb-1.5 block text-xs font-bold text-slate-500"
-          >알림 시작</label
-        >
+          class="mb-1.5 block text-xs font-bold text-slate-500">
+          알림 시작
+        </label>
         <div class="flex gap-2">
           <input
             id="scheduled-notification-time"
@@ -466,7 +484,8 @@
             type="submit"
             form="scheduled-notification-create-form"
             class="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border-0 bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-800">
-            <span class="i-lucide-plus h-4 w-4"></span>추가
+            <span class="i-lucide-plus h-4 w-4"></span>
+            추가
           </button>
         </div>
       </div>
@@ -479,9 +498,9 @@
           <span class="i-lucide-clock-3 h-3.5 w-3.5 shrink-0 text-blue-600"></span>
           <span
             class="min-w-0 flex-1 truncate text-xs font-bold text-slate-600"
-            title="<%= item.timeLabel %>"
-            ><%= item.timeLabel %></span
-          >
+            title="<%= item.timeLabel %>">
+            <%= item.timeLabel %>
+          </span>
           <button
             type="submit"
             form="scheduled-notification-delete-form"
@@ -544,7 +563,8 @@
       type="submit"
       form="work-delete-form"
       class="ui-button-danger inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold">
-      <span class="i-lucide-trash-2 h-4 w-4"></span>업무 삭제
+      <span class="i-lucide-trash-2 h-4 w-4"></span>
+      업무 삭제
     </button>
   </aside>
 </form>
@@ -569,7 +589,8 @@
     <div
       id="redmine-panel"
       class="py-12 text-center text-sm text-slate-500">
-      <span class="i-lucide-loader-circle mx-auto mb-3 h-6 w-6 animate-spin text-blue-600"></span>Redmine 이슈를 불러오는 중입니다.
+      <span class="i-lucide-loader-circle mx-auto mb-3 h-6 w-6 animate-spin text-blue-600"></span>
+      Redmine 이슈를 불러오는 중입니다.
     </div>
   </div>
 </dialog>

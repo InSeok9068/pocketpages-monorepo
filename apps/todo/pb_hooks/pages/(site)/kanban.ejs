@@ -32,23 +32,23 @@
     <a
       href="/kanban"
       aria-current="<%= !selectedDeveloper ? 'page' : 'false' %>"
-      class="<%= !selectedDeveloper ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline"
-      >전체</a
-    >
+      class="<%= !selectedDeveloper ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
+      전체
+    </a>
     <a
       href="/kanban?developer=__unassigned__"
       aria-current="<%= selectedDeveloper === '__unassigned__' ? 'page' : 'false' %>"
-      class="<%= selectedDeveloper === '__unassigned__' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline"
-      >미배정</a
-    >
+      class="<%= selectedDeveloper === '__unassigned__' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
+      미배정
+    </a>
     <% for (let index = 0; index < developers.length; index += 1) { %>
     <% const developer = developers[index] %>
     <a
       href="/kanban?developer=<%= encodeURIComponent(developer.id) %>"
       aria-current="<%= selectedDeveloper === developer.id ? 'page' : 'false' %>"
-      class="<%= selectedDeveloper === developer.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline"
-      ><%= developer.name %></a
-    >
+      class="<%= selectedDeveloper === developer.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
+      <%= developer.name %>
+    </a>
     <% } %>
   </div>
 </nav>

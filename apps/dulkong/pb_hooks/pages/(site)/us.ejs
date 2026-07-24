@@ -26,13 +26,15 @@
         class="rounded-[28px] bg-[#dcebbf] p-6 text-center shadow-[0_16px_36px_rgba(92,112,57,0.13)]"
         aria-labelledby="couple-title">
         <div class="mx-auto flex w-fit items-center">
-          <span class="<%= profiles.current.colorClass %> flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] text-2xl"><%= profiles.current.emoji %></span
-          ><span class="<%= profiles.partner.colorClass %> -ml-3 flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] text-2xl"><%= profiles.partner.emoji %></span>
+          <span class="<%= profiles.current.colorClass %> flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] text-2xl"><%= profiles.current.emoji %></span>
+          <span class="<%= profiles.partner.colorClass %> -ml-3 flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] text-2xl"><%= profiles.partner.emoji %></span>
         </div>
         <h2
           id="couple-title"
           class="mt-4 mb-0 text-xl font-extrabold tracking-[-0.035em]">
-          <%= profiles.current.name %> <span class="text-[#75964c]">♥</span> <%= profiles.partner.name %>
+          <%= profiles.current.name %>
+          <span class="text-[#75964c]">♥</span>
+          <%= profiles.partner.name %>
         </h2>
         <p class="mt-1.5 mb-0 text-sm font-semibold text-[#66784c]"><%= relationship ? relationship.dateLabel + '부터 함께' : '우리의 첫날을 등록해 보세요' %></p>
       </section>
@@ -61,8 +63,11 @@
         <button
           type="submit"
           class="flex w-full items-center justify-between rounded-[22px] border-0 bg-white px-4 py-4 text-left text-sm font-bold shadow-[0_7px_20px_rgba(48,49,43,0.05)]">
-          <span class="flex items-center gap-3"><span class="i-lucide-log-out h-5 w-5 text-[#7c8e5d]"></span><%= profiles.current.name %>님 로그아웃</span
-          ><span class="i-lucide-chevron-right h-4 w-4 text-[#b3b2a8]"></span>
+          <span class="flex items-center gap-3">
+            <span class="i-lucide-log-out h-5 w-5 text-[#7c8e5d]"></span>
+            <%= profiles.current.name %>님 로그아웃
+          </span>
+          <span class="i-lucide-chevron-right h-4 w-4 text-[#b3b2a8]"></span>
         </button>
       </form>
     </main>
@@ -111,8 +116,9 @@
             class="rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm">
             <option value="custom">기념일</option>
             <option value="relationship_start">우리가 만난 날</option>
-            <option value="birthday">생일</option></select
-          ><select
+            <option value="birthday">생일</option>
+          </select>
+          <select
             data-bind:anniversary-recurrence
             class="rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm">
             <option value="none">한 번만</option>

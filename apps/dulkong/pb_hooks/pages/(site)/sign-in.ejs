@@ -28,41 +28,45 @@
     <fieldset class="m-0 border-0 p-0">
       <legend class="mb-2 text-sm font-extrabold">나를 선택해 주세요</legend>
       <div class="grid grid-cols-2 gap-3">
-        <label class="cursor-pointer"
-          ><input
+        <label class="cursor-pointer">
+          <input
             data-bind:profile-key
             type="radio"
             name="profileKey"
             value="inseok"
-            class="peer sr-only" /><span
-            class="flex flex-col items-center rounded-[22px] border-2 border-transparent bg-white p-4 shadow-[0_8px_24px_rgba(48,49,43,0.06)] peer-checked:border-[#9fbd6f] peer-checked:bg-[#f2f7e9]"
-            ><span class="flex h-13 w-13 items-center justify-center rounded-full bg-[#ffe5db] text-xl">🫘</span><strong class="mt-2 text-sm">인석</strong></span
-          ></label
-        >
-        <label class="cursor-pointer"
-          ><input
+            class="peer sr-only" />
+          <span
+            class="flex flex-col items-center rounded-[22px] border-2 border-transparent bg-white p-4 shadow-[0_8px_24px_rgba(48,49,43,0.06)] peer-checked:border-[#9fbd6f] peer-checked:bg-[#f2f7e9]">
+            <span class="flex h-13 w-13 items-center justify-center rounded-full bg-[#ffe5db] text-xl">🫘</span>
+            <strong class="mt-2 text-sm">인석</strong>
+          </span>
+        </label>
+        <label class="cursor-pointer">
+          <input
             data-bind:profile-key
             type="radio"
             name="profileKey"
             value="solmi"
-            class="peer sr-only" /><span
-            class="flex flex-col items-center rounded-[22px] border-2 border-transparent bg-white p-4 shadow-[0_8px_24px_rgba(48,49,43,0.06)] peer-checked:border-[#9fbd6f] peer-checked:bg-[#f2f7e9]"
-            ><span class="flex h-13 w-13 items-center justify-center rounded-full bg-[#e1eaff] text-xl">🌱</span><strong class="mt-2 text-sm">솔미</strong></span
-          ></label
-        >
+            class="peer sr-only" />
+          <span
+            class="flex flex-col items-center rounded-[22px] border-2 border-transparent bg-white p-4 shadow-[0_8px_24px_rgba(48,49,43,0.06)] peer-checked:border-[#9fbd6f] peer-checked:bg-[#f2f7e9]">
+            <span class="flex h-13 w-13 items-center justify-center rounded-full bg-[#e1eaff] text-xl">🌱</span>
+            <strong class="mt-2 text-sm">솔미</strong>
+          </span>
+        </label>
       </div>
     </fieldset>
-    <label class="block"
-      ><span class="mb-2 block text-sm font-extrabold">비밀번호</span
-      ><input
+    <label class="block">
+      <span class="mb-2 block text-sm font-extrabold">비밀번호</span>
+      <input
         data-bind:password
         type="password"
         name="password"
         required
         autocomplete="current-password"
         placeholder="비밀번호를 입력하세요"
-        class="box-border h-13 w-full rounded-[19px] border border-[#e1ded2] bg-white px-4 text-sm outline-none focus:border-[#9fbd6f]"
-    /></label>
+        class="box-border h-13 w-full rounded-[19px] border border-[#e1ded2] bg-white px-4 text-sm outline-none focus:border-[#9fbd6f]" />
+    </label>
     <button
       type="submit"
       class="h-13 w-full rounded-[19px] border-0 bg-[#354922] text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(53,73,34,0.18)]">

@@ -29,9 +29,10 @@
       현재
       <strong
         id="open-work-count"
-        class="text-slate-900"
-        ><%= workCards.length %>개</strong
-      >의 미완료 업무가 있습니다.
+        class="text-slate-900">
+        <%= workCards.length %>개
+      </strong>
+      의 미완료 업무가 있습니다.
     </p>
   </div>
   <form
@@ -40,7 +41,8 @@
     <button
       type="submit"
       class="ui-button-secondary inline-flex h-10 items-center gap-2 rounded-lg px-3.5 text-sm font-bold text-slate-700">
-      <span class="i-lucide-arrow-up-narrow-wide h-4 w-4"></span>마감일순 정렬
+      <span class="i-lucide-arrow-up-narrow-wide h-4 w-4"></span>
+      마감일순 정렬
     </button>
   </form>
 </header>
@@ -56,9 +58,9 @@
     class="flex flex-col gap-3 sm:flex-row">
     <label
       class="sr-only"
-      for="new-work-title"
-      >새 업무</label
-    >
+      for="new-work-title">
+      새 업무
+    </label>
     <input
       id="new-work-title"
       name="title"
@@ -70,7 +72,8 @@
     <button
       type="submit"
       class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border-0 bg-blue-600 px-5 text-sm font-bold text-white hover:bg-blue-700">
-      <span class="i-lucide-plus h-4 w-4"></span>등록
+      <span class="i-lucide-plus h-4 w-4"></span>
+      등록
     </button>
   </form>
 </section>
@@ -79,21 +82,21 @@
   <div class="flex min-w-max gap-2">
     <a
       href="/"
-      class="<%= !selectedDeveloper ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3.5 py-2 text-sm font-bold no-underline"
-      >전체</a
-    >
+      class="<%= !selectedDeveloper ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3.5 py-2 text-sm font-bold no-underline">
+      전체
+    </a>
     <a
       href="/?developer=__unassigned__"
-      class="<%= selectedDeveloper === '__unassigned__' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3.5 py-2 text-sm font-bold no-underline"
-      >미배정</a
-    >
+      class="<%= selectedDeveloper === '__unassigned__' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3.5 py-2 text-sm font-bold no-underline">
+      미배정
+    </a>
     <% for (let index = 0; index < developers.length; index += 1) { %>
     <% const developer = developers[index] %>
     <a
       href="/?developer=<%= encodeURIComponent(developer.id) %>"
-      class="<%= selectedDeveloper === developer.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3.5 py-2 text-sm font-bold no-underline"
-      ><%= developer.name %></a
-    >
+      class="<%= selectedDeveloper === developer.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3.5 py-2 text-sm font-bold no-underline">
+      <%= developer.name %>
+    </a>
     <% } %>
   </div>
 </section>

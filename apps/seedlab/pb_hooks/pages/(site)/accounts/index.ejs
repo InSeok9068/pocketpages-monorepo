@@ -541,7 +541,9 @@
       <div>
         <h2 class="text-base font-bold text-[#191f28]">목표와 현재</h2>
         <p class="mt-1 text-xs font-medium text-[#8b95a1]">
-          <%= targetSummary.targetCount %>개 분류 · 괴리합산 <span class="<%= portfolioSummary.driftTotalClass %>"><%= portfolioSummary.driftTotalText %></span> · 최대 괴리
+          <%= targetSummary.targetCount %>개 분류 · 괴리합산
+          <span class="<%= portfolioSummary.driftTotalClass %>"><%= portfolioSummary.driftTotalText %></span>
+          · 최대 괴리
           <span class="<%= portfolioSummary.maxDriftClass %>"><%= portfolioSummary.maxDriftText %></span>
         </p>
       </div>
@@ -595,9 +597,9 @@
         <span class="mt-1 block text-xs font-medium text-[#8b95a1]">필요할 때만 열어서 수정합니다</span>
       </span>
       <span class="flex shrink-0 items-center gap-2">
-        <span class="<%= targetSummary.isValid ? 'bg-[#ecfdf3] text-[#008a45]' : 'bg-[#fff0f0] text-[#c92a2a]' %> rounded-md px-2 py-1 text-xs font-bold"
-          >남은 비율 <%= formatPct(targetSummary.remainingPct) %></span
-        >
+        <span class="<%= targetSummary.isValid ? 'bg-[#ecfdf3] text-[#008a45]' : 'bg-[#fff0f0] text-[#c92a2a]' %> rounded-md px-2 py-1 text-xs font-bold">
+          남은 비율 <%= formatPct(targetSummary.remainingPct) %>
+        </span>
         <span
           class="i-lucide-chevron-down h-4 w-4 text-[#8b95a1] transition-transform group-open:rotate-180"
           aria-hidden="true"></span>

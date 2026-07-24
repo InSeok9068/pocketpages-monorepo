@@ -330,9 +330,9 @@
                 value="<%= option.value %>"
                 <%= option.value === projectView.priority ? 'checked' : '' %> />
               <span
-                class="launchboard-priority-choice flex h-9 w-full items-center justify-center rounded-lg bg-[#f7f8fa] text-[13px] font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6]"
-                ><%= option.label %></span
-              >
+                class="launchboard-priority-choice flex h-9 w-full items-center justify-center rounded-lg bg-[#f7f8fa] text-[13px] font-bold text-[#4e5968] shadow-[inset_0_0_0_1px_rgba(227,231,237,0)] transition-colors duration-150 hover:bg-[#f2f4f6]">
+                <%= option.label %>
+              </span>
             </label>
             <% } %>
           </div>

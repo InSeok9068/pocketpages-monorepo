@@ -25,9 +25,9 @@
             class="shrink-0 text-[10px]"
             data-project-status-count
             data-status="<%= tabColumn.value %>"
-            data-class="{'text-[#1b64da]': $activeProjectStatus === '<%= tabColumn.value %>', 'text-[#6b7684]': $activeProjectStatus !== '<%= tabColumn.value %>'}"
-            ><%= tabProjects.length %></span
-          >
+            data-class="{'text-[#1b64da]': $activeProjectStatus === '<%= tabColumn.value %>', 'text-[#6b7684]': $activeProjectStatus !== '<%= tabColumn.value %>'}">
+            <%= tabProjects.length %>
+          </span>
         </span>
       </button>
       <% } %>
@@ -56,9 +56,9 @@
               <span
                 class="text-xs font-bold text-[#8b95a1]"
                 data-project-status-count
-                data-status="<%= column.value %>"
-                ><%= columnProjects.length %></span
-              >
+                data-status="<%= column.value %>">
+                <%= columnProjects.length %>
+              </span>
             </div>
             <div class="flex shrink-0 items-center gap-2">
               <button
@@ -140,16 +140,17 @@
                   <% } %>
                   <h3 class="min-w-0 flex-1 truncate text-base font-bold text-[#191f28]">
                     <%= project.nameKo %><% if (project.nameEn) { %>
-                    <span class="font-semibold text-[#8b95a1]"> - <%= project.nameEn %></span><% } %>
+                    <span class="font-semibold text-[#8b95a1]">- <%= project.nameEn %></span>
+                    <% } %>
                   </h3>
                 </div>
                 <div class="flex shrink-0 items-center gap-1.5">
                   <% if (project.showPriority) { %>
                   <span
                     class="<%= project.priorityTone %> rounded-md px-2 py-1 text-[11px] font-bold"
-                    data-show="!$compactProjectStatuses.<%= column.value %>"
-                    ><%= project.priorityLabel %></span
-                  >
+                    data-show="!$compactProjectStatuses.<%= column.value %>">
+                    <%= project.priorityLabel %>
+                  </span>
                   <% } %>
                   <button
                     type="button"

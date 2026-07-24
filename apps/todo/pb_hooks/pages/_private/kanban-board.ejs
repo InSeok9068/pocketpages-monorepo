@@ -51,9 +51,10 @@
               <div class="flex items-start gap-1.5">
                 <a
                   href="/works/<%= encodeURIComponent(work.id) %>"
-                  class="<%= work.done ? 'line-through' : '' %> block min-w-0 flex-1 text-sm leading-5 font-bold text-slate-900 no-underline hover:text-blue-700"
-                  ><%= work.title %></a
-                ><button
+                  class="<%= work.done ? 'line-through' : '' %> block min-w-0 flex-1 text-sm leading-5 font-bold text-slate-900 no-underline hover:text-blue-700">
+                  <%= work.title %>
+                </a>
+                <button
                   type="button"
                   class="inline-flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded-md border-0 bg-transparent text-slate-300 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
                   data-kanban-handle
@@ -62,23 +63,30 @@
                 </button>
               </div>
               <div class="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-[11px] text-slate-500">
-                <span class="inline-flex min-w-0 items-center gap-1"><span class="i-lucide-user-round h-3 w-3"></span><span class="truncate"><%= work.developerName %></span></span>
-                <span class="<%= work.isUrgent ? 'font-bold text-rose-600' : '' %> inline-flex items-center gap-1"
-                  ><span class="i-lucide-calendar-clock h-3 w-3"></span><%= work.dueDateLabel || '없음' %></span
-                >
+                <span class="inline-flex min-w-0 items-center gap-1">
+                  <span class="i-lucide-user-round h-3 w-3"></span>
+                  <span class="truncate"><%= work.developerName %></span>
+                </span>
+                <span class="<%= work.isUrgent ? 'font-bold text-rose-600' : '' %> inline-flex items-center gap-1">
+                  <span class="i-lucide-calendar-clock h-3 w-3"></span>
+                  <%= work.dueDateLabel || '없음' %>
+                </span>
               </div>
               <div class="mt-2 flex min-h-7 items-center gap-1.5 border-t border-slate-100 pt-2 text-slate-400">
                 <% if (work.redmine || work.joplin || work.file) { %>
-                <% if (work.redmine) { %><span
+                <% if (work.redmine) { %>
+                <span
                   class="i-lucide-square-kanban h-3 w-3"
-                  title="Redmine 연결"></span
-                ><% } %> <% if (work.joplin) { %><span
+                  title="Redmine 연결"></span>
+                <% } %> <% if (work.joplin) { %>
+                <span
                   class="i-lucide-notebook-tabs h-3 w-3"
-                  title="Joplin 연결"></span
-                ><% } %> <% if (work.file) { %><span
+                  title="Joplin 연결"></span>
+                <% } %> <% if (work.file) { %>
+                <span
                   class="i-lucide-paperclip h-3 w-3"
-                  title="첨부파일 있음"></span
-                ><% } %>
+                  title="첨부파일 있음"></span>
+                <% } %>
                 <% } %>
                 <form
                   hx-post="/xapi/works/state"

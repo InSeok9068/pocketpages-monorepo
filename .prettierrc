@@ -5,6 +5,7 @@
   "trailingComma": "es5",
   "bracketSameLine": true,
   "singleAttributePerLine": true,
+  "htmlWhitespaceSensitivity": "ignore",
   "tailwindStylesheet": "./tailwind.css",
   "plugins": ["./tools/prettier-plugin-ejs-safe.mjs"]
 }
