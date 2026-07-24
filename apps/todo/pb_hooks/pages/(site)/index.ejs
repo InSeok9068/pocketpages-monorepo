@@ -25,7 +25,14 @@
   <div>
     <p class="text-sm font-bold text-blue-600">TODAY</p>
     <h1 class="mt-1 text-3xl font-black tracking-tight">오늘의 업무</h1>
-    <p class="mt-2 text-sm text-slate-500">현재 <strong class="text-slate-900"><%= workCards.length %>개</strong>의 미완료 업무가 있습니다.</p>
+    <p class="mt-2 text-sm text-slate-500">
+      현재
+      <strong
+        id="open-work-count"
+        class="text-slate-900"
+        ><%= workCards.length %>개</strong
+      >의 미완료 업무가 있습니다.
+    </p>
   </div>
   <form
     method="post"

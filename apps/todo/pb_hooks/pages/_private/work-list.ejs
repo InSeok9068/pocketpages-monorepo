@@ -1,6 +1,7 @@
 <section
   id="work-list"
   class="space-y-3"
+  data-selected-developer="<%= selectedDeveloper || '' %>"
   aria-live="polite">
   <% if (typeof listMessage !== 'undefined' && listMessage) { %>
   <p class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700"><%= listMessage %></p>

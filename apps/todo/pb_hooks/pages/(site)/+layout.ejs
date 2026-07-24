@@ -58,13 +58,13 @@
     <%- include('app-toast.ejs', { flashMessage: params.__flash }) %>
     <% if (request.auth) { %>
     <div
-      id="notification-realtime"
+      id="app-realtime"
       class="hidden"
       hx-ext="pocketbase-sse"
-      sse-swap="notifications/*"
+      sse-swap="notifications/*,works/*"
       hx-swap="none"
       aria-hidden="true"></div>
-    <script src="<%= asset('/assets/notification-realtime.js') %>"></script>
+    <script src="<%= asset('/assets/app-realtime.js') %>"></script>
     <% } %>
   </body>
 </html>

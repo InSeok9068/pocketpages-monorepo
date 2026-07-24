@@ -1,8 +1,9 @@
 ;(function () {
-  const realtimeElement = document.getElementById('notification-realtime')
+  const appRealtimeElement = document.getElementById('app-realtime')
   const unreadIndicator = document.getElementById('notification-unread-indicator')
   let unreadSyncInFlight = false
   let lastUnreadSyncAt = 0
+  let workListRefreshTimer = null
 
   function updateUnreadIndicator(hasUnread) {
     if (!unreadIndicator) return
@@ -96,6 +97,27 @@
     }
   }
 
+  function refreshTodayWorkList() {
+    const workList = document.getElementById('work-list')
+    if (window.location.pathname !== '/' || !workList || !window.htmx) return
+
+    const selectedDeveloper = String(workList.dataset.selectedDeveloper || '')
+    const query = selectedDeveloper ? '?developer=' + encodeURIComponent(selectedDeveloper) : ''
+
+    window.htmx.ajax('GET', '/api/works/today' + query, {
+      target: '#work-list',
+      swap: 'outerHTML',
+    })
+  }
+
+  function scheduleTodayWorkListRefresh() {
+    if (workListRefreshTimer) window.clearTimeout(workListRefreshTimer)
+    workListRefreshTimer = window.setTimeout(function () {
+      workListRefreshTimer = null
+      refreshTodayWorkList()
+    }, 150)
+  }
+
   document.addEventListener('click', function (event) {
     const button = event.target instanceof Element ? event.target.closest('[data-enable-browser-notifications]') : null
     if (!button || notificationPermission() !== 'default') return
@@ -109,8 +131,8 @@
       })
   })
 
-  if (realtimeElement) {
-    realtimeElement.addEventListener('htmx:sseBeforeMessage', function (event) {
+  if (appRealtimeElement) {
+    appRealtimeElement.addEventListener('htmx:sseBeforeMessage', function (event) {
       let payload
       try {
         payload = JSON.parse(event.detail.data)
@@ -121,7 +143,11 @@
       if (!payload || !payload.action || !payload.record) return
 
       event.preventDefault()
-      if (payload.action !== 'create') return
+      if (event.detail.type === 'works/*') {
+        scheduleTodayWorkListRefresh()
+        return
+      }
+      if (event.detail.type !== 'notifications/*' || payload.action !== 'create') return
 
       updateUnreadIndicator(true)
       showToast(payload.record.title || '업무 알림', payload.record.message || '')

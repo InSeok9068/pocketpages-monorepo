@@ -1,0 +1,42 @@
+<script server>
+  const todoData = resolve('todo-data')
+
+  dbg('todo/api/works/today:start', {
+    method: request.method,
+    isSignedIn: !!request.auth,
+  })
+
+  if (request.method !== 'GET') {
+    warn('todo/api/works/today:invalid-method', { method: request.method })
+    response.json(405, { ok: false, message: 'GET 요청만 허용됩니다.' })
+    return
+  }
+  if (!request.auth) {
+    warn('todo/api/works/today:unauthorized')
+    response.json(401, { ok: false, message: '로그인이 필요합니다.' })
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const selectedDeveloper = String(request.url.query.developer || '')
+  const workCards = todoData.listWorkCards(userId, {
+    done: false,
+    developerId: selectedDeveloper,
+  })
+
+  dbg('todo/api/works/today:response', {
+    userId,
+    workCount: workCards.length,
+    selectedDeveloper,
+    status: 200,
+  })
+  response.header('Cache-Control', 'private, no-store')
+  response.header('Vary', 'Cookie')
+</script>
+<%- include('work-list.ejs', { workCards, selectedDeveloper }) %>
+<strong
+  id="open-work-count"
+  class="text-slate-900"
+  hx-swap-oob="outerHTML"
+  ><%= workCards.length %>개</strong
+>
