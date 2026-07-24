@@ -140,7 +140,10 @@ function findPostByBoardAndSlug(boardId, postSlug) {
   }
 
   try {
-    return $app.findFirstRecordByFilter('posts', 'board = {:boardId} && slug = {:slug}', { boardId: boardId, slug: slug })
+    return $app.findFirstRecordByFilter('posts', 'board = {:boardId} && slug = {:slug}', {
+      boardId: boardId,
+      slug: slug,
+    })
   } catch (_error) {
     return null
   }
@@ -156,7 +159,9 @@ function listPostsByBoard(boardId) {
     return []
   }
 
-  return $app.findRecordsByFilter('posts', 'board = {:boardId}', '-is_notice,-published_at', 50, 0, { boardId: boardId })
+  return $app.findRecordsByFilter('posts', 'board = {:boardId}', '-is_notice,-published_at', 50, 0, {
+    boardId: boardId,
+  })
 }
 
 /**
@@ -169,7 +174,14 @@ function listPublishedPostsByBoard(boardId) {
     return []
   }
 
-  return $app.findRecordsByFilter('posts', 'board = {:boardId} && status = "published"', '-is_notice,-published_at', 50, 0, { boardId: boardId })
+  return $app.findRecordsByFilter(
+    'posts',
+    'board = {:boardId} && status = "published"',
+    '-is_notice,-published_at',
+    50,
+    0,
+    { boardId: boardId }
+  )
 }
 
 /**

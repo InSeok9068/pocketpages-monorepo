@@ -89,7 +89,8 @@ function mapAnniversary(record, now) {
   const recurrence = String(record.get('recurrence') || 'none')
   const targetDate = recurrence === 'yearly' ? getNextYearlyDate(eventDate, now) : eventDate
   const difference = dateutil.diffDays(targetDate, now)
-  let dayLabel = difference === 0 ? 'D-DAY' : difference > 0 ? 'D-' + String(difference) : 'D+' + String(Math.abs(difference))
+  let dayLabel =
+    difference === 0 ? 'D-DAY' : difference > 0 ? 'D-' + String(difference) : 'D+' + String(Math.abs(difference))
 
   if (kind === 'relationship_start') {
     dayLabel = '+' + String(Math.max(1, dateutil.diffDays(now, eventDate) + 1))
@@ -149,7 +150,14 @@ function mapPhoto(record) {
     dateLabel: dateutil.formatDate(takenAtValue, 'M.DD'),
     monthLabel: dateutil.formatDate(takenAtValue, dateutil.FORMATS.MONTH_KR),
     isFavorite: Boolean(record.get('isFavorite')),
-    imageUrl: '/api/files/' + encodeURIComponent(collectionName) + '/' + encodeURIComponent(recordId) + '/' + encodeURIComponent(fileName) + '?thumb=960x0',
+    imageUrl:
+      '/api/files/'
+      + encodeURIComponent(collectionName)
+      + '/'
+      + encodeURIComponent(recordId)
+      + '/'
+      + encodeURIComponent(fileName)
+      + '?thumb=960x0',
   }
 }
 

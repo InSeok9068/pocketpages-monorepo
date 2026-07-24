@@ -16,7 +16,9 @@
   }
 
   const userId = String(request.auth.get('id') || '')
-  const projects = $app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 200, 0, { userId })
+  const projects = $app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 200, 0, {
+    userId,
+  })
   const boardState = projectBoard.getProjectBoardState(projects)
 
   dbg('page/launchboard:index:response', {

@@ -74,16 +74,29 @@
 
   try {
     dbg('seedlab/accounts/holdings/edit:db-access', { collection: 'portfolio_accounts' })
-    const accountRecords = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner} && isActive = true', '-updated', 50, 0, { owner: userId })
+    const accountRecords = $app.findRecordsByFilter(
+      'portfolio_accounts',
+      'owner = {:owner} && isActive = true',
+      '-updated',
+      50,
+      0,
+      { owner: userId }
+    )
     accountOptions = accountRecords.map(buildAccountOption)
 
     dbg('seedlab/accounts/holdings/edit:db-access', { collection: 'account_holdings', holdingId })
-    const holdingRecord = $app.findFirstRecordByFilter('account_holdings', 'id = {:id} && owner = {:owner} && source = {:source}', {
-      id: holdingId,
-      owner: userId,
-      source: 'manual',
+    const holdingRecord = $app.findFirstRecordByFilter(
+      'account_holdings',
+      'id = {:id} && owner = {:owner} && source = {:source}',
+      {
+        id: holdingId,
+        owner: userId,
+        source: 'manual',
+      }
+    )
+    const assetRecord = $app.findFirstRecordByFilter('assets', 'id = {:id}', {
+      id: String(holdingRecord.get('asset') || ''),
     })
-    const assetRecord = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id: String(holdingRecord.get('asset') || '') })
     const assetClass = String(holdingRecord.get('assetClassOverride') || assetRecord.get('assetClass') || 'equity')
 
     holdingCard = {
@@ -96,10 +109,16 @@
       assetClass,
       quantityText: formatNumber(holdingRecord.get('quantity'), 6),
       marketValueText: formatNumber(holdingRecord.get('marketValue'), 0) + '원',
-      profitLossText: (Number(holdingRecord.get('profitLoss') || 0) > 0 ? '+' : '') + formatNumber(holdingRecord.get('profitLoss'), 0) + '원',
+      profitLossText:
+        (Number(holdingRecord.get('profitLoss') || 0) > 0 ? '+' : '')
+        + formatNumber(holdingRecord.get('profitLoss'), 0)
+        + '원',
     }
   } catch (exception) {
-    warn('seedlab/accounts/holdings/edit:db-access-failed', { holdingId, error: String(exception.message || exception) })
+    warn('seedlab/accounts/holdings/edit:db-access-failed', {
+      holdingId,
+      error: String(exception.message || exception),
+    })
     dbg('seedlab/accounts/holdings/edit:redirect', {
       status: 303,
       redirectTo: '/accounts',
@@ -138,7 +157,8 @@
         name="holdingId"
         value="<%= holdingCard.id %>" />
 
-      <label class="grid grid-cols-[72px_1fr] items-center gap-3 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+      <label
+        class="grid grid-cols-[72px_1fr] items-center gap-3 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
         <span class="text-xs font-bold text-[#6b7684]">계좌</span>
         <select
           name="accountId"

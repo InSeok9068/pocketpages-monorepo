@@ -1,4 +1,7 @@
-<% const initialToastMessage = typeof flashMessage === 'undefined' || flashMessage === null ? '' : String(flashMessage).trim() %>
+<%
+  const initialToastMessage =
+    typeof flashMessage === 'undefined' || flashMessage === null ? '' : String(flashMessage).trim()
+%>
 <div
   x-data="appToast"
   data-initial-message="<%= initialToastMessage %>"

@@ -95,7 +95,8 @@ function readObject(value) {
 
   if (typeof value === 'object') {
     const objectValue = /** @type {Record<string, any>} */ (value)
-    if (typeof objectValue.experimentType !== 'undefined' || typeof objectValue.timeline !== 'undefined') return objectValue
+    if (typeof objectValue.experimentType !== 'undefined' || typeof objectValue.timeline !== 'undefined')
+      return objectValue
     if (typeof objectValue.string === 'function') {
       const parsedString = parseObjectText(objectValue.string())
       if (Object.keys(parsedString).length > 0) return parsedString
@@ -370,7 +371,9 @@ function buildSimulationModel(record) {
   const currentTotal = readNumber(timeline.initialTotalValue || summary.currentTotalValue || first.totalValue)
   const finalTotal = readNumber(timeline.finalTotalValue || summary.afterTotalValue || last.totalValue)
   const projectionMonths = readNumber(timeline.projectionMonths || summary.projectionMonths)
-  const monthlyContribution = readNumber(timeline.monthlyContributionAmount || summary.monthlyContributionAmount || record.get('monthlyContribution'))
+  const monthlyContribution = readNumber(
+    timeline.monthlyContributionAmount || summary.monthlyContributionAmount || record.get('monthlyContribution')
+  )
   const contributionAmount = readNumber(summary.contributionAmount)
   const targetText = bucketTargetText(bucketRows)
 
@@ -411,7 +414,8 @@ function buildSimulationModel(record) {
     profitText: signedAmount(finalProfitLoss) + '원',
     profitValue: finalProfitLoss,
     returnText: formatPct(timeline.returnPct || 0),
-    contributionText: '첫 달 ' + formatAmount(contributionAmount) + '원 · 월 ' + formatAmount(monthlyContribution) + '원',
+    contributionText:
+      '첫 달 ' + formatAmount(contributionAmount) + '원 · 월 ' + formatAmount(monthlyContribution) + '원',
     returnAssumptionText: returnAssumptionText(summary.annualReturnPcts),
     actionText: actionableCount > 0 ? '후보 ' + formatAmount(actionableCount) + '개' : '후보 없음',
     actionCandidateCount: actionableCount,

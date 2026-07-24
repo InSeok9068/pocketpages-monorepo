@@ -50,7 +50,17 @@ function sendPushNotification(input) {
   const oneSignal = createOneSignalClient()
   const result = oneSignal.createNotification(notification)
 
-  $app.logger().debug('onesignal:send:response', 'statusCode', result.statusCode, 'externalIdCount', externalIds.length, 'notificationId', result.notificationId)
+  $app
+    .logger()
+    .debug(
+      'onesignal:send:response',
+      'statusCode',
+      result.statusCode,
+      'externalIdCount',
+      externalIds.length,
+      'notificationId',
+      result.notificationId
+    )
 
   if (!result.ok) {
     throw new Error('OneSignal 푸시 발송에 실패했습니다. status=' + result.statusCode + ' error=' + result.errorMessage)

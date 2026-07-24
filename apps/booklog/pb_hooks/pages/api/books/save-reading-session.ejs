@@ -101,11 +101,15 @@
 
     if (sessionId) {
       try {
-        sessionRecord = $app.findFirstRecordByFilter('reading_sessions', 'id = {:sessionId} && user_id = {:userId} && book_id = {:bookId}', {
-          sessionId: sessionId,
-          userId: userId,
-          bookId: bookId,
-        })
+        sessionRecord = $app.findFirstRecordByFilter(
+          'reading_sessions',
+          'id = {:sessionId} && user_id = {:userId} && book_id = {:bookId}',
+          {
+            sessionId: sessionId,
+            userId: userId,
+            bookId: bookId,
+          }
+        )
       } catch (exception) {
         sessionRecord = null
       }

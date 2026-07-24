@@ -65,12 +65,16 @@
     let snapshotRecord = null
 
     try {
-      snapshotRecord = $app.findFirstRecordByFilter('account_snapshots', 'owner = {:owner} && account = {:account} && snapshotDate >= {:startDate} && snapshotDate <= {:endDate}', {
-        owner: args.userId,
-        account: accountId,
-        startDate: dateutil.startOfDay(snapshotDate).toISOString(),
-        endDate: dateutil.endOfDay(snapshotDate).toISOString(),
-      })
+      snapshotRecord = $app.findFirstRecordByFilter(
+        'account_snapshots',
+        'owner = {:owner} && account = {:account} && snapshotDate >= {:startDate} && snapshotDate <= {:endDate}',
+        {
+          owner: args.userId,
+          account: accountId,
+          startDate: dateutil.startOfDay(snapshotDate).toISOString(),
+          endDate: dateutil.endOfDay(snapshotDate).toISOString(),
+        }
+      )
     } catch (exception) {
       snapshotRecord = new Record($app.findCollectionByNameOrId('account_snapshots'))
       snapshotRecord.set('owner', args.userId)
@@ -149,11 +153,15 @@
     const now = new Date().toISOString()
 
     dbg('seedlab/xapi/accounts/manual/update:db-access', { collection: 'portfolio_accounts', accountId })
-    const accountRecord = $app.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner} && syncMode = {:syncMode}', {
-      id: accountId,
-      owner: userId,
-      syncMode: 'manual',
-    })
+    const accountRecord = $app.findFirstRecordByFilter(
+      'portfolio_accounts',
+      'id = {:id} && owner = {:owner} && syncMode = {:syncMode}',
+      {
+        id: accountId,
+        owner: userId,
+        syncMode: 'manual',
+      }
+    )
     const metadata = readObject(accountRecord.get('metadata'))
 
     accountRecord.set('name', name)

@@ -11,5 +11,8 @@
   const photoFilter = String(signals.photoFilter || 'all')
 
   dbg('dulkong/xapi/photos/list:query', { userId: String(request.auth.get('id') || ''), photoFilter })
-  datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, photoFilter) }), { selector: '#photo-results', mode: 'outer' })
+  datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, photoFilter) }), {
+    selector: '#photo-results',
+    mode: 'outer',
+  })
 </script>

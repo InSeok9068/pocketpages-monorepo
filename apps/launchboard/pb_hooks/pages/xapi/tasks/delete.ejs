@@ -50,10 +50,17 @@
       userId,
     })
     const projectSlug = String(project.get('slug') || '').trim()
-    const tasks = $app.findRecordsByFilter('project_tasks', 'user = {:userId} && project = {:projectId}', '-is_pinned,+sort_order,-updated', 300, 0, {
-      userId,
-      projectId,
-    })
+    const tasks = $app.findRecordsByFilter(
+      'project_tasks',
+      'user = {:userId} && project = {:projectId}',
+      '-is_pinned,+sort_order,-updated',
+      300,
+      0,
+      {
+        userId,
+        projectId,
+      }
+    )
     const state = taskBoard.getTaskBoardState(tasks)
 
     datastar.patchElements(
@@ -85,9 +92,23 @@
 
   function patchInbox(view, userId, message) {
     const inboxView = view === 'today' ? 'today' : 'all'
-    const projects = $app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 300, 0, { userId })
+    const projects = $app.findRecordsByFilter(
+      'projects',
+      'user = {:userId}',
+      '-is_pinned,+sort_order,-updated',
+      300,
+      0,
+      { userId }
+    )
     const projectMap = taskBoard.getTaskProjectMap(projects)
-    const tasks = $app.findRecordsByFilter('project_tasks', 'user = {:userId}', '-is_pinned,+sort_order,due_at,-updated', 300, 0, { userId })
+    const tasks = $app.findRecordsByFilter(
+      'project_tasks',
+      'user = {:userId}',
+      '-is_pinned,+sort_order,due_at,-updated',
+      300,
+      0,
+      { userId }
+    )
     const state = taskBoard.getTaskInboxState(tasks, projectMap, inboxView)
 
     datastar.patchElements(
@@ -118,7 +139,9 @@
       taskActionBoardScope: 'inbox',
       taskActionView: inboxView,
     })
-    datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable(); window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter();')
+    datastar.executeScript(
+      'window.launchboardInitTaskSortable && window.launchboardInitTaskSortable(); window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter();'
+    )
   }
 
   if (request.method !== 'POST') {

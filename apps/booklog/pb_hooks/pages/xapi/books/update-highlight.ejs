@@ -52,11 +52,15 @@
     if (quoteText.length > 10000) throw new Error('문구는 10000자 이하로 저장해 주세요.')
     if (noteText.length > 5000) throw new Error('메모는 5000자 이하로 저장해 주세요.')
 
-    const highlightRecord = $app.findFirstRecordByFilter('book_highlights', 'id = {:highlightId} && user_id = {:userId} && book_id = {:bookId}', {
-      highlightId: highlightId,
-      userId: userId,
-      bookId: bookId,
-    })
+    const highlightRecord = $app.findFirstRecordByFilter(
+      'book_highlights',
+      'id = {:highlightId} && user_id = {:userId} && book_id = {:bookId}',
+      {
+        highlightId: highlightId,
+        userId: userId,
+        bookId: bookId,
+      }
+    )
 
     highlightRecord.set('quote_text', quoteText)
     highlightRecord.set('note_text', noteText)

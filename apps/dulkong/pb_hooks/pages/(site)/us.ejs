@@ -26,8 +26,14 @@
         class="rounded-[28px] bg-[#dcebbf] p-6 text-center shadow-[0_16px_36px_rgba(92,112,57,0.13)]"
         aria-labelledby="couple-title">
         <div class="mx-auto flex w-fit items-center">
-          <span class="<%= profiles.current.colorClass %> flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] text-2xl"><%= profiles.current.emoji %></span>
-          <span class="<%= profiles.partner.colorClass %> -ml-3 flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] text-2xl"><%= profiles.partner.emoji %></span>
+          <span
+            class="<%= profiles.current.colorClass %> flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] text-2xl">
+            <%= profiles.current.emoji %>
+          </span>
+          <span
+            class="<%= profiles.partner.colorClass %> -ml-3 flex h-17 w-17 items-center justify-center rounded-full border-4 border-[#dcebbf] text-2xl">
+            <%= profiles.partner.emoji %>
+          </span>
         </div>
         <h2
           id="couple-title"
@@ -36,7 +42,9 @@
           <span class="text-[#75964c]">♥</span>
           <%= profiles.partner.name %>
         </h2>
-        <p class="mt-1.5 mb-0 text-sm font-semibold text-[#66784c]"><%= relationship ? relationship.dateLabel + '부터 함께' : '우리의 첫날을 등록해 보세요' %></p>
+        <p class="mt-1.5 mb-0 text-sm font-semibold text-[#66784c]">
+          <%= relationship ? relationship.dateLabel + '부터 함께' : '우리의 첫날을 등록해 보세요' %>
+        </p>
       </section>
 
       <section aria-labelledby="days-title">

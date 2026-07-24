@@ -14,9 +14,13 @@
     <p class="text-sm text-stone-500">Select a board.</p>
   </header>
   <% } else if (panelError) { %>
-  <p class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"><%= panelError %></p>
+  <p class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+    <%= panelError %>
+  </p>
   <% } else if (!panelBoard) { %>
-  <p class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">Board not found.</p>
+  <p class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+    Board not found.
+  </p>
   <% } else { %>
   <header class="mb-5 flex flex-wrap items-start justify-between gap-4">
     <div class="min-w-0 space-y-2">
@@ -51,7 +55,9 @@
           <%= postItem.title %>
         </a>
       </h3>
-      <p class="mt-2 text-xs tracking-[0.14em] text-stone-500 uppercase"><%= postItem.isNotice ? 'Notice' : 'Post' %> · <%= postItem.authorName %> · <%= postItem.publishedAt %></p>
+      <p class="mt-2 text-xs tracking-[0.14em] text-stone-500 uppercase">
+        <%= postItem.isNotice ? 'Notice' : 'Post' %> · <%= postItem.authorName %> · <%= postItem.publishedAt %>
+      </p>
     </section>
     <% }) %>
   </div>

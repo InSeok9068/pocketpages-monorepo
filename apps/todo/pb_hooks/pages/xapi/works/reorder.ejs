@@ -37,7 +37,13 @@
       $app.runInTransaction(function (txApp) {
         const updateResult = txApp
           .db()
-          .newQuery('UPDATE works SET sort = CASE id ' + sortCases.join(' ') + ' ELSE sort END WHERE user = {:userId} AND done = FALSE AND id IN (' + idPlaceholders.join(', ') + ')')
+          .newQuery(
+            'UPDATE works SET sort = CASE id '
+              + sortCases.join(' ')
+              + ' ELSE sort END WHERE user = {:userId} AND done = FALSE AND id IN ('
+              + idPlaceholders.join(', ')
+              + ')'
+          )
           .bind(bindings)
           .execute()
         if (updateResult.rowsAffected() !== order.length) throw new Error('정렬할 업무를 찾을 수 없습니다.')

@@ -15,9 +15,13 @@
     if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
     if (!userId) throw new Error('로그인이 필요합니다.')
     let isValidState = false
-    for (let index = 0; index < stateOptions.length; index += 1) if (stateOptions[index].value === state) isValidState = true
+    for (let index = 0; index < stateOptions.length; index += 1)
+      if (stateOptions[index].value === state) isValidState = true
     if (!isValidState) throw new Error('상태 값이 올바르지 않습니다.')
-    const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId} && done = false', { workId, userId })
+    const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId} && done = false', {
+      workId,
+      userId,
+    })
     work.set('state', state)
     $app.save(work)
     info('todo/xapi/works/state:success', { userId, workId, state })

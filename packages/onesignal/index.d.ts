@@ -29,7 +29,17 @@ declare namespace pocketpagesOneSignal {
   interface OneSignalTagFilter {
     field: 'tag'
     key: string
-    relation: '=' | '!=' | 'exists' | 'not_exists' | 'in_array' | 'not_in_array' | '>' | '<' | 'time_elapsed_gt' | 'time_elapsed_lt'
+    relation:
+      | '='
+      | '!='
+      | 'exists'
+      | 'not_exists'
+      | 'in_array'
+      | 'not_in_array'
+      | '>'
+      | '<'
+      | 'time_elapsed_gt'
+      | 'time_elapsed_lt'
     value?: string
   }
 
@@ -52,7 +62,13 @@ declare namespace pocketpagesOneSignal {
     long: string | number
   }
 
-  type OneSignalFilter = OneSignalFilterOperator | OneSignalTagFilter | OneSignalSessionFilter | OneSignalValueFilter | OneSignalLocationFilter | JsonObject
+  type OneSignalFilter =
+    | OneSignalFilterOperator
+    | OneSignalTagFilter
+    | OneSignalSessionFilter
+    | OneSignalValueFilter
+    | OneSignalLocationFilter
+    | JsonObject
 
   interface OneSignalButton {
     id: string

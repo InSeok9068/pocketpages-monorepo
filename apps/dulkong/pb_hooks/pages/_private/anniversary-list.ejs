@@ -14,18 +14,24 @@
   <% } %>
 
   <% anniversaries.forEach(function (anniversary) { %>
-  <article class="flex items-center justify-between gap-3 rounded-[22px] border border-[#ebe9df] bg-white p-4 shadow-[0_7px_20px_rgba(48,49,43,0.05)]">
+  <article
+    class="flex items-center justify-between gap-3 rounded-[22px] border border-[#ebe9df] bg-white p-4 shadow-[0_7px_20px_rgba(48,49,43,0.05)]">
     <div class="flex min-w-0 items-center gap-3">
-      <span class="<%= anniversary.kind === 'birthday' ? 'bg-[#e9f0ff]' : 'bg-[#fff0e7]' %> flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] text-xl">
+      <span
+        class="<%= anniversary.kind === 'birthday' ? 'bg-[#e9f0ff]' : 'bg-[#fff0e7]' %> flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] text-xl">
         <%= anniversary.emoji %>
       </span>
       <div class="min-w-0">
         <h3 class="m-0 truncate text-[15px] font-extrabold"><%= anniversary.title %></h3>
-        <p class="mt-1 mb-0 text-xs font-semibold text-[#99988e]"><%= anniversary.dateLabel %><%= anniversary.recurrence === 'yearly' ? ' · 매년' : '' %></p>
+        <p class="mt-1 mb-0 text-xs font-semibold text-[#99988e]">
+          <%= anniversary.dateLabel %><%= anniversary.recurrence === 'yearly' ? ' · 매년' : '' %>
+        </p>
       </div>
     </div>
     <div class="flex shrink-0 items-center gap-1">
-      <strong class="<%= anniversary.difference > 0 ? 'text-[#627fb5]' : 'text-[#5f7b37]' %> mr-1 text-lg"><%= anniversary.dayLabel %></strong>
+      <strong class="<%= anniversary.difference > 0 ? 'text-[#627fb5]' : 'text-[#5f7b37]' %> mr-1 text-lg">
+        <%= anniversary.dayLabel %>
+      </strong>
       <button
         type="button"
         data-on:click="@post('/xapi/anniversaries/delete', {payload: {anniversaryId: '<%= anniversary.id %>'}})"

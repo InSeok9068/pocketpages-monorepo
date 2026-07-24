@@ -18,7 +18,8 @@
     if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
     if (!userId) throw new Error('로그인이 필요합니다.')
     const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
-    if (redmineService.parseIssueId(String(work.get('redmine') || ''))) throw new Error('이미 Redmine 이슈가 연결되어 있습니다.')
+    if (redmineService.parseIssueId(String(work.get('redmine') || '')))
+      throw new Error('이미 Redmine 이슈가 연결되어 있습니다.')
 
     const dueDate = String(work.get('dueDate') || '')
     const issue = redmineService.createIssue(config, {
@@ -38,7 +39,11 @@
     error('todo/xapi/redmine/create:failed', { userId, workId, error: errorMessage })
   }
 
-  dbg('todo/xapi/redmine/create:redirect', { status: 303, redirectTo, message: errorMessage || 'Redmine 이슈를 생성하고 업무에 연결했습니다.' })
+  dbg('todo/xapi/redmine/create:redirect', {
+    status: 303,
+    redirectTo,
+    message: errorMessage || 'Redmine 이슈를 생성하고 업무에 연결했습니다.',
+  })
   redirect(redirectTo, { status: 303, message: errorMessage || 'Redmine 이슈를 생성하고 업무에 연결했습니다.' })
   return
 </script>

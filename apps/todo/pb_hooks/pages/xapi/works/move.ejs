@@ -31,7 +31,8 @@
       const workId = String(item.id || '').trim()
       const state = String(item.state || '').trim()
       const sort = Number(item.sort)
-      if (!workId || seenIds[workId] || !validStates[state] || !isFinite(sort)) throw new Error('이동 값이 올바르지 않습니다.')
+      if (!workId || seenIds[workId] || !validStates[state] || !isFinite(sort))
+        throw new Error('이동 값이 올바르지 않습니다.')
       const idKey = 'id' + index
       const stateKey = 'state' + index
       const sortKey = 'sort' + index
@@ -48,13 +49,13 @@
         const updateResult = txApp
           .db()
           .newQuery(
-            'UPDATE works SET state = CASE id ' +
-              stateCases.join(' ') +
-              ' ELSE state END, sort = CASE id ' +
-              sortCases.join(' ') +
-              ' ELSE sort END, updated = {:updated} WHERE user = {:userId} AND done = FALSE AND id IN (' +
-              idPlaceholders.join(', ') +
-              ')'
+            'UPDATE works SET state = CASE id '
+              + stateCases.join(' ')
+              + ' ELSE state END, sort = CASE id '
+              + sortCases.join(' ')
+              + ' ELSE sort END, updated = {:updated} WHERE user = {:userId} AND done = FALSE AND id IN ('
+              + idPlaceholders.join(', ')
+              + ')'
           )
           .bind(bindings)
           .execute()

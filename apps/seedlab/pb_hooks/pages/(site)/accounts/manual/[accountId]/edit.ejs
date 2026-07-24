@@ -43,7 +43,10 @@
   function moneyInputText(value, currency) {
     const number = Number(value || 0)
     if (!isFinite(number) || number === 0) return ''
-    return formatNumber(number, String(currency || 'KRW') === 'USD' ? 2 : 0) + (String(currency || 'KRW') === 'USD' ? '' : '원')
+    return (
+      formatNumber(number, String(currency || 'KRW') === 'USD' ? 2 : 0)
+      + (String(currency || 'KRW') === 'USD' ? '' : '원')
+    )
   }
 
   function readObject(value) {
@@ -62,24 +65,39 @@
   function latestSnapshot(accountId) {
     try {
       dbg('seedlab/accounts/manual/edit:db-access', { collection: 'account_snapshots', accountId })
-      const records = $app.findRecordsByFilter('account_snapshots', 'owner = {:owner} && account = {:account}', '-snapshotDate', 1, 0, {
-        owner: userId,
-        account: accountId,
-      })
+      const records = $app.findRecordsByFilter(
+        'account_snapshots',
+        'owner = {:owner} && account = {:account}',
+        '-snapshotDate',
+        1,
+        0,
+        {
+          owner: userId,
+          account: accountId,
+        }
+      )
       return records.length > 0 ? records[0] : null
     } catch (exception) {
-      warn('seedlab/accounts/manual/edit:db-access-failed', { collection: 'account_snapshots', accountId, error: String(exception.message || exception) })
+      warn('seedlab/accounts/manual/edit:db-access-failed', {
+        collection: 'account_snapshots',
+        accountId,
+        error: String(exception.message || exception),
+      })
       return null
     }
   }
 
   try {
     dbg('seedlab/accounts/manual/edit:db-access', { collection: 'portfolio_accounts', accountId })
-    const accountRecord = $app.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner} && syncMode = {:syncMode}', {
-      id: accountId,
-      owner: userId,
-      syncMode: 'manual',
-    })
+    const accountRecord = $app.findFirstRecordByFilter(
+      'portfolio_accounts',
+      'id = {:id} && owner = {:owner} && syncMode = {:syncMode}',
+      {
+        id: accountId,
+        owner: userId,
+        syncMode: 'manual',
+      }
+    )
     const metadata = readObject(accountRecord.get('metadata'))
     const snapshotRecord = latestSnapshot(accountId)
     const baseCurrency = String(accountRecord.get('baseCurrency') || 'KRW')
@@ -93,9 +111,18 @@
       baseCurrency,
       memo: String(metadata.memo || ''),
       isTaxAdvantaged: !!accountRecord.get('isTaxAdvantaged'),
-      totalValueText: moneyInputText(snapshotRecord ? snapshotRecord.get('totalValue') : metadata.initialTotalValue, baseCurrency),
-      cashValueText: moneyInputText(snapshotRecord ? snapshotRecord.get('cashValue') : metadata.initialCashValue, baseCurrency),
-      profitLossText: moneyInputText(snapshotRecord ? snapshotRecord.get('profitLoss') : metadata.initialProfitLoss, baseCurrency),
+      totalValueText: moneyInputText(
+        snapshotRecord ? snapshotRecord.get('totalValue') : metadata.initialTotalValue,
+        baseCurrency
+      ),
+      cashValueText: moneyInputText(
+        snapshotRecord ? snapshotRecord.get('cashValue') : metadata.initialCashValue,
+        baseCurrency
+      ),
+      profitLossText: moneyInputText(
+        snapshotRecord ? snapshotRecord.get('profitLoss') : metadata.initialProfitLoss,
+        baseCurrency
+      ),
     }
   } catch (exception) {
     warn('seedlab/accounts/manual/edit:not-found', { accountId, error: String(exception.message || exception) })
@@ -258,7 +285,8 @@
 <%= accountCard.memo %></textarea>
       </label>
 
-      <label class="flex items-center justify-between gap-3 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+      <label
+        class="flex items-center justify-between gap-3 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
         <span class="text-sm font-bold text-[#191f28]">세제 혜택</span>
         <% if (accountCard.isTaxAdvantaged) { %>
         <input

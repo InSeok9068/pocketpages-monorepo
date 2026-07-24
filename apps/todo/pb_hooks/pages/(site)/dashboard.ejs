@@ -21,19 +21,25 @@
   $app
     .db()
     .newQuery(
-      'SELECT COUNT(*) AS total,' +
-        ' COALESCE(SUM(CASE WHEN done = TRUE THEN 1 ELSE 0 END), 0) AS done,' +
-        " COALESCE(SUM(CASE WHEN done = FALSE AND dueDate IS NOT NULL AND dueDate != '' AND dueDate <= {:urgentThrough} THEN 1 ELSE 0 END), 0) AS urgent" +
-        ' FROM works WHERE user = {:userId}'
+      'SELECT COUNT(*) AS total,'
+        + ' COALESCE(SUM(CASE WHEN done = TRUE THEN 1 ELSE 0 END), 0) AS done,'
+        + " COALESCE(SUM(CASE WHEN done = FALSE AND dueDate IS NOT NULL AND dueDate != '' AND dueDate <= {:urgentThrough} THEN 1 ELSE 0 END), 0) AS urgent"
+        + ' FROM works WHERE user = {:userId}'
     )
     .bind({ userId, urgentThrough })
     .one(summary)
 
-  $app.db().newQuery('SELECT state, COUNT(*) AS total FROM works WHERE user = {:userId} GROUP BY state').bind({ userId }).all(stateRows)
+  $app
+    .db()
+    .newQuery('SELECT state, COUNT(*) AS total FROM works WHERE user = {:userId} GROUP BY state')
+    .bind({ userId })
+    .all(stateRows)
 
   $app
     .db()
-    .newQuery("SELECT COALESCE(NULLIF(developer, ''), '__unassigned__') AS developerId, COUNT(*) AS total FROM works WHERE user = {:userId} GROUP BY COALESCE(NULLIF(developer, ''), '__unassigned__')")
+    .newQuery(
+      "SELECT COALESCE(NULLIF(developer, ''), '__unassigned__') AS developerId, COUNT(*) AS total FROM works WHERE user = {:userId} GROUP BY COALESCE(NULLIF(developer, ''), '__unassigned__')"
+    )
     .bind({ userId })
     .all(developerRows)
 
@@ -48,7 +54,9 @@
     stateCounts[String(stateRows[index].state || '')] = Number(stateRows[index].total || 0)
   }
   for (let index = 0; index < developerRows.length; index += 1) {
-    developerCounts[String(developerRows[index].developerId || '__unassigned__')] = Number(developerRows[index].total || 0)
+    developerCounts[String(developerRows[index].developerId || '__unassigned__')] = Number(
+      developerRows[index].total || 0
+    )
   }
   dbg('todo/dashboard:response', { userId, workCount: totalCount })
 </script>

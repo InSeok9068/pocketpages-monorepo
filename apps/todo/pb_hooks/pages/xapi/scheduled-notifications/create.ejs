@@ -30,7 +30,11 @@
     error('todo/xapi/scheduled-notifications/create:failed', { userId, workId, error: errorMessage })
   }
   const redirectTo = workId ? '/works/' + encodeURIComponent(workId) : '/'
-  dbg('todo/xapi/scheduled-notifications/create:redirect', { status: 303, redirectTo, message: errorMessage || '알림을 예약했습니다.' })
+  dbg('todo/xapi/scheduled-notifications/create:redirect', {
+    status: 303,
+    redirectTo,
+    message: errorMessage || '알림을 예약했습니다.',
+  })
   redirect(redirectTo, { status: 303, message: errorMessage || '알림을 예약했습니다.' })
   return
 </script>

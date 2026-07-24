@@ -60,10 +60,17 @@
     let strategyRecord = null
 
     try {
-      const strategyRecords = txApp.findRecordsByFilter('investment_strategies', 'owner = {:owner} && strategyType = {:strategyType}', '-updated', 50, 0, {
-        owner: userId,
-        strategyType: 'real',
-      })
+      const strategyRecords = txApp.findRecordsByFilter(
+        'investment_strategies',
+        'owner = {:owner} && strategyType = {:strategyType}',
+        '-updated',
+        50,
+        0,
+        {
+          owner: userId,
+          strategyType: 'real',
+        }
+      )
       for (let recordIndex = 0; recordIndex < strategyRecords.length; recordIndex += 1) {
         if (String(strategyRecords[recordIndex].get('name') || '') === '기본 리밸런싱') {
           strategyRecord = strategyRecords[recordIndex]
@@ -101,10 +108,14 @@
     let targetRecord = null
 
     try {
-      targetRecord = txApp.findFirstRecordByFilter('strategy_asset_targets', 'strategy = {:strategy} && assetClass = {:assetClass}', {
-        strategy: args.strategyId,
-        assetClass: args.assetClass,
-      })
+      targetRecord = txApp.findFirstRecordByFilter(
+        'strategy_asset_targets',
+        'strategy = {:strategy} && assetClass = {:assetClass}',
+        {
+          strategy: args.strategyId,
+          assetClass: args.assetClass,
+        }
+      )
     } catch (exception) {
       targetRecord = null
     }
@@ -169,7 +180,9 @@
     if (Math.round(totalTargetPct * 10) / 10 !== 100) throw new Error('목표 비중 합계는 100%여야 합니다.')
 
     dbg('seedlab/xapi/rebalance/runs/create:db-access', { collection: 'account_holdings' })
-    const holdings = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-marketValue', 200, 0, { owner: userId })
+    const holdings = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-marketValue', 200, 0, {
+      owner: userId,
+    })
     if (holdings.length === 0) throw new Error('리밸런싱할 보유 종목이 없습니다.')
 
     const currentValues = {
@@ -261,7 +274,10 @@
         itemRecord.set('targetValue', targetValue)
         itemRecord.set('deltaAmount', deltaAmount)
         itemRecord.set('priority', index + 1)
-        itemRecord.set('reason', classLabel(assetClass) + ' 비중을 ' + currentPct + '%에서 ' + targetPct + '%로 맞추는 초안입니다.')
+        itemRecord.set(
+          'reason',
+          classLabel(assetClass) + ' 비중을 ' + currentPct + '%에서 ' + targetPct + '%로 맞추는 초안입니다.'
+        )
         itemRecord.set('status', 'draft')
         itemRecord.set('checks', {
           brokerOrderBlocked: true,

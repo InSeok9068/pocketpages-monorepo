@@ -116,17 +116,31 @@
     const savedBucket = readSavedAllocationBucket(holding)
     if (savedBucket) return savedBucket
 
-    const assetClass = normalizeAssetClass(holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none' ? holding.get('assetClassOverride') : asset ? asset.get('assetClass') : '')
+    const assetClass = normalizeAssetClass(
+      holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none'
+        ? holding.get('assetClassOverride')
+        : asset
+          ? asset.get('assetClass')
+          : ''
+    )
     const assetType = String(asset ? asset.get('assetType') : '').toLowerCase()
     const symbol = String(asset ? asset.get('symbol') : '').toUpperCase()
     const name = String(asset ? asset.get('name') : '').toUpperCase()
     const searchText = symbol + ' ' + name
 
     if (assetClass === 'cash' || assetType === 'cash') return 'cash'
-    if (assetClass === 'fixed_income' || assetType === 'bond' || searchText.indexOf('BOND') >= 0 || searchText.indexOf('채권') >= 0) return 'bond'
+    if (
+      assetClass === 'fixed_income'
+      || assetType === 'bond'
+      || searchText.indexOf('BOND') >= 0
+      || searchText.indexOf('채권') >= 0
+    )
+      return 'bond'
     if (searchText.indexOf('GOLD') >= 0 || searchText.indexOf('금') >= 0) return 'gold'
-    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0) return 'real_estate'
-    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0) return 'dividend_stock'
+    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0)
+      return 'real_estate'
+    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0)
+      return 'dividend_stock'
     if (assetClass === 'equity') return 'growth_stock'
     return 'other'
   }
@@ -134,10 +148,17 @@
   function readLatestUsdKrwRate() {
     try {
       dbg('seedlab/xapi/simulations/recalculate:db-access', { collection: 'fx_rates' })
-      const records = $app.findRecordsByFilter('fx_rates', 'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}', '-rateAt', 1, 0, {
-        baseCurrency: 'USD',
-        quoteCurrency: 'KRW',
-      })
+      const records = $app.findRecordsByFilter(
+        'fx_rates',
+        'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}',
+        '-rateAt',
+        1,
+        0,
+        {
+          baseCurrency: 'USD',
+          quoteCurrency: 'KRW',
+        }
+      )
       return records.length > 0 ? Number(records[0].get('rate') || 0) : 0
     } catch (exception) {
       dbg('seedlab/xapi/simulations/recalculate:fx-rate-missing', { pair: 'USD_KRW' })
@@ -154,7 +175,11 @@
       dbg('seedlab/xapi/simulations/recalculate:db-access', { collection: 'assets', assetId: id })
       assetsById[id] = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id })
     } catch (exception) {
-      warn('seedlab/xapi/simulations/recalculate:db-access-failed', { collection: 'assets', assetId: id, error: String(exception.message || exception) })
+      warn('seedlab/xapi/simulations/recalculate:db-access-failed', {
+        collection: 'assets',
+        assetId: id,
+        error: String(exception.message || exception),
+      })
       assetsById[id] = null
     }
 
@@ -216,7 +241,10 @@
         cashValue += Number(snapshot.get('cashValue') || 0)
       }
     } catch (exception) {
-      warn('seedlab/xapi/simulations/recalculate:db-access-failed', { collection: 'account_snapshots', error: String(exception.message || exception) })
+      warn('seedlab/xapi/simulations/recalculate:db-access-failed', {
+        collection: 'account_snapshots',
+        error: String(exception.message || exception),
+      })
     }
 
     return { cashValue }
@@ -225,7 +253,17 @@
   function readPriceValue(source) {
     const value = readObject(source)
     const amount = readObject(value.amount)
-    const candidates = [value.price, value.lastPrice, value.currentPrice, value.tradePrice, value.close, value.closePrice, value.regularMarketPrice, amount.value, amount.amount]
+    const candidates = [
+      value.price,
+      value.lastPrice,
+      value.currentPrice,
+      value.tradePrice,
+      value.close,
+      value.closePrice,
+      value.regularMarketPrice,
+      amount.value,
+      amount.amount,
+    ]
     for (let index = 0; index < candidates.length; index += 1) {
       const price = readNumber(candidates[index])
       if (price > 0) return price
@@ -245,7 +283,15 @@
   function readPriceOverrides(result) {
     const body = readObject(result)
     const overrides = {}
-    const rows = Array.isArray(result) ? result : Array.isArray(body.items) ? body.items : Array.isArray(body.prices) ? body.prices : Array.isArray(body.data) ? body.data : []
+    const rows = Array.isArray(result)
+      ? result
+      : Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body.prices)
+          ? body.prices
+          : Array.isArray(body.data)
+            ? body.data
+            : []
 
     for (let index = 0; index < rows.length; index += 1) {
       addPriceOverride(overrides, rows[index])
@@ -269,11 +315,18 @@
   }
 
   function findActiveTossConnection(userId) {
-    const connectionRecords = $app.findRecordsByFilter('broker_connections', 'owner = {:owner} && provider = {:provider} && status = {:status}', '-updated', 1, 0, {
-      owner: userId,
-      provider: 'toss',
-      status: 'active',
-    })
+    const connectionRecords = $app.findRecordsByFilter(
+      'broker_connections',
+      'owner = {:owner} && provider = {:provider} && status = {:status}',
+      '-updated',
+      1,
+      0,
+      {
+        owner: userId,
+        provider: 'toss',
+        status: 'active',
+      }
+    )
 
     return connectionRecords.length > 0 ? connectionRecords[0] : null
   }
@@ -321,15 +374,24 @@
   function addMonthsDateOnly(value, months) {
     const date = new Date(value)
     if (isNaN(date.getTime())) return dateutil.toDateOnlyIso(new Date())
-    const nextDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + Number(months || 0), date.getUTCDate()))
+    const nextDate = new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + Number(months || 0), date.getUTCDate())
+    )
     return dateutil.toDateOnlyIso(nextDate)
   }
 
   function findDefaultStrategy(txApp, userId) {
-    const records = txApp.findRecordsByFilter('investment_strategies', 'owner = {:owner} && strategyType = {:strategyType}', '-updated', 50, 0, {
-      owner: userId,
-      strategyType: 'real',
-    })
+    const records = txApp.findRecordsByFilter(
+      'investment_strategies',
+      'owner = {:owner} && strategyType = {:strategyType}',
+      '-updated',
+      50,
+      0,
+      {
+        owner: userId,
+        strategyType: 'real',
+      }
+    )
 
     for (let index = 0; index < records.length; index += 1) {
       if (String(records[index].get('name') || '') === '기본 리밸런싱') return records[index]
@@ -379,10 +441,17 @@
         offset,
         limit,
       })
-      const pageRecords = txApp.findRecordsByFilter('simulation_snapshots', 'owner = {:owner} && simulation = {:simulation}', '-created', limit, offset, {
-        owner: userId,
-        simulation: simulationId,
-      })
+      const pageRecords = txApp.findRecordsByFilter(
+        'simulation_snapshots',
+        'owner = {:owner} && simulation = {:simulation}',
+        '-created',
+        limit,
+        offset,
+        {
+          owner: userId,
+          simulation: simulationId,
+        }
+      )
       for (let index = 0; index < pageRecords.length; index += 1) {
         records.push(pageRecords[index])
       }
@@ -485,7 +554,19 @@
     }
   }
 
-  function saveActionCandidates(txApp, userId, strategyId, simulationId, today, summary, contributionAmount, reserveCashAmount, minimumOrderAmount, monthlyContributionAmount, projectionMonths) {
+  function saveActionCandidates(
+    txApp,
+    userId,
+    strategyId,
+    simulationId,
+    today,
+    summary,
+    contributionAmount,
+    reserveCashAmount,
+    minimumOrderAmount,
+    monthlyContributionAmount,
+    projectionMonths
+  ) {
     if (summary.actionableCount <= 0) return 0
 
     const actionBatch = new Record(txApp.findCollectionByNameOrId('action_batches'))
@@ -515,7 +596,8 @@
     let actionCount = 0
     for (let index = 0; index < summary.candidates.length; index += 1) {
       const candidate = summary.candidates[index]
-      if (Number(candidate.spendKrw || 0) <= 0 || Number(candidate.quantity || 0) <= 0 || candidate.missingReason) continue
+      if (Number(candidate.spendKrw || 0) <= 0 || Number(candidate.quantity || 0) <= 0 || candidate.missingReason)
+        continue
 
       const actionItem = new Record(txApp.findCollectionByNameOrId('action_items'))
       actionItem.set('owner', userId)
@@ -527,7 +609,10 @@
       actionItem.set('targetAmount', Number(candidate.spendKrw || 0))
       actionItem.set('targetQuantity', Number(candidate.quantity || 0))
       actionItem.set('limitPrice', Number(candidate.price || 0))
-      actionItem.set('reason', candidate.bucketLabel + ' 목표 비중에 맞춘 ' + (candidate.name || candidate.symbol) + ' 매수 후보입니다.')
+      actionItem.set(
+        'reason',
+        candidate.bucketLabel + ' 목표 비중에 맞춘 ' + (candidate.name || candidate.symbol) + ' 매수 후보입니다.'
+      )
       actionItem.set('status', 'draft')
       actionItem.set('checks', {
         mockOnly: true,
@@ -593,23 +678,40 @@
     })
     const settings = readObject(simulationRecord.get('settings'))
     const previousSummary = readObject(simulationRecord.get('summary'))
-    const fallbackTargets = Object.keys(readObject(settings.targets)).length > 0 ? readObject(settings.targets) : allocationBuckets.defaultTargets()
-    const fallbackAnnualReturnPcts = Object.keys(readObject(settings.annualReturnPcts)).length > 0 ? readObject(settings.annualReturnPcts) : contributionExperiment.defaultAnnualReturnPcts()
+    const fallbackTargets =
+      Object.keys(readObject(settings.targets)).length > 0
+        ? readObject(settings.targets)
+        : allocationBuckets.defaultTargets()
+    const fallbackAnnualReturnPcts =
+      Object.keys(readObject(settings.annualReturnPcts)).length > 0
+        ? readObject(settings.annualReturnPcts)
+        : contributionExperiment.defaultAnnualReturnPcts()
     const accountId = isEditMode ? cleanText(form.accountId) : cleanText(settings.accountId)
     const targets = isEditMode ? readTargetSettings(form, fallbackTargets) : fallbackTargets
     const preferredHoldingIds = isEditMode ? readPreferredHoldingIds(form) : readObject(settings.preferredHoldingIds)
-    const annualReturnPcts = isEditMode ? readAnnualReturnPcts(form, fallbackAnnualReturnPcts) : fallbackAnnualReturnPcts
-    const contributionAmount = isEditMode ? readPositiveNumber(form.contributionAmount, '첫 달 추가금') : readNumber(previousSummary.contributionAmount)
+    const annualReturnPcts = isEditMode
+      ? readAnnualReturnPcts(form, fallbackAnnualReturnPcts)
+      : fallbackAnnualReturnPcts
+    const contributionAmount = isEditMode
+      ? readPositiveNumber(form.contributionAmount, '첫 달 추가금')
+      : readNumber(previousSummary.contributionAmount)
     const monthlyContributionAmount = isEditMode
       ? readNumber(form.monthlyContributionAmount)
-      : readNumber(settings.monthlyContributionAmount || previousSummary.monthlyContributionAmount || simulationRecord.get('monthlyContribution'))
+      : readNumber(
+          settings.monthlyContributionAmount
+            || previousSummary.monthlyContributionAmount
+            || simulationRecord.get('monthlyContribution')
+        )
     const projectionMonths = isEditMode
       ? readBoundedInteger(form.projectionMonths, 12, 1, 360)
       : Math.max(1, Math.floor(readNumber(settings.projectionMonths || previousSummary.projectionMonths || 12)))
     const reserveCashAmount = isEditMode ? readNumber(form.reserveCashAmount) : readNumber(settings.reserveCashAmount)
-    const minimumOrderAmount = isEditMode ? readNumber(form.minimumOrderAmount) : readNumber(settings.minimumOrderAmount)
+    const minimumOrderAmount = isEditMode
+      ? readNumber(form.minimumOrderAmount)
+      : readNumber(settings.minimumOrderAmount)
     const priceMode = normalizePriceMode(isEditMode ? form.priceMode : settings.priceMode || previousSummary.priceMode)
-    const priceChangePct = priceMode === 'scenario' ? readNumber(isEditMode ? form.priceChangePct : settings.priceChangePct) : 0
+    const priceChangePct =
+      priceMode === 'scenario' ? readNumber(isEditMode ? form.priceChangePct : settings.priceChangePct) : 0
     const createActions = isEditMode && cleanText(form.createActions) === 'on'
     const nextName = isEditMode ? requireText(form.name, '실험 이름') : cleanText(simulationRecord.get('name'))
 
@@ -621,7 +723,8 @@
     if (minimumOrderAmount < 0) throw new Error('최소 주문금액은 0 이상이어야 합니다.')
     if (targetTotal(targets) !== 100) throw new Error('목표 비중 합계는 100%여야 합니다.')
 
-    let latestUsdKrwRate = readNumber(isEditMode ? form.usdKrwRate : settings.latestUsdKrwRate) || readLatestUsdKrwRate()
+    let latestUsdKrwRate =
+      readNumber(isEditMode ? form.usdKrwRate : settings.latestUsdKrwRate) || readLatestUsdKrwRate()
     const holdings = readHoldings(userId, accountId, latestUsdKrwRate)
     if (holdings.length === 0) throw new Error('계산할 보유 종목이 없습니다.')
 
@@ -687,7 +790,8 @@
     })
     if (isEditMode) nextSettings.editedAt = today
     if (Object.keys(readObject(nextSettings.initialSummary)).length === 0) nextSettings.initialSummary = previousSummary
-    if (!cleanText(nextSettings.initialStartDate)) nextSettings.initialStartDate = String(simulationRecord.get('startDate') || today)
+    if (!cleanText(nextSettings.initialStartDate))
+      nextSettings.initialStartDate = String(simulationRecord.get('startDate') || today)
     let actionCount = 0
 
     $app.runInTransaction(function (txApp) {

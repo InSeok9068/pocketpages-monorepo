@@ -30,9 +30,15 @@
   const requestedSort = String(request.url.query.sort || 'recent').trim()
   const requestedLimit = Number(request.url.query.limit || 50)
   const maxLibraryLimit = 5000
-  const statusFilter = requestedStatus === 'queued' || requestedStatus === 'reading' || requestedStatus === 'finished' ? requestedStatus : 'all'
+  const statusFilter =
+    requestedStatus === 'queued' || requestedStatus === 'reading' || requestedStatus === 'finished'
+      ? requestedStatus
+      : 'all'
   const sortMode = requestedSort === 'title' ? 'title' : 'recent'
-  const visibleLimit = isNaN(requestedLimit) || requestedLimit < 1 ? 50 : Math.min(Math.max(Math.round(requestedLimit), 50), maxLibraryLimit)
+  const visibleLimit =
+    isNaN(requestedLimit) || requestedLimit < 1
+      ? 50
+      : Math.min(Math.max(Math.round(requestedLimit), 50), maxLibraryLimit)
   const nextLimit = Math.min(visibleLimit + 50, maxLibraryLimit)
   const normalizedQuery = queryText.toLowerCase()
 
@@ -58,9 +64,12 @@
 
     if (normalizedQuery) {
       query.andWhere(
-        $dbx.exp("(instr(lower(coalesce(books.title, '')), {:query}) > 0 OR instr(lower(coalesce(books.author, '')), {:query}) > 0)", {
-          query: normalizedQuery,
-        })
+        $dbx.exp(
+          "(instr(lower(coalesce(books.title, '')), {:query}) > 0 OR instr(lower(coalesce(books.author, '')), {:query}) > 0)",
+          {
+            query: normalizedQuery,
+          }
+        )
       )
     }
 
@@ -142,18 +151,33 @@
     .where($dbx.exp('book_shelves.user_id = {:userId}', { userId: userId }))
     .one(totalShelfResult)
 
-  applyLibraryWhere($app.db().select('count(*) as total').from('book_shelves').innerJoin('books', $dbx.exp('books.id = book_shelves.book_id'))).one(totalMatchedResult)
+  applyLibraryWhere(
+    $app
+      .db()
+      .select('count(*) as total')
+      .from('book_shelves')
+      .innerJoin('books', $dbx.exp('books.id = book_shelves.book_id'))
+  ).one(totalMatchedResult)
 
   const libraryQuery = applyLibraryWhere(
     $app
       .db()
-      .select('books.id as bookId', 'books.title as title', 'books.author as author', 'books.book_image_url as coverUrl', 'book_shelves.status as status')
+      .select(
+        'books.id as bookId',
+        'books.title as title',
+        'books.author as author',
+        'books.book_image_url as coverUrl',
+        'book_shelves.status as status'
+      )
       .from('book_shelves')
       .innerJoin('books', $dbx.exp('books.id = book_shelves.book_id'))
   )
 
   if (sortMode === 'title') {
-    libraryQuery.orderBy("lower(coalesce(nullif(books.title_sort, ''), books.title, '')) ASC", "lower(coalesce(books.title, '')) ASC")
+    libraryQuery.orderBy(
+      "lower(coalesce(nullif(books.title_sort, ''), books.title, '')) ASC",
+      "lower(coalesce(books.title, '')) ASC"
+    )
   } else {
     libraryQuery.orderBy('book_shelves.last_read_at DESC', 'book_shelves.updated DESC')
   }
@@ -197,18 +221,23 @@
     <div>
       <div class="flex items-center gap-3">
         <h1 class="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">도서함</h1>
-        <p class="inline-flex items-center rounded-full bg-white/78 px-3 py-1.5 text-sm font-medium text-stone-600 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]"><%= totalMatchedBookCount %>권</p>
+        <p
+          class="inline-flex items-center rounded-full bg-white/78 px-3 py-1.5 text-sm font-medium text-stone-600 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+          <%= totalMatchedBookCount %>권
+        </p>
       </div>
     </div>
   </div>
 
   <% if (flashMessage) { %>
-  <section class="rounded-[1.6rem] border border-stone-200 bg-white/85 px-5 py-4 text-sm text-stone-700 shadow-sm backdrop-blur-sm">
+  <section
+    class="rounded-[1.6rem] border border-stone-200 bg-white/85 px-5 py-4 text-sm text-stone-700 shadow-sm backdrop-blur-sm">
     <%= flashMessage %>
   </section>
   <% } %>
 
-  <section class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
+  <section
+    class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
     <% if (hasLibraryBooks) { %>
     <div class="mb-5 space-y-3">
       <form
@@ -239,7 +268,8 @@
           </button>
         </div>
 
-        <div class="-mx-1 [scrollbar-width:none] overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          class="-mx-1 [scrollbar-width:none] overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <div class="flex w-max min-w-full items-center gap-2">
             <a
               href="<%= buildLibraryHref({ status: 'all', limit: 50 }) %>"
@@ -326,7 +356,9 @@
         </div>
         <div class="mt-3 min-w-0 space-y-1">
           <h2 class="m-0 min-w-0 text-sm leading-5 font-semibold break-words text-stone-950"><%= book.title %></h2>
-          <p class="m-0 text-[12px] leading-5 font-medium text-stone-500"><%= book.author ? book.author + ' · ' : '' %><%= book.statusLabel %></p>
+          <p class="m-0 text-[12px] leading-5 font-medium text-stone-500">
+            <%= book.author ? book.author + ' · ' : '' %><%= book.statusLabel %>
+          </p>
         </div>
       </a>
       <% } %>
@@ -358,7 +390,8 @@
     </div>
     <% } %>
     <% } else { %>
-    <div class="rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+    <div
+      class="rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
       아직 도서함에 담긴 책이 없습니다. 메인에서 EPUB를 올리면 이곳에 책이 쌓입니다.
     </div>
     <% } %>

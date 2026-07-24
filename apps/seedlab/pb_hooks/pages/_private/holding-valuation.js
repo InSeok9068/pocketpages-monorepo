@@ -51,7 +51,8 @@ function readUsdAmountFromPrice(raw, sourceKey) {
 
   if (sourceKey === 'marketValueSource' && quantity > 0 && lastPrice > 0) return quantity * lastPrice
   if (sourceKey === 'costAmountSource' && quantity > 0 && averagePrice > 0) return quantity * averagePrice
-  if (sourceKey === 'profitLossSource' && quantity > 0 && lastPrice > 0 && averagePrice > 0) return (lastPrice - averagePrice) * quantity
+  if (sourceKey === 'profitLossSource' && quantity > 0 && lastPrice > 0 && averagePrice > 0)
+    return (lastPrice - averagePrice) * quantity
   return 0
 }
 

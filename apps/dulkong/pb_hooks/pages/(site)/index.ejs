@@ -29,12 +29,16 @@
         href="#home"
         class="inline-flex items-center gap-2 text-[#292923] no-underline"
         aria-label="둘콩 홈">
-        <span class="flex h-9 w-9 items-center justify-center rounded-[14px] bg-[#b9d986] text-[#33451e] shadow-[0_6px_16px_rgba(92,120,51,0.18)]">
+        <span
+          class="flex h-9 w-9 items-center justify-center rounded-[14px] bg-[#b9d986] text-[#33451e] shadow-[0_6px_16px_rgba(92,120,51,0.18)]">
           <span class="i-lucide-heart h-4.5 w-4.5"></span>
         </span>
         <span class="text-xl font-extrabold tracking-[-0.04em]">둘콩</span>
       </a>
-      <span class="rounded-full bg-white px-3 py-2 text-xs font-bold text-[#71834f] shadow-[0_5px_18px_rgba(58,59,51,0.08)]"><%= profiles.current.name %></span>
+      <span
+        class="rounded-full bg-white px-3 py-2 text-xs font-bold text-[#71834f] shadow-[0_5px_18px_rgba(58,59,51,0.08)]">
+        <%= profiles.current.name %>
+      </span>
     </header>
 
     <main class="mt-5 space-y-7">
@@ -62,12 +66,16 @@
               <%= relationship ? relationship.dayLabel.slice(1) + '일' : '첫날 대기 중' %>
             </h2>
           </div>
-          <span class="flex h-12 w-12 items-center justify-center rounded-[18px] bg-white/65 text-[#567336]"><span class="i-lucide-calendar-heart h-6 w-6"></span></span>
+          <span class="flex h-12 w-12 items-center justify-center rounded-[18px] bg-white/65 text-[#567336]">
+            <span class="i-lucide-calendar-heart h-6 w-6"></span>
+          </span>
         </div>
         <div class="relative mt-8 flex items-center justify-between border-t border-[#9fbd6f]/45 pt-4">
           <div>
             <p class="m-0 text-xs font-semibold text-[#6d8053]">다음 기념일</p>
-            <p class="mt-1 mb-0 text-sm font-extrabold text-[#3a4d25]"><%= nextAnniversary ? nextAnniversary.title + ' · ' + nextAnniversary.dayLabel : '우리의 날을 추가해 보세요' %></p>
+            <p class="mt-1 mb-0 text-sm font-extrabold text-[#3a4d25]">
+              <%= nextAnniversary ? nextAnniversary.title + ' · ' + nextAnniversary.dayLabel : '우리의 날을 추가해 보세요' %>
+            </p>
           </div>
           <a
             href="/us"
@@ -83,7 +91,9 @@
           <a
             href="/memories"
             class="flex items-center gap-3 rounded-[22px] border border-[#ebe9df] bg-white p-4 text-inherit no-underline shadow-[0_8px_24px_rgba(48,49,43,0.055)]">
-            <span class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[#fff0e7] text-[#d27355]"><span class="i-lucide-camera h-5 w-5"></span></span>
+            <span class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[#fff0e7] text-[#d27355]">
+              <span class="i-lucide-camera h-5 w-5"></span>
+            </span>
             <span>
               <span class="block text-[13px] font-bold text-[#88877d]">오늘의</span>
               <span class="block text-[15px] font-extrabold">사진 올리기</span>
@@ -92,7 +102,9 @@
           <a
             href="/chat"
             class="flex items-center gap-3 rounded-[22px] border border-[#ebe9df] bg-white p-4 text-inherit no-underline shadow-[0_8px_24px_rgba(48,49,43,0.055)]">
-            <span class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[#e9f0ff] text-[#627fb5]"><span class="i-lucide-message-circle h-5 w-5"></span></span>
+            <span class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[#e9f0ff] text-[#627fb5]">
+              <span class="i-lucide-message-circle h-5 w-5"></span>
+            </span>
             <span>
               <span class="block text-[13px] font-bold text-[#88877d]"><%= profiles.partner.name %>에게</span>
               <span class="block text-[15px] font-extrabold">대화 보내기</span>
@@ -127,7 +139,10 @@
               src="<%= photo.imageUrl %>"
               alt="<%= photo.caption %>"
               class="h-full w-full object-cover" />
-            <span class="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/65 to-transparent px-2 pt-8 pb-2 text-[11px] font-bold text-white"><%= photo.caption %></span>
+            <span
+              class="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/65 to-transparent px-2 pt-8 pb-2 text-[11px] font-bold text-white">
+              <%= photo.caption %>
+            </span>
           </a>
           <% }) %>
         </div>
@@ -154,13 +169,18 @@
           href="/chat"
           class="block rounded-[24px] border border-[#ebe9df] bg-white p-4 text-inherit no-underline shadow-[0_9px_26px_rgba(48,49,43,0.06)]">
           <div class="flex items-center gap-3">
-            <span class="<%= profiles.partner.colorClass %> flex h-12 w-12 items-center justify-center rounded-full text-xl"><%= profiles.partner.emoji %></span>
+            <span
+              class="<%= profiles.partner.colorClass %> flex h-12 w-12 items-center justify-center rounded-full text-xl">
+              <%= profiles.partner.emoji %>
+            </span>
             <div class="min-w-0 flex-1">
               <div class="flex justify-between gap-3">
                 <strong class="text-[15px]"><%= profiles.partner.name %></strong>
                 <time class="text-[11px] text-[#aaa99f]"><%= lastMessage ? lastMessage.timeLabel : '' %></time>
               </div>
-              <p class="mt-1 mb-0 truncate text-sm text-[#77766d]"><%= lastMessage ? lastMessage.body : '아직 대화가 없어요. 첫 인사를 보내 보세요.' %></p>
+              <p class="mt-1 mb-0 truncate text-sm text-[#77766d]">
+                <%= lastMessage ? lastMessage.body : '아직 대화가 없어요. 첫 인사를 보내 보세요.' %>
+              </p>
             </div>
             <span class="i-lucide-chevron-right h-4.5 w-4.5 text-[#b3b2a8]"></span>
           </div>

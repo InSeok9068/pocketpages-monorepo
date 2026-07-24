@@ -99,7 +99,8 @@
   const storedFileName = bookFileRecord ? String(bookFileRecord.get('stored_file') || '').trim() : ''
   const bookFileId = bookFileRecord ? String(bookFileRecord.get('id') || '').trim() : ''
   const bookFileHash = bookFileRecord ? String(bookFileRecord.get('file_hash') || '').trim() : ''
-  const epubReaderUrl = bookFileRecord && storedFileName ? '/xapi/books/' + encodeURIComponent(bookId) + '/read-file' : ''
+  const epubReaderUrl =
+    bookFileRecord && storedFileName ? '/xapi/books/' + encodeURIComponent(bookId) + '/read-file' : ''
 
   if (!epubReaderUrl) {
     dbg('page/books/[bookId]/read:redirect', {
@@ -602,7 +603,9 @@
         <div class="mb-2.5 flex items-start justify-between gap-3">
           <div>
             <h2 class="text-[15px] font-semibold text-stone-950">읽기 설정</h2>
-            <p class="mt-0.5 text-[10px] leading-snug text-stone-500">EPUB 형식에 따라 일부 설정은 다르게 보일 수 있어요.</p>
+            <p class="mt-0.5 text-[10px] leading-snug text-stone-500">
+              EPUB 형식에 따라 일부 설정은 다르게 보일 수 있어요.
+            </p>
           </div>
           <button
             type="button"
@@ -830,11 +833,17 @@
 
         <div class="max-h-[60vh] overflow-y-auto">
           <template x-if="highlightsLoading">
-            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">문구를 불러오는 중입니다.</p>
+            <p
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              문구를 불러오는 중입니다.
+            </p>
           </template>
 
           <template x-if="!highlightsLoading && !highlights.length">
-            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">아직 저장한 문구가 없습니다.</p>
+            <p
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              아직 저장한 문구가 없습니다.
+            </p>
           </template>
 
           <div
@@ -925,11 +934,17 @@
 
         <div class="max-h-[60vh] overflow-y-auto">
           <template x-if="bookmarksLoading">
-            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">책갈피를 불러오는 중입니다.</p>
+            <p
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              책갈피를 불러오는 중입니다.
+            </p>
           </template>
 
           <template x-if="!bookmarksLoading && !bookmarks.length">
-            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">아직 저장한 책갈피가 없습니다.</p>
+            <p
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              아직 저장한 책갈피가 없습니다.
+            </p>
           </template>
 
           <div
@@ -939,7 +954,8 @@
             <template
               x-for="bookmark in bookmarks"
               :key="bookmark.id">
-              <div class="relative rounded-[1.25rem] bg-[#fbf7ef] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
+              <div
+                class="relative rounded-[1.25rem] bg-[#fbf7ef] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
                 <button
                   type="button"
                   x-on:click="goToBookmark(bookmark)"
@@ -974,7 +990,8 @@
     x-cloak
     class="fixed inset-x-0 bottom-0 z-50 px-3"
     style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem)">
-    <div class="mx-auto max-w-3xl rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.96)] px-4 py-3 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
+    <div
+      class="mx-auto max-w-3xl rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.96)] px-4 py-3 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
       <div class="flex items-start gap-3">
         <div class="min-w-0 flex-1">
           <p class="mb-1 text-[11px] font-semibold tracking-[0.18em] text-stone-500">선택한 문구</p>
@@ -1024,7 +1041,8 @@
     x-cloak
     class="fixed inset-x-0 bottom-0 z-50 px-3"
     style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem)">
-    <div class="mx-auto max-w-3xl rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.96)] px-4 py-4 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
+    <div
+      class="mx-auto max-w-3xl rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.96)] px-4 py-4 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div class="min-w-0">
           <p class="text-sm font-semibold text-stone-950">마지막까지 읽은 것 같아요.</p>
@@ -1072,7 +1090,8 @@
     x-cloak
     class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.21)]">
     <div class="ios-safe-screen mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
-      <div class="w-full rounded-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
+      <div
+        class="w-full rounded-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
         <div class="mb-3 flex items-center justify-between gap-3">
           <div>
             <h2 class="text-base font-semibold text-stone-950">읽어주기</h2>
@@ -1092,7 +1111,10 @@
 
         <div class="space-y-4">
           <template x-if="!readAloudSupported">
-            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">이 브라우저는 읽어주기 기능을 지원하지 않습니다.</p>
+            <p
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              이 브라우저는 읽어주기 기능을 지원하지 않습니다.
+            </p>
           </template>
 
           <template x-if="readAloudSupported">
@@ -1129,7 +1151,8 @@
                   class="block w-full accent-stone-900" />
               </label>
 
-              <div class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              <div
+                class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
                 현재 위치와 가장 가까운 문단부터 현재 챕터 끝까지 읽습니다.
               </div>
             </div>
@@ -1229,7 +1252,10 @@
 
         <div class="max-h-[60vh] overflow-y-auto">
           <template x-if="!searchResults.length && !searching && !searchMessage">
-            <p class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">검색어를 입력하면 책 전체를 훑어서 결과를 보여줍니다.</p>
+            <p
+              class="rounded-[1.25rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+              검색어를 입력하면 책 전체를 훑어서 결과를 보여줍니다.
+            </p>
           </template>
 
           <div
@@ -1331,7 +1357,8 @@
     x-cloak
     class="fixed inset-0 z-40 bg-[rgba(24,19,16,0.21)]">
     <div class="ios-safe-screen mx-auto flex min-h-screen max-w-3xl items-start justify-center px-4 pt-20 sm:px-6">
-      <div class="w-full rounded-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
+      <div
+        class="w-full rounded-[1.75rem] border border-stone-200/80 bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_24px_60px_rgba(24,19,16,0.16)]">
         <div class="mb-3 flex items-center justify-between gap-3">
           <div>
             <h2 class="text-base font-semibold text-stone-950">인상 깊은 문구 추가</h2>

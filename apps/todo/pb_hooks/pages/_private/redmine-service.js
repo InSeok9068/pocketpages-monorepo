@@ -66,7 +66,10 @@ function getIssue(config, issueId) {
     })
 
     if (statusesResult.statusCode >= 200 && statusesResult.statusCode < 300) {
-      issue.allowed_statuses = statusesResult.json && Array.isArray(statusesResult.json.issue_statuses) ? statusesResult.json.issue_statuses : []
+      issue.allowed_statuses =
+        statusesResult.json && Array.isArray(statusesResult.json.issue_statuses)
+          ? statusesResult.json.issue_statuses
+          : []
     }
   }
 

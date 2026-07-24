@@ -30,7 +30,8 @@ function buildSearchText(values) {
  */
 function normalizeAssetClass(value) {
   const assetClass = cleanText(value)
-  if (assetClass === 'equity' || assetClass === 'fixed_income' || assetClass === 'cash' || assetClass === 'alternative') return assetClass
+  if (assetClass === 'equity' || assetClass === 'fixed_income' || assetClass === 'cash' || assetClass === 'alternative')
+    return assetClass
   return ''
 }
 
@@ -41,7 +42,15 @@ function normalizeAssetClass(value) {
  */
 function normalizeAssetType(value) {
   const assetType = cleanText(value)
-  if (assetType === 'stock' || assetType === 'etf' || assetType === 'bond' || assetType === 'index' || assetType === 'cash' || assetType === 'fund') return assetType
+  if (
+    assetType === 'stock'
+    || assetType === 'etf'
+    || assetType === 'bond'
+    || assetType === 'index'
+    || assetType === 'cash'
+    || assetType === 'fund'
+  )
+    return assetType
   return ''
 }
 
@@ -79,7 +88,14 @@ function classifyAsset(input) {
   const source = input || {}
   const explicitClass = normalizeAssetClass(source.assetClass)
   const explicitType = normalizeAssetType(source.assetType)
-  const searchText = buildSearchText([source.symbol, source.name, source.displayName, source.productType, source.securityType, source.category])
+  const searchText = buildSearchText([
+    source.symbol,
+    source.name,
+    source.displayName,
+    source.productType,
+    source.securityType,
+    source.category,
+  ])
   let assetType = explicitType || 'stock'
   let assetClass = explicitClass || 'equity'
   let confidence = explicitClass || explicitType ? 0.95 : 0.65
@@ -96,7 +112,10 @@ function classifyAsset(input) {
     if (assetType === 'cash' || hasKeyword(searchText, ['CASH', '현금', '예수금', 'MMF', 'RP'])) {
       assetClass = 'cash'
       confidence = 0.9
-    } else if (assetType === 'bond' || hasKeyword(searchText, ['BOND', '채권', '국채', '회사채', 'TREASURY', 'TLT', 'IEF', 'SHY'])) {
+    } else if (
+      assetType === 'bond'
+      || hasKeyword(searchText, ['BOND', '채권', '국채', '회사채', 'TREASURY', 'TLT', 'IEF', 'SHY'])
+    ) {
       assetClass = 'fixed_income'
       confidence = assetType === 'etf' ? 0.8 : 0.9
     } else if (hasKeyword(searchText, ['GOLD', '금', '원자재', 'COMMODITY', 'REIT', '리츠'])) {
@@ -111,7 +130,10 @@ function classifyAsset(input) {
   return {
     assetType,
     assetClass,
-    classificationSource: normalizeClassificationSource(source.classificationSource, explicitClass || explicitType ? 'manual' : 'auto'),
+    classificationSource: normalizeClassificationSource(
+      source.classificationSource,
+      explicitClass || explicitType ? 'manual' : 'auto'
+    ),
     classificationConfidence: confidence,
   }
 }

@@ -2,7 +2,17 @@
 
 type DateutilInput = Date | string | number | import('dayjs').Dayjs
 
-type DateutilFormat = 'YYYY-MM-DD' | 'YYYY년 MM월 DD일' | 'YYYY-MM-DD HH:mm:ss' | 'YYYY-MM-DD HH:mm' | 'HH:mm:ss' | 'HH:mm' | 'YYYY-MM' | 'YYYY년 MM월' | 'YYYYMMDD' | 'YYYYMMDDHHmmss'
+type DateutilFormat =
+  | 'YYYY-MM-DD'
+  | 'YYYY년 MM월 DD일'
+  | 'YYYY-MM-DD HH:mm:ss'
+  | 'YYYY-MM-DD HH:mm'
+  | 'HH:mm:ss'
+  | 'HH:mm'
+  | 'YYYY-MM'
+  | 'YYYY년 MM월'
+  | 'YYYYMMDD'
+  | 'YYYYMMDDHHmmss'
 
 interface DateutilApi {
   /** 자주 쓰는 날짜 포맷 문자열입니다. */

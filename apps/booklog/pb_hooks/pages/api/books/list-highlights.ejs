@@ -45,11 +45,18 @@
     $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
 
     if (bookFileId) {
-      const highlightRecords = $app.findRecordsByFilter('book_highlights', 'user_id = {:userId} && book_id = {:bookId} && file_id = {:bookFileId}', '-highlighted_at,-created', 100, 0, {
-        userId: userId,
-        bookId: bookId,
-        bookFileId: bookFileId,
-      })
+      const highlightRecords = $app.findRecordsByFilter(
+        'book_highlights',
+        'user_id = {:userId} && book_id = {:bookId} && file_id = {:bookFileId}',
+        '-highlighted_at,-created',
+        100,
+        0,
+        {
+          userId: userId,
+          bookId: bookId,
+          bookFileId: bookFileId,
+        }
+      )
 
       for (let index = 0; index < highlightRecords.length; index += 1) {
         const highlightRecord = highlightRecords[index]

@@ -6,7 +6,10 @@
   dbg('todo/xapi/notifications/read:start', { userId, notificationId })
   try {
     if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
-    const notification = $app.findFirstRecordByFilter('notifications', 'id = {:notificationId} && user = {:userId}', { notificationId, userId })
+    const notification = $app.findFirstRecordByFilter('notifications', 'id = {:notificationId} && user = {:userId}', {
+      notificationId,
+      userId,
+    })
     notification.set('read', true)
     $app.save(notification)
     info('todo/xapi/notifications/read:success', { userId, notificationId })

@@ -13,7 +13,8 @@
   class="relative mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col bg-[#f7f5ee] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
   data-signals="<%= stringify({ draft: '', clientMessageId: '', chatRevision: 0, chatHandledRevision: 0, chatSending: false, chatAtBottom: true, chatHasNewMessage: false, messageHasMore: messagePage.hasMore, messageHistoryLoading: false, oldestMessageCreated: oldestMessage ? oldestMessage.createdAt : '', oldestMessageId: oldestMessage ? oldestMessage.id : '' }) %>"
   data-effect="if ($chatRevision && $chatRevision !== $chatHandledRevision) { $chatHandledRevision = $chatRevision; if ($chatAtBottom) @get('/xapi/messages/list'); else $chatHasNewMessage = true }">
-  <header class="shrink-0 border-b border-[#e8e5da] bg-[#fbfaf6]/92 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 backdrop-blur-md">
+  <header
+    class="shrink-0 border-b border-[#e8e5da] bg-[#fbfaf6]/92 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 backdrop-blur-md">
     <div class="flex items-center gap-3">
       <span
         class="<%= profiles.partner.colorClass %> relative flex h-11 w-11 items-center justify-center rounded-full text-lg"
@@ -79,7 +80,8 @@
     }
 
     window.dulkongScrollChatToBottom()
-    if (document.readyState !== 'complete') window.addEventListener('load', window.dulkongScrollChatToBottom, { once: true })
+    if (document.readyState !== 'complete')
+      window.addEventListener('load', window.dulkongScrollChatToBottom, { once: true })
     setTimeout(window.dulkongScrollChatToBottom, 100)
   </script>
   <%- include('app-bottom-nav.ejs', { currentPath: '/chat' }) %>

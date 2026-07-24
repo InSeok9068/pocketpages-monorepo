@@ -57,7 +57,15 @@ function findHighlightBookTitle(highlightRecord) {
     const bookRecord = $app.findRecordById('books', bookId)
     return String(bookRecord && bookRecord.get('title') ? bookRecord.get('title') : '제목 없음').trim() || '제목 없음'
   } catch (exception) {
-    $app.logger().warn('jobs/highlight-reminder:find-book-failed', 'bookId', bookId, 'error', String(exception && exception.message ? exception.message : exception))
+    $app
+      .logger()
+      .warn(
+        'jobs/highlight-reminder:find-book-failed',
+        'bookId',
+        bookId,
+        'error',
+        String(exception && exception.message ? exception.message : exception)
+      )
     return '제목 없음'
   }
 }
@@ -68,7 +76,13 @@ function findHighlightBookTitle(highlightRecord) {
  * @returns {Array<any>} 알림 대상 user_settings 목록
  */
 function findHighlightReminderSettings() {
-  return $app.findRecordsByFilter('user_settings', 'push_enabled = true && highlight_push_cycle > 0', '-updated', 500, 0)
+  return $app.findRecordsByFilter(
+    'user_settings',
+    'push_enabled = true && highlight_push_cycle > 0',
+    '-updated',
+    500,
+    0
+  )
 }
 
 /**
@@ -108,7 +122,15 @@ function findHighlightRecords(userId) {
       userId: userId,
     })
   } catch (exception) {
-    $app.logger().error('jobs/highlight-reminder:find-highlights-failed', 'userId', String(userId || '').trim(), 'error', String(exception && exception.message ? exception.message : exception))
+    $app
+      .logger()
+      .error(
+        'jobs/highlight-reminder:find-highlights-failed',
+        'userId',
+        String(userId || '').trim(),
+        'error',
+        String(exception && exception.message ? exception.message : exception)
+      )
   }
 
   return []
@@ -143,7 +165,11 @@ function findReminderHighlightRecord(userId) {
     return null
   }
 
-  const recentHighlightIds = pushSendLogService.getSentHighlightIdsWithinDays(userId, NOTIFICATION_KEY, RECENT_HIGHLIGHT_LOOKBACK_DAYS)
+  const recentHighlightIds = pushSendLogService.getSentHighlightIdsWithinDays(
+    userId,
+    NOTIFICATION_KEY,
+    RECENT_HIGHLIGHT_LOOKBACK_DAYS
+  )
   const recentHighlightIdMap = {}
 
   for (let index = 0; index < recentHighlightIds.length; index += 1) {
@@ -307,7 +333,17 @@ function sendReminderForUser(settingsRecord) {
     payloadJson: response,
   })
 
-  $app.logger().info('jobs/highlight-reminder:sent', 'userId', userId, 'highlightId', String(highlightRecord.get('id') || '').trim(), 'bookTitle', bookTitle)
+  $app
+    .logger()
+    .info(
+      'jobs/highlight-reminder:sent',
+      'userId',
+      userId,
+      'highlightId',
+      String(highlightRecord.get('id') || '').trim(),
+      'bookTitle',
+      bookTitle
+    )
 
   return {
     sent: true,
@@ -338,7 +374,15 @@ function run() {
         sentCount += 1
       } else {
         skippedCount += 1
-        $app.logger().info('jobs/highlight-reminder:skip', 'userId', String(result.userId || ''), 'reason', String(result.reason || ''))
+        $app
+          .logger()
+          .info(
+            'jobs/highlight-reminder:skip',
+            'userId',
+            String(result.userId || ''),
+            'reason',
+            String(result.reason || '')
+          )
       }
     } catch (exception) {
       skippedCount += 1
@@ -365,11 +409,27 @@ function run() {
       }
       $app
         .logger()
-        .error('jobs/highlight-reminder:user-failed', 'userId', String(settingsRecord.get('user_id') || '').trim(), 'error', String(exception && exception.message ? exception.message : exception))
+        .error(
+          'jobs/highlight-reminder:user-failed',
+          'userId',
+          String(settingsRecord.get('user_id') || '').trim(),
+          'error',
+          String(exception && exception.message ? exception.message : exception)
+        )
     }
   }
 
-  $app.logger().info('jobs/highlight-reminder:done', 'matchedUserCount', settingsRecords.length, 'sentCount', sentCount, 'skippedCount', skippedCount)
+  $app
+    .logger()
+    .info(
+      'jobs/highlight-reminder:done',
+      'matchedUserCount',
+      settingsRecords.length,
+      'sentCount',
+      sentCount,
+      'skippedCount',
+      skippedCount
+    )
 
   return {
     ready: true,

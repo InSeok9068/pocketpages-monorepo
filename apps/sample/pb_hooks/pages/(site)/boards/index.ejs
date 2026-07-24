@@ -87,7 +87,9 @@
     </header>
 
     <% if (pageData.error) { %>
-    <p class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"><%= pageData.error %></p>
+    <p class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+      <%= pageData.error %>
+    </p>
     <% } else if (!pageData.boardItems.length) { %>
     <p class="text-sm text-stone-500">No boards found.</p>
     <% } else { %>
@@ -120,9 +122,15 @@
         <tbody>
           <% pageData.boardItems.forEach((boardItem) => { %>
           <tr align-top>
-            <td class="border-b border-stone-100 px-4 py-4 font-semibold text-stone-900"><%= boardItem.name || '(untitled board)' %></td>
-            <td class="border-b border-stone-100 px-4 py-4 whitespace-nowrap text-stone-500">/boards/<%= boardItem.slug %></td>
-            <td class="border-b border-stone-100 px-4 py-4 leading-6 text-stone-600"><%= boardItem.description || 'No description' %></td>
+            <td class="border-b border-stone-100 px-4 py-4 font-semibold text-stone-900">
+              <%= boardItem.name || '(untitled board)' %>
+            </td>
+            <td class="border-b border-stone-100 px-4 py-4 whitespace-nowrap text-stone-500">
+              /boards/<%= boardItem.slug %>
+            </td>
+            <td class="border-b border-stone-100 px-4 py-4 leading-6 text-stone-600">
+              <%= boardItem.description || 'No description' %>
+            </td>
             <td class="border-b border-stone-100 px-4 py-4">
               <a
                 href="<%= boardItem.path %>"

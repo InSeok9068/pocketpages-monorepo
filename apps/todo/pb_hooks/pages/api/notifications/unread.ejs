@@ -16,7 +16,14 @@
   }
 
   const userId = String(request.auth.get('id') || '')
-  const unreadNotifications = $app.findRecordsByFilter('notifications', 'user = {:userId} && read = false', '-created', 1, 0, { userId })
+  const unreadNotifications = $app.findRecordsByFilter(
+    'notifications',
+    'user = {:userId} && read = false',
+    '-created',
+    1,
+    0,
+    { userId }
+  )
   const hasUnread = unreadNotifications.length > 0
 
   dbg('todo/api/notifications/unread:response', {

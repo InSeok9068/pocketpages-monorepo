@@ -54,9 +54,21 @@ declare namespace DatastarV1 {
 
   interface RealtimeSender {
     patchElements(elements: string, patchOptions?: PatchElementsOptions, realtimeOptions?: RealtimeOptions): void
-    removeElements(selector: string, patchOptions?: Omit<PatchElementsOptions, 'selector' | 'mode'>, realtimeOptions?: RealtimeOptions): void
-    patchSignals(signals: string | Record<string, any>, patchOptions?: PatchSignalsOptions, realtimeOptions?: RealtimeOptions): void
-    removeSignals(signalKeys: SignalKeyInput, patchOptions?: RemoveSignalsOptions, realtimeOptions?: RealtimeOptions): void
+    removeElements(
+      selector: string,
+      patchOptions?: Omit<PatchElementsOptions, 'selector' | 'mode'>,
+      realtimeOptions?: RealtimeOptions
+    ): void
+    patchSignals(
+      signals: string | Record<string, any>,
+      patchOptions?: PatchSignalsOptions,
+      realtimeOptions?: RealtimeOptions
+    ): void
+    removeSignals(
+      signalKeys: SignalKeyInput,
+      patchOptions?: RemoveSignalsOptions,
+      realtimeOptions?: RealtimeOptions
+    ): void
   }
 
   interface RealtimePayloadBuilders {
@@ -144,9 +156,21 @@ declare namespace DatastarV1 {
     prefetch(urls: string[], options?: ExecuteScriptOptions): void
     realtime: {
       patchElements(elements: string, patchOptions?: PatchElementsOptions, realtimeOptions?: RealtimeOptions): void
-      removeElements(selector: string, patchOptions?: Omit<PatchElementsOptions, 'selector' | 'mode'>, realtimeOptions?: RealtimeOptions): void
-      patchSignals(signals: string | Record<string, any>, patchOptions?: PatchSignalsOptions, realtimeOptions?: RealtimeOptions): void
-      removeSignals(signalKeys: SignalKeyInput, patchOptions?: RemoveSignalsOptions, realtimeOptions?: RealtimeOptions): void
+      removeElements(
+        selector: string,
+        patchOptions?: Omit<PatchElementsOptions, 'selector' | 'mode'>,
+        realtimeOptions?: RealtimeOptions
+      ): void
+      patchSignals(
+        signals: string | Record<string, any>,
+        patchOptions?: PatchSignalsOptions,
+        realtimeOptions?: RealtimeOptions
+      ): void
+      removeSignals(
+        signalKeys: SignalKeyInput,
+        patchOptions?: RemoveSignalsOptions,
+        realtimeOptions?: RealtimeOptions
+      ): void
     }
   }
 }

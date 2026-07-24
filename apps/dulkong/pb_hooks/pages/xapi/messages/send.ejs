@@ -32,7 +32,10 @@
     const profiles = coupleData.getCoupleProfiles($app, request.auth)
     const page = coupleData.getMessagePage($app, userId, { limit: 50 })
     const oldestMessage = page.messages.length ? page.messages[0] : null
-    datastar.patchElements(include('message-list.ejs', { messages: page.messages, partnerName: profiles.partner.name }), { selector: '#message-list', mode: 'outer' })
+    datastar.patchElements(
+      include('message-list.ejs', { messages: page.messages, partnerName: profiles.partner.name }),
+      { selector: '#message-list', mode: 'outer' }
+    )
     datastar.patchSignals({
       draft: '',
       clientMessageId: '',
@@ -53,7 +56,11 @@
       },
     })
   } catch (exception) {
-    error('dulkong/xapi/messages/send:failed', { userId, clientMessageId, error: String(exception.message || exception) })
+    error('dulkong/xapi/messages/send:failed', {
+      userId,
+      clientMessageId,
+      error: String(exception.message || exception),
+    })
     datastar.patchSignals({ chatSending: false })
     patchAppToast(datastar, String(exception.message || '메시지를 보내지 못했어요.'), 'error')
   }

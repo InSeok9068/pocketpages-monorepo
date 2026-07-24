@@ -4,7 +4,9 @@
   const containerClasses = isErrorFlash
     ? 'rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 shadow-sm'
     : 'rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700 shadow-sm'
-  const labelClasses = isErrorFlash ? 'text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-500' : 'text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-600'
+  const labelClasses = isErrorFlash
+    ? 'text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-500'
+    : 'text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-600'
 %>
 <% if (flashMessage) { %>
 <div

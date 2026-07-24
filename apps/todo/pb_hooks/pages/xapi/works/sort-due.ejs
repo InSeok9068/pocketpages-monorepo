@@ -11,14 +11,14 @@
     const updateResult = $app
       .db()
       .newQuery(
-        'WITH ordered AS (' +
-          ' SELECT id, ROW_NUMBER() OVER (' +
-          " ORDER BY CASE WHEN dueDate IS NULL OR dueDate = '' THEN 1 ELSE 0 END, dueDate ASC, sort ASC, created DESC" +
-          ' ) - 1 AS nextSort' +
-          ' FROM works WHERE user = {:userId} AND done = FALSE' +
-          ')' +
-          ' UPDATE works SET sort = (SELECT nextSort FROM ordered WHERE ordered.id = works.id)' +
-          ' WHERE id IN (SELECT id FROM ordered)'
+        'WITH ordered AS ('
+          + ' SELECT id, ROW_NUMBER() OVER ('
+          + " ORDER BY CASE WHEN dueDate IS NULL OR dueDate = '' THEN 1 ELSE 0 END, dueDate ASC, sort ASC, created DESC"
+          + ' ) - 1 AS nextSort'
+          + ' FROM works WHERE user = {:userId} AND done = FALSE'
+          + ')'
+          + ' UPDATE works SET sort = (SELECT nextSort FROM ordered WHERE ordered.id = works.id)'
+          + ' WHERE id IN (SELECT id FROM ordered)'
       )
       .bind({ userId })
       .execute()
@@ -29,7 +29,11 @@
     error('todo/xapi/works/sort-due:failed', { userId, error: errorMessage })
   }
 
-  dbg('todo/xapi/works/sort-due:redirect', { status: 303, redirectTo: '/', message: errorMessage || '마감일순으로 정렬했습니다.' })
+  dbg('todo/xapi/works/sort-due:redirect', {
+    status: 303,
+    redirectTo: '/',
+    message: errorMessage || '마감일순으로 정렬했습니다.',
+  })
   redirect('/', { status: 303, message: errorMessage || '마감일순으로 정렬했습니다.' })
   return
 </script>

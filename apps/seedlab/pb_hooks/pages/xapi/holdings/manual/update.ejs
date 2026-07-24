@@ -88,10 +88,17 @@
   }
 
   function refreshManualSnapshot(txApp, args) {
-    const holdings = txApp.findRecordsByFilter('account_holdings', 'owner = {:owner} && account = {:account}', '-updated', 200, 0, {
-      owner: args.userId,
-      account: args.accountId,
-    })
+    const holdings = txApp.findRecordsByFilter(
+      'account_holdings',
+      'owner = {:owner} && account = {:account}',
+      '-updated',
+      200,
+      0,
+      {
+        owner: args.userId,
+        account: args.accountId,
+      }
+    )
     let holdingTotalValue = 0
     let holdingTotalCost = 0
     let holdingTotalProfitLoss = 0
@@ -106,12 +113,16 @@
     let snapshotRecord = null
 
     try {
-      snapshotRecord = txApp.findFirstRecordByFilter('account_snapshots', 'owner = {:owner} && account = {:account} && snapshotDate >= {:startDate} && snapshotDate <= {:endDate}', {
-        owner: args.userId,
-        account: args.accountId,
-        startDate: dateutil.startOfDay(snapshotDate).toISOString(),
-        endDate: dateutil.endOfDay(snapshotDate).toISOString(),
-      })
+      snapshotRecord = txApp.findFirstRecordByFilter(
+        'account_snapshots',
+        'owner = {:owner} && account = {:account} && snapshotDate >= {:startDate} && snapshotDate <= {:endDate}',
+        {
+          owner: args.userId,
+          account: args.accountId,
+          startDate: dateutil.startOfDay(snapshotDate).toISOString(),
+          endDate: dateutil.endOfDay(snapshotDate).toISOString(),
+        }
+      )
     } catch (exception) {
       snapshotRecord = new Record(txApp.findCollectionByNameOrId('account_snapshots'))
       snapshotRecord.set('owner', args.userId)
@@ -195,11 +206,15 @@
 
     $app.runInTransaction(function (txApp) {
       dbg('seedlab/xapi/holdings/manual/update:db-access', { collection: 'account_holdings', holdingId })
-      const holdingRecord = txApp.findFirstRecordByFilter('account_holdings', 'id = {:id} && owner = {:owner} && source = {:source}', {
-        id: holdingId,
-        owner: userId,
-        source: 'manual',
-      })
+      const holdingRecord = txApp.findFirstRecordByFilter(
+        'account_holdings',
+        'id = {:id} && owner = {:owner} && source = {:source}',
+        {
+          id: holdingId,
+          owner: userId,
+          source: 'manual',
+        }
+      )
       const previousAccountId = String(holdingRecord.get('account') || '')
       txApp.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner}', {
         id: accountId,

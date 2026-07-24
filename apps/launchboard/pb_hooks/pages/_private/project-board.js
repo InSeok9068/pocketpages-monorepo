@@ -1,11 +1,41 @@
 const { dateutil } = require('@pocketpages/utils')
 
 const PROJECT_STATUS_COLUMNS = [
-  { value: 'idea', label: '아이디어', icon: 'i-lucide-lightbulb', iconTone: 'bg-[#fff0c2] text-[#f59f00]', surface: 'bg-[#fffaf0]' },
-  { value: 'building', label: '작업중', icon: 'i-lucide-hammer', iconTone: 'bg-[#eaf3ff] text-[#3182f6]', surface: 'bg-[#f2f7ff]' },
-  { value: 'launched', label: '출시', icon: 'i-lucide-rocket', iconTone: 'bg-[#e9f9ee] text-[#2fbe5f]', surface: 'bg-[#f1fbf4]' },
-  { value: 'paused', label: '보류', icon: 'i-lucide-pause', iconTone: 'bg-[#f3efff] text-[#8b5cf6]', surface: 'bg-[#f8f5ff]' },
-  { value: 'discarded', label: '폐기', icon: 'i-lucide-trash-2', iconTone: 'bg-[#fff0f0] text-[#ff6b6b]', surface: 'bg-[#fff5f5]' },
+  {
+    value: 'idea',
+    label: '아이디어',
+    icon: 'i-lucide-lightbulb',
+    iconTone: 'bg-[#fff0c2] text-[#f59f00]',
+    surface: 'bg-[#fffaf0]',
+  },
+  {
+    value: 'building',
+    label: '작업중',
+    icon: 'i-lucide-hammer',
+    iconTone: 'bg-[#eaf3ff] text-[#3182f6]',
+    surface: 'bg-[#f2f7ff]',
+  },
+  {
+    value: 'launched',
+    label: '출시',
+    icon: 'i-lucide-rocket',
+    iconTone: 'bg-[#e9f9ee] text-[#2fbe5f]',
+    surface: 'bg-[#f1fbf4]',
+  },
+  {
+    value: 'paused',
+    label: '보류',
+    icon: 'i-lucide-pause',
+    iconTone: 'bg-[#f3efff] text-[#8b5cf6]',
+    surface: 'bg-[#f8f5ff]',
+  },
+  {
+    value: 'discarded',
+    label: '폐기',
+    icon: 'i-lucide-trash-2',
+    iconTone: 'bg-[#fff0f0] text-[#ff6b6b]',
+    surface: 'bg-[#fff5f5]',
+  },
 ]
 
 const PROJECT_STATUS_VALUES = PROJECT_STATUS_COLUMNS.map((column) => column.value)

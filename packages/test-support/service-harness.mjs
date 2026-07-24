@@ -212,7 +212,9 @@ function runDataImports(serviceDir, tempDataDir, imports, serviceName) {
     }
 
     if (result.status !== 0) {
-      throw new Error(`[${serviceName}] import failed for ${collection} from ${inputPath} (exitCode=${result.status})\nstdout:\n${result.stdout || ''}\nstderr:\n${result.stderr || ''}`)
+      throw new Error(
+        `[${serviceName}] import failed for ${collection} from ${inputPath} (exitCode=${result.status})\nstdout:\n${result.stdout || ''}\nstderr:\n${result.stderr || ''}`
+      )
     }
   }
 }
@@ -317,7 +319,16 @@ export async function startService(options) {
     throw error
   }
 
-  const args = ['serve', '--dev', '--dir', tempData.tempDataDir, '--hooksDir', path.join(serviceDir, 'pb_hooks'), '--http', `127.0.0.1:${httpPort}`]
+  const args = [
+    'serve',
+    '--dev',
+    '--dir',
+    tempData.tempDataDir,
+    '--hooksDir',
+    path.join(serviceDir, 'pb_hooks'),
+    '--http',
+    `127.0.0.1:${httpPort}`,
+  ]
 
   if (existsSync(path.join(serviceDir, 'pb_public'))) {
     args.push('--publicDir', path.join(serviceDir, 'pb_public'))

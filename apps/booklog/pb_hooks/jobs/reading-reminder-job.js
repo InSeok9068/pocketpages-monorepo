@@ -11,7 +11,13 @@ const MAX_REMINDER_CYCLE_DAYS = 90
  * @returns {Array<any>} 대상 user_settings 목록
  */
 function findReadingReminderSettings() {
-  return $app.findRecordsByFilter('user_settings', 'push_enabled = true && reading_reminder_cycle > 0', '-updated', 500, 0)
+  return $app.findRecordsByFilter(
+    'user_settings',
+    'push_enabled = true && reading_reminder_cycle > 0',
+    '-updated',
+    500,
+    0
+  )
 }
 
 /**
@@ -39,9 +45,16 @@ function getInactivityDays(settingsRecord) {
  */
 function findLatestReadingShelfRecord(userId) {
   try {
-    const shelfRecords = $app.findRecordsByFilter('book_shelves', 'user_id = {:userId} && status = "reading" && last_read_at != ""', '-last_read_at,-updated', 1, 0, {
-      userId: userId,
-    })
+    const shelfRecords = $app.findRecordsByFilter(
+      'book_shelves',
+      'user_id = {:userId} && status = "reading" && last_read_at != ""',
+      '-last_read_at,-updated',
+      1,
+      0,
+      {
+        userId: userId,
+      }
+    )
 
     if (!shelfRecords || shelfRecords.length === 0) {
       return null
@@ -49,7 +62,15 @@ function findLatestReadingShelfRecord(userId) {
 
     return shelfRecords[0]
   } catch (exception) {
-    $app.logger().error('jobs/reading-reminder:find-shelf-failed', 'userId', String(userId || '').trim(), 'error', String(exception && exception.message ? exception.message : exception))
+    $app
+      .logger()
+      .error(
+        'jobs/reading-reminder:find-shelf-failed',
+        'userId',
+        String(userId || '').trim(),
+        'error',
+        String(exception && exception.message ? exception.message : exception)
+      )
   }
 
   return null
@@ -86,7 +107,15 @@ function findShelfBookTitle(shelfRecord) {
 
     return title || '제목 없는 책'
   } catch (exception) {
-    $app.logger().warn('jobs/reading-reminder:find-book-failed', 'bookId', bookId, 'error', String(exception && exception.message ? exception.message : exception))
+    $app
+      .logger()
+      .warn(
+        'jobs/reading-reminder:find-book-failed',
+        'bookId',
+        bookId,
+        'error',
+        String(exception && exception.message ? exception.message : exception)
+      )
   }
 
   return '제목 없는 책'
@@ -275,7 +304,19 @@ function sendReminderForUser(settingsRecord) {
     payloadJson: response,
   })
 
-  $app.logger().info('jobs/reading-reminder:sent', 'userId', userId, 'shelfId', String(shelfRecord.get('id') || '').trim(), 'bookTitle', bookTitle, 'inactiveDays', inactiveDaysSinceLastRead)
+  $app
+    .logger()
+    .info(
+      'jobs/reading-reminder:sent',
+      'userId',
+      userId,
+      'shelfId',
+      String(shelfRecord.get('id') || '').trim(),
+      'bookTitle',
+      bookTitle,
+      'inactiveDays',
+      inactiveDaysSinceLastRead
+    )
 
   return {
     sent: true,
@@ -306,7 +347,15 @@ function run() {
         sentCount += 1
       } else {
         skippedCount += 1
-        $app.logger().info('jobs/reading-reminder:skip', 'userId', String(result.userId || ''), 'reason', String(result.reason || ''))
+        $app
+          .logger()
+          .info(
+            'jobs/reading-reminder:skip',
+            'userId',
+            String(result.userId || ''),
+            'reason',
+            String(result.reason || '')
+          )
       }
     } catch (exception) {
       skippedCount += 1
@@ -333,11 +382,27 @@ function run() {
       }
       $app
         .logger()
-        .error('jobs/reading-reminder:user-failed', 'userId', String(settingsRecord.get('user_id') || '').trim(), 'error', String(exception && exception.message ? exception.message : exception))
+        .error(
+          'jobs/reading-reminder:user-failed',
+          'userId',
+          String(settingsRecord.get('user_id') || '').trim(),
+          'error',
+          String(exception && exception.message ? exception.message : exception)
+        )
     }
   }
 
-  $app.logger().info('jobs/reading-reminder:done', 'matchedUserCount', settingsRecords.length, 'sentCount', sentCount, 'skippedCount', skippedCount)
+  $app
+    .logger()
+    .info(
+      'jobs/reading-reminder:done',
+      'matchedUserCount',
+      settingsRecords.length,
+      'sentCount',
+      sentCount,
+      'skippedCount',
+      skippedCount
+    )
 
   return {
     ready: true,

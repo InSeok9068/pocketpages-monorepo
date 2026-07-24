@@ -12,7 +12,10 @@
   const page = coupleData.getMessagePage($app, userId, { limit: 50 })
   const oldestMessage = page.messages.length ? page.messages[0] : null
   dbg('dulkong/xapi/messages/list:query', { userId })
-  datastar.patchElements(include('message-list.ejs', { messages: page.messages, partnerName: profiles.partner.name }), { selector: '#message-list', mode: 'outer' })
+  datastar.patchElements(include('message-list.ejs', { messages: page.messages, partnerName: profiles.partner.name }), {
+    selector: '#message-list',
+    mode: 'outer',
+  })
   datastar.patchSignals({
     chatAtBottom: true,
     chatHasNewMessage: false,

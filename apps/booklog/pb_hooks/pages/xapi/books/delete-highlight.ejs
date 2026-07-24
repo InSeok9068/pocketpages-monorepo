@@ -47,11 +47,15 @@
     if (!bookId) throw new Error('책 정보가 필요합니다.')
     if (!highlightId) throw new Error('문구 정보가 필요합니다.')
 
-    const highlightRecord = $app.findFirstRecordByFilter('book_highlights', 'id = {:highlightId} && user_id = {:userId} && book_id = {:bookId}', {
-      highlightId: highlightId,
-      userId: userId,
-      bookId: bookId,
-    })
+    const highlightRecord = $app.findFirstRecordByFilter(
+      'book_highlights',
+      'id = {:highlightId} && user_id = {:userId} && book_id = {:bookId}',
+      {
+        highlightId: highlightId,
+        userId: userId,
+        bookId: bookId,
+      }
+    )
 
     $app.delete(highlightRecord)
 

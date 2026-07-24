@@ -17,10 +17,17 @@
     const record = $app.findFirstRecordByFilter('anniversaries', 'id = {:anniversaryId}', { anniversaryId })
     $app.delete(record)
     info('dulkong/xapi/anniversaries/delete:success', { anniversaryId, userId })
-    datastar.patchElements(include('anniversary-list.ejs', { anniversaries: coupleData.listAnniversaries($app) }), { selector: '#anniversary-list', mode: 'outer' })
+    datastar.patchElements(include('anniversary-list.ejs', { anniversaries: coupleData.listAnniversaries($app) }), {
+      selector: '#anniversary-list',
+      mode: 'outer',
+    })
     patchAppToast(datastar, '기념일을 삭제했어요.', 'success')
   } catch (exception) {
-    error('dulkong/xapi/anniversaries/delete:failed', { anniversaryId, userId, error: String(exception.message || exception) })
+    error('dulkong/xapi/anniversaries/delete:failed', {
+      anniversaryId,
+      userId,
+      error: String(exception.message || exception),
+    })
     patchAppToast(datastar, '기념일을 삭제하지 못했어요.', 'error')
   }
 </script>

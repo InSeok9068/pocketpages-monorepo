@@ -100,11 +100,15 @@
       slug,
       userId,
     })
-    task = $app.findFirstRecordByFilter('project_tasks', 'id = {:taskId} && user = {:userId} && project = {:projectId}', {
-      taskId,
-      userId,
-      projectId: String(project.get('id') || ''),
-    })
+    task = $app.findFirstRecordByFilter(
+      'project_tasks',
+      'id = {:taskId} && user = {:userId} && project = {:projectId}',
+      {
+        taskId,
+        userId,
+        projectId: String(project.get('id') || ''),
+      }
+    )
   } catch (exception) {
     project = null
     task = null

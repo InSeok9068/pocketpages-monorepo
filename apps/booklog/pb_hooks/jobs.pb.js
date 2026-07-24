@@ -5,7 +5,13 @@ cronAdd('booklog-reading-reminder', '10 0 * * *', function () {
 
     readingReminderJob.run()
   } catch (exception) {
-    $app.logger().error('jobs/reading-reminder:failed', 'error', String(exception && exception.message ? exception.message : exception))
+    $app
+      .logger()
+      .error(
+        'jobs/reading-reminder:failed',
+        'error',
+        String(exception && exception.message ? exception.message : exception)
+      )
   }
 })
 
@@ -16,7 +22,13 @@ cronAdd('booklog-highlight-reminder', '0 0 * * *', function () {
 
     highlightReminderJob.run()
   } catch (exception) {
-    $app.logger().error('jobs/highlight-reminder:failed', 'error', String(exception && exception.message ? exception.message : exception))
+    $app
+      .logger()
+      .error(
+        'jobs/highlight-reminder:failed',
+        'error',
+        String(exception && exception.message ? exception.message : exception)
+      )
   }
 })
 
@@ -26,7 +38,13 @@ cronAdd('booklog-weekly-reading-nudge', '0 9 * * 0', function () {
 
     weeklyReadingNudgeJob.run()
   } catch (exception) {
-    $app.logger().error('jobs/weekly-reading-nudge:failed', 'error', String(exception && exception.message ? exception.message : exception))
+    $app
+      .logger()
+      .error(
+        'jobs/weekly-reading-nudge:failed',
+        'error',
+        String(exception && exception.message ? exception.message : exception)
+      )
   }
 })
 
@@ -37,7 +55,13 @@ cronAdd('booklog-push-send-log-cleanup', '20 18 * * *', function () {
 
     $app.logger().info('jobs/push-send-log-cleanup:completed', 'deletedCount', String(deletedCount))
   } catch (exception) {
-    $app.logger().error('jobs/push-send-log-cleanup:failed', 'error', String(exception && exception.message ? exception.message : exception))
+    $app
+      .logger()
+      .error(
+        'jobs/push-send-log-cleanup:failed',
+        'error',
+        String(exception && exception.message ? exception.message : exception)
+      )
   }
 })
 
@@ -47,6 +71,12 @@ cronAdd('booklog-reading-session-merge', '30 18 * * *', function () {
 
     readingSessionMergeJob.run()
   } catch (exception) {
-    $app.logger().error('jobs/reading-session-merge:failed', 'error', String(exception && exception.message ? exception.message : exception))
+    $app
+      .logger()
+      .error(
+        'jobs/reading-session-merge:failed',
+        'error',
+        String(exception && exception.message ? exception.message : exception)
+      )
   }
 })

@@ -27,9 +27,14 @@
     })
     const oldestMessage = page.messages.length ? page.messages[0] : null
 
-    datastar.executeScript("var list=document.getElementById('message-list'); if(list) window.dulkongHistoryAnchor={height:list.scrollHeight,top:list.scrollTop};")
+    datastar.executeScript(
+      "var list=document.getElementById('message-list'); if(list) window.dulkongHistoryAnchor={height:list.scrollHeight,top:list.scrollTop};"
+    )
     if (page.messages.length) {
-      datastar.patchElements(include('message-rows.ejs', { messages: page.messages }), { selector: '#message-rows', mode: 'prepend' })
+      datastar.patchElements(include('message-rows.ejs', { messages: page.messages }), {
+        selector: '#message-rows',
+        mode: 'prepend',
+      })
     }
     datastar.patchSignals({
       messageHasMore: page.hasMore,

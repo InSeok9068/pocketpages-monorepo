@@ -100,12 +100,12 @@ function parseOffsetlessStringToUtcMs(value) {
   const kstDate = new Date(utcMs + KST_OFFSET_MS)
 
   if (
-    kstDate.getUTCFullYear() !== year ||
-    kstDate.getUTCMonth() !== month - 1 ||
-    kstDate.getUTCDate() !== day ||
-    kstDate.getUTCHours() !== hour ||
-    kstDate.getUTCMinutes() !== minute ||
-    kstDate.getUTCSeconds() !== second
+    kstDate.getUTCFullYear() !== year
+    || kstDate.getUTCMonth() !== month - 1
+    || kstDate.getUTCDate() !== day
+    || kstDate.getUTCHours() !== hour
+    || kstDate.getUTCMinutes() !== minute
+    || kstDate.getUTCSeconds() !== second
   ) {
     return NaN
   }

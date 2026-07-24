@@ -93,10 +93,17 @@
   function readLatestUsdKrwRate() {
     try {
       dbg('seedlab/accounts/holdings/[holdingId]:db-access', { collection: 'fx_rates' })
-      const records = $app.findRecordsByFilter('fx_rates', 'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}', '-rateAt', 1, 0, {
-        baseCurrency: 'USD',
-        quoteCurrency: 'KRW',
-      })
+      const records = $app.findRecordsByFilter(
+        'fx_rates',
+        'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}',
+        '-rateAt',
+        1,
+        0,
+        {
+          baseCurrency: 'USD',
+          quoteCurrency: 'KRW',
+        }
+      )
       return records.length > 0 ? Number(records[0].get('rate') || 0) : 0
     } catch (exception) {
       dbg('seedlab/accounts/holdings/[holdingId]:fx-rate-missing', { pair: 'USD_KRW' })
@@ -130,17 +137,31 @@
     const savedBucket = readSavedAllocationBucket(holding)
     if (savedBucket) return savedBucket
 
-    const assetClass = normalizeAssetClass(holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none' ? holding.get('assetClassOverride') : asset ? asset.get('assetClass') : '')
+    const assetClass = normalizeAssetClass(
+      holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none'
+        ? holding.get('assetClassOverride')
+        : asset
+          ? asset.get('assetClass')
+          : ''
+    )
     const assetType = String(asset ? asset.get('assetType') : '').toLowerCase()
     const symbol = String(asset ? asset.get('symbol') : '').toUpperCase()
     const name = String(asset ? asset.get('name') : '').toUpperCase()
     const searchText = symbol + ' ' + name
 
     if (assetClass === 'cash' || assetType === 'cash') return 'cash'
-    if (assetClass === 'fixed_income' || assetType === 'bond' || searchText.indexOf('BOND') >= 0 || searchText.indexOf('채권') >= 0) return 'bond'
+    if (
+      assetClass === 'fixed_income'
+      || assetType === 'bond'
+      || searchText.indexOf('BOND') >= 0
+      || searchText.indexOf('채권') >= 0
+    )
+      return 'bond'
     if (searchText.indexOf('GOLD') >= 0 || searchText.indexOf('금') >= 0) return 'gold'
-    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0) return 'real_estate'
-    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0) return 'dividend_stock'
+    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0)
+      return 'real_estate'
+    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0)
+      return 'dividend_stock'
     if (assetClass === 'equity') return 'growth_stock'
     return 'other'
   }
@@ -163,7 +184,9 @@
       id: holdingId,
       owner: userId,
     })
-    const assetRecord = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id: String(holdingRecord.get('asset') || '') })
+    const assetRecord = $app.findFirstRecordByFilter('assets', 'id = {:id}', {
+      id: String(holdingRecord.get('asset') || ''),
+    })
     const accountRecord = $app.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner}', {
       id: String(holdingRecord.get('account') || ''),
       owner: userId,
@@ -198,7 +221,8 @@
       canEditManual: source === 'manual',
       editHref: '/accounts/holdings/' + String(holdingRecord.get('id') || '') + '/edit',
       accountName: String(accountRecord.get('name') || '계좌'),
-      accountCaption: accountTypeLabel(accountRecord.get('accountType')) + ' · ' + String(accountRecord.get('baseCurrency') || 'KRW'),
+      accountCaption:
+        accountTypeLabel(accountRecord.get('accountType')) + ' · ' + String(accountRecord.get('baseCurrency') || 'KRW'),
       symbol: String(assetRecord.get('symbol') || ''),
       assetName: String(assetRecord.get('name') || '종목 정보 없음'),
       currency,
@@ -209,12 +233,16 @@
       profitLossText: (profitLoss > 0 ? '+' : '') + formatAmount(profitLoss, 'KRW') + '원',
       profitLossClass: holdingProfitClass(profitLoss),
       quantityText: formatQuantity(holdingRecord.get('quantity')),
-      currentPriceText: formatAmount(holdingRecord.get('currentPrice'), currency) + (currency === 'USD' ? '달러' : '원'),
+      currentPriceText:
+        formatAmount(holdingRecord.get('currentPrice'), currency) + (currency === 'USD' ? '달러' : '원'),
       sourceValueText: readSourceValueText(currency, raw),
     }
     targetBucketCards = buildTargetBucketCards()
   } catch (exception) {
-    warn('seedlab/accounts/holdings/[holdingId]:db-access-failed', { holdingId, error: String(exception.message || exception) })
+    warn('seedlab/accounts/holdings/[holdingId]:db-access-failed', {
+      holdingId,
+      error: String(exception.message || exception),
+    })
     dbg('seedlab/accounts/holdings/[holdingId]:redirect', {
       status: 303,
       redirectTo: '/accounts',
@@ -249,10 +277,16 @@
         <div class="min-w-0">
           <div class="flex min-w-0 items-center gap-2">
             <p class="truncate text-base font-bold text-[#191f28]"><%= holdingCard.assetName %></p>
-            <span class="<%= holdingCard.allocationTone %> shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold"><%= holdingCard.allocationLabel %></span>
-            <span class="shrink-0 rounded-md bg-[#f2f4f6] px-1.5 py-0.5 text-[11px] font-bold text-[#6b7684]"><%= holdingCard.currency %></span>
+            <span class="<%= holdingCard.allocationTone %> shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold">
+              <%= holdingCard.allocationLabel %>
+            </span>
+            <span class="shrink-0 rounded-md bg-[#f2f4f6] px-1.5 py-0.5 text-[11px] font-bold text-[#6b7684]">
+              <%= holdingCard.currency %>
+            </span>
           </div>
-          <p class="mt-1 text-xs font-medium text-[#8b95a1]"><%= holdingCard.symbol %> · <%= holdingCard.sourceLabel %></p>
+          <p class="mt-1 text-xs font-medium text-[#8b95a1]">
+            <%= holdingCard.symbol %> · <%= holdingCard.sourceLabel %>
+          </p>
         </div>
         <div class="shrink-0 text-right">
           <p class="text-base font-bold text-[#191f28]"><%= holdingCard.marketValueText %></p>

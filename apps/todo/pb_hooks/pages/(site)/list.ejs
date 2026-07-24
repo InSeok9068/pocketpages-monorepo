@@ -17,14 +17,20 @@
   const today = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
   const defaultCreatedFrom = dateutil.formatDate(dateutil.addMonths(today, -3), dateutil.FORMATS.DATE)
   const weekday = new Date(today + 'T00:00:00.000Z').getUTCDay()
-  const weeklyFrom = dateutil.formatDate(dateutil.addDays(today, weekday === 0 ? -6 : 1 - weekday), dateutil.FORMATS.DATE)
+  const weeklyFrom = dateutil.formatDate(
+    dateutil.addDays(today, weekday === 0 ? -6 : 1 - weekday),
+    dateutil.FORMATS.DATE
+  )
   const weeklyTo = dateutil.formatDate(dateutil.addDays(weeklyFrom, 4), dateutil.FORMATS.DATE)
   const query = {
     keyword: String(request.url.query.keyword || '').trim(),
     developer: String(request.url.query.developer || '').trim(),
     state: String(request.url.query.state || '').trim(),
     done: String(request.url.query.done || '').trim(),
-    createdFrom: typeof request.url.query.createdFrom === 'undefined' ? defaultCreatedFrom : readDateQuery(request.url.query.createdFrom),
+    createdFrom:
+      typeof request.url.query.createdFrom === 'undefined'
+        ? defaultCreatedFrom
+        : readDateQuery(request.url.query.createdFrom),
     createdTo: typeof request.url.query.createdTo === 'undefined' ? today : readDateQuery(request.url.query.createdTo),
     updatedFrom: readDateQuery(request.url.query.updatedFrom),
     updatedTo: readDateQuery(request.url.query.updatedTo),
@@ -34,11 +40,23 @@
     query.updatedFrom = weeklyFrom
     query.updatedTo = weeklyTo
   }
-  const hasAdvancedFilters = !!(query.createdFrom !== defaultCreatedFrom || query.createdTo !== today || query.updatedFrom || query.updatedTo || query.weekly)
+  const hasAdvancedFilters = !!(
+    query.createdFrom !== defaultCreatedFrom
+    || query.createdTo !== today
+    || query.updatedFrom
+    || query.updatedTo
+    || query.weekly
+  )
   const developers = todoData.listDevelopers(userId)
   const stateOptions = todoData.listWorkStates()
   /** @type {types.WorkCardFilters} */
-  const filters = { keyword: query.keyword, developerId: query.developer, state: query.state, sort: '-updated', limit: 500 }
+  const filters = {
+    keyword: query.keyword,
+    developerId: query.developer,
+    state: query.state,
+    sort: '-updated',
+    limit: 500,
+  }
   if (query.done === 'true') filters.done = true
   if (query.done === 'false') filters.done = false
   if (query.createdFrom) filters.createdFrom = dateutil.startOfDay(query.createdFrom).toISOString()
@@ -71,7 +89,8 @@
     <label class="block md:col-span-2 lg:col-span-4">
       <span class="mb-1.5 block text-xs font-bold text-slate-500">검색어</span>
       <span class="relative block">
-        <span class="i-lucide-search pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400"></span>
+        <span
+          class="i-lucide-search pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400"></span>
         <input
           name="keyword"
           value="<%= query.keyword %>"
@@ -133,7 +152,8 @@
       </select>
     </label>
     <div class="flex items-end gap-2 lg:col-span-2">
-      <button class="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border-0 bg-slate-900 px-4 text-sm font-bold text-white hover:bg-slate-800">
+      <button
+        class="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border-0 bg-slate-900 px-4 text-sm font-bold text-white hover:bg-slate-800">
         <span class="i-lucide-search h-4 w-4"></span>
         검색
       </button>
@@ -148,10 +168,13 @@
     <details
       <%= hasAdvancedFilters ? 'open' : '' %>
       class="group rounded-xl border border-slate-100 bg-slate-50/70 md:col-span-2 lg:col-span-12">
-      <summary class="flex min-h-10 cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-bold text-slate-600">
+      <summary
+        class="flex min-h-10 cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-bold text-slate-600">
         <span class="i-lucide-calendar-range h-4 w-4 text-blue-600"></span>
         <span>기간 · 주간보고서</span>
-        <span class="<%= hasAdvancedFilters ? 'text-blue-600' : 'text-slate-400' %> ml-auto text-[11px] font-bold"><%= hasAdvancedFilters ? '상세 조건 적용' : '기본 최근 3개월' %></span>
+        <span class="<%= hasAdvancedFilters ? 'text-blue-600' : 'text-slate-400' %> ml-auto text-[11px] font-bold">
+          <%= hasAdvancedFilters ? '상세 조건 적용' : '기본 최근 3개월' %>
+        </span>
         <span class="i-lucide-chevron-down h-4 w-4 text-slate-400 transition group-open:rotate-180"></span>
       </summary>
       <div class="grid gap-4 border-t border-slate-200 px-3 pt-3 pb-4 md:grid-cols-2">
@@ -255,7 +278,8 @@
         <tr class="group transition hover:bg-blue-50/50">
           <td class="px-5 py-4">
             <div class="flex items-center gap-3">
-              <span class="<%= work.done ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400' %> inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+              <span
+                class="<%= work.done ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400' %> inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
                 <span class="<%= work.done ? 'i-lucide-check' : 'i-lucide-clipboard-list' %> h-4 w-4"></span>
               </span>
               <div class="min-w-0">
@@ -279,7 +303,8 @@
             </div>
           </td>
           <td class="px-4 py-4">
-            <span class="<%= work.stateBadgeClass %> inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold">
+            <span
+              class="<%= work.stateBadgeClass %> inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold">
               <span class="<%= work.stateIconClass %> h-3.5 w-3.5"></span>
               <%= work.stateLabel %>
             </span>
@@ -290,7 +315,9 @@
               <span class="truncate"><%= work.developerName %></span>
             </span>
           </td>
-          <td class="<%= work.isUrgent ? 'font-bold text-rose-600' : 'text-slate-600' %> px-4 py-4 whitespace-nowrap"><%= work.dueDateLabel || '-' %></td>
+          <td class="<%= work.isUrgent ? 'font-bold text-rose-600' : 'text-slate-600' %> px-4 py-4 whitespace-nowrap">
+            <%= work.dueDateLabel || '-' %>
+          </td>
           <td class="px-4 py-4 whitespace-nowrap text-slate-500"><%= work.createdLabel %></td>
         </tr>
         <% } %>

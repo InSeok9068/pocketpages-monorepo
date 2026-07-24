@@ -62,10 +62,17 @@
     slug: String(project.get('slug') || '').trim(),
     detailHref: '/projects/' + encodeURIComponent(String(project.get('slug') || '').trim()),
   }
-  const tasks = $app.findRecordsByFilter('project_tasks', 'user = {:userId} && project = {:projectId}', '-is_pinned,+sort_order,-updated', 300, 0, {
-    userId,
-    projectId: projectView.id,
-  })
+  const tasks = $app.findRecordsByFilter(
+    'project_tasks',
+    'user = {:userId} && project = {:projectId}',
+    '-is_pinned,+sort_order,-updated',
+    300,
+    0,
+    {
+      userId,
+      projectId: projectView.id,
+    }
+  )
   const boardState = taskBoard.getTaskBoardState(tasks)
   const aiCopyContext = taskBoard.getTaskAiCopyContext({
     title: projectView.nameKo + ' 업무 AI 컨텍스트',
@@ -171,7 +178,9 @@
       </div>
 
       <div class="min-w-0">
-        <p class="truncate text-[11px] leading-3 font-bold text-[#8b95a1]"><%= projectView.nameEn || 'LaunchBoard' %></p>
+        <p class="truncate text-[11px] leading-3 font-bold text-[#8b95a1]">
+          <%= projectView.nameEn || 'LaunchBoard' %>
+        </p>
         <h1 class="line-clamp-2 text-lg leading-5 font-bold text-[#191f28]"><%= projectView.nameKo %> 업무</h1>
       </div>
     </div>

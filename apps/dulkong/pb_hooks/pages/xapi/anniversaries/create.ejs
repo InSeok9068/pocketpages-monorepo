@@ -8,11 +8,20 @@
     return
   }
 
-  const form = datastar.requestSignals({ anniversaryTitle: '', anniversaryDate: '', anniversaryKind: 'custom', anniversaryRecurrence: 'none', anniversaryEmoji: '' })
+  const form = datastar.requestSignals({
+    anniversaryTitle: '',
+    anniversaryDate: '',
+    anniversaryKind: 'custom',
+    anniversaryRecurrence: 'none',
+    anniversaryEmoji: '',
+  })
   const userId = String(request.auth.get('id') || '')
   const title = String(form.anniversaryTitle || '').trim()
   const eventDate = String(form.anniversaryDate || '').trim()
-  const kind = ['relationship_start', 'birthday', 'custom'].indexOf(String(form.anniversaryKind || '')) >= 0 ? String(form.anniversaryKind) : 'custom'
+  const kind =
+    ['relationship_start', 'birthday', 'custom'].indexOf(String(form.anniversaryKind || '')) >= 0
+      ? String(form.anniversaryKind)
+      : 'custom'
   const recurrence = String(form.anniversaryRecurrence || '') === 'yearly' ? 'yearly' : 'none'
 
   dbg('dulkong/xapi/anniversaries/create:start', { userId, title, eventDate, kind })
@@ -33,8 +42,18 @@
     $app.save(record)
 
     info('dulkong/xapi/anniversaries/create:success', { anniversaryId: String(record.get('id') || ''), userId })
-    datastar.patchElements(include('anniversary-list.ejs', { anniversaries: coupleData.listAnniversaries($app) }), { selector: '#anniversary-list', mode: 'outer' })
-    datastar.patchSignals({ anniversaryModalOpen: false, anniversaryTitle: '', anniversaryDate: '', anniversaryKind: 'custom', anniversaryRecurrence: 'none', anniversaryEmoji: '' })
+    datastar.patchElements(include('anniversary-list.ejs', { anniversaries: coupleData.listAnniversaries($app) }), {
+      selector: '#anniversary-list',
+      mode: 'outer',
+    })
+    datastar.patchSignals({
+      anniversaryModalOpen: false,
+      anniversaryTitle: '',
+      anniversaryDate: '',
+      anniversaryKind: 'custom',
+      anniversaryRecurrence: 'none',
+      anniversaryEmoji: '',
+    })
     patchAppToast(datastar, '기념일을 추가했어요.', 'success')
   } catch (exception) {
     error('dulkong/xapi/anniversaries/create:failed', { userId, error: String(exception.message || exception) })

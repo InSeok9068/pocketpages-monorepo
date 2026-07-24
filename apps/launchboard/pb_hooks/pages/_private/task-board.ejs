@@ -8,7 +8,8 @@
     const taskBoardCanSort = typeof canSortTasks === 'undefined' ? true : canSortTasks === true
     const taskBoardCanDelete = typeof canDeleteTasks === 'undefined' ? true : canDeleteTasks === true
     const taskBoardCanFilter = canFilterTasks === true
-    const taskBoardScope = typeof boardScope === 'undefined' ? (projectId ? 'project' : 'inbox') : String(boardScope || 'project')
+    const taskBoardScope =
+      typeof boardScope === 'undefined' ? (projectId ? 'project' : 'inbox') : String(boardScope || 'project')
     const taskBoardView = typeof taskView === 'undefined' ? 'all' : String(taskView || 'all')
   %>
   <nav
@@ -108,7 +109,8 @@
           </label>
 
           <div class="launchboard-scrollbar-none flex gap-2 overflow-x-auto pb-1">
-            <label class="flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg bg-white/80 px-3 text-xs font-bold text-[#4e5968] hover:bg-white">
+            <label
+              class="flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg bg-white/80 px-3 text-xs font-bold text-[#4e5968] hover:bg-white">
               <input
                 type="checkbox"
                 class="h-4 w-4 accent-[#3182f6]"
@@ -116,7 +118,8 @@
                 data-on:input="window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter(el)" />
               높음
             </label>
-            <label class="flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg bg-white/80 px-3 text-xs font-bold text-[#4e5968] hover:bg-white">
+            <label
+              class="flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg bg-white/80 px-3 text-xs font-bold text-[#4e5968] hover:bg-white">
               <input
                 type="checkbox"
                 class="h-4 w-4 accent-[#3182f6]"
@@ -142,9 +145,14 @@
           <% for (let taskIndex = 0; taskIndex < columnTasks.length; taskIndex += 1) { %>
           <% const task = columnTasks[taskIndex] %>
           <%
-            const baseTaskHref = task.href || (projectSlug ? '/projects/' + encodeURIComponent(projectSlug) + '/tasks/' + encodeURIComponent(task.id) : '#')
+            const baseTaskHref =
+              task.href ||
+              (projectSlug ? '/projects/' + encodeURIComponent(projectSlug) + '/tasks/' + encodeURIComponent(task.id) : '#')
             const returnTo = taskBoardView === 'today' ? '/tasks?view=today' : '/tasks'
-            const taskHref = taskBoardScope === 'inbox' && baseTaskHref !== '#' ? baseTaskHref + '?return_to=' + encodeURIComponent(returnTo) : baseTaskHref
+            const taskHref =
+              taskBoardScope === 'inbox' && baseTaskHref !== '#'
+                ? baseTaskHref + '?return_to=' + encodeURIComponent(returnTo)
+                : baseTaskHref
           %>
           <article
             class="max-w-full min-w-0 cursor-pointer overflow-hidden rounded-lg bg-white p-3.5 shadow-[0_8px_22px_rgba(25,31,40,0.07),0_0_0_1px_rgba(227,231,237,0.72)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(25,31,40,0.1),0_0_0_1px_rgba(49,130,246,0.16)]"
@@ -213,9 +221,12 @@
 
             <div class="mt-2.5 flex items-center justify-between gap-2">
               <div class="flex min-w-0 flex-wrap items-center gap-1.5">
-                <span class="rounded-md bg-[#f2f4f6] px-2 py-1 text-[11px] font-bold text-[#6b7684]"><%= task.typeLabel %></span>
+                <span class="rounded-md bg-[#f2f4f6] px-2 py-1 text-[11px] font-bold text-[#6b7684]">
+                  <%= task.typeLabel %>
+                </span>
                 <% if (task.dueBadge) { %>
-                <span class="<%= task.dueBadge.tone %> inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold">
+                <span
+                  class="<%= task.dueBadge.tone %> inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold">
                   <span
                     class="<%= task.dueBadge.icon %> h-3 w-3"
                     aria-hidden="true"></span>
@@ -224,7 +235,8 @@
                 <% } %>
                 <% for (let badgeIndex = 0; badgeIndex < task.signalBadges.length; badgeIndex += 1) { %>
                 <% const badge = task.signalBadges[badgeIndex] %>
-                <span class="<%= badge.tone %> inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold">
+                <span
+                  class="<%= badge.tone %> inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold">
                   <span
                     class="<%= badge.icon %> h-3 w-3"
                     aria-hidden="true"></span>

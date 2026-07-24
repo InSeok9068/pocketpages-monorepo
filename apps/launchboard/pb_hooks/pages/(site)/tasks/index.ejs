@@ -18,7 +18,9 @@
     return
   }
 
-  const projects = $app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 300, 0, { userId })
+  const projects = $app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 300, 0, {
+    userId,
+  })
   const projectMap = taskBoard.getTaskProjectMap(projects)
   const projectOptions = []
 
@@ -35,7 +37,14 @@
     })
   }
 
-  const tasks = $app.findRecordsByFilter('project_tasks', 'user = {:userId}', '-is_pinned,+sort_order,due_at,-updated', 300, 0, { userId })
+  const tasks = $app.findRecordsByFilter(
+    'project_tasks',
+    'user = {:userId}',
+    '-is_pinned,+sort_order,due_at,-updated',
+    300,
+    0,
+    { userId }
+  )
   const boardState = taskBoard.getTaskInboxState(tasks, projectMap, activeView)
   const viewTitle = activeView === 'today' ? '오늘 업무' : '전체 업무'
   const aiCopyContext = taskBoard.getTaskAiCopyContext({
@@ -203,7 +212,9 @@
             class="h-11 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#191f28] outline-none focus:bg-white focus:shadow-[0_0_0_3px_rgba(49,130,246,0.18),0_0_0_1px_#3182f6]">
             <% for (let index = 0; index < projectOptions.length; index += 1) { %>
             <% const option = projectOptions[index] %>
-            <option value="<%= option.id %>"><%= option.nameKo %><% if (option.nameEn) { %> - <%= option.nameEn %><% } %></option>
+            <option value="<%= option.id %>">
+              <%= option.nameKo %><% if (option.nameEn) { %> - <%= option.nameEn %><% } %>
+            </option>
             <% } %>
           </select>
         </label>

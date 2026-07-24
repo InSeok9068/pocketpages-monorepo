@@ -99,7 +99,10 @@ test('removeElements emits a remove element patch', function () {
 
   harness.api.datastar.removeElements('#toast')
 
-  assert.strictEqual(harness.output(), 'event: datastar-patch-elements\n' + 'data: selector #toast\n' + 'data: mode remove\n' + '\n')
+  assert.strictEqual(
+    harness.output(),
+    'event: datastar-patch-elements\n' + 'data: selector #toast\n' + 'data: mode remove\n' + '\n'
+  )
   assert.strictEqual(harness.responseHeaders['Content-Type'], 'text/event-stream')
 })
 
@@ -114,12 +117,12 @@ test('patchElements emits view transition selector options', function () {
 
   assert.strictEqual(
     harness.output(),
-    'event: datastar-patch-elements\n' +
-      'data: selector #modal\n' +
-      'data: useViewTransition true\n' +
-      'data: viewTransitionSelector #shell\n' +
-      'data: elements <div id="modal">Updated</div>\n' +
-      '\n'
+    'event: datastar-patch-elements\n'
+      + 'data: selector #modal\n'
+      + 'data: useViewTransition true\n'
+      + 'data: viewTransitionSelector #shell\n'
+      + 'data: elements <div id="modal">Updated</div>\n'
+      + '\n'
   )
 })
 
@@ -136,7 +139,10 @@ test('removeSignals emits nested null patches for dotted keys', function () {
 
   harness.api.datastar.removeSignals(['draft.title', 'draft.body'])
 
-  assert.strictEqual(harness.output(), 'event: datastar-patch-signals\n' + 'data: signals {"draft":{"title":null,"body":null}}\n' + '\n')
+  assert.strictEqual(
+    harness.output(),
+    'event: datastar-patch-signals\n' + 'data: signals {"draft":{"title":null,"body":null}}\n' + '\n'
+  )
 })
 
 test('removeSignals lets parent removal win over nested keys', function () {
@@ -301,15 +307,23 @@ test('realtime helpers send custom topics without leaking topic into send option
 })
 
 test('realtime payload builders create PocketBase realtime Datastar messages', function () {
-  assert.deepStrictEqual(JSON.parse(datastarPluginFactory.realtime.buildPatchElementsPayload('<div id="notice">Updated</div>', { selector: '#notice', mode: 'outer' })), {
-    type: 'datastar-patch-elements',
-    el: null,
-    argsRaw: {
-      elements: '<div id="notice">Updated</div>',
-      selector: '#notice',
-      mode: 'outer',
-    },
-  })
+  assert.deepStrictEqual(
+    JSON.parse(
+      datastarPluginFactory.realtime.buildPatchElementsPayload('<div id="notice">Updated</div>', {
+        selector: '#notice',
+        mode: 'outer',
+      })
+    ),
+    {
+      type: 'datastar-patch-elements',
+      el: null,
+      argsRaw: {
+        elements: '<div id="notice">Updated</div>',
+        selector: '#notice',
+        mode: 'outer',
+      },
+    }
+  )
 
   assert.deepStrictEqual(
     JSON.parse(
@@ -416,7 +430,14 @@ test('Datastar page render still emits an inner patch for selectors', function (
 
   harness.plugin.onRender({ api: harness.api, content: '<h1>Hello</h1>' })
 
-  assert.strictEqual(harness.output(), 'event: datastar-patch-elements\n' + 'data: selector #main\n' + 'data: mode inner\n' + 'data: elements <h1>Hello</h1>\n' + '\n')
+  assert.strictEqual(
+    harness.output(),
+    'event: datastar-patch-elements\n'
+      + 'data: selector #main\n'
+      + 'data: mode inner\n'
+      + 'data: elements <h1>Hello</h1>\n'
+      + '\n'
+  )
 })
 
 test('Datastar page render forwards view transition selector headers', function () {
@@ -431,12 +452,12 @@ test('Datastar page render forwards view transition selector headers', function 
 
   assert.strictEqual(
     harness.output(),
-    'event: datastar-patch-elements\n' +
-      'data: selector #main\n' +
-      'data: mode inner\n' +
-      'data: useViewTransition true\n' +
-      'data: viewTransitionSelector #shell\n' +
-      'data: elements <h1>Hello</h1>\n' +
-      '\n'
+    'event: datastar-patch-elements\n'
+      + 'data: selector #main\n'
+      + 'data: mode inner\n'
+      + 'data: useViewTransition true\n'
+      + 'data: viewTransitionSelector #shell\n'
+      + 'data: elements <h1>Hello</h1>\n'
+      + '\n'
   )
 })

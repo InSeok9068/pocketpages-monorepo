@@ -142,10 +142,15 @@
         owner: userId,
       })
 
-      const snapshots = collectRecords(txApp, 'simulation_snapshots', 'owner = {:owner} && simulation = {:simulation}', {
-        owner: userId,
-        simulation: simulationId,
-      })
+      const snapshots = collectRecords(
+        txApp,
+        'simulation_snapshots',
+        'owner = {:owner} && simulation = {:simulation}',
+        {
+          owner: userId,
+          simulation: simulationId,
+        }
+      )
       for (let index = 0; index < snapshots.length; index += 1) {
         txApp.delete(snapshots[index])
         deletedSnapshotCount += 1

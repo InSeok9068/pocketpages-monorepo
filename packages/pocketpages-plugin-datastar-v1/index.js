@@ -164,7 +164,12 @@ function normalizeRealtimeOptions(options) {
   delete sendOptions.topic
   if (typeof source.filter === 'function') {
     sendOptions.filter = function (clientId, client, sendTopic, message) {
-      return client && typeof client.hasSubscription === 'function' && client.hasSubscription(sendTopic) && source.filter(clientId, client, sendTopic, message)
+      return (
+        client
+        && typeof client.hasSubscription === 'function'
+        && client.hasSubscription(sendTopic)
+        && source.filter(clientId, client, sendTopic, message)
+      )
     }
   }
 
@@ -178,7 +183,9 @@ function buildRealtimePatchElementsPayload(api, elements, patchOptions) {
   return stringify(api, {
     type: EventType.PatchElements,
     el: null,
-    argsRaw: normalizeRealtimePatchElementsArgs(Object.assign({ elements: String(elements || '') }, patchOptions || {})),
+    argsRaw: normalizeRealtimePatchElementsArgs(
+      Object.assign({ elements: String(elements || '') }, patchOptions || {})
+    ),
   })
 }
 
@@ -190,7 +197,9 @@ function buildRealtimeRemoveElementsPayload(api, selector, patchOptions) {
   return stringify(api, {
     type: EventType.PatchElements,
     el: null,
-    argsRaw: normalizeRealtimePatchElementsArgs(Object.assign({}, patchOptions || {}, { selector: String(selector), mode: ElementPatchMode.Remove })),
+    argsRaw: normalizeRealtimePatchElementsArgs(
+      Object.assign({}, patchOptions || {}, { selector: String(selector), mode: ElementPatchMode.Remove })
+    ),
   })
 }
 
@@ -198,7 +207,9 @@ function buildRealtimePatchSignalsPayload(api, signals, patchOptions) {
   return stringify(api, {
     type: EventType.PatchSignals,
     el: null,
-    argsRaw: normalizeRealtimePatchSignalsArgs(Object.assign({ signals: normalizeSignals(api, signals) }, patchOptions || {})),
+    argsRaw: normalizeRealtimePatchSignalsArgs(
+      Object.assign({ signals: normalizeSignals(api, signals) }, patchOptions || {})
+    ),
   })
 }
 
@@ -208,7 +219,9 @@ function buildRealtimeRemoveSignalsPayload(api, signalKeys, patchOptions) {
   return stringify(api, {
     type: EventType.PatchSignals,
     el: null,
-    argsRaw: normalizeRealtimePatchSignalsArgs(Object.assign({}, patchOptions || {}, { signals: stringify(api, buildSignalRemovalPatch(signalKeys)) })),
+    argsRaw: normalizeRealtimePatchSignalsArgs(
+      Object.assign({}, patchOptions || {}, { signals: stringify(api, buildSignalRemovalPatch(signalKeys)) })
+    ),
   })
 }
 
@@ -251,19 +264,39 @@ function createRealtimeSender(deps) {
   return {
     patchElements: function (elements, patchOptions, realtimeOptions) {
       const realtime = normalizeRealtimeOptions(realtimeOptions)
-      sendRealtimePayload(deps, realtime.topic, buildRealtimePatchElementsPayload(null, elements, patchOptions), realtime.sendOptions)
+      sendRealtimePayload(
+        deps,
+        realtime.topic,
+        buildRealtimePatchElementsPayload(null, elements, patchOptions),
+        realtime.sendOptions
+      )
     },
     removeElements: function (selector, patchOptions, realtimeOptions) {
       const realtime = normalizeRealtimeOptions(realtimeOptions)
-      sendRealtimePayload(deps, realtime.topic, buildRealtimeRemoveElementsPayload(null, selector, patchOptions), realtime.sendOptions)
+      sendRealtimePayload(
+        deps,
+        realtime.topic,
+        buildRealtimeRemoveElementsPayload(null, selector, patchOptions),
+        realtime.sendOptions
+      )
     },
     patchSignals: function (signals, patchOptions, realtimeOptions) {
       const realtime = normalizeRealtimeOptions(realtimeOptions)
-      sendRealtimePayload(deps, realtime.topic, buildRealtimePatchSignalsPayload(null, signals, patchOptions), realtime.sendOptions)
+      sendRealtimePayload(
+        deps,
+        realtime.topic,
+        buildRealtimePatchSignalsPayload(null, signals, patchOptions),
+        realtime.sendOptions
+      )
     },
     removeSignals: function (signalKeys, patchOptions, realtimeOptions) {
       const realtime = normalizeRealtimeOptions(realtimeOptions)
-      sendRealtimePayload(deps, realtime.topic, buildRealtimeRemoveSignalsPayload(null, signalKeys, patchOptions), realtime.sendOptions)
+      sendRealtimePayload(
+        deps,
+        realtime.topic,
+        buildRealtimeRemoveSignalsPayload(null, signalKeys, patchOptions),
+        realtime.sendOptions
+      )
     },
   }
 }
@@ -388,7 +421,12 @@ function buildNavigationScript(options) {
     'history.pushState({datastar:{url:path}},"",path)',
     '@get(path,{headers:' + headersJson + '})',
   ].join(';')
-  const popstateExpression = ['var state=evt.state&&evt.state.datastar', 'var url=state&&state.url', 'if(!url)return', '@get(url,{headers:' + headersJson + '})'].join(';')
+  const popstateExpression = [
+    'var state=evt.state&&evt.state.datastar',
+    'var url=state&&state.url',
+    'if(!url)return',
+    '@get(url,{headers:' + headersJson + '})',
+  ].join(';')
 
   return [
     '<script>',
@@ -492,7 +530,11 @@ function datastarPluginFactory(config, pluginOptions) {
 
         api.echo('event: ' + eventType + '\n')
         if (sendOptions.eventId) api.echo('id: ' + sendOptions.eventId + '\n')
-        if (sendOptions.retryDuration !== undefined && sendOptions.retryDuration !== null && Number(sendOptions.retryDuration) !== DefaultSseRetryDuration) {
+        if (
+          sendOptions.retryDuration !== undefined
+          && sendOptions.retryDuration !== null
+          && Number(sendOptions.retryDuration) !== DefaultSseRetryDuration
+        ) {
           api.echo('retry: ' + sendOptions.retryDuration + '\n')
         }
         for (let i = 0; i < dataLines.length; i += 1) {
@@ -591,7 +633,8 @@ function datastarPluginFactory(config, pluginOptions) {
         const attrs = normalizeAttributes(scriptOptions.attributes)
         const autoRemove = scriptOptions.autoRemove !== false && !attrs.names['data-effect']
         const effectAttr = autoRemove ? ' data-effect="el.remove()"' : ''
-        const scriptElement = '<script' + attrs.html + effectAttr + '>' + escapeScriptEndTag(scriptContents) + '</script>'
+        const scriptElement =
+          '<script' + attrs.html + effectAttr + '>' + escapeScriptEndTag(scriptContents) + '</script>'
 
         patchElements(scriptElement, {
           selector: 'body',
@@ -673,21 +716,24 @@ function datastarPluginFactory(config, pluginOptions) {
             },
             options || {}
           )
-          const targetExpression = eventOptions.selector === 'document' ? '[document]' : 'Array.prototype.slice.call(document.querySelectorAll(' + JSON.stringify(eventOptions.selector) + '))'
+          const targetExpression =
+            eventOptions.selector === 'document'
+              ? '[document]'
+              : 'Array.prototype.slice.call(document.querySelectorAll(' + JSON.stringify(eventOptions.selector) + '))'
           const detailExpression = detail === undefined ? 'undefined' : JSON.stringify(detail)
           const js = [
             'var elements = ' + targetExpression,
-            'var event = new CustomEvent(' +
-              JSON.stringify(eventName) +
-              ', { bubbles: ' +
-              String(!!eventOptions.bubbles) +
-              ', cancelable: ' +
-              String(!!eventOptions.cancelable) +
-              ', composed: ' +
-              String(!!eventOptions.composed) +
-              ', detail: ' +
-              detailExpression +
-              ' })',
+            'var event = new CustomEvent('
+              + JSON.stringify(eventName)
+              + ', { bubbles: '
+              + String(!!eventOptions.bubbles)
+              + ', cancelable: '
+              + String(!!eventOptions.cancelable)
+              + ', composed: '
+              + String(!!eventOptions.composed)
+              + ', detail: '
+              + detailExpression
+              + ' })',
             'elements.forEach(function (element) { element.dispatchEvent(event); })',
           ].join(';\n')
           executeScript(js, {
@@ -725,28 +771,44 @@ function datastarPluginFactory(config, pluginOptions) {
               throw new Error('pocketpages-plugin-realtime is required for datastar.realtime')
             }
             const realtime = normalizeRealtimeOptions(realtimeOptions)
-            api.realtime.send(realtime.topic, buildRealtimePatchElementsPayload(api, elements, patchOptions), realtime.sendOptions)
+            api.realtime.send(
+              realtime.topic,
+              buildRealtimePatchElementsPayload(api, elements, patchOptions),
+              realtime.sendOptions
+            )
           },
           removeElements: function (selector, patchOptions, realtimeOptions) {
             if (!api.realtime || typeof api.realtime.send !== 'function') {
               throw new Error('pocketpages-plugin-realtime is required for datastar.realtime')
             }
             const realtime = normalizeRealtimeOptions(realtimeOptions)
-            api.realtime.send(realtime.topic, buildRealtimeRemoveElementsPayload(api, selector, patchOptions), realtime.sendOptions)
+            api.realtime.send(
+              realtime.topic,
+              buildRealtimeRemoveElementsPayload(api, selector, patchOptions),
+              realtime.sendOptions
+            )
           },
           patchSignals: function (signals, patchOptions, realtimeOptions) {
             if (!api.realtime || typeof api.realtime.send !== 'function') {
               throw new Error('pocketpages-plugin-realtime is required for datastar.realtime')
             }
             const realtime = normalizeRealtimeOptions(realtimeOptions)
-            api.realtime.send(realtime.topic, buildRealtimePatchSignalsPayload(api, signals, patchOptions), realtime.sendOptions)
+            api.realtime.send(
+              realtime.topic,
+              buildRealtimePatchSignalsPayload(api, signals, patchOptions),
+              realtime.sendOptions
+            )
           },
           removeSignals: function (signalKeys, patchOptions, realtimeOptions) {
             if (!api.realtime || typeof api.realtime.send !== 'function') {
               throw new Error('pocketpages-plugin-realtime is required for datastar.realtime')
             }
             const realtime = normalizeRealtimeOptions(realtimeOptions)
-            api.realtime.send(realtime.topic, buildRealtimeRemoveSignalsPayload(api, signalKeys, patchOptions), realtime.sendOptions)
+            api.realtime.send(
+              realtime.topic,
+              buildRealtimeRemoveSignalsPayload(api, signalKeys, patchOptions),
+              realtime.sendOptions
+            )
           },
         },
       }

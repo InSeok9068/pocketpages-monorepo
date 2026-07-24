@@ -66,7 +66,10 @@
       href: href,
       chapterLabel: chapterLabel,
       pageNumber: currentPageValue === null || typeof currentPageValue === 'undefined' ? '' : String(currentPageValue),
-      progressPercent: progressPercentValue === null || typeof progressPercentValue === 'undefined' ? '' : String(progressPercentValue),
+      progressPercent:
+        progressPercentValue === null || typeof progressPercentValue === 'undefined'
+          ? ''
+          : String(progressPercentValue),
     })
     return
   } catch (exception) {

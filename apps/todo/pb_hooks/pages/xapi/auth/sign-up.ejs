@@ -20,7 +20,8 @@
     .trim()
     .toLowerCase()
   const password = form.password === undefined || form.password === null ? '' : String(form.password)
-  const passwordConfirm = form.passwordConfirm === undefined || form.passwordConfirm === null ? '' : String(form.passwordConfirm)
+  const passwordConfirm =
+    form.passwordConfirm === undefined || form.passwordConfirm === null ? '' : String(form.passwordConfirm)
   let errorMessage = ''
 
   dbg('todo/xapi/auth/sign-up:start', {

@@ -33,9 +33,14 @@
     $app.save(record)
 
     info('dulkong/xapi/photos/upload:success', { photoId: String(record.get('id') || ''), userId })
-    datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, 'all') }), { selector: '#photo-results', mode: 'outer' })
+    datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, 'all') }), {
+      selector: '#photo-results',
+      mode: 'outer',
+    })
     datastar.patchSignals({ photoModalOpen: false, photoFilter: 'all' })
-    datastar.executeScript("var form=document.getElementById('photo-upload-form'); if(window.dulkongPhotoPond) window.dulkongPhotoPond.removeFiles(); if(form) form.reset();")
+    datastar.executeScript(
+      "var form=document.getElementById('photo-upload-form'); if(window.dulkongPhotoPond) window.dulkongPhotoPond.removeFiles(); if(form) form.reset();"
+    )
     patchAppToast(datastar, '사진을 올렸어요.', 'success')
   } catch (exception) {
     error('dulkong/xapi/photos/upload:failed', { userId, error: String(exception.message || exception) })

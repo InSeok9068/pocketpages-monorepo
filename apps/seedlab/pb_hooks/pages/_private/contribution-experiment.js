@@ -275,7 +275,13 @@ function buildContributionExperiment(input) {
   const priceChangePct = readNumber(safeInput.priceChangePct)
   const latestUsdKrwRate = readNumber(safeInput.latestUsdKrwRate)
   const current = buildCurrentState(holdings, safeInput.cashValue)
-  const allocation = allocateContribution(current.totals, targets, current.totalValue, contributionAmount, investableAmount)
+  const allocation = allocateContribution(
+    current.totals,
+    targets,
+    current.totalValue,
+    contributionAmount,
+    investableAmount
+  )
   const afterTotals = Object.assign({}, current.totals)
   const buckets = allocationBuckets.listBuckets()
   const candidates = []
@@ -329,7 +335,10 @@ function buildContributionExperiment(input) {
       continue
     }
 
-    const quantity = priceBasis.currency === 'USD' ? roundFractionalQuantity(budget / priceBasis.priceKrw) : Math.floor(budget / priceBasis.priceKrw)
+    const quantity =
+      priceBasis.currency === 'USD'
+        ? roundFractionalQuantity(budget / priceBasis.priceKrw)
+        : Math.floor(budget / priceBasis.priceKrw)
     const spendKrw = quantity > 0 ? quantity * priceBasis.priceKrw : 0
     const leftover = Math.max(0, budget - spendKrw)
 
@@ -591,7 +600,13 @@ function buildTimelineExperiment(input) {
 
   for (let month = 1; month <= projectionMonths; month += 1) {
     const depositAmount = month === 1 ? initialContributionAmount : monthlyContributionAmount
-    const depositResult = applyMonthlyDeposit(totals, targets, depositAmount, month === 1 ? reserveCashAmount : 0, minimumOrderAmount)
+    const depositResult = applyMonthlyDeposit(
+      totals,
+      targets,
+      depositAmount,
+      month === 1 ? reserveCashAmount : 0,
+      minimumOrderAmount
+    )
     investedAmount += depositAmount
     totalBuyAmount += depositResult.usedAmount
     applyMonthlyReturns(totals, annualReturnPcts)

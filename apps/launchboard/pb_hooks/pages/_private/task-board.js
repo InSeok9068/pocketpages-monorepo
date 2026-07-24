@@ -1,11 +1,41 @@
 const { dateutil } = require('@pocketpages/utils')
 
 const TASK_STATUS_COLUMNS = [
-  { value: 'todo', label: '할 일', icon: 'i-lucide-circle', iconTone: 'bg-[#eef2f6] text-[#8b95a1]', surface: 'bg-white' },
-  { value: 'doing', label: '진행중', icon: 'i-lucide-loader-circle', iconTone: 'bg-[#eaf3ff] text-[#3182f6]', surface: 'bg-[#f2f7ff]' },
-  { value: 'done', label: '완료', icon: 'i-lucide-check-circle-2', iconTone: 'bg-[#e9f9ee] text-[#2fbe5f]', surface: 'bg-[#f1fbf4]' },
-  { value: 'paused', label: '보류', icon: 'i-lucide-pause', iconTone: 'bg-[#f3efff] text-[#8b5cf6]', surface: 'bg-[#f8f5ff]' },
-  { value: 'canceled', label: '취소', icon: 'i-lucide-x-circle', iconTone: 'bg-[#fff0f0] text-[#ff6b6b]', surface: 'bg-[#fff5f5]' },
+  {
+    value: 'todo',
+    label: '할 일',
+    icon: 'i-lucide-circle',
+    iconTone: 'bg-[#eef2f6] text-[#8b95a1]',
+    surface: 'bg-white',
+  },
+  {
+    value: 'doing',
+    label: '진행중',
+    icon: 'i-lucide-loader-circle',
+    iconTone: 'bg-[#eaf3ff] text-[#3182f6]',
+    surface: 'bg-[#f2f7ff]',
+  },
+  {
+    value: 'done',
+    label: '완료',
+    icon: 'i-lucide-check-circle-2',
+    iconTone: 'bg-[#e9f9ee] text-[#2fbe5f]',
+    surface: 'bg-[#f1fbf4]',
+  },
+  {
+    value: 'paused',
+    label: '보류',
+    icon: 'i-lucide-pause',
+    iconTone: 'bg-[#f3efff] text-[#8b5cf6]',
+    surface: 'bg-[#f8f5ff]',
+  },
+  {
+    value: 'canceled',
+    label: '취소',
+    icon: 'i-lucide-x-circle',
+    iconTone: 'bg-[#fff0f0] text-[#ff6b6b]',
+    surface: 'bg-[#fff5f5]',
+  },
 ]
 
 const TASK_STATUS_VALUES = TASK_STATUS_COLUMNS.map((column) => column.value)
@@ -368,7 +398,13 @@ function toTaskMarkdownLines(task) {
  * @returns {string}
  */
 function toTaskAiMarkdown(context) {
-  const lines = ['# ' + context.title, '', '- 범위: ' + context.scopeLabel, '- 생성: ' + context.generatedAt, '- 업무 수: ' + context.taskCount]
+  const lines = [
+    '# ' + context.title,
+    '',
+    '- 범위: ' + context.scopeLabel,
+    '- 생성: ' + context.generatedAt,
+    '- 업무 수: ' + context.taskCount,
+  ]
 
   if (context.project) {
     lines.push('- 프로젝트: ' + context.project.nameKo)

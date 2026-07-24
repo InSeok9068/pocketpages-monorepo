@@ -31,7 +31,12 @@ function isHtmxRequest(request) {
  * @returns {string}
  */
 function escapeHtml(value) {
-  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 /**
@@ -42,32 +47,36 @@ function escapeHtml(value) {
  * @returns {string}
  */
 function renderErrorPage(title, message, detail) {
-  const detailHtml = detail ? '<pre style="margin-top:16px;white-space:pre-wrap;border-radius:12px;background:#fff7ed;padding:16px;color:#7c2d12;">' + escapeHtml(detail) + '</pre>' : ''
+  const detailHtml = detail
+    ? '<pre style="margin-top:16px;white-space:pre-wrap;border-radius:12px;background:#fff7ed;padding:16px;color:#7c2d12;">'
+      + escapeHtml(detail)
+      + '</pre>'
+    : ''
 
   return (
-    '<!doctype html>' +
-    '<html lang="ko">' +
-    '<head>' +
-    '<meta charset="utf-8">' +
-    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-    '<title>' +
-    escapeHtml(title) +
-    '</title>' +
-    '</head>' +
-    '<body style="margin:0;min-height:100vh;background:#f7f2e6;color:#292524;font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;">' +
-    '<main style="box-sizing:border-box;width:min(720px,100%);margin:0 auto;padding:48px 20px;">' +
-    '<p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.14em;color:#a16207;text-transform:uppercase;">Booklog</p>' +
-    '<h1 style="margin:0;font-size:28px;line-height:1.25;">' +
-    escapeHtml(title) +
-    '</h1>' +
-    '<p style="margin:14px 0 0;font-size:16px;line-height:1.7;color:#57534e;">' +
-    escapeHtml(message) +
-    '</p>' +
-    '<p style="margin:24px 0 0;"><a href="/" style="color:#44403c;font-weight:700;text-decoration:none;">홈으로 이동</a></p>' +
-    detailHtml +
-    '</main>' +
-    '</body>' +
-    '</html>'
+    '<!doctype html>'
+    + '<html lang="ko">'
+    + '<head>'
+    + '<meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+    + '<title>'
+    + escapeHtml(title)
+    + '</title>'
+    + '</head>'
+    + '<body style="margin:0;min-height:100vh;background:#f7f2e6;color:#292524;font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;">'
+    + '<main style="box-sizing:border-box;width:min(720px,100%);margin:0 auto;padding:48px 20px;">'
+    + '<p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.14em;color:#a16207;text-transform:uppercase;">Booklog</p>'
+    + '<h1 style="margin:0;font-size:28px;line-height:1.25;">'
+    + escapeHtml(title)
+    + '</h1>'
+    + '<p style="margin:14px 0 0;font-size:16px;line-height:1.7;color:#57534e;">'
+    + escapeHtml(message)
+    + '</p>'
+    + '<p style="margin:24px 0 0;"><a href="/" style="color:#44403c;font-weight:700;text-decoration:none;">홈으로 이동</a></p>'
+    + detailHtml
+    + '</main>'
+    + '</body>'
+    + '</html>'
   )
 }
 
@@ -78,12 +87,12 @@ function renderErrorPage(title, message, detail) {
  */
 function renderHtmxErrorAlert(message) {
   return (
-    '<div class="rounded-[1.5rem] border-none bg-rose-50/90 px-4 py-3 text-sm text-rose-800 shadow-[0_12px_30px_rgba(136,19,55,0.06)] backdrop-blur-sm">' +
-    '<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-500">Alert</p>' +
-    '<p class="mt-1.5 font-medium leading-6">' +
-    escapeHtml(message) +
-    '</p>' +
-    '</div>'
+    '<div class="rounded-[1.5rem] border-none bg-rose-50/90 px-4 py-3 text-sm text-rose-800 shadow-[0_12px_30px_rgba(136,19,55,0.06)] backdrop-blur-sm">'
+    + '<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-500">Alert</p>'
+    + '<p class="mt-1.5 font-medium leading-6">'
+    + escapeHtml(message)
+    + '</p>'
+    + '</div>'
   )
 }
 
@@ -124,6 +133,9 @@ module.exports = function (api, next) {
       })
     }
 
-    return response.html(500, renderErrorPage('페이지를 불러오지 못했습니다.', fallbackMessage, isDevelopment ? errorMessage : ''))
+    return response.html(
+      500,
+      renderErrorPage('페이지를 불러오지 못했습니다.', fallbackMessage, isDevelopment ? errorMessage : '')
+    )
   }
 }

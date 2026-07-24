@@ -89,9 +89,16 @@ function setOptionalNumber(record, fieldName, value) {
  * @returns {Array<any>} 독서 세션 후보
  */
 function findMergeCandidateRecords(cutoffIso) {
-  return $app.findRecordsByFilter('reading_sessions', 'ended_at != "" && ended_at < {:cutoffIso}', 'user_id,book_id,file_id,ended_at,created', BATCH_LIMIT, 0, {
-    cutoffIso: cutoffIso,
-  })
+  return $app.findRecordsByFilter(
+    'reading_sessions',
+    'ended_at != "" && ended_at < {:cutoffIso}',
+    'user_id,book_id,file_id,ended_at,created',
+    BATCH_LIMIT,
+    0,
+    {
+      cutoffIso: cutoffIso,
+    }
+  )
 }
 
 /**
@@ -133,7 +140,9 @@ function groupSessionRecords(sessionRecords) {
  * @returns {string} 정렬 값
  */
 function getStartSortValue(sessionRecord) {
-  return readString(sessionRecord, 'started_at') || readString(sessionRecord, 'created') || readString(sessionRecord, 'id')
+  return (
+    readString(sessionRecord, 'started_at') || readString(sessionRecord, 'created') || readString(sessionRecord, 'id')
+  )
 }
 
 /**
@@ -143,7 +152,9 @@ function getStartSortValue(sessionRecord) {
  * @returns {string} 정렬 값
  */
 function getEndSortValue(sessionRecord) {
-  return readString(sessionRecord, 'ended_at') || readString(sessionRecord, 'updated') || readString(sessionRecord, 'id')
+  return (
+    readString(sessionRecord, 'ended_at') || readString(sessionRecord, 'updated') || readString(sessionRecord, 'id')
+  )
 }
 
 /**
@@ -215,7 +226,11 @@ function updateMergedSessionRecord(keeperRecord, firstRecord, lastRecord, durati
   keeperRecord.set('end_chapter_label', readString(lastRecord, 'end_chapter_label'))
   setOptionalNumber(keeperRecord, 'start_progress_percent', startProgressPercent)
   setOptionalNumber(keeperRecord, 'end_progress_percent', endProgressPercent)
-  setOptionalNumber(keeperRecord, 'progress_delta_percent', startProgressPercent !== null && endProgressPercent !== null ? endProgressPercent - startProgressPercent : null)
+  setOptionalNumber(
+    keeperRecord,
+    'progress_delta_percent',
+    startProgressPercent !== null && endProgressPercent !== null ? endProgressPercent - startProgressPercent : null
+  )
   setOptionalNumber(keeperRecord, 'start_page', startPage)
   setOptionalNumber(keeperRecord, 'end_page', endPage)
   setOptionalNumber(keeperRecord, 'page_delta', startPage !== null && endPage !== null ? endPage - startPage : null)
@@ -278,7 +293,17 @@ function run() {
   let mergedGroupCount = 0
   let deletedCount = 0
 
-  $app.logger().info('jobs/reading-session-merge:start', 'cutoffIso', cutoffIso, 'candidateCount', String(sessionRecords.length), 'groupCount', String(groupKeys.length))
+  $app
+    .logger()
+    .info(
+      'jobs/reading-session-merge:start',
+      'cutoffIso',
+      cutoffIso,
+      'candidateCount',
+      String(sessionRecords.length),
+      'groupCount',
+      String(groupKeys.length)
+    )
 
   for (let index = 0; index < groupKeys.length; index += 1) {
     const groupKey = groupKeys[index]
@@ -298,11 +323,29 @@ function run() {
     } catch (exception) {
       $app
         .logger()
-        .error('jobs/reading-session-merge:group-failed', 'groupKey', groupKey, 'count', String(groupRecords.length), 'error', String(exception && exception.message ? exception.message : exception))
+        .error(
+          'jobs/reading-session-merge:group-failed',
+          'groupKey',
+          groupKey,
+          'count',
+          String(groupRecords.length),
+          'error',
+          String(exception && exception.message ? exception.message : exception)
+        )
     }
   }
 
-  $app.logger().info('jobs/reading-session-merge:done', 'candidateCount', String(sessionRecords.length), 'mergedGroupCount', String(mergedGroupCount), 'deletedCount', String(deletedCount))
+  $app
+    .logger()
+    .info(
+      'jobs/reading-session-merge:done',
+      'candidateCount',
+      String(sessionRecords.length),
+      'mergedGroupCount',
+      String(mergedGroupCount),
+      'deletedCount',
+      String(deletedCount)
+    )
 
   return {
     ready: true,

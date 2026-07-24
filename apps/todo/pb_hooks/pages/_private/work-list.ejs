@@ -4,7 +4,9 @@
   data-selected-developer="<%= selectedDeveloper || '' %>"
   aria-live="polite">
   <% if (typeof listMessage !== 'undefined' && listMessage) { %>
-  <p class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700"><%= listMessage %></p>
+  <p class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+    <%= listMessage %>
+  </p>
   <% } %>
   <% if (!workCards.length) { %>
   <div class="rounded-xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center">
@@ -44,7 +46,10 @@
         </button>
       </form>
       <% } else { %>
-      <span class="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-500 text-white"><span class="i-lucide-check h-3.5 w-3.5"></span></span>
+      <span
+        class="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-500 text-white">
+        <span class="i-lucide-check h-3.5 w-3.5"></span>
+      </span>
       <% } %>
       <div class="min-w-0 flex-1">
         <div class="flex items-start gap-2">
@@ -53,7 +58,8 @@
             class="<%= work.done ? 'line-through opacity-60' : '' %> min-w-0 flex-1 text-base font-bold text-slate-900 no-underline hover:text-blue-700">
             <%= work.title %>
           </a>
-          <span class="<%= work.stateBadgeClass %> inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold">
+          <span
+            class="<%= work.stateBadgeClass %> inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold">
             <span class="<%= work.stateIconClass %> h-3.5 w-3.5"></span>
             <%= work.stateLabel %>
           </span>

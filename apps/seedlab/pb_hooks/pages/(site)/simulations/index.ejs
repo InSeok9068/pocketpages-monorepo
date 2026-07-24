@@ -23,10 +23,15 @@
   if (userId) {
     try {
       dbg('seedlab/simulations:index:db-access', { collection: 'simulations' })
-      const simulationRecords = $app.findRecordsByFilter('simulations', 'owner = {:owner}', '-created', 50, 0, { owner: userId })
+      const simulationRecords = $app.findRecordsByFilter('simulations', 'owner = {:owner}', '-created', 50, 0, {
+        owner: userId,
+      })
       simulationCards = simulationRecords.map(simulationView.buildSimulationModel)
     } catch (exception) {
-      warn('seedlab/simulations:index:db-access-failed', { collection: 'simulations', error: String(exception.message || exception) })
+      warn('seedlab/simulations:index:db-access-failed', {
+        collection: 'simulations',
+        error: String(exception.message || exception),
+      })
       simulationCards = []
     }
   }
@@ -88,21 +93,28 @@
               <p class="truncate text-base font-bold text-[#191f28]"><%= simulationCards[index].name %></p>
               <p class="mt-1 text-xs leading-5 font-bold text-[#6b7684]"><%= simulationCards[index].targetText %></p>
             </div>
-            <span class="shrink-0 rounded-md bg-[#e8f3ff] px-2 py-1 text-xs font-bold text-[#1b64da]"><%= simulationCards[index].badgeText %></span>
+            <span class="shrink-0 rounded-md bg-[#e8f3ff] px-2 py-1 text-xs font-bold text-[#1b64da]">
+              <%= simulationCards[index].badgeText %>
+            </span>
           </div>
 
           <div class="mt-4">
             <p class="text-xs font-bold text-[#8b95a1]">예상 평가액</p>
             <div class="mt-1 flex items-end justify-between gap-3">
-              <p class="min-w-0 truncate text-[24px] leading-tight font-bold text-[#191f28]"><%= simulationCards[index].finalTotalText %></p>
-              <p class="<%= String(simulationCards[index].profitText).indexOf('-') === 0 ? 'text-[#1b64da]' : 'text-[#f04452]' %> shrink-0 text-sm font-bold">
+              <p class="min-w-0 truncate text-[24px] leading-tight font-bold text-[#191f28]">
+                <%= simulationCards[index].finalTotalText %>
+              </p>
+              <p
+                class="<%= String(simulationCards[index].profitText).indexOf('-') === 0 ? 'text-[#1b64da]' : 'text-[#f04452]' %> shrink-0 text-sm font-bold">
                 <%= simulationCards[index].profitText %>
               </p>
             </div>
             <div class="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
               <div class="min-w-0">
                 <p class="truncate text-[10px] font-bold text-[#8b95a1]">현재</p>
-                <p class="mt-0.5 truncate text-xs font-bold text-[#191f28]"><%= simulationCards[index].currentTotalText %></p>
+                <p class="mt-0.5 truncate text-xs font-bold text-[#191f28]">
+                  <%= simulationCards[index].currentTotalText %>
+                </p>
               </div>
               <div class="min-w-0">
                 <p class="truncate text-[10px] font-bold text-[#8b95a1]">수익률</p>
@@ -120,15 +132,21 @@
             <% for (let bucketIndex = 0; bucketIndex < simulationCards[index].bucketRows.length && bucketIndex < 4; bucketIndex += 1) { %>
             <div>
               <div class="mb-1 flex items-center justify-between gap-2">
-                <p class="truncate text-xs font-bold text-[#191f28]"><%= simulationCards[index].bucketRows[bucketIndex].label %></p>
+                <p class="truncate text-xs font-bold text-[#191f28]">
+                  <%= simulationCards[index].bucketRows[bucketIndex].label %>
+                </p>
                 <p class="shrink-0 text-xs font-bold text-[#4e5968]">
-                  현재 <%= simulationCards[index].bucketRows[bucketIndex].currentPctText %> → 예상 <%= simulationCards[index].bucketRows[bucketIndex].finalPctText %>
+                  현재 <%= simulationCards[index].bucketRows[bucketIndex].currentPctText %> → 예상
+                  <%= simulationCards[index].bucketRows[bucketIndex].finalPctText %>
                 </p>
               </div>
               <div class="h-2 overflow-hidden rounded-full bg-[#f2f4f6]">
                 <div
                   class="h-full rounded-full"
-                  style="width: <%= simulationCards[index].bucketRows[bucketIndex].barWidth %>%; background: <%= simulationCards[index].bucketRows[bucketIndex].color %>"></div>
+                  style="
+                    width: <%= simulationCards[index].bucketRows[bucketIndex].barWidth %>%;
+                    background: <%= simulationCards[index].bucketRows[bucketIndex].color %>;
+                  "></div>
               </div>
             </div>
             <% } %>

@@ -30,8 +30,14 @@
   const settings = {
     pushEnabled: settingsRecord ? !!settingsRecord.get('push_enabled') : false,
     weeklyReadingNudgeEnabled: settingsRecord ? !!settingsRecord.get('weekly_reading_nudge_enabled') : false,
-    readingReminderCycle: settingsRecord && settingsRecord.get('reading_reminder_cycle') ? Number(settingsRecord.get('reading_reminder_cycle')) : '',
-    highlightPushCycle: settingsRecord && settingsRecord.get('highlight_push_cycle') ? Number(settingsRecord.get('highlight_push_cycle')) : '',
+    readingReminderCycle:
+      settingsRecord && settingsRecord.get('reading_reminder_cycle')
+        ? Number(settingsRecord.get('reading_reminder_cycle'))
+        : '',
+    highlightPushCycle:
+      settingsRecord && settingsRecord.get('highlight_push_cycle')
+        ? Number(settingsRecord.get('highlight_push_cycle'))
+        : '',
   }
 </script>
 
@@ -50,7 +56,8 @@
 
   <div><%- include('flash-alert.ejs') %></div>
 
-  <section class="rounded-[1.75rem] border border-stone-200/80 bg-white/88 px-4 py-5 shadow-[0_18px_38px_rgba(73,54,31,0.07)] backdrop-blur-sm sm:p-6">
+  <section
+    class="rounded-[1.75rem] border border-stone-200/80 bg-white/88 px-4 py-5 shadow-[0_18px_38px_rgba(73,54,31,0.07)] backdrop-blur-sm sm:p-6">
     <form
       id="settings-form"
       action="/xapi/settings/save"
@@ -62,7 +69,8 @@
           <p class="text-sm leading-6 text-stone-600">알림 사용 여부와 받을 주기를 관리합니다.</p>
         </div>
 
-        <label class="flex items-center justify-between gap-4 rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+        <label
+          class="flex items-center justify-between gap-4 rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
           <span class="min-w-0 flex-1">
             <span class="block text-sm font-semibold text-stone-900">푸시 알림 사용</span>
             <span class="mt-1 block text-sm leading-6 text-stone-600">브라우저 구독이 허용되면 알림을 받습니다.</span>
@@ -79,10 +87,13 @@
             aria-hidden="true"></span>
         </label>
 
-        <label class="flex items-center justify-between gap-4 rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+        <label
+          class="flex items-center justify-between gap-4 rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
           <span class="min-w-0 flex-1">
             <span class="block text-sm font-semibold text-stone-900">주간 독서 리마인더</span>
-            <span class="mt-1 block text-sm leading-6 text-stone-600">일요일 저녁까지 이번 주 독서 세션이 없으면 짧은 알림을 받습니다.</span>
+            <span class="mt-1 block text-sm leading-6 text-stone-600">
+              일요일 저녁까지 이번 주 독서 세션이 없으면 짧은 알림을 받습니다.
+            </span>
           </span>
           <input
             type="checkbox"
@@ -110,7 +121,9 @@
         <div class="grid gap-3 sm:grid-cols-2">
           <label class="block rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
             <span class="block text-sm font-semibold text-stone-900">읽기 리마인더</span>
-            <span class="mt-1 block text-sm leading-6 text-stone-600">마지막 읽기 후 며칠 뒤 알림을 보낼지 정합니다.</span>
+            <span class="mt-1 block text-sm leading-6 text-stone-600">
+              마지막 읽기 후 며칠 뒤 알림을 보낼지 정합니다.
+            </span>
             <input
               id="reading-reminder-cycle-input"
               type="number"
@@ -124,7 +137,9 @@
 
           <label class="block rounded-[1.25rem] bg-[#faf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
             <span class="block text-sm font-semibold text-stone-900">하이라이트 알림</span>
-            <span class="mt-1 block text-sm leading-6 text-stone-600">저장한 문구를 며칠마다 다시 보여줄지 정합니다.</span>
+            <span class="mt-1 block text-sm leading-6 text-stone-600">
+              저장한 문구를 며칠마다 다시 보여줄지 정합니다.
+            </span>
             <input
               id="highlight-push-cycle-input"
               type="number"
@@ -162,7 +177,16 @@
     const submitLabel = document.getElementById('settings-submit-label')
     const maxReminderCycleDays = 90
 
-    if (!form || !pushEnabledInput || !readingReminderCycleInput || !highlightPushCycleInput || !pushNoticeElement || !pushStateNoticeElement || !submitButton || !submitLabel) {
+    if (
+      !form
+      || !pushEnabledInput
+      || !readingReminderCycleInput
+      || !highlightPushCycleInput
+      || !pushNoticeElement
+      || !pushStateNoticeElement
+      || !submitButton
+      || !submitLabel
+    ) {
       return
     }
 
@@ -206,9 +230,14 @@
     function isIosDevice() {
       const platform = typeof navigator !== 'undefined' ? String(navigator.platform || '') : ''
       const userAgent = typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : ''
-      const touchPoints = typeof navigator !== 'undefined' && typeof navigator.maxTouchPoints === 'number' ? navigator.maxTouchPoints : 0
+      const touchPoints =
+        typeof navigator !== 'undefined' && typeof navigator.maxTouchPoints === 'number' ? navigator.maxTouchPoints : 0
 
-      return /iPad|iPhone|iPod/i.test(userAgent) || /iPad|iPhone|iPod/i.test(platform) || (platform === 'MacIntel' && touchPoints > 1)
+      return (
+        /iPad|iPhone|iPod/i.test(userAgent)
+        || /iPad|iPhone|iPod/i.test(platform)
+        || (platform === 'MacIntel' && touchPoints > 1)
+      )
     }
 
     /**
@@ -217,7 +246,10 @@
      * @returns {boolean} standalone 실행 여부
      */
     function isStandaloneWebApp() {
-      const displayModeStandalone = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches
+      const displayModeStandalone =
+        typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(display-mode: standalone)').matches
       const navigatorStandalone = typeof navigator !== 'undefined' && navigator.standalone === true
 
       return !!(displayModeStandalone || navigatorStandalone)
@@ -236,13 +268,17 @@
       } else if (!state.pushState.ready) {
         message = pushEnabledInput.checked ? '브라우저 알림 상태를 확인하는 중입니다.' : ''
       } else if (!pushEnabledInput.checked) {
-        message = state.pushState.optedIn ? '북로그 알림은 꺼져 있지만, 브라우저 구독은 아직 남아 있습니다. 저장하면 북로그 알림도 함께 꺼집니다.' : ''
+        message = state.pushState.optedIn
+          ? '북로그 알림은 꺼져 있지만, 브라우저 구독은 아직 남아 있습니다. 저장하면 북로그 알림도 함께 꺼집니다.'
+          : ''
       } else if (state.pushState.optedIn) {
         message = ''
       } else if (state.pushState.permission === 'denied') {
-        message = '브라우저 알림 권한이 차단되어 있습니다. 브라우저 설정에서 권한을 다시 허용해야 북로그 알림을 받을 수 있습니다.'
+        message =
+          '브라우저 알림 권한이 차단되어 있습니다. 브라우저 설정에서 권한을 다시 허용해야 북로그 알림을 받을 수 있습니다.'
       } else {
-        message = '북로그 알림은 켜져 있지만 현재 브라우저 구독은 연결되지 않았습니다. 설정을 저장하면 브라우저 구독을 다시 확인합니다.'
+        message =
+          '북로그 알림은 켜져 있지만 현재 브라우저 구독은 연결되지 않았습니다. 설정을 저장하면 브라우저 구독을 다시 확인합니다.'
       }
 
       renderMessage(pushStateNoticeElement, message)
@@ -256,8 +292,10 @@
     function applyPushState(nextState) {
       state.pushState = {
         ready: !!(nextState && nextState.ready),
-        supported: nextState && typeof nextState.supported === 'boolean' ? nextState.supported : state.pushState.supported,
-        permission: nextState && typeof nextState.permission === 'string' ? nextState.permission : state.pushState.permission,
+        supported:
+          nextState && typeof nextState.supported === 'boolean' ? nextState.supported : state.pushState.supported,
+        permission:
+          nextState && typeof nextState.permission === 'string' ? nextState.permission : state.pushState.permission,
         optedIn: !!(nextState && nextState.optedIn),
       }
 
@@ -458,7 +496,12 @@
       if (readingReminderCycleInput.value) {
         const readingReminderCycle = Number(readingReminderCycleInput.value || '')
 
-        if (isNaN(readingReminderCycle) || readingReminderCycle < 1 || readingReminderCycle > maxReminderCycleDays || Math.floor(readingReminderCycle) !== readingReminderCycle) {
+        if (
+          isNaN(readingReminderCycle)
+          || readingReminderCycle < 1
+          || readingReminderCycle > maxReminderCycleDays
+          || Math.floor(readingReminderCycle) !== readingReminderCycle
+        ) {
           event.preventDefault()
           stopSubmit('읽기 리마인더 주기는 1일부터 90일 사이의 정수여야 합니다.')
           return
@@ -468,7 +511,12 @@
       if (highlightPushCycleInput.value) {
         const highlightPushCycle = Number(highlightPushCycleInput.value || '')
 
-        if (isNaN(highlightPushCycle) || highlightPushCycle < 1 || highlightPushCycle > maxReminderCycleDays || Math.floor(highlightPushCycle) !== highlightPushCycle) {
+        if (
+          isNaN(highlightPushCycle)
+          || highlightPushCycle < 1
+          || highlightPushCycle > maxReminderCycleDays
+          || Math.floor(highlightPushCycle) !== highlightPushCycle
+        ) {
           event.preventDefault()
           stopSubmit('하이라이트 리마인더 주기는 1일부터 90일 사이의 정수여야 합니다.')
           return

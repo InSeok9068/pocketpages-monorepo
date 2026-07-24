@@ -11,7 +11,15 @@ const DEFAULT_MAX_ATTEMPTS = 1
 const GEMINI_API_KEY_ENV_NAMES = ['GEMINI_API_KEY', 'GEMINI_AI_KEY']
 const OPENAI_API_KEY_ENV_NAMES = ['OPENAI_API_KEY']
 const DEEPSEEK_API_KEY_ENV_NAMES = ['DEEPSEEK_API_KEY']
-const GEMINI_PAYLOAD_FIELDS = ['contents', 'tools', 'toolConfig', 'safetySettings', 'systemInstruction', 'generationConfig', 'cachedContent']
+const GEMINI_PAYLOAD_FIELDS = [
+  'contents',
+  'tools',
+  'toolConfig',
+  'safetySettings',
+  'systemInstruction',
+  'generationConfig',
+  'cachedContent',
+]
 const OPENAI_PAYLOAD_FIELDS = [
   'background',
   'conversation',
@@ -192,12 +200,12 @@ function isRetryableTransportError(errorText) {
   const text = String(errorText || '').toLowerCase()
   if (!text) return false
   return (
-    text.indexOf('timeout') >= 0 ||
-    text.indexOf('deadline') >= 0 ||
-    text.indexOf('temporarily unavailable') >= 0 ||
-    text.indexOf('connection reset') >= 0 ||
-    text.indexOf('connection refused') >= 0 ||
-    text.indexOf('eof') >= 0
+    text.indexOf('timeout') >= 0
+    || text.indexOf('deadline') >= 0
+    || text.indexOf('temporarily unavailable') >= 0
+    || text.indexOf('connection reset') >= 0
+    || text.indexOf('connection refused') >= 0
+    || text.indexOf('eof') >= 0
   )
 }
 
@@ -655,7 +663,8 @@ function sendWithRetry(request, runtime) {
       const elapsedMs = runtime.now() - attemptStartedAt
       const statusCode = Number(response.statusCode || 0)
       const headers = response.headers || {}
-      const responseJson = response.json && typeof response.json === 'object' && !Array.isArray(response.json) ? response.json : {}
+      const responseJson =
+        response.json && typeof response.json === 'object' && !Array.isArray(response.json) ? response.json : {}
 
       lastStatusCode = statusCode
       lastResponseJson = responseJson
@@ -758,7 +767,21 @@ function waitBeforeRetry(request, runtime, attempts, retryAfter, failure) {
     delayMs,
   }
 
-  $app.logger().warn('pocketpages/ai:retry', 'provider', meta.provider, 'attempt', meta.attempt, 'statusCode', meta.statusCode, 'error', meta.error, 'delayMs', meta.delayMs)
+  $app
+    .logger()
+    .warn(
+      'pocketpages/ai:retry',
+      'provider',
+      meta.provider,
+      'attempt',
+      meta.attempt,
+      'statusCode',
+      meta.statusCode,
+      'error',
+      meta.error,
+      'delayMs',
+      meta.delayMs
+    )
   runtime.sleep(delayMs)
 }
 
@@ -891,7 +914,7 @@ function requestOpenAi(input, runtime) {
   if (!payload.model) payload.model = requireText(request.model, 'OpenAI model')
   const model = cleanText(payload.model)
   const headers = {
-    authorization: `Bearer ${apiKey}`,
+    'authorization': `Bearer ${apiKey}`,
     'content-type': 'application/json',
   }
 
@@ -931,7 +954,7 @@ function requestDeepSeek(input, runtime) {
   if (!payload.model) payload.model = requireText(request.model, 'DeepSeek model')
   const model = cleanText(payload.model)
   const headers = {
-    authorization: `Bearer ${apiKey}`,
+    'authorization': `Bearer ${apiKey}`,
     'content-type': 'application/json',
   }
 

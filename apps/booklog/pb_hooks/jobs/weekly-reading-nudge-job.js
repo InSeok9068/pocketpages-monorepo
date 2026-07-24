@@ -34,7 +34,13 @@ function getCurrentKoreanWeekWindow(nowDate) {
  * @returns {Array<any>} 대상 user_settings 목록
  */
 function findWeeklyReadingNudgeSettings() {
-  return $app.findRecordsByFilter('user_settings', 'push_enabled = true && weekly_reading_nudge_enabled = true', '-updated', 500, 0)
+  return $app.findRecordsByFilter(
+    'user_settings',
+    'push_enabled = true && weekly_reading_nudge_enabled = true',
+    '-updated',
+    500,
+    0
+  )
 }
 
 /**
@@ -53,11 +59,15 @@ function hasReadingSessionThisWeek(userId, weekStartIso, weekEndIso) {
   }
 
   try {
-    return !!$app.findFirstRecordByFilter('reading_sessions', 'user_id = {:userId} && ended_at >= {:weekStartIso} && ended_at <= {:weekEndIso} && duration_seconds > 0', {
-      userId: normalizedUserId,
-      weekStartIso: weekStartIso,
-      weekEndIso: weekEndIso,
-    })
+    return !!$app.findFirstRecordByFilter(
+      'reading_sessions',
+      'user_id = {:userId} && ended_at >= {:weekStartIso} && ended_at <= {:weekEndIso} && duration_seconds > 0',
+      {
+        userId: normalizedUserId,
+        weekStartIso: weekStartIso,
+        weekEndIso: weekEndIso,
+      }
+    )
   } catch (_exception) {
     return false
   }
@@ -196,7 +206,17 @@ function run() {
 
   $app
     .logger()
-    .info('jobs/weekly-reading-nudge:start', 'matchedUserCount', settingsRecords.length, 'weekKey', weekWindow.weekKey, 'weekStartIso', weekWindow.weekStartIso, 'weekEndIso', weekWindow.weekEndIso)
+    .info(
+      'jobs/weekly-reading-nudge:start',
+      'matchedUserCount',
+      settingsRecords.length,
+      'weekKey',
+      weekWindow.weekKey,
+      'weekStartIso',
+      weekWindow.weekStartIso,
+      'weekEndIso',
+      weekWindow.weekEndIso
+    )
 
   for (let index = 0; index < settingsRecords.length; index += 1) {
     const settingsRecord = settingsRecords[index]
@@ -208,7 +228,15 @@ function run() {
         sentCount += 1
       } else {
         skippedCount += 1
-        $app.logger().info('jobs/weekly-reading-nudge:skip', 'userId', String(result.userId || ''), 'reason', String(result.reason || ''))
+        $app
+          .logger()
+          .info(
+            'jobs/weekly-reading-nudge:skip',
+            'userId',
+            String(result.userId || ''),
+            'reason',
+            String(result.reason || '')
+          )
       }
     } catch (exception) {
       skippedCount += 1
@@ -235,11 +263,27 @@ function run() {
       }
       $app
         .logger()
-        .error('jobs/weekly-reading-nudge:user-failed', 'userId', String(settingsRecord.get('user_id') || '').trim(), 'error', String(exception && exception.message ? exception.message : exception))
+        .error(
+          'jobs/weekly-reading-nudge:user-failed',
+          'userId',
+          String(settingsRecord.get('user_id') || '').trim(),
+          'error',
+          String(exception && exception.message ? exception.message : exception)
+        )
     }
   }
 
-  $app.logger().info('jobs/weekly-reading-nudge:done', 'matchedUserCount', settingsRecords.length, 'sentCount', sentCount, 'skippedCount', skippedCount)
+  $app
+    .logger()
+    .info(
+      'jobs/weekly-reading-nudge:done',
+      'matchedUserCount',
+      settingsRecords.length,
+      'sentCount',
+      sentCount,
+      'skippedCount',
+      skippedCount
+    )
 
   return {
     ready: true,

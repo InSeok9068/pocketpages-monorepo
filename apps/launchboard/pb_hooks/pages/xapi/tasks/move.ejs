@@ -20,9 +20,23 @@
 
   function patchInbox(view, userId, message) {
     const inboxView = view === 'today' ? 'today' : 'all'
-    const projects = $app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 300, 0, { userId })
+    const projects = $app.findRecordsByFilter(
+      'projects',
+      'user = {:userId}',
+      '-is_pinned,+sort_order,-updated',
+      300,
+      0,
+      { userId }
+    )
     const projectMap = taskBoard.getTaskProjectMap(projects)
-    const tasks = $app.findRecordsByFilter('project_tasks', 'user = {:userId}', '-is_pinned,+sort_order,due_at,-updated', 300, 0, { userId })
+    const tasks = $app.findRecordsByFilter(
+      'project_tasks',
+      'user = {:userId}',
+      '-is_pinned,+sort_order,due_at,-updated',
+      300,
+      0,
+      { userId }
+    )
     const state = taskBoard.getTaskInboxState(tasks, projectMap, inboxView)
 
     datastar.patchElements(
@@ -56,7 +70,9 @@
       taskActionBoardScope: 'inbox',
       taskActionView: inboxView,
     })
-    datastar.executeScript('window.launchboardInitTaskSortable && window.launchboardInitTaskSortable(); window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter();')
+    datastar.executeScript(
+      'window.launchboardInitTaskSortable && window.launchboardInitTaskSortable(); window.launchboardApplyTaskFilter && window.launchboardApplyTaskFilter();'
+    )
   }
 
   function patchBoard(projectId, userId, message) {
@@ -65,10 +81,17 @@
       userId,
     })
     const projectSlug = String(project.get('slug') || '').trim()
-    const tasks = $app.findRecordsByFilter('project_tasks', 'user = {:userId} && project = {:projectId}', '-is_pinned,+sort_order,-updated', 300, 0, {
-      userId,
-      projectId,
-    })
+    const tasks = $app.findRecordsByFilter(
+      'project_tasks',
+      'user = {:userId} && project = {:projectId}',
+      '-is_pinned,+sort_order,-updated',
+      300,
+      0,
+      {
+        userId,
+        projectId,
+      }
+    )
     const state = taskBoard.getTaskBoardState(tasks)
 
     datastar.patchElements(
@@ -142,11 +165,15 @@
       if (taskBoard.TASK_STATUS_VALUES.indexOf(orderedStatus) < 0) throw new Error('상태 값이 올바르지 않습니다.')
       if (isNaN(sortOrder) || sortOrder < 0) throw new Error('정렬 값이 올바르지 않습니다.')
 
-      const task = $app.findFirstRecordByFilter('project_tasks', 'id = {:taskId} && user = {:userId} && project = {:projectId}', {
-        taskId: orderedTaskId,
-        userId,
-        projectId: targetProjectId,
-      })
+      const task = $app.findFirstRecordByFilter(
+        'project_tasks',
+        'id = {:taskId} && user = {:userId} && project = {:projectId}',
+        {
+          taskId: orderedTaskId,
+          userId,
+          projectId: targetProjectId,
+        }
+      )
 
       seen[orderedTaskId] = true
       updates.push({

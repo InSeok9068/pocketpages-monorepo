@@ -40,10 +40,17 @@
   }
 
   function findDefaultStrategy(txApp, userId) {
-    const records = txApp.findRecordsByFilter('investment_strategies', 'owner = {:owner} && strategyType = {:strategyType}', '-updated', 50, 0, {
-      owner: userId,
-      strategyType: 'real',
-    })
+    const records = txApp.findRecordsByFilter(
+      'investment_strategies',
+      'owner = {:owner} && strategyType = {:strategyType}',
+      '-updated',
+      50,
+      0,
+      {
+        owner: userId,
+        strategyType: 'real',
+      }
+    )
 
     for (let index = 0; index < records.length; index += 1) {
       if (String(records[index].get('name') || '') === '기본 리밸런싱') return records[index]

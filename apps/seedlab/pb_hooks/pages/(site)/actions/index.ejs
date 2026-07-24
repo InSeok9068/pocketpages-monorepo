@@ -82,7 +82,11 @@
       dbg('seedlab/actions:index:db-access', { collection: 'assets', assetId: id })
       assetsById[id] = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id })
     } catch (exception) {
-      warn('seedlab/actions:index:db-access-failed', { collection: 'assets', assetId: id, error: String(exception.message || exception) })
+      warn('seedlab/actions:index:db-access-failed', {
+        collection: 'assets',
+        assetId: id,
+        error: String(exception.message || exception),
+      })
       assetsById[id] = null
     }
 
@@ -118,7 +122,9 @@
   if (userId) {
     try {
       dbg('seedlab/actions:index:db-access', { collection: 'action_items' })
-      const actionRecords = $app.findRecordsByFilter('action_items', 'owner = {:owner}', '-created', 50, 0, { owner: userId })
+      const actionRecords = $app.findRecordsByFilter('action_items', 'owner = {:owner}', '-created', 50, 0, {
+        owner: userId,
+      })
       const allActionCards = actionRecords.map(buildActionCard)
 
       for (let index = 0; index < allActionCards.length; index += 1) {
@@ -126,15 +132,23 @@
         if (allActionCards[index].status === 'submitted') submittedCount += 1
       }
     } catch (exception) {
-      warn('seedlab/actions:index:db-access-failed', { collection: 'action_items', error: String(exception.message || exception) })
+      warn('seedlab/actions:index:db-access-failed', {
+        collection: 'action_items',
+        error: String(exception.message || exception),
+      })
       actionCards = []
     }
 
     try {
       dbg('seedlab/actions:index:db-access', { collection: 'order_records' })
-      orderCount = $app.findRecordsByFilter('order_records', 'owner = {:owner}', '-created', 200, 0, { owner: userId }).length
+      orderCount = $app.findRecordsByFilter('order_records', 'owner = {:owner}', '-created', 200, 0, {
+        owner: userId,
+      }).length
     } catch (exception) {
-      warn('seedlab/actions:index:db-access-failed', { collection: 'order_records', error: String(exception.message || exception) })
+      warn('seedlab/actions:index:db-access-failed', {
+        collection: 'order_records',
+        error: String(exception.message || exception),
+      })
       orderCount = 0
     }
 
@@ -183,12 +197,16 @@
       <h2 class="text-base font-bold text-[#191f28]">검토할 매수 후보</h2>
       <span class="text-sm font-bold text-[#3182f6]"><%= draftCount %>개</span>
     </div>
-    <p class="-mt-1 text-xs leading-5 font-medium text-[#8b95a1]">실제 주문은 나가지 않고, 검토한 후보를 기록으로만 남깁니다.</p>
+    <p class="-mt-1 text-xs leading-5 font-medium text-[#8b95a1]">
+      실제 주문은 나가지 않고, 검토한 후보를 기록으로만 남깁니다.
+    </p>
 
     <% if (actionCards.length === 0) { %>
     <div class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
       <p class="text-sm font-bold text-[#191f28]">아직 주문 후보가 없습니다</p>
-      <p class="mt-1 text-sm leading-5 text-[#6b7684]">추가 투자 실험을 만들면 목표 비중에 맞춘 매수 후보가 여기에 표시됩니다.</p>
+      <p class="mt-1 text-sm leading-5 text-[#6b7684]">
+        추가 투자 실험을 만들면 목표 비중에 맞춘 매수 후보가 여기에 표시됩니다.
+      </p>
       <a
         href="/simulations/new"
         class="mt-4 box-border flex h-11 items-center justify-center gap-2 rounded-lg bg-[#191f28] px-3 text-sm font-bold text-white no-underline shadow-[0_8px_18px_rgba(25,31,40,0.16)] active:bg-[#333d4b]">
@@ -203,7 +221,8 @@
       <% for (let index = 0; index < actionCards.length; index += 1) { %>
       <article class="rounded-lg bg-white p-4 shadow-[0_8px_24px_rgba(25,31,40,0.06)]">
         <div class="flex items-start gap-3">
-          <span class="<%= actionCards[index].iconClass %> flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+          <span
+            class="<%= actionCards[index].iconClass %> flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
             <span
               class="<%= actionCards[index].iconName %> h-5 w-5"
               aria-hidden="true"></span>
@@ -211,10 +230,14 @@
           <div class="min-w-0 flex-1">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
-                <p class="truncate text-sm font-bold text-[#191f28]"><%= actionCards[index].displayName %> <%= actionCards[index].sideLabel %></p>
+                <p class="truncate text-sm font-bold text-[#191f28]">
+                  <%= actionCards[index].displayName %> <%= actionCards[index].sideLabel %>
+                </p>
                 <p class="mt-1 truncate text-xs text-[#8b95a1]">목표 비중에 맞춘 후보</p>
               </div>
-              <span class="shrink-0 rounded-md bg-[#f2f4f6] px-2 py-1 text-xs font-bold text-[#4e5968]"><%= actionCards[index].statusLabel %></span>
+              <span class="shrink-0 rounded-md bg-[#f2f4f6] px-2 py-1 text-xs font-bold text-[#4e5968]">
+                <%= actionCards[index].statusLabel %>
+              </span>
             </div>
             <div class="mt-3 flex items-end justify-between gap-3">
               <p class="text-lg font-bold text-[#191f28]"><%= actionCards[index].targetAmountText %>원</p>

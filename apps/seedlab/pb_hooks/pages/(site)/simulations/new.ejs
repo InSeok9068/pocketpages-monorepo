@@ -76,7 +76,11 @@
       dbg('seedlab/simulations/new:db-access', { collection: 'assets', assetId: id })
       assetsById[id] = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id })
     } catch (exception) {
-      warn('seedlab/simulations/new:db-access-failed', { collection: 'assets', assetId: id, error: String(exception.message || exception) })
+      warn('seedlab/simulations/new:db-access-failed', {
+        collection: 'assets',
+        assetId: id,
+        error: String(exception.message || exception),
+      })
       assetsById[id] = null
     }
 
@@ -99,17 +103,31 @@
     const savedBucket = readSavedAllocationBucket(holding)
     if (savedBucket) return savedBucket
 
-    const assetClass = normalizeAssetClass(holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none' ? holding.get('assetClassOverride') : asset ? asset.get('assetClass') : '')
+    const assetClass = normalizeAssetClass(
+      holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none'
+        ? holding.get('assetClassOverride')
+        : asset
+          ? asset.get('assetClass')
+          : ''
+    )
     const assetType = String(asset ? asset.get('assetType') : '').toLowerCase()
     const symbol = String(asset ? asset.get('symbol') : '').toUpperCase()
     const name = String(asset ? asset.get('name') : '').toUpperCase()
     const searchText = symbol + ' ' + name
 
     if (assetClass === 'cash' || assetType === 'cash') return 'cash'
-    if (assetClass === 'fixed_income' || assetType === 'bond' || searchText.indexOf('BOND') >= 0 || searchText.indexOf('채권') >= 0) return 'bond'
+    if (
+      assetClass === 'fixed_income'
+      || assetType === 'bond'
+      || searchText.indexOf('BOND') >= 0
+      || searchText.indexOf('채권') >= 0
+    )
+      return 'bond'
     if (searchText.indexOf('GOLD') >= 0 || searchText.indexOf('금') >= 0) return 'gold'
-    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0) return 'real_estate'
-    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0) return 'dividend_stock'
+    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0)
+      return 'real_estate'
+    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0)
+      return 'dividend_stock'
     if (assetClass === 'equity') return 'growth_stock'
     return 'other'
   }
@@ -117,10 +135,17 @@
   function readLatestUsdKrwRate() {
     try {
       dbg('seedlab/simulations/new:db-access', { collection: 'fx_rates' })
-      const records = $app.findRecordsByFilter('fx_rates', 'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}', '-rateAt', 1, 0, {
-        baseCurrency: 'USD',
-        quoteCurrency: 'KRW',
-      })
+      const records = $app.findRecordsByFilter(
+        'fx_rates',
+        'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}',
+        '-rateAt',
+        1,
+        0,
+        {
+          baseCurrency: 'USD',
+          quoteCurrency: 'KRW',
+        }
+      )
       return records.length > 0 ? Number(records[0].get('rate') || 0) : 0
     } catch (exception) {
       dbg('seedlab/simulations/new:fx-rate-missing', { pair: 'USD_KRW' })
@@ -133,10 +158,17 @@
 
     try {
       dbg('seedlab/simulations/new:db-access', { collection: 'investment_strategies' })
-      const strategyRecords = $app.findRecordsByFilter('investment_strategies', 'owner = {:owner} && strategyType = {:strategyType}', '-updated', 50, 0, {
-        owner: userId,
-        strategyType: 'real',
-      })
+      const strategyRecords = $app.findRecordsByFilter(
+        'investment_strategies',
+        'owner = {:owner} && strategyType = {:strategyType}',
+        '-updated',
+        50,
+        0,
+        {
+          owner: userId,
+          strategyType: 'real',
+        }
+      )
       let strategyRecord = null
 
       for (let index = 0; index < strategyRecords.length; index += 1) {
@@ -205,7 +237,9 @@
 
     try {
       dbg('seedlab/simulations/new:db-access', { collection: 'account_holdings' })
-      const holdingRecords = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-marketValue', 200, 0, { owner: userId })
+      const holdingRecords = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-marketValue', 200, 0, {
+        owner: userId,
+      })
       for (let index = 0; index < holdingRecords.length; index += 1) {
         const holding = holdingRecords[index]
         const asset = readAssetRecord(holding.get('asset'))
@@ -228,11 +262,18 @@
           id: String(holding.get('id') || ''),
           symbol,
           label: name || symbol,
-          subText: formatAmount(marketValue, 'KRW') + '원 · 현재가 ' + formatAmount(holding.get('currentPrice'), currency) + (currency === 'USD' ? '달러' : '원'),
+          subText:
+            formatAmount(marketValue, 'KRW')
+            + '원 · 현재가 '
+            + formatAmount(holding.get('currentPrice'), currency)
+            + (currency === 'USD' ? '달러' : '원'),
         })
       }
     } catch (exception) {
-      warn('seedlab/simulations/new:db-access-failed', { collection: 'account_holdings', error: String(exception.message || exception) })
+      warn('seedlab/simulations/new:db-access-failed', {
+        collection: 'account_holdings',
+        error: String(exception.message || exception),
+      })
     }
 
     return optionsByBucket
@@ -261,7 +302,14 @@
   if (userId) {
     try {
       dbg('seedlab/simulations/new:db-access', { collection: 'portfolio_accounts' })
-      const accountRecords = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner} && isActive = true', '-updated', 50, 0, { owner: userId })
+      const accountRecords = $app.findRecordsByFilter(
+        'portfolio_accounts',
+        'owner = {:owner} && isActive = true',
+        '-updated',
+        50,
+        0,
+        { owner: userId }
+      )
       accountOptions = accountRecords.map(function (record) {
         return {
           id: String(record.get('id') || ''),
@@ -269,7 +317,10 @@
         }
       })
     } catch (exception) {
-      warn('seedlab/simulations/new:db-access-failed', { collection: 'portfolio_accounts', error: String(exception.message || exception) })
+      warn('seedlab/simulations/new:db-access-failed', {
+        collection: 'portfolio_accounts',
+        error: String(exception.message || exception),
+      })
       accountOptions = []
     }
 
@@ -305,8 +356,12 @@
             class="i-lucide-route mt-0.5 h-5 w-5 shrink-0 text-[#3182f6]"
             aria-hidden="true"></span>
           <div class="min-w-0">
-            <p class="text-sm leading-5 font-bold text-[#191f28]">매달 넣을 돈이 목표 비중을 얼마나 바꾸는지 계산합니다</p>
-            <p class="mt-1 text-xs leading-5 font-medium text-[#6b7684]">결과는 월별 예상 경로와 첫 달 매수 후보로 나뉩니다.</p>
+            <p class="text-sm leading-5 font-bold text-[#191f28]">
+              매달 넣을 돈이 목표 비중을 얼마나 바꾸는지 계산합니다
+            </p>
+            <p class="mt-1 text-xs leading-5 font-medium text-[#6b7684]">
+              결과는 월별 예상 경로와 첫 달 매수 후보로 나뉩니다.
+            </p>
           </div>
         </div>
         <div class="mt-4 grid grid-cols-3 gap-2 text-center">
@@ -395,7 +450,8 @@
           </select>
         </label>
         <details>
-          <summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-bold text-[#4e5968]">
+          <summary
+            class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-bold text-[#4e5968]">
             세부 조건
             <span
               class="i-lucide-chevron-down h-4 w-4 text-[#8b95a1]"
@@ -451,8 +507,11 @@
           <p class="text-sm font-bold text-[#191f28]">실험 목표</p>
         </div>
         <% for (let index = 0; index < targetBucketCards.length; index += 1) { %>
-        <label class="<%= index + 1 === targetBucketCards.length ? '' : 'border-b border-[#f2f4f6]' %> grid grid-cols-[1fr_92px] items-center gap-3 px-4 py-3">
-          <span class="<%= targetBucketCards[index].tone %> min-w-0 truncate rounded-md px-2 py-0.5 text-xs font-bold"><%= targetBucketCards[index].label %></span>
+        <label
+          class="<%= index + 1 === targetBucketCards.length ? '' : 'border-b border-[#f2f4f6]' %> grid grid-cols-[1fr_92px] items-center gap-3 px-4 py-3">
+          <span class="<%= targetBucketCards[index].tone %> min-w-0 truncate rounded-md px-2 py-0.5 text-xs font-bold">
+            <%= targetBucketCards[index].label %>
+          </span>
           <div class="flex min-w-0 items-center justify-end gap-1.5">
             <input
               type="number"
@@ -473,8 +532,11 @@
           <p class="text-sm font-bold text-[#191f28]">연수익률 가정</p>
         </div>
         <% for (let index = 0; index < returnBucketCards.length; index += 1) { %>
-        <label class="<%= index + 1 === returnBucketCards.length ? '' : 'border-b border-[#f2f4f6]' %> grid grid-cols-[1fr_92px] items-center gap-3 px-4 py-3">
-          <span class="<%= returnBucketCards[index].tone %> min-w-0 truncate rounded-md px-2 py-0.5 text-xs font-bold"><%= returnBucketCards[index].label %></span>
+        <label
+          class="<%= index + 1 === returnBucketCards.length ? '' : 'border-b border-[#f2f4f6]' %> grid grid-cols-[1fr_92px] items-center gap-3 px-4 py-3">
+          <span class="<%= returnBucketCards[index].tone %> min-w-0 truncate rounded-md px-2 py-0.5 text-xs font-bold">
+            <%= returnBucketCards[index].label %>
+          </span>
           <div class="flex min-w-0 items-center justify-end gap-1.5">
             <input
               type="number"
@@ -496,13 +558,18 @@
         </div>
         <% for (let index = 0; index < buyTargetCards.length; index += 1) { %>
         <label class="<%= index + 1 === buyTargetCards.length ? '' : 'border-b border-[#f2f4f6]' %> block px-4 py-3">
-          <span class="<%= buyTargetCards[index].tone %> inline-flex max-w-full truncate rounded-md px-2 py-0.5 text-xs font-bold"><%= buyTargetCards[index].label %></span>
+          <span
+            class="<%= buyTargetCards[index].tone %> inline-flex max-w-full truncate rounded-md px-2 py-0.5 text-xs font-bold">
+            <%= buyTargetCards[index].label %>
+          </span>
           <select
             name="<%= buyTargetCards[index].fieldName %>"
             class="mt-2 h-9 w-full min-w-0 border-0 bg-transparent p-0 text-sm font-bold text-[#191f28] outline-none">
             <option value="">자동 선택</option>
             <% for (let optionIndex = 0; optionIndex < buyTargetCards[index].options.length; optionIndex += 1) { %>
-            <option value="<%= buyTargetCards[index].options[optionIndex].id %>"><%= buyTargetCards[index].options[optionIndex].label %></option>
+            <option value="<%= buyTargetCards[index].options[optionIndex].id %>">
+              <%= buyTargetCards[index].options[optionIndex].label %>
+            </option>
             <% } %>
           </select>
           <% if (buyTargetCards[index].options.length === 0) { %>
@@ -512,7 +579,8 @@
         <% } %>
       </div>
 
-      <label class="flex min-h-12 items-center justify-between gap-4 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+      <label
+        class="flex min-h-12 items-center justify-between gap-4 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
         <span class="text-sm font-bold text-[#191f28]">주문 후보 만들기</span>
         <input
           type="checkbox"

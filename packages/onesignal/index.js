@@ -75,7 +75,10 @@ function isNoSubscribedRecipientsMessage(value) {
  */
 function buildResult(args) {
   const statusCode = Number(args.statusCode || 0)
-  const responseJson = args.responseJson && typeof args.responseJson === 'object' && !Array.isArray(args.responseJson) ? args.responseJson : {}
+  const responseJson =
+    args.responseJson && typeof args.responseJson === 'object' && !Array.isArray(args.responseJson)
+      ? args.responseJson
+      : {}
   const errors = getResponseErrors(responseJson)
   const notificationId = cleanText(responseJson.id)
   const httpOk = statusCode >= 200 && statusCode < 300
@@ -116,7 +119,10 @@ function createRuntime(options) {
  * @returns {Record<string, any>} OneSignal payload입니다.
  */
 function buildNotificationPayload(request, runtime) {
-  const payload = request.payload && typeof request.payload === 'object' ? Object.assign({}, request.payload) : Object.assign({}, request)
+  const payload =
+    request.payload && typeof request.payload === 'object'
+      ? Object.assign({}, request.payload)
+      : Object.assign({}, request)
   delete payload.payload
   delete payload.timeoutSeconds
 
@@ -136,27 +142,46 @@ function createNotification(input, runtime) {
   const timeout = normalizePositiveNumber(request.timeoutSeconds, runtime.timeoutSeconds)
   const apiKey = requireText(runtime.apiKey, 'OneSignal apiKey')
 
-  $app.logger().debug('pocketpages/onesignal:request', 'targetChannel', cleanText(payload.target_channel), 'timeoutSeconds', timeout)
+  $app
+    .logger()
+    .debug(
+      'pocketpages/onesignal:request',
+      'targetChannel',
+      cleanText(payload.target_channel),
+      'timeoutSeconds',
+      timeout
+    )
 
   try {
     const response = $http.send({
       url: runtime.baseUrl + '/notifications',
       method: 'POST',
       headers: {
-        Authorization: 'Key ' + apiKey,
+        'Authorization': 'Key ' + apiKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
       timeout,
     })
-    const responseJson = response.json && typeof response.json === 'object' && !Array.isArray(response.json) ? response.json : {}
+    const responseJson =
+      response.json && typeof response.json === 'object' && !Array.isArray(response.json) ? response.json : {}
     const result = buildResult({
       statusCode: response.statusCode,
       responseJson,
       errorMessage: '',
     })
 
-    $app.logger().debug('pocketpages/onesignal:response', 'statusCode', result.statusCode, 'ok', result.ok, 'notificationId', result.notificationId)
+    $app
+      .logger()
+      .debug(
+        'pocketpages/onesignal:response',
+        'statusCode',
+        result.statusCode,
+        'ok',
+        result.ok,
+        'notificationId',
+        result.notificationId
+      )
     return result
   } catch (error) {
     const result = buildResult({
@@ -165,7 +190,17 @@ function createNotification(input, runtime) {
       errorMessage: cleanText(error),
     })
 
-    $app.logger().debug('pocketpages/onesignal:response', 'statusCode', result.statusCode, 'ok', result.ok, 'error', result.errorMessage)
+    $app
+      .logger()
+      .debug(
+        'pocketpages/onesignal:response',
+        'statusCode',
+        result.statusCode,
+        'ok',
+        result.ok,
+        'error',
+        result.errorMessage
+      )
     return result
   }
 }

@@ -139,7 +139,10 @@
     const costAmountAlreadyKrw = looksLikeKrwSourceAmount(rawCostAmount, sourceCostAmount, exchangeRate)
     const convertedMarketValue = marketValueAlreadyKrw ? rawMarketValue : sourceMarketValue * exchangeRate
     const convertedCostAmount = costAmountAlreadyKrw ? rawCostAmount : sourceCostAmount * exchangeRate
-    const convertedProfitLoss = marketValueAlreadyKrw || costAmountAlreadyKrw ? convertedMarketValue - convertedCostAmount : rawProfitLoss * exchangeRate
+    const convertedProfitLoss =
+      marketValueAlreadyKrw || costAmountAlreadyKrw
+        ? convertedMarketValue - convertedCostAmount
+        : rawProfitLoss * exchangeRate
 
     return {
       exchangeRate,
@@ -253,12 +256,16 @@
     const startDate = dateutil.startOfDay(snapshotDate).toISOString()
     const endDate = dateutil.endOfDay(snapshotDate).toISOString()
     try {
-      return txApp.findFirstRecordByFilter('account_snapshots', 'owner = {:owner} && account = {:account} && snapshotDate >= {:startDate} && snapshotDate <= {:endDate}', {
-        owner: userId,
-        account: accountId,
-        startDate,
-        endDate,
-      })
+      return txApp.findFirstRecordByFilter(
+        'account_snapshots',
+        'owner = {:owner} && account = {:account} && snapshotDate >= {:startDate} && snapshotDate <= {:endDate}',
+        {
+          owner: userId,
+          account: accountId,
+          startDate,
+          endDate,
+        }
+      )
     } catch (exception) {
       const record = new Record(txApp.findCollectionByNameOrId('account_snapshots'))
       record.set('owner', userId)
@@ -337,12 +344,16 @@
     let holdingRecord = null
 
     try {
-      holdingRecord = txApp.findFirstRecordByFilter('account_holdings', 'owner = {:owner} && account = {:account} && asset = {:asset} && source = {:source}', {
-        owner: args.userId,
-        account: args.accountId,
-        asset: assetId,
-        source: 'toss',
-      })
+      holdingRecord = txApp.findFirstRecordByFilter(
+        'account_holdings',
+        'owner = {:owner} && account = {:account} && asset = {:asset} && source = {:source}',
+        {
+          owner: args.userId,
+          account: args.accountId,
+          asset: assetId,
+          source: 'toss',
+        }
+      )
     } catch (exception) {
       holdingRecord = null
     }
@@ -368,8 +379,11 @@
       profitLossSource: holdingAmounts.sourceProfitLoss,
       profitLossKrw: holdingAmounts.convertedProfitLoss,
     })
-    const savedAllocationBucket = allocationBuckets.normalizeBucket(existingRaw.allocationBucket || existingSeedlab.allocationBucket)
-    const savedAllocationBucketUpdatedAt = existingRaw.allocationBucketUpdatedAt || existingSeedlab.allocationBucketUpdatedAt
+    const savedAllocationBucket = allocationBuckets.normalizeBucket(
+      existingRaw.allocationBucket || existingSeedlab.allocationBucket
+    )
+    const savedAllocationBucketUpdatedAt =
+      existingRaw.allocationBucketUpdatedAt || existingSeedlab.allocationBucketUpdatedAt
     if (savedAllocationBucket) {
       nextSeedlab.allocationBucket = savedAllocationBucket
       nextSeedlab.allocationBucketUpdatedAt = savedAllocationBucketUpdatedAt
@@ -441,20 +455,28 @@
     requireText(accountId, '계좌')
 
     dbg('seedlab/xapi/accounts/toss/sync:db-access', { collection: 'portfolio_accounts' })
-    const accountRecord = $app.findFirstRecordByFilter('portfolio_accounts', 'id = {:id} && owner = {:owner} && providerName = {:providerName}', {
-      id: accountId,
-      owner: userId,
-      providerName: 'toss',
-    })
+    const accountRecord = $app.findFirstRecordByFilter(
+      'portfolio_accounts',
+      'id = {:id} && owner = {:owner} && providerName = {:providerName}',
+      {
+        id: accountId,
+        owner: userId,
+        providerName: 'toss',
+      }
+    )
     const connectionId = requireText(accountRecord.get('brokerConnection'), '토스증권 연결')
 
     dbg('seedlab/xapi/accounts/toss/sync:db-access', { collection: 'broker_connections' })
-    const connectionRecord = $app.findFirstRecordByFilter('broker_connections', 'id = {:id} && owner = {:owner} && provider = {:provider} && status = {:status}', {
-      id: connectionId,
-      owner: userId,
-      provider: 'toss',
-      status: 'active',
-    })
+    const connectionRecord = $app.findFirstRecordByFilter(
+      'broker_connections',
+      'id = {:id} && owner = {:owner} && provider = {:provider} && status = {:status}',
+      {
+        id: connectionId,
+        owner: userId,
+        provider: 'toss',
+        status: 'active',
+      }
+    )
 
     syncRunRecord = new Record($app.findCollectionByNameOrId('sync_runs'))
     syncRunRecord.set('owner', userId)
@@ -497,9 +519,15 @@
     const overviewPurchaseAmount = readCurrencyComponents(overview, 'totalPurchaseAmount')
     const overviewProfitLoss = readCurrencyComponents(overview, 'profitLoss')
     const cashBalances = readCashBalances(toss, clientOptions.accountSeq)
-    const needsUsdKrwRate = hasUsdHolding(items) || overviewMarketValue.usd > 0 || overviewPurchaseAmount.usd > 0 || overviewProfitLoss.usd !== 0 || cashBalances.usd > 0
+    const needsUsdKrwRate =
+      hasUsdHolding(items)
+      || overviewMarketValue.usd > 0
+      || overviewPurchaseAmount.usd > 0
+      || overviewProfitLoss.usd !== 0
+      || cashBalances.usd > 0
     const exchangeRates = needsUsdKrwRate ? fetchUsdKrwRate(toss) : { USD_KRW: 0, raw: null }
-    if (needsUsdKrwRate && Number(exchangeRates.USD_KRW || 0) <= 0) throw new Error('USD 보유 종목 환율 조회에 실패했습니다.')
+    if (needsUsdKrwRate && Number(exchangeRates.USD_KRW || 0) <= 0)
+      throw new Error('USD 보유 종목 환율 조회에 실패했습니다.')
     dbg('seedlab/xapi/accounts/toss/sync:valuation-input', {
       userId,
       accountId,
@@ -613,11 +641,18 @@
         changedCount += 1
       }
 
-      const existingHoldings = txApp.findRecordsByFilter('account_holdings', 'owner = {:owner} && account = {:account} && source = {:source}', '-updated', 200, 0, {
-        owner: userId,
-        account: accountId,
-        source: 'toss',
-      })
+      const existingHoldings = txApp.findRecordsByFilter(
+        'account_holdings',
+        'owner = {:owner} && account = {:account} && source = {:source}',
+        '-updated',
+        200,
+        0,
+        {
+          owner: userId,
+          account: accountId,
+          source: 'toss',
+        }
+      )
 
       for (let index = 0; index < existingHoldings.length; index += 1) {
         const existingHolding = existingHoldings[index]

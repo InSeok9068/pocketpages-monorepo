@@ -26,11 +26,11 @@
    */
   function buildEtag(value) {
     return (
-      '"' +
-      String(value || '')
-        .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"') +
       '"'
+      + String(value || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+      + '"'
     )
   }
 

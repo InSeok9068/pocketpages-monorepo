@@ -13,7 +13,8 @@
   const BOOK_SEARCH_PAGE_SIZE = 25
   const FICTION_CHARS_PER_PAGE = 430
   const NONFICTION_CHARS_PER_PAGE = 310
-  const METADATA_ENTRY_PATH_PATTERN = /(rights|copyright|colophon|author|about|credit|imprint|title|cover|bookinfo|book_info|book-info)/i
+  const METADATA_ENTRY_PATH_PATTERN =
+    /(rights|copyright|colophon|author|about|credit|imprint|title|cover|bookinfo|book_info|book-info)/i
   const ISBN_SCAN_ENTRY_PATTERN = /\.(opf|xml|ncx|xhtml|html|htm|txt)$/i
   const SET_ISBN_CONTEXT_PATTERN = /(?:세트|set|전집|합본)/i
   const ZIP_EOCD_SIGNATURE = 0x06054b50
@@ -95,7 +96,11 @@
   function shouldExtractEpubTextEntry(entryPath) {
     const normalizedEntryPath = String(entryPath || '')
 
-    return normalizedEntryPath === 'mimetype' || normalizedEntryPath === 'META-INF/container.xml' || /\.(opf|xml|ncx|xhtml|html|htm|txt)$/i.test(normalizedEntryPath)
+    return (
+      normalizedEntryPath === 'mimetype'
+      || normalizedEntryPath === 'META-INF/container.xml'
+      || /\.(opf|xml|ncx|xhtml|html|htm|txt)$/i.test(normalizedEntryPath)
+    )
   }
 
   function readUInt16LE(bytes, offset) {
@@ -103,7 +108,13 @@
   }
 
   function readUInt32LE(bytes, offset) {
-    return (Number(bytes[offset] || 0) | (Number(bytes[offset + 1] || 0) << 8) | (Number(bytes[offset + 2] || 0) << 16) | (Number(bytes[offset + 3] || 0) << 24)) >>> 0
+    return (
+      (Number(bytes[offset] || 0)
+        | (Number(bytes[offset + 1] || 0) << 8)
+        | (Number(bytes[offset + 2] || 0) << 16)
+        | (Number(bytes[offset + 3] || 0) << 24))
+      >>> 0
+    )
   }
 
   function readReaderRange(reader, offset, length) {
@@ -650,11 +661,19 @@
    * @param {object} packageDocument 파싱된 OPF XML 문서
    * @returns {{ textCharCount: number, chapterCount: number, estimatedPageCount: number, pageDivisor: number, pageRule: string }} 계산된 분량 지표
    */
-  function buildReadingMetrics(matchedBook, epubMetadata, archiveEntries, manifestItems, packageDocumentPath, packageDocument) {
+  function buildReadingMetrics(
+    matchedBook,
+    epubMetadata,
+    archiveEntries,
+    manifestItems,
+    packageDocumentPath,
+    packageDocument
+  ) {
     const manifestList = Array.isArray(manifestItems) ? manifestItems : []
     const manifestById = {}
     const spineIdrefs = parseSpineIdrefs(packageDocument)
-    const excludedPathPattern = /(cover|copy|copyright|colophon|imprint|about|author|title|toc|nav|contents|index|footnote)/i
+    const excludedPathPattern =
+      /(cover|copy|copyright|colophon|imprint|about|author|title|toc|nav|contents|index|footnote)/i
     let combinedText = ''
 
     for (let index = 0; index < manifestList.length; index += 1) {
@@ -943,7 +962,11 @@
     for (let index = 0; index < isbnScanEntryPaths.length; index += 1) {
       const entryPath = isbnScanEntryPaths[index]
       const plainText = readIsbnScanText(archiveEntries, entryPath)
-      const pageCandidates = extractPageIsbnCandidates(plainText, entryPath, isMetadataEntryPath(entryPath) ? 'metadata-page' : 'archive-entry')
+      const pageCandidates = extractPageIsbnCandidates(
+        plainText,
+        entryPath,
+        isMetadataEntryPath(entryPath) ? 'metadata-page' : 'archive-entry'
+      )
 
       for (let candidateIndex = 0; candidateIndex < pageCandidates.length; candidateIndex += 1) {
         pendingCandidates.push(pageCandidates[candidateIndex])
@@ -1094,7 +1117,10 @@
   function buildEpubTextFileHash(archiveSnapshot, fileSize) {
     const archiveEntries = archiveSnapshot && archiveSnapshot.archiveEntries ? archiveSnapshot.archiveEntries : {}
     const entryInfos = archiveSnapshot && Array.isArray(archiveSnapshot.entryInfos) ? archiveSnapshot.entryInfos : []
-    const entryNames = archiveSnapshot && Array.isArray(archiveSnapshot.entryNames) ? archiveSnapshot.entryNames : Object.keys(archiveEntries).sort()
+    const entryNames =
+      archiveSnapshot && Array.isArray(archiveSnapshot.entryNames)
+        ? archiveSnapshot.entryNames
+        : Object.keys(archiveEntries).sort()
     const fingerprintParts = ['epub-text-v1', String(fileSize || 0)]
 
     for (let index = 0; index < entryInfos.length; index += 1) {
@@ -1215,8 +1241,12 @@
     const normalizedTitle = String(title || '').trim()
     const normalizedAuthor = String(author || '').trim()
     const combinedKeyword = buildSearchKeyword(normalizedTitle, normalizedAuthor)
-    const normalizedTranslator = normalizeContributorName(matchMetadata && matchMetadata.translator ? matchMetadata.translator : '')
-    const normalizedPublisher = normalizePublisherName(matchMetadata && matchMetadata.publisher ? matchMetadata.publisher : '')
+    const normalizedTranslator = normalizeContributorName(
+      matchMetadata && matchMetadata.translator ? matchMetadata.translator : ''
+    )
+    const normalizedPublisher = normalizePublisherName(
+      matchMetadata && matchMetadata.publisher ? matchMetadata.publisher : ''
+    )
 
     if (combinedKeyword) {
       pushUniqueSearchProfile(profiles, {
@@ -1266,10 +1296,20 @@
     profiles.push(profile)
   }
 
-  function collectSupplementalSearchMetadata(epubMetadata, archiveEntries, manifestItems, packageDocumentPath, entryNames) {
+  function collectSupplementalSearchMetadata(
+    epubMetadata,
+    archiveEntries,
+    manifestItems,
+    packageDocumentPath,
+    entryNames
+  ) {
     const metadataEntryPaths = buildMetadataEntryPaths(manifestItems, packageDocumentPath, entryNames)
     let translator = ''
-    let publisher = normalizePublisherName(epubMetadata && (epubMetadata.publisher || epubMetadata.source) ? epubMetadata.publisher || epubMetadata.source : '')
+    let publisher = normalizePublisherName(
+      epubMetadata && (epubMetadata.publisher || epubMetadata.source)
+        ? epubMetadata.publisher || epubMetadata.source
+        : ''
+    )
 
     for (let index = 0; index < metadataEntryPaths.length; index += 1) {
       const entryPath = metadataEntryPaths[index]
@@ -1300,8 +1340,12 @@
     const primaryAuthor = extractPrimaryAuthorName(epubMetadata.author)
     const filePrimaryAuthor = extractPrimaryAuthorName(filenameMetadata.author)
     const normalizedTitle = String(epubMetadata.title || filenameMetadata.title || '').trim()
-    const translator = normalizeContributorName(supplementalMetadata && supplementalMetadata.translator ? supplementalMetadata.translator : '')
-    const publisher = normalizePublisherName(supplementalMetadata && supplementalMetadata.publisher ? supplementalMetadata.publisher : epubMetadata.publisher)
+    const translator = normalizeContributorName(
+      supplementalMetadata && supplementalMetadata.translator ? supplementalMetadata.translator : ''
+    )
+    const publisher = normalizePublisherName(
+      supplementalMetadata && supplementalMetadata.publisher ? supplementalMetadata.publisher : epubMetadata.publisher
+    )
 
     addSearchProfile(profiles, epubMetadata.title, primaryAuthor || epubMetadata.author, 'epub', supplementalMetadata)
 
@@ -1309,8 +1353,18 @@
       addSearchProfile(profiles, epubMetadata.title, epubMetadata.author, 'epub-raw-author', supplementalMetadata)
     }
 
-    if (filenameMetadata.title && (filenameMetadata.title !== String(epubMetadata.title || '').trim() || filePrimaryAuthor !== (primaryAuthor || String(epubMetadata.author || '').trim()))) {
-      addSearchProfile(profiles, filenameMetadata.title, filePrimaryAuthor || filenameMetadata.author, 'filename', supplementalMetadata)
+    if (
+      filenameMetadata.title
+      && (filenameMetadata.title !== String(epubMetadata.title || '').trim()
+        || filePrimaryAuthor !== (primaryAuthor || String(epubMetadata.author || '').trim()))
+    ) {
+      addSearchProfile(
+        profiles,
+        filenameMetadata.title,
+        filePrimaryAuthor || filenameMetadata.author,
+        'filename',
+        supplementalMetadata
+      )
     }
 
     if (translator && translator !== primaryAuthor && translator !== filePrimaryAuthor) {
@@ -1382,7 +1436,11 @@
         continue
       }
 
-      if (normalizedTargetText === candidate || normalizedTargetText.indexOf(candidate) !== -1 || candidate.indexOf(normalizedTargetText) !== -1) {
+      if (
+        normalizedTargetText === candidate
+        || normalizedTargetText.indexOf(candidate) !== -1
+        || candidate.indexOf(normalizedTargetText) !== -1
+      ) {
         return true
       }
     }
@@ -1563,7 +1621,11 @@
         }
       }
 
-      if (pageDocs.length < BOOK_SEARCH_PAGE_SIZE || docs.length >= MAX_BOOK_SEARCH_DOCS || pageNo * BOOK_SEARCH_PAGE_SIZE >= Number(searchResult.numFound || 0)) {
+      if (
+        pageDocs.length < BOOK_SEARCH_PAGE_SIZE
+        || docs.length >= MAX_BOOK_SEARCH_DOCS
+        || pageNo * BOOK_SEARCH_PAGE_SIZE >= Number(searchResult.numFound || 0)
+      ) {
         break
       }
 
@@ -1657,11 +1719,20 @@
     const detailAuthor = normalizeMatchText(detailBook && detailBook.authors ? detailBook.authors : '')
     const enrichedAuthor = normalizeMatchText(enrichedBook && enrichedBook.authors ? enrichedBook.authors : '')
 
-    if (detailTitleVariants.length > 0 && enrichedTitle && !containsAnyComparableText(enrichedTitle, detailTitleVariants)) {
+    if (
+      detailTitleVariants.length > 0
+      && enrichedTitle
+      && !containsAnyComparableText(enrichedTitle, detailTitleVariants)
+    ) {
       return false
     }
 
-    if (detailAuthor && enrichedAuthor && enrichedAuthor.indexOf(detailAuthor) === -1 && detailAuthor.indexOf(enrichedAuthor) === -1) {
+    if (
+      detailAuthor
+      && enrichedAuthor
+      && enrichedAuthor.indexOf(detailAuthor) === -1
+      && detailAuthor.indexOf(enrichedAuthor) === -1
+    ) {
       return false
     }
 
@@ -1687,8 +1758,16 @@
     mergedBook.bookname = preferBookField(detailBook.bookname, enrichedDoc && enrichedDoc.bookname, 1)
     mergedBook.authors = preferBookField(detailBook.authors, enrichedDoc && enrichedDoc.authors, 1)
     mergedBook.publisher = preferBookField(detailBook.publisher, enrichedDoc && enrichedDoc.publisher, 1)
-    mergedBook.publication_date = preferBookField(detailBook.publication_date, enrichedDoc && enrichedDoc.publication_date, 1)
-    mergedBook.publication_year = preferBookField(detailBook.publication_year, enrichedDoc && enrichedDoc.publication_year, 1)
+    mergedBook.publication_date = preferBookField(
+      detailBook.publication_date,
+      enrichedDoc && enrichedDoc.publication_date,
+      1
+    )
+    mergedBook.publication_year = preferBookField(
+      detailBook.publication_year,
+      enrichedDoc && enrichedDoc.publication_year,
+      1
+    )
     mergedBook.description = preferBookField(detailBook.description, enrichedDoc && enrichedDoc.description, 30)
     mergedBook.bookImageURL = preferBookField(detailBook.bookImageURL, enrichedDoc && enrichedDoc.bookImageURL, 1)
     mergedBook.class_no = preferBookField(detailBook.class_no, enrichedDoc && enrichedDoc.class_no, 1)
@@ -1705,7 +1784,8 @@
         enrichment: {
           searchKeyword: enrichmentLookup && enrichmentLookup.searchKeyword ? enrichmentLookup.searchKeyword : '',
           matchedSource: enrichmentLookup && enrichmentLookup.matchedSource ? enrichmentLookup.matchedSource : '',
-          matchedScore: enrichmentLookup && typeof enrichmentLookup.matchedScore === 'number' ? enrichmentLookup.matchedScore : -1,
+          matchedScore:
+            enrichmentLookup && typeof enrichmentLookup.matchedScore === 'number' ? enrichmentLookup.matchedScore : -1,
           matchedIsbn13: enrichedDoc && enrichedDoc.isbn13 ? String(enrichedDoc.isbn13) : '',
         },
       }),
@@ -1724,7 +1804,10 @@
     })
 
     try {
-      const detailResult = data4libraryService.getBookDetail({ apiKey: env('DATA4LIBRARY_APIKEY') }, { isbn13: normalizedIsbn13 })
+      const detailResult = data4libraryService.getBookDetail(
+        { apiKey: env('DATA4LIBRARY_APIKEY') },
+        { isbn13: normalizedIsbn13 }
+      )
 
       dbg('xapi/epub/upload:detail-by-isbn13:done', {
         isbn13: normalizedIsbn13,
@@ -1843,9 +1926,28 @@
     }
   }
 
-  function resolveBookLookup(epubMetadata, archiveEntries, manifestItems, packageDocumentPath, entryNames, originalName) {
-    const isbnCandidates = collectEpubIsbnCandidates(epubMetadata, archiveEntries, manifestItems, packageDocumentPath, entryNames)
-    const supplementalMetadata = collectSupplementalSearchMetadata(epubMetadata, archiveEntries, manifestItems, packageDocumentPath, entryNames)
+  function resolveBookLookup(
+    epubMetadata,
+    archiveEntries,
+    manifestItems,
+    packageDocumentPath,
+    entryNames,
+    originalName
+  ) {
+    const isbnCandidates = collectEpubIsbnCandidates(
+      epubMetadata,
+      archiveEntries,
+      manifestItems,
+      packageDocumentPath,
+      entryNames
+    )
+    const supplementalMetadata = collectSupplementalSearchMetadata(
+      epubMetadata,
+      archiveEntries,
+      manifestItems,
+      packageDocumentPath,
+      entryNames
+    )
 
     dbg('xapi/epub/upload:isbn-candidates', {
       count: isbnCandidates.length,
@@ -1882,14 +1984,21 @@
         const enrichmentLookup = findBestBookSearchResult(epubMetadata, supplementalMetadata, originalName)
 
         if (enrichmentLookup.selectedDoc && canUseEnrichmentBook(detailBook, enrichmentLookup.selectedDoc)) {
-          const enrichedDetailResult = buildEnrichedDetailResult(detailLookup.detailResult, enrichmentLookup.selectedDoc, enrichmentLookup)
+          const enrichedDetailResult = buildEnrichedDetailResult(
+            detailLookup.detailResult,
+            enrichmentLookup.selectedDoc,
+            enrichmentLookup
+          )
 
           info('xapi/epub/upload:detail-enriched', {
             isbn13: detailLookup.matchedCandidate ? detailLookup.matchedCandidate.isbn13 : '',
             searchKeyword: enrichmentLookup.searchKeyword,
             matchedSource: enrichmentLookup.matchedSource || '',
             matchedScore: enrichmentLookup.matchedScore,
-            enrichedIsbn13: enrichmentLookup.selectedDoc && enrichmentLookup.selectedDoc.isbn13 ? String(enrichmentLookup.selectedDoc.isbn13) : '',
+            enrichedIsbn13:
+              enrichmentLookup.selectedDoc && enrichmentLookup.selectedDoc.isbn13
+                ? String(enrichmentLookup.selectedDoc.isbn13)
+                : '',
             beforeRichness: detailRichness,
             afterRichness: summarizeBookMetadataRichness(enrichedDetailResult.book),
           })
@@ -1900,7 +2009,10 @@
             selectedDoc: enrichmentLookup.selectedDoc,
             detailResult: enrichedDetailResult,
             matchedBy: 'isbn13+enriched',
-            matchedSource: (detailLookup.matchedCandidate ? detailLookup.matchedCandidate.source : '') + '+' + (enrichmentLookup.matchedSource || ''),
+            matchedSource:
+              (detailLookup.matchedCandidate ? detailLookup.matchedCandidate.source : '')
+              + '+'
+              + (enrichmentLookup.matchedSource || ''),
             matchedScore: enrichmentLookup.matchedScore,
             matchedIsbn13: detailLookup.matchedCandidate ? detailLookup.matchedCandidate.isbn13 : '',
           }
@@ -1934,7 +2046,8 @@
       matchedBy: searchLookup.matchedBy,
       matchedSource: searchLookup.matchedSource || '',
       matchedScore: searchLookup.matchedScore,
-      matchedIsbn13: searchLookup.selectedDoc && searchLookup.selectedDoc.isbn13 ? String(searchLookup.selectedDoc.isbn13) : '',
+      matchedIsbn13:
+        searchLookup.selectedDoc && searchLookup.selectedDoc.isbn13 ? String(searchLookup.selectedDoc.isbn13) : '',
     }
   }
 
@@ -1960,10 +2073,14 @@
       }
     }
 
-    const legacyCandidateRecord = findFirstRecordOrNull('book_files', 'original_name = {:originalName} && file_size = {:fileSize}', {
-      originalName: fileLookupInput.originalName,
-      fileSize: fileLookupInput.fileSize,
-    })
+    const legacyCandidateRecord = findFirstRecordOrNull(
+      'book_files',
+      'original_name = {:originalName} && file_size = {:fileSize}',
+      {
+        originalName: fileLookupInput.originalName,
+        fileSize: fileLookupInput.fileSize,
+      }
+    )
 
     if (!legacyCandidateRecord) {
       return {
@@ -1999,7 +2116,16 @@
    * @returns {boolean} 필수 메타데이터가 모두 있으면 true
    */
   function hasCompleteStoredBookMetadata(bookRecord) {
-    const requiredFields = ['title', 'author', 'publisher', 'publication_year', 'isbn', 'isbn13', 'book_image_url', 'description']
+    const requiredFields = [
+      'title',
+      'author',
+      'publisher',
+      'publication_year',
+      'isbn',
+      'isbn13',
+      'book_image_url',
+      'description',
+    ]
     let fieldIndex = 0
     const estimatedPageCount = bookRecord ? Number(bookRecord.get('estimated_page_count') || 0) : 0
 
@@ -2359,14 +2485,19 @@
       stageMs: fileLookupDoneAt - fileLookupStartedAt,
       elapsedMs: fileLookupDoneAt - uploadStartedAt,
     })
-    const existingBookId = existingBookFile && existingBookFile.get('book_id') ? String(existingBookFile.get('book_id')) : ''
+    const existingBookId =
+      existingBookFile && existingBookFile.get('book_id') ? String(existingBookFile.get('book_id')) : ''
     const existingBookRecord = existingBookId
       ? findFirstRecordOrNull('books', 'id = {:bookId}', {
           bookId: existingBookId,
         })
       : null
     const existingBookMetadataComplete = hasCompleteStoredBookMetadata(existingBookRecord)
-    const canReuseExistingBookFile = !!(existingBookFile && existingBookRecord && (fileLookup.hashMode === 'epub-text-v1' || existingBookMetadataComplete))
+    const canReuseExistingBookFile = !!(
+      existingBookFile
+      && existingBookRecord
+      && (fileLookup.hashMode === 'epub-text-v1' || existingBookMetadataComplete)
+    )
 
     dbg('xapi/epub/upload:existing-book-file', {
       fileHash: fileHash,
@@ -2412,8 +2543,13 @@
     const manifestItems = parseManifestItems(packageDocument)
     const epubMetadata = parseEpubMetadata(packageDocument)
     const filenameMetadata = parseFilenameMetadata(epubFile.originalName || epubFile.name)
-    const fallbackTitle = epubMetadata.title || filenameMetadata.title || stripFileExtension(epubFile.originalName || epubFile.name)
-    const fallbackAuthor = extractPrimaryAuthorName(epubMetadata.author) || extractPrimaryAuthorName(filenameMetadata.author) || epubMetadata.author || filenameMetadata.author
+    const fallbackTitle =
+      epubMetadata.title || filenameMetadata.title || stripFileExtension(epubFile.originalName || epubFile.name)
+    const fallbackAuthor =
+      extractPrimaryAuthorName(epubMetadata.author)
+      || extractPrimaryAuthorName(filenameMetadata.author)
+      || epubMetadata.author
+      || filenameMetadata.author
     dbg('xapi/epub/upload:epub-metadata', {
       title: epubMetadata.title,
       author: epubMetadata.author,
@@ -2457,7 +2593,14 @@
     let matchedIsbn13 = ''
 
     if (epubMetadata.title || epubMetadata.author || filenameMetadata.title || filenameMetadata.author) {
-      const lookupResult = resolveBookLookup(epubMetadata, archiveEntries, manifestItems, packageDocumentPath, entryNames, epubFile.originalName || epubFile.name)
+      const lookupResult = resolveBookLookup(
+        epubMetadata,
+        archiveEntries,
+        manifestItems,
+        packageDocumentPath,
+        entryNames,
+        epubFile.originalName || epubFile.name
+      )
       searchKeyword = lookupResult.searchKeyword
       searchResult = lookupResult.searchResult
       selectedDoc = lookupResult.selectedDoc
@@ -2486,8 +2629,16 @@
 
     const detailBook = detailResult && detailResult.book ? detailResult.book : null
     const matchedBook = detailBook || selectedDoc || null
-    const resolvedIsbn13 = detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
-    const readingMetrics = buildReadingMetrics(matchedBook, epubMetadata, archiveEntries, manifestItems, packageDocumentPath, packageDocument)
+    const resolvedIsbn13 =
+      detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
+    const readingMetrics = buildReadingMetrics(
+      matchedBook,
+      epubMetadata,
+      archiveEntries,
+      manifestItems,
+      packageDocumentPath,
+      packageDocument
+    )
     dbg('xapi/epub/upload:reading-metrics', {
       textCharCount: readingMetrics.textCharCount,
       chapterCount: readingMetrics.chapterCount,

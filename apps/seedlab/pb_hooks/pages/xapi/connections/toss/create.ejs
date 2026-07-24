@@ -110,11 +110,15 @@
       /** @type {PocketPagesRecord<"broker_connections"> | null} */
       let connectionRecord = null
       try {
-        connectionRecord = txApp.findFirstRecordByFilter('broker_connections', 'owner = {:owner} && provider = {:provider} && accountSeq = {:accountSeq}', {
-          owner: userId,
-          provider: 'toss',
-          accountSeq,
-        })
+        connectionRecord = txApp.findFirstRecordByFilter(
+          'broker_connections',
+          'owner = {:owner} && provider = {:provider} && accountSeq = {:accountSeq}',
+          {
+            owner: userId,
+            provider: 'toss',
+            accountSeq,
+          }
+        )
       } catch (exception) {
         connectionRecord = null
       }
@@ -144,11 +148,15 @@
       /** @type {PocketPagesRecord<"portfolio_accounts"> | null} */
       let accountRecord = null
       try {
-        accountRecord = txApp.findFirstRecordByFilter('portfolio_accounts', 'owner = {:owner} && providerName = {:providerName} && accountSeq = {:accountSeq}', {
-          owner: userId,
-          providerName: 'toss',
-          accountSeq,
-        })
+        accountRecord = txApp.findFirstRecordByFilter(
+          'portfolio_accounts',
+          'owner = {:owner} && providerName = {:providerName} && accountSeq = {:accountSeq}',
+          {
+            owner: userId,
+            providerName: 'toss',
+            accountSeq,
+          }
+        )
       } catch (exception) {
         accountRecord = null
       }

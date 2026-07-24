@@ -17,16 +17,16 @@
   const { CharacterCount, Editor, Highlight, Placeholder, StarterKit, Typography } = tiptapRuntime
 
   const ACTIVE_COMMANDS = {
-    bold: (editor) => editor.isActive('bold'),
-    italic: (editor) => editor.isActive('italic'),
-    underline: (editor) => editor.isActive('underline'),
-    strike: (editor) => editor.isActive('strike'),
-    highlight: (editor) => editor.isActive('highlight'),
+    'bold': (editor) => editor.isActive('bold'),
+    'italic': (editor) => editor.isActive('italic'),
+    'underline': (editor) => editor.isActive('underline'),
+    'strike': (editor) => editor.isActive('strike'),
+    'highlight': (editor) => editor.isActive('highlight'),
     'bullet-list': (editor) => editor.isActive('bulletList'),
     'ordered-list': (editor) => editor.isActive('orderedList'),
-    blockquote: (editor) => editor.isActive('blockquote'),
+    'blockquote': (editor) => editor.isActive('blockquote'),
     'code-block': (editor) => editor.isActive('codeBlock'),
-    link: (editor) => editor.isActive('link'),
+    'link': (editor) => editor.isActive('link'),
   }
 
   /**
@@ -162,7 +162,7 @@
       editorProps: {
         attributes: {
           'aria-label': '업무 내용 편집기',
-          class: 'work-rich-text-content',
+          'class': 'work-rich-text-content',
         },
       },
       onCreate: ({ editor: currentEditor }) => {

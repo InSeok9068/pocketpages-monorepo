@@ -21,7 +21,9 @@
   const now = new Date()
   const weekItems = []
   const requestedWeekValue = String(request.url.query.week || '').trim()
-  const sessionRecords = $app.findRecordsByFilter('reading_sessions', 'user_id = {:userId}', '-ended_at', 500, 0, { userId: userId })
+  const sessionRecords = $app.findRecordsByFilter('reading_sessions', 'user_id = {:userId}', '-ended_at', 500, 0, {
+    userId: userId,
+  })
 
   /**
    * 날짜를 한국시간 기준 해당 주 월요일로 맞춥니다.
@@ -150,7 +152,8 @@
   const isCurrentPeriod = selectedWeekStart.getTime() === currentWeekStart.getTime()
   const previousWeekHref = buildWeekHref(previousWeekStart)
   const nextWeekHref = buildWeekHref(nextWeekStart)
-  const periodLabel = dateutil.formatDate(periodStart, 'YYYY.MM.DD') + ' ~ ' + dateutil.formatDate(periodEnd, 'YYYY.MM.DD')
+  const periodLabel =
+    dateutil.formatDate(periodStart, 'YYYY.MM.DD') + ' ~ ' + dateutil.formatDate(periodEnd, 'YYYY.MM.DD')
   const weeklySecondsByKey = {}
   let totalSeconds = 0
   let currentWeekSeconds = 0
@@ -239,22 +242,42 @@
     </div>
   </div>
 
-  <section class="grid grid-cols-3 overflow-hidden rounded-[1.35rem] bg-white/82 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)] sm:gap-3 sm:overflow-visible sm:bg-transparent sm:shadow-none">
-    <div class="min-w-0 px-3 py-3 sm:rounded-[1.5rem] sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
-      <p class="text-[10px] font-semibold tracking-[0.16em] text-stone-500 uppercase sm:text-[11px] sm:tracking-[0.2em]">이번 주</p>
-      <p class="mt-1 text-lg font-semibold tracking-tight break-keep text-stone-950 sm:mt-2 sm:text-2xl"><%= formatMinutesLabel(currentWeekMinutes) %></p>
+  <section
+    class="grid grid-cols-3 overflow-hidden rounded-[1.35rem] bg-white/82 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)] sm:gap-3 sm:overflow-visible sm:bg-transparent sm:shadow-none">
+    <div
+      class="min-w-0 px-3 py-3 sm:rounded-[1.5rem] sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+      <p
+        class="text-[10px] font-semibold tracking-[0.16em] text-stone-500 uppercase sm:text-[11px] sm:tracking-[0.2em]">
+        이번 주
+      </p>
+      <p class="mt-1 text-lg font-semibold tracking-tight break-keep text-stone-950 sm:mt-2 sm:text-2xl">
+        <%= formatMinutesLabel(currentWeekMinutes) %>
+      </p>
     </div>
-    <div class="min-w-0 border-x border-stone-200/70 px-3 py-3 sm:rounded-[1.5rem] sm:border-x-0 sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
-      <p class="text-[10px] font-semibold tracking-[0.16em] text-stone-500 uppercase sm:text-[11px] sm:tracking-[0.2em]">누적</p>
-      <p class="mt-1 text-lg font-semibold tracking-tight break-keep text-stone-950 sm:mt-2 sm:text-2xl"><%= totalMinutesLabel %></p>
+    <div
+      class="min-w-0 border-x border-stone-200/70 px-3 py-3 sm:rounded-[1.5rem] sm:border-x-0 sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+      <p
+        class="text-[10px] font-semibold tracking-[0.16em] text-stone-500 uppercase sm:text-[11px] sm:tracking-[0.2em]">
+        누적
+      </p>
+      <p class="mt-1 text-lg font-semibold tracking-tight break-keep text-stone-950 sm:mt-2 sm:text-2xl">
+        <%= totalMinutesLabel %>
+      </p>
     </div>
-    <div class="min-w-0 px-3 py-3 sm:rounded-[1.5rem] sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
-      <p class="text-[10px] font-semibold tracking-[0.16em] text-stone-500 uppercase sm:text-[11px] sm:tracking-[0.2em]">완독</p>
-      <p class="mt-1 text-lg font-semibold tracking-tight break-keep text-stone-950 sm:mt-2 sm:text-2xl"><%= finishedBookCount %>권</p>
+    <div
+      class="min-w-0 px-3 py-3 sm:rounded-[1.5rem] sm:bg-white/80 sm:px-4 sm:py-4 sm:shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+      <p
+        class="text-[10px] font-semibold tracking-[0.16em] text-stone-500 uppercase sm:text-[11px] sm:tracking-[0.2em]">
+        완독
+      </p>
+      <p class="mt-1 text-lg font-semibold tracking-tight break-keep text-stone-950 sm:mt-2 sm:text-2xl">
+        <%= finishedBookCount %>권
+      </p>
     </div>
   </section>
 
-  <section class="rounded-[1.6rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:rounded-[2rem] sm:p-5">
+  <section
+    class="rounded-[1.6rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:rounded-[2rem] sm:p-5">
     <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h2 class="text-lg font-semibold tracking-tight text-stone-950 sm:text-xl">주차별 독서 시간</h2>
@@ -304,7 +327,8 @@
 
     <div class="space-y-2">
       <% for (let index = 0; index < weekItems.length; index += 1) { const item = weekItems[index] %>
-      <div class="flex items-center justify-between gap-3 rounded-[1rem] bg-[#fbf7ef] px-3 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] sm:rounded-[1.1rem] sm:px-4 sm:py-3">
+      <div
+        class="flex items-center justify-between gap-3 rounded-[1rem] bg-[#fbf7ef] px-3 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] sm:rounded-[1.1rem] sm:px-4 sm:py-3">
         <span class="font-medium text-stone-700"><%= item.label %></span>
         <span class="font-semibold text-stone-950"><%= item.minutesLabel %></span>
       </div>

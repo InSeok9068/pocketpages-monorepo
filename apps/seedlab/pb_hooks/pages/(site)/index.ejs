@@ -79,10 +79,17 @@
   function readLatestUsdKrwRate() {
     try {
       dbg('seedlab/index:db-access', { collection: 'fx_rates' })
-      const records = $app.findRecordsByFilter('fx_rates', 'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}', '-rateAt', 1, 0, {
-        baseCurrency: 'USD',
-        quoteCurrency: 'KRW',
-      })
+      const records = $app.findRecordsByFilter(
+        'fx_rates',
+        'baseCurrency = {:baseCurrency} && quoteCurrency = {:quoteCurrency}',
+        '-rateAt',
+        1,
+        0,
+        {
+          baseCurrency: 'USD',
+          quoteCurrency: 'KRW',
+        }
+      )
       return records.length > 0 ? Number(records[0].get('rate') || 0) : 0
     } catch (exception) {
       dbg('seedlab/index:fx-rate-missing', { pair: 'USD_KRW' })
@@ -118,7 +125,11 @@
       dbg('seedlab/index:db-access', { collection: 'assets', assetId: id })
       assetsById[id] = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id })
     } catch (exception) {
-      warn('seedlab/index:db-access-failed', { collection: 'assets', assetId: id, error: String(exception.message || exception) })
+      warn('seedlab/index:db-access-failed', {
+        collection: 'assets',
+        assetId: id,
+        error: String(exception.message || exception),
+      })
       assetsById[id] = null
     }
 
@@ -133,17 +144,26 @@
 
     const asset = readAssetRecord(holding.get('asset'))
     const overrideClass = String(holding.get('assetClassOverride') || '')
-    const assetClass = overrideClass && overrideClass !== 'none' ? overrideClass : String(asset ? asset.get('assetClass') : '')
+    const assetClass =
+      overrideClass && overrideClass !== 'none' ? overrideClass : String(asset ? asset.get('assetClass') : '')
     const assetType = String(asset ? asset.get('assetType') : '').toLowerCase()
     const symbol = String(asset ? asset.get('symbol') : '').toUpperCase()
     const name = String(asset ? asset.get('name') : '').toUpperCase()
     const searchText = symbol + ' ' + name
 
     if (assetClass === 'cash' || assetType === 'cash') return 'cash'
-    if (assetClass === 'fixed_income' || assetType === 'bond' || searchText.indexOf('BOND') >= 0 || searchText.indexOf('채권') >= 0) return 'bond'
+    if (
+      assetClass === 'fixed_income'
+      || assetType === 'bond'
+      || searchText.indexOf('BOND') >= 0
+      || searchText.indexOf('채권') >= 0
+    )
+      return 'bond'
     if (searchText.indexOf('GOLD') >= 0 || searchText.indexOf('금') >= 0) return 'gold'
-    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0) return 'real_estate'
-    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0) return 'dividend_stock'
+    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0)
+      return 'real_estate'
+    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0)
+      return 'dividend_stock'
     if (assetClass === 'equity') return 'growth_stock'
     return 'other'
   }
@@ -194,7 +214,9 @@
 
     try {
       dbg('seedlab/index:db-access', { collection: 'account_snapshots' })
-      const snapshots = $app.findRecordsByFilter('account_snapshots', 'owner = {:owner}', '-snapshotDate', 200, 0, { owner: userId })
+      const snapshots = $app.findRecordsByFilter('account_snapshots', 'owner = {:owner}', '-snapshotDate', 200, 0, {
+        owner: userId,
+      })
       for (let index = 0; index < snapshots.length; index += 1) {
         const snapshot = snapshots[index]
         const accountId = String(snapshot.get('account') || '')
@@ -204,7 +226,10 @@
         hasSnapshot = true
       }
     } catch (exception) {
-      warn('seedlab/index:db-access-failed', { collection: 'account_snapshots', error: String(exception.message || exception) })
+      warn('seedlab/index:db-access-failed', {
+        collection: 'account_snapshots',
+        error: String(exception.message || exception),
+      })
     }
 
     if (hasSnapshot && cashValue > 0) {
@@ -218,14 +243,26 @@
 
     try {
       dbg('seedlab/index:db-access', { collection: 'portfolio_accounts' })
-      dashboard.accountCount = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner} && isActive = true', '-updated', 200, 0, { owner: userId }).length
+      dashboard.accountCount = $app.findRecordsByFilter(
+        'portfolio_accounts',
+        'owner = {:owner} && isActive = true',
+        '-updated',
+        200,
+        0,
+        { owner: userId }
+      ).length
     } catch (exception) {
-      warn('seedlab/index:db-access-failed', { collection: 'portfolio_accounts', error: String(exception.message || exception) })
+      warn('seedlab/index:db-access-failed', {
+        collection: 'portfolio_accounts',
+        error: String(exception.message || exception),
+      })
     }
 
     try {
       dbg('seedlab/index:db-access', { collection: 'account_holdings' })
-      const holdingRecords = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-updated', 200, 0, { owner: userId })
+      const holdingRecords = $app.findRecordsByFilter('account_holdings', 'owner = {:owner}', '-updated', 200, 0, {
+        owner: userId,
+      })
       dashboard.holdingCount = holdingRecords.length
       for (let index = 0; index < holdingRecords.length; index += 1) {
         const marketValue = holdingMarketValueKrw(holdingRecords[index])
@@ -234,28 +271,57 @@
         addBucketValue(inferAllocationBucket(holdingRecords[index]), marketValue)
       }
     } catch (exception) {
-      warn('seedlab/index:db-access-failed', { collection: 'account_holdings', error: String(exception.message || exception) })
+      warn('seedlab/index:db-access-failed', {
+        collection: 'account_holdings',
+        error: String(exception.message || exception),
+      })
     }
 
     try {
       dbg('seedlab/index:db-access', { collection: 'investment_strategies' })
-      dashboard.strategyCount = $app.findRecordsByFilter('investment_strategies', 'owner = {:owner} && isActive = true', '-updated', 200, 0, { owner: userId }).length
+      dashboard.strategyCount = $app.findRecordsByFilter(
+        'investment_strategies',
+        'owner = {:owner} && isActive = true',
+        '-updated',
+        200,
+        0,
+        { owner: userId }
+      ).length
     } catch (exception) {
-      warn('seedlab/index:db-access-failed', { collection: 'investment_strategies', error: String(exception.message || exception) })
+      warn('seedlab/index:db-access-failed', {
+        collection: 'investment_strategies',
+        error: String(exception.message || exception),
+      })
     }
 
     try {
       dbg('seedlab/index:db-access', { collection: 'simulations' })
-      dashboard.simulationCount = $app.findRecordsByFilter('simulations', 'owner = {:owner}', '-updated', 200, 0, { owner: userId }).length
+      dashboard.simulationCount = $app.findRecordsByFilter('simulations', 'owner = {:owner}', '-updated', 200, 0, {
+        owner: userId,
+      }).length
     } catch (exception) {
-      warn('seedlab/index:db-access-failed', { collection: 'simulations', error: String(exception.message || exception) })
+      warn('seedlab/index:db-access-failed', {
+        collection: 'simulations',
+        error: String(exception.message || exception),
+      })
     }
 
     try {
       dbg('seedlab/index:db-access', { collection: 'simulations' })
-      dashboard.runningSimulationCount = $app.findRecordsByFilter('simulations', 'owner = {:owner} && status = {:status}', '-updated', 200, 0, { owner: userId, status: 'running' }).length
+      dashboard.runningSimulationCount = $app.findRecordsByFilter(
+        'simulations',
+        'owner = {:owner} && status = {:status}',
+        '-updated',
+        200,
+        0,
+        { owner: userId, status: 'running' }
+      ).length
     } catch (exception) {
-      warn('seedlab/index:db-access-failed', { collection: 'simulations', status: 'running', error: String(exception.message || exception) })
+      warn('seedlab/index:db-access-failed', {
+        collection: 'simulations',
+        status: 'running',
+        error: String(exception.message || exception),
+      })
     }
 
     applyLatestSnapshotTotals()
@@ -264,12 +330,20 @@
 
   const totalValueText = formatAmount(dashboard.totalValue)
   const profitLossText = (dashboard.profitLoss > 0 ? '+' : '') + formatAmount(dashboard.profitLoss)
-  const readinessText = dashboard.accountCount === 0 ? '계좌 연결 필요' : dashboard.holdingCount === 0 ? '보유 종목 동기화 필요' : '점검 완료'
+  const readinessText =
+    dashboard.accountCount === 0
+      ? '계좌 연결 필요'
+      : dashboard.holdingCount === 0
+        ? '보유 종목 동기화 필요'
+        : '점검 완료'
   const primaryHref = dashboard.accountCount === 0 ? '/connections/toss/new' : '/accounts'
   const primaryLabel = dashboard.accountCount === 0 ? '계좌 연결' : '종목 동기화'
   const hasMainTask = dashboard.accountCount === 0 || dashboard.holdingCount === 0
   const mainTaskTitle = dashboard.accountCount === 0 ? '계좌를 먼저 연결하세요' : '보유 종목을 동기화하세요'
-  const mainTaskDescription = dashboard.accountCount === 0 ? '토스증권 API 연결 후 보유 종목과 비중을 계산합니다.' : '연결된 계좌에서 보유 종목을 가져와야 리밸런싱이 가능합니다.'
+  const mainTaskDescription =
+    dashboard.accountCount === 0
+      ? '토스증권 API 연결 후 보유 종목과 비중을 계산합니다.'
+      : '연결된 계좌에서 보유 종목을 가져와야 리밸런싱이 가능합니다.'
   const quickLinks = [
     { href: '/accounts', label: '계좌/비중', icon: 'i-lucide-wallet-cards' },
     { href: '/accounts/holdings/new', label: '종목 추가', icon: 'i-lucide-plus' },
@@ -289,7 +363,8 @@
   <div>
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[#3182f6] text-white shadow-[0_10px_24px_rgba(49,130,246,0.22)]">
+        <div
+          class="flex h-10 w-10 items-center justify-center rounded-lg bg-[#3182f6] text-white shadow-[0_10px_24px_rgba(49,130,246,0.22)]">
           <span
             class="i-lucide-sprout h-6 w-6"
             aria-hidden="true"></span>
@@ -312,7 +387,9 @@
         <br />
         실험해보세요
       </h1>
-      <p class="mt-4 max-w-[340px] text-[15px] leading-6 text-[#6b7684]">계좌, 전략, 가상 인물의 결과를 같은 화면에서 봅니다.</p>
+      <p class="mt-4 max-w-[340px] text-[15px] leading-6 text-[#6b7684]">
+        계좌, 전략, 가상 인물의 결과를 같은 화면에서 봅니다.
+      </p>
     </div>
 
     <div class="mt-8 rounded-lg bg-white p-4 shadow-[0_10px_30px_rgba(25,31,40,0.08)]">
@@ -410,7 +487,8 @@
         <p class="mt-0.5 truncate text-[28px] leading-none font-bold text-[#191f28]"><%= totalValueText %>원</p>
       </div>
       <div class="shrink-0 text-right">
-        <span class="<%= readinessText === '점검 완료' ? 'bg-[#ecfdf3] text-[#008a45]' : 'bg-[#e8f3ff] text-[#1b64da]' %> inline-flex rounded-md px-2 py-1 text-xs font-bold">
+        <span
+          class="<%= readinessText === '점검 완료' ? 'bg-[#ecfdf3] text-[#008a45]' : 'bg-[#e8f3ff] text-[#1b64da]' %> inline-flex rounded-md px-2 py-1 text-xs font-bold">
           <%= readinessText %>
         </span>
         <p class="<%= profitClass(dashboard.profitLoss) %> mt-2 text-sm font-bold"><%= profitLossText %>원</p>
@@ -451,11 +529,17 @@
               <span
                 class="h-2.5 w-2.5 shrink-0 rounded-full"
                 style="background-color: <%= allocationChart.segments[index].color %>"></span>
-              <span class="truncate text-sm font-bold text-[#191f28]"><%= allocationChart.segments[index].label %></span>
+              <span class="truncate text-sm font-bold text-[#191f28]">
+                <%= allocationChart.segments[index].label %>
+              </span>
             </span>
-            <span class="shrink-0 text-sm font-bold text-[#4e5968]"><%= allocationChart.segments[index].pctText %></span>
+            <span class="shrink-0 text-sm font-bold text-[#4e5968]">
+              <%= allocationChart.segments[index].pctText %>
+            </span>
           </div>
-          <p class="mt-0.5 text-right text-[11px] font-medium text-[#8b95a1]"><%= allocationChart.segments[index].valueText %>원</p>
+          <p class="mt-0.5 text-right text-[11px] font-medium text-[#8b95a1]">
+            <%= allocationChart.segments[index].valueText %>원
+          </p>
         </div>
         <% } %>
       </div>

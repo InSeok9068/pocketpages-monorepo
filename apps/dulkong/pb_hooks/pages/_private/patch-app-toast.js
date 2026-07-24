@@ -16,12 +16,12 @@ function patchAppToast(datastarApi, message, tone) {
     appToastTone: displayTone,
   })
   datastarApi.executeScript(
-    'window.clearTimeout(window.dulkongToastTimer);' +
-      'window.dulkongToastTimer = window.setTimeout(function () {' +
-      "window.patchSignals && window.patchSignals({appToastMessage: ''})" +
-      '}, ' +
-      String(ToastDuration) +
-      ')'
+    'window.clearTimeout(window.dulkongToastTimer);'
+      + 'window.dulkongToastTimer = window.setTimeout(function () {'
+      + "window.patchSignals && window.patchSignals({appToastMessage: ''})"
+      + '}, '
+      + String(ToastDuration)
+      + ')'
   )
 }
 

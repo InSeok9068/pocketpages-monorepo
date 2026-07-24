@@ -31,7 +31,8 @@
   const requestedOffset = Number(request.url.query.offset || 30)
   const maxHighlightLimit = 5000
   const pageLimit = 30
-  const pageOffset = isNaN(requestedOffset) || requestedOffset < 0 ? 30 : Math.min(Math.round(requestedOffset), maxHighlightLimit)
+  const pageOffset =
+    isNaN(requestedOffset) || requestedOffset < 0 ? 30 : Math.min(Math.round(requestedOffset), maxHighlightLimit)
   const nextOffset = Math.min(pageOffset + pageLimit, maxHighlightLimit)
   const nextVisibleLimit = Math.min(nextOffset + pageLimit, maxHighlightLimit)
   const highlightItems = []
@@ -48,9 +49,12 @@
 
     if (normalizedQuery) {
       query.andWhere(
-        $dbx.exp("(instr(lower(coalesce(book_highlights.quote_text, '')), {:query}) > 0 OR instr(lower(coalesce(books.title, '')), {:query}) > 0)", {
-          query: normalizedQuery,
-        })
+        $dbx.exp(
+          "(instr(lower(coalesce(book_highlights.quote_text, '')), {:query}) > 0 OR instr(lower(coalesce(books.title, '')), {:query}) > 0)",
+          {
+            query: normalizedQuery,
+          }
+        )
       )
     }
 
@@ -105,7 +109,12 @@
   applyHighlightWhere(
     $app
       .db()
-      .select('book_highlights.book_id as bookId', 'books.title as bookTitle', 'book_highlights.quote_text as quoteText', 'book_highlights.highlighted_at as highlightedAtValue')
+      .select(
+        'book_highlights.book_id as bookId',
+        'books.title as bookTitle',
+        'book_highlights.quote_text as quoteText',
+        'book_highlights.highlighted_at as highlightedAtValue'
+      )
       .from('book_highlights')
       .innerJoin('books', $dbx.exp('books.id = book_highlights.book_id'))
       .orderBy('book_highlights.highlighted_at DESC', 'book_highlights.updated DESC')
@@ -132,7 +141,9 @@
 <a
   href="/books/<%= item.bookId %>?from=/highlights"
   class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-3.5 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
-  <p class="text-[15px] leading-[1.65] font-semibold tracking-[-0.02em] text-stone-900 sm:text-base"><%= item.quoteText %></p>
+  <p class="text-[15px] leading-[1.65] font-semibold tracking-[-0.02em] text-stone-900 sm:text-base">
+    <%= item.quoteText %>
+  </p>
   <p class="mt-2.5 text-[12px] leading-5 text-stone-600"><%= item.bookTitle %></p>
   <% if (item.highlightedAt) { %>
   <p class="mt-1.5 text-[12px] font-medium text-stone-400"><%= item.highlightedAt %></p>

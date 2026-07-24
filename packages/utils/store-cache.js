@@ -103,7 +103,10 @@ function writeStoreValue(namespace, value) {
  */
 function normalizeBucket(value) {
   const bucket = value && typeof value === 'object' && !Array.isArray(value) ? value : null
-  const entries = bucket && bucket.entries && typeof bucket.entries === 'object' && !Array.isArray(bucket.entries) ? bucket.entries : {}
+  const entries =
+    bucket && bucket.entries && typeof bucket.entries === 'object' && !Array.isArray(bucket.entries)
+      ? bucket.entries
+      : {}
 
   return {
     version: STORE_VERSION,

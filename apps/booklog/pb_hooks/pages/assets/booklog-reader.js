@@ -247,7 +247,8 @@ window.booklogReaderLogic = (function () {
     component.selectedHighlightQuoteText = payload.quoteText
     component.selectedHighlightLocator = payload.locator
     component.selectedHighlightHref = href
-    component.selectedHighlightChapterLabel = chapterLabel || component.currentChapterLabel || getChapterLabelForHref(href)
+    component.selectedHighlightChapterLabel =
+      chapterLabel || component.currentChapterLabel || getChapterLabelForHref(href)
     component.selectedHighlightMessage = ''
     component.selectedHighlightOpen = true
     component.controlsVisible = false
@@ -599,7 +600,11 @@ window.booklogReaderLogic = (function () {
   }
 
   function getSpeechSynthesisInstance() {
-    if (typeof window === 'undefined' || !window.speechSynthesis || typeof window.SpeechSynthesisUtterance === 'undefined') {
+    if (
+      typeof window === 'undefined'
+      || !window.speechSynthesis
+      || typeof window.SpeechSynthesisUtterance === 'undefined'
+    ) {
       return null
     }
 
@@ -614,7 +619,9 @@ window.booklogReaderLogic = (function () {
     var lang = String(voice && voice.lang ? voice.lang : '').toLowerCase()
     var name = String(voice && voice.name ? voice.name : '').toLowerCase()
 
-    return lang.indexOf('ko') === 0 || name.indexOf('korean') >= 0 || name.indexOf('한국') >= 0 || name.indexOf('ko-kr') >= 0
+    return (
+      lang.indexOf('ko') === 0 || name.indexOf('korean') >= 0 || name.indexOf('한국') >= 0 || name.indexOf('ko-kr') >= 0
+    )
   }
 
   /**
@@ -660,8 +667,8 @@ window.booklogReaderLogic = (function () {
     }
 
     if (
-      component.readAloudVoiceName &&
-      component.readAloudVoices.some(function (voice) {
+      component.readAloudVoiceName
+      && component.readAloudVoices.some(function (voice) {
         return voice.name === component.readAloudVoiceName
       })
     ) {
@@ -1269,7 +1276,10 @@ window.booklogReaderLogic = (function () {
 
               if (doc && fragment) {
                 targetElement =
-                  doc.getElementById(fragment) || doc.getElementById(decodeURIComponent(fragment)) || doc.querySelector('[name="' + fragment.replace(/"/g, '\\"') + '"]') || fallbackElement
+                  doc.getElementById(fragment)
+                  || doc.getElementById(decodeURIComponent(fragment))
+                  || doc.querySelector('[name="' + fragment.replace(/"/g, '\\"') + '"]')
+                  || fallbackElement
               }
 
               if (targetElement && typeof section.cfiFromElement === 'function') {
@@ -1369,8 +1379,15 @@ window.booklogReaderLogic = (function () {
     var progressPercent = ''
 
     try {
-      if (locator && bookInstance && bookInstance.locations && typeof bookInstance.locations.percentageFromCfi === 'function') {
-        progressPercent = String(Math.max(0, Math.min(100, Math.round(bookInstance.locations.percentageFromCfi(locator) * 100))))
+      if (
+        locator
+        && bookInstance
+        && bookInstance.locations
+        && typeof bookInstance.locations.percentageFromCfi === 'function'
+      ) {
+        progressPercent = String(
+          Math.max(0, Math.min(100, Math.round(bookInstance.locations.percentageFromCfi(locator) * 100)))
+        )
       }
     } catch (exception) {
       progressPercent = ''
@@ -1434,20 +1451,20 @@ window.booklogReaderLogic = (function () {
    */
   function canShowFinishPrompt(component) {
     return !!(
-      component &&
-      !component.loading &&
-      !component.finishPromptDismissed &&
-      !component.finishPromptOpen &&
-      !component.finishingBook &&
-      !component.selectedHighlightOpen &&
-      !component.searchOpen &&
-      !component.tocOpen &&
-      !component.bookmarksOpen &&
-      !component.highlightOpen &&
-      !component.readAloudOpen &&
-      !finishPromptShown &&
-      !bookMarkedFinished &&
-      currentLocation
+      component
+      && !component.loading
+      && !component.finishPromptDismissed
+      && !component.finishPromptOpen
+      && !component.finishingBook
+      && !component.selectedHighlightOpen
+      && !component.searchOpen
+      && !component.tocOpen
+      && !component.bookmarksOpen
+      && !component.highlightOpen
+      && !component.readAloudOpen
+      && !finishPromptShown
+      && !bookMarkedFinished
+      && currentLocation
     )
   }
 
@@ -1505,7 +1522,8 @@ window.booklogReaderLogic = (function () {
     var location = currentLocation && currentLocation.start ? currentLocation.start : null
     var locator = location && location.cfi ? String(location.cfi) : ''
     var href = location && location.href ? String(location.href) : ''
-    var chapterLabel = component && component.currentChapterLabel ? String(component.currentChapterLabel) : getChapterLabelForHref(href)
+    var chapterLabel =
+      component && component.currentChapterLabel ? String(component.currentChapterLabel) : getChapterLabelForHref(href)
     var pageNumber = getPageNumberFromLocation(currentLocation)
     var progressPercent = ''
 
@@ -1514,7 +1532,10 @@ window.booklogReaderLogic = (function () {
       location = currentLocation && currentLocation.start ? currentLocation.start : null
       locator = location && location.cfi ? String(location.cfi) : ''
       href = location && location.href ? String(location.href) : ''
-      chapterLabel = component && component.currentChapterLabel ? String(component.currentChapterLabel) : getChapterLabelForHref(href)
+      chapterLabel =
+        component && component.currentChapterLabel
+          ? String(component.currentChapterLabel)
+          : getChapterLabelForHref(href)
       pageNumber = getPageNumberFromLocation(currentLocation)
     }
 
@@ -1557,7 +1578,11 @@ window.booklogReaderLogic = (function () {
       })
       .then(function (result) {
         if (!result.ok) {
-          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '읽기 위치를 불러오지 못했습니다.'))
+          throw new Error(
+            String(
+              result.payload && result.payload.message ? result.payload.message : '읽기 위치를 불러오지 못했습니다.'
+            )
+          )
         }
 
         return result.payload || {}
@@ -1589,7 +1614,11 @@ window.booklogReaderLogic = (function () {
   }
 
   function isReadingSessionActive(nowMs) {
-    return !!readingSessionStartedAtMs && isDocumentVisible() && nowMs - readingSessionLastActivityMs <= READING_SESSION_IDLE_MS
+    return (
+      !!readingSessionStartedAtMs
+      && isDocumentVisible()
+      && nowMs - readingSessionLastActivityMs <= READING_SESSION_IDLE_MS
+    )
   }
 
   function markReadingSessionActivity() {
@@ -1704,7 +1733,9 @@ window.booklogReaderLogic = (function () {
       })
       .then(function (result) {
         if (!result.ok) {
-          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '독서 세션 저장에 실패했습니다.'))
+          throw new Error(
+            String(result.payload && result.payload.message ? result.payload.message : '독서 세션 저장에 실패했습니다.')
+          )
         }
 
         if (result.payload && result.payload.id) {
@@ -1899,7 +1930,9 @@ window.booklogReaderLogic = (function () {
       })
       .then(function (result) {
         if (!result.ok) {
-          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '책갈피를 불러오지 못했습니다.'))
+          throw new Error(
+            String(result.payload && result.payload.message ? result.payload.message : '책갈피를 불러오지 못했습니다.')
+          )
         }
 
         return result.payload && result.payload.bookmarks ? result.payload.bookmarks : []
@@ -1957,7 +1990,9 @@ window.booklogReaderLogic = (function () {
       })
       .then(function (result) {
         if (!result.ok) {
-          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '문구를 불러오지 못했습니다.'))
+          throw new Error(
+            String(result.payload && result.payload.message ? result.payload.message : '문구를 불러오지 못했습니다.')
+          )
         }
 
         return result.payload && result.payload.highlights ? result.payload.highlights : []
@@ -2020,7 +2055,9 @@ window.booklogReaderLogic = (function () {
       })
       .then(function (result) {
         if (!result.ok) {
-          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '책갈피 저장에 실패했습니다.'))
+          throw new Error(
+            String(result.payload && result.payload.message ? result.payload.message : '책갈피 저장에 실패했습니다.')
+          )
         }
 
         return result.payload || {}
@@ -2056,7 +2093,9 @@ window.booklogReaderLogic = (function () {
       })
       .then(function (result) {
         if (!result.ok) {
-          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '책갈피 삭제에 실패했습니다.'))
+          throw new Error(
+            String(result.payload && result.payload.message ? result.payload.message : '책갈피 삭제에 실패했습니다.')
+          )
         }
 
         return result.payload || {}
@@ -2139,13 +2178,17 @@ window.booklogReaderLogic = (function () {
       })
       .then(function (result) {
         if (!result.ok) {
-          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '읽던 위치 저장에 실패했습니다.'))
+          throw new Error(
+            String(result.payload && result.payload.message ? result.payload.message : '읽던 위치 저장에 실패했습니다.')
+          )
         }
 
         lastPersistedProgressKey = progressKey
 
         if (shouldShowMessage) {
-          component.showSavePositionMessage(String(result.payload && result.payload.message ? result.payload.message : '읽던 위치를 저장했습니다.'))
+          component.showSavePositionMessage(
+            String(result.payload && result.payload.message ? result.payload.message : '읽던 위치를 저장했습니다.')
+          )
         }
 
         return true
@@ -2285,14 +2328,18 @@ window.booklogReaderLogic = (function () {
           .then(function (location) {
             var progress = null
 
-            component.currentChapterLabel = String(payload && payload.chapterLabel ? payload.chapterLabel : component.currentChapterLabel || '')
+            component.currentChapterLabel = String(
+              payload && payload.chapterLabel ? payload.chapterLabel : component.currentChapterLabel || ''
+            )
             updateCurrentLocation(component, location || renditionInstance.currentLocation())
 
             progress = getCurrentProgressPayload(component)
             lastPersistedProgressKey = buildProgressKey(progress)
 
             if (shouldShowMessage) {
-              component.showSavePositionMessage(String(payload && payload.message ? payload.message : '저장된 읽기 위치를 불러왔습니다.'))
+              component.showSavePositionMessage(
+                String(payload && payload.message ? payload.message : '저장된 읽기 위치를 불러왔습니다.')
+              )
             }
 
             return true
@@ -2471,7 +2518,8 @@ window.booklogReaderLogic = (function () {
   function getComponentReaderSettings(component) {
     return normalizeReaderSettings({
       theme: component && component.readerTheme ? component.readerTheme : DEFAULT_READER_THEME,
-      fontSizePercent: component && component.readerFontSizePercent ? component.readerFontSizePercent : DEFAULT_FONT_SIZE_PERCENT,
+      fontSizePercent:
+        component && component.readerFontSizePercent ? component.readerFontSizePercent : DEFAULT_FONT_SIZE_PERCENT,
       fontFamily: component && component.readerFontFamily ? component.readerFontFamily : DEFAULT_READER_FONT_FAMILY,
       lineHeight: component && component.readerLineHeight ? component.readerLineHeight : DEFAULT_READER_LINE_HEIGHT,
       pageMargin: component && component.readerPageMargin ? component.readerPageMargin : DEFAULT_READER_PAGE_MARGIN,
@@ -2512,30 +2560,50 @@ window.booklogReaderLogic = (function () {
 
   function buildReaderSettingsCss(settings) {
     var normalizedSettings = normalizeReaderSettings(settings)
-    var cssRules = ['html{background:#ffffff !important;}', 'body{background:#ffffff !important;color:#1c1917 !important;}', 'a{color:#57534e !important;}']
+    var cssRules = [
+      'html{background:#ffffff !important;}',
+      'body{background:#ffffff !important;color:#1c1917 !important;}',
+      'a{color:#57534e !important;}',
+    ]
 
     if (normalizedSettings.theme === 'sepia') {
-      cssRules = ['html{background:#f7f0df !important;}', 'body{background:#f7f0df !important;color:#33281f !important;}', 'a{color:#79553b !important;}']
+      cssRules = [
+        'html{background:#f7f0df !important;}',
+        'body{background:#f7f0df !important;color:#33281f !important;}',
+        'a{color:#79553b !important;}',
+      ]
     }
 
     if (normalizedSettings.theme === 'night') {
-      cssRules = ['html{background:#161616 !important;}', 'body{background:#161616 !important;color:#e8e1d6 !important;}', 'a{color:#d8b16d !important;}']
+      cssRules = [
+        'html{background:#161616 !important;}',
+        'body{background:#161616 !important;color:#e8e1d6 !important;}',
+        'a{color:#d8b16d !important;}',
+      ]
     }
 
     if (normalizedSettings.fontFamily === 'sans') {
-      cssRules.push('body,body p,body li,body blockquote{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif !important;}')
+      cssRules.push(
+        'body,body p,body li,body blockquote{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif !important;}'
+      )
     }
 
     if (normalizedSettings.fontFamily === 'serif') {
-      cssRules.push('body,body p,body li,body blockquote{font-family:Georgia,"Times New Roman","Noto Serif KR","Nanum Myeongjo",serif !important;}')
+      cssRules.push(
+        'body,body p,body li,body blockquote{font-family:Georgia,"Times New Roman","Noto Serif KR","Nanum Myeongjo",serif !important;}'
+      )
     }
 
     if (normalizedSettings.lineHeight === 'relaxed') {
-      cssRules.push('body,body p,body div,body li,body blockquote,body section,body article{line-height:2.05 !important;}')
+      cssRules.push(
+        'body,body p,body div,body li,body blockquote,body section,body article{line-height:2.05 !important;}'
+      )
     }
 
     if (normalizedSettings.lineHeight === 'loose') {
-      cssRules.push('body,body p,body div,body li,body blockquote,body section,body article{line-height:2.3 !important;}')
+      cssRules.push(
+        'body,body p,body div,body li,body blockquote,body section,body article{line-height:2.3 !important;}'
+      )
     }
 
     if (normalizedSettings.pageMargin === 'narrow') {
@@ -2545,7 +2613,9 @@ window.booklogReaderLogic = (function () {
     }
 
     if (normalizedSettings.pageMargin === 'wide') {
-      cssRules.push('body{box-sizing:border-box !important;margin-left:0 !important;margin-right:0 !important;padding-left:3rem !important;padding-right:3rem !important;}')
+      cssRules.push(
+        'body{box-sizing:border-box !important;margin-left:0 !important;margin-right:0 !important;padding-left:3rem !important;padding-right:3rem !important;}'
+      )
     }
 
     return cssRules.join('\n')
@@ -2619,7 +2689,10 @@ window.booklogReaderLogic = (function () {
 
     matcher = new RegExp('(' + escapeRegExp(normalizedQuery) + ')', 'gi')
 
-    return escapedLabel.replace(matcher, '<mark class="bg-transparent font-semibold text-stone-900 underline decoration-[#b68454] decoration-[2px] underline-offset-[0.22em]">$1</mark>')
+    return escapedLabel.replace(
+      matcher,
+      '<mark class="bg-transparent font-semibold text-stone-900 underline decoration-[#b68454] decoration-[2px] underline-offset-[0.22em]">$1</mark>'
+    )
   }
 
   function canUseReaderCache() {
@@ -2697,7 +2770,10 @@ window.booklogReaderLogic = (function () {
         var failed = false
 
         records.sort(function (left, right) {
-          return Number(right && right.lastOpenedAt ? right.lastOpenedAt : 0) - Number(left && left.lastOpenedAt ? left.lastOpenedAt : 0)
+          return (
+            Number(right && right.lastOpenedAt ? right.lastOpenedAt : 0)
+            - Number(left && left.lastOpenedAt ? left.lastOpenedAt : 0)
+          )
         })
 
         removable = records.slice(READER_CACHE_LIMIT)
@@ -3123,7 +3199,8 @@ window.booklogReaderLogic = (function () {
    * @returns {boolean} 더 이상 자동 이동하면 안 되는지 여부
    */
   function isAutoPagingBoundary(direction) {
-    var spineItems = bookInstance && bookInstance.spine && bookInstance.spine.spineItems ? bookInstance.spine.spineItems : []
+    var spineItems =
+      bookInstance && bookInstance.spine && bookInstance.spine.spineItems ? bookInstance.spine.spineItems : []
     var start = currentLocation && currentLocation.start ? currentLocation.start : null
     var end = currentLocation && currentLocation.end ? currentLocation.end : null
     var lastSpineIndex = spineItems.length ? spineItems.length - 1 : -1
@@ -3131,8 +3208,18 @@ window.booklogReaderLogic = (function () {
     var endIndex = end && typeof end.index === 'number' ? end.index : startIndex
     var displayed = currentLocation && currentLocation.displayed ? currentLocation.displayed : null
     var startDisplayed = start && start.displayed ? start.displayed : null
-    var page = displayed && typeof displayed.page === 'number' ? displayed.page : startDisplayed && typeof startDisplayed.page === 'number' ? startDisplayed.page : null
-    var total = displayed && typeof displayed.total === 'number' ? displayed.total : startDisplayed && typeof startDisplayed.total === 'number' ? startDisplayed.total : null
+    var page =
+      displayed && typeof displayed.page === 'number'
+        ? displayed.page
+        : startDisplayed && typeof startDisplayed.page === 'number'
+          ? startDisplayed.page
+          : null
+    var total =
+      displayed && typeof displayed.total === 'number'
+        ? displayed.total
+        : startDisplayed && typeof startDisplayed.total === 'number'
+          ? startDisplayed.total
+          : null
     var progressPercent = Number(getProgressPercentFromLocator(start && start.cfi ? String(start.cfi) : ''))
 
     if (direction === 'prev') {
@@ -3481,7 +3568,10 @@ window.booklogReaderLogic = (function () {
 
       try {
         registerTocItems(bookInstance.navigation && bookInstance.navigation.toc ? bookInstance.navigation.toc : [])
-        syncTocState(component, bookInstance.navigation && bookInstance.navigation.toc ? bookInstance.navigation.toc : [])
+        syncTocState(
+          component,
+          bookInstance.navigation && bookInstance.navigation.toc ? bookInstance.navigation.toc : []
+        )
       } catch (exception) {}
 
       return locationsPromise.then(function () {
@@ -3861,7 +3951,9 @@ window.booklogReaderLogic = (function () {
       })
       .then(function (result) {
         if (!result.ok) {
-          throw new Error(String(result.payload && result.payload.message ? result.payload.message : '문구 저장에 실패했습니다.'))
+          throw new Error(
+            String(result.payload && result.payload.message ? result.payload.message : '문구 저장에 실패했습니다.')
+          )
         }
 
         return result.payload || {}
@@ -3876,13 +3968,19 @@ window.booklogReaderLogic = (function () {
   function addSavedHighlightAnnotation(locator) {
     var normalizedLocator = String(locator || '').trim()
 
-    if (!normalizedLocator || normalizedLocator.indexOf(',') < 0 || !renditionInstance || !renditionInstance.annotations || typeof renditionInstance.annotations.highlight !== 'function') {
+    if (
+      !normalizedLocator
+      || normalizedLocator.indexOf(',') < 0
+      || !renditionInstance
+      || !renditionInstance.annotations
+      || typeof renditionInstance.annotations.highlight !== 'function'
+    ) {
       return
     }
 
     try {
       renditionInstance.annotations.highlight(normalizedLocator, {}, null, 'booklog-saved-highlight', {
-        fill: '#facc15',
+        'fill': '#facc15',
         'fill-opacity': '0.36',
         'mix-blend-mode': 'multiply',
       })
@@ -3942,7 +4040,9 @@ window.booklogReaderLogic = (function () {
         component.highlightNoteText = ''
         component.highlightMessage = ''
         loadHighlights(component)
-        component.showSavePositionMessage(String(payload && payload.message ? payload.message : '인상 깊은 문구를 저장했습니다.'))
+        component.showSavePositionMessage(
+          String(payload && payload.message ? payload.message : '인상 깊은 문구를 저장했습니다.')
+        )
       })
       .catch(function (exception) {
         component.savingHighlight = false
@@ -3954,10 +4054,13 @@ window.booklogReaderLogic = (function () {
   }
 
   function saveSelectedHighlight(component) {
-    var quoteText = component && component.selectedHighlightQuoteText ? normalizeText(component.selectedHighlightQuoteText) : ''
-    var locator = component && component.selectedHighlightLocator ? String(component.selectedHighlightLocator).trim() : ''
+    var quoteText =
+      component && component.selectedHighlightQuoteText ? normalizeText(component.selectedHighlightQuoteText) : ''
+    var locator =
+      component && component.selectedHighlightLocator ? String(component.selectedHighlightLocator).trim() : ''
     var href = component && component.selectedHighlightHref ? String(component.selectedHighlightHref).trim() : ''
-    var chapterLabel = component && component.selectedHighlightChapterLabel ? String(component.selectedHighlightChapterLabel).trim() : ''
+    var chapterLabel =
+      component && component.selectedHighlightChapterLabel ? String(component.selectedHighlightChapterLabel).trim() : ''
 
     if (!component || component.selectedHighlightSaving) {
       return
@@ -3996,7 +4099,9 @@ window.booklogReaderLogic = (function () {
         addSavedHighlightAnnotation(locator)
         activeSelectionContents = null
         loadHighlights(component)
-        component.showSavePositionMessage(String(payload && payload.message ? payload.message : '인상 깊은 문구를 저장했습니다.'))
+        component.showSavePositionMessage(
+          String(payload && payload.message ? payload.message : '인상 깊은 문구를 저장했습니다.')
+        )
       })
       .catch(function (exception) {
         component.selectedHighlightSaving = false
@@ -4228,7 +4333,9 @@ window.booklogReaderLogic = (function () {
         }, 900)
       })
       .catch(function (exception) {
-        component.finishPromptMessage = String(exception && exception.message ? exception.message : '완독 처리에 실패했습니다.')
+        component.finishPromptMessage = String(
+          exception && exception.message ? exception.message : '완독 처리에 실패했습니다.'
+        )
         console.error('page/books/[bookId]/read:finish-book:failed', {
           message: component.finishPromptMessage,
         })
@@ -4313,7 +4420,9 @@ window.booklogReaderLogic = (function () {
         component.showSavePositionMessage(progressValue + '% 지점으로 이동했습니다.')
       })
       .catch(function (exception) {
-        component.showSavePositionMessage(String(exception && exception.message ? exception.message : '진행률 이동에 실패했습니다.'))
+        component.showSavePositionMessage(
+          String(exception && exception.message ? exception.message : '진행률 이동에 실패했습니다.')
+        )
         console.error('page/books/[bookId]/read:go-to-progress:failed', {
           message: String(exception && exception.message ? exception.message : exception),
           progressValue: progressValue,

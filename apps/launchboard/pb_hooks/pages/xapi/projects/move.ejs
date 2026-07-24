@@ -11,7 +11,14 @@
   }
 
   function patchBoard(userId, message) {
-    const projects = $app.findRecordsByFilter('projects', 'user = {:userId}', '-is_pinned,+sort_order,-updated', 200, 0, { userId })
+    const projects = $app.findRecordsByFilter(
+      'projects',
+      'user = {:userId}',
+      '-is_pinned,+sort_order,-updated',
+      200,
+      0,
+      { userId }
+    )
     const state = projectBoard.getProjectBoardState(projects)
 
     datastar.patchElements(
@@ -88,7 +95,8 @@
   function setStatusDates(project, nextStatus) {
     if (nextStatus === 'building' && !project.get('started_at')) project.set('started_at', new Date().toISOString())
     if (nextStatus === 'launched' && !project.get('launched_at')) project.set('launched_at', new Date().toISOString())
-    if (nextStatus === 'discarded' && !project.get('discarded_at')) project.set('discarded_at', new Date().toISOString())
+    if (nextStatus === 'discarded' && !project.get('discarded_at'))
+      project.set('discarded_at', new Date().toISOString())
   }
 
   function getProjectOrderUpdates(orderItems) {

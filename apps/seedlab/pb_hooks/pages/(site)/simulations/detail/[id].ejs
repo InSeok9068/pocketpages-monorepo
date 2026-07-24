@@ -43,7 +43,11 @@
       dbg('seedlab/simulations/[id]:db-access', { collection: 'assets', assetId: id })
       assetsById[id] = $app.findFirstRecordByFilter('assets', 'id = {:id}', { id })
     } catch (exception) {
-      warn('seedlab/simulations/[id]:db-access-failed', { collection: 'assets', assetId: id, error: String(exception.message || exception) })
+      warn('seedlab/simulations/[id]:db-access-failed', {
+        collection: 'assets',
+        assetId: id,
+        error: String(exception.message || exception),
+      })
       assetsById[id] = null
     }
 
@@ -60,17 +64,31 @@
     const savedBucket = readSavedAllocationBucket(holding)
     if (savedBucket) return savedBucket
 
-    const assetClass = normalizeAssetClass(holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none' ? holding.get('assetClassOverride') : asset ? asset.get('assetClass') : '')
+    const assetClass = normalizeAssetClass(
+      holding.get('assetClassOverride') && holding.get('assetClassOverride') !== 'none'
+        ? holding.get('assetClassOverride')
+        : asset
+          ? asset.get('assetClass')
+          : ''
+    )
     const assetType = String(asset ? asset.get('assetType') : '').toLowerCase()
     const symbol = String(asset ? asset.get('symbol') : '').toUpperCase()
     const name = String(asset ? asset.get('name') : '').toUpperCase()
     const searchText = symbol + ' ' + name
 
     if (assetClass === 'cash' || assetType === 'cash') return 'cash'
-    if (assetClass === 'fixed_income' || assetType === 'bond' || searchText.indexOf('BOND') >= 0 || searchText.indexOf('채권') >= 0) return 'bond'
+    if (
+      assetClass === 'fixed_income'
+      || assetType === 'bond'
+      || searchText.indexOf('BOND') >= 0
+      || searchText.indexOf('채권') >= 0
+    )
+      return 'bond'
     if (searchText.indexOf('GOLD') >= 0 || searchText.indexOf('금') >= 0) return 'gold'
-    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0) return 'real_estate'
-    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0) return 'dividend_stock'
+    if (searchText.indexOf('REIT') >= 0 || searchText.indexOf('리츠') >= 0 || searchText.indexOf('부동산') >= 0)
+      return 'real_estate'
+    if (searchText.indexOf('SCHD') >= 0 || searchText.indexOf('DIVIDEND') >= 0 || searchText.indexOf('배당') >= 0)
+      return 'dividend_stock'
     if (assetClass === 'equity') return 'growth_stock'
     return 'other'
   }
@@ -102,7 +120,10 @@
         })
       }
     } catch (exception) {
-      warn('seedlab/simulations/[id]:db-access-failed', { collection: 'account_holdings', error: String(exception.message || exception) })
+      warn('seedlab/simulations/[id]:db-access-failed', {
+        collection: 'account_holdings',
+        error: String(exception.message || exception),
+      })
     }
 
     return rows
@@ -173,10 +194,15 @@
         <p class="text-xs font-bold text-[#8b95a1]">예상 평가액</p>
         <p class="mt-1 text-[28px] leading-tight font-bold text-[#191f28]"><%= simulationCard.finalTotalText %></p>
       </div>
-      <span class="shrink-0 rounded-md bg-[#e8f3ff] px-2 py-1 text-xs font-bold text-[#1b64da]"><%= simulationCard.badgeText %></span>
+      <span class="shrink-0 rounded-md bg-[#e8f3ff] px-2 py-1 text-xs font-bold text-[#1b64da]">
+        <%= simulationCard.badgeText %>
+      </span>
     </div>
     <div class="mt-3 flex items-center justify-between gap-3">
-      <p class="<%= String(simulationCard.profitText).indexOf('-') === 0 ? 'text-[#1b64da]' : 'text-[#f04452]' %> text-sm font-bold"><%= simulationCard.profitText %></p>
+      <p
+        class="<%= String(simulationCard.profitText).indexOf('-') === 0 ? 'text-[#1b64da]' : 'text-[#f04452]' %> text-sm font-bold">
+        <%= simulationCard.profitText %>
+      </p>
       <p class="text-sm font-bold text-[#191f28]">수익률 <%= simulationCard.returnText %></p>
     </div>
     <div class="mt-4 grid grid-cols-2 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
@@ -198,26 +224,40 @@
       <article class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <span class="<%= simulationCard.bucketRows[index].tone %> inline-flex max-w-full truncate rounded-md px-2 py-0.5 text-xs font-bold"><%= simulationCard.bucketRows[index].label %></span>
+            <span
+              class="<%= simulationCard.bucketRows[index].tone %> inline-flex max-w-full truncate rounded-md px-2 py-0.5 text-xs font-bold">
+              <%= simulationCard.bucketRows[index].label %>
+            </span>
             <p class="mt-2 text-sm font-bold text-[#191f28]">
-              목표 <%= simulationCard.bucketRows[index].targetPctText %> · 현재 <%= simulationCard.bucketRows[index].currentPctText %> · 예상 <%= simulationCard.bucketRows[index].finalPctText %>
+              목표 <%= simulationCard.bucketRows[index].targetPctText %> · 현재
+              <%= simulationCard.bucketRows[index].currentPctText %> · 예상
+              <%= simulationCard.bucketRows[index].finalPctText %>
             </p>
           </div>
-          <p class="<%= simulationCard.bucketRows[index].driftTone %> shrink-0 text-sm font-bold"><%= simulationCard.bucketRows[index].driftPctText %></p>
+          <p class="<%= simulationCard.bucketRows[index].driftTone %> shrink-0 text-sm font-bold">
+            <%= simulationCard.bucketRows[index].driftPctText %>
+          </p>
         </div>
         <div class="mt-3 h-2 overflow-hidden rounded-full bg-[#f2f4f6]">
           <div
             class="h-full rounded-full"
-            style="width: <%= simulationCard.bucketRows[index].barWidth %>%; background: <%= simulationCard.bucketRows[index].color %>"></div>
+            style="
+              width: <%= simulationCard.bucketRows[index].barWidth %>%;
+              background: <%= simulationCard.bucketRows[index].color %>;
+            "></div>
         </div>
         <div class="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-[#f7f8fa] px-3 py-2">
           <div>
             <p class="text-[10px] font-bold text-[#8b95a1]">현재 금액</p>
-            <p class="mt-0.5 text-xs font-bold text-[#191f28]"><%= simulationCard.bucketRows[index].currentValueText %></p>
+            <p class="mt-0.5 text-xs font-bold text-[#191f28]">
+              <%= simulationCard.bucketRows[index].currentValueText %>
+            </p>
           </div>
           <div>
             <p class="text-[10px] font-bold text-[#8b95a1]">예상 금액</p>
-            <p class="mt-0.5 text-xs font-bold text-[#191f28]"><%= simulationCard.bucketRows[index].finalValueText %></p>
+            <p class="mt-0.5 text-xs font-bold text-[#191f28]">
+              <%= simulationCard.bucketRows[index].finalValueText %>
+            </p>
           </div>
         </div>
       </article>
@@ -230,19 +270,28 @@
     <% if (simulationCard.candidateRows.length === 0) { %>
     <div class="rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
       <p class="text-sm font-bold text-[#191f28]">매수 후보가 없습니다</p>
-      <p class="mt-1 text-sm leading-5 text-[#6b7684]">목표 비중과 최소 주문 조건 때문에 첫 달 주문 후보가 만들어지지 않았습니다.</p>
+      <p class="mt-1 text-sm leading-5 text-[#6b7684]">
+        목표 비중과 최소 주문 조건 때문에 첫 달 주문 후보가 만들어지지 않았습니다.
+      </p>
     </div>
     <% } else { %>
     <div class="space-y-2">
       <% for (let index = 0; index < simulationCard.candidateRows.length; index += 1) { %>
-      <article class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+      <article
+        class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
         <div class="min-w-0">
           <p class="<%= simulationCard.candidateRows[index].tone %> truncate text-sm font-bold">
-            <%= simulationCard.candidateRows[index].displayName %> · <%= simulationCard.candidateRows[index].bucketLabel %>
+            <%= simulationCard.candidateRows[index].displayName %> ·
+            <%= simulationCard.candidateRows[index].bucketLabel %>
           </p>
-          <p class="mt-1 truncate text-xs font-medium text-[#8b95a1]"><%= simulationCard.candidateRows[index].statusText %> <%= simulationCard.candidateRows[index].quantityText %></p>
+          <p class="mt-1 truncate text-xs font-medium text-[#8b95a1]">
+            <%= simulationCard.candidateRows[index].statusText %>
+            <%= simulationCard.candidateRows[index].quantityText %>
+          </p>
         </div>
-        <p class="<%= simulationCard.candidateRows[index].tone %> shrink-0 text-sm font-bold"><%= simulationCard.candidateRows[index].amountText %></p>
+        <p class="<%= simulationCard.candidateRows[index].tone %> shrink-0 text-sm font-bold">
+          <%= simulationCard.candidateRows[index].amountText %>
+        </p>
       </article>
       <% } %>
     </div>
@@ -253,17 +302,22 @@
     <h2 class="text-base font-bold text-[#191f28]">보유 종목 근거</h2>
     <div class="space-y-2">
       <% for (let index = 0; index < holdingRows.length && index < 12; index += 1) { %>
-      <article class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+      <article
+        class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg bg-white p-4 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
         <div class="min-w-0">
           <div class="flex min-w-0 items-center gap-2">
             <p class="truncate text-sm font-bold text-[#191f28]"><%= holdingRows[index].displayName %></p>
-            <span class="<%= holdingRows[index].tone %> shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold"><%= holdingRows[index].bucketLabel %></span>
+            <span class="<%= holdingRows[index].tone %> shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold">
+              <%= holdingRows[index].bucketLabel %>
+            </span>
           </div>
           <p class="mt-1 truncate text-xs font-medium text-[#8b95a1]"><%= holdingRows[index].quantityText %></p>
         </div>
         <div class="shrink-0 text-right">
           <p class="text-sm font-bold text-[#191f28]"><%= holdingRows[index].valueText %></p>
-          <p class="<%= holdingRows[index].profitTone %> mt-1 text-xs font-bold"><%= holdingRows[index].profitText %></p>
+          <p class="<%= holdingRows[index].profitTone %> mt-1 text-xs font-bold">
+            <%= holdingRows[index].profitText %>
+          </p>
         </div>
       </article>
       <% } %>
@@ -274,10 +328,13 @@
     <h2 class="text-base font-bold text-[#191f28]">월별 흐름</h2>
     <div class="overflow-hidden rounded-lg bg-white shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
       <% for (let index = 0; index < simulationCard.timelineRows.length; index += 1) { %>
-      <div class="grid grid-cols-[64px_1fr_auto] items-center gap-2 border-b border-[#f2f4f6] px-4 py-3 last:border-b-0">
+      <div
+        class="grid grid-cols-[64px_1fr_auto] items-center gap-2 border-b border-[#f2f4f6] px-4 py-3 last:border-b-0">
         <p class="truncate text-xs font-bold text-[#6b7684]"><%= simulationCard.timelineRows[index].label %></p>
         <p class="truncate text-sm font-bold text-[#191f28]"><%= simulationCard.timelineRows[index].totalText %></p>
-        <p class="<%= simulationCard.timelineRows[index].tone %> shrink-0 text-xs font-bold"><%= simulationCard.timelineRows[index].profitText %></p>
+        <p class="<%= simulationCard.timelineRows[index].tone %> shrink-0 text-xs font-bold">
+          <%= simulationCard.timelineRows[index].profitText %>
+        </p>
       </div>
       <% } %>
     </div>

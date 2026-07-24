@@ -6,7 +6,8 @@
   dbg('todo/xapi/settings/save:start', { userId, daysBefore })
   try {
     if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
-    if (isNaN(daysBefore) || daysBefore < 0 || daysBefore > 365) throw new Error('임박 기준은 0일에서 365일 사이여야 합니다.')
+    if (isNaN(daysBefore) || daysBefore < 0 || daysBefore > 365)
+      throw new Error('임박 기준은 0일에서 365일 사이여야 합니다.')
     let setting = null
     try {
       setting = $app.findFirstRecordByFilter('settings', 'user = {:userId}', { userId })
@@ -21,7 +22,11 @@
     errorMessage = String(exception.message || exception)
     error('todo/xapi/settings/save:failed', { userId, error: errorMessage })
   }
-  dbg('todo/xapi/settings/save:redirect', { status: 303, redirectTo: '/setting', message: errorMessage || '설정을 저장했습니다.' })
+  dbg('todo/xapi/settings/save:redirect', {
+    status: 303,
+    redirectTo: '/setting',
+    message: errorMessage || '설정을 저장했습니다.',
+  })
   redirect('/setting', { status: 303, message: errorMessage || '설정을 저장했습니다.' })
   return
 </script>

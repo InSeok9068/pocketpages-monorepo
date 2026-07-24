@@ -152,19 +152,28 @@
       })
       const assetId = String(assetRecord.get('id') || '')
       const marketValue = marketValueInput >= 0 ? marketValueInput : quantity * currentPriceInput
-      const profitLoss = hasProfitLossInput ? profitLossInput : averagePriceInput >= 0 ? marketValue - quantity * averagePriceInput : 0
+      const profitLoss = hasProfitLossInput
+        ? profitLossInput
+        : averagePriceInput >= 0
+          ? marketValue - quantity * averagePriceInput
+          : 0
       const costAmount = marketValue - profitLoss
       const currentPrice = quantity > 0 ? marketValue / quantity : marketValue
-      const averagePrice = averagePriceInput >= 0 ? averagePriceInput : quantity > 0 ? costAmount / quantity : currentPrice
+      const averagePrice =
+        averagePriceInput >= 0 ? averagePriceInput : quantity > 0 ? costAmount / quantity : currentPrice
       /** @type {PocketPagesRecord<"account_holdings"> | null} */
       let holdingRecord = null
 
       try {
-        holdingRecord = txApp.findFirstRecordByFilter('account_holdings', 'owner = {:owner} && account = {:account} && asset = {:asset}', {
-          owner: userId,
-          account: accountId,
-          asset: assetId,
-        })
+        holdingRecord = txApp.findFirstRecordByFilter(
+          'account_holdings',
+          'owner = {:owner} && account = {:account} && asset = {:asset}',
+          {
+            owner: userId,
+            account: accountId,
+            asset: assetId,
+          }
+        )
       } catch (exception) {
         holdingRecord = null
       }

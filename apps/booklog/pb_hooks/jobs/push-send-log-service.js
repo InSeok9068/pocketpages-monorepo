@@ -164,10 +164,17 @@ function getLastSentAt(userId, notificationKey) {
   }
 
   try {
-    const logRecords = $app.findRecordsByFilter(COLLECTION_NAME, 'user_id = {:userId} && notification_key = {:notificationKey} && send_status = "sent"', '-sent_at,-created', 1, 0, {
-      userId: normalizedUserId,
-      notificationKey: normalizedNotificationKey,
-    })
+    const logRecords = $app.findRecordsByFilter(
+      COLLECTION_NAME,
+      'user_id = {:userId} && notification_key = {:notificationKey} && send_status = "sent"',
+      '-sent_at,-created',
+      1,
+      0,
+      {
+        userId: normalizedUserId,
+        notificationKey: normalizedNotificationKey,
+      }
+    )
 
     if (!logRecords || logRecords.length === 0) {
       return ''

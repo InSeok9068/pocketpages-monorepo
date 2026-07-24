@@ -9,10 +9,15 @@
     if (request.method !== 'POST' || !userId) throw new Error('로그인이 필요합니다.')
     $app.runInTransaction(function (txApp) {
       const work = txApp.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })
-      const scheduled = txApp.findFirstRecordByFilter('scheduledNotifications', 'id = {:scheduledId} && user = {:userId}', { scheduledId, userId })
+      const scheduled = txApp.findFirstRecordByFilter(
+        'scheduledNotifications',
+        'id = {:scheduledId} && user = {:userId}',
+        { scheduledId, userId }
+      )
       const currentIds = Array.isArray(work.get('scheduledNotifications')) ? work.get('scheduledNotifications') : []
       const nextIds = []
-      for (let index = 0; index < currentIds.length; index += 1) if (String(currentIds[index]) !== scheduledId) nextIds.push(String(currentIds[index]))
+      for (let index = 0; index < currentIds.length; index += 1)
+        if (String(currentIds[index]) !== scheduledId) nextIds.push(String(currentIds[index]))
       work.set('scheduledNotifications', nextIds)
       txApp.save(work)
       txApp.delete(scheduled)
@@ -23,7 +28,11 @@
     error('todo/xapi/scheduled-notifications/delete:failed', { userId, workId, scheduledId, error: errorMessage })
   }
   const redirectTo = workId ? '/works/' + encodeURIComponent(workId) : '/'
-  dbg('todo/xapi/scheduled-notifications/delete:redirect', { status: 303, redirectTo, message: errorMessage || '예약 알림을 삭제했습니다.' })
+  dbg('todo/xapi/scheduled-notifications/delete:redirect', {
+    status: 303,
+    redirectTo,
+    message: errorMessage || '예약 알림을 삭제했습니다.',
+  })
   redirect(redirectTo, { status: 303, message: errorMessage || '예약 알림을 삭제했습니다.' })
   return
 </script>

@@ -89,7 +89,10 @@
   })
 
   response.header('Content-Type', 'application/epub+zip')
-  response.header('Content-Disposition', 'attachment; filename="' + asciiFileName + "\"; filename*=UTF-8''" + encodeURIComponent(downloadFileName))
+  response.header(
+    'Content-Disposition',
+    'attachment; filename="' + asciiFileName + "\"; filename*=UTF-8''" + encodeURIComponent(downloadFileName)
+  )
   response.file(localFilePath)
   return
 </script>

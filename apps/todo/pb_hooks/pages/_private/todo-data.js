@@ -6,7 +6,9 @@ const workView = require('./work-view')
  * @returns {types.DeveloperOption[]}
  */
 function listDevelopers(userId) {
-  const records = $app.findRecordsByFilter('developers', 'user = {:userId} && del = false', '+sort,+name', 200, 0, { userId })
+  const records = $app.findRecordsByFilter('developers', 'user = {:userId} && del = false', '+sort,+name', 200, 0, {
+    userId,
+  })
 
   return workView.toDeveloperOptions(records)
 }
@@ -105,7 +107,14 @@ function listWorkCards(userId, filters) {
   const developers = listDevelopers(userId)
   const stateOptions = listWorkStates()
   const setting = findSetting(userId)
-  const records = $app.findRecordsByFilter('works', expressions.join(' && '), input.sort || '+sort,-created', input.limit || 500, 0, values)
+  const records = $app.findRecordsByFilter(
+    'works',
+    expressions.join(' && '),
+    input.sort || '+sort,-created',
+    input.limit || 500,
+    0,
+    values
+  )
   const developerMap = workView.getDeveloperMap(developers)
   const urgentDays = workView.getUrgentDays(setting)
   const cards = []

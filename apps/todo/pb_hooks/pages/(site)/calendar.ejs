@@ -12,7 +12,9 @@
   const selectedDeveloper = String(request.url.query.developer || '').trim()
   const developers = todoData.listDevelopers(userId)
   const requestedMonth = String(request.url.query.month || '').trim()
-  const month = /^\d{4}-\d{2}$/.test(requestedMonth) ? requestedMonth : dateutil.formatDate(new Date(), dateutil.FORMATS.MONTH)
+  const month = /^\d{4}-\d{2}$/.test(requestedMonth)
+    ? requestedMonth
+    : dateutil.formatDate(new Date(), dateutil.FORMATS.MONTH)
   const monthStart = month + '-01'
   const monthParts = month.split('-')
   const nextMonthNumber = Number(monthParts[1]) === 12 ? 1 : Number(monthParts[1]) + 1
@@ -88,7 +90,10 @@
 </nav>
 <div class="space-y-4">
   <% if (!dates.length) { %>
-  <p class="rounded-xl border border-dashed border-slate-300 bg-white py-12 text-center text-sm font-bold text-slate-500">이 달에 마감 예정인 업무가 없습니다.</p>
+  <p
+    class="rounded-xl border border-dashed border-slate-300 bg-white py-12 text-center text-sm font-bold text-slate-500">
+    이 달에 마감 예정인 업무가 없습니다.
+  </p>
   <% } %><% for (let dateIndex = 0; dateIndex < dates.length; dateIndex += 1) { const date = dates[dateIndex] %>
   <section class="rounded-xl border border-slate-200 bg-white shadow-sm">
     <header class="border-b border-slate-100 px-4 py-3 font-black">

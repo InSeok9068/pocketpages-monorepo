@@ -19,7 +19,10 @@
     photo.set('isFavorite', !photo.get('isFavorite'))
     $app.save(photo)
     info('dulkong/xapi/photos/favorite:success', { photoId, userId, isFavorite: Boolean(photo.get('isFavorite')) })
-    datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, photoFilter) }), { selector: '#photo-results', mode: 'outer' })
+    datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, photoFilter) }), {
+      selector: '#photo-results',
+      mode: 'outer',
+    })
   } catch (exception) {
     error('dulkong/xapi/photos/favorite:failed', { photoId, userId, error: String(exception.message || exception) })
     patchAppToast(datastar, '즐겨찾기를 변경하지 못했어요.', 'error')

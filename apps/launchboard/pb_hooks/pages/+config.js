@@ -3,7 +3,12 @@ module.exports = function (api) {
   const isDevelopment = appEnv === 'development'
 
   return {
-    plugins: ['pocketpages-plugin-ejs', 'pocketpages-plugin-datastar-v1', 'pocketpages-plugin-js-sdk', 'pocketpages-plugin-auth'],
+    plugins: [
+      'pocketpages-plugin-ejs',
+      'pocketpages-plugin-datastar-v1',
+      'pocketpages-plugin-js-sdk',
+      'pocketpages-plugin-auth',
+    ],
     debug: isDevelopment,
   }
 }

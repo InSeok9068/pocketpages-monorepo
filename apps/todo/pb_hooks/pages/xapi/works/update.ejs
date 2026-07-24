@@ -36,7 +36,10 @@
     }
     if (!isValidState) throw new Error('상태 값이 올바르지 않습니다.')
     if (developerId) {
-      $app.findFirstRecordByFilter('developers', 'id = {:developerId} && user = {:userId} && del = false', { developerId, userId })
+      $app.findFirstRecordByFilter('developers', 'id = {:developerId} && user = {:userId} && del = false', {
+        developerId,
+        userId,
+      })
     }
 
     const work = $app.findFirstRecordByFilter('works', 'id = {:workId} && user = {:userId}', { workId, userId })

@@ -247,7 +247,9 @@ function buildHttpResult(args) {
   const httpOk = statusCode >= 200 && statusCode < 300
   const result = Object.prototype.hasOwnProperty.call(json, 'result') ? json.result : json
   const requestId = cleanText((error && error.requestId) || getHeaderValues(headers, 'X-Request-Id')[0] || '')
-  const errorMessage = cleanText(args.transportError || (error && error.message) || json.message || oauthErrorDescription || oauthErrorCode || '')
+  const errorMessage = cleanText(
+    args.transportError || (error && error.message) || json.message || oauthErrorDescription || oauthErrorCode || ''
+  )
 
   // OAuth 토큰 응답은 result envelope이 없으므로 json 전체를 result처럼 다룹니다.
   return {
@@ -286,7 +288,8 @@ function createRuntime(options) {
     clientSecret: cleanText(safeOptions.clientSecret || safeOptions.secret || readEnv('TOSS_SECRET')),
     accessToken: cleanText(safeOptions.accessToken || readEnv('TOSSINVEST_ACCESS_TOKEN')),
     accountSeq: cleanText(safeOptions.accountSeq || readEnv('TOSSINVEST_ACCOUNT_SEQ')),
-    accessTokenExpiresAtMs: expiresInSeconds > 0 ? nowMs + expiresInSeconds * 1000 : Number(safeOptions.accessTokenExpiresAtMs || 0),
+    accessTokenExpiresAtMs:
+      expiresInSeconds > 0 ? nowMs + expiresInSeconds * 1000 : Number(safeOptions.accessTokenExpiresAtMs || 0),
   }
 }
 
@@ -345,7 +348,7 @@ function issueOAuth2Token(input, runtime) {
       timeout: runtime.timeoutSeconds,
       body: toFormBody(payload),
       headers: {
-        Accept: 'application/json',
+        'Accept': 'application/json',
         'Content-Type': 'application/x-www-form-urlencoded',
       },
     })

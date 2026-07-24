@@ -40,7 +40,9 @@
     }
 
     Object.assign(issue, redmineService.toIssueView(config, redmineService.getIssue(config, issueId)))
-    message = watcherResult.failedIds.length ? '이슈는 수정했지만 일부 관찰자를 추가하지 못했습니다.' : 'Redmine 이슈를 업데이트했습니다.'
+    message = watcherResult.failedIds.length
+      ? '이슈는 수정했지만 일부 관찰자를 추가하지 못했습니다.'
+      : 'Redmine 이슈를 업데이트했습니다.'
     if (watcherResult.failedIds.length) toastTone = 'info'
     info('todo/xapi/redmine/update:success', { userId, workId, issueId, watcherCount: watcherResult.addedCount })
   } catch (exception) {

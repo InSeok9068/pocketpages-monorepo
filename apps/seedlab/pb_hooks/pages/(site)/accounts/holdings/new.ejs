@@ -41,10 +41,20 @@
 
   try {
     dbg('seedlab/accounts/holdings/new:db-access', { collection: 'portfolio_accounts' })
-    const accountRecords = $app.findRecordsByFilter('portfolio_accounts', 'owner = {:owner} && isActive = true', '-updated', 50, 0, { owner: userId })
+    const accountRecords = $app.findRecordsByFilter(
+      'portfolio_accounts',
+      'owner = {:owner} && isActive = true',
+      '-updated',
+      50,
+      0,
+      { owner: userId }
+    )
     accountOptions = accountRecords.map(buildAccountOption)
   } catch (exception) {
-    warn('seedlab/accounts/holdings/new:db-access-failed', { collection: 'portfolio_accounts', error: String(exception.message || exception) })
+    warn('seedlab/accounts/holdings/new:db-access-failed', {
+      collection: 'portfolio_accounts',
+      error: String(exception.message || exception),
+    })
     accountOptions = []
   }
 </script>
@@ -83,7 +93,8 @@
       method="post"
       action="/xapi/holdings/manual/create"
       class="space-y-4">
-      <label class="grid grid-cols-[72px_1fr] items-center gap-3 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
+      <label
+        class="grid grid-cols-[72px_1fr] items-center gap-3 rounded-lg bg-white px-4 py-3 shadow-[0_4px_16px_rgba(25,31,40,0.05)]">
         <span class="text-xs font-bold text-[#6b7684]">계좌</span>
         <span class="flex h-9 min-w-0 items-center gap-2">
           <span
@@ -94,7 +105,9 @@
             required
             class="h-9 min-w-0 flex-1 border-0 bg-transparent p-0 text-right text-base font-bold text-[#191f28] outline-none">
             <% for (let index = 0; index < accountOptions.length; index += 1) { %>
-            <option value="<%= accountOptions[index].id %>"><%= accountOptions[index].name %> · <%= accountOptions[index].caption %></option>
+            <option value="<%= accountOptions[index].id %>">
+              <%= accountOptions[index].name %> · <%= accountOptions[index].caption %>
+            </option>
             <% } %>
           </select>
         </span>

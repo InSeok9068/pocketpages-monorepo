@@ -6,7 +6,9 @@
       detailToastMessage: message,
       detailToastTone: tone,
     })
-    datastar.executeScript("window.setTimeout(function () { window.patchSignals && window.patchSignals({detailToastMessage: ''}) }, 2400)")
+    datastar.executeScript(
+      "window.setTimeout(function () { window.patchSignals && window.patchSignals({detailToastMessage: ''}) }, 2400)"
+    )
   }
 
   if (request.method !== 'POST') {

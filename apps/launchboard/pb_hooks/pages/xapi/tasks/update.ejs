@@ -7,7 +7,9 @@
       detailToastMessage: message,
       detailToastTone: tone,
     })
-    datastar.executeScript("window.setTimeout(function () { window.patchSignals && window.patchSignals({detailToastMessage: ''}) }, 2400)")
+    datastar.executeScript(
+      "window.setTimeout(function () { window.patchSignals && window.patchSignals({detailToastMessage: ''}) }, 2400)"
+    )
   }
 
   if (request.method !== 'POST') {
@@ -115,11 +117,15 @@
       projectId,
       userId,
     })
-    const task = $app.findFirstRecordByFilter('project_tasks', 'id = {:taskId} && user = {:userId} && project = {:projectId}', {
-      taskId,
-      userId,
-      projectId,
-    })
+    const task = $app.findFirstRecordByFilter(
+      'project_tasks',
+      'id = {:taskId} && user = {:userId} && project = {:projectId}',
+      {
+        taskId,
+        userId,
+        projectId,
+      }
+    )
     const slug = String(project.get('slug') || projectSlug).trim()
 
     redirectTo = getTaskDetailHref(slug, taskId, returnTo)

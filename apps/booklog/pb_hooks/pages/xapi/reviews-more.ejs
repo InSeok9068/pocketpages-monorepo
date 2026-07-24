@@ -31,7 +31,8 @@
   const requestedOffset = Number(request.url.query.offset || 30)
   const maxReviewLimit = 5000
   const pageLimit = 30
-  const pageOffset = isNaN(requestedOffset) || requestedOffset < 0 ? 30 : Math.min(Math.round(requestedOffset), maxReviewLimit)
+  const pageOffset =
+    isNaN(requestedOffset) || requestedOffset < 0 ? 30 : Math.min(Math.round(requestedOffset), maxReviewLimit)
   const nextOffset = Math.min(pageOffset + pageLimit, maxReviewLimit)
   const nextVisibleLimit = Math.min(nextOffset + pageLimit, maxReviewLimit)
   const reviewItems = []
@@ -48,9 +49,12 @@
 
     if (normalizedQuery) {
       query.andWhere(
-        $dbx.exp("(instr(lower(coalesce(book_reviews.review_text, '')), {:query}) > 0 OR instr(lower(coalesce(books.title, '')), {:query}) > 0)", {
-          query: normalizedQuery,
-        })
+        $dbx.exp(
+          "(instr(lower(coalesce(book_reviews.review_text, '')), {:query}) > 0 OR instr(lower(coalesce(books.title, '')), {:query}) > 0)",
+          {
+            query: normalizedQuery,
+          }
+        )
       )
     }
 
@@ -105,7 +109,12 @@
   applyReviewWhere(
     $app
       .db()
-      .select('book_reviews.book_id as bookId', 'books.title as bookTitle', 'book_reviews.review_text as reviewText', 'book_reviews.reviewed_at as reviewedAtValue')
+      .select(
+        'book_reviews.book_id as bookId',
+        'books.title as bookTitle',
+        'book_reviews.review_text as reviewText',
+        'book_reviews.reviewed_at as reviewedAtValue'
+      )
       .from('book_reviews')
       .innerJoin('books', $dbx.exp('books.id = book_reviews.book_id'))
       .orderBy('book_reviews.reviewed_at DESC', 'book_reviews.updated DESC')
@@ -132,7 +141,9 @@
 <a
   href="/books/<%= item.bookId %>?from=/reviews"
   class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-3.5 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
-  <p class="text-[15px] leading-[1.65] font-semibold tracking-[-0.02em] text-stone-900 sm:text-base"><%= item.reviewText %></p>
+  <p class="text-[15px] leading-[1.65] font-semibold tracking-[-0.02em] text-stone-900 sm:text-base">
+    <%= item.reviewText %>
+  </p>
   <p class="mt-2.5 text-[12px] leading-5 text-stone-600">
     <span><%= item.bookTitle %></span>
   </p>
