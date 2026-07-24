@@ -2,6 +2,8 @@
  * Minified by jsDelivr using Terser v5.39.0.
  * Original file: /npm/pocketbase-htmx-ext-sse@0.0.3/src/htmx-ext-sse.js
  *
+ * 이 프로젝트에서 Realtime 연결 중복을 막기 위해 직접 수정한 파일입니다.
+ *
  * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
  */
 !(function () {
@@ -48,6 +50,12 @@
   }
   function r(t, a) {
     if (null == t) return null;
+    // 같은 요소가 다시 처리되어도 활성 Realtime 연결은 하나만 유지합니다.
+    var currentSource = e.getInternalData(t).sseEventSource;
+    if (null != currentSource) {
+      if (currentSource.readyState !== EventSource.CLOSED) return currentSource;
+      currentSource.close();
+    }
     (e.getAttributeValue(t, "sse-swap") &&
       (function (t, a, i) {
         var o = htmx.createEventSource(a);

@@ -1,9 +1,16 @@
 ;(function () {
-  const appRealtimeElement = document.getElementById('app-realtime')
+  const realtimeSubscriptions = ['notifications/*', 'works/*']
+  const pocketBase = window.__todoPocketBase || new window.PocketBase(window.location.origin)
   const unreadIndicator = document.getElementById('notification-unread-indicator')
   let unreadSyncInFlight = false
   let lastUnreadSyncAt = 0
   let workListRefreshTimer = null
+  let realtimeGeneration = 0
+  let realtimeCleanupPromise = Promise.resolve()
+  let realtimeStartPromise = null
+  let realtimeUnsubscribers = []
+
+  window.__todoPocketBase = pocketBase
 
   function updateUnreadIndicator(hasUnread) {
     if (!unreadIndicator) return
@@ -118,6 +125,92 @@
     }, 150)
   }
 
+  function handleRealtimeMessage(topic, payload) {
+    if (!payload || !payload.action || !payload.record) return
+
+    if (topic === 'works/*') {
+      scheduleTodayWorkListRefresh()
+      return
+    }
+    if (topic !== 'notifications/*' || payload.action !== 'create') return
+
+    updateUnreadIndicator(true)
+    showToast(payload.record.title || '업무 알림', payload.record.message || '')
+    showBrowserNotification(payload.record)
+  }
+
+  function stopRealtime() {
+    realtimeGeneration += 1
+
+    const pendingStart = realtimeStartPromise
+    const unsubscribers = realtimeUnsubscribers
+    realtimeUnsubscribers = []
+
+    const cleanupPromises = []
+    for (let index = 0; index < unsubscribers.length; index += 1) {
+      cleanupPromises.push(
+        Promise.resolve()
+          .then(unsubscribers[index])
+          .catch(function () {
+            // 페이지 종료 중 구독 해제 실패는 SDK 재연결 대상으로 남기지 않습니다.
+          })
+      )
+    }
+    if (pendingStart) cleanupPromises.push(pendingStart)
+
+    realtimeCleanupPromise = Promise.all(cleanupPromises)
+    return realtimeCleanupPromise
+  }
+
+  function startRealtime() {
+    if (realtimeStartPromise || realtimeUnsubscribers.length) return realtimeStartPromise
+
+    const generation = ++realtimeGeneration
+    const startPromise = realtimeCleanupPromise
+      .then(function () {
+        if (generation !== realtimeGeneration) return []
+
+        return Promise.all([
+          pocketBase.collection('notifications').subscribe('*', function (event) {
+            handleRealtimeMessage('notifications/*', event)
+          }),
+          pocketBase.collection('works').subscribe('*', function (event) {
+            handleRealtimeMessage('works/*', event)
+          }),
+        ])
+      })
+      .then(function (unsubscribers) {
+        if (generation === realtimeGeneration) {
+          realtimeUnsubscribers = unsubscribers
+          return
+        }
+
+        return Promise.all(
+          unsubscribers.map(function (unsubscribe) {
+            return unsubscribe()
+          })
+        )
+      })
+      .catch(function (exception) {
+        console.warn('실시간 구독 시작 실패', exception)
+        return pocketBase.realtime.unsubscribe().catch(function () {
+          // 시작 실패 후 SDK 내부 구독 정리는 다음 시작에서도 다시 시도합니다.
+        })
+      })
+      .finally(function () {
+        if (realtimeStartPromise === startPromise) realtimeStartPromise = null
+      })
+
+    realtimeStartPromise = startPromise
+    return realtimeStartPromise
+  }
+
+  function resumeRealtime() {
+    return realtimeCleanupPromise.finally(function () {
+      startRealtime()
+    })
+  }
+
   document.addEventListener('click', function (event) {
     const button = event.target instanceof Element ? event.target.closest('[data-enable-browser-notifications]') : null
     if (!button || notificationPermission() !== 'default') return
@@ -131,35 +224,28 @@
       })
   })
 
-  if (appRealtimeElement) {
-    appRealtimeElement.addEventListener('htmx:sseBeforeMessage', function (event) {
-      let payload
-      try {
-        payload = JSON.parse(event.detail.data)
-      } catch (_exception) {
-        return
-      }
-
-      if (!payload || !payload.action || !payload.record) return
-
-      event.preventDefault()
-      if (event.detail.type === 'works/*') {
-        scheduleTodayWorkListRefresh()
-        return
-      }
-      if (event.detail.type !== 'notifications/*' || payload.action !== 'create') return
-
-      updateUnreadIndicator(true)
-      showToast(payload.record.title || '업무 알림', payload.record.message || '')
-      showBrowserNotification(payload.record)
-    })
+  const previousRealtime = window.__todoRealtime
+  window.__todoRealtime = {
+    start: startRealtime,
+    stop: stopRealtime,
+    isConnected: function () {
+      return pocketBase.realtime.isConnected
+    },
   }
 
   window.addEventListener('focus', syncUnreadIndicator)
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) syncUnreadIndicator()
   })
+  window.addEventListener('pagehide', stopRealtime)
+  window.addEventListener('pageshow', function () {
+    resumeRealtime()
+  })
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', updatePermissionButtons)
   else updatePermissionButtons()
+
+  Promise.resolve(previousRealtime && typeof previousRealtime.stop === 'function' ? previousRealtime.stop() : null).finally(function () {
+    resumeRealtime()
+  })
 })()

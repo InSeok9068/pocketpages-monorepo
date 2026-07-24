@@ -18,6 +18,14 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Official PocketBase browser SDK bundles contain generated code that matches generic-api-key."
+targetRules = ["generic-api-key"]
+paths = [
+  '''^scripts/vendor/pocketbase-0\.27\.0\.umd\.js$''',
+  '''^apps/todo/pb_hooks/pages/assets/vendor/pocketbase-0\.27\.0\.umd\.js$''',
+]
+
+[[allowlists]]
 description = "Seedlab Toss API docs contain example access_token fields."
 targetRules = ["generic-api-key"]
 paths = [
