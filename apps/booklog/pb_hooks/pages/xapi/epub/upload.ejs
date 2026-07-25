@@ -11,8 +11,7 @@
   const MAX_METADATA_PAGE_FALLBACKS = 12
   const MAX_BOOK_SEARCH_DOCS = 100
   const BOOK_SEARCH_PAGE_SIZE = 25
-  const FICTION_CHARS_PER_PAGE = 430
-  const NONFICTION_CHARS_PER_PAGE = 310
+  const CHARS_PER_PAGE = 430
   const METADATA_ENTRY_PATH_PATTERN =
     /(rights|copyright|colophon|author|about|credit|imprint|title|cover|bookinfo|book_info|book-info)/i
   const ISBN_SCAN_ENTRY_PATTERN = /\.(opf|xml|ncx|xhtml|html|htm|txt)$/i
@@ -634,27 +633,8 @@
     return normalizedText ? normalizedText.length : 0
   }
 
-  function isLikelyNarrativeBook(classNo, description, title) {
-    const normalizedClassNo = String(classNo || '').trim()
-    const normalizedDescription = String(description || '')
-    const normalizedTitle = String(title || '')
-    const fictionPattern = /소설|장편|단편|문학|시집|희곡|에세이소설/i
-
-    if (normalizedClassNo && normalizedClassNo.charAt(0) === '8') {
-      return true
-    }
-
-    if (fictionPattern.test(normalizedDescription) || fictionPattern.test(normalizedTitle)) {
-      return true
-    }
-
-    return false
-  }
-
   /**
    * EPUB 본문 기준 분량 지표를 계산합니다.
-   * @param {Record|null} matchedBook 매칭된 외부 메타데이터 책 정보
-   * @param {{ title?: string }} epubMetadata EPUB 기본 메타데이터
    * @param {object} archiveEntries EPUB 압축 엔트리 맵
    * @param {Array<{id:string,href:string,mediaType:string,properties:string}>} manifestItems manifest 아이템 목록
    * @param {string} packageDocumentPath OPF 경로
@@ -662,8 +642,6 @@
    * @returns {{ textCharCount: number, chapterCount: number, estimatedPageCount: number, pageDivisor: number, pageRule: string }} 계산된 분량 지표
    */
   function buildReadingMetrics(
-    matchedBook,
-    epubMetadata,
     archiveEntries,
     manifestItems,
     packageDocumentPath,
@@ -707,13 +685,7 @@
     const textCharCount = countReadableCharacters(combinedText)
     const tocEntryPath = findTocEntryPath(manifestItems, packageDocument, packageDocumentPath)
     const chapterCount = countTocNavPoints(parseXmlDocument(readArchiveText(archiveEntries, tocEntryPath)))
-    const pageDivisor = isLikelyNarrativeBook(
-      matchedBook && matchedBook.class_no ? matchedBook.class_no : '',
-      matchedBook && matchedBook.description ? matchedBook.description : '',
-      matchedBook && matchedBook.bookname ? matchedBook.bookname : epubMetadata.title
-    )
-      ? FICTION_CHARS_PER_PAGE
-      : NONFICTION_CHARS_PER_PAGE
+    const pageDivisor = CHARS_PER_PAGE
     const estimatedPageCount = textCharCount > 0 ? Math.ceil(textCharCount / pageDivisor) : 0
 
     return {
@@ -721,7 +693,7 @@
       chapterCount: chapterCount,
       estimatedPageCount: estimatedPageCount,
       pageDivisor: pageDivisor,
-      pageRule: pageDivisor === FICTION_CHARS_PER_PAGE ? 'fiction' : 'nonfiction',
+      pageRule: 'fixed',
     }
   }
 
@@ -2632,8 +2604,6 @@
     const resolvedIsbn13 =
       detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
     const readingMetrics = buildReadingMetrics(
-      matchedBook,
-      epubMetadata,
       archiveEntries,
       manifestItems,
       packageDocumentPath,
