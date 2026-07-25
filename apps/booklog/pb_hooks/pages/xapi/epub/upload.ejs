@@ -641,12 +641,7 @@
    * @param {object} packageDocument 파싱된 OPF XML 문서
    * @returns {{ textCharCount: number, chapterCount: number, estimatedPageCount: number, pageDivisor: number, pageRule: string }} 계산된 분량 지표
    */
-  function buildReadingMetrics(
-    archiveEntries,
-    manifestItems,
-    packageDocumentPath,
-    packageDocument
-  ) {
+  function buildReadingMetrics(archiveEntries, manifestItems, packageDocumentPath, packageDocument) {
     const manifestList = Array.isArray(manifestItems) ? manifestItems : []
     const manifestById = {}
     const spineIdrefs = parseSpineIdrefs(packageDocument)
@@ -2603,12 +2598,7 @@
     const matchedBook = detailBook || selectedDoc || null
     const resolvedIsbn13 =
       detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
-    const readingMetrics = buildReadingMetrics(
-      archiveEntries,
-      manifestItems,
-      packageDocumentPath,
-      packageDocument
-    )
+    const readingMetrics = buildReadingMetrics(archiveEntries, manifestItems, packageDocumentPath, packageDocument)
     dbg('xapi/epub/upload:reading-metrics', {
       textCharCount: readingMetrics.textCharCount,
       chapterCount: readingMetrics.chapterCount,
