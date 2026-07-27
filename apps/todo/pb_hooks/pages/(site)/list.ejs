@@ -66,18 +66,11 @@
   const workCards = todoData.listWorkCards(userId, filters)
   dbg('todo/list:response', { userId, workCount: workCards.length })
 </script>
-<header class="mb-5 flex flex-wrap items-end justify-between gap-4">
+<header class="mb-5">
   <div>
     <p class="text-xs font-black tracking-[0.16em] text-blue-600">FIND WORK</p>
     <h1 class="mt-1 text-3xl font-black tracking-tight">업무 검색</h1>
     <p class="mt-2 text-sm text-slate-500">필요한 조건만 선택해 업무를 빠르게 좁혀보세요.</p>
-  </div>
-  <div class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-right shadow-sm">
-    <p class="text-[11px] font-bold text-slate-400">검색 결과</p>
-    <p class="mt-0.5 text-lg font-black text-slate-900">
-      <%= workCards.length %>
-      <span class="ml-1 text-sm text-slate-400">개</span>
-    </p>
   </div>
 </header>
 <form
