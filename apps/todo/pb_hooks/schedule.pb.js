@@ -188,13 +188,9 @@ cronAdd('todo-recurring-work-palrago-work-review', '55 0 * * 2,4', function () {
 })
 
 cronAdd('todo-promote-scheduled-notifications', '* * * * *', function () {
-  const now = new Date().toISOString()
-
   try {
     $app.runInTransaction(function (txApp) {
-      const scheduled = txApp.findRecordsByFilter('scheduledNotifications', 'time <= {:now}', '+time', 500, 0, {
-        now: now,
-      })
+      const scheduled = txApp.findRecordsByFilter('scheduledNotifications', 'time <= @now', '+time', 500, 0)
       const notificationCollection = txApp.findCollectionByNameOrId('notifications')
 
       for (let index = 0; index < scheduled.length; index += 1) {
@@ -210,7 +206,7 @@ cronAdd('todo-promote-scheduled-notifications', '* * * * *', function () {
       }
     })
 
-    $app.logger().info('todo/scheduled-notifications:completed', 'at', now)
+    $app.logger().info('todo/scheduled-notifications:completed')
   } catch (exception) {
     $app
       .logger()
