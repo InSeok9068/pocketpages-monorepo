@@ -42,9 +42,7 @@
   $app
     .db()
     .newQuery(
-      'SELECT state, COUNT(*) AS total FROM works WHERE user = {:userId}'
-        + developerCondition
-        + ' GROUP BY state'
+      'SELECT state, COUNT(*) AS total FROM works WHERE user = {:userId}' + developerCondition + ' GROUP BY state'
     )
     .bind(workBindings)
     .all(stateRows)
