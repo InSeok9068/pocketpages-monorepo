@@ -10,10 +10,19 @@
     return
   }
   const userId = String(request.auth.get('id') || '')
+  const selectedDeveloper = String(request.url.query.developer || '').trim()
   const stateOptions = todoData.listWorkStates()
   const developers = todoData.listDevelopers(userId)
   const urgentDays = workView.getUrgentDays(todoData.findSetting(userId))
   const urgentThrough = dateutil.endOfDay(dateutil.addDays(new Date(), urgentDays)).toISOString()
+  let developerCondition = ''
+  if (selectedDeveloper === '__unassigned__') {
+    developerCondition = " AND (developer IS NULL OR developer = '')"
+  } else if (selectedDeveloper) {
+    developerCondition = ' AND developer = {:developerId}'
+  }
+  const workBindings = { userId, developerId: selectedDeveloper }
+  const summaryBindings = { userId, urgentThrough, developerId: selectedDeveloper }
   const summary = new DynamicModel({ total: 0, done: 0, urgent: 0 })
   const stateRows = arrayOf(new DynamicModel({ state: '', total: 0 }))
   const developerRows = arrayOf(new DynamicModel({ developerId: '', total: 0 }))
@@ -25,22 +34,30 @@
         + ' COALESCE(SUM(CASE WHEN done = TRUE THEN 1 ELSE 0 END), 0) AS done,'
         + " COALESCE(SUM(CASE WHEN done = FALSE AND dueDate IS NOT NULL AND dueDate != '' AND dueDate <= {:urgentThrough} THEN 1 ELSE 0 END), 0) AS urgent"
         + ' FROM works WHERE user = {:userId}'
+        + developerCondition
     )
-    .bind({ userId, urgentThrough })
+    .bind(summaryBindings)
     .one(summary)
 
   $app
     .db()
-    .newQuery('SELECT state, COUNT(*) AS total FROM works WHERE user = {:userId} GROUP BY state')
-    .bind({ userId })
+    .newQuery(
+      'SELECT state, COUNT(*) AS total FROM works WHERE user = {:userId}'
+        + developerCondition
+        + ' GROUP BY state'
+    )
+    .bind(workBindings)
     .all(stateRows)
 
   $app
     .db()
     .newQuery(
-      "SELECT COALESCE(NULLIF(developer, ''), '__unassigned__') AS developerId, COUNT(*) AS total FROM works WHERE user = {:userId} GROUP BY COALESCE(NULLIF(developer, ''), '__unassigned__')"
+      "SELECT COALESCE(NULLIF(developer, ''), '__unassigned__') AS developerId, COUNT(*) AS total"
+        + ' FROM works WHERE user = {:userId}'
+        + developerCondition
+        + " GROUP BY COALESCE(NULLIF(developer, ''), '__unassigned__')"
     )
-    .bind({ userId })
+    .bind(workBindings)
     .all(developerRows)
 
   const totalCount = Number(summary.total || 0)
@@ -58,12 +75,39 @@
       developerRows[index].total || 0
     )
   }
-  dbg('todo/dashboard:response', { userId, workCount: totalCount })
+  dbg('todo/dashboard:response', { userId, workCount: totalCount, selectedDeveloper })
 </script>
 <header class="mb-6">
   <p class="text-sm font-bold text-blue-600">DASHBOARD</p>
   <h1 class="mt-1 text-3xl font-black tracking-tight">업무 현황</h1>
 </header>
+<nav
+  class="mb-5 overflow-x-auto"
+  aria-label="담당자 필터">
+  <div class="flex min-w-max gap-1.5">
+    <a
+      href="/dashboard"
+      aria-current="<%= !selectedDeveloper ? 'page' : 'false' %>"
+      class="<%= !selectedDeveloper ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
+      전체
+    </a>
+    <a
+      href="/dashboard?developer=__unassigned__"
+      aria-current="<%= selectedDeveloper === '__unassigned__' ? 'page' : 'false' %>"
+      class="<%= selectedDeveloper === '__unassigned__' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
+      미배정
+    </a>
+    <% for (let index = 0; index < developers.length; index += 1) { %>
+    <% const developer = developers[index] %>
+    <a
+      href="/dashboard?developer=<%= encodeURIComponent(developer.id) %>"
+      aria-current="<%= selectedDeveloper === developer.id ? 'page' : 'false' %>"
+      class="<%= selectedDeveloper === developer.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
+      <%= developer.name %>
+    </a>
+    <% } %>
+  </div>
+</nav>
 <section class="grid gap-4 sm:grid-cols-3">
   <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <span class="i-lucide-list-todo h-5 w-5 text-blue-600"></span>
