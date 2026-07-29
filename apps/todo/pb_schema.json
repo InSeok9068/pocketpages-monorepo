@@ -1356,6 +1356,15 @@
       },
       {
         "hidden": false,
+        "id": "bool780452196",
+        "name": "important",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "hidden": false,
         "id": "hw4se6vw",
         "max": "",
         "min": "",

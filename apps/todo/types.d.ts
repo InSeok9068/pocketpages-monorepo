@@ -20,6 +20,7 @@ declare namespace types {
     title: string
     content: string
     done: boolean
+    important: boolean
     doneDate: string
     dueDate: string
     dueDateLabel: string

@@ -308,6 +308,10 @@ textarea:focus {
   background: #fff;
 }
 
+.ui-work-card-important {
+  border-left-color: #f59e0b;
+}
+
 .ui-work-card-urgent {
   border-color: #fecdd3;
   border-left-color: #e11d48;

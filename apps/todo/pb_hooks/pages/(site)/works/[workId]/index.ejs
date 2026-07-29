@@ -35,6 +35,7 @@
     title: String(work.get('title') || ''),
     content: String(work.get('content') || ''),
     done: !!work.get('done'),
+    important: !!work.get('important'),
     dueDate: dueDate ? dateutil.formatDate(dueDate, dateutil.FORMATS.DATE) : '',
     state: String(work.get('state') || 'wait'),
     developerId: String(work.get('developer') || ''),
@@ -454,6 +455,26 @@
             name="due_date"
             value="<%= view.dueDate %>"
             class="mt-2 h-11 w-full rounded-xl px-3" />
+        </label>
+        <label
+          class="flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700">
+          <span class="inline-flex items-center gap-2">
+            <span class="i-lucide-flag h-4 w-4 text-amber-600"></span>
+            중요 업무
+          </span>
+          <span class="relative inline-flex h-6 w-11 shrink-0">
+            <input
+              type="checkbox"
+              role="switch"
+              name="important"
+              value="true"
+              <%= view.important ? 'checked' : '' %>
+              class="peer sr-only" />
+            <span
+              class="h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-slate-900 peer-focus-visible:ring-3 peer-focus-visible:ring-slate-200"></span>
+            <span
+              class="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5"></span>
+          </span>
         </label>
         <label class="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700">
           <input

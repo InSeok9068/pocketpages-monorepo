@@ -78,6 +78,7 @@ function toWorkCard(record, developerMap, stateOptions, urgentDays) {
     title: String(record.get('title') || ''),
     content: String(record.get('content') || ''),
     done: !!record.get('done'),
+    important: !!record.get('important'),
     doneDate: String(record.get('doneDate') || ''),
     dueDate,
     dueDateLabel: dueDate ? dateutil.formatDate(dueDate, dateutil.FORMATS.DATE) : '',

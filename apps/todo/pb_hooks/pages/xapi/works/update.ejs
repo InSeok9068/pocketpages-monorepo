@@ -8,6 +8,7 @@
   const requestedState = String(form.state || 'wait').trim()
   const developerId = String(form.developer || '').trim()
   const isDone = String(form.done || '') === 'true'
+  const isImportant = String(form.important || '') === 'true'
   let state = requestedState
   let errorMessage = ''
   let uploadedFile = null
@@ -53,6 +54,7 @@
     work.set('redmine', String(form.redmine || '').trim())
     work.set('joplin', String(form.joplin || '').trim())
     work.set('done', isDone)
+    work.set('important', isImportant)
     if (uploadedFile) {
       work.set('file', uploadedFile)
       work.set('originalFileName', String(uploadedFile.originalName || uploadedFile.name || '첨부파일'))

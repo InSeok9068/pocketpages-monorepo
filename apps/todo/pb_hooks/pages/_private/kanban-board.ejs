@@ -52,15 +52,23 @@
             <% for (let workIndex = 0; workIndex < stateWorks.length; workIndex += 1) { %>
             <% const work = stateWorks[workIndex] %>
             <article
-              class="<%= work.isUrgent ? 'ui-work-card-urgent' : '' %> <%= work.done ? 'opacity-75' : '' %> ui-work-card group rounded-lg p-2.5 shadow-sm transition hover:shadow-md"
+              class="<%= work.important ? 'ui-work-card-important' : '' %> <%= work.isUrgent ? 'ui-work-card-urgent' : '' %> <%= work.done ? 'opacity-75' : '' %> ui-work-card group rounded-lg p-2.5 shadow-sm transition hover:shadow-md"
               data-kanban-card
-              data-work-id="<%= work.id %>">
+              data-work-id="<%= work.id %>"
+              data-important="<%= work.important ? 'true' : 'false' %>">
               <div class="flex items-start gap-1.5">
                 <a
                   href="/works/<%= encodeURIComponent(work.id) %>"
                   class="<%= work.done ? 'line-through' : '' %> block min-w-0 flex-1 text-sm leading-5 font-bold text-slate-900 no-underline hover:text-blue-700">
                   <%= work.title %>
                 </a>
+                <% if (work.important) { %>
+                <span
+                  class="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-amber-50 px-1.5 py-1 text-[10px] font-black text-amber-700">
+                  <span class="i-lucide-flag h-3 w-3"></span>
+                  중요
+                </span>
+                <% } %>
                 <button
                   type="button"
                   class="inline-flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded-md border-0 bg-transparent text-slate-300 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
