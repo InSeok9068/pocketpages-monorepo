@@ -1,17 +1,17 @@
 <div id="photo-results">
   <section
-    class="rounded-[26px] bg-[#302f2a] p-5 text-white"
+    class="rounded-[26px] border border-[#dce7c8] bg-[#edf3df] p-5 text-[#354922]"
     aria-labelledby="memory-summary-title">
     <div class="flex items-end justify-between gap-4">
       <div>
-        <p class="m-0 text-xs font-semibold text-white/55">함께 모은 순간</p>
+        <p class="m-0 text-xs font-semibold text-[#7f8c68]">함께 모은 순간</p>
         <h2
           id="memory-summary-title"
           class="mt-1 mb-0 text-2xl font-extrabold">
           <%= photos.length %>장
         </h2>
       </div>
-      <span class="text-sm font-semibold text-[#cbe39f]">
+      <span class="text-sm font-semibold text-[#66813f]">
         <%= photos.length ? photos[photos.length - 1].takenAt.replace(/-/g, '.') + '부터' : '첫 사진을 기다리는 중' %>
       </span>
     </div>
