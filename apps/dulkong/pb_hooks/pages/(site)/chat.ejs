@@ -10,7 +10,7 @@
 </script>
 
 <div
-  class="relative mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col bg-[#f7f5ee] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
+  class="fixed inset-0 mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden bg-[#f7f5ee] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
   data-signals="<%= stringify({ draft: '', clientMessageId: '', chatRevision: 0, chatHandledRevision: 0, chatSending: false, chatAtBottom: true, chatHasNewMessage: false, messageHasMore: messagePage.hasMore, messageHistoryLoading: false, oldestMessageCreated: oldestMessage ? oldestMessage.createdAt : '', oldestMessageId: oldestMessage ? oldestMessage.id : '' }) %>"
   data-effect="if ($chatRevision && $chatRevision !== $chatHandledRevision) { $chatHandledRevision = $chatRevision; if ($chatAtBottom) @get('/xapi/messages/list'); else $chatHasNewMessage = true }">
   <header
@@ -46,7 +46,7 @@
     method="post"
     action="/xapi/messages/send"
     data-on:submit__prevent="if (!$chatSending) { $chatSending = true; $clientMessageId = 'web_' + Date.now(); @post('/xapi/messages/send') }"
-    class="shrink-0 border-t border-[#e8e5da] bg-[#fffefa] px-4 pt-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
+    class="shrink-0 border-t border-[#e8e5da] bg-[#fffefa] px-4 pt-3 pb-[calc(5.25rem+env(safe-area-inset-bottom))]">
     <div class="flex items-end gap-2">
       <label class="min-w-0 flex-1">
         <span class="sr-only">메시지</span>

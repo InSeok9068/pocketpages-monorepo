@@ -86,7 +86,7 @@
     class="fixed inset-0 z-60 flex items-end justify-center bg-black/35 px-3"
     data-on:click="$anniversaryModalOpen = false">
     <section
-      class="mb-[max(0.75rem,env(safe-area-inset-bottom))] w-full max-w-[456px] rounded-[28px] bg-[#fffefa] p-5 shadow-[0_24px_70px_rgba(30,31,27,0.28)]"
+      class="mb-[max(0.75rem,env(safe-area-inset-bottom))] box-border w-full max-w-[456px] rounded-[28px] bg-[#fffefa] p-5 shadow-[0_24px_70px_rgba(30,31,27,0.28)]"
       data-on:click__stop="true">
       <div class="mb-4 flex items-center justify-between">
         <div>
@@ -121,14 +121,14 @@
         <div class="grid grid-cols-2 gap-2">
           <select
             data-bind:anniversary-kind
-            class="rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm">
+            class="box-border min-w-0 rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm">
             <option value="custom">기념일</option>
             <option value="relationship_start">우리가 만난 날</option>
             <option value="birthday">생일</option>
           </select>
           <select
             data-bind:anniversary-recurrence
-            class="rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm">
+            class="box-border min-w-0 rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm">
             <option value="none">한 번만</option>
             <option value="yearly">매년</option>
           </select>
