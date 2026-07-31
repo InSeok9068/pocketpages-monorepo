@@ -70,7 +70,12 @@
   <body
     id="app-shell"
     class="bg-[#efeee8]"
-    data-signals="<%= stringify({ appToastMessage: initialToastMessage, appToastTone: 'info' }) %>"
+    data-signals="<%= stringify({ appToastMessage: initialToastMessage, appToastTone: 'info', appUnreadMessageCount: 0, appHandledChatRevision: 0, chatRevision: 0 }) %>"
+    <% if (request.auth) { %>
+    data-init="@get('/xapi/messages/unread')"
+    data-effect="if ($chatRevision && $chatRevision !== $appHandledChatRevision) { $appHandledChatRevision = $chatRevision; if (window.location.pathname !== '/chat') @get('/xapi/messages/unread') }"
+    data-on:focus__window="if (document.visibilityState === 'visible') @get('/xapi/messages/unread')"
+    <% } %>
     un-cloak>
     <main id="app-view"><%- slots.body || slot %></main>
 

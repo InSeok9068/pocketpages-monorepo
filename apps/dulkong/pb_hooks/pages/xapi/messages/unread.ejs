@@ -1,0 +1,22 @@
+<script server>
+  const coupleData = resolve('couple-data')
+
+  if (request.method !== 'GET' || !request.auth) {
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const lastReadAt = String(request.auth.get('lastReadAt') || '')
+
+  try {
+    const unreadMessageCount = coupleData.getUnreadMessageCount($app, userId, lastReadAt)
+
+    dbg('dulkong/xapi/messages/unread:query', { userId, unreadMessageCount })
+    datastar.patchSignals({ appUnreadMessageCount: unreadMessageCount })
+  } catch (exception) {
+    error('dulkong/xapi/messages/unread:failed', {
+      userId,
+      error: String(exception.message || exception),
+    })
+  }
+</script>

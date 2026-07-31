@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { test } from 'node:test'
 
 const require = createRequire(import.meta.url)
-const { getMessagePage } = require('../pb_hooks/pages/_private/couple-data.js')
+const { getMessagePage, getUnreadMessageCount } = require('../pb_hooks/pages/_private/couple-data.js')
 
 function messageRecord(id, created, sender, body) {
   const fields = { id, created, sender, body }
@@ -76,4 +76,26 @@ test('message page marks only the latest message read by the partner', () => {
     page.messages.filter((message) => message.showReadReceipt).map((message) => message.id),
     ['message-2']
   )
+})
+
+test('unread message count queries only newer partner messages', () => {
+  const calls = []
+  const app = {
+    findRecordsByFilter(...args) {
+      calls.push(args)
+      return new Array(3)
+    },
+  }
+
+  const count = getUnreadMessageCount(app, 'inseok', '2026-07-21 14:03:02.000Z')
+
+  assert.equal(count, 3)
+  assert.equal(calls[0][0], 'messages')
+  assert.match(calls[0][1], /sender != \{:userId\}/)
+  assert.match(calls[0][1], /created > \{:lastReadAt\}/)
+  assert.equal(calls[0][3], 100)
+  assert.deepEqual(calls[0][5], {
+    userId: 'inseok',
+    lastReadAt: '2026-07-21 14:03:02.000Z',
+  })
 })

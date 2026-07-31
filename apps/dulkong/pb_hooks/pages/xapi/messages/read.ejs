@@ -23,7 +23,7 @@
     const currentLastReadAt = String(request.auth.get('lastReadAt') || '')
 
     if (!latestCreated || latestCreated <= currentLastReadAt) {
-      datastar.patchSignals({ chatReadAt: currentLastReadAt })
+      datastar.patchSignals({ chatReadAt: currentLastReadAt, appUnreadMessageCount: 0 })
       return
     }
 
@@ -31,7 +31,7 @@
     $app.save(request.auth)
 
     info('dulkong/xapi/messages/read:updated', { userId, lastReadAt: latestCreated })
-    datastar.patchSignals({ chatReadAt: latestCreated })
+    datastar.patchSignals({ chatReadAt: latestCreated, appUnreadMessageCount: 0 })
     datastar.realtime.patchSignals({ chatReceiptRevision: new Date().getTime() }, undefined, {
       filter: function (realtimeClientId) {
         return !clientId || realtimeClientId !== clientId

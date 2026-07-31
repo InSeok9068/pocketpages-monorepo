@@ -139,6 +139,15 @@ textarea {
   transition: transform 160ms ease;
 }
 
+.memory-filter-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.memory-filter-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .photo-card--pressing {
   transform: scale(0.97);
 }

@@ -28,9 +28,16 @@
       class="bottom-nav-item<%= currentPath === '/chat' ? ' bottom-nav-item--active' : '' %>"
       <% if (currentPath === '/chat') { %>aria-current="page"
       <% } %>>
-      <span
-        class="i-lucide-message-circle h-5 w-5"
-        aria-hidden="true"></span>
+      <span class="relative">
+        <span
+          class="i-lucide-message-circle block h-5 w-5"
+          aria-hidden="true"></span>
+        <span
+          data-show="$appUnreadMessageCount > 0 && window.location.pathname !== '/chat'"
+          data-text="$appUnreadMessageCount > 99 ? '99+' : $appUnreadMessageCount"
+          class="absolute -top-2 -right-3 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#df6f5e] px-1 text-[9px] leading-none font-bold text-white shadow-[0_2px_7px_rgba(166,61,48,0.28)]"
+          aria-label="읽지 않은 메시지"></span>
+      </span>
       <span>대화</span>
     </a>
     <a

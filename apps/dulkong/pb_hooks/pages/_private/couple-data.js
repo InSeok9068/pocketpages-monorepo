@@ -256,6 +256,26 @@ function getMessagePage(app, currentUserId, options) {
 }
 
 /**
+ * 현재 사용자가 읽지 않은 상대방 메시지 수를 조회합니다.
+ * @param {types.CoupleDataApp} app PocketBase 앱
+ * @param {string} currentUserId 현재 사용자 ID
+ * @param {string} lastReadAt 마지막 읽은 시각
+ * @returns {number} 읽지 않은 메시지 수
+ */
+function getUnreadMessageCount(app, currentUserId, lastReadAt) {
+  const readAt = String(lastReadAt || '')
+  let filter = "sender != {:userId} && deletedAt = ''"
+  const filterValues = { userId: currentUserId }
+
+  if (readAt) {
+    filter += ' && created > {:lastReadAt}'
+    filterValues.lastReadAt = readAt
+  }
+
+  return app.findRecordsByFilter('messages', filter, '-created,-id', 100, 0, filterValues).length
+}
+
+/**
  * 최근 메시지를 오래된 순으로 조회합니다.
  * @param {types.CoupleDataApp} app PocketBase 앱
  * @param {string} currentUserId 현재 사용자 ID
@@ -269,6 +289,7 @@ module.exports = {
   getCoupleProfiles,
   getProfileName,
   getMessagePage,
+  getUnreadMessageCount,
   listAnniversaries,
   listMessages,
   listPhotos,
