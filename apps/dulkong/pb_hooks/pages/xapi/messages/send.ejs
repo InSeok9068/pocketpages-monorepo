@@ -30,7 +30,10 @@
 
     info('dulkong/xapi/messages/send:success', { messageId: String(record.get('id') || ''), userId })
     const profiles = coupleData.getCoupleProfiles($app, request.auth)
-    const page = coupleData.getMessagePage($app, userId, { limit: 50 })
+    const page = coupleData.getMessagePage($app, userId, {
+      limit: 50,
+      partnerLastReadAt: profiles.partner.lastReadAt,
+    })
     const oldestMessage = page.messages.length ? page.messages[0] : null
     datastar.patchElements(
       include('message-list.ejs', { messages: page.messages, partnerName: profiles.partner.name }),

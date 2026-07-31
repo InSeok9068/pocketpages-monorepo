@@ -7,6 +7,7 @@ declare namespace types {
     name: string
     emoji: string
     colorClass: string
+    lastReadAt: string
   }
 
   type CoupleProfiles = {
@@ -46,6 +47,7 @@ declare namespace types {
     lines: string[]
     createdAt: string
     mine: boolean
+    showReadReceipt: boolean
     timeLabel: string
     dateLabel: string
   }
@@ -54,6 +56,7 @@ declare namespace types {
     limit?: number
     beforeCreated?: string
     beforeId?: string
+    partnerLastReadAt?: string
   }
 
   type MessagePage = {

@@ -1,3 +1,19 @@
+@font-face {
+  font-family: 'LINE Seed KR';
+  src: url('/assets/fonts/LINESeedKR-Rg.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'LINE Seed KR';
+  src: url('/assets/fonts/LINESeedKR-Bd.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 @view-transition {
   navigation: auto;
 }
@@ -5,6 +21,7 @@
 :root {
   color-scheme: light;
   font-family:
+    'LINE Seed KR',
     Pretendard,
     -apple-system,
     BlinkMacSystemFont,
@@ -119,10 +136,18 @@ textarea {
 
 .photo-card {
   isolation: isolate;
+  transition: transform 160ms ease;
+}
+
+.photo-card--pressing {
+  transform: scale(0.97);
 }
 
 .photo-viewer-trigger {
   z-index: 1;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  user-select: none;
 }
 
 .photo-favorite-button {

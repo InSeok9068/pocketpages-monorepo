@@ -70,3 +70,14 @@ test('FilePond preview assets are served locally', async () => {
     assert.equal(response.status, 200)
   }
 })
+
+test('LINE Seed KR webfonts are served locally', async () => {
+  for (const path of [
+    '/assets/fonts/LINESeedKR-Rg.woff2',
+    '/assets/fonts/LINESeedKR-Bd.woff2',
+  ]) {
+    const response = await fetch(`${service.baseUrl}${path}`)
+
+    assert.equal(response.status, 200)
+  }
+})

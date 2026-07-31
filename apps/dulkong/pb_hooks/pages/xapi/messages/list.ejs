@@ -9,7 +9,10 @@
 
   const userId = String(request.auth.get('id') || '')
   const profiles = coupleData.getCoupleProfiles($app, request.auth)
-  const page = coupleData.getMessagePage($app, userId, { limit: 50 })
+  const page = coupleData.getMessagePage($app, userId, {
+    limit: 50,
+    partnerLastReadAt: profiles.partner.lastReadAt,
+  })
   const oldestMessage = page.messages.length ? page.messages[0] : null
   dbg('dulkong/xapi/messages/list:query', { userId })
   datastar.patchElements(include('message-list.ejs', { messages: page.messages, partnerName: profiles.partner.name }), {

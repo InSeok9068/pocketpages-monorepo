@@ -9,6 +9,7 @@
   }
 
   const form = datastar.requestSignals({
+    anniversaryId: '',
     anniversaryTitle: '',
     anniversaryDate: '',
     anniversaryKind: 'custom',
@@ -16,6 +17,7 @@
     anniversaryEmoji: '',
   })
   const userId = String(request.auth.get('id') || '')
+  const anniversaryId = String(form.anniversaryId || '').trim()
   const title = String(form.anniversaryTitle || '').trim()
   const eventDate = String(form.anniversaryDate || '').trim()
   const kind =
@@ -24,15 +26,14 @@
       : 'custom'
   const recurrence = String(form.anniversaryRecurrence || '') === 'yearly' ? 'yearly' : 'none'
 
-  dbg('dulkong/xapi/anniversaries/create:start', { userId, title, eventDate, kind })
+  dbg('dulkong/xapi/anniversaries/update:start', { anniversaryId, userId, title, eventDate, kind })
 
   try {
+    if (!anniversaryId) throw new Error('수정할 기념일을 찾지 못했어요.')
     if (!title) throw new Error('기념일 이름을 입력해 주세요.')
     if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) throw new Error('날짜를 선택해 주세요.')
 
-    const collection = $app.findCollectionByNameOrId('anniversaries')
-    const record = new Record(collection)
-    record.set('createdBy', userId)
+    const record = $app.findFirstRecordByFilter('anniversaries', 'id = {:anniversaryId}', { anniversaryId })
     record.set('kind', kind)
     record.set('title', title)
     record.set('eventDate', dateutil.toDateOnlyIso(eventDate))
@@ -41,7 +42,7 @@
     record.set('isPinned', kind === 'relationship_start')
     $app.save(record)
 
-    info('dulkong/xapi/anniversaries/create:success', { anniversaryId: String(record.get('id') || ''), userId })
+    info('dulkong/xapi/anniversaries/update:success', { anniversaryId, userId })
     datastar.patchElements(include('anniversary-list.ejs', { anniversaries: coupleData.listAnniversaries($app) }), {
       selector: '#anniversary-list',
       mode: 'outer',
@@ -56,9 +57,13 @@
       anniversaryRecurrence: 'none',
       anniversaryEmoji: '',
     })
-    patchAppToast(datastar, '기념일을 추가했어요.', 'success')
+    patchAppToast(datastar, '기념일을 수정했어요.', 'success')
   } catch (exception) {
-    error('dulkong/xapi/anniversaries/create:failed', { userId, error: String(exception.message || exception) })
-    patchAppToast(datastar, String(exception.message || '기념일을 저장하지 못했어요.'), 'error')
+    error('dulkong/xapi/anniversaries/update:failed', {
+      anniversaryId,
+      userId,
+      error: String(exception.message || exception),
+    })
+    patchAppToast(datastar, String(exception.message || '기념일을 수정하지 못했어요.'), 'error')
   }
 </script>

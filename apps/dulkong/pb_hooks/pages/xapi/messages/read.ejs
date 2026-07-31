@@ -1,0 +1,47 @@
+<script server>
+  if (request.method !== 'POST' || !request.auth) {
+    return
+  }
+
+  const signals = datastar.requestSignals({ clientId: '' })
+  const userId = String(request.auth.get('id') || '')
+  const clientId = String(signals.clientId || '')
+
+  dbg('dulkong/xapi/messages/read:start', { userId })
+
+  try {
+    const records = $app.findRecordsByFilter(
+      'messages',
+      "sender != {:userId} && deletedAt = ''",
+      '-created,-id',
+      1,
+      0,
+      { userId: userId }
+    )
+    const latestMessage = records.length ? records[0] : null
+    const latestCreated = latestMessage ? String(latestMessage.get('created') || '') : ''
+    const currentLastReadAt = String(request.auth.get('lastReadAt') || '')
+
+    if (!latestCreated || latestCreated <= currentLastReadAt) {
+      datastar.patchSignals({ chatReadAt: currentLastReadAt })
+      return
+    }
+
+    request.auth.set('lastReadAt', latestCreated)
+    $app.save(request.auth)
+
+    info('dulkong/xapi/messages/read:updated', { userId, lastReadAt: latestCreated })
+    datastar.patchSignals({ chatReadAt: latestCreated })
+    datastar.realtime.patchSignals({ chatReceiptRevision: new Date().getTime() }, undefined, {
+      filter: function (realtimeClientId) {
+        return !clientId || realtimeClientId !== clientId
+      },
+    })
+  } catch (exception) {
+    error('dulkong/xapi/messages/read:failed', {
+      userId,
+      error: String(exception.message || exception),
+    })
+    datastar.patchSignals({ chatReadAt: '' })
+  }
+</script>

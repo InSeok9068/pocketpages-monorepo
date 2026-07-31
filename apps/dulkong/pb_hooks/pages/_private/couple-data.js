@@ -30,6 +30,7 @@ function mapProfile(record) {
     name: storedName || getProfileName(profileKey),
     emoji: profileKey === 'solmi' ? '🌱' : '🫘',
     colorClass: profileKey === 'solmi' ? 'bg-[#e1eaff]' : 'bg-[#ffe5db]',
+    lastReadAt: String(record.get('lastReadAt') || ''),
   }
 }
 
@@ -55,6 +56,7 @@ function getCoupleProfiles(app, authRecord) {
       name: current.profileKey === 'inseok' ? '솔미' : '인석',
       emoji: current.profileKey === 'inseok' ? '🌱' : '🫘',
       colorClass: current.profileKey === 'inseok' ? 'bg-[#e1eaff]' : 'bg-[#ffe5db]',
+      lastReadAt: '',
     }
   }
 
@@ -144,7 +146,7 @@ function mapPhoto(record) {
   return {
     id: recordId,
     uploaderId: String(record.get('uploader') || ''),
-    caption: String(record.get('caption') || '').trim() || '우리의 순간',
+    caption: String(record.get('caption') || '').trim(),
     locationName: String(record.get('locationName') || '').trim(),
     takenAt: dateutil.formatDate(takenAtValue, dateutil.FORMATS.DATE),
     dateLabel: dateutil.formatDate(takenAtValue, 'M.DD'),
@@ -204,6 +206,7 @@ function mapMessage(record, currentUserId) {
     lines: body.split(/\r\n?|\n/),
     createdAt: String(record.get('created') || ''),
     mine: String(record.get('sender') || '') === currentUserId,
+    showReadReceipt: false,
     timeLabel: dateutil.formatDate(createdValue, dateutil.FORMATS.TIME_MINUTES),
     dateLabel: dateutil.formatDate(createdValue, 'M월 D일'),
   }
@@ -221,6 +224,7 @@ function getMessagePage(app, currentUserId, options) {
   const limit = Math.max(1, Math.min(100, Number(pageOptions.limit) || 50))
   const beforeCreated = String(pageOptions.beforeCreated || '')
   const beforeId = String(pageOptions.beforeId || '')
+  const partnerLastReadAt = String(pageOptions.partnerLastReadAt || '')
   let filter = "deletedAt = ''"
   let filterValues = {}
 
@@ -235,6 +239,17 @@ function getMessagePage(app, currentUserId, options) {
 
   for (let index = recordCount - 1; index >= 0; index -= 1) {
     messages.push(mapMessage(records[index], currentUserId))
+  }
+
+  if (partnerLastReadAt) {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]
+
+      if (message.mine && message.createdAt <= partnerLastReadAt) {
+        message.showReadReceipt = true
+        break
+      }
+    }
   }
 
   return { messages: messages, hasMore: records.length > limit }

@@ -1,17 +1,17 @@
 <div id="photo-results">
   <section
-    class="rounded-[26px] border border-[#dce7c8] bg-[#edf3df] p-5 text-[#354922]"
+    class="rounded-[22px] border border-[#dce7c8] bg-[#edf3df] px-4 py-3.5 text-[#354922]"
     aria-labelledby="memory-summary-title">
     <div class="flex items-end justify-between gap-4">
       <div>
-        <p class="m-0 text-xs font-semibold text-[#7f8c68]">함께 모은 순간</p>
+        <p class="m-0 text-[11px] font-medium text-[#7f8c68]">함께 모은 순간</p>
         <h2
           id="memory-summary-title"
-          class="mt-1 mb-0 text-2xl font-extrabold">
+          class="mt-0.5 mb-0 text-xl font-bold">
           <%= photos.length %>장
         </h2>
       </div>
-      <span class="text-sm font-semibold text-[#66813f]">
+      <span class="text-[13px] font-medium text-[#66813f]">
         <%= photos.length ? photos[photos.length - 1].takenAt.replace(/-/g, '.') + '부터' : '첫 사진을 기다리는 중' %>
       </span>
     </div>
@@ -25,7 +25,7 @@
       <span
         class="i-lucide-image-plus mx-auto block h-9 w-9 text-[#9bb471]"
         aria-hidden="true"></span>
-      <p class="mt-3 mb-0 text-sm font-extrabold text-[#55554d]">아직 모은 사진이 없어요.</p>
+      <p class="mt-3 mb-0 text-sm font-bold text-[#55554d]">아직 모은 사진이 없어요.</p>
       <p class="mt-1 mb-0 text-xs text-[#99988e]">오늘의 순간을 첫 추억으로 올려 보세요.</p>
     </div>
     <% } else { %>
@@ -34,21 +34,34 @@
       <article class="photo-card group relative aspect-square overflow-hidden rounded-[24px] bg-[#e8e6dc]">
         <img
           src="<%= photo.imageUrl %>"
-          alt="<%= photo.caption %>"
+          alt="<%= photo.caption || '추억 사진' %>"
           class="h-full w-full object-cover"
           loading="lazy" />
         <div
           class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 to-transparent px-3 pt-10 pb-3 text-white">
-          <p class="m-0 truncate text-sm font-extrabold"><%= photo.caption %></p>
-          <p class="mt-0.5 mb-0 text-[11px] font-semibold text-white/75">
+          <% if (photo.caption) { %>
+          <p class="m-0 truncate text-sm font-bold"><%= photo.caption %></p>
+          <% } %>
+          <p class="mt-0.5 mb-0 text-[11px] font-medium text-white/75">
             <%= photo.dateLabel %><%= photo.locationName ? ' · ' + photo.locationName : '' %>
           </p>
         </div>
         <button
           type="button"
-          data-on:click="$photoViewerUrl = <%= stringify(photo.imageUrl) %>; $photoViewerCaption = <%= stringify(photo.caption) %>; $photoViewerMeta = <%= stringify(photo.dateLabel + (photo.locationName ? ' · ' + photo.locationName : '')) %>; $photoViewerOpen = true"
+          data-photo-id="<%= photo.id %>"
+          data-photo-caption="<%= photo.caption %>"
+          data-photo-taken-at="<%= photo.takenAt %>"
+          data-photo-location-name="<%= photo.locationName %>"
+          data-photo-viewer-url="<%= photo.imageUrl %>"
+          data-photo-viewer-meta="<%= photo.dateLabel + (photo.locationName ? ' · ' + photo.locationName : '') %>"
+          data-on:pointerdown="window.dulkongStartPhotoPress(evt)"
+          data-on:pointermove="window.dulkongMovePhotoPress(evt)"
+          data-on:pointerup="window.dulkongEndPhotoPress(evt)"
+          data-on:pointercancel="window.dulkongCancelPhotoPress(evt)"
+          data-on:contextmenu__prevent="true"
+          data-on:click="window.dulkongOpenPhoto(evt)"
           class="photo-viewer-trigger absolute inset-0 cursor-zoom-in rounded-[24px] border-0 bg-transparent"
-          aria-label="<%= photo.caption %> 크게 보기"></button>
+          aria-label="<%= photo.caption || '추억 사진' %> 크게 보기. 길게 누르면 수정"></button>
         <button
           type="button"
           data-on:click__stop="@post('/xapi/photos/favorite', {payload: {photoId: '<%= photo.id %>', photoFilter: $photoFilter}})"

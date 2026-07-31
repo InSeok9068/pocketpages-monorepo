@@ -1,0 +1,59 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const coupleData = resolve('couple-data')
+  const { patchAppToast } = resolve('patch-app-toast')
+
+  if (request.method !== 'POST' || !request.auth) {
+    patchAppToast(datastar, '로그인이 필요합니다.', 'error')
+    return
+  }
+
+  const form = datastar.requestSignals({
+    photoEditId: '',
+    photoCaption: '',
+    photoTakenAt: '',
+    photoLocationName: '',
+    photoFilter: 'all',
+  })
+  const userId = String(request.auth.get('id') || '')
+  const photoId = String(form.photoEditId || '').trim()
+  const caption = String(form.photoCaption || '').trim()
+  const takenAt = String(form.photoTakenAt || '').trim()
+  const locationName = String(form.photoLocationName || '').trim()
+  const photoFilter = String(form.photoFilter || 'all')
+
+  dbg('dulkong/xapi/photos/update:start', { photoId, userId, caption, takenAt, locationName })
+
+  try {
+    if (!photoId) throw new Error('수정할 사진을 찾지 못했어요.')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(takenAt)) throw new Error('촬영일을 선택해 주세요.')
+
+    const record = $app.findFirstRecordByFilter('photos', "id = {:photoId} && deletedAt = ''", { photoId })
+    record.set('caption', caption)
+    record.set('takenAt', dateutil.toDateOnlyIso(takenAt))
+    record.set('locationName', locationName)
+    $app.save(record)
+
+    info('dulkong/xapi/photos/update:success', { photoId, userId })
+    datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, photoFilter) }), {
+      selector: '#photo-results',
+      mode: 'outer',
+    })
+    datastar.patchSignals({
+      photoModalOpen: false,
+      photoModalMode: 'create',
+      photoEditId: '',
+      photoCaption: '',
+      photoTakenAt: '',
+      photoLocationName: '',
+    })
+    patchAppToast(datastar, '사진 정보를 수정했어요.', 'success')
+  } catch (exception) {
+    error('dulkong/xapi/photos/update:failed', {
+      photoId,
+      userId,
+      error: String(exception.message || exception),
+    })
+    patchAppToast(datastar, String(exception.message || '사진 정보를 수정하지 못했어요.'), 'error')
+  }
+</script>

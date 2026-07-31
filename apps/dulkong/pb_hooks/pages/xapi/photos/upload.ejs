@@ -37,7 +37,15 @@
       selector: '#photo-results',
       mode: 'outer',
     })
-    datastar.patchSignals({ photoModalOpen: false, photoFilter: 'all' })
+    datastar.patchSignals({
+      photoModalOpen: false,
+      photoModalMode: 'create',
+      photoEditId: '',
+      photoCaption: '',
+      photoTakenAt: '',
+      photoLocationName: '',
+      photoFilter: 'all',
+    })
     datastar.executeScript(
       "var form=document.getElementById('photo-upload-form'); if(window.dulkongPhotoPond) window.dulkongPhotoPond.removeFiles(); if(form) form.reset();"
     )

@@ -53,3 +53,27 @@ test('message pagination returns a stable oldest-to-newest page and cursor filte
     beforeId: 'message-4',
   })
 })
+
+test('message page marks only the latest message read by the partner', () => {
+  const records = [
+    messageRecord('message-4', '2026-07-21 14:03:04.000Z', 'inseok', '넷'),
+    messageRecord('message-3', '2026-07-21 14:03:03.000Z', 'solmi', '셋'),
+    messageRecord('message-2', '2026-07-21 14:03:02.000Z', 'inseok', '둘'),
+    messageRecord('message-1', '2026-07-21 14:03:01.000Z', 'inseok', '하나'),
+  ]
+  const app = {
+    findRecordsByFilter() {
+      return records
+    },
+  }
+
+  const page = getMessagePage(app, 'inseok', {
+    limit: 50,
+    partnerLastReadAt: '2026-07-21 14:03:03.000Z',
+  })
+
+  assert.deepEqual(
+    page.messages.filter((message) => message.showReadReceipt).map((message) => message.id),
+    ['message-2']
+  )
+})

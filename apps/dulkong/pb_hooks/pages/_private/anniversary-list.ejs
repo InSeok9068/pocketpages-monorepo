@@ -15,15 +15,19 @@
 
   <% anniversaries.forEach(function (anniversary) { %>
   <article
-    class="flex items-center justify-between gap-3 rounded-[22px] border border-[#ebe9df] bg-white p-4 shadow-[0_7px_20px_rgba(48,49,43,0.05)]">
+    role="button"
+    tabindex="0"
+    data-on:click="$anniversaryModalMode = 'edit'; $anniversaryId = <%= stringify(anniversary.id) %>; $anniversaryTitle = <%= stringify(anniversary.title) %>; $anniversaryDate = <%= stringify(anniversary.eventDate) %>; $anniversaryKind = <%= stringify(anniversary.kind) %>; $anniversaryRecurrence = <%= stringify(anniversary.recurrence) %>; $anniversaryEmoji = <%= stringify(anniversary.emoji) %>; $anniversaryModalOpen = true"
+    data-on:keydown="if (evt.key === 'Enter' || evt.key === ' ') { evt.preventDefault(); $anniversaryModalMode = 'edit'; $anniversaryId = <%= stringify(anniversary.id) %>; $anniversaryTitle = <%= stringify(anniversary.title) %>; $anniversaryDate = <%= stringify(anniversary.eventDate) %>; $anniversaryKind = <%= stringify(anniversary.kind) %>; $anniversaryRecurrence = <%= stringify(anniversary.recurrence) %>; $anniversaryEmoji = <%= stringify(anniversary.emoji) %>; $anniversaryModalOpen = true }"
+    class="flex cursor-pointer items-center justify-between gap-3 rounded-[22px] border border-[#ebe9df] bg-white p-4 shadow-[0_7px_20px_rgba(48,49,43,0.05)]">
     <div class="flex min-w-0 items-center gap-3">
       <span
         class="<%= anniversary.kind === 'birthday' ? 'bg-[#e9f0ff]' : 'bg-[#fff0e7]' %> flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] text-xl">
         <%= anniversary.emoji %>
       </span>
       <div class="min-w-0">
-        <h3 class="m-0 truncate text-[15px] font-extrabold"><%= anniversary.title %></h3>
-        <p class="mt-1 mb-0 text-xs font-semibold text-[#99988e]">
+        <h3 class="m-0 truncate text-[15px] font-bold"><%= anniversary.title %></h3>
+        <p class="mt-1 mb-0 text-xs font-medium text-[#99988e]">
           <%= anniversary.dateLabel %><%= anniversary.recurrence === 'yearly' ? ' · 매년' : '' %>
         </p>
       </div>
@@ -34,7 +38,7 @@
       </strong>
       <button
         type="button"
-        data-on:click="@post('/xapi/anniversaries/delete', {payload: {anniversaryId: '<%= anniversary.id %>'}})"
+        data-on:click__stop="@post('/xapi/anniversaries/delete', {payload: {anniversaryId: '<%= anniversary.id %>'}})"
         class="flex h-8 w-8 items-center justify-center rounded-full border-0 bg-[#f4f2eb] text-[#aaa99f]"
         aria-label="<%= anniversary.title %> 삭제">
         <span
