@@ -1,0 +1,56 @@
+<script server>
+  const { patchAppToast } = resolve('patch-app-toast')
+  const isDatastarRequest = datastar.isRequest(request)
+
+  if (request.method !== 'POST' || !request.auth) {
+    dbg('dulkong/xapi/plans/delete:redirect', {
+      status: 303,
+      redirectTo: request.auth ? '/calendar' : '/sign-in',
+      message: request.auth ? '잘못된 요청입니다.' : '로그인이 필요합니다.',
+    })
+    if (isDatastarRequest) {
+      patchAppToast(datastar, request.auth ? '잘못된 요청입니다.' : '로그인이 필요합니다.', 'error')
+      return
+    }
+    redirect(request.auth ? '/calendar' : '/sign-in', {
+      status: 303,
+      message: request.auth ? '잘못된 요청입니다.' : '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = isDatastarRequest ? datastar.requestSignals({ planId: '' }) : body()
+  const userId = String(request.auth.get('id') || '')
+  const planId = String(form.planId || '').trim()
+  let message = '약속을 삭제했어요.'
+
+  dbg('dulkong/xapi/plans/delete:start', { planId, userId })
+
+  try {
+    if (!planId) throw new Error('삭제할 약속을 찾지 못했어요.')
+
+    const record = $app.findFirstRecordByFilter('plans', 'id = {:planId} && members.id ?= {:userId}', {
+      planId: planId,
+      userId: userId,
+    })
+    $app.delete(record)
+    info('dulkong/xapi/plans/delete:success', { planId, userId })
+    if (isDatastarRequest) {
+      datastar.executeScript(
+        'window.dulkongDeletePlan && window.dulkongDeletePlan(' + JSON.stringify(planId) + ')'
+      )
+      patchAppToast(datastar, message, 'success')
+      return
+    }
+  } catch (exception) {
+    message = String(exception.message || '약속을 삭제하지 못했어요.')
+    error('dulkong/xapi/plans/delete:failed', { planId, userId, error: message })
+    if (isDatastarRequest) {
+      patchAppToast(datastar, message, 'error')
+      return
+    }
+  }
+
+  dbg('dulkong/xapi/plans/delete:redirect', { status: 303, redirectTo: '/calendar', message })
+  return redirect('/calendar', { status: 303, message })
+</script>

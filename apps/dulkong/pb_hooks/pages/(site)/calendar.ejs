@@ -1,0 +1,315 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const coupleData = resolve('couple-data')
+  const userId = String(request.auth.get('id') || '')
+  const plans = coupleData.listPlans($app, userId)
+  const anniversaries = coupleData.listAnniversaries($app)
+  const today = new Date()
+  const currentYear = Number(dateutil.formatDate(today, 'YYYY'))
+  const calendarEvents = []
+  const planEmoji = {
+    date: '💚',
+    trip: '🧳',
+    appointment: '🕐',
+    other: '🌿',
+  }
+
+  plans.forEach(function (plan) {
+    const allDay = !plan.startTime
+    const event = {
+      id: 'plan:' + plan.id,
+      title: plan.title,
+      start: allDay ? plan.startDate : plan.startDate + 'T' + plan.startTime,
+      end:
+        allDay && plan.endDate
+          ? dateutil.formatDate(dateutil.addDays(plan.endDate, 1), dateutil.FORMATS.DATE)
+          : undefined,
+      allDay: allDay,
+      extendedProps: {
+        sourceKind: 'plan',
+        kind: plan.kind,
+        kindEmoji: planEmoji[plan.kind] || planEmoji.other,
+        title: plan.title,
+        startDate: plan.startDate,
+        endDate: plan.endDate,
+        startTime: plan.startTime,
+        locationName: plan.locationName,
+        plan: plan,
+      },
+    }
+
+    calendarEvents.push(event)
+  })
+
+  anniversaries.forEach(function (anniversary) {
+    const repeatsYearly = anniversary.recurrence === 'yearly' || anniversary.kind === 'relationship_start'
+    const years = repeatsYearly
+      ? [currentYear - 2, currentYear - 1, currentYear, currentYear + 1, currentYear + 2]
+      : [Number(anniversary.eventDate.slice(0, 4))]
+
+    years.forEach(function (year) {
+      const eventDate = String(year) + anniversary.eventDate.slice(4)
+
+      if (dateutil.formatDate(eventDate, dateutil.FORMATS.DATE) !== eventDate) {
+        return
+      }
+
+      calendarEvents.push({
+        id: 'anniversary:' + anniversary.id + ':' + String(year),
+        title: anniversary.emoji + ' ' + anniversary.title,
+        start: eventDate,
+        allDay: true,
+        extendedProps: {
+          sourceKind: 'anniversary',
+          title: anniversary.title,
+          emoji: anniversary.emoji,
+          startDate: eventDate,
+          endDate: eventDate,
+        },
+      })
+    })
+  })
+
+  const calendarEventsJson = JSON.stringify(calendarEvents).replace(/</g, '\\u003c')
+
+  meta('title', '우리의 약속 | 둘콩')
+  meta('description', '둘이 함께할 약속과 기념일을 달력에서 확인해요')
+</script>
+
+<link
+  rel="stylesheet"
+  href="<%= asset('/assets/vendor/fullcalendar-7.0.2.skeleton.css') %>" />
+<link
+  rel="stylesheet"
+  href="<%= asset('/assets/calendar.css') %>" />
+
+<div
+  id="calendar-page"
+  class="mx-auto min-h-[100dvh] w-full max-w-[480px] bg-[#fbfaf6] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
+  data-signals="<%= stringify({ planId: '', planTitle: '', planKind: 'date', planStartDate: '', planEndDate: '', planStartTime: '', planLocationName: '', planNote: '' }) %>">
+  <div class="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-30">
+    <header class="flex items-center justify-between py-2">
+      <div>
+        <p class="m-0 text-xs font-bold tracking-[0.08em] text-[#98a081]">둘이 함께할 시간</p>
+        <h1 class="mt-1 mb-0 text-[27px] font-extrabold tracking-[-0.045em]">우리의 약속</h1>
+      </div>
+      <button
+        id="plan-add-button"
+        type="button"
+        class="flex h-12 w-12 items-center justify-center rounded-[17px] border-0 bg-[#dcebbf] text-[#405729] shadow-[0_8px_22px_rgba(91,112,57,0.14)]"
+        aria-label="약속 추가">
+        <span class="i-lucide-plus h-5 w-5"></span>
+      </button>
+    </header>
+
+    <main class="mt-5 space-y-5">
+      <section
+        class="rounded-[25px] border border-[#ebe9df] bg-white p-4 shadow-[0_10px_28px_rgba(48,49,43,0.06)]"
+        aria-label="약속 달력">
+        <div
+          id="couple-calendar"
+          class="couple-calendar min-w-0 overflow-hidden"
+          data-calendar-events="<%= calendarEventsJson %>"></div>
+        <div
+          class="mt-3 flex items-center justify-center gap-4 border-t border-[#ebe8dd] pt-3 text-[11px] font-bold text-[#89887e]">
+          <span class="inline-flex items-center gap-1.5">
+            <span class="h-2 w-2 rounded-full bg-[#8fb35f]"></span>
+            약속
+          </span>
+          <span class="inline-flex items-center gap-1.5">
+            <span class="h-2 w-2 rounded-full bg-[#df7e76]"></span>
+            기념일
+          </span>
+        </div>
+      </section>
+
+      <section aria-labelledby="calendar-selected-title">
+        <div class="mb-3 flex items-center justify-between">
+          <div>
+            <p class="m-0 text-xs font-bold tracking-[0.08em] text-[#98a081]">선택한 날</p>
+            <h2
+              id="calendar-selected-title"
+              class="mt-1 mb-0 text-lg font-bold"></h2>
+          </div>
+          <button
+            type="button"
+            class="border-0 bg-transparent px-2 py-1 text-xs font-bold text-[#71834f]"
+            onclick="document.getElementById('plan-add-button').click()">
+            + 약속
+          </button>
+        </div>
+        <div id="calendar-selected-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <div
+    id="plan-modal"
+    hidden
+    class="fixed inset-0 z-80 flex items-end justify-center bg-black/35 px-3"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="plan-modal-title">
+    <section
+      class="mb-[max(0.75rem,env(safe-area-inset-bottom))] box-border max-h-[calc(100dvh-1.5rem)] w-full max-w-[456px] overflow-y-auto rounded-[28px] bg-[#fffefa] p-5 shadow-[0_24px_70px_rgba(30,31,27,0.28)]">
+      <div class="mb-4 flex items-center justify-between">
+        <div>
+          <p
+            id="plan-modal-kicker"
+            class="m-0 text-xs font-bold text-[#98a081]">
+            새 약속
+          </p>
+          <h2
+            id="plan-modal-title"
+            class="mt-1 mb-0 text-xl font-bold">
+            우리의 약속 추가
+          </h2>
+        </div>
+        <button
+          type="button"
+          data-plan-modal-close
+          class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-[#f0eee7]"
+          aria-label="닫기">
+          <span class="i-lucide-x h-4 w-4"></span>
+        </button>
+      </div>
+
+      <form
+        id="plan-form"
+        method="post"
+        action="/xapi/plans/save"
+        data-on:submit__prevent="@post('/xapi/plans/save')"
+        class="space-y-3">
+        <input
+          data-bind:plan-id
+          type="hidden"
+          name="planId" />
+        <input
+          data-bind:plan-title
+          type="text"
+          name="title"
+          maxlength="120"
+          required
+          placeholder="어떤 약속인가요?"
+          class="box-border w-full rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-4 py-3 text-sm outline-none focus:border-[#9fbd6f]" />
+        <select
+          data-bind:plan-kind
+          name="kind"
+          class="box-border w-full rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-4 py-3 text-sm outline-none">
+          <option value="date">데이트</option>
+          <option value="trip">여행</option>
+          <option value="appointment">예약</option>
+          <option value="other">기타 약속</option>
+        </select>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="min-w-0 text-xs font-bold text-[#77766d]">
+            시작일
+            <input
+              data-bind:plan-start-date
+              type="date"
+              name="startDate"
+              required
+              class="mt-1 box-border w-full min-w-0 rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm outline-none" />
+          </label>
+          <label class="min-w-0 text-xs font-bold text-[#77766d]">
+            종료일
+            <input
+              data-bind:plan-end-date
+              type="date"
+              name="endDate"
+              class="mt-1 box-border w-full min-w-0 rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm outline-none" />
+          </label>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <input
+            data-bind:plan-start-time
+            type="time"
+            name="startTime"
+            aria-label="약속 시간"
+            class="box-border min-w-0 rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm outline-none" />
+          <input
+            data-bind:plan-location-name
+            type="text"
+            name="locationName"
+            maxlength="120"
+            placeholder="장소(선택)"
+            class="box-border min-w-0 rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm outline-none" />
+        </div>
+        <textarea
+          data-bind:plan-note
+          name="note"
+          maxlength="1000"
+          rows="3"
+          placeholder="함께 기억할 메모"
+          class="box-border w-full resize-none rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-4 py-3 text-sm outline-none"></textarea>
+        <button
+          id="plan-submit-label"
+          type="submit"
+          class="h-12 w-full rounded-[18px] border-0 bg-[#354922] text-sm font-bold text-white">
+          약속 저장하기
+        </button>
+      </form>
+
+      <form
+        id="plan-delete-form"
+        method="post"
+        action="/xapi/plans/delete"
+        data-on:submit__prevent="if (confirm('이 약속을 삭제할까요?')) @post('/xapi/plans/delete')"
+        hidden
+        class="mt-2">
+        <input
+          data-bind:plan-id
+          type="hidden"
+          name="planId" />
+        <button
+          type="submit"
+          class="h-11 w-full rounded-[18px] border border-[#edddd8] bg-[#fff7f4] text-xs font-bold text-[#a14f45]">
+          이 약속 삭제
+        </button>
+      </form>
+    </section>
+  </div>
+
+  <%- include('app-bottom-nav.ejs', { currentPath: '/calendar' }) %>
+</div>
+
+<script>
+  ;(function () {
+    function loadScript(src, isReady) {
+      if (isReady()) return Promise.resolve()
+
+      return new Promise(function (resolve, reject) {
+        const script = document.createElement('script')
+        script.src = src
+        script.async = true
+        script.onload = resolve
+        script.onerror = function () {
+          reject(new Error('달력 스크립트를 불러오지 못했어요.'))
+        }
+        document.head.appendChild(script)
+      })
+    }
+
+    const vendorSrc = '<%= asset('/assets/vendor/fullcalendar-7.0.2.min.js') %>'
+    const pageSrc = '<%= asset('/assets/calendar-page.js') %>'
+
+    window.dulkongCalendarAssetsReady =
+      window.dulkongCalendarAssetsReady
+      || loadScript(vendorSrc, function () {
+        return Boolean(window.DulkongFullCalendar)
+      }).then(function () {
+        return loadScript(pageSrc, function () {
+          return typeof window.dulkongInitCalendarPage === 'function'
+        })
+      })
+
+    window.dulkongCalendarAssetsReady
+      .then(function () {
+        window.dulkongInitCalendarPage()
+      })
+      .catch(function (error) {
+        window.dulkongCalendarAssetsReady = null
+        console.warn('Dulkong calendar init failed', error)
+      })
+  })()
+</script>

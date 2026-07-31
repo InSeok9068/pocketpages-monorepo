@@ -11,6 +11,10 @@
     anniversaries.filter(function (item) {
       return item.kind !== 'relationship_start' && item.difference >= 0
     })[0] || null
+  const nextPlan =
+    coupleData.listPlans($app, profiles.current.id).filter(function (item) {
+      return item.difference >= 0
+    })[0] || null
   const recentPhotos = coupleData.listPhotos($app, 'all').slice(0, 3)
   const recentMessages = coupleData.listMessages($app, profiles.current.id)
   const lastMessage = recentMessages.length ? recentMessages[recentMessages.length - 1] : null
@@ -66,21 +70,28 @@
               <%= relationship ? relationship.dayLabel.slice(1) + '일' : '첫날 대기 중' %>
             </h2>
           </div>
-          <span class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-white/65 text-[#567336]">
+          <a
+            href="/calendar"
+            class="flex h-11 w-11 items-center justify-center rounded-[16px] bg-white/65 text-[#567336] no-underline"
+            aria-label="우리의 약속 보기">
             <span class="i-lucide-calendar-heart h-5.5 w-5.5"></span>
-          </span>
+          </a>
         </div>
         <div class="relative mt-6 flex items-center justify-between gap-3 border-t border-[#9fbd6f]/45 pt-3.5">
           <div class="min-w-0">
-            <p class="m-0 text-xs font-medium text-[#6d8053]">다음 기념일</p>
+            <p class="m-0 text-xs font-medium text-[#6d8053]"><%= nextPlan ? '다음 약속' : '다음 기념일' %></p>
             <p class="mt-1 mb-0 truncate text-[13px] font-bold text-[#3a4d25]">
+              <% if (nextPlan) { %>
+              <%= nextPlan.dateLabel + ' · ' + nextPlan.title %>
+              <% } else { %>
               <%= nextAnniversary ? nextAnniversary.title + ' · ' + nextAnniversary.dayLabel : '우리의 날을 추가해 보세요' %>
+              <% } %>
             </p>
           </div>
           <a
-            href="/us"
+            href="<%= nextPlan ? '/calendar' : '/us' %>"
             class="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-[#354922] px-3.5 text-xs font-bold text-white no-underline">
-            관리
+            <%= nextPlan ? '일정' : '관리' %>
             <span class="i-lucide-chevron-right h-3.5 w-3.5 -translate-y-px"></span>
           </a>
         </div>

@@ -30,6 +30,22 @@ declare namespace types {
     difference: number
   }
 
+  type PlanItem = {
+    id: string
+    createdById: string
+    kind: string
+    kindLabel: string
+    title: string
+    startDate: string
+    endDate: string
+    startTime: string
+    locationName: string
+    note: string
+    dateLabel: string
+    timeLabel: string
+    difference: number
+  }
+
   type PhotoItem = {
     id: string
     uploaderId: string

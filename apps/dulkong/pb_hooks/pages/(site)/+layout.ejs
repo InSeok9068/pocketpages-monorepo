@@ -101,6 +101,9 @@
             })
         })
       })
+      window.__dulkongOneSignalReady.catch(function () {
+        // 알림 설정 화면에서 사용자 안내를 표시할 수 있도록 원래 Promise는 유지합니다.
+      })
     </script>
     <% } %>
     <%- datastar.scripts({

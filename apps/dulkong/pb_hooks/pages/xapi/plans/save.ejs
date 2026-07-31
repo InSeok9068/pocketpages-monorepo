@@ -1,0 +1,124 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const coupleData = resolve('couple-data')
+  const { patchAppToast } = resolve('patch-app-toast')
+  const isDatastarRequest = datastar.isRequest(request)
+
+  if (request.method !== 'POST' || !request.auth) {
+    dbg('dulkong/xapi/plans/save:redirect', {
+      status: 303,
+      redirectTo: request.auth ? '/calendar' : '/sign-in',
+      message: request.auth ? '잘못된 요청입니다.' : '로그인이 필요합니다.',
+    })
+    if (isDatastarRequest) {
+      patchAppToast(datastar, request.auth ? '잘못된 요청입니다.' : '로그인이 필요합니다.', 'error')
+      return
+    }
+    redirect(request.auth ? '/calendar' : '/sign-in', {
+      status: 303,
+      message: request.auth ? '잘못된 요청입니다.' : '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = isDatastarRequest
+    ? datastar.requestSignals({
+        planId: '',
+        planTitle: '',
+        planKind: 'other',
+        planStartDate: '',
+        planEndDate: '',
+        planStartTime: '',
+        planLocationName: '',
+        planNote: '',
+      })
+    : body()
+  const userId = String(request.auth.get('id') || '')
+  const planId = String(form.planId || '').trim()
+  const title = String(isDatastarRequest ? form.planTitle : form.title || '').trim()
+  const startDate = String(isDatastarRequest ? form.planStartDate : form.startDate || '').trim()
+  const endDate = String(isDatastarRequest ? form.planEndDate : form.endDate || '').trim()
+  const startTime = String(isDatastarRequest ? form.planStartTime : form.startTime || '').trim()
+  const formKind = isDatastarRequest ? form.planKind : form.kind
+  const kind =
+    ['date', 'trip', 'appointment', 'other'].indexOf(String(formKind || '')) >= 0 ? String(formKind) : 'other'
+  let message = planId ? '약속을 수정했어요.' : '새 약속을 추가했어요.'
+
+  dbg('dulkong/xapi/plans/save:start', { planId, userId, title, startDate, endDate, startTime, kind })
+
+  try {
+    if (!title) throw new Error('약속 이름을 입력해 주세요.')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new Error('시작 날짜를 선택해 주세요.')
+    if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) throw new Error('종료 날짜를 확인해 주세요.')
+    if (endDate && dateutil.diffDays(endDate, startDate) < 0) {
+      throw new Error('종료 날짜는 시작 날짜보다 빠를 수 없어요.')
+    }
+    if (startTime && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(startTime)) {
+      throw new Error('시간을 확인해 주세요.')
+    }
+
+    let record = null
+
+    if (planId) {
+      record = $app.findFirstRecordByFilter('plans', 'id = {:planId} && members.id ?= {:userId}', {
+        planId: planId,
+        userId: userId,
+      })
+    } else {
+      const collection = $app.findCollectionByNameOrId('plans')
+      const members = $app
+        .findRecordsByFilter('users', '', '+created', 2, 0)
+        .map(function (userRecord) {
+          return String(userRecord.get('id') || '')
+        })
+        .filter(Boolean)
+
+      if (members.indexOf(userId) < 0) members.push(userId)
+      record = new Record(collection)
+      record.set('createdBy', userId)
+      record.set('members', members)
+    }
+
+    record.set('kind', kind)
+    record.set('title', title)
+    record.set('startDate', dateutil.toDateOnlyIso(startDate))
+    record.set('endDate', endDate ? dateutil.toDateOnlyIso(endDate) : '')
+    record.set('startTime', startTime)
+    record.set('locationName', String(isDatastarRequest ? form.planLocationName : form.locationName || '').trim())
+    record.set('note', String(isDatastarRequest ? form.planNote : form.note || '').trim())
+    $app.save(record)
+
+    const savedPlanId = String(record.get('id') || '')
+    info('dulkong/xapi/plans/save:success', {
+      planId: savedPlanId,
+      userId,
+      mode: planId ? 'update' : 'create',
+    })
+
+    if (isDatastarRequest) {
+      const savedPlan = coupleData
+        .listPlans($app, userId)
+        .filter(function (item) {
+          return item.id === savedPlanId
+        })[0]
+
+      datastar.executeScript(
+        'window.dulkongApplyPlan && window.dulkongApplyPlan('
+          + JSON.stringify(savedPlan).replace(/</g, '\\u003c')
+          + ')'
+      )
+      patchAppToast(datastar, message, 'success')
+      return
+    }
+  } catch (exception) {
+    message = String(exception.message || '약속을 저장하지 못했어요.')
+    error('dulkong/xapi/plans/save:failed', { planId, userId, error: message })
+    if (isDatastarRequest) {
+      patchAppToast(datastar, message, 'error')
+      return
+    }
+  }
+
+  dbg('dulkong/xapi/plans/save:redirect', { status: 303, redirectTo: '/calendar', message })
+  return redirect('/calendar', { status: 303, message })
+</script>

@@ -137,6 +137,64 @@ function listAnniversaries(app, now) {
 }
 
 /**
+ * 약속 레코드를 표시용 데이터로 변환합니다.
+ * @param {core.Record} record 약속 레코드
+ * @param {Date} now 현재 시각
+ * @returns {types.PlanItem} 약속 항목
+ */
+function mapPlan(record, now) {
+  const startDate = dateutil.formatDate(record.get('startDate'), dateutil.FORMATS.DATE)
+  const endDate = record.get('endDate') ? dateutil.formatDate(record.get('endDate'), dateutil.FORMATS.DATE) : ''
+  const startTime = String(record.get('startTime') || '')
+  const kind = String(record.get('kind') || 'other')
+  const kindLabels = {
+    date: '데이트',
+    trip: '여행',
+    appointment: '예약',
+    other: '약속',
+  }
+  let dateLabel = dateutil.formatDate(startDate, 'M월 D일')
+
+  if (endDate && endDate !== startDate) {
+    dateLabel += ' – ' + dateutil.formatDate(endDate, 'M월 D일')
+  }
+
+  return {
+    id: String(record.get('id') || ''),
+    createdById: String(record.get('createdBy') || ''),
+    kind: kind,
+    kindLabel: kindLabels[kind] || kindLabels.other,
+    title: String(record.get('title') || ''),
+    startDate: startDate,
+    endDate: endDate,
+    startTime: startTime,
+    locationName: String(record.get('locationName') || '').trim(),
+    note: String(record.get('note') || '').trim(),
+    dateLabel: dateLabel,
+    timeLabel: startTime ? startTime : '하루 종일',
+    difference: dateutil.diffDays(startDate, now),
+  }
+}
+
+/**
+ * 로그인 사용자가 함께하는 약속을 조회합니다.
+ * @param {types.CoupleDataApp} app PocketBase 앱
+ * @param {string} currentUserId 현재 사용자 ID
+ * @param {Date} [now] 현재 시각
+ * @returns {types.PlanItem[]} 약속 목록
+ */
+function listPlans(app, currentUserId, now) {
+  const sourceDate = now || new Date()
+  const records = app.findRecordsByFilter('plans', 'members.id ?= {:userId}', '+startDate,+startTime,+created', 500, 0, {
+    userId: currentUserId,
+  })
+
+  return records.map(function (record) {
+    return mapPlan(record, sourceDate)
+  })
+}
+
+/**
  * 사진 레코드를 표시용 데이터로 변환합니다.
  * @param {core.Record} record 사진 레코드
  * @returns {types.PhotoItem} 사진 항목
@@ -297,5 +355,6 @@ module.exports = {
   listAnniversaries,
   listMessages,
   listPhotos,
+  listPlans,
   mapMessage,
 }
