@@ -842,7 +842,8 @@ COPY --from=deps /app/packages /app/packages
 COPY --from=deps /app/apps/${service}/node_modules ./node_modules
 ${cssCopy}COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
 RUN mkdir -p /opt/defaults/pb_hooks \\
-  && if [ -d "\${CODE_ROOT}/pb_hooks" ]; then cp -R "\${CODE_ROOT}/pb_hooks/." /opt/defaults/pb_hooks/; fi
+  && if [ -d "\${CODE_ROOT}/pb_hooks" ]; then cp -R "\${CODE_ROOT}/pb_hooks/." /opt/defaults/pb_hooks/; fi \\
+  && if [ -d "\${CODE_ROOT}/pb_public" ]; then mkdir -p /opt/defaults/pb_public && cp -R "\${CODE_ROOT}/pb_public/." /opt/defaults/pb_public/; fi
 
 RUN cat <<'EOF' > /usr/local/bin/start.sh
 #!/bin/sh
@@ -856,9 +857,14 @@ INIT_MARKER="\${PB_DATA}/.superuser_initialized"
 
 mkdir -p "\${PB_DATA}"
 mkdir -p "\${PB_HOOKS}"
+mkdir -p "\${PB_PUBLIC}"
 
 if [ -z "$(ls -A "\${PB_HOOKS}" 2>/dev/null)" ] && [ -d /opt/defaults/pb_hooks ]; then
   cp -R /opt/defaults/pb_hooks/. "\${PB_HOOKS}/"
+fi
+
+if [ -z "$(ls -A "\${PB_PUBLIC}" 2>/dev/null)" ] && [ -d /opt/defaults/pb_public ]; then
+  cp -R /opt/defaults/pb_public/. "\${PB_PUBLIC}/"
 fi
 
 if [ -n "\${PB_ADMIN_EMAIL:-}" ] && [ -n "\${PB_ADMIN_PASSWORD:-}" ] && [ ! -f "\${INIT_MARKER}" ]; then

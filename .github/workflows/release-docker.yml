@@ -143,6 +143,7 @@ jobs:
               service="$1"
               deploy_owner="$2"
               hooks_dir="/app/apps/${service}/pb_hooks"
+              public_dir="/app/apps/${service}/pb_public"
 
               if [ ! -d /opt/defaults/pb_hooks ]; then
                 echo "Baked hooks directory not found: /opt/defaults/pb_hooks" >&2
@@ -153,6 +154,13 @@ jobs:
               find "$hooks_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
               cp -a /opt/defaults/pb_hooks/. "$hooks_dir"/
               chown -R "$deploy_owner" "$hooks_dir"
+
+              if [ -d /opt/defaults/pb_public ]; then
+                mkdir -p "$public_dir"
+                find "$public_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+                cp -a /opt/defaults/pb_public/. "$public_dir"/
+                chown -R "$deploy_owner" "$public_dir"
+              fi
             ' -- ${{ steps.svc.outputs.service }} "$deploy_owner"
             docker compose up -d --no-deps --force-recreate --wait ${{ steps.svc.outputs.compose_service }}
             docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
