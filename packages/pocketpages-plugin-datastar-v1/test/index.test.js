@@ -1,6 +1,7 @@
 'use strict'
 
 const assert = require('assert')
+const vm = require('vm')
 const datastarPluginFactory = require('..')
 
 function createHarness(requestHeaders) {
@@ -388,9 +389,14 @@ test('scripts closes navigation and realtime script tags in raw HTML', function 
     realtime: true,
   })
 
-  assert.ok(html.includes('new EventSource("/api/realtime")'))
+  assert.ok(html.includes('var source = new EventSource(endpoint)'))
   assert.ok(html.includes('data-on:click'))
+  assert.ok(html.includes('requestCancellation:navigation.controller'))
+  assert.ok(html.includes('navigation.controller.abort()'))
   assert.ok(html.includes('document.addEventListener("datastar-scope-children", bindLinks, true);'))
+  assert.ok(html.includes('state.source.close()'))
+  assert.ok(html.includes('window.addEventListener("pagehide", handlePageHide)'))
+  assert.ok(html.includes('window.addEventListener("pageshow", handlePageShow)'))
   assert.strictEqual((html.match(/<\/script>/g) || []).length, 4)
   assert.strictEqual(html.includes('<\\/script>'), false)
 })
@@ -409,6 +415,66 @@ test('scripts subscribes realtime clients to custom topics', function () {
   assert.ok(html.includes('var clientIdSignal = "chatClientId";'))
   assert.ok(html.includes('subscriptions: [topic]'))
   assert.ok(html.includes('source.addEventListener(topic'))
+})
+
+test('realtime browser script keeps one connection and reconnects after page restore', function () {
+  const harness = createHarness()
+  const html = harness.api.datastar.scripts({ realtime: true })
+  const inlineScripts = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g), function (match) {
+    return match[1]
+  })
+  const realtimeScript = inlineScripts[inlineScripts.length - 1]
+  const windowListeners = {}
+  const sources = []
+
+  function EventSource() {
+    this.readyState = EventSource.OPEN
+    this.listeners = {}
+    sources.push(this)
+  }
+  EventSource.OPEN = 1
+  EventSource.CLOSED = 2
+  EventSource.prototype.addEventListener = function (name, listener) {
+    this.listeners[name] = listener
+  }
+  EventSource.prototype.close = function () {
+    this.readyState = EventSource.CLOSED
+  }
+
+  const context = {
+    console,
+    CustomEvent: function (name, options) {
+      this.type = name
+      this.detail = options.detail
+    },
+    document: {
+      hidden: false,
+      dispatchEvent: function () {},
+    },
+    EventSource,
+    fetch: function () {
+      return { catch: function () {} }
+    },
+    window: {
+      addEventListener: function (name, listener) {
+        windowListeners[name] = listener
+      },
+      removeEventListener: function (name, listener) {
+        if (windowListeners[name] === listener) delete windowListeners[name]
+      },
+    },
+  }
+
+  vm.runInNewContext(realtimeScript, context)
+  vm.runInNewContext(realtimeScript, context)
+  assert.strictEqual(sources.length, 1)
+
+  windowListeners.pagehide()
+  assert.strictEqual(sources[0].readyState, EventSource.CLOSED)
+
+  windowListeners.pageshow()
+  assert.strictEqual(sources.length, 2)
+  assert.strictEqual(sources[1].readyState, EventSource.OPEN)
 })
 
 test('Datastar page render skips empty automatic element patches', function () {
