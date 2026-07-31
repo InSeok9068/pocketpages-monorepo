@@ -11,6 +11,7 @@ apps/*/pb_hooks/pages/assets/**/*.woff
 apps/*/pb_hooks/pages/assets/**/*.woff2
 apps/*/pb_hooks/pages/assets/**/*.ttf
 apps/*/pb_hooks/pages/assets/**/*.eot
+apps/*/pb_hooks/pages/assets/**/*.txt
 *.bundle.js
 *.min.js
 *.min.css
