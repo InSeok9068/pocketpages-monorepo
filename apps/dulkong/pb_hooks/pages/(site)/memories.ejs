@@ -158,6 +158,7 @@
   <%- include('app-bottom-nav.ejs', { currentPath: '/memories' }) %>
 </div>
 
+<script src="<%= asset('/assets/image-resize.js') %>"></script>
 <script>
   ;(function () {
     function clearPhotoPress(button) {
@@ -243,6 +244,7 @@
 
     var input = document.getElementById('photo-image')
     if (!input || !window.FilePond || window.FilePond.find(input)) return
+    var uploadField = input.parentElement
 
     if (!window.dulkongFilePondReady) {
       window.FilePond.registerPlugin(window.FilePondPluginImagePreview)
@@ -266,5 +268,65 @@
       labelTapToRetry: '눌러서 다시 시도',
       labelTapToUndo: '눌러서 되돌리기',
     })
+
+    var form = document.getElementById('photo-upload-form')
+    if (!form || form.dulkongResizeInstalled) return
+    form.dulkongResizeInstalled = true
+
+    form.addEventListener(
+      'submit',
+      function (event) {
+        var uploadFieldHidden =
+          uploadField && (uploadField.hidden || window.getComputedStyle(uploadField).display === 'none')
+        if (form.dulkongResizeBypass || uploadFieldHidden || typeof window.dulkongResizeImageFile !== 'function') {
+          return
+        }
+
+        var item = window.dulkongPhotoPond.getFile()
+        if (!item || !(item.file instanceof File)) return
+
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        if (form.dulkongResizePending) return
+        form.dulkongResizePending = true
+
+        var submitter = event.submitter
+        var submitButton = submitter || form.querySelector('button[type="submit"]')
+        var originalButtonText = submitButton ? submitButton.textContent : ''
+        if (submitButton) {
+          submitButton.disabled = true
+          submitButton.textContent = '사진 줄이는 중...'
+        }
+
+        window
+          .dulkongResizeImageFile(item.file, { maxEdge: 1920, quality: 0.82 })
+          .then(function (resizedFile) {
+            if (resizedFile !== item.file) {
+              var storedInput = form.querySelector('input[type="file"][name="image"]')
+              if (!storedInput) throw new Error('업로드할 사진 필드를 찾지 못했습니다.')
+
+              var transfer = new DataTransfer()
+              transfer.items.add(resizedFile)
+              storedInput.files = transfer.files
+            }
+          })
+          .catch(function (resizeError) {
+            console.warn('Dulkong photo upload uses the original image', resizeError)
+          })
+          .then(function () {
+            form.dulkongResizeBypass = true
+            form.dulkongResizePending = false
+            if (submitButton) {
+              submitButton.disabled = false
+              submitButton.textContent = originalButtonText
+            }
+
+            if (submitter) form.requestSubmit(submitter)
+            else form.requestSubmit()
+            form.dulkongResizeBypass = false
+          })
+      },
+      true
+    )
   })()
 </script>
