@@ -1,4 +1,5 @@
 <script server>
+  const { createOneSignalClient } = require('@pocketpages/onesignal')
   const coupleData = resolve('couple-data')
   const { patchAppToast } = resolve('patch-app-toast')
 
@@ -58,6 +59,61 @@
         return !senderClientId || clientId !== senderClientId
       },
     })
+
+    if (profiles.partner.id && profiles.partner.pushEnabled && !profiles.partner.chatMuted) {
+      const oneSignalAppId = String(env('DULKONG_ONESIGNAL_APPID') || '').trim()
+      const oneSignalApiKey = String(env('DULKONG_ONESIGNAL_APIKEY') || '').trim()
+
+      if (!oneSignalAppId || !oneSignalApiKey) {
+        warn('dulkong/xapi/messages/send:push-skipped', {
+          messageId: String(record.get('id') || ''),
+          reason: 'onesignal_not_configured',
+        })
+      } else {
+        try {
+          const pushBody = bodyText.length > 100 ? bodyText.slice(0, 100) + '…' : bodyText
+          const oneSignal = createOneSignalClient({
+            appId: oneSignalAppId,
+            apiKey: oneSignalApiKey,
+            timeoutSeconds: 5,
+          })
+          const pushResult = oneSignal.createNotification({
+            include_aliases: {
+              external_id: [profiles.partner.id],
+            },
+            target_channel: 'push',
+            headings: {
+              en: profiles.current.name + '에게 메시지가 왔어요 💬',
+            },
+            contents: {
+              en: pushBody,
+            },
+            isAnyWeb: true,
+          })
+
+          if (pushResult.ok) {
+            info('dulkong/xapi/messages/send:push-success', {
+              messageId: String(record.get('id') || ''),
+              notificationId: pushResult.notificationId,
+              recipientId: profiles.partner.id,
+            })
+          } else {
+            warn('dulkong/xapi/messages/send:push-failed', {
+              messageId: String(record.get('id') || ''),
+              recipientId: profiles.partner.id,
+              statusCode: pushResult.statusCode,
+              error: pushResult.errorMessage,
+            })
+          }
+        } catch (pushException) {
+          warn('dulkong/xapi/messages/send:push-failed', {
+            messageId: String(record.get('id') || ''),
+            recipientId: profiles.partner.id,
+            error: String(pushException.message || pushException),
+          })
+        }
+      }
+    }
   } catch (exception) {
     error('dulkong/xapi/messages/send:failed', {
       userId,

@@ -58,6 +58,31 @@ test('Datastar login validation patches the global toast', async () => {
   assert.match(body, /인석과 솔미 중에서 선택해 주세요\./)
 })
 
+test('push preference API requires authentication', async () => {
+  const response = await fetch(`${service.baseUrl}/api/push/preference`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: true }),
+    redirect: 'manual',
+  })
+  const body = await response.json()
+
+  assert.equal(response.status, 401)
+  assert.deepEqual(body, {
+    ok: false,
+    message: '로그인이 필요합니다.',
+  })
+})
+
+test('OneSignal service worker is served from the app origin', async () => {
+  const response = await fetch(`${service.baseUrl}/OneSignalSDKWorker.js`)
+  const body = await response.text()
+
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-type') || '', /javascript/)
+  assert.match(body, /OneSignalSDK\.sw\.js/)
+})
+
 test('FilePond preview assets are served locally', async () => {
   for (const path of [
     '/assets/vendor/filepond-4.32.12.min.css',
@@ -72,10 +97,7 @@ test('FilePond preview assets are served locally', async () => {
 })
 
 test('LINE Seed KR webfonts are served locally', async () => {
-  for (const path of [
-    '/assets/fonts/LINESeedKR-Rg.woff2',
-    '/assets/fonts/LINESeedKR-Bd.woff2',
-  ]) {
+  for (const path of ['/assets/fonts/LINESeedKR-Rg.woff2', '/assets/fonts/LINESeedKR-Bd.woff2']) {
     const response = await fetch(`${service.baseUrl}${path}`)
 
     assert.equal(response.status, 200)

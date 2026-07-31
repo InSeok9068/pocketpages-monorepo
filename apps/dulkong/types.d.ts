@@ -8,6 +8,8 @@ declare namespace types {
     emoji: string
     colorClass: string
     lastReadAt: string
+    pushEnabled: boolean
+    chatMuted: boolean
   }
 
   type CoupleProfiles = {

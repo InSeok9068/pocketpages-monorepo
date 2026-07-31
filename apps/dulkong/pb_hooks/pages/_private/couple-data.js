@@ -31,6 +31,8 @@ function mapProfile(record) {
     emoji: profileKey === 'solmi' ? '🌱' : '🫘',
     colorClass: profileKey === 'solmi' ? 'bg-[#e1eaff]' : 'bg-[#ffe5db]',
     lastReadAt: String(record.get('lastReadAt') || ''),
+    pushEnabled: Boolean(record.get('pushEnabled')),
+    chatMuted: Boolean(record.get('chatMuted')),
   }
 }
 
@@ -57,6 +59,8 @@ function getCoupleProfiles(app, authRecord) {
       emoji: current.profileKey === 'inseok' ? '🌱' : '🫘',
       colorClass: current.profileKey === 'inseok' ? 'bg-[#e1eaff]' : 'bg-[#ffe5db]',
       lastReadAt: '',
+      pushEnabled: false,
+      chatMuted: false,
     }
   }
 

@@ -102,6 +102,17 @@ module.exports = function ({ datastar, dbg, env, error, request, redirect, resol
     || pathname.startsWith('/api/realtime')
 
   if (!request.auth && !isPublicPath) {
+    if (isApiPath(pathname)) {
+      dbg('dulkong/auth-guard:api-unauthorized', {
+        status: 401,
+        pathname,
+      })
+      return response.json(401, {
+        ok: false,
+        message: '로그인이 필요합니다.',
+      })
+    }
+
     if (isXapiPath(pathname) && datastar && datastar.isRequest(request)) {
       const { patchAppToast } = resolve('patch-app-toast')
       return patchAppToast(datastar, '로그인이 필요합니다.', 'error')

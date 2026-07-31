@@ -1,0 +1,22 @@
+<script server>
+  if (request.method !== 'POST') {
+    response.json(405, { ok: false, message: '허용되지 않은 요청입니다.' })
+    return
+  }
+
+  if (!request.auth) {
+    response.json(401, { ok: false, message: '로그인이 필요합니다.' })
+    return
+  }
+
+  const payload = body()
+  const pushEnabled = Boolean(payload && typeof payload === 'object' && payload.enabled === true)
+  const userId = String(request.auth.get('id') || '')
+
+  dbg('dulkong/api/push/preference:start', { userId, pushEnabled })
+  request.auth.set('pushEnabled', pushEnabled)
+  $app.save(request.auth)
+  info('dulkong/api/push/preference:success', { userId, pushEnabled })
+
+  response.json(200, { ok: true, pushEnabled })
+</script>

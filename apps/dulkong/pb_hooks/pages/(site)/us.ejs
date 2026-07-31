@@ -6,6 +6,8 @@
     anniversaries.filter(function (item) {
       return item.kind === 'relationship_start'
     })[0] || null
+  const pushConfigured = Boolean(String(env('DULKONG_ONESIGNAL_APPID') || '').trim())
+  const pushEnabled = Boolean(request.auth.get('pushEnabled'))
 
   meta('title', '우리 | 둘콩')
   meta('description', '우리 둘의 정보와 기념일')
@@ -62,6 +64,35 @@
           </button>
         </div>
         <%- include('anniversary-list.ejs', { anniversaries }) %>
+      </section>
+
+      <section
+        class="flex items-center gap-3 rounded-[22px] bg-white p-4 shadow-[0_7px_20px_rgba(48,49,43,0.05)]"
+        aria-labelledby="push-title">
+        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef5df] text-[#607a3c]">
+          <span
+            class="i-lucide-bell h-5 w-5"
+            aria-hidden="true"></span>
+        </span>
+        <div class="min-w-0 flex-1">
+          <h2
+            id="push-title"
+            class="m-0 text-sm font-bold">
+            채팅 알림
+          </h2>
+          <p
+            id="push-status"
+            class="mt-1 mb-0 text-xs leading-4.5 text-[#8b8a80]">
+            <%= pushConfigured ? (pushEnabled ? '이 기기의 알림 상태를 확인하고 있어요.' : '새 메시지를 놓치지 않도록 알려드려요.') : 'OneSignal 환경 설정이 필요해요.' %>
+          </p>
+        </div>
+        <button
+          id="push-toggle"
+          type="button"
+          class="min-h-10 shrink-0 rounded-full border-0 bg-[#354922] px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
+          <%= pushConfigured ? '' : 'disabled' %>>
+          <%= pushEnabled ? '알림 끄기' : '알림 받기' %>
+        </button>
       </section>
 
       <form
@@ -154,3 +185,124 @@
   </div>
   <%- include('app-bottom-nav.ejs', { currentPath: '/us' }) %>
 </div>
+
+<% if (pushConfigured) { %>
+<script>
+  ;(function () {
+    const button = document.getElementById('push-toggle')
+    const status = document.getElementById('push-status')
+    let oneSignal = null
+    let busy = false
+
+    if (!button || !status) return
+
+    function isIosDevice() {
+      return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    }
+
+    function isStandaloneWebApp() {
+      return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+    }
+
+    function getSubscription() {
+      if (!oneSignal || !oneSignal.User || !oneSignal.User.PushSubscription) return null
+      return oneSignal.User.PushSubscription
+    }
+
+    function render(enabled, message) {
+      button.textContent = enabled ? '알림 끄기' : '알림 받기'
+      button.dataset.enabled = enabled ? 'true' : 'false'
+      button.disabled = busy
+      status.textContent = message
+    }
+
+    function savePreference(enabled) {
+      return fetch('/api/push/preference', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: enabled }),
+      }).then(function (response) {
+        return response.json().then(function (result) {
+          if (!response.ok || !result.ok) {
+            throw new Error(result.message || '알림 설정을 저장하지 못했어요.')
+          }
+
+          return result
+        })
+      })
+    }
+
+    function finish(enabled, message) {
+      busy = false
+      render(enabled, message)
+    }
+
+    button.disabled = true
+
+    if (!window.__dulkongOneSignalReady) {
+      finish(false, 'OneSignal을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.')
+      return
+    }
+
+    window.__dulkongOneSignalReady
+      .then(function (readyOneSignal) {
+        oneSignal = readyOneSignal
+        const subscription = getSubscription()
+        const enabled = Boolean(subscription && subscription.optedIn)
+
+        if (isIosDevice() && !isStandaloneWebApp()) {
+          render(false, 'iPhone에서는 홈 화면에 추가한 둘콩 앱에서 켤 수 있어요.')
+          return
+        }
+
+        if (!subscription) {
+          render(false, '현재 브라우저에서는 웹 푸시를 지원하지 않아요.')
+          button.disabled = true
+          return
+        }
+
+        render(enabled, enabled ? '새 채팅이 오면 이 기기로 알려드려요.' : '새 메시지를 놓치지 않도록 알려드려요.')
+      })
+      .catch(function () {
+        finish(false, '알림 기능을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.')
+      })
+
+    button.addEventListener('click', function () {
+      if (busy) return
+
+      if (isIosDevice() && !isStandaloneWebApp()) {
+        render(false, '공유 메뉴에서 홈 화면에 추가한 뒤 둘콩 앱으로 열어주세요.')
+        return
+      }
+
+      const subscription = getSubscription()
+      if (!subscription) {
+        render(false, '알림 기능이 아직 준비되지 않았어요.')
+        return
+      }
+
+      const enable = !subscription.optedIn
+      const operation = enable ? subscription.optIn() : subscription.optOut()
+      busy = true
+      render(!enable, enable ? '알림 권한을 확인하고 있어요.' : '알림을 끄고 있어요.')
+
+      Promise.resolve(operation)
+        .then(function () {
+          if (Boolean(subscription.optedIn) !== enable) {
+            throw new Error(enable ? '알림 권한이 허용되지 않았어요.' : '알림 구독을 끄지 못했어요.')
+          }
+
+          return savePreference(enable)
+        })
+        .then(function () {
+          finish(enable, enable ? '새 채팅이 오면 이 기기로 알려드려요.' : '이 기기의 채팅 알림을 껐어요.')
+        })
+        .catch(function (pushError) {
+          console.warn('Dulkong push preference failed', pushError)
+          finish(Boolean(subscription.optedIn), String(pushError.message || '알림 설정을 바꾸지 못했어요.'))
+        })
+    })
+  })()
+</script>
+<% } %>

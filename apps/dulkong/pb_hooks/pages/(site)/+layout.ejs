@@ -2,6 +2,8 @@
   const isProduction = String(env('APP_ENV') || 'development').trim() === 'production'
   const initialToastMessage = params.__flash ? String(params.__flash).trim() : ''
   const filePondAssetRoot = '/assets/vendor/'
+  const oneSignalAppId = String(env('DULKONG_ONESIGNAL_APPID') || '').trim()
+  const oneSignalExternalId = request.auth ? String(request.auth.get('id') || '') : ''
 %>
 <!DOCTYPE html>
 <html lang="ko">
@@ -45,6 +47,14 @@
     <meta
       name="apple-mobile-web-app-title"
       content="둘콩" />
+    <% if (oneSignalAppId) { %>
+    <meta
+      name="dulkong-onesignal-app-id"
+      content="<%= oneSignalAppId %>" />
+    <meta
+      name="dulkong-onesignal-external-id"
+      content="<%= oneSignalExternalId %>" />
+    <% } %>
     <link
       rel="stylesheet"
       href="<%= asset(filePondAssetRoot + 'filepond-4.32.12.min.css') %>" />
@@ -57,6 +67,42 @@
     <%- include('unocss-head.ejs', { isProduction }) %>
     <script src="<%= asset(filePondAssetRoot + 'filepond-plugin-image-preview-4.6.12.min.js') %>"></script>
     <script src="<%= asset(filePondAssetRoot + 'filepond-4.32.12.min.js') %>"></script>
+    <% if (oneSignalAppId) { %>
+    <script
+      src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+      defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || []
+      window.__dulkongOneSignalReady = new Promise(function (resolve, reject) {
+        const appIdMeta = document.querySelector('meta[name="dulkong-onesignal-app-id"]')
+        const externalIdMeta = document.querySelector('meta[name="dulkong-onesignal-external-id"]')
+        const browserAppId = appIdMeta ? appIdMeta.content : ''
+        const browserExternalId = externalIdMeta ? externalIdMeta.content : ''
+
+        window.OneSignalDeferred.push(function (OneSignal) {
+          Promise.resolve(
+            OneSignal.init({
+              appId: browserAppId,
+            })
+          )
+            .then(function () {
+              if (browserExternalId) {
+                return OneSignal.login(browserExternalId)
+              }
+
+              return OneSignal.logout()
+            })
+            .then(function () {
+              resolve(OneSignal)
+            })
+            .catch(function (initError) {
+              console.warn('Dulkong OneSignal init failed', initError)
+              reject(initError)
+            })
+        })
+      })
+    </script>
+    <% } %>
     <%- datastar.scripts({
       spa: {
         scope: '#app-shell',
