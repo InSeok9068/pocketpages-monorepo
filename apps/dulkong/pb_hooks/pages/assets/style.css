@@ -194,6 +194,11 @@ textarea {
   z-index: 30;
 }
 
+#chat-page nav[aria-label='하단 메뉴'] {
+  position: static;
+  flex-shrink: 0;
+}
+
 .bottom-nav-item {
   display: flex;
   min-width: 0;
