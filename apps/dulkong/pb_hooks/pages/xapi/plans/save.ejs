@@ -35,19 +35,21 @@
     : body()
   const userId = String(request.auth.get('id') || '')
   const planId = String(form.planId || '').trim()
-  const title = String(isDatastarRequest ? form.planTitle : form.title || '').trim()
+  const submittedTitle = String(isDatastarRequest ? form.planTitle : form.title || '').trim()
   const startDate = String(isDatastarRequest ? form.planStartDate : form.startDate || '').trim()
-  const endDate = String(isDatastarRequest ? form.planEndDate : form.endDate || '').trim()
+  const submittedEndDate = String(isDatastarRequest ? form.planEndDate : form.endDate || '').trim()
+  const endDate = submittedEndDate === 'Invalid Date' ? '' : submittedEndDate
   const startTime = String(isDatastarRequest ? form.planStartTime : form.startTime || '').trim()
   const formKind = isDatastarRequest ? form.planKind : form.kind
   const kind =
     ['date', 'trip', 'appointment', 'other'].indexOf(String(formKind || '')) >= 0 ? String(formKind) : 'other'
+  const kindTitles = { date: '데이트', trip: '여행', appointment: '예약', other: '약속' }
+  const title = submittedTitle || kindTitles[kind]
   let message = planId ? '약속을 수정했어요.' : '새 약속을 추가했어요.'
 
   dbg('dulkong/xapi/plans/save:start', { planId, userId, title, startDate, endDate, startTime, kind })
 
   try {
-    if (!title) throw new Error('약속 이름을 입력해 주세요.')
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new Error('시작 날짜를 선택해 주세요.')
     if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) throw new Error('종료 날짜를 확인해 주세요.')
     if (endDate && dateutil.diffDays(endDate, startDate) < 0) {

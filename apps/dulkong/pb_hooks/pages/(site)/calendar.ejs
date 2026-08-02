@@ -189,8 +189,7 @@
           type="text"
           name="title"
           maxlength="120"
-          required
-          placeholder="어떤 약속인가요?"
+          placeholder="제목 (비우면 약속 종류로 저장)"
           class="box-border w-full rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-4 py-3 text-sm outline-none focus:border-[#9fbd6f]" />
         <select
           data-bind:plan-kind
@@ -212,7 +211,7 @@
               class="mt-1 box-border w-full min-w-0 rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm outline-none" />
           </label>
           <label class="min-w-0 text-xs font-bold text-[#77766d]">
-            종료일
+            종료일 (선택)
             <input
               data-bind:plan-end-date
               type="date"

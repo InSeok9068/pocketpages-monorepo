@@ -144,7 +144,8 @@ function listAnniversaries(app, now) {
  */
 function mapPlan(record, now) {
   const startDate = dateutil.formatDate(record.get('startDate'), dateutil.FORMATS.DATE)
-  const endDate = record.get('endDate') ? dateutil.formatDate(record.get('endDate'), dateutil.FORMATS.DATE) : ''
+  const endDateValue = dateutil.toDateOnlyIso(record.get('endDate'))
+  const endDate = endDateValue ? dateutil.formatDate(endDateValue, dateutil.FORMATS.DATE) : ''
   const startTime = String(record.get('startTime') || '')
   const kind = String(record.get('kind') || 'other')
   const kindLabels = {
