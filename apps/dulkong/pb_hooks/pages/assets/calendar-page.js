@@ -70,9 +70,6 @@
     document.getElementById('plan-modal-title').textContent = '우리의 약속 추가'
     document.getElementById('plan-submit-label').textContent = '약속 저장하기'
     setModalOpen(modal, true)
-    window.setTimeout(function () {
-      form.elements.namedItem('title').focus()
-    }, 50)
   }
 
   function openEditModal(modal, form, deleteForm, plan) {
