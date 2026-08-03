@@ -59,7 +59,11 @@
     datastar.executeScript(
       "var form=document.getElementById('photo-upload-form'); if(window.dulkongPhotoPond) window.dulkongPhotoPond.removeFiles(); if(form) form.reset();"
     )
-    patchAppToast(datastar, uploadedFiles.length === 1 ? '사진을 올렸어요.' : uploadedFiles.length + '장의 사진을 올렸어요.', 'success')
+    patchAppToast(
+      datastar,
+      uploadedFiles.length === 1 ? '사진을 올렸어요.' : uploadedFiles.length + '장의 사진을 올렸어요.',
+      'success'
+    )
   } catch (exception) {
     error('dulkong/xapi/photos/upload:failed', { userId, error: String(exception.message || exception) })
     patchAppToast(datastar, String(exception.message || '사진을 올리지 못했어요.'), 'error')

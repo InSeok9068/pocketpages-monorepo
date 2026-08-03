@@ -47,10 +47,12 @@
           aria-label="<%= photo.caption || '추억 사진' %> 크게 보기. 길게 누르면 수정"></button>
         <div
           data-show="$photoSelectionMode"
-          data-class="{
-            'bg-[#354922] text-white': $selectedPhotoIds.includes('<%= photo.id %>'),
-            'bg-white/88 text-transparent': !$selectedPhotoIds.includes('<%= photo.id %>'),
-          }"
+          data-class="
+            {
+              'bg-[#354922] text-white': $selectedPhotoIds.includes('<%= photo.id %>'),
+              'bg-white/88 text-transparent': !$selectedPhotoIds.includes('<%= photo.id %>'),
+            }
+          "
           class="pointer-events-none absolute top-2 left-2 z-20 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white shadow-[0_2px_8px_rgba(0,0,0,0.18)]">
           <span
             class="i-lucide-check h-4 w-4"

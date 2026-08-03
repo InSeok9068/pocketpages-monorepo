@@ -21,7 +21,7 @@
     photoFilter: 'all',
     photoCount: photos.length,
     photoSelectionMode: false,
-    selectedPhotoIds: [],
+    selectedPhotoIds: Array(),
     selectedPhotoCount: 0,
     photoViewerOpen: false,
     photoViewerUrl: '',
@@ -96,11 +96,16 @@
         </div>
         <button
           type="button"
-          data-on:click="if ($photoSelectionMode) window.dulkongExitPhotoSelection(); else window.dulkongEnterPhotoSelection()"
-          data-class="{
-            'bg-transparent text-[#77766d]': !$photoSelectionMode,
-            'bg-[#354922] text-white': $photoSelectionMode,
-          }"
+          data-on:click="
+            if ($photoSelectionMode) window.dulkongExitPhotoSelection()
+            else window.dulkongEnterPhotoSelection()
+          "
+          data-class="
+            {
+              'bg-transparent text-[#77766d]': !$photoSelectionMode,
+              'bg-[#354922] text-white': $photoSelectionMode,
+            }
+          "
           class="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border-0"
           data-attr:aria-label="$photoSelectionMode ? '사진 선택 취소' : '사진 선택'">
           <span
@@ -255,8 +260,7 @@
     </section>
   </div>
 
-  <div
-    data-show="!$photoSelectionMode">
+  <div data-show="!$photoSelectionMode">
     <%- include('app-bottom-nav.ejs', { currentPath: '/memories' }) %>
   </div>
   <div

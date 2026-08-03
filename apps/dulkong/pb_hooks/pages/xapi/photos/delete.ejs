@@ -54,7 +54,11 @@
       selectedPhotoCount: 0,
     })
     datastar.executeScript('window.dulkongPhotoSelectionMode = false; window.dulkongSelectedPhotoIds = [];')
-    patchAppToast(datastar, photoIds.length === 1 ? '사진을 삭제했어요.' : photoIds.length + '장의 사진을 삭제했어요.', 'success')
+    patchAppToast(
+      datastar,
+      photoIds.length === 1 ? '사진을 삭제했어요.' : photoIds.length + '장의 사진을 삭제했어요.',
+      'success'
+    )
   } catch (exception) {
     error('dulkong/xapi/photos/delete:failed', {
       photoIds,
