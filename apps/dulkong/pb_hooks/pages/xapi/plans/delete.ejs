@@ -36,9 +36,7 @@
     $app.delete(record)
     info('dulkong/xapi/plans/delete:success', { planId, userId })
     if (isDatastarRequest) {
-      datastar.executeScript(
-        'window.dulkongDeletePlan && window.dulkongDeletePlan(' + JSON.stringify(planId) + ')'
-      )
+      datastar.executeScript('window.dulkongDeletePlan && window.dulkongDeletePlan(' + JSON.stringify(planId) + ')')
       patchAppToast(datastar, message, 'success')
       return
     }

@@ -268,12 +268,13 @@
         extendedProps: {
           sourceKind: 'plan',
           kind: plan.kind,
-          kindEmoji: {
-            date: '💚',
-            trip: '🧳',
-            appointment: '🕐',
-            other: '🌿',
-          }[plan.kind] || '🌿',
+          kindEmoji:
+            {
+              date: '💚',
+              trip: '🧳',
+              appointment: '🕐',
+              other: '🌿',
+            }[plan.kind] || '🌿',
           title: plan.title,
           startDate: plan.startDate,
           endDate: plan.endDate,

@@ -186,9 +186,16 @@ function mapPlan(record, now) {
  */
 function listPlans(app, currentUserId, now) {
   const sourceDate = now || new Date()
-  const records = app.findRecordsByFilter('plans', 'members.id ?= {:userId}', '+startDate,+startTime,+created', 500, 0, {
-    userId: currentUserId,
-  })
+  const records = app.findRecordsByFilter(
+    'plans',
+    'members.id ?= {:userId}',
+    '+startDate,+startTime,+created',
+    500,
+    0,
+    {
+      userId: currentUserId,
+    }
+  )
 
   return records.map(function (record) {
     return mapPlan(record, sourceDate)

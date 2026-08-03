@@ -98,16 +98,12 @@
     })
 
     if (isDatastarRequest) {
-      const savedPlan = coupleData
-        .listPlans($app, userId)
-        .filter(function (item) {
-          return item.id === savedPlanId
-        })[0]
+      const savedPlan = coupleData.listPlans($app, userId).filter(function (item) {
+        return item.id === savedPlanId
+      })[0]
 
       datastar.executeScript(
-        'window.dulkongApplyPlan && window.dulkongApplyPlan('
-          + JSON.stringify(savedPlan).replace(/</g, '\\u003c')
-          + ')'
+        'window.dulkongApplyPlan && window.dulkongApplyPlan(' + JSON.stringify(savedPlan).replace(/</g, '\\u003c') + ')'
       )
       patchAppToast(datastar, message, 'success')
       return
