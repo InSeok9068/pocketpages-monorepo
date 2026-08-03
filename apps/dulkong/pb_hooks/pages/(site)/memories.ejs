@@ -20,6 +20,9 @@
     photoLocationName: '',
     photoFilter: 'all',
     photoCount: photos.length,
+    photoSelectionMode: false,
+    selectedPhotoIds: [],
+    selectedPhotoCount: 0,
     photoViewerOpen: false,
     photoViewerUrl: '',
     photoViewerCaption: '',
@@ -32,18 +35,23 @@
         <h1 class="mt-1 mb-0 text-[28px] font-extrabold tracking-[-0.045em]">추억</h1>
       </div>
       <section
-        class="ml-auto inline-flex flex-col rounded-[15px] border border-[#dce7c8] bg-[#edf3df] px-3.5 py-2 text-[#354922]"
+        class="inline-flex flex-col rounded-[15px] border border-[#dce7c8] bg-[#edf3df] px-3.5 py-2 text-[#354922]"
         aria-labelledby="memory-summary-title">
-        <span class="text-[10px] font-medium text-[#7f8c68]">함께 모은 순간</span>
+        <span
+          class="text-[10px] font-medium text-[#7f8c68]"
+          data-text="$photoSelectionMode ? '선택한 사진' : '함께 모은 순간'">
+          함께 모은 순간
+        </span>
         <strong
           id="memory-summary-title"
           class="mt-0.5 text-sm font-bold"
-          data-text="$photoCount + '장'">
+          data-text="$photoSelectionMode ? $selectedPhotoCount + '장 선택' : $photoCount + '장'">
           <%= photos.length %>장
         </strong>
       </section>
       <button
         type="button"
+        data-show="!$photoSelectionMode"
         data-on:click="
           $photoModalMode = 'create'
           $photoEditId = ''
@@ -54,7 +62,7 @@
           if (window.dulkongPhotoPond) window.dulkongPhotoPond.removeFiles()
           $photoModalOpen = true
         "
-        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border-0 bg-[#dcebbf] text-[#4e672f] shadow-[0_6px_18px_rgba(92,112,57,0.15)]"
+        class="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border-0 bg-[#dcebbf] text-[#4e672f] shadow-[0_6px_18px_rgba(92,112,57,0.15)]"
         aria-label="사진 추가">
         <span
           class="i-lucide-plus h-5 w-5"
@@ -62,27 +70,44 @@
       </button>
     </header>
 
-    <main class="mt-6">
-      <div
-        class="memory-filter-scroll mb-5 flex gap-2 overflow-x-auto pb-1"
-        aria-label="추억 기간 필터">
-        <% [{ value: 'all', label: '전체' }, { value: currentYear, label: currentYear + '년' }, { value: previousYear, label: previousYear + '년' }, { value: 'favorite', label: '즐겨찾기' }].forEach(function (filter) { %>
+    <main class="mt-4">
+      <div class="mb-5 flex items-center gap-2">
+        <div
+          data-show="!$photoSelectionMode"
+          class="memory-filter-scroll flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1"
+          aria-label="추억 기간 필터">
+          <% [{ value: 'all', label: '전체' }, { value: currentYear, label: currentYear + '년' }, { value: previousYear, label: previousYear + '년' }, { value: 'favorite', label: '즐겨찾기' }].forEach(function (filter) { %>
+          <button
+            type="button"
+            data-on:click="
+              $photoFilter = '<%= filter.value %>'
+              @get('/xapi/photos/list')
+            "
+            data-class="
+              {
+                'bg-[#354922] text-white': $photoFilter === '<%= filter.value %>',
+                'bg-[#efede5] text-[#77766d]': $photoFilter !== '<%= filter.value %>',
+              }
+            "
+            class="shrink-0 rounded-full border-0 px-3 py-2 text-sm font-bold">
+            <%= filter.label %>
+          </button>
+          <% }) %>
+        </div>
         <button
           type="button"
-          data-on:click="
-            $photoFilter = '<%= filter.value %>'
-            @get('/xapi/photos/list')
-          "
-          data-class="
-            {
-              'bg-[#354922] text-white': $photoFilter === '<%= filter.value %>',
-              'bg-[#efede5] text-[#77766d]': $photoFilter !== '<%= filter.value %>',
-            }
-          "
-          class="shrink-0 rounded-full border-0 px-4 py-2 text-sm font-bold">
-          <%= filter.label %>
+          data-on:click="if ($photoSelectionMode) window.dulkongExitPhotoSelection(); else window.dulkongEnterPhotoSelection()"
+          data-class="{
+            'bg-transparent text-[#77766d]': !$photoSelectionMode,
+            'bg-[#354922] text-white': $photoSelectionMode,
+          }"
+          class="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border-0"
+          data-attr:aria-label="$photoSelectionMode ? '사진 선택 취소' : '사진 선택'">
+          <span
+            data-class="{ 'i-lucide-square-check-big': !$photoSelectionMode, 'i-lucide-x': $photoSelectionMode }"
+            class="h-4 w-4"
+            aria-hidden="true"></span>
         </button>
-        <% }) %>
       </div>
       <%- include('photo-grid.ejs', { photos }) %>
     </main>
@@ -230,7 +255,29 @@
     </section>
   </div>
 
-  <%- include('app-bottom-nav.ejs', { currentPath: '/memories' }) %>
+  <div
+    data-show="!$photoSelectionMode">
+    <%- include('app-bottom-nav.ejs', { currentPath: '/memories' }) %>
+  </div>
+  <div
+    data-show="$photoSelectionMode"
+    class="fixed right-0 bottom-0 left-0 z-70 mx-auto box-border w-full max-w-[480px] border-t border-[#ead8d4] bg-[#fffefa]/96 px-5 pt-3 shadow-[0_-10px_30px_rgba(47,48,42,0.1)] backdrop-blur-md"
+    style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
+    <button
+      type="button"
+      data-attr:disabled="$selectedPhotoCount === 0"
+      data-text="$selectedPhotoCount > 0 ? '선택한 ' + $selectedPhotoCount + '장 삭제' : '삭제할 사진을 선택해 주세요'"
+      data-on:click="
+        if ($selectedPhotoCount > 0 && confirm('선택한 사진 ' + $selectedPhotoCount + '장을 삭제할까요?')) {
+          @post('/xapi/photos/delete', {
+            payload: { selectedPhotoIds: $selectedPhotoIds, photoFilter: $photoFilter },
+          })
+        }
+      "
+      class="h-12 w-full rounded-[18px] border-0 bg-[#c95c50] text-sm font-bold text-white disabled:bg-[#e7dfdc] disabled:text-[#a99e99]">
+      삭제할 사진을 선택해 주세요
+    </button>
+  </div>
 </div>
 
 <script src="<%= asset('/assets/image-resize.js') %>"></script>
@@ -247,7 +294,42 @@
       if (card) card.classList.remove('photo-card--pressing')
     }
 
+    function patchPhotoSelection() {
+      if (!window.patchSignals) return
+      window.patchSignals({
+        photoSelectionMode: window.dulkongPhotoSelectionMode,
+        selectedPhotoIds: window.dulkongSelectedPhotoIds.slice(),
+        selectedPhotoCount: window.dulkongSelectedPhotoIds.length,
+      })
+    }
+
+    window.dulkongPhotoSelectionMode = false
+    window.dulkongSelectedPhotoIds = []
+
+    window.dulkongEnterPhotoSelection = function () {
+      window.dulkongPhotoSelectionMode = true
+      window.dulkongSelectedPhotoIds = []
+      patchPhotoSelection()
+    }
+
+    window.dulkongExitPhotoSelection = function () {
+      window.dulkongPhotoSelectionMode = false
+      window.dulkongSelectedPhotoIds = []
+      patchPhotoSelection()
+    }
+
+    window.dulkongTogglePhotoSelection = function (button) {
+      var photoId = button ? String(button.dataset.photoId || '') : ''
+      if (!photoId) return
+
+      var selectedIndex = window.dulkongSelectedPhotoIds.indexOf(photoId)
+      if (selectedIndex >= 0) window.dulkongSelectedPhotoIds.splice(selectedIndex, 1)
+      else window.dulkongSelectedPhotoIds.push(photoId)
+      patchPhotoSelection()
+    }
+
     window.dulkongStartPhotoPress = function (event) {
+      if (window.dulkongPhotoSelectionMode) return
       if (event.pointerType === 'mouse' && event.button !== 0) return
 
       var button = event.currentTarget
@@ -301,6 +383,11 @@
 
     window.dulkongOpenPhoto = function (event) {
       var button = event.currentTarget
+
+      if (window.dulkongPhotoSelectionMode) {
+        window.dulkongTogglePhotoSelection(button)
+        return
+      }
 
       if (button.dulkongSuppressClick) {
         button.dulkongSuppressClick = false

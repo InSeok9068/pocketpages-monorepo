@@ -7,22 +7,34 @@
     return
   }
 
-  const signals = datastar.requestSignals({ photoEditId: '', photoFilter: 'all' })
+  const signals = datastar.requestSignals({ photoEditId: '', photoFilter: 'all', selectedPhotoIds: [] })
   const photoId = String(signals.photoEditId || '').trim()
+  const selectedPhotoIds = Array.isArray(signals.selectedPhotoIds) ? signals.selectedPhotoIds : []
+  const photoIds = []
+  const requestedPhotoIds = selectedPhotoIds.length ? selectedPhotoIds : photoId ? [photoId] : []
+  requestedPhotoIds.forEach(function (selectedPhotoId) {
+    const normalizedPhotoId = String(selectedPhotoId || '').trim()
+    if (normalizedPhotoId && photoIds.indexOf(normalizedPhotoId) < 0) photoIds.push(normalizedPhotoId)
+  })
   const photoFilter = String(signals.photoFilter || 'all')
   const userId = String(request.auth.get('id') || '')
 
-  dbg('dulkong/xapi/photos/delete:start', { photoId, userId })
+  dbg('dulkong/xapi/photos/delete:start', { photoIds, userId })
 
   try {
-    if (!photoId) throw new Error('삭제할 사진을 찾지 못했어요.')
+    if (!photoIds.length) throw new Error('삭제할 사진을 찾지 못했어요.')
+    if (photoIds.length > 100) throw new Error('사진은 한 번에 100장까지 삭제할 수 있어요.')
 
-    const record = $app.findFirstRecordByFilter('photos', "id = {:photoId} && deletedAt = ''", {
-      photoId: photoId,
+    $app.runInTransaction(function (txApp) {
+      photoIds.forEach(function (selectedPhotoId) {
+        const record = txApp.findFirstRecordByFilter('photos', "id = {:photoId} && deletedAt = ''", {
+          photoId: selectedPhotoId,
+        })
+        txApp.delete(record)
+      })
     })
-    $app.delete(record)
 
-    info('dulkong/xapi/photos/delete:success', { photoId, userId })
+    info('dulkong/xapi/photos/delete:success', { photoIds, userId })
     const filteredPhotos = coupleData.listPhotos($app, photoFilter)
     const photoCount = photoFilter === 'all' ? filteredPhotos.length : coupleData.listPhotos($app, 'all').length
     datastar.patchElements(include('photo-grid.ejs', { photos: filteredPhotos }), {
@@ -37,11 +49,15 @@
       photoTakenAt: '',
       photoLocationName: '',
       photoCount: photoCount,
+      photoSelectionMode: false,
+      selectedPhotoIds: [],
+      selectedPhotoCount: 0,
     })
-    patchAppToast(datastar, '사진을 삭제했어요.', 'success')
+    datastar.executeScript('window.dulkongPhotoSelectionMode = false; window.dulkongSelectedPhotoIds = [];')
+    patchAppToast(datastar, photoIds.length === 1 ? '사진을 삭제했어요.' : photoIds.length + '장의 사진을 삭제했어요.', 'success')
   } catch (exception) {
     error('dulkong/xapi/photos/delete:failed', {
-      photoId,
+      photoIds,
       userId,
       error: String(exception.message || exception),
     })

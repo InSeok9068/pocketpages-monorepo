@@ -11,7 +11,9 @@
     <% } else { %>
     <div class="grid grid-cols-2 gap-3">
       <% photos.forEach(function (photo) { %>
-      <article class="photo-card group relative aspect-square overflow-hidden rounded-[24px] bg-[#e8e6dc]">
+      <article
+        data-class="{ 'ring-3 ring-[#91aa68] ring-offset-2': $selectedPhotoIds.includes('<%= photo.id %>') }"
+        class="photo-card group relative aspect-square overflow-hidden rounded-[24px] bg-[#e8e6dc]">
         <img
           src="<%= photo.imageUrl %>"
           alt="<%= photo.caption || '추억 사진' %>"
@@ -43,8 +45,20 @@
           data-on:click="window.dulkongOpenPhoto(evt)"
           class="photo-viewer-trigger absolute inset-0 cursor-zoom-in rounded-[24px] border-0 bg-transparent"
           aria-label="<%= photo.caption || '추억 사진' %> 크게 보기. 길게 누르면 수정"></button>
+        <div
+          data-show="$photoSelectionMode"
+          data-class="{
+            'bg-[#354922] text-white': $selectedPhotoIds.includes('<%= photo.id %>'),
+            'bg-white/88 text-transparent': !$selectedPhotoIds.includes('<%= photo.id %>'),
+          }"
+          class="pointer-events-none absolute top-2 left-2 z-20 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white shadow-[0_2px_8px_rgba(0,0,0,0.18)]">
+          <span
+            class="i-lucide-check h-4 w-4"
+            aria-hidden="true"></span>
+        </div>
         <button
           type="button"
+          data-show="!$photoSelectionMode"
           data-on:click__stop="
             @post('/xapi/photos/favorite', {
               payload: { photoId: '<%= photo.id %>', photoFilter: $photoFilter },
