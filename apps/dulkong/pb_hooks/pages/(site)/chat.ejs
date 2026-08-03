@@ -1,6 +1,8 @@
 <script server>
   const coupleData = resolve('couple-data')
+  const { listChatStickers } = resolve('chat-stickers')
   const profiles = coupleData.getCoupleProfiles($app, request.auth)
+  const chatStickers = listChatStickers()
   const messagePage = coupleData.getMessagePage($app, profiles.current.id, {
     limit: 50,
     partnerLastReadAt: profiles.partner.lastReadAt,
@@ -20,6 +22,8 @@
   data-signals="<%= stringify({
     draft: '',
     clientMessageId: '',
+    stickerId: '',
+    stickerPickerOpen: false,
     chatHandledRevision: 0,
     chatReceiptRevision: 0,
     chatHandledReceiptRevision: 0,
@@ -139,21 +143,71 @@
     data-on:submit__prevent="
       if (!$chatSending) {
         $chatSending = true
+        $stickerId = ''
+        $stickerPickerOpen = false
         $clientMessageId = 'web_' + Date.now()
         @post('/xapi/messages/send')
       }
     "
+    data-on:keydown="if (evt.key === 'Escape') $stickerPickerOpen = false"
     class="relative z-10 shrink-0 border-t border-[#e8e5da] bg-[#fffefa] px-4 py-3">
+    <div
+      id="dulkong-sticker-picker"
+      data-show="$stickerPickerOpen"
+      data-on:click__outside="$stickerPickerOpen = false"
+      class="absolute right-4 bottom-[calc(100%+0.5rem)] left-4 rounded-[24px] border border-[#e6e3d8] bg-[#fffefa]/96 p-3 shadow-[0_18px_50px_rgba(58,59,51,0.16)] backdrop-blur-md">
+      <div class="mb-2 flex items-center justify-between px-1">
+        <strong class="text-xs text-[#55554d]">둘콩 스티커</strong>
+        <span class="text-[10px] text-[#99988e]">누르면 바로 전송돼요</span>
+      </div>
+      <div class="grid grid-cols-4 gap-1.5">
+        <% chatStickers.forEach(function (sticker) { %>
+        <button
+          type="button"
+          data-on:click="
+            if (!$chatSending) {
+              $chatSending = true
+              $stickerId = <%= stringify(sticker.id) %>
+              $clientMessageId = 'web_' + Date.now()
+              $stickerPickerOpen = false
+              @post('/xapi/messages/send')
+            }
+          "
+          class="relative flex aspect-square min-w-0 items-center justify-center overflow-hidden rounded-[16px] border-0 bg-[#f4f2e9] p-0.5 text-inherit active:bg-[#e7efd8]"
+          aria-label="<%= sticker.label %> 스티커 보내기"
+          title="<%= sticker.label %>">
+          <img
+            src="<%= asset(sticker.imagePath) %>"
+            alt=""
+            class="h-[108%] w-[108%] max-w-none object-contain"
+            aria-hidden="true" />
+          <span
+            class="absolute right-1 bottom-1 left-1 truncate rounded-full bg-[#fffdf7]/90 px-1 py-0.5 text-center text-[8px] leading-none font-bold text-[#53683b]">
+            <%= sticker.label %>
+          </span>
+        </button>
+        <% }) %>
+      </div>
+    </div>
     <div class="flex items-end gap-2">
-      <label class="block min-w-0 flex-1">
+      <label class="relative block min-w-0 flex-1">
         <span class="sr-only">메시지</span>
         <textarea
           id="chat-draft"
           data-bind:draft
           rows="1"
           maxlength="5000"
-          class="box-border block h-12 max-h-28 min-h-12 w-full resize-none rounded-[24px] border border-[#e4e1d6] bg-[#f7f5ef] px-4 py-3 text-sm outline-none focus:border-[#9fbd6f]"
+          class="box-border block h-12 max-h-28 min-h-12 w-full resize-none rounded-[24px] border border-[#e4e1d6] bg-[#f7f5ef] py-3 pr-13 pl-4 text-sm outline-none focus:border-[#9fbd6f]"
           placeholder="메시지를 입력하세요"></textarea>
+        <button
+          type="button"
+          data-on:click__stop="$stickerPickerOpen = !$stickerPickerOpen"
+          data-attr:aria-expanded="$stickerPickerOpen"
+          class="absolute right-1.5 bottom-1.5 flex h-9 w-9 items-center justify-center rounded-full border-0 bg-transparent text-[#6d8053] active:bg-[#e7efd8]"
+          aria-label="둘콩 스티커 열기"
+          aria-controls="dulkong-sticker-picker">
+          <span class="i-lucide-smile-plus h-5 w-5" aria-hidden="true"></span>
+        </button>
       </label>
       <button
         type="submit"

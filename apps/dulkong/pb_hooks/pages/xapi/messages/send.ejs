@@ -1,6 +1,7 @@
 <script server>
   const { createOneSignalClient } = require('@pocketpages/onesignal')
   const coupleData = resolve('couple-data')
+  const { getChatSticker } = resolve('chat-stickers')
   const { patchAppToast } = resolve('patch-app-toast')
 
   if (request.method !== 'POST' || !request.auth) {
@@ -12,26 +13,37 @@
     draft: '',
     clientMessageId: '',
     clientId: '',
+    stickerId: '',
     newestMessageCreated: '',
     newestMessageId: '',
   })
   const userId = String(request.auth.get('id') || '')
   const bodyText = String(signals.draft || '').trim()
+  const stickerId = String(signals.stickerId || '').trim()
+  const sticker = getChatSticker(stickerId)
+  const isSticker = Boolean(stickerId)
   const clientMessageId = String(signals.clientMessageId || '').trim() || 'web_' + String(new Date().getTime())
   const senderClientId = String(signals.clientId || '')
 
-  dbg('dulkong/xapi/messages/send:start', { userId, clientMessageId, bodyLength: bodyText.length })
+  dbg('dulkong/xapi/messages/send:start', {
+    userId,
+    clientMessageId,
+    messageType: isSticker ? 'sticker' : 'text',
+    bodyLength: bodyText.length,
+  })
 
   try {
-    if (!bodyText) throw new Error('메시지를 입력해 주세요.')
-    if (bodyText.length > 5000) throw new Error('메시지는 5,000자까지 보낼 수 있어요.')
+    if (isSticker && !sticker) throw new Error('사용할 수 없는 스티커예요.')
+    if (!isSticker && !bodyText) throw new Error('메시지를 입력해 주세요.')
+    if (!isSticker && bodyText.length > 5000) throw new Error('메시지는 5,000자까지 보낼 수 있어요.')
 
     const collection = $app.findCollectionByNameOrId('messages')
     const record = new Record(collection)
     record.set('sender', userId)
     record.set('clientMessageId', clientMessageId)
-    record.set('type', 'text')
-    record.set('body', bodyText)
+    record.set('type', isSticker ? 'sticker' : 'text')
+    record.set('body', isSticker ? sticker.label : bodyText)
+    if (isSticker) record.set('systemData', { stickerId: sticker.id })
     record.set('clientCreatedAt', new Date().toISOString())
     $app.save(record)
 
@@ -51,8 +63,10 @@
       mode: 'append',
     })
     datastar.patchSignals({
-      draft: '',
+      draft: isSticker ? String(signals.draft || '') : '',
       clientMessageId: '',
+      stickerId: '',
+      stickerPickerOpen: false,
       chatSending: false,
       chatAtBottom: true,
       chatHasNewMessage: false,
@@ -61,7 +75,9 @@
       chatPartnerReadAt: profiles.partner.lastReadAt,
     })
     datastar.executeScript(
-      "var draft=document.getElementById('chat-draft'); if(draft) draft.value=''; if(window.dulkongApplyChatReadReceipt) window.dulkongApplyChatReadReceipt("
+      "var draft=document.getElementById('chat-draft'); if(draft && "
+        + JSON.stringify(!isSticker)
+        + ") draft.value=''; if(window.dulkongApplyChatReadReceipt) window.dulkongApplyChatReadReceipt("
         + JSON.stringify(profiles.partner.lastReadAt)
         + '); if(window.dulkongFinishChatUpdate) window.dulkongFinishChatUpdate(true);'
     )
@@ -82,7 +98,8 @@
         })
       } else {
         try {
-          const pushBody = bodyText.length > 100 ? bodyText.slice(0, 100) + '…' : bodyText
+          const messageBody = isSticker ? sticker.art + ' ' + sticker.label : bodyText
+          const pushBody = messageBody.length > 100 ? messageBody.slice(0, 100) + '…' : messageBody
           const pushOrigin = String($app.settings().meta.appURL || '')
             .trim()
             .replace(/\/+$/, '')

@@ -67,13 +67,22 @@ declare namespace types {
   type MessageItem = {
     id: string
     senderId: string
+    type: string
     body: string
     lines: string[]
+    sticker: ChatSticker | null
     createdAt: string
     mine: boolean
     showReadReceipt: boolean
     timeLabel: string
     dateLabel: string
+  }
+
+  type ChatSticker = {
+    id: string
+    art: string
+    label: string
+    imagePath: string
   }
 
   type MessagePageOptions = {

@@ -1,4 +1,5 @@
 const { dateutil } = require('@pocketpages/utils')
+const { getChatSticker } = require('./chat-stickers')
 
 const ProfileNames = {
   inseok: '인석',
@@ -283,13 +284,25 @@ function listPhotos(app, filter) {
  */
 function mapMessage(record, currentUserId) {
   const createdValue = record.get('clientCreatedAt') || record.get('created')
+  const messageType = String(record.get('type') || 'text')
   const body = String(record.get('body') || '')
+  let systemData = {}
+
+  try {
+    systemData = JSON.parse(String(record.get('systemData') || '{}'))
+  } catch (_exception) {
+    systemData = {}
+  }
+
+  const sticker = messageType === 'sticker' ? getChatSticker(systemData.stickerId) : null
 
   return {
     id: String(record.get('id') || ''),
     senderId: String(record.get('sender') || ''),
+    type: messageType,
     body: body,
     lines: body.split(/\r\n?|\n/),
+    sticker: sticker,
     createdAt: String(record.get('created') || ''),
     mine: String(record.get('sender') || '') === currentUserId,
     showReadReceipt: false,

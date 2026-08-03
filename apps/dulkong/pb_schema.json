@@ -866,7 +866,7 @@
         "required": true,
         "system": false,
         "type": "select",
-        "values": ["text", "photo", "system"]
+        "values": ["text", "photo", "sticker", "system"]
       },
       {
         "autogeneratePattern": "",

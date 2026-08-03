@@ -16,12 +16,19 @@
     <time><%= message.timeLabel %></time>
   </div>
   <% } %>
+  <% if (message.sticker) { %>
+  <img
+    src="<%= asset(message.sticker.imagePath) %>"
+    alt="둘콩 스티커: <%= message.sticker.label %>"
+    class="h-36 w-36 object-contain" />
+  <% } else { %>
   <div
     class="<%= message.mine ? 'rounded-[18px_18px_6px_18px] bg-[#cfe5a6] text-[#30421d]' : 'rounded-[18px_18px_18px_6px] bg-white' %> max-w-[76%] min-w-0 px-3.5 py-2.5 text-sm leading-5 break-words shadow-[0_5px_16px_rgba(58,59,51,0.06)]">
     <% message.lines.forEach(function (line) { %>
     <span class="block min-h-5"><%= line %></span>
     <% }) %>
   </div>
+  <% } %>
   <% if (!message.mine) { %>
   <time class="mb-1 shrink-0 text-[10px] leading-none font-medium whitespace-nowrap text-[#7f7e75]">
     <%= message.timeLabel %>
