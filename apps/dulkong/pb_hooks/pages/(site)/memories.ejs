@@ -1,8 +1,15 @@
 <script server>
   const coupleData = resolve('couple-data')
-  const currentYear = String(new Date().getFullYear())
-  const previousYear = String(Number(currentYear) - 1)
   const photos = coupleData.listPhotos($app, 'all')
+  const photoYears = []
+
+  photos.forEach(function (photo) {
+    const photoYear = String(photo.takenAt || '').slice(0, 4)
+    if (/^\d{4}$/.test(photoYear) && photoYears.indexOf(photoYear) < 0) photoYears.push(photoYear)
+  })
+  photoYears.sort(function (left, right) {
+    return Number(right) - Number(left)
+  })
 
   meta('title', '추억 | 둘콩')
   meta('description', '우리 둘의 사진과 추억')
@@ -76,7 +83,7 @@
           data-show="!$photoSelectionMode"
           class="memory-filter-scroll flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1"
           aria-label="추억 기간 필터">
-          <% [{ value: 'all', label: '전체' }, { value: currentYear, label: currentYear + '년' }, { value: previousYear, label: previousYear + '년' }, { value: 'favorite', label: '즐겨찾기' }].forEach(function (filter) { %>
+          <% [{ value: 'all', label: '전체' }].concat(photoYears.map(function (year) { return { value: year, label: year + '년' } }), [{ value: 'favorite', label: '즐겨찾기' }]).forEach(function (filter) { %>
           <button
             type="button"
             data-on:click="
