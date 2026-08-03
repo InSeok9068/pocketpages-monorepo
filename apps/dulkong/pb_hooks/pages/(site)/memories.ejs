@@ -119,6 +119,16 @@
           추억으로 저장
         </button>
       </form>
+      <form
+        data-show="$photoModalMode === 'edit'"
+        data-on:submit__prevent="if (confirm('이 사진을 삭제할까요?')) @post('/xapi/photos/delete')"
+        class="mt-3">
+        <button
+          type="submit"
+          class="h-12 w-full rounded-[18px] border border-[#ead8d4] bg-[#fff4f1] text-sm font-bold text-[#b24b3f]">
+          사진 삭제
+        </button>
+      </form>
     </section>
   </div>
 
