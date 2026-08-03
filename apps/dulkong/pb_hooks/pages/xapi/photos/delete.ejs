@@ -23,7 +23,9 @@
     $app.delete(record)
 
     info('dulkong/xapi/photos/delete:success', { photoId, userId })
-    datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, photoFilter) }), {
+    const filteredPhotos = coupleData.listPhotos($app, photoFilter)
+    const photoCount = photoFilter === 'all' ? filteredPhotos.length : coupleData.listPhotos($app, 'all').length
+    datastar.patchElements(include('photo-grid.ejs', { photos: filteredPhotos }), {
       selector: '#photo-results',
       mode: 'outer',
     })
@@ -34,6 +36,7 @@
       photoCaption: '',
       photoTakenAt: '',
       photoLocationName: '',
+      photoCount: photoCount,
     })
     patchAppToast(datastar, '사진을 삭제했어요.', 'success')
   } catch (exception) {

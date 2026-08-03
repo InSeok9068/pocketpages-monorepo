@@ -19,17 +19,29 @@
     photoTakenAt: '',
     photoLocationName: '',
     photoFilter: 'all',
+    photoCount: photos.length,
     photoViewerOpen: false,
     photoViewerUrl: '',
     photoViewerCaption: '',
     photoViewerMeta: '',
   }) %>">
   <div class="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-30">
-    <header class="flex items-center justify-between py-2">
-      <div>
+    <header class="flex items-center gap-3 py-2">
+      <div class="shrink-0">
         <p class="m-0 text-xs font-bold tracking-[0.1em] text-[#98a081]">우리의 기록</p>
         <h1 class="mt-1 mb-0 text-[28px] font-extrabold tracking-[-0.045em]">추억</h1>
       </div>
+      <section
+        class="ml-auto inline-flex flex-col rounded-[15px] border border-[#dce7c8] bg-[#edf3df] px-3.5 py-2 text-[#354922]"
+        aria-labelledby="memory-summary-title">
+        <span class="text-[10px] font-medium text-[#7f8c68]">함께 모은 순간</span>
+        <strong
+          id="memory-summary-title"
+          class="mt-0.5 text-sm font-bold"
+          data-text="$photoCount + '장'">
+          <%= photos.length %>장
+        </strong>
+      </section>
       <button
         type="button"
         data-on:click="
@@ -42,7 +54,7 @@
           if (window.dulkongPhotoPond) window.dulkongPhotoPond.removeFiles()
           $photoModalOpen = true
         "
-        class="flex h-11 w-11 items-center justify-center rounded-[16px] border-0 bg-[#dcebbf] text-[#4e672f] shadow-[0_6px_18px_rgba(92,112,57,0.15)]"
+        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border-0 bg-[#dcebbf] text-[#4e672f] shadow-[0_6px_18px_rgba(92,112,57,0.15)]"
         aria-label="사진 추가">
         <span
           class="i-lucide-plus h-5 w-5"

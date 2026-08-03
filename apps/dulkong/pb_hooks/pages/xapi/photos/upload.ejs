@@ -33,7 +33,8 @@
     $app.save(record)
 
     info('dulkong/xapi/photos/upload:success', { photoId: String(record.get('id') || ''), userId })
-    datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, 'all') }), {
+    const photos = coupleData.listPhotos($app, 'all')
+    datastar.patchElements(include('photo-grid.ejs', { photos: photos }), {
       selector: '#photo-results',
       mode: 'outer',
     })
@@ -45,6 +46,7 @@
       photoTakenAt: '',
       photoLocationName: '',
       photoFilter: 'all',
+      photoCount: photos.length,
     })
     datastar.executeScript(
       "var form=document.getElementById('photo-upload-form'); if(window.dulkongPhotoPond) window.dulkongPhotoPond.removeFiles(); if(form) form.reset();"

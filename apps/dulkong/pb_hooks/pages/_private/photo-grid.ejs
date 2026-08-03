@@ -1,25 +1,5 @@
 <div id="photo-results">
-  <section
-    class="rounded-[22px] border border-[#dce7c8] bg-[#edf3df] px-4 py-3.5 text-[#354922]"
-    aria-labelledby="memory-summary-title">
-    <div class="flex items-end justify-between gap-4">
-      <div>
-        <p class="m-0 text-[11px] font-medium text-[#7f8c68]">함께 모은 순간</p>
-        <h2
-          id="memory-summary-title"
-          class="mt-0.5 mb-0 text-xl font-bold">
-          <%= photos.length %>장
-        </h2>
-      </div>
-      <span class="text-[13px] font-medium text-[#66813f]">
-        <%= photos.length ? photos[photos.length - 1].takenAt.replace(/-/g, '.') + '부터' : '첫 사진을 기다리는 중' %>
-      </span>
-    </div>
-  </section>
-
-  <section
-    class="mt-5"
-    aria-label="사진 목록">
+  <section aria-label="사진 목록">
     <% if (!photos.length) { %>
     <div class="rounded-[24px] border border-dashed border-[#d9d7cc] bg-white/65 px-5 py-12 text-center">
       <span
