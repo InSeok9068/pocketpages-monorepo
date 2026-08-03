@@ -3,10 +3,10 @@
   id="message-<%= message.id %>"
   class="<%= message.mine ? 'justify-end' : '' %> flex items-end gap-2">
   <% if (message.mine) { %>
-  <div class="mb-1 flex items-center gap-1 text-[10px] font-medium text-[#aaa99f]">
+  <div class="mb-1 flex items-center gap-1 text-[10px] font-medium text-[#7f7e75] text-shadow-[0_1px_2px_rgba(255,255,255,0.9)]">
     <time><%= message.timeLabel %></time>
     <% if (message.showReadReceipt) { %>
-    <span class="text-[#71834f]">· 읽음</span>
+    <span class="text-[#567336]">· 읽음</span>
     <% } %>
   </div>
   <% } %>
@@ -17,7 +17,7 @@
     <% }) %>
   </div>
   <% if (!message.mine) { %>
-  <time class="mb-1 text-[10px] font-medium text-[#aaa99f]"><%= message.timeLabel %></time>
+  <time class="mb-1 text-[10px] font-medium text-[#7f7e75] text-shadow-[0_1px_2px_rgba(255,255,255,0.9)]"><%= message.timeLabel %></time>
   <% } %>
 </div>
 <% }) %>
