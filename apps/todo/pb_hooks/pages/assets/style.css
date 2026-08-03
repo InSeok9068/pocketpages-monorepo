@@ -317,6 +317,13 @@ textarea:focus {
   border-left-color: #e11d48;
 }
 
+@media (min-width: 96rem) {
+  .kanban-page {
+    width: calc(100vw - 3rem);
+    margin-inline: calc((100% - 100vw + 3rem) / 2);
+  }
+}
+
 .htmx-request [data-loading] {
   display: inline-flex;
 }

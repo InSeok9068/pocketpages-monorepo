@@ -14,85 +14,87 @@
   const workCards = todoData.listWorkCards(userId, { done: false, developerId: selectedDeveloper, limit: 500 })
   dbg('todo/kanban:response', { userId, workCount: workCards.length, selectedDeveloper })
 </script>
-<header class="mb-3 flex flex-wrap items-end justify-between gap-3">
-  <div>
-    <p class="text-[11px] font-black tracking-[0.16em] text-blue-600">WORKFLOW</p>
-    <h1 class="mt-0.5 text-2xl font-black tracking-tight">칸반 보드</h1>
-    <p class="mt-1 text-xs text-slate-500">카드를 끌어 상태와 우선순위를 정리하세요.</p>
-  </div>
-  <div class="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
-    <span class="text-[11px] font-bold text-slate-400">미완료</span>
-    <strong class="text-sm font-black text-blue-600"><%= workCards.length %>개</strong>
-  </div>
-</header>
-<nav
-  class="mb-3 overflow-x-auto"
-  aria-label="담당자 필터">
-  <div class="flex min-w-max gap-1.5">
-    <a
-      href="/kanban"
-      aria-current="<%= !selectedDeveloper ? 'page' : 'false' %>"
-      class="<%= !selectedDeveloper ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
-      전체
-    </a>
-    <a
-      href="/kanban?developer=__unassigned__"
-      aria-current="<%= selectedDeveloper === '__unassigned__' ? 'page' : 'false' %>"
-      class="<%= selectedDeveloper === '__unassigned__' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
-      미배정
-    </a>
-    <% for (let index = 0; index < developers.length; index += 1) { %>
-    <% const developer = developers[index] %>
-    <a
-      href="/kanban?developer=<%= encodeURIComponent(developer.id) %>"
-      aria-current="<%= selectedDeveloper === developer.id ? 'page' : 'false' %>"
-      class="<%= selectedDeveloper === developer.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
-      <%= developer.name %>
-    </a>
-    <% } %>
-  </div>
-</nav>
-<%- include('kanban-board.ejs', { stateOptions, workCards, selectedDeveloper }) %>
-<form
-  id="kanban-move-form"
-  hx-post="/xapi/works/move"
-  hx-target="#kanban-board"
-  hx-swap="outerHTML"
-  class="hidden">
-  <input
-    type="hidden"
-    name="order" />
-  <input
-    type="hidden"
-    name="developer"
-    value="<%= selectedDeveloper %>" />
-</form>
-<script src="<%= asset('/assets/vendor/sortable-1.15.7.min.js') %>"></script>
-<script>
-  function initTodoKanbanSortable() {
-    if (!window.Sortable) return
-    document.querySelectorAll('[data-kanban-list]').forEach(function (list) {
-      if (list.dataset.sortableReady === 'true') return
-      list.dataset.sortableReady = 'true'
-      window.Sortable.create(list, {
-        group: 'todo-kanban',
-        animation: 160,
-        draggable: '[data-kanban-card]',
-        handle: '[data-kanban-handle]',
-        onEnd: function () {
-          const order = []
-          document.querySelectorAll('[data-kanban-list]').forEach(function (column) {
-            column.querySelectorAll('[data-kanban-card]').forEach(function (card, index) {
-              order.push({ id: card.dataset.workId || '', state: column.dataset.state || '', sort: index })
+<div class="kanban-page">
+  <header class="mb-3 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <p class="text-[11px] font-black tracking-[0.16em] text-blue-600">WORKFLOW</p>
+      <h1 class="mt-0.5 text-2xl font-black tracking-tight">칸반 보드</h1>
+      <p class="mt-1 text-xs text-slate-500">카드를 끌어 상태와 우선순위를 정리하세요.</p>
+    </div>
+    <div class="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+      <span class="text-[11px] font-bold text-slate-400">미완료</span>
+      <strong class="text-sm font-black text-blue-600"><%= workCards.length %>개</strong>
+    </div>
+  </header>
+  <nav
+    class="mb-3 overflow-x-auto"
+    aria-label="담당자 필터">
+    <div class="flex min-w-max gap-1.5">
+      <a
+        href="/kanban"
+        aria-current="<%= !selectedDeveloper ? 'page' : 'false' %>"
+        class="<%= !selectedDeveloper ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
+        전체
+      </a>
+      <a
+        href="/kanban?developer=__unassigned__"
+        aria-current="<%= selectedDeveloper === '__unassigned__' ? 'page' : 'false' %>"
+        class="<%= selectedDeveloper === '__unassigned__' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
+        미배정
+      </a>
+      <% for (let index = 0; index < developers.length; index += 1) { %>
+      <% const developer = developers[index] %>
+      <a
+        href="/kanban?developer=<%= encodeURIComponent(developer.id) %>"
+        aria-current="<%= selectedDeveloper === developer.id ? 'page' : 'false' %>"
+        class="<%= selectedDeveloper === developer.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600' %> rounded-full px-3 py-1.5 text-xs font-bold no-underline">
+        <%= developer.name %>
+      </a>
+      <% } %>
+    </div>
+  </nav>
+  <%- include('kanban-board.ejs', { stateOptions, workCards, selectedDeveloper }) %>
+  <form
+    id="kanban-move-form"
+    hx-post="/xapi/works/move"
+    hx-target="#kanban-board"
+    hx-swap="outerHTML"
+    class="hidden">
+    <input
+      type="hidden"
+      name="order" />
+    <input
+      type="hidden"
+      name="developer"
+      value="<%= selectedDeveloper %>" />
+  </form>
+  <script src="<%= asset('/assets/vendor/sortable-1.15.7.min.js') %>"></script>
+  <script>
+    function initTodoKanbanSortable() {
+      if (!window.Sortable) return
+      document.querySelectorAll('[data-kanban-list]').forEach(function (list) {
+        if (list.dataset.sortableReady === 'true') return
+        list.dataset.sortableReady = 'true'
+        window.Sortable.create(list, {
+          group: 'todo-kanban',
+          animation: 160,
+          draggable: '[data-kanban-card]',
+          handle: '[data-kanban-handle]',
+          onEnd: function () {
+            const order = []
+            document.querySelectorAll('[data-kanban-list]').forEach(function (column) {
+              column.querySelectorAll('[data-kanban-card]').forEach(function (card, index) {
+                order.push({ id: card.dataset.workId || '', state: column.dataset.state || '', sort: index })
+              })
             })
-          })
-          const form = document.getElementById('kanban-move-form')
-          form.elements.order.value = JSON.stringify(order)
-          form.requestSubmit()
-        },
+            const form = document.getElementById('kanban-move-form')
+            form.elements.order.value = JSON.stringify(order)
+            form.requestSubmit()
+          },
+        })
       })
-    })
-  }
-  initTodoKanbanSortable()
-  document.addEventListener('htmx:afterSwap', initTodoKanbanSortable)
-</script>
+    }
+    initTodoKanbanSortable()
+    document.addEventListener('htmx:afterSwap', initTodoKanbanSortable)
+  </script>
+</div>
