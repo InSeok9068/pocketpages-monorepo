@@ -33,6 +33,46 @@
     return startDate <= dateText && dateText <= endDate
   }
 
+  function nextDateText(dateText) {
+    const date = new Date(dateText + 'T12:00:00')
+    date.setDate(date.getDate() + 1)
+    return localDateText(date)
+  }
+
+  function createCalendarDisplayEvents(events) {
+    const displayEvents = []
+
+    events.forEach(function (event) {
+      const details = event.extendedProps || {}
+      const sourceId = event.id
+      const startDate = String(details.startDate || event.start || '').slice(0, 10)
+      const endDate = String(details.endDate || startDate).slice(0, 10)
+      let dateText = startDate
+
+      while (dateText && dateText <= endDate) {
+        displayEvents.push({
+          id: sourceId + ':' + dateText,
+          title: event.title,
+          start: dateText,
+          allDay: true,
+          extendedProps: Object.assign({}, details, {
+            calendarDate: dateText,
+            calendarSourceId: sourceId,
+          }),
+        })
+        dateText = nextDateText(dateText)
+      }
+    })
+
+    return displayEvents
+  }
+
+  function removeCalendarDisplayEvents(calendar, sourceId) {
+    calendar.getEvents().forEach(function (event) {
+      if (event.extendedProps.calendarSourceId === sourceId) event.remove()
+    })
+  }
+
   function setModalOpen(modal, open) {
     modal.hidden = !open
     document.body.style.overflow = open ? 'hidden' : ''
@@ -183,7 +223,7 @@
       dayMaxEvents: 3,
       displayEventTime: false,
       borderless: true,
-      events: events,
+      events: createCalendarDisplayEvents(events),
       toolbarClass: 'couple-calendar-toolbar',
       toolbarTitleClass: 'couple-calendar-title',
       buttonClass: function (info) {
@@ -234,7 +274,7 @@
       },
       eventClick: function (info) {
         const details = info.event.extendedProps || {}
-        selectedDate = String(details.startDate || '').slice(0, 10)
+        selectedDate = String(details.calendarDate || details.startDate || '').slice(0, 10)
         renderSelectedDate(root, events, selectedDate, openPlan)
       },
       datesSet: function () {
@@ -246,9 +286,9 @@
     global.dulkongCalendarInstance = calendar
 
     global.dulkongApplyPlan = function (plan) {
-      const existingEvent = calendar.getEventById('plan:' + plan.id)
+      const sourceId = 'plan:' + plan.id
       const existingIndex = events.findIndex(function (event) {
-        return event.id === 'plan:' + plan.id
+        return event.id === sourceId
       })
       const allDay = !plan.startTime
       let eventEnd
@@ -260,7 +300,7 @@
       }
 
       const calendarEvent = {
-        id: 'plan:' + plan.id,
+        id: sourceId,
         title: plan.title,
         start: allDay ? plan.startDate : plan.startDate + 'T' + plan.startTime,
         end: eventEnd,
@@ -284,10 +324,12 @@
         },
       }
 
-      if (existingEvent) existingEvent.remove()
+      removeCalendarDisplayEvents(calendar, sourceId)
       if (existingIndex >= 0) events.splice(existingIndex, 1, calendarEvent)
       else events.push(calendarEvent)
-      calendar.addEvent(calendarEvent)
+      createCalendarDisplayEvents([calendarEvent]).forEach(function (displayEvent) {
+        calendar.addEvent(displayEvent)
+      })
       selectedDate = plan.startDate
       renderSelectedDate(root, events, selectedDate, openPlan)
       setModalOpen(modal, false)
@@ -295,12 +337,11 @@
 
     global.dulkongDeletePlan = function (planId) {
       const eventId = 'plan:' + planId
-      const existingEvent = calendar.getEventById(eventId)
       const existingIndex = events.findIndex(function (event) {
         return event.id === eventId
       })
 
-      if (existingEvent) existingEvent.remove()
+      removeCalendarDisplayEvents(calendar, eventId)
       if (existingIndex >= 0) events.splice(existingIndex, 1)
       renderSelectedDate(root, events, selectedDate, openPlan)
       setModalOpen(modal, false)
@@ -328,5 +369,8 @@
     observer.observe(document.body, { childList: true, subtree: true })
   }
 
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { createCalendarDisplayEvents, eventOccursOn }
+  }
   global.dulkongInitCalendarPage = initCalendarPage
-})(window)
+})(typeof window === 'undefined' ? globalThis : window)
