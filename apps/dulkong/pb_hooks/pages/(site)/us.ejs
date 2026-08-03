@@ -27,11 +27,40 @@
     anniversaryEmoji: '',
   }) %>">
   <div class="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-30">
-    <header class="flex items-center justify-between py-2">
-      <div>
+    <header class="flex items-center gap-3 py-2">
+      <div class="shrink-0">
         <p class="m-0 text-xs font-bold tracking-[0.1em] text-[#98a081]">둘콩 커플</p>
         <h1 class="mt-1 mb-0 text-[28px] font-extrabold tracking-[-0.045em]">우리</h1>
       </div>
+      <section
+        class="ml-auto flex min-w-0 items-center gap-2 rounded-[18px] border border-[#e3ead5] bg-[#f2f6e9] px-2.5 py-2 shadow-[0_6px_18px_rgba(70,76,53,0.06)]"
+        aria-labelledby="push-title">
+        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e3efd0] text-[#607a3c]">
+          <span
+            class="i-lucide-bell h-4 w-4"
+            aria-hidden="true"></span>
+        </span>
+        <div class="min-w-0">
+          <h2
+            id="push-title"
+            class="m-0 text-[11px] font-bold whitespace-nowrap">
+            채팅 알림
+          </h2>
+          <p
+            id="push-status"
+            class="mt-0.5 mb-0 text-[10px] font-medium whitespace-nowrap text-[#7f8c68]">
+            <%= pushConfigured ? (pushEnabled ? '켜짐' : '꺼짐') : '준비 중' %>
+          </p>
+        </div>
+        <% if (pushConfigured) { %>
+        <button
+          id="push-toggle"
+          type="button"
+          class="h-8 shrink-0 rounded-full border-0 bg-[#354922] px-2.5 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-45">
+          <%= pushEnabled ? '끄기' : '받기' %>
+        </button>
+        <% } %>
+      </section>
     </header>
     <main class="mt-6 space-y-6">
       <section
@@ -84,35 +113,6 @@
           </button>
         </div>
         <%- include('anniversary-list.ejs', { anniversaries }) %>
-      </section>
-
-      <section
-        class="flex items-center gap-3 rounded-[22px] bg-white p-4 shadow-[0_7px_20px_rgba(48,49,43,0.05)]"
-        aria-labelledby="push-title">
-        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef5df] text-[#607a3c]">
-          <span
-            class="i-lucide-bell h-5 w-5"
-            aria-hidden="true"></span>
-        </span>
-        <div class="min-w-0 flex-1">
-          <h2
-            id="push-title"
-            class="m-0 text-sm font-bold">
-            채팅 알림
-          </h2>
-          <p
-            id="push-status"
-            class="mt-1 mb-0 text-xs leading-4.5 text-[#8b8a80]">
-            <%= pushConfigured ? (pushEnabled ? '이 기기의 알림 상태를 확인하고 있어요.' : '새 메시지를 놓치지 않도록 알려드려요.') : 'OneSignal 환경 설정이 필요해요.' %>
-          </p>
-        </div>
-        <button
-          id="push-toggle"
-          type="button"
-          class="min-h-10 shrink-0 rounded-full border-0 bg-[#354922] px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
-          <%= pushConfigured ? '' : 'disabled' %>>
-          <%= pushEnabled ? '알림 끄기' : '알림 받기' %>
-        </button>
       </section>
 
       <form
@@ -247,7 +247,7 @@
     }
 
     function render(enabled, message) {
-      button.textContent = enabled ? '알림 끄기' : '알림 받기'
+      button.textContent = enabled ? '끄기' : '받기'
       button.dataset.enabled = enabled ? 'true' : 'false'
       button.disabled = busy
       status.textContent = message
@@ -278,7 +278,7 @@
     button.disabled = true
 
     if (!window.__dulkongOneSignalReady) {
-      finish(false, 'OneSignal을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.')
+      finish(false, '준비 실패')
       return
     }
 
@@ -289,40 +289,40 @@
         const enabled = Boolean(subscription && subscription.optedIn)
 
         if (isIosDevice() && !isStandaloneWebApp()) {
-          render(false, 'iPhone에서는 홈 화면에 추가한 둘콩 앱에서 켤 수 있어요.')
+          render(false, '앱에서 설정')
           return
         }
 
         if (!subscription) {
-          render(false, '현재 브라우저에서는 웹 푸시를 지원하지 않아요.')
+          render(false, '지원 안 함')
           button.disabled = true
           return
         }
 
-        render(enabled, enabled ? '새 채팅이 오면 이 기기로 알려드려요.' : '새 메시지를 놓치지 않도록 알려드려요.')
+        render(enabled, enabled ? '켜짐' : '꺼짐')
       })
       .catch(function () {
-        finish(false, '알림 기능을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.')
+        finish(false, '준비 실패')
       })
 
     button.addEventListener('click', function () {
       if (busy) return
 
       if (isIosDevice() && !isStandaloneWebApp()) {
-        render(false, '공유 메뉴에서 홈 화면에 추가한 뒤 둘콩 앱으로 열어주세요.')
+        render(false, '앱에서 설정')
         return
       }
 
       const subscription = getSubscription()
       if (!subscription) {
-        render(false, '알림 기능이 아직 준비되지 않았어요.')
+        render(false, '준비 실패')
         return
       }
 
       const enable = !subscription.optedIn
       const operation = enable ? subscription.optIn() : subscription.optOut()
       busy = true
-      render(!enable, enable ? '알림 권한을 확인하고 있어요.' : '알림을 끄고 있어요.')
+      render(!enable, enable ? '확인 중' : '끄는 중')
 
       Promise.resolve(operation)
         .then(function () {
@@ -333,11 +333,11 @@
           return savePreference(enable)
         })
         .then(function () {
-          finish(enable, enable ? '새 채팅이 오면 이 기기로 알려드려요.' : '이 기기의 채팅 알림을 껐어요.')
+          finish(enable, enable ? '켜짐' : '꺼짐')
         })
         .catch(function (pushError) {
           console.warn('Dulkong push preference failed', pushError)
-          finish(Boolean(subscription.optedIn), String(pushError.message || '알림 설정을 바꾸지 못했어요.'))
+          finish(Boolean(subscription.optedIn), '설정 실패')
         })
     })
   })()

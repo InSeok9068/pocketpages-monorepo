@@ -119,6 +119,12 @@
           id="couple-calendar"
           class="couple-calendar min-w-0 overflow-hidden"
           data-calendar-events="<%= calendarEventsJson %>"></div>
+        <input
+          id="calendar-month-input"
+          type="month"
+          tabindex="-1"
+          class="pointer-events-none fixed h-px w-px opacity-0"
+          aria-label="이동할 월 선택" />
         <div
           class="mt-3 flex items-center justify-center gap-4 border-t border-[#ebe8dd] pt-3 text-[11px] font-bold text-[#89887e]">
           <span class="inline-flex items-center gap-1.5">

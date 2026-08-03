@@ -198,8 +198,11 @@
     const form = document.getElementById('plan-form')
     const deleteForm = document.getElementById('plan-delete-form')
     const addButton = document.getElementById('plan-add-button')
+    const monthInput = document.getElementById('calendar-month-input')
     const calendarApi = global.DulkongFullCalendar
-    if (!root || !modal || !form || !deleteForm || !addButton || !calendarApi) return
+    if (!root || !modal || !form || !deleteForm || !addButton || !monthInput || !calendarApi) {
+      return
+    }
     if (root.dataset.calendarInitialized === 'true') return
     root.dataset.calendarInitialized = 'true'
 
@@ -278,12 +281,56 @@
         renderSelectedDate(root, events, selectedDate, openPlan)
       },
       datesSet: function () {
+        syncMonthInput()
         renderSelectedDate(root, events, selectedDate, openPlan)
       },
     })
 
     calendar.render()
     global.dulkongCalendarInstance = calendar
+
+    const calendarTitle = root.querySelector('.couple-calendar-title')
+
+    function syncMonthInput() {
+      const calendarDate = calendar.getDate()
+      const year = String(calendarDate.getFullYear())
+      const month = String(calendarDate.getMonth() + 1).padStart(2, '0')
+      monthInput.value = year + '-' + month
+    }
+
+    function openMonthPicker() {
+      syncMonthInput()
+      if (typeof monthInput.showPicker === 'function') {
+        try {
+          monthInput.showPicker()
+          return
+        } catch {
+          monthInput.focus()
+          monthInput.click()
+          return
+        }
+      }
+      monthInput.focus()
+      monthInput.click()
+    }
+
+    if (calendarTitle) {
+      calendarTitle.setAttribute('role', 'button')
+      calendarTitle.setAttribute('tabindex', '0')
+      calendarTitle.setAttribute('aria-label', '다른 달 선택')
+      calendarTitle.addEventListener('click', openMonthPicker)
+      calendarTitle.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        openMonthPicker()
+      })
+    }
+
+    monthInput.addEventListener('change', function () {
+      if (!/^\d{4}-\d{2}$/.test(monthInput.value)) return
+      selectedDate = monthInput.value + '-01'
+      calendar.gotoDate(selectedDate)
+    })
 
     global.dulkongApplyPlan = function (plan) {
       const sourceId = 'plan:' + plan.id
