@@ -104,6 +104,7 @@ function mapAnniversary(record, now) {
 
   return {
     id: String(record.get('id') || ''),
+    relatedUserId: String(record.get('relatedUser') || ''),
     kind: kind,
     title: String(record.get('title') || ''),
     eventDate: eventDate,

@@ -19,6 +19,7 @@ declare namespace types {
 
   type AnniversaryItem = {
     id: string
+    relatedUserId: string
     kind: string
     title: string
     eventDate: string

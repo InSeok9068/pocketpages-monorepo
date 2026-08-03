@@ -14,6 +14,7 @@
     anniversaryDate: '',
     anniversaryKind: 'custom',
     anniversaryRecurrence: 'none',
+    anniversaryRelatedUserId: '',
     anniversaryEmoji: '',
   })
   const userId = String(request.auth.get('id') || '')
@@ -24,7 +25,11 @@
     ['relationship_start', 'birthday', 'custom'].indexOf(String(form.anniversaryKind || '')) >= 0
       ? String(form.anniversaryKind)
       : 'custom'
-  const recurrence = String(form.anniversaryRecurrence || '') === 'yearly' ? 'yearly' : 'none'
+  const recurrence =
+    kind === 'birthday' || kind === 'relationship_start' || String(form.anniversaryRecurrence || '') === 'yearly'
+      ? 'yearly'
+      : 'none'
+  const relatedUserId = kind === 'birthday' ? String(form.anniversaryRelatedUserId || '').trim() : ''
 
   dbg('dulkong/xapi/anniversaries/update:start', { anniversaryId, userId, title, eventDate, kind })
 
@@ -32,8 +37,11 @@
     if (!anniversaryId) throw new Error('수정할 기념일을 찾지 못했어요.')
     if (!title) throw new Error('기념일 이름을 입력해 주세요.')
     if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) throw new Error('날짜를 선택해 주세요.')
+    if (kind === 'birthday' && !relatedUserId) throw new Error('생일 주인공을 선택해 주세요.')
+    if (relatedUserId) $app.findFirstRecordByFilter('users', 'id = {:relatedUserId}', { relatedUserId })
 
     const record = $app.findFirstRecordByFilter('anniversaries', 'id = {:anniversaryId}', { anniversaryId })
+    record.set('relatedUser', relatedUserId)
     record.set('kind', kind)
     record.set('title', title)
     record.set('eventDate', dateutil.toDateOnlyIso(eventDate))
@@ -55,6 +63,7 @@
       anniversaryDate: '',
       anniversaryKind: 'custom',
       anniversaryRecurrence: 'none',
+      anniversaryRelatedUserId: '',
       anniversaryEmoji: '',
     })
     patchAppToast(datastar, '기념일을 수정했어요.', 'success')

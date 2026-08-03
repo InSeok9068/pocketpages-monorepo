@@ -15,7 +15,17 @@
 
 <div
   class="mx-auto min-h-[100dvh] w-full max-w-[480px] bg-[#fbfaf6] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
-  data-signals="<%= stringify({ anniversaryModalOpen: false, anniversaryModalMode: 'create', anniversaryId: '', anniversaryTitle: '', anniversaryDate: '', anniversaryKind: 'custom', anniversaryRecurrence: 'none', anniversaryEmoji: '' }) %>">
+  data-signals="<%= stringify({
+  anniversaryModalOpen: false,
+  anniversaryModalMode: 'create',
+  anniversaryId: '',
+  anniversaryTitle: '',
+  anniversaryDate: '',
+  anniversaryKind: 'custom',
+  anniversaryRecurrence: 'none',
+  anniversaryRelatedUserId: '',
+  anniversaryEmoji: '',
+}) %>">
   <div class="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-30">
     <header class="flex items-center justify-between py-2">
       <div>
@@ -58,7 +68,7 @@
           </h2>
           <button
             type="button"
-            data-on:click="$anniversaryModalMode = 'create'; $anniversaryId = ''; $anniversaryTitle = ''; $anniversaryDate = ''; $anniversaryKind = 'custom'; $anniversaryRecurrence = 'none'; $anniversaryEmoji = ''; $anniversaryModalOpen = true"
+            data-on:click="$anniversaryModalMode = 'create'; $anniversaryId = ''; $anniversaryTitle = ''; $anniversaryDate = ''; $anniversaryKind = 'custom'; $anniversaryRecurrence = 'none'; $anniversaryRelatedUserId = ''; $anniversaryEmoji = ''; $anniversaryModalOpen = true"
             class="border-0 bg-transparent text-sm font-bold text-[#71834f]">
             +추가
           </button>
@@ -156,6 +166,7 @@
         <div class="grid grid-cols-2 gap-2">
           <select
             data-bind:anniversary-kind
+            data-on:change="if ($anniversaryKind === 'birthday' || $anniversaryKind === 'relationship_start') $anniversaryRecurrence = 'yearly'"
             class="box-border min-w-0 rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm">
             <option value="custom">기념일</option>
             <option value="relationship_start">우리가 만난 날</option>
@@ -163,11 +174,24 @@
           </select>
           <select
             data-bind:anniversary-recurrence
+            data-attr:disabled="$anniversaryKind === 'birthday' || $anniversaryKind === 'relationship_start'"
             class="box-border min-w-0 rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm">
             <option value="none">한 번만</option>
             <option value="yearly">매년</option>
           </select>
         </div>
+        <label
+          data-show="$anniversaryKind === 'birthday'"
+          class="block">
+          <span class="mb-1.5 block px-1 text-xs font-bold text-[#77766d]">누구의 생일인가요?</span>
+          <select
+            data-bind:anniversary-related-user-id
+            class="box-border w-full rounded-[18px] border border-[#e4e1d6] bg-[#f7f5ef] px-3 py-3 text-sm">
+            <option value="">선택해 주세요</option>
+            <option value="<%= profiles.current.id %>"><%= profiles.current.name %></option>
+            <option value="<%= profiles.partner.id %>"><%= profiles.partner.name %></option>
+          </select>
+        </label>
         <input
           data-bind:anniversary-emoji
           type="text"
