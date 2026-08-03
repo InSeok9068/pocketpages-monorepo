@@ -1,0 +1,63 @@
+<script server>
+  const coupleData = resolve('couple-data')
+  const { patchAppToast } = resolve('patch-app-toast')
+
+  if (request.method !== 'GET' || !request.auth) {
+    patchAppToast(datastar, '로그인이 필요합니다.', 'error')
+    return
+  }
+
+  const signals = datastar.requestSignals({
+    newestMessageCreated: '',
+    newestMessageId: '',
+    chatStickToBottom: false,
+    chatAtBottom: true,
+    chatHasNewMessage: false,
+  })
+  const userId = String(request.auth.get('id') || '')
+  const newestMessageCreated = String(signals.newestMessageCreated || '')
+  const newestMessageId = String(signals.newestMessageId || '')
+  const stickToBottom = Boolean(signals.chatStickToBottom)
+
+  dbg('dulkong/xapi/messages/updates:query', { userId, newestMessageCreated, newestMessageId })
+
+  try {
+    const profiles = coupleData.getCoupleProfiles($app, request.auth)
+    const messages = coupleData.getMessagesAfter($app, userId, newestMessageCreated, newestMessageId, 100)
+    const newestMessage = messages.length ? messages[messages.length - 1] : null
+
+    if (messages.length) {
+      datastar.removeElements('#message-empty-state')
+      datastar.patchElements(include('message-rows.ejs', { messages: messages }), {
+        selector: '#message-rows',
+        mode: 'append',
+      })
+    }
+
+    const updatedSignals = {
+      chatUpdating: false,
+      chatStickToBottom: false,
+      chatPartnerReadAt: profiles.partner.lastReadAt,
+      chatAtBottom: messages.length ? stickToBottom : Boolean(signals.chatAtBottom),
+      chatHasNewMessage: messages.length ? !stickToBottom : Boolean(signals.chatHasNewMessage),
+      newestMessageCreated: newestMessage ? newestMessage.createdAt : newestMessageCreated,
+      newestMessageId: newestMessage ? newestMessage.id : newestMessageId,
+    }
+
+    datastar.patchSignals(updatedSignals)
+    datastar.executeScript(
+      'if(window.dulkongApplyChatReadReceipt) window.dulkongApplyChatReadReceipt('
+        + JSON.stringify(profiles.partner.lastReadAt)
+        + '); if(window.dulkongFinishChatUpdate) window.dulkongFinishChatUpdate('
+        + JSON.stringify(stickToBottom)
+        + ');'
+    )
+  } catch (exception) {
+    error('dulkong/xapi/messages/updates:failed', {
+      userId,
+      error: String(exception.message || exception),
+    })
+    datastar.patchSignals({ chatUpdating: false, chatStickToBottom: false })
+    patchAppToast(datastar, '새 메시지를 불러오지 못했어요.', 'error')
+  }
+</script>

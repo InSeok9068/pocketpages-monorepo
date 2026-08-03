@@ -1,10 +1,18 @@
 <main
   id="message-list"
-  class="message-list--positioning relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-5"
-  data-on:scroll__throttle.100ms="$chatAtBottom = evt.currentTarget.scrollHeight - evt.currentTarget.scrollTop - evt.currentTarget.clientHeight < 48"
+  class="<%= positionOnLoad ? 'message-list--positioning ' : '' %>relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-5"
+  data-on:scroll__throttle.100ms="
+    $chatAtBottom = evt.currentTarget.scrollHeight - evt.currentTarget.scrollTop - evt.currentTarget.clientHeight < 48
+    if ($chatAtBottom && $chatHasNewMessage) {
+      $chatHasNewMessage = false
+      @post('/xapi/messages/read')
+    }
+  "
   aria-live="polite">
   <% if (!messages.length) { %>
-  <div class="flex h-full min-h-64 flex-col items-center justify-center text-center">
+  <div
+    id="message-empty-state"
+    class="flex h-full min-h-64 flex-col items-center justify-center text-center">
     <span
       class="flex h-15 w-15 items-center justify-center rounded-full bg-[#e7efd8] text-2xl"
       aria-hidden="true">
@@ -13,7 +21,7 @@
     <p class="mt-4 mb-0 text-sm font-bold text-[#55554d]">아직 대화가 없어요.</p>
     <p class="mt-1 mb-0 text-xs text-[#99988e]"><%= partnerName %>님에게 첫 인사를 보내 보세요.</p>
   </div>
-  <% } else { %>
+  <% } %>
   <div
     id="message-history-sentinel"
     data-show="$messageHasMore"
@@ -27,5 +35,4 @@
     class="space-y-4">
     <%- include('message-rows.ejs', { messages }) %>
   </div>
-  <% } %>
 </main>

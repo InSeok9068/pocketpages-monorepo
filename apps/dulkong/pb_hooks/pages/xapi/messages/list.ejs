@@ -14,11 +14,19 @@
     partnerLastReadAt: profiles.partner.lastReadAt,
   })
   const oldestMessage = page.messages.length ? page.messages[0] : null
+  const newestMessage = page.messages.length ? page.messages[page.messages.length - 1] : null
   dbg('dulkong/xapi/messages/list:query', { userId })
-  datastar.patchElements(include('message-list.ejs', { messages: page.messages, partnerName: profiles.partner.name }), {
-    selector: '#message-list',
-    mode: 'outer',
-  })
+  datastar.patchElements(
+    include('message-list.ejs', {
+      messages: page.messages,
+      partnerName: profiles.partner.name,
+      positionOnLoad: false,
+    }),
+    {
+      selector: '#message-list',
+      mode: 'outer',
+    }
+  )
   datastar.patchSignals({
     chatAtBottom: true,
     chatHasNewMessage: false,
@@ -26,8 +34,13 @@
     messageHistoryLoading: false,
     oldestMessageCreated: oldestMessage ? oldestMessage.createdAt : '',
     oldestMessageId: oldestMessage ? oldestMessage.id : '',
+    newestMessageCreated: newestMessage ? newestMessage.createdAt : '',
+    newestMessageId: newestMessage ? newestMessage.id : '',
+    chatPartnerReadAt: profiles.partner.lastReadAt,
   })
   datastar.executeScript(
-    "requestAnimationFrame(function(){requestAnimationFrame(function(){var list=document.getElementById('message-list'); if(list){list.scrollTop=list.scrollHeight;list.classList.remove('message-list--positioning');list.dataset.ready='true';}});});"
+    'if(window.dulkongApplyChatReadReceipt) window.dulkongApplyChatReadReceipt('
+      + JSON.stringify(profiles.partner.lastReadAt)
+      + '); if(window.dulkongFinishChatUpdate) window.dulkongFinishChatUpdate(true);'
   )
 </script>

@@ -277,7 +277,7 @@ function listPhotos(app, filter) {
 
 /**
  * 메시지 레코드를 표시용 데이터로 변환합니다.
- * @param {core.Record} record 메시지 레코드
+ * @param {types.ReadableRecord} record 메시지 레코드
  * @param {string} currentUserId 현재 사용자 ID
  * @returns {types.MessageItem} 메시지 항목
  */
@@ -342,6 +342,37 @@ function getMessagePage(app, currentUserId, options) {
 }
 
 /**
+ * 지정한 메시지 이후의 새 메시지를 오래된 순으로 조회합니다.
+ * @param {types.CoupleDataApp} app PocketBase 앱
+ * @param {string} currentUserId 현재 사용자 ID
+ * @param {string} afterCreated 마지막으로 반영한 생성 시각
+ * @param {string} afterId 마지막으로 반영한 메시지 ID
+ * @param {number} [limit] 조회 개수
+ * @returns {types.MessageItem[]} 새 메시지 목록
+ */
+function getMessagesAfter(app, currentUserId, afterCreated, afterId, limit) {
+  const normalizedAfterCreated = String(afterCreated || '')
+  const normalizedAfterId = String(afterId || '')
+  const normalizedLimit = Math.max(1, Math.min(200, Number(limit) || 100))
+  let filter = "deletedAt = ''"
+  let filterValues = {}
+
+  if (normalizedAfterCreated && normalizedAfterId) {
+    filter += ' && (created > {:afterCreated} || (created = {:afterCreated} && id > {:afterId}))'
+    filterValues = {
+      afterCreated: normalizedAfterCreated,
+      afterId: normalizedAfterId,
+    }
+  }
+
+  return app
+    .findRecordsByFilter('messages', filter, 'created,id', normalizedLimit, 0, filterValues)
+    .map(function (record) {
+      return mapMessage(record, currentUserId)
+    })
+}
+
+/**
  * 현재 사용자가 읽지 않은 상대방 메시지 수를 조회합니다.
  * @param {types.CoupleDataApp} app PocketBase 앱
  * @param {string} currentUserId 현재 사용자 ID
@@ -374,6 +405,7 @@ function listMessages(app, currentUserId) {
 module.exports = {
   getChatBackgroundPhoto,
   getCoupleProfiles,
+  getMessagesAfter,
   getProfileName,
   getMessagePage,
   getUnreadMessageCount,

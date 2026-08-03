@@ -7,6 +7,7 @@
   })
   const messages = messagePage.messages
   const oldestMessage = messages.length ? messages[0] : null
+  const newestMessage = messages.length ? messages[messages.length - 1] : null
   const backgroundPhoto = coupleData.getChatBackgroundPhoto($app)
 
   meta('title', '대화 | 둘콩')
@@ -22,27 +23,47 @@
     chatHandledRevision: 0,
     chatReceiptRevision: 0,
     chatHandledReceiptRevision: 0,
+    chatReceiptUpdating: false,
+    chatPartnerReadAt: profiles.partner.lastReadAt,
     chatReadAt: '',
     chatSending: false,
+    chatUpdating: false,
+    chatStickToBottom: false,
     chatAtBottom: true,
     chatHasNewMessage: false,
     messageHasMore: messagePage.hasMore,
     messageHistoryLoading: false,
     oldestMessageCreated: oldestMessage ? oldestMessage.createdAt : '',
     oldestMessageId: oldestMessage ? oldestMessage.id : '',
+    newestMessageCreated: newestMessage ? newestMessage.createdAt : '',
+    newestMessageId: newestMessage ? newestMessage.id : '',
   }) %>"
   data-init="@post('/xapi/messages/read')"
   data-effect="
     if ($chatRevision && $chatRevision !== $chatHandledRevision) {
-      $chatHandledRevision = $chatRevision
-      if ($chatAtBottom && document.visibilityState === 'visible') {
-        @get('/xapi/messages/list')
-        @post('/xapi/messages/read')
-      } else $chatHasNewMessage = true
+      if (!$chatUpdating) {
+        $chatHandledRevision = $chatRevision
+        $chatUpdating = true
+        $chatStickToBottom = $chatAtBottom && document.visibilityState === 'visible'
+        if (!$chatStickToBottom) $chatHasNewMessage = true
+        @get('/xapi/messages/updates')
+        if ($chatStickToBottom) @post('/xapi/messages/read')
+      }
     }
     if ($chatReceiptRevision && $chatReceiptRevision !== $chatHandledReceiptRevision) {
-      $chatHandledReceiptRevision = $chatReceiptRevision
-      if ($chatAtBottom && document.visibilityState === 'visible') @get('/xapi/messages/list')
+      if (!$chatReceiptUpdating) {
+        $chatHandledReceiptRevision = $chatReceiptRevision
+        $chatReceiptUpdating = true
+        @get('/xapi/messages/receipt')
+      }
+    }
+  "
+  data-on:focus__window="
+    if (document.visibilityState === 'visible' && !$chatUpdating) {
+      $chatUpdating = true
+      $chatStickToBottom = $chatAtBottom
+      @get('/xapi/messages/updates')
+      if ($chatStickToBottom) @post('/xapi/messages/read')
     }
   ">
   <% if (backgroundPhoto) { %>
@@ -90,14 +111,21 @@
     </div>
   </header>
 
-  <%- include('message-list.ejs', { messages, partnerName: profiles.partner.name }) %>
+  <%- include('message-list.ejs', { messages, partnerName: profiles.partner.name, positionOnLoad: true }) %>
 
   <button
     type="button"
     data-show="$chatHasNewMessage"
     data-on:click="
       $chatHasNewMessage = false
-      @get('/xapi/messages/list')
+      $chatAtBottom = true
+      $chatStickToBottom = true
+      window.dulkongChatForceBottom = true
+      window.dulkongScrollChatToBottom()
+      if (!$chatUpdating) {
+        $chatUpdating = true
+        @get('/xapi/messages/updates')
+      }
       @post('/xapi/messages/read')
     "
     class="chat-new-message-button z-10 flex items-center gap-1.5 rounded-full border-0 bg-[#354922] px-4 py-2.5 text-xs font-bold text-white shadow-[0_10px_28px_rgba(53,73,34,0.24)]">
@@ -138,6 +166,11 @@
   </form>
 
   <script>
+    window.dulkongIsChatAtBottom = function () {
+      var list = document.getElementById('message-list')
+      return !list || list.scrollHeight - list.scrollTop - list.clientHeight < 48
+    }
+
     window.dulkongScrollChatToBottom = function () {
       requestAnimationFrame(function () {
         var list = document.getElementById('message-list')
@@ -146,6 +179,36 @@
         list.classList.remove('message-list--positioning')
         list.dataset.ready = 'true'
       })
+    }
+
+    window.dulkongDeduplicateChatMessages = function () {
+      var seenMessageIds = {}
+      var rows = document.querySelectorAll('#message-rows > [id^="message-"]')
+
+      Array.prototype.forEach.call(rows, function (row) {
+        if (seenMessageIds[row.id]) seenMessageIds[row.id].remove()
+        seenMessageIds[row.id] = row
+      })
+    }
+
+    window.dulkongApplyChatReadReceipt = function (readAt) {
+      var selectedReceipt = null
+      var rows = document.querySelectorAll('#message-rows > [data-message-mine="true"]')
+
+      Array.prototype.forEach.call(rows, function (row) {
+        var receipt = row.querySelector('[data-chat-read-receipt]')
+        if (!receipt) return
+        receipt.hidden = true
+        if (readAt && row.dataset.messageCreated <= readAt) selectedReceipt = receipt
+      })
+
+      if (selectedReceipt) selectedReceipt.hidden = false
+    }
+
+    window.dulkongFinishChatUpdate = function (stickToBottom) {
+      window.dulkongDeduplicateChatMessages()
+      if (stickToBottom || window.dulkongChatForceBottom) window.dulkongScrollChatToBottom()
+      window.dulkongChatForceBottom = false
     }
 
     window.dulkongScrollChatToBottom()

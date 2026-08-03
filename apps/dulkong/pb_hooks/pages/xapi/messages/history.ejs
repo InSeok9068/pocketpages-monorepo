@@ -11,6 +11,7 @@
   const userId = String(request.auth.get('id') || '')
   const beforeCreated = String(signals.oldestMessageCreated || '')
   const beforeId = String(signals.oldestMessageId || '')
+  const profiles = coupleData.getCoupleProfiles($app, request.auth)
 
   dbg('dulkong/xapi/messages/history:query', { userId, beforeCreated, beforeId })
 
@@ -24,6 +25,7 @@
       limit: 50,
       beforeCreated: beforeCreated,
       beforeId: beforeId,
+      partnerLastReadAt: profiles.partner.lastReadAt,
     })
     const oldestMessage = page.messages.length ? page.messages[0] : null
 
@@ -43,7 +45,9 @@
       oldestMessageId: oldestMessage ? oldestMessage.id : beforeId,
     })
     datastar.executeScript(
-      "requestAnimationFrame(function(){var list=document.getElementById('message-list'); var anchor=window.dulkongHistoryAnchor; if(list&&anchor) list.scrollTop=list.scrollHeight-anchor.height+anchor.top; window.dulkongHistoryAnchor=null;});"
+      "requestAnimationFrame(function(){var list=document.getElementById('message-list'); var anchor=window.dulkongHistoryAnchor; if(list&&anchor) list.scrollTop=list.scrollHeight-anchor.height+anchor.top; window.dulkongHistoryAnchor=null; if(window.dulkongApplyChatReadReceipt) window.dulkongApplyChatReadReceipt("
+        + JSON.stringify(profiles.partner.lastReadAt)
+        + ');});'
     )
   } catch (exception) {
     error('dulkong/xapi/messages/history:failed', { userId, error: String(exception.message || exception) })

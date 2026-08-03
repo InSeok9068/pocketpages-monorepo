@@ -1,0 +1,31 @@
+<script server>
+  const coupleData = resolve('couple-data')
+
+  if (request.method !== 'GET' || !request.auth) {
+    return
+  }
+
+  const userId = String(request.auth.get('id') || '')
+
+  try {
+    const profiles = coupleData.getCoupleProfiles($app, request.auth)
+    const partnerReadAt = String(profiles.partner.lastReadAt || '')
+
+    dbg('dulkong/xapi/messages/receipt:query', { userId, partnerReadAt })
+    datastar.patchSignals({
+      chatReceiptUpdating: false,
+      chatPartnerReadAt: partnerReadAt,
+    })
+    datastar.executeScript(
+      'if(window.dulkongApplyChatReadReceipt) window.dulkongApplyChatReadReceipt('
+        + JSON.stringify(partnerReadAt)
+        + ');'
+    )
+  } catch (exception) {
+    error('dulkong/xapi/messages/receipt:failed', {
+      userId,
+      error: String(exception.message || exception),
+    })
+    datastar.patchSignals({ chatReceiptUpdating: false })
+  }
+</script>

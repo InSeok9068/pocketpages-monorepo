@@ -1,6 +1,10 @@
 declare namespace types {
   type CoupleDataApp = Pick<PocketBase, 'findFirstRecordByFilter' | 'findRecordsByFilter'>
 
+  type ReadableRecord = {
+    get(name: string): any
+  }
+
   type CoupleProfile = {
     id: string
     profileKey: string

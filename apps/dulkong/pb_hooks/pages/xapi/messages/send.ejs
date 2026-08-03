@@ -8,7 +8,13 @@
     return
   }
 
-  const signals = datastar.requestSignals({ draft: '', clientMessageId: '', clientId: '' })
+  const signals = datastar.requestSignals({
+    draft: '',
+    clientMessageId: '',
+    clientId: '',
+    newestMessageCreated: '',
+    newestMessageId: '',
+  })
   const userId = String(request.auth.get('id') || '')
   const bodyText = String(signals.draft || '').trim()
   const clientMessageId = String(signals.clientMessageId || '').trim() || 'web_' + String(new Date().getTime())
@@ -31,28 +37,33 @@
 
     info('dulkong/xapi/messages/send:success', { messageId: String(record.get('id') || ''), userId })
     const profiles = coupleData.getCoupleProfiles($app, request.auth)
-    const page = coupleData.getMessagePage($app, userId, {
-      limit: 50,
-      partnerLastReadAt: profiles.partner.lastReadAt,
-    })
-    const oldestMessage = page.messages.length ? page.messages[0] : null
-    datastar.patchElements(
-      include('message-list.ejs', { messages: page.messages, partnerName: profiles.partner.name }),
-      { selector: '#message-list', mode: 'outer' }
+    const messages = coupleData.getMessagesAfter(
+      $app,
+      userId,
+      String(signals.newestMessageCreated || ''),
+      String(signals.newestMessageId || ''),
+      100
     )
+    const newestMessage = messages.length ? messages[messages.length - 1] : coupleData.mapMessage(record, userId)
+    datastar.removeElements('#message-empty-state')
+    datastar.patchElements(include('message-rows.ejs', { messages: messages.length ? messages : [newestMessage] }), {
+      selector: '#message-rows',
+      mode: 'append',
+    })
     datastar.patchSignals({
       draft: '',
       clientMessageId: '',
       chatSending: false,
       chatAtBottom: true,
       chatHasNewMessage: false,
-      messageHasMore: page.hasMore,
-      messageHistoryLoading: false,
-      oldestMessageCreated: oldestMessage ? oldestMessage.createdAt : '',
-      oldestMessageId: oldestMessage ? oldestMessage.id : '',
+      newestMessageCreated: newestMessage.createdAt,
+      newestMessageId: newestMessage.id,
+      chatPartnerReadAt: profiles.partner.lastReadAt,
     })
     datastar.executeScript(
-      "requestAnimationFrame(function(){requestAnimationFrame(function(){var draft=document.getElementById('chat-draft'); var list=document.getElementById('message-list'); if(draft) draft.value=''; if(list){list.scrollTop=list.scrollHeight;list.classList.remove('message-list--positioning');list.dataset.ready='true';}});});"
+      "var draft=document.getElementById('chat-draft'); if(draft) draft.value=''; if(window.dulkongApplyChatReadReceipt) window.dulkongApplyChatReadReceipt("
+        + JSON.stringify(profiles.partner.lastReadAt)
+        + '); if(window.dulkongFinishChatUpdate) window.dulkongFinishChatUpdate(true);'
     )
     datastar.realtime.patchSignals({ chatRevision: new Date().getTime() }, undefined, {
       filter: function (clientId) {

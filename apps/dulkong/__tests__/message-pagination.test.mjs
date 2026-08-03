@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { test } from 'node:test'
 
 const require = createRequire(import.meta.url)
-const { getMessagePage, getUnreadMessageCount } = require('../pb_hooks/pages/_private/couple-data.js')
+const { getMessagePage, getMessagesAfter, getUnreadMessageCount } = require('../pb_hooks/pages/_private/couple-data.js')
 
 function messageRecord(id, created, sender, body) {
   const fields = { id, created, sender, body }
@@ -76,6 +76,39 @@ test('message page marks only the latest message read by the partner', () => {
     page.messages.filter((message) => message.showReadReceipt).map((message) => message.id),
     ['message-2']
   )
+})
+
+test('message updates query only messages after the latest rendered cursor', () => {
+  const calls = []
+  const records = [
+    messageRecord('message-3', '2026-07-21 14:03:03.000Z', 'solmi', '셋'),
+    messageRecord('message-4', '2026-07-21 14:03:04.000Z', 'inseok', '넷'),
+  ]
+  const app = {
+    findRecordsByFilter(...args) {
+      calls.push(args)
+      return records
+    },
+  }
+
+  const messages = getMessagesAfter(app, 'inseok', '2026-07-21 14:03:02.000Z', 'message-2', 100)
+
+  assert.deepEqual(
+    messages.map((message) => message.id),
+    ['message-3', 'message-4']
+  )
+  assert.deepEqual(
+    messages.map((message) => message.mine),
+    [false, true]
+  )
+  assert.match(calls[0][1], /created > \{:afterCreated\}/)
+  assert.match(calls[0][1], /created = \{:afterCreated\} && id > \{:afterId\}/)
+  assert.equal(calls[0][2], 'created,id')
+  assert.equal(calls[0][3], 100)
+  assert.deepEqual(calls[0][5], {
+    afterCreated: '2026-07-21 14:03:02.000Z',
+    afterId: 'message-2',
+  })
 })
 
 test('unread message count queries only newer partner messages', () => {
