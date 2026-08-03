@@ -18,27 +18,27 @@
     role="button"
     tabindex="0"
     data-on:click="
-      $anniversaryModalMode = 'edit';
-      $anniversaryId = <%= stringify(anniversary.id) %>;
-      $anniversaryTitle = <%= stringify(anniversary.title) %>;
-      $anniversaryDate = <%= stringify(anniversary.eventDate) %>;
-      $anniversaryKind = <%= stringify(anniversary.kind) %>;
-      $anniversaryRecurrence = <%= stringify(anniversary.recurrence) %>;
-      $anniversaryRelatedUserId = <%= stringify(anniversary.relatedUserId) %>;
-      $anniversaryEmoji = <%= stringify(anniversary.emoji) %>;
+      $anniversaryModalMode = 'edit'
+      $anniversaryId = <%= stringify(anniversary.id) %>
+      $anniversaryTitle = <%= stringify(anniversary.title) %>
+      $anniversaryDate = <%= stringify(anniversary.eventDate) %>
+      $anniversaryKind = <%= stringify(anniversary.kind) %>
+      $anniversaryRecurrence = <%= stringify(anniversary.recurrence) %>
+      $anniversaryRelatedUserId = <%= stringify(anniversary.relatedUserId) %>
+      $anniversaryEmoji = <%= stringify(anniversary.emoji) %>
       $anniversaryModalOpen = true
     "
     data-on:keydown="
       if (evt.key === 'Enter' || evt.key === ' ') {
-        evt.preventDefault();
-        $anniversaryModalMode = 'edit';
-        $anniversaryId = <%= stringify(anniversary.id) %>;
-        $anniversaryTitle = <%= stringify(anniversary.title) %>;
-        $anniversaryDate = <%= stringify(anniversary.eventDate) %>;
-        $anniversaryKind = <%= stringify(anniversary.kind) %>;
-        $anniversaryRecurrence = <%= stringify(anniversary.recurrence) %>;
-        $anniversaryRelatedUserId = <%= stringify(anniversary.relatedUserId) %>;
-        $anniversaryEmoji = <%= stringify(anniversary.emoji) %>;
+        evt.preventDefault()
+        $anniversaryModalMode = 'edit'
+        $anniversaryId = <%= stringify(anniversary.id) %>
+        $anniversaryTitle = <%= stringify(anniversary.title) %>
+        $anniversaryDate = <%= stringify(anniversary.eventDate) %>
+        $anniversaryKind = <%= stringify(anniversary.kind) %>
+        $anniversaryRecurrence = <%= stringify(anniversary.recurrence) %>
+        $anniversaryRelatedUserId = <%= stringify(anniversary.relatedUserId) %>
+        $anniversaryEmoji = <%= stringify(anniversary.emoji) %>
         $anniversaryModalOpen = true
       }
     "
@@ -61,7 +61,7 @@
       </strong>
       <button
         type="button"
-        data-on:click__stop="@post('/xapi/anniversaries/delete', {payload: {anniversaryId: '<%= anniversary.id %>'}})"
+        data-on:click__stop="@post('/xapi/anniversaries/delete', { payload: { anniversaryId: '<%= anniversary.id %>' } })"
         class="flex h-8 w-8 items-center justify-center rounded-full border-0 bg-[#f4f2eb] text-[#aaa99f]"
         aria-label="<%= anniversary.title %> 삭제">
         <span

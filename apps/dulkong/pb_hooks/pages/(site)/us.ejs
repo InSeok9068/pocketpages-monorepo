@@ -16,16 +16,16 @@
 <div
   class="mx-auto min-h-[100dvh] w-full max-w-[480px] bg-[#fbfaf6] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
   data-signals="<%= stringify({
-  anniversaryModalOpen: false,
-  anniversaryModalMode: 'create',
-  anniversaryId: '',
-  anniversaryTitle: '',
-  anniversaryDate: '',
-  anniversaryKind: 'custom',
-  anniversaryRecurrence: 'none',
-  anniversaryRelatedUserId: '',
-  anniversaryEmoji: '',
-}) %>">
+    anniversaryModalOpen: false,
+    anniversaryModalMode: 'create',
+    anniversaryId: '',
+    anniversaryTitle: '',
+    anniversaryDate: '',
+    anniversaryKind: 'custom',
+    anniversaryRecurrence: 'none',
+    anniversaryRelatedUserId: '',
+    anniversaryEmoji: '',
+  }) %>">
   <div class="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-30">
     <header class="flex items-center justify-between py-2">
       <div>
@@ -68,7 +68,17 @@
           </h2>
           <button
             type="button"
-            data-on:click="$anniversaryModalMode = 'create'; $anniversaryId = ''; $anniversaryTitle = ''; $anniversaryDate = ''; $anniversaryKind = 'custom'; $anniversaryRecurrence = 'none'; $anniversaryRelatedUserId = ''; $anniversaryEmoji = ''; $anniversaryModalOpen = true"
+            data-on:click="
+              $anniversaryModalMode = 'create'
+              $anniversaryId = ''
+              $anniversaryTitle = ''
+              $anniversaryDate = ''
+              $anniversaryKind = 'custom'
+              $anniversaryRecurrence = 'none'
+              $anniversaryRelatedUserId = ''
+              $anniversaryEmoji = ''
+              $anniversaryModalOpen = true
+            "
             class="border-0 bg-transparent text-sm font-bold text-[#71834f]">
             +추가
           </button>
@@ -149,7 +159,10 @@
       <form
         method="post"
         action="/xapi/anniversaries/create"
-        data-on:submit__prevent="if ($anniversaryModalMode === 'edit') @post('/xapi/anniversaries/update'); else @post('/xapi/anniversaries/create')"
+        data-on:submit__prevent="
+          if ($anniversaryModalMode === 'edit') @post('/xapi/anniversaries/update')
+          else @post('/xapi/anniversaries/create')
+        "
         class="space-y-3">
         <input
           data-bind:anniversary-title

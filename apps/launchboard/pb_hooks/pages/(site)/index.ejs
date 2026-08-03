@@ -29,34 +29,36 @@
 
 <div
   class="space-y-3"
-  data-signals="{
-    projectModalOpen: false,
-    projectName: '',
-    projectDescription: '',
-    userMenuOpen: false,
-    projectMessage: '',
-    projectMoveId: '',
-    projectMoveStatus: '',
-    projectMoveOrder: [],
-    projectActionOpen: false,
-    projectActionId: '',
-    projectActionName: '',
-    projectActionStatus: '',
-    projectActionHref: '',
-    projectActionTasksHref: '',
-    projectStatusId: '',
-    projectStatus: '',
-    compactProjectStatuses: {idea: true, building: true, launched: true, paused: true, discarded: true},
-    activeProjectStatus: (function () {
-      try {
-        const status = window.localStorage.getItem('launchboard:active-status') || 'idea'
-
-        return ['idea', 'building', 'launched', 'paused', 'discarded'].indexOf(status) >= 0 ? status : 'idea'
-      } catch (exception) {
-        return 'idea'
-      }
-    })()
-  }">
+  data-signals="
+    {
+      projectModalOpen: false,
+      projectName: '',
+      projectDescription: '',
+      userMenuOpen: false,
+      projectMessage: '',
+      projectMoveId: '',
+      projectMoveStatus: '',
+      projectMoveOrder: [],
+      projectActionOpen: false,
+      projectActionId: '',
+      projectActionName: '',
+      projectActionStatus: '',
+      projectActionHref: '',
+      projectActionTasksHref: '',
+      projectStatusId: '',
+      projectStatus: '',
+      compactProjectStatuses: { idea: true, building: true, launched: true, paused: true, discarded: true },
+      activeProjectStatus: (function () {
+        try {
+          const status = window.localStorage.getItem('launchboard:active-status') || 'idea'
+    
+          return ['idea', 'building', 'launched', 'paused', 'discarded'].indexOf(status) >= 0 ? status : 'idea'
+        } catch (exception) {
+          return 'idea'
+        }
+      })(),
+    }
+  ">
   <div
     class="relative z-30 flex justify-end"
     data-on:click__outside="$userMenuOpen = false">
@@ -158,7 +160,7 @@
         <a
           href="/"
           class="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#f2f4f6] px-3 text-sm font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
-          data-attr="{'href': $projectActionHref}">
+          data-attr="{ href: $projectActionHref }">
           <span
             class="i-lucide-panels-top-left h-4 w-4"
             aria-hidden="true"></span>
@@ -167,7 +169,7 @@
         <a
           href="/tasks"
           class="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#f2f4f6] px-3 text-sm font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
-          data-attr="{'href': $projectActionTasksHref}">
+          data-attr="{ href: $projectActionTasksHref }">
           <span
             class="i-lucide-list-todo h-4 w-4"
             aria-hidden="true"></span>
@@ -183,9 +185,19 @@
           <button
             type="button"
             class="inline-flex h-11 items-center justify-center gap-2 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#4e5968] hover:bg-[#eaf3ff] hover:text-[#1b64da]"
-            data-class="{'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]': $projectActionStatus === '<%= statusColumn.value %>', 'bg-[#f7f8fa] text-[#4e5968]': $projectActionStatus !== '<%= statusColumn.value %>'}"
-            data-attr="{'aria-pressed': $projectActionStatus === '<%= statusColumn.value %>' ? 'true' : 'false'}"
-            data-on:click="$projectStatusId = $projectActionId; $projectStatus = '<%= statusColumn.value %>'; document.querySelector('[data-project-status-trigger]').click()">
+            data-class="
+              {
+                'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]':
+                  $projectActionStatus === '<%= statusColumn.value %>',
+                'bg-[#f7f8fa] text-[#4e5968]': $projectActionStatus !== '<%= statusColumn.value %>',
+              }
+            "
+            data-attr="{ 'aria-pressed': $projectActionStatus === '<%= statusColumn.value %>' ? 'true' : 'false' }"
+            data-on:click="
+              $projectStatusId = $projectActionId
+              $projectStatus = '<%= statusColumn.value %>'
+              document.querySelector('[data-project-status-trigger]').click()
+            ">
             <span
               class="<%= statusColumn.icon %> h-4 w-4"
               aria-hidden="true"></span>
@@ -221,7 +233,12 @@
     style="display: none"
     class="fixed inset-0 z-50 !mt-0 flex items-end justify-center bg-[#191f28]/45 px-4 py-4"
     data-on:click="if (evt.target === el) $projectModalOpen = false"
-    data-on:keydown__window="if (evt.key === 'Escape') { $projectModalOpen = false; $userMenuOpen = false }">
+    data-on:keydown__window="
+      if (evt.key === 'Escape') {
+        $projectModalOpen = false
+        $userMenuOpen = false
+      }
+    ">
     <section
       class="w-full max-w-[420px] rounded-lg bg-white p-5 shadow-[0_24px_80px_rgba(25,31,40,0.28)]"
       data-on:click__stop="true">
@@ -243,7 +260,7 @@
       <form
         method="post"
         action="/xapi/projects/create"
-        data-on:submit="@post('/xapi/projects/create', {contentType: 'form'})"
+        data-on:submit="@post('/xapi/projects/create', { contentType: 'form' })"
         class="mt-5 grid gap-4">
         <label class="grid gap-2 text-sm font-semibold text-[#4e5968]">
           프로젝트명

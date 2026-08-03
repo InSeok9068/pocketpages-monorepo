@@ -99,37 +99,39 @@
 
 <div
   class="space-y-3 pb-20"
-  data-signals="{
-    taskModalOpen: false,
-    taskTitle: '',
-    taskDescription: '',
-    taskDueAt: '',
-    aiCopyModalOpen: false,
-    aiCopyFormat: 'markdown',
-    taskMessage: '',
-    moveTaskId: '',
-    moveStatus: '',
-    moveOrder: [],
-    taskBoardScope: 'project',
-    taskView: 'all',
-    taskActionOpen: false,
-    taskActionId: '',
-    taskActionTitle: '',
-    taskActionStatus: '',
-    taskActionHref: '',
-    taskActionProjectId: '',
-    taskActionBoardScope: 'project',
-    taskActionView: 'all',
-    activeTaskStatus: (function () {
-      try {
-        const status = window.localStorage.getItem('launchboard:task-active-status:<%= projectView.id %>') || 'todo'
-
-        return ['todo', 'doing', 'done', 'paused', 'canceled'].indexOf(status) >= 0 ? status : 'todo'
-      } catch (exception) {
-        return 'todo'
-      }
-    })()
-  }">
+  data-signals="
+    {
+      taskModalOpen: false,
+      taskTitle: '',
+      taskDescription: '',
+      taskDueAt: '',
+      aiCopyModalOpen: false,
+      aiCopyFormat: 'markdown',
+      taskMessage: '',
+      moveTaskId: '',
+      moveStatus: '',
+      moveOrder: [],
+      taskBoardScope: 'project',
+      taskView: 'all',
+      taskActionOpen: false,
+      taskActionId: '',
+      taskActionTitle: '',
+      taskActionStatus: '',
+      taskActionHref: '',
+      taskActionProjectId: '',
+      taskActionBoardScope: 'project',
+      taskActionView: 'all',
+      activeTaskStatus: (function () {
+        try {
+          const status = window.localStorage.getItem('launchboard:task-active-status:<%= projectView.id %>') || 'todo'
+    
+          return ['todo', 'doing', 'done', 'paused', 'canceled'].indexOf(status) >= 0 ? status : 'todo'
+        } catch (exception) {
+          return 'todo'
+        }
+      })(),
+    }
+  ">
   <%- include('app-nav.ejs', {
     activeNav: 'tasks',
     canCreateTask: true,
@@ -248,7 +250,7 @@
         method="post"
         action="/xapi/tasks/create"
         class="mt-4 grid gap-3"
-        data-on:submit="@post('/xapi/tasks/create', {contentType: 'form'})">
+        data-on:submit="@post('/xapi/tasks/create', { contentType: 'form' })">
         <input
           type="hidden"
           name="project_id"

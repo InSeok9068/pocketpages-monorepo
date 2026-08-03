@@ -29,7 +29,7 @@
       <a
         href="/"
         class="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#f2f4f6] px-3 text-sm font-bold text-[#4e5968] no-underline hover:bg-[#e5e8eb]"
-        data-attr="{'href': $taskActionHref}">
+        data-attr="{ href: $taskActionHref }">
         <span
           class="i-lucide-panel-top h-4 w-4"
           aria-hidden="true"></span>
@@ -38,7 +38,10 @@
       <button
         type="button"
         class="inline-flex h-11 items-center justify-center gap-2 rounded-lg border-0 bg-[#f2f4f6] px-3 text-sm font-bold text-[#4e5968] hover:bg-[#e5e8eb]"
-        data-on:click="$taskActionOpen = false; $taskModalOpen = true">
+        data-on:click="
+          $taskActionOpen = false
+          $taskModalOpen = true
+        ">
         <span
           class="i-lucide-plus h-4 w-4"
           aria-hidden="true"></span>
@@ -54,9 +57,22 @@
         <button
           type="button"
           class="inline-flex h-11 items-center justify-center gap-2 rounded-lg border-0 bg-[#f7f8fa] px-3 text-sm font-bold text-[#4e5968] hover:bg-[#eaf3ff] hover:text-[#1b64da]"
-          data-class="{'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]': $taskActionStatus === '<%= statusColumn.value %>', 'bg-[#f7f8fa] text-[#4e5968]': $taskActionStatus !== '<%= statusColumn.value %>'}"
-          data-attr="{'aria-pressed': $taskActionStatus === '<%= statusColumn.value %>' ? 'true' : 'false'}"
-          data-on:click="$moveTaskId = $taskActionId; $moveStatus = '<%= statusColumn.value %>'; $moveOrder = []; $taskBoardScope = $taskActionBoardScope; $taskView = $taskActionView; document.querySelector('[data-task-move-trigger]').click()">
+          data-class="
+            {
+              'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]':
+                $taskActionStatus === '<%= statusColumn.value %>',
+              'bg-[#f7f8fa] text-[#4e5968]': $taskActionStatus !== '<%= statusColumn.value %>',
+            }
+          "
+          data-attr="{ 'aria-pressed': $taskActionStatus === '<%= statusColumn.value %>' ? 'true' : 'false' }"
+          data-on:click="
+            $moveTaskId = $taskActionId
+            $moveStatus = '<%= statusColumn.value %>'
+            $moveOrder = []
+            $taskBoardScope = $taskActionBoardScope
+            $taskView = $taskActionView
+            document.querySelector('[data-task-move-trigger]').click()
+          ">
           <span
             class="<%= statusColumn.icon %> h-4 w-4"
             aria-hidden="true"></span>
@@ -70,7 +86,7 @@
       method="post"
       action="/xapi/tasks/delete"
       class="mt-4 border-t border-[#edf0f3] pt-3"
-      data-on:submit="@post('/xapi/tasks/delete', {contentType: 'form'})"
+      data-on:submit="@post('/xapi/tasks/delete', { contentType: 'form' })"
       data-on:click__stop="true">
       <input
         type="hidden"

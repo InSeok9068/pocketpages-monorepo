@@ -10,7 +10,20 @@
 
 <div
   class="mx-auto min-h-[100dvh] w-full max-w-[480px] bg-[#fbfaf6] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
-  data-signals="<%= stringify({ photoModalOpen: false, photoModalMode: 'create', photoEditId: '', photoEditIsChatBackground: false, photoCaption: '', photoTakenAt: '', photoLocationName: '', photoFilter: 'all', photoViewerOpen: false, photoViewerUrl: '', photoViewerCaption: '', photoViewerMeta: '' }) %>">
+  data-signals="<%= stringify({
+    photoModalOpen: false,
+    photoModalMode: 'create',
+    photoEditId: '',
+    photoEditIsChatBackground: false,
+    photoCaption: '',
+    photoTakenAt: '',
+    photoLocationName: '',
+    photoFilter: 'all',
+    photoViewerOpen: false,
+    photoViewerUrl: '',
+    photoViewerCaption: '',
+    photoViewerMeta: '',
+  }) %>">
   <div class="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-30">
     <header class="flex items-center justify-between py-2">
       <div>
@@ -19,7 +32,16 @@
       </div>
       <button
         type="button"
-        data-on:click="$photoModalMode = 'create'; $photoEditId = ''; $photoEditIsChatBackground = false; $photoCaption = ''; $photoTakenAt = ''; $photoLocationName = ''; if (window.dulkongPhotoPond) window.dulkongPhotoPond.removeFiles(); $photoModalOpen = true"
+        data-on:click="
+          $photoModalMode = 'create'
+          $photoEditId = ''
+          $photoEditIsChatBackground = false
+          $photoCaption = ''
+          $photoTakenAt = ''
+          $photoLocationName = ''
+          if (window.dulkongPhotoPond) window.dulkongPhotoPond.removeFiles()
+          $photoModalOpen = true
+        "
         class="flex h-11 w-11 items-center justify-center rounded-[16px] border-0 bg-[#dcebbf] text-[#4e672f] shadow-[0_6px_18px_rgba(92,112,57,0.15)]"
         aria-label="사진 추가">
         <span
@@ -35,8 +57,16 @@
         <% [{ value: 'all', label: '전체' }, { value: currentYear, label: currentYear + '년' }, { value: previousYear, label: previousYear + '년' }, { value: 'favorite', label: '즐겨찾기' }].forEach(function (filter) { %>
         <button
           type="button"
-          data-on:click="$photoFilter = '<%= filter.value %>'; @get('/xapi/photos/list')"
-          data-class="{'bg-[#354922] text-white': $photoFilter === '<%= filter.value %>', 'bg-[#efede5] text-[#77766d]': $photoFilter !== '<%= filter.value %>'}"
+          data-on:click="
+            $photoFilter = '<%= filter.value %>'
+            @get('/xapi/photos/list')
+          "
+          data-class="
+            {
+              'bg-[#354922] text-white': $photoFilter === '<%= filter.value %>',
+              'bg-[#efede5] text-[#77766d]': $photoFilter !== '<%= filter.value %>',
+            }
+          "
           class="shrink-0 rounded-full border-0 px-4 py-2 text-sm font-bold">
           <%= filter.label %>
         </button>
@@ -79,7 +109,10 @@
         method="post"
         action="/xapi/photos/upload"
         enctype="multipart/form-data"
-        data-on:submit__prevent="if ($photoModalMode === 'edit') @post('/xapi/photos/update'); else @post('/xapi/photos/upload', {contentType: 'form'})"
+        data-on:submit__prevent="
+          if ($photoModalMode === 'edit') @post('/xapi/photos/update')
+          else @post('/xapi/photos/upload', { contentType: 'form' })
+        "
         class="space-y-3">
         <div data-show="$photoModalMode === 'create'">
           <input

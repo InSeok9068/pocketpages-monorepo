@@ -66,38 +66,40 @@
 
 <div
   class="space-y-3 pb-20"
-  data-signals="{
-    taskModalOpen: false,
-    taskTitle: '',
-    taskDescription: '',
-    taskDueAt: '',
-    aiCopyModalOpen: false,
-    aiCopyFormat: 'markdown',
-    taskFilterOpen: false,
-    taskMessage: '',
-    moveTaskId: '',
-    moveStatus: '',
-    moveOrder: [],
-    taskBoardScope: 'inbox',
-    taskView: '<%= activeView %>',
-    taskActionOpen: false,
-    taskActionId: '',
-    taskActionTitle: '',
-    taskActionStatus: '',
-    taskActionHref: '',
-    taskActionProjectId: '',
-    taskActionBoardScope: 'inbox',
-    taskActionView: '<%= activeView %>',
-    activeTaskStatus: (function () {
-      try {
-        const status = window.localStorage.getItem('launchboard:inbox-active-status') || 'todo'
-
-        return ['todo', 'doing', 'done', 'paused', 'canceled'].indexOf(status) >= 0 ? status : 'todo'
-      } catch (exception) {
-        return 'todo'
-      }
-    })()
-  }">
+  data-signals="
+    {
+      taskModalOpen: false,
+      taskTitle: '',
+      taskDescription: '',
+      taskDueAt: '',
+      aiCopyModalOpen: false,
+      aiCopyFormat: 'markdown',
+      taskFilterOpen: false,
+      taskMessage: '',
+      moveTaskId: '',
+      moveStatus: '',
+      moveOrder: [],
+      taskBoardScope: 'inbox',
+      taskView: '<%= activeView %>',
+      taskActionOpen: false,
+      taskActionId: '',
+      taskActionTitle: '',
+      taskActionStatus: '',
+      taskActionHref: '',
+      taskActionProjectId: '',
+      taskActionBoardScope: 'inbox',
+      taskActionView: '<%= activeView %>',
+      activeTaskStatus: (function () {
+        try {
+          const status = window.localStorage.getItem('launchboard:inbox-active-status') || 'todo'
+    
+          return ['todo', 'doing', 'done', 'paused', 'canceled'].indexOf(status) >= 0 ? status : 'todo'
+        } catch (exception) {
+          return 'todo'
+        }
+      })(),
+    }
+  ">
   <%- include('app-nav.ejs', {
     activeNav: activeView === 'today' ? 'today' : 'tasks',
     canCreateTask: projectOptions.length > 0,

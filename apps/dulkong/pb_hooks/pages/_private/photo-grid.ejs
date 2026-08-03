@@ -65,7 +65,11 @@
           aria-label="<%= photo.caption || '추억 사진' %> 크게 보기. 길게 누르면 수정"></button>
         <button
           type="button"
-          data-on:click__stop="@post('/xapi/photos/favorite', {payload: {photoId: '<%= photo.id %>', photoFilter: $photoFilter}})"
+          data-on:click__stop="
+            @post('/xapi/photos/favorite', {
+              payload: { photoId: '<%= photo.id %>', photoFilter: $photoFilter },
+            })
+          "
           class="photo-favorite-button <%= photo.isFavorite ? 'photo-favorite-button--active' : '' %> absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full border-0 bg-black/28 text-white backdrop-blur-sm"
           aria-pressed="<%= photo.isFavorite ? 'true' : 'false' %>"
           aria-label="즐겨찾기 <%= photo.isFavorite ? '해제' : '추가' %>">

@@ -24,8 +24,14 @@
       class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 bg-[#f2f4f6] px-1 text-[10px] leading-none font-bold text-[#4e5968] hover:bg-[#eaf3ff]"
       data-task-status-tab
       data-status="<%= tabColumn.value %>"
-      data-attr="{'aria-pressed': $activeTaskStatus === '<%= tabColumn.value %>' ? 'true' : 'false'}"
-      data-class="{'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]': $activeTaskStatus === '<%= tabColumn.value %>', 'bg-[#f2f4f6] text-[#4e5968]': $activeTaskStatus !== '<%= tabColumn.value %>'}"
+      data-attr="{ 'aria-pressed': $activeTaskStatus === '<%= tabColumn.value %>' ? 'true' : 'false' }"
+      data-class="
+        {
+          'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]':
+            $activeTaskStatus === '<%= tabColumn.value %>',
+          'bg-[#f2f4f6] text-[#4e5968]': $activeTaskStatus !== '<%= tabColumn.value %>',
+        }
+      "
       data-on:click="window.launchboardActivateTaskStatus && window.launchboardActivateTaskStatus('<%= tabColumn.value %>')">
       <span
         class="<%= tabColumn.icon %> h-3.5 w-3.5"
@@ -36,7 +42,12 @@
           class="shrink-0 text-[10px] text-[#6b7684]"
           data-task-status-count
           data-status="<%= tabColumn.value %>"
-          data-class="{'text-[#1b64da]': $activeTaskStatus === '<%= tabColumn.value %>', 'text-[#6b7684]': $activeTaskStatus !== '<%= tabColumn.value %>'}">
+          data-class="
+            {
+              'text-[#1b64da]': $activeTaskStatus === '<%= tabColumn.value %>',
+              'text-[#6b7684]': $activeTaskStatus !== '<%= tabColumn.value %>',
+            }
+          ">
           <%= tabTasks.length %>
         </span>
       </span>
@@ -79,7 +90,7 @@
                 type="button"
                 class="inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-white/70 text-[#6b7684] hover:bg-white"
                 aria-label="업무 검색 필터"
-                data-attr="{'aria-expanded': $taskFilterOpen ? 'true' : 'false'}"
+                data-attr="{ 'aria-expanded': $taskFilterOpen ? 'true' : 'false' }"
                 data-on:click="$taskFilterOpen = !$taskFilterOpen">
                 <span
                   class="i-lucide-search h-4 w-4"
@@ -199,7 +210,16 @@
                   data-task-project-id="<%= task.projectId %>"
                   data-task-board-scope="<%= taskBoardScope %>"
                   data-task-view="<%= taskBoardView %>"
-                  data-on:click__stop="$taskActionId = el.dataset.taskId; $taskActionTitle = el.dataset.taskTitle; $taskActionStatus = el.dataset.taskStatus; $taskActionHref = el.dataset.taskHref; $taskActionProjectId = el.dataset.taskProjectId; $taskActionBoardScope = el.dataset.taskBoardScope; $taskActionView = el.dataset.taskView; $taskActionOpen = true">
+                  data-on:click__stop="
+                    $taskActionId = el.dataset.taskId
+                    $taskActionTitle = el.dataset.taskTitle
+                    $taskActionStatus = el.dataset.taskStatus
+                    $taskActionHref = el.dataset.taskHref
+                    $taskActionProjectId = el.dataset.taskProjectId
+                    $taskActionBoardScope = el.dataset.taskBoardScope
+                    $taskActionView = el.dataset.taskView
+                    $taskActionOpen = true
+                  ">
                   <span
                     class="i-lucide-more-horizontal h-4 w-4"
                     aria-hidden="true"></span>
@@ -257,7 +277,7 @@
               <form
                 method="post"
                 action="/xapi/tasks/delete"
-                data-on:submit="@post('/xapi/tasks/delete', {contentType: 'form'})"
+                data-on:submit="@post('/xapi/tasks/delete', { contentType: 'form' })"
                 data-on:click__stop="true">
                 <input
                   type="hidden"

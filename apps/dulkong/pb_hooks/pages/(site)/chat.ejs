@@ -16,9 +16,35 @@
 <div
   id="chat-page"
   class="fixed inset-0 mx-auto flex w-full max-w-[480px] flex-col overflow-hidden bg-[#f7f5ee] text-[#292923] shadow-[0_0_60px_rgba(70,76,53,0.08)]"
-  data-signals="<%= stringify({ draft: '', clientMessageId: '', chatHandledRevision: 0, chatReceiptRevision: 0, chatHandledReceiptRevision: 0, chatReadAt: '', chatSending: false, chatAtBottom: true, chatHasNewMessage: false, messageHasMore: messagePage.hasMore, messageHistoryLoading: false, oldestMessageCreated: oldestMessage ? oldestMessage.createdAt : '', oldestMessageId: oldestMessage ? oldestMessage.id : '' }) %>"
+  data-signals="<%= stringify({
+    draft: '',
+    clientMessageId: '',
+    chatHandledRevision: 0,
+    chatReceiptRevision: 0,
+    chatHandledReceiptRevision: 0,
+    chatReadAt: '',
+    chatSending: false,
+    chatAtBottom: true,
+    chatHasNewMessage: false,
+    messageHasMore: messagePage.hasMore,
+    messageHistoryLoading: false,
+    oldestMessageCreated: oldestMessage ? oldestMessage.createdAt : '',
+    oldestMessageId: oldestMessage ? oldestMessage.id : '',
+  }) %>"
   data-init="@post('/xapi/messages/read')"
-  data-effect="if ($chatRevision && $chatRevision !== $chatHandledRevision) { $chatHandledRevision = $chatRevision; if ($chatAtBottom && document.visibilityState === 'visible') { @get('/xapi/messages/list'); @post('/xapi/messages/read') } else $chatHasNewMessage = true }; if ($chatReceiptRevision && $chatReceiptRevision !== $chatHandledReceiptRevision) { $chatHandledReceiptRevision = $chatReceiptRevision; if ($chatAtBottom && document.visibilityState === 'visible') @get('/xapi/messages/list') }">
+  data-effect="
+    if ($chatRevision && $chatRevision !== $chatHandledRevision) {
+      $chatHandledRevision = $chatRevision
+      if ($chatAtBottom && document.visibilityState === 'visible') {
+        @get('/xapi/messages/list')
+        @post('/xapi/messages/read')
+      } else $chatHasNewMessage = true
+    }
+    if ($chatReceiptRevision && $chatReceiptRevision !== $chatHandledReceiptRevision) {
+      $chatHandledReceiptRevision = $chatReceiptRevision
+      if ($chatAtBottom && document.visibilityState === 'visible') @get('/xapi/messages/list')
+    }
+  ">
   <% if (backgroundPhoto) { %>
   <img
     src="<%= backgroundPhoto.imageUrl %>"
@@ -48,7 +74,12 @@
       </div>
       <button
         type="button"
-        data-on:click="$chatAtBottom = true; $chatHasNewMessage = false; @get('/xapi/messages/list'); @post('/xapi/messages/read')"
+        data-on:click="
+          $chatAtBottom = true
+          $chatHasNewMessage = false
+          @get('/xapi/messages/list')
+          @post('/xapi/messages/read')
+        "
         class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-0 bg-transparent text-[#89917d] opacity-65 active:bg-[#efeee8] active:opacity-100"
         aria-label="대화 다시 불러오기"
         title="대화 다시 불러오기">
@@ -64,7 +95,11 @@
   <button
     type="button"
     data-show="$chatHasNewMessage"
-    data-on:click="$chatHasNewMessage = false; @get('/xapi/messages/list'); @post('/xapi/messages/read')"
+    data-on:click="
+      $chatHasNewMessage = false
+      @get('/xapi/messages/list')
+      @post('/xapi/messages/read')
+    "
     class="chat-new-message-button z-10 flex items-center gap-1.5 rounded-full border-0 bg-[#354922] px-4 py-2.5 text-xs font-bold text-white shadow-[0_10px_28px_rgba(53,73,34,0.24)]">
     새 메시지
     <span aria-hidden="true">↓</span>
@@ -73,7 +108,13 @@
   <form
     method="post"
     action="/xapi/messages/send"
-    data-on:submit__prevent="if (!$chatSending) { $chatSending = true; $clientMessageId = 'web_' + Date.now(); @post('/xapi/messages/send') }"
+    data-on:submit__prevent="
+      if (!$chatSending) {
+        $chatSending = true
+        $clientMessageId = 'web_' + Date.now()
+        @post('/xapi/messages/send')
+      }
+    "
     class="relative z-10 shrink-0 border-t border-[#e8e5da] bg-[#fffefa] px-4 py-3">
     <div class="flex items-end gap-2">
       <label class="block min-w-0 flex-1">

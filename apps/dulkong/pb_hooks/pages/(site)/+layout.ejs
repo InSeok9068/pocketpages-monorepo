@@ -119,10 +119,21 @@
   <body
     id="app-shell"
     class="bg-[#efeee8]"
-    data-signals="<%= stringify({ appToastMessage: initialToastMessage, appToastTone: 'info', appUnreadMessageCount: 0, appHandledChatRevision: 0, chatRevision: 0 }) %>"
+    data-signals="<%= stringify({
+      appToastMessage: initialToastMessage,
+      appToastTone: 'info',
+      appUnreadMessageCount: 0,
+      appHandledChatRevision: 0,
+      chatRevision: 0,
+    }) %>"
     <% if (request.auth) { %>
     data-init="@get('/xapi/messages/unread')"
-    data-effect="if ($chatRevision && $chatRevision !== $appHandledChatRevision) { $appHandledChatRevision = $chatRevision; if (window.location.pathname !== '/chat') @get('/xapi/messages/unread') }"
+    data-effect="
+      if ($chatRevision && $chatRevision !== $appHandledChatRevision) {
+        $appHandledChatRevision = $chatRevision
+        if (window.location.pathname !== '/chat') @get('/xapi/messages/unread')
+      }
+    "
     data-on:focus__window="if (document.visibilityState === 'visible') @get('/xapi/messages/unread')"
     <% } %>
     un-cloak>
@@ -136,18 +147,22 @@
         id="app-toast"
         role="status"
         data-show="$appToastMessage"
-        data-class="{
-          'bg-[#302f2a]': $appToastTone === 'info',
-          'bg-[#354922]': $appToastTone === 'success',
-          'bg-[#8f3934]': $appToastTone === 'error'
-        }"
+        data-class="
+          {
+            'bg-[#302f2a]': $appToastTone === 'info',
+            'bg-[#354922]': $appToastTone === 'success',
+            'bg-[#8f3934]': $appToastTone === 'error',
+          }
+        "
         class="pointer-events-auto box-border flex min-h-12 w-full max-w-full items-center gap-3 rounded-[18px] px-4 py-3 text-white shadow-[0_16px_40px_rgba(34,35,30,0.24)]">
         <span
-          data-class="{
-            'bg-white/24': $appToastTone === 'info',
-            'bg-[#dcebbf]/24': $appToastTone === 'success',
-            'bg-[#ffd5d0]/24': $appToastTone === 'error'
-          }"
+          data-class="
+            {
+              'bg-white/24': $appToastTone === 'info',
+              'bg-[#dcebbf]/24': $appToastTone === 'success',
+              'bg-[#ffd5d0]/24': $appToastTone === 'error',
+            }
+          "
           class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
           <span
             class="h-2.5 w-2.5 rounded-full bg-white"

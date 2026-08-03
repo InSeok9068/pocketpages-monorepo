@@ -13,8 +13,14 @@
         class="flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border-0 bg-[#f2f4f6] px-1 text-[10px] leading-none font-bold text-[#4e5968] hover:bg-[#eaf3ff]"
         data-project-status-tab
         data-status="<%= tabColumn.value %>"
-        data-attr="{'aria-pressed': $activeProjectStatus === '<%= tabColumn.value %>' ? 'true' : 'false'}"
-        data-class="{'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]': $activeProjectStatus === '<%= tabColumn.value %>', 'bg-[#f2f4f6] text-[#4e5968]': $activeProjectStatus !== '<%= tabColumn.value %>'}"
+        data-attr="{ 'aria-pressed': $activeProjectStatus === '<%= tabColumn.value %>' ? 'true' : 'false' }"
+        data-class="
+          {
+            'bg-[#eaf3ff] text-[#1b64da] shadow-[inset_0_0_0_1px_rgba(49,130,246,0.28)]':
+              $activeProjectStatus === '<%= tabColumn.value %>',
+            'bg-[#f2f4f6] text-[#4e5968]': $activeProjectStatus !== '<%= tabColumn.value %>',
+          }
+        "
         data-on:click="window.launchboardActivateProjectStatus && window.launchboardActivateProjectStatus('<%= tabColumn.value %>')">
         <span
           class="<%= tabColumn.icon %> h-3.5 w-3.5 shrink-0"
@@ -25,7 +31,12 @@
             class="shrink-0 text-[10px]"
             data-project-status-count
             data-status="<%= tabColumn.value %>"
-            data-class="{'text-[#1b64da]': $activeProjectStatus === '<%= tabColumn.value %>', 'text-[#6b7684]': $activeProjectStatus !== '<%= tabColumn.value %>'}">
+            data-class="
+              {
+                'text-[#1b64da]': $activeProjectStatus === '<%= tabColumn.value %>',
+                'text-[#6b7684]': $activeProjectStatus !== '<%= tabColumn.value %>',
+              }
+            ">
             <%= tabProjects.length %>
           </span>
         </span>
@@ -66,7 +77,12 @@
                 class="inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-white/70 text-[#6b7684] hover:bg-white"
                 data-project-compact-button
                 data-status="<%= column.value %>"
-                data-attr="{'aria-label': $compactProjectStatuses.<%= column.value %> ? '자세히 보기' : '간단히 보기', 'aria-pressed': $compactProjectStatuses.<%= column.value %> ? 'true' : 'false'}"
+                data-attr="
+                  {
+                    'aria-label': $compactProjectStatuses.<%= column.value %> ? '자세히 보기' : '간단히 보기',
+                    'aria-pressed': $compactProjectStatuses.<%= column.value %> ? 'true' : 'false',
+                  }
+                "
                 data-on:click="$compactProjectStatuses.<%= column.value %> = !$compactProjectStatuses.<%= column.value %>">
                 <span
                   data-show="!$compactProjectStatuses.<%= column.value %>"
@@ -163,7 +179,14 @@
                     data-project-status="<%= project.status %>"
                     data-project-href="<%= project.href %>"
                     data-project-tasks-href="<%= project.tasksHref %>"
-                    data-on:click__stop="$projectActionId = el.dataset.projectId; $projectActionName = el.dataset.projectName; $projectActionStatus = el.dataset.projectStatus; $projectActionHref = el.dataset.projectHref; $projectActionTasksHref = el.dataset.projectTasksHref; $projectActionOpen = true">
+                    data-on:click__stop="
+                      $projectActionId = el.dataset.projectId
+                      $projectActionName = el.dataset.projectName
+                      $projectActionStatus = el.dataset.projectStatus
+                      $projectActionHref = el.dataset.projectHref
+                      $projectActionTasksHref = el.dataset.projectTasksHref
+                      $projectActionOpen = true
+                    ">
                     <span
                       class="i-lucide-more-horizontal h-3.5 w-3.5"
                       aria-hidden="true"></span>
