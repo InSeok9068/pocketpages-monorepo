@@ -83,7 +83,9 @@
       } else {
         try {
           const pushBody = bodyText.length > 100 ? bodyText.slice(0, 100) + '…' : bodyText
-          const pushOrigin = String($app.settings().meta.appURL || '').trim().replace(/\/+$/, '')
+          const pushOrigin = String($app.settings().meta.appURL || '')
+            .trim()
+            .replace(/\/+$/, '')
           const oneSignal = createOneSignalClient({
             appId: oneSignalAppId,
             apiKey: oneSignalApiKey,

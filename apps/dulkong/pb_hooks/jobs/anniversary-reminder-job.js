@@ -112,7 +112,9 @@ function createIdempotencyKey(apiKey, anniversaryId, todayDate, recipientKind) {
  * @returns {import('@pocketpages/onesignal').OneSignalResult} 발송 결과
  */
 function sendPush(oneSignal, apiKey, anniversaryId, todayDate, delivery) {
-  const pushOrigin = String($app.settings().meta.appURL || '').trim().replace(/\/+$/, '')
+  const pushOrigin = String($app.settings().meta.appURL || '')
+    .trim()
+    .replace(/\/+$/, '')
   const pushResult = oneSignal.createNotification({
     include_aliases: {
       external_id: delivery.recipientIds,
