@@ -51,6 +51,7 @@ button {
   appearance: none;
   border: 0;
   background-image: none;
+  color: inherit;
   font: inherit;
   cursor: pointer;
 }
