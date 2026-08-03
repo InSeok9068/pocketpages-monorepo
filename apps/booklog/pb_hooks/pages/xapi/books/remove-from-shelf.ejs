@@ -33,6 +33,7 @@
   let removedReviewCount = 0
   let removedHighlightCount = 0
   let removedBookmarkCount = 0
+  let removedReadingSessionCount = 0
 
   dbg('xapi/books/remove-from-shelf:start', {
     userId: userId,
@@ -65,12 +66,14 @@
       const reviewDeleteResult = txApp.db().delete('book_reviews', personalRecordFilter).execute()
       const highlightDeleteResult = txApp.db().delete('book_highlights', personalRecordFilter).execute()
       const bookmarkDeleteResult = txApp.db().delete('book_bookmarks', personalRecordFilter).execute()
+      const readingSessionDeleteResult = txApp.db().delete('reading_sessions', personalRecordFilter).execute()
 
       txApp.delete(shelfRecord)
 
       removedReviewCount = reviewDeleteResult.rowsAffected()
       removedHighlightCount = highlightDeleteResult.rowsAffected()
       removedBookmarkCount = bookmarkDeleteResult.rowsAffected()
+      removedReadingSessionCount = readingSessionDeleteResult.rowsAffected()
     })
 
     dbg('xapi/books/remove-from-shelf:redirect', {
@@ -80,6 +83,7 @@
       removedReviewCount: removedReviewCount,
       removedHighlightCount: removedHighlightCount,
       removedBookmarkCount: removedBookmarkCount,
+      removedReadingSessionCount: removedReadingSessionCount,
     })
     redirect('/library', {
       status: 303,
