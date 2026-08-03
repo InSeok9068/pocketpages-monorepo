@@ -1,0 +1,51 @@
+<script server>
+  const coupleData = resolve('couple-data')
+  const { patchAppToast } = resolve('patch-app-toast')
+
+  if (request.method !== 'POST' || !request.auth) {
+    patchAppToast(datastar, '로그인이 필요합니다.', 'error')
+    return
+  }
+
+  const signals = datastar.requestSignals({ photoEditId: '', photoFilter: 'all' })
+  const photoId = String(signals.photoEditId || '').trim()
+  const photoFilter = String(signals.photoFilter || 'all')
+  const userId = String(request.auth.get('id') || '')
+
+  dbg('dulkong/xapi/photos/chat-background:start', { photoId, userId })
+
+  try {
+    if (!photoId) throw new Error('배경으로 설정할 사진을 찾지 못했어요.')
+
+    $app.runInTransaction(function (txApp) {
+      const selectedPhoto = txApp.findFirstRecordByFilter('photos', "id = {:photoId} && deletedAt = ''", {
+        photoId: photoId,
+      })
+      const previousPhotos = txApp.findRecordsByFilter('photos', 'isChatBackground = true', '', 200, 0)
+
+      previousPhotos.forEach(function (photo) {
+        if (String(photo.get('id') || '') === photoId) return
+        photo.set('isChatBackground', false)
+        txApp.save(photo)
+      })
+
+      selectedPhoto.set('isChatBackground', true)
+      txApp.save(selectedPhoto)
+    })
+
+    info('dulkong/xapi/photos/chat-background:success', { photoId, userId })
+    datastar.patchElements(include('photo-grid.ejs', { photos: coupleData.listPhotos($app, photoFilter) }), {
+      selector: '#photo-results',
+      mode: 'outer',
+    })
+    datastar.patchSignals({ photoEditIsChatBackground: true })
+    patchAppToast(datastar, '채팅방 배경을 바꿨어요.', 'success')
+  } catch (exception) {
+    error('dulkong/xapi/photos/chat-background:failed', {
+      photoId,
+      userId,
+      error: String(exception.message || exception),
+    })
+    patchAppToast(datastar, '채팅방 배경을 바꾸지 못했어요.', 'error')
+  }
+</script>

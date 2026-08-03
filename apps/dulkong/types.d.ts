@@ -55,6 +55,7 @@ declare namespace types {
     dateLabel: string
     monthLabel: string
     isFavorite: boolean
+    isChatBackground: boolean
     imageUrl: string
   }
 

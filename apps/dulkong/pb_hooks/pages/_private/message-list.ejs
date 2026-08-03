@@ -1,6 +1,6 @@
 <main
   id="message-list"
-  class="message-list--positioning min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-5"
+  class="message-list--positioning relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-5"
   data-on:scroll__throttle.100ms="$chatAtBottom = evt.currentTarget.scrollHeight - evt.currentTarget.scrollTop - evt.currentTarget.clientHeight < 48"
   aria-live="polite">
   <% if (!messages.length) { %>

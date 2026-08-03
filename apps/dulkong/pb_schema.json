@@ -728,6 +728,16 @@
       {
         "help": "",
         "hidden": false,
+        "id": "bool1401002002",
+        "name": "isChatBackground",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "help": "",
+        "hidden": false,
         "id": "date1401002002",
         "max": "",
         "min": "",
@@ -758,7 +768,10 @@
         "type": "autodate"
       }
     ],
-    "indexes": ["CREATE INDEX `idx_photos_deletedAt_takenAt` ON `photos` (`deletedAt`, `takenAt` DESC)"],
+    "indexes": [
+      "CREATE INDEX `idx_photos_deletedAt_takenAt` ON `photos` (`deletedAt`, `takenAt` DESC)",
+      "CREATE UNIQUE INDEX `idx_photos_chat_background` ON `photos` (`isChatBackground`) WHERE `isChatBackground` = 1"
+    ],
     "system": false
   },
   {

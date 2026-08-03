@@ -222,6 +222,7 @@ function mapPhoto(record) {
     dateLabel: dateutil.formatDate(takenAtValue, 'M.DD'),
     monthLabel: dateutil.formatDate(takenAtValue, dateutil.FORMATS.MONTH_KR),
     isFavorite: Boolean(record.get('isFavorite')),
+    isChatBackground: Boolean(record.get('isChatBackground')),
     imageUrl:
       '/api/files/'
       + encodeURIComponent(collectionName)
@@ -230,6 +231,20 @@ function mapPhoto(record) {
       + '/'
       + encodeURIComponent(fileName)
       + '?thumb=960x0',
+  }
+}
+
+/**
+ * 채팅방 배경으로 지정한 사진을 조회합니다.
+ * @param {types.CoupleDataApp} app PocketBase 앱
+ * @returns {types.PhotoItem | null} 배경 사진
+ */
+function getChatBackgroundPhoto(app) {
+  try {
+    const record = app.findFirstRecordByFilter('photos', "isChatBackground = true && deletedAt = ''")
+    return mapPhoto(record)
+  } catch (_exception) {
+    return null
   }
 }
 
@@ -356,6 +371,7 @@ function listMessages(app, currentUserId) {
 }
 
 module.exports = {
+  getChatBackgroundPhoto,
   getCoupleProfiles,
   getProfileName,
   getMessagePage,
