@@ -27,7 +27,6 @@ Usage:
   ./task.sh diag [file-or-service] [--profile] [--no-daemon]
   ./task.sh verify [service]
   ./task.sh preflight
-  ./task.sh jj-main
   ./task.sh knip [-- <extra args>]
   ./task.sh gitleaks [--staged|--history|--range <git-log-range>|--latest|--ci] [-- <extra args>]
   ./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
@@ -57,7 +56,6 @@ Commands:
             `--profile` prints slow-file timings, `--no-daemon` disables the warm background cache
   verify    Run lint, tsc, and diag together for one service or all services
   preflight Run format, css, verify, staged Gitleaks, and Knip as a final local check
-  jj-main   Move the main jj bookmark to current @ and push it after a safety preview
   knip      Run Knip unused files/dependencies check for the whole repository
   gitleaks  Run Gitleaks secret scan; defaults to staged changes
   index     Query AI-friendly PocketPages project index JSON for one service
@@ -88,7 +86,6 @@ Examples:
   ./task.sh audit
   ./task.sh audit -- --omit=dev
   ./task.sh preflight
-  ./task.sh jj-main
   ./task.sh knip
   ./task.sh gitleaks --history
   ./task.sh generate
@@ -1079,95 +1076,6 @@ run_preflight() {
   echo
   echo "Running preflight step: audit"
   run_audit
-}
-
-print_jj_main_help() {
-  cat <<'EOF'
-Usage:
-  ./task.sh jj-main
-
-Moves the main jj bookmark to current @ and pushes it.
-EOF
-}
-
-run_jj_main() {
-  local answer=""
-  local current_description=""
-  local current_is_empty=""
-
-  if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    print_jj_main_help
-    return 0
-  fi
-
-  [[ $# -eq 0 ]] || { echo "Usage: ./task.sh jj-main" >&2; exit 1; }
-
-  if ! command -v jj >/dev/null 2>&1; then
-    echo "jj not found. Install Jujutsu or run this command in a shell where jj is available." >&2
-    exit 1
-  fi
-
-  (
-    cd "$ROOT_DIR"
-
-    if ! jj root >/dev/null 2>&1; then
-      echo "Not a jj repository: $ROOT_DIR" >&2
-      exit 1
-    fi
-
-    echo "== jj status =="
-    jj status
-
-    echo
-    echo "== recent log =="
-    jj log -n 5
-
-    current_is_empty="$(jj log -r @ --no-graph -T 'empty')"
-    current_description="$(jj log -r @ --no-graph -T 'description')"
-
-    if [[ "$current_is_empty" == "true" ]]; then
-      cat >&2 <<'EOF'
-
-Current @ is empty, so there is no work to move to main.
-If main was moved here by mistake, move it back before trying again:
-  jj bookmark set main -r @-
-EOF
-      exit 1
-    fi
-
-    if [[ -z "$current_description" ]]; then
-      cat >&2 <<'EOF'
-
-Current @ has no description. Describe it before pushing to main:
-  jj describe -m "작업 설명"
-EOF
-      exit 1
-    fi
-
-    echo
-    read -r -p "Move main bookmark to current @ and push? [y/N] " answer
-
-    case "$answer" in
-      y|Y|yes|YES)
-        ;;
-      *)
-        echo "Cancelled."
-        exit 1
-        ;;
-    esac
-
-    echo
-    echo "== fetch =="
-    jj git fetch
-
-    echo
-    echo "== move main bookmark to current @ =="
-    jj bookmark set main -r @
-
-    echo
-    echo "== push main =="
-    jj git push --bookmark main
-  )
 }
 
 list_release_services() {
@@ -2474,10 +2382,6 @@ case "${1:-help}" in
     shift || true
     [[ $# -eq 0 ]] || { echo "Usage: ./task.sh preflight" >&2; exit 1; }
     run_preflight
-    ;;
-  jj-main)
-    shift || true
-    run_jj_main "$@"
     ;;
   knip)
     shift || true
