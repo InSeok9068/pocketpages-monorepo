@@ -234,6 +234,11 @@ textarea {
   color: #627848;
 }
 
+.filepond--root.dulkong-filepond--has-files .filepond--drop-label {
+  display: none;
+  min-height: 0;
+}
+
 .filepond-label {
   display: flex;
   align-items: center;

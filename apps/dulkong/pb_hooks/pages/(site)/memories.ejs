@@ -133,8 +133,16 @@
             type="file"
             name="image"
             accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+            multiple
             data-attr:required="$photoModalMode === 'create'"
             required />
+          <button
+            id="photo-add-more"
+            type="button"
+            hidden
+            class="mb-4 h-10 w-full rounded-[16px] border border-[#dce7c8] bg-[#edf3df] text-sm font-bold text-[#4e672f]">
+            사진 더 추가
+          </button>
         </div>
         <input
           data-bind:photo-caption
@@ -321,12 +329,13 @@
 
     window.dulkongPhotoPond = window.FilePond.create(input, {
       storeAsFile: true,
-      allowMultiple: false,
+      allowMultiple: true,
+      maxFiles: 10,
       allowProcess: false,
       credits: false,
       imagePreviewHeight: 180,
       labelIdle:
-        '<span class="filepond-label"><span class="i-lucide-image-plus filepond-label-icon"></span><strong>사진 선택</strong><small>눌러서 고르거나 이곳에 놓아주세요</small></span>',
+        '<span class="filepond-label"><span class="i-lucide-image-plus filepond-label-icon"></span><strong>사진 선택</strong><small>최대 10장까지 고르거나 이곳에 놓아주세요</small></span>',
       labelFileWaitingForSize: '사진 확인 중',
       labelFileLoading: '사진 불러오는 중',
       labelFileLoadError: '사진을 불러오지 못했어요',
@@ -336,6 +345,25 @@
       labelTapToRetry: '눌러서 다시 시도',
       labelTapToUndo: '눌러서 되돌리기',
     })
+
+    var addMoreButton = document.getElementById('photo-add-more')
+    function syncPhotoUploadControls(items) {
+      var fileCount = items.length
+      var maxFiles = 10
+      window.dulkongPhotoPond.element.classList.toggle('dulkong-filepond--has-files', fileCount > 0)
+      if (!addMoreButton) return
+
+      addMoreButton.hidden = fileCount === 0 || fileCount >= maxFiles
+      addMoreButton.textContent = '사진 더 추가 · ' + fileCount + '/' + maxFiles
+    }
+
+    window.dulkongPhotoPond.on('updatefiles', syncPhotoUploadControls)
+    syncPhotoUploadControls(window.dulkongPhotoPond.getFiles())
+    if (addMoreButton) {
+      addMoreButton.addEventListener('click', function () {
+        window.dulkongPhotoPond.browse()
+      })
+    }
 
     var form = document.getElementById('photo-upload-form')
     if (!form || form.dulkongResizeInstalled) return
@@ -350,8 +378,10 @@
           return
         }
 
-        var item = window.dulkongPhotoPond.getFile()
-        if (!item || !(item.file instanceof File)) return
+        var items = window.dulkongPhotoPond.getFiles().filter(function (item) {
+          return item.file instanceof File
+        })
+        if (!items.length) return
 
         event.preventDefault()
         event.stopImmediatePropagation()
@@ -366,20 +396,30 @@
           submitButton.textContent = '사진 줄이는 중...'
         }
 
-        window
-          .dulkongResizeImageFile(item.file, { maxEdge: 1920, quality: 0.82 })
-          .then(function (resizedFile) {
-            if (resizedFile !== item.file) {
-              var storedInput = form.querySelector('input[type="file"][name="image"]')
-              if (!storedInput) throw new Error('업로드할 사진 필드를 찾지 못했습니다.')
+        Promise.all(
+          items.map(function (item) {
+            return window
+              .dulkongResizeImageFile(item.file, { maxEdge: 1920, quality: 0.82 })
+              .catch(function (resizeError) {
+                console.warn('Dulkong photo upload uses the original image', resizeError)
+                return item.file
+              })
+          })
+        )
+          .then(function (resizedFiles) {
+            var storedInputs = form.querySelectorAll('input[type="file"][name="image"]')
+            if (storedInputs.length !== resizedFiles.length) {
+              throw new Error('업로드할 사진 필드를 찾지 못했습니다.')
+            }
 
+            resizedFiles.forEach(function (resizedFile, index) {
               var transfer = new DataTransfer()
               transfer.items.add(resizedFile)
-              storedInput.files = transfer.files
-            }
+              storedInputs[index].files = transfer.files
+            })
           })
           .catch(function (resizeError) {
-            console.warn('Dulkong photo upload uses the original image', resizeError)
+            console.warn('Dulkong photo upload uses the selected images', resizeError)
           })
           .then(function () {
             form.dulkongResizeBypass = true

@@ -9,30 +9,38 @@
   }
 
   const form = formData()
-  const uploadedFiles = request.event.findUploadedFiles('image')
-  const uploadedFile = uploadedFiles.length ? uploadedFiles[0] : null
+  const uploadedFiles = request.event.findUploadedFiles('image') || []
   const userId = String(request.auth.get('id') || '')
   const caption = String(form.caption || '').trim()
   const takenAt = String(form.takenAt || '').trim()
   const locationName = String(form.locationName || '').trim()
 
-  dbg('dulkong/xapi/photos/upload:start', { userId, caption, takenAt, hasFile: Boolean(uploadedFile) })
+  dbg('dulkong/xapi/photos/upload:start', { userId, caption, takenAt, fileCount: uploadedFiles.length })
 
   try {
-    if (!uploadedFile) throw new Error('올릴 사진을 선택해 주세요.')
+    if (!uploadedFiles.length) throw new Error('올릴 사진을 선택해 주세요.')
+    if (uploadedFiles.length > 10) throw new Error('사진은 한 번에 10장까지 올릴 수 있어요.')
 
-    const collection = $app.findCollectionByNameOrId('photos')
-    const record = new Record(collection)
-    record.set('uploader', userId)
-    record.set('image', uploadedFile)
-    record.set('caption', caption)
-    record.set('takenAt', dateutil.toDateOnlyIso(takenAt || new Date()))
-    record.set('locationName', locationName)
-    record.set('source', 'upload')
-    record.set('isFavorite', false)
-    $app.save(record)
+    const photoIds = []
+    const photoTakenAt = dateutil.toDateOnlyIso(takenAt || new Date())
+    $app.runInTransaction(function (txApp) {
+      const collection = txApp.findCollectionByNameOrId('photos')
 
-    info('dulkong/xapi/photos/upload:success', { photoId: String(record.get('id') || ''), userId })
+      uploadedFiles.forEach(function (uploadedFile) {
+        const record = new Record(collection)
+        record.set('uploader', userId)
+        record.set('image', uploadedFile)
+        record.set('caption', caption)
+        record.set('takenAt', photoTakenAt)
+        record.set('locationName', locationName)
+        record.set('source', 'upload')
+        record.set('isFavorite', false)
+        txApp.save(record)
+        photoIds.push(String(record.get('id') || ''))
+      })
+    })
+
+    info('dulkong/xapi/photos/upload:success', { photoIds, userId, fileCount: uploadedFiles.length })
     const photos = coupleData.listPhotos($app, 'all')
     datastar.patchElements(include('photo-grid.ejs', { photos: photos }), {
       selector: '#photo-results',
@@ -51,7 +59,7 @@
     datastar.executeScript(
       "var form=document.getElementById('photo-upload-form'); if(window.dulkongPhotoPond) window.dulkongPhotoPond.removeFiles(); if(form) form.reset();"
     )
-    patchAppToast(datastar, '사진을 올렸어요.', 'success')
+    patchAppToast(datastar, uploadedFiles.length === 1 ? '사진을 올렸어요.' : uploadedFiles.length + '장의 사진을 올렸어요.', 'success')
   } catch (exception) {
     error('dulkong/xapi/photos/upload:failed', { userId, error: String(exception.message || exception) })
     patchAppToast(datastar, String(exception.message || '사진을 올리지 못했어요.'), 'error')
