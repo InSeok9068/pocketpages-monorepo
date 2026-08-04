@@ -42,6 +42,10 @@ body {
   min-width: 320px;
 }
 
+.sign-in-page {
+  min-height: 100dvh;
+}
+
 button,
 a {
   -webkit-tap-highlight-color: transparent;
@@ -283,6 +287,10 @@ a:focus-visible {
 @media (min-width: 481px) {
   body {
     padding-block: 24px;
+  }
+
+  .sign-in-page {
+    min-height: calc(100dvh - 48px);
   }
 
   #home {
