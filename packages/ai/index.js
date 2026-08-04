@@ -303,12 +303,24 @@ function applyGeminiJsonMode(payload) {
 
 /**
  * OpenAI JSON 응답 옵션을 payload에 병합합니다.
+ * jsonSchema를 주면 구조를 강제하는 json_schema로, 없으면 json_object로 설정합니다.
  * @param {Record<string, any>} payload OpenAI payload입니다.
+ * @param {unknown} jsonSchema json_schema 설정입니다. `{ name, schema }` 형태입니다.
  */
-function applyOpenAiJsonMode(payload) {
+function applyOpenAiJsonMode(payload, jsonSchema) {
   const textConfig = isObjectRecord(payload.text) ? Object.assign({}, payload.text) : {}
   if (!textConfig.format) {
-    textConfig.format = { type: 'json_object' }
+    if (isObjectRecord(jsonSchema) && isObjectRecord(jsonSchema.schema)) {
+      textConfig.format = {
+        type: 'json_schema',
+        name: cleanText(jsonSchema.name) || 'response',
+        schema: jsonSchema.schema,
+        strict: jsonSchema.strict !== false,
+      }
+      if (jsonSchema.description !== undefined) textConfig.format.description = jsonSchema.description
+    } else {
+      textConfig.format = { type: 'json_object' }
+    }
   }
   payload.text = textConfig
 }
@@ -480,7 +492,7 @@ function buildOpenAiPayload(request) {
     const payload = Object.assign({}, request.payload)
     delete payload.stream
     delete payload.stream_options
-    if (request.json === true) applyOpenAiJsonMode(payload)
+    if (request.json === true) applyOpenAiJsonMode(payload, request.jsonSchema)
     return payload
   }
 
@@ -489,7 +501,7 @@ function buildOpenAiPayload(request) {
   copyDefinedFields(payload, request, OPENAI_PAYLOAD_FIELDS)
 
   if (payload.input === undefined) payload.input = input == null ? '' : input
-  if (request.json === true) applyOpenAiJsonMode(payload)
+  if (request.json === true) applyOpenAiJsonMode(payload, request.jsonSchema)
 
   return payload
 }
