@@ -95,7 +95,7 @@ jobs:
             "$PHIO_USERNAME@ftp.pockethost.io"
 
       - name: Send Deploy Success
-        uses: appleboy/telegram-action@master
+        uses: appleboy/telegram-action@221e6b684967abe813051ee4a37dd61770a83ad3 # v1.0.1
         if: success()
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -110,7 +110,7 @@ jobs:
             [View Commit](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
 
       - name: Send Deploy Failure
-        uses: appleboy/telegram-action@master
+        uses: appleboy/telegram-action@221e6b684967abe813051ee4a37dd61770a83ad3 # v1.0.1
         if: failure()
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}

@@ -126,7 +126,7 @@ jobs:
             ${{ steps.svc.outputs.image }}:release
 
       - name: Restart Server
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.REMOTE_IP }}
           username: ${{ secrets.REMOTE_ID }}
@@ -167,7 +167,7 @@ jobs:
             docker image prune -f
 
       - name: Send Build Success
-        uses: appleboy/telegram-action@master
+        uses: appleboy/telegram-action@221e6b684967abe813051ee4a37dd61770a83ad3 # v1.0.1
         if: success()
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -182,7 +182,7 @@ jobs:
             [View Commit](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
 
       - name: Send Build Failure
-        uses: appleboy/telegram-action@master
+        uses: appleboy/telegram-action@221e6b684967abe813051ee4a37dd61770a83ad3 # v1.0.1
         if: failure()
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
