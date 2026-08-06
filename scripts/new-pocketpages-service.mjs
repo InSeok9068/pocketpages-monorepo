@@ -810,7 +810,7 @@ COPY packages /app/packages
 RUN cd /app/packages/utils && npm ci --omit=dev
 RUN npm ci --omit=dev
 ${cssStage}
-FROM alpine:3.22 AS pocketbase
+FROM alpine:3.24 AS pocketbase
 
 ARG TARGETARCH
 ARG PB_VERSION
@@ -828,7 +828,7 @@ RUN set -eu; \\
   unzip /tmp/pocketbase.zip -d /out; \\
   chmod +x /out/pocketbase
 
-FROM alpine:3.22
+FROM alpine:3.24
 
 ENV CODE_ROOT=/app/apps/${service}
 ENV APP_ROOT=/app/apps/${service}

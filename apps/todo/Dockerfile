@@ -17,7 +17,7 @@ COPY apps/todo/pb_hooks ./apps/todo/pb_hooks
 RUN npm ci
 RUN bash ./task.sh css todo
 
-FROM alpine:3.22 AS pocketbase
+FROM alpine:3.24 AS pocketbase
 
 ARG TARGETARCH
 ARG PB_VERSION
@@ -35,7 +35,7 @@ RUN set -eu; \
   unzip /tmp/pocketbase.zip -d /out; \
   chmod +x /out/pocketbase
 
-FROM alpine:3.22
+FROM alpine:3.24
 
 ENV CODE_ROOT=/app/apps/todo
 ENV APP_ROOT=/app/apps/todo
