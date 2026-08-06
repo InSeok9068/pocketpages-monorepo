@@ -27,5 +27,8 @@ apps/*/pocketbase
 apps/*/pocketbase.exe
 apps/*/pbw
 apps/*/pbw.exe
+apps/*/*.d.ts
+apps/*/jsconfig.json
+apps/*/pb_schema.json
 
 packages/*/node_modules
