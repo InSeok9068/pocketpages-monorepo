@@ -25,7 +25,11 @@
         window.__unocss_runtime.presets.presetIcons({
           collections: {
             lucide: () => {
-              lucideIcons = lucideIcons || fetch('<%= asset('/assets/vendor/iconify-lucide-1.2.116.icons.json') %>').then((response) => response.json())
+              lucideIcons =
+                lucideIcons
+                || fetch('<%= asset('/assets/vendor/iconify-lucide-1.2.116.icons.json') %>').then((response) =>
+                  response.json()
+                )
 
               return lucideIcons
             },
