@@ -1,0 +1,41 @@
+diff --git a/node_modules/@fullstackfamily/manseryeok/dist/index.js b/node_modules/@fullstackfamily/manseryeok/dist/index.js
+index d77e1f7..8a7389e 100644
+--- a/node_modules/@fullstackfamily/manseryeok/dist/index.js
++++ b/node_modules/@fullstackfamily/manseryeok/dist/index.js
+@@ -64,11 +64,26 @@ let _countBytes = null;
+ let _dataBytes = null;
+ let _dayOffsets = null;
+ function b64ToBytes(b64) {
+-    const bin = atob(b64);
+-    const bytes = new Uint8Array(bin.length);
+-    for (let i = 0; i < bin.length; i++)
+-        bytes[i] = bin.charCodeAt(i);
+-    return bytes;
++    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
++    const bytes = [];
++    let buffer = 0;
++    let bitCount = 0;
++    for (let i = 0; i < b64.length; i++) {
++        const char = b64.charAt(i);
++        if (char === '=')
++            break;
++        const value = alphabet.indexOf(char);
++        if (value === -1)
++            continue;
++        buffer = (buffer << 6) | value;
++        bitCount += 6;
++        if (bitCount >= 8) {
++            bitCount -= 8;
++            bytes.push((buffer >> bitCount) & 0xff);
++            buffer &= (1 << bitCount) - 1;
++        }
++    }
++    return new Uint8Array(bytes);
+ }
+ function getJDOffsets() {
+     if (!_jdOffsets)
+@@ -2525,4 +2540,3 @@ exports.isBeforeLichun = isBeforeLichun;
+ exports.isSupportedYear = isSupportedYear;
+ exports.lunarToSolar = lunarToSolar;
+ exports.solarToLunar = solarToLunar;
+-//# sourceMappingURL=index.js.map
