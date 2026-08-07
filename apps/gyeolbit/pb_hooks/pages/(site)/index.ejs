@@ -26,30 +26,6 @@
     private: '선택 안 함',
   }
 
-  const ELEMENTS = {
-    갑: '목',
-    을: '목',
-    인: '목',
-    묘: '목',
-    병: '화',
-    정: '화',
-    사: '화',
-    오: '화',
-    무: '토',
-    기: '토',
-    진: '토',
-    술: '토',
-    축: '토',
-    미: '토',
-    경: '금',
-    신: '금',
-    유: '금',
-    임: '수',
-    계: '수',
-    해: '수',
-    자: '수',
-  }
-
   function readText(value) {
     return String(value || '').trim()
   }
@@ -64,31 +40,6 @@
         return place.id === placeId
       }) || BIRTH_PLACES[0]
     )
-  }
-
-  function getElementProfile(saju) {
-    const counts = { 목: 0, 화: 0, 토: 0, 금: 0, 수: 0 }
-    const pillars = [saju.yearPillar, saju.monthPillar, saju.dayPillar, saju.hourPillar]
-
-    pillars.forEach(function (pillar) {
-      if (!pillar) return
-
-      String(pillar)
-        .split('')
-        .forEach(function (character) {
-          const element = ELEMENTS[character]
-          if (element) counts[element] += 1
-        })
-    })
-
-    return {
-      counts: counts,
-      text: ['목', '화', '토', '금', '수']
-        .map(function (element) {
-          return element + ' ' + counts[element]
-        })
-        .join(' · '),
-    }
   }
 
   function buildPrompt(result) {
@@ -110,7 +61,7 @@
       result.saju.hourPillar ? '시주 ' + result.saju.hourPillar + '(' + result.saju.hourPillarHanja + ')' : '시주 미상',
     ].join(' · ')
 
-    return [
+    const promptLines = [
       '당신은 한국 사주명리의 여러 해석 관점을 균형 있게 설명하는 해석가입니다.',
       '아래 계산된 만세력 원국을 기준으로, 과장하거나 운명을 단정하지 말고 실생활에 적용 가능한 언어로 풀어주세요.',
       '',
@@ -124,9 +75,19 @@
       '- 양력: ' + result.solar.year + '년 ' + result.solar.month + '월 ' + result.solar.day + '일',
       '- 음력: ' + lunarText,
       '- 사주 원국: ' + pillarText,
-      '- 일간: ' + result.dayMaster,
-      '- 단순 오행 분포: ' + result.elementProfile.text,
-      '- 주의: 위 오행 개수는 겉글자 기준이며 지장간, 월령, 조후, 합화는 아직 반영하지 않았습니다.',
+      '- 일간: ' + result.analysis.dayMaster.label,
+      '- 겉글자 오행 분포: ' + result.analysis.elementProfile.text,
+      '- 천간 십신: ' + result.analysis.stemTenGodText,
+      '- 지지 본기 십신: ' + result.analysis.branchTenGodText,
+      '- 지장간과 십신:',
+    ]
+
+    result.analysis.hiddenStemLines.forEach(function (line) {
+      promptLines.push('  - ' + line)
+    })
+
+    promptLines.push(
+      '- 주의: 오행 개수는 겉글자 기준이며 지장간 가중치, 월령, 조후, 합화는 반영하지 않았습니다.',
       '',
       '## 요청할 풀이',
       '1. 내 기본 성격 구조: 겉으로 보이는 모습과 실제 내면 성향의 차이',
@@ -140,14 +101,21 @@
       '',
       '## 해석 원칙',
       '- 제공된 사주 원국은 다시 계산하지 말고 그대로 사용하세요.',
-      '- 먼저 오행, 십신, 월령, 합·충·형·파·해를 분석한 뒤 결론을 설명하세요.',
+      '- 제공된 지장간과 십신은 다시 계산하지 말고, 이를 바탕으로 월령, 강약, 합·충·형·파·해를 분석하세요.',
       '- 각 항목을 [관찰] → [해석] → [현실적인 조언] 순서로 작성하세요.',
       '- 학파에 따라 달라지는 판단은 하나로 단정하지 말고 다른 가능성을 짧게 밝혀주세요.',
       '- 건강, 투자, 법률 문제를 확정적으로 예언하지 마세요.',
       '- 태어난 시간이 없으면 시주와 시주에 의존하는 해석은 제외하거나 불확실성을 표시하세요.',
       '- 막연한 좋은 말보다 근거가 된 원국의 글자와 관계를 함께 적어주세요.',
       '- 전체 답변은 읽기 쉬운 한국어로, 항목별 제목을 붙여 작성하세요.',
-    ].join('\n')
+      '',
+      '## 개인정보 및 대화 맥락',
+      '- 이 요청에 적힌 정보만 사용하고, 저장된 메모리·과거 대화·사용자 프로필을 참조하지 마세요.',
+      '- 생년 정보와 해석 결과를 장기 메모리나 이후 대화의 개인화 정보로 저장하지 마세요.',
+      '- 플랫폼에서 이 요청을 보장할 수 없다면 그 사실을 짧게 알리고, 제공된 정보 범위 안에서만 답하세요.'
+    )
+
+    return promptLines.join('\n')
   }
 
   meta('title', '결빛 사주 · 나의 결을 비추다')
@@ -173,6 +141,7 @@
   if (request.method === 'POST') {
     const { dateutil } = require('@pocketpages/utils')
     const manseryeok = require('@fullstackfamily/manseryeok')
+    const sajuAnalysis = resolve('saju-analysis')
     const form = body()
 
     formValues.calendarType = readText(form.calendarType) === 'lunar' ? 'lunar' : 'solar'
@@ -238,7 +207,7 @@
         applyTimeCorrection: place.correctTime,
       })
       const lunar = manseryeok.solarToLunar(solar.year, solar.month, solar.day).lunar
-      const elementProfile = getElementProfile(saju)
+      const analysis = sajuAnalysis.analyzeSaju(saju)
       const correctedTimeText = saju.correctedTime
         ? padNumber(saju.correctedTime.hour) + ':' + padNumber(saju.correctedTime.minute) + ' 경도 보정'
         : formValues.timeUnknown
@@ -248,8 +217,7 @@
         calendarLabel: formValues.calendarType === 'lunar' ? '음력' : '양력',
         correctedTimeText: correctedTimeText,
         currentYear: Number(dateutil.formatDate(Date.now(), 'YYYY')),
-        dayMaster: saju.dayPillar.charAt(0) + ELEMENTS[saju.dayPillar.charAt(0)],
-        elementProfile: elementProfile,
+        analysis: analysis,
         genderLabel: GENDER_LABELS[formValues.gender],
         inputDate: inputDate + (formValues.isLeapMonth && formValues.calendarType === 'lunar' ? ' 윤달' : ''),
         inputTime: formValues.birthTime,
@@ -285,7 +253,7 @@
         <small>나의 결을 비추다</small>
       </span>
     </a>
-    <span class="privacy-badge">저장하지 않아요</span>
+    <span class="privacy-badge">서버 저장 없음</span>
   </header>
 
   <% if (!resultSummary) { %>
@@ -509,15 +477,15 @@
     <div class="result-meta">
       <span>
         일간
-        <strong><%= resultSummary.dayMaster %></strong>
+        <strong><%= resultSummary.analysis.dayMaster.label %></strong>
       </span>
-      <span><%= resultSummary.elementProfile.text %></span>
+      <span><%= resultSummary.analysis.elementProfile.text %></span>
     </div>
 
     <label class="prompt-editor">
       <span class="prompt-label">
         <strong>AI에게 보낼 내용</strong>
-        <small>보내기 전에 원하는 표현으로 직접 다듬어 보세요.</small>
+        <small>가능하면 AI 서비스의 임시 대화에서 사용하세요.</small>
       </span>
       <textarea
         x-ref="prompt"
@@ -544,7 +512,7 @@
       </button>
     </div>
 
-    <p class="privacy-note">복사한 내용에는 생년월일시가 포함됩니다. AI 서비스의 개인정보 정책을 확인하세요.</p>
+    <p class="privacy-note">프롬프트만으로 AI의 저장 정책은 바뀌지 않습니다. 생년 정보는 가능하면 임시 대화 모드에서 사용하세요.</p>
   </section>
   <% } %>
 </div>
