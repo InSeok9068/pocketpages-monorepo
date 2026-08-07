@@ -145,6 +145,10 @@ main {
   overflow: hidden;
 }
 
+.screen-form {
+  padding-bottom: clamp(14px, 2.3dvh, 22px);
+}
+
 .intro-copy {
   flex: 0 0 auto;
 }
@@ -188,7 +192,7 @@ main {
   margin-top: clamp(13px, 2.2dvh, 20px);
   flex: 1 1 auto;
   flex-direction: column;
-  gap: clamp(8px, 1.35dvh, 13px);
+  gap: clamp(11px, 1.75dvh, 16px);
 }
 
 .form-error {
@@ -571,6 +575,10 @@ select.control {
 
   .screen {
     padding-top: 10px;
+  }
+
+  .screen-form {
+    padding-bottom: 6px;
   }
 
   .intro-copy h1,
