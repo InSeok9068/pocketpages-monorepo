@@ -409,6 +409,23 @@
 
     if (!swiperElement) return
 
+    const updateSwipeAreaHeight = function () {
+      const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight
+      const nav = document.querySelector('.launchboard-app-nav')
+      const navHeight = nav ? nav.offsetHeight : 0
+      const availableHeight = viewportHeight - swiperElement.getBoundingClientRect().top - navHeight
+
+      swiperElement.style.minHeight = Math.max(240, availableHeight) + 'px'
+    }
+
+    updateSwipeAreaHeight()
+
+    if (swiperElement.dataset.swipeAreaResizeReady !== 'true') {
+      swiperElement.dataset.swipeAreaResizeReady = 'true'
+      window.addEventListener('resize', updateSwipeAreaHeight)
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', updateSwipeAreaHeight)
+    }
+
     if (swiperElement.dataset.horizontalWheelReady !== 'true') {
       swiperElement.dataset.horizontalWheelReady = 'true'
       swiperElement.addEventListener(

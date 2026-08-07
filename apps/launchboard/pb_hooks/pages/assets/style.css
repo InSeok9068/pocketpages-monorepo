@@ -16,6 +16,10 @@ button:focus-visible {
   box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.18);
 }
 
+.launchboard-app-nav {
+  margin: 0;
+}
+
 .launchboard-choice-input {
   position: absolute;
   width: 1px;
@@ -118,6 +122,7 @@ button:focus-visible {
   align-items: flex-start;
   box-sizing: content-box;
   display: flex;
+  min-height: inherit;
   transition-property: transform, height;
 }
 
