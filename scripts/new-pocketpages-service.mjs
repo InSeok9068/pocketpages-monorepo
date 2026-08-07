@@ -305,7 +305,7 @@ function buildPackageJson(options) {
       },
       scripts: {
         postinstall:
-          "node -e \"try{const r=require('child_process').spawnSync(process.execPath,['../../scripts/run-patch-package.js'],{encoding:'utf8'});if(r.status===0){if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr)}else{console.log('patch script not available, skip')}}catch(e){console.log('patch script not available, skip')}\"",
+          "node -e \"const fs=require('fs');const p='../../scripts/run-patch-package.js';if(!fs.existsSync(p)){console.log('patch script not available, skip');process.exit(0)}const r=require('child_process').spawnSync(process.execPath,[p],{stdio:'inherit'});if(r.error)throw r.error;process.exit(r.status===null?1:r.status)\"",
       },
       dependencies,
       devDependencies: {
@@ -807,8 +807,10 @@ RUN bash ./task.sh css ${service}
 WORKDIR /app/apps/${service}
 COPY apps/${service}/package*.json ./
 COPY packages /app/packages
+COPY scripts/run-patch-package.js /app/scripts/run-patch-package.js
+COPY scripts/patches /app/scripts/patches
 RUN cd /app/packages/utils && npm ci --omit=dev
-RUN npm ci --omit=dev
+RUN npm ci && npm prune --omit=dev
 ${cssStage}
 FROM alpine:3.24 AS pocketbase
 

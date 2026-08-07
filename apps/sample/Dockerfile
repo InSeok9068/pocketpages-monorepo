@@ -3,8 +3,10 @@ FROM node:24-bookworm-slim AS deps
 WORKDIR /app/apps/sample
 COPY apps/sample/package*.json ./
 COPY packages /app/packages
+COPY scripts/run-patch-package.js /app/scripts/run-patch-package.js
+COPY scripts/patches /app/scripts/patches
 RUN cd /app/packages/utils && npm ci --omit=dev
-RUN npm ci --omit=dev
+RUN npm ci && npm prune --omit=dev
 
 FROM node:24-bookworm-slim AS css
 
