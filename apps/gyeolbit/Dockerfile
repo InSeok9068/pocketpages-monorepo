@@ -9,17 +9,6 @@ COPY scripts/patches /app/scripts/patches
 RUN cd /app/packages/utils && npm ci --omit=dev
 RUN npm ci && npm prune --omit=dev
 
-FROM node:24-bookworm-slim AS css
-
-WORKDIR /app
-COPY package*.json ./
-COPY task.sh ./
-COPY unocss.config.js ./
-COPY packages /app/packages
-COPY apps/gyeolbit/pb_hooks ./apps/gyeolbit/pb_hooks
-RUN npm ci
-RUN bash ./task.sh css gyeolbit
-
 FROM alpine:3.24 AS pocketbase
 
 ARG TARGETARCH
@@ -50,7 +39,6 @@ RUN apk add --no-cache ca-certificates
 COPY apps/gyeolbit/. .
 COPY --from=deps /app/packages /app/packages
 COPY --from=deps /app/apps/gyeolbit/node_modules ./node_modules
-COPY --from=css /app/apps/gyeolbit/pb_hooks/pages/assets/uno.min.css ./pb_hooks/pages/assets/uno.min.css
 COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
 RUN mkdir -p /opt/defaults/pb_hooks \
   && if [ -d "${CODE_ROOT}/pb_hooks" ]; then cp -R "${CODE_ROOT}/pb_hooks/." /opt/defaults/pb_hooks/; fi \
