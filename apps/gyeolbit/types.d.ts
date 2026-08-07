@@ -35,15 +35,39 @@ declare namespace types {
     branch: string
     stemTenGod: string
     branchMainTenGod: string
+    twelveStage: string
     hiddenStems: HiddenStemAnalysis[]
+  }
+
+  interface MonthCommandAnalysis {
+    branch: string
+    season: string
+    phase: string
+    element: FiveElement
+    text: string
+  }
+
+  interface AnnualFortuneAnalysis {
+    year: number
+    pillar: string
+    stemTenGod: string
+    branchMainTenGod: string
+    twelveStage: string
+    relations: string[]
+    text: string
   }
 
   interface SajuAnalysis {
     dayMaster: DayMasterAnalysis
     elementProfile: ElementProfile
     pillars: PillarAnalysis[]
+    monthCommand: MonthCommandAnalysis
+    natalRelationLines: string[]
+    annualFortunes: AnnualFortuneAnalysis[]
     stemTenGodText: string
     branchTenGodText: string
     hiddenStemLines: string[]
+    twelveStageText: string
+    annualFortuneLines: string[]
   }
 }

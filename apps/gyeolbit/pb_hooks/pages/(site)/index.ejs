@@ -86,8 +86,25 @@
       promptLines.push('  - ' + line)
     })
 
+    promptLines.push('- 월령과 계절: ' + result.analysis.monthCommand.text)
+    promptLines.push('- 일간 기준 12운성: ' + result.analysis.twelveStageText)
+    promptLines.push('- 원국의 고정 관계:')
+    if (result.analysis.natalRelationLines.length > 0) {
+      result.analysis.natalRelationLines.forEach(function (line) {
+        promptLines.push('  - ' + line)
+      })
+    } else {
+      promptLines.push('  - 천간합·지지 합충형파해·삼합·방합 중 확인된 관계 없음')
+    }
+
+    promptLines.push('- 향후 3년 세운(입춘 기준):')
+    result.analysis.annualFortuneLines.forEach(function (line) {
+      promptLines.push('  - ' + line)
+    })
+
     promptLines.push(
       '- 주의: 오행 개수는 겉글자 기준이며 지장간 가중치, 월령, 조후, 합화는 반영하지 않았습니다.',
+      '- 주의: 합·삼합·방합은 관계의 존재만 표시하며 실제 합화 성립을 뜻하지 않습니다.',
       '',
       '## 요청할 풀이',
       '1. 내 기본 성격 구조: 겉으로 보이는 모습과 실제 내면 성향의 차이',
@@ -101,7 +118,9 @@
       '',
       '## 해석 원칙',
       '- 제공된 사주 원국은 다시 계산하지 말고 그대로 사용하세요.',
-      '- 제공된 지장간과 십신은 다시 계산하지 말고, 이를 바탕으로 월령, 강약, 합·충·형·파·해를 분석하세요.',
+      '- 제공된 지장간·십신·월령·12운성·원국 관계·세운은 다시 계산하지 마세요.',
+      '- 모든 관계를 같은 비중으로 다루지 말고 월령·일간·원국 구조와 직접 관련된 요소를 우선하세요.',
+      '- 신강·신약, 조후, 용신과 합화 성립은 제공된 확정 계산과 구분하여 해석하세요.',
       '- 각 항목을 [관찰] → [해석] → [현실적인 조언] 순서로 작성하세요.',
       '- 학파에 따라 달라지는 판단은 하나로 단정하지 말고 다른 가능성을 짧게 밝혀주세요.',
       '- 건강, 투자, 법률 문제를 확정적으로 예언하지 마세요.',
@@ -207,7 +226,8 @@
         applyTimeCorrection: place.correctTime,
       })
       const lunar = manseryeok.solarToLunar(solar.year, solar.month, solar.day).lunar
-      const analysis = sajuAnalysis.analyzeSaju(saju)
+      const currentYear = Number(dateutil.formatDate(Date.now(), 'YYYY'))
+      const analysis = sajuAnalysis.analyzeSaju(saju, currentYear)
       const correctedTimeText = saju.correctedTime
         ? padNumber(saju.correctedTime.hour) + ':' + padNumber(saju.correctedTime.minute) + ' 경도 보정'
         : formValues.timeUnknown
@@ -216,7 +236,7 @@
       const result = {
         calendarLabel: formValues.calendarType === 'lunar' ? '음력' : '양력',
         correctedTimeText: correctedTimeText,
-        currentYear: Number(dateutil.formatDate(Date.now(), 'YYYY')),
+        currentYear: currentYear,
         analysis: analysis,
         genderLabel: GENDER_LABELS[formValues.gender],
         inputDate: inputDate + (formValues.isLeapMonth && formValues.calendarType === 'lunar' ? ' 윤달' : ''),
