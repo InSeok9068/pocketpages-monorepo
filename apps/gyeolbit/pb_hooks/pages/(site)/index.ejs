@@ -42,6 +42,27 @@
     )
   }
 
+  /**
+   * 오늘이 속한 사주 연도부터 3년간의 세운 간지를 만세력에서 가져옵니다.
+   *
+   * 세운은 달력 연도가 아니라 입춘을 경계로 바뀝니다.
+   */
+  function getAnnualPillars(manseryeok, year, month, day) {
+    const startYear = manseryeok.isBeforeLichun(month, day) ? year - 1 : year
+    const pillars = []
+
+    for (let offset = 0; offset < 3; offset += 1) {
+      const targetYear = startYear + offset
+      // 입춘(2월 4일경) 직후 날짜의 연주가 해당 사주 연도의 세운 간지입니다.
+      pillars.push({
+        year: targetYear,
+        pillar: manseryeok.getGapja(targetYear, 2, 10).yearPillar,
+      })
+    }
+
+    return pillars
+  }
+
   function buildPrompt(result) {
     const timeText = result.timeUnknown
       ? '태어난 시간 모름 — 시주는 제외하고 해석'
@@ -226,8 +247,10 @@
         applyTimeCorrection: place.correctTime,
       })
       const lunar = manseryeok.solarToLunar(solar.year, solar.month, solar.day).lunar
-      const currentYear = Number(dateutil.formatDate(Date.now(), 'YYYY'))
-      const analysis = sajuAnalysis.analyzeSaju(saju, currentYear)
+      const today = dateutil.formatDate(Date.now(), 'YYYY-MM-DD').split('-').map(Number)
+      const annualPillars = getAnnualPillars(manseryeok, today[0], today[1], today[2])
+      const currentYear = annualPillars[0].year
+      const analysis = sajuAnalysis.analyzeSaju(saju, annualPillars)
       const correctedTimeText = saju.correctedTime
         ? padNumber(saju.correctedTime.hour) + ':' + padNumber(saju.correctedTime.minute) + ' 경도 보정'
         : formValues.timeUnknown

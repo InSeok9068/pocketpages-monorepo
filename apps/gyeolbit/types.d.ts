@@ -47,6 +47,11 @@ declare namespace types {
     text: string
   }
 
+  interface AnnualPillar {
+    year: number
+    pillar: string
+  }
+
   interface AnnualFortuneAnalysis {
     year: number
     pillar: string

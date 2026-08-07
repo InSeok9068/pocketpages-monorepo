@@ -48,7 +48,6 @@ const PILLARS = [
   { key: 'hour', label: '시', field: 'hourPillar' },
 ]
 
-const STEM_ORDER = ['갑', '을', '병', '정', '무', '기', '경', '신', '임', '계']
 const BRANCH_ORDER = ['자', '축', '인', '묘', '진', '사', '오', '미', '신', '유', '술', '해']
 const TWELVE_STAGES = ['장생', '목욕', '관대', '건록', '제왕', '쇠', '병', '사', '묘', '절', '태', '양']
 
@@ -295,12 +294,6 @@ function getNatalRelationLines(pillars) {
   return lines
 }
 
-function getYearPillar(year) {
-  const stemIndex = ((year - 4) % 10 + 10) % 10
-  const branchIndex = ((year - 4) % 12 + 12) % 12
-  return STEM_ORDER[stemIndex] + BRANCH_ORDER[branchIndex]
-}
-
 function getAnnualRelations(pillars, annualStem, annualBranch) {
   const relations = []
 
@@ -329,12 +322,12 @@ function getAnnualRelations(pillars, annualStem, annualBranch) {
   return relations
 }
 
-function getAnnualFortunes(dayStem, pillars, currentYear) {
+function getAnnualFortunes(dayStem, pillars, annualPillars) {
   const fortunes = []
 
-  for (let offset = 0; offset < 3; offset += 1) {
-    const year = currentYear + offset
-    const pillar = getYearPillar(year)
+  annualPillars.forEach(function (annual) {
+    const year = annual.year
+    const pillar = String(annual.pillar)
     const stem = pillar.charAt(0)
     const branch = pillar.charAt(1)
     const hiddenStems = HIDDEN_STEMS[branch] || []
@@ -367,7 +360,7 @@ function getAnnualFortunes(dayStem, pillars, currentYear) {
         + ' · '
         + relationText,
     })
-  }
+  })
 
   return fortunes
 }
@@ -425,10 +418,10 @@ function analyzePillar(dayStem, definition, pillar) {
 /**
  * 원국과 향후 세운의 고정 관계를 계산합니다.
  * @param {types.SajuPillars} saju 사주 원국
- * @param {number} currentYear 세운 시작 연도
+ * @param {types.AnnualPillar[]} annualPillars 만세력에서 계산한 세운 간지 목록
  * @returns {types.SajuAnalysis} 원국 분석 결과
  */
-function analyzeSaju(saju, currentYear) {
+function analyzeSaju(saju, annualPillars) {
   const dayStem = String(saju.dayPillar || '').charAt(0)
   const dayMaster = STEMS[dayStem]
   if (!dayMaster) throw new Error('일간을 확인할 수 없습니다.')
@@ -438,7 +431,7 @@ function analyzeSaju(saju, currentYear) {
   }).map(function (definition) {
     return analyzePillar(dayStem, definition, saju[definition.field])
   })
-  const annualFortunes = getAnnualFortunes(dayStem, pillars, currentYear)
+  const annualFortunes = getAnnualFortunes(dayStem, pillars, annualPillars)
 
   return {
     dayMaster: {
