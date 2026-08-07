@@ -1,24 +1,539 @@
 <script server>
-  meta('title', 'gyeolbit')
-  meta('description', 'gyeolbit 서비스 홈')
+  const BIRTH_PLACES = [
+    { id: 'capital', label: '서울 · 경기 · 인천', longitude: 127.0, correctTime: true },
+    { id: 'gangwon', label: '강원', longitude: 128.2, correctTime: true },
+    { id: 'chungcheong', label: '대전 · 세종 · 충청', longitude: 127.4, correctTime: true },
+    { id: 'jeolla', label: '광주 · 전라', longitude: 126.9, correctTime: true },
+    { id: 'gyeongsang', label: '부산 · 대구 · 울산 · 경상', longitude: 128.7, correctTime: true },
+    { id: 'jeju', label: '제주', longitude: 126.5, correctTime: true },
+    { id: 'other', label: '해외 · 기타', longitude: 135, correctTime: false },
+  ]
+
+  const GENDER_LABELS = {
+    female: '여성',
+    male: '남성',
+    private: '선택 안 함',
+  }
+
+  const ELEMENTS = {
+    갑: '목',
+    을: '목',
+    인: '목',
+    묘: '목',
+    병: '화',
+    정: '화',
+    사: '화',
+    오: '화',
+    무: '토',
+    기: '토',
+    진: '토',
+    술: '토',
+    축: '토',
+    미: '토',
+    경: '금',
+    신: '금',
+    유: '금',
+    임: '수',
+    계: '수',
+    해: '수',
+    자: '수',
+  }
+
+  function readText(value) {
+    return String(value || '').trim()
+  }
+
+  function padNumber(value) {
+    return String(value).padStart(2, '0')
+  }
+
+  function getPlace(placeId) {
+    return (
+      BIRTH_PLACES.find(function (place) {
+        return place.id === placeId
+      }) || BIRTH_PLACES[0]
+    )
+  }
+
+  function getElementProfile(saju) {
+    const counts = { 목: 0, 화: 0, 토: 0, 금: 0, 수: 0 }
+    const pillars = [saju.yearPillar, saju.monthPillar, saju.dayPillar, saju.hourPillar]
+
+    pillars.forEach(function (pillar) {
+      if (!pillar) return
+
+      String(pillar)
+        .split('')
+        .forEach(function (character) {
+          const element = ELEMENTS[character]
+          if (element) counts[element] += 1
+        })
+    })
+
+    return {
+      counts: counts,
+      text: ['목', '화', '토', '금', '수']
+        .map(function (element) {
+          return element + ' ' + counts[element]
+        })
+        .join(' · '),
+    }
+  }
+
+  function buildPrompt(result) {
+    const timeText = result.timeUnknown
+      ? '태어난 시간 모름 — 시주는 제외하고 해석'
+      : result.inputTime + ' (' + result.correctedTimeText + ')'
+    const lunarText =
+      result.lunar.year
+      + '년 '
+      + result.lunar.month
+      + '월 '
+      + result.lunar.day
+      + '일'
+      + (result.lunar.isLeapMonth ? ' 윤달' : '')
+    const pillarText = [
+      '년주 ' + result.saju.yearPillar + '(' + result.saju.yearPillarHanja + ')',
+      '월주 ' + result.saju.monthPillar + '(' + result.saju.monthPillarHanja + ')',
+      '일주 ' + result.saju.dayPillar + '(' + result.saju.dayPillarHanja + ')',
+      result.saju.hourPillar ? '시주 ' + result.saju.hourPillar + '(' + result.saju.hourPillarHanja + ')' : '시주 미상',
+    ].join(' · ')
+
+    return [
+      '당신은 한국 사주명리의 여러 해석 관점을 균형 있게 설명하는 해석가입니다.',
+      '아래 계산된 만세력 원국을 기준으로, 과장하거나 운명을 단정하지 말고 실생활에 적용 가능한 언어로 풀어주세요.',
+      '',
+      '## 해석 대상',
+      '- 성별: ' + result.genderLabel,
+      '- 출생 입력: ' + result.calendarLabel + ' ' + result.inputDate,
+      '- 태어난 시간: ' + timeText,
+      '- 태어난 지역: ' + result.place.label + ' (대표 경도 ' + result.place.longitude + '° 기준)',
+      '',
+      '## 계산된 만세력',
+      '- 양력: ' + result.solar.year + '년 ' + result.solar.month + '월 ' + result.solar.day + '일',
+      '- 음력: ' + lunarText,
+      '- 사주 원국: ' + pillarText,
+      '- 일간: ' + result.dayMaster,
+      '- 단순 오행 분포: ' + result.elementProfile.text,
+      '- 주의: 위 오행 개수는 겉글자 기준이며 지장간, 월령, 조후, 합화는 아직 반영하지 않았습니다.',
+      '',
+      '## 요청할 풀이',
+      '1. 내 기본 성격 구조: 겉으로 보이는 모습과 실제 내면 성향의 차이',
+      '2. 인간관계에서 반복되는 문제 패턴과 그 원인',
+      '3. 연애 스타일과 잘 맞는 사람, 충돌하기 쉬운 사람의 유형',
+      '4. 결혼 생활에서 생길 수 있는 현실적인 갈등 지점과 조율법',
+      '5. 돈을 벌고 관리하는 방식의 성향: 안정형, 기복형, 타이밍형 여부',
+      '6. 사회생활에서 인정받는 방식과 힘들어지는 환경',
+      '7. ' + result.currentYear + '년부터 3년간 흐름이 좋아지는 시기와 주의할 시기',
+      '8. 스스로 고치면 삶이 편해질 가능성이 높은 습관 3가지',
+      '',
+      '## 해석 원칙',
+      '- 제공된 사주 원국은 다시 계산하지 말고 그대로 사용하세요.',
+      '- 먼저 오행, 십신, 월령, 합·충·형·파·해를 분석한 뒤 결론을 설명하세요.',
+      '- 각 항목을 [관찰] → [해석] → [현실적인 조언] 순서로 작성하세요.',
+      '- 학파에 따라 달라지는 판단은 하나로 단정하지 말고 다른 가능성을 짧게 밝혀주세요.',
+      '- 건강, 투자, 법률 문제를 확정적으로 예언하지 마세요.',
+      '- 태어난 시간이 없으면 시주와 시주에 의존하는 해석은 제외하거나 불확실성을 표시하세요.',
+      '- 막연한 좋은 말보다 근거가 된 원국의 글자와 관계를 함께 적어주세요.',
+      '- 전체 답변은 읽기 쉬운 한국어로, 항목별 제목을 붙여 작성하세요.',
+    ].join('\n')
+  }
+
+  meta('title', '결빛 · AI 사주 프롬프트')
+  meta('description', '출생 정보로 만세력을 계산하고 AI에게 보낼 사주 풀이 프롬프트를 준비합니다.')
+
+  const formValues = {
+    calendarType: 'solar',
+    birthYear: '',
+    birthMonth: '',
+    birthDay: '',
+    birthTime: '12:00',
+    timeUnknown: false,
+    isLeapMonth: false,
+    birthPlace: 'capital',
+    gender: 'female',
+  }
+  let promptText = ''
+  let resultSummary = null
+  let formError = ''
+
+  dbg('gyeolbit/home:request', { method: String(request.method || '') })
+
+  if (request.method === 'POST') {
+    const { dateutil } = require('@pocketpages/utils')
+    const manseryeok = require('@fullstackfamily/manseryeok')
+    const form = body()
+
+    formValues.calendarType = readText(form.calendarType) === 'lunar' ? 'lunar' : 'solar'
+    formValues.birthYear = readText(form.birthYear)
+    formValues.birthMonth = readText(form.birthMonth)
+    formValues.birthDay = readText(form.birthDay)
+    formValues.birthTime = readText(form.birthTime) || '12:00'
+    formValues.timeUnknown = readText(form.timeUnknown) === 'on'
+    formValues.isLeapMonth = readText(form.isLeapMonth) === 'on'
+    formValues.birthPlace = readText(form.birthPlace) || 'capital'
+    formValues.gender = GENDER_LABELS[readText(form.gender)] ? readText(form.gender) : 'private'
+
+    try {
+      const year = Number(formValues.birthYear)
+      const month = Number(formValues.birthMonth)
+      const day = Number(formValues.birthDay)
+
+      if (!/^\d{4}$/.test(formValues.birthYear) || year < 1900 || year > 2050) {
+        throw new Error('출생 연도는 1900년부터 2050년 사이로 입력해 주세요.')
+      }
+      if (!/^\d{1,2}$/.test(formValues.birthMonth) || month < 1 || month > 12) {
+        throw new Error('출생 월을 정확히 입력해 주세요.')
+      }
+      if (!/^\d{1,2}$/.test(formValues.birthDay) || day < 1 || day > 31) {
+        throw new Error('출생 일을 정확히 입력해 주세요.')
+      }
+
+      const inputDate = year + '-' + padNumber(month) + '-' + padNumber(day)
+      let solar = { year: year, month: month, day: day }
+
+      if (formValues.calendarType === 'solar') {
+        const dateOnlyIso = dateutil.toDateOnlyIso(inputDate)
+        if (!dateOnlyIso || dateOnlyIso.slice(0, 10) !== inputDate) {
+          throw new Error('실제로 존재하는 양력 날짜를 입력해 주세요.')
+        }
+      } else {
+        const converted = manseryeok.lunarToSolar(year, month, day, formValues.isLeapMonth)
+        solar = converted.solar
+      }
+
+      let hour
+      let minute = 0
+      if (!formValues.timeUnknown) {
+        const timeMatch = formValues.birthTime.match(/^(\d{2}):(\d{2})$/)
+        if (!timeMatch) throw new Error('태어난 시간을 정확히 입력해 주세요.')
+
+        hour = Number(timeMatch[1])
+        minute = Number(timeMatch[2])
+        if (hour > 23 || minute > 59) throw new Error('태어난 시간을 정확히 입력해 주세요.')
+      }
+
+      const place = getPlace(formValues.birthPlace)
+
+      dbg('gyeolbit/home:calculate-saju', {
+        calendarType: formValues.calendarType,
+        solarDate: solar.year + '-' + padNumber(solar.month) + '-' + padNumber(solar.day),
+        hasBirthTime: !formValues.timeUnknown,
+        birthPlace: place.id,
+      })
+
+      const saju = manseryeok.calculateSaju(solar.year, solar.month, solar.day, hour, minute, {
+        longitude: place.longitude,
+        applyTimeCorrection: place.correctTime,
+      })
+      const lunar = manseryeok.solarToLunar(solar.year, solar.month, solar.day).lunar
+      const elementProfile = getElementProfile(saju)
+      const correctedTimeText = saju.correctedTime
+        ? padNumber(saju.correctedTime.hour) + ':' + padNumber(saju.correctedTime.minute) + ' 경도 보정'
+        : formValues.timeUnknown
+          ? '시간 미입력'
+          : formValues.birthTime + ' 보정 없음'
+      const result = {
+        calendarLabel: formValues.calendarType === 'lunar' ? '음력' : '양력',
+        correctedTimeText: correctedTimeText,
+        currentYear: Number(dateutil.formatDate(Date.now(), 'YYYY')),
+        dayMaster: saju.dayPillar.charAt(0) + ELEMENTS[saju.dayPillar.charAt(0)],
+        elementProfile: elementProfile,
+        genderLabel: GENDER_LABELS[formValues.gender],
+        inputDate: inputDate + (formValues.isLeapMonth && formValues.calendarType === 'lunar' ? ' 윤달' : ''),
+        inputTime: formValues.birthTime,
+        lunar: lunar,
+        place: place,
+        saju: saju,
+        solar: solar,
+        timeUnknown: formValues.timeUnknown,
+      }
+
+      promptText = buildPrompt(result)
+      resultSummary = result
+    } catch (exception) {
+      formError = String(exception && exception.message ? exception.message : exception)
+      warn('gyeolbit/home:invalid-input', { error: formError })
+    }
+  }
 </script>
 
-<header>
-  <p>gyeolbit</p>
-  <h1>gyeolbit</h1>
-  <p>새 PocketPages 서비스를 시작하는 기본 화면입니다.</p>
-</header>
+<div class="app-shell">
+  <header class="app-header">
+    <a
+      class="brand"
+      href="/"
+      aria-label="결빛 홈">
+      <span
+        class="brand-mark"
+        aria-hidden="true">
+        結
+      </span>
+      <span>
+        <strong>결빛</strong>
+        <small>AI 사주 프롬프트</small>
+      </span>
+    </a>
+    <span class="privacy-badge">저장하지 않아요</span>
+  </header>
 
-<%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+  <% if (!resultSummary) { %>
+  <section
+    class="screen screen-form"
+    x-data="{ calendarType: '<%= formValues.calendarType %>', timeUnknown: <%= formValues.timeUnknown ? 'true' : 'false' %> }">
+    <div class="intro-copy">
+      <p class="eyebrow">STEP 1 · 출생 정보</p>
+      <h1>
+        풀이 전에,
+        <br />
+        <em>정확한 원국</em>
+        부터 준비해요.
+      </h1>
+      <p>입력한 정보로 만세력을 계산하고 AI에게 보낼 질문을 한 번에 정리해 드려요.</p>
+    </div>
 
-<section>
-  <article>
-    <h2>SSR route</h2>
-    <p>페이지 전용 로직은 page 파일에 두고, 공유 처리는 middleware와 _private 모듈로 옮깁니다.</p>
-  </article>
+    <form
+      method="post"
+      class="birth-form">
+      <% if (formError) { %>
+      <div
+        class="form-error"
+        role="alert">
+        <%= formError %>
+      </div>
+      <% } %>
 
-  <article>
-    <h2>Next step</h2>
-    <p>도메인 컬렉션과 route를 추가하면서 서비스를 확장하세요.</p>
-  </article>
-</section>
+      <div class="field-group compact-group">
+        <span class="field-label">달력 기준</span>
+        <div class="segment-control">
+          <label>
+            <input
+              type="radio"
+              name="calendarType"
+              value="solar"
+              x-model="calendarType" />
+            <span>양력</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="calendarType"
+              value="lunar"
+              x-model="calendarType" />
+            <span>음력</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-heading">
+          <label
+            class="field-label"
+            for="birth-year">
+            생년월일
+          </label>
+          <label
+            class="inline-check"
+            x-show="calendarType === 'lunar'"
+            x-cloak>
+            <input
+              type="checkbox"
+              name="isLeapMonth"
+              <%= formValues.isLeapMonth ? 'checked' : '' %> />
+            <span>윤달</span>
+          </label>
+        </div>
+        <div class="date-grid">
+          <label class="input-wrap year-input">
+            <input
+              id="birth-year"
+              name="birthYear"
+              type="number"
+              inputmode="numeric"
+              min="1900"
+              max="2050"
+              placeholder="1990"
+              value="<%= formValues.birthYear %>"
+              required />
+            <span>년</span>
+          </label>
+          <label class="input-wrap">
+            <input
+              name="birthMonth"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="12"
+              placeholder="5"
+              value="<%= formValues.birthMonth %>"
+              required />
+            <span>월</span>
+          </label>
+          <label class="input-wrap">
+            <input
+              name="birthDay"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="31"
+              placeholder="15"
+              value="<%= formValues.birthDay %>"
+              required />
+            <span>일</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="field-group">
+          <div class="field-heading">
+            <label
+              class="field-label"
+              for="birth-time">
+              태어난 시간
+            </label>
+            <label class="inline-check">
+              <input
+                type="checkbox"
+                name="timeUnknown"
+                x-model="timeUnknown"
+                <%= formValues.timeUnknown ? 'checked' : '' %> />
+              <span>모름</span>
+            </label>
+          </div>
+          <input
+            id="birth-time"
+            class="control"
+            name="birthTime"
+            type="time"
+            value="<%= formValues.birthTime %>"
+            :disabled="timeUnknown"
+            :required="!timeUnknown" />
+        </div>
+
+        <div class="field-group">
+          <label
+            class="field-label"
+            for="birth-place">
+            태어난 지역
+          </label>
+          <select
+            id="birth-place"
+            class="control"
+            name="birthPlace">
+            <% BIRTH_PLACES.forEach(function (place) { %>
+            <option
+              value="<%= place.id %>"
+              <%= formValues.birthPlace === place.id ? 'selected' : '' %>>
+              <%= place.label %>
+            </option>
+            <% }) %>
+          </select>
+        </div>
+      </div>
+
+      <div class="field-group compact-group">
+        <span class="field-label">성별</span>
+        <div class="segment-control gender-control">
+          <label>
+            <input
+              type="radio"
+              name="gender"
+              value="female"
+              <%= formValues.gender === 'female' ? 'checked' : '' %> />
+            <span>여성</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="gender"
+              value="male"
+              <%= formValues.gender === 'male' ? 'checked' : '' %> />
+            <span>남성</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="gender"
+              value="private"
+              <%= formValues.gender === 'private' ? 'checked' : '' %> />
+            <span>미선택</span>
+          </label>
+        </div>
+      </div>
+
+      <button
+        class="primary-button"
+        type="submit">
+        <span>AI용 프롬프트 만들기</span>
+        <span aria-hidden="true">→</span>
+      </button>
+    </form>
+
+    <p class="privacy-note">생년 정보는 프롬프트 생성에만 사용되며 서버에 저장하지 않습니다.</p>
+  </section>
+  <% } else { %>
+  <section
+    class="screen screen-result"
+    x-data="{ copied: false }">
+    <div class="result-heading">
+      <div>
+        <p class="eyebrow">STEP 2 · 프롬프트 완성</p>
+        <h1>
+          원국을 담은 질문이
+          <br />
+          <em>준비됐어요.</em>
+        </h1>
+      </div>
+      <div
+        class="pillar-orbit"
+        aria-label="사주 원국">
+        <span><%= resultSummary.saju.yearPillar %></span>
+        <span><%= resultSummary.saju.monthPillar %></span>
+        <span><%= resultSummary.saju.dayPillar %></span>
+        <span><%= resultSummary.saju.hourPillar || '미상' %></span>
+      </div>
+    </div>
+
+    <div class="result-meta">
+      <span>
+        일간
+        <strong><%= resultSummary.dayMaster %></strong>
+      </span>
+      <span><%= resultSummary.elementProfile.text %></span>
+    </div>
+
+    <label class="prompt-editor">
+      <span class="prompt-label">
+        <strong>AI에게 보낼 내용</strong>
+        <small>보내기 전에 원하는 표현으로 직접 다듬어 보세요.</small>
+      </span>
+      <textarea
+        x-ref="prompt"
+        spellcheck="false">
+<%= promptText %></textarea>
+    </label>
+
+    <div class="result-actions">
+      <a
+        class="secondary-button"
+        href="/">
+        다시 입력
+      </a>
+      <button
+        class="primary-button copy-button"
+        type="button"
+        @click="navigator.clipboard.writeText($refs.prompt.value).then(() => { copied = true; setTimeout(() => copied = false, 1600) })">
+        <span x-text="copied ? '복사했어요' : '프롬프트 복사'">프롬프트 복사</span>
+        <span
+          aria-hidden="true"
+          x-text="copied ? '✓' : '⧉'">
+          ⧉
+        </span>
+      </button>
+    </div>
+
+    <p class="privacy-note">복사한 내용에는 생년월일시가 포함됩니다. AI 서비스의 개인정보 정책을 확인하세요.</p>
+  </section>
+  <% } %>
+</div>
