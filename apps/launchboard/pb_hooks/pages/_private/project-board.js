@@ -81,7 +81,15 @@ function getFaviconUrls(domainUrl) {
 
   if (!origin) return []
 
-  return [origin + '/favicon.svg', origin + '/assets/favicon.svg', origin + '/favicon.png', origin + '/favicon.ico']
+  return [
+    origin + '/favicon.svg',
+    origin + '/assets/favicon.svg',
+    origin + '/favicon.png',
+    origin + '/assets/favicon.png',
+    origin + '/favicon.ico',
+    origin + '/assets/favicon.ico',
+    origin + '/assets/favicon-32.png',
+  ]
 }
 
 /**
