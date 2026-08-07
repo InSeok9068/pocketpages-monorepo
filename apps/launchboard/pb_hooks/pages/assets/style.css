@@ -115,9 +115,10 @@ button:focus-visible {
 
 .launchboard-project-swiper > .swiper-wrapper,
 .launchboard-task-swiper > .swiper-wrapper {
+  align-items: flex-start;
   box-sizing: content-box;
   display: flex;
-  transition-property: transform;
+  transition-property: transform, height;
 }
 
 .launchboard-project-swiper > .swiper-wrapper > .swiper-slide,
