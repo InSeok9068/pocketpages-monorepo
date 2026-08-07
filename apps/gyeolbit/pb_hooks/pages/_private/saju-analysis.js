@@ -272,12 +272,25 @@ function getNatalRelationLines(pillars) {
       const right = pillars[rightIndex]
       const stemCombination = getStemCombination(left.stem, right.stem)
       if (stemCombination) {
-        lines.push(left.label + '간 ' + left.stem + '·' + right.label + '간 ' + right.stem + ': 천간합(' + stemCombination.result + ')')
+        lines.push(
+          left.label
+            + '간 '
+            + left.stem
+            + '·'
+            + right.label
+            + '간 '
+            + right.stem
+            + ': 천간합('
+            + stemCombination.result
+            + ')'
+        )
       }
 
       const branchRelations = getBranchPairRelations(left.branch, right.branch)
       if (branchRelations.length > 0) {
-        lines.push(left.label + '지 ' + left.branch + '·' + right.label + '지 ' + right.branch + ': ' + branchRelations.join('·'))
+        lines.push(
+          left.label + '지 ' + left.branch + '·' + right.label + '지 ' + right.branch + ': ' + branchRelations.join('·')
+        )
       }
     }
   }
@@ -315,7 +328,16 @@ function getAnnualRelations(pillars, annualStem, annualBranch) {
   const combinedBranches = natalBranches.concat([annualBranch])
   BRANCH_GROUP_RELATIONS.forEach(function (relation) {
     if (!hasAllBranches(natalBranches, relation.branches) && hasAllBranches(combinedBranches, relation.branches)) {
-      relations.push(withSubjectParticle(annualBranch) + ' 더해져 ' + relation.branches.join('·') + ' ' + relation.type + '(' + relation.result + ')')
+      relations.push(
+        withSubjectParticle(annualBranch)
+          + ' 더해져 '
+          + relation.branches.join('·')
+          + ' '
+          + relation.type
+          + '('
+          + relation.result
+          + ')'
+      )
     }
   })
 
