@@ -15,7 +15,10 @@
 node_modules
 pb_data
 
-scripts
+scripts/*
+!scripts/run-patch-package.js
+!scripts/patches/
+!scripts/patches/**
 tools
 
 apps/*/.docs

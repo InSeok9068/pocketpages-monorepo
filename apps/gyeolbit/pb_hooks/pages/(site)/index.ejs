@@ -1,11 +1,22 @@
 <script server>
   const BIRTH_PLACES = [
-    { id: 'capital', label: '서울 · 경기 · 인천', longitude: 127.0, correctTime: true },
-    { id: 'gangwon', label: '강원', longitude: 128.2, correctTime: true },
-    { id: 'chungcheong', label: '대전 · 세종 · 충청', longitude: 127.4, correctTime: true },
-    { id: 'jeolla', label: '광주 · 전라', longitude: 126.9, correctTime: true },
-    { id: 'gyeongsang', label: '부산 · 대구 · 울산 · 경상', longitude: 128.7, correctTime: true },
-    { id: 'jeju', label: '제주', longitude: 126.5, correctTime: true },
+    { id: 'seoul', label: '서울', longitude: 126.98, correctTime: true },
+    { id: 'busan', label: '부산', longitude: 129.08, correctTime: true },
+    { id: 'daegu', label: '대구', longitude: 128.6, correctTime: true },
+    { id: 'incheon', label: '인천', longitude: 126.71, correctTime: true },
+    { id: 'gwangju', label: '광주', longitude: 126.85, correctTime: true },
+    { id: 'daejeon', label: '대전', longitude: 127.38, correctTime: true },
+    { id: 'ulsan', label: '울산', longitude: 129.31, correctTime: true },
+    { id: 'sejong', label: '세종', longitude: 127.29, correctTime: true },
+    { id: 'gyeonggi', label: '경기', longitude: 127.03, correctTime: true },
+    { id: 'gangwon', label: '강원', longitude: 127.73, correctTime: true },
+    { id: 'chungbuk', label: '충북', longitude: 127.49, correctTime: true },
+    { id: 'chungnam', label: '충남', longitude: 126.67, correctTime: true },
+    { id: 'jeonbuk', label: '전북', longitude: 127.15, correctTime: true },
+    { id: 'jeonnam', label: '전남', longitude: 126.46, correctTime: true },
+    { id: 'gyeongbuk', label: '경북', longitude: 128.73, correctTime: true },
+    { id: 'gyeongnam', label: '경남', longitude: 128.68, correctTime: true },
+    { id: 'jeju', label: '제주', longitude: 126.53, correctTime: true },
     { id: 'other', label: '해외 · 기타', longitude: 135, correctTime: false },
   ]
 
@@ -139,7 +150,7 @@
     ].join('\n')
   }
 
-  meta('title', '결빛 · AI 사주 프롬프트')
+  meta('title', '결빛 사주 · 나의 결을 비추다')
   meta('description', '출생 정보로 만세력을 계산하고 AI에게 보낼 사주 풀이 프롬프트를 준비합니다.')
 
   const formValues = {
@@ -150,7 +161,7 @@
     birthTime: '12:00',
     timeUnknown: false,
     isLeapMonth: false,
-    birthPlace: 'capital',
+    birthPlace: 'seoul',
     gender: 'female',
   }
   let promptText = ''
@@ -171,7 +182,7 @@
     formValues.birthTime = readText(form.birthTime) || '12:00'
     formValues.timeUnknown = readText(form.timeUnknown) === 'on'
     formValues.isLeapMonth = readText(form.isLeapMonth) === 'on'
-    formValues.birthPlace = readText(form.birthPlace) || 'capital'
+    formValues.birthPlace = readText(form.birthPlace) || 'seoul'
     formValues.gender = GENDER_LABELS[readText(form.gender)] ? readText(form.gender) : 'private'
 
     try {
@@ -270,8 +281,8 @@
         結
       </span>
       <span>
-        <strong>결빛</strong>
-        <small>AI 사주 프롬프트</small>
+        <strong>결빛 사주</strong>
+        <small>나의 결을 비추다</small>
       </span>
     </a>
     <span class="privacy-badge">저장하지 않아요</span>
