@@ -217,6 +217,7 @@ module.exports = [
       'knip.config.js',
       'eslint.config.js',
       'unocss.config.js',
+      'pwa-install-guide.js',
     ],
   },
   js.configs.recommended,

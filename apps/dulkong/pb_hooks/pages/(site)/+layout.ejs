@@ -65,6 +65,10 @@
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
     <%- include('unocss-head.ejs', { isProduction }) %>
+    <script
+      src="<%= asset('/assets/pwa-install-guide.js') %>"
+      data-app-name="둘콩"
+      defer></script>
     <script src="<%= asset(filePondAssetRoot + 'filepond-plugin-image-preview-4.6.12.min.js') %>"></script>
     <script src="<%= asset(filePondAssetRoot + 'filepond-4.32.12.min.js') %>"></script>
     <% if (oneSignalAppId) { %>

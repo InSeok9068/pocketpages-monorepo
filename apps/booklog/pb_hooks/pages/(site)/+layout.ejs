@@ -56,6 +56,10 @@
       }
     </style>
     <%- include('unocss-head.ejs', { isProduction }) %>
+    <script
+      src="<%= asset('/assets/pwa-install-guide.js') %>"
+      data-app-name="Booklog"
+      defer></script>
     <script src="<%= asset('/assets/vendor/htmx-2.0.10.min.js') %>"></script>
     <script
       defer
