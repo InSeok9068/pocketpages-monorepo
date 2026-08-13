@@ -1,0 +1,226 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const todoData = resolve('todo-data')
+
+  meta('title', '주간보고서 · TODO')
+  meta('description', '이번 주 업무를 정리해 엑셀에 복사합니다.')
+
+  if (!request.auth) {
+    dbg('todo/weekly-report:redirect', { status: 303, redirectTo: '/sign-in' })
+    redirect('/sign-in', { status: 303 })
+    return
+  }
+
+  function readDateQuery(value, fallback) {
+    const text = String(value || '').trim()
+
+    return dateutil.toDateOnlyIso(text) ? text : fallback
+  }
+
+  const userId = String(request.auth.get('id') || '')
+  const today = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
+  const weekday = new Date(today + 'T00:00:00.000Z').getUTCDay()
+  const defaultFrom = dateutil.formatDate(
+    dateutil.addDays(today, weekday === 0 ? -6 : 1 - weekday),
+    dateutil.FORMATS.DATE
+  )
+  const defaultTo = dateutil.formatDate(dateutil.addDays(defaultFrom, 4), dateutil.FORMATS.DATE)
+  let updatedFrom = readDateQuery(request.url.query.from, defaultFrom)
+  let updatedTo = readDateQuery(request.url.query.to, defaultTo)
+
+  if (dateutil.isAfterDay(updatedFrom, updatedTo)) {
+    updatedFrom = defaultFrom
+    updatedTo = defaultTo
+  }
+
+  const selectedDeveloper = String(request.url.query.developer || '').trim()
+  const developers = todoData.listDevelopers(userId)
+  const workCards = todoData.listWorkCards(userId, {
+    developerId: selectedDeveloper,
+    updatedFrom: dateutil.startOfDay(updatedFrom).toISOString(),
+    updatedTo: dateutil.endOfDay(updatedTo).toISOString(),
+    sort: '-updated',
+    limit: 500,
+  })
+  const reportItems = []
+
+  for (let index = 0; index < workCards.length; index += 1) {
+    const work = workCards[index]
+    reportItems.push({
+      title: work.title,
+      contentHtml: work.content,
+      owner: work.developerName === '미배정' ? '' : work.developerName,
+      dueDate: work.dueDate ? dateutil.formatDate(work.dueDate, 'M월 D일') : '-',
+    })
+  }
+
+  const reportItemsJson = JSON.stringify(reportItems)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+
+  dbg('todo/weekly-report:response', {
+    userId,
+    updatedFrom,
+    updatedTo,
+    workCount: workCards.length,
+  })
+</script>
+
+<!-- slot:head -->
+<script
+  defer
+  src="<%= asset('/assets/weekly-report.js') %>"></script>
+
+<!-- slot:body -->
+
+<header class="mb-5">
+  <h1 class="text-3xl font-black tracking-tight">주간보고서 복사</h1>
+</header>
+
+<form
+  method="get"
+  action="/weekly-report"
+  class="mb-5 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_1fr_1.3fr_auto]">
+  <label class="block">
+    <span class="mb-1.5 block text-xs font-bold text-slate-500">수정일 시작</span>
+    <input
+      type="date"
+      name="from"
+      value="<%= updatedFrom %>"
+      class="h-11 w-full rounded-xl px-3" />
+  </label>
+  <label class="block">
+    <span class="mb-1.5 block text-xs font-bold text-slate-500">수정일 종료</span>
+    <input
+      type="date"
+      name="to"
+      value="<%= updatedTo %>"
+      class="h-11 w-full rounded-xl px-3" />
+  </label>
+  <label class="block">
+    <span class="mb-1.5 block text-xs font-bold text-slate-500">담당자</span>
+    <select
+      name="developer"
+      class="h-11 w-full rounded-xl px-3">
+      <option value="">전체</option>
+      <option
+        value="__unassigned__"
+        <%= selectedDeveloper === '__unassigned__' ? 'selected' : '' %>>
+        미배정
+      </option>
+      <% for (let index = 0; index < developers.length; index += 1) { %>
+      <option
+        value="<%= developers[index].id %>"
+        <%= selectedDeveloper === developers[index].id ? 'selected' : '' %>>
+        <%= developers[index].name %>
+      </option>
+      <% } %>
+    </select>
+  </label>
+  <div class="flex items-end">
+    <button
+      type="submit"
+      class="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border-0 bg-slate-900 px-5 text-sm font-bold text-white hover:bg-slate-800">
+      <span class="i-lucide-search h-4 w-4"></span>
+      조회
+    </button>
+  </div>
+</form>
+
+<section
+  data-weekly-report
+  data-report-items="<%= reportItemsJson %>"
+  class="space-y-4">
+  <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+    <div class="mr-auto">
+      <p class="text-sm font-black text-slate-900">
+        <span data-selected-count>0</span>개 선택 · 전체 <span data-item-count><%= workCards.length %></span>개
+      </p>
+    </div>
+    <button
+      type="button"
+      data-select-all
+      class="ui-button-secondary inline-flex h-9 items-center justify-center rounded-lg px-3 text-xs font-bold text-slate-700">
+      전체 선택
+    </button>
+    <button
+      type="button"
+      data-clear-selection
+      class="ui-button-secondary inline-flex h-9 items-center justify-center rounded-lg px-3 text-xs font-bold text-slate-700">
+      선택 해제
+    </button>
+    <button
+      type="button"
+      data-copy-rows
+      class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-blue-600 px-3 text-xs font-black text-white shadow-sm hover:bg-blue-700">
+      <span class="i-lucide-clipboard-copy h-3.5 w-3.5"></span>
+      엑셀 행 복사
+    </button>
+  </div>
+
+  <% if (!workCards.length) { %>
+  <div class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
+    <span class="i-lucide-calendar-x mx-auto h-8 w-8 text-slate-300"></span>
+    <p class="mt-3 font-black text-slate-700">이 기간에 수정한 업무가 없습니다.</p>
+    <p class="mt-1 text-sm text-slate-500">조회 기간이나 담당자를 변경해보세요.</p>
+  </div>
+  <% } %>
+
+  <% for (let index = 0; index < workCards.length; index += 1) { const work = workCards[index] %>
+  <article
+    data-report-item
+    data-report-index="<%= index %>"
+    class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="mb-4 flex items-start gap-3">
+      <input
+        type="checkbox"
+        data-report-selected
+        class="mt-1 h-4 w-4 shrink-0" />
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-2">
+          <a
+            href="/works/<%= encodeURIComponent(work.id) %>"
+            class="font-black text-slate-900 no-underline hover:text-blue-700">
+            <%= work.title %>
+          </a>
+          <span class="<%= work.stateBadgeClass %> rounded-full px-2 py-0.5 text-[11px] font-bold">
+            <%= work.stateLabel %>
+          </span>
+          <button
+            type="button"
+            data-remove-report-item
+            class="ml-auto inline-flex h-8 items-center justify-center gap-1 rounded-lg border-0 bg-slate-100 px-2.5 text-xs font-bold text-slate-500 hover:bg-rose-50 hover:text-rose-600">
+            <span class="i-lucide-x h-3.5 w-3.5"></span>
+            제외
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_10rem_10rem]">
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-bold text-slate-500">Contents</span>
+        <textarea
+          data-report-content
+          rows="4"
+          class="w-full resize-y rounded-xl px-3 py-2.5 text-sm leading-6"
+          placeholder="보고서에 붙여넣을 내용을 입력하세요."></textarea>
+      </label>
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-bold text-slate-500">owner</span>
+        <input
+          data-report-owner
+          value="<%= work.developerName === '미배정' ? '' : work.developerName %>"
+          class="h-11 w-full rounded-xl px-3" />
+      </label>
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-bold text-slate-500">due-date</span>
+        <input
+          data-report-due-date
+          value="<%= work.dueDate ? dateutil.formatDate(work.dueDate, 'M월 D일') : '-' %>"
+          class="h-11 w-full rounded-xl px-3" />
+      </label>
+    </div>
+  </article>
+  <% } %>
+</section>

@@ -5,6 +5,7 @@
     { href: '/kanban', label: '칸반', icon: 'i-lucide-columns-3' },
     { href: '/list', label: '검색', icon: 'i-lucide-search' },
     { href: '/calendar', label: '캘린더', icon: 'i-lucide-calendar-days' },
+    { href: '/weekly-report', label: '주간보고서', icon: 'i-lucide-clipboard-copy' },
     { href: '/dashboard', label: '현황', icon: 'i-lucide-chart-no-axes-column' },
   ]
 %>
@@ -69,7 +70,7 @@
 <nav
   class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white md:hidden"
   aria-label="모바일 메뉴">
-  <div class="mx-auto grid max-w-lg grid-cols-5">
+  <div class="mx-auto grid max-w-lg grid-cols-6">
     <% for (let index = 0; index < navItems.length; index += 1) { %>
     <% const item = navItems[index] %>
     <a
@@ -91,7 +92,7 @@
       return
     }
 
-    const shortcut = event.code.match(/^Digit([1-5])$/)
+    const shortcut = event.code.match(/^Digit([1-6])$/)
     if (!shortcut) {
       return
     }

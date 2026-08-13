@@ -243,3 +243,42 @@ test('Redmine API requires authentication', async () => {
   assert.equal(updateResponse.status, 401)
   assert.equal(updatePayload.ok, false)
 })
+
+test('weekly report page lists recently updated work for copying', async () => {
+  const email = `todo-weekly-${Date.now()}@example.com`
+  const password = 'password1234'
+  const signUpResponse = await fetch(`${service.baseUrl}/xapi/auth/sign-up`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ email, password, passwordConfirm: password }),
+    redirect: 'manual',
+  })
+  const cookie = readCookieHeader(signUpResponse.headers)
+
+  assert.ok(cookie)
+
+  await fetch(`${service.baseUrl}/xapi/works/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
+    body: new URLSearchParams({ title: '주간보고서 복사 테스트' }),
+    redirect: 'manual',
+  })
+
+  const response = await fetch(`${service.baseUrl}/weekly-report?from=2020-01-01&to=2030-12-31`, {
+    headers: { Cookie: cookie },
+  })
+  const body = await response.text()
+  const page = load(body)
+
+  assert.equal(response.status, 200, body)
+  assert.equal(page('h1').first().text().trim(), '주간보고서 복사')
+  assert.equal(page('[data-report-item]').length, 1)
+  assert.equal(page('[data-report-content]').length, 1)
+  assert.equal(page('[data-remove-report-item]').length, 1)
+  assert.equal(page('[data-copy-rows]').length, 1)
+  assert.equal(page('script[src*="weekly-report."]').length, 1)
+
+  const assetResponse = await fetch(`${service.baseUrl}/assets/weekly-report.js`)
+
+  assert.equal(assetResponse.status, 200)
+})
