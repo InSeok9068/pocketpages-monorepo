@@ -104,6 +104,8 @@ test('a signed-up user can create and complete a work', async () => {
   assert.equal(detailPage('input[form="scheduled-notification-create-form"][name="title"]').length, 0)
   assert.equal(detailPage('input[form="scheduled-notification-create-form"][name="message"]').length, 0)
   assert.equal(detailPage('#work-file[name="file"]').length, 1)
+  assert.equal(detailPage('#work-detail-form').attr('hx-post'), '/xapi/works/update')
+  assert.equal(detailPage('#work-detail-form').attr('hx-swap'), 'none')
   assert.equal(detailPage('link[href*="filepond-4.32.12.min."]').length, 1)
   assert.equal(detailPage('script[src*="filepond-4.32.12.min."]').length, 1)
 
@@ -136,6 +138,34 @@ test('a signed-up user can create and complete a work', async () => {
   assert.equal(savedDetailPage('input[name="title"]').attr('value'), '첨부파일 없이 수정한 업무')
   assert.equal(savedDetailPage('a[aria-label="Redmine 이슈 열기"]').attr('href'), 'https://pms.kpcard.co.kr/issues/123')
   assert.equal(savedDetailPage('a[aria-label="Joplin 링크 열기"]').attr('href'), 'joplin://x-callback-url/openNote?id=test-note')
+
+  const htmxUpdateForm = new FormData()
+  htmxUpdateForm.set('work_id', workId)
+  htmxUpdateForm.set('title', 'HTMX로 수정한 업무')
+  htmxUpdateForm.set('state', 'wait')
+  htmxUpdateForm.set('developer', '')
+  htmxUpdateForm.set('due_date', '')
+  const htmxUpdateResponse = await fetch(`${service.baseUrl}/xapi/works/update`, {
+    method: 'POST',
+    headers: { Cookie: cookie, 'HX-Request': 'true' },
+    body: htmxUpdateForm,
+    redirect: 'manual',
+  })
+
+  assert.equal(htmxUpdateResponse.status, 200)
+  assert.equal(htmxUpdateResponse.headers.get('location'), null)
+  assert.equal(htmxUpdateResponse.headers.get('hx-refresh'), null)
+  assert.deepEqual(JSON.parse(htmxUpdateResponse.headers.get('hx-trigger')), {
+    'app-toast': {
+      message: '업무를 저장했습니다.',
+      tone: 'success',
+    },
+  })
+
+  const htmxSavedDetailResponse = await fetch(`${service.baseUrl}/works/${workId}`, { headers: { Cookie: cookie } })
+  const htmxSavedDetailPage = load(await htmxSavedDetailResponse.text())
+
+  assert.equal(htmxSavedDetailPage('input[name="title"]').attr('value'), 'HTMX로 수정한 업무')
 
   const attachmentForm = new FormData()
   attachmentForm.set('work_id', workId)

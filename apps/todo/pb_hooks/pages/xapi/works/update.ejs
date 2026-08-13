@@ -1,7 +1,9 @@
 <script server>
   const { dateutil } = require('@pocketpages/utils')
+  const htmxResponse = resolve('htmx-response')
   const todoData = resolve('todo-data')
   const form = formData()
+  const isHtmx = String(request.header('HX-Request') || '').toLowerCase() === 'true'
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   const workId = String(form.work_id || '').trim()
   const title = String(form.title || '').trim()
@@ -70,6 +72,23 @@
   }
 
   const redirectTo = workId ? '/works/' + encodeURIComponent(workId) : '/'
+
+  if (isHtmx) {
+    if (errorMessage) {
+      htmxResponse.setToastTrigger(response, {
+        message: errorMessage,
+        tone: 'error',
+      })
+      return
+    }
+
+    htmxResponse.setToastTrigger(response, {
+      message: '업무를 저장했습니다.',
+      tone: 'success',
+    })
+    return
+  }
+
   dbg('todo/xapi/works/update:redirect', { status: 303, redirectTo, message: errorMessage || '업무를 저장했습니다.' })
   redirect(redirectTo, { status: 303, message: errorMessage || '업무를 저장했습니다.' })
   return
