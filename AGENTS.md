@@ -160,13 +160,12 @@ Use index sections when relevant:
 
 ---
 
-## 11. Priority
+## 11. Source of Truth
 
-1. `.docs/pocketpages/*`
-2. `.docs/pocketbase/*`
-3. `apps/<service>/pb_schema.json`
-4. `apps/<service>/pb_data/types.d.ts`
-5. `apps/<service>/types.d.ts`
-
-If rules conflict, this file overrides defaults for this repo.
-If docs are ambiguous or seem to conflict, also check existing local service patterns and keep changes consistent.
+- Project policy and code style: `AGENTS.md`
+- Collection and field definitions: `apps/<service>/pb_schema.json`
+- PocketBase JSVM runtime API: `apps/<service>/pb_data/types.d.ts`
+- Shared service types: `apps/<service>/types.d.ts`
+- PocketPages framework behavior: `.docs/pocketpages/*`
+- PocketBase behavior: `.docs/pocketbase/*`
+- If documentation is ambiguous, inspect existing local service patterns without overriding schema or runtime types.

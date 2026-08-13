@@ -160,13 +160,12 @@
 
 ---
 
-## 11. Priority
+## 11. Source of Truth
 
-1. `.docs/pocketpages/*`
-2. `.docs/pocketbase/*`
-3. `apps/<service>/pb_schema.json`
-4. `apps/<service>/pb_data/types.d.ts`
-5. `apps/<service>/types.d.ts`
-
-규칙이 충돌하면 이 파일의 기준을 이 저장소 기본값보다 우선한다.
-문서 해석이 애매하거나 충돌하는 것처럼 보이면 기존 서비스의 로컬 패턴도 함께 확인하고 일관성을 유지한다.
+- 프로젝트 정책과 코드 스타일: `AGENTS.md`
+- 컬렉션과 필드 정의: `apps/<service>/pb_schema.json`
+- PocketBase JSVM runtime API: `apps/<service>/pb_data/types.d.ts`
+- 서비스 공용 타입: `apps/<service>/types.d.ts`
+- PocketPages framework 동작: `.docs/pocketpages/*`
+- PocketBase 동작: `.docs/pocketbase/*`
+- 문서 해석이 애매하면 schema나 runtime type을 무시하지 않는 범위에서 기존 서비스의 로컬 패턴을 확인한다.
