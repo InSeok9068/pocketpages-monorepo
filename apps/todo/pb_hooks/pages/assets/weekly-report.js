@@ -1,4 +1,4 @@
-(function () {
+;(function () {
   const BLOCK_TAGS = {
     BLOCKQUOTE: true,
     DIV: true,
@@ -319,9 +319,10 @@
       const workingTimeInput = element.querySelector('[data-report-working-time]')
       const selectedInput = element.querySelector('[data-report-selected]')
 
-      contentInput.value = savedItem && typeof savedItem.contents === 'string'
-        ? savedItem.contents
-        : makeReportContent(item.title, item.contentHtml)
+      contentInput.value =
+        savedItem && typeof savedItem.contents === 'string'
+          ? savedItem.contents
+          : makeReportContent(item.title, item.contentHtml)
       if (savedItem && typeof savedItem.owner === 'string') ownerInput.value = savedItem.owner
       if (savedItem && typeof savedItem.dueDate === 'string') dueDateInput.value = savedItem.dueDate
       if (savedItem && typeof savedItem.workingTime === 'string') workingTimeInput.value = savedItem.workingTime
