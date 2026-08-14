@@ -257,10 +257,31 @@ test('weekly report page lists recently updated work for copying', async () => {
 
   assert.ok(cookie)
 
-  await fetch(`${service.baseUrl}/xapi/works/create`, {
+  const createResponse = await fetch(`${service.baseUrl}/xapi/works/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
     body: new URLSearchParams({ title: '주간보고서 복사 테스트' }),
+    redirect: 'manual',
+  })
+  const homeResponse = await fetch(new URL(createResponse.headers.get('location'), service.baseUrl), {
+    headers: { Cookie: cookie },
+  })
+  const homePage = load(await homeResponse.text())
+  const workId = homePage('[data-work-card]').first().attr('data-work-id')
+
+  assert.ok(workId)
+
+  const updateForm = new FormData()
+  updateForm.set('work_id', workId)
+  updateForm.set('title', '주간보고서 복사 테스트')
+  updateForm.set('state', 'wait')
+  updateForm.set('developer', '')
+  updateForm.set('due_date', '')
+  updateForm.set('redmine', 'https://pms.kpcard.co.kr/issues/1223')
+  await fetch(`${service.baseUrl}/xapi/works/update`, {
+    method: 'POST',
+    headers: { Cookie: cookie },
+    body: updateForm,
     redirect: 'manual',
   })
 
@@ -272,9 +293,18 @@ test('weekly report page lists recently updated work for copying', async () => {
 
   assert.equal(response.status, 200, body)
   assert.equal(page('h1').first().text().trim(), '주간보고서 복사')
-  assert.equal(page('[data-report-item]').length, 1)
-  assert.equal(page('[data-report-content]').length, 1)
-  assert.equal(page('[data-remove-report-item]').length, 1)
+  assert.equal(page('[data-report-item]').length, 2)
+  assert.equal(page('[data-report-item][data-report-section="thisWeek"]').length, 1)
+  assert.equal(page('[data-report-item][data-report-section="nextWeek"][hidden]').length, 1)
+  assert.equal(page('[data-report-content]').length, 2)
+  assert.equal(page('[data-report-working-time]').length, 2)
+  assert.equal(page('[data-copy-to-next-week]').length, 1)
+  assert.equal(page('[data-remove-report-item]').length, 2)
+  assert.equal(page('[data-report-tab]').length, 2)
+  assert.equal(page('[data-redmine-issue="1223"]').length, 2)
+  assert.equal(page('[data-redmine-issue="1223"]').first().text().trim(), '#1223')
+  assert.equal(page('[data-reset-draft]').length, 1)
+  assert.equal(page('[data-weekly-report]').attr('data-draft-key')?.startsWith('todo:weekly-report-draft:v1:'), true)
   assert.equal(page('[data-copy-rows]').length, 1)
   assert.equal(page('script[src*="weekly-report."]').length, 1)
 

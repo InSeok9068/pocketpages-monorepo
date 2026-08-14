@@ -90,6 +90,7 @@ function toWorkCard(record, developerMap, stateOptions, urgentDays) {
     stateBadgeClass: stateOption.badgeClass,
     developerId,
     developerName: developer ? developer.name : '미배정',
+    time: Number(record.get('time') || 0),
     sort: Number(record.get('sort') || 0),
     redmine: String(record.get('redmine') || ''),
     joplin: String(record.get('joplin') || ''),

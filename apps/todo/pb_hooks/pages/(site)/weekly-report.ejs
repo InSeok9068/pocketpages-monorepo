@@ -17,6 +17,12 @@
     return dateutil.toDateOnlyIso(text) ? text : fallback
   }
 
+  function readRedmineIssueNumber(value) {
+    const match = String(value || '').match(/\/issues\/(\d+)(?:[/?#]|$)/)
+
+    return match ? match[1] : ''
+  }
+
   const userId = String(request.auth.get('id') || '')
   const today = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
   const weekday = new Date(today + 'T00:00:00.000Z').getUTCDay()
@@ -47,10 +53,12 @@
   for (let index = 0; index < workCards.length; index += 1) {
     const work = workCards[index]
     reportItems.push({
+      id: work.id,
       title: work.title,
       contentHtml: work.content,
       owner: work.developerName === '미배정' ? '' : work.developerName,
       dueDate: work.dueDate ? dateutil.formatDate(work.dueDate, 'M월 D일') : '-',
+      workingTime: work.time > 0 ? work.time + 'H' : '',
     })
   }
 
@@ -74,21 +82,21 @@
 
 <!-- slot:body -->
 
-<header class="mb-5">
-  <h1 class="text-3xl font-black tracking-tight">주간보고서 복사</h1>
+<header class="mb-3">
+  <h1 class="text-2xl font-black tracking-tight">주간보고서 복사</h1>
 </header>
 
 <form
   method="get"
   action="/weekly-report"
-  class="mb-5 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_1fr_1.3fr_auto]">
+  class="mb-3 grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[1fr_1fr_1.3fr_auto]">
   <label class="block">
     <span class="mb-1.5 block text-xs font-bold text-slate-500">수정일 시작</span>
     <input
       type="date"
       name="from"
       value="<%= updatedFrom %>"
-      class="h-11 w-full rounded-xl px-3" />
+      class="h-10 w-full rounded-lg px-3" />
   </label>
   <label class="block">
     <span class="mb-1.5 block text-xs font-bold text-slate-500">수정일 종료</span>
@@ -96,13 +104,13 @@
       type="date"
       name="to"
       value="<%= updatedTo %>"
-      class="h-11 w-full rounded-xl px-3" />
+      class="h-10 w-full rounded-lg px-3" />
   </label>
   <label class="block">
     <span class="mb-1.5 block text-xs font-bold text-slate-500">담당자</span>
     <select
       name="developer"
-      class="h-11 w-full rounded-xl px-3">
+      class="h-10 w-full rounded-lg px-3">
       <option value="">전체</option>
       <option
         value="__unassigned__"
@@ -121,7 +129,7 @@
   <div class="flex items-end">
     <button
       type="submit"
-      class="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border-0 bg-slate-900 px-5 text-sm font-bold text-white hover:bg-slate-800">
+      class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border-0 bg-slate-900 px-5 text-sm font-bold text-white hover:bg-slate-800">
       <span class="i-lucide-search h-4 w-4"></span>
       조회
     </button>
@@ -131,8 +139,29 @@
 <section
   data-weekly-report
   data-report-items="<%= reportItemsJson %>"
-  class="space-y-4">
-  <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+  data-draft-key="todo:weekly-report-draft:v1:<%= userId %>"
+  class="space-y-2">
+  <div class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+    <div class="flex items-center gap-1" role="tablist" aria-label="주간보고서 구분">
+      <button
+        type="button"
+        role="tab"
+        aria-selected="true"
+        data-report-tab="thisWeek"
+        class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-slate-900 px-3 text-xs font-bold text-white">
+        이번 주
+        <span data-section-count="thisWeek"><%= workCards.length %></span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected="false"
+        data-report-tab="nextWeek"
+        class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 px-3 text-xs font-bold text-slate-600 hover:bg-slate-100">
+        다음 주
+        <span data-section-count="nextWeek">0</span>
+      </button>
+    </div>
     <div class="mr-auto">
       <p class="text-sm font-black text-slate-900">
         <span data-selected-count>0</span>개 선택 · 전체 <span data-item-count><%= workCards.length %></span>개
@@ -152,6 +181,13 @@
     </button>
     <button
       type="button"
+      data-reset-draft
+      class="ui-button-secondary inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-bold text-slate-700">
+      <span class="i-lucide-rotate-ccw h-3.5 w-3.5"></span>
+      초기화
+    </button>
+    <button
+      type="button"
       data-copy-rows
       class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-blue-600 px-3 text-xs font-black text-white shadow-sm hover:bg-blue-700">
       <span class="i-lucide-clipboard-copy h-3.5 w-3.5"></span>
@@ -159,68 +195,111 @@
     </button>
   </div>
 
-  <% if (!workCards.length) { %>
-  <div class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-    <span class="i-lucide-calendar-x mx-auto h-8 w-8 text-slate-300"></span>
-    <p class="mt-3 font-black text-slate-700">이 기간에 수정한 업무가 없습니다.</p>
-    <p class="mt-1 text-sm text-slate-500">조회 기간이나 담당자를 변경해보세요.</p>
-  </div>
-  <% } %>
+  <% const reportSections = ['thisWeek', 'nextWeek'] %>
+  <% for (let sectionIndex = 0; sectionIndex < reportSections.length; sectionIndex += 1) { %>
+  <% const reportSection = reportSections[sectionIndex] %>
+  <div
+    data-report-panel="<%= reportSection %>"
+    <%= reportSection === 'nextWeek' ? 'hidden' : '' %>
+    class="space-y-2"
+    role="tabpanel">
+    <div
+      data-section-empty="<%= reportSection %>"
+      hidden
+      class="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
+      <span class="i-lucide-calendar-x mx-auto h-7 w-7 text-slate-300"></span>
+      <p class="mt-2 text-sm font-black text-slate-700">
+        <%= reportSection === 'thisWeek' ? '표시할 이번 주 업무가 없습니다.' : '다음 주 업무가 없습니다.' %>
+      </p>
+    </div>
 
-  <% for (let index = 0; index < workCards.length; index += 1) { const work = workCards[index] %>
-  <article
-    data-report-item
-    data-report-index="<%= index %>"
-    class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div class="mb-4 flex items-start gap-3">
-      <input
-        type="checkbox"
-        data-report-selected
-        class="mt-1 h-4 w-4 shrink-0" />
-      <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-center gap-2">
-          <a
-            href="/works/<%= encodeURIComponent(work.id) %>"
-            class="font-black text-slate-900 no-underline hover:text-blue-700">
-            <%= work.title %>
-          </a>
-          <span class="<%= work.stateBadgeClass %> rounded-full px-2 py-0.5 text-[11px] font-bold">
-            <%= work.stateLabel %>
-          </span>
-          <button
-            type="button"
-            data-remove-report-item
-            class="ml-auto inline-flex h-8 items-center justify-center gap-1 rounded-lg border-0 bg-slate-100 px-2.5 text-xs font-bold text-slate-500 hover:bg-rose-50 hover:text-rose-600">
-            <span class="i-lucide-x h-3.5 w-3.5"></span>
-            제외
-          </button>
+    <% for (let index = 0; index < workCards.length; index += 1) { const work = workCards[index] %>
+    <% const redmineIssueNumber = readRedmineIssueNumber(work.redmine) %>
+    <article
+      data-report-item
+      data-report-section="<%= reportSection %>"
+      data-report-index="<%= index %>"
+      data-report-id="<%= work.id %>"
+      <%= reportSection === 'nextWeek' ? 'hidden' : '' %>
+      class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div class="mb-2 flex items-center gap-2">
+        <input
+          type="checkbox"
+          data-report-selected
+          class="h-4 w-4 shrink-0" />
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <a
+              href="/works/<%= encodeURIComponent(work.id) %>"
+              class="text-sm font-black text-slate-900 no-underline hover:text-blue-700">
+              <%= work.title %>
+            </a>
+            <span class="<%= work.stateBadgeClass %> rounded-full px-2 py-0.5 text-[11px] font-bold">
+              <%= work.stateLabel %>
+            </span>
+            <% if (redmineIssueNumber) { %>
+            <a
+              href="<%= work.redmine %>"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-redmine-issue="<%= redmineIssueNumber %>"
+              class="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-black text-red-700 no-underline hover:bg-red-100">
+              #<%= redmineIssueNumber %>
+            </a>
+            <% } %>
+            <% if (reportSection === 'thisWeek') { %>
+            <button
+              type="button"
+              data-copy-to-next-week
+              class="ml-auto inline-flex h-7 items-center justify-center gap-1 rounded-md border-0 bg-blue-50 px-2 text-[11px] font-bold text-blue-700 hover:bg-blue-100">
+              <span class="i-lucide-arrow-right h-3.5 w-3.5"></span>
+              다음 주로 복사
+            </button>
+            <% } %>
+            <button
+              type="button"
+              data-remove-report-item
+              class="<%= reportSection === 'nextWeek' ? 'ml-auto ' : '' %>inline-flex h-7 items-center justify-center gap-1 rounded-md border-0 bg-slate-100 px-2 text-[11px] font-bold text-slate-500 hover:bg-rose-50 hover:text-rose-600">
+              <span class="i-lucide-x h-3.5 w-3.5"></span>
+              제외
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_10rem_10rem]">
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-bold text-slate-500">Contents</span>
-        <textarea
-          data-report-content
-          rows="4"
-          class="w-full resize-y rounded-xl px-3 py-2.5 text-sm leading-6"
-          placeholder="보고서에 붙여넣을 내용을 입력하세요."></textarea>
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-bold text-slate-500">owner</span>
-        <input
-          data-report-owner
-          value="<%= work.developerName === '미배정' ? '' : work.developerName %>"
-          class="h-11 w-full rounded-xl px-3" />
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-bold text-slate-500">due-date</span>
-        <input
-          data-report-due-date
-          value="<%= work.dueDate ? dateutil.formatDate(work.dueDate, 'M월 D일') : '-' %>"
-          class="h-11 w-full rounded-xl px-3" />
-      </label>
-    </div>
-  </article>
+      <div class="grid gap-2 lg:grid-cols-[minmax(0,1fr)_8rem_8rem_8rem]">
+        <label class="block">
+          <span class="mb-1 block text-[11px] font-bold text-slate-500">Contents</span>
+          <textarea
+            data-report-content
+            rows="2"
+            class="w-full resize-y rounded-lg px-3 py-2 text-sm leading-5"
+            placeholder="보고서에 붙여넣을 내용을 입력하세요."></textarea>
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-[11px] font-bold text-slate-500">owner</span>
+          <input
+            data-report-owner
+            value="<%= work.developerName === '미배정' ? '' : work.developerName %>"
+            class="h-10 w-full rounded-lg px-3 text-sm" />
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-[11px] font-bold text-slate-500">due-date</span>
+          <input
+            data-report-due-date
+            value="<%= work.dueDate ? dateutil.formatDate(work.dueDate, 'M월 D일') : '-' %>"
+            class="h-10 w-full rounded-lg px-3 text-sm" />
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-[11px] font-bold text-slate-500">Working time</span>
+          <input
+            data-report-working-time
+            value="<%= work.time > 0 ? work.time + 'H' : '' %>"
+            placeholder="40H"
+            class="h-10 w-full rounded-lg px-3 text-sm" />
+        </label>
+      </div>
+    </article>
+    <% } %>
+  </div>
   <% } %>
 </section>

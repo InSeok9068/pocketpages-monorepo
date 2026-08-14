@@ -32,6 +32,7 @@ declare namespace types {
     stateBadgeClass: string
     developerId: string
     developerName: string
+    time: number
     sort: number
     redmine: string
     joplin: string
