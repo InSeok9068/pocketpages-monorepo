@@ -296,7 +296,6 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
 scoop bucket add extras
 scoop install delta
 scoop install lazygit
-scoop install main/jj
 ```
 
 ### 업데이트
@@ -305,7 +304,6 @@ scoop install main/jj
 scoop update
 scoop update delta
 scoop update lazygit
-scoop update main/jj
 ```
 
 ---
