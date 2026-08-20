@@ -10748,7 +10748,10 @@ const PocketPagesLanguageServiceManager = createPocketPagesLanguageServiceManage
 module.exports = {
   PocketPagesLanguageServiceManager,
   buildSchemaFieldDiagnostic,
+  collectJsvmRuntimeDiagnostics,
   collectRedirectReturnDiagnostics,
+  collectTransactionAppDiagnostics,
+  collectUnsupportedNodeBuiltinRequireDiagnostics,
   findAppRoot,
   ts,
 };

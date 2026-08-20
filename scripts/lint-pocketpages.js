@@ -9,67 +9,70 @@
 // 3) 서버 코드에서 async/await/Promise/.then() 사용
 // 4) 서버 코드에서 JSVM locale API(Intl/toLocale*) 사용
 // 5) 서버 코드에서 브라우저/Web API 전역 사용
+// 6) 서버 코드에서 ESM import/export/import.meta 사용
+// 7) 서버 코드에서 Node.js built-in require() 사용
 //
 // [apps/<service>/pb_hooks/* - pages 밖 hooks/jobs]
-// 6) pages 밖 pb_hooks 코드에서 PocketPages 전역(env/dbg/info/warn/error) 사용
-// 7) pages 밖 pb_hooks 코드에서 PocketPages Datastar request helper 사용
-// 8) pages 밖 pb_hooks 코드에서 PocketPages route helper 사용
+// 8) pages 밖 pb_hooks 코드에서 PocketPages 전역(env/dbg/info/warn/error) 사용
+// 9) pages 밖 pb_hooks 코드에서 PocketPages Datastar request helper 사용
+// 10) pages 밖 pb_hooks 코드에서 PocketPages route helper 사용
+// 11) 격리 실행되는 hook handler에서 바깥 lexical declaration 캡처
 //
 // [apps/<service>/pb_hooks/pages/**/* - pages 서버 코드]
-// 9) resolve('/_private/...') 같이 _private 기준 규칙에 어긋나는 resolve 사용
-// 10) include('/_private/...') 같이 _private 절대 경로 include 사용
-// 11) EJS/JS에서 PocketBase Record field 직접 접근
-// 12) redirect flash를 쓰면서 __flash 쿼리스트링을 수동 조립하는 패턴
-// 13) 허용 범위를 벗어난 raw EJS 출력(<%- ... %>)
-// 14) auth helper 사용 시 pocketpages-plugin-auth 누락
-// 15) JS helper/로컬 바인딩에서 params 이름 사용
-// 16) include()에 full context(api/request/response/resolve/params/data) 전달
-// 17) 로컬 @typedef 사용
-// 18) pages 내부 코드에서 process.env 사용
-// 19) pb_hooks/pages 아래에 *.pb.js 파일 배치
-// 20) pb_hooks/pages 안에서 PocketBase hook 등록 API 사용
-// 21) resolve/include/asset/route 경로가 실제로 없는 정적 경로
-// 22) 존재하지 않는 PocketBase collection 문자열 사용
-// 23) 존재하지 않는 PocketBase Record field 문자열 사용
-// 24) params를 query처럼 읽는 패턴
-// 25) redirect() 뒤 return 누락
-// 26) redirect option에서 flash 사용
-// 27) Datastar attribute key에 camelCase 사용
-// 28) pages 안에서 PocketBase backend Datastar realtime utility 사용
+// 12) resolve('/_private/...') 같이 _private 기준 규칙에 어긋나는 resolve 사용
+// 13) include('/_private/...') 같이 _private 절대 경로 include 사용
+// 14) EJS/JS에서 PocketBase Record field 직접 접근
+// 15) redirect flash를 쓰면서 __flash 쿼리스트링을 수동 조립하는 패턴
+// 16) 허용 범위를 벗어난 raw EJS 출력(<%- ... %>)
+// 17) auth helper 사용 시 pocketpages-plugin-auth 누락
+// 18) JS helper/로컬 바인딩에서 params 이름 사용
+// 19) include()에 full context(api/request/response/resolve/params/data) 전달
+// 20) 로컬 @typedef 사용
+// 21) pages 내부 코드에서 process.env 사용
+// 22) pb_hooks/pages 아래에 *.pb.js 파일 배치
+// 23) pb_hooks/pages 안에서 PocketBase hook 등록 API 사용
+// 24) resolve/include/asset/route 경로가 실제로 없는 정적 경로
+// 25) 존재하지 않는 PocketBase collection 문자열 사용
+// 26) 존재하지 않는 PocketBase Record field 문자열 사용
+// 27) params를 query처럼 읽는 패턴
+// 28) redirect() 뒤 return 누락
+// 29) redirect option에서 flash 사용
+// 30) Datastar attribute key에 camelCase 사용
+// 31) pages 안에서 PocketBase backend Datastar realtime utility 사용
 //
 // [apps/<service>/pb_hooks/pages/+* - route/config/middleware/load 구조]
-// 29) +middleware.js 에서 인자로 받은 resolve 대신 전역 resolve() 직접 사용
-// 30) api/xapi 아래에 +layout.ejs 를 두는 잘못된 레이아웃 구성
-// 31) 중첩 +config.js 사용
-// 32) PocketPages가 알지 못하는 +special 파일명 사용
-// 33) next 인자를 받는 middleware가 next()나 response.* 호출 없이 끝나는 패턴
-// 34) 상위/하위 경로에 중첩 +load.js 배치
-// 35) pocketpages-plugin-auth 사용 시 pocketpages-plugin-js-sdk 누락 또는 순서 역전
-// 36) +config.js plugin이 package.json 직접 의존성에 없는 경우
+// 32) +middleware.js 에서 인자로 받은 resolve 대신 전역 resolve() 직접 사용
+// 33) api/xapi 아래에 +layout.ejs 를 두는 잘못된 레이아웃 구성
+// 34) 중첩 +config.js 사용
+// 35) PocketPages가 알지 못하는 +special 파일명 사용
+// 36) next 인자를 받는 middleware가 next()나 response.* 호출 없이 끝나는 패턴
+// 37) 상위/하위 경로에 중첩 +load.js 배치
+// 38) pocketpages-plugin-auth 사용 시 pocketpages-plugin-js-sdk 누락 또는 순서 역전
+// 39) +config.js plugin이 package.json 직접 의존성에 없는 경우
 //
 // [apps/<service>/pb_hooks/pages/api|xapi/**/*]
-// 37) xapi 엔드포인트에서 <!DOCTYPE>, <html>, <body> 같은 전체 문서 응답 반환
-// 38) xapi 엔드포인트에서 response.json(...) 사용
-// 39) api 엔드포인트에서 redirect(...) 사용
-// 40) api 엔드포인트에서 HTML 응답 반환
+// 40) xapi 엔드포인트에서 <!DOCTYPE>, <html>, <body> 같은 전체 문서 응답 반환
+// 41) xapi 엔드포인트에서 response.json(...) 사용
+// 42) api 엔드포인트에서 redirect(...) 사용
+// 43) api 엔드포인트에서 HTML 응답 반환
 //
 // [apps/<service>/pb_hooks/pages/*.js - static JS 오용]
-// 41) pages 일반 .js(static js) 안에 서버 코드 사용
+// 44) pages 일반 .js(static js) 안에 서버 코드 사용
 //
 // [apps/<service>/pb_hooks/pages/_private/**/*]
-// 42) _private 내부에 +layout, +load, +middleware 같은 특수 PocketPages 파일 배치
-// 43) _private 내부 .js/.ejs 파일에서 resolve() 사용
-// 44) _private/*.js 에서 plain module 대신 factory/function export 사용
-// 45) module.exports.foo = ... 형태의 분산 export 사용
-// 46) _private/*.ejs 에서 <script server> 사용
-// 47) _private/*.ejs 에서 $app 기반 DB 접근 사용
-// 48) _private/*.js 에서 PocketPages globalApi를 require/destructure 없이 사용
+// 45) _private 내부에 +layout, +load, +middleware 같은 특수 PocketPages 파일 배치
+// 46) _private 내부 .js/.ejs 파일에서 resolve() 사용
+// 47) _private/*.js 에서 plain module 대신 factory/function export 사용
+// 48) module.exports.foo = ... 형태의 분산 export 사용
+// 49) _private/*.ejs 에서 <script server> 사용
+// 50) _private/*.ejs 에서 $app 기반 DB 접근 사용
+// 51) _private/*.js 에서 PocketPages globalApi를 require/destructure 없이 사용
 //
 // [apps/<service>/pb_hooks/pages/_private/roles/*.js]
-// 49) roles/*.js 내부에서 부작용/DB 조회/요청 문맥 접근 사용
+// 52) roles/*.js 내부에서 부작용/DB 조회/요청 문맥 접근 사용
 //
 // [apps/<service>/pb_hooks/pages/**/* - entry files]
-// 50) 엔트리에서 resolve('roles/...') 조립이 과도하게 많음
+// 53) 엔트리에서 resolve('roles/...') 조립이 과도하게 많음
 
 const fs = require('fs')
 const path = require('path')
@@ -79,7 +82,14 @@ const { collectPathContexts, collectSchemaContexts } = require('../tools/vscode-
 const { extractServerBlocks } = require('../tools/vscode-pocketpages/packages/language-core/script-server')
 const { collectParamsFlowDiagnostics } = require('../tools/vscode-pocketpages/packages/language-service/flow-analysis')
 const { PocketPagesProjectIndex } = require('../tools/vscode-pocketpages/packages/language-service/project-index')
-const { collectRedirectReturnDiagnostics, ts } = require('../tools/vscode-pocketpages/packages/language-service/language-service')
+const { collectHookHandlerCaptureDiagnostics } = require('../tools/vscode-pocketpages/packages/language-service/hook-handler-scope-analysis')
+const {
+  collectJsvmRuntimeDiagnostics,
+  collectRedirectReturnDiagnostics,
+  collectTransactionAppDiagnostics,
+  collectUnsupportedNodeBuiltinRequireDiagnostics,
+  ts,
+} = require('../tools/vscode-pocketpages/packages/language-service/language-service')
 
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
@@ -91,6 +101,7 @@ const LINT_DEPENDENCY_FILES = [
   require.resolve('../tools/vscode-pocketpages/packages/language-core/custom-context'),
   require.resolve('../tools/vscode-pocketpages/packages/language-core/script-server'),
   require.resolve('../tools/vscode-pocketpages/packages/language-service/flow-analysis'),
+  require.resolve('../tools/vscode-pocketpages/packages/language-service/hook-handler-scope-analysis'),
   require.resolve('../tools/vscode-pocketpages/packages/language-service/project-index'),
   require.resolve('../tools/vscode-pocketpages/packages/language-service/language-service'),
 ]
@@ -124,6 +135,9 @@ const JSVM_BROWSER_GLOBALS = new Set([
 ])
 
 const POCKETPAGES_GLOBAL_API_NAMES = new Set(['dbg', 'env', 'error', 'info', 'store', 'stringify', 'url', 'warn'])
+const JSVM_BROWSER_API_SIGNAL_RE = new RegExp(`\\b(?:${Array.from(JSVM_BROWSER_GLOBALS).join('|')})\\b`)
+const JSVM_LOCALE_API_SIGNAL_RE = /\bIntl\b|toLocale(?:String|DateString|TimeString)/
+const JSVM_RUNTIME_SIGNAL_RE = /\b(?:async|await|export|import|Promise)\b|\.then\s*\(/
 
 const RE = {
   resolvePrivate: /resolve\(\s*["']\/?_private\//,
@@ -168,9 +182,6 @@ const RE = {
   staticJsServerCode: /\bmodule\.exports\b|\brequire\s*\(|\$app\.|(^|[^A-Za-z0-9_$])(response\.[A-Za-z_][A-Za-z0-9_]*\s*\(|redirect\s*\(|resolve\s*\(|env\s*\()/,
   hookRegistration:
     /(^|[^A-Za-z0-9_$])(routerAdd|routerUse|cronAdd|onBootstrap|onServe|onTerminate|onRecord[A-Za-z0-9_]*|onSettings[A-Za-z0-9_]*|onMailer[A-Za-z0-9_]*|onRealtime[A-Za-z0-9_]*|onBackup[A-Za-z0-9_]*)\s*\(/,
-  outerAppInsideTransaction: /\$app\./,
-  asyncFlow: /\basync\b|\bawait\b|\bPromise\b|\.then\s*\(/g,
-  localeApi: /\bIntl\b|\.\s*toLocale(?:String|DateString|TimeString)\s*\(/g,
   redirectCall: /\bredirect\s*\(/g,
   redirectFlashOption: /[,{]\s*flash\s*:/,
 }
@@ -969,24 +980,37 @@ function isServerRuntimeFile(file) {
   return file.isEjs || file.basename.startsWith('+') || file.relFromPages.startsWith('_private/')
 }
 
-function collectAsyncFlowMatches(context) {
-  const matches = []
-  const files = context.hooksCodeFiles.filter(isServerRuntimeFile)
+function formatDiagnosticLineMatch(file, diagnostic) {
+  if (!diagnostic || typeof diagnostic.start !== 'number') {
+    return null
+  }
 
-  for (const file of files) {
+  return formatLintLineMatch(file, lineNumberAt(file.content, diagnostic.start))
+}
+
+function collectJsvmRuntimeMatches(context) {
+  const matchesByCode = new Map()
+
+  for (const file of context.hooksCodeFiles.filter(isServerRuntimeFile)) {
     const analysisText = getLintAnalysisText(file)
+    if (!JSVM_RUNTIME_SIGNAL_RE.test(analysisText)) {
+      continue
+    }
 
-    RE.asyncFlow.lastIndex = 0
-    let match = RE.asyncFlow.exec(analysisText)
+    for (const diagnostic of collectJsvmRuntimeDiagnostics(analysisText)) {
+      const match = formatDiagnosticLineMatch(file, diagnostic)
+      if (!match) {
+        continue
+      }
 
-    while (match) {
-      const lineNumber = lineNumberAt(analysisText, match.index)
-      matches.push(formatLintLineMatch(file, lineNumber))
-      match = RE.asyncFlow.exec(analysisText)
+      const code = String(diagnostic.code || '')
+      const matches = matchesByCode.get(code) || []
+      matches.push(match)
+      matchesByCode.set(code, matches)
     }
   }
 
-  return unique(matches)
+  return matchesByCode
 }
 
 function isDeclarationNameIdentifier(node) {
@@ -1090,17 +1114,12 @@ function collectBrowserApiMatches(context) {
   const files = context.hooksCodeFiles.filter(isServerRuntimeFile)
 
   for (const file of files) {
-    if (file.isEjs) {
-      const blocks = extractServerBlocks(file.content)
-
-      for (const block of blocks) {
-        matches.push(...collectBrowserApiMatchesInText(file, block.content, block.contentStart))
-      }
-
+    const analysisText = getLintAnalysisText(file)
+    if (!JSVM_BROWSER_API_SIGNAL_RE.test(analysisText)) {
       continue
     }
 
-    matches.push(...collectBrowserApiMatchesInText(file, file.content, 0))
+    matches.push(...collectBrowserApiMatchesInText(file, analysisText, 0))
   }
 
   return unique(matches)
@@ -1265,33 +1284,32 @@ function collectPrivateGlobalApiMatches(files) {
 function collectLocaleApiMatches(context) {
   const matches = []
   const files = context.hooksCodeFiles.filter(isServerRuntimeFile)
+  const localeMethodNames = new Set(['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString'])
 
   for (const file of files) {
-    if (file.isEjs) {
-      const blocks = extractServerBlocks(file.content)
-
-      for (const block of blocks) {
-        RE.localeApi.lastIndex = 0
-        let match = RE.localeApi.exec(block.content)
-
-        while (match) {
-          const lineNumber = lineNumberAt(file.content, block.contentStart + match.index)
-          matches.push(formatLintLineMatch(file, lineNumber))
-          match = RE.localeApi.exec(block.content)
-        }
-      }
-
+    const analysisText = getLintAnalysisText(file)
+    if (!JSVM_LOCALE_API_SIGNAL_RE.test(analysisText)) {
       continue
     }
 
-    RE.localeApi.lastIndex = 0
-    let match = RE.localeApi.exec(file.content)
+    const sourceFile = ts.createSourceFile(`${file.absPath}.__jsvm-locale__.js`, analysisText, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
+    const declaredNames = collectDeclaredNames(sourceFile)
 
-    while (match) {
-      const lineNumber = lineNumberAt(file.content, match.index)
-      matches.push(formatLintLineMatch(file, lineNumber))
-      match = RE.localeApi.exec(file.content)
+    function visit(node) {
+      if (ts.isIdentifier(node) && node.text === 'Intl' && !declaredNames.has('Intl') && !isDeclarationNameIdentifier(node) && !isPropertyNameIdentifier(node)) {
+        matches.push(formatLintLineMatch(file, lineNumberAt(file.content, node.getStart(sourceFile))))
+      } else if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        localeMethodNames.has(node.expression.name.text)
+      ) {
+        matches.push(formatLintLineMatch(file, lineNumberAt(file.content, node.expression.name.getStart(sourceFile))))
+      }
+
+      ts.forEachChild(node, visit)
     }
+
+    visit(sourceFile)
   }
 
   return unique(matches)
@@ -1326,24 +1344,50 @@ function collectTransactionCallbackRanges(sourceText) {
   return ranges
 }
 
-function collectTransactionOuterAppMatches(files) {
+function collectTransactionOuterAppMatches(context) {
   const matches = []
 
-  for (const file of files) {
-    for (const transaction of collectTransactionCallbackRanges(file.content)) {
-      const body = file.content.slice(transaction.bodyStart, transaction.bodyEnd)
-      const bodyStartLine = lineNumberAt(file.content, transaction.bodyStart)
-      const bodyLines = body.split(/\r?\n/)
+  for (const file of context.hooksCodeFiles.filter(isServerRuntimeFile)) {
+    const analysisText = getLintAnalysisText(file)
 
-      for (let index = 0; index < bodyLines.length; index += 1) {
-        const line = bodyLines[index]
-        RE.outerAppInsideTransaction.lastIndex = 0
+    for (const diagnostic of collectTransactionAppDiagnostics(context.projectIndex, analysisText)) {
+      const match = formatDiagnosticLineMatch(file, diagnostic)
+      if (match) {
+        matches.push(match)
+      }
+    }
+  }
 
-        if (!RE.outerAppInsideTransaction.test(line)) {
-          continue
-        }
+  return unique(matches)
+}
 
-        matches.push(`${file.displayPath}:${bodyStartLine + index}:${line}`)
+function collectNodeBuiltinRequireMatches(context) {
+  const matches = []
+
+  for (const file of context.hooksCodeFiles.filter(isServerRuntimeFile)) {
+    if (!/\brequire\s*\(/.test(file.content)) {
+      continue
+    }
+
+    for (const diagnostic of collectUnsupportedNodeBuiltinRequireDiagnostics(file.absPath, file.content)) {
+      const match = formatDiagnosticLineMatch(file, diagnostic)
+      if (match) {
+        matches.push(match)
+      }
+    }
+  }
+
+  return unique(matches)
+}
+
+function collectHookHandlerCaptureMatches(context) {
+  const matches = []
+
+  for (const file of context.nonPagesHooksCodeFiles.filter((entry) => entry.basename.endsWith('.js'))) {
+    for (const diagnostic of collectHookHandlerCaptureDiagnostics(file.content)) {
+      const match = formatDiagnosticLineMatch(file, diagnostic)
+      if (match) {
+        matches.push(match)
       }
     }
   }
@@ -1718,15 +1762,22 @@ function lintService(context) {
     staticJsServerCodeMatches
   )
 
-  const transactionOuterAppMatches = collectTransactionOuterAppMatches(context.hooksCodeFiles)
+  const transactionOuterAppMatches = collectTransactionOuterAppMatches(context)
   printMatches(
     context.serviceName,
     'Invalid runInTransaction usage. Inside $app.runInTransaction(...) always use the callback txApp argument instead of the outer $app instance.',
     transactionOuterAppMatches
   )
 
-  const asyncFlowMatches = collectAsyncFlowMatches(context)
+  const jsvmRuntimeMatches = collectJsvmRuntimeMatches(context)
+  const asyncFlowMatches = unique(jsvmRuntimeMatches.get('pp-jsvm-async-flow') || [])
   printMatches(context.serviceName, 'Invalid JSVM async flow. Keep PocketBase/PocketPages server code sync; do not use async, await, Promise, or .then(...).', asyncFlowMatches)
+
+  const esmSyntaxMatches = unique(jsvmRuntimeMatches.get('pp-jsvm-esm-syntax') || [])
+  printMatches(context.serviceName, 'Invalid JSVM module syntax. Use CommonJS require() and module.exports instead of ESM import, export, import(), or import.meta.', esmSyntaxMatches)
+
+  const nodeBuiltinRequireMatches = collectNodeBuiltinRequireMatches(context)
+  printMatches(context.serviceName, 'Invalid JSVM require(). Node.js built-in modules are not available in PocketBase JSVM.', nodeBuiltinRequireMatches)
 
   const localeApiMatches = collectLocaleApiMatches(context)
   printMatches(
@@ -1740,6 +1791,13 @@ function lintService(context) {
     context.serviceName,
     'Invalid JSVM browser API usage. Do not use browser/Web APIs in PocketBase/PocketPages server code; use PocketBase globals such as $http, sleep, $app.store(), or explicit project utilities.',
     browserApiMatches
+  )
+
+  const hookHandlerCaptureMatches = collectHookHandlerCaptureMatches(context)
+  printMatches(
+    context.serviceName,
+    'Invalid isolated hook handler capture. Move outer declarations inside the handler or require a module from inside the handler.',
+    hookHandlerCaptureMatches
   )
 
   const pagesHookRegistrationMatches = collectLineMatches(context.pagesCodeFiles, RE.hookRegistration)
@@ -2007,6 +2065,7 @@ function main() {
 
   const serviceArg = process.argv[2]
   const serviceDirs = collectServiceDirs(serviceArg)
+  const cacheEnabled = process.env.POCKETPAGES_LINT_DISABLE_CACHE !== '1'
 
   if (serviceDirs.length === 0) {
     console.log('No services found.')
@@ -2017,7 +2076,7 @@ function main() {
     const serviceStart = process.hrtime.bigint()
     const serviceName = path.basename(serviceDir)
     const fingerprint = createLintFingerprint(serviceDir)
-    const cached = getValidLintCache(serviceDir, fingerprint)
+    const cached = cacheEnabled ? getValidLintCache(serviceDir, fingerprint) : null
 
     if (cached) {
       const warningCount = Number.isFinite(cached.warnings) ? cached.warnings : 0
@@ -2036,7 +2095,7 @@ function main() {
     lintService(context)
 
     const serviceWarningCount = warnings - previousWarnings
-    if (errors === previousErrors && serviceWarningCount === 0) {
+    if (cacheEnabled && errors === previousErrors && serviceWarningCount === 0) {
       writeLintCache(serviceDir, fingerprint, serviceWarningCount)
     }
 
