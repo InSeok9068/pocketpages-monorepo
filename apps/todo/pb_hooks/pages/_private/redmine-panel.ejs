@@ -14,7 +14,7 @@
     role="<%= panelTone === 'error' ? 'alert' : 'status' %>"
     aria-live="<%= panelTone === 'error' ? 'assertive' : 'polite' %>"
     aria-atomic="true"
-    class="mb-5 flex items-start gap-2 rounded-xl border px-4 py-3 text-sm font-bold <%= panelFeedbackClass %>">
+    class="<%= panelFeedbackClass %> mb-5 flex items-start gap-2 rounded-xl border px-4 py-3 text-sm font-bold">
     <span
       class="<%= panelTone === 'error' ? 'i-lucide-circle-alert' : panelTone === 'info' ? 'i-lucide-info' : 'i-lucide-circle-check' %> mt-0.5 h-4 w-4 shrink-0"
       aria-hidden="true"></span>

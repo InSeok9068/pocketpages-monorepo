@@ -609,6 +609,8 @@ function buildJsConfig() {
     "noEmit": true,
     "strict": false,
     "target": "es6",
+    "lib": ["ES2015"],
+    "types": [],
     "module": "commonjs",
     "allowSyntheticDefaultImports": true,
     "maxNodeModuleJsDepth": 0,
