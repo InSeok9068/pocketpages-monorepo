@@ -58,6 +58,7 @@ function createDiagnosticsFeatureService(context) {
       code === "pp-schema-filter-param" ||
       code === "pp-jsvm-async-flow" ||
       code === "pp-jsvm-esm-syntax" ||
+      code === "pp-jsvm-handler-capture" ||
       code === "pp-jsvm-node-builtin"
     );
   }

@@ -49,7 +49,7 @@ PocketPages 전용 분석은 app root를 찾을 수 있는 파일에만 적용�
 | --- | --- | --- |
 | EJS 문서 | app root 안의 `.ejs` | EJS virtual code, TypeScript 기능, PocketPages path/schema 기능, diagnostics, CodeLens |
 | pages script | `pb_hooks/pages/**/*.js`, `**/*.cjs`, `**/*.mjs` | TypeScript 기능, PocketPages path/schema 기능, diagnostics, document link, CodeLens |
-| schema-only hook script | `pb_hooks/**/*.js`, `**/*.cjs`, `**/*.mjs` 중 `pb_hooks/pages` 밖 파일 | PocketBase schema completion/diagnostics 중심 |
+| schema-only hook script | `pb_hooks/**/*.js`, `**/*.cjs`, `**/*.mjs` 중 `pb_hooks/pages` 밖 파일 | PocketBase schema completion/diagnostics와 JSVM runtime diagnostics 중심 |
 
 `pb_hooks/pages` 안에 있어도 route-exposed `vendor/**`, `*.min.js`, `*.min.cjs`, `*.min.mjs`는 PocketPages code index에서 제외합니다. `_private/vendor/**`는 내부 dependency로 보고 계속 인덱싱합니다.
 
@@ -180,7 +180,7 @@ EJS block 끝 위치는 사용자가 커서를 자주 멈추는 위치이므로 
 | `resolve('...')`, `api.resolve('...')` | `_private` module |
 | `include('...')`, `api.include('...')` | `_private` partial |
 | `asset('...')` | local/global asset |
-| `fetch('/path')`, `window.fetch('/path')`, `globalThis.fetch('/path')` | route, JS와 `.ejs` client `<script>`의 정적 내부 path와 `method` init 기준 |
+| `fetch('/path')`, `window.fetch('/path')`, `globalThis.fetch('/path')` | route, 안전한 public asset JS와 `.ejs` client `<script>`의 정적 내부 path와 `method` init 기준 |
 | `redirect('/path')`, `api.redirect('/path')` | route |
 | `datastar.redirect('/path')`, `datastar.replaceURL('/path')` | route |
 | `href="/path"` | route, static asset fallback |
@@ -296,6 +296,8 @@ PocketPages 전용 diagnostics는 `pp-*` 코드로 표시됩니다.
 | `pp-transaction-app` | `runInTransaction()` 내부에서 transaction app 대신 `$app` DB 호출 사용 |
 | `pp-jsvm-async-flow` | JSVM 서버 코드에서 `async`, `await`, `Promise`, `.then()` 사용 |
 | `pp-jsvm-esm-syntax` | CommonJS 전용 JSVM 서버 코드에서 ESM `import` / `export` 문법 사용 |
+| `pp-jsvm-handler-capture` | 격리 실행되는 PocketBase handler에서 handler 밖의 변수나 함수 캡처 |
+| `pp-jsvm-node-builtin` | JSVM 서버 코드에서 Node.js built-in module을 `require()`로 로드 |
 | `pp-middleware-next-bare-return` | `+middleware.js`에서 bare `return` 사용 |
 | `pp-middleware-next-empty-return` | `+middleware.js`에서 `return {}` 사용 |
 | `pp-middleware-next-missing-call` | `+middleware.js`에서 `next()` 호출 누락 |
@@ -500,7 +502,7 @@ npm run install:vscode-pocketpages
 중요한 제약:
 
 - app root를 찾지 못하는 파일은 PocketPages 관리 대상이 아닙니다.
-- schema-only hook script는 schema 기능으로 제한됩니다.
+- schema-only hook script의 언어 기능은 schema 중심으로 제한되며 JSVM runtime diagnostics는 함께 제공됩니다.
 - JS/CJS/MJS 문서의 일반 hover는 기본 JS/TS 경험에 맡기고, 확장은 PocketPages path hover를 추가합니다.
 - route completion은 static `.ejs` route 중심입니다.
 - route navigation은 `.ejs`, `.js`, `.cjs`, `.mjs` target을 더 넓게 해석합니다.

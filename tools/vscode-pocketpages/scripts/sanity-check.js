@@ -2113,7 +2113,11 @@ redirect('/sign-in')
   )
   writeFile(
     path.join(appRoot, 'pb_hooks', 'pages', '(site)', 'boards', 'client-fetch-reference-check.ejs'),
-    `<script>
+    `<script server>
+fetch('/sign-in')
+</script>
+<% fetch('/boards') %>
+<script>
 fetch('/feedback', { method: 'POST' })
 resolve('board-service')
 </script>
@@ -3025,6 +3029,44 @@ datastar.replaceURL('/replace')
     throw new Error(`Expected collectPathContexts to surface redirect and replace-url route sources. Got: ${JSON.stringify(collectedRouteSources)}`)
   }
 
+  const serverFetchDocument = `<script server>
+fetch('/feedback', { method: 'POST' })
+</script>
+<% fetch('/boards') %>
+`
+  const serverFetchContexts = collectPathContexts(serverFetchDocument, { mode: 'ejs' })
+    .filter((context) => context.kind === 'route-path' && String(context.routeSource || '').startsWith('fetch-'))
+  if (serverFetchContexts.length) {
+    throw new Error(`Expected server-side EJS fetch() calls to stay outside route intelligence. Got: ${JSON.stringify(serverFetchContexts)}`)
+  }
+  for (const marker of ['/feedback', '/boards']) {
+    const serverFetchContextAtOffset = getPathContextAtOffset(
+      serverFetchDocument,
+      serverFetchDocument.indexOf(marker) + 2,
+      { mode: 'ejs' }
+    )
+    if (serverFetchContextAtOffset) {
+      throw new Error(
+        `Expected server-side EJS fetch() completion/hover context to stay disabled at ${marker}. Got: ${JSON.stringify(serverFetchContextAtOffset)}`
+      )
+    }
+  }
+  for (const serverScriptPath of [
+    'C:/repo/apps/example/pb_hooks/main.pb.js',
+    'C:/repo/apps/example/pb_hooks/pages/api/+get.js',
+    'C:/repo/apps/example/pb_hooks/pages/_private/service.js',
+  ]) {
+    const serverScriptFetchContexts = collectPathContexts("fetch('/feedback')", {
+      mode: 'script',
+      filePath: serverScriptPath,
+    })
+    if (serverScriptFetchContexts.length) {
+      throw new Error(
+        `Expected server script fetch() calls to stay outside route intelligence for ${serverScriptPath}. Got: ${JSON.stringify(serverScriptFetchContexts)}`
+      )
+    }
+  }
+
   const clientScriptFetchDocument = `<script>
 const result = fetch('/feedback', { method: 'POST' })
 const service = resolve('board-service')
@@ -3166,6 +3208,14 @@ window.fetch('/feedback')
       clientScriptFetchRouteLink.targetRelativePath !== '(site)/feedback/+post.js'
     ) {
       throw new Error(`Expected project index routeLinks to include EJS client <script> fetch route target. Got: ${JSON.stringify(clientScriptFetchRouteLink)}`)
+    }
+    const clientFetchReferenceRouteLinks = indexReport.routeLinks.filter((entry) =>
+      entry.sourceRelativePath === '(site)/boards/client-fetch-reference-check.ejs'
+    )
+    if (clientFetchReferenceRouteLinks.length !== 1) {
+      throw new Error(
+        `Expected project index routeLinks to exclude server/template fetch() and keep only the client fetch(). Got: ${JSON.stringify(clientFetchReferenceRouteLinks)}`
+      )
     }
     const clientScriptResolveRouteLink = indexReport.routeLinks.find((entry) =>
       entry.sourceRelativePath === '(site)/boards/client-fetch-reference-check.ejs' &&
@@ -8426,6 +8476,13 @@ $app.findRecordsByFilter('boards', 'nmae = true')
         start: schemaOnlyDiagnosticsText.indexOf('import'),
         end: schemaOnlyDiagnosticsText.indexOf('import') + 'import'.length,
       },
+      {
+        code: 'pp-jsvm-handler-capture',
+        category: ts.DiagnosticCategory.Error,
+        message: 'PocketBase runs this handler in an isolated scope, so outer declarations are unavailable.',
+        start: 0,
+        end: 'missingGlobal'.length,
+      },
     ])
     const schemaOnlyDiagnosticsFeatureService = createDiagnosticsFeatureService(
       schemaOnlyDiagnosticsSmokeContext.context
@@ -8450,6 +8507,7 @@ $app.findRecordsByFilter('boards', 'nmae = true')
       'pp-schema-filter-param',
       'pp-jsvm-async-flow',
       'pp-jsvm-esm-syntax',
+      'pp-jsvm-handler-capture',
       'pp-jsvm-node-builtin',
     ])
     if (schemaOnlyDiagnosticsReport.items.some(
@@ -8469,7 +8527,7 @@ $app.findRecordsByFilter('boards', 'nmae = true')
         `Expected schema-support-only hook diagnostics to keep filter param diagnostics. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
       )
     }
-    for (const code of ['pp-jsvm-async-flow', 'pp-jsvm-esm-syntax', 'pp-jsvm-node-builtin']) {
+    for (const code of ['pp-jsvm-async-flow', 'pp-jsvm-esm-syntax', 'pp-jsvm-handler-capture', 'pp-jsvm-node-builtin']) {
       if (!schemaOnlyDiagnosticsReport.items.some((entry) => String(entry.code) === code)) {
         throw new Error(
           `Expected schema-support-only hook diagnostics to keep ${code}. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
@@ -8517,7 +8575,7 @@ onBootstrap(async function (event) {
     const schemaOnlyRuntimeCodes = schemaOnlyRuntimeReport && Array.isArray(schemaOnlyRuntimeReport.items)
       ? schemaOnlyRuntimeReport.items.map((entry) => String(entry.code))
       : []
-    for (const code of ['pp-jsvm-async-flow', 'pp-jsvm-esm-syntax', 'pp-jsvm-node-builtin']) {
+    for (const code of ['pp-jsvm-async-flow', 'pp-jsvm-esm-syntax', 'pp-jsvm-handler-capture', 'pp-jsvm-node-builtin']) {
       if (!schemaOnlyRuntimeCodes.includes(code)) {
         throw new Error(
           `Expected real schema-only hook diagnostics to report ${code}. Got: ${JSON.stringify(schemaOnlyRuntimeReport)}`
@@ -10826,6 +10884,122 @@ export default realtimeAuth
     if (jsvmEsmSchemaOnlyDiagnostics.length !== 2) {
       throw new Error(
         `Expected ESM diagnostics in schema-only hook scripts. Got: ${JSON.stringify(jsvmEsmSchemaOnlyDiagnostics)}`
+      )
+    }
+
+    const jsvmHandlerCaptureText = `const outerConfig = { name: 'outside' }
+function outerHelper(value) { return value }
+
+function namedHandler(event) {
+  const localConfig = { name: 'inside' }
+  function localHelper(value) { return value }
+  console.log({ outerConfig }, outerHelper(localConfig.name), localHelper(localConfig.name))
+  event.next()
+}
+
+onBootstrap(namedHandler)
+onRecordCreate(function namedRecordHandler(event) {
+  const outerConfig = { name: 'shadowed' }
+  function outerHelper(value) { return value }
+  const values = [outerConfig.name]
+  values.forEach(function (value) {
+    console.log(outerHelper(value), namedRecordHandler)
+  })
+  event.next()
+})
+`
+    const jsvmHandlerCaptureDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      jsvmHandlerCaptureText
+    ).filter((entry) => String(entry.code) === 'pp-jsvm-handler-capture')
+    const jsvmHandlerCaptureNames = jsvmHandlerCaptureDiagnostics.map((entry) =>
+      jsvmHandlerCaptureText.slice(entry.start, entry.end)
+    )
+    if (
+      jsvmHandlerCaptureDiagnostics.length !== 2 ||
+      JSON.stringify(jsvmHandlerCaptureNames) !== JSON.stringify(['outerConfig', 'outerHelper'])
+    ) {
+      throw new Error(
+        `Expected only true outer lexical captures in a named hook handler. Got: ${JSON.stringify(jsvmHandlerCaptureDiagnostics)}`
+      )
+    }
+
+    const jsvmNestedHandlerCaptureText = `const loopIndex = 'outside'
+onBootstrap(function (event) {
+  const requestLabel = 'request'
+  for (let loopIndex = 0; loopIndex < 1; loopIndex += 1) {
+    console.log(loopIndex)
+  }
+  console.log(loopIndex)
+  onRecordCreate(function (recordEvent) {
+    console.log(requestLabel)
+    recordEvent.next()
+  })
+  event.next()
+})
+`
+    const jsvmNestedHandlerCaptureDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      jsvmNestedHandlerCaptureText
+    ).filter((entry) => String(entry.code) === 'pp-jsvm-handler-capture')
+    const jsvmNestedHandlerCaptureNames = jsvmNestedHandlerCaptureDiagnostics.map((entry) =>
+      jsvmNestedHandlerCaptureText.slice(entry.start, entry.end)
+    )
+    if (
+      jsvmNestedHandlerCaptureDiagnostics.length !== 2 ||
+      JSON.stringify(jsvmNestedHandlerCaptureNames) !== JSON.stringify(['loopIndex', 'requestLabel'])
+    ) {
+      throw new Error(
+        `Expected loop-scope and nested-handler captures to respect their serialization boundaries. Got: ${JSON.stringify(jsvmNestedHandlerCaptureDiagnostics)}`
+      )
+    }
+
+    const jsvmShadowedRegistrationText = `const outside = 'safe for this local function'
+function onBootstrap(handler) { handler() }
+onBootstrap(function () { console.log(outside) })
+`
+    const jsvmShadowedRegistrationDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      jsvmShadowedRegistrationText
+    ).filter((entry) => String(entry.code) === 'pp-jsvm-handler-capture')
+    if (jsvmShadowedRegistrationDiagnostics.length) {
+      throw new Error(
+        `Expected a locally declared registration-like function to stay outside PocketBase handler analysis. Got: ${JSON.stringify(jsvmShadowedRegistrationDiagnostics)}`
+      )
+    }
+
+    const jsvmIsolatedHandlerKindsText = `const sharedValue = 'outside'
+routerAdd('GET', '/scope-check', function (event) {
+  return event.string(200, sharedValue)
+}, function (event) {
+  console.log(sharedValue)
+  event.next()
+})
+routerUse(new Middleware(function (event) {
+  console.log(sharedValue)
+  event.next()
+}, -1))
+cronAdd('scope-check', '* * * * *', function () {
+  console.log(sharedValue)
+})
+onBootstrap(function (event) {
+  const config = require(__hooks + '/config.js')
+  console.log(config.name)
+  event.next()
+})
+`
+    const jsvmIsolatedHandlerKindDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      jsvmIsolatedHandlerKindsText
+    ).filter((entry) => String(entry.code) === 'pp-jsvm-handler-capture')
+    if (
+      jsvmIsolatedHandlerKindDiagnostics.length !== 4 ||
+      jsvmIsolatedHandlerKindDiagnostics.some((entry) =>
+        jsvmIsolatedHandlerKindsText.slice(entry.start, entry.end) !== 'sharedValue'
+      )
+    ) {
+      throw new Error(
+        `Expected route, route middleware, global middleware, and cron handlers to report only outer captures. Got: ${JSON.stringify(jsvmIsolatedHandlerKindDiagnostics)}`
       )
     }
 

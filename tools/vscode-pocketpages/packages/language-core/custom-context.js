@@ -770,6 +770,29 @@ function isScriptFilePath(filePath) {
   return /\.(?:[cm]?js|ts)$/i.test(String(filePath || ''))
 }
 
+function isRouteFetchAssetScriptPath(filePath) {
+  const normalizedPath = String(filePath || '').replace(/\\/g, '/')
+  const pagesMarker = '/pb_hooks/pages/'
+  const markerIndex = normalizedPath.toLowerCase().indexOf(pagesMarker)
+  if (markerIndex === -1 || !/\.(?:[cm]?js)$/i.test(normalizedPath)) {
+    return false
+  }
+
+  const relativeSegments = normalizedPath
+    .slice(markerIndex + pagesMarker.length)
+    .split('/')
+    .filter(Boolean)
+  const lowerPath = normalizedPath.toLowerCase()
+  return (
+    relativeSegments.includes('assets') &&
+    !relativeSegments.includes('_private') &&
+    !relativeSegments.includes('vendor') &&
+    !lowerPath.endsWith('.min.js') &&
+    !lowerPath.endsWith('.min.cjs') &&
+    !lowerPath.endsWith('.min.mjs')
+  )
+}
+
 function looksLikeEjsOrHtml(text) {
   const sourceText = String(text || '')
   return /<%|^\s*<[A-Za-z][\w:-]*(?:\s|>|\/>)/.test(sourceText)
@@ -1480,6 +1503,14 @@ function shouldIncludeFetchRouteContext(context, options = {}) {
     : value.startsWith('/')
 }
 
+function shouldIncludeScriptPathContext(context, options = {}) {
+  if (!isFetchRouteContext(context)) {
+    return true
+  }
+
+  return options.allowFetchRouteContexts === true && shouldIncludeFetchRouteContext(context, options)
+}
+
 function getStringLiteralPathRange(argument, sourceFile, scriptText, offsetBase = 0, options = {}) {
   const target = skipParenthesizedExpression(argument)
   if (!target || !ts.isStringLiteralLike(target)) {
@@ -1555,7 +1586,7 @@ function collectScriptPathContexts(scriptText, options = {}) {
         const pathRange = getStringLiteralPathRange(node.arguments[0], sourceFile, sourceText, offsetBase)
         if (pathRange) {
           const context = createScriptPathContextFromCall(node, descriptor, pathRange, sourceFile, sourceText)
-          if (shouldIncludeFetchRouteContext(context)) {
+          if (shouldIncludeScriptPathContext(context, options)) {
             contexts.push(context)
           }
         }
@@ -1605,7 +1636,10 @@ function getOpenScriptPathContextAtOffset(scriptText, offset, options = {}) {
               end: offset,
             }
           const context = createScriptPathContextFromCall(node, descriptor, boundedPathRange, sourceFile, sourceText)
-          if (shouldIncludeFetchRouteContext(context, { allowEmpty: true })) {
+          if (shouldIncludeScriptPathContext(context, {
+            ...options,
+            allowEmpty: true,
+          })) {
             openContext = context
           }
           return
@@ -1658,6 +1692,7 @@ function getClientScriptFetchPathContextAtOffset(documentText, offset) {
 
     const context = getScriptPathContextAtOffset(block.content, offset, {
       offsetBase: block.contentStart,
+      allowFetchRouteContexts: true,
     })
     return context && context.kind === 'route-path' && isFetchRouteContext(context)
       ? context
@@ -1676,7 +1711,10 @@ function collectClientScriptFetchPathContexts(documentText) {
       continue
     }
 
-    for (const context of collectScriptPathContexts(block.content, { offsetBase: block.contentStart })) {
+    for (const context of collectScriptPathContexts(block.content, {
+      offsetBase: block.contentStart,
+      allowFetchRouteContexts: true,
+    })) {
       if (context.kind === 'route-path' && isFetchRouteContext(context)) {
         contexts.push(context)
       }
@@ -1776,7 +1814,11 @@ function getPathContextAtOffset(documentText, offset, options = {}) {
   }
 
   if (mode === 'script') {
-    return getScriptPathContextAtOffset(documentText, offset)
+    return getScriptPathContextAtOffset(documentText, offset, {
+      ...options,
+      allowFetchRouteContexts:
+        options.allowFetchRouteContexts === true || isRouteFetchAssetScriptPath(options.filePath),
+    })
   }
 
   return null
@@ -1789,7 +1831,11 @@ function collectPathContexts(documentText, options = {}) {
   }
 
   if (mode === 'script') {
-    return collectScriptPathContexts(documentText)
+    return collectScriptPathContexts(documentText, {
+      ...options,
+      allowFetchRouteContexts:
+        options.allowFetchRouteContexts === true || isRouteFetchAssetScriptPath(options.filePath),
+    })
   }
 
   return []

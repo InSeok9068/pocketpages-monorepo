@@ -28,6 +28,7 @@ const {
   getScriptSchemaContextAtOffset,
 } = require("../language-core/custom-context");
 const { collectParamsFlowDiagnostics } = require("./flow-analysis");
+const { collectHookHandlerCaptureDiagnostics } = require("./hook-handler-scope-analysis");
 const { createCompletionFeatureHandlers } = require("./features/completion-features");
 const { createDiagnosticsFeatureHandlers } = require("./features/diagnostics-features");
 const { createNavigationFeatureHandlers } = require("./features/navigation-features");
@@ -3740,6 +3741,14 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText, opti
 
   for (const diagnostic of collectJsvmRuntimeDiagnostics(analysisText, { sourceFile: analysisSourceFile })) {
     diagnostics.push(diagnostic);
+  }
+
+  if (isSchemaSupportOnlyHookScriptFile(projectIndex.appRoot, filePath)) {
+    for (const diagnostic of collectHookHandlerCaptureDiagnostics(documentText, {
+      sourceFile: analysisSourceFile,
+    })) {
+      diagnostics.push(diagnostic);
+    }
   }
 
   for (const diagnostic of collectRedirectReturnDiagnostics(filePath, analysisText, { sourceFile: analysisSourceFile })) {
