@@ -158,6 +158,7 @@ EJS block 끝 위치는 사용자가 커서를 자주 멈추는 위치이므로 
 - `record.get('field')`, `record.set('field', value)` field completion
 - unknown collection diagnostics
 - unknown field diagnostics
+- JSVM runtime diagnostics for async flow, ESM syntax, and Node.js built-in modules
 - static `require()` path definition/document link/references
 - hook script file rename edit for supported static require forms
 
@@ -294,6 +295,7 @@ PocketPages 전용 diagnostics는 `pp-*` 코드로 표시됩니다.
 | `pp-redirect-missing-return` | `redirect()` 이후 `return` 누락 |
 | `pp-transaction-app` | `runInTransaction()` 내부에서 transaction app 대신 `$app` DB 호출 사용 |
 | `pp-jsvm-async-flow` | JSVM 서버 코드에서 `async`, `await`, `Promise`, `.then()` 사용 |
+| `pp-jsvm-esm-syntax` | CommonJS 전용 JSVM 서버 코드에서 ESM `import` / `export` 문법 사용 |
 | `pp-middleware-next-bare-return` | `+middleware.js`에서 bare `return` 사용 |
 | `pp-middleware-next-empty-return` | `+middleware.js`에서 `return {}` 사용 |
 | `pp-middleware-next-missing-call` | `+middleware.js`에서 `next()` 호출 누락 |

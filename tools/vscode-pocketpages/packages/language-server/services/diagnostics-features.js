@@ -51,11 +51,14 @@ function createDiagnosticsFeatureService(context) {
     toRange,
   } = helpers;
 
-  function isSchemaDiagnosticCode(code) {
+  function isSchemaSupportOnlyDiagnosticCode(code) {
     return (
       code === "pp-schema-collection" ||
       code === "pp-schema-field" ||
-      code === "pp-schema-filter-param"
+      code === "pp-schema-filter-param" ||
+      code === "pp-jsvm-async-flow" ||
+      code === "pp-jsvm-esm-syntax" ||
+      code === "pp-jsvm-node-builtin"
     );
   }
 
@@ -130,7 +133,7 @@ function createDiagnosticsFeatureService(context) {
       helpers.isSchemaSupportOnlyHookScriptPath(documentContext.filePath)
     ) {
       filteredDiagnostics = filteredDiagnostics.filter((diagnostic) =>
-        isSchemaDiagnosticCode(diagnostic && diagnostic.code)
+        isSchemaSupportOnlyDiagnosticCode(diagnostic && diagnostic.code)
       );
     }
 

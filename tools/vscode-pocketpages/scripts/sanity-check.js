@@ -8329,7 +8329,13 @@ ${largeRealisticSections}
     }
 
     const schemaOnlyDiagnosticsCore = new PocketPagesLanguageCore()
-    const schemaOnlyDiagnosticsText = `missingGlobal()\n$app.findRecordsByFilter('missing_collection')\n$app.findRecordsByFilter('boards', 'nmae = true')\n`
+    const schemaOnlyDiagnosticsText = `missingGlobal()
+async function load() { return Promise.resolve() }
+const fs = require('fs')
+import helper from './helper.js'
+$app.findRecordsByFilter('missing_collection')
+$app.findRecordsByFilter('boards', 'nmae = true')
+`
     const schemaOnlyDiagnosticsDocument = createTestDocument(
       fixture.jobScriptFilePath,
       'javascript',
@@ -8399,6 +8405,27 @@ ${largeRealisticSections}
         start: schemaOnlyDiagnosticsText.indexOf('missingGlobal'),
         end: schemaOnlyDiagnosticsText.indexOf('missingGlobal') + 'missingGlobal'.length,
       },
+      {
+        code: 'pp-jsvm-async-flow',
+        category: ts.DiagnosticCategory.Error,
+        message: '"async" functions are not supported in PocketBase JSVM.',
+        start: schemaOnlyDiagnosticsText.indexOf('async'),
+        end: schemaOnlyDiagnosticsText.indexOf('async') + 'async'.length,
+      },
+      {
+        code: 'pp-jsvm-node-builtin',
+        category: ts.DiagnosticCategory.Error,
+        message: 'Node.js built-in module "fs" is not available in PocketBase JSVM.',
+        start: schemaOnlyDiagnosticsText.indexOf("'fs'") + 1,
+        end: schemaOnlyDiagnosticsText.indexOf("'fs'") + 3,
+      },
+      {
+        code: 'pp-jsvm-esm-syntax',
+        category: ts.DiagnosticCategory.Error,
+        message: 'ECMAScript module "import" syntax is not supported in PocketBase JSVM.',
+        start: schemaOnlyDiagnosticsText.indexOf('import'),
+        end: schemaOnlyDiagnosticsText.indexOf('import') + 'import'.length,
+      },
     ])
     const schemaOnlyDiagnosticsFeatureService = createDiagnosticsFeatureService(
       schemaOnlyDiagnosticsSmokeContext.context
@@ -8417,16 +8444,19 @@ ${largeRealisticSections}
         `Expected schema-support-only hook diagnostics pull report. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport)}`
       )
     }
-    if (
-      schemaOnlyDiagnosticsReport.items.some(
-        (entry) =>
-          String(entry.code) !== 'pp-schema-collection' &&
-          String(entry.code) !== 'pp-schema-field' &&
-          String(entry.code) !== 'pp-schema-filter-param'
-      )
-    ) {
+    const schemaOnlyAllowedDiagnosticCodes = new Set([
+      'pp-schema-collection',
+      'pp-schema-field',
+      'pp-schema-filter-param',
+      'pp-jsvm-async-flow',
+      'pp-jsvm-esm-syntax',
+      'pp-jsvm-node-builtin',
+    ])
+    if (schemaOnlyDiagnosticsReport.items.some(
+      (entry) => !schemaOnlyAllowedDiagnosticCodes.has(String(entry.code))
+    )) {
       throw new Error(
-        `Expected schema-support-only hook diagnostics to drop non-schema entries. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
+        `Expected schema-support-only hook diagnostics to keep only schema and JSVM runtime entries. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
       )
     }
     if (!schemaOnlyDiagnosticsReport.items.some((entry) => String(entry.code) === 'pp-schema-collection')) {
@@ -8439,11 +8469,60 @@ ${largeRealisticSections}
         `Expected schema-support-only hook diagnostics to keep filter param diagnostics. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
       )
     }
+    for (const code of ['pp-jsvm-async-flow', 'pp-jsvm-esm-syntax', 'pp-jsvm-node-builtin']) {
+      if (!schemaOnlyDiagnosticsReport.items.some((entry) => String(entry.code) === code)) {
+        throw new Error(
+          `Expected schema-support-only hook diagnostics to keep ${code}. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
+        )
+      }
+    }
     const schemaOnlyFieldDiagnostic = schemaOnlyDiagnosticsReport.items.find((entry) => String(entry.code) === 'pp-schema-field')
     if (!schemaOnlyFieldDiagnostic) {
       throw new Error(
         `Expected schema-support-only hook diagnostics to keep field diagnostics. Got: ${JSON.stringify(schemaOnlyDiagnosticsReport.items)}`
       )
+    }
+
+    const schemaOnlyRuntimeCore = new PocketPagesLanguageCore()
+    const schemaOnlyRuntimeText = `const fs = require('fs')
+import helper from './helper.js'
+onBootstrap(async function (event) {
+  await Promise.resolve(helper)
+  event.next()
+})
+`
+    const schemaOnlyRuntimeDocument = createTestDocument(
+      fixture.jobScriptFilePath,
+      'javascript',
+      1,
+      schemaOnlyRuntimeText
+    )
+    schemaOnlyRuntimeCore.openDocument({
+      uri: schemaOnlyRuntimeDocument.uri,
+      languageId: 'javascript',
+      version: 1,
+      text: schemaOnlyRuntimeText,
+    })
+    const schemaOnlyRuntimeContext = createLspServiceSmokeContext(
+      schemaOnlyRuntimeCore,
+      new Map([[schemaOnlyRuntimeDocument.uri, schemaOnlyRuntimeDocument]])
+    )
+    const schemaOnlyRuntimeFeatures = createDiagnosticsFeatureService(
+      schemaOnlyRuntimeContext.context
+    )
+    const schemaOnlyRuntimeReport = await schemaOnlyRuntimeFeatures.providePullDiagnostics(
+      { textDocument: { uri: schemaOnlyRuntimeDocument.uri } },
+      { isCancellationRequested: false }
+    )
+    const schemaOnlyRuntimeCodes = schemaOnlyRuntimeReport && Array.isArray(schemaOnlyRuntimeReport.items)
+      ? schemaOnlyRuntimeReport.items.map((entry) => String(entry.code))
+      : []
+    for (const code of ['pp-jsvm-async-flow', 'pp-jsvm-esm-syntax', 'pp-jsvm-node-builtin']) {
+      if (!schemaOnlyRuntimeCodes.includes(code)) {
+        throw new Error(
+          `Expected real schema-only hook diagnostics to report ${code}. Got: ${JSON.stringify(schemaOnlyRuntimeReport)}`
+        )
+      }
     }
 
     const schemaOnlyCodeActionCore = new PocketPagesLanguageCore()
@@ -10682,6 +10761,71 @@ module.exports = load
     if (jsvmAsyncFlowScriptDiagnostics.length !== 4) {
       throw new Error(
         `Expected JSVM async-flow diagnostics in managed scripts. Got: ${JSON.stringify(jsvmAsyncFlowScriptDiagnostics)}`
+      )
+    }
+
+    const jsvmEsmSyntaxText = `<script server>
+import boardService from '../_private/board-service.js'
+export const boardValue = boardService
+const lazyBoardService = import('../_private/board-service.js')
+const moduleUrl = import.meta.url
+</script>
+<script type="module">
+import clientModule from '/assets/client.js'
+export default clientModule
+const lazyClientModule = import('/assets/lazy-client.js')
+console.log(import.meta.url)
+</script>
+<p><%= "import export import.meta" %></p>
+`
+    const jsvmEsmSyntaxDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      jsvmEsmSyntaxText
+    ).filter((entry) => String(entry.code) === 'pp-jsvm-esm-syntax')
+    const jsvmEsmSyntaxDiagnosticText = jsvmEsmSyntaxDiagnostics.map((entry) =>
+      jsvmEsmSyntaxText.slice(entry.start, entry.end)
+    )
+    if (
+      jsvmEsmSyntaxDiagnostics.length !== 4 ||
+      JSON.stringify(jsvmEsmSyntaxDiagnosticText) !== JSON.stringify(['import', 'export', 'import', 'import'])
+    ) {
+      throw new Error(
+        `Expected ESM diagnostics only in executable JSVM code. Got: ${JSON.stringify(jsvmEsmSyntaxDiagnostics)}`
+      )
+    }
+
+    const jsvmEsmSyntaxScriptText = `import boardService from './board-service.js'
+export { boardService }
+export default boardService
+const lazyBoardService = import('./board-service.js')
+const moduleUrl = import.meta.url
+`
+    const jsvmEsmSyntaxScriptDiagnostics = service.getDiagnostics(
+      fixture.middlewareFilePath,
+      jsvmEsmSyntaxScriptText
+    ).filter((entry) => String(entry.code) === 'pp-jsvm-esm-syntax')
+    const jsvmEsmSyntaxScriptDiagnosticText = jsvmEsmSyntaxScriptDiagnostics.map((entry) =>
+      jsvmEsmSyntaxScriptText.slice(entry.start, entry.end)
+    )
+    if (
+      jsvmEsmSyntaxScriptDiagnostics.length !== 5 ||
+      JSON.stringify(jsvmEsmSyntaxScriptDiagnosticText) !== JSON.stringify(['import', 'export', 'export', 'import', 'import'])
+    ) {
+      throw new Error(
+        `Expected import, export, dynamic import(), and import.meta diagnostics in managed scripts. Got: ${JSON.stringify(jsvmEsmSyntaxScriptDiagnostics)}`
+      )
+    }
+
+    const jsvmEsmSchemaOnlyText = `import realtimeAuth from './lib/realtime-auth.js'
+export default realtimeAuth
+`
+    const jsvmEsmSchemaOnlyDiagnostics = service.getDiagnostics(
+      fixture.jobScriptFilePath,
+      jsvmEsmSchemaOnlyText
+    ).filter((entry) => String(entry.code) === 'pp-jsvm-esm-syntax')
+    if (jsvmEsmSchemaOnlyDiagnostics.length !== 2) {
+      throw new Error(
+        `Expected ESM diagnostics in schema-only hook scripts. Got: ${JSON.stringify(jsvmEsmSchemaOnlyDiagnostics)}`
       )
     }
 

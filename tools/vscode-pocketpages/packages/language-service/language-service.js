@@ -589,19 +589,36 @@ function isPromiseValueReference(node) {
   return true;
 }
 
-function collectJsvmAsyncFlowDiagnostics(scriptText, options = {}) {
+function collectJsvmRuntimeDiagnostics(scriptText, options = {}) {
   const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-jsvm-async-flow.ts", scriptText);
   const diagnostics = [];
+  const seenEsmDiagnostics = new Set();
 
-  const pushDiagnostic = (node, message, end) => {
+  const pushDiagnostic = (node, message, end, code = "pp-jsvm-async-flow") => {
     const start = node.getStart(sourceFile);
     diagnostics.push({
-      code: "pp-jsvm-async-flow",
+      code,
       category: ts.DiagnosticCategory.Error,
       message,
       start,
       end: typeof end === "number" ? end : node.getEnd(),
     });
+  };
+
+  const pushEsmDiagnostic = (token, message) => {
+    if (!token) {
+      return;
+    }
+
+    const start = token.getStart(sourceFile);
+    const end = token.getEnd();
+    const key = `${start}:${end}`;
+    if (seenEsmDiagnostics.has(key)) {
+      return;
+    }
+
+    seenEsmDiagnostics.add(key);
+    pushDiagnostic(token, message, undefined, "pp-jsvm-esm-syntax");
   };
 
   const visit = (node) => {
@@ -646,6 +663,46 @@ function collectJsvmAsyncFlowDiagnostics(scriptText, options = {}) {
         memberName,
         'Promise .then() flow is not supported in PocketBase JSVM. Use synchronous server APIs.'
       );
+    }
+
+    if (ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node)) {
+      pushEsmDiagnostic(
+        node.getFirstToken(sourceFile),
+        'ECMAScript module "import" syntax is not supported in PocketBase JSVM. Use CommonJS require().'
+      );
+    } else if (ts.isExportDeclaration(node) || ts.isExportAssignment(node)) {
+      pushEsmDiagnostic(
+        node.getFirstToken(sourceFile),
+        'ECMAScript module "export" syntax is not supported in PocketBase JSVM. Use module.exports.'
+      );
+    } else if (
+      ts.isCallExpression(node) &&
+      skipExpressionWrappers(node.expression).kind === ts.SyntaxKind.ImportKeyword
+    ) {
+      pushEsmDiagnostic(
+        skipExpressionWrappers(node.expression),
+        'Dynamic import() is not supported in PocketBase JSVM. Use CommonJS require().'
+      );
+    } else if (
+      ts.isMetaProperty(node) &&
+      node.keywordToken === ts.SyntaxKind.ImportKeyword
+    ) {
+      pushEsmDiagnostic(
+        node.getFirstToken(sourceFile),
+        'import.meta is not supported in PocketBase JSVM CommonJS modules.'
+      );
+    }
+
+    if (ts.canHaveModifiers(node)) {
+      const exportModifier = (ts.getModifiers(node) || []).find(
+        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
+      );
+      if (exportModifier) {
+        pushEsmDiagnostic(
+          exportModifier,
+          'ECMAScript module "export" syntax is not supported in PocketBase JSVM. Use module.exports.'
+        );
+      }
     }
 
     ts.forEachChild(node, visit);
@@ -3681,7 +3738,7 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText, opti
     diagnostics.push(diagnostic);
   }
 
-  for (const diagnostic of collectJsvmAsyncFlowDiagnostics(analysisText, { sourceFile: analysisSourceFile })) {
+  for (const diagnostic of collectJsvmRuntimeDiagnostics(analysisText, { sourceFile: analysisSourceFile })) {
     diagnostics.push(diagnostic);
   }
 
