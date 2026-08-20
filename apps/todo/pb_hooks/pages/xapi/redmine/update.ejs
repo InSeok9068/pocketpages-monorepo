@@ -1,6 +1,5 @@
 <script server>
   const { dateutil } = require('@pocketpages/utils')
-  const htmxResponse = resolve('htmx-response')
   const redmineService = resolve('redmine-service')
   const form = body()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
@@ -49,11 +48,5 @@
     errorMessage = String(exception.message || exception)
     error('todo/xapi/redmine/update:failed', { userId, workId, error: errorMessage })
   }
-  if (!errorMessage) {
-    htmxResponse.setToastTrigger(response, {
-      message,
-      tone: toastTone,
-    })
-  }
 </script>
-<%- include('redmine-panel.ejs', { workId, issue, errorMessage }) %>
+<%- include('redmine-panel.ejs', { workId, issue, errorMessage, message, messageTone: toastTone }) %>
