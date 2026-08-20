@@ -10541,6 +10541,107 @@ const { dateutil } = require('@pocketpages/utils')
       throw new Error(`Expected typed require() hover info from package declarations. Got: ${JSON.stringify(typedRequireQuickInfo)}`)
     }
 
+    const jsvmAmbientCompletionText = `<script server>
+doc
+</script>
+`
+    const jsvmAmbientCompletion = service.getCompletionData(
+      fixture.boardsFilePath,
+      jsvmAmbientCompletionText,
+      jsvmAmbientCompletionText.indexOf('doc') + 'doc'.length
+    )
+    const jsvmAmbientCompletionNames = jsvmAmbientCompletion
+      ? jsvmAmbientCompletion.entries.map((entry) => entry.name)
+      : []
+    const leakedRuntimeGlobalNames = [
+      'Buffer',
+      '__dirname',
+      'document',
+      'fetch',
+      'localStorage',
+      'setImmediate',
+      'window',
+    ].filter((name) => jsvmAmbientCompletionNames.includes(name))
+    if (leakedRuntimeGlobalNames.length) {
+      throw new Error(
+        `Expected PocketBase JSVM completion to exclude browser and Node.js globals. Got: ${leakedRuntimeGlobalNames.join(', ')}`
+      )
+    }
+
+    const jsvmAmbientDiagnosticsText = `<script server>
+console.log('supported')
+document.querySelector('main')
+Buffer.from('value')
+setTimeout(function () {}, 1)
+process.cwd()
+</script>
+`
+    const jsvmAmbientDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      jsvmAmbientDiagnosticsText
+    )
+    const jsvmAmbientDiagnosticMessages = jsvmAmbientDiagnostics.map((entry) => String(entry.message))
+    for (const globalName of ['document', 'Buffer', 'setTimeout']) {
+      if (!jsvmAmbientDiagnosticMessages.includes(`"${globalName}" is not available in PocketBase JSVM.`)) {
+        throw new Error(
+          `Expected PocketBase JSVM diagnostic for ${globalName}. Got: ${jsvmAmbientDiagnosticMessages.join(' | ')}`
+        )
+      }
+    }
+    if (
+      jsvmAmbientDiagnosticMessages.some((message) => message.includes("Cannot find name 'console'")) ||
+      !jsvmAmbientDiagnosticMessages.some((message) => message.includes("Property 'cwd' does not exist"))
+    ) {
+      throw new Error(
+        `Expected console support and process.env-only typing in PocketBase JSVM. Got: ${jsvmAmbientDiagnosticMessages.join(' | ')}`
+      )
+    }
+
+    const jsvmNodeBuiltinRequireText = `<script server>
+const fs = require('fs')
+const promises = require('node:fs/promises')
+const localService = require('./local-service')
+const utils = require('@pocketpages/utils')
+const text = "require('child_process')"
+// require('worker_threads')
+</script>
+`
+    const jsvmNodeBuiltinRequireDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      jsvmNodeBuiltinRequireText
+    ).filter((entry) => String(entry.code) === 'pp-jsvm-node-builtin')
+    if (
+      jsvmNodeBuiltinRequireDiagnostics.length !== 2 ||
+      !jsvmNodeBuiltinRequireDiagnostics.every((entry) =>
+        ['fs', 'node:fs/promises'].includes(
+          jsvmNodeBuiltinRequireText.slice(entry.start, entry.end)
+        )
+      )
+    ) {
+      throw new Error(
+        `Expected only executable Node.js built-in require() calls to be diagnosed. Got: ${JSON.stringify(jsvmNodeBuiltinRequireDiagnostics)}`
+      )
+    }
+
+    const jsvmNodeBuiltinScriptText = `const fs = require('fs')
+const boardService = require('./board-service')
+`
+    const jsvmNodeBuiltinScriptDiagnostics = service.getDiagnostics(
+      fixture.middlewareFilePath,
+      jsvmNodeBuiltinScriptText
+    ).filter((entry) => String(entry.code) === 'pp-jsvm-node-builtin')
+    if (
+      jsvmNodeBuiltinScriptDiagnostics.length !== 1 ||
+      jsvmNodeBuiltinScriptText.slice(
+        jsvmNodeBuiltinScriptDiagnostics[0].start,
+        jsvmNodeBuiltinScriptDiagnostics[0].end
+      ) !== 'fs'
+    ) {
+      throw new Error(
+        `Expected Node.js built-in require() diagnostics in managed scripts. Got: ${JSON.stringify(jsvmNodeBuiltinScriptDiagnostics)}`
+      )
+    }
+
     const typedResolveCompletionText = `<script server>
 const boardService = resolve('board-service')
 boardService.

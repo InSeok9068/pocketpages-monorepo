@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const { builtinModules } = require("module");
 const path = require("path");
 const ts = require("typescript");
 const { URI } = require("vscode-uri");
@@ -46,12 +47,49 @@ const COMPILER_OPTIONS = {
   strict: false,
   noEmit: true,
   target: ts.ScriptTarget.ES2015,
+  lib: ["lib.es2015.d.ts"],
+  types: [],
   module: ts.ModuleKind.CommonJS,
   moduleResolution: ts.ModuleResolutionKind.NodeJs,
   allowSyntheticDefaultImports: true,
   useUnknownInCatchVariables: false,
   maxNodeModuleJsDepth: 2,
 };
+const JSVM_RUNTIME_PRELUDE = [
+  "declare const console: {",
+  "  debug(...data: any[]): void;",
+  "  error(...data: any[]): void;",
+  "  info(...data: any[]): void;",
+  "  log(...data: any[]): void;",
+  "  warn(...data: any[]): void;",
+  "};",
+  "declare const process: {",
+  "  env: Record<string, string | undefined>;",
+  "};",
+].join("\n");
+const NODE_BUILTIN_MODULES = new Set(
+  builtinModules.map((name) => String(name).replace(/^node:/, ""))
+);
+const UNSUPPORTED_JSVM_GLOBAL_NAMES = new Set([
+  "Buffer",
+  "XMLHttpRequest",
+  "WebSocket",
+  "__dirname",
+  "__filename",
+  "clearImmediate",
+  "clearInterval",
+  "clearTimeout",
+  "document",
+  "fetch",
+  "global",
+  "localStorage",
+  "navigator",
+  "sessionStorage",
+  "setImmediate",
+  "setInterval",
+  "setTimeout",
+  "window",
+]);
 const CANCELLATION_POLL_INTERVAL_MS = 20;
 const INCLUDE_RENAME_EXTENSIONS = [".ejs"];
 const ROUTE_PARAM_CODE_EXTENSIONS = new Set([".ejs", ".js", ".cjs", ".mjs"]);
@@ -486,6 +524,45 @@ function collectStaticRequireCallContexts(documentText, options = {}) {
   }
 
   return contexts;
+}
+
+function isUnsupportedNodeBuiltinRequire(filePath, requestPath) {
+  const requestValue = String(requestPath || "").trim();
+  const builtinName = requestValue.replace(/^node:/, "");
+  if (!requestValue || !NODE_BUILTIN_MODULES.has(builtinName)) {
+    return false;
+  }
+
+  if (requestValue.startsWith("node:")) {
+    return true;
+  }
+
+  const resolution = ts.resolveModuleName(
+    requestValue,
+    normalizePath(filePath),
+    COMPILER_OPTIONS,
+    ts.sys
+  );
+  return !(resolution && resolution.resolvedModule);
+}
+
+function collectUnsupportedNodeBuiltinRequireDiagnostics(filePath, documentText) {
+  const diagnostics = [];
+  for (const context of collectStaticRequireCallContexts(documentText, { filePath })) {
+    if (!isUnsupportedNodeBuiltinRequire(filePath, context.value)) {
+      continue;
+    }
+
+    diagnostics.push({
+      code: "pp-jsvm-node-builtin",
+      category: ts.DiagnosticCategory.Error,
+      message: `Node.js built-in module "${context.value}" is not available in PocketBase JSVM.`,
+      start: context.start,
+      end: context.end,
+    });
+  }
+
+  return diagnostics;
 }
 
 function getRequirePathContextAtOffset(documentText, offset, options = {}) {
@@ -1608,6 +1685,15 @@ function flattenDiagnosticMessage(messageText) {
   }
 
   return parts.join("\n");
+}
+
+function getJsvmTypeScriptDiagnosticMessage(diagnostic, documentText, start, end) {
+  const identifierName = String(documentText || "").slice(start, end);
+  if (UNSUPPORTED_JSVM_GLOBAL_NAMES.has(identifierName)) {
+    return `"${identifierName}" is not available in PocketBase JSVM.`;
+  }
+
+  return flattenDiagnosticMessage(diagnostic.messageText);
 }
 
 function elapsedMilliseconds(startTime) {
@@ -3501,6 +3587,10 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText, opti
     diagnostics.push(diagnostic);
   }
 
+  for (const diagnostic of collectUnsupportedNodeBuiltinRequireDiagnostics(filePath, documentText)) {
+    diagnostics.push(diagnostic);
+  }
+
   for (const diagnostic of collectRedirectReturnDiagnostics(filePath, analysisText, { sourceFile: analysisSourceFile })) {
     diagnostics.push(diagnostic);
   }
@@ -4845,7 +4935,7 @@ class ProjectLanguageService {
         ]
       : [];
 
-    const parts = [];
+    const parts = [JSVM_RUNTIME_PRELUDE];
     if (references.length) {
       parts.push(references.join("\n"));
     }
@@ -9729,7 +9819,12 @@ class ProjectLanguageService {
             diagnostics.push({
               code: diagnostic.code,
               category: diagnostic.category,
-              message: flattenDiagnosticMessage(diagnostic.messageText),
+              message: getJsvmTypeScriptDiagnosticMessage(
+                diagnostic,
+                documentText,
+                start,
+                end
+              ),
               start,
               end,
             });
@@ -10026,7 +10121,12 @@ class ProjectLanguageService {
           diagnostics.push({
             code: diagnostic.code,
             category: diagnostic.category,
-            message: flattenDiagnosticMessage(diagnostic.messageText),
+            message: getJsvmTypeScriptDiagnosticMessage(
+              diagnostic,
+              documentText,
+              start,
+              end
+            ),
             start,
             end,
           });
