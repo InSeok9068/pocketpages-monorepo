@@ -5,7 +5,6 @@
   },
   "html.validate.styles": false,
   "html.validate.scripts": false,
-  "color-highlight.enable": false,
   "js/ts.preferGoToSourceDefinition": true,
   "git.blame.editorDecoration.enabled": false,
   "explorer.fileNesting.enabled": true,
