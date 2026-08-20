@@ -565,6 +565,96 @@ function collectUnsupportedNodeBuiltinRequireDiagnostics(filePath, documentText)
   return diagnostics;
 }
 
+function isPromiseValueReference(node) {
+  if (!ts.isIdentifier(node) || node.text !== "Promise" || !node.parent) {
+    return false;
+  }
+
+  const parent = node.parent;
+  if (
+    (ts.isVariableDeclaration(parent) && parent.name === node) ||
+    (ts.isParameter(parent) && parent.name === node) ||
+    (ts.isBindingElement(parent) && parent.name === node) ||
+    ((ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent) || ts.isClassDeclaration(parent) || ts.isClassExpression(parent)) &&
+      parent.name === node) ||
+    (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+    ((ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent) || ts.isGetAccessorDeclaration(parent) || ts.isSetAccessorDeclaration(parent)) &&
+      parent.name === node) ||
+    (ts.isLabeledStatement(parent) && parent.label === node) ||
+    ((ts.isBreakStatement(parent) || ts.isContinueStatement(parent)) && parent.label === node)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function collectJsvmAsyncFlowDiagnostics(scriptText, options = {}) {
+  const sourceFile = options.sourceFile || createSourceFileForText("pocketpages-jsvm-async-flow.ts", scriptText);
+  const diagnostics = [];
+
+  const pushDiagnostic = (node, message, end) => {
+    const start = node.getStart(sourceFile);
+    diagnostics.push({
+      code: "pp-jsvm-async-flow",
+      category: ts.DiagnosticCategory.Error,
+      message,
+      start,
+      end: typeof end === "number" ? end : node.getEnd(),
+    });
+  };
+
+  const visit = (node) => {
+    const asyncModifier = ts.canHaveModifiers(node)
+      ? (ts.getModifiers(node) || []).find((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)
+      : null;
+    if (asyncModifier) {
+      pushDiagnostic(
+        asyncModifier,
+        '"async" functions are not supported in PocketBase JSVM. Keep server code synchronous.'
+      );
+    }
+
+    if (ts.isAwaitExpression(node)) {
+      const start = node.getStart(sourceFile);
+      pushDiagnostic(
+        node,
+        '"await" is not supported in PocketBase JSVM. Keep server code synchronous.',
+        start + "await".length
+      );
+    } else if (ts.isForOfStatement(node) && node.awaitModifier) {
+      pushDiagnostic(
+        node.awaitModifier,
+        '"await" is not supported in PocketBase JSVM. Keep server code synchronous.'
+      );
+    }
+
+    if (isPromiseValueReference(node)) {
+      pushDiagnostic(
+        node,
+        'Promise-based flow is not supported in PocketBase JSVM. Use synchronous server APIs.'
+      );
+    }
+
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(skipExpressionWrappers(node.expression)) &&
+      skipExpressionWrappers(node.expression).name.text === "then"
+    ) {
+      const memberName = skipExpressionWrappers(node.expression).name;
+      pushDiagnostic(
+        memberName,
+        'Promise .then() flow is not supported in PocketBase JSVM. Use synchronous server APIs.'
+      );
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return diagnostics.sort((left, right) => left.start - right.start || left.end - right.end);
+}
+
 function getRequirePathContextAtOffset(documentText, offset, options = {}) {
   for (const context of collectStaticRequireCallContexts(documentText, options)) {
     if (offset >= context.start && offset <= context.end) {
@@ -3588,6 +3678,10 @@ function collectAgentsRuleDiagnostics(projectIndex, filePath, documentText, opti
   }
 
   for (const diagnostic of collectUnsupportedNodeBuiltinRequireDiagnostics(filePath, documentText)) {
+    diagnostics.push(diagnostic);
+  }
+
+  for (const diagnostic of collectJsvmAsyncFlowDiagnostics(analysisText, { sourceFile: analysisSourceFile })) {
     diagnostics.push(diagnostic);
   }
 

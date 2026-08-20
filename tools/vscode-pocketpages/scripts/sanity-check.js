@@ -10642,6 +10642,49 @@ const boardService = require('./board-service')
       )
     }
 
+    const jsvmAsyncFlowText = `<script server>
+async function load() {
+  await Promise.resolve(1).then(String)
+}
+</script>
+<script>
+async function loadClient() {
+  await Promise.resolve(1).then(String)
+}
+</script>
+<p><%= "async await Promise .then()" %></p>
+`
+    const jsvmAsyncFlowDiagnostics = service.getDiagnostics(
+      fixture.boardsFilePath,
+      jsvmAsyncFlowText
+    ).filter((entry) => String(entry.code) === 'pp-jsvm-async-flow')
+    const jsvmAsyncFlowDiagnosticText = jsvmAsyncFlowDiagnostics.map((entry) =>
+      jsvmAsyncFlowText.slice(entry.start, entry.end)
+    )
+    if (
+      jsvmAsyncFlowDiagnostics.length !== 4 ||
+      JSON.stringify(jsvmAsyncFlowDiagnosticText) !== JSON.stringify(['async', 'await', 'Promise', 'then'])
+    ) {
+      throw new Error(
+        `Expected async, await, Promise, and .then() only in executable JSVM code to be diagnosed. Got: ${JSON.stringify(jsvmAsyncFlowDiagnostics)}`
+      )
+    }
+
+    const jsvmAsyncFlowScriptText = `async function load() {
+  return await Promise.resolve(1).then(String)
+}
+module.exports = load
+`
+    const jsvmAsyncFlowScriptDiagnostics = service.getDiagnostics(
+      fixture.middlewareFilePath,
+      jsvmAsyncFlowScriptText
+    ).filter((entry) => String(entry.code) === 'pp-jsvm-async-flow')
+    if (jsvmAsyncFlowScriptDiagnostics.length !== 4) {
+      throw new Error(
+        `Expected JSVM async-flow diagnostics in managed scripts. Got: ${JSON.stringify(jsvmAsyncFlowScriptDiagnostics)}`
+      )
+    }
+
     const typedResolveCompletionText = `<script server>
 const boardService = resolve('board-service')
 boardService.
