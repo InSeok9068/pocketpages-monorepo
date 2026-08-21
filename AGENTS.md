@@ -68,9 +68,9 @@
 - template = render only
 - avoid heavy logic or formatting logic in template
 - allowed: simple `if`, simple loop, short expression
-- DEFAULT: simple mutations use POST -> redirect -> message -> GET render
+- DEFAULT: full-page form mutations use POST -> redirect -> message -> GET
 - DEFAULT: use HTMX only for partial updates with clear UX benefit, such as preserving scroll, focus, open panel, or list position
-- HTMX returns partial HTML or redirect only, never layout HTML
+- HTMX returns partial HTML, redirect, or an empty 200 with response headers; never layout HTML
 - DEFAULT: reuse shared markup via `_private` partial
 
 ---
@@ -91,10 +91,13 @@
 
 ### `_private` naming
 
-- DEFAULT: use `*-service.js` for external integrations or named domain steps, `*-data.js` for feature-specific reads/data preparation, `*-view.js` for pure Record-to-view mapping, and `*-response.js` for HTMX/API response helpers
-- DEFAULT: use `roles/*.js` for pure domain rules or policies; roles do not access the DB or build responses
-- DEFAULT: treat `_private/*.ejs` as shared UI partials; route EJS files remain in their route area
-- EXCEPTION: keep a domain-first name such as `task-board.js` when it communicates the responsibility more clearly; do not force a suffix or rename an existing file only for convention
+- `*-service.js`: external integrations or clear named domain steps
+- `*-data.js`: feature-specific reads and data preparation
+- `*-view.js`: Record-to-view data mapping
+- `*-response.js`: HTMX/API response helpers
+- `roles/*.js`: pure domain rules without DB access or response building
+- `_private/*.ejs`: shared UI partials
+- EXCEPTION: use a domain-first name when it communicates the responsibility more clearly; do not rename existing files only to satisfy this convention
 
 ---
 

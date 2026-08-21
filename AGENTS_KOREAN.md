@@ -68,9 +68,9 @@
 - template는 render에만 집중한다
 - template 안에 무거운 로직이나 formatting 로직을 두지 않는다
 - 허용: 단순 `if`, 단순 loop, 짧은 expression
-- DEFAULT: 단순 mutation은 POST -> redirect -> message -> GET render를 우선한다
+- DEFAULT: full-page form mutation은 POST -> redirect -> message -> GET을 우선한다
 - DEFAULT: HTMX는 스크롤, 포커스, 열린 패널, 목록 위치 유지처럼 부분 갱신 이점이 명확할 때만 사용한다
-- HTMX는 partial HTML 또는 redirect만 반환하고 layout HTML은 반환하지 않는다
+- HTMX는 partial HTML, redirect 또는 response header를 포함한 빈 200을 반환하고 layout HTML은 반환하지 않는다
 - DEFAULT: 공통 마크업은 `_private` partial로 재사용한다
 
 ---
@@ -91,10 +91,13 @@
 
 ### `_private` 명명
 
-- DEFAULT: `*-service.js`는 외부 연동 또는 이름을 붙일 수 있는 domain step, `*-data.js`는 기능별 조회·data preparation, `*-view.js`는 순수 Record-to-view mapping, `*-response.js`는 HTMX/API response helper에 사용한다
-- DEFAULT: `roles/*.js`는 순수 domain rule 또는 policy에 사용하며 DB 접근이나 response 생성을 하지 않는다
-- DEFAULT: `_private/*.ejs`는 shared UI partial로 취급하고 route EJS는 각 route 영역에 둔다
-- EXCEPTION: 역할이 더 분명해지는 domain-first 이름을 사용해도 되며, 이 규칙만을 이유로 기존 파일을 rename하지 않는다
+- `*-service.js`: 외부 연동 또는 명확한 domain step
+- `*-data.js`: 기능별 조회와 data 준비
+- `*-view.js`: Record를 화면용 data로 변환
+- `*-response.js`: HTMX/API response helper
+- `roles/*.js`: DB access나 response 생성이 없는 순수 domain rule
+- `_private/*.ejs`: shared UI partial
+- EXCEPTION: 역할이 더 명확하면 domain-first 이름을 사용하며, 이 규칙만으로 기존 파일을 rename하지 않는다
 
 ---
 
