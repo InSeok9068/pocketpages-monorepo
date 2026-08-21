@@ -75,7 +75,7 @@
 
 ---
 
-## 6. \_private & Resolve
+## 6. `_private` & `resolve`
 
 - `_private` is internal only; use it for partials, services, utils, and internal modules, never route-exposed
 - partials take minimal props only
@@ -88,6 +88,13 @@
 - choose request-context dependencies at entry level, then inject them
 - use `_private`-relative names like `resolve('moduleName')`; do not use `resolve('/_private/...')`
 - do not chain or default to `resolve()` inside `_private`
+
+### `_private` naming
+
+- DEFAULT: use `*-service.js` for external integrations or named domain steps, `*-data.js` for feature-specific reads/data preparation, `*-view.js` for pure Record-to-view mapping, and `*-response.js` for HTMX/API response helpers
+- DEFAULT: use `roles/*.js` for pure domain rules or policies; roles do not access the DB or build responses
+- DEFAULT: treat `_private/*.ejs` as shared UI partials; route EJS files remain in their route area
+- EXCEPTION: keep a domain-first name such as `task-board.js` when it communicates the responsibility more clearly; do not force a suffix or rename an existing file only for convention
 
 ---
 

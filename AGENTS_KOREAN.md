@@ -75,7 +75,7 @@
 
 ---
 
-## 6. \_private 와 Resolve
+## 6. `_private` 와 `resolve`
 
 - `_private`는 internal 전용이며 partial, service, util, internal module 용도로만 사용하고 route로 노출하지 않는다
 - partial에는 필요한 최소 props만 넘긴다
@@ -88,6 +88,13 @@
 - request-context 의존성은 entry에서 먼저 고르고 주입한다
 - `resolve('moduleName')`처럼 `_private` 기준 이름을 사용하고 `resolve('/_private/...')`는 사용하지 않는다
 - `_private` 내부에서 `resolve()`를 연쇄하거나 기본 패턴처럼 쓰지 않는다
+
+### `_private` 명명
+
+- DEFAULT: `*-service.js`는 외부 연동 또는 이름을 붙일 수 있는 domain step, `*-data.js`는 기능별 조회·data preparation, `*-view.js`는 순수 Record-to-view mapping, `*-response.js`는 HTMX/API response helper에 사용한다
+- DEFAULT: `roles/*.js`는 순수 domain rule 또는 policy에 사용하며 DB 접근이나 response 생성을 하지 않는다
+- DEFAULT: `_private/*.ejs`는 shared UI partial로 취급하고 route EJS는 각 route 영역에 둔다
+- EXCEPTION: 역할이 더 분명해지는 domain-first 이름을 사용해도 되며, 이 규칙만을 이유로 기존 파일을 rename하지 않는다
 
 ---
 
