@@ -166,6 +166,22 @@ jobs:
             docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
             docker image prune -f
 
+      - name: Clean up old container versions
+        id: cleanup
+        continue-on-error: true
+        uses: actions/delete-package-versions@v5
+        with:
+          owner: ${{ env.IMAGE_OWNER }}
+          package-name: ${{ steps.svc.outputs.service }}
+          package-type: container
+          # Keep the current release and four previous versions for rollback.
+          min-versions-to-keep: 5
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Report container cleanup failure
+        if: steps.cleanup.outcome == 'failure'
+        run: echo "::warning::Container version cleanup failed; deployment already completed."
+
       - name: Send Build Success
         uses: appleboy/telegram-action@221e6b684967abe813051ee4a37dd61770a83ad3 # v1.0.1
         if: success()
