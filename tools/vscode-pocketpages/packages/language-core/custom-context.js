@@ -3164,4 +3164,5 @@ module.exports = {
   getScriptCollectionContext,
   getScriptFieldContext,
   getScriptSchemaContextAtOffset,
+  isTemplateBlockInsideServerBlock,
 }

@@ -4,7 +4,7 @@ const path = require("path");
 const { URI } = require("vscode-uri");
 const { extractServerBlocks } = require("./script-server");
 const { buildTemplateVirtualText, extractTemplateCodeBlocks } = require("./ejs-template");
-const { collectPathContexts } = require("./custom-context");
+const { collectPathContexts, isTemplateBlockInsideServerBlock } = require("./custom-context");
 const { createScriptSnapshot } = require("./snapshot");
 
 function normalizeLanguageId(languageId, filePath) {
@@ -455,7 +455,9 @@ function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodes) {
     );
   }
 
-  const templateBlocks = extractTemplateCodeBlocks(text);
+  const templateBlocks = extractTemplateCodeBlocks(text).filter(
+    (block) => !isTemplateBlockInsideServerBlock(block, serverBlocks)
+  );
   if (templateBlocks.length || serverBlocks.length) {
     const templateVirtualText = buildTemplateVirtualText(text);
     const templateVirtualTextHash = hashText(templateVirtualText);
