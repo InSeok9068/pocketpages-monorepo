@@ -3381,21 +3381,26 @@ class PocketPagesProjectIndex {
       return collectExportedStringConstantValues(sourceFile)
     }
 
-    const cachedValue = this.moduleExportedStringConstantsCache.get(normalizedFilePath)
-    if (cachedValue) {
-      return cachedValue
-    }
-
-    const effectiveSourceText = fileExists(normalizedFilePath)
-      ? fs.readFileSync(normalizedFilePath, 'utf8')
-      : null
-    if (effectiveSourceText === null) {
+    const identity = readSmallFileIdentity(normalizedFilePath)
+    if (!identity.exists) {
+      this.moduleExportedStringConstantsCache.delete(normalizedFilePath)
       return new Map()
     }
 
-    const sourceFile = ts.createSourceFile(normalizedFilePath, effectiveSourceText, ts.ScriptTarget.Latest, true)
+    const cachedEntry = this.moduleExportedStringConstantsCache.get(normalizedFilePath)
+    if (cachedEntry && isSmallFileCacheCurrent(cachedEntry, identity)) {
+      return cachedEntry.value
+    }
+
+    const sourceFile = ts.createSourceFile(normalizedFilePath, identity.text, ts.ScriptTarget.Latest, true)
     const exportedStringConstants = collectExportedStringConstantValues(sourceFile)
-    this.moduleExportedStringConstantsCache.set(normalizedFilePath, exportedStringConstants)
+    this.moduleExportedStringConstantsCache.set(normalizedFilePath, {
+      mtimeMs: identity.mtimeMs,
+      ctimeMs: identity.ctimeMs,
+      size: identity.size,
+      hash: identity.hash,
+      value: exportedStringConstants,
+    })
     return exportedStringConstants
   }
 
