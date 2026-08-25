@@ -4207,6 +4207,108 @@ const boardService = resolve('board-service')
       throw new Error('Expected linked code precision to expose a root -> embedded-code mapper.')
     }
 
+    const inServerTagText = `<script server>
+const label = '<%= inner %>'
+</script>
+<p><%= outer %></p>
+`
+    const inServerTagUri = URI.file(fixture.boardsFilePath).toString()
+    const inServerTagVirtualCode = createVirtualCode(inServerTagUri, 'ejs', 1, inServerTagText)
+    const inServerTagTemplateCode = inServerTagVirtualCode.embeddedCodes.find((entry) => entry.kind === 'template')
+    if (!inServerTagTemplateCode) {
+      throw new Error('Expected virtual code to expose a template embedded code for the outer tag.')
+    }
+    const inServerTagSourceOffsets = (inServerTagTemplateCode.mappings || []).flatMap((mapping) => mapping.sourceOffsets || [])
+    const inServerContentStart = inServerTagText.indexOf('<%= inner %>') + 3
+    const inServerContentEnd = inServerTagText.indexOf('%>', inServerContentStart)
+    if (inServerTagSourceOffsets.some((offset) => offset >= inServerContentStart && offset < inServerContentEnd)) {
+      throw new Error(
+        `Expected template mappings to exclude EJS tags inside server-block string literals. Got source offsets: ${JSON.stringify(inServerTagSourceOffsets)}`
+      )
+    }
+    const outerTagContentStart = inServerTagText.indexOf('<%= outer %>') + 3
+    const outerTagContentEnd = inServerTagText.indexOf('%>', outerTagContentStart)
+    if (!inServerTagSourceOffsets.some((offset) => offset >= outerTagContentStart && offset < outerTagContentEnd)) {
+      throw new Error(
+        `Expected template mappings to still cover the genuine outer template tag. Got source offsets: ${JSON.stringify(inServerTagSourceOffsets)}`
+      )
+    }
+
+    const ownerRoutingText = `<script server>
+const widget = 1
+</script>
+<p><%= widget %></p>
+`
+    const ownerRoutingUri = URI.file(fixture.signInFilePath).toString()
+    const ownerRoutingCore = new PocketPagesLanguageCore()
+    ownerRoutingCore.openDocument({
+      uri: ownerRoutingUri,
+      languageId: 'ejs',
+      version: 1,
+      text: ownerRoutingText,
+    })
+    const ownerServerOffset = ownerRoutingText.indexOf('widget')
+    const ownerTemplateOffset = ownerRoutingText.lastIndexOf('widget')
+    const ownerServerOwners = ownerRoutingCore.getFeatureOwnersAtOffset(ownerRoutingUri, ownerServerOffset, 'hover')
+    if (!ownerServerOwners.some((entry) => entry.embeddedCode.kind === 'server-script')) {
+      throw new Error(
+        `Expected server-block offset to be owned by the server embedded code. Got: ${JSON.stringify(ownerServerOwners.map((entry) => entry.embeddedCode.kind))}`
+      )
+    }
+    if (ownerServerOwners.some((entry) => entry.embeddedCode.kind === 'template')) {
+      throw new Error('Expected server-block offset to not be owned by the template embedded code.')
+    }
+    const ownerTemplateOwners = ownerRoutingCore.getFeatureOwnersAtOffset(ownerRoutingUri, ownerTemplateOffset, 'hover')
+    if (!ownerTemplateOwners.some((entry) => entry.embeddedCode.kind === 'template')) {
+      throw new Error(
+        `Expected template-expression offset to be owned by the template embedded code. Got: ${JSON.stringify(ownerTemplateOwners.map((entry) => entry.embeddedCode.kind))}`
+      )
+    }
+
+    const semanticTokenText = `<%= "done" %>\n<% var total = 7 // note %>\n<%# skip %>\n`
+    const semanticTokenEntries = collectEjsSemanticTokenEntries(semanticTokenText)
+    const findSemanticToken = (start, tokenType) =>
+      semanticTokenEntries.find((entry) => entry.start === start && entry.tokenType === tokenType)
+    const openDelimiterToken = findSemanticToken(0, 'operator')
+    if (!openDelimiterToken || openDelimiterToken.length !== 3) {
+      throw new Error(`Expected a 3-char operator token for the <%= open delimiter. Got: ${JSON.stringify(semanticTokenEntries)}`)
+    }
+    const semanticStringStart = semanticTokenText.indexOf('"done"')
+    const semanticStringToken = findSemanticToken(semanticStringStart, 'string')
+    if (!semanticStringToken || semanticStringToken.length !== 6) {
+      throw new Error(`Expected a string token covering "done". Got: ${JSON.stringify(semanticTokenEntries)}`)
+    }
+    const semanticKeywordStart = semanticTokenText.indexOf('var')
+    const semanticKeywordToken = findSemanticToken(semanticKeywordStart, 'keyword')
+    if (!semanticKeywordToken || semanticKeywordToken.length !== 3) {
+      throw new Error(`Expected a keyword token covering "var". Got: ${JSON.stringify(semanticTokenEntries)}`)
+    }
+    const semanticNumberStart = semanticTokenText.indexOf('7')
+    const semanticNumberToken = findSemanticToken(semanticNumberStart, 'number')
+    if (!semanticNumberToken || semanticNumberToken.length !== 1) {
+      throw new Error(`Expected a number token covering "7". Got: ${JSON.stringify(semanticTokenEntries)}`)
+    }
+    const semanticCommentStart = semanticTokenText.indexOf('// note')
+    if (!semanticTokenEntries.some((entry) => entry.tokenType === 'comment' && entry.start === semanticCommentStart)) {
+      throw new Error(`Expected a comment token covering the JS line comment. Got: ${JSON.stringify(semanticTokenEntries)}`)
+    }
+    const semanticSkipStart = semanticTokenText.indexOf('<%# skip %>')
+    const semanticSkipEnd = semanticSkipStart + '<%# skip %>'.length
+    if (semanticTokenEntries.some((entry) => entry.start >= semanticSkipStart && entry.start < semanticSkipEnd)) {
+      throw new Error(`Expected <%# comment tags to emit no semantic tokens. Got: ${JSON.stringify(semanticTokenEntries)}`)
+    }
+    if (
+      getTokenTypeIndex('keyword') !== 0 ||
+      getTokenTypeIndex('string') !== 1 ||
+      getTokenTypeIndex('number') !== 2 ||
+      getTokenTypeIndex('regexp') !== 3 ||
+      getTokenTypeIndex('comment') !== 4 ||
+      getTokenTypeIndex('operator') !== 5 ||
+      getTokenTypeIndex('unknown-token-type') !== null
+    ) {
+      throw new Error('Expected stable semantic token type legend indices.')
+    }
+
     const plugin = createPocketPagesLanguagePlugin()
     const initialSnapshot = createScriptSnapshot(boardShowText)
     const pluginVirtualCode = plugin.createVirtualCode(boardShowUri, 'ejs', initialSnapshot)
@@ -9018,6 +9120,25 @@ module.exports = {
     }
     fs.rmSync(moduleConstantsAFilePath, { force: true })
     fs.rmSync(moduleConstantsBFilePath, { force: true })
+
+    const outsidePagesModuleFilePath = path.join(fixture.appRoot, 'pb_hooks', 'lib', 'shared-collection-constants.js')
+    fs.mkdirSync(path.dirname(outsidePagesModuleFilePath), { recursive: true })
+    writeFile(outsidePagesModuleFilePath, `const NAME = 'boards'\nmodule.exports = { NAME }\n`)
+    const warmOutsidePagesConstants = fineInvalidationService.projectIndex.getModuleExportedStringConstants(outsidePagesModuleFilePath)
+    if (warmOutsidePagesConstants.get('NAME') !== 'boards') {
+      throw new Error(`Expected out-of-pages module constants warmup to read the initial value. Got: ${JSON.stringify([...warmOutsidePagesConstants])}`)
+    }
+    if (!fineInvalidationService.projectIndex.moduleExportedStringConstantsCache.has(normalizeFilePath(outsidePagesModuleFilePath))) {
+      throw new Error('Expected out-of-pages module constants probe to warm the module cache entry.')
+    }
+    writeFile(outsidePagesModuleFilePath, `const NAME = 'posts'\nmodule.exports = { NAME }\n`)
+    const healedOutsidePagesConstants = fineInvalidationService.projectIndex.getModuleExportedStringConstants(outsidePagesModuleFilePath)
+    if (healedOutsidePagesConstants.get('NAME') !== 'posts') {
+      throw new Error(
+        `Expected out-of-pages module constants cache to self-heal on content change without an explicit invalidate. Got: ${JSON.stringify([...healedOutsidePagesConstants])}`
+      )
+    }
+    fs.rmSync(outsidePagesModuleFilePath, { force: true })
 
     const fineBoardsAnalysisText = buildTemplateVirtualText(fs.readFileSync(fixture.boardsFilePath, 'utf8'))
     const fineLocalsAnalysisText = buildTemplateVirtualText(fs.readFileSync(fixture.localsTypeCheckFilePath, 'utf8'))
