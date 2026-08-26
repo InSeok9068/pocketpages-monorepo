@@ -240,48 +240,6 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
     "syncOption": {
       "delete": true
     }
-  },
-  {
-    "name": "photofolio-hooks",
-    "host": "146.56.177.250",
-    "protocol": "sftp",
-    "port": 22,
-    "username": "ubuntu",
-    "privateKeyPath": "~/.ssh/ssh-key-2023-04-17-DOCKER.key",
-    "context": "apps/photofolio/pb_hooks",
-    "remotePath": "/path/to/photofolio/hooks",
-    "connectTimeout": 100000,
-    "syncOption": {
-      "delete": true
-    }
-  },
-  {
-    "name": "homeping-public",
-    "host": "146.56.177.250",
-    "protocol": "sftp",
-    "port": 22,
-    "username": "ubuntu",
-    "privateKeyPath": "~/.ssh/ssh-key-2023-04-17-DOCKER.key",
-    "context": "apps/homeping/pb_public",
-    "remotePath": "/path/to/homeping/public",
-    "connectTimeout": 100000,
-    "syncOption": {
-      "delete": true
-    }
-  },
-  {
-    "name": "homeping-hooks",
-    "host": "146.56.177.250",
-    "protocol": "sftp",
-    "port": 22,
-    "username": "ubuntu",
-    "privateKeyPath": "~/.ssh/ssh-key-2023-04-17-DOCKER.key",
-    "context": "apps/homeping/pb_hooks",
-    "remotePath": "/path/to/homeping/hooks",
-    "connectTimeout": 100000,
-    "syncOption": {
-      "delete": true
-    }
   }
 ]
 ```
@@ -309,8 +267,6 @@ scoop update lazygit
 ---
 
 ## nvm 설치 후 global 패키지 의존성 설치
-
-@google/gemini-cli @openai/codex firebase-tools gemini-commit-assistant pnpm ts-node tsx
 
 ```shell
 node -e "console.log(Object.keys(JSON.parse(require('child_process').execSync('npm list -g --depth=0 --json').toString()).dependencies).join('\n'))"
