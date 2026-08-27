@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APPS_DIR="$ROOT_DIR/apps"
 GITLEAKS_VERSION="8.30.1"
+DOCKER_REGISTRY="ghcr.io"
+DOCKER_IMAGE_OWNER="inseok9068"
 
 print_help() {
   cat <<'EOF'
@@ -15,6 +17,7 @@ Usage:
   ./task.sh install <npm> [-- <extra args>]
   ./task.sh deploy <service> [--skip-verify]
   ./task.sh rollback <service> <1|2|3>
+  ./task.sh docker-rollback <service> <1|2|3>
   ./task.sh backup <service>
   ./task.sh archive <service>
   ./task.sh restore <archive-tag>
@@ -44,6 +47,7 @@ Commands:
   install   `npm` runs npm install in root and app package.json dirs
   deploy    Verify and upload one service deploy targets using .vscode/sftp.json
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
+  docker-rollback  Retag a previous release image (from release/<service> git history) and restart its docker compose service
   backup    Archive the remote pb_data directory over SSH and download it to ~/pocketpages-backups/<service>/
   archive   Tag current HEAD as archive/<service>/<YYYY-MM-DD>, push it, then remove apps/<service>
   restore   Restore apps/<service> from an archive tag
@@ -69,6 +73,7 @@ Examples:
   ./task.sh css booklog
   ./task.sh deploy booklog
   ./task.sh deploy booklog --skip-verify
+  ./task.sh docker-rollback booklog 1
   ./task.sh backup booklog
   ./task.sh archive portfolio
   ./task.sh restore archive/portfolio/2026-05-28
@@ -2188,6 +2193,197 @@ run_rollback() {
   done
 }
 
+DOCKER_HOST_ADDR=""
+DOCKER_HOST_PORT=""
+DOCKER_HOST_USERNAME=""
+DOCKER_HOST_PRIVATE_KEY_PATH=""
+DOCKER_HOST_CONNECT_TIMEOUT_SECONDS=""
+
+load_docker_host_config() {
+  local config_file="$ROOT_DIR/.vscode/sftp.json"
+  local config_values=()
+
+  [[ -f "$config_file" ]] || {
+    echo "Missing deploy config: $config_file" >&2
+    exit 1
+  }
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Cannot read deploy config." >&2
+    exit 1
+  fi
+
+  if ! mapfile -t config_values < <(node - "$config_file" <<'NODE'
+const fs = require('fs');
+
+const configFile = process.argv[2];
+const entries = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+const entry = Array.isArray(entries) ? entries.find((item) => item && item.host) : null;
+
+if (!entry) {
+  console.error('No SSH host entry found in deploy config.');
+  process.exit(1);
+}
+
+const timeoutMs = Number(entry.connectTimeout);
+const timeoutSeconds = Number.isFinite(timeoutMs) && timeoutMs > 0
+  ? Math.max(1, Math.ceil(timeoutMs / 1000))
+  : 30;
+
+const values = [
+  entry.host || '',
+  entry.port == null ? '22' : String(entry.port),
+  entry.username || '',
+  entry.privateKeyPath || '',
+  String(timeoutSeconds),
+];
+
+process.stdout.write(values.join('\n'));
+NODE
+  ); then
+    exit 1
+  fi
+
+  if [[ "${#config_values[@]}" -ne 5 ]]; then
+    echo "Invalid deploy host config in $config_file" >&2
+    exit 1
+  fi
+
+  DOCKER_HOST_ADDR="${config_values[0]}"
+  DOCKER_HOST_PORT="${config_values[1]}"
+  DOCKER_HOST_USERNAME="${config_values[2]}"
+  DOCKER_HOST_PRIVATE_KEY_PATH="${config_values[3]}"
+  DOCKER_HOST_CONNECT_TIMEOUT_SECONDS="${config_values[4]}"
+
+  if [[ -z "$DOCKER_HOST_ADDR" || -z "$DOCKER_HOST_USERNAME" ]]; then
+    echo "Incomplete SSH host config in $config_file" >&2
+    exit 1
+  fi
+}
+
+run_docker_rollback() {
+  local service="$1"
+  local version_index="$2"
+  local branch="release/$service"
+  local shas=()
+  local target_sha=""
+  local private_key_path=""
+  local ssh_target=""
+  local ssh_cmd=()
+  local image=""
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "git not found. Cannot resolve rollback target." >&2
+    exit 1
+  fi
+
+  if ! command -v ssh >/dev/null 2>&1; then
+    echo "ssh not found. Run this command in Windows Git Bash." >&2
+    exit 1
+  fi
+
+  if [[ ! "$version_index" =~ ^[1-3]$ ]]; then
+    echo "Docker rollback version must be 1, 2, or 3." >&2
+    exit 1
+  fi
+
+  echo "Fetching $branch from origin..."
+  if ! git -C "$ROOT_DIR" fetch --quiet origin "$branch"; then
+    echo "Unknown release branch on origin: $branch" >&2
+    exit 1
+  fi
+
+  mapfile -t shas < <(git -C "$ROOT_DIR" log --format=%H -n 5 FETCH_HEAD)
+
+  if [[ "${#shas[@]}" -le "$version_index" ]]; then
+    echo "Rollback version $version_index is not available for $branch (only ${#shas[@]} commits)." >&2
+    exit 1
+  fi
+
+  target_sha="${shas[$version_index]}"
+
+  load_docker_host_config
+
+  private_key_path="$(normalize_bash_path "$DOCKER_HOST_PRIVATE_KEY_PATH")"
+  if [[ -n "$private_key_path" && ! -f "$private_key_path" ]]; then
+    echo "Private key not found: $private_key_path" >&2
+    exit 1
+  fi
+
+  ssh_target="${DOCKER_HOST_USERNAME}@${DOCKER_HOST_ADDR}"
+  ssh_cmd=(
+    ssh
+    -p "$DOCKER_HOST_PORT"
+    -o BatchMode=yes
+    -o StrictHostKeyChecking=accept-new
+    -o ConnectTimeout="$DOCKER_HOST_CONNECT_TIMEOUT_SECONDS"
+  )
+
+  if [[ -n "$private_key_path" ]]; then
+    ssh_cmd+=(-i "$private_key_path")
+  fi
+
+  image="${DOCKER_REGISTRY}/${DOCKER_IMAGE_OWNER}/${service}"
+
+  echo "Testing SSH connection: $ssh_target"
+  if ! "${ssh_cmd[@]}" "$ssh_target" true; then
+    echo "SSH connection test failed. Check network/VPN and try again." >&2
+    exit 1
+  fi
+
+  echo "Rolling back Docker service: $service -> version $version_index"
+  echo "Target image: $image:$target_sha"
+
+  "${ssh_cmd[@]}" "$ssh_target" bash -s -- "$service" "$image" "$target_sha" <<'EOF'
+set -euo pipefail
+
+service="$1"
+image="$2"
+target_sha="$3"
+compose_service="${service}-pocketpages"
+
+cd ./Docker-Compose
+
+echo "Pulling ${image}:${target_sha}"
+docker pull "${image}:${target_sha}"
+docker tag "${image}:${target_sha}" "${image}:release"
+
+docker compose stop "$compose_service"
+
+deploy_owner="$(id -u):$(id -g)"
+docker compose run --rm --no-deps --entrypoint sh "$compose_service" -c '
+  set -eu
+  service="$1"
+  deploy_owner="$2"
+  hooks_dir="/app/apps/${service}/pb_hooks"
+  public_dir="/app/apps/${service}/pb_public"
+
+  if [ ! -d /opt/defaults/pb_hooks ]; then
+    echo "Baked hooks directory not found: /opt/defaults/pb_hooks" >&2
+    exit 1
+  fi
+
+  mkdir -p "$hooks_dir"
+  find "$hooks_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  cp -a /opt/defaults/pb_hooks/. "$hooks_dir"/
+  chown -R "$deploy_owner" "$hooks_dir"
+
+  if [ -d /opt/defaults/pb_public ]; then
+    mkdir -p "$public_dir"
+    find "$public_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    cp -a /opt/defaults/pb_public/. "$public_dir"/
+    chown -R "$deploy_owner" "$public_dir"
+  fi
+' -- "$service" "$deploy_owner"
+
+docker compose up -d --no-deps --force-recreate --wait "$compose_service"
+docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+docker image prune -f
+EOF
+
+  echo "Docker rollback complete: $service -> version $version_index ($target_sha)"
+}
+
 if [[ "${1:-}" == "__complete_services" ]]; then
   list_services
   exit 0
@@ -2292,6 +2488,15 @@ case "${1:-help}" in
     shift 2 || true
     [[ $# -eq 0 ]] || { echo "Usage: ./task.sh rollback <service> <version>" >&2; exit 1; }
     run_rollback "$service" "$version_index"
+    ;;
+  docker-rollback)
+    shift
+    [[ -n "${1:-}" && -n "${2:-}" ]] || { echo "Usage: ./task.sh docker-rollback <service> <1|2|3>" >&2; exit 1; }
+    service="$1"
+    version_index="$2"
+    shift 2 || true
+    [[ $# -eq 0 ]] || { echo "Usage: ./task.sh docker-rollback <service> <1|2|3>" >&2; exit 1; }
+    run_docker_rollback "$service" "$version_index"
     ;;
   backup)
     shift
