@@ -974,19 +974,15 @@ run_css() {
     local relative_service_dir="${service_dir#$ROOT_DIR/}"
     content_patterns=(
       "$relative_service_dir/pb_hooks/pages/**/*.ejs"
-      "$relative_service_dir/pb_hooks/pages/_private/**/*.js"
-      "!$relative_service_dir/pb_hooks/pages/_private/vendor/**"
-      "$relative_service_dir/pb_hooks/pages/assets/**/*.js"
-      "!$relative_service_dir/pb_hooks/pages/assets/vendor/**"
+      "$relative_service_dir/pb_hooks/pages/**/*.js"
+      "!$relative_service_dir/pb_hooks/pages/**/vendor/**"
     )
     relative_output_file="$relative_service_dir/pb_hooks/pages/assets/uno.min.css"
   else
     content_patterns=(
       "$pages_dir/**/*.ejs"
-      "$pages_dir/_private/**/*.js"
-      "!$pages_dir/_private/vendor/**"
-      "$pages_dir/assets/**/*.js"
-      "!$pages_dir/assets/vendor/**"
+      "$pages_dir/**/*.js"
+      "!$pages_dir/**/vendor/**"
     )
     relative_output_file="$output_file"
   fi
