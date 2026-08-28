@@ -2,7 +2,7 @@
   "name": "vscode-pocketpages",
   "displayName": "VSCode PocketPages",
   "description": "VSCode extension for PocketPages <script server> completion, hover, and diagnostics in .ejs files.",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "publisher": "dlstj-local",
   "license": "UNLICENSED",
