@@ -15,7 +15,7 @@
 | DB                  | SQLite (PB)               |
 | DB 관리             | PB Admin                  |
 | DB <br>마이그레이션 | PB Migration              |
-| DB 복제/복원        | Litestream, LiteFS        |
+| DB 복제/복원        | PB 백업 → Litestream      |
 | 인증                | PB Auth + (Cookie)        |
 | 인가                | 서버 로직                 |
 | 객체 저장           | File, AWS S3              |
@@ -172,10 +172,25 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
 
 ---
 
-## SQLite 복제/복원
+## 백업/복원
 
-- 기본 복제/복원: Litestream
-- 장기 운영 확장 옵션: LiteFS (분산 읽기)
+- 현재: PocketBase 내장 ZIP 백업을 S3에 저장
+- 전환 시점: 데이터가 `5~10GB`를 넘거나 전체 백업 시간이 부담될 때
+- SQLite: Litestream으로 S3 복제 및 시점 복구
+- 파일: `rclone copy`, 버전 관리가 필요하면 Kopia/restic 검토
+- 분산 읽기가 필요하면 LiteFS 검토
+
+---
+
+## 파일 저장소를 S3로 전환
+
+1. PocketBase를 중지하고 전체 백업 생성
+2. 기존 파일을 전용 S3 버킷으로 복사
+   ```bash
+   rclone copy /path/to/pb_data/storage/ oci:pocketbase-file/ --progress
+   ```
+3. PB Admin의 `Settings > Files storage`에 같은 버킷을 설정하고 연결 테스트
+4. 재시작 후 업로드·읽기·다운로드를 확인하고 로컬 파일은 검증이 끝날 때까지 유지
 
 ---
 

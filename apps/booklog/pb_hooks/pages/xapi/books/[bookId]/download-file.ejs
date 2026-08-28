@@ -66,7 +66,6 @@
   }
 
   const storageFileKey = String(bookFileRecord.baseFilesPath() || '') + '/' + storedFileName
-  const localFilePath = String($app.dataDir() || '') + '/storage/' + storageFileKey
   const bookTitle = String(book.get('title') || 'book').trim()
   const sanitizedTitle = bookTitle
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
@@ -84,7 +83,6 @@
     bookId: bookId,
     bookFileId: String(bookFileRecord.get('id') || ''),
     fileKey: storageFileKey,
-    filePath: localFilePath,
     downloadFileName: downloadFileName,
   })
 
@@ -93,6 +91,17 @@
     'Content-Disposition',
     'attachment; filename="' + asciiFileName + "\"; filename*=UTF-8''" + encodeURIComponent(downloadFileName)
   )
-  response.file(localFilePath)
+
+  let fsys = null
+  let fileReader = null
+
+  try {
+    fsys = $app.newFilesystem()
+    fileReader = fsys.getReader(storageFileKey)
+    request.event.stream(200, 'application/epub+zip', fileReader)
+  } finally {
+    if (fileReader) fileReader.close()
+    if (fsys) fsys.close()
+  }
   return
 </script>

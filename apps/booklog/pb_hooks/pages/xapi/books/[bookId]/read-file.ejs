@@ -94,7 +94,6 @@
   }
 
   const storageFileKey = String(bookFileRecord.baseFilesPath() || '') + '/' + storedFileName
-  const localFilePath = String($app.dataDir() || '') + '/storage/' + storageFileKey
   const fileHash = String(bookFileRecord.get('file_hash') || '').trim()
   const fileSizeValue = bookFileRecord.get('file_size')
   const fileSize = fileSizeValue === null || typeof fileSizeValue === 'undefined' ? '' : String(fileSizeValue)
@@ -107,7 +106,6 @@
     bookId: bookId,
     bookFileId: String(bookFileRecord.get('id') || ''),
     fileKey: storageFileKey,
-    filePath: localFilePath,
     etag: etag,
   })
 
@@ -127,6 +125,16 @@
     return
   }
 
-  response.file(localFilePath)
+  let fsys = null
+  let fileReader = null
+
+  try {
+    fsys = $app.newFilesystem()
+    fileReader = fsys.getReader(storageFileKey)
+    request.event.stream(200, 'application/epub+zip', fileReader)
+  } finally {
+    if (fileReader) fileReader.close()
+    if (fsys) fsys.close()
+  }
   return
 </script>
