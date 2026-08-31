@@ -66,6 +66,7 @@
 | ------------------- | -------------------------------------------------- | ----------- |
 | `fflate`            | ZIP/EPUB 압축 해제, 바이너리 압축 데이터 처리      | X           |
 | `fast-xml-parser`   | EPUB 내부 XML, OPF, container.xml 같은 구조 파싱   | X           |
+| `xlsx`              | XLSX 시트·행·열·셀 데이터 읽기 (수식·서식 제외)   | X           |
 | `papaparse`         | CSV 파싱, CSV 확장자 파일 업로드/가져오기 처리     | X           |
 | `node-html-parser`  | HTML 파싱, 본문/메타 추출, 간단한 DOM 탐색         | X           |
 | `html-to-text`      | HTML을 구조 있는 텍스트로 변환, 본문 분석 전처리   | O           |
@@ -81,6 +82,7 @@
 | `zod`               | form/body/query 입력값 런타임 검증                 | X           |
 
 - 현재 실측 기준으로 번들러가 필요했던 케이스는 `html-to-text`만 확인됨
+- `xlsx`: JSVM에서는 `require('xlsx/dist/xlsx.mini.min.js')` 사용
 - `qs`: PocketBase JSVM에서는 `6.9.7` exact pin + `require('qs')` 기준으로 사용
 - `lodash`: 전체 import보다 메서드별 경로 import 방식(`per-method import`) 권장
   ```js

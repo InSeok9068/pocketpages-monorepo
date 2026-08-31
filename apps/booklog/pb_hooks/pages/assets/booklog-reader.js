@@ -52,6 +52,7 @@ window.booklogReaderLogic = (function () {
   var autoSaveInFlight = false
   var saveRequestInFlight = false
   var activePersistRequest = null
+  var queuedPersistRequest = null
   var readingSessionId = ''
   var readingSessionStartedAtMs = 0
   var readingSessionStartedAtIso = ''
@@ -2132,7 +2133,19 @@ window.booklogReaderLogic = (function () {
         component.showSavePositionMessage('읽기 위치를 저장하는 중입니다.')
       }
 
-      return activePersistRequest || Promise.resolve(false)
+      if (!queuedPersistRequest) {
+        queuedPersistRequest = (activePersistRequest || Promise.resolve(false))
+          .catch(function () {
+            return false
+          })
+          .then(function () {
+            queuedPersistRequest = null
+
+            return persistProgress(component, options)
+          })
+      }
+
+      return queuedPersistRequest
     }
 
     if (!progress.locator && !progress.href) {
