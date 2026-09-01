@@ -163,6 +163,7 @@ jobs:
               fi
             ' -- ${{ steps.svc.outputs.service }} "$deploy_owner"
             docker compose up -d --no-deps --force-recreate --wait ${{ steps.svc.outputs.compose_service }}
+            docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile
             docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
             docker image prune -f
 
