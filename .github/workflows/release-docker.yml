@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: release-${{ github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -133,6 +133,7 @@ jobs:
           key: ${{ secrets.REMOTE_SSH_KEY }}
           port: 22
           script: |
+            set -eu
             cd ./Docker-Compose
             git pull --ff-only
             docker compose pull ${{ steps.svc.outputs.compose_service }}
