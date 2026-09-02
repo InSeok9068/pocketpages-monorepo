@@ -49,13 +49,17 @@
         const updateResult = txApp
           .db()
           .newQuery(
-            'UPDATE works SET state = CASE id '
-              + stateCases.join(' ')
-              + ' ELSE state END, sort = CASE id '
-              + sortCases.join(' ')
-              + ' ELSE sort END, updated = {:updated} WHERE user = {:userId} AND done = FALSE AND id IN ('
-              + idPlaceholders.join(', ')
-              + ')'
+            `
+              UPDATE works
+              SET state = CASE id ${stateCases.join(' ')}
+                    ELSE state
+                  END,
+                  sort = CASE id ${sortCases.join(' ')}
+                    ELSE sort
+                  END,
+                  updated = {:updated}
+              WHERE user = {:userId} AND done = FALSE AND id IN (${idPlaceholders.join(', ')})
+            `
           )
           .bind(bindings)
           .execute()
