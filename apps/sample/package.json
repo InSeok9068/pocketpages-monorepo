@@ -1,9 +1,6 @@
 {
   "name": "sample",
   "private": true,
-  "volta": {
-    "extends": "../../package.json"
-  },
   "scripts": {
     "postinstall": "node -e \"const fs=require('fs');const p='../../scripts/run-patch-package.js';if(!fs.existsSync(p)){console.log('patch script not available, skip');process.exit(0)}const r=require('child_process').spawnSync(process.execPath,[p],{stdio:'inherit'});if(r.error)throw r.error;process.exit(r.status===null?1:r.status)\""
   },
