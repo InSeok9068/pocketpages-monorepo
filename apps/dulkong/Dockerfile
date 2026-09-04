@@ -1,23 +1,36 @@
+# syntax=docker/dockerfile:1
+
 FROM node:24-bookworm-slim AS deps
 
 WORKDIR /app/apps/dulkong
+
 COPY apps/dulkong/package*.json ./
 COPY packages /app/packages
 COPY scripts/run-patch-package.js /app/scripts/run-patch-package.js
 COPY scripts/patches /app/scripts/patches
-RUN cd /app/packages/utils && npm ci --omit=dev
-RUN npm ci && npm prune --omit=dev
+
+RUN cd /app/packages/utils \
+    && npm ci --omit=dev --no-audit --no-fund
+
+RUN npm ci --no-audit --no-fund \
+    && npm prune --omit=dev --no-audit --no-fund
+
 
 FROM node:24-bookworm-slim AS css
 
 WORKDIR /app
+
 COPY package*.json ./
+COPY packages /app/packages
+
+RUN npm ci --no-audit --no-fund
+
 COPY task.sh ./
 COPY unocss.config.js ./
-COPY packages /app/packages
 COPY apps/dulkong/pb_hooks ./apps/dulkong/pb_hooks
-RUN npm ci
+
 RUN bash ./task.sh css dulkong
+
 
 FROM alpine:3.24 AS pocketbase
 
@@ -29,13 +42,14 @@ RUN set -eu; \
   if [ -z "${PB_VERSION}" ]; then echo "PB_VERSION build argument is required"; exit 1; fi; \
   case "${TARGETARCH}" in \
     amd64|arm64) PB_ARCH="${TARGETARCH}" ;; \
-    *) echo "Unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
+    *) echo "Unsupported TARGETARCH: $TARGETARCH"; exit 1 ;; \
   esac; \
   CURL_RETRY="--retry 5 --retry-delay 5 --retry-max-time 120 --retry-all-errors --retry-connrefused"; \
   curl -fsSL ${CURL_RETRY} -o /tmp/pocketbase.zip \
     "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_${PB_ARCH}.zip"; \
   unzip /tmp/pocketbase.zip -d /out; \
   chmod +x /out/pocketbase
+
 
 FROM alpine:3.24
 
@@ -51,6 +65,7 @@ COPY --from=deps /app/packages /app/packages
 COPY --from=deps /app/apps/dulkong/node_modules ./node_modules
 COPY --from=css /app/apps/dulkong/pb_hooks/pages/assets/uno.min.css ./pb_hooks/pages/assets/uno.min.css
 COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
+
 RUN mkdir -p /opt/defaults/pb_hooks \
   && if [ -d "${CODE_ROOT}/pb_hooks" ]; then cp -R "${CODE_ROOT}/pb_hooks/." /opt/defaults/pb_hooks/; fi \
   && if [ -d "${CODE_ROOT}/pb_public" ]; then mkdir -p /opt/defaults/pb_public && cp -R "${CODE_ROOT}/pb_public/." /opt/defaults/pb_public/; fi

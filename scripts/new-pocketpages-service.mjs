@@ -789,32 +789,41 @@ export {}
 function buildDockerfile(options) {
   const service = options.service
   const cssStage = hasFeature(options, 'unocss')
-    ? `
-FROM node:24-bookworm-slim AS css
+    ? `FROM node:24-bookworm-slim AS css
 
 WORKDIR /app
+
 COPY package*.json ./
+COPY packages /app/packages
+
+RUN npm ci --no-audit --no-fund
+
 COPY task.sh ./
 COPY unocss.config.js ./
-COPY packages /app/packages
 COPY apps/${service}/pb_hooks ./apps/${service}/pb_hooks
-RUN npm ci
-RUN bash ./task.sh css ${service}
-`
+
+RUN bash ./task.sh css ${service}`
     : ''
+  const cssSection = cssStage ? `\n\n${cssStage}\n\n\n` : '\n\n'
   const cssCopy = hasFeature(options, 'unocss') ? `COPY --from=css /app/apps/${service}/pb_hooks/pages/assets/uno.min.css ./pb_hooks/pages/assets/uno.min.css\n` : ''
 
-  return `FROM node:24-bookworm-slim AS deps
+  return `# syntax=docker/dockerfile:1
+
+FROM node:24-bookworm-slim AS deps
 
 WORKDIR /app/apps/${service}
+
 COPY apps/${service}/package*.json ./
 COPY packages /app/packages
 COPY scripts/run-patch-package.js /app/scripts/run-patch-package.js
 COPY scripts/patches /app/scripts/patches
-RUN cd /app/packages/utils && npm ci --omit=dev
-RUN npm ci && npm prune --omit=dev
-${cssStage}
-FROM alpine:3.24 AS pocketbase
+
+RUN cd /app/packages/utils \\
+    && npm ci --omit=dev --no-audit --no-fund
+
+RUN npm ci --no-audit --no-fund \\
+    && npm prune --omit=dev --no-audit --no-fund
+${cssSection}FROM alpine:3.24 AS pocketbase
 
 ARG TARGETARCH
 ARG PB_VERSION
@@ -824,13 +833,14 @@ RUN set -eu; \\
   if [ -z "\${PB_VERSION}" ]; then echo "PB_VERSION build argument is required"; exit 1; fi; \\
   case "\${TARGETARCH}" in \\
     amd64|arm64) PB_ARCH="\${TARGETARCH}" ;; \\
-    *) echo "Unsupported TARGETARCH: \${TARGETARCH}"; exit 1 ;; \\
+    *) echo "Unsupported TARGETARCH: $TARGETARCH"; exit 1 ;; \\
   esac; \\
   CURL_RETRY="--retry 5 --retry-delay 5 --retry-max-time 120 --retry-all-errors --retry-connrefused"; \\
   curl -fsSL \${CURL_RETRY} -o /tmp/pocketbase.zip \\
     "https://github.com/pocketbase/pocketbase/releases/download/v\${PB_VERSION}/pocketbase_\${PB_VERSION}_linux_\${PB_ARCH}.zip"; \\
   unzip /tmp/pocketbase.zip -d /out; \\
   chmod +x /out/pocketbase
+
 
 FROM alpine:3.24
 
@@ -845,6 +855,7 @@ COPY apps/${service}/. .
 COPY --from=deps /app/packages /app/packages
 COPY --from=deps /app/apps/${service}/node_modules ./node_modules
 ${cssCopy}COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
+
 RUN mkdir -p /opt/defaults/pb_hooks \\
   && if [ -d "\${CODE_ROOT}/pb_hooks" ]; then cp -R "\${CODE_ROOT}/pb_hooks/." /opt/defaults/pb_hooks/; fi \\
   && if [ -d "\${CODE_ROOT}/pb_public" ]; then mkdir -p /opt/defaults/pb_public && cp -R "\${CODE_ROOT}/pb_public/." /opt/defaults/pb_public/; fi

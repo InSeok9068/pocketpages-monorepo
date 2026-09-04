@@ -124,6 +124,8 @@ jobs:
           tags: |
             ${{ steps.svc.outputs.image }}:${{ github.sha }}
             ${{ steps.svc.outputs.image }}:release
+          cache-from: type=gha,scope=${{ steps.svc.outputs.service }}
+          cache-to: type=gha,mode=max,scope=${{ steps.svc.outputs.service }}
 
       - name: Restart Server
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
