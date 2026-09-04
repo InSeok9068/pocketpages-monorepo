@@ -2,7 +2,7 @@
   "name": "pocketpages-monorepo",
   "packageManager": "npm@11.18.0",
   "volta": {
-    "node": "24.16.0",
+    "node": "24.20.0",
     "npm": "11.18.0"
   },
   "scripts": {
