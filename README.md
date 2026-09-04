@@ -23,7 +23,7 @@
 | 메시지 큐           | X                         |
 | 캐시                | Memory / Server (Store)   |
 | 웹 서버             | Caddy                     |
-| 서버리스 함수       | Cloudflare Workers        |
+| 클라우드 함수       | Node / Go (단발성 작업)   |
 | 모니터링            | PB Admin Logs             |
 | 로깅                | PB Logs                   |
 | 린팅                | custom script             |
@@ -56,7 +56,7 @@
 | ------------------------ | ---------------------------------- | ------------------------------ | -------------------- | ---------------------- |
 | A. 순수 JS 라이브러리    | JSVM에서 바로 가능할 때            | 파싱, 검증, 유틸               | 가장 단순함          | JSVM 호환성            |
 | B. Go 확장 + JSVM 바인딩 | PocketBase 내부와 강하게 연결될 때 | Redis, 큐, 락, 내부 함수       | 내부 제어 강함       | 유지보수 책임 증가     |
-| C. 외부 서버리스 함수    | 본체에서 분리하고 싶을 때          | 브라우저 자동화, 무거운 런타임 | 실패 격리, 독립 배포 | 네트워크 홉, 외부 운영 |
+| C. 클라우드 함수         | JSVM 제약을 넘거나 라이브러리 이점이 클 때 | 브라우저 자동화, 추가 라이브러리 | 필요한 때만 호출 | 호출·배포 경계 관리 |
 
 ---
 
@@ -118,36 +118,23 @@
 ## 공용 스크립트
 
 - 실행 환경: Windows Git Bash 기준
+- 전체 명령과 옵션: `./task.sh --help`
 
 ```bash
+# 개발
 ./task.sh start <service> [-- <extra args>]
 ./task.sh kill
-./task.sh deploy <service>
-./task.sh rollback <service> <version>
+
+# 검증
 ./task.sh test [service]
 ./task.sh lint [service]
 ./task.sh tsc [service]
-./task.sh diag [file-or-service] [--profile] [--no-daemon]
 ./task.sh verify [service]
-./task.sh index <service> [--section <name>] [--file <relative-path>] [--json|--pretty]
-./task.sh css <service>
-./task.sh bundle
-./task.sh format [-- <extra args>]
-```
 
-- `start`: 서비스 실행
-- `kill`: 실행 중 프로세스 종료
-- `deploy`: 서비스 배포
-- `rollback`: 배포 롤백
-- `test`: 테스트 실행
-- `lint`: 린트 실행
-- `tsc`: checkJs TypeScript 검증 실행
-- `diag`: 진단 실행
-- `verify`: 린트 + `tsc` + 진단 실행
-- `index`: 프로젝트 인덱스 조회
-- `css`: UnoCSS 빌드 실행
-- `bundle`: vendor 번들링
-- `format`: 포맷 실행
+# 배포
+./task.sh deploy <service> [--skip-verify]
+./task.sh rollback <service> <1|2|3>
+```
 
 ---
 
@@ -167,10 +154,10 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
 
 ---
 
-## 운영 DB 클라이언트
+## 운영 DB 관리
 
-- 도구: Adminer
-- 용도: 운영 DB 조회 및 쿼리 실행
+- 도구: PocketBase Admin Dashboard > SQL Console
+- 용도: 운영 DB 조회 및 일회성 SQL 실행 (superuser 전용)
 
 ---
 
@@ -198,14 +185,7 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
 
 ## SMTP
 
-- 솔루션: Resend
-- 추가 후보: AWS SES
-
----
-
-## Cloudflare Workers
-
-- 용도: 브라우저 자동화, 추가 라이브러리 의존 동작
+- 솔루션: OCI Email Delivery (SMTP)
 
 ---
 
@@ -263,6 +243,33 @@ npm --prefix tools/vscode-pocketpages run install:vscode-pocketpages
 
 ---
 
+## Node 버전 매니저 (fnm)
+
+### 설치 및 업데이트
+
+```bash
+scoop install fnm
+scoop update fnm
+```
+
+### Git Bash 설정
+
+`~/.bashrc`에 다음 한 줄을 추가합니다.
+
+```bash
+eval "$(fnm env --use-on-cd --version-file-strategy=recursive --shell bash)"
+```
+
+Node 버전을 설치합니다.
+
+```bash
+fnm install 24.20.0
+```
+
+저장소의 `.node-version`을 기준으로 하위 디렉터리에서도 Node 버전이 자동 전환됩니다.
+
+---
+
 ## Git 확장 도구 설치/업데이트
 
 ### 설치
@@ -283,7 +290,7 @@ scoop update lazygit
 
 ---
 
-## nvm 설치 후 global 패키지 의존성 설치
+## 전역 패키지 의존성 확인
 
 ```shell
 node -e "console.log(Object.keys(JSON.parse(require('child_process').execSync('npm list -g --depth=0 --json').toString()).dependencies).join('\n'))"
