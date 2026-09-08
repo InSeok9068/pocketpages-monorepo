@@ -121,7 +121,7 @@
       bookFileId: String(bookFileRecord.get('id') || ''),
       etag: etag,
     })
-    response.status(304)
+    request.event.noContent(304)
     return
   }
 

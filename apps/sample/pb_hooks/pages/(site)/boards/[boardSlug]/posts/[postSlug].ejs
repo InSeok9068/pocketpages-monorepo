@@ -9,11 +9,11 @@
   let postDetail = null
 
   if (!boardSummary) {
-    response.status(404)
+    request.event.response.writeHeader(404)
     meta('title', 'Board Not Found')
   } else {
     if (!post) {
-      response.status(404)
+      request.event.response.writeHeader(404)
       meta('title', 'Post Not Found')
     } else {
       if (postRole.canIncrementViewCount(post)) {

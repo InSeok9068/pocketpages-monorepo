@@ -619,20 +619,15 @@ function buildJsConfig() {
 
 function buildPocketPagesGlobals(options) {
   const authImport = options.auth
-    ? "import type { AuthData as PocketPagesAuthData, User as PocketPagesAuthUser } from 'pocketpages-plugin-auth'\n"
+    ? "import type PocketBase from 'pocketbase-js-sdk-jsvm'\nimport type { AuthData as PocketPagesAuthData, User as PocketPagesAuthUser } from 'pocketpages-plugin-auth'\nimport type { PocketBaseClientOptions } from 'pocketpages-plugin-js-sdk'\n"
     : ''
   const datastarImport = hasFeature(options, 'datastar') ? "import type DatastarPlugin = require('pocketpages-plugin-datastar-v1')\n" : ''
   const realtimeImport = hasFeature(options, 'realtime') ? "import type { Client, ClientId, RealtimeFilter, RealtimeOptions } from 'pocketpages-plugin-realtime'\n" : ''
   const datastarTypes = hasFeature(options, 'datastar')
     ? `
 type PocketPagesDatastarApi = DatastarPlugin.DatastarApi
-type PocketPagesEditorApi<TData = any> = PagesRequestContext<TData> & {
-  datastar: PocketPagesDatastarApi
-}
 `
-    : `
-type PocketPagesEditorApi<TData = any> = PagesRequestContext<TData>
-`
+    : ''
   const authTypes = options.auth
     ? `
 type PocketPagesAuthOptions = {
@@ -664,16 +659,28 @@ type PocketPagesPasswordlessUserData = {
 type PocketPagesOtpRequestData = {
   otpId: string
 }
-type PocketPagesPocketBasePasswordAuthResult = {
-  token: string
-  record: any
+type PocketPagesAuthGlobalApi = {
+  createUser: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesAuthUser
+  createAnonymousUser: (options?: PocketPagesAuthOptions) => PocketPagesAnonymousUserData
+  // Runtime name is misspelled in pocketpages-plugin-auth 0.2.2.
+  createPaswordlessUser: (email: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesPasswordlessUserData
+  requestOTP: (email: string, options?: PocketPagesAuthOptions) => PocketPagesOtpRequestData
+  requestVerification: (email: string, options?: PocketPagesAuthOptions) => void
+  confirmVerification: (token: string, options?: PocketPagesAuthOptions) => void
 }
-type PocketPagesPocketBaseClient = {
-  collection: (name: string) => {
-    authWithPassword: (email: string, password: string) => PocketPagesPocketBasePasswordAuthResult
-  }
+type PocketPagesAuthRequestApi = {
+  signInWithPassword: (email: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
+  registerWithPassword: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesAuthData
+  signInAnonymously: (options?: PocketPagesAuthOptions) => PocketPagesAuthData
+  signInWithOTP: (otpId: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
+  requestOAuth2Login: (providerName: string, options?: PocketPagesOAuth2RequestOptions) => string
+  signInWithOAuth2: (state: string, code: string, options?: PocketPagesOAuth2ConfirmOptions) => PocketPagesAuthData
+  signOut: () => void
 }
-type PocketPagesPocketBaseCtor = new (baseUrl?: string, authStore?: any, lang?: string) => PocketPagesPocketBaseClient
+type PocketPagesAuthApi = PocketPagesAuthGlobalApi & PocketPagesAuthRequestApi
+type PocketPagesJsSdkApi = {
+  pb: (options?: Partial<PocketBaseClientOptions>) => PocketBase
+}
 `
     : ''
   const realtimeTypes = hasFeature(options, 'realtime')
@@ -691,20 +698,22 @@ type PocketPagesRealtimeOptions = RealtimeOptions
   const authGlobals = options.auth
     ? `
   // \`pocketpages-plugin-auth\` auth helpers
-  const createUser: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesAuthUser
-  const createAnonymousUser: (options?: PocketPagesAuthOptions) => PocketPagesAnonymousUserData
-  // Runtime name is misspelled in pocketpages-plugin-auth 0.2.2.
-  const createPaswordlessUser: (email: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesPasswordlessUserData
-  const signInWithPassword: (email: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
-  const registerWithPassword: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesAuthData
-  const signInAnonymously: (options?: PocketPagesAuthOptions) => PocketPagesAuthData
-  const requestOTP: (email: string, options?: PocketPagesAuthOptions) => PocketPagesOtpRequestData
-  const signInWithOTP: (otpId: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
-  const requestOAuth2Login: (providerName: string, options?: PocketPagesOAuth2RequestOptions) => string
-  const signInWithOAuth2: (state: string, code: string, options?: PocketPagesOAuth2ConfirmOptions) => PocketPagesAuthData
-  const signOut: () => void
-  const requestVerification: (email: string, options?: PocketPagesAuthOptions) => void
-  const confirmVerification: (token: string, options?: PocketPagesAuthOptions) => void
+  const createUser: PocketPagesAuthApi['createUser']
+  const createAnonymousUser: PocketPagesAuthApi['createAnonymousUser']
+  const createPaswordlessUser: PocketPagesAuthApi['createPaswordlessUser']
+  const signInWithPassword: PocketPagesAuthApi['signInWithPassword']
+  const registerWithPassword: PocketPagesAuthApi['registerWithPassword']
+  const signInAnonymously: PocketPagesAuthApi['signInAnonymously']
+  const requestOTP: PocketPagesAuthApi['requestOTP']
+  const signInWithOTP: PocketPagesAuthApi['signInWithOTP']
+  const requestOAuth2Login: PocketPagesAuthApi['requestOAuth2Login']
+  const signInWithOAuth2: PocketPagesAuthApi['signInWithOAuth2']
+  const signOut: PocketPagesAuthApi['signOut']
+  const requestVerification: PocketPagesAuthApi['requestVerification']
+  const confirmVerification: PocketPagesAuthApi['confirmVerification']
+
+  // \`pocketpages-plugin-js-sdk\` runtime helper
+  const pb: PocketPagesJsSdkApi['pb']
 `
     : ''
   const datastarGlobal = hasFeature(options, 'datastar')
@@ -719,28 +728,38 @@ type PocketPagesRealtimeOptions = RealtimeOptions
   const realtime: PocketPagesRealtimeApi
 `
     : ''
+  const editorApiExtensions = [
+    options.auth ? '  & PocketPagesAuthApi\n  & PocketPagesJsSdkApi\n' : '',
+    hasFeature(options, 'datastar') ? '  & { datastar: PocketPagesDatastarApi }\n' : '',
+    hasFeature(options, 'realtime') ? '  & { realtime: PocketPagesRealtimeApi }\n' : '',
+  ].join('')
+  const globalApiExtensions = options.auth ? ' & PocketPagesAuthGlobalApi & PocketPagesJsSdkApi' : ''
 
   return `import type { MiddlewareNextFunc, PagesGlobalContext, PagesRequestContext, PagesResponse } from 'pocketpages'
 ${authImport}${datastarImport}${realtimeImport}
 // Editor-only mirror for globals injected by PocketPages core and plugins in
 // \`pb_hooks/pages/+config.js\`.
 ${datastarTypes}${authTypes}${realtimeTypes}
-type PocketPagesEditorResponse = PagesResponse & {
-  // Repo code uses response.status(...) inside <script server>.
-  status: (status: number) => void
+type PocketPagesEditorResponse = Omit<PagesResponse, 'cookie'> & {
+  // PocketPages 0.22.3 returns the serialized cookie value at runtime.
+  cookie: <T>(name: string, value: T, options?: Parameters<PagesResponse['cookie']>[2]) => string
 }
+type PocketPagesEditorApi<TData = any> = Omit<PagesRequestContext<TData>, 'formData' | 'response'>
+${editorApiExtensions}  & {
+    formData: () => Record<string, any>
+    response: PocketPagesEditorResponse
+  }
 
 declare module 'pocketpages' {
-  export const globalApi: PagesGlobalContext
+  export const globalApi: PagesGlobalContext${globalApiExtensions}
 }
-${options.auth ? "\ndeclare module 'pocketbase-js-sdk-jsvm' {\n  const PocketBase: PocketPagesPocketBaseCtor\n  export = PocketBase\n}\n" : ''}
 
 declare global {
   const process: {
     env: Record<string, string | undefined>
   }
   interface PocketPagesRouteParams {}
-  type PocketPagesNextMiddlewareFunc<TData = any> = (api: PagesRequestContext<TData>, next: MiddlewareNextFunc) => void
+  type PocketPagesNextMiddlewareFunc<TData = any> = (api: PocketPagesEditorApi<TData>, next: MiddlewareNextFunc) => void
 
   // \`pocketpages\` core request/context globals
   const api: PocketPagesEditorApi<any>
@@ -748,7 +767,7 @@ declare global {
   const auth: PocketPagesEditorApi<any>['auth']
   const data: PocketPagesEditorApi<any>['data']
   const echo: PocketPagesEditorApi<any>['echo']
-  const formData: () => any
+  const formData: PocketPagesEditorApi<any>['formData']
   const body: () => any
   const meta: PocketPagesEditorApi<any>['meta']
   const params: PocketPagesEditorApi<any>['params'] & PocketPagesRouteParams

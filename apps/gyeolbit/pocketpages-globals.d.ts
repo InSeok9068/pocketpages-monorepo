@@ -3,24 +3,25 @@ import type { MiddlewareNextFunc, PagesGlobalContext, PagesRequestContext, Pages
 // Editor-only mirror for globals injected by PocketPages core and plugins in
 // `pb_hooks/pages/+config.js`.
 
-type PocketPagesEditorApi<TData = any> = PagesRequestContext<TData>
-
-type PocketPagesEditorResponse = PagesResponse & {
-  // Repo code uses response.status(...) inside <script server>.
-  status: (status: number) => void
+type PocketPagesEditorResponse = Omit<PagesResponse, 'cookie'> & {
+  // PocketPages 0.22.3 returns the serialized cookie value at runtime.
+  cookie: <T>(name: string, value: T, options?: Parameters<PagesResponse['cookie']>[2]) => string
+}
+type PocketPagesEditorApi<TData = any> = Omit<PagesRequestContext<TData>, 'formData' | 'response'> & {
+  formData: () => Record<string, any>
+  response: PocketPagesEditorResponse
 }
 
 declare module 'pocketpages' {
   export const globalApi: PagesGlobalContext
 }
 
-
 declare global {
   const process: {
     env: Record<string, string | undefined>
   }
   interface PocketPagesRouteParams {}
-  type PocketPagesNextMiddlewareFunc<TData = any> = (api: PagesRequestContext<TData>, next: MiddlewareNextFunc) => void
+  type PocketPagesNextMiddlewareFunc<TData = any> = (api: PocketPagesEditorApi<TData>, next: MiddlewareNextFunc) => void
 
   // `pocketpages` core request/context globals
   const api: PocketPagesEditorApi<any>
@@ -28,7 +29,7 @@ declare global {
   const auth: PocketPagesEditorApi<any>['auth']
   const data: PocketPagesEditorApi<any>['data']
   const echo: PocketPagesEditorApi<any>['echo']
-  const formData: () => any
+  const formData: PocketPagesEditorApi<any>['formData']
   const body: () => any
   const meta: PocketPagesEditorApi<any>['meta']
   const params: PocketPagesEditorApi<any>['params'] & PocketPagesRouteParams

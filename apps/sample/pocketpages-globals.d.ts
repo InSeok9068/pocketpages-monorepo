@@ -6,16 +6,19 @@ import type { Client, ClientId, RealtimeOptions } from 'pocketpages-plugin-realt
 // `pb_hooks/pages/+config.js`.
 
 type PocketPagesDatastarApi = DatastarPlugin.DatastarApi
-type PocketPagesEditorApi<TData = any> = PagesRequestContext<TData> & {
-  datastar: PocketPagesDatastarApi
-}
-type PocketPagesEditorResponse = PagesResponse & {
-  // Repo code uses response.status(...) inside <script server>.
-  status: (status: number) => void
-}
 type PocketPagesRealtimeApi = {
   getClientById: (clientId: ClientId) => Client | undefined
   send: (topic: string, message: string, options?: RealtimeOptions) => void
+}
+type PocketPagesEditorResponse = Omit<PagesResponse, 'cookie'> & {
+  // PocketPages 0.22.3 returns the serialized cookie value at runtime.
+  cookie: <T>(name: string, value: T, options?: Parameters<PagesResponse['cookie']>[2]) => string
+}
+type PocketPagesEditorApi<TData = any> = Omit<PagesRequestContext<TData>, 'formData' | 'response'> & {
+  datastar: PocketPagesDatastarApi
+} & { realtime: PocketPagesRealtimeApi } & {
+  formData: () => Record<string, any>
+  response: PocketPagesEditorResponse
 }
 
 declare module 'pocketpages' {
@@ -27,7 +30,7 @@ declare global {
     env: Record<string, string | undefined>
   }
   interface PocketPagesRouteParams {}
-  type PocketPagesNextMiddlewareFunc<TData = any> = (api: PagesRequestContext<TData>, next: MiddlewareNextFunc) => void
+  type PocketPagesNextMiddlewareFunc<TData = any> = (api: PocketPagesEditorApi<TData>, next: MiddlewareNextFunc) => void
 
   // `pocketpages` core request/context globals
   const api: PocketPagesEditorApi<any>
@@ -36,7 +39,7 @@ declare global {
   const data: PocketPagesEditorApi<any>['data']
   const echo: PocketPagesEditorApi<any>['echo']
   // Raw request payload is normalized per route, so editor typing stays loose here.
-  const formData: () => any
+  const formData: PocketPagesEditorApi<any>['formData']
   const body: () => any
   const meta: PocketPagesEditorApi<any>['meta']
   const params: PocketPagesEditorApi<any>['params'] & PocketPagesRouteParams

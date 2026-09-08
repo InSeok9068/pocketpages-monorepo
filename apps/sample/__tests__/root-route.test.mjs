@@ -49,12 +49,12 @@ test('GET /datastar returns the Datastar sample page', async () => {
   assert.match(body, /datastar\.min/);
 });
 
-test('GET /assets/vendor/datastar.min.js returns the vendored Datastar v1.0.2 bundle', async () => {
+test('GET /assets/vendor/datastar.min.js returns the vendored Datastar v1.0.3 bundle', async () => {
   const response = await fetch(`${service.baseUrl}/assets/vendor/datastar.min.js`);
   const body = await response.text();
 
   assert.equal(response.status, 200);
-  assert.match(body, /^\/\/ Datastar v1\.0\.2/);
+  assert.match(body, /^\/\/ Datastar v1\.0\.3/);
   assert.match(body, /viewTransitionSelector/);
 });
 

@@ -5,7 +5,7 @@
   const boardSummary = boardService.toBoardSummary(board)
 
   if (!boardSummary) {
-    response.status(404)
+    request.event.response.writeHeader(404)
     meta('title', 'Board Not Found')
   } else {
     meta('title', `Write Post | ${boardSummary.name || boardSummary.slug}`)

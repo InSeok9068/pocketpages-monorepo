@@ -8,7 +8,7 @@
   let postError = ''
 
   if (!boardSummary) {
-    response.status(404)
+    request.event.response.writeHeader(404)
     meta('title', 'Board Not Found')
   } else {
     meta('title', `${boardSummary.name || boardSummary.slug} | PocketPages Board`)
