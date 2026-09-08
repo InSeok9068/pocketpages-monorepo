@@ -282,11 +282,15 @@ function buildPackageJson(options) {
     pocketpages: '^0.22.3',
     'pocketpages-plugin-ejs': '^0.1.2',
   }
+  const devDependencies = {
+    'patch-package': '^8.0.1',
+  }
 
   if (options.auth) {
     dependencies['@pocketpages/auth-cookie'] = 'file:../../packages/auth-cookie'
     dependencies['pocketpages-plugin-auth'] = '^0.2.2'
     dependencies['pocketpages-plugin-js-sdk'] = '^0.2.0'
+    devDependencies['pocketbase-js-sdk-jsvm'] = '^0.25.10004'
   }
 
   if (hasFeature(options, 'datastar')) {
@@ -305,9 +309,7 @@ function buildPackageJson(options) {
           "node -e \"const fs=require('fs');const p='../../scripts/run-patch-package.js';if(!fs.existsSync(p)){console.log('patch script not available, skip');process.exit(0)}const r=require('child_process').spawnSync(process.execPath,[p],{stdio:'inherit'});if(r.error)throw r.error;process.exit(r.status===null?1:r.status)\"",
       },
       dependencies,
-      devDependencies: {
-        'patch-package': '^8.0.1',
-      },
+      devDependencies,
     },
     null,
     2
