@@ -618,6 +618,9 @@ function buildJsConfig() {
 }
 
 function buildPocketPagesGlobals(options) {
+  const authImport = options.auth
+    ? "import type { AuthData as PocketPagesAuthData, User as PocketPagesAuthUser } from 'pocketpages-plugin-auth'\n"
+    : ''
   const datastarImport = hasFeature(options, 'datastar') ? "import type DatastarPlugin = require('pocketpages-plugin-datastar-v1')\n" : ''
   const realtimeImport = hasFeature(options, 'realtime') ? "import type { Client, ClientId, RealtimeFilter, RealtimeOptions } from 'pocketpages-plugin-realtime'\n" : ''
   const datastarTypes = hasFeature(options, 'datastar')
@@ -649,23 +652,14 @@ type PocketPagesOAuth2ConfirmOptions = {
   collection?: string
   cookieName?: string
 }
-type PocketPagesAuthData = {
-  token: string
-  record: core.Record
-}
-type PocketPagesRegisterAuthData = {
-  token: string
-  user: core.Record
-  record?: core.Record
-}
 type PocketPagesAnonymousUserData = {
   email: string
   password: string
-  user: core.Record
+  user: PocketPagesAuthUser
 }
 type PocketPagesPasswordlessUserData = {
   password: string
-  user: core.Record
+  user: PocketPagesAuthUser
 }
 type PocketPagesOtpRequestData = {
   otpId: string
@@ -697,15 +691,15 @@ type PocketPagesRealtimeOptions = RealtimeOptions
   const authGlobals = options.auth
     ? `
   // \`pocketpages-plugin-auth\` auth helpers
-  const createUser: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => core.Record
+  const createUser: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesAuthUser
   const createAnonymousUser: (options?: PocketPagesAuthOptions) => PocketPagesAnonymousUserData
-  const createPasswordlessUser: (email: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesPasswordlessUserData
+  // Runtime name is misspelled in pocketpages-plugin-auth 0.2.2.
+  const createPaswordlessUser: (email: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesPasswordlessUserData
   const signInWithPassword: (email: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
-  const registerWithPassword: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesRegisterAuthData
+  const registerWithPassword: (email: string, password: string, options?: PocketPagesAuthVerificationOptions) => PocketPagesAuthData
   const signInAnonymously: (options?: PocketPagesAuthOptions) => PocketPagesAuthData
   const requestOTP: (email: string, options?: PocketPagesAuthOptions) => PocketPagesOtpRequestData
   const signInWithOTP: (otpId: string, password: string, options?: PocketPagesAuthOptions) => PocketPagesAuthData
-  const signInWithToken: (token: string) => void
   const requestOAuth2Login: (providerName: string, options?: PocketPagesOAuth2RequestOptions) => string
   const signInWithOAuth2: (state: string, code: string, options?: PocketPagesOAuth2ConfirmOptions) => PocketPagesAuthData
   const signOut: () => void
@@ -727,7 +721,7 @@ type PocketPagesRealtimeOptions = RealtimeOptions
     : ''
 
   return `import type { MiddlewareNextFunc, PagesGlobalContext, PagesRequestContext, PagesResponse } from 'pocketpages'
-${datastarImport}${realtimeImport}
+${authImport}${datastarImport}${realtimeImport}
 // Editor-only mirror for globals injected by PocketPages core and plugins in
 // \`pb_hooks/pages/+config.js\`.
 ${datastarTypes}${authTypes}${realtimeTypes}

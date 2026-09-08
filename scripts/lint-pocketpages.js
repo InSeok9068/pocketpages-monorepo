@@ -160,7 +160,8 @@ const RE = {
   rawEjsOutput: /<%-/,
   rawEjsAllowed: /<%-\s*(include\s*\(|slots?\b|content\b|resolve\s*\(|datastar\.scripts\s*\()/,
   datastarCamelCaseAttribute: /\bdata-(?:bind|class|computed|on|ref|signals|style):[A-Za-z0-9_-]*[A-Z][A-Za-z0-9_-]*(?=[\s=>])/,
-  authHelper: /\b(signInWithPassword|signOut|requestOAuth2Login|requestOAuth2Link|registerWithPassword|signInWithOtp|signInWithOAuth2|signInAnonymously|signInWithToken)\s*\(/,
+  authHelper:
+    /\b(?:createUser|createAnonymousUser|createPaswordlessUser|signInWithPassword|registerWithPassword|signInAnonymously|requestOTP|signInWithOTP|requestOAuth2Login|signInWithOAuth2|signOut|requestVerification|confirmVerification)\s*\(/,
   resolveCall: /\bresolve\s*\(/,
   roleSideEffect: /\bredirect\s*\(|\bresponse\.[A-Za-z_][A-Za-z0-9_]*\s*\(|\bbody\s*\(|\$app\.(save|saveNoValidate|delete|deleteRecord|deleteRecords|dao)\b/,
   roleDbQuery:
