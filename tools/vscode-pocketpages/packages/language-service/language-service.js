@@ -4095,6 +4095,7 @@ class ProjectLanguageService {
     this.appRoot = appRoot;
     this.projectIndex = new PocketPagesProjectIndex(appRoot);
     this.projectVersion = 0;
+    this.staticFilesInitialized = false;
     this.documentSnapshotManager = new DocumentSnapshotManager({ normalizePath });
     this.staticFiles = this.documentSnapshotManager.staticFiles;
     this.virtualFiles = this.documentSnapshotManager.virtualFiles;
@@ -4270,6 +4271,7 @@ class ProjectLanguageService {
     this.resolveModuleReturnTypeCache.clear();
     this.scriptSchemaDiagnosticsCache.clear();
     this.schemaAppReceiverTypeCache.clear();
+    this.staticFilesInitialized = false;
     this.documentSnapshotManager.clearTsFileStates();
     this.documentSnapshotManager.clearSourceDocuments();
     this.documentSnapshotManager.clearPreparedDocumentStates();
@@ -5070,13 +5072,14 @@ class ProjectLanguageService {
   }
 
   refreshStaticFiles(options = {}) {
-    if (options.skipStaticRefresh === true) {
+    if (options.skipStaticRefresh === true && this.staticFilesInitialized) {
       return;
     }
 
     for (const filePath of getAppAmbientTypeFiles(this.appRoot)) {
       this.ensureStaticFile(filePath);
     }
+    this.staticFilesInitialized = true;
   }
 
   buildPrelude(filePath, analysisText = "", options = {}) {

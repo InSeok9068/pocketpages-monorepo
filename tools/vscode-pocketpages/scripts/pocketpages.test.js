@@ -142,6 +142,9 @@ declare var $app: pocketbase.PocketBase;
       writeFile(
         path.join(appRoot, 'pocketpages-globals.d.ts'),
         `
+interface PocketPagesRouteParams {}
+declare const params: Record<string, string | undefined> & PocketPagesRouteParams
+declare const meta: (key: string, value?: string) => string | undefined
 declare const include: (path: string, locals?: Record<string, any>) => string;
 declare const resolve: (path: string) => any;
 `
@@ -322,6 +325,33 @@ declare const resolve: (path: string) => any;
       assert.deepEqual(await complete(), [], 'An invalid replacement must not resurrect deleted collections')
       await updateSchema(app.schemaText)
       assert.deepEqual(await complete(), ['posts'])
+    })
+
+    test('IPC first server block after template-only open loads ambient and route types', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'first-server-block', 'posts')
+      const page = path.join(app.pagesRoot, '[boardSlug]', 'index.ejs')
+      const templateText = '<h1>Template</h1>\n'
+      const serverText = '<script server>\nmet\n</script>\n<%= params. %>\n'
+      writeFile(page, templateText)
+      await server.open(page, templateText)
+      await server.change(page, 2, serverText)
+
+      const complete = (offset) => server.complete(page, serverText, offset)
+      const globalNames = await complete(serverText.indexOf('met') + 3)
+      assert.ok(
+        globalNames.includes('meta'),
+        `Expected ambient global completion after first server block. Got: ${globalNames.join(', ')}`
+      )
+      const routeParamNames = await complete(serverText.indexOf('params.') + 'params.'.length)
+      assert.ok(
+        routeParamNames.includes('boardSlug'),
+        `Expected route parameter completion after first server block. Got: ${routeParamNames.join(', ')}`
+      )
+
+      await server.request('pocketpages/reloadCaches', { uri: server.uri(page) })
+      assert.ok((await complete(serverText.indexOf('met') + 3)).includes('$app'))
+      assert.ok((await complete(serverText.indexOf('params.') + 'params.'.length)).includes('boardSlug'))
     })
   })
 }
