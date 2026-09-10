@@ -439,6 +439,8 @@ npm test
 
 `scripts/pocketpages.test.js`에서 기존 회귀 테스트 5개와 extension-host 검증을 포함한 전체 sanity 검증을 순서대로 실행합니다. 기존 검증 본문과 fixture, 정리 코드는 유지합니다.
 
+계약, 문서 상태, snapshot, 경로 해석, extension-host의 15개 시나리오, 언어 서비스 통합 검증을 기능별 하위 테스트로 표시합니다. 공유 상태를 사용하는 검증은 순서를 유지하고, 실패하면 다음 단계로 진행하지 않습니다.
+
 ```bash
 node --expose-gc --test --test-concurrency=1 ./scripts/pocketpages.test.js
 ```
