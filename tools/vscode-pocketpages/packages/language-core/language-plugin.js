@@ -35,8 +35,8 @@ function createPocketPagesLanguagePlugin() {
         getLanguageId(uri)
       );
     },
-    createSnapshot(text, previousSnapshot = null) {
-      return createScriptSnapshot(text, previousSnapshot);
+    createSnapshot(text) {
+      return createScriptSnapshot(text);
     },
   };
 }

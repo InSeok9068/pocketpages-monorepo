@@ -2703,6 +2703,7 @@ class PocketPagesProjectIndex {
     this.appRoot = normalizePath(appRoot)
     this.pagesRoot = normalizePath(path.join(this.appRoot, 'pb_hooks', 'pages'))
     this.schemaCache = null
+    this.lastValidSchemaCollections = []
     this.collectionMethodCache = null
     this.moduleExportedStringConstantsCache = new Map()
     this.includeLocalsCache = null
@@ -2716,6 +2717,7 @@ class PocketPagesProjectIndex {
   }
 
   resetCaches() {
+    // Derived caches can be reset while the last parsed schema survives a partial write.
     this.schemaCache = null
     this.collectionMethodCache = null
     this.moduleExportedStringConstantsCache.clear()
@@ -2837,6 +2839,7 @@ class PocketPagesProjectIndex {
     const schemaPath = normalizePath(path.join(this.appRoot, 'pb_schema.json'))
     const identity = readSmallFileIdentity(schemaPath)
     if (!identity.exists) {
+      this.lastValidSchemaCollections = []
       this.schemaCache = createMissingSchemaCache(schemaPath, identity)
       return this.schemaCache
     }
@@ -2849,8 +2852,9 @@ class PocketPagesProjectIndex {
     try {
       const raw = JSON.parse(identity.text)
       collections = ensureArray(raw)
+      this.lastValidSchemaCollections = collections
     } catch (_error) {
-      collections = this.schemaCache && this.schemaCache.schemaPath === schemaPath ? ensureArray(this.schemaCache.collections) : []
+      collections = this.lastValidSchemaCollections
     }
 
     const collectionNameById = new Map()

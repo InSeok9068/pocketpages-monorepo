@@ -962,24 +962,29 @@ function takePendingDocumentContentChanges(uri, version) {
   return Array.isArray(changes) ? changes : null;
 }
 
-function getCachedCompletionItems(cacheKey) {
+function getCachedCompletionItems(cacheKey, service) {
   if (!completionCache.has(cacheKey)) {
     return undefined;
   }
 
   const cachedValue = completionCache.get(cacheKey);
   completionCache.delete(cacheKey);
+  if (cachedValue.service !== service || cachedValue.projectVersion !== service.projectVersion) {
+    return undefined;
+  }
   completionCache.set(cacheKey, cachedValue);
-  return cachedValue;
+  return cachedValue.value;
 }
 
-function getReusableCompletionItems(uri, document, offset, context) {
+function getReusableCompletionItems(uri, document, offset, context, service) {
   const position = document.positionAt(offset);
   const lastCompletion = lastCompletionByUri.get(uri);
   if (
     shouldReuseLastCompletion(lastCompletion, {
       uri,
       version: document.version,
+      service,
+      projectVersion: service.projectVersion,
       line: position.line,
       character: position.character,
       triggerKind: context && context.triggerKind,
@@ -991,7 +996,7 @@ function getReusableCompletionItems(uri, document, offset, context) {
   return undefined;
 }
 
-function rememberReusableCompletionItems(uri, document, offset, result) {
+function rememberReusableCompletionItems(uri, document, offset, result, service) {
   if (!result) {
     lastCompletionByUri.delete(uri);
     return;
@@ -1001,6 +1006,8 @@ function rememberReusableCompletionItems(uri, document, offset, result) {
   lastCompletionByUri.set(uri, {
     uri,
     version: document.version,
+    service,
+    projectVersion: service.projectVersion,
     line: position.line,
     character: position.character,
     offset,
@@ -1031,8 +1038,9 @@ function getPreferredDiagnosticOffset(uri) {
   return entry && Number.isFinite(Number(entry.offset)) ? Number(entry.offset) : null;
 }
 
-function setCachedCompletionItems(cacheKey, value) {
-  completionCache.set(cacheKey, value);
+function setCachedCompletionItems(cacheKey, value, service) {
+  // Capture after analysis, which can also advance the service's project version.
+  completionCache.set(cacheKey, { value, service, projectVersion: service.projectVersion });
   while (completionCache.size > 60) {
     const oldestKey = completionCache.keys().next().value;
     completionCache.delete(oldestKey);
@@ -1486,7 +1494,7 @@ connection.onCompletion((params, token) => {
   }
 
   const cacheKey = completionCacheKey(document.uri, document.version, offset, params.context);
-  const cachedItems = getCachedCompletionItems(cacheKey);
+  const cachedItems = getCachedCompletionItems(cacheKey, context.service);
   if (cachedItems !== undefined) {
     const totalMs = elapsedMilliseconds(startedAt);
     logServer("perf", "completion", "cache-hit", {
@@ -1503,7 +1511,7 @@ connection.onCompletion((params, token) => {
     return cachedItems;
   }
 
-  const reusableItems = getReusableCompletionItems(document.uri, document, offset, params.context);
+  const reusableItems = getReusableCompletionItems(document.uri, document, offset, params.context, context.service);
   if (reusableItems !== undefined) {
     const totalMs = elapsedMilliseconds(startedAt);
     logServer("perf", "completion", "near-cache-hit", {
@@ -1541,8 +1549,8 @@ connection.onCompletion((params, token) => {
 
   if (customResult) {
     const result = customResult.items.length ? customResult : null;
-    setCachedCompletionItems(cacheKey, result);
-    rememberReusableCompletionItems(document.uri, document, offset, result);
+    setCachedCompletionItems(cacheKey, result, context.service);
+    rememberReusableCompletionItems(document.uri, document, offset, result, context.service);
     const totalMs = elapsedMilliseconds(startedAt);
     logServer("perf", "completion", "custom", {
       req: requestId,
@@ -1562,18 +1570,18 @@ connection.onCompletion((params, token) => {
   }
 
   if (isSchemaSupportOnlyDocument) {
-    setCachedCompletionItems(cacheKey, null);
+    setCachedCompletionItems(cacheKey, null, context.service);
     return null;
   }
 
   if (routePathAssetScript) {
-    setCachedCompletionItems(cacheKey, null);
+    setCachedCompletionItems(cacheKey, null, context.service);
     return null;
   }
 
   const result = typeScriptFeatureService.provideCompletionItems(params, token);
-  setCachedCompletionItems(cacheKey, result || null);
-  rememberReusableCompletionItems(document.uri, document, offset, result || null);
+  setCachedCompletionItems(cacheKey, result || null, context.service);
+  rememberReusableCompletionItems(document.uri, document, offset, result || null, context.service);
   return result;
 });
 

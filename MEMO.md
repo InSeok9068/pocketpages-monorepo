@@ -187,8 +187,7 @@ rg --files --hidden tools/vscode-pocketpages -g '!node_modules/**' -g '!dist/**'
 
 ### tests / scripts / docs
 
-- `scripts/sanity-check.js`
-- `scripts/extension-host-sanity.js`
+- `scripts/pocketpages.test.js` — 회귀, extension-host, 전체 sanity 검증 통합
 - `scripts/install-vscode-pocketpages.js`
 - `scripts/sync-ts-plugin-package.js`
 - `README.md`
@@ -210,10 +209,10 @@ rg --files --hidden tools/vscode-pocketpages -g '!node_modules/**' -g '!dist/**'
 npm test
 ```
 
-가능하면 추가 확인:
+위 명령은 extension-host 검증도 포함한다. 테스트 러너를 직접 실행하려면:
 
 ```bash
-node scripts/extension-host-sanity.js
+node --expose-gc --test --test-concurrency=1 scripts/pocketpages.test.js
 ```
 
 필요하면 first-party JS syntax check:
@@ -375,8 +374,8 @@ node --check <file>
 
 ### G. 테스트 평가
 
-- `sanity-check.js`가 방어하는 핵심 흐름
-- `extension-host-sanity.js`가 방어하는 영역
+- `pocketpages.test.js`의 전체 sanity 검증이 방어하는 핵심 흐름
+- 같은 파일의 extension-host 검증과 회귀 테스트가 방어하는 영역
 - 테스트가 부족한 영역
 - 추가할 가치가 있는 테스트
 - 삭제할 가치가 있는 테스트

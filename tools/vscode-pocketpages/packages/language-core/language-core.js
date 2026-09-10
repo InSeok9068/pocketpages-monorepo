@@ -336,13 +336,13 @@ class PocketPagesLanguageCore {
     return "plaintext";
   }
 
-  createSnapshot(text, previousSnapshot = null) {
+  createSnapshot(text) {
     const plugin = this.plugins.find((entry) => typeof entry.createSnapshot === "function");
     if (!plugin) {
       throw new Error("PocketPages language plugin is missing createSnapshot().");
     }
 
-    return plugin.createSnapshot(text, previousSnapshot);
+    return plugin.createSnapshot(text);
   }
 
   getLanguagePlugin(uri, languageId) {
@@ -464,7 +464,7 @@ class PocketPagesLanguageCore {
       previousText === currentText;
     const snapshot = previousText === currentText
       ? previousSourceScript.snapshot
-      : this.createSnapshot(currentText, previousSourceScript ? previousSourceScript.snapshot : null);
+      : this.createSnapshot(currentText);
     const shouldPrepareVirtualCode = options.prepareVirtualCode !== false;
     const sourceScript = this.setSourceScript(document.uri, snapshot, document.languageId, document.version, {
       updateGenerated: shouldPrepareVirtualCode && !canReuseGenerated,

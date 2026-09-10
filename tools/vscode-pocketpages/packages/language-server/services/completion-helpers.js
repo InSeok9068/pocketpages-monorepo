@@ -109,6 +109,9 @@ function shouldReuseLastCompletion(lastCompletion, request) {
   if (lastCompletion.uri !== request.uri || lastCompletion.version !== request.version) {
     return false;
   }
+  if (lastCompletion.service !== request.service || lastCompletion.projectVersion !== request.projectVersion) {
+    return false;
+  }
   if (request.triggerKind !== COMPLETION_TRIGGER_KIND.INCOMPLETE) {
     return false;
   }

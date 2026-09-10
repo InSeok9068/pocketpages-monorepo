@@ -62,7 +62,8 @@ function buildScriptServerMirrorText(documentText) {
     return "";
   }
 
-  const mirrored = Array.from(sourceText, (character) =>
+  // String offsets use UTF-16 code units, including both halves of an emoji.
+  const mirrored = sourceText.split("").map((character) =>
     character === "\n" || character === "\r" ? character : " "
   );
 

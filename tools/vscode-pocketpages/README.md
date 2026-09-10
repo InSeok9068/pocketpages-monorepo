@@ -4,7 +4,7 @@ PocketPages 모노레포 개발을 위한 VS Code 언어 확장입니다.
 
 `.ejs` 파일과 `pb_hooks/pages` 스크립트를 일반 HTML/JavaScript 파일로만 보지 않고, PocketPages의 SSR 라우팅, `_private` partial/module, PocketBase schema, route/include/resolve/asset 문자열 연결을 하나의 app root 문맥으로 분석합니다.
 
-이 문서는 현재 `tools/vscode-pocketpages` 코드와 `scripts/sanity-check.js`에서 검증되는 동작을 기준으로 합니다.
+이 문서는 현재 `tools/vscode-pocketpages` 코드와 `scripts/pocketpages.test.js`에서 검증되는 동작을 기준으로 합니다.
 
 ## 주요 기능
 
@@ -437,11 +437,13 @@ EJS code block 내부에 semantic token을 제공합니다.
 npm test
 ```
 
-이는 내부적으로 다음을 실행합니다.
+`scripts/pocketpages.test.js`에서 기존 회귀 테스트 5개와 extension-host 검증을 포함한 전체 sanity 검증을 순서대로 실행합니다. 기존 검증 본문과 fixture, 정리 코드는 유지합니다.
 
 ```bash
-npm run sanity-check
+node --expose-gc --test --test-concurrency=1 ./scripts/pocketpages.test.js
 ```
+
+회귀 테스트는 snapshot GC, emoji의 UTF-16 위치 보존, 실제 LSP 서버의 문서 간 자동완성 갱신·앱 격리·schema watcher 복구를 검증합니다.
 
 현재 sanity check가 검증하는 주요 축:
 

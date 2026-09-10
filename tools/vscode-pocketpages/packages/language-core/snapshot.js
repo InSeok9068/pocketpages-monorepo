@@ -60,10 +60,8 @@ function getChangeRange(oldText, newText) {
   };
 }
 
-function createScriptSnapshot(text, previousSnapshot = null) {
+function createScriptSnapshot(text) {
   const currentText = String(text || "");
-  const previousText = readSnapshotText(previousSnapshot);
-  const fallbackChangeRange = previousSnapshot ? getChangeRange(previousText, currentText) : undefined;
 
   const snapshot = {
     __pocketpagesText: currentText,
@@ -82,10 +80,7 @@ function createScriptSnapshot(text, previousSnapshot = null) {
         return createNoopChangeRange(currentText.length);
       }
 
-      if (oldSnapshot === previousSnapshot && fallbackChangeRange) {
-        return fallbackChangeRange;
-      }
-
+      // Compare on demand so a live snapshot never retains the document's history.
       const oldText = readSnapshotText(oldSnapshot);
       return getChangeRange(oldText, currentText);
     },

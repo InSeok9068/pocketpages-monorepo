@@ -249,11 +249,10 @@ function createEmbeddedCode({
   kind,
   languageId,
   text,
-  previous,
   mappings,
   metadata,
 }) {
-  const snapshot = createScriptSnapshot(text, previous ? previous.snapshot : null);
+  const snapshot = createScriptSnapshot(text);
   return {
     id,
     kind,
@@ -431,7 +430,6 @@ function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodes) {
         kind: "server-script",
         languageId: "typescript",
         text: block.content,
-        previous: previousEmbeddedCodeMap.get(id) || previousServerCode,
         mappings: createSegmentMappings({
           sourceBaseOffset: block.contentStart,
           generatedBaseOffset: 0,
@@ -537,7 +535,6 @@ function buildEmbeddedCodes(filePath, languageId, text, previousEmbeddedCodes) {
         kind: "template",
         languageId: "typescript",
         text: templateVirtualText,
-        previous: previousTemplateCode,
         mappings: templateMappings,
         metadata: {
           templateBlocks,
@@ -579,13 +576,12 @@ class PocketPagesVirtualCode {
   }
 
   update({ version, text, languageId }) {
-    const previousSnapshot = this.snapshot;
     const previousEmbeddedCodes = this.embeddedCodes;
 
     this.version = version;
     this.languageId = normalizeLanguageId(languageId || this.languageId, this.filePath);
     this.text = String(text || "");
-    this.snapshot = createScriptSnapshot(this.text, previousSnapshot);
+    this.snapshot = createScriptSnapshot(this.text);
     this.mappings = createIdentityMapping(this.text.length, ROOT_CODE_INFORMATION);
     this.updateEmbeddedCodes(previousEmbeddedCodes);
     return this;

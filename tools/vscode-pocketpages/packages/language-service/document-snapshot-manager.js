@@ -45,7 +45,7 @@ function createVersionedTextState(previousState, state) {
     ...state,
     text: currentText,
     version: previousState ? String(Number(previousState.version) + 1) : "1",
-    snapshot: createScriptSnapshot(currentText, previousState ? previousState.snapshot : null),
+    snapshot: createScriptSnapshot(currentText),
   };
 }
 
@@ -103,7 +103,7 @@ class DocumentSnapshotManager {
       lspVersion,
       contentVersion: sequence,
       snapshotId: `document:${sequence}`,
-      snapshot: createScriptSnapshot(currentText, previous ? previous.snapshot : null),
+      snapshot: createScriptSnapshot(currentText),
       createdAt: previous ? previous.createdAt : now,
       updatedAt: now,
       openedAt: options.opened === true ? now : previous ? previous.openedAt : 0,
