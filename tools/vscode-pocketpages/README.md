@@ -437,9 +437,13 @@ EJS code block 내부에 semantic token을 제공합니다.
 npm test
 ```
 
-`scripts/pocketpages.test.js`에서 기존 회귀 테스트 5개와 extension-host 검증을 포함한 전체 sanity 검증을 순서대로 실행합니다. 기존 검증 본문과 fixture, 정리 코드는 유지합니다.
+`scripts/pocketpages.test.js` 하나에서 기존 검증 조건과 fixture를 유지하며 다음 흐름을 실행합니다.
 
-계약, 문서 상태, snapshot, 경로 해석, extension-host의 15개 시나리오, 언어 서비스 통합 검증을 기능별 하위 테스트로 표시합니다. 공유 상태를 사용하는 검증은 순서를 유지하고, 실패하면 다음 단계로 진행하지 않습니다.
+- 독립 검증: snapshot·mirror, 자동완성·schema 복구, runtime 계약, 문서 상태·경로 분석
+- VS Code 연결: 시작·종료·재시작, 명령, 편집 이벤트 등 15개 시나리오
+- 언어 서비스: 기능·변경·복구를 검증하는 22개 시나리오 함수
+
+각 시나리오는 필요한 입력과 다음 단계에 전달할 결과를 명시합니다. 캐시·watcher처럼 공유 상태가 필요한 흐름은 같은 서비스와 fixture로 순차 실행하고, 실패하면 후속 단계를 중단한 뒤 기존 정리 코드를 실행합니다.
 
 ```bash
 node --expose-gc --test --test-concurrency=1 ./scripts/pocketpages.test.js
