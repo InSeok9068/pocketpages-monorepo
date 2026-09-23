@@ -1,4 +1,4 @@
-(() => {
+;(() => {
   const form = document.getElementById('home-filter-form')
   if (!form) return
 
