@@ -101,14 +101,21 @@ summary::-webkit-details-marker {
 
 .home-page {
   min-height: 100vh;
+}
+
+.home-page.has-bottom-nav {
   padding-bottom: var(--home-bottom-nav-height);
 }
 
 .home-app {
-  min-height: calc(100vh - var(--home-bottom-nav-height));
+  min-height: 100vh;
   margin: 0 auto;
   padding: 1rem 1rem 1.25rem;
   background: #f8faf9;
+}
+
+.home-page.has-bottom-nav .home-app {
+  min-height: calc(100vh - var(--home-bottom-nav-height));
 }
 
 .home-header {
@@ -856,11 +863,15 @@ summary::-webkit-details-marker {
 
 @media (min-width: 40rem) {
   .home-app {
-    min-height: calc(100vh - var(--home-bottom-nav-height) - 1rem);
+    min-height: calc(100vh - 1rem);
     margin-top: 1rem;
     border-radius: 1.75rem 1.75rem 0 0;
     padding: 1.5rem 1.5rem 2rem;
     box-shadow: 0 16px 50px rgb(36 58 49 / 10%);
+  }
+
+  .home-page.has-bottom-nav .home-app {
+    min-height: calc(100vh - var(--home-bottom-nav-height) - 1rem);
   }
 
   .optional-panel {

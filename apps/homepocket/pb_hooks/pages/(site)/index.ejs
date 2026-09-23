@@ -14,7 +14,7 @@
   meta('description', '생활 목록')
 </script>
 
-<div class="home-page">
+<div class="home-page<%= request.auth ? ' has-bottom-nav' : '' %>">
   <div class="home-app">
     <header class="home-header">
       <div>
