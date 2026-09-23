@@ -15,8 +15,8 @@ function readFilters(input) {
   const source = input || {}
   const requestedSection = String(source.section || '')
   const requestedStatus = String(source.status || '')
-  const section = SECTION_VALUES.find(value => value === requestedSection) || 'task'
-  const status = STATUS_VALUES.find(value => value === requestedStatus) || 'all'
+  const section = SECTION_VALUES.find((value) => value === requestedSection) || 'task'
+  const status = STATUS_VALUES.find((value) => value === requestedStatus) || 'all'
   let tag = String(source.tag || '')
 
   if (section === 'task' && ['none', 'weekly', 'monthly'].indexOf(tag) < 0) tag = ''
@@ -24,7 +24,9 @@ function readFilters(input) {
 
   return {
     section,
-    keyword: String(source.keyword || '').trim().slice(0, 100),
+    keyword: String(source.keyword || '')
+      .trim()
+      .slice(0, 100),
     status,
     tag,
   }
@@ -75,7 +77,8 @@ function listItems(userId, filters) {
     if (filters.status !== 'all' && card.status !== filters.status) continue
     if (filters.section === 'task' && filters.tag && card.repeatFrequency !== filters.tag) continue
     if (filters.section !== 'task' && filters.tag === 'untagged' && card.channel) continue
-    if (filters.section !== 'task' && filters.tag && filters.tag !== 'untagged' && card.channel !== filters.tag) continue
+    if (filters.section !== 'task' && filters.tag && filters.tag !== 'untagged' && card.channel !== filters.tag)
+      continue
 
     cards.push(card)
   }
@@ -94,7 +97,11 @@ function getEffectiveStatus(record, today) {
   const dueDate = String(record.get('nextDueDate') || '')
   const currentDate = today || dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
 
-  if (frequency !== 'none' && dueDate && (dateutil.isBeforeDay(dueDate, currentDate) || dateutil.isSameDay(dueDate, currentDate))) {
+  if (
+    frequency !== 'none'
+    && dueDate
+    && (dateutil.isBeforeDay(dueDate, currentDate) || dateutil.isSameDay(dueDate, currentDate))
+  ) {
     return 'open'
   }
 
@@ -112,7 +119,7 @@ function getEffectiveStatus(record, today) {
  */
 function nextDueDate(frequency, interval, weekdays, dayOfMonth, dueDate) {
   const today = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
-  const baseDate = dueDate && dateutil.isBeforeDay(dueDate, today) ? today : (dueDate || today)
+  const baseDate = dueDate && dateutil.isBeforeDay(dueDate, today) ? today : dueDate || today
   const repeatInterval = Math.max(1, Math.min(12, Number(interval) || 1))
 
   if (frequency === 'weekly') {
@@ -185,7 +192,16 @@ function toStringArray(value) {
   }
 
   const text = String(value || '').trim()
-  return text ? text.split(',').map(function (item) { return item.trim() }).filter(function (item) { return !!item }) : []
+  return text
+    ? text
+        .split(',')
+        .map(function (item) {
+          return item.trim()
+        })
+        .filter(function (item) {
+          return !!item
+        })
+    : []
 }
 
 /**

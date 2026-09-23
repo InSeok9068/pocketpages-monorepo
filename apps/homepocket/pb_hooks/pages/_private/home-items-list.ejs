@@ -1,4 +1,6 @@
-<section id="home-items" aria-live="polite">
+<section
+  id="home-items"
+  aria-live="polite">
   <% if (listMessage) { %>
   <p class="list-error"><%= listMessage %></p>
   <% } %>
@@ -6,7 +8,14 @@
   <% if (!itemCards.length) { %>
   <div class="empty-state">
     <div class="empty-state-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true">
         <path d="M8 6h13M8 12h13M8 18h13"></path>
         <path d="M3 6h.01M3 12h.01M3 18h.01"></path>
       </svg>
@@ -18,15 +27,44 @@
   <ul class="item-list">
     <% for (const item of itemCards) { %>
     <li class="item-row <%= item.status === 'done' ? 'is-done' : '' %>">
-      <form class="item-action" method="post" action="/xapi/items/state" hx-post="/xapi/items/state" hx-target="#home-items" hx-swap="outerHTML">
-        <input type="hidden" name="itemId" value="<%= item.id %>" />
-        <input type="hidden" name="action" value="<%= item.status === 'done' ? 'open' : 'done' %>" />
-        <input type="hidden" name="returnSection" value="<%= filters.section %>" />
-        <input type="hidden" name="returnKeyword" value="<%= filters.keyword %>" />
-        <input type="hidden" name="returnStatus" value="<%= filters.status %>" />
-        <input type="hidden" name="returnTag" value="<%= filters.tag %>" />
-        <button class="complete-button" type="submit" aria-label="<%= item.status === 'done' ? '할 일로 되돌리기' : '완료하기' %>">
-          <span class="complete-circle <%= item.status === 'done' ? 'is-complete' : '' %>"><%= item.status === 'done' ? '✓' : '' %></span>
+      <form
+        class="item-action"
+        method="post"
+        action="/xapi/items/state"
+        hx-post="/xapi/items/state"
+        hx-target="#home-items"
+        hx-swap="outerHTML">
+        <input
+          type="hidden"
+          name="itemId"
+          value="<%= item.id %>" />
+        <input
+          type="hidden"
+          name="action"
+          value="<%= item.status === 'done' ? 'open' : 'done' %>" />
+        <input
+          type="hidden"
+          name="returnSection"
+          value="<%= filters.section %>" />
+        <input
+          type="hidden"
+          name="returnKeyword"
+          value="<%= filters.keyword %>" />
+        <input
+          type="hidden"
+          name="returnStatus"
+          value="<%= filters.status %>" />
+        <input
+          type="hidden"
+          name="returnTag"
+          value="<%= filters.tag %>" />
+        <button
+          class="complete-button"
+          type="submit"
+          aria-label="<%= item.status === 'done' ? '할 일로 되돌리기' : '완료하기' %>">
+          <span class="complete-circle <%= item.status === 'done' ? 'is-complete' : '' %>">
+            <%= item.status === 'done' ? '✓' : '' %>
+          </span>
         </button>
       </form>
 
@@ -47,16 +85,48 @@
         <% } %>
       </div>
 
-      <form class="item-action" method="post" action="/xapi/items/delete" hx-post="/xapi/items/delete" hx-target="#home-items" hx-swap="outerHTML" hx-confirm="이 항목을 삭제할까요?">
-        <input type="hidden" name="itemId" value="<%= item.id %>" />
-        <input type="hidden" name="returnSection" value="<%= filters.section %>" />
-        <input type="hidden" name="returnKeyword" value="<%= filters.keyword %>" />
-        <input type="hidden" name="returnStatus" value="<%= filters.status %>" />
-        <input type="hidden" name="returnTag" value="<%= filters.tag %>" />
-        <button class="delete-button" type="submit" aria-label="삭제">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <form
+        class="item-action"
+        method="post"
+        action="/xapi/items/delete"
+        hx-post="/xapi/items/delete"
+        hx-target="#home-items"
+        hx-swap="outerHTML"
+        hx-confirm="이 항목을 삭제할까요?">
+        <input
+          type="hidden"
+          name="itemId"
+          value="<%= item.id %>" />
+        <input
+          type="hidden"
+          name="returnSection"
+          value="<%= filters.section %>" />
+        <input
+          type="hidden"
+          name="returnKeyword"
+          value="<%= filters.keyword %>" />
+        <input
+          type="hidden"
+          name="returnStatus"
+          value="<%= filters.status %>" />
+        <input
+          type="hidden"
+          name="returnTag"
+          value="<%= filters.tag %>" />
+        <button
+          class="delete-button"
+          type="submit"
+          aria-label="삭제">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true">
             <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6"></path>
-            </svg>
+          </svg>
         </button>
       </form>
     </li>

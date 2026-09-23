@@ -16,45 +16,62 @@
 
 <div class="auth-page">
   <section class="auth-card">
-  <a class="auth-brand" href="/">HOMEPOCKET</a>
-  <h1 class="auth-title">회원가입</h1>
-  <p class="auth-copy">나만의 살림 목록을 만들어 보세요.</p>
+    <a
+      class="auth-brand"
+      href="/">
+      HOMEPOCKET
+    </a>
+    <h1 class="auth-title">회원가입</h1>
+    <p class="auth-copy">나만의 살림 목록을 만들어 보세요.</p>
 
-  <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+    <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
 
-  <form class="auth-form" method="post" action="/xapi/auth/sign-up">
-    <label class="auth-label">
-      이메일
-      <input class="auth-input"
-        type="email"
-        name="email"
-        required
-        placeholder="me@example.com" />
-    </label>
+    <form
+      class="auth-form"
+      method="post"
+      action="/xapi/auth/sign-up">
+      <label class="auth-label">
+        이메일
+        <input
+          class="auth-input"
+          type="email"
+          name="email"
+          required
+          placeholder="me@example.com" />
+      </label>
 
-    <label class="auth-label">
-      비밀번호
-      <input class="auth-input"
-        type="password"
-        name="password"
-        required
-        minlength="8"
-        placeholder="8자 이상" />
-    </label>
+      <label class="auth-label">
+        비밀번호
+        <input
+          class="auth-input"
+          type="password"
+          name="password"
+          required
+          minlength="8"
+          placeholder="8자 이상" />
+      </label>
 
-    <label class="auth-label">
-      비밀번호 확인
-      <input class="auth-input"
-        type="password"
-        name="passwordConfirm"
-        required
-        minlength="8"
-        placeholder="비밀번호 확인" />
-    </label>
+      <label class="auth-label">
+        비밀번호 확인
+        <input
+          class="auth-input"
+          type="password"
+          name="passwordConfirm"
+          required
+          minlength="8"
+          placeholder="비밀번호 확인" />
+      </label>
 
-    <button class="primary-button" type="submit">가입</button>
-  </form>
+      <button
+        class="primary-button"
+        type="submit">
+        가입
+      </button>
+    </form>
 
-  <p class="auth-footer">이미 계정이 있나요? <a href="/sign-in">로그인</a></p>
+    <p class="auth-footer">
+      이미 계정이 있나요?
+      <a href="/sign-in">로그인</a>
+    </p>
   </section>
 </div>

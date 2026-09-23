@@ -30,11 +30,17 @@
   }
 
   if (!isHtmx) {
-    const target = '/?section=' + encodeURIComponent(filters.section)
+    const target =
+      '/?section='
+      + encodeURIComponent(filters.section)
       + (filters.keyword ? '&keyword=' + encodeURIComponent(filters.keyword) : '')
       + (filters.status !== 'all' ? '&status=' + encodeURIComponent(filters.status) : '')
       + (filters.tag ? '&tag=' + encodeURIComponent(filters.tag) : '')
-    dbg('homepocket/xapi/items/delete:redirect', { status: 303, redirectTo: target, message: listMessage || '항목을 삭제했습니다.' })
+    dbg('homepocket/xapi/items/delete:redirect', {
+      status: 303,
+      redirectTo: target,
+      message: listMessage || '항목을 삭제했습니다.',
+    })
     redirect(target, { status: 303, message: listMessage || '항목을 삭제했습니다.' })
     return
   }

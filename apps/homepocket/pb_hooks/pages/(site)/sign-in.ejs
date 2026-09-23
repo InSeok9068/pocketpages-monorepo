@@ -16,34 +16,50 @@
 
 <div class="auth-page">
   <section class="auth-card">
-  <a class="auth-brand" href="/">HOMEPOCKET</a>
-  <h1 class="auth-title">로그인</h1>
-  <p class="auth-copy">내 생활 목록을 이어서 정리해요.</p>
+    <a
+      class="auth-brand"
+      href="/">
+      HOMEPOCKET
+    </a>
+    <h1 class="auth-title">로그인</h1>
+    <p class="auth-copy">내 생활 목록을 이어서 정리해요.</p>
 
-  <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+    <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
 
-  <form class="auth-form" method="post" action="/xapi/auth/sign-in">
-    <label class="auth-label">
-      이메일
-      <input class="auth-input"
-        type="email"
-        name="email"
-        required
-        placeholder="me@example.com" />
-    </label>
+    <form
+      class="auth-form"
+      method="post"
+      action="/xapi/auth/sign-in">
+      <label class="auth-label">
+        이메일
+        <input
+          class="auth-input"
+          type="email"
+          name="email"
+          required
+          placeholder="me@example.com" />
+      </label>
 
-    <label class="auth-label">
-      비밀번호
-      <input class="auth-input"
-        type="password"
-        name="password"
-        required
-        placeholder="비밀번호" />
-    </label>
+      <label class="auth-label">
+        비밀번호
+        <input
+          class="auth-input"
+          type="password"
+          name="password"
+          required
+          placeholder="비밀번호" />
+      </label>
 
-    <button class="primary-button" type="submit">로그인</button>
-  </form>
+      <button
+        class="primary-button"
+        type="submit">
+        로그인
+      </button>
+    </form>
 
-  <p class="auth-footer">처음 오셨나요? <a href="/sign-up">회원가입</a></p>
+    <p class="auth-footer">
+      처음 오셨나요?
+      <a href="/sign-up">회원가입</a>
+    </p>
   </section>
 </div>

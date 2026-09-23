@@ -4,7 +4,7 @@
 
 :root {
   color-scheme: light;
-  font-family: Inter, "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-family: Inter, 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   background: #e9eeec;
   color: #252a28;
 }
@@ -166,7 +166,9 @@ summary::-webkit-details-marker {
   background: #edf1ef;
   color: #58605d;
   text-decoration: none;
-  transition: background 140ms ease, transform 140ms ease;
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
 }
 
 .icon-button:hover {
@@ -228,7 +230,9 @@ summary::-webkit-details-marker {
   font-size: 0.875rem;
   font-weight: 750;
   text-decoration: none;
-  transition: background 140ms ease, transform 140ms ease;
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
 }
 
 .primary-link {
@@ -274,7 +278,10 @@ summary::-webkit-details-marker {
   border-radius: 1rem;
   background: #f7f9f8;
   padding: 0.25rem 0.25rem 0.25rem 0.875rem;
-  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
 }
 
 .capture-row:focus-within {
@@ -312,7 +319,9 @@ summary::-webkit-details-marker {
   border-radius: 0.75rem;
   background: #087a59;
   color: #fff;
-  transition: background 140ms ease, transform 140ms ease;
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
 }
 
 .add-button:hover {
@@ -420,7 +429,10 @@ summary::-webkit-details-marker {
   border-radius: 1rem;
   background: #e9eeeb;
   padding: 0 0.875rem;
-  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
 }
 
 .search-shell:focus-within {
@@ -593,7 +605,9 @@ summary::-webkit-details-marker {
   height: 2.75rem;
   place-items: center;
   border-radius: 0.875rem;
-  transition: background 140ms ease, color 140ms ease;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
 }
 
 .complete-button:hover {

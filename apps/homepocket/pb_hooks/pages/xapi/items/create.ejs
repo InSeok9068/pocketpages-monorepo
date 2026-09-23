@@ -7,7 +7,10 @@
   const section = String(input.section || '')
   const title = String(input.title || '').trim()
   const frequencyValues = ['none', 'weekly', 'monthly']
-  const repeatFrequency = frequencyValues.indexOf(String(input.repeatFrequency || 'none')) >= 0 ? String(input.repeatFrequency || 'none') : 'none'
+  const repeatFrequency =
+    frequencyValues.indexOf(String(input.repeatFrequency || 'none')) >= 0
+      ? String(input.repeatFrequency || 'none')
+      : 'none'
   const repeatWeekdays = homeItemsData.readWeekdays(input.repeatWeekdays)
   const intervalField = repeatFrequency === 'monthly' ? input.repeatMonthlyInterval : input.repeatWeeklyInterval
   const interval = Math.max(1, Math.min(12, parseInt(String(intervalField || '1'), 10) || 1))
@@ -32,15 +35,18 @@
     if (['task', 'purchase', 'grocery'].indexOf(section) < 0) throw new Error('항목 구분을 확인해 주세요.')
     if (!title) throw new Error('항목 이름을 입력해 주세요.')
     if (title.length > 200) throw new Error('항목 이름은 200자 이내로 입력해 주세요.')
-    if (enteredDate && (!/^\d{4}-\d{2}-\d{2}$/.test(enteredDate) || !dateutil.toDateOnlyIso(enteredDate))) throw new Error('예정일을 확인해 주세요.')
-    if (section === 'task' && repeatFrequency === 'weekly' && !repeatWeekdays.length) throw new Error('매주 반복할 요일을 선택해 주세요.')
+    if (enteredDate && (!/^\d{4}-\d{2}-\d{2}$/.test(enteredDate) || !dateutil.toDateOnlyIso(enteredDate)))
+      throw new Error('예정일을 확인해 주세요.')
+    if (section === 'task' && repeatFrequency === 'weekly' && !repeatWeekdays.length)
+      throw new Error('매주 반복할 요일을 선택해 주세요.')
 
     const channelValue = section === 'task' ? '' : String(input.channel || '')
     if (channelValue && ['offline', 'online'].indexOf(channelValue) < 0) throw new Error('구매 태그를 확인해 주세요.')
     let repeatDayOfMonth = parseInt(String(input.repeatDayOfMonth || ''), 10) || 0
     if (section === 'task' && repeatFrequency === 'monthly') {
       if (!repeatDayOfMonth) repeatDayOfMonth = Number(dueDateText.slice(8, 10))
-      if (repeatDayOfMonth < 1 || repeatDayOfMonth > 31) throw new Error('매월 반복 날짜는 1일부터 31일 사이로 입력해 주세요.')
+      if (repeatDayOfMonth < 1 || repeatDayOfMonth > 31)
+        throw new Error('매월 반복 날짜는 1일부터 31일 사이로 입력해 주세요.')
     }
 
     const collection = $app.findCollectionByNameOrId('homeItems')
@@ -54,9 +60,17 @@
     record.set('repeatInterval', section === 'task' && repeatFrequency !== 'none' ? interval : 1)
     record.set('repeatWeekdays', section === 'task' && repeatFrequency === 'weekly' ? repeatWeekdays : [])
     record.set('repeatDayOfMonth', section === 'task' && repeatFrequency === 'monthly' ? repeatDayOfMonth : 0)
-    record.set('nextDueDate', section === 'task' && repeatFrequency !== 'none' ? dateutil.toDateOnlyIso(dueDateText) : '')
+    record.set(
+      'nextDueDate',
+      section === 'task' && repeatFrequency !== 'none' ? dateutil.toDateOnlyIso(dueDateText) : ''
+    )
     record.set('lastCompletedAt', '')
-    record.set('note', String(input.note || '').trim().slice(0, 2000))
+    record.set(
+      'note',
+      String(input.note || '')
+        .trim()
+        .slice(0, 2000)
+    )
     $app.save(record)
     response.header('HX-Trigger', 'home-item-created')
 
@@ -67,11 +81,17 @@
   }
 
   if (!isHtmx) {
-    const target = '/?section=' + encodeURIComponent(filters.section)
+    const target =
+      '/?section='
+      + encodeURIComponent(filters.section)
       + (filters.keyword ? '&keyword=' + encodeURIComponent(filters.keyword) : '')
       + (filters.status !== 'all' ? '&status=' + encodeURIComponent(filters.status) : '')
       + (filters.tag ? '&tag=' + encodeURIComponent(filters.tag) : '')
-    dbg('homepocket/xapi/items/create:redirect', { status: 303, redirectTo: target, message: listMessage || '항목을 추가했습니다.' })
+    dbg('homepocket/xapi/items/create:redirect', {
+      status: 303,
+      redirectTo: target,
+      message: listMessage || '항목을 추가했습니다.',
+    })
     redirect(target, { status: 303, message: listMessage || '항목을 추가했습니다.' })
     return
   }
