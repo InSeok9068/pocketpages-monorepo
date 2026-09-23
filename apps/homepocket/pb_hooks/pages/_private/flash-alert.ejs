@@ -1,0 +1,6 @@
+<%
+  const displayMessage = typeof flashMessage === 'undefined' || flashMessage === null ? '' : String(flashMessage).trim()
+%>
+<% if (displayMessage) { %>
+<div><%= displayMessage %></div>
+<% } %>
