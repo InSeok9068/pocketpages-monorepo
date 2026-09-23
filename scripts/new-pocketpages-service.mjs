@@ -14,13 +14,12 @@ const appsDir = path.join(rootDir, 'apps')
 const downloadDir = path.join(rootDir, '.download')
 const vendorDir = path.join(scriptDir, 'vendor')
 
-const featureIds = ['htmx', 'alpine', 'unocss', 'datastar', 'realtime']
-const defaultFeatures = ['htmx', 'alpine', 'unocss']
+const featureIds = ['htmx', 'alpine', 'datastar', 'realtime']
+const defaultFeatures = ['htmx', 'alpine']
 const vendorByFeature = {
   htmx: ['htmx-2.0.10.min.js'],
   alpine: ['alpine-3.15.12-cdn.min.js'],
   datastar: ['datastar.min.js'],
-  unocss: ['preset-wind4-66.7.5.global.js', 'preset-icons-66.7.5.global.js', 'iconify-lucide-1.2.123.icons.json', 'unocss-core-66.7.5.global.js'],
 }
 const vendorByFeaturePair = {
   'htmx+realtime': ['pocketbase-htmx-ext-sse-0.0.3.js'],
@@ -33,7 +32,7 @@ function printHelp() {
 Options:
   --service <name>              Service name under apps/
   --auth / --no-auth            Include or skip password auth scaffold
-  --features <list>             Comma list: htmx,alpine,unocss,datastar,realtime,none
+  --features <list>             Comma list: htmx,alpine,datastar,realtime,none
   --install / --skip-install    Run or skip npm install in the new service
   --copy-binaries               Copy pbw/pocketbase binaries from an existing service when found
   --skip-binaries               Skip binary copy
@@ -42,7 +41,7 @@ Options:
 
 Examples:
   ./task.sh new
-  ./task.sh new my-service --auth --features htmx,alpine,unocss
+  ./task.sh new my-service --auth --features htmx,alpine
   ./task.sh new my-service --no-auth --features htmx --skip-install
 `)
 }
@@ -235,7 +234,6 @@ async function completeOptions(options) {
         choices: [
           { name: 'HTMX', value: 'htmx', checked: true },
           { name: 'Alpine.js', value: 'alpine', checked: true },
-          { name: 'UnoCSS', value: 'unocss', checked: true },
           { name: 'Datastar', value: 'datastar', checked: false },
           { name: 'Realtime', value: 'realtime', checked: false },
         ],
@@ -470,7 +468,6 @@ module.exports = function (api, next) {
 }
 
 function buildLayoutEjs(options) {
-  const isUno = hasFeature(options, 'unocss')
   const isDatastar = hasFeature(options, 'datastar')
   const scripts = []
   if (hasFeature(options, 'htmx')) scripts.push('<script src="<%= asset(\'/assets/vendor/htmx-2.0.10.min.js\') %>"></script>')
@@ -479,12 +476,9 @@ function buildLayoutEjs(options) {
   }
   if (hasFeature(options, 'alpine')) scripts.push('<script defer src="<%= asset(\'/assets/vendor/alpine-3.15.12-cdn.min.js\') %>"></script>')
 
-  const unoHead = isUno ? "    <%- include('unocss-head.ejs', { isProduction }) %>\n" : ''
   const datastarHead = isDatastar ? `    <%- datastar.scripts(${hasFeature(options, 'realtime') ? '{ realtime: true }' : ''}) %>\n` : ''
-  const bodyAttrs = isUno ? '\n    un-cloak' : ''
 
-  return `<% const isProduction = String(env('APP_ENV') || 'development').trim() === 'production' %>
-<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
@@ -498,10 +492,10 @@ function buildLayoutEjs(options) {
     <link
       rel="stylesheet"
       href="<%= asset('/assets/style.css') %>" />
-${unoHead}${datastarHead}${scripts.map((script) => `    ${script}`).join('\n')}${scripts.length ? '\n' : ''}    <%- slots.head %>
+${datastarHead}${scripts.map((script) => `    ${script}`).join('\n')}${scripts.length ? '\n' : ''}    <%- slots.head %>
   </head>
 
-  <body${bodyAttrs}>
+  <body>
     <main><%- slots.body || slot %></main>
   </body>
 </html>
@@ -540,51 +534,6 @@ function buildStyleCss() {
   return `@view-transition {
   navigation: auto;
 }
-`
-}
-
-function buildUnoHeadEjs() {
-  return `<% if (isProduction) { %>
-<link
-  rel="stylesheet"
-  href="<%= asset('/assets/uno.min.css') %>" />
-<% } else { %>
-<style>
-  [un-cloak] {
-    display: none !important;
-  }
-</style>
-<script src="<%= asset('/assets/vendor/preset-wind4-66.7.5.global.js') %>"></script>
-<script src="<%= asset('/assets/vendor/preset-icons-66.7.5.global.js') %>"></script>
-<script>
-  let lucideIcons
-
-  window.__unocss = {
-    presets: [
-      () =>
-        window.__unocss_runtime.presets.presetWind4({
-          preflights: {
-            reset: false,
-          },
-        }),
-      () =>
-        window.__unocss_runtime.presets.presetIcons({
-          collections: {
-            lucide: () => {
-              lucideIcons = lucideIcons || fetch('<%= asset('/assets/vendor/iconify-lucide-1.2.123.icons.json') %>').then((response) => response.json())
-
-              return lucideIcons
-            },
-          },
-        }),
-    ],
-    ready: () => {
-      document.body.removeAttribute('un-cloak')
-    },
-  }
-</script>
-<script src="<%= asset('/assets/vendor/unocss-core-66.7.5.global.js') %>"></script>
-<% } %>
 `
 }
 
@@ -800,24 +749,6 @@ export {}
 
 function buildDockerfile(options) {
   const service = options.service
-  const cssStage = hasFeature(options, 'unocss')
-    ? `FROM node:24-bookworm-slim AS css
-
-WORKDIR /app
-
-COPY package*.json ./
-COPY packages /app/packages
-
-RUN npm ci --no-audit --no-fund
-
-COPY task.sh ./
-COPY unocss.config.js ./
-COPY apps/${service}/pb_hooks ./apps/${service}/pb_hooks
-
-RUN bash ./task.sh css ${service}`
-    : ''
-  const cssSection = cssStage ? `\n\n${cssStage}\n\n\n` : '\n\n'
-  const cssCopy = hasFeature(options, 'unocss') ? `COPY --from=css /app/apps/${service}/pb_hooks/pages/assets/uno.min.css ./pb_hooks/pages/assets/uno.min.css\n` : ''
 
   return `# syntax=docker/dockerfile:1
 
@@ -835,7 +766,8 @@ RUN cd /app/packages/utils \\
 
 RUN npm ci --no-audit --no-fund \\
     && npm prune --omit=dev --no-audit --no-fund
-${cssSection}FROM alpine:3.24 AS pocketbase
+
+FROM alpine:3.24 AS pocketbase
 
 ARG TARGETARCH
 ARG PB_VERSION
@@ -866,7 +798,7 @@ RUN apk add --no-cache ca-certificates
 COPY apps/${service}/. .
 COPY --from=deps /app/packages /app/packages
 COPY --from=deps /app/apps/${service}/node_modules ./node_modules
-${cssCopy}COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
+COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
 
 RUN mkdir -p /opt/defaults/pb_hooks \\
   && if [ -d "\${CODE_ROOT}/pb_hooks" ]; then cp -R "\${CODE_ROOT}/pb_hooks/." /opt/defaults/pb_hooks/; fi \\
@@ -1258,10 +1190,6 @@ function buildPlan(options) {
     ['pb_hooks/pages/_private/flash-alert.ejs', buildFlashAlertEjs()],
     ['__tests__/root-route.test.mjs', buildRootTest(options)],
   ]
-
-  if (hasFeature(options, 'unocss')) {
-    files.push(['pb_hooks/pages/_private/unocss-head.ejs', buildUnoHeadEjs()])
-  }
 
   if (options.auth) {
     files.push(['pb_hooks/pages/(site)/sign-in.ejs', buildSignInPage(options)])
