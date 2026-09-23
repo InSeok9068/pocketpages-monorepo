@@ -9,7 +9,7 @@
 | 백엔드              | PocketPages (PB)          |
 | 프론트엔드          | HTMX, Alpine.js, Datastar |
 | 템플릿/UI           | EJS                       |
-| 스타일              | CSS                       |
+| 스타일              | UnoCSS (Tailwind)         |
 | 상태관리            | PB Native Context         |
 | 라우팅              | 파일 시스템 (Auto)        |
 | DB                  | SQLite (PB)               |

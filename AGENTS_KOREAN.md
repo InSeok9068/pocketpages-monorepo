@@ -14,7 +14,7 @@
 
 ## 1. 스택과 구조
 
-- 스택: PocketBase (JSVM), PocketPages (SSR, file routing), EJS, HTMX, Alpine.js, CSS
+- 스택: PocketBase (JSVM), PocketPages (SSR, file routing), EJS, HTMX, Alpine.js, UnoCSS presetWind4 (Tailwind CSS v4 호환 유틸리티)
 - 서비스 루트: `apps/<service>/*`
 - `pb_hooks/pages` = 라우팅 루트
 - `apps/<service>/pb_hooks/pages/+config.js` = 서비스 plugin/config entry
@@ -146,10 +146,8 @@
 - toggle, modal, tab, 짧은 local UI state에 사용한다
 - Datastar는 server-driven patch나 realtime state가 복잡도를 명확히 줄이는 page에서만 opt-in으로 사용한다
 - 한 page에서 같은 UI state를 Alpine과 Datastar가 함께 소유하지 않는다
-- class 이름은 UI 역할이 드러나게 짓고, 재사용되는 컴포넌트는 BEM 형식을 우선한다
-- 반복해서 사용하는 색상, 간격 등의 값은 CSS 변수로 관리한다
-- 아이콘은 Lucide를 사용하고 `_private/icons/<name>.ejs` partial로 관리한다
-- 아이콘 partial에는 SVG 마크업만 두고, 크기와 색상은 사용하는 쪽의 class와 CSS로 지정한다
+- UnoCSS Wind4 preflight reset은 비활성화한다. `tailwindcss`는 앱 CSS runtime이 아니라 editor/formatting 도구로만 사용한다
+- UnoCSS class는 스캔되는 파일 안에 완성된 문자열로 둔다
 
 ---
 
