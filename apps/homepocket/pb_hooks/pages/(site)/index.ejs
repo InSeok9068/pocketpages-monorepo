@@ -18,7 +18,6 @@
   <div class="home-app">
     <header class="home-header">
       <div>
-        <p class="home-brand-kicker">HOMEPOCKET</p>
         <div class="home-title-row">
           <h1 class="home-title"><%= sectionTitle %></h1>
           <% if (request.auth) { %>
@@ -99,7 +98,6 @@
     </section>
     <% } else { %>
     <section class="capture-card">
-      <p class="section-label">빠르게 추가</p>
       <form
         id="home-item-form"
         class="item-form"
@@ -163,7 +161,8 @@
         <% if (filters.section === 'task') { %>
         <details
           class="optional-details"
-          x-data="{ frequency: 'none' }">
+          x-data="{ frequency: 'none' }"
+          x-on:home-item-created.window="frequency = 'none'">
           <summary class="optional-summary">
             <svg
               class="chevron-icon"
@@ -178,17 +177,39 @@
             <span class="muted">(선택)</span>
           </summary>
           <div class="optional-panel">
-            <label class="field-label">
-              반복 주기
-              <select
-                class="field-control"
-                name="repeatFrequency"
-                x-model="frequency">
-                <option value="none">반복 안 함</option>
-                <option value="weekly">매주</option>
-                <option value="monthly">매월</option>
-              </select>
-            </label>
+            <fieldset class="choice-field">
+              <legend class="field-caption">반복 주기</legend>
+              <div class="choice-options">
+                <label class="choice-option">
+                  <input
+                    class="choice-input visually-hidden"
+                    type="radio"
+                    name="repeatFrequency"
+                    value="none"
+                    x-model="frequency"
+                    checked />
+                  <span class="choice-button">안 함</span>
+                </label>
+                <label class="choice-option">
+                  <input
+                    class="choice-input visually-hidden"
+                    type="radio"
+                    name="repeatFrequency"
+                    value="weekly"
+                    x-model="frequency" />
+                  <span class="choice-button">매주</span>
+                </label>
+                <label class="choice-option">
+                  <input
+                    class="choice-input visually-hidden"
+                    type="radio"
+                    name="repeatFrequency"
+                    value="monthly"
+                    x-model="frequency" />
+                  <span class="choice-button">매월</span>
+                </label>
+              </div>
+            </fieldset>
             <label class="field-label">
               첫 예정일
               <input
@@ -252,21 +273,34 @@
                   일
                 </label>
               </div>
-              <label class="field-label compact-field">
-                반복 간격
-                <select
-                  class="field-control"
-                  name="repeatWeeklyInterval">
-                  <option value="1">매주</option>
-                  <option value="2">2주마다</option>
-                </select>
-              </label>
+              <fieldset class="choice-field compact-field">
+                <legend class="field-caption">반복 간격</legend>
+                <div class="choice-options">
+                  <label class="choice-option">
+                    <input
+                      class="choice-input visually-hidden"
+                      type="radio"
+                      name="repeatWeeklyInterval"
+                      value="1"
+                      checked />
+                    <span class="choice-button">매주</span>
+                  </label>
+                  <label class="choice-option">
+                    <input
+                      class="choice-input visually-hidden"
+                      type="radio"
+                      name="repeatWeeklyInterval"
+                      value="2" />
+                    <span class="choice-button">2주마다</span>
+                  </label>
+                </div>
+              </fieldset>
             </div>
             <div
               class="wide-field"
               x-show="frequency === 'monthly'"
               x-cloak>
-              <label class="field-label compact-field">
+              <label class="field-label">
                 매월 며칠
                 <input
                   class="field-control"
@@ -276,15 +310,28 @@
                   max="31"
                   placeholder="예: 1일" />
               </label>
-              <label class="field-label compact-field">
-                반복 간격
-                <select
-                  class="field-control"
-                  name="repeatMonthlyInterval">
-                  <option value="1">매월</option>
-                  <option value="2">2개월마다</option>
-                </select>
-              </label>
+              <fieldset class="choice-field compact-field">
+                <legend class="field-caption">반복 간격</legend>
+                <div class="choice-options">
+                  <label class="choice-option">
+                    <input
+                      class="choice-input visually-hidden"
+                      type="radio"
+                      name="repeatMonthlyInterval"
+                      value="1"
+                      checked />
+                    <span class="choice-button">매월</span>
+                  </label>
+                  <label class="choice-option">
+                    <input
+                      class="choice-input visually-hidden"
+                      type="radio"
+                      name="repeatMonthlyInterval"
+                      value="2" />
+                    <span class="choice-button">2개월마다</span>
+                  </label>
+                </div>
+              </fieldset>
             </div>
             <label class="field-label wide-field">
               메모 (선택)
@@ -312,16 +359,36 @@
             <span class="muted">(선택)</span>
           </summary>
           <div class="optional-panel">
-            <label class="field-label">
-              구매 방식
-              <select
-                class="field-control"
-                name="channel">
-                <option value="">태그 없음</option>
-                <option value="offline">오프라인</option>
-                <option value="online">온라인</option>
-              </select>
-            </label>
+            <fieldset class="choice-field">
+              <legend class="field-caption">구매 태그</legend>
+              <div class="choice-options">
+                <label class="choice-option">
+                  <input
+                    class="choice-input visually-hidden"
+                    type="radio"
+                    name="channel"
+                    value=""
+                    checked />
+                  <span class="choice-button">없음</span>
+                </label>
+                <label class="choice-option">
+                  <input
+                    class="choice-input visually-hidden"
+                    type="radio"
+                    name="channel"
+                    value="offline" />
+                  <span class="choice-button">오프라인</span>
+                </label>
+                <label class="choice-option">
+                  <input
+                    class="choice-input visually-hidden"
+                    type="radio"
+                    name="channel"
+                    value="online" />
+                  <span class="choice-button">온라인</span>
+                </label>
+              </div>
+            </fieldset>
             <label class="field-label">
               메모 (선택)
               <input
@@ -344,55 +411,11 @@
         hx-get="/xapi/items/list"
         hx-target="#home-items"
         hx-swap="outerHTML"
-        hx-trigger="submit, change, keyup changed delay:350ms from:input[name=keyword]"
-        x-data="{ hasKeyword: <%= filters.keyword ? 'true' : 'false' %> }">
+        hx-trigger="submit, change">
         <input
           type="hidden"
           name="section"
           value="<%= filters.section %>" />
-        <label class="search-shell">
-          <svg
-            class="search-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            aria-hidden="true">
-            <circle
-              cx="11"
-              cy="11"
-              r="7"></circle>
-            <path d="m20 20-3.5-3.5"></path>
-          </svg>
-          <span class="visually-hidden">검색</span>
-          <input
-            class="search-input"
-            type="search"
-            name="keyword"
-            value="<%= filters.keyword %>"
-            placeholder="목록에서 검색"
-            autocomplete="off"
-            x-ref="search"
-            x-on:input="hasKeyword = $event.target.value.length > 0" />
-          <button
-            class="clear-button"
-            type="button"
-            aria-label="검색어 지우기"
-            x-cloak
-            x-show="hasKeyword"
-            x-on:click="$refs.search.value = ''; hasKeyword = false; $refs.search.dispatchEvent(new Event('input', { bubbles: true })); $refs.search.focus()">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              aria-hidden="true">
-              <path d="m7 7 10 10M17 7 7 17"></path>
-            </svg>
-          </button>
-        </label>
         <div class="filter-row">
           <label class="filter-pill">
             <span class="visually-hidden">상태</span>
@@ -551,4 +574,7 @@
     </a>
   </div>
 </nav>
+<script
+  defer
+  src="<%= asset('/assets/home-filters.js') %>"></script>
 <% } %>
