@@ -14,26 +14,27 @@
   }
 </script>
 
-<section>
-  <h1>회원가입</h1>
+<div class="auth-page">
+  <section class="auth-card">
+  <a class="auth-brand" href="/">HOMEPOCKET</a>
+  <h1 class="auth-title">회원가입</h1>
+  <p class="auth-copy">나만의 살림 목록을 만들어 보세요.</p>
 
   <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
 
-  <form
-    method="post"
-    action="/xapi/auth/sign-up">
-    <label>
+  <form class="auth-form" method="post" action="/xapi/auth/sign-up">
+    <label class="auth-label">
       이메일
-      <input
+      <input class="auth-input"
         type="email"
         name="email"
         required
         placeholder="me@example.com" />
     </label>
 
-    <label>
+    <label class="auth-label">
       비밀번호
-      <input
+      <input class="auth-input"
         type="password"
         name="password"
         required
@@ -41,9 +42,9 @@
         placeholder="8자 이상" />
     </label>
 
-    <label>
+    <label class="auth-label">
       비밀번호 확인
-      <input
+      <input class="auth-input"
         type="password"
         name="passwordConfirm"
         required
@@ -51,8 +52,9 @@
         placeholder="비밀번호 확인" />
     </label>
 
-    <button type="submit">가입</button>
+    <button class="primary-button" type="submit">가입</button>
   </form>
 
-  <a href="/sign-in">로그인</a>
-</section>
+  <p class="auth-footer">이미 계정이 있나요? <a href="/sign-in">로그인</a></p>
+  </section>
+</div>

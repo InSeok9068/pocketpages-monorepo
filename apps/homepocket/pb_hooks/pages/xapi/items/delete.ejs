@@ -1,0 +1,44 @@
+<script server>
+  const homeItemsData = resolve('home-items-data')
+  const input = body() || {}
+  const isHtmx = String(request.header('HX-Request') || '').toLowerCase() === 'true'
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const itemId = String(input.itemId || '').trim()
+  let returnSection = String(input.returnSection || 'task')
+  if (['task', 'purchase', 'grocery'].indexOf(returnSection) < 0) returnSection = 'task'
+  const filters = homeItemsData.readFilters({
+    section: returnSection,
+    keyword: input.returnKeyword,
+    status: input.returnStatus,
+    tag: input.returnTag,
+  })
+  let listMessage = ''
+
+  dbg('homepocket/xapi/items/delete:start', { userId, itemId })
+
+  try {
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!itemId) throw new Error('항목을 찾을 수 없습니다.')
+
+    const item = $app.findFirstRecordByFilter('homeItems', 'id = {:itemId} && user = {:userId}', { itemId, userId })
+    $app.delete(item)
+    info('homepocket/xapi/items/delete:success', { userId, itemId })
+  } catch (exception) {
+    listMessage = String(exception.message || exception)
+    error('homepocket/xapi/items/delete:failed', { userId, itemId, error: listMessage })
+  }
+
+  if (!isHtmx) {
+    const target = '/?section=' + encodeURIComponent(filters.section)
+      + (filters.keyword ? '&keyword=' + encodeURIComponent(filters.keyword) : '')
+      + (filters.status !== 'all' ? '&status=' + encodeURIComponent(filters.status) : '')
+      + (filters.tag ? '&tag=' + encodeURIComponent(filters.tag) : '')
+    dbg('homepocket/xapi/items/delete:redirect', { status: 303, redirectTo: target, message: listMessage || '항목을 삭제했습니다.' })
+    redirect(target, { status: 303, message: listMessage || '항목을 삭제했습니다.' })
+    return
+  }
+
+  const itemCards = userId ? homeItemsData.listItems(userId, filters) : []
+</script>
+<%- include('home-items-list.ejs', { itemCards, filters, listMessage }) %>

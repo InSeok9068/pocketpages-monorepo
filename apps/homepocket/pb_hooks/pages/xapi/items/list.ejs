@@ -1,0 +1,9 @@
+<script server>
+  const homeItemsData = resolve('home-items-data')
+  const filters = homeItemsData.readFilters(request.url.query || {})
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const itemCards = userId ? homeItemsData.listItems(userId, filters) : []
+
+  dbg('homepocket/xapi/items/list', { userId, section: filters.section, status: filters.status })
+</script>
+<%- include('home-items-list.ejs', { itemCards, filters, listMessage: '' }) %>

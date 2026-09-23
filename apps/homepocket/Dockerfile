@@ -15,23 +15,6 @@ RUN cd /app/packages/utils \
 RUN npm ci --no-audit --no-fund \
     && npm prune --omit=dev --no-audit --no-fund
 
-
-FROM node:24-bookworm-slim AS css
-
-WORKDIR /app
-
-COPY package*.json ./
-COPY packages /app/packages
-
-RUN npm ci --no-audit --no-fund
-
-COPY task.sh ./
-COPY unocss.config.js ./
-COPY apps/homepocket/pb_hooks ./apps/homepocket/pb_hooks
-
-RUN bash ./task.sh css homepocket
-
-
 FROM alpine:3.24 AS pocketbase
 
 ARG TARGETARCH
@@ -63,7 +46,6 @@ RUN apk add --no-cache ca-certificates
 COPY apps/homepocket/. .
 COPY --from=deps /app/packages /app/packages
 COPY --from=deps /app/apps/homepocket/node_modules ./node_modules
-COPY --from=css /app/apps/homepocket/pb_hooks/pages/assets/uno.min.css ./pb_hooks/pages/assets/uno.min.css
 COPY --from=pocketbase /out/pocketbase /usr/local/bin/pocketbase
 
 RUN mkdir -p /opt/defaults/pb_hooks \

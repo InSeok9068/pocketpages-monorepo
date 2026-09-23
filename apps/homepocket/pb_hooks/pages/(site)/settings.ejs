@@ -1,0 +1,35 @@
+<script server>
+  meta('title', '설정')
+  meta('description', '계정 설정')
+
+  if (!request.auth) {
+    dbg('homepocket/settings:redirect', {
+      status: 303,
+      redirectTo: '/sign-in',
+    })
+    redirect('/sign-in', {
+      status: 303,
+    })
+    return
+  }
+
+  const email = String(request.auth.get('email') || '')
+</script>
+
+<div class="settings-page">
+  <div class="settings-content">
+    <header class="settings-header">
+      <a class="icon-button" href="/" aria-label="목록으로 돌아가기">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m15 18-6-6 6-6"></path>
+        </svg>
+      </a>
+      <h1>설정</h1>
+    </header>
+
+    <section class="settings-card">
+      <h2>계정</h2>
+      <p><%= email %></p>
+    </section>
+  </div>
+</div>

@@ -1,0 +1,74 @@
+<script server>
+  const homeItemsData = resolve('home-items-data')
+  const { dateutil } = require('@pocketpages/utils')
+  const input = body() || {}
+  const isHtmx = String(request.header('HX-Request') || '').toLowerCase() === 'true'
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const itemId = String(input.itemId || '').trim()
+  const action = String(input.action || '')
+  let returnSection = String(input.returnSection || 'task')
+  if (['task', 'purchase', 'grocery'].indexOf(returnSection) < 0) returnSection = 'task'
+  const filters = homeItemsData.readFilters({
+    section: returnSection,
+    keyword: input.returnKeyword,
+    status: input.returnStatus,
+    tag: input.returnTag,
+  })
+  const today = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
+  const todayIso = dateutil.toDateOnlyIso(today)
+  let listMessage = ''
+
+  dbg('homepocket/xapi/items/state:start', { userId, itemId, action })
+
+  try {
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!itemId) throw new Error('항목을 찾을 수 없습니다.')
+    if (action !== 'done' && action !== 'open') throw new Error('상태 값이 올바르지 않습니다.')
+
+    const item = $app.findFirstRecordByFilter('homeItems', 'id = {:itemId} && user = {:userId}', { itemId, userId })
+    const frequency = String(item.get('repeatFrequency') || 'none')
+    const currentStatus = String(item.get('status') || 'open')
+    const dueDate = String(item.get('nextDueDate') || '')
+    const isDue = dueDate && (dateutil.isBeforeDay(dueDate, today) || dateutil.isSameDay(dueDate, today))
+    const effectiveStatus = frequency !== 'none' && isDue ? 'open' : currentStatus
+
+    if (action === 'done') {
+      if (effectiveStatus === 'done') throw new Error('이미 완료한 항목입니다.')
+      item.set('status', 'done')
+      item.set('lastCompletedAt', todayIso)
+      if (frequency === 'weekly' || frequency === 'monthly') {
+        const nextDate = homeItemsData.nextDueDate(
+          frequency,
+          Number(item.get('repeatInterval') || 1),
+          homeItemsData.readWeekdays(item.get('repeatWeekdays')),
+          Number(item.get('repeatDayOfMonth') || 1),
+          dueDate
+        )
+        item.set('nextDueDate', nextDate)
+      }
+    } else {
+      item.set('status', 'open')
+      if (frequency !== 'none') item.set('nextDueDate', todayIso)
+    }
+
+    $app.save(item)
+    info('homepocket/xapi/items/state:success', { userId, itemId, action })
+  } catch (exception) {
+    listMessage = String(exception.message || exception)
+    error('homepocket/xapi/items/state:failed', { userId, itemId, action, error: listMessage })
+  }
+
+  if (!isHtmx) {
+    const target = '/?section=' + encodeURIComponent(filters.section)
+      + (filters.keyword ? '&keyword=' + encodeURIComponent(filters.keyword) : '')
+      + (filters.status !== 'all' ? '&status=' + encodeURIComponent(filters.status) : '')
+      + (filters.tag ? '&tag=' + encodeURIComponent(filters.tag) : '')
+    dbg('homepocket/xapi/items/state:redirect', { status: 303, redirectTo: target, message: listMessage || '상태를 변경했습니다.' })
+    redirect(target, { status: 303, message: listMessage || '상태를 변경했습니다.' })
+    return
+  }
+
+  const itemCards = userId ? homeItemsData.listItems(userId, filters) : []
+</script>
+<%- include('home-items-list.ejs', { itemCards, filters, listMessage }) %>
