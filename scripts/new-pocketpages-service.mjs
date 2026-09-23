@@ -17,10 +17,10 @@ const vendorDir = path.join(scriptDir, 'vendor')
 const featureIds = ['htmx', 'alpine', 'unocss', 'datastar', 'realtime']
 const defaultFeatures = ['htmx', 'alpine', 'unocss']
 const vendorByFeature = {
-  htmx: ['htmx-2.0.10.min.js'],
-  alpine: ['alpine-3.15.12-cdn.min.js'],
+  htmx: ['htmx-2.0.11.min.js'],
+  alpine: ['alpine-3.17.4-cdn.min.js'],
   datastar: ['datastar.min.js'],
-  unocss: ['preset-wind4-66.7.5.global.js', 'preset-icons-66.7.5.global.js', 'iconify-lucide-1.2.123.icons.json', 'unocss-core-66.7.5.global.js'],
+  unocss: ['preset-wind4-66.10.5.global.js', 'preset-icons-66.10.5.global.js', 'iconify-lucide-1.2.123.icons.json', 'unocss-core-66.10.5.global.js'],
 }
 const vendorByFeaturePair = {
   'htmx+realtime': ['pocketbase-htmx-ext-sse-0.0.3.js'],
@@ -473,11 +473,11 @@ function buildLayoutEjs(options) {
   const isUno = hasFeature(options, 'unocss')
   const isDatastar = hasFeature(options, 'datastar')
   const scripts = []
-  if (hasFeature(options, 'htmx')) scripts.push('<script src="<%= asset(\'/assets/vendor/htmx-2.0.10.min.js\') %>"></script>')
+  if (hasFeature(options, 'htmx')) scripts.push('<script src="<%= asset(\'/assets/vendor/htmx-2.0.11.min.js\') %>"></script>')
   if (hasFeature(options, 'htmx') && hasFeature(options, 'realtime')) {
     scripts.push('<script src="<%= asset(\'/assets/vendor/pocketbase-htmx-ext-sse-0.0.3.js\') %>"></script>')
   }
-  if (hasFeature(options, 'alpine')) scripts.push('<script defer src="<%= asset(\'/assets/vendor/alpine-3.15.12-cdn.min.js\') %>"></script>')
+  if (hasFeature(options, 'alpine')) scripts.push('<script defer src="<%= asset(\'/assets/vendor/alpine-3.17.4-cdn.min.js\') %>"></script>')
 
   const unoHead = isUno ? "    <%- include('unocss-head.ejs', { isProduction }) %>\n" : ''
   const datastarHead = isDatastar ? `    <%- datastar.scripts(${hasFeature(options, 'realtime') ? '{ realtime: true }' : ''}) %>\n` : ''
@@ -554,8 +554,8 @@ function buildUnoHeadEjs() {
     display: none !important;
   }
 </style>
-<script src="<%= asset('/assets/vendor/preset-wind4-66.7.5.global.js') %>"></script>
-<script src="<%= asset('/assets/vendor/preset-icons-66.7.5.global.js') %>"></script>
+<script src="<%= asset('/assets/vendor/preset-wind4-66.10.5.global.js') %>"></script>
+<script src="<%= asset('/assets/vendor/preset-icons-66.10.5.global.js') %>"></script>
 <script>
   let lucideIcons
 
@@ -583,7 +583,7 @@ function buildUnoHeadEjs() {
     },
   }
 </script>
-<script src="<%= asset('/assets/vendor/unocss-core-66.7.5.global.js') %>"></script>
+<script src="<%= asset('/assets/vendor/unocss-core-66.10.5.global.js') %>"></script>
 <% } %>
 `
 }
