@@ -34,7 +34,7 @@
       '/?section='
       + encodeURIComponent(filters.section)
       + (filters.keyword ? '&keyword=' + encodeURIComponent(filters.keyword) : '')
-      + (filters.status !== 'all' ? '&status=' + encodeURIComponent(filters.status) : '')
+      + '&status=' + encodeURIComponent(filters.status)
       + (filters.tag ? '&tag=' + encodeURIComponent(filters.tag) : '')
     dbg('homepocket/xapi/items/delete:redirect', {
       status: 303,

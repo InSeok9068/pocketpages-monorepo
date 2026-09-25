@@ -6,7 +6,7 @@ declare namespace types {
   interface HomeItemFilters {
     section: 'task' | 'purchase' | 'grocery'
     keyword: string
-    status: 'all' | 'open' | 'done'
+    status: 'open' | 'done'
     tag: string
   }
 

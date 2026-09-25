@@ -3,7 +3,7 @@ const { dateutil } = require('@pocketpages/utils')
 /** @type {types.HomeItemFilters['section'][]} */
 const SECTION_VALUES = ['task', 'purchase', 'grocery']
 /** @type {types.HomeItemFilters['status'][]} */
-const STATUS_VALUES = ['all', 'open', 'done']
+const STATUS_VALUES = ['open', 'done']
 const WEEKDAY_VALUES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
 /**
@@ -16,7 +16,7 @@ function readFilters(input) {
   const requestedSection = String(source.section || '')
   const requestedStatus = String(source.status || '')
   const section = SECTION_VALUES.find((value) => value === requestedSection) || 'task'
-  const status = STATUS_VALUES.find((value) => value === requestedStatus) || 'all'
+  const status = STATUS_VALUES.find((value) => value === requestedStatus) || 'open'
   let tag = String(source.tag || '')
 
   if (section === 'task' && ['none', 'weekly', 'monthly'].indexOf(tag) < 0) tag = ''
@@ -74,7 +74,7 @@ function listItems(userId, filters) {
       nextDueLabel: formatDateOnly(nextDueDate),
     }
 
-    if (filters.status !== 'all' && card.status !== filters.status) continue
+    if (card.status !== filters.status) continue
     if (filters.section === 'task' && filters.tag && card.repeatFrequency !== filters.tag) continue
     if (filters.section !== 'task' && filters.tag === 'untagged' && card.channel) continue
     if (filters.section !== 'task' && filters.tag && filters.tag !== 'untagged' && card.channel !== filters.tag)

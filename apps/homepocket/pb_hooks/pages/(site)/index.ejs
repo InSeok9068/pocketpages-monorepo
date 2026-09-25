@@ -423,11 +423,6 @@
               class="filter-select"
               name="status">
               <option
-                value="all"
-                <%= filters.status === 'all' ? 'selected' : '' %>>
-                상태 · 전체
-              </option>
-              <option
                 value="open"
                 <%= filters.status === 'open' ? 'selected' : '' %>>
                 상태 · 할 일
@@ -435,7 +430,7 @@
               <option
                 value="done"
                 <%= filters.status === 'done' ? 'selected' : '' %>>
-                상태 · 완료
+                상태 · 완료됨
               </option>
             </select>
             <svg

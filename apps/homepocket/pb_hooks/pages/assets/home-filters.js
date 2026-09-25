@@ -31,7 +31,16 @@
 
     const savedValue = readPreference(key)
     const hasOption = Array.from(select.options).some((option) => option.value === savedValue)
-    if (savedValue === null || !hasOption || select.value === savedValue) return false
+    if (savedValue === null) return false
+    if (!hasOption) {
+      try {
+        window.localStorage.removeItem(key)
+      } catch {
+        // 저장소를 사용할 수 없는 브라우저에서는 현재 선택만 적용한다.
+      }
+      return false
+    }
+    if (select.value === savedValue) return false
 
     select.value = savedValue
     return true
