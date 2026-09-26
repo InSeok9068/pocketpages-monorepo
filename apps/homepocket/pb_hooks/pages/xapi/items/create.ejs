@@ -72,7 +72,7 @@
         .slice(0, 2000)
     )
     $app.save(record)
-    response.header('HX-Trigger', 'home-item-created')
+    response.header('HX-Trigger', JSON.stringify({ 'home-item-created': { section } }))
 
     info('homepocket/xapi/items/create:success', { userId, itemId: String(record.get('id') || ''), section })
   } catch (exception) {

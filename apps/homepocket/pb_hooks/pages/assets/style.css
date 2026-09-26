@@ -118,6 +118,33 @@ summary::-webkit-details-marker {
   min-height: calc(100vh - var(--home-bottom-nav-height));
 }
 
+.home-section-swiper {
+  width: 100%;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.home-section-swiper > .swiper-wrapper {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: auto;
+  box-sizing: content-box;
+  transition-property: transform;
+}
+
+.home-section-swiper > .swiper-wrapper > .swiper-slide {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.home-section-swiper:not(.is-ready) > .swiper-wrapper > .swiper-slide:not(.is-active) {
+  display: none;
+}
+
 .home-header {
   display: flex;
   align-items: center;

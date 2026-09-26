@@ -1,5 +1,5 @@
 <section
-  id="home-items"
+  id="home-items-<%= filters.section %>"
   aria-live="polite">
   <% if (listMessage) { %>
   <p class="list-error"><%= listMessage %></p>
@@ -31,7 +31,7 @@
         method="post"
         action="/xapi/items/state"
         hx-post="/xapi/items/state"
-        hx-target="#home-items"
+        hx-target="#home-items-<%= filters.section %>"
         hx-swap="outerHTML">
         <input
           type="hidden"
@@ -95,7 +95,7 @@
         method="post"
         action="/xapi/items/delete"
         hx-post="/xapi/items/delete"
-        hx-target="#home-items"
+        hx-target="#home-items-<%= filters.section %>"
         hx-swap="outerHTML"
         hx-confirm="이 항목을 삭제할까요?">
         <input

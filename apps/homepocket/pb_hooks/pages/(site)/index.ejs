@@ -6,500 +6,59 @@
     purchase: '구매',
     grocery: '장보기',
   }
-  const sectionTitle = sectionTitles[filters.section]
+  const sectionOrder = ['task', 'purchase', 'grocery']
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
-  const itemCards = userId ? homeItemsData.listItems(userId, filters) : []
+  const sectionPanels = []
 
-  meta('title', sectionTitle)
+  if (userId) {
+    for (const section of sectionOrder) {
+      const panelFilters = homeItemsData.readFilters({
+        section,
+        keyword: filters.keyword,
+        status: filters.status,
+        tag: section === filters.section ? filters.tag : '',
+      })
+      sectionPanels.push({
+        filters: panelFilters,
+        sectionTitle: sectionTitles[section],
+        itemCards: homeItemsData.listItems(userId, panelFilters),
+      })
+    }
+  }
+
+  meta('title', sectionTitles[filters.section])
   meta('description', '생활 목록')
 </script>
 
 <div class="home-page<%= request.auth ? ' has-bottom-nav' : '' %>">
-  <div class="home-app">
-    <header class="home-header">
-      <div>
-        <div class="home-title-row">
-          <h1 class="home-title"><%= sectionTitle %></h1>
-          <% if (request.auth) { %>
-          <span class="home-count"><%= itemCards.length %></span>
-          <% } %>
-        </div>
-      </div>
-
+  <% if (request.auth) { %>
+  <div
+    class="home-section-swiper"
+    data-home-section-swiper
+    data-initial-section="<%= filters.section %>">
+    <div class="swiper-wrapper">
+      <% for (const panel of sectionPanels) { %>
       <div
-        class="menu-wrap"
-        x-data="{ menuOpen: false }"
-        x-on:click.outside="menuOpen = false"
-        x-on:keydown.escape.window="menuOpen = false">
-        <button
-          class="icon-button"
-          type="button"
-          aria-label="메뉴 열기"
-          x-on:click="menuOpen = !menuOpen"
-          x-bind:aria-expanded="menuOpen.toString()">
-          <svg
-            class="icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            aria-hidden="true">
-            <path d="M4 6h16M4 12h16M4 18h16"></path>
-          </svg>
-        </button>
-
-        <div
-          class="menu-popover"
-          x-cloak
-          x-show="menuOpen"
-          x-transition.origin.top.right>
-          <% if (request.auth) { %>
-          <a
-            class="menu-link"
-            href="/settings">
-            설정
-          </a>
-          <form
-            method="post"
-            action="/xapi/auth/sign-out">
-            <button
-              class="menu-link menu-button"
-              type="submit">
-              로그아웃
-            </button>
-          </form>
-          <% } else { %>
-          <a
-            class="menu-link"
-            href="/sign-in">
-            로그인
-          </a>
-          <a
-            class="menu-link"
-            href="/sign-up">
-            회원가입
-          </a>
-          <% } %>
-        </div>
+        class="swiper-slide<%= panel.filters.section === filters.section ? ' is-active' : '' %>"
+        data-home-section-slide="<%= panel.filters.section %>">
+        <%- include('home-section-panel.ejs', {
+          filters: panel.filters,
+          sectionTitle: panel.sectionTitle,
+          itemCards: panel.itemCards,
+          showFlash: panel.filters.section === filters.section,
+        }) %>
       </div>
-    </header>
-
-    <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
-
-    <% if (!request.auth) { %>
-    <section class="signed-out-panel">
-      <p>목록을 보려면 로그인해 주세요.</p>
-      <a
-        class="primary-link"
-        href="/sign-in">
-        로그인
-      </a>
-    </section>
-    <% } else { %>
-    <section class="capture-card">
-      <form
-        id="home-item-form"
-        class="item-form"
-        method="post"
-        action="/xapi/items/create"
-        hx-post="/xapi/items/create"
-        hx-target="#home-items"
-        hx-swap="outerHTML"
-        x-data="{}"
-        x-ref="form"
-        x-on:home-item-created.window="$refs.form.reset(); $refs.title.focus()">
-        <input
-          type="hidden"
-          name="section"
-          value="<%= filters.section %>" />
-        <input
-          type="hidden"
-          name="returnSection"
-          value="<%= filters.section %>" />
-        <input
-          type="hidden"
-          name="returnKeyword"
-          value="<%= filters.keyword %>" />
-        <input
-          type="hidden"
-          name="returnStatus"
-          value="<%= filters.status %>" />
-        <input
-          type="hidden"
-          name="returnTag"
-          value="<%= filters.tag %>" />
-        <div class="capture-row">
-          <label class="capture-label">
-            <span class="visually-hidden">항목 이름</span>
-            <input
-              class="capture-input"
-              type="text"
-              name="title"
-              x-ref="title"
-              maxlength="200"
-              required
-              autocomplete="off"
-              placeholder="<%= filters.section === 'grocery' ? '무엇을 장볼까요?' : filters.section === 'purchase' ? '무엇을 구매할까요?' : '무엇을 할까요?' %>" />
-          </label>
-          <button
-            class="add-button"
-            type="submit"
-            aria-label="추가">
-            <svg
-              class="icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              aria-hidden="true">
-              <path d="M12 5v14M5 12h14"></path>
-            </svg>
-          </button>
-        </div>
-        <% if (filters.section === 'task') { %>
-        <details
-          class="optional-details"
-          x-data="{ frequency: 'none' }"
-          x-on:home-item-created.window="frequency = 'none'">
-          <summary class="optional-summary">
-            <svg
-              class="chevron-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              aria-hidden="true">
-              <path d="m6 9 6 6 6-6"></path>
-            </svg>
-            반복 설정
-            <span class="muted">(선택)</span>
-          </summary>
-          <div class="optional-panel">
-            <fieldset class="choice-field">
-              <legend class="field-caption">반복 주기</legend>
-              <div class="choice-options">
-                <label class="choice-option">
-                  <input
-                    class="choice-input visually-hidden"
-                    type="radio"
-                    name="repeatFrequency"
-                    value="none"
-                    x-model="frequency"
-                    checked />
-                  <span class="choice-button">안 함</span>
-                </label>
-                <label class="choice-option">
-                  <input
-                    class="choice-input visually-hidden"
-                    type="radio"
-                    name="repeatFrequency"
-                    value="weekly"
-                    x-model="frequency" />
-                  <span class="choice-button">매주</span>
-                </label>
-                <label class="choice-option">
-                  <input
-                    class="choice-input visually-hidden"
-                    type="radio"
-                    name="repeatFrequency"
-                    value="monthly"
-                    x-model="frequency" />
-                  <span class="choice-button">매월</span>
-                </label>
-              </div>
-            </fieldset>
-            <label class="field-label">
-              첫 예정일
-              <input
-                class="field-control"
-                type="date"
-                name="nextDueDate" />
-            </label>
-            <div
-              class="wide-field"
-              x-show="frequency === 'weekly'"
-              x-cloak>
-              <p class="field-caption">요일</p>
-              <div class="weekdays">
-                <label class="weekday-option">
-                  <input
-                    type="checkbox"
-                    name="repeatWeekdays"
-                    value="mon" />
-                  월
-                </label>
-                <label class="weekday-option">
-                  <input
-                    type="checkbox"
-                    name="repeatWeekdays"
-                    value="tue" />
-                  화
-                </label>
-                <label class="weekday-option">
-                  <input
-                    type="checkbox"
-                    name="repeatWeekdays"
-                    value="wed" />
-                  수
-                </label>
-                <label class="weekday-option">
-                  <input
-                    type="checkbox"
-                    name="repeatWeekdays"
-                    value="thu" />
-                  목
-                </label>
-                <label class="weekday-option">
-                  <input
-                    type="checkbox"
-                    name="repeatWeekdays"
-                    value="fri" />
-                  금
-                </label>
-                <label class="weekday-option">
-                  <input
-                    type="checkbox"
-                    name="repeatWeekdays"
-                    value="sat" />
-                  토
-                </label>
-                <label class="weekday-option">
-                  <input
-                    type="checkbox"
-                    name="repeatWeekdays"
-                    value="sun" />
-                  일
-                </label>
-              </div>
-              <fieldset class="choice-field compact-field">
-                <legend class="field-caption">반복 간격</legend>
-                <div class="choice-options">
-                  <label class="choice-option">
-                    <input
-                      class="choice-input visually-hidden"
-                      type="radio"
-                      name="repeatWeeklyInterval"
-                      value="1"
-                      checked />
-                    <span class="choice-button">매주</span>
-                  </label>
-                  <label class="choice-option">
-                    <input
-                      class="choice-input visually-hidden"
-                      type="radio"
-                      name="repeatWeeklyInterval"
-                      value="2" />
-                    <span class="choice-button">2주마다</span>
-                  </label>
-                </div>
-              </fieldset>
-            </div>
-            <div
-              class="wide-field"
-              x-show="frequency === 'monthly'"
-              x-cloak>
-              <label class="field-label">
-                매월 며칠
-                <input
-                  class="field-control"
-                  type="number"
-                  name="repeatDayOfMonth"
-                  min="1"
-                  max="31"
-                  placeholder="예: 1일" />
-              </label>
-              <fieldset class="choice-field compact-field">
-                <legend class="field-caption">반복 간격</legend>
-                <div class="choice-options">
-                  <label class="choice-option">
-                    <input
-                      class="choice-input visually-hidden"
-                      type="radio"
-                      name="repeatMonthlyInterval"
-                      value="1"
-                      checked />
-                    <span class="choice-button">매월</span>
-                  </label>
-                  <label class="choice-option">
-                    <input
-                      class="choice-input visually-hidden"
-                      type="radio"
-                      name="repeatMonthlyInterval"
-                      value="2" />
-                    <span class="choice-button">2개월마다</span>
-                  </label>
-                </div>
-              </fieldset>
-            </div>
-            <label class="field-label wide-field">
-              메모 (선택)
-              <input
-                class="field-control"
-                type="text"
-                name="note"
-                maxlength="2000" />
-            </label>
-          </div>
-        </details>
-        <% } else { %>
-        <details class="optional-details">
-          <summary class="optional-summary">
-            <svg
-              class="chevron-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              aria-hidden="true">
-              <path d="m6 9 6 6 6-6"></path>
-            </svg>
-            태그와 메모
-            <span class="muted">(선택)</span>
-          </summary>
-          <div class="optional-panel">
-            <fieldset class="choice-field">
-              <legend class="field-caption">구매 태그</legend>
-              <div class="choice-options">
-                <label class="choice-option">
-                  <input
-                    class="choice-input visually-hidden"
-                    type="radio"
-                    name="channel"
-                    value=""
-                    checked />
-                  <span class="choice-button">없음</span>
-                </label>
-                <label class="choice-option">
-                  <input
-                    class="choice-input channel-choice-input visually-hidden"
-                    type="radio"
-                    name="channel"
-                    value="offline" />
-                  <span class="choice-button">오프라인</span>
-                </label>
-                <label class="choice-option">
-                  <input
-                    class="choice-input channel-choice-input visually-hidden"
-                    type="radio"
-                    name="channel"
-                    value="online" />
-                  <span class="choice-button">온라인</span>
-                </label>
-              </div>
-            </fieldset>
-            <label class="field-label">
-              메모 (선택)
-              <input
-                class="field-control"
-                type="text"
-                name="note"
-                maxlength="2000" />
-            </label>
-          </div>
-        </details>
-        <% } %>
-      </form>
-    </section>
-
-    <section class="filter-section">
-      <form
-        id="home-filter-form"
-        method="get"
-        action="/"
-        hx-get="/xapi/items/list"
-        hx-target="#home-items"
-        hx-swap="outerHTML"
-        hx-trigger="submit, change">
-        <input
-          type="hidden"
-          name="section"
-          value="<%= filters.section %>" />
-        <div class="filter-row">
-          <label class="filter-pill">
-            <span class="visually-hidden">상태</span>
-            <select
-              class="filter-select"
-              name="status">
-              <option
-                value="open"
-                <%= filters.status === 'open' ? 'selected' : '' %>>
-                상태 · 할 일
-              </option>
-              <option
-                value="done"
-                <%= filters.status === 'done' ? 'selected' : '' %>>
-                상태 · 완료됨
-              </option>
-            </select>
-            <svg
-              class="filter-chevron"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              aria-hidden="true">
-              <path d="m7 10 5 5 5-5"></path>
-            </svg>
-          </label>
-          <label class="filter-pill">
-            <span class="visually-hidden">태그</span>
-            <select
-              class="filter-select"
-              name="tag">
-              <option value="">태그 · 전체</option>
-              <% if (filters.section === 'task') { %>
-              <option
-                value="none"
-                <%= filters.tag === 'none' ? 'selected' : '' %>>
-                태그 · 반복 없음
-              </option>
-              <option
-                value="weekly"
-                <%= filters.tag === 'weekly' ? 'selected' : '' %>>
-                태그 · 매주
-              </option>
-              <option
-                value="monthly"
-                <%= filters.tag === 'monthly' ? 'selected' : '' %>>
-                태그 · 매월
-              </option>
-              <% } else { %>
-              <option
-                value="offline"
-                <%= filters.tag === 'offline' ? 'selected' : '' %>>
-                태그 · 오프라인
-              </option>
-              <option
-                value="online"
-                <%= filters.tag === 'online' ? 'selected' : '' %>>
-                태그 · 온라인
-              </option>
-              <option
-                value="untagged"
-                <%= filters.tag === 'untagged' ? 'selected' : '' %>>
-                태그 · 없음
-              </option>
-              <% } %>
-            </select>
-            <svg
-              class="filter-chevron"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              aria-hidden="true">
-              <path d="m7 10 5 5 5-5"></path>
-            </svg>
-          </label>
-        </div>
-      </form>
-    </section>
-
-    <%- include('home-items-list.ejs', { itemCards, filters, listMessage: '' }) %>
-    <% } %>
+      <% } %>
+    </div>
   </div>
+  <% } else { %>
+  <%- include('home-section-panel.ejs', {
+    filters,
+    sectionTitle: sectionTitles[filters.section],
+    itemCards: [],
+    showFlash: true,
+  }) %>
+  <% } %>
 </div>
 
 <% if (request.auth) { %>
@@ -510,8 +69,8 @@
     <a
       class="bottom-nav-link <%= filters.section === 'task' ? 'is-active' : '' %>"
       href="/?section=task"
-      <% if (filters.section === 'task') { %>aria-current="page"
-      <% } %>>
+      data-home-section-tab="task"
+      <% if (filters.section === 'task') { %>aria-current="page"<% } %>>
       <span class="bottom-nav-icon">
         <svg
           viewBox="0 0 24 24"
@@ -530,8 +89,8 @@
     <a
       class="bottom-nav-link <%= filters.section === 'purchase' ? 'is-active' : '' %>"
       href="/?section=purchase"
-      <% if (filters.section === 'purchase') { %>aria-current="page"
-      <% } %>>
+      data-home-section-tab="purchase"
+      <% if (filters.section === 'purchase') { %>aria-current="page"<% } %>>
       <span class="bottom-nav-icon">
         <svg
           viewBox="0 0 24 24"
@@ -550,8 +109,8 @@
     <a
       class="bottom-nav-link <%= filters.section === 'grocery' ? 'is-active' : '' %>"
       href="/?section=grocery"
-      <% if (filters.section === 'grocery') { %>aria-current="page"
-      <% } %>>
+      data-home-section-tab="grocery"
+      <% if (filters.section === 'grocery') { %>aria-current="page"<% } %>>
       <span class="bottom-nav-icon">
         <svg
           viewBox="0 0 24 24"
@@ -571,5 +130,11 @@
 </nav>
 <script
   defer
+  src="<%= asset('/assets/vendor/swiper-12.2.0.min.js') %>"></script>
+<script
+  defer
   src="<%= asset('/assets/home-filters.js') %>"></script>
+<script
+  defer
+  src="<%= asset('/assets/home-sections.js') %>"></script>
 <% } %>

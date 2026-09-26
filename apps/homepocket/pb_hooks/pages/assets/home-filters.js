@@ -1,14 +1,11 @@
 ;(() => {
-  const form = document.getElementById('home-filter-form')
-  if (!form) return
+  const forms = Array.from(document.querySelectorAll('[data-home-filter-form]'))
+  if (!forms.length) return
 
-  const statusSelect = form.querySelector('select[name="status"]')
-  const tagSelect = form.querySelector('select[name="tag"]')
-  const section = form.querySelector('input[name="section"]').value
   const statusKey = 'homepocket:filter-status'
-  const tagKey = 'homepocket:filter-tag:' + section
   const query = new URLSearchParams(window.location.search)
-  let needsRefresh = false
+  const initialSection = query.get('section') || forms[0].elements.section.value
+  const formsNeedingRefresh = new Set()
 
   function readPreference(key) {
     try {
@@ -26,12 +23,13 @@
     }
   }
 
-  function restorePreference(select, key, queryName) {
-    if (query.has(queryName)) return false
+  function restorePreference(select, key, queryName, isActiveSection, allSections) {
+    if ((allSections || isActiveSection) && query.has(queryName)) return false
 
     const savedValue = readPreference(key)
-    const hasOption = Array.from(select.options).some((option) => option.value === savedValue)
     if (savedValue === null) return false
+
+    const hasOption = Array.from(select.options).some((option) => option.value === savedValue)
     if (!hasOption) {
       try {
         window.localStorage.removeItem(key)
@@ -46,16 +44,37 @@
     return true
   }
 
-  needsRefresh = restorePreference(statusSelect, statusKey, 'status') || needsRefresh
-  needsRefresh = restorePreference(tagSelect, tagKey, 'tag') || needsRefresh
+  for (const form of forms) {
+    const section = form.elements.section.value
+    const statusSelect = form.elements.status
+    const tagSelect = form.elements.tag
+    const activeSection = section === initialSection
 
-  form.addEventListener('change', (event) => {
-    if (event.target === statusSelect) writePreference(statusKey, statusSelect.value)
-    if (event.target === tagSelect) writePreference(tagKey, tagSelect.value)
-  })
+    if (restorePreference(statusSelect, statusKey, 'status', activeSection, true)) {
+      for (const sectionForm of forms) formsNeedingRefresh.add(sectionForm)
+    }
+    if (restorePreference(tagSelect, 'homepocket:filter-tag:' + section, 'tag', activeSection)) {
+      formsNeedingRefresh.add(form)
+    }
+
+    form.addEventListener('change', (event) => {
+      if (event.target === statusSelect) {
+        writePreference(statusKey, statusSelect.value)
+        for (const sectionForm of forms) {
+          const sectionStatus = sectionForm.elements.status
+          sectionStatus.value = statusSelect.value
+          if (sectionForm !== form) sectionForm.requestSubmit()
+        }
+      }
+
+      if (event.target === tagSelect) {
+        writePreference('homepocket:filter-tag:' + section, tagSelect.value)
+      }
+    })
+  }
 
   function applySavedFilters() {
-    if (needsRefresh) form.requestSubmit()
+    for (const form of formsNeedingRefresh) form.requestSubmit()
   }
 
   if (document.readyState === 'loading') {
