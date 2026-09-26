@@ -2,7 +2,7 @@
   const container = document.querySelector('[data-home-section-swiper]')
   if (!container || !window.Swiper) return
 
-  const sectionOrder = ['task', 'purchase', 'grocery']
+  const sectionOrder = ['task', 'purchase', 'grocery', 'storage']
   const initialSection = container.dataset.initialSection
   const initialIndex = Math.max(0, sectionOrder.indexOf(initialSection))
   const tabs = Array.from(document.querySelectorAll('[data-home-section-tab]'))

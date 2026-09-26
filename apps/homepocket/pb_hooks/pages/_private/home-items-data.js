@@ -1,7 +1,7 @@
 const { dateutil } = require('@pocketpages/utils')
 
 /** @type {types.HomeItemFilters['section'][]} */
-const SECTION_VALUES = ['task', 'purchase', 'grocery']
+const SECTION_VALUES = ['task', 'purchase', 'grocery', 'storage']
 /** @type {types.HomeItemFilters['status'][]} */
 const STATUS_VALUES = ['open', 'done']
 const WEEKDAY_VALUES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
@@ -20,7 +20,11 @@ function readFilters(input) {
   let tag = String(source.tag || '')
 
   if (section === 'task' && ['none', 'weekly', 'monthly'].indexOf(tag) < 0) tag = ''
-  if (section !== 'task' && ['offline', 'online', 'untagged'].indexOf(tag) < 0) tag = ''
+  if (section === 'storage' && ['fridge', 'freezer', 'untagged'].indexOf(tag) < 0) tag = ''
+  if (
+    (section === 'purchase' || section === 'grocery')
+    && ['offline', 'online', 'untagged'].indexOf(tag) < 0
+  ) tag = ''
 
   return {
     section,
@@ -33,7 +37,7 @@ function readFilters(input) {
 }
 
 /**
- * 반복 주기와 태그에 맞는 생활 항목을 조회한다.
+ * 반복 주기와 태그에 맞는 생활 항목을 조회하고 보관 위치별로 묶는다.
  * @param {string} userId 사용자 ID
  * @param {types.HomeItemFilters} filters 검색 조건
  * @returns {types.HomeItemCard[]} 목록 카드
@@ -51,6 +55,9 @@ function listItems(userId, filters) {
   const records = $app.findRecordsByFilter('homeItems', expressions.join(' && '), sort, 500, 0, values)
   const today = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
   const cards = []
+  const fridgeCards = []
+  const freezerCards = []
+  const untaggedStorageCards = []
 
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index]
@@ -76,14 +83,26 @@ function listItems(userId, filters) {
 
     if (card.status !== filters.status) continue
     if (filters.section === 'task' && filters.tag && card.repeatFrequency !== filters.tag) continue
-    if (filters.section !== 'task' && filters.tag === 'untagged' && card.channel) continue
-    if (filters.section !== 'task' && filters.tag && filters.tag !== 'untagged' && card.channel !== filters.tag)
-      continue
+    if (filters.section === 'storage') {
+      if (filters.tag === 'untagged' && card.channel) continue
+      if (filters.tag && filters.tag !== 'untagged' && card.channel !== filters.tag) continue
+    } else if (filters.section === 'purchase' || filters.section === 'grocery') {
+      if (filters.tag === 'untagged' && card.channel) continue
+      if (filters.tag && filters.tag !== 'untagged' && card.channel !== filters.tag) continue
+    }
 
-    cards.push(card)
+    if (filters.section === 'storage') {
+      if (card.channel === 'fridge') fridgeCards.push(card)
+      else if (card.channel === 'freezer') freezerCards.push(card)
+      else untaggedStorageCards.push(card)
+    } else {
+      cards.push(card)
+    }
   }
 
-  return cards
+  return filters.section === 'storage'
+    ? fridgeCards.concat(freezerCards, untaggedStorageCards)
+    : cards
 }
 
 /**

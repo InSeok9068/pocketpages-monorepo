@@ -125,7 +125,7 @@
               maxlength="200"
               required
               autocomplete="off"
-              placeholder="<%= filters.section === 'grocery' ? '무엇을 장볼까요?' : filters.section === 'purchase' ? '무엇을 구매할까요?' : '무엇을 할까요?' %>" />
+              placeholder="<%= filters.section === 'grocery' ? '무엇을 장볼까요?' : filters.section === 'purchase' ? '무엇을 구매할까요?' : filters.section === 'storage' ? '무엇을 보관할까요?' : '무엇을 할까요?' %>" />
           </label>
           <button
             class="add-button"
@@ -143,6 +143,31 @@
             </svg>
           </button>
         </div>
+        <% if (filters.section === 'storage') { %>
+        <fieldset class="choice-field storage-position-field">
+          <legend class="field-caption">보관 위치 <span class="muted">(필수)</span></legend>
+          <div class="choice-options storage-location-options">
+            <label class="choice-option">
+              <input
+                class="choice-input storage-choice-input visually-hidden"
+                type="radio"
+                name="channel"
+                value="fridge"
+                required />
+              <span class="choice-button">냉장</span>
+            </label>
+            <label class="choice-option">
+              <input
+                class="choice-input storage-choice-input visually-hidden"
+                type="radio"
+                name="channel"
+                value="freezer"
+                required />
+              <span class="choice-button">냉동</span>
+            </label>
+          </div>
+        </fieldset>
+        <% } %>
         <% if (filters.section === 'task') { %>
         <details
           class="optional-details"
@@ -328,6 +353,33 @@
             </label>
           </div>
         </details>
+        <% } else if (filters.section === 'storage') { %>
+        <details class="optional-details">
+          <summary class="optional-summary">
+            <svg
+              class="chevron-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              aria-hidden="true">
+              <path d="m6 9 6 6 6-6"></path>
+            </svg>
+            보관 메모
+            <span class="muted">(선택)</span>
+          </summary>
+          <div class="optional-panel">
+            <label class="field-label">
+              보관 정보
+              <input
+                class="field-control"
+                type="text"
+                name="note"
+                maxlength="2000"
+                placeholder="예: 냉동 · 2봉 · 10/12까지" />
+            </label>
+          </div>
+        </details>
         <% } else { %>
         <details class="optional-details">
           <summary class="optional-summary">
@@ -410,12 +462,12 @@
               <option
                 value="open"
                 <%= filters.status === 'open' ? 'selected' : '' %>>
-                상태 · 할 일
+                상태 · <%= filters.section === 'storage' ? '보관 중' : '할 일' %>
               </option>
               <option
                 value="done"
                 <%= filters.status === 'done' ? 'selected' : '' %>>
-                상태 · 완료됨
+                상태 · <%= filters.section === 'storage' ? '소비 완료' : '완료됨' %>
               </option>
             </select>
             <svg
@@ -428,6 +480,28 @@
               <path d="m7 10 5 5 5-5"></path>
             </svg>
           </label>
+          <% if (filters.section === 'storage') { %>
+          <label class="filter-pill">
+            <span class="visually-hidden">보관 위치 태그</span>
+            <select
+              class="filter-select"
+              name="tag">
+              <option value="">위치 · 전체</option>
+              <option value="fridge" <%= filters.tag === 'fridge' ? 'selected' : '' %>>위치 · 냉장</option>
+              <option value="freezer" <%= filters.tag === 'freezer' ? 'selected' : '' %>>위치 · 냉동</option>
+              <option value="untagged" <%= filters.tag === 'untagged' ? 'selected' : '' %>>위치 · 미지정</option>
+            </select>
+            <svg
+              class="filter-chevron"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              aria-hidden="true">
+              <path d="m7 10 5 5 5-5"></path>
+            </svg>
+          </label>
+          <% } else { %>
           <label class="filter-pill">
             <span class="visually-hidden">태그</span>
             <select
@@ -478,6 +552,7 @@
               <path d="m7 10 5 5 5-5"></path>
             </svg>
           </label>
+          <% } %>
         </div>
       </form>
     </section>

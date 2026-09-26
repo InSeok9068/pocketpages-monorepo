@@ -856,7 +856,7 @@
         "required": true,
         "system": false,
         "type": "select",
-        "values": ["task", "purchase", "grocery"]
+        "values": ["task", "purchase", "grocery", "storage"]
       },
       {
         "help": "",
@@ -869,7 +869,7 @@
         "required": false,
         "system": false,
         "type": "select",
-        "values": ["offline", "online"]
+        "values": ["offline", "online", "fridge", "freezer"]
       },
       {
         "help": "",

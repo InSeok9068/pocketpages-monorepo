@@ -7,7 +7,7 @@
   const itemId = String(input.itemId || '').trim()
   const action = String(input.action || '')
   let returnSection = String(input.returnSection || 'task')
-  if (['task', 'purchase', 'grocery'].indexOf(returnSection) < 0) returnSection = 'task'
+  if (['task', 'purchase', 'grocery', 'storage'].indexOf(returnSection) < 0) returnSection = 'task'
   const filters = homeItemsData.readFilters({
     section: returnSection,
     keyword: input.returnKeyword,

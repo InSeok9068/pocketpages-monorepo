@@ -37,7 +37,7 @@
   }
 
   const section = String(record.get('section') || '')
-  const sectionTitles = { task: '할 일', purchase: '구매', grocery: '장보기' }
+  const sectionTitles = { task: '할 일', purchase: '구매', grocery: '장보기', storage: '보관' }
   if (!sectionTitles[section]) {
     warn('homepocket/items/detail:invalid-section', { userId, itemId, section })
     redirect(returnUrl, { status: 303, message: '항목을 찾을 수 없습니다.' })
@@ -97,14 +97,16 @@
 
     <section class="item-detail-card">
       <div class="item-detail-overview">
-        <span class="item-detail-status <%= item.status === 'done' ? 'is-done' : 'is-open' %>"><%= item.status === 'done' ? '완료됨' : '할 일' %></span>
+        <span class="item-detail-status <%= item.status === 'done' ? 'is-done' : 'is-open' %>"><%= item.section === 'storage' ? (item.status === 'done' ? '소비 완료' : '보관 중') : (item.status === 'done' ? '완료됨' : '할 일') %></span>
         <% if (item.section === 'task' && item.repeatFrequency !== 'none') { %>
         <span class="item-badge repeat-badge"><%= item.repeatFrequency === 'weekly' ? '매주' : '매월' %></span>
+        <% } else if (item.section === 'storage' && item.channel) { %>
+        <span class="item-badge storage-badge <%= item.channel === 'fridge' ? 'is-fridge' : 'is-freezer' %>"><%= item.channel === 'fridge' ? '냉장' : '냉동' %></span>
         <% } else if (item.channel) { %>
         <span class="item-badge channel-badge <%= item.channel === 'online' ? 'is-online' : 'is-offline' %>"><%= item.channel === 'online' ? '온라인' : '오프라인' %></span>
         <% } %>
         <% if (item.lastCompletedLabel) { %>
-        <span class="item-detail-completed">최근 완료 · <%= item.lastCompletedLabel %></span>
+        <span class="item-detail-completed"><%= item.section === 'storage' ? '최근 소비 · ' : '최근 완료 · ' %><%= item.lastCompletedLabel %></span>
         <% } %>
       </div>
 
@@ -250,6 +252,20 @@
             </div>
           </fieldset>
         </div>
+        <% } else if (item.section === 'storage') { %>
+        <fieldset class="choice-field storage-position-field">
+          <legend class="field-caption">보관 위치 <span class="muted">(필수)</span></legend>
+          <div class="choice-options storage-location-options">
+            <label class="choice-option">
+              <input class="choice-input storage-choice-input visually-hidden" type="radio" name="channel" value="fridge" required <%= item.channel === 'fridge' ? 'checked' : '' %> />
+              <span class="choice-button">냉장</span>
+            </label>
+            <label class="choice-option">
+              <input class="choice-input storage-choice-input visually-hidden" type="radio" name="channel" value="freezer" required <%= item.channel === 'freezer' ? 'checked' : '' %> />
+              <span class="choice-button">냉동</span>
+            </label>
+          </div>
+        </fieldset>
         <% } else { %>
         <fieldset class="choice-field">
           <legend class="field-caption">구매 태그</legend>
@@ -271,12 +287,12 @@
         <% } %>
 
         <label class="field-label">
-          메모 (선택)
+          <%= item.section === 'storage' ? '보관 메모 (선택)' : '메모 (선택)' %>
           <textarea
             class="field-control item-detail-note"
             name="note"
             maxlength="2000"
-            placeholder="메모를 입력하세요"><%= item.note %></textarea>
+            placeholder="<%= item.section === 'storage' ? '예: 냉동 · 2봉 · 10/12까지' : '메모를 입력하세요' %>"><%= item.note %></textarea>
         </label>
 
         <div class="item-detail-actions">

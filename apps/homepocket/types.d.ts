@@ -4,7 +4,7 @@ declare namespace types {
   }
 
   interface HomeItemFilters {
-    section: 'task' | 'purchase' | 'grocery'
+    section: 'task' | 'purchase' | 'grocery' | 'storage'
     keyword: string
     status: 'open' | 'done'
     tag: string
@@ -14,8 +14,8 @@ declare namespace types {
     id: string
     title: string
     note: string
-    section: 'task' | 'purchase' | 'grocery'
-    channel: 'offline' | 'online' | ''
+    section: 'task' | 'purchase' | 'grocery' | 'storage'
+    channel: 'offline' | 'online' | 'fridge' | 'freezer' | ''
     status: 'open' | 'done'
     repeatFrequency: 'none' | 'weekly' | 'monthly'
     repeatInterval: number

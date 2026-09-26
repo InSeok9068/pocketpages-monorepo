@@ -5,7 +5,7 @@
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
   const itemId = String(input.itemId || '').trim()
   let returnSection = String(input.returnSection || 'task')
-  if (['task', 'purchase', 'grocery'].indexOf(returnSection) < 0) returnSection = 'task'
+  if (['task', 'purchase', 'grocery', 'storage'].indexOf(returnSection) < 0) returnSection = 'task'
   const filters = homeItemsData.readFilters({
     section: returnSection,
     keyword: input.returnKeyword,
@@ -31,7 +31,7 @@
 
     const item = $app.findFirstRecordByFilter('homeItems', 'id = {:itemId} && user = {:userId}', { itemId, userId })
     const section = String(item.get('section') || '')
-    if (['task', 'purchase', 'grocery'].indexOf(section) < 0) throw new Error('항목 구분을 확인해 주세요.')
+    if (['task', 'purchase', 'grocery', 'storage'].indexOf(section) < 0) throw new Error('항목 구분을 확인해 주세요.')
 
     const frequencyValues = ['none', 'weekly', 'monthly']
     const requestedFrequency = String(input.repeatFrequency || 'none')
@@ -55,8 +55,12 @@
         throw new Error('매월 반복 날짜는 1일부터 31일 사이로 입력해 주세요.')
     }
 
-    const channelValue = section === 'task' ? '' : String(input.channel || '')
-    if (channelValue && ['offline', 'online'].indexOf(channelValue) < 0) throw new Error('구매 태그를 확인해 주세요.')
+    const channelValue = ['purchase', 'grocery', 'storage'].indexOf(section) >= 0 ? String(input.channel || '') : ''
+    const channelValues = section === 'storage' ? ['fridge', 'freezer'] : ['offline', 'online']
+    if (section === 'storage' && channelValues.indexOf(channelValue) < 0)
+      throw new Error('냉장 또는 냉동을 선택해 주세요.')
+    if (channelValue && channelValues.indexOf(channelValue) < 0)
+      throw new Error(section === 'storage' ? '보관 위치를 확인해 주세요.' : '구매 태그를 확인해 주세요.')
 
     item.set('title', title)
     item.set('note', String(input.note || '').trim().slice(0, 2000))
