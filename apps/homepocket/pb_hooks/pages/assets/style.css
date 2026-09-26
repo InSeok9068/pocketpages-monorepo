@@ -118,6 +118,41 @@ summary::-webkit-details-marker {
   min-height: calc(100vh - var(--home-bottom-nav-height));
 }
 
+.home-page.has-bottom-nav {
+  height: calc(100vh - var(--home-bottom-nav-height));
+  height: calc(100dvh - var(--home-bottom-nav-height));
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.home-page.has-bottom-nav .home-section-swiper {
+  height: 100%;
+  min-height: 0;
+}
+
+.home-page.has-bottom-nav .home-section-swiper > .swiper-wrapper,
+.home-page.has-bottom-nav .home-section-swiper > .swiper-wrapper > .swiper-slide {
+  height: 100%;
+}
+
+.home-page.has-bottom-nav .home-app {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.home-page.has-bottom-nav .home-app > section[id^='home-items-'] {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-color: #cbd8d1 transparent;
+  scrollbar-width: thin;
+}
+
 .home-section-swiper {
   width: 100%;
   overflow: hidden;
@@ -1091,7 +1126,9 @@ summary::-webkit-details-marker {
   }
 
   .home-page.has-bottom-nav .home-app {
-    min-height: calc(100vh - var(--home-bottom-nav-height) - 1rem);
+    height: calc(100% - 1rem);
+    min-height: 0;
+    margin-top: 1rem;
   }
 
   .optional-panel {

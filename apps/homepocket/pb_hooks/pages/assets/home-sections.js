@@ -68,7 +68,7 @@
   const swiper = new window.Swiper(container, {
     initialSlide: initialIndex,
     slidesPerView: 1,
-    autoHeight: true,
+    autoHeight: false,
     spaceBetween: 0,
     speed: 220,
     threshold: 12,
@@ -89,6 +89,5 @@
   document.body.addEventListener('htmx:afterSwap', (event) => {
     if (!event.target.closest('[data-home-section-slide]')) return
     swiper.update()
-    swiper.updateAutoHeight(0)
   })
 })()
