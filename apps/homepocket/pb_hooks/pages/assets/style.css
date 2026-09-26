@@ -334,19 +334,21 @@ summary::-webkit-details-marker {
     0 5px 14px rgb(36 58 49 / 8%);
 }
 
-.home-page.has-bottom-nav .storage-position-field {
-  margin-top: 0;
-  border-radius: 1rem 1rem 0 0;
+.home-page.has-bottom-nav .storage-options-card {
+  margin: 0.25rem 0 0.75rem;
+  border: 1px solid #e1e9e5;
+  border-radius: 1rem;
   background: #fff;
-  padding: 0.625rem 0.75rem 0.25rem;
+  padding: 0.625rem 0.75rem 0.375rem;
+  box-shadow: 0 4px 16px rgb(36 58 49 / 6%);
 }
 
-.home-page.has-bottom-nav .storage-position-field + .optional-details {
-  margin-bottom: 0.75rem;
-  border-radius: 0 0 1rem 1rem;
-  background: #fff;
-  padding: 0 0.75rem 0.375rem;
-  box-shadow: 0 4px 16px rgb(36 58 49 / 6%);
+.home-page.has-bottom-nav .storage-options-card .storage-position-field {
+  margin-top: 0;
+}
+
+.home-page.has-bottom-nav .storage-options-card .optional-details {
+  margin-top: 0.125rem;
 }
 
 .home-page.has-bottom-nav .capture-row + .optional-details {
