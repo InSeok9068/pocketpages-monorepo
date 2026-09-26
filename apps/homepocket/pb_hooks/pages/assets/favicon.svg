@@ -4,64 +4,97 @@
   viewBox="0 0 512 512"
   fill="none"
   xmlns="http://www.w3.org/2000/svg">
-  <g transform="translate(25.6 25.6) scale(0.9)">
+  <defs>
+    <linearGradient
+      id="home-fill"
+      x1="130"
+      y1="109"
+      x2="366"
+      y2="418"
+      gradientUnits="userSpaceOnUse">
+      <stop stop-color="#138563" />
+      <stop offset="1" stop-color="#087052" />
+    </linearGradient>
+  </defs>
   <path
-    d="M256 64 448 224h-48v190c0 18-14 32-32 32H144c-18 0-32-14-32-32V224H64L256 64Z"
-    fill="#087A59" />
+    d="M115 218c36-32 87-77 125-111 9-8 23-8 32 0 38 34 89 79 125 111 12 11 13 29 3 40-9 10-24 11-34 2v109c0 28-22 50-50 50H196c-28 0-50-22-50-50V260c-10 9-25 8-34-2-10-11-9-29 3-40Z"
+    transform="translate(0 8)"
+    fill="#194E3D"
+    fill-opacity="0.14" />
+  <path
+    d="M115 218c36-32 87-77 125-111 9-8 23-8 32 0 38 34 89 79 125 111 12 11 13 29 3 40-9 10-24 11-34 2v109c0 28-22 50-50 50H196c-28 0-50-22-50-50V260c-10 9-25 8-34-2-10-11-9-29 3-40Z"
+    fill="url(#home-fill)" />
+  <path
+    d="M161 228c35-31 73-64 95-83"
+    stroke="#8FD0B3"
+    stroke-opacity="0.58"
+    stroke-width="9"
+    stroke-linecap="round" />
   <rect
-    x="164"
-    y="245"
-    width="40"
-    height="40"
-    rx="12"
-    fill="#DFF4E9" />
+    x="169"
+    y="218"
+    width="174"
+    height="162"
+    rx="43"
+    fill="#F8F4EC" />
+  <rect
+    x="207"
+    y="208"
+    width="98"
+    height="19"
+    rx="9.5"
+    fill="#E1AD74" />
+  <circle
+    cx="202"
+    cy="265"
+    r="15"
+    fill="#DDF1E5" />
   <path
-    d="m173 264 9 9 18-21"
-    stroke="#087A59"
-    stroke-width="7"
+    d="m195 265 5 5 10-11"
+    stroke="#087052"
+    stroke-width="5"
     stroke-linecap="round"
     stroke-linejoin="round" />
   <rect
-    x="224"
-    y="258"
-    width="126"
-    height="14"
-    rx="7"
-    fill="#F8FAF9" />
+    x="226"
+    y="259"
+    width="87"
+    height="12"
+    rx="6"
+    fill="#80B99D" />
+  <circle
+    cx="202"
+    cy="309"
+    r="15"
+    fill="#F1E2CE" />
+  <circle
+    cx="202"
+    cy="309"
+    r="5"
+    fill="#C98C52" />
   <rect
-    x="164"
-    y="317"
-    width="40"
-    height="40"
-    rx="12"
-    fill="#DFF4E9" />
+    x="226"
+    y="303"
+    width="68"
+    height="12"
+    rx="6"
+    fill="#C9B59D" />
+  <circle
+    cx="202"
+    cy="353"
+    r="15"
+    fill="#E5EBE3" />
   <path
-    d="m173 336 9 9 18-21"
-    stroke="#087A59"
-    stroke-width="7"
+    d="m195 353 5 5 10-11"
+    stroke="#6E9A82"
+    stroke-width="5"
     stroke-linecap="round"
     stroke-linejoin="round" />
   <rect
-    x="224"
-    y="330"
-    width="104"
-    height="14"
-    rx="7"
-    fill="#F8FAF9" />
-  <rect
-    x="167.5"
-    y="389.5"
-    width="33"
-    height="33"
-    rx="9"
-    stroke="#DFF4E9"
-    stroke-width="7" />
-  <rect
-    x="224"
-    y="399"
-    width="119"
-    height="14"
-    rx="7"
-    fill="#F8FAF9" />
-  </g>
+    x="226"
+    y="347"
+    width="78"
+    height="12"
+    rx="6"
+    fill="#AABEB0" />
 </svg>
