@@ -7,7 +7,17 @@
   const initialIndex = Math.max(0, sectionOrder.indexOf(initialSection))
   const tabs = Array.from(document.querySelectorAll('[data-home-section-tab]'))
   const slides = Array.from(container.querySelectorAll('[data-home-section-slide]'))
+  const scrollApps = Array.from(container.querySelectorAll('.home-app'))
   let activeIndex = initialIndex
+
+  function syncScrolledState(app) {
+    app.classList.toggle('is-scrolled', app.scrollTop > 1)
+  }
+
+  for (const app of scrollApps) {
+    syncScrolledState(app)
+    app.addEventListener('scroll', () => syncScrolledState(app), { passive: true })
+  }
 
   function syncAddress(section) {
     const activeForm = Array.from(document.querySelectorAll('[data-home-filter-form]')).find(

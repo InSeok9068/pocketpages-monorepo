@@ -93,7 +93,7 @@
         hx-swap="outerHTML"
         x-data="{}"
         x-ref="form"
-        x-on:home-item-created.window="if ($event.detail.section === '<%= filters.section %>') { $refs.form.reset(); $refs.title.focus() }">
+        x-on:home-item-created.window="if ($event.detail.section === '<%= filters.section %>') { const location = $refs.form.querySelector('input[name=channel]:checked')?.value; $refs.form.reset(); if ('<%= filters.section %>' === 'storage' && location) { const option = $refs.form.querySelector('input[name=channel][value=' + location + ']'); if (option) option.checked = true; } $refs.title.focus() }">
         <input
           type="hidden"
           name="section"
@@ -439,7 +439,9 @@
         <% } %>
       </form>
     </section>
+    <% } %>
 
+  <% if (request.auth) { %>
     <section class="filter-section">
       <form
         id="home-filter-form-<%= filters.section %>" data-home-filter-form
