@@ -36,7 +36,7 @@
     if (action === 'done') {
       if (effectiveStatus === 'done') throw new Error('이미 완료한 항목입니다.')
       item.set('status', 'done')
-      item.set('lastCompletedAt', todayIso)
+      item.set('lastCompletedAt', new Date().toISOString())
       if (frequency === 'weekly' || frequency === 'monthly') {
         const nextDate = homeItemsData.nextDueDate(
           frequency,

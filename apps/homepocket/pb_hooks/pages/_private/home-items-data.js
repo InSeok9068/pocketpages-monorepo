@@ -47,7 +47,7 @@ function listItems(userId, filters) {
     values.keyword = filters.keyword
   }
 
-  const sort = filters.section === 'task' ? '+nextDueDate,-created' : '-created'
+  const sort = filters.status === 'done' ? '-lastCompletedAt,-created' : '-created'
   const records = $app.findRecordsByFilter('homeItems', expressions.join(' && '), sort, 500, 0, values)
   const today = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
   const cards = []
