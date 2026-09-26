@@ -69,11 +69,17 @@
 
       <div class="item-content">
         <div class="item-title-row">
-          <h2 class="item-title"><%= item.title %></h2>
+          <h2 class="item-title">
+            <a
+              class="item-title-link"
+              href="/items/<%= encodeURIComponent(item.id) %>?section=<%= encodeURIComponent(filters.section) %>&status=<%= encodeURIComponent(filters.status) %>&tag=<%= encodeURIComponent(filters.tag) %><%= filters.keyword ? '&keyword=' + encodeURIComponent(filters.keyword) : '' %>">
+              <%= item.title %>
+            </a>
+          </h2>
           <% if (item.section === 'task' && item.repeatFrequency !== 'none') { %>
           <span class="item-badge repeat-badge"><%= item.repeatFrequency === 'weekly' ? '매주' : '매월' %></span>
           <% } else if (item.channel) { %>
-          <span class="item-badge channel-badge"><%= item.channel === 'online' ? '온라인' : '오프라인' %></span>
+          <span class="item-badge channel-badge <%= item.channel === 'online' ? 'is-online' : 'is-offline' %>"><%= item.channel === 'online' ? '온라인' : '오프라인' %></span>
           <% } %>
         </div>
         <% if (item.note) { %>

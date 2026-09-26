@@ -1,0 +1,289 @@
+<script server>
+  const homeItemsData = resolve('home-items-data')
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const itemId = String(params.itemId || '').trim()
+  const query = request.url.query || {}
+  const filters = homeItemsData.readFilters(query)
+  const queryParts = [
+    'section=' + encodeURIComponent(filters.section),
+    'status=' + encodeURIComponent(filters.status),
+  ]
+  if (filters.tag) queryParts.push('tag=' + encodeURIComponent(filters.tag))
+  if (filters.keyword) queryParts.push('keyword=' + encodeURIComponent(filters.keyword))
+  const returnUrl = '/?' + queryParts.join('&')
+
+  dbg('homepocket/items/detail:start', { userId, itemId })
+
+  if (!userId) {
+    dbg('homepocket/items/detail:redirect', { status: 303, redirectTo: '/sign-in' })
+    redirect('/sign-in', { status: 303 })
+    return
+  }
+
+  if (!itemId) {
+    dbg('homepocket/items/detail:redirect', { status: 303, redirectTo: returnUrl })
+    redirect(returnUrl, { status: 303, message: '항목을 찾을 수 없습니다.' })
+    return
+  }
+
+  let record = null
+  try {
+    record = $app.findFirstRecordByFilter('homeItems', 'id = {:itemId} && user = {:userId}', { itemId, userId })
+  } catch (exception) {
+    warn('homepocket/items/detail:not-found', { userId, itemId })
+    dbg('homepocket/items/detail:redirect', { status: 303, redirectTo: returnUrl })
+    redirect(returnUrl, { status: 303, message: '항목을 찾을 수 없습니다.' })
+    return
+  }
+
+  const section = String(record.get('section') || '')
+  const sectionTitles = { task: '할 일', purchase: '구매', grocery: '장보기' }
+  if (!sectionTitles[section]) {
+    warn('homepocket/items/detail:invalid-section', { userId, itemId, section })
+    redirect(returnUrl, { status: 303, message: '항목을 찾을 수 없습니다.' })
+    return
+  }
+
+  const repeatFrequency = String(record.get('repeatFrequency') || 'none')
+  const nextDueDate = String(record.get('nextDueDate') || '')
+  const lastCompletedAt = String(record.get('lastCompletedAt') || '')
+  const item = {
+    id: itemId,
+    title: String(record.get('title') || ''),
+    note: String(record.get('note') || ''),
+    section,
+    channel: String(record.get('channel') || ''),
+    status: homeItemsData.getEffectiveStatus(record),
+    repeatFrequency,
+    repeatInterval: Number(record.get('repeatInterval') || 1),
+    repeatWeekdays: homeItemsData.readWeekdays(record.get('repeatWeekdays')),
+    repeatDayOfMonth: Number(record.get('repeatDayOfMonth') || 0),
+    nextDueDate,
+    nextDueLabel: homeItemsData.formatDateOnly(nextDueDate),
+    lastCompletedLabel: homeItemsData.formatDateOnly(lastCompletedAt),
+  }
+  const sectionTitle = sectionTitles[section]
+
+  meta('title', item.title + ' 수정')
+  meta('description', '항목 상세와 설정 수정')
+</script>
+
+<div class="item-detail-page">
+  <div class="item-detail-content">
+    <header class="item-detail-header">
+      <a
+        class="icon-button"
+        href="<%= returnUrl %>"
+        aria-label="목록으로 돌아가기">
+        <svg
+          class="icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true">
+          <path d="m15 18-6-6 6-6"></path>
+        </svg>
+      </a>
+      <div class="item-detail-heading">
+        <p><%= sectionTitle %></p>
+        <h1>항목 수정</h1>
+      </div>
+    </header>
+
+    <%- include('flash-alert.ejs', { flashMessage: params.__flash }) %>
+
+    <section class="item-detail-card">
+      <div class="item-detail-overview">
+        <span class="item-detail-status <%= item.status === 'done' ? 'is-done' : 'is-open' %>"><%= item.status === 'done' ? '완료됨' : '할 일' %></span>
+        <% if (item.section === 'task' && item.repeatFrequency !== 'none') { %>
+        <span class="item-badge repeat-badge"><%= item.repeatFrequency === 'weekly' ? '매주' : '매월' %></span>
+        <% } else if (item.channel) { %>
+        <span class="item-badge channel-badge <%= item.channel === 'online' ? 'is-online' : 'is-offline' %>"><%= item.channel === 'online' ? '온라인' : '오프라인' %></span>
+        <% } %>
+        <% if (item.lastCompletedLabel) { %>
+        <span class="item-detail-completed">최근 완료 · <%= item.lastCompletedLabel %></span>
+        <% } %>
+      </div>
+
+      <form
+        class="item-detail-form"
+        method="post"
+        action="/xapi/items/update"
+        x-data="{ frequency: '<%= item.repeatFrequency %>' }">
+        <input type="hidden" name="itemId" value="<%= item.id %>" />
+        <input type="hidden" name="returnSection" value="<%= filters.section %>" />
+        <input type="hidden" name="returnKeyword" value="<%= filters.keyword %>" />
+        <input type="hidden" name="returnStatus" value="<%= filters.status %>" />
+        <input type="hidden" name="returnTag" value="<%= filters.tag %>" />
+
+        <label class="field-label">
+          항목 이름
+          <input
+            class="field-control"
+            type="text"
+            name="title"
+            maxlength="200"
+            autocomplete="off"
+            value="<%= item.title %>"
+            required />
+        </label>
+
+        <% if (item.section === 'task') { %>
+        <fieldset class="choice-field">
+          <legend class="field-caption">반복 주기</legend>
+          <div class="choice-options">
+            <label class="choice-option">
+              <input
+                class="choice-input visually-hidden"
+                type="radio"
+                name="repeatFrequency"
+                value="none"
+                x-model="frequency"
+                <%= item.repeatFrequency === 'none' ? 'checked' : '' %> />
+              <span class="choice-button">안 함</span>
+            </label>
+            <label class="choice-option">
+              <input
+                class="choice-input visually-hidden"
+                type="radio"
+                name="repeatFrequency"
+                value="weekly"
+                x-model="frequency"
+                <%= item.repeatFrequency === 'weekly' ? 'checked' : '' %> />
+              <span class="choice-button">매주</span>
+            </label>
+            <label class="choice-option">
+              <input
+                class="choice-input visually-hidden"
+                type="radio"
+                name="repeatFrequency"
+                value="monthly"
+                x-model="frequency"
+                <%= item.repeatFrequency === 'monthly' ? 'checked' : '' %> />
+              <span class="choice-button">매월</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <label class="field-label" x-show="frequency !== 'none'" x-cloak>
+          <%= item.status === 'done' ? '다음 예정일' : '예정일' %>
+          <input
+            class="field-control"
+            type="date"
+            name="nextDueDate"
+            value="<%= item.nextDueDate ? item.nextDueDate.slice(0, 10) : '' %>" />
+        </label>
+
+        <div class="item-detail-settings" x-show="frequency === 'weekly'" x-cloak>
+          <p class="field-caption">반복 요일</p>
+          <div class="weekdays">
+            <label class="weekday-option">
+              <input type="checkbox" name="repeatWeekdays" value="mon" <%= item.repeatWeekdays.indexOf('mon') >= 0 ? 'checked' : '' %> />
+              월
+            </label>
+            <label class="weekday-option">
+              <input type="checkbox" name="repeatWeekdays" value="tue" <%= item.repeatWeekdays.indexOf('tue') >= 0 ? 'checked' : '' %> />
+              화
+            </label>
+            <label class="weekday-option">
+              <input type="checkbox" name="repeatWeekdays" value="wed" <%= item.repeatWeekdays.indexOf('wed') >= 0 ? 'checked' : '' %> />
+              수
+            </label>
+            <label class="weekday-option">
+              <input type="checkbox" name="repeatWeekdays" value="thu" <%= item.repeatWeekdays.indexOf('thu') >= 0 ? 'checked' : '' %> />
+              목
+            </label>
+            <label class="weekday-option">
+              <input type="checkbox" name="repeatWeekdays" value="fri" <%= item.repeatWeekdays.indexOf('fri') >= 0 ? 'checked' : '' %> />
+              금
+            </label>
+            <label class="weekday-option">
+              <input type="checkbox" name="repeatWeekdays" value="sat" <%= item.repeatWeekdays.indexOf('sat') >= 0 ? 'checked' : '' %> />
+              토
+            </label>
+            <label class="weekday-option">
+              <input type="checkbox" name="repeatWeekdays" value="sun" <%= item.repeatWeekdays.indexOf('sun') >= 0 ? 'checked' : '' %> />
+              일
+            </label>
+          </div>
+          <fieldset class="choice-field compact-field">
+            <legend class="field-caption">반복 간격</legend>
+            <div class="choice-options">
+              <label class="choice-option">
+                <input class="choice-input visually-hidden" type="radio" name="repeatWeeklyInterval" value="1" <%= item.repeatInterval === 1 ? 'checked' : '' %> />
+                <span class="choice-button">매주</span>
+              </label>
+              <label class="choice-option">
+                <input class="choice-input visually-hidden" type="radio" name="repeatWeeklyInterval" value="2" <%= item.repeatInterval === 2 ? 'checked' : '' %> />
+                <span class="choice-button">2주마다</span>
+              </label>
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="item-detail-settings" x-show="frequency === 'monthly'" x-cloak>
+          <label class="field-label">
+            매월 며칠
+            <input
+              class="field-control"
+              type="number"
+              name="repeatDayOfMonth"
+              min="1"
+              max="31"
+              value="<%= item.repeatDayOfMonth || '' %>"
+              placeholder="예: 1일" />
+          </label>
+          <fieldset class="choice-field compact-field">
+            <legend class="field-caption">반복 간격</legend>
+            <div class="choice-options">
+              <label class="choice-option">
+                <input class="choice-input visually-hidden" type="radio" name="repeatMonthlyInterval" value="1" <%= item.repeatInterval === 1 ? 'checked' : '' %> />
+                <span class="choice-button">매월</span>
+              </label>
+              <label class="choice-option">
+                <input class="choice-input visually-hidden" type="radio" name="repeatMonthlyInterval" value="2" <%= item.repeatInterval === 2 ? 'checked' : '' %> />
+                <span class="choice-button">2개월마다</span>
+              </label>
+            </div>
+          </fieldset>
+        </div>
+        <% } else { %>
+        <fieldset class="choice-field">
+          <legend class="field-caption">구매 태그</legend>
+          <div class="choice-options">
+            <label class="choice-option">
+              <input class="choice-input visually-hidden" type="radio" name="channel" value="" <%= !item.channel ? 'checked' : '' %> />
+              <span class="choice-button">없음</span>
+            </label>
+            <label class="choice-option">
+              <input class="choice-input channel-choice-input visually-hidden" type="radio" name="channel" value="offline" <%= item.channel === 'offline' ? 'checked' : '' %> />
+              <span class="choice-button">오프라인</span>
+            </label>
+            <label class="choice-option">
+              <input class="choice-input channel-choice-input visually-hidden" type="radio" name="channel" value="online" <%= item.channel === 'online' ? 'checked' : '' %> />
+              <span class="choice-button">온라인</span>
+            </label>
+          </div>
+        </fieldset>
+        <% } %>
+
+        <label class="field-label">
+          메모 (선택)
+          <textarea
+            class="field-control item-detail-note"
+            name="note"
+            maxlength="2000"
+            placeholder="메모를 입력하세요"><%= item.note %></textarea>
+        </label>
+
+        <div class="item-detail-actions">
+          <a class="item-detail-cancel" href="<%= returnUrl %>">취소</a>
+          <button class="item-detail-save" type="submit">저장</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>

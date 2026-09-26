@@ -1,0 +1,95 @@
+<script server>
+  const homeItemsData = resolve('home-items-data')
+  const { dateutil } = require('@pocketpages/utils')
+  const input = body() || {}
+  const userId = request.auth ? String(request.auth.get('id') || '') : ''
+  const itemId = String(input.itemId || '').trim()
+  let returnSection = String(input.returnSection || 'task')
+  if (['task', 'purchase', 'grocery'].indexOf(returnSection) < 0) returnSection = 'task'
+  const filters = homeItemsData.readFilters({
+    section: returnSection,
+    keyword: input.returnKeyword,
+    status: input.returnStatus,
+    tag: input.returnTag,
+  })
+  const today = dateutil.formatDate(new Date(), dateutil.FORMATS.DATE)
+  const enteredDate = String(input.nextDueDate || '').trim()
+  const dueDateText = enteredDate || today
+  const title = String(input.title || '').trim()
+  let listMessage = ''
+
+  dbg('homepocket/xapi/items/update:start', { userId, itemId, titleLength: title.length })
+
+  try {
+    if (request.method !== 'POST') throw new Error('잘못된 요청입니다.')
+    if (!userId) throw new Error('로그인이 필요합니다.')
+    if (!itemId) throw new Error('항목을 찾을 수 없습니다.')
+    if (!title) throw new Error('항목 이름을 입력해 주세요.')
+    if (title.length > 200) throw new Error('항목 이름은 200자 이내로 입력해 주세요.')
+    if (enteredDate && (!/^\d{4}-\d{2}-\d{2}$/.test(enteredDate) || !dateutil.toDateOnlyIso(enteredDate)))
+      throw new Error('예정일을 확인해 주세요.')
+
+    const item = $app.findFirstRecordByFilter('homeItems', 'id = {:itemId} && user = {:userId}', { itemId, userId })
+    const section = String(item.get('section') || '')
+    if (['task', 'purchase', 'grocery'].indexOf(section) < 0) throw new Error('항목 구분을 확인해 주세요.')
+
+    const frequencyValues = ['none', 'weekly', 'monthly']
+    const requestedFrequency = String(input.repeatFrequency || 'none')
+    if (section === 'task' && frequencyValues.indexOf(requestedFrequency) < 0)
+      throw new Error('반복 주기를 확인해 주세요.')
+
+    const repeatFrequency = section === 'task' ? requestedFrequency : 'none'
+    const repeatWeekdays = repeatFrequency === 'weekly' ? homeItemsData.readWeekdays(input.repeatWeekdays) : []
+    if (repeatFrequency === 'weekly' && !repeatWeekdays.length)
+      throw new Error('매주 반복할 요일을 선택해 주세요.')
+
+    const intervalField = repeatFrequency === 'monthly' ? input.repeatMonthlyInterval : input.repeatWeeklyInterval
+    const repeatInterval =
+      section === 'task' && repeatFrequency !== 'none'
+        ? Math.max(1, Math.min(12, parseInt(String(intervalField || '1'), 10) || 1))
+        : 1
+    let repeatDayOfMonth = repeatFrequency === 'monthly' ? parseInt(String(input.repeatDayOfMonth || ''), 10) || 0 : 0
+    if (repeatFrequency === 'monthly') {
+      if (!repeatDayOfMonth) repeatDayOfMonth = Number(dueDateText.slice(8, 10))
+      if (repeatDayOfMonth < 1 || repeatDayOfMonth > 31)
+        throw new Error('매월 반복 날짜는 1일부터 31일 사이로 입력해 주세요.')
+    }
+
+    const channelValue = section === 'task' ? '' : String(input.channel || '')
+    if (channelValue && ['offline', 'online'].indexOf(channelValue) < 0) throw new Error('구매 태그를 확인해 주세요.')
+
+    item.set('title', title)
+    item.set('note', String(input.note || '').trim().slice(0, 2000))
+    item.set('channel', channelValue)
+    item.set('repeatFrequency', repeatFrequency)
+    item.set('repeatInterval', repeatInterval)
+    item.set('repeatWeekdays', repeatWeekdays)
+    item.set('repeatDayOfMonth', repeatDayOfMonth)
+    item.set(
+      'nextDueDate',
+      repeatFrequency !== 'none' ? dateutil.toDateOnlyIso(dueDateText) : ''
+    )
+    $app.save(item)
+
+    info('homepocket/xapi/items/update:success', { userId, itemId, section })
+  } catch (exception) {
+    listMessage = String(exception.message || exception)
+    error('homepocket/xapi/items/update:failed', { userId, itemId, error: listMessage })
+  }
+
+  const queryParts = [
+    'section=' + encodeURIComponent(filters.section),
+    'status=' + encodeURIComponent(filters.status),
+  ]
+  if (filters.tag) queryParts.push('tag=' + encodeURIComponent(filters.tag))
+  if (filters.keyword) queryParts.push('keyword=' + encodeURIComponent(filters.keyword))
+  const listTarget = '/?' + queryParts.join('&')
+  const target = itemId ? '/items/' + encodeURIComponent(itemId) + '?' + queryParts.join('&') : listTarget
+  dbg('homepocket/xapi/items/update:redirect', {
+    status: 303,
+    redirectTo: target,
+    message: listMessage || '항목을 수정했습니다.',
+  })
+  redirect(target, { status: 303, message: listMessage || '항목을 수정했습니다.' })
+  return
+</script>
