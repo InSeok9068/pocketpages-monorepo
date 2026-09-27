@@ -21,10 +21,7 @@ function readFilters(input) {
 
   if (section === 'task' && ['none', 'weekly', 'monthly'].indexOf(tag) < 0) tag = ''
   if (section === 'storage' && ['fridge', 'freezer', 'untagged'].indexOf(tag) < 0) tag = ''
-  if (
-    (section === 'purchase' || section === 'grocery')
-    && ['offline', 'online', 'untagged'].indexOf(tag) < 0
-  ) tag = ''
+  if ((section === 'purchase' || section === 'grocery') && ['offline', 'online', 'untagged'].indexOf(tag) < 0) tag = ''
 
   return {
     section,
@@ -100,9 +97,7 @@ function listItems(userId, filters) {
     }
   }
 
-  return filters.section === 'storage'
-    ? fridgeCards.concat(freezerCards, untaggedStorageCards)
-    : cards
+  return filters.section === 'storage' ? fridgeCards.concat(freezerCards, untaggedStorageCards) : cards
 }
 
 /**

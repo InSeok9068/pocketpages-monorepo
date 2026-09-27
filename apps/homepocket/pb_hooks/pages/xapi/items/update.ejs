@@ -40,8 +40,7 @@
 
     const repeatFrequency = section === 'task' ? requestedFrequency : 'none'
     const repeatWeekdays = repeatFrequency === 'weekly' ? homeItemsData.readWeekdays(input.repeatWeekdays) : []
-    if (repeatFrequency === 'weekly' && !repeatWeekdays.length)
-      throw new Error('매주 반복할 요일을 선택해 주세요.')
+    if (repeatFrequency === 'weekly' && !repeatWeekdays.length) throw new Error('매주 반복할 요일을 선택해 주세요.')
 
     const intervalField = repeatFrequency === 'monthly' ? input.repeatMonthlyInterval : input.repeatWeeklyInterval
     const repeatInterval =
@@ -63,16 +62,18 @@
       throw new Error(section === 'storage' ? '보관 위치를 확인해 주세요.' : '구매 태그를 확인해 주세요.')
 
     item.set('title', title)
-    item.set('note', String(input.note || '').trim().slice(0, 2000))
+    item.set(
+      'note',
+      String(input.note || '')
+        .trim()
+        .slice(0, 2000)
+    )
     item.set('channel', channelValue)
     item.set('repeatFrequency', repeatFrequency)
     item.set('repeatInterval', repeatInterval)
     item.set('repeatWeekdays', repeatWeekdays)
     item.set('repeatDayOfMonth', repeatDayOfMonth)
-    item.set(
-      'nextDueDate',
-      repeatFrequency !== 'none' ? dateutil.toDateOnlyIso(dueDateText) : ''
-    )
+    item.set('nextDueDate', repeatFrequency !== 'none' ? dateutil.toDateOnlyIso(dueDateText) : '')
     $app.save(item)
 
     info('homepocket/xapi/items/update:success', { userId, itemId, section })
@@ -81,10 +82,7 @@
     error('homepocket/xapi/items/update:failed', { userId, itemId, error: listMessage })
   }
 
-  const queryParts = [
-    'section=' + encodeURIComponent(filters.section),
-    'status=' + encodeURIComponent(filters.status),
-  ]
+  const queryParts = ['section=' + encodeURIComponent(filters.section), 'status=' + encodeURIComponent(filters.status)]
   if (filters.tag) queryParts.push('tag=' + encodeURIComponent(filters.tag))
   if (filters.keyword) queryParts.push('keyword=' + encodeURIComponent(filters.keyword))
   const listTarget = '/?' + queryParts.join('&')
