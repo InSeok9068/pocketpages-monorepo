@@ -345,21 +345,21 @@
           </div>
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
             <dt class="text-[11px] font-semibold tracking-[0.2em] text-stone-500 uppercase">페이지 수</dt>
-            <dd class="mt-1 flex items-center gap-2 text-base font-medium text-stone-900">
+            <dd class="mt-1 flex items-center justify-between gap-3 text-base font-medium text-stone-900">
               <% if (estimatedPageCount > 0) { %>
               <span>약 <%= estimatedPageCount %>p</span>
               <% } else { %>
               <span>페이지 정보 없음</span>
               <% if (bookFileRecord && storedFileName) { %>
               <form
-                class="inline-flex"
+                class="inline-flex shrink-0"
                 method="post"
                 action="/xapi/books/recalculate-page-count"
               >
                 <input type="hidden" name="bookId" value="<%= bookId %>">
                 <button
                   type="submit"
-                  class="inline-flex size-8 items-center justify-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-600"
+                  class="inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#efe2d2] text-[#8e5521] shadow-[0_8px_18px_rgba(132,90,47,0.08)] transition hover:bg-[#ead9c4] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-600"
                   aria-label="페이지 수 다시 계산"
                   title="페이지 수 다시 계산"
                 >
