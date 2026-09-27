@@ -5,13 +5,13 @@
   const { dateutil } = require('@pocketpages/utils')
   const { compile: compileHtmlToText } = require(`${__hooks}/pages/_private/vendor/html-to-text.bundle.js`)
   const data4libraryService = resolve('data4library-service')
+  const epubReadingMetrics = resolve('epub-reading-metrics')
   const MAX_EPUB_BYTES = 1024 * 1024 * 100
   const DEFAULT_SHELF_BOOKS_PER_USER = 100
   const MIN_BOOK_SEARCH_SCORE = 80
   const MAX_METADATA_PAGE_FALLBACKS = 12
   const MAX_BOOK_SEARCH_DOCS = 100
   const BOOK_SEARCH_PAGE_SIZE = 25
-  const CHARS_PER_PAGE = 430
   const METADATA_ENTRY_PATH_PATTERN =
     /(rights|copyright|colophon|author|about|credit|imprint|title|cover|bookinfo|book_info|book-info)/i
   const ISBN_SCAN_ENTRY_PATTERN = /\.(opf|xml|ncx|xhtml|html|htm|txt)$/i
@@ -573,123 +573,6 @@
 
   function htmlToPlainText(input) {
     return decodeXmlText(epubHtmlToText(String(input || '')))
-  }
-
-  function parseSpineIdrefs(packageDocument) {
-    const packageNode = getXmlChild(packageDocument, 'package')
-    const spineNode = getXmlChild(packageNode, 'spine')
-    const itemrefNodes = getXmlChildren(spineNode, 'itemref')
-    const idrefs = []
-
-    for (let index = 0; index < itemrefNodes.length; index += 1) {
-      const idref = getXmlAttribute(itemrefNodes[index], 'idref')
-
-      if (idref) {
-        idrefs.push(idref)
-      }
-    }
-
-    return idrefs
-  }
-
-  function findTocEntryPath(manifestItems, packageDocument, packageDocumentPath) {
-    const packageNode = getXmlChild(packageDocument, 'package')
-    const spineNode = getXmlChild(packageNode, 'spine')
-    const tocId = getXmlAttribute(spineNode, 'toc')
-    const manifestList = Array.isArray(manifestItems) ? manifestItems : []
-
-    for (let index = 0; index < manifestList.length; index += 1) {
-      const manifestItem = manifestList[index]
-
-      if (!manifestItem || !manifestItem.href) {
-        continue
-      }
-
-      if ((tocId && manifestItem.id === tocId) || manifestItem.mediaType === 'application/x-dtbncx+xml') {
-        return joinPath(dirname(packageDocumentPath), manifestItem.href)
-      }
-    }
-
-    return ''
-  }
-
-  function countTocNavPoints(node) {
-    if (!node || typeof node !== 'object') {
-      return 0
-    }
-
-    const navPoints = getXmlChildren(node, 'navPoint')
-    let count = navPoints.length
-
-    for (let index = 0; index < navPoints.length; index += 1) {
-      count += countTocNavPoints(navPoints[index])
-    }
-
-    return count
-  }
-
-  function countReadableCharacters(input) {
-    const normalizedText = String(input || '').replace(/\s+/g, '')
-    return normalizedText ? normalizedText.length : 0
-  }
-
-  /**
-   * EPUB 본문 기준 분량 지표를 계산합니다.
-   * @param {object} archiveEntries EPUB 압축 엔트리 맵
-   * @param {Array<{id:string,href:string,mediaType:string,properties:string}>} manifestItems manifest 아이템 목록
-   * @param {string} packageDocumentPath OPF 경로
-   * @param {object} packageDocument 파싱된 OPF XML 문서
-   * @returns {{ textCharCount: number, chapterCount: number, estimatedPageCount: number, pageDivisor: number, pageRule: string }} 계산된 분량 지표
-   */
-  function buildReadingMetrics(archiveEntries, manifestItems, packageDocumentPath, packageDocument) {
-    const manifestList = Array.isArray(manifestItems) ? manifestItems : []
-    const manifestById = {}
-    const spineIdrefs = parseSpineIdrefs(packageDocument)
-    const excludedPathPattern =
-      /(cover|copy|copyright|colophon|imprint|about|author|title|toc|nav|contents|index|footnote)/i
-    let combinedText = ''
-
-    for (let index = 0; index < manifestList.length; index += 1) {
-      const manifestItem = manifestList[index]
-
-      if (manifestItem && manifestItem.id) {
-        manifestById[manifestItem.id] = manifestItem
-      }
-    }
-
-    for (let index = 0; index < spineIdrefs.length; index += 1) {
-      const manifestItem = manifestById[spineIdrefs[index]]
-
-      if (!manifestItem || !manifestItem.href) {
-        continue
-      }
-
-      if (!(manifestItem.mediaType === 'application/xhtml+xml' || /\.(xhtml|html|htm)$/i.test(manifestItem.href))) {
-        continue
-      }
-
-      const entryPath = joinPath(dirname(packageDocumentPath), manifestItem.href)
-
-      if (excludedPathPattern.test(entryPath)) {
-        continue
-      }
-
-      combinedText += ' ' + htmlToPlainText(readArchiveText(archiveEntries, entryPath))
-    }
-
-    const textCharCount = countReadableCharacters(combinedText)
-    const tocEntryPath = findTocEntryPath(manifestItems, packageDocument, packageDocumentPath)
-    const chapterCount = countTocNavPoints(parseXmlDocument(readArchiveText(archiveEntries, tocEntryPath)))
-    const pageDivisor = CHARS_PER_PAGE
-    const estimatedPageCount = textCharCount > 0 ? Math.ceil(textCharCount / pageDivisor) : 0
-
-    return {
-      textCharCount: textCharCount,
-      chapterCount: chapterCount,
-      estimatedPageCount: estimatedPageCount,
-      pageDivisor: pageDivisor,
-      pageRule: 'fixed',
-    }
   }
 
   function isMetadataEntryPath(entryPath) {
@@ -2460,10 +2343,14 @@
         })
       : null
     const existingBookMetadataComplete = hasCompleteStoredBookMetadata(existingBookRecord)
+    const existingEstimatedPageCount = existingBookRecord
+      ? Number(existingBookRecord.get('estimated_page_count') || 0)
+      : 0
+    const hasStoredEstimatedPageCount = existingEstimatedPageCount > 0
     const canReuseExistingBookFile = !!(
       existingBookFile
       && existingBookRecord
-      && (fileLookup.hashMode === 'epub-text-v1' || existingBookMetadataComplete)
+      && (fileLookup.hashMode === 'epub-text-v1' ? hasStoredEstimatedPageCount : existingBookMetadataComplete)
     )
 
     dbg('xapi/epub/upload:existing-book-file', {
@@ -2471,6 +2358,7 @@
       existingId: existingBookFile ? existingBookFile.get('id') : '',
       existingBookId: existingBookId,
       hasCompleteBookMetadata: existingBookMetadataComplete,
+      hasStoredEstimatedPageCount: hasStoredEstimatedPageCount,
       canReuseExistingBookFile: canReuseExistingBookFile,
     })
 
@@ -2598,7 +2486,12 @@
     const matchedBook = detailBook || selectedDoc || null
     const resolvedIsbn13 =
       detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
-    const readingMetrics = buildReadingMetrics(archiveEntries, manifestItems, packageDocumentPath, packageDocument)
+    const readingMetrics = epubReadingMetrics.buildReadingMetrics(
+      archiveEntries,
+      manifestItems,
+      packageDocumentPath,
+      packageDocument
+    )
     dbg('xapi/epub/upload:reading-metrics', {
       textCharCount: readingMetrics.textCharCount,
       chapterCount: readingMetrics.chapterCount,

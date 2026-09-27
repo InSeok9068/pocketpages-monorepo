@@ -32,6 +32,14 @@ declare namespace types {
     [key: string]: any[]
   }
 
+  interface EpubReadingMetrics {
+    textCharCount: number
+    chapterCount: number
+    estimatedPageCount: number
+    pageDivisor: number
+    pageRule: string
+  }
+
   interface ReaderSettings {
     theme: string
     fontSizePercent: number

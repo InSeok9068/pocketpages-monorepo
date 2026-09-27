@@ -345,8 +345,42 @@
           </div>
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
             <dt class="text-[11px] font-semibold tracking-[0.2em] text-stone-500 uppercase">페이지 수</dt>
-            <dd class="mt-1 text-base font-medium text-stone-900">
-              <%= estimatedPageCount > 0 ? '약 ' + estimatedPageCount + 'p' : '페이지 정보 없음' %>
+            <dd class="mt-1 flex items-center gap-2 text-base font-medium text-stone-900">
+              <% if (estimatedPageCount > 0) { %>
+              <span>약 <%= estimatedPageCount %>p</span>
+              <% } else { %>
+              <span>페이지 정보 없음</span>
+              <% if (bookFileRecord && storedFileName) { %>
+              <form
+                class="inline-flex"
+                method="post"
+                action="/xapi/books/recalculate-page-count"
+              >
+                <input type="hidden" name="bookId" value="<%= bookId %>">
+                <button
+                  type="submit"
+                  class="inline-flex size-8 items-center justify-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-600"
+                  aria-label="페이지 수 다시 계산"
+                  title="페이지 수 다시 계산"
+                >
+                  <svg
+                    class="size-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"></path>
+                    <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"></path>
+                  </svg>
+                  <span class="sr-only">페이지 수 다시 계산</span>
+                </button>
+              </form>
+              <% } %>
+              <% } %>
             </dd>
           </div>
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
