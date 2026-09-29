@@ -354,15 +354,16 @@
               <form
                 class="inline-flex shrink-0"
                 method="post"
-                action="/xapi/books/recalculate-page-count"
-              >
-                <input type="hidden" name="bookId" value="<%= bookId %>">
+                action="/xapi/books/recalculate-page-count">
+                <input
+                  type="hidden"
+                  name="bookId"
+                  value="<%= bookId %>" />
                 <button
                   type="submit"
                   class="inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#efe2d2] text-[#8e5521] shadow-[0_8px_18px_rgba(132,90,47,0.08)] transition hover:bg-[#ead9c4] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-600"
                   aria-label="페이지 수 다시 계산"
-                  title="페이지 수 다시 계산"
-                >
+                  title="페이지 수 다시 계산">
                   <svg
                     class="size-4"
                     viewBox="0 0 24 24"
@@ -371,8 +372,7 @@
                     stroke-width="1.8"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
+                    aria-hidden="true">
                     <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"></path>
                     <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"></path>
                   </svg>

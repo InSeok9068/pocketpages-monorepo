@@ -138,14 +138,10 @@
 
   if (bookFileId) {
     try {
-      bookFileRecord = $app.findFirstRecordByFilter(
-        'book_files',
-        'id = {:bookFileId} && book_id = {:bookId}',
-        {
-          bookFileId: bookFileId,
-          bookId: bookId,
-        }
-      )
+      bookFileRecord = $app.findFirstRecordByFilter('book_files', 'id = {:bookFileId} && book_id = {:bookId}', {
+        bookFileId: bookFileId,
+        bookId: bookId,
+      })
     } catch (exception) {
       bookFileRecord = null
     }
