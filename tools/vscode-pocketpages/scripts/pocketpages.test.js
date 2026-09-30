@@ -119,6 +119,25 @@ async function runSubtest(parent, name, body) {
       assert.equal(shouldReuseLastCompletion(cached, { ...request, service: {} }), false)
     })
 
+    test('scheduled callbacks that throw are reported instead of escaping the timer', () => {
+      const { createRequestCoordinator } = require('../packages/language-server/request-coordinator')
+      const timers = []
+      const errors = []
+      const coordinator = createRequestCoordinator({
+        setTimeout(callback) {
+          timers.push(callback)
+          return timers.length
+        },
+        clearTimeout() {},
+        onError: (error, context) => errors.push([error.message, context.key]),
+      })
+      coordinator.schedule('file:///page.ejs', 'first-request-warmup', 0, () => {
+        throw new Error('boom')
+      })
+      assert.doesNotThrow(() => timers[0]())
+      assert.deepEqual(errors, [['boom', 'first-request-warmup']])
+    })
+
     function writeFile(filePath, text) {
       fs.mkdirSync(path.dirname(filePath), { recursive: true })
       fs.writeFileSync(filePath, text, 'utf8')
@@ -360,6 +379,7 @@ declare const resolve: (path: string) => any;
 const runExtensionHostWorkflow = (() => {
   'use strict'
 
+  const assert = require('assert/strict')
   const fs = require('fs')
   const os = require('os')
   const path = require('path')
@@ -929,6 +949,14 @@ const renameLabel = 'Before'
       TransportKind: {
         ipc: 1,
       },
+      CloseAction: {
+        DoNotRestart: 1,
+        Restart: 2,
+      },
+      ErrorAction: {
+        Continue: 1,
+        Shutdown: 2,
+      },
       LanguageClient: class MockLanguageClient {
         constructor(id, name, serverOptions, clientOptions) {
           this.id = id
@@ -1244,6 +1272,11 @@ const renameLabel = 'Before'
       }
 
       const firstClient = harness.controls.clientState.instances[0]
+      const { CloseAction, ErrorAction } = harness.mocks.languageClientModule
+      const errorHandler = firstClient.clientOptions && firstClient.clientOptions.errorHandler
+      assert.equal((await errorHandler.closed()).action, CloseAction.DoNotRestart)
+      assert.equal((await errorHandler.error(new Error('x'), undefined, 1)).action, ErrorAction.Continue)
+      assert.equal((await errorHandler.error(new Error('x'), undefined, 4)).action, ErrorAction.Shutdown)
       firstClient.emitStateChange(harness.mocks.languageClientModule.State.Stopped)
       await flushAsyncWork()
 

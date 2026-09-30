@@ -6,6 +6,7 @@ function createRequestCoordinator(options = {}) {
     typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
   const clearTimer =
     typeof options.clearTimeout === "function" ? options.clearTimeout : clearTimeout;
+  const onError = typeof options.onError === "function" ? options.onError : null;
   const timers = new Map();
 
   function toTimerKey(uri, key) {
@@ -61,8 +62,18 @@ function createRequestCoordinator(options = {}) {
         return;
       }
 
-      if (typeof callback === "function") {
+      if (typeof callback !== "function") {
+        return;
+      }
+
+      try {
         callback();
+      } catch (error) {
+        if (onError) {
+          onError(error, { uri, key });
+        } else {
+          console.error(error);
+        }
       }
     }, delayMs);
 

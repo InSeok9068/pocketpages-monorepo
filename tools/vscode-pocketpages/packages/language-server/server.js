@@ -64,7 +64,16 @@ const completionCache = new Map();
 const lastCompletionByUri = new Map();
 const lastInteractiveOffsetByUri = new Map();
 const documentRuntimeState = createDocumentRuntimeStateRegistry();
-const requestCoordinator = createRequestCoordinator({ runtimeState: documentRuntimeState });
+const requestCoordinator = createRequestCoordinator({
+  runtimeState: documentRuntimeState,
+  onError(error, { uri, key }) {
+    logServer("error", "scheduler", "callback-failed", {
+      uri,
+      key,
+      error: error && error.stack ? error.stack : String(error),
+    });
+  },
+});
 let pullDiagnosticRefreshSupported = false;
 let serverRequestSequence = 0;
 let logSessionId = null;

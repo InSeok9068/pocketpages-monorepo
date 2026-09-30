@@ -2,7 +2,13 @@
 
 const path = require("path");
 const vscode = require("vscode");
-const { LanguageClient, TransportKind, State } = require("vscode-languageclient/node");
+const {
+  LanguageClient,
+  TransportKind,
+  State,
+  CloseAction,
+  ErrorAction,
+} = require("vscode-languageclient/node");
 const { findAppRoot } = require("../language-service/language-service");
 const { getServerTemplateBoundaryLineNumbers } = require("../language-core/ejs-server-boundary");
 const { REQUESTS, NOTIFICATIONS } = require("../language-server/protocol");
@@ -1285,6 +1291,16 @@ async function activateLsp(context) {
     },
     synchronize: {
       fileEvents: synchronizedFileWatchers,
+    },
+    errorHandler: {
+      error: (_error, _message, count) => ({
+        action: count && count <= 3 ? ErrorAction.Continue : ErrorAction.Shutdown,
+      }),
+      closed: () => ({
+        action: CloseAction.DoNotRestart,
+        message: "PocketPages language server stopped unexpectedly; the extension will restart it.",
+        handled: true,
+      }),
     },
   };
 
