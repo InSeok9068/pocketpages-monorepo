@@ -311,6 +311,44 @@ declare const resolve: (path: string) => any;
       assert.deepEqual(await server.complete(page, callerText, offset), ['beforeName'])
     })
 
+    test('IPC local rename preserves shorthand property keys', { timeout: 30000 }, async (t) => {
+      const { TextDocument } = require('vscode-languageserver-textdocument')
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'rename', 'posts')
+      const cases = [
+        {
+          name: 'server-object',
+          text: '<script server>\nconst title = "x";\nconst obj = { title, label: title };\nconsole.log(title, obj.title);\n</script>\n',
+          expected: '<script server>\nconst renamed = "x";\nconst obj = { title: renamed, label: renamed };\nconsole.log(renamed, obj.title);\n</script>\n',
+        },
+        {
+          name: 'server-destructuring',
+          text: '<script server>\nconst { title } = { title: "x" };\nconsole.log(title);\n</script>\n',
+          expected: '<script server>\nconst { title: renamed } = { title: "x" };\nconsole.log(renamed);\n</script>\n',
+        },
+        {
+          name: 'template-object',
+          text: '<script server>\nconst title = "x";\n</script>\n<%= JSON.stringify({ title }) %>\n<%= title %>\n',
+          expected: '<script server>\nconst renamed = "x";\n</script>\n<%= JSON.stringify({ title: renamed }) %>\n<%= renamed %>\n',
+        },
+      ]
+      for (const entry of cases) {
+        const page = path.join(app.pagesRoot, `${entry.name}.ejs`)
+        writeFile(page, entry.text)
+        await server.open(page, entry.text)
+        const uri = server.uri(page)
+        const document = TextDocument.create(uri, 'ejs', 1, entry.text)
+        const result = await server.request('textDocument/rename', {
+          textDocument: { uri },
+          position: document.positionAt(entry.text.indexOf('title') + 2),
+          newName: 'renamed',
+        })
+        assert.ok(result?.changes?.[uri], `Expected rename edits for ${entry.name}`)
+        assert.deepEqual(Object.keys(result.changes), [uri], 'Local rename stays in its document')
+        assert.equal(TextDocument.applyEdits(document, result.changes[uri]), entry.expected, entry.name)
+      }
+    })
+
     test('IPC schema watch retains valid data only through parse failures', { timeout: 30000 }, async (t) => {
       const server = await startServer(t)
       const app = createApp(server.fixtureRoot, 'schema', 'posts')

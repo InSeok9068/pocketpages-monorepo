@@ -378,7 +378,7 @@ function createNavigationFeatureHandlers(deps) {
         virtualState.virtualOffset,
         false,
         false,
-        {}
+        { providePrefixAndSuffixTextForRename: true }
       ) || [];
       if (service.shouldCancelOperation(options)) {
         return null;
@@ -401,7 +401,7 @@ function createNavigationFeatureHandlers(deps) {
             filePath: mappedLocation.filePath,
             start: mappedLocation.start,
             end: mappedLocation.end,
-            newText: newName,
+            newText: `${location.prefixText || ""}${newName}${location.suffixText || ""}`,
           });
         }
       }
