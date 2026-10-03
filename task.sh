@@ -13,7 +13,7 @@ Usage:
   ./task.sh start <service> [-- <extra args>]
   ./task.sh kill
   ./task.sh update <npm|pocketbase> [-- <extra args>]
-  ./task.sh audit [-- <extra args>]
+  ./task.sh audit [--fix] [-- <extra args>]
   ./task.sh install <npm> [-- <extra args>]
   ./task.sh deploy <service> [--skip-verify]
   ./task.sh rollback <service> <1|2|3>
@@ -43,7 +43,7 @@ Commands:
   start     Start service in foreground
   kill      Kill running pocketbase/pbw processes and free their ports
   update    `npm` runs npm up in root and app package.json dirs; `pocketbase` runs pocketbase update in app dirs
-  audit     Run npm audit in root and app package.json dirs; continues across dirs and fails at the end if any dir reports vulnerabilities
+  audit     Run npm audit in root and app package.json dirs; --fix runs npm audit fix --force in each dir
   install   `npm` runs npm install in root and app package.json dirs
   deploy    Verify and upload one service deploy targets using .vscode/sftp.json
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
@@ -89,6 +89,7 @@ Examples:
   ./task.sh update pocketbase
   ./task.sh update pocketbase -- --backup
   ./task.sh audit
+  ./task.sh audit --fix
   ./task.sh audit -- --omit=dev
   ./task.sh preflight
   ./task.sh knip
@@ -2448,8 +2449,35 @@ case "${1:-help}" in
     ;;
   audit)
     shift || true
-    [[ "${1:-}" == "--" ]] && shift
-    run_audit "$@"
+    audit_fix="false"
+    audit_args=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --fix)
+          audit_fix="true"
+          shift
+          ;;
+        --)
+          shift
+          audit_args+=("$@")
+          break
+          ;;
+        --help|-h)
+          print_help
+          exit 0
+          ;;
+        *)
+          echo "Unknown audit option: $1" >&2
+          echo "Usage: ./task.sh audit [--fix] [-- <extra args>]" >&2
+          exit 1
+          ;;
+      esac
+    done
+    if [[ "$audit_fix" == "true" ]]; then
+      run_audit fix --force "${audit_args[@]}"
+    else
+      run_audit "${audit_args[@]}"
+    fi
     ;;
   install)
     shift || true
