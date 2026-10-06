@@ -7,6 +7,7 @@ apps/todo/todo-portable.zip
 
 # 데이터
 pb_data
+apps/booklog/.docs/*.epub
 
 # stfp 인증정보
 .vscode/sftp.json

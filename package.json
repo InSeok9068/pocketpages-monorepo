@@ -2,12 +2,14 @@
   "name": "pocketpages-monorepo",
   "packageManager": "npm@11.19.0",
   "scripts": {
-    "format": "prettier --write --cache --cache-location .cache/prettier/.prettier-cache \"apps/*/pb_hooks/**/*\" \"packages/**/*.js\" \"packages/**/*.mjs\" \"packages/**/*.d.ts\""
+    "format": "prettier --write --cache --cache-location .cache/prettier/.prettier-cache \"apps/*/pb_hooks/**/*\" \"packages/**/*.js\" \"packages/**/*.mjs\" \"packages/**/*.d.ts\"",
+    "test:booklog:webkit": "playwright test --config=apps/booklog/playwright.config.mjs --project=webkit"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@iconify-json/lucide": "1.2.123",
     "@inquirer/prompts": "^8.5.2",
+    "@playwright/test": "^1.63.0",
     "@pocketpages/test-support": "file:packages/test-support",
     "@types/node": "^24.13.2",
     "@unocss/cli": "66.10.5",

@@ -296,6 +296,14 @@ module.exports = [
     },
   },
   {
+    files: ['apps/**/playwright.config.mjs', 'apps/**/tests/**/*.spec.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: globals.node,
+    },
+  },
+  {
     files: ['apps/**/__tests__/**/*.mjs', 'packages/test-support/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
