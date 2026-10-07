@@ -38,6 +38,179 @@ async function runSubtest(parent, name, body) {
   const { buildScriptServerMirrorText } = require('../packages/typescript-plugin/shared')
   const { extractServerBlocks } = require('../packages/language-core/script-server')
   const { shouldReuseLastCompletion } = require('../packages/language-server/services/completion-helpers')
+  test('Method loaders attach only to actual pages and runtime .js files', () => {
+    const vm = require('node:vm')
+    const { PocketPagesProjectIndex, normalizePath } = require('../packages/language-service/project-index')
+    const { PocketPagesLanguageServiceManager } = require('../packages/language-service/language-service')
+    const repoRoot = path.resolve(__dirname, '../../..')
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pocketpages-method-loaders-'))
+    const pagesRoot = path.join(root, 'pb_hooks', 'pages')
+    const file = (name) => path.join(pagesRoot, name)
+    const write = (name) => {
+      fs.mkdirSync(path.dirname(file(name)), { recursive: true })
+      fs.writeFileSync(file(name), name.endsWith('.ejs') ? '<h1>Page</h1>' : 'module.exports = function () { return {} }')
+    }
+    try {
+      for (const name of [
+        'orphan/+post.js', 'orphan/+load.js', 'orphan/+middleware.js',
+        'valid/index.ejs', 'valid/+post.js', 'valid/+load.js', 'valid/+load.cjs', 'valid/+middleware.js', 'valid/+middleware.mjs',
+        'cjs/index.ejs', 'cjs/+post.cjs', 'mjs/index.ejs', 'mjs/+post.mjs',
+        'named/new.ejs', 'named/edit.ejs', 'named/+post.js',
+        '(site)/items/[id]/index.ejs', '(site)/items/[id]/+get.js',
+        '_private/module.cjs', '_private/module.mjs',
+      ]) write(name)
+      const source = fs.readFileSync(path.join(repoRoot, 'apps/booklog/node_modules/pocketpages/dist/index.js'), 'utf8')
+      let cache
+      const context = {
+        pagesRoot, process, LOADER_METHODS: ['load', 'get', 'post', 'put', 'patch', 'delete'],
+        globalApi: {}, dbg() {}, toBoolean: () => false, keys: Object.keys, forEach: (items, fn) => items.forEach(fn),
+        loadPlugins: () => [{ handles: ({ filePath }) => filePath.endsWith('.ejs') }],
+        pocketbase_node: { fs: { existsSync: fs.existsSync } }, pocketbase_log: { info() {}, error() {} },
+        $os: { readFile: fs.readFileSync }, toString: (buffer) => buffer.toString(), $security: { sha256: () => '' },
+        $app: { store: () => ({ set: (_key, value) => { cache = value } }) },
+        $filepath: {
+          join: path.join, dir: path.dirname, base: path.basename, ext: path.extname,
+          toSlash: (value) => value.replaceAll('\\', '/'), glob: () => [],
+          walkDir: (dir, callback) => {
+            const walk = (current) => {
+              for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+                const target = path.join(current, entry.name)
+                callback(target, { isDir: () => entry.isDirectory() })
+                if (entry.isDirectory()) walk(target)
+              }
+            }
+            walk(dir)
+          },
+        },
+      }
+      vm.createContext(context)
+      const start = source.indexOf('const AfterBootstrapHandler =')
+      vm.runInContext(source.slice(start, source.indexOf('//#endregion', start)) + '\nAfterBootstrapHandler({});', context)
+      const index = new PocketPagesProjectIndex(root)
+      for (const name of ['orphan/+post.js', 'cjs/+post.cjs', 'mjs/+post.mjs']) {
+        assert.equal(index.describeRouteFilePath(file(name)), null, name)
+        assert.equal(index.getRouteDescriptorByFilePath(file(name)), null, name)
+      }
+      const runtimeLoaders = new Set()
+      for (const route of cache.routes.filter((entry) => !entry.isStatic)) {
+        const routePath = '/' + Array.from(route.segments, (segment) => segment.nodeName).filter((segment) => segment !== 'index').join('/')
+        for (const [method, target] of Object.entries(route.loaders)) {
+          if (method !== 'load') runtimeLoaders.add(`${method.toUpperCase()} ${routePath} ${normalizePath(target)}`)
+        }
+      }
+      const lspLoaders = new Set(index.getRouteState().descriptors.filter((entry) => entry.method !== 'PAGE')
+        .map((entry) => `${entry.method} ${entry.routePath} ${entry.filePath}`))
+      assert.deepEqual(lspLoaders, runtimeLoaders)
+      assert.equal(index.resolveRouteTarget(file('valid/index.ejs'), '/orphan', { routeSource: 'hx-post' }), null)
+      assert.equal(index.resolveRouteTarget(file('valid/index.ejs'), '/named', { routeSource: 'hx-post' }), null)
+      for (const request of ['/named/new', '/named/edit']) {
+        assert.equal(index.resolveRouteTarget(file('valid/index.ejs'), request, { routeSource: 'hx-post' }), normalizePath(file('named/+post.js')))
+      }
+      for (const extension of ['cjs', 'mjs']) {
+        assert.equal(index.resolveResolveTarget(file('valid/index.ejs'), `module.${extension}`), normalizePath(file(`_private/module.${extension}`)))
+      }
+      const service = new PocketPagesLanguageServiceManager().getServiceForFile(file('valid/index.ejs'))
+      const namedCallerText = '<button hx-post="/named/new"></button><button hx-post="/named/edit"></button>'
+      fs.writeFileSync(file('valid/index.ejs'), namedCallerText)
+      const namedRenameEdits = service.getFileRenameEdits(file('named'), file('renamed'))
+        .filter((entry) => normalizePath(entry.filePath) === normalizePath(file('valid/index.ejs')))
+      assert.deepEqual(namedRenameEdits.map((entry) => entry.newText).sort(), ['/renamed/edit', '/renamed/new'])
+      for (const name of ['orphan/+post.js', 'orphan/+load.js', 'cjs/+post.cjs', 'valid/+load.cjs']) {
+        const explanation = service.getCurrentRouteExplanation(file(name))
+        assert.equal(explanation.route, null, name)
+        assert.deepEqual(explanation.loaders, [], name)
+      }
+      const explanation = service.getCurrentRouteExplanation(file('valid/index.ejs'))
+      assert.deepEqual(explanation.loaders.map((entry) => entry.fileName), ['+load.js', '+post.js'])
+      assert.deepEqual(explanation.middlewareChain, [normalizePath(file('valid/+middleware.js'))])
+      fs.unlinkSync(file('valid/index.ejs'))
+      index.resetCaches()
+      assert.equal(index.getRouteDescriptorByFilePath(file('valid/+post.js')), null)
+      write('valid/index.ejs')
+      index.resetCaches()
+      assert(index.getRouteDescriptorByFilePath(file('valid/+post.js')))
+      service.dispose()
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+  test('Private paths follow installed PocketPages and EJS runtime resolution', () => {
+    const vm = require('node:vm')
+    const { PocketPagesProjectIndex, normalizePath } = require('../packages/language-service/project-index')
+    const { PocketPagesLanguageServiceManager } = require('../packages/language-service/language-service')
+    const repoRoot = path.resolve(__dirname, '../../..')
+    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pocketpages-private-paths-'))
+    const pagesRoot = path.join(fixtureRoot, 'pb_hooks', 'pages')
+    const file = (name) => path.join(pagesRoot, name)
+    const write = (name, text) => {
+      fs.mkdirSync(path.dirname(file(name)), { recursive: true })
+      fs.writeFileSync(file(name), text)
+    }
+    try {
+      for (const name of ['_private/only.js', 'feature/_private/model.js', '_private/feature/_private/model.js']) {
+        write(name, 'module.exports = { value: 1 }')
+      }
+      for (const name of ['_private/header.ejs', 'feature/_private/header.ejs', 'feature/header.ejs', 'feature/index.ejs']) {
+        write(name, '<h1>Header</h1>')
+      }
+      const source = fs.readFileSync(path.join(repoRoot, 'apps/booklog/node_modules/pocketpages/dist/index.js'), 'utf8')
+      const context = {
+        __hooks: path.dirname(pagesRoot), process,
+        $filepath: { join: path.join, dir: path.dirname },
+        pocketbase_node: { fs: { existsSync: fs.existsSync, readFileSync: fs.readFileSync } },
+        require: (target) => normalizePath(fs.existsSync(`${target}.js`) ? `${target}.js` : target),
+      }
+      vm.createContext(context)
+      vm.runInContext(
+        source.slice(source.indexOf('const pagesRoot ='), source.indexOf('const mkMeta =')) + '\nthis.resolve = mkResolve;',
+        context
+      )
+      const runtimeResolve = context.resolve(path.dirname(file('feature/index.ejs')))
+      const ejs = { compile() {}, resolveInclude() {}, includeFile() {} }
+      const pluginModule = { exports: {} }
+      vm.runInNewContext(
+        fs.readFileSync(path.join(repoRoot, 'apps/booklog/node_modules/pocketpages-plugin-ejs/dist/index.js'), 'utf8'),
+        {
+          process, module: pluginModule,
+          require: (name) => name === 'pocketbase-ejs' ? ejs
+            : name === 'pocketbase-node' ? { fs: { existsSync: fs.existsSync } }
+              : { stringify: JSON.stringify },
+        }
+      )
+      pluginModule.exports({ pagesRoot, dbg() {} }, {})
+      const index = new PocketPagesProjectIndex(fixtureRoot)
+      const caller = file('feature/index.ejs')
+      const findOrNull = (find) => { try { return normalizePath(find()) } catch { return null } }
+      for (const request of ['model', './model', 'only', '../only', '../_private/model', '/feature/_private/model', '/missing']) {
+        assert.equal(index.resolveResolveTarget(caller, request), findOrNull(() => runtimeResolve(request)), request)
+      }
+      for (const request of ['header.ejs', './header.ejs', '../header.ejs', '../only.ejs', '../_private/header.ejs', '../../_private/header.ejs']) {
+        assert.equal(index.resolveIncludeTarget(caller, request), findOrNull(() => ejs.resolveInclude(request, caller, false)), request)
+      }
+      assert.equal(index.resolveIncludeTarget(caller, '/feature/_private/header.ejs'), normalizePath(file('feature/_private/header.ejs')))
+      assert.equal(index.resolveResolveTarget(caller, '../only'), null)
+      assert(!index.getResolveCandidates(caller, '../on').some((entry) => entry.value === '../only'))
+      for (const [kind, requests] of [['resolve', ['../', '/', './']], ['include', ['../', '/', './']]]) {
+        for (const request of requests) {
+          const candidates = kind === 'resolve' ? index.getResolveCandidates(caller, request) : index.getIncludeCandidates(caller, request)
+          for (const candidate of candidates) {
+            const target = kind === 'resolve' ? index.resolveResolveTarget(caller, candidate.value) : index.resolveIncludeTarget(caller, candidate.value)
+            assert.equal(target, candidate.filePath, `${kind} completion ${candidate.value}`)
+          }
+        }
+      }
+      const service = new PocketPagesLanguageServiceManager().getServiceForFile(caller)
+      assert.equal(service.buildUpdatedIncludeRequestPath(caller, '../header.ejs', file('feature/header.ejs'), file('feature/title.ejs')), '../title.ejs')
+      assert.equal(service.buildUpdatedResolveRequestPath(caller, '/feature/_private/model', file('_private/feature/_private/model.js'), file('_private/feature/_private/renamed.js')), '/feature/_private/renamed')
+      const missingText = "<script server>resolve('../only')</script><%- include('../only.ejs') %>"
+      const diagnostics = service.getDiagnostics(caller, missingText)
+      assert(diagnostics.some((entry) => entry.code === 'pp-unresolved-resolve-path'))
+      assert(diagnostics.some((entry) => entry.code === 'pp-unresolved-include-path'))
+      service.dispose()
+    } finally {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true })
+    }
+  })
   describe('Document snapshots and mirrors', { concurrency: false }, () => {
     test('snapshots compare arbitrary generations without retaining their history', async () => {
       assert.equal(typeof global.gc, 'function', 'Run with --expose-gc')
@@ -6053,9 +6226,23 @@ module.exports = {
     assertScriptRouteContext('api.resolve', "api.resolve('./board-service')\n", './board-service', {
       kind: 'resolve-path',
     })
-    assertScriptRouteContext('api.include', "api.include('./shared-panel.ejs')\n", './shared-panel.ejs', {
-      kind: 'include-path',
-    })
+    const apiIncludeText = "api.include('./shared-panel.ejs', { api })\n"
+    const apiIncludeContext = getPathContextAtOffset(
+      apiIncludeText,
+      apiIncludeText.indexOf('./shared-panel.ejs'),
+      { mode: 'script' }
+    )
+    if (apiIncludeContext || collectPathContexts(apiIncludeText, { mode: 'script' }).length) {
+      throw new Error('Expected api.include() to stay outside PocketPages path analysis.')
+    }
+    const { collectIncludeCallEntries } = require('../packages/language-service/project-index')
+    const includeCalls = collectIncludeCallEntries(
+      'include-probe.js',
+      `${apiIncludeText}include('shared-panel.ejs', { title: 'Hello' })\n`
+    )
+    if (includeCalls.length !== 1 || includeCalls[0].requestPath !== 'shared-panel.ejs') {
+      throw new Error(`Expected only EJS include() to contribute partial locals. Got: ${JSON.stringify(includeCalls)}`)
+    }
     assertScriptRouteContext('api.asset', "api.asset('/style.css')\n", '/style.css', { kind: 'asset-path' })
 
     const responseResolveContext = getPathContextAtOffset(
@@ -14019,6 +14206,39 @@ watchedSchemaSortOrder
   }
 
   async function verifyTypedCompletions({ service, fixture }) {
+    for (const optionsText of ['', ', {}', ", { mode: 'require' }", ", { mode: 'raw' }", ", { mode: 'script' }", ", { mode: 'style' }"]) {
+      const isTextMode = /raw|script|style/.test(optionsText)
+      const resolveModeText = `<script server>
+const loaded = resolve('board-service'${optionsText})
+</script>
+<%= loaded. %>
+`
+      const modeHover = service.getQuickInfo(fixture.boardsFilePath, resolveModeText, resolveModeText.indexOf('loaded =') + 1)
+      const modeCompletion = service.getCompletionData(
+        fixture.boardsFilePath,
+        resolveModeText,
+        resolveModeText.indexOf('loaded.') + 'loaded.'.length
+      )
+      const names = modeCompletion ? modeCompletion.entries.map((entry) => entry.name) : []
+      if (
+        !modeHover
+        || (isTextMode ? !modeHover.displayText.includes('const loaded: string') : modeHover.displayText.includes('const loaded: string'))
+        || (isTextMode ? !names.includes('trim') || names.includes('readAuthState') : !names.includes('readAuthState') || names.includes('trim'))
+      ) {
+        throw new Error(`Expected resolve() return type and completion to follow ${optionsText || 'default mode'}. Got: ${JSON.stringify({ modeHover, names })}`)
+      }
+    }
+    const variableModeText = `<script server>
+/** @type {'raw' | 'require'} */
+const mode = request.method === 'GET' ? 'raw' : 'require'
+const loaded = resolve('board-service', { mode })
+</script>
+<%= loaded %>
+`
+    const variableModeHover = service.getQuickInfo(fixture.boardsFilePath, variableModeText, variableModeText.indexOf('loaded =') + 1)
+    if (!variableModeHover || !variableModeHover.displayText.includes('string | typeof import(') || !variableModeHover.displayText.includes('board-service')) {
+      throw new Error(`Expected variable resolve mode to retain module/string union. Got: ${JSON.stringify(variableModeHover)}`)
+    }
     const completionText = `<script server>\nmet\n</script>\n`
     const completionOffset = completionText.indexOf('met') + 'met'.length
     const completionData = service.getCompletionData(fixture.boardsFilePath, completionText, completionOffset)
@@ -14957,9 +15177,9 @@ boardService.readAuthState(
     }
     const typedResolvePrelude = service.buildPrelude(fixture.boardsFilePath, typedResolveCompletionText)
     if (
-      !typedResolvePrelude.includes('declare const resolve: ((requestPath: string, ...args: any[]) => any) & {')
+      !typedResolvePrelude.includes('declare const resolve: {')
       || !typedResolvePrelude.includes(
-        `(requestPath: "board-service", ...args: any[]): typeof import(${JSON.stringify(
+        `(requestPath: "board-service", options?: { mode?: 'require' }): typeof import(${JSON.stringify(
           normalizeFilePath(fixture.boardServiceFilePath)
         )});`
       )
@@ -16521,12 +16741,9 @@ function loadPostRole() {
       `<script server>\nresolve('../shared-service')\n</script>\n`,
       `<script server>\nresolve('../shared-service')\n</script>\n`.indexOf('../shared-service') + 3
     )
-    if (
-      !parentResolveDefinition
-      || normalizeFilePath(parentResolveDefinition) !== normalizeFilePath(fixture.sharedServiceFilePath)
-    ) {
+    if (parentResolveDefinition) {
       throw new Error(
-        `Expected ../ resolve() to skip the local _private module and use the parent-level one. Got: ${parentResolveDefinition}`
+        `Expected ../ resolve() not to invent an ancestor _private target. Got: ${parentResolveDefinition}`
       )
     }
 
@@ -16557,11 +16774,8 @@ function loadPostRole() {
       `<%- api.include('flash-alert.ejs') %>\n`,
       `<%- api.include('flash-alert.ejs') %>\n`.indexOf('flash-alert.ejs') + 2
     )
-    if (
-      !apiIncludeDefinition
-      || normalizeFilePath(apiIncludeDefinition) !== normalizeFilePath(fixture.flashAlertFilePath)
-    ) {
-      throw new Error(`Expected api.include() definition target. Got: ${apiIncludeDefinition}`)
+    if (apiIncludeDefinition) {
+      throw new Error(`Expected api.include() to have no partial definition target. Got: ${apiIncludeDefinition}`)
     }
 
     const includePathTargetInfo = service.getPathTargetInfo(
@@ -16590,19 +16804,22 @@ function loadPostRole() {
       `<%- api.include('flash-alert.ejs') %>\n`,
       `<%- api.include('flash-alert.ejs') %>\n`.indexOf('flash-alert.ejs') + 2
     )
+    if (apiIncludePathTargetInfo) {
+      throw new Error(`Expected api.include() to have no partial path info. Got: ${JSON.stringify(apiIncludePathTargetInfo)}`)
+    }
+    const invalidApiIncludeText = `<%- api.include('flash-alert.ejs', { api }) %>\n`
+    const invalidApiIncludeDiagnostics = service.getDiagnostics(fixture.boardsFilePath, invalidApiIncludeText)
     if (
-      !apiIncludePathTargetInfo
-      || normalizeFilePath(apiIncludePathTargetInfo.targetFilePath) !== normalizeFilePath(fixture.flashAlertFilePath)
+      !invalidApiIncludeDiagnostics.some((entry) => entry.code === 2339 && entry.message.includes("'include'"))
+      || invalidApiIncludeDiagnostics.some((entry) => entry.code === 'pp-partial-full-context')
     ) {
-      throw new Error(`Expected api.include() path target info. Got: ${JSON.stringify(apiIncludePathTargetInfo)}`)
+      throw new Error(`Expected api.include() to keep its TS error without EJS partial rules. Got: ${JSON.stringify(invalidApiIncludeDiagnostics)}`)
     }
     if (
-      !Array.isArray(apiIncludePathTargetInfo.includeLocals)
-      || !apiIncludePathTargetInfo.includeLocals.some((entry) => entry.name === 'flashMessage')
+      service.getCustomCompletionData(fixture.boardsFilePath, invalidApiIncludeText, invalidApiIncludeText.indexOf('flash-alert') + 3)
+      || service.getDocumentLinks(fixture.boardsFilePath, invalidApiIncludeText).length
     ) {
-      throw new Error(
-        `Expected api.include() path hover info to expose locals contract. Got: ${JSON.stringify(apiIncludePathTargetInfo)}`
-      )
+      throw new Error('Expected api.include() to have no partial path completion or document link.')
     }
 
     const extlessIncludeDefinition = service.getDefinitionTarget(
@@ -16662,10 +16879,10 @@ function loadPostRole() {
     )
     if (
       !parentIncludeDefinition
-      || normalizeFilePath(parentIncludeDefinition) !== normalizeFilePath(fixture.sharedPanelFilePath)
+      || normalizeFilePath(parentIncludeDefinition) !== normalizeFilePath(fixture.routeSharedPanelFilePath)
     ) {
       throw new Error(
-        `Expected ../ include() to skip the local _private partial and use the parent-level one. Got: ${parentIncludeDefinition}`
+        `Expected ../ include() to use the actual path beside _private. Got: ${parentIncludeDefinition}`
       )
     }
 
@@ -17037,9 +17254,9 @@ function loadPostRole() {
     const apiPartialCallerReferences = apiPartialFileReferences.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath)
     )
-    if (apiPartialCallerReferences.length !== 1) {
+    if (apiPartialCallerReferences.length !== 0) {
       throw new Error(
-        `Expected api.include() file-based partial reference. Got: ${JSON.stringify(apiPartialFileReferences)}`
+        `Expected api.include() to be excluded from partial references. Got: ${JSON.stringify(apiPartialFileReferences)}`
       )
     }
     service.clearDocumentOverride(fixture.boardsFilePath)
@@ -18056,14 +18273,8 @@ module.exports = {
         path.resolve(path.dirname(fixture.flashAlertFilePath), 'notice-alert.ejs')
       )
       .filter((entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.boardsFilePath))
-    if (apiPartialRenameEdits.length !== 1) {
-      throw new Error(`Expected api.include() rename edit. Got: ${JSON.stringify(apiPartialRenameEdits)}`)
-    }
-    const renamedApiPartialText = applyEditsToText(apiPartialCallerText, apiPartialRenameEdits)
-    if (!renamedApiPartialText.includes(`api.include('notice-alert.ejs')`)) {
-      throw new Error(
-        `Expected api.include() request path to update after partial file rename. Got: ${renamedApiPartialText}`
-      )
+    if (apiPartialRenameEdits.length !== 0) {
+      throw new Error(`Expected partial rename to leave api.include() untouched. Got: ${JSON.stringify(apiPartialRenameEdits)}`)
     }
     service.clearDocumentOverride(fixture.boardsFilePath)
 
@@ -18151,17 +18362,8 @@ module.exports = {
     const resolveParentCheckEdits = parentResolveRenameEdits.filter(
       (entry) => normalizeFilePath(entry.filePath) === normalizeFilePath(fixture.resolveParentCheckFilePath)
     )
-    if (resolveParentCheckEdits.length !== 1) {
-      throw new Error(`Expected parent-level resolve() rename edit. Got: ${JSON.stringify(resolveParentCheckEdits)}`)
-    }
-    const renamedResolveParentCheckText = applyEditsToText(
-      fs.readFileSync(fixture.resolveParentCheckFilePath, 'utf8'),
-      resolveParentCheckEdits
-    )
-    if (!renamedResolveParentCheckText.includes(`resolve('../summary-service')`)) {
-      throw new Error(
-        `Expected ../ resolve() path to update after parent module rename. Got: ${renamedResolveParentCheckText}`
-      )
+    if (resolveParentCheckEdits.length !== 0) {
+      throw new Error(`Expected unresolved ../ resolve() to stay untouched by ancestor module rename. Got: ${JSON.stringify(resolveParentCheckEdits)}`)
     }
 
     const shadowedResolveCallerText = `<script server>

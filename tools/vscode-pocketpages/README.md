@@ -178,7 +178,7 @@ EJS block 끝 위치는 사용자가 커서를 자주 멈추는 위치이므로 
 | 패턴 | target |
 | --- | --- |
 | `resolve('...')`, `api.resolve('...')` | `_private` module |
-| `include('...')`, `api.include('...')` | `_private` partial |
+| `include('...')` | `_private` partial |
 | `asset('...')` | local/global asset |
 | `fetch('/path')`, `window.fetch('/path')`, `globalThis.fetch('/path')` | route, 안전한 public asset JS와 `.ejs` client `<script>`의 정적 내부 path와 `method` init 기준 |
 | `redirect('/path')`, `api.redirect('/path')` | route |

@@ -1414,7 +1414,7 @@ function getPathCallDescriptor(expression) {
       return null
     }
 
-    if (memberName === 'resolve' || memberName === 'include') {
+    if (memberName === 'resolve') {
       return {
         kind: `${memberName}-path`,
       }

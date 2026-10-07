@@ -2315,6 +2315,7 @@ function isPocketPagesCalleeNamed(expression, name) {
   }
 
   return !!(
+    name !== "include" &&
     target &&
     ts.isPropertyAccessExpression(target) &&
     ts.isIdentifier(target.expression) &&
@@ -6423,26 +6424,31 @@ class ProjectLanguageService {
       return "";
     }
 
+    const requestPaths = collectResolveRequestPaths(analysisText);
+    if (!requestPaths.length) {
+      return "";
+    }
     const overloadLines = [];
 
-    for (const requestPath of collectResolveRequestPaths(analysisText)) {
+    for (const requestPath of requestPaths) {
       const targetFilePath = this.projectIndex.resolveResolveTarget(filePath, requestPath);
       if (!targetFilePath || !isScriptFile(targetFilePath)) {
         continue;
       }
 
+      const targetType = this.buildResolveTargetType(targetFilePath);
       overloadLines.push(
-        `  (requestPath: ${JSON.stringify(requestPath)}, ...args: any[]): ${this.buildResolveTargetType(targetFilePath)};`
+        `  (requestPath: ${JSON.stringify(requestPath)}, options: { mode: 'raw' | 'script' | 'style' }): string;`,
+        `  (requestPath: ${JSON.stringify(requestPath)}, options?: { mode?: 'require' }): ${targetType};`,
+        `  (requestPath: ${JSON.stringify(requestPath)}, options: { mode?: 'require' | 'raw' | 'script' | 'style' }): (${targetType}) | string;`
       );
     }
 
-    if (!overloadLines.length) {
-      return "";
-    }
-
     return [
-      "declare const resolve: ((requestPath: string, ...args: any[]) => any) & {",
+      "declare const resolve: {",
+      "  (requestPath: string, options: { mode: 'raw' | 'script' | 'style' }): string;",
       ...overloadLines,
+      "  (requestPath: string, options?: { mode?: 'require' | 'raw' | 'script' | 'style' }): any;",
       "};",
     ].join("\n");
   }
@@ -9046,7 +9052,22 @@ class ProjectLanguageService {
         normalizedOldDirectoryPath,
         normalizedNewDirectoryPath
       );
-      const newRouteDescriptor = this.projectIndex.describeRouteFilePath(newRouteFilePath);
+      const newPageFilePath = oldRouteDescriptor.pageFilePath
+        ? rewriteDirectoryChildPath(
+            oldRouteDescriptor.pageFilePath,
+            normalizedOldDirectoryPath,
+            normalizedNewDirectoryPath
+          )
+        : newRouteFilePath;
+      const newPageDescriptor = this.projectIndex.describeRouteFilePath(newPageFilePath);
+      const newRouteDescriptor = newPageDescriptor && oldRouteDescriptor.pageFilePath
+        ? {
+            ...newPageDescriptor,
+            filePath: newRouteFilePath,
+            pageFilePath: newPageFilePath,
+            method: oldRouteDescriptor.method,
+          }
+        : newPageDescriptor;
       const oldRouteMethod = normalizeRouteMethod(oldRouteDescriptor.method);
       if (!newRouteDescriptor || normalizeRouteMethod(newRouteDescriptor.method) !== oldRouteMethod) {
         continue;
@@ -9215,31 +9236,17 @@ class ProjectLanguageService {
 
   buildUpdatedIncludeRequestPath(filePath, currentRequestPath, oldTargetFilePath, newTargetFilePath) {
     const normalizedCurrentRequestPath = String(currentRequestPath || "").trim();
-    const currentDir = normalizePath(path.dirname(filePath));
     const formatNextRequestPath = (nextRequestPath) =>
       preserveIncludeRequestExtensionStyle(normalizedCurrentRequestPath, nextRequestPath);
 
-    if (normalizedCurrentRequestPath.startsWith("./") || normalizedCurrentRequestPath.startsWith("../")) {
-      return formatNextRequestPath(
-        toRelativeSpecifier(path.relative(currentDir, newTargetFilePath), { leadingDot: true })
-      );
-    }
-
-    if (this.includeRequestMatchesTargetAtBase(currentDir, normalizedCurrentRequestPath, oldTargetFilePath)) {
-      return formatNextRequestPath(toRelativeSpecifier(path.relative(currentDir, newTargetFilePath)));
-    }
-
-    if (
-      this.includeRequestMatchesTargetAtBase(
-        this.projectIndex.pagesRoot,
-        normalizedCurrentRequestPath.replace(/^\/+/, ""),
-        oldTargetFilePath
-      )
-    ) {
-      return formatNextRequestPath(toPortablePath(path.relative(this.projectIndex.pagesRoot, newTargetFilePath)));
+    if (normalizedCurrentRequestPath.startsWith("/")) {
+      return formatNextRequestPath(`/${toPortablePath(path.relative(this.projectIndex.pagesRoot, newTargetFilePath))}`);
     }
 
     const matchedPrivateRoot = this.getMatchingIncludeRoot(filePath, normalizedCurrentRequestPath, oldTargetFilePath);
+    if (matchedPrivateRoot && (normalizedCurrentRequestPath.startsWith("./") || normalizedCurrentRequestPath.startsWith("../"))) {
+      return formatNextRequestPath(toRelativeSpecifier(path.relative(matchedPrivateRoot, newTargetFilePath), { leadingDot: true }));
+    }
     if (matchedPrivateRoot && isSameOrChildPath(matchedPrivateRoot, newTargetFilePath)) {
       return formatNextRequestPath(toPortablePath(path.relative(matchedPrivateRoot, newTargetFilePath)));
     }
@@ -9258,15 +9265,10 @@ class ProjectLanguageService {
     const leadingSlashPrefix = normalizedCurrentRequestPath.match(/^\/+/);
     const isExplicitRelativeRequest =
       normalizedCurrentRequestPath.startsWith("./") || normalizedCurrentRequestPath.startsWith("../");
-    const relativePrefix = normalizedCurrentRequestPath.startsWith("./")
-      ? "./"
-      : isExplicitRelativeRequest
-        ? "../".repeat((normalizedCurrentRequestPath.match(/\.\.\//g) || []).length)
-        : "";
     const matchedPrivateRoot = this.getMatchingResolveRoot(filePath, currentRequestPath, oldTargetFilePath);
     const candidateRoots = [];
 
-    if (matchedPrivateRoot && isSameOrChildPath(matchedPrivateRoot, newTargetFilePath)) {
+    if (matchedPrivateRoot && (isExplicitRelativeRequest || isSameOrChildPath(matchedPrivateRoot, newTargetFilePath))) {
       candidateRoots.push(matchedPrivateRoot);
     }
 
@@ -9296,7 +9298,7 @@ class ProjectLanguageService {
       }
 
       if (isExplicitRelativeRequest) {
-        return `${relativePrefix}${requestPath}`;
+        return requestPath.startsWith("../") ? requestPath : `./${requestPath}`;
       }
 
       return requestPath;
@@ -9566,7 +9568,6 @@ class ProjectLanguageService {
   }
 
   getExistingRoutePeerFiles(routeDir) {
-    const scriptExtensions = [".js", ".cjs", ".mjs"];
     const candidates = [
       { kind: "load", method: null, basename: "+load" },
       { kind: "method", method: "GET", basename: "+get" },
@@ -9574,12 +9575,7 @@ class ProjectLanguageService {
       { kind: "method", method: "PUT", basename: "+put" },
       { kind: "method", method: "PATCH", basename: "+patch" },
       { kind: "method", method: "DELETE", basename: "+delete" },
-    ].flatMap((candidate) =>
-      scriptExtensions.map((extension) => ({
-        ...candidate,
-        fileName: `${candidate.basename}${extension}`,
-      }))
-    );
+    ].map((candidate) => ({ ...candidate, fileName: `${candidate.basename}.js` }));
 
     return candidates
       .map((candidate) => ({
@@ -9627,10 +9623,13 @@ class ProjectLanguageService {
     }
 
     const basename = getScriptFileBasename(normalizedFilePath);
-    if (basename === "+load" || basename === "+middleware") {
+    if (path.extname(normalizedFilePath) === ".js" && (basename === "+load" || basename === "+middleware")) {
       const routeDir = normalizePath(path.dirname(normalizedFilePath));
+      const pages = this.projectIndex.getRouteState().descriptors.filter((entry) =>
+        path.extname(entry.filePath) === ".ejs" && path.dirname(entry.filePath) === routeDir
+      );
       return {
-        descriptor: this.projectIndex.describeRouteFilePath(path.join(routeDir, "index.ejs")),
+        descriptor: pages.find((entry) => path.basename(entry.filePath) === "index.ejs") || pages[0] || null,
         sourceKind: basename === "+load" ? "loader" : "middleware",
         routeDir,
       };
@@ -9681,11 +9680,8 @@ class ProjectLanguageService {
         : null,
       params: this.projectIndex.getRouteParamEntries(routeParamFilePath).map((entry) => entry.name),
       layoutChain: this.getAncestorSpecialFileChain(explanationDescriptor.routeDir, "+layout.ejs"),
-      middlewareChain: this.getAncestorSpecialFileChain(
-        explanationDescriptor.routeDir,
-        ["+middleware.js", "+middleware.cjs", "+middleware.mjs"]
-      ),
-      loaders: this.getExistingRoutePeerFiles(explanationDescriptor.routeDir),
+      middlewareChain: descriptor ? this.getAncestorSpecialFileChain(explanationDescriptor.routeDir, "+middleware.js") : [],
+      loaders: descriptor ? this.getExistingRoutePeerFiles(explanationDescriptor.routeDir) : [],
       references: {
         queryKind: referenceQuery ? referenceQuery.kind : null,
         count: references.length,

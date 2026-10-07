@@ -295,7 +295,6 @@ function buildPathCompletionCandidateValue(relativePath, extensions, options = {
   const normalizedRelativePath = toRelativePath(relativePath)
   const keepExtension = !!options.keepExtension
   const prefixKind = String(options.prefixKind || 'implicit')
-  const depth = Math.max(0, Number(options.depth) || 0)
   const trimIndex = !!options.trimIndex
   let value = keepExtension ? normalizedRelativePath : stripKnownExtension(normalizedRelativePath, extensions)
 
@@ -312,7 +311,7 @@ function buildPathCompletionCandidateValue(relativePath, extensions, options = {
   }
 
   if (prefixKind === 'relative') {
-    return `${depth > 0 ? '../'.repeat(depth) : './'}${value}`
+    return value.startsWith('../') ? value : `./${value}`
   }
 
   return value
@@ -392,25 +391,6 @@ function getResolveRequestVariants(requestPath) {
   }
 
   return variants
-}
-
-function parsePrivateSearchRequest(requestPath) {
-  let remainingPath = String(requestPath || '').trim()
-  let skipPrivateRootCount = 0
-
-  while (remainingPath.startsWith('./')) {
-    remainingPath = remainingPath.slice(2)
-  }
-
-  while (remainingPath.startsWith('../')) {
-    skipPrivateRootCount += 1
-    remainingPath = remainingPath.slice(3)
-  }
-
-  return {
-    skipPrivateRootCount,
-    searchPath: remainingPath,
-  }
 }
 
 function walkFiles(dirPath, predicate, rootDir = dirPath, results = []) {
@@ -1934,10 +1914,27 @@ function createRouteDescriptor(pagesRoot, filePath, routeExtensions = ROUTE_EXTE
   if (fileBasename === 'index') {
     method = 'PAGE'
   } else if (ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]) {
-    if (!ASSET_SCRIPT_EXTENSIONS.includes(extension)) {
+    if (extension !== '.js') {
       return null
     }
-    method = ROUTE_METHOD_BY_FILE_BASENAME[fileBasename]
+    const routeDir = path.dirname(normalizedFilePath)
+    const pageFiles = readDirectoryEntries(routeDir)
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.ejs') && !/^[-+_]/.test(entry.name))
+      .sort((left, right) =>
+        Number(right.name === 'index.ejs') - Number(left.name === 'index.ejs') || left.name.localeCompare(right.name)
+      )
+    for (const page of pageFiles) {
+      const pageDescriptor = createRouteDescriptor(pagesRoot, path.join(routeDir, page.name), routeExtensions)
+      if (pageDescriptor) {
+        return {
+          ...pageDescriptor,
+          filePath: normalizedFilePath,
+          pageFilePath: pageDescriptor.filePath,
+          method: ROUTE_METHOD_BY_FILE_BASENAME[fileBasename],
+        }
+      }
+    }
+    return null
   } else if (NON_ROUTE_SPECIAL_FILE_BASENAMES.has(fileBasename) || fileBasename.startsWith('+')) {
     return null
   } else {
@@ -2260,6 +2257,7 @@ function isPocketPagesCalleeNamed(expression, name) {
   }
 
   return !!(
+    name !== 'include' &&
     target &&
     ts.isPropertyAccessExpression(target) &&
     ts.isIdentifier(target.expression) &&
@@ -3055,13 +3053,10 @@ class PocketPagesProjectIndex {
   getPrivateSearchRootsForDir(startDir) {
     const roots = []
     let currentDir = normalizePath(startDir)
-    const privateRoots = this.getPagesGraphState().privateRoots
 
     while (currentDir.startsWith(this.pagesRoot)) {
       const privateDir = normalizePath(path.join(currentDir, '_private'))
-      if (privateRoots.has(privateDir)) {
-        roots.push(privateDir)
-      }
+      roots.push(privateDir)
 
       if (currentDir === this.pagesRoot) {
         break
@@ -3174,6 +3169,9 @@ class PocketPagesProjectIndex {
     const completionDescriptors = []
 
     for (const entry of this.getPagesGraphState().allFiles) {
+      if (ROUTE_METHOD_BY_FILE_BASENAME[path.basename(entry.filePath, path.extname(entry.filePath))]) {
+        continue
+      }
       const descriptor = createRouteDescriptor(this.pagesRoot, entry.filePath, ROUTE_EXTENSIONS)
       if (descriptor) {
         descriptors.push(descriptor)
@@ -3183,6 +3181,24 @@ class PocketPagesProjectIndex {
       const completionDescriptor = createRouteDescriptor(this.pagesRoot, entry.filePath, ROUTE_COMPLETION_EXTENSIONS)
       if (completionDescriptor) {
         completionDescriptors.push(completionDescriptor)
+      }
+    }
+
+    for (const page of [...descriptors]) {
+      const pageSegments = toRelativePath(path.relative(this.pagesRoot, page.filePath)).split('/')
+      if (path.extname(page.filePath) !== '.ejs' || pageSegments.some((segment) => /^[-+_]/.test(segment))) {
+        continue
+      }
+      for (const [basename, method] of Object.entries(ROUTE_METHOD_BY_FILE_BASENAME)) {
+        const loaderFilePath = normalizePath(path.join(path.dirname(page.filePath), `${basename}.js`))
+        if (!fileExists(loaderFilePath)) {
+          continue
+        }
+        const descriptor = { ...page, filePath: loaderFilePath, pageFilePath: page.filePath, method }
+        descriptors.push(descriptor)
+        if (!descriptorByFilePath.has(loaderFilePath) || path.basename(page.filePath) === 'index.ejs') {
+          descriptorByFilePath.set(loaderFilePath, descriptor)
+        }
       }
     }
 
@@ -3225,15 +3241,19 @@ class PocketPagesProjectIndex {
       })
     }
 
-    for (const [depth, privateRoot] of this.getPrivateSearchRoots(filePath).entries()) {
-      const files = this.getSearchRootFileState(privateRoot, RESOLVE_EXTENSIONS).entries
+    const roots = requestOptions.prefixKind === 'absolute'
+      ? [normalizePath(path.join(this.pagesRoot, '_private'))]
+      : this.getPrivateSearchRoots(filePath)
+    for (const privateRoot of roots) {
+      const files = requestPath.startsWith('../')
+        ? this.getPagesGraphState().allFiles.filter((entry) => RESOLVE_EXTENSIONS.includes(path.extname(entry.filePath)))
+        : this.getSearchRootFileState(privateRoot, RESOLVE_EXTENSIONS).entries
 
       for (const entry of files) {
         addCandidate(
-          buildPathCompletionCandidateValue(entry.relativePath, RESOLVE_EXTENSIONS, {
+          buildPathCompletionCandidateValue(path.relative(privateRoot, entry.filePath), RESOLVE_EXTENSIONS, {
             keepExtension: requestOptions.keepExtension,
             prefixKind: requestOptions.prefixKind,
-            depth,
             trimIndex: !requestOptions.keepExtension,
           }),
           entry.filePath
@@ -3251,21 +3271,7 @@ class PocketPagesProjectIndex {
     }
 
     if (normalizedRequestPath.startsWith('/')) {
-      return [this.pagesRoot]
-    }
-
-    if (normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../')) {
-      const relativeSearch = parsePrivateSearchRequest(normalizedRequestPath)
-      if (!relativeSearch.searchPath) {
-        return []
-      }
-
-      let searchStartDir = normalizePath(path.dirname(filePath))
-      for (let index = 0; index < relativeSearch.skipPrivateRootCount && searchStartDir !== this.pagesRoot; index += 1) {
-        searchStartDir = normalizePath(path.dirname(searchStartDir))
-      }
-
-      return this.getPrivateSearchRootsForDir(searchStartDir)
+      return [normalizePath(path.join(this.pagesRoot, '_private'))]
     }
 
     return this.getPrivateSearchRoots(filePath)
@@ -3279,10 +3285,6 @@ class PocketPagesProjectIndex {
 
     if (normalizedRequestPath.startsWith('/')) {
       return normalizedRequestPath.replace(/^\/+/, '')
-    }
-
-    if (normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../')) {
-      return parsePrivateSearchRequest(normalizedRequestPath).searchPath
     }
 
     return normalizedRequestPath
@@ -3593,9 +3595,8 @@ class PocketPagesProjectIndex {
   }
 
   resolveResolveTarget(filePath, requestPath) {
-    const searchRoots = this.getResolveSearchRoots(filePath, requestPath)
     for (const candidatePath of this.getResolveCandidatePaths(filePath, requestPath)) {
-      if (searchRoots.some((searchRoot) => this.getSearchRootFileState(searchRoot, RESOLVE_EXTENSIONS).filePathSet.has(candidatePath))) {
+      if (fileExists(candidatePath)) {
         return candidatePath
       }
     }
@@ -3659,15 +3660,16 @@ class PocketPagesProjectIndex {
       })
     }
 
-    const privateRoots = this.getPrivateSearchRoots(filePath)
-    for (const [depth, privateRoot] of privateRoots.entries()) {
-      const files = this.getSearchRootFileState(privateRoot, INCLUDE_EXTENSIONS).entries
+    const privateRoots = requestOptions.prefixKind === 'absolute' ? [this.pagesRoot] : this.getPrivateSearchRoots(filePath)
+    for (const privateRoot of privateRoots) {
+      const files = requestPath.startsWith('../')
+        ? this.getPagesGraphState().allFiles.filter((entry) => INCLUDE_EXTENSIONS.includes(path.extname(entry.filePath)))
+        : this.getSearchRootFileState(privateRoot, INCLUDE_EXTENSIONS).entries
       for (const entry of files) {
         addCandidate(
-          buildPathCompletionCandidateValue(entry.relativePath, INCLUDE_EXTENSIONS, {
+          buildPathCompletionCandidateValue(path.relative(privateRoot, entry.filePath), INCLUDE_EXTENSIONS, {
             keepExtension: true,
             prefixKind: requestOptions.prefixKind,
-            depth,
           }),
           entry.filePath
         )
@@ -3723,7 +3725,6 @@ class PocketPagesProjectIndex {
     }
 
     const candidatePaths = []
-    const currentDir = normalizePath(path.dirname(filePath))
     const seen = new Set()
 
     const addCandidatePath = (candidatePath) => {
@@ -3744,21 +3745,6 @@ class PocketPagesProjectIndex {
 
     if (normalizedRequestPath.startsWith('/')) {
       addIncludeTargetCandidates(this.pagesRoot, normalizedRequestPath.replace(/^\/+/, ''))
-    } else if (normalizedRequestPath.startsWith('./') || normalizedRequestPath.startsWith('../')) {
-      const relativeSearch = parsePrivateSearchRequest(normalizedRequestPath)
-      if (relativeSearch.searchPath) {
-        let searchStartDir = currentDir
-        for (let index = 0; index < relativeSearch.skipPrivateRootCount && searchStartDir !== this.pagesRoot; index += 1) {
-          searchStartDir = normalizePath(path.dirname(searchStartDir))
-        }
-
-        const privateRoots = this.getPrivateSearchRootsForDir(searchStartDir)
-        for (const privateRoot of privateRoots) {
-          addIncludeTargetCandidates(privateRoot, relativeSearch.searchPath)
-        }
-      }
-
-      addIncludeTargetCandidates(currentDir, normalizedRequestPath)
     } else {
       for (const privateRoot of this.getPrivateSearchRoots(filePath)) {
         addIncludeTargetCandidates(privateRoot, normalizedRequestPath)
@@ -3774,7 +3760,6 @@ class PocketPagesProjectIndex {
       return null
     }
 
-    const currentDir = normalizePath(path.dirname(filePath))
     const privateRoots = this.getPrivateSearchRoots(filePath)
     const rootCandidates = new Map()
     const getRootCandidates = (rootPath) => {
@@ -3790,10 +3775,6 @@ class PocketPagesProjectIndex {
     }
 
     for (const candidatePath of candidatePaths) {
-      if (getRootCandidates(currentDir).has(candidatePath)) {
-        return candidatePath
-      }
-
       for (const privateRoot of privateRoots) {
         if (candidatePath.startsWith(`${privateRoot}/`) && getRootCandidates(privateRoot).has(candidatePath)) {
           return candidatePath
