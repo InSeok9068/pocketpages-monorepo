@@ -140,8 +140,6 @@ const JSVM_LOCALE_API_SIGNAL_RE = /\bIntl\b|toLocale(?:String|DateString|TimeStr
 const JSVM_RUNTIME_SIGNAL_RE = /\b(?:async|await|export|import|Promise)\b|\.then\s*\(/
 
 const RE = {
-  resolvePrivate: /resolve\(\s*["']\/?_private\//,
-  includePrivate: /include\(\s*["']\/?_private\//,
   recordParamTag: /@param\s+\{([^}]*(?:core\.Record|types\.[A-Za-z_$][A-Za-z0-9_$]*Record)[^}]*)\}\s+([A-Za-z_$][A-Za-z0-9_$]*|\[[A-Za-z_$][A-Za-z0-9_$]*(?:=[^\]]*)?\])/g,
   recordFindDeclaration:
     /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:\$app|[A-Za-z_$][A-Za-z0-9_$]*Service)\.find(?!Records\b|Records[A-Za-z0-9_$])(?:[A-Za-z0-9_$]*Record[A-Za-z0-9_$]*|[A-Za-z0-9_$]*By[A-Za-z0-9_$]*)\s*\(/g,
@@ -271,18 +269,25 @@ function collectServiceDirs(serviceArg) {
 }
 
 function buildFileInfo(filePath, hooksRoot, pagesRoot) {
-  const isCode = /\.(js|ejs)$/.test(filePath)
+  const isScript = /\.(js|cjs|mjs)$/.test(filePath)
+  const isCode = isScript || filePath.endsWith('.ejs')
   const inPages = isWithin(filePath, pagesRoot)
   const relFromPages = inPages ? relativePosix(pagesRoot, filePath) : ''
+  const pageSegments = relFromPages.split('/')
+  const routeRelativePath = pageSegments.filter((segment) => !/^\(.+\)$/.test(segment)).join('/')
   const info = {
     absPath: filePath,
     displayPath: toDisplayPath(filePath),
     basename: path.basename(filePath),
     isCode,
+    isScript,
     isEjs: filePath.endsWith('.ejs'),
     relFromHooks: relativePosix(hooksRoot, filePath),
     inPages,
     relFromPages,
+    routeRelativePath,
+    inPrivate: inPages && pageSegments.includes('_private'),
+    inAssets: inPages && pageSegments.includes('assets'),
     inVendor: inPages && relFromPages.split('/').includes('vendor'),
     content: '',
     lines: [],
@@ -323,13 +328,13 @@ function buildServiceContext(serviceDir) {
     nonPagesHooksCodeFiles: hooksCodeFiles.filter((file) => !file.inPages),
     pagesFiles,
     pagesCodeFiles,
-    lintCodeFiles: pagesCodeFiles.filter((file) => !file.relFromPages.startsWith('assets/')),
-    pagesEjsFiles: pagesEjsFiles.filter((file) => !file.relFromPages.startsWith('assets/')),
-    privateCodeFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('_private/')),
-    roleFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('_private/roles/') && file.basename.endsWith('.js')),
-    entryCodeFiles: pagesCodeFiles.filter((file) => !file.relFromPages.startsWith('_private/') && !file.relFromPages.startsWith('assets/')),
-    apiFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('api/')),
-    xapiFiles: pagesCodeFiles.filter((file) => file.relFromPages.startsWith('xapi/')),
+    lintCodeFiles: pagesCodeFiles.filter((file) => !file.inAssets),
+    pagesEjsFiles: pagesEjsFiles.filter((file) => !file.inAssets),
+    privateCodeFiles: pagesCodeFiles.filter((file) => file.inPrivate && !file.inAssets),
+    roleFiles: pagesCodeFiles.filter((file) => /(^|\/)_private\/roles\//.test(file.relFromPages) && file.isScript && !file.inAssets),
+    entryCodeFiles: pagesCodeFiles.filter((file) => !file.inPrivate && !file.inAssets),
+    apiFiles: pagesCodeFiles.filter((file) => !file.inPrivate && !file.inAssets && file.routeRelativePath.startsWith('api/')),
+    xapiFiles: pagesCodeFiles.filter((file) => !file.inPrivate && !file.inAssets && file.routeRelativePath.startsWith('xapi/')),
     middlewareFiles: pagesCodeFiles.filter((file) => file.basename === '+middleware.js'),
     loadFiles: pagesCodeFiles.filter((file) => file.basename === '+load.js'),
     configFiles: pagesCodeFiles.filter((file) => file.basename === '+config.js'),
@@ -971,14 +976,14 @@ function collectModuleExportsShorthandMatches(files) {
 
 function isServerRuntimeFile(file) {
   if (!file.inPages) {
-    return file.basename.endsWith('.js')
+    return file.isScript
   }
 
-  if (file.relFromPages.startsWith('assets/')) {
+  if (file.inAssets) {
     return false
   }
 
-  return file.isEjs || file.basename.startsWith('+') || file.relFromPages.startsWith('_private/')
+  return file.isEjs || file.basename.startsWith('+') || file.inPrivate
 }
 
 function formatDiagnosticLineMatch(file, diagnostic) {
@@ -1432,7 +1437,7 @@ function resolveLintPathContextTarget(projectIndex, filePath, pathContext) {
   return null
 }
 
-function collectUnresolvedPathMatches(context) {
+function collectUnresolvedPathMatches(context, pathFiles) {
   const matchesByKind = {
     resolve: [],
     include: [],
@@ -1440,9 +1445,7 @@ function collectUnresolvedPathMatches(context) {
     route: [],
   }
 
-  for (const file of context.lintCodeFiles) {
-    const pathContexts = collectPathContexts(file.content)
-
+  for (const { file, pathContexts } of pathFiles) {
     for (const pathContext of pathContexts) {
       if (pathContext.kind === 'resolve-path' && /^\/?_private\//.test(pathContext.value)) {
         continue
@@ -1486,6 +1489,18 @@ function collectUnresolvedPathMatches(context) {
     asset: unique(matchesByKind.asset),
     route: unique(matchesByKind.route),
   }
+}
+
+function collectPrivatePathMatches(pathFiles, kind) {
+  const matches = []
+  for (const { file, pathContexts } of pathFiles) {
+    for (const pathContext of pathContexts) {
+      if (pathContext.kind === kind && /^\/?_private\//.test(pathContext.value)) {
+        matches.push(formatLintLineMatch(file, lineNumberAt(file.content, pathContext.start)))
+      }
+    }
+  }
+  return unique(matches)
 }
 
 function isSchemaLintAppReceiver(schemaContext, transactionRanges) {
@@ -1714,11 +1729,15 @@ function collectConfigPluginDependencyMatches(context) {
 
 function lintService(context) {
   console.log(`Checking service: ${context.serviceName}`)
+  const pathFiles = context.lintCodeFiles.map((file) => ({
+    file,
+    pathContexts: collectPathContexts(file.content),
+  }))
 
-  const resolvePrivateMatches = collectLineMatches(context.lintCodeFiles, RE.resolvePrivate)
+  const resolvePrivateMatches = collectPrivatePathMatches(pathFiles, 'resolve-path')
   printMatches(context.serviceName, "Invalid resolve() path. Use names relative to _private, for example resolve('board-service').", resolvePrivateMatches)
 
-  const includePrivateMatches = collectLineMatches(context.pagesCodeFiles, RE.includePrivate)
+  const includePrivateMatches = collectPrivatePathMatches(pathFiles, 'include-path')
   printMatches(context.serviceName, 'Invalid include() path. Keep include paths relative to the current PocketPages include rules.', includePrivateMatches)
 
   const recordFieldMatches = collectDirectRecordFieldMatches(context.lintCodeFiles)
@@ -1733,7 +1752,7 @@ function lintService(context) {
     .map((file) => file.displayPath)
   printMatches(context.serviceName, 'Invalid middleware resolve() usage. Read resolve from middleware function arguments.', middlewareResolveMatches)
 
-  const apiLayoutMatches = collectPathMatches(context.pagesFiles, (file) => /^(api|xapi)(\/.*)?\/\+layout\.ejs$/.test(file.relFromPages))
+  const apiLayoutMatches = collectPathMatches(context.pagesFiles, (file) => !file.inPrivate && !file.inAssets && /^(api|xapi)(\/.*)?\/\+layout\.ejs$/.test(file.routeRelativePath))
   printMatches(context.serviceName, 'Invalid layout placement. Keep +layout.ejs in routable page sections, not under api/ or xapi/.', apiLayoutMatches)
 
   const xapiFullHtmlMatches = collectLineMatches(context.xapiFiles, RE.fullHtml)
@@ -1742,7 +1761,7 @@ function lintService(context) {
   const apiHtmlResponseMatches = unique([...collectLineMatches(context.apiFiles, RE.fullHtml), ...collectLineMatches(context.apiFiles, RE.responseHtml)])
   printMatches(context.serviceName, 'Invalid api response shape. Keep api/ for programmatic responses such as JSON and do not return HTML documents or response.html(...).', apiHtmlResponseMatches)
 
-  const privateSpecialFileMatches = collectPathMatches(context.pagesFiles, (file) => /_private\/.*\/\+(layout|config|load|middleware|get|post|put|patch|delete)\.(ejs|js)$/.test(file.relFromPages))
+  const privateSpecialFileMatches = collectPathMatches(context.pagesFiles, (file) => file.inPrivate && /^\+(layout|config|load|middleware|get|post|put|patch|delete)\.(ejs|js|cjs|mjs)$/.test(file.basename))
   printMatches(context.serviceName, 'Invalid _private file placement. Keep PocketPages special route/config files outside _private.', privateSpecialFileMatches)
 
   const pagesPbJsMatches = collectPathMatches(context.pagesFiles, (file) => file.basename.endsWith('.pb.js'))
@@ -1754,7 +1773,7 @@ function lintService(context) {
 
   const staticPagesJsFiles = context.pagesCodeFiles.filter(
     (file) =>
-      file.basename.endsWith('.js') && !file.basename.startsWith('+') && !file.basename.endsWith('.pb.js') && !file.relFromPages.startsWith('_private/') && !file.relFromPages.startsWith('assets/')
+      file.isScript && !file.basename.startsWith('+') && !file.basename.endsWith('.pb.js') && !file.inPrivate && !file.inAssets
   )
   const staticJsServerCodeMatches = collectLineMatches(staticPagesJsFiles, RE.staticJsServerCode)
   printMatches(
@@ -1815,7 +1834,7 @@ function lintService(context) {
     privateResolveMatches
   )
 
-  const privateGlobalApiMatches = collectPrivateGlobalApiMatches(context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')))
+  const privateGlobalApiMatches = collectPrivateGlobalApiMatches(context.privateCodeFiles.filter((file) => file.isScript))
   printMatches(
     context.serviceName,
     "Invalid _private globalApi usage. In _private/*.js, use const { globalApi } = require('pocketpages') and const { dbg, env, warn } = globalApi for PocketPages global helpers.",
@@ -1831,18 +1850,18 @@ function lintService(context) {
 
   const privateModulePatternMatches = unique([
     ...collectLineMatches(
-      context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')),
+      context.privateCodeFiles.filter((file) => file.isScript),
       RE.privateModuleFunctionExport
     ),
     ...collectLineMatches(
-      context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')),
+      context.privateCodeFiles.filter((file) => file.isScript),
       RE.privateModuleFactoryExport
     ),
   ])
   printWarnings(context.serviceName, 'Discouraged _private module export style. Prefer module.exports = { ... } and avoid function/factory exports in _private/*.js.', privateModulePatternMatches)
 
   const distributedModuleExportMatches = collectLineMatches(
-    context.privateCodeFiles.filter((file) => file.basename.endsWith('.js')),
+    context.privateCodeFiles.filter((file) => file.isScript),
     RE.distributedModuleExport
   )
   printWarnings(
@@ -1851,7 +1870,7 @@ function lintService(context) {
     distributedModuleExportMatches
   )
 
-  const moduleExportsShorthandMatches = collectModuleExportsShorthandMatches(context.hooksCodeFiles.filter((file) => file.basename.endsWith('.js')))
+  const moduleExportsShorthandMatches = collectModuleExportsShorthandMatches(context.hooksCodeFiles.filter((file) => file.isScript))
   printWarnings(
     context.serviceName,
     'Discouraged module.exports object style. Prefer shorthand members such as { sentCount } instead of repeating sentCount: sentCount in exported objects.',
@@ -1859,7 +1878,7 @@ function lintService(context) {
   )
 
   const privateScriptServerMatches = collectLineMatches(
-    context.pagesEjsFiles.filter((file) => file.relFromPages.startsWith('_private/')),
+    context.pagesEjsFiles.filter((file) => file.inPrivate),
     RE.scriptServerTag
   )
   printMatches(
@@ -1869,7 +1888,7 @@ function lintService(context) {
   )
 
   const privateEjsDbAccessMatches = collectLineMatches(
-    context.pagesEjsFiles.filter((file) => file.relFromPages.startsWith('_private/')),
+    context.pagesEjsFiles.filter((file) => file.inPrivate),
     RE.privateEjsDbAccess
   )
   printMatches(
@@ -1937,7 +1956,7 @@ function lintService(context) {
   const redirectMissingReturnMatches = collectRedirectMissingReturnMatches(context)
   printMatches(context.serviceName, 'Invalid redirect() control flow. Return after redirect() so PocketPages execution stops explicitly.', redirectMissingReturnMatches)
 
-  const unresolvedPathMatches = collectUnresolvedPathMatches(context)
+  const unresolvedPathMatches = collectUnresolvedPathMatches(context, pathFiles)
   printMatches(context.serviceName, 'Invalid resolve() target. resolve(...) must point to an existing _private module or partial.', unresolvedPathMatches.resolve)
   printMatches(context.serviceName, 'Invalid include() target. include(...) must point to an existing partial file.', unresolvedPathMatches.include)
   printMatches(context.serviceName, 'Invalid asset() target. asset(...) must point to an existing asset file.', unresolvedPathMatches.asset)
