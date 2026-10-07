@@ -32,7 +32,8 @@ async function runSubtest(parent, name, body) {
   const { setImmediate: nextTurn } = require('node:timers/promises')
   const { test } = require('node:test')
   const { URI } = require('vscode-uri')
-  const { createMessageConnection, IPCMessageReader, IPCMessageWriter } = require('vscode-jsonrpc/node')
+  const { TextDocument } = require('vscode-languageserver-textdocument')
+  const { createMessageConnection, IPCMessageReader, IPCMessageWriter, CancellationTokenSource } = require('vscode-jsonrpc/node')
   const { createScriptSnapshot } = require('../packages/language-core/snapshot')
   const { buildScriptServerMirrorText } = require('../packages/typescript-plugin/shared')
   const { extractServerBlocks } = require('../packages/language-core/script-server')
@@ -206,7 +207,8 @@ declare const resolve: (path: string) => any;
       connection.onNotification('window/logMessage', (entry) => logs.push(entry.message))
       connection.onRequest('workspace/diagnostic/refresh', () => null)
       connection.listen()
-      const request = (method, params) => withDeadline(connection.sendRequest(method, params), 10000)
+      const request = (method, params, token) => withDeadline(
+        token ? connection.sendRequest(method, params, token) : connection.sendRequest(method, params), 10000)
       const notify = (method, params) => connection.sendNotification(method, params)
       const uri = (filePath) => URI.file(filePath).toString()
 
@@ -247,7 +249,7 @@ declare const resolve: (path: string) => any;
         uri,
         async open(filePath, text) {
           await notify('textDocument/didOpen', {
-            textDocument: { uri: uri(filePath), languageId: 'ejs', version: 1, text },
+            textDocument: { uri: uri(filePath), languageId: filePath.endsWith('.ejs') ? 'ejs' : 'javascript', version: 1, text },
           })
         },
         async change(filePath, version, text) {
@@ -255,6 +257,44 @@ declare const resolve: (path: string) => any;
             textDocument: { uri: uri(filePath), version },
             contentChanges: [{ text }],
           })
+        },
+        async edit(filePath, version, document, start, end, newText) {
+          const range = { start: document.positionAt(start), end: document.positionAt(end) }
+          await notify('textDocument/didChange', {
+            textDocument: { uri: uri(filePath), version },
+            contentChanges: [{ range, text: newText }],
+          })
+          return TextDocument.create(uri(filePath), 'ejs', version,
+            TextDocument.applyEdits(document, [{ range, newText }]))
+        },
+        async edits(filePath, version, document, edits) {
+          let text = document.getText()
+          const contentChanges = edits.map(({ start, end, newText }) => {
+            const current = TextDocument.create(uri(filePath), 'ejs', version, text)
+            const range = { start: current.positionAt(start), end: current.positionAt(end) }
+            text = text.slice(0, start) + newText + text.slice(end)
+            return { range, text: newText }
+          })
+          await notify('textDocument/didChange', {
+            textDocument: { uri: uri(filePath), version }, contentChanges,
+          })
+          return TextDocument.create(uri(filePath), 'ejs', version, text)
+        },
+        feature(method, filePath, text, offset, extra = {}) {
+          const document = TextDocument.create(uri(filePath), 'ejs', 1, text)
+          return request(`textDocument/${method}`, {
+            textDocument: { uri: uri(filePath) }, position: document.positionAt(offset), ...extra,
+          })
+        },
+        async diagnostics(filePath, matches) {
+          const deadline = Date.now() + 8000
+          let report
+          do {
+            report = await request('textDocument/diagnostic', { textDocument: { uri: uri(filePath) } })
+            if (report.kind === 'full' && matches(report.items)) return report
+            await new Promise((resolve) => setTimeout(resolve, 100))
+          } while (Date.now() < deadline)
+          assert.fail(`Diagnostics did not converge: ${JSON.stringify({ kind: report.kind, version: report.documentVersion, items: report.items })}`)
         },
         async complete(filePath, text, offset) {
           const lines = text.slice(0, offset).split('\n')
@@ -347,6 +387,334 @@ declare const resolve: (path: string) => any;
         assert.deepEqual(Object.keys(result.changes), [uri], 'Local rename stays in its document')
         assert.equal(TextDocument.applyEdits(document, result.changes[uri]), entry.expected, entry.name)
       }
+    })
+
+    test('IPC rename at EJS symbol boundaries edits only source references', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'rename-boundaries', 'posts')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const text = '<script server>const title = "한글😀";</script>\r\n<p>title 😀</p>\r\n<%=title%><%=title+title%>\r\n'
+      const expected = '<script server>const heading = "한글😀";</script>\r\n<p>title 😀</p>\r\n<%=heading%><%=heading+heading%>\r\n'
+      writeFile(page, text)
+      await server.open(page, text)
+      const uri = server.uri(page)
+      const document = TextDocument.create(uri, 'ejs', 1, text)
+      const offsets = [text.indexOf('<%=title') + 3, text.indexOf('+title') + 1]
+      for (const start of offsets) {
+        for (const offset of [start, start + 2, start + 'title'.length]) {
+          const result = await server.request('textDocument/rename', {
+            textDocument: { uri }, position: document.positionAt(offset), newName: 'heading',
+          })
+          assert.ok(result?.changes?.[uri], `Rename at offset ${offset}`)
+          assert.deepEqual(Object.keys(result.changes), [uri], 'No generated or unrelated file edits')
+          const edits = result.changes[uri]
+          const ranges = edits.map((edit) => [document.offsetAt(edit.range.start), document.offsetAt(edit.range.end)])
+            .sort((a, b) => a[0] - b[0])
+          assert.equal(ranges.length, 4, 'Exactly four symbol references')
+          for (let index = 1; index < ranges.length; index += 1) {
+            assert.ok(ranges[index - 1][1] <= ranges[index][0], 'No duplicate or overlapping edits')
+          }
+          assert.equal(TextDocument.applyEdits(document, edits), expected)
+        }
+      }
+    })
+
+    test('IPC diagnostics recover after rapid close and reopen with reset version', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'reopen-diagnostics', 'posts')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const initial = '<script server>const value = missingBefore;</script>'
+      const reopened = '<script server>const value = missingAfter;</script>'
+      writeFile(page, initial)
+      await server.open(page, initial)
+      const hasMissing = (name) => (items) => items.some((item) => item.code === 2304 && item.message.includes(name))
+      await server.diagnostics(page, hasMissing('missingBefore'))
+      await server.change(page, 9, initial)
+      await server.notify('textDocument/didClose', { textDocument: { uri: server.uri(page) } })
+      await server.open(page, reopened)
+      const report = await server.diagnostics(page, hasMissing('missingAfter'))
+      assert.ok(!report.items.some((item) => item.message.includes('missingBefore')), 'Old session diagnostics are gone')
+      await server.change(page, 2, '<script server>const value = "fixed";</script>')
+      await server.diagnostics(page, (items) => items.length === 0)
+      await server.change(page, 3, reopened)
+      await server.diagnostics(page, hasMissing('missingAfter'))
+    })
+
+    test('IPC incremental edits preserve CRLF and UTF-16 feature positions', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'incremental-positions', 'posts')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const initial = '<p>한글😀👩‍💻</p>\r\n<script server>const title = "x";</script>\r\n<%=title%>\r\n'
+      writeFile(page, initial)
+      await server.open(page, initial)
+      let document = TextDocument.create(server.uri(page), 'ejs', 1, initial)
+      document = await server.edit(page, 2, document, 3, 3, '📚\r\n추가😀')
+      const inserted = document.getText().indexOf('추가😀')
+      document = await server.edit(page, 3, document, inserted, inserted + '추가😀'.length, '')
+      const symbolStart = document.getText().indexOf('<%=title') + 3
+      document = await server.edit(page, 4, document, symbolStart, symbolStart + 5, 'missingValue')
+      const report = await server.diagnostics(page, (items) => items.some((item) => item.code === 2304 && item.message.includes('missingValue')))
+      const diagnostic = report.items.find((item) => item.code === 2304 && item.message.includes('missingValue'))
+      assert.deepEqual(diagnostic.range, {
+        start: document.positionAt(symbolStart), end: document.positionAt(symbolStart + 'missingValue'.length),
+      })
+      document = await server.edit(page, 5, document, symbolStart, symbolStart + 'missingValue'.length, 'tit')
+      assert.ok((await server.complete(page, document.getText(), symbolStart + 3)).includes('title'))
+      document = await server.edit(page, 6, document, symbolStart + 3, symbolStart + 3, 'le')
+      await server.diagnostics(page, (items) => items.length === 0)
+      const result = await server.request('textDocument/rename', {
+        textDocument: { uri: server.uri(page) }, position: document.positionAt(symbolStart), newName: 'heading',
+      })
+      assert.deepEqual(Object.keys(result.changes), [server.uri(page)])
+      assert.equal(TextDocument.applyEdits(document, result.changes[server.uri(page)]),
+        '<p>📚\r\n한글😀👩‍💻</p>\r\n<script server>const heading = "x";</script>\r\n<%=heading%>\r\n')
+    })
+
+    test('IPC regression incomplete syntax recovers without restarting', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'syntax-recovery', 'posts')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const valid = '<script server>const title = "ready";</script>\n<%=title%>'
+      writeFile(page, valid)
+      await server.open(page, valid)
+      let version = 1
+      for (const broken of ['<%=', '<script server>const title = "unfinished',
+        '<script server>/* unfinished', '<script server>const title = (</script>\n<%=title%>',
+        '<script server>const title = "ready";']) {
+        await server.change(page, ++version, broken)
+        await server.complete(page, broken, broken.length)
+        const report = await server.request('textDocument/diagnostic', { textDocument: { uri: server.uri(page) } })
+        assert.ok(['full', 'unchanged'].includes(report.kind))
+        await server.change(page, ++version, valid)
+        assert.ok((await server.complete(page, valid, valid.lastIndexOf('title') + 2)).includes('title'))
+        await server.diagnostics(page, (items) => items.length === 0)
+        const renamed = await server.feature('rename', page, valid, valid.lastIndexOf('title'), { newName: 'heading' })
+        assert.equal(TextDocument.applyEdits(TextDocument.create(server.uri(page), 'ejs', version, valid), renamed.changes[server.uri(page)]),
+          valid.replaceAll('title', 'heading'))
+      }
+    })
+
+    test('IPC regression unsaved module types reach EJS consumers and revert on close', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'unsaved-module', 'posts')
+      const modulePath = path.join(app.pagesRoot, '_private', 'model.js')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const disk = 'module.exports = { beforeName: 1, value: 1 };'
+      const changed = 'module.exports = { afterName: "new", value: "new" };'
+      const text = '<script server>const model = resolve("model"); const result = model.value.toFixed();</script>'
+      writeFile(modulePath, disk)
+      writeFile(page, text)
+      await server.open(modulePath, disk)
+      await server.open(page, text)
+      const sibling = path.join(app.pagesRoot, '_private', 'unrelated.js')
+      const siblingText = 'const unrelatedPrivateValue = 1;'
+      writeFile(sibling, siblingText)
+      await server.open(sibling, siblingText)
+      const globals = await server.complete(page, text, text.indexOf('model =') + 2)
+      assert.ok(!globals.includes('unrelatedPrivateValue'), 'Opening a sibling script does not add globals to EJS')
+      const names = () => server.complete(page, text, text.indexOf('model.value') + 'model.'.length)
+      assert.ok((await names()).includes('beforeName'))
+      await server.change(modulePath, 2, changed)
+      const updated = await names()
+      assert.ok(updated.includes('afterName'), JSON.stringify(updated))
+      assert.ok(!updated.includes('beforeName'))
+      await server.request('pocketpages/reloadCaches', { uri: server.uri(page) })
+      const reloaded = await names()
+      assert.ok(reloaded.includes('afterName') && !reloaded.includes('beforeName'), 'Cache reload preserves unsaved module types')
+      await server.diagnostics(page, (items) => items.some((item) => [2339, 2551].includes(item.code) && item.message.includes('toFixed')))
+      const consumer = text.replace('toFixed', 'toUpperCase')
+      await server.change(page, 2, consumer)
+      const hover = await server.feature('hover', page, consumer, consumer.indexOf('model.value') + 7)
+      assert.match(JSON.stringify(hover.contents), /string/)
+      await server.diagnostics(page, (items) => items.length === 0)
+      await server.notify('textDocument/didClose', { textDocument: { uri: server.uri(modulePath) } })
+      const reverted = await server.complete(page, consumer, consumer.indexOf('model.value') + 'model.'.length)
+      assert.ok(reverted.includes('beforeName') && !reverted.includes('afterName'))
+      await server.diagnostics(page, (items) => items.some((item) => [2339, 2551].includes(item.code) && item.message.includes('toUpperCase')))
+    })
+
+    test('IPC regression overlapping requests and cancellation leave fresh results', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'request-recovery', 'posts')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const before = '<script server>const beforeName = 1;</script>\n<%=beforeName%>'
+      const after = '<script server>const afterName = 1;</script>\n<%=afterName%>'
+      writeFile(page, before)
+      await server.open(page, before)
+      await server.diagnostics(page, (items) => items.length === 0)
+      const token = new CancellationTokenSource()
+      const pending = server.request('textDocument/diagnostic', { textDocument: { uri: server.uri(page) } }, token.token)
+        .then((report) => ({ report }), (error) => ({ error }))
+      const oldCompletion = server.complete(page, before, before.lastIndexOf('beforeName') + 2)
+      token.cancel()
+      await server.change(page, 2, after)
+      const newCompletion = server.complete(page, after, after.lastIndexOf('afterName') + 2)
+      const [cancelled, oldNames, newNames] = await Promise.all([pending, oldCompletion, newCompletion])
+      token.dispose()
+      if (cancelled.error) assert.ok([-32800, -32801, -32802].includes(cancelled.error.code), cancelled.error.message)
+      else assert.equal(cancelled.report.kind, 'full')
+      assert.ok(Array.isArray(oldNames))
+      assert.ok(newNames.includes('afterName') && !newNames.includes('beforeName'))
+      assert.equal(new Set(newNames).size, newNames.length, 'No duplicate completion candidates')
+      const invalid = after.replace('<%=afterName%>', '<%=missingAfterCancel%>')
+      await server.change(page, 3, invalid)
+      await server.diagnostics(page, (items) => items.some((item) => item.code === 2304 && item.message.includes('missingAfterCancel')))
+      await server.change(page, 4, after)
+      await server.diagnostics(page, (items) => items.length === 0)
+    })
+
+    test('IPC regression batched edits undo and redo match a freshly opened document', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'undo-redo', 'posts')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const initial = '<p>한글😀</p>\r\n<script server>const title = "x";</script>\r\n<%=title%><%=missingValue%>'
+      writeFile(page, initial)
+      await server.open(page, initial)
+      let document = TextDocument.create(server.uri(page), 'ejs', 1, initial)
+      const declaration = initial.indexOf('title')
+      const reference = initial.lastIndexOf('title')
+      const edits = [{ start: declaration, end: declaration + 5, newText: 'heading' },
+        { start: reference + 2, end: reference + 7, newText: 'heading' }]
+      document = await server.edits(page, 2, document, edits)
+      const finalText = document.getText()
+      assert.equal(finalText, initial.replaceAll('title', 'heading'))
+      const observe = async () => {
+        const report = await server.diagnostics(page, (items) => items.some((item) => item.code === 2304 && item.message.includes('missingValue')))
+        const names = await server.complete(page, finalText, finalText.lastIndexOf('heading') + 2)
+        const rename = await server.feature('rename', page, finalText, finalText.lastIndexOf('heading'), { newName: 'label' })
+        return { diagnostics: report.items, names: names.slice().sort(),
+          renamed: TextDocument.applyEdits(TextDocument.create(server.uri(page), 'ejs', 1, finalText), rename.changes[server.uri(page)]) }
+      }
+      const edited = await observe()
+      assert.equal(edited.renamed, finalText.replaceAll('heading', 'label'))
+      const undo = [{ start: declaration, end: declaration + 7, newText: 'title' },
+        { start: reference, end: reference + 7, newText: 'title' }]
+      document = await server.edits(page, 3, document, undo)
+      assert.equal(document.getText(), initial)
+      assert.ok((await server.complete(page, initial, reference + 2)).includes('title'))
+      document = await server.edits(page, 4, document, edits)
+      assert.equal(document.getText(), finalText)
+      assert.deepEqual(await observe(), edited)
+      await server.notify('textDocument/didClose', { textDocument: { uri: server.uri(page) } })
+      await server.open(page, finalText)
+      assert.deepEqual(await observe(), edited)
+    })
+
+    test('IPC regression deleted dependencies are replaced by new contents', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'dependency-recreation', 'posts')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const partial = path.join(app.pagesRoot, '_private', 'card.ejs')
+      const modulePath = path.join(app.pagesRoot, '_private', 'model.js')
+      const text = '<script server>const model = resolve("model"); const result = model.beforeName;</script>\n<%- include("card.ejs", {  }) %>'
+      writeFile(page, text)
+      writeFile(partial, '<%=beforeName%>')
+      writeFile(modulePath, 'module.exports = { beforeName: 1 };')
+      await server.open(page, text)
+      const partialNames = () => server.complete(page, text, text.indexOf('{  }') + 2)
+      const moduleNames = () => server.complete(page, text, text.indexOf('model.beforeName') + 6)
+      assert.deepEqual(await partialNames(), ['beforeName'])
+      assert.ok((await moduleNames()).includes('beforeName'))
+      for (const filePath of [partial, modulePath]) {
+        fs.unlinkSync(filePath)
+        await server.watch(filePath, 3)
+      }
+      assert.ok(!(await partialNames()).includes('beforeName'), 'Deleted partial locals are not offered by fallback completion')
+      const missing = await server.feature('definition', page, text, text.indexOf('"model"') + 2)
+      assert.ok(!missing || missing.length === 0, JSON.stringify(missing))
+      writeFile(partial, '<%=afterName%>')
+      writeFile(modulePath, 'module.exports = { afterName: "new" };')
+      await server.watch(partial, 1)
+      await server.watch(modulePath, 1)
+      assert.deepEqual(await partialNames(), ['afterName'])
+      const recreated = await moduleNames()
+      assert.ok(recreated.includes('afterName') && !recreated.includes('beforeName'), JSON.stringify(recreated))
+    })
+
+    test('IPC regression server browser and template region transitions discard old state', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'region-transitions', 'posts')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const serverText = '<script server>const title = "ready"; const value = missingServer;</script>\n<%=title%>'
+      writeFile(page, serverText)
+      await server.open(page, serverText)
+      await server.diagnostics(page, (items) => items.some((item) => item.code === 2304 && item.message.includes('missingServer')))
+      const template = '<h1>Plain template</h1>'
+      await server.change(page, 2, template)
+      await server.diagnostics(page, (items) => items.length === 0)
+      const browser = '<script>const browserTitle = "ready"; document.title = browserTitle;</script>'
+      await server.change(page, 3, browser)
+      const browserNames = await server.complete(page, browser, browser.lastIndexOf('browserTitle') + 3)
+      assert.ok(!browserNames.includes('title'), 'Old server symbols do not leak into browser scripts')
+      assert.ok(!browserNames.includes('$app'), 'Server globals do not leak into browser scripts')
+      await server.diagnostics(page, (items) => !items.some((item) => item.message.includes('missingServer')))
+      const restored = serverText.replace('missingServer', 'title')
+      await server.change(page, 4, restored)
+      const names = await server.complete(page, restored, restored.lastIndexOf('title') + 2)
+      assert.ok(names.includes('title') && !names.includes('browserTitle'))
+      await server.diagnostics(page, (items) => items.length === 0)
+    })
+
+    test('IPC regression encoded Windows paths and case-only rename retain file identity', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, '경로 space #%', 'posts')
+      const page = path.join(app.pagesRoot, 'index #% 한글.ejs')
+      const partial = path.join(app.pagesRoot, '_private', 'Card.ejs')
+      const renamed = path.join(app.pagesRoot, '_private', 'card.ejs')
+      const text = '<%- include("Card.ejs", {  }) %>'
+      writeFile(page, text)
+      writeFile(partial, '<%=title%>')
+      await server.open(page, text)
+      assert.match(server.uri(page), /%20/)
+      assert.match(server.uri(page), /%23/)
+      assert.match(server.uri(page), /%25/)
+      const definitions = await server.feature('definition', page, text, text.indexOf('Card.ejs') + 2)
+      assert.ok([].concat(definitions || []).some((entry) => entry.uri === server.uri(partial)), JSON.stringify(definitions))
+      const references = await server.feature('references', page, text, text.indexOf('Card.ejs') + 2,
+        { context: { includeDeclaration: false } })
+      assert.ok(references.some((entry) => entry.uri === server.uri(page)), JSON.stringify(references))
+      const edits = await server.request('pocketpages/fileRenameEdits', { oldUri: server.uri(partial), newUri: server.uri(renamed) })
+      const callerEdits = edits.filter((entry) => path.relative(entry.filePath, page) === '')
+      assert.ok(callerEdits.length > 0, JSON.stringify(edits))
+      const newText = callerEdits.slice().sort((a, b) => b.start - a.start)
+        .reduce((value, edit) => value.slice(0, edit.start) + edit.newText + value.slice(edit.end), text)
+      assert.equal(newText, text.replace('Card.ejs', 'card.ejs'))
+      fs.renameSync(partial, renamed)
+      await server.watch(partial, 3)
+      await server.watch(renamed, 1)
+      await server.change(page, 2, newText)
+      assert.deepEqual(await server.complete(page, newText, newText.indexOf('{  }') + 2), ['title'])
+      const updated = await server.feature('definition', page, newText, newText.indexOf('card.ejs') + 2)
+      assert.ok([].concat(updated || []).some((entry) => entry.uri === server.uri(renamed)), JSON.stringify(updated))
+    })
+
+    test('IPC regression circular and missing modules recover when dependencies change', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'dependency-cycles', 'posts')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const a = path.join(app.pagesRoot, '_private', 'a.js')
+      const b = path.join(app.pagesRoot, '_private', 'b.js')
+      const missing = path.join(app.pagesRoot, '_private', 'later.js')
+      const text = '<script server>const model = resolve("a"); const later = resolve("later"); const value = model.title;</script>'
+      writeFile(a, 'require("./b"); module.exports = { title: "a" };')
+      writeFile(b, 'require("./a"); module.exports = { count: 1 };')
+      writeFile(page, text)
+      await server.open(page, text)
+      const cycleNames = await server.complete(page, text, text.indexOf('model.title') + 6)
+      assert.ok(cycleNames.includes('title'), JSON.stringify(cycleNames))
+      const unresolved = await server.feature('definition', page, text, text.indexOf('"later"') + 2)
+      assert.ok(!unresolved || unresolved.length === 0)
+      await server.request('textDocument/diagnostic', { textDocument: { uri: server.uri(page) } })
+      writeFile(b, 'module.exports = { count: 2 };')
+      await server.watch(b)
+      writeFile(missing, 'module.exports = { ready: true };')
+      await server.watch(missing, 1)
+      const resolved = await server.feature('definition', page, text, text.indexOf('"later"') + 2)
+      assert.ok([].concat(resolved || []).some((entry) => entry.uri === server.uri(missing)), JSON.stringify(resolved))
+      const updated = text.replace('model.title', 'later.ready')
+      await server.change(page, 2, updated)
+      assert.ok((await server.complete(page, updated, updated.indexOf('later.ready') + 6)).includes('ready'))
+      await server.diagnostics(page, (items) => items.length === 0)
     })
 
     test('IPC schema watch retains valid data only through parse failures', { timeout: 30000 }, async (t) => {

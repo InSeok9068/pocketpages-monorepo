@@ -4219,6 +4219,9 @@ class ProjectLanguageService {
     const currentText = typeof text === "string" ? text : "";
     this.upsertDocumentSnapshot(normalizedFilePath, currentText, options);
     const previousText = this.documentOverrides.get(normalizedFilePath);
+    if (isScriptFile(normalizedFilePath)) {
+      this.upsertStaticFileText(normalizedFilePath, currentText);
+    }
     if (previousText === currentText) {
       return;
     }
@@ -4258,6 +4261,9 @@ class ProjectLanguageService {
     this.resolveModuleReturnTypeCache.delete(normalizedFilePath);
     this.scriptSchemaDiagnosticsCache.delete(normalizedFilePath);
     this.schemaAppReceiverTypeCache.clear();
+    if (isScriptFile(normalizedFilePath)) {
+      this.ensureStaticFile(normalizedFilePath);
+    }
     this.projectVersion += 1;
     return true;
   }
@@ -5033,6 +5039,11 @@ class ProjectLanguageService {
 
   ensureStaticFile(filePath) {
     const resolvedPath = normalizePath(filePath);
+    const overrideText = this.documentOverrides.get(resolvedPath);
+    if (typeof overrideText === "string") {
+      this.upsertStaticFileText(resolvedPath, overrideText);
+      return;
+    }
 
     if (!fileExists(resolvedPath)) {
       if (this.documentSnapshotManager.deleteStaticFileState(resolvedPath)) {
