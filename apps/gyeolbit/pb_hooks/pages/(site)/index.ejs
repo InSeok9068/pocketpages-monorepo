@@ -84,8 +84,8 @@
     ].join(' · ')
 
     const promptLines = [
-      '당신은 한국 사주명리의 여러 해석 관점을 균형 있게 설명하는 해석가입니다.',
-      '아래 계산된 만세력 원국을 기준으로, 과장하거나 운명을 단정하지 말고 실생활에 적용 가능한 언어로 풀어주세요.',
+      '당신은 한국 전통 사주명리의 해석가입니다. 제공된 계산 근거를 바탕으로 가장 설득력 있는 해석을 명확하게 제시하세요.',
+      '운명을 확정적으로 예언하지 말고, 해석이 현실에서 나타날 수 있는 구체적인 경향과 선택으로 설명하세요.',
       '',
       '## 해석 대상',
       '- 성별: ' + result.genderLabel,
@@ -138,16 +138,20 @@
       '7. ' + result.currentYear + '년부터 3년간 흐름이 좋아지는 시기와 주의할 시기',
       '8. 스스로 고치면 삶이 편해질 가능성이 높은 습관 3가지',
       '',
+      '각 항목은 [핵심 해석] → [근거와 명리 원리] → [현실에서 나타날 수 있는 모습] → [조언] 순서로 작성하세요.',
+      '',
       '## 해석 원칙',
       '- 제공된 사주 원국은 다시 계산하지 말고 그대로 사용하세요.',
-      '- 제공된 지장간·십신·월령·12운성·원국 관계·세운은 다시 계산하지 마세요.',
-      '- 모든 관계를 같은 비중으로 다루지 말고 월령·일간·원국 구조와 직접 관련된 요소를 우선하세요.',
-      '- 신강·신약, 조후, 용신과 합화 성립은 제공된 확정 계산과 구분하여 해석하세요.',
-      '- 각 항목을 [관찰] → [해석] → [현실적인 조언] 순서로 작성하세요.',
-      '- 학파에 따라 달라지는 판단은 하나로 단정하지 말고 다른 가능성을 짧게 밝혀주세요.',
+      '- 제공된 지장간·십신·월령·12운성·원국 관계·세운도 다시 계산하지 말고, 근거를 들 때 항목명과 값을 구체적으로 적으세요.',
+      '- 모든 요소를 같은 비중으로 다루지 말고 일간·월령·원국 구조와 직접 연결되는 핵심 근거를 우선하세요.',
+      '- 근거가 서로 모이면 가장 설득력 있는 결론을 분명하게 말하세요. 근거가 엇갈리면 어느 쪽을 우선하는지와 이유를 설명하세요.',
+      '- 근거가 부족한 항목에서만 판단의 한계와 그 이유를 짧게 밝히세요. 충분한 근거가 있는 내용까지 매 문장마다 가능성으로 흐리거나 면책 문구를 반복하지 마세요.',
+      '- 누구에게나 맞는 일반론은 피하고, 각 조언은 해당 항목의 해석 근거와 직접 연결하세요.',
+      '- 제공되지 않은 대운·신살·신강신약·조후·용신과 실제 합화는 계산하거나 확정하지 마세요. 결론에 꼭 필요한 경우에만 미계산 사실을 밝히세요.',
+      '- 세운은 제공된 연도별 간지·십신·12운성·원국 관계를 근거로 설명하고, 특정 사건이나 발생 시점을 만들어내지 마세요.',
+      '- 학파 차이로 결론이 달라지는 부분만 다른 해석 가능성을 짧게 덧붙이세요.',
       '- 건강, 투자, 법률 문제를 확정적으로 예언하지 마세요.',
       '- 태어난 시간이 없으면 시주와 시주에 의존하는 해석은 제외하거나 불확실성을 표시하세요.',
-      '- 막연한 좋은 말보다 근거가 된 원국의 글자와 관계를 함께 적어주세요.',
       '- 전체 답변은 읽기 쉬운 한국어로, 항목별 제목을 붙여 작성하세요.',
       '',
       '## 개인정보 및 대화 맥락',
@@ -167,11 +171,11 @@
     birthYear: '',
     birthMonth: '',
     birthDay: '',
-    birthTime: '12:00',
-    timeUnknown: false,
+    birthTime: '',
+    timeUnknown: true,
     isLeapMonth: false,
     birthPlace: 'seoul',
-    gender: 'female',
+    gender: 'private',
   }
   let promptText = ''
   let resultSummary = null
@@ -189,7 +193,7 @@
     formValues.birthYear = readText(form.birthYear)
     formValues.birthMonth = readText(form.birthMonth)
     formValues.birthDay = readText(form.birthDay)
-    formValues.birthTime = readText(form.birthTime) || '12:00'
+    formValues.birthTime = readText(form.birthTime)
     formValues.timeUnknown = readText(form.timeUnknown) === 'on'
     formValues.isLeapMonth = readText(form.isLeapMonth) === 'on'
     formValues.birthPlace = readText(form.birthPlace) || 'seoul'
@@ -238,9 +242,7 @@
 
       dbg('gyeolbit/home:calculate-saju', {
         calendarType: formValues.calendarType,
-        solarDate: solar.year + '-' + padNumber(solar.month) + '-' + padNumber(solar.day),
         hasBirthTime: !formValues.timeUnknown,
-        birthPlace: place.id,
       })
 
       const saju = manseryeok.calculateSaju(solar.year, solar.month, solar.day, hour, minute, {
@@ -297,7 +299,7 @@
         <small>나의 결을 비추다</small>
       </span>
     </a>
-    <span class="privacy-badge">서버 저장 없음</span>
+    <span class="privacy-badge">앱 DB 저장 없음</span>
   </header>
 
   <% if (!resultSummary) { %>
@@ -493,7 +495,7 @@
       </button>
     </form>
 
-    <p class="privacy-note">생년 정보는 프롬프트 생성에만 사용되며 서버에 저장하지 않습니다.</p>
+    <p class="privacy-note">출생 정보는 계산을 위해 서버로 전송됩니다. 이 앱 DB에는 저장하지 않습니다.</p>
   </section>
   <% } else { %>
   <section
@@ -557,7 +559,7 @@
     </div>
 
     <p class="privacy-note">
-      프롬프트만으로 AI의 저장 정책은 바뀌지 않습니다. 생년 정보는 가능하면 임시 대화 모드에서 사용하세요.
+      복사한 프롬프트를 AI 서비스에 붙여넣으면 출생 정보도 전달됩니다. 저장 정책을 확인하고 가능하면 임시 대화를 이용하세요.
     </p>
   </section>
   <% } %>
