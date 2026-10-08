@@ -4097,6 +4097,7 @@ module.exports = {
   PocketPagesProjectIndex,
   POCKETPAGES_GLOBAL_NAMES,
   collectIncludeCallEntries,
+  isAssetCandidateFile,
   normalizePath,
   fileExists,
   quoteRegex,

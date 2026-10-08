@@ -4,7 +4,7 @@
 const fs = require('fs')
 const net = require('net')
 const path = require('path')
-const { collectManagedWatchedFiles, getDiagIpcPath, resolveTarget, ROOT_DIR, runDiagnosticsAsync, readFileToken } = require('./diag-pocketpages-core')
+const { collectManagedWatchedFiles, getDiagIpcPath, resolveTarget, ROOT_DIR, runDiagnosticsAsync, readManagedFileToken } = require('./diag-pocketpages-core')
 const { PocketPagesLanguageServiceManager } = require('../tools/vscode-pocketpages/packages/language-service/language-service')
 
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000
@@ -48,7 +48,7 @@ function buildServiceSnapshot(serviceDir) {
   const snapshot = new Map()
 
   for (const filePath of collectManagedWatchedFiles(serviceDir)) {
-    snapshot.set(path.resolve(filePath), readFileToken(filePath))
+    snapshot.set(path.resolve(filePath), readManagedFileToken(serviceDir, filePath))
   }
 
   return snapshot

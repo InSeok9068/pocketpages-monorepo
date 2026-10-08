@@ -7,6 +7,7 @@ const os = require('os')
 const path = require('path')
 const { performance } = require('perf_hooks')
 const { PocketPagesLanguageServiceManager, ts } = require('../tools/vscode-pocketpages/packages/language-service/language-service')
+const { isAssetCandidateFile } = require('../tools/vscode-pocketpages/packages/language-service/project-index')
 const { runStatEpoch } = require('../tools/vscode-pocketpages/packages/language-service/stat-cache')
 
 const ROOT_DIR = path.resolve(__dirname, '..')
@@ -135,12 +136,43 @@ function collectPagesCodeFiles(serviceDir) {
   return results.sort((left, right) => left.localeCompare(right))
 }
 
+function collectPagesAssetFiles(serviceDir) {
+  const pagesRoot = path.resolve(serviceDir, 'pb_hooks', 'pages')
+  if (!fs.existsSync(pagesRoot)) {
+    return []
+  }
+
+  const results = []
+  const queue = [pagesRoot]
+
+  while (queue.length > 0) {
+    const currentDir = queue.pop()
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      const absolutePath = path.resolve(currentDir, entry.name)
+
+      if (entry.isDirectory()) {
+        queue.push(absolutePath)
+        continue
+      }
+
+      if (entry.isFile() && isAssetCandidateFile(pagesRoot, absolutePath)) {
+        results.push(absolutePath)
+      }
+    }
+  }
+
+  return results.sort((left, right) => left.localeCompare(right))
+}
+
 function collectManagedWatchedFiles(serviceDir) {
   const ambientFiles = [path.join(serviceDir, 'pb_schema.json'), path.join(serviceDir, 'pb_data', 'types.d.ts'), path.join(serviceDir, 'pocketpages-globals.d.ts'), path.join(serviceDir, 'types.d.ts')]
     .filter((filePath) => fs.existsSync(filePath) && fs.statSync(filePath).isFile())
     .map((filePath) => path.resolve(filePath))
 
-  return [...collectPagesCodeFiles(serviceDir), ...ambientFiles].sort((left, right) => left.localeCompare(right))
+  return [...collectPagesCodeFiles(serviceDir), ...collectPagesAssetFiles(serviceDir), ...ambientFiles]
+    .sort((left, right) => left.localeCompare(right))
 }
 
 function readFileToken(filePath) {
@@ -157,6 +189,15 @@ function readFileToken(filePath) {
   } catch (_error) {
     return `${stats.mtimeMs}:${stats.size}`
   }
+}
+
+function readManagedFileToken(serviceDir, filePath) {
+  const pagesRoot = path.resolve(serviceDir, 'pb_hooks', 'pages')
+  if (isAssetCandidateFile(pagesRoot, filePath)) {
+    return 'asset'
+  }
+
+  return readFileToken(filePath)
 }
 
 function buildLineStarts(text) {
@@ -566,6 +607,7 @@ module.exports = {
   collectManagedWatchedFiles,
   collectPagesCodeFiles,
   getDiagIpcPath,
+  readManagedFileToken,
   readFileToken,
   resolveTarget,
   runDiagnostics,

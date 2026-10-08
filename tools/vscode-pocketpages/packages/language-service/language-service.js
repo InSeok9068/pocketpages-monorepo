@@ -4322,6 +4322,14 @@ class ProjectLanguageService {
       this.projectIndex.isAssetCandidateFile(normalizedFilePath);
 
     if (
+      isPageAssetCandidate &&
+      (changeType === "create" || changeType === "delete")
+    ) {
+      const changed = this.projectIndex.invalidateAssetForFile(normalizedFilePath);
+      return changed ? "asset" : "noop";
+    }
+
+    if (
       isPagesPath &&
       this.projectIndex.isExcludedRouteExposedPagesScriptFile(normalizedFilePath)
     ) {
