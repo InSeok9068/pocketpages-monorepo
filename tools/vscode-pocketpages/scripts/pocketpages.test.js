@@ -363,7 +363,7 @@ declare const resolve: (path: string) => any;
       }
     }
 
-    async function startServer(t) {
+    async function startServer(t, clientCapabilities = { workspace: { diagnostics: { refreshSupport: true } } }) {
       const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pocketpages-lsp-regression-'))
       const child = fork(path.join(__dirname, '../packages/language-server/server.js'), ['--node-ipc'], {
         silent: true,
@@ -377,8 +377,17 @@ declare const resolve: (path: string) => any;
       const exited = new Promise((resolve) => child.once('exit', resolve))
       const connection = createMessageConnection(new IPCMessageReader(child), new IPCMessageWriter(child))
       const logs = []
+      let diagnosticRefreshRequestCount = 0
+      let resolveDiagnosticRefreshRequest
+      const diagnosticRefreshRequest = new Promise((resolve) => {
+        resolveDiagnosticRefreshRequest = resolve
+      })
       connection.onNotification('window/logMessage', (entry) => logs.push(entry.message))
-      connection.onRequest('workspace/diagnostic/refresh', () => null)
+      connection.onRequest('workspace/diagnostic/refresh', () => {
+        diagnosticRefreshRequestCount += 1
+        resolveDiagnosticRefreshRequest()
+        return null
+      })
       connection.listen()
       const request = (method, params, token) => withDeadline(
         token ? connection.sendRequest(method, params, token) : connection.sendRequest(method, params), 10000)
@@ -407,19 +416,22 @@ declare const resolve: (path: string) => any;
         }
       })
 
-      await request('initialize', {
+      const initializeResult = await request('initialize', {
         processId: process.pid,
         rootUri: uri(fixtureRoot),
-        capabilities: { workspace: { diagnostics: { refreshSupport: true } } },
+        capabilities: clientCapabilities,
       })
       await notify('initialized', {})
 
       return {
         fixtureRoot,
+        initializeResult,
         logs,
         request,
         notify,
         uri,
+        diagnosticRefreshRequestCount: () => diagnosticRefreshRequestCount,
+        waitForDiagnosticRefreshRequest: () => withDeadline(diagnosticRefreshRequest, 2000),
         async open(filePath, text) {
           await notify('textDocument/didOpen', {
             textDocument: { uri: uri(filePath), languageId: filePath.endsWith('.ejs') ? 'ejs' : 'javascript', version: 1, text },
@@ -483,6 +495,64 @@ declare const resolve: (path: string) => any;
         },
       }
     }
+
+    test('IPC initialization advertises supported capabilities and respects diagnostic refresh support', { timeout: 30000 }, async (t) => {
+      const scenarios = [
+        {
+          name: 'with client diagnostic refresh support',
+          clientCapabilities: { workspace: { diagnostics: { refreshSupport: true } } },
+          refreshSupport: true,
+        },
+        {
+          name: 'without client diagnostic refresh support',
+          clientCapabilities: {},
+          refreshSupport: false,
+        },
+      ]
+
+      for (const scenario of scenarios) {
+        await runSubtest(t, scenario.name, async (subtest) => {
+          const server = await startServer(subtest, scenario.clientCapabilities)
+          const capabilities = server.initializeResult && server.initializeResult.capabilities
+          assert.ok(capabilities, 'initialize returns server capabilities')
+          assert.deepEqual(capabilities.textDocumentSync, { openClose: true, change: 2, save: false })
+          assert.deepEqual(capabilities.completionProvider, {
+            resolveProvider: true,
+            triggerCharacters: ['.', "'", '"', '`', '/', '{', ','],
+          })
+          assert.equal(capabilities.hoverProvider, true)
+          assert.equal(capabilities.definitionProvider, true)
+          assert.equal(capabilities.referencesProvider, true)
+          assert.deepEqual(capabilities.renameProvider, { prepareProvider: true })
+          assert.equal(capabilities.codeActionProvider, true)
+          assert.deepEqual(capabilities.documentLinkProvider, {})
+          assert.deepEqual(capabilities.signatureHelpProvider, {
+            triggerCharacters: ['(', ','],
+            retriggerCharacters: ['(', ','],
+          })
+          assert.equal(capabilities.documentSymbolProvider, true)
+          assert.equal(capabilities.workspaceSymbolProvider, true)
+          assert.ok(Array.isArray(capabilities.semanticTokensProvider.legend.tokenTypes))
+          assert.ok(capabilities.semanticTokensProvider.legend.tokenTypes.length > 0)
+          assert.deepEqual(capabilities.semanticTokensProvider.legend.tokenModifiers, [])
+          assert.equal(capabilities.semanticTokensProvider.full, true)
+          assert.deepEqual(capabilities.codeLensProvider, { resolveProvider: true })
+          assert.deepEqual(capabilities.diagnosticProvider, {
+            interFileDependencies: true,
+            workspaceDiagnostics: false,
+          })
+
+          assert.deepEqual(await server.request('pocketpages/refreshDiagnostics', {}), { ok: true })
+          if (scenario.refreshSupport) {
+            await server.waitForDiagnosticRefreshRequest()
+            assert.equal(server.diagnosticRefreshRequestCount(), 1)
+          } else {
+            await new Promise((resolve) => setTimeout(resolve, 100))
+            assert.equal(server.diagnosticRefreshRequestCount(), 0)
+          }
+        })
+      }
+    })
 
     test('IPC completion follows another open partial and preserves app isolation', { timeout: 30000 }, async (t) => {
       const server = await startServer(t)
