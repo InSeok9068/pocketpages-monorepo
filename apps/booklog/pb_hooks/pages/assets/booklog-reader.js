@@ -45,6 +45,8 @@ window.booklogReaderLogic = (function () {
   var READER_PAGE_MARGIN_OPTIONS = ['narrow', 'normal', 'wide']
   var READER_SETTINGS_STYLE_ID = 'booklog-reader-settings-style'
   var HIGHLIGHT_QUOTE_MAX_LENGTH = 10000
+  var SELECTED_HIGHLIGHT_POLL_INTERVAL_MS = 120
+  var SELECTED_HIGHLIGHT_SETTLE_MS = 220
   var READER_CACHE_DB_NAME = 'booklog-reader-cache'
   var READER_CACHE_STORE_NAME = 'epubBuffers'
   var READER_CACHE_LIMIT = 5
@@ -84,6 +86,9 @@ window.booklogReaderLogic = (function () {
   var activeComponent = null
   var activeSelectionContents = null
   var selectionSyncTimerId = 0
+  var selectedHighlightPollingTimerId = 0
+  var pendingSelectedHighlightSelection = null
+  var pendingSelectedHighlightSelectionAt = 0
   var isLeavingPage = false
   var isHandlingHistoryBack = false
   var skipNextPopState = false
@@ -274,6 +279,111 @@ window.booklogReaderLogic = (function () {
     }, 160)
   }
 
+  function readSelectedHighlightSelection(contents) {
+    var contentsWindow = getContentsWindow(contents)
+    var selection = null
+    var range = null
+    var quoteText = ''
+
+    if (!contentsWindow || typeof contentsWindow.getSelection !== 'function') {
+      return null
+    }
+
+    try {
+      selection = contentsWindow.getSelection()
+
+      if (!selection || selection.rangeCount < 1 || selection.isCollapsed) {
+        return null
+      }
+
+      quoteText = normalizeText(selection.toString())
+      range = selection.getRangeAt(0)
+    } catch (exception) {
+      return null
+    }
+
+    if (!quoteText || !range) {
+      return null
+    }
+
+    return {
+      contents: contents,
+      quoteText: quoteText,
+      startContainer: range.startContainer,
+      startOffset: range.startOffset,
+      endContainer: range.endContainer,
+      endOffset: range.endOffset,
+    }
+  }
+
+  function isSameSelectedHighlightSelection(first, second) {
+    return !!first && !!second &&
+      first.contents === second.contents &&
+      first.quoteText === second.quoteText &&
+      first.startContainer === second.startContainer &&
+      first.startOffset === second.startOffset &&
+      first.endContainer === second.endContainer &&
+      first.endOffset === second.endOffset
+  }
+
+  function pollSelectedHighlightSelection(component) {
+    var entries = getRenderedContentEntries()
+    var selected = null
+    var index = 0
+    var entry = null
+
+    for (index = 0; index < entries.length; index += 1) {
+      entry = entries[index]
+      selected = readSelectedHighlightSelection(entry && entry.contents ? entry.contents : null)
+
+      if (selected) {
+        break
+      }
+    }
+
+    if (!selected) {
+      pendingSelectedHighlightSelection = null
+      pendingSelectedHighlightSelectionAt = 0
+
+      if (component && component.selectedHighlightOpen && !component.selectedHighlightSaving) {
+        syncSelectedHighlight(component, activeSelectionContents, '')
+      }
+
+      return
+    }
+
+    if (!isSameSelectedHighlightSelection(pendingSelectedHighlightSelection, selected)) {
+      pendingSelectedHighlightSelection = selected
+      pendingSelectedHighlightSelectionAt = Date.now()
+      return
+    }
+
+    if (Date.now() - pendingSelectedHighlightSelectionAt < SELECTED_HIGHLIGHT_SETTLE_MS) {
+      return
+    }
+
+    if (
+      component &&
+      component.selectedHighlightOpen &&
+      component.selectedHighlightQuoteText === selected.quoteText &&
+      activeSelectionContents === selected.contents
+    ) {
+      return
+    }
+
+    syncSelectedHighlight(component, selected.contents, '')
+  }
+
+  function ensureSelectedHighlightPolling(component) {
+    if (selectedHighlightPollingTimerId) {
+      return
+    }
+
+    selectedHighlightPollingTimerId = window.setInterval(function () {
+      pollSelectedHighlightSelection(component)
+    }, SELECTED_HIGHLIGHT_POLL_INTERVAL_MS)
+  }
+
   /**
    * EPUB 본문 선택 이벤트를 리더 바텀바와 연결합니다.
    *
@@ -284,7 +394,13 @@ window.booklogReaderLogic = (function () {
     var doc = getContentsDocument(contents)
     var sync = null
 
-    if (!doc || doc.__booklogSelectionCaptureBound) {
+    if (!doc) {
+      return
+    }
+
+    ensureSelectedHighlightPolling(component)
+
+    if (doc.__booklogSelectionCaptureBound) {
       return
     }
 
@@ -295,6 +411,7 @@ window.booklogReaderLogic = (function () {
 
     doc.addEventListener('selectionchange', sync, false)
     doc.addEventListener('mouseup', sync, false)
+    doc.addEventListener('pointerup', sync, false)
     doc.addEventListener('touchend', sync, false)
     doc.addEventListener('keyup', sync, false)
   }
@@ -504,6 +621,7 @@ window.booklogReaderLogic = (function () {
       renderedContentEntries[existingIndex] = {
         href: href,
         document: doc,
+        contents: contents,
       }
       return
     }
@@ -511,6 +629,7 @@ window.booklogReaderLogic = (function () {
     renderedContentEntries.push({
       href: href,
       document: doc,
+      contents: contents,
     })
   }
 

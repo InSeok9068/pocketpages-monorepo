@@ -12,6 +12,10 @@ export default defineConfig({
   workers: 1,
   projects: [
     {
+      name: 'chrome',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+    },
+    {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
     },

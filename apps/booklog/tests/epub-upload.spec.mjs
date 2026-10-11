@@ -33,7 +33,7 @@ async function signIn(page) {
 }
 
 for (const fileName of uploadCases) {
-  const title = `WebKit에서 ${fileName} 업로드 로딩 후 완료 메시지를 표시한다`
+  const title = `${fileName} 업로드 로딩 후 완료 메시지를 표시한다`
   const filePath = resolve(testDirectory, '../.docs', fileName)
 
   if (!existsSync(filePath)) {
