@@ -316,7 +316,7 @@
           <form
             method="post"
             action="/xapi/books/remove-from-shelf"
-            class="absolute top-5 right-5 z-10 m-0 md:static md:mb-4 md:flex md:w-full md:justify-end lg:absolute lg:mb-0 lg:w-auto"
+            class="absolute top-5 right-5 z-10 m-0 md:static md:mb-2 md:flex md:w-full md:justify-end lg:absolute lg:mb-0 lg:w-auto"
             onsubmit="return window.confirm('이 책을 내 도서함에서 제거할까요? 감상평과 저장한 문구도 함께 정리됩니다.')">
             <input
               type="hidden"
@@ -329,7 +329,7 @@
             </button>
           </form>
           <% } %>
-          <h2 class="text-2xl leading-tight font-semibold tracking-[-0.03em] text-stone-950 sm:text-3xl lg:pr-40">
+          <h2 class="text-2xl leading-tight font-semibold tracking-[-0.03em] text-stone-950 sm:text-3xl md:mt-0 lg:mt-6 lg:pr-40">
             <%= title %>
           </h2>
         </div>
