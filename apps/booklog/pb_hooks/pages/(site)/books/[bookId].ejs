@@ -277,23 +277,6 @@
 
   <section
     class="relative rounded-[2rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,252,245,0.94),rgba(245,236,222,0.96))] p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
-    <% if (shelfRecord) { %>
-    <form
-      method="post"
-      action="/xapi/books/remove-from-shelf"
-      class="absolute top-5 right-5 z-10 m-0"
-      onsubmit="return window.confirm('이 책을 내 도서함에서 제거할까요? 감상평과 저장한 문구도 함께 정리됩니다.')">
-      <input
-        type="hidden"
-        name="bookId"
-        value="<%= bookId %>" />
-      <button
-        type="submit"
-        class="inline-flex items-center rounded-full border-none bg-[#efe2d2] px-3.5 py-2 text-[12px] font-medium text-[#8e5521] shadow-[0_10px_22px_rgba(132,90,47,0.10)] ring-0 transition outline-none hover:bg-[#ead9c4]">
-        도서함에서 제거
-      </button>
-    </form>
-    <% } %>
     <div
       class="flex flex-col gap-5 md:grid md:grid-cols-[14rem_minmax(0,1fr)] md:items-start md:gap-x-8 md:gap-y-5 lg:gap-x-12">
       <div class="w-34 shrink-0 sm:w-40 md:w-[14rem]">
@@ -328,7 +311,24 @@
       </div>
 
       <div class="min-w-0 flex-1 space-y-4">
-        <div>
+        <div class="md:flex md:flex-col">
+          <% if (shelfRecord) { %>
+          <form
+            method="post"
+            action="/xapi/books/remove-from-shelf"
+            class="absolute top-5 right-5 z-10 m-0 md:static md:mb-4 md:flex md:w-full md:justify-end lg:absolute lg:mb-0 lg:w-auto"
+            onsubmit="return window.confirm('이 책을 내 도서함에서 제거할까요? 감상평과 저장한 문구도 함께 정리됩니다.')">
+            <input
+              type="hidden"
+              name="bookId"
+              value="<%= bookId %>" />
+            <button
+              type="submit"
+              class="inline-flex items-center rounded-full border-none bg-[#efe2d2] px-3.5 py-2 text-[12px] font-medium text-[#8e5521] shadow-[0_10px_22px_rgba(132,90,47,0.10)] ring-0 transition outline-none hover:bg-[#ead9c4]">
+              도서함에서 제거
+            </button>
+          </form>
+          <% } %>
           <h2 class="text-2xl leading-tight font-semibold tracking-[-0.03em] text-stone-950 sm:text-3xl lg:pr-40">
             <%= title %>
           </h2>
