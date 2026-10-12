@@ -317,13 +317,16 @@ window.booklogReaderLogic = (function () {
   }
 
   function isSameSelectedHighlightSelection(first, second) {
-    return !!first && !!second &&
-      first.contents === second.contents &&
-      first.quoteText === second.quoteText &&
-      first.startContainer === second.startContainer &&
-      first.startOffset === second.startOffset &&
-      first.endContainer === second.endContainer &&
-      first.endOffset === second.endOffset
+    return (
+      !!first
+      && !!second
+      && first.contents === second.contents
+      && first.quoteText === second.quoteText
+      && first.startContainer === second.startContainer
+      && first.startOffset === second.startOffset
+      && first.endContainer === second.endContainer
+      && first.endOffset === second.endOffset
+    )
   }
 
   function pollSelectedHighlightSelection(component) {
@@ -363,10 +366,10 @@ window.booklogReaderLogic = (function () {
     }
 
     if (
-      component &&
-      component.selectedHighlightOpen &&
-      component.selectedHighlightQuoteText === selected.quoteText &&
-      activeSelectionContents === selected.contents
+      component
+      && component.selectedHighlightOpen
+      && component.selectedHighlightQuoteText === selected.quoteText
+      && activeSelectionContents === selected.contents
     ) {
       return
     }
