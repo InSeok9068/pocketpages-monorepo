@@ -960,6 +960,98 @@ declare const resolve: (path: string) => any;
       await server.diagnostics(page, (items) => items.length === 0)
     })
 
+    test('IPC regression closed module changes on disk refresh open consumer diagnostics', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'disk-module', 'posts')
+      const modulePath = path.join(app.pagesRoot, '_private', 'model.js')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const before = 'module.exports = { value: "a" };'
+      const after = 'module.exports = { value: 1 };'
+      const text = '<script server>const model = resolve("model"); const result = model.value.toFixed();</script>'
+      const isMissing = (items) => items.some((item) => [2339, 2551].includes(item.code) && item.message.includes('toFixed'))
+      writeFile(modulePath, before)
+      writeFile(page, text)
+      await server.open(page, text)
+      const stale = await server.diagnostics(page, isMissing)
+      writeFile(modulePath, after)
+      await server.watch(modulePath)
+      const next = await server.request('textDocument/diagnostic', {
+        textDocument: { uri: server.uri(page) }, previousResultId: stale.resultId,
+      })
+      assert.notEqual(next.kind, 'unchanged', 'A dependency change must not be reported as unchanged')
+      await server.diagnostics(page, (items) => !isMissing(items))
+      await server.open(modulePath, after)
+      await server.change(modulePath, 2, before)
+      await server.diagnostics(page, isMissing)
+      await server.notify('textDocument/didClose', { textDocument: { uri: server.uri(modulePath) } })
+      writeFile(modulePath, before)
+      await server.watch(modulePath)
+      await server.diagnostics(page, isMissing)
+    })
+
+    test('IPC regression closed caller changes on disk refresh open partial locals', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'disk-caller', 'posts')
+      const partial = path.join(app.pagesRoot, '_private', 'card.ejs')
+      const caller = path.join(app.pagesRoot, 'index.ejs')
+      const partialText = '<p><%= subtitle %></p>'
+      const isMissing = (items) => items.some((item) => item.code === 2304 && item.message.includes('subtitle'))
+      writeFile(partial, partialText)
+      writeFile(caller, '<%- include("card.ejs", { title: "a" }) %>')
+      await server.open(partial, partialText)
+      await server.diagnostics(partial, isMissing)
+      const withSubtitle = '<%- include("card.ejs", { title: "a", subtitle: "b" }) %>'
+      writeFile(caller, withSubtitle)
+      await server.watch(caller)
+      await server.diagnostics(partial, (items) => !isMissing(items))
+      await server.open(caller, withSubtitle)
+      await server.change(caller, 2, '<%- include("card.ejs", { title: "a" }) %>')
+      await server.diagnostics(partial, isMissing)
+      await server.change(caller, 3, withSubtitle)
+      await server.diagnostics(partial, (items) => !isMissing(items))
+      await server.change(caller, 4, '<p>no include</p>')
+      await server.diagnostics(partial, isMissing)
+    })
+
+    test('IPC regression module changes refresh open partial locals typed by the caller', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'module-partial', 'posts')
+      const modulePath = path.join(app.pagesRoot, '_private', 'card-data.js')
+      const partial = path.join(app.pagesRoot, '_private', 'card.ejs')
+      const caller = path.join(app.pagesRoot, 'index.ejs')
+      const stringTitle = 'function readCard() { return { title: "a" } }\nmodule.exports = { readCard }\n'
+      const numberTitle = 'function readCard() { return { title: 1 } }\nmodule.exports = { readCard }\n'
+      const partialText = '<p><%= card.title.toFixed() %></p>'
+      const isWrongType = (items) => items.some((item) => [2339, 2551].includes(item.code) && item.message.includes('toFixed'))
+      writeFile(modulePath, stringTitle)
+      writeFile(partial, partialText)
+      writeFile(caller, '<script server>const cardData = resolve("card-data"); const card = cardData.readCard();</script>\n<%- include("card.ejs", { card }) %>')
+      await server.open(partial, partialText)
+      await server.diagnostics(partial, isWrongType)
+      writeFile(modulePath, numberTitle)
+      await server.watch(modulePath)
+      await server.diagnostics(partial, (items) => !isWrongType(items))
+      await server.open(modulePath, numberTitle)
+      await server.change(modulePath, 2, stringTitle)
+      await server.diagnostics(partial, isWrongType)
+    })
+
+    test('IPC regression folder-only delete events invalidate routes', { timeout: 30000 }, async (t) => {
+      const server = await startServer(t)
+      const app = createApp(server.fixtureRoot, 'folder-delete', 'posts')
+      const booksDir = path.join(app.pagesRoot, 'books')
+      const page = path.join(app.pagesRoot, 'index.ejs')
+      const text = '<a href="/books">Books</a>'
+      const isMissing = (items) => items.some((item) => item.message.includes('"/books" was not found'))
+      writeFile(path.join(booksDir, 'index.ejs'), '<h1>Books</h1>')
+      writeFile(page, text)
+      await server.open(page, text)
+      await server.diagnostics(page, (items) => !isMissing(items))
+      fs.rmSync(booksDir, { recursive: true, force: true })
+      await server.watch(booksDir, 3)
+      await server.diagnostics(page, isMissing)
+    })
+
     test('IPC schema watch retains valid data only through parse failures', { timeout: 30000 }, async (t) => {
       const server = await startServer(t)
       const app = createApp(server.fixtureRoot, 'schema', 'posts')
@@ -6186,9 +6278,10 @@ module.exports = {
       kind: 'probe',
       marker: 'initial',
     })
-    if (versionedInitial.version !== '1' || !versionedInitial.snapshot) {
+    const versionedIndependent = createVersionedTextState(null, { text: 'const versioned = 1\n', kind: 'probe' })
+    if (!versionedInitial.version || !versionedInitial.snapshot || versionedIndependent.version === versionedInitial.version) {
       throw new Error(
-        `Expected createVersionedTextState to seed version "1" with a snapshot. Got: ${JSON.stringify({ version: versionedInitial.version })}`
+        `Expected createVersionedTextState to seed a process-unique version with a snapshot. Got: ${JSON.stringify({ version: versionedInitial.version })}`
       )
     }
     const versionedSameText = createVersionedTextState(versionedInitial, {
@@ -6210,7 +6303,7 @@ module.exports = {
       kind: 'probe',
     })
     if (
-      versionedChangedText.version !== '2'
+      Number(versionedChangedText.version) <= Number(versionedSameText.version)
       || versionedChangedText.snapshot === versionedInitial.snapshot
       || versionedChangedText.text !== 'const versioned = 12\n'
     ) {
@@ -6221,7 +6314,7 @@ module.exports = {
     const versionedNullText = createVersionedTextState(versionedChangedText, {
       kind: 'probe',
     })
-    if (versionedNullText.text !== '' || versionedNullText.version !== '3') {
+    if (versionedNullText.text !== '' || Number(versionedNullText.version) <= Number(versionedChangedText.version)) {
       throw new Error(
         `Expected createVersionedTextState to coerce missing text to "" and advance version. Got: ${JSON.stringify({ text: versionedNullText.text, version: versionedNullText.version })}`
       )
@@ -6249,12 +6342,9 @@ module.exports = {
       text: 'declare const afterResetGeneration: true\n',
     })
     const scriptVersionAfterReset = resetGenerationProbe.getScriptVersion(resetGenerationFilePath)
-    if (
-      scriptVersionAfterReset === scriptVersionBeforeReset
-      || resetGenerationProbe.getTsFileState(resetGenerationFilePath).version !== '1'
-    ) {
+    if (scriptVersionAfterReset === scriptVersionBeforeReset) {
       throw new Error(
-        `Expected full TypeScript state resets to advance the exposed script generation even when the local version restarts at "1". Got: ${JSON.stringify({ scriptVersionBeforeReset, scriptVersionAfterReset })}`
+        `Expected full TypeScript state resets to expose a different script version. Got: ${JSON.stringify({ scriptVersionBeforeReset, scriptVersionAfterReset })}`
       )
     }
   }

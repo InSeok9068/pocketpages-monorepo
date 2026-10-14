@@ -4107,6 +4107,10 @@ class ProjectLanguageService {
     this.includeContractCache = new Map();
     this.includeCallEntriesCache = new Map();
     this.includePreludeCache = new Map();
+    this.includeLocalsRevisionByTarget = new Map();
+    this.includeCallerCodeSignatures = new Map();
+    this.includeCallerDependencyCache = new Map();
+    this.includeModuleRevision = 0;
     this.schemaTypePreludeCache = null;
     this.resolveModuleReturnTypeCache = new Map();
     this.scriptSchemaDiagnosticsCache = new Map();
@@ -4227,9 +4231,14 @@ class ProjectLanguageService {
       return;
     }
 
+    const previousIncludeTargets = this.collectPreviousIncludeTargets(normalizedFilePath);
     this.documentOverrides.set(normalizedFilePath, currentText);
     this.projectIndex.invalidateContentForFile(normalizedFilePath);
     this.includeCallEntriesCache.delete(normalizedFilePath);
+    this.bumpIncludeLocalsRevisions(normalizedFilePath, previousIncludeTargets, currentText);
+    if (isScriptFile(normalizedFilePath)) {
+      this.includeModuleRevision += 1;
+    }
     this.includeContractCache.delete(normalizedFilePath);
     this.resolveModuleReturnTypeCache.delete(normalizedFilePath);
     this.schemaAppReceiverTypeCache.clear();
@@ -4264,6 +4273,7 @@ class ProjectLanguageService {
     this.schemaAppReceiverTypeCache.clear();
     if (isScriptFile(normalizedFilePath)) {
       this.ensureStaticFile(normalizedFilePath);
+      this.includeModuleRevision += 1;
     }
     this.projectVersion += 1;
     return true;
@@ -4274,6 +4284,7 @@ class ProjectLanguageService {
     this.includeCallEntriesCache.clear();
     this.includePreludeCache.clear();
     this.includePreludeStack.clear();
+    this.includeCallerDependencyCache.clear();
     this.schemaTypePreludeCache = null;
     this.resolveModuleReturnTypeCache.clear();
     this.scriptSchemaDiagnosticsCache.clear();
@@ -4360,12 +4371,23 @@ class ProjectLanguageService {
       (isPagesPath || isSchemaOnlyHookScript) &&
       (changeType === "create" || changeType === "delete");
 
+    const previousIncludeTargets = isPagesPath ? this.collectPreviousIncludeTargets(normalizedFilePath) : null;
     if (isPagesPath) {
       if (isStructureChange) {
         this.projectIndex.invalidateStructureForFile(normalizedFilePath);
       } else {
         this.projectIndex.invalidateContentForFile(normalizedFilePath);
       }
+    }
+    if (isPagesPath && isScriptFile(normalizedFilePath) && !this.documentOverrides.has(normalizedFilePath)) {
+      this.includeModuleRevision += 1;
+    }
+    if (previousIncludeTargets && !this.documentOverrides.has(normalizedFilePath)) {
+      this.bumpIncludeLocalsRevisions(
+        normalizedFilePath,
+        previousIncludeTargets,
+        changeType === "delete" || !fileExists(normalizedFilePath) ? null : readFileText(normalizedFilePath)
+      );
     }
 
     if (this.documentSnapshotManager.deleteSourceDocument(normalizedFilePath)) {
@@ -4633,6 +4655,7 @@ class ProjectLanguageService {
       `schema-type:${this.getSchemaTypeIdentity()}`,
       `structure:${this.projectIndex.pagesStructureVersion}`,
       `ambient:${this.getAmbientSnapshotKey()}`,
+      this.getIncludeLocalsRevisionIdentity(normalizedFilePath),
     ].join("|");
 
     if (options.includeProjectRuleDiagnostics !== false) {
@@ -4762,16 +4785,14 @@ class ProjectLanguageService {
     ].join(":");
   }
 
-  getTypeScriptDependencyIdentity(filePath, documentText) {
+  collectScriptDependencies(filePath, analysisText) {
     const normalizedFilePath = normalizePath(filePath);
-    const analysisText = toAnalysisText(normalizedFilePath, documentText);
-    const dependencyTokens = new Set();
+    const dependencies = [];
 
     for (const requestPath of collectResolveRequestPaths(analysisText)) {
       const targetFilePath = this.projectIndex.resolveResolveTarget(normalizedFilePath, requestPath);
       if (targetFilePath && isScriptFile(targetFilePath)) {
-        const normalizedTargetFilePath = normalizePath(targetFilePath);
-        dependencyTokens.add(`resolve:${normalizedTargetFilePath}:${this.getDocumentSnapshotToken(normalizedTargetFilePath)}`);
+        dependencies.push(`resolve:${normalizePath(targetFilePath)}`);
       }
     }
 
@@ -4782,10 +4803,41 @@ class ProjectLanguageService {
         requireContext
       );
       if (targetFilePath && isScriptFile(targetFilePath)) {
-        const normalizedTargetFilePath = normalizePath(targetFilePath);
-        dependencyTokens.add(`require:${normalizedTargetFilePath}:${this.getDocumentSnapshotToken(normalizedTargetFilePath)}`);
+        dependencies.push(`require:${normalizePath(targetFilePath)}`);
       }
     }
+
+    return dependencies;
+  }
+
+  getScriptDependencyToken(dependency) {
+    return `${dependency}:${this.getDocumentSnapshotToken(dependency.slice(dependency.indexOf(":") + 1))}`;
+  }
+
+  getIncludeCallerDependencyKey(callerFilePath, callerToken) {
+    let cached = this.includeCallerDependencyCache.get(callerFilePath);
+    if (!cached || cached.callerToken !== callerToken || cached.structureVersion !== this.projectIndex.pagesStructureVersion) {
+      cached = {
+        callerToken,
+        structureVersion: this.projectIndex.pagesStructureVersion,
+        dependencies: this.collectScriptDependencies(
+          callerFilePath,
+          toAnalysisText(callerFilePath, this.getDocumentText(callerFilePath))
+        ),
+      };
+      this.includeCallerDependencyCache.set(callerFilePath, cached);
+    }
+
+    return cached.dependencies.map((dependency) => this.getScriptDependencyToken(dependency)).join(",");
+  }
+
+  getTypeScriptDependencyIdentity(filePath, documentText) {
+    const normalizedFilePath = normalizePath(filePath);
+    const analysisText = toAnalysisText(normalizedFilePath, documentText);
+    const dependencyTokens = new Set(
+      this.collectScriptDependencies(normalizedFilePath, analysisText)
+        .map((dependency) => this.getScriptDependencyToken(dependency))
+    );
 
     if (isEjsFile(normalizedFilePath) && isPrivatePagesFile(normalizedFilePath)) {
       dependencyTokens.add(`include-locals:${this.projectIndex.pagesContentVersion}`);
@@ -4951,8 +5003,82 @@ class ProjectLanguageService {
       `template:${templateRegions.join("|")}`,
       `ambient:${this.getAmbientSnapshotKey()}`,
       `structure:${this.projectIndex.pagesStructureVersion}`,
+      this.getIncludeLocalsRevisionIdentity(normalizedFilePath),
       "resolve-types:on",
     ].join("|");
+  }
+
+  collectIncludeTargetsFromText(filePath, analysisText) {
+    const targets = new Set();
+    if (typeof analysisText !== "string") {
+      return targets;
+    }
+
+    for (const entry of this.getIncludeCallEntries(filePath, analysisText)) {
+      const targetFilePath = this.projectIndex.resolveIncludeTarget(filePath, entry.requestPath);
+      if (targetFilePath) {
+        targets.add(normalizePath(targetFilePath));
+      }
+    }
+    return targets;
+  }
+
+  collectPreviousIncludeTargets(filePath) {
+    const targets = new Set();
+    if (!isEjsFile(filePath)) {
+      return targets;
+    }
+
+    const indexedLocals = this.projectIndex.includeLocalsCache;
+    if (indexedLocals && indexedLocals.byTargetFile) {
+      for (const [targetFilePath, targetState] of indexedLocals.byTargetFile) {
+        if (targetState.callSites.some((callSite) => normalizePath(callSite.callerFilePath) === filePath)) {
+          targets.add(targetFilePath);
+        }
+      }
+    }
+
+    const cachedEntries = this.includeCallEntriesCache.get(filePath);
+    if (cachedEntries) {
+      for (const entry of cachedEntries.entries) {
+        const targetFilePath = this.projectIndex.resolveIncludeTarget(filePath, entry.requestPath);
+        if (targetFilePath) {
+          targets.add(normalizePath(targetFilePath));
+        }
+      }
+    }
+    return targets;
+  }
+
+  bumpIncludeLocalsRevisions(filePath, previousTargets, nextText) {
+    if (!isEjsFile(filePath)) {
+      return;
+    }
+
+    const analysisText = typeof nextText === "string" ? toAnalysisText(filePath, nextText) : null;
+    const codeSignature = analysisText === null ? "missing" : hashText(analysisText.replace(/\s+/g, " "));
+    const previousSignature = this.includeCallerCodeSignatures.get(filePath);
+    this.includeCallerCodeSignatures.set(filePath, codeSignature);
+    if (previousSignature === codeSignature) {
+      return;
+    }
+
+    const targets = new Set([...previousTargets, ...this.collectIncludeTargetsFromText(filePath, analysisText)]);
+    for (const targetFilePath of targets) {
+      this.includeLocalsRevisionByTarget.set(
+        targetFilePath,
+        (this.includeLocalsRevisionByTarget.get(targetFilePath) || 0) + 1
+      );
+    }
+  }
+
+  getIncludeLocalsRevisionIdentity(filePath) {
+    const normalizedFilePath = normalizePath(filePath);
+    if (!isEjsFile(normalizedFilePath) || !isPrivatePagesFile(normalizedFilePath)) {
+      return "include-locals:none";
+    }
+
+    return `include-locals:${this.includeLocalsRevisionByTarget.get(normalizedFilePath) || 0}:${this.includeModuleRevision}`;
   }
 
   getIncludeCallEntries(filePath, analysisText) {
@@ -5336,27 +5462,34 @@ class ProjectLanguageService {
         return "";
       }
 
-      const snapshotKey = [
-        this.getAmbientSnapshotKey(),
-        ...callSites.map((callSite) => {
-          const callerFilePath = normalizePath(callSite.callerFilePath);
-          return `${callerFilePath}:${this.getDocumentSnapshotToken(callerFilePath)}`;
-        }),
-      ].join("|");
+      const ambientSnapshotKey = this.getAmbientSnapshotKey();
+      const callerKeys = callSites.map((callSite) => {
+        const callerFilePath = normalizePath(callSite.callerFilePath);
+        const callerToken = this.getDocumentSnapshotToken(callerFilePath);
+        return `${callerFilePath}:${callerToken}|deps:${this.getIncludeCallerDependencyKey(callerFilePath, callerToken)}`;
+      });
+      const snapshotKey = [ambientSnapshotKey, ...callerKeys].join("|");
       const cachedEntry = this.includePreludeCache.get(normalizedFilePath);
       if (cachedEntry && cachedEntry.snapshotKey === snapshotKey) {
         return cachedEntry.preludeText;
       }
 
+      const previousTypeTextsByCaller =
+        cachedEntry && cachedEntry.typeTextsByCaller instanceof Map ? cachedEntry.typeTextsByCaller : new Map();
+      const typeTextsByCaller = new Map();
       const bindingsByName = new Map();
 
-      for (const callSite of callSites) {
+      for (const [callSiteIndex, callSite] of callSites.entries()) {
         const callerFilePath = normalizePath(callSite.callerFilePath);
         if (!fileExists(callerFilePath)) {
           continue;
         }
 
-        const callerDocumentText = this.getDocumentText(callerFilePath);
+        const callerKey = `${ambientSnapshotKey}|${callerKeys[callSiteIndex]}`;
+        const callerTypeTexts =
+          typeTextsByCaller.get(callerKey) || previousTypeTextsByCaller.get(callerKey) || new Map();
+        typeTextsByCaller.set(callerKey, callerTypeTexts);
+        let callerDocumentText = null;
 
         for (const local of callSite.locals || []) {
           let bindingState = bindingsByName.get(local.name);
@@ -5368,8 +5501,18 @@ class ProjectLanguageService {
             bindingsByName.set(local.name, bindingState);
           }
 
+          const localKey = `${local.name}:${local.typeStrategy}:${local.typeText}:${local.expressionStart}:${local.expressionEnd}`;
+          let typeText = callerTypeTexts.get(localKey);
+          if (typeText === undefined) {
+            if (callerDocumentText === null) {
+              callerDocumentText = this.getDocumentText(callerFilePath);
+            }
+            typeText = this.getIncludeLocalTypeText(callerFilePath, callerDocumentText, local);
+            callerTypeTexts.set(localKey, typeText);
+          }
+
           bindingState.presenceCount += 1;
-          bindingState.typeTexts.add(this.getIncludeLocalTypeText(callerFilePath, callerDocumentText, local));
+          bindingState.typeTexts.add(typeText);
         }
       }
 
@@ -5394,6 +5537,7 @@ class ProjectLanguageService {
       this.includePreludeCache.set(normalizedFilePath, {
         snapshotKey,
         preludeText,
+        typeTextsByCaller,
       });
       return preludeText;
     } finally {

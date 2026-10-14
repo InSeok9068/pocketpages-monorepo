@@ -26,6 +26,8 @@ function fileExists(filePath) {
   return statFileExists(filePath);
 }
 
+let nextTextStateVersion = 1;
+
 function createVersionedTextState(previousState, state) {
   const currentText =
     state && state.text !== undefined && state.text !== null
@@ -44,7 +46,7 @@ function createVersionedTextState(previousState, state) {
   return {
     ...state,
     text: currentText,
-    version: previousState ? String(Number(previousState.version) + 1) : "1",
+    version: String(nextTextStateVersion++),
     snapshot: createScriptSnapshot(currentText),
   };
 }
