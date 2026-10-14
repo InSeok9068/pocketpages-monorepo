@@ -155,6 +155,8 @@
   const periodLabel =
     dateutil.formatDate(periodStart, 'YYYY.MM.DD') + ' ~ ' + dateutil.formatDate(periodEnd, 'YYYY.MM.DD')
   const weeklySecondsByKey = {}
+  const weeklyBooksByKey = {}
+  const bookTitlesById = {}
   let totalSeconds = 0
   let currentWeekSeconds = 0
   let finishedBookCount = 0
@@ -183,11 +185,13 @@
     const weekStartLabel = dateutil.formatDate(weekStart, dateutil.FORMATS.DATE).slice(5)
     const weekEndLabel = dateutil.formatDate(weekEnd, dateutil.FORMATS.DATE).slice(5)
     weeklySecondsByKey[weekKey] = 0
+    weeklyBooksByKey[weekKey] = {}
     weekItems.push({
       key: weekKey,
       label: weekStartLabel + ' ~ ' + weekEndLabel,
       minutes: 0,
       minutesLabel: '0분',
+      books: [],
     })
   }
 
@@ -205,6 +209,21 @@
 
     if (typeof weeklySecondsByKey[weekKey] === 'number') {
       weeklySecondsByKey[weekKey] += durationSeconds
+
+      const bookId = String(sessionRecord.get('book_id') || '')
+      const weeklyBooks = weeklyBooksByKey[weekKey]
+
+      if (!weeklyBooks[bookId]) {
+        if (typeof bookTitlesById[bookId] === 'undefined') {
+          // 현재 사용자의 세션에 연결된 책만 조회합니다.
+          const books = $app.findRecordsByFilter('books', 'id = {:bookId}', '', 1, 0, { bookId: bookId })
+          bookTitlesById[bookId] = books.length ? String(books[0].get('title') || '제목 없음') : '책 정보 없음'
+        }
+
+        weeklyBooks[bookId] = { title: bookTitlesById[bookId], seconds: 0, minutesLabel: '' }
+      }
+
+      weeklyBooks[bookId].seconds += durationSeconds
     }
 
     if (weekKey === currentWeekKey) {
@@ -220,6 +239,18 @@
 
     weekItems[index].minutes = minutes
     weekItems[index].minutesLabel = formatMinutesLabel(minutes)
+    const weeklyBooks = weeklyBooksByKey[weekItems[index].key]
+    const bookIds = Object.keys(weeklyBooks)
+
+    for (let bookIndex = 0; bookIndex < bookIds.length; bookIndex += 1) {
+      const book = weeklyBooks[bookIds[bookIndex]]
+      book.minutesLabel = book.seconds < 60 ? '1분 미만' : formatMinutesLabel(Math.round(book.seconds / 60))
+      weekItems[index].books.push(book)
+    }
+
+    weekItems[index].books.sort(function (left, right) {
+      return right.seconds - left.seconds
+    })
   }
 
   const totalMinutes = Math.round(totalSeconds / 60)
@@ -330,10 +361,64 @@
 
     <div class="space-y-2">
       <% for (let index = 0; index < weekItems.length; index += 1) { const item = weekItems[index] %>
-      <div
-        class="flex items-center justify-between gap-3 rounded-[1rem] bg-[#fbf7ef] px-3 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] sm:rounded-[1.1rem] sm:px-4 sm:py-3">
-        <span class="font-medium text-stone-700"><%= item.label %></span>
-        <span class="font-semibold text-stone-950"><%= item.minutesLabel %></span>
+      <div x-data="{}">
+        <button
+          type="button"
+          @click="$refs.weekDialog.showModal()"
+          aria-haspopup="dialog"
+          aria-controls="week-dialog-<%= item.key %>"
+          aria-label="<%= item.label %> 독서 기록 보기"
+          class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-[1rem] border-none bg-[#fbf7ef] px-3 py-2 text-left text-sm shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] hover:bg-[#f5efe4] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500 sm:rounded-[1.1rem] sm:px-4 sm:py-3">
+          <span class="font-medium text-stone-700"><%= item.label %></span>
+          <span class="flex shrink-0 items-center gap-2 font-semibold text-stone-950">
+            <%= item.minutesLabel %>
+            <span
+              class="i-lucide-chevron-right h-4 w-4 text-stone-400"
+              aria-hidden="true"></span>
+          </span>
+        </button>
+        <dialog
+          id="week-dialog-<%= item.key %>"
+          x-ref="weekDialog"
+          aria-labelledby="week-title-<%= item.key %>"
+          @click="if ($event.target === $el) $el.close()"
+          class="fixed inset-0 m-auto max-h-[80dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-[1.5rem] border-none bg-[#fbf7ef] p-0 text-stone-950 shadow-xl backdrop:bg-black/40">
+          <div
+            class="space-y-4 p-5"
+            @click.stop>
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h3
+                  id="week-title-<%= item.key %>"
+                  class="text-lg font-semibold">
+                  <%= item.label %> 독서 기록
+                </h3>
+                <p class="mt-1 text-sm text-stone-500">총 <%= item.minutesLabel %> · 세션 종료일 기준</p>
+              </div>
+              <button
+                type="button"
+                @click="$refs.weekDialog.close()"
+                aria-label="닫기"
+                class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-none bg-stone-200/60 text-stone-700">
+                <span
+                  class="i-lucide-x h-4 w-4"
+                  aria-hidden="true"></span>
+              </button>
+            </div>
+            <% if (item.books.length) { %>
+            <ul class="m-0 list-none space-y-2 p-0">
+              <% for (let bookIndex = 0; bookIndex < item.books.length; bookIndex += 1) { const book = item.books[bookIndex] %>
+              <li class="flex items-start justify-between gap-4 rounded-xl bg-white/80 px-3 py-3 text-sm">
+                <span class="min-w-0 font-medium break-words"><%= book.title %></span>
+                <span class="shrink-0 font-semibold"><%= book.minutesLabel %></span>
+              </li>
+              <% } %>
+            </ul>
+            <% } else { %>
+            <p class="py-6 text-center text-sm text-stone-500">이 주차에는 독서 기록이 없습니다.</p>
+            <% } %>
+          </div>
+        </dialog>
       </div>
       <% } %>
     </div>
