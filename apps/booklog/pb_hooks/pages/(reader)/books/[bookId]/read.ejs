@@ -57,6 +57,7 @@
   }
 
   const bookDetailPath = '/books/' + bookId
+  const bookTitle = String(bookRecord.get('title') || '').trim()
 
   try {
     shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
@@ -1160,6 +1161,7 @@
             </p>
             <audio
               id="reader-cloud-audio"
+              data-book-title="<%= bookTitle %>"
               controls
               preload="metadata"
               class="block w-full"

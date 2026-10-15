@@ -83,6 +83,26 @@ function countSectionChunks(app, fileId, configHash, sectionIndex) {
 }
 
 /**
+ * 낭독 구간이 등록된 다음 챕터를 찾습니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} fileId EPUB 파일 ID
+ * @param {string} configHash 낭독 설정 해시
+ * @param {number} sectionIndex 현재 spine 순서
+ * @returns {number} 다음 챕터 spine 순서, 없으면 -1
+ */
+function findNextSectionIndex(app, fileId, configHash, sectionIndex) {
+  const next = app.findRecordsByFilter(
+    'book_audio_chunks',
+    'file_id = {:fileId} && config_hash = {:configHash} && section_index > {:sectionIndex}',
+    'section_index',
+    1,
+    0,
+    { fileId, configHash, sectionIndex }
+  )[0]
+  return next ? Number(next.get('section_index')) : -1
+}
+
+/**
  * 낭독 설정과 관계없이 EPUB에 저장된 음성 구간 수를 셉니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
@@ -120,9 +140,10 @@ function findReadyChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
  * @param {core.Record} chunk 생성 완료 구간
  * @param {string} bookId 접근을 확인한 책 ID
  * @param {number} chunkCount 챕터의 구간 수
+ * @param {number} nextSectionIndex 다음 챕터 spine 순서, 없으면 -1
  * @returns {types.BookAudioChunkView} 재생 정보
  */
-function chunkView(chunk, bookId, chunkCount) {
+function chunkView(chunk, bookId, chunkCount, nextSectionIndex) {
   const query =
     'bookId='
     + encodeURIComponent(bookId)
@@ -134,6 +155,7 @@ function chunkView(chunk, bookId, chunkCount) {
     chunkId: String(chunk.get('id')),
     configHash: String(chunk.get('config_hash')),
     chunkCount,
+    nextSectionIndex,
     audioUrl: '/xapi/books/audio-file?' + query + '&v=' + $security.sha256(String(chunk.get('generated_at'))),
   }
 }
@@ -144,6 +166,7 @@ module.exports = {
   readBookSections,
   countSectionChunks,
   countFileChunks,
+  findNextSectionIndex,
   findReadyChunk,
   chunkView,
 }

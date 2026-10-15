@@ -38,9 +38,23 @@
         0,
         bindings
       )[0]
+      let sectionIndex = progress ? Number(progress.get('section_index')) : 0
       let chunkIndex = progress ? Number(progress.get('chunk_index')) : 0
       let seconds = progress ? Number(progress.get('position_seconds')) : 0
+      let isCompleted = progress ? !!progress.get('is_completed') : false
+      let startsNextSection = false
+      if (isCompleted) {
+        const nextSectionIndex = audioData.findNextSectionIndex($app, fileId, settings.configHash, sectionIndex)
+        if (nextSectionIndex >= 0) {
+          sectionIndex = nextSectionIndex
+          chunkIndex = 0
+          seconds = 0
+          isCompleted = false
+          startsNextSection = true
+        }
+      }
       if (progress && !progress.get('is_completed') && progress.get('audio_chunk_id')) {
+        // 구간 끝까지 들은 위치는 다음 구간 처음으로 복원합니다.
         const previous = $app.findRecordsByFilter(
           'book_audio_chunks',
           'id = {:chunkId} && file_id = {:fileId}',
@@ -51,12 +65,7 @@
         )[0]
         const duration = previous ? Number(previous.get('duration_seconds')) : 0
         if (duration > 0 && seconds >= duration) {
-          const chunkCount = audioData.countSectionChunks(
-            $app,
-            fileId,
-            settings.configHash,
-            Number(progress.get('section_index'))
-          )
+          const chunkCount = audioData.countSectionChunks($app, fileId, settings.configHash, sectionIndex)
           if (chunkIndex + 1 < chunkCount) {
             chunkIndex += 1
             seconds = 0
@@ -67,14 +76,7 @@
       response.json(200, {
         ok: true,
         configHash: settings.configHash,
-        progress: progress
-          ? {
-              sectionIndex: Number(progress.get('section_index')),
-              chunkIndex,
-              seconds,
-              isCompleted: !!progress.get('is_completed'),
-            }
-          : null,
+        progress: progress ? { sectionIndex, chunkIndex, seconds, isCompleted, startsNextSection } : null,
       })
       return
     }

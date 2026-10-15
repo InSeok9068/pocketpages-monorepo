@@ -45,8 +45,9 @@
       return
     }
     const chunkCount = audioData.countSectionChunks($app, fileId, settings.configHash, sectionIndex)
-    dbg('api/books/audio-chunk:found', { userId, fileId, sectionIndex, chunkIndex, chunkCount })
-    response.json(200, Object.assign({ ok: true }, audioData.chunkView(chunk, bookId, chunkCount)))
+    const nextSectionIndex = audioData.findNextSectionIndex($app, fileId, settings.configHash, sectionIndex)
+    dbg('api/books/audio-chunk:found', { userId, fileId, sectionIndex, chunkIndex, chunkCount, nextSectionIndex })
+    response.json(200, Object.assign({ ok: true }, audioData.chunkView(chunk, bookId, chunkCount, nextSectionIndex)))
   } catch (exception) {
     error('api/books/audio-chunk:failed', { userId, fileId, error: String(exception.message || exception) })
     response.json(500, { ok: false, message: 'AI 오디오북 구간을 불러오지 못했습니다.' })

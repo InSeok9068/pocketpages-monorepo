@@ -55,6 +55,7 @@ function renderReader(aiAudioAvailable) {
     epubReaderUrl: '/test.epub',
     initialShelfStatus: 'reading',
     aiAudioAvailable,
+    bookTitle: '낭독 <테스트>',
   })
 }
 
@@ -160,6 +161,11 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   const player = page.locator('#reader-cloud-audio')
   await expect.poll(() => player.evaluate((audio) => audio.readyState)).toBeGreaterThan(0)
   await expect(page.getByRole('status')).toContainText('1 / 1 구간')
+  const media = await page.evaluate(() => ({
+    artist: navigator.mediaSession.metadata && navigator.mediaSession.metadata.artist,
+    state: navigator.mediaSession.playbackState,
+  }))
+  expect(media).toEqual({ artist: '낭독 <테스트>', state: 'playing' })
   await player.evaluate((audio) => {
     audio.currentTime = 5
   })

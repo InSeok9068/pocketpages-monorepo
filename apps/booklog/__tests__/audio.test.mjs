@@ -126,7 +126,8 @@ function runRoute({ authenticated = true, method = 'GET', owned = true, ready = 
         return ready ? { id: 'chunk' } : null
       },
       countSectionChunks: () => 3,
-      chunkView: (chunk, bookId, chunkCount) => ({ chunkId: chunk.id, chunkCount }),
+      findNextSectionIndex: (app, fileId, configHash, sectionIndex) => sectionIndex + 2,
+      chunkView: (chunk, bookId, chunkCount, nextSectionIndex) => ({ chunkId: chunk.id, chunkCount, nextSectionIndex }),
     }),
   }
   vm.runInNewContext('(function () {' + routeSource + '\n})()', context)
@@ -184,6 +185,7 @@ test('Audio chunk lookup only returns generated audio and never generates it', (
   assert.equal(found.result.status, 200)
   assert.deepEqual(found.lookups[0], { fileId: 'file', configHash: 'settings', sectionIndex: 2, chunkIndex: 1 })
   assert.equal(found.result.body.chunkCount, 3)
+  assert.equal(found.result.body.nextSectionIndex, 4)
   const missing = runRoute({ ready: false })
   assert.equal(missing.result.status, 404)
   assert.match(missing.result.body.message, /아직 AI 오디오북이 생성되지 않았습니다/)
@@ -210,6 +212,7 @@ function createPlayerHarness(fetchAudio, options = {}) {
     removeAttribute() {
       this.src = ''
     },
+    getAttribute: (name) => (name === 'data-book-title' ? '테스트 책' : null),
     load() {
       this.currentTime = 0
     },
@@ -221,8 +224,12 @@ function createPlayerHarness(fetchAudio, options = {}) {
         readerCacheKey: 'user:hash',
         bookId: 'book',
         bookFileId: 'file',
-        audioModel: 'gemini-3.8-flash-tts',
       },
+      MediaMetadata: options.mediaSession
+        ? function (metadata) {
+            Object.assign(this, metadata)
+          }
+        : undefined,
       location: { origin: 'http://localhost' },
       addEventListener() {},
       caches: {
@@ -235,6 +242,7 @@ function createPlayerHarness(fetchAudio, options = {}) {
       },
     },
     document: { getElementById: () => audio },
+    navigator: options.mediaSession ? { mediaSession: options.mediaSession } : {},
     localStorage: {
       getItem: (key) => values.get(key) || null,
       setItem: (key, value) => values.set(key, value),
@@ -252,6 +260,9 @@ function createPlayerHarness(fetchAudio, options = {}) {
             seconds: Number(form.get('seconds')),
             isCompleted: form.get('isCompleted') === 'true',
           }
+          server.saves = (server.saves || []).concat([
+            parts[1] + ':' + parts[2] + ':' + form.get('isCompleted') + ':' + form.get('restart'),
+          ])
           return new Response(JSON.stringify({ ok: true }))
         }
         const progress = server.progress ? { ...server.progress } : null
@@ -514,6 +525,79 @@ test('A completed chapter remains completed until the user explicitly restarts i
   await flushPlayback()
   assert.equal(server.progress.isCompleted, false)
   logic.stop()
+})
+
+const chapterResponse = (count, nextSectionIndex) =>
+  new Response(JSON.stringify({ ok: true, chunkCount: count, nextSectionIndex }))
+
+test('Finishing a chapter continues with the next chapter that has audio', async () => {
+  const { logic, state, audio, requests, server } = createPlayerHarness((index, _signal, section) =>
+    section === 1 ? chapterResponse(1, 4) : chapterResponse(2, -1)
+  )
+  logic.start(state, 1)
+  await flushPlayback()
+  audio.currentTime = 60
+  audio.onended()
+  await flushPlayback()
+  assert.equal(state.cloudAudioActive, true)
+  assert.match(state.cloudAudioMessage, /1 \/ 2 구간/)
+  assert.deepEqual(requests, [0, 0, 1])
+  assert.ok(server.saves.includes('1:0:true:false'))
+  assert.ok(server.saves.includes('4:0:false:true'), 'first save of the next chapter overrides an old completion')
+  audio.currentTime = 60
+  audio.onended()
+  await flushPlayback()
+  audio.currentTime = 60
+  audio.onended()
+  await flushPlayback()
+  assert.equal(state.cloudAudioActive, false)
+  assert.match(state.cloudAudioMessage, /마지막 챕터까지 들었습니다/)
+  logic.stop()
+})
+
+test('Resuming after a completed chapter starts the next chapter from the beginning', async () => {
+  const server = {
+    progress: { sectionIndex: 4, chunkIndex: 0, seconds: 0, isCompleted: false, startsNextSection: true },
+    downloads: 0,
+    chunkCount: 1,
+    failSaves: false,
+  }
+  const { logic, state, server: result } = createPlayerHarness(() => chapterResponse(1, -1), { server })
+  logic.start(state, 0)
+  await flushPlayback()
+  assert.equal(state.cloudAudioActive, true)
+  assert.ok(result.saves.includes('4:0:false:true'))
+  logic.stop()
+})
+
+test('Lock screen controls show the chapter and control the same player', async () => {
+  const handlers = {}
+  const mediaSession = {
+    metadata: null,
+    playbackState: 'none',
+    setActionHandler(action, handler) {
+      handlers[action] = handler
+    },
+    setPositionState(position) {
+      this.position = position
+    },
+  }
+  const { logic, state, audio } = createPlayerHarness(() => chapterResponse(1, -1), { mediaSession })
+  logic.start(state, 0)
+  await flushPlayback()
+  assert.equal(mediaSession.metadata.artist, '테스트 책')
+  assert.equal(mediaSession.playbackState, 'playing')
+  assert.equal(mediaSession.position.duration, 60)
+  audio.currentTime = 30
+  handlers.seekbackward({})
+  assert.equal(audio.currentTime, 15)
+  handlers.seekforward({ seekOffset: 30 })
+  assert.equal(audio.currentTime, 45)
+  handlers.pause()
+  assert.equal(mediaSession.playbackState, 'paused')
+  logic.stop()
+  assert.equal(handlers.play, null)
+  assert.equal(mediaSession.playbackState, 'none')
 })
 
 test('Failed completion saves are retained locally and flushed before the next resume', async () => {

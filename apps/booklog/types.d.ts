@@ -26,6 +26,7 @@ declare namespace types {
     chunkId: string
     configHash: string
     chunkCount: number
+    nextSectionIndex: number
     audioUrl: string
   }
 
