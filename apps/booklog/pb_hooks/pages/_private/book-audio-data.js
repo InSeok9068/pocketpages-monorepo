@@ -103,6 +103,41 @@ function findNextSectionIndex(app, fileId, configHash, sectionIndex) {
 }
 
 /**
+ * 리더의 현재 문장이 들어 있는 챕터 내 구간을 찾습니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} fileId EPUB 파일 ID
+ * @param {string} configHash 낭독 설정 해시
+ * @param {number} sectionIndex spine 순서
+ * @param {string} anchorText 리더 화면의 기준 문장
+ * @returns {number} 구간 순서, 찾지 못하면 -1
+ */
+function findChunkIndexByText(app, fileId, configHash, sectionIndex, anchorText) {
+  // 리더 DOM과 낭독 원문의 줄바꿈·공백 처리가 달라 공백을 모두 지운 뒤 비교합니다.
+  const anchor = String(anchorText || '').replace(/[\s\u00ad]+/g, '')
+  if (!anchor) return -1
+  const chunks = app.findRecordsByFilter(
+    'book_audio_chunks',
+    'file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex}',
+    'chunk_index',
+    0,
+    0,
+    { fileId, configHash, sectionIndex }
+  )
+  const texts = chunks.map(function (chunk) {
+    return String(chunk.get('input_text')).replace(/[\s\u00ad]+/g, '')
+  })
+  // \uc5ec\ub7ec \ubb38\ub2e8\uc744 \uc774\uc740 \uae30\uc900 \ubb38\uc7a5\uc740 \uad6c\uac04 \uacbd\uacc4\uc5d0 \uac78\uce60 \uc218 \uc788\uc5b4, \uccab \ubb38\ub2e8 \ucabd \uc55e\ubd80\ubd84\uc73c\ub85c \uc904\uc5ec \uac00\uba70 \ucc3e\uc2b5\ub2c8\ub2e4.
+  for (const length of [anchor.length, 40, 20, 10]) {
+    if (length > anchor.length) continue
+    const prefix = anchor.slice(0, length)
+    for (let index = 0; index < texts.length; index += 1) {
+      if (texts[index].indexOf(prefix) >= 0) return Number(chunks[index].get('chunk_index'))
+    }
+  }
+  return -1
+}
+
+/**
  * 낭독 설정과 관계없이 EPUB에 저장된 음성 구간 수를 셉니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
@@ -167,6 +202,7 @@ module.exports = {
   countSectionChunks,
   countFileChunks,
   findNextSectionIndex,
+  findChunkIndexByText,
   findReadyChunk,
   chunkView,
 }

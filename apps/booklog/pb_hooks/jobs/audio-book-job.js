@@ -20,6 +20,35 @@ function run() {
   )[0]
   if (!job) return { jobId: '', chunkId: '', statusCode: 0 }
   const jobId = String(job.get('id'))
+  if (jobService.needsPlanning(job)) {
+    // 책 분석은 무거워서 이번 실행은 구간 등록만 하고, 생성은 다음 실행부터 합니다.
+    try {
+      const audioData = require(__hooks + '/pages/_private/book-audio-data.js')
+      const file = $app.findRecordById('book_files', String(job.get('file_id')))
+      const sections = audioData.readBookSections($app, file, toBytes)
+      if (!sections.length) {
+        jobService.failPlanning($app, jobId, '이 책에서 낭독할 본문을 찾지 못했습니다.')
+        logger.warn('jobs/audio-book:no-readable-text', 'jobId', jobId)
+        return { jobId, chunkId: '', statusCode: 422 }
+      }
+      const planned = jobService.planJob($app, jobId, sections)
+      logger.info(
+        'jobs/audio-book:planned',
+        'jobId',
+        jobId,
+        'totalChunks',
+        String(planned.get('total_chunks')),
+        'status',
+        String(planned.get('status'))
+      )
+      return { jobId, chunkId: '', statusCode: 201 }
+    } catch (exception) {
+      const message = String(exception && exception.message ? exception.message : exception)
+      jobService.failPlanning($app, jobId, 'EPUB 본문을 분석하지 못했습니다. 다시 시작하면 재시도합니다.')
+      logger.error('jobs/audio-book:planning-failed', 'jobId', jobId, 'error', message)
+      return { jobId, chunkId: '', statusCode: 500 }
+    }
+  }
   const apiKey = String(
     process.env.GEMINI_API_KEY || process.env.GEMINI_APIKEY || process.env.GEMINI_AI_KEY || ''
   ).trim()

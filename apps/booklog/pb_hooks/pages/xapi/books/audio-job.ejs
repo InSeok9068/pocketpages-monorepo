@@ -35,9 +35,8 @@
   }
   const audioData = resolve('book-audio-data')
   const jobService = resolve('book-audio-job-service')
-  let file = null
   try {
-    file = audioData.findAuthorizedFile($app, userId, bookId, fileId)
+    audioData.findAuthorizedFile($app, userId, bookId, fileId)
     $app.findCollectionByNameOrId('book_audio_jobs')
   } catch (_exception) {
     warn('xapi/books/audio-job:file-or-schema-missing', { userId, bookId, fileId })
@@ -48,23 +47,9 @@
   try {
     const settings = audioData.getSettings(String(env('BOOKLOG_TTS_MODEL') || 'gemini-3.8-flash-tts').trim())
     if (action === 'start') {
-      const sections = audioData.readBookSections($app, file, toBytes)
-      if (!sections.length) {
-        message = '이 책에서 낭독할 본문을 찾지 못했습니다.'
-      } else {
-        const job = jobService.planJob($app, fileId, userId, settings, sections)
-        info('xapi/books/audio-job:planned', {
-          userId,
-          fileId,
-          jobId: String(job.get('id')),
-          status: String(job.get('status')),
-          totalChunks: Number(job.get('total_chunks')),
-        })
-        message =
-          job.get('status') === 'completed'
-            ? 'AI 오디오북이 이미 모두 생성되어 있습니다.'
-            : 'AI 오디오북 생성을 예약했습니다. 서버가 순서대로 만듭니다.'
-      }
+      const job = jobService.requestJob($app, fileId, userId, settings)
+      info('xapi/books/audio-job:requested', { userId, fileId, jobId: String(job.get('id')) })
+      message = 'AI 오디오북 생성을 예약했습니다. 2분 안에 책을 분석해 생성을 시작합니다.'
     } else if (action === 'delete') {
       const deleted = jobService.deleteAudioBook($app, fileId)
       info('xapi/books/audio-job:deleted', { userId, fileId, deleted })

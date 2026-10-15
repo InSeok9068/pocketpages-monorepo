@@ -3896,6 +3896,33 @@ window.booklogReaderLogic = (function () {
     window.booklogAudio.start(component, section.index, !!fromBeginning)
   }
 
+  function startCloudAudioAtReadingPosition(component) {
+    var location = currentLocation && currentLocation.start ? currentLocation.start : null
+    var section = bookInstance && location ? bookInstance.section(location.href) : null
+    if (!section || !window.booklogAudio) {
+      component.cloudAudioMessage = '리더가 준비된 후 다시 시도해 주세요.'
+      return
+    }
+    stopBrowserSpeech(component, { keepMessage: true })
+    window.booklogAudio.stop()
+    component.cloudAudioBusy = true
+    component.cloudAudioMessage = '읽던 위치를 확인하고 있습니다.'
+    buildReadAloudQueue(component)
+      .then(function (queue) {
+        var anchor = ''
+        // 짧은 제목·대사만으로는 같은 문장이 여러 구간에 있을 수 있어 40자 이상 모읍니다.
+        for (var index = 0; index < queue.length && anchor.replace(/\s+/g, '').length < 40; index += 1) {
+          anchor += ' ' + queue[index].text
+        }
+        component.cloudAudioBusy = false
+        window.booklogAudio.start(component, section.index, true, normalizeText(anchor).slice(0, 200))
+      })
+      .catch(function (exception) {
+        component.cloudAudioBusy = false
+        component.cloudAudioMessage = String(exception && exception.message ? exception.message : exception)
+      })
+  }
+
   function audioChapterLabel(sectionIndex) {
     var section = bookInstance && bookInstance.spine ? bookInstance.spine.get(sectionIndex) : null
     return section ? getChapterLabelForSection(section) : ''
@@ -4602,6 +4629,7 @@ window.booklogReaderLogic = (function () {
     scrollActiveTocItemIntoView: scrollActiveTocItemIntoView,
     startReadAloud: startReadAloud,
     startCloudAudio: startCloudAudio,
+    startCloudAudioAtReadingPosition: startCloudAudioAtReadingPosition,
     audioChapterLabel: audioChapterLabel,
     stopReadAloud: stopReadAloud,
     loadHighlights: loadHighlights,

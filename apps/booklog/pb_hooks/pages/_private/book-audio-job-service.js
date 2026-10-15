@@ -23,17 +23,66 @@ function findJob(app, fileId, configHash) {
 }
 
 /**
- * 책 전체 구간을 대기 상태로 등록하고 작업을 예약합니다.
+ * 생성 작업을 예약합니다. 책 분석과 구간 등록은 cron이 다음 실행에서 처리합니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
  * @param {string} userId 요청한 관리자 ID
  * @param {types.BookAudioSettings} settings 예약할 낭독 설정
- * @param {types.BookAudioSection[]} sections 챕터별 낭독 구간
  * @returns {core.Record} 저장한 작업
  */
-function planJob(app, fileId, userId, settings, sections) {
+function requestJob(app, fileId, userId, settings) {
   let job = null
   app.runInTransaction(function (txApp) {
+    job = findJob(txApp, fileId, settings.configHash)
+    if (!job) job = new Record(txApp.findCollectionByNameOrId('book_audio_jobs'))
+    job.set('file_id', fileId)
+    job.set('requested_by', userId)
+    job.set('config_hash', settings.configHash)
+    job.set('provider', settings.provider)
+    job.set('model', settings.model)
+    job.set('voice', settings.voice)
+    job.set('style', settings.style)
+    job.set('pipeline_version', settings.pipelineVersion)
+    job.set('status', String(job.get('started_at')) ? 'running' : 'queued')
+    // total_chunks 0은 cron이 책을 다시 분석해 구간을 등록해야 한다는 표시입니다.
+    job.set('total_chunks', 0)
+    job.set('next_run_at', '')
+    job.set('completed_at', '')
+    job.set('error_message', '')
+    txApp.save(job)
+  })
+  return job
+}
+
+/**
+ * 작업의 구간 등록이 필요한지 확인합니다.
+ * @param {core.Record} job 오디오북 작업
+ * @returns {boolean} 구간 등록 필요 여부
+ */
+function needsPlanning(job) {
+  return Number(job.get('total_chunks') || 0) === 0
+}
+
+/**
+ * 예약 시점 설정으로 책 전체 구간을 대기 상태로 등록합니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} jobId 오디오북 작업 ID
+ * @param {types.BookAudioSection[]} sections 챕터별 낭독 구간
+ * @returns {core.Record} 갱신한 작업
+ */
+function planJob(app, jobId, sections) {
+  let job = null
+  app.runInTransaction(function (txApp) {
+    job = txApp.findRecordById('book_audio_jobs', jobId)
+    const fileId = String(job.get('file_id'))
+    const settings = {
+      provider: String(job.get('provider')),
+      model: String(job.get('model')),
+      voice: String(job.get('voice')),
+      style: String(job.get('style')),
+      pipelineVersion: String(job.get('pipeline_version')),
+      configHash: String(job.get('config_hash')),
+    }
     const known = {}
     txApp
       .findRecordsByFilter('book_audio_chunks', 'file_id = {:fileId} && config_hash = {:configHash}', '', 0, 0, {
@@ -78,23 +127,24 @@ function planJob(app, fileId, userId, settings, sections) {
     Object.keys(known).forEach(function (key) {
       txApp.delete(known[key])
     })
-    job = findJob(txApp, fileId, settings.configHash)
-    if (!job) job = new Record(txApp.findCollectionByNameOrId('book_audio_jobs'))
-    job.set('file_id', fileId)
-    job.set('requested_by', userId)
-    job.set('config_hash', settings.configHash)
-    job.set('provider', settings.provider)
-    job.set('model', settings.model)
-    job.set('voice', settings.voice)
-    job.set('style', settings.style)
-    job.set('pipeline_version', settings.pipelineVersion)
-    job.set('status', String(job.get('started_at')) ? 'running' : 'queued')
-    job.set('next_run_at', '')
-    job.set('completed_at', '')
-    job.set('error_message', '')
     syncJobProgress(txApp, job)
   })
   return job
+}
+
+/**
+ * 책 분석에 실패한 작업을 실패 상태로 저장합니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} jobId 오디오북 작업 ID
+ * @param {string} message 관리자에게 보여줄 사유
+ */
+function failPlanning(app, jobId, message) {
+  app.runInTransaction(function (txApp) {
+    const job = txApp.findRecordById('book_audio_jobs', jobId)
+    job.set('status', 'failed')
+    job.set('error_message', message)
+    txApp.save(job)
+  })
 }
 
 /**
@@ -229,15 +279,19 @@ function jobView(job) {
     failedChunks: failed,
     percent,
     statusLabel:
-      (labels[status] || status)
-      + ' · '
-      + percent
-      + '% ('
-      + ready
-      + ' / '
-      + total
-      + ' 구간)'
-      + (failed > 0 ? ' · 실패 ' + failed : ''),
+      total === 0
+        ? status === 'failed'
+          ? '생성 실패'
+          : '구간 준비 중 · 2분 안에 책을 분석해 생성을 시작합니다'
+        : (labels[status] || status)
+          + ' · '
+          + percent
+          + '% ('
+          + ready
+          + ' / '
+          + total
+          + ' 구간)'
+          + (failed > 0 ? ' · 실패 ' + failed : ''),
     nextRunLabel:
       nextRunMs > Date.now() && (status === 'queued' || status === 'running')
         ? dateutil.formatDate(nextRunMs, dateutil.FORMATS.DATE_TIME_MINUTES) + ' 이후 이어서 생성'
@@ -248,4 +302,15 @@ function jobView(job) {
   }
 }
 
-module.exports = { findJob, planJob, pauseJob, deleteAudioBook, syncJobProgress, findNextChunk, jobView }
+module.exports = {
+  findJob,
+  requestJob,
+  needsPlanning,
+  planJob,
+  failPlanning,
+  pauseJob,
+  deleteAudioBook,
+  syncJobProgress,
+  findNextChunk,
+  jobView,
+}

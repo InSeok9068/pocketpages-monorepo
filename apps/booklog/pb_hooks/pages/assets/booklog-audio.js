@@ -405,10 +405,11 @@ window.booklogAudio = (function () {
    * 마지막 청취 위치 또는 현재 챕터의 처음부터 AI 낭독을 시작합니다.
    * @param {any} state 리더 UI 상태
    * @param {number} chapterIndex 현재 EPUB spine 순서
-   * @param {boolean} [fromBeginning] 현재 챕터를 처음부터 재생할지 여부
+   * @param {boolean} [fromBeginning] 저장된 청취 위치 대신 현재 챕터에서 시작할지 여부
+   * @param {string} [anchorText] 이 문장이 들어 있는 구간부터 시작할 때의 리더 기준 문장
    * @returns {void}
    */
-  function start(state, chapterIndex, fromBeginning) {
+  function start(state, chapterIndex, fromBeginning, anchorText) {
     if (
       !fromBeginning
       && activeSession
@@ -507,7 +508,28 @@ window.booklogAudio = (function () {
             return
           }
         }
-        return playChunk(session)
+        if (!anchorText) return playChunk(session)
+        state.cloudAudioMessage = '읽던 위치의 음성 구간을 찾고 있습니다.'
+        var position = new URLSearchParams({
+          bookId: config.bookId,
+          fileId: config.bookFileId,
+          sectionIndex: String(session.sectionIndex),
+          anchor: anchorText,
+        })
+        return fetch('/api/books/audio-position?' + position.toString(), {
+          cache: 'no-store',
+          signal: session.controller.signal,
+        })
+          .then(readJson)
+          .then(function (located) {
+            if (!isActive(session)) return
+            session.chunkIndex = located.chunkIndex >= 0 ? located.chunkIndex : 0
+            return playChunk(session).then(function () {
+              if (isActive(session) && located.chunkIndex < 0 && !session.failed) {
+                state.cloudAudioMessage = '읽던 위치를 찾지 못해 챕터 처음부터 재생합니다. ' + playbackMessage(session)
+              }
+            })
+          })
       })
       .catch(function (error) {
         setError(session, error)

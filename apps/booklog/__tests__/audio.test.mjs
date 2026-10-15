@@ -218,6 +218,7 @@ function createPlayerHarness(fetchAudio, options = {}) {
     },
   }
   const state = { readAloudRate: '1', cloudAudioBusy: false, cloudAudioActive: false, cloudAudioMessage: '' }
+  const positionChunk = options.positionChunk ?? -1
   const context = {
     window: {
       booklogReaderConfig: {
@@ -276,6 +277,13 @@ function createPlayerHarness(fetchAudio, options = {}) {
           progress.seconds = 0
         }
         return new Response(JSON.stringify({ ok: true, configHash: 'settings', progress }))
+      }
+      if (url.startsWith('/api/books/audio-position')) {
+        const position = new URL(url, 'http://localhost').searchParams
+        server.positionQueries = (server.positionQueries || []).concat([
+          position.get('sectionIndex') + ':' + position.get('anchor'),
+        ])
+        return new Response(JSON.stringify({ ok: true, chunkIndex: positionChunk }))
       }
       if (url.startsWith('/xapi/books/audio-file')) {
         server.downloads += 1
@@ -568,6 +576,57 @@ test('Resuming after a completed chapter starts the next chapter from the beginn
   assert.equal(state.cloudAudioActive, true)
   assert.ok(result.saves.includes('4:0:false:true'))
   logic.stop()
+})
+
+test('Starting from the reading position plays the chunk that contains the visible sentence', async () => {
+  const server = {
+    progress: { sectionIndex: 9, chunkIndex: 3, seconds: 40, isCompleted: false },
+    downloads: 0,
+    chunkCount: 1,
+    failSaves: false,
+  }
+  const { logic, state, requests, server: result } = createPlayerHarness(() => chapterResponse(4, -1), {
+    server,
+    positionChunk: 2,
+  })
+  logic.start(state, 5, true, '읽던 문장')
+  await flushPlayback()
+  assert.deepEqual(result.positionQueries, ['5:읽던 문장'])
+  assert.equal(requests[0], 2)
+  assert.match(state.cloudAudioMessage, /3 \/ 4 구간/)
+  assert.ok(result.saves.includes('5:2:false:true'), 'a previously completed chapter is reopened')
+  logic.stop()
+})
+
+test('An unmatched reading position falls back to the chapter beginning with a notice', async () => {
+  const { logic, state, requests } = createPlayerHarness(() => chapterResponse(2, -1))
+  logic.start(state, 1, true, '찾을 수 없는 문장')
+  await flushPlayback()
+  assert.equal(requests[0], 0)
+  assert.match(state.cloudAudioMessage, /챕터 처음부터 재생합니다/)
+  logic.stop()
+})
+
+test('Reading-position matching ignores whitespace and tolerates anchors that cross chunk boundaries', () => {
+  const context = {
+    module: { exports: {} },
+    require: () => ({}),
+    __hooks: '',
+    $security: { sha256: () => '' },
+  }
+  vm.runInNewContext(
+    readFileSync(new URL('../pb_hooks/pages/_private/book-audio-data.js', import.meta.url), 'utf8'),
+    context
+  )
+  const chunks = ['첫 구간의 문장입니다.', '둘째 구간은\n\n여기서 시작하는 긴 문단입니다.', '셋째 구간 문단입니다.'].map(
+    (text, index) => ({ get: (name) => (name === 'input_text' ? text : index) })
+  )
+  const app = { findRecordsByFilter: () => chunks }
+  const find = (anchor) => context.module.exports.findChunkIndexByText(app, 'file', 'hash', 0, anchor)
+  assert.equal(find('여기서  시작하는 긴'), 1)
+  assert.equal(find('둘째 구간은 여기서 시작하는 긴 문단입니다. 셋째 구간 문단입니다.'), 1)
+  assert.equal(find('어디에도 없는 문장입니다만 충분히 깁니다'), -1)
+  assert.equal(find('   '), -1)
 })
 
 test('Lock screen controls show the chapter and control the same player', async () => {

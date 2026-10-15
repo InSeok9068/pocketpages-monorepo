@@ -96,6 +96,7 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
     'Windows Playwright WebKit rejects standalone PCM WAV playback; verify Safari on an Apple device.'
   )
   const lookups = []
+  const anchors = []
   let downloads = 0
   let savedProgress = null
   const errors = []
@@ -110,6 +111,10 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
       }
       if (url.pathname === '/test.epub')
         return route.fulfill({ body: Buffer.from(epub), contentType: 'application/epub+zip' })
+      if (url.pathname === '/api/books/audio-position') {
+        anchors.push(url.searchParams.get('sectionIndex') + ':' + url.searchParams.get('anchor'))
+        return route.fulfill({ json: { ok: true, chunkIndex: 0 } })
+      }
       if (url.pathname === '/api/books/audio-chunk') {
         lookups.push(
           route.request().method()
@@ -185,5 +190,11 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   await expect.poll(() => player.evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(4.9)
   expect(downloads).toBe(2)
   expect(lookups.every((lookup) => lookup === 'GET:0:0')).toBe(true)
+  await page.getByRole('button', { name: '정지', exact: true }).click()
+  await page.getByRole('button', { name: '읽던 위치부터' }).click()
+  await expect.poll(() => anchors.length).toBe(1)
+  expect(anchors[0]).toMatch(/^0:.*책을 듣는 시간을 함께합니다/)
+  await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
+  await expect(page.getByRole('status')).toContainText('1 / 1 구간')
   expect(errors).toEqual([])
 })

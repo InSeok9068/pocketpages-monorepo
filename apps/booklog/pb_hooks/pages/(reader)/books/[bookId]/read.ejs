@@ -394,6 +394,9 @@
     startCloudAudio: function (fromBeginning) {
       window.booklogReaderLogic.startCloudAudio(this, fromBeginning)
     },
+    startCloudAudioAtReadingPosition: function () {
+      window.booklogReaderLogic.startCloudAudioAtReadingPosition(this)
+    },
     stopReadAloud: function () {
       window.booklogReaderLogic.stopReadAloud(this)
     },
@@ -1192,6 +1195,13 @@
                 x-bind:disabled="cloudAudioBusy || cloudAudioActive"
                 class="rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
                 x-text="cloudAudioBusy ? '불러오는 중' : '이어 듣기'"></button>
+              <button
+                type="button"
+                x-on:click="startCloudAudioAtReadingPosition()"
+                x-bind:disabled="cloudAudioBusy || cloudAudioActive"
+                class="rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 disabled:opacity-60">
+                읽던 위치부터
+              </button>
               <button
                 type="button"
                 x-on:click="startCloudAudio(true)"

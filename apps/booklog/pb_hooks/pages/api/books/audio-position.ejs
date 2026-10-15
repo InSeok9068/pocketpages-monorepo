@@ -1,0 +1,46 @@
+<script server>
+  response.header('Cache-Control', 'no-store')
+  if (request.method !== 'GET') {
+    response.json(405, { ok: false, message: 'GET 요청만 가능합니다.' })
+    return
+  }
+  if (!request.auth) {
+    response.json(401, { ok: false, message: '로그인이 필요합니다.' })
+    return
+  }
+  const query = request.url.query
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(query.bookId || '')
+  const fileId = String(query.fileId || '')
+  const anchorText = String(query.anchor || '').trim()
+  const sectionInput = String(query.sectionIndex == null ? '' : query.sectionIndex).trim()
+  const sectionIndex = Number(sectionInput)
+  if (
+    !bookId
+    || !fileId
+    || !sectionInput
+    || !Number.isSafeInteger(sectionIndex)
+    || sectionIndex < 0
+    || !anchorText
+    || anchorText.length > 300
+  ) {
+    response.json(400, { ok: false, message: '읽던 위치 정보를 확인해 주세요.' })
+    return
+  }
+  const audioData = resolve('book-audio-data')
+  try {
+    audioData.findAuthorizedFile($app, userId, bookId, fileId)
+  } catch (_exception) {
+    response.json(404, { ok: false, message: '내 서재에서 EPUB 파일을 찾지 못했습니다.' })
+    return
+  }
+  try {
+    const settings = audioData.getSettings(String(env('BOOKLOG_TTS_MODEL') || 'gemini-3.8-flash-tts').trim())
+    const chunkIndex = audioData.findChunkIndexByText($app, fileId, settings.configHash, sectionIndex, anchorText)
+    dbg('api/books/audio-position:lookup', { userId, fileId, sectionIndex, chunkIndex })
+    response.json(200, { ok: true, chunkIndex })
+  } catch (exception) {
+    error('api/books/audio-position:failed', { userId, fileId, error: String(exception.message || exception) })
+    response.json(500, { ok: false, message: '읽던 위치의 음성을 찾지 못했습니다.' })
+  }
+</script>
