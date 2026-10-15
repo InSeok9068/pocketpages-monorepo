@@ -402,19 +402,56 @@ function buildAudioBookFromBytes(epubBytes) {
   )
   const sections = []
   for (let sectionIndex = 0; sectionIndex < entryPaths.length; sectionIndex += 1) {
-    const text = entryPaths[sectionIndex] ? readAudioText(archive, entryPaths[sectionIndex]) : ''
-    if (text) sections.push({ sectionIndex, chunks: splitAudioText(text) })
+    const entryPath = entryPaths[sectionIndex]
+    const html = entryPath && archive[entryPath] ? readArchiveText(archive, entryPath) : ''
+    const text = html ? htmlToAudioText(html) : ''
+    if (text && !isCopyrightSection(entryPath, html, text)) {
+      sections.push({ sectionIndex, chunks: splitAudioText(text) })
+    }
   }
   return sections
 }
 
-function readAudioText(archive, entryPath) {
-  if (!archive[entryPath]) return ''
-  return epubAudioHtmlToText(readArchiveText(archive, entryPath))
-    .replace(/\r/g, '')
-    .replace(/\u00a0/g, ' ')
-    .replace(/\u00ad/g, '')
-    .trim()
+const copyrightEntryNames = ['copy', 'copyright', 'copyrightpage', 'colophon', 'imprint']
+const copyrightTerms =
+  /\ubc1c\ud589\uc778|\ubc1c\ud589\ucc98|\ud3b4\ub0b8\uc774|\ud3b4\ub0b8\uacf3|\ucd9c\ud310\ub4f1\ub85d|\uc778\uc1c4|\ucd08\ud310|1\ud310 1\uc1c4|copyright|\u00a9|all rights reserved/gi
+
+/**
+ * \ub0ad\ub3c5\ud560 \ud544\uc694\uac00 \uc5c6\ub294 \ud310\uad8c \ud398\uc774\uc9c0\uc778\uc9c0 \ud310\ub2e8\ud569\ub2c8\ub2e4.
+ * @param {string} entryPath \ucc55\ud130 \ud30c\uc77c \uacbd\ub85c
+ * @param {string} html \ucc55\ud130 HTML
+ * @param {string} text \ub0ad\ub3c5 \ubcf8\ubb38
+ * @returns {boolean} \ud310\uad8c \ud398\uc774\uc9c0 \uc5ec\ubd80
+ */
+function isCopyrightSection(entryPath, html, text) {
+  const entryName = String(entryPath.split('/').pop())
+    .replace(/\.(xhtml|html|htm)$/i, '')
+    .replace(/[-_.]/g, '')
+    .replace(/\d+$/, '')
+    .toLowerCase()
+  if (copyrightEntryNames.indexOf(entryName) >= 0) return true
+  if (/epub:type\s*=\s*["'][^"']*\b(copyright-page|colophon|imprint)\b/i.test(html)) return true
+  // \ud310\uad8c \ud45c\uc2dc\uac00 \uc5c6\ub294 \ucc45\ub3c4 \ub9ce\uc544 ISBN\uacfc \ud310\uad8c \uc6a9\uc5b4\uac00 \ud568\uaed8 \uc788\ub294 \uc9e7\uc740 \ucc55\ud130\ub97c \ud310\uad8c \ud398\uc774\uc9c0\ub85c \ubd05\ub2c8\ub2e4.
+  const terms = text.match(copyrightTerms) || []
+  return text.length <= 2500 && /ISBN/i.test(text) && terms.length >= 2
+}
+
+function htmlToAudioText(html) {
+  return (
+    epubAudioHtmlToText(html)
+      .replace(/\r/g, '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\u00ad/g, '')
+      // \ub514\uc790\uc778\uc6a9\uc73c\ub85c \uae00\uc790 \uc0ac\uc774\uc5d0 \uac00\uc6b4\ub383\uc810\uc744 \ub123\uc740 \uc601\ubb38(P\u318dr\u318do\u318dl\u318do\u318dg\u318du\u318de)\uc740 \ud55c \ub2e8\uc5b4\ub85c \ubd99\uc785\ub2c8\ub2e4.
+      .replace(/[A-Za-z](?:[\u318d\u00b7\u2022][A-Za-z])+/g, function (word) {
+        return word.replace(/[\u318d\u00b7\u2022]/g, '')
+      })
+      .replace(
+        /^[ \t]*[\u25a1\u25a0\u25c7\u25c6\u25cb\u25cf\u25b6\u25b7\u25ba\u25aa\u25ab\u2610\u2611\u2713\u2714]+[ \t]*/gm,
+        ''
+      )
+      .trim()
+  )
 }
 
 function splitAudioText(text) {

@@ -425,6 +425,56 @@ function audioChunksForHtml(html) {
   return context.module.exports.buildAudioBookFromBytes(epub)[0].chunks
 }
 
+function audioSectionsForFiles(files) {
+  const { zipSync, strToU8 } = require('fflate')
+  const context = { module: { exports: {} }, require, __hooks: serviceRoot + 'pb_hooks' }
+  vm.runInNewContext(
+    readFileSync(new URL('../pb_hooks/pages/_private/epub-reading-metrics.js', import.meta.url), 'utf8'),
+    context
+  )
+  const names = Object.keys(files)
+  const entries = {
+    'META-INF/container.xml': strToU8('<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>'),
+    'book.opf': strToU8(
+      '<package><manifest>'
+        + names.map((name, index) => '<item id="i' + index + '" href="' + name + '" media-type="application/xhtml+xml"/>').join('')
+        + '</manifest><spine>'
+        + names.map((_name, index) => '<itemref idref="i' + index + '"/>').join('')
+        + '</spine></package>'
+    ),
+  }
+  names.forEach((name) => {
+    entries[name] = strToU8(files[name])
+  })
+  return JSON.parse(JSON.stringify(context.module.exports.buildAudioBookFromBytes(zipSync(entries))))
+}
+
+test('Copyright pages are skipped by file name, EPUB semantics, or ISBN with publishing terms', () => {
+  const sections = audioSectionsForFiles({
+    'chapter.xhtml': '<html><body><p>본문입니다. ISBN이라는 단어가 나와도 본문은 남습니다.</p></body></html>',
+    'copyright.xhtml': '<html><body><p>판권 페이지</p></body></html>',
+    'semantic.xhtml':
+      '<html xmlns:epub="http://www.idpf.org/2007/ops"><body epub:type="backmatter copyright-page"><p>저작권</p></body></html>',
+    'last.xhtml':
+      '<html><body><p>책 제목</p><p>1판 1쇄 발행 2016년</p><p>발행인 홍길동</p><p>ISBN 979-11-87119-84-5</p></body></html>',
+  })
+  assert.deepEqual(
+    sections.map((section) => section.sectionIndex),
+    [0]
+  )
+  assert.match(sections[0].chunks[0], /ISBN이라는 단어/)
+})
+
+test('Narration joins letter-spaced Latin titles and drops decorative bullets only', () => {
+  const [section] = audioSectionsForFiles({
+    'chapter.xhtml':
+      '<html><body><p>Pㆍrㆍoㆍlㆍoㆍgㆍuㆍe</p><p>Tㆍhㆍaㆍnㆍkㆍs tㆍo</p><p>□ 내게 친절할 것</p><p>■ 가볍게 살 것</p>'
+      + '<p>글ㆍ그림 김수현, 정신적ㆍ신체적 건강, A·B 테스트, 가격은 □ 안에 적기</p></body></html>',
+  })
+  const text = section.chunks.join(' ').replace(/\s+/g, ' ')
+  assert.equal(text, 'Prologue Thanks to 내게 친절할 것 가볍게 살 것 글ㆍ그림 김수현, 정신적ㆍ신체적 건강, AB 테스트, 가격은 □ 안에 적기')
+})
+
 test('Narration omits navigation and hidden text without introducing list or quotation markers', () => {
   const chunks = audioChunksForHtml(
     '<nav>목차</nav><p hidden>숨긴 글</p><p aria-hidden="true">장식</p>'
