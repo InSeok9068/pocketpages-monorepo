@@ -72,7 +72,7 @@ test('Whole-book extraction keeps spine order and preserves each chapter text ex
     readFileSync(new URL('../pb_hooks/pages/_private/epub-reading-metrics.js', import.meta.url), 'utf8'),
     context
   )
-  const paragraph = '오디오북 문장을 자연스럽게 읽습니다. '.repeat(160).trim()
+  const paragraph = '오디오북 문장을 자연스럽게 읽습니다. '.repeat(400).trim()
   const bytes = zipSync({
     'META-INF/container.xml': strToU8(
       '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
@@ -93,7 +93,7 @@ test('Whole-book extraction keeps spine order and preserves each chapter text ex
   assert.deepEqual(book[0].chunks, ['다른 챕터'])
   const chunks = book[1].chunks
   assert.ok(chunks.length > 1)
-  assert.ok(chunks.every((text) => text.length <= 1400))
+  assert.ok(chunks.every((text) => text.length <= 3000))
   assert.equal(chunks.join(' ').replace(/\s+/g, ' '), paragraph)
 })
 
@@ -542,7 +542,7 @@ test('Narration omits navigation and hidden text without introducing list or quo
 
 test('A shorter complete sentence is preserved instead of splitting the following sentence', () => {
   const firstSentence = '가'.repeat(300) + '.'
-  const secondSentence = '낭독 단어 '.repeat(350).trim() + '.'
+  const secondSentence = '낭독 단어 '.repeat(600).trim() + '.'
   const chunks = audioChunksForHtml('<p>' + firstSentence + ' ' + secondSentence + '</p>')
   assert.equal(chunks[0], firstSentence)
   assert.equal(chunks.join(' ').replace(/\s+/g, ' '), firstSentence + ' ' + secondSentence)

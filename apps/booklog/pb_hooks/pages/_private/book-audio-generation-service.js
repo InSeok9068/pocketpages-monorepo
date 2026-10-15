@@ -1,4 +1,4 @@
-const CLAIM_TTL_MS = 180000
+const CLAIM_TTL_MS = 600000
 const MAX_ATTEMPTS = 5
 const RETRY_DELAY_MS = 600000
 
@@ -84,7 +84,7 @@ function markFailed(app, chunkId, claimedAt, message, countAttempt) {
 function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
   try {
     const chunk = app.findRecordById('book_audio_chunks', chunkId)
-    const ai = require('@pocketpages/ai').createAiClient({ geminiApiKey: apiKey, timeoutSeconds: 120, maxAttempts: 1 })
+    const ai = require('@pocketpages/ai').createAiClient({ geminiApiKey: apiKey, timeoutSeconds: 300, maxAttempts: 1 })
     const result = ai.geminiSpeech({
       model: String(chunk.get('model')),
       input: String(chunk.get('input_text')),

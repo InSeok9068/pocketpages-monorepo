@@ -454,13 +454,16 @@ function htmlToAudioText(html) {
   )
 }
 
+// TTS 출력 한도(16,384토큰, 초당 25토큰 ≈ 10분 55초) 안에서 하루 요청 수를 줄이도록 약 7분 분량으로 나눕니다.
+const AUDIO_CHUNK_MAX_CHARS = 3000
+
 function splitAudioText(text) {
   let remaining = text
   const chunks = []
-  while (remaining.length > 1400) {
-    const windowText = remaining.slice(0, 1400)
+  while (remaining.length > AUDIO_CHUNK_MAX_CHARS) {
+    const windowText = remaining.slice(0, AUDIO_CHUNK_MAX_CHARS)
     let boundary = windowText.lastIndexOf('\n\n')
-    if (boundary < 700) {
+    if (boundary < AUDIO_CHUNK_MAX_CHARS / 2) {
       const sentences = /[.!?。！？][”’"']?\s+/g
       let match = sentences.exec(windowText)
       boundary = -1
