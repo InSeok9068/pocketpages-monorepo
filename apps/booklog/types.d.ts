@@ -19,6 +19,8 @@ declare namespace types {
   interface BookAudioGenerationResult {
     ok: boolean
     statusCode: number
+    /** Gemini 정책 필터 차단 여부. 이 구간만 미루고 작업은 계속합니다. */
+    blocked: boolean
     error: string
   }
 

@@ -93,6 +93,11 @@ function run() {
     if (result.statusCode === 429) {
       current.set('next_run_at', new Date(Date.now() + QUOTA_WAIT_MS).toISOString())
       current.set('error_message', 'Gemini 사용 한도에 도달해 30분 뒤 이어서 생성합니다.')
+    } else if (result.blocked) {
+      current.set(
+        'error_message',
+        '일부 구간이 Gemini 정책 필터에 차단되어, 다른 구간을 먼저 만들고 나중에 다시 시도합니다.'
+      )
     } else if (!result.ok) {
       current.set('next_run_at', new Date(Date.now() + FAILURE_WAIT_MS).toISOString())
       current.set('error_message', '음성 생성에 실패해 10분 뒤 다시 시도합니다.')

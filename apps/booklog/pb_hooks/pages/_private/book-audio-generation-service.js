@@ -1,5 +1,5 @@
 const CLAIM_TTL_MS = 180000
-const MAX_ATTEMPTS = 3
+const MAX_ATTEMPTS = 5
 const RETRY_DELAY_MS = 600000
 
 /**
@@ -95,12 +95,18 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
     if (!result.ok) {
       const quota = result.statusCode === 429
       const reason = String(result.errorMessage || '').slice(0, 500)
-      const message =
-        (quota ? 'Gemini 사용 한도에 도달했습니다.' : 'Gemini 음성 생성에 실패했습니다.') + (reason ? ' ' + reason : '')
-      markFailed(app, chunkId, claimedAt, message.slice(0, 2000), !quota)
+      // 정책 차단은 같은 본문도 재시도에서 통과하는 경우가 있어, 이 구간만 미루고 다른 구간은 계속 생성합니다.
+      const blocked = result.statusCode === 400 && /policy|blocked|safety/i.test(reason)
+      const summary = quota
+        ? 'Gemini 사용 한도에 도달했습니다.'
+        : blocked
+          ? 'Gemini 정책 필터에 차단되어 나중에 다시 시도합니다.'
+          : 'Gemini 음성 생성에 실패했습니다.'
+      markFailed(app, chunkId, claimedAt, (summary + (reason ? ' ' + reason : '')).slice(0, 2000), !quota)
       return {
         ok: false,
         statusCode: quota ? 429 : 502,
+        blocked,
         error: 'provider ' + result.statusCode + (reason ? ': ' + reason : ''),
       }
     }
@@ -116,14 +122,14 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
       current.set('error_message', '')
       current.set('next_retry_at', '')
     })
-    return { ok: true, statusCode: saved ? 200 : 409, error: saved ? '' : 'claim expired' }
+    return { ok: true, statusCode: saved ? 200 : 409, blocked: false, error: saved ? '' : 'claim expired' }
   } catch (exception) {
     try {
       markFailed(app, chunkId, claimedAt, '음성 생성 또는 저장에 실패했습니다.', true)
     } catch (_saveError) {
       /* 소유권 만료 후 다음 생성에서 다시 시도합니다. */
     }
-    return { ok: false, statusCode: 500, error: String((exception && exception.message) || exception) }
+    return { ok: false, statusCode: 500, blocked: false, error: String((exception && exception.message) || exception) }
   }
 }
 

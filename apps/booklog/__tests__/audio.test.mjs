@@ -168,6 +168,44 @@ test('Generated MP3 duration is calculated from frames for MPEG-1 and MPEG-2 str
   assert.ok(Math.abs(second.durationSeconds - (50 * 576) / 24000) < 1e-9)
 })
 
+function generateWithProviderResult(providerResult) {
+  const fields = { status: 'generating', generation_started_at: 'claim', attempt_count: 0, model: 'm', input_text: '본문' }
+  const record = { get: (name) => fields[name], set: (name, value) => (fields[name] = value) }
+  const app = {
+    findRecordById: () => record,
+    runInTransaction: (fn) => fn({ findRecordById: () => record, save() {} }),
+  }
+  const context = {
+    module: { exports: {} },
+    require: () => ({ createAiClient: () => ({ geminiSpeech: () => providerResult }) }),
+  }
+  vm.runInNewContext(
+    readFileSync(new URL('../pb_hooks/pages/_private/book-audio-generation-service.js', import.meta.url), 'utf8'),
+    context
+  )
+  const result = context.module.exports.generateClaimedChunk(app, 'key', 'chunk', 'claim')
+  return { result, fields, maxAttempts: context.module.exports.MAX_ATTEMPTS }
+}
+
+test('Gemini policy blocks are retried later for that chunk only and keep the provider reason', () => {
+  const blocked = generateWithProviderResult({
+    ok: false,
+    statusCode: 400,
+    errorMessage: 'Request blocked for an unspecified policy reason. Please modify your input and retry.',
+  })
+  assert.equal(blocked.result.blocked, true)
+  assert.equal(blocked.maxAttempts, 5)
+  assert.equal(blocked.fields.status, 'failed')
+  assert.equal(blocked.fields.attempt_count, 1)
+  assert.match(blocked.fields.error_message, /정책 필터.*Request blocked/)
+  assert.ok(Date.parse(blocked.fields.next_retry_at) > Date.now())
+  const invalid = generateWithProviderResult({ ok: false, statusCode: 400, errorMessage: 'Invalid voice name' })
+  assert.equal(invalid.result.blocked, false)
+  const quota = generateWithProviderResult({ ok: false, statusCode: 429, errorMessage: 'Rate limit exceeded' })
+  assert.equal(quota.result.statusCode, 429)
+  assert.equal(quota.fields.attempt_count, 0)
+})
+
 test('Generated audio is rejected unless it is a valid MP3', () => {
   const service = loadGenerationService()
   const mpeg1 = mp3Bytes({ frames: 2, header: [0xff, 0xfb, 0x90, 0x00], frameLength: 417 }).toString('base64')
