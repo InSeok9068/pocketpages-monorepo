@@ -94,9 +94,15 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
     })
     if (!result.ok) {
       const quota = result.statusCode === 429
-      const message = quota ? 'Gemini 사용 한도에 도달했습니다.' : 'Gemini 음성 생성에 실패했습니다.'
-      markFailed(app, chunkId, claimedAt, message, !quota)
-      return { ok: false, statusCode: quota ? 429 : 502, error: 'provider ' + result.statusCode }
+      const reason = String(result.errorMessage || '').slice(0, 500)
+      const message =
+        (quota ? 'Gemini 사용 한도에 도달했습니다.' : 'Gemini 음성 생성에 실패했습니다.') + (reason ? ' ' + reason : '')
+      markFailed(app, chunkId, claimedAt, message.slice(0, 2000), !quota)
+      return {
+        ok: false,
+        statusCode: quota ? 429 : 502,
+        error: 'provider ' + result.statusCode + (reason ? ': ' + reason : ''),
+      }
     }
     if (!result.audio) throw new Error('음성을 받지 못했습니다.')
     const audio = decodeMp3(result.audio.data, result.audio.mimeType)
