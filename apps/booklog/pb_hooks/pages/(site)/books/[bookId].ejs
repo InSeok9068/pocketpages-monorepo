@@ -179,15 +179,26 @@
   let audioJob = null
   let audioJobError = ''
   let hasStoredAudio = false
+  /** @type {types.BookAudioModelOption[]} */
+  let audioModelOptions = []
+  let audioSelectedModel = ''
+  let canRequestAudio = false
 
   if (showAudioJob) {
     try {
       const audioData = resolve('book-audio-data')
-      const audioSettings = audioData.getSettings(String(env('BOOKLOG_TTS_MODEL') || 'gemini-3.8-flash-tts').trim())
       const audioJobService = resolve('book-audio-job-service')
-      const audioJobRecord = audioJobService.findJob($app, audioJobFileId, audioSettings.configHash)
+      const audioJobRecord = audioData.findFileJob($app, audioJobFileId)
       audioJob = audioJobRecord ? audioJobService.jobView(audioJobRecord) : null
       hasStoredAudio = !!audioJobRecord || audioData.countFileChunks($app, audioJobFileId) > 0
+      audioModelOptions = audioData.getModelOptions($app, audioJobFileId).filter(function (option) {
+        return !audioJobRecord || option.model === String(audioJobRecord.get('model'))
+      })
+      const availableModel = audioModelOptions.find(function (option) {
+        return !option.disabled
+      })
+      audioSelectedModel = availableModel ? availableModel.model : ''
+      canRequestAudio = !!availableModel
     } catch (exception) {
       warn('page/books/[bookId]:audio-job-unavailable', {
         bookId: bookId,
@@ -753,6 +764,9 @@
           style="width: <%= audioJob.percent %>%"></div>
       </div>
       <p class="text-sm font-medium text-stone-800"><%= audioJob.statusLabel %></p>
+      <p class="text-xs text-stone-500">
+        모델: <%= audioModelOptions[0] ? audioModelOptions[0].label : '' %> · 생성 시작 시 고정
+      </p>
       <% if (audioJob.nextRunLabel) { %>
       <p class="text-xs text-stone-500"><%= audioJob.nextRunLabel %></p>
       <% } %>
@@ -781,9 +795,33 @@
           type="hidden"
           name="action"
           value="start" />
+        <fieldset class="mb-3 space-y-2">
+          <legend class="mb-2 text-sm font-medium text-stone-800">생성 모델</legend>
+          <% for (const option of audioModelOptions) { %>
+          <label class="flex items-start gap-2 text-sm text-stone-700">
+            <input
+              type="radio"
+              name="model"
+              value="<%= option.model %>"
+              <%= option.model === audioSelectedModel ? 'checked' : '' %>
+              <%= option.disabled ? 'disabled' : '' %>
+              required
+              class="mt-1" />
+            <span>
+              <%= option.label %>
+              <% if (option.disabled) { %>
+              <span class="block text-xs text-stone-500">
+                「<%= option.busyBookTitle %>」 미완료 · 완료하거나 삭제하면 사용 가능
+              </span>
+              <% } %>
+            </span>
+          </label>
+          <% } %>
+        </fieldset>
         <button
           type="submit"
-          class="inline-flex h-10 items-center justify-center rounded-full border-none bg-stone-900 px-4 text-sm font-semibold text-white ring-0 transition outline-none hover:bg-stone-700">
+          <%= canRequestAudio ? '' : 'disabled' %>
+          class="inline-flex h-10 items-center justify-center rounded-full border-none bg-stone-900 px-4 text-sm font-semibold text-white ring-0 transition outline-none hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40">
           <%= audioJob ? '생성 다시 시작' : 'AI 오디오북 생성 요청' %>
         </button>
       </form>

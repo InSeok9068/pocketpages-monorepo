@@ -120,10 +120,7 @@
   let aiAudioAvailable = false
 
   try {
-    const audioSettings = resolve('book-audio-data').getSettings(
-      String(env('BOOKLOG_TTS_MODEL') || 'gemini-3.8-flash-tts').trim()
-    )
-    const audioJob = resolve('book-audio-job-service').findJob($app, bookFileId, audioSettings.configHash)
+    const audioJob = resolve('book-audio-data').findFileJob($app, bookFileId)
     aiAudioAvailable = !!audioJob && Number(audioJob.get('ready_chunks') || 0) > 0
   } catch (exception) {
     warn('page/books/[bookId]/read:audio-unavailable', {

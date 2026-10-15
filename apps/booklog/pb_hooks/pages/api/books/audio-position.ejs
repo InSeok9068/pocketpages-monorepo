@@ -35,7 +35,7 @@
     return
   }
   try {
-    const settings = audioData.getSettings(String(env('BOOKLOG_TTS_MODEL') || 'gemini-3.8-flash-tts').trim())
+    const settings = audioData.getFileSettings($app, fileId)
     const chunkIndex = audioData.findChunkIndexByText($app, fileId, settings.configHash, sectionIndex, anchorText)
     dbg('api/books/audio-position:lookup', { userId, fileId, sectionIndex, chunkIndex })
     response.json(200, { ok: true, chunkIndex })

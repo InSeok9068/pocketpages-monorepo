@@ -45,16 +45,26 @@
   }
   let message = ''
   try {
-    const settings = audioData.getSettings(String(env('BOOKLOG_TTS_MODEL') || 'gemini-3.8-flash-tts').trim())
     if (action === 'start') {
-      const job = jobService.requestJob($app, fileId, userId, settings)
-      info('xapi/books/audio-job:requested', { userId, fileId, jobId: String(job.get('id')) })
+      const model = String(form.model || 'gemini-3.8-flash-lite-tts').trim()
+      if (['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts'].indexOf(model) < 0) {
+        redirectWithMessage(bookDetailPath, 'TTS 모델을 확인해 주세요.')
+        return
+      }
+      const result = jobService.requestJob($app, fileId, userId, audioData.getSettings(model))
+      if (result.message) {
+        dbg('xapi/books/audio-job:reservation', { userId, fileId, model, accepted: !!result.job })
+        redirectWithMessage(bookDetailPath, result.message)
+        return
+      }
+      info('xapi/books/audio-job:requested', { userId, fileId, model, jobId: String(result.job.get('id')) })
       message = 'AI 오디오북 생성을 예약했습니다. 2분 안에 책을 분석해 생성을 시작합니다.'
     } else if (action === 'delete') {
       const deleted = jobService.deleteAudioBook($app, fileId)
       info('xapi/books/audio-job:deleted', { userId, fileId, deleted })
       message = deleted.chunks + deleted.jobs > 0 ? 'AI 오디오북을 삭제했습니다.' : '삭제할 AI 오디오북이 없습니다.'
     } else {
+      const settings = audioData.getFileSettings($app, fileId)
       const paused = jobService.pauseJob($app, fileId, settings.configHash)
       info('xapi/books/audio-job:paused', { userId, fileId, paused })
       message = paused ? 'AI 오디오북 생성을 일시 정지했습니다.' : '진행 중인 AI 오디오북 생성이 없습니다.'

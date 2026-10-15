@@ -16,6 +16,18 @@ declare namespace types {
     chunks: string[]
   }
 
+  interface BookAudioModelOption {
+    model: string
+    label: string
+    disabled: boolean
+    busyBookTitle: string
+  }
+
+  interface BookAudioJobRequestResult {
+    job: core.Record | null
+    message: string
+  }
+
   interface BookAudioGenerationResult {
     ok: boolean
     statusCode: number

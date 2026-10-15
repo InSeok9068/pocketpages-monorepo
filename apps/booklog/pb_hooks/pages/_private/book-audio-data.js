@@ -1,6 +1,66 @@
 const epubReadingMetrics = require(__hooks + '/pages/_private/epub-reading-metrics.js')
 const generation = require(__hooks + '/pages/_private/book-audio-generation-service.js')
 
+const MODELS = [
+  { model: 'gemini-3.8-flash-lite-tts', label: 'Flash-Lite' },
+  { model: 'gemini-3.8-flash-tts', label: 'Flash' },
+]
+
+/**
+ * EPUB에 등록된 최근 오디오북 작업을 찾습니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} fileId EPUB 파일 ID
+ * @returns {core.Record | null} 오디오북 작업
+ */
+function findFileJob(app, fileId) {
+  return app.findRecordsByFilter('book_audio_jobs', 'file_id = {:fileId}', '-created,-id', 1, 0, { fileId })[0] || null
+}
+
+/**
+ * 책에 고정된 낭독 설정을 읽습니다. 등록 전에는 Lite를 사용합니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} fileId EPUB 파일 ID
+ * @returns {types.BookAudioSettings} 낭독 설정
+ */
+function getFileSettings(app, fileId) {
+  const job = findFileJob(app, fileId)
+  if (!job) return getSettings('gemini-3.8-flash-lite-tts')
+  return {
+    provider: String(job.get('provider')),
+    model: String(job.get('model')),
+    voice: String(job.get('voice')),
+    style: String(job.get('style')),
+    pipelineVersion: String(job.get('pipeline_version')),
+    configHash: String(job.get('config_hash')),
+  }
+}
+
+/**
+ * 모델별 미완료 작업과 새 책의 생성 가능 여부를 읽습니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} fileId 현재 EPUB 파일 ID
+ * @returns {types.BookAudioModelOption[]} 모델 선택 항목
+ */
+function getModelOptions(app, fileId) {
+  return MODELS.map(function (entry) {
+    const busy = app.findRecordsByFilter(
+      'book_audio_jobs',
+      "model = {:model} && file_id != {:fileId} && status != 'completed'",
+      'created,id',
+      1,
+      0,
+      { model: entry.model, fileId }
+    )[0]
+    let bookTitle = ''
+    if (busy) {
+      const file = app.findRecordById('book_files', String(busy.get('file_id')))
+      const book = app.findRecordById('books', String(file.get('book_id')))
+      bookTitle = String(book.get('title') || '제목 없는 책')
+    }
+    return { model: entry.model, label: entry.label, disabled: !!busy, busyBookTitle: bookTitle }
+  })
+}
+
 /**
  * 서버의 낭독 설정과 재사용 식별자를 만듭니다.
  * @param {string} model 모델 이름
@@ -202,6 +262,9 @@ function chunkView(chunk, bookId, chunkCount, nextSectionIndex) {
 }
 
 module.exports = {
+  findFileJob,
+  getFileSettings,
+  getModelOptions,
   getSettings,
   findAuthorizedFile,
   readBookSections,

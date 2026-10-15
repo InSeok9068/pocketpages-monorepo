@@ -26,7 +26,7 @@
     return
   }
   try {
-    const settings = audioData.getSettings(String(env('BOOKLOG_TTS_MODEL') || 'gemini-3.8-flash-tts').trim())
+    const settings = audioData.getFileSettings($app, fileId)
     const bindings = { userId, fileId, configHash: settings.configHash }
     const filter = 'user_id = {:userId} && file_id = {:fileId} && config_hash = {:configHash}'
     if (request.method === 'GET') {

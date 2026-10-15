@@ -1,5 +1,6 @@
 const { dateutil } = require('@pocketpages/utils')
 const generation = require(__hooks + '/pages/_private/book-audio-generation-service.js')
+const audioData = require(__hooks + '/pages/_private/book-audio-data.js')
 
 const CLAIMABLE_FILTER =
   "(status = 'queued'"
@@ -28,21 +29,46 @@ function findJob(app, fileId, configHash) {
  * @param {string} fileId EPUB 파일 ID
  * @param {string} userId 요청한 관리자 ID
  * @param {types.BookAudioSettings} settings 예약할 낭독 설정
- * @returns {core.Record} 저장한 작업
+ * @returns {types.BookAudioJobRequestResult} 저장한 작업 또는 예약 불가 사유
  */
 function requestJob(app, fileId, userId, settings) {
-  let job = null
+  /** @type {types.BookAudioJobRequestResult} */
+  const result = { job: null, message: '' }
   app.runInTransaction(function (txApp) {
-    job = findJob(txApp, fileId, settings.configHash)
-    if (!job) job = new Record(txApp.findCollectionByNameOrId('book_audio_jobs'))
+    let job = audioData.findFileJob(txApp, fileId)
+    if (job && String(job.get('model')) !== settings.model) {
+      result.message = '이 책의 모델은 생성 시작 시 고정됩니다. 바꾸려면 오디오북을 삭제한 뒤 다시 요청해 주세요.'
+      return
+    }
+    if (job && ['queued', 'running', 'completed'].indexOf(String(job.get('status'))) >= 0) {
+      result.job = job
+      result.message =
+        job.get('status') === 'completed' ? '이미 생성이 완료된 오디오북입니다.' : '이미 생성이 예약된 오디오북입니다.'
+      return
+    }
+    // 화면을 연 뒤 다른 요청이 먼저 예약했을 수 있어, 저장 트랜잭션 안에서 다시 확인합니다.
+    const option = audioData.getModelOptions(txApp, fileId).filter(function (entry) {
+      return entry.model === settings.model
+    })[0]
+    if (!option) {
+      result.message = 'TTS 모델을 확인해 주세요.'
+      return
+    }
+    if (option.disabled) {
+      result.message = option.label + '는 「' + option.busyBookTitle + '」의 미완료 작업이 있어 사용할 수 없습니다.'
+      return
+    }
+    if (!job) {
+      job = new Record(txApp.findCollectionByNameOrId('book_audio_jobs'))
+      job.set('config_hash', settings.configHash)
+      job.set('provider', settings.provider)
+      job.set('model', settings.model)
+      job.set('voice', settings.voice)
+      job.set('style', settings.style)
+      job.set('pipeline_version', settings.pipelineVersion)
+    }
     job.set('file_id', fileId)
     job.set('requested_by', userId)
-    job.set('config_hash', settings.configHash)
-    job.set('provider', settings.provider)
-    job.set('model', settings.model)
-    job.set('voice', settings.voice)
-    job.set('style', settings.style)
-    job.set('pipeline_version', settings.pipelineVersion)
     job.set('status', String(job.get('started_at')) ? 'running' : 'queued')
     // total_chunks 0은 cron이 책을 다시 분석해 구간을 등록해야 한다는 표시입니다.
     job.set('total_chunks', 0)
@@ -50,8 +76,9 @@ function requestJob(app, fileId, userId, settings) {
     job.set('completed_at', '')
     job.set('error_message', '')
     txApp.save(job)
+    result.job = job
   })
-  return job
+  return result
 }
 
 /**
@@ -317,6 +344,20 @@ function applyRegenerateRequests(app, nowMs) {
       if (!chunk.get('regenerate_requested')) return
       // 생성 중인 구간은 결과 저장과 겹치지 않도록 끝난 뒤 다음 실행에서 초기화합니다.
       if (chunk.get('status') === 'generating' && !generation.isClaimable(chunk, nowMs)) return
+      const fileId = String(chunk.get('file_id'))
+      const job = findJob(txApp, fileId, String(chunk.get('config_hash')))
+      if (job && (job.get('status') === 'completed' || job.get('status') === 'failed')) {
+        const occupied = audioData.getModelOptions(txApp, fileId).some(function (option) {
+          return option.model === String(job.get('model')) && option.disabled
+        })
+        if (occupied) return
+        // 새 작업의 예약과 경합하지 않도록 구간 초기화와 모델 재점유를 함께 저장합니다.
+        job.set('status', 'running')
+        job.set('completed_at', '')
+        job.set('next_run_at', '')
+        job.set('error_message', '')
+        txApp.save(job)
+      }
       chunk.set('status', 'queued')
       chunk.set('audio_file', '')
       chunk.set('duration_seconds', 0)
@@ -338,12 +379,6 @@ function applyRegenerateRequests(app, nowMs) {
     app.runInTransaction(function (txApp) {
       const job = findJob(txApp, touched[key].fileId, touched[key].configHash)
       if (!job) return
-      if (job.get('status') === 'completed' || job.get('status') === 'failed') {
-        job.set('status', 'running')
-        job.set('completed_at', '')
-        job.set('next_run_at', '')
-        job.set('error_message', '')
-      }
       syncJobProgress(txApp, job)
     })
   })

@@ -122,7 +122,7 @@ function runRoute({ authenticated = true, method = 'GET', owned = true, ready = 
         queries.push({ userId, bookId, fileId })
         if (!owned) throw new Error('Not found')
       },
-      getSettings: () => ({ configHash: 'settings' }),
+      getFileSettings: () => ({ configHash: 'settings' }),
       findPlayableChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
         lookups.push({ fileId, configHash, sectionIndex, chunkIndex })
         return ready ? { id: 'chunk' } : null
