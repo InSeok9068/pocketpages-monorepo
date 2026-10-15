@@ -118,7 +118,11 @@ function run() {
       'statusCode',
       String(result.statusCode),
       'error',
-      result.error
+      result.error,
+      'blocked',
+      String(result.blocked),
+      'detail',
+      result.detail
     )
   }
   return { jobId, chunkId, statusCode: result.statusCode }

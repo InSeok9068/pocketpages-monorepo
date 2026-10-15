@@ -103,11 +103,14 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
           ? 'Gemini 정책 필터에 차단되어 나중에 다시 시도합니다.'
           : 'Gemini 음성 생성에 실패했습니다.'
       markFailed(app, chunkId, claimedAt, (summary + (reason ? ' ' + reason : '')).slice(0, 2000), !quota)
+      const body = result.responseJson || {}
       return {
         ok: false,
         statusCode: quota ? 429 : 502,
         blocked,
         error: 'provider ' + result.statusCode + (reason ? ': ' + reason : ''),
+        // 차단 사유 코드(status, details)를 확인하기 위해 Gemini 오류 응답 전체를 남깁니다.
+        detail: JSON.stringify(body.error || body).slice(0, 4000),
       }
     }
     if (!result.audio) throw new Error('음성을 받지 못했습니다.')
@@ -122,14 +125,20 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
       current.set('error_message', '')
       current.set('next_retry_at', '')
     })
-    return { ok: true, statusCode: saved ? 200 : 409, blocked: false, error: saved ? '' : 'claim expired' }
+    return { ok: true, statusCode: saved ? 200 : 409, blocked: false, error: saved ? '' : 'claim expired', detail: '' }
   } catch (exception) {
     try {
       markFailed(app, chunkId, claimedAt, '음성 생성 또는 저장에 실패했습니다.', true)
     } catch (_saveError) {
       /* 소유권 만료 후 다음 생성에서 다시 시도합니다. */
     }
-    return { ok: false, statusCode: 500, blocked: false, error: String((exception && exception.message) || exception) }
+    return {
+      ok: false,
+      statusCode: 500,
+      blocked: false,
+      error: String((exception && exception.message) || exception),
+      detail: '',
+    }
   }
 }
 

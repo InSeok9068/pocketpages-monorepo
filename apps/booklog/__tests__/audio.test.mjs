@@ -192,8 +192,22 @@ test('Gemini policy blocks are retried later for that chunk only and keep the pr
     ok: false,
     statusCode: 400,
     errorMessage: 'Request blocked for an unspecified policy reason. Please modify your input and retry.',
+    responseJson: {
+      error: {
+        code: 400,
+        status: 'INVALID_ARGUMENT',
+        message: 'Request blocked for an unspecified policy reason.',
+        details: [{ reason: 'POLICY_BLOCK' }],
+      },
+    },
   })
   assert.equal(blocked.result.blocked, true)
+  assert.deepEqual(JSON.parse(blocked.result.detail), {
+    code: 400,
+    status: 'INVALID_ARGUMENT',
+    message: 'Request blocked for an unspecified policy reason.',
+    details: [{ reason: 'POLICY_BLOCK' }],
+  })
   assert.equal(blocked.maxAttempts, 5)
   assert.equal(blocked.fields.status, 'failed')
   assert.equal(blocked.fields.attempt_count, 1)

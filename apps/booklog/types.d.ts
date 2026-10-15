@@ -22,6 +22,8 @@ declare namespace types {
     /** Gemini 정책 필터 차단 여부. 이 구간만 미루고 작업은 계속합니다. */
     blocked: boolean
     error: string
+    /** 실패 시 Gemini 오류 응답 본문(JSON, 최대 4,000자) */
+    detail: string
   }
 
   interface BookAudioChunkView {
