@@ -123,7 +123,7 @@ function runRoute({ authenticated = true, method = 'GET', owned = true, ready = 
         if (!owned) throw new Error('Not found')
       },
       getSettings: () => ({ configHash: 'settings' }),
-      findReadyChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
+      findPlayableChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
         lookups.push({ fileId, configHash, sectionIndex, chunkIndex })
         return ready ? { id: 'chunk' } : null
       },
@@ -291,6 +291,10 @@ function createPlayerHarness(fetchAudio, options = {}) {
         readerCacheKey: 'user:hash',
         bookId: 'book',
         bookFileId: 'file',
+      },
+      speechSynthesis: options.speech,
+      SpeechSynthesisUtterance: function (text) {
+        this.text = text
       },
       MediaMetadata: options.mediaSession
         ? function (metadata) {
@@ -743,6 +747,68 @@ test('Reading-position matching ignores whitespace and tolerates anchors that cr
   assert.equal(find('둘째 구간은 여기서 시작하는 긴 문단입니다. 셋째 구간 문단입니다.'), 1)
   assert.equal(find('어디에도 없는 문장입니다만 충분히 깁니다'), -1)
   assert.equal(find('   '), -1)
+})
+
+function fakeSpeech() {
+  const speech = {
+    spoken: [],
+    cancelled: 0,
+    getVoices: () => [{ name: '한국어', lang: 'ko-KR' }],
+    speak(utterance) {
+      speech.spoken.push({ text: utterance.text, lang: utterance.lang, voice: utterance.voice && utterance.voice.name })
+      setImmediate(() => utterance.onend && utterance.onend())
+    },
+    cancel() {
+      speech.cancelled += 1
+    },
+    pause() {},
+    resume() {},
+  }
+  return speech
+}
+
+test('A chunk that failed every retry is read with the device voice and playback continues', async () => {
+  const speech = fakeSpeech()
+  const fallbackText = '첫 문장입니다. 둘째 문장입니다.\n셋째 줄입니다.'
+  const { logic, state, audio, requests, server } = createPlayerHarness(
+    (index) =>
+      index === 1
+        ? new Response(JSON.stringify({ ok: true, chunkCount: 3, nextSectionIndex: -1, fallbackText }))
+        : chapterResponse(3, -1),
+    { speech }
+  )
+  logic.start(state, 0)
+  await flushPlayback()
+  audio.currentTime = 60
+  audio.onended()
+  await flushPlayback()
+  assert.deepEqual(
+    speech.spoken.map((item) => item.text),
+    ['첫 문장입니다. 둘째 문장입니다.', '셋째 줄입니다.']
+  )
+  assert.equal(speech.spoken[0].lang, 'ko-KR')
+  assert.equal(speech.spoken[0].voice, '한국어')
+  assert.deepEqual(requests, [0, 1, 2])
+  assert.ok(server.saves.some((save) => save.startsWith('0:1:false')), 'the fallback chunk position is saved')
+  assert.equal(state.cloudAudioActive, true)
+  assert.match(state.cloudAudioMessage, /3 \/ 3 구간 · AI 생성 음성/)
+  logic.stop()
+})
+
+test('Stopping during a device voice fallback cancels speech and never resumes it', async () => {
+  const speech = fakeSpeech()
+  speech.speak = (utterance) => speech.spoken.push({ text: utterance.text })
+  const { logic, state } = createPlayerHarness(
+    () => new Response(JSON.stringify({ ok: true, chunkCount: 1, nextSectionIndex: -1, fallbackText: '대체 문장' })),
+    { speech }
+  )
+  logic.start(state, 0)
+  await flushPlayback()
+  assert.match(state.cloudAudioMessage, /기기 음성으로 읽는 중/)
+  const cancelledBefore = speech.cancelled
+  logic.stop()
+  assert.equal(speech.cancelled, cancelledBefore + 1)
+  assert.equal(state.cloudAudioActive, false)
 })
 
 test('Lock screen controls show the chapter and control the same player', async () => {

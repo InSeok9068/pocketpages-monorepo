@@ -77,7 +77,7 @@ window.booklogAudio = (function () {
       fields: {
         configHash: session.configHash,
         chunkId: session.chunkId,
-        seconds: String(session.player.currentTime || 0),
+        seconds: String(session.fallback ? 0 : session.player.currentTime || 0),
         isCompleted: String(!!completed),
         restart: String(session.restartPending),
       },
@@ -130,6 +130,14 @@ window.booklogAudio = (function () {
           throw new Error('낭독 설정이 바뀌었습니다. 다시 이어 듣기를 시작해 주세요.')
         if (!Number.isInteger(result.chunkCount) || result.chunkCount <= index || !result.chunkId) {
           throw new Error('낭독 구간 정보를 확인하지 못했습니다.')
+        }
+        if (result.fallbackText) {
+          return {
+            fallbackText: result.fallbackText,
+            count: result.chunkCount,
+            chunkId: result.chunkId,
+            nextSectionIndex: Number.isInteger(result.nextSectionIndex) ? result.nextSectionIndex : -1,
+          }
         }
         var url = new URL(
           '/_booklog-audio-cache/' + encodeURIComponent(config.readerCacheKey + ':' + result.audioUrl),
@@ -235,7 +243,7 @@ window.booklogAudio = (function () {
       + String(session.chunkIndex + 1)
       + ' / '
       + String(session.chunkCount)
-      + ' 구간 · AI 생성 음성'
+      + (session.fallback ? ' 구간 · AI 음성을 만들지 못해 기기 음성으로 읽는 중' : ' 구간 · AI 생성 음성')
       + (session.syncFailed ? ' · 청취 위치 동기화 대기' : '')
     )
   }
@@ -296,10 +304,22 @@ window.booklogAudio = (function () {
     var player = session.player
     var handlers = {
       play: function () {
-        if (isActive(session)) playAudio(session)
+        if (!isActive(session)) return
+        if (session.fallback && window.speechSynthesis) {
+          window.speechSynthesis.resume()
+          setMediaPlaybackState('playing')
+          return
+        }
+        playAudio(session)
       },
       pause: function () {
-        if (isActive(session)) player.pause()
+        if (!isActive(session)) return
+        if (session.fallback && window.speechSynthesis) {
+          window.speechSynthesis.pause()
+          setMediaPlaybackState('paused')
+          return
+        }
+        player.pause()
       },
       stop: function () {
         if (isActive(session)) stop()
@@ -355,6 +375,7 @@ window.booklogAudio = (function () {
         session.nextSectionIndex = result.nextSectionIndex
         session.nextChunk = null
         session.prefetchedKey = ''
+        if (result.fallbackText) return speakFallback(session, result.fallbackText)
         if (session.objectUrl) URL.revokeObjectURL(session.objectUrl)
         session.objectUrl = URL.createObjectURL(result.blob)
         session.player.src = session.objectUrl
@@ -369,12 +390,79 @@ window.booklogAudio = (function () {
       })
   }
 
+  function splitSpeech(text) {
+    var pieces = []
+    String(text)
+      .split(/\n+/)
+      .forEach(function (line) {
+        var rest = line.trim()
+        // 일부 브라우저는 긴 발화를 중간에 끊으므로 문장 단위, 최대 180자로 나눠 읽습니다.
+        while (rest.length > 180) {
+          var cut = Math.max(rest.lastIndexOf('. ', 180), rest.lastIndexOf('? ', 180), rest.lastIndexOf('! ', 180))
+          if (cut < 40) cut = rest.lastIndexOf(' ', 180)
+          if (cut < 1) cut = 180
+          pieces.push(rest.slice(0, cut + 1).trim())
+          rest = rest.slice(cut + 1).trim()
+        }
+        if (rest) pieces.push(rest)
+      })
+    return pieces
+  }
+
+  function speakFallback(session, text) {
+    var synth = window.speechSynthesis
+    if (!synth || typeof window.SpeechSynthesisUtterance !== 'function') {
+      setError(session, new Error('이 구간은 AI 음성을 만들지 못했고, 이 브라우저는 기기 음성을 지원하지 않습니다.'))
+      return
+    }
+    var pieces = splitSpeech(text)
+    var voices = typeof synth.getVoices === 'function' ? synth.getVoices() : []
+    var voice =
+      voices.filter(function (item) {
+        return item.name === session.state.readAloudVoiceName
+      })[0]
+      || voices.filter(function (item) {
+        return /^ko/i.test(item.lang)
+      })[0]
+      || null
+    var index = 0
+    session.fallback = true
+    session.positionReady = true
+    session.state.cloudAudioBusy = false
+    session.state.cloudAudioActive = true
+    session.state.cloudAudioMessage = playbackMessage(session)
+    updateMediaSession(session)
+    setMediaPlaybackState('playing')
+    prepareNextChunk(session)
+    function speakNext() {
+      if (!isActive(session) || !session.fallback) return
+      if (index >= pieces.length) {
+        advanceChunk(session)
+        return
+      }
+      var utterance = new window.SpeechSynthesisUtterance(pieces[index])
+      index += 1
+      utterance.lang = 'ko-KR'
+      if (voice) utterance.voice = voice
+      utterance.rate = Number(session.state.readAloudRate || 1)
+      utterance.onend = speakNext
+      utterance.onerror = function (event) {
+        if (!isActive(session) || (event && (event.error === 'interrupted' || event.error === 'canceled'))) return
+        setError(session, new Error('기기 음성으로 읽지 못했습니다.'))
+      }
+      synth.speak(utterance)
+    }
+    synth.cancel()
+    speakNext()
+  }
+
   function advanceChunk(session) {
     if (!isActive(session)) return
     var next = nextPosition(session)
     var chapterDone = session.chunkIndex + 1 >= session.chunkCount
     savePosition(session, true, chapterDone)
     session.positionReady = false
+    session.fallback = false
     if (!next) {
       session.completed = true
       session.state.cloudAudioActive = false
@@ -416,6 +504,7 @@ window.booklogAudio = (function () {
       && activeSession.positionReady
       && !activeSession.failed
       && !activeSession.completed
+      && !activeSession.fallback
     ) {
       playAudio(activeSession)
       return
@@ -440,6 +529,7 @@ window.booklogAudio = (function () {
       nextChunk: null,
       nextSectionIndex: -1,
       prefetchedKey: '',
+      fallback: false,
       cacheUnavailable: false,
       lastSavedAt: 0,
       syncFailed: false,
@@ -546,6 +636,8 @@ window.booklogAudio = (function () {
     savePosition(session, true, false)
     activeSession = null
     session.controller.abort()
+    if (session.fallback && window.speechSynthesis) window.speechSynthesis.cancel()
+    session.fallback = false
     var player = session.player
     player.onpause = null
     player.onended = null

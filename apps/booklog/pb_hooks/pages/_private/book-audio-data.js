@@ -1,4 +1,5 @@
 const epubReadingMetrics = require(__hooks + '/pages/_private/epub-reading-metrics.js')
+const generation = require(__hooks + '/pages/_private/book-audio-generation-service.js')
 
 /**
  * 서버의 낭독 설정과 재사용 식별자를 만듭니다.
@@ -148,37 +149,39 @@ function countFileChunks(app, fileId) {
 }
 
 /**
- * 재생할 수 있는 생성 완료 구간을 찾습니다.
+ * 재생할 구간을 찾습니다. 생성 완료 구간과, 재시도를 모두 소진해 기기 음성으로 대신 읽을 구간을 돌려줍니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
  * @param {string} configHash 낭독 설정 해시
  * @param {number} sectionIndex spine 순서
  * @param {number} chunkIndex 챕터 내 구간 순서
- * @returns {core.Record | null} 생성 완료 구간
+ * @returns {core.Record | null} 재생할 구간
  */
-function findReadyChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
+function findPlayableChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
   return (
     app.findRecordsByFilter(
       'book_audio_chunks',
       'file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex}'
-        + " && chunk_index = {:chunkIndex} && status = 'ready' && audio_file != ''",
+        + ' && chunk_index = {:chunkIndex}'
+        + " && ((status = 'ready' && audio_file != '') || (status = 'failed' && attempt_count >= {:maxAttempts}))",
       '',
       1,
       0,
-      { fileId, configHash, sectionIndex, chunkIndex }
+      { fileId, configHash, sectionIndex, chunkIndex, maxAttempts: generation.MAX_ATTEMPTS }
     )[0] || null
   )
 }
 
 /**
- * 생성 완료 구간을 재생 정보로 만듭니다.
- * @param {core.Record} chunk 생성 완료 구간
+ * 재생할 구간을 재생 정보로 만듭니다. 생성에 끝내 실패한 구간은 기기 음성으로 읽을 원문을 담습니다.
+ * @param {core.Record} chunk 재생할 구간
  * @param {string} bookId 접근을 확인한 책 ID
  * @param {number} chunkCount 챕터의 구간 수
  * @param {number} nextSectionIndex 다음 챕터 spine 순서, 없으면 -1
  * @returns {types.BookAudioChunkView} 재생 정보
  */
 function chunkView(chunk, bookId, chunkCount, nextSectionIndex) {
+  const ready = String(chunk.get('status')) === 'ready'
   const query =
     'bookId='
     + encodeURIComponent(bookId)
@@ -191,7 +194,10 @@ function chunkView(chunk, bookId, chunkCount, nextSectionIndex) {
     configHash: String(chunk.get('config_hash')),
     chunkCount,
     nextSectionIndex,
-    audioUrl: '/xapi/books/audio-file?' + query + '&v=' + $security.sha256(String(chunk.get('generated_at'))),
+    audioUrl: ready
+      ? '/xapi/books/audio-file?' + query + '&v=' + $security.sha256(String(chunk.get('generated_at')))
+      : '',
+    fallbackText: ready ? '' : String(chunk.get('input_text')),
   }
 }
 
@@ -203,6 +209,6 @@ module.exports = {
   countFileChunks,
   findNextSectionIndex,
   findChunkIndexByText,
-  findReadyChunk,
+  findPlayableChunk,
   chunkView,
 }

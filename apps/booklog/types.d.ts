@@ -31,7 +31,10 @@ declare namespace types {
     configHash: string
     chunkCount: number
     nextSectionIndex: number
+    /** 생성 완료 구간의 음성 주소. 대체 구간이면 빈 문자열 */
     audioUrl: string
+    /** 생성에 끝내 실패해 기기 음성으로 읽을 원문. 생성 완료 구간이면 빈 문자열 */
+    fallbackText: string
   }
 
   interface BookAudioJobCounts {

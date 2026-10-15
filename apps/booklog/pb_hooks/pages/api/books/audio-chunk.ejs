@@ -38,7 +38,7 @@
   }
   try {
     const settings = audioData.getSettings(String(env('BOOKLOG_TTS_MODEL') || 'gemini-3.8-flash-tts').trim())
-    const chunk = audioData.findReadyChunk($app, fileId, settings.configHash, sectionIndex, chunkIndex)
+    const chunk = audioData.findPlayableChunk($app, fileId, settings.configHash, sectionIndex, chunkIndex)
     if (!chunk) {
       dbg('api/books/audio-chunk:not-ready', { userId, fileId, sectionIndex, chunkIndex })
       response.json(404, { ok: false, message: '이 구간은 아직 AI 오디오북이 생성되지 않았습니다.' })

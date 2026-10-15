@@ -95,11 +95,17 @@
     }
     const chunk = $app.findRecordsByFilter(
       'book_audio_chunks',
-      'id = {:chunkId} && file_id = {:fileId} && config_hash = {:configHash} && status = "ready"',
+      'id = {:chunkId} && file_id = {:fileId} && config_hash = {:configHash}'
+        + " && (status = 'ready' || (status = 'failed' && attempt_count >= {:maxAttempts}))",
       '',
       1,
       0,
-      { chunkId, fileId, configHash: savedConfigHash }
+      {
+        chunkId,
+        fileId,
+        configHash: savedConfigHash,
+        maxAttempts: resolve('book-audio-generation-service').MAX_ATTEMPTS,
+      }
     )[0]
     if (!chunk) {
       response.json(409, { ok: false, message: '청취하던 음성 구간이 변경됐습니다. 현재 저장된 위치로 이어 듣습니다.' })
