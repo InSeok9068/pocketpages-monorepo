@@ -15,7 +15,7 @@ declare namespace pocketpagesAi {
      */
     maxAttempts?: number
 
-    /** Gemini API 키입니다. 생략하면 `GEMINI_API_KEY` 또는 `GEMINI_AI_KEY`를 사용합니다. */
+    /** Gemini API 키입니다. 생략하면 `GEMINI_API_KEY`, `GEMINI_APIKEY`, `GEMINI_AI_KEY`를 사용합니다. */
     geminiApiKey?: string
 
     /** OpenAI API 키입니다. 생략하면 `OPENAI_API_KEY`를 사용합니다. */
@@ -691,10 +691,27 @@ declare namespace pocketpagesAi {
     rateLimitCause: AiRateLimitCause
   }
 
+  /** Gemini 3.8 TTS의 낭독 요청입니다. */
+  interface GeminiSpeechRequest extends AiRequestBase {
+    model: string
+    input: string
+    voice?: string
+    style?: string
+    apiVersion?: string
+  }
+
+  interface AiSpeechResult extends AiResult {
+    /** 생성된 WAV 음성입니다. 실패하면 null입니다. */
+    audio: { data: string; mimeType: string } | null
+  }
+
   /** provider별 호출 함수를 제공하는 PocketBase JSVM용 AI 클라이언트입니다. */
   interface AiClient {
     /** Gemini `generateContent` API를 호출합니다. */
     gemini(request: GeminiRequest): AiResult
+
+    /** Gemini Interactions API로 음성을 생성합니다. */
+    geminiSpeech(request: GeminiSpeechRequest): AiSpeechResult
 
     /** OpenAI Responses API를 호출합니다. */
     openai(request: OpenAiRequest): AiResult

@@ -1,4 +1,53 @@
 declare namespace types {
+  /** `$app`과 트랜잭션 `txApp`을 모두 받는 DB 앱입니다. */
+  type BooklogApp = PocketBase | core.App
+
+  interface BookAudioSettings {
+    provider: string
+    model: string
+    voice: string
+    style: string
+    pipelineVersion: string
+    configHash: string
+  }
+
+  interface BookAudioSection {
+    sectionIndex: number
+    chunks: string[]
+  }
+
+  interface BookAudioGenerationResult {
+    ok: boolean
+    statusCode: number
+    error: string
+  }
+
+  interface BookAudioChunkView {
+    chunkId: string
+    configHash: string
+    chunkCount: number
+    audioUrl: string
+  }
+
+  interface BookAudioJobCounts {
+    total: number
+    ready: number
+    failed: number
+  }
+
+  interface BookAudioJobView {
+    status: string
+    totalChunks: number
+    readyChunks: number
+    failedChunks: number
+    percent: number
+    statusLabel: string
+    nextRunLabel: string
+    errorMessage: string
+    canStart: boolean
+    canPause: boolean
+  }
+
   interface BooklogOneSignalPushInput {
     externalIds: string[]
     title: string

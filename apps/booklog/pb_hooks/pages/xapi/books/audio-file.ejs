@@ -1,0 +1,53 @@
+<script server>
+  if (request.method !== 'GET') {
+    response.html(405, 'GET 요청만 가능합니다.')
+    return
+  }
+  if (!request.auth) {
+    response.html(401, '로그인이 필요합니다.')
+    return
+  }
+  const query = request.url.query
+  const userId = String(request.auth.get('id'))
+  const bookId = String(query.bookId || '')
+  const fileId = String(query.fileId || '')
+  const chunkId = String(query.chunkId || '')
+  const audioData = resolve('book-audio-data')
+  let chunk = null
+  try {
+    audioData.findAuthorizedFile($app, userId, bookId, fileId)
+    chunk = $app.findFirstRecordByFilter(
+      'book_audio_chunks',
+      'id = {:chunkId} && file_id = {:fileId} && status = "ready"',
+      { chunkId, fileId }
+    )
+  } catch (_exception) {
+    response.html(404, '접근할 수 있는 음성을 찾지 못했습니다.')
+    return
+  }
+  const filename = String(chunk.get('audio_file') || '')
+  if (!filename) {
+    response.html(404, '음성 파일을 찾지 못했습니다.')
+    return
+  }
+  // 권한을 먼저 확인한 뒤 파일별 ETag로 브라우저 다운로드를 줄입니다.
+  const etag = '"' + $security.sha256(chunkId + ':' + filename + ':' + String(chunk.get('generated_at'))) + '"'
+  response.header('ETag', etag)
+  response.header('Cache-Control', 'private, max-age=0, must-revalidate')
+  response.header('Content-Type', 'audio/wav')
+  if (request.header('If-None-Match') === etag) {
+    request.event.noContent(304)
+    return
+  }
+  dbg('xapi/books/audio-file:serve', { userId, bookId, chunkId })
+  const fsys = $app.newFilesystem()
+  let reader = null
+  try {
+    reader = fsys.getReader(String(chunk.baseFilesPath()) + '/' + filename)
+    request.event.stream(200, 'audio/wav', reader)
+  } finally {
+    if (reader) reader.close()
+    fsys.close()
+  }
+  return
+</script>

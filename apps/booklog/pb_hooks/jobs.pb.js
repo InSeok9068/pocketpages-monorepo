@@ -65,6 +65,18 @@ cronAdd('booklog-push-send-log-cleanup', '20 18 * * *', function () {
   }
 })
 
+cronAdd('booklog-audio-book', '*/2 * * * *', function () {
+  try {
+    const audioBookJob = require(__hooks + '/jobs/audio-book-job.js')
+
+    audioBookJob.run()
+  } catch (exception) {
+    $app
+      .logger()
+      .error('jobs/audio-book:failed', 'error', String(exception && exception.message ? exception.message : exception))
+  }
+})
+
 cronAdd('booklog-reading-session-merge', '30 18 * * *', function () {
   try {
     const readingSessionMergeJob = require(__hooks + '/jobs/reading-session-merge-job.js')

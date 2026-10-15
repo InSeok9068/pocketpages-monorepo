@@ -28,6 +28,26 @@ const epubHtmlToText = compileHtmlToText({
     { selector: 'h6', options: { uppercase: false } },
   ],
 })
+const epubAudioHtmlToText = compileHtmlToText({
+  wordwrap: false,
+  selectors: [
+    { selector: 'a', options: { ignoreHref: true } },
+    { selector: 'img', format: 'skip' },
+    { selector: 'nav', format: 'skip' },
+    { selector: '[hidden]', format: 'skip' },
+    { selector: '[aria-hidden="true"]', format: 'skip' },
+    { selector: 'blockquote', format: 'block' },
+    { selector: 'ul', format: 'block' },
+    { selector: 'ol', format: 'block' },
+    { selector: 'li', format: 'block' },
+    { selector: 'h1', options: { uppercase: false } },
+    { selector: 'h2', options: { uppercase: false } },
+    { selector: 'h3', options: { uppercase: false } },
+    { selector: 'h4', options: { uppercase: false } },
+    { selector: 'h5', options: { uppercase: false } },
+    { selector: 'h6', options: { uppercase: false } },
+  ],
+})
 const excludedEntryNames = [
   'cover',
   'coverpage',
@@ -74,7 +94,7 @@ function getXmlChild(node, key) {
 }
 
 function getXmlChildren(node, key) {
-  return ensureArray(getXmlChild(node, key))
+  return ensureArray(node && typeof node === 'object' ? node[key] : null)
 }
 
 function parseXmlDocument(xmlText) {
@@ -341,7 +361,89 @@ function buildReadingMetricsFromBytes(epubBytes) {
   return buildReadingMetrics(archiveEntries, manifestItems, packageDocumentPath, packageDocument)
 }
 
+function readAudioSpinePaths(epubBytes) {
+  const metadata = fflate.unzipSync(epubBytes, {
+    filter: function (file) {
+      return (file.name === 'META-INF/container.xml' || /\.opf$/i.test(file.name)) && file.originalSize <= 1024 * 1024
+    },
+  })
+  const packagePath = parseContainerRootfilePath(parseXmlDocument(readArchiveText(metadata, 'META-INF/container.xml')))
+  const packageDocument = parseXmlDocument(readArchiveText(metadata, packagePath))
+  const items = parseManifestItems(packageDocument)
+  return parseSpineIdrefs(packageDocument).map(function (idref) {
+    const item = items.filter(function (entry) {
+      return entry.id === idref
+    })[0]
+    if (!item || !/^(application\/xhtml\+xml|text\/html)$/.test(item.mediaType)) return ''
+    return joinPath(dirname(packagePath), decodeURIComponent(item.href.split('#')[0]))
+  })
+}
+
+function unzipAudioEntries(epubBytes, entryPaths) {
+  return fflate.unzipSync(epubBytes, {
+    filter: function (file) {
+      return entryPaths.indexOf(file.name) >= 0 && file.originalSize <= 2 * 1024 * 1024
+    },
+  })
+}
+
+/**
+ * EPUB 전체에서 본문이 있는 챕터의 낭독 구간을 만듭니다.
+ * @param {Uint8Array} epubBytes EPUB 압축 바이트
+ * @returns {types.BookAudioSection[]} spine 순서의 챕터별 낭독 구간
+ */
+function buildAudioBookFromBytes(epubBytes) {
+  const entryPaths = readAudioSpinePaths(epubBytes)
+  const archive = unzipAudioEntries(
+    epubBytes,
+    entryPaths.filter(function (entryPath) {
+      return !!entryPath
+    })
+  )
+  const sections = []
+  for (let sectionIndex = 0; sectionIndex < entryPaths.length; sectionIndex += 1) {
+    const text = entryPaths[sectionIndex] ? readAudioText(archive, entryPaths[sectionIndex]) : ''
+    if (text) sections.push({ sectionIndex, chunks: splitAudioText(text) })
+  }
+  return sections
+}
+
+function readAudioText(archive, entryPath) {
+  if (!archive[entryPath]) return ''
+  return epubAudioHtmlToText(readArchiveText(archive, entryPath))
+    .replace(/\r/g, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\u00ad/g, '')
+    .trim()
+}
+
+function splitAudioText(text) {
+  let remaining = text
+  const chunks = []
+  while (remaining.length > 1400) {
+    const windowText = remaining.slice(0, 1400)
+    let boundary = windowText.lastIndexOf('\n\n')
+    if (boundary < 700) {
+      const sentences = /[.!?。！？][”’"']?\s+/g
+      let match = sentences.exec(windowText)
+      boundary = -1
+      while (match) {
+        boundary = match.index + match[0].length
+        match = sentences.exec(windowText)
+      }
+    }
+    // 짧은 문장도 중간에서 끊지 않습니다. 긴 한 문장일 때만 공백을 사용합니다.
+    if (boundary < 1) boundary = windowText.lastIndexOf(' ')
+    if (boundary < 1) throw new Error('본문을 낭독 구간으로 나누지 못했습니다.')
+    chunks.push(remaining.slice(0, boundary).trim())
+    remaining = remaining.slice(boundary).trim()
+  }
+  if (remaining) chunks.push(remaining)
+  return chunks
+}
+
 module.exports = {
+  buildAudioBookFromBytes,
   buildReadingMetrics,
   buildReadingMetricsFromBytes,
 }

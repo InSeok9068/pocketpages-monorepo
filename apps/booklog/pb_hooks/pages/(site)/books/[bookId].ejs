@@ -174,6 +174,28 @@
       : ''
   const downloadFileUrl =
     bookFileRecord && storedFileName ? '/xapi/books/' + encodeURIComponent(bookId) + '/download-file' : ''
+  const audioJobFileId = bookFileRecord && storedFileName ? String(bookFileRecord.get('id') || '') : ''
+  const showAudioJob = request.auth.get('tts_manager') === true && !!audioJobFileId
+  let audioJob = null
+  let audioJobError = ''
+  let hasStoredAudio = false
+
+  if (showAudioJob) {
+    try {
+      const audioData = resolve('book-audio-data')
+      const audioSettings = audioData.getSettings(String(env('BOOKLOG_TTS_MODEL') || 'gemini-3.8-flash-tts').trim())
+      const audioJobService = resolve('book-audio-job-service')
+      const audioJobRecord = audioJobService.findJob($app, audioJobFileId, audioSettings.configHash)
+      audioJob = audioJobRecord ? audioJobService.jobView(audioJobRecord) : null
+      hasStoredAudio = !!audioJobRecord || audioData.countFileChunks($app, audioJobFileId) > 0
+    } catch (exception) {
+      warn('page/books/[bookId]:audio-job-unavailable', {
+        bookId: bookId,
+        error: String(exception.message || exception),
+      })
+      audioJobError = '오디오북 스키마 또는 TTS 설정을 확인해 주세요.'
+    }
+  }
 
   try {
     highlightRecords = $app.findRecordsByFilter(
@@ -715,4 +737,108 @@
       </form>
     </div>
   </section>
+
+  <% if (showAudioJob) { %>
+  <section
+    class="space-y-4 rounded-[2rem] border border-stone-200/80 bg-white/80 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
+    <h3 class="text-xl font-semibold tracking-tight text-stone-950 sm:text-2xl">AI 오디오북</h3>
+    <% if (audioJobError) { %>
+    <p class="text-sm text-stone-600"><%= audioJobError %></p>
+    <% } else { %>
+    <% if (audioJob) { %>
+    <div class="space-y-2">
+      <div class="h-2 overflow-hidden rounded-full bg-stone-200">
+        <div
+          class="h-full rounded-full bg-stone-900"
+          style="width: <%= audioJob.percent %>%"></div>
+      </div>
+      <p class="text-sm font-medium text-stone-800"><%= audioJob.statusLabel %></p>
+      <% if (audioJob.nextRunLabel) { %>
+      <p class="text-xs text-stone-500"><%= audioJob.nextRunLabel %></p>
+      <% } %>
+      <% if (audioJob.errorMessage) { %>
+      <p class="text-xs text-stone-500"><%= audioJob.errorMessage %></p>
+      <% } %>
+    </div>
+    <% } else { %>
+    <p class="text-sm text-stone-600">아직 생성을 요청하지 않았습니다.</p>
+    <% } %>
+    <div class="flex flex-wrap gap-2">
+      <% if (!audioJob || audioJob.canStart) { %>
+      <form
+        method="post"
+        action="/xapi/books/audio-job"
+        class="m-0">
+        <input
+          type="hidden"
+          name="bookId"
+          value="<%= bookId %>" />
+        <input
+          type="hidden"
+          name="fileId"
+          value="<%= audioJobFileId %>" />
+        <input
+          type="hidden"
+          name="action"
+          value="start" />
+        <button
+          type="submit"
+          class="inline-flex h-10 items-center justify-center rounded-full border-none bg-stone-900 px-4 text-sm font-semibold text-white ring-0 transition outline-none hover:bg-stone-700">
+          <%= audioJob ? '생성 다시 시작' : 'AI 오디오북 생성 요청' %>
+        </button>
+      </form>
+      <% } %>
+      <% if (audioJob && audioJob.canPause) { %>
+      <form
+        method="post"
+        action="/xapi/books/audio-job"
+        class="m-0">
+        <input
+          type="hidden"
+          name="bookId"
+          value="<%= bookId %>" />
+        <input
+          type="hidden"
+          name="fileId"
+          value="<%= audioJobFileId %>" />
+        <input
+          type="hidden"
+          name="action"
+          value="pause" />
+        <button
+          type="submit"
+          class="inline-flex h-10 items-center justify-center rounded-full border-none bg-stone-100 px-4 text-sm font-semibold text-stone-700 ring-0 transition outline-none hover:bg-stone-200">
+          일시 정지
+        </button>
+      </form>
+      <% } %>
+      <% if (hasStoredAudio) { %>
+      <form
+        method="post"
+        action="/xapi/books/audio-job"
+        class="m-0"
+        onsubmit="return window.confirm('생성한 AI 오디오북 음성과 청취 기록을 모두 삭제할까요?')">
+        <input
+          type="hidden"
+          name="bookId"
+          value="<%= bookId %>" />
+        <input
+          type="hidden"
+          name="fileId"
+          value="<%= audioJobFileId %>" />
+        <input
+          type="hidden"
+          name="action"
+          value="delete" />
+        <button
+          type="submit"
+          class="inline-flex h-10 items-center justify-center rounded-full border-none bg-[#efe2d2] px-4 text-sm font-semibold text-[#8e5521] ring-0 transition outline-none hover:bg-[#ead9c4]">
+          오디오북 삭제
+        </button>
+      </form>
+      <% } %>
+    </div>
+    <% } %>
+  </section>
+  <% } %>
 </section>

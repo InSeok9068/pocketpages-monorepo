@@ -1,0 +1,144 @@
+<script server>
+  response.header('Cache-Control', 'no-store')
+  if (request.method !== 'GET' && request.method !== 'POST') {
+    response.json(405, { ok: false, message: 'GET 또는 POST 요청만 가능합니다.' })
+    return
+  }
+  if (!request.auth) {
+    response.json(401, { ok: false, message: '로그인이 필요합니다.' })
+    return
+  }
+  const input = request.method === 'GET' ? request.url.query : body()
+  const userId = String(request.auth.get('id'))
+  const bookId = String(input.bookId || '')
+  const fileId = String(input.fileId || '')
+  const audioData = resolve('book-audio-data')
+  try {
+    audioData.findAuthorizedFile($app, userId, bookId, fileId)
+  } catch (_exception) {
+    response.json(404, { ok: false, message: '내 서재에서 EPUB 파일을 찾지 못했습니다.' })
+    return
+  }
+  try {
+    $app.findCollectionByNameOrId('book_audio_progress')
+  } catch (_exception) {
+    response.json(503, { ok: false, message: '오디오북 스키마를 관리자에서 먼저 import해 주세요.' })
+    return
+  }
+  try {
+    const settings = audioData.getSettings(String(env('BOOKLOG_TTS_MODEL') || 'gemini-3.8-flash-tts').trim())
+    const bindings = { userId, fileId, configHash: settings.configHash }
+    const filter = 'user_id = {:userId} && file_id = {:fileId} && config_hash = {:configHash}'
+    if (request.method === 'GET') {
+      const progress = $app.findRecordsByFilter(
+        'book_audio_progress',
+        filter,
+        '-last_listened_at,-updated',
+        1,
+        0,
+        bindings
+      )[0]
+      let chunkIndex = progress ? Number(progress.get('chunk_index')) : 0
+      let seconds = progress ? Number(progress.get('position_seconds')) : 0
+      if (progress && !progress.get('is_completed') && progress.get('audio_chunk_id')) {
+        const previous = $app.findRecordsByFilter(
+          'book_audio_chunks',
+          'id = {:chunkId} && file_id = {:fileId}',
+          '',
+          1,
+          0,
+          { chunkId: String(progress.get('audio_chunk_id')), fileId }
+        )[0]
+        const duration = previous ? Number(previous.get('duration_seconds')) : 0
+        if (duration > 0 && seconds >= duration) {
+          const chunkCount = audioData.countSectionChunks(
+            $app,
+            fileId,
+            settings.configHash,
+            Number(progress.get('section_index'))
+          )
+          if (chunkIndex + 1 < chunkCount) {
+            chunkIndex += 1
+            seconds = 0
+          }
+        }
+      }
+      dbg('api/books/audio-progress:load', { userId, fileId, found: !!progress })
+      response.json(200, {
+        ok: true,
+        configHash: settings.configHash,
+        progress: progress
+          ? {
+              sectionIndex: Number(progress.get('section_index')),
+              chunkIndex,
+              seconds,
+              isCompleted: !!progress.get('is_completed'),
+            }
+          : null,
+      })
+      return
+    }
+    const savedConfigHash = String(input.configHash || '')
+    if (!/^[a-f0-9]{64}$/.test(savedConfigHash)) {
+      response.json(400, { ok: false, message: '낭독 설정 정보를 확인해 주세요.' })
+      return
+    }
+    const chunkId = String(input.chunkId || '')
+    const seconds = Number(input.seconds)
+    const completed = String(input.isCompleted) === 'true'
+    const restart = String(input.restart) === 'true'
+    if (!chunkId || !isFinite(seconds) || seconds < 0) {
+      response.json(400, { ok: false, message: '청취 위치를 확인해 주세요.' })
+      return
+    }
+    const chunk = $app.findRecordsByFilter(
+      'book_audio_chunks',
+      'id = {:chunkId} && file_id = {:fileId} && config_hash = {:configHash} && status = "ready"',
+      '',
+      1,
+      0,
+      { chunkId, fileId, configHash: savedConfigHash }
+    )[0]
+    if (!chunk) {
+      response.json(409, { ok: false, message: '청취하던 음성 구간이 변경됐습니다. 현재 저장된 위치로 이어 듣습니다.' })
+      return
+    }
+    const sectionIndex = Number(chunk.get('section_index'))
+    const chunkIndex = Number(chunk.get('chunk_index'))
+    const duration = Number(chunk.get('duration_seconds') || 0)
+    const chunkCount = audioData.countSectionChunks($app, fileId, savedConfigHash, sectionIndex)
+    if (completed && chunkIndex !== chunkCount - 1) {
+      response.json(400, { ok: false, message: '마지막 구간까지 들은 후 완료할 수 있습니다.' })
+      return
+    }
+    $app.runInTransaction(function (txApp) {
+      const progressBindings = { userId, fileId, configHash: savedConfigHash, sectionIndex }
+      let progress = txApp.findRecordsByFilter(
+        'book_audio_progress',
+        filter + ' && section_index = {:sectionIndex}',
+        '',
+        1,
+        0,
+        progressBindings
+      )[0]
+      // 다른 탭의 늦은 일반 저장이 완료 기록을 취소하지 않도록 합니다.
+      if (progress && progress.get('is_completed') && !restart && !completed) return
+      if (!progress) progress = new Record(txApp.findCollectionByNameOrId('book_audio_progress'))
+      progress.set('user_id', userId)
+      progress.set('file_id', fileId)
+      progress.set('config_hash', savedConfigHash)
+      progress.set('section_index', sectionIndex)
+      progress.set('chunk_index', chunkIndex)
+      progress.set('audio_chunk_id', chunkId)
+      progress.set('position_seconds', duration > 0 ? Math.min(seconds, duration) : seconds)
+      progress.set('is_completed', completed)
+      progress.set('last_listened_at', new Date().toISOString())
+      txApp.save(progress)
+    })
+    dbg('api/books/audio-progress:saved', { userId, fileId, chunkId, completed })
+    response.json(200, { ok: true })
+  } catch (exception) {
+    error('api/books/audio-progress:failed', { userId, fileId, error: String(exception.message || exception) })
+    response.json(500, { ok: false, message: '청취 위치를 동기화하지 못했습니다. 다시 시도해 주세요.' })
+  }
+</script>

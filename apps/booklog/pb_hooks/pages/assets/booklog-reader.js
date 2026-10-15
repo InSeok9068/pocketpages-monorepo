@@ -705,7 +705,7 @@ window.booklogReaderLogic = (function () {
     }
   }
 
-  function stopSpeechPlayback(component, options) {
+  function stopBrowserSpeech(component, options) {
     var shouldKeepMessage = !!(options && options.keepMessage)
 
     clearSpeechRestartTimer()
@@ -720,6 +720,11 @@ window.booklogReaderLogic = (function () {
     resetReadAloudState(component || speechCurrentComponent, {
       keepMessage: shouldKeepMessage,
     })
+  }
+
+  function stopSpeechPlayback(component, options) {
+    if (window.booklogAudio) window.booklogAudio.stop()
+    stopBrowserSpeech(component, options)
   }
 
   function getSpeechSynthesisInstance() {
@@ -3859,23 +3864,41 @@ window.booklogReaderLogic = (function () {
     component.readAloudMessage = '현재 챕터를 준비하는 중입니다.'
     speechActiveToken += 1
     speechCurrentComponent = component
+    var currentToken = speechActiveToken
 
     buildReadAloudQueue(component)
       .then(function (queue) {
-        if (speechCurrentComponent !== component) {
+        if (speechCurrentComponent !== component || currentToken !== speechActiveToken) {
           return
         }
 
         speechQueue = queue
         speechQueueIndex = 0
-        speakQueueItem(component, speechActiveToken)
+        speakQueueItem(component, currentToken)
       })
       .catch(function (exception) {
+        if (currentToken !== speechActiveToken) return
         resetReadAloudState(component, {
           keepMessage: true,
         })
         component.readAloudMessage = String(exception && exception.message ? exception.message : exception)
       })
+  }
+
+  function startCloudAudio(component, fromBeginning) {
+    var location = currentLocation && currentLocation.start ? currentLocation.start : null
+    var section = bookInstance && location ? bookInstance.section(location.href) : null
+    if (!section || !window.booklogAudio) {
+      component.cloudAudioMessage = '리더가 준비된 후 다시 시도해 주세요.'
+      return
+    }
+    stopBrowserSpeech(component, { keepMessage: true })
+    window.booklogAudio.start(component, section.index, !!fromBeginning)
+  }
+
+  function audioChapterLabel(sectionIndex) {
+    var section = bookInstance && bookInstance.spine ? bookInstance.spine.get(sectionIndex) : null
+    return section ? getChapterLabelForSection(section) : ''
   }
 
   function stopReadAloud(component) {
@@ -4578,6 +4601,8 @@ window.booklogReaderLogic = (function () {
     isActiveTocItem: isActiveTocItem,
     scrollActiveTocItemIntoView: scrollActiveTocItemIntoView,
     startReadAloud: startReadAloud,
+    startCloudAudio: startCloudAudio,
+    audioChapterLabel: audioChapterLabel,
     stopReadAloud: stopReadAloud,
     loadHighlights: loadHighlights,
     goToHighlight: goToHighlight,

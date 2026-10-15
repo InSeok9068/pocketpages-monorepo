@@ -1,0 +1,82 @@
+<script server>
+  /**
+   * 결과 메시지와 함께 책 상세로 돌아갑니다.
+   * @param {string} redirectTo 이동할 경로
+   * @param {string} message 안내 메시지
+   */
+  function redirectWithMessage(redirectTo, message) {
+    dbg('xapi/books/audio-job:redirect', { status: 303, redirectTo, message })
+    redirect(redirectTo, { status: 303, message })
+  }
+
+  if (request.method !== 'POST') {
+    redirectWithMessage('/', '잘못된 요청입니다.')
+    return
+  }
+  if (!request.auth) {
+    redirectWithMessage('/auth', '로그인이 필요합니다.')
+    return
+  }
+  const userId = String(request.auth.get('id') || '')
+  const form = body()
+  const bookId = String(form.bookId || '').trim()
+  const fileId = String(form.fileId || '').trim()
+  const action = String(form.action || '')
+  const bookDetailPath = bookId ? '/books/' + encodeURIComponent(bookId) : '/'
+  dbg('xapi/books/audio-job:start', { userId, bookId, fileId, action })
+  if (request.auth.get('tts_manager') !== true) {
+    warn('xapi/books/audio-job:forbidden', { userId, bookId })
+    redirectWithMessage(bookDetailPath, 'AI 오디오북 생성 권한이 없습니다.')
+    return
+  }
+  if (!bookId || !fileId || ['start', 'pause', 'delete'].indexOf(action) < 0) {
+    redirectWithMessage(bookDetailPath, '요청 정보를 확인해 주세요.')
+    return
+  }
+  const audioData = resolve('book-audio-data')
+  const jobService = resolve('book-audio-job-service')
+  let file = null
+  try {
+    file = audioData.findAuthorizedFile($app, userId, bookId, fileId)
+    $app.findCollectionByNameOrId('book_audio_jobs')
+  } catch (_exception) {
+    warn('xapi/books/audio-job:file-or-schema-missing', { userId, bookId, fileId })
+    redirectWithMessage(bookDetailPath, '내 도서함의 EPUB 파일 또는 오디오북 스키마를 찾지 못했습니다.')
+    return
+  }
+  let message = ''
+  try {
+    const settings = audioData.getSettings(String(env('BOOKLOG_TTS_MODEL') || 'gemini-3.8-flash-tts').trim())
+    if (action === 'start') {
+      const sections = audioData.readBookSections($app, file, toBytes)
+      if (!sections.length) {
+        message = '이 책에서 낭독할 본문을 찾지 못했습니다.'
+      } else {
+        const job = jobService.planJob($app, fileId, userId, settings, sections)
+        info('xapi/books/audio-job:planned', {
+          userId,
+          fileId,
+          jobId: String(job.get('id')),
+          status: String(job.get('status')),
+          totalChunks: Number(job.get('total_chunks')),
+        })
+        message =
+          job.get('status') === 'completed'
+            ? 'AI 오디오북이 이미 모두 생성되어 있습니다.'
+            : 'AI 오디오북 생성을 예약했습니다. 서버가 순서대로 만듭니다.'
+      }
+    } else if (action === 'delete') {
+      const deleted = jobService.deleteAudioBook($app, fileId)
+      info('xapi/books/audio-job:deleted', { userId, fileId, deleted })
+      message = deleted.chunks + deleted.jobs > 0 ? 'AI 오디오북을 삭제했습니다.' : '삭제할 AI 오디오북이 없습니다.'
+    } else {
+      const paused = jobService.pauseJob($app, fileId, settings.configHash)
+      info('xapi/books/audio-job:paused', { userId, fileId, paused })
+      message = paused ? 'AI 오디오북 생성을 일시 정지했습니다.' : '진행 중인 AI 오디오북 생성이 없습니다.'
+    }
+  } catch (exception) {
+    error('xapi/books/audio-job:failed', { userId, fileId, action, error: String(exception.message || exception) })
+    message = 'AI 오디오북 작업을 처리하지 못했습니다.'
+  }
+  redirectWithMessage(bookDetailPath, message)
+</script>

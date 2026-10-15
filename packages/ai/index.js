@@ -8,7 +8,7 @@ const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com'
 const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 const DEFAULT_TIMEOUT_SECONDS = 60
 const DEFAULT_MAX_ATTEMPTS = 1
-const GEMINI_API_KEY_ENV_NAMES = ['GEMINI_API_KEY', 'GEMINI_AI_KEY']
+const GEMINI_API_KEY_ENV_NAMES = ['GEMINI_API_KEY', 'GEMINI_APIKEY', 'GEMINI_AI_KEY']
 const OPENAI_API_KEY_ENV_NAMES = ['OPENAI_API_KEY']
 const DEEPSEEK_API_KEY_ENV_NAMES = ['DEEPSEEK_API_KEY']
 const GEMINI_PAYLOAD_FIELDS = [
@@ -911,6 +911,62 @@ function requestGemini(input, runtime) {
 }
 
 /**
+ * Gemini Interactions API로 낭독 음성을 생성합니다.
+ * @param {Record<string, any>} input 음성 요청입니다.
+ * @param {Record<string, any>} runtime 런타임 의존성입니다.
+ * @returns {Record<string, any>} 음성과 호출 결과입니다.
+ */
+function requestGeminiSpeech(input, runtime) {
+  const request = input || {}
+  const apiKey = requireText(resolveApiKey('gemini', request, runtime), 'Gemini apiKey')
+  const model = requireText(request.model, 'Gemini model')
+  const text = requireText(request.input, 'Gemini speech input')
+  const content = { type: 'text', text }
+  if (request.style) content.annotations = [{ type: 'speech_metadata', style: String(request.style) }]
+  const result = sendWithRetry(
+    {
+      provider: 'gemini',
+      model,
+      maxAttempts: normalizeAttempts(request.maxAttempts, runtime.defaultMaxAttempts),
+      parseJson: false,
+      isRetryableResponse: isRetryableGeminiResponse,
+      extractText: function () {
+        return ''
+      },
+      httpOptions: {
+        url: `${request.baseUrl || DEFAULT_GEMINI_BASE_URL}/${request.apiVersion || DEFAULT_GEMINI_API_VERSION}/interactions`,
+        method: 'POST',
+        timeout: normalizePositiveNumber(request.timeoutSeconds, runtime.defaultTimeoutSeconds),
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          model,
+          input: [{ type: 'user_input', content: [content] }],
+          response_format: { type: 'audio', mime_type: 'audio/wav' },
+          generation_config: { speech_config: [{ voice: cleanText(request.voice) || 'Sulafat' }] },
+        }),
+      },
+    },
+    runtime
+  )
+  result.audio = null
+  if (!result.ok) return result
+  const steps = Array.isArray(result.responseJson.steps) ? result.responseJson.steps : []
+  steps.forEach(function (step) {
+    if (step.type !== 'model_output' || !Array.isArray(step.content)) return
+    step.content.forEach(function (part) {
+      if (part.type === 'audio' && cleanText(part.data)) {
+        result.audio = { data: part.data, mimeType: cleanText(part.mime_type) || 'audio/wav' }
+      }
+    })
+  })
+  if (!result.audio) {
+    result.ok = false
+    result.errorMessage = 'Gemini returned no audio'
+  }
+  return result
+}
+
+/**
  * OpenAI Responses API 요청을 실행합니다.
  * @param {Record<string, any>} input 요청 옵션입니다.
  * @param {Record<string, any>} runtime 런타임 의존성입니다.
@@ -1001,6 +1057,9 @@ function createAiClient(options) {
   return {
     gemini(request) {
       return requestGemini(request, runtime)
+    },
+    geminiSpeech(request) {
+      return requestGeminiSpeech(request, runtime)
     },
     openai(request) {
       return requestOpenAi(request, runtime)
