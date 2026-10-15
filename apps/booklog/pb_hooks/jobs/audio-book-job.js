@@ -10,6 +10,8 @@ function run() {
   const jobService = require(__hooks + '/pages/_private/book-audio-job-service.js')
   const logger = $app.logger()
   const nowMs = Date.now()
+  const regenerated = jobService.applyRegenerateRequests($app, nowMs)
+  if (regenerated > 0) logger.info('jobs/audio-book:regenerate-requested', 'chunks', String(regenerated))
   const job = $app.findRecordsByFilter(
     'book_audio_jobs',
     "(status = 'queued' || status = 'running') && (next_run_at = '' || next_run_at <= {:now})",

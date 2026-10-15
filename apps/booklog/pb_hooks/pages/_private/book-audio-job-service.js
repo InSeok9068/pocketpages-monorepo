@@ -302,7 +302,56 @@ function jobView(job) {
   }
 }
 
+/**
+ * 관리자가 `regenerate_requested`를 켠 구간을 처음 상태로 되돌리고, 끝난 작업은 다시 진행 상태로 바꿉니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {number} nowMs 현재 시각(ms)
+ * @returns {number} 초기화한 구간 수
+ */
+function applyRegenerateRequests(app, nowMs) {
+  const touched = {}
+  let reset = 0
+  app.findRecordsByFilter('book_audio_chunks', 'regenerate_requested = true', '', 100, 0).forEach(function (record) {
+    app.runInTransaction(function (txApp) {
+      const chunk = txApp.findRecordById('book_audio_chunks', String(record.get('id')))
+      if (!chunk.get('regenerate_requested')) return
+      // 생성 중인 구간은 결과 저장과 겹치지 않도록 끝난 뒤 다음 실행에서 초기화합니다.
+      if (chunk.get('status') === 'generating' && !generation.isClaimable(chunk, nowMs)) return
+      chunk.set('status', 'queued')
+      chunk.set('audio_file', '')
+      chunk.set('duration_seconds', 0)
+      chunk.set('attempt_count', 0)
+      chunk.set('next_retry_at', '')
+      chunk.set('error_message', '')
+      chunk.set('generation_started_at', '')
+      chunk.set('generated_at', '')
+      chunk.set('regenerate_requested', false)
+      txApp.save(chunk)
+      touched[chunk.get('file_id') + ':' + chunk.get('config_hash')] = {
+        fileId: String(chunk.get('file_id')),
+        configHash: String(chunk.get('config_hash')),
+      }
+      reset += 1
+    })
+  })
+  Object.keys(touched).forEach(function (key) {
+    app.runInTransaction(function (txApp) {
+      const job = findJob(txApp, touched[key].fileId, touched[key].configHash)
+      if (!job) return
+      if (job.get('status') === 'completed' || job.get('status') === 'failed') {
+        job.set('status', 'running')
+        job.set('completed_at', '')
+        job.set('next_run_at', '')
+        job.set('error_message', '')
+      }
+      syncJobProgress(txApp, job)
+    })
+  })
+  return reset
+}
+
 module.exports = {
+  applyRegenerateRequests,
   findJob,
   requestJob,
   needsPlanning,

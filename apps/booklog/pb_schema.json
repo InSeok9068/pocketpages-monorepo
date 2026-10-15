@@ -704,6 +704,16 @@
         "type": "date"
       },
       {
+        "help": "true로 바꾸면 다음 생성 실행에서 이 구간의 음성·시도 기록을 지우고 처음부터 다시 만듭니다",
+        "hidden": false,
+        "id": "bool1101001146",
+        "name": "regenerate_requested",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
         "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
