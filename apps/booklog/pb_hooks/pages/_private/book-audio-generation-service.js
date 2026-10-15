@@ -90,6 +90,7 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
       input: String(chunk.get('input_text')),
       voice: String(chunk.get('voice')),
       style: String(chunk.get('style')),
+      mimeType: 'audio/mp3',
     })
     if (!result.ok) {
       const quota = result.statusCode === 429
@@ -97,13 +98,13 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
       markFailed(app, chunkId, claimedAt, message, !quota)
       return { ok: false, statusCode: quota ? 429 : 502, error: 'provider ' + result.statusCode }
     }
-    if (!result.audio || result.audio.mimeType !== 'audio/wav') throw new Error('WAV 음성을 받지 못했습니다.')
-    const wave = decodeWave(result.audio.data)
+    if (!result.audio) throw new Error('음성을 받지 못했습니다.')
+    const audio = decodeMp3(result.audio.data, result.audio.mimeType)
     // JSVM은 ArrayBuffer를 []byte로 바로 변환합니다. number[] 변환은 수백 MB 메모리를 씁니다.
-    const audioFile = $filesystem.fileFromBytes(/** @type {any} */ (wave.bytes.buffer), 'audio.wav')
+    const audioFile = $filesystem.fileFromBytes(/** @type {any} */ (audio.bytes.buffer), 'audio.mp3')
     const saved = updateClaimed(app, chunkId, claimedAt, function (current) {
       current.set('audio_file', audioFile)
-      current.set('duration_seconds', wave.durationSeconds)
+      current.set('duration_seconds', audio.durationSeconds)
       current.set('generated_at', new Date().toISOString())
       current.set('status', 'ready')
       current.set('error_message', '')
@@ -121,11 +122,66 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
 }
 
 /**
- * Gemini WAV 응답을 파일 바이트와 재생 길이로 변환합니다.
- * @param {string} data base64 WAV
+ * Gemini MP3 응답을 파일 바이트와 재생 길이로 변환합니다.
+ * @param {string} data base64 MP3
+ * @param {string} returnedMimeType 응답의 MIME 형식(`audio/mp3; rate=24000` 형태 포함)
  * @returns {{ bytes: Uint8Array, durationSeconds: number }} 음성 파일 데이터
  */
-function decodeWave(data) {
+function decodeMp3(data, returnedMimeType) {
+  const returned = String(returnedMimeType || '')
+    .split(';')[0]
+    .trim()
+  if (['audio/mp3', 'audio/mpeg'].indexOf(returned) < 0) throw new Error('MP3 음성을 받지 못했습니다: ' + returned)
+  const bytes = decodeBase64(data)
+  if (bytes.length > 50 * 1024 * 1024) throw new Error('음성 파일이 너무 큽니다.')
+  return { bytes, durationSeconds: mp3Duration(bytes) }
+}
+
+function mp3Duration(bytes) {
+  let offset = 0
+  if (bytes.length >= 10 && String.fromCharCode(bytes[0], bytes[1], bytes[2]) === 'ID3') {
+    offset = 10 + ((bytes[6] << 21) | (bytes[7] << 14) | (bytes[8] << 7) | bytes[9]) + (bytes[5] & 0x10 ? 10 : 0)
+  }
+  const mpeg1Kbps = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]
+  const mpeg2Kbps = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]
+  const sampleRates = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] }
+  const searchLimit = offset + 65536
+  let samples = 0
+  let sampleRate = 0
+  let frames = 0
+  while (offset + 4 <= bytes.length) {
+    const version = (bytes[offset + 1] >> 3) & 3
+    const layer = (bytes[offset + 1] >> 1) & 3
+    const bitrateIndex = bytes[offset + 2] >> 4
+    const rateIndex = (bytes[offset + 2] >> 2) & 3
+    const valid =
+      bytes[offset] === 0xff
+      && (bytes[offset + 1] & 0xe0) === 0xe0
+      && version !== 1
+      && layer === 1
+      && bitrateIndex > 0
+      && bitrateIndex < 15
+      && rateIndex < 3
+    if (!valid) {
+      // 첫 프레임 앞의 잡음만 건너뛰고, 프레임이 시작된 뒤 형식이 깨지면 ID3v1 꼬리표 등으로 보고 끝냅니다.
+      if (frames > 0 || offset >= searchLimit) break
+      offset += 1
+      continue
+    }
+    const samplesPerFrame = version === 3 ? 1152 : 576
+    sampleRate = sampleRates[version][rateIndex]
+    const kbps = (version === 3 ? mpeg1Kbps : mpeg2Kbps)[bitrateIndex]
+    const length = Math.floor(((samplesPerFrame / 8) * kbps * 1000) / sampleRate) + ((bytes[offset + 2] >> 1) & 1)
+    if (offset + length > bytes.length) break
+    samples += samplesPerFrame
+    frames += 1
+    offset += length
+  }
+  if (!frames || !sampleRate) throw new Error('MP3 음성 형식을 확인하지 못했습니다.')
+  return samples / sampleRate
+}
+
+function decodeBase64(data) {
   if (!data || data.length > 70 * 1024 * 1024 || data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) {
     throw new Error('올바른 음성 데이터를 받지 못했습니다.')
   }
@@ -146,24 +202,7 @@ function decodeWave(data) {
     if (offset < size) bytes[offset++] = (value >> 8) & 255
     if (offset < size) bytes[offset++] = value & 255
   }
-  function label(index) {
-    return String.fromCharCode(bytes[index], bytes[index + 1], bytes[index + 2], bytes[index + 3])
-  }
-  if (size < 44 || size > 50 * 1024 * 1024 || label(0) !== 'RIFF' || label(8) !== 'WAVE') {
-    throw new Error('WAV 음성 형식을 확인하지 못했습니다.')
-  }
-  const view = new DataView(bytes.buffer)
-  let byteRate = 0
-  let dataSize = 0
-  for (let index = 12; index + 8 <= size;) {
-    const length = view.getUint32(index + 4, true)
-    if (index + 8 + length > size) throw new Error('음성 파일이 완전하지 않습니다.')
-    if (label(index) === 'fmt ' && length >= 16) byteRate = view.getUint32(index + 16, true)
-    if (label(index) === 'data') dataSize += length
-    index += 8 + length + (length % 2)
-  }
-  if (!byteRate || !dataSize) throw new Error('음성 재생 길이를 확인하지 못했습니다.')
-  return { bytes, durationSeconds: dataSize / byteRate }
+  return bytes
 }
 
 module.exports = {
@@ -174,5 +213,5 @@ module.exports = {
   toDbDate,
   claimChunk,
   generateClaimedChunk,
-  decodeWave,
+  decodeMp3,
 }

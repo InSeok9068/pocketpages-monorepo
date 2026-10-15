@@ -155,7 +155,7 @@ window.booklogAudio = (function () {
                 .then(function (blob) {
                   if (!cache) return blob
                   return cache
-                    .put(url, new Response(blob, { headers: { 'Content-Type': 'audio/wav' } }))
+                    .put(url, new Response(blob, { headers: { 'Content-Type': 'audio/mpeg' } }))
                     .then(function () {
                       return cache.keys()
                     })

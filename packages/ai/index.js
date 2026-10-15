@@ -941,7 +941,7 @@ function requestGeminiSpeech(input, runtime) {
         body: JSON.stringify({
           model,
           input: [{ type: 'user_input', content: [content] }],
-          response_format: { type: 'audio', mime_type: 'audio/wav' },
+          response_format: { type: 'audio', mime_type: cleanText(request.mimeType) || 'audio/wav' },
           generation_config: { speech_config: [{ voice: cleanText(request.voice) || 'Sulafat' }] },
         }),
       },

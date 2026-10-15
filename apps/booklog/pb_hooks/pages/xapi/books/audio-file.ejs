@@ -34,7 +34,7 @@
   const etag = '"' + $security.sha256(chunkId + ':' + filename + ':' + String(chunk.get('generated_at'))) + '"'
   response.header('ETag', etag)
   response.header('Cache-Control', 'private, max-age=0, must-revalidate')
-  response.header('Content-Type', 'audio/wav')
+  response.header('Content-Type', 'audio/mpeg')
   if (request.header('If-None-Match') === etag) {
     request.event.noContent(304)
     return
@@ -44,7 +44,7 @@
   let reader = null
   try {
     reader = fsys.getReader(String(chunk.baseFilesPath()) + '/' + filename)
-    request.event.stream(200, 'audio/wav', reader)
+    request.event.stream(200, 'audio/mpeg', reader)
   } finally {
     if (reader) reader.close()
     fsys.close()

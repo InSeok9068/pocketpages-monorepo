@@ -697,6 +697,8 @@ declare namespace pocketpagesAi {
     input: string
     voice?: string
     style?: string
+    /** 출력 음성 형식입니다. 기본값은 `audio/wav`이며 모델에 따라 `audio/mp3`를 지원합니다. */
+    mimeType?: string
     apiVersion?: string
   }
 

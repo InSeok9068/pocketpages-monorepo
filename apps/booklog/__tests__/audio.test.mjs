@@ -47,6 +47,8 @@ test('Gemini speech uses the configured key, separate styling, and WAV response'
   assert.equal(payload.input[0].content[0].text, '원문 그대로.')
   assert.equal(payload.input[0].content[0].annotations[0].style, '차분하게')
   assert.equal(payload.response_format.mime_type, 'audio/wav')
+  client.geminiSpeech({ model: 'gemini-3.8-flash-lite-tts', input: '원문', mimeType: 'audio/mp3' })
+  assert.deepEqual(JSON.parse(requests[1].body).response_format, { type: 'audio', mime_type: 'audio/mp3' })
 })
 
 test('Gemini quota errors are returned without a second call or fallback model', () => {
@@ -134,32 +136,44 @@ function runRoute({ authenticated = true, method = 'GET', owned = true, ready = 
   return { result, queries, lookups }
 }
 
-test('Generated WAV decoding matches the original bytes and duration for every padding length', () => {
+function loadGenerationService() {
   const context = { module: { exports: {} } }
   vm.runInNewContext(
     readFileSync(new URL('../pb_hooks/pages/_private/book-audio-generation-service.js', import.meta.url), 'utf8'),
     context
   )
-  for (const extra of [0, 1, 2]) {
-    const wav = Buffer.alloc(44 + 48000 * 2 + extra)
-    wav.write('RIFF', 0)
-    wav.writeUInt32LE(wav.length - 8, 4)
-    wav.write('WAVEfmt ', 8)
-    wav.writeUInt32LE(16, 16)
-    wav.writeUInt16LE(1, 20)
-    wav.writeUInt16LE(1, 22)
-    wav.writeUInt32LE(24000, 24)
-    wav.writeUInt32LE(48000, 28)
-    wav.writeUInt16LE(2, 32)
-    wav.writeUInt16LE(16, 34)
-    wav.write('data', 36)
-    wav.writeUInt32LE(48000 * 2 + extra, 40)
-    for (let index = 44; index < wav.length; index += 1) wav[index] = (index * 37) % 256
-    const decoded = context.module.exports.decodeWave(wav.toString('base64'))
-    assert.ok(Buffer.from(decoded.bytes).equals(wav))
-    assert.equal(decoded.durationSeconds, (48000 * 2 + extra) / 48000)
+  return context.module.exports
+}
+
+function mp3Bytes({ frames, header, frameLength, id3 = true, trailer = true }) {
+  const parts = []
+  if (id3) parts.push(Buffer.from([0x49, 0x44, 0x33, 3, 0, 0, 0, 0, 0, 20]), Buffer.alloc(20))
+  for (let index = 0; index < frames; index += 1) {
+    const frame = Buffer.alloc(frameLength)
+    Buffer.from(header).copy(frame)
+    parts.push(frame)
   }
-  assert.throws(() => context.module.exports.decodeWave('not base64!'))
+  if (trailer) parts.push(Buffer.concat([Buffer.from('TAG'), Buffer.alloc(125)]))
+  return Buffer.concat(parts)
+}
+
+test('Generated MP3 duration is calculated from frames for MPEG-1 and MPEG-2 streams', () => {
+  const service = loadGenerationService()
+  const mpeg1 = mp3Bytes({ frames: 100, header: [0xff, 0xfb, 0x90, 0x00], frameLength: 417 })
+  const decoded = service.decodeMp3(mpeg1.toString('base64'), 'audio/mp3; rate=24000; channels=1')
+  assert.ok(Buffer.from(decoded.bytes).equals(mpeg1))
+  assert.ok(Math.abs(decoded.durationSeconds - (100 * 1152) / 44100) < 1e-9)
+  const mpeg2 = mp3Bytes({ frames: 50, header: [0xff, 0xf3, 0xc4, 0x00], frameLength: 384, id3: false, trailer: false })
+  const second = service.decodeMp3(mpeg2.toString('base64'), 'audio/mpeg')
+  assert.ok(Math.abs(second.durationSeconds - (50 * 576) / 24000) < 1e-9)
+})
+
+test('Generated audio is rejected unless it is a valid MP3', () => {
+  const service = loadGenerationService()
+  const mpeg1 = mp3Bytes({ frames: 2, header: [0xff, 0xfb, 0x90, 0x00], frameLength: 417 }).toString('base64')
+  assert.throws(() => service.decodeMp3(mpeg1, 'audio/wav'), /MP3 음성을 받지 못했습니다/)
+  assert.throws(() => service.decodeMp3(Buffer.alloc(400).toString('base64'), 'audio/mp3'), /MP3/)
+  assert.throws(() => service.decodeMp3('not base64!', 'audio/mp3'))
 })
 
 test('Audio chunk lookup requires authentication and GET', () => {
