@@ -51,6 +51,9 @@ window.booklogReaderLogic = (function () {
   var READER_CACHE_DB_NAME = 'booklog-reader-cache'
   var READER_CACHE_STORE_NAME = 'epubBuffers'
   var READER_CACHE_LIMIT = 5
+  var PROGRESS_LOCATION_BREAK = 1600
+  var PROGRESS_LOCATIONS_CACHE_VERSION = 'epubjs-0.3.93:' + PROGRESS_LOCATION_BREAK
+  var cachedProgressLocations = ''
   var autoSaveTimerId = null
   var autoSaveInFlight = false
   var saveRequestInFlight = false
@@ -2943,6 +2946,11 @@ window.booklogReaderLogic = (function () {
         request.onsuccess = function () {
           var cacheEntry = request.result || null
 
+          cachedProgressLocations =
+            cacheEntry && cacheEntry.buffer && cacheEntry.progressLocationsVersion === PROGRESS_LOCATIONS_CACHE_VERSION
+              ? String(cacheEntry.progressLocations || '')
+              : ''
+
           resolve(cacheEntry && cacheEntry.buffer ? cacheEntry.buffer : null)
         }
 
@@ -3093,6 +3101,75 @@ window.booklogReaderLogic = (function () {
         db.close()
       })
     })
+  }
+
+  function writeCachedProgressLocations(serializedLocations) {
+    return openReaderCacheDb().then(function (db) {
+      if (!db) {
+        return
+      }
+
+      return new Promise(function (resolve, reject) {
+        var transaction = db.transaction(READER_CACHE_STORE_NAME, 'readwrite')
+        var store = transaction.objectStore(READER_CACHE_STORE_NAME)
+        var request = store.get(readerCacheKey)
+
+        transaction.oncomplete = function () {
+          resolve()
+        }
+
+        transaction.onerror = transaction.onabort = function () {
+          reject(transaction.error || new Error('진행률 캐시에 저장하지 못했습니다.'))
+        }
+
+        request.onsuccess = function () {
+          var cacheEntry = request.result || null
+
+          if (!cacheEntry || !cacheEntry.buffer) {
+            return
+          }
+
+          cacheEntry.progressLocationsVersion = PROGRESS_LOCATIONS_CACHE_VERSION
+          cacheEntry.progressLocations = serializedLocations
+          store.put(cacheEntry)
+        }
+      }).finally(function () {
+        db.close()
+      })
+    })
+  }
+
+  function restoreCachedProgressLocations(component) {
+    if (!cachedProgressLocations) {
+      return
+    }
+
+    try {
+      var locations = JSON.parse(cachedProgressLocations)
+      var valid =
+        Array.isArray(locations)
+        && locations.length > 0
+        && locations.every(function (locator) {
+          return (
+            typeof locator === 'string'
+            && locator.indexOf('epubcfi(') === 0
+            && locator.charAt(locator.length - 1) === ')'
+            && !!bookInstance.spine.get(locator)
+          )
+        })
+
+      if (!valid) {
+        throw new Error('진행률 캐시의 위치 목록이 올바르지 않습니다.')
+      }
+
+      bookInstance.locations.load(locations)
+      component.progressLocationsStatus = 'ready'
+    } catch (exception) {
+      cachedProgressLocations = ''
+      console.warn('page/books/[bookId]/read:progress-locations-cache-skipped', {
+        message: String(exception && exception.message ? exception.message : exception),
+      })
+    }
   }
 
   function fetchBookBuffer() {
@@ -3676,11 +3753,44 @@ window.booklogReaderLogic = (function () {
   function startProgressLocationGeneration(component) {
     var locations = bookInstance && bookInstance.locations ? bookInstance.locations : null
 
+    function handleReady() {
+      component.progressLocationsStatus = 'ready'
+      syncCurrentProgressState(component)
+
+      if (readingSessionStartProgress) {
+        readingSessionStartProgress.progressPercent = getProgressPercentFromLocator(readingSessionStartProgress.locator)
+      }
+
+      scheduleFinishPromptIfNeeded(component)
+
+      persistProgress(component, {
+        silent: true,
+        skipIfUnchanged: false,
+      }).catch(function (exception) {
+        console.warn('page/books/[bookId]/read:progress-locations-save:failed', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+
+      saveReadingSessionCheckpoint(component, {
+        final: true,
+      }).catch(function (exception) {
+        console.warn('page/books/[bookId]/read:progress-locations-session-save:failed', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+    }
+
     function handleFailure(exception) {
       component.progressLocationsStatus = 'failed'
       console.warn('page/books/[bookId]/read:progress-locations:failed', {
         message: String(exception && exception.message ? exception.message : exception),
       })
+    }
+
+    if (component.progressLocationsStatus === 'ready') {
+      handleReady()
+      return
     }
 
     if (!locations || typeof locations.generate !== 'function') {
@@ -3693,7 +3803,7 @@ window.booklogReaderLogic = (function () {
         var generationPromise = null
 
         try {
-          generationPromise = locations.generate(1600)
+          generationPromise = locations.generate(PROGRESS_LOCATION_BREAK)
         } catch (exception) {
           handleFailure(exception)
           return
@@ -3701,33 +3811,17 @@ window.booklogReaderLogic = (function () {
 
         Promise.resolve(generationPromise)
           .then(function () {
-            component.progressLocationsStatus = 'ready'
-            syncCurrentProgressState(component)
+            handleReady()
 
-            if (readingSessionStartProgress) {
-              readingSessionStartProgress.progressPercent = getProgressPercentFromLocator(
-                readingSessionStartProgress.locator
-              )
-            }
-
-            scheduleFinishPromptIfNeeded(component)
-
-            persistProgress(component, {
-              silent: true,
-              skipIfUnchanged: false,
-            }).catch(function (exception) {
-              console.warn('page/books/[bookId]/read:progress-locations-save:failed', {
-                message: String(exception && exception.message ? exception.message : exception),
+            Promise.resolve()
+              .then(function () {
+                return writeCachedProgressLocations(locations.save())
               })
-            })
-
-            saveReadingSessionCheckpoint(component, {
-              final: true,
-            }).catch(function (exception) {
-              console.warn('page/books/[bookId]/read:progress-locations-session-save:failed', {
-                message: String(exception && exception.message ? exception.message : exception),
+              .catch(function (exception) {
+                console.warn('page/books/[bookId]/read:progress-locations-cache-write-skipped', {
+                  message: String(exception && exception.message ? exception.message : exception),
+                })
               })
-            })
           })
           .catch(handleFailure)
       }, 0)
@@ -3813,6 +3907,8 @@ window.booklogReaderLogic = (function () {
     })
 
     return bookInstance.ready.then(function () {
+      restoreCachedProgressLocations(component)
+
       try {
         registerTocItems(bookInstance.navigation && bookInstance.navigation.toc ? bookInstance.navigation.toc : [])
         syncTocState(
