@@ -1,5 +1,6 @@
 <script server>
   const bookTitleService = resolve('book-title')
+  const bookAuthorView = resolve('book-author-view')
   meta('title', 'Booklog 도서함')
   meta('description', '내 도서함에 담긴 책 목록')
 
@@ -194,7 +195,7 @@
     libraryBooks.push({
       bookId: String(row.bookId || ''),
       title: bookTitleService.getMainTitle(String(row.title || '제목 없음')),
-      author: String(row.author || '').trim(),
+      author: bookAuthorView.formatDisplayAuthor(String(row.author || '').trim()),
       coverUrl: String(row.coverUrl || '').trim(),
       status: status,
     })
@@ -357,7 +358,7 @@
             <%= book.title %>
           </h2>
           <% if (book.author) { %>
-          <p class="m-0 text-[12px] leading-5 font-medium text-stone-500"><%= book.author %></p>
+          <p class="m-0 truncate text-[12px] leading-5 font-medium text-stone-500"><%= book.author %></p>
           <% } %>
         </div>
       </a>
