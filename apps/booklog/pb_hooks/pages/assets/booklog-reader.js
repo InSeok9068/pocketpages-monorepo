@@ -944,7 +944,7 @@ window.booklogReaderLogic = (function () {
     var doc = section && section.document ? section.document : null
     var nodes = collectReadableTextNodes(doc && doc.body ? doc.body : doc)
     var queue = []
-    var firstMatchingIndex = -1
+    var startIndex = -1
 
     nodes.forEach(function (node, index) {
       var text = normalizeText(node && node.textContent ? node.textContent : '')
@@ -962,8 +962,9 @@ window.booklogReaderLogic = (function () {
         }
       }
 
-      if (firstMatchingIndex < 0 && currentCfi && cfi && compareCfi(cfi, currentCfi) >= 0) {
-        firstMatchingIndex = queue.length
+      // 현재 위치가 문단 안에 있으면 해당 문단부터 읽습니다.
+      if (currentCfi && cfi && compareCfi(cfi, currentCfi) <= 0) {
+        startIndex = queue.length
       }
 
       queue.push({
@@ -978,8 +979,8 @@ window.booklogReaderLogic = (function () {
       return []
     }
 
-    if (firstMatchingIndex >= 0) {
-      return queue.slice(firstMatchingIndex)
+    if (startIndex >= 0) {
+      return queue.slice(startIndex)
     }
 
     return queue
