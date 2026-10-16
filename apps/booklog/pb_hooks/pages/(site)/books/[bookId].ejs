@@ -89,6 +89,23 @@
   const publisher = String(bookRecord.get('publisher') || '').trim()
   const estimatedPageCount = Number(bookRecord.get('estimated_page_count') || 0)
   const bookImageUrl = String(bookRecord.get('book_image_url') || '').trim()
+  const metadataJsonState = new DynamicModel({ isMissing: 0 })
+  $app
+    .db()
+    .newQuery(
+      `
+      SELECT CASE
+        WHEN metadata_json IS NULL THEN 1
+        WHEN TRIM(CAST(metadata_json AS TEXT)) = '' THEN 1
+        WHEN LOWER(TRIM(CAST(metadata_json AS TEXT))) = 'null' THEN 1
+        ELSE 0
+      END AS isMissing
+      FROM books
+      WHERE id = {:bookId}`
+    )
+    .bind({ bookId: bookId })
+    .one(metadataJsonState)
+  const shouldShowMetadataRefreshButton = Number(metadataJsonState.isMissing) === 1
 
   try {
     shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
@@ -386,7 +403,33 @@
           </div>
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
             <dt class="text-[11px] font-semibold tracking-[0.2em] text-stone-500 uppercase">출판 정보</dt>
-            <dd class="mt-1 text-base font-medium text-stone-900"><%= publicationMetaText %></dd>
+            <dd class="mt-1 flex items-center justify-between gap-3 text-base font-medium text-stone-900">
+              <span class="min-w-0"><%= publicationMetaText %></span>
+              <% if (shouldShowMetadataRefreshButton) { %>
+              <form
+                method="post"
+                action="/xapi/books/refresh-metadata"
+                class="m-0 inline-flex shrink-0">
+                <input
+                  type="hidden"
+                  name="bookId"
+                  value="<%= bookId %>" />
+                <input
+                  type="hidden"
+                  name="from"
+                  value="<%= bookBackHref %>" />
+                <button
+                  type="submit"
+                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-none bg-[#efe2d2] text-[#8e5521] shadow-[0_8px_18px_rgba(132,90,47,0.08)] ring-0 transition hover:bg-[#ead9c4] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-600"
+                  aria-label="도서 정보 다시 가져오기"
+                  title="도서 정보 다시 가져오기">
+                  <span
+                    class="i-lucide-refresh-cw h-4 w-4"
+                    aria-hidden="true"></span>
+                </button>
+              </form>
+              <% } %>
+            </dd>
           </div>
           <div class="rounded-[1.2rem] bg-white/75 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
             <dt class="text-[11px] font-semibold tracking-[0.2em] text-stone-500 uppercase">페이지 수</dt>
@@ -409,18 +452,9 @@
                   class="inline-flex h-8 w-8 items-center justify-center rounded-full border-none bg-[#efe2d2] text-[#8e5521] shadow-[0_8px_18px_rgba(132,90,47,0.08)] transition hover:bg-[#ead9c4] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-600"
                   aria-label="페이지 수 다시 계산"
                   title="페이지 수 다시 계산">
-                  <svg
-                    class="size-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true">
-                    <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"></path>
-                    <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"></path>
-                  </svg>
+                  <span
+                    class="i-lucide-refresh-cw h-4 w-4"
+                    aria-hidden="true"></span>
                   <span class="sr-only">페이지 수 다시 계산</span>
                 </button>
               </form>

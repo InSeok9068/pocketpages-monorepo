@@ -1,0 +1,295 @@
+<script server>
+  const { dateutil } = require('@pocketpages/utils')
+  const epubBookMetadataService = resolve('epub-book-metadata-service').create({
+    data4libraryService: resolve('data4library-service'),
+    toBytes: toBytes,
+    dbg: dbg,
+    info: info,
+    warn: warn,
+    apiKey: env('DATA4LIBRARY_APIKEY'),
+    logPrefix: 'xapi/books/refresh-metadata',
+  })
+  const {
+    MAX_EPUB_BYTES,
+    readArchiveText,
+    readUploadedEpubArchiveSnapshot,
+    parseXmlDocument,
+    parseContainerRootfilePath,
+    parseManifestItems,
+    parseEpubMetadata,
+    parseFilenameMetadata,
+    stripFileExtension,
+    extractPrimaryAuthorName,
+    parsePublicationDate,
+    resolveBookLookup,
+    loadBookDetailByIsbn13,
+  } = epubBookMetadataService
+
+  function extractDigits(input) {
+    return String(input || '').replace(/\D+/g, '')
+  }
+
+  function preferFreshValue(freshValue, currentValue) {
+    const normalizedFreshValue = String(freshValue || '').trim()
+    return normalizedFreshValue || String(currentValue || '').trim()
+  }
+
+  if (request.method !== 'POST') {
+    dbg('xapi/books/refresh-metadata:redirect', {
+      status: 303,
+      redirectTo: '/',
+      message: '잘못된 요청입니다.',
+    })
+    redirect('/', {
+      status: 303,
+      message: '잘못된 요청입니다.',
+    })
+    return
+  }
+
+  if (!request.auth) {
+    warn('xapi/books/refresh-metadata:unauthorized', {})
+    dbg('xapi/books/refresh-metadata:redirect', {
+      status: 303,
+      redirectTo: '/auth',
+      message: '로그인이 필요합니다.',
+    })
+    redirect('/auth', {
+      status: 303,
+      message: '로그인이 필요합니다.',
+    })
+    return
+  }
+
+  const form = body()
+  const userId = String(request.auth.get('id') || '')
+  const bookId = String(form.bookId || '').trim()
+  const fromPath = resolve('book-navigation').getBackHref(form.from)
+  const bookDetailPath = bookId ? '/books/' + encodeURIComponent(bookId) + '?from=' + encodeURIComponent(fromPath) : '/'
+  let resultMessage = ''
+  let failureMessage = ''
+
+  dbg('xapi/books/refresh-metadata:start', {
+    userId: userId,
+    bookId: bookId,
+  })
+
+  try {
+    if (!bookId) {
+      throw new Error('책 정보가 필요합니다.')
+    }
+
+    let shelfRecord = null
+
+    try {
+      shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+        userId: userId,
+        bookId: bookId,
+      })
+    } catch (exception) {
+      shelfRecord = null
+    }
+
+    if (!shelfRecord) {
+      throw new Error('내 도서함에서 책을 찾을 수 없습니다.')
+    }
+
+    let bookRecord = null
+
+    try {
+      bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', {
+        bookId: bookId,
+      })
+    } catch (exception) {
+      bookRecord = null
+    }
+
+    if (!bookRecord) {
+      throw new Error('책 정보를 찾을 수 없습니다.')
+    }
+
+    const metadataJsonState = new DynamicModel({ isMissing: 0 })
+    $app
+      .db()
+      .newQuery(
+        `
+        SELECT CASE
+          WHEN metadata_json IS NULL THEN 1
+          WHEN TRIM(CAST(metadata_json AS TEXT)) = '' THEN 1
+          WHEN LOWER(TRIM(CAST(metadata_json AS TEXT))) = 'null' THEN 1
+          ELSE 0
+        END AS isMissing
+        FROM books
+        WHERE id = {:bookId}`
+      )
+      .bind({ bookId: bookId })
+      .one(metadataJsonState)
+
+    if (Number(metadataJsonState.isMissing) !== 1) {
+      resultMessage = '도서 상세 메타데이터가 이미 있습니다.'
+    } else {
+      const bookFileId = String(shelfRecord.get('book_file_id') || '').trim()
+
+      if (!bookFileId) {
+        throw new Error('재분석할 EPUB 파일이 도서함에 연결되어 있지 않습니다.')
+      }
+
+      let bookFileRecord = null
+
+      try {
+        bookFileRecord = $app.findFirstRecordByFilter('book_files', 'id = {:bookFileId} && book_id = {:bookId}', {
+          bookFileId: bookFileId,
+          bookId: bookId,
+        })
+      } catch (exception) {
+        bookFileRecord = null
+      }
+
+      if (!bookFileRecord) {
+        throw new Error('재분석할 EPUB 파일을 찾을 수 없습니다.')
+      }
+
+      const storedFileName = String(bookFileRecord.get('stored_file') || '').trim()
+      const originalName = String(bookFileRecord.get('original_name') || storedFileName).trim()
+      const fileSize = Number(bookFileRecord.get('file_size') || 0)
+
+      if (!storedFileName) {
+        throw new Error('저장된 EPUB 파일을 찾을 수 없습니다.')
+      }
+
+      if (fileSize <= 0 || fileSize > MAX_EPUB_BYTES) {
+        throw new Error('EPUB 파일 크기를 확인할 수 없습니다.')
+      }
+
+      const storageFileKey = String(bookFileRecord.baseFilesPath() || '') + '/' + storedFileName
+      const fsys = $app.newFilesystem()
+      let archiveSnapshot = null
+
+      try {
+        const storedEpubFile = {
+          originalName: originalName,
+          name: originalName,
+          reader: {
+            open: function () {
+              const reader = fsys.getReader(storageFileKey)
+              reader.seek(0, 0)
+              return reader
+            },
+          },
+        }
+        archiveSnapshot = readUploadedEpubArchiveSnapshot(storedEpubFile, fileSize)
+      } finally {
+        fsys.close()
+      }
+
+      const archiveEntries = archiveSnapshot.archiveEntries
+      const entryNames = archiveSnapshot.entryNames
+      const containerDocument = parseXmlDocument(readArchiveText(archiveEntries, 'META-INF/container.xml'))
+      const packageDocumentPath = parseContainerRootfilePath(containerDocument)
+      const packageDocument = parseXmlDocument(readArchiveText(archiveEntries, packageDocumentPath))
+      const manifestItems = parseManifestItems(packageDocument)
+      const epubMetadata = parseEpubMetadata(packageDocument)
+      const filenameMetadata = parseFilenameMetadata(originalName)
+      const fallbackTitle = epubMetadata.title || filenameMetadata.title || stripFileExtension(originalName)
+
+      dbg('xapi/books/refresh-metadata:epub-metadata', {
+        bookId: bookId,
+        originalName: originalName,
+        title: epubMetadata.title || '',
+        author: epubMetadata.author || '',
+        isbn13: epubMetadata.isbn13 || '',
+        readMode: archiveSnapshot.readMode || '',
+      })
+
+      const lookupResult = resolveBookLookup(
+        epubMetadata,
+        archiveEntries,
+        manifestItems,
+        packageDocumentPath,
+        entryNames,
+        originalName
+      )
+      let detailResult = lookupResult.detailResult || null
+      const selectedDoc = lookupResult.selectedDoc || null
+      let selectedIsbn13 = String(lookupResult.matchedIsbn13 || '')
+
+      if (!detailResult && selectedDoc && selectedDoc.isbn13) {
+        selectedIsbn13 = String(selectedDoc.isbn13)
+        detailResult = loadBookDetailByIsbn13(selectedIsbn13)
+      }
+
+      dbg('xapi/books/refresh-metadata:search-selection', {
+        bookId: bookId,
+        matchedBy: lookupResult.matchedBy || '',
+        matchedSource: lookupResult.matchedSource || '',
+        matchedIsbn13: selectedIsbn13,
+        selectedBookname: selectedDoc && selectedDoc.bookname ? String(selectedDoc.bookname) : '',
+        hasDetail: !!(detailResult && detailResult.book),
+      })
+
+      if (!detailResult || !detailResult.book) {
+        failureMessage = '도서관정보나루에서 일치하는 책을 찾지 못했습니다.'
+        warn('xapi/books/refresh-metadata:no-match', {
+          userId: userId,
+          bookId: bookId,
+          title: epubMetadata.title || fallbackTitle,
+          author: epubMetadata.author || '',
+          hasIsbn13: !!epubMetadata.isbn13,
+          matchedBy: lookupResult.matchedBy || '',
+        })
+      } else {
+        const detailBook = detailResult.book
+        const publicationDigits = extractDigits(detailBook.publication_date)
+        const publicationDate = parsePublicationDate(detailBook.publication_date)
+        const publicationYear =
+          String(detailBook.publication_year || '').trim()
+          || (publicationDigits.length >= 4 ? publicationDigits.slice(0, 4) : '')
+        const normalizedPublicationDate = publicationDate
+          ? dateutil.toDateOnlyIso(publicationDate)
+          : String(bookRecord.get('publication_date') || '')
+
+        bookRecord.set('title', preferFreshValue(detailBook.bookname, bookRecord.get('title')))
+        bookRecord.set('author', preferFreshValue(detailBook.authors, bookRecord.get('author')))
+        bookRecord.set('publisher', preferFreshValue(detailBook.publisher, bookRecord.get('publisher')))
+        bookRecord.set('publication_date', normalizedPublicationDate)
+        bookRecord.set('publication_year', preferFreshValue(publicationYear, bookRecord.get('publication_year')))
+        bookRecord.set('class_no', preferFreshValue(detailBook.class_no, bookRecord.get('class_no')))
+        bookRecord.set('isbn', preferFreshValue(detailBook.isbn, bookRecord.get('isbn')))
+        bookRecord.set('isbn13', preferFreshValue(detailBook.isbn13 || selectedIsbn13, bookRecord.get('isbn13')))
+        bookRecord.set('book_image_url', preferFreshValue(detailBook.bookImageURL, bookRecord.get('book_image_url')))
+        bookRecord.set('description', preferFreshValue(detailBook.description, bookRecord.get('description')))
+        bookRecord.set('metadata_json', detailResult.raw)
+        $app.save(bookRecord)
+
+        info('xapi/books/refresh-metadata:success', {
+          userId: userId,
+          bookId: bookId,
+          isbn13: selectedIsbn13 || String(detailBook.isbn13 || ''),
+          matchedBy: lookupResult.matchedBy || '',
+          title: String(detailBook.bookname || ''),
+        })
+        resultMessage = '도서관정보나루 메타데이터를 갱신했습니다.'
+      }
+    }
+  } catch (exception) {
+    failureMessage = String(exception.message || exception)
+    error('xapi/books/refresh-metadata:failed', {
+      userId: userId,
+      bookId: bookId,
+      error: failureMessage,
+    })
+  }
+
+  const redirectMessage = failureMessage || resultMessage || '메타데이터 갱신이 완료되었습니다.'
+
+  dbg('xapi/books/refresh-metadata:redirect', {
+    status: 303,
+    redirectTo: bookDetailPath,
+    message: redirectMessage,
+  })
+  redirect(bookDetailPath, {
+    status: 303,
+    message: redirectMessage,
+  })
+  return
+</script>
