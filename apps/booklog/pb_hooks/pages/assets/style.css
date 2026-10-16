@@ -33,6 +33,11 @@
   display: none;
 }
 
+#book-review,
+[id^='highlight-'] {
+  scroll-margin-top: 7rem;
+}
+
 .booklog-linked-section {
   outline: 2px solid #9e6125;
   outline-offset: 4px;

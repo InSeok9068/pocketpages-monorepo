@@ -49,7 +49,7 @@
     var target = document.getElementById(id)
     if (!target) return
 
-    target.scrollIntoView({ block: 'center' })
+    target.scrollIntoView({ block: 'start' })
     target.classList.add('booklog-linked-section')
     window.setTimeout(function () {
       target.classList.remove('booklog-linked-section')
