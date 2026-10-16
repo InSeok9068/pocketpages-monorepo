@@ -151,6 +151,7 @@
     searching: false,
     searchMessage: '',
     currentProgressPercent: '',
+    progressLocationsStatus: 'pending',
     readingSettingsOpen: false,
     readerTheme: 'paper',
     readerFontSizePercent: '100',
@@ -573,10 +574,19 @@
           <span>진행률 이동</span>
           <span
             class="tracking-normal text-stone-600"
-            x-text="currentProgressPercent ? '현재 ' + currentProgressPercent + '%' : '위치 확인 중'"></span>
+            x-text="
+              progressLocationsStatus === 'pending'
+                ? '진행률 계산 중'
+                : progressLocationsStatus === 'failed'
+                  ? '진행률 계산 불가'
+                  : currentProgressPercent
+                    ? '현재 ' + currentProgressPercent + '%'
+                    : '위치 확인 중'
+            "></span>
         </div>
         <input
           x-model="progressJumpValue"
+          x-bind:disabled="progressLocationsStatus !== 'ready' || jumpingProgress || loading"
           x-on:focus="progressJumpEditing = true"
           x-on:blur="progressJumpEditing = false"
           type="range"
@@ -587,6 +597,7 @@
         <div class="mt-2 flex items-center gap-2">
           <input
             x-model="progressJumpValue"
+            x-bind:disabled="progressLocationsStatus !== 'ready' || jumpingProgress || loading"
             x-on:focus="progressJumpEditing = true"
             x-on:blur="progressJumpEditing = false"
             x-on:keydown.enter.prevent="goToProgress()"
@@ -600,7 +611,7 @@
           <button
             type="button"
             x-on:click="goToProgress()"
-            x-bind:disabled="jumpingProgress || loading"
+            x-bind:disabled="progressLocationsStatus !== 'ready' || jumpingProgress || loading"
             class="inline-flex shrink-0 items-center justify-center rounded-full border-none bg-stone-950 px-3 py-1.5 text-sm font-semibold text-white ring-0 outline-none disabled:opacity-60">
             <span
               x-show="!jumpingProgress"
