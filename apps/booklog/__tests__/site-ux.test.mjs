@@ -33,6 +33,14 @@ before(async () => {
     recursive: true,
     filter: (source) => path.basename(source) !== 'jobs.pb.js',
   })
+  const configPath = path.join(fixtureDir, 'pb_hooks/pages/+config.js')
+  writeFileSync(
+    configPath,
+    readFileSync(configPath, 'utf8').replace(
+      "'pocketpages-plugin-js-sdk'",
+      "{ name: 'pocketpages-plugin-js-sdk', host: 'http://127.0.0.1:18095' }"
+    )
+  )
   const binary = process.platform === 'win32' ? 'pocketbase.exe' : 'pocketbase'
   copyFileSync(path.join(serviceDir, binary), path.join(fixtureDir, binary))
   symlinkSync(realpathSync(path.join(serviceDir, 'node_modules')), path.join(fixtureDir, 'node_modules'), 'junction')
@@ -45,7 +53,7 @@ before(async () => {
     path.join(fixtureDir, 'pb_hooks/test-setup.pb.js')
   )
   writeFileSync(path.join(fixtureDir, '.env'), 'APP_ENV=production\nONESIGNAL_APPID=\nONESIGNAL_API_KEY=\n')
-  service = await startService({ serviceName: path.basename(fixtureDir), timeoutMs: 30000 })
+  service = await startService({ serviceName: path.basename(fixtureDir), port: 18095, timeoutMs: 30000 })
   const response = await fetch(service.baseUrl + '/xapi/auth/sign-in', {
     method: 'POST',
     redirect: 'manual',

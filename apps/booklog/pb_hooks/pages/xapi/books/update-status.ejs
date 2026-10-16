@@ -34,26 +34,6 @@
   const nowIso = new Date().toISOString()
   let errorMessage = ''
 
-  /**
-   * 책에 연결된 EPUB 파일이 하나뿐일 때 그 파일 ID를 반환합니다.
-   *
-   * @param {string} targetBookId 조회할 책 ID
-   * @returns {string} 단일 EPUB 파일 ID
-   */
-  function findSingleBookFileId(targetBookId) {
-    try {
-      const matchedBookFileRecords = $app.findRecordsByFilter('book_files', 'book_id = {:bookId}', '-updated', 2, 0, {
-        bookId: targetBookId,
-      })
-
-      if (matchedBookFileRecords.length === 1) {
-        return String(matchedBookFileRecords[0].get('id') || '')
-      }
-    } catch (exception) {}
-
-    return ''
-  }
-
   dbg('xapi/books/update-status:start', {
     userId: userId,
     bookId: bookId,
@@ -65,7 +45,6 @@
     if (status !== 'queued' && status !== 'reading' && status !== 'finished')
       throw new Error('변경할 수 없는 상태입니다.')
 
-    const bookRecord = $app.findFirstRecordByFilter('books', 'id = {:bookId}', { bookId: bookId })
     let shelfRecord = null
 
     try {
@@ -77,30 +56,8 @@
       shelfRecord = null
     }
 
-    if (!shelfRecord && status === 'queued') {
-      dbg('xapi/books/update-status:redirect', {
-        status: 303,
-        redirectTo: bookDetailPath,
-        message: '읽을 예정으로 되돌렸습니다.',
-      })
-      redirect(bookDetailPath, {
-        status: 303,
-        message: '읽을 예정으로 되돌렸습니다.',
-      })
-      return
-    }
-
     if (!shelfRecord) {
-      const collection = $app.findCollectionByNameOrId('book_shelves')
-      const singleBookFileId = findSingleBookFileId(bookId)
-
-      shelfRecord = new Record(collection)
-      shelfRecord.set('user_id', userId)
-      shelfRecord.set('book_id', String(bookRecord.get('id') || ''))
-
-      if (singleBookFileId) {
-        shelfRecord.set('book_file_id', singleBookFileId)
-      }
+      throw new Error('내 도서함에서 책을 찾을 수 없습니다.')
     }
 
     const shelfStartedAt = String(shelfRecord.get('started_at') || '').trim()

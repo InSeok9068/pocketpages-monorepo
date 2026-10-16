@@ -39,7 +39,6 @@
     if (!locator && !href) throw new Error('저장할 읽기 위치가 없습니다.')
 
     let existingShelfRecord = null
-    let bookFileRecord = null
 
     try {
       existingShelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
@@ -50,94 +49,49 @@
       existingShelfRecord = null
     }
 
-    if (existingShelfRecord) {
-      const shelfStatus = String(existingShelfRecord.get('status') || '').trim()
-
-      if (shelfStatus !== 'finished' && shelfStatus !== 'reading') {
-        existingShelfRecord.set('status', 'reading')
-      }
-
-      if (!String(existingShelfRecord.get('started_at') || '').trim()) {
-        existingShelfRecord.set('started_at', nowIso)
-      }
-
-      existingShelfRecord.set('current_locator', locator)
-      existingShelfRecord.set('current_href', href)
-      existingShelfRecord.set('current_label', chapterLabel)
-      existingShelfRecord.set('last_read_at', nowIso)
-
-      if (pageNumber !== null && !isNaN(pageNumber)) {
-        existingShelfRecord.set('current_page', pageNumber)
-      }
-
-      if (progressPercent !== null && !isNaN(progressPercent)) {
-        existingShelfRecord.set('progress_percent', progressPercent)
-      }
-
-      $app.save(existingShelfRecord)
-
-      info('api/books/save-progress:done', {
-        userId: userId,
-        bookId: bookId,
-        shelfId: String(existingShelfRecord.get('id') || ''),
-        hasLocator: !!locator,
-      })
-
-      response.json(200, {
-        ok: true,
-        message: '읽던 위치를 저장했습니다.',
-        id: String(existingShelfRecord.get('id') || ''),
-      })
-      return
-    } else {
-      const bookRecord = $app.findRecordById('books', bookId)
-      const shelfCollection = $app.findCollectionByNameOrId('book_shelves')
-      const newShelfRecord = new Record(shelfCollection)
-
-      newShelfRecord.set('user_id', userId)
-      newShelfRecord.set('book_id', String(bookRecord.get('id') || ''))
-      newShelfRecord.set('status', 'reading')
-
-      try {
-        bookFileRecord = $app.findFirstRecordByFilter('book_files', 'book_id = {:bookId}', { bookId: bookId })
-      } catch (exception) {
-        bookFileRecord = null
-      }
-
-      if (bookFileRecord) {
-        newShelfRecord.set('book_file_id', String(bookFileRecord.get('id') || ''))
-      }
-
-      newShelfRecord.set('started_at', nowIso)
-      newShelfRecord.set('current_locator', locator)
-      newShelfRecord.set('current_href', href)
-      newShelfRecord.set('current_label', chapterLabel)
-      newShelfRecord.set('last_read_at', nowIso)
-
-      if (pageNumber !== null && !isNaN(pageNumber)) {
-        newShelfRecord.set('current_page', pageNumber)
-      }
-
-      if (progressPercent !== null && !isNaN(progressPercent)) {
-        newShelfRecord.set('progress_percent', progressPercent)
-      }
-
-      $app.save(newShelfRecord)
-
-      info('api/books/save-progress:done', {
-        userId: userId,
-        bookId: bookId,
-        shelfId: String(newShelfRecord.get('id') || ''),
-        hasLocator: !!locator,
-      })
-
-      response.json(200, {
-        ok: true,
-        message: '읽던 위치를 저장했습니다.',
-        id: String(newShelfRecord.get('id') || ''),
-      })
+    if (!existingShelfRecord) {
+      response.json(404, { ok: false, message: '내 도서함에서 책을 찾을 수 없습니다.' })
       return
     }
+
+    const shelfStatus = String(existingShelfRecord.get('status') || '').trim()
+
+    if (shelfStatus !== 'finished' && shelfStatus !== 'reading') {
+      existingShelfRecord.set('status', 'reading')
+    }
+
+    if (!String(existingShelfRecord.get('started_at') || '').trim()) {
+      existingShelfRecord.set('started_at', nowIso)
+    }
+
+    existingShelfRecord.set('current_locator', locator)
+    existingShelfRecord.set('current_href', href)
+    existingShelfRecord.set('current_label', chapterLabel)
+    existingShelfRecord.set('last_read_at', nowIso)
+
+    if (pageNumber !== null && !isNaN(pageNumber)) {
+      existingShelfRecord.set('current_page', pageNumber)
+    }
+
+    if (progressPercent !== null && !isNaN(progressPercent)) {
+      existingShelfRecord.set('progress_percent', progressPercent)
+    }
+
+    $app.save(existingShelfRecord)
+
+    info('api/books/save-progress:done', {
+      userId: userId,
+      bookId: bookId,
+      shelfId: String(existingShelfRecord.get('id') || ''),
+      hasLocator: !!locator,
+    })
+
+    response.json(200, {
+      ok: true,
+      message: '읽던 위치를 저장했습니다.',
+      id: String(existingShelfRecord.get('id') || ''),
+    })
+    return
   } catch (exception) {
     const errorMessage = String(exception.message || exception)
 

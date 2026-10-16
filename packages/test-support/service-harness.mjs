@@ -288,6 +288,7 @@ function removeTempDir(tempRootDir) {
  * @param {object} options 서비스 시작 옵션입니다.
  * @param {string} options.serviceName 서비스 이름입니다.
  * @param {number} [options.timeoutMs] readiness 대기 시간입니다.
+ * @param {number} [options.port] 테스트 서버 포트입니다. 기본값은 8090입니다.
  * @param {Array<object>} [options.imports] 서비스 시작 전 temp pb_data에 넣을 CSV 목록입니다.
  * @param {string} options.imports[].collection 대상 컬렉션 이름입니다.
  * @param {string} [options.imports[].fixture] test-support fixtures 기준 CSV 경로입니다.
@@ -303,9 +304,10 @@ export async function startService(options) {
   const timeoutMs = options.timeoutMs || 20000
   const serviceDir = resolveServiceDir(serviceName)
   const pocketBasePath = resolvePocketBase(serviceDir)
+  const httpPort = options.port === undefined ? DEFAULT_HTTP_PORT : options.port
+  if (!Number.isInteger(httpPort) || httpPort < 1 || httpPort > 65535) throw new Error('Invalid test service port')
   const tempData = createTempDataDir(serviceDir, serviceName)
   const envFilePath = path.join(serviceDir, '.env')
-  const httpPort = DEFAULT_HTTP_PORT
   const baseUrl = `http://127.0.0.1:${httpPort}`
   const childEnv = {
     ...process.env,

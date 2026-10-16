@@ -98,13 +98,35 @@ function renderHtmxErrorAlert(message) {
 
 /** @type {PocketPagesNextMiddlewareFunc} */
 module.exports = function (api, next) {
-  const { env, error, request, redirect, response } = api
+  const { dbg, env, error, request, redirect, response } = api
   const pathname = String(request.url.pathname || '')
   const appEnv = String(env('APP_ENV') || 'development').trim()
   const isDevelopment = appEnv === 'development'
   const fallbackMessage = '처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
 
   try {
+    const isPublicPath =
+      pathname === '/' || pathname === '/auth' || pathname.startsWith('/xapi/auth/') || pathname.startsWith('/assets/')
+
+    if (!isPublicPath && (!request.auth || request.auth.get('booklog_enabled') !== true)) {
+      const status = request.auth ? 403 : 401
+      const message = request.auth ? '관리자의 사용 승인이 필요합니다.' : '로그인이 필요합니다.'
+
+      dbg('booklog/access:denied', { pathname, status })
+
+      if (isApiPath(pathname)) {
+        return response.json(status, { ok: false, message })
+      }
+
+      if (isHtmxRequest(request)) {
+        return response.html(status, renderHtmxErrorAlert(message))
+      }
+
+      const redirectTo = request.auth ? '/' : '/auth'
+      dbg('booklog/access:redirect', { status: 303, redirectTo, message })
+      return redirect(redirectTo, { status: 303, message })
+    }
+
     next()
   } catch (exception) {
     const errorMessage = String(exception && exception.message ? exception.message : exception)
