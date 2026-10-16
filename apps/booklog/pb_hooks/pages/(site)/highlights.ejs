@@ -90,6 +90,7 @@
 
   const highlightRows = arrayOf(
     new DynamicModel({
+      id: '',
       bookId: '',
       bookTitle: '',
       quoteText: '',
@@ -102,6 +103,7 @@
     $app
       .db()
       .select(
+        'book_highlights.id as id',
         'book_highlights.book_id as bookId',
         'books.title as bookTitle',
         'book_highlights.quote_text as quoteText',
@@ -121,6 +123,7 @@
     const row = highlightRows[index]
     const highlightedAtValue = String(row.highlightedAtValue || '').trim()
     highlightItems.push({
+      id: String(row.id || ''),
       bookId: String(row.bookId || '').trim(),
       bookTitle: String(row.bookTitle || '제목 없음'),
       quoteText: String(row.quoteText || '').trim(),
@@ -187,7 +190,8 @@
     <div class="space-y-2.5">
       <% for (let index = 0; index < highlightItems.length; index += 1) { const item = highlightItems[index] %>
       <a
-        href="/books/<%= item.bookId %>?from=/highlights"
+        data-book-detail
+        href="/books/<%= item.bookId %>?from=<%= encodeURIComponent(buildHighlightsHref({})) %>&highlight=<%= item.id %>#highlight-<%= item.id %>"
         class="block rounded-[1.4rem] bg-[#fbf7ef] px-4 py-3.5 text-stone-900 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] transition hover:bg-[#f7f0e3]">
         <p class="text-[15px] leading-[1.65] font-semibold tracking-[-0.02em] text-stone-900 sm:text-base">
           <%= item.quoteText %>

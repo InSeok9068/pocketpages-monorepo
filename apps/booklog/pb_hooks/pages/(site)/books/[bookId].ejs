@@ -6,8 +6,8 @@
   const flashMessage = params.__flash ? String(params.__flash) : ''
   const bookId = String(params.bookId || '').trim()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
-  const backSource = String(request.url.query.from || '').trim()
-  let bookBackHref = '/'
+  const bookBackHref = resolve('book-navigation').getBackHref(request.url.query.from)
+  const backSource = bookBackHref.split('?')[0]
   let bookBackLabel = '메인으로'
   const shelfStatusLabels = {
     queued: '읽을 예정',
@@ -17,17 +17,14 @@
   }
 
   if (backSource === '/library') {
-    bookBackHref = '/library'
     bookBackLabel = '도서함으로'
   }
 
   if (backSource === '/reviews') {
-    bookBackHref = '/reviews'
     bookBackLabel = '감상평으로'
   }
 
   if (backSource === '/highlights') {
-    bookBackHref = '/highlights'
     bookBackLabel = '문구로'
   }
 
@@ -222,6 +219,26 @@
     )
   } catch (exception) {
     highlightRecords = []
+  }
+
+  const selectedHighlightId = String(request.url.query.highlight || '').trim()
+
+  if (
+    selectedHighlightId
+    && !highlightRecords.some(function (record) {
+      return record.get('id') === selectedHighlightId
+    })
+  ) {
+    try {
+      const selectedHighlight = $app.findFirstRecordByFilter(
+        'book_highlights',
+        'id = {:highlightId} && user_id = {:userId} && book_id = {:bookId}',
+        { highlightId: selectedHighlightId, userId: userId, bookId: bookId }
+      )
+      highlightRecords.unshift(selectedHighlight)
+    } catch (exception) {
+      dbg('page/books/[bookId]:selected-highlight-unavailable', { bookId: bookId, highlightId: selectedHighlightId })
+    }
   }
 
   /**
@@ -565,6 +582,7 @@
     <div class="mt-5 space-y-3">
       <% for (let index = 0; index < highlightCards.length; index += 1) { const highlight = highlightCards[index] %>
       <article
+        id="highlight-<%= highlight.id %>"
         x-data="{ editing: false }"
         class="rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
         <div
@@ -687,6 +705,7 @@
   </section>
 
   <section
+    id="book-review"
     class="relative rounded-[2rem] border border-stone-200/80 bg-white/80 p-5 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm">
     <div class="space-y-2">
       <h3 class="text-xl font-semibold tracking-tight text-stone-950 sm:text-2xl">감상평</h3>
@@ -734,6 +753,7 @@
         <label class="block space-y-2">
           <textarea
             name="reviewText"
+            data-review-draft-key="booklog.review-draft:<%= userId %>:<%= bookId %>"
             rows="8"
             aria-label="감상평"
             class="booklog-review-textarea box-border block w-full min-w-0 resize-none rounded-[1.4rem] border-0 bg-[#fbf5ec] px-4 py-4 text-[15px] leading-7 text-[#2f251c] shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1),0_10px_24px_rgba(157,121,72,0.08)] transition outline-none placeholder:text-[#b59f87] focus:bg-[#fffaf2] focus:shadow-[inset_0_0_0_1.5px_rgba(155,111,69,0.42),0_14px_28px_rgba(157,121,72,0.12)]"

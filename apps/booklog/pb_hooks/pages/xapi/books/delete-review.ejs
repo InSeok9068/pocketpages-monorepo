@@ -28,13 +28,9 @@
   const form = body()
   const userId = String(request.auth.get('id') || '')
   const bookId = String(form.bookId || '').trim()
-  const fromPath = String(form.from || '').trim()
-  let bookDetailPath = '/books/' + bookId
+  const fromPath = resolve('book-navigation').getBackHref(form.from)
+  const bookDetailPath = '/books/' + bookId + '?from=' + encodeURIComponent(fromPath)
   let errorMessage = ''
-
-  if (fromPath === '/' || fromPath === '/library' || fromPath === '/reviews' || fromPath === '/highlights') {
-    bookDetailPath += '?from=' + encodeURIComponent(fromPath)
-  }
 
   dbg('xapi/books/delete-review:start', {
     userId: userId,
