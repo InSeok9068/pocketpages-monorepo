@@ -2587,9 +2587,21 @@ window.booklogReaderLogic = (function () {
 
   function syncReaderSettingsState(component, settings) {
     var normalizedSettings = normalizeReaderSettings(settings)
+    var themeColorMeta = document.querySelector('meta[name="theme-color"]')
+    var themeColor = '#ffffff'
 
     if (!component) {
       return
+    }
+
+    if (normalizedSettings.theme === 'sepia') {
+      themeColor = '#f7f2e6'
+    } else if (normalizedSettings.theme === 'night') {
+      themeColor = '#161616'
+    }
+
+    if (themeColorMeta) {
+      themeColorMeta.setAttribute('content', themeColor)
     }
 
     component.readerTheme = normalizedSettings.theme
@@ -2741,8 +2753,8 @@ window.booklogReaderLogic = (function () {
 
     if (normalizedSettings.theme === 'sepia') {
       cssRules = [
-        'html{background:#f7f0df !important;}',
-        'body{background:#f7f0df !important;color:#33281f !important;}',
+        'html{background:#f7f2e6 !important;}',
+        'body{background:#f7f2e6 !important;color:#33281f !important;}',
         'a{color:#79553b !important;}',
       ]
     }
@@ -3754,6 +3766,7 @@ window.booklogReaderLogic = (function () {
 
     activeComponent = component
     syncReaderFontSizeState(component, readStoredReaderFontSizePercent())
+    syncReaderSettingsState(component, readStoredReaderSettings())
     window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
     window.addEventListener('popstate', handlePopState)
     bindReadingSessionActivityTracking(component)
