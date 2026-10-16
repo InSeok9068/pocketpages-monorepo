@@ -2585,24 +2585,37 @@ window.booklogReaderLogic = (function () {
     component.readerFontSizePercent = String(normalizeReaderFontSizePercent(percent))
   }
 
-  function syncReaderSettingsState(component, settings) {
-    var normalizedSettings = normalizeReaderSettings(settings)
+  function syncReaderPageTheme(theme) {
     var themeColorMeta = document.querySelector('meta[name="theme-color"]')
     var themeColor = '#ffffff'
 
-    if (!component) {
-      return
-    }
-
-    if (normalizedSettings.theme === 'sepia') {
+    if (theme === 'sepia') {
       themeColor = '#f7f2e6'
-    } else if (normalizedSettings.theme === 'night') {
+    } else if (theme === 'night') {
       themeColor = '#161616'
     }
 
     if (themeColorMeta) {
       themeColorMeta.setAttribute('content', themeColor)
     }
+
+    if (document.documentElement) {
+      document.documentElement.style.backgroundColor = themeColor
+    }
+
+    if (document.body) {
+      document.body.style.backgroundColor = themeColor
+    }
+  }
+
+  function syncReaderSettingsState(component, settings) {
+    var normalizedSettings = normalizeReaderSettings(settings)
+
+    if (!component) {
+      return
+    }
+
+    syncReaderPageTheme(normalizedSettings.theme)
 
     component.readerTheme = normalizedSettings.theme
     component.readerFontSizePercent = String(normalizedSettings.fontSizePercent)
