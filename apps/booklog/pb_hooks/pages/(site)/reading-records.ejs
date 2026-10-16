@@ -21,9 +21,6 @@
   const now = new Date()
   const weekItems = []
   const requestedWeekValue = String(request.url.query.week || '').trim()
-  const sessionRecords = $app.findRecordsByFilter('reading_sessions', 'user_id = {:userId}', '-ended_at', 500, 0, {
-    userId: userId,
-  })
 
   /**
    * 날짜를 한국시간 기준 해당 주 월요일로 맞춥니다.
@@ -156,10 +153,51 @@
     dateutil.formatDate(periodStart, 'YYYY.MM.DD') + ' ~ ' + dateutil.formatDate(periodEnd, 'YYYY.MM.DD')
   const weeklySecondsByKey = {}
   const weeklyBooksByKey = {}
-  const bookTitlesById = {}
-  let totalSeconds = 0
-  let currentWeekSeconds = 0
+  const readingSummary = new DynamicModel({ totalSeconds: 0, currentWeekSeconds: 0 })
+  const sessionRows = arrayOf(new DynamicModel({ endedAt: '', durationSeconds: 0, bookId: '', bookTitle: '' }))
   let finishedBookCount = 0
+
+  dbg('page/reading-records:find-sessions', { userId: userId, periodLabel: periodLabel })
+  $app
+    .db()
+    .newQuery(
+      `SELECT COALESCE(SUM(duration_seconds), 0) AS totalSeconds,
+        COALESCE(SUM(CASE WHEN ended_at >= {:weekStart} AND ended_at < {:weekEnd}
+          THEN duration_seconds ELSE 0 END), 0) AS currentWeekSeconds
+      FROM reading_sessions
+      WHERE user_id = {:userId} AND ended_at != '' AND duration_seconds > 0`
+    )
+    .bind({
+      userId: userId,
+      weekStart: dateutil.startOfDay(currentWeekKey).toISOString().replace('T', ' '),
+      weekEnd: dateutil.startOfDay(dateutil.addDays(currentWeekKey, 7)).toISOString().replace('T', ' '),
+    })
+    .one(readingSummary)
+
+  $app
+    .db()
+    .newQuery(
+      `SELECT reading_sessions.ended_at AS endedAt, reading_sessions.duration_seconds AS durationSeconds,
+        reading_sessions.book_id AS bookId, COALESCE(books.title, '책 정보 없음') AS bookTitle
+      FROM reading_sessions
+      LEFT JOIN books ON books.id = reading_sessions.book_id
+      WHERE reading_sessions.user_id = {:userId}
+        AND reading_sessions.ended_at >= {:periodStart} AND reading_sessions.ended_at <= {:periodEnd}
+        AND reading_sessions.duration_seconds > 0
+      ORDER BY reading_sessions.ended_at DESC`
+    )
+    .bind({
+      userId: userId,
+      periodStart: dateutil
+        .startOfDay(dateutil.formatDate(periodStart, dateutil.FORMATS.DATE))
+        .toISOString()
+        .replace('T', ' '),
+      periodEnd: dateutil
+        .endOfDay(dateutil.formatDate(periodEnd, dateutil.FORMATS.DATE))
+        .toISOString()
+        .replace('T', ' '),
+    })
+    .all(sessionRows)
 
   try {
     finishedBookCount = $app.countRecords(
@@ -195,11 +233,11 @@
     })
   }
 
-  for (let index = 0; index < sessionRecords.length; index += 1) {
-    const sessionRecord = sessionRecords[index]
-    const endedAtValue = String(sessionRecord.get('ended_at') || '').trim()
-    const durationSeconds = Number(sessionRecord.get('duration_seconds') || 0)
-    const endedAt = endedAtValue ? new Date(endedAtValue) : null
+  for (let index = 0; index < sessionRows.length; index += 1) {
+    const row = sessionRows[index]
+    const endedAtValue = String(row.endedAt || '').trim()
+    const durationSeconds = Number(row.durationSeconds || 0)
+    const endedAt = endedAtValue ? dateutil.toDate(endedAtValue) : null
 
     if (!endedAt || isNaN(endedAt.getTime()) || isNaN(durationSeconds) || durationSeconds < 1) {
       continue
@@ -210,27 +248,15 @@
     if (typeof weeklySecondsByKey[weekKey] === 'number') {
       weeklySecondsByKey[weekKey] += durationSeconds
 
-      const bookId = String(sessionRecord.get('book_id') || '')
+      const bookId = String(row.bookId || '')
       const weeklyBooks = weeklyBooksByKey[weekKey]
 
       if (!weeklyBooks[bookId]) {
-        if (typeof bookTitlesById[bookId] === 'undefined') {
-          // 현재 사용자의 세션에 연결된 책만 조회합니다.
-          const books = $app.findRecordsByFilter('books', 'id = {:bookId}', '', 1, 0, { bookId: bookId })
-          bookTitlesById[bookId] = books.length ? String(books[0].get('title') || '제목 없음') : '책 정보 없음'
-        }
-
-        weeklyBooks[bookId] = { title: bookTitlesById[bookId], seconds: 0, minutesLabel: '' }
+        weeklyBooks[bookId] = { title: String(row.bookTitle || '제목 없음'), seconds: 0, minutesLabel: '' }
       }
 
       weeklyBooks[bookId].seconds += durationSeconds
     }
-
-    if (weekKey === currentWeekKey) {
-      currentWeekSeconds += durationSeconds
-    }
-
-    totalSeconds += durationSeconds
   }
 
   for (let index = 0; index < weekItems.length; index += 1) {
@@ -253,9 +279,9 @@
     })
   }
 
-  const totalMinutes = Math.round(totalSeconds / 60)
+  const totalMinutes = Math.round(Number(readingSummary.totalSeconds || 0) / 60)
   const totalMinutesLabel = formatTotalMinutesLabel(totalMinutes)
-  const currentWeekMinutes = Math.round(currentWeekSeconds / 60)
+  const currentWeekMinutes = Math.round(Number(readingSummary.currentWeekSeconds || 0) / 60)
 </script>
 
 <section class="space-y-6">

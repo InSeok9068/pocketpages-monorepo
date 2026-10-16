@@ -113,25 +113,17 @@
   const readingProgressText = hasReadingProgress ? readingProgressPercent + '%' : ''
 
   try {
-    const readingSessionRecords = $app.findRecordsByFilter(
-      'reading_sessions',
-      'user_id = {:userId} && book_id = {:bookId}',
-      '-ended_at',
-      500,
-      0,
-      {
-        userId: userId,
-        bookId: bookId,
-      }
-    )
-
-    for (let index = 0; index < readingSessionRecords.length; index += 1) {
-      const durationSeconds = Number(readingSessionRecords[index].get('duration_seconds') || 0)
-
-      if (!isNaN(durationSeconds) && durationSeconds > 0) {
-        readingDurationSeconds += durationSeconds
-      }
-    }
+    const readingSummary = new DynamicModel({ totalSeconds: 0 })
+    $app
+      .db()
+      .newQuery(
+        `SELECT COALESCE(SUM(duration_seconds), 0) AS totalSeconds
+        FROM reading_sessions
+        WHERE user_id = {:userId} AND book_id = {:bookId} AND duration_seconds > 0`
+      )
+      .bind({ userId: userId, bookId: bookId })
+      .one(readingSummary)
+    readingDurationSeconds = Number(readingSummary.totalSeconds || 0)
   } catch (exception) {
     readingDurationSeconds = 0
   }

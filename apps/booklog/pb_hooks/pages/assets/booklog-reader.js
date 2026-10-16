@@ -30,6 +30,7 @@ window.booklogReaderLogic = (function () {
   var EDGE_INTENT_MS = 140
   var AUTO_PAGE_SETTLE_MS = 520
   var AUTO_SAVE_INTERVAL_MS = 5000
+  var POSITION_RESTORE_PENDING_MESSAGE = '읽던 위치를 확인하지 못해 위치 저장을 보류합니다. 자동으로 다시 시도합니다.'
   var READING_SESSION_SAVE_INTERVAL_MS = 60000
   var READING_SESSION_IDLE_MS = 180000
   var NAVIGATION_SAVE_WAIT_MS = 2000
@@ -66,10 +67,11 @@ window.booklogReaderLogic = (function () {
   var readingSessionBeaconSent = false
   var readingSessionActiveSeconds = 0
   var readingSessionLastTickMs = 0
+  var readingSessionWasVisible = false
   var readingSessionLastActivityMs = 0
   var readingSessionActivityBound = false
   var isRestoringPosition = false
-  var hasAttemptedInitialRestore = false
+  var hasResolvedSavedPosition = false
   var lastPersistedProgressKey = ''
   var speechSynthesisInstance = null
   var speechVoices = []
@@ -1705,7 +1707,7 @@ window.booklogReaderLogic = (function () {
           })
       })
       .then(function (result) {
-        if (!result.ok) {
+        if (!result.ok || result.payload.ok !== true) {
           throw new Error(
             String(
               result.payload && result.payload.message ? result.payload.message : '읽기 위치를 불러오지 못했습니다.'
@@ -1741,39 +1743,34 @@ window.booklogReaderLogic = (function () {
     return typeof document === 'undefined' || document.visibilityState !== 'hidden'
   }
 
-  function isReadingSessionActive(nowMs) {
-    return (
-      !!readingSessionStartedAtMs
-      && isDocumentVisible()
-      && nowMs - readingSessionLastActivityMs <= READING_SESSION_IDLE_MS
-    )
-  }
-
   function markReadingSessionActivity() {
     var nowMs = Date.now()
 
+    syncReadingSessionActiveSeconds()
     readingSessionLastActivityMs = nowMs
-
-    if (!readingSessionLastTickMs) {
-      readingSessionLastTickMs = nowMs
-    }
   }
 
   function syncReadingSessionActiveSeconds() {
     var nowMs = Date.now()
     var elapsedMs = 0
 
-    if (!readingSessionLastTickMs) {
+    if (!readingSessionStartedAtMs || !readingSessionLastTickMs) {
       readingSessionLastTickMs = nowMs
+      readingSessionWasVisible = isDocumentVisible()
       return
     }
 
-    if (isReadingSessionActive(nowMs)) {
-      elapsedMs = Math.max(0, nowMs - readingSessionLastTickMs)
+    if (readingSessionWasVisible) {
+      // 화면 전환 직전 상태로 지난 구간을 집계합니다.
+      elapsedMs = Math.max(
+        0,
+        Math.min(nowMs, readingSessionLastActivityMs + READING_SESSION_IDLE_MS) - readingSessionLastTickMs
+      )
       readingSessionActiveSeconds += elapsedMs / 1000
     }
 
     readingSessionLastTickMs = nowMs
+    readingSessionWasVisible = isDocumentVisible()
   }
 
   function buildReadingSessionFormData(component) {
@@ -1878,15 +1875,15 @@ window.booklogReaderLogic = (function () {
     var payload = buildReadingSessionFormData(component)
     var finalSave = !!(options && options.final)
 
-    if (finalSave) {
-      readingSessionBeaconSent = true
-    }
-
     if (readingSessionSaveInFlight) {
       if (finalSave) {
-        return (activeReadingSessionRequest || Promise.resolve(false)).then(function () {
-          return saveReadingSessionCheckpoint(component, options)
-        })
+        return (activeReadingSessionRequest || Promise.resolve(false))
+          .catch(function () {
+            return false
+          })
+          .then(function () {
+            return saveReadingSessionCheckpoint(component, options)
+          })
       }
 
       return activeReadingSessionRequest || Promise.resolve(false)
@@ -1947,7 +1944,7 @@ window.booklogReaderLogic = (function () {
 
     payload = buildReadingSessionFormData(component)
 
-    if (!payload) {
+    if (!payload || payload.durationSeconds <= lastReadingSessionSavedSeconds) {
       return
     }
 
@@ -1955,16 +1952,21 @@ window.booklogReaderLogic = (function () {
 
     if (window.navigator && typeof window.navigator.sendBeacon === 'function') {
       try {
-        window.navigator.sendBeacon('/api/books/save-reading-session', payload.formData)
-        return
+        if (window.navigator.sendBeacon('/api/books/save-reading-session', payload.formData)) {
+          return
+        }
       } catch (exception) {}
     }
 
     try {
       requestSaveReadingSession(payload.formData, {
         keepalive: true,
-      }).catch(function () {})
-    } catch (exception) {}
+      }).catch(function () {
+        readingSessionBeaconSent = false
+      })
+    } catch (exception) {
+      readingSessionBeaconSent = false
+    }
   }
 
   function startReadingSession(component) {
@@ -1978,6 +1980,7 @@ window.booklogReaderLogic = (function () {
     readingSessionStartProgress = getCurrentProgressPayload(component)
     readingSessionActiveSeconds = 0
     readingSessionLastTickMs = readingSessionStartedAtMs
+    readingSessionWasVisible = isDocumentVisible()
     readingSessionLastActivityMs = readingSessionStartedAtMs
     lastReadingSessionSavedSeconds = 0
     readingSessionBeaconSent = false
@@ -2015,12 +2018,14 @@ window.booklogReaderLogic = (function () {
       syncReadingSessionActiveSeconds()
 
       if (isDocumentVisible()) {
+        readingSessionBeaconSent = false
         markReadingSessionActivity()
         return
       }
 
       saveReadingSessionCheckpoint(component, {
         final: true,
+        keepalive: true,
       }).catch(function (exception) {
         console.warn('page/books/[bookId]/read:session-visibility-save:failed', {
           message: String(exception && exception.message ? exception.message : exception),
@@ -2255,6 +2260,13 @@ window.booklogReaderLogic = (function () {
     var shouldShowMessage = !options || !options.silent
     var progressKey = buildProgressKey(progress)
 
+    if (!hasResolvedSavedPosition || isRestoringPosition) {
+      if (shouldShowMessage) {
+        component.showSavePositionMessage(POSITION_RESTORE_PENDING_MESSAGE)
+      }
+      return Promise.resolve(false)
+    }
+
     if (saveRequestInFlight) {
       if (shouldShowMessage) {
         component.showSavePositionMessage('읽기 위치를 저장하는 중입니다.')
@@ -2454,7 +2466,13 @@ window.booklogReaderLogic = (function () {
         var target = locator || href
 
         if (!target) {
-          throw new Error('저장된 읽기 위치가 없습니다.')
+          if (payload.hasSavedPosition !== false) {
+            throw new Error('읽기 위치 응답을 확인하지 못했습니다.')
+          }
+          if (shouldShowMessage) {
+            component.showSavePositionMessage('저장된 읽기 위치가 없습니다.')
+          }
+          return false
         }
 
         return Promise.resolve(renditionInstance.display(target))
@@ -2485,7 +2503,17 @@ window.booklogReaderLogic = (function () {
             return true
           })
       })
+      .then(function (restored) {
+        hasResolvedSavedPosition = true
+        if (component.errorMessage === POSITION_RESTORE_PENDING_MESSAGE) {
+          component.errorMessage = ''
+        }
+        return restored
+      })
       .catch(function (exception) {
+        if (!hasResolvedSavedPosition) {
+          component.errorMessage = POSITION_RESTORE_PENDING_MESSAGE
+        }
         if (shouldShowMessage) {
           component.showSavePositionMessage(String(exception && exception.message ? exception.message : exception))
         } else {
@@ -2506,7 +2534,7 @@ window.booklogReaderLogic = (function () {
       return true
     }
 
-    if (!renditionInstance || !hasAttemptedInitialRestore || isRestoringPosition || autoSaveInFlight) {
+    if (!renditionInstance || isRestoringPosition || autoSaveInFlight || isLeavingPage) {
       return true
     }
 
@@ -2515,6 +2543,11 @@ window.booklogReaderLogic = (function () {
 
   function runAutoSave(component) {
     if (shouldSkipAutoSave(component)) {
+      return
+    }
+
+    if (!hasResolvedSavedPosition) {
+      restoreSavedPosition(component, { silent: true })
       return
     }
 
@@ -3812,7 +3845,6 @@ window.booklogReaderLogic = (function () {
         return restoreSavedPosition(component, {
           silent: true,
         }).finally(function () {
-          hasAttemptedInitialRestore = true
           component.loadingSavedPosition = false
         })
       })

@@ -48,10 +48,6 @@
     const currentPageValue = shelfRecord.get('current_page')
     const progressPercentValue = shelfRecord.get('progress_percent')
 
-    if (!locator && !href) {
-      throw new Error('저장된 읽기 위치가 없습니다.')
-    }
-
     info('api/books/load-progress:done', {
       userId: userId,
       bookId: bookId,
@@ -61,7 +57,8 @@
 
     response.json(200, {
       ok: true,
-      message: '저장된 읽기 위치를 불러왔습니다.',
+      hasSavedPosition: !!(locator || href),
+      message: locator || href ? '저장된 읽기 위치를 불러왔습니다.' : '저장된 읽기 위치가 없습니다.',
       locator: locator,
       href: href,
       chapterLabel: chapterLabel,
