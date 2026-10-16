@@ -34,6 +34,7 @@
   let removedHighlightCount = 0
   let removedBookmarkCount = 0
   let removedReadingSessionCount = 0
+  let removedAudioProgressCount = 0
 
   dbg('xapi/books/remove-from-shelf:start', {
     userId: userId,
@@ -68,6 +69,20 @@
       const bookmarkDeleteResult = txApp.db().delete('book_bookmarks', personalRecordFilter).execute()
       const readingSessionDeleteResult = txApp.db().delete('reading_sessions', personalRecordFilter).execute()
 
+      const bookFileRecords = txApp.findRecordsByFilter('book_files', 'book_id = {:bookId}', '', 0, 0, {
+        bookId: bookId,
+      })
+      bookFileRecords.forEach(function (bookFileRecord) {
+        const audioProgressDeleteResult = txApp
+          .db()
+          .delete(
+            'book_audio_progress',
+            $dbx.hashExp({ user_id: userId, file_id: String(bookFileRecord.get('id') || '') })
+          )
+          .execute()
+        removedAudioProgressCount += audioProgressDeleteResult.rowsAffected()
+      })
+
       txApp.delete(shelfRecord)
 
       removedReviewCount = reviewDeleteResult.rowsAffected()
@@ -84,6 +99,7 @@
       removedHighlightCount: removedHighlightCount,
       removedBookmarkCount: removedBookmarkCount,
       removedReadingSessionCount: removedReadingSessionCount,
+      removedAudioProgressCount: removedAudioProgressCount,
     })
     redirect('/library', {
       status: 303,
