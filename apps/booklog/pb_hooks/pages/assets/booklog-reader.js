@@ -49,11 +49,13 @@ window.booklogReaderLogic = (function () {
   var SELECTED_HIGHLIGHT_POLL_INTERVAL_MS = 120
   var SELECTED_HIGHLIGHT_SETTLE_MS = 220
   var READER_CACHE_DB_NAME = 'booklog-reader-cache'
+  var READER_CACHE_DB_VERSION = 2
   var READER_CACHE_STORE_NAME = 'epubBuffers'
   var READER_CACHE_LIMIT = 5
   var PROGRESS_LOCATION_BREAK = 1600
   var PROGRESS_LOCATIONS_CACHE_VERSION = 'epubjs-0.3.93:' + PROGRESS_LOCATION_BREAK
   var cachedProgressLocations = ''
+  var bookCacheWritePromise = Promise.resolve()
   var autoSaveTimerId = null
   var autoSaveInFlight = false
   var saveRequestInFlight = false
@@ -2901,24 +2903,48 @@ window.booklogReaderLogic = (function () {
   function openReaderCacheDb() {
     return new Promise(function (resolve, reject) {
       var request = null
+      var abandoned = false
 
       if (!canUseReaderCache()) {
         resolve(null)
         return
       }
 
-      request = window.indexedDB.open(READER_CACHE_DB_NAME, 1)
+      request = window.indexedDB.open(READER_CACHE_DB_NAME, READER_CACHE_DB_VERSION)
 
       request.onupgradeneeded = function (event) {
         var db = event.target.result
+        var store = null
 
         if (!db.objectStoreNames.contains(READER_CACHE_STORE_NAME)) {
-          db.createObjectStore(READER_CACHE_STORE_NAME, { keyPath: 'cacheKey' })
+          store = db.createObjectStore(READER_CACHE_STORE_NAME, { keyPath: 'cacheKey' })
+        } else {
+          store = request.transaction.objectStore(READER_CACHE_STORE_NAME)
+        }
+
+        if (!store.indexNames.contains('lastOpenedAt')) {
+          store.createIndex('lastOpenedAt', 'lastOpenedAt')
         }
       }
 
       request.onsuccess = function () {
-        resolve(request.result)
+        var db = request.result
+
+        db.onversionchange = function () {
+          db.close()
+        }
+
+        if (abandoned) {
+          db.close()
+          return
+        }
+
+        resolve(db)
+      }
+
+      request.onblocked = function () {
+        abandoned = true
+        resolve(null)
       }
 
       request.onerror = function () {
@@ -2958,63 +2984,32 @@ window.booklogReaderLogic = (function () {
           reject(request.error || new Error('EPUB 캐시를 읽지 못했습니다.'))
         }
       }).finally(function () {
-        db.close()
+        if (db) {
+          db.close()
+        }
       })
     })
   }
 
   function pruneReaderCache(store) {
-    return new Promise(function (resolve, reject) {
-      var request = store.getAll()
+    var request = store.index('lastOpenedAt').openKeyCursor(null, 'prev')
+    var count = 0
 
-      request.onsuccess = function () {
-        var records = request.result || []
-        var removable = null
-        var pendingDeletes = 0
-        var failed = false
+    request.onsuccess = function () {
+      var cursor = request.result
 
-        records.sort(function (left, right) {
-          return (
-            Number(right && right.lastOpenedAt ? right.lastOpenedAt : 0)
-            - Number(left && left.lastOpenedAt ? left.lastOpenedAt : 0)
-          )
-        })
-
-        removable = records.slice(READER_CACHE_LIMIT)
-
-        if (!removable.length) {
-          resolve()
-          return
-        }
-
-        pendingDeletes = removable.length
-
-        removable.forEach(function (cacheEntry) {
-          var deleteRequest = store.delete(cacheEntry.cacheKey)
-
-          deleteRequest.onsuccess = function () {
-            pendingDeletes -= 1
-
-            if (!pendingDeletes && !failed) {
-              resolve()
-            }
-          }
-
-          deleteRequest.onerror = function () {
-            if (failed) {
-              return
-            }
-
-            failed = true
-            reject(deleteRequest.error || new Error('EPUB 캐시 정리에 실패했습니다.'))
-          }
-        })
+      if (!cursor) {
+        return
       }
 
-      request.onerror = function () {
-        reject(request.error || new Error('EPUB 캐시 목록을 읽지 못했습니다.'))
+      count += 1
+
+      if (count > READER_CACHE_LIMIT) {
+        store.delete(cursor.primaryKey)
       }
-    })
+
+      cursor.continue()
+    }
   }
 
   function writeCachedBookBuffer(buffer) {
@@ -3031,6 +3026,15 @@ window.booklogReaderLogic = (function () {
 
         transaction = db.transaction(READER_CACHE_STORE_NAME, 'readwrite')
         store = transaction.objectStore(READER_CACHE_STORE_NAME)
+
+        transaction.oncomplete = function () {
+          resolve()
+        }
+
+        transaction.onerror = transaction.onabort = function () {
+          reject(transaction.error || new Error('EPUB 캐시에 저장하지 못했습니다.'))
+        }
+
         request = store.put({
           cacheKey: readerCacheKey,
           buffer: buffer,
@@ -3040,19 +3044,11 @@ window.booklogReaderLogic = (function () {
 
         request.onsuccess = function () {
           pruneReaderCache(store)
-            .then(function () {
-              resolve()
-            })
-            .catch(function (exception) {
-              reject(exception)
-            })
-        }
-
-        request.onerror = function () {
-          reject(request.error || new Error('EPUB 캐시에 저장하지 못했습니다.'))
         }
       }).finally(function () {
-        db.close()
+        if (db) {
+          db.close()
+        }
       })
     })
   }
@@ -3098,7 +3094,9 @@ window.booklogReaderLogic = (function () {
           reject(request.error || new Error('EPUB 캐시 갱신에 실패했습니다.'))
         }
       }).finally(function () {
-        db.close()
+        if (db) {
+          db.close()
+        }
       })
     })
   }
@@ -3813,7 +3811,7 @@ window.booklogReaderLogic = (function () {
           .then(function () {
             handleReady()
 
-            Promise.resolve()
+            bookCacheWritePromise
               .then(function () {
                 return writeCachedProgressLocations(locations.save())
               })
@@ -3981,11 +3979,8 @@ window.booklogReaderLogic = (function () {
             cacheKey: readerCacheKey,
           })
 
-          return touchCachedBookBuffer()
-            .catch(function () {})
-            .then(function () {
-              return cachedBuffer
-            })
+          bookCacheWritePromise = touchCachedBookBuffer().catch(function () {})
+          return cachedBuffer
         }
 
         console.debug('page/books/[bookId]/read:cache-miss', {
@@ -3994,15 +3989,12 @@ window.booklogReaderLogic = (function () {
         })
 
         return fetchBookBuffer().then(function (buffer) {
-          return writeCachedBookBuffer(buffer)
-            .catch(function (exception) {
-              console.warn('page/books/[bookId]/read:cache-write-skipped', {
-                message: String(exception && exception.message ? exception.message : exception),
-              })
+          bookCacheWritePromise = writeCachedBookBuffer(buffer).catch(function (exception) {
+            console.warn('page/books/[bookId]/read:cache-write-skipped', {
+              message: String(exception && exception.message ? exception.message : exception),
             })
-            .then(function () {
-              return buffer
-            })
+          })
+          return buffer
         })
       })
       .then(function (buffer) {
