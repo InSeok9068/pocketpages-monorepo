@@ -6,6 +6,7 @@
 
   const { dateutil } = require('@pocketpages/utils')
   const bookTitleService = resolve('book-title')
+  const bookAuthorView = resolve('book-author-view')
   const flashMessage = params.__flash ? String(params.__flash) : ''
   const isSignedIn = !!request.auth
   const canUseBooklog = isSignedIn && request.auth.get('booklog_enabled') === true
@@ -153,7 +154,7 @@
         continue
       }
 
-      const author = String(bookRecord.get('author') || '').trim()
+      const author = bookAuthorView.formatDisplayAuthor(String(bookRecord.get('author') || '').trim())
       loadedShelfBooks.push({
         bookId: String(bookRecord.get('id') || ''),
         title: bookTitleService.getMainTitle(String(bookRecord.get('title') || '제목 없음')),
