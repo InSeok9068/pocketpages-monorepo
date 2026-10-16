@@ -276,7 +276,7 @@ window.booklogAudio = (function () {
       mediaSession.metadata = new window.MediaMetadata({
         title: chapterLabel(session) || bookTitle || 'AI 오디오북',
         artist: bookTitle,
-        album: 'Booklog AI 오디오북',
+        album: '북로그 AI 오디오북',
       })
     } catch (_error) {
       /* 메타데이터 없이 재생합니다. */

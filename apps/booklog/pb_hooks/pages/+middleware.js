@@ -65,7 +65,7 @@ function renderErrorPage(title, message, detail) {
     + '</head>'
     + '<body style="margin:0;min-height:100vh;background:#f7f2e6;color:#292524;font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;">'
     + '<main style="box-sizing:border-box;width:min(720px,100%);margin:0 auto;padding:48px 20px;">'
-    + '<p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.14em;color:#a16207;text-transform:uppercase;">Booklog</p>'
+    + '<p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.14em;color:#a16207;text-transform:uppercase;">북로그</p>'
     + '<h1 style="margin:0;font-size:28px;line-height:1.25;">'
     + escapeHtml(title)
     + '</h1>'

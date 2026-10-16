@@ -1,7 +1,7 @@
 <script server>
   const bookTitleService = resolve('book-title')
-  meta('title', 'Booklog 리더')
-  meta('description', 'Booklog EPUB 리더')
+  meta('title', '북로그 리더')
+  meta('description', '북로그 EPUB 리더')
 
   const bookId = String(params.bookId || '').trim()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''

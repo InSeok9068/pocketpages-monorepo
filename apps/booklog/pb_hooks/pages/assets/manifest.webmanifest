@@ -1,6 +1,6 @@
 {
-  "name": "Booklog",
-  "short_name": "Booklog",
+  "name": "북로그",
+  "short_name": "북로그",
   "lang": "ko",
   "start_url": "/",
   "display": "standalone",
