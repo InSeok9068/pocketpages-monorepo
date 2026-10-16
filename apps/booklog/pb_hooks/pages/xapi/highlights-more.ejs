@@ -1,5 +1,6 @@
 <script server>
   const { dateutil } = require('@pocketpages/utils')
+  const bookTitleService = resolve('book-title')
 
   if (request.method !== 'GET') {
     dbg('xapi/highlights-more:redirect', {
@@ -133,7 +134,7 @@
     highlightItems.push({
       id: String(row.id || ''),
       bookId: String(row.bookId || '').trim(),
-      bookTitle: String(row.bookTitle || '제목 없음'),
+      bookTitle: bookTitleService.getMainTitle(String(row.bookTitle || '제목 없음')),
       quoteText: String(row.quoteText || '').trim(),
       highlightedAt: highlightedAtValue ? dateutil.formatDate(highlightedAtValue, dateutil.FORMATS.DATE) : '',
     })

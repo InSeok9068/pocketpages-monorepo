@@ -5,6 +5,7 @@
   meta('image', 'https://booklog.development-support.o-r.kr/assets/og/booklog-home.png')
 
   const { dateutil } = require('@pocketpages/utils')
+  const bookTitleService = resolve('book-title')
   const flashMessage = params.__flash ? String(params.__flash) : ''
   const isSignedIn = !!request.auth
   const canUseBooklog = isSignedIn && request.auth.get('booklog_enabled') === true
@@ -155,7 +156,7 @@
       const author = String(bookRecord.get('author') || '').trim()
       loadedShelfBooks.push({
         bookId: String(bookRecord.get('id') || ''),
-        title: String(bookRecord.get('title') || '제목 없음'),
+        title: bookTitleService.getMainTitle(String(bookRecord.get('title') || '제목 없음')),
         author: author || '저자 정보 없음',
         status: status,
         tone: 'from-[#d8c3a5] to-[#b08968]',
@@ -209,7 +210,9 @@
           return {
             id: String(highlightRecord.get('id') || ''),
             bookId: highlightBookId,
-            bookTitle: highlightBookRecord ? String(highlightBookRecord.get('title') || '제목 없음') : '제목 없음',
+            bookTitle: highlightBookRecord
+              ? bookTitleService.getMainTitle(String(highlightBookRecord.get('title') || '제목 없음'))
+              : '제목 없음',
             quoteText: quoteText,
             highlightedAt: highlightedAt,
           }

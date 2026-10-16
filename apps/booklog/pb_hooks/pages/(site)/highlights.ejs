@@ -3,6 +3,7 @@
   meta('description', 'Booklog 인상 깊은 문구 리스트')
 
   const { dateutil } = require('@pocketpages/utils')
+  const bookTitleService = resolve('book-title')
   const flashMessage = params.__flash ? String(params.__flash) : ''
   const queryText = String(request.url.query.q || '').trim()
   const requestedLimit = Number(request.url.query.limit || 30)
@@ -125,7 +126,7 @@
     highlightItems.push({
       id: String(row.id || ''),
       bookId: String(row.bookId || '').trim(),
-      bookTitle: String(row.bookTitle || '제목 없음'),
+      bookTitle: bookTitleService.getMainTitle(String(row.bookTitle || '제목 없음')),
       quoteText: String(row.quoteText || '').trim(),
       highlightedAt: highlightedAtValue ? dateutil.formatDate(highlightedAtValue, dateutil.FORMATS.DATE) : '',
     })

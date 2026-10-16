@@ -1,5 +1,6 @@
 const oneSignalService = require('./onesignal-service')
 const pushSendLogService = require('./push-send-log-service')
+const bookTitleService = require(__hooks + '/pages/_private/book-title.js')
 
 const NOTIFICATION_KEY = 'reading_reminder'
 const PUSH_CHANNEL = 'push'
@@ -83,7 +84,8 @@ function findLatestReadingShelfRecord(userId) {
  * @returns {string} 정리된 책 제목
  */
 function trimBookTitle(title) {
-  return String(title || '')
+  return bookTitleService
+    .getMainTitle(String(title || ''))
     .replace(/\s+/g, ' ')
     .trim()
 }

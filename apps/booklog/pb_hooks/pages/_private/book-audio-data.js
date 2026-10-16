@@ -1,5 +1,6 @@
 const epubReadingMetrics = require(__hooks + '/pages/_private/epub-reading-metrics.js')
 const generation = require(__hooks + '/pages/_private/book-audio-generation-service.js')
+const bookTitleService = require(__hooks + '/pages/_private/book-title.js')
 
 const MODELS = [
   { model: 'gemini-3.8-flash-lite-tts', label: 'Flash-Lite' },
@@ -55,7 +56,7 @@ function getModelOptions(app, fileId) {
     if (busy) {
       const file = app.findRecordById('book_files', String(busy.get('file_id')))
       const book = app.findRecordById('books', String(file.get('book_id')))
-      bookTitle = String(book.get('title') || '제목 없는 책')
+      bookTitle = bookTitleService.getMainTitle(String(book.get('title') || '제목 없는 책'))
     }
     return { model: entry.model, label: entry.label, disabled: !!busy, busyBookTitle: bookTitle }
   })

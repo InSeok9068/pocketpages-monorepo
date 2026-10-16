@@ -1,4 +1,5 @@
 <script server>
+  const bookTitleService = resolve('book-title')
   const bookId = String(params.bookId || '').trim()
   const userId = request.auth ? String(request.auth.get('id') || '') : ''
 
@@ -66,7 +67,7 @@
   }
 
   const storageFileKey = String(bookFileRecord.baseFilesPath() || '') + '/' + storedFileName
-  const bookTitle = String(book.get('title') || 'book').trim()
+  const bookTitle = bookTitleService.getMainTitle(String(book.get('title') || 'book').trim())
   const sanitizedTitle = bookTitle
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
     .replace(/\s+/g, ' ')

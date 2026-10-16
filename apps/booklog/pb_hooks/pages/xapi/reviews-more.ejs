@@ -1,5 +1,6 @@
 <script server>
   const { dateutil } = require('@pocketpages/utils')
+  const bookTitleService = resolve('book-title')
 
   if (request.method !== 'GET') {
     dbg('xapi/reviews-more:redirect', {
@@ -130,7 +131,7 @@
     const reviewedAtValue = String(row.reviewedAtValue || '').trim()
     reviewItems.push({
       bookId: String(row.bookId || '').trim(),
-      bookTitle: String(row.bookTitle || '제목 없음'),
+      bookTitle: bookTitleService.getMainTitle(String(row.bookTitle || '제목 없음')),
       reviewText: String(row.reviewText || '').trim(),
       reviewedAt: reviewedAtValue ? dateutil.formatDate(reviewedAtValue, dateutil.FORMATS.DATE) : '',
     })

@@ -1,10 +1,5 @@
 <script server>
-  const shelfStatusLabels = {
-    queued: '읽을 예정',
-    reading: '읽는 중',
-    finished: '완독',
-    dropped: '중단함',
-  }
+  const bookTitleService = resolve('book-title')
 
   if (request.method !== 'GET') {
     dbg('xapi/library-more:redirect', {
@@ -176,11 +171,10 @@
     const status = String(row.status || 'queued').trim()
     libraryBooks.push({
       bookId: String(row.bookId || ''),
-      title: String(row.title || '제목 없음'),
+      title: bookTitleService.getMainTitle(String(row.title || '제목 없음')),
       author: String(row.author || '').trim(),
       coverUrl: String(row.coverUrl || '').trim(),
       status: status,
-      statusLabel: shelfStatusLabels[status] || '보관 중',
     })
   }
 </script>
@@ -202,16 +196,20 @@
     <% } else { %>
     <div class="absolute inset-0 box-border px-3 py-4 text-white">
       <div class="absolute top-[34%] left-1/2 w-[78%] -translate-x-1/2 -translate-y-1/2 text-center">
-        <h2 class="m-0 text-base leading-5 font-semibold break-keep"><%= book.title %></h2>
+        <h2 class="m-0 line-clamp-3 text-base leading-5 font-semibold break-keep sm:line-clamp-none">
+          <%= book.title %>
+        </h2>
       </div>
     </div>
     <% } %>
   </div>
   <div class="mt-3 min-w-0 space-y-1">
-    <h2 class="m-0 min-w-0 text-sm leading-5 font-semibold break-words text-stone-950"><%= book.title %></h2>
-    <p class="m-0 text-[12px] leading-5 font-medium text-stone-500">
-      <%= book.author ? book.author + ' · ' : '' %><%= book.statusLabel %>
-    </p>
+    <h2 class="m-0 line-clamp-3 min-w-0 text-sm leading-5 font-semibold break-words text-stone-950 sm:line-clamp-none">
+      <%= book.title %>
+    </h2>
+    <% if (book.author) { %>
+    <p class="m-0 text-[12px] leading-5 font-medium text-stone-500"><%= book.author %></p>
+    <% } %>
   </div>
 </a>
 <% } %>

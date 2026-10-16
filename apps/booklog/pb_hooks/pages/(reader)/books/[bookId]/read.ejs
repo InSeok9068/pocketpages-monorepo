@@ -1,4 +1,5 @@
 <script server>
+  const bookTitleService = resolve('book-title')
   meta('title', 'Booklog 리더')
   meta('description', 'Booklog EPUB 리더')
 
@@ -57,7 +58,7 @@
   }
 
   const bookDetailPath = '/books/' + bookId
-  const bookTitle = String(bookRecord.get('title') || '').trim()
+  const bookTitle = bookTitleService.getMainTitle(String(bookRecord.get('title') || '').trim())
 
   try {
     shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {

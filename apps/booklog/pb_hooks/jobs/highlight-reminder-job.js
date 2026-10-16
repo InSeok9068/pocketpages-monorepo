@@ -1,5 +1,6 @@
 const oneSignalService = require('./onesignal-service')
 const pushSendLogService = require('./push-send-log-service')
+const bookTitleService = require(__hooks + '/pages/_private/book-title.js')
 
 const NOTIFICATION_KEY = 'highlight_reminder'
 const PUSH_CHANNEL = 'push'
@@ -25,7 +26,8 @@ function trimHighlightQuote(quoteText) {
  * @returns {string} 잘린 책 제목
  */
 function trimBookTitle(title) {
-  const normalized = String(title || '')
+  const normalized = bookTitleService
+    .getMainTitle(String(title || ''))
     .replace(/\s+/g, ' ')
     .trim()
 

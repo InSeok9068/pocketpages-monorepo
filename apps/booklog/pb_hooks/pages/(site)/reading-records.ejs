@@ -1,5 +1,6 @@
 <script server>
   const { dateutil } = require('@pocketpages/utils')
+  const bookTitleService = resolve('book-title')
 
   meta('title', 'Booklog 독서 기록')
   meta('description', '주차별 독서 시간을 확인하는 페이지')
@@ -252,7 +253,11 @@
       const weeklyBooks = weeklyBooksByKey[weekKey]
 
       if (!weeklyBooks[bookId]) {
-        weeklyBooks[bookId] = { title: String(row.bookTitle || '제목 없음'), seconds: 0, minutesLabel: '' }
+        weeklyBooks[bookId] = {
+          title: bookTitleService.getMainTitle(String(row.bookTitle || '제목 없음')),
+          seconds: 0,
+          minutesLabel: '',
+        }
       }
 
       weeklyBooks[bookId].seconds += durationSeconds
