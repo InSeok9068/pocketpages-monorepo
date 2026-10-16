@@ -112,19 +112,26 @@ function normalizeDetailBook(detail) {
 }
 
 /**
- * 키워드로 도서 목록을 조회한다.
+ * 검색 조건으로 도서 목록을 조회한다.
  * @param {{ apiKey: string, baseUrl?: string, timeout?: number }} config 호출 설정
- * @param {{ keyword: string, pageNo?: number, pageSize?: number, sort?: string, direction?: string, exactMatch?: boolean }} input 검색 조건
+ * @param {{ keyword?: string, title?: string, author?: string, publisher?: string, pageNo?: number, pageSize?: number, sort?: string, direction?: string, exactMatch?: boolean }} input 검색 조건
  * @returns {{ request: any, numFound: number, docs: Array<any>, raw: any }} 검색 결과
  */
 function searchBooks(config, input) {
   const keyword = String(input && input.keyword ? input.keyword : '').trim()
-  if (!keyword) {
-    throw new Error('도서 검색 keyword가 필요합니다.')
+  const title = String(input && input.title ? input.title : '').trim()
+  const author = String(input && input.author ? input.author : '').trim()
+  const publisher = String(input && input.publisher ? input.publisher : '').trim()
+
+  if (!keyword && !title && !author && !publisher) {
+    throw new Error('도서 검색 조건이 필요합니다.')
   }
 
   const payload = requestData4LibraryJson(config, '/srchBooks', {
     keyword: keyword,
+    title: title,
+    author: author,
+    publisher: publisher,
     pageNo: input && input.pageNo ? input.pageNo : 1,
     pageSize: input && input.pageSize ? input.pageSize : 10,
     sort: input && input.sort ? input.sort : 'loan_count',

@@ -1098,8 +1098,26 @@
       matchMetadata && matchMetadata.publisher ? matchMetadata.publisher : ''
     )
 
+    if (normalizedTitle && normalizedAuthor) {
+      pushUniqueSearchProfile(profiles, {
+        query: {
+          title: normalizedTitle,
+          author: normalizedAuthor,
+        },
+        keyword: combinedKeyword,
+        title: normalizedTitle,
+        author: normalizedAuthor,
+        translator: normalizedTranslator,
+        publisher: normalizedPublisher,
+        source: source + ':title-author-fields',
+      })
+    }
+
     if (combinedKeyword) {
       pushUniqueSearchProfile(profiles, {
+        query: {
+          keyword: combinedKeyword,
+        },
         keyword: combinedKeyword,
         title: normalizedTitle,
         author: normalizedAuthor,
@@ -1111,6 +1129,23 @@
 
     if (normalizedTitle) {
       pushUniqueSearchProfile(profiles, {
+        query: {
+          title: normalizedTitle,
+        },
+        keyword: normalizedTitle,
+        title: normalizedTitle,
+        author: normalizedAuthor,
+        translator: normalizedTranslator,
+        publisher: normalizedPublisher,
+        source: source + ':title-field',
+      })
+    }
+
+    if (normalizedTitle) {
+      pushUniqueSearchProfile(profiles, {
+        query: {
+          keyword: normalizedTitle,
+        },
         keyword: normalizedTitle,
         title: normalizedTitle,
         author: normalizedAuthor,
@@ -1122,6 +1157,9 @@
 
     if (normalizedAuthor) {
       pushUniqueSearchProfile(profiles, {
+        query: {
+          keyword: normalizedAuthor,
+        },
         keyword: normalizedAuthor,
         title: normalizedTitle,
         author: normalizedAuthor,
@@ -1133,12 +1171,22 @@
   }
 
   function pushUniqueSearchProfile(profiles, profile) {
-    if (!profile || !profile.keyword) {
+    const query = profile && profile.query ? profile.query : {}
+    const hasQuery = !!(query.keyword || query.title || query.author || query.publisher)
+
+    if (!hasQuery) {
       return
     }
 
     for (let index = 0; index < profiles.length; index += 1) {
-      if (profiles[index].keyword === profile.keyword) {
+      const existingQuery = profiles[index].query || {}
+
+      if (
+        (existingQuery.keyword || '') === (query.keyword || '')
+        && (existingQuery.title || '') === (query.title || '')
+        && (existingQuery.author || '') === (query.author || '')
+        && (existingQuery.publisher || '') === (query.publisher || '')
+      ) {
         return
       }
     }
@@ -1219,6 +1267,9 @@
 
     if (translator && translator !== primaryAuthor && translator !== filePrimaryAuthor) {
       pushUniqueSearchProfile(profiles, {
+        query: {
+          keyword: translator,
+        },
         keyword: translator,
         title: normalizedTitle,
         author: primaryAuthor || epubMetadata.author,
@@ -1230,6 +1281,9 @@
 
     if (publisher) {
       pushUniqueSearchProfile(profiles, {
+        query: {
+          keyword: publisher,
+        },
         keyword: publisher,
         title: normalizedTitle,
         author: primaryAuthor || epubMetadata.author,
@@ -1429,8 +1483,9 @@
     docs.push(normalizedDoc)
   }
 
-  function loadSearchDocsByKeyword(keyword) {
+  function loadSearchDocsByQuery(query) {
     const docs = []
+    const searchQuery = query || {}
     let pageNo = 1
     let numFound = 0
     let request = {}
@@ -1439,11 +1494,10 @@
     while (docs.length < MAX_BOOK_SEARCH_DOCS) {
       const searchResult = data4libraryService.searchBooks(
         { apiKey: env('DATA4LIBRARY_APIKEY') },
-        {
-          keyword: keyword,
+        Object.assign({}, searchQuery, {
           pageNo: pageNo,
           pageSize: BOOK_SEARCH_PAGE_SIZE,
-        }
+        })
       )
 
       if (!numFound) {
@@ -1456,7 +1510,7 @@
       const pageDocs = Array.isArray(searchResult.docs) ? searchResult.docs : []
 
       dbg('xapi/epub/upload:search-page', {
-        keyword: keyword,
+        query: searchQuery,
         pageNo: pageNo,
         pageDocsCount: pageDocs.length,
         aggregatedDocsCount: docs.length,
@@ -1714,15 +1768,17 @@
     let selectedSearchResult = null
     let selectedSearchScore = -1
     let matchedSource = ''
+    let matchedBy = ''
 
     for (let index = 0; index < profiles.length; index += 1) {
       const profile = profiles[index]
       const keyword = profile.keyword
       dbg('xapi/epub/upload:search-attempt', {
+        query: profile.query,
         keyword: keyword,
         source: profile.source,
       })
-      const searchResult = loadSearchDocsByKeyword(keyword)
+      const searchResult = loadSearchDocsByQuery(profile.query)
       const bestMatch = chooseBestSearchDoc(searchResult.docs, {
         title: profile.title,
         author: profile.author,
@@ -1732,6 +1788,7 @@
       })
 
       dbg('xapi/epub/upload:search-result', {
+        query: profile.query,
         keyword: keyword,
         source: profile.source,
         numFound: searchResult.numFound,
@@ -1761,6 +1818,7 @@
         selectedSearchResult = searchResult
         selectedSearchScore = bestMatch.bestScore
         matchedSource = profile.source
+        matchedBy = profile.query.keyword ? 'keyword' : 'structured-fields'
         break
       }
     }
@@ -1772,7 +1830,7 @@
       detailResult: null,
       matchedSource: matchedSource,
       matchedScore: selectedSearchScore,
-      matchedBy: selectedDoc ? 'keyword' : '',
+      matchedBy: matchedBy,
     }
   }
 
