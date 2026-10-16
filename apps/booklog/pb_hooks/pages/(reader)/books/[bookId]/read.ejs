@@ -1378,8 +1378,14 @@
               <button
                 type="button"
                 x-on:click="goToSearchResult(result)"
-                class="block w-full rounded-[1.25rem] border-none bg-[#fbf7ef] px-4 py-3 text-left text-sm leading-6 text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] ring-0 transition outline-none hover:bg-[#f7f0e3]">
-                <span x-html="result.labelHtml || result.label"></span>
+                class="block w-full rounded-[1.25rem] border-none bg-[#fbf7ef] px-4 py-3 text-left text-sm text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] ring-0 transition outline-none hover:bg-[#f7f0e3]">
+                <span
+                  x-show="result.chapterLabel"
+                  x-text="result.chapterLabel"
+                  class="mb-1 block text-xs leading-5 font-semibold text-[#956536]"></span>
+                <span
+                  x-html="result.excerptHtml || result.excerpt"
+                  class="block leading-6"></span>
               </button>
             </template>
           </div>

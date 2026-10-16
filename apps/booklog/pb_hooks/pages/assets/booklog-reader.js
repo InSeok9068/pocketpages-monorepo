@@ -2826,17 +2826,6 @@ window.booklogReaderLogic = (function () {
     })
   }
 
-  function buildSearchResultLabel(result) {
-    var chapterLabel = normalizeText(result && result.chapterLabel ? result.chapterLabel : '')
-    var excerpt = normalizeText(result && result.excerpt ? result.excerpt : '')
-
-    if (chapterLabel && excerpt) {
-      return chapterLabel + ' · ' + excerpt
-    }
-
-    return chapterLabel || excerpt || '검색 결과'
-  }
-
   function escapeHtml(value) {
     return String(value || '')
       .replace(/&/g, '&amp;')
@@ -2850,19 +2839,19 @@ window.booklogReaderLogic = (function () {
     return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   }
 
-  function buildSearchResultLabelHtml(result, query) {
-    var label = buildSearchResultLabel(result)
+  function buildHighlightedTextHtml(value, query) {
+    var text = normalizeText(value)
     var normalizedQuery = normalizeText(query)
-    var escapedLabel = escapeHtml(label)
+    var escapedText = escapeHtml(text)
     var matcher = null
 
     if (!normalizedQuery) {
-      return escapedLabel
+      return escapedText
     }
 
     matcher = new RegExp('(' + escapeRegExp(normalizedQuery) + ')', 'gi')
 
-    return escapedLabel.replace(
+    return escapedText.replace(
       matcher,
       '<mark class="bg-transparent font-semibold text-stone-900 underline decoration-[#b68454] decoration-[2px] underline-offset-[0.22em]">$1</mark>'
     )
@@ -4016,17 +4005,7 @@ window.booklogReaderLogic = (function () {
                 cfi: String(item && item.cfi ? item.cfi : ''),
                 excerpt: normalizeText(item && item.excerpt ? item.excerpt : ''),
                 chapterLabel: chapterLabel,
-                label: buildSearchResultLabel({
-                  chapterLabel: chapterLabel,
-                  excerpt: item && item.excerpt ? item.excerpt : '',
-                }),
-                labelHtml: buildSearchResultLabelHtml(
-                  {
-                    chapterLabel: chapterLabel,
-                    excerpt: item && item.excerpt ? item.excerpt : '',
-                  },
-                  query
-                ),
+                excerptHtml: buildHighlightedTextHtml(item && item.excerpt ? item.excerpt : '', query),
               })
             })
           })
