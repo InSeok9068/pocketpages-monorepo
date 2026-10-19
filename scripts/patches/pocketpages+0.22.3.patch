@@ -2,6 +2,9 @@ diff --git a/node_modules/pocketpages/dist/index.js b/node_modules/pocketpages/d
 index 2bda541..cf945a7 100644
 --- a/node_modules/pocketpages/dist/index.js
 +++ b/node_modules/pocketpages/dist/index.js
+@@ -766 +766 @@
+-	if (!pocketbase_node.fs.existsSync(pagesRoot)) throw new Error(`${pagesRoot} must exist. Did you launch pocketbase with --dir or --hooksDir`);
++	if (!pocketbase_node.fs.existsSync(pagesRoot, `dir`)) throw new Error(`${pagesRoot} must exist. Did you launch pocketbase with --dir or --hooksDir`);
 @@ -839,7 +839,12 @@ const AfterBootstrapHandler = (e) => {
  		{
  			const pathParts = $filepath.toSlash($filepath.dir(relativePath)).split(`/`).filter((node) => node !== ".").filter((p) => !!p);
