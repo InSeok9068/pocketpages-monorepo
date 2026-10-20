@@ -681,6 +681,9 @@ test('Cover links, tables of contents, notes, references, and English rights pag
     'notes.xhtml': '<html><body><p>주</p><p>머리말 1 이 용어는 대화에서 나왔다.</p></body></html>',
     'ref.xhtml': '<html><body><p>참고 문헌</p><p>저자, 책 제목, 2020</p></body></html>',
     'pictures.xhtml': '<html><body><p>PICTURE ACKNOWLEDGEMENTS</p><p>[1] Agency</p></body></html>',
+    'decorated.xhtml': '<html><body><p>/ 참고문헌 /</p><p>• Allais, M. 1979.</p></body></html>',
+    'bookinfo.xhtml':
+      '<html><body><p>이 전자책은 대한민국 저작권법의 보호를 받는 저작물입니다. 허락 없이 가공할 수 없습니다.</p></body></html>',
     'start2.xhtml':
       '<html><body><p>ORIGINAL TITLE</p><p>Copyright © 2022 by Author</p><p>Korean edition published by arrangement with Agency.</p></body></html>',
     'endnotes.xhtml':
@@ -706,6 +709,19 @@ test('Cover links, tables of contents, notes, references, and English rights pag
     sections.map((section) => names[section.sectionIndex]),
     Object.keys(kept)
   )
+})
+
+test('A page that ends with endnotes keeps the narrative before the first note without the notes heading', () => {
+  const summary = '요약 문단입니다. 이 논문은 불확실한 상황에서 판단을 내릴 때 개입하는 세 가지 어림짐작을 다룹니다. '.repeat(3)
+  const [section] = audioSectionsForFiles({
+    'appendix.xhtml':
+      '<html><body><p>' + summary + '</p><p>/ 주 /</p>'
+      + [1, 2, 3, 4, 5, 6]
+        .map((n) => '<p><a href="paper.xhtml#ref' + n + '">' + n + '.</a> 참고 논문 ' + n + '</p>')
+        .join('')
+      + '</body></html>',
+  })
+  assert.equal(section.chunks.join(''), summary.trim())
 })
 
 test('Narration joins letter-spaced Latin titles and drops decorative bullets only', () => {
@@ -867,6 +883,7 @@ test('Finishing a chapter continues with the next chapter that has audio', async
   await flushPlayback()
   assert.equal(state.cloudAudioActive, false)
   assert.match(state.cloudAudioMessage, /마지막 챕터까지 들었습니다/)
+  assert.equal(state.cloudAudioSession, false, 'the start screen offers other starting points')
   logic.stop()
 })
 
@@ -1096,6 +1113,7 @@ test('A chapter that is not generated yet shows why playback stopped', async () 
   logic.start(state, 8, true)
   await flushPlayback()
   assert.equal(state.cloudAudioMessage, message)
+  assert.equal(state.cloudAudioSession, false, 'the start screen comes back with the reason')
   assert.equal(state.cloudAudioActive, false)
   logic.stop()
 })

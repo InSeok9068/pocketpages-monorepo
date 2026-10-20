@@ -404,8 +404,13 @@ function buildAudioBookFromBytes(epubBytes) {
   for (let sectionIndex = 0; sectionIndex < entryPaths.length; sectionIndex += 1) {
     const entryPath = entryPaths[sectionIndex]
     const html = entryPath && archive[entryPath] ? readArchiveText(archive, entryPath) : ''
-    const text = html ? htmlToAudioText(html) : ''
-    if (text && !isNonNarrativeSection(entryPath, html, text)) {
+    // 미주는 첫 주석 문단부터 빼고, 그 앞의 본문(부록 논문의 요약 등)은 남깁니다. 제목만 남으면 페이지째 뺍니다.
+    const noteStart = html ? findNoteStart(entryPath, html) : -1
+    const text = html
+      ? withoutTrailingNoteHeading(htmlToAudioText(noteStart >= 0 ? html.slice(0, noteStart) : html), noteStart)
+      : ''
+    const narratable = noteStart < 0 || text.replace(/\s+/g, '').length >= 100
+    if (text && narratable && !isNonNarrativeSection(entryPath, html, text)) {
       sections.push({ sectionIndex, chunks: splitAudioText(text) })
     }
   }
@@ -429,6 +434,8 @@ const copyrightTerms =
   /\ubc1c\ud589\uc778|\ubc1c\ud589\ucc98|\ud3b4\ub0b8\uc774|\ud3b4\ub0b8\uacf3|\ucd9c\ud310\ub4f1\ub85d|\uc778\uc1c4|\ucd08\ud310|1\ud310 1\uc1c4|copyright|\u00a9|\u24d2|all rights reserved/gi
 const linkOnlyTexts = ['\ucc98\uc74c\uc73c\ub85c', '\ucc45\uc758\uc2dc\uc791', '\ucc45\uc758\ub05d', '\ud45c\uc9c0']
 // \uccab \uc904\uc774 \uc774 \uc81c\ubaa9\uacfc \uc815\ud655\ud788 \uac19\uc744 \ub54c\ub9cc \uc81c\uc678\ud574, \uac19\uc740 \ub2e8\uc5b4\ub85c \uc2dc\uc791\ud558\ub294 \ubcf8\ubb38 \ubb38\uc7a5\uc740 \uadf8\ub300\ub85c \ub461\ub2c8\ub2e4.
+// 「/ 참고문헌 /」·「│감사의 말│」처럼 제목을 꾸민 기호와 공백은 지우고 비교합니다.
+const headingDecorations = /[\s/|│┃·・\-–—()[\]<>《》〈〉「」『』.,:]+/g
 const backMatterHeadings =
   /^(\ucc28\ub840|\ubaa9\ucc28|contents|table of contents|\uc8fc\uc11d|\ubbf8\uc8fc|\uac01\uc8fc|\uc8fc|notes|endnotes|footnotes|\ucc38\uace0\ubb38\ud5cc|\ucc38\uace0\ub3c4\uc11c|\ucc38\uace0\uc790\ub8cc|bibliography|references|\ucc3e\uc544\ubcf4\uae30|\uc0c9\uc778|index|\uc0ac\uc9c4\ucd9c\ucc98|\ub3c4\ud310\ucd9c\ucc98|\uc774\ubbf8\uc9c0\ucd9c\ucc98|\uadf8\ub9bc\ucd9c\ucc98|pictureacknowledgements)$/i
 
@@ -453,9 +460,9 @@ function isNonNarrativeSection(entryPath, html, text) {
   const compact = text.replace(/\s+/g, '')
   if (linkOnlyTexts.indexOf(compact) >= 0) return true
   // \u300c\ucc28<br>\ub840\u300d\ucc98\ub7fc \uc81c\ubaa9 \uae00\uc790\ub97c \uc904\uc744 \ub098\ub220 \uc4f4 \ucc45\uc774 \uc788\uc5b4, \uccab \uc904 \ub300\uc2e0 \uccab \ubb38\ub2e8\uc744 \uc81c\ubaa9\uc73c\ub85c \ubd05\ub2c8\ub2e4.
-  const heading = text.split(/\n\s*\n/)[0].replace(/\s+/g, '')
+  const heading = text.split(/\n\s*\n/)[0].replace(headingDecorations, '')
   if (backMatterHeadings.test(heading) && text.length <= 80000) return true
-  if (isNotePage(entryPath, html)) return true
+  if (text.length <= 1000 && /저작권법/.test(text) && /보호를 받|허락 없이|무단/.test(text)) return true
   if (text.length > 3000) return false
   if (/all rights? reserved/i.test(text) || heading === '\ud310\uad8c') return true
   if (/copyright|\u00a9|\u24d2/i.test(text) && /published by|by arrangement with|translation rights/i.test(text))
@@ -467,19 +474,35 @@ function isNonNarrativeSection(entryPath, html, text) {
 
 // 제목이 이미지라 글자로 찾을 수 없는 미주도, 문단 대부분이 본문으로 돌아가는 번호 링크로 시작하면 주석 페이지로 봅니다.
 // 본문 챕터의 주석 번호는 문장 중간에 있어 문단 첫머리 조건에 걸리지 않습니다.
-function isNotePage(entryPath, html) {
+function findNoteStart(entryPath, html) {
   const ownName = String(entryPath.split('/').pop())
-  const paragraphs = (html.match(/<p\b[^>]*>[\s\S]*?<\/p>/gi) || []).filter(function (paragraph) {
-    return paragraph.replace(/<[^>]+>/g, '').trim()
-  })
-  const backlinked = paragraphs.filter(function (paragraph) {
-    const inner = paragraph.replace(/^<p\b[^>]*>/i, '').replace(/^(\s|<(span|sup|b|strong|em|i)\b[^>]*>)*/i, '')
-    const link = inner.match(/^<a\b[^>]*href\s*=\s*["']([^"'#]*)#[^"']*["'][^>]*>([\s\S]*?)<\/a>/i)
-    if (!link) return false
-    const target = String(link[1].split('/').pop())
-    return !!target && target !== ownName && /^[[(]?\d{1,3}[\]).．]?$/.test(link[2].replace(/<[^>]+>/g, '').trim())
-  }).length
-  return backlinked >= 5 && backlinked >= paragraphs.length / 2
+  const paragraphPattern = /<p\b[^>]*>[\s\S]*?<\/p>/gi
+  let total = 0
+  let backlinked = 0
+  let firstNote = -1
+  let match = paragraphPattern.exec(html)
+  while (match) {
+    const paragraph = match[0]
+    if (paragraph.replace(/<[^>]+>/g, '').trim()) {
+      total += 1
+      const inner = paragraph.replace(/^<p\b[^>]*>/i, '').replace(/^(\s|<(span|sup|b|strong|em|i)\b[^>]*>)*/i, '')
+      const link = inner.match(/^<a\b[^>]*href\s*=\s*["']([^"'#]*)#[^"']*["'][^>]*>([\s\S]*?)<\/a>/i)
+      const target = link ? String(link[1].split('/').pop()) : ''
+      if (target && target !== ownName && /^[[(]?\d{1,3}[\]).．]?$/.test(link[2].replace(/<[^>]+>/g, '').trim())) {
+        backlinked += 1
+        if (firstNote < 0) firstNote = match.index
+      }
+    }
+    match = paragraphPattern.exec(html)
+  }
+  return backlinked >= 5 && backlinked >= total / 2 ? firstNote : -1
+}
+
+function withoutTrailingNoteHeading(text, noteStart) {
+  if (noteStart < 0) return text
+  const blocks = text.split(/\n\s*\n/)
+  const last = blocks[blocks.length - 1].replace(headingDecorations, '')
+  return backMatterHeadings.test(last) ? blocks.slice(0, -1).join('\n\n').trim() : text
 }
 
 function htmlToAudioText(html) {

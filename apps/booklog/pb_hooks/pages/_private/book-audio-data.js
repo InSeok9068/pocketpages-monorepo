@@ -203,8 +203,7 @@ function readSectionOrder(app, fileId, configHash) {
  * @returns {string} 안내 문구
  */
 function pendingMessage(app, fileId, configHash, order, splitting) {
-  if (splitting)
-    return '이 구간은 정책 필터 때문에 나눠서 다시 만드는 중입니다. 조각이 모두 만들어지면 들을 수 있습니다.'
+  if (splitting) return '이 부분은 AI 음성을 다시 만드는 중입니다. 조금 뒤에 이어 들을 수 있습니다.'
   const pending = app.findRecordsByFilter(
     'book_audio_chunks',
     'file_id = {:fileId} && config_hash = {:configHash}'

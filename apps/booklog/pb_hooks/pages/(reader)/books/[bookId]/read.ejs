@@ -59,6 +59,8 @@
 
   const bookDetailPath = '/books/' + bookId
   const bookTitle = bookTitleService.getMainTitle(String(bookRecord.get('title') || '').trim())
+  // 구간·조각 번호는 관리자가 재생성할 구간을 찾을 때만 필요해 관리자에게만 보여줍니다.
+  const showAudioDetail = request.auth.get('admin_manager') === true
 
   try {
     shelfRecord = $app.findFirstRecordByFilter('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
@@ -1338,9 +1340,11 @@
                   class="block w-full accent-[#8e5521]" />
                 <div class="flex justify-between gap-2 text-xs text-stone-500 tabular-nums">
                   <span x-text="formatAudioTime(cloudAudioPosition)"></span>
+                  <% if (showAudioDetail) { %>
                   <span
                     class="truncate"
                     x-text="cloudAudioDetail"></span>
+                  <% } %>
                   <span x-text="formatAudioTime(cloudAudioDuration)"></span>
                 </div>
               </div>

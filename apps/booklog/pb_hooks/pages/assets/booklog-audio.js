@@ -63,7 +63,8 @@ window.booklogAudio = (function () {
 
   function readJson(response) {
     return response.json().then(function (result) {
-      if (!response.ok || !result.ok) throw new Error(result.message || '오디오북 요청에 실패했습니다.')
+      if (!response.ok || !result.ok)
+        throw new Error(result.message || '오디오북을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.')
       return result
     })
   }
@@ -100,7 +101,7 @@ window.booklogAudio = (function () {
         session.syncFailed = true
         if (isActive(session))
           session.state.cloudAudioMessage =
-            '청취 위치를 임시 보관했습니다. 재생 중 또는 다음 이어 듣기에서 다시 동기화합니다.'
+            '인터넷 연결이 불안정해 들은 위치를 이 기기에 잠시 보관했습니다. 연결되면 자동으로 저장합니다.'
       })
   }
 
@@ -141,7 +142,7 @@ window.booklogAudio = (function () {
         if (result.moved) return result.moved
         if (!isActive(session)) throw new DOMException('Playback stopped', 'AbortError')
         if (result.configHash !== session.configHash)
-          throw new Error('낭독 설정이 바뀌었습니다. 다시 이어 듣기를 시작해 주세요.')
+          throw new Error('오디오북이 새로 만들어졌습니다. 이어 듣기를 다시 눌러 주세요.')
         if (
           !Number.isInteger(result.chunkCount)
           || result.chunkCount <= index
@@ -149,7 +150,7 @@ window.booklogAudio = (function () {
           || !Array.isArray(result.parts)
           || !result.parts.length
         ) {
-          throw new Error('낭독 구간 정보를 확인하지 못했습니다.')
+          throw new Error('오디오북을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.')
         }
         return Promise.all(
           result.parts.map(function (part) {
@@ -194,7 +195,7 @@ window.booklogAudio = (function () {
         if (!isActive(session)) throw new DOMException('Playback stopped', 'AbortError')
         return fetch(audioUrl, { signal: session.controller.signal })
           .then(function (response) {
-            if (!response.ok) throw new Error('저장된 음성을 내려받지 못했습니다.')
+            if (!response.ok) throw new Error('음성을 내려받지 못했습니다. 인터넷 연결을 확인해 주세요.')
             return response.blob()
           })
           .then(function (blob) {
@@ -225,9 +226,15 @@ window.booklogAudio = (function () {
   function setError(session, error) {
     if (!isActive(session) || error.name === 'AbortError') return
     session.failed = true
-    session.state.cloudAudioBusy = false
-    session.state.cloudAudioActive = false
-    session.state.cloudAudioMessage = error.message || '음성 재생에 실패했습니다.'
+    endSession(session, error.message || '음성을 재생하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+  }
+
+  // 재생이 끝나거나 막히면 시작 화면으로 돌아가, 이유와 함께 이어 들을 위치를 보여줍니다.
+  function endSession(session, message) {
+    if (!isActive(session)) return
+    var state = session.state
+    stop()
+    state.cloudAudioMessage = message
   }
 
   function nextPosition(session) {
@@ -274,7 +281,7 @@ window.booklogAudio = (function () {
     session.state.cloudAudioMessage = session.fallback
       ? '이 부분은 AI 음성을 만들지 못해 기기 음성으로 읽는 중입니다.'
       : session.syncFailed
-        ? '청취 위치 동기화를 기다리고 있습니다.'
+        ? '들은 위치를 아직 저장하지 못했습니다. 연결되면 자동으로 저장합니다.'
         : ''
   }
 
@@ -758,14 +765,10 @@ window.booklogAudio = (function () {
     session.fallback = false
     if (!next) {
       session.completed = true
-      session.state.cloudAudioActive = false
-      session.state.cloudAudioMessage = '책의 마지막 챕터까지 들었습니다. 완료 기록을 동기화하고 있습니다.'
-      progressQueue.then(function () {
-        if (!isActive(session)) return
-        session.state.cloudAudioMessage = session.syncFailed
-          ? '마지막 챕터까지 들었습니다. 서버에 연결되면 다음 이어 듣기에서 완료 기록을 동기화합니다.'
-          : '책의 마지막 챕터까지 들었습니다. 완료 기록을 저장했습니다.'
-      })
+      endSession(
+        session,
+        '책의 마지막 챕터까지 들었습니다. 다른 위치에서 시작에서 원하는 챕터를 다시 들을 수 있습니다.'
+      )
       return
     }
     // 새 챕터의 첫 저장은 이전 완료 기록을 덮어써야 하므로 처음부터 듣는 것으로 표시합니다.
@@ -899,9 +902,10 @@ window.booklogAudio = (function () {
           if (result.progress.startsNextSection) session.restartPending = true
           if (result.progress.isCompleted) {
             session.completed = true
-            state.cloudAudioBusy = false
-            state.cloudAudioMessage =
-              '책의 마지막 챕터까지 모두 들었습니다. 현재 챕터 처음부터 버튼으로 다시 들을 수 있습니다.'
+            endSession(
+              session,
+              '책의 마지막 챕터까지 모두 들었습니다. 다른 위치에서 시작에서 원하는 챕터를 다시 들을 수 있습니다.'
+            )
             return
           }
         }

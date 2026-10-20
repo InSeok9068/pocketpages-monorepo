@@ -56,6 +56,7 @@ function renderReader(aiAudioAvailable) {
     initialShelfStatus: 'reading',
     aiAudioAvailable,
     bookTitle: '낭독 <테스트>',
+    showAudioDetail: true,
   })
 }
 
