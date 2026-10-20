@@ -116,6 +116,26 @@ test('A stranger cannot create a shelf through position or status changes; owner
   assert.equal((await request('/books/' + bookId + '/read')).status, 200)
 })
 
+test('A device saving from an older position cannot overwrite a newer position saved elsewhere', async () => {
+  const save = (input) => request('/api/books/save-progress', 1, { bookId, ...input })
+  const first = 'epubcfi(/6/2!/4/2/1:0)'
+  const newer = 'epubcfi(/6/4!/4/2/1:0)'
+
+  assert.equal((await save({ locator: first, baseLocator: '', force: 'true' })).status, 200)
+  assert.equal((await save({ locator: newer, baseLocator: first })).status, 200, 'device B continues from device A')
+
+  const stale = await save({ locator: 'epubcfi(/6/2!/4/8/1:0)', baseLocator: first })
+  assert.equal(stale.status, 409)
+  const conflict = await stale.json()
+  assert.equal(conflict.conflict, true)
+  assert.equal(conflict.locator, newer)
+  assert.equal((await (await request('/api/books/load-progress', 1, { bookId })).json()).locator, newer)
+
+  const forced = 'epubcfi(/6/2!/4/10/1:0)'
+  assert.equal((await save({ locator: forced, baseLocator: first, force: 'true' })).status, 200)
+  assert.equal((await save({ locator: 'epubcfi(/6/2!/4/12/1:0)' })).status, 200, 'a tab without baseLocator still saves')
+})
+
 test('Imported schema blocks self-approval and approval at signup while ordinary profile updates remain allowed', async () => {
   const response = await fetch(service.baseUrl + '/api/collections/users/records/reviewuser00003', {
     method: 'PATCH',

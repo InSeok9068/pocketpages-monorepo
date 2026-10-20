@@ -79,6 +79,8 @@ window.booklogReaderLogic = (function () {
   var isRestoringPosition = false
   var hasResolvedSavedPosition = false
   var lastPersistedProgressKey = ''
+  var serverPositionKey = ''
+  var pendingConflictPosition = null
   var speechSynthesisInstance = null
   var speechVoices = []
   var speechVoiceSyncHandler = null
@@ -1614,6 +1616,7 @@ window.booklogReaderLogic = (function () {
       && !component.bookmarksOpen
       && !component.highlightOpen
       && !component.readAloudOpen
+      && !component.positionConflictOpen
       && !finishPromptShown
       && !bookMarkedFinished
       && currentLocation
@@ -2327,6 +2330,12 @@ window.booklogReaderLogic = (function () {
     formData.set('chapterLabel', progress.chapterLabel)
     formData.set('pageNumber', progress.pageNumber)
     formData.set('progressPercent', progress.progressPercent)
+    formData.set('baseLocator', serverPositionKey)
+
+    if (options && options.force) {
+      formData.set('force', 'true')
+    }
+
     saveRequestInFlight = true
 
     activePersistRequest = fetch('/api/books/save-progress', {
@@ -2340,17 +2349,27 @@ window.booklogReaderLogic = (function () {
           .then(function (payload) {
             return {
               ok: response.ok,
+              status: response.status,
               payload: payload || {},
             }
           })
           .catch(function () {
             return {
               ok: response.ok,
+              status: response.status,
               payload: {},
             }
           })
       })
       .then(function (result) {
+        if (result.status === 409 && result.payload && result.payload.conflict) {
+          if (!options || !options.skipOnConflict) {
+            openPositionConflict(component, result.payload)
+          }
+
+          return false
+        }
+
         if (!result.ok) {
           throw new Error(
             String(result.payload && result.payload.message ? result.payload.message : '읽던 위치 저장에 실패했습니다.')
@@ -2358,6 +2377,7 @@ window.booklogReaderLogic = (function () {
         }
 
         lastPersistedProgressKey = progressKey
+        serverPositionKey = String(progress.locator || progress.href || '').trim()
 
         if (shouldShowMessage) {
           component.showSavePositionMessage(
@@ -2373,6 +2393,73 @@ window.booklogReaderLogic = (function () {
       })
 
     return activePersistRequest
+  }
+
+  function openPositionConflict(component, payload) {
+    var locator = String(payload && payload.locator ? payload.locator : '').trim()
+    var href = String(payload && payload.href ? payload.href : '').trim()
+
+    if (!component || (!locator && !href)) {
+      return
+    }
+
+    pendingConflictPosition = { locator: locator, href: href }
+    component.positionConflictLabel = String(payload && payload.chapterLabel ? payload.chapterLabel : '').trim()
+    component.positionConflictOpen = true
+  }
+
+  function acceptServerPosition(component) {
+    var position = pendingConflictPosition
+    var target = position ? position.locator || position.href : ''
+
+    if (!component || !target || !renditionInstance) {
+      return
+    }
+
+    component.positionConflictOpen = false
+    component.loading = true
+    stopLocalReadAloud(component)
+    prepareManualNavigation()
+
+    Promise.resolve(renditionInstance.display(target))
+      .catch(function () {
+        if (position.locator && position.href) {
+          return renditionInstance.display(position.href)
+        }
+
+        throw new Error('저장된 위치로 이동하지 못했습니다.')
+      })
+      .then(function (location) {
+        updateCurrentLocation(component, location || renditionInstance.currentLocation())
+        serverPositionKey = target
+        pendingConflictPosition = null
+        lastPersistedProgressKey = buildProgressKey(getCurrentProgressPayload(component))
+        component.showSavePositionMessage('다른 기기에서 읽던 위치로 이동했습니다.')
+      })
+      .catch(function (exception) {
+        component.positionConflictOpen = true
+        component.showSavePositionMessage(String(exception && exception.message ? exception.message : exception))
+      })
+      .finally(function () {
+        component.loading = false
+      })
+  }
+
+  function keepLocalPosition(component) {
+    if (!component) {
+      return
+    }
+
+    component.positionConflictOpen = false
+    pendingConflictPosition = null
+
+    persistProgress(component, {
+      silent: false,
+      skipIfUnchanged: false,
+      force: true,
+    }).catch(function (exception) {
+      component.showSavePositionMessage(String(exception && exception.message ? exception.message : exception))
+    })
   }
 
   function waitForProgressSave(component, options) {
@@ -2408,6 +2495,7 @@ window.booklogReaderLogic = (function () {
         : {
             silent: true,
             skipIfUnchanged: false,
+            skipOnConflict: true,
           }
 
     if (!component || isLeavingPage) {
@@ -2501,6 +2589,7 @@ window.booklogReaderLogic = (function () {
       saveOptions: {
         silent: true,
         skipIfUnchanged: false,
+        skipOnConflict: true,
       },
     })
 
@@ -2535,6 +2624,7 @@ window.booklogReaderLogic = (function () {
           if (payload.hasSavedPosition !== false) {
             throw new Error('읽기 위치 응답을 확인하지 못했습니다.')
           }
+          serverPositionKey = ''
           if (shouldShowMessage) {
             component.showSavePositionMessage('저장된 읽기 위치가 없습니다.')
           }
@@ -2559,6 +2649,7 @@ window.booklogReaderLogic = (function () {
 
             progress = getCurrentProgressPayload(component)
             lastPersistedProgressKey = buildProgressKey(progress)
+            serverPositionKey = target
 
             if (shouldShowMessage) {
               component.showSavePositionMessage(
@@ -2596,7 +2687,13 @@ window.booklogReaderLogic = (function () {
   }
 
   function shouldSkipAutoSave(component) {
-    if (!component || component.loading || component.loadingSavedPosition || component.savingPosition) {
+    if (
+      !component
+      || component.loading
+      || component.loadingSavedPosition
+      || component.savingPosition
+      || component.positionConflictOpen
+    ) {
       return true
     }
 
@@ -4761,6 +4858,7 @@ window.booklogReaderLogic = (function () {
       saveOptions: {
         silent: true,
         skipIfUnchanged: false,
+        skipOnConflict: true,
       },
     })
   }
@@ -4776,6 +4874,7 @@ window.booklogReaderLogic = (function () {
     persistProgress(component, {
       silent: true,
       skipIfUnchanged: false,
+      skipOnConflict: true,
     })
       .catch(function (exception) {
         console.warn('page/books/[bookId]/read:finish-progress-save-skipped', {
@@ -4931,6 +5030,8 @@ window.booklogReaderLogic = (function () {
     goToBookDetail: goToBookDetail,
     markBookFinished: markBookFinished,
     loadSavedPosition: loadSavedPosition,
+    acceptServerPosition: acceptServerPosition,
+    keepLocalPosition: keepLocalPosition,
     goToProgress: goToProgress,
     decreaseReaderFontSize: decreaseReaderFontSize,
     increaseReaderFontSize: increaseReaderFontSize,

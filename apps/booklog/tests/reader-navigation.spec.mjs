@@ -51,7 +51,8 @@ function html(body) {
 }
 
 async function mockSite(page, options) {
-  const requests = { detail: 0, saveProgress: 0 }
+  const requests = { detail: 0, saveProgress: 0, saveForms: [] }
+  const savedHref = options && options.savedHref ? options.savedHref : ''
   await page.route(
     (url) => url.protocol === 'http:' || url.protocol === 'https:',
     async (route) => {
@@ -60,9 +61,24 @@ async function mockSite(page, options) {
         return route.fulfill({ path: fileURLToPath(new URL(url.pathname.slice(1), pagesRoot)) })
       }
       if (url.pathname === '/test.epub') return route.fulfill({ body: Buffer.from(epub), contentType: 'application/epub+zip' })
-      if (url.pathname === '/api/books/load-progress') return route.fulfill({ json: { ok: true, hasSavedPosition: false } })
+      if (url.pathname === '/api/books/load-progress') {
+        return route.fulfill({ json: { ok: true, hasSavedPosition: !!savedHref, locator: '', href: savedHref } })
+      }
       if (url.pathname === '/api/books/save-progress') {
         requests.saveProgress += 1
+        const request = route.request()
+        const form = await new Request(request.url(), {
+          method: 'POST',
+          headers: request.headers(),
+          body: request.postDataBuffer(),
+        }).formData()
+        requests.saveForms.push({ baseLocator: form.get('baseLocator'), force: form.get('force') })
+        if (options && options.conflict && form.get('force') !== 'true') {
+          return route.fulfill({
+            status: 409,
+            json: { ok: false, conflict: true, locator: '', href: 'chapter.xhtml', chapterLabel: '다른 기기 챕터' },
+          })
+        }
         return route.fulfill({ json: { ok: true } })
       }
       if (url.pathname.startsWith('/api/')) return route.fulfill({ json: { ok: true, id: 'session00000001' } })
@@ -126,4 +142,31 @@ test('Browser back from a reader opened from the book detail page saves and retu
   await expect(page.getByRole('heading', { name: '책 상세' })).toBeVisible()
   expect(requests.saveProgress).toBeGreaterThan(savesBeforeBack)
   expect(await page.evaluate(() => window.history.length), 'returned with history.back, not a new entry').toBe(4)
+})
+
+test('A save rejected because another device moved on asks before overwriting', async ({ page }) => {
+  const requests = await mockSite(page, { savedHref: 'chapter.xhtml', conflict: true })
+  await page.goto('/books/book/read')
+  await waitForReader(page)
+
+  await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).saveCurrentPosition())
+  await expect(page.getByText('다른 기기에서 읽은 위치가 있어요.')).toBeVisible()
+  await expect(page.getByText('다른 기기 챕터 위치로 이동할까요?')).toBeVisible()
+  expect(requests.saveForms.at(-1)).toEqual({ baseLocator: 'chapter.xhtml', force: null })
+
+  await page.getByRole('button', { name: '여기서 계속 읽기' }).click()
+  await expect.poll(() => requests.saveForms.at(-1).force).toBe('true')
+  await expect(page.getByText('다른 기기에서 읽은 위치가 있어요.')).toBeHidden()
+})
+
+test('Leaving after another device moved on skips the stale save without asking', async ({ page }) => {
+  const requests = await mockSite(page, { savedHref: 'chapter.xhtml', conflict: true })
+  await page.goto('/books/book/read')
+  await waitForReader(page)
+  const savesBeforeLeave = requests.saveProgress
+
+  await page.evaluate(() => document.querySelector('a[aria-label="뒤로가기"]').click())
+  await expect(page).toHaveURL(/\/books\/book$/)
+  expect(requests.saveProgress).toBeGreaterThan(savesBeforeLeave)
+  expect(requests.saveForms.every((form) => form.force === null)).toBe(true)
 })

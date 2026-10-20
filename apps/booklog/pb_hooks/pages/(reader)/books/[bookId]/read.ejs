@@ -211,6 +211,8 @@
     finishPromptDismissed: false,
     finishingBook: false,
     finishPromptMessage: '',
+    positionConflictOpen: false,
+    positionConflictLabel: '',
     currentChapterLabel: '',
     bookmarksOpen: false,
     bookmarksLoading: false,
@@ -318,6 +320,12 @@
     },
     markBookFinished: function () {
       window.booklogReaderLogic.markBookFinished(this)
+    },
+    acceptServerPosition: function () {
+      window.booklogReaderLogic.acceptServerPosition(this)
+    },
+    keepLocalPosition: function () {
+      window.booklogReaderLogic.keepLocalPosition(this)
     },
     saveCurrentPosition: function () {
       window.booklogReaderLogic.saveCurrentPosition(this)
@@ -1194,6 +1202,38 @@
               x-cloak>
               처리 중
             </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    x-show="positionConflictOpen"
+    x-cloak
+    class="fixed inset-x-0 bottom-0 z-50 px-3"
+    style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem)">
+    <div
+      class="mx-auto max-w-3xl rounded-[1.4rem] border border-stone-200/90 bg-[rgba(255,255,255,0.96)] px-4 py-4 shadow-[0_18px_44px_rgba(24,19,16,0.2)] backdrop-blur-md">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="min-w-0">
+          <p class="text-sm font-semibold text-stone-950">다른 기기에서 읽은 위치가 있어요.</p>
+          <p
+            class="mt-1 text-[13px] leading-5 text-stone-500"
+            x-text="positionConflictLabel ? positionConflictLabel + ' 위치로 이동할까요?' : '그 위치로 이동할까요?'"></p>
+        </div>
+        <div class="flex shrink-0 gap-2">
+          <button
+            type="button"
+            x-on:click="keepLocalPosition()"
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-700 ring-0 outline-none">
+            여기서 계속 읽기
+          </button>
+          <button
+            type="button"
+            x-on:click="acceptServerPosition()"
+            class="inline-flex items-center justify-center rounded-full border-none bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white ring-0 outline-none">
+            그 위치로 이동
           </button>
         </div>
       </div>

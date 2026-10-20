@@ -54,6 +54,31 @@
       return
     }
 
+    const storedLocator = String(existingShelfRecord.get('current_locator') || '').trim()
+    const storedHref = String(existingShelfRecord.get('current_href') || '').trim()
+    const storedPosition = storedLocator || storedHref
+    // baseLocator를 보내지 않는 배포 전 리더 탭의 저장은 막지 않습니다.
+    const checksBasePosition = Object.prototype.hasOwnProperty.call(form, 'baseLocator')
+    const baseLocator = String(form.baseLocator || '').trim()
+    const forceSave = String(form.force || '') === 'true'
+
+    if (checksBasePosition && !forceSave && storedPosition && storedPosition !== baseLocator) {
+      info('api/books/save-progress:conflict', {
+        userId: userId,
+        bookId: bookId,
+        hasBaseLocator: !!baseLocator,
+      })
+      response.json(409, {
+        ok: false,
+        conflict: true,
+        message: '다른 기기에서 저장한 읽기 위치가 있습니다.',
+        locator: storedLocator,
+        href: storedHref,
+        chapterLabel: String(existingShelfRecord.get('current_label') || '').trim(),
+      })
+      return
+    }
+
     const shelfStatus = String(existingShelfRecord.get('status') || '').trim()
 
     if (shelfStatus !== 'finished' && shelfStatus !== 'reading') {
