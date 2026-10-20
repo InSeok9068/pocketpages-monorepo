@@ -58,6 +58,10 @@ declare namespace types {
     nextSectionIndex: number
     /** 음성 구간이 있는 이전 챕터 spine 순서, 없으면 -1 */
     previousSectionIndex: number
+    /** 낭독 구간이 있는 챕터 중 몇 번째인지(1부터) */
+    chapterNumber: number
+    /** 낭독 구간이 있는 챕터 수 */
+    chapterTotal: number
     /** 챕터 재생 바용 구간별 길이(초). 음성이 없는 구간은 글자 수로 추정 */
     timeline: number[]
     /** 재생 순서의 조각. 나누지 않은 구간은 1개 */

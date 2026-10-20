@@ -125,8 +125,20 @@ window.booklogAudio = (function () {
       chunkIndex: String(index),
     })
     return fetch('/api/books/audio-chunk?' + query.toString(), { cache: 'no-store', signal: session.controller.signal })
-      .then(readJson)
+      .then(function (response) {
+        return response.json().then(function (result) {
+          if (response.ok && result.ok) return result
+          // 표지·이미지 페이지처럼 본문이 없는 곳에서 시작하면 뒤쪽 첫 본문 챕터부터 재생합니다.
+          if (result.reason === 'no-text' && index === 0 && result.nextSectionIndex > sectionIndex) {
+            return loadChunk(session, result.nextSectionIndex, 0).then(function (moved) {
+              return { moved: moved }
+            })
+          }
+          throw new Error(result.message || '오디오북 요청에 실패했습니다.')
+        })
+      })
       .then(function (result) {
+        if (result.moved) return result.moved
         if (!isActive(session)) throw new DOMException('Playback stopped', 'AbortError')
         if (result.configHash !== session.configHash)
           throw new Error('낭독 설정이 바뀌었습니다. 다시 이어 듣기를 시작해 주세요.')
@@ -151,6 +163,8 @@ window.booklogAudio = (function () {
           })
         ).then(function (parts) {
           return {
+            sectionIndex: sectionIndex,
+            chapterOrder: result.chapterNumber > 0 ? result.chapterNumber + ' / ' + result.chapterTotal : '',
             parts: parts,
             timeline: Array.isArray(result.timeline) ? result.timeline.map(Number) : [],
             previousSectionIndex: Number.isInteger(result.previousSectionIndex) ? result.previousSectionIndex : -1,
@@ -596,8 +610,14 @@ window.booklogAudio = (function () {
     return (prepared || loadChunk(session, session.sectionIndex, session.chunkIndex))
       .then(function (result) {
         if (!isActive(session) || token !== session.loadToken) return
+        if (result.sectionIndex !== session.sectionIndex) {
+          session.sectionIndex = result.sectionIndex
+          session.chunkIndex = 0
+          session.restartPending = true
+        }
         session.timeline = result.timeline.length ? result.timeline : session.timeline
         session.state.cloudAudioChapter = chapterLabel(session)
+        session.state.cloudAudioChapterOrder = result.chapterOrder
         session.chunkCount = result.count
         session.chunkId = result.chunkId
         session.nextSectionIndex = result.nextSectionIndex
@@ -944,6 +964,7 @@ window.booklogAudio = (function () {
     session.state.cloudAudioHasPrevious = false
     session.state.cloudAudioHasNext = false
     session.state.cloudAudioChapter = ''
+    session.state.cloudAudioChapterOrder = ''
     session.state.cloudAudioDetail = ''
     session.state.cloudAudioSession = false
   }

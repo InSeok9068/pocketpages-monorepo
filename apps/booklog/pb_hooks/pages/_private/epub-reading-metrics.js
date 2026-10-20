@@ -405,35 +405,81 @@ function buildAudioBookFromBytes(epubBytes) {
     const entryPath = entryPaths[sectionIndex]
     const html = entryPath && archive[entryPath] ? readArchiveText(archive, entryPath) : ''
     const text = html ? htmlToAudioText(html) : ''
-    if (text && !isCopyrightSection(entryPath, html, text)) {
+    if (text && !isNonNarrativeSection(entryPath, html, text)) {
       sections.push({ sectionIndex, chunks: splitAudioText(text) })
     }
   }
   return sections
 }
 
-const copyrightEntryNames = ['copy', 'copyright', 'copyrightpage', 'colophon', 'imprint']
+const skippedEntryNames = [
+  'copy',
+  'encopy',
+  'copyright',
+  'copyrightpage',
+  'rights',
+  'colophon',
+  'imprint',
+  'footnote',
+  'footnotes',
+  'endnote',
+  'endnotes',
+]
 const copyrightTerms =
-  /\ubc1c\ud589\uc778|\ubc1c\ud589\ucc98|\ud3b4\ub0b8\uc774|\ud3b4\ub0b8\uacf3|\ucd9c\ud310\ub4f1\ub85d|\uc778\uc1c4|\ucd08\ud310|1\ud310 1\uc1c4|copyright|\u00a9|all rights reserved/gi
+  /\ubc1c\ud589\uc778|\ubc1c\ud589\ucc98|\ud3b4\ub0b8\uc774|\ud3b4\ub0b8\uacf3|\ucd9c\ud310\ub4f1\ub85d|\uc778\uc1c4|\ucd08\ud310|1\ud310 1\uc1c4|copyright|\u00a9|\u24d2|all rights reserved/gi
+const linkOnlyTexts = ['\ucc98\uc74c\uc73c\ub85c', '\ucc45\uc758\uc2dc\uc791', '\ucc45\uc758\ub05d', '\ud45c\uc9c0']
+// \uccab \uc904\uc774 \uc774 \uc81c\ubaa9\uacfc \uc815\ud655\ud788 \uac19\uc744 \ub54c\ub9cc \uc81c\uc678\ud574, \uac19\uc740 \ub2e8\uc5b4\ub85c \uc2dc\uc791\ud558\ub294 \ubcf8\ubb38 \ubb38\uc7a5\uc740 \uadf8\ub300\ub85c \ub461\ub2c8\ub2e4.
+const backMatterHeadings =
+  /^(\ucc28\ub840|\ubaa9\ucc28|contents|table of contents|\uc8fc\uc11d|\ubbf8\uc8fc|\uac01\uc8fc|\uc8fc|notes|endnotes|footnotes|\ucc38\uace0\ubb38\ud5cc|\ucc38\uace0\ub3c4\uc11c|\ucc38\uace0\uc790\ub8cc|bibliography|references|\ucc3e\uc544\ubcf4\uae30|\uc0c9\uc778|index|\uc0ac\uc9c4\ucd9c\ucc98|\ub3c4\ud310\ucd9c\ucc98|\uc774\ubbf8\uc9c0\ucd9c\ucc98|\uadf8\ub9bc\ucd9c\ucc98|pictureacknowledgements)$/i
 
 /**
- * \ub0ad\ub3c5\ud560 \ud544\uc694\uac00 \uc5c6\ub294 \ud310\uad8c \ud398\uc774\uc9c0\uc778\uc9c0 \ud310\ub2e8\ud569\ub2c8\ub2e4.
+ * \ud310\uad8c\u00b7\ucc28\ub840\u00b7\uc8fc\uc11d\u00b7\ucc38\uace0\ubb38\ud5cc\u00b7\ud45c\uc9c0 \ub9c1\ud06c\ucc98\ub7fc \ub0ad\ub3c5\ud560 \ud544\uc694\uac00 \uc5c6\ub294 \ud398\uc774\uc9c0\uc778\uc9c0 \ud310\ub2e8\ud569\ub2c8\ub2e4.
  * @param {string} entryPath \ucc55\ud130 \ud30c\uc77c \uacbd\ub85c
  * @param {string} html \ucc55\ud130 HTML
  * @param {string} text \ub0ad\ub3c5 \ubcf8\ubb38
- * @returns {boolean} \ud310\uad8c \ud398\uc774\uc9c0 \uc5ec\ubd80
+ * @returns {boolean} \uc81c\uc678 \uc5ec\ubd80
  */
-function isCopyrightSection(entryPath, html, text) {
+function isNonNarrativeSection(entryPath, html, text) {
   const entryName = String(entryPath.split('/').pop())
     .replace(/\.(xhtml|html|htm)$/i, '')
     .replace(/[-_.]/g, '')
     .replace(/\d+$/, '')
     .toLowerCase()
-  if (copyrightEntryNames.indexOf(entryName) >= 0) return true
+  if (skippedEntryNames.indexOf(entryName) >= 0) return true
   if (/epub:type\s*=\s*["'][^"']*\b(copyright-page|colophon|imprint)\b/i.test(html)) return true
-  // \ud310\uad8c \ud45c\uc2dc\uac00 \uc5c6\ub294 \ucc45\ub3c4 \ub9ce\uc544 ISBN\uacfc \ud310\uad8c \uc6a9\uc5b4\uac00 \ud568\uaed8 \uc788\ub294 \uc9e7\uc740 \ucc55\ud130\ub97c \ud310\uad8c \ud398\uc774\uc9c0\ub85c \ubd05\ub2c8\ub2e4.
+  if (/<body[^>]*epub:type\s*=\s*["'][^"']*\b(footnotes|endnotes|rearnotes|bibliography|index|toc)\b/i.test(html)) {
+    return true
+  }
+  const compact = text.replace(/\s+/g, '')
+  if (linkOnlyTexts.indexOf(compact) >= 0) return true
+  // \u300c\ucc28<br>\ub840\u300d\ucc98\ub7fc \uc81c\ubaa9 \uae00\uc790\ub97c \uc904\uc744 \ub098\ub220 \uc4f4 \ucc45\uc774 \uc788\uc5b4, \uccab \uc904 \ub300\uc2e0 \uccab \ubb38\ub2e8\uc744 \uc81c\ubaa9\uc73c\ub85c \ubd05\ub2c8\ub2e4.
+  const heading = text.split(/\n\s*\n/)[0].replace(/\s+/g, '')
+  if (backMatterHeadings.test(heading) && text.length <= 80000) return true
+  if (isNotePage(entryPath, html)) return true
+  if (text.length > 3000) return false
+  if (/all rights? reserved/i.test(text) || heading === '\ud310\uad8c') return true
+  if (/copyright|\u00a9|\u24d2/i.test(text) && /published by|by arrangement with|translation rights/i.test(text))
+    return true
+  // \ud310\uad8c \ud45c\uc2dc\uac00 \uc5c6\ub294 \ucc45\ub3c4 \ub9ce\uc544 ISBN\uacfc \ud310\uad8c \uc6a9\uc5b4\uac00 \ud568\uaed8 \uc788\ub294 \uc9e7\uc740 \ud398\uc774\uc9c0\ub97c \ud310\uad8c\uc73c\ub85c \ubd05\ub2c8\ub2e4.
   const terms = text.match(copyrightTerms) || []
-  return text.length <= 2500 && /ISBN/i.test(text) && terms.length >= 2
+  return /ISBN/i.test(text) && terms.length >= 2
+}
+
+// 제목이 이미지라 글자로 찾을 수 없는 미주도, 문단 대부분이 본문으로 돌아가는 번호 링크로 시작하면 주석 페이지로 봅니다.
+// 본문 챕터의 주석 번호는 문장 중간에 있어 문단 첫머리 조건에 걸리지 않습니다.
+function isNotePage(entryPath, html) {
+  const ownName = String(entryPath.split('/').pop())
+  const paragraphs = (html.match(/<p\b[^>]*>[\s\S]*?<\/p>/gi) || []).filter(function (paragraph) {
+    return paragraph.replace(/<[^>]+>/g, '').trim()
+  })
+  const backlinked = paragraphs.filter(function (paragraph) {
+    const inner = paragraph.replace(/^<p\b[^>]*>/i, '').replace(/^(\s|<(span|sup|b|strong|em|i)\b[^>]*>)*/i, '')
+    const link = inner.match(/^<a\b[^>]*href\s*=\s*["']([^"'#]*)#[^"']*["'][^>]*>([\s\S]*?)<\/a>/i)
+    if (!link) return false
+    const target = String(link[1].split('/').pop())
+    return !!target && target !== ownName && /^[[(]?\d{1,3}[\]).．]?$/.test(link[2].replace(/<[^>]+>/g, '').trim())
+  }).length
+  return backlinked >= 5 && backlinked >= paragraphs.length / 2
 }
 
 function htmlToAudioText(html) {

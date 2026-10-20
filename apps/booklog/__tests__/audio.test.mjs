@@ -128,16 +128,16 @@ function runRoute({ authenticated = true, method = 'GET', owned = true, ready = 
         return ready ? { id: 'chunk' } : null
       },
       countSectionChunks: () => 3,
-      findNextSectionIndex: (app, fileId, configHash, sectionIndex) => sectionIndex + 2,
+      readSectionOrder: () => [1, 2, 4],
+      pendingMessage: (app, fileId, configHash, order, splitting) =>
+        splitting ? 'splitting' : 'pending of ' + order.length,
       findPlayableParts: (app, chunk) => (split ? null : [chunk]),
-      findPreviousSectionIndex: (app, fileId, configHash, sectionIndex) => sectionIndex - 1,
       sectionTimeline: () => [60, 60, 60],
-      chunkView: (chunk, parts, bookId, chunkCount, sections, timeline) => ({
+      chunkView: (chunk, parts, bookId, chunkCount, order, timeline) => ({
         chunkId: chunk.id,
         parts: parts.length,
         chunkCount,
-        nextSectionIndex: sections.next,
-        previousSectionIndex: sections.previous,
+        order,
         timeline,
       }),
     }),
@@ -247,13 +247,13 @@ test('A chunk is halved at the sentence boundary nearest the middle and short te
   assert.equal(service.splitInHalf('가'.repeat(400)), null, 'text without boundaries is not cut mid-word')
 })
 
-test('A chunk blocked twice is replaced by two ordered parts and short chunks keep retrying', () => {
+test('A chunk blocked once is replaced by two ordered parts and short chunks keep retrying', () => {
   const text = longNarration(60)
-  const split = generateWithProviderResult(policyBlock, { attempt_count: 1, input_text: text })
+  const split = generateWithProviderResult(policyBlock, { input_text: text })
   assert.equal(split.result.blocked, true)
   assert.equal(split.result.split, true)
   assert.equal(split.fields.status, 'split')
-  assert.equal(split.fields.attempt_count, 2)
+  assert.equal(split.fields.attempt_count, 1)
   assert.deepEqual(
     split.created.map((part) => [part.split_path, part.status, part.section_index, part.chunk_index]),
     [
@@ -267,10 +267,9 @@ test('A chunk blocked twice is replaced by two ordered parts and short chunks ke
     nested.created.map((part) => part.split_path),
     ['10', '11']
   )
-  const first = generateWithProviderResult(policyBlock, { input_text: text })
-  assert.equal(first.fields.status, 'failed')
-  assert.equal(first.created.length, 0)
-  const short = generateWithProviderResult(policyBlock, { attempt_count: 1, input_text: longNarration(12) })
+  const retried = generateWithProviderResult(policyBlock, { attempt_count: 3, input_text: text })
+  assert.equal(retried.fields.status, 'split', 'a chunk reset by restart is split on its next block')
+  const short = generateWithProviderResult(policyBlock, { input_text: longNarration(12) })
   assert.equal(short.fields.status, 'failed')
   assert.equal(short.created.length, 0)
   const other = generateWithProviderResult(
@@ -344,12 +343,47 @@ test('Audio chunk lookup only returns generated audio and never generates it', (
   assert.equal(found.result.status, 200)
   assert.deepEqual(found.lookups[0], { fileId: 'file', configHash: 'settings', sectionIndex: 2, chunkIndex: 1 })
   assert.equal(found.result.body.chunkCount, 3)
-  assert.equal(found.result.body.nextSectionIndex, 4)
-  assert.equal(found.result.body.previousSectionIndex, 1)
+  assert.equal(JSON.stringify(found.result.body.order), '[1,2,4]')
   const missing = runRoute({ ready: false })
   assert.equal(missing.result.status, 404)
-  assert.match(missing.result.body.message, /아직 AI 오디오북이 생성되지 않았습니다/)
-  assert.equal(runRoute({ split: true }).result.status, 404, 'a split chunk waits until every part is playable')
+  assert.equal(missing.result.body.reason, 'not-ready')
+  assert.equal(missing.result.body.message, 'pending of 3')
+  const split = runRoute({ split: true })
+  assert.equal(split.result.status, 404, 'a split chunk waits until every part is playable')
+  assert.equal(split.result.body.message, 'splitting')
+})
+
+test('A page without narration points to the next chapter that has narration', () => {
+  const image = runRoute({ query: { sectionIndex: '3', chunkIndex: '0' } })
+  assert.equal(image.result.status, 404)
+  assert.equal(image.result.body.reason, 'no-text')
+  assert.equal(image.result.body.nextSectionIndex, 4)
+  assert.equal(image.lookups.length, 0, 'no chunk lookup for a page without narration')
+  const end = runRoute({ query: { sectionIndex: '9', chunkIndex: '0' } })
+  assert.equal(end.result.body.nextSectionIndex, -1)
+  assert.match(end.result.body.message, /뒤로는 낭독할 본문이 없습니다/)
+})
+
+test('Chunk views number the chapter among chapters with narration and link its neighbours', () => {
+  const context = {
+    module: { exports: {} },
+    require: () => ({}),
+    __hooks: '',
+    $security: { sha256: () => 'hash' },
+  }
+  vm.runInNewContext(
+    readFileSync(new URL('../pb_hooks/pages/_private/book-audio-data.js', import.meta.url), 'utf8'),
+    context
+  )
+  const fields = { id: 'c', config_hash: 'h', section_index: 7, file_id: 'f', status: 'ready', input_text: '본문', duration_seconds: 3 }
+  const chunk = { get: (name) => fields[name] }
+  const view = context.module.exports.chunkView(chunk, [chunk], 'book', 1, [1, 5, 7, 9], [3])
+  assert.deepEqual(
+    [view.chapterNumber, view.chapterTotal, view.previousSectionIndex, view.nextSectionIndex],
+    [3, 4, 5, 9]
+  )
+  const last = context.module.exports.chunkView(chunk, [chunk], 'book', 1, [7], [3])
+  assert.deepEqual([last.chapterNumber, last.previousSectionIndex, last.nextSectionIndex], [1, -1, -1])
 })
 
 function createPlayerHarness(fetchAudio, options = {}) {
@@ -634,6 +668,44 @@ test('Copyright pages are skipped by file name, EPUB semantics, or ISBN with pub
     [0]
   )
   assert.match(sections[0].chunks[0], /ISBN이라는 단어/)
+})
+
+test('Cover links, tables of contents, notes, references, and English rights pages are not narrated', () => {
+  const skipped = {
+    'cover.xhtml': '<html><body><p><a href="#">처음으로</a></p></body></html>',
+    'start.xhtml': '<html><body><p>책의 시작</p></body></html>',
+    'toc.xhtml': '<html><body><p>차<br/>례</p><p></p><p>1장 시작</p><p>2장 끝</p></body></html>',
+    'en_copy.xhtml': '<html><body><p>ORIGINAL TITLE</p><p>ⓒAuthor 2016</p></body></html>',
+    'kcr.xhtml': '<html><body><p>THE TITLE</p><p>Copyright ⓒ 2025 by Author All rights reserved.</p></body></html>',
+    'rights.xhtml': '<html><body><p>판권</p><p>제목 1판 1쇄 발행 2019년</p></body></html>',
+    'notes.xhtml': '<html><body><p>주</p><p>머리말 1 이 용어는 대화에서 나왔다.</p></body></html>',
+    'ref.xhtml': '<html><body><p>참고 문헌</p><p>저자, 책 제목, 2020</p></body></html>',
+    'pictures.xhtml': '<html><body><p>PICTURE ACKNOWLEDGEMENTS</p><p>[1] Agency</p></body></html>',
+    'start2.xhtml':
+      '<html><body><p>ORIGINAL TITLE</p><p>Copyright © 2022 by Author</p><p>Korean edition published by arrangement with Agency.</p></body></html>',
+    'endnotes.xhtml':
+      '<html><body><p><img src="note-title.png"/></p><p>프롤로그</p>'
+      + [1, 2, 3, 4, 5, 6]
+        .map((n) => '<p><a href="chapter.xhtml#ref' + n + '" id="note' + n + '">' + n + '.</a> 참고한 책 ' + n + '</p>')
+        .join('')
+      + '</body></html>',
+  }
+  const kept = {
+    'author.xhtml': '<html><body><p>지은이 소개</p><p>작가는 1988년에 태어났다.</p></body></html>',
+    'chapter.xhtml':
+      '<html><body><p>차례대로 줄을 섰다. 주석을 달 필요는 없었다.</p>'
+      + [1, 2, 3, 4, 5, 6]
+        .map((n) => '<p>문장 ' + n + '에는 주석 번호<a href="endnotes.xhtml#note' + n + '">' + n + '</a>가 붙어 있다.</p>')
+        .join('')
+      + '</body></html>',
+    'thanks.xhtml': '<html><body><p>감사의 글</p><p>도와준 모든 분께 감사드립니다.</p></body></html>',
+  }
+  const sections = audioSectionsForFiles({ ...skipped, ...kept })
+  const names = Object.keys({ ...skipped, ...kept })
+  assert.deepEqual(
+    sections.map((section) => names[section.sectionIndex]),
+    Object.keys(kept)
+  )
 })
 
 test('Narration joins letter-spaced Latin titles and drops decorative bullets only', () => {
@@ -991,6 +1063,41 @@ test('Before playback the resume button shows where listening continues', async 
   assert.equal(saved.state.cloudAudioSession, true)
   saved.logic.stop()
   assert.equal(saved.state.cloudAudioSession, false)
+})
+
+test('Starting on a page without narration plays the next chapter and shows its chapter number', async () => {
+  const sections = []
+  const { logic, state, server } = createPlayerHarness((index, _signal, section) => {
+    sections.push(section)
+    if (section === 2) {
+      return new Response(JSON.stringify({ ok: false, reason: 'no-text', nextSectionIndex: 5, message: '없음' }), {
+        status: 404,
+      })
+    }
+    return new Response(
+      JSON.stringify({ ok: true, chunkCount: 2, nextSectionIndex: -1, chapterNumber: 3, chapterTotal: 16 })
+    )
+  })
+  logic.start(state, 2, true)
+  await flushPlayback()
+  assert.deepEqual(sections.slice(0, 2), [2, 5])
+  assert.equal(state.cloudAudioActive, true)
+  assert.equal(state.cloudAudioChapterOrder, '3 / 16')
+  assert.ok(server.saves.some((save) => save.startsWith('5:0:false:true')), 'the moved chapter starts over')
+  logic.stop()
+  assert.equal(state.cloudAudioChapterOrder, '')
+})
+
+test('A chapter that is not generated yet shows why playback stopped', async () => {
+  const message = '이 챕터는 아직 AI 음성을 만들지 않았습니다. 지금 3 / 16번째 챕터를 만들고 있습니다.'
+  const { logic, state } = createPlayerHarness(
+    () => new Response(JSON.stringify({ ok: false, reason: 'not-ready', message }), { status: 404 })
+  )
+  logic.start(state, 8, true)
+  await flushPlayback()
+  assert.equal(state.cloudAudioMessage, message)
+  assert.equal(state.cloudAudioActive, false)
+  logic.stop()
 })
 
 test('The listening position is the start of the sentence being read in the current part', async () => {

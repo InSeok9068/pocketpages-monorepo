@@ -38,18 +38,36 @@
   }
   try {
     const settings = audioData.getFileSettings($app, fileId)
+    const order = audioData.readSectionOrder($app, fileId, settings.configHash)
+    if (order.indexOf(sectionIndex) < 0) {
+      // 표지·이미지·판권처럼 낭독 구간이 없는 페이지는 뒤쪽의 첫 본문 챕터를 알려줍니다.
+      const nextSectionIndex = order.filter(function (index) {
+        return index > sectionIndex
+      })[0]
+      dbg('api/books/audio-chunk:no-text', { userId, fileId, sectionIndex, nextSectionIndex })
+      response.json(404, {
+        ok: false,
+        reason: 'no-text',
+        nextSectionIndex: nextSectionIndex === undefined ? -1 : nextSectionIndex,
+        message:
+          nextSectionIndex === undefined
+            ? '이 페이지 뒤로는 낭독할 본문이 없습니다.'
+            : '이 페이지에는 낭독할 본문이 없습니다.',
+      })
+      return
+    }
     const chunk = audioData.findPlayableChunk($app, fileId, settings.configHash, sectionIndex, chunkIndex)
     const parts = chunk ? audioData.findPlayableParts($app, chunk) : null
     if (!parts) {
       dbg('api/books/audio-chunk:not-ready', { userId, fileId, sectionIndex, chunkIndex, split: !!chunk })
-      response.json(404, { ok: false, message: '이 구간은 아직 AI 오디오북이 생성되지 않았습니다.' })
+      response.json(404, {
+        ok: false,
+        reason: 'not-ready',
+        message: audioData.pendingMessage($app, fileId, settings.configHash, order, !!chunk),
+      })
       return
     }
     const chunkCount = audioData.countSectionChunks($app, fileId, settings.configHash, sectionIndex)
-    const sections = {
-      next: audioData.findNextSectionIndex($app, fileId, settings.configHash, sectionIndex),
-      previous: audioData.findPreviousSectionIndex($app, fileId, settings.configHash, sectionIndex),
-    }
     const timeline = audioData.sectionTimeline($app, fileId, settings.configHash, sectionIndex)
     dbg('api/books/audio-chunk:found', {
       userId,
@@ -58,12 +76,11 @@
       chunkIndex,
       parts: parts.length,
       chunkCount,
-      nextSectionIndex: sections.next,
-      previousSectionIndex: sections.previous,
+      chapters: order.length,
     })
     response.json(
       200,
-      Object.assign({ ok: true }, audioData.chunkView(chunk, parts, bookId, chunkCount, sections, timeline))
+      Object.assign({ ok: true }, audioData.chunkView(chunk, parts, bookId, chunkCount, order, timeline))
     )
   } catch (exception) {
     error('api/books/audio-chunk:failed', { userId, fileId, error: String(exception.message || exception) })

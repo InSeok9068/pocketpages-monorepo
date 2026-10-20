@@ -4272,7 +4272,7 @@ window.booklogReaderLogic = (function () {
 
     component.loading = true
     component.searchOpen = false
-    stopSpeechPlayback(component, {
+    stopBrowserSpeech(component, {
       keepMessage: true,
     })
     prepareManualNavigation()
@@ -4302,7 +4302,7 @@ window.booklogReaderLogic = (function () {
     component.tocOpen = false
     component.controlsVisible = false
     component.loading = true
-    stopSpeechPlayback(component, {
+    stopBrowserSpeech(component, {
       keepMessage: true,
     })
     prepareManualNavigation()
@@ -4584,7 +4584,7 @@ window.booklogReaderLogic = (function () {
     component.bookmarksOpen = false
     component.controlsVisible = false
     component.loading = true
-    stopSpeechPlayback(component, {
+    stopBrowserSpeech(component, {
       keepMessage: true,
     })
     prepareManualNavigation()
@@ -4628,7 +4628,7 @@ window.booklogReaderLogic = (function () {
     component.highlightsOpen = false
     component.controlsVisible = false
     component.loading = true
-    stopSpeechPlayback(component, {
+    stopBrowserSpeech(component, {
       keepMessage: true,
     })
     prepareManualNavigation()
@@ -4773,7 +4773,7 @@ window.booklogReaderLogic = (function () {
 
     component.loadingSavedPosition = true
     component.loading = true
-    stopSpeechPlayback(component, {
+    stopBrowserSpeech(component, {
       keepMessage: true,
     })
 
@@ -4839,7 +4839,7 @@ window.booklogReaderLogic = (function () {
     }
 
     prepareManualNavigation()
-    stopSpeechPlayback(component, {
+    stopBrowserSpeech(component, {
       keepMessage: true,
     })
 

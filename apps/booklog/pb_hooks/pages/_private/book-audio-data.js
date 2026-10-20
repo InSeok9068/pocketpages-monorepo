@@ -169,23 +169,58 @@ function findNextSectionIndex(app, fileId, configHash, sectionIndex) {
 }
 
 /**
- * 낭독 구간이 등록된 이전 챕터를 찾습니다.
+ * 낭독 구간이 있는 챕터의 spine 순서를 차례대로 읽습니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
  * @param {string} configHash 낭독 설정 해시
- * @param {number} sectionIndex 현재 spine 순서
- * @returns {number} 이전 챕터 spine 순서, 없으면 -1
+ * @returns {number[]} 오름차순 spine 순서
  */
-function findPreviousSectionIndex(app, fileId, configHash, sectionIndex) {
-  const previous = app.findRecordsByFilter(
+function readSectionOrder(app, fileId, configHash) {
+  const order = []
+  app
+    .findRecordsByFilter(
+      'book_audio_chunks',
+      "file_id = {:fileId} && config_hash = {:configHash} && split_path = '' && chunk_index = 0",
+      'section_index',
+      0,
+      0,
+      { fileId, configHash }
+    )
+    .forEach(function (record) {
+      const sectionIndex = Number(record.get('section_index'))
+      if (order.indexOf(sectionIndex) < 0) order.push(sectionIndex)
+    })
+  return order
+}
+
+/**
+ * 아직 재생할 수 없는 구간에서 보여줄 안내 문구를 만듭니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} fileId EPUB 파일 ID
+ * @param {string} configHash 낭독 설정 해시
+ * @param {number[]} order 낭독 구간이 있는 챕터 spine 순서
+ * @param {boolean} splitting 정책 차단으로 나눈 조각을 만드는 중인지 여부
+ * @returns {string} 안내 문구
+ */
+function pendingMessage(app, fileId, configHash, order, splitting) {
+  if (splitting)
+    return '이 구간은 정책 필터 때문에 나눠서 다시 만드는 중입니다. 조각이 모두 만들어지면 들을 수 있습니다.'
+  const pending = app.findRecordsByFilter(
     'book_audio_chunks',
-    'file_id = {:fileId} && config_hash = {:configHash} && section_index < {:sectionIndex}',
-    '-section_index',
+    'file_id = {:fileId} && config_hash = {:configHash}'
+      + " && (status = 'queued' || status = 'generating' || (status = 'failed' && attempt_count < {:maxAttempts}))",
+    'section_index,chunk_index,split_path',
     1,
     0,
-    { fileId, configHash, sectionIndex }
+    { fileId, configHash, maxAttempts: generation.MAX_ATTEMPTS }
   )[0]
-  return previous ? Number(previous.get('section_index')) : -1
+  const job = findFileJob(app, fileId)
+  const position = pending ? order.indexOf(Number(pending.get('section_index'))) + 1 : 0
+  return (
+    '이 챕터는 아직 AI 음성을 만들지 않았습니다.'
+    + (position > 0 ? ' 지금 ' + position + ' / ' + order.length + '번째 챕터를 만들고 있습니다.' : '')
+    + (job && String(job.get('status')) === 'paused' ? ' 생성이 일시 정지되어 있습니다.' : '')
+  )
 }
 
 /**
@@ -329,17 +364,20 @@ function sectionTimeline(app, fileId, configHash, sectionIndex) {
  * @param {core.Record[]} parts 재생 순서의 조각
  * @param {string} bookId 접근을 확인한 책 ID
  * @param {number} chunkCount 챕터의 구간 수
- * @param {{ next: number, previous: number }} sections 다음·이전 챕터 spine 순서, 없으면 -1
+ * @param {number[]} order 낭독 구간이 있는 챕터 spine 순서
  * @param {number[]} timeline 챕터의 구간별 길이(초)
  * @returns {types.BookAudioChunkView} 재생 정보
  */
-function chunkView(chunk, parts, bookId, chunkCount, sections, timeline) {
+function chunkView(chunk, parts, bookId, chunkCount, order, timeline) {
+  const position = order.indexOf(Number(chunk.get('section_index')))
   return {
     chunkId: String(chunk.get('id')),
     configHash: String(chunk.get('config_hash')),
     chunkCount,
-    nextSectionIndex: sections.next,
-    previousSectionIndex: sections.previous,
+    nextSectionIndex: position >= 0 && position + 1 < order.length ? order[position + 1] : -1,
+    previousSectionIndex: position > 0 ? order[position - 1] : -1,
+    chapterNumber: position + 1,
+    chapterTotal: order.length,
     timeline,
     parts: parts.map(function (part) {
       const ready = String(part.get('status')) === 'ready'
@@ -372,7 +410,8 @@ module.exports = {
   countSectionChunks,
   countFileChunks,
   findNextSectionIndex,
-  findPreviousSectionIndex,
+  readSectionOrder,
+  pendingMessage,
   findChunkIndexByText,
   findPlayableChunk,
   findPlayableParts,
