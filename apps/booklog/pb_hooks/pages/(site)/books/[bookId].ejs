@@ -186,7 +186,7 @@
   const downloadFileUrl =
     bookFileRecord && storedFileName ? '/xapi/books/' + encodeURIComponent(bookId) + '/download-file' : ''
   const audioJobFileId = bookFileRecord && storedFileName ? String(bookFileRecord.get('id') || '') : ''
-  const showAudioJob = request.auth.get('tts_manager') === true && !!audioJobFileId
+  const showAudioJob = request.auth.get('admin_manager') === true && !!audioJobFileId
   let audioJob = null
   let audioJobError = ''
   let hasStoredAudio = false

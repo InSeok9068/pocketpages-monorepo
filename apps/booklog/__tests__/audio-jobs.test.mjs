@@ -70,7 +70,7 @@ before(async () => {
   const response = await fetch(service.baseUrl + '/xapi/auth/sign-in', {
     method: 'POST',
     redirect: 'manual',
-    body: new URLSearchParams({ email: 'tts-manager@example.com', password: 'test-password-1234' }),
+    body: new URLSearchParams({ email: 'admin-manager@example.com', password: 'test-password-1234' }),
   })
   assert.equal(response.status, 303)
   cookie = readCookieHeader(response.headers)

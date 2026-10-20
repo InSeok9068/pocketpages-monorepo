@@ -5,10 +5,10 @@ onBootstrap(function (event) {
   $app.importCollectionsByMarshaledJSON($os.readFile(__hooks + '/test-schema.json'), false)
   const user = new Record($app.findCollectionByNameOrId('users'))
   user.set('id', 'user00000000001')
-  user.set('email', 'tts-manager@example.com')
+  user.set('email', 'admin-manager@example.com')
   user.set('password', 'test-password-1234')
   user.set('verified', true)
-  user.set('tts_manager', true)
+  user.set('admin_manager', true)
   user.set('booklog_enabled', true)
   $app.save(user)
   for (let index = 1; index <= 4; index += 1) {

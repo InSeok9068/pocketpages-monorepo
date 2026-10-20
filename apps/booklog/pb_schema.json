@@ -142,7 +142,7 @@
         "help": "오디오북 생성 요청과 진행률 확인 권한",
         "hidden": true,
         "id": "bool2026101501",
-        "name": "tts_manager",
+        "name": "admin_manager",
         "presentable": false,
         "required": false,
         "system": false,

@@ -24,7 +24,7 @@
   const action = String(form.action || '')
   const bookDetailPath = bookId ? '/books/' + encodeURIComponent(bookId) : '/'
   dbg('xapi/books/audio-job:start', { userId, bookId, fileId, action })
-  if (request.auth.get('tts_manager') !== true) {
+  if (request.auth.get('admin_manager') !== true) {
     warn('xapi/books/audio-job:forbidden', { userId, bookId })
     redirectWithMessage(bookDetailPath, 'AI 오디오북 생성 권한이 없습니다.')
     return

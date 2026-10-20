@@ -2,16 +2,16 @@
 
 | 위치                            | 누가                       | 무엇을                                      |
 | ------------------------------- | -------------------------- | ------------------------------------------- |
-| 책 상세                         | `users.tts_manager = true` | AI 오디오북 생성 요청·일시 정지·진행률 확인 |
+| 책 상세                         | `users.admin_manager = true` | AI 오디오북 생성 요청·일시 정지·진행률 확인 |
 | 리더 → 읽어주기 → AI 오디오북   | 서재에 책이 있는 사용자    | 생성된 음성만 재생. 리더는 생성하지 않음    |
 | 리더 → 읽어주기 → 로컬 오디오북 | 모두                       | 기기 음성(Web Speech)으로 재생              |
 
-`tts_manager`는 hidden 필드라 사용자가 API로 직접 바꿀 수 없고, 어드민에서만 설정합니다.
+`admin_manager`는 hidden 필드라 사용자가 API로 직접 바꿀 수 없고, 어드민에서만 설정합니다.
 생성된 구간이 하나도 없으면 리더의 AI 오디오북 항목은 비활성화되고 로컬 오디오북이 기본으로 선택됩니다.
 
 ## 서버 설정
 
-먼저 `pb_schema.json`의 `book_audio_chunks`, `book_audio_progress`, `book_audio_jobs`, `users.tts_manager`를 관리자에서 import합니다.
+먼저 `pb_schema.json`의 `book_audio_chunks`, `book_audio_progress`, `book_audio_jobs`, `users.admin_manager`를 관리자에서 import합니다.
 
 서비스 `.env`의 `GEMINI_APIKEY`를 그대로 사용할 수 있습니다.
 `GEMINI_API_KEY`, `GEMINI_AI_KEY`도 지원하며 키는 브라우저에 전달하지 않습니다.
