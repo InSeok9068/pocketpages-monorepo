@@ -279,12 +279,16 @@
     return record
   }
 
+  function findBookShelfRecord(userId, bookId) {
+    return findFirstRecordOrNull('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+      userId: userId,
+      bookId: bookId,
+    })
+  }
+
   function saveBookShelfRecord(shelfInput) {
     const collection = $app.findCollectionByNameOrId('book_shelves')
-    let record = findFirstRecordOrNull('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
-      userId: shelfInput.userId,
-      bookId: shelfInput.bookId,
-    })
+    let record = findBookShelfRecord(shelfInput.userId, shelfInput.bookId)
 
     if (!record) {
       record = new Record(collection)
@@ -357,27 +361,14 @@
         user_id: userId,
       })
     )
+    const isShelfAtCapacity = shelfBookCount >= shelfBookLimit
 
     dbg('xapi/epub/upload:shelf-limit', {
       userId: userId,
       count: shelfBookCount,
       limit: shelfBookLimit,
+      isAtCapacity: isShelfAtCapacity,
     })
-
-    if (shelfBookCount >= shelfBookLimit) {
-      const shelfLimitMessage = '내 도서함은 최대 ' + shelfBookLimit + '권까지 보관할 수 있습니다.'
-
-      dbg('xapi/epub/upload:redirect', {
-        status: 303,
-        redirectTo: '/',
-        message: shelfLimitMessage,
-      })
-      redirect('/', {
-        status: 303,
-        message: shelfLimitMessage,
-      })
-      return
-    }
 
     let uploadedFiles = []
 
@@ -469,6 +460,29 @@
     })
     const existingBookId =
       existingBookFile && existingBookFile.get('book_id') ? String(existingBookFile.get('book_id')) : ''
+    const existingShelfRecord = existingBookId ? findBookShelfRecord(userId, existingBookId) : null
+
+    if (existingShelfRecord) {
+      const duplicateMessage = '같은 책이 이미 도서함에 존재합니다.'
+
+      info('xapi/epub/upload:already-in-shelf', {
+        userId: userId,
+        bookId: existingBookId,
+        shelfId: String(existingShelfRecord.get('id') || ''),
+        fileHash: fileHash,
+      })
+      dbg('xapi/epub/upload:redirect', {
+        status: 303,
+        redirectTo: '/',
+        message: duplicateMessage,
+      })
+      redirect('/', {
+        status: 303,
+        message: duplicateMessage,
+      })
+      return
+    }
+
     const existingBookRecord = existingBookId
       ? findFirstRecordOrNull('books', 'id = {:bookId}', {
           bookId: existingBookId,
@@ -495,6 +509,21 @@
     })
 
     if (canReuseExistingBookFile) {
+      if (isShelfAtCapacity) {
+        const shelfLimitMessage = '내 도서함은 최대 ' + shelfBookLimit + '권까지 보관할 수 있습니다.'
+
+        dbg('xapi/epub/upload:redirect', {
+          status: 303,
+          redirectTo: '/',
+          message: shelfLimitMessage,
+        })
+        redirect('/', {
+          status: 303,
+          message: shelfLimitMessage,
+        })
+        return
+      }
+
       const shelfRecord = saveBookShelfRecord({
         userId: request.auth.get('id'),
         bookId: existingBookId,
@@ -618,6 +647,51 @@
     const matchedBook = detailBook || selectedDoc || null
     const resolvedIsbn13 =
       detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
+
+    const existingIsbnBookRecord = resolvedIsbn13
+      ? findFirstRecordOrNull('books', 'isbn13 = {:isbn13}', {
+          isbn13: resolvedIsbn13,
+        })
+      : null
+    const existingIsbnBookId = existingIsbnBookRecord ? String(existingIsbnBookRecord.get('id') || '') : ''
+    const existingIsbnShelfRecord = existingIsbnBookId ? findBookShelfRecord(userId, existingIsbnBookId) : null
+
+    if (existingIsbnShelfRecord) {
+      const duplicateMessage = '같은 책이 이미 도서함에 존재합니다.'
+
+      info('xapi/epub/upload:already-in-shelf', {
+        userId: userId,
+        bookId: existingIsbnBookId,
+        shelfId: String(existingIsbnShelfRecord.get('id') || ''),
+        isbn13: resolvedIsbn13,
+      })
+      dbg('xapi/epub/upload:redirect', {
+        status: 303,
+        redirectTo: '/',
+        message: duplicateMessage,
+      })
+      redirect('/', {
+        status: 303,
+        message: duplicateMessage,
+      })
+      return
+    }
+
+    if (isShelfAtCapacity) {
+      const shelfLimitMessage = '내 도서함은 최대 ' + shelfBookLimit + '권까지 보관할 수 있습니다.'
+
+      dbg('xapi/epub/upload:redirect', {
+        status: 303,
+        redirectTo: '/',
+        message: shelfLimitMessage,
+      })
+      redirect('/', {
+        status: 303,
+        message: shelfLimitMessage,
+      })
+      return
+    }
+
     const readingMetrics = epubReadingMetrics.buildReadingMetrics(
       archiveEntries,
       manifestItems,
