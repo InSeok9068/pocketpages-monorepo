@@ -4091,6 +4091,50 @@ window.booklogReaderLogic = (function () {
     window.booklogAudio.start(component, section.index, !!fromBeginning)
   }
 
+  function goToListeningPosition(component) {
+    var anchor = window.booklogAudio ? window.booklogAudio.currentAnchor() : null
+    var section = anchor && bookInstance && bookInstance.spine ? bookInstance.spine.get(anchor.sectionIndex) : null
+    if (!section || !renditionInstance) {
+      component.cloudAudioMessage = '듣는 위치를 아직 확인하지 못했습니다.'
+      return
+    }
+    component.readAloudOpen = false
+    component.loading = true
+    prepareManualNavigation()
+    Promise.resolve(section.load(bookInstance.load.bind(bookInstance)))
+      .then(function () {
+        var cfi = ''
+        // 인라인 태그로 나뉜 문장은 긴 검색어가 맞지 않아, 문장 앞부분을 점점 짧게 줄여 가며 찾습니다.
+        ;[24, 14, 8].some(function (length) {
+          var query = anchor.text.slice(0, length).trim()
+          var found = query ? section.find(query) || [] : []
+          cfi = found.length ? String(found[0].cfi || '') : ''
+          return !!cfi
+        })
+        return renditionInstance.display(cfi || section.href)
+      })
+      .then(function () {
+        component.loading = false
+      })
+      .catch(function (exception) {
+        component.loading = false
+        console.error('page/books/[bookId]/read:goto-listening-position:failed', {
+          message: String(exception && exception.message ? exception.message : exception),
+          sectionIndex: anchor.sectionIndex,
+        })
+      })
+      .finally(function () {
+        try {
+          section.unload()
+        } catch (exception) {}
+      })
+  }
+
+  function toggleCloudAudio(component) {
+    if (window.booklogAudio && window.booklogAudio.toggle()) return
+    startCloudAudio(component, false)
+  }
+
   function startCloudAudioAtReadingPosition(component) {
     var location = currentLocation && currentLocation.start ? currentLocation.start : null
     var section = bookInstance && location ? bookInstance.section(location.href) : null
@@ -4101,7 +4145,7 @@ window.booklogReaderLogic = (function () {
     stopBrowserSpeech(component, { keepMessage: true })
     window.booklogAudio.stop()
     component.cloudAudioBusy = true
-    component.cloudAudioMessage = '읽던 위치를 확인하고 있습니다.'
+    component.cloudAudioMessage = ''
     buildReadAloudQueue(component)
       .then(function (queue) {
         var anchor = ''
@@ -4119,8 +4163,14 @@ window.booklogReaderLogic = (function () {
   }
 
   function audioChapterLabel(sectionIndex) {
-    var section = bookInstance && bookInstance.spine ? bookInstance.spine.get(sectionIndex) : null
-    return section ? getChapterLabelForSection(section) : ''
+    if (!bookInstance || !bookInstance.spine) return ''
+    // 한 챕터를 여러 파일로 나눈 책은 뒤쪽 파일이 목차에 없어, 가장 가까운 앞쪽 목차 이름을 씁니다.
+    for (var index = sectionIndex; index >= 0; index -= 1) {
+      var section = bookInstance.spine.get(index)
+      var label = section ? getChapterLabelForSection(section) : ''
+      if (label) return label
+    }
+    return ''
   }
 
   function stopReadAloud(component) {
@@ -4823,6 +4873,8 @@ window.booklogReaderLogic = (function () {
     scrollActiveTocItemIntoView: scrollActiveTocItemIntoView,
     startReadAloud: startReadAloud,
     startCloudAudio: startCloudAudio,
+    toggleCloudAudio: toggleCloudAudio,
+    goToListeningPosition: goToListeningPosition,
     startCloudAudioAtReadingPosition: startCloudAudioAtReadingPosition,
     audioChapterLabel: audioChapterLabel,
     stopReadAloud: stopReadAloud,

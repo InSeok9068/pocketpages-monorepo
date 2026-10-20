@@ -1,6 +1,7 @@
 window.booklogAudio = (function () {
   var config = window.booklogReaderConfig || {}
   var activeSession = null
+  var previewRequest = null
   var progressQueue = Promise.resolve()
   var CACHE_NAME = 'booklog-audio-v3'
   var CACHE_LIMIT = 16
@@ -29,8 +30,9 @@ window.booklogAudio = (function () {
     })
     return fetch('/api/books/audio-progress', { method: 'POST', body: form, keepalive: true })
       .then(function (response) {
-        // 삭제되거나 교체된 구간의 임시 저장이 새 청취를 막지 않도록 합니다.
-        return response.status === 409 ? { ok: true } : readJson(response)
+        // 다시 보내도 받아들여지지 않는 요청(삭제·교체된 구간 등)은 버려서 새 청취를 막지 않습니다.
+        var rejected = response.status >= 400 && response.status < 500 && [401, 408, 429].indexOf(response.status) < 0
+        return rejected ? { ok: true } : readJson(response)
       })
       .then(function () {
         if (pendingSaves[snapshot.key] && pendingSaves[snapshot.key].revision === snapshot.revision) {
@@ -139,14 +141,19 @@ window.booklogAudio = (function () {
         }
         return Promise.all(
           result.parts.map(function (part) {
-            if (part.fallbackText) return { fallbackText: part.fallbackText, duration: 0 }
+            var text = String(part.text || part.fallbackText || '')
+            if (part.fallbackText) {
+              return { fallbackText: part.fallbackText, text: text, duration: Number(part.durationSeconds) || 0 }
+            }
             return fetchAudioBlob(session, part.audioUrl).then(function (blob) {
-              return { blob: blob, duration: Number(part.durationSeconds) || 0 }
+              return { blob: blob, text: text, duration: Number(part.durationSeconds) || 0 }
             })
           })
         ).then(function (parts) {
           return {
             parts: parts,
+            timeline: Array.isArray(result.timeline) ? result.timeline.map(Number) : [],
+            previousSectionIndex: Number.isInteger(result.previousSectionIndex) ? result.previousSectionIndex : -1,
             count: result.chunkCount,
             chunkId: result.chunkId,
             nextSectionIndex: Number.isInteger(result.nextSectionIndex) ? result.nextSectionIndex : -1,
@@ -236,31 +243,69 @@ window.booklogAudio = (function () {
       if (!isActive(session)) return
       if (error.name === 'NotAllowedError') {
         session.state.cloudAudioActive = false
-        session.state.cloudAudioMessage = '음성이 준비됐습니다. 아래 오디오의 재생 버튼을 눌러 주세요.'
+        session.state.cloudAudioMessage = '음성이 준비됐습니다. 재생 버튼을 눌러 주세요.'
         return
       }
       setError(session, error)
     })
   }
 
-  function playbackMessage(session) {
-    var label = chapterLabel(session)
-    return (
-      (label ? label + ' · ' : '')
-      + String(session.chunkIndex + 1)
+  function showPlayback(session) {
+    session.state.cloudAudioDetail =
+      String(session.chunkIndex + 1)
       + ' / '
       + String(session.chunkCount)
       + ' 구간'
-      + (session.parts.length > 1 ? ' (조각 ' + (session.partIndex + 1) + ' / ' + session.parts.length + ')' : '')
-      + (session.fallback ? ' · AI 음성을 만들지 못해 기기 음성으로 읽는 중' : ' · AI 생성 음성')
-      + (session.syncFailed ? ' · 청취 위치 동기화 대기' : '')
-    )
+      + (session.parts.length > 1 ? ' · 조각 ' + (session.partIndex + 1) + ' / ' + session.parts.length : '')
+    session.state.cloudAudioMessage = session.fallback
+      ? '이 부분은 AI 음성을 만들지 못해 기기 음성으로 읽는 중입니다.'
+      : session.syncFailed
+        ? '청취 위치 동기화를 기다리고 있습니다.'
+        : ''
   }
 
   function chapterLabel(session) {
+    return chapterLabelAt(session.sectionIndex)
+  }
+
+  function chapterLabelAt(sectionIndex) {
     return window.booklogReaderLogic && window.booklogReaderLogic.audioChapterLabel
-      ? window.booklogReaderLogic.audioChapterLabel(session.sectionIndex)
+      ? window.booklogReaderLogic.audioChapterLabel(sectionIndex)
       : ''
+  }
+
+  function resumeLabel(progress) {
+    if (!progress) return '처음 듣는 책 · 현재 챕터 처음부터'
+    if (progress.isCompleted) return '마지막 챕터까지 모두 들었습니다'
+    var label = chapterLabelAt(progress.sectionIndex)
+    if (progress.startsNextSection) return (label || '다음 챕터') + ' 처음부터'
+    return (label ? label + ' · ' : '') + formatTime(progress.chapterSeconds || 0) + '부터'
+  }
+
+  /**
+   * 재생 전 화면에 이어 들을 위치를 표시합니다.
+   * @param {any} state 리더 UI 상태
+   * @returns {void}
+   */
+  function preview(state) {
+    if (activeSession) return
+    var request = {}
+    previewRequest = request
+    progressQueue
+      .then(flushPendingSaves)
+      .catch(function () {
+        /* 임시 보관한 위치는 다음 재생에서 다시 보냅니다. */
+      })
+      .then(function () {
+        var query = new URLSearchParams({ bookId: config.bookId, fileId: config.bookFileId })
+        return fetch('/api/books/audio-progress?' + query.toString(), { cache: 'no-store' }).then(readJson)
+      })
+      .then(function (result) {
+        if (!activeSession && request === previewRequest) state.cloudAudioResumeLabel = resumeLabel(result.progress)
+      })
+      .catch(function () {
+        if (!activeSession && request === previewRequest) state.cloudAudioResumeLabel = '마지막 청취 위치부터'
+      })
   }
 
   function mediaSessionApi() {
@@ -292,19 +337,198 @@ window.booklogAudio = (function () {
     }
   }
 
+  function sumUntil(values, end) {
+    var total = 0
+    for (var index = 0; index < Math.min(end, values.length); index += 1) total += values[index]
+    return total
+  }
+
+  function chapterDuration(session) {
+    return sumUntil(session.timeline, session.timeline.length)
+  }
+
+  function chapterPosition(session) {
+    var within = session.fallback ? session.fallbackElapsed : session.player.currentTime || 0
+    return Math.min(
+      sumUntil(session.timeline, session.chunkIndex) + session.partOffset + within,
+      chapterDuration(session)
+    )
+  }
+
+  function updateProgress(session) {
+    if (!isActive(session)) return
+    session.state.cloudAudioDuration = chapterDuration(session)
+    session.state.cloudAudioHasPrevious = session.previousSectionIndex >= 0
+    session.state.cloudAudioHasNext = session.nextSectionIndex >= 0
+    if (!session.state.cloudAudioSeeking) session.state.cloudAudioPosition = chapterPosition(session)
+    updateMediaPosition(session)
+  }
+
+  /**
+   * 음성 구간이 있는 이전·다음 챕터의 처음부터 재생합니다.
+   * @param {number} direction 1이면 다음 챕터, -1이면 이전 챕터
+   * @returns {void}
+   */
+  function moveChapter(direction) {
+    var session = activeSession
+    if (!session) return
+    var target = direction > 0 ? session.nextSectionIndex : session.previousSectionIndex
+    if (!(target >= 0)) return
+    savePosition(session, true, false)
+    haltCurrent(session)
+    session.completed = false
+    session.failed = false
+    // 새 챕터의 첫 저장은 이전 완료 기록을 덮어써야 하므로 처음부터 듣는 것으로 표시합니다.
+    session.restartPending = true
+    session.sectionIndex = target
+    session.chunkIndex = 0
+    session.resumeSeconds = 0
+    session.nextChunk = null
+    session.prefetchedKey = ''
+    playChunk(session)
+  }
+
   function updateMediaPosition(session) {
     var mediaSession = mediaSessionApi()
-    var player = session.player
-    if (!mediaSession || typeof mediaSession.setPositionState !== 'function' || !isFinite(player.duration)) return
+    var duration = chapterDuration(session)
+    if (!mediaSession || typeof mediaSession.setPositionState !== 'function' || !(duration > 0)) return
     try {
       mediaSession.setPositionState({
-        duration: player.duration,
-        playbackRate: player.playbackRate || 1,
-        position: Math.min(player.currentTime || 0, player.duration),
+        duration: duration,
+        playbackRate: session.player.playbackRate || 1,
+        position: chapterPosition(session),
       })
     } catch (_error) {
       /* 위치 표시 없이 재생합니다. */
     }
+  }
+
+  function haltCurrent(session) {
+    session.positionReady = false
+    if (session.fallback && window.speechSynthesis) {
+      session.fallback = false
+      session.speechToken += 1
+      window.speechSynthesis.cancel()
+    }
+    session.player.pause()
+  }
+
+  /**
+   * 현재 챕터의 재생 위치로 이동합니다. 다른 구간·조각이면 그 음성을 불러와 이어 재생합니다.
+   * @param {number} seconds 챕터 처음부터의 시간(초)
+   * @returns {void}
+   */
+  function seekTo(seconds) {
+    var session = activeSession
+    if (!session || !session.timeline.length || !session.parts.length) return
+    var target = Math.max(0, Math.min(Number(seconds) || 0, chapterDuration(session) - 0.5))
+    var chunkIndex = 0
+    var chunkStart = 0
+    while (chunkIndex < session.timeline.length - 1 && target >= chunkStart + session.timeline[chunkIndex]) {
+      chunkStart += session.timeline[chunkIndex]
+      chunkIndex += 1
+    }
+    var within = target - chunkStart
+    session.completed = false
+    session.failed = false
+    if (chunkIndex !== session.chunkIndex) {
+      haltCurrent(session)
+      session.chunkIndex = chunkIndex
+      session.resumeSeconds = within
+      session.nextChunk = null
+      session.prefetchedKey = ''
+      playChunk(session)
+      return
+    }
+    var partIndex = 0
+    var partStart = 0
+    while (partIndex < session.parts.length - 1 && within >= partStart + session.parts[partIndex].duration) {
+      partStart += session.parts[partIndex].duration
+      partIndex += 1
+    }
+    if (partIndex === session.partIndex && !session.fallback && session.positionReady) {
+      session.player.currentTime = within - partStart
+      updateProgress(session)
+      savePosition(session, true, false)
+      return
+    }
+    haltCurrent(session)
+    session.partIndex = partIndex
+    session.partOffset = partStart
+    session.resumeSeconds = within - partStart
+    playPart(session)
+  }
+
+  /**
+   * 지금 읽고 있는 문장을 추정합니다. 조각 안의 재생 시간 비율로 원문 위치를 잡고 그 문장 처음부터 돌려줍니다.
+   * @returns {{ sectionIndex: number, text: string } | null} 챕터와 문장, 재생 중이 아니면 null
+   */
+  function currentAnchor() {
+    var session = activeSession
+    var part = session ? session.parts[session.partIndex] : null
+    if (!part || !part.text) return null
+    var elapsed = session.fallback ? session.fallbackElapsed : session.player.currentTime || 0
+    var ratio = part.duration > 0 ? Math.min(1, elapsed / part.duration) : 0
+    var text = part.text
+    var offset = Math.floor(ratio * text.length)
+    var start = Math.max(
+      text.lastIndexOf('. ', offset),
+      text.lastIndexOf('? ', offset),
+      text.lastIndexOf('! ', offset),
+      text.lastIndexOf('\n', offset)
+    )
+    var sentence = text
+      .slice(start < 0 ? 0 : start + 1)
+      .trim()
+      .split('\n')[0]
+    return { sectionIndex: session.sectionIndex, text: sentence.replace(/\s+/g, ' ').trim() }
+  }
+
+  /**
+   * 현재 위치에서 앞뒤로 이동합니다. 챕터 처음과 끝을 넘지 않습니다.
+   * @param {number} seconds 이동할 시간(초), 음수면 뒤로
+   * @returns {void}
+   */
+  function seekBy(seconds) {
+    if (activeSession) seekTo(chapterPosition(activeSession) + seconds)
+  }
+
+  /**
+   * 재생 중이면 일시 정지하고, 멈춰 있으면 이어서 재생합니다.
+   * @returns {boolean} 처리 여부. 재생 세션이 없거나 끝났으면 false
+   */
+  function toggle() {
+    var session = activeSession
+    if (!session || session.completed || session.failed) return false
+    if (session.fallback && window.speechSynthesis) {
+      if (session.state.cloudAudioActive) {
+        window.speechSynthesis.pause()
+        session.state.cloudAudioActive = false
+        setMediaPlaybackState('paused')
+        savePosition(session, true, false)
+      } else {
+        window.speechSynthesis.resume()
+        session.state.cloudAudioActive = true
+        setMediaPlaybackState('playing')
+      }
+      return true
+    }
+    if (session.player.paused) playAudio(session)
+    else session.player.pause()
+    return true
+  }
+
+  /**
+   * 재생 시간을 `분:초` 또는 `시:분:초`로 표시합니다.
+   * @param {number} seconds 시간(초)
+   * @returns {string} 표시 문자열
+   */
+  function formatTime(seconds) {
+    var total = Math.max(0, Math.floor(Number(seconds) || 0))
+    var hours = Math.floor(total / 3600)
+    var minutes = Math.floor((total % 3600) / 60)
+    var rest = String(total % 60).padStart(2, '0')
+    return hours > 0 ? hours + ':' + String(minutes).padStart(2, '0') + ':' + rest : minutes + ':' + rest
   }
 
   function bindMediaSession(session) {
@@ -314,39 +538,29 @@ window.booklogAudio = (function () {
     var handlers = {
       play: function () {
         if (!isActive(session)) return
-        if (session.fallback && window.speechSynthesis) {
-          window.speechSynthesis.resume()
-          setMediaPlaybackState('playing')
-          return
-        }
-        playAudio(session)
+        if (session.fallback ? !session.state.cloudAudioActive : player.paused) toggle()
       },
       pause: function () {
         if (!isActive(session)) return
-        if (session.fallback && window.speechSynthesis) {
-          window.speechSynthesis.pause()
-          setMediaPlaybackState('paused')
-          return
-        }
-        player.pause()
+        if (session.fallback ? session.state.cloudAudioActive : !player.paused) toggle()
       },
       stop: function () {
         if (isActive(session)) stop()
       },
       seekbackward: function (details) {
-        if (!isActive(session)) return
-        player.currentTime = Math.max(0, player.currentTime - ((details && details.seekOffset) || 15))
+        if (isActive(session)) seekBy(-((details && details.seekOffset) || 15))
       },
       seekforward: function (details) {
-        if (!isActive(session) || !isFinite(player.duration)) return
-        player.currentTime = Math.min(
-          Math.max(0, player.duration - 0.1),
-          player.currentTime + ((details && details.seekOffset) || 15)
-        )
+        if (isActive(session)) seekBy((details && details.seekOffset) || 15)
       },
       seekto: function (details) {
-        if (!isActive(session) || !details || typeof details.seekTime !== 'number') return
-        player.currentTime = details.seekTime
+        if (isActive(session) && details && typeof details.seekTime === 'number') seekTo(details.seekTime)
+      },
+      previoustrack: function () {
+        if (isActive(session)) moveChapter(-1)
+      },
+      nexttrack: function () {
+        if (isActive(session)) moveChapter(1)
       },
     }
     Object.keys(handlers).forEach(function (action) {
@@ -361,27 +575,33 @@ window.booklogAudio = (function () {
   function clearMediaSession() {
     var mediaSession = mediaSessionApi()
     if (!mediaSession) return
-    ;['play', 'pause', 'stop', 'seekbackward', 'seekforward', 'seekto'].forEach(function (action) {
-      try {
-        mediaSession.setActionHandler(action, null)
-      } catch (_error) {
-        /* 지원하지 않는 동작은 건너뜁니다. */
+    ;['play', 'pause', 'stop', 'seekbackward', 'seekforward', 'seekto', 'previoustrack', 'nexttrack'].forEach(
+      function (action) {
+        try {
+          mediaSession.setActionHandler(action, null)
+        } catch (_error) {
+          /* 지원하지 않는 동작은 건너뜁니다. */
+        }
       }
-    })
+    )
     setMediaPlaybackState('none')
   }
 
   function playChunk(session, prepared) {
+    // 재생 바를 연달아 옮기면 늦게 도착한 이전 구간이 새 위치를 덮지 않도록 마지막 요청만 반영합니다.
+    var token = (session.loadToken += 1)
     session.positionReady = false
     session.failed = false
     session.state.cloudAudioBusy = true
-    session.state.cloudAudioMessage = '저장된 AI 오디오북을 불러오고 있습니다.'
     return (prepared || loadChunk(session, session.sectionIndex, session.chunkIndex))
       .then(function (result) {
-        if (!isActive(session)) return
+        if (!isActive(session) || token !== session.loadToken) return
+        session.timeline = result.timeline.length ? result.timeline : session.timeline
+        session.state.cloudAudioChapter = chapterLabel(session)
         session.chunkCount = result.count
         session.chunkId = result.chunkId
         session.nextSectionIndex = result.nextSectionIndex
+        session.previousSectionIndex = result.previousSectionIndex
         session.nextChunk = null
         session.prefetchedKey = ''
         session.parts = result.parts
@@ -400,7 +620,7 @@ window.booklogAudio = (function () {
         return playPart(session)
       })
       .catch(function (error) {
-        setError(session, error)
+        if (token === session.loadToken) setError(session, error)
       })
   }
 
@@ -414,8 +634,9 @@ window.booklogAudio = (function () {
     session.player.src = session.objectUrl
     session.player.playbackRate = Number(session.state.readAloudRate || 1)
     session.state.cloudAudioBusy = false
-    session.state.cloudAudioMessage = playbackMessage(session)
+    showPlayback(session)
     updateMediaSession(session)
+    updateProgress(session)
     return playAudio(session)
   }
 
@@ -467,16 +688,26 @@ window.booklogAudio = (function () {
       })[0]
       || null
     var index = 0
+    var token = (session.speechToken += 1)
+    var part = session.parts[session.partIndex]
+    var totalChars = pieces.join('').length || 1
     session.fallback = true
+    session.fallbackElapsed = 0
     session.positionReady = true
     session.state.cloudAudioBusy = false
     session.state.cloudAudioActive = true
-    session.state.cloudAudioMessage = playbackMessage(session)
+    showPlayback(session)
     updateMediaSession(session)
     setMediaPlaybackState('playing')
+    updateProgress(session)
     prepareNextChunk(session)
     function speakNext() {
-      if (!isActive(session) || !session.fallback) return
+      if (!isActive(session) || !session.fallback || token !== session.speechToken) return
+      if (index > 0 && part) {
+        // 기기 음성은 재생 시간을 알 수 없어, 읽은 글자 비율만큼 추정 길이 안에서 진행합니다.
+        session.fallbackElapsed += (pieces[index - 1].length / totalChars) * part.duration
+        updateProgress(session)
+      }
       if (index >= pieces.length) {
         advancePart(session)
         return
@@ -488,7 +719,8 @@ window.booklogAudio = (function () {
       utterance.rate = Number(session.state.readAloudRate || 1)
       utterance.onend = speakNext
       utterance.onerror = function (event) {
-        if (!isActive(session) || (event && (event.error === 'interrupted' || event.error === 'canceled'))) return
+        if (!isActive(session) || token !== session.speechToken) return
+        if (event && (event.error === 'interrupted' || event.error === 'canceled')) return
         setError(session, new Error('기기 음성으로 읽지 못했습니다.'))
       }
       synth.speak(utterance)
@@ -564,6 +796,10 @@ window.booklogAudio = (function () {
       parts: [],
       partIndex: 0,
       partOffset: 0,
+      timeline: [],
+      loadToken: 0,
+      speechToken: 0,
+      fallbackElapsed: 0,
       resumeSeconds: 0,
       positionReady: false,
       failed: false,
@@ -572,6 +808,7 @@ window.booklogAudio = (function () {
       objectUrl: '',
       nextChunk: null,
       nextSectionIndex: -1,
+      previousSectionIndex: -1,
       prefetchedKey: '',
       fallback: false,
       cacheUnavailable: false,
@@ -581,7 +818,8 @@ window.booklogAudio = (function () {
     }
     activeSession = session
     state.cloudAudioBusy = true
-    state.cloudAudioMessage = '서버에서 마지막 청취 위치를 불러오고 있습니다.'
+    state.cloudAudioSession = true
+    state.cloudAudioMessage = ''
     player.onloadedmetadata = function () {
       if (!isActive(session)) return
       if (session.resumeSeconds > 0 && isFinite(player.duration)) {
@@ -589,17 +827,18 @@ window.booklogAudio = (function () {
       }
       session.resumeSeconds = 0
       session.positionReady = true
-      updateMediaPosition(session)
+      updateProgress(session)
     }
     player.ontimeupdate = function () {
+      updateProgress(session)
       savePosition(session, false, false)
     }
     player.onplay = function () {
       if (!isActive(session)) return
       setMediaPlaybackState('playing')
-      updateMediaPosition(session)
+      updateProgress(session)
       state.cloudAudioActive = true
-      state.cloudAudioMessage = playbackMessage(session)
+      showPlayback(session)
       savePosition(session, true, false)
       prepareNextChunk(session)
     }
@@ -618,6 +857,10 @@ window.booklogAudio = (function () {
     bindMediaSession(session)
     progressQueue
       .then(flushPendingSaves)
+      .catch(function () {
+        // 보관한 위치를 아직 보내지 못해도 재생은 시작하고, 다음 저장 때 다시 보냅니다.
+        session.syncFailed = true
+      })
       .then(function () {
         if (!isActive(session)) throw new DOMException('Playback stopped', 'AbortError')
         var query = new URLSearchParams({ bookId: config.bookId, fileId: config.bookFileId })
@@ -643,7 +886,6 @@ window.booklogAudio = (function () {
           }
         }
         if (!anchorText) return playChunk(session)
-        state.cloudAudioMessage = '읽던 위치의 음성 구간을 찾고 있습니다.'
         var position = new URLSearchParams({
           bookId: config.bookId,
           fileId: config.bookFileId,
@@ -660,7 +902,7 @@ window.booklogAudio = (function () {
             session.chunkIndex = located.chunkIndex >= 0 ? located.chunkIndex : 0
             return playChunk(session).then(function () {
               if (isActive(session) && located.chunkIndex < 0 && !session.failed) {
-                state.cloudAudioMessage = '읽던 위치를 찾지 못해 챕터 처음부터 재생합니다. ' + playbackMessage(session)
+                state.cloudAudioMessage = '읽던 위치를 찾지 못해 챕터 처음부터 재생합니다.'
               }
             })
           })
@@ -696,11 +938,29 @@ window.booklogAudio = (function () {
     if (session.objectUrl) URL.revokeObjectURL(session.objectUrl)
     session.state.cloudAudioBusy = false
     session.state.cloudAudioActive = false
+    session.state.cloudAudioSeeking = false
+    session.state.cloudAudioPosition = 0
+    session.state.cloudAudioDuration = 0
+    session.state.cloudAudioHasPrevious = false
+    session.state.cloudAudioHasNext = false
+    session.state.cloudAudioChapter = ''
+    session.state.cloudAudioDetail = ''
+    session.state.cloudAudioSession = false
   }
 
   window.addEventListener('pagehide', stop)
   window.addEventListener('visibilitychange', function () {
     if (activeSession) savePosition(activeSession, true, false)
   })
-  return { start: start, stop: stop }
+  return {
+    start: start,
+    stop: stop,
+    toggle: toggle,
+    seekTo: seekTo,
+    seekBy: seekBy,
+    moveChapter: moveChapter,
+    preview: preview,
+    currentAnchor: currentAnchor,
+    formatTime: formatTime,
+  }
 })()

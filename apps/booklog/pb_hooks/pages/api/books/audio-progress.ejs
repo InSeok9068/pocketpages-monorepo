@@ -72,11 +72,21 @@
           }
         }
       }
+      const chapterSeconds = progress
+        ? audioData
+            .sectionTimeline($app, fileId, settings.configHash, sectionIndex)
+            .slice(0, chunkIndex)
+            .reduce(function (total, length) {
+              return total + length
+            }, seconds)
+        : 0
       dbg('api/books/audio-progress:load', { userId, fileId, found: !!progress })
       response.json(200, {
         ok: true,
         configHash: settings.configHash,
-        progress: progress ? { sectionIndex, chunkIndex, seconds, isCompleted, startsNextSection } : null,
+        progress: progress
+          ? { sectionIndex, chunkIndex, seconds, chapterSeconds, isCompleted, startsNextSection }
+          : null,
       })
       return
     }
@@ -115,9 +125,10 @@
     const chunkIndex = Number(chunk.get('chunk_index'))
     const duration = Number(chunk.get('duration_seconds') || 0)
     const chunkCount = audioData.countSectionChunks($app, fileId, savedConfigHash, sectionIndex)
-    if (completed && chunkIndex !== chunkCount - 1) {
-      response.json(400, { ok: false, message: '마지막 구간까지 들은 후 완료할 수 있습니다.' })
-      return
+    // 구간 구성이 바뀐 뒤 늦게 도착한 완료 저장은 위치만 남기고, 거절해서 재생 시작을 막지 않습니다.
+    const markCompleted = completed && chunkIndex === chunkCount - 1
+    if (completed && !markCompleted) {
+      warn('api/books/audio-progress:completion-ignored', { userId, fileId, chunkId, chunkIndex, chunkCount })
     }
     $app.runInTransaction(function (txApp) {
       const progressBindings = { userId, fileId, configHash: savedConfigHash, sectionIndex }
@@ -130,7 +141,7 @@
         progressBindings
       )[0]
       // 다른 탭의 늦은 일반 저장이 완료 기록을 취소하지 않도록 합니다.
-      if (progress && progress.get('is_completed') && !restart && !completed) return
+      if (progress && progress.get('is_completed') && !restart && !markCompleted) return
       if (!progress) progress = new Record(txApp.findCollectionByNameOrId('book_audio_progress'))
       progress.set('user_id', userId)
       progress.set('file_id', fileId)
@@ -139,11 +150,11 @@
       progress.set('chunk_index', chunkIndex)
       progress.set('audio_chunk_id', chunkId)
       progress.set('position_seconds', duration > 0 ? Math.min(seconds, duration) : seconds)
-      progress.set('is_completed', completed)
+      progress.set('is_completed', markCompleted)
       progress.set('last_listened_at', new Date().toISOString())
       txApp.save(progress)
     })
-    dbg('api/books/audio-progress:saved', { userId, fileId, chunkId, completed })
+    dbg('api/books/audio-progress:saved', { userId, fileId, chunkId, completed: markCompleted })
     response.json(200, { ok: true })
   } catch (exception) {
     error('api/books/audio-progress:failed', { userId, fileId, error: String(exception.message || exception) })

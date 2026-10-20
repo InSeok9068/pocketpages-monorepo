@@ -130,11 +130,15 @@ function runRoute({ authenticated = true, method = 'GET', owned = true, ready = 
       countSectionChunks: () => 3,
       findNextSectionIndex: (app, fileId, configHash, sectionIndex) => sectionIndex + 2,
       findPlayableParts: (app, chunk) => (split ? null : [chunk]),
-      chunkView: (chunk, parts, bookId, chunkCount, nextSectionIndex) => ({
+      findPreviousSectionIndex: (app, fileId, configHash, sectionIndex) => sectionIndex - 1,
+      sectionTimeline: () => [60, 60, 60],
+      chunkView: (chunk, parts, bookId, chunkCount, sections, timeline) => ({
         chunkId: chunk.id,
         parts: parts.length,
         chunkCount,
-        nextSectionIndex,
+        nextSectionIndex: sections.next,
+        previousSectionIndex: sections.previous,
+        timeline,
       }),
     }),
   }
@@ -341,6 +345,7 @@ test('Audio chunk lookup only returns generated audio and never generates it', (
   assert.deepEqual(found.lookups[0], { fileId: 'file', configHash: 'settings', sectionIndex: 2, chunkIndex: 1 })
   assert.equal(found.result.body.chunkCount, 3)
   assert.equal(found.result.body.nextSectionIndex, 4)
+  assert.equal(found.result.body.previousSectionIndex, 1)
   const missing = runRoute({ ready: false })
   assert.equal(missing.result.status, 404)
   assert.match(missing.result.body.message, /아직 AI 오디오북이 생성되지 않았습니다/)
@@ -355,14 +360,24 @@ function createPlayerHarness(fetchAudio, options = {}) {
   const audio = {
     currentTime: 0,
     duration: 60,
-    src: '',
+    source: '',
+    get src() {
+      return this.source
+    },
+    set src(value) {
+      this.source = value
+      this.currentTime = 0
+    },
     playbackRate: 1,
+    paused: true,
     play() {
+      this.paused = false
       this.onloadedmetadata?.()
       this.onplay?.()
       return Promise.resolve()
     },
     pause() {
+      this.paused = true
       this.onpause?.()
     },
     removeAttribute() {
@@ -413,6 +428,10 @@ function createPlayerHarness(fetchAudio, options = {}) {
       if (url.startsWith('/api/books/audio-progress')) {
         if (options.method === 'POST') {
           if (server.failSaves) return new Response(JSON.stringify({ ok: false, message: 'offline' }), { status: 503 })
+          if (server.rejectSaves) {
+            server.rejected = (server.rejected || 0) + 1
+            return new Response(JSON.stringify({ ok: false, message: 'invalid' }), { status: 400 })
+          }
           const form = options.body
           const parts = String(form.get('chunkId')).split('-')
           server.progress = {
@@ -463,6 +482,7 @@ function createPlayerHarness(fetchAudio, options = {}) {
           ...result,
           chunkId: 'chunk-' + section + '-' + index,
           configHash: 'settings',
+          timeline: result.timeline || Array.from({ length: result.chunkCount }, () => 60),
           parts:
             result.parts
             || (result.fallbackText
@@ -537,7 +557,7 @@ test('Playback stops at a chunk that is not generated yet and resumes there late
   logic.start(state, 0)
   await flushPlayback()
   assert.deepEqual(requests, [0, 1, 1, 1])
-  assert.match(state.cloudAudioMessage, /2 \/ 2/)
+  assert.match(state.cloudAudioDetail, /2 \/ 2/)
   logic.stop()
 })
 
@@ -657,7 +677,7 @@ test('Manual playback after autoplay was blocked starts prefetch exactly once', 
   audio.onplay()
   await flushPlayback()
   assert.deepEqual(requests, [0, 1])
-  assert.match(state.cloudAudioMessage, /1 \/ 2 구간/)
+  assert.match(state.cloudAudioDetail, /1 \/ 2 구간/)
   logic.stop()
 })
 
@@ -707,10 +727,10 @@ test('A late response from a stopped chapter never changes the new playback sess
   await flushPlayback()
   logic.start(state, 1)
   await flushPlayback()
-  const playingMessage = state.cloudAudioMessage
+  const playingDetail = state.cloudAudioDetail
   finishOldChapter(audioResponse(2))
   await flushPlayback()
-  assert.equal(state.cloudAudioMessage, playingMessage)
+  assert.equal(state.cloudAudioDetail, playingDetail)
   assert.equal(state.cloudAudioActive, true)
   assert.equal(requests.length, 2)
   logic.stop()
@@ -763,7 +783,7 @@ test('Finishing a chapter continues with the next chapter that has audio', async
   audio.onended()
   await flushPlayback()
   assert.equal(state.cloudAudioActive, true)
-  assert.match(state.cloudAudioMessage, /1 \/ 2 구간/)
+  assert.match(state.cloudAudioDetail, /1 \/ 2 구간/)
   assert.deepEqual(requests, [0, 0, 1])
   assert.ok(server.saves.includes('1:0:true:false'))
   assert.ok(server.saves.includes('4:0:false:true'), 'first save of the next chapter overrides an old completion')
@@ -808,7 +828,7 @@ test('Starting from the reading position plays the chunk that contains the visib
   await flushPlayback()
   assert.deepEqual(result.positionQueries, ['5:읽던 문장'])
   assert.equal(requests[0], 2)
-  assert.match(state.cloudAudioMessage, /3 \/ 4 구간/)
+  assert.match(state.cloudAudioDetail, /3 \/ 4 구간/)
   assert.ok(result.saves.includes('5:2:false:true'), 'a previously completed chapter is reopened')
   logic.stop()
 })
@@ -824,7 +844,7 @@ test('An unmatched reading position falls back to the chapter beginning with a n
 
 const splitParts = [
   { audioUrl: '/xapi/books/audio-file?chunkId=part-0', fallbackText: '', durationSeconds: 40 },
-  { audioUrl: '', fallbackText: '차단된 문장입니다.', durationSeconds: 0 },
+  { audioUrl: '', fallbackText: '차단된 문장입니다.', durationSeconds: 10 },
   { audioUrl: '/xapi/books/audio-file?chunkId=part-1', fallbackText: '', durationSeconds: 50 },
 ]
 
@@ -839,7 +859,8 @@ test('A split chunk plays its parts in order and saves one position across the p
   )
   logic.start(state, 0)
   await flushPlayback()
-  assert.match(state.cloudAudioMessage, /1 \/ 2 구간 \(조각 1 \/ 3\) · AI 생성 음성/)
+  assert.match(state.cloudAudioDetail, /1 \/ 2 구간 · 조각 1 \/ 3/)
+  assert.equal(state.cloudAudioMessage, '')
   assert.equal(server.downloads, 3, 'both audio parts and the prefetched next chunk')
   audio.currentTime = 40
   audio.onended()
@@ -848,13 +869,14 @@ test('A split chunk plays its parts in order and saves one position across the p
     speech.spoken.map((item) => item.text),
     ['차단된 문장입니다.']
   )
-  assert.match(state.cloudAudioMessage, /1 \/ 2 구간 \(조각 3 \/ 3\) · AI 생성 음성/)
+  assert.match(state.cloudAudioDetail, /1 \/ 2 구간 · 조각 3 \/ 3/)
   audio.currentTime = 10
   logic.stop()
   await flushPlayback()
   assert.deepEqual(
     [server.progress.chunkIndex, server.progress.seconds],
-    [0, 50]
+    [0, 60],
+    'the device voice part counts as its estimated length'
   )
 })
 
@@ -866,9 +888,138 @@ test('Resuming inside a split chunk starts the part that contains the saved time
   )
   logic.start(state, 0)
   await flushPlayback()
-  assert.match(state.cloudAudioMessage, /조각 2 \/ 2/)
+  assert.match(state.cloudAudioDetail, /조각 2 \/ 2/)
   assert.equal(audio.currentTime, 12)
   logic.stop()
+})
+
+test('The chapter progress bar spans every chunk and seeking moves to the chunk that holds the time', async () => {
+  const { logic, state, audio, requests } = createPlayerHarness(() => chapterResponse(3, -1))
+  logic.start(state, 0)
+  await flushPlayback()
+  assert.equal(state.cloudAudioDuration, 180)
+  audio.currentTime = 20
+  audio.ontimeupdate()
+  assert.equal(state.cloudAudioPosition, 20)
+  logic.seekTo(130)
+  await flushPlayback()
+  assert.ok(requests.includes(2), 'the chunk containing 130s is loaded')
+  assert.equal(audio.currentTime, 10)
+  assert.equal(state.cloudAudioPosition, 130)
+  logic.seekBy(-15)
+  await flushPlayback()
+  assert.ok(requests.includes(1))
+  assert.equal(audio.currentTime, 55)
+  assert.equal(state.cloudAudioPosition, 115)
+  const loads = requests.length
+  logic.seekBy(3)
+  assert.equal(requests.length, loads, 'seeking inside the playing chunk does not reload it')
+  assert.equal(audio.currentTime, 58)
+  assert.equal(logic.toggle(), true)
+  assert.equal(state.cloudAudioActive, false)
+  logic.toggle()
+  assert.equal(state.cloudAudioActive, true)
+  logic.stop()
+  assert.equal(state.cloudAudioDuration, 0)
+  assert.equal(logic.toggle(), false, 'without a session the caller starts playback')
+})
+
+test('Chapter buttons jump to the start of the previous or next chapter that has audio', async () => {
+  const handlers = {}
+  const mediaSession = { setActionHandler: (action, handler) => (handlers[action] = handler), setPositionState() {} }
+  const chapters = { 2: [-1, 5], 5: [2, 9], 9: [5, -1] }
+  const { logic, state, audio, server } = createPlayerHarness(
+    (index, _signal, section) =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          chunkCount: 2,
+          previousSectionIndex: chapters[section][0],
+          nextSectionIndex: chapters[section][1],
+        })
+      ),
+    { mediaSession }
+  )
+  logic.start(state, 5)
+  await flushPlayback()
+  assert.deepEqual([state.cloudAudioHasPrevious, state.cloudAudioHasNext], [true, true])
+  audio.currentTime = 30
+  logic.moveChapter(1)
+  await flushPlayback()
+  assert.match(state.cloudAudioDetail, /1 \/ 2 구간/)
+  assert.equal(state.cloudAudioPosition, 0)
+  assert.deepEqual([state.cloudAudioHasPrevious, state.cloudAudioHasNext], [true, false])
+  assert.ok(server.saves.includes('9:0:false:true'), 'the new chapter is saved as a restart')
+  logic.moveChapter(1)
+  await flushPlayback()
+  assert.equal(server.progress.sectionIndex, 9, 'there is no chapter after the last one')
+  handlers.previoustrack()
+  await flushPlayback()
+  handlers.previoustrack()
+  await flushPlayback()
+  assert.equal(server.progress.sectionIndex, 2)
+  assert.deepEqual([state.cloudAudioHasPrevious, state.cloudAudioHasNext], [false, true])
+  logic.stop()
+  assert.deepEqual([state.cloudAudioHasPrevious, state.cloudAudioHasNext], [false, false])
+})
+
+test('A dragged progress bar is not overwritten by playback updates until it is released', async () => {
+  const { logic, state, audio } = createPlayerHarness(() => chapterResponse(2, -1))
+  logic.start(state, 0)
+  await flushPlayback()
+  state.cloudAudioSeeking = true
+  state.cloudAudioPosition = 90
+  audio.currentTime = 5
+  audio.ontimeupdate()
+  assert.equal(state.cloudAudioPosition, 90)
+  logic.stop()
+})
+
+test('Before playback the resume button shows where listening continues', async () => {
+  const fresh = createPlayerHarness(() => chapterResponse(1, -1))
+  fresh.logic.preview(fresh.state)
+  await flushPlayback()
+  assert.match(fresh.state.cloudAudioResumeLabel, /처음 듣는 책/)
+  const saved = createPlayerHarness(() => chapterResponse(3, -1), {
+    server: { progress: { sectionIndex: 0, chunkIndex: 1, seconds: 15, chapterSeconds: 75 }, downloads: 0, chunkCount: 3 },
+  })
+  saved.logic.preview(saved.state)
+  await flushPlayback()
+  assert.equal(saved.state.cloudAudioResumeLabel, '1:15부터')
+  saved.logic.start(saved.state, 0)
+  await flushPlayback()
+  assert.equal(saved.state.cloudAudioSession, true)
+  saved.logic.stop()
+  assert.equal(saved.state.cloudAudioSession, false)
+})
+
+test('The listening position is the start of the sentence being read in the current part', async () => {
+  const text = '첫 문장입니다. 둘째 문장은 여기서 시작합니다. 셋째 문장입니다.'
+  const { logic, state, audio } = createPlayerHarness(() =>
+    new Response(
+      JSON.stringify({
+        ok: true,
+        chunkCount: 1,
+        nextSectionIndex: -1,
+        parts: [{ audioUrl: '/xapi/books/audio-file?chunkId=p', fallbackText: '', text, durationSeconds: 60 }],
+      })
+    )
+  )
+  assert.equal(logic.currentAnchor(), null)
+  logic.start(state, 4)
+  await flushPlayback()
+  assert.deepEqual(JSON.parse(JSON.stringify(logic.currentAnchor())), { sectionIndex: 4, text })
+  audio.currentTime = 30
+  assert.deepEqual(JSON.parse(JSON.stringify(logic.currentAnchor())), { sectionIndex: 4, text: '둘째 문장은 여기서 시작합니다. 셋째 문장입니다.' })
+  logic.stop()
+})
+
+test('Playback times are shown as minutes or hours', () => {
+  const { logic } = createPlayerHarness(() => chapterResponse(1, -1))
+  assert.deepEqual(
+    [0, 65.9, 3600, 3725].map(logic.formatTime),
+    ['0:00', '1:05', '1:00:00', '1:02:05']
+  )
 })
 
 test('Reading-position matching ignores whitespace and tolerates anchors that cross chunk boundaries', () => {
@@ -935,7 +1086,8 @@ test('A chunk that failed every retry is read with the device voice and playback
   assert.deepEqual(requests, [0, 1, 2])
   assert.ok(server.saves.some((save) => save.startsWith('0:1:false')), 'the fallback chunk position is saved')
   assert.equal(state.cloudAudioActive, true)
-  assert.match(state.cloudAudioMessage, /3 \/ 3 구간 · AI 생성 음성/)
+  assert.match(state.cloudAudioDetail, /3 \/ 3 구간/)
+  assert.equal(state.cloudAudioMessage, '', 'normal AI playback shows no notice')
   logic.stop()
 })
 
@@ -983,6 +1135,30 @@ test('Lock screen controls show the chapter and control the same player', async 
   logic.stop()
   assert.equal(handlers.play, null)
   assert.equal(mediaSession.playbackState, 'none')
+})
+
+test('A saved position the server rejects as invalid is dropped and never blocks playback', async () => {
+  const storage = new Map([
+    [
+      'booklog-audio-pending:user:hash',
+      JSON.stringify({
+        stale: {
+          key: 'stale',
+          sectionIndex: 0,
+          revision: '1',
+          fields: { configHash: 'settings', chunkId: 'chunk-0-0', seconds: '60', isCompleted: 'true', restart: 'false' },
+        },
+      }),
+    ],
+  ])
+  const server = { progress: null, downloads: 0, chunkCount: 2, rejectSaves: true }
+  const { logic, state } = createPlayerHarness(() => chapterResponse(2, -1), { storage, server })
+  logic.start(state, 0)
+  await flushPlayback()
+  assert.equal(server.rejected >= 1, true)
+  assert.equal(state.cloudAudioActive, true, 'playback starts despite the rejected save')
+  assert.equal(JSON.parse(storage.get('booklog-audio-pending:user:hash')).stale, undefined)
+  logic.stop()
 })
 
 test('Failed completion saves are retained locally and flushed before the next resume', async () => {

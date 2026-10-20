@@ -172,6 +172,15 @@
     cloudAudioBusy: false,
     cloudAudioActive: false,
     cloudAudioMessage: '',
+    cloudAudioPosition: 0,
+    cloudAudioDuration: 0,
+    cloudAudioSeeking: false,
+    cloudAudioHasPrevious: false,
+    cloudAudioHasNext: false,
+    cloudAudioChapter: '',
+    cloudAudioDetail: '',
+    cloudAudioSession: false,
+    cloudAudioResumeLabel: '',
     readAloudSupported: false,
     readAloudBusy: false,
     readAloudPlaying: false,
@@ -396,6 +405,34 @@
     startCloudAudioAtReadingPosition: function () {
       window.booklogReaderLogic.startCloudAudioAtReadingPosition(this)
     },
+    toggleCloudAudio: function () {
+      window.booklogReaderLogic.toggleCloudAudio(this)
+    },
+    goToListeningPosition: function () {
+      window.booklogReaderLogic.goToListeningPosition(this)
+    },
+    seekCloudAudio: function (seconds) {
+      window.booklogAudio.seekTo(seconds)
+    },
+    seekCloudAudioBy: function (seconds) {
+      window.booklogAudio.seekBy(seconds)
+    },
+    moveCloudAudioChapter: function (direction) {
+      window.booklogAudio.moveChapter(direction)
+    },
+    previewCloudAudio: function () {
+      if (window.booklogAudio) window.booklogAudio.preview(this)
+    },
+    cycleCloudAudioRate: function () {
+      var current = Number(this.readAloudRate || 1)
+      var next = [0.8, 1, 1.2, 1.4, 1.6].filter(function (rate) {
+        return rate > current + 0.01
+      })[0]
+      this.readAloudRate = String(next || 0.8)
+    },
+    formatAudioTime: function (seconds) {
+      return window.booklogAudio ? window.booklogAudio.formatTime(seconds) : '0:00'
+    },
     stopReadAloud: function () {
       window.booklogReaderLogic.stopReadAloud(this)
     },
@@ -403,6 +440,40 @@
   x-init="window.booklogReaderLogic.init($data)"
   x-bind:class="readerTheme === 'sepia' ? 'bg-[#f7f2e6]' : readerTheme === 'night' ? 'bg-[#161616]' : 'bg-white'"
   class="ios-safe-screen relative min-h-screen bg-white">
+  <div
+    x-cloak
+    x-show="cloudAudioSession && !readAloudOpen"
+    x-bind:class="readerTheme === 'night' ? 'bg-[#2b2621] text-stone-100 shadow-[0_8px_24px_rgba(0,0,0,0.36)]' : 'bg-white/95 text-stone-900 shadow-[0_8px_24px_rgba(24,19,16,0.14)]'"
+    class="fixed right-[6.75rem] left-4 z-30 flex h-11 max-w-[22rem] items-center gap-2 rounded-full pr-3 pl-1"
+    style="bottom: calc(env(safe-area-inset-bottom) + 1rem)">
+    <button
+      type="button"
+      x-bind:aria-label="cloudAudioActive ? 'AI 오디오북 일시 정지' : 'AI 오디오북 재생'"
+      x-on:click="toggleCloudAudio()"
+      x-bind:disabled="cloudAudioBusy"
+      class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none bg-[#8e5521] text-white disabled:opacity-60">
+      <span
+        x-show="!cloudAudioActive"
+        class="i-lucide-play h-4 w-4"
+        aria-hidden="true"></span>
+      <span
+        x-show="cloudAudioActive"
+        class="i-lucide-pause h-4 w-4"
+        aria-hidden="true"></span>
+    </button>
+    <button
+      type="button"
+      aria-label="AI 오디오북 조작 열기"
+      x-on:click="openReadAloud()"
+      class="flex min-w-0 flex-1 flex-col items-start border-none bg-transparent p-0 text-left text-inherit">
+      <span
+        class="block w-full truncate text-xs font-semibold"
+        x-text="cloudAudioBusy && !(cloudAudioDuration > 0) ? '불러오는 중' : cloudAudioChapter || 'AI 오디오북'"></span>
+      <span
+        class="block text-[11px] tabular-nums opacity-70"
+        x-text="formatAudioTime(cloudAudioPosition) + ' / ' + formatAudioTime(cloudAudioDuration)"></span>
+    </button>
+  </div>
   <div
     x-cloak
     x-bind:class="readerTheme === 'night' ? 'bg-[rgba(255,255,255,0.18)] text-stone-100 shadow-[0_8px_24px_rgba(0,0,0,0.36)]' : 'bg-[rgba(24,19,16,0.14)] text-stone-800/75 shadow-[0_6px_18px_rgba(24,19,16,0.08)]'"
@@ -1136,8 +1207,9 @@
           <div>
             <h2 class="text-base font-semibold text-stone-950">읽어주기</h2>
             <p
+              x-show="currentChapterLabel"
               class="mt-1 text-sm text-stone-500"
-              x-text="currentChapterLabel ? '현재 챕터: ' + currentChapterLabel : '현재 챕터를 확인하는 중입니다.'"></p>
+              x-text="'현재 챕터: ' + currentChapterLabel"></p>
           </div>
           <button
             type="button"
@@ -1171,62 +1243,177 @@
           <% if (aiAudioAvailable) { %>
           <div
             x-show="readAloudEngine === 'ai'"
+            x-effect="if (readAloudOpen && readAloudEngine === 'ai' && !cloudAudioSession) previewCloudAudio()"
             class="space-y-3">
             <audio
               id="reader-cloud-audio"
               data-book-title="<%= bookTitle %>"
-              controls
               preload="metadata"
-              class="block w-full"
+              class="hidden"
               x-effect="$el.playbackRate = Number(readAloudRate || 1)"></audio>
-            <label class="block space-y-2">
-              <span
-                class="text-sm text-stone-700"
-                x-text="'재생 속도 ' + Number(readAloudRate || 1).toFixed(1) + 'x'"></span>
-              <input
-                x-model="readAloudRate"
-                type="range"
-                min="0.8"
-                max="1.6"
-                step="0.1"
-                class="block w-full accent-stone-900" />
-            </label>
-            <p class="text-xs leading-5 text-stone-500">
-              청취 위치는 재생 중 주기적으로, 일시 정지·종료 시 저장합니다.
-            </p>
+            <div
+              x-show="!cloudAudioSession"
+              class="space-y-1">
+              <button
+                type="button"
+                aria-label="이어 듣기"
+                x-on:click="startCloudAudio()"
+                x-bind:disabled="cloudAudioBusy"
+                class="flex w-full items-center gap-3 rounded-[1.25rem] border-none bg-[#efe2d2] px-4 py-3 text-left text-[#5c3816] disabled:opacity-60">
+                <span
+                  class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#8e5521] text-white">
+                  <span
+                    class="i-lucide-play h-5 w-5"
+                    aria-hidden="true"></span>
+                </span>
+                <span class="min-w-0">
+                  <span class="block text-base font-semibold">이어 듣기</span>
+                  <span
+                    class="block truncate text-xs text-[#8e5521]"
+                    x-text="cloudAudioResumeLabel || '마지막 청취 위치를 확인하고 있습니다'"></span>
+                </span>
+              </button>
+              <details class="group">
+                <summary
+                  class="flex cursor-pointer list-none items-center gap-1 px-1 py-2 text-sm font-medium text-stone-600">
+                  다른 위치에서 시작
+                  <span
+                    class="i-lucide-chevron-down h-4 w-4 transition group-open:rotate-180"
+                    aria-hidden="true"></span>
+                </summary>
+                <div class="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    x-on:click="startCloudAudioAtReadingPosition()"
+                    x-bind:disabled="cloudAudioBusy"
+                    class="rounded-full border-none bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-700 disabled:opacity-60">
+                    읽던 위치부터
+                  </button>
+                  <button
+                    type="button"
+                    x-on:click="startCloudAudio(true)"
+                    x-bind:disabled="cloudAudioBusy"
+                    class="rounded-full border-none bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-700 disabled:opacity-60">
+                    현재 챕터 처음부터
+                  </button>
+                </div>
+              </details>
+            </div>
+            <div
+              x-show="cloudAudioSession"
+              class="space-y-3">
+              <div class="space-y-1">
+                <div class="flex items-center justify-between gap-2">
+                  <p
+                    class="m-0 min-w-0 truncate text-sm font-semibold text-stone-900"
+                    x-text="cloudAudioBusy && !(cloudAudioDuration > 0) ? '불러오는 중' : cloudAudioChapter || 'AI 오디오북'"></p>
+                  <button
+                    type="button"
+                    x-on:click="goToListeningPosition()"
+                    x-bind:disabled="!(cloudAudioDuration > 0)"
+                    class="inline-flex shrink-0 items-center gap-1 rounded-full border-none bg-[#efe2d2] px-3 py-1.5 text-xs font-semibold text-[#8e5521] disabled:opacity-40">
+                    <span
+                      class="i-lucide-locate-fixed h-3.5 w-3.5"
+                      aria-hidden="true"></span>
+                    듣는 곳으로 이동
+                  </button>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  step="1"
+                  aria-label="챕터 재생 위치"
+                  x-bind:max="Math.floor(cloudAudioDuration)"
+                  x-bind:value="Math.floor(cloudAudioPosition)"
+                  x-bind:disabled="!(cloudAudioDuration > 0)"
+                  x-on:input="cloudAudioSeeking = true; cloudAudioPosition = Number($event.target.value)"
+                  x-on:change="cloudAudioSeeking = false; seekCloudAudio(Number($event.target.value))"
+                  class="block w-full accent-[#8e5521]" />
+                <div class="flex justify-between gap-2 text-xs text-stone-500 tabular-nums">
+                  <span x-text="formatAudioTime(cloudAudioPosition)"></span>
+                  <span
+                    class="truncate"
+                    x-text="cloudAudioDetail"></span>
+                  <span x-text="formatAudioTime(cloudAudioDuration)"></span>
+                </div>
+              </div>
+              <div class="flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  aria-label="이전 챕터"
+                  x-on:click="moveCloudAudioChapter(-1)"
+                  x-bind:disabled="cloudAudioBusy || !cloudAudioHasPrevious"
+                  class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-transparent text-stone-700 disabled:opacity-30">
+                  <span
+                    class="i-lucide-skip-back h-5 w-5"
+                    aria-hidden="true"></span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="15초 뒤로"
+                  x-on:click="seekCloudAudioBy(-15)"
+                  x-bind:disabled="cloudAudioBusy || !(cloudAudioDuration > 0)"
+                  class="inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-stone-100 text-stone-700 disabled:opacity-40">
+                  <span
+                    class="i-lucide-rotate-ccw h-5 w-5"
+                    aria-hidden="true"></span>
+                </button>
+                <button
+                  type="button"
+                  x-bind:aria-label="cloudAudioActive ? '일시 정지' : '재생'"
+                  x-on:click="toggleCloudAudio()"
+                  x-bind:disabled="cloudAudioBusy"
+                  class="inline-flex h-14 w-14 items-center justify-center rounded-full border-none bg-[#8e5521] text-white disabled:opacity-60">
+                  <span
+                    x-show="!cloudAudioActive"
+                    class="i-lucide-play h-6 w-6"
+                    aria-hidden="true"></span>
+                  <span
+                    x-show="cloudAudioActive"
+                    class="i-lucide-pause h-6 w-6"
+                    aria-hidden="true"></span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="15초 앞으로"
+                  x-on:click="seekCloudAudioBy(15)"
+                  x-bind:disabled="cloudAudioBusy || !(cloudAudioDuration > 0)"
+                  class="inline-flex h-11 w-11 items-center justify-center rounded-full border-none bg-stone-100 text-stone-700 disabled:opacity-40">
+                  <span
+                    class="i-lucide-rotate-cw h-5 w-5"
+                    aria-hidden="true"></span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="다음 챕터"
+                  x-on:click="moveCloudAudioChapter(1)"
+                  x-bind:disabled="cloudAudioBusy || !cloudAudioHasNext"
+                  class="inline-flex h-10 w-10 items-center justify-center rounded-full border-none bg-transparent text-stone-700 disabled:opacity-30">
+                  <span
+                    class="i-lucide-skip-forward h-5 w-5"
+                    aria-hidden="true"></span>
+                </button>
+              </div>
+              <div class="flex items-center justify-between">
+                <button
+                  type="button"
+                  aria-label="재생 속도"
+                  x-on:click="cycleCloudAudioRate()"
+                  x-text="Number(readAloudRate || 1).toFixed(1) + 'x'"
+                  class="rounded-full border-none bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-700 tabular-nums"></button>
+                <button
+                  type="button"
+                  x-on:click="stopReadAloud()"
+                  class="rounded-full border-none bg-transparent px-3 py-2 text-sm font-semibold text-stone-600">
+                  정지
+                </button>
+              </div>
+            </div>
             <p
               role="status"
-              class="text-sm text-stone-600"
-              x-text="cloudAudioMessage"></p>
-            <div class="flex flex-wrap gap-2">
-              <button
-                type="button"
-                x-on:click="startCloudAudio()"
-                x-bind:disabled="cloudAudioBusy || cloudAudioActive"
-                class="rounded-full border-none bg-stone-950 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
-                x-text="cloudAudioBusy ? '불러오는 중' : '이어 듣기'"></button>
-              <button
-                type="button"
-                x-on:click="startCloudAudioAtReadingPosition()"
-                x-bind:disabled="cloudAudioBusy || cloudAudioActive"
-                class="rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 disabled:opacity-60">
-                읽던 위치부터
-              </button>
-              <button
-                type="button"
-                x-on:click="startCloudAudio(true)"
-                x-bind:disabled="cloudAudioBusy || cloudAudioActive"
-                class="rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 disabled:opacity-60">
-                현재 챕터 처음부터
-              </button>
-              <button
-                type="button"
-                x-on:click="stopReadAloud()"
-                x-bind:disabled="!cloudAudioBusy && !cloudAudioActive"
-                class="rounded-full border-none bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-700 disabled:opacity-60">
-                정지
-              </button>
-            </div>
+              x-show="cloudAudioMessage"
+              x-text="cloudAudioMessage"
+              class="m-0 rounded-[1rem] bg-[#fbf5ec] px-3 py-2 text-sm leading-6 text-stone-700"></p>
           </div>
           <% } %>
           <template x-if="readAloudEngine === 'local' && !readAloudSupported">

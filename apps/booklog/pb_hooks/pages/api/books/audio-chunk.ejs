@@ -46,7 +46,11 @@
       return
     }
     const chunkCount = audioData.countSectionChunks($app, fileId, settings.configHash, sectionIndex)
-    const nextSectionIndex = audioData.findNextSectionIndex($app, fileId, settings.configHash, sectionIndex)
+    const sections = {
+      next: audioData.findNextSectionIndex($app, fileId, settings.configHash, sectionIndex),
+      previous: audioData.findPreviousSectionIndex($app, fileId, settings.configHash, sectionIndex),
+    }
+    const timeline = audioData.sectionTimeline($app, fileId, settings.configHash, sectionIndex)
     dbg('api/books/audio-chunk:found', {
       userId,
       fileId,
@@ -54,11 +58,12 @@
       chunkIndex,
       parts: parts.length,
       chunkCount,
-      nextSectionIndex,
+      nextSectionIndex: sections.next,
+      previousSectionIndex: sections.previous,
     })
     response.json(
       200,
-      Object.assign({ ok: true }, audioData.chunkView(chunk, parts, bookId, chunkCount, nextSectionIndex))
+      Object.assign({ ok: true }, audioData.chunkView(chunk, parts, bookId, chunkCount, sections, timeline))
     )
   } catch (exception) {
     error('api/books/audio-chunk:failed', { userId, fileId, error: String(exception.message || exception) })

@@ -45,6 +45,9 @@ declare namespace types {
     audioUrl: string
     /** 생성에 끝내 실패해 기기 음성으로 읽을 원문. 생성 완료 조각이면 빈 문자열 */
     fallbackText: string
+    /** 낭독 원문. 리더에서 듣는 위치를 찾을 때 씁니다 */
+    text: string
+    /** 재생 길이(초). 대체 조각은 글자 수로 추정 */
     durationSeconds: number
   }
 
@@ -53,6 +56,10 @@ declare namespace types {
     configHash: string
     chunkCount: number
     nextSectionIndex: number
+    /** 음성 구간이 있는 이전 챕터 spine 순서, 없으면 -1 */
+    previousSectionIndex: number
+    /** 챕터 재생 바용 구간별 길이(초). 음성이 없는 구간은 글자 수로 추정 */
+    timeline: number[]
     /** 재생 순서의 조각. 나누지 않은 구간은 1개 */
     parts: BookAudioPartView[]
   }

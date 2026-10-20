@@ -8,6 +8,8 @@ const MODELS = [
 ]
 const PLAYABLE_FILTER =
   "((status = 'ready' && audio_file != '') || (status = 'failed' && attempt_count >= {:maxAttempts}))"
+// 실측 Gemini 낭독 속도(공백 포함 초당 약 6.8자)로 아직 음성이 없는 구간의 재생 바 길이를 잡습니다.
+const ESTIMATED_CHARS_PER_SECOND = 6.8
 
 /**
  * EPUB에 등록된 최근 오디오북 작업을 찾습니다.
@@ -167,6 +169,26 @@ function findNextSectionIndex(app, fileId, configHash, sectionIndex) {
 }
 
 /**
+ * 낭독 구간이 등록된 이전 챕터를 찾습니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} fileId EPUB 파일 ID
+ * @param {string} configHash 낭독 설정 해시
+ * @param {number} sectionIndex 현재 spine 순서
+ * @returns {number} 이전 챕터 spine 순서, 없으면 -1
+ */
+function findPreviousSectionIndex(app, fileId, configHash, sectionIndex) {
+  const previous = app.findRecordsByFilter(
+    'book_audio_chunks',
+    'file_id = {:fileId} && config_hash = {:configHash} && section_index < {:sectionIndex}',
+    '-section_index',
+    1,
+    0,
+    { fileId, configHash, sectionIndex }
+  )[0]
+  return previous ? Number(previous.get('section_index')) : -1
+}
+
+/**
  * 리더의 현재 문장이 들어 있는 챕터 내 구간을 찾습니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
@@ -268,21 +290,57 @@ function findPlayableParts(app, chunk) {
   return total > 0 && parts.length === total ? parts : null
 }
 
+function partDuration(record) {
+  const seconds = String(record.get('status')) === 'ready' ? Number(record.get('duration_seconds') || 0) : 0
+  if (seconds > 0) return seconds
+  return Math.max(1, Math.round((String(record.get('input_text')).length / ESTIMATED_CHARS_PER_SECOND) * 10) / 10)
+}
+
+/**
+ * 챕터 재생 바에 쓸 구간별 길이를 읽습니다. 음성이 없는 구간·조각은 글자 수로 추정합니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} fileId EPUB 파일 ID
+ * @param {string} configHash 낭독 설정 해시
+ * @param {number} sectionIndex spine 순서
+ * @returns {number[]} 구간 순서별 길이(초)
+ */
+function sectionTimeline(app, fileId, configHash, sectionIndex) {
+  const timeline = []
+  app
+    .findRecordsByFilter(
+      'book_audio_chunks',
+      "file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex} && status != 'split'",
+      'chunk_index,split_path',
+      0,
+      0,
+      { fileId, configHash, sectionIndex }
+    )
+    .forEach(function (record) {
+      const index = Number(record.get('chunk_index'))
+      timeline[index] = (timeline[index] || 0) + partDuration(record)
+    })
+  for (let index = 0; index < timeline.length; index += 1) timeline[index] = Number(timeline[index] || 0)
+  return timeline
+}
+
 /**
  * 재생할 구간을 재생 정보로 만듭니다. 생성에 끝내 실패한 조각은 기기 음성으로 읽을 원문을 담습니다.
  * @param {core.Record} chunk 재생할 구간
  * @param {core.Record[]} parts 재생 순서의 조각
  * @param {string} bookId 접근을 확인한 책 ID
  * @param {number} chunkCount 챕터의 구간 수
- * @param {number} nextSectionIndex 다음 챕터 spine 순서, 없으면 -1
+ * @param {{ next: number, previous: number }} sections 다음·이전 챕터 spine 순서, 없으면 -1
+ * @param {number[]} timeline 챕터의 구간별 길이(초)
  * @returns {types.BookAudioChunkView} 재생 정보
  */
-function chunkView(chunk, parts, bookId, chunkCount, nextSectionIndex) {
+function chunkView(chunk, parts, bookId, chunkCount, sections, timeline) {
   return {
     chunkId: String(chunk.get('id')),
     configHash: String(chunk.get('config_hash')),
     chunkCount,
-    nextSectionIndex,
+    nextSectionIndex: sections.next,
+    previousSectionIndex: sections.previous,
+    timeline,
     parts: parts.map(function (part) {
       const ready = String(part.get('status')) === 'ready'
       const query =
@@ -297,7 +355,8 @@ function chunkView(chunk, parts, bookId, chunkCount, nextSectionIndex) {
           ? '/xapi/books/audio-file?' + query + '&v=' + $security.sha256(String(part.get('generated_at')))
           : '',
         fallbackText: ready ? '' : String(part.get('input_text')),
-        durationSeconds: ready ? Number(part.get('duration_seconds') || 0) : 0,
+        text: String(part.get('input_text')),
+        durationSeconds: partDuration(part),
       }
     }),
   }
@@ -313,8 +372,10 @@ module.exports = {
   countSectionChunks,
   countFileChunks,
   findNextSectionIndex,
+  findPreviousSectionIndex,
   findChunkIndexByText,
   findPlayableChunk,
   findPlayableParts,
+  sectionTimeline,
   chunkView,
 }

@@ -129,7 +129,15 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
             chunkCount: 1,
             configHash: 'settings',
             chunkId: 'chunk-0-0',
-            parts: [{ audioUrl: '/xapi/books/audio-file?chunkId=chunk-0-0', fallbackText: '', durationSeconds: 1 }],
+            timeline: [10],
+            parts: [
+              {
+                audioUrl: '/xapi/books/audio-file?chunkId=chunk-0-0',
+                fallbackText: '',
+                text: '첫 번째 챕터\n\n책을 듣는 시간을 함께합니다.',
+                durationSeconds: 10,
+              },
+            ],
           },
         })
       }
@@ -165,7 +173,9 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   await start.click()
   const player = page.locator('#reader-cloud-audio')
   await expect.poll(() => player.evaluate((audio) => audio.readyState)).toBeGreaterThan(0)
-  await expect(page.getByRole('status')).toContainText('1 / 1 구간')
+  await expect(page.getByText('1 / 1 구간')).toBeVisible()
+  await expect(page.getByRole('slider', { name: '챕터 재생 위치' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '일시 정지', exact: true })).toBeVisible()
   const media = await page.evaluate(() => ({
     artist: navigator.mediaSession.metadata && navigator.mediaSession.metadata.artist,
     state: navigator.mediaSession.playbackState,
@@ -175,6 +185,7 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
     audio.currentTime = 5
   })
   await page.getByRole('button', { name: '정지', exact: true }).click()
+  await expect(start).toContainText('부터')
   await start.click()
   await expect.poll(() => player.evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(4.9)
   expect(lookups.every((lookup) => lookup === 'GET:0:0')).toBe(true)
@@ -191,10 +202,23 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   expect(downloads).toBe(2)
   expect(lookups.every((lookup) => lookup === 'GET:0:0')).toBe(true)
   await page.getByRole('button', { name: '정지', exact: true }).click()
+  await page.getByText('다른 위치에서 시작').click()
   await page.getByRole('button', { name: '읽던 위치부터' }).click()
   await expect.poll(() => anchors.length).toBe(1)
   expect(anchors[0]).toMatch(/^0:.*책을 듣는 시간을 함께합니다/)
   await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
-  await expect(page.getByRole('status')).toContainText('1 / 1 구간')
+  await expect(page.getByText('1 / 1 구간')).toBeVisible()
+  await page.getByRole('button', { name: '듣는 곳으로 이동' }).click()
+  await expect(page.getByRole('button', { name: '듣는 곳으로 이동' })).toBeHidden()
+  await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
+  const miniPause = page.getByRole('button', { name: 'AI 오디오북 일시 정지' })
+  await expect(miniPause).toBeVisible()
+  await expect(page.getByRole('button', { name: 'AI 오디오북 조작 열기' })).toContainText('첫 번째 챕터')
+  await miniPause.click()
+  await expect.poll(() => player.evaluate((audio) => audio.paused)).toBe(true)
+  await expect(page.getByRole('button', { name: 'AI 오디오북 재생' })).toBeVisible()
+  await page.getByRole('button', { name: 'AI 오디오북 조작 열기' }).click()
+  await expect(page.getByRole('button', { name: '듣는 곳으로 이동' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'AI 오디오북 재생' })).toBeHidden()
   expect(errors).toEqual([])
 })
