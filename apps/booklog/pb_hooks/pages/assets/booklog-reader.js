@@ -34,6 +34,7 @@ window.booklogReaderLogic = (function () {
   var READING_SESSION_SAVE_INTERVAL_MS = 60000
   var READING_SESSION_IDLE_MS = 180000
   var NAVIGATION_SAVE_WAIT_MS = 2000
+  var HISTORY_BACK_FALLBACK_MS = 1500
   var DEFAULT_FONT_SIZE_PERCENT = 100
   var FONT_SIZE_OPTIONS = [90, 100, 110, 120, 130]
   var DEFAULT_READER_THEME = 'paper'
@@ -2422,8 +2423,7 @@ window.booklogReaderLogic = (function () {
       }),
     ]).finally(function () {
       if (historyBack) {
-        skipNextPopState = true
-        window.history.back()
+        leaveByHistoryBack()
         return
       }
 
@@ -2434,6 +2434,51 @@ window.booklogReaderLogic = (function () {
 
       isLeavingPage = false
     })
+  }
+
+  function hasSameOriginReferrer() {
+    try {
+      return !!document.referrer && new URL(document.referrer).origin === window.location.origin
+    } catch (exception) {
+      return false
+    }
+  }
+
+  function leaveByHistoryBack() {
+    var bookDetailPath = '/books/' + bookId
+    var fallbackTimerId = 0
+
+    if (!hasSameOriginReferrer()) {
+      window.location.href = bookDetailPath
+      return
+    }
+
+    // 이전 기록이 없어 history.back()이 아무 일도 하지 않으면 책 상세로 보냅니다.
+    window.addEventListener(
+      'pagehide',
+      function () {
+        window.clearTimeout(fallbackTimerId)
+      },
+      { once: true }
+    )
+    fallbackTimerId = window.setTimeout(function () {
+      window.location.href = bookDetailPath
+    }, HISTORY_BACK_FALLBACK_MS)
+    skipNextPopState = true
+    window.history.back()
+  }
+
+  function handlePageShow(event) {
+    if (!event || !event.persisted) {
+      return
+    }
+
+    isLeavingPage = false
+    skipNextPopState = false
+
+    if (!(window.history.state && window.history.state.readerSaveGuard)) {
+      window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
+    }
   }
 
   function handlePopState() {
@@ -3941,6 +3986,7 @@ window.booklogReaderLogic = (function () {
     syncReaderSettingsState(component, readStoredReaderSettings())
     window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
     window.addEventListener('popstate', handlePopState)
+    window.addEventListener('pageshow', handlePageShow)
     bindReadingSessionActivityTracking(component)
 
     window.addEventListener('beforeunload', function () {
