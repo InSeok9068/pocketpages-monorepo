@@ -161,7 +161,7 @@ function planJob(app, jobId, sections) {
       if (kept[part.get('section_index') + ':' + part.get('chunk_index')]) resetFailedAttempts(txApp, part)
       else txApp.delete(part)
     })
-    syncJobProgress(txApp, job)
+    syncJobProgress(txApp, job, true)
   })
   return job
 }
@@ -235,10 +235,16 @@ function deleteAudioBook(app, fileId) {
  * 구간 상태를 집계해 작업 진행률과 종료 상태를 저장합니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {core.Record} job 오디오북 작업
+ * @param {boolean} [planned] 방금 구간 등록을 마쳐 재등록 표시를 실제 구간 수로 바꿀지 여부
  * @returns {types.BookAudioJobCounts} 집계 결과
  */
-function syncJobProgress(app, job) {
+function syncJobProgress(app, job, planned) {
   const counts = countChunks(app, String(job.get('file_id')), String(job.get('config_hash')))
+  // 다시 시작으로 구간 재등록을 기다리는 작업은, 그전에 끝난 생성이 진행률을 갱신해도 재등록 표시(total_chunks 0)를 지우지 않습니다.
+  if (!planned && needsPlanning(job)) {
+    app.save(job)
+    return counts
+  }
   job.set('total_chunks', counts.total)
   job.set('ready_chunks', counts.ready)
   job.set('failed_chunks', counts.failed)

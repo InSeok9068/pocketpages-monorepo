@@ -123,15 +123,13 @@ function runRoute({ authenticated = true, method = 'GET', owned = true, ready = 
         if (!owned) throw new Error('Not found')
       },
       getFileSettings: () => ({ configHash: 'settings' }),
-      findPlayableChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
+      findChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
         lookups.push({ fileId, configHash, sectionIndex, chunkIndex })
         return ready ? { id: 'chunk' } : null
       },
       countSectionChunks: () => 3,
       readSectionOrder: () => [1, 2, 4],
-      pendingMessage: (app, fileId, configHash, order, splitting) =>
-        splitting ? 'splitting' : 'pending of ' + order.length,
-      findPlayableParts: (app, chunk) => (split ? null : [chunk]),
+      findChunkParts: (app, chunk) => (split ? [] : [chunk]),
       sectionTimeline: () => [60, 60, 60],
       chunkView: (chunk, parts, bookId, chunkCount, order, timeline) => ({
         chunkId: chunk.id,
@@ -311,6 +309,21 @@ test('Audio much shorter than its text is regenerated twice and then saved with 
   assert.equal(shortText.fields.status, 'ready', 'short chunks are not checked')
 })
 
+test('Reclaiming a chunk interrupted by a restart counts an attempt and stops after the limit', () => {
+  const service = loadGenerationService()
+  const chunkWith = (fields) => ({ fields, get: (name) => fields[name], set: (name, value) => (fields[name] = value) })
+  const txApp = { save() {} }
+  const fresh = chunkWith({ status: 'queued', attempt_count: 0 })
+  assert.ok(service.claimChunk(txApp, fresh))
+  assert.equal(fresh.fields.attempt_count, 0, 'a normal claim is not an attempt')
+  const interrupted = chunkWith({ status: 'generating', attempt_count: 1 })
+  assert.ok(service.claimChunk(txApp, interrupted))
+  assert.deepEqual([interrupted.fields.status, interrupted.fields.attempt_count], ['generating', 2])
+  const crashing = chunkWith({ status: 'generating', attempt_count: 4 })
+  assert.equal(service.claimChunk(txApp, crashing), '')
+  assert.deepEqual([crashing.fields.status, crashing.fields.attempt_count], ['failed', 5])
+})
+
 test('Gemini policy blocks are retried later for that chunk only and keep the provider reason', () => {
   const blocked = generateWithProviderResult({
     ok: false,
@@ -379,10 +392,8 @@ test('Audio chunk lookup only returns generated audio and never generates it', (
   const missing = runRoute({ ready: false })
   assert.equal(missing.result.status, 404)
   assert.equal(missing.result.body.reason, 'not-ready')
-  assert.equal(missing.result.body.message, 'pending of 3')
-  const split = runRoute({ split: true })
-  assert.equal(split.result.status, 404, 'a split chunk waits until every part is playable')
-  assert.equal(split.result.body.message, 'splitting')
+  assert.match(missing.result.body.message, /찾지 못했습니다/)
+  assert.equal(runRoute({ split: true }).result.status, 404, 'a split chunk without parts is not playable')
 })
 
 test('A page without narration points to the next chapter that has narration', () => {
@@ -740,6 +751,15 @@ test('Cover links, tables of contents, notes, references, and English rights pag
   assert.deepEqual(
     sections.map((section) => names[section.sectionIndex]),
     Object.keys(kept)
+  )
+})
+
+test('Long text without spaces is cut at the chunk limit instead of failing the whole book', () => {
+  const text = 'あ'.repeat(7000)
+  const [section] = audioSectionsForFiles({ 'jp.xhtml': '<html><body><p>' + text + '</p></body></html>' })
+  assert.deepEqual(
+    section.chunks.map((chunk) => chunk.length),
+    [3000, 3000, 1000]
   )
 })
 
@@ -1148,6 +1168,65 @@ test('A chapter that is not generated yet shows why playback stopped', async () 
   assert.equal(state.cloudAudioSession, false, 'the start screen comes back with the reason')
   assert.equal(state.cloudAudioActive, false)
   logic.stop()
+})
+
+test('A part that is still being generated is read with the device voice and says so', async () => {
+  const speech = fakeSpeech()
+  const { logic, state } = createPlayerHarness(
+    () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          chunkCount: 1,
+          nextSectionIndex: -1,
+          parts: [{ audioUrl: '', fallbackText: '아직 만드는 중인 문장입니다.', pending: true, durationSeconds: 5 }],
+        })
+      ),
+    { speech }
+  )
+  logic.start(state, 0)
+  await flushPlayback()
+  assert.deepEqual(
+    speech.spoken.map((item) => item.text),
+    ['아직 만드는 중인 문장입니다.']
+  )
+  logic.stop()
+})
+
+test('Device voice resumes at the sentence nearest the saved time and saves its estimated progress', async () => {
+  const sentences = ['첫째 문장입니다.', '둘째 문장입니다.', '셋째 문장입니다.', '넷째 문장입니다.']
+  const speech = fakeSpeech()
+  speech.speak = (utterance) => speech.spoken.push({ text: utterance.text, utterance })
+  const server = { progress: { sectionIndex: 0, chunkIndex: 0, seconds: 25 }, downloads: 0, chunkCount: 1 }
+  const { logic, state } = createPlayerHarness(
+    () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          chunkCount: 1,
+          nextSectionIndex: -1,
+          parts: [{ audioUrl: '', fallbackText: sentences.join('\n'), pending: true, durationSeconds: 40 }],
+        })
+      ),
+    { speech, server }
+  )
+  logic.start(state, 0)
+  await flushPlayback()
+  assert.equal(speech.spoken[0].text, '셋째 문장입니다.', 'the third sentence starts at 20s, just before 25s')
+  assert.equal(state.cloudAudioPosition, 20)
+  speech.spoken[0].utterance.onend()
+  assert.equal(speech.spoken[1].text, '넷째 문장입니다.')
+  assert.equal(state.cloudAudioPosition, 30)
+  logic.stop()
+  await flushPlayback()
+  assert.equal(server.progress.seconds, 30, 'the estimated device-voice progress is saved')
+})
+
+test('A body file over the size limit fails planning instead of silently dropping a chapter', () => {
+  assert.throws(
+    () => audioSectionsForFiles({ 'huge.xhtml': '<html><body><p>' + '가'.repeat(6 * 1024 * 1024) + '</p></body></html>' }),
+    (error) => /16MB를 넘어/.test(error.userMessage)
+  )
 })
 
 test('The listening position is the start of the sentence being read in the current part', async () => {

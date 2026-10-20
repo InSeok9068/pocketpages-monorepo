@@ -45,6 +45,8 @@ declare namespace types {
     audioUrl: string
     /** 생성에 끝내 실패해 기기 음성으로 읽을 원문. 생성 완료 조각이면 빈 문자열 */
     fallbackText: string
+    /** 아직 생성 전이라 기기 음성으로 대신 읽는 조각인지 여부. 생성에 끝내 실패한 조각은 false */
+    pending: boolean
     /** 낭독 원문. 리더에서 듣는 위치를 찾을 때 씁니다 */
     text: string
     /** 재생 길이(초). 대체 조각은 글자 수로 추정 */

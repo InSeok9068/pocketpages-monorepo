@@ -6,8 +6,6 @@ const MODELS = [
   { model: 'gemini-3.8-flash-lite-tts', label: 'Flash-Lite' },
   { model: 'gemini-3.8-flash-tts', label: 'Flash' },
 ]
-const PLAYABLE_FILTER =
-  "((status = 'ready' && audio_file != '') || (status = 'failed' && attempt_count >= {:maxAttempts}))"
 // 실측 Gemini 낭독 속도(공백 포함 초당 약 6.8자)로 아직 음성이 없는 구간의 재생 바 길이를 잡습니다.
 const ESTIMATED_CHARS_PER_SECOND = 6.8
 
@@ -50,7 +48,8 @@ function getModelOptions(app, fileId) {
   return MODELS.map(function (entry) {
     const busy = app.findRecordsByFilter(
       'book_audio_jobs',
-      "model = {:model} && file_id != {:fileId} && status != 'completed'",
+      // 본문 분석에 실패해 구간이 하나도 없는 작업은 더 진행할 수 없으므로 모델을 차지하지 않습니다.
+      "model = {:model} && file_id != {:fileId} && status != 'completed' && (status != 'failed' || total_chunks > 0)",
       'created,id',
       1,
       0,
@@ -194,35 +193,6 @@ function readSectionOrder(app, fileId, configHash) {
 }
 
 /**
- * 아직 재생할 수 없는 구간에서 보여줄 안내 문구를 만듭니다.
- * @param {types.BooklogApp} app DB 앱
- * @param {string} fileId EPUB 파일 ID
- * @param {string} configHash 낭독 설정 해시
- * @param {number[]} order 낭독 구간이 있는 챕터 spine 순서
- * @param {boolean} splitting 정책 차단으로 나눈 조각을 만드는 중인지 여부
- * @returns {string} 안내 문구
- */
-function pendingMessage(app, fileId, configHash, order, splitting) {
-  if (splitting) return '이 부분은 AI 음성을 다시 만드는 중입니다. 조금 뒤에 이어 들을 수 있습니다.'
-  const pending = app.findRecordsByFilter(
-    'book_audio_chunks',
-    'file_id = {:fileId} && config_hash = {:configHash}'
-      + " && (status = 'queued' || status = 'generating' || (status = 'failed' && attempt_count < {:maxAttempts}))",
-    'section_index,chunk_index,split_path',
-    1,
-    0,
-    { fileId, configHash, maxAttempts: generation.MAX_ATTEMPTS }
-  )[0]
-  const job = findFileJob(app, fileId)
-  const position = pending ? order.indexOf(Number(pending.get('section_index'))) + 1 : 0
-  return (
-    '이 챕터는 아직 AI 음성을 만들지 않았습니다.'
-    + (position > 0 ? ' 지금 ' + position + ' / ' + order.length + '번째 챕터를 만들고 있습니다.' : '')
-    + (job && String(job.get('status')) === 'paused' ? ' 생성이 일시 정지되어 있습니다.' : '')
-  )
-}
-
-/**
  * 리더의 현재 문장이 들어 있는 챕터 내 구간을 찾습니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
@@ -268,60 +238,51 @@ function countFileChunks(app, fileId) {
 }
 
 /**
- * 재생할 구간을 찾습니다. 생성 완료·조각으로 나뉜 구간과, 재시도를 모두 소진해 기기 음성으로 대신 읽을 구간을 돌려줍니다.
+ * 재생할 원래 구간을 찾습니다. 생성 상태와 관계없이 찾고, 아직 음성이 없는 부분은 기기 음성으로 대신 읽습니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
  * @param {string} configHash 낭독 설정 해시
  * @param {number} sectionIndex spine 순서
  * @param {number} chunkIndex 챕터 내 구간 순서
- * @returns {core.Record | null} 재생할 구간
+ * @returns {core.Record | null} 원래 구간
  */
-function findPlayableChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
+function findChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
   return (
     app.findRecordsByFilter(
       'book_audio_chunks',
       'file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex}'
-        + " && chunk_index = {:chunkIndex} && split_path = ''"
-        + " && (status = 'split' || "
-        + PLAYABLE_FILTER
-        + ')',
+        + " && chunk_index = {:chunkIndex} && split_path = ''",
       '',
       1,
       0,
-      { fileId, configHash, sectionIndex, chunkIndex, maxAttempts: generation.MAX_ATTEMPTS }
+      { fileId, configHash, sectionIndex, chunkIndex }
     )[0] || null
   )
 }
 
 /**
- * 구간을 재생 순서의 조각으로 펼칩니다. 나눈 조각이 하나라도 아직 준비되지 않았으면 null입니다.
+ * 구간을 재생 순서의 조각으로 펼칩니다. 나누지 않은 구간은 그 구간 하나입니다.
  * @param {types.BooklogApp} app DB 앱
- * @param {core.Record} chunk 재생할 구간
- * @returns {core.Record[] | null} 재생할 조각
+ * @param {core.Record} chunk 원래 구간
+ * @returns {core.Record[]} 재생할 조각
  */
-function findPlayableParts(app, chunk) {
+function findChunkParts(app, chunk) {
   if (String(chunk.get('status')) !== 'split') return [chunk]
-  const bindings = {
-    fileId: String(chunk.get('file_id')),
-    configHash: String(chunk.get('config_hash')),
-    sectionIndex: Number(chunk.get('section_index')),
-    chunkIndex: Number(chunk.get('chunk_index')),
-    maxAttempts: generation.MAX_ATTEMPTS,
-  }
-  const scope =
-    'file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex}'
-    + " && chunk_index = {:chunkIndex} && split_path != '' && status != 'split'"
-  const total = app.findRecordsByFilter('book_audio_chunks', scope, '', 0, 0, bindings).length
   // 나눈 조각 중 더 나뉘지 않은 조각만 split_path 순서로 이으면 원문 순서가 됩니다.
-  const parts = app.findRecordsByFilter(
+  return app.findRecordsByFilter(
     'book_audio_chunks',
-    scope + ' && ' + PLAYABLE_FILTER,
+    'file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex}'
+      + " && chunk_index = {:chunkIndex} && split_path != '' && status != 'split'",
     'split_path',
     0,
     0,
-    bindings
+    {
+      fileId: String(chunk.get('file_id')),
+      configHash: String(chunk.get('config_hash')),
+      sectionIndex: Number(chunk.get('section_index')),
+      chunkIndex: Number(chunk.get('chunk_index')),
+    }
   )
-  return total > 0 && parts.length === total ? parts : null
 }
 
 function partDuration(record) {
@@ -358,7 +319,7 @@ function sectionTimeline(app, fileId, configHash, sectionIndex) {
 }
 
 /**
- * 재생할 구간을 재생 정보로 만듭니다. 생성에 끝내 실패한 조각은 기기 음성으로 읽을 원문을 담습니다.
+ * 재생할 구간을 재생 정보로 만듭니다. 음성이 없는 조각(생성 전·생성 실패)은 기기 음성으로 읽을 원문을 담습니다.
  * @param {core.Record} chunk 재생할 구간
  * @param {core.Record[]} parts 재생 순서의 조각
  * @param {string} bookId 접근을 확인한 책 ID
@@ -379,7 +340,9 @@ function chunkView(chunk, parts, bookId, chunkCount, order, timeline) {
     chapterTotal: order.length,
     timeline,
     parts: parts.map(function (part) {
-      const ready = String(part.get('status')) === 'ready'
+      const ready = String(part.get('status')) === 'ready' && !!part.get('audio_file')
+      const exhausted =
+        String(part.get('status')) === 'failed' && Number(part.get('attempt_count') || 0) >= generation.MAX_ATTEMPTS
       const query =
         'bookId='
         + encodeURIComponent(bookId)
@@ -392,6 +355,7 @@ function chunkView(chunk, parts, bookId, chunkCount, order, timeline) {
           ? '/xapi/books/audio-file?' + query + '&v=' + $security.sha256(String(part.get('generated_at')))
           : '',
         fallbackText: ready ? '' : String(part.get('input_text')),
+        pending: !ready && !exhausted,
         text: String(part.get('input_text')),
         durationSeconds: partDuration(part),
       }
@@ -410,10 +374,9 @@ module.exports = {
   countFileChunks,
   findNextSectionIndex,
   readSectionOrder,
-  pendingMessage,
   findChunkIndexByText,
-  findPlayableChunk,
-  findPlayableParts,
+  findChunk,
+  findChunkParts,
   sectionTimeline,
   chunkView,
 }

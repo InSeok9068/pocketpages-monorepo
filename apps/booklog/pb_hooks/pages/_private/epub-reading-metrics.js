@@ -375,16 +375,38 @@ function readAudioSpinePaths(epubBytes) {
       return entry.id === idref
     })[0]
     if (!item || !/^(application\/xhtml\+xml|text\/html)$/.test(item.mediaType)) return ''
-    return joinPath(dirname(packagePath), decodeURIComponent(item.href.split('#')[0]))
+    const href = item.href.split('#')[0]
+    try {
+      return joinPath(dirname(packagePath), decodeURIComponent(href))
+    } catch (_exception) {
+      // 잘못 인코딩된 경로(%가 그대로 들어간 파일 이름 등)는 원래 문자열로 찾습니다.
+      return joinPath(dirname(packagePath), href)
+    }
   })
 }
 
+const MAX_AUDIO_ENTRY_BYTES = 16 * 1024 * 1024
+
 function unzipAudioEntries(epubBytes, entryPaths) {
-  return fflate.unzipSync(epubBytes, {
+  const oversized = []
+  const archive = fflate.unzipSync(epubBytes, {
     filter: function (file) {
-      return entryPaths.indexOf(file.name) >= 0 && file.originalSize <= 2 * 1024 * 1024
+      if (entryPaths.indexOf(file.name) < 0) return false
+      if (file.originalSize <= MAX_AUDIO_ENTRY_BYTES) return true
+      oversized.push(file.name)
+      return false
     },
   })
+  // 큰 파일을 건너뛰면 챕터가 빠진 채 생성이 완료될 수 있어, 아예 실패로 알립니다.
+  if (oversized.length) {
+    const error = /** @type {Error & { userMessage?: string }} */ (
+      new Error('oversized audio entries: ' + oversized.join(', '))
+    )
+    error.userMessage =
+      '본문 파일 ' + oversized.length + '개가 16MB를 넘어 낭독할 수 없습니다. 챕터가 빠지지 않도록 생성을 멈췄습니다.'
+    throw error
+  }
+  return archive
 }
 
 /**
@@ -543,7 +565,8 @@ function splitAudioText(text) {
     }
     // 짧은 문장도 중간에서 끊지 않습니다. 긴 한 문장일 때만 공백을 사용합니다.
     if (boundary < 1) boundary = windowText.lastIndexOf(' ')
-    if (boundary < 1) throw new Error('본문을 낭독 구간으로 나누지 못했습니다.')
+    // 띄어쓰기 없는 긴 글(일본어·중국어 등)은 구간 최대 길이에서 자릅니다.
+    if (boundary < 1) boundary = AUDIO_CHUNK_MAX_CHARS
     chunks.push(remaining.slice(0, boundary).trim())
     remaining = remaining.slice(boundary).trim()
   }

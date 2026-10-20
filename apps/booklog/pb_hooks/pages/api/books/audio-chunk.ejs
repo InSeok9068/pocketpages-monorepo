@@ -39,6 +39,15 @@
   try {
     const settings = audioData.getFileSettings($app, fileId)
     const order = audioData.readSectionOrder($app, fileId, settings.configHash)
+    if (!order.length) {
+      dbg('api/books/audio-chunk:not-planned', { userId, fileId, sectionIndex })
+      response.json(404, {
+        ok: false,
+        reason: 'not-ready',
+        message: '아직 AI 오디오북 구간을 준비하고 있습니다. 잠시 후 다시 시도해 주세요.',
+      })
+      return
+    }
     if (order.indexOf(sectionIndex) < 0) {
       // 표지·이미지·판권처럼 낭독 구간이 없는 페이지는 뒤쪽의 첫 본문 챕터를 알려줍니다.
       const nextSectionIndex = order.filter(function (index) {
@@ -56,14 +65,15 @@
       })
       return
     }
-    const chunk = audioData.findPlayableChunk($app, fileId, settings.configHash, sectionIndex, chunkIndex)
-    const parts = chunk ? audioData.findPlayableParts($app, chunk) : null
-    if (!parts) {
-      dbg('api/books/audio-chunk:not-ready', { userId, fileId, sectionIndex, chunkIndex, split: !!chunk })
+    // 아직 음성이 없는 구간도 원문을 함께 돌려줘, 생성 중인 책도 기기 음성으로 끊김 없이 이어 듣게 합니다.
+    const chunk = audioData.findChunk($app, fileId, settings.configHash, sectionIndex, chunkIndex)
+    const parts = chunk ? audioData.findChunkParts($app, chunk) : []
+    if (!parts.length) {
+      dbg('api/books/audio-chunk:missing', { userId, fileId, sectionIndex, chunkIndex, found: !!chunk })
       response.json(404, {
         ok: false,
         reason: 'not-ready',
-        message: audioData.pendingMessage($app, fileId, settings.configHash, order, !!chunk),
+        message: '이 구간을 찾지 못했습니다. 잠시 후 다시 시도해 주세요.',
       })
       return
     }

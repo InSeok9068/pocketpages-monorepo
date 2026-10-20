@@ -12,6 +12,16 @@ function run() {
   const nowMs = Date.now()
   const regenerated = jobService.applyRegenerateRequests($app, nowMs)
   if (regenerated > 0) logger.info('jobs/audio-book:regenerate-requested', 'chunks', String(regenerated))
+  // Gemini 응답은 최대 300초라 cron 실행이 겹칠 수 있습니다. 한 번에 한 구간만 요청해 하루 한도를 예측대로 씁니다.
+  const inFlight = $app.findRecordsByFilter(
+    'book_audio_chunks',
+    "status = 'generating' && generation_started_at >= {:staleBefore}",
+    '',
+    1,
+    0,
+    { staleBefore: generation.toDbDate(nowMs - generation.CLAIM_TTL_MS) }
+  )[0]
+  if (inFlight) return { jobId: '', chunkId: String(inFlight.get('id')), statusCode: 202 }
   const job = $app.findRecordsByFilter(
     'book_audio_jobs',
     "(status = 'queued' || status = 'running') && (next_run_at = '' || next_run_at <= {:now})",
@@ -46,7 +56,11 @@ function run() {
       return { jobId, chunkId: '', statusCode: 201 }
     } catch (exception) {
       const message = String(exception && exception.message ? exception.message : exception)
-      jobService.failPlanning($app, jobId, 'EPUB 본문을 분석하지 못했습니다. 다시 시작하면 재시도합니다.')
+      jobService.failPlanning(
+        $app,
+        jobId,
+        (exception && exception.userMessage) || 'EPUB 본문을 분석하지 못했습니다. 다시 시작하면 재시도합니다.'
+      )
       logger.error('jobs/audio-book:planning-failed', 'jobId', jobId, 'error', message)
       return { jobId, chunkId: '', statusCode: 500 }
     }

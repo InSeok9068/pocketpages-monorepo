@@ -729,6 +729,12 @@ window.booklogReaderLogic = (function () {
     })
   }
 
+  // AI 오디오북의 기기 음성 대체 구간도 speechSynthesis를 쓰므로, 페이지 이동 때는 로컬 오디오북만 멈춥니다.
+  function stopLocalReadAloud(component) {
+    if (window.booklogAudio && window.booklogAudio.isPlaying()) return
+    stopBrowserSpeech(component, { keepMessage: true })
+  }
+
   function stopSpeechPlayback(component, options) {
     if (window.booklogAudio) window.booklogAudio.stop()
     stopBrowserSpeech(component, options)
@@ -4272,9 +4278,7 @@ window.booklogReaderLogic = (function () {
 
     component.loading = true
     component.searchOpen = false
-    stopBrowserSpeech(component, {
-      keepMessage: true,
-    })
+    stopLocalReadAloud(component)
     prepareManualNavigation()
 
     renditionInstance
@@ -4302,9 +4306,7 @@ window.booklogReaderLogic = (function () {
     component.tocOpen = false
     component.controlsVisible = false
     component.loading = true
-    stopBrowserSpeech(component, {
-      keepMessage: true,
-    })
+    stopLocalReadAloud(component)
     prepareManualNavigation()
 
     renditionInstance
@@ -4584,9 +4586,7 @@ window.booklogReaderLogic = (function () {
     component.bookmarksOpen = false
     component.controlsVisible = false
     component.loading = true
-    stopBrowserSpeech(component, {
-      keepMessage: true,
-    })
+    stopLocalReadAloud(component)
     prepareManualNavigation()
 
     Promise.resolve(renditionInstance.display(target))
@@ -4628,9 +4628,7 @@ window.booklogReaderLogic = (function () {
     component.highlightsOpen = false
     component.controlsVisible = false
     component.loading = true
-    stopBrowserSpeech(component, {
-      keepMessage: true,
-    })
+    stopLocalReadAloud(component)
     prepareManualNavigation()
 
     Promise.resolve(renditionInstance.display(target))
@@ -4773,9 +4771,7 @@ window.booklogReaderLogic = (function () {
 
     component.loadingSavedPosition = true
     component.loading = true
-    stopBrowserSpeech(component, {
-      keepMessage: true,
-    })
+    stopLocalReadAloud(component)
 
     restoreSavedPosition(component, {
       silent: false,
@@ -4839,9 +4835,7 @@ window.booklogReaderLogic = (function () {
     }
 
     prepareManualNavigation()
-    stopBrowserSpeech(component, {
-      keepMessage: true,
-    })
+    stopLocalReadAloud(component)
 
     Promise.resolve(renditionInstance.display(locator))
       .then(function (location) {

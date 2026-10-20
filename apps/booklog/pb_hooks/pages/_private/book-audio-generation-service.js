@@ -48,6 +48,18 @@ function toDbDate(ms) {
  * @returns {string} 결과 저장 시 확인할 소유권 시각
  */
 function claimChunk(txApp, chunk) {
+  // 생성 중 서버가 꺼져 다시 가져가는 구간도 시도 1회로 세어, 같은 원인으로 계속 꺼질 때 한도를 끝없이 쓰지 않게 합니다.
+  if (String(chunk.get('status')) === 'generating') {
+    const attempts = Number(chunk.get('attempt_count') || 0) + 1
+    chunk.set('attempt_count', attempts)
+    if (attempts >= MAX_ATTEMPTS) {
+      chunk.set('status', 'failed')
+      chunk.set('error_message', '생성 중 서버가 여러 번 중단되어 이 구간은 기기 음성으로 읽습니다.')
+      chunk.set('next_retry_at', '')
+      txApp.save(chunk)
+      return ''
+    }
+  }
   chunk.set('status', 'generating')
   chunk.set('generation_started_at', new Date().toISOString())
   chunk.set('error_message', '')

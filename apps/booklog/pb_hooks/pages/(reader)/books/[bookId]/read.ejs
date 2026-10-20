@@ -262,6 +262,8 @@
     },
     closeReadAloud: function () {
       this.readAloudOpen = false
+      // 멈춘 이유를 패널에서 확인했으면 미니 플레이어의 안내도 닫습니다.
+      if (!this.cloudAudioSession) this.cloudAudioMessage = ''
     },
     openReadingSettings: function () {
       this.readingSettingsOpen = true
@@ -445,7 +447,7 @@
   class="ios-safe-screen relative min-h-screen bg-white">
   <div
     x-cloak
-    x-show="cloudAudioSession && !readAloudOpen"
+    x-show="!readAloudOpen && (cloudAudioSession || cloudAudioMessage)"
     x-bind:class="readerTheme === 'night' ? 'bg-[#2b2621] text-stone-100 shadow-[0_8px_24px_rgba(0,0,0,0.36)]' : 'bg-white/95 text-stone-900 shadow-[0_8px_24px_rgba(24,19,16,0.14)]'"
     class="fixed right-[6.75rem] left-4 z-30 flex h-11 max-w-[22rem] items-center gap-2 rounded-full pr-3 pl-1"
     style="bottom: calc(env(safe-area-inset-bottom) + 1rem)">
@@ -471,10 +473,10 @@
       class="flex min-w-0 flex-1 flex-col items-start border-none bg-transparent p-0 text-left text-inherit">
       <span
         class="block w-full truncate text-xs font-semibold"
-        x-text="cloudAudioBusy && !(cloudAudioDuration > 0) ? '불러오는 중' : cloudAudioChapter || 'AI 오디오북'"></span>
+        x-text="!cloudAudioSession ? cloudAudioMessage : cloudAudioBusy && !(cloudAudioDuration > 0) ? '불러오는 중' : cloudAudioChapter || 'AI 오디오북'"></span>
       <span
         class="block text-[11px] tabular-nums opacity-70"
-        x-text="formatAudioTime(cloudAudioPosition) + ' / ' + formatAudioTime(cloudAudioDuration) + (cloudAudioChapterOrder ? ' · ' + cloudAudioChapterOrder + ' 챕터' : '')"></span>
+        x-text="!cloudAudioSession ? '재생이 멈췄습니다 · 눌러서 자세히 보기' : formatAudioTime(cloudAudioPosition) + ' / ' + formatAudioTime(cloudAudioDuration) + (cloudAudioChapterOrder ? ' · ' + cloudAudioChapterOrder + ' 챕터' : '')"></span>
     </button>
   </div>
   <div
@@ -1334,7 +1336,7 @@
                   aria-label="챕터 재생 위치"
                   x-bind:max="Math.floor(cloudAudioDuration)"
                   x-bind:value="Math.floor(cloudAudioPosition)"
-                  x-bind:disabled="!(cloudAudioDuration > 0)"
+                  x-bind:disabled="cloudAudioBusy || !(cloudAudioDuration > 0)"
                   x-on:input="cloudAudioSeeking = true; cloudAudioPosition = Number($event.target.value)"
                   x-on:change="cloudAudioSeeking = false; seekCloudAudio(Number($event.target.value))"
                   class="block w-full accent-[#8e5521]" />
