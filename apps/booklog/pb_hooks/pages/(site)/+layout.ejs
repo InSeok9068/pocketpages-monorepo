@@ -275,6 +275,13 @@
             class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline ring-0 transition outline-none">
             설정 관리
           </a>
+          <% if (request.auth.get('admin_manager') === true) { %>
+          <a
+            href="/admin/books"
+            class="block w-full rounded-xl border-none px-3 py-3 text-left text-sm font-medium text-stone-700 no-underline ring-0 transition outline-none">
+            관리자 페이지
+          </a>
+          <% } %>
           <form
             method="post"
             action="/xapi/auth/sign-out">

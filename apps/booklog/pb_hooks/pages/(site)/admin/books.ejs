@@ -1,0 +1,308 @@
+<script server>
+  meta('title', '도서 관리')
+  meta('description', '북로그 도서와 연결된 사용자를 관리합니다.')
+
+  if (!request.auth || request.auth.get('admin_manager') !== true) {
+    warn('page/admin/books:forbidden', { userId: request.auth ? request.auth.get('id') : '' })
+    dbg('page/admin/books:redirect', { status: 303, redirectTo: '/', message: '관리자 권한이 필요합니다.' })
+    redirect('/', { status: 303, message: '관리자 권한이 필요합니다.' })
+    return
+  }
+
+  const queryText = String(request.url.query.q || '')
+    .trim()
+    .slice(0, 200)
+  const scope = request.url.query.scope === 'all' ? 'all' : 'unused'
+  const requestedPage = Math.max(1, Math.floor(Number(request.url.query.page) || 1))
+  const pageSize = 30
+  const userId = String(request.auth.get('id') || '')
+
+  function buildPageHref(page) {
+    return '/admin/books?scope=' + scope + '&q=' + encodeURIComponent(queryText) + '&page=' + page
+  }
+
+  dbg('page/admin/books:start', { userId, method: request.method, scope, queryText })
+
+  if (request.method === 'POST') {
+    const form = body()
+    const bookId = String(form.bookId || '').trim()
+    const expectedUserCount = Number(form.userCount)
+    let message = '책과 관련 데이터를 삭제했습니다.'
+
+    try {
+      if (form.action !== 'delete' || !bookId || !Number.isInteger(expectedUserCount) || expectedUserCount < 0) {
+        throw new Error('삭제할 책 정보를 확인해 주세요.')
+      }
+
+      $app.runInTransaction(function (txApp) {
+        const book = txApp.findRecordById('books', bookId)
+        const connectedUsers = new DynamicModel({ total: 0 })
+        txApp
+          .db()
+          .newQuery('SELECT count(DISTINCT user_id) AS total FROM book_shelves WHERE book_id = {:bookId}')
+          .bind({ bookId })
+          .one(connectedUsers)
+        if (Number(connectedUsers.total) !== expectedUserCount) {
+          throw new Error('연결 인원이 변경되었습니다. 목록을 확인한 뒤 다시 삭제해 주세요.')
+        }
+
+        txApp
+          .findRecordsByFilter('push_send_logs', 'book_id = {:bookId}', '', 0, 0, { bookId })
+          .forEach(function (record) {
+            txApp.delete(record)
+          })
+        // 스키마의 cascadeDelete로 도서함·독서 기록·모든 EPUB·오디오 데이터를 함께 삭제합니다.
+        // Record 삭제를 사용해야 EPUB와 음성 파일도 PocketBase에서 정리합니다.
+        txApp.delete(book)
+      })
+      info('page/admin/books:deleted', { userId, bookId, connectedUserCount: expectedUserCount })
+    } catch (exception) {
+      const detail = String(exception.message || exception)
+      error('page/admin/books:delete-failed', { userId, bookId, error: detail })
+      message =
+        detail.indexOf('연결 인원이 변경') === 0 || detail.indexOf('삭제할 책 정보') === 0
+          ? detail
+          : '책 삭제에 실패했습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.'
+    }
+
+    const redirectTo = buildPageHref(requestedPage)
+    dbg('page/admin/books:redirect', { status: 303, redirectTo, message })
+    redirect(redirectTo, { status: 303, message })
+    return
+  }
+
+  const unusedCondition = 'NOT EXISTS (SELECT 1 FROM book_shelves WHERE book_shelves.book_id = books.id)'
+  const conditions = []
+  const bindings = queryText ? { search: '%' + queryText + '%' } : {}
+  if (scope === 'unused') conditions.push(unusedCondition)
+  if (queryText) {
+    conditions.push('(books.title LIKE {:search} OR books.author LIKE {:search})')
+  }
+  const whereSql = conditions.length ? ' WHERE ' + conditions.join(' AND ') : ''
+  const summary = new DynamicModel({ total: 0, unused: 0 })
+  $app
+    .db()
+    .newQuery(
+      'SELECT count(*) AS total, coalesce(sum(CASE WHEN '
+        + unusedCondition
+        + ' THEN 1 ELSE 0 END), 0) AS unused FROM books'
+    )
+    .one(summary)
+  const matched = new DynamicModel({ total: 0 })
+  $app
+    .db()
+    .newQuery('SELECT count(*) AS total FROM books' + whereSql)
+    .bind(bindings)
+    .one(matched)
+  const pageCount = Math.max(1, Math.ceil(Number(matched.total) / pageSize))
+  const currentPage = Math.min(requestedPage, pageCount)
+  const rows = arrayOf(
+    new DynamicModel({
+      bookId: '',
+      title: '',
+      author: '',
+      userCount: 0,
+      userNames: '',
+      fileCount: 0,
+      fileBytes: 0,
+      audioCount: 0,
+    })
+  )
+  $app
+    .db()
+    .newQuery(
+      'SELECT books.id AS bookId, books.title AS title, books.author AS author, '
+        + '(SELECT count(DISTINCT user_id) FROM book_shelves WHERE book_id = books.id) AS userCount, '
+        + "coalesce((SELECT group_concat(coalesce(nullif(users.name, ''), users.email), ', ') FROM book_shelves JOIN users ON users.id = book_shelves.user_id WHERE book_shelves.book_id = books.id), '') AS userNames, "
+        + '(SELECT count(*) FROM book_files WHERE book_id = books.id) AS fileCount, '
+        + '(SELECT coalesce(sum(file_size), 0) FROM book_files WHERE book_id = books.id) AS fileBytes, '
+        + "(SELECT count(*) FROM book_audio_chunks JOIN book_files ON book_files.id = book_audio_chunks.file_id WHERE book_files.book_id = books.id AND book_audio_chunks.audio_file != '') AS audioCount "
+        + 'FROM books'
+        + whereSql
+        + ' ORDER BY books.created DESC, books.id ASC LIMIT {:limit} OFFSET {:offset}'
+    )
+    .bind(Object.assign({}, bindings, { limit: pageSize, offset: (currentPage - 1) * pageSize }))
+    .all(rows)
+
+  const books = rows.map(function (row) {
+    const title = String(row.title || '제목 없음')
+    const userCount = Number(row.userCount || 0)
+    return {
+      bookId: String(row.bookId),
+      title,
+      author: String(row.author || '저자 정보 없음'),
+      userCount,
+      userNames: String(row.userNames || ''),
+      fileCount: Number(row.fileCount || 0),
+      fileSizeLabel: (Number(row.fileBytes || 0) / 1024 / 1024).toFixed(1) + ' MB',
+      audioCount: Number(row.audioCount || 0),
+      deleteConfirmation:
+        '「'
+        + title
+        + '」을 영구 삭제할까요? 연결 인원 '
+        + userCount
+        + '명의 기록과 EPUB·오디오 파일도 함께 삭제되며 복구할 수 없습니다.',
+    }
+  })
+  const previousHref = currentPage > 1 ? buildPageHref(currentPage - 1) : ''
+  const nextHref = currentPage < pageCount ? buildPageHref(currentPage + 1) : ''
+  const formAction = buildPageHref(currentPage)
+  const flashMessage = params.__flash ? String(params.__flash) : ''
+  dbg('page/admin/books:loaded', { matchedCount: Number(matched.total), currentPage })
+</script>
+
+<section class="space-y-6">
+  <div class="space-y-3">
+    <a
+      href="/"
+      class="inline-flex items-center gap-2 rounded-full border-none bg-white/78 px-3 py-2 text-sm font-medium text-stone-700 no-underline shadow-[0_10px_22px_rgba(70,52,31,0.08)] ring-0 outline-none">
+      <span
+        class="i-lucide-arrow-left h-4 w-4"
+        aria-hidden="true"></span>
+      메인으로
+    </a>
+    <div class="flex flex-wrap items-center gap-3">
+      <h1 class="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">도서 관리</h1>
+      <p
+        class="m-0 inline-flex items-center rounded-full bg-white/78 px-3 py-1.5 text-sm font-medium text-stone-600 shadow-[inset_0_0_0_1px_rgba(120,93,63,0.08)]">
+        전체 <%= summary.total %>권 · 미사용 <%= summary.unused %>권
+      </p>
+    </div>
+  </div>
+
+  <div><%- include('flash-alert.ejs') %></div>
+
+  <section
+    class="rounded-[2rem] border border-stone-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(73,54,31,0.08)] backdrop-blur-sm sm:p-5">
+    <form
+      method="get"
+      action="/admin/books"
+      class="mb-5 space-y-3">
+      <div class="flex gap-2">
+        <label
+          class="relative block min-w-0 flex-1"
+          for="admin-book-search">
+          <span class="sr-only">제목 또는 저자 검색</span>
+          <span
+            class="i-lucide-search pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-stone-400"
+            aria-hidden="true"></span>
+          <input
+            id="admin-book-search"
+            type="search"
+            name="q"
+            value="<%= queryText %>"
+            maxlength="200"
+            placeholder="제목이나 저자 검색"
+            class="box-border h-11 w-full rounded-full border-0 bg-white/88 pr-4 pl-9 text-sm font-medium text-stone-900 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none placeholder:text-stone-400" />
+        </label>
+        <button
+          type="submit"
+          class="inline-flex h-11 shrink-0 items-center justify-center rounded-full border-0 bg-stone-900 px-4 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(24,19,16,0.12)] ring-0 outline-none">
+          검색
+        </button>
+      </div>
+      <label
+        class="relative inline-block"
+        for="admin-book-scope">
+        <span class="sr-only">도서 범위</span>
+        <select
+          id="admin-book-scope"
+          name="scope"
+          class="h-10 appearance-none rounded-full border-0 bg-white/88 pr-9 pl-4 text-sm font-semibold text-stone-700 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)] outline-none">
+          <option
+            value="unused"
+            <%= scope === 'unused' ? 'selected' : '' %>>
+            미사용 도서
+          </option>
+          <option
+            value="all"
+            <%= scope === 'all' ? 'selected' : '' %>>
+            전체 도서
+          </option>
+        </select>
+        <span
+          class="i-lucide-chevron-down pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-stone-400"
+          aria-hidden="true"></span>
+      </label>
+    </form>
+
+    <div class="space-y-3">
+      <% if (!books.length) { %>
+      <p
+        class="m-0 rounded-[1.4rem] bg-[#fbf7ef] px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+        해당하는 도서가 없습니다.
+      </p>
+      <% } %>
+      <% books.forEach(function (book) { %>
+      <article class="rounded-[1.25rem] bg-[#faf7ef] p-4 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0 space-y-1">
+            <h2 class="m-0 text-base leading-6 font-semibold break-words text-stone-950"><%= book.title %></h2>
+            <p class="m-0 text-xs leading-5 break-words text-stone-500"><%= book.author %></p>
+          </div>
+          <form
+            method="post"
+            action="<%= formAction %>"
+            onsubmit="return confirm(this.dataset.confirm)"
+            data-confirm="<%= book.deleteConfirmation %>"
+            class="shrink-0">
+            <input
+              type="hidden"
+              name="action"
+              value="delete" />
+            <input
+              type="hidden"
+              name="bookId"
+              value="<%= book.bookId %>" />
+            <input
+              type="hidden"
+              name="userCount"
+              value="<%= book.userCount %>" />
+            <button
+              type="submit"
+              class="inline-flex h-9 items-center justify-center rounded-full border-0 bg-rose-50 px-3 text-sm font-semibold text-rose-700 shadow-[inset_0_0_0_1px_rgba(225,29,72,0.12)] ring-0 transition outline-none hover:bg-rose-100"
+              aria-label="<%= book.title %> 영구 삭제">
+              삭제
+            </button>
+          </form>
+        </div>
+        <div class="mt-3 space-y-2 text-xs leading-5 text-stone-500">
+          <p class="m-0">
+            EPUB <%= book.fileCount %>개 · <%= book.fileSizeLabel %> · 음성 파일 <%= book.audioCount %>개
+          </p>
+          <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <p class="m-0 shrink-0 font-semibold text-stone-700">연결 인원 <%= book.userCount %>명</p>
+            <% if (book.userNames) { %>
+            <p class="m-0 min-w-0 break-all"><%= book.userNames %></p>
+            <% } %>
+          </div>
+        </div>
+      </article>
+      <% }) %>
+    </div>
+
+    <nav
+      aria-label="도서 목록 페이지"
+      class="mt-5 flex items-center justify-between gap-3 text-sm">
+      <div>
+        <% if (previousHref) { %>
+        <a
+          href="<%= previousHref %>"
+          class="inline-flex h-9 items-center rounded-full bg-white/88 px-3 font-semibold text-stone-700 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]">
+          이전
+        </a>
+        <% } %>
+      </div>
+      <span class="text-stone-500"><%= currentPage %> / <%= pageCount %> · <%= matched.total %>권</span>
+      <div>
+        <% if (nextHref) { %>
+        <a
+          href="<%= nextHref %>"
+          class="inline-flex h-9 items-center rounded-full bg-white/88 px-3 font-semibold text-stone-700 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.1)]">
+          다음
+        </a>
+        <% } %>
+      </div>
+    </nav>
+  </section>
+</section>

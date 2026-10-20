@@ -3,6 +3,7 @@ import { after, before, test } from 'node:test'
 import {
   copyFileSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -61,7 +62,7 @@ before(async () => {
     'APP_ENV=production\nDATA4LIBRARY_APIKEY=\nONESIGNAL_APPID=\nONESIGNAL_API_KEY=\n'
   )
   service = await startService({ serviceName: path.basename(fixtureDir), port: 18093, timeoutMs: 30000 })
-  for (const index of [1, 2, 3]) {
+  for (const index of [1, 2, 3, 4]) {
     const response = await fetch(service.baseUrl + '/api/collections/users/auth-with-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -193,4 +194,82 @@ test('Approved users can still add a book through EPUB upload', async () => {
     1,
     decodeURIComponent(response.headers.get('location'))
   )
+})
+
+test('Only administrators see and access book management; users cannot grant themselves admin access', async () => {
+  assert.doesNotMatch(await (await request('/')).text(), /href="\/admin\/books"/)
+  assert.match(await (await request('/', 4)).text(), /href="\/admin\/books"/)
+  for (const user of [0, 1, 2, 3]) {
+    assert.equal((await request('/admin/books', user)).status, 303)
+    assert.equal(
+      (await request('/admin/books', user, { action: 'delete', bookId: 'adminbook000001', userCount: '2' })).status,
+      303
+    )
+  }
+  const escalation = await fetch(service.baseUrl + '/api/collections/users/records/reviewuser00001', {
+    method: 'PATCH',
+    headers: { ...sessions[1], 'Content-Type': 'application/json' },
+    body: JSON.stringify({ admin_manager: true }),
+  })
+  const escalationState = await (await request('/_test/admin-state')).json()
+  assert.equal(escalation.status, 200)
+  assert.equal(escalationState.ownerAdmin, false, 'hidden admin_manager input is ignored by the Record API')
+  const signup = await fetch(service.baseUrl + '/api/collections/users/records', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: 'forged-admin@example.com',
+      password: 'test-password-1234',
+      passwordConfirm: 'test-password-1234',
+      admin_manager: true,
+    }),
+  })
+  assert.equal(signup.status, 200)
+  const state = await (await request('/_test/admin-state')).json()
+  assert.equal(state.counts.books, 1)
+  assert.equal(state.forgedAdminCount, 0)
+})
+
+test('Administrators can search all books, see members and delete unused books', async () => {
+  const unused = await request('/admin/books', 4)
+  assert.equal(unused.status, 200)
+  assert.match(await unused.text(), /미사용 관리 책/)
+  const listing = await request('/admin/books?scope=all&q=' + encodeURIComponent('관리 저자'), 4)
+  assert.equal(listing.status, 200)
+  const html = await listing.text()
+  assert.match(html, /관리 대상 책/)
+  assert.match(html, /연결 인원 2명/)
+  assert.match(html, /reader4@example.com/)
+  assert.match(html, /EPUB 2개/)
+  assert.match(html, /음성 파일 2개/)
+  assert.equal(
+    (await request('/admin/books', 4, { action: 'delete', bookId: 'unusedbook00001', userCount: '0' })).status,
+    303
+  )
+  assert.equal((await (await request('/_test/admin-state')).json()).unusedBookCount, 0)
+})
+
+test('Deleting a shared book checks the member count and removes all related records and stored files', async () => {
+  const beforeState = await (await request('/_test/admin-state')).json()
+  for (const count of Object.values(beforeState.counts)) assert.ok(count > 0)
+  assert.equal(beforeState.paths.length, 4)
+  for (const storedPath of beforeState.paths)
+    assert.ok(existsSync(path.join(beforeState.storageRoot, storedPath)), storedPath)
+  const stale = await request('/admin/books', 4, { action: 'delete', bookId: 'adminbook000001', userCount: '0' })
+  assert.equal(stale.status, 303)
+  assert.match(decodeURIComponent(stale.headers.get('location')), /연결 인원이 변경/)
+  assert.deepEqual((await (await request('/_test/admin-state')).json()).counts, beforeState.counts)
+  const deleted = await request('/admin/books?scope=all', 4, {
+    action: 'delete',
+    bookId: 'adminbook000001',
+    userCount: '2',
+  })
+  assert.equal(deleted.status, 303)
+  assert.match(decodeURIComponent(deleted.headers.get('location')), /책과 관련 데이터를 삭제/)
+  const state = await (await request('/_test/admin-state')).json()
+  for (const [collection, count] of Object.entries(state.counts)) assert.equal(count, 0, collection)
+  assert.equal(state.originalBookCount, 1)
+  assert.equal(state.originalFileCount, 1)
+  for (const storedPath of beforeState.paths)
+    assert.equal(existsSync(path.join(beforeState.storageRoot, storedPath)), false, storedPath)
 })
