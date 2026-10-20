@@ -207,6 +207,7 @@ function generateWithProviderResult(providerResult, overrides = {}) {
     module: { exports: {} },
     require: () => ({ createAiClient: () => ({ geminiSpeech: () => providerResult }) }),
     $security: { sha256: (text) => 'hash:' + text.length },
+    $filesystem: { fileFromBytes: () => 'audio-file' },
     Record: function () {
       this.fields = {}
       this.get = (name) => this.fields[name]
@@ -277,6 +278,37 @@ test('A chunk blocked once is replaced by two ordered parts and short chunks kee
     { attempt_count: 1, input_text: text }
   )
   assert.equal(other.fields.status, 'failed', 'only policy blocks are split')
+})
+
+test('Audio much shorter than its text is regenerated twice and then saved with a review note', () => {
+  // MPEG-1 44.1kHz 프레임 하나는 1152/44100초입니다.
+  const audioFor = (seconds) => ({
+    ok: true,
+    audio: {
+      data: mp3Bytes({
+        frames: Math.round((seconds * 44100) / 1152),
+        header: [0xff, 0xfb, 0x90, 0x00],
+        frameLength: 417,
+        id3: false,
+        trailer: false,
+      }).toString('base64'),
+      mimeType: 'audio/mp3',
+    },
+  })
+  const text = '가'.repeat(1300)
+  const skipped = generateWithProviderResult(audioFor(150), { input_text: text })
+  assert.equal(skipped.result.ok, false)
+  assert.equal(skipped.fields.status, 'failed')
+  assert.equal(skipped.fields.attempt_count, 1)
+  assert.match(skipped.fields.error_message, /짧게 생성되어\(초당 8\.\d자\) 다시 만듭니다/)
+  const kept = generateWithProviderResult(audioFor(150), { input_text: text, attempt_count: 2 })
+  assert.equal(kept.result.ok, true)
+  assert.equal(kept.fields.status, 'ready')
+  assert.match(kept.fields.error_message, /짧게 생성됐습니다.*재생성해 주세요/)
+  const normal = generateWithProviderResult(audioFor(240), { input_text: text })
+  assert.deepEqual([normal.fields.status, normal.fields.error_message], ['ready', ''])
+  const shortText = generateWithProviderResult(audioFor(20), { input_text: '가'.repeat(400) })
+  assert.equal(shortText.fields.status, 'ready', 'short chunks are not checked')
 })
 
 test('Gemini policy blocks are retried later for that chunk only and keep the provider reason', () => {

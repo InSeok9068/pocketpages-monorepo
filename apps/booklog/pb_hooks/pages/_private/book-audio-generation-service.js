@@ -3,6 +3,9 @@ const MAX_ATTEMPTS = 5
 const RETRY_DELAY_MS = 600000
 const SPLIT_AFTER_ATTEMPTS = 1
 const MIN_SPLIT_CHARS = 300
+const SHORT_CHECK_MIN_CHARS = 1000
+const MAX_CHARS_PER_SECOND = 6.5
+const SHORT_RETRY_LIMIT = 2
 
 /**
  * 구간을 지금 생성할 수 있는지 판단합니다.
@@ -185,6 +188,22 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
     }
     if (!result.audio) throw new Error('음성을 받지 못했습니다.')
     const audio = decodeMp3(result.audio.data, result.audio.mimeType)
+    const inputText = String(chunk.get('input_text'))
+    const rate = inputText.replace(/\s+/g, '').length / Math.max(audio.durationSeconds, 1)
+    // 실측 정상 낭독은 공백 제외 초당 5.1~5.8자이고, 문장을 건너뛴 음성은 6.5자를 넘었습니다.
+    const short = inputText.length >= SHORT_CHECK_MIN_CHARS && rate > MAX_CHARS_PER_SECOND
+    const rateLabel = '초당 ' + rate.toFixed(1) + '자'
+    if (short && Number(chunk.get('attempt_count') || 0) < SHORT_RETRY_LIMIT) {
+      markFailed(app, chunkId, claimedAt, '음성이 원문보다 짧게 생성되어(' + rateLabel + ') 다시 만듭니다.', true)
+      return {
+        ok: false,
+        statusCode: 502,
+        blocked: false,
+        split: false,
+        error: 'audio shorter than text (' + rate.toFixed(2) + ' chars/s)',
+        detail: '',
+      }
+    }
     // JSVM은 ArrayBuffer를 []byte로 바로 변환합니다. number[] 변환은 수백 MB 메모리를 씁니다.
     const audioFile = $filesystem.fileFromBytes(/** @type {any} */ (audio.bytes.buffer), 'audio.mp3')
     const saved = updateClaimed(app, chunkId, claimedAt, function (current) {
@@ -192,7 +211,12 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
       current.set('duration_seconds', audio.durationSeconds)
       current.set('generated_at', new Date().toISOString())
       current.set('status', 'ready')
-      current.set('error_message', '')
+      current.set(
+        'error_message',
+        short
+          ? '음성이 원문보다 짧게 생성됐습니다(' + rateLabel + '). 내용이 빠졌는지 들어 보고 필요하면 재생성해 주세요.'
+          : ''
+      )
       current.set('next_retry_at', '')
     })
     return {
