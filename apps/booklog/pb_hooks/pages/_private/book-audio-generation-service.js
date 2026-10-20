@@ -33,15 +33,6 @@ function toMs(value) {
 }
 
 /**
- * ms를 PocketBase date 필터 비교용 문자열로 바꿉니다.
- * @param {number} ms 시각(ms)
- * @returns {string} `YYYY-MM-DD HH:mm:ss.SSSZ`
- */
-function toDbDate(ms) {
-  return new Date(ms).toISOString().replace('T', ' ')
-}
-
-/**
  * 트랜잭션 안에서 구간 생성 소유권을 확보합니다.
  * @param {types.BooklogApp} txApp 트랜잭션 앱
  * @param {core.Record} chunk 생성할 구간
@@ -345,7 +336,6 @@ module.exports = {
   MAX_ATTEMPTS,
   isClaimable,
   toMs,
-  toDbDate,
   claimChunk,
   generateClaimedChunk,
   splitInHalf,

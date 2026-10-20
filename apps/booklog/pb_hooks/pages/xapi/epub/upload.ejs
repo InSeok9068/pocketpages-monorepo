@@ -33,9 +33,9 @@
     resolveBookLookup,
     loadBookDetailByIsbn13,
   } = epubBookMetadataService
-  function findFirstRecordOrNull(collectionName, filter, queryValues) {
+  function findFirstRecordOrNull(app, collectionName, filter, queryValues) {
     try {
-      return $app.findFirstRecordByFilter(collectionName, filter, queryValues || {})
+      return app.findFirstRecordByFilter(collectionName, filter, queryValues || {})
     } catch (exception) {
       return null
     }
@@ -43,7 +43,7 @@
 
   function resolveExistingBookFileLookup(fileLookupInput) {
     const textFileHash = buildEpubTextFileHash(fileLookupInput.archiveSnapshot, fileLookupInput.fileSize)
-    const existingTextHashRecord = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
+    const existingTextHashRecord = findFirstRecordOrNull($app, 'book_files', 'file_hash = {:fileHash}', {
       fileHash: textFileHash,
     })
 
@@ -56,6 +56,7 @@
     }
 
     const legacyCandidateRecord = findFirstRecordOrNull(
+      $app,
       'book_files',
       'original_name = {:originalName} && file_size = {:fileSize}',
       {
@@ -73,7 +74,7 @@
     }
 
     const legacyFileHash = buildLegacyBinaryFileHash(fileLookupInput.readEpubByteArray())
-    const existingLegacyHashRecord = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
+    const existingLegacyHashRecord = findFirstRecordOrNull($app, 'book_files', 'file_hash = {:fileHash}', {
       fileHash: legacyFileHash,
     })
 
@@ -146,22 +147,23 @@
 
   /**
    * 도서 메타데이터를 기존 책에 반영하거나 새 책으로 저장합니다.
+   * @param {types.BooklogApp} app DB 앱
    * @param {object} bookInput 저장할 도서 값
    * @param {string} [bookInput.existingBookId] 우선 재사용할 기존 책 ID
    * @returns {Record} 저장된 책 레코드
    */
-  function saveBookRecord(bookInput) {
-    const collection = $app.findCollectionByNameOrId('books')
+  function saveBookRecord(app, bookInput) {
+    const collection = app.findCollectionByNameOrId('books')
     let record = null
 
     if (bookInput.existingBookId) {
-      record = findFirstRecordOrNull('books', 'id = {:bookId}', {
+      record = findFirstRecordOrNull(app, 'books', 'id = {:bookId}', {
         bookId: bookInput.existingBookId,
       })
     }
 
     if (!record && bookInput.isbn13) {
-      record = findFirstRecordOrNull('books', 'isbn13 = {:isbn13}', {
+      record = findFirstRecordOrNull(app, 'books', 'isbn13 = {:isbn13}', {
         isbn13: bookInput.isbn13,
       })
     }
@@ -171,7 +173,7 @@
       const recordIsbn13 = String(record.get('isbn13') || '')
 
       if (recordIsbn13 !== bookInput.isbn13) {
-        const matchedIsbnRecord = findFirstRecordOrNull('books', 'isbn13 = {:isbn13}', {
+        const matchedIsbnRecord = findFirstRecordOrNull(app, 'books', 'isbn13 = {:isbn13}', {
           isbn13: bookInput.isbn13,
         })
 
@@ -210,7 +212,7 @@
     record.set('description', bookInput.description)
     record.set('metadata_json', bookInput.metadataJson)
 
-    $app.save(record)
+    app.save(record)
 
     dbg('xapi/epub/upload:save-book:done', {
       id: record.get('id'),
@@ -221,9 +223,9 @@
     return record
   }
 
-  function saveBookFileRecord(fileInput) {
-    const collection = $app.findCollectionByNameOrId('book_files')
-    let record = findFirstRecordOrNull('book_files', 'file_hash = {:fileHash}', {
+  function saveBookFileRecord(app, fileInput) {
+    const collection = app.findCollectionByNameOrId('book_files')
+    let record = findFirstRecordOrNull(app, 'book_files', 'file_hash = {:fileHash}', {
       fileHash: fileInput.fileHash,
     })
 
@@ -268,7 +270,7 @@
       hasStoredFile: !!record.get('stored_file'),
     })
 
-    $app.save(record)
+    app.save(record)
 
     dbg('xapi/epub/upload:save-book-file:done', {
       id: record.get('id'),
@@ -279,16 +281,42 @@
     return record
   }
 
-  function findBookShelfRecord(userId, bookId) {
-    return findFirstRecordOrNull('book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
+  function findBookShelfRecord(app, userId, bookId) {
+    return findFirstRecordOrNull(app, 'book_shelves', 'user_id = {:userId} && book_id = {:bookId}', {
       userId: userId,
       bookId: bookId,
     })
   }
 
-  function saveBookShelfRecord(shelfInput) {
-    const collection = $app.findCollectionByNameOrId('book_shelves')
-    let record = findBookShelfRecord(shelfInput.userId, shelfInput.bookId)
+  /**
+   * 도서함 중복과 권수 제한을 확인합니다.
+   * @param {types.BooklogApp} app DB 앱
+   * @param {string} userId 사용자 ID
+   * @param {string[]} bookIds 연결될 수 있는 책 ID 목록
+   * @param {number} shelfBookLimit 최대 도서 수
+   * @returns {''|'duplicate'|'full'} 충돌 종류
+   */
+  function findShelfConflict(app, userId, bookIds, shelfBookLimit) {
+    for (let index = 0; index < bookIds.length; index += 1) {
+      if (bookIds[index] && findBookShelfRecord(app, userId, bookIds[index])) {
+        return 'duplicate'
+      }
+    }
+
+    if (app.countRecords('book_shelves', $dbx.hashExp({ user_id: userId })) >= shelfBookLimit) {
+      return 'full'
+    }
+
+    return ''
+  }
+
+  function createUserError(message) {
+    return Object.assign(new Error(message), { userMessage: message })
+  }
+
+  function saveBookShelfRecord(app, shelfInput) {
+    const collection = app.findCollectionByNameOrId('book_shelves')
+    let record = findBookShelfRecord(app, shelfInput.userId, shelfInput.bookId)
 
     if (!record) {
       record = new Record(collection)
@@ -305,7 +333,7 @@
     })
 
     record.set('book_file_id', shelfInput.bookFileId)
-    $app.save(record)
+    app.save(record)
 
     dbg('xapi/epub/upload:save-shelf:done', {
       id: record.get('id'),
@@ -387,13 +415,13 @@
     const epubFile = uploadedFiles[0]
 
     if (!epubFile) {
-      throw new Error('EPUB 파일이 필요합니다.')
+      throw createUserError('EPUB 파일이 필요합니다.')
     }
 
     const originalFileName = String(epubFile.originalName || epubFile.name || '').trim()
 
     if (!/\.epub$/i.test(originalFileName)) {
-      throw new Error('EPUB 파일만 업로드할 수 있습니다.')
+      throw createUserError('EPUB 파일만 업로드할 수 있습니다.')
     }
 
     dbg('xapi/epub/upload:selected-file', {
@@ -411,7 +439,7 @@
     })
 
     if (fileSize > MAX_EPUB_BYTES) {
-      throw new Error('EPUB 파일은 최대 100MB까지 업로드할 수 있습니다.')
+      throw createUserError('EPUB 파일은 최대 100MB까지 업로드할 수 있습니다.')
     }
 
     let cachedEpubByteArray = null
@@ -460,7 +488,7 @@
     })
     const existingBookId =
       existingBookFile && existingBookFile.get('book_id') ? String(existingBookFile.get('book_id')) : ''
-    const existingShelfRecord = existingBookId ? findBookShelfRecord(userId, existingBookId) : null
+    const existingShelfRecord = existingBookId ? findBookShelfRecord($app, userId, existingBookId) : null
 
     if (existingShelfRecord) {
       const duplicateMessage = '같은 책이 이미 도서함에 존재합니다.'
@@ -484,7 +512,7 @@
     }
 
     const existingBookRecord = existingBookId
-      ? findFirstRecordOrNull('books', 'id = {:bookId}', {
+      ? findFirstRecordOrNull($app, 'books', 'id = {:bookId}', {
           bookId: existingBookId,
         })
       : null
@@ -509,26 +537,42 @@
     })
 
     if (canReuseExistingBookFile) {
-      if (isShelfAtCapacity) {
-        const shelfLimitMessage = '내 도서함은 최대 ' + shelfBookLimit + '권까지 보관할 수 있습니다.'
+      let reuseConflict = isShelfAtCapacity ? 'full' : ''
+      let shelfRecord = null
+
+      if (!reuseConflict) {
+        $app.runInTransaction(function (txApp) {
+          reuseConflict = findShelfConflict(txApp, userId, [existingBookId], shelfBookLimit)
+
+          if (reuseConflict) {
+            return
+          }
+
+          shelfRecord = saveBookShelfRecord(txApp, {
+            userId: userId,
+            bookId: existingBookId,
+            bookFileId: existingBookFile.get('id'),
+          })
+        })
+      }
+
+      if (reuseConflict) {
+        const conflictMessage =
+          reuseConflict === 'duplicate'
+            ? '같은 책이 이미 도서함에 존재합니다.'
+            : '내 도서함은 최대 ' + shelfBookLimit + '권까지 보관할 수 있습니다.'
 
         dbg('xapi/epub/upload:redirect', {
           status: 303,
           redirectTo: '/',
-          message: shelfLimitMessage,
+          message: conflictMessage,
         })
         redirect('/', {
           status: 303,
-          message: shelfLimitMessage,
+          message: conflictMessage,
         })
         return
       }
-
-      const shelfRecord = saveBookShelfRecord({
-        userId: request.auth.get('id'),
-        bookId: existingBookId,
-        bookFileId: existingBookFile.get('id'),
-      })
 
       info('xapi/epub/upload:reuse-existing-book', {
         userId: request.auth.get('id'),
@@ -649,12 +693,12 @@
       detailBook && detailBook.isbn13 ? String(detailBook.isbn13) : matchedIsbn13 || epubMetadata.isbn13 || ''
 
     const existingIsbnBookRecord = resolvedIsbn13
-      ? findFirstRecordOrNull('books', 'isbn13 = {:isbn13}', {
+      ? findFirstRecordOrNull($app, 'books', 'isbn13 = {:isbn13}', {
           isbn13: resolvedIsbn13,
         })
       : null
     const existingIsbnBookId = existingIsbnBookRecord ? String(existingIsbnBookRecord.get('id') || '') : ''
-    const existingIsbnShelfRecord = existingIsbnBookId ? findBookShelfRecord(userId, existingIsbnBookId) : null
+    const existingIsbnShelfRecord = existingIsbnBookId ? findBookShelfRecord($app, userId, existingIsbnBookId) : null
 
     if (existingIsbnShelfRecord) {
       const duplicateMessage = '같은 책이 이미 도서함에 존재합니다.'
@@ -705,7 +749,7 @@
       pageDivisor: readingMetrics.pageDivisor,
       pageRule: readingMetrics.pageRule,
     })
-    const bookRecord = saveBookRecord({
+    const bookInput = {
       existingBookId: existingBookId,
       title: matchedBook && matchedBook.bookname ? matchedBook.bookname : fallbackTitle,
       author: matchedBook && matchedBook.authors ? matchedBook.authors : fallbackAuthor,
@@ -719,19 +763,8 @@
       estimatedPageCount: readingMetrics.estimatedPageCount,
       description: matchedBook && matchedBook.description ? matchedBook.description : '',
       metadataJson: detailResult ? detailResult.raw : null,
-    })
-    const resolvedBookId = bookRecord.get('id')
-
-    if (existingBookFile && existingBookFile.get('book_id') && existingBookFile.get('book_id') !== resolvedBookId) {
-      warn('xapi/epub/upload:file-book-mismatch', {
-        fileHash: fileHash,
-        existingBookId: existingBookFile.get('book_id'),
-        newBookId: resolvedBookId,
-      })
     }
-
-    const bookFileRecord = saveBookFileRecord({
-      bookId: resolvedBookId,
+    const fileInput = {
       originalName: epubFile.originalName || epubFile.name,
       uploadedFile: epubFile,
       mimeType: normalizePreview(mimetypeText, 120) || 'application/epub+zip',
@@ -745,18 +778,115 @@
       chapterCount: readingMetrics.chapterCount,
       tocJson: [],
       manifestJson: manifestItems,
-    })
-    const shelfRecord = saveBookShelfRecord({
-      userId: request.auth.get('id'),
-      bookId: resolvedBookId,
-      bookFileId: bookFileRecord.get('id'),
+    }
+    let saveConflict = ''
+    let saveResult = null
+
+    $app.runInTransaction(function (txApp) {
+      // 분석하는 동안 다른 요청이 같은 파일을 먼저 저장했으면 그 책과 파일에 연결만 합니다.
+      const concurrentBookFile = existingBookFile
+        ? null
+        : findFirstRecordOrNull(txApp, 'book_files', 'file_hash = {:fileHash}', { fileHash: fileHash })
+
+      if (concurrentBookFile) {
+        const concurrentBookId = String(concurrentBookFile.get('book_id') || '')
+
+        saveConflict = findShelfConflict(txApp, userId, [concurrentBookId], shelfBookLimit)
+
+        if (saveConflict) {
+          return
+        }
+
+        const concurrentShelfRecord = saveBookShelfRecord(txApp, {
+          userId: userId,
+          bookId: concurrentBookId,
+          bookFileId: concurrentBookFile.get('id'),
+        })
+
+        saveResult = {
+          reused: true,
+          bookId: concurrentBookId,
+          bookFileId: String(concurrentBookFile.get('id')),
+          shelfId: String(concurrentShelfRecord.get('id')),
+        }
+        return
+      }
+
+      const isbnBookRecord = resolvedIsbn13
+        ? findFirstRecordOrNull(txApp, 'books', 'isbn13 = {:isbn13}', { isbn13: resolvedIsbn13 })
+        : null
+
+      saveConflict = findShelfConflict(
+        txApp,
+        userId,
+        [existingBookId, isbnBookRecord ? String(isbnBookRecord.get('id')) : ''],
+        shelfBookLimit
+      )
+
+      if (saveConflict) {
+        return
+      }
+
+      const bookRecord = saveBookRecord(txApp, bookInput)
+      const resolvedBookId = String(bookRecord.get('id'))
+
+      if (existingBookFile && existingBookFile.get('book_id') && existingBookFile.get('book_id') !== resolvedBookId) {
+        warn('xapi/epub/upload:file-book-mismatch', {
+          fileHash: fileHash,
+          existingBookId: existingBookFile.get('book_id'),
+          newBookId: resolvedBookId,
+        })
+      }
+
+      const bookFileRecord = saveBookFileRecord(txApp, Object.assign({ bookId: resolvedBookId }, fileInput))
+      const shelfRecord = saveBookShelfRecord(txApp, {
+        userId: userId,
+        bookId: resolvedBookId,
+        bookFileId: bookFileRecord.get('id'),
+      })
+
+      saveResult = {
+        reused: false,
+        bookId: resolvedBookId,
+        bookFileId: String(bookFileRecord.get('id')),
+        shelfId: String(shelfRecord.get('id')),
+      }
     })
 
+    if (saveConflict) {
+      const conflictMessage =
+        saveConflict === 'duplicate'
+          ? '같은 책이 이미 도서함에 존재합니다.'
+          : '내 도서함은 최대 ' + shelfBookLimit + '권까지 보관할 수 있습니다.'
+
+      info('xapi/epub/upload:save-conflict', {
+        userId: userId,
+        conflict: saveConflict,
+        fileHash: fileHash,
+        isbn13: resolvedIsbn13,
+      })
+      dbg('xapi/epub/upload:redirect', {
+        status: 303,
+        redirectTo: '/',
+        message: conflictMessage,
+      })
+      redirect('/', {
+        status: 303,
+        message: conflictMessage,
+      })
+      return
+    }
+
+    const successMessage = saveResult.reused
+      ? '기존 책과 파일을 찾아 서재에 연결했습니다.'
+      : 'EPUB 파일과 도서 메타데이터를 저장했습니다.'
+
     info('xapi/epub/upload:success', {
-      userId: request.auth.get('id'),
-      bookId: resolvedBookId,
-      bookFileId: bookFileRecord.get('id'),
-      shelfId: shelfRecord.get('id'),
+      userId: userId,
+      bookId: saveResult.bookId,
+      bookFileId: saveResult.bookFileId,
+      shelfId: saveResult.shelfId,
+      reused: saveResult.reused,
       fileHash: fileHash,
       epubTitle: epubMetadata.title,
       epubAuthor: epubMetadata.author,
@@ -769,15 +899,19 @@
     dbg('xapi/epub/upload:redirect', {
       status: 303,
       redirectTo: '/',
-      message: 'EPUB 파일과 도서 메타데이터를 저장했습니다.',
+      message: successMessage,
     })
     redirect('/', {
       status: 303,
-      message: 'EPUB 파일과 도서 메타데이터를 저장했습니다.',
+      message: successMessage,
     })
     return
   } catch (exception) {
     const errorMessage = String(exception.message || exception)
+    const userMessage =
+      exception && exception.userMessage
+        ? String(exception.userMessage)
+        : '업로드 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
 
     error('xapi/epub/upload:failed', {
       error: errorMessage,
@@ -786,11 +920,12 @@
     dbg('xapi/epub/upload:redirect', {
       status: 303,
       redirectTo: '/',
+      message: userMessage,
       error: errorMessage,
     })
     redirect('/', {
       status: 303,
-      message: errorMessage,
+      message: userMessage,
     })
     return
   }

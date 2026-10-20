@@ -196,6 +196,85 @@ test('Approved users can still add a book through EPUB upload', async () => {
   )
 })
 
+test('Concurrent uploads of the same new EPUB leave one book, one stored file and one shelf entry', async () => {
+  const { zipSync, strToU8 } = require('fflate')
+  const title = 'concurrent-upload-race'
+  const bytes = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+    ),
+    'OPS/book.opf': strToU8(
+      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>' + title + '</dc:title><dc:creator>동시 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+    ),
+    'OPS/body.xhtml': strToU8('<html><body><p>같은 파일을 동시에 여러 번 올려도 한 권만 남아야 합니다.</p></body></html>'),
+  })
+  const responses = await Promise.all(
+    [1, 2, 3].map(() => {
+      const form = new FormData()
+      form.set('epubFile', new Blob([bytes], { type: 'application/epub+zip' }), title + '.epub')
+      return fetch(service.baseUrl + '/xapi/epub/upload', {
+        method: 'POST',
+        headers: sessions[1],
+        redirect: 'manual',
+        body: form,
+      })
+    })
+  )
+  const messages = responses.map((response) => decodeURIComponent(response.headers.get('location') || ''))
+  for (const response of responses) assert.equal(response.status, 303)
+  const state = await (await request('/_test/upload-state?title=' + encodeURIComponent(title))).json()
+  assert.equal(state.bookCount, 1, messages.join('\n'))
+  assert.equal(state.files.length, 1, messages.join('\n'))
+  assert.deepEqual(state.shelves, [{ userId: 'reviewuser00001', bookFileId: state.files[0].id }], messages.join('\n'))
+  assert.ok(existsSync(path.join(state.storageRoot, state.files[0].path)), 'stored EPUB file exists')
+  assert.equal(messages.filter((message) => message.includes('EPUB 파일과 도서 메타데이터를 저장했습니다.')).length, 1)
+  for (const message of messages) assert.doesNotMatch(message, /UNIQUE|constraint|validation_/i)
+})
+
+test('A failed shelf save rolls back the new book, file record and stored EPUB file', async () => {
+  const { zipSync, strToU8 } = require('fflate')
+  const { readdirSync } = await import('node:fs')
+  const title = 'rollback-upload-case'
+  const bytes = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+    ),
+    'OPS/book.opf': strToU8(
+      '<package version="3.0"><metadata></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+    ),
+    'OPS/body.xhtml': strToU8('<html><body><p>도서함 저장이 실패하면 책과 파일이 모두 되돌려져야 합니다.</p></body></html>'),
+  })
+  const { storageRoot } = await (await request('/_test/upload-state?title=' + encodeURIComponent(title))).json()
+  const storageDir = path.join(storageRoot, 'pbc_1101001002')
+  const countStoredFiles = () =>
+    existsSync(storageDir) ? readdirSync(storageDir, { recursive: true }).filter((name) => /\.epub$/i.test(name)).length : 0
+  const storedBefore = countStoredFiles()
+  assert.ok(storedBefore > 0, 'storage path points at existing book_files uploads')
+  await fetch(service.baseUrl + '/_test/fail-shelf-save?on=true', { method: 'POST' })
+  try {
+    const form = new FormData()
+    form.set('epubFile', new Blob([bytes], { type: 'application/epub+zip' }), title + '.epub')
+    const response = await fetch(service.baseUrl + '/xapi/epub/upload', {
+      method: 'POST',
+      headers: sessions[1],
+      redirect: 'manual',
+      body: form,
+    })
+    const message = decodeURIComponent(response.headers.get('location') || '')
+    assert.equal(response.status, 303)
+    assert.match(message, /업로드 중 문제가 발생했습니다/)
+    assert.doesNotMatch(message, /forced shelf save failure/)
+  } finally {
+    await fetch(service.baseUrl + '/_test/fail-shelf-save?on=false', { method: 'POST' })
+  }
+  const state = await (await request('/_test/upload-state?title=' + encodeURIComponent(title))).json()
+  assert.equal(state.bookCount, 0, 'book record rolled back')
+  assert.equal(state.files.length, 0, 'file record rolled back')
+  assert.equal(countStoredFiles(), storedBefore, 'stored EPUB file removed after rollback')
+})
+
 test('Only administrators see and access book management; users cannot grant themselves admin access', async () => {
   assert.doesNotMatch(await (await request('/')).text(), /href="\/admin\/books"/)
   assert.match(await (await request('/', 4)).text(), /href="\/admin\/books"/)

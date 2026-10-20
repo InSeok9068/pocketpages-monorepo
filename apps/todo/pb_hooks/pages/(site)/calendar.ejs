@@ -23,8 +23,8 @@
   const nextMonthStart = String(nextMonthYear) + '-' + nextMonthText + '-01'
   const monthEnd = dateutil.addDays(dateutil.startOfDay(nextMonthStart), -1)
   const workCards = todoData.listWorkCards(userId, {
-    dueFrom: dateutil.startOfDay(monthStart).toISOString(),
-    dueTo: dateutil.endOfDay(monthEnd).toISOString(),
+    dueFrom: dateutil.dbStartOfDay(monthStart),
+    dueTo: dateutil.dbEndOfDay(monthEnd),
     developerId: selectedDeveloper,
     sort: '-dueDate,+sort',
     limit: 500,

@@ -293,8 +293,8 @@ function findNextChunk(app, job, nowMs) {
         fileId: String(job.get('file_id')),
         configHash: String(job.get('config_hash')),
         maxAttempts: generation.MAX_ATTEMPTS,
-        now: generation.toDbDate(nowMs),
-        staleBefore: generation.toDbDate(nowMs - generation.CLAIM_TTL_MS),
+        now: dateutil.toDbDateTime(nowMs),
+        staleBefore: dateutil.toDbDateTime(nowMs - generation.CLAIM_TTL_MS),
       }
     )[0] || null
   )

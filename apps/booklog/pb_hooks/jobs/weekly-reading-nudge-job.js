@@ -23,8 +23,8 @@ function getCurrentKoreanWeekWindow(nowDate) {
 
   return {
     weekKey: weekKey,
-    weekStartIso: dateutil.startOfDay(weekKey).toISOString(),
-    weekEndIso: sourceDate.toISOString(),
+    weekStartIso: dateutil.dbStartOfDay(weekKey),
+    weekEndIso: dateutil.toDbDateTime(sourceDate),
   }
 }
 

@@ -1,4 +1,5 @@
 <script server>
+  const { dateutil } = require('@pocketpages/utils')
   const htmxResponse = resolve('htmx-response')
   const todoData = resolve('todo-data')
   const form = body()
@@ -21,7 +22,7 @@
     if (!Array.isArray(order)) throw new Error('이동 값이 올바르지 않습니다.')
     const validStates = {}
     for (let index = 0; index < stateOptions.length; index += 1) validStates[stateOptions[index].value] = true
-    const bindings = { userId, updated: new Date().toISOString() }
+    const bindings = { userId, updated: dateutil.toDbDateTime(new Date()) }
     const stateCases = []
     const sortCases = []
     const idPlaceholders = []

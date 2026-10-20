@@ -43,8 +43,8 @@
   const developers = todoData.listDevelopers(userId)
   const workCards = todoData.listWorkCards(userId, {
     developerId: selectedDeveloper,
-    updatedFrom: dateutil.startOfDay(updatedFrom).toISOString(),
-    updatedTo: dateutil.endOfDay(updatedTo).toISOString(),
+    updatedFrom: dateutil.dbStartOfDay(updatedFrom),
+    updatedTo: dateutil.dbEndOfDay(updatedTo),
     sort: '-updated',
     limit: 500,
   })

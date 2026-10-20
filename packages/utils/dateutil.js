@@ -216,6 +216,25 @@ function toDateOnlyIso(value) {
 }
 
 /**
+ * 시각 값을 PB date 저장 형식 문자열로 바꿉니다.
+ *
+ * 필터·SQL에서 DB 날짜와 비교하거나 raw SQL로 저장할 때 사용합니다.
+ * PB는 `YYYY-MM-DD HH:mm:ss.SSSZ`로 저장하므로 `toISOString()`의 `T` 형식과는 문자열 비교가 어긋납니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} value 시각 값
+ * @returns {string} `YYYY-MM-DD HH:mm:ss.SSSZ` 문자열, 해석할 수 없으면 빈 문자열
+ */
+function toDbDateTime(value) {
+  const utcMs = toUtcMs(value)
+
+  if (isNaN(utcMs)) {
+    return ''
+  }
+
+  return new Date(utcMs).toISOString().replace('T', ' ')
+}
+
+/**
  * 날짜에 일 수를 더한 뒤 KST 기준 Date 객체를 반환합니다.
  *
  * @param {Date|string|number|import('dayjs').Dayjs} value 기준 날짜
@@ -240,7 +259,7 @@ function addMonths(value, amount) {
 /**
  * KST 기준 해당 일자의 시작 시각을 반환합니다.
  *
- * 날짜 단위 검색의 시작 ISO를 만들 때 사용합니다.
+ * 코드 안의 날짜 계산에 사용합니다. DB 날짜와 비교할 때는 dbStartOfDay()를 사용합니다.
  *
  * @param {Date|string|number|import('dayjs').Dayjs} value 날짜 값
  * @returns {Date} KST 기준 00:00:00.000 Date 객체
@@ -252,13 +271,33 @@ function startOfDay(value) {
 /**
  * KST 기준 해당 일자의 끝 시각을 반환합니다.
  *
- * 날짜 단위 검색의 종료 ISO를 만들 때 사용합니다.
+ * 코드 안의 날짜 계산에 사용합니다. DB 날짜와 비교할 때는 dbEndOfDay()를 사용합니다.
  *
  * @param {Date|string|number|import('dayjs').Dayjs} value 날짜 값
  * @returns {Date} KST 기준 23:59:59.999 Date 객체
  */
 function endOfDay(value) {
   return new Date(toBusinessDayjs(value).endOf('day').valueOf() - KST_OFFSET_MS)
+}
+
+/**
+ * KST 기준 해당 일자의 시작 시각을 PB date 비교용 문자열로 반환합니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} value 날짜 값
+ * @returns {string} `YYYY-MM-DD HH:mm:ss.SSSZ` 문자열, 해석할 수 없으면 빈 문자열
+ */
+function dbStartOfDay(value) {
+  return toDbDateTime(startOfDay(value))
+}
+
+/**
+ * KST 기준 해당 일자의 끝 시각을 PB date 비교용 문자열로 반환합니다.
+ *
+ * @param {Date|string|number|import('dayjs').Dayjs} value 날짜 값
+ * @returns {string} `YYYY-MM-DD HH:mm:ss.SSSZ` 문자열, 해석할 수 없으면 빈 문자열
+ */
+function dbEndOfDay(value) {
+  return toDbDateTime(endOfDay(value))
 }
 
 /**
@@ -310,10 +349,13 @@ module.exports = {
   toDate,
   formatDate,
   toDateOnlyIso,
+  toDbDateTime,
   addDays,
   addMonths,
   startOfDay,
   endOfDay,
+  dbStartOfDay,
+  dbEndOfDay,
   isSameDay,
   diffDays,
   isBeforeDay,

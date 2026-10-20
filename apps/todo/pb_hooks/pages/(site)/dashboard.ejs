@@ -14,7 +14,7 @@
   const stateOptions = todoData.listWorkStates()
   const developers = todoData.listDevelopers(userId)
   const urgentDays = workView.getUrgentDays(todoData.findSetting(userId))
-  const urgentThrough = dateutil.endOfDay(dateutil.addDays(new Date(), urgentDays)).toISOString()
+  const urgentThrough = dateutil.dbEndOfDay(dateutil.addDays(new Date(), urgentDays))
   let developerCondition = ''
   if (selectedDeveloper === '__unassigned__') {
     developerCondition = " AND (developer IS NULL OR developer = '')"

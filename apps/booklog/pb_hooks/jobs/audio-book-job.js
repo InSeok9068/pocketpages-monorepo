@@ -1,3 +1,5 @@
+const { dateutil } = require('@pocketpages/utils')
+
 const QUOTA_WAIT_MS = 30 * 60 * 1000
 const FAILURE_WAIT_MS = 10 * 60 * 1000
 
@@ -19,7 +21,7 @@ function run() {
     '',
     1,
     0,
-    { staleBefore: generation.toDbDate(nowMs - generation.CLAIM_TTL_MS) }
+    { staleBefore: dateutil.toDbDateTime(nowMs - generation.CLAIM_TTL_MS) }
   )[0]
   if (inFlight) return { jobId: '', chunkId: String(inFlight.get('id')), statusCode: 202 }
   const job = $app.findRecordsByFilter(
@@ -28,7 +30,7 @@ function run() {
     'next_run_at,created',
     1,
     0,
-    { now: generation.toDbDate(nowMs) }
+    { now: dateutil.toDbDateTime(nowMs) }
   )[0]
   if (!job) return { jobId: '', chunkId: '', statusCode: 0 }
   const jobId = String(job.get('id'))

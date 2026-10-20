@@ -59,10 +59,10 @@
   }
   if (query.done === 'true') filters.done = true
   if (query.done === 'false') filters.done = false
-  if (query.createdFrom) filters.createdFrom = dateutil.startOfDay(query.createdFrom).toISOString()
-  if (query.createdTo) filters.createdTo = dateutil.endOfDay(query.createdTo).toISOString()
-  if (query.updatedFrom) filters.updatedFrom = dateutil.startOfDay(query.updatedFrom).toISOString()
-  if (query.updatedTo) filters.updatedTo = dateutil.endOfDay(query.updatedTo).toISOString()
+  if (query.createdFrom) filters.createdFrom = dateutil.dbStartOfDay(query.createdFrom)
+  if (query.createdTo) filters.createdTo = dateutil.dbEndOfDay(query.createdTo)
+  if (query.updatedFrom) filters.updatedFrom = dateutil.dbStartOfDay(query.updatedFrom)
+  if (query.updatedTo) filters.updatedTo = dateutil.dbEndOfDay(query.updatedTo)
   const workCards = todoData.listWorkCards(userId, filters)
   dbg('todo/list:response', { userId, workCount: workCards.length })
 </script>

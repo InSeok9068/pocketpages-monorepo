@@ -1,4 +1,4 @@
-/* global onBootstrap, $app, $os, __hooks, Record, $filesystem, $security, routerAdd, $dbx */
+/* global onBootstrap, $app, $os, __hooks, Record, $filesystem, $security, routerAdd, $dbx, onRecordCreate */
 onBootstrap(function (event) {
   event.next()
   $app.importCollectionsByMarshaledJSON($os.readFile(__hooks + '/test-schema.json'), false)
@@ -123,6 +123,34 @@ routerAdd('GET', '/_test/access-state', function (event) {
     strangerShelfCount: $app.countRecords('book_shelves', $dbx.hashExp({ user_id: 'reviewuser00002' })),
     pendingApproved: pending.get('booklog_enabled'),
   })
+})
+
+onRecordCreate(function (event) {
+  if ($app.store().get('failShelfSave') === true) {
+    throw new Error('forced shelf save failure')
+  }
+  event.next()
+}, 'book_shelves')
+
+routerAdd('POST', '/_test/fail-shelf-save', function (event) {
+  $app.store().set('failShelfSave', String(event.request.url.query().get('on')) === 'true')
+  return event.json(200, { ok: true })
+})
+
+routerAdd('GET', '/_test/upload-state', function (event) {
+  const title = String(event.request.url.query().get('title'))
+  const books = $app.findRecordsByFilter('books', 'title = {:title}', '', 0, 0, { title })
+  const files = []
+  const shelves = []
+  books.forEach(function (book) {
+    $app.findRecordsByFilter('book_files', 'book_id = {:bookId}', '', 0, 0, { bookId: book.id }).forEach(function (file) {
+      files.push({ id: file.id, path: file.baseFilesPath() + '/' + file.get('stored_file') })
+    })
+    $app.findRecordsByFilter('book_shelves', 'book_id = {:bookId}', '', 0, 0, { bookId: book.id }).forEach(function (shelf) {
+      shelves.push({ userId: shelf.get('user_id'), bookFileId: shelf.get('book_file_id') })
+    })
+  })
+  return event.json(200, { bookCount: books.length, files, shelves, storageRoot: $app.dataDir() + '/storage' })
 })
 
 routerAdd('POST', '/_test/approve', function (event) {

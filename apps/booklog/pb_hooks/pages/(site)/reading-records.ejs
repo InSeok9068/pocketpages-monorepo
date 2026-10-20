@@ -170,8 +170,8 @@
     )
     .bind({
       userId: userId,
-      weekStart: dateutil.startOfDay(currentWeekKey).toISOString().replace('T', ' '),
-      weekEnd: dateutil.startOfDay(dateutil.addDays(currentWeekKey, 7)).toISOString().replace('T', ' '),
+      weekStart: dateutil.dbStartOfDay(currentWeekKey),
+      weekEnd: dateutil.dbStartOfDay(dateutil.addDays(currentWeekKey, 7)),
     })
     .one(readingSummary)
 
@@ -189,14 +189,8 @@
     )
     .bind({
       userId: userId,
-      periodStart: dateutil
-        .startOfDay(dateutil.formatDate(periodStart, dateutil.FORMATS.DATE))
-        .toISOString()
-        .replace('T', ' '),
-      periodEnd: dateutil
-        .endOfDay(dateutil.formatDate(periodEnd, dateutil.FORMATS.DATE))
-        .toISOString()
-        .replace('T', ' '),
+      periodStart: dateutil.dbStartOfDay(dateutil.formatDate(periodStart, dateutil.FORMATS.DATE)),
+      periodEnd: dateutil.dbEndOfDay(dateutil.formatDate(periodEnd, dateutil.FORMATS.DATE)),
     })
     .all(sessionRows)
 

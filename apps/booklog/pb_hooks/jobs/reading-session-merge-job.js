@@ -33,7 +33,7 @@ function getKoreanDateKey(value) {
 function getCutoffIso(retentionDays) {
   const cutoffDate = dateutil.addDays(new Date(), -Number(retentionDays || 0))
 
-  return dateutil.startOfDay(cutoffDate).toISOString()
+  return dateutil.dbStartOfDay(cutoffDate)
 }
 
 /**

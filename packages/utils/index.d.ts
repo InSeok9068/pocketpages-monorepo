@@ -43,6 +43,12 @@ interface DateutilApi {
    * 실제 발생 시각 저장에는 사용하지 않습니다.
    */
   toDateOnlyIso(value: DateutilInput): string
+  /**
+   * 시각 값을 PB date 저장 형식(`YYYY-MM-DD HH:mm:ss.SSSZ`) 문자열로 바꿉니다.
+   *
+   * 필터·SQL에서 DB 날짜와 비교하거나 raw SQL로 저장할 때 사용합니다.
+   */
+  toDbDateTime(value: DateutilInput): string
   /** 날짜에 일 수를 더한 뒤 KST 기준 Date 객체를 반환합니다. */
   addDays(value: DateutilInput, amount: number): Date
   /** 날짜에 월 수를 더한 뒤 KST 기준 Date 객체를 반환합니다. */
@@ -50,15 +56,19 @@ interface DateutilApi {
   /**
    * KST 기준 해당 일자의 시작 시각을 반환합니다.
    *
-   * 날짜 단위 검색의 시작 ISO를 만들 때 사용합니다.
+   * 코드 안의 날짜 계산에 사용합니다. DB 날짜와 비교할 때는 dbStartOfDay()를 사용합니다.
    */
   startOfDay(value: DateutilInput): Date
   /**
    * KST 기준 해당 일자의 끝 시각을 반환합니다.
    *
-   * 날짜 단위 검색의 종료 ISO를 만들 때 사용합니다.
+   * 코드 안의 날짜 계산에 사용합니다. DB 날짜와 비교할 때는 dbEndOfDay()를 사용합니다.
    */
   endOfDay(value: DateutilInput): Date
+  /** KST 기준 해당 일자의 시작 시각을 PB date 비교용 문자열로 반환합니다. */
+  dbStartOfDay(value: DateutilInput): string
+  /** KST 기준 해당 일자의 끝 시각을 PB date 비교용 문자열로 반환합니다. */
+  dbEndOfDay(value: DateutilInput): string
   /** 두 날짜가 KST 기준으로 같은 날짜인지 확인합니다. */
   isSameDay(left: DateutilInput, right: DateutilInput): boolean
   /** 두 날짜의 KST 기준 일 차이를 반환합니다. */

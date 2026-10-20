@@ -77,8 +77,8 @@ function getDateTextDaysAgo(daysBeforeToday) {
  */
 function getDateRangeIso(dateText) {
   return {
-    startIso: dateutil.startOfDay(dateText).toISOString(),
-    endIso: dateutil.endOfDay(dateText).toISOString(),
+    startIso: dateutil.dbStartOfDay(dateText),
+    endIso: dateutil.dbEndOfDay(dateText),
   }
 }
 

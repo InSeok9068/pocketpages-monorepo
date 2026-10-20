@@ -89,8 +89,8 @@
         0,
         {
           userId: userId,
-          weekStart: dateutil.startOfDay(weekStartText).toISOString(),
-          weekEnd: dateutil.endOfDay(dateutil.formatDate(weekEndDate, dateutil.FORMATS.DATE)).toISOString(),
+          weekStart: dateutil.dbStartOfDay(weekStartText),
+          weekEnd: dateutil.dbEndOfDay(dateutil.formatDate(weekEndDate, dateutil.FORMATS.DATE)),
         }
       )
 
