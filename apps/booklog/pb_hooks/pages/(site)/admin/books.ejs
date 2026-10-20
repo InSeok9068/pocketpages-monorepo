@@ -23,6 +23,64 @@
 
   dbg('page/admin/books:start', { userId, method: request.method, scope, queryText })
 
+  if (request.method === 'POST' && body().action === 'audio-start') {
+    const form = body()
+    const bookId = String(form.bookId || '').trim()
+    const fileId = String(form.fileId || '').trim()
+    let message = ''
+    try {
+      // 관리자는 자기 도서함에 없는 책도 생성할 수 있지만, EPUB이 그 책의 파일인지는 확인합니다.
+      $app.findFirstRecordByFilter('book_files', 'id = {:fileId} && book_id = {:bookId}', { fileId, bookId })
+      const audioData = resolve('book-audio-data')
+      const job = audioData.findFileJob($app, fileId)
+      const options = audioData.getModelOptions($app, fileId)
+      const available = options.filter(function (option) {
+        return !option.disabled
+      })[0]
+      const model = job ? String(job.get('model')) : (available || options[0]).model
+      const result = resolve('book-audio-job-service').requestJob($app, fileId, userId, audioData.getSettings(model))
+      message = result.message || 'AI 오디오북 생성을 예약했습니다. 2분 안에 책을 분석해 생성을 시작합니다.'
+      info('page/admin/books:audio-requested', { userId, bookId, fileId, model, accepted: !result.message })
+    } catch (exception) {
+      error('page/admin/books:audio-request-failed', {
+        userId,
+        bookId,
+        fileId,
+        error: String(exception.message || exception),
+      })
+      message = 'AI 오디오북 생성을 요청하지 못했습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.'
+    }
+    const redirectTo = buildPageHref(requestedPage)
+    dbg('page/admin/books:redirect', { status: 303, redirectTo, message })
+    redirect(redirectTo, { status: 303, message })
+    return
+  }
+
+  if (request.method === 'POST' && body().action === 'audio-delete') {
+    const form = body()
+    const bookId = String(form.bookId || '').trim()
+    const fileId = String(form.fileId || '').trim()
+    let message = ''
+    try {
+      $app.findFirstRecordByFilter('book_files', 'id = {:fileId} && book_id = {:bookId}', { fileId, bookId })
+      const deleted = resolve('book-audio-job-service').deleteAudioBook($app, fileId)
+      info('page/admin/books:audio-deleted', { userId, bookId, fileId, deleted })
+      message = deleted.chunks + deleted.jobs > 0 ? 'AI 오디오북을 삭제했습니다.' : '삭제할 AI 오디오북이 없습니다.'
+    } catch (exception) {
+      error('page/admin/books:audio-delete-failed', {
+        userId,
+        bookId,
+        fileId,
+        error: String(exception.message || exception),
+      })
+      message = 'AI 오디오북을 삭제하지 못했습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.'
+    }
+    const redirectTo = buildPageHref(requestedPage)
+    dbg('page/admin/books:redirect', { status: 303, redirectTo, message })
+    redirect(redirectTo, { status: 303, message })
+    return
+  }
+
   if (request.method === 'POST') {
     const form = body()
     const bookId = String(form.bookId || '').trim()
@@ -124,10 +182,38 @@
     .bind(Object.assign({}, bindings, { limit: pageSize, offset: (currentPage - 1) * pageSize }))
     .all(rows)
 
+  const audioData = resolve('book-audio-data')
+  const audioJobService = resolve('book-audio-job-service')
+  const audioFilesByBook = {}
+  const fileBindings = {}
+  const fileFilter = rows
+    .map(function (row, index) {
+      fileBindings['book' + index] = String(row.bookId)
+      return 'book_id = {:book' + index + '}'
+    })
+    .join(' || ')
+  if (fileFilter) {
+    $app.findRecordsByFilter('book_files', fileFilter, 'created,id', 0, 0, fileBindings).forEach(function (file) {
+      const fileId = String(file.get('id'))
+      const job = audioData.findFileJob($app, fileId)
+      const view = job ? audioJobService.jobView(job) : null
+      const bookId = String(file.get('book_id'))
+      ;(audioFilesByBook[bookId] = audioFilesByBook[bookId] || []).push({
+        fileId,
+        name: String(file.get('original_name') || 'EPUB'),
+        statusLabel: view ? view.statusLabel : 'AI 오디오북 없음',
+        canRequest: !view || view.canStart,
+        requestLabel: view ? '생성 다시 시작' : 'AI 오디오북 생성',
+        canDelete: !!job || audioData.countFileChunks($app, fileId) > 0,
+      })
+    })
+  }
+
   const books = rows.map(function (row) {
     const title = String(row.title || '제목 없음')
     const userCount = Number(row.userCount || 0)
     return {
+      audioFiles: audioFilesByBook[String(row.bookId)] || [],
       bookId: String(row.bookId),
       title,
       author: String(row.author || '저자 정보 없음'),
@@ -276,6 +362,73 @@
             <p class="m-0 min-w-0 break-all"><%= book.userNames %></p>
             <% } %>
           </div>
+          <% book.audioFiles.forEach(function (file) { %>
+          <div class="flex flex-wrap items-center justify-between gap-2 rounded-[1rem] bg-white/70 px-3 py-2">
+            <p class="m-0 min-w-0 flex-1">
+              <span class="inline-flex items-center gap-1 font-semibold text-stone-700">
+                <span
+                  class="i-lucide-headphones h-3.5 w-3.5"
+                  aria-hidden="true"></span>
+                <%= file.statusLabel %>
+              </span>
+              <% if (book.audioFiles.length > 1) { %>
+              <span class="block break-all text-stone-400"><%= file.name %></span>
+              <% } %>
+            </p>
+            <div class="flex shrink-0 items-center gap-2">
+              <% if (file.canRequest) { %>
+              <form
+                method="post"
+                action="<%= formAction %>"
+                class="m-0 shrink-0">
+                <input
+                  type="hidden"
+                  name="action"
+                  value="audio-start" />
+                <input
+                  type="hidden"
+                  name="bookId"
+                  value="<%= book.bookId %>" />
+                <input
+                  type="hidden"
+                  name="fileId"
+                  value="<%= file.fileId %>" />
+                <button
+                  type="submit"
+                  class="inline-flex h-8 items-center justify-center rounded-full border-0 bg-[#efe2d2] px-3 text-xs font-semibold text-[#8e5521] ring-0 transition outline-none hover:bg-[#ead9c4]">
+                  <%= file.requestLabel %>
+                </button>
+              </form>
+              <% } %>
+              <% if (file.canDelete) { %>
+              <form
+                method="post"
+                action="<%= formAction %>"
+                onsubmit="return confirm(this.dataset.confirm)"
+                data-confirm="「<%= book.title %>」의 AI 오디오북 음성과 청취 기록을 모두 삭제할까요? EPUB은 남습니다."
+                class="m-0 shrink-0">
+                <input
+                  type="hidden"
+                  name="action"
+                  value="audio-delete" />
+                <input
+                  type="hidden"
+                  name="bookId"
+                  value="<%= book.bookId %>" />
+                <input
+                  type="hidden"
+                  name="fileId"
+                  value="<%= file.fileId %>" />
+                <button
+                  type="submit"
+                  class="inline-flex h-8 items-center justify-center rounded-full border-0 bg-rose-50 px-3 text-xs font-semibold text-rose-700 shadow-[inset_0_0_0_1px_rgba(225,29,72,0.12)] ring-0 transition outline-none hover:bg-rose-100">
+                  오디오북 삭제
+                </button>
+              </form>
+              <% } %>
+            </div>
+          </div>
+          <% }) %>
         </div>
       </article>
       <% }) %>
