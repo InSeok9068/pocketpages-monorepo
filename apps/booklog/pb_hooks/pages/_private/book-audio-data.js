@@ -6,6 +6,8 @@ const MODELS = [
   { model: 'gemini-3.8-flash-lite-tts', label: 'Flash-Lite' },
   { model: 'gemini-3.8-flash-tts', label: 'Flash' },
 ]
+const PLAYABLE_FILTER =
+  "((status = 'ready' && audio_file != '') || (status = 'failed' && attempt_count >= {:maxAttempts}))"
 
 /**
  * EPUB에 등록된 최근 오디오북 작업을 찾습니다.
@@ -140,7 +142,7 @@ function readEpubBytes(app, file, readBytes) {
 function countSectionChunks(app, fileId, configHash, sectionIndex) {
   return app.countRecords(
     'book_audio_chunks',
-    $dbx.hashExp({ file_id: fileId, config_hash: configHash, section_index: sectionIndex })
+    $dbx.hashExp({ file_id: fileId, config_hash: configHash, section_index: sectionIndex, split_path: '' })
   )
 }
 
@@ -179,7 +181,7 @@ function findChunkIndexByText(app, fileId, configHash, sectionIndex, anchorText)
   if (!anchor) return -1
   const chunks = app.findRecordsByFilter(
     'book_audio_chunks',
-    'file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex}',
+    "file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex} && split_path = ''",
     'chunk_index',
     0,
     0,
@@ -210,7 +212,7 @@ function countFileChunks(app, fileId) {
 }
 
 /**
- * 재생할 구간을 찾습니다. 생성 완료 구간과, 재시도를 모두 소진해 기기 음성으로 대신 읽을 구간을 돌려줍니다.
+ * 재생할 구간을 찾습니다. 생성 완료·조각으로 나뉜 구간과, 재시도를 모두 소진해 기기 음성으로 대신 읽을 구간을 돌려줍니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
  * @param {string} configHash 낭독 설정 해시
@@ -223,8 +225,10 @@ function findPlayableChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
     app.findRecordsByFilter(
       'book_audio_chunks',
       'file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex}'
-        + ' && chunk_index = {:chunkIndex}'
-        + " && ((status = 'ready' && audio_file != '') || (status = 'failed' && attempt_count >= {:maxAttempts}))",
+        + " && chunk_index = {:chunkIndex} && split_path = ''"
+        + " && (status = 'split' || "
+        + PLAYABLE_FILTER
+        + ')',
       '',
       1,
       0,
@@ -234,31 +238,68 @@ function findPlayableChunk(app, fileId, configHash, sectionIndex, chunkIndex) {
 }
 
 /**
- * 재생할 구간을 재생 정보로 만듭니다. 생성에 끝내 실패한 구간은 기기 음성으로 읽을 원문을 담습니다.
+ * 구간을 재생 순서의 조각으로 펼칩니다. 나눈 조각이 하나라도 아직 준비되지 않았으면 null입니다.
+ * @param {types.BooklogApp} app DB 앱
  * @param {core.Record} chunk 재생할 구간
+ * @returns {core.Record[] | null} 재생할 조각
+ */
+function findPlayableParts(app, chunk) {
+  if (String(chunk.get('status')) !== 'split') return [chunk]
+  const bindings = {
+    fileId: String(chunk.get('file_id')),
+    configHash: String(chunk.get('config_hash')),
+    sectionIndex: Number(chunk.get('section_index')),
+    chunkIndex: Number(chunk.get('chunk_index')),
+    maxAttempts: generation.MAX_ATTEMPTS,
+  }
+  const scope =
+    'file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex}'
+    + " && chunk_index = {:chunkIndex} && split_path != '' && status != 'split'"
+  const total = app.findRecordsByFilter('book_audio_chunks', scope, '', 0, 0, bindings).length
+  // 나눈 조각 중 더 나뉘지 않은 조각만 split_path 순서로 이으면 원문 순서가 됩니다.
+  const parts = app.findRecordsByFilter(
+    'book_audio_chunks',
+    scope + ' && ' + PLAYABLE_FILTER,
+    'split_path',
+    0,
+    0,
+    bindings
+  )
+  return total > 0 && parts.length === total ? parts : null
+}
+
+/**
+ * 재생할 구간을 재생 정보로 만듭니다. 생성에 끝내 실패한 조각은 기기 음성으로 읽을 원문을 담습니다.
+ * @param {core.Record} chunk 재생할 구간
+ * @param {core.Record[]} parts 재생 순서의 조각
  * @param {string} bookId 접근을 확인한 책 ID
  * @param {number} chunkCount 챕터의 구간 수
  * @param {number} nextSectionIndex 다음 챕터 spine 순서, 없으면 -1
  * @returns {types.BookAudioChunkView} 재생 정보
  */
-function chunkView(chunk, bookId, chunkCount, nextSectionIndex) {
-  const ready = String(chunk.get('status')) === 'ready'
-  const query =
-    'bookId='
-    + encodeURIComponent(bookId)
-    + '&fileId='
-    + encodeURIComponent(String(chunk.get('file_id')))
-    + '&chunkId='
-    + encodeURIComponent(String(chunk.get('id')))
+function chunkView(chunk, parts, bookId, chunkCount, nextSectionIndex) {
   return {
     chunkId: String(chunk.get('id')),
     configHash: String(chunk.get('config_hash')),
     chunkCount,
     nextSectionIndex,
-    audioUrl: ready
-      ? '/xapi/books/audio-file?' + query + '&v=' + $security.sha256(String(chunk.get('generated_at')))
-      : '',
-    fallbackText: ready ? '' : String(chunk.get('input_text')),
+    parts: parts.map(function (part) {
+      const ready = String(part.get('status')) === 'ready'
+      const query =
+        'bookId='
+        + encodeURIComponent(bookId)
+        + '&fileId='
+        + encodeURIComponent(String(part.get('file_id')))
+        + '&chunkId='
+        + encodeURIComponent(String(part.get('id')))
+      return {
+        audioUrl: ready
+          ? '/xapi/books/audio-file?' + query + '&v=' + $security.sha256(String(part.get('generated_at')))
+          : '',
+        fallbackText: ready ? '' : String(part.get('input_text')),
+        durationSeconds: ready ? Number(part.get('duration_seconds') || 0) : 0,
+      }
+    }),
   }
 }
 
@@ -274,5 +315,6 @@ module.exports = {
   findNextSectionIndex,
   findChunkIndexByText,
   findPlayableChunk,
+  findPlayableParts,
   chunkView,
 }

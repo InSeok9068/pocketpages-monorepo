@@ -1,6 +1,8 @@
 const CLAIM_TTL_MS = 600000
 const MAX_ATTEMPTS = 5
 const RETRY_DELAY_MS = 600000
+const SPLIT_AFTER_ATTEMPTS = 2
+const MIN_SPLIT_CHARS = 300
 
 /**
  * 구간을 지금 생성할 수 있는지 판단합니다.
@@ -10,7 +12,7 @@ const RETRY_DELAY_MS = 600000
  */
 function isClaimable(chunk, nowMs) {
   const status = String(chunk.get('status'))
-  if (status === 'ready' && chunk.get('audio_file')) return false
+  if (status === 'split' || (status === 'ready' && chunk.get('audio_file'))) return false
   if (status === 'generating') return !(nowMs - toMs(chunk.get('generation_started_at')) < CLAIM_TTL_MS)
   if (status !== 'failed') return true
   const retryAt = toMs(chunk.get('next_retry_at'))
@@ -56,21 +58,81 @@ function updateClaimed(app, chunkId, claimedAt, apply) {
   app.runInTransaction(function (txApp) {
     const current = txApp.findRecordById('book_audio_chunks', chunkId)
     if (current.get('status') !== 'generating' || String(current.get('generation_started_at')) !== claimedAt) return
-    apply(current)
+    apply(current, txApp)
     txApp.save(current)
     saved = current
   })
   return saved
 }
 
-function markFailed(app, chunkId, claimedAt, message, countAttempt) {
-  updateClaimed(app, chunkId, claimedAt, function (current) {
+function markFailed(app, chunkId, claimedAt, message, countAttempt, splitWhenRepeated) {
+  let split = false
+  updateClaimed(app, chunkId, claimedAt, function (current, txApp) {
     const attempts = Number(current.get('attempt_count') || 0) + (countAttempt ? 1 : 0)
+    const parts =
+      splitWhenRepeated && attempts >= SPLIT_AFTER_ATTEMPTS ? splitInHalf(String(current.get('input_text'))) : null
+    current.set('attempt_count', attempts)
+    if (parts) {
+      splitChunk(txApp, current, parts)
+      split = true
+      return
+    }
     current.set('status', 'failed')
     current.set('error_message', message)
-    current.set('attempt_count', attempts)
     current.set('next_retry_at', new Date(Date.now() + (countAttempt ? RETRY_DELAY_MS * attempts : 0)).toISOString())
   })
+  return split
+}
+
+function splitChunk(txApp, parent, parts) {
+  const collection = txApp.findCollectionByNameOrId('book_audio_chunks')
+  const copied = [
+    'file_id',
+    'section_index',
+    'chunk_index',
+    'config_hash',
+    'provider',
+    'model',
+    'voice',
+    'style',
+    'pipeline_version',
+  ]
+  parts.forEach(function (text, index) {
+    const child = new Record(collection)
+    copied.forEach(function (field) {
+      child.set(field, parent.get(field))
+    })
+    child.set('split_path', String(parent.get('split_path') || '') + index)
+    child.set('text_hash', $security.sha256(text))
+    child.set('input_text', text)
+    child.set('status', 'queued')
+    txApp.save(child)
+  })
+  parent.set('status', 'split')
+  parent.set('error_message', '정책 차단이 반복되어 조각 2개로 나눠 다시 만듭니다.')
+  parent.set('next_retry_at', '')
+}
+
+/**
+ * 본문을 가운데에 가까운 문단·문장 경계에서 둘로 나눕니다.
+ * @param {string} text 낭독 본문
+ * @returns {string[] | null} 앞뒤 조각, 너무 짧아 나눌 수 없으면 null
+ */
+function splitInHalf(text) {
+  if (text.length < MIN_SPLIT_CHARS) return null
+  const middle = text.length / 2
+  for (const pattern of [/\n\n+/g, /[.!?。！？][”’"']?\s+/g, /\s+/g]) {
+    let best = -1
+    let match = pattern.exec(text)
+    while (match) {
+      const end = match.index + match[0].length
+      const balanced = end >= text.length / 4 && end <= (text.length * 3) / 4
+      if (balanced && (best < 0 || Math.abs(end - middle) < Math.abs(best - middle))) best = end
+      match = pattern.exec(text)
+    }
+    if (best > 0) return [text.slice(0, best).trim(), text.slice(best).trim()]
+  }
+  return null
 }
 
 /**
@@ -102,12 +164,20 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
         : blocked
           ? 'Gemini 정책 필터에 차단되어 나중에 다시 시도합니다.'
           : 'Gemini 음성 생성에 실패했습니다.'
-      markFailed(app, chunkId, claimedAt, (summary + (reason ? ' ' + reason : '')).slice(0, 2000), !quota)
+      const split = markFailed(
+        app,
+        chunkId,
+        claimedAt,
+        (summary + (reason ? ' ' + reason : '')).slice(0, 2000),
+        !quota,
+        blocked
+      )
       const body = result.responseJson || {}
       return {
         ok: false,
         statusCode: quota ? 429 : 502,
         blocked,
+        split,
         error: 'provider ' + result.statusCode + (reason ? ': ' + reason : ''),
         // 차단 사유 코드(status, details)를 확인하기 위해 Gemini 오류 응답 전체를 남깁니다.
         detail: JSON.stringify(body.error || body).slice(0, 4000),
@@ -125,7 +195,14 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
       current.set('error_message', '')
       current.set('next_retry_at', '')
     })
-    return { ok: true, statusCode: saved ? 200 : 409, blocked: false, error: saved ? '' : 'claim expired', detail: '' }
+    return {
+      ok: true,
+      statusCode: saved ? 200 : 409,
+      blocked: false,
+      split: false,
+      error: saved ? '' : 'claim expired',
+      detail: '',
+    }
   } catch (exception) {
     try {
       markFailed(app, chunkId, claimedAt, '음성 생성 또는 저장에 실패했습니다.', true)
@@ -136,6 +213,7 @@ function generateClaimedChunk(app, apiKey, chunkId, claimedAt) {
       ok: false,
       statusCode: 500,
       blocked: false,
+      split: false,
       error: String((exception && exception.message) || exception),
       detail: '',
     }
@@ -234,5 +312,6 @@ module.exports = {
   toDbDate,
   claimChunk,
   generateClaimedChunk,
+  splitInHalf,
   decodeMp3,
 }

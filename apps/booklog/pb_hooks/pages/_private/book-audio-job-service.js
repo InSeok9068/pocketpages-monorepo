@@ -111,12 +111,18 @@ function planJob(app, jobId, sections) {
       configHash: String(job.get('config_hash')),
     }
     const known = {}
+    const parts = []
+    const kept = {}
     txApp
       .findRecordsByFilter('book_audio_chunks', 'file_id = {:fileId} && config_hash = {:configHash}', '', 0, 0, {
         fileId,
         configHash: settings.configHash,
       })
       .forEach(function (record) {
+        if (String(record.get('split_path') || '')) {
+          parts.push(record)
+          return
+        }
         known[[record.get('section_index'), record.get('chunk_index'), record.get('text_hash')].join(':')] = record
       })
     const chunkCollection = txApp.findCollectionByNameOrId('book_audio_chunks')
@@ -127,11 +133,8 @@ function planJob(app, jobId, sections) {
         const existing = known[key]
         delete known[key]
         if (existing) {
-          if (existing.get('status') === 'failed') {
-            existing.set('attempt_count', 0)
-            existing.set('next_retry_at', '')
-            txApp.save(existing)
-          }
+          kept[section.sectionIndex + ':' + chunkIndex] = true
+          resetFailedAttempts(txApp, existing)
           return
         }
         const chunk = new Record(chunkCollection)
@@ -154,9 +157,20 @@ function planJob(app, jobId, sections) {
     Object.keys(known).forEach(function (key) {
       txApp.delete(known[key])
     })
+    parts.forEach(function (part) {
+      if (kept[part.get('section_index') + ':' + part.get('chunk_index')]) resetFailedAttempts(txApp, part)
+      else txApp.delete(part)
+    })
     syncJobProgress(txApp, job)
   })
   return job
+}
+
+function resetFailedAttempts(txApp, chunk) {
+  if (chunk.get('status') !== 'failed') return
+  chunk.set('attempt_count', 0)
+  chunk.set('next_retry_at', '')
+  txApp.save(chunk)
 }
 
 /**
@@ -243,7 +257,7 @@ function syncJobProgress(app, job) {
 function countChunks(app, fileId, configHash) {
   const scope = $dbx.hashExp({ file_id: fileId, config_hash: configHash })
   return {
-    total: app.countRecords('book_audio_chunks', scope),
+    total: app.countRecords('book_audio_chunks', scope, $dbx.not($dbx.hashExp({ status: 'split' }))),
     ready: app.countRecords('book_audio_chunks', scope, $dbx.hashExp({ status: 'ready' })),
     failed: app.countRecords(
       'book_audio_chunks',
@@ -266,7 +280,7 @@ function findNextChunk(app, job, nowMs) {
     app.findRecordsByFilter(
       'book_audio_chunks',
       'file_id = {:fileId} && config_hash = {:configHash} && ' + CLAIMABLE_FILTER,
-      'section_index,chunk_index',
+      'section_index,chunk_index,split_path',
       1,
       0,
       {
@@ -368,6 +382,7 @@ function applyRegenerateRequests(app, nowMs) {
       chunk.set('generated_at', '')
       chunk.set('regenerate_requested', false)
       txApp.save(chunk)
+      deleteSplitParts(txApp, chunk)
       touched[chunk.get('file_id') + ':' + chunk.get('config_hash')] = {
         fileId: String(chunk.get('file_id')),
         configHash: String(chunk.get('config_hash')),
@@ -383,6 +398,28 @@ function applyRegenerateRequests(app, nowMs) {
     })
   })
   return reset
+}
+
+function deleteSplitParts(txApp, chunk) {
+  const path = String(chunk.get('split_path') || '')
+  txApp
+    .findRecordsByFilter(
+      'book_audio_chunks',
+      'file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex} && chunk_index = {:chunkIndex}',
+      '',
+      0,
+      0,
+      {
+        fileId: String(chunk.get('file_id')),
+        configHash: String(chunk.get('config_hash')),
+        sectionIndex: Number(chunk.get('section_index')),
+        chunkIndex: Number(chunk.get('chunk_index')),
+      }
+    )
+    .forEach(function (record) {
+      const partPath = String(record.get('split_path') || '')
+      if (partPath.length > path.length && partPath.indexOf(path) === 0) txApp.delete(record)
+    })
 }
 
 module.exports = {

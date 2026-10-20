@@ -33,9 +33,19 @@ declare namespace types {
     statusCode: number
     /** Gemini 정책 필터 차단 여부. 이 구간만 미루고 작업은 계속합니다. */
     blocked: boolean
+    /** 반복 차단으로 구간을 조각 2개로 나눴는지 여부 */
+    split: boolean
     error: string
     /** 실패 시 Gemini 오류 응답 본문(JSON, 최대 4,000자) */
     detail: string
+  }
+
+  interface BookAudioPartView {
+    /** 생성 완료 조각의 음성 주소. 대체 조각이면 빈 문자열 */
+    audioUrl: string
+    /** 생성에 끝내 실패해 기기 음성으로 읽을 원문. 생성 완료 조각이면 빈 문자열 */
+    fallbackText: string
+    durationSeconds: number
   }
 
   interface BookAudioChunkView {
@@ -43,10 +53,8 @@ declare namespace types {
     configHash: string
     chunkCount: number
     nextSectionIndex: number
-    /** 생성 완료 구간의 음성 주소. 대체 구간이면 빈 문자열 */
-    audioUrl: string
-    /** 생성에 끝내 실패해 기기 음성으로 읽을 원문. 생성 완료 구간이면 빈 문자열 */
-    fallbackText: string
+    /** 재생 순서의 조각. 나누지 않은 구간은 1개 */
+    parts: BookAudioPartView[]
   }
 
   interface BookAudioJobCounts {

@@ -129,7 +129,7 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
             chunkCount: 1,
             configHash: 'settings',
             chunkId: 'chunk-0-0',
-            audioUrl: '/xapi/books/audio-file?chunkId=chunk-0-0',
+            parts: [{ audioUrl: '/xapi/books/audio-file?chunkId=chunk-0-0', fallbackText: '', durationSeconds: 1 }],
           },
         })
       }

@@ -95,8 +95,8 @@
     }
     const chunk = $app.findRecordsByFilter(
       'book_audio_chunks',
-      'id = {:chunkId} && file_id = {:fileId} && config_hash = {:configHash}'
-        + " && (status = 'ready' || (status = 'failed' && attempt_count >= {:maxAttempts}))",
+      "id = {:chunkId} && file_id = {:fileId} && config_hash = {:configHash} && split_path = ''"
+        + " && (status = 'ready' || status = 'split' || (status = 'failed' && attempt_count >= {:maxAttempts}))",
       '',
       1,
       0,

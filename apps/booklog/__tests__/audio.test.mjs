@@ -97,7 +97,7 @@ test('Whole-book extraction keeps spine order and preserves each chapter text ex
   assert.equal(chunks.join(' ').replace(/\s+/g, ' '), paragraph)
 })
 
-function runRoute({ authenticated = true, method = 'GET', owned = true, ready = true, query = {} } = {}) {
+function runRoute({ authenticated = true, method = 'GET', owned = true, ready = true, split = false, query = {} } = {}) {
   let result
   const queries = []
   const lookups = []
@@ -129,7 +129,13 @@ function runRoute({ authenticated = true, method = 'GET', owned = true, ready = 
       },
       countSectionChunks: () => 3,
       findNextSectionIndex: (app, fileId, configHash, sectionIndex) => sectionIndex + 2,
-      chunkView: (chunk, bookId, chunkCount, nextSectionIndex) => ({ chunkId: chunk.id, chunkCount, nextSectionIndex }),
+      findPlayableParts: (app, chunk) => (split ? null : [chunk]),
+      chunkView: (chunk, parts, bookId, chunkCount, nextSectionIndex) => ({
+        chunkId: chunk.id,
+        parts: parts.length,
+        chunkCount,
+        nextSectionIndex,
+      }),
     }),
   }
   vm.runInNewContext('(function () {' + routeSource + '\n})()', context)
@@ -168,24 +174,107 @@ test('Generated MP3 duration is calculated from frames for MPEG-1 and MPEG-2 str
   assert.ok(Math.abs(second.durationSeconds - (50 * 576) / 24000) < 1e-9)
 })
 
-function generateWithProviderResult(providerResult) {
-  const fields = { status: 'generating', generation_started_at: 'claim', attempt_count: 0, model: 'm', input_text: '본문' }
+function generateWithProviderResult(providerResult, overrides = {}) {
+  const fields = {
+    status: 'generating',
+    generation_started_at: 'claim',
+    attempt_count: 0,
+    model: 'm',
+    input_text: '본문',
+    split_path: '',
+    section_index: 3,
+    chunk_index: 2,
+    ...overrides,
+  }
   const record = { get: (name) => fields[name], set: (name, value) => (fields[name] = value) }
+  const created = []
   const app = {
     findRecordById: () => record,
-    runInTransaction: (fn) => fn({ findRecordById: () => record, save() {} }),
+    runInTransaction: (fn) =>
+      fn({
+        findRecordById: () => record,
+        findCollectionByNameOrId: () => 'book_audio_chunks',
+        save(saved) {
+          if (saved !== record) created.push(saved.fields)
+        },
+      }),
   }
   const context = {
     module: { exports: {} },
     require: () => ({ createAiClient: () => ({ geminiSpeech: () => providerResult }) }),
+    $security: { sha256: (text) => 'hash:' + text.length },
+    Record: function () {
+      this.fields = {}
+      this.get = (name) => this.fields[name]
+      this.set = (name, value) => (this.fields[name] = value)
+    },
   }
   vm.runInNewContext(
     readFileSync(new URL('../pb_hooks/pages/_private/book-audio-generation-service.js', import.meta.url), 'utf8'),
     context
   )
   const result = context.module.exports.generateClaimedChunk(app, 'key', 'chunk', 'claim')
-  return { result, fields, maxAttempts: context.module.exports.MAX_ATTEMPTS }
+  return { result, fields, created, maxAttempts: context.module.exports.MAX_ATTEMPTS }
 }
+
+const policyBlock = {
+  ok: false,
+  statusCode: 400,
+  errorMessage: 'Request blocked for an unspecified policy reason. Please modify your input and retry.',
+}
+
+function longNarration(sentences) {
+  return Array.from({ length: sentences }, (_, index) => '문장 ' + index + '번은 차분하게 이어지는 본문입니다.').join(' ')
+}
+
+test('A chunk is halved at the sentence boundary nearest the middle and short text is not split', () => {
+  const service = loadGenerationService()
+  const text = longNarration(60)
+  const [first, second] = service.splitInHalf(text)
+  assert.equal(first + ' ' + second, text)
+  assert.match(first, /입니다\.$/)
+  assert.ok(Math.abs(first.length - second.length) < 40)
+  const paragraphs = longNarration(20) + '\n\n' + longNarration(25)
+  assert.equal(service.splitInHalf(paragraphs)[0], longNarration(20))
+  const minimum = longNarration(13)
+  assert.ok(minimum.length >= 300 && minimum.length < 330)
+  assert.equal(service.splitInHalf(minimum).join(' '), minimum)
+  assert.equal(service.splitInHalf(longNarration(12)), null)
+  assert.equal(service.splitInHalf('가'.repeat(400)), null, 'text without boundaries is not cut mid-word')
+})
+
+test('A chunk blocked twice is replaced by two ordered parts and short chunks keep retrying', () => {
+  const text = longNarration(60)
+  const split = generateWithProviderResult(policyBlock, { attempt_count: 1, input_text: text })
+  assert.equal(split.result.blocked, true)
+  assert.equal(split.result.split, true)
+  assert.equal(split.fields.status, 'split')
+  assert.equal(split.fields.attempt_count, 2)
+  assert.deepEqual(
+    split.created.map((part) => [part.split_path, part.status, part.section_index, part.chunk_index]),
+    [
+      ['0', 'queued', 3, 2],
+      ['1', 'queued', 3, 2],
+    ]
+  )
+  assert.equal(split.created[0].input_text + ' ' + split.created[1].input_text, text)
+  const nested = generateWithProviderResult(policyBlock, { attempt_count: 1, input_text: text, split_path: '1' })
+  assert.deepEqual(
+    nested.created.map((part) => part.split_path),
+    ['10', '11']
+  )
+  const first = generateWithProviderResult(policyBlock, { input_text: text })
+  assert.equal(first.fields.status, 'failed')
+  assert.equal(first.created.length, 0)
+  const short = generateWithProviderResult(policyBlock, { attempt_count: 1, input_text: longNarration(12) })
+  assert.equal(short.fields.status, 'failed')
+  assert.equal(short.created.length, 0)
+  const other = generateWithProviderResult(
+    { ok: false, statusCode: 500, errorMessage: 'Internal' },
+    { attempt_count: 1, input_text: text }
+  )
+  assert.equal(other.fields.status, 'failed', 'only policy blocks are split')
+})
 
 test('Gemini policy blocks are retried later for that chunk only and keep the provider reason', () => {
   const blocked = generateWithProviderResult({
@@ -255,6 +344,7 @@ test('Audio chunk lookup only returns generated audio and never generates it', (
   const missing = runRoute({ ready: false })
   assert.equal(missing.result.status, 404)
   assert.match(missing.result.body.message, /아직 AI 오디오북이 생성되지 않았습니다/)
+  assert.equal(runRoute({ split: true }).result.status, 404, 'a split chunk waits until every part is playable')
 })
 
 function createPlayerHarness(fetchAudio, options = {}) {
@@ -367,12 +457,17 @@ function createPlayerHarness(fetchAudio, options = {}) {
       if (!response.ok) return response
       const result = await response.json()
       server.chunkCount = result.chunkCount
+      const audioUrl = '/xapi/books/audio-file?chunkId=chunk-' + section + '-' + index
       return new Response(
         JSON.stringify({
           ...result,
           chunkId: 'chunk-' + section + '-' + index,
           configHash: 'settings',
-          audioUrl: '/xapi/books/audio-file?chunkId=chunk-' + section + '-' + index,
+          parts:
+            result.parts
+            || (result.fallbackText
+              ? [{ audioUrl: '', fallbackText: result.fallbackText, durationSeconds: 0 }]
+              : [{ audioUrl, fallbackText: '', durationSeconds: 60 }]),
         })
       )
     },
@@ -724,6 +819,55 @@ test('An unmatched reading position falls back to the chapter beginning with a n
   await flushPlayback()
   assert.equal(requests[0], 0)
   assert.match(state.cloudAudioMessage, /챕터 처음부터 재생합니다/)
+  logic.stop()
+})
+
+const splitParts = [
+  { audioUrl: '/xapi/books/audio-file?chunkId=part-0', fallbackText: '', durationSeconds: 40 },
+  { audioUrl: '', fallbackText: '차단된 문장입니다.', durationSeconds: 0 },
+  { audioUrl: '/xapi/books/audio-file?chunkId=part-1', fallbackText: '', durationSeconds: 50 },
+]
+
+test('A split chunk plays its parts in order and saves one position across the parts', async () => {
+  const speech = fakeSpeech()
+  const { logic, state, audio, server } = createPlayerHarness(
+    (index) =>
+      new Response(
+        JSON.stringify({ ok: true, chunkCount: 2, nextSectionIndex: -1, ...(index === 0 ? { parts: splitParts } : {}) })
+      ),
+    { speech }
+  )
+  logic.start(state, 0)
+  await flushPlayback()
+  assert.match(state.cloudAudioMessage, /1 \/ 2 구간 \(조각 1 \/ 3\) · AI 생성 음성/)
+  assert.equal(server.downloads, 3, 'both audio parts and the prefetched next chunk')
+  audio.currentTime = 40
+  audio.onended()
+  await flushPlayback()
+  assert.deepEqual(
+    speech.spoken.map((item) => item.text),
+    ['차단된 문장입니다.']
+  )
+  assert.match(state.cloudAudioMessage, /1 \/ 2 구간 \(조각 3 \/ 3\) · AI 생성 음성/)
+  audio.currentTime = 10
+  logic.stop()
+  await flushPlayback()
+  assert.deepEqual(
+    [server.progress.chunkIndex, server.progress.seconds],
+    [0, 50]
+  )
+})
+
+test('Resuming inside a split chunk starts the part that contains the saved time', async () => {
+  const parts = [splitParts[0], splitParts[2]]
+  const { logic, state, audio } = createPlayerHarness(
+    () => new Response(JSON.stringify({ ok: true, chunkCount: 2, nextSectionIndex: -1, parts })),
+    { server: { progress: { sectionIndex: 0, chunkIndex: 0, seconds: 52 }, downloads: 0, chunkCount: 2 } }
+  )
+  logic.start(state, 0)
+  await flushPlayback()
+  assert.match(state.cloudAudioMessage, /조각 2 \/ 2/)
+  assert.equal(audio.currentTime, 12)
   logic.stop()
 })
 

@@ -39,15 +39,27 @@
   try {
     const settings = audioData.getFileSettings($app, fileId)
     const chunk = audioData.findPlayableChunk($app, fileId, settings.configHash, sectionIndex, chunkIndex)
-    if (!chunk) {
-      dbg('api/books/audio-chunk:not-ready', { userId, fileId, sectionIndex, chunkIndex })
+    const parts = chunk ? audioData.findPlayableParts($app, chunk) : null
+    if (!parts) {
+      dbg('api/books/audio-chunk:not-ready', { userId, fileId, sectionIndex, chunkIndex, split: !!chunk })
       response.json(404, { ok: false, message: '이 구간은 아직 AI 오디오북이 생성되지 않았습니다.' })
       return
     }
     const chunkCount = audioData.countSectionChunks($app, fileId, settings.configHash, sectionIndex)
     const nextSectionIndex = audioData.findNextSectionIndex($app, fileId, settings.configHash, sectionIndex)
-    dbg('api/books/audio-chunk:found', { userId, fileId, sectionIndex, chunkIndex, chunkCount, nextSectionIndex })
-    response.json(200, Object.assign({ ok: true }, audioData.chunkView(chunk, bookId, chunkCount, nextSectionIndex)))
+    dbg('api/books/audio-chunk:found', {
+      userId,
+      fileId,
+      sectionIndex,
+      chunkIndex,
+      parts: parts.length,
+      chunkCount,
+      nextSectionIndex,
+    })
+    response.json(
+      200,
+      Object.assign({ ok: true }, audioData.chunkView(chunk, parts, bookId, chunkCount, nextSectionIndex))
+    )
   } catch (exception) {
     error('api/books/audio-chunk:failed', { userId, fileId, error: String(exception.message || exception) })
     response.json(500, { ok: false, message: 'AI 오디오북 구간을 불러오지 못했습니다.' })

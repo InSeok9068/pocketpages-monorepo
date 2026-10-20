@@ -609,7 +609,22 @@
         "required": true,
         "system": false,
         "type": "select",
-        "values": ["queued", "generating", "ready", "failed"]
+        "values": ["queued", "generating", "ready", "failed", "split"]
+      },
+      {
+        "autogeneratePattern": "",
+        "help": "정책 차단으로 나눈 조각 위치. 원래 구간은 빈 값, 반으로 나누면 0·1, 다시 나누면 00·01처럼 이어 붙입니다",
+        "hidden": false,
+        "id": "text1101001147",
+        "max": 20,
+        "min": 0,
+        "name": "split_path",
+        "pattern": "^[01]*$",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
       },
       {
         "help": "생성 완료한 구간 음성",
@@ -735,8 +750,8 @@
       }
     ],
     "indexes": [
-      "CREATE UNIQUE INDEX idx_book_audio_chunks_file_section_chunk_config_text ON book_audio_chunks (file_id, section_index, chunk_index, config_hash, text_hash)",
-      "CREATE INDEX idx_book_audio_chunks_file_config_section_chunk ON book_audio_chunks (file_id, config_hash, section_index, chunk_index)",
+      "CREATE UNIQUE INDEX idx_book_audio_chunks_file_section_chunk_config_text ON book_audio_chunks (file_id, section_index, chunk_index, split_path, config_hash, text_hash)",
+      "CREATE INDEX idx_book_audio_chunks_file_config_section_chunk ON book_audio_chunks (file_id, config_hash, section_index, chunk_index, split_path)",
       "CREATE INDEX idx_book_audio_chunks_status_started ON book_audio_chunks (status, generation_started_at)"
     ],
     "system": false

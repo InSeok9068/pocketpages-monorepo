@@ -98,7 +98,9 @@ function run() {
     } else if (result.blocked) {
       current.set(
         'error_message',
-        '일부 구간이 Gemini 정책 필터에 차단되어, 다른 구간을 먼저 만들고 나중에 다시 시도합니다.'
+        result.split
+          ? '정책 필터에 반복 차단된 구간을 반으로 나눠 다시 만듭니다.'
+          : '일부 구간이 Gemini 정책 필터에 차단되어, 다른 구간을 먼저 만들고 나중에 다시 시도합니다.'
       )
     } else if (!result.ok) {
       current.set('next_run_at', new Date(Date.now() + FAILURE_WAIT_MS).toISOString())
@@ -123,6 +125,8 @@ function run() {
       result.error,
       'blocked',
       String(result.blocked),
+      'split',
+      String(result.split),
       'detail',
       result.detail
     )
