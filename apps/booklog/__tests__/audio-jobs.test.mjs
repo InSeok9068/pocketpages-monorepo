@@ -158,7 +158,10 @@ test('Book-level model reservations, concurrent requests, resume, playback and r
   await request(1, 'start', lite)
   assert.equal((await jobs()).find((job) => job.file_id === fileId(1)).config_hash, originalHash)
   await control(1, { status: 'failed' })
-  assert.ok((await detail(4))(`input[value="${lite}"]`).is(':disabled'))
+  assert.ok(
+    !(await detail(4))(`input[value="${lite}"]`).is(':disabled'),
+    'a job that failed before registering chunks releases its model'
+  )
   await request(1, 'start', lite)
 
   await control(flashBook, { playback: true })
@@ -176,7 +179,7 @@ test('Book-level model reservations, concurrent requests, resume, playback and r
   const chunk = await response.json()
   assert.equal(response.status, 200, JSON.stringify(chunk))
   assert.equal(chunk.configHash, flashJob.config_hash)
-  response = await fetch(service.baseUrl + chunk.audioUrl, { headers })
+  response = await fetch(service.baseUrl + chunk.parts[0].audioUrl, { headers })
   assert.equal(response.status, 200)
   assert.equal(response.headers.get('content-type'), 'audio/mpeg')
   response = await fetch(service.baseUrl + '/books/' + bookId(flashBook) + '/read', { headers })

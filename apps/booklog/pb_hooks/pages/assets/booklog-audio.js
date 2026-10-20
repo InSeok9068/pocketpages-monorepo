@@ -523,7 +523,14 @@ window.booklogAudio = (function () {
    * @returns {void}
    */
   function seekBy(seconds) {
-    if (activeSession) seekTo(chapterPosition(activeSession) + seconds)
+    var session = activeSession
+    if (!session) return
+    var position = chapterPosition(session)
+    var target = position + seconds
+    // 기기 음성은 문장 처음부터 다시 읽으므로, 앞으로 갈 때는 적어도 지금 문장 다음으로 넘어가게 합니다.
+    if (session.fallback && seconds > 0)
+      target = Math.max(target, position + (session.fallbackPieceSeconds || 0) + 0.01)
+    seekTo(target)
   }
 
   /**
@@ -533,6 +540,8 @@ window.booklogAudio = (function () {
   function toggle() {
     var session = activeSession
     if (!session || session.completed || session.failed) return false
+    // 다른 구간을 불러오는 중에는 이전 음성이 다시 재생되지 않도록 잠금화면 재생 요청도 무시합니다.
+    if (session.state.cloudAudioBusy) return true
     if (session.fallback && window.speechSynthesis) {
       if (session.state.cloudAudioActive) {
         window.speechSynthesis.pause()
@@ -769,6 +778,7 @@ window.booklogAudio = (function () {
       }
       var utterance = new window.SpeechSynthesisUtterance(pieces[index])
       speaking = index
+      session.fallbackPieceSeconds = pieceSeconds[index]
       index += 1
       utterance.lang = 'ko-KR'
       if (voice) utterance.voice = voice
@@ -984,7 +994,11 @@ window.booklogAudio = (function () {
     savePosition(session, true, false)
     activeSession = null
     session.controller.abort()
-    if (session.fallback && window.speechSynthesis) window.speechSynthesis.cancel()
+    if (session.fallback && window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+      // 일시 정지한 채 멈추면 Chrome은 그 상태가 남아 리더의 기기 읽어주기가 소리 없이 멈춥니다.
+      window.speechSynthesis.resume()
+    }
     session.fallback = false
     var player = session.player
     player.onpause = null

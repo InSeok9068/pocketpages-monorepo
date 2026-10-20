@@ -1222,6 +1222,32 @@ test('Device voice resumes at the sentence nearest the saved time and saves its 
   assert.equal(server.progress.seconds, 30, 'the estimated device-voice progress is saved')
 })
 
+test('Seeking forward in device voice moves past a sentence longer than the seek step', async () => {
+  const speech = fakeSpeech()
+  speech.speak = (utterance) => speech.spoken.push({ text: utterance.text, utterance })
+  const { logic, state } = createPlayerHarness(
+    () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          chunkCount: 1,
+          nextSectionIndex: -1,
+          timeline: [40],
+          parts: [{ audioUrl: '', fallbackText: '첫째 문장입니다.\n둘째 문장입니다.', pending: true, durationSeconds: 40 }],
+        })
+      ),
+    { speech }
+  )
+  logic.start(state, 0)
+  await flushPlayback()
+  assert.equal(speech.spoken[0].text, '첫째 문장입니다.')
+  logic.seekBy(15)
+  await flushPlayback()
+  assert.equal(speech.spoken.at(-1).text, '둘째 문장입니다.', 'a 20s sentence is not restarted by a 15s seek')
+  assert.equal(state.cloudAudioPosition, 20)
+  logic.stop()
+})
+
 test('A body file over the size limit fails planning instead of silently dropping a chapter', () => {
   assert.throws(
     () => audioSectionsForFiles({ 'huge.xhtml': '<html><body><p>' + '가'.repeat(6 * 1024 * 1024) + '</p></body></html>' }),
