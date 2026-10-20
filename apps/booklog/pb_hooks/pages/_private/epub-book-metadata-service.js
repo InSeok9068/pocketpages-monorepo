@@ -366,6 +366,14 @@ function createEpubBookMetadataService(dependencies) {
     return ensureArray(targetNode)
   }
 
+  function getXmlValues(node, key) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) {
+      return []
+    }
+
+    return ensureArray(node[key])
+  }
+
   function parseXmlDocument(xmlText) {
     const normalizedXmlText = String(xmlText || '').trim()
 
@@ -513,6 +521,20 @@ function createEpubBookMetadataService(dependencies) {
       .replace(/[）]/g, ')')
   }
 
+  function isValidIsbn13(isbn13) {
+    if (!/^\d{13}$/.test(isbn13)) {
+      return false
+    }
+
+    let sum = 0
+
+    for (let index = 0; index < 12; index += 1) {
+      sum += Number(isbn13[index]) * (index % 2 === 0 ? 1 : 3)
+    }
+
+    return (10 - (sum % 10)) % 10 === Number(isbn13[12])
+  }
+
   function extractIsbn13Matches(input) {
     const normalizedInput = normalizeIsbnScanText(input)
     const pattern = /97[89](?:[\s-]*\d){10}/g
@@ -522,7 +544,7 @@ function createEpubBookMetadataService(dependencies) {
     while ((match = pattern.exec(normalizedInput))) {
       const isbn13 = extractDigits(match[0]).slice(0, 13)
 
-      if (isbn13.length === 13) {
+      if (isValidIsbn13(isbn13)) {
         pushUniqueValue(matches, isbn13)
       }
     }
@@ -785,7 +807,7 @@ function createEpubBookMetadataService(dependencies) {
     while ((match = pattern.exec(normalizedText))) {
       const isbn13 = extractDigits(match[0]).slice(0, 13)
 
-      if (isbn13.length !== 13) {
+      if (!isValidIsbn13(isbn13)) {
         continue
       }
 
@@ -851,25 +873,29 @@ function createEpubBookMetadataService(dependencies) {
       return ''
     }
 
-    normalizedAuthor = normalizedAuthor.replace(/[|│/]/g, '|')
+    const segments = normalizedAuthor.replace(/[|│/]/g, '|').split('|')
 
-    if (normalizedAuthor.indexOf('|') !== -1) {
-      normalizedAuthor = normalizedAuthor.split('|')[0]
+    for (let index = 0; index < segments.length; index += 1) {
+      let segment = segments[index]
+      const translatorRoleMatch = segment.match(/옮긴이|옮김|역자|그림|감수/i)
+
+      if (translatorRoleMatch) {
+        segment = segment.slice(0, translatorRoleMatch.index)
+      }
+
+      segment = segment
+        .replace(/\([^)]*\)/g, ' ')
+        .replace(/(?:지은이|지음|글쓴이|글|저자)\s*[·:|-]?\s*/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\s저$/, '')
+
+      if (segment) {
+        return segment
+      }
     }
 
-    const translatorRoleMatch = normalizedAuthor.match(/옮긴이|옮김|역자|그림|감수/i)
-
-    if (translatorRoleMatch) {
-      normalizedAuthor = normalizedAuthor.slice(0, translatorRoleMatch.index)
-    }
-
-    normalizedAuthor = normalizedAuthor
-      .replace(/\([^)]*\)/g, ' ')
-      .replace(/(?:지은이|지음|글쓴이|글|저자)\s*[·:|-]?\s*/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-
-    return normalizedAuthor
+    return ''
   }
 
   function normalizeContributorName(input) {
@@ -1041,24 +1067,21 @@ function createEpubBookMetadataService(dependencies) {
   function parseEpubMetadata(packageDocument) {
     const packageNode = getXmlChild(packageDocument, 'package')
     const metadataNode = getXmlChild(packageNode, 'metadata')
-    const identifierNodes = getXmlChildren(metadataNode, 'identifier').map(function (node) {
+    const identifierNodes = getXmlValues(metadataNode, 'identifier').map(function (node) {
       return {
         attributesText: stringifyXmlAttributes(node),
         value: getXmlNodeText(node),
       }
     })
     const identifiers = []
-    const title = getXmlNodeText(getXmlChildren(metadataNode, 'title')[0])
-    const creatorNodes = getXmlChildren(metadataNode, 'creator').map(function (node) {
-      return {
-        attributesText: stringifyXmlAttributes(node),
-        value: getXmlNodeText(node),
-      }
-    })
-    const author = creatorNodes.length > 0 ? creatorNodes[0].value : ''
-    const languageCode = getXmlNodeText(getXmlChildren(metadataNode, 'language')[0])
-    const publisher = getXmlNodeText(getXmlChildren(metadataNode, 'publisher')[0])
-    const source = getXmlNodeText(getXmlChildren(metadataNode, 'source')[0])
+    const title = getXmlNodeText(getXmlValues(metadataNode, 'title')[0]).trim()
+    const authorNode = getXmlValues(metadataNode, 'creator').filter(function (node) {
+      return getXmlAttribute(node, 'role').toLowerCase() !== 'trl' && getXmlNodeText(node).trim()
+    })[0]
+    const author = authorNode ? getXmlNodeText(authorNode).trim() : ''
+    const languageCode = getXmlNodeText(getXmlValues(metadataNode, 'language')[0]).trim()
+    const publisher = getXmlNodeText(getXmlValues(metadataNode, 'publisher')[0]).trim()
+    const source = getXmlNodeText(getXmlValues(metadataNode, 'source')[0]).trim()
     const identifierCandidates = extractIdentifierIsbnCandidates(identifierNodes)
 
     for (let index = 0; index < identifierNodes.length; index += 1) {

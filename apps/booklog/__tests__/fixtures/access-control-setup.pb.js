@@ -43,6 +43,20 @@ onBootstrap(function (event) {
 
   saveRecord('books', { id: 'adminbook000001', title: '관리 대상 책', author: '관리 저자' })
   saveRecord('books', { id: 'unusedbook00001', title: '미사용 관리 책' })
+  saveRecord('books', {
+    id: 'sharedbook00001',
+    title: '공유 원본 책',
+    author: '원본 저자',
+    publisher: '원본 출판사',
+    publication_year: '2020',
+    isbn: '1100000011',
+    isbn13: '9791100000014',
+    book_image_url: 'https://example.com/cover.jpg',
+    description: '원본 설명',
+    estimated_page_count: 123,
+    metadata_json: { source: 'original' },
+  })
+  saveRecord('books', { id: 'blankbook000001', title: '빈칸 책', isbn13: '9791100000021' })
   for (let index = 1; index <= 2; index += 1) {
     const fileId = 'adminfile00000' + index
     saveRecord('book_files', {
@@ -151,6 +165,44 @@ routerAdd('GET', '/_test/upload-state', function (event) {
     })
   })
   return event.json(200, { bookCount: books.length, files, shelves, storageRoot: $app.dataDir() + '/storage' })
+})
+
+routerAdd('GET', '/_test/book', function (event) {
+  const query = event.request.url.query()
+  const book = query.get('id')
+    ? $app.findRecordById('books', String(query.get('id')))
+    : $app.findFirstRecordByFilter('books', 'isbn13 = {:isbn13}', { isbn13: String(query.get('isbn13')) })
+  const fields = {}
+  ;['title', 'author', 'publisher', 'isbn13', 'book_image_url', 'description', 'estimated_page_count'].forEach(
+    function (field) {
+      fields[field] = book.get(field)
+    }
+  )
+  return event.json(200, {
+    id: book.id,
+    fields,
+    metadataJson: book.getString('metadata_json'),
+    fileCount: $app.findRecordsByFilter('book_files', 'book_id = {:bookId}', '', 0, 0, { bookId: book.id }).length,
+    shelves: $app
+      .findRecordsByFilter('book_shelves', 'book_id = {:bookId}', '', 0, 0, { bookId: book.id })
+      .map(function (shelf) {
+        const file = $app.findRecordById('book_files', shelf.get('book_file_id'))
+        return { userId: shelf.get('user_id'), fileBookId: file.get('book_id') }
+      }),
+  })
+})
+
+routerAdd('POST', '/_test/prepare-move', function (event) {
+  const book = $app.findRecordById('books', String(event.request.url.query().get('bookId')))
+  const isbn13 = book.get('isbn13')
+  book.set('isbn13', '9791100000045')
+  book.set('estimated_page_count', 0)
+  $app.save(book)
+  const other = new Record($app.findCollectionByNameOrId('books'))
+  other.set('title', '같은 ISBN의 다른 책')
+  other.set('isbn13', isbn13)
+  $app.save(other)
+  return event.json(200, { otherId: other.id })
 })
 
 routerAdd('POST', '/_test/approve', function (event) {

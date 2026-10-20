@@ -189,6 +189,9 @@
       }
     }
 
+    const isNewRecord = !record
+    const filledFields = []
+
     if (!record) {
       record = new Record(collection)
     }
@@ -199,18 +202,44 @@
       title: bookInput.title,
     })
 
-    record.set('title', bookInput.title)
-    record.set('author', bookInput.author)
-    record.set('publisher', bookInput.publisher)
-    record.set('publication_date', dateutil.toDateOnlyIso(bookInput.publicationDate))
-    record.set('publication_year', bookInput.publicationYear)
-    record.set('class_no', bookInput.classNo)
-    record.set('isbn', bookInput.isbn)
-    record.set('isbn13', bookInput.isbn13)
-    record.set('book_image_url', bookInput.bookImageUrl)
-    record.set('estimated_page_count', bookInput.estimatedPageCount)
-    record.set('description', bookInput.description)
-    record.set('metadata_json', bookInput.metadataJson)
+    const fieldValues = {
+      title: bookInput.title,
+      author: bookInput.author,
+      publisher: bookInput.publisher,
+      publication_date: dateutil.toDateOnlyIso(bookInput.publicationDate),
+      publication_year: bookInput.publicationYear,
+      class_no: bookInput.classNo,
+      isbn: bookInput.isbn,
+      isbn13: bookInput.isbn13,
+      book_image_url: bookInput.bookImageUrl,
+      description: bookInput.description,
+    }
+
+    Object.keys(fieldValues).forEach(function (field) {
+      if (isNewRecord || !String(record.get(field) || '').trim()) {
+        record.set(field, fieldValues[field])
+        filledFields.push(field)
+      }
+    })
+
+    if (isNewRecord || Number(record.get('estimated_page_count') || 0) <= 0) {
+      record.set('estimated_page_count', bookInput.estimatedPageCount)
+      filledFields.push('estimated_page_count')
+    }
+
+    const storedMetadataJson = isNewRecord ? '' : toString(record.get('metadata_json')).trim()
+
+    if (isNewRecord || ((!storedMetadataJson || storedMetadataJson === 'null') && bookInput.metadataJson)) {
+      record.set('metadata_json', bookInput.metadataJson)
+      filledFields.push('metadata_json')
+    }
+
+    if (!isNewRecord) {
+      info('xapi/epub/upload:save-book:fill-blank', {
+        id: record.get('id'),
+        filledFields: filledFields,
+      })
+    }
 
     app.save(record)
 
@@ -241,7 +270,9 @@
       fileSize: fileInput.fileSize,
     })
 
-    record.set('book_id', fileInput.bookId)
+    if (!record.get('id')) {
+      record.set('book_id', fileInput.bookId)
+    }
     record.set('original_name', fileInput.originalName)
     record.set('mime_type', fileInput.mimeType)
     record.set('file_size', fileInput.fileSize)
@@ -829,25 +860,26 @@
 
       const bookRecord = saveBookRecord(txApp, bookInput)
       const resolvedBookId = String(bookRecord.get('id'))
+      const bookFileRecord = saveBookFileRecord(txApp, Object.assign({ bookId: resolvedBookId }, fileInput))
+      const fileBookId = String(bookFileRecord.get('book_id'))
 
-      if (existingBookFile && existingBookFile.get('book_id') && existingBookFile.get('book_id') !== resolvedBookId) {
+      if (fileBookId !== resolvedBookId) {
         warn('xapi/epub/upload:file-book-mismatch', {
           fileHash: fileHash,
-          existingBookId: existingBookFile.get('book_id'),
-          newBookId: resolvedBookId,
+          keptBookId: fileBookId,
+          matchedBookId: resolvedBookId,
         })
       }
 
-      const bookFileRecord = saveBookFileRecord(txApp, Object.assign({ bookId: resolvedBookId }, fileInput))
       const shelfRecord = saveBookShelfRecord(txApp, {
         userId: userId,
-        bookId: resolvedBookId,
+        bookId: fileBookId,
         bookFileId: bookFileRecord.get('id'),
       })
 
       saveResult = {
         reused: false,
-        bookId: resolvedBookId,
+        bookId: fileBookId,
         bookFileId: String(bookFileRecord.get('id')),
         shelfId: String(shelfRecord.get('id')),
       }

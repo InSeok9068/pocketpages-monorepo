@@ -275,6 +275,78 @@ test('A failed shelf save rolls back the new book, file record and stored EPUB f
   assert.equal(countStoredFiles(), storedBefore, 'stored EPUB file removed after rollback')
 })
 
+function buildIsbnEpub(isbn13, bodyText) {
+  const { zipSync, strToU8 } = require('fflate')
+  return zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+    ),
+    'OPS/book.opf': strToU8(
+      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:identifier id="isbn" opf:scheme="ISBN">'
+        + isbn13
+        + '</dc:identifier></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+    ),
+    'OPS/body.xhtml': strToU8('<html><body><p>' + bodyText + '</p></body></html>'),
+  })
+}
+
+async function uploadEpub(user, bytes, name) {
+  const form = new FormData()
+  form.set('epubFile', new Blob([bytes], { type: 'application/epub+zip' }), name)
+  const response = await fetch(service.baseUrl + '/xapi/epub/upload', {
+    method: 'POST',
+    headers: sessions[user],
+    redirect: 'manual',
+    body: form,
+  })
+  assert.equal(response.status, 303)
+  return decodeURIComponent(response.headers.get('location') || '')
+}
+
+test('Uploading another file of an existing book keeps its stored metadata and only fills blank fields', async () => {
+  const sharedMessage = await uploadEpub(1, buildIsbnEpub('9791100000014', '다른 판본 파일입니다.'), 'other-edition.epub')
+  assert.match(sharedMessage, /저장했습니다/)
+  const shared = await (await request('/_test/book?id=sharedbook00001')).json()
+  assert.deepEqual(shared.fields, {
+    title: '공유 원본 책',
+    author: '원본 저자',
+    publisher: '원본 출판사',
+    isbn13: '9791100000014',
+    book_image_url: 'https://example.com/cover.jpg',
+    description: '원본 설명',
+    estimated_page_count: 123,
+  })
+  assert.deepEqual(JSON.parse(shared.metadataJson), { source: 'original' })
+  assert.equal(shared.fileCount, 1)
+  assert.deepEqual(shared.shelves, [{ userId: 'reviewuser00001', fileBookId: 'sharedbook00001' }])
+
+  await uploadEpub(1, buildIsbnEpub('9791100000021', '빈칸을 채우는 파일입니다.'), 'blank-fill.epub')
+  const blank = await (await request('/_test/book?id=blankbook000001')).json()
+  assert.equal(blank.fields.title, '빈칸 책')
+  assert.ok(blank.fields.estimated_page_count > 0, 'missing page count is filled')
+})
+
+test('A re-saved shared file stays attached to its book even when its ISBN now points at another book', async () => {
+  const bytes = buildIsbnEpub('9791100000038', '파일이 다른 책으로 옮겨 붙으면 안 됩니다.')
+  await uploadEpub(1, bytes, 'move-guard.epub')
+  const original = await (await request('/_test/book?isbn13=9791100000038')).json()
+  const { otherId } = await (await fetch(service.baseUrl + '/_test/prepare-move?bookId=' + original.id, { method: 'POST' })).json()
+
+  const message = await uploadEpub(2, bytes, 'move-guard.epub')
+  assert.doesNotMatch(message, /문제가 발생했습니다/)
+  const kept = await (await request('/_test/book?id=' + original.id)).json()
+  assert.equal(kept.fields.isbn13, '9791100000045')
+  assert.equal(kept.fileCount, 1, 'shared file still belongs to the original book')
+  assert.deepEqual(
+    kept.shelves.map((shelf) => shelf.userId + ':' + shelf.fileBookId).sort(),
+    ['reviewuser00001:' + original.id, 'reviewuser00002:' + original.id]
+  )
+  const other = await (await request('/_test/book?id=' + otherId)).json()
+  assert.equal(other.fields.title, '같은 ISBN의 다른 책')
+  assert.equal(other.fileCount, 0)
+})
+
 test('Only administrators see and access book management; users cannot grant themselves admin access', async () => {
   assert.doesNotMatch(await (await request('/')).text(), /href="\/admin\/books"/)
   assert.match(await (await request('/', 4)).text(), /href="\/admin\/books"/)
