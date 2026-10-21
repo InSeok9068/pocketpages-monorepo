@@ -41,8 +41,8 @@
       found.chunkIndex >= 0
         ? audioData.sectionTimeline($app, fileId, settings.configHash, sectionIndex)[found.chunkIndex] || 0
         : 0
-    // 글자 비율로 잡은 시간은 실제 낭독보다 조금 늦을 수 있어, 보던 문장을 놓치지 않게 몇 초 앞에서 시작합니다.
-    const seconds = Math.max(0, Math.floor(found.ratio * chunkSeconds) - 3)
+    // 글자 비율로 잡은 시간은 실제 낭독보다 조금 늦을 수 있어, 문장 첫 단어를 놓치지 않게 1초 앞에서 시작합니다.
+    const seconds = Math.max(0, Math.floor(found.ratio * chunkSeconds) - 1)
     dbg('api/books/audio-position:lookup', { userId, fileId, sectionIndex, chunkIndex: found.chunkIndex, seconds })
     response.json(200, { ok: true, chunkIndex: found.chunkIndex, seconds })
   } catch (exception) {

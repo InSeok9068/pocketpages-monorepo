@@ -267,6 +267,35 @@ test('Leaving with only the bottom of a picture page above the text saves the te
   expect(requests.savedLocators.at(-1)).toMatch(/^epubcfi\(\/6\/6!/)
 })
 
+test('AI audio from the reading position starts at the first sentence on screen, not the paragraph start', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const xhtml = (body) => strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + body + '</body></html>')
+  const sentences = Array.from({ length: 400 }, (_, index) => '문장 ' + (index + 1) + '입니다.').join(' ')
+  const longParagraphBook = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+    ),
+    'book.opf': strToU8(
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">long-paragraph</dc:identifier><dc:title>긴 문단</dc:title></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+    ),
+    'body.xhtml': xhtml('<p>' + sentences + '</p><p>다음 문단입니다.</p>'),
+  })
+  await mockSite(page, { epub: longParagraphBook, savedLocator: 'epubcfi(/6/2!/4/2/1:3000)', aiAudio: true })
+  await page.goto('/books/book/read')
+  await waitForReader(page)
+  await page.waitForTimeout(1000)
+
+  const audioRequest = page.waitForRequest((request) => request.url().includes('/api/books/audio-position'))
+  await page.evaluate(() =>
+    window.Alpine.$data(document.querySelector('section[x-data]')).startCloudAudioAtReadingPosition()
+  )
+  const anchor = new URL((await audioRequest).url()).searchParams.get('anchor')
+  const sentence = Number((anchor.match(/^문장 (\d+)입니다\./) || [])[1])
+  expect(sentence, anchor).toBeGreaterThan(250)
+  expect(sentence, anchor).toBeLessThan(300)
+})
+
 test('Restoring near the end of the last chapter does not wait for a chapter that will never load', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const xhtml = (body) => strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + body + '</body></html>')

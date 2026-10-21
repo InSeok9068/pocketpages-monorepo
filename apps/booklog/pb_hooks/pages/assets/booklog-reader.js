@@ -992,10 +992,36 @@ window.booklogReaderLogic = (function () {
     }
 
     if (startIndex >= 0) {
+      queue[startIndex].visibleOffset = findVisibleTextOffset(doc, nodes[queue[startIndex].sourceIndex], currentCfi)
       return queue.slice(startIndex)
     }
 
     return queue
+  }
+
+  // 화면 첫 줄이 문단 중간이면, 그 문단에서 화면 앞쪽(이전 페이지)에 있는 글자 수를 구합니다.
+  function findVisibleTextOffset(doc, node, currentCfi) {
+    if (!doc || !node || !currentCfi || !window.ePub || !window.ePub.CFI) return 0
+    try {
+      var start = new window.ePub.CFI(currentCfi).toRange(doc)
+      if (!start || !node.contains(start.startContainer)) return 0
+      var before = doc.createRange()
+      before.setStart(node, 0)
+      before.setEnd(start.startContainer, start.startOffset)
+      return normalizeText(before.toString()).length
+    } catch (exception) {
+      return 0
+    }
+  }
+
+  // 화면 첫 줄이 문장 중간이면 그 문장은 건너뛰고, 화면 안에서 처음 시작하는 문장의 위치를 돌려줍니다.
+  function findVisibleSentenceStart(text, offset) {
+    if (!(offset > 0)) return 0
+    if (/[.?!…]["'”’)\]]*\s*$/.test(text.slice(0, offset))) return offset
+    var boundary = /[.?!…]["'”’)\]]*\s+/g
+    boundary.lastIndex = offset
+    var found = boundary.exec(text)
+    return found ? found.index + found[0].length : -1
   }
 
   function activateReadAloudHighlight(queueItem) {
@@ -4492,9 +4518,17 @@ window.booklogReaderLogic = (function () {
     buildReadAloudQueue(component)
       .then(function (queue) {
         var anchor = ''
+        var first = queue[0]
+        var start = findVisibleSentenceStart(first.text, first.visibleOffset || 0)
+        // 화면 첫 문단이 이전 페이지에서 이어진 경우, 안 보이는 앞부분이 아니라 화면 안의 첫 문장부터 듣게 합니다.
+        var texts = queue.map(function (item) {
+          return item.text
+        })
+        if (start > 0) texts[0] = first.text.slice(start)
+        else if (start < 0 && texts.length > 1) texts.shift()
         // 짧은 제목·대사만으로는 같은 문장이 여러 구간에 있을 수 있어 40자 이상 모읍니다.
-        for (var index = 0; index < queue.length && anchor.replace(/\s+/g, '').length < 40; index += 1) {
-          anchor += ' ' + queue[index].text
+        for (var index = 0; index < texts.length && anchor.replace(/\s+/g, '').length < 40; index += 1) {
+          anchor += ' ' + texts[index]
         }
         component.cloudAudioBusy = false
         window.booklogAudio.start(component, section.index, true, normalizeText(anchor).slice(0, 200))
