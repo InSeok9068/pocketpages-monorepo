@@ -15,6 +15,7 @@ Usage:
   ./task.sh update <npm|pocketbase> [-- <extra args>]
   ./task.sh audit [--fix] [-- <extra args>]
   ./task.sh install <npm> [-- <extra args>]
+  ./task.sh ci <npm> [-- <extra args>]
   ./task.sh deploy <service> [--skip-verify]
   ./task.sh rollback <service> <1|2|3>
   ./task.sh docker-rollback <service> <1|2|3>
@@ -45,6 +46,7 @@ Commands:
   update    `npm` runs npm up in root and app package.json dirs; `pocketbase` runs pocketbase update in app dirs
   audit     Run npm audit in root and app package.json dirs; --fix runs npm audit fix --force in each dir
   install   `npm` runs npm install in root and app package.json dirs
+  ci        `npm` runs npm ci in root and app package.json dirs
   deploy    Verify and upload one service deploy targets using .vscode/sftp.json
   rollback  Restore deploy history version 1, 2, or 3 for one service target set
   docker-rollback  Retag a previous release image (from release/<service> git history) and restart its docker compose service
@@ -86,6 +88,7 @@ Examples:
   ./task.sh update npm -- --save
   ./task.sh install npm
   ./task.sh install npm -- --package-lock-only
+  ./task.sh ci npm
   ./task.sh update pocketbase
   ./task.sh update pocketbase -- --backup
   ./task.sh audit
@@ -301,6 +304,10 @@ run_install_npm() {
   run_npm_app_command install "$@"
 }
 
+run_ci_npm() {
+  run_npm_app_command ci "$@"
+}
+
 run_audit() {
   run_npm_app_command audit "$@"
 }
@@ -351,6 +358,22 @@ run_install() {
     *)
       echo "Unknown install target: $target" >&2
       echo "Usage: ./task.sh install <npm> [-- <extra args>]" >&2
+      exit 1
+      ;;
+  esac
+}
+
+run_ci() {
+  local target="${1:-}"
+  shift || true
+
+  case "$target" in
+    npm)
+      run_ci_npm "$@"
+      ;;
+    *)
+      echo "Unknown ci target: $target" >&2
+      echo "Usage: ./task.sh ci <npm> [-- <extra args>]" >&2
       exit 1
       ;;
   esac
@@ -2420,6 +2443,11 @@ if [[ "${1:-}" == "__complete_install_targets" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "__complete_ci_targets" ]]; then
+  printf '%s\n' npm
+  exit 0
+fi
+
 if [[ "${1:-}" == "__complete_generate_kinds" ]]; then
   printf '%s\n' xapi-redirect api-json xapi-partial xapi-datastar
   exit 0
@@ -2486,6 +2514,14 @@ case "${1:-help}" in
     shift || true
     [[ "${1:-}" == "--" ]] && shift
     run_install "$target" "$@"
+    ;;
+  ci)
+    shift || true
+    [[ -n "${1:-}" ]] || { echo "Usage: ./task.sh ci <npm> [-- <extra args>]" >&2; exit 1; }
+    target="$1"
+    shift || true
+    [[ "${1:-}" == "--" ]] && shift
+    run_ci "$target" "$@"
     ;;
   deploy)
     shift

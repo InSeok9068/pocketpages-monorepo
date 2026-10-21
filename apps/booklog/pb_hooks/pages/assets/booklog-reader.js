@@ -19,7 +19,7 @@ window.booklogReaderLogic = (function () {
   var intentStartedAt = 0
   var releaseRequired = false
   var releaseDirection = ''
-  var pendingTransitionSnapshot = null
+  var autoPagingGeneration = 0
   var boundAutoPagingTarget = null
   var boundAutoPagingHandler = null
   var lastContainerScrollTop = 0
@@ -3678,7 +3678,6 @@ window.booklogReaderLogic = (function () {
     }
 
     pendingAutoPagingDirection = ''
-    pendingTransitionSnapshot = null
     resetAutoPagingIntent()
 
     if (!keepRelease) {
@@ -3691,6 +3690,7 @@ window.booklogReaderLogic = (function () {
     }
 
     if (!keepInFlight) {
+      autoPagingGeneration += 1
       autoPagingInFlight = false
     }
   }
@@ -3973,25 +3973,6 @@ window.booklogReaderLogic = (function () {
   }
 
   /**
-   * 자동 페이지 전환 전 스크롤 위치 스냅샷을 기록합니다.
-   * @param {'next' | 'prev'} direction 이동 방향
-   * @param {HTMLElement | null} target 현재 스크롤 컨테이너
-   * @returns {{ direction: 'next' | 'prev', beforeScrollTop: number, beforeScrollHeight: number, beforeClientHeight: number } | null} 전환 보정 스냅샷
-   */
-  function createAutoPagingTransitionSnapshot(direction, target) {
-    if (!target || (direction !== 'next' && direction !== 'prev')) {
-      return null
-    }
-
-    return {
-      direction: direction,
-      beforeScrollTop: Number(target.scrollTop || 0),
-      beforeScrollHeight: Number(target.scrollHeight || 0),
-      beforeClientHeight: Number(target.clientHeight || 0),
-    }
-  }
-
-  /**
    * 자동 페이지 전환 완료 후 공통 상태를 마무리합니다.
    * @param {'next' | 'prev'} direction 이동 방향
    * @param {HTMLElement | null} target 현재 스크롤 컨테이너
@@ -4001,7 +3982,6 @@ window.booklogReaderLogic = (function () {
     var activeTarget = target || syncAutoPagingTarget()
 
     autoPagingInFlight = false
-    pendingTransitionSnapshot = null
     releaseRequired = true
     releaseDirection = direction
     setAutoPagingSettling()
@@ -4012,36 +3992,11 @@ window.booklogReaderLogic = (function () {
     }
   }
 
-  /**
-   * 이전 섹션 prepend 후 높이 차이만큼 스크롤 위치를 보정합니다.
-   * @param {{ direction: 'next' | 'prev', beforeScrollTop: number, beforeScrollHeight: number, beforeClientHeight: number } | null} snapshot 전환 전 스냅샷
-   * @returns {void}
-   */
-  function schedulePrevAutoPagingCompensation(snapshot) {
-    window.requestAnimationFrame(function () {
-      window.requestAnimationFrame(function () {
-        var target = syncAutoPagingTarget()
-        var afterScrollHeight = 0
-        var heightDelta = 0
-
-        if (!target || !snapshot || snapshot.direction !== 'prev') {
-          finalizeAutoPagingTransition(snapshot && snapshot.direction ? snapshot.direction : 'prev', target)
-          return
-        }
-
-        afterScrollHeight = Number(target.scrollHeight || 0)
-        heightDelta = Math.max(afterScrollHeight - snapshot.beforeScrollHeight, 0)
-        target.scrollTop = snapshot.beforeScrollTop + heightDelta
-        lastContainerScrollTop = target.scrollTop || 0
-
-        finalizeAutoPagingTransition('prev', target)
-      })
-    })
-  }
-
-  function goToAdjacentSection(component, direction) {
-    var action = null
+  // continuous 모드의 연결·위치 보정을 사용해 경계에서 추가 화면 이동이 생기지 않도록 합니다.
+  function fillAdjacentSections(component, direction) {
+    var manager = renditionInstance && renditionInstance.manager ? renditionInstance.manager : null
     var target = autoPagingTarget || syncAutoPagingTarget()
+    var generation = autoPagingGeneration
 
     if (!renditionInstance || !target || autoPagingInFlight || isAutoPagingSettling()) {
       return
@@ -4059,28 +4014,27 @@ window.booklogReaderLogic = (function () {
       return
     }
 
-    action = direction === 'next' ? renditionInstance.next : renditionInstance.prev
-
-    if (typeof action !== 'function') {
-      return
-    }
-
-    pendingTransitionSnapshot = createAutoPagingTransitionSnapshot(direction, target)
-
-    if (!pendingTransitionSnapshot) {
+    if (!manager || typeof manager.fill !== 'function') {
       return
     }
 
     autoPagingInFlight = true
     resetAutoPagingIntent()
 
-    Promise.resolve(action.call(renditionInstance))
+    Promise.resolve()
       .then(function () {
+        if (generation !== autoPagingGeneration) return
+        return manager.fill()
+      })
+      .then(function () {
+        if (generation !== autoPagingGeneration) return
+        finalizeAutoPagingTransition(direction, syncAutoPagingTarget())
         console.debug('page/books/[bookId]/read:auto-page:requested', {
           direction: direction,
         })
       })
       .catch(function (exception) {
+        if (generation !== autoPagingGeneration) return
         resetAutoPagingState()
         console.warn('page/books/[bookId]/read:auto-page:failed', {
           direction: direction,
@@ -4162,7 +4116,7 @@ window.booklogReaderLogic = (function () {
       return
     }
 
-    goToAdjacentSection(component, direction)
+    fillAdjacentSections(component, direction)
   }
 
   function bindAutoPaging(component, target) {
@@ -4340,24 +4294,12 @@ window.booklogReaderLogic = (function () {
 
     renditionInstance.on('relocated', function (location) {
       var target = null
-      var snapshot = pendingTransitionSnapshot
 
       target = syncAutoPagingTarget()
       if (target) {
         bindAutoPaging(component, target)
       }
       updateCurrentLocation(component, location)
-
-      if (!autoPagingInFlight || !snapshot) {
-        return
-      }
-
-      if (snapshot.direction === 'prev') {
-        schedulePrevAutoPagingCompensation(snapshot)
-        return
-      }
-
-      finalizeAutoPagingTransition(snapshot.direction, target)
     })
 
     return bookInstance.ready.then(function () {

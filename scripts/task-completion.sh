@@ -19,7 +19,7 @@ _pp_dev_complete() {
   fi
 
   if [[ $COMP_CWORD -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "start kill update audit install deploy rollback docker-rollback backup archive restore archives merge test lint tsc diag verify preflight knip gitleaks index new css bundle generate format help" -- "$cur") )
+    COMPREPLY=( $(compgen -W "start kill update audit install ci deploy rollback docker-rollback backup archive restore archives merge test lint tsc diag verify preflight knip gitleaks index new css bundle generate format help" -- "$cur") )
     return
   fi
 
@@ -34,6 +34,13 @@ _pp_dev_complete() {
     local install_targets
     install_targets="$("$script" __complete_install_targets 2>/dev/null)"
     COMPREPLY=( $(compgen -W "$install_targets" -- "$cur") )
+    return
+  fi
+
+  if [[ $COMP_CWORD -eq 2 && "$cmd" == "ci" ]]; then
+    local ci_targets
+    ci_targets="$("$script" __complete_ci_targets 2>/dev/null)"
+    COMPREPLY=( $(compgen -W "$ci_targets" -- "$cur") )
     return
   fi
 
@@ -147,7 +154,7 @@ _pp_dev_complete() {
     fi
   fi
 
-  if [[ ( "$cmd" == "update" || "$cmd" == "install" ) && "$cur" == --* ]]; then
+  if [[ ( "$cmd" == "update" || "$cmd" == "install" || "$cmd" == "ci" ) && "$cur" == --* ]]; then
     local target
     target="${COMP_WORDS[2]}"
 

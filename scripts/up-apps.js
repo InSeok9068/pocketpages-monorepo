@@ -8,7 +8,7 @@ const { spawnSync } = require('child_process')
 const ROOT_DIR = path.resolve(__dirname, '..')
 const APPS_DIR = path.join(ROOT_DIR, 'apps')
 const ROOT_PACKAGE_JSON = path.join(ROOT_DIR, 'package.json')
-const SUPPORTED_NPM_COMMANDS = new Set(['up', 'install', 'audit'])
+const SUPPORTED_NPM_COMMANDS = new Set(['up', 'install', 'ci', 'audit'])
 
 /**
  * 현재 런타임에서 npm 실행 정보를 구합니다.
@@ -98,7 +98,7 @@ function parseArgs(args) {
 
   if (!SUPPORTED_NPM_COMMANDS.has(npmCommand)) {
     console.error(`Unknown npm command: ${npmCommand}`)
-    console.error('Usage: node scripts/up-apps.js [--npm-command <up|install>] [npm args...]')
+    console.error('Usage: node scripts/up-apps.js [--npm-command <up|install|ci|audit>] [npm args...]')
     process.exit(1)
   }
 
@@ -109,7 +109,7 @@ function parseArgs(args) {
  * 도움말을 출력합니다.
  */
 function printHelp() {
-  console.log('Usage: node scripts/up-apps.js [--npm-command <up|install|audit>] [npm args...]')
+  console.log('Usage: node scripts/up-apps.js [--npm-command <up|install|ci|audit>] [npm args...]')
   console.log('')
   console.log('Examples:')
   console.log('  node scripts/up-apps.js')
@@ -117,6 +117,7 @@ function printHelp() {
   console.log('  node scripts/up-apps.js --dry-run')
   console.log('  node scripts/up-apps.js --npm-command install')
   console.log('  node scripts/up-apps.js --npm-command install --package-lock-only')
+  console.log('  node scripts/up-apps.js --npm-command ci')
   console.log('  node scripts/up-apps.js --npm-command audit')
   console.log('  node scripts/up-apps.js --npm-command audit -- --omit=dev')
 }
@@ -164,7 +165,13 @@ function main() {
   const packageDirs = collectPackageDirs()
   const hasRoot = packageDirs.includes(ROOT_DIR)
   const appCount = packageDirs.filter((targetDir) => targetDir !== ROOT_DIR).length
-  const actionLabel = npmCommand === 'install' ? 'Installing' : npmCommand === 'audit' ? 'Auditing' : 'Updating'
+  const actionLabel = npmCommand === 'install'
+    ? 'Installing'
+    : npmCommand === 'ci'
+      ? 'Installing from lockfiles'
+      : npmCommand === 'audit'
+        ? 'Auditing'
+        : 'Updating'
   const continueOnFailure = npmCommand === 'audit'
 
   if (packageDirs.length === 0) {
