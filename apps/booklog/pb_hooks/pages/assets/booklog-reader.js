@@ -34,6 +34,8 @@ window.booklogReaderLogic = (function () {
   var READING_SESSION_SAVE_INTERVAL_MS = 60000
   var READING_SESSION_IDLE_MS = 180000
   var NAVIGATION_SAVE_WAIT_MS = 2000
+  var DISPLAY_SETTLE_TIMEOUT_MS = 1500
+  var DISPLAY_SETTLE_RETRY_MS = 80
   var HISTORY_BACK_FALLBACK_MS = 1500
   var DEFAULT_FONT_SIZE_PERCENT = 100
   var FONT_SIZE_OPTIONS = [90, 100, 110, 120, 130]
@@ -2421,10 +2423,10 @@ window.booklogReaderLogic = (function () {
     stopLocalReadAloud(component)
     prepareManualNavigation()
 
-    Promise.resolve(renditionInstance.display(target))
+    Promise.resolve(displayAt(target))
       .catch(function () {
         if (position.locator && position.href) {
-          return renditionInstance.display(position.href)
+          return displayAt(position.href)
         }
 
         throw new Error('저장된 위치로 이동하지 못했습니다.')
@@ -2596,6 +2598,81 @@ window.booklogReaderLogic = (function () {
     isHandlingHistoryBack = false
   }
 
+  /**
+   * 이동한 CFI가 화면 맨 위에 오도록 스크롤을 다시 맞춥니다.
+   * @param {string} target 이동한 CFI 또는 href
+   * @returns {Promise<void>} 보정 완료
+   */
+  function settleDisplayedTarget(target) {
+    var startedAt = Date.now()
+
+    return new Promise(function (resolve) {
+      function attempt() {
+        var container = renditionInstance && renditionInstance.manager ? renditionInstance.manager.container : null
+        var range = null
+        var frame = null
+        var delta = 0
+        var desiredScrollTop = 0
+        var maxScrollTop = 0
+
+        if (!container || String(target || '').indexOf('epubcfi(') !== 0) {
+          resolve()
+          return
+        }
+
+        try {
+          range = renditionInstance.getRange(target)
+          frame = range ? range.startContainer.ownerDocument.defaultView.frameElement : null
+        } catch (exception) {
+          range = null
+        }
+
+        if (!range || !frame) {
+          resolve()
+          return
+        }
+
+        delta =
+          frame.getBoundingClientRect().top + range.getBoundingClientRect().top - container.getBoundingClientRect().top
+        desiredScrollTop = container.scrollTop + delta
+        maxScrollTop = container.scrollHeight - container.clientHeight
+
+        if (Math.abs(delta) < 2) {
+          resolve()
+          return
+        }
+
+        // 챕터 끝 근처는 다음 챕터가 붙기 전까지 스크롤할 공간이 없어 기다렸다가 맞춥니다.
+        if (
+          (desiredScrollTop >= 0 && desiredScrollTop <= maxScrollTop)
+          || Date.now() - startedAt >= DISPLAY_SETTLE_TIMEOUT_MS
+        ) {
+          prepareManualNavigation()
+          container.scrollTop = Math.max(0, Math.min(maxScrollTop, desiredScrollTop))
+          resolve()
+          return
+        }
+
+        window.setTimeout(attempt, DISPLAY_SETTLE_RETRY_MS)
+      }
+
+      window.requestAnimationFrame(attempt)
+    })
+  }
+
+  /**
+   * 대상 위치로 이동한 뒤 스크롤 보정을 마친 현재 위치를 반환합니다.
+   * @param {string} target 이동할 CFI 또는 href
+   * @returns {Promise<any>} 보정 후 epub.js 위치
+   */
+  function displayAt(target) {
+    return Promise.resolve(renditionInstance.display(target)).then(function (location) {
+      return settleDisplayedTarget(target).then(function () {
+        return renditionInstance.currentLocation() || location
+      })
+    })
+  }
+
   function restoreSavedPosition(component, options) {
     var shouldShowMessage = !options || !options.silent
 
@@ -2631,10 +2708,10 @@ window.booklogReaderLogic = (function () {
           return false
         }
 
-        return Promise.resolve(renditionInstance.display(target))
+        return Promise.resolve(displayAt(target))
           .catch(function () {
             if (locator && href) {
-              return renditionInstance.display(href)
+              return displayAt(href)
             }
 
             throw new Error('저장된 위치로 이동하지 못했습니다.')
@@ -4260,7 +4337,7 @@ window.booklogReaderLogic = (function () {
           cfi = found.length ? String(found[0].cfi || '') : ''
           return !!cfi
         })
-        return renditionInstance.display(cfi || section.href)
+        return displayAt(cfi || section.href)
       })
       .then(function () {
         component.loading = false
@@ -4424,8 +4501,7 @@ window.booklogReaderLogic = (function () {
     stopLocalReadAloud(component)
     prepareManualNavigation()
 
-    renditionInstance
-      .display(target)
+    displayAt(target)
       .then(function () {
         component.loading = false
       })
@@ -4452,8 +4528,7 @@ window.booklogReaderLogic = (function () {
     stopLocalReadAloud(component)
     prepareManualNavigation()
 
-    renditionInstance
-      .display(target)
+    displayAt(target)
       .then(function (location) {
         updateCurrentLocation(component, location || renditionInstance.currentLocation())
         component.loading = false
@@ -4732,10 +4807,10 @@ window.booklogReaderLogic = (function () {
     stopLocalReadAloud(component)
     prepareManualNavigation()
 
-    Promise.resolve(renditionInstance.display(target))
+    Promise.resolve(displayAt(target))
       .catch(function () {
         if (locator && href) {
-          return renditionInstance.display(href)
+          return displayAt(href)
         }
 
         throw new Error('책갈피 위치로 이동하지 못했습니다.')
@@ -4774,10 +4849,10 @@ window.booklogReaderLogic = (function () {
     stopLocalReadAloud(component)
     prepareManualNavigation()
 
-    Promise.resolve(renditionInstance.display(target))
+    Promise.resolve(displayAt(target))
       .catch(function () {
         if (locator && href) {
-          return renditionInstance.display(href)
+          return displayAt(href)
         }
 
         throw new Error('문구 위치로 이동하지 못했습니다.')
@@ -4982,7 +5057,7 @@ window.booklogReaderLogic = (function () {
     prepareManualNavigation()
     stopLocalReadAloud(component)
 
-    Promise.resolve(renditionInstance.display(locator))
+    Promise.resolve(displayAt(locator))
       .then(function (location) {
         updateCurrentLocation(component, location || renditionInstance.currentLocation())
         component.showSavePositionMessage(progressValue + '% 지점으로 이동했습니다.')

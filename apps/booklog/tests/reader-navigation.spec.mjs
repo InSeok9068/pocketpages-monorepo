@@ -44,7 +44,7 @@ const readerBody = render(
 
 function html(body) {
   return (
-    '<!doctype html><html><head><meta charset="utf-8"><style>[x-cloak]{display:none!important}</style><script defer src="/assets/vendor/alpine-3.17.4-cdn.min.js"></script></head><body>'
+    '<!doctype html><html><head><meta charset="utf-8"><style>[x-cloak]{display:none!important}</style><link rel="stylesheet" href="/assets/uno.min.css"><script defer src="/assets/vendor/alpine-3.17.4-cdn.min.js"></script></head><body>'
     + body
     + '</body></html>'
   )
@@ -53,6 +53,8 @@ function html(body) {
 async function mockSite(page, options) {
   const requests = { detail: 0, saveProgress: 0, saveForms: [] }
   const savedHref = options && options.savedHref ? options.savedHref : ''
+  const savedLocator = options && options.savedLocator ? options.savedLocator : ''
+  const epubBytes = Buffer.from(options && options.epub ? options.epub : epub)
   await page.route(
     (url) => url.protocol === 'http:' || url.protocol === 'https:',
     async (route) => {
@@ -60,9 +62,11 @@ async function mockSite(page, options) {
       if (url.pathname.startsWith('/assets/')) {
         return route.fulfill({ path: fileURLToPath(new URL(url.pathname.slice(1), pagesRoot)) })
       }
-      if (url.pathname === '/test.epub') return route.fulfill({ body: Buffer.from(epub), contentType: 'application/epub+zip' })
+      if (url.pathname === '/test.epub') return route.fulfill({ body: epubBytes, contentType: 'application/epub+zip' })
       if (url.pathname === '/api/books/load-progress') {
-        return route.fulfill({ json: { ok: true, hasSavedPosition: !!savedHref, locator: '', href: savedHref } })
+        return route.fulfill({
+          json: { ok: true, hasSavedPosition: !!(savedHref || savedLocator), locator: savedLocator, href: savedHref },
+        })
       }
       if (url.pathname === '/api/books/save-progress') {
         requests.saveProgress += 1
@@ -169,4 +173,37 @@ test('Leaving after another device moved on skips the stale save without asking'
   await expect(page).toHaveURL(/\/books\/book$/)
   expect(requests.saveProgress).toBeGreaterThan(savesBeforeLeave)
   expect(requests.saveForms.every((form) => form.force === null)).toBe(true)
+})
+
+test('A saved position near the end of a short chapter is restored to the top of the screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const paragraphs = (chapter, count) =>
+    Array.from({ length: count }, (_, index) => '<p>' + chapter + ' 문단 ' + (index + 1) + ' 짧은 챕터의 끝부분까지 이어지는 본문입니다.</p>').join('')
+  const shortChapters = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+    ),
+    'book.opf': strToU8(
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">short-chapters</dc:identifier><dc:title>짧은 챕터</dc:title></metadata><manifest><item id="zero" href="zero.xhtml" media-type="application/xhtml+xml"/><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="two.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="zero"/><itemref idref="one"/><itemref idref="two"/></spine></package>'
+    ),
+    'zero.xhtml': strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + paragraphs('서문', 200) + '</body></html>'),
+    'one.xhtml': strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + paragraphs('첫째', 30) + '</body></html>'),
+    'two.xhtml': strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + paragraphs('둘째', 30) + '</body></html>'),
+  })
+  await mockSite(page, { epub: shortChapters, savedLocator: 'epubcfi(/6/4!/4/56/1:0)' })
+  await page.goto('/books/book/read')
+  await waitForReader(page)
+
+  const top = await page.evaluate(() => {
+    const readerTop = document.querySelector('#epub-reader').getBoundingClientRect().top
+    for (const frame of document.querySelectorAll('#epub-reader iframe')) {
+      const frameTop = frame.getBoundingClientRect().top
+      for (const paragraph of frame.contentDocument.querySelectorAll('p')) {
+        if (frameTop + paragraph.getBoundingClientRect().bottom > readerTop + 1) return paragraph.textContent.trim()
+      }
+    }
+    return ''
+  })
+  expect(top).toContain('첫째 문단 28')
 })
