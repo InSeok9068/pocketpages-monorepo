@@ -136,6 +136,11 @@ routerAdd('GET', '/_test/access-state', function (event) {
   return event.json(200, {
     strangerShelfCount: $app.countRecords('book_shelves', $dbx.hashExp({ user_id: 'reviewuser00002' })),
     pendingApproved: pending.get('booklog_enabled'),
+    readingSessions: $app
+      .findRecordsByFilter('reading_sessions', 'user_id = {:userId}', '', 0, 0, { userId: 'reviewuser00001' })
+      .map(function (session) {
+        return { id: session.id, durationSeconds: session.get('duration_seconds') }
+      }),
   })
 })
 

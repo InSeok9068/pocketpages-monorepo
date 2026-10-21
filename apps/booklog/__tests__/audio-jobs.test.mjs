@@ -225,3 +225,61 @@ test('Book-level model reservations, concurrent requests, resume, playback and r
   await request(4)
   assert.equal((await jobs()).find((job) => job.file_id === fileId(4)).model, lite)
 })
+
+async function scenario(index, name) {
+  const response = await fetch(service.baseUrl + '/_test/audio-scenario', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileId: fileId(index), name }),
+  })
+  const result = await response.json()
+  assert.equal(response.status, 200, JSON.stringify(result))
+  return result
+}
+
+test('A job whose only missing parts were blocked by policy is completed and releases its model', async () => {
+  const { job } = await scenario(5, 'blocked')
+  assert.equal(job.status, 'completed')
+  assert.equal(job.ready_chunks, 1)
+  assert.match(job.error_message, /1개 구간은 정책 차단/)
+})
+
+test('Resuming after chunks were re-planned moves a stale position to the nearest remaining chunk', async () => {
+  const headers = { Cookie: cookie }
+  const { job, chunks } = await scenario(6, 'plan')
+  const save = (chunk) =>
+    fetch(service.baseUrl + '/api/books/audio-progress', {
+      method: 'POST',
+      headers,
+      body: new URLSearchParams({
+        bookId: bookId(6),
+        fileId: fileId(6),
+        configHash: job.config_hash,
+        chunkId: chunk.id,
+        seconds: '12',
+        listenedAt: new Date().toISOString(),
+      }),
+    })
+  const load = async () => {
+    const query = new URLSearchParams({ bookId: bookId(6), fileId: fileId(6) })
+    const { progress } = await (await fetch(service.baseUrl + '/api/books/audio-progress?' + query, { headers })).json()
+    return { sectionIndex: progress.sectionIndex, chunkIndex: progress.chunkIndex, seconds: progress.seconds }
+  }
+
+  assert.equal((await save(chunks.find((chunk) => chunk.sectionIndex === 0 && chunk.chunkIndex === 2))).status, 200)
+  await scenario(6, 'replan')
+  assert.deepEqual(
+    await load(),
+    { sectionIndex: 0, chunkIndex: 0, seconds: 0 },
+    'a chunk beyond the shortened chapter falls back to its last chunk'
+  )
+
+  const replanned = (await scenario(6, 'plan')).chunks
+  assert.equal((await save(replanned.find((chunk) => chunk.sectionIndex === 2))).status, 200)
+  await scenario(6, 'replan')
+  assert.deepEqual(
+    await load(),
+    { sectionIndex: 4, chunkIndex: 0, seconds: 0 },
+    'a removed chapter resumes from the next chapter that still has narration'
+  )
+})

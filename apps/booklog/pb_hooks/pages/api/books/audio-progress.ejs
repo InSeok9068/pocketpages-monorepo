@@ -72,6 +72,24 @@
           }
         }
       }
+      if (progress) {
+        // 다시 시작하며 구간을 새로 나누면 저장된 챕터·구간이 없어질 수 있어, 남아 있는 가장 가까운 위치로 맞춥니다.
+        const chunkCount = audioData.countSectionChunks($app, fileId, settings.configHash, sectionIndex)
+        if (chunkCount === 0) {
+          const order = audioData.readSectionOrder($app, fileId, settings.configHash)
+          const later = order.filter(function (index) {
+            return index > sectionIndex
+          })
+          if (order.length) {
+            sectionIndex = later.length ? later[0] : order[order.length - 1]
+            chunkIndex = 0
+            seconds = 0
+          }
+        } else if (chunkIndex >= chunkCount) {
+          chunkIndex = chunkCount - 1
+          seconds = 0
+        }
+      }
       const chapterSeconds = progress
         ? audioData
             .sectionTimeline($app, fileId, settings.configHash, sectionIndex)

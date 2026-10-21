@@ -209,3 +209,36 @@ test('Browser restores drafts, clears them after successful saves, updates expan
   assert.deepEqual(errors, [])
   await context.close()
 })
+
+test('Home counts every shelf book and points to the library when the chosen status is beyond the first 50', async () => {
+  const $ = await html('/')
+  const data = $('[x-data*="loadedShelfStatusCounts"]').attr('x-data')
+  assert.match(data, /shelfStatusCounts: \{\s*queued: 0,\s*reading: 55,\s*finished: 1,/)
+  assert.match(data, /loadedShelfStatusCounts: \{\s*queued: 0,\s*reading: 50,\s*finished: 0,/)
+
+  const homeBrowser = await chromium.launch({ channel: 'chrome', headless: true })
+  try {
+    const context = await homeBrowser.newContext()
+    await context.route('https://**/*', (route) => route.abort())
+    await context.addCookies(
+      cookie.split('; ').map((entry) => {
+        const separator = entry.indexOf('=')
+        return { name: entry.slice(0, separator), value: entry.slice(separator + 1), url: service.baseUrl }
+      })
+    )
+    await context.addInitScript(() =>
+      globalThis.localStorage.setItem(
+        'booklog.home.shelfFilters',
+        JSON.stringify({ queued: false, reading: false, finished: true })
+      )
+    )
+    const page = await context.newPage()
+    await page.goto(service.baseUrl + '/')
+    const link = page.getByRole('link', { name: '도서함에서 모두 보기' })
+    await link.waitFor({ state: 'visible', timeout: 10000 })
+    assert.equal(await link.getAttribute('href'), '/library?status=finished')
+    assert.equal(await page.getByText('선택한 상태의 책이 없습니다.').isVisible(), false)
+  } finally {
+    await homeBrowser.close()
+  }
+})

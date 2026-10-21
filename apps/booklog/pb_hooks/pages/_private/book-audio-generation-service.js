@@ -351,6 +351,7 @@ function isBlockedExhausted(chunk) {
 }
 
 module.exports = {
+  BLOCKED_EXHAUSTED_MESSAGE,
   CLAIM_TTL_MS,
   MAX_ATTEMPTS,
   isBlockedExhausted,

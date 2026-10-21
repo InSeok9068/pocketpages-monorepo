@@ -74,6 +74,7 @@ declare namespace types {
     total: number
     ready: number
     failed: number
+    blocked: number
   }
 
   interface BookAudioJobView {

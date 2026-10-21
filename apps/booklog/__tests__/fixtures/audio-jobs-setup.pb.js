@@ -11,7 +11,7 @@ onBootstrap(function (event) {
   user.set('admin_manager', true)
   user.set('booklog_enabled', true)
   $app.save(user)
-  for (let index = 1; index <= 4; index += 1) {
+  for (let index = 1; index <= 6; index += 1) {
     const suffix = ('00000000000' + index).slice(-11)
     const book = new Record($app.findCollectionByNameOrId('books'))
     book.set('id', 'book' + suffix)
@@ -71,4 +71,66 @@ routerAdd('POST', '/_test/audio-control', function (event) {
   }
   const reset = input.apply ? service.applyRegenerateRequests($app, Date.now()) : 0
   return event.json(200, { reset })
+})
+
+// 모델 예약 흐름과 섞이지 않도록 작업을 직접 만들고, 구간 상태를 시나리오대로 바꿉니다.
+routerAdd('POST', '/_test/audio-scenario', function (event) {
+  const input = new DynamicModel({ fileId: '', name: '' })
+  event.bindBody(input)
+  const audioData = require(__hooks + '/pages/_private/book-audio-data.js')
+  const generation = require(__hooks + '/pages/_private/book-audio-generation-service.js')
+  const service = require(__hooks + '/pages/_private/book-audio-job-service.js')
+  const settings = audioData.getSettings('gemini-3.8-flash-tts')
+  let job = audioData.findFileJob($app, input.fileId)
+  if (!job) {
+    job = new Record($app.findCollectionByNameOrId('book_audio_jobs'))
+    job.set('config_hash', settings.configHash)
+    job.set('provider', settings.provider)
+    job.set('model', settings.model)
+    job.set('voice', settings.voice)
+    job.set('style', settings.style)
+    job.set('pipeline_version', settings.pipelineVersion)
+    job.set('file_id', input.fileId)
+    job.set('requested_by', 'user00000000001')
+    job.set('status', 'running')
+    job.set('total_chunks', 0)
+    $app.save(job)
+  }
+  const chunks = function () {
+    return $app.findRecordsByFilter('book_audio_chunks', 'file_id = {:fileId}', 'section_index,chunk_index', 0, 0, {
+      fileId: input.fileId,
+    })
+  }
+  if (input.name === 'blocked') {
+    service.planJob($app, job.id, [{ sectionIndex: 0, chunks: ['첫 구간입니다.', '차단된 구간입니다.'] }])
+    const planned = chunks()
+    planned[0].set('status', 'ready')
+    planned[0].set('audio_file', $filesystem.fileFromBytes([255, 251, 144, 0], 'test.mp3'))
+    planned[0].set('duration_seconds', 60)
+    $app.save(planned[0])
+    planned[1].set('status', 'failed')
+    planned[1].set('attempt_count', generation.MAX_ATTEMPTS)
+    planned[1].set('error_message', generation.BLOCKED_EXHAUSTED_MESSAGE + ' 400 Request blocked')
+    $app.save(planned[1])
+    service.syncJobProgress($app, $app.findRecordById('book_audio_jobs', job.id))
+  }
+  if (input.name === 'plan') {
+    service.planJob($app, job.id, [
+      { sectionIndex: 0, chunks: ['가 구간', '나 구간', '다 구간'] },
+      { sectionIndex: 2, chunks: ['라 구간'] },
+      { sectionIndex: 4, chunks: ['마 구간'] },
+    ])
+  }
+  if (input.name === 'replan') {
+    service.planJob($app, job.id, [
+      { sectionIndex: 0, chunks: ['가 구간'] },
+      { sectionIndex: 4, chunks: ['마 구간'] },
+    ])
+  }
+  return event.json(200, {
+    job: $app.findRecordById('book_audio_jobs', job.id).publicExport(),
+    chunks: chunks().map(function (chunk) {
+      return { id: chunk.id, sectionIndex: chunk.get('section_index'), chunkIndex: chunk.get('chunk_index') }
+    }),
+  })
 })

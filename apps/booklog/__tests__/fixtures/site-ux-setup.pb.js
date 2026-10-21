@@ -40,4 +40,15 @@ onBootstrap(function (event) {
     highlight.set('highlighted_at', new Date(Date.UTC(2026, 0, index)).toISOString())
     $app.save(highlight)
   }
+
+  // 홈은 읽는 중인 책부터 50권만 보여 주므로, 이 완독 책은 홈 목록 밖에 있습니다.
+  const finishedBook = new Record($app.findCollectionByNameOrId('books'))
+  finishedBook.set('id', 'finishedbook001')
+  finishedBook.set('title', '완독한 책')
+  $app.save(finishedBook)
+  const finishedShelf = new Record($app.findCollectionByNameOrId('book_shelves'))
+  finishedShelf.set('user_id', user.id)
+  finishedShelf.set('book_id', finishedBook.id)
+  finishedShelf.set('status', 'finished')
+  $app.save(finishedShelf)
 })

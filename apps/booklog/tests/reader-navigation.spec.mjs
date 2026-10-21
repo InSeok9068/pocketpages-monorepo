@@ -153,6 +153,39 @@ test('Browser back from a reader opened from the book detail page saves and retu
   expect(await page.evaluate(() => window.history.length), 'returned with history.back, not a new entry').toBe(4)
 })
 
+test('Browser back after reloading the reader still returns to the book detail page', async ({ page }) => {
+  await mockSite(page)
+  await page.goto('/books/book')
+  await page.getByRole('link', { name: '읽기' }).click()
+  await waitForReader(page)
+  for (let index = 0; index < 2; index += 1) {
+    await page.reload()
+    await waitForReader(page)
+  }
+
+  expect(await page.evaluate(() => window.history.length), 'reloading does not stack reader entries').toBe(4)
+
+  await page.goBack()
+  await expect(page).toHaveURL(/\/books\/book$/)
+  await expect(page.getByRole('heading', { name: '책 상세' })).toBeVisible()
+  expect(await page.evaluate(() => window.history.length), 'returned with history.back, not a new entry').toBe(4)
+})
+
+test('A saved position missing from this file does not block saving the new position', async ({ page }) => {
+  const requests = await mockSite(page, { savedHref: 'chapter-from-another-file.xhtml' })
+  await page.goto('/books/book/read')
+  await waitForReader(page)
+
+  await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).saveCurrentPosition())
+  await expect.poll(() => requests.savedLocators.length).toBeGreaterThan(0)
+  expect(requests.saveForms[0].baseLocator, 'the first save replaces the position this file does not have').toBe(
+    'chapter-from-another-file.xhtml'
+  )
+  expect(
+    await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).errorMessage)
+  ).toBe('')
+})
+
 test('A save rejected because another device moved on asks before overwriting', async ({ page }) => {
   const requests = await mockSite(page, { savedHref: 'chapter.xhtml', conflict: true })
   await page.goto('/books/book/read')

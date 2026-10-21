@@ -126,6 +126,26 @@ test('ISBN candidates with a wrong check digit or placeholder digits are ignored
   assert.deepEqual(detailRequests, ['9791161571195'])
 })
 
+test('A data4library network error never carries the API key', () => {
+  const context = {
+    module: { exports: {} },
+    require: (name) => (name === 'pocketpages' ? { globalApi: { dbg() {} } } : require(name)),
+    $http: {
+      send(options) {
+        throw new Error('Get "' + options.url + '": context deadline exceeded')
+      },
+    },
+  }
+  vm.runInNewContext(
+    readFileSync(new URL('../pb_hooks/pages/_private/data4library-service.js', import.meta.url), 'utf8'),
+    context
+  )
+  assert.throws(
+    () => context.module.exports.searchBooks({ apiKey: 'SECRET-KEY/1' }, { keyword: '책' }),
+    (error) => /요청에 실패했습니다/.test(error.message) && !/SECRET-KEY/.test(error.message)
+  )
+})
+
 test('Unpacked EPUB text is limited to 16MB per file and 200MB per book', () => {
   const { createTextEntrySizeGuard } = require('./pb_hooks/pages/_private/epub-reading-metrics.js')
   const MB = 1024 * 1024

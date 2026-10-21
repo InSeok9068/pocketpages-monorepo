@@ -73,6 +73,11 @@
       shelfRecord = null
     }
 
+    if (!shelfRecord) {
+      response.json(404, { ok: false, message: '내 도서함에서 책을 찾을 수 없습니다.' })
+      return
+    }
+
     if (bookFileId) {
       try {
         bookFileRecord = $app.findFirstRecordByFilter('book_files', 'id = {:bookFileId} && book_id = {:bookId}', {

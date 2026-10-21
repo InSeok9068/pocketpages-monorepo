@@ -36,7 +36,7 @@ before(async () => {
   // 외부 도서 검색만 고정하고 업로드·EPUB 파싱·DB 저장은 실제 코드로 검증합니다.
   writeFileSync(
     path.join(fixtureDir, 'pb_hooks/pages/_private/data4library-service.js'),
-    'module.exports = { searchBooks: function () { return { numFound: 0, docs: [], raw: {} } }, getBookDetail: function () { return { book: null } } }'
+    'module.exports = { searchBooks: function (config, query) { if (JSON.stringify(query).indexOf("검색장애") >= 0) throw new Error("도서관정보나루 API 요청에 실패했습니다. timeout"); return { numFound: 0, docs: [], raw: {} } }, getBookDetail: function () { return { book: null } } }'
   )
   const configPath = path.join(fixtureDir, 'pb_hooks/pages/+config.js')
   writeFileSync(
@@ -106,6 +106,16 @@ test('A stranger cannot create a shelf through position or status changes; owner
   assert.equal((await request(filePath, 2)).status, 404)
   const state = await (await request('/_test/access-state')).json()
   assert.equal(state.strangerShelfCount, 0)
+
+  // 서재에 없는 책(다른 기기에서 서재에서 뺀 책 포함)에는 기록이 다시 생기지 않아야 합니다.
+  assert.equal((await request('/api/books/save-highlight', 2, { bookId, quoteText: '남의 책 문구' })).status, 404)
+  assert.equal((await request('/api/books/save-bookmark', 2, { bookId, href: 'chapter.xhtml' })).status, 404)
+  const now = new Date().toISOString()
+  const session = { bookId, startedAt: now, endedAt: now, durationSeconds: '90' }
+  assert.equal((await request('/api/books/save-reading-session', 2, session)).status, 404)
+  const review = await request('/xapi/books/save-review', 2, { bookId, reviewText: '남의 책 감상평' })
+  assert.equal(review.status, 303)
+  assert.match(decodeURIComponent(review.headers.get('location') || ''), /내 도서함에 있는 책만 감상평/)
 
   const save = await request('/api/books/save-progress', 1, { bookId, href: 'chapter.xhtml', progressPercent: '42' })
   assert.equal(save.status, 200)
@@ -365,6 +375,42 @@ test('A re-saved shared file stays attached to its book even when its ISBN now p
   const other = await (await request('/_test/book?id=' + otherId)).json()
   assert.equal(other.fields.title, '같은 ISBN의 다른 책')
   assert.equal(other.fileCount, 0)
+})
+
+test('Saves sent together while closing the reader keep one reading session', async () => {
+  const sessionId = 'closingsession0'
+  const now = new Date().toISOString()
+  const save = (durationSeconds) =>
+    request('/api/books/save-reading-session', 1, { bookId, sessionId, startedAt: now, endedAt: now, durationSeconds })
+  const before = (await (await request('/_test/access-state')).json()).readingSessions.length
+
+  const responses = await Promise.all([save('40'), save('41')])
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [200, 200]
+  )
+  assert.equal((await (await save('42')).json()).id, sessionId)
+
+  const sessions = (await (await request('/_test/access-state')).json()).readingSessions
+  assert.equal(sessions.length, before + 1)
+  assert.equal(sessions.find((session) => session.id === sessionId).durationSeconds, 42)
+})
+
+test('A failing book search does not block the upload; the EPUB metadata is saved instead', async () => {
+  const { zipSync, strToU8 } = require('fflate')
+  const epub = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8('<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'),
+    'OPS/book.opf': strToU8(
+      '<package version="3.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>검색장애 책</dc:title><dc:creator>장애 저자</dc:creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+    ),
+    'OPS/body.xhtml': strToU8('<html><body><p>검색 API가 응답하지 않아도 책은 올라가야 합니다.</p></body></html>'),
+  })
+
+  const message = await uploadEpub(1, epub, 'search-down.epub')
+  assert.match(message, /저장했습니다/)
+  const state = await (await request('/_test/upload-state?title=' + encodeURIComponent('검색장애 책'))).json()
+  assert.equal(state.bookCount, 1)
 })
 
 test('An EPUB whose text expands far beyond a real book is rejected before it is unpacked', async () => {

@@ -51,17 +51,31 @@ function requestData4LibraryJson(config, path, query) {
     query || {}
   )
   const url = baseUrl + path + '?' + toQueryString(requestQuery)
+  const redactKey = function (text) {
+    return String(text).split(encodeURIComponent(apiKey)).join('[REDACTED]').split(apiKey).join('[REDACTED]')
+  }
 
   dbg('data4library:request', {
     path: path,
-    url: url.replace(apiKey, '[REDACTED]'),
+    url: redactKey(url),
   })
 
-  const response = $http.send({
-    url: url,
-    method: 'GET',
-    timeout: timeout,
-  })
+  let response = null
+
+  try {
+    response = $http.send({
+      url: url,
+      method: 'GET',
+      timeout: timeout,
+    })
+  } catch (exception) {
+    // 네트워크 오류 문구에 authKey가 든 요청 URL이 그대로 담겨 와서, 원래 오류를 cause로도 넘기지 않습니다.
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error(
+      '도서관정보나루 API 요청에 실패했습니다. '
+        + redactKey(exception && exception.message ? exception.message : exception)
+    )
+  }
 
   dbg('data4library:response', {
     path: path,

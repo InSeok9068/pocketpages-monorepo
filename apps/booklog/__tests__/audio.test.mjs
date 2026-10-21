@@ -298,7 +298,7 @@ test('Restarting a job retries ordinary failures but not parts that policy block
     module: { exports: {} },
     __hooks: '',
     $security: { sha256: (text) => text },
-    $dbx: { hashExp: () => ({}), not: () => ({}), exp: () => ({}) },
+    $dbx: { hashExp: () => ({}), not: () => ({}), exp: () => ({}), like: () => ({ match: () => ({}) }) },
     Date,
   }
   const load = (file) => {

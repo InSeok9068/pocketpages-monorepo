@@ -1819,7 +1819,19 @@ function createEpubBookMetadataService(dependencies) {
         keyword: keyword,
         source: profile.source,
       })
-      const searchResult = loadSearchDocsByQuery(profile.query)
+      let searchResult = null
+
+      try {
+        searchResult = loadSearchDocsByQuery(profile.query)
+      } catch (exception) {
+        // 검색 API가 응답하지 않으면 남은 검색도 같은 시간만큼 기다리게 되므로, EPUB 정보만으로 진행합니다.
+        warn(logPrefix + ':search-failed', {
+          source: profile.source,
+          error: String(exception && exception.message ? exception.message : exception),
+        })
+        break
+      }
+
       const bestMatch = chooseBestSearchDoc(searchResult.docs, {
         title: profile.title,
         author: profile.author,

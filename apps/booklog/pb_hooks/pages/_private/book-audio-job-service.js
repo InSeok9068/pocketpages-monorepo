@@ -253,6 +253,11 @@ function syncJobProgress(app, job, planned) {
     job.set('status', 'completed')
     if (!String(job.get('completed_at'))) job.set('completed_at', new Date().toISOString())
     job.set('error_message', '')
+  } else if (counts.total > 0 && counts.ready + counts.blocked >= counts.total) {
+    // 정책 차단으로 끝난 조각은 다시 시작해도 재시도하지 않으므로, 나머지를 다 만들었으면 완료로 보고 모델을 풀어 줍니다.
+    job.set('status', 'completed')
+    if (!String(job.get('completed_at'))) job.set('completed_at', new Date().toISOString())
+    job.set('error_message', counts.blocked + '개 구간은 정책 차단으로 만들지 못해 기기 음성으로 읽습니다.')
   } else if (counts.total > 0 && counts.ready + counts.failed >= counts.total && job.get('status') !== 'paused') {
     job.set('status', 'failed')
     job.set(
@@ -275,6 +280,12 @@ function countChunks(app, fileId, configHash) {
       scope,
       $dbx.hashExp({ status: 'failed' }),
       $dbx.exp('attempt_count >= {:maxAttempts}', { maxAttempts: generation.MAX_ATTEMPTS })
+    ),
+    blocked: app.countRecords(
+      'book_audio_chunks',
+      scope,
+      $dbx.hashExp({ status: 'failed' }),
+      $dbx.like('error_message', generation.BLOCKED_EXHAUSTED_MESSAGE).match(false, true)
     ),
   }
 }

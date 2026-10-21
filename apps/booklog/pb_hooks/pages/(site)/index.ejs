@@ -60,6 +60,11 @@
     reading: 0,
     finished: 0,
   }
+  const loadedShelfStatusCounts = {
+    queued: 0,
+    reading: 0,
+    finished: 0,
+  }
   let weeklyReadingDays = []
   let weeklyReadingDayCount = 0
   let randomHighlights = []
@@ -171,9 +176,14 @@
       })
 
       if (status === 'queued' || status === 'reading' || status === 'finished') {
-        shelfStatusCounts[status] += 1
+        loadedShelfStatusCounts[status] += 1
       }
     }
+
+    // 홈은 50권까지만 보여 주므로, 상태별 개수는 도서함 전체 기준으로 셉니다.
+    Object.keys(shelfStatusCounts).forEach(function (status) {
+      shelfStatusCounts[status] = $app.countRecords('book_shelves', $dbx.hashExp({ user_id: userId, status: status }))
+    })
 
     if (loadedShelfBooks.length > 0) {
       shelfBooks = loadedShelfBooks
@@ -409,6 +419,11 @@
       reading: <%= shelfStatusCounts.reading %>,
       finished: <%= shelfStatusCounts.finished %>,
     },
+    loadedShelfStatusCounts: {
+      queued: <%= loadedShelfStatusCounts.queued %>,
+      reading: <%= loadedShelfStatusCounts.reading %>,
+      finished: <%= loadedShelfStatusCounts.finished %>,
+    },
     get uploadElapsedLabel() {
       return window.booklogHomeUpload.getUploadElapsedLabel(this.uploadElapsedSeconds)
     },
@@ -438,23 +453,24 @@
 
       return this.isShelfFilterEnabled(status)
     },
+    countEnabledShelfBooks(counts) {
+      return ['queued', 'reading', 'finished'].reduce((total, status) => {
+        return total + (this.isShelfFilterEnabled(status) ? Number(counts[status] || 0) : 0)
+      }, 0)
+    },
     hasVisibleShelfBooks() {
-      const statuses = ['queued', 'reading', 'finished']
-      let totalCount = 0
-      let visibleCount = 0
+      const loaded = this.loadedShelfStatusCounts
+      const loadedTotal = Number(loaded.queued || 0) + Number(loaded.reading || 0) + Number(loaded.finished || 0)
 
-      for (let index = 0; index < statuses.length; index += 1) {
-        const status = statuses[index]
-        const count = Number(this.shelfStatusCounts[status] || 0)
+      return loadedTotal === 0 || this.countEnabledShelfBooks(loaded) > 0
+    },
+    hasShelfBooksOnlyInLibrary() {
+      return !this.hasVisibleShelfBooks() && this.countEnabledShelfBooks(this.shelfStatusCounts) > 0
+    },
+    get shelfLibraryHref() {
+      const enabled = ['queued', 'reading', 'finished'].filter((status) => this.isShelfFilterEnabled(status))
 
-        totalCount += count
-
-        if (this.isShelfFilterEnabled(status)) {
-          visibleCount += count
-        }
-      }
-
-      return totalCount === 0 || visibleCount > 0
+      return enabled.length === 1 ? '/library?status=' + enabled[0] : '/library'
     },
     beginUpload() {
       window.booklogHomeUpload.beginUpload(this)
@@ -572,10 +588,22 @@
           </article>
           <% } %>
           <div
-            x-show="!hasVisibleShelfBooks()"
+            x-show="!hasVisibleShelfBooks() && !hasShelfBooksOnlyInLibrary()"
             x-cloak
             class="w-[15rem] flex-none rounded-[1.4rem] bg-white/72 px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
             선택한 상태의 책이 없습니다.
+          </div>
+          <div
+            x-show="hasShelfBooksOnlyInLibrary()"
+            x-cloak
+            class="w-[15rem] flex-none rounded-[1.4rem] bg-white/72 px-4 py-4 text-sm leading-6 text-stone-500 shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)]">
+            선택한 상태의 책은 도서함에서 볼 수 있습니다.
+            <a
+              x-bind:href="shelfLibraryHref"
+              href="/library"
+              class="mt-1 block font-semibold text-stone-800 underline underline-offset-[0.2em]">
+              도서함에서 모두 보기
+            </a>
           </div>
         </div>
       </div>

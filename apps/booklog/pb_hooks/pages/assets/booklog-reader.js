@@ -2167,12 +2167,27 @@ window.booklogReaderLogic = (function () {
     }
   }
 
+  // 첫 저장 응답 전에 리더를 닫아도 닫을 때 보내는 저장들이 같은 기록을 가리키도록, ID를 미리 정합니다.
+  function createReadingSessionId() {
+    var alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789'
+    var bytes = new Uint8Array(15)
+    var id = ''
+
+    window.crypto.getRandomValues(bytes)
+
+    for (var index = 0; index < bytes.length; index += 1) {
+      id += alphabet.charAt(bytes[index] % alphabet.length)
+    }
+
+    return id
+  }
+
   function startReadingSession(component) {
     if (readingSessionTimerId) {
       clearInterval(readingSessionTimerId)
     }
 
-    readingSessionId = ''
+    readingSessionId = createReadingSessionId()
     readingSessionStartedAtMs = Date.now()
     readingSessionStartedAtIso = new Date(readingSessionStartedAtMs).toISOString()
     readingSessionStartProgress = getCurrentProgressPayload(component)
@@ -2897,26 +2912,36 @@ window.booklogReaderLogic = (function () {
 
             throw new Error('저장된 위치로 이동하지 못했습니다.')
           })
-          .then(function (location) {
-            var progress = null
+          .then(
+            function (location) {
+              var progress = null
 
-            component.currentChapterLabel = String(
-              payload && payload.chapterLabel ? payload.chapterLabel : component.currentChapterLabel || ''
-            )
-            updateCurrentLocation(component, location || renditionInstance.currentLocation())
-
-            progress = getCurrentProgressPayload(component)
-            lastPersistedProgressKey = buildProgressKey(progress)
-            serverPositionKey = target
-
-            if (shouldShowMessage) {
-              component.showSavePositionMessage(
-                String(payload && payload.message ? payload.message : '저장된 읽기 위치를 불러왔습니다.')
+              component.currentChapterLabel = String(
+                payload && payload.chapterLabel ? payload.chapterLabel : component.currentChapterLabel || ''
               )
-            }
+              updateCurrentLocation(component, location || renditionInstance.currentLocation())
 
-            return true
-          })
+              progress = getCurrentProgressPayload(component)
+              lastPersistedProgressKey = buildProgressKey(progress)
+              serverPositionKey = target
+
+              if (shouldShowMessage) {
+                component.showSavePositionMessage(
+                  String(payload && payload.message ? payload.message : '저장된 읽기 위치를 불러왔습니다.')
+                )
+              }
+
+              return true
+            },
+            function () {
+              // 저장 위치가 이 파일에 없으면(다른 EPUB로 바뀐 경우 등) 매번 실패하므로, 위치 없음으로 보고 다음 저장이 덮어쓰게 합니다.
+              serverPositionKey = target
+              if (shouldShowMessage) {
+                component.showSavePositionMessage('저장된 위치를 이 파일에서 찾지 못해 처음부터 표시합니다.')
+              }
+              return false
+            }
+          )
       })
       .then(function (restored) {
         hasResolvedSavedPosition = true
@@ -4340,7 +4365,10 @@ window.booklogReaderLogic = (function () {
     window.setInterval(followListeningPosition, LISTEN_FOLLOW_INTERVAL_MS)
     syncReaderFontSizeState(component, readStoredReaderFontSizePercent())
     syncReaderSettingsState(component, readStoredReaderSettings())
-    window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
+    // 새로고침하면 지금 항목이 이미 보호 항목이라, 또 쌓으면 뒤로가기마다 리더가 다시 열립니다.
+    if (!(window.history.state && window.history.state.readerSaveGuard)) {
+      window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
+    }
     window.addEventListener('popstate', handlePopState)
     window.addEventListener('pageshow', handlePageShow)
     bindReadingSessionActivityTracking(component)
