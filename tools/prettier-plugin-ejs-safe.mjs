@@ -385,6 +385,12 @@ function tokenizeEjs(text) {
 
 function rawBlockToDoc(raw) {
   const lines = raw.split('\n')
+  const continuationIndents = lines
+    .slice(1)
+    .filter((line) => line.trim())
+    .map((line) => line.match(/^[ \t]*/)[0].length)
+  // hardline이 현재 들여쓰기를 다시 붙이므로, 원문에 남은 이전 들여쓰기를 걷어 내야 포맷 결과가 매번 같습니다.
+  const commonIndent = continuationIndents.length > 0 ? Math.min(...continuationIndents) : 0
   const doc = []
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -392,7 +398,7 @@ function rawBlockToDoc(raw) {
       doc.push(hardline)
     }
 
-    doc.push(lines[index])
+    doc.push(index > 0 ? lines[index].slice(commonIndent) : lines[index])
   }
 
   return doc
