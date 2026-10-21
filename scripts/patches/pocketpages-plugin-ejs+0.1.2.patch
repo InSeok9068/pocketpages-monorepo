@@ -1,8 +1,15 @@
 diff --git a/node_modules/pocketpages-plugin-ejs/dist/index.js b/node_modules/pocketpages-plugin-ejs/dist/index.js
-index 218861d..d2ab331 100644
+index 218861d..8b77d1e 100644
 --- a/node_modules/pocketpages-plugin-ejs/dist/index.js
 +++ b/node_modules/pocketpages-plugin-ejs/dist/index.js
-@@ -49,26 +49,54 @@ const ejsPluinFactory = (config, extra) => {
+@@ -43,32 +43,61 @@ const ejsPluinFactory = (config, extra) => {
+ 		if (!VALID_CONFIG_KEYS.includes(key)) throw new Error(`Invalid config key: ${key}`);
+ 	});
+ 	const { pagesRoot, dbg } = config;
++	const templateCache = !(config.config && config.config.debug);
+ 	pocketbase_ejs.default.compile = function(template, options) {
+ 		const newTemplate = template.replaceAll(/<script\s+server>([\s\S]*?)<\/script>/g, "<% $1 %>");
+ 		return oldCompile(newTemplate, { ...options });
  	};
  	pocketbase_ejs.default.resolveInclude = function(includePath, templatePath, isDir) {
  		dbg(`ejs resolveInclude ${includePath} from ${templatePath} <${isDir ? "dir" : "file"}>`);
@@ -67,7 +74,7 @@ index 218861d..d2ab331 100644
  				dbg(`skipping ${attemptPath} in ${pagesRoot}`);
  				break;
  			}
-@@ -76,8 +104,8 @@ const ejsPluinFactory = (config, extra) => {
+@@ -76,8 +105,8 @@ const ejsPluinFactory = (config, extra) => {
  			const foundPath = tryExtensions(attemptPath);
  			if (foundPath) return foundPath;
  			triedPaths.push(attemptPath);
@@ -78,3 +85,12 @@ index 218861d..d2ab331 100644
  		}
  		throw new Error(`No partial '${includePath}' found in any _private directory. Tried: ${triedPaths.join(", ")}`);
  	};
+@@ -110,7 +139,7 @@ const ejsPluinFactory = (config, extra) => {
+           `,
+ 				compileDebug: true,
+ 				async: false,
+-				cache: false,
++				cache: templateCache,
+ 				root: pagesRoot,
+ 				includeFile: function(path$1, options) {
+ 					dbg(`includeFile ${path$1}`);
