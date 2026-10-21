@@ -38,6 +38,7 @@ window.booklogReaderLogic = (function () {
   var DISPLAY_SETTLE_RETRY_MS = 80
   var VISIBLE_TOP_TOLERANCE_PX = 64
   var FOLLOW_BOTTOM_MARGIN_PX = 140
+  var FOLLOW_TARGET_TOP_RATIO = 1 / 3
   var LISTEN_FOLLOW_INTERVAL_MS = 1000
   var HISTORY_BACK_FALLBACK_MS = 1500
   var DEFAULT_FONT_SIZE_PERCENT = 100
@@ -1059,11 +1060,34 @@ window.booklogReaderLogic = (function () {
 
   // 읽는 문단을 보고 있던 사용자만 따라 옮기고, 이미 잘 보이는 문단이면 화면을 움직이지 않습니다.
   // 문단 첫 줄이 화면 위로 지나갔거나 아래쪽 미니 플레이어 근처까지 내려왔을 때만 옮깁니다.
-  function revealFollowedNode(node, watching) {
+  function revealFollowedNode(node, watching, targetTopRatio) {
     var box = getNodeScreenBox(node)
+    var scrollMarginTop = 0
+    var previousScrollMarginTop = ''
+    var previousScrollMarginPriority = ''
+
     if (!watching || !box || typeof node.scrollIntoView !== 'function') return
     if (box.top >= box.viewTop && box.top <= box.viewBottom - FOLLOW_BOTTOM_MARGIN_PX) return
-    node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' })
+
+    if (typeof targetTopRatio !== 'number') {
+      node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' })
+      return
+    }
+
+    scrollMarginTop = Math.round((box.viewBottom - box.viewTop) * targetTopRatio)
+    previousScrollMarginTop = node.style.getPropertyValue('scroll-margin-top')
+    previousScrollMarginPriority = node.style.getPropertyPriority('scroll-margin-top')
+    node.style.setProperty('scroll-margin-top', scrollMarginTop + 'px')
+
+    try {
+      node.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'smooth' })
+    } finally {
+      if (previousScrollMarginTop) {
+        node.style.setProperty('scroll-margin-top', previousScrollMarginTop, previousScrollMarginPriority)
+      } else {
+        node.style.removeProperty('scroll-margin-top')
+      }
+    }
   }
 
   function activateReadAloudHighlight(queueItem) {
@@ -4620,7 +4644,7 @@ window.booklogReaderLogic = (function () {
     ensureReadAloudStyle(target.ownerDocument)
     target.classList.add('booklog-listen-active')
     listeningFollow = { key: followKey, node: target, openedSection: -1 }
-    revealFollowedNode(target, watching)
+    revealFollowedNode(target, watching, FOLLOW_TARGET_TOP_RATIO)
   }
 
   function toggleCloudAudio(component) {
