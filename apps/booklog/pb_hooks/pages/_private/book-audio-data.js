@@ -193,18 +193,18 @@ function readSectionOrder(app, fileId, configHash) {
 }
 
 /**
- * 리더의 현재 문장이 들어 있는 챕터 내 구간을 찾습니다.
+ * 리더의 현재 문장이 들어 있는 챕터 내 구간과 그 구간 안의 글자 위치를 찾습니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
  * @param {string} configHash 낭독 설정 해시
  * @param {number} sectionIndex spine 순서
  * @param {string} anchorText 리더 화면의 기준 문장
- * @returns {number} 구간 순서, 찾지 못하면 -1
+ * @returns {{ chunkIndex: number, ratio: number }} 구간 순서(찾지 못하면 -1)와 구간 안 위치 비율(0~1)
  */
-function findChunkIndexByText(app, fileId, configHash, sectionIndex, anchorText) {
+function findChunkPositionByText(app, fileId, configHash, sectionIndex, anchorText) {
   // 리더 DOM과 낭독 원문의 줄바꿈·공백 처리가 달라 공백을 모두 지운 뒤 비교합니다.
   const anchor = String(anchorText || '').replace(/[\s\u00ad]+/g, '')
-  if (!anchor) return -1
+  if (!anchor) return { chunkIndex: -1, ratio: 0 }
   const chunks = app.findRecordsByFilter(
     'book_audio_chunks',
     "file_id = {:fileId} && config_hash = {:configHash} && section_index = {:sectionIndex} && split_path = ''",
@@ -221,10 +221,11 @@ function findChunkIndexByText(app, fileId, configHash, sectionIndex, anchorText)
     if (length > anchor.length) continue
     const prefix = anchor.slice(0, length)
     for (let index = 0; index < texts.length; index += 1) {
-      if (texts[index].indexOf(prefix) >= 0) return Number(chunks[index].get('chunk_index'))
+      const at = texts[index].indexOf(prefix)
+      if (at >= 0) return { chunkIndex: Number(chunks[index].get('chunk_index')), ratio: at / texts[index].length }
     }
   }
-  return -1
+  return { chunkIndex: -1, ratio: 0 }
 }
 
 /**
@@ -374,7 +375,7 @@ module.exports = {
   countFileChunks,
   findNextSectionIndex,
   readSectionOrder,
-  findChunkIndexByText,
+  findChunkPositionByText,
   findChunk,
   findChunkParts,
   sectionTimeline,

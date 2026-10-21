@@ -467,6 +467,7 @@ function createPlayerHarness(fetchAudio, options = {}) {
   }
   const state = { readAloudRate: '1', cloudAudioBusy: false, cloudAudioActive: false, cloudAudioMessage: '' }
   const positionChunk = options.positionChunk ?? -1
+  const positionSeconds = options.positionSeconds ?? 0
   const context = {
     window: {
       booklogReaderConfig: {
@@ -539,7 +540,7 @@ function createPlayerHarness(fetchAudio, options = {}) {
         server.positionQueries = (server.positionQueries || []).concat([
           position.get('sectionIndex') + ':' + position.get('anchor'),
         ])
-        return new Response(JSON.stringify({ ok: true, chunkIndex: positionChunk }))
+        return new Response(JSON.stringify({ ok: true, chunkIndex: positionChunk, seconds: positionSeconds }))
       }
       if (url.startsWith('/xapi/books/audio-file')) {
         server.downloads += 1
@@ -961,14 +962,16 @@ test('Starting from the reading position plays the chunk that contains the visib
     chunkCount: 1,
     failSaves: false,
   }
-  const { logic, state, requests, server: result } = createPlayerHarness(() => chapterResponse(4, -1), {
+  const { logic, state, requests, audio, server: result } = createPlayerHarness(() => chapterResponse(4, -1), {
     server,
     positionChunk: 2,
+    positionSeconds: 25,
   })
   logic.start(state, 5, true, '읽던 문장')
   await flushPlayback()
   assert.deepEqual(result.positionQueries, ['5:읽던 문장'])
   assert.equal(requests[0], 2)
+  assert.equal(audio.currentTime, 25, 'playback starts at the visible sentence inside the chunk')
   assert.match(state.cloudAudioDetail, /3 \/ 4 구간/)
   assert.ok(result.saves.includes('5:2:false:true'), 'a previously completed chapter is reopened')
   logic.stop()
@@ -1299,11 +1302,12 @@ test('Reading-position matching ignores whitespace and tolerates anchors that cr
     (text, index) => ({ get: (name) => (name === 'input_text' ? text : index) })
   )
   const app = { findRecordsByFilter: () => chunks }
-  const find = (anchor) => context.module.exports.findChunkIndexByText(app, 'file', 'hash', 0, anchor)
-  assert.equal(find('여기서  시작하는 긴'), 1)
-  assert.equal(find('둘째 구간은 여기서 시작하는 긴 문단입니다. 셋째 구간 문단입니다.'), 1)
-  assert.equal(find('어디에도 없는 문장입니다만 충분히 깁니다'), -1)
-  assert.equal(find('   '), -1)
+  const find = (anchor) =>
+    JSON.parse(JSON.stringify(context.module.exports.findChunkPositionByText(app, 'file', 'hash', 0, anchor)))
+  assert.deepEqual(find('여기서  시작하는 긴'), { chunkIndex: 1, ratio: 5 / 19 })
+  assert.deepEqual(find('둘째 구간은 여기서 시작하는 긴 문단입니다. 셋째 구간 문단입니다.'), { chunkIndex: 1, ratio: 0 })
+  assert.equal(find('어디에도 없는 문장입니다만 충분히 깁니다').chunkIndex, -1)
+  assert.equal(find('   ').chunkIndex, -1)
 })
 
 function fakeSpeech() {

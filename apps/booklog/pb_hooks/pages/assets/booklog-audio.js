@@ -972,6 +972,7 @@ window.booklogAudio = (function () {
           .then(function (located) {
             if (!isActive(session)) return
             session.chunkIndex = located.chunkIndex >= 0 ? located.chunkIndex : 0
+            session.resumeSeconds = located.chunkIndex >= 0 ? Number(located.seconds) || 0 : 0
             return playChunk(session).then(function () {
               if (isActive(session) && located.chunkIndex < 0 && !session.failed) {
                 state.cloudAudioMessage = '읽던 위치를 찾지 못해 챕터 처음부터 재생합니다.'
