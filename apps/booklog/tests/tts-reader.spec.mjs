@@ -182,6 +182,10 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
     state: navigator.mediaSession.playbackState,
   }))
   expect(media).toEqual({ artist: '낭독 <테스트>', state: 'playing' })
+  const sleep = page.getByRole('button', { name: /^잠자기 타이머/ })
+  await expect(sleep).toHaveText('타이머')
+  await sleep.click()
+  await expect(sleep).toHaveText('15분')
   await player.evaluate((audio) => {
     audio.currentTime = 5
   })

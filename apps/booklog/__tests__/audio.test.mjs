@@ -643,6 +643,7 @@ function createPlayerHarness(fetchAudio, options = {}) {
     setTimeout,
     clearTimeout,
     atob,
+    ...(options.Date ? { Date: options.Date } : {}),
   }
   vm.runInNewContext(
     readFileSync(new URL('../pb_hooks/pages/assets/booklog-audio.js', import.meta.url), 'utf8'),
@@ -1379,6 +1380,56 @@ test('Starting from an excluded page explains that the next narrated chapter pla
   await flushPlayback()
   assert.match(state.cloudAudioMessage, /다음 본문 챕터부터 재생합니다/)
   logic.stop()
+})
+
+test('The sleep timer cycles through its options and stops playback when the time is up', async () => {
+  let now = Date.now()
+  class ClockDate extends Date {
+    static now() {
+      return now
+    }
+  }
+  const { logic, state, audio, server } = createPlayerHarness(() => chapterResponse(2, -1), { Date: ClockDate })
+  logic.start(state, 0)
+  await flushPlayback()
+  logic.cycleSleepTimer()
+  assert.deepEqual([state.cloudAudioSleep, state.cloudAudioSleepLabel], ['15', '15분'])
+  now += 6 * 60000
+  audio.ontimeupdate()
+  assert.equal(state.cloudAudioSleepLabel, '9분', 'the remaining minutes follow playback')
+  audio.currentTime = 30
+  now += 9 * 60000
+  audio.ontimeupdate()
+  await flushPlayback()
+  assert.equal(state.cloudAudioSession, false)
+  assert.match(state.cloudAudioMessage, /잠자기 타이머로 재생을 멈췄습니다/)
+  assert.equal(server.progress.seconds, 30, 'the stopped position is saved for resuming')
+  assert.equal(state.cloudAudioSleep, '')
+
+  logic.start(state, 0)
+  await flushPlayback()
+  const labels = [1, 2, 3, 4, 5].map(() => {
+    logic.cycleSleepTimer()
+    return state.cloudAudioSleepLabel
+  })
+  assert.deepEqual(labels, ['15분', '30분', '60분', '챕터 끝', ''], 'the timer turns off after the last option')
+  logic.stop()
+})
+
+test('The chapter-end sleep timer stops after the chapter and resumes with the next one', async () => {
+  const { logic, state, audio, server } = createPlayerHarness((index, _signal, section) =>
+    section === 1 ? chapterResponse(1, 4) : chapterResponse(1, -1)
+  )
+  logic.start(state, 1)
+  await flushPlayback()
+  ;[1, 2, 3, 4].forEach(() => logic.cycleSleepTimer())
+  assert.deepEqual([state.cloudAudioSleep, state.cloudAudioSleepLabel], ['chapter', '챕터 끝'])
+  audio.currentTime = 60
+  audio.onended()
+  await flushPlayback()
+  assert.equal(state.cloudAudioSession, false)
+  assert.match(state.cloudAudioMessage, /다음 챕터부터 들을 수 있습니다/)
+  assert.ok(server.saves.includes('1:0:true:false'), 'the chapter is saved as finished')
 })
 
 test('A body file over the size limit fails planning instead of silently dropping a chapter', () => {

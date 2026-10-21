@@ -9,6 +9,8 @@ window.booklogAudio = (function () {
   var outboxKey = 'booklog-audio-pending:' + config.readerCacheKey
   var pendingSaves = {}
   var saveSequence = 0
+  var SLEEP_MODES = ['', '15', '30', '60', 'chapter']
+  var sleepTimer = { mode: '', endsAt: 0, timerId: 0 }
   try {
     pendingSaves = JSON.parse(localStorage.getItem(outboxKey) || '{}') || {}
   } catch (_error) {
@@ -403,7 +405,61 @@ window.booklogAudio = (function () {
     )
   }
 
+  function sleepLabel() {
+    if (sleepTimer.mode === 'chapter') return '챕터 끝'
+    if (!sleepTimer.mode) return ''
+    return Math.max(1, Math.ceil((sleepTimer.endsAt - Date.now()) / 60000)) + '분'
+  }
+
+  function clearSleepTimer(state) {
+    if (sleepTimer.timerId) clearTimeout(sleepTimer.timerId)
+    sleepTimer = { mode: '', endsAt: 0, timerId: 0 }
+    state.cloudAudioSleep = ''
+    state.cloudAudioSleepLabel = ''
+  }
+
+  function sleepNow(session, message) {
+    clearSleepTimer(session.state)
+    endSession(session, message)
+  }
+
+  // 백그라운드에서는 브라우저가 타이머를 늦출 수 있어, 재생 진행이 갱신될 때도 시간을 확인합니다.
+  function checkSleepTimer(session) {
+    if (!sleepTimer.mode || sleepTimer.mode === 'chapter') return
+    if (Date.now() >= sleepTimer.endsAt) {
+      sleepNow(session, '잠자기 타이머로 재생을 멈췄습니다. 이어 듣기로 들은 곳부터 계속 들을 수 있습니다.')
+      return
+    }
+    session.state.cloudAudioSleepLabel = sleepLabel()
+  }
+
+  /**
+   * 잠자기 타이머를 끄기 → 15분 → 30분 → 60분 → 챕터 끝 순서로 바꿉니다.
+   * @returns {void}
+   */
+  function cycleSleepTimer() {
+    var session = activeSession
+    if (!session) return
+    var mode = SLEEP_MODES[(SLEEP_MODES.indexOf(sleepTimer.mode) + 1) % SLEEP_MODES.length]
+    clearSleepTimer(session.state)
+    if (!mode) return
+    sleepTimer.mode = mode
+    if (mode !== 'chapter') {
+      sleepTimer.endsAt = Date.now() + Number(mode) * 60000
+      sleepTimer.timerId = setTimeout(
+        function () {
+          if (activeSession) checkSleepTimer(activeSession)
+        },
+        Number(mode) * 60000
+      )
+    }
+    session.state.cloudAudioSleep = mode
+    session.state.cloudAudioSleepLabel = sleepLabel()
+  }
+
   function updateProgress(session) {
+    if (!isActive(session)) return
+    checkSleepTimer(session)
     if (!isActive(session)) return
     session.state.cloudAudioDuration = chapterDuration(session)
     session.state.cloudAudioHasPrevious = session.previousSectionIndex >= 0
@@ -868,6 +924,10 @@ window.booklogAudio = (function () {
       )
       return
     }
+    if (chapterDone && sleepTimer.mode === 'chapter') {
+      sleepNow(session, '챕터를 끝까지 들어 잠자기 타이머로 멈췄습니다. 이어 듣기로 다음 챕터부터 들을 수 있습니다.')
+      return
+    }
     // 새 챕터의 첫 저장은 이전 완료 기록을 덮어써야 하므로 처음부터 듣는 것으로 표시합니다.
     if (next.sectionIndex !== session.sectionIndex) session.restartPending = true
     session.sectionIndex = next.sectionIndex
@@ -1088,6 +1148,7 @@ window.booklogAudio = (function () {
     session.state.cloudAudioChapterOrder = ''
     session.state.cloudAudioDetail = ''
     session.state.cloudAudioSession = false
+    clearSleepTimer(session.state)
   }
 
   window.addEventListener('pagehide', stop)
@@ -1104,6 +1165,7 @@ window.booklogAudio = (function () {
     seekTo: seekTo,
     seekBy: seekBy,
     moveChapter: moveChapter,
+    cycleSleepTimer: cycleSleepTimer,
     preview: preview,
     currentAnchor: currentAnchor,
     formatTime: formatTime,

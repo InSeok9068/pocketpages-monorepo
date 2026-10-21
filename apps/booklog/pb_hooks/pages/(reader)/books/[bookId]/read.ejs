@@ -184,6 +184,8 @@
     cloudAudioDetail: '',
     cloudAudioSession: false,
     cloudAudioResumeLabel: '',
+    cloudAudioSleep: '',
+    cloudAudioSleepLabel: '',
     readAloudSupported: false,
     readAloudBusy: false,
     readAloudPlaying: false,
@@ -432,6 +434,9 @@
     },
     moveCloudAudioChapter: function (direction) {
       window.booklogAudio.moveChapter(direction)
+    },
+    cycleCloudAudioSleep: function () {
+      window.booklogAudio.cycleSleepTimer()
     },
     previewCloudAudio: function () {
       if (window.booklogAudio) window.booklogAudio.preview(this)
@@ -1448,12 +1453,25 @@
                 </button>
               </div>
               <div class="flex items-center justify-between">
-                <button
-                  type="button"
-                  aria-label="재생 속도"
-                  x-on:click="cycleCloudAudioRate()"
-                  x-text="Number(readAloudRate || 1).toFixed(1) + 'x'"
-                  class="rounded-full border-none bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-700 tabular-nums"></button>
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="재생 속도"
+                    x-on:click="cycleCloudAudioRate()"
+                    x-text="Number(readAloudRate || 1).toFixed(1) + 'x'"
+                    class="rounded-full border-none bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-700 tabular-nums"></button>
+                  <button
+                    type="button"
+                    x-bind:aria-label="cloudAudioSleep ? '잠자기 타이머 ' + cloudAudioSleepLabel + ', 눌러서 바꾸기' : '잠자기 타이머 꺼짐, 눌러서 켜기'"
+                    x-on:click="cycleCloudAudioSleep()"
+                    x-bind:class="cloudAudioSleep ? 'bg-[#efe2d2] text-[#8e5521]' : 'bg-stone-100 text-stone-700'"
+                    class="inline-flex items-center gap-1 rounded-full border-none px-3 py-2 text-sm font-semibold tabular-nums">
+                    <span
+                      class="i-lucide-moon h-4 w-4"
+                      aria-hidden="true"></span>
+                    <span x-text="cloudAudioSleep ? cloudAudioSleepLabel : '타이머'"></span>
+                  </button>
+                </div>
                 <button
                   type="button"
                   x-on:click="stopReadAloud()"
