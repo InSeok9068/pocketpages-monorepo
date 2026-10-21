@@ -1382,6 +1382,60 @@ test('Starting from an excluded page explains that the next narrated chapter pla
   logic.stop()
 })
 
+test('The AI voice listening position counts letters without spaces so blank lines do not run ahead', async () => {
+  const first = '가'.repeat(50) + '.'
+  const second = '나'.repeat(50) + '.'
+  const text = first + '\n'.repeat(60) + second
+  const { logic, state, audio } = createPlayerHarness(() =>
+    new Response(
+      JSON.stringify({
+        ok: true,
+        chunkCount: 1,
+        nextSectionIndex: -1,
+        parts: [{ audioUrl: '/xapi/books/audio-file?chunkId=p', fallbackText: '', text, durationSeconds: 100 }],
+      })
+    )
+  )
+  logic.start(state, 0)
+  await flushPlayback()
+  audio.currentTime = 45
+  assert.equal(logic.currentAnchor().text, first, 'at 45% of the voice the first sentence is still being read')
+  audio.currentTime = 55
+  assert.equal(logic.currentAnchor().text, second)
+  logic.stop()
+})
+
+test('The listening position in device voice is the sentence actually being spoken', async () => {
+  const speech = fakeSpeech()
+  speech.speak = (utterance) => speech.spoken.push({ text: utterance.text, utterance })
+  const lines = [
+    '짧은 첫 문단입니다.',
+    '두 번째 문단은 조금 더 길게 써서 글자 수를 늘려 봅니다. 문장이 두 개입니다.',
+    '세 번째.',
+    '네 번째 문단도 길게 씁니다. 여기에도 문장이 여러 개 있습니다. 하나 더 있습니다.',
+    '마지막 다섯 번째 문단입니다.',
+  ]
+  const { logic, state } = createPlayerHarness(
+    () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          chunkCount: 1,
+          nextSectionIndex: -1,
+          parts: [{ audioUrl: '', fallbackText: lines.join('\n'), pending: true, durationSeconds: 60 }],
+        })
+      ),
+    { speech }
+  )
+  logic.start(state, 0)
+  await flushPlayback()
+  lines.forEach((line, index) => {
+    assert.equal(logic.currentAnchor().text, line, 'the follow highlight matches the spoken paragraph')
+    speech.spoken[index].utterance.onend()
+  })
+  logic.stop()
+})
+
 test('The sleep timer cycles through its options and stops playback when the time is up', async () => {
   let now = Date.now()
   class ClockDate extends Date {

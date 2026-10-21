@@ -572,10 +572,19 @@ window.booklogAudio = (function () {
     var session = activeSession
     var part = session ? session.parts[session.partIndex] : null
     if (!part || !part.text) return null
+    // 기기 음성은 지금 읽는 문장을 알고 있어, 시간 비율로 추정하지 않고 그 문장을 그대로 씁니다.
+    if (session.fallback && session.fallbackSpeaking) {
+      return { sectionIndex: session.sectionIndex, text: session.fallbackSpeaking.replace(/\s+/g, ' ').trim() }
+    }
     var elapsed = session.fallback ? session.fallbackElapsed : session.player.currentTime || 0
     var ratio = part.duration > 0 ? Math.min(1, elapsed / part.duration) : 0
     var text = part.text
-    var offset = Math.floor(ratio * text.length)
+    // 낭독 속도는 공백을 뺀 글자 수에 비례하므로, 줄바꿈·공백이 많은 대사 부분에서 위치가 앞서가지 않게 공백 제외 글자로 셉니다.
+    var target = Math.floor(ratio * text.replace(/\s+/g, '').length)
+    var offset = 0
+    for (var counted = 0; offset < text.length && counted < target; offset += 1) {
+      if (!/\s/.test(text[offset])) counted += 1
+    }
     var start = Math.max(
       text.lastIndexOf('. ', offset),
       text.lastIndexOf('? ', offset),
@@ -890,6 +899,7 @@ window.booklogAudio = (function () {
       }
       var utterance = new window.SpeechSynthesisUtterance(pieces[index])
       speaking = index
+      session.fallbackSpeaking = pieces[index]
       session.fallbackPieceSeconds = pieceSeconds[index]
       index += 1
       utterance.lang = 'ko-KR'
