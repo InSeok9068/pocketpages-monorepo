@@ -36,6 +36,7 @@ window.booklogReaderLogic = (function () {
   var NAVIGATION_SAVE_WAIT_MS = 2000
   var DISPLAY_SETTLE_TIMEOUT_MS = 1500
   var DISPLAY_SETTLE_RETRY_MS = 80
+  var VISIBLE_TOP_TOLERANCE_PX = 64
   var HISTORY_BACK_FALLBACK_MS = 1500
   var DEFAULT_FONT_SIZE_PERCENT = 100
   var FONT_SIZE_OPTIONS = [90, 100, 110, 120, 130]
@@ -1088,9 +1089,9 @@ window.booklogReaderLogic = (function () {
    * @returns {Promise<Array<{text:string,cfi:string}>>} 읽을 문단 큐
    */
   function buildReadAloudQueue(component) {
-    var location = currentLocation && currentLocation.start ? currentLocation.start : null
-    var href = normalizeHref(location && location.href ? location.href : '')
-    var cfi = location && location.cfi ? String(location.cfi) : ''
+    var progress = getCurrentProgressPayload(component)
+    var href = normalizeHref(progress.href)
+    var cfi = progress.locator
     var section = null
 
     if (!bookInstance || typeof bookInstance.section !== 'function') {
@@ -1675,6 +1676,103 @@ window.booklogReaderLogic = (function () {
     return [locator, href, pageNumber].join('::')
   }
 
+  function getCfiScreenTop(cfi) {
+    var range = null
+    var frame = null
+
+    try {
+      range = renditionInstance.getRange(cfi)
+      frame = range ? range.startContainer.ownerDocument.defaultView.frameElement : null
+    } catch (exception) {
+      return null
+    }
+
+    return range && frame ? frame.getBoundingClientRect().top + range.getBoundingClientRect().top : null
+  }
+
+  /**
+   * epub.js 위치가 화면 위쪽 그림 영역에 있으면 화면에 처음 보이는 글자 위치를 찾습니다.
+   * @param {string} locator epub.js가 계산한 시작 CFI
+   * @returns {{ locator: string, href: string } | null} 바꿀 위치, 그대로 쓰면 null
+   */
+  function findVisibleTopPosition(locator) {
+    var container = renditionInstance && renditionInstance.manager ? renditionInstance.manager.container : null
+    var containerRect = null
+    var startTop = null
+    var views = []
+
+    if (!container || !locator || String(locator).indexOf('epubcfi(') !== 0) {
+      return null
+    }
+
+    containerRect = container.getBoundingClientRect()
+    startTop = getCfiScreenTop(locator)
+
+    // 글자 위치는 epub.js가 화면 첫 줄로 잡아 주므로, 글자가 없는 그림 페이지가 걸린 경우만 바꿉니다.
+    if (startTop !== null && startTop >= containerRect.top - VISIBLE_TOP_TOLERANCE_PX) {
+      return null
+    }
+
+    views = renditionInstance.manager.views
+      .all()
+      .slice()
+      .sort(function (left, right) {
+        return left.element.getBoundingClientRect().top - right.element.getBoundingClientRect().top
+      })
+
+    for (var viewIndex = 0; viewIndex < views.length; viewIndex += 1) {
+      var view = views[viewIndex]
+      var frameRect = view.iframe ? view.iframe.getBoundingClientRect() : null
+      var doc = view.contents && view.contents.document ? view.contents.document : null
+      var walker = null
+      var node = null
+
+      if (
+        !frameRect
+        || !doc
+        || !doc.body
+        || frameRect.bottom <= containerRect.top
+        || frameRect.top >= containerRect.bottom
+      ) {
+        continue
+      }
+
+      walker = doc.createTreeWalker(doc.body, 4)
+
+      while ((node = walker.nextNode())) {
+        var range = null
+        var rect = null
+
+        if (!String(node.textContent || '').trim()) {
+          continue
+        }
+
+        range = doc.createRange()
+        range.selectNodeContents(node)
+        rect = range.getBoundingClientRect()
+
+        if (frameRect.top + rect.top >= containerRect.bottom) {
+          return null
+        }
+
+        if (frameRect.top + rect.bottom > containerRect.top) {
+          range.collapse(true)
+
+          try {
+            return {
+              locator: String(view.contents.cfiFromRange(range) || ''),
+              href: String(view.section && view.section.href ? view.section.href : ''),
+            }
+          } catch (exception) {
+            return null
+          }
+        }
+      }
+    }
+
+    return null
+  }
+
   function getCurrentProgressPayload(component) {
     var location = currentLocation && currentLocation.start ? currentLocation.start : null
     var locator = location && location.cfi ? String(location.cfi) : ''
@@ -1683,6 +1781,7 @@ window.booklogReaderLogic = (function () {
       component && component.currentChapterLabel ? String(component.currentChapterLabel) : getChapterLabelForHref(href)
     var pageNumber = getPageNumberFromLocation(currentLocation)
     var progressPercent = ''
+    var visibleTop = null
 
     if (!locator && renditionInstance && typeof renditionInstance.currentLocation === 'function') {
       updateCurrentLocation(component, renditionInstance.currentLocation())
@@ -1694,6 +1793,14 @@ window.booklogReaderLogic = (function () {
           ? String(component.currentChapterLabel)
           : getChapterLabelForHref(href)
       pageNumber = getPageNumberFromLocation(currentLocation)
+    }
+
+    visibleTop = findVisibleTopPosition(locator)
+
+    if (visibleTop) {
+      locator = visibleTop.locator
+      href = visibleTop.href
+      chapterLabel = getChapterLabelForHref(href) || chapterLabel
     }
 
     progressPercent = getProgressPercentFromLocator(locator)
@@ -2598,6 +2705,15 @@ window.booklogReaderLogic = (function () {
     isHandlingHistoryBack = false
   }
 
+  function canAppendSection(direction) {
+    var views = renditionInstance && renditionInstance.manager ? renditionInstance.manager.views.all() : []
+    var edgeView = direction === 'next' ? views[views.length - 1] : views[0]
+    var section = edgeView && edgeView.section ? edgeView.section : null
+    var method = direction === 'next' ? 'next' : 'prev'
+
+    return !!(section && typeof section[method] === 'function' && section[method]())
+  }
+
   /**
    * 이동한 CFI가 화면 맨 위에 오도록 스크롤을 다시 맞춥니다.
    * @param {string} target 이동한 CFI 또는 href
@@ -2645,6 +2761,7 @@ window.booklogReaderLogic = (function () {
         // 챕터 끝 근처는 다음 챕터가 붙기 전까지 스크롤할 공간이 없어 기다렸다가 맞춥니다.
         if (
           (desiredScrollTop >= 0 && desiredScrollTop <= maxScrollTop)
+          || !canAppendSection(desiredScrollTop > maxScrollTop ? 'next' : 'prev')
           || Date.now() - startedAt >= DISPLAY_SETTLE_TIMEOUT_MS
         ) {
           prepareManualNavigation()
@@ -4307,8 +4424,8 @@ window.booklogReaderLogic = (function () {
   }
 
   function startCloudAudio(component, fromBeginning) {
-    var location = currentLocation && currentLocation.start ? currentLocation.start : null
-    var section = bookInstance && location ? bookInstance.section(location.href) : null
+    var progress = getCurrentProgressPayload(component)
+    var section = bookInstance && progress.href ? bookInstance.section(progress.href) : null
     if (!section || !window.booklogAudio) {
       component.cloudAudioMessage = '리더가 준비된 후 다시 시도해 주세요.'
       return
@@ -4362,8 +4479,8 @@ window.booklogReaderLogic = (function () {
   }
 
   function startCloudAudioAtReadingPosition(component) {
-    var location = currentLocation && currentLocation.start ? currentLocation.start : null
-    var section = bookInstance && location ? bookInstance.section(location.href) : null
+    var progress = getCurrentProgressPayload(component)
+    var section = bookInstance && progress.href ? bookInstance.section(progress.href) : null
     if (!section || !window.booklogAudio) {
       component.cloudAudioMessage = '리더가 준비된 후 다시 시도해 주세요.'
       return
@@ -4647,9 +4764,7 @@ window.booklogReaderLogic = (function () {
   }
 
   function saveHighlight(component) {
-    var location = currentLocation && currentLocation.start ? currentLocation.start : null
-    var locator = location && location.cfi ? String(location.cfi) : ''
-    var href = location && location.href ? String(location.href) : ''
+    var progress = getCurrentProgressPayload(component)
     var quoteText = normalizeText(component.highlightQuoteText)
 
     component.highlightMessage = ''
@@ -4669,9 +4784,9 @@ window.booklogReaderLogic = (function () {
     requestSaveHighlight({
       quoteText: component.highlightQuoteText,
       noteText: component.highlightNoteText,
-      locator: locator,
-      href: href,
-      chapterLabel: component.currentChapterLabel || getChapterLabelForHref(href),
+      locator: progress.locator,
+      href: progress.href,
+      chapterLabel: progress.chapterLabel,
     })
       .then(function (payload) {
         component.savingHighlight = false

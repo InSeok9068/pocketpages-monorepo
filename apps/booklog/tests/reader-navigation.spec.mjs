@@ -22,7 +22,7 @@ const epub = zipSync({
   ),
 })
 
-const readerBody = render(
+const renderReaderBody = (aiAudioAvailable) => render(
   readFileSync(new URL('(reader)/books/[bookId]/read.ejs', pagesRoot), 'utf8').replace(
     /<script server>[\s\S]*?<\/script>/,
     ''
@@ -36,11 +36,12 @@ const readerBody = render(
     bookFileHash: 'nav-hash',
     epubReaderUrl: '/test.epub',
     initialShelfStatus: 'finished',
-    aiAudioAvailable: false,
+    aiAudioAvailable,
     bookTitle: '이동 테스트',
     showAudioDetail: false,
   }
 )
+const readerBody = renderReaderBody(false)
 
 function html(body) {
   return (
@@ -51,7 +52,7 @@ function html(body) {
 }
 
 async function mockSite(page, options) {
-  const requests = { detail: 0, saveProgress: 0, saveForms: [] }
+  const requests = { detail: 0, saveProgress: 0, saveForms: [], savedLocators: [] }
   const savedHref = options && options.savedHref ? options.savedHref : ''
   const savedLocator = options && options.savedLocator ? options.savedLocator : ''
   const epubBytes = Buffer.from(options && options.epub ? options.epub : epub)
@@ -77,6 +78,7 @@ async function mockSite(page, options) {
           body: request.postDataBuffer(),
         }).formData()
         requests.saveForms.push({ baseLocator: form.get('baseLocator'), force: form.get('force') })
+        requests.savedLocators.push(form.get('locator'))
         if (options && options.conflict && form.get('force') !== 'true') {
           return route.fulfill({
             status: 409,
@@ -91,7 +93,10 @@ async function mockSite(page, options) {
         if (options && options.cancelDetailNavigation) return route.fulfill({ status: 204 })
         return route.fulfill({ contentType: 'text/html', body: html('<h1>책 상세</h1><a href="/books/book/read">읽기</a>') })
       }
-      return route.fulfill({ contentType: 'text/html', body: html(readerBody) })
+      return route.fulfill({
+        contentType: 'text/html',
+        body: html(options && options.aiAudio ? renderReaderBody(true) : readerBody),
+      })
     }
   )
   return requests
@@ -206,4 +211,94 @@ test('A saved position near the end of a short chapter is restored to the top of
     return ''
   })
   expect(top).toContain('첫째 문단 28')
+})
+
+test('Leaving with only the bottom of a picture page above the text saves the text position', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const xhtml = (body) => strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + body + '</body></html>')
+  const pictureBook = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+    ),
+    'book.opf': strToU8(
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">picture-page</dc:identifier><dc:title>그림 페이지</dc:title></metadata><manifest><item id="intro" href="intro.xhtml" media-type="application/xhtml+xml"/><item id="picture" href="picture.xhtml" media-type="application/xhtml+xml"/><item id="next" href="next.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="intro"/><itemref idref="picture"/><itemref idref="next"/></spine></package>'
+    ),
+    'intro.xhtml': xhtml(Array.from({ length: 200 }, (_, index) => '<p>서문 ' + (index + 1) + '</p>').join('')),
+    'picture.xhtml': xhtml('<div style="height:1500px;background:#ddd"></div>'),
+    'next.xhtml': xhtml(Array.from({ length: 40 }, (_, index) => '<p>다음 장 문단 ' + (index + 1) + '</p>').join('')),
+  })
+  const requests = await mockSite(page, { epub: pictureBook, savedLocator: 'epubcfi(/6/6!/4/2/1:0)', aiAudio: true })
+  await page.goto('/books/book/read')
+  await waitForReader(page)
+  await page.waitForTimeout(1000)
+  await page.evaluate(() => {
+    const scroller = [...document.querySelectorAll('#epub-reader, #epub-reader *')].find(
+      (element) => element.scrollHeight > element.clientHeight + 10 && /auto|scroll/.test(window.getComputedStyle(element).overflowY)
+    )
+    scroller.scrollTop -= 100
+  })
+  await page.waitForTimeout(1000)
+
+  const highlightRequest = page.waitForRequest((request) => request.url().includes('/api/books/save-highlight'))
+  await page.evaluate(() => {
+    const reader = window.Alpine.$data(document.querySelector('section[x-data]'))
+    reader.highlightQuoteText = '직접 붙여 넣은 문구'
+    reader.saveHighlight()
+  })
+  const highlightForm = await new Request('http://local/', {
+    method: 'POST',
+    headers: (await highlightRequest).headers(),
+    body: (await highlightRequest).postDataBuffer(),
+  }).formData()
+  expect(highlightForm.get('locator')).toMatch(/^epubcfi\(\/6\/6!/)
+  expect(highlightForm.get('href')).toBe('next.xhtml')
+
+  const audioRequest = page.waitForRequest((request) => request.url().includes('/api/books/audio-position'))
+  await page.evaluate(() =>
+    window.Alpine.$data(document.querySelector('section[x-data]')).startCloudAudioAtReadingPosition()
+  )
+  const audioQuery = new URL((await audioRequest).url()).searchParams
+  expect(audioQuery.get('sectionIndex')).toBe('2')
+  expect(audioQuery.get('anchor')).toMatch(/^다음 장 문단 1/)
+
+  await page.evaluate(() => document.querySelector('a[aria-label="뒤로가기"]').click())
+  await expect(page).toHaveURL(/\/books\/book$/)
+  expect(requests.savedLocators.at(-1)).toMatch(/^epubcfi\(\/6\/6!/)
+})
+
+test('Restoring near the end of the last chapter does not wait for a chapter that will never load', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const xhtml = (body) => strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + body + '</body></html>')
+  const lastChapterBook = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+    ),
+    'book.opf': strToU8(
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">last-chapter</dc:identifier><dc:title>마지막 챕터</dc:title></metadata><manifest><item id="intro" href="intro.xhtml" media-type="application/xhtml+xml"/><item id="last" href="last.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="intro"/><itemref idref="last"/></spine></package>'
+    ),
+    'intro.xhtml': xhtml(Array.from({ length: 200 }, (_, index) => '<p>서문 ' + (index + 1) + '</p>').join('')),
+    'last.xhtml': xhtml(Array.from({ length: 30 }, (_, index) => '<p>마지막 문단 ' + (index + 1) + '</p>').join('')),
+  })
+  await mockSite(page, { epub: lastChapterBook, savedLocator: 'epubcfi(/6/4!/4/56/1:0)' })
+  const loadProgressAnswered = page.waitForResponse((response) => response.url().includes('/api/books/load-progress'))
+  await page.goto('/books/book/read')
+  await loadProgressAnswered
+  const answeredAt = Date.now()
+  await waitForReader(page)
+  const restoreMs = Date.now() - answeredAt
+
+  const top = await page.evaluate(() => {
+    const readerTop = document.querySelector('#epub-reader').getBoundingClientRect().top
+    for (const frame of document.querySelectorAll('#epub-reader iframe')) {
+      const frameTop = frame.getBoundingClientRect().top
+      for (const paragraph of frame.contentDocument.querySelectorAll('p')) {
+        if (frameTop + paragraph.getBoundingClientRect().bottom > readerTop + 1) return paragraph.textContent.trim()
+      }
+    }
+    return ''
+  })
+  expect(top).toContain('마지막 문단')
+  expect(restoreMs).toBeLessThan(1000)
 })
