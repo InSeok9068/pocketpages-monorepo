@@ -328,6 +328,80 @@ test('Footnote number links are left out of the reading position text, like the 
   expect(sentence, anchor).toBeLessThan(300)
 })
 
+test('AI audio highlights the paragraph being read and follows it only while the reader is watching it', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const xhtml = (body) => strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + body + '</body></html>')
+  const paragraphs = Array.from(
+    { length: 60 },
+    (_, index) => '<p>문단 ' + (index + 1) + '번째 이야기입니다. 듣는 위치를 화면에서 따라가는지 확인합니다.</p>'
+  ).join('')
+  const followBook = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+    ),
+    'book.opf': strToU8(
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">follow</dc:identifier><dc:title>따라가기</dc:title></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+    ),
+    'body.xhtml': xhtml(paragraphs),
+  })
+  await mockSite(page, { epub: followBook, aiAudio: true })
+  await page.goto('/books/book/read')
+  await waitForReader(page)
+  await page.waitForTimeout(1000)
+  await page.evaluate(() => {
+    window.booklogAudio.currentAnchor = () => window.__listening
+    window.Alpine.$data(document.querySelector('section[x-data]')).cloudAudioSession = true
+  })
+  const listen = (number) =>
+    page.evaluate((text) => {
+      window.__listening = { sectionIndex: 0, text }
+    }, '문단 ' + number + '번째 이야기입니다.')
+  const state = () =>
+    page.evaluate(() => {
+      const scroller = [...document.querySelectorAll('#epub-reader, #epub-reader *')].find(
+        (element) => element.scrollHeight > element.clientHeight + 10 && /auto|scroll/.test(window.getComputedStyle(element).overflowY)
+      )
+      const frame = document.querySelector('#epub-reader iframe')
+      const active = frame.contentDocument.querySelector('.booklog-listen-active')
+      const box = active ? active.getBoundingClientRect() : null
+      const top = box ? frame.getBoundingClientRect().top + box.top : null
+      return {
+        text: active ? active.textContent.split('.')[0] : '',
+        onScreen: top !== null && top >= 0 && top < window.innerHeight,
+        scrollTop: Math.round(scroller.scrollTop),
+      }
+    })
+
+  await listen(2)
+  await expect.poll(async () => (await state()).text).toBe('문단 2번째 이야기입니다')
+  const atStart = await state()
+  await listen(3)
+  await expect.poll(async () => (await state()).text).toBe('문단 3번째 이야기입니다')
+  expect((await state()).scrollTop, 'a visible next paragraph does not move the page').toBe(atStart.scrollTop)
+
+  await listen(40)
+  await expect.poll(async () => (await state()).text).toBe('문단 40번째 이야기입니다')
+  await expect.poll(async () => (await state()).onScreen, 'the page follows a paragraph that left the screen').toBe(true)
+
+  await page.evaluate(() => {
+    const scroller = [...document.querySelectorAll('#epub-reader, #epub-reader *')].find(
+      (element) => element.scrollHeight > element.clientHeight + 10 && /auto|scroll/.test(window.getComputedStyle(element).overflowY)
+    )
+    scroller.scrollTop = 0
+  })
+  await page.waitForTimeout(500)
+  await listen(41)
+  await expect.poll(async () => (await state()).text).toBe('문단 41번째 이야기입니다')
+  await page.waitForTimeout(1200)
+  expect((await state()).scrollTop, 'a reader who scrolled away is not pulled back').toBeLessThan(50)
+
+  await page.evaluate(() => {
+    window.Alpine.$data(document.querySelector('section[x-data]')).cloudAudioSession = false
+  })
+  await expect.poll(async () => (await state()).text, 'stopping clears the highlight').toBe('')
+})
+
 test('Restoring near the end of the last chapter does not wait for a chapter that will never load', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const xhtml = (body) => strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + body + '</body></html>')

@@ -37,6 +37,8 @@ window.booklogReaderLogic = (function () {
   var DISPLAY_SETTLE_TIMEOUT_MS = 1500
   var DISPLAY_SETTLE_RETRY_MS = 80
   var VISIBLE_TOP_TOLERANCE_PX = 64
+  var FOLLOW_BOTTOM_MARGIN_PX = 140
+  var LISTEN_FOLLOW_INTERVAL_MS = 1000
   var HISTORY_BACK_FALLBACK_MS = 1500
   var DEFAULT_FONT_SIZE_PERCENT = 100
   var FONT_SIZE_OPTIONS = [90, 100, 110, 120, 130]
@@ -96,6 +98,7 @@ window.booklogReaderLogic = (function () {
   var readAloudPrepared = false
   var renderedContentEntries = []
   var activeReadAloudHighlight = null
+  var listeningFollow = { key: '', node: null, openedSection: -1 }
   var activeComponent = null
   var activeSelectionContents = null
   var selectionSyncTimerId = 0
@@ -835,7 +838,7 @@ window.booklogReaderLogic = (function () {
     styleElement = doc.createElement('style')
     styleElement.id = 'booklog-read-aloud-style'
     styleElement.textContent =
-      '.booklog-read-aloud-active{background:rgba(245,204,96,0.38)!important;border-radius:0.4rem;box-shadow:0 0 0 0.18rem rgba(245,204,96,0.16);transition:background-color 120ms ease;}'
+      '.booklog-read-aloud-active,.booklog-listen-active{background:rgba(245,204,96,0.38)!important;border-radius:0.4rem;box-shadow:0 0 0 0.18rem rgba(245,204,96,0.16);transition:background-color 120ms ease;}'
     doc.head.appendChild(styleElement)
   }
 
@@ -1038,6 +1041,31 @@ window.booklogReaderLogic = (function () {
     return found ? found.index + found[0].length : -1
   }
 
+  function getNodeScreenBox(node) {
+    var container = renditionInstance && renditionInstance.manager ? renditionInstance.manager.container : null
+    var win = node && node.ownerDocument ? node.ownerDocument.defaultView : null
+    var frame = win ? win.frameElement : null
+    if (!container || !frame || !node.isConnected) return null
+    var bounds = container.getBoundingClientRect()
+    var frameTop = frame.getBoundingClientRect().top
+    var rect = node.getBoundingClientRect()
+    return { top: frameTop + rect.top, bottom: frameTop + rect.bottom, viewTop: bounds.top, viewBottom: bounds.bottom }
+  }
+
+  function isNodeOnScreen(node) {
+    var box = getNodeScreenBox(node)
+    return !!box && box.bottom > box.viewTop && box.top < box.viewBottom
+  }
+
+  // 읽는 문단을 보고 있던 사용자만 따라 옮기고, 이미 잘 보이는 문단이면 화면을 움직이지 않습니다.
+  // 문단 첫 줄이 화면 위로 지나갔거나 아래쪽 미니 플레이어 근처까지 내려왔을 때만 옮깁니다.
+  function revealFollowedNode(node, watching) {
+    var box = getNodeScreenBox(node)
+    if (!watching || !box || typeof node.scrollIntoView !== 'function') return
+    if (box.top >= box.viewTop && box.top <= box.viewBottom - FOLLOW_BOTTOM_MARGIN_PX) return
+    node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' })
+  }
+
   function activateReadAloudHighlight(queueItem) {
     var entries = []
     var entry = null
@@ -1046,6 +1074,8 @@ window.booklogReaderLogic = (function () {
     var node = null
     var entryIndex = 0
     var className = 'booklog-read-aloud-active'
+    var previous = activeReadAloudHighlight ? activeReadAloudHighlight.node : null
+    var watching = !previous || isNodeOnScreen(previous)
 
     clearReadAloudHighlight()
 
@@ -1114,13 +1144,7 @@ window.booklogReaderLogic = (function () {
       className: className,
     }
 
-    if (typeof node.scrollIntoView === 'function') {
-      node.scrollIntoView({
-        block: 'center',
-        inline: 'nearest',
-        behavior: 'smooth',
-      })
-    }
+    revealFollowedNode(node, watching)
   }
 
   /**
@@ -4313,6 +4337,7 @@ window.booklogReaderLogic = (function () {
     var container = document.getElementById('epub-reader')
 
     activeComponent = component
+    window.setInterval(followListeningPosition, LISTEN_FOLLOW_INTERVAL_MS)
     syncReaderFontSizeState(component, readStoredReaderFontSizePercent())
     syncReaderSettingsState(component, readStoredReaderSettings())
     window.history.pushState({ readerSaveGuard: true }, '', window.location.href)
@@ -4511,6 +4536,63 @@ window.booklogReaderLogic = (function () {
           section.unload()
         } catch (exception) {}
       })
+  }
+
+  function clearListeningHighlight() {
+    if (listeningFollow.node) listeningFollow.node.classList.remove('booklog-listen-active')
+    listeningFollow = { key: '', node: null, openedSection: -1 }
+  }
+
+  function findListeningNode(doc, key) {
+    var nodes = collectReadableTextNodes(doc && doc.body ? doc.body : doc)
+    var previous = listeningFollow.node ? nodes.indexOf(listeningFollow.node) : -1
+    // 같은 문장이 여러 번 나오는 책도 있어, 직전에 강조한 문단부터 뒤쪽으로 먼저 찾습니다.
+    var ordered = previous >= 0 ? nodes.slice(previous).concat(nodes.slice(0, previous)) : nodes
+    return (
+      ordered.find(function (node) {
+        return getReadableText(node).replace(/\s+/g, '').indexOf(key) >= 0
+      }) || null
+    )
+  }
+
+  // AI 오디오북이 읽는 문단을 강조하고, 로컬 읽어주기와 같은 규칙으로 보고 있던 사용자만 화면을 따라 옮깁니다.
+  function followListeningPosition() {
+    var component = activeComponent
+    var anchor =
+      component && component.cloudAudioSession && window.booklogAudio ? window.booklogAudio.currentAnchor() : null
+    var key = anchor && anchor.text ? anchor.text.replace(/\s+/g, '').slice(0, 16) : ''
+    if (!key || !bookInstance || !bookInstance.spine) {
+      if (listeningFollow.node || listeningFollow.key) clearListeningHighlight()
+      return
+    }
+    var followKey = anchor.sectionIndex + ':' + key
+    if (listeningFollow.key === followKey) return
+    var watching = !listeningFollow.node || isNodeOnScreen(listeningFollow.node)
+    var section = bookInstance.spine.get(anchor.sectionIndex)
+    var view =
+      renditionInstance && renditionInstance.manager
+        ? renditionInstance.manager.views.all().find(function (candidate) {
+            return candidate.section && candidate.section.index === anchor.sectionIndex && candidate.contents
+          })
+        : null
+    var node = view ? findListeningNode(view.contents.document, key) : null
+    if (!node) {
+      // 다음 챕터로 넘어갔는데 아직 화면에 없으면, 보고 있던 경우에만 한 번 그 챕터를 엽니다.
+      if (!view && watching && section && listeningFollow.openedSection !== anchor.sectionIndex) {
+        listeningFollow.openedSection = anchor.sectionIndex
+        prepareManualNavigation()
+        displayAt(section.href).catch(function () {})
+      }
+      return
+    }
+    var target = findHighlightTarget(node) || node
+    if (listeningFollow.node && listeningFollow.node !== target) {
+      listeningFollow.node.classList.remove('booklog-listen-active')
+    }
+    ensureReadAloudStyle(target.ownerDocument)
+    target.classList.add('booklog-listen-active')
+    listeningFollow = { key: followKey, node: target, openedSection: -1 }
+    revealFollowedNode(target, watching)
   }
 
   function toggleCloudAudio(component) {
