@@ -185,6 +185,22 @@ window.booklogAudio = (function () {
       })
   }
 
+  // 이동 중 잠깐 끊긴 연결로 듣기가 끝나지 않도록, 연결·응답 오류만 몇 초 뒤 다시 받습니다.
+  function loadChunkRetrying(session, sectionIndex, index, retries) {
+    return loadChunk(session, sectionIndex, index).catch(function (error) {
+      var network = error && (error.name === 'TypeError' || error.name === 'SyntaxError')
+      if (!network || !isActive(session)) throw error
+      if (!(retries > 0)) {
+        throw new Error('인터넷 연결이 불안정해 다음 구간을 받지 못했습니다. 연결을 확인한 뒤 이어 듣기를 눌러 주세요.')
+      }
+      return new Promise(function (resolve) {
+        setTimeout(resolve, 3000)
+      }).then(function () {
+        return loadChunkRetrying(session, sectionIndex, index, retries - 1)
+      })
+    })
+  }
+
   function fetchAudioBlob(session, audioUrl) {
     var url = new URL(
       '/_booklog-audio-cache/' + encodeURIComponent(config.readerCacheKey + ':' + audioUrl),
@@ -635,7 +651,7 @@ window.booklogAudio = (function () {
     session.positionReady = false
     session.failed = false
     session.state.cloudAudioBusy = true
-    return (prepared || loadChunk(session, session.sectionIndex, session.chunkIndex))
+    return (prepared || loadChunkRetrying(session, session.sectionIndex, session.chunkIndex, 2))
       .then(function (result) {
         if (!isActive(session) || token !== session.loadToken) return
         if (result.sectionIndex !== session.sectionIndex) {
@@ -676,6 +692,7 @@ window.booklogAudio = (function () {
     var part = session.parts[session.partIndex]
     session.fallback = false
     if (part.fallbackText) return speakFallback(session, part.fallbackText)
+    session.startAnchor = ''
     session.positionReady = false
     if (session.objectUrl) URL.revokeObjectURL(session.objectUrl)
     session.objectUrl = URL.createObjectURL(part.blob)
@@ -719,6 +736,42 @@ window.booklogAudio = (function () {
     return pieces
   }
 
+  // 읽던 위치에서 시작할 때는 추정 시간 대신 리더의 기준 문장을 원문에서 찾아, 그 문장부터 읽도록 조각을 자릅니다.
+  function cutAtAnchor(pieces, pieceSeconds, anchor) {
+    var compactAnchor = String(anchor).replace(/\s+/g, '')
+    // 첫 문장이 짧으면 긴 검색어가 다음 문단까지 넘어가므로 점점 줄여 찾습니다.
+    for (var length = 12; length >= 5; length -= length > 8 ? 4 : 3) {
+      if (compactAnchor.length < length) continue
+      var found = findAnchorPiece(pieces, pieceSeconds, compactAnchor.slice(0, length))
+      if (found) return found
+    }
+    return null
+  }
+
+  function findAnchorPiece(pieces, pieceSeconds, key) {
+    var elapsed = 0
+    for (var index = 0; index < pieces.length; index += 1) {
+      var piece = pieces[index]
+      var compact = ''
+      var positions = []
+      for (var at = 0; at < piece.length; at += 1) {
+        if (/\s/.test(piece[at])) continue
+        compact += piece[at]
+        positions.push(at)
+      }
+      var found = compact.indexOf(key)
+      if (found >= 0) {
+        var cut = positions[found]
+        var skipped = (pieceSeconds[index] * cut) / (piece.length || 1)
+        pieces[index] = piece.slice(cut)
+        pieceSeconds[index] -= skipped
+        return { index: index, elapsed: elapsed + skipped }
+      }
+      elapsed += pieceSeconds[index]
+    }
+    return null
+  }
+
   function speakFallback(session, text) {
     var synth = window.speechSynthesis
     if (!synth || typeof window.SpeechSynthesisUtterance !== 'function') {
@@ -742,11 +795,14 @@ window.booklogAudio = (function () {
     var pieceSeconds = pieces.map(function (piece) {
       return part ? (piece.length / totalChars) * part.duration : 0
     })
+    var anchored = session.startAnchor ? cutAtAnchor(pieces, pieceSeconds, session.startAnchor) : null
+    session.startAnchor = ''
     // 저장한 위치나 옮긴 위치가 조각 중간이면, 그 시간 직전에 시작하는 문장부터 읽습니다.
-    var index = 0
-    var elapsed = 0
+    var index = anchored ? anchored.index : 0
+    var elapsed = anchored ? anchored.elapsed : 0
     while (
-      session.resumeSeconds > 0
+      !anchored
+      && session.resumeSeconds > 0
       && index < pieces.length - 1
       && pieceSeconds[index] > 0
       && elapsed + pieceSeconds[index] <= session.resumeSeconds
@@ -826,7 +882,9 @@ window.booklogAudio = (function () {
             && result.value.parts.some(function (part) {
               return part.pending
             })
-          return result.error || stale ? loadChunk(session, next.sectionIndex, next.chunkIndex) : result.value
+          return result.error || stale
+            ? loadChunkRetrying(session, next.sectionIndex, next.chunkIndex, 2)
+            : result.value
         })
       : null
     playChunk(session, prepared)
@@ -880,6 +938,7 @@ window.booklogAudio = (function () {
       nextSectionIndex: -1,
       previousSectionIndex: -1,
       prefetchedKey: '',
+      startAnchor: '',
       fallback: false,
       cacheUnavailable: false,
       lastSavedAt: 0,
@@ -971,12 +1030,16 @@ window.booklogAudio = (function () {
           .then(readJson)
           .then(function (located) {
             if (!isActive(session)) return
+            var requestedSection = session.sectionIndex
             session.chunkIndex = located.chunkIndex >= 0 ? located.chunkIndex : 0
             session.resumeSeconds = located.chunkIndex >= 0 ? Number(located.seconds) || 0 : 0
+            session.startAnchor = located.chunkIndex >= 0 ? anchorText : ''
             return playChunk(session).then(function () {
-              if (isActive(session) && located.chunkIndex < 0 && !session.failed) {
-                state.cloudAudioMessage = '읽던 위치를 찾지 못해 챕터 처음부터 재생합니다.'
-              }
+              if (!isActive(session) || located.chunkIndex >= 0 || session.failed) return
+              state.cloudAudioMessage =
+                session.sectionIndex !== requestedSection
+                  ? '이 페이지는 낭독하지 않는 부분이라 다음 본문 챕터부터 재생합니다.'
+                  : '읽던 위치를 찾지 못해 챕터 처음부터 재생합니다.'
             })
           })
       })

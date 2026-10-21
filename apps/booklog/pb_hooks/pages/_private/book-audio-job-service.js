@@ -167,7 +167,8 @@ function planJob(app, jobId, sections) {
 }
 
 function resetFailedAttempts(txApp, chunk) {
-  if (chunk.get('status') !== 'failed') return
+  // 반복 차단된 조각은 다시 시작해도 또 막혀 한도만 쓰므로, 관리자가 재생성을 요청할 때만 다시 만듭니다.
+  if (chunk.get('status') !== 'failed' || generation.isBlockedExhausted(chunk)) return
   chunk.set('attempt_count', 0)
   chunk.set('next_retry_at', '')
   txApp.save(chunk)
@@ -254,7 +255,11 @@ function syncJobProgress(app, job, planned) {
     job.set('error_message', '')
   } else if (counts.total > 0 && counts.ready + counts.failed >= counts.total && job.get('status') !== 'paused') {
     job.set('status', 'failed')
-    job.set('error_message', counts.failed + '개 구간을 만들지 못했습니다. 다시 예약하면 실패한 구간만 재시도합니다.')
+    job.set(
+      'error_message',
+      counts.failed
+        + '개 구간을 만들지 못했습니다. 다시 예약하면 정책 차단을 제외한 실패 구간만 재시도하고, 차단된 부분은 기기 음성으로 읽습니다.'
+    )
   }
   app.save(job)
   return counts

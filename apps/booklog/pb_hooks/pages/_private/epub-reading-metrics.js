@@ -342,15 +342,48 @@ function shouldExtractTextEntry(entryPath) {
   )
 }
 
+const MAX_TEXT_ENTRY_BYTES = 16 * 1024 * 1024
+const MAX_TEXT_TOTAL_BYTES = 200 * 1024 * 1024
+
+/**
+ * 한 EPUB에서 풀어 읽을 텍스트 파일의 압축 해제 크기 검사기를 만듭니다.
+ * @returns {(entryName: string, originalSize: number) => void} 파일 하나 또는 합계가 한도를 넘으면 오류를 던지는 검사 함수
+ */
+function createTextEntrySizeGuard() {
+  let totalBytes = 0
+
+  return function (entryName, originalSize) {
+    totalBytes += Number(originalSize || 0)
+
+    if (originalSize <= MAX_TEXT_ENTRY_BYTES && totalBytes <= MAX_TEXT_TOTAL_BYTES) {
+      return
+    }
+
+    const message = '압축을 푼 본문 크기가 너무 커서 처리할 수 없는 EPUB입니다.'
+    throw Object.assign(
+      new Error('oversized epub text: ' + entryName + ' ' + originalSize + ' bytes, total ' + totalBytes + ' bytes'),
+      { userMessage: message }
+    )
+  }
+}
+
 /**
  * EPUB 바이트에서 읽기 분량을 다시 계산합니다.
  * @param {Uint8Array} epubBytes EPUB 압축 바이트
  * @returns {types.EpubReadingMetrics} 계산된 읽기 분량
  */
 function buildReadingMetricsFromBytes(epubBytes) {
+  const checkTextEntrySize = createTextEntrySizeGuard()
   const archiveEntries = fflate.unzipSync(epubBytes, {
     filter: function (file) {
-      return shouldExtractTextEntry(String(file && file.name ? file.name : ''))
+      const entryName = String(file && file.name ? file.name : '')
+
+      if (!shouldExtractTextEntry(entryName)) {
+        return false
+      }
+
+      checkTextEntrySize(entryName, file.originalSize)
+      return true
     },
   })
   const containerDocument = parseXmlDocument(readArchiveText(archiveEntries, 'META-INF/container.xml'))
@@ -385,16 +418,18 @@ function readAudioSpinePaths(epubBytes) {
   })
 }
 
-const MAX_AUDIO_ENTRY_BYTES = 16 * 1024 * 1024
-
 function unzipAudioEntries(epubBytes, entryPaths) {
   const oversized = []
+  const checkTextEntrySize = createTextEntrySizeGuard()
   const archive = fflate.unzipSync(epubBytes, {
     filter: function (file) {
       if (entryPaths.indexOf(file.name) < 0) return false
-      if (file.originalSize <= MAX_AUDIO_ENTRY_BYTES) return true
-      oversized.push(file.name)
-      return false
+      if (file.originalSize > MAX_TEXT_ENTRY_BYTES) {
+        oversized.push(file.name)
+        return false
+      }
+      checkTextEntrySize(file.name, file.originalSize)
+      return true
     },
   })
   // 큰 파일을 건너뛰면 챕터가 빠진 채 생성이 완료될 수 있어, 아예 실패로 알립니다.
@@ -578,4 +613,5 @@ module.exports = {
   buildAudioBookFromBytes,
   buildReadingMetrics,
   buildReadingMetricsFromBytes,
+  createTextEntrySizeGuard,
 }

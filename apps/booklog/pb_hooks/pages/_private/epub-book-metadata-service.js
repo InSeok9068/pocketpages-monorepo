@@ -2,6 +2,7 @@ const fflate = require('fflate')
 const { XMLParser } = require('fast-xml-parser')
 const he = require('he')
 const { compile: compileHtmlToText } = require(`${__hooks}/pages/_private/vendor/html-to-text.bundle.js`)
+const { createTextEntrySizeGuard } = require(`${__hooks}/pages/_private/epub-reading-metrics.js`)
 
 /**
  * EPUB 업로드와 재분석에서 같은 도서 메타데이터 탐색을 제공합니다.
@@ -229,7 +230,7 @@ function createEpubBookMetadataService(dependencies) {
     }
 
     if (entryInfo.compression === 8) {
-      return fflate.inflateSync(compressedBytes)
+      return fflate.inflateSync(compressedBytes, { out: new Uint8Array(entryInfo.originalSize) })
     }
 
     return null
@@ -239,6 +240,7 @@ function createEpubBookMetadataService(dependencies) {
     const entryInfos = parseZipCentralDirectory(reader, fileSize)
     const entryNames = []
     const archiveEntries = {}
+    const checkTextEntrySize = createTextEntrySizeGuard()
 
     for (let index = 0; index < entryInfos.length; index += 1) {
       const entryInfo = entryInfos[index]
@@ -253,6 +255,7 @@ function createEpubBookMetadataService(dependencies) {
         continue
       }
 
+      checkTextEntrySize(entryInfo.name, entryInfo.originalSize)
       const entryData = readZipEntryData(reader, entryInfo)
 
       if (entryData) {
@@ -283,6 +286,7 @@ function createEpubBookMetadataService(dependencies) {
     const seenEntryNames = {}
     const entryNames = []
     const entryInfos = []
+    const checkTextEntrySize = createTextEntrySizeGuard()
     const archiveEntries = fflate.unzipSync(archiveBytes, {
       filter: function (file) {
         const entryName = String(file && file.name ? file.name : '')
@@ -298,7 +302,12 @@ function createEpubBookMetadataService(dependencies) {
           })
         }
 
-        return shouldExtractEpubTextEntry(entryName)
+        if (!shouldExtractEpubTextEntry(entryName)) {
+          return false
+        }
+
+        checkTextEntrySize(entryName, file.originalSize)
+        return true
       },
     })
 
@@ -329,6 +338,10 @@ function createEpubBookMetadataService(dependencies) {
     try {
       return readZipTextArchiveEntries(reader, fileSize)
     } catch (exception) {
+      if (exception && exception.userMessage) {
+        throw exception
+      }
+
       warn(logPrefix + ':zip-range-fallback', {
         originalName: uploadedFile.originalName || uploadedFile.name,
         error: String(exception.message || exception),

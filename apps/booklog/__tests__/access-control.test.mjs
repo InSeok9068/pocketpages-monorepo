@@ -367,6 +367,22 @@ test('A re-saved shared file stays attached to its book even when its ISBN now p
   assert.equal(other.fileCount, 0)
 })
 
+test('An EPUB whose text expands far beyond a real book is rejected before it is unpacked', async () => {
+  const { zipSync, strToU8 } = require('fflate')
+  const bomb = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8('<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'),
+    'OPS/book.opf': strToU8('<package version="3.0"><metadata></metadata><manifest></manifest><spine></spine></package>'),
+    'OPS/body.xhtml': new Uint8Array(17 * 1024 * 1024).fill(32),
+  })
+  assert.ok(bomb.length < 1024 * 1024, 'a small upload that expands to 17MB')
+
+  const message = await uploadEpub(1, bomb, 'bomb.epub')
+  assert.match(message, /압축을 푼 본문 크기가 너무 커서/)
+  const state = await (await request('/_test/upload-state?title=bomb')).json()
+  assert.equal(state.bookCount, 0)
+})
+
 test('Only administrators see and access book management; users cannot grant themselves admin access', async () => {
   assert.doesNotMatch(await (await request('/')).text(), /href="\/admin\/books"/)
   assert.match(await (await request('/', 4)).text(), /href="\/admin\/books"/)

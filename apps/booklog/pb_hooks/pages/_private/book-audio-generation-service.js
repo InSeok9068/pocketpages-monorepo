@@ -3,9 +3,11 @@ const MAX_ATTEMPTS = 5
 const RETRY_DELAY_MS = 600000
 const SPLIT_AFTER_ATTEMPTS = 1
 const MIN_SPLIT_CHARS = 300
-const SHORT_CHECK_MIN_CHARS = 1000
+const SHORT_CHECK_MIN_CHARS = 250
 const MAX_CHARS_PER_SECOND = 6.5
 const SHORT_RETRY_LIMIT = 2
+const BLOCKED_MAX_ATTEMPTS = 2
+const BLOCKED_EXHAUSTED_MESSAGE = 'Gemini 정책 필터에 반복 차단되어 이 부분은 기기 음성으로 읽습니다.'
 
 /**
  * 구간을 지금 생성할 수 있는지 판단합니다.
@@ -81,6 +83,14 @@ function markFailed(app, chunkId, claimedAt, message, countAttempt, splitWhenRep
     if (parts) {
       splitChunk(txApp, current, parts)
       split = true
+      return
+    }
+    // 더 나눌 수 없는 차단 조각은 다시 보내도 대부분 또 막혀, 한 번만 재시도하고 하루 한도를 아낍니다.
+    if (splitWhenRepeated && attempts >= BLOCKED_MAX_ATTEMPTS) {
+      current.set('attempt_count', MAX_ATTEMPTS)
+      current.set('status', 'failed')
+      current.set('error_message', (BLOCKED_EXHAUSTED_MESSAGE + ' ' + message).slice(0, 2000))
+      current.set('next_retry_at', '')
       return
     }
     current.set('status', 'failed')
@@ -331,9 +341,19 @@ function decodeBase64(data) {
   return bytes
 }
 
+/**
+ * 정책 차단으로 재시도를 끝낸 구간인지 확인합니다.
+ * @param {core.Record} chunk 음성 구간
+ * @returns {boolean} 반복 차단으로 끝난 구간 여부
+ */
+function isBlockedExhausted(chunk) {
+  return chunk.get('status') === 'failed' && String(chunk.get('error_message')).indexOf(BLOCKED_EXHAUSTED_MESSAGE) === 0
+}
+
 module.exports = {
   CLAIM_TTL_MS,
   MAX_ATTEMPTS,
+  isBlockedExhausted,
   isClaimable,
   toMs,
   claimChunk,

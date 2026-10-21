@@ -7,6 +7,7 @@ import vm from 'node:vm'
 
 const serviceRoot = fileURLToPath(new URL('../', import.meta.url))
 const require = createRequire(new URL('../package.json', import.meta.url))
+globalThis.__hooks = serviceRoot + 'pb_hooks'
 
 function createService() {
   const context = { module: { exports: {} }, require, __hooks: serviceRoot + 'pb_hooks' }
@@ -123,4 +124,21 @@ test('ISBN candidates with a wrong check digit or placeholder digits are ignored
     'book.epub'
   )
   assert.deepEqual(detailRequests, ['9791161571195'])
+})
+
+test('Unpacked EPUB text is limited to 16MB per file and 200MB per book', () => {
+  const { createTextEntrySizeGuard } = require('./pb_hooks/pages/_private/epub-reading-metrics.js')
+  const MB = 1024 * 1024
+
+  const realBook = createTextEntrySizeGuard()
+  realBook('OPS/footnote.xhtml', 234 * 1024)
+  realBook('OPS/chapter.xhtml', 16 * MB)
+
+  assert.throws(() => createTextEntrySizeGuard()('OPS/huge.xhtml', 16 * MB + 1), {
+    userMessage: '압축을 푼 본문 크기가 너무 커서 처리할 수 없는 EPUB입니다.',
+  })
+
+  const manyFiles = createTextEntrySizeGuard()
+  for (let index = 0; index < 12; index += 1) manyFiles('OPS/part' + index + '.xhtml', 16 * MB)
+  assert.throws(() => manyFiles('OPS/part12.xhtml', 16 * MB), /total/)
 })

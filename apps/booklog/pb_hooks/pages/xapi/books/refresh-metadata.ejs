@@ -272,11 +272,12 @@
       }
     }
   } catch (exception) {
-    failureMessage = String(exception.message || exception)
+    const errorMessage = String(exception.message || exception)
+    failureMessage = exception && exception.userMessage ? String(exception.userMessage) : errorMessage
     error('xapi/books/refresh-metadata:failed', {
       userId: userId,
       bookId: bookId,
-      error: failureMessage,
+      error: errorMessage,
     })
   }
 

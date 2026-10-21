@@ -271,11 +271,73 @@ test('A chunk blocked once is replaced by two ordered parts and short chunks kee
   const short = generateWithProviderResult(policyBlock, { input_text: longNarration(12) })
   assert.equal(short.fields.status, 'failed')
   assert.equal(short.created.length, 0)
+  assert.equal(short.fields.attempt_count, 1, 'a short blocked part is retried once later')
+  const shortAgain = generateWithProviderResult(policyBlock, { attempt_count: 1, input_text: longNarration(12) })
+  assert.equal(shortAgain.fields.status, 'failed')
+  assert.equal(shortAgain.fields.attempt_count, 5, 'a second block ends retries to save the daily quota')
+  assert.match(shortAgain.fields.error_message, /^Gemini 정책 필터에 반복 차단되어 이 부분은 기기 음성으로 읽습니다/)
   const other = generateWithProviderResult(
     { ok: false, statusCode: 500, errorMessage: 'Internal' },
     { attempt_count: 1, input_text: text }
   )
   assert.equal(other.fields.status, 'failed', 'only policy blocks are split')
+})
+
+test('Restarting a job retries ordinary failures but not parts that policy blocks repeatedly', () => {
+  const record = (fields) => ({
+    fields: { ...fields },
+    get(name) {
+      return this.fields[name] ?? ''
+    },
+    set(name, value) {
+      this.fields[name] = value
+    },
+  })
+  const blockedPath = '/pages/_private/book-audio-generation-service.js'
+  const context = {
+    module: { exports: {} },
+    __hooks: '',
+    $security: { sha256: (text) => text },
+    $dbx: { hashExp: () => ({}), not: () => ({}), exp: () => ({}) },
+    Date,
+  }
+  const load = (file) => {
+    const sandbox = { ...context, module: { exports: {} } }
+    vm.runInNewContext(readFileSync(new URL('../pb_hooks' + file, import.meta.url), 'utf8'), sandbox)
+    return sandbox.module.exports
+  }
+  context.require = (name) => (name === blockedPath ? load(blockedPath) : name.startsWith('@') ? { dateutil: {} } : {})
+  const service = load('/pages/_private/book-audio-job-service.js')
+  const blocked = record({
+    section_index: 0,
+    chunk_index: 0,
+    split_path: '',
+    text_hash: '첫 구간',
+    status: 'failed',
+    attempt_count: 5,
+    error_message: 'Gemini 정책 필터에 반복 차단되어 이 부분은 기기 음성으로 읽습니다. reason',
+  })
+  const ordinary = record({
+    section_index: 0,
+    chunk_index: 1,
+    split_path: '',
+    text_hash: '둘째 구간',
+    status: 'failed',
+    attempt_count: 5,
+    error_message: 'Gemini 음성 생성에 실패했습니다.',
+  })
+  const job = record({ file_id: 'file', config_hash: 'hash', status: 'running', total_chunks: 0 })
+  const tx = {
+    findRecordById: () => job,
+    findRecordsByFilter: () => [blocked, ordinary],
+    findCollectionByNameOrId: () => ({}),
+    countRecords: () => 0,
+    save() {},
+    delete() {},
+  }
+  service.planJob({ runInTransaction: (fn) => fn(tx) }, 'job', [{ sectionIndex: 0, chunks: ['첫 구간', '둘째 구간'] }])
+  assert.equal(ordinary.fields.attempt_count, 0, 'ordinary failures are retried after a restart')
+  assert.equal(blocked.fields.attempt_count, 5, 'repeatedly blocked parts keep reading with the device voice')
 })
 
 test('Audio much shorter than its text is regenerated twice and then saved with a review note', () => {
@@ -305,8 +367,10 @@ test('Audio much shorter than its text is regenerated twice and then saved with 
   assert.match(kept.fields.error_message, /짧게 생성됐습니다.*재생성해 주세요/)
   const normal = generateWithProviderResult(audioFor(240), { input_text: text })
   assert.deepEqual([normal.fields.status, normal.fields.error_message], ['ready', ''])
-  const shortText = generateWithProviderResult(audioFor(20), { input_text: '가'.repeat(400) })
-  assert.equal(shortText.fields.status, 'ready', 'short chunks are not checked')
+  const skippedPart = generateWithProviderResult(audioFor(34), { input_text: '가'.repeat(398) })
+  assert.equal(skippedPart.fields.status, 'failed', 'a split part missing a third of its text is regenerated')
+  const shortText = generateWithProviderResult(audioFor(20), { input_text: '가'.repeat(200) })
+  assert.equal(shortText.fields.status, 'ready', 'very short text is not checked')
 })
 
 test('Reclaiming a chunk interrupted by a restart counts an attempt and stops after the limit', () => {
@@ -1248,6 +1312,60 @@ test('Seeking forward in device voice moves past a sentence longer than the seek
   await flushPlayback()
   assert.equal(speech.spoken.at(-1).text, '둘째 문장입니다.', 'a 20s sentence is not restarted by a 15s seek')
   assert.equal(state.cloudAudioPosition, 20)
+  logic.stop()
+})
+
+test('Starting from the reading position in device voice begins at the visible sentence, not the line before', async () => {
+  const speech = fakeSpeech()
+  speech.speak = (utterance) => speech.spoken.push({ text: utterance.text, utterance })
+  const lines = ['앞 문단은 화면 위쪽 이전 페이지에 있습니다.', '화면 첫 문장입니다. 이어지는 문장입니다.']
+  const { logic, state } = createPlayerHarness(
+    () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          chunkCount: 1,
+          nextSectionIndex: -1,
+          parts: [{ audioUrl: '', fallbackText: lines.join('\n'), pending: true, durationSeconds: 40 }],
+        })
+      ),
+    { speech, positionChunk: 0, positionSeconds: 15 }
+  )
+  logic.start(state, 0, true, '이어지는 문장입니다. 다음 문단')
+  await flushPlayback()
+  assert.equal(speech.spoken[0].text, '이어지는 문장입니다.', 'the sentence is found in the text instead of the estimated time')
+  logic.stop()
+})
+
+test('A dropped connection between chunks is retried before playback gives up', async () => {
+  let failures = 2
+  const { logic, state, requests } = createPlayerHarness(() => {
+    if (requests.length === 2 && failures > 0) {
+      failures -= 1
+      throw new TypeError('Failed to fetch')
+    }
+    return chapterResponse(2, -1)
+  })
+  logic.start(state, 0)
+  await flushPlayback()
+  const original = globalThis.setTimeout
+  logic.seekTo(70)
+  await new Promise((resolve) => original(resolve, 6500))
+  await flushPlayback()
+  assert.equal(state.cloudAudioSession, true, 'playback continues after the connection returns')
+  assert.match(state.cloudAudioDetail, /2 \/ 2 구간/)
+  logic.stop()
+})
+
+test('Starting from an excluded page explains that the next narrated chapter plays', async () => {
+  const { logic, state } = createPlayerHarness((index, _signal, section) =>
+    section === 3
+      ? new Response(JSON.stringify({ ok: false, reason: 'no-text', nextSectionIndex: 5 }), { status: 404 })
+      : chapterResponse(1, -1)
+  )
+  logic.start(state, 3, true, '판권 페이지의 문장입니다')
+  await flushPlayback()
+  assert.match(state.cloudAudioMessage, /다음 본문 챕터부터 재생합니다/)
   logic.stop()
 })
 

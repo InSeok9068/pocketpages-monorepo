@@ -4533,9 +4533,10 @@ window.booklogReaderLogic = (function () {
         component.cloudAudioBusy = false
         window.booklogAudio.start(component, section.index, true, normalizeText(anchor).slice(0, 200))
       })
-      .catch(function (exception) {
+      .catch(function () {
         component.cloudAudioBusy = false
-        component.cloudAudioMessage = String(exception && exception.message ? exception.message : exception)
+        // 그림만 있는 페이지처럼 기준 문장이 없으면 현재 챕터에서 시작하고, 낭독 구간이 없으면 다음 본문 챕터로 넘어갑니다.
+        window.booklogAudio.start(component, section.index, true)
       })
   }
 
