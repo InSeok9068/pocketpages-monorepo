@@ -28,10 +28,28 @@ const epubHtmlToText = compileHtmlToText({
     { selector: 'h6', options: { uppercase: false } },
   ],
 })
+// 각주 번호 링크만 빼고, 링크가 없는 위첨자(km², 원어 병기)는 남깁니다.
+const NOTE_REFERENCE_TEXT = /^[[(]?\d{1,3}[\])]?$|^[*†‡]$/
+
+function collectNodeText(nodes) {
+  return (nodes || [])
+    .map(function (node) {
+      return node.type === 'text' ? node.data : collectNodeText(node.children)
+    })
+    .join('')
+}
+
+function formatLinkWithoutNoteReference(elem, walk, builder) {
+  const href = String(elem.attribs && elem.attribs.href ? elem.attribs.href : '')
+  if (href.indexOf('#') >= 0 && NOTE_REFERENCE_TEXT.test(collectNodeText(elem.children).trim())) return
+  walk(elem.children, builder)
+}
+
 const epubAudioHtmlToText = compileHtmlToText({
   wordwrap: false,
+  formatters: { linkWithoutNoteReference: formatLinkWithoutNoteReference },
   selectors: [
-    { selector: 'a', options: { ignoreHref: true } },
+    { selector: 'a', format: 'linkWithoutNoteReference' },
     { selector: 'img', format: 'skip' },
     { selector: 'nav', format: 'skip' },
     { selector: '[hidden]', format: 'skip' },

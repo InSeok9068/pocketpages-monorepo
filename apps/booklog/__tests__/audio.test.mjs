@@ -762,6 +762,18 @@ function audioSectionsForFiles(files) {
   return JSON.parse(JSON.stringify(context.module.exports.buildAudioBookFromBytes(zipSync(entries))))
 }
 
+test('Footnote number links are not narrated, while unit exponents, glosses and ordinary links are', () => {
+  const [text] = audioChunksForHtml(
+    '<p>바로 자리 문제다.<sup><a href="notes.xhtml#n1">1</a></sup> 다음 문장이다.<a href="notes.xhtml#n2"><sup>[2]</sup></a>'
+      + ' 별표 주석도 있다.<a href="#n3">*</a> 면적은 약 140 km<sup>2</sup>이고 마이오카인<sup>myokine</sup>이 나온다.'
+      + ' <a href="#figure">그림 3</a>을 보라.</p>'
+  )
+  assert.equal(
+    text,
+    '바로 자리 문제다. 다음 문장이다. 별표 주석도 있다. 면적은 약 140 km2이고 마이오카인myokine이 나온다. 그림 3을 보라.'
+  )
+})
+
 test('Copyright pages are skipped by file name, EPUB semantics, or ISBN with publishing terms', () => {
   const sections = audioSectionsForFiles({
     'chapter.xhtml': '<html><body><p>본문입니다. ISBN이라는 단어가 나와도 본문은 남습니다.</p></body></html>',

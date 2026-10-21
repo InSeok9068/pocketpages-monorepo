@@ -951,6 +951,20 @@ window.booklogReaderLogic = (function () {
     return node
   }
 
+  // 서버 AI 낭독 텍스트와 같은 기준으로 각주 번호 링크만 빼고 읽습니다.
+  var NOTE_REFERENCE_TEXT = /^[[(]?\d{1,3}[\])]?$|^[*†‡]$/
+
+  function removeNoteReferences(root) {
+    Array.prototype.forEach.call(root.querySelectorAll('a[href*="#"]'), function (link) {
+      if (NOTE_REFERENCE_TEXT.test(String(link.textContent || '').trim())) link.remove()
+    })
+    return root
+  }
+
+  function getReadableText(node) {
+    return normalizeText(removeNoteReferences(node.cloneNode(true)).textContent)
+  }
+
   function buildSpeechQueueFromSection(section, currentCfi) {
     var href = normalizeHref(section && section.href ? section.href : section && section.url ? section.url : '')
     var doc = section && section.document ? section.document : null
@@ -959,7 +973,7 @@ window.booklogReaderLogic = (function () {
     var startIndex = -1
 
     nodes.forEach(function (node, index) {
-      var text = normalizeText(node && node.textContent ? node.textContent : '')
+      var text = node ? getReadableText(node) : ''
       var cfi = ''
 
       if (!text) {
@@ -1008,7 +1022,7 @@ window.booklogReaderLogic = (function () {
       var before = doc.createRange()
       before.setStart(node, 0)
       before.setEnd(start.startContainer, start.startOffset)
-      return normalizeText(before.toString()).length
+      return normalizeText(removeNoteReferences(before.cloneContents()).textContent).length
     } catch (exception) {
       return 0
     }
@@ -1068,14 +1082,14 @@ window.booklogReaderLogic = (function () {
         node = doc.querySelector('[data-booklog-read-aloud-index="' + String(queueItem.sourceIndex) + '"]')
       }
 
-      if (node && queueItem.text && normalizeText(node.textContent || '') !== queueItem.text) {
+      if (node && queueItem.text && getReadableText(node) !== queueItem.text) {
         node = null
       }
 
       if (!node && queueItem.text) {
         node =
           nodes.find(function (candidate) {
-            return normalizeText(candidate && candidate.textContent ? candidate.textContent : '') === queueItem.text
+            return !!candidate && getReadableText(candidate) === queueItem.text
           }) || null
       }
 
