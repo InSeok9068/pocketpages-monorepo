@@ -19,6 +19,7 @@
   const userId = String(request.auth.get('id') || '')
   const bookId = String(form.bookId || '').trim()
   const bookFileId = String(form.bookFileId || '').trim()
+  const annotationsOnly = String(form.annotationsOnly || '') === 'true'
 
   dbg('api/books/list-highlights:start', {
     userId: userId,
@@ -49,7 +50,7 @@
         'book_highlights',
         'user_id = {:userId} && book_id = {:bookId} && file_id = {:bookFileId}',
         '-highlighted_at,-created',
-        100,
+        annotationsOnly ? 0 : 100,
         0,
         {
           userId: userId,
@@ -60,11 +61,20 @@
 
       for (let index = 0; index < highlightRecords.length; index += 1) {
         const highlightRecord = highlightRecords[index]
+        const locator = readString(highlightRecord, 'locator')
+
+        if (annotationsOnly) {
+          if (locator.indexOf('epubcfi(') === 0 && locator.indexOf(',') >= 0) {
+            highlights.push({ locator: locator })
+          }
+          continue
+        }
+
         const pageValue = highlightRecord.get('page_number')
 
         highlights.push({
           id: readString(highlightRecord, 'id'),
-          locator: readString(highlightRecord, 'locator'),
+          locator: locator,
           href: readString(highlightRecord, 'href'),
           chapterLabel: readString(highlightRecord, 'chapter_label'),
           pageNumber: pageValue === null || typeof pageValue === 'undefined' ? '' : String(pageValue),

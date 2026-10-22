@@ -98,6 +98,7 @@ window.booklogReaderLogic = (function () {
   var speechActiveToken = 0
   var readAloudPrepared = false
   var renderedContentEntries = []
+  var savedHighlightLocators = {}
   var activeReadAloudHighlight = null
   var listeningFollow = { key: '', node: null, openedSection: -1 }
   var activeComponent = null
@@ -2331,11 +2332,15 @@ window.booklogReaderLogic = (function () {
       })
   }
 
-  function requestHighlights() {
+  function requestHighlights(options) {
     var formData = new FormData()
 
     formData.set('bookId', bookId)
     formData.set('bookFileId', bookFileId)
+
+    if (options && options.annotationsOnly) {
+      formData.set('annotationsOnly', 'true')
+    }
 
     return fetch('/api/books/list-highlights', {
       method: 'POST',
@@ -2366,6 +2371,20 @@ window.booklogReaderLogic = (function () {
         }
 
         return result.payload && result.payload.highlights ? result.payload.highlights : []
+      })
+  }
+
+  function restoreSavedHighlightAnnotations() {
+    requestHighlights({ annotationsOnly: true })
+      .then(function (highlights) {
+        highlights.forEach(function (highlight) {
+          addSavedHighlightAnnotation(highlight.locator)
+        })
+      })
+      .catch(function (exception) {
+        console.warn('page/books/[bookId]/read:highlight-restore-skipped', {
+          message: String(exception && exception.message ? exception.message : exception),
+        })
       })
   }
 
@@ -4418,6 +4437,7 @@ window.booklogReaderLogic = (function () {
         startAutoSave(component)
         startReadingSession(component)
         startProgressLocationGeneration(component)
+        restoreSavedHighlightAnnotations()
         console.debug('page/books/[bookId]/read:rendered', {
           bookId: bookId,
         })
@@ -4843,7 +4863,7 @@ window.booklogReaderLogic = (function () {
   }
 
   /**
-   * 저장된 선택 문구를 현재 화면에 표시합니다.
+   * 선택 문구의 강조를 등록해 해당 챕터가 표시될 때 복원합니다.
    *
    * @param {string} locator EPUB CFI
    */
@@ -4852,7 +4872,9 @@ window.booklogReaderLogic = (function () {
 
     if (
       !normalizedLocator
+      || normalizedLocator.indexOf('epubcfi(') !== 0
       || normalizedLocator.indexOf(',') < 0
+      || savedHighlightLocators[normalizedLocator]
       || !renditionInstance
       || !renditionInstance.annotations
       || typeof renditionInstance.annotations.highlight !== 'function'
@@ -4866,6 +4888,7 @@ window.booklogReaderLogic = (function () {
         'fill-opacity': '0.36',
         'mix-blend-mode': 'multiply',
       })
+      savedHighlightLocators[normalizedLocator] = true
     } catch (exception) {
       console.warn('page/books/[bookId]/read:highlight-annotation-skip', {
         message: String(exception && exception.message ? exception.message : exception),

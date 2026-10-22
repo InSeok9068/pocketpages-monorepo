@@ -100,7 +100,9 @@ const observeReader = `
       var rendition = renderTo.apply(book, arguments)
       window.__scrollTest.rendition = rendition
       rendition.hooks.content.register(function (contents) {
-        Array.from(contents.document.querySelectorAll('p')).forEach(function (node, index) {
+        // 실제 책은 표지·그림 페이지처럼 p가 없는 화면이 있어, 제목·목록·그림도 위치 기준으로 씁니다.
+        var selector = window.__scrollMarkMedia ? 'p, h1, h2, h3, h4, h5, h6, li, blockquote, figure, img, svg' : 'p'
+        Array.from(contents.document.querySelectorAll(selector)).forEach(function (node, index) {
           if (!node.hasAttribute('data-ordinal')) node.setAttribute('data-ordinal', contents.sectionIndex * 100000 + index)
           node.setAttribute('data-scroll-section', contents.sectionIndex)
         })
@@ -182,7 +184,10 @@ async function openReader(page, options = {}) {
         return route.fulfill({
           contentType: 'application/javascript',
           body:
-            observeReader
+            'window.__scrollMarkMedia = '
+            + !!options.epubPath
+            + ';'
+            + observeReader
             + readFileSync(process.env.BOOKLOG_READER_SCRIPT || new URL('assets/booklog-reader.js', pagesRoot), 'utf8'),
         })
       }
@@ -228,6 +233,15 @@ async function openReader(page, options = {}) {
   return errors
 }
 
+// 목차가 다섯 항목보다 짧은 책도 있어, 있는 범위 안에서 다섯 번째(없으면 마지막) 항목으로 이동합니다.
+async function openTocItem(page) {
+  await page.getByRole('button', { name: '메뉴 열기', exact: true }).click()
+  await page.getByRole('button', { name: '목차', exact: true }).click()
+  const items = page.locator('#reader-toc-scroll button')
+  await expect.poll(() => items.count()).toBeGreaterThan(0)
+  await items.nth(Math.min(4, (await items.count()) - 1)).click()
+}
+
 async function screen(page) {
   return page.evaluate(() => {
     const state = window.__scrollTest
@@ -244,7 +258,7 @@ async function screen(page) {
       )
         continue
       const top = frameBox.top
-      for (const paragraph of frame.contentDocument?.querySelectorAll('p[data-ordinal]') || []) {
+      for (const paragraph of frame.contentDocument?.querySelectorAll('[data-ordinal]') || []) {
         const rect = paragraph.getBoundingClientRect()
         if (top + rect.bottom > bounds.top + 1 && top + rect.top < bounds.bottom) {
           visible.push({ ordinal: Number(paragraph.dataset.ordinal), top: Math.round(top + rect.top - bounds.top) })
@@ -327,7 +341,7 @@ async function startScrollWatch(page) {
         if (!entry || entry.document !== frame.contentDocument) {
           entry = {
             document: frame.contentDocument,
-            nodes: [...frame.contentDocument.querySelectorAll('p[data-ordinal]')],
+            nodes: [...frame.contentDocument.querySelectorAll('[data-ordinal]')],
           }
           cache.set(frame, entry)
         }
@@ -631,9 +645,7 @@ for (const supplied of [false, true]) {
     async ({ page }, testInfo) => {
       test.skip(supplied && !process.env.BOOKLOG_SCROLL_EPUB, 'Set BOOKLOG_SCROLL_EPUB to a local EPUB path.')
       const errors = await openReader(page, supplied ? { epubPath: process.env.BOOKLOG_SCROLL_EPUB } : {})
-      await page.getByRole('button', { name: '메뉴 열기', exact: true }).click()
-      await page.getByRole('button', { name: '목차', exact: true }).click()
-      await page.locator('#reader-toc-scroll button').nth(4).click()
+      await openTocItem(page)
       await page.waitForTimeout(900)
       await page.mouse.move(190, 420)
       await scrollSteps(page, 1, 12, { delta: 90, interval: 120 })
@@ -697,10 +709,24 @@ test('Supplied EPUB keeps its position at short and long chapter boundaries', as
     await page.evaluate(() => {
       window.__scrollTest.delay = 1600
       window.__scrollTest.events = []
+    })
+    // 챕터 시작 근처로 옮기는 준비 스크롤은 기록에서 빼고, 그 뒤 화면 안에 보이는 요소를 관찰합니다.
+    await page.mouse.wheel(0, -(initial.top - 29))
+    await page.waitForTimeout(300)
+    await page.evaluate(() => {
       const container = window.__scrollTest.rendition.manager.container
-      const anchor = [...container.querySelectorAll('iframe')]
-        .map((frame) => ({ frame, node: frame.contentDocument?.querySelector('p[data-ordinal]') }))
-        .find((item) => item.node && item.frame.clientHeight)
+      const bounds = container.getBoundingClientRect()
+      const candidates = [...container.querySelectorAll('iframe')]
+        .filter((frame) => frame.clientHeight && window.getComputedStyle(frame).visibility !== 'hidden')
+        .flatMap((frame) =>
+          [...(frame.contentDocument?.querySelectorAll('[data-ordinal]') || [])].map((node) => ({ frame, node }))
+        )
+      const anchor =
+        candidates.find(({ frame, node }) => {
+          const frameTop = frame.getBoundingClientRect().top
+          const rect = node.getBoundingClientRect()
+          return frameTop + rect.bottom > bounds.top && frameTop + rect.top < bounds.bottom
+        }) || candidates[0]
       const watch = (window.__scrollTest.watch = [])
       const started = performance.now()
       function record() {
@@ -718,7 +744,6 @@ test('Supplied EPUB keeps its position at short and long chapter boundaries', as
       }
       window.requestAnimationFrame(record)
     })
-    await page.mouse.wheel(0, -(initial.top - 29))
     await scrollSteps(page, -1, 12, { delta: 2, interval: 65 })
     await page.waitForTimeout(5000)
     observations.push(
@@ -744,21 +769,31 @@ test('Supplied EPUB supports repeated manual scrolling and resize in its longest
 }, testInfo) => {
   test.skip(!process.env.BOOKLOG_SCROLL_EPUB, 'Set BOOKLOG_SCROLL_EPUB to a local EPUB path.')
   const errors = await openReader(page, { epubPath: process.env.BOOKLOG_SCROLL_EPUB })
-  await page.evaluate(() => {
-    const items = window.__scrollTest.book.spine.spineItems
-    return window.Alpine.$data(document.querySelector('section[x-data]')).goToTocItem({
-      href: items.at(-1).href,
-      label: 'test',
-    })
+  // 실제 책의 마지막 spine 항목은 주석·판권처럼 짧은 페이지가 많아, 본문 글자 수가 가장 많은 챕터를 고릅니다.
+  const longestHref = await page.evaluate(async () => {
+    const book = window.__scrollTest.book
+    let longest = { href: '', length: -1 }
+    for (const item of book.spine.spineItems) {
+      const contents = await item.load(book.load.bind(book))
+      const length = String(contents.textContent || '').replace(/\s+/g, '').length
+      item.unload()
+      if (length > longest.length) longest = { href: item.href, length }
+    }
+    return longest.href
   })
+  await page.evaluate(
+    (href) => window.Alpine.$data(document.querySelector('section[x-data]')).goToTocItem({ href, label: 'test' }),
+    longestHref
+  )
   await page.waitForTimeout(1200)
   const start = await screen(page)
   const down = await scrollSteps(page, 1, 70, { delta: 420, interval: 50 })
   const up = await scrollSteps(page, -1, 45, { delta: 420, interval: 50 })
   expect(reverseJumps(down, 1)).toEqual([])
   expect(reverseJumps(up, -1)).toEqual([])
-  expect(down.at(-1).visible[0].ordinal).toBeGreaterThan(start.visible[0].ordinal + 20)
-  expect(up.at(-1).visible[0].ordinal).toBeLessThan(down.at(-1).visible[0].ordinal - 20)
+  // 긴 챕터라도 문단 대신 몇 개의 큰 블록으로 된 책이 있어, 요소 개수 대신 실제로 앞뒤로 움직였는지 봅니다.
+  expect(down.at(-1).visible[0].ordinal).toBeGreaterThan(start.visible[0].ordinal)
+  expect(up.at(-1).visible[0].ordinal).toBeLessThan(down.at(-1).visible[0].ordinal)
   for (const direction of [1, -1, 1, -1]) await scrollSteps(page, direction, 8, { delta: 320, interval: 45 })
   await page.waitForTimeout(800)
   const stopped = await screen(page)
@@ -960,9 +995,7 @@ test.describe('Scroll stress', () => {
   test('supplied EPUB traverses several chapters in both directions under load', async ({ page }, testInfo) => {
     test.skip(!process.env.BOOKLOG_SCROLL_EPUB, 'Set BOOKLOG_SCROLL_EPUB to a local EPUB path.')
     const errors = await openReader(page, { epubPath: process.env.BOOKLOG_SCROLL_EPUB })
-    await page.getByRole('button', { name: '메뉴 열기', exact: true }).click()
-    await page.getByRole('button', { name: '목차', exact: true }).click()
-    await page.locator('#reader-toc-scroll button').nth(4).click()
+    await openTocItem(page)
     await page.waitForTimeout(1200)
     await page.mouse.move(190, 420)
     await page.evaluate(() => {
