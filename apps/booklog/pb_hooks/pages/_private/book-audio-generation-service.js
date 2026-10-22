@@ -370,6 +370,7 @@ module.exports = {
   BLOCKED_EXHAUSTED_MESSAGE,
   CLAIM_TTL_MS,
   MAX_ATTEMPTS,
+  MIN_REGENERATE_SPLIT_CHARS,
   isBlockedExhausted,
   isClaimable,
   splitBlockedChunk,

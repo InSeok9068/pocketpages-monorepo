@@ -214,6 +214,8 @@
   let audioModelOptions = []
   let audioSelectedModel = ''
   let canRequestAudio = false
+  /** @type {types.BookAudioFailedChunkView[]} */
+  let audioFailedChunks = []
 
   if (showAudioJob) {
     try {
@@ -221,6 +223,9 @@
       const audioJobService = resolve('book-audio-job-service')
       const audioJobRecord = audioData.findFileJob($app, audioJobFileId)
       audioJob = audioJobRecord ? audioJobService.jobView(audioJobRecord) : null
+      audioFailedChunks = audioJobRecord
+        ? audioData.listFinalFailedChunks($app, audioJobFileId, String(audioJobRecord.get('config_hash')), 50)
+        : []
       hasStoredAudio = !!audioJobRecord || audioData.countFileChunks($app, audioJobFileId) > 0
       audioModelOptions = audioData.getModelOptions($app, audioJobFileId).filter(function (option) {
         return !audioJobRecord || option.model === String(audioJobRecord.get('model'))
@@ -856,6 +861,9 @@
       <p class="text-xs text-stone-500"><%= audioJob.errorMessage %></p>
       <% } %>
     </div>
+    <% if (audioFailedChunks.length > 0) { %>
+    <%- include('book-audio-failed-chunks.ejs', { chunks: audioFailedChunks, fileId: audioJobFileId, bookTitle: mainTitle }) %>
+    <% } %>
     <% } else { %>
     <p class="text-sm text-stone-600">아직 생성을 요청하지 않았습니다.</p>
     <% } %>

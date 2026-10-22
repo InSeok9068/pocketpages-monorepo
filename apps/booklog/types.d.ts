@@ -32,6 +32,21 @@ declare namespace types {
     busyBookTitle: string
   }
 
+  interface BookAudioFailedChunkView {
+    id: string
+    /** `챕터:구간.조각` 형식의 위치 */
+    position: string
+    textLength: number
+    preview: string
+    /** 실패 종류와 재생성 시 나눌 수 있는지 */
+    reasonLabel: string
+    regenerateRequested: boolean
+    /** 정책 차단이 아닌 실패의 오류 내용 */
+    errorMessage: string
+    /** PocketBase 관리자 화면의 레코드 조회 경로 */
+    adminHref: string
+  }
+
   interface BookAudioJobRequestResult {
     job: core.Record | null
     message: string

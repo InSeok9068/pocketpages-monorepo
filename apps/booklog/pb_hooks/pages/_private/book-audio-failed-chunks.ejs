@@ -1,0 +1,74 @@
+<div x-data="{}">
+  <button
+    type="button"
+    @click="$refs.failedDialog.showModal()"
+    aria-haspopup="dialog"
+    aria-controls="failed-dialog-<%= fileId %>"
+    class="inline-flex h-8 items-center gap-1 rounded-full border-0 bg-stone-100 px-3 text-xs font-semibold text-stone-700 ring-0 transition hover:bg-stone-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
+    재시도를 끝낸 구간 <%= chunks.length %>개
+    <span
+      class="i-lucide-chevron-right h-3.5 w-3.5"
+      aria-hidden="true"></span>
+  </button>
+  <dialog
+    id="failed-dialog-<%= fileId %>"
+    x-ref="failedDialog"
+    aria-labelledby="failed-title-<%= fileId %>"
+    @click="if ($event.target === $el) $el.close()"
+    class="fixed inset-0 m-auto max-h-[80dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-[1.5rem] border-none bg-[#fbf7ef] p-0 text-left text-stone-950 shadow-xl backdrop:bg-black/40">
+    <div
+      class="space-y-3 p-5"
+      @click.stop>
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h3
+            id="failed-title-<%= fileId %>"
+            class="m-0 text-lg font-semibold">
+            재시도를 끝낸 구간 <%= chunks.length %>개
+          </h3>
+          <p class="m-0 mt-1 truncate text-sm text-stone-500"><%= bookTitle %></p>
+        </div>
+        <button
+          type="button"
+          @click="$refs.failedDialog.close()"
+          aria-label="닫기"
+          class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-none bg-stone-200/60 text-stone-700">
+          <span
+            class="i-lucide-x h-4 w-4"
+            aria-hidden="true"></span>
+        </button>
+      </div>
+      <p class="m-0 text-xs leading-5 text-stone-500">
+        기기 음성으로 읽는 부분입니다. 눌러서 관리자 화면에서 regenerate_requested를 켜면 다시 만듭니다.
+      </p>
+      <ul class="m-0 list-none space-y-2 p-0">
+        <% for (const chunk of chunks) { %>
+        <li>
+          <a
+            href="<%= chunk.adminHref %>"
+            target="_blank"
+            rel="noopener"
+            class="flex items-start gap-3 rounded-[1rem] bg-white/80 px-3 py-2.5 text-stone-700 no-underline shadow-[inset_0_0_0_1px_rgba(118,87,52,0.08)] outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-stone-400/60">
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm text-stone-900"><%= chunk.preview %></span>
+              <span class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-stone-500">
+                <span><%= chunk.position %> · <%= chunk.textLength %>자</span>
+                <% if (chunk.regenerateRequested) { %>
+                <span class="rounded-full bg-stone-200 px-1.5 py-0.5 font-semibold text-stone-700">재생성 대기</span>
+                <% } %>
+                <span class="font-semibold text-[#8e5521]"><%= chunk.reasonLabel %></span>
+              </span>
+              <% if (chunk.errorMessage) { %>
+              <span class="mt-0.5 block truncate text-xs text-stone-400"><%= chunk.errorMessage %></span>
+              <% } %>
+            </span>
+            <span
+              class="i-lucide-external-link mt-0.5 h-4 w-4 shrink-0 text-stone-400"
+              aria-hidden="true"></span>
+          </a>
+        </li>
+        <% } %>
+      </ul>
+    </div>
+  </dialog>
+</div>

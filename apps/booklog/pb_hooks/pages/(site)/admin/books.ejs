@@ -276,6 +276,7 @@
         canRequest: !view || view.canStart,
         requestLabel: view ? '생성 다시 시작' : 'AI 오디오북 생성',
         canDelete: !!job || audioData.countFileChunks($app, fileId) > 0,
+        failedChunks: job ? audioData.listFinalFailedChunks($app, fileId, String(job.get('config_hash')), 50) : [],
       })
     })
   }
@@ -502,6 +503,9 @@
                       <%= file.errorMessage || '저장된 오류 내용이 없습니다.' %>
                     </p>
                   </details>
+                  <% } %>
+                  <% if (file.failedChunks.length > 0) { %>
+                  <%- include('book-audio-failed-chunks.ejs', { chunks: file.failedChunks, fileId: file.fileId, bookTitle: book.title }) %>
                   <% } %>
                   <div class="flex flex-wrap items-center gap-1">
                     <% if (file.canRequest) { %>

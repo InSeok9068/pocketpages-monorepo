@@ -279,6 +279,46 @@ function countFileChunks(app, fileId) {
 }
 
 /**
+ * 재시도를 끝내 관리자가 검토할 구간·조각을 책 순서대로 읽습니다.
+ * @param {types.BooklogApp} app DB 앱
+ * @param {string} fileId EPUB 파일 ID
+ * @param {string} configHash 낭독 설정 해시
+ * @param {number} limit 최대 개수
+ * @returns {types.BookAudioFailedChunkView[]} 실패 구간
+ */
+function listFinalFailedChunks(app, fileId, configHash, limit) {
+  return app
+    .findRecordsByFilter(
+      'book_audio_chunks',
+      "file_id = {:fileId} && config_hash = {:configHash} && status = 'failed' && attempt_count >= {:maxAttempts}",
+      'section_index,chunk_index,split_path',
+      limit,
+      0,
+      { fileId, configHash, maxAttempts: generation.MAX_ATTEMPTS }
+    )
+    .map(function (record) {
+      const text = String(record.get('input_text') || '')
+      const splitPath = String(record.get('split_path') || '')
+      const id = String(record.get('id'))
+      const blocked = generation.isBlockedExhausted(record)
+      return {
+        id,
+        position: record.get('section_index') + ':' + record.get('chunk_index') + (splitPath ? '.' + splitPath : ''),
+        textLength: text.length,
+        preview: text.replace(/\s+/g, ' ').trim().slice(0, 60),
+        reasonLabel: !blocked
+          ? '생성 실패'
+          : text.length >= generation.MIN_REGENERATE_SPLIT_CHARS
+            ? '정책 차단(나눠서 재생성 가능)'
+            : '정책 차단(' + generation.MIN_REGENERATE_SPLIT_CHARS + '자 미만)',
+        regenerateRequested: !!record.get('regenerate_requested'),
+        errorMessage: blocked ? '' : String(record.get('error_message') || '').slice(0, 120),
+        adminHref: '/_/#/collections?collection=book_audio_chunks&filter=' + encodeURIComponent("id = '" + id + "'"),
+      }
+    })
+}
+
+/**
  * 재생할 원래 구간을 찾습니다. 생성 상태와 관계없이 찾고, 아직 음성이 없는 부분은 기기 음성으로 대신 읽습니다.
  * @param {types.BooklogApp} app DB 앱
  * @param {string} fileId EPUB 파일 ID
@@ -416,6 +456,7 @@ module.exports = {
   readBookSections,
   countSectionChunks,
   countFileChunks,
+  listFinalFailedChunks,
   findNextSectionIndex,
   readSectionOrder,
   findChunkPositionByText,

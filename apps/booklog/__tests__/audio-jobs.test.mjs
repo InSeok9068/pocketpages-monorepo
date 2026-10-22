@@ -238,11 +238,24 @@ async function scenario(index, name) {
 }
 
 test('A job whose only missing parts were blocked by policy is completed and releases its model', async () => {
-  const { job } = await scenario(5, 'blocked')
+  const { job, chunks } = await scenario(5, 'blocked')
   assert.equal(job.status, 'completed')
   assert.equal(job.ready_chunks, 1)
   assert.match(job.error_message, /1개 구간은 정책 차단/)
-})
+  const $ = await detail(5)
+  const failed = $('a[href^="/_/#/collections?collection=book_audio_chunks"]')
+  assert.equal(failed.length, 1, 'only the part that finished retrying is listed for review')
+  assert.equal(
+    failed.attr('href'),
+    '/_/#/collections?collection=book_audio_chunks&filter=' + encodeURIComponent("id = '" + chunks[1].id + "'")
+  )
+  assert.match(failed.text(), /0:1/)
+  assert.match(failed.text(), /정책 차단\(80자 미만\)/)
+  const adminResponse = await fetch(service.baseUrl + '/admin/books?scope=all&q=' + encodeURIComponent('테스트 책 5'), {
+    headers: { Cookie: cookie },
+  })
+  const admin = load(await adminResponse.text())
+  assert.equal(admin(`a[href="${failed.attr('href')}"]`).length, 1, 'the admin book list links the same part')})
 
 test('Resuming after chunks were re-planned moves a stale position to the nearest remaining chunk', async () => {
   const headers = { Cookie: cookie }
