@@ -503,3 +503,48 @@ test('Reaching the end of the book asks once to mark it finished', async ({ page
   await page.waitForTimeout(2500)
   await expect(prompt).toBeHidden()
 })
+
+test('Center panels close when the dimmed area outside them is tapped, but not after dragging out from inside', async ({
+  page,
+}) => {
+  await openReader(page)
+  const outside = () => page.mouse.click(195, 16)
+  const panels = [
+    { open: () => openMenuItem(page, '검색'), heading: '책 전체 검색' },
+    { open: () => openMenuItem(page, '목차'), heading: '목차' },
+    { open: () => openMenuItem(page, '책갈피'), heading: '책갈피' },
+    { open: () => openMenuItem(page, '문구'), heading: '문구' },
+    { open: () => openMenuItem(page, '읽어주기'), heading: '읽어주기' },
+    {
+      open: async () => {
+        await page.getByRole('button', { name: '메뉴 열기', exact: true }).click()
+        await page.getByRole('button', { name: '상세 읽기 설정' }).click()
+      },
+      heading: '읽기 설정',
+    },
+    {
+      open: async () => {
+        await openMenuItem(page, '문구')
+        await page.getByRole('button', { name: '문구 추가', exact: true }).click()
+      },
+      heading: '인상 깊은 문구 추가',
+    },
+  ]
+
+  for (const panel of panels) {
+    const heading = page.getByRole('heading', { name: panel.heading, exact: true })
+    await panel.open()
+    await expect(heading).toBeVisible()
+    await outside()
+    await expect(heading, panel.heading + ' closes from outside').toBeHidden()
+  }
+
+  await openMenuItem(page, '검색')
+  const input = page.locator('#reader-search-input')
+  const box = await input.boundingBox()
+  await page.mouse.move(box.x + 10, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(195, 16, { steps: 4 })
+  await page.mouse.up()
+  await expect(input, 'a drag that started inside keeps the panel open').toBeVisible()
+})

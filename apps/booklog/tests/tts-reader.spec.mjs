@@ -206,7 +206,21 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   await expect.poll(() => player.evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(4.9)
   expect(downloads).toBe(2)
   expect(lookups.every((lookup) => lookup === 'GET:0:0')).toBe(true)
+  // 정지하면 이어 들을 위치를 서버에서 다시 받아 표시하므로, 그 값이 반영된 뒤에 긴 챕터명을 넣어야 덮이지 않습니다.
+  const resumePreview = page.waitForResponse(
+    (response) => response.url().includes('/api/books/audio-progress') && response.request().method() === 'GET'
+  )
   await page.getByRole('button', { name: '정지', exact: true }).click()
+  const { progress } = await (await resumePreview).json()
+  const previewLabel = await page.evaluate(
+    (seconds) => window.booklogAudio.formatTime(seconds) + '부터',
+    progress.chapterSeconds || 0
+  )
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).cloudAudioResumeLabel)
+    )
+    .toBe(previewLabel)
   await expect(page.getByRole('button', { name: '현재 챕터 처음부터' })).toBeHidden()
   const viewport = page.viewportSize()
   await page.setViewportSize({ width: 400, height: 700 })
