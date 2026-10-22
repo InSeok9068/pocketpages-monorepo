@@ -13,12 +13,13 @@
     .trim()
     .slice(0, 200)
   const scope = request.url.query.scope === 'all' ? 'all' : 'unused'
+  const sort = request.url.query.sort === 'size' ? 'size' : 'newest'
   const requestedPage = Math.max(1, Math.floor(Number(request.url.query.page) || 1))
   const pageSize = 30
   const userId = String(request.auth.get('id') || '')
 
   function buildPageHref(page) {
-    return '/admin/books?scope=' + scope + '&q=' + encodeURIComponent(queryText) + '&page=' + page
+    return '/admin/books?scope=' + scope + '&q=' + encodeURIComponent(queryText) + '&sort=' + sort + '&page=' + page
   }
 
   dbg('page/admin/books:start', { userId, method: request.method, scope, queryText })
@@ -154,7 +155,7 @@
     .one(matched)
   const pageCount = Math.max(1, Math.ceil(Number(matched.total) / pageSize))
   const currentPage = Math.min(requestedPage, pageCount)
-  const rows = arrayOf(
+  let rows = arrayOf(
     new DynamicModel({
       bookId: '',
       title: '',
@@ -177,10 +178,80 @@
         + "(SELECT count(*) FROM book_audio_chunks JOIN book_files ON book_files.id = book_audio_chunks.file_id WHERE book_files.book_id = books.id AND book_audio_chunks.audio_file != '') AS audioCount "
         + 'FROM books'
         + whereSql
-        + ' ORDER BY books.created DESC, books.id ASC LIMIT {:limit} OFFSET {:offset}'
+        + ' ORDER BY books.created DESC, books.id ASC'
+        + (sort === 'size' ? '' : ' LIMIT {:limit} OFFSET {:offset}')
     )
     .bind(Object.assign({}, bindings, { limit: pageSize, offset: (currentPage - 1) * pageSize }))
     .all(rows)
+
+  // 용량순은 검색 결과 전체를 집계한 뒤 페이지를 나눕니다.
+  const audioBytesByBook = {}
+  const audioSizeUnknown = {}
+  const storageBindings = {}
+  const storageIds = rows.map(function (row, index) {
+    storageBindings['id' + index] = String(row.bookId)
+    return '{:id' + index + '}'
+  })
+  if (storageIds.length) {
+    const audioRows = arrayOf(new DynamicModel({ bookId: '', chunkId: '', audioFile: '' }))
+    $app
+      .db()
+      .newQuery(
+        'SELECT book_files.book_id AS bookId, book_audio_chunks.id AS chunkId, book_audio_chunks.audio_file AS audioFile '
+          + 'FROM book_audio_chunks JOIN book_files ON book_files.id = book_audio_chunks.file_id '
+          + "WHERE book_audio_chunks.audio_file != '' AND book_files.book_id IN ("
+          + storageIds.join(',')
+          + ')'
+      )
+      .bind(storageBindings)
+      .all(audioRows)
+    if (audioRows.length) {
+      const collectionId = $app.findCollectionByNameOrId('book_audio_chunks').id
+      const filesystem = $app.newFilesystem()
+      try {
+        audioRows.forEach(function (chunk) {
+          const bookId = String(chunk.bookId)
+          try {
+            const attributes = filesystem.attributes(collectionId + '/' + chunk.chunkId + '/' + chunk.audioFile)
+            audioBytesByBook[bookId] = (audioBytesByBook[bookId] || 0) + Number(attributes.size)
+          } catch (exception) {
+            audioSizeUnknown[bookId] = true
+            warn('page/admin/books:audio-size-unavailable', {
+              bookId,
+              chunkId: String(chunk.chunkId),
+              error: String(exception),
+            })
+          }
+        })
+      } finally {
+        filesystem.close()
+      }
+    }
+  }
+  if (sort === 'size') {
+    // 집계하지 못한 도서는 정확한 용량으로 비교할 수 없어 뒤에 표시합니다.
+    rows.sort(function (left, right) {
+      const leftId = String(left.bookId)
+      const rightId = String(right.bookId)
+      const unknownOrder = Number(!!audioSizeUnknown[leftId]) - Number(!!audioSizeUnknown[rightId])
+      if (unknownOrder) return unknownOrder
+      const difference =
+        Number(right.fileBytes)
+        + (audioBytesByBook[rightId] || 0)
+        - Number(left.fileBytes)
+        - (audioBytesByBook[leftId] || 0)
+      return difference || (leftId < rightId ? -1 : leftId > rightId ? 1 : 0)
+    })
+    rows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  }
+
+  function formatBytes(bytes) {
+    if (bytes === 0) return '0 B'
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+    return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB'
+  }
 
   const audioData = resolve('book-audio-data')
   const audioJobService = resolve('book-audio-job-service')
@@ -202,6 +273,8 @@
         fileId,
         name: String(file.get('original_name') || 'EPUB'),
         statusLabel: view ? view.statusLabel : 'AI 오디오북 없음',
+        errorMessage: view && (view.status === 'failed' || view.failedChunks > 0) ? view.errorMessage : '',
+        hasFailure: !!view && (view.status === 'failed' || view.failedChunks > 0),
         canRequest: !view || view.canStart,
         requestLabel: view ? '생성 다시 시작' : 'AI 오디오북 생성',
         canDelete: !!job || audioData.countFileChunks($app, fileId) > 0,
@@ -220,7 +293,13 @@
       userCount,
       userNames: String(row.userNames || ''),
       fileCount: Number(row.fileCount || 0),
-      fileSizeLabel: (Number(row.fileBytes || 0) / 1024 / 1024).toFixed(1) + ' MB',
+      fileSizeLabel: formatBytes(Number(row.fileBytes || 0)),
+      audioSizeLabel: audioSizeUnknown[String(row.bookId)]
+        ? '확인 불가'
+        : formatBytes(audioBytesByBook[String(row.bookId)] || 0),
+      totalSizeLabel: audioSizeUnknown[String(row.bookId)]
+        ? '확인 불가'
+        : formatBytes(Number(row.fileBytes || 0) + (audioBytesByBook[String(row.bookId)] || 0)),
       audioCount: Number(row.audioCount || 0),
       deleteConfirmation:
         '「'
@@ -266,6 +345,22 @@
       action="/admin/books"
       class="flex flex-wrap items-center gap-2 border-0 border-b border-solid border-stone-200 bg-[#faf7ef] p-3">
       <label
+        class="relative block w-full min-w-0 flex-none sm:max-w-xs sm:flex-1"
+        for="admin-book-search">
+        <span class="sr-only">제목 또는 저자 검색</span>
+        <span
+          class="i-lucide-search pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-stone-400"
+          aria-hidden="true"></span>
+        <input
+          id="admin-book-search"
+          type="search"
+          name="q"
+          value="<%= queryText %>"
+          maxlength="200"
+          placeholder="제목이나 저자 검색"
+          class="box-border h-8 w-full rounded-md border border-solid border-stone-300 bg-white pr-2 pl-8 text-xs text-stone-900 placeholder:text-stone-400 focus-visible:outline-stone-500" />
+      </label>
+      <label
         class="sr-only"
         for="admin-book-scope">
         도서 범위
@@ -286,21 +381,25 @@
         </option>
       </select>
       <label
-        class="relative block min-w-0 flex-1 sm:max-w-xs"
-        for="admin-book-search">
-        <span class="sr-only">제목 또는 저자 검색</span>
-        <span
-          class="i-lucide-search pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-stone-400"
-          aria-hidden="true"></span>
-        <input
-          id="admin-book-search"
-          type="search"
-          name="q"
-          value="<%= queryText %>"
-          maxlength="200"
-          placeholder="제목이나 저자 검색"
-          class="box-border h-8 w-full rounded-md border border-solid border-stone-300 bg-white pr-2 pl-8 text-xs text-stone-900 placeholder:text-stone-400 focus-visible:outline-stone-500" />
+        class="sr-only"
+        for="admin-book-sort">
+        정렬
       </label>
+      <select
+        id="admin-book-sort"
+        name="sort"
+        class="box-border h-8 rounded-md border border-solid border-stone-300 bg-white px-2 text-xs text-stone-700 focus-visible:outline-stone-500">
+        <option
+          value="newest"
+          <%= sort === 'newest' ? 'selected' : '' %>>
+          최신순
+        </option>
+        <option
+          value="size"
+          <%= sort === 'size' ? 'selected' : '' %>>
+          용량 큰 순
+        </option>
+      </select>
       <button
         type="submit"
         class="inline-flex h-8 shrink-0 items-center justify-center rounded-md border-0 bg-stone-800 px-3 text-xs font-semibold text-white hover:bg-stone-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500">
@@ -328,28 +427,24 @@
       aria-label="도서 관리 목록"
       tabindex="0">
       <table class="w-full min-w-[860px] table-fixed border-collapse text-left text-xs leading-5">
-        <caption class="sr-only">도서별 연결 사용자, EPUB 용량, 음성 파일 수와 AI 오디오북 관리</caption>
+        <caption class="sr-only">도서별 연결 사용자, EPUB·오디오 총용량과 AI 오디오북 관리</caption>
         <thead class="bg-stone-100/80 text-stone-500">
           <tr>
             <th
               scope="col"
-              class="w-[26%] px-3 py-2 font-medium">
+              class="w-[24%] px-3 py-2 font-medium">
               도서 / 저자
             </th>
             <th
               scope="col"
-              class="w-[15%] px-3 py-2 font-medium">
+              class="w-[16%] px-3 py-2 font-medium">
               연결 사용자
             </th>
             <th
               scope="col"
-              class="w-[10%] px-3 py-2 text-right font-medium">
-              EPUB
-            </th>
-            <th
-              scope="col"
-              class="w-[8%] px-3 py-2 text-right font-medium">
-              음성 파일
+              class="w-[19%] px-3 py-2 text-right font-medium">
+              총용량
+              <span class="block text-[11px] font-normal">EPUB + 오디오</span>
             </th>
             <th
               scope="col"
@@ -367,7 +462,7 @@
           <% if (!books.length) { %>
           <tr>
             <td
-              colspan="6"
+              colspan="5"
               class="px-3 py-10 text-center text-stone-500">
               해당하는 도서가 없습니다.
             </td>
@@ -391,10 +486,10 @@
               <% } %>
             </td>
             <td class="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">
-              <span class="font-semibold"><%= book.fileSizeLabel %></span>
-              <p class="m-0 text-stone-500"><%= book.fileCount %>개</p>
+              <span class="font-semibold text-stone-950"><%= book.totalSizeLabel %></span>
+              <p class="m-0 text-[11px] text-stone-500">EPUB <%= book.fileSizeLabel %> · <%= book.fileCount %>개</p>
+              <p class="m-0 text-[11px] text-stone-500">오디오 <%= book.audioSizeLabel %> · <%= book.audioCount %>개</p>
             </td>
-            <td class="px-3 py-2.5 text-right whitespace-nowrap tabular-nums"><%= book.audioCount %>개</td>
             <td class="px-3 py-2.5">
               <div class="space-y-2">
                 <% if (!book.audioFiles.length) { %>
@@ -405,6 +500,14 @@
                   <p class="m-0 font-medium text-stone-700"><%= file.statusLabel %></p>
                   <% if (book.audioFiles.length > 1) { %>
                   <p class="m-0 text-[11px] break-all text-stone-500"><%= file.name %></p>
+                  <% } %>
+                  <% if (file.hasFailure) { %>
+                  <details class="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-800">
+                    <summary class="cursor-pointer font-medium focus-visible:outline-stone-500">실패 사유</summary>
+                    <p class="mt-1 mb-0 max-h-40 overflow-y-auto break-all whitespace-pre-wrap">
+                      <%= file.errorMessage || '저장된 오류 내용이 없습니다.' %>
+                    </p>
+                  </details>
                   <% } %>
                   <div class="flex flex-wrap items-center gap-1">
                     <% if (file.canRequest) { %>

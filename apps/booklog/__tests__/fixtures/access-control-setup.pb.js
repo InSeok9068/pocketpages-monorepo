@@ -131,6 +131,45 @@ onBootstrap(function (event) {
   }
 })
 
+routerAdd('POST', '/_test/missing-audio', function (event) {
+  const missing = String(event.request.url.query().get('on')) === 'true'
+  const chunk = $app.findFirstRecordByFilter('book_audio_chunks', "file_id = 'adminfile000001'")
+  if (missing) $app.store().set('originalAudioFile', chunk.get('audio_file'))
+  const audioFile = missing ? 'missing.mp3' : String($app.store().get('originalAudioFile'))
+  $app.db().newQuery('UPDATE book_audio_chunks SET audio_file = {:audioFile} WHERE id = {:id}')
+    .bind({ audioFile, id: chunk.id }).execute()
+  return event.json(200, { ok: true })
+})
+
+routerAdd('POST', '/_test/storage-fixtures', function (event) {
+  for (let index = 0; index < 31; index += 1) {
+    const book = new Record($app.findCollectionByNameOrId('books'))
+    book.set('title', '용량 정렬 책 ' + index)
+    book.set('author', '용량검증')
+    $app.save(book)
+    if (index === 0) {
+      const file = new Record($app.findCollectionByNameOrId('book_files'))
+      file.set('book_id', book.id)
+      file.set('stored_file', $filesystem.fileFromBytes([80, 75, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0], 'larger.epub'))
+      file.set('original_name', 'larger.epub')
+      file.set('mime_type', 'application/epub+zip')
+      file.set('file_size', 12)
+      file.set('file_hash', $security.sha256('storage-larger-epub'))
+      $app.save(file)
+    }
+  }
+  const target = $app.findRecordById('books', 'adminbook000001')
+  target.set('author', '용량검증')
+  $app.save(target)
+  const job = $app.findFirstRecordByFilter('book_audio_jobs', "file_id = 'adminfile000001'")
+  job.set('status', 'failed')
+  job.set('total_chunks', 1)
+  job.set('failed_chunks', 1)
+  job.set('error_message', '음성 생성 요청 실패: <script>alert("오류")</script>\n잠시 후 다시 시도하세요.')
+  $app.save(job)
+  return event.json(200, { ok: true })
+})
+
 routerAdd('GET', '/_test/access-state', function (event) {
   const pending = $app.findRecordById('users', 'reviewuser00003')
   return event.json(200, {
