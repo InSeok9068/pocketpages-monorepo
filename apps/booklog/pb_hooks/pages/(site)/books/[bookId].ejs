@@ -30,6 +30,10 @@
     bookBackLabel = '문구로'
   }
 
+  if (backSource === '/popular') {
+    bookBackLabel = '인기 도서로'
+  }
+
   if (!request.auth) {
     dbg('page/books/[bookId]:redirect', {
       status: 303,

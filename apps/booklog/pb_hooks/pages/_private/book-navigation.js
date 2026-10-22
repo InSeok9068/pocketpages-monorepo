@@ -6,7 +6,7 @@
 function getBackHref(value) {
   const href = String(value || '').trim()
 
-  return href === '/' || /^\/(library|reviews|highlights)(\?[^#\r\n\\]*)?$/.test(href) ? href : '/'
+  return href === '/' || /^\/(library|reviews|highlights|popular)(\?[^#\r\n\\]*)?$/.test(href) ? href : '/'
 }
 
 module.exports = { getBackHref }

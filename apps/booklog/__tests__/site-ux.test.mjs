@@ -282,6 +282,10 @@ test('The popular page shows rising books at once, loads the ranking separately,
   assert.doesNotMatch(books.eq(1).text(), /도서함에 있음/)
   assert.equal(books.eq(0).find('button[aria-label="도서명 복사"]').attr('data-copy-text'), '완독한 책')
 
+  const detail = await html(books.eq(0).find('[data-book-link]').attr('href'))
+  assert.equal(detail('a[href="/popular?tab=month"]').first().text().trim(), '인기 도서로')
+  assert.equal(detail('input[name="from"]').first().val(), '/popular?tab=month')
+
   const cached = await html('/popular')
   assert.equal(cached('#popular-list').attr('hx-get'), undefined)
   assert.equal(cached('[data-popular-book]').length, 2)
