@@ -490,6 +490,23 @@ test('AI audio highlights the paragraph being read and follows it only while the
   expect((await state()).scrollTop, 'a reader who scrolled away is not pulled back').toBeLessThan(50)
 
   await page.evaluate(() => {
+    window.Alpine.$data(document.querySelector('section[x-data]')).cloudAudioDuration = 60
+  })
+  await page.getByRole('button', { name: '듣는 곳으로 이동' }).click()
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const frame = document.querySelector('#epub-reader iframe')
+          const active = frame.contentDocument.querySelector('.booklog-listen-active')
+          const top = active ? frame.getBoundingClientRect().top + active.getBoundingClientRect().top : null
+          return top !== null && top > -16 && top < window.innerHeight / 2
+        }),
+      'the mini player button brings the listening paragraph back to the top of the screen'
+    )
+    .toBe(true)
+
+  await page.evaluate(() => {
     window.Alpine.$data(document.querySelector('section[x-data]')).cloudAudioSession = false
   })
   await expect.poll(async () => (await state()).text, 'stopping clears the highlight').toBe('')

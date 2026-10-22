@@ -225,7 +225,11 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
   await expect(page.getByText('1 / 1 구간')).toBeVisible()
   await page.getByRole('button', { name: '듣는 곳으로 이동' }).click()
-  await expect(page.getByRole('button', { name: '듣는 곳으로 이동' })).toBeHidden()
+  await expect(page.getByRole('heading', { name: '읽어주기' })).toBeHidden()
+  await expect(
+    page.getByRole('button', { name: '듣는 곳으로 이동' }),
+    'the mini player offers the same move'
+  ).toBeEnabled()
   await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)
   const miniPause = page.getByRole('button', { name: 'AI 오디오북 일시 정지' })
   await expect(miniPause).toBeVisible()

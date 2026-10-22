@@ -496,6 +496,18 @@
     </button>
     <button
       type="button"
+      x-show="cloudAudioSession"
+      aria-label="듣는 곳으로 이동"
+      x-on:click="goToListeningPosition()"
+      x-bind:disabled="!(cloudAudioDuration > 0)"
+      x-bind:class="readerTheme === 'night' ? 'text-[#d8b16d]' : 'text-[#8e5521]'"
+      class="-ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-none bg-transparent disabled:opacity-40">
+      <span
+        class="i-lucide-locate-fixed h-4 w-4"
+        aria-hidden="true"></span>
+    </button>
+    <button
+      type="button"
       aria-label="AI 오디오북 조작 열기"
       x-on:click="openReadAloud()"
       class="flex min-w-0 flex-1 flex-col items-start border-none bg-transparent p-0 text-left text-inherit">
