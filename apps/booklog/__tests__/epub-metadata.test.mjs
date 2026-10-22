@@ -7,6 +7,7 @@ import vm from 'node:vm'
 
 const serviceRoot = fileURLToPath(new URL('../', import.meta.url))
 const require = createRequire(new URL('../package.json', import.meta.url))
+const testRequire = createRequire(import.meta.url)
 globalThis.__hooks = serviceRoot + 'pb_hooks'
 
 function createService() {
@@ -147,7 +148,7 @@ test('A data4library network error never carries the API key', () => {
 })
 
 test('Unpacked EPUB text is limited to 16MB per file and 200MB per book', () => {
-  const { createTextEntrySizeGuard } = require('./pb_hooks/pages/_private/epub-reading-metrics.js')
+  const { createTextEntrySizeGuard } = testRequire('../pb_hooks/pages/_private/epub-reading-metrics.js')
   const MB = 1024 * 1024
 
   const realBook = createTextEntrySizeGuard()
