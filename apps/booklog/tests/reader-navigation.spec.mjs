@@ -361,6 +361,65 @@ test('Footnote number links are left out of the reading position text, like the 
   expect(sentence, anchor).toBeLessThan(300)
 })
 
+test('Tapping a footnote number shows the note in a sheet without leaving the reading position', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const xhtml = (body) =>
+    strToU8(
+      '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>c</title></head><body>'
+        + body
+        + '</body></html>'
+    )
+  const filler = Array.from({ length: 60 }, (_, index) => '<p>본문 문단 ' + (index + 1) + '입니다.</p>').join('')
+  const longNote = Array.from({ length: 30 }, (_, index) => '<p>긴 주석 문단 ' + (index + 1) + '입니다.</p>').join('')
+  const noteBook = zipSync({
+    'mimetype': strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+    ),
+    'book.opf': strToU8(
+      '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">notes</dc:identifier><dc:title>주석</dc:title></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/><item id="notes" href="notes.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/><itemref idref="notes"/></spine></package>'
+    ),
+    'body.xhtml': xhtml(
+      '<p>첫 주석이 붙은 문장입니다.<sup><a epub:type="noteref" id="r1" href="notes.xhtml#n1">1</a></sup> 둘째 주석입니다.<a id="r2" href="notes.xhtml#n2">[2]</a></p>'
+        + filler
+    ),
+    'notes.xhtml': xhtml(
+      '<aside epub:type="footnote" id="n1"><p><a href="body.xhtml#r1">1</a> 10<sup>9</sup>은 10억입니다.</p></aside><div id="n2"><p><a href="body.xhtml#r2">[2]</a> 긴 주석의 시작입니다.</p>'
+        + longNote
+        + '</div>'
+    ),
+  })
+  const requests = await mockSite(page, { epub: noteBook })
+  await page.goto('/books/book/read')
+  await waitForReader(page)
+  await page.waitForTimeout(800)
+  const body = page.frameLocator('#epub-reader iframe').first()
+  const sheet = page.locator('#reader-note-sheet')
+
+  await body.locator('#r1').click()
+  await expect(sheet).toBeVisible()
+  await expect(page.locator('#reader-note-title')).toHaveText('주석 1')
+  await expect(page.locator('#reader-note-text')).toHaveText('10⁹은 10억입니다.')
+  await expect(body.locator('#r1')).toBeInViewport()
+
+  await page.keyboard.press('Escape')
+  await expect(sheet).toBeHidden()
+
+  await body.locator('#r2').click()
+  await expect(page.locator('#reader-note-title')).toHaveText('주석 2')
+  await expect(page.locator('#reader-note-text')).toContainText('긴 주석 문단 30입니다.')
+  expect(
+    await page.locator('#reader-note-text').evaluate((element) => element.scrollHeight > element.clientHeight)
+  ).toBe(true)
+  await page.mouse.click(195, 40)
+  await expect(sheet).toBeHidden()
+  await expect(body.locator('#r2')).toBeInViewport()
+
+  await page.evaluate(() => window.Alpine.$data(document.querySelector('section[x-data]')).saveCurrentPosition())
+  await expect.poll(() => requests.savedLocators.length).toBeGreaterThan(0)
+  expect(requests.savedLocators.at(-1)).toMatch(/^epubcfi\(\/6\/2!/)
+})
+
 test('AI audio highlights the paragraph being read and follows it only while the reader is watching it', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const xhtml = (body) => strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>' + body + '</body></html>')

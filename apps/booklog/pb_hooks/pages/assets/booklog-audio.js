@@ -324,12 +324,18 @@ window.booklogAudio = (function () {
       : ''
   }
 
+  // 긴 챕터명만 줄여 보이고 이어질 시간은 항상 보이도록 둘을 나눠 돌려줍니다.
   function resumeLabel(progress) {
-    if (!progress) return '처음 듣는 책 · 현재 챕터 처음부터'
-    if (progress.isCompleted) return '마지막 챕터까지 모두 들었습니다'
-    var label = chapterLabelAt(progress.sectionIndex)
-    if (progress.startsNextSection) return (label || '다음 챕터') + ' 처음부터'
-    return (label ? label + ' · ' : '') + formatTime(progress.chapterSeconds || 0) + '부터'
+    if (!progress) return { chapter: '', label: '처음 듣는 책 · 현재 챕터 처음부터' }
+    if (progress.isCompleted) return { chapter: '', label: '마지막 챕터까지 모두 들었습니다' }
+    var chapter = chapterLabelAt(progress.sectionIndex)
+    if (progress.startsNextSection) return { chapter: chapter || '다음 챕터', label: '처음부터' }
+    return { chapter: chapter, label: formatTime(progress.chapterSeconds || 0) + '부터' }
+  }
+
+  function showResume(state, resume) {
+    state.cloudAudioResumeChapter = resume.chapter
+    state.cloudAudioResumeLabel = resume.label
   }
 
   /**
@@ -351,10 +357,11 @@ window.booklogAudio = (function () {
         return fetch('/api/books/audio-progress?' + query.toString(), { cache: 'no-store' }).then(readJson)
       })
       .then(function (result) {
-        if (!activeSession && request === previewRequest) state.cloudAudioResumeLabel = resumeLabel(result.progress)
+        if (!activeSession && request === previewRequest) showResume(state, resumeLabel(result.progress))
       })
       .catch(function () {
-        if (!activeSession && request === previewRequest) state.cloudAudioResumeLabel = '마지막 청취 위치부터'
+        if (!activeSession && request === previewRequest)
+          showResume(state, { chapter: '', label: '마지막 청취 위치부터' })
       })
   }
 

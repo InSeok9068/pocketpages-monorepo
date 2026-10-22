@@ -207,8 +207,19 @@ test('Reader plays generated AI audio and reuses it after stopping', async ({ pa
   expect(downloads).toBe(2)
   expect(lookups.every((lookup) => lookup === 'GET:0:0')).toBe(true)
   await page.getByRole('button', { name: '정지', exact: true }).click()
-  await page.getByText('다른 위치에서 시작').click()
-  await page.getByRole('button', { name: '읽던 위치부터' }).click()
+  await expect(page.getByRole('button', { name: '현재 챕터 처음부터' })).toBeHidden()
+  const viewport = page.viewportSize()
+  await page.setViewportSize({ width: 400, height: 700 })
+  const resumeTime = page.getByRole('button', { name: '이어 듣기', exact: true }).getByText('0:57부터')
+  await page.evaluate(() => {
+    const data = window.Alpine.$data(document.querySelector('section[x-data]'))
+    data.cloudAudioResumeChapter = '내게 친절하지 않은 사람에게 친절하지 않을 것'
+    data.cloudAudioResumeLabel = '0:57부터'
+  })
+  await expect(resumeTime).toBeVisible()
+  expect(await resumeTime.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await page.setViewportSize(viewport)
+  await page.getByRole('button', { name: '지금 보는 곳부터 듣기' }).click()
   await expect.poll(() => anchors.length).toBe(1)
   expect(anchors[0]).toMatch(/^0:.*책을 듣는 시간을 함께합니다/)
   await expect.poll(() => player.evaluate((audio) => !audio.paused)).toBe(true)

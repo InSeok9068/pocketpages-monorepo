@@ -402,6 +402,7 @@ window.booklogReaderLogic = (function () {
 
     selectedHighlightPollingTimerId = window.setInterval(function () {
       pollSelectedHighlightSelection(component)
+      pollNoteReferenceFocus(component)
     }, SELECTED_HIGHLIGHT_POLL_INTERVAL_MS)
   }
 
@@ -960,7 +961,7 @@ window.booklogReaderLogic = (function () {
   var NOTE_REFERENCE_TEXT = /^[[(]?\d{1,3}[\])]?$|^[*†‡]$/
 
   function removeNoteReferences(root) {
-    Array.prototype.forEach.call(root.querySelectorAll('a[href*="#"]'), function (link) {
+    Array.prototype.forEach.call(root.querySelectorAll('a[href*="#"], a[data-booklog-note-href]'), function (link) {
       if (NOTE_REFERENCE_TEXT.test(String(link.textContent || '').trim())) link.remove()
     })
     return root
@@ -968,6 +969,224 @@ window.booklogReaderLogic = (function () {
 
   function getReadableText(node) {
     return normalizeText(removeNoteReferences(node.cloneNode(true)).textContent)
+  }
+
+  var NOTE_BLOCK_SELECTOR = 'aside, li, p, dd, dt, div, section, blockquote, td'
+  var NOTE_TEXT_MAX_LENGTH = 4000
+  var noteDocumentRequests = {}
+
+  function getEpubType(element) {
+    return String(
+      (element.getAttributeNS && element.getAttributeNS('http://www.idpf.org/2007/ops', 'type'))
+        || element.getAttribute('epub:type')
+        || element.getAttribute('role')
+        || ''
+    )
+  }
+
+  function resolveSectionHref(baseHref, relativeHref) {
+    try {
+      return decodeURIComponent(new URL(relativeHref, 'https://epub.invalid/' + baseHref).pathname.slice(1))
+    } catch (exception) {
+      return relativeHref
+    }
+  }
+
+  // 본문에서 뒤쪽 주석으로 가는 링크만 팝업으로 열고, 주석에서 본문으로 돌아가는 링크는 그대로 이동시킵니다.
+  function resolveNoteTarget(contents, link) {
+    var href = String(link.getAttribute('data-booklog-note-href') || link.getAttribute('href') || '').trim()
+    var hashIndex = href.indexOf('#')
+    var type = getEpubType(link)
+    var currentSection = null
+    var targetSection = null
+    var id = ''
+
+    if (hashIndex < 0 || /^[a-z][a-z0-9+.-]*:/i.test(href) || /\bbacklink\b/.test(type)) return null
+    if (!/\bnoteref\b/.test(type) && !NOTE_REFERENCE_TEXT.test(String(link.textContent || '').trim())) return null
+    if (!bookInstance || !bookInstance.spine) return null
+
+    currentSection = bookInstance.spine.get(contents.sectionIndex)
+    if (!currentSection) return null
+
+    targetSection =
+      hashIndex > 0
+        ? bookInstance.spine.get(resolveSectionHref(currentSection.href, href.slice(0, hashIndex)))
+        : currentSection
+    if (!targetSection || targetSection.index < currentSection.index) return null
+
+    try {
+      id = decodeURIComponent(href.slice(hashIndex + 1))
+    } catch (exception) {
+      id = href.slice(hashIndex + 1)
+    }
+
+    return id ? { section: targetSection, id: id, sameSection: targetSection === currentSection } : null
+  }
+
+  function loadNoteDocument(section) {
+    if (!noteDocumentRequests[section.href]) {
+      noteDocumentRequests[section.href] = bookInstance.load(section.url).catch(function (exception) {
+        delete noteDocumentRequests[section.href]
+        throw exception
+      })
+    }
+
+    return noteDocumentRequests[section.href]
+  }
+
+  function findNoteBlock(doc, id) {
+    var target = doc.getElementById(id)
+
+    if (!target) {
+      try {
+        target = doc.querySelector('[name="' + window.CSS.escape(id) + '"]')
+      } catch (exception) {
+        target = null
+      }
+    }
+
+    if (!target || /^h[1-6]$/i.test(target.tagName)) return null
+    return target.matches(NOTE_BLOCK_SELECTOR) ? target : target.closest(NOTE_BLOCK_SELECTOR)
+  }
+
+  var SUPERSCRIPT_CHARS = {
+    '0': '⁰',
+    '1': '¹',
+    '2': '²',
+    '3': '³',
+    '4': '⁴',
+    '5': '⁵',
+    '6': '⁶',
+    '7': '⁷',
+    '8': '⁸',
+    '9': '⁹',
+    '-': '⁻',
+    '+': '⁺',
+  }
+
+  // 텍스트로만 보여 주므로 10<sup>9</sup> 같은 지수가 109로 붙지 않게 위첨자 문자로 바꿉니다.
+  function convertSuperscriptNumbers(root) {
+    Array.prototype.forEach.call(root.querySelectorAll('sup'), function (sup) {
+      var text = String(sup.textContent || '').trim()
+
+      if (/^[-+0-9]+$/.test(text) && !sup.querySelector('a') && !sup.closest('a')) {
+        sup.textContent = text.replace(/./g, function (character) {
+          return SUPERSCRIPT_CHARS[character]
+        })
+      }
+    })
+    return root
+  }
+
+  function readNoteText(sourceBlock, label) {
+    var block = convertSuperscriptNumbers(sourceBlock.cloneNode(true))
+    var parts = Array.prototype.map
+      .call(block.querySelectorAll('p, li, dd'), function (node) {
+        return normalizeText(node.textContent)
+      })
+      .filter(Boolean)
+    var text = parts.length ? parts.join('\n\n') : normalizeText(block.textContent)
+
+    if (label && text.indexOf(label) === 0 && !/\d/.test(text.charAt(label.length))) {
+      text = text.slice(label.length).replace(/^[\s.]+/, '')
+    }
+
+    return text
+  }
+
+  function openNoteReference(component, contents, target, label) {
+    var request = target.sameSection ? Promise.resolve(getContentsDocument(contents)) : loadNoteDocument(target.section)
+
+    request
+      .then(function (doc) {
+        var block = doc ? findNoteBlock(doc, target.id) : null
+        var text = block ? readNoteText(block, label) : ''
+
+        if (!text || text.length > NOTE_TEXT_MAX_LENGTH) {
+          console.debug('page/books/[bookId]/read:note-fallback', {
+            href: target.section.href,
+            id: target.id,
+            length: text.length,
+          })
+          return renditionInstance.display(target.section.href + '#' + target.id)
+        }
+
+        component.noteLabel = label.replace(/^[[(]+|[\])]+$/g, '')
+        component.noteText = text
+        component.noteOpen = true
+        component.controlsVisible = false
+        // 탭한 뒤 포커스가 본문 iframe에 남아 Esc가 닿지 않으므로, x-show가 시트를 그린 다음 프레임에 닫기 버튼으로 옮깁니다.
+        window.Alpine.nextTick(function () {
+          window.requestAnimationFrame(function () {
+            var closeButton = document.querySelector('#reader-note-sheet button')
+
+            if (closeButton) closeButton.focus()
+          })
+        })
+      })
+      .catch(function (exception) {
+        console.warn('page/books/[bookId]/read:note-open-failed', {
+          href: target.section.href,
+          message: String(exception && exception.message ? exception.message : exception),
+        })
+      })
+  }
+
+  function openNoteFromLink(component, contents, link) {
+    var target = resolveNoteTarget(contents, link)
+
+    link.blur()
+
+    if (target) {
+      openNoteReference(component, contents, target, String(link.textContent || '').trim())
+    }
+  }
+
+  // WebKit은 스크립트가 막힌 본문 iframe에 붙인 클릭 처리기를 실행하지 않아, 탭으로 주석 번호에 간 포커스를 확인해 엽니다.
+  function pollNoteReferenceFocus(component) {
+    getRenderedContentEntries().forEach(function (entry) {
+      var doc = getContentsDocument(entry && entry.contents ? entry.contents : null)
+      var link = doc ? doc.activeElement : null
+
+      if (link && typeof link.matches === 'function' && link.matches('a[data-booklog-note-href]')) {
+        openNoteFromLink(component, entry.contents, link)
+      }
+    })
+  }
+
+  // 주석 번호의 href를 떼어 두어야 WebKit에서 iframe이 주석 파일 주소로 넘어가지 않습니다.
+  function bindNoteReferencePopup(component, contents) {
+    var doc = getContentsDocument(contents)
+
+    if (!doc || doc.__booklogNoteReferenceBound) {
+      return
+    }
+
+    doc.__booklogNoteReferenceBound = true
+    Array.prototype.forEach.call(doc.querySelectorAll('a[href*="#"]'), function (link) {
+      if (!resolveNoteTarget(contents, link)) return
+
+      link.setAttribute('data-booklog-note-href', link.getAttribute('href'))
+      link.removeAttribute('href')
+      link.setAttribute('tabindex', '0')
+      link.style.cursor = 'pointer'
+      link.onclick = null
+    })
+    doc.addEventListener(
+      'click',
+      function (event) {
+        var link = event.target && event.target.closest ? event.target.closest('a[data-booklog-note-href]') : null
+
+        if (!link) {
+          return
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+        openNoteFromLink(component, contents, link)
+      },
+      true
+    )
   }
 
   function buildSpeechQueueFromSection(section, currentCfi) {
@@ -4287,6 +4506,7 @@ window.booklogReaderLogic = (function () {
       upsertRenderedContentEntry(contents)
       applyReaderSettingsToDocument(doc, getComponentReaderSettings(component))
       bindContentSelectionCapture(component, contents)
+      bindNoteReferencePopup(component, contents)
 
       if (doc.documentElement && doc.documentElement.style) {
         doc.documentElement.style.setProperty('overflow-anchor', 'none', 'important')
