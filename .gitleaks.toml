@@ -17,6 +17,8 @@ paths = ['''^apps/[^/]+/patches/pocketbase-js-sdk-jsvm\+0\.25\.10004\.patch$''']
 description = "Official PocketBase browser SDK bundles contain generated code that matches generic-api-key."
 targetRules = ["generic-api-key"]
 paths = [
+  '''^scripts/vendor/pocketbase-0\.27\.0\.umd\.js$''',
+  '''^apps/todo/pb_hooks/pages/assets/vendor/pocketbase-0\.27\.0\.umd\.js$''',
   '''^scripts/vendor/pocketbase-0\.28\.0\.umd\.js$''',
   '''^apps/todo/pb_hooks/pages/assets/vendor/pocketbase-0\.28\.0\.umd\.js$''',
 ]
