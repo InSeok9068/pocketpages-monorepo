@@ -3,6 +3,7 @@ const MAX_ATTEMPTS = 5
 const RETRY_DELAY_MS = 600000
 const SPLIT_AFTER_ATTEMPTS = 1
 const MIN_SPLIT_CHARS = 300
+const MIN_REGENERATE_SPLIT_CHARS = 80
 const SHORT_CHECK_MIN_CHARS = 250
 const MAX_CHARS_PER_SECOND = 6.5
 const SHORT_RETRY_LIMIT = 2
@@ -132,10 +133,11 @@ function splitChunk(txApp, parent, parts) {
 /**
  * 본문을 가운데에 가까운 문단·문장 경계에서 둘로 나눕니다.
  * @param {string} text 낭독 본문
+ * @param {number} [minChars] 나눌 수 있는 최소 글자 수
  * @returns {string[] | null} 앞뒤 조각, 너무 짧아 나눌 수 없으면 null
  */
-function splitInHalf(text) {
-  if (text.length < MIN_SPLIT_CHARS) return null
+function splitInHalf(text, minChars) {
+  if (text.length < (minChars || MIN_SPLIT_CHARS)) return null
   const middle = text.length / 2
   for (const pattern of [/\n\n+/g, /[.!?。！？][”’"']?\s+/g, /\s+/g]) {
     let best = -1
@@ -350,12 +352,27 @@ function isBlockedExhausted(chunk) {
   return chunk.get('status') === 'failed' && String(chunk.get('error_message')).indexOf(BLOCKED_EXHAUSTED_MESSAGE) === 0
 }
 
+/**
+ * 반복 차단으로 끝난 구간을 재생성 요청 시 더 작은 조각 2개로 나눕니다.
+ * @param {types.BooklogApp} txApp 트랜잭션 앱
+ * @param {core.Record} chunk 재생성을 요청한 구간
+ * @returns {boolean} 나눴는지 여부, 차단 구간이 아니거나 너무 짧으면 false
+ */
+function splitBlockedChunk(txApp, chunk) {
+  if (!isBlockedExhausted(chunk)) return false
+  const parts = splitInHalf(String(chunk.get('input_text')), MIN_REGENERATE_SPLIT_CHARS)
+  if (!parts) return false
+  splitChunk(txApp, chunk, parts)
+  return true
+}
+
 module.exports = {
   BLOCKED_EXHAUSTED_MESSAGE,
   CLAIM_TTL_MS,
   MAX_ATTEMPTS,
   isBlockedExhausted,
   isClaimable,
+  splitBlockedChunk,
   toMs,
   claimChunk,
   generateClaimedChunk,

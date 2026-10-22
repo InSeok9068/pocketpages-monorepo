@@ -244,6 +244,8 @@ test('A chunk is halved at the sentence boundary nearest the middle and short te
   assert.equal(service.splitInHalf(minimum).join(' '), minimum)
   assert.equal(service.splitInHalf(longNarration(12)), null)
   assert.equal(service.splitInHalf('가'.repeat(400)), null, 'text without boundaries is not cut mid-word')
+  assert.equal(service.splitInHalf(longNarration(4), 80).join(' '), longNarration(4))
+  assert.equal(service.splitInHalf(longNarration(3), 80), null)
 })
 
 test('A chunk blocked once is replaced by two ordered parts and short chunks keep retrying', () => {
@@ -338,6 +340,83 @@ test('Restarting a job retries ordinary failures but not parts that policy block
   service.planJob({ runInTransaction: (fn) => fn(tx) }, 'job', [{ sectionIndex: 0, chunks: ['첫 구간', '둘째 구간'] }])
   assert.equal(ordinary.fields.attempt_count, 0, 'ordinary failures are retried after a restart')
   assert.equal(blocked.fields.attempt_count, 5, 'repeatedly blocked parts keep reading with the device voice')
+})
+
+test('Regenerating a repeatedly blocked part splits it down to 80 chars, while other parts are simply remade', () => {
+  const record = (fields) => ({
+    fields: { ...fields },
+    get(name) {
+      return this.fields[name] ?? ''
+    },
+    set(name, value) {
+      this.fields[name] = value
+    },
+  })
+  const generationPath = '/pages/_private/book-audio-generation-service.js'
+  const created = []
+  const context = {
+    module: { exports: {} },
+    __hooks: '',
+    $security: { sha256: (text) => text },
+    $dbx: { hashExp: () => ({}), not: () => ({}), exp: () => ({}), like: () => ({ match: () => ({}) }) },
+    Record: function () {
+      const part = record({})
+      created.push(part)
+      return part
+    },
+    Date,
+  }
+  const load = (file) => {
+    const sandbox = { ...context, module: { exports: {} } }
+    vm.runInNewContext(readFileSync(new URL('../pb_hooks' + file, import.meta.url), 'utf8'), sandbox)
+    return sandbox.module.exports
+  }
+  context.require = (name) =>
+    name === generationPath ? load(generationPath) : name.startsWith('@') ? { dateutil: {} } : {}
+  const service = load('/pages/_private/book-audio-job-service.js')
+  const exhausted = 'Gemini 정책 필터에 반복 차단되어 이 부분은 기기 음성으로 읽습니다. reason'
+  const chunk = (id, fields) =>
+    record({
+      id,
+      file_id: 'file',
+      config_hash: 'hash',
+      section_index: 2,
+      chunk_index: 5,
+      split_path: '1',
+      regenerate_requested: true,
+      ...fields,
+    })
+  const chunks = {
+    blocked: chunk('blocked', { status: 'failed', attempt_count: 5, error_message: exhausted, input_text: longNarration(4) }),
+    tiny: chunk('tiny', { status: 'failed', attempt_count: 5, error_message: exhausted, input_text: longNarration(3) }),
+    ready: chunk('ready', { status: 'ready', audio_file: 'a.mp3', input_text: longNarration(4) }),
+  }
+  const job = record({ file_id: 'file', config_hash: 'hash', status: 'running', total_chunks: 3 })
+  const app = {
+    findRecordsByFilter: (collection, filter) =>
+      filter.startsWith('regenerate') ? Object.values(chunks) : filter.includes('section_index') ? [] : [job],
+    findRecordById: (collection, id) => chunks[id],
+    findCollectionByNameOrId: () => ({}),
+    runInTransaction: (fn) => fn(app),
+    countRecords: () => 0,
+    save() {},
+    delete() {},
+  }
+  assert.equal(service.applyRegenerateRequests(app, Date.now()), 3)
+  assert.equal(chunks.blocked.fields.status, 'split')
+  assert.equal(chunks.blocked.fields.regenerate_requested, false)
+  assert.deepEqual(
+    created.map((part) => [part.fields.split_path, part.fields.status, part.fields.section_index, part.fields.chunk_index]),
+    [
+      ['10', 'queued', 2, 5],
+      ['11', 'queued', 2, 5],
+    ]
+  )
+  assert.equal(created.map((part) => part.fields.input_text).join(' '), longNarration(4))
+  assert.equal(chunks.tiny.fields.status, 'queued', 'a part under 80 chars is sent again as is')
+  assert.equal(chunks.tiny.fields.attempt_count, 0)
+  assert.equal(chunks.ready.fields.status, 'queued', 'a part that was not blocked is remade without splitting')
+  assert.equal(chunks.ready.fields.audio_file, '')
 })
 
 test('Audio much shorter than its text is regenerated twice and then saved with a review note', () => {

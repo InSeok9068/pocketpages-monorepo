@@ -394,17 +394,23 @@ function applyRegenerateRequests(app, nowMs) {
         job.set('error_message', '')
         txApp.save(job)
       }
-      chunk.set('status', 'queued')
-      chunk.set('audio_file', '')
-      chunk.set('duration_seconds', 0)
-      chunk.set('attempt_count', 0)
-      chunk.set('next_retry_at', '')
-      chunk.set('error_message', '')
-      chunk.set('generation_started_at', '')
-      chunk.set('generated_at', '')
-      chunk.set('regenerate_requested', false)
-      txApp.save(chunk)
-      deleteSplitParts(txApp, chunk)
+      // 반복 차단된 조각은 같은 본문을 다시 보내도 또 막혀, 더 작게 나눠 차단 문장만 기기 음성으로 남깁니다.
+      if (generation.splitBlockedChunk(txApp, chunk)) {
+        chunk.set('regenerate_requested', false)
+        txApp.save(chunk)
+      } else {
+        chunk.set('status', 'queued')
+        chunk.set('audio_file', '')
+        chunk.set('duration_seconds', 0)
+        chunk.set('attempt_count', 0)
+        chunk.set('next_retry_at', '')
+        chunk.set('error_message', '')
+        chunk.set('generation_started_at', '')
+        chunk.set('generated_at', '')
+        chunk.set('regenerate_requested', false)
+        txApp.save(chunk)
+        deleteSplitParts(txApp, chunk)
+      }
       touched[chunk.get('file_id') + ':' + chunk.get('config_hash')] = {
         fileId: String(chunk.get('file_id')),
         configHash: String(chunk.get('config_hash')),
