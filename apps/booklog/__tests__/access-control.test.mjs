@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { load } from 'cheerio'
 import { after, before, test } from 'node:test'
 import {
   copyFileSync,
@@ -471,10 +472,11 @@ test('Administrators can search all books, see members and delete unused books',
   assert.equal(listing.status, 200)
   const html = await listing.text()
   assert.match(html, /관리 대상 책/)
-  assert.match(html, /연결 인원 2명/)
+  const cells = load(html)('tbody tr').first().find('td')
+  assert.match(cells.eq(0).text(), /2명/)
   assert.match(html, /reader4@example.com/)
-  assert.match(html, /EPUB 2개/)
-  assert.match(html, /음성 파일 2개/)
+  assert.match(cells.eq(1).text(), /2개/)
+  assert.match(cells.eq(2).text(), /2개/)
   assert.equal(
     (await request('/admin/books', 4, { action: 'delete', bookId: 'unusedbook00001', userCount: '0' })).status,
     303
