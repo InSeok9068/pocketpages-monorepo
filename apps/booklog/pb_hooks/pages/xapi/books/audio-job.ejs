@@ -46,8 +46,8 @@
   let message = ''
   try {
     if (action === 'start') {
-      const model = String(form.model || 'gemini-3.8-flash-lite-tts').trim()
-      if (['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts'].indexOf(model) < 0) {
+      const model = String(form.model || audioData.DEFAULT_MODEL).trim()
+      if (!audioData.isSupportedModel(model)) {
         redirectWithMessage(bookDetailPath, 'TTS 모델을 확인해 주세요.')
         return
       }

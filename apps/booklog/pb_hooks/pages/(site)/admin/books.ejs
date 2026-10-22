@@ -35,10 +35,8 @@
       const audioData = resolve('book-audio-data')
       const job = audioData.findFileJob($app, fileId)
       const options = audioData.getModelOptions($app, fileId)
-      const available = options.filter(function (option) {
-        return !option.disabled
-      })[0]
-      const model = job ? String(job.get('model')) : (available || options[0]).model
+      const available = audioData.pickAvailableModel(options)
+      const model = job ? String(job.get('model')) : available ? available.model : audioData.DEFAULT_MODEL
       const result = resolve('book-audio-job-service').requestJob($app, fileId, userId, audioData.getSettings(model))
       message = result.message || 'AI 오디오북 생성을 예약했습니다. 2분 안에 책을 분석해 생성을 시작합니다.'
       info('page/admin/books:audio-requested', { userId, bookId, fileId, model, accepted: !result.message })

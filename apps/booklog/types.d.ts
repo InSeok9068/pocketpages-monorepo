@@ -16,9 +16,18 @@ declare namespace types {
     chunks: string[]
   }
 
-  interface BookAudioModelOption {
-    model: string
+  type BookAudioModelName = 'gemini-3.8-flash-lite-tts' | 'gemini-3.8-flash-tts'
+
+  interface BookAudioModelEntry {
+    model: BookAudioModelName
     label: string
+    isDefault: boolean
+  }
+
+  interface BookAudioModelOption {
+    model: BookAudioModelName
+    label: string
+    isDefault: boolean
     disabled: boolean
     busyBookTitle: string
   }

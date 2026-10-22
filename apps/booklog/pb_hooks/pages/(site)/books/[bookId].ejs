@@ -225,9 +225,7 @@
       audioModelOptions = audioData.getModelOptions($app, audioJobFileId).filter(function (option) {
         return !audioJobRecord || option.model === String(audioJobRecord.get('model'))
       })
-      const availableModel = audioModelOptions.find(function (option) {
-        return !option.disabled
-      })
+      const availableModel = audioData.pickAvailableModel(audioModelOptions)
       audioSelectedModel = availableModel ? availableModel.model : ''
       canRequestAudio = !!availableModel
     } catch (exception) {

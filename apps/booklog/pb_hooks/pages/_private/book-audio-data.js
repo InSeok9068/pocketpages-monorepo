@@ -2,10 +2,15 @@ const epubReadingMetrics = require(__hooks + '/pages/_private/epub-reading-metri
 const generation = require(__hooks + '/pages/_private/book-audio-generation-service.js')
 const bookTitleService = require(__hooks + '/pages/_private/book-title.js')
 
+// 새 모델은 여기 한 줄만 추가합니다. 화면 순서대로 두고, 기본 모델은 하나만 둡니다.
+/** @type {types.BookAudioModelEntry[]} */
 const MODELS = [
-  { model: 'gemini-3.8-flash-lite-tts', label: 'Flash-Lite' },
-  { model: 'gemini-3.8-flash-tts', label: 'Flash' },
+  { model: 'gemini-3.8-flash-lite-tts', label: '3.8 Flash Lite', isDefault: true },
+  { model: 'gemini-3.8-flash-tts', label: '3.8 Flash', isDefault: false },
 ]
+const DEFAULT_MODEL = MODELS.filter(function (entry) {
+  return entry.isDefault
+})[0].model
 // 실측 Gemini 낭독 속도(공백 포함 초당 약 6.8자)로 아직 음성이 없는 구간의 재생 바 길이를 잡습니다.
 const ESTIMATED_CHARS_PER_SECOND = 6.8
 
@@ -27,7 +32,7 @@ function findFileJob(app, fileId) {
  */
 function getFileSettings(app, fileId) {
   const job = findFileJob(app, fileId)
-  if (!job) return getSettings('gemini-3.8-flash-lite-tts')
+  if (!job) return getSettings(DEFAULT_MODEL)
   return {
     provider: String(job.get('provider')),
     model: String(job.get('model')),
@@ -61,7 +66,42 @@ function getModelOptions(app, fileId) {
       const book = app.findRecordById('books', String(file.get('book_id')))
       bookTitle = bookTitleService.getMainTitle(String(book.get('title') || '제목 없는 책'))
     }
-    return { model: entry.model, label: entry.label, disabled: !!busy, busyBookTitle: bookTitle }
+    return {
+      model: entry.model,
+      label: entry.label,
+      isDefault: entry.isDefault,
+      disabled: !!busy,
+      busyBookTitle: bookTitle,
+    }
+  })
+}
+
+/**
+ * 지금 생성에 쓸 수 있는 모델을 고릅니다. 모델마다 한도가 따로라 비어 있는 모델을 쓰되, 기본 모델이 비어 있으면 그것을 고릅니다.
+ * @param {types.BookAudioModelOption[]} options 모델 선택 항목
+ * @returns {types.BookAudioModelOption | null} 사용할 모델, 모두 사용 중이면 null
+ */
+function pickAvailableModel(options) {
+  const available = options.filter(function (option) {
+    return !option.disabled
+  })
+  return (
+    available.filter(function (option) {
+      return option.isDefault
+    })[0]
+    || available[0]
+    || null
+  )
+}
+
+/**
+ * 지원하는 TTS 모델인지 확인합니다.
+ * @param {string} model 모델 이름
+ * @returns {boolean} 지원 여부
+ */
+function isSupportedModel(model) {
+  return MODELS.some(function (entry) {
+    return entry.model === model
   })
 }
 
@@ -71,7 +111,7 @@ function getModelOptions(app, fileId) {
  * @returns {types.BookAudioSettings} 낭독 설정
  */
 function getSettings(model) {
-  if (['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'].indexOf(model) < 0) {
+  if (!isSupportedModel(model)) {
     throw new Error('서버의 TTS 모델 설정을 확인해 주세요.')
   }
   const settings = {
@@ -365,9 +405,12 @@ function chunkView(chunk, parts, bookId, chunkCount, order, timeline) {
 }
 
 module.exports = {
+  DEFAULT_MODEL,
   findFileJob,
   getFileSettings,
   getModelOptions,
+  pickAvailableModel,
+  isSupportedModel,
   getSettings,
   findAuthorizedFile,
   readBookSections,
