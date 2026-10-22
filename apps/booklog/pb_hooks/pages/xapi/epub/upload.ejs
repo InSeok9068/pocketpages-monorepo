@@ -55,15 +55,10 @@
       }
     }
 
-    const legacyCandidateRecord = findFirstRecordOrNull(
-      $app,
-      'book_files',
-      'original_name = {:originalName} && file_size = {:fileSize}',
-      {
-        originalName: fileLookupInput.originalName,
-        fileSize: fileLookupInput.fileSize,
-      }
-    )
+    // 파일명이 달라도 같은 크기의 기존 파일이 있으면 예전 해시까지 비교합니다.
+    const legacyCandidateRecord = findFirstRecordOrNull($app, 'book_files', 'file_size = {:fileSize}', {
+      fileSize: fileLookupInput.fileSize,
+    })
 
     if (!legacyCandidateRecord) {
       return {
@@ -503,7 +498,6 @@
     const fileLookup = resolveExistingBookFileLookup({
       archiveSnapshot: archiveSnapshot,
       readEpubByteArray: readEpubByteArray,
-      originalName: epubFile.originalName || epubFile.name,
       fileSize: fileSize,
     })
     const fileLookupDoneAt = Date.now()

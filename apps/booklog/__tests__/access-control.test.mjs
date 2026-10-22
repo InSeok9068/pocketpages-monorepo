@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { load } from 'cheerio'
 import { after, before, test } from 'node:test'
 import {
@@ -261,6 +262,57 @@ test('Concurrent uploads of the same new EPUB leave one book, one stored file an
   assert.ok(existsSync(path.join(state.storageRoot, state.files[0].path)), 'stored EPUB file exists')
   assert.equal(messages.filter((message) => message.includes('EPUB 파일과 도서 메타데이터를 저장했습니다.')).length, 1)
   for (const message of messages) assert.doesNotMatch(message, /UNIQUE|constraint|validation_/i)
+})
+
+test('Renamed legacy EPUBs reuse the same file, while equal-size different contents stay separate', async () => {
+  const { zipSync, strToU8 } = require('fflate')
+  const title = 'legacy-hash-rename-case'
+  function buildEpub(letter) {
+    return zipSync({
+      'mimetype': strToU8('application/epub+zip'),
+      'META-INF/container.xml': strToU8(
+        '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'
+      ),
+      'OPS/book.opf': strToU8(
+        '<package version="3.0"><metadata><title>' + title
+          + '</title><creator>테스트 저자</creator></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>'
+      ),
+      'OPS/body.xhtml': strToU8('<html><body><p>본문 ' + letter + '</p></body></html>'),
+    }, { level: 0 })
+  }
+  async function upload(bytes, name, user) {
+    const form = new FormData()
+    form.set('epubFile', new Blob([bytes], { type: 'application/epub+zip' }), name)
+    const response = await fetch(service.baseUrl + '/xapi/epub/upload', {
+      method: 'POST', headers: sessions[user], redirect: 'manual', body: form,
+    })
+    assert.equal(response.status, 303)
+    return response
+  }
+  const stateUrl = '/_test/upload-state?title=' + encodeURIComponent(title)
+  const bytes = buildEpub('A')
+  await upload(bytes, '같은파일.epub', 1)
+  const before = await (await request(stateUrl)).json()
+  assert.equal(before.files.length, 1)
+  const file = before.files[0]
+  // 예전 구현은 각 바이트를 문자로 바꾼 문자열을 SHA-256에 전달했습니다.
+  const legacyHash = createHash('sha256').update(Buffer.from(bytes).toString('latin1'), 'utf8').digest('hex')
+  assert.equal((await request('/_test/legacy-file-hash?fileId=' + file.id + '&hash=' + legacyHash, 1, {})).status, 200)
+  await upload(bytes, '같은파일.epub'.normalize('NFD'), 2)
+  await upload(bytes, '완전히다른이름.epub', 4)
+  const reused = await (await request(stateUrl)).json()
+  assert.equal(reused.bookCount, 1)
+  assert.deepEqual(reused.files, [file])
+  assert.deepEqual(reused.shelves.map((shelf) => shelf.userId).sort(), [
+    'reviewuser00001', 'reviewuser00002', 'reviewuser00004',
+  ])
+  assert.ok(reused.shelves.every((shelf) => shelf.bookFileId === file.id))
+  const differentBytes = buildEpub('B')
+  assert.equal(differentBytes.length, bytes.length, 'the candidate size is exactly the same')
+  await upload(differentBytes, '같은파일.epub', 2)
+  const separate = await (await request(stateUrl)).json()
+  assert.equal(separate.bookCount, 2)
+  assert.equal(separate.files.length, 2, 'equal size must not reuse different file contents')
 })
 
 test('A failed shelf save rolls back the new book, file record and stored EPUB file', async () => {

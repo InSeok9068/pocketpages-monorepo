@@ -195,6 +195,14 @@ routerAdd('POST', '/_test/fail-shelf-save', function (event) {
   return event.json(200, { ok: true })
 })
 
+routerAdd('POST', '/_test/legacy-file-hash', function (event) {
+  const query = event.request.url.query()
+  const file = $app.findRecordById('book_files', String(query.get('fileId')))
+  file.set('file_hash', String(query.get('hash')))
+  $app.save(file)
+  return event.json(200, { ok: true })
+})
+
 routerAdd('GET', '/_test/upload-state', function (event) {
   const title = String(event.request.url.query().get('title'))
   const books = $app.findRecordsByFilter('books', 'title = {:title}', '', 0, 0, { title })
