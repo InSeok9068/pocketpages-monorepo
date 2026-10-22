@@ -525,6 +525,30 @@ test('Slow upward gestures at a loading chapter boundary keep the reading positi
   expect(errors).toEqual([])
 })
 
+test('The reader hides its scrollbars while scrolling keeps working', async ({ page }) => {
+  const errors = await openReader(page)
+  const before = await screen(page)
+  // headless 브라우저는 스크롤바를 늘 숨겨 너비로는 알 수 없어, 실제로 적용된 스타일을 확인합니다.
+  const scrollers = await page.evaluate(() =>
+    [document.getElementById('epub-reader'), window.__scrollTest.rendition.manager.container]
+      .filter((element) => element.scrollHeight > element.clientHeight)
+      .map((element) => ({
+        scrollbarWidth: window.getComputedStyle(element).scrollbarWidth || '',
+        webkitScrollbar: window.getComputedStyle(element, '::-webkit-scrollbar').display,
+      }))
+  )
+  expect(scrollers.length, 'the reader has a scrolling area').toBeGreaterThan(0)
+  for (const scroller of scrollers) {
+    expect(
+      scroller.scrollbarWidth === 'none' || scroller.webkitScrollbar === 'none',
+      'the scrolling area hides its scrollbar: ' + JSON.stringify(scroller)
+    ).toBe(true)
+  }
+  await scrollSteps(page, 1, 5)
+  expect((await screen(page)).top).toBeGreaterThan(before.top)
+  expect(errors).toEqual([])
+})
+
 test('The first and last chapters remain reachable without looping', async ({ page }, testInfo) => {
   const errors = await openReader(page)
   await scrollSteps(page, 1, 38, { delta: 1500, interval: 120 })

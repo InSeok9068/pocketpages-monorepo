@@ -38,6 +38,17 @@
   scroll-margin-top: 7rem;
 }
 
+/* 리더 스크롤은 불러온 챕터만 기준이라 책 전체 위치와 맞지 않아, 스크롤바 대신 진행률 막대로 위치를 보여 줍니다. */
+#epub-reader,
+#epub-reader .epub-container {
+  scrollbar-width: none;
+}
+
+#epub-reader::-webkit-scrollbar,
+#epub-reader .epub-container::-webkit-scrollbar {
+  display: none;
+}
+
 .booklog-linked-section {
   outline: 2px solid #9e6125;
   outline-offset: 4px;
